@@ -201,6 +201,21 @@ func (w *AgentRunWorker) runOne(ctx context.Context, id string, fence agentrunti
 	}
 }
 
+// Cancel requests best-effort cancellation of an active worker for a durable run.
+func (w *AgentRunWorker) Cancel(key agentruntime.RunKey) error {
+	if w == nil || key.TenantID == 0 || key.RunID == "" {
+		return agentruntime.ErrConflict
+	}
+	id := fmt.Sprintf("%d/%s", key.TenantID, key.RunID)
+	w.mu.Lock()
+	cancel, ok := w.active[id]
+	w.mu.Unlock()
+	if ok {
+		cancel()
+	}
+	return nil
+}
+
 func (w *AgentRunWorker) drain() {
 	w.mu.Lock()
 	cancels := make([]context.CancelFunc, 0, len(w.active))

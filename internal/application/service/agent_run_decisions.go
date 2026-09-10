@@ -75,9 +75,15 @@ func (s *AgentRunService) Resolve(ctx context.Context, key agentruntime.RunKey, 
 	if !ok {
 		return agentruntime.Run{}, fmt.Errorf("agent run store does not support decisions")
 	}
-	principal, ok := types.PrincipalFromContext(ctx)
-	if !ok || principal.StorageID() == "" {
+	actor := types.SessionOwnerIDFromContext(ctx)
+	if actor == "" {
+		principal, ok := types.PrincipalFromContext(ctx)
+		if ok {
+			actor = principal.StorageID()
+		}
+	}
+	if actor == "" {
 		return agentruntime.Run{}, fmt.Errorf("authenticated decision actor is required")
 	}
-	return resolver.ApplyDecision(ctx, key, principal.StorageID(), in)
+	return resolver.ApplyDecision(ctx, key, actor, in)
 }

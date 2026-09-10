@@ -121,7 +121,7 @@ func (h *Handler) latestRunSeq(ctx context.Context, key agentruntime.RunKey) int
 }
 func runView(r agentruntime.Run) gin.H {
 	v := gin.H{"run_id": r.Key.RunID, "session_id": r.SessionID, "status": r.Status, "wait_reason": r.WaitReason, "revision": r.Revision, "epoch": r.Epoch, "seq": int64(0), "capabilities": gin.H{"engine_type": "trpc", "durable_recovery": true}}
-	if r.WaitReason != "" {
+	if r.Status == "waiting_user" && r.WaitReason != "" {
 		v["pending_id"] = r.WaitReason
 	}
 	return v

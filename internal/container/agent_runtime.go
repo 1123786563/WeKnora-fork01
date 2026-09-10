@@ -21,6 +21,7 @@ func newAgentRuntime(cfg *config.Config, store *repository.AgentRunStore, resour
 	// The provider-specific adapter is selected by the sandbox manager at
 	// execution time. Until it is available, park the claimed run durably;
 	// never let the graph fabricate a successful result.
+	r.Runs.SetCancelHook(func(_ context.Context, key agentruntime.RunKey) error { return r.Worker.Cancel(key) })
 	r.SetRecoveryHook(func(ctx context.Context, fence agentruntime.Fence) error {
 		_ = resources // used by the provider-backed adapter when it is configured
 		_ = r.Runs.WaitForDecision(ctx, fence, "sandbox_unavailable")
