@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"reflect"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/mattn/go-sqlite3" // Register the SQLite driver used by the checkpoint probe.
 	"trpc.group/trpc-go/trpc-agent-go/agent"
 	"trpc.group/trpc-go/trpc-agent-go/agent/graphagent"
 	"trpc.group/trpc-go/trpc-agent-go/graph"
@@ -49,7 +49,8 @@ func RunCheckpointProbe(ctx context.Context, path string, interrupt bool) (repor
 	// SDK List keeps its result cursor open while GetTuple issues another query.
 	db.SetMaxOpenConns(2)
 	defer func() { err = errors.Join(err, db.Close()) }()
-	if _, err = db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS probe_counts (name TEXT PRIMARY KEY, value INTEGER NOT NULL)`); err != nil {
+	const createCounts = `CREATE TABLE IF NOT EXISTS probe_counts (name TEXT PRIMARY KEY, value INTEGER NOT NULL)`
+	if _, err = db.ExecContext(ctx, createCounts); err != nil {
 		return report, err
 	}
 	saver, err := checkpointsqlite.NewSaver(db)
@@ -64,16 +65,21 @@ func RunCheckpointProbe(ctx context.Context, path string, interrupt bool) (repor
 	state := map[string]any{graph.CfgKeyLineageID: probeLineageID, graph.CfgKeyCheckpointNS: probeNamespace}
 	if latest != nil {
 		state[graph.CfgKeyCheckpointID] = latest.Checkpoint.ID
-		report.PendingRestored = latest.Checkpoint.InterruptState != nil && latest.Checkpoint.InterruptState.TaskID == probeToolCallID
+		report.PendingRestored = latest.Checkpoint.InterruptState != nil &&
+			latest.Checkpoint.InterruptState.TaskID == probeToolCallID
 		if !interrupt {
 			state[graph.StateKeyCommand] = &graph.Command{ResumeMap: map[string]any{probeToolCallID: true}}
 		}
 	}
 	llm := &probeModel{db: db}
-	tools := map[string]tool.Tool{probeToolName: function.NewFunctionTool(func(ctx context.Context, _ struct{}) (string, error) {
-		return "incremented", incrementProbeCounter(ctx, db, "tool")
-	}, function.WithName(probeToolName), function.WithDescription("Increment the durable probe counter."))}
-	schema := graph.MessagesStateSchema().AddField(stateKeyToolCallID, graph.StateField{Type: reflect.TypeOf(""), Reducer: graph.DefaultReducer})
+	tools := map[string]tool.Tool{
+		probeToolName: function.NewFunctionTool(func(ctx context.Context, _ struct{}) (string, error) {
+			return "incremented", incrementProbeCounter(ctx, db, "tool")
+		}, function.WithName(probeToolName), function.WithDescription("Increment the durable probe counter.")),
+	}
+	schema := graph.MessagesStateSchema().AddField(stateKeyToolCallID, graph.StateField{
+		Type: reflect.TypeOf(""), Reducer: graph.DefaultReducer,
+	})
 	g, err := graph.NewStateGraph(schema).
 		AddLLMNode("plan", llm, "Plan one tool call.", tools).
 		AddNode("approval", func(ctx context.Context, state graph.State) (any, error) {
@@ -92,7 +98,8 @@ func RunCheckpointProbe(ctx context.Context, path string, interrupt bool) (repor
 			}
 			call := messages[len(messages)-1].ToolCalls[0]
 			if interrupt || latest != nil {
-				if _, err := graph.Interrupt(ctx, state, call.ID, map[string]any{"tool_call_id": call.ID, "tool_name": call.Function.Name}); err != nil {
+				payload := map[string]any{"tool_call_id": call.ID, "tool_name": call.Function.Name}
+				if _, err := graph.Interrupt(ctx, state, call.ID, payload); err != nil {
 					return nil, err
 				}
 			}
@@ -126,18 +133,23 @@ func RunCheckpointProbe(ctx context.Context, path string, interrupt bool) (repor
 		if evt.Error != nil {
 			err = errors.Join(err, fmt.Errorf("SDK event %s: %s", evt.Error.Type, evt.Error.Message))
 		}
-		if evt.Object == graph.ObjectTypeGraphExecution && evt.Done && len(evt.Choices) == 1 && evt.Choices[0].Message.Content == "probe complete" {
+		if evt.Object == graph.ObjectTypeGraphExecution && evt.Done && len(evt.Choices) == 1 &&
+			evt.Choices[0].Message.Content == "probe complete" {
 			report.Completed = true
 		}
 	}
-	if countErr := db.QueryRowContext(ctx, `SELECT COALESCE((SELECT value FROM probe_counts WHERE name = 'model'), 0), COALESCE((SELECT value FROM probe_counts WHERE name = 'tool'), 0)`).Scan(&report.ModelCalls, &report.ToolCalls); countErr != nil {
+	const readCounts = `SELECT COALESCE((SELECT value FROM probe_counts WHERE name = 'model'), 0),
+		COALESCE((SELECT value FROM probe_counts WHERE name = 'tool'), 0)`
+	if countErr := db.QueryRowContext(ctx, readCounts).Scan(&report.ModelCalls, &report.ToolCalls); countErr != nil {
 		err = errors.Join(err, countErr)
 	}
 	return report, err
 }
 
 func incrementProbeCounter(ctx context.Context, db *sql.DB, name string) error {
-	_, err := db.ExecContext(ctx, `INSERT INTO probe_counts(name, value) VALUES (?, 1) ON CONFLICT(name) DO UPDATE SET value = value + 1`, name)
+	const increment = `INSERT INTO probe_counts(name, value) VALUES (?, 1)
+		ON CONFLICT(name) DO UPDATE SET value = value + 1`
+	_, err := db.ExecContext(ctx, increment, name)
 	return err
 }
 
@@ -159,10 +171,15 @@ func (m *probeModel) GenerateContent(ctx context.Context, request *model.Request
 		}
 	}
 	if message.Content == "" {
-		message.ToolCalls = []model.ToolCall{{ID: probeToolCallID, Type: "function", Function: model.FunctionDefinitionParam{Name: probeToolName, Arguments: []byte(`{}`)}}}
+		message.ToolCalls = []model.ToolCall{{
+			ID: probeToolCallID, Type: "function",
+			Function: model.FunctionDefinitionParam{Name: probeToolName, Arguments: []byte(`{}`)},
+		}}
 	}
 	responses := make(chan *model.Response, 1)
-	responses <- &model.Response{Object: model.ObjectTypeChatCompletion, Done: true, Choices: []model.Choice{{Message: message}}}
+	responses <- &model.Response{
+		Object: model.ObjectTypeChatCompletion, Done: true, Choices: []model.Choice{{Message: message}},
+	}
 	close(responses)
 	return responses, nil
 }

@@ -33,7 +33,8 @@ func TestCheckpointProbeReopen(t *testing.T) {
 func TestCheckpointProbeStreamTerminal(t *testing.T) {
 	for _, interrupt := range []bool{true, false} {
 		t.Run(map[bool]string{true: "interrupted", false: "completed"}[interrupt], func(t *testing.T) {
-			result, err := RunCheckpointProbe(context.Background(), filepath.Join(t.TempDir(), "terminal.db"), interrupt)
+			path := filepath.Join(t.TempDir(), "terminal.db")
+			result, err := RunCheckpointProbe(context.Background(), path, interrupt)
 			require.NoError(t, err)
 			require.Equal(t, !interrupt, result.Completed)
 			if interrupt {
