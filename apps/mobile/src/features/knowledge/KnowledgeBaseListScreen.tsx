@@ -24,7 +24,7 @@ export function KnowledgeBaseListScreen() {
   return <SafeAreaView style={{ flex: 1, padding: 16 }}>
     <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
       <Text accessibilityRole="header" style={{ fontSize: 24, fontWeight: '700' }}>Knowledge bases</Text>
-      <Pressable accessibilityRole="button" onPress={() => void runtime.logout()}><Text style={{ color: '#2864dc' }}>Sign out</Text></Pressable>
+      <View style={{ flexDirection: 'row', gap: 12 }}><Pressable accessibilityRole="button" onPress={() => router.push('/management')}><Text style={{ color: '#2864dc' }}>Manage</Text></Pressable><Pressable accessibilityRole="button" onPress={() => void runtime.logout()}><Text style={{ color: '#2864dc' }}>Sign out</Text></Pressable></View>
     </View>
     {error ? <Text accessibilityRole="alert" style={{ color: '#b42318', marginBottom: 12 }}>{error}</Text> : null}
     {loading ? <ActivityIndicator accessibilityLabel="Loading knowledge bases" /> : <FlatList

@@ -43,7 +43,7 @@
 | T20 Expo基础、原生登录和网络生命周期 | review | `fcc1069` (`feat: add Expo mobile foundation`) | `pnpm --filter @weknora/mobile typecheck` 0；`pnpm --filter @weknora/mobile test` 0（1/1）；`pnpm --filter @weknora/mobile exec expo export --platform ios --output-dir <tmp>` 0；`expo config --type public --json` 0；`git diff --check` 0 | Expo Router/RN foundation, SecureStore credential adapter, HTTP(S)-validated native transport, SSE stream parser and React runtime wiring: passed; iOS Metro production export: passed; device/simulator, native install, live backend auth/network lifecycle: not completed | Added `apps/mobile` Expo SDK 55/RN 0.83.10 foundation and auth/knowledge route shells. Direct runtime dependencies are declared for pnpm/Metro resolution. Android/iOS native runtime, real login/refresh/logout, AppState/network recovery and backend acceptance remain |
 | T21 原生知识库、检索与文件 | review | working tree (`apps/mobile`, shared contracts/API client) | `pnpm test:shared` 0（121/121）；`pnpm --filter @weknora/mobile test` 0（3/3）；`pnpm typecheck:shared` 0；`pnpm --filter @weknora/mobile typecheck` 0；Expo iOS export 0；`git diff --check` 0 | Shared DTO/API tests, native platform URI seam, native FlatList source, and production iOS JS bundle: passed; device upload/download/share, real backend permission/large-file recovery: not completed | Added folder/tag/detail/search/download-path contracts, native `{uri,name,type}` upload source, Expo DocumentPicker/FileSystem/Sharing seam, KB/document/filter/detail routes, pagination and AppState refresh. Real iOS/Android picker/upload/download/share, 403/413, cancellation and backend parity remain |
 | T22 原生聊天、引用与核心闭环 | review | working tree (`apps/mobile`, shared chat contracts/API client) | `pnpm test:shared` 0（125/125）；`pnpm typecheck:shared` 0；`pnpm --filter @weknora/mobile test` 0（5/5）；`pnpm --filter @weknora/mobile typecheck` 0；Expo iOS export 0；`git diff --check` 0 | Shared stop/continue/attachment/SSE tests, shared reducer parity fixture, native FlatList chat and production iOS JS bundle: passed; real SSE/approval/attachment/device recovery: not completed | Added native chat route with sessions/history, shared reducer streaming, stop/continue after AppState, retry/error state, attachments, tool approval, grouped references, safe plain-text rendering and artifact metadata. Real iOS/Android SSE, OAuth/steer/artifact download and backend acceptance remain |
-| T23 移动管理功能与能力矩阵补齐 | pending | — | — | — | 依赖 T08/T09/T14/T16/T17 |
+| T23 移动管理功能与能力矩阵补齐 | review | working tree (`apps/mobile/src/features/management`) | `pnpm --filter @weknora/mobile test` 0（6/6）；`pnpm --filter @weknora/mobile typecheck` 0；Expo iOS export 0；`git diff --check` 0 | Explicit mobile capability matrix, capability-gated management hub, read-only configuration/identity surfaces, and production iOS JS bundle: passed; role-specific live backend matrix and every management write flow: not completed | Added explicit core/read-only/unsupported decisions, server capability lookup, read-only Agents/Models/MCP/Skills list and identity capability view; unsupported sandbox/offline/embed admin surfaces are visible with reasons rather than silently omitted |
 | T24 构建、回归矩阵与灰度发布 | pending | — | — | — | 依赖 T07–T23 |
 | T25 Vue退役与维护交接 | pending | — | — | — | 依赖 T24 且满足退役门槛 |
 
@@ -97,7 +97,8 @@
 | 2026-09-10 | T06 React knowledge-base mutation flow | `292fdc4` |
 | 2026-09-11 | T20 Expo mobile foundation, native transport and iOS export verification | `fcc1069` |
 | 2026-09-11 | T21 native knowledge, retrieval, filters, upload/download/share seams and iOS export verification | `df6148f` |
-| 2026-09-11 | T22 native chat, resumable stream, attachments, approvals, citations and iOS export verification | pending T22 commit |
+| 2026-09-11 | T22 native chat, resumable stream, attachments, approvals, citations and iOS export verification | `2006cd8` |
+| 2026-09-11 | T23 mobile capability matrix and read-only management/configuration surfaces | pending T23 commit |
 
 ## T01-T05 completion-plan execution (2026-09-10)
 
@@ -158,6 +159,13 @@
 - Added `apps/mobile/src/features/chat/parity.ts` and `parity.test.ts`: a fixture verifies mobile replay produces the same answer, approval, and grouped-reference state as the shared reducer; incomplete assistant selection is explicit for recovery.
 - `pnpm test:shared`: 125/125, exit 0; `pnpm typecheck:shared`: exit 0; `pnpm --filter @weknora/mobile test`: 5/5, exit 0; `pnpm --filter @weknora/mobile typecheck`: exit 0; Expo iOS export: exit 0, 1,100 modules and one Hermes iOS bundle (`2.9 MB`); `git diff --check`: exit 0.
 - This remains `review`: no real iOS/Android SSE/stop/resume, tool approval/OAuth/steer, attachment processing, artifact download, or background-disconnect device evidence was available. Bundle success does not replace native/backend acceptance.
+
+### T23 review evidence (2026-09-11)
+
+- Added `MOBILE_CAPABILITIES` as the explicit mobile scope matrix. Core knowledge/chat/attachments/approvals are linked; identity and configuration are read-only; Wiki/FAQ is explicitly read-only; sandbox terminal, offline writes and Embed/IM administration are explicitly unsupported with reasons.
+- Added a capability-gated `/management` hub that queries `/api/v1/system/capabilities`, plus read-only Agents/Models/MCP/Skills and identity capability screens. No mobile screen invents tenant membership or bypasses server role/capability checks; write forms are intentionally not presented in this slice.
+- `pnpm --filter @weknora/mobile test`: 6/6, exit 0; `pnpm --filter @weknora/mobile typecheck`: exit 0; Expo iOS export: exit 0, 1,107 modules and one Hermes iOS bundle (`2.9 MB`); `git diff --check`: exit 0.
+- This remains `review`: real role × tenant backend capability matrix, member/audit live reads, configuration permission negatives, Wiki/FAQ read screens and every required management write/sync flow still need live acceptance or a subsequent scope decision; no untracked “待完善” row is treated as accepted.
 
 ### 本轮问题与裁定
 
