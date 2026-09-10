@@ -7,6 +7,7 @@ import { createDataSourcesApi } from './datasource.ts';
 import { createAuthApi } from './auth/endpoints.ts';
 import { createChatSessionsApi } from './chat/sessions.ts';
 import { createSandboxTerminalApi } from './sandbox/terminal.ts';
+import { createConfigurationApi } from './configuration.ts';
 import { buildChatStreamRequest, consumeChatStream, consumeStreamResult } from './chat/stream.ts';
 import { createChatApprovalsApi } from './chat/approvals.ts';
 import { createChatSteerApi } from './chat/steer.ts';
@@ -97,6 +98,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
   const auth = createAuthApi(request);
   const sessions = createChatSessionsApi(request);
   const sandbox = createSandboxTerminalApi(request);
+  const configuration = createConfigurationApi(request);
   const chatApprovals = createChatApprovalsApi(request);
   const chatSteer = createChatSteerApi(request);
 
@@ -126,6 +128,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
     auth,
     sessions,
     sandbox,
+    configuration,
     chat: {
       approvals: chatApprovals,
       steer: chatSteer,
