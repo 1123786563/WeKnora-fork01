@@ -176,3 +176,25 @@ Remaining blocker:
 
 V02 remains **FAIL**. The focused suite is green, but a cross-namespace cleanup
 DELETE is still possible under the current implementation.
+
+## Round-4 re-review: FAIL
+
+Reviewed fix commit `0734cd0f09615f59961832b8d1a933634c406fe8`.
+
+Evidence: `python3 -m unittest scripts.saas.probe_case_test -v` passes 9/9;
+`git diff 0734cd0^ 0734cd0 --check` passes. Literal path namespace segments
+and absolute `replay_identity` validation are now covered.
+
+Remaining blocker:
+
+`_validate_path_namespace()` explicitly exempts capture references, and it is
+called on the raw path during validation. At execution, paths are then bound
+with captured values without re-running namespace validation. A path such as
+`/namespaces/${capture:ns}/customers/${capture:id}` can therefore resolve to a
+captured `ns` value belonging to another namespace and issue a cross-namespace
+DELETE (or request). Validate the bound path immediately after `_bind()` for
+both ordinary and cleanup steps, or constrain namespace path captures to the
+explicit namespace capture/value. Add a regression test where a capture
+resolves to `other`.
+
+V02 remains **FAIL** until resolved.

@@ -61,6 +61,12 @@ def _bind(value: object, captures: dict[str, object], *, allow_names: set[str] |
             if name not in captures and (allow_names is None or name not in allow_names):
                 raise ValueError(f"unknown capture: {name}")
             return captures[name]
+        refs = re.findall(r"\$\{capture:([A-Za-z][A-Za-z0-9_.-]*)\}", value)
+        for name in refs:
+            if name not in captures and (allow_names is None or name not in allow_names):
+                raise ValueError(f"unknown capture: {name}")
+            if name in captures:
+                value = value.replace("${capture:" + name + "}", str(captures[name]))
         return value
     if isinstance(value, dict):
         return {k: _bind(v, captures, allow_names=allow_names) for k, v in value.items()}
@@ -184,6 +190,7 @@ def run_case(case: dict, base_url: str, namespace: str, allow_test_writes: bool,
             raise ValueError(f"unknown operation_id: {operation}")
         path = paths[operation].split(" ", 1)[1]
         path = _bind(step.get("path", path), captures)
+        _validate_path_namespace(str(path), namespace)
         body = _bind(step.get("body"), captures)
         key = step.get("idempotency_key", case.get("idempotency_key"))
         try:
@@ -219,6 +226,7 @@ def run_case(case: dict, base_url: str, namespace: str, allow_test_writes: bool,
         if item.get("namespace", namespace) != namespace:
             raise ValueError("cleanup namespace mismatch")
         cleanup_path = _bind(item["path"], {item["capture"]: target})
+        _validate_path_namespace(str(cleanup_path), namespace)
         status, response = _request_json(base_url.rstrip("/") + str(cleanup_path), "DELETE", None)
         records.append({"cleanup": True, "status": status, "response": redact(response)})
         if not 200 <= status < 300: raise AssertionError(f"cleanup HTTP status {status}")

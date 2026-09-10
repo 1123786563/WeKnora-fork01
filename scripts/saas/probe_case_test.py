@@ -20,6 +20,12 @@ class ProbeTests(unittest.TestCase):
         case["request"]["namespace"] = "other"
         with self.assertRaises(ValueError):
             validate_case(case, "saas-x", True)
+        case["request"]["path"] = "/namespaces/saas-x/customers"
+        case["request"]["replay"] = True
+        case["request"]["idempotency_key"] = "k"
+        case["request"]["replay_identity"] = "id"
+        with self.assertRaises(ValueError):
+            validate_case(case, "saas-x", True)
 
     def test_same_namespace_body_and_cleanup_guards(self):
         case = {"id": "x", "operation_id": "create", "captures": {"id": "/id"},
@@ -43,13 +49,12 @@ class ProbeTests(unittest.TestCase):
         case = {"id": "x", "operation_id": "get", "request": {"path": "/namespaces/other/customers"}, "expected": {}}
         with self.assertRaises(ValueError):
             validate_case(case, "saas-x", True)
-        case["request"]["path"] = "/namespaces/saas-x/customers"
-        case["request"]["replay"] = True
-        case["request"]["idempotency_key"] = "k"
-        case["request"]["replay_identity"] = "id"
-        with self.assertRaises(ValueError):
-            validate_case(case, "saas-x", True)
 
+    def test_captured_path_namespace_is_checked_after_binding(self):
+        from scripts.saas.probe_case import _bind, _validate_path_namespace
+        path = _bind("/namespaces/${capture:ns}/customers", {"ns": "other"})
+        with self.assertRaises(ValueError):
+            _validate_path_namespace(path, "saas-x")
     def test_unknown_capture_rejected(self):
         case = {"id": "x", "operation_id": "get", "request": {"body": {"id": "${capture:nope}"}}, "expected": {}}
         with self.assertRaises(ValueError):
