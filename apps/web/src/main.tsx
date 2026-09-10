@@ -1,8 +1,9 @@
 import { createRoot } from 'react-dom/client';
-import { createJsonTransport, createWeKnoraClient } from '@weknora/api-client';
+import { createWeKnoraClient } from '@weknora/api-client';
 import { createScopeController } from '@weknora/domain/scope';
 import { KnowledgeBasesPage } from './App.tsx';
-import { authorizationHeader, readLegacyPlatformSession } from './platform/legacy-session.ts';
+import { readLegacyPlatformSession } from './platform/legacy-session.ts';
+import { createBrowserTransport } from './platform/http.ts';
 import './styles.css';
 
 const session = readLegacyPlatformSession();
@@ -15,12 +16,10 @@ const scopeController = createScopeController({
 
 const client = createWeKnoraClient({
   baseURL: apiBaseUrl,
-  transport: createJsonTransport(async (input, init) => {
-    const headers = new Headers(init?.headers);
-    const authorization = authorizationHeader(session.credential);
-    if (authorization) headers.set('Authorization', authorization);
-    if (session.tenantId) headers.set('X-Tenant-ID', session.tenantId);
-    return fetch(input, { ...init, headers });
+  transport: createBrowserTransport({
+    credential: session.credential,
+    tenantId: session.tenantId,
+    locale: navigator.language,
   }),
 });
 
