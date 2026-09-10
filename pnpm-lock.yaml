@@ -52,10 +52,10 @@ importers:
   apps/embed:
     dependencies:
       '@weknora/api-client':
-        specifier: file:../../packages/api-client
-        version: file:packages/api-client
+        specifier: workspace:*
+        version: link:../../packages/api-client
       '@weknora/contracts':
-        specifier: file:../../packages/contracts
+        specifier: workspace:*
         version: link:../../packages/contracts
       '@weknora/views':
         specifier: workspace:*
@@ -342,10 +342,10 @@ importers:
   apps/web:
     dependencies:
       '@weknora/api-client':
-        specifier: file:../../packages/api-client
-        version: file:packages/api-client
+        specifier: workspace:*
+        version: link:../../packages/api-client
       '@weknora/contracts':
-        specifier: file:../../packages/contracts
+        specifier: workspace:*
         version: link:../../packages/contracts
       '@weknora/domain':
         specifier: file:../../packages/domain
@@ -1863,9 +1863,6 @@ packages:
     engines: {node: ^20.19.0 || >=22.12.0}
     peerDependencies:
       vite: ^4.2.0 || ^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0
-
-  '@weknora/api-client@file:packages/api-client':
-    resolution: {directory: packages/api-client, type: directory}
 
   '@weknora/domain@file:packages/domain':
     resolution: {directory: packages/domain, type: directory}
@@ -5433,10 +5430,6 @@ snapshots:
       vite: 7.3.6(@types/node@22.14.0)(lightningcss@1.33.0)(terser@5.51.2)(tsx@4.23.1)(yaml@2.9.0)
     transitivePeerDependencies:
       - supports-color
-
-  '@weknora/api-client@file:packages/api-client':
-    dependencies:
-      '@weknora/contracts': link:packages/contracts
 
   '@weknora/domain@file:packages/domain':
     dependencies:

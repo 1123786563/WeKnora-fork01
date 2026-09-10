@@ -13,4 +13,6 @@ export type { EmbedMessageEvent } from './embed/bridge.ts';
 export { INTEGRATION_SECTIONS, integrationSection } from './integrations/registry.ts';
 export type { IntegrationKey, IntegrationOperation, IntegrationSection } from './integrations/registry.ts';
 export { IntegrationsPage } from './integrations/page.tsx';
-export type { IntegrationResource, IntegrationsPageProps } from './integrations/page.tsx';
+export type { APIPrincipalConfig, IntegrationActions, IntegrationPrincipalToken, IntegrationResource, IntegrationsPageProps } from './integrations/page.tsx';
+export { buildEmbedUpdatePayload } from './integrations/form.ts';
+export type { EmbedResourceLike } from './integrations/form.ts';

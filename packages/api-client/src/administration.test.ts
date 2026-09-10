@@ -44,3 +44,22 @@ test('keeps system-admin authorization errors observable', async () => {
     return true;
   });
 });
+
+test('maps API principal configuration and one-shot playground token routes', async () => {
+  const requests: Array<{ method: string; path: string; body?: unknown }> = [];
+  const api = createAdministrationApi(async (request) => {
+    requests.push(request);
+    if (request.method === 'GET') return { success: true, data: { mode: 'signed_token', direct_header_name: 'X-External-User-ID', signed_token_header_name: 'X-External-User-Token', require_direct_header: false, has_hmac_secret: true } };
+    if (request.path.endsWith('api-principal-test-token')) return { token: 'jwt-once', header_name: 'X-External-User-Token', expires_in_seconds: 900, external_user_id: 'visitor-1' };
+    return { success: true, data: { mode: 'direct_header', direct_header_name: 'X-External-User-ID', signed_token_header_name: 'X-External-User-Token', require_direct_header: true, has_hmac_secret: false } };
+  });
+
+  assert.equal((await api.tenantApiKeys.principalConfig(7)).mode, 'signed_token');
+  assert.equal((await api.tenantApiKeys.updatePrincipalConfig(7, { mode: 'direct_header', requireDirectHeader: true })).require_direct_header, true);
+  assert.deepEqual(await api.tenantApiKeys.createPrincipalTestToken(7, 'visitor-1'), { token: 'jwt-once', headerName: 'X-External-User-Token', expiresInSeconds: 900, externalUserId: 'visitor-1' });
+  assert.deepEqual(requests.map(({ method, path, body }) => [method, path, body]), [
+    ['GET', '/api/v1/tenants/7/api-principal-config', undefined],
+    ['PUT', '/api/v1/tenants/7/api-principal-config', { mode: 'direct_header', require_direct_header: true }],
+    ['POST', '/api/v1/tenants/7/api-principal-test-token', { external_user_id: 'visitor-1', expires_in_seconds: 900 }],
+  ]);
+});

@@ -25,7 +25,7 @@ export type { ChatMessage, ChatSession, ChatSessionListResponse } from '@weknora
 export { createIdentityApi } from './identity/index.ts';
 export type { IdentityApi, TenantRole, TenantMember, TenantInvitation, AuditLog, Organization, OrganizationApi, OrganizationMember, OrganizationJoinRequest } from './identity/index.ts';
 export { createAdministrationApi } from './administration/index.ts';
-export type { AdministrationApi, ApiKey, SystemAdminUser, SystemSetting, RuntimeTask, RuntimeQueues, DeploymentCapabilities } from './administration/index.ts';
+export type { AdministrationApi, ApiKey, SystemAdminUser, SystemSetting, RuntimeTask, RuntimeQueues, DeploymentCapabilities, APIPrincipalConfig } from './administration/index.ts';
 export { createSettingsApi } from './settings/index.ts';
 export type { SettingsApi, SettingsRequest, SettingsPayload, SettingsResource, OllamaStatus, OllamaModel, ParserProbeResult, SystemInfo, ConnectionTestResult } from './settings/index.ts';
 export { createEmbedApi, embedHeaders, extractEmbedToken } from './embed/index.ts';

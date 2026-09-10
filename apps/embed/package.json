@@ -9,8 +9,8 @@
     "test": "node --import tsx --test 'src/**/*.test.ts'"
   },
   "dependencies": {
-    "@weknora/api-client": "file:../../packages/api-client",
-    "@weknora/contracts": "file:../../packages/contracts",
+    "@weknora/api-client": "workspace:*",
+    "@weknora/contracts": "workspace:*",
     "@weknora/views": "workspace:*",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
