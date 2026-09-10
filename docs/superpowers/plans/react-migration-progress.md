@@ -22,7 +22,7 @@
 | 任务 | 状态 | 实现文件/提交 | 测试与退出码 | 证据层级 | 问题/下一步 |
 |---|---|---|---|---|---|
 | T01 基线、契约和复用来源冻结 | review | `eb0e9a9` (`docs: freeze React migration baseline and contracts`) | `python3 scripts/generate_react_migration_baseline.py` 0；矩阵自检 0；`go test ./docs` 0；`cd frontend && npm test` 0（804/804）；`npm run type-check` 0；`npm run build` 0；`git diff --check` 0 | 静态：通过；现有 Vue mock/unit：通过；现有 Vue build：通过；真实后端/截图/Wails 包/原生：未完成 | API 行已全量覆盖但 handler DTO/权限逐行仍需审阅；真实后端 smoke 与生成器试点待补；首轮 reviewer 超时并关闭，tester 复核通过 |
-| T02 无框架 SDK与第一条真实 API 链路 | pending | — | — | — | 依赖 T01 |
+| T02 无框架 SDK与第一条真实 API 链路 | review | `e3a3a8f` (`feat: add framework-free shared client foundation`) | `pnpm test:shared` 0（10/10）；`pnpm typecheck:shared` 0；TDD nested-error/late-abort RED→GREEN；真实后端 0 | 静态/Node mock：通过；真实后端 Web：未完成 | 已实现 contracts/api-client/domain 与 KB list mock 链路；仍需接入 Web 调试页、共享认证和真实后端 |
 | T03 登录、刷新、OIDC与凭证隔离 | pending | — | — | — | 依赖 T02 |
 | T04 空间上下文、路由和能力守卫 | pending | — | — | — | 依赖 T03 |
 | T05 UI基础、平台注入和国际化 | pending | — | — | — | 依赖 T02 |
