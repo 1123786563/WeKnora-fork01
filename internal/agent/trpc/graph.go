@@ -141,11 +141,11 @@ func buildGraph(b GraphBindings) (*graph.Graph, error) {
 		if b.Tools == nil {
 			return nil, fmt.Errorf("tool executor is required")
 		}
-		calls := s.Messages[len(s.Messages)-1].ToolCalls
-		for s.NextCallIndex < len(calls) {
-			id := calls[s.NextCallIndex].ID
+		assistantCalls := append([]model.ToolCall(nil), s.Messages[len(s.Messages)-1].ToolCalls...)
+		for s.NextCallIndex < len(assistantCalls) {
+			id := assistantCalls[s.NextCallIndex].ID
 			var call model.ToolCall
-			for _, c := range s.Messages[len(s.Messages)-1].ToolCalls {
+			for _, c := range assistantCalls {
 				if c.ID == id {
 					call = c
 					break
