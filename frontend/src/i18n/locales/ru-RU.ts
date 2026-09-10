@@ -1,4 +1,6 @@
 export default {
+  agentRunRecovery: { title: 'Запуск требует внимания', defaultReason: 'Запуск приостановлен в ожидании безопасного решения.', tool: 'Инструмент: {name}', resultLabel: 'Результат инструмента', resultPlaceholder: 'Вставьте проверенный структурированный результат (JSON или текст)', retry: 'Повторить', provideResult: 'Указать результат', terminate: 'Завершить', failed: 'Не удалось обновить запуск' },
+
   platformApiKeys: {
     title: 'Платформенные API-ключи',
     description: 'Учетные данные для автоматизации между рабочими пространствами. Для API пространства используйте X-Tenant-ID.',

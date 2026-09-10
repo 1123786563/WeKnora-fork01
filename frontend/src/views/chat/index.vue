@@ -136,6 +136,8 @@
                         :aria-label="t('chat.thinkingAlt')">
                         <span class="chat-global-wait__spinner" aria-hidden="true"></span>
                     </div>
+                    <AgentRunRecovery v-if="agentRun" :session-id="String(session_id)" :run="agentRun"
+                        @updated="(next) => { agentRun = next }" @refresh="() => loadSessionAndHydrate(session_id)" />
                 </div>
             </div>
             <ChatQuestionMinimap v-if="!embeddedMode" :scroll-container="scrollContainer" :messages="messagesList"
@@ -180,6 +182,7 @@ import InputField from '../../components/Input-field.vue';
 import botmsg from './components/botmsg.vue';
 import usermsg from './components/usermsg.vue';
 import { getMessageList, getSession } from "@/api/chat/index";
+import { getAgentRun } from '@/api/chat/runs';
 import { getSuggestedQuestions } from "@/api/agent/index";
 import { deleteTemporaryAttachment, uploadTemporaryAttachment } from '@/api/chat/temporary-attachments';
 import { useStream } from '../../api/chat/streame'
@@ -198,6 +201,7 @@ import { clearCitationChunkCache } from '@/utils/citationChunkCache';
 import ChatReferencesDrawer from '@/components/ChatReferencesDrawer.vue';
 import ChatAttachmentPreviewDrawer from '@/components/ChatAttachmentPreviewDrawer.vue';
 import FollowUpSuggestions from '@/components/chat/FollowUpSuggestions.vue';
+import AgentRunRecovery from './components/AgentRunRecovery.vue';
 import MessageTimestamp from '@/components/chat/MessageTimestamp.vue';
 import ChatQuestionMinimap from '@/components/chat/ChatQuestionMinimap.vue';
 import { shouldShowConversationTimestamp } from '@/utils/messageTimestamp';
@@ -276,6 +280,7 @@ const attachStreamDebugToMessage = (message) => {
 const route = useRoute();
 const session_id = ref(props.session_id || route.params.chatid);
 const currentSession = ref(null);
+const agentRun = ref(null);
 
 // 拉 session 详情，并按其 last_request_state 把输入栏状态恢复到当时的发起态。
 // 嵌入式（embeddedMode）由宿主页面注入 agent/KB，所以跳过整套恢复逻辑，
@@ -286,6 +291,11 @@ const loadSessionAndHydrate = async (sid) => {
         const sessionRes = await getSession(sid);
         if (sessionRes?.data && sid === session_id.value) {
             currentSession.value = sessionRes.data;
+            const runId = sessionRes.data.active_agent_run_id || sessionRes.data.active_run_id || sessionRes.data.run_id;
+            if (runId) {
+                try { agentRun.value = await getAgentRun(String(sid), String(runId)); }
+                catch (runError) { console.warn('[AgentRun] Failed to load durable run:', runError); }
+            } else { agentRun.value = null; }
             const lastState = sessionRes.data.last_request_state;
             if (lastState) {
                 // 先把当前的"全局默认"快照下来，再用 session 状态覆盖；

@@ -1,4 +1,10 @@
 export default {
+  agentRunRecovery: {
+    title: 'Run needs your attention', defaultReason: 'The run paused while waiting for a safe recovery decision.',
+    tool: 'Tool: {name}', resultLabel: 'Tool result', resultPlaceholder: 'Paste the verified structured result (JSON or text)',
+    retry: 'Retry', provideResult: 'Provide result', terminate: 'Terminate', failed: 'Could not update the run',
+  },
+
   menu: {
     sessionInProgress: 'Conversation in progress',
     knowledgeBase: 'Knowledge Base',

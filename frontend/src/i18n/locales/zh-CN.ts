@@ -1,4 +1,10 @@
 export default {
+  agentRunRecovery: {
+    title: '运行需要你的处理', defaultReason: '运行已暂停，请选择安全的恢复操作。',
+    tool: '工具：{name}', resultLabel: '工具结果', resultPlaceholder: '粘贴已核验的结构化结果（JSON 或文本）',
+    retry: '重试', provideResult: '提供结果', terminate: '终止', failed: '更新运行失败',
+  },
+
   platformApiKeys: {
     title: '平台 API Key',
     description: '为跨空间自动化创建平台级凭据；调用空间接口时通过 X-Tenant-ID 指定目标空间。',
