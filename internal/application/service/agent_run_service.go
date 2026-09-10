@@ -12,6 +12,13 @@ import (
 // AgentRunService admits durable tRPC runs. The admission payload is copied
 // before it is handed to storage so request-owned buffers cannot be changed
 // after admission.
+var defaultAgentRunService *AgentRunService
+
+// RegisterAgentRunService makes the durable admission boundary available to
+// the session service after container construction.
+func RegisterAgentRunService(s *AgentRunService)  { defaultAgentRunService = s }
+func RegisteredAgentRunService() *AgentRunService { return defaultAgentRunService }
+
 type AgentRunService struct {
 	store agentruntime.RunStore
 	wake  func()

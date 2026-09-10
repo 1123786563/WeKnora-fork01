@@ -58,7 +58,9 @@ func NewAgentRuntime(cfg *config.Config, store *repository.AgentRunStore, execut
 	}
 	var wake func()
 	wake = func() {}
-	return &AgentRuntime{Runs: service.NewAgentRunService(store, wake), Worker: worker}, nil
+	runs := service.NewAgentRunService(store, wake)
+	service.RegisterAgentRunService(runs)
+	return &AgentRuntime{Runs: runs, Worker: worker}, nil
 }
 
 func (r *AgentRuntime) Start(ctx context.Context) {
