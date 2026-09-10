@@ -15,3 +15,6 @@ export type { WikiPage, WikiPageListResponse, WikiPageRevision, WikiRevisionList
 export type { DataSource, DataSourceResource } from './datasource.ts';
 export { buildChatStreamRequest, createServerSentEventParser, parseChatEvent } from './chat/stream.ts';
 export type { ChatStreamRequestOptions, ParsedServerSentEvent, ServerSentEventHandler } from './chat/stream.ts';
+export { createChatSessionsApi } from './chat/sessions.ts';
+export type { ChatMessageListParams, ChatSessionListParams, ChatSessionsApi } from './chat/sessions.ts';
+export type { ChatMessage, ChatSession, ChatSessionListResponse } from '@weknora/contracts';

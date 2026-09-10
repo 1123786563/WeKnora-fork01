@@ -7,6 +7,7 @@ import { readLegacyPlatformSession } from './platform/legacy-session.ts';
 import { createBrowserTransport } from './platform/http.ts';
 import { createWebScopeRuntime } from './platform/scope-runtime.ts';
 import { resolveRoute } from './routes.tsx';
+import { ChatRoutePage } from './chat/ChatRoutePage.tsx';
 import './styles.css';
 
 const route = resolveRoute(window.location.pathname);
@@ -36,6 +37,8 @@ if (route.kind === 'embed') {
     window.localStorage.setItem('weknora_refresh_token', next.refreshToken);
     window.location.assign('/platform/knowledge-bases');
   }} />);
+} else if (route.path === '/platform/creatChat' || route.path.startsWith('/platform/chat/')) {
+  root.render(<ChatRoutePage client={client} scopeController={scopeController} />);
 } else {
   root.render(<KnowledgeBasesPage client={client} scopeController={scopeController} />);
 }

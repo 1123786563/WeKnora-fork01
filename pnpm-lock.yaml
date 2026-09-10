@@ -32,6 +32,9 @@ importers:
       '@weknora/ui':
         specifier: file:../../packages/ui
         version: link:../../packages/ui
+      '@weknora/views':
+        specifier: workspace:*
+        version: link:../../packages/views
       react:
         specifier: ^19.2.0
         version: 19.3.0
@@ -78,6 +81,19 @@ importers:
 
   packages/ui:
     dependencies:
+      react:
+        specifier: '>=19'
+        version: 19.3.0
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.0
+        version: 19.3.0
+
+  packages/views:
+    dependencies:
+      '@weknora/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       react:
         specifier: '>=19'
         version: 19.3.0

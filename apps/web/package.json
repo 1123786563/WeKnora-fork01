@@ -13,6 +13,7 @@
     "@weknora/contracts": "file:../../packages/contracts",
     "@weknora/domain": "file:../../packages/domain",
     "@weknora/ui": "file:../../packages/ui",
+    "@weknora/views": "workspace:*",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

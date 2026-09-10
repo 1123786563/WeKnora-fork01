@@ -5,6 +5,7 @@ import { createKnowledgeDocumentsApi } from './knowledge/documents.ts';
 import { createWikiPagesApi } from './wiki/pages.ts';
 import { createDataSourcesApi } from './datasource.ts';
 import { createAuthApi } from './auth/endpoints.ts';
+import { createChatSessionsApi } from './chat/sessions.ts';
 
 export interface ClientRequest {
   method: string;
@@ -90,6 +91,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
   const wiki = createWikiPagesApi(request);
   const dataSources = createDataSourcesApi(request);
   const auth = createAuthApi(request);
+  const sessions = createChatSessionsApi(request);
 
   return {
     request,
@@ -115,6 +117,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
     wiki,
     dataSources,
     auth,
+    sessions,
   };
 }
 

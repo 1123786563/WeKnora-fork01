@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/query-key.ts",
     "./scope": "./src/scope.ts",
-    "./wiki/diff": "./src/wiki/diff.ts"
+    "./wiki/diff": "./src/wiki/diff.ts",
+    "./chat/draft": "./src/chat/draft.ts"
   },
   "dependencies": {
     "@weknora/contracts": "workspace:*"

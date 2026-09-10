@@ -5,4 +5,5 @@ packages:
   - packages/ui
   - packages/design-tokens
   - packages/i18n
+  - packages/views
   - apps/web
