@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "allowJs": false,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "ignoreDeprecations": "6.0",
+    "jsx": "react-jsx",
+    "allowImportingTsExtensions": true,
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@weknora/api-client": ["../../packages/api-client/src/index.ts"],
+      "@weknora/contracts": ["../../packages/contracts/src/index.ts"],
+      "@weknora/domain": ["../../packages/domain/src/query-key.ts"],
+      "@weknora/domain/scope": ["../../packages/domain/src/scope.ts"],
+      "@weknora/ui": ["../../packages/ui/src/index.tsx"]
+    }
+  },
+  "include": ["src", "vite.config.ts"]
+}

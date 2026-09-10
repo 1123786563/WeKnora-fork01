@@ -1,0 +1,10 @@
+body { margin: 0; min-width: 320px; }
+.wk-page { box-sizing: border-box; margin: 0 auto; max-width: 960px; padding: 3rem 1.25rem; }
+.wk-header { align-items: flex-start; display: flex; justify-content: space-between; gap: 1rem; margin-bottom: 1.5rem; }
+.wk-eyebrow { color: #2e6de6; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.08em; margin: 0; text-transform: uppercase; }
+h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
+.wk-muted, .wk-debug { color: #66758b; }
+.wk-debug { border-bottom: 1px solid #edf0f5; font-family: ui-monospace, monospace; font-size: 0.75rem; overflow-wrap: anywhere; padding-bottom: 0.8rem; }
+.wk-list { list-style: none; margin: 0; padding: 0; }
+.wk-list li { align-items: baseline; border-bottom: 1px solid #edf0f5; display: flex; justify-content: space-between; gap: 1rem; padding: 0.9rem 0; }
+.wk-list li span { color: #66758b; font-family: ui-monospace, monospace; font-size: 0.8rem; }

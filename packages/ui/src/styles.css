@@ -1,0 +1,22 @@
+:root {
+  color: #172033;
+  background: #f7f9fc;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-synthesis: none;
+  line-height: 1.5;
+}
+
+.wk-button {
+  border: 1px solid #b8c5d6;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #172033;
+  cursor: pointer;
+  padding: 0.55rem 0.8rem;
+}
+
+.wk-button:hover { border-color: #2e6de6; }
+.wk-card { border: 1px solid #dce3ed; border-radius: 8px; background: #ffffff; padding: 1rem; }
+.wk-status { margin: 0.5rem 0; color: #506078; }
+.wk-status-error { color: #b42318; }
+.wk-status-success { color: #137333; }
