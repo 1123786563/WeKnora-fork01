@@ -3,10 +3,11 @@ import { ActivityIndicator, AppState, FlatList, KeyboardAvoidingView, Platform, 
 import { useRouter } from 'expo-router';
 import type { ChatMessage, ChatSession, ChatStreamEvent, TemporaryAttachment } from '@weknora/contracts';
 import { initialChatStreamState, reduceChatStream, type ChatStreamState } from '@weknora/domain/chat/reducer';
-import { normalizeArtifactList } from '@weknora/domain/chat/artifacts';
+import { artifactDownloadPath, normalizeArtifactList } from '@weknora/domain/chat/artifacts';
 import { normalizeToolResult } from '@weknora/domain/chat/tool-results';
 import { useMobileRuntime } from '../../runtime.tsx';
 import { pickNativeFile } from '../../platform/files.ts';
+import { downloadKnowledgeFile, shareNativeFile } from '../../platform/files.ts';
 import { selectIncompleteAssistant, selectMessageArtifacts, selectReferenceGroups, shouldRenderPendingUser } from './parity.ts';
 
 function errorText(cause: unknown, fallback: string): string {
@@ -171,6 +172,18 @@ export function ChatScreen() {
     } catch (cause) { setError(errorText(cause, 'Unable to resolve tool approval')); }
   }
 
+  async function shareArtifact(messageId: string, artifact: ReturnType<typeof normalizeArtifactList>[number]) {
+    try {
+      const uri = await downloadKnowledgeFile({
+        baseURL: runtime.baseURL,
+        path: artifactDownloadPath(selectedSessionId || '', messageId, artifact.index),
+        fileName: artifact.fileName,
+        credential: runtime.credential,
+      });
+      await shareNativeFile(uri);
+    } catch (cause) { setError(errorText(cause, 'Unable to download artifact')); }
+  }
+
   const liveAssistant = streamState.answer ? [{ id: 'mobile-live-assistant', session_id: selectedSessionId || '', role: 'assistant' as const, content: streamState.answer, is_completed: streamState.phase === 'completed' }] : [];
   const displayMessages = useMemo(() => uniqueMessages([
     ...messages,
@@ -198,7 +211,7 @@ export function ChatScreen() {
         {references.length ? <View style={{ marginBottom: 8 }}><Text style={{ fontWeight: '600' }}>References</Text>{references.flatMap((group) => group.items).map((reference) => <View key={reference.key} style={{ backgroundColor: '#f8f9fc', padding: 8, borderRadius: 8, marginTop: 4 }}><Text>{reference.title}</Text>{reference.snippet ? <Text selectable style={{ color: '#667085', fontSize: 12 }}>{reference.snippet}</Text> : null}</View>)}</View> : null}
         {pendingApprovals.map((approval) => <View key={approval.pendingId} style={{ backgroundColor: '#fff7ed', padding: 10, borderRadius: 8, marginBottom: 8 }}><Text>Tool approval required</Text><View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}><Pressable onPress={() => void approve(approval.pendingId, 'approve')}><Text style={{ color: '#16803c' }}>Approve</Text></Pressable><Pressable onPress={() => void approve(approval.pendingId, 'reject')}><Text style={{ color: '#b42318' }}>Reject</Text></Pressable></View></View>)}
       </>}
-      renderItem={({ item }) => <View style={{ alignSelf: item.role === 'user' ? 'flex-end' : 'stretch', maxWidth: '92%', backgroundColor: item.role === 'user' ? '#eff6ff' : '#f8f9fc', padding: 10, borderRadius: 10, marginBottom: 8 }}><Text style={{ fontWeight: '600', marginBottom: 4 }}>{item.role}</Text><Text selectable>{item.content}</Text>{item.role === 'assistant' && item.is_completed === false ? <Text style={{ color: '#667085', marginTop: 4 }}>Resuming…</Text> : null}{normalizeArtifactList(selectMessageArtifacts(item)).map((artifact) => <Text key={`${artifact.index}-${artifact.fileName}`} style={{ color: '#2864dc', marginTop: 6 }}>File: {artifact.fileName}</Text>)}{item.role === 'assistant' && item.data ? <Text style={{ color: '#667085' }}>{normalizeToolResult({ output: item.data }).text}</Text> : null}</View>}
+      renderItem={({ item }) => <View style={{ alignSelf: item.role === 'user' ? 'flex-end' : 'stretch', maxWidth: '92%', backgroundColor: item.role === 'user' ? '#eff6ff' : '#f8f9fc', padding: 10, borderRadius: 10, marginBottom: 8 }}><Text style={{ fontWeight: '600', marginBottom: 4 }}>{item.role}</Text><Text selectable>{item.content}</Text>{item.role === 'assistant' && item.is_completed === false ? <Text style={{ color: '#667085', marginTop: 4 }}>Resuming…</Text> : null}{normalizeArtifactList(selectMessageArtifacts(item)).map((artifact) => <Pressable key={`${artifact.index}-${artifact.fileName}`} onPress={() => void shareArtifact(item.id, artifact)}><Text style={{ color: '#2864dc', marginTop: 6 }}>File: {artifact.fileName} · Share</Text></Pressable>)}{item.role === 'assistant' && item.data ? <Text style={{ color: '#667085' }}>{normalizeToolResult({ output: item.data }).text}</Text> : null}</View>}
     />
     {attachments.length ? <ScrollView horizontal style={{ maxHeight: 38, paddingHorizontal: 12 }}><View style={{ flexDirection: 'row', gap: 8 }}>{attachments.map((attachment) => <View key={attachment.id} style={{ backgroundColor: '#f2f4f7', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 6 }}><Text>{attachment.file_name} · {attachment.status}</Text></View>)}</View></ScrollView> : null}
     <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingVertical: 6 }}><Pressable onPress={() => setDraft('Summarize the selected knowledge base')}><Text style={{ color: '#2864dc', fontSize: 12 }}>Summarize</Text></Pressable><Pressable onPress={() => setDraft('Find related files')}><Text style={{ color: '#2864dc', fontSize: 12 }}>Related files</Text></Pressable></View>
