@@ -85,6 +85,12 @@ type Session struct {
 	// UserID is the owner scope for this session. WeKnora user UUIDs, API
 	// external-user principals, and embed visitor principals all use this column.
 	UserID string `json:"user_id,omitempty" gorm:"type:varchar(512);index"`
+	// EngineType selects the execution engine for the lifetime of the session.
+	// Existing and unspecified sessions use the built-in engine.
+	EngineType string `json:"engine_type" gorm:"type:varchar(16);not null;default:builtin"`
+	// ActiveAgentRunID reserves the single durable tRPC run slot for this
+	// session. waiting_user runs intentionally keep the slot reserved.
+	ActiveAgentRunID *string `json:"active_agent_run_id,omitempty" gorm:"type:varchar(64)"`
 	// IsPinned indicates whether the session is pinned in the list.
 	IsPinned bool `json:"is_pinned" gorm:"default:false"`
 	// PinnedAt records when the session was pinned; nil when not pinned.
