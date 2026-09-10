@@ -110,3 +110,21 @@ test('honors an already-aborted caller signal before transport starts', async ()
   );
   assert.equal(sawAbortedSignal, true);
 });
+
+test('exposes approval and steer actions under the chat namespace', async () => {
+  const client = createWeKnoraClient({
+    baseURL: 'https://api.example.test',
+    transport: {
+      send: async ({ url }) => ({
+        status: 200,
+        headers: {},
+        body: url.endsWith('/steer')
+          ? { success: true, items: [] }
+          : { success: true },
+      }),
+    },
+  });
+
+  assert.deepEqual(await client.chat.approvals.cancelOAuth('pending-1'), { success: true });
+  assert.deepEqual(await client.chat.steer.list('session-1'), { success: true, items: [] });
+});

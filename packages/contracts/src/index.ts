@@ -56,6 +56,39 @@ export interface ChatMessage {
   [key: string]: unknown;
 }
 
+export interface ActionSuccessResponse {
+  success: true;
+}
+
+export type SteerDelivery = 'inject' | 'after';
+
+export interface SteerQueueItem {
+  steer_id: string;
+  content: string;
+  delivery: SteerDelivery;
+  mentioned_items?: unknown[];
+}
+
+export interface SteerListResponse extends ActionSuccessResponse {
+  assistant_message_id?: string;
+  items: SteerQueueItem[];
+}
+
+export type SteerMutationResponse =
+  | (ActionSuccessResponse & { status: 'new_run' })
+  | (ActionSuccessResponse & {
+    status: 'queued';
+    steer_id: string;
+    assistant_message_id: string;
+    delivery: SteerDelivery;
+  })
+  | (ActionSuccessResponse & { status: 'already_injected'; steer_id: string });
+
+export type SteerDeleteResponse =
+  | (ActionSuccessResponse & { status: 'gone' })
+  | (ActionSuccessResponse & { status: 'deleted'; steer_id: string; removed: boolean })
+  | (ActionSuccessResponse & { status: 'already_injected'; steer_id: string; removed: false });
+
 export type { ChatResponseType, ChatStreamEvent } from './chat/events.ts';
 export { responseType } from './chat/events.ts';
 
@@ -99,6 +132,102 @@ function requireNonEmptyString(value: unknown, path: string): string {
 function requiredString(value: unknown, path: string): string {
   if (typeof value !== 'string') throw new ContractError(path, 'expected a string');
   return value;
+}
+
+function actionEnvelope(value: unknown): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new ContractError('', 'expected an object envelope');
+  }
+  const result = value as Record<string, unknown>;
+  if (result.success !== true) throw new ContractError('success', 'expected true');
+  return result;
+}
+
+function parseSteerDelivery(value: unknown, path: string): SteerDelivery {
+  if (value !== 'inject' && value !== 'after') {
+    throw new ContractError(path, 'expected inject or after');
+  }
+  return value;
+}
+
+export function parseActionSuccessResponse(value: unknown): ActionSuccessResponse {
+  actionEnvelope(value);
+  return { success: true };
+}
+
+export function parseSteerMutationResponse(value: unknown): SteerMutationResponse {
+  const result = actionEnvelope(value);
+  if (result.status === 'new_run') return { success: true, status: 'new_run' };
+  if (result.status === 'already_injected') {
+    return {
+      success: true,
+      status: 'already_injected',
+      steer_id: requireNonEmptyString(result.steer_id, 'steer_id'),
+    };
+  }
+  if (result.status === 'queued') {
+    return {
+      success: true,
+      status: 'queued',
+      steer_id: requireNonEmptyString(result.steer_id, 'steer_id'),
+      assistant_message_id: requireNonEmptyString(result.assistant_message_id, 'assistant_message_id'),
+      delivery: parseSteerDelivery(result.delivery, 'delivery'),
+    };
+  }
+  throw new ContractError('status', 'expected queued, new_run, or already_injected');
+}
+
+export function parseSteerListResponse(value: unknown): SteerListResponse {
+  const result = actionEnvelope(value);
+  if (!Array.isArray(result.items)) throw new ContractError('items', 'expected an array');
+  const assistantMessageId = result.assistant_message_id === undefined
+    ? undefined
+    : requireNonEmptyString(result.assistant_message_id, 'assistant_message_id');
+  const items = result.items.map((value, index) => {
+    const path = `items[${index}]`;
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+      throw new ContractError(path, 'expected an object');
+    }
+    const item = value as Record<string, unknown>;
+    if (item.mentioned_items !== undefined && !Array.isArray(item.mentioned_items)) {
+      throw new ContractError(`${path}.mentioned_items`, 'expected an array');
+    }
+    return {
+      steer_id: requireNonEmptyString(item.steer_id, `${path}.steer_id`),
+      content: requireNonEmptyString(item.content, `${path}.content`),
+      delivery: parseSteerDelivery(item.delivery, `${path}.delivery`),
+      ...(item.mentioned_items === undefined ? {} : { mentioned_items: item.mentioned_items }),
+    };
+  });
+  return {
+    success: true,
+    ...(assistantMessageId === undefined ? {} : { assistant_message_id: assistantMessageId }),
+    items,
+  };
+}
+
+export function parseSteerDeleteResponse(value: unknown): SteerDeleteResponse {
+  const result = actionEnvelope(value);
+  if (result.status === 'gone') return { success: true, status: 'gone' };
+  if (result.status === 'already_injected') {
+    if (result.removed !== false) throw new ContractError('removed', 'expected false');
+    return {
+      success: true,
+      status: 'already_injected',
+      steer_id: requireNonEmptyString(result.steer_id, 'steer_id'),
+      removed: false,
+    };
+  }
+  if (result.status === 'deleted') {
+    if (typeof result.removed !== 'boolean') throw new ContractError('removed', 'expected a boolean');
+    return {
+      success: true,
+      status: 'deleted',
+      steer_id: requireNonEmptyString(result.steer_id, 'steer_id'),
+      removed: result.removed,
+    };
+  }
+  throw new ContractError('status', 'expected deleted, gone, or already_injected');
 }
 
 export function parseApiErrorPayload(value: unknown): ApiErrorPayload {

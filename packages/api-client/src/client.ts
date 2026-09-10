@@ -7,6 +7,8 @@ import { createDataSourcesApi } from './datasource.ts';
 import { createAuthApi } from './auth/endpoints.ts';
 import { createChatSessionsApi } from './chat/sessions.ts';
 import { buildChatStreamRequest, consumeChatStream, consumeStreamResult } from './chat/stream.ts';
+import { createChatApprovalsApi } from './chat/approvals.ts';
+import { createChatSteerApi } from './chat/steer.ts';
 
 export interface ClientRequest {
   method: string;
@@ -93,6 +95,8 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
   const dataSources = createDataSourcesApi(request);
   const auth = createAuthApi(request);
   const sessions = createChatSessionsApi(request);
+  const chatApprovals = createChatApprovalsApi(request);
+  const chatSteer = createChatSteerApi(request);
 
   return {
     request,
@@ -120,6 +124,8 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
     auth,
     sessions,
     chat: {
+      approvals: chatApprovals,
+      steer: chatSteer,
       stream: async (streamOptions: Parameters<typeof consumeChatStream>[1], onEvent: Parameters<typeof consumeChatStream>[2]) => {
         const streamRequest = buildChatStreamRequest(streamOptions);
         if (!options.transport.sendStream) return consumeChatStream(request, streamOptions, onEvent);

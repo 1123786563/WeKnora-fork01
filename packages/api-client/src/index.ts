@@ -18,3 +18,21 @@ export type { ChatStreamRequestOptions, ParsedServerSentEvent, ServerSentEventHa
 export { createChatSessionsApi } from './chat/sessions.ts';
 export type { ChatMessageListParams, ChatSessionListParams, ChatSessionsApi } from './chat/sessions.ts';
 export type { ChatMessage, ChatSession, ChatSessionListResponse } from '@weknora/contracts';
+export { createChatApprovalsApi } from './chat/approvals.ts';
+export type {
+  ChatApprovalsApi,
+  MCPOAuthDecision,
+  ResolveMCPOAuthInput,
+  ResolveToolApprovalInput,
+  ToolApprovalDecision,
+} from './chat/approvals.ts';
+export { createChatSteerApi } from './chat/steer.ts';
+export type { ChatSteerApi, EnqueueSteerInput } from './chat/steer.ts';
+export type {
+  ActionSuccessResponse,
+  SteerDeleteResponse,
+  SteerDelivery,
+  SteerListResponse,
+  SteerMutationResponse,
+  SteerQueueItem,
+} from '@weknora/contracts';
