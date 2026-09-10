@@ -30,5 +30,5 @@ test('encodes ids and preserves explicit write failures', async () => {
   assert.equal((await api.models.update('model/1', { name: 'Updated' })).name, 'Updated');
   await api.models.remove('model/1');
   assert.equal((requests[0] as { path: string }).path, '/api/v1/models/model%2F1');
-  assert.throws(() => api.models.get(''), /must not be empty/);
+  await assert.rejects(() => api.models.get(''), /must not be empty/);
 });
