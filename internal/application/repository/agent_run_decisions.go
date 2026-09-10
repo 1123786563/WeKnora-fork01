@@ -37,6 +37,11 @@ func (s *AgentRunStore) ApplyDecision(
 ) (agentruntime.Run, error) {
 	for attempt := 0; attempt < 3; attempt++ {
 		run, err := s.applyDecisionOnce(ctx, key, actor, d)
+		if err != nil && strings.Contains(strings.ToLower(err.Error()), "unique") {
+			if replay, ok := s.replayDecision(ctx, key, actor, d); ok {
+				return replay, nil
+			}
+		}
 		if err == nil || !isSQLiteLock(err) {
 			return run, err
 		}
@@ -47,6 +52,18 @@ func (s *AgentRunStore) ApplyDecision(
 		}
 	}
 	return agentruntime.Run{}, agentruntime.ErrConflict
+}
+
+func (s *AgentRunStore) replayDecision(ctx context.Context, key agentruntime.RunKey, actor string, d agentruntime.Decision) (agentruntime.Run, bool) {
+	var row agentRunDecisionRow
+	if err := s.db.WithContext(ctx).Where("tenant_id=? AND run_id=? AND decision_id=?", key.TenantID, key.RunID, d.DecisionID).Take(&row).Error; err != nil {
+		return agentruntime.Run{}, false
+	}
+	if row.PendingID != d.PendingID || row.ToolCallID != d.ToolCallID || row.ActorID != actor || row.Action != d.Action || row.Reason != d.Reason || row.ArgsHash != d.ArgsHash || row.ResourceRef != d.ResourceRef || row.Result != string(d.Result) || row.ExpectedRevision != d.ExpectedRevision {
+		return agentruntime.Run{}, false
+	}
+	run, err := s.Get(ctx, key)
+	return run, err == nil
 }
 
 func isSQLiteLock(err error) bool {
@@ -121,9 +138,9 @@ func (s *AgentRunStore) applyDecisionOnce(
 		var pending struct{ CallID, ArgsHash string }
 		pendingQuery := tx.Table("agent_tool_calls").Select("call_id, args_hash").Where("tenant_id = ? AND run_id = ? AND status = 'unknown'", key.TenantID, key.RunID)
 		if d.ToolCallID != "" {
-			pendingQuery = pendingQuery.Where("call_id = ? AND unknown_reason = ?", d.ToolCallID, d.PendingID)
+			pendingQuery = pendingQuery.Where("call_id = ?", d.ToolCallID)
 		} else {
-			pendingQuery = pendingQuery.Where("unknown_reason = ? OR call_id = ?", d.PendingID, d.PendingID)
+			pendingQuery = pendingQuery.Where("unknown_reason = ? OR unknown_reason LIKE ? OR call_id = ?", d.PendingID, d.PendingID+"|%", d.PendingID)
 		}
 		var pendingRows []struct{ CallID, ArgsHash string }
 		pendingErr := pendingQuery.Find(&pendingRows).Error

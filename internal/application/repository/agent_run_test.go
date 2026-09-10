@@ -317,12 +317,12 @@ func TestAgentRunReopenAndMigrations(t *testing.T) {
 	_, filename, _, ok := runtime.Caller(0)
 	require.True(t, ok)
 	root := filepath.Clean(filepath.Join(filepath.Dir(filename), "../../.."))
-	dir, version := "sqlite", "000014"
+	dir, version, suffix := "sqlite", "000014", "agent_runs"
 	if db.Name() == "postgres" {
-		dir, version = "versioned", "000093"
+		dir, version, suffix = "versioned", "000093", "agent_runs"
 	}
 	for _, direction := range []string{"down", "up"} {
-		script, e := os.ReadFile(filepath.Join(root, "migrations", dir, version+"_agent_runs."+direction+".sql"))
+		script, e := os.ReadFile(filepath.Join(root, "migrations", dir, version+"_"+suffix+"."+direction+".sql"))
 		require.NoError(t, e)
 		require.NoError(t, db.Exec(string(script)).Error)
 	}

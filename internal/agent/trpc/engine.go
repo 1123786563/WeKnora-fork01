@@ -15,11 +15,12 @@ import (
 )
 
 type GraphBindings struct {
-	Model        model.Model
-	Store        agentruntime.RunStore
-	Tools        *agentruntime.ToolExecutor
-	Finalize     func(context.Context, agentruntime.Fence, json.RawMessage) error
-	InitialState State
+	Model           model.Model
+	Store           agentruntime.RunStore
+	Tools           *agentruntime.ToolExecutor
+	Finalize        func(context.Context, agentruntime.Fence, json.RawMessage) error
+	InitialState    State
+	WaitForDecision func(context.Context, agentruntime.Fence, string) error
 }
 
 type GraphRunner struct{ bindings GraphBindings }
@@ -39,6 +40,9 @@ func NewGraphRunner(b GraphBindings) (*GraphRunner, error) {
 		return nil, fmt.Errorf("clone initial state: %w", err)
 	}
 	b.InitialState = cloned
+	if b.Tools != nil && b.WaitForDecision != nil {
+		b.Tools.SetWaitForDecision(b.WaitForDecision)
+	}
 	return &GraphRunner{bindings: b}, nil
 }
 func (r *GraphRunner) Run(ctx context.Context, fence agentruntime.Fence) error {

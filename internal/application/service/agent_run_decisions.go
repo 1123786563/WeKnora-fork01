@@ -64,6 +64,13 @@ func (s *AgentRunService) Resolve(ctx context.Context, key agentruntime.RunKey, 
 	if err := ValidateDecision(in); err != nil {
 		return agentruntime.Run{}, err
 	}
+	if s.decisionPolicy != nil {
+		if err := s.decisionPolicy(ctx, in); err != nil {
+			return agentruntime.Run{}, err
+		}
+	} else if in.Action == "retry" || in.Action == "provide_result" {
+		return agentruntime.Run{}, fmt.Errorf("current approval policy is unavailable")
+	}
 	resolver, ok := s.store.(decisionResolver)
 	if !ok {
 		return agentruntime.Run{}, fmt.Errorf("agent run store does not support decisions")

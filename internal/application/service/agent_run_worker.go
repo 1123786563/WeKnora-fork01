@@ -170,6 +170,9 @@ func (w *AgentRunWorker) runOne(ctx context.Context, id string, fence agentrunti
 	if renewCtx.Err() != nil {
 		return
 	}
+	if current, getErr := w.store.Get(context.Background(), fence.RunKey); getErr == nil && current.Status == "waiting_user" {
+		return
+	}
 	status, reason := "succeeded", ""
 	if err != nil {
 		status, reason = "failed", err.Error()

@@ -220,9 +220,17 @@ func ToolDispatchFromContext(ctx context.Context) (ToolDispatch, bool) {
 
 // ToolExecutor wraps the existing registry with a durable tool journal.
 type ToolExecutor struct {
-	runs    RunStore
-	journal ToolJournal
-	execute ToolExecuteFunc
+	runs            RunStore
+	journal         ToolJournal
+	execute         ToolExecuteFunc
+	waitForDecision func(context.Context, Fence, string) error
+}
+
+// SetWaitForDecision installs the durable park hook used for unknown outcomes.
+func (e *ToolExecutor) SetWaitForDecision(wait func(context.Context, Fence, string) error) {
+	if e != nil {
+		e.waitForDecision = wait
+	}
 }
 
 // NewToolExecutor creates a recoverable executor without replacing the
@@ -351,8 +359,13 @@ func (e *ToolExecutor) Execute(
 		}
 		persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
-		if markErr := e.journal.MarkToolUnknown(persistCtx, fence, attempt, executeErr.Error()); markErr != nil {
+		if markErr := e.journal.MarkToolUnknown(persistCtx, fence, attempt, plan.CallID+"|"+executeErr.Error()); markErr != nil {
 			return StoredToolResult{}, errors.Join(executeErr, markErr)
+		}
+		if e.waitForDecision != nil {
+			if waitErr := e.waitForDecision(persistCtx, fence, plan.CallID); waitErr != nil {
+				return StoredToolResult{}, errors.Join(executeErr, waitErr)
+			}
 		}
 		return StoredToolResult{}, executeErr
 	}

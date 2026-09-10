@@ -20,9 +20,27 @@ func RegisterAgentRunService(s *AgentRunService)  { defaultAgentRunService = s }
 func RegisteredAgentRunService() *AgentRunService { return defaultAgentRunService }
 
 type AgentRunService struct {
-	store agentruntime.RunStore
-	wake  func()
-	mu    sync.Mutex
+	store          agentruntime.RunStore
+	wake           func()
+	decisionPolicy func(context.Context, agentruntime.Decision) error
+	mu             sync.Mutex
+}
+
+// SetDecisionPolicy installs the current authorization check used immediately
+// before a durable decision is consumed.
+func (s *AgentRunService) SetDecisionPolicy(check func(context.Context, agentruntime.Decision) error) {
+	if s != nil {
+		s.decisionPolicy = check
+	}
+}
+
+// WaitForDecision durably parks a leased run. Resolve later queues it, allowing
+// the worker to resume after a restart without an in-process waiter.
+func (s *AgentRunService) WaitForDecision(ctx context.Context, fence agentruntime.Fence, pendingID string) error {
+	if s == nil || s.store == nil || pendingID == "" {
+		return agentruntime.ErrConflict
+	}
+	return s.store.SetStatus(ctx, fence, "waiting_user", pendingID)
 }
 
 func NewAgentRunService(store agentruntime.RunStore, wake ...func()) *AgentRunService {
