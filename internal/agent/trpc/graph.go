@@ -160,7 +160,7 @@ func buildGraph(b GraphBindings) (*graph.Graph, error) {
 			}
 			s.NextCallIndex++
 		}
-		return stateUpdate(s), nil
+		return graph.Command{Update: stateUpdate(s), GoTo: nodeApply}, nil
 	})
 	sg.AddNode(nodeApply, func(ctx context.Context, in graph.State) (any, error) {
 		s, err := stateFromGraph(in)
@@ -186,7 +186,7 @@ func buildGraph(b GraphBindings) (*graph.Graph, error) {
 				return nil, fmt.Errorf("tool result %s is missing from state", id)
 			}
 		}
-		return stateUpdate(s), nil
+		return graph.Command{Update: stateUpdate(s), GoTo: NextAfterTool(s.NextCallIndex, len(s.PendingCallIDs))}, nil
 	})
 	sg.AddNode(nodeFinalize, func(ctx context.Context, in graph.State) (any, error) {
 		s, err := stateFromGraph(in)
