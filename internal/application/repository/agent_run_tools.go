@@ -15,6 +15,7 @@ import (
 )
 
 var _ agentruntime.ToolJournal = (*AgentRunStore)(nil)
+var _ agentruntime.ToolResultReader = (*AgentRunStore)(nil)
 
 type agentToolCallRow struct {
 	TenantID                                   uint64
@@ -46,6 +47,32 @@ func (agentToolAttemptRow) TableName() string { return "agent_tool_attempts" }
 
 func toolCallScope(tx *gorm.DB, key agentruntime.RunKey, callID string) *gorm.DB {
 	return tx.Where("tenant_id = ? AND run_id = ? AND call_id = ?", key.TenantID, key.RunID, callID)
+}
+
+// LoadToolResult returns the committed result for one logical call under the fence scope.
+func (s *AgentRunStore) LoadToolResult(ctx context.Context, fence agentruntime.Fence, callID string) (agentruntime.StoredToolResult, error) {
+	if fence.TenantID == 0 || fence.RunID == "" || fence.Owner == "" || fence.Epoch <= 0 {
+		return agentruntime.StoredToolResult{}, agentruntime.ErrLeaseLost
+	}
+	run, err := s.Get(ctx, fence.RunKey)
+	if err != nil || run.Owner != fence.Owner || run.Epoch != fence.Epoch {
+		return agentruntime.StoredToolResult{}, agentruntime.ErrLeaseLost
+	}
+	var row agentToolCallRow
+	if err := toolCallScope(s.db.WithContext(ctx), fence.RunKey, callID).Take(&row).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return agentruntime.StoredToolResult{}, agentruntime.ErrNotFound
+		}
+		return agentruntime.StoredToolResult{}, err
+	}
+	record, err := row.view()
+	if err != nil {
+		return agentruntime.StoredToolResult{}, err
+	}
+	if record.Result == nil {
+		return agentruntime.StoredToolResult{}, agentruntime.ErrNotFound
+	}
+	return *record.Result, nil
 }
 
 func (row agentToolCallRow) view() (agentruntime.ToolRecord, error) {
