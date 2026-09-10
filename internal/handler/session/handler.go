@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	stderrors "errors"
 	"net/http"
 
@@ -365,6 +366,20 @@ func (h *Handler) UpdateSession(c *gin.Context) {
 	})
 }
 
+// fenceSessionRuns prevents durable workers from taking over while legacy
+// session deletion/clearing removes the visible session state.
+func (h *Handler) fenceSessionRuns(ctx context.Context, sessionID string) error {
+	runs := h.runService()
+	if runs == nil {
+		return nil
+	}
+	tenant, ok := types.TenantIDFromContext(ctx)
+	if !ok || tenant == 0 {
+		return errors.NewUnauthorizedError("Unauthorized")
+	}
+	return runs.DeleteSessionRuns(ctx, tenant, sessionID)
+}
+
 // DeleteSession godoc
 // @Summary      删除会话
 // @Description  删除指定的会话
@@ -388,6 +403,14 @@ func (h *Handler) DeleteSession(c *gin.Context) {
 		return
 	}
 
+	if _, ownErr := h.sessionService.GetOwnedSession(ctx, id); ownErr != nil {
+		c.Error(errors.NewNotFoundError("session not found"))
+		return
+	}
+	if err := h.fenceSessionRuns(ctx, id); err != nil {
+		c.Error(errors.NewInternalServerError(err.Error()))
+		return
+	}
 	// Call service to delete session
 	if err := h.sessionService.DeleteSession(ctx, id); err != nil {
 		if stderrors.Is(err, errors.ErrSessionNotFound) {
@@ -431,6 +454,14 @@ func (h *Handler) ClearSessionMessages(c *gin.Context) {
 	}
 
 	logger.Infof(ctx, "Clearing all messages for session: %s", id)
+	if _, ownErr := h.sessionService.GetOwnedSession(ctx, id); ownErr != nil {
+		c.Error(errors.NewNotFoundError("session not found"))
+		return
+	}
+	if err := h.fenceSessionRuns(ctx, id); err != nil {
+		c.Error(errors.NewInternalServerError(err.Error()))
+		return
+	}
 
 	if err := h.messageService.ClearSessionMessages(ctx, id); err != nil {
 		if stderrors.Is(err, errors.ErrSessionNotFound) {
@@ -479,6 +510,19 @@ func (h *Handler) BatchDeleteSessions(c *gin.Context) {
 	}
 
 	if req.DeleteAll {
+		sessions, listErr := h.sessionService.GetSessionsByTenant(ctx)
+		if listErr != nil {
+			c.Error(errors.NewInternalServerError(listErr.Error()))
+			return
+		}
+		for _, sess := range sessions {
+			if sess != nil {
+				if err := h.fenceSessionRuns(ctx, sess.ID); err != nil {
+					c.Error(errors.NewInternalServerError(err.Error()))
+					return
+				}
+			}
+		}
 		if err := h.sessionService.DeleteAllSessions(ctx); err != nil {
 			logger.ErrorWithFields(ctx, err, nil)
 			c.Error(errors.NewInternalServerError(err.Error()))
@@ -510,6 +554,16 @@ func (h *Handler) BatchDeleteSessions(c *gin.Context) {
 		return
 	}
 
+	for _, id := range sanitizedIDs {
+		if _, ownErr := h.sessionService.GetOwnedSession(ctx, id); ownErr != nil {
+			c.Error(errors.NewNotFoundError("session not found"))
+			return
+		}
+		if err := h.fenceSessionRuns(ctx, id); err != nil {
+			c.Error(errors.NewInternalServerError(err.Error()))
+			return
+		}
+	}
 	if err := h.sessionService.BatchDeleteSessions(ctx, sanitizedIDs); err != nil {
 		if stderrors.Is(err, errors.ErrSessionNotFound) {
 			logger.Warnf(ctx, "No visible sessions found for batch delete")

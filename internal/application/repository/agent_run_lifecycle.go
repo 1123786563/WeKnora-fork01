@@ -49,7 +49,10 @@ func (s *AgentRunStore) DeleteSessionRuns(ctx context.Context, tenantID uint64, 
 			if err := tx.Table("agent_runs").Where("tenant_id=? AND run_id=?", tenantID, id).Updates(map[string]any{"status": "canceled", "wait_reason": "session_deleted", "lease_owner": "", "lease_until": nil, "revision": gorm.Expr("revision+1")}).Error; err != nil {
 				return err
 			}
-			for _, table := range []string{"agent_run_inputs", "agent_run_decisions", "agent_run_events", "agent_run_attempts", "agent_run_tool_calls", "agent_run_checkpoints"} {
+			for _, table := range []string{"agent_run_inputs", "agent_run_decisions", "agent_run_events", "agent_tool_attempts", "agent_tool_calls", "agent_run_checkpoints"} {
+				if !tx.Migrator().HasTable(table) {
+					continue
+				}
 				if err := tx.Exec("DELETE FROM "+table+" WHERE tenant_id=? AND run_id=?", tenantID, id).Error; err != nil {
 					return err
 				}

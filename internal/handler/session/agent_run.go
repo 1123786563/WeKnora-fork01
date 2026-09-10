@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/application/service"
@@ -53,7 +54,11 @@ func (h *Handler) ownedRun(c *gin.Context) (context.Context, agentruntime.RunKey
 		c.JSON(http.StatusBadRequest, gin.H{"error": "session_id and run_id are required"})
 		return ctx, agentruntime.RunKey{}, agentruntime.Run{}, false
 	}
-	if h.sessionService != nil {
+	if h.sessionService == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "run not found"})
+		return ctx, agentruntime.RunKey{}, agentruntime.Run{}, false
+	}
+	{
 		sess, err := h.sessionService.GetOwnedSession(ctx, sessionID)
 		if err != nil || sess == nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "run not found"})
@@ -91,8 +96,9 @@ func (h *Handler) GetAgentRun(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": runView(run)})
 }
 func runView(r agentruntime.Run) gin.H {
-	return gin.H{"run_id": r.Key.RunID, "session_id": r.SessionID, "status": r.Status, "wait_reason": r.WaitReason, "revision": r.Revision, "epoch": r.Epoch}
+	return gin.H{"run_id": r.Key.RunID, "session_id": r.SessionID, "status": r.Status, "wait_reason": r.WaitReason, "revision": r.Revision, "epoch": r.Epoch, "seq": int64(0), "capabilities": gin.H{"engine_type": "trpc", "durable_recovery": true}}
 }
+func runViewWithSeq(r agentruntime.Run, seq int64) gin.H { v := runView(r); v["seq"] = seq; return v }
 
 func (h *Handler) GetAgentRunEvents(c *gin.Context) {
 	ctx, key, run, ok := h.ownedRun(c)
@@ -134,11 +140,52 @@ func (h *Handler) GetAgentRunEvents(c *gin.Context) {
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Status(http.StatusOK)
-	for _, e := range events {
-		c.SSEvent(strconv.FormatInt(e.Seq, 10), e)
+	seen := map[int64]bool{}
+	emit := func(page []agentruntime.RunEvent) int64 {
+		latest := after
+		for _, e := range page {
+			if e.Seq <= after || seen[e.Seq] {
+				continue
+			}
+			seen[e.Seq] = true
+			if e.Seq > latest {
+				latest = e.Seq
+			}
+			c.SSEvent(strconv.FormatInt(e.Seq, 10), e)
+		}
+		c.Writer.Flush()
+		return latest
 	}
+	after = emit(events)
 	if len(events) == 0 && run.Status != "succeeded" && run.Status != "failed" && run.Status != "canceled" {
-		c.SSEvent("run", runView(run))
+		c.SSEvent("run", runViewWithSeq(run, after))
+		c.Writer.Flush()
+	}
+	if c.Query("once") == "1" {
+		return
+	}
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+	keep := time.NewTicker(15 * time.Second)
+	defer keep.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			page, readErr := es.ReadEvents(ctx, key, after, 256)
+			if readErr != nil {
+				return
+			}
+			after = emit(page)
+			current, getErr := h.runService().Get(ctx, key)
+			if getErr == nil && (current.Status == "succeeded" || current.Status == "failed" || current.Status == "canceled") {
+				return
+			}
+		case <-keep.C:
+			c.SSEvent("keepalive", gin.H{"seq": after})
+			c.Writer.Flush()
+		}
 	}
 }
 
