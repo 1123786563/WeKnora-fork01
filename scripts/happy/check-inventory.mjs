@@ -18,11 +18,12 @@ export function fixedRoutePaths(upstream, commit) {
 export function validateCommittedInventory({ upstream, commit, matrixPath }) {
   const matrix = JSON.parse(fs.readFileSync(matrixPath, 'utf8'));
   if (matrix.commit !== commit) throw new Error(`matrix commit mismatch: ${matrix.commit}`);
-  checkInventory(matrix.rows, fixedRoutePaths(upstream, commit));
+  checkInventory(matrix.rows, fixedRoutePaths(upstream, commit), matrix.expectedIds ?? []);
+  for (const id of matrix.expectedIds ?? []) if (!matrix.rows.some(row => row.id === id)) throw new Error();
   return matrix.rows.length;
 }
 
-export function checkInventory(rows, routes) {
+export function checkInventory(rows, routes, expectedIds = []) {
   if (!Array.isArray(rows) || !Array.isArray(routes)) throw new TypeError('rows and routes must be arrays');
   const ids = new Set();
   for (const row of rows) {
@@ -36,5 +37,5 @@ export function checkInventory(rows, routes) {
   for (const route of routes) {
     if (!rows.some(row => row.route === route)) throw new Error(`unmapped ${route}`);
   }
-  for (const id of REQUIRED_CAPABILITIES) if (!rows.some(row => row.id === id)) throw new Error(`missing capability ${id}`);
+  for (const id of expectedIds) if (!rows.some(row => row.id === id)) throw new Error(`missing capability ${id}`);
 }

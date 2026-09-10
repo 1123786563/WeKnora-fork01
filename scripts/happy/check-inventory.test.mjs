@@ -33,5 +33,5 @@ test('committed matrix covers every fixed production route', () => {
 
 test('deleting a required capability fails validation', () => {
   const matrix = JSON.parse(fs.readFileSync('docs/migrations/happy/interaction-matrix.json'));
-  assert.throws(() => checkInventory(matrix.rows.filter(row => row.id !== 'session.send'), matrix.rows.map(row => row.route)), /missing capability session.send/);
+  assert.throws(() => checkInventory(matrix.rows.filter(row => row.id !== 'session.send'), matrix.rows.map(row => row.route), matrix.expectedIds), /missing capability session.send/);
 });
