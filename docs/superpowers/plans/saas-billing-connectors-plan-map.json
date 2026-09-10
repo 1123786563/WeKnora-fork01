@@ -1,0 +1,506 @@
+{
+  "date": "2026-09-11",
+  "tasks": {
+    "V01": {
+      "title": "固定版本接口盘点与只读健康探测",
+      "plan": "2026-09-11-saas-00-contract-verification.md",
+      "depends_on": []
+    },
+    "V02": {
+      "title": "可重复执行的业务契约实验驱动器",
+      "plan": "2026-09-11-saas-00-contract-verification.md",
+      "depends_on": [
+        "V01"
+      ]
+    },
+    "V03": {
+      "title": "执行两套官方模型实验并冻结唯一接入契约",
+      "plan": "2026-09-11-saas-00-contract-verification.md",
+      "depends_on": [
+        "V02"
+      ]
+    },
+    "F01": {
+      "title": "金额、Credits 和月周期原语",
+      "plan": "2026-09-11-saas-01-foundation.md",
+      "depends_on": [
+        "V03"
+      ]
+    },
+    "F02": {
+      "title": "空间商业权限与唯一 Customer 映射",
+      "plan": "2026-09-11-saas-01-foundation.md",
+      "depends_on": [
+        "V03"
+      ]
+    },
+    "F03": {
+      "title": "不可变套餐目录与分段升级报价",
+      "plan": "2026-09-11-saas-01-foundation.md",
+      "depends_on": [
+        "F01",
+        "F02"
+      ]
+    },
+    "F04": {
+      "title": "周期发放与到期降级投影",
+      "plan": "2026-09-11-saas-01-foundation.md",
+      "depends_on": [
+        "F03"
+      ]
+    },
+    "F05": {
+      "title": "原子资源配额与商业路由权限",
+      "plan": "2026-09-11-saas-01-foundation.md",
+      "depends_on": [
+        "F02",
+        "F03"
+      ]
+    },
+    "C01": {
+      "title": "订单、支付尝试与持久化 Outbox",
+      "plan": "2026-09-11-saas-02-payments.md",
+      "depends_on": [
+        "F03",
+        "F05"
+      ]
+    },
+    "C02": {
+      "title": "支付适配接口与微信验签链路",
+      "plan": "2026-09-11-saas-02-payments.md",
+      "depends_on": [
+        "C01"
+      ]
+    },
+    "C03": {
+      "title": "支付宝独立支付与退款适配",
+      "plan": "2026-09-11-saas-02-payments.md",
+      "depends_on": [
+        "C02"
+      ]
+    },
+    "C04": {
+      "title": "付款到权益的幂等履约工作进程",
+      "plan": "2026-09-11-saas-02-payments.md",
+      "depends_on": [
+        "C01",
+        "F04",
+        "V03"
+      ]
+    },
+    "C05": {
+      "title": "退款锁定、渠道出款与精确撤权",
+      "plan": "2026-09-11-saas-02-payments.md",
+      "depends_on": [
+        "C02",
+        "C03",
+        "C04",
+        "U02",
+        "U03"
+      ]
+    },
+    "U01": {
+      "title": "实际调用身份、资金来源与用量去重",
+      "plan": "2026-09-11-saas-03-budget-metering.md",
+      "depends_on": [
+        "F01",
+        "F03"
+      ]
+    },
+    "U02": {
+      "title": "跨进程任务预算与额度原子预占",
+      "plan": "2026-09-11-saas-03-budget-metering.md",
+      "depends_on": [
+        "U01",
+        "V03"
+      ]
+    },
+    "U03": {
+      "title": "最终消费与外部确认水位交接",
+      "plan": "2026-09-11-saas-03-budget-metering.md",
+      "depends_on": [
+        "U02",
+        "C04"
+      ]
+    },
+    "U04": {
+      "title": "取消、到期、追加与恢复租约",
+      "plan": "2026-09-11-saas-03-budget-metering.md",
+      "depends_on": [
+        "U03",
+        "F02",
+        "F04"
+      ]
+    },
+    "U05": {
+      "title": "主子 Runtime、模型与平台服务的收费准入接线",
+      "plan": "2026-09-11-saas-03-budget-metering.md",
+      "depends_on": [
+        "U01",
+        "U02",
+        "U03",
+        "U04"
+      ]
+    },
+    "A01": {
+      "title": "空间安装、版本与两类连接",
+      "plan": "2026-09-11-saas-04-connectors.md",
+      "depends_on": [
+        "F02"
+      ]
+    },
+    "A02": {
+      "title": "OAuth绑定、凭据引用和撤销接线",
+      "plan": "2026-09-11-saas-04-connectors.md",
+      "depends_on": [
+        "A01"
+      ]
+    },
+    "A03": {
+      "title": "持久化Action审批与未知结果状态",
+      "plan": "2026-09-11-saas-04-connectors.md",
+      "depends_on": [
+        "A02",
+        "U05"
+      ]
+    },
+    "A04": {
+      "title": "MCP和受控HTTP统一执行适配",
+      "plan": "2026-09-11-saas-04-connectors.md",
+      "depends_on": [
+        "A03"
+      ]
+    },
+    "A05": {
+      "title": "飞书发送消息的审批和结果核对",
+      "plan": "2026-09-11-saas-04-connectors.md",
+      "depends_on": [
+        "A04"
+      ]
+    },
+    "A06": {
+      "title": "Notion页面创建与部分完成恢复",
+      "plan": "2026-09-11-saas-04-connectors.md",
+      "depends_on": [
+        "A04"
+      ]
+    },
+    "A07": {
+      "title": "飞书和Notion同步迁移、游标与暂停",
+      "plan": "2026-09-11-saas-04-connectors.md",
+      "depends_on": [
+        "A02",
+        "U05"
+      ]
+    },
+    "W01": {
+      "title": "共享商业契约与API client",
+      "plan": "2026-09-11-saas-05-product-flows.md",
+      "depends_on": [
+        "C01",
+        "C05",
+        "F05"
+      ]
+    },
+    "W02": {
+      "title": "空间购买、充值与订单结果页面",
+      "plan": "2026-09-11-saas-05-product-flows.md",
+      "depends_on": [
+        "W01"
+      ]
+    },
+    "W03": {
+      "title": "账单授权、退款申请和平台审核页面",
+      "plan": "2026-09-11-saas-05-product-flows.md",
+      "depends_on": [
+        "W01",
+        "C05"
+      ]
+    },
+    "W04": {
+      "title": "应用目录、连接与同步页面及API",
+      "plan": "2026-09-11-saas-05-product-flows.md",
+      "depends_on": [
+        "A01",
+        "A02",
+        "A07"
+      ]
+    },
+    "W05": {
+      "title": "任务预算与具体写操作审批交互",
+      "plan": "2026-09-11-saas-05-product-flows.md",
+      "depends_on": [
+        "A03",
+        "U04",
+        "W04"
+      ]
+    },
+    "O01": {
+      "title": "运营恢复队列、审计与收费开关",
+      "plan": "2026-09-11-saas-06-rollout-acceptance.md",
+      "depends_on": [
+        "C04",
+        "C05",
+        "U03",
+        "A03"
+      ]
+    },
+    "O02": {
+      "title": "旧空间与数据源迁移、影子计量和注销保留",
+      "plan": "2026-09-11-saas-06-rollout-acceptance.md",
+      "depends_on": [
+        "F02",
+        "F04",
+        "U01",
+        "A07",
+        "O01"
+      ]
+    },
+    "O03": {
+      "title": "按证据收口全部接口与产品联验",
+      "plan": "2026-09-11-saas-06-rollout-acceptance.md",
+      "depends_on": [
+        "W02",
+        "W03",
+        "W04",
+        "W05",
+        "O01",
+        "O02",
+        "C02",
+        "C03",
+        "A05",
+        "A06",
+        "U05"
+      ]
+    }
+  },
+  "check_owners": {
+    "OM-01": [
+      "V01",
+      "V03"
+    ],
+    "OM-02": [
+      "V03"
+    ],
+    "OM-03": [
+      "V03",
+      "F02",
+      "F03"
+    ],
+    "OM-04": [
+      "V03",
+      "C04"
+    ],
+    "OM-05": [
+      "V03",
+      "F04"
+    ],
+    "OM-06": [
+      "V03",
+      "F01",
+      "F04"
+    ],
+    "OM-07": [
+      "V03",
+      "F03",
+      "F04"
+    ],
+    "OM-08": [
+      "V03",
+      "C05"
+    ],
+    "OM-09": [
+      "V03",
+      "C04"
+    ],
+    "OM-10": [
+      "U02",
+      "U03"
+    ],
+    "COM-01": [
+      "F02",
+      "F05"
+    ],
+    "COM-02": [
+      "F03"
+    ],
+    "COM-03": [
+      "C01"
+    ],
+    "COM-04": [
+      "C04"
+    ],
+    "COM-05": [
+      "C05"
+    ],
+    "COM-06": [
+      "C05"
+    ],
+    "COM-07": [
+      "F03",
+      "F04",
+      "F05"
+    ],
+    "WX-01": [
+      "C02"
+    ],
+    "WX-02": [
+      "C02"
+    ],
+    "WX-03": [
+      "C02"
+    ],
+    "WX-04": [
+      "C02"
+    ],
+    "WX-05": [
+      "C02"
+    ],
+    "ALI-01": [
+      "C03"
+    ],
+    "ALI-02": [
+      "C03"
+    ],
+    "ALI-03": [
+      "C03"
+    ],
+    "ALI-04": [
+      "C03"
+    ],
+    "ALI-05": [
+      "C03"
+    ],
+    "BUD-01": [
+      "U02"
+    ],
+    "BUD-02": [
+      "U02",
+      "U05"
+    ],
+    "BUD-03": [
+      "U02",
+      "U04"
+    ],
+    "BUD-04": [
+      "U04"
+    ],
+    "BUD-05": [
+      "U03"
+    ],
+    "BUD-06": [
+      "U04",
+      "C05"
+    ],
+    "BUD-07": [
+      "U03",
+      "O01"
+    ],
+    "BUD-08": [
+      "U05"
+    ],
+    "USE-01": [
+      "U01",
+      "U05"
+    ],
+    "USE-02": [
+      "U01",
+      "U05"
+    ],
+    "USE-03": [
+      "U01",
+      "U03"
+    ],
+    "USE-04": [
+      "U01",
+      "U03"
+    ],
+    "USE-05": [
+      "F01",
+      "U01"
+    ],
+    "USE-06": [
+      "U04",
+      "U05"
+    ],
+    "CON-01": [
+      "A01"
+    ],
+    "CON-02": [
+      "A01"
+    ],
+    "CON-03": [
+      "A02"
+    ],
+    "CON-04": [
+      "A02"
+    ],
+    "CON-05": [
+      "A03"
+    ],
+    "CON-06": [
+      "A03"
+    ],
+    "CON-07": [
+      "A04"
+    ],
+    "CON-08": [
+      "A04"
+    ],
+    "FS-01": [
+      "A05"
+    ],
+    "FS-02": [
+      "A05"
+    ],
+    "FS-03": [
+      "A05"
+    ],
+    "FS-04": [
+      "A05"
+    ],
+    "NO-01": [
+      "A06"
+    ],
+    "NO-02": [
+      "A06"
+    ],
+    "NO-03": [
+      "A06"
+    ],
+    "NO-04": [
+      "A06"
+    ],
+    "SYNC-01": [
+      "A07"
+    ],
+    "SYNC-02": [
+      "A07"
+    ],
+    "SYNC-03": [
+      "A07"
+    ],
+    "SYNC-04": [
+      "A07"
+    ],
+    "SYNC-05": [
+      "A07"
+    ],
+    "OPS-01": [
+      "O01"
+    ],
+    "OPS-02": [
+      "O02"
+    ],
+    "OPS-03": [
+      "O01",
+      "O02"
+    ],
+    "OPS-04": [
+      "W02",
+      "W03",
+      "W04",
+      "W05"
+    ]
+  }
+}
