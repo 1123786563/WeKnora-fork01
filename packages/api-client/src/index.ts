@@ -13,7 +13,7 @@ export type { KnowledgeDocumentListParams, KnowledgeDocumentUploadInput } from '
 export type { KnowledgeDocument, KnowledgeProcessingStatus, KnowledgeDocumentListResponse } from '@weknora/contracts';
 export type { WikiPage, WikiPageListResponse, WikiPageRevision, WikiRevisionListResponse, WikiPageUpdateInput } from './wiki/pages.ts';
 export type { DataSource, DataSourceResource } from './datasource.ts';
-export { buildChatStreamRequest, createServerSentEventParser, parseChatEvent } from './chat/stream.ts';
+export { buildChatStreamRequest, consumeChatStream, createServerSentEventParser, parseChatEvent } from './chat/stream.ts';
 export type { ChatStreamRequestOptions, ParsedServerSentEvent, ServerSentEventHandler } from './chat/stream.ts';
 export { createChatSessionsApi } from './chat/sessions.ts';
 export type { ChatMessageListParams, ChatSessionListParams, ChatSessionsApi } from './chat/sessions.ts';

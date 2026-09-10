@@ -84,3 +84,15 @@ export function parseChatEvent(event: ParsedServerSentEvent): ChatStreamEvent {
     ...(event.event && !(value as ChatStreamEvent).type ? { type: event.event } : {}),
   };
 }
+
+export async function consumeChatStream(
+  request: (input: ClientRequest) => Promise<unknown>,
+  options: ChatStreamRequestOptions,
+  onEvent: (event: ChatStreamEvent) => void,
+): Promise<void> {
+  const body = await request(buildChatStreamRequest(options));
+  if (typeof body !== 'string') throw new Error('Chat stream returned a non-text body');
+  const parser = createServerSentEventParser((event) => onEvent(parseChatEvent(event)));
+  parser.push(body);
+  parser.finish();
+}

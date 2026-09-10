@@ -6,6 +6,7 @@ import { createWikiPagesApi } from './wiki/pages.ts';
 import { createDataSourcesApi } from './datasource.ts';
 import { createAuthApi } from './auth/endpoints.ts';
 import { createChatSessionsApi } from './chat/sessions.ts';
+import { consumeChatStream } from './chat/stream.ts';
 
 export interface ClientRequest {
   method: string;
@@ -118,6 +119,9 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
     dataSources,
     auth,
     sessions,
+    chat: {
+      stream: (options: Parameters<typeof consumeChatStream>[1], onEvent: Parameters<typeof consumeChatStream>[2]) => consumeChatStream(request, options, onEvent),
+    },
   };
 }
 

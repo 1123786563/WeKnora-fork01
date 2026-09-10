@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ChatMessage, ChatSession, WeKnoraClient } from '@weknora/api-client';
 import { chatDraftKey } from '@weknora/domain/chat/draft';
+import { initialChatStreamState, reduceChatStream } from '@weknora/domain/chat/reducer';
 import { ChatPage, type ChatSubmission } from '@weknora/views';
 import type { ScopeController } from '@weknora/domain/scope';
 import { chatSessionIdFromPath } from './session-route.ts';
@@ -78,8 +79,21 @@ export function ChatRoutePage({ client, scopeController }: ChatRoutePageProps) {
     if (storageKey) window.localStorage.setItem(storageKey, value);
   }
 
-  async function send(_submission: ChatSubmission): Promise<void> {
-    throw new Error('Chat sending is unavailable until the SSE transport integration is implemented.');
+  async function send(submission: ChatSubmission): Promise<void> {
+    if (!selectedSessionId) throw new Error('Create or select a conversation first.');
+    const sessionId = selectedSessionId;
+    setMessages((current) => [...current, {
+      id: `local-${Date.now()}`, session_id: sessionId, role: 'user', content: submission.content,
+    }]);
+    let streamState = initialChatStreamState();
+    await client.chat.stream({ sessionId, mode: 'knowledge', body: { query: submission.content, channel: 'web' } }, (event) => {
+      streamState = reduceChatStream(streamState, event);
+      if (streamState.phase === 'error') throw new Error(streamState.error ?? 'Chat stream failed');
+      if (streamState.answer) setMessages((current) => [...current.filter((item) => item.id !== `stream-${sessionId}`), {
+        id: `stream-${sessionId}`, session_id: sessionId, role: 'assistant', content: streamState.answer,
+        is_completed: streamState.phase === 'completed',
+      }]);
+    });
   }
 
   return <ChatPage

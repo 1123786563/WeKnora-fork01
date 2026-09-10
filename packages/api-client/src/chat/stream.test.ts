@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildChatStreamRequest, createServerSentEventParser, parseChatEvent } from './stream.ts';
+import { buildChatStreamRequest, consumeChatStream, createServerSentEventParser, parseChatEvent } from './stream.ts';
 
 test('parses split and multi-line SSE data frames', () => {
   const events: Array<{ id?: string; event?: string; data: string }> = [];
@@ -25,4 +25,13 @@ test('builds knowledge and agent stream paths with resumable event id', () => {
 
 test('rejects non-object chat SSE payloads', () => {
   assert.throws(() => parseChatEvent({ data: '[]' }), /Invalid chat SSE event/);
+});
+
+test('consumes a text stream through the shared request boundary', async () => {
+  const events: string[] = [];
+  await consumeChatStream(async (request) => {
+    assert.equal(request.path, '/api/v1/knowledge-chat/s-1');
+    return 'id: e1\ndata: {"response_type":"answer","content":"hi"}\n\ndata: {"response_type":"complete"}\n';
+  }, { sessionId: 's-1', body: { query: 'hello' } }, (event) => events.push(String(event.response_type)));
+  assert.deepEqual(events, ['answer', 'complete']);
 });

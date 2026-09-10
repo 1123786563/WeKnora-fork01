@@ -24,6 +24,7 @@
       "@weknora/contracts": ["../../packages/contracts/src/index.ts"],
       "@weknora/domain": ["../../packages/domain/src/query-key.ts"],
       "@weknora/domain/scope": ["../../packages/domain/src/scope.ts"],
+      "@weknora/domain/chat/reducer": ["../../packages/domain/src/chat/reducer.ts"],
       "@weknora/ui": ["../../packages/ui/src/index.tsx"],
       "@weknora/views": ["../../packages/views/src/index.ts"]
     }

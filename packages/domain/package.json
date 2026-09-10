@@ -7,7 +7,8 @@
     ".": "./src/query-key.ts",
     "./scope": "./src/scope.ts",
     "./wiki/diff": "./src/wiki/diff.ts",
-    "./chat/draft": "./src/chat/draft.ts"
+    "./chat/draft": "./src/chat/draft.ts",
+    "./chat/reducer": "./src/chat/reducer.ts"
   },
   "dependencies": {
     "@weknora/contracts": "workspace:*"
