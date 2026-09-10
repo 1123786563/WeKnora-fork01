@@ -43,12 +43,25 @@ type Config struct {
 
 // AgentConfig represents the global agent settings.
 type AgentConfig struct {
+	// Recovery configures the optional durable tRPC run worker. It is disabled
+	// by default so existing builtin/ReAct deployments are unchanged.
+	Recovery AgentRecoveryConfig `yaml:"recovery" json:"recovery"`
 	// LLMCallTimeout is the default timeout for a single LLM call in seconds.
 	// Default: 120 (standard agents) or 300 (can be overridden by Env).
 	LLMCallTimeout int `yaml:"llm_call_timeout" json:"llm_call_timeout"`
 	// ToolApprovalTimeoutSeconds is how long the agent waits for human approval on a flagged MCP tool.
 	// 0 means default 600 (10 minutes).
 	ToolApprovalTimeoutSeconds int `yaml:"tool_approval_timeout_seconds" json:"tool_approval_timeout_seconds"`
+}
+
+// AgentRecoveryConfig controls admission and background recovery for tRPC runs.
+type AgentRecoveryConfig struct {
+	Enabled          bool          `yaml:"enabled" json:"enabled"`
+	AdmissionEnabled bool          `yaml:"admission_enabled" json:"admission_enabled"`
+	Lease            time.Duration `yaml:"lease" json:"lease"`
+	Heartbeat        time.Duration `yaml:"heartbeat" json:"heartbeat"`
+	ScanInterval     time.Duration `yaml:"scan_interval" json:"scan_interval"`
+	MaxWorkers       int           `yaml:"max_workers" json:"max_workers"`
 }
 
 // IMConfig configures the IM integration service.
@@ -776,6 +789,20 @@ func applyKnowledgeBaseEnvOverrides(cfg *Config) {
 func applyAgentEnvOverrides(cfg *Config) {
 	if cfg.Agent == nil {
 		cfg.Agent = &AgentConfig{}
+	}
+	// Durable tRPC recovery is opt-in. Keep operational defaults here so a
+	// partially specified config cannot accidentally create an unsafe worker.
+	if cfg.Agent.Recovery.Lease == 0 {
+		cfg.Agent.Recovery.Lease = time.Minute
+	}
+	if cfg.Agent.Recovery.Heartbeat == 0 {
+		cfg.Agent.Recovery.Heartbeat = 15 * time.Second
+	}
+	if cfg.Agent.Recovery.ScanInterval == 0 {
+		cfg.Agent.Recovery.ScanInterval = 5 * time.Second
+	}
+	if cfg.Agent.Recovery.MaxWorkers == 0 {
+		cfg.Agent.Recovery.MaxWorkers = 4
 	}
 	if value := strings.TrimSpace(os.Getenv("WEKNORA_AGENT_LLM_TIMEOUT")); value != "" {
 		if timeout, err := time.ParseDuration(value); err == nil {

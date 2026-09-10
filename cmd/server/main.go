@@ -68,6 +68,10 @@ func main() {
 		resourceCleaner interfaces.ResourceCleaner,
 		systemSettingSvc interfaces.SystemSettingService,
 	) error {
+		if err := container.ValidateAgentRuntimeConfig(cfg); err != nil {
+			return err
+		}
+
 		// Create HTTP server
 		server := &http.Server{
 			Handler: router,
