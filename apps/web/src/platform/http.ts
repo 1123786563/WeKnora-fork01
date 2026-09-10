@@ -1,5 +1,6 @@
 import { createJsonTransport, type FetchLike } from '@weknora/api-client';
 import type { Credential } from '@weknora/api-client';
+import type { HttpRequest, HttpResult, HttpStreamResult } from '@weknora/api-client';
 
 export interface BrowserTransportOptions {
   fetcher?: FetchLike;
@@ -7,6 +8,8 @@ export interface BrowserTransportOptions {
   tenantId?: string | null;
   locale?: string;
   requestId?: () => string;
+  shouldRefresh?: (request: HttpRequest) => boolean;
+  refresh?: () => Promise<void>;
 }
 
 function authHeader(credential: Credential | undefined): string | undefined {
@@ -22,9 +25,14 @@ function defaultRequestId(): string {
 export function createBrowserTransport(options: BrowserTransportOptions = {}) {
   const fetcher = options.fetcher ?? ((input, init) => fetch(input, init));
   const base = createJsonTransport(fetcher);
-  function decorate(request: Parameters<typeof base.send>[0]) {
+  let refreshInFlight: Promise<void> | undefined;
+
+  function currentCredential(): Credential | undefined {
+    return typeof options.credential === 'function' ? options.credential() : options.credential;
+  }
+
+  function decorate(request: HttpRequest, credential = currentCredential()) {
     const headers = { ...request.headers };
-    const credential = typeof options.credential === 'function' ? options.credential() : options.credential;
     const authorization = authHeader(credential);
     if (authorization) headers.authorization = authorization;
     if (credential?.kind !== 'embed' && options.tenantId) headers['x-tenant-id'] = options.tenantId;
@@ -36,13 +44,62 @@ export function createBrowserTransport(options: BrowserTransportOptions = {}) {
     headers['x-request-id'] ??= options.requestId?.() ?? defaultRequestId();
     return { ...request, headers };
   }
+
+  function canRefresh(request: HttpRequest, credential: Credential | undefined): boolean {
+    return credential?.kind === 'bearer'
+      && Boolean(credential.refreshToken)
+      && Boolean(options.refresh)
+      && (options.shouldRefresh?.(request) ?? true);
+  }
+
+  async function refreshOnce(): Promise<void> {
+    if (!options.refresh) return;
+    if (!refreshInFlight) {
+      const task = options.refresh();
+      let shared!: Promise<void>;
+      shared = task.finally(() => {
+        if (refreshInFlight === shared) refreshInFlight = undefined;
+      });
+      refreshInFlight = shared;
+    }
+    await refreshInFlight;
+  }
+
+  async function sendWithRefresh(request: HttpRequest): Promise<HttpResult> {
+    const credential = currentCredential();
+    let result = await base.send(decorate(request, credential));
+    if (result.status !== 401 || !canRefresh(request, credential)) return result;
+
+    const latest = currentCredential();
+    if (credential?.kind === 'bearer' && latest?.kind === 'bearer' && latest.accessToken !== credential.accessToken) {
+      return base.send(decorate(request, latest));
+    }
+    await refreshOnce();
+    result = await base.send(decorate(request));
+    return result;
+  }
+
+  async function sendStreamWithRefresh(request: HttpRequest): Promise<HttpStreamResult> {
+    const credential = currentCredential();
+    let result = await base.sendStream!(decorate(request, credential));
+    if (result.status !== 401 || !canRefresh(request, credential)) return result;
+
+    const latest = currentCredential();
+    if (credential?.kind === 'bearer' && latest?.kind === 'bearer' && latest.accessToken !== credential.accessToken) {
+      return base.sendStream!(decorate(request, latest));
+    }
+    await refreshOnce();
+    result = await base.sendStream!(decorate(request));
+    return result;
+  }
+
   return {
     async send(request: Parameters<typeof base.send>[0]) {
-      return base.send(decorate(request));
+      return sendWithRefresh(request);
     },
     async sendStream(request: Parameters<typeof base.send>[0]) {
       if (!base.sendStream) throw new Error('Streaming transport is unavailable');
-      return base.sendStream(decorate(request));
+      return sendStreamWithRefresh(request);
     },
   };
 }

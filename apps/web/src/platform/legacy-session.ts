@@ -19,7 +19,8 @@ export function createLegacyPlatformAdapter(storage: Pick<Storage, 'getItem'>): 
       if (/^embed\s/i.test(token)) {
         return { credential: { kind: 'embed', token }, tenantId };
       }
-      return { credential: { kind: 'bearer', accessToken: token }, tenantId };
+      const refreshToken = storage.getItem('weknora_refresh_token')?.trim() || undefined;
+      return { credential: { kind: 'bearer', accessToken: token, refreshToken }, tenantId };
     },
   };
 }

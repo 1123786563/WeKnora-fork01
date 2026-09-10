@@ -55,3 +55,83 @@ test('forwards streaming requests with the same scoped headers', async () => {
   assert.equal(seen?.['x-tenant-id'], 'tenant-stream');
   assert.deepEqual(chunks, ['data: {}\n\n']);
 });
+
+test('refreshes once and retries concurrent bearer requests after 401', async () => {
+  let accessToken = 'expired-access';
+  let refreshCalls = 0;
+  let releaseRefresh!: () => void;
+  const refreshGate = new Promise<void>((resolve) => { releaseRefresh = resolve; });
+  const requests: string[] = [];
+  const transport = createBrowserTransport({
+    credential: () => ({ kind: 'bearer', accessToken, refreshToken: 'refresh-1' }),
+    fetcher: (async (_url, init) => {
+      const authorization = init?.headers?.authorization ?? '';
+      requests.push(authorization);
+      if (authorization === 'Bearer expired-access') {
+        return { status: 401, headers: new Headers({ 'content-type': 'application/json' }), json: async () => ({ success: false }), text: async () => '' };
+      }
+      return { status: 200, headers: new Headers({ 'content-type': 'application/json' }), json: async () => ({ success: true, data: [] }), text: async () => '' };
+    }) satisfies FetchLike,
+    shouldRefresh: (request) => request.url.endsWith('/knowledge-bases'),
+    refresh: async () => {
+      refreshCalls += 1;
+      await refreshGate;
+      accessToken = 'fresh-access';
+    },
+  });
+
+  const first = transport.send({ method: 'GET', url: 'https://api.test/api/v1/knowledge-bases', headers: {} });
+  const second = transport.send({ method: 'GET', url: 'https://api.test/api/v1/knowledge-bases', headers: {} });
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  assert.equal(refreshCalls, 1, 'concurrent 401 responses share one refresh operation');
+  releaseRefresh();
+
+  assert.deepEqual((await Promise.all([first, second])).map((result) => result.status), [200, 200]);
+  assert.deepEqual(requests, ['Bearer expired-access', 'Bearer expired-access', 'Bearer fresh-access', 'Bearer fresh-access']);
+});
+
+test('does not refresh 403 responses or retry an unauthorized response twice', async () => {
+  let refreshCalls = 0;
+  let requests = 0;
+  const transport = createBrowserTransport({
+    credential: { kind: 'bearer', accessToken: 'access-1', refreshToken: 'refresh-1' },
+    fetcher: (async () => {
+      requests += 1;
+      return { status: requests === 1 ? 403 : 401, headers: new Headers(), json: async () => ({}), text: async () => '' };
+    }) satisfies FetchLike,
+    shouldRefresh: () => true,
+    refresh: async () => { refreshCalls += 1; },
+  });
+
+  assert.equal((await transport.send({ method: 'GET', url: 'https://api.test/forbidden', headers: {} })).status, 403);
+  assert.equal((await transport.send({ method: 'GET', url: 'https://api.test/unauthorized', headers: {} })).status, 401);
+  assert.equal(refreshCalls, 1);
+  assert.equal(requests, 3);
+});
+
+test('keeps refresh endpoint failures from recursively refreshing', async () => {
+  let refreshCalls = 0;
+  const transport = createBrowserTransport({
+    credential: { kind: 'bearer', accessToken: 'access-1', refreshToken: 'refresh-1' },
+    fetcher: (async () => ({ status: 401, headers: new Headers(), json: async () => ({}), text: async () => '' })) satisfies FetchLike,
+    shouldRefresh: (request) => !request.url.endsWith('/auth/refresh'),
+    refresh: async () => { refreshCalls += 1; },
+  });
+
+  assert.equal((await transport.send({ method: 'POST', url: 'https://api.test/api/v1/auth/refresh', headers: {} })).status, 401);
+  assert.equal(refreshCalls, 0);
+});
+
+test('does not refresh Embed stream responses', async () => {
+  let refreshCalls = 0;
+  const transport = createBrowserTransport({
+    credential: { kind: 'embed', token: 'embed-token' },
+    fetcher: (async () => ({ status: 401, headers: new Headers(), json: async () => ({}), text: async () => '', body: null })) satisfies FetchLike,
+    shouldRefresh: () => true,
+    refresh: async () => { refreshCalls += 1; },
+  });
+
+  const result = await transport.sendStream!({ method: 'GET', url: 'https://api.test/embed/chat', headers: {} });
+  assert.equal(result.status, 401);
+  assert.equal(refreshCalls, 0);
+});
