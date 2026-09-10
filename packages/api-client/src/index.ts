@@ -1,7 +1,7 @@
 export { createWeKnoraClient } from './client.ts';
 export type { WeKnoraClient, WeKnoraClientOptions, ClientRequest, KnowledgeBaseListParams, KnowledgeBaseMutationInput } from './client.ts';
 export { ApiError } from './errors.ts';
-export type { HttpRequest, HttpResult, HttpTransport } from './ports.ts';
+export type { HttpRequest, HttpResult, HttpTransport, NativeFileSource } from './ports.ts';
 export type { BearerCredential, EmbedCredential, Credential, CredentialAdapter } from './ports.ts';
 export { createJsonTransport } from './transport/json.ts';
 export type { FetchLike, FetchResponseLike } from './transport/json.ts';
@@ -9,8 +9,8 @@ export { AuthError, createRefreshCoordinator } from './auth/refresh-coordinator.
 export type { AuthErrorCode, RefreshCoordinator, RefreshCoordinatorOptions, RefreshResponse } from './auth/refresh-coordinator.ts';
 export { createAuthApi } from './auth/endpoints.ts';
 export type { AuthApi, AuthMe, AuthSession, LoginInput } from './auth/endpoints.ts';
-export type { KnowledgeDocumentListParams, KnowledgeDocumentUploadInput } from './knowledge/documents.ts';
-export type { KnowledgeDocument, KnowledgeProcessingStatus, KnowledgeDocumentListResponse } from '@weknora/contracts';
+export type { KnowledgeDocumentListParams, KnowledgeDocumentUploadInput, KnowledgeDocumentSearchParams, KnowledgeTagListParams } from './knowledge/documents.ts';
+export type { KnowledgeDocument, KnowledgeProcessingStatus, KnowledgeDocumentListResponse, KnowledgeFolderNode, KnowledgeFolderTree, KnowledgeSearchResponse, KnowledgeTag } from '@weknora/contracts';
 export type { WikiPage, WikiPageListResponse, WikiPageRevision, WikiRevisionListResponse, WikiPageUpdateInput } from './wiki/pages.ts';
 export type { DataSource, DataSourceResource } from './datasource.ts';
 export { buildChatStreamRequest, consumeChatStream, createServerSentEventParser, parseChatEvent } from './chat/stream.ts';

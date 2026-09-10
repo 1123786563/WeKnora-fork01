@@ -6,6 +6,7 @@ import { createMobileTransport } from './platform/transport.ts';
 
 interface MobileRuntimeValue {
   client: WeKnoraClient;
+  baseURL: string;
   credential: Credential;
   hydrating: boolean;
   login(email: string, password: string): Promise<void>;
@@ -32,7 +33,7 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
   }
   async function logout() { await adapter.clear(); setCredential({ kind: 'anonymous' }); }
 
-  return <RuntimeContext.Provider value={{ client, credential, hydrating, login, logout }}>{children}</RuntimeContext.Provider>;
+  return <RuntimeContext.Provider value={{ client, baseURL, credential, hydrating, login, logout }}>{children}</RuntimeContext.Provider>;
 }
 
 export function useMobileRuntime(): MobileRuntimeValue {

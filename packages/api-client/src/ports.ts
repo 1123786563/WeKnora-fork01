@@ -6,6 +6,14 @@ export interface HttpRequest {
   signal?: AbortSignal;
 }
 
+/** A platform-owned file reference. URI semantics never cross into DTOs. */
+export interface NativeFileSource {
+  uri: string;
+  name: string;
+  type: string;
+  size?: number;
+}
+
 export interface HttpResult {
   status: number;
   headers: Record<string, string>;
