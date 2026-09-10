@@ -6,7 +6,13 @@
     {"source":"packages/happy-app/package.json","target":"happy-mobile/package.json","sha256":"bfef039b058d1c3431a90774bb4f97bb488b79f62fe6c865870fc073e64ae31f","license":"MIT"},
     {"source":"package.json","target":"happy-mobile/package.json.root","sha256":"f3640fd60d7030418351d6bd84739b4de4a5550f13c4ae978cd4f31bb2659713","license":"MIT"},
     {"source":"pnpm-lock.yaml","target":"happy-mobile/pnpm-lock.yaml","sha256":"6ac8f7afe7b3b8668fe32976a35a4a98dff0420d89b52c2e98333ea8fe9d037e","license":"MIT"},
-    {"source":"patches/","target":"happy-mobile/patches/","sha256":"8c309a70134a4327d8d47f6c2eb73d6e03f6f107d8adcdd3e5d35039b8c4d5a0;43dfd8f461bc0da3d16f7313080cba866ee242ac67b87d27d1ed3a8385cfffc4;5a7f5cac1b8b7d27405f9199a4beb19b91ef36164b3e516da20b00a89d8ebe46;2bea67206fbd733bac90e24553448789373dffdab70c783d6f33863d958492df;a3767ba86001c83f43c7c1bc12607bc6d6fcb8b665d560dc74965f398eb805ef;7f2a539a27a845ecc5ade6056b5714f1bd5047387b193046e45655e2bf197518","license":"MIT"}
+    {"source":"patches/expose-pierre-diffs-style.cjs","target":"happy-mobile/patches/expose-pierre-diffs-style.cjs","sha256":"8c309a70134a4327d8d47f6c2eb73d6e03f6f107d8adcdd3e5d35039b8c4d5a0","license":"MIT"},
+    {"source":"patches/fix-livekit-room-reuse.cjs","target":"happy-mobile/patches/fix-livekit-room-reuse.cjs","sha256":"43dfd8f461bc0da3d16f7313080cba866ee242ac67b87d27d1ed3a8385cfffc4","license":"MIT"},
+    {"source":"patches/fix-pglite-prisma-bytes.cjs","target":"happy-mobile/patches/fix-pglite-prisma-bytes.cjs","sha256":"5a7f5cac1b8b7d27405f9199a4beb19b91ef36164b3e516da20b00a89d8ebe46","license":"MIT"},
+    {"source":"patches/fix-pierre-trees-preact-hooks.cjs","target":"happy-mobile/patches/fix-pierre-trees-preact-hooks.cjs","sha256":"2bea67206fbd733bac90e24553448789373dffdab70c783d6f33863d958492df","license":"MIT"},
+    {"source":"patches/fix-react-native-audio-api-size-t.cjs","target":"happy-mobile/patches/fix-react-native-audio-api-size-t.cjs","sha256":"a3767ba86001c83f43c7c1bc12607bc6d6fcb8b665d560dc74965f398eb805ef","license":"MIT"},
+    {"source":"patches/force-preact-cjs.cjs","target":"happy-mobile/patches/force-preact-cjs.cjs","sha256":"7f2a539a27a845ecc5ade6056b5714f1bd5047387b193046e45655e2bf197518","license":"MIT"},
+    {"source":"packages/happy-wire/package.json","target":"happy-mobile/happy-wire/package.json","sha256":"ebbfd3f41e9336ec9c7d3dbf802425278d0e533c9fcabeae25a1b1255127b145","license":"MIT"}
   ],
   "dependencies": {"workspace":"@slopus/happy-wire","packageManager":"pnpm@10.11.0","runtime":"Expo 55 / React Native 0.83.1","voice":"LiveKit and ElevenLabs","storage":"MMKV, AsyncStorage, PGlite/Prisma"},
   "patches": ["patches/expose-pierre-diffs-style.cjs","patches/fix-livekit-room-reuse.cjs","patches/fix-pglite-prisma-bytes.cjs","patches/fix-pierre-trees-preact-hooks.cjs","patches/fix-react-native-audio-api-size-t.cjs","patches/force-preact-cjs.cjs"]
