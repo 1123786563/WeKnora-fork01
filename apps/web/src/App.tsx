@@ -36,7 +36,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
       </header>
       <Card>
         <p className="wk-debug">scope key: {JSON.stringify(queryKey)}</p>
-        {state.message === 'Loading…' ? <Status>Loading knowledge bases…</Status> : null}
+        {state.status === 'error' && state.message === 'Loading…' ? <Status>Loading knowledge bases…</Status> : null}
         {state.status === 'error' && state.message !== 'Loading…' ? (
           <>
             <Status tone="error">{state.message}</Status>
