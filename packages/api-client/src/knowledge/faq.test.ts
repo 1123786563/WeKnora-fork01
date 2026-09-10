@@ -36,3 +36,19 @@ test('keeps FAQ writes typed and reports import task identity', async () => {
     'DELETE /api/v1/knowledge-bases/kb-1/faq/entries',
   ]);
 });
+
+test('uses the server search and export endpoints without changing their payloads', async () => {
+  const requests: Array<{ method: string; path: string; body?: unknown }> = [];
+  const api = createKnowledgeFaqApi(async (request) => {
+    requests.push({ method: request.method, path: request.path, body: request.body });
+    return request.path.includes('/export') ? 'standard_question,answers\n"How?","This."\n' : { success: true, data: { results: [] } };
+  });
+  await api.search('kb-1', { query_text: 'How?', vector_threshold: 0.7, match_count: 5 });
+  assert.equal(await api.exportEntries('kb-1'), 'standard_question,answers\n"How?","This."\n');
+  assert.equal(await api.exportEntries('kb-1', 'json'), 'standard_question,answers\n"How?","This."\n');
+  assert.deepEqual(requests, [
+    { method: 'POST', path: '/api/v1/knowledge-bases/kb-1/faq/search', body: { query_text: 'How?', vector_threshold: 0.7, match_count: 5 } },
+    { method: 'GET', path: '/api/v1/knowledge-bases/kb-1/faq/entries/export', body: undefined },
+    { method: 'GET', path: '/api/v1/knowledge-bases/kb-1/faq/entries/export?format=json', body: undefined },
+  ]);
+});

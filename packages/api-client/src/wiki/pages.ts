@@ -25,6 +25,8 @@ export interface WikiPageRevision {
   title: string;
   summary: string;
   content?: string;
+  edit_source?: string;
+  edited_at?: string;
   [key: string]: unknown;
 }
 
@@ -110,6 +112,12 @@ export function createWikiPagesApi(request: (input: ClientRequest) => Promise<un
       if (params.offset !== undefined) query.set('offset', String(params.offset));
       const suffix = query.toString();
       return revisionList(await request({ method: 'GET', path: `${base(kbId)}/revisions/${pathSlug(slug)}${suffix ? `?${suffix}` : ''}` }));
+    },
+    async getRevision(kbId: string, slug: string, version: number): Promise<WikiPageRevision> {
+      const value = object(await request({ method: 'GET', path: `${base(kbId)}/revisions/${pathSlug(slug)}?version=${encodeURIComponent(String(version))}` }), 'Invalid Wiki revision response');
+      for (const key of ['id', 'slug', 'title', 'summary']) if (typeof value[key] !== 'string') throw new Error(`Invalid Wiki revision field: ${key}`);
+      if (typeof value.version !== 'number' || !Number.isSafeInteger(value.version) || value.version < 1) throw new Error('Invalid Wiki revision version');
+      return value as WikiPageRevision;
     },
     async revert(kbId: string, slug: string, version: number): Promise<WikiPage> {
       return page(await request({ method: 'POST', path: `${base(kbId)}/revert`, body: { slug, version } }));

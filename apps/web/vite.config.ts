@@ -14,6 +14,7 @@ export default defineConfig({
       '@weknora/domain/knowledge/folders': fileURLToPath(new URL('../../packages/domain/src/knowledge/folders.ts', import.meta.url)),
       '@weknora/domain/knowledge/processing': fileURLToPath(new URL('../../packages/domain/src/knowledge/processing.ts', import.meta.url)),
       '@weknora/domain/knowledge/preview': fileURLToPath(new URL('../../packages/domain/src/knowledge/preview.ts', import.meta.url)),
+      '@weknora/domain/wiki/diff': fileURLToPath(new URL('../../packages/domain/src/wiki/diff.ts', import.meta.url)),
       '@weknora/domain': fileURLToPath(new URL('../../packages/domain/src/query-key.ts', import.meta.url)),
       '@weknora/ui': fileURLToPath(new URL('../../packages/ui/src/index.tsx', import.meta.url)),
       '@weknora/views': fileURLToPath(new URL('../../packages/views/src/index.ts', import.meta.url)),

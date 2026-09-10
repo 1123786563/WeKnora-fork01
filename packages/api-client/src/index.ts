@@ -11,7 +11,7 @@ export { createAuthApi } from './auth/endpoints.ts';
 export type { AuthApi, AuthMe, AuthSession, InvitationLookup, LoginInput, OIDCConfig, OIDCURL, RegisterInput, RegistrationConfig, RegistrationResult } from './auth/endpoints.ts';
 export type { KnowledgeDocumentListParams, KnowledgeDocumentUploadInput, KnowledgeDocumentUrlInput, KnowledgeDocumentManualInput, KnowledgeDocumentSearchParams, KnowledgeTagListParams } from './knowledge/documents.ts';
 export { createKnowledgeFaqApi } from './knowledge/faq.ts';
-export type { FAQEntry, FAQEntryListResponse, FAQEntryFieldsUpdate, FAQEntryFieldsBatchRequest, FAQEntryPayload } from './knowledge/faq.ts';
+export type { FAQEntry, FAQEntryListResponse, FAQEntryFieldsUpdate, FAQEntryFieldsBatchRequest, FAQEntryPayload, FAQSearchInput } from './knowledge/faq.ts';
 export type { KnowledgeDocument, KnowledgeProcessingStatus, KnowledgeDocumentListResponse, KnowledgeFolderNode, KnowledgeFolderTree, KnowledgeSearchResponse, KnowledgeTag } from '@weknora/contracts';
 export type { WikiPage, WikiPageListResponse, WikiPageRevision, WikiRevisionListResponse, WikiPageUpdateInput } from './wiki/pages.ts';
 export type { DataSource, DataSourceResource } from './datasource.ts';

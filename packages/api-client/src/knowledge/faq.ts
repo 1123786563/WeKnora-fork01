@@ -14,6 +14,7 @@ export interface FAQEntryListResponse { data: FAQEntry[]; total: number; page: n
 export interface FAQEntryFieldsUpdate { is_enabled?: boolean; is_recommended?: boolean; tag_id?: number | null; }
 export interface FAQEntryFieldsBatchRequest { by_id?: Record<number, FAQEntryFieldsUpdate>; by_tag?: Record<number, FAQEntryFieldsUpdate>; exclude_ids?: number[]; }
 export interface FAQEntryPayload { standard_question: string; similar_questions?: string[]; negative_questions?: string[]; answers: string[]; tag_id?: number | null; is_enabled?: boolean; is_recommended?: boolean; }
+export interface FAQSearchInput { query_text: string; vector_threshold?: number; match_count?: number; }
 
 function object(value: unknown, message: string): Record<string, unknown> { if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error(message); return value as Record<string, unknown>; }
 function envelope(value: unknown): Record<string, unknown> { const row = object(value, 'Invalid FAQ response'); if (row.success !== true) throw new Error('Invalid FAQ response success'); return object(row.data, 'Invalid FAQ response data'); }
@@ -37,5 +38,11 @@ export function createKnowledgeFaqApi(request: (input: ClientRequest) => Promise
     async updateFields(kbId: string, input: FAQEntryFieldsBatchRequest): Promise<void> { await request({ method: 'PUT', path: `${base(kbId)}/entries/fields`, body: input }); },
     async updateTags(kbId: string, input: { updates: Record<number, number | null> }): Promise<void> { await request({ method: 'PUT', path: `${base(kbId)}/entries/tags`, body: input }); },
     async removeMany(kbId: string, ids: number[]): Promise<void> { await request({ method: 'DELETE', path: `${base(kbId)}/entries`, body: { ids } }); },
+    async search(kbId: string, input: FAQSearchInput): Promise<unknown> { return request({ method: 'POST', path: `${base(kbId)}/search`, body: input }); },
+    async exportEntries(kbId: string, format: 'csv' | 'json' = 'csv'): Promise<string> {
+      const suffix = format === 'json' ? '?format=json' : '';
+      const value = await request({ method: 'GET', path: `${base(kbId)}/entries/export${suffix}` });
+      return typeof value === 'string' ? value : JSON.stringify(value);
+    },
   };
 }

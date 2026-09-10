@@ -30,3 +30,11 @@ test('rejects a page response without the required version', async () => {
   const api = createWikiPagesApi(async () => ({ ...wikiPage, version: 0 }));
   await assert.rejects(api.get('kb-1', 'start'), /Invalid Wiki page version/);
 });
+
+test('loads a full historical revision with its version-specific query', async () => {
+  let path = '';
+  const api = createWikiPagesApi(async (request) => { path = request.path; return { id: 'r-1', slug: 'docs/start', title: 'Start', summary: 'Old', content: 'Old body', version: 1, edit_source: 'user', edited_at: '2026-09-10T00:00:00Z' }; });
+  const revision = await api.getRevision('kb-1', 'docs/start', 1);
+  assert.equal(revision.content, 'Old body');
+  assert.equal(path, '/api/v1/knowledgebase/kb-1/wiki/revisions/docs/start?version=1');
+});
