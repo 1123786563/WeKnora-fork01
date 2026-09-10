@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { memoryEnabledPatch, memoryItemPatch, memoryWorkspacePatch, profilePasswordPatch, settingsSectionMeta, settingsValueEntries, tenantEditState, tenantPatch } from './surface.ts';
+import { memoryEnabledPatch, memoryItemPatch, memoryWorkspacePatch, profilePasswordPatch, settingsResourceInput, settingsResourceRows, settingsSectionMeta, settingsValueEntries, tenantEditState, tenantPatch } from './surface.ts';
 import { SETTINGS_SECTIONS } from '@weknora/views';
 
 test('gives every registered settings section a concrete inventory description', () => {
@@ -55,4 +55,17 @@ test('limits tenant editing to the server-owned name and description fields', ()
   assert.deepEqual(tenantEditState({ id: 7, name: 'Acme', description: 'Docs', owner_id: 'u-1' }), { name: 'Acme', description: 'Docs' });
   assert.deepEqual(tenantPatch(' Acme ', ' Docs '), { name: 'Acme', description: 'Docs' });
   assert.throws(() => tenantPatch('  ', 'Docs'), /name/);
+});
+
+test('normalizes resource settings rows and validates a resource mutation payload', () => {
+  assert.deepEqual(settingsResourceRows({ backends: [{ id: 'storage-1', name: 'Local' }], legacy: {} }, 'storage'), [{ id: 'storage-1', name: 'Local' }]);
+  assert.deepEqual(settingsResourceRows([{ id: 'vector-1' }], 'vectorstore'), [{ id: 'vector-1' }]);
+  assert.deepEqual(settingsResourceInput('  Primary ', ' qdrant ', '{"url":"http://qdrant"}'), {
+    name: 'Primary',
+    type: 'qdrant',
+    config: { url: 'http://qdrant' },
+  });
+  assert.throws(() => settingsResourceInput('', 'qdrant', '{}'), /name/);
+  assert.throws(() => settingsResourceInput('Primary', '', '{}'), /type/);
+  assert.throws(() => settingsResourceInput('Primary', 'qdrant', '[]'), /object/);
 });

@@ -92,3 +92,23 @@ export function memoryWorkspacePatch(enabled: boolean, writeMode: string, maxIte
   if (!Number.isInteger(maxItems) || maxItems < 10 || maxItems > 2000) throw new Error('Memory max items must be between 10 and 2000');
   return { enabled, write_mode: writeMode, max_items: maxItems, vector_recall: vectorRecall, retrieval_conditioning: retrievalConditioning };
 }
+
+export function settingsResourceRows(value: unknown, section: 'storage' | 'vectorstore' | 'websearch'): Array<Record<string, unknown>> {
+  const candidate = section === 'storage' && value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>).backends
+    : value;
+  return Array.isArray(candidate)
+    ? candidate.filter((item): item is Record<string, unknown> => item !== null && typeof item === 'object' && !Array.isArray(item))
+    : [];
+}
+
+export function settingsResourceInput(name: string, type: string, configText: string): { name: string; type: string; config: Record<string, unknown> } {
+  const nextName = name.trim();
+  const nextType = type.trim();
+  if (!nextName) throw new Error('Resource name is required');
+  if (!nextType) throw new Error('Resource type is required');
+  let parsed: unknown;
+  try { parsed = JSON.parse(configText.trim() || '{}'); } catch { throw new Error('Resource config must be valid JSON'); }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Resource config must be a JSON object');
+  return { name: nextName, type: nextType, config: parsed as Record<string, unknown> };
+}
