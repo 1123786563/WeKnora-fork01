@@ -57,6 +57,12 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-diff-add { background: #ecfdf3; color: #137333; display: block; }
 .wk-diff-del { background: #fef3f2; color: #b42318; display: block; }
 .wk-diff-same { display: block; }
+.wk-data-sources-page { max-width: 1180px; }
+.wk-data-source-item { align-items: flex-start !important; }
+.wk-data-source-item small { color: #66758b; }
+.wk-data-source-logs, .wk-data-source-editor { margin-top: 1rem; }
+.wk-data-source-logs h2, .wk-data-source-editor h2 { margin: 0; }
+.wk-data-source-item .wk-list-actions { flex-wrap: wrap; }
 @media (max-width: 720px) { .wk-wiki-layout { grid-template-columns: 1fr; } }
 @media (max-width: 720px) { .wk-wiki-history-layout { grid-template-columns: 1fr; } }
 @media (max-width: 720px) { .wk-documents-layout { grid-template-columns: 1fr; } .wk-folder-panel { border-right: 0; border-bottom: 1px solid #edf0f5; padding: 0 0 1rem; } }

@@ -29,6 +29,22 @@ export interface DataSourceResource {
   [key: string]: unknown;
 }
 
+export interface DataSourceSyncLog {
+  id: string;
+  status: string;
+  [key: string]: unknown;
+}
+
+export interface DataSourceConnectorType {
+  type: string;
+  name: string;
+  description: string;
+  icon?: string;
+  priority: number;
+  auth_type: string;
+  capabilities: string[];
+}
+
 function row(value: unknown, label: string): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error(`Invalid ${label}`);
   return value as Record<string, unknown>;
@@ -51,12 +67,31 @@ function parseDataSources(value: unknown): DataSource[] {
 export function createDataSourcesApi(request: (input: ClientRequest) => Promise<unknown>) {
   const path = (id: string, suffix = '') => `/api/v1/datasource/${encodeURIComponent(id)}${suffix}`;
   return {
+    async types(): Promise<DataSourceConnectorType[]> {
+      const value = await request({ method: 'GET', path: '/api/v1/datasource/types' });
+      const raw = Array.isArray(value) ? value : row(value, 'data source types').data;
+      if (!Array.isArray(raw)) throw new Error('Invalid data source types');
+      return raw.map((item) => {
+        const connector = row(item, 'data source type');
+        for (const key of ['type', 'name', 'description', 'auth_type']) if (typeof connector[key] !== 'string' || !connector[key]) throw new Error(`Invalid data source type field: ${key}`);
+        if (typeof connector.priority !== 'number' || !Number.isSafeInteger(connector.priority)) throw new Error('Invalid data source type field: priority');
+        if (!Array.isArray(connector.capabilities) || connector.capabilities.some((capability) => typeof capability !== 'string')) throw new Error('Invalid data source type capabilities');
+        return connector as unknown as DataSourceConnectorType;
+      });
+    },
     async list(knowledgeBaseId: string): Promise<DataSource[]> {
       return parseDataSources(await request({ method: 'GET', path: `/api/v1/datasource?kb_id=${encodeURIComponent(knowledgeBaseId)}` }));
     },
     async get(id: string): Promise<DataSource> { return parseDataSource(await request({ method: 'GET', path: path(id) })); },
     async create(input: Partial<DataSource>): Promise<DataSource> { return parseDataSource(await request({ method: 'POST', path: '/api/v1/datasource', body: input })); },
     async update(id: string, input: Partial<DataSource>): Promise<DataSource> { return parseDataSource(await request({ method: 'PUT', path: path(id), body: input })); },
+    async putCredentials(id: string, credentials: Record<string, unknown>): Promise<unknown> { return request({ method: 'PUT', path: path(id, '/credentials'), body: { credentials } }); },
+    async logs(id: string, limit = 20, offset = 0): Promise<DataSourceSyncLog[]> {
+      const value = await request({ method: 'GET', path: path(id, `/logs?limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(String(offset))}`) });
+      const raw = Array.isArray(value) ? value : row(value, 'data source logs').data;
+      if (!Array.isArray(raw)) throw new Error('Invalid data source logs');
+      return raw.map((item) => { const log = row(item, 'data source log'); if (typeof log.id !== 'string' || typeof log.status !== 'string') throw new Error('Invalid data source log fields'); return log as DataSourceSyncLog; });
+    },
     async remove(id: string): Promise<void> { await request({ method: 'DELETE', path: path(id) }); },
     async validate(id: string): Promise<unknown> { return request({ method: 'POST', path: path(id, '/validate'), body: {} }); },
     async validateCredentials(type: string, credentials: Record<string, unknown>): Promise<unknown> {

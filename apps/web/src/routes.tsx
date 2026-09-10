@@ -7,6 +7,7 @@ export type RouteMatch =
   | { kind: 'knowledge-document'; path: string; knowledgeBaseId: string; documentId: string }
   | { kind: 'knowledge-wiki'; path: string; knowledgeBaseId: string }
   | { kind: 'knowledge-faq'; path: string; knowledgeBaseId: string }
+  | { kind: 'knowledge-settings'; path: string; knowledgeBaseId: string }
   | { kind: 'join'; path: '/join' }
   | { kind: 'onboarding'; path: '/onboarding/workspace' }
   | { kind: 'embed'; path: string }
@@ -25,6 +26,8 @@ export function resolveRoute(pathname: string): RouteMatch {
   if (wikiMatch) return { kind: 'knowledge-wiki', path, knowledgeBaseId: decodeURIComponent(wikiMatch[1]!) };
   const faqMatch = path.match(/^\/knowledgeBase\/([^/]+)\/faq$/);
   if (faqMatch) return { kind: 'knowledge-faq', path, knowledgeBaseId: decodeURIComponent(faqMatch[1]!) };
+  const settingsMatch = path.match(/^\/knowledgeBase\/([^/]+)\/settings$/);
+  if (settingsMatch) return { kind: 'knowledge-settings', path, knowledgeBaseId: decodeURIComponent(settingsMatch[1]!) };
   if (path === '/knowledgeBase' || path.startsWith('/knowledgeBase/')) return { kind: 'knowledge-base', path };
   if (path === '/platform' || path.startsWith('/platform/')) return { kind: 'platform', path };
   if (path === '/creatChat' || path.startsWith('/creatChat/')) return { kind: 'platform', path: `/platform/creatChat${path.slice('/creatChat'.length)}` };

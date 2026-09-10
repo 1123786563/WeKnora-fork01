@@ -18,6 +18,7 @@ import { KnowledgeDocumentsPage } from './documents/KnowledgeDocumentsPage.tsx';
 import { KnowledgeDocumentDetailPage } from './documents/KnowledgeDocumentDetailPage.tsx';
 import { WikiPage } from './wiki/WikiPage.tsx';
 import { FAQPage } from './faq/FAQPage.tsx';
+import { DataSourcesPage } from './data-sources/DataSourcesPage.tsx';
 import './styles.css';
 
 const oidcCallback = parseOIDCCallbackHash(window.location.hash);
@@ -118,6 +119,8 @@ function renderProtected() {
     root.render(<WikiPage client={client} knowledgeBaseId={route.knowledgeBaseId} />);
   } else if (route.kind === 'knowledge-faq') {
     root.render(<FAQPage client={client} knowledgeBaseId={route.knowledgeBaseId} />);
+  } else if (route.kind === 'knowledge-settings') {
+    root.render(<DataSourcesPage client={client} knowledgeBaseId={route.knowledgeBaseId} />);
   } else if (route.kind === 'knowledge-base' && route.path.split('/').filter(Boolean).length === 2) {
     const knowledgeBaseId = decodeURIComponent(route.path.split('/')[2]!);
     root.render(<KnowledgeDocumentsPage client={client} knowledgeBaseId={knowledgeBaseId} onOpenDocument={(document) => window.location.assign(`/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}/documents/${encodeURIComponent(document.id)}`)} />);
