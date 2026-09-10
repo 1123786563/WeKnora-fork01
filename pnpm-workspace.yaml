@@ -3,4 +3,6 @@ packages:
   - packages/api-client
   - packages/domain
   - packages/ui
+  - packages/design-tokens
+  - packages/i18n
   - apps/web

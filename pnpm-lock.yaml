@@ -66,11 +66,15 @@ importers:
 
   packages/contracts: {}
 
+  packages/design-tokens: {}
+
   packages/domain:
     dependencies:
       '@weknora/contracts':
         specifier: workspace:*
         version: link:../contracts
+
+  packages/i18n: {}
 
   packages/ui:
     dependencies:
