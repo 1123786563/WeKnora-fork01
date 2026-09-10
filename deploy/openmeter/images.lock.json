@@ -1,0 +1,96 @@
+{
+  "verifiedAt": "2026-09-10T13:56:22.134472+00:00",
+  "release": "v1.0.0-beta.232",
+  "officialReleaseURL": "https://github.com/openmeterio/openmeter/releases/tag/v1.0.0-beta.232",
+  "officialOpenMeterArm64Manifest": "sha256:0a59132264bc72094c1405ada110c6e810d28f7336bde22aa814409bd58dd6c1",
+  "images": [
+    {
+      "reference": "clickhouse/clickhouse-server:25.12.3-alpine@sha256:74da41cd61db84f652c6364fd30d59e19b7276d34f7c82515f5f0e70d6f325da",
+      "architecture": "arm64",
+      "os": "linux",
+      "descriptor": {
+        "mediaType": "application/vnd.oci.image.index.v1+json",
+        "digest": "sha256:74da41cd61db84f652c6364fd30d59e19b7276d34f7c82515f5f0e70d6f325da",
+        "size": 1609
+      },
+      "repoDigests": [
+        "clickhouse/clickhouse-server@sha256:74da41cd61db84f652c6364fd30d59e19b7276d34f7c82515f5f0e70d6f325da"
+      ],
+      "version": null
+    },
+    {
+      "reference": "confluentinc/cp-kafka:8.0.3@sha256:db5eac24a1d15a1689fa89642ef97a7e3bc4f55ad5159a07b213c4dc7d0114e3",
+      "architecture": "arm64",
+      "os": "linux",
+      "descriptor": {
+        "mediaType": "application/vnd.docker.distribution.manifest.list.v2+json",
+        "digest": "sha256:db5eac24a1d15a1689fa89642ef97a7e3bc4f55ad5159a07b213c4dc7d0114e3",
+        "size": 772
+      },
+      "repoDigests": [
+        "confluentinc/cp-kafka@sha256:db5eac24a1d15a1689fa89642ef97a7e3bc4f55ad5159a07b213c4dc7d0114e3"
+      ],
+      "version": null
+    },
+    {
+      "reference": "ghcr.io/openmeterio/openmeter:v1.0.0-beta.232",
+      "architecture": "arm64",
+      "os": "linux",
+      "descriptor": {
+        "mediaType": "application/vnd.oci.image.manifest.v1+json",
+        "digest": "sha256:0a59132264bc72094c1405ada110c6e810d28f7336bde22aa814409bd58dd6c1",
+        "size": 2209,
+        "annotations": {
+          "io.containerd.image.name": "ghcr.io/openmeterio/openmeter:v1.0.0-beta.232",
+          "org.opencontainers.image.ref.name": "v1.0.0-beta.232"
+        }
+      },
+      "repoDigests": [
+        "ghcr.io/openmeterio/openmeter@sha256:0a59132264bc72094c1405ada110c6e810d28f7336bde22aa814409bd58dd6c1"
+      ],
+      "version": "v1.0.0-beta.232"
+    },
+    {
+      "reference": "postgres:14.20-alpine3.23@sha256:14f02666642586a64d6fae8ef42d479fd76456a77c73ae8a626b8fe323b76d22",
+      "architecture": "arm64",
+      "os": "linux",
+      "descriptor": {
+        "mediaType": "application/vnd.oci.image.index.v1+json",
+        "digest": "sha256:14f02666642586a64d6fae8ef42d479fd76456a77c73ae8a626b8fe323b76d22",
+        "size": 10301
+      },
+      "repoDigests": [
+        "postgres@sha256:14f02666642586a64d6fae8ef42d479fd76456a77c73ae8a626b8fe323b76d22"
+      ],
+      "version": null
+    },
+    {
+      "reference": "redis:7.4.7@sha256:c6e4a82ce60b829a72a21cc4ad4c1c274fa6962eb0d6ac698e8157cbc3fe16a4",
+      "architecture": "arm64",
+      "os": "linux",
+      "descriptor": {
+        "mediaType": "application/vnd.oci.image.index.v1+json",
+        "digest": "sha256:c6e4a82ce60b829a72a21cc4ad4c1c274fa6962eb0d6ac698e8157cbc3fe16a4",
+        "size": 10264
+      },
+      "repoDigests": [
+        "redis@sha256:c6e4a82ce60b829a72a21cc4ad4c1c274fa6962eb0d6ac698e8157cbc3fe16a4"
+      ],
+      "version": null
+    },
+    {
+      "reference": "svix/svix-server:v1.84.1@sha256:35dc9d4884073272e55f8e2f60a7a37983e535b7e7994db56a99c87cdf9b1a59",
+      "architecture": "arm64",
+      "os": "linux",
+      "descriptor": {
+        "mediaType": "application/vnd.oci.image.index.v1+json",
+        "digest": "sha256:35dc9d4884073272e55f8e2f60a7a37983e535b7e7994db56a99c87cdf9b1a59",
+        "size": 1609
+      },
+      "repoDigests": [
+        "svix/svix-server@sha256:35dc9d4884073272e55f8e2f60a7a37983e535b7e7994db56a99c87cdf9b1a59"
+      ],
+      "version": null
+    }
+  ]
+}

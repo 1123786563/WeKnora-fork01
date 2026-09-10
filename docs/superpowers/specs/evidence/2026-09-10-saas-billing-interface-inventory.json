@@ -1,0 +1,357 @@
+{
+  "observed_at_utc": "2026-09-10T15:47:01.572305+00:00",
+  "release": "v1.0.0-beta.232",
+  "commit": "887e0cac903ccd06e74d61ed23c651651d10c7a9",
+  "sources": [
+    {
+      "family": "official_v1_v2",
+      "repository_path": "api/openapi.yaml",
+      "sha256": "927d82ffe64709d1527f705f9af1c192b3c53596b152894bfad30a3d1d26e5f1"
+    },
+    {
+      "family": "official_v3",
+      "repository_path": "api/v3/openapi.yaml",
+      "sha256": "5ae852be96ca3102ff5878d2656d7ef20835e9aa4d0ae46b934d2b96aaedd7f1"
+    }
+  ],
+  "operations": [
+    {
+      "family": "official_v1_v2",
+      "method": "POST",
+      "schema_path": "/api/v1/apps/custom-invoicing/{invoiceId}/payment/status",
+      "local_path": "/api/v1/apps/custom-invoicing/{invoiceId}/payment/status",
+      "operation_id": "appCustomInvoicingUpdatePaymentStatus",
+      "source_line": 798,
+      "status": "schema_only"
+    },
+    {
+      "family": "official_v1_v2",
+      "method": "POST",
+      "schema_path": "/api/v1/customers",
+      "local_path": "/api/v1/customers",
+      "operation_id": "createCustomer",
+      "source_line": 2908,
+      "status": "schema_only"
+    },
+    {
+      "family": "official_v1_v2",
+      "method": "GET",
+      "schema_path": "/api/v1/customers/{customerIdOrKey}",
+      "local_path": "/api/v1/customers/{customerIdOrKey}",
+      "operation_id": "getCustomer",
+      "source_line": 3037,
+      "status": "schema_only"
+    },
+    {
+      "family": "official_v1_v2",
+      "method": "POST",
+      "schema_path": "/api/v1/events",
+      "local_path": "/api/v1/events",
+      "operation_id": "ingestEvents",
+      "source_line": 4335,
+      "status": "schema_only"
+    },
+    {
+      "family": "official_v1_v2",
+      "method": "DELETE",
+      "schema_path": "/api/v1/grants/{grantId}",
+      "local_path": "/api/v1/grants/{grantId}",
+      "operation_id": "voidGrant",
+      "source_line": 4787,
+      "status": "schema_only"
+    },
+    {
+      "family": "official_v1_v2",
+      "method": "GET",
+      "schema_path": "/api/v1/meters/{meterIdOrSlug}/query",
+      "local_path": "/api/v1/meters/{meterIdOrSlug}/query",
+      "operation_id": "queryMeter",
+      "source_line": 5817,
+      "status": "schema_only"
+    },
+    {
+      "family": "official_v1_v2",
+      "method": "POST",
+      "schema_path": "/api/v1/plans",
+      "local_path": "/api/v1/plans",
+      "operation_id": "createPlan",
+      "source_line": 7302,
+      "status": "schema_only"
+    },
+    {
+      "family": "official_v1_v2",
+      "method": "POST",
+      "schema_path": "/api/v1/plans/{planId}/publish",
+      "local_path": "/api/v1/plans/{planId}/publish",
+      "operation_id": "publishPlan",
+      "source_line": 8176,
+      "status": "schema_only"
+    },
+    {
+      "family": "official_v1_v2",
+      "method": "POST",
+      "schema_path": "/api/v1/subscriptions",
+      "local_path": "/api/v1/subscriptions",
+      "operation_id": "createSubscription",
+      "source_line": 9731,
+      "status": "schema_only"
+    },
+    {
+      "family": "official_v1_v2",
+      "method": "POST",
+      "schema_path": "/api/v1/subscriptions/{subscriptionId}/cancel",
+      "local_path": "/api/v1/subscriptions/{subscriptionId}/cancel",
+      "operation_id": "cancelSubscription",
+      "source_line": 10348,
+      "status": "schema_only"
+    },
+    {
+      "family": "official_v1_v2",
+      "method": "POST",
+      "schema_path": "/api/v1/subscriptions/{subscriptionId}/change",
+      "local_path": "/api/v1/subscriptions/{subscriptionId}/change",
+      "operation_id": "changeSubscription",
+      "source_line": 10439,
+      "status": "schema_only"
+    },
+    {
+      "family": "official_v1_v2",
+      "method": "POST",
+      "schema_path": "/api/v2/customers/{customerIdOrKey}/entitlements",
+      "local_path": "/api/v2/customers/{customerIdOrKey}/entitlements",
+      "operation_id": "createCustomerEntitlementV2",
+      "source_line": 10788,
+      "status": "schema_only"
+    },
+    {
+      "family": "official_v1_v2",
+      "method": "GET",
+      "schema_path": "/api/v2/customers/{customerIdOrKey}/entitlements/{entitlementIdOrFeatureKey}/grants",
+      "local_path": "/api/v2/customers/{customerIdOrKey}/entitlements/{entitlementIdOrFeatureKey}/grants",
+      "operation_id": "listCustomerEntitlementGrantsV2",
+      "source_line": 11096,
+      "status": "schema_only"
+    },
+    {
+      "family": "official_v1_v2",
+      "method": "POST",
+      "schema_path": "/api/v2/customers/{customerIdOrKey}/entitlements/{entitlementIdOrFeatureKey}/grants",
+      "local_path": "/api/v2/customers/{customerIdOrKey}/entitlements/{entitlementIdOrFeatureKey}/grants",
+      "operation_id": "createCustomerEntitlementGrantV2",
+      "source_line": 11180,
+      "status": "schema_only"
+    },
+    {
+      "family": "official_v1_v2",
+      "method": "GET",
+      "schema_path": "/api/v2/customers/{customerIdOrKey}/entitlements/{entitlementIdOrFeatureKey}/history",
+      "local_path": "/api/v2/customers/{customerIdOrKey}/entitlements/{entitlementIdOrFeatureKey}/history",
+      "operation_id": "getCustomerEntitlementHistoryV2",
+      "source_line": 11274,
+      "status": "schema_only"
+    },
+    {
+      "family": "official_v1_v2",
+      "method": "POST",
+      "schema_path": "/api/v2/customers/{customerIdOrKey}/entitlements/{entitlementIdOrFeatureKey}/reset",
+      "local_path": "/api/v2/customers/{customerIdOrKey}/entitlements/{entitlementIdOrFeatureKey}/reset",
+      "operation_id": "resetCustomerEntitlementUsageV2",
+      "source_line": 11481,
+      "status": "schema_only"
+    },
+    {
+      "family": "official_v1_v2",
+      "method": "GET",
+      "schema_path": "/api/v2/customers/{customerIdOrKey}/entitlements/{entitlementIdOrFeatureKey}/value",
+      "local_path": "/api/v2/customers/{customerIdOrKey}/entitlements/{entitlementIdOrFeatureKey}/value",
+      "operation_id": "getCustomerEntitlementValueV2",
+      "source_line": 11563,
+      "status": "schema_only"
+    },
+    {
+      "family": "official_v3",
+      "method": "POST",
+      "schema_path": "/openmeter/customers",
+      "local_path": "/api/v3/openmeter/customers",
+      "operation_id": "create-customer",
+      "source_line": 1006,
+      "status": "schema_only"
+    },
+    {
+      "family": "official_v3",
+      "method": "GET",
+      "schema_path": "/openmeter/customers/{customerId}",
+      "local_path": "/api/v3/openmeter/customers/{customerId}",
+      "operation_id": "get-customer",
+      "source_line": 1077,
+      "status": "schema_only"
+    },
+    {
+      "family": "official_v3",
+      "method": "POST",
+      "schema_path": "/openmeter/customers/{customerId}/credits/adjustments",
+      "local_path": "/api/v3/openmeter/customers/{customerId}/credits/adjustments",
+      "operation_id": "create-credit-adjustment",
+      "source_line": 1453,
+      "status": "schema_only"
+    },
+    {
+      "family": "official_v3",
+      "method": "GET",
+      "schema_path": "/openmeter/customers/{customerId}/credits/balance",
+      "local_path": "/api/v3/openmeter/customers/{customerId}/credits/balance",
+      "operation_id": "get-customer-credit-balance",
+      "source_line": 1494,
+      "status": "schema_only"
+    },
+    {
+      "family": "official_v3",
+      "method": "POST",
+      "schema_path": "/openmeter/customers/{customerId}/credits/grants",
+      "local_path": "/api/v3/openmeter/customers/{customerId}/credits/grants",
+      "operation_id": "create-credit-grant",
+      "source_line": 1541,
+      "status": "schema_only"
+    },
+    {
+      "family": "official_v3",
+      "method": "GET",
+      "schema_path": "/openmeter/customers/{customerId}/credits/grants",
+      "local_path": "/api/v3/openmeter/customers/{customerId}/credits/grants",
+      "operation_id": "list-credit-grants",
+      "source_line": 1579,
+      "status": "schema_only"
+    },
+    {
+      "family": "official_v3",
+      "method": "GET",
+      "schema_path": "/openmeter/customers/{customerId}/credits/grants/{creditGrantId}",
+      "local_path": "/api/v3/openmeter/customers/{customerId}/credits/grants/{creditGrantId}",
+      "operation_id": "get-credit-grant",
+      "source_line": 1616,
+      "status": "schema_only"
+    },
+    {
+      "family": "official_v3",
+      "method": "POST",
+      "schema_path": "/openmeter/customers/{customerId}/credits/grants/{creditGrantId}/settlement/external",
+      "local_path": "/api/v3/openmeter/customers/{customerId}/credits/grants/{creditGrantId}/settlement/external",
+      "operation_id": "update-credit-grant-external-settlement",
+      "source_line": 1650,
+      "status": "schema_only"
+    },
+    {
+      "family": "official_v3",
+      "method": "POST",
+      "schema_path": "/openmeter/customers/{customerId}/credits/grants/{creditGrantId}/void",
+      "local_path": "/api/v3/openmeter/customers/{customerId}/credits/grants/{creditGrantId}/void",
+      "operation_id": "void-credit-grant",
+      "source_line": 1694,
+      "status": "schema_only"
+    },
+    {
+      "family": "official_v3",
+      "method": "GET",
+      "schema_path": "/openmeter/customers/{customerId}/credits/transactions",
+      "local_path": "/api/v3/openmeter/customers/{customerId}/credits/transactions",
+      "operation_id": "list-credit-transactions",
+      "source_line": 1745,
+      "status": "schema_only"
+    },
+    {
+      "family": "official_v3",
+      "method": "POST",
+      "schema_path": "/openmeter/events",
+      "local_path": "/api/v3/openmeter/events",
+      "operation_id": "ingest-metering-events",
+      "source_line": 1912,
+      "status": "schema_only"
+    },
+    {
+      "family": "official_v3",
+      "method": "POST",
+      "schema_path": "/openmeter/governance/query",
+      "local_path": "/api/v3/openmeter/governance/query",
+      "operation_id": "query-governance-access",
+      "source_line": 2142,
+      "status": "schema_only"
+    },
+    {
+      "family": "official_v3",
+      "method": "POST",
+      "schema_path": "/openmeter/plans",
+      "local_path": "/api/v3/openmeter/plans",
+      "operation_id": "create-plan",
+      "source_line": 2606,
+      "status": "schema_only"
+    },
+    {
+      "family": "official_v3",
+      "method": "POST",
+      "schema_path": "/openmeter/plans/{planId}/publish",
+      "local_path": "/api/v3/openmeter/plans/{planId}/publish",
+      "operation_id": "publish-plan",
+      "source_line": 2919,
+      "status": "schema_only"
+    },
+    {
+      "family": "official_v3",
+      "method": "POST",
+      "schema_path": "/openmeter/subscriptions",
+      "local_path": "/api/v3/openmeter/subscriptions",
+      "operation_id": "create-subscription",
+      "source_line": 3092,
+      "status": "schema_only"
+    },
+    {
+      "family": "official_v3",
+      "method": "POST",
+      "schema_path": "/openmeter/subscriptions/{subscriptionId}/cancel",
+      "local_path": "/api/v3/openmeter/subscriptions/{subscriptionId}/cancel",
+      "operation_id": "cancel-subscription",
+      "source_line": 3311,
+      "status": "schema_only"
+    },
+    {
+      "family": "official_v3",
+      "method": "POST",
+      "schema_path": "/openmeter/subscriptions/{subscriptionId}/change",
+      "local_path": "/api/v3/openmeter/subscriptions/{subscriptionId}/change",
+      "operation_id": "change-subscription",
+      "source_line": 3349,
+      "status": "schema_only"
+    }
+  ],
+  "live_read_only_probe": {
+    "target": "http://127.0.0.1:48888",
+    "proxy_disabled_for_loopback": true,
+    "results": [
+      {
+        "path": "/api/v1/meters",
+        "status": "connection_refused",
+        "response_body_saved": false
+      },
+      {
+        "path": "/api/v1/customers",
+        "status": "connection_refused",
+        "response_body_saved": false
+      },
+      {
+        "path": "/api/v2/entitlements",
+        "status": "connection_refused",
+        "response_body_saved": false
+      },
+      {
+        "path": "/api/v3/openmeter/customers",
+        "status": "connection_refused",
+        "response_body_saved": false
+      }
+    ]
+  },
+  "mutating_tests_performed": false,
+  "reservation_search": {
+    "scope": "path and operationId in two pinned schemas",
+    "result": "no explicitly named reserve/reservation endpoint located",
+    "limitation": "does not establish absence of internal or differently named capabilities"
+  }
+}
