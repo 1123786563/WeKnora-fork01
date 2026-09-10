@@ -26,3 +26,7 @@
 - 只改动任务简报列出的实现、测试、清单和进度台账文件。
 - CLI 仅接受 schema 路径能与清单 `repository_path` 对齐且 hash 相符的文件；hash 不符退出码为 2。
 - 当前未执行真实服务探测，V01 台账保留 `review`，待固定 schema 与可用服务环境补充证据。
+
+## 评审修复
+
+补充 schema hash mismatch/connection refusal、GET-only 以及 `paths` 后续顶层区块隔离的回归覆盖，并将解析器限制在顶层 `paths:` 区块。

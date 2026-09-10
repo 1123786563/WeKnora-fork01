@@ -20,6 +20,10 @@ def operation_paths(text: str, prefix: str) -> dict[str, str]:
         if line == "paths:":
             saw_paths = True
             continue
+        if saw_paths and line and not line.startswith(" "):
+            break
+        if not saw_paths:
+            continue
         if re.match(r"^  /", line):
             if not line.rstrip().endswith(":"):
                 raise ValueError("unsupported schema structure")
