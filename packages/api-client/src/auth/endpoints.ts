@@ -62,7 +62,8 @@ export function createAuthApi(request: (input: ClientRequest) => Promise<unknown
       return { user: record(data.user, 'auth me user'), tenant: data.tenant === null ? null : data.tenant ? record(data.tenant, 'auth me tenant') : undefined, memberships: Array.isArray(data.memberships) ? data.memberships : undefined, tenant_required: data.tenant_required === true, capabilities: data.capabilities && typeof data.capabilities === 'object' ? record(data.capabilities, 'capabilities') : undefined };
     },
     async logout(): Promise<void> {
-      await request({ method: 'POST', path: '/api/v1/auth/logout', body: {} });
+      const response = await request({ method: 'POST', path: '/api/v1/auth/logout', body: {} });
+      if (response !== undefined) successEnvelope(response);
     },
   };
 }

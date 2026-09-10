@@ -12,8 +12,8 @@ export function resolveRoute(pathname: string): RouteMatch {
   if (path === '/join') return { kind: 'join', path: '/join' };
   if (path.startsWith('/embed/')) return { kind: 'embed', path };
   if (path === '/knowledgeBase' || path.startsWith('/knowledgeBase/')) return { kind: 'knowledge-base', path };
-  if (path.startsWith('/platform/')) return { kind: 'platform', path };
-  if (path === '/creatChat' || path.startsWith('/creatChat/')) return { kind: 'platform', path: `/platform${path.slice('/creatChat'.length)}` };
+  if (path === '/platform' || path.startsWith('/platform/')) return { kind: 'platform', path };
+  if (path === '/creatChat' || path.startsWith('/creatChat/')) return { kind: 'platform', path: `/platform/creatChat${path.slice('/creatChat'.length)}` };
   return { kind: 'not-found', path };
 }
 

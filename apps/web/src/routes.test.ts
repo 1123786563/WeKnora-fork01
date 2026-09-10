@@ -5,7 +5,8 @@ import { resolveRoute, routeRedirect } from './routes.tsx';
 test('keeps legacy deep links and redirects the misspelled chat path compatibly', () => {
   assert.equal(resolveRoute('/knowledgeBase?id=kb-1').kind, 'knowledge-base');
   assert.equal(resolveRoute('/platform/settings?section=general').kind, 'platform');
-  assert.equal(routeRedirect('/creatChat?agentId=a'), '/platform?agentId=a');
+  assert.equal(routeRedirect('/creatChat?agentId=a'), '/platform/creatChat?agentId=a');
+  assert.equal(resolveRoute('/platform').kind, 'platform');
 });
 
 test('does not treat embed or missing capability paths as authenticated platform routes', () => {

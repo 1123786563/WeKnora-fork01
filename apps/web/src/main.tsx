@@ -1,12 +1,16 @@
 import { createRoot } from 'react-dom/client';
 import { createWeKnoraClient } from '@weknora/api-client';
+import { Status } from '@weknora/ui';
 import { KnowledgeBasesPage } from './App.tsx';
+import { LoginPage } from './auth/LoginPage.tsx';
 import { readLegacyPlatformSession } from './platform/legacy-session.ts';
 import { createBrowserTransport } from './platform/http.ts';
 import { createWebScopeRuntime } from './platform/scope-runtime.ts';
+import { resolveRoute } from './routes.tsx';
 import './styles.css';
 
-const session = readLegacyPlatformSession();
+const route = resolveRoute(window.location.pathname);
+let session = route.kind === 'embed' ? { credential: { kind: 'anonymous' } as const, tenantId: null } : readLegacyPlatformSession();
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? '';
 const scopeRuntime = createWebScopeRuntime(apiBaseUrl || window.location.origin, null, session.tenantId);
 const scopeController = scopeRuntime.controller;
@@ -14,7 +18,7 @@ const scopeController = scopeRuntime.controller;
 const client = createWeKnoraClient({
   baseURL: apiBaseUrl,
   transport: createBrowserTransport({
-    credential: session.credential,
+    credential: () => session.credential,
     tenantId: session.tenantId,
     locale: navigator.language,
   }),
@@ -22,6 +26,16 @@ const client = createWeKnoraClient({
 
 // Migration seam: the legacy Vue route is /platform/knowledge-bases.
 // This entry only proves the React list slice; it does not claim Vue migration completion.
-createRoot(document.getElementById('root')!).render(
-  <KnowledgeBasesPage client={client} scopeController={scopeController} />,
-);
+const root = createRoot(document.getElementById('root')!);
+if (route.kind === 'embed') {
+  root.render(<main className="wk-page"><Status tone="error">Embed must use its isolated entrypoint.</Status></main>);
+} else if (route.kind === 'login') {
+  root.render(<LoginPage client={client} onAuthenticated={(next) => {
+    session = { credential: { kind: 'bearer', accessToken: next.token, refreshToken: next.refreshToken }, tenantId: null };
+    window.localStorage.setItem('weknora_token', next.token);
+    window.localStorage.setItem('weknora_refresh_token', next.refreshToken);
+    window.location.assign('/platform/knowledge-bases');
+  }} />);
+} else {
+  root.render(<KnowledgeBasesPage client={client} scopeController={scopeController} />);
+}

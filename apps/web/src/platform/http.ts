@@ -3,7 +3,7 @@ import type { Credential } from '@weknora/api-client';
 
 export interface BrowserTransportOptions {
   fetcher?: FetchLike;
-  credential?: Credential;
+  credential?: Credential | (() => Credential);
   tenantId?: string | null;
   locale?: string;
   requestId?: () => string;
@@ -25,12 +25,13 @@ export function createBrowserTransport(options: BrowserTransportOptions = {}) {
   return {
     async send(request: Parameters<typeof base.send>[0]) {
       const headers = { ...request.headers };
-      const authorization = authHeader(options.credential);
+      const credential = typeof options.credential === 'function' ? options.credential() : options.credential;
+      const authorization = authHeader(credential);
       if (authorization) headers.authorization = authorization;
-      if (options.credential?.kind !== 'embed' && options.tenantId) headers['x-tenant-id'] = options.tenantId;
-      if (options.credential?.kind === 'embed') {
-        if (options.credential.sessionSig) headers['x-embed-session'] = options.credential.sessionSig;
-        if (options.credential.visitorId) headers['x-embed-visitor'] = options.credential.visitorId;
+      if (credential?.kind !== 'embed' && options.tenantId) headers['x-tenant-id'] = options.tenantId;
+      if (credential?.kind === 'embed') {
+        if (credential.sessionSig) headers['x-embed-session'] = credential.sessionSig;
+        if (credential.visitorId) headers['x-embed-visitor'] = credential.visitorId;
       }
       if (options.locale) headers['accept-language'] = options.locale;
       headers['x-request-id'] ??= options.requestId?.() ?? defaultRequestId();

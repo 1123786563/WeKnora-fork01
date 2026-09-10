@@ -221,11 +221,12 @@ def api_rows() -> list[list[str]]:
             if raw_method.upper() not in HTTP_METHODS:
                 continue
             method = raw_method.upper()
-            domain = next((v for k, v in domain_map.items() if current.startswith(k)), "other")
+            normalized_current = normalize_path(current)
+            domain = next((v for k, v in domain_map.items() if normalized_current.startswith(k)), "other")
             kind = "mutation" if method in {"POST", "PUT", "PATCH", "DELETE"} else "read"
-            if any(token in current for token in ("chat", "stream", "events")):
+            if any(token in normalized_current for token in ("chat", "stream", "events")):
                 kind = "sse-or-event" if method in {"GET", "POST"} else kind
-            if any(token in current for token in ("download", "preview", "export", "files")):
+            if any(token in normalized_current for token in ("download", "preview", "export", "files")):
                 kind = "blob-or-file"
             task = {"identity": "T03", "tenant": "T04/T16", "organization": "T16", "knowledge": "T06-T09", "chat": "T10-T13", "configuration": "T15/T17", "sandbox": "T14", "system": "T16/T17", "embed": "T18", "integration": "T18", "file": "T07/T13"}.get(domain, "T01 follow-up")
             key = (method, canonical_path(current))
@@ -233,7 +234,7 @@ def api_rows() -> list[list[str]]:
             source_status = (
                 route["source_status"]
                 if route
-                else ("client-used" if current in used_paths else "swagger")
+                else ("client-used" if normalized_current in used_paths else "swagger")
             )
             comparison = "registered-route" if route else "swagger-only"
             current_source = route["source"] if route else "docs/swagger.json"

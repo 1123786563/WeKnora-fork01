@@ -25,3 +25,10 @@ test('requires the structured auth/me payload', async () => {
   const auth = createAuthApi(async () => ({ success: true, data: { user: { id: 'u-1' }, tenant: null } }));
   assert.deepEqual(await auth.me(), { user: { id: 'u-1' }, tenant: null, memberships: undefined, tenant_required: false, capabilities: undefined });
 });
+
+test('does not treat a business-level logout failure as success', async () => {
+  const failed = createAuthApi(async () => ({ success: false, message: 'logout rejected' }));
+  await assert.rejects(failed.logout(), /logout rejected/);
+  const ok = createAuthApi(async () => ({ success: true }));
+  await ok.logout();
+});
