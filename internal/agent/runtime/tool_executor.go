@@ -41,6 +41,7 @@ var (
 // RecoveryPolicy is empty for the safe default (wait_user). Capability values
 // are accepted only from trusted application wiring, never inferred here.
 type ToolPlan struct {
+	Version        int64
 	CallID         string
 	Name           string
 	Identity       string
@@ -95,7 +96,8 @@ func (r ToolRecord) RecoveryFacts(now time.Time) RecoveryFacts {
 // ToolJournal persists plan, attempt and outcome transitions under a fence.
 type ToolJournal interface {
 	EnsureToolPlan(context.Context, Fence, ToolPlan) (ToolRecord, error)
-	BeginToolAttempt(context.Context, Fence, string) (ToolAttempt, error)
+	BeginToolAttempt(context.Context, Fence, string, ...int64) (ToolAttempt, error)
+	ReviseToolPlan(context.Context, Fence, string, int64, json.RawMessage) (ToolPlan, error)
 	CommitToolResult(context.Context, Fence, ToolAttempt, StoredToolResult) error
 	CommitToolRejection(context.Context, Fence, string, StoredToolResult) error
 	MarkToolUnknown(context.Context, Fence, ToolAttempt, string) error
@@ -113,6 +115,8 @@ type ToolDispatch struct {
 	CallID, Identity, IdempotencyKey string
 	IdempotencyExpiresAt             time.Time
 	Attempt                          int
+	PlanVersion                      int64
+	ArgsHash                         string
 }
 
 type toolDispatchContextKey struct{}
@@ -121,7 +125,8 @@ type toolDispatchState struct {
 	mu       sync.Mutex
 	metadata ToolDispatch
 	attempt  ToolAttempt
-	begin    func(context.Context) (ToolAttempt, error)
+	begin    func(context.Context, int64) (ToolAttempt, error)
+	revise   func(context.Context, int64, json.RawMessage) (ToolPlan, error)
 	finished bool
 }
 
@@ -141,12 +146,51 @@ func BeforeToolDispatch(ctx context.Context) error {
 	if state.finished || state.attempt.Number != 0 {
 		return ErrConflict
 	}
-	attempt, err := state.begin(ctx)
+	attempt, err := state.begin(ctx, state.metadata.PlanVersion)
 	if err != nil {
 		return err
 	}
 	state.attempt = attempt
 	state.metadata.Attempt = attempt.Number
+	return nil
+}
+
+type toolApprovalProjectionKey struct{}
+
+// WithToolApprovalProjection binds a proxy's approved target args back to its
+// logical call envelope. Only the trusted proxy adapter installs this mapping.
+func WithToolApprovalProjection(
+	ctx context.Context, project func(json.RawMessage) (json.RawMessage, error),
+) context.Context {
+	return context.WithValue(ctx, toolApprovalProjectionKey{}, project)
+}
+
+// ApproveToolArguments persists arguments returned by the server-side approval
+// gate. Tool input itself must never be used as authorization to call this.
+func ApproveToolArguments(ctx context.Context, args json.RawMessage) error {
+	state, ok := ctx.Value(toolDispatchContextKey{}).(*toolDispatchState)
+	if !ok {
+		return nil
+	}
+	if project, ok := ctx.Value(toolApprovalProjectionKey{}).(func(json.RawMessage) (json.RawMessage, error)); ok {
+		var err error
+		args, err = project(args)
+		if err != nil {
+			return err
+		}
+	}
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if state.finished || state.attempt.Number != 0 {
+		return ErrConflict
+	}
+	plan, err := state.revise(ctx, state.metadata.PlanVersion, args)
+	if err != nil {
+		return err
+	}
+	state.metadata.PlanVersion, state.metadata.ArgsHash = plan.Version, plan.ArgsHash
+	state.metadata.IdempotencyKey = plan.IdempotencyKey
+	state.metadata.IdempotencyExpiresAt = plan.IdempotencyExpiresAt
 	return nil
 }
 
@@ -225,9 +269,13 @@ func (e *ToolExecutor) Execute(
 		metadata: ToolDispatch{
 			RunKey: fence.RunKey, CallID: record.Plan.CallID, Identity: record.Plan.Identity,
 			IdempotencyKey: record.Plan.IdempotencyKey, IdempotencyExpiresAt: record.Plan.IdempotencyExpiresAt,
+			PlanVersion: record.Plan.Version, ArgsHash: record.Plan.ArgsHash,
 		},
-		begin: func(dispatchCtx context.Context) (ToolAttempt, error) {
-			return e.journal.BeginToolAttempt(dispatchCtx, fence, plan.CallID)
+		begin: func(dispatchCtx context.Context, version int64) (ToolAttempt, error) {
+			return e.journal.BeginToolAttempt(dispatchCtx, fence, plan.CallID, version)
+		},
+		revise: func(approvalCtx context.Context, version int64, args json.RawMessage) (ToolPlan, error) {
+			return e.journal.ReviseToolPlan(approvalCtx, fence, plan.CallID, version, args)
 		},
 	}
 	dispatchCtx := context.WithValue(ctx, toolDispatchContextKey{}, state)

@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Tencent/WeKnora/internal/agent/approval"
+	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
@@ -905,6 +906,16 @@ func (t *MCPCallTool) Execute(ctx context.Context, raw json.RawMessage) (*types.
 	if err != nil {
 		return mcpDiscoveryFailure(err, "unavailable")
 	}
+	ref, _, err := decodeMCPCall(raw)
+	if err != nil {
+		return nil, err
+	}
+	ctx = agentruntime.WithToolApprovalProjection(ctx, func(approved json.RawMessage) (json.RawMessage, error) {
+		return json.Marshal(struct {
+			ToolRef   string          `json:"tool_ref"`
+			Arguments json.RawMessage `json:"arguments"`
+		}{ToolRef: ref, Arguments: approved})
+	})
 	return t.registry.execute(ctx, tool, args)
 }
 

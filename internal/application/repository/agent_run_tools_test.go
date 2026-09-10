@@ -314,3 +314,27 @@ func TestAgentRunToolPersistsReturnedResultAfterRequestCancellation(t *testing.T
 	require.Equal(t, "side effect completed", result.Result.Output)
 	require.Equal(t, 1, calls)
 }
+
+func TestAgentRunToolApprovedArgsVersionSurvivesRecovery(t *testing.T) {
+	store, fence := claimedToolRun(t)
+	ctx := context.Background()
+	plan := testToolPlan()
+	_, err := store.EnsureToolPlan(ctx, fence, plan)
+	require.NoError(t, err)
+	approved, err := store.ReviseToolPlan(ctx, fence, plan.CallID, 1, json.RawMessage(`{"value":"approved"}`))
+	require.NoError(t, err)
+	require.EqualValues(t, 2, approved.Version)
+	require.Equal(t, "a68080e4b87bfa8925a0ceeb10fd6d931911eb63e6006791aad77fd65fdae4de", approved.ArgsHash)
+	require.NotEqual(t, plan.IdempotencyKey, approved.IdempotencyKey)
+	require.Len(t, approved.IdempotencyKey, 64)
+	reopened := NewAgentRunStore(reopenRunDB(t, store.db))
+	record, err := reopened.EnsureToolPlan(ctx, fence, plan)
+	require.NoError(t, err)
+	require.Equal(t, approved, record.Plan)
+	_, err = reopened.BeginToolAttempt(ctx, fence, plan.CallID, 1)
+	require.ErrorIs(t, err, agentruntime.ErrConflict)
+	_, err = reopened.BeginToolAttempt(ctx, fence, plan.CallID, 2)
+	require.NoError(t, err)
+	_, err = reopened.ReviseToolPlan(ctx, fence, plan.CallID, 2, json.RawMessage(`{"value":"unsafe"}`))
+	require.ErrorIs(t, err, agentruntime.ErrConflict)
+}

@@ -38,6 +38,9 @@ func registryJournalDB(t *testing.T) (*gorm.DB, *repository.AgentRunStore, agent
 	migration, err := os.ReadFile("../../../migrations/sqlite/000014_agent_runs.up.sql")
 	require.NoError(t, err)
 	require.NoError(t, db.Exec(string(migration)).Error)
+	versions, err := os.ReadFile("../../../migrations/sqlite/000015_agent_tool_plan_versions.up.sql")
+	require.NoError(t, err)
+	require.NoError(t, db.Exec(string(versions)).Error)
 	require.NoError(t, db.Exec(`UPDATE sessions SET engine_type='trpc', active_agent_run_id='r1';`).Error)
 	require.NoError(t, db.Exec(`INSERT INTO agent_runs
 		(tenant_id,run_id,session_id,owner_id,request_id,assistant_message_id,request_hash,snapshot,deadline)
@@ -141,9 +144,12 @@ func TestToolJournalMCPApprovalThenDispatchAndReplay(t *testing.T) {
 	server := sdkserver.NewMCPServer("journal", "1", sdkserver.WithToolCapabilities(false))
 	var calls atomic.Int32
 	server.AddTool(sdkmcp.NewTool("write"), func(
-		context.Context, sdkmcp.CallToolRequest,
+		_ context.Context, request sdkmcp.CallToolRequest,
 	) (*sdkmcp.CallToolResult, error) {
 		calls.Add(1)
+		if request.GetArguments()["value"] != "approved" {
+			return sdkmcp.NewToolResultError("wrong approved arguments"), nil
+		}
 		var status string
 		if err := db.Table("agent_tool_calls").Select("status").Scan(&status).Error; err != nil {
 			return nil, err
@@ -162,7 +168,7 @@ func TestToolJournalMCPApprovalThenDispatchAndReplay(t *testing.T) {
 		var status string
 		require.NoError(t, db.Table("agent_tool_calls").Select("status").Scan(&status).Error)
 		require.Equal(t, "planned", status)
-		return approval.Decision{Approved: true}, nil
+		return approval.Decision{Approved: true, ModifiedArgs: json.RawMessage(`{"value":"approved"}`)}, nil
 	}}
 	tool := NewMCPTool(&types.MCPService{
 		ID: "svc", Name: "writer", TenantID: 1, Enabled: true,
@@ -184,4 +190,56 @@ func TestToolJournalMCPApprovalThenDispatchAndReplay(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, first.Result.Output, replayed.Result.Output)
 	require.EqualValues(t, 1, calls.Load())
+	record, err := store.EnsureToolPlan(ctx, fence, plan)
+	require.NoError(t, err)
+	require.EqualValues(t, 2, record.Plan.Version)
+	require.JSONEq(t, `{"value":"approved"}`, string(record.Plan.Args))
+	require.Equal(t, "a68080e4b87bfa8925a0ceeb10fd6d931911eb63e6006791aad77fd65fdae4de", record.Plan.ArgsHash)
+	var approvedVersion int64
+	require.NoError(t, db.Table("agent_tool_calls").Select("approved_plan_version").Scan(&approvedVersion).Error)
+	require.EqualValues(t, 2, approvedVersion)
+}
+
+func TestToolJournalOrdinarySafetyRejectionRemainsPlanned(t *testing.T) {
+	cases := []struct {
+		name string
+		tool types.Tool
+		args string
+	}{
+		{
+			"knowledge authorization", NewDataAnalysisTool(nil,
+				&scopeKnowledgeService{knowledge: &types.Knowledge{
+					ID: "other-document", KnowledgeBaseID: "foreign-kb",
+				}},
+				nil, nil, nil, "s1").WithSearchTargets(nil),
+			`{"knowledge_id":"other-document","sql":"SELECT 1"}`,
+		},
+		{"sandbox unavailable", NewShellExecTool(nil, nil), `{"command":"pwd"}`},
+		{"destructive command", NewShellExecTool(&fakeShellExecutor{}, nil), `{"command":"rm -rf /"}`},
+		{"outside workdir", NewShellExecTool(&fakeShellExecutor{}, nil), `{"command":"pwd","work_dir":"/etc"}`},
+		{
+			"missing credential", NewShellExecTool(&fakeShellExecutor{}, stubEnvResolver{missing: []string{"API_KEY"}}),
+			`{"command":"pwd"}`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			db, store, fence := registryJournalDB(t)
+			registry := NewToolRegistry()
+			registry.RegisterTool(tc.tool)
+			ctx := WithToolExecContext(context.Background(), &ToolExecContext{SessionID: "s1"})
+			plan := agentruntime.ToolPlan{
+				CallID: "c1", Name: tc.tool.Name(), Identity: "test@1", ArgsHash: "hash",
+				Args: json.RawMessage(tc.args),
+			}
+			_, err := agentruntime.NewToolExecutor(store, store, registry.ExecuteTool).Execute(ctx, fence, plan)
+			require.Error(t, err)
+			record, err := store.EnsureToolPlan(ctx, fence, plan)
+			require.NoError(t, err)
+			require.Equal(t, "planned", record.Status)
+			var attempts int64
+			require.NoError(t, db.Table("agent_tool_attempts").Count(&attempts).Error)
+			require.Zero(t, attempts)
+		})
+	}
 }

@@ -338,6 +338,13 @@ type Tool interface {
 	Execute(ctx context.Context, args json.RawMessage) (*ToolResult, error)
 }
 
+// ToolPreflight performs authorization and safety checks before a durable
+// dispatch. It may return a context carrying call-scoped prepared values so
+// Execute uses exactly what was checked. It must not perform tool side effects.
+type ToolPreflight interface {
+	Preflight(context.Context, json.RawMessage) (context.Context, error)
+}
+
 // Cleanable is an optional interface that tools can implement to release resources.
 // Tools implementing this interface will have their Cleanup method called during
 // registry cleanup (e.g., at the end of an agent session).

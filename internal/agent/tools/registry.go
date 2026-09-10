@@ -231,6 +231,15 @@ func (r *ToolRegistry) execute(ctx context.Context, tool types.Tool, args json.R
 	}
 	// MCP wrappers own a later boundary, after policy, human approval and
 	// OAuth connection checks. Other tools dispatch after registry validation.
+	if _, durable := agentruntime.ToolDispatchFromContext(ctx); durable {
+		if preflight, ok := tool.(types.ToolPreflight); ok {
+			preparedCtx, err := preflight.Preflight(ctx, args)
+			if err != nil {
+				return nil, err
+			}
+			ctx = preparedCtx
+		}
+	}
 	switch tool.(type) {
 	case *MCPTool, *MCPRegisteredTool, *MCPCallTool:
 	default:

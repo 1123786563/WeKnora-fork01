@@ -40,10 +40,16 @@ func (j *executorJournal) EnsureToolPlan(_ context.Context, _ Fence, plan ToolPl
 	return j.record, nil
 }
 
-func (j *executorJournal) BeginToolAttempt(_ context.Context, fence Fence, callID string) (ToolAttempt, error) {
+func (j *executorJournal) BeginToolAttempt(
+	_ context.Context, fence Fence, callID string, _ ...int64,
+) (ToolAttempt, error) {
 	j.attempt = ToolAttempt{CallID: callID, Number: j.attempt.Number + 1, Epoch: fence.Epoch}
 	j.record.Status = ToolStatusDispatching
 	return j.attempt, nil
+}
+
+func (*executorJournal) ReviseToolPlan(context.Context, Fence, string, int64, json.RawMessage) (ToolPlan, error) {
+	return ToolPlan{}, ErrConflict
 }
 
 func (j *executorJournal) CommitToolResult(

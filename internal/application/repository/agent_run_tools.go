@@ -3,8 +3,10 @@ package repository
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"time"
 
@@ -24,6 +26,8 @@ type agentToolCallRow struct {
 	Status, UnknownReason, OutputFiles, Source string
 	Result                                     *string
 	CreatedAt, UpdatedAt                       time.Time
+	PlanVersion, ApprovedPlanVersion           int64
+	PlanHistory                                string
 }
 
 func (agentToolCallRow) TableName() string { return "agent_tool_calls" }
@@ -47,7 +51,8 @@ func toolCallScope(tx *gorm.DB, key agentruntime.RunKey, callID string) *gorm.DB
 func (row agentToolCallRow) view() (agentruntime.ToolRecord, error) {
 	r := agentruntime.ToolRecord{
 		Plan: agentruntime.ToolPlan{
-			CallID: row.CallID, Name: row.ToolName, Identity: row.ToolIdentity,
+			Version: row.PlanVersion,
+			CallID:  row.CallID, Name: row.ToolName, Identity: row.ToolIdentity,
 			ArgsHash: row.ArgsHash, Args: json.RawMessage(row.Args), RecoveryPolicy: row.RecoveryPolicy,
 			IdempotencyKey: row.IdempotencyKey,
 		},
@@ -107,6 +112,12 @@ func (s *AgentRunStore) lockToolRun(tx *gorm.DB, fence agentruntime.Fence) error
 }
 
 func normalizeToolPlan(plan agentruntime.ToolPlan) (agentruntime.ToolPlan, error) {
+	if plan.Version == 0 {
+		plan.Version = 1
+	}
+	if plan.Version < 1 {
+		return plan, agentruntime.ErrConflict
+	}
 	if plan.CallID == "" || len(plan.CallID) > 255 || plan.Name == "" || len(plan.Name) > 255 ||
 		plan.Identity == "" || len(plan.Identity) > 512 || plan.ArgsHash == "" || len(plan.ArgsHash) > 64 ||
 		len(plan.IdempotencyKey) > 255 || !json.Valid(plan.Args) {
@@ -137,7 +148,8 @@ func sameToolPlan(a, b agentruntime.ToolPlan) bool {
 	if da.Decode(&aa) != nil || db.Decode(&bb) != nil || !reflect.DeepEqual(aa, bb) {
 		return false
 	}
-	return a.CallID == b.CallID && a.Name == b.Name && a.Identity == b.Identity && a.ArgsHash == b.ArgsHash &&
+	return a.Version == b.Version && a.CallID == b.CallID && a.Name == b.Name &&
+		a.Identity == b.Identity && a.ArgsHash == b.ArgsHash &&
 		a.IdempotencyKey == b.IdempotencyKey && a.RecoveryPolicy == b.RecoveryPolicy &&
 		a.IdempotencyExpiresAt.Equal(b.IdempotencyExpiresAt)
 }
@@ -164,6 +176,15 @@ func (s *AgentRunStore) EnsureToolPlan(
 				return e
 			}
 			if !sameToolPlan(record.Plan, plan) {
+				var history []agentruntime.ToolPlan
+				if err := json.Unmarshal([]byte(row.PlanHistory), &history); err != nil {
+					return err
+				}
+				for _, previous := range history {
+					if sameToolPlan(previous, plan) {
+						return nil
+					}
+				}
 				return agentruntime.ErrConflict
 			}
 			return nil
@@ -177,6 +198,7 @@ func (s *AgentRunStore) EnsureToolPlan(
 			return e
 		}
 		row = agentToolCallRow{
+			PlanVersion: plan.Version, PlanHistory: "[]",
 			TenantID: fence.TenantID, RunID: fence.RunID, CallID: plan.CallID,
 			CallSeq: seq + 1, ToolName: plan.Name, ToolIdentity: plan.Identity, ArgsHash: plan.ArgsHash,
 			Args: string(plan.Args), RecoveryPolicy: plan.RecoveryPolicy, IdempotencyKey: plan.IdempotencyKey,
@@ -197,7 +219,7 @@ func (s *AgentRunStore) EnsureToolPlan(
 // BeginToolAttempt appends one attempt. A dispatch in this epoch is still live,
 // even for a read-only tool, and cannot be concurrently repeated.
 func (s *AgentRunStore) BeginToolAttempt(
-	ctx context.Context, fence agentruntime.Fence, callID string,
+	ctx context.Context, fence agentruntime.Fence, callID string, expectedVersion ...int64,
 ) (agentruntime.ToolAttempt, error) {
 	var attempt agentruntime.ToolAttempt
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -222,6 +244,9 @@ func (s *AgentRunStore) BeginToolAttempt(
 		record, e := row.view()
 		if e != nil {
 			return e
+		}
+		if len(expectedVersion) > 1 || (len(expectedVersion) == 1 && expectedVersion[0] != record.Plan.Version) {
+			return agentruntime.ErrConflict
 		}
 		var previous agentToolAttemptRow
 		e = toolCallScope(tx, fence.RunKey, callID).Order("attempt DESC").Take(&previous).Error
@@ -261,6 +286,76 @@ func (s *AgentRunStore) BeginToolAttempt(
 		return nil
 	})
 	return attempt, err
+}
+
+// ReviseToolPlan creates a new version only from gate-approved arguments before
+// any external attempt. Prior versions are immutable audit/recovery references;
+// only the latest version may dispatch, with a new parameter hash and key.
+func (s *AgentRunStore) ReviseToolPlan(
+	ctx context.Context, fence agentruntime.Fence, callID string, expectedVersion int64, args json.RawMessage,
+) (agentruntime.ToolPlan, error) {
+	var object map[string]any
+	decoder := json.NewDecoder(bytes.NewReader(args))
+	decoder.UseNumber()
+	if !json.Valid(args) || decoder.Decode(&object) != nil || object == nil {
+		return agentruntime.ToolPlan{}, agentruntime.ErrConflict
+	}
+	canonical, err := json.Marshal(object)
+	if err != nil {
+		return agentruntime.ToolPlan{}, err
+	}
+	var revised agentruntime.ToolPlan
+	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := s.lockToolRun(tx, fence); err != nil {
+			return err
+		}
+		var row agentToolCallRow
+		if err := toolCallScope(tx, fence.RunKey, callID).Take(&row).Error; err != nil {
+			return err
+		}
+		record, err := row.view()
+		if err != nil {
+			return err
+		}
+		if record.Plan.Version != expectedVersion || record.Status != agentruntime.ToolStatusPlanned {
+			return agentruntime.ErrConflict
+		}
+		var attempts int64
+		count := toolCallScope(tx.Model(&agentToolAttemptRow{}), fence.RunKey, callID).Count(&attempts)
+		if count.Error != nil {
+			return count.Error
+		}
+		if attempts != 0 {
+			return agentruntime.ErrConflict
+		}
+		revised = record.Plan
+		revised.Args = canonical
+		if sameToolPlan(revised, record.Plan) {
+			return nil
+		}
+		var history []agentruntime.ToolPlan
+		if err := json.Unmarshal([]byte(row.PlanHistory), &history); err != nil {
+			return err
+		}
+		history = append(history, record.Plan)
+		historyJSON, err := json.Marshal(history)
+		if err != nil {
+			return err
+		}
+		revised.Version++
+		revised.ArgsHash = fmt.Sprintf("%x", sha256.Sum256(canonical))
+		keyMaterial := fmt.Sprintf("%d:%s:%s:%d:%s:%s", fence.TenantID, fence.RunID, callID,
+			revised.Version, record.Plan.IdempotencyKey, revised.ArgsHash)
+		revised.IdempotencyKey = fmt.Sprintf("%x", sha256.Sum256([]byte(keyMaterial)))
+		// Replace the approval binding, never carry a previous version's
+		// approval forward to new arguments. This call is the new gate decision.
+		return toolCallScope(tx.Model(&agentToolCallRow{}), fence.RunKey, callID).Updates(map[string]any{
+			"args": string(canonical), "args_hash": revised.ArgsHash, "idempotency_key": revised.IdempotencyKey,
+			"plan_version": revised.Version, "approved_plan_version": revised.Version,
+			"plan_history": string(historyJSON),
+		}).Error
+	})
+	return revised, err
 }
 
 func validToolAttempt(fence agentruntime.Fence, attempt agentruntime.ToolAttempt) bool {
