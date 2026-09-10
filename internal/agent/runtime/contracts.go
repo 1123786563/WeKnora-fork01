@@ -67,6 +67,18 @@ type Admission struct {
 	Deadline           time.Time
 }
 
+// Decision is a durable user resolution for a run waiting on an external
+// result or tool action. Result is used only by provide_result.
+type Decision struct {
+	PendingID        string
+	DecisionID       string
+	Action           string
+	ArgsHash         string
+	Reason           string
+	ExpectedRevision int64
+	Result           json.RawMessage
+}
+
 // CheckpointRecord holds a complete graph checkpoint and its pending writes.
 type CheckpointRecord struct {
 	Namespace     string

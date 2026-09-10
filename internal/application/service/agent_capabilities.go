@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/Tencent/WeKnora/internal/agent"
+	"github.com/Tencent/WeKnora/internal/agent/approval"
 	"github.com/Tencent/WeKnora/internal/agent/skills"
 	"github.com/Tencent/WeKnora/internal/agent/tools"
 	"github.com/Tencent/WeKnora/internal/event"
@@ -30,6 +31,10 @@ type AgentCapabilities struct {
 	PinnedMCP      []*agent.PinnedMCPServiceInfo
 	PinnedSkills   []*agent.PinnedSkillInfo
 	ImageDescriber agent.ImageDescriberFunc
+	// Approval policy and waiting are separate capabilities. Recovery may use
+	// the policy checker while durable decisions never enter the live waiter.
+	ApprovalChecker approval.ApprovalChecker
+	ApprovalWaiter  approval.ApprovalWaiter
 }
 
 func (s *agentService) prepareAgentCapabilities(
@@ -83,6 +88,10 @@ func (s *agentService) prepareAgentCapabilities(
 		EventBus:       eventBus,
 		PinnedMCP:      pinnedMCP,
 		PinnedSkills:   s.resolvePinnedSkillInfos(config),
+	}
+	if s.toolApprovalGate != nil {
+		capabilities.ApprovalChecker, _ = s.toolApprovalGate.(approval.ApprovalChecker)
+		capabilities.ApprovalWaiter, _ = s.toolApprovalGate.(approval.ApprovalWaiter)
 	}
 
 	if config.VLMModelID != "" {
