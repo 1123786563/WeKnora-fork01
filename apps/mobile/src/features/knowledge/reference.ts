@@ -1,3 +1,5 @@
+import type { Href } from 'expo-router';
+
 export type KnowledgeReferenceKind = 'wiki' | 'faq';
 
 export function selectWikiReferenceLabel(row: { title: string; slug: string; version: number }): string {
@@ -11,6 +13,6 @@ export function selectFaqReferenceLabel(row: { standard_question: string; is_ena
   return `${question} · ${state}${row.is_recommended ? ' · recommended' : ''}`;
 }
 
-export function referenceRoute(kind: KnowledgeReferenceKind, kbId: string): string {
-  return `/knowledge/${encodeURIComponent(kbId)}/${kind}`;
+export function referenceRoute(kind: KnowledgeReferenceKind, kbId: string): Href {
+  return `/knowledge/${encodeURIComponent(kbId)}/${kind}` as Href;
 }
