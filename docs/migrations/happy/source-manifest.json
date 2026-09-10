@@ -1,0 +1,13 @@
+{
+  "commit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
+  "files": [
+    {"source":"packages/happy-app/sources/-session/SessionView.tsx","target":"happy-mobile/session/SessionView.tsx","sha256":"57cfb2b97a583d0937beed4a7f8e2cacdb04a3e1d4bab1e847f6b6a7399563f9","license":"MIT"},
+    {"source":"packages/happy-app/sources/sync/ops.ts","target":"happy-mobile/sync/ops.ts","sha256":"6b1c75d572a484d5c924473a19083bd51a79be0df624fafe6d5d5b41ecc5151e","license":"MIT"},
+    {"source":"packages/happy-app/package.json","target":"happy-mobile/package.json","sha256":"bfef039b058d1c3431a90774bb4f97bb488b79f62fe6c865870fc073e64ae31f","license":"MIT"},
+    {"source":"package.json","target":"happy-mobile/package.json.root","sha256":"f3640fd60d7030418351d6bd84739b4de4a5550f13c4ae978cd4f31bb2659713","license":"MIT"},
+    {"source":"pnpm-lock.yaml","target":"happy-mobile/pnpm-lock.yaml","sha256":"6ac8f7afe7b3b8668fe32976a35a4a98dff0420d89b52c2e98333ea8fe9d037e","license":"MIT"},
+    {"source":"patches/","target":"happy-mobile/patches/","sha256":"8c309a70134a4327d8d47f6c2eb73d6e03f6f107d8adcdd3e5d35039b8c4d5a0;43dfd8f461bc0da3d16f7313080cba866ee242ac67b87d27d1ed3a8385cfffc4;5a7f5cac1b8b7d27405f9199a4beb19b91ef36164b3e516da20b00a89d8ebe46;2bea67206fbd733bac90e24553448789373dffdab70c783d6f33863d958492df;a3767ba86001c83f43c7c1bc12607bc6d6fcb8b665d560dc74965f398eb805ef;7f2a539a27a845ecc5ade6056b5714f1bd5047387b193046e45655e2bf197518","license":"MIT"}
+  ],
+  "dependencies": {"workspace":"@slopus/happy-wire","packageManager":"pnpm@10.11.0","runtime":"Expo 55 / React Native 0.83.1","voice":"LiveKit and ElevenLabs","storage":"MMKV, AsyncStorage, PGlite/Prisma"},
+  "patches": ["patches/expose-pierre-diffs-style.cjs","patches/fix-livekit-room-reuse.cjs","patches/fix-pglite-prisma-bytes.cjs","patches/fix-pierre-trees-preact-hooks.cjs","patches/fix-react-native-audio-api-size-t.cjs","patches/force-preact-cjs.cjs"]
+}
