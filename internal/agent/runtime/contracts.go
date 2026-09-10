@@ -36,6 +36,21 @@ type Fence struct {
 	Epoch int64
 }
 
+// RunEvent is an append-only durable event in a run stream. Seq is assigned by the store.
+type RunEvent struct {
+	Seq       int64           `json:"seq"`
+	AttemptID string          `json:"attempt_id,omitempty"`
+	Type      string          `json:"type"`
+	Payload   json.RawMessage `json:"payload"`
+}
+
+// RunInput is a durable steering message. Mode is inject or after.
+type RunInput struct {
+	SteerID string          `json:"steer_id"`
+	Mode    string          `json:"mode"`
+	Message json.RawMessage `json:"message"`
+}
+
 // Run is the durable execution query view.
 type Run struct {
 	Key                RunKey
@@ -101,4 +116,17 @@ type RunStore interface {
 	SaveCheckpoint(context.Context, Fence, CheckpointRecord) error
 	SetStatus(context.Context, Fence, string, string) error
 	LoadCheckpoint(context.Context, RunKey) (CheckpointRecord, error)
+}
+
+// RunEventStore is the durable event and steering projection boundary.
+type RunEventStore interface {
+	AppendEvent(context.Context, Fence, RunEvent) (RunEvent, error)
+	ReadEvents(context.Context, RunKey, int64, int) ([]RunEvent, error)
+	Finalize(context.Context, Fence, json.RawMessage) error
+}
+
+// RunInputStore persists and atomically applies steering inputs with a checkpoint.
+type RunInputStore interface {
+	AppendInput(context.Context, RunKey, RunInput) error
+	ApplyInput(context.Context, Fence, string, CheckpointRecord) error
 }
