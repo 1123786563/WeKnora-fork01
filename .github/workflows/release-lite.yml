@@ -47,6 +47,52 @@ jobs:
           path: frontend/dist/
           retention-days: 1
 
+  # Keep the React Web/Embed candidate separate from the current Vue Lite
+  # artifact until T25 accepts the migration and authorizes the switch.
+  build-react-artifact:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install pnpm
+        run: npm install --global pnpm@10.28.2
+
+      - name: Install React workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check React boundaries
+        run: node scripts/check-react-boundaries.mjs
+
+      - name: Build React Web and Embed candidate
+        env:
+          REACT_BUILD_VERSION: ${{ inputs.tag || github.sha }}
+          VITE_FRONTEND_COMMIT: ${{ github.sha }}
+        run: pnpm run build:react-bundle
+
+      - name: Package React candidate artifact
+        shell: bash
+        run: |
+          VERSION="${{ inputs.tag || github.sha }}"
+          ARCHIVE="WeKnora-react-web_${VERSION}"
+          mkdir -p "${ARCHIVE}"
+          cp -R dist/react-web/web "${ARCHIVE}/web"
+          tar czf "${ARCHIVE}.tar.gz" "${ARCHIVE}"
+          shasum -a 256 "${ARCHIVE}.tar.gz" > "${ARCHIVE}.tar.gz.sha256"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: react-web-dist
+          path: |
+            WeKnora-react-web_*.tar.gz
+            WeKnora-react-web_*.tar.gz.sha256
+          retention-days: 3
+
   # ── 2a. Build Web CLI binary per platform (native CGO) ──
   build-binary:
     needs: build-frontend
@@ -326,7 +372,7 @@ jobs:
 
   # ── 3. Create GitHub Release ──
   release:
-    needs: [build-binary, build-desktop-app]
+    needs: [build-binary, build-desktop-app, build-react-artifact]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -340,6 +386,11 @@ jobs:
         with:
           pattern: desktop-*
           merge-multiple: true
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: react-web-dist
+          path: .
 
       - name: Resolve version
         id: ver
@@ -414,6 +465,8 @@ jobs:
             --notes-file notes.md \
             WeKnora-lite_*.tar.gz \
             WeKnora-lite_*.tar.gz.sha256 \
+            WeKnora-react-web_*.tar.gz \
+            WeKnora-react-web_*.tar.gz.sha256 \
             WeKnora-Lite-App_* || true
 
   # ── 4. Update Homebrew Formula ──

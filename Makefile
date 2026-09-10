@@ -132,9 +132,9 @@ docker-build-docreader:
 # Build frontend Docker image (multi-stage: npm runs inside the builder stage)
 docker-build-frontend:
 	@eval $$(./scripts/get_version.sh env); \
-	docker build --platform $(PLATFORM) \
+		docker build --platform $(PLATFORM) \
 		--build-arg VITE_FRONTEND_COMMIT="$$COMMIT_ID" \
-		-f frontend/Dockerfile -t wechatopenai/weknora-ui:latest frontend/
+		-f frontend/Dockerfile -t wechatopenai/weknora-ui:latest .
 
 # Build all Docker images
 docker-build-all: docker-build-app docker-build-docreader docker-build-frontend
@@ -352,4 +352,3 @@ dev-app:
 
 dev-frontend:
 	./scripts/dev.sh frontend
-

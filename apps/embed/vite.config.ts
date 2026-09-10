@@ -4,6 +4,10 @@ import { fileURLToPath, URL } from 'node:url';
 
 export default defineConfig({
   plugins: [react()],
+  // The Embed entry is copied below web/embed/ for Lite and served behind
+  // /embed/. Keeping the base explicit prevents it from resolving assets
+  // against the main Web SPA.
+  base: '/embed/',
   resolve: {
     alias: {
       '@weknora/api-client/embed': fileURLToPath(new URL('../../packages/api-client/src/embed/client.ts', import.meta.url)),

@@ -28,3 +28,20 @@ func TestFrontendStaticDoesNotInterceptResourceGrant(t *testing.T) {
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.Equal(t, "resource", recorder.Body.String())
 }
+
+func TestFrontendStaticUsesDedicatedEmbedFallback(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	webDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(webDir, "index.html"), []byte("web"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(webDir, "embed.html"), []byte("embed"), 0o600))
+	t.Setenv("WEKNORA_WEB_DIR", webDir)
+
+	r := gin.New()
+	serveFrontendStatic(r)
+
+	recorder := httptest.NewRecorder()
+	r.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/embed/channel-1", nil))
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, "embed", recorder.Body.String())
+}

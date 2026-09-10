@@ -10,11 +10,14 @@
     "typecheck:web": "pnpm --filter @weknora/web exec tsc -p tsconfig.json --noEmit",
     "build:web": "pnpm --filter @weknora/web build",
     "build:desktop-renderer": "pnpm --filter @weknora/desktop-renderer build",
+    "build:react-bundle": "bash ./scripts/build_react_web_bundle.sh",
     "typecheck:desktop": "pnpm --filter @weknora/desktop-renderer typecheck",
     "test:desktop": "pnpm --filter @weknora/desktop-renderer test",
     "test:embed": "pnpm --filter @weknora/embed test",
     "typecheck:embed": "pnpm --filter @weknora/embed exec tsc -p tsconfig.json --noEmit",
-    "build:embed": "pnpm --filter @weknora/embed build"
+    "build:embed": "pnpm --filter @weknora/embed build",
+    "test:mobile": "pnpm --filter @weknora/mobile test",
+    "typecheck:mobile": "pnpm --filter @weknora/mobile typecheck"
   },
   "devDependencies": {
     "@types/node": "22.14.0",
