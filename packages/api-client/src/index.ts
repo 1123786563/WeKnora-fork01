@@ -14,3 +14,8 @@ export type { WikiPage, WikiPageListResponse, WikiPageRevision, WikiRevisionList
 export type { DataSource, DataSourceResource } from './datasource.ts';
 export { buildChatStreamRequest, createServerSentEventParser, parseChatEvent } from './chat/stream.ts';
 export type { ChatStreamRequestOptions, ParsedServerSentEvent, ServerSentEventHandler } from './chat/stream.ts';
+
+export { createOIDCApi } from './auth/oidc.ts';
+export type { OIDCAuthURLResponse, OIDCConfigResponse, OIDCExchangeResponse, AuthRequest } from './auth/oidc.ts';
+export { createInvitationsApi } from './auth/invitations.ts';
+export type { TenantInvitation, TenantInvitationStatus, InvitationListResponse, InvitationActionResponse, InvitationLookupResponse, RegisterByInviteRequest } from './auth/invitations.ts';
