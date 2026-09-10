@@ -8,7 +8,10 @@
     "./scope": "./src/scope.ts",
     "./wiki/diff": "./src/wiki/diff.ts",
     "./chat/draft": "./src/chat/draft.ts",
-    "./chat/reducer": "./src/chat/reducer.ts"
+    "./chat/reducer": "./src/chat/reducer.ts",
+    "./chat/references": "./src/chat/references.ts",
+    "./chat/artifacts": "./src/chat/artifacts.ts",
+    "./chat/tool-results": "./src/chat/tool-results.ts"
   },
   "dependencies": {
     "@weknora/contracts": "workspace:*"
