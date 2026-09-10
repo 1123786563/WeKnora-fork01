@@ -56,3 +56,17 @@ export function settingsValueEntries(value: unknown): Array<[string, string]> {
     .filter(([key]) => !isSecretKey(key))
     .map(([key, item]) => [key, printable(item)]);
 }
+
+export interface TenantEditState { name: string; description: string }
+
+export function tenantEditState(value: unknown): TenantEditState {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return { name: '', description: '' };
+  const row = value as Record<string, unknown>;
+  return { name: typeof row.name === 'string' ? row.name : '', description: typeof row.description === 'string' ? row.description : '' };
+}
+
+export function tenantPatch(name: string, description: string): { name: string; description: string } {
+  const nextName = name.trim();
+  if (!nextName) throw new Error('Tenant name is required');
+  return { name: nextName, description: description.trim() };
+}
