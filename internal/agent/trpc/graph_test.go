@@ -175,6 +175,7 @@ func (s *graphTestStore) LoadCheckpoint(context.Context, agentruntime.RunKey) (a
 type graphTestJournal struct {
 	plans   []agentruntime.ToolPlan
 	calls   int
+	order   []string
 	results map[string]agentruntime.StoredToolResult
 }
 
