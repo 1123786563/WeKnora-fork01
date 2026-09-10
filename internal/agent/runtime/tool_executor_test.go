@@ -49,7 +49,15 @@ func (j *executorJournal) BeginToolAttempt(_ context.Context, fence Fence, callI
 func (j *executorJournal) CommitToolResult(
 	_ context.Context, _ Fence, _ ToolAttempt, result StoredToolResult,
 ) error {
-	j.record.Status = ToolStatusResult
+	j.record.Status = ToolStatusSucceeded
+	j.record.Result = &result
+	return nil
+}
+
+func (j *executorJournal) CommitToolRejection(
+	_ context.Context, _ Fence, _ string, result StoredToolResult,
+) error {
+	j.record.Status = ToolStatusFailed
 	j.record.Result = &result
 	return nil
 }
@@ -68,7 +76,10 @@ func TestToolExecutorMarksCanceledDispatchUnknown(t *testing.T) {
 	executor := NewToolExecutor(
 		&executorRunStore{run: Run{Key: fence.RunKey, Status: "running", Owner: fence.Owner, Epoch: fence.Epoch}},
 		journal,
-		func(context.Context, string, json.RawMessage) (*types.ToolResult, error) {
+		func(ctx context.Context, _ string, _ json.RawMessage) (*types.ToolResult, error) {
+			if err := BeforeToolDispatch(ctx); err != nil {
+				return nil, err
+			}
 			return nil, context.DeadlineExceeded
 		},
 	)

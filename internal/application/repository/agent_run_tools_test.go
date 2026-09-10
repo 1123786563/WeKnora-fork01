@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -73,7 +74,10 @@ func TestToolResultEnvelopeSurvivesReopenWithoutDuplicateExecution(t *testing.T)
 	ctx := context.Background()
 	plan := testToolPlan()
 	var calls atomic.Int32
-	execute := func(context.Context, string, json.RawMessage) (*types.ToolResult, error) {
+	execute := func(ctx context.Context, _ string, _ json.RawMessage) (*types.ToolResult, error) {
+		if err := agentruntime.BeforeToolDispatch(ctx); err != nil {
+			return nil, err
+		}
 		calls.Add(1)
 		return &types.ToolResult{
 			Success: true, Output: "created", Data: map[string]any{"bytes": float64(7)},
@@ -95,7 +99,7 @@ func TestToolResultEnvelopeSurvivesReopenWithoutDuplicateExecution(t *testing.T)
 
 	record, err := reopened.EnsureToolPlan(ctx, fence, plan)
 	require.NoError(t, err)
-	require.Equal(t, agentruntime.ToolStatusResult, record.Status)
+	require.Equal(t, agentruntime.ToolStatusSucceeded, record.Status)
 	require.NotNil(t, record.Result)
 	require.Equal(t, []string{"sandbox:report.md"}, record.Result.OutputFiles)
 	require.Equal(t, record.Result.OutputFiles, record.Result.Result.OutputFiles)
@@ -110,8 +114,11 @@ func TestAgentRunToolUnknownOutcomeWaitsAndKeepsAttempt(t *testing.T) {
 	plan.IdempotencyExpiresAt = time.Time{}
 	var calls atomic.Int32
 	executor := agentruntime.NewToolExecutor(store, store, func(
-		context.Context, string, json.RawMessage,
+		ctx context.Context, _ string, _ json.RawMessage,
 	) (*types.ToolResult, error) {
+		if err := agentruntime.BeforeToolDispatch(ctx); err != nil {
+			return nil, err
+		}
 		calls.Add(1)
 		return nil, context.DeadlineExceeded
 	})
@@ -166,6 +173,9 @@ func TestAgentRunToolIdempotentRetryKeepsKeyAndAttemptHistory(t *testing.T) {
 	executor := agentruntime.NewToolExecutor(store, store, func(
 		ctx context.Context, _ string, _ json.RawMessage,
 	) (*types.ToolResult, error) {
+		if err := agentruntime.BeforeToolDispatch(ctx); err != nil {
+			return nil, err
+		}
 		metadata, ok := agentruntime.ToolDispatchFromContext(ctx)
 		require.True(t, ok)
 		require.Equal(t, "idem-1", metadata.IdempotencyKey)
@@ -187,7 +197,7 @@ func TestAgentRunToolIdempotentRetryKeepsKeyAndAttemptHistory(t *testing.T) {
 	require.NoError(t, store.db.Order("attempt ASC").Find(&attempts).Error)
 	require.Len(t, attempts, 2)
 	require.Equal(t, agentruntime.ToolStatusUnknown, attempts[0].Status)
-	require.Equal(t, agentruntime.ToolStatusResult, attempts[1].Status)
+	require.Equal(t, agentruntime.ToolStatusSucceeded, attempts[1].Status)
 	require.Contains(t, attempts[0].ErrorMessage, "canceled")
 }
 
@@ -259,4 +269,48 @@ func TestAgentRunToolRecoveryUsesImmutablePlanAndExpiry(t *testing.T) {
 	changed.IdempotencyKey = "new-key"
 	_, err = store.EnsureToolPlan(ctx, fence, changed)
 	require.ErrorIs(t, err, agentruntime.ErrConflict)
+}
+
+func TestAgentRunToolCommittedResultValidatesCheckpoint(t *testing.T) {
+	for _, success := range []bool{true, false} {
+		t.Run(fmt.Sprint(success), func(t *testing.T) {
+			store, fence := claimedToolRun(t)
+			plan := testToolPlan()
+			ctx := context.Background()
+			_, err := agentruntime.NewToolExecutor(store, store, func(
+				ctx context.Context, _ string, _ json.RawMessage,
+			) (*types.ToolResult, error) {
+				if err := agentruntime.BeforeToolDispatch(ctx); err != nil {
+					return nil, err
+				}
+				return &types.ToolResult{Success: success, Output: "provider response"}, nil
+			}).Execute(ctx, fence, plan)
+			require.NoError(t, err)
+			err = store.ValidateCheckpointCalls(ctx, fence.RunKey, nil, map[string]bool{plan.CallID: true})
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestAgentRunToolPersistsReturnedResultAfterRequestCancellation(t *testing.T) {
+	store, fence := claimedToolRun(t)
+	plan := testToolPlan()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var calls int
+	execute := func(ctx context.Context, _ string, _ json.RawMessage) (*types.ToolResult, error) {
+		if err := agentruntime.BeforeToolDispatch(ctx); err != nil {
+			return nil, err
+		}
+		calls++
+		cancel()
+		return &types.ToolResult{Success: true, Output: "side effect completed"}, nil
+	}
+	_, err := agentruntime.NewToolExecutor(store, store, execute).Execute(ctx, fence, plan)
+	require.NoError(t, err)
+	reopened := NewAgentRunStore(reopenRunDB(t, store.db))
+	result, err := agentruntime.NewToolExecutor(reopened, reopened, execute).Execute(context.Background(), fence, plan)
+	require.NoError(t, err)
+	require.Equal(t, "side effect completed", result.Result.Output)
+	require.Equal(t, 1, calls)
 }

@@ -7,6 +7,7 @@ import (
 	"sort"
 	"unicode/utf8"
 
+	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/common"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -226,6 +227,15 @@ func (r *ToolRegistry) execute(ctx context.Context, tool types.Tool, args json.R
 	if provider, ok := tool.(outputLimitProvider); ok {
 		if toolLimit := provider.OutputLimitChars(args); toolLimit > maxOutput {
 			maxOutput = toolLimit
+		}
+	}
+	// MCP wrappers own a later boundary, after policy, human approval and
+	// OAuth connection checks. Other tools dispatch after registry validation.
+	switch tool.(type) {
+	case *MCPTool, *MCPRegisteredTool, *MCPCallTool:
+	default:
+		if err := agentruntime.BeforeToolDispatch(ctx); err != nil {
+			return nil, err
 		}
 	}
 	result, execErr := tool.Execute(WithOutputBudget(ctx, maxOutput), args)

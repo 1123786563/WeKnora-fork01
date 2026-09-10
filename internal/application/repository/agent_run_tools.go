@@ -310,6 +310,18 @@ func (s *AgentRunStore) CommitToolResult(
 	ctx context.Context, fence agentruntime.Fence, attempt agentruntime.ToolAttempt,
 	result agentruntime.StoredToolResult,
 ) error {
+	fields, err := storedToolResultFields(result)
+	if err != nil {
+		return err
+	}
+	status := agentruntime.ToolStatusFailed
+	if result.Result.Success {
+		status = agentruntime.ToolStatusSucceeded
+	}
+	return s.finishToolAttempt(ctx, fence, attempt, status, "", fields)
+}
+
+func storedToolResultFields(result agentruntime.StoredToolResult) (map[string]any, error) {
 	if result.Source == "" {
 		result.Source = "tool"
 	}
@@ -322,14 +334,51 @@ func (s *AgentRunStore) CommitToolResult(
 	}
 	encodedFiles, err := json.Marshal(files)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	encodedResult, err := json.Marshal(result.Result)
 	if err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"result": string(encodedResult), "output_files": string(encodedFiles), "source": result.Source,
+	}, nil
+}
+
+// CommitToolRejection records a definitive preflight rejection without claiming
+// an external dispatch. Pending approval/OAuth errors never call this method.
+func (s *AgentRunStore) CommitToolRejection(
+	ctx context.Context, fence agentruntime.Fence, callID string, result agentruntime.StoredToolResult,
+) error {
+	if result.Result.Success || callID == "" {
+		return agentruntime.ErrConflict
+	}
+	fields, err := storedToolResultFields(result)
+	if err != nil {
 		return err
 	}
-	return s.finishToolAttempt(ctx, fence, attempt, agentruntime.ToolStatusResult, "", map[string]any{
-		"result": string(encodedResult), "output_files": string(encodedFiles), "source": result.Source,
+	fields["status"] = agentruntime.ToolStatusFailed
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := s.lockToolRun(tx, fence); err != nil {
+			return err
+		}
+		var attempts int64
+		count := toolCallScope(tx.Model(&agentToolAttemptRow{}), fence.RunKey, callID).Count(&attempts)
+		if err := count.Error; err != nil {
+			return err
+		}
+		if attempts != 0 {
+			return agentruntime.ErrConflict
+		}
+		updated := toolCallScope(tx.Model(&agentToolCallRow{}), fence.RunKey, callID).
+			Where("status = ?", agentruntime.ToolStatusPlanned).Updates(fields)
+		if updated.Error != nil {
+			return updated.Error
+		}
+		if updated.RowsAffected != 1 {
+			return agentruntime.ErrConflict
+		}
+		return nil
 	})
 }
 
