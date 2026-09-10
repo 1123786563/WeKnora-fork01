@@ -24,7 +24,7 @@ const scopeController = scopeRuntime.controller;
 let client: ReturnType<typeof createWeKnoraClient>;
 const refreshCoordinator = browserCredentialAdapter ? createRefreshCoordinator({
   credentials: browserCredentialAdapter,
-  refresh: async (refreshToken) => ({ success: true, ...(await client.auth.refresh(refreshToken)) }),
+  refresh: (refreshToken) => client.auth.refresh(refreshToken),
 }) : undefined;
 
 client = createWeKnoraClient({

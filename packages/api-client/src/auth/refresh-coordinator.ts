@@ -28,7 +28,8 @@ function parseRefreshCredential(response: RefreshResponse, previous: BearerCrede
     throw new AuthError('AUTH_REFRESH_INVALID', 'Refresh response did not contain valid tokens');
   }
   const record = response as Record<string, unknown>;
-  if (record.success !== true || !isNonEmptyString(record.access_token)) {
+  const isEnvelope = record.success !== undefined;
+  if ((isEnvelope ? record.success !== true : false) || !isNonEmptyString(record.access_token)) {
     throw new AuthError('AUTH_REFRESH_INVALID', 'Refresh response did not contain a valid access token');
   }
   if (record.refresh_token !== undefined && !isNonEmptyString(record.refresh_token)) {

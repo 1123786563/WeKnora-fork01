@@ -44,6 +44,17 @@ test('refreshes a bearer profile once for concurrent callers and rotates both to
   assert.deepEqual(credentials.value, { kind: 'bearer', accessToken: 'new-access', refreshToken: 'new-refresh' });
 });
 
+test('accepts the normalized token pair returned by auth.refresh', async () => {
+  const credentials = adapter({ kind: 'bearer', accessToken: 'old-access', refreshToken: 'old-refresh' });
+  const coordinator = createRefreshCoordinator({
+    credentials,
+    refresh: async () => ({ access_token: 'new-access', refresh_token: 'new-refresh' }),
+  });
+
+  assert.deepEqual(await coordinator.refresh(), { kind: 'bearer', accessToken: 'new-access', refreshToken: 'new-refresh' });
+  assert.deepEqual(credentials.value, { kind: 'bearer', accessToken: 'new-access', refreshToken: 'new-refresh' });
+});
+
 test('refresh failure clears bearer credentials and rejects every waiter', async () => {
   const credentials = adapter({ kind: 'bearer', accessToken: 'old-access', refreshToken: 'old-refresh' });
   const failure = new Error('refresh denied');
