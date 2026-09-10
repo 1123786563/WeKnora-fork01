@@ -22,6 +22,7 @@ import { DataSourcesPage } from './data-sources/DataSourcesPage.tsx';
 import { KnowledgeSettingsPage } from './knowledge-settings/KnowledgeSettingsPage.tsx';
 import { ConfigurationPage } from './configuration/ConfigurationPage.tsx';
 import { AdministrationPage } from './administration/AdministrationPage.tsx';
+import { OrganizationsPage } from './organizations/OrganizationsPage.tsx';
 import './styles.css';
 
 const oidcCallback = parseOIDCCallbackHash(window.location.hash);
@@ -128,6 +129,8 @@ function renderProtected() {
     root.render(<ConfigurationPage client={client} />);
   } else if (route.path === '/platform/administration') {
     root.render(<AdministrationPage client={client} tenantId={Number(scopeRuntime.current().scope.tenantId)} />);
+  } else if (route.path === '/platform/organizations') {
+    root.render(<OrganizationsPage client={client} />);
   } else if (route.path === '/platform/system') {
     root.render(<AdministrationPage client={client} tenantId={Number(scopeRuntime.current().scope.tenantId)} systemAdmin />);
   } else if (route.kind === 'knowledge-base' && route.path.split('/').filter(Boolean).length === 2) {

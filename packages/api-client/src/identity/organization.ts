@@ -5,7 +5,7 @@ export type OrganizationRole = 'admin' | 'editor' | 'viewer';
 export type OrganizationPermission = 'admin' | 'editor' | 'viewer';
 export interface Organization { id: string; name: string; description: string; owner_id: string; owner_tenant_id: number; [key: string]: unknown }
 export interface OrganizationPage { items: Organization[]; total: number; resourceCounts?: JsonRecord }
-export interface OrganizationMember { id: string; user_id: string; username: string; email: string; role: OrganizationRole; tenant_id: number; joined_at: string; [key: string]: unknown }
+export interface OrganizationMember { id: string; user_id: string; username: string; email: string; role: OrganizationRole; tenant_id: number; tenant_name?: string; joined_at: string; [key: string]: unknown }
 export interface OrganizationMemberPage { items: OrganizationMember[]; total: number }
 export interface OrganizationJoinRequest { id: string; user_id: string; username: string; email: string; message: string; request_type: string; requested_role: string; status: string; created_at: string; [key: string]: unknown }
 export interface OrganizationJoinRequestPage { items: OrganizationJoinRequest[]; total: number }
@@ -19,7 +19,7 @@ function organization(value: unknown, path: string): Organization {
 }
 function member(value: unknown, path: string): OrganizationMember {
   const row = record(value, path);
-  return { ...row, id: stringValue(row.id, `${path}.id`), user_id: stringValue(row.user_id, `${path}.user_id`), username: stringValue(row.username, `${path}.username`), email: stringValue(row.email, `${path}.email`), role: stringValue(row.role, `${path}.role`) as OrganizationRole, tenant_id: numberValue(row.tenant_id, `${path}.tenant_id`), joined_at: stringValue(row.joined_at, `${path}.joined_at`) };
+  return { ...row, id: stringValue(row.id, `${path}.id`), user_id: stringValue(row.user_id, `${path}.user_id`), username: stringValue(row.username, `${path}.username`), email: stringValue(row.email, `${path}.email`), role: stringValue(row.role, `${path}.role`) as OrganizationRole, tenant_id: numberValue(row.tenant_id, `${path}.tenant_id`), ...(typeof row.tenant_name === 'string' ? { tenant_name: row.tenant_name } : {}), joined_at: stringValue(row.joined_at, `${path}.joined_at`) };
 }
 function parseResource(value: unknown, path: string): OrganizationShare { const row = record(value, path); return { ...row, id: stringValue(row.id, `${path}.id`) }; }
 function responseData(value: unknown, path: string): unknown { return success(value, path).data; }
