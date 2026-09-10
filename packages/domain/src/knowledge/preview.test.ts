@@ -17,4 +17,5 @@ test('does not present non-terminal processing as ready to preview', () => {
   assert.deepEqual(previewStatus({ parse_status: 'finalizing' }), { kind: 'processing', label: 'Finalizing' });
   assert.deepEqual(previewStatus({ parse_status: 'completed' }), { kind: 'ready', label: 'Ready' });
   assert.deepEqual(previewStatus({ parse_status: 'failed' }), { kind: 'unavailable', label: 'Failed' });
+  assert.deepEqual(previewStatus({ parse_status: 'indexed' as never }), { kind: 'unavailable', label: 'Unknown status' });
 });

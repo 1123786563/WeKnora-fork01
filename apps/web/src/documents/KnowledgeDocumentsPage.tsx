@@ -19,7 +19,9 @@ function displayName(document: KnowledgeDocument): string {
 
 function documentStatus(document: KnowledgeDocument): { label: string; tone: 'neutral' | 'success' | 'warning' | 'error' } {
   if (!document.parse_status) return { label: 'Unknown status', tone: 'warning' };
-  const status = normalizeKnowledgeProcessingStatus(document.parse_status);
+  let status: ReturnType<typeof normalizeKnowledgeProcessingStatus>;
+  try { status = normalizeKnowledgeProcessingStatus(document.parse_status); }
+  catch { return { label: 'Unknown status', tone: 'warning' }; }
   if (status === 'completed') return { label: processingStatusLabel(status), tone: 'success' };
   if (status === 'failed' || status === 'cancelled') return { label: processingStatusLabel(status), tone: 'error' };
   return { label: processingStatusLabel(status), tone: 'warning' };

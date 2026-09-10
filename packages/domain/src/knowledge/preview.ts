@@ -17,7 +17,12 @@ export function previewKindForFile(fileName: string): KnowledgePreviewKind {
 
 export function previewStatus(document: Pick<KnowledgeDocument, 'parse_status'>): { kind: 'ready' | 'processing' | 'unavailable'; label: string } {
   if (!document.parse_status) return { kind: 'unavailable', label: 'Unknown status' };
-  const status = normalizeKnowledgeProcessingStatus(document.parse_status);
+  let status: ReturnType<typeof normalizeKnowledgeProcessingStatus>;
+  try {
+    status = normalizeKnowledgeProcessingStatus(document.parse_status);
+  } catch {
+    return { kind: 'unavailable', label: 'Unknown status' };
+  }
   if (status === 'completed') return { kind: 'ready', label: 'Ready' };
   if (status === 'failed' || status === 'cancelled') return { kind: 'unavailable', label: processingStatusLabel(status) };
   return { kind: 'processing', label: processingStatusLabel(status) };
