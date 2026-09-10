@@ -40,7 +40,7 @@ func (s *AgentRunStore) AppendInput(ctx context.Context, key agentruntime.RunKey
 	return nil
 }
 func (s *AgentRunStore) ApplyInput(ctx context.Context, fence agentruntime.Fence, steerID string, cp agentruntime.CheckpointRecord) error {
-	if steerID == "" || cp.ID == "" || !json.Valid(cp.State) || !json.Valid(cp.PendingWrites) {
+	if steerID == "" || cp.Namespace == "" || cp.ID == "" || cp.Seq < 0 || !json.Valid(cp.State) || !json.Valid(cp.PendingWrites) {
 		return agentruntime.ErrConflict
 	}
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {

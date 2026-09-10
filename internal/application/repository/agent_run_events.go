@@ -80,7 +80,7 @@ func (s *AgentRunStore) Finalize(ctx context.Context, fence agentruntime.Fence, 
 		return agentruntime.ErrConflict
 	}
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := s.fenced(tx, fence).Take(&agentRunRow{}).Error; err != nil {
+		if err := s.lockToolRun(tx, fence); err != nil {
 			var terminal agentRunRow
 			if e := runScope(tx, fence.RunKey).Where("status = ?", "succeeded").Take(&terminal).Error; e == nil {
 				return nil
@@ -93,9 +93,13 @@ func (s *AgentRunStore) Finalize(ctx context.Context, fence agentruntime.Fence, 
 		}
 		var obj struct {
 			Content string `json:"content"`
+			Answer  string `json:"answer"`
 		}
 		if err := json.Unmarshal(answer, &obj); err != nil {
 			return err
+		}
+		if obj.Content == "" {
+			obj.Content = obj.Answer
 		}
 		if obj.Content == "" {
 			obj.Content = string(answer)
