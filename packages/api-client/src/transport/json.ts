@@ -5,6 +5,7 @@ export interface FetchResponseLike {
   headers: { get(name: string): string | null };
   json(): Promise<unknown>;
   text(): Promise<string>;
+  body?: { getReader(): { read(): Promise<{ done: boolean; value?: Uint8Array }>; releaseLock?(): void } } | null;
 }
 
 export type FetchLike = (input: string, init?: {
@@ -35,6 +36,36 @@ export function createJsonTransport(fetcher: FetchLike): HttpTransport {
         headers: requestId ? { 'x-request-id': requestId } : {},
         body,
       };
+    },
+    async sendStream(request: HttpRequest) {
+      const response = await fetcher(request.url, {
+        method: request.method,
+        headers: request.headers,
+        body: request.body === undefined ? undefined : JSON.stringify(request.body),
+        signal: request.signal,
+      });
+      const requestId = response.headers.get('x-request-id');
+      const headers: Record<string, string> = {};
+      if (requestId) headers['x-request-id'] = requestId;
+      async function* chunks(): AsyncIterable<string> {
+        if (response.body) {
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          try {
+            for (;;) {
+              const part = await reader.read();
+              if (part.done) break;
+              if (part.value) yield decoder.decode(part.value, { stream: true });
+            }
+            const tail = decoder.decode();
+            if (tail) yield tail;
+          } finally { reader.releaseLock?.(); }
+        } else {
+          const text = await response.text();
+          if (text) yield text;
+        }
+      }
+      return { status: response.status, headers, chunks: chunks() };
     },
   };
 }

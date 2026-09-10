@@ -12,8 +12,15 @@ export interface HttpResult {
   body: unknown;
 }
 
+export interface HttpStreamResult {
+  status: number;
+  headers: Record<string, string>;
+  chunks: AsyncIterable<string>;
+}
+
 export interface HttpTransport {
   send(request: HttpRequest): Promise<HttpResult>;
+  sendStream?(request: HttpRequest): Promise<HttpStreamResult>;
 }
 
 export interface RequestScope {

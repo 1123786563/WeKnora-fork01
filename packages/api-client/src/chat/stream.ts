@@ -1,5 +1,6 @@
 import type { ChatStreamEvent } from '@weknora/contracts';
 import type { ClientRequest } from '../client.ts';
+import type { HttpStreamResult } from '../ports.ts';
 
 export interface ParsedServerSentEvent {
   id?: string;
@@ -95,4 +96,13 @@ export async function consumeChatStream(
   const parser = createServerSentEventParser((event) => onEvent(parseChatEvent(event)));
   parser.push(body);
   parser.finish();
+}
+
+export function consumeStreamResult(result: HttpStreamResult, onEvent: (event: ChatStreamEvent) => void): Promise<void> {
+  if (result.status < 200 || result.status >= 300) throw new Error(`Chat stream failed with HTTP ${result.status}`);
+  return (async () => {
+    const parser = createServerSentEventParser((event) => onEvent(parseChatEvent(event)));
+    for await (const chunk of result.chunks) parser.push(chunk);
+    parser.finish();
+  })();
 }
