@@ -2,6 +2,7 @@ import * as React from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { createMobileHost, useMobileHost, useSetMobileHost } from '@/weknora/platform/host';
+import { nativeOriginStorage } from '@/weknora/platform/native-origin-storage';
 
 export default function ServerConfigScreen() {
   const router = useRouter();
@@ -10,11 +11,13 @@ export default function ServerConfigScreen() {
   const [origin, setOrigin] = React.useState(currentHost?.origin ?? '');
   const [error, setError] = React.useState<string | null>(null);
 
-  const save = () => {
+  const save = async () => {
     try {
-      setMobileHost(createMobileHost(origin));
+      const selected = createMobileHost(origin);
+      setMobileHost(selected);
+      await nativeOriginStorage.write(selected.origin);
       setError(null);
-      router.replace('/(app)');
+      router.replace('/(app)/login');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'INVALID_SERVER');
     }

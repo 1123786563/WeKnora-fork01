@@ -6,6 +6,8 @@ export type { BearerCredential, EmbedCredential, Credential, CredentialAdapter }
 export { createJsonTransport } from './transport/json.ts';
 export { AuthError, createRefreshCoordinator } from './auth/refresh-coordinator.ts';
 export type { AuthErrorCode, RefreshCoordinator, RefreshCoordinatorOptions, RefreshResponse } from './auth/refresh-coordinator.ts';
+export { createProductAuth, createProductAuthSession, parseLogin } from './auth/login.ts';
+export type { ParsedLogin, ProductAuthOptions } from './auth/login.ts';
 export type { KnowledgeDocumentListParams, KnowledgeDocumentUploadInput } from './knowledge/documents.ts';
 export type { KnowledgeDocument, KnowledgeProcessingStatus, KnowledgeDocumentListResponse } from '@weknora/contracts';
 export type { WikiPage, WikiPageListResponse, WikiPageRevision, WikiRevisionListResponse, WikiPageUpdateInput } from './wiki/pages.ts';
