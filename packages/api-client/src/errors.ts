@@ -7,6 +7,20 @@ export interface ApiErrorInit {
   cause?: unknown;
 }
 
+export function createAbortError(message = 'Request was cancelled'): Error {
+  const DOMExceptionConstructor = (globalThis as typeof globalThis & {
+    DOMException?: new (message?: string, name?: string) => Error;
+  }).DOMException;
+  if (DOMExceptionConstructor) return new DOMExceptionConstructor(message, 'AbortError');
+  const error = new Error(message);
+  error.name = 'AbortError';
+  return error;
+}
+
+export function isNamedError(error: unknown, name: string): boolean {
+  return error instanceof Error && error.name === name;
+}
+
 export class ApiError extends Error {
   readonly status?: number;
   readonly code: string;

@@ -1,5 +1,5 @@
 import { parseActionSuccessResponse, parseKnowledgeBaseListResponse, parseKnowledgeBaseResponse, type KnowledgeBase } from '@weknora/contracts';
-import { ApiError, errorFromResult } from './errors.ts';
+import { ApiError, createAbortError, errorFromResult, isNamedError } from './errors.ts';
 import type { HttpRequest, HttpResult, HttpTransport } from './ports.ts';
 import { createKnowledgeDocumentsApi } from './knowledge/documents.ts';
 import { createKnowledgeFaqApi } from './knowledge/faq.ts';
@@ -81,17 +81,17 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
     try {
       const result: HttpResult = await options.transport.send(request);
       if (controller.signal.aborted) {
-        throw new DOMException('Request was cancelled', 'AbortError');
+        throw createAbortError();
       }
       if (result.status === 204) return undefined;
       if (result.status < 200 || result.status >= 300) throw errorFromResult(result.status, result.body, result.headers);
       return result.body;
     } catch (error: unknown) {
       if (error instanceof ApiError) throw error;
-      if (timedOut || (error instanceof DOMException && error.name === 'TimeoutError')) {
+      if (timedOut || isNamedError(error, 'TimeoutError')) {
         throw new ApiError({ code: 'TIMEOUT', message: 'Request timed out', cause: error });
       }
-      if (input.signal?.aborted || (error instanceof DOMException && error.name === 'AbortError')) {
+      if (input.signal?.aborted || isNamedError(error, 'AbortError')) {
         throw new ApiError({ code: 'CANCELLED', message: 'Request was cancelled', cause: error });
       }
       throw error;

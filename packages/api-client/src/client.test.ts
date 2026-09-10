@@ -92,6 +92,28 @@ test('preserves cancellation and converts timeout to a typed error', async () =>
   );
 });
 
+test('classifies abort-like errors when DOMException is unavailable', async () => {
+  const globals = globalThis as typeof globalThis & { DOMException?: typeof DOMException };
+  const originalDOMException = globals.DOMException;
+  try {
+    delete globals.DOMException;
+    const aborted = new Error('network cancelled');
+    aborted.name = 'AbortError';
+    const client = createWeKnoraClient({
+      baseURL: 'https://api.example.test',
+      transport: { send: async () => { throw aborted; } },
+    });
+
+    await assert.rejects(
+      client.request({ method: 'GET', path: '/api/v1/knowledge-bases' }),
+      (error: unknown) => error instanceof ApiError && error.code === 'CANCELLED',
+    );
+  } finally {
+    if (originalDOMException) globals.DOMException = originalDOMException;
+    else delete globals.DOMException;
+  }
+});
+
 test('honors an already-aborted caller signal before transport starts', async () => {
   const controller = new AbortController();
   controller.abort();

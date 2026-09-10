@@ -1,4 +1,4 @@
-import { createServerSentEventParser, parseChatEvent } from '@weknora/api-client';
+import { createAbortError, createServerSentEventParser, parseChatEvent } from '@weknora/api-client';
 import type { ChatStreamEvent } from '@weknora/contracts';
 
 export async function consumeNativeSSE(response: Response, onEvent: (event: ChatStreamEvent) => void, signal?: AbortSignal): Promise<void> {
@@ -11,7 +11,7 @@ export async function consumeNativeSSE(response: Response, onEvent: (event: Chat
   signal?.addEventListener('abort', abort, { once: true });
   try {
     for (;;) {
-      if (signal?.aborted) throw new DOMException('Request was cancelled', 'AbortError');
+      if (signal?.aborted) throw createAbortError();
       const part = await reader.read();
       if (part.done) break;
       if (part.value) parser.push(decoder.decode(part.value, { stream: true }));

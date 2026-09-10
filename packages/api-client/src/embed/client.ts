@@ -1,4 +1,4 @@
-import { ApiError, errorFromResult } from '../errors.ts';
+import { ApiError, createAbortError, errorFromResult, isNamedError } from '../errors.ts';
 import type { HttpRequest, HttpResult, HttpTransport } from '../ports.ts';
 import { consumeStreamResult, createServerSentEventParser, parseChatEvent } from '../chat/stream.ts';
 import type { ChatStreamEvent } from '@weknora/contracts';
@@ -37,14 +37,14 @@ export function createEmbedClient(options: EmbedClientOptions): { request: (inpu
     };
     try {
       const result: HttpResult = await options.transport.send(request);
-      if (controller.signal.aborted) throw new DOMException('Request was cancelled', 'AbortError');
+      if (controller.signal.aborted) throw createAbortError();
       if (result.status === 204) return undefined;
       if (result.status < 200 || result.status >= 300) throw errorFromResult(result.status, result.body, result.headers);
       return result.body;
     } catch (error: unknown) {
       if (error instanceof ApiError) throw error;
-      if (timedOut || (error instanceof DOMException && error.name === 'TimeoutError')) throw new ApiError({ code: 'TIMEOUT', message: 'Request timed out', cause: error });
-      if (input.signal?.aborted || (error instanceof DOMException && error.name === 'AbortError')) throw new ApiError({ code: 'CANCELLED', message: 'Request was cancelled', cause: error });
+      if (timedOut || isNamedError(error, 'TimeoutError')) throw new ApiError({ code: 'TIMEOUT', message: 'Request timed out', cause: error });
+      if (input.signal?.aborted || isNamedError(error, 'AbortError')) throw new ApiError({ code: 'CANCELLED', message: 'Request was cancelled', cause: error });
       throw error;
     } finally {
       clearTimeout(timer);
