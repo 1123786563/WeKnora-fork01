@@ -36,7 +36,7 @@
 | T13 Markdown、引用、工具结果与产物 | review | `addbc48` | `pnpm test:shared` 0（78/78）；`pnpm typecheck:shared` 0；`pnpm typecheck:web` 0；`pnpm build:web` 0；`git diff --check` 0 | Pure reference grouping, artifact metadata sanitization/path construction, tool renderer classification and security policy tests: passed; protected download/preview/browser XSS/performance: not completed | Added UI-independent reference groups, variable-length public resource handles, authenticated artifact download path, expiry handling, and explicit plain-text fallback for unknown tools. DOM markdown renderer, protected live artifact download and browser security evidence remain. |
 | T14 沙箱终端与文件面板 | review | `7579143` | `pnpm test:shared` 0（83/83）；`pnpm typecheck:shared` 0；`pnpm typecheck:web` 0；`pnpm build:web` 0；`git diff --check` 0 | Strict ticket DTO, authenticated ticket POST, WS URL without JWT, terminal status/generation pure tests: passed; real WS shell/resize/reconnect/browser: not completed | Added short-lived ticket API and explicit terminal state/URL helpers. Web terminal panel, ticket refresh/reconnect, PTY input/resize, and live shell evidence remain. |
 | T15 Agent、模型、MCP与Skill配置 | review | `cbe5710` + `9b253b6` | `pnpm test:shared` 0（89/89）；`pnpm typecheck:shared` 0；`pnpm typecheck:web` 0；`pnpm build:web` 0；`git diff --check` 0 | Strict shared configuration list/get/create/update/delete seams for Agent/Model/MCP and Skill listing, secret redaction tests: passed; configuration UI, permission negatives, debug/OAuth/install lifecycle and live calls: not completed | Added shared configuration API with route-specific collections, encoded IDs, success-envelope validation, explicit failure behavior, and secret removal from returned records. Full settings UI and per-feature live acceptance remain. |
-| T16 空间与组织管理、系统后台 | pending | — | — | — | 依赖 T04/T05 |
+| T16 空间与组织管理、系统后台 | review | `ae40b71` (`feat: add identity and administration client seams`) | `pnpm test:shared` 0（98/98）；`pnpm typecheck:shared` 0；`pnpm test:web` 0（15/15）；`pnpm typecheck:web` 0；`pnpm build:web` 0；`git diff --check` 0 | Shared strict identity/administration API and production Web bundle: passed; real backend role matrix, browser access matrix and Lite runtime: not completed | Added tenant members/invitations/audit, organization CRUD/membership/share routes, system admins/API keys/settings/runtime queues; UI screens, live 403/409 matrix and capability-driven visibility remain |
 | T17 其余设置、Memory与运行配置 | pending | — | — | — | 依赖 T09/T15 |
 | T18 Embed、IM与外部集成入口 | pending | — | — | — | 依赖 T12/T13/T15 |
 | T19 Wails React renderer与Lite发布 | pending | — | — | — | 依赖 T06；最终依赖 T07–T18 |
@@ -91,6 +91,7 @@
 | 2026-09-10 | T09 add data-source API client seam and endpoint tests | `f2fe50e` |
 | 2026-09-10 | T10 add chat response contracts and pure stream reducer | `cfb7d29` |
 | 2026-09-10 | T10 add incremental SSE framing and resumable request builder | `f2c2fd3` |
+| 2026-09-10 | T16 shared identity and administration API seam, strict contract tests and client wiring | `8dd391b` |
 | 2026-09-10 | T01-T05 completion plan and scoped React fixes | `e4134a0`, `0105fa8`, `ef3377a`, `19dede6`, `cc3556f`, `a784f2b`, `a356e80` |
 | 2026-09-10 | T06 React knowledge-base mutation flow | `292fdc4` |
 
@@ -111,6 +112,14 @@
 - `pnpm test:shared`：46/46，0；`pnpm typecheck:shared`：0。
 - `pnpm --filter @weknora/web test`：11/11，0；`pnpm typecheck:web`：0；`pnpm build:web`：0；`git diff --check`：0。
 - 证据层级：静态/Node mock/Web bundle 已有；真实后端、浏览器真实账号/OIDC、Wails 安装包、移动原生和六语言完整迁移仍缺失，因此 T01-T05 保持 `review`，不得写为 `accepted`。
+
+### T16 review evidence (current worktree)
+
+- Added `packages/api-client/src/identity/` for tenant members, invitations, audit cursor, organization membership, join requests, KB/agent sharing and tenant-independent organization discovery.
+- Added `packages/api-client/src/administration/index.ts` for tenant/platform API keys and capability scopes, system-admin operations, system settings, system audit and runtime queue/task pagination.
+- Every mutation uses the shared request boundary; encoded identifiers and query parameters are tested. HTTP 403/409 `ApiError` instances are deliberately not converted to successful responses; deletion/leave methods resolve only after the server response is accepted.
+- TDD evidence: missing modules produced RED module-resolution failures; focused tests then passed 7/7; aggregate `pnpm test:shared` passed 98/98.
+- `pnpm typecheck:shared`, `pnpm typecheck:web`, and `pnpm build:web` exited 0; real backend, browser access matrix, Lite capability visibility and React organization/administration screens remain unverified, so T16 stays `review`.
 
 ### 本轮问题与裁定
 
