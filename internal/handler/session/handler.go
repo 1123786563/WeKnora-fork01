@@ -371,7 +371,7 @@ func (h *Handler) UpdateSession(c *gin.Context) {
 func (h *Handler) fenceSessionRuns(ctx context.Context, sessionID string) error {
 	runs := h.runService()
 	if runs == nil {
-		return nil
+		return errors.NewServiceUnavailableError("durable agent runs are unavailable")
 	}
 	tenant, ok := types.TenantIDFromContext(ctx)
 	if !ok || tenant == 0 {

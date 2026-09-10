@@ -89,11 +89,34 @@ func (h *Handler) ownedRun(c *gin.Context) (context.Context, agentruntime.RunKey
 }
 
 func (h *Handler) GetAgentRun(c *gin.Context) {
-	_, _, run, ok := h.ownedRun(c)
+	ctx, key, run, ok := h.ownedRun(c)
 	if !ok {
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": runView(run)})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": runViewWithSeq(run, h.latestRunSeq(ctx, key))})
+}
+func (h *Handler) latestRunSeq(ctx context.Context, key agentruntime.RunKey) int64 {
+	runs := h.runService()
+	if runs == nil {
+		return 0
+	}
+	es, ok := runs.Store().(interface {
+		ReadEvents(context.Context, agentruntime.RunKey, int64, int) ([]agentruntime.RunEvent, error)
+	})
+	if !ok {
+		return 0
+	}
+	events, err := es.ReadEvents(ctx, key, 0, 100000)
+	if err != nil {
+		return 0
+	}
+	var seq int64
+	for _, e := range events {
+		if e.Seq > seq {
+			seq = e.Seq
+		}
+	}
+	return seq
 }
 func runView(r agentruntime.Run) gin.H {
 	return gin.H{"run_id": r.Key.RunID, "session_id": r.SessionID, "status": r.Status, "wait_reason": r.WaitReason, "revision": r.Revision, "epoch": r.Epoch, "seq": int64(0), "capabilities": gin.H{"engine_type": "trpc", "durable_recovery": true}}
@@ -132,7 +155,8 @@ func (h *Handler) GetAgentRunEvents(c *gin.Context) {
 			status = http.StatusNotFound
 		}
 		if errors.Is(err, agentruntime.ErrCursorExpired) {
-			status = http.StatusConflict
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "cursor_expired"})
+			return
 		}
 		c.JSON(status, gin.H{"error": err.Error()})
 		return
@@ -175,6 +199,12 @@ func (h *Handler) GetAgentRunEvents(c *gin.Context) {
 		case <-ticker.C:
 			page, readErr := es.ReadEvents(ctx, key, after, 256)
 			if readErr != nil {
+				code := "event_read_error"
+				if errors.Is(readErr, agentruntime.ErrCursorExpired) {
+					code = "cursor_expired"
+				}
+				c.SSEvent("error", gin.H{"code": code, "message": readErr.Error(), "seq": after})
+				c.Writer.Flush()
 				return
 			}
 			after = emit(page)
