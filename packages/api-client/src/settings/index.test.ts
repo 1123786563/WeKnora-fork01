@@ -98,3 +98,14 @@ test('does not turn unavailable or forbidden responses into empty settings', asy
   });
   await assert.rejects(() => api.system.info(), /forbidden/);
 });
+
+test('reads the active tenant from the authenticated user envelope', async () => {
+  const requests: Array<{ method: string; path: string }> = [];
+  const api = createSettingsApi(async (request) => {
+    requests.push({ method: request.method, path: request.path });
+    return { success: true, data: { user: { id: 'user-1' }, tenant: { id: 7, name: 'React tenant', description: 'Live' } } };
+  });
+
+  assert.deepEqual(await api.tenant.get(), { id: 7, name: 'React tenant', description: 'Live' });
+  assert.deepEqual(requests, [{ method: 'GET', path: '/api/v1/auth/me' }]);
+});

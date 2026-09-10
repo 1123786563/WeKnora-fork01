@@ -333,7 +333,8 @@ export function createSettingsApi(request: SettingsRequest) {
     },
     tenant: {
       async get(signal?: AbortSignal): Promise<SettingsPayload> {
-        return dataRecord(await request(withSignal({ method: 'GET', path: '/api/v1/auth/tenant' }, signal)), '/auth/tenant');
+        const root = dataRecord(await request(withSignal({ method: 'GET', path: '/api/v1/auth/me' }, signal)), '/auth/me');
+        return record(root.tenant, '/auth/me.data.tenant');
       },
       async update(id: number, input: SettingsPayload, signal?: AbortSignal): Promise<SettingsPayload> {
         return dataRecord(await request(withSignal({ method: 'PUT', path: `/api/v1/tenants/${encoded(id, 'tenantId')}`, body: input }, signal)), '/tenants/:id');
