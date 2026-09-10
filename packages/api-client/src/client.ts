@@ -6,6 +6,7 @@ import { createWikiPagesApi } from './wiki/pages.ts';
 import { createDataSourcesApi } from './datasource.ts';
 import { createAuthApi } from './auth/endpoints.ts';
 import { createChatSessionsApi } from './chat/sessions.ts';
+import { createSandboxTerminalApi } from './sandbox/terminal.ts';
 import { buildChatStreamRequest, consumeChatStream, consumeStreamResult } from './chat/stream.ts';
 import { createChatApprovalsApi } from './chat/approvals.ts';
 import { createChatSteerApi } from './chat/steer.ts';
@@ -95,6 +96,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
   const dataSources = createDataSourcesApi(request);
   const auth = createAuthApi(request);
   const sessions = createChatSessionsApi(request);
+  const sandbox = createSandboxTerminalApi(request);
   const chatApprovals = createChatApprovalsApi(request);
   const chatSteer = createChatSteerApi(request);
 
@@ -123,6 +125,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
     dataSources,
     auth,
     sessions,
+    sandbox,
     chat: {
       approvals: chatApprovals,
       steer: chatSteer,

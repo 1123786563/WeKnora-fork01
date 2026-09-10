@@ -18,6 +18,8 @@ export type { ChatStreamRequestOptions, ParsedServerSentEvent, ServerSentEventHa
 export { createChatSessionsApi } from './chat/sessions.ts';
 export type { ChatMessageListParams, ChatSessionListParams, ChatSessionsApi } from './chat/sessions.ts';
 export type { ChatMessage, ChatSession, ChatSessionListResponse } from '@weknora/contracts';
+export { createSandboxTerminalApi, parseSandboxTerminalTicket } from './sandbox/terminal.ts';
+export type { SandboxTerminalApi, SandboxTerminalTicket } from './sandbox/terminal.ts';
 export { createChatApprovalsApi } from './chat/approvals.ts';
 export type {
   ChatApprovalsApi,
