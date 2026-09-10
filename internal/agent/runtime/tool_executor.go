@@ -198,7 +198,10 @@ func ApproveToolArguments(ctx context.Context, args json.RawMessage) error {
 // fresh execution context from the request parent.
 func CarryToolDispatch(from, to context.Context) context.Context {
 	if state, ok := from.Value(toolDispatchContextKey{}).(*toolDispatchState); ok {
-		return context.WithValue(to, toolDispatchContextKey{}, state)
+		to = context.WithValue(to, toolDispatchContextKey{}, state)
+	}
+	if project, ok := from.Value(toolApprovalProjectionKey{}).(func(json.RawMessage) (json.RawMessage, error)); ok {
+		to = context.WithValue(to, toolApprovalProjectionKey{}, project)
 	}
 	return to
 }

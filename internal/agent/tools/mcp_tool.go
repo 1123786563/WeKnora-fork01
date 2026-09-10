@@ -211,11 +211,6 @@ func (t *MCPTool) Execute(ctx context.Context, args json.RawMessage) (*types.Too
 					}
 				}
 				// Approval may have consumed most/all of the per-tool exec budget set by the
-				if len(decision.ModifiedArgs) > 0 {
-					if err := agentruntime.ApproveToolArguments(ctx, args); err != nil {
-						return nil, err
-					}
-				}
 				// agent engine (act.go). Re-derive a fresh tool-exec ctx from ApprovalCtx so
 				// the actual MCP CallTool gets a full timeout window. (issue #1173 follow-up)
 				if meta.ApprovalCtx != nil {
@@ -226,6 +221,14 @@ func (t *MCPTool) Execute(ctx context.Context, args json.RawMessage) (*types.Too
 					freshCtx, freshCancel := context.WithTimeout(meta.ApprovalCtx, freshTimeout)
 					defer freshCancel()
 					ctx = WithToolExecContext(agentruntime.CarryToolDispatch(ctx, freshCtx), meta)
+				}
+				// Persist approved edits using the fresh, request-bound execution
+				// budget as well; the old per-tool context may have expired while
+				// waiting for the human. Request cancellation still propagates.
+				if len(decision.ModifiedArgs) > 0 {
+					if err := agentruntime.ApproveToolArguments(ctx, args); err != nil {
+						return nil, err
+					}
 				}
 			}
 		}

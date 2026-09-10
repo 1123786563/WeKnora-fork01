@@ -138,6 +138,15 @@ func TestToolJournalCannotBypassRequiredApprovalWithoutContext(t *testing.T) {
 }
 
 func TestToolJournalMCPApprovalThenDispatchAndReplay(t *testing.T) {
+	assertMCPJournalApproval(t, false)
+}
+
+func TestToolJournalMCPApprovalOutlivesToolTimeout(t *testing.T) {
+	assertMCPJournalApproval(t, true)
+}
+
+func assertMCPJournalApproval(t *testing.T, expireToolContext bool) {
+	t.Helper()
 	db, store, fence := registryJournalDB(t)
 	utils.SetSSRFWhitelistFromRaw("127.0.0.1")
 	t.Cleanup(utils.ResetSSRFWhitelistForTest)
@@ -164,7 +173,13 @@ func TestToolJournalMCPApprovalThenDispatchAndReplay(t *testing.T) {
 	manager := internalmcp.NewMCPManager(nil)
 	defer manager.Shutdown()
 	ctx := context.WithValue(context.Background(), types.TenantIDContextKey, uint64(1))
+	var toolCtx context.Context
 	gate := &journalApprovalGate{wait: func() (approval.Decision, error) {
+		if expireToolContext {
+			<-toolCtx.Done()
+			require.ErrorIs(t, toolCtx.Err(), context.DeadlineExceeded)
+			require.NoError(t, ctx.Err(), "the approval/request context remains live")
+		}
 		var status string
 		require.NoError(t, db.Table("agent_tool_calls").Select("status").Scan(&status).Error)
 		require.Equal(t, "planned", status)
@@ -183,7 +198,13 @@ func TestToolJournalMCPApprovalThenDispatchAndReplay(t *testing.T) {
 		ArgsHash: "hash", Args: json.RawMessage(`{}`),
 	}
 	executor := agentruntime.NewToolExecutor(store, store, registry.ExecuteTool)
-	first, err := executor.Execute(ctx, fence, plan)
+	toolCtx = ctx
+	if expireToolContext {
+		var cancel context.CancelFunc
+		toolCtx, cancel = context.WithTimeout(ctx, 50*time.Millisecond)
+		defer cancel()
+	}
+	first, err := executor.Execute(toolCtx, fence, plan)
 	require.NoError(t, err)
 	require.True(t, first.Result.Success, first.Result.Error)
 	replayed, err := executor.Execute(ctx, fence, plan)
