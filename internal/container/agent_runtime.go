@@ -48,9 +48,15 @@ func NewAgentRuntime(cfg *config.Config, store *repository.AgentRunStore, execut
 	// Graph construction is injected by the tRPC graph task. Keeping this
 	// executor explicit makes an enabled but unwired deployment fail runs
 	// durably instead of pretending they completed.
-	execute := func(context.Context, agentruntime.Fence) error { return errors.New("trpc graph executor is not wired") }
-	if len(executors) > 0 && executors[0] != nil {
+	var execute func(context.Context, agentruntime.Fence) error
+	if len(executors) > 0 {
 		execute = executors[0]
+	}
+	if c.Enabled && execute == nil {
+		return nil, errors.New("tRPC recovery enabled but no graph executor provider is registered")
+	}
+	if execute == nil {
+		execute = func(context.Context, agentruntime.Fence) error { return nil }
 	}
 	worker, err := service.NewAgentRunWorker(store, execute, c)
 	if err != nil {
