@@ -74,6 +74,10 @@ type SessionSandboxBinding struct {
 	// Empty for Docker (no such credential) and for bindings written before
 	// this field existed; both are valid.
 	TrafficAccessToken string `json:"traffic_access_token,omitempty"`
+
+	// Generation identifies the provider instance generation observed when the
+	// binding was created. Empty is accepted for pre-recovery bindings.
+	Generation string `json:"generation,omitempty"`
 }
 
 // Validate checks a binding against the current schema and authoritative key.
@@ -102,6 +106,16 @@ func (b SessionSandboxBinding) Validate(key SessionSandboxKey) error {
 	}
 	if b.CreatedAt.IsZero() {
 		return errors.New("sandbox binding requires creation time")
+	}
+	return nil
+}
+
+func (b SessionSandboxBinding) ValidateRecovery(key SessionSandboxKey) error {
+	if err := b.Validate(key); err != nil {
+		return err
+	}
+	if strings.TrimSpace(b.ConfigID) == "" || strings.TrimSpace(b.Generation) == "" {
+		return errors.New("sandbox recovery binding requires config and generation")
 	}
 	return nil
 }

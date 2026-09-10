@@ -87,6 +87,26 @@ func TestWorkerTwoTicksDoNotDuplicate(t *testing.T) {
 	require.Equal(t, 1, s.claims)
 	close(release)
 }
+
+func TestWorkerCallsRecoveryHookBeforeExecute(t *testing.T) {
+	s := &workerStore{runs: map[string]agentruntime.Run{"r": {Key: agentruntime.RunKey{TenantID: 1, RunID: "r"}, Status: "queued"}}, keys: []agentruntime.RunKey{{TenantID: 1, RunID: "r"}}}
+	order := []string{}
+	done := make(chan struct{})
+	w, err := NewAgentRunWorker(s, func(context.Context, agentruntime.Fence) error {
+		order = append(order, "execute")
+		close(done)
+		return nil
+	}, WorkerConfig{Enabled: true, Lease: time.Minute, Heartbeat: time.Second, ScanInterval: time.Second, MaxWorkers: 1})
+	require.NoError(t, err)
+	w.SetRecoveryHook(func(context.Context, agentruntime.Fence) error { order = append(order, "reconcile"); return nil })
+	require.NoError(t, w.Tick(context.Background()))
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("worker did not execute")
+	}
+	require.Equal(t, []string{"reconcile", "execute"}, order)
+}
 func TestSubmitCopiesSnapshot(t *testing.T) {
 	s := &workerStore{runs: map[string]agentruntime.Run{}}
 	svc := NewAgentRunService(s)

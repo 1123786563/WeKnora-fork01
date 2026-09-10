@@ -30,13 +30,22 @@ func (c WorkerConfig) Validate() error {
 }
 
 type AgentRunWorker struct {
-	store   agentruntime.RunStore
-	execute func(context.Context, agentruntime.Fence) error
-	cfg     WorkerConfig
-	owner   string
-	mu      sync.Mutex
-	active  map[string]context.CancelFunc
-	done    chan struct{}
+	store     agentruntime.RunStore
+	execute   func(context.Context, agentruntime.Fence) error
+	reconcile func(context.Context, agentruntime.Fence) error
+	cfg       WorkerConfig
+	owner     string
+	mu        sync.Mutex
+	active    map[string]context.CancelFunc
+	done      chan struct{}
+}
+
+// SetRecoveryHook installs the post-claim sandbox reconciliation step. The
+// hook runs before graph execution and may durably park the run.
+func (w *AgentRunWorker) SetRecoveryHook(hook func(context.Context, agentruntime.Fence) error) {
+	if w != nil {
+		w.reconcile = hook
+	}
 }
 
 func NewAgentRunWorker(store agentruntime.RunStore, execute func(context.Context, agentruntime.Fence) error, cfg WorkerConfig) (*AgentRunWorker, error) {
@@ -166,6 +175,14 @@ func (w *AgentRunWorker) runOne(ctx context.Context, id string, fence agentrunti
 			}
 		}
 	}()
+	if w.reconcile != nil {
+		if err := w.reconcile(renewCtx, fence); err != nil {
+			if current, getErr := w.store.Get(context.Background(), fence.RunKey); getErr == nil && current.Status == "waiting_user" {
+				return
+			}
+			return
+		}
+	}
 	err := w.execute(renewCtx, fence)
 	if renewCtx.Err() != nil {
 		return
