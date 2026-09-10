@@ -23,6 +23,7 @@ import { KnowledgeSettingsPage } from './knowledge-settings/KnowledgeSettingsPag
 import { ConfigurationPage } from './configuration/ConfigurationPage.tsx';
 import { AdministrationPage } from './administration/AdministrationPage.tsx';
 import { OrganizationsPage } from './organizations/OrganizationsPage.tsx';
+import { SettingsPage } from './settings/SettingsPage.tsx';
 import './styles.css';
 
 const oidcCallback = parseOIDCCallbackHash(window.location.hash);
@@ -131,6 +132,8 @@ function renderProtected() {
     root.render(<AdministrationPage client={client} tenantId={Number(scopeRuntime.current().scope.tenantId)} />);
   } else if (route.path === '/platform/organizations') {
     root.render(<OrganizationsPage client={client} />);
+  } else if (route.path === '/platform/settings') {
+    root.render(<SettingsPage client={client} />);
   } else if (route.path === '/platform/system') {
     root.render(<AdministrationPage client={client} tenantId={Number(scopeRuntime.current().scope.tenantId)} systemAdmin />);
   } else if (route.kind === 'knowledge-base' && route.path.split('/').filter(Boolean).length === 2) {
