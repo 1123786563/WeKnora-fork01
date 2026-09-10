@@ -6,7 +6,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { useColorScheme } from 'react-native';
-import { createMobileHost, MobileHostProvider, useMobileHost } from '@/weknora/platform/host';
+import { createMobileHost, MobileHostProvider, useMobileHost, useSetMobileHost } from '@/weknora/platform/host';
 import { ProductAuthProvider, useProductAuth } from '@/weknora/auth/session';
 import { nativeOriginStorage } from '@/weknora/platform/native-origin-storage';
 

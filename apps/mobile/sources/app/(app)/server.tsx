@@ -14,8 +14,8 @@ export default function ServerConfigScreen() {
   const save = async () => {
     try {
       const selected = createMobileHost(origin);
-      setMobileHost(selected);
       await nativeOriginStorage.write(selected.origin);
+      setMobileHost(selected);
       setError(null);
       router.replace('/(app)/login');
     } catch (cause) {
