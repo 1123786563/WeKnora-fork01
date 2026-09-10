@@ -1,8 +1,16 @@
+import { ContractError } from '@weknora/contracts';
 import type { ClientRequest } from '../client.ts';
 
 export interface SandboxTerminalTicket {
   ticket: string;
   expiresIn: number;
+}
+
+function responseRecord(value: unknown, path: string): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new ContractError(path, 'invalid terminal ticket response');
+  }
+  return value as Record<string, unknown>;
 }
 
 function sessionPath(sessionId: string): string {
@@ -11,14 +19,17 @@ function sessionPath(sessionId: string): string {
 }
 
 export function parseSandboxTerminalTicket(value: unknown): SandboxTerminalTicket {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('invalid terminal ticket response');
-  const envelope = value as Record<string, unknown>;
-  if (envelope.success !== true || typeof envelope.data !== 'object' || envelope.data === null || Array.isArray(envelope.data)) {
-    throw new Error('invalid terminal ticket response');
+  const envelope = responseRecord(value, 'terminalTicket');
+  if (envelope.success !== true) {
+    throw new ContractError('terminalTicket.success', 'invalid terminal ticket response');
   }
-  const data = envelope.data as Record<string, unknown>;
-  if (typeof data.ticket !== 'string' || data.ticket.trim() === '') throw new Error('missing terminal ticket');
-  if (!Number.isSafeInteger(data.expires_in) || (data.expires_in as number) <= 0) throw new Error('invalid terminal ticket expiry');
+  const data = responseRecord(envelope.data, 'terminalTicket.data');
+  if (typeof data.ticket !== 'string' || data.ticket.trim() === '') {
+    throw new ContractError('terminalTicket.data.ticket', 'missing terminal ticket');
+  }
+  if (!Number.isSafeInteger(data.expires_in) || (data.expires_in as number) <= 0) {
+    throw new ContractError('terminalTicket.data.expires_in', 'invalid terminal ticket expiry');
+  }
   return { ticket: data.ticket, expiresIn: data.expires_in as number };
 }
 
