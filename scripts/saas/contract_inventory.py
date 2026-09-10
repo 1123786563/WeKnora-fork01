@@ -46,6 +46,8 @@ def operation_paths(text: str, prefix: str) -> dict[str, str]:
             result[operation_id] = f"{method} {prefix}{path}"
     if not saw_paths:
         raise ValueError("unsupported schema structure")
+    if not result:
+        raise ValueError("empty paths block")
     return result
 
 

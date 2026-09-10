@@ -30,3 +30,5 @@
 ## 评审修复
 
 补充 schema hash mismatch/connection refusal、GET-only 以及 `paths` 后续顶层区块隔离的回归覆盖，并将解析器限制在顶层 `paths:` 区块。
+
+第二轮修复补充空/缺失 `paths` 的 fail-closed 断言，并验证 hash 不匹配时 `_probe` 不会被调用。

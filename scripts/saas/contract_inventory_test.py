@@ -18,6 +18,12 @@ class InventoryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             operation_paths("paths:\n  /customers:\n    get:\n      operationId: list\n", "")
 
+    def test_missing_or_empty_paths_block_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "unsupported schema structure"):
+            operation_paths("openapi: 3.0.0\n", "/api/v1")
+        with self.assertRaisesRegex(ValueError, "empty paths block"):
+            operation_paths("paths:\ncomponents:\n  schemas: {}\n", "/api/v1")
+
     def test_duplicate_operation_id_is_rejected(self):
         schema = "paths:\n  /one:\n    get:\n      operationId: same\n  /two:\n    get:\n      operationId: same\n"
         with self.assertRaisesRegex(ValueError, "duplicate operationId"):
@@ -49,7 +55,9 @@ class InventoryTests(unittest.TestCase):
             schema.parent.mkdir()
             schema.write_text("paths:\n", encoding="utf-8")
             output = Path(directory) / "result.json"
-            self.assertEqual(main(["--schema", str(schema), "--prefix", "/api/v1", "--base-url", "http://127.0.0.1:1", "--output", str(output)]), 2)
+            with patch("scripts.saas.contract_inventory._probe") as probe:
+                self.assertEqual(main(["--schema", str(schema), "--prefix", "/api/v1", "--base-url", "http://127.0.0.1:1", "--output", str(output)]), 2)
+                probe.assert_not_called()
             self.assertFalse(output.exists())
 
 
