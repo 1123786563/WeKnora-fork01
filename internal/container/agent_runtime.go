@@ -20,12 +20,15 @@ type AgentRuntime struct {
 	once   sync.Once
 }
 
-func NewAgentRuntime(cfg *config.Config, store *repository.AgentRunStore) (*AgentRuntime, error) {
+func NewAgentRuntime(cfg *config.Config, store *repository.AgentRunStore, executors ...func(context.Context, agentruntime.Fence) error) (*AgentRuntime, error) {
 	if store == nil {
 		return nil, errors.New("agent run store is required")
 	}
 	if err := ValidateAgentRuntimeConfig(cfg); err != nil {
 		return nil, err
+	}
+	if cfg == nil || cfg.Agent == nil {
+		return &AgentRuntime{Runs: service.NewAgentRunService(store)}, nil
 	}
 	r := cfg.Agent.Recovery
 	c := service.DefaultWorkerConfig()
@@ -45,7 +48,11 @@ func NewAgentRuntime(cfg *config.Config, store *repository.AgentRunStore) (*Agen
 	// Graph construction is injected by the tRPC graph task. Keeping this
 	// executor explicit makes an enabled but unwired deployment fail runs
 	// durably instead of pretending they completed.
-	worker, err := service.NewAgentRunWorker(store, func(context.Context, agentruntime.Fence) error { return errors.New("trpc graph executor is not wired") }, c)
+	execute := func(context.Context, agentruntime.Fence) error { return errors.New("trpc graph executor is not wired") }
+	if len(executors) > 0 && executors[0] != nil {
+		execute = executors[0]
+	}
+	worker, err := service.NewAgentRunWorker(store, execute, c)
 	if err != nil {
 		return nil, err
 	}

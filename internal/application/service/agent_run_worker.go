@@ -176,10 +176,8 @@ func (w *AgentRunWorker) runOne(ctx context.Context, id string, fence agentrunti
 	}
 	// A terminal state is durable and fenced; a cancelled/draining worker
 	// leaves the run non-terminal for lease based takeover.
-	if set, ok := w.store.(interface {
-		SetStatus(context.Context, agentruntime.Fence, string, string) error
-	}); ok {
-		_ = set.SetStatus(context.Background(), fence, status, reason)
+	if err := w.store.SetStatus(context.Background(), fence, status, reason); err != nil {
+		return
 	}
 }
 

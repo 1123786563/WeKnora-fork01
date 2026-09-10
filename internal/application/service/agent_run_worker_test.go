@@ -97,3 +97,7 @@ func TestSubmitCopiesSnapshot(t *testing.T) {
 	raw[2] = 'x'
 	require.Equal(t, byte('v'), s.runs["r"].Snapshot[2])
 }
+
+func (s *workerStore) SetStatus(context.Context, agentruntime.Fence, string, string) error {
+	return nil
+}

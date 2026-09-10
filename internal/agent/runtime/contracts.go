@@ -85,5 +85,6 @@ type RunStore interface {
 	Renew(context.Context, Fence, time.Duration) error
 	Scan(context.Context, int) ([]RunKey, error)
 	SaveCheckpoint(context.Context, Fence, CheckpointRecord) error
+	SetStatus(context.Context, Fence, string, string) error
 	LoadCheckpoint(context.Context, RunKey) (CheckpointRecord, error)
 }

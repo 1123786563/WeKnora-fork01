@@ -212,3 +212,7 @@ func (j *graphTestJournal) LoadToolResult(_ context.Context, _ agentruntime.Fenc
 	}
 	return r, nil
 }
+
+func (s *graphTestStore) SetStatus(context.Context, agentruntime.Fence, string, string) error {
+	return nil
+}

@@ -79,3 +79,5 @@ func TestGraphRunnerDeepCopiesNestedMessageAliases(t *testing.T) {
 	require.Equal(t, "a", got.ToolCalls[0].ExtraFields["nested"].([]any)[0])
 	require.Equal(t, "hello", *got.ContentParts[0].Text)
 }
+
+func (*minimalStore) SetStatus(context.Context, agentruntime.Fence, string, string) error { return nil }

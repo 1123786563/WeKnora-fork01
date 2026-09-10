@@ -115,3 +115,5 @@ func TestToolExecutorRejectsInvalidDependenciesAndPlan(t *testing.T) {
 	_, err = executor.Execute(context.Background(), Fence{}, ToolPlan{})
 	require.ErrorIs(t, err, ErrConflict)
 }
+
+func (s *executorRunStore) SetStatus(context.Context, Fence, string, string) error { return nil }
