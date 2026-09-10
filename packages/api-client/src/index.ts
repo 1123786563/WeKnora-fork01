@@ -21,7 +21,16 @@ export type { ChatMessage, ChatSession, ChatSessionListResponse } from '@weknora
 export { createSandboxTerminalApi, parseSandboxTerminalTicket } from './sandbox/terminal.ts';
 export type { SandboxTerminalApi, SandboxTerminalTicket } from './sandbox/terminal.ts';
 export { createConfigurationApi } from './configuration.ts';
-export type { AgentConfiguration, ConfigurationApi, McpConfiguration, ModelConfiguration, SkillConfiguration } from './configuration.ts';
+export type {
+  AgentConfiguration,
+  AgentConfigurationList,
+  AgentConfigurationListOptions,
+  ConfigurationApi,
+  McpConfiguration,
+  ModelConfiguration,
+  SkillConfiguration,
+  SkillConfigurationList,
+} from './configuration.ts';
 export { createChatApprovalsApi } from './chat/approvals.ts';
 export type {
   ChatApprovalsApi,

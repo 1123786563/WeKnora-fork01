@@ -32,3 +32,56 @@ test('encodes ids and preserves explicit write failures', async () => {
   assert.equal((requests[0] as { path: string }).path, '/api/v1/models/model%2F1');
   await assert.rejects(() => api.models.get(''), /must not be empty/);
 });
+
+test('recursively removes MCP secrets but preserves credential status', async () => {
+  const api = createConfigurationApi(async () => ({
+    success: true,
+    data: [{
+      id: 'mcp-1',
+      name: 'MCP',
+      auth_config: {
+        type: 'api_key',
+        api_key: 'secret-a',
+        token: 'secret-b',
+        nested: { client_secret: 'secret-c', label: 'safe' },
+      },
+      credentials: { api_key: { configured: true } },
+    }],
+  }));
+
+  const [service] = await api.mcp.list();
+  assert.deepEqual(service?.auth_config, { type: 'api_key', nested: { label: 'safe' } });
+  assert.deepEqual(service?.credentials, { api_key: { configured: true } });
+});
+
+test('preserves agent disabled state and skill availability from list envelopes', async () => {
+  const requests: unknown[] = [];
+  const api = createConfigurationApi(async (request) => {
+    requests.push(request);
+    if ((request.path as string).startsWith('/api/v1/agents')) {
+      return {
+        success: true,
+        data: [{ id: 'agent-1', name: 'Agent', is_builtin: false }],
+        disabled_own_agent_ids: ['agent-1'],
+      };
+    }
+    return {
+      success: true,
+      data: [{ name: 'Research', description: 'Search sources' }],
+      skills_available: true,
+    };
+  });
+
+  assert.deepEqual(await api.agents.listWithState({ creator: 'mine' }), {
+    items: [{ id: 'agent-1', name: 'Agent', is_builtin: false }],
+    disabledOwnAgentIds: ['agent-1'],
+  });
+  assert.deepEqual(await api.skills.listWithAvailability('sandbox/1'), {
+    items: [{ id: 'Research', name: 'Research', description: 'Search sources' }],
+    skillsAvailable: true,
+  });
+  assert.deepEqual(requests.map((request) => (request as { path: string }).path), [
+    '/api/v1/agents?creator=mine',
+    '/api/v1/skills?sandbox_config_id=sandbox%2F1',
+  ]);
+});
