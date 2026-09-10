@@ -28,8 +28,11 @@ export function checkInventory(rows, routes, expectedIds = []) {
     }
     if (!STATUSES.has(row.status)) throw new Error('invalid status');
   }
+  const expected = arguments[2] || [];
+  if (new Set(expected).size !== expected.length || expected.some(id => typeof id !== 'string')) throw new Error('invalid expected IDs');
   for (const route of routes) {
     if (!rows.some(row => row.route === route)) throw new Error(`unmapped ${route}`);
   }
   for (const id of expectedIds) if (!rows.some(row => row.id === id)) throw new Error(`missing capability ${id}`);
+  if (expectedIds.length && rows.some(row => !expectedIds.includes(row.id))) throw new Error('unexpected capability');
 }

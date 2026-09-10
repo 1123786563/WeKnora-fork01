@@ -2,81 +2,27 @@
   "commit": "ac64b9b4677870f7b7a9eacfd0780959229717f1",
   "files": [
     {
-      "source": "packages/happy-app/package.json",
-      "target": "happy-mobile/package.json",
-      "sha256": "bfef039b058d1c3431a90774bb4f97bb488b79f62fe6c865870fc073e64ae31f",
+      "source": "packages/happy-app/sources/-session/SessionView.tsx",
+      "target": "happy-mobile/sources/-session/SessionView.tsx",
+      "sha256": "57cfb2b97a583d0937beed4a7f8e2cacdb04a3e1d4bab1e847f6b6a7399563f9",
       "license": "MIT"
     },
     {
-      "source": "packages/happy-wire/package.json",
-      "target": "happy-mobile/packages/happy-wire/package.json",
-      "sha256": "ebbfd3f41e9336ec9c7d3dbf802425278d0e533c9fcabeae25a1b1255127b145",
+      "source": "packages/happy-app/sources/-session/agentGoalActionHandler.spec.ts",
+      "target": "happy-mobile/sources/-session/agentGoalActionHandler.spec.ts",
+      "sha256": "d7fb756676d68cec870796397cc34c934424cba3e955aa3b096c0e331105cfcd",
       "license": "MIT"
     },
     {
-      "source": "packages/happy-wire/README.md",
-      "target": "happy-mobile/packages/happy-wire/README.md",
-      "sha256": "9075ad1f07bffcd151c1ee9b640bcfb7ca60dc350a85387ca812645ec36b2b60",
+      "source": "packages/happy-app/sources/-session/agentGoalActionHandler.ts",
+      "target": "happy-mobile/sources/-session/agentGoalActionHandler.ts",
+      "sha256": "23d7a2fe7c18bbeb8741b34bffd57262cae1fcc1faebab1471c718a487bca471",
       "license": "MIT"
     },
     {
-      "source": "packages/happy-wire/tsconfig.json",
-      "target": "happy-mobile/packages/happy-wire/tsconfig.json",
-      "sha256": "0cffdd501bdf95184d564ca01efded8aa0984fef197824f5b85c2cc83f74fde4",
-      "license": "MIT"
-    },
-    {
-      "source": "packages/happy-wire/vitest.config.ts",
-      "target": "happy-mobile/packages/happy-wire/vitest.config.ts",
-      "sha256": "9b22c025e8f322f1c63dfbda1fc47f741ac706906eac556715d6dacc6da8b979",
-      "license": "MIT"
-    },
-    {
-      "source": "package.json",
-      "target": "happy-mobile/package.json",
-      "sha256": "f3640fd60d7030418351d6bd84739b4de4a5550f13c4ae978cd4f31bb2659713",
-      "license": "MIT"
-    },
-    {
-      "source": "pnpm-lock.yaml",
-      "target": "happy-mobile/pnpm-lock.yaml",
-      "sha256": "6ac8f7afe7b3b8668fe32976a35a4a98dff0420d89b52c2e98333ea8fe9d037e",
-      "license": "MIT"
-    },
-    {
-      "source": "patches/expose-pierre-diffs-style.cjs",
-      "target": "happy-mobile/patches/expose-pierre-diffs-style.cjs",
-      "sha256": "8c309a70134a4327d8d47f6c2eb73d6e03f6f107d8adcdd3e5d35039b8c4d5a0",
-      "license": "MIT"
-    },
-    {
-      "source": "patches/fix-livekit-room-reuse.cjs",
-      "target": "happy-mobile/patches/fix-livekit-room-reuse.cjs",
-      "sha256": "43dfd8f461bc0da3d16f7313080cba866ee242ac67b87d27d1ed3a8385cfffc4",
-      "license": "MIT"
-    },
-    {
-      "source": "patches/fix-pglite-prisma-bytes.cjs",
-      "target": "happy-mobile/patches/fix-pglite-prisma-bytes.cjs",
-      "sha256": "5a7f5cac1b8b7d27405f9199a4beb19b91ef36164b3e516da20b00a89d8ebe46",
-      "license": "MIT"
-    },
-    {
-      "source": "patches/fix-pierre-trees-preact-hooks.cjs",
-      "target": "happy-mobile/patches/fix-pierre-trees-preact-hooks.cjs",
-      "sha256": "2bea67206fbd733bac90e24553448789373dffdab70c783d6f33863d958492df",
-      "license": "MIT"
-    },
-    {
-      "source": "patches/fix-react-native-audio-api-size-t.cjs",
-      "target": "happy-mobile/patches/fix-react-native-audio-api-size-t.cjs",
-      "sha256": "a3767ba86001c83f43c7c1bc12607bc6d6fcb8b665d560dc74965f398eb805ef",
-      "license": "MIT"
-    },
-    {
-      "source": "patches/force-preact-cjs.cjs",
-      "target": "happy-mobile/patches/force-preact-cjs.cjs",
-      "sha256": "7f2a539a27a845ecc5ade6056b5714f1bd5047387b193046e45655e2bf197518",
+      "source": "packages/happy-app/sources/-session/sessionOverlayNav.ts",
+      "target": "happy-mobile/sources/-session/sessionOverlayNav.ts",
+      "sha256": "269678909e253b556fa873d35499f3b023607e293b5e0857f0b2cb29a28b992b",
       "license": "MIT"
     },
     {
@@ -437,6 +383,132 @@
       "source": "packages/happy-app/sources/app/_layout.tsx",
       "target": "happy-mobile/sources/app/_layout.tsx",
       "sha256": "c18f227a75d2c48a538617697f0d437b563c1e0e75387a2e38259890ef4d3f1b",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/assets/animations/game.json",
+      "target": "happy-mobile/sources/assets/animations/game.json",
+      "sha256": "e0875ef4ae4aa214a3d9de567ea39e9429465addabc91d177ea883302146ae89",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/assets/animations/owl.json",
+      "target": "happy-mobile/sources/assets/animations/owl.json",
+      "sha256": "95402270d116a310aa4b1606f88a2bbc79d2b4d947b5d84181c0b126c7aaba59",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/assets/animations/popcorn.json",
+      "target": "happy-mobile/sources/assets/animations/popcorn.json",
+      "sha256": "d632b7b222d54c6d49f470100fd0ca4f641624f262106f8dd085c3e90db8a6ca",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/assets/animations/robot.json",
+      "target": "happy-mobile/sources/assets/animations/robot.json",
+      "sha256": "eeabc392ba20328ce97452eb826dddf3e306129e360ce4847c3b48470ffc053b",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/assets/animations/sparkles.json",
+      "target": "happy-mobile/sources/assets/animations/sparkles.json",
+      "sha256": "b14e504ce3467a6ba1c519348dee9fc4e05286b9e4f058f33df9175865bde4b9",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/assets/animations/stone.json",
+      "target": "happy-mobile/sources/assets/animations/stone.json",
+      "sha256": "3c24024f4bf7079d9a3e098d823f6c2916743f694843566efe542cfd5bfe3c8b",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/auth/AuthContext.tsx",
+      "target": "happy-mobile/sources/auth/AuthContext.tsx",
+      "sha256": "f935da7d679c8082ec365a09d14ee1f9ede9c51d04ff7861d565ec41c970700a",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/auth/authAccountApprove.ts",
+      "target": "happy-mobile/sources/auth/authAccountApprove.ts",
+      "sha256": "1f29513ab4d59bb1e3abcdb2141edc13ecfd2eaea612565058ef6b263b017aae",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/auth/authApprove.ts",
+      "target": "happy-mobile/sources/auth/authApprove.ts",
+      "sha256": "8c2b5d289a6e81725311e625e0419b87f8de96fc90b4d72426c21a245ab6eaea",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/auth/authChallenge.ts",
+      "target": "happy-mobile/sources/auth/authChallenge.ts",
+      "sha256": "98c742fbb22543a1478793cfe1e44a60340568caa1cecb81868bf1b1e2aef89f",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/auth/authGetToken.ts",
+      "target": "happy-mobile/sources/auth/authGetToken.ts",
+      "sha256": "094d40bd9fbd6d56b1a249e6df4ec312afb3bcf6d496dc8bc44696f0acbf6ef9",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/auth/authQRStart.ts",
+      "target": "happy-mobile/sources/auth/authQRStart.ts",
+      "sha256": "4fa3f83be74b13aea2184bb6c64499e7b6046fe6071b0ac6ce664928f533d2b2",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/auth/authQRWait.ts",
+      "target": "happy-mobile/sources/auth/authQRWait.ts",
+      "sha256": "d498b09ef81d2ec515dbf2d9d49acf13a57838bd9e383328c9c1d3d72042f9d8",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/auth/secretKeyBackup.spec.ts",
+      "target": "happy-mobile/sources/auth/secretKeyBackup.spec.ts",
+      "sha256": "592ae7c5b71833491155eed6a8c0ae4deb2e47fdace2bf3522e9235b90acadae",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/auth/secretKeyBackup.ts",
+      "target": "happy-mobile/sources/auth/secretKeyBackup.ts",
+      "sha256": "2df3966a658fd9d6e509ae7d417a26e65152c1781cca6d20aee070cbe508cd98",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/auth/tokenStorage.ts",
+      "target": "happy-mobile/sources/auth/tokenStorage.ts",
+      "sha256": "931fbfd2ebdd1b129b156051ac0fc468d45dea9ecf0a7041f054e81bd1dc67e3",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/changelog/changelog.json",
+      "target": "happy-mobile/sources/changelog/changelog.json",
+      "sha256": "2f3e43e63e36bf802779226a22a980325b0e057d4b16d3334c213e2c4512decc",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/changelog/index.ts",
+      "target": "happy-mobile/sources/changelog/index.ts",
+      "sha256": "acff582738efc958428f69932b3ab076d36b2efae64c79d4b890335010cd19cb",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/changelog/parser.ts",
+      "target": "happy-mobile/sources/changelog/parser.ts",
+      "sha256": "d2c72e17a0b5a13f61e42c4abfe259169d153842d79103756c8f501473486e66",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/changelog/storage.ts",
+      "target": "happy-mobile/sources/changelog/storage.ts",
+      "sha256": "a8f56141a305fe9190f4f12a19483fd6c79984c9ef2ff47734ed6d95edba50f2",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/changelog/types.ts",
+      "target": "happy-mobile/sources/changelog/types.ts",
+      "sha256": "251171a37de0a24be384ca1049f6125f65aecd60ebd34fff93484383b18aae37",
       "license": "MIT"
     },
     {
@@ -1886,27 +1958,579 @@
       "license": "MIT"
     },
     {
-      "source": "packages/happy-app/sources/-session/SessionView.tsx",
-      "target": "happy-mobile/sources/-session/SessionView.tsx",
-      "sha256": "57cfb2b97a583d0937beed4a7f8e2cacdb04a3e1d4bab1e847f6b6a7399563f9",
+      "source": "packages/happy-app/sources/config.ts",
+      "target": "happy-mobile/sources/config.ts",
+      "sha256": "6b372d15dc97387a86934928064f996027517719bce63d118c4cd31732b700dc",
       "license": "MIT"
     },
     {
-      "source": "packages/happy-app/sources/-session/agentGoalActionHandler.spec.ts",
-      "target": "happy-mobile/sources/-session/agentGoalActionHandler.spec.ts",
-      "sha256": "d7fb756676d68cec870796397cc34c934424cba3e955aa3b096c0e331105cfcd",
+      "source": "packages/happy-app/sources/constants/Languages.ts",
+      "target": "happy-mobile/sources/constants/Languages.ts",
+      "sha256": "91f9ea864d79c0b9bbcd28601aef1424b33dffaf7f73a87758b8913ce4ab2d81",
       "license": "MIT"
     },
     {
-      "source": "packages/happy-app/sources/-session/agentGoalActionHandler.ts",
-      "target": "happy-mobile/sources/-session/agentGoalActionHandler.ts",
-      "sha256": "23d7a2fe7c18bbeb8741b34bffd57262cae1fcc1faebab1471c718a487bca471",
+      "source": "packages/happy-app/sources/constants/Typography.ts",
+      "target": "happy-mobile/sources/constants/Typography.ts",
+      "sha256": "da737cdd90cc2833e0bd8d94e3a5a1310c81a719c7525e7769a040d9c6d2dacb",
       "license": "MIT"
     },
     {
-      "source": "packages/happy-app/sources/-session/sessionOverlayNav.ts",
-      "target": "happy-mobile/sources/-session/sessionOverlayNav.ts",
-      "sha256": "269678909e253b556fa873d35499f3b023607e293b5e0857f0b2cb29a28b992b",
+      "source": "packages/happy-app/sources/dev/testRunner.ts",
+      "target": "happy-mobile/sources/dev/testRunner.ts",
+      "sha256": "0de1a6ce54c7813c63cee1a87f0c3d4c6d86cca0358d4e52ffabe8b229f3566c",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/encryption/aes.appspec.ts",
+      "target": "happy-mobile/sources/encryption/aes.appspec.ts",
+      "sha256": "4c2085b3af249f06a364dd228663bc000556427cc701bd36374f08230ad985f9",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/encryption/aes.ts",
+      "target": "happy-mobile/sources/encryption/aes.ts",
+      "sha256": "817769a7fe9bbb7b3f10158c7ddc13d1c9d692a01e8abbbc3fe6300da89fc0f5",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/encryption/aes.web.test.ts",
+      "target": "happy-mobile/sources/encryption/aes.web.test.ts",
+      "sha256": "83534a46c385eb1c54554e7d34ce26d1643b2337f3ba809efc06a209fee0b3fc",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/encryption/aes.web.ts",
+      "target": "happy-mobile/sources/encryption/aes.web.ts",
+      "sha256": "e812450c80f8ee7b6547cdda2ba9944f2194c58d3c81b92754beccb5f848c8c8",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/encryption/base64.appspec.ts",
+      "target": "happy-mobile/sources/encryption/base64.appspec.ts",
+      "sha256": "18c90176f35aa19a932af7c3d73d6ab4ee8803c1aa994e10f372c87bf4a6c121",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/encryption/base64.native.ts",
+      "target": "happy-mobile/sources/encryption/base64.native.ts",
+      "sha256": "b9a8ffe8139f40fd70d8f1c28f4135121d0dac187af41a2bb804e423f60fe1ff",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/encryption/base64.ts",
+      "target": "happy-mobile/sources/encryption/base64.ts",
+      "sha256": "56cb9935312ca82774b3327a5f697901172c69c202c7bb75ef8a266edb1fbb81",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/encryption/blob.test.ts",
+      "target": "happy-mobile/sources/encryption/blob.test.ts",
+      "sha256": "ada4cd9778429df52f8fb8224f1317dd52349981d157f6ca71fb60e8d79da2df",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/encryption/blob.ts",
+      "target": "happy-mobile/sources/encryption/blob.ts",
+      "sha256": "71a28e504b50a63dc85ae0cc192cb399b86580c33c29d6dcb9b197f740d2c784",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/encryption/deriveKey.appspec.ts",
+      "target": "happy-mobile/sources/encryption/deriveKey.appspec.ts",
+      "sha256": "0a0769a114658c2e7642caaef15067efe2908a2a1acf01294ab7fba2f3775f1c",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/encryption/deriveKey.ts",
+      "target": "happy-mobile/sources/encryption/deriveKey.ts",
+      "sha256": "dbb69f4d6f75181e90200db56216e45049857976102970ac3fd6279dc6584d88",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/encryption/hex.ts",
+      "target": "happy-mobile/sources/encryption/hex.ts",
+      "sha256": "41c1f62de29e6ba8e753a664f05282be594fcde60e450944cb1b907af477522a",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/encryption/hmac_sha512.appspec.ts",
+      "target": "happy-mobile/sources/encryption/hmac_sha512.appspec.ts",
+      "sha256": "307ce9af24703870100886008c5ab4a58f256767a1b89df05d27cc938c05b8e0",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/encryption/hmac_sha512.ts",
+      "target": "happy-mobile/sources/encryption/hmac_sha512.ts",
+      "sha256": "63f631a447b933d12cb150f36d5894ea289cf2e2d8d3ebd21764f7d2b30a1299",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/encryption/libsodium.lib.ts",
+      "target": "happy-mobile/sources/encryption/libsodium.lib.ts",
+      "sha256": "bb591b74d571d7c9a45df8eb1c17b9dc7c7917797f9017942c8a28871b88006b",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/encryption/libsodium.lib.web.ts",
+      "target": "happy-mobile/sources/encryption/libsodium.lib.web.ts",
+      "sha256": "a0e29d60eb44b5244b471b86bff9a34039f2959003d2697f5019b38796322095",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/encryption/libsodium.ts",
+      "target": "happy-mobile/sources/encryption/libsodium.ts",
+      "sha256": "d7a0b9c1dd51a15f45454fa813d8f00a2c0965689c9f57e3596cf3f4351ee40c",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/encryption/text.test.ts",
+      "target": "happy-mobile/sources/encryption/text.test.ts",
+      "sha256": "f1d7424c9f6a306121b09c5057fa1db7b96e29778502352badb879fb2d4d4231",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/encryption/text.ts",
+      "target": "happy-mobile/sources/encryption/text.ts",
+      "sha256": "9318c523da714d98e7ed7318d4f2e451463e97e540d7cb119c29d238b0f081bf",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useAsyncCommand.ts",
+      "target": "happy-mobile/sources/hooks/useAsyncCommand.ts",
+      "sha256": "278ce375d3c59cada101970fb91c0b7fc904af796a79a142760f5a998bb59463",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useAttachmentImage.ts",
+      "target": "happy-mobile/sources/hooks/useAttachmentImage.ts",
+      "sha256": "4c11efb844238fda3d017db3dc69c897468b544d88cba6ad029c26daa297de98",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useAutocomplete.ts",
+      "target": "happy-mobile/sources/hooks/useAutocomplete.ts",
+      "sha256": "50653644d328273236f8495d0f66011dd8479e0e88050ef3ab04cec0aa28153f",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useAutocompleteSession.ts",
+      "target": "happy-mobile/sources/hooks/useAutocompleteSession.ts",
+      "sha256": "851caab685fd4b804c8e7a775d8d63ba8eb21674de252e2afa21007e732096b2",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useBrowserNavigationShortcuts.ts",
+      "target": "happy-mobile/sources/hooks/useBrowserNavigationShortcuts.ts",
+      "sha256": "f8e387a586998a483fa6ce86b5f2eda0ae60f40e6b97c06c93e4d1a5354d6bc8",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useChangelog.ts",
+      "target": "happy-mobile/sources/hooks/useChangelog.ts",
+      "sha256": "8f1f6655e94e8238608b9e1596a53da904d7daf3e00e0dd723028d469c3be5b8",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useCheckCameraPermissions.ts",
+      "target": "happy-mobile/sources/hooks/useCheckCameraPermissions.ts",
+      "sha256": "b94bb1d13041f6c9f41a1ec2cc6551bec35a11c5becd5fb5618aec8e79c45d00",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useConnectAccount.ts",
+      "target": "happy-mobile/sources/hooks/useConnectAccount.ts",
+      "sha256": "115d3f9161adcdbd4a926e447096ad6b36774b216f6ac98802b3d63359422e8e",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useConnectTerminal.ts",
+      "target": "happy-mobile/sources/hooks/useConnectTerminal.ts",
+      "sha256": "236afc4107b2e68b92160194a29607e9483f0f18cf071acfde4392618701cd39",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useDemoMessages.ts",
+      "target": "happy-mobile/sources/hooks/useDemoMessages.ts",
+      "sha256": "bc7511ee580a2c7bffb911a1fd528c117d43d4cc93725ad9eeed5a182a515e74",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useDraft.ts",
+      "target": "happy-mobile/sources/hooks/useDraft.ts",
+      "sha256": "b73f76e4bb6df441364814ada14be9cda12eac83cbe72f33ffba13d1c14b2f39",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useElapsedTime.ts",
+      "target": "happy-mobile/sources/hooks/useElapsedTime.ts",
+      "sha256": "384b452875a19a617477a153afba3eab37d12af23c7b2b3be6fa6543f63f2364",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useGetPath.ts",
+      "target": "happy-mobile/sources/hooks/useGetPath.ts",
+      "sha256": "dc8bf82fdafe4705bfba1ad9c7fd3f5f545b7ed89acaf0af6bd9a42932d6d279",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useGitStatusFiles.ts",
+      "target": "happy-mobile/sources/hooks/useGitStatusFiles.ts",
+      "sha256": "9443c0af153a5e8a670767c392dab06f36f3e87b9515ab796fd8e7a1ad57bfd1",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useGlobalKeyboard.ts",
+      "target": "happy-mobile/sources/hooks/useGlobalKeyboard.ts",
+      "sha256": "af2c179bba296a1d24d13787f76ec6b12abf6a647da0769f7650312508bbdf78",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useGroupedMessages.test.ts",
+      "target": "happy-mobile/sources/hooks/useGroupedMessages.test.ts",
+      "sha256": "8612b81535552a0e7ff5d06ccdf07882455ac8783be4b3af66d258097f779cf8",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useGroupedMessages.ts",
+      "target": "happy-mobile/sources/hooks/useGroupedMessages.ts",
+      "sha256": "44d3fb440716dffec197269936e8a979fb95d35d5fa595dbb8cb886c025a2f08",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useHappyAction.ts",
+      "target": "happy-mobile/sources/hooks/useHappyAction.ts",
+      "sha256": "265edd057537f98eccc207acdb6fcd3f4bc5adf8d7b0f17499992c0bd11ed7b6",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useImagePicker.test.ts",
+      "target": "happy-mobile/sources/hooks/useImagePicker.test.ts",
+      "sha256": "bec79cf45c25906ce4e3372925ee2b7eaa8aed2c6b22c3afaf9850e6b314ede4",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useImagePicker.ts",
+      "target": "happy-mobile/sources/hooks/useImagePicker.ts",
+      "sha256": "14dde2f6f228bd2825fd4b41f086f384f7a5a8ae29b4326a0d2faac0d35bc27f",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useInboxHasContent.ts",
+      "target": "happy-mobile/sources/hooks/useInboxHasContent.ts",
+      "sha256": "348d816ac8edd5469a804cb31c1f669a2a2f44183025e1ebd81f96e5288b5472",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useMultiClick.ts",
+      "target": "happy-mobile/sources/hooks/useMultiClick.ts",
+      "sha256": "84a99c479c444b56cc37fc23027c84603ac9e7ec618d7587c6c02cb146bc77e6",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useNativeUpdate.ts",
+      "target": "happy-mobile/sources/hooks/useNativeUpdate.ts",
+      "sha256": "056954750e62b8f0fc275e2b9695e9611ef74b5861b84dc131f34d7b7325232d",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useNavigateToSession.test.ts",
+      "target": "happy-mobile/sources/hooks/useNavigateToSession.test.ts",
+      "sha256": "2973a521de2a582b6043d885a3a97bc11e1659a232b5c3941b6c10d10229bb7e",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useNavigateToSession.ts",
+      "target": "happy-mobile/sources/hooks/useNavigateToSession.ts",
+      "sha256": "b5b35cb8db845257e805948395d61425b5123d85dc84052b1cd74cb0ed9262c0",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useNewSessionDraft.test.ts",
+      "target": "happy-mobile/sources/hooks/useNewSessionDraft.test.ts",
+      "sha256": "6145a54d974febbf17e36dd576659d5b3301d369b2090a17440733bdab6c7b71",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useNewSessionDraft.ts",
+      "target": "happy-mobile/sources/hooks/useNewSessionDraft.ts",
+      "sha256": "1a4307bd55417571f6d0daf5a259cd0cd72113c9b7df10bf5f981bf64c4c44f2",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useOfflineMachineTroubleshooting.ts",
+      "target": "happy-mobile/sources/hooks/useOfflineMachineTroubleshooting.ts",
+      "sha256": "b8c7552aa37deab3235a5eb854d8ef1a6f00611446fc8f779713e1f776421a68",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/usePrefetchFileContents.ts",
+      "target": "happy-mobile/sources/hooks/usePrefetchFileContents.ts",
+      "sha256": "7dc1ef473b4d1d9cee9bcf9364757e21ea5d1efcc6613027317605ce31600c1d",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useSearch.ts",
+      "target": "happy-mobile/sources/hooks/useSearch.ts",
+      "sha256": "2e8cea4bcb194fc0c68fd141a3a8c14c9736600555135e7656bcff15bd94900e",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useSessionQuickActions.ts",
+      "target": "happy-mobile/sources/hooks/useSessionQuickActions.ts",
+      "sha256": "86dc16db3b11039010c59fa5209f6b74fb99e306b607478a8575bac1014c3dd0",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useSessionVisibility.test.ts",
+      "target": "happy-mobile/sources/hooks/useSessionVisibility.test.ts",
+      "sha256": "0ced7ab9448be2d5bbd126e7eddeff05c1b08f67a42430787b9553ff66a35044",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useSessionVisibility.ts",
+      "target": "happy-mobile/sources/hooks/useSessionVisibility.ts",
+      "sha256": "a395060459532c57ecf7c1201a32e656d22c94c5d2a083c431ed5bba71562208",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useStartSessionFromDraft.test.ts",
+      "target": "happy-mobile/sources/hooks/useStartSessionFromDraft.test.ts",
+      "sha256": "493c0947f55a78287ffd2218cb8a47ea14df32230028e1d8a6d5df3545eeb020",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useStartSessionFromDraft.ts",
+      "target": "happy-mobile/sources/hooks/useStartSessionFromDraft.ts",
+      "sha256": "db6bd6019cef8b1fcf596720f2615307da7470c3e5c4dbe36c0463dae92764f3",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useTauriDrag.ts",
+      "target": "happy-mobile/sources/hooks/useTauriDrag.ts",
+      "sha256": "0e4aa337e3cd617a946e06f4737495dfb16b5c06e5c231406c0db14df67c7c18",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useTauriZoom.test.ts",
+      "target": "happy-mobile/sources/hooks/useTauriZoom.test.ts",
+      "sha256": "b8571c41cf909dba26446727b135e3c5b9de3423ad9d2de7b60fc493d21042ee",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useTauriZoom.ts",
+      "target": "happy-mobile/sources/hooks/useTauriZoom.ts",
+      "sha256": "48114badf44c0041b4187e9290d5955a7d2fac8516adf6319709c961a5a4de1e",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useUpdates.ts",
+      "target": "happy-mobile/sources/hooks/useUpdates.ts",
+      "sha256": "68d8fb6f6c7a5f0f3d40f7a7f20e0fe223b6f34107101d43fdf5feba439afbea",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useVisibleSessionListViewData.test.ts",
+      "target": "happy-mobile/sources/hooks/useVisibleSessionListViewData.test.ts",
+      "sha256": "2bfe9582dbcb23f0089d2e0ed24825bb24425cb2e66deac26eb32384bcbad441",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useVisibleSessionListViewData.ts",
+      "target": "happy-mobile/sources/hooks/useVisibleSessionListViewData.ts",
+      "sha256": "5b4be0bf253dcc52413cc66fa5ddab2b1e4bc15789008d1477570f49bb4a1d92",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useWorktreeCleanup.ts",
+      "target": "happy-mobile/sources/hooks/useWorktreeCleanup.ts",
+      "sha256": "11c6788b1831606333049db66722999b5703436780db11ddfb2ab57352c922b4",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useWorktrees.test.ts",
+      "target": "happy-mobile/sources/hooks/useWorktrees.test.ts",
+      "sha256": "fca3068426462dd6fc64c0cd7f7984de6df04cf409e14ded672987e3e09fd7cb",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/hooks/useWorktrees.ts",
+      "target": "happy-mobile/sources/hooks/useWorktrees.ts",
+      "sha256": "57aa615f25793ee1e885f9d936a5b169c4076ac696ffbad210b9b834195485b1",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/keyboard/shortcuts.test.ts",
+      "target": "happy-mobile/sources/keyboard/shortcuts.test.ts",
+      "sha256": "892d7aaffb583e0a777ad50b2ecab7a2dc400c3dc6a2e99d6661cf67cd02e4f5",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/keyboard/shortcuts.ts",
+      "target": "happy-mobile/sources/keyboard/shortcuts.ts",
+      "sha256": "58e10fdeabebfd2982c6c06dde156ce09454d49195192a4d1edce45481ed7de1",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/log.ts",
+      "target": "happy-mobile/sources/log.ts",
+      "sha256": "ba69de2666bd48b3dc91cdad8a157dc097e94c2bc41e26e545a8ce015e231b48",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/modal/ModalManager.ts",
+      "target": "happy-mobile/sources/modal/ModalManager.ts",
+      "sha256": "9a19b5fcfbaa6ec8df065852890120b6035fe4c74f9c567895db7f22650272c3",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/modal/ModalProvider.tsx",
+      "target": "happy-mobile/sources/modal/ModalProvider.tsx",
+      "sha256": "5fc2ce82204001e570fb1d5a67b9c05318047298e5c0b189ba05403454899d81",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/modal/components/BaseModal.tsx",
+      "target": "happy-mobile/sources/modal/components/BaseModal.tsx",
+      "sha256": "b15cddd58a856ac66991d2555a652dfdaec17f5aca6004798920b63b90bcbc56",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/modal/components/CustomModal.tsx",
+      "target": "happy-mobile/sources/modal/components/CustomModal.tsx",
+      "sha256": "1aada1c84bcd45d3705722adce55a2eb1a16891b762abc3a6eeee7d2d1aa2282",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/modal/components/WebAlertModal.tsx",
+      "target": "happy-mobile/sources/modal/components/WebAlertModal.tsx",
+      "sha256": "05446ce762adb001aebc2e18708f13082e9ac3f576518e5cc255d06d189dd685",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/modal/components/WebPromptModal.tsx",
+      "target": "happy-mobile/sources/modal/components/WebPromptModal.tsx",
+      "sha256": "3d4209397f0b9622c9e4646483671b1f321f5f9f376385ae9ae32f4d1ee0e86f",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/modal/index.ts",
+      "target": "happy-mobile/sources/modal/index.ts",
+      "sha256": "fc62c1e7ee6370e5291d47a161f3e8df7d85d9a10ae61ac67209e816d2084b0d",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/modal/types.ts",
+      "target": "happy-mobile/sources/modal/types.ts",
+      "sha256": "9b8a66db97c50b073a85b57ca52b10a4dbbf32dc0fb229b7c71d2bb5c928885d",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/navigation/browserNavigation.test.ts",
+      "target": "happy-mobile/sources/navigation/browserNavigation.test.ts",
+      "sha256": "6a058bcc799fd5ced5faa8b8e44efd64027812d4cda89be8bf239ca36e740c09",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/navigation/browserNavigation.ts",
+      "target": "happy-mobile/sources/navigation/browserNavigation.ts",
+      "sha256": "707ab709d9b46feeddddb86e4c0cee85f3c5df8cb74e86d07bfdbbbfa32e9d1a",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/navigation/browserNavigationStore.ts",
+      "target": "happy-mobile/sources/navigation/browserNavigationStore.ts",
+      "sha256": "c4de7bb7ced82164ed45468fc1f24d736c4498bbb295176e3808ce0ee1895464",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/polyfills/screenOrientation.ts",
+      "target": "happy-mobile/sources/polyfills/screenOrientation.ts",
+      "sha256": "3725c27a7c3dfee7a7755c3cf52dce065f0ef29638918efdb4f27ec33bdf51d5",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/realtime/RealtimeProvider.tsx",
+      "target": "happy-mobile/sources/realtime/RealtimeProvider.tsx",
+      "sha256": "f43ad1aa53e65b1c78d68eefeb79a3e416acfcb675e4434fc0c4ea9876b8bb7c",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/realtime/RealtimeProvider.web.tsx",
+      "target": "happy-mobile/sources/realtime/RealtimeProvider.web.tsx",
+      "sha256": "266b7daf9e5e948f1387c56b1fa92458c688db0510a62acf9cb50af64088c4e2",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/realtime/RealtimeSession.ts",
+      "target": "happy-mobile/sources/realtime/RealtimeSession.ts",
+      "sha256": "570081536964f7427dcfa4d894eac8122da97d7efb8e533b7ee3cd16256b1bbc",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/realtime/RealtimeVoiceSession.tsx",
+      "target": "happy-mobile/sources/realtime/RealtimeVoiceSession.tsx",
+      "sha256": "947a83134713c59b1c1a20733285fc64f41d4be21ae8cfe6e654ecbe21b41cec",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/realtime/RealtimeVoiceSession.web.tsx",
+      "target": "happy-mobile/sources/realtime/RealtimeVoiceSession.web.tsx",
+      "sha256": "7879b8d329dfb0cb64b598bb65349afeb62c9430f3501a54818dca224e559aef",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/realtime/hooks/contextFormatters.ts",
+      "target": "happy-mobile/sources/realtime/hooks/contextFormatters.ts",
+      "sha256": "0693ac0a3a3f4db2de53edd9ef5d0f2d1201e79950795cf5d06a411a3f629b38",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/realtime/hooks/voiceHooks.ts",
+      "target": "happy-mobile/sources/realtime/hooks/voiceHooks.ts",
+      "sha256": "098c13de5938167f5ecb87432238a953336a6c15381fe91f482f01a629ebb27b",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/realtime/realtimeClientTools.ts",
+      "target": "happy-mobile/sources/realtime/realtimeClientTools.ts",
+      "sha256": "b8c9e68d4ba4a39307b6de8120fbda0401f03598f44135131392b9b5987853b8",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/realtime/types.ts",
+      "target": "happy-mobile/sources/realtime/types.ts",
+      "sha256": "870e5765151b50cb80103350096007c38af3f96ae6a4a3b3b18e222263133e69",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/realtime/voiceConfig.ts",
+      "target": "happy-mobile/sources/realtime/voiceConfig.ts",
+      "sha256": "1249728ca3cdb846c3abcc6e9e70f70ea1aed2154aa999b771d68e0730ae8849",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/realtime/voiceExperiment.ts",
+      "target": "happy-mobile/sources/realtime/voiceExperiment.ts",
+      "sha256": "dc9ab8aa049798fe1684327b571be611155d847841d90c8fbd220bddf818a143",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/realtime/voiceSystemPrompt.ts",
+      "target": "happy-mobile/sources/realtime/voiceSystemPrompt.ts",
+      "sha256": "a42382b95137389c5d4b9b50399b951c05662f3ececcbdc42a3d35b0c11cba0d",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/scripts/compareTranslations.ts",
+      "target": "happy-mobile/sources/scripts/compareTranslations.ts",
+      "sha256": "69fb618c8c663a03fcc588e021599fffc98d3cf65006593405eca24adbb68d85",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/scripts/parseChangelog.ts",
+      "target": "happy-mobile/sources/scripts/parseChangelog.ts",
+      "sha256": "a8ad1d3adaa9a28cd1c8f6d60f52362f09443ef9fee6cfafac55dabce776e5a9",
       "license": "MIT"
     },
     {
@@ -2678,75 +3302,873 @@
       "license": "MIT"
     },
     {
-      "source": "packages/happy-wire/src/controlMessages.test.ts",
-      "target": "happy-mobile/packages/happy-wire/src/controlMessages.test.ts",
-      "sha256": "f4d5d8092b51cf0bdca70a0378a3da0d0bf17515c82887a8a49acdf9456063c5",
+      "source": "packages/happy-app/sources/text/_all.ts",
+      "target": "happy-mobile/sources/text/_all.ts",
+      "sha256": "abe46935da07d2f9f64fd80492dfb2fafc2621a39bb2585ebda584396207c994",
       "license": "MIT"
     },
     {
-      "source": "packages/happy-wire/src/controlMessages.ts",
-      "target": "happy-mobile/packages/happy-wire/src/controlMessages.ts",
-      "sha256": "dc793df4cf90d1065f09dbd6c54871114361da0881dd3347ce5c48c1dd3ed53d",
+      "source": "packages/happy-app/sources/text/_default.ts",
+      "target": "happy-mobile/sources/text/_default.ts",
+      "sha256": "4ca46b476a39fb034985d6463b5ef625757dfc5ed17d221e31c315c46fe1334d",
       "license": "MIT"
     },
     {
-      "source": "packages/happy-wire/src/index.ts",
-      "target": "happy-mobile/packages/happy-wire/src/index.ts",
-      "sha256": "614af0f31cfe1beb9ecd60f687ba3e47a8fd5ed6717f2d5a260b82f8d9a30983",
+      "source": "packages/happy-app/sources/text/index.ts",
+      "target": "happy-mobile/sources/text/index.ts",
+      "sha256": "6876cba42c3a33ebf0d10995e0c8dcea1f9b9c3af48113ed31b0b31354361a53",
       "license": "MIT"
     },
     {
-      "source": "packages/happy-wire/src/legacyProtocol.ts",
-      "target": "happy-mobile/packages/happy-wire/src/legacyProtocol.ts",
-      "sha256": "161001afcae0b30db767192147242ccbefb061ebac3b0e23afdd4383a397d8b0",
+      "source": "packages/happy-app/sources/text/translations/ca.ts",
+      "target": "happy-mobile/sources/text/translations/ca.ts",
+      "sha256": "3442166b093802e45c92812115dd27e9b2e4274f3f0da6aeefa72d4909b15b6e",
       "license": "MIT"
     },
     {
-      "source": "packages/happy-wire/src/messageMeta.ts",
-      "target": "happy-mobile/packages/happy-wire/src/messageMeta.ts",
-      "sha256": "39562f4e9dc3b0e18129a09dc55b48d066e87a7494692935f7239f557ff81ee4",
+      "source": "packages/happy-app/sources/text/translations/en.ts",
+      "target": "happy-mobile/sources/text/translations/en.ts",
+      "sha256": "4a5e78c30ebe745b6e95f9e3dbf3ab52391eda606ffce7ad622c7292d5c74662",
       "license": "MIT"
     },
     {
-      "source": "packages/happy-wire/src/messages.test.ts",
-      "target": "happy-mobile/packages/happy-wire/src/messages.test.ts",
-      "sha256": "7056489bea29955f5ff4548c6878c03d349e8a7435913efb7aae1750e0562691",
+      "source": "packages/happy-app/sources/text/translations/es.ts",
+      "target": "happy-mobile/sources/text/translations/es.ts",
+      "sha256": "bc03a98c6a4a2dc423cc981d76de9bcdd8e6c7c8db7221b923526be57cd779af",
       "license": "MIT"
     },
     {
-      "source": "packages/happy-wire/src/messages.ts",
-      "target": "happy-mobile/packages/happy-wire/src/messages.ts",
-      "sha256": "cc2846a331afe09466ded514c3e759db7a6d8a27cf0f2d6f0c5bf7664df08d38",
+      "source": "packages/happy-app/sources/text/translations/it.ts",
+      "target": "happy-mobile/sources/text/translations/it.ts",
+      "sha256": "e49df26c6b935516b4e4722dc226c3318579129550961e5690e1e3a996b5269b",
       "license": "MIT"
     },
     {
-      "source": "packages/happy-wire/src/rigMetadata.test.ts",
-      "target": "happy-mobile/packages/happy-wire/src/rigMetadata.test.ts",
-      "sha256": "176a6adeb4ae3182a079da4c4f97d1c0c5de90aedb488d0f8f6f0fa80b1e3bb6",
+      "source": "packages/happy-app/sources/text/translations/ja.ts",
+      "target": "happy-mobile/sources/text/translations/ja.ts",
+      "sha256": "eefe377c4faca43d25534becc7f5db8ea69c87fd3e6b3729625f625d0503c27d",
       "license": "MIT"
     },
     {
-      "source": "packages/happy-wire/src/rigMetadata.ts",
-      "target": "happy-mobile/packages/happy-wire/src/rigMetadata.ts",
-      "sha256": "b54666cecf634faa3e9a586e95f71497122450458efb67ebc96c0a1c617939c4",
+      "source": "packages/happy-app/sources/text/translations/pl.ts",
+      "target": "happy-mobile/sources/text/translations/pl.ts",
+      "sha256": "32baa4082e4abe8dd479bf5c8fecdcc10142a7f58edae4582909eb7001b88cca",
       "license": "MIT"
     },
     {
-      "source": "packages/happy-wire/src/sessionProtocol.test.ts",
-      "target": "happy-mobile/packages/happy-wire/src/sessionProtocol.test.ts",
-      "sha256": "12073f62bead82b08b920588155cbf7fcab0a6778d6d17dd4935cc1109e3190e",
+      "source": "packages/happy-app/sources/text/translations/pt.ts",
+      "target": "happy-mobile/sources/text/translations/pt.ts",
+      "sha256": "bd0c02f39fb4743194c38e8243f0de7cf06d84d71323af99868127703e0ec9c5",
       "license": "MIT"
     },
     {
-      "source": "packages/happy-wire/src/sessionProtocol.ts",
-      "target": "happy-mobile/packages/happy-wire/src/sessionProtocol.ts",
-      "sha256": "6275298f524874fd435d77f8e7f462dc76200ca68b11e40c191ba7e9f4b678b2",
+      "source": "packages/happy-app/sources/text/translations/ru.ts",
+      "target": "happy-mobile/sources/text/translations/ru.ts",
+      "sha256": "8be997b39cae5522b8b5c6b96b0127f008e56c750f487a9b6dbe800771f9cf6d",
       "license": "MIT"
     },
     {
-      "source": "packages/happy-wire/src/voice.ts",
-      "target": "happy-mobile/packages/happy-wire/src/voice.ts",
-      "sha256": "dfc054b92430a09e82174a46e68929e5b8eb0adb1f8d4d79d70644ca46785041",
+      "source": "packages/happy-app/sources/text/translations/zh-Hans.ts",
+      "target": "happy-mobile/sources/text/translations/zh-Hans.ts",
+      "sha256": "4f7101910e95a4a28ae0cac79d5f9685c72b499e5a44ce0680514bc4d9a90b96",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/text/translations/zh-Hant.ts",
+      "target": "happy-mobile/sources/text/translations/zh-Hant.ts",
+      "sha256": "9b98547b79a86ae8fed9545488495852910344a5b2d8b5450777c8635828327e",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/theme.dark.json",
+      "target": "happy-mobile/sources/theme.dark.json",
+      "sha256": "82c7112304b9219e54764604aec6e0275daf820b31defd568a8a421c8a5c95c7",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/theme.figma.json",
+      "target": "happy-mobile/sources/theme.figma.json",
+      "sha256": "0b7d1bcb3c3f898ec3f18449c3b584f1ddcbbafb4e41f8dd28992921b48f7598",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/theme.gen.ts",
+      "target": "happy-mobile/sources/theme.gen.ts",
+      "sha256": "a2681b3d487a36db1c61c494a240d3dd61aa10f740922b2a5b35d56bc35c780e",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/theme.light.json",
+      "target": "happy-mobile/sources/theme.light.json",
+      "sha256": "b9f8c8844e71901a49eef0af156d20d66333cf2fcd647214b7144d4e5f1517c1",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/theme.ts",
+      "target": "happy-mobile/sources/theme.ts",
+      "sha256": "0d38cd51ee20ab9b1d2e6e11dc9a2d3bfbcc10bf7e8473074ab85e6698cc8443",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/track/index.ts",
+      "target": "happy-mobile/sources/track/index.ts",
+      "sha256": "e1df3396483d7bc9208f5abf56f1a1996c8351a9ff0cf56c027cbe81ba80a1c3",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/track/tracking.ts",
+      "target": "happy-mobile/sources/track/tracking.ts",
+      "sha256": "f696f2326ff21883a4abc98a1f661204e0521baa759b2d2c9bf1c90c67eb4043",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/track/useTrackScreens.ts",
+      "target": "happy-mobile/sources/track/useTrackScreens.ts",
+      "sha256": "fa1d7cc4c40dd4d76813a6a498999e089e5b664456d80668a5c1957268792d06",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/types/react-native-webrtc-web-shim.d.ts",
+      "target": "happy-mobile/sources/types/react-native-webrtc-web-shim.d.ts",
+      "sha256": "ef20551c2f79cc2ac28ac0ef8d9569755101563d5d2515d4543e3446a51fdf6b",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/unistyles.ts",
+      "target": "happy-mobile/sources/unistyles.ts",
+      "sha256": "466553af7cf0c979e252f91e7edef2d1227e12ccdd791b711576a52ce102d936",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/agentTurnCopy.test.ts",
+      "target": "happy-mobile/sources/utils/agentTurnCopy.test.ts",
+      "sha256": "a25db122264905a8dda9134fc47640a81922420e6ebc4d8216e8e6bd0ac6f6b3",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/agentTurnCopy.ts",
+      "target": "happy-mobile/sources/utils/agentTurnCopy.ts",
+      "sha256": "32aacc690292602c90674c435ab4393c57d45908fae585cb692986b3eeb5500c",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/avatarHarness.test.ts",
+      "target": "happy-mobile/sources/utils/avatarHarness.test.ts",
+      "sha256": "71d03c987328f2124b88fe21d3e4baec31d95248ec3d027fc2d1469c16067a89",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/avatarHarness.ts",
+      "target": "happy-mobile/sources/utils/avatarHarness.ts",
+      "sha256": "db00e2ef0d5db0a73955fbc056e9de7099facafbb7a68a5e4623986393f9d5f3",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/avatarStyle.ts",
+      "target": "happy-mobile/sources/utils/avatarStyle.ts",
+      "sha256": "631291ead2a12361a37844107c23bdc89901c2e2e05649d72c0183f12452071f",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/codexPatchEntry.spec.ts",
+      "target": "happy-mobile/sources/utils/codexPatchEntry.spec.ts",
+      "sha256": "5e900c1ad8923b7c28630a7a92ee3b304197411660c8701b9c0b0cb83203769d",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/codexPatchEntry.ts",
+      "target": "happy-mobile/sources/utils/codexPatchEntry.ts",
+      "sha256": "f24d7d7f69bb019b442bdaa5d38974ac1b6341b979ed9a8753ce2a5023da1265",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/codexUnifiedDiff.spec.ts",
+      "target": "happy-mobile/sources/utils/codexUnifiedDiff.spec.ts",
+      "sha256": "f175f9febd9cfff76245ab39c7f8fa50216e81bd7dc84cc4164969b160a32cf4",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/codexUnifiedDiff.ts",
+      "target": "happy-mobile/sources/utils/codexUnifiedDiff.ts",
+      "sha256": "4d85835ce2d377010c7d622ad220d8c31bcaa1eec940cbbb63dfec35de776bc5",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/consoleLogging.ts",
+      "target": "happy-mobile/sources/utils/consoleLogging.ts",
+      "sha256": "51b3250d11757d36c083e6957f40da573c6f1fe4930e6f4e1b2041b9dbbf2de9",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/copySessionMetadataToClipboard.ts",
+      "target": "happy-mobile/sources/utils/copySessionMetadataToClipboard.ts",
+      "sha256": "379231d53e411fb7976d7fdd5ad47c6e90a0096c87ebb07c131a8018b8fbea3f",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/debounce.test.ts",
+      "target": "happy-mobile/sources/utils/debounce.test.ts",
+      "sha256": "264bc7cf7d53b6bd416ad3cfa033dfc89ca1f4ffa65585618f0b33814fedabb5",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/debounce.ts",
+      "target": "happy-mobile/sources/utils/debounce.ts",
+      "sha256": "52f09719daadb4e729c557aef233a4e053c16f677d1a46ebf86ebc28867917de",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/deviceCalculations.test.ts",
+      "target": "happy-mobile/sources/utils/deviceCalculations.test.ts",
+      "sha256": "01e6897d60bb472d86f7bfdfeec42acc24b9affe87ef85c74d754661bd4ad172",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/deviceCalculations.ts",
+      "target": "happy-mobile/sources/utils/deviceCalculations.ts",
+      "sha256": "2657739a42ae8e3c3d0521267fd1cb51b274595b4aaa619443918397013656a8",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/duplicateSheetLayout.test.ts",
+      "target": "happy-mobile/sources/utils/duplicateSheetLayout.test.ts",
+      "sha256": "6ee199be4ad339506384c0d23f5957e8da6c055e534479fe8263869020d53bee",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/duplicateSheetLayout.ts",
+      "target": "happy-mobile/sources/utils/duplicateSheetLayout.ts",
+      "sha256": "7dbbbdac5f2b154c30bf65c8a5b103121ba310978b4af016d55819d5014cdd6f",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/errors.ts",
+      "target": "happy-mobile/sources/utils/errors.ts",
+      "sha256": "d5bd4f7d613cb8e57ddc105d9221ad002e2f86a1ae982144b5cec6f8063a61e5",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/flatSessionList.test.ts",
+      "target": "happy-mobile/sources/utils/flatSessionList.test.ts",
+      "sha256": "37046053e39226d4eced7561680300b4bc9b04b4fd3577740336501de4197a6e",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/flatSessionList.ts",
+      "target": "happy-mobile/sources/utils/flatSessionList.ts",
+      "sha256": "ade67b7229752c30758948ebe7e5763a7d6cc52e1dbacb09a527596def2492a5",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/flatSessionRowPresentation.test.ts",
+      "target": "happy-mobile/sources/utils/flatSessionRowPresentation.test.ts",
+      "sha256": "264d20338d9fa823a4e2061daec8a600b7d1ce5b9cc1bba0c7d3028dcc3ae6f9",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/flatSessionRowPresentation.ts",
+      "target": "happy-mobile/sources/utils/flatSessionRowPresentation.ts",
+      "sha256": "7232c1b87f11e9a10e8c70a4f48a609c0a9d38811a4cdf950a75144a63510282",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/formatPermissionParams.ts",
+      "target": "happy-mobile/sources/utils/formatPermissionParams.ts",
+      "sha256": "a4a47515bbafe56006f1c55b455f754f8347937627dcb5d4c6c693f7347f7651",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/gitDiffCommand.spec.ts",
+      "target": "happy-mobile/sources/utils/gitDiffCommand.spec.ts",
+      "sha256": "787fe23f5ea37a67c2ff1a97be8e19f6410494565570177fb213ede0d17e248f",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/gitDiffCommand.ts",
+      "target": "happy-mobile/sources/utils/gitDiffCommand.ts",
+      "sha256": "d8cd65d77513e16266a50f2c9fe364f1cde385ccfe9d0d28c1f2f8dd798b112e",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/happyToolDisplay.ts",
+      "target": "happy-mobile/sources/utils/happyToolDisplay.ts",
+      "sha256": "f7bd2df3ceb32112cb325cb7ea226a47aa06f32bf18c89372b956838a063757b",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/harnessCatalog.test.ts",
+      "target": "happy-mobile/sources/utils/harnessCatalog.test.ts",
+      "sha256": "64799d3f599621f8784ba1333981cb092f957e9eb39c5b7adb6f622ce79cb75d",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/harnessCatalog.ts",
+      "target": "happy-mobile/sources/utils/harnessCatalog.ts",
+      "sha256": "1ae1b13eb3216eac5e5a41c7d5557fb7d8f631a3dfde2f173ca8f65b1270c511",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/imageFiles.spec.ts",
+      "target": "happy-mobile/sources/utils/imageFiles.spec.ts",
+      "sha256": "fb6881ed0aa734173e85cddda8993341e2b4bd72bdf9056032b89e5d4df23f3c",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/imageFiles.ts",
+      "target": "happy-mobile/sources/utils/imageFiles.ts",
+      "sha256": "e8bd02fafd6d1ca8b225a073c08ff2788ca9eb4cdd7b9dfb3d03bc03d241c09d",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/isTauri.ts",
+      "target": "happy-mobile/sources/utils/isTauri.ts",
+      "sha256": "f7fc490278885a874d6a9792c0130c93203b35b77242312ef7b46ad1911a8ea8",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/loadSkia.ts",
+      "target": "happy-mobile/sources/utils/loadSkia.ts",
+      "sha256": "f411189111a47545b5b16dac8220122bd40256fa17513c8ea02be8b61b9f53c6",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/loadSkia.web.ts",
+      "target": "happy-mobile/sources/utils/loadSkia.web.ts",
+      "sha256": "1312f55f52ec01ffa753848a4c78610cdf5d67e4ea1d02b0c848287376174dc0",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/lock.ts",
+      "target": "happy-mobile/sources/utils/lock.ts",
+      "sha256": "51d4bbddb641a577ff5842dba3bce63e2476de4f382efa06bb524de6fc20f467",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/machineUtils.ts",
+      "target": "happy-mobile/sources/utils/machineUtils.ts",
+      "sha256": "7d182fbf28476c68dddf62ec0650c71524252a91d4dde8bfd2b3c42dfc49c7e0",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/messageUtils.ts",
+      "target": "happy-mobile/sources/utils/messageUtils.ts",
+      "sha256": "b792f0019a74005bc07074c364859ffc87abfda735175000f8bf689815a6d087",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/microphonePermissions.ts",
+      "target": "happy-mobile/sources/utils/microphonePermissions.ts",
+      "sha256": "78a24a7efa189cb3f8989fd7153715c640b8d1047ab78b1b1805a9b5acaeb2ea",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/newSessionAgentSelection.test.ts",
+      "target": "happy-mobile/sources/utils/newSessionAgentSelection.test.ts",
+      "sha256": "6837a1e4bd8aeb421b21e4efec3fbb7882a1fdf393999e43eab73038ec718df3",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/newSessionAgentSelection.ts",
+      "target": "happy-mobile/sources/utils/newSessionAgentSelection.ts",
+      "sha256": "642495d25a2190aef08fe7276c162d062311fae2f6a404eb8323e3ff98263e25",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/newSessionModeSelection.test.ts",
+      "target": "happy-mobile/sources/utils/newSessionModeSelection.test.ts",
+      "sha256": "52eba074ecbc1615e04c9ccceb7e0145cda3b42783fbc24e38edf831324cf3fb",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/newSessionModeSelection.ts",
+      "target": "happy-mobile/sources/utils/newSessionModeSelection.ts",
+      "sha256": "1d8727d78aae7a1f2304210c246c69b6b36edc525e23df3e1674e5fb73a0b109",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/newSessionPickerInteraction.test.ts",
+      "target": "happy-mobile/sources/utils/newSessionPickerInteraction.test.ts",
+      "sha256": "aba34432ed0d7e96b2482432c545c1a742dfabf4adc781ae7f2f1f01ec669c26",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/newSessionPickerInteraction.ts",
+      "target": "happy-mobile/sources/utils/newSessionPickerInteraction.ts",
+      "sha256": "f6cdbe41e1af423dd401f0341cb5f99b3994cae37138e7af006f61b728521c8d",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/newSessionPickerItems.test.ts",
+      "target": "happy-mobile/sources/utils/newSessionPickerItems.test.ts",
+      "sha256": "7096336b355ed4f27752e13d95b21ecd4519019c76e9dd36e1535d4ee2f168e5",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/newSessionPickerItems.ts",
+      "target": "happy-mobile/sources/utils/newSessionPickerItems.ts",
+      "sha256": "372ec79bcc785ef0c9e02691aa97d27a2a9baa44e913e7295d300e1065861ed7",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/newSessionSidebarLayout.test.ts",
+      "target": "happy-mobile/sources/utils/newSessionSidebarLayout.test.ts",
+      "sha256": "277eda92806308767d97030effb20d303508c11105a2256a5786ec26069ccca4",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/newSessionSidebarLayout.ts",
+      "target": "happy-mobile/sources/utils/newSessionSidebarLayout.ts",
+      "sha256": "3da2559d0606234f91ef6911a6e46c9bc652d428cd594fe1da24d56fbe7b820b",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/notificationRouting.test.ts",
+      "target": "happy-mobile/sources/utils/notificationRouting.test.ts",
+      "sha256": "a80ffc1d098137c90cae4fdc063779bd13da105a6802f10ca9267ed1744382b7",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/notificationRouting.ts",
+      "target": "happy-mobile/sources/utils/notificationRouting.ts",
+      "sha256": "24afdf896af1af3dac044f2e8fd4371b7058bd9da3ccdac6c0db029acefbf0a1",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/oauth.ts",
+      "target": "happy-mobile/sources/utils/oauth.ts",
+      "sha256": "582058106967bd6a40d82bcd5301f0cfaaeae8fc6711897f55ccd4cdb46f361f",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/offlineMachineTroubleshooting.test.ts",
+      "target": "happy-mobile/sources/utils/offlineMachineTroubleshooting.test.ts",
+      "sha256": "52f68f863999d7c9c5cc3ab3f9d01dcdc262b1cd0347f15bc8dd65e02669e1cb",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/offlineMachineTroubleshooting.ts",
+      "target": "happy-mobile/sources/utils/offlineMachineTroubleshooting.ts",
+      "sha256": "d6d3e47574d0266002d845af87f6a5146b347db96ab87e2595ab71b48d81a94c",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/openExternalUrl.ts",
+      "target": "happy-mobile/sources/utils/openExternalUrl.ts",
+      "sha256": "b136e549437fc0dca002c11909127cdc59c93c44d6ecc5a3b096f79c78e24bff",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/parseToken.ts",
+      "target": "happy-mobile/sources/utils/parseToken.ts",
+      "sha256": "b0259e185cdaca74a48bb4a308a33cd79000fecc4bfd4e2b6bcd63c885f22a40",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/pasteImages.web.ts",
+      "target": "happy-mobile/sources/utils/pasteImages.web.ts",
+      "sha256": "40ff36d447460c309a232a948f4f245b29ab09bec9b3e7d799c5ab328ba0c9ac",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/pathUtils.spec.ts",
+      "target": "happy-mobile/sources/utils/pathUtils.spec.ts",
+      "sha256": "12d3a7ed6d32b899a7d60db4cf9dc6e5cd73e59e26fd65f0eb53b4fdd0d8f563",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/pathUtils.ts",
+      "target": "happy-mobile/sources/utils/pathUtils.ts",
+      "sha256": "e1962fa2c81bf257a978d3dff6ee6c68fe10d0140deb70e5a64ccc42c4f0d489",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/perfLog.ts",
+      "target": "happy-mobile/sources/utils/perfLog.ts",
+      "sha256": "03c4e9376c9b6b85f094d63d1560834051523437607a89a76270e74b3fdcbe6b",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/permissionModeLabels.test.ts",
+      "target": "happy-mobile/sources/utils/permissionModeLabels.test.ts",
+      "sha256": "6648723eedbfd9dcc0ef1b0bed0ade8577c979be60de530898c6e8330bf3689c",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/permissionModeLabels.ts",
+      "target": "happy-mobile/sources/utils/permissionModeLabels.ts",
+      "sha256": "8c89071df56d608d1c7c8c18b9c18f8868c5e61cdc39fd83de5468e4eec9f980",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/platform.ts",
+      "target": "happy-mobile/sources/utils/platform.ts",
+      "sha256": "56dfec74486460559046840e09175c0fe792cbabc0a925a961b085c00b25a11b",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/readFileBytes.ts",
+      "target": "happy-mobile/sources/utils/readFileBytes.ts",
+      "sha256": "c5979788ed07c6dd7afd759cdfc910678bf27924ba32f00796af0a85e03897d3",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/readFileBytes.web.ts",
+      "target": "happy-mobile/sources/utils/readFileBytes.web.ts",
+      "sha256": "e5535baa3f929f1d3869022754d6394e7e7b23f1a7ae1b908f2f4a0a2db2ba27",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/requestReview.ts",
+      "target": "happy-mobile/sources/utils/requestReview.ts",
+      "sha256": "a44b2e1d97559e4e63eac24bf81104a31c28a2276687236b2612c687236356df",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/responsive.ts",
+      "target": "happy-mobile/sources/utils/responsive.ts",
+      "sha256": "e4f2a891002abf29a56ef35ba49ed950eb9e82ad10bad973951897d844e50941",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/resumeCommand.test.ts",
+      "target": "happy-mobile/sources/utils/resumeCommand.test.ts",
+      "sha256": "468a29dfe684e0ebc01485b58fbbfe705ef103e343d247755d636a607b6b482b",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/resumeCommand.ts",
+      "target": "happy-mobile/sources/utils/resumeCommand.ts",
+      "sha256": "0c174b7bd9a5cd3dd772d1eb2b0fc572328f76a3fe66147e19ea9c0d96048b98",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/rigGitLineChanges.test.ts",
+      "target": "happy-mobile/sources/utils/rigGitLineChanges.test.ts",
+      "sha256": "57064ad7a77c9de9f497a7e4c063c8a60b2e1b6194c745fafce2b18bb75cc4b4",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/rigGitLineChanges.ts",
+      "target": "happy-mobile/sources/utils/rigGitLineChanges.ts",
+      "sha256": "49473cffa1602c4851bfedd876dd2f37d34579cf6ac4efb5d0051d23b967a2f6",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/rigModelPickerOrder.test.ts",
+      "target": "happy-mobile/sources/utils/rigModelPickerOrder.test.ts",
+      "sha256": "a3d5289aedbff0a856b8830afbc4560c200658994e6874d0ab857974cd10ff31",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/rigModelPickerOrder.ts",
+      "target": "happy-mobile/sources/utils/rigModelPickerOrder.ts",
+      "sha256": "e122eae75e27df8af7130da9bfece8f8f629e2c73da2878061c407679dcc5537",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/sessionActivity.test.ts",
+      "target": "happy-mobile/sources/utils/sessionActivity.test.ts",
+      "sha256": "ef96f44104166410939b030e07c9978229bb7fdf1e9339323252a28babfd4318",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/sessionActivity.ts",
+      "target": "happy-mobile/sources/utils/sessionActivity.ts",
+      "sha256": "f6408c7663162281638bbd2b6155e29f98b57af8a844668350b9e694af66526c",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/sessionDisplayOrder.test.ts",
+      "target": "happy-mobile/sources/utils/sessionDisplayOrder.test.ts",
+      "sha256": "dc2608f96617e1038e9332ec866d5679745c19dd4acc50961d10204368ed25f2",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/sessionDisplayOrder.ts",
+      "target": "happy-mobile/sources/utils/sessionDisplayOrder.ts",
+      "sha256": "ce97c6205d902fd9bbbd29635d0e75fb44a262359e62f38dda57d2e675bcf60f",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/sessionFileLinks.test.ts",
+      "target": "happy-mobile/sources/utils/sessionFileLinks.test.ts",
+      "sha256": "c6e6ea7e6351ad7e8c0a1519332c3e62e27435ae74e91d2e4f20fe45f82874e4",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/sessionFileLinks.ts",
+      "target": "happy-mobile/sources/utils/sessionFileLinks.ts",
+      "sha256": "fc293eaedc1db5eaaf5cd4ccf9e49d84a9fc6c2529cfa1d9e0ae7efec59d5646",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/sessionFork.test.ts",
+      "target": "happy-mobile/sources/utils/sessionFork.test.ts",
+      "sha256": "03107eb435752747d86464f73a3041543bde0eff0dfb35409330f6762efeb15d",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/sessionFork.ts",
+      "target": "happy-mobile/sources/utils/sessionFork.ts",
+      "sha256": "70533d7db64299816d90a8a7725e21da3036ee373cd1149ce6e1596cc95c7413",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/sessionGitPresentation.test.ts",
+      "target": "happy-mobile/sources/utils/sessionGitPresentation.test.ts",
+      "sha256": "69464fd94b4c852783b53a08dc8154fc6a10fac01da63a1ac2551bf69b75c78f",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/sessionGitPresentation.ts",
+      "target": "happy-mobile/sources/utils/sessionGitPresentation.ts",
+      "sha256": "7af435703677ce83cd13b605b465d0cb6742764b461db2e51d93b11520a7003d",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/sessionListTimestamp.test.ts",
+      "target": "happy-mobile/sources/utils/sessionListTimestamp.test.ts",
+      "sha256": "067dfd19d5599821bee3acea6471c70f36a89522292aaede4757b13c35501a94",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/sessionListTimestamp.ts",
+      "target": "happy-mobile/sources/utils/sessionListTimestamp.ts",
+      "sha256": "b9a25cd8df4e50b584d6f8fa2a3bd86c9253b954a792d43e33b0cc6d0b3b9388",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/sessionStatusBar.test.ts",
+      "target": "happy-mobile/sources/utils/sessionStatusBar.test.ts",
+      "sha256": "bd45ad65a6d4eccbcd3002a377eb679eb6b4cdd1b35787275d52517ce34f2016",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/sessionStatusBar.ts",
+      "target": "happy-mobile/sources/utils/sessionStatusBar.ts",
+      "sha256": "a1409cdb78e67cd924bba65feb77e138a3efb7f4b4bdea8e658b23043098517d",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/sessionUtils.ts",
+      "target": "happy-mobile/sources/utils/sessionUtils.ts",
+      "sha256": "3ea1de3a04b2dfe9d712717adcb38353a8bf250059bbd2aad4b6a77f2362ed04",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/stringUtils.ts",
+      "target": "happy-mobile/sources/utils/stringUtils.ts",
+      "sha256": "03eedc6bf78cdce5a8252baa1aff4745e4db542c1ee4b2d79725e904f711387e",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/sync.ts",
+      "target": "happy-mobile/sources/utils/sync.ts",
+      "sha256": "7338c1951737b086fd2883bb433eb2fdac896e03f450325bc412e44ab09887aa",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/thumbhash.ts",
+      "target": "happy-mobile/sources/utils/thumbhash.ts",
+      "sha256": "661934b2230717d18404522b61b3d5ff616c4ae068dfc616ea845405a9303ac2",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/thumbhash.web.ts",
+      "target": "happy-mobile/sources/utils/thumbhash.web.ts",
+      "sha256": "32c652bee7f936ef969e02c7fd2105c68880a6b9d2c2ce497ae626facac6343b",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/time.ts",
+      "target": "happy-mobile/sources/utils/time.ts",
+      "sha256": "11371b8a01339bc0193dcbdd114352a1a7bf580f4a47924f714b07f6a3b70b88",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/toSnakeCase.test.ts",
+      "target": "happy-mobile/sources/utils/toSnakeCase.test.ts",
+      "sha256": "7fe8c49d836a8aa41c7c321c9f2ce6768cf8b0939883371c342e8bde56ab2f79",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/toSnakeCase.ts",
+      "target": "happy-mobile/sources/utils/toSnakeCase.ts",
+      "sha256": "12c922c3e29416538a5d6b8f5cf1a34119211d9e6135c717e0b8b3029077b310",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/toolCommand.test.ts",
+      "target": "happy-mobile/sources/utils/toolCommand.test.ts",
+      "sha256": "fbe96c63a4505dd01be59e09eb63a948864e6db2074c6b5c5c5220e1ed77c1ae",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/toolCommand.ts",
+      "target": "happy-mobile/sources/utils/toolCommand.ts",
+      "sha256": "0e471b5e2db8d850a0428026f593068dab3b87514af4aa12f8fb62799c9cc6b1",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/toolComparison.test.ts",
+      "target": "happy-mobile/sources/utils/toolComparison.test.ts",
+      "sha256": "80beb9e153994700da48c79be2a0ed34d3c86dae67aeb7de6070c69e8767db0a",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/toolComparison.ts",
+      "target": "happy-mobile/sources/utils/toolComparison.ts",
+      "sha256": "6a8c8f2c6a8b46cc8514e96f755edb4e770493ff2204909da8c027c67102f44c",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/toolDisplay.test.ts",
+      "target": "happy-mobile/sources/utils/toolDisplay.test.ts",
+      "sha256": "8b26c08a06bbde972a0c039b5a631f9b94ea305400249dff30c9c0fb0f564f3c",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/toolDisplay.ts",
+      "target": "happy-mobile/sources/utils/toolDisplay.ts",
+      "sha256": "9410735d0d3176ef568405d8257e1a8bb45c823ecf406cc0c48a658ecca587f3",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/toolErrorParser.test.ts",
+      "target": "happy-mobile/sources/utils/toolErrorParser.test.ts",
+      "sha256": "62d69aa4fd77c04225163141283b92b1c330e4c83f247b78367f2e27b23f5d9f",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/toolErrorParser.ts",
+      "target": "happy-mobile/sources/utils/toolErrorParser.ts",
+      "sha256": "852f98c9191ad7f1c251ddfd16419b9cbd0367dc3f324dac70d716609cbf8657",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/toolResult.test.ts",
+      "target": "happy-mobile/sources/utils/toolResult.test.ts",
+      "sha256": "d0628ae0326739ebf0a817b940d0b25c0f9787ac48d8a592b710bb73d85c7a23",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/toolResult.ts",
+      "target": "happy-mobile/sources/utils/toolResult.ts",
+      "sha256": "dc4d287cadd186a81ed3fbbab030e7851868f5f9b6aae20848f77ab2614a7a25",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/trimIdent.ts",
+      "target": "happy-mobile/sources/utils/trimIdent.ts",
+      "sha256": "fecbff2b9cd5b945a230abee7176377eb19e8e68102a631ed3229c1a28c11a5d",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/truncateForLogs.ts",
+      "target": "happy-mobile/sources/utils/truncateForLogs.ts",
+      "sha256": "6f9a5f01dbff84cca5ab1e06d79a234294bbca69ed3bb2ea6a1315d78a58b549",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/userMessageBubbleColor.test.ts",
+      "target": "happy-mobile/sources/utils/userMessageBubbleColor.test.ts",
+      "sha256": "e5c06d1bf81a24a54579e63b9e916244e3108883465708f639678cb5b10f1f9a",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/userMessageBubbleColor.ts",
+      "target": "happy-mobile/sources/utils/userMessageBubbleColor.ts",
+      "sha256": "1b8c6cf0de5ba7c7f04563abe81d2070808f0f40ad6100e17bd50a213ff8726a",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/versionUtils.test.ts",
+      "target": "happy-mobile/sources/utils/versionUtils.test.ts",
+      "sha256": "e73f5c10c9d2f1ee41924adf158b6e055a2608992722a8a061b99a5748b70742",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/versionUtils.ts",
+      "target": "happy-mobile/sources/utils/versionUtils.ts",
+      "sha256": "aa795a4ae8859b930323122323c323021b8bbab455c5d769b01cbc054d7cd92c",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/web/faviconGenerator.ts",
+      "target": "happy-mobile/sources/utils/web/faviconGenerator.ts",
+      "sha256": "4a23097d251987a17c36dcf8d2366723b556bc9df6b313c994ba911ab5b076af",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/worktree.ts",
+      "target": "happy-mobile/sources/utils/worktree.ts",
+      "sha256": "99599107810320b4ecba3cad64187e5ec857b11669733333340a2df166510713",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/sources/utils/worktreePaths.ts",
+      "target": "happy-mobile/sources/utils/worktreePaths.ts",
+      "sha256": "0f8c2b276c4acb35979dc673b1b7eb55fc9cd56ccae72b7824526f1566f5d163",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/package.json",
+      "target": "happy-mobile/package.json",
+      "sha256": "bfef039b058d1c3431a90774bb4f97bb488b79f62fe6c865870fc073e64ae31f",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-wire/package.json",
+      "target": "happy-mobile/packages/happy-wire/package.json",
+      "sha256": "ebbfd3f41e9336ec9c7d3dbf802425278d0e533c9fcabeae25a1b1255127b145",
+      "license": "MIT"
+    },
+    {
+      "source": "package.json",
+      "target": "happy-mobile/package.json.root",
+      "sha256": "f3640fd60d7030418351d6bd84739b4de4a5550f13c4ae978cd4f31bb2659713",
+      "license": "MIT"
+    },
+    {
+      "source": "pnpm-lock.yaml",
+      "target": "happy-mobile/pnpm-lock.yaml",
+      "sha256": "6ac8f7afe7b3b8668fe32976a35a4a98dff0420d89b52c2e98333ea8fe9d037e",
+      "license": "MIT"
+    },
+    {
+      "source": "patches/expose-pierre-diffs-style.cjs",
+      "target": "happy-mobile/patches/expose-pierre-diffs-style.cjs",
+      "sha256": "8c309a70134a4327d8d47f6c2eb73d6e03f6f107d8adcdd3e5d35039b8c4d5a0",
+      "license": "MIT"
+    },
+    {
+      "source": "patches/fix-livekit-room-reuse.cjs",
+      "target": "happy-mobile/patches/fix-livekit-room-reuse.cjs",
+      "sha256": "43dfd8f461bc0da3d16f7313080cba866ee242ac67b87d27d1ed3a8385cfffc4",
+      "license": "MIT"
+    },
+    {
+      "source": "patches/fix-pglite-prisma-bytes.cjs",
+      "target": "happy-mobile/patches/fix-pglite-prisma-bytes.cjs",
+      "sha256": "5a7f5cac1b8b7d27405f9199a4beb19b91ef36164b3e516da20b00a89d8ebe46",
+      "license": "MIT"
+    },
+    {
+      "source": "patches/fix-pierre-trees-preact-hooks.cjs",
+      "target": "happy-mobile/patches/fix-pierre-trees-preact-hooks.cjs",
+      "sha256": "2bea67206fbd733bac90e24553448789373dffdab70c783d6f33863d958492df",
+      "license": "MIT"
+    },
+    {
+      "source": "patches/fix-react-native-audio-api-size-t.cjs",
+      "target": "happy-mobile/patches/fix-react-native-audio-api-size-t.cjs",
+      "sha256": "a3767ba86001c83f43c7c1bc12607bc6d6fcb8b665d560dc74965f398eb805ef",
+      "license": "MIT"
+    },
+    {
+      "source": "patches/force-preact-cjs.cjs",
+      "target": "happy-mobile/patches/force-preact-cjs.cjs",
+      "sha256": "7f2a539a27a845ecc5ade6056b5714f1bd5047387b193046e45655e2bf197518",
       "license": "MIT"
     }
   ],
