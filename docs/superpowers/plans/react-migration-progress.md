@@ -28,7 +28,7 @@
 | T05 UI基础、平台注入和国际化 | review | `a230366` + `ac955da` | `pnpm test:web` 0（3/3）；`pnpm typecheck:web` 0；`pnpm build:web` 0；`git diff --check` 0 | React/Vite source and focused tests: passed; package installation: passed; live backend/native/i18n coverage: not completed | Added explicit legacy-session adapter, UI Button/Card/Status primitives and React entry; no broad visual redesign. Internationalization package is still pending as a separate slice. |
 | T06 知识库列表与创建编辑闭环 | review | `a230366` + `ac955da` + `de1ce63` | `pnpm test:shared` 0（26/26）；`pnpm test:web` 0（4/4）；`pnpm typecheck:shared` 0；`pnpm typecheck:web` 0；`pnpm build:web` 0 | Static/Node mock and production bundle: passed; live backend list/create/edit/browser: not completed | Real list path plus typed create/update/delete SDK paths are wired with strict response parsing. UI mutation flow, cache invalidation, permissions and live backend proof remain next work. |
 | T07 文档上传、列表、目录标签与预览 | review | `45901be` + `d0af87f` + `93d3099` | `pnpm test:shared` 0（24/24）；`pnpm typecheck:shared` 0；`pnpm test:web` 0（4/4）；`pnpm typecheck:web` 0；`pnpm build:web` 0 | Contracts/API/domain focused tests, Web loader and production bundle: passed; real upload/processing/preview/browser: not completed | Added paginated document DTO validation, processing-state guard, document list API, multipart upload API, no-fallback Web loader and non-browser-safe FormData detection. UI document view, folders/tags/preview, real backend upload and 413/browser proof remain. |
-| T08 FAQ与Wiki编辑/版本 | pending | — | — | — | 依赖 T07 |
+| T08 FAQ与Wiki编辑/版本 | review | `736eca4` | `pnpm test:shared` 0（29/29）；`pnpm typecheck:shared` 0；`git diff --check` 0 | Shared Wiki diff algorithm and regression tests: passed; FAQ/Wiki API/editor/version conflict/browser: not completed | Migrated pure line/revision diff with common prefix/suffix trimming, LCS cap and field ordering. API contracts, editor conflict handling, FAQ operations and live backend remain. |
 | T09 知识库高级配置与数据源 | pending | — | — | — | 依赖 T06 |
 | T10 聊天协议、状态机与恢复底座 | pending | — | — | — | 依赖 T04 |
 | T11 会话、消息和问答主界面 | pending | — | — | — | 依赖 T05/T10 |
@@ -85,3 +85,4 @@
 | 2026-09-10 | T07 Web document loader seam and client alias integration | `d0af87f` |
 | 2026-09-10 | T07 harden multipart transport environment guard | `93d3099` |
 | 2026-09-10 | T06 add typed knowledge-base create/update/delete API paths | `de1ce63` |
+| 2026-09-10 | T08 add shared Wiki revision diff algorithm and regression tests | `736eca4` |
