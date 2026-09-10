@@ -48,7 +48,9 @@ const nginx = readFileSync(join(root, 'frontend/nginx.conf'), 'utf8');
 for (const requiredRule of [
   'location /api/',
   'location = /files',
+  'location ^~ /embed/assets/',
   'location ^~ /embed/',
+  'public, max-age=31536000, immutable',
   'proxy_buffering off',
   'proxy_set_header Upgrade $http_upgrade',
   'try_files $uri $uri/ /index.html',
