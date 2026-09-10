@@ -16,6 +16,10 @@ export function selectIncompleteAssistant(messages: readonly ChatMessage[]): Cha
   return [...messages].reverse().find((message) => message.role === 'assistant' && message.is_completed === false);
 }
 
+export function shouldRenderPendingUser(messages: readonly ChatMessage[], pendingUser: string | null): boolean {
+  return pendingUser !== null && !messages.some((message) => message.role === 'user' && message.content === pendingUser);
+}
+
 export function selectMessageArtifacts(message: ChatMessage): unknown[] {
   const value = message.artifacts;
   return Array.isArray(value) ? value : [];

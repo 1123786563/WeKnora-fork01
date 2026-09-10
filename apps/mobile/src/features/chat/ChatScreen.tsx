@@ -7,7 +7,7 @@ import { normalizeArtifactList } from '@weknora/domain/chat/artifacts';
 import { normalizeToolResult } from '@weknora/domain/chat/tool-results';
 import { useMobileRuntime } from '../../runtime.tsx';
 import { pickNativeFile } from '../../platform/files.ts';
-import { selectIncompleteAssistant, selectMessageArtifacts, selectReferenceGroups } from './parity.ts';
+import { selectIncompleteAssistant, selectMessageArtifacts, selectReferenceGroups, shouldRenderPendingUser } from './parity.ts';
 
 function errorText(cause: unknown, fallback: string): string {
   return cause instanceof Error ? cause.message : fallback;
@@ -174,7 +174,7 @@ export function ChatScreen() {
   const liveAssistant = streamState.answer ? [{ id: 'mobile-live-assistant', session_id: selectedSessionId || '', role: 'assistant' as const, content: streamState.answer, is_completed: streamState.phase === 'completed' }] : [];
   const displayMessages = useMemo(() => uniqueMessages([
     ...messages,
-    ...(pendingUser ? [{ id: 'mobile-pending-user', session_id: selectedSessionId || '', role: 'user' as const, content: pendingUser }] : []),
+    ...(shouldRenderPendingUser(messages, pendingUser) ? [{ id: 'mobile-pending-user', session_id: selectedSessionId || '', role: 'user' as const, content: pendingUser! }] : []),
     ...liveAssistant,
   ]), [liveAssistant, messages, pendingUser, selectedSessionId]);
   const references = selectReferenceGroups(streamState);

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { initialChatStreamState, reduceChatStream } from '@weknora/domain/chat/reducer';
-import { replayMobileChatEvents, selectIncompleteAssistant, selectReferenceGroups } from './parity.ts';
+import { replayMobileChatEvents, selectIncompleteAssistant, selectReferenceGroups, shouldRenderPendingUser } from './parity.ts';
 
 test('mobile replay uses the shared reducer for answer, approval, and references', () => {
   const events = [
@@ -22,4 +22,10 @@ test('mobile resumes only an incomplete assistant message', () => {
     { id: 'done', session_id: 's', role: 'assistant', content: 'done', is_completed: true },
     { id: 'live', session_id: 's', role: 'assistant', content: 'partial', is_completed: false },
   ])?.id, 'live');
+});
+
+test('mobile does not duplicate a user message after stream recovery reloads history', () => {
+  const messages = [{ id: 'u', session_id: 's', role: 'user' as const, content: 'hello' }];
+  assert.equal(shouldRenderPendingUser(messages, 'hello'), false);
+  assert.equal(shouldRenderPendingUser(messages, 'new draft'), true);
 });
