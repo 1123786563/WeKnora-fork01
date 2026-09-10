@@ -2,6 +2,7 @@ import { parseActionSuccessResponse, parseKnowledgeBaseListResponse, parseKnowle
 import { ApiError, errorFromResult } from './errors.ts';
 import type { HttpRequest, HttpResult, HttpTransport } from './ports.ts';
 import { createKnowledgeDocumentsApi } from './knowledge/documents.ts';
+import { createKnowledgeFaqApi } from './knowledge/faq.ts';
 import { createWikiPagesApi } from './wiki/pages.ts';
 import { createDataSourcesApi } from './datasource.ts';
 import { createAuthApi } from './auth/endpoints.ts';
@@ -98,6 +99,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
   }
 
   const knowledgeDocuments = createKnowledgeDocumentsApi(request);
+  const knowledgeFaq = createKnowledgeFaqApi(request);
   const wiki = createWikiPagesApi(request);
   const dataSources = createDataSourcesApi(request);
   const auth = createAuthApi(request);
@@ -166,9 +168,11 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
         await request({ method: 'DELETE', path: `/api/v1/knowledge-bases/${encodeURIComponent(id)}` });
       },
       documents: knowledgeDocuments,
+      faq: knowledgeFaq,
     },
     knowledge: {
       documents: knowledgeDocuments,
+      faq: knowledgeFaq,
     },
     wiki,
     dataSources,
