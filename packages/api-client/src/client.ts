@@ -76,6 +76,8 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
     }
   }
 
+  const knowledgeDocuments = createKnowledgeDocumentsApi(request);
+
   return {
     request,
     knowledgeBases: {
@@ -83,9 +85,10 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
         const path = withQuery('/api/v1/knowledge-bases', { ...params });
         return parseKnowledgeBaseListResponse(await request({ method: 'GET', path }));
       },
+      documents: knowledgeDocuments,
     },
     knowledge: {
-      documents: createKnowledgeDocumentsApi(request),
+      documents: knowledgeDocuments,
     },
   };
 }
