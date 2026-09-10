@@ -76,3 +76,9 @@ func TestCrossSessionRoutingHasNoSharedCursor(t *testing.T) {
 func TestFinalizeIsExplicitlyInjectable(t *testing.T) {
 	require.NotNil(t, GraphBindings{Finalize: func(context.Context, agentruntime.Fence, json.RawMessage) error { return nil }}.Finalize)
 }
+
+func TestApplyDurableResultFailsClosedWithoutReader(t *testing.T) {
+	s := State{Version: StateVersion, PendingCallIDs: []string{"c1"}, NextCallIndex: 1, AppliedCallIDs: map[string]bool{"c1": true}}
+	err := applyDurableResult(context.Background(), GraphBindings{}, s, "c1")
+	require.Error(t, err)
+}

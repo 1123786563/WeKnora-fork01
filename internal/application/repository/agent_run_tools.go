@@ -55,7 +55,9 @@ func (s *AgentRunStore) LoadToolResult(ctx context.Context, fence agentruntime.F
 		return agentruntime.StoredToolResult{}, agentruntime.ErrLeaseLost
 	}
 	run, err := s.Get(ctx, fence.RunKey)
-	if err != nil || run.Owner != fence.Owner || run.Epoch != fence.Epoch {
+	if err != nil || run.Owner != fence.Owner || run.Epoch != fence.Epoch ||
+		(run.Status != "running" && run.Status != "recovering") ||
+		run.LeaseUntil.IsZero() || !time.Now().Before(run.LeaseUntil) {
 		return agentruntime.StoredToolResult{}, agentruntime.ErrLeaseLost
 	}
 	var row agentToolCallRow

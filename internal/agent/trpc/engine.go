@@ -34,7 +34,11 @@ func NewGraphRunner(b GraphBindings) (*GraphRunner, error) {
 	if b.InitialState.Version == 0 {
 		b.InitialState.Version = StateVersion
 	}
-	b.InitialState = cloneState(b.InitialState)
+	cloned, err := cloneState(b.InitialState)
+	if err != nil {
+		return nil, fmt.Errorf("clone initial state: %w", err)
+	}
+	b.InitialState = cloned
 	return &GraphRunner{bindings: b}, nil
 }
 func (r *GraphRunner) Run(ctx context.Context, fence agentruntime.Fence) error {
@@ -84,12 +88,17 @@ func (r *GraphRunner) Run(ctx context.Context, fence agentruntime.Fence) error {
 }
 func graphBindingsWithFence(b GraphBindings, f agentruntime.Fence) GraphBindings { return b }
 
-func cloneState(in State) State {
+func cloneState(in State) (State, error) {
 	out := in
 	out.Messages = make([]model.Message, len(in.Messages))
 	for i, msg := range in.Messages {
-		raw, _ := json.Marshal(msg)
-		_ = json.Unmarshal(raw, &out.Messages[i])
+		raw, err := json.Marshal(msg)
+		if err != nil {
+			return State{}, err
+		}
+		if err := json.Unmarshal(raw, &out.Messages[i]); err != nil {
+			return State{}, err
+		}
 	}
 	out.PendingCallIDs = append([]string(nil), in.PendingCallIDs...)
 	out.AppliedCallIDs = map[string]bool{}
@@ -101,5 +110,5 @@ func cloneState(in State) State {
 	for k, v := range in.UsageAttempts {
 		out.UsageAttempts[k] = append(json.RawMessage(nil), v...)
 	}
-	return out
+	return out, nil
 }

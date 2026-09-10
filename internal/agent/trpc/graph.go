@@ -167,15 +167,8 @@ func buildGraph(b GraphBindings) (*graph.Graph, error) {
 		}
 		if s.NextCallIndex > 0 {
 			id := s.PendingCallIDs[s.NextCallIndex-1]
-			if b.Tools == nil {
-				return nil, fmt.Errorf("durable tool result %s cannot be verified without tool executor", id)
-			}
-			durable, verifyErr := b.Tools.VerifyResult(ctx, b.fenceFromContext(ctx), id)
-			if verifyErr != nil {
-				return nil, fmt.Errorf("durable tool result %s unavailable: %w", id, verifyErr)
-			}
-			if durable.Result.Output != toolOutputForCall(s, id) {
-				return nil, fmt.Errorf("durable tool result %s does not match applied result", id)
+			if err := applyDurableResult(ctx, b, s, id); err != nil {
+				return nil, err
 			}
 			if !s.AppliedCallIDs[id] {
 				return nil, fmt.Errorf("tool result %s was not durably applied", id)
@@ -280,4 +273,18 @@ func toolOutputForCall(s State, id string) string {
 		}
 	}
 	return ""
+}
+
+func applyDurableResult(ctx context.Context, b GraphBindings, s State, id string) error {
+	if b.Tools == nil {
+		return fmt.Errorf("durable tool result %s cannot be verified without tool executor", id)
+	}
+	durable, err := b.Tools.VerifyResult(ctx, b.fenceFromContext(ctx), id)
+	if err != nil {
+		return fmt.Errorf("durable tool result %s unavailable: %w", id, err)
+	}
+	if durable.Result.Output != toolOutputForCall(s, id) {
+		return fmt.Errorf("durable tool result %s does not match applied result", id)
+	}
+	return nil
 }
