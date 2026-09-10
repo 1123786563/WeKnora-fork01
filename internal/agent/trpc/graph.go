@@ -141,23 +141,25 @@ func buildGraph(b GraphBindings) (*graph.Graph, error) {
 		if b.Tools == nil {
 			return nil, fmt.Errorf("tool executor is required")
 		}
-		id := s.PendingCallIDs[s.NextCallIndex]
-		var call model.ToolCall
-		for _, c := range s.Messages[len(s.Messages)-1].ToolCalls {
-			if c.ID == id {
-				call = c
-				break
+		for s.NextCallIndex < len(s.PendingCallIDs) {
+			id := s.PendingCallIDs[s.NextCallIndex]
+			var call model.ToolCall
+			for _, c := range s.Messages[len(s.Messages)-1].ToolCalls {
+				if c.ID == id {
+					call = c
+					break
+				}
 			}
+			result, err := b.Tools.Execute(ctx, b.fenceFromContext(ctx), agentruntime.ToolPlan{Version: 1, CallID: id, Name: call.Function.Name, Identity: call.Function.Name, ArgsHash: hashArgs(call.Function.Arguments), Args: call.Function.Arguments})
+			if err != nil {
+				return nil, err
+			}
+			if !s.AppliedCallIDs[id] {
+				s.Messages = append(s.Messages, model.Message{Role: model.RoleTool, ToolID: id, Content: result.Result.Output})
+				s.AppliedCallIDs[id] = true
+			}
+			s.NextCallIndex++
 		}
-		result, err := b.Tools.Execute(ctx, b.fenceFromContext(ctx), agentruntime.ToolPlan{Version: 1, CallID: id, Name: call.Function.Name, Identity: call.Function.Name, ArgsHash: hashArgs(call.Function.Arguments), Args: call.Function.Arguments})
-		if err != nil {
-			return nil, err
-		}
-		if !s.AppliedCallIDs[id] {
-			s.Messages = append(s.Messages, model.Message{Role: model.RoleTool, ToolID: id, Content: result.Result.Output})
-			s.AppliedCallIDs[id] = true
-		}
-		s.NextCallIndex++
 		return stateUpdate(s), nil
 	})
 	sg.AddNode(nodeApply, func(ctx context.Context, in graph.State) (any, error) {
