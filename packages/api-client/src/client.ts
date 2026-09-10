@@ -13,6 +13,7 @@ import { createChatApprovalsApi } from './chat/approvals.ts';
 import { createChatSteerApi } from './chat/steer.ts';
 import { createIdentityApi } from './identity/index.ts';
 import { createAdministrationApi } from './administration/index.ts';
+import { createSettingsApi } from './settings/index.ts';
 
 export interface ClientRequest {
   method: string;
@@ -105,6 +106,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
   const chatSteer = createChatSteerApi(request);
   const identity = createIdentityApi(request);
   const administration = createAdministrationApi(request);
+  const settings = createSettingsApi(request);
 
   return {
     request,
@@ -132,6 +134,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
     auth,
     identity,
     administration,
+    settings,
     sessions,
     sandbox,
     configuration,

@@ -6,3 +6,5 @@ export { SessionSidebar } from './chat/session-sidebar.tsx';
 export type { SessionSidebarProps } from './chat/session-sidebar.tsx';
 export { ChatPage } from './chat/page.tsx';
 export type { ChatPageProps } from './chat/page.tsx';
+export { SETTINGS_SECTIONS, settingsSection } from './settings/registry.ts';
+export type { SettingsSection, SettingsScope, SettingsRole, SettingsOperation } from './settings/registry.ts';

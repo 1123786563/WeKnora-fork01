@@ -128,3 +128,14 @@ test('exposes approval and steer actions under the chat namespace', async () => 
   assert.deepEqual(await client.chat.approvals.cancelOAuth('pending-1'), { success: true });
   assert.deepEqual(await client.chat.steer.list('session-1'), { success: true, items: [] });
 });
+
+test('exposes the complete settings API under the client', async () => {
+  const client = createWeKnoraClient({
+    baseURL: 'https://api.example.test',
+    transport: {
+      send: async () => ({ status: 200, headers: {}, body: { code: 0, data: { version: 'test' } } }),
+    },
+  });
+
+  assert.equal((await client.settings.system.info()).version, 'test');
+});
