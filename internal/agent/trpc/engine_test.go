@@ -60,3 +60,22 @@ func (*minimalStore) SaveCheckpoint(context.Context, agentruntime.Fence, agentru
 func (*minimalStore) LoadCheckpoint(context.Context, agentruntime.RunKey) (agentruntime.CheckpointRecord, error) {
 	return agentruntime.CheckpointRecord{}, agentruntime.ErrNotFound
 }
+
+func TestGraphRunnerDeepCopiesNestedMessageAliases(t *testing.T) {
+	idx := 3
+	arg := []byte(`{"x":1}`)
+	extra := map[string]any{"nested": []any{"a"}}
+	text := "hello"
+	in := State{Version: StateVersion, Messages: []model.Message{{ToolCalls: []model.ToolCall{{Index: &idx, ExtraFields: extra, Function: model.FunctionDefinitionParam{Arguments: arg}}}, ContentParts: []model.ContentPart{{Text: &text}}}}}
+	r, err := NewGraphRunner(GraphBindings{Model: &engineModel{}, Store: &minimalStore{}, InitialState: in})
+	require.NoError(t, err)
+	idx = 9
+	arg[0] = 'x'
+	extra["nested"].([]any)[0] = "changed"
+	text = "changed"
+	got := r.bindings.InitialState.Messages[0]
+	require.Equal(t, 3, *got.ToolCalls[0].Index)
+	require.Equal(t, byte('{'), got.ToolCalls[0].Function.Arguments[0])
+	require.Equal(t, "a", got.ToolCalls[0].ExtraFields["nested"].([]any)[0])
+	require.Equal(t, "hello", *got.ContentParts[0].Text)
+}
