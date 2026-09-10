@@ -384,6 +384,114 @@
       "target": "happy-mobile/packages/happy-wire/package.json",
       "sha256": "ebbfd3f41e9336ec9c7d3dbf802425278d0e533c9fcabeae25a1b1255127b145",
       "license": "MIT"
+    },
+    {
+      "source": "packages/happy-wire/src/controlMessages.test.ts",
+      "target": "happy-mobile/packages/happy-wire/src/controlMessages.test.ts",
+      "sha256": "f4d5d8092b51cf0bdca70a0378a3da0d0bf17515c82887a8a49acdf9456063c5",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-wire/src/controlMessages.ts",
+      "target": "happy-mobile/packages/happy-wire/src/controlMessages.ts",
+      "sha256": "dc793df4cf90d1065f09dbd6c54871114361da0881dd3347ce5c48c1dd3ed53d",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-wire/src/index.ts",
+      "target": "happy-mobile/packages/happy-wire/src/index.ts",
+      "sha256": "614af0f31cfe1beb9ecd60f687ba3e47a8fd5ed6717f2d5a260b82f8d9a30983",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-wire/src/legacyProtocol.ts",
+      "target": "happy-mobile/packages/happy-wire/src/legacyProtocol.ts",
+      "sha256": "161001afcae0b30db767192147242ccbefb061ebac3b0e23afdd4383a397d8b0",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-wire/src/messageMeta.ts",
+      "target": "happy-mobile/packages/happy-wire/src/messageMeta.ts",
+      "sha256": "39562f4e9dc3b0e18129a09dc55b48d066e87a7494692935f7239f557ff81ee4",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-wire/src/messages.test.ts",
+      "target": "happy-mobile/packages/happy-wire/src/messages.test.ts",
+      "sha256": "7056489bea29955f5ff4548c6878c03d349e8a7435913efb7aae1750e0562691",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-wire/src/messages.ts",
+      "target": "happy-mobile/packages/happy-wire/src/messages.ts",
+      "sha256": "cc2846a331afe09466ded514c3e759db7a6d8a27cf0f2d6f0c5bf7664df08d38",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-wire/src/rigMetadata.test.ts",
+      "target": "happy-mobile/packages/happy-wire/src/rigMetadata.test.ts",
+      "sha256": "176a6adeb4ae3182a079da4c4f97d1c0c5de90aedb488d0f8f6f0fa80b1e3bb6",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-wire/src/rigMetadata.ts",
+      "target": "happy-mobile/packages/happy-wire/src/rigMetadata.ts",
+      "sha256": "b54666cecf634faa3e9a586e95f71497122450458efb67ebc96c0a1c617939c4",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-wire/src/sessionProtocol.test.ts",
+      "target": "happy-mobile/packages/happy-wire/src/sessionProtocol.test.ts",
+      "sha256": "12073f62bead82b08b920588155cbf7fcab0a6778d6d17dd4935cc1109e3190e",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-wire/src/sessionProtocol.ts",
+      "target": "happy-mobile/packages/happy-wire/src/sessionProtocol.ts",
+      "sha256": "6275298f524874fd435d77f8e7f462dc76200ca68b11e40c191ba7e9f4b678b2",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-wire/src/voice.ts",
+      "target": "happy-mobile/packages/happy-wire/src/voice.ts",
+      "sha256": "dfc054b92430a09e82174a46e68929e5b8eb0adb1f8d4d79d70644ca46785041",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-wire/tsconfig.json",
+      "target": "happy-mobile/packages/happy-wire/tsconfig.json",
+      "sha256": "0cffdd501bdf95184d564ca01efded8aa0984fef197824f5b85c2cc83f74fde4",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-wire/vitest.config.ts",
+      "target": "happy-mobile/packages/happy-wire/vitest.config.ts",
+      "sha256": "9b22c025e8f322f1c63dfbda1fc47f741ac706906eac556715d6dacc6da8b979",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-wire/README.md",
+      "target": "happy-mobile/packages/happy-wire/README.md",
+      "sha256": "9075ad1f07bffcd151c1ee9b640bcfb7ca60dc350a85387ca812645ec36b2b60",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/tsconfig.json",
+      "target": "happy-mobile/tsconfig.json",
+      "sha256": "e3afa305d85b43a54677815fa8945a220a733af102db0f68c956c28ea60c6517",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/vitest.config.ts",
+      "target": "happy-mobile/vitest.config.ts",
+      "sha256": "4910f3a52a21ce97407d97e382106b7068294a09d093ec49fb37b3d4dfbff330",
+      "license": "MIT"
+    },
+    {
+      "source": "packages/happy-app/metro.config.js",
+      "target": "happy-mobile/metro.config.js",
+      "sha256": "55266009436688620104aa608a61a71a18646da053439e6cfbf16e428c15f10f",
+      "license": "MIT"
     }
   ],
   "dependencies": {
