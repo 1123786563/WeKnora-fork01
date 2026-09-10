@@ -7,7 +7,7 @@
 | 任务 | 状态 | 实现提交 | 验证结果 | 下一步 |
 | --- | --- | --- | --- | --- |
 | V01 | review | 待提交 | `python3 -m unittest scripts.saas.contract_inventory_test -v`：3/3 通过；外部只读探测未运行（blocked-env） | 在固定官方 schema 文件上运行 hash 校验与四个 GET 探测 |
-| V02 | pending | 未实施 | 未运行 | 等待 V01 |
+| V02 | review | `待提交` | `python3 -m unittest scripts.saas.probe_case_test -v`：5/5 通过；`git diff --check` 通过；外部真实业务实验未运行（blocked-env） | 提交后由主协调器复核；需在可用 OpenMeter 环境执行 OM-02～OM-10 |
 | V03 | pending | 未实施 | 未运行 | 等待 V02 |
 | F01 | pending | 未实施 | 未运行 | 等待 V03 |
 | F02 | pending | 未实施 | 未运行 | 等待 V03 |
