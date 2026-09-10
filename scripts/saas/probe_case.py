@@ -96,12 +96,37 @@ def validate_case(case: dict, namespace: str, allow_test_writes: bool) -> None:
             raise ValueError("write namespace mismatch")
         if "path" in step and not str(step["path"]).startswith("/"):
             raise ValueError("path must be absolute")
-        _bind(step.get("body"), {}, allow_names=declared)  # reject malformed capture references early
+        _bind(step.get("body"), {}, allow_names=declared)
+        for value in _walk(step.get("body")):
+            if isinstance(value, str) and ("namespace" in value.lower() or "tenant" in value.lower()):
+                if value != namespace and not CAPTURE_REF.match(value):
+                    raise ValueError("embedded namespace mismatch")
+    cleanup = case.get("cleanup", [])
+    if cleanup and not isinstance(cleanup, list):
+        raise ValueError("cleanup must be a list")
+    for item in cleanup:
+        if not isinstance(item, dict) or item.get("capture") not in declared:
+            raise ValueError("cleanup must target a declared capture")
+        if item.get("unsettled_transactions", 0):
+            raise ValueError("cleanup refused: unsettled transactions")
 
 
-def _request_json(url: str, method: str, body: object | None) -> tuple[int, object]:
+def _walk(value: object):
+    if isinstance(value, dict):
+        for key, child in value.items():
+            yield key
+            yield from _walk(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _walk(child)
+
+
+def _request_json(url: str, method: str, body: object | None, idempotency_key: str | None = None) -> tuple[int, object]:
     data = None if body is None else json.dumps(body).encode()
-    request = Request(url, data=data, method=method, headers={"Content-Type": "application/json"})
+    headers = {"Content-Type": "application/json"}
+    if idempotency_key:
+        headers["Idempotency-Key"] = idempotency_key
+    request = Request(url, data=data, method=method, headers=headers)
     with urlopen(request, timeout=15) as response:
         payload = response.read()
         return response.status, json.loads(payload) if payload else {}
@@ -109,10 +134,15 @@ def _request_json(url: str, method: str, body: object | None) -> tuple[int, obje
 
 def run_case(case: dict, base_url: str, namespace: str, allow_test_writes: bool, schema: Path, artifact_root: Path) -> None:
     validate_case(case, namespace, allow_test_writes)
-    paths = operation_paths(schema.read_text(encoding="utf-8"), "/api/v3")
+    raw_schema = json.loads(schema.read_text(encoding="utf-8")) if schema.suffix == ".json" else None
+    paths = ({x["operation_id"]: f'{x["method"]} {x["local_path"]}' for x in raw_schema["operations"]}
+             if raw_schema and "operations" in raw_schema else operation_paths(schema.read_text(encoding="utf-8"), "/api/v3"))
     captures: dict[str, object] = {}
     records = []
-    for step in _steps(case):
+    output = artifact_root / str(case["id"])
+    output.mkdir(parents=True, exist_ok=True)
+    try:
+      for step in _steps(case):
         method = str(step.get("method", "GET")).upper()
         operation = step.get("operation_id", case["operation_id"])
         if operation not in paths:
@@ -120,7 +150,8 @@ def run_case(case: dict, base_url: str, namespace: str, allow_test_writes: bool,
         path = paths[operation].split(" ", 1)[1]
         path = _bind(step.get("path", path), captures)
         body = _bind(step.get("body"), captures)
-        status, response = _request_json(base_url.rstrip("/") + str(path), method, body)
+        key = step.get("idempotency_key", case.get("idempotency_key"))
+        status, response = _request_json(base_url.rstrip("/") + str(path), method, body, key)
         record = {"method": method, "operation_id": operation, "request": redact(body), "status": status, "response": redact(response)}
         records.append(record)
         if not 200 <= status < 300:
@@ -129,11 +160,23 @@ def run_case(case: dict, base_url: str, namespace: str, allow_test_writes: bool,
             captures[name] = json_pointer(response, pointer)
         if "expected" in step:
             assert_subset(response, step["expected"])
-    if "expected" in case and records:
-        assert_subset(records[-1]["response"], redact(case["expected"]))
-    output = artifact_root / str(case["id"])
-    output.mkdir(parents=True, exist_ok=True)
-    (output / "run.json").write_text(json.dumps(redact({"case": case["id"], "namespace": namespace, "steps": records}), indent=2) + "\n", encoding="utf-8")
+        if step.get("replay"):
+            replay_status, replay_response = _request_json(base_url.rstrip("/") + str(path), method, body, key)
+            if replay_status != status or replay_response != response:
+                raise AssertionError("idempotent replay changed business result")
+        if "expected" in case and records:
+            assert_subset(records[-1]["response"], redact(case["expected"]))
+      for item in case.get("cleanup", []):
+        if item.get("unsettled_transactions", 0):
+            raise ValueError("cleanup refused: unsettled transactions")
+        target = captures[item["capture"]]
+        if item.get("namespace", namespace) != namespace:
+            raise ValueError("cleanup namespace mismatch")
+        status, response = _request_json(base_url.rstrip("/") + str(item["path"]).replace("${capture:" + item["capture"] + "}", str(target)), "DELETE", None)
+        records.append({"cleanup": True, "status": status, "response": redact(response)})
+        if not 200 <= status < 300: raise AssertionError(f"cleanup HTTP status {status}")
+    finally:
+      (output / "run.json").write_text(json.dumps(redact({"case": case["id"], "namespace": namespace, "steps": records}), indent=2) + "\n", encoding="utf-8")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -147,10 +190,13 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         run_case(json.loads(args.case.read_text(encoding="utf-8")), args.base_url, args.namespace, args.allow_test_writes, args.schema, args.artifact_root)
+    except HTTPError as exc:
+        print(f"probe failed: HTTP status {exc.code}", file=sys.stderr)
+        return 1
     except (URLError, TimeoutError, ConnectionError) as exc:
         print(f"blocked-env: {exc}", file=sys.stderr)
         return 2
-    except (AssertionError, PermissionError, ValueError, HTTPError, OSError, json.JSONDecodeError) as exc:
+    except (AssertionError, PermissionError, ValueError, OSError, json.JSONDecodeError) as exc:
         print(f"probe failed: {exc}", file=sys.stderr)
         return 1
     return 0
