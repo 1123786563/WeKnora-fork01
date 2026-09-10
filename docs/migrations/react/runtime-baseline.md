@@ -1,7 +1,7 @@
 # T01 运行基线
 
 - Captured at: 2026-09-10
-- WeKnora HEAD: `0fefc0310810c25fbb58b8f5f704edd6c0056bd9`
+- WeKnora HEAD: `15889e1a66f040fc277473bf0d7d9c1eaa3d098f`
 - Multica HEAD (read-only): `85b1fdbb44fd90aa90ce3353a95c2b1f3d115ddf`
 - Vue SFC count: `200` (plan/inventory said 199; current is 200)
 - API TS count under `frontend/src/api`: `33`

@@ -26,7 +26,7 @@
 | T03 登录、刷新、OIDC与凭证隔离 | review | `118d15d` (`feat: isolate bearer refresh and embed credentials`) | `pnpm test:shared` 0（15/15）；`pnpm typecheck:shared` 0；auth RED→GREEN；`git diff --check` 0；真实后端/OIDC/浏览器 0 | 静态/Node mock：通过；真实后端、OIDC浏览器回调、React登录页：未完成 | 已实现异步 credential adapter、Bearer 单飞 refresh、Embed 隔离、generation/invalidate 和严格 token 校验；需后续接入 auth endpoints、Web adapter 与真实回调 |
 | T04 空间上下文、路由和能力守卫 | review | `9b35b5a` (`feat: guard scoped requests across tenant changes`) | `pnpm test:shared` 0（17/17）；`pnpm typecheck:shared` 0；scope RED→GREEN；`git diff --check` 0；真实路由/后端 0 | 静态/Node mock：通过；真实路由、Web 深链、后端权限：未完成 | 已实现切空间 abort、generation stale guard、logout/invalidate；仍需 Web Router/Query 接入与服务端权限负例 |
 | T05 UI基础、平台注入和国际化 | review | `a230366` + `ac955da` | `pnpm test:web` 0（3/3）；`pnpm typecheck:web` 0；`pnpm build:web` 0；`git diff --check` 0 | React/Vite source and focused tests: passed; package installation: passed; live backend/native/i18n coverage: not completed | Added explicit legacy-session adapter, UI Button/Card/Status primitives and React entry; no broad visual redesign. Internationalization package is still pending as a separate slice. |
-| T06 知识库列表与创建编辑闭环 | review | `a230366` + `ac955da` + `de1ce63` | `pnpm test:shared` 0（26/26）；`pnpm test:web` 0（4/4）；`pnpm typecheck:shared` 0；`pnpm typecheck:web` 0；`pnpm build:web` 0 | Static/Node mock and production bundle: passed; live backend list/create/edit/browser: not completed | Real list path plus typed create/update/delete SDK paths are wired with strict response parsing. UI mutation flow, cache invalidation, permissions and live backend proof remain next work. |
+| T06 知识库列表与创建编辑闭环 | review | `a230366` + `ac955da` + `de1ce63` + `292fdc4` | `pnpm test:shared` 0（46/46）；`pnpm test:web` 0（12/12）；`pnpm typecheck:shared` 0；`pnpm typecheck:web` 0；`pnpm build:web` 0 | Static/Node mock and production bundle: passed; live backend list/create/edit/browser: not completed | React list now exposes strict create/update/delete mutation flow with explicit error state; cache invalidation is reload-based. Live backend, permissions, pagination/search, and browser acceptance remain. |
 | T07 文档上传、列表、目录标签与预览 | review | `45901be` + `d0af87f` + `93d3099` | `pnpm test:shared` 0（24/24）；`pnpm typecheck:shared` 0；`pnpm test:web` 0（4/4）；`pnpm typecheck:web` 0；`pnpm build:web` 0 | Contracts/API/domain focused tests, Web loader and production bundle: passed; real upload/processing/preview/browser: not completed | Added paginated document DTO validation, processing-state guard, document list API, multipart upload API, no-fallback Web loader and non-browser-safe FormData detection. UI document view, folders/tags/preview, real backend upload and 413/browser proof remain. |
 | T08 FAQ与Wiki编辑/版本 | review | `736eca4` + `3d8daa6` | `pnpm test:shared` 0（32/32）；`pnpm typecheck:shared` 0；`git diff --check` 0 | Shared Wiki diff/API client tests: passed; FAQ/Wiki editor/version conflict/browser: not completed | Migrated pure line/revision diff and added typed Wiki page list/get/create/update/delete/revision/revert paths with optimistic version payloads. UI editor conflict handling, FAQ operations and live backend remain. |
 | T09 知识库高级配置与数据源 | review | `f2fe50e` + current verification | `pnpm test:shared` 0（35/35）；`pnpm typecheck:shared` 0；`git diff --check` 0 | Data-source CRUD/control endpoint seam and focused tests: passed; settings UI, permission negatives, connector credentials/live sync: not completed | Added typed data-source list/get/create/update/delete, credential validation, resource listing and sync pause/resume paths. Advanced KB settings UI and live connector evidence remain. |
@@ -91,3 +91,30 @@
 | 2026-09-10 | T09 add data-source API client seam and endpoint tests | `f2fe50e` |
 | 2026-09-10 | T10 add chat response contracts and pure stream reducer | `cfb7d29` |
 | 2026-09-10 | T10 add incremental SSE framing and resumable request builder | `f2c2fd3` |
+| 2026-09-10 | T01-T05 completion plan and scoped React fixes | `e4134a0`, `0105fa8`, `ef3377a`, `19dede6`, `cc3556f`, `a784f2b`, `a356e80` |
+| 2026-09-10 | T06 React knowledge-base mutation flow | `292fdc4` |
+
+## T01-T05 completion-plan execution (2026-09-10)
+
+- 详细执行计划：`docs/superpowers/plans/2026-09-10-react-multiclient-t01-t05.md`，提交 `e4134a0`。
+- 隔离 worktree：`/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/react-multiclient`，分支 `codex/react-multiclient`。
+- T01 集成提交：`a356e80`（worker 原提交 `e211610`）；生成器把 Swagger 361 操作、实现专有 91 路由和 53 条入口/特殊路由分开记录，focused unittest 4/4 通过。
+- T02 集成提交：`0105fa8`、`19dede6`；新增 Web 注入式 transport，修复 Embed scheme/session/visitor/tenant 隔离，Web focused tests 11/11、shared tests 46/46、Web typecheck/build 通过。
+- T03 集成提交：`ef3377a`；新增严格 auth login/refresh/me/logout facade 和 React Login seam，shared tests 46/46、Web typecheck/build 通过；完整 OIDC/真实后端尚未验证。
+- T04 集成提交：`cc3556f`；新增 scope runtime、旧 URL 解析/redirect 和跨空间 generation 测试，Web tests 11/11 通过；真实深链/后端权限负例尚未验证。
+- T05 集成提交：`a784f2b`；新增无 Vue runtime 的 design-tokens/i18n/platform adapters。当前实际源码只有 5 个 locale（不是计划文字中的 6 个），未凭空新增第六语言；i18n/native/keyboard browser evidence 尚未完成。
+
+### 本轮验证证据
+
+- `pnpm install --frozen-lockfile`：0（隔离 worktree，8 workspace projects）。
+- `python3 scripts/generate_react_migration_baseline.py`：0；`python3 -m unittest scripts/test_generate_react_migration_baseline.py -v`：4/4，0。
+- `pnpm test:shared`：46/46，0；`pnpm typecheck:shared`：0。
+- `pnpm --filter @weknora/web test`：11/11，0；`pnpm typecheck:web`：0；`pnpm build:web`：0；`git diff --check`：0。
+- 证据层级：静态/Node mock/Web bundle 已有；真实后端、浏览器真实账号/OIDC、Wails 安装包、移动原生和六语言完整迁移仍缺失，因此 T01-T05 保持 `review`，不得写为 `accepted`。
+
+### 本轮问题与裁定
+
+- 计划/设计原文仍写“方案 B 尚未批准”，与用户本轮批准相冲突；本实施分支按用户批准的方案 B 执行，未因旧措辞改变架构。
+- Multica 根许可证含 hosted/commercial/branding 附加条件；本轮仅采用分层模式，未复制其产品源码或品牌资产。
+- T02 reviewer 发现并已修复 Embed 裸 token、租户头泄露和缺失 session/visitor header；修复提交为 `19dede6`，修复后验证 11/11。
+- 当前 worktree 保留三份用户提供的未跟踪权威输入文件，未修改、未清理、未提交。

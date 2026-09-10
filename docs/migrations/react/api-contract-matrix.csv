@@ -19,7 +19,7 @@ PUT,/agents/{id},other,mutation,swagger-2.0,internal/router + handler DTO/permis
 POST,/agents/{id}/copy,other,mutation,swagger-2.0,internal/router + handler DTO/permission/tests,swagger,swagger-only,T01 follow-up,docs/swagger.json
 DELETE,/agents/{id}/shares/{share_id},other,mutation,swagger-2.0,internal/router + handler DTO/permission/tests,registered-route,registered-route,T01 follow-up,internal/router/routes_agent.go
 GET,/agents/{id}/suggested-questions,other,read,swagger-2.0,internal/router + handler DTO/permission/tests,registered-route,registered-route,T01 follow-up,internal/router/routes_agent.go
-GET,/api/v1/knowledge/{id}/spans,other,read,swagger-2.0,internal/router + handler DTO/permission/tests,swagger,swagger-only,T01 follow-up,docs/swagger.json
+GET,/api/v1/knowledge/{id}/spans,knowledge,read,swagger-2.0,internal/router + handler DTO/permission/tests,swagger,swagger-only,T06-T09,docs/swagger.json
 POST,/auth/auto-setup,identity,mutation,swagger-2.0,internal/router + handler DTO/permission/tests,registered-route,registered-route,T03,internal/router/routes_auth_tenant.go
 POST,/auth/change-password,identity,mutation,swagger-2.0,internal/router + handler DTO/permission/tests,registered-route,registered-route,T03,internal/router/routes_auth_tenant.go
 GET,/auth/config,identity,read,swagger-2.0,internal/router + handler DTO/permission/tests,registered-route,registered-route,T03,internal/router/routes_auth_tenant.go
