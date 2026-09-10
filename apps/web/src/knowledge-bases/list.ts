@@ -8,9 +8,10 @@ export type KnowledgeBaseListState =
 export async function loadKnowledgeBases(
   client: Pick<WeKnoraClient, 'knowledgeBases'>,
   signal?: AbortSignal,
+  params: { creator?: 'all' | 'mine' | 'others' } = {},
 ): Promise<KnowledgeBaseListState> {
   try {
-    return { status: 'success', items: await client.knowledgeBases.list({}) };
+    return { status: 'success', items: await client.knowledgeBases.list(params) };
   } catch (error) {
     if (signal?.aborted) throw error;
     return { status: 'error', message: error instanceof Error ? error.message : 'Unable to load knowledge bases' };

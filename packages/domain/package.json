@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/query-key.ts",
     "./access/capability": "./src/access/capability.ts",
+    "./knowledge/list": "./src/knowledge/list.ts",
     "./scope": "./src/scope.ts",
     "./wiki/diff": "./src/wiki/diff.ts",
     "./chat/draft": "./src/chat/draft.ts",

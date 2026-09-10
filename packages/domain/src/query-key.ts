@@ -1,6 +1,8 @@
 import type { RequestScope } from './scope.ts';
 export { isCapabilitySupported, normalizeCapabilityMap } from './access/capability.ts';
 export type { CapabilityDescriptor, CapabilityMap } from './access/capability.ts';
+export { filterKnowledgeBases } from './knowledge/list.ts';
+export type { KnowledgeBaseCreatorFilter, KnowledgeBaseListFilter, KnowledgeBaseListResult } from './knowledge/list.ts';
 
 export type { RequestScope } from './scope.ts';
 export { createScopeController } from './scope.ts';

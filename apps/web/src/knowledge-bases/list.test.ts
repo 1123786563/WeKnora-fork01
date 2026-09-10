@@ -36,3 +36,11 @@ test('does not report a mutation success before the client resolves', async () =
   assert.deepEqual(calls, ['create:FAQ', 'update:kb-2:FAQ v2', 'remove:kb-2']);
   await assert.rejects(saveKnowledgeBase(client, null, { name: ' ' }), /name is required/);
 });
+
+test('passes the creator filter to the server-compatible list query', async () => {
+  let seen: unknown;
+  await loadKnowledgeBases({ knowledgeBases: {
+    list: async (params: unknown) => { seen = params; return []; },
+  } } as never, undefined, { creator: 'mine' });
+  assert.deepEqual(seen, { creator: 'mine' });
+});
