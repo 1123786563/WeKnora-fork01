@@ -21,6 +21,19 @@ class ProbeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_case(case, "saas-x", True)
 
+    def test_same_namespace_body_and_cleanup_guards(self):
+        case = {"id": "x", "operation_id": "create", "captures": {"id": "/id"},
+                "request": {"method": "POST", "body": {"namespace": "saas-x"}},
+                "cleanup": [{"capture": "id", "path": "/customers/${capture:id}"}], "expected": {}}
+        validate_case(case, "saas-x", True)
+        with self.assertRaises(PermissionError):
+            validate_case(case, "saas-x", False)
+
+    def test_repeatable_write_requires_idempotency_key(self):
+        case = {"id": "x", "operation_id": "create", "request": {"method": "POST", "repeatable": True}, "expected": {}}
+        with self.assertRaises(ValueError):
+            validate_case(case, "saas-x", True)
+
     def test_unknown_capture_rejected(self):
         case = {"id": "x", "operation_id": "get", "request": {"body": {"id": "${capture:nope}"}}, "expected": {}}
         with self.assertRaises(ValueError):

@@ -97,10 +97,12 @@ def validate_case(case: dict, namespace: str, allow_test_writes: bool) -> None:
         if "path" in step and not str(step["path"]).startswith("/"):
             raise ValueError("path must be absolute")
         _bind(step.get("body"), {}, allow_names=declared)
-        for value in _walk(step.get("body")):
-            if isinstance(value, str) and ("namespace" in value.lower() or "tenant" in value.lower()):
-                if value != namespace and not CAPTURE_REF.match(value):
-                    raise ValueError("embedded namespace mismatch")
+        bound = _bind(step.get("body"), {}, allow_names=declared)
+        for key, value in _namespace_pairs(bound):
+            if value != namespace:
+                raise ValueError(f"embedded {key} mismatch")
+        if method in WRITE_METHODS and (step.get("repeatable") or step.get("replay")) and not (step.get("idempotency_key") or case.get("idempotency_key")):
+            raise ValueError("repeatable write requires idempotency_key")
     cleanup = case.get("cleanup", [])
     if cleanup and not isinstance(cleanup, list):
         raise ValueError("cleanup must be a list")
@@ -109,6 +111,8 @@ def validate_case(case: dict, namespace: str, allow_test_writes: bool) -> None:
             raise ValueError("cleanup must target a declared capture")
         if item.get("unsettled_transactions", 0):
             raise ValueError("cleanup refused: unsettled transactions")
+        if not str(item.get("path", "")).startswith("/"):
+            raise ValueError("cleanup path must be absolute")
 
 
 def _walk(value: object):
@@ -116,6 +120,16 @@ def _walk(value: object):
         for key, child in value.items():
             yield key
             yield from _walk(child)
+
+def _namespace_pairs(value: object):
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if "namespace" in key.lower() or "tenant" in key.lower():
+                yield key, child
+            yield from _namespace_pairs(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _namespace_pairs(child)
     elif isinstance(value, list):
         for child in value:
             yield from _walk(child)
@@ -151,7 +165,12 @@ def run_case(case: dict, base_url: str, namespace: str, allow_test_writes: bool,
         path = _bind(step.get("path", path), captures)
         body = _bind(step.get("body"), captures)
         key = step.get("idempotency_key", case.get("idempotency_key"))
-        status, response = _request_json(base_url.rstrip("/") + str(path), method, body, key)
+        try:
+            status, response = _request_json(base_url.rstrip("/") + str(path), method, body, key)
+        except HTTPError as exc:
+            response = json.loads(exc.read().decode() or "{}")
+            records.append({"method": method, "operation_id": operation, "request": redact(body), "status": exc.code, "response": redact(response)})
+            raise
         record = {"method": method, "operation_id": operation, "request": redact(body), "status": status, "response": redact(response)}
         records.append(record)
         if not 200 <= status < 300:
@@ -167,12 +186,15 @@ def run_case(case: dict, base_url: str, namespace: str, allow_test_writes: bool,
         if "expected" in case and records:
             assert_subset(records[-1]["response"], redact(case["expected"]))
       for item in case.get("cleanup", []):
+        if not allow_test_writes:
+            raise PermissionError("cleanup requires --allow-test-writes")
         if item.get("unsettled_transactions", 0):
             raise ValueError("cleanup refused: unsettled transactions")
         target = captures[item["capture"]]
         if item.get("namespace", namespace) != namespace:
             raise ValueError("cleanup namespace mismatch")
-        status, response = _request_json(base_url.rstrip("/") + str(item["path"]).replace("${capture:" + item["capture"] + "}", str(target)), "DELETE", None)
+        cleanup_path = _bind(item["path"], {item["capture"]: target})
+        status, response = _request_json(base_url.rstrip("/") + str(cleanup_path), "DELETE", None)
         records.append({"cleanup": True, "status": status, "response": redact(response)})
         if not 200 <= status < 300: raise AssertionError(f"cleanup HTTP status {status}")
     finally:
