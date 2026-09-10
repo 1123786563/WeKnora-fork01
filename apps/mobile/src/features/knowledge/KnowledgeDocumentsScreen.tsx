@@ -5,6 +5,7 @@ import type { KnowledgeDocument, KnowledgeFolderNode, KnowledgeTag } from '@wekn
 import { useMobileRuntime } from '../../runtime.tsx';
 import { pickNativeFile } from '../../platform/files.ts';
 import { selectKnowledgeDocumentLabel } from './parity.ts';
+import { referenceRoute } from './reference.ts';
 
 function flattenFolders(nodes: KnowledgeFolderNode[]): KnowledgeFolderNode[] {
   return nodes.flatMap((node) => [node, ...flattenFolders(node.children || [])]);
@@ -88,6 +89,8 @@ export function KnowledgeDocumentsScreen() {
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 10 }}>
       <Pressable accessibilityRole="button" onPress={() => router.back()}><Text style={{ color: '#2864dc' }}>Back</Text></Pressable>
       <Text accessibilityRole="header" style={{ flex: 1, fontSize: 21, fontWeight: '700' }}>Files</Text>
+      <Pressable accessibilityRole="button" disabled={!kbId} onPress={() => kbId && router.push(referenceRoute('wiki', kbId))}><Text style={{ color: '#2864dc' }}>Wiki</Text></Pressable>
+      <Pressable accessibilityRole="button" disabled={!kbId} onPress={() => kbId && router.push(referenceRoute('faq', kbId))}><Text style={{ color: '#2864dc' }}>FAQ</Text></Pressable>
       <Pressable accessibilityRole="button" onPress={() => uploading ? uploadController.current?.abort() : void upload()}><Text style={{ color: '#2864dc' }}>{uploading ? 'Cancel' : 'Upload'}</Text></Pressable>
     </View>
     <TextInput accessibilityLabel="Search files" value={keyword} onChangeText={setKeyword} onSubmitEditing={() => void loadPage(1, true)} placeholder="Search files" returnKeyType="search" style={{ borderColor: '#d0d5dd', borderWidth: 1, borderRadius: 8, padding: 10, marginBottom: 8 }} />
