@@ -225,7 +225,7 @@ func buildGraph(b GraphBindings) (*graph.Graph, error) {
 		return NextAfterTool(s.NextCallIndex, len(s.PendingCallIDs)), nil
 	}, map[string]string{nodeModel: nodeModel, nodeDispatch: nodeDispatch})
 	sg.AddEdge(nodeFinalize, graph.End)
-	return sg.Compile()
+	return sg.SetEntryPoint(nodePrepare).SetFinishPoint(nodeFinalize).Compile()
 }
 
 // context values are private to this package and avoid putting live bindings in checkpoints.
