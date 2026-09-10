@@ -38,3 +38,20 @@ test('isolates embed headers from bearer tenant context', async () => {
   assert.equal(seen[0]?.['x-embed-visitor'], 'visitor-1');
   assert.equal(seen[1]?.authorization, undefined);
 });
+
+test('forwards streaming requests with the same scoped headers', async () => {
+  let seen: Record<string, string> | undefined;
+  const transport = createBrowserTransport({
+    credential: { kind: 'bearer', accessToken: 'stream-access' }, tenantId: 'tenant-stream',
+    fetcher: (async (_url, init) => {
+      seen = init?.headers;
+      return { status: 200, headers: new Headers(), json: async () => ({}), text: async () => 'data: {}\n\n' };
+    }) satisfies FetchLike,
+  });
+  const result = await transport.sendStream!({ method: 'POST', url: 'https://api.test/chat', headers: { accept: 'text/event-stream' }, body: { query: 'x' } });
+  const chunks: string[] = [];
+  for await (const chunk of result.chunks) chunks.push(chunk);
+  assert.equal(seen?.authorization, 'Bearer stream-access');
+  assert.equal(seen?.['x-tenant-id'], 'tenant-stream');
+  assert.deepEqual(chunks, ['data: {}\n\n']);
+});

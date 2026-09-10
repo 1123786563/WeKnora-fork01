@@ -22,20 +22,27 @@ function defaultRequestId(): string {
 export function createBrowserTransport(options: BrowserTransportOptions = {}) {
   const fetcher = options.fetcher ?? ((input, init) => fetch(input, init));
   const base = createJsonTransport(fetcher);
+  function decorate(request: Parameters<typeof base.send>[0]) {
+    const headers = { ...request.headers };
+    const credential = typeof options.credential === 'function' ? options.credential() : options.credential;
+    const authorization = authHeader(credential);
+    if (authorization) headers.authorization = authorization;
+    if (credential?.kind !== 'embed' && options.tenantId) headers['x-tenant-id'] = options.tenantId;
+    if (credential?.kind === 'embed') {
+      if (credential.sessionSig) headers['x-embed-session'] = credential.sessionSig;
+      if (credential.visitorId) headers['x-embed-visitor'] = credential.visitorId;
+    }
+    if (options.locale) headers['accept-language'] = options.locale;
+    headers['x-request-id'] ??= options.requestId?.() ?? defaultRequestId();
+    return { ...request, headers };
+  }
   return {
     async send(request: Parameters<typeof base.send>[0]) {
-      const headers = { ...request.headers };
-      const credential = typeof options.credential === 'function' ? options.credential() : options.credential;
-      const authorization = authHeader(credential);
-      if (authorization) headers.authorization = authorization;
-      if (credential?.kind !== 'embed' && options.tenantId) headers['x-tenant-id'] = options.tenantId;
-      if (credential?.kind === 'embed') {
-        if (credential.sessionSig) headers['x-embed-session'] = credential.sessionSig;
-        if (credential.visitorId) headers['x-embed-visitor'] = credential.visitorId;
-      }
-      if (options.locale) headers['accept-language'] = options.locale;
-      headers['x-request-id'] ??= options.requestId?.() ?? defaultRequestId();
-      return base.send({ ...request, headers });
+      return base.send(decorate(request));
+    },
+    async sendStream(request: Parameters<typeof base.send>[0]) {
+      if (!base.sendStream) throw new Error('Streaming transport is unavailable');
+      return base.sendStream(decorate(request));
     },
   };
 }
