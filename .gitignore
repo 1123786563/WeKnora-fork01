@@ -31,6 +31,10 @@ logs/
 WeKnora
 WeKnora-lite
 cmd/desktop/build/bin/
+apps/embed/dist/
+apps/desktop/dist/
+apps/desktop/package.json.md5
+apps/desktop/src/wailsjs/
 /models/
 test/data/mswag.txt
 data/files/

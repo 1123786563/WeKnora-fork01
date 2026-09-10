@@ -13,7 +13,8 @@ import './styles.css';
 
 const route = resolveRoute(window.location.pathname);
 let session = route.kind === 'embed' ? { credential: { kind: 'anonymous' } as const, tenantId: null } : readLegacyPlatformSession();
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? '';
+const injectedApiBaseUrl = (window as Window & { __WEKNORA_API_BASE__?: unknown }).__WEKNORA_API_BASE__;
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || (typeof injectedApiBaseUrl === 'string' ? injectedApiBaseUrl : '');
 const scopeRuntime = createWebScopeRuntime(apiBaseUrl || window.location.origin, null, session.tenantId);
 const scopeController = scopeRuntime.controller;
 

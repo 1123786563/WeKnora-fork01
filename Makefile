@@ -265,7 +265,11 @@ build-prod:
 # Build Lite version (single binary, SQLite + in-memory queue)
 # 会先构建前端到 web/，再构建 Go 二进制；SKIP_FRONTEND=1 可跳过前端
 build-lite:
-	@if [ -f frontend/package.json ] && [ "$${SKIP_FRONTEND:-}" != "1" ]; then \
+	@if [ "$${REACT_FRONTEND:-0}" = "1" ]; then \
+		echo ">> Building React Web renderer for Lite..."; \
+		pnpm install --frozen-lockfile && pnpm run build:web && \
+		rm -rf web && cp -r apps/web/dist web; \
+	elif [ -f frontend/package.json ] && [ "$${SKIP_FRONTEND:-}" != "1" ]; then \
 		echo ">> Building frontend for Lite..."; \
 		(cd frontend && npm ci --prefer-offline && npm run build) && \
 		rm -rf web && cp -r frontend/dist web; \
@@ -348,5 +352,4 @@ dev-app:
 
 dev-frontend:
 	./scripts/dev.sh frontend
-
 

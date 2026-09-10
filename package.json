@@ -9,6 +9,9 @@
     "test:web": "pnpm --filter @weknora/web test",
     "typecheck:web": "pnpm --filter @weknora/web exec tsc -p tsconfig.json --noEmit",
     "build:web": "pnpm --filter @weknora/web build",
+    "build:desktop-renderer": "pnpm --filter @weknora/desktop-renderer build",
+    "typecheck:desktop": "pnpm --filter @weknora/desktop-renderer typecheck",
+    "test:desktop": "pnpm --filter @weknora/desktop-renderer test",
     "test:embed": "pnpm --filter @weknora/embed test",
     "typecheck:embed": "pnpm --filter @weknora/embed exec tsc -p tsconfig.json --noEmit",
     "build:embed": "pnpm --filter @weknora/embed build"

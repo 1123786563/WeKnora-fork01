@@ -8,3 +8,4 @@ packages:
   - packages/views
   - apps/web
   - apps/embed
+  - apps/desktop

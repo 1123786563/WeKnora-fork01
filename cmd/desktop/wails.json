@@ -2,8 +2,11 @@
   "$schema": "https://wails.io/schemas/config.v2.json",
   "name": "WeKnora Lite",
   "outputfilename": "WeKnora Lite",
-  "frontend:dir": "../../frontend",
-  "wailsjsdir": "../../frontend/src",
+  "frontend:dir": "../../apps/desktop",
+  "frontend:install": "pnpm --dir ../.. install --frozen-lockfile",
+  "frontend:build": "pnpm --dir ../.. build:desktop-renderer",
+  "frontend:dev": "pnpm --dir ../.. --filter @weknora/desktop-renderer dev",
+  "wailsjsdir": "../../apps/desktop/src/wailsjs",
   "author": {
     "name": "WeKnora Team",
     "email": ""

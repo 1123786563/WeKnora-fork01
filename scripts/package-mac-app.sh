@@ -22,7 +22,14 @@ echo "  Output: dist/${APP_BUNDLE}"
 echo ""
 
 # ── Step 1: Build frontend (if not skipped) ──
-if [ "${SKIP_FRONTEND:-}" != "1" ]; then
+if [ "${REACT_FRONTEND:-0}" = "1" ]; then
+    echo ">> Building React Web renderer..."
+    pnpm install --frozen-lockfile
+    pnpm run build:web
+    echo ">> Sync apps/web/dist -> web/"
+    rm -rf web
+    cp -r apps/web/dist web
+elif [ "${SKIP_FRONTEND:-}" != "1" ]; then
     if [ -f frontend/package.json ]; then
         echo ">> Building frontend..."
         (cd frontend && npm ci --prefer-offline && npm run build)
