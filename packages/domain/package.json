@@ -1,0 +1,9 @@
+{
+  "name": "@weknora/domain",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/query-key.ts"
+  }
+}
