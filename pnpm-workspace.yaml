@@ -7,3 +7,4 @@ packages:
   - packages/i18n
   - packages/views
   - apps/web
+  - apps/embed

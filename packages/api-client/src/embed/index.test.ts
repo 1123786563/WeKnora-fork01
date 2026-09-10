@@ -1,0 +1,78 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+
+import { createEmbedApi, extractEmbedToken, embedHeaders } from './index.ts';
+
+test('exchanges a publish token and creates a signed visitor session without bearer headers', async () => {
+  const requests: Array<{ method: string; path: string; headers?: Record<string, string>; body?: unknown }> = [];
+  const api = createEmbedApi(async (request) => {
+    requests.push(request);
+    if (request.path.endsWith('/exchange')) return { success: true, data: { session_token: 'ems-short', expires_in: 60 } };
+    return { success: true, data: { id: 'session/1', sig: 'sig-1' } };
+  });
+
+  assert.deepEqual(await api.public.exchange('channel/1', 'publish-token'), { sessionToken: 'ems-short', expiresIn: 60 });
+  assert.deepEqual(await api.public.createSession('channel/1', 'ems-short'), { id: 'session/1', signature: 'sig-1' });
+  assert.deepEqual(requests, [
+    { method: 'POST', path: '/api/v1/embed/channel%2F1/exchange', headers: { Authorization: 'Embed publish-token' }, body: {} },
+    { method: 'POST', path: '/api/v1/embed/channel%2F1/sessions', headers: { Authorization: 'Embed ems-short' }, body: {} },
+  ]);
+  assert.deepEqual(embedHeaders('ems-short', 'sig-1', 'visitor-1'), {
+    Authorization: 'Embed ems-short',
+    'X-Embed-Session': 'sig-1',
+    'X-Embed-Visitor': 'visitor-1',
+  });
+});
+
+test('keeps embed chat on the channel-scoped SSE route and forwards visitor context', async () => {
+  const requests: Array<{ method: string; path: string; headers?: Record<string, string>; body?: unknown }> = [];
+  const events: unknown[] = [];
+  const api = createEmbedApi(async (request) => {
+    requests.push(request);
+    return { success: true, data: [] };
+  }, async (request, onEvent) => {
+    requests.push(request);
+    onEvent({ type: 'answer', content: 'hello' });
+  });
+
+  await api.public.chat({
+    channelId: 'channel/1', token: 'ems-short', sessionId: 'session/1', signature: 'sig-1', visitorId: 'visitor-1',
+    body: { query: 'hi', attachment_uploads: [{ file_name: 'a.txt' }] },
+  }, (event) => events.push(event));
+
+  assert.deepEqual(requests, [{
+    method: 'POST',
+    path: '/api/v1/embed/channel%2F1/knowledge-chat/session%2F1',
+    headers: { accept: 'text/event-stream', ...embedHeaders('ems-short', 'sig-1', 'visitor-1') },
+    body: { query: 'hi', attachment_uploads: [{ file_name: 'a.txt' }] },
+  }]);
+  assert.deepEqual(events, [{ type: 'answer', content: 'hello' }]);
+});
+
+test('maps channel management and IM endpoints while preserving non-envelope data responses', async () => {
+  const requests: Array<{ method: string; path: string; body?: unknown }> = [];
+  const api = createEmbedApi(async (request) => {
+    requests.push(request);
+    if (request.method === 'DELETE') return { success: true };
+    if (request.path.endsWith('/toggle')) return { data: { id: 'im-1', platform: 'feishu' } };
+    if (request.path.includes('im-channels')) return { data: [{ id: 'im-1', platform: 'feishu', credentials: { token: 'must-not-leak' } }] };
+    return { success: true, data: [{ id: 'embed-1', name: 'Support' }] };
+  });
+
+  assert.equal((await api.channels.listAll())[0]?.id, 'embed-1');
+  assert.equal((await api.im.listAll())[0]?.id, 'im-1');
+  await api.channels.remove('embed/1');
+  await api.im.toggle('im/1');
+  assert.deepEqual(requests.map(({ method, path }) => [method, path]), [
+    ['GET', '/api/v1/embed-channels'],
+    ['GET', '/api/v1/im-channels'],
+    ['DELETE', '/api/v1/embed-channels/embed%2F1'],
+    ['POST', '/api/v1/im-channels/im%2F1/toggle'],
+  ]);
+});
+
+test('extracts tokens from query or hash without treating arbitrary URL text as a credential', () => {
+  assert.equal(extractEmbedToken('https://host.test/embed/c-1?token=query-token'), 'query-token');
+  assert.equal(extractEmbedToken('https://host.test/embed/c-1#token=hash-token'), 'hash-token');
+  assert.equal(extractEmbedToken('https://host.test/embed/c-1?next=token=not-a-token'), '');
+});

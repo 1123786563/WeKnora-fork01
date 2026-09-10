@@ -11,3 +11,27 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-form { display: flex; align-items: end; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1rem; }
 .wk-form label { display: grid; gap: 0.25rem; }
 .wk-form input { border: 1px solid #b8c5d6; border-radius: 6px; padding: 0.55rem; }
+
+.wk-integrations-page { max-width: 1040px; margin: 0 auto; padding: 2rem 1rem; }
+.wk-integrations-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; }
+.wk-integrations-header h1 { margin: 0; }
+.wk-integrations-tabs { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
+.wk-integrations-tabs button { border: 1px solid #dce3ed; border-radius: 999px; background: #fff; color: #506078; cursor: pointer; padding: .5rem .75rem; }
+.wk-integrations-tabs button.is-active { border-color: #2e6de6; color: #1849a9; background: #eff4ff; }
+.wk-integrations-panel { border: 1px solid #dce3ed; border-radius: 10px; background: #fff; padding: 1.25rem; }
+.wk-integrations-panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; border-bottom: 1px solid #eef1f5; padding-bottom: 1rem; margin-bottom: 1rem; }
+.wk-integrations-panel-heading h2 { margin: 0 0 .25rem; }
+.wk-integrations-panel-heading p { margin: 0; color: #506078; }
+.wk-role-badge, .wk-enabled, .wk-disabled { border-radius: 999px; padding: .2rem .55rem; font-size: .8rem; }
+.wk-role-badge { color: #6941c6; background: #f4f3ff; }
+.wk-enabled { color: #137333; background: #ecfdf3; }
+.wk-disabled { color: #b42318; background: #fef3f2; }
+.wk-integration-list { display: grid; gap: .65rem; }
+.wk-integration-card { display: flex; align-items: center; justify-content: space-between; gap: 1rem; border: 1px solid #eef1f5; border-radius: 8px; padding: .8rem; }
+.wk-integration-card div:first-child { display: grid; gap: .15rem; min-width: 0; }
+.wk-integration-card span { color: #667085; font-size: .8rem; overflow-wrap: anywhere; }
+.wk-integration-card-actions { display: flex; align-items: center; gap: .6rem; }
+.wk-integration-copy { display: grid; gap: .7rem; color: #506078; }
+.wk-integration-copy p { margin: 0; }
+.wk-integration-copy code { width: fit-content; border-radius: 6px; background: #f7f9fc; padding: .55rem .7rem; color: #172033; }
+.wk-integration-copy a { width: fit-content; color: #1849a9; }

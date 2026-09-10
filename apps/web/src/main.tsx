@@ -8,6 +8,7 @@ import { createBrowserTransport } from './platform/http.ts';
 import { createWebScopeRuntime } from './platform/scope-runtime.ts';
 import { resolveRoute } from './routes.tsx';
 import { ChatRoutePage } from './chat/ChatRoutePage.tsx';
+import { IntegrationsRoutePage } from './integrations/IntegrationsRoutePage.tsx';
 import './styles.css';
 
 const route = resolveRoute(window.location.pathname);
@@ -39,6 +40,8 @@ if (route.kind === 'embed') {
   }} />);
 } else if (route.path === '/platform/creatChat' || route.path.startsWith('/platform/chat/')) {
   root.render(<ChatRoutePage client={client} scopeController={scopeController} />);
+} else if (route.path === '/platform/integrations') {
+  root.render(<IntegrationsRoutePage client={client} />);
 } else {
   root.render(<KnowledgeBasesPage client={client} scopeController={scopeController} />);
 }

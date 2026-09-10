@@ -8,12 +8,13 @@ import { createAuthApi } from './auth/endpoints.ts';
 import { createChatSessionsApi } from './chat/sessions.ts';
 import { createSandboxTerminalApi } from './sandbox/terminal.ts';
 import { createConfigurationApi } from './configuration.ts';
-import { buildChatStreamRequest, consumeChatStream, consumeStreamResult } from './chat/stream.ts';
+import { buildChatStreamRequest, consumeChatStream, consumeStreamResult, createServerSentEventParser, parseChatEvent } from './chat/stream.ts';
 import { createChatApprovalsApi } from './chat/approvals.ts';
 import { createChatSteerApi } from './chat/steer.ts';
 import { createIdentityApi } from './identity/index.ts';
 import { createAdministrationApi } from './administration/index.ts';
 import { createSettingsApi } from './settings/index.ts';
+import { createEmbedApi } from './embed/index.ts';
 
 export interface ClientRequest {
   method: string;
@@ -107,6 +108,25 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
   const identity = createIdentityApi(request);
   const administration = createAdministrationApi(request);
   const settings = createSettingsApi(request);
+  const embed = createEmbedApi(request, async (streamRequest, onEvent, signal) => {
+    const input = signal === undefined ? streamRequest : { ...streamRequest, signal };
+    if (options.transport.sendStream) {
+      const result = await options.transport.sendStream({
+        method: input.method,
+        url: joinURL(options.baseURL, input.path),
+        headers: { accept: 'application/json', ...input.headers },
+        body: input.body,
+        signal: input.signal,
+      });
+      await consumeStreamResult(result, onEvent);
+      return;
+    }
+    const body = await request(input);
+    if (typeof body !== 'string') throw new Error('Embed chat stream returned a non-text body');
+    const parser = createServerSentEventParser((event) => onEvent(parseChatEvent(event)));
+    parser.push(body);
+    parser.finish();
+  });
 
   return {
     request,
@@ -135,6 +155,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
     identity,
     administration,
     settings,
+    embed,
     sessions,
     sandbox,
     configuration,

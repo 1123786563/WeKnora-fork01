@@ -139,3 +139,20 @@ test('exposes the complete settings API under the client', async () => {
 
   assert.equal((await client.settings.system.info()).version, 'test');
 });
+
+test('exposes the embed API with an isolated credential profile', async () => {
+  const client = createWeKnoraClient({
+    baseURL: 'https://api.example.test',
+    transport: {
+      send: async ({ headers }) => ({
+        status: 200,
+        headers: {},
+        body: headers.Authorization === 'Embed ems-1'
+          ? { success: true, data: { channel_id: 'c-1', agent_id: 'a-1' } }
+          : { success: false },
+      }),
+    },
+  });
+
+  assert.equal((await client.embed.public.config('c-1', 'ems-1')).agent_id, 'a-1');
+});
