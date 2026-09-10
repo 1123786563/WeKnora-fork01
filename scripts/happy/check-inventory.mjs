@@ -2,12 +2,6 @@ const REQUIRED = ['id', 'route', 'source', 'interaction', 'destination', 'servic
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 const STATUSES = new Set(['pending', 'accepted', 'blocked']);
-export const REQUIRED_CAPABILITIES = new Set([
-  'session.send','session.stop','session.retry','session.attach','session.openChanges','session.openFiles','session.openInfo','session.share',
-  'session.sidechat.create','session.sidechat.select','session.sidechat.close','session.permission.allow','session.permission.deny','session.permission.switch',
-  'session.model','session.effort','session.voice.start','session.voice.stop','session.goal.accept','session.goal.reject','session.question','session.resume','session.resume.copy',
-  'session.archive','session.delete','session.fork','session.sidechat.open'
-]);
 
 export function fixedRoutePaths(upstream, commit) {
   return execFileSync('git', ['-C', upstream, 'ls-tree', '-r', '--name-only', commit, 'packages/happy-app/sources/app'], { encoding: 'utf8' })
