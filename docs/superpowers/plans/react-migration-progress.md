@@ -21,7 +21,7 @@
 
 | 任务 | 状态 | 实现文件/提交 | 测试与退出码 | 证据层级 | 问题/下一步 |
 |---|---|---|---|---|---|
-| T01 基线、契约和复用来源冻结 | review | `eb0e9a9` (`docs: freeze React migration baseline and contracts`) | `python3 scripts/generate_react_migration_baseline.py` 0；矩阵自检 0；`go test ./docs` 0；`cd frontend && npm test` 0（804/804）；`npm run type-check` 0；`npm run build` 0；`git diff --check` 0 | 静态：通过；现有 Vue mock/unit：通过；现有 Vue build：通过；真实后端/截图/Wails 包/原生：未完成 | API 行已全量覆盖但 handler DTO/权限逐行仍需审阅；真实后端 smoke 与生成器试点待补；首轮 reviewer 超时并关闭，tester 复核通过 |
+| T01 基线、契约和复用来源冻结 | review | `eb0e9a9` + working-tree T01 audit | `python3 -m unittest scripts/test_generate_react_migration_baseline.py -v` 0（4/4）；`python3 scripts/generate_react_migration_baseline.py` 0；`git diff --check` pending | 静态矩阵/确定性/注册路由分类：通过；Swagger 282 paths/361 operations 与注册 Gin 路由对照；真实后端/截图/Wails 包/原生：未完成 | API 矩阵 452 行（361 Swagger + 91 implementation-only），route parity 53 行；handler DTO/权限逐行复核、OpenAPI Generator 试点和真实 smoke 仍待补 |
 | T02 无框架 SDK与第一条真实 API 链路 | review | `e3a3a8f` (`feat: add framework-free shared client foundation`) | `pnpm test:shared` 0（10/10）；`pnpm typecheck:shared` 0；TDD nested-error/late-abort RED→GREEN；真实后端 0 | 静态/Node mock：通过；真实后端 Web：未完成 | 已实现 contracts/api-client/domain 与 KB list mock 链路；仍需接入 Web 调试页、共享认证和真实后端 |
 | T03 登录、刷新、OIDC与凭证隔离 | review | `118d15d` (`feat: isolate bearer refresh and embed credentials`) | `pnpm test:shared` 0（15/15）；`pnpm typecheck:shared` 0；auth RED→GREEN；`git diff --check` 0；真实后端/OIDC/浏览器 0 | 静态/Node mock：通过；真实后端、OIDC浏览器回调、React登录页：未完成 | 已实现异步 credential adapter、Bearer 单飞 refresh、Embed 隔离、generation/invalidate 和严格 token 校验；需后续接入 auth endpoints、Web adapter 与真实回调 |
 | T04 空间上下文、路由和能力守卫 | review | `9b35b5a` (`feat: guard scoped requests across tenant changes`) | `pnpm test:shared` 0（17/17）；`pnpm typecheck:shared` 0；scope RED→GREEN；`git diff --check` 0；真实路由/后端 0 | 静态/Node mock：通过；真实路由、Web 深链、后端权限：未完成 | 已实现切空间 abort、generation stale guard、logout/invalidate；仍需 Web Router/Query 接入与服务端权限负例 |
@@ -55,7 +55,8 @@
 - 检查目标/参考仓库 HEAD、分支和工作区；未修改参考仓库。
 - 核对目标仓库适用规范与 CLI 子目录边界。
 - 采集 Vue/API/Swagger/Wails 的当前实际数量与入口。
-- 生成 `docs/migrations/react/route-parity.csv`（46 行入口/设置清单）、`api-contract-matrix.csv`（361 行 Swagger 操作）、`reuse-manifest.csv`、`version-matrix.md` 和 `runtime-baseline.md`。
+- 生成 `docs/migrations/react/route-parity.csv`（53 行入口/设置/特殊路由清单）、`api-contract-matrix.csv`（361 行 Swagger 操作 + 91 条实现专有行），并补充 `source_status`、Gin 注册来源、SSE/Embed/文件/终端 WS 特殊分类。
+- 新增 `scripts/test_generate_react_migration_baseline.py`：检查 282 paths/361 operations、Swagger/注册路由覆盖、非空任务/身份/能力、特殊路由分类和双次生成字节确定性。
 - 运行当前 Vue 基线：`npm ci --ignore-scripts`、804 个前端测试、`vue-tsc --build` 和 Vite 构建均退出码 0；`go test ./docs` 退出码 0。
 - 记录 Multica 仅作为架构模式参考；其源码、UI、品牌和业务模型不复制，因根许可证带附加条件而采用 clean-room 路线。
 - T01 范围提交：`eb0e9a9`；提交未包含用户提供的三份未跟踪权威输入文档。
@@ -64,7 +65,7 @@
 ### 待完成
 
 - route parity：逐项连接 Vue 入口/旧 URL、Go 注册路由和能力/角色。
-- API contract：以 Go 路由、handler DTO/注解和测试为行为权威，分类 Swagger 独有/实现独有/客户端未使用。
+- API contract：已以 Go 路由注册代码对照 Swagger，并分类 Swagger 独有/实现独有/客户端使用/特殊路由；handler DTO/注解/权限/测试仍需逐行复核。
 - reuse manifest：记录目标/参考源码、固定提交、许可证与复用策略；未核实授权的实现独立编写。
 - version matrix：验证 Swagger 2.0 生成路线、Node/pnpm/TypeScript/Vite/React/Expo/Wails 版本和原生兼容性。
 - runtime baseline：六种语言、旧 URL、Lite 数据路径、核心截图及真实后端 smoke；无法运行的条件单列为缺失证据。
@@ -72,7 +73,7 @@
 ### T01 review findings
 
 - 计划库存与当前 HEAD 存在 SFC 数量差异（199 → 200），已在运行基线和矩阵中记录。
-- Swagger 2.0 行数与当前文档一致（282 paths/361 operations），但这不是运行路由证明；所有 API 行保留 `requires-handler-dto-permission-review` 状态。
+- Swagger 2.0 行数与当前文档一致（282 paths/361 operations），但这不是运行路由证明；矩阵用 `source_status` 区分 `swagger`、`registered-route`、`client-used` 和 `special-route`，handler DTO/权限仍未宣称已审结。
 - 当前环境没有已配置的 OpenAPI Generator 试点结果、真实后端测试身份、核心截图采集和 Wails/Expo 主机证据；这些缺失不能用已有 Vue 构建替代。
 
 ## 变更与提交记录
