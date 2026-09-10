@@ -1,4 +1,6 @@
 export default {
+  agentRunRecovery: { title: '실행에 확인이 필요합니다', defaultReason: '안전한 복구 결정을 기다리며 실행이 일시 중지되었습니다.', tool: '도구: {name}', resultLabel: '도구 결과', resultPlaceholder: '확인한 구조화 결과(JSON 또는 텍스트)를 입력하세요', retry: '재시도', provideResult: '결과 제공', terminate: '종료', failed: '실행을 업데이트하지 못했습니다' },
+
   platformApiKeys: {
     title: '플랫폼 API 키',
     description: '워크스페이스 간 자동화를 위한 플랫폼 자격 증명입니다. 워크스페이스 API에는 X-Tenant-ID를 사용하세요.',

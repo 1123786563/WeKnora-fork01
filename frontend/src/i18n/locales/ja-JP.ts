@@ -1,4 +1,6 @@
 export default {
+  agentRunRecovery: { title: '実行の確認が必要です', defaultReason: '安全な復旧の判断を待って実行を一時停止しました。', tool: 'ツール: {name}', resultLabel: 'ツール結果', resultPlaceholder: '確認済みの構造化結果（JSON またはテキスト）を入力', retry: '再試行', provideResult: '結果を提供', terminate: '終了', failed: '実行を更新できませんでした' },
+
   menu: {
     sessionInProgress: '会話中',
     knowledgeBase: 'ナレッジベース',
