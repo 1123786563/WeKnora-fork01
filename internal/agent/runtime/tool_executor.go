@@ -231,6 +231,24 @@ func NewToolExecutor(runs RunStore, journal ToolJournal, execute ToolExecuteFunc
 	return &ToolExecutor{runs: runs, journal: journal, execute: execute}
 }
 
+// PreparePlan durably records an immutable tool plan before any dispatch.
+// Graph runtimes use this to make every call in a model batch recoverable.
+func (e *ToolExecutor) PreparePlan(ctx context.Context, fence Fence, plan ToolPlan) error {
+	if e == nil || e.runs == nil || e.journal == nil || !validToolPlan(plan) {
+		return ErrConflict
+	}
+	run, err := e.runs.Get(ctx, fence.RunKey)
+	if err != nil {
+		return err
+	}
+	if run.Key != fence.RunKey || run.Owner != fence.Owner || run.Epoch != fence.Epoch ||
+		(run.Status != "running" && run.Status != "recovering") {
+		return ErrLeaseLost
+	}
+	_, err = e.journal.EnsureToolPlan(ctx, fence, plan)
+	return err
+}
+
 // Execute journals planned -> dispatching -> result. The external call runs
 // outside repository transactions. Any error after dispatch is conservatively
 // recorded as unknown, including cancellation and timeout.

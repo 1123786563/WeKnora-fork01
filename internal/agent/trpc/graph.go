@@ -33,7 +33,7 @@ func NextAfterTool(index, count int) string {
 func stateFromGraph(in graph.State) (State, error) {
 	raw, ok := in[StateKey]
 	if !ok {
-		return State{Version: StateVersion, AppliedCallIDs: map[string]bool{}}, nil
+		return State{}, nil
 	}
 	b, err := json.Marshal(raw)
 	if err != nil {
@@ -87,8 +87,11 @@ func buildGraph(b GraphBindings) (*graph.Graph, error) {
 				break
 			}
 		}
-		if response == nil || len(response.Choices) == 0 {
-			return nil, fmt.Errorf("model returned no completed response")
+		if response == nil || !response.Done || response.IsPartial || response.Error != nil || len(response.Choices) == 0 {
+			if response != nil && response.Error != nil {
+				return nil, fmt.Errorf("model response error: %w", response.Error)
+			}
+			return nil, fmt.Errorf("model returned partial or incomplete response")
 		}
 		msg := response.Choices[0].Message
 		s.ModelAttemptID = response.ID
@@ -111,11 +114,18 @@ func buildGraph(b GraphBindings) (*graph.Graph, error) {
 			return stateUpdate(s), nil
 		}
 		s.PendingCallIDs = make([]string, len(calls))
+		fence := b.fenceFromContext(ctx)
 		for i, c := range calls {
-			if c.ID == "" || c.Function.Name == "" || !json.Valid(c.Function.Arguments) {
+			if c.ID == "" || c.Function.Name == "" || !json.Valid(c.Function.Arguments) || string(c.Function.Arguments) == "null" {
 				return nil, fmt.Errorf("invalid tool call at index %d", i)
 			}
 			s.PendingCallIDs[i] = c.ID
+			if b.Tools == nil {
+				return nil, fmt.Errorf("tool executor is required")
+			}
+			if err := b.Tools.PreparePlan(ctx, fence, agentruntime.ToolPlan{Version: 1, CallID: c.ID, Name: c.Function.Name, Identity: c.Function.Name, ArgsHash: hashArgs(c.Function.Arguments), Args: c.Function.Arguments}); err != nil {
+				return nil, err
+			}
 		}
 		s.NextCallIndex = 0
 		return stateUpdate(s), nil
@@ -155,9 +165,22 @@ func buildGraph(b GraphBindings) (*graph.Graph, error) {
 		if err != nil {
 			return nil, err
 		}
-		// dispatch_one_tool commits the result and cursor atomically in the graph state.
-		// Keep this node explicit so recovery can validate that the journal result
-		// was applied before routing to the next call/model.
+		if s.NextCallIndex > 0 {
+			id := s.PendingCallIDs[s.NextCallIndex-1]
+			if !s.AppliedCallIDs[id] {
+				return nil, fmt.Errorf("tool result %s was not durably applied", id)
+			}
+			found := false
+			for _, m := range s.Messages {
+				if m.Role == model.RoleTool && m.ToolID == id {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return nil, fmt.Errorf("tool result %s is missing from state", id)
+			}
+		}
 		return stateUpdate(s), nil
 	})
 	sg.AddNode(nodeFinalize, func(ctx context.Context, in graph.State) (any, error) {
