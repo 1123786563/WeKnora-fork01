@@ -174,6 +174,9 @@ export interface KnowledgeTag {
 export interface KnowledgeTagListResponse {
   success: true;
   data: KnowledgeTag[];
+  total?: number;
+  page?: number;
+  page_size?: number;
 }
 
 export interface KnowledgeSearchResponse {
@@ -550,8 +553,22 @@ export function parseKnowledgeFolderTreeResponse(value: unknown): KnowledgeFolde
 
 export function parseKnowledgeTagListResponse(value: unknown): KnowledgeTagListResponse {
   const envelope = actionEnvelope(value);
-  if (!Array.isArray(envelope.data)) throw new ContractError('data', 'expected an array');
-  const data = envelope.data.map((item, index) => {
+  const payload = envelope.data;
+  let rows: unknown[];
+  let pagination: { total?: number; page?: number; page_size?: number } = {};
+  if (Array.isArray(payload)) {
+    rows = payload;
+  } else if (typeof payload === 'object' && payload !== null) {
+    const paged = payload as Record<string, unknown>;
+    if (!Array.isArray(paged.data)) throw new ContractError('data.data', 'expected an array');
+    rows = paged.data;
+    for (const key of ['total', 'page', 'page_size'] as const) {
+      if (paged[key] !== undefined) pagination[key] = validatePageNumber(paged[key], `data.${key}`);
+    }
+  } else {
+    throw new ContractError('data', 'expected an array or paginated object');
+  }
+  const data = rows.map((item, index) => {
     const path = `data[${index}]`;
     if (typeof item !== 'object' || item === null || Array.isArray(item)) throw new ContractError(path, 'expected an object');
     const row = item as Record<string, unknown>;
@@ -563,7 +580,7 @@ export function parseKnowledgeTagListResponse(value: unknown): KnowledgeTagListR
       name: requireNonEmptyString(row.name, `${path}.name`),
     } as KnowledgeTag;
   });
-  return { success: true, data };
+  return { success: true, data, ...pagination };
 }
 
 export function parseKnowledgeSearchResponse(value: unknown): KnowledgeSearchResponse {

@@ -33,6 +33,16 @@ test('parses folder tree and tags without weakening numeric or identity fields',
   assert.throws(() => parseKnowledgeTagListResponse({ success: true, data: [{ id: 'tag-1', name: 4 }] }), ContractError);
 });
 
+test('parses the backend paginated tag envelope', () => {
+  const result = parseKnowledgeTagListResponse({
+    success: true,
+    data: { total: 1, page: 1, page_size: 100, data: [{ id: 'tag-1', name: 'important' }] },
+  });
+  assert.equal(result.data[0]?.name, 'important');
+  assert.equal(result.total, 1);
+  assert.equal(result.page_size, 100);
+});
+
 test('parses recent search response and rejects missing completion metadata', () => {
   const result = parseKnowledgeSearchResponse({ success: true, data: [{ id: 'doc-1', title: 'Guide' }], has_more: true, total: 3 });
   assert.equal(result.has_more, true);
