@@ -36,6 +36,7 @@ type AgentRunWorker struct {
 	owner   string
 	mu      sync.Mutex
 	active  map[string]context.CancelFunc
+	done    chan struct{}
 }
 
 func NewAgentRunWorker(store agentruntime.RunStore, execute func(context.Context, agentruntime.Fence) error, cfg WorkerConfig) (*AgentRunWorker, error) {
@@ -43,40 +44,57 @@ func NewAgentRunWorker(store agentruntime.RunStore, execute func(context.Context
 		return nil, errors.New("agent worker store and executor are required")
 	}
 	if !cfg.Enabled {
-		return &AgentRunWorker{store: store, execute: execute, cfg: cfg, owner: fmt.Sprintf("worker-%d", time.Now().UnixNano()), active: make(map[string]context.CancelFunc)}, nil
+		return &AgentRunWorker{store: store, execute: execute, cfg: cfg, owner: fmt.Sprintf("worker-%d", time.Now().UnixNano()), active: make(map[string]context.CancelFunc), done: make(chan struct{})}, nil
 	}
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
-	return &AgentRunWorker{store: store, execute: execute, cfg: cfg, owner: fmt.Sprintf("worker-%d", time.Now().UnixNano()), active: make(map[string]context.CancelFunc)}, nil
+	return &AgentRunWorker{store: store, execute: execute, cfg: cfg, owner: fmt.Sprintf("worker-%d", time.Now().UnixNano()), active: make(map[string]context.CancelFunc), done: make(chan struct{})}, nil
 }
 
-func (w *AgentRunWorker) Run(ctx context.Context) error {
+func (w *AgentRunWorker) Run(ctx context.Context) (err error) {
 	if w == nil {
 		return errors.New("agent worker is nil")
 	}
-	if err := w.cfg.Validate(); err != nil {
-		return err
-	}
+	defer close(w.done)
 	if !w.cfg.Enabled {
 		return nil
+	}
+	if err := w.cfg.Validate(); err != nil {
+		return err
 	}
 	ticker := time.NewTicker(w.cfg.ScanInterval)
 	defer ticker.Stop()
 	// Recover immediately on process startup, then continue polling.
 	if err := w.Tick(ctx); err != nil && ctx.Err() == nil {
-		return err
+		w.backoff(ctx)
 	}
 	for {
 		select {
 		case <-ctx.Done():
-			w.drain(ctx)
+			w.drain()
 			return nil
 		case <-ticker.C:
 			if err := w.Tick(ctx); err != nil && ctx.Err() == nil {
-				return err
+				w.backoff(ctx)
 			}
 		}
+	}
+}
+
+func (w *AgentRunWorker) backoff(ctx context.Context) {
+	d := w.cfg.ScanInterval / 2
+	if d < 25*time.Millisecond {
+		d = 25 * time.Millisecond
+	}
+	if d > time.Second {
+		d = time.Second
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+	case <-t.C:
 	}
 }
 
@@ -148,10 +166,24 @@ func (w *AgentRunWorker) runOne(ctx context.Context, id string, fence agentrunti
 			}
 		}
 	}()
-	_ = w.execute(renewCtx, fence)
+	err := w.execute(renewCtx, fence)
+	if renewCtx.Err() != nil {
+		return
+	}
+	status, reason := "succeeded", ""
+	if err != nil {
+		status, reason = "failed", err.Error()
+	}
+	// A terminal state is durable and fenced; a cancelled/draining worker
+	// leaves the run non-terminal for lease based takeover.
+	if set, ok := w.store.(interface {
+		SetStatus(context.Context, agentruntime.Fence, string, string) error
+	}); ok {
+		_ = set.SetStatus(context.Background(), fence, status, reason)
+	}
 }
 
-func (w *AgentRunWorker) drain(ctx context.Context) {
+func (w *AgentRunWorker) drain() {
 	w.mu.Lock()
 	cancels := make([]context.CancelFunc, 0, len(w.active))
 	for _, c := range w.active {
@@ -171,11 +203,28 @@ func (w *AgentRunWorker) drain(ctx context.Context) {
 			return
 		}
 		select {
-		case <-ctx.Done():
-			return
 		case <-deadline.C:
 			return
 		case <-time.After(5 * time.Millisecond):
 		}
+	}
+}
+
+// Wait blocks until the worker loop exits, bounded by timeout.
+func (w *AgentRunWorker) Wait(timeout time.Duration) bool {
+	if w == nil {
+		return true
+	}
+	if timeout <= 0 {
+		<-w.done
+		return true
+	}
+	t := time.NewTimer(timeout)
+	defer t.Stop()
+	select {
+	case <-w.done:
+		return true
+	case <-t.C:
+		return false
 	}
 }

@@ -310,6 +310,21 @@ func (s *AgentRunStore) SaveCheckpoint(
 	})
 }
 
+// SetStatus durably records execution outcome under the current fence.
+func (s *AgentRunStore) SetStatus(ctx context.Context, fence agentruntime.Fence, status, reason string) error {
+	if status != "succeeded" && status != "failed" && status != "waiting_user" {
+		return agentruntime.ErrConflict
+	}
+	result := s.fenced(s.db.WithContext(ctx), fence).Updates(map[string]any{"status": status, "wait_reason": reason, "lease_owner": "", "lease_until": nil, "revision": gorm.Expr("revision + 1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP")})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return agentruntime.ErrLeaseLost
+	}
+	return nil
+}
+
 // LoadCheckpoint returns the latest committed graph snapshot for one tenant/run.
 func (s *AgentRunStore) LoadCheckpoint(
 	ctx context.Context, key agentruntime.RunKey,
