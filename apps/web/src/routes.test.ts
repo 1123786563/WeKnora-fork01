@@ -8,6 +8,7 @@ test('keeps legacy deep links and redirects the misspelled chat path compatibly'
   assert.equal(resolveRoute('/platform/integrations').kind, 'platform');
   assert.equal(routeRedirect('/creatChat?agentId=a'), '/platform/creatChat?agentId=a');
   assert.equal(resolveRoute('/platform').kind, 'platform');
+  assert.deepEqual(resolveRoute('/register'), { kind: 'login', path: '/register', mode: 'register' });
 });
 
 test('does not treat embed or missing capability paths as authenticated platform routes', () => {

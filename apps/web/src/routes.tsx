@@ -1,5 +1,5 @@
 export type RouteMatch =
-  | { kind: 'login'; path: '/login' }
+  | { kind: 'login'; path: '/login' | '/register'; mode?: 'login' | 'register' }
   | { kind: 'platform'; path: string }
   | { kind: 'knowledge-base'; path: string }
   | { kind: 'join'; path: '/join' }
@@ -9,6 +9,7 @@ export type RouteMatch =
 export function resolveRoute(pathname: string): RouteMatch {
   const path = pathname.split('?')[0] || '/';
   if (path === '/login') return { kind: 'login', path: '/login' };
+  if (path === '/register') return { kind: 'login', path: '/register', mode: 'register' };
   if (path === '/join') return { kind: 'join', path: '/join' };
   if (path.startsWith('/embed/')) return { kind: 'embed', path };
   if (path === '/knowledgeBase' || path.startsWith('/knowledgeBase/')) return { kind: 'knowledge-base', path };

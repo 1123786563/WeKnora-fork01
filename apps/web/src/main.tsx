@@ -60,7 +60,7 @@ if (route.kind === 'embed') {
     session = { credential: { kind: 'bearer', accessToken: next.token, refreshToken: next.refreshToken }, tenantId: null };
     persistBrowserCredential(window.localStorage, session.credential);
     window.location.assign('/platform/knowledge-bases');
-  }} apiBaseUrl={apiBaseUrl} initialError={initialLoginError} />);
+  }} apiBaseUrl={apiBaseUrl} initialError={initialLoginError} initialMode={route.mode} />);
 } else if (route.kind === 'join') {
   root.render(<JoinPage client={client} onAuthenticated={(next) => {
     session = { credential: { kind: 'bearer', accessToken: next.token, refreshToken: next.refreshToken }, tenantId: null };

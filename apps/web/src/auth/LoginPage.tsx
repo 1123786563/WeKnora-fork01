@@ -7,10 +7,11 @@ export interface LoginPageProps {
   onAuthenticated?: (session: AuthSession) => void;
   apiBaseUrl?: string;
   initialError?: string;
+  initialMode?: 'login' | 'register';
 }
 
-export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError }: LoginPageProps) {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, initialMode = 'login' }: LoginPageProps) {
+  const [mode, setMode] = useState<'login' | 'register'>(initialMode);
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
