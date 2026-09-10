@@ -113,6 +113,15 @@ def validate_case(case: dict, namespace: str, allow_test_writes: bool) -> None:
             raise ValueError("cleanup refused: unsettled transactions")
         if not str(item.get("path", "")).startswith("/"):
             raise ValueError("cleanup path must be absolute")
+        for key, value in _namespace_pairs(item.get("path")):
+            if value != namespace and not CAPTURE_REF.match(str(value)):
+                raise ValueError(f"cleanup embedded {key} mismatch")
+        for key, value in _namespace_pairs(item.get("body")):
+            if value != namespace and not CAPTURE_REF.match(str(value)):
+                raise ValueError(f"cleanup embedded {key} mismatch")
+    for step in steps:
+        if step.get("replay") and not step.get("replay_identity"):
+            raise ValueError("replay requires replay_identity JSON Pointer")
 
 
 def _walk(value: object):
@@ -181,7 +190,9 @@ def run_case(case: dict, base_url: str, namespace: str, allow_test_writes: bool,
             assert_subset(response, step["expected"])
         if step.get("replay"):
             replay_status, replay_response = _request_json(base_url.rstrip("/") + str(path), method, body, key)
-            if replay_status != status or replay_response != response:
+            identity = json_pointer(response, step["replay_identity"])
+            replay_identity = json_pointer(replay_response, step["replay_identity"])
+            if replay_status != status or replay_identity != identity:
                 raise AssertionError("idempotent replay changed business result")
         if "expected" in case and records:
             assert_subset(records[-1]["response"], redact(case["expected"]))
@@ -190,6 +201,8 @@ def run_case(case: dict, base_url: str, namespace: str, allow_test_writes: bool,
             raise PermissionError("cleanup requires --allow-test-writes")
         if item.get("unsettled_transactions", 0):
             raise ValueError("cleanup refused: unsettled transactions")
+        if item["capture"] not in captures:
+            raise ValueError(f"cleanup capture unavailable: {item['capture']}")
         target = captures[item["capture"]]
         if item.get("namespace", namespace) != namespace:
             raise ValueError("cleanup namespace mismatch")

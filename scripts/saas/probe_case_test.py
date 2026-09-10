@@ -34,6 +34,11 @@ class ProbeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_case(case, "saas-x", True)
 
+    def test_replay_requires_identity_pointer(self):
+        case = {"id": "x", "operation_id": "create", "request": {"method": "POST", "replay": True, "idempotency_key": "k"}, "expected": {}}
+        with self.assertRaises(ValueError):
+            validate_case(case, "saas-x", True)
+
     def test_unknown_capture_rejected(self):
         case = {"id": "x", "operation_id": "get", "request": {"body": {"id": "${capture:nope}"}}, "expected": {}}
         with self.assertRaises(ValueError):

@@ -122,3 +122,32 @@ Remaining blocking findings:
 
 The re-review remains **FAIL** until these authorization, namespace, cleanup,
 idempotency, and failure-evidence issues are fixed.
+
+## Round-2 re-review: FAIL
+
+Reviewed fix commit `88f4129821001be14f316692bf319c604edffa3b`.
+
+Evidence: `python3 -m unittest scripts.saas.probe_case_test -v` passes 7/7 and
+`git diff 88f4129^ 88f4129 --check` passes. The fix adds cleanup write gating,
+same-namespace body support, repeatable-write key validation, bound cleanup
+substitution, and in-step HTTP error recording.
+
+Remaining blockers:
+
+1. Cleanup checks only `item["namespace"]` and a leading slash. It does not
+   inspect namespace or tenant values embedded in the cleanup path, so a path
+   such as `/namespaces/other/customers/${capture:id}` can issue a
+   cross-namespace DELETE. Apply the same bound namespace-pair validation to
+   cleanup paths and add a regression test.
+
+2. Cleanup accepts a declared capture that no preceding step actually produced;
+   execution then leaks `KeyError` at `captures[item["capture"]]`. Require a
+   proven preceding capture or raise a clean `ValueError`, with a test.
+
+3. Replay compares complete responses only when `step.replay` is enabled and
+   does not require a configured resource identity assertion. A case omitting
+   the identity can therefore fail to prove same-resource replay. Require a
+   replay identity JSON Pointer/capture assertion and test differing resource
+   IDs.
+
+V02 remains **FAIL** until these cleanup and replay contract gaps are fixed.
