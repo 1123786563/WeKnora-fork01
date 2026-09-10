@@ -27,6 +27,14 @@ Opening the real `iOS Live KB` row on the simulator navigated to the native
 folder controls, then rendered `0 files` and `No files match these filters.`
 without the previous `data: expected an array` error.
 
+For a non-empty read fixture, the isolated backend accepted
+`POST /api/v1/knowledge-bases/{id}/knowledge/manual` with a draft manual
+document (`Native list fixture`, `200`). After a Metro reload, the native
+screen rendered `1 files` and the row `Native list fixture.md, draft`. Tapping
+the row opened the native `knowledge/document/[id]` route and rendered the
+server-owned title, parse status, document id, type (`manual`), size, and the
+`Download and share` action.
+
 ## Contract correction
 
 The nested tag response first failed the new contract test with
@@ -35,6 +43,6 @@ that RED result to accept both the existing flat fixture form and the actual
 paginated backend form, while validating `total`, `page`, `page_size`, tag
 identity, and tag field types. The GREEN test passed 5/5.
 
-This is authenticated list/empty-state evidence, not upload-processing,
-search-result, preview/download/share, 403/413, cancellation, or large-file
-acceptance. Those gates remain `review`.
+This is authenticated list/detail and empty-state evidence, not native picker
+upload-processing, search-result, preview/download/share execution, 403/413,
+cancellation, or large-file acceptance. Those gates remain `review`.
