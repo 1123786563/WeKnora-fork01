@@ -8,6 +8,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/agent/approval"
 	"github.com/Tencent/WeKnora/internal/agent/skills"
 	"github.com/Tencent/WeKnora/internal/agent/tools"
+	trpcagent "github.com/Tencent/WeKnora/internal/agent/trpc"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/models/chat"
@@ -35,6 +36,32 @@ type AgentCapabilities struct {
 	// the policy checker while durable decisions never enter the live waiter.
 	ApprovalChecker approval.ApprovalChecker
 	ApprovalWaiter  approval.ApprovalWaiter
+	MemoryPrompt    string
+	ImageReferences []string
+}
+
+// CapabilitySnapshot is the restart boundary for shared agent capabilities.
+// It is assembled from the same request-scoped registry used by builtin ReAct.
+func (c *AgentCapabilities) CapabilitySnapshot() trpcagent.CapabilitySnapshot {
+	if c == nil {
+		return trpcagent.CapabilitySnapshot{}
+	}
+	s := trpcagent.CapabilitySnapshot{SystemPrompt: c.SystemPrompt, MemoryPrompt: c.MemoryPrompt, ImageReferences: append([]string(nil), c.ImageReferences...)}
+	if c.Tools != nil {
+		for _, definition := range c.Tools.GetFunctionDefinitions() {
+			s.ToolIdentities = append(s.ToolIdentities, definition.Name)
+		}
+		s.DeferredNames = c.Tools.DeferredToolNames()
+	}
+	if c.Skills != nil {
+		s.SkillDigests = make(map[string]string)
+		for _, metadata := range c.Skills.GetAllMetadata() {
+			if metadata != nil {
+				s.SkillDigests[metadata.Name] = trpcagent.SkillDigest(metadata.Name, metadata.Description)
+			}
+		}
+	}
+	return s
 }
 
 func (s *agentService) prepareAgentCapabilities(

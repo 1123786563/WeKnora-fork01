@@ -31,6 +31,7 @@ type State struct {
 	ModelAttemptID  string                     `json:"model_attempt_id,omitempty"`
 	InputCursor     int64                      `json:"input_cursor"`
 	UsageAttempts   map[string]json.RawMessage `json:"usage_attempts,omitempty"`
+	Capabilities    CapabilitySnapshot         `json:"capabilities"`
 }
 
 // CompactionSnapshot is version 1 of CompactionState's JSON schema.
@@ -52,6 +53,9 @@ type ModelAttempt struct {
 func (s State) Validate() error {
 	if s.Version != StateVersion {
 		return fmt.Errorf("unsupported state version %d", s.Version)
+	}
+	if err := s.Capabilities.Validate(); err != nil {
+		return fmt.Errorf("capabilities: %w", err)
 	}
 	if s.NextCallIndex < 0 || s.NextCallIndex > len(s.PendingCallIDs) || s.InputCursor < 0 {
 		return fmt.Errorf("invalid execution cursor")

@@ -21,6 +21,7 @@ type GraphBindings struct {
 	Finalize        func(context.Context, agentruntime.Fence, json.RawMessage) error
 	InitialState    State
 	WaitForDecision func(context.Context, agentruntime.Fence, string) error
+	Capabilities    CapabilitySnapshot
 }
 
 type GraphRunner struct{ bindings GraphBindings }
@@ -34,6 +35,9 @@ func NewGraphRunner(b GraphBindings) (*GraphRunner, error) {
 	}
 	if b.InitialState.Version == 0 {
 		b.InitialState.Version = StateVersion
+	}
+	if b.InitialState.Capabilities.IsEmpty() {
+		b.InitialState.Capabilities = b.Capabilities
 	}
 	cloned, err := cloneState(b.InitialState)
 	if err != nil {
@@ -113,6 +117,13 @@ func cloneState(in State) (State, error) {
 	out.UsageAttempts = map[string]json.RawMessage{}
 	for k, v := range in.UsageAttempts {
 		out.UsageAttempts[k] = append(json.RawMessage(nil), v...)
+	}
+	out.Capabilities.ToolIdentities = append([]string(nil), in.Capabilities.ToolIdentities...)
+	out.Capabilities.DeferredNames = append([]string(nil), in.Capabilities.DeferredNames...)
+	out.Capabilities.ImageReferences = append([]string(nil), in.Capabilities.ImageReferences...)
+	out.Capabilities.SkillDigests = map[string]string{}
+	for k, v := range in.Capabilities.SkillDigests {
+		out.Capabilities.SkillDigests[k] = v
 	}
 	return out, nil
 }

@@ -99,6 +99,20 @@ func (r *ToolRegistry) ListTools() []string {
 	return names
 }
 
+// DeferredToolNames returns the stable identities retained for execution but
+// intentionally omitted from the model-facing tool definitions (for example,
+// deferred MCP tools). The result is sorted for durable snapshot equality.
+func (r *ToolRegistry) DeferredToolNames() []string {
+	names := make([]string, 0)
+	for name, deferred := range r.deferred {
+		if deferred {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
 // GetFunctionDefinitions returns function definitions for all registered tools.
 // The slice is sorted by tool name so the serialized payload sent to the LLM
 // is byte-identical across requests. Providers that key prompt caching on a

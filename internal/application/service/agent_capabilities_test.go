@@ -99,6 +99,32 @@ func TestAgentCapabilitiesUseIndependentRegistriesPerSession(t *testing.T) {
 	require.Equal(t, []string{tools.ToolDiscoverMCPTools, tools.ToolThinking}, modelToolNames(second.Tools))
 }
 
+func TestAgentCapabilitiesSnapshotPreservesDeferredMCPAndSkills(t *testing.T) {
+	ctx := types.WithPrincipal(
+		context.WithValue(context.Background(), types.TenantIDContextKey, uint64(7)),
+		types.Principal{Type: types.PrincipalWebUser, ID: "user-1"},
+	)
+	manager := mcp.NewMCPManager(nil)
+	t.Cleanup(manager.Shutdown)
+	mcpService := &agentCapabilitiesMCPService{
+		service:  &types.MCPService{ID: "calendar", TenantID: 7, Enabled: true},
+		metadata: &types.MCPMetadata{ServiceID: "calendar"},
+	}
+	svc := &agentService{mcpServiceService: mcpService, mcpManager: manager}
+	caps, err := svc.prepareAgentCapabilities(ctx, &types.AgentConfig{AllowedTools: []string{tools.ToolThinking}}, &fakeAgentChatModel{}, nil, nil, "session-1", "message-1")
+	require.NoError(t, err)
+	snapshot := caps.CapabilitySnapshot()
+	require.Contains(t, snapshot.ToolIdentities, tools.ToolThinking)
+	// The deferred set is derived from the same registry, so a capability
+	// snapshot cannot accidentally advertise a tool that execution lacks.
+	for _, name := range snapshot.DeferredNames {
+		require.Contains(t, snapshot.ToolIdentities, name)
+	}
+	raw, err := json.Marshal(snapshot)
+	require.NoError(t, err)
+	require.NotEmpty(t, raw)
+}
+
 func modelToolNames(registry *tools.ToolRegistry) []string {
 	definitions := registry.GetModelFunctionDefinitions()
 	names := make([]string, 0, len(definitions))

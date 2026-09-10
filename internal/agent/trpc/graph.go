@@ -67,6 +67,24 @@ func buildGraph(b GraphBindings) (*graph.Graph, error) {
 		if s.AppliedCallIDs == nil {
 			s.AppliedCallIDs = map[string]bool{}
 		}
+		if s.Capabilities.IsEmpty() {
+			s.Capabilities = b.Capabilities
+		}
+		for _, prompt := range []string{s.Capabilities.SystemPrompt, s.Capabilities.MemoryPrompt} {
+			if prompt == "" {
+				continue
+			}
+			found := false
+			for _, m := range s.Messages {
+				if m.Role == model.RoleSystem && m.Content == prompt {
+					found = true
+					break
+				}
+			}
+			if !found {
+				s.Messages = append([]model.Message{{Role: model.RoleSystem, Content: prompt}}, s.Messages...)
+			}
+		}
 		return stateUpdate(s), nil
 	})
 	sg.AddNode(nodeModel, func(ctx context.Context, in graph.State) (any, error) {
