@@ -112,3 +112,52 @@ export function settingsResourceInput(name: string, type: string, configText: st
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Resource config must be a JSON object');
   return { name: nextName, type: nextType, config: parsed as Record<string, unknown> };
 }
+
+type SettingsConfigSection = 'retrieval' | 'chathistory' | 'parser';
+
+function finiteNumber(value: unknown, key: string, min: number, max: number): number {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(parsed) || parsed < min || parsed > max) throw new Error(`${key} must be between ${min} and ${max}`);
+  return parsed;
+}
+
+export function settingsConfigPatch(section: SettingsConfigSection, values: Record<string, unknown>): Record<string, unknown> {
+  if (section === 'retrieval') {
+    return {
+      embedding_top_k: Math.trunc(finiteNumber(values.embedding_top_k, 'embedding_top_k', 1, 100)),
+      vector_threshold: finiteNumber(values.vector_threshold, 'vector_threshold', 0, 1),
+      keyword_threshold: finiteNumber(values.keyword_threshold, 'keyword_threshold', 0, 1),
+      rerank_top_k: Math.trunc(finiteNumber(values.rerank_top_k, 'rerank_top_k', 1, 100)),
+      rerank_threshold: finiteNumber(values.rerank_threshold, 'rerank_threshold', -10, 10),
+      rerank_model_id: typeof values.rerank_model_id === 'string' ? values.rerank_model_id.trim() : '',
+    };
+  }
+  if (section === 'chathistory') {
+    if (typeof values.enabled !== 'boolean') throw new Error('Chat history enabled must be a boolean');
+    return { enabled: values.enabled, embedding_model_id: typeof values.embedding_model_id === 'string' ? values.embedding_model_id.trim() : '' };
+  }
+  const endpoint = typeof values.mineru_endpoint === 'string' ? values.mineru_endpoint.trim() : '';
+  if (endpoint) {
+    let parsed: URL;
+    try { parsed = new URL(endpoint); } catch { throw new Error('Parser endpoint must be an absolute URL'); }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new Error('Parser endpoint must use HTTP(S)');
+  }
+  const patch: Record<string, unknown> = { mineru_endpoint: endpoint };
+  const apiKey = typeof values.mineru_api_key === 'string' ? values.mineru_api_key.trim() : '';
+  if (apiKey) patch.mineru_api_key = apiKey;
+  return patch;
+}
+
+export function ollamaModelInput(value: string): string {
+  const model = value.trim();
+  if (!model) throw new Error('Ollama model name is required');
+  return model;
+}
+
+export function cloudCredentialPatch(appId: string, appSecret: string): { app_id: string; app_secret: string } {
+  const id = appId.trim();
+  const secret = appSecret.trim();
+  if (!id) throw new Error('WeKnora Cloud app ID is required');
+  if (!secret) throw new Error('WeKnora Cloud app secret is required');
+  return { app_id: id, app_secret: secret };
+}

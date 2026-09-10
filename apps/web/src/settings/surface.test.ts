@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { memoryEnabledPatch, memoryItemPatch, memoryWorkspacePatch, profilePasswordPatch, settingsResourceInput, settingsResourceRows, settingsSectionMeta, settingsValueEntries, tenantEditState, tenantPatch } from './surface.ts';
+import { cloudCredentialPatch, memoryEnabledPatch, memoryItemPatch, memoryWorkspacePatch, ollamaModelInput, profilePasswordPatch, settingsConfigPatch, settingsResourceInput, settingsResourceRows, settingsSectionMeta, settingsValueEntries, tenantEditState, tenantPatch } from './surface.ts';
 import { SETTINGS_SECTIONS } from '@weknora/views';
 
 test('gives every registered settings section a concrete inventory description', () => {
@@ -68,4 +68,25 @@ test('normalizes resource settings rows and validates a resource mutation payloa
   assert.throws(() => settingsResourceInput('', 'qdrant', '{}'), /name/);
   assert.throws(() => settingsResourceInput('Primary', '', '{}'), /type/);
   assert.throws(() => settingsResourceInput('Primary', 'qdrant', '[]'), /object/);
+});
+
+test('builds field-level patches for retrieval, chat history, and parser settings', () => {
+  assert.deepEqual(settingsConfigPatch('retrieval', { embedding_top_k: '20', vector_threshold: '0.25', keyword_threshold: '0.3', rerank_top_k: '10', rerank_threshold: '-0.2', rerank_model_id: 'rerank-1' }), {
+    embedding_top_k: 20, vector_threshold: 0.25, keyword_threshold: 0.3, rerank_top_k: 10, rerank_threshold: -0.2, rerank_model_id: 'rerank-1',
+  });
+  assert.deepEqual(settingsConfigPatch('chathistory', { enabled: true, embedding_model_id: 'embed-1' }), { enabled: true, embedding_model_id: 'embed-1' });
+  assert.deepEqual(settingsConfigPatch('parser', { mineru_endpoint: ' https://mineru.example ', mineru_api_key: '  ' }), { mineru_endpoint: 'https://mineru.example' });
+  assert.throws(() => settingsConfigPatch('retrieval', { embedding_top_k: '0', vector_threshold: '0', keyword_threshold: '0', rerank_top_k: '1', rerank_threshold: '0', rerank_model_id: '' }), /embedding_top_k/);
+  assert.throws(() => settingsConfigPatch('parser', { mineru_endpoint: 'not-a-url' }), /endpoint/);
+});
+
+test('requires a concrete Ollama model name before starting a download', () => {
+  assert.equal(ollamaModelInput('  llama3.2:latest  '), 'llama3.2:latest');
+  assert.throws(() => ollamaModelInput('  '), /model name/);
+});
+
+test('requires both WeKnora Cloud credential fields without accepting a blank secret', () => {
+  assert.deepEqual(cloudCredentialPatch(' app-id ', ' app-secret '), { app_id: 'app-id', app_secret: 'app-secret' });
+  assert.throws(() => cloudCredentialPatch('', 'secret'), /app ID/);
+  assert.throws(() => cloudCredentialPatch('id', '  '), /app secret/);
 });
