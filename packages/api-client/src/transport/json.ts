@@ -20,7 +20,9 @@ export function createJsonTransport(fetcher: FetchLike): HttpTransport {
       const response = await fetcher(request.url, {
         method: request.method,
         headers: request.headers,
-        body: request.body instanceof FormData ? request.body : request.body === undefined ? undefined : JSON.stringify(request.body),
+        body: typeof FormData !== 'undefined' && request.body instanceof FormData
+          ? request.body
+          : request.body === undefined ? undefined : JSON.stringify(request.body),
         signal: request.signal,
       });
       const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
