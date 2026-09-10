@@ -14,9 +14,11 @@ export interface AuthSession {
   tenant?: Record<string, unknown> | null;
   memberships?: unknown[];
 }
+export interface AuthUser extends Record<string, unknown> { id: string }
+export interface AuthTenant extends Record<string, unknown> { id: string | number }
 export interface AuthMe {
-  user: Record<string, unknown>;
-  tenant?: Record<string, unknown> | null;
+  user: AuthUser;
+  tenant?: AuthTenant | null;
   memberships?: unknown[];
   tenant_required?: boolean;
   capabilities?: Record<string, unknown>;
@@ -30,6 +32,20 @@ function record(value: unknown, label: string): Record<string, unknown> {
 function requiredString(value: unknown, label: string): string {
   if (typeof value !== 'string' || value.trim() === '') throw new Error(`${label} is required`);
   return value;
+}
+
+function recordWithId(value: unknown, label: string): Record<string, unknown> & { id: string } {
+  const result = record(value, label);
+  return { ...result, id: requiredString(result.id, `${label}.id`) };
+}
+
+function tenantRecord(value: unknown, label: string): AuthTenant {
+  const result = record(value, label);
+  const id = result.id;
+  if ((typeof id !== 'string' || id.trim() === '') && (typeof id !== 'number' || !Number.isSafeInteger(id) || id <= 0)) {
+    throw new Error(`${label}.id is required`);
+  }
+  return { ...result, id: typeof id === 'string' ? id : id as number };
 }
 
 function requiredBoolean(value: unknown, label: string): boolean {
@@ -128,7 +144,7 @@ export function createAuthApi(request: (input: ClientRequest) => Promise<unknown
     async me(): Promise<AuthMe> {
       const root = successEnvelope(await request({ method: 'GET', path: '/api/v1/auth/me' }));
       const data = record(root.data, 'auth me data');
-      return { user: record(data.user, 'auth me user'), tenant: data.tenant === null ? null : data.tenant ? record(data.tenant, 'auth me tenant') : undefined, memberships: Array.isArray(data.memberships) ? data.memberships : undefined, tenant_required: data.tenant_required === true, capabilities: data.capabilities && typeof data.capabilities === 'object' ? record(data.capabilities, 'capabilities') : undefined };
+      return { user: recordWithId(data.user, 'auth me user'), tenant: data.tenant === null ? null : data.tenant ? tenantRecord(data.tenant, 'auth me tenant') : undefined, memberships: Array.isArray(data.memberships) ? data.memberships : undefined, tenant_required: data.tenant_required === true, capabilities: data.capabilities && typeof data.capabilities === 'object' ? record(data.capabilities, 'capabilities') : undefined };
     },
     async logout(): Promise<void> {
       const response = await request({ method: 'POST', path: '/api/v1/auth/logout', body: {} });

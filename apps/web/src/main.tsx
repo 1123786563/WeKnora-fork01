@@ -4,12 +4,13 @@ import { Status } from '@weknora/ui';
 import { KnowledgeBasesPage } from './App.tsx';
 import { LoginPage } from './auth/LoginPage.tsx';
 import { JoinPage } from './auth/JoinPage.tsx';
+import { WorkspaceOnboardingPage } from './auth/WorkspaceOnboardingPage.tsx';
 import { parseOIDCCallbackHash } from './auth/oidc.ts';
-import { readLegacyPlatformSession } from './platform/legacy-session.ts';
+import { persistSelectedTenant, readLegacyPlatformSession } from './platform/legacy-session.ts';
 import { createBrowserTransport } from './platform/http.ts';
 import { createBrowserCredentialAdapter, persistBrowserCredential } from './platform/credentials.ts';
 import { createWebScopeRuntime } from './platform/scope-runtime.ts';
-import { resolveRoute } from './routes.tsx';
+import { guardRoute, resolveRoute, routeRedirect } from './routes.tsx';
 import { ChatRoutePage } from './chat/ChatRoutePage.tsx';
 import { IntegrationsRoutePage } from './integrations/IntegrationsRoutePage.tsx';
 import './styles.css';
@@ -30,7 +31,8 @@ const browserCredentialAdapter = route.kind === 'embed' ? undefined : createBrow
 const currentCredential = (): Credential => route.kind === 'embed' ? session.credential : readLegacyPlatformSession().credential;
 const injectedApiBaseUrl = (window as Window & { __WEKNORA_API_BASE__?: unknown }).__WEKNORA_API_BASE__;
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || (typeof injectedApiBaseUrl === 'string' ? injectedApiBaseUrl : '');
-const scopeRuntime = createWebScopeRuntime(apiBaseUrl || window.location.origin, null, session.tenantId);
+const liteMode = window.localStorage.getItem('weknora_lite_mode') === 'true';
+const scopeRuntime = createWebScopeRuntime(apiBaseUrl || window.location.origin, null, session.tenantId, { liteMode });
 const scopeController = scopeRuntime.controller;
 
 let client: ReturnType<typeof createWeKnoraClient>;
@@ -43,34 +45,111 @@ client = createWeKnoraClient({
   baseURL: apiBaseUrl,
   transport: createBrowserTransport({
     credential: currentCredential,
-    tenantId: session.tenantId,
+    tenantId: () => scopeController.current().scope.tenantId,
     locale: navigator.language,
     shouldRefresh: (request) => !request.url.endsWith('/api/v1/auth/refresh'),
     refresh: refreshCoordinator ? async () => { await refreshCoordinator.refresh(); } : undefined,
   }),
 });
 
-// Migration seam: the legacy Vue route is /platform/knowledge-bases.
-// This entry only proves the React list slice; it does not claim Vue migration completion.
 const root = createRoot(document.getElementById('root')!);
-if (route.kind === 'embed') {
-  root.render(<main className="wk-page"><Status tone="error">Embed must use its isolated entrypoint.</Status></main>);
-} else if (route.kind === 'login') {
+
+function nextPathAfterAuth(): string {
+  const next = new URLSearchParams(window.location.search).get('next');
+  return next && next.startsWith('/') && !next.startsWith('//') ? next : '/platform/knowledge-bases';
+}
+
+function renderLogin(error = initialLoginError) {
   root.render(<LoginPage client={client} onAuthenticated={(next) => {
     session = { credential: { kind: 'bearer', accessToken: next.token, refreshToken: next.refreshToken }, tenantId: null };
     persistBrowserCredential(window.localStorage, session.credential);
-    window.location.assign('/platform/knowledge-bases');
-  }} apiBaseUrl={apiBaseUrl} initialError={initialLoginError} initialMode={route.mode} />);
-} else if (route.kind === 'join') {
-  root.render(<JoinPage client={client} onAuthenticated={(next) => {
-    session = { credential: { kind: 'bearer', accessToken: next.token, refreshToken: next.refreshToken }, tenantId: null };
-    persistBrowserCredential(window.localStorage, session.credential);
-    window.location.assign('/platform/knowledge-bases');
-  }} />);
-} else if (route.path === '/platform/creatChat' || route.path.startsWith('/platform/chat/')) {
-  root.render(<ChatRoutePage client={client} scopeController={scopeController} />);
-} else if (route.path === '/platform/integrations') {
-  root.render(<IntegrationsRoutePage client={client} />);
-} else {
-  root.render(<KnowledgeBasesPage client={client} scopeController={scopeController} />);
+    window.location.assign(nextPathAfterAuth());
+  }} apiBaseUrl={apiBaseUrl} initialError={error} initialMode={route.kind === 'login' ? route.mode : 'login'} />);
 }
+
+async function logout(): Promise<void> {
+  try { await client.auth.logout(); } catch { /* local invalidation still wins */ }
+  await browserCredentialAdapter?.clear();
+  scopeRuntime.logout();
+  session = { credential: { kind: 'anonymous' }, tenantId: null };
+  window.location.assign('/login');
+}
+
+function renderProtected() {
+  const pathname = `${window.location.pathname}${window.location.search}`;
+  const current = scopeRuntime.current().scope;
+  const decision = guardRoute(pathname, {
+    authenticated: session.credential.kind === 'bearer',
+    tenantId: current.tenantId,
+    capabilities: scopeRuntime.capabilities(),
+    isSystemAdmin: scopeRuntime.isSystemAdmin(),
+    liteMode,
+  });
+  if (decision.kind === 'redirect') {
+    if (decision.to === '/onboarding/workspace') {
+      if (window.location.pathname !== decision.to) window.history.replaceState({}, document.title, decision.to);
+      root.render(<WorkspaceOnboardingPage client={client} scopeRuntime={scopeRuntime} onLogout={logout} />);
+      return;
+    }
+    if (decision.reason === 'authentication-required') {
+      window.history.replaceState({}, document.title, decision.to);
+      renderLogin();
+      return;
+    }
+    window.location.replace(decision.to);
+    return;
+  }
+  if (route.kind === 'onboarding') {
+    root.render(<WorkspaceOnboardingPage client={client} scopeRuntime={scopeRuntime} onLogout={logout} />);
+    return;
+  }
+  if (route.path === '/platform/creatChat' || route.path.startsWith('/platform/chat/')) {
+    root.render(<ChatRoutePage client={client} scopeController={scopeController} />);
+  } else if (route.path === '/platform/integrations') {
+    root.render(<IntegrationsRoutePage client={client} />);
+  } else {
+    root.render(<KnowledgeBasesPage client={client} scopeController={scopeController} />);
+  }
+}
+
+async function bootstrap() {
+  if (route.kind === 'embed') {
+    root.render(<main className="wk-page"><Status tone="error">Embed must use its isolated entrypoint.</Status></main>);
+    return;
+  }
+  if (route.kind === 'login') {
+    const inviteToken = new URLSearchParams(window.location.search).get('token')?.trim();
+    if (route.mode === 'register' && inviteToken) {
+      root.render(<JoinPage client={client} onAuthenticated={(next) => {
+        session = { credential: { kind: 'bearer', accessToken: next.token, refreshToken: next.refreshToken }, tenantId: null };
+        persistBrowserCredential(window.localStorage, session.credential);
+        window.location.assign(nextPathAfterAuth());
+      }} />);
+    } else renderLogin();
+    return;
+  }
+  if (route.kind === 'join') {
+    const redirect = routeRedirect(`${window.location.pathname}${window.location.search}`);
+    if (session.credential.kind !== 'bearer') {
+      window.location.replace(`/login?next=${encodeURIComponent(`${window.location.pathname}${window.location.search}`)}`);
+    } else if (redirect) window.location.replace(redirect);
+    return;
+  }
+  if (session.credential.kind !== 'bearer') {
+    renderProtected();
+    return;
+  }
+  try {
+    const authMe = await client.auth.me();
+    const hydrated = scopeRuntime.hydrate(authMe);
+    session.tenantId = hydrated.scope.tenantId;
+    persistSelectedTenant(window.localStorage, hydrated.scope.tenantId);
+    renderProtected();
+  } catch (error) {
+    scopeRuntime.logout();
+    await browserCredentialAdapter?.clear();
+    renderLogin(error instanceof Error ? error.message : 'Your session could not be restored.');
+  }
+}
+
+void bootstrap();

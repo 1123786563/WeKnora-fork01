@@ -29,6 +29,11 @@ export function readLegacyPlatformSession(): LegacyPlatformSession {
   return createLegacyPlatformAdapter(window.localStorage).read();
 }
 
+export function persistSelectedTenant(storage: Pick<Storage, 'setItem' | 'removeItem'>, tenantId: string | null): void {
+  if (tenantId) storage.setItem('weknora_selected_tenant_id', tenantId);
+  else storage.removeItem('weknora_selected_tenant_id');
+}
+
 export function authorizationHeader(credential: Credential): string | undefined {
   if (credential.kind === 'bearer') return `Bearer ${credential.accessToken}`;
   if (credential.kind === 'embed') return credential.token;

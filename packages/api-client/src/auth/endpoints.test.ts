@@ -26,6 +26,16 @@ test('requires the structured auth/me payload', async () => {
   assert.deepEqual(await auth.me(), { user: { id: 'u-1' }, tenant: null, memberships: undefined, tenant_required: false, capabilities: undefined });
 });
 
+test('rejects auth/me identities without a stable user id', async () => {
+  const auth = createAuthApi(async () => ({ success: true, data: { user: { email: 'user@example.test' }, tenant: null } }));
+  await assert.rejects(auth.me(), /auth me user\.id is required/);
+});
+
+test('rejects an active auth/me tenant without an id', async () => {
+  const auth = createAuthApi(async () => ({ success: true, data: { user: { id: 'user-1' }, tenant: { name: 'Broken' } } }));
+  await assert.rejects(auth.me(), /auth me tenant\.id is required/);
+});
+
 test('does not treat a business-level logout failure as success', async () => {
   const failed = createAuthApi(async () => ({ success: false, message: 'logout rejected' }));
   await assert.rejects(failed.logout(), /logout rejected/);

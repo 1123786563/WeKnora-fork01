@@ -2,6 +2,53 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createWebScopeRuntime } from './scope-runtime.ts';
 
+test('hydrates auth/me into the active user, tenant, and capability snapshot', () => {
+  const runtime = createWebScopeRuntime('https://api.test', null, 'legacy-tenant');
+  const next = runtime.hydrate({
+    user: { id: 'user-2' },
+    tenant: { id: 7 },
+    tenant_required: false,
+    capabilities: {
+      organizations: { supported: false, reason: 'lite' },
+      agents: { supported: true },
+    },
+  });
+
+  assert.deepEqual(next.scope, {
+    origin: 'https://api.test',
+    userId: 'user-2',
+    tenantId: '7',
+    generation: next.scope.generation,
+  });
+  assert.equal(runtime.can('organizations'), false);
+  assert.equal(runtime.can('agents'), true);
+});
+
+test('auth/me with no active tenant clears the old tenant and exposes onboarding state', () => {
+  const runtime = createWebScopeRuntime('https://api.test', 'user-1', 'tenant-a');
+  runtime.hydrate({ user: { id: 'user-1' }, tenant: null, tenant_required: true, capabilities: {} });
+  assert.equal(runtime.current().scope.tenantId, null);
+  assert.equal(runtime.current().scope.userId, 'user-1');
+  assert.equal(runtime.requiresWorkspace(), true);
+});
+
+test('switchTenant commits the new scope only after auth.switchTenant returns a session', async () => {
+  const runtime = createWebScopeRuntime('https://api.test', 'user-1', 'tenant-a');
+  const previous = runtime.current();
+  const persisted: string[] = [];
+  const next = await runtime.switchTenant('7', async (tenantId, refreshToken) => {
+    assert.equal(tenantId, 7);
+    assert.equal(refreshToken, 'refresh-a');
+    return { token: 'access-b', refreshToken: 'refresh-b', tenant: { id: 7 } };
+  }, async (session) => {
+    persisted.push(session.token);
+  }, 'refresh-a');
+
+  assert.equal(previous.signal.aborted, true);
+  assert.equal(next.scope.tenantId, '7');
+  assert.deepEqual(persisted, ['access-b']);
+});
+
 test('tenant switches abort the previous scope and produce a scoped query key', () => {
   const runtime = createWebScopeRuntime('https://api.test', 'user-1', 'tenant-a');
   const previous = runtime.current();

@@ -5,7 +5,7 @@ import type { HttpRequest, HttpResult, HttpStreamResult } from '@weknora/api-cli
 export interface BrowserTransportOptions {
   fetcher?: FetchLike;
   credential?: Credential | (() => Credential);
-  tenantId?: string | null;
+  tenantId?: string | null | (() => string | null);
   locale?: string;
   requestId?: () => string;
   shouldRefresh?: (request: HttpRequest) => boolean;
@@ -31,11 +31,16 @@ export function createBrowserTransport(options: BrowserTransportOptions = {}) {
     return typeof options.credential === 'function' ? options.credential() : options.credential;
   }
 
+  function currentTenantId(): string | null | undefined {
+    return typeof options.tenantId === 'function' ? options.tenantId() : options.tenantId;
+  }
+
   function decorate(request: HttpRequest, credential = currentCredential()) {
     const headers = { ...request.headers };
     const authorization = authHeader(credential);
     if (authorization) headers.authorization = authorization;
-    if (credential?.kind !== 'embed' && options.tenantId) headers['x-tenant-id'] = options.tenantId;
+    const tenantId = currentTenantId();
+    if (credential?.kind !== 'embed' && tenantId) headers['x-tenant-id'] = tenantId;
     if (credential?.kind === 'embed') {
       if (credential.sessionSig) headers['x-embed-session'] = credential.sessionSig;
       if (credential.visitorId) headers['x-embed-visitor'] = credential.visitorId;

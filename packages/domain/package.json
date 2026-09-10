@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/query-key.ts",
+    "./access/capability": "./src/access/capability.ts",
     "./scope": "./src/scope.ts",
     "./wiki/diff": "./src/wiki/diff.ts",
     "./chat/draft": "./src/chat/draft.ts",

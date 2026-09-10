@@ -1,4 +1,6 @@
 import type { RequestScope } from './scope.ts';
+export { isCapabilitySupported, normalizeCapabilityMap } from './access/capability.ts';
+export type { CapabilityDescriptor, CapabilityMap } from './access/capability.ts';
 
 export type { RequestScope } from './scope.ts';
 export { createScopeController } from './scope.ts';

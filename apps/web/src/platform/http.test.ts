@@ -23,6 +23,25 @@ test('injects scoped auth headers without changing the shared transport', async 
   assert.equal(seen?.headers['x-request-id'], 'request-1');
 });
 
+test('reads the current tenant for every request after a scope switch', async () => {
+  let tenantId: string | null = 'tenant-a';
+  const seen: Array<string | undefined> = [];
+  const transport = createBrowserTransport({
+    credential: { kind: 'bearer', accessToken: 'access-1' },
+    tenantId: () => tenantId,
+    fetcher: (async (_url, init) => {
+      seen.push(init?.headers?.['x-tenant-id']);
+      return { status: 204, headers: new Headers(), json: async () => undefined, text: async () => '' };
+    }) satisfies FetchLike,
+  });
+
+  await transport.send({ method: 'GET', url: 'https://api.test/api/v1/knowledge-bases', headers: {} });
+  tenantId = 'tenant-b';
+  await transport.send({ method: 'GET', url: 'https://api.test/api/v1/knowledge-bases', headers: {} });
+
+  assert.deepEqual(seen, ['tenant-a', 'tenant-b']);
+});
+
 test('isolates embed headers from bearer tenant context', async () => {
   const seen: Record<string, string>[] = [];
   for (const credential of [{ kind: 'embed', token: 'visitor-token', sessionSig: 'sig-1', visitorId: 'visitor-1' } as const, { kind: 'anonymous' } as const]) {
