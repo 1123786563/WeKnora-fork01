@@ -92,8 +92,9 @@ func TestApplyDurableResultFailsClosedWithoutReader(t *testing.T) {
 
 func TestBuildGraphExecutesBatchAndPersistsPlans(t *testing.T) {
 	store := &graphTestStore{fence: agentruntime.Fence{RunKey: agentruntime.RunKey{TenantID: 1, RunID: "r1"}, Owner: "w", Epoch: 1}, run: agentruntime.Run{Key: agentruntime.RunKey{TenantID: 1, RunID: "r1"}, Owner: "w", Epoch: 1, Status: "running", LeaseUntil: time.Now().Add(time.Minute)}}
-	journal := &graphTestJournal{}
-	exec := agentruntime.NewToolExecutor(store, journal, func(_ context.Context, name string, _ json.RawMessage) (*types.ToolResult, error) {
+	journal := &graphTestJournal{results: map[string]agentruntime.StoredToolResult{}}
+	exec := agentruntime.NewToolExecutor(store, journal, func(ctx context.Context, name string, _ json.RawMessage) (*types.ToolResult, error) {
+		require.NoError(t, agentruntime.BeforeToolDispatch(ctx))
 		journal.calls++
 		return &types.ToolResult{Success: true, Output: name + "-ok"}, nil
 	})
@@ -104,15 +105,17 @@ func TestBuildGraphExecutesBatchAndPersistsPlans(t *testing.T) {
 	ex, err := graph.NewExecutor(g)
 	require.NoError(t, err)
 	inv := &agent.Invocation{AgentName: "test", InvocationID: "i1", SessionService: noop.NewService(), Message: model.NewUserMessage("hi")}
-	events, err := ex.Execute(withFence(context.Background(), store.fence), graph.State{StateKey: State{Version: StateVersion, Messages: []model.Message{model.NewUserMessage("hi")}}}, inv)
+	runctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	events, err := ex.Execute(withFence(runctx, store.fence), graph.State{StateKey: State{Version: StateVersion, Messages: []model.Message{model.NewUserMessage("hi")}}}, inv)
 	require.NoError(t, err)
 	for range events {
 	}
 	t.Logf("model=%d plans=%v calls=%d", mdl.calls, journal.plans, journal.calls)
 	require.Equal(t, 2, len(journal.plans))
-	require.GreaterOrEqual(t, journal.calls, 1)
+	require.GreaterOrEqual(t, journal.calls, 2)
 	require.GreaterOrEqual(t, mdl.calls, 1)
-	_ = finalized
+	require.GreaterOrEqual(t, finalized, 1)
 }
 
 type batchModel struct{ calls int }
@@ -165,8 +168,9 @@ func (s *graphTestStore) LoadCheckpoint(context.Context, agentruntime.RunKey) (a
 }
 
 type graphTestJournal struct {
-	plans []agentruntime.ToolPlan
-	calls int
+	plans   []agentruntime.ToolPlan
+	calls   int
+	results map[string]agentruntime.StoredToolResult
 }
 
 func (j *graphTestJournal) EnsureToolPlan(_ context.Context, _ agentruntime.Fence, p agentruntime.ToolPlan) (agentruntime.ToolRecord, error) {
@@ -184,7 +188,8 @@ func (j *graphTestJournal) BeginToolAttempt(_ context.Context, f agentruntime.Fe
 func (j *graphTestJournal) ReviseToolPlan(context.Context, agentruntime.Fence, string, int64, json.RawMessage) (agentruntime.ToolPlan, error) {
 	return agentruntime.ToolPlan{}, nil
 }
-func (j *graphTestJournal) CommitToolResult(context.Context, agentruntime.Fence, agentruntime.ToolAttempt, agentruntime.StoredToolResult) error {
+func (j *graphTestJournal) CommitToolResult(_ context.Context, _ agentruntime.Fence, a agentruntime.ToolAttempt, r agentruntime.StoredToolResult) error {
+	j.results[a.CallID] = r
 	return nil
 }
 func (j *graphTestJournal) CommitToolRejection(context.Context, agentruntime.Fence, string, agentruntime.StoredToolResult) error {
@@ -192,4 +197,12 @@ func (j *graphTestJournal) CommitToolRejection(context.Context, agentruntime.Fen
 }
 func (j *graphTestJournal) MarkToolUnknown(context.Context, agentruntime.Fence, agentruntime.ToolAttempt, string) error {
 	return nil
+}
+
+func (j *graphTestJournal) LoadToolResult(_ context.Context, _ agentruntime.Fence, id string) (agentruntime.StoredToolResult, error) {
+	r, ok := j.results[id]
+	if !ok {
+		return agentruntime.StoredToolResult{}, agentruntime.ErrNotFound
+	}
+	return r, nil
 }
