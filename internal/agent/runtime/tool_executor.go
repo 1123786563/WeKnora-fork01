@@ -231,6 +231,25 @@ func NewToolExecutor(runs RunStore, journal ToolJournal, execute ToolExecuteFunc
 	return &ToolExecutor{runs: runs, journal: journal, execute: execute}
 }
 
+// ToolResultReader is an optional durable journal read path used at the graph
+// apply boundary.
+type ToolResultReader interface {
+	LoadToolResult(context.Context, Fence, string) (StoredToolResult, error)
+}
+
+// VerifyResult reads the committed result by logical call ID when the journal
+// provides a durable reader.
+func (e *ToolExecutor) VerifyResult(ctx context.Context, fence Fence, callID string) (StoredToolResult, error) {
+	if e == nil || e.journal == nil || callID == "" {
+		return StoredToolResult{}, ErrNotFound
+	}
+	reader, ok := e.journal.(ToolResultReader)
+	if !ok {
+		return StoredToolResult{}, ErrNotFound
+	}
+	return reader.LoadToolResult(ctx, fence, callID)
+}
+
 // PreparePlan durably records an immutable tool plan before any dispatch.
 // Graph runtimes use this to make every call in a model batch recoverable.
 func (e *ToolExecutor) PreparePlan(ctx context.Context, fence Fence, plan ToolPlan) error {

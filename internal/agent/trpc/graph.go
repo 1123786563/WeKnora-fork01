@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 
@@ -167,6 +168,15 @@ func buildGraph(b GraphBindings) (*graph.Graph, error) {
 		}
 		if s.NextCallIndex > 0 {
 			id := s.PendingCallIDs[s.NextCallIndex-1]
+			if b.Tools != nil {
+				if durable, verifyErr := b.Tools.VerifyResult(ctx, b.fenceFromContext(ctx), id); verifyErr == nil {
+					if durable.Result.Output != toolOutputForCall(s, id) {
+						return nil, fmt.Errorf("durable tool result %s does not match applied result", id)
+					}
+				} else if !errors.Is(verifyErr, agentruntime.ErrNotFound) {
+					return nil, verifyErr
+				}
+			}
 			if !s.AppliedCallIDs[id] {
 				return nil, fmt.Errorf("tool result %s was not durably applied", id)
 			}
@@ -261,4 +271,13 @@ func ensureUsage(m map[string]json.RawMessage, r *model.Response) map[string]jso
 	raw, _ := json.Marshal(ModelAttempt{Version: 1, Response: r})
 	m[r.ID] = raw
 	return m
+}
+
+func toolOutputForCall(s State, id string) string {
+	for _, m := range s.Messages {
+		if m.Role == model.RoleTool && m.ToolID == id {
+			return m.Content
+		}
+	}
+	return ""
 }

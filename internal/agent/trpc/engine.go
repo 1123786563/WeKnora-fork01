@@ -34,6 +34,7 @@ func NewGraphRunner(b GraphBindings) (*GraphRunner, error) {
 	if b.InitialState.Version == 0 {
 		b.InitialState.Version = StateVersion
 	}
+	b.InitialState = cloneState(b.InitialState)
 	return &GraphRunner{bindings: b}, nil
 }
 func (r *GraphRunner) Run(ctx context.Context, fence agentruntime.Fence) error {
@@ -82,3 +83,23 @@ func (r *GraphRunner) Run(ctx context.Context, fence agentruntime.Fence) error {
 	return nil
 }
 func graphBindingsWithFence(b GraphBindings, f agentruntime.Fence) GraphBindings { return b }
+
+func cloneState(in State) State {
+	out := in
+	out.Messages = append([]model.Message(nil), in.Messages...)
+	out.PendingCallIDs = append([]string(nil), in.PendingCallIDs...)
+	out.AppliedCallIDs = map[string]bool{}
+	for k, v := range in.AppliedCallIDs {
+		out.AppliedCallIDs[k] = v
+	}
+	out.CompactionState = append(json.RawMessage(nil), in.CompactionState...)
+	out.UsageAttempts = map[string]json.RawMessage{}
+	for k, v := range in.UsageAttempts {
+		out.UsageAttempts[k] = append(json.RawMessage(nil), v...)
+	}
+	for i := range out.Messages {
+		out.Messages[i].ToolCalls = append([]model.ToolCall(nil), in.Messages[i].ToolCalls...)
+		out.Messages[i].ContentParts = append([]model.ContentPart(nil), in.Messages[i].ContentParts...)
+	}
+	return out
+}
