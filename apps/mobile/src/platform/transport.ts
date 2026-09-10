@@ -2,6 +2,7 @@ import { createJsonTransport, type Credential, type FetchLike, type HttpTranspor
 
 export interface MobileTransportOptions {
   credential: () => Credential;
+  refresh?: () => Promise<Credential>;
   tenantId?: () => string | null;
   locale?: () => string | undefined;
   fetcher?: FetchLike;
@@ -27,8 +28,15 @@ export function createMobileTransport(options: MobileTransportOptions): HttpTran
     if (locale) headers['accept-language'] = locale;
     return { ...request, headers };
   };
+  const isIdempotentRead = (method: string) => ['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase());
   return {
-    send: (request) => base.send(decorate(request)),
+    send: async (request) => {
+      const result = await base.send(decorate(request));
+      const credential = options.credential();
+      if (result.status !== 401 || !options.refresh || credential.kind !== 'bearer' || !isIdempotentRead(request.method)) return result;
+      await options.refresh();
+      return base.send(decorate(request));
+    },
     sendStream: base.sendStream ? (request) => base.sendStream!(decorate(request)) : undefined,
   };
 }

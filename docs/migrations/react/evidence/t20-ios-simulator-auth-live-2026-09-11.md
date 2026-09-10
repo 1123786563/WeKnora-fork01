@@ -23,6 +23,12 @@ the shared client and Embed client, and replaces direct native stream/file
 abort construction. The focused test then passed and the iOS bundle reloaded
 without the ReferenceError.
 
+The mobile transport also now accepts the shared refresh coordinator. A 401
+retries exactly once only for GET/HEAD/OPTIONS after a bearer refresh; POST,
+multipart upload, and chat stream requests are not replayed. The runtime
+persists rotated tokens through SecureStore and requests a foreground refresh
+when a bearer credential has a refresh token.
+
 ## Live sequence
 
 1. `POST /api/v1/auth/register` created the isolated owner account (`201`).
@@ -45,7 +51,7 @@ AppState/network recovery, upload/share, or production deployment acceptance.
 
 - `pnpm test:shared`: 154/154, exit 0.
 - `pnpm typecheck:shared`: exit 0.
-- `pnpm test:mobile`: 9/9, exit 0.
+- `pnpm test:mobile`: 11/11, exit 0, including read-refresh and write-no-replay cases.
 - `pnpm typecheck:mobile`: exit 0.
 - `pnpm --filter @weknora/mobile exec expo export --platform ios`: exit 0;
   Hermes bundle about 3 MB.
