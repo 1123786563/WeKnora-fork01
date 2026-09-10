@@ -9,3 +9,4 @@ export type { AuthErrorCode, RefreshCoordinator, RefreshCoordinatorOptions, Refr
 export type { KnowledgeDocumentListParams, KnowledgeDocumentUploadInput } from './knowledge/documents.ts';
 export type { KnowledgeDocument, KnowledgeProcessingStatus, KnowledgeDocumentListResponse } from '@weknora/contracts';
 export type { WikiPage, WikiPageListResponse, WikiPageRevision, WikiRevisionListResponse, WikiPageUpdateInput } from './wiki/pages.ts';
+export type { DataSource, DataSourceResource } from './datasource.ts';
