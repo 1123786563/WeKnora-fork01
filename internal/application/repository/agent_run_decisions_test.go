@@ -121,3 +121,14 @@ func TestAgentRunDecisionProvideResultLinksUnknownTool(t *testing.T) {
 	require.Equal(t, "oauth://example", decision.ResourceRef)
 	require.Equal(t, "c1", decision.ToolCallID)
 }
+
+func TestAgentRunDecisionRejectsMismatchedToolLink(t *testing.T) {
+	db := openRunTestDB(t)
+	store := NewAgentRunStore(db)
+	_, err := store.Admit(context.Background(), agentruntime.Admission{Key: agentruntime.RunKey{TenantID: 1, RunID: "r1"}, SessionID: "s1", UserID: "u1", RequestID: "q1", AssistantMessageID: "a1", RequestHash: "h1", Snapshot: json.RawMessage(`{"version":1}`), UserMessage: json.RawMessage(`{"role":"user"}`), AssistantMessage: json.RawMessage(`{"role":"assistant"}`), Deadline: testDeadline()})
+	require.NoError(t, err)
+	require.NoError(t, db.Exec("INSERT INTO agent_tool_calls (tenant_id,run_id,call_id,call_seq,tool_name,tool_identity,args_hash,args,status,unknown_reason) VALUES (1,'r1','c1',1,'write','write:v1','ah1','{}','unknown','p1')").Error)
+	require.NoError(t, db.Exec("UPDATE agent_runs SET status='waiting_user', wait_reason='p1', revision=7 WHERE tenant_id=1 AND run_id='r1'").Error)
+	_, err = store.ApplyDecision(context.Background(), agentruntime.RunKey{TenantID: 1, RunID: "r1"}, "u1", agentruntime.Decision{PendingID: "p1", ToolCallID: "c2", ArgsHash: "ah1", DecisionID: "d1", Action: "retry", Reason: "checked", ExpectedRevision: 7})
+	require.ErrorIs(t, err, agentruntime.ErrConflict)
+}

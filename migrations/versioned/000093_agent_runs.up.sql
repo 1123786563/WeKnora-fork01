@@ -135,8 +135,6 @@ CREATE TABLE agent_run_decisions (
     decision_id VARCHAR(255) NOT NULL,
     pending_id VARCHAR(255) NOT NULL,
     tool_call_id VARCHAR(255),
-    args_hash VARCHAR(64) NOT NULL DEFAULT '',
-    resource_ref VARCHAR(1024) NOT NULL DEFAULT '',
     expected_revision BIGINT NOT NULL,
     actor_id VARCHAR(512) NOT NULL,
     action VARCHAR(32) NOT NULL,

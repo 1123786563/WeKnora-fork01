@@ -94,7 +94,7 @@ func (s *AgentRunStore) applyDecisionOnce(
 		var pending struct{ CallID, ArgsHash string }
 		pendingQuery := tx.Table("agent_tool_calls").Select("call_id, args_hash").Where("tenant_id = ? AND run_id = ? AND status = 'unknown'", key.TenantID, key.RunID)
 		if d.ToolCallID != "" {
-			pendingQuery = pendingQuery.Where("call_id = ?", d.ToolCallID)
+			pendingQuery = pendingQuery.Where("call_id = ? AND unknown_reason = ?", d.ToolCallID, d.PendingID)
 		} else {
 			pendingQuery = pendingQuery.Where("unknown_reason = ? OR call_id = ?", d.PendingID, d.PendingID)
 		}
@@ -103,7 +103,10 @@ func (s *AgentRunStore) applyDecisionOnce(
 			if d.ArgsHash == "" || d.ArgsHash != pending.ArgsHash {
 				return agentruntime.ErrConflict
 			}
-		} else if !errors.Is(pendingErr, gorm.ErrRecordNotFound) {
+		} else if d.ToolCallID != "" || !errors.Is(pendingErr, gorm.ErrRecordNotFound) {
+			if errors.Is(pendingErr, gorm.ErrRecordNotFound) {
+				return agentruntime.ErrConflict
+			}
 			return pendingErr
 		}
 		r := agentRunDecisionRow{
