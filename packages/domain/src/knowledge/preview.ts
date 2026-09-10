@@ -15,11 +15,11 @@ export function previewKindForFile(fileName: string): KnowledgePreviewKind {
   return 'unsupported';
 }
 
-export function previewStatus(document: Pick<KnowledgeDocument, 'parse_status'>): { kind: 'ready' | 'processing' | 'unavailable'; label: string } {
-  if (!document.parse_status) return { kind: 'unavailable', label: 'Unknown status' };
+export function previewStatus(item: Pick<KnowledgeDocument, 'parse_status'>): { kind: 'ready' | 'processing' | 'unavailable'; label: string } {
+  if (!item.parse_status) return { kind: 'unavailable', label: 'Unknown status' };
   let status: ReturnType<typeof normalizeKnowledgeProcessingStatus>;
   try {
-    status = normalizeKnowledgeProcessingStatus(document.parse_status);
+    status = normalizeKnowledgeProcessingStatus(item.parse_status);
   } catch {
     return { kind: 'unavailable', label: 'Unknown status' };
   }
