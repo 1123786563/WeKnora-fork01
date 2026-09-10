@@ -119,6 +119,16 @@ export function parseKnowledgeBaseListResponse(value: unknown): KnowledgeBase[] 
   });
 }
 
+export function parseKnowledgeBaseResponse(value: unknown): KnowledgeBase {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new ContractError('', 'expected an object envelope');
+  }
+  const envelope = value as Record<string, unknown>;
+  if (envelope.success !== true) throw new ContractError('success', 'expected true');
+  if (envelope.data === undefined) throw new ContractError('data', 'expected an object');
+  return parseKnowledgeBaseListResponse({ success: true, data: [envelope.data] })[0]!;
+}
+
 function validatePageNumber(value: unknown, path: string): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
     throw new ContractError(path, 'expected a non-negative integer');

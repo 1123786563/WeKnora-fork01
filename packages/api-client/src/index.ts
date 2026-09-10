@@ -1,5 +1,5 @@
 export { createWeKnoraClient } from './client.ts';
-export type { WeKnoraClient, WeKnoraClientOptions, ClientRequest, KnowledgeBaseListParams } from './client.ts';
+export type { WeKnoraClient, WeKnoraClientOptions, ClientRequest, KnowledgeBaseListParams, KnowledgeBaseMutationInput } from './client.ts';
 export { ApiError } from './errors.ts';
 export type { HttpRequest, HttpResult, HttpTransport } from './ports.ts';
 export type { BearerCredential, EmbedCredential, Credential, CredentialAdapter } from './ports.ts';

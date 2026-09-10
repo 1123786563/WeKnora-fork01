@@ -1,4 +1,4 @@
-import { parseKnowledgeBaseListResponse, type KnowledgeBase } from '@weknora/contracts';
+import { parseKnowledgeBaseListResponse, parseKnowledgeBaseResponse, type KnowledgeBase } from '@weknora/contracts';
 import { ApiError, errorFromResult } from './errors.ts';
 import type { HttpRequest, HttpResult, HttpTransport } from './ports.ts';
 import { createKnowledgeDocumentsApi } from './knowledge/documents.ts';
@@ -21,6 +21,13 @@ export interface KnowledgeBaseListParams {
   agent_id?: string;
   agent_source_tenant_id?: string;
   creator?: 'all' | 'mine' | 'others';
+}
+
+export interface KnowledgeBaseMutationInput {
+  name: string;
+  description?: string;
+  type?: 'document' | 'faq';
+  [key: string]: unknown;
 }
 
 function joinURL(baseURL: string, path: string): string {
@@ -84,6 +91,15 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
       async list(params: KnowledgeBaseListParams = {}): Promise<KnowledgeBase[]> {
         const path = withQuery('/api/v1/knowledge-bases', { ...params });
         return parseKnowledgeBaseListResponse(await request({ method: 'GET', path }));
+      },
+      async create(input: KnowledgeBaseMutationInput): Promise<KnowledgeBase> {
+        return parseKnowledgeBaseResponse(await request({ method: 'POST', path: '/api/v1/knowledge-bases', body: input }));
+      },
+      async update(id: string, input: KnowledgeBaseMutationInput): Promise<KnowledgeBase> {
+        return parseKnowledgeBaseResponse(await request({ method: 'PUT', path: `/api/v1/knowledge-bases/${encodeURIComponent(id)}`, body: input }));
+      },
+      async remove(id: string): Promise<void> {
+        await request({ method: 'DELETE', path: `/api/v1/knowledge-bases/${encodeURIComponent(id)}` });
       },
       documents: knowledgeDocuments,
     },
