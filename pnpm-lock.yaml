@@ -91,6 +91,9 @@ importers:
       '@babel/runtime':
         specifier: ^7.29.7
         version: 7.29.7
+      '@expo-google-fonts/material-symbols':
+        specifier: 0.4.47
+        version: 0.4.47
       '@expo/metro-runtime':
         specifier: ~55.0.12
         version: 55.0.12(@expo/dom-webview@55.0.6)(expo@55.0.31)(react-native@0.83.10(@babel/core@7.29.7)(@types/react@19.2.18)(react@19.2.0))(react@19.2.0)
