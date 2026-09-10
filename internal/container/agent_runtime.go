@@ -112,14 +112,27 @@ func (r *AgentRuntime) Drain() {
 	})
 }
 
+// AgentRecoveryAdmissionEnabled reports whether new tRPC runs may be admitted.
+// Enabled controls the worker; AdmissionEnabled controls new work, so an
+// operator can close admission while allowing existing runs to drain.
+func AgentRecoveryAdmissionEnabled(cfg *config.Config) bool {
+	return cfg != nil && cfg.Agent != nil && cfg.Agent.Recovery.Enabled && cfg.Agent.Recovery.AdmissionEnabled
+}
+
 // ValidateAgentRuntimeConfig is called by startup wiring before constructing
 // any tRPC graph resources.
 func ValidateAgentRuntimeConfig(cfg *config.Config) error {
-	if cfg == nil || cfg.Agent == nil || !cfg.Agent.Recovery.Enabled {
+	if cfg == nil || cfg.Agent == nil {
+		return nil
+	}
+	r := cfg.Agent.Recovery
+	if r.AdmissionEnabled && !r.Enabled {
+		return errors.New("tRPC recovery admission requires the recovery worker to be enabled")
+	}
+	if !r.Enabled {
 		return nil
 	}
 	c := service.DefaultWorkerConfig()
-	r := cfg.Agent.Recovery
 	if r.Lease > 0 {
 		c.Lease = r.Lease
 	}
