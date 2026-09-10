@@ -72,11 +72,13 @@ type Admission struct {
 type Decision struct {
 	PendingID        string
 	DecisionID       string
+	ToolCallID       string
 	Action           string
 	ArgsHash         string
 	Reason           string
 	ExpectedRevision int64
 	Result           json.RawMessage
+	ResourceRef      string
 }
 
 // CheckpointRecord holds a complete graph checkpoint and its pending writes.

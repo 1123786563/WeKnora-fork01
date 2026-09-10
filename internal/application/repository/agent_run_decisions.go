@@ -16,6 +16,7 @@ type agentRunDecisionRow struct {
 	RunID, DecisionID, PendingID, ToolCallID string
 	ExpectedRevision                         int64
 	ActorID, Action, Result, Reason          string
+	ArgsHash, ResourceRef                    string
 	Applied                                  bool
 }
 
@@ -78,7 +79,7 @@ func (s *AgentRunStore) applyDecisionOnce(
 		if priorErr == nil {
 			if prior.PendingID != d.PendingID || prior.ExpectedRevision != d.ExpectedRevision ||
 				prior.ActorID != actor || prior.Action != d.Action || prior.Reason != d.Reason ||
-				prior.Result != string(d.Result) {
+				prior.Result != string(d.Result) || prior.ArgsHash != d.ArgsHash || prior.ResourceRef != d.ResourceRef {
 				return agentruntime.ErrConflict
 			}
 			out = run.view()
@@ -91,10 +92,13 @@ func (s *AgentRunStore) applyDecisionOnce(
 			return agentruntime.ErrConflict
 		}
 		var pending struct{ CallID, ArgsHash string }
-		pendingErr := tx.Table("agent_tool_calls").Select("call_id, args_hash").Where(
-			"tenant_id = ? AND run_id = ? AND status = 'unknown' AND (unknown_reason = ? OR call_id = ?)",
-			key.TenantID, key.RunID, d.PendingID, d.PendingID,
-		).Take(&pending).Error
+		pendingQuery := tx.Table("agent_tool_calls").Select("call_id, args_hash").Where("tenant_id = ? AND run_id = ? AND status = 'unknown'", key.TenantID, key.RunID)
+		if d.ToolCallID != "" {
+			pendingQuery = pendingQuery.Where("call_id = ?", d.ToolCallID)
+		} else {
+			pendingQuery = pendingQuery.Where("unknown_reason = ? OR call_id = ?", d.PendingID, d.PendingID)
+		}
+		pendingErr := pendingQuery.Take(&pending).Error
 		if pendingErr == nil {
 			if d.ArgsHash == "" || d.ArgsHash != pending.ArgsHash {
 				return agentruntime.ErrConflict
@@ -104,8 +108,9 @@ func (s *AgentRunStore) applyDecisionOnce(
 		}
 		r := agentRunDecisionRow{
 			TenantID: key.TenantID, RunID: key.RunID, DecisionID: d.DecisionID,
-			PendingID: d.PendingID, ExpectedRevision: d.ExpectedRevision,
-			ActorID: actor, Action: d.Action, Result: string(d.Result), Reason: d.Reason, Applied: true,
+			PendingID: d.PendingID, ToolCallID: pending.CallID, ExpectedRevision: d.ExpectedRevision,
+			ActorID: actor, Action: d.Action, Result: string(d.Result), Reason: d.Reason,
+			ArgsHash: d.ArgsHash, ResourceRef: d.ResourceRef, Applied: true,
 		}
 		if err := tx.Create(&r).Error; err != nil {
 			return err
@@ -123,6 +128,13 @@ func (s *AgentRunStore) applyDecisionOnce(
 					return agentruntime.ErrConflict
 				}
 			} else if d.Action == "retry" {
+				planned := tx.Table("agent_tool_calls").Where("tenant_id = ? AND run_id = ? AND call_id = ? AND status = 'unknown'", key.TenantID, key.RunID, pending.CallID).Updates(map[string]any{"status": "planned", "unknown_reason": d.Reason})
+				if planned.Error != nil {
+					return planned.Error
+				}
+				if planned.RowsAffected != 1 {
+					return agentruntime.ErrConflict
+				}
 				var last struct{ Attempt int }
 				if err := tx.Table("agent_tool_attempts").Select("attempt").Where(
 					"tenant_id = ? AND run_id = ? AND call_id = ?", key.TenantID, key.RunID, pending.CallID,
