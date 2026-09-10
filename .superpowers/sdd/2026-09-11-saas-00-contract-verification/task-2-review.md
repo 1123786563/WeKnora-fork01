@@ -151,3 +151,28 @@ Remaining blockers:
    IDs.
 
 V02 remains **FAIL** until these cleanup and replay contract gaps are fixed.
+
+## Round-3 re-review: FAIL
+
+Reviewed fix commit `8c9b477742ab357ccd8f8a27cda293d12f0d521d`.
+
+Evidence: `python3 -m unittest scripts.saas.probe_case_test -v` passes 8/8;
+`git diff 8c9b477^ 8c9b477 --check` passes. The commit adds unavailable
+cleanup-capture rejection and requires a replay identity pointer, then compares
+that pointer across the original and replay responses.
+
+Remaining blocker:
+
+1. **Cleanup path namespace enforcement still does not work for paths.**
+   `_namespace_pairs()` only traverses dictionaries and lists. Cleanup paths are
+   strings (for example `/namespaces/other/customers/${capture:id}`), so the
+   new loop yields no pairs and the cross-namespace path proceeds to DELETE.
+   The same issue exists for request `step["path"]`. Parse/validate path
+   namespace segments explicitly (or reject path forms whose namespace cannot be
+   proven equal to the explicit namespace), after capture binding, and add the
+   promised cross-namespace cleanup-path regression test. Also validate that
+   `replay_identity` is an absolute JSON Pointer during case validation rather
+   than deferring malformed configuration to a live run.
+
+V02 remains **FAIL**. The focused suite is green, but a cross-namespace cleanup
+DELETE is still possible under the current implementation.

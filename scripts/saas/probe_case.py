@@ -96,6 +96,7 @@ def validate_case(case: dict, namespace: str, allow_test_writes: bool) -> None:
             raise ValueError("write namespace mismatch")
         if "path" in step and not str(step["path"]).startswith("/"):
             raise ValueError("path must be absolute")
+        _validate_path_namespace(str(step.get("path", "")), namespace)
         _bind(step.get("body"), {}, allow_names=declared)
         bound = _bind(step.get("body"), {}, allow_names=declared)
         for key, value in _namespace_pairs(bound):
@@ -113,6 +114,7 @@ def validate_case(case: dict, namespace: str, allow_test_writes: bool) -> None:
             raise ValueError("cleanup refused: unsettled transactions")
         if not str(item.get("path", "")).startswith("/"):
             raise ValueError("cleanup path must be absolute")
+        _validate_path_namespace(str(item.get("path", "")), namespace)
         for key, value in _namespace_pairs(item.get("path")):
             if value != namespace and not CAPTURE_REF.match(str(value)):
                 raise ValueError(f"cleanup embedded {key} mismatch")
@@ -122,6 +124,16 @@ def validate_case(case: dict, namespace: str, allow_test_writes: bool) -> None:
     for step in steps:
         if step.get("replay") and not step.get("replay_identity"):
             raise ValueError("replay requires replay_identity JSON Pointer")
+        if step.get("replay_identity") and not str(step["replay_identity"]).startswith("/"):
+            raise ValueError("replay_identity must be an absolute JSON Pointer")
+
+def _validate_path_namespace(path: str, namespace: str) -> None:
+    parts = path.split("/")
+    for i, part in enumerate(parts[:-1]):
+        if part.lower() in {"namespace", "namespaces", "tenant", "tenants"}:
+            value = parts[i + 1]
+            if value and value != namespace and not CAPTURE_REF.match(value):
+                raise ValueError("path namespace mismatch")
 
 
 def _walk(value: object):

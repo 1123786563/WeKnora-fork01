@@ -39,6 +39,17 @@ class ProbeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_case(case, "saas-x", True)
 
+    def test_path_namespace_and_identity_pointer_are_validated(self):
+        case = {"id": "x", "operation_id": "get", "request": {"path": "/namespaces/other/customers"}, "expected": {}}
+        with self.assertRaises(ValueError):
+            validate_case(case, "saas-x", True)
+        case["request"]["path"] = "/namespaces/saas-x/customers"
+        case["request"]["replay"] = True
+        case["request"]["idempotency_key"] = "k"
+        case["request"]["replay_identity"] = "id"
+        with self.assertRaises(ValueError):
+            validate_case(case, "saas-x", True)
+
     def test_unknown_capture_rejected(self):
         case = {"id": "x", "operation_id": "get", "request": {"body": {"id": "${capture:nope}"}}, "expected": {}}
         with self.assertRaises(ValueError):
