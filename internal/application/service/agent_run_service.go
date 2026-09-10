@@ -79,3 +79,20 @@ func (s *AgentRunService) Submit(ctx context.Context, in agentruntime.Admission)
 	}
 	return run, err
 }
+
+// Store exposes the durable store to transport adapters that only need the
+// read-side event contract; mutations remain on this service.
+func (s *AgentRunService) Store() agentruntime.RunStore {
+	if s == nil {
+		return nil
+	}
+	return s.store
+}
+
+// Get returns the durable run view for transport read paths.
+func (s *AgentRunService) Get(ctx context.Context, key agentruntime.RunKey) (agentruntime.Run, error) {
+	if s == nil || s.store == nil {
+		return agentruntime.Run{}, fmt.Errorf("agent run store is required")
+	}
+	return s.store.Get(ctx, key)
+}

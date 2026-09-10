@@ -64,6 +64,12 @@ func RegisterSessionRoutes(
 		sessions.GET("/:id/attachments/:attachment_id/preview", handler.PreviewTemporaryDocument)
 		sessions.DELETE("/:id/attachments/:attachment_id", handler.DeleteTemporaryDocument)
 		sessions.POST("/:session_id/stop", handler.StopSession)
+		// Durable tRPC run controls. These routes remain behind the chat API-key
+		// capability and handlers enforce the persisted owner/tenant scope.
+		sessions.GET("/:id/runs/:run_id", handler.GetAgentRun)
+		sessions.GET("/:id/runs/:run_id/events", handler.GetAgentRunEvents)
+		sessions.POST("/:session_id/runs/:run_id/decisions", handler.PostAgentRunDecision)
+		sessions.POST("/:session_id/runs/:run_id/cancel", handler.CancelAgentRun)
 		sessions.POST("/:session_id/sandbox/terminal-ticket", handler.IssueSandboxTerminalTicket)
 		// Mid-run message injection: append a user message to the turn that is
 		// currently generating. Accepts even when no run is live (the client

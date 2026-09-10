@@ -47,6 +47,7 @@ type Handler struct {
 	// selected agent so the sandbox is created with the same config a
 	// conversation turn would use.
 	terminalService *service.SandboxTerminalService
+	agentRunService *service.AgentRunService
 }
 
 // NewHandler creates a new instance of Handler with all necessary dependencies
@@ -144,10 +145,16 @@ func (h *Handler) CreateSession(c *gin.Context) {
 	)
 
 	// Create session object with base properties
+	engine, parseErr := types.ParseAgentEngine(string(request.EngineType))
+	if parseErr != nil {
+		c.Error(errors.NewBadRequestError(parseErr.Error()))
+		return
+	}
 	createdSession := &types.Session{
 		TenantID:    tenantID.(uint64),
 		Title:       request.Title,
 		Description: types.SanitizeClientSessionDescription(request.Description, ""),
+		EngineType:  string(engine),
 	}
 	// Attach the calling user as the session owner when available.
 	// API-key callers scope sessions per external user when configured;
@@ -314,6 +321,21 @@ func (h *Handler) UpdateSession(c *gin.Context) {
 
 	session.ID = id
 	session.TenantID = tenantID.(uint64)
+	if existing, loadErr := h.sessionService.GetOwnedSession(ctx, id); loadErr != nil {
+		c.Error(errors.NewNotFoundError(loadErr.Error()))
+		return
+	} else {
+		current, parseErr := types.ParseAgentEngine(existing.EngineType)
+		if parseErr != nil {
+			c.Error(errors.NewInternalServerError(parseErr.Error()))
+			return
+		}
+		if err := ValidateEngineUpdate(current, types.AgentEngineType(session.EngineType)); err != nil {
+			c.Error(errors.NewConflictError(err.Error()))
+			return
+		}
+		session.EngineType = string(current)
+	}
 
 	// Call service to update session
 	if err := h.sessionService.UpdateSession(ctx, &session); err != nil {

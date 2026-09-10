@@ -1,6 +1,7 @@
 package session
 
 import (
+	"fmt"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
@@ -12,6 +13,8 @@ type CreateSessionRequest struct {
 	Title string `json:"title"`
 	// Description for the session (optional)
 	Description string `json:"description"`
+	// EngineType is immutable after session creation; omitted means builtin.
+	EngineType types.AgentEngineType `json:"engine_type,omitempty"`
 }
 
 // GenerateTitleRequest defines the request structure for generating a session title
@@ -82,4 +85,14 @@ type SearchKnowledgeRequest struct {
 // StopSessionRequest represents the stop session request
 type StopSessionRequest struct {
 	MessageID string `json:"message_id" binding:"required"`
+}
+
+// ValidateEngineUpdate prevents a session from switching execution engines
+// after its first request. An empty next value means the client is preserving
+// the existing value.
+func ValidateEngineUpdate(current, next types.AgentEngineType) error {
+	if next == "" || current == next {
+		return nil
+	}
+	return fmt.Errorf("session engine cannot change from %q to %q", current, next)
 }
