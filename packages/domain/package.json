@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/query-key.ts"
+    ".": "./src/query-key.ts",
+    "./scope": "./src/scope.ts"
   }
 }

@@ -1,9 +1,8 @@
-export interface RequestScope {
-  origin: string;
-  userId: string | null;
-  tenantId: string | null;
-  generation: number;
-}
+import type { RequestScope } from './scope.ts';
+
+export type { RequestScope } from './scope.ts';
+export { createScopeController } from './scope.ts';
+export type { ScopeController, ScopeHandle, ScopeInput } from './scope.ts';
 
 export type QueryKey = readonly [
   'weknora',
