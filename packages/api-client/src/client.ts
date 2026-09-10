@@ -1,6 +1,7 @@
 import { parseKnowledgeBaseListResponse, type KnowledgeBase } from '@weknora/contracts';
 import { ApiError, errorFromResult } from './errors.ts';
 import type { HttpRequest, HttpResult, HttpTransport } from './ports.ts';
+import { createKnowledgeDocumentsApi } from './knowledge/documents.ts';
 
 export interface ClientRequest {
   method: string;
@@ -82,6 +83,9 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
         const path = withQuery('/api/v1/knowledge-bases', { ...params });
         return parseKnowledgeBaseListResponse(await request({ method: 'GET', path }));
       },
+    },
+    knowledge: {
+      documents: createKnowledgeDocumentsApi(request),
     },
   };
 }

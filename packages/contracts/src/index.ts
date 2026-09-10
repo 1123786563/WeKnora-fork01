@@ -28,6 +28,36 @@ export interface KnowledgeBaseListResponse {
   data: KnowledgeBase[];
 }
 
+export type KnowledgeProcessingStatus =
+  | 'pending'
+  | 'processing'
+  | 'finalizing'
+  | 'completed'
+  | 'failed'
+  | 'deleting'
+  | 'cancelled';
+
+export interface KnowledgeDocument {
+  id: string;
+  knowledge_base_id?: string;
+  title?: string;
+  file_name?: string;
+  file_type?: string;
+  source?: string;
+  parse_status?: KnowledgeProcessingStatus;
+  summary_status?: string;
+  folder_path?: string;
+  [key: string]: unknown;
+}
+
+export interface KnowledgeDocumentListResponse {
+  success: true;
+  data: KnowledgeDocument[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
 function requireNonEmptyString(value: unknown, path: string): string {
   if (typeof value !== 'string' || value.trim() === '') {
     throw new ContractError(path, 'expected a non-empty string');
@@ -87,4 +117,39 @@ export function parseKnowledgeBaseListResponse(value: unknown): KnowledgeBase[] 
     }
     return result;
   });
+}
+
+function validatePageNumber(value: unknown, path: string): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+    throw new ContractError(path, 'expected a non-negative integer');
+  }
+  return value;
+}
+
+export function parseKnowledgeDocumentListResponse(value: unknown): KnowledgeDocumentListResponse {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new ContractError('', 'expected an object envelope');
+  }
+  const envelope = value as Record<string, unknown>;
+  if (envelope.success !== true) throw new ContractError('success', 'expected true');
+  if (!Array.isArray(envelope.data)) throw new ContractError('data', 'expected an array');
+  const data = envelope.data.map((item, index) => {
+    const path = `data[${index}]`;
+    if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+      throw new ContractError(path, 'expected an object');
+    }
+    const row = item as Record<string, unknown>;
+    const id = requireNonEmptyString(row.id, `${path}.id`);
+    if (row.parse_status !== undefined && typeof row.parse_status !== 'string') {
+      throw new ContractError(`${path}.parse_status`, 'expected a string');
+    }
+    return { ...row, id } as KnowledgeDocument;
+  });
+  return {
+    success: true,
+    data,
+    total: validatePageNumber(envelope.total, 'total'),
+    page: validatePageNumber(envelope.page, 'page'),
+    page_size: validatePageNumber(envelope.page_size, 'page_size'),
+  };
 }

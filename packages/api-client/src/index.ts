@@ -6,3 +6,4 @@ export type { BearerCredential, EmbedCredential, Credential, CredentialAdapter }
 export { createJsonTransport } from './transport/json.ts';
 export { AuthError, createRefreshCoordinator } from './auth/refresh-coordinator.ts';
 export type { AuthErrorCode, RefreshCoordinator, RefreshCoordinatorOptions, RefreshResponse } from './auth/refresh-coordinator.ts';
+export type { KnowledgeDocumentListParams, KnowledgeDocumentUploadInput } from './knowledge/documents.ts';

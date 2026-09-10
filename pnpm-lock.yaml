@@ -28,7 +28,7 @@ importers:
         version: link:../../packages/contracts
       '@weknora/domain':
         specifier: file:../../packages/domain
-        version: link:../../packages/domain
+        version: file:packages/domain
       '@weknora/ui':
         specifier: file:../../packages/ui
         version: link:../../packages/ui
@@ -66,7 +66,11 @@ importers:
 
   packages/contracts: {}
 
-  packages/domain: {}
+  packages/domain:
+    dependencies:
+      '@weknora/contracts':
+        specifier: workspace:*
+        version: link:../contracts
 
   packages/ui:
     dependencies:
@@ -517,6 +521,9 @@ packages:
 
   '@weknora/api-client@file:packages/api-client':
     resolution: {directory: packages/api-client, type: directory}
+
+  '@weknora/domain@file:packages/domain':
+    resolution: {directory: packages/domain, type: directory}
 
   baseline-browser-mapping@2.11.21:
     resolution: {integrity: sha512-uh8vpY/1/YyFkunIDFH/12p7/7VdPKA1hejMVEbdkEaWnUz0Hesvx5EbiU6XxjyHZIOju+ZMbQJkRh+es3/spQ==}
@@ -1049,6 +1056,10 @@ snapshots:
       - supports-color
 
   '@weknora/api-client@file:packages/api-client':
+    dependencies:
+      '@weknora/contracts': link:packages/contracts
+
+  '@weknora/domain@file:packages/domain':
     dependencies:
       '@weknora/contracts': link:packages/contracts
 

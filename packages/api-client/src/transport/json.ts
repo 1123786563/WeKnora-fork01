@@ -10,7 +10,7 @@ export interface FetchResponseLike {
 export type FetchLike = (input: string, init?: {
   method?: string;
   headers?: Record<string, string>;
-  body?: string;
+  body?: string | FormData;
   signal?: AbortSignal;
 }) => Promise<FetchResponseLike>;
 
@@ -20,7 +20,7 @@ export function createJsonTransport(fetcher: FetchLike): HttpTransport {
       const response = await fetcher(request.url, {
         method: request.method,
         headers: request.headers,
-        body: request.body === undefined ? undefined : JSON.stringify(request.body),
+        body: request.body instanceof FormData ? request.body : request.body === undefined ? undefined : JSON.stringify(request.body),
         signal: request.signal,
       });
       const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
