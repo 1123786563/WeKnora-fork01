@@ -14,3 +14,7 @@ export function normalizeKnowledgeProcessingStatus(value: unknown): KnowledgePro
 export function isKnowledgeProcessingTerminal(status: KnowledgeProcessingStatus): boolean {
   return status === 'completed' || status === 'failed' || status === 'cancelled';
 }
+
+export function processingStatusLabel(status: KnowledgeProcessingStatus): string {
+  return status === 'finalizing' ? 'Finalizing' : status.charAt(0).toUpperCase() + status.slice(1);
+}

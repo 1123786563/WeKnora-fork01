@@ -25,6 +25,9 @@
       "@weknora/domain": ["../../packages/domain/src/query-key.ts"],
       "@weknora/domain/scope": ["../../packages/domain/src/scope.ts"],
       "@weknora/domain/chat/reducer": ["../../packages/domain/src/chat/reducer.ts"],
+      "@weknora/domain/knowledge/folders": ["../../packages/domain/src/knowledge/folders.ts"],
+      "@weknora/domain/knowledge/processing": ["../../packages/domain/src/knowledge/processing.ts"],
+      "@weknora/domain/knowledge/preview": ["../../packages/domain/src/knowledge/preview.ts"],
       "@weknora/ui": ["../../packages/ui/src/index.tsx"],
       "@weknora/views": ["../../packages/views/src/index.ts"]
     }

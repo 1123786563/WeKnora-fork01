@@ -4,6 +4,7 @@ export type RouteMatch =
   | { kind: 'login'; path: '/login' | '/register'; mode?: 'login' | 'register' }
   | { kind: 'platform'; path: string }
   | { kind: 'knowledge-base'; path: string }
+  | { kind: 'knowledge-document'; path: string; knowledgeBaseId: string; documentId: string }
   | { kind: 'join'; path: '/join' }
   | { kind: 'onboarding'; path: '/onboarding/workspace' }
   | { kind: 'embed'; path: string }
@@ -16,6 +17,8 @@ export function resolveRoute(pathname: string): RouteMatch {
   if (path === '/join') return { kind: 'join', path: '/join' };
   if (path === '/onboarding/workspace') return { kind: 'onboarding', path };
   if (path.startsWith('/embed/')) return { kind: 'embed', path };
+  const documentMatch = path.match(/^\/knowledgeBase\/([^/]+)\/documents\/([^/]+)$/);
+  if (documentMatch) return { kind: 'knowledge-document', path, knowledgeBaseId: decodeURIComponent(documentMatch[1]!), documentId: decodeURIComponent(documentMatch[2]!) };
   if (path === '/knowledgeBase' || path.startsWith('/knowledgeBase/')) return { kind: 'knowledge-base', path };
   if (path === '/platform' || path.startsWith('/platform/')) return { kind: 'platform', path };
   if (path === '/creatChat' || path.startsWith('/creatChat/')) return { kind: 'platform', path: `/platform/creatChat${path.slice('/creatChat'.length)}` };

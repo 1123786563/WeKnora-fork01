@@ -9,7 +9,7 @@ export { AuthError, createRefreshCoordinator } from './auth/refresh-coordinator.
 export type { AuthErrorCode, RefreshCoordinator, RefreshCoordinatorOptions, RefreshResponse } from './auth/refresh-coordinator.ts';
 export { createAuthApi } from './auth/endpoints.ts';
 export type { AuthApi, AuthMe, AuthSession, InvitationLookup, LoginInput, OIDCConfig, OIDCURL, RegisterInput, RegistrationConfig, RegistrationResult } from './auth/endpoints.ts';
-export type { KnowledgeDocumentListParams, KnowledgeDocumentUploadInput, KnowledgeDocumentSearchParams, KnowledgeTagListParams } from './knowledge/documents.ts';
+export type { KnowledgeDocumentListParams, KnowledgeDocumentUploadInput, KnowledgeDocumentUrlInput, KnowledgeDocumentManualInput, KnowledgeDocumentSearchParams, KnowledgeTagListParams } from './knowledge/documents.ts';
 export type { KnowledgeDocument, KnowledgeProcessingStatus, KnowledgeDocumentListResponse, KnowledgeFolderNode, KnowledgeFolderTree, KnowledgeSearchResponse, KnowledgeTag } from '@weknora/contracts';
 export type { WikiPage, WikiPageListResponse, WikiPageRevision, WikiRevisionListResponse, WikiPageUpdateInput } from './wiki/pages.ts';
 export type { DataSource, DataSourceResource } from './datasource.ts';

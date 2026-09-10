@@ -86,3 +86,36 @@ test('loads folders, tags, detail, search, and creates an authenticated download
     '/api/v1/knowledge/search?keyword=guide&limit=10&file_types=pdf%2Cmd',
   ]);
 });
+
+test('supports URL/manual sources and guarded document mutations', async () => {
+  const requests: Array<{ method: string; path: string; body?: unknown }> = [];
+  const api = createKnowledgeDocumentsApi(async (request) => {
+    requests.push({ method: request.method, path: request.path, body: request.body });
+    if (request.method === 'DELETE') return undefined;
+    if (request.path.endsWith('/preview')) return undefined;
+    return { success: true, data: { id: 'doc-2', parse_status: 'pending' } };
+  });
+  await api.createFromUrl('kb-1', { url: 'https://example.test/a', tag_ids: ['tag-1'] });
+  await api.createManual('kb-1', { title: 'Manual', content: '# body', status: 'pending' });
+  await api.moveToFolder('kb-1', ['doc-2'], 'docs/spec');
+  await api.renameFolder('kb-1', 'docs', 'archive');
+  await api.updateTags({ 'doc-2': ['tag-1'] });
+  await api.reparse('doc-2');
+  await api.cancelParse('doc-2');
+  await api.remove('doc-2');
+  await api.batchDelete('kb-1', ['doc-2']);
+  assert.equal(api.previewPath('doc-2'), '/api/v1/knowledge/doc-2/preview');
+  assert.deepEqual(requests.map(({ method, path }) => `${method} ${path}`), [
+    'POST /api/v1/knowledge-bases/kb-1/knowledge/url',
+    'POST /api/v1/knowledge-bases/kb-1/knowledge/manual',
+    'POST /api/v1/knowledge/folder',
+    'PUT /api/v1/knowledge-bases/kb-1/knowledge/folders',
+    'PUT /api/v1/knowledge/tags',
+    'POST /api/v1/knowledge/doc-2/reparse',
+    'POST /api/v1/knowledge/doc-2/cancel-parse',
+    'DELETE /api/v1/knowledge/doc-2',
+    'POST /api/v1/knowledge/batch-delete',
+  ]);
+  assert.deepEqual(requests[2]?.body, { kb_id: 'kb-1', knowledge_ids: ['doc-2'], folder_path: 'docs/spec' });
+  assert.deepEqual(requests[4]?.body, { updates: { 'doc-2': ['tag-1'] } });
+});

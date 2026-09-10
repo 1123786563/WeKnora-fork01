@@ -37,6 +37,21 @@ export interface KnowledgeDocumentUploadInput {
   channel?: string;
 }
 
+export interface KnowledgeDocumentUrlInput {
+  url: string;
+  tag_ids?: string[];
+  process_config?: unknown;
+  enable_multimodel?: boolean;
+}
+
+export interface KnowledgeDocumentManualInput {
+  title: string;
+  content: string;
+  status: string;
+  tag_ids?: string[];
+  process_config?: unknown;
+}
+
 export interface KnowledgeDocumentSearchParams {
   keyword?: string;
   offset?: number;
@@ -58,6 +73,12 @@ function isNativeFileSource(value: Blob | NativeFileSource): value is NativeFile
 }
 
 export function createKnowledgeDocumentsApi(request: (input: ClientRequest) => Promise<unknown>) {
+  const knowledgePath = (id: string, suffix = '') => `/api/v1/knowledge/${encodeURIComponent(id)}${suffix}`;
+
+  async function parseDocumentMutation(response: unknown): Promise<KnowledgeDocument> {
+    return parseKnowledgeDocumentResponse(response);
+  }
+
   return {
     async list(knowledgeBaseId: string, params: KnowledgeDocumentListParams = {}): Promise<KnowledgeDocumentListResponse> {
       const query = new URLSearchParams();
@@ -95,6 +116,29 @@ export function createKnowledgeDocumentsApi(request: (input: ClientRequest) => P
       }
       return data as KnowledgeDocument;
     },
+    async createFromUrl(knowledgeBaseId: string, input: KnowledgeDocumentUrlInput): Promise<KnowledgeDocument> {
+      return parseDocumentMutation(await request({
+        method: 'POST',
+        path: `/api/v1/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}/knowledge/url`,
+        body: input,
+      }));
+    },
+    async createManual(knowledgeBaseId: string, input: KnowledgeDocumentManualInput): Promise<KnowledgeDocument> {
+      return parseDocumentMutation(await request({
+        method: 'POST',
+        path: `/api/v1/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}/knowledge/manual`,
+        body: input,
+      }));
+    },
+    async moveToFolder(knowledgeBaseId: string, knowledgeIds: string[], folderPath: string): Promise<void> {
+      await request({ method: 'POST', path: '/api/v1/knowledge/folder', body: { kb_id: knowledgeBaseId, knowledge_ids: knowledgeIds, folder_path: folderPath } });
+    },
+    async renameFolder(knowledgeBaseId: string, from: string, to: string): Promise<void> {
+      await request({ method: 'PUT', path: `/api/v1/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}/knowledge/folders`, body: { from, to } });
+    },
+    async updateTags(updates: Record<string, string[]>): Promise<void> {
+      await request({ method: 'PUT', path: '/api/v1/knowledge/tags', body: { updates } });
+    },
     async folders(knowledgeBaseId: string): Promise<KnowledgeFolderTree> {
       return parseKnowledgeFolderTreeResponse(await request({
         method: 'GET',
@@ -114,11 +158,26 @@ export function createKnowledgeDocumentsApi(request: (input: ClientRequest) => P
       const suffix = query.toString();
       return parseKnowledgeDocumentResponse(await request({
         method: 'GET',
-        path: `/api/v1/knowledge/${encodeURIComponent(id)}${suffix ? `?${suffix}` : ''}`,
+        path: `${knowledgePath(id)}${suffix ? `?${suffix}` : ''}`,
       }));
     },
     downloadPath(id: string): string {
-      return `/api/v1/knowledge/${encodeURIComponent(id)}/download`;
+      return knowledgePath(id, '/download');
+    },
+    previewPath(id: string): string {
+      return knowledgePath(id, '/preview');
+    },
+    async reparse(id: string, process_config?: unknown): Promise<void> {
+      await request({ method: 'POST', path: knowledgePath(id, '/reparse'), body: process_config === undefined ? undefined : { process_config } });
+    },
+    async cancelParse(id: string): Promise<void> {
+      await request({ method: 'POST', path: knowledgePath(id, '/cancel-parse') });
+    },
+    async remove(id: string): Promise<void> {
+      await request({ method: 'DELETE', path: knowledgePath(id) });
+    },
+    async batchDelete(knowledgeBaseId: string, ids: string[]): Promise<void> {
+      await request({ method: 'POST', path: '/api/v1/knowledge/batch-delete', body: { kb_id: knowledgeBaseId, ids } });
     },
     async search(params: KnowledgeDocumentSearchParams = {}): Promise<KnowledgeSearchResponse> {
       const query = new URLSearchParams();

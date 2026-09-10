@@ -14,6 +14,8 @@ import { createWebPlatformAdapters } from './platform/adapters.ts';
 import { guardRoute, resolveRoute, routeRedirect } from './routes.tsx';
 import { ChatRoutePage } from './chat/ChatRoutePage.tsx';
 import { IntegrationsRoutePage } from './integrations/IntegrationsRoutePage.tsx';
+import { KnowledgeDocumentsPage } from './documents/KnowledgeDocumentsPage.tsx';
+import { KnowledgeDocumentDetailPage } from './documents/KnowledgeDocumentDetailPage.tsx';
 import './styles.css';
 
 const oidcCallback = parseOIDCCallbackHash(window.location.hash);
@@ -108,7 +110,12 @@ function renderProtected() {
     root.render(<WorkspaceOnboardingPage client={client} scopeRuntime={scopeRuntime} onLogout={logout} />);
     return;
   }
-  if (route.path === '/platform/creatChat' || route.path.startsWith('/platform/chat/')) {
+  if (route.kind === 'knowledge-document') {
+    root.render(<KnowledgeDocumentDetailPage client={client} documentId={route.documentId} onBack={() => window.location.assign(`/knowledgeBase/${encodeURIComponent(route.knowledgeBaseId)}`)} />);
+  } else if (route.kind === 'knowledge-base' && route.path.split('/').filter(Boolean).length === 2) {
+    const knowledgeBaseId = decodeURIComponent(route.path.split('/')[2]!);
+    root.render(<KnowledgeDocumentsPage client={client} knowledgeBaseId={knowledgeBaseId} onOpenDocument={(document) => window.location.assign(`/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}/documents/${encodeURIComponent(document.id)}`)} />);
+  } else if (route.path === '/platform/creatChat' || route.path.startsWith('/platform/chat/')) {
     root.render(<ChatRoutePage client={client} scopeController={scopeController} />);
   } else if (route.path === '/platform/integrations') {
     root.render(<IntegrationsRoutePage client={client} />);
