@@ -70,3 +70,25 @@ export function tenantPatch(name: string, description: string): { name: string; 
   if (!nextName) throw new Error('Tenant name is required');
   return { name: nextName, description: description.trim() };
 }
+
+export function profilePasswordPatch(oldPassword: string, newPassword: string, confirmation: string): { old_password: string; new_password: string } {
+  if (!oldPassword.trim()) throw new Error('Current password is required');
+  if (!newPassword.trim()) throw new Error('New password is required');
+  if (newPassword === oldPassword) throw new Error('New password must be different from the current password');
+  if (newPassword !== confirmation) throw new Error('New passwords must match');
+  return { old_password: oldPassword, new_password: newPassword };
+}
+
+export function memoryItemPatch(content: string): { content: string } {
+  const nextContent = content.trim();
+  if (!nextContent) throw new Error('Memory content is required');
+  return { content: nextContent };
+}
+
+export function memoryEnabledPatch(enabled: boolean): { enabled: boolean } { return { enabled }; }
+
+export function memoryWorkspacePatch(enabled: boolean, writeMode: string, maxItems: number, vectorRecall: boolean, retrievalConditioning: boolean): Record<string, unknown> {
+  if (writeMode !== 'explicit_only' && writeMode !== 'auto') throw new Error('Unsupported memory write mode');
+  if (!Number.isInteger(maxItems) || maxItems < 10 || maxItems > 2000) throw new Error('Memory max items must be between 10 and 2000');
+  return { enabled, write_mode: writeMode, max_items: maxItems, vector_recall: vectorRecall, retrieval_conditioning: retrievalConditioning };
+}

@@ -24,12 +24,18 @@ This evidence covers only the active tenant read and name/description update sli
 | Command | Result |
 |---|---|
 | `pnpm test:shared` | exit 0, 150/150 |
-| `pnpm test:web` | exit 0, 53/53 |
+| `pnpm test:web` | exit 0, 57/57 |
 | `pnpm typecheck:shared` | exit 0 |
 | `pnpm typecheck:web` | exit 0 |
 | `pnpm build:web` | exit 0 |
 | `node scripts/check-react-boundaries.mjs` | exit 0 |
 | `git diff --check` | exit 0 |
+
+## Additional memory evidence
+
+- `/platform/settings?section=memory` rendered the tenant-admin workspace control with the server's `enabled: false` value. Saving the switch sent `PUT /api/v1/tenants/kv/memory-config` with the typed fields `enabled`, `write_mode`, `max_items`, `vector_recall`, and `retrieval_conditioning`, and the backend returned HTTP `200`.
+- Before that workspace write, `/platform/settings?section=mymemory` attempted to create a personal memory and the server returned the explicit error `memory is disabled`; the UI kept the draft and displayed the error.
+- After the workspace was enabled, creating `React migration live memory` returned HTTP `200` from `POST /api/v1/memory/items` with an active `fact` row, and the React page rendered the returned row. This is isolated test data only.
 
 ## Limitations
 
