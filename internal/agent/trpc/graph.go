@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"reflect"
 
@@ -169,12 +168,12 @@ func buildGraph(b GraphBindings) (*graph.Graph, error) {
 		if s.NextCallIndex > 0 {
 			id := s.PendingCallIDs[s.NextCallIndex-1]
 			if b.Tools != nil {
-				if durable, verifyErr := b.Tools.VerifyResult(ctx, b.fenceFromContext(ctx), id); verifyErr == nil {
-					if durable.Result.Output != toolOutputForCall(s, id) {
-						return nil, fmt.Errorf("durable tool result %s does not match applied result", id)
-					}
-				} else if !errors.Is(verifyErr, agentruntime.ErrNotFound) {
-					return nil, verifyErr
+				durable, verifyErr := b.Tools.VerifyResult(ctx, b.fenceFromContext(ctx), id)
+				if verifyErr != nil {
+					return nil, fmt.Errorf("durable tool result %s unavailable: %w", id, verifyErr)
+				}
+				if durable.Result.Output != toolOutputForCall(s, id) {
+					return nil, fmt.Errorf("durable tool result %s does not match applied result", id)
 				}
 			}
 			if !s.AppliedCallIDs[id] {
