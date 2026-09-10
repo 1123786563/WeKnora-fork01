@@ -12,12 +12,19 @@ import (
 )
 
 type agentRunDecisionRow struct {
-	TenantID                                 uint64
-	RunID, DecisionID, PendingID, ToolCallID string
-	ExpectedRevision                         int64
-	ActorID, Action, Result, Reason          string
-	ArgsHash, ResourceRef                    string
-	Applied                                  bool
+	TenantID         uint64 `gorm:"column:tenant_id"`
+	RunID            string `gorm:"column:run_id"`
+	DecisionID       string `gorm:"column:decision_id"`
+	PendingID        string `gorm:"column:pending_id"`
+	ToolCallID       string `gorm:"column:tool_call_id"`
+	ExpectedRevision int64  `gorm:"column:expected_revision"`
+	ActorID          string `gorm:"column:actor_id"`
+	Action           string `gorm:"column:action"`
+	Result           string `gorm:"column:result"`
+	Reason           string `gorm:"column:reason"`
+	ArgsHash         string `gorm:"column:args_hash"`
+	ResourceRef      string `gorm:"column:resource_ref"`
+	Applied          bool   `gorm:"column:applied"`
 }
 
 func (agentRunDecisionRow) TableName() string { return "agent_run_decisions" }
@@ -77,9 +84,29 @@ func (s *AgentRunStore) applyDecisionOnce(
 			key.TenantID, key.RunID, d.DecisionID,
 		).Take(&prior).Error
 		if priorErr == nil {
-			if prior.PendingID != d.PendingID || prior.ExpectedRevision != d.ExpectedRevision ||
+			var mismatch int64
+			if err := tx.Table("agent_run_decisions").Where(
+				"tenant_id = ? AND run_id = ? AND decision_id = ? AND (reason <> ? OR action <> ? OR pending_id <> ? OR actor_id <> ? OR expected_revision <> ?)",
+				key.TenantID, key.RunID, d.DecisionID, d.Reason, d.Action, d.PendingID, actor, d.ExpectedRevision,
+			).Count(&mismatch).Error; err != nil {
+				return err
+			}
+			if mismatch != 0 {
+				return agentruntime.ErrConflict
+			}
+			var stored struct {
+				Reason, ToolCallID, ArgsHash, ResourceRef, Result, Action, PendingID, ActorID string
+				ExpectedRevision                                                              int64
+			}
+			if err := tx.Table("agent_run_decisions").Select("reason,tool_call_id,args_hash,resource_ref,result,action,pending_id,actor_id,expected_revision").Where("tenant_id = ? AND run_id = ? AND decision_id = ?", key.TenantID, key.RunID, d.DecisionID).Scan(&stored).Error; err != nil {
+				return err
+			}
+			if prior.PendingID != d.PendingID || prior.ToolCallID != d.ToolCallID || prior.ExpectedRevision != d.ExpectedRevision ||
 				prior.ActorID != actor || prior.Action != d.Action || prior.Reason != d.Reason ||
 				prior.Result != string(d.Result) || prior.ArgsHash != d.ArgsHash || prior.ResourceRef != d.ResourceRef {
+				return agentruntime.ErrConflict
+			}
+			if stored.Reason != d.Reason || stored.ToolCallID != d.ToolCallID || stored.ArgsHash != d.ArgsHash || stored.ResourceRef != d.ResourceRef || stored.Result != string(d.Result) || stored.Action != d.Action || stored.PendingID != d.PendingID || stored.ActorID != actor || stored.ExpectedRevision != d.ExpectedRevision {
 				return agentruntime.ErrConflict
 			}
 			out = run.view()
@@ -98,8 +125,23 @@ func (s *AgentRunStore) applyDecisionOnce(
 		} else {
 			pendingQuery = pendingQuery.Where("unknown_reason = ? OR call_id = ?", d.PendingID, d.PendingID)
 		}
-		pendingErr := pendingQuery.Take(&pending).Error
+		var pendingRows []struct{ CallID, ArgsHash string }
+		pendingErr := pendingQuery.Find(&pendingRows).Error
 		if pendingErr == nil {
+			if len(pendingRows) > 1 {
+				return agentruntime.ErrConflict
+			}
+			if len(pendingRows) == 1 {
+				pending = pendingRows[0]
+			}
+			if len(pendingRows) == 1 && d.ToolCallID == "" {
+				return agentruntime.ErrConflict
+			}
+			if len(pendingRows) == 0 && d.ToolCallID != "" {
+				return agentruntime.ErrConflict
+			}
+		}
+		if pendingErr == nil && len(pendingRows) == 1 {
 			if d.ArgsHash == "" || d.ArgsHash != pending.ArgsHash {
 				return agentruntime.ErrConflict
 			}
@@ -109,13 +151,7 @@ func (s *AgentRunStore) applyDecisionOnce(
 			}
 			return pendingErr
 		}
-		r := agentRunDecisionRow{
-			TenantID: key.TenantID, RunID: key.RunID, DecisionID: d.DecisionID,
-			PendingID: d.PendingID, ToolCallID: pending.CallID, ExpectedRevision: d.ExpectedRevision,
-			ActorID: actor, Action: d.Action, Result: string(d.Result), Reason: d.Reason,
-			ArgsHash: d.ArgsHash, ResourceRef: d.ResourceRef, Applied: true,
-		}
-		if err := tx.Create(&r).Error; err != nil {
+		if err := tx.Exec("INSERT INTO agent_run_decisions (tenant_id,run_id,decision_id,pending_id,tool_call_id,expected_revision,actor_id,action,result,reason,args_hash,resource_ref,applied) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", key.TenantID, key.RunID, d.DecisionID, d.PendingID, pending.CallID, d.ExpectedRevision, actor, d.Action, string(d.Result), d.Reason, d.ArgsHash, d.ResourceRef, true).Error; err != nil {
 			return err
 		}
 		if pendingErr == nil {
