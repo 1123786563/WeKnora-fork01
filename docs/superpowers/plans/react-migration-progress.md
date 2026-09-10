@@ -27,7 +27,7 @@
 | T04 空间上下文、路由和能力守卫 | review | `9b35b5a` (`feat: guard scoped requests across tenant changes`) | `pnpm test:shared` 0（17/17）；`pnpm typecheck:shared` 0；scope RED→GREEN；`git diff --check` 0；真实路由/后端 0 | 静态/Node mock：通过；真实路由、Web 深链、后端权限：未完成 | 已实现切空间 abort、generation stale guard、logout/invalidate；仍需 Web Router/Query 接入与服务端权限负例 |
 | T05 UI基础、平台注入和国际化 | review | `a230366` + `ac955da` | `pnpm test:web` 0（3/3）；`pnpm typecheck:web` 0；`pnpm build:web` 0；`git diff --check` 0 | React/Vite source and focused tests: passed; package installation: passed; live backend/native/i18n coverage: not completed | Added explicit legacy-session adapter, UI Button/Card/Status primitives and React entry; no broad visual redesign. Internationalization package is still pending as a separate slice. |
 | T06 知识库列表与创建编辑闭环 | review | `a230366` + `ac955da` | `pnpm test:shared` 0（17/17）；`pnpm test:web` 0（3/3）；`pnpm typecheck:web` 0；`pnpm build:web` 0 | Static/Node mock and production bundle: passed; live backend list/create/edit/browser: not completed | Real `GET /api/v1/knowledge-bases` client path is wired with loading/error/empty states and no fake data. Create/edit and live backend proof remain next work. |
-| T07 文档上传、列表、目录标签与预览 | review | `45901be` + current Web loader integration | `pnpm test:shared` 0（24/24）；`pnpm typecheck:shared` 0；`pnpm test:web` 0（4/4）；`pnpm typecheck:web` 0；`pnpm build:web` 0 | Contracts/API/domain focused tests, Web loader and production bundle: passed; real upload/processing/preview/browser: not completed | Added paginated document DTO validation, processing-state guard, document list API, multipart upload API and no-fallback Web loader. UI document view, folders/tags/preview, real backend upload and 413/browser proof remain. |
+| T07 文档上传、列表、目录标签与预览 | review | `45901be` + `d0af87f` | `pnpm test:shared` 0（24/24）；`pnpm typecheck:shared` 0；`pnpm test:web` 0（4/4）；`pnpm typecheck:web` 0；`pnpm build:web` 0 | Contracts/API/domain focused tests, Web loader and production bundle: passed; real upload/processing/preview/browser: not completed | Added paginated document DTO validation, processing-state guard, document list API, multipart upload API and no-fallback Web loader. UI document view, folders/tags/preview, real backend upload and 413/browser proof remain. |
 | T08 FAQ与Wiki编辑/版本 | pending | — | — | — | 依赖 T07 |
 | T09 知识库高级配置与数据源 | pending | — | — | — | 依赖 T06 |
 | T10 聊天协议、状态机与恢复底座 | pending | — | — | — | 依赖 T04 |
@@ -82,4 +82,4 @@
 | 2026-09-10 | 创建账本；保留用户已有权威文档未提交状态 | 待 T01 范围提交 |
 | 2026-09-10 | T05/T06 React Web slice + workspace integration, package install and verification | `a230366`, `ac955da` |
 | 2026-09-10 | T07 document contracts, processing state guard and multipart API seam | `45901be` |
-| 2026-09-10 | T07 Web document loader seam and client alias integration | pending commit |
+| 2026-09-10 | T07 Web document loader seam and client alias integration | `d0af87f` |
