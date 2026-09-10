@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { ContractError, parseChatMessageListResponse, parseChatSessionListResponse, parseChatSessionResponse } from '../src/index.ts';
+import { ContractError, parseChatMessageListResponse, parseChatSessionListResponse, parseChatSessionResponse, parseTemporaryAttachmentResponse } from '../src/index.ts';
 
 test('parses the session-list envelope returned by GET /sessions', () => {
   const result = parseChatSessionListResponse({
@@ -43,4 +43,13 @@ test('parses message history and rejects an unknown role', () => {
     () => parseChatMessageListResponse({ success: true, data: [{ id: 'message-1', session_id: 'session-1', role: 'tool', content: 'x' }] }),
     ContractError,
   );
+});
+
+test('parses attachment processing states without exposing server storage fields as required DTOs', () => {
+  const attachment = parseTemporaryAttachmentResponse({ success: true, data: {
+    id: 'att-1', session_id: 'session-1', file_name: 'notes.md', file_type: 'md', file_size: 12, status: 'ready', resource_ref: '/private/path',
+  } });
+  assert.equal(attachment.status, 'ready');
+  assert.equal(attachment.resource_ref, '/private/path');
+  assert.throws(() => parseTemporaryAttachmentResponse({ success: true, data: { id: 'att-1', session_id: 's', file_name: 'x', file_type: 'md', file_size: -1, status: 'ready' } }), ContractError);
 });

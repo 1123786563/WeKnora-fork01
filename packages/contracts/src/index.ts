@@ -56,6 +56,29 @@ export interface ChatMessage {
   [key: string]: unknown;
 }
 
+export type TemporaryAttachmentStatus = 'uploaded' | 'processing' | 'ready' | 'failed';
+
+export interface TemporaryAttachment {
+  id: string;
+  session_id: string;
+  file_name: string;
+  file_type: string;
+  file_size: number;
+  mime_type?: string;
+  status: TemporaryAttachmentStatus;
+  token_count?: number;
+  chunk_count?: number;
+  image_refs?: unknown[];
+  error_message?: string;
+  expires_at?: string;
+  [key: string]: unknown;
+}
+
+export interface TemporaryAttachmentListResponse {
+  success: true;
+  data: TemporaryAttachment[];
+}
+
 export interface ActionSuccessResponse {
   success: true;
 }
@@ -422,6 +445,34 @@ export function parseChatMessageListResponse(value: unknown): ChatMessage[] {
       ...(updatedAt === undefined ? {} : { updated_at: updatedAt }),
     } as ChatMessage;
   });
+}
+
+function parseTemporaryAttachment(value: unknown, path: string): TemporaryAttachment {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new ContractError(path, 'expected an object');
+  const row = value as Record<string, unknown>;
+  const status = requiredString(row.status, `${path}.status`);
+  if (!['uploaded', 'processing', 'ready', 'failed'].includes(status)) throw new ContractError(`${path}.status`, 'unknown attachment status');
+  if (typeof row.file_size !== 'number' || !Number.isFinite(row.file_size) || row.file_size < 0) throw new ContractError(`${path}.file_size`, 'expected a non-negative number');
+  return {
+    ...row,
+    id: requireNonEmptyString(row.id, `${path}.id`),
+    session_id: requireNonEmptyString(row.session_id, `${path}.session_id`),
+    file_name: requireNonEmptyString(row.file_name, `${path}.file_name`),
+    file_type: requiredString(row.file_type, `${path}.file_type`),
+    file_size: row.file_size,
+    status: status as TemporaryAttachmentStatus,
+  } as TemporaryAttachment;
+}
+
+export function parseTemporaryAttachmentResponse(value: unknown): TemporaryAttachment {
+  const envelope = actionEnvelope(value);
+  return parseTemporaryAttachment(envelope.data, 'data');
+}
+
+export function parseTemporaryAttachmentListResponse(value: unknown): TemporaryAttachmentListResponse {
+  const envelope = actionEnvelope(value);
+  if (!Array.isArray(envelope.data)) throw new ContractError('data', 'expected an array');
+  return { success: true, data: envelope.data.map((item, index) => parseTemporaryAttachment(item, `data[${index}]`)) };
 }
 
 export function parseKnowledgeDocumentListResponse(value: unknown): KnowledgeDocumentListResponse {

@@ -1,4 +1,4 @@
-import { parseKnowledgeBaseListResponse, parseKnowledgeBaseResponse, type KnowledgeBase } from '@weknora/contracts';
+import { parseActionSuccessResponse, parseKnowledgeBaseListResponse, parseKnowledgeBaseResponse, type KnowledgeBase } from '@weknora/contracts';
 import { ApiError, errorFromResult } from './errors.ts';
 import type { HttpRequest, HttpResult, HttpTransport } from './ports.ts';
 import { createKnowledgeDocumentsApi } from './knowledge/documents.ts';
@@ -11,6 +11,7 @@ import { createConfigurationApi } from './configuration.ts';
 import { buildChatStreamRequest, consumeChatStream, consumeStreamResult, createServerSentEventParser, parseChatEvent } from './chat/stream.ts';
 import { createChatApprovalsApi } from './chat/approvals.ts';
 import { createChatSteerApi } from './chat/steer.ts';
+import { createChatAttachmentsApi } from './chat/attachments.ts';
 import { createIdentityApi } from './identity/index.ts';
 import { createAdministrationApi } from './administration/index.ts';
 import { createSettingsApi } from './settings/index.ts';
@@ -105,6 +106,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
   const configuration = createConfigurationApi(request);
   const chatApprovals = createChatApprovalsApi(request);
   const chatSteer = createChatSteerApi(request);
+  const chatAttachments = createChatAttachmentsApi(request);
   const identity = createIdentityApi(request);
   const administration = createAdministrationApi(request);
   const settings = createSettingsApi(request);
@@ -127,6 +129,25 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
     parser.push(body);
     parser.finish();
   });
+
+  async function consumeChatTransport(input: ClientRequest, onEvent: Parameters<typeof consumeChatStream>[2]): Promise<void> {
+    if (!options.transport.sendStream) {
+      const body = await request(input);
+      if (typeof body !== 'string') throw new Error('Chat stream returned a non-text body');
+      const parser = createServerSentEventParser((event) => onEvent(parseChatEvent(event)));
+      parser.push(body);
+      parser.finish();
+      return;
+    }
+    const result = await options.transport.sendStream({
+      method: input.method,
+      url: joinURL(options.baseURL, input.path),
+      headers: { accept: 'text/event-stream', ...input.headers },
+      body: input.body,
+      signal: input.signal,
+    });
+    await consumeStreamResult(result, onEvent);
+  }
 
   return {
     request,
@@ -162,16 +183,27 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
     chat: {
       approvals: chatApprovals,
       steer: chatSteer,
+      attachments: chatAttachments,
       stream: async (streamOptions: Parameters<typeof consumeChatStream>[1], onEvent: Parameters<typeof consumeChatStream>[2]) => {
         const streamRequest = buildChatStreamRequest(streamOptions);
-        if (!options.transport.sendStream) return consumeChatStream(request, streamOptions, onEvent);
-        const result = await options.transport.sendStream({
-          method: streamRequest.method,
-          url: joinURL(options.baseURL, streamRequest.path),
-          headers: { accept: 'application/json', ...streamRequest.headers },
-          body: streamRequest.body,
-        });
-        return consumeStreamResult(result, onEvent);
+        return consumeChatTransport(streamRequest, onEvent);
+      },
+      continueStream: async (sessionId: string, messageId: string, onEvent: Parameters<typeof consumeChatStream>[2], signal?: AbortSignal) => {
+        const query = new URLSearchParams({ message_id: messageId });
+        return consumeChatTransport({
+          method: 'GET',
+          path: `/api/v1/sessions/continue-stream/${encodeURIComponent(sessionId)}?${query.toString()}`,
+          headers: { accept: 'text/event-stream' },
+          signal,
+        }, onEvent);
+      },
+      stop: async (sessionId: string, messageId: string, signal?: AbortSignal) => {
+        return parseActionSuccessResponse(await request({
+          method: 'POST',
+          path: `/api/v1/sessions/${encodeURIComponent(sessionId)}/stop`,
+          body: { message_id: messageId },
+          signal,
+        }));
       },
     },
   };

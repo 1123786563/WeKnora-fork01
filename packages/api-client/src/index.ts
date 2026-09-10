@@ -51,6 +51,8 @@ export type {
 } from './chat/approvals.ts';
 export { createChatSteerApi } from './chat/steer.ts';
 export type { ChatSteerApi, EnqueueSteerInput } from './chat/steer.ts';
+export { createChatAttachmentsApi } from './chat/attachments.ts';
+export type { ChatAttachmentsApi, ChatAttachmentUploadInput } from './chat/attachments.ts';
 export type {
   ActionSuccessResponse,
   SteerDeleteResponse,

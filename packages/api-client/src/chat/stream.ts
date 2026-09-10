@@ -60,6 +60,7 @@ export interface ChatStreamRequestOptions {
   mode?: 'knowledge' | 'agent';
   body: Record<string, unknown>;
   lastEventId?: string;
+  signal?: AbortSignal;
 }
 
 export function buildChatStreamRequest(options: ChatStreamRequestOptions): ClientRequest {
@@ -73,6 +74,7 @@ export function buildChatStreamRequest(options: ChatStreamRequestOptions): Clien
       ...(options.lastEventId ? { 'Last-Event-ID': options.lastEventId } : {}),
     },
     body: options.body,
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
   };
 }
 

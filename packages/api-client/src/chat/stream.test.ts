@@ -21,6 +21,8 @@ test('builds knowledge and agent stream paths with resumable event id', () => {
     body: { query: 'hi' },
   });
   assert.equal(buildChatStreamRequest({ sessionId: 's-1', mode: 'agent', body: {} }).path, '/api/v1/agent-chat/s-1');
+  const controller = new AbortController();
+  assert.equal(buildChatStreamRequest({ sessionId: 's-1', body: {}, signal: controller.signal }).signal, controller.signal);
 });
 
 test('rejects non-object chat SSE payloads', () => {
@@ -34,4 +36,27 @@ test('consumes a text stream through the shared request boundary', async () => {
     return 'id: e1\ndata: {"response_type":"answer","content":"hi"}\n\ndata: {"response_type":"complete"}\n';
   }, { sessionId: 's-1', body: { query: 'hello' } }, (event) => events.push(String(event.response_type)));
   assert.deepEqual(events, ['answer', 'complete']);
+});
+
+test('builds resumable continue and stop calls with cancellation boundaries', async () => {
+  const requests: Array<{ method: string; path: string; signal?: AbortSignal }> = [];
+  const controller = new AbortController();
+  const api = (await import('../client.ts')).createWeKnoraClient({
+    baseURL: 'https://weknora.test',
+    transport: {
+      async send(request) {
+        requests.push({ method: request.method, path: new URL(request.url).pathname + new URL(request.url).search, signal: request.signal });
+        if (request.method === 'POST') return { status: 200, headers: {}, body: { success: true } };
+        return { status: 200, headers: {}, body: 'id: e1\ndata: {"response_type":"complete"}\n' };
+      },
+    },
+  });
+  const events: string[] = [];
+  await api.chat.continueStream('session/a', 'message/b', (event) => events.push(String(event.response_type)), controller.signal);
+  await api.chat.stop('session/a', 'message/b', controller.signal);
+  assert.deepEqual(events, ['complete']);
+  assert.equal(requests[0]?.method, 'GET');
+  assert.equal(requests[0]?.path, '/api/v1/sessions/continue-stream/session%2Fa?message_id=message%2Fb');
+  assert.equal(requests[0]?.signal?.aborted, false);
+  assert.equal(requests[1]?.path, '/api/v1/sessions/session%2Fa/stop');
 });
