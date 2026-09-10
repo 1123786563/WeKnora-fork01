@@ -32,7 +32,10 @@ const currentCredential = (): Credential => route.kind === 'embed' ? session.cre
 const injectedApiBaseUrl = (window as Window & { __WEKNORA_API_BASE__?: unknown }).__WEKNORA_API_BASE__;
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || (typeof injectedApiBaseUrl === 'string' ? injectedApiBaseUrl : '');
 const liteMode = window.localStorage.getItem('weknora_lite_mode') === 'true';
-const scopeRuntime = createWebScopeRuntime(apiBaseUrl || window.location.origin, null, session.tenantId, { liteMode });
+const scopeRuntime = createWebScopeRuntime(apiBaseUrl || window.location.origin, null, session.tenantId, {
+  liteMode,
+  persistTenant: (tenantId) => persistSelectedTenant(window.localStorage, tenantId),
+});
 const scopeController = scopeRuntime.controller;
 
 let client: ReturnType<typeof createWeKnoraClient>;
@@ -143,7 +146,6 @@ async function bootstrap() {
     const authMe = await client.auth.me();
     const hydrated = scopeRuntime.hydrate(authMe);
     session.tenantId = hydrated.scope.tenantId;
-    persistSelectedTenant(window.localStorage, hydrated.scope.tenantId);
     renderProtected();
   } catch (error) {
     scopeRuntime.logout();

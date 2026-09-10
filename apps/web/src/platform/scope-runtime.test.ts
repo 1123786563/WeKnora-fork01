@@ -49,6 +49,16 @@ test('switchTenant commits the new scope only after auth.switchTenant returns a 
   assert.deepEqual(persisted, ['access-b']);
 });
 
+test('persists the active tenant whenever a scope change is committed', () => {
+  const persisted: Array<string | null> = [];
+  const runtime = createWebScopeRuntime('https://api.test', 'user-1', 'tenant-a', {
+    persistTenant: (tenantId) => persisted.push(tenantId),
+  });
+  runtime.setTenant('tenant-b');
+  runtime.logout();
+  assert.deepEqual(persisted, ['tenant-b', null]);
+});
+
 test('tenant switches abort the previous scope and produce a scoped query key', () => {
   const runtime = createWebScopeRuntime('https://api.test', 'user-1', 'tenant-a');
   const previous = runtime.current();

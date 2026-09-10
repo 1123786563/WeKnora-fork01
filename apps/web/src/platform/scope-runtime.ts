@@ -21,12 +21,17 @@ export interface WebScopeRuntime {
   key(resource: string, params?: unknown): readonly unknown[];
 }
 
-export function createWebScopeRuntime(origin: string, userId: string | null = null, tenantId: string | null = null, options: { liteMode?: boolean; edition?: string } = {}): WebScopeRuntime {
+export function createWebScopeRuntime(origin: string, userId: string | null = null, tenantId: string | null = null, options: { liteMode?: boolean; edition?: string; persistTenant?: (tenantId: string | null) => void } = {}): WebScopeRuntime {
   const controller = createScopeController({ origin, userId, tenantId });
   let capabilitySnapshot: CapabilityMap = {};
   let liteMode = options.liteMode === true;
   let edition = options.edition;
   let systemAdmin = false;
+  const commitScope = (nextUserId: string | null, nextTenantId: string | null): ScopeHandle => {
+    const handle = controller.switchScope(origin, nextUserId, nextTenantId);
+    options.persistTenant?.(nextTenantId);
+    return handle;
+  };
   const hydrate = (authMe: AuthMe): ScopeHandle => {
     const nextUserId = typeof authMe.user.id === 'string' && authMe.user.id.trim() ? authMe.user.id : null;
     const rawTenant = authMe.tenant;
@@ -35,7 +40,7 @@ export function createWebScopeRuntime(origin: string, userId: string | null = nu
     systemAdmin = authMe.user.is_system_admin === true || authMe.user.isSystemAdmin === true;
     const maybeEdition = authMe.user.edition;
     if (typeof maybeEdition === 'string' && maybeEdition.trim()) edition = maybeEdition;
-    return controller.switchScope(origin, nextUserId, nextTenantId);
+    return commitScope(nextUserId, nextTenantId);
   };
   const switchTenant = async (
     tenantId: string,
@@ -47,16 +52,16 @@ export function createWebScopeRuntime(origin: string, userId: string | null = nu
     if (!Number.isSafeInteger(numericTenantId) || numericTenantId <= 0) throw new Error('tenantId must be a positive safe integer');
     const session = await switcher(numericTenantId, refreshToken);
     await persistSession(session);
-    return controller.switchScope(origin, controller.current().scope.userId, tenantId);
+    return commitScope(controller.current().scope.userId, tenantId);
   };
   return {
     controller,
     current: () => controller.current(),
     hydrate,
-    setIdentity: (nextUserId, nextTenantId) => controller.switchScope(origin, nextUserId, nextTenantId),
-    setTenant: (nextTenantId) => controller.switchScope(origin, controller.current().scope.userId, nextTenantId),
+    setIdentity: commitScope,
+    setTenant: (nextTenantId) => commitScope(controller.current().scope.userId, nextTenantId),
     switchTenant,
-    logout: () => { capabilitySnapshot = {}; systemAdmin = false; controller.logout(); },
+    logout: () => { capabilitySnapshot = {}; systemAdmin = false; controller.logout(); options.persistTenant?.(null); },
     requiresWorkspace: () => controller.current().scope.userId !== null && controller.current().scope.tenantId === null,
     can: (capability) => isCapabilitySupported(capabilitySnapshot, capability, { liteMode, edition }),
     capabilities: () => ({ ...capabilitySnapshot }),
