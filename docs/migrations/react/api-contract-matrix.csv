@@ -1,0 +1,362 @@
+method,path,domain,wire_kind,document_source,runtime_authority,comparison_status,target_task
+POST,/agent-chat/{session_id},other,sse-or-event,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+POST,/agent/mcp-oauth-resolutions/{pending_id},other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+POST,/agent/mcp-oauth-resolutions/{pending_id}/cancel,other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+POST,/agent/tool-approvals/{pending_id},other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+GET,/agents,other,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+POST,/agents,other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+DELETE,/agents/{id},other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+GET,/agents/{id},other,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+PUT,/agents/{id},other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+POST,/agents/{id}/copy,other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+DELETE,/agents/{id}/shares/{share_id},other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+GET,/agents/{id}/suggested-questions,other,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+GET,/agents/placeholders,other,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+GET,/agents/type-presets,other,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+GET,/api/v1/knowledge/{id}/spans,other,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+POST,/auth/auto-setup,identity,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+POST,/auth/change-password,identity,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+GET,/auth/config,identity,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+POST,/auth/invitations/lookup,identity,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+POST,/auth/login,identity,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+POST,/auth/logout,identity,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+GET,/auth/me,identity,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+PUT,/auth/me/preferences,identity,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+GET,/auth/oidc/callback,identity,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+GET,/auth/oidc/config,identity,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+GET,/auth/oidc/start,identity,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+GET,/auth/oidc/url,identity,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+POST,/auth/refresh,identity,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+POST,/auth/register,identity,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+POST,/auth/register-by-invite,identity,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+POST,/auth/switch-tenant,identity,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+GET,/auth/validate,identity,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+POST,/chunker/preview,other,blob-or-file,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+DELETE,/chunks/{knowledge_id},other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+GET,/chunks/{knowledge_id},other,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+DELETE,/chunks/{knowledge_id}/{id},other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+PUT,/chunks/{knowledge_id}/{id},other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+GET,/chunks/by-id/{id},other,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+DELETE,/chunks/by-id/{id}/questions,other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+GET,/datasource,other,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+POST,/datasource,other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+DELETE,/datasource/{id},other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+GET,/datasource/{id},other,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+PUT,/datasource/{id},other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+GET,/datasource/{id}/logs,other,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+POST,/datasource/{id}/pause,other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+POST,/datasource/{id}/resource-ancestors,other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+GET,/datasource/{id}/resources,other,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+POST,/datasource/{id}/resume,other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+POST,/datasource/{id}/sync,other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+POST,/datasource/{id}/validate,other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+GET,/datasource/logs/{log_id},other,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+GET,/datasource/types,other,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+POST,/datasource/validate-credentials,other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+GET,/evaluation/,other,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+POST,/evaluation/,other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+GET,/faq/import/progress/{task_id},other,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+DELETE,/im-channels/{id},integration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T18
+PUT,/im-channels/{id},integration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T18
+POST,/im-channels/{id}/toggle,integration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T18
+GET,/im/callback/{channel_id},integration,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T18
+POST,/im/callback/{channel_id},integration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T18
+POST,/initialization/asr/check,other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+GET,/initialization/config/{kbId},other,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+PUT,/initialization/config/{kbId},other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+POST,/initialization/embedding/test,other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+POST,/initialization/extract/fabri-tag,other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+POST,/initialization/extract/fabri-text,other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+POST,/initialization/extract/text-relation,other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+POST,/initialization/initialize/{kbId},other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+POST,/initialization/multimodal/test,other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+GET,/initialization/ollama/download/progress/{taskId},other,blob-or-file,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+GET,/initialization/ollama/download/tasks,other,blob-or-file,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+GET,/initialization/ollama/models,other,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+POST,/initialization/ollama/models/check,other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+POST,/initialization/ollama/models/download,other,blob-or-file,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+GET,/initialization/ollama/status,other,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+POST,/initialization/remote/check,other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+POST,/initialization/rerank/check,other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+GET,/knowledge-bases,knowledge,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+POST,/knowledge-bases,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+DELETE,/knowledge-bases/{id},knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+GET,/knowledge-bases/{id},knowledge,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+PUT,/knowledge-bases/{id},knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+GET,/knowledge-bases/{id}/activity,knowledge,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+POST,/knowledge-bases/{id}/duplicate,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+DELETE,/knowledge-bases/{id}/faq/entries,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+GET,/knowledge-bases/{id}/faq/entries,knowledge,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+POST,/knowledge-bases/{id}/faq/entries,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+GET,/knowledge-bases/{id}/faq/entries/{entry_id},knowledge,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+PUT,/knowledge-bases/{id}/faq/entries/{entry_id},knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+POST,/knowledge-bases/{id}/faq/entries/{entry_id}/similar-questions,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+GET,/knowledge-bases/{id}/faq/entries/export,knowledge,blob-or-file,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+PUT,/knowledge-bases/{id}/faq/entries/fields,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+PUT,/knowledge-bases/{id}/faq/entries/tags,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+POST,/knowledge-bases/{id}/faq/entry,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+PUT,/knowledge-bases/{id}/faq/import/last-result/display,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+POST,/knowledge-bases/{id}/faq/search,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+GET,/knowledge-bases/{id}/hybrid-search,knowledge,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+POST,/knowledge-bases/{id}/hybrid-search,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+DELETE,/knowledge-bases/{id}/knowledge,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+GET,/knowledge-bases/{id}/knowledge,knowledge,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+POST,/knowledge-bases/{id}/knowledge/file,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+GET,/knowledge-bases/{id}/knowledge/folders,knowledge,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+PUT,/knowledge-bases/{id}/knowledge/folders,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+POST,/knowledge-bases/{id}/knowledge/manual,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+POST,/knowledge-bases/{id}/knowledge/url,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+GET,/knowledge-bases/{id}/move-targets,knowledge,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+PUT,/knowledge-bases/{id}/pin,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+GET,/knowledge-bases/{id}/shares,knowledge,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+POST,/knowledge-bases/{id}/shares,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+DELETE,/knowledge-bases/{id}/shares/{share_id},knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+PUT,/knowledge-bases/{id}/shares/{share_id},knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+GET,/knowledge-bases/{id}/tags,knowledge,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+POST,/knowledge-bases/{id}/tags,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+DELETE,/knowledge-bases/{id}/tags/{tag_id},knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+PUT,/knowledge-bases/{id}/tags/{tag_id},knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+POST,/knowledge-bases/copy,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+GET,/knowledge-bases/copy/progress/{task_id},knowledge,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+POST,/knowledge-chat/{session_id},knowledge,sse-or-event,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+POST,/knowledge-search,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+DELETE,/knowledge/{id},knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+GET,/knowledge/{id},knowledge,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+PUT,/knowledge/{id},knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+POST,/knowledge/{id}/cancel-parse,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+GET,/knowledge/{id}/download,knowledge,blob-or-file,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+GET,/knowledge/{id}/preview,knowledge,blob-or-file,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+POST,/knowledge/{id}/reparse,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+GET,/knowledge/batch,knowledge,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+POST,/knowledge/batch-delete,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+POST,/knowledge/batch-reparse,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+POST,/knowledge/folder,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+PUT,/knowledge/image/{id}/{chunk_id},knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+PUT,/knowledge/manual/{id},knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+POST,/knowledge/move,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+GET,/knowledge/move/progress/{task_id},knowledge,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+GET,/knowledge/search,knowledge,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+PUT,/knowledge/tags,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+POST,/knowledgebase/{kb_id}/wiki/auto-fix,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+GET,/knowledgebase/{kb_id}/wiki/folders,knowledge,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+POST,/knowledgebase/{kb_id}/wiki/folders,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+DELETE,/knowledgebase/{kb_id}/wiki/folders/{folder_id},knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+PUT,/knowledgebase/{kb_id}/wiki/folders/{folder_id},knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+GET,/knowledgebase/{kb_id}/wiki/graph,knowledge,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+GET,/knowledgebase/{kb_id}/wiki/index,knowledge,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+GET,/knowledgebase/{kb_id}/wiki/issues,knowledge,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+PUT,/knowledgebase/{kb_id}/wiki/issues/{issue_id}/status,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+GET,/knowledgebase/{kb_id}/wiki/lint,knowledge,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+PUT,/knowledgebase/{kb_id}/wiki/move-page,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+GET,/knowledgebase/{kb_id}/wiki/pages,knowledge,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+POST,/knowledgebase/{kb_id}/wiki/pages,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+DELETE,/knowledgebase/{kb_id}/wiki/pages/{slug},knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+GET,/knowledgebase/{kb_id}/wiki/pages/{slug},knowledge,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+PUT,/knowledgebase/{kb_id}/wiki/pages/{slug},knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+POST,/knowledgebase/{kb_id}/wiki/rebuild-links,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+POST,/knowledgebase/{kb_id}/wiki/revert,knowledge,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+GET,/knowledgebase/{kb_id}/wiki/revisions/{slug},knowledge,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+GET,/knowledgebase/{kb_id}/wiki/search,knowledge,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+GET,/knowledgebase/{kb_id}/wiki/stats,knowledge,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T06-T09
+GET,/mcp-services,configuration,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+POST,/mcp-services,configuration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+DELETE,/mcp-services/{id},configuration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+GET,/mcp-services/{id},configuration,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+PUT,/mcp-services/{id},configuration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+PUT,/mcp-services/{id}/credentials,configuration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+DELETE,/mcp-services/{id}/credentials/{field},configuration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+GET,/mcp-services/{id}/metadata,configuration,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+POST,/mcp-services/{id}/metadata/refresh,configuration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+POST,/mcp-services/{id}/oauth/authorize-url,configuration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+GET,/mcp-services/{id}/oauth/status,configuration,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+DELETE,/mcp-services/{id}/oauth/token,configuration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+GET,/mcp-services/{id}/resources,configuration,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+POST,/mcp-services/{id}/test,configuration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+PUT,/mcp-services/{id}/tool-approvals/{tool_name},configuration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+GET,/mcp-services/{id}/tools,configuration,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+GET,/mcp-services/oauth/callback,configuration,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+GET,/me/env-vars,identity,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+DELETE,/me/env-vars/sandbox,identity,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+PUT,/me/env-vars/sandbox,identity,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+DELETE,/me/env-vars/skill,identity,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+PUT,/me/env-vars/skill,identity,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+GET,/me/invitations,identity,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+POST,/me/invitations/{inv_id}/accept,identity,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+POST,/me/invitations/{inv_id}/decline,identity,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+POST,/me/invitations/accept-by-token,identity,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+GET,/me/invitations/pending-count,identity,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+POST,/memory/consolidate,identity,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+GET,/memory/documents,identity,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+DELETE,/memory/documents/{id},identity,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+GET,/memory/export,identity,blob-or-file,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+DELETE,/memory/items,identity,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+GET,/memory/items,identity,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+POST,/memory/items,identity,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+DELETE,/memory/items/{id},identity,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+PUT,/memory/items/{id},identity,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+POST,/memory/items/{id}/confirm,identity,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+POST,/memory/items/{id}/reject,identity,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+GET,/memory/settings,identity,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+PUT,/memory/settings,identity,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+GET,/memory/topics,identity,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+DELETE,/memory/topics/{id},identity,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+POST,/memory/topics/{id}/promote,identity,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+DELETE,/messages/{session_id}/{id},identity,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+GET,/messages/{session_id}/load,identity,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+GET,/messages/chat-history-stats,identity,sse-or-event,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+POST,/messages/search,identity,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T03
+GET,/models,configuration,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+POST,/models,configuration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+DELETE,/models/{id},configuration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+GET,/models/{id},configuration,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+PUT,/models/{id},configuration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+GET,/models/providers,configuration,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+GET,/models/weknoracloud/status,configuration,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+GET,/organizations,organization,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16
+POST,/organizations,organization,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16
+DELETE,/organizations/{id},organization,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16
+GET,/organizations/{id},organization,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16
+PUT,/organizations/{id},organization,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16
+GET,/organizations/{id}/agent-shares,organization,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16
+POST,/organizations/{id}/invite,organization,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16
+POST,/organizations/{id}/invite-code,organization,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16
+GET,/organizations/{id}/join-requests,organization,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16
+PUT,/organizations/{id}/join-requests/{request_id}/review,organization,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16
+POST,/organizations/{id}/leave,organization,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16
+GET,/organizations/{id}/members,organization,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16
+DELETE,/organizations/{id}/members/{tenant_id},organization,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16
+PUT,/organizations/{id}/members/{tenant_id},organization,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16
+POST,/organizations/{id}/request-upgrade,organization,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16
+GET,/organizations/{id}/search-tenants,organization,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16
+GET,/organizations/{id}/search-users,organization,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16
+GET,/organizations/{id}/shared-agents,organization,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16
+GET,/organizations/{id}/shared-knowledge-bases,organization,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16
+GET,/organizations/{id}/shares,organization,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16
+POST,/organizations/join,organization,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16
+POST,/organizations/join-by-id,organization,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16
+POST,/organizations/join-request,organization,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16
+GET,/organizations/preview/{code},organization,blob-or-file,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16
+GET,/organizations/search,organization,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16
+GET,/sandbox-configs,sandbox,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T14
+POST,/sandbox-configs,sandbox,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T14
+DELETE,/sandbox-configs/{id},sandbox,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T14
+GET,/sandbox-configs/{id},sandbox,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T14
+PUT,/sandbox-configs/{id},sandbox,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T14
+GET,/sandbox-configs/{id}/sandboxes,sandbox,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T14
+GET,/sandbox-configs/{id}/skills,sandbox,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T14
+POST,/sandbox-configs/{id}/skills,sandbox,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T14
+DELETE,/sandbox-configs/{id}/skills/{skillId},sandbox,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T14
+GET,/sandbox-configs/{id}/skills/{skillId},sandbox,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T14
+PATCH,/sandbox-configs/{id}/skills/{skillId},sandbox,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T14
+GET,/sandbox-configs/{id}/skills/{skillId}/files,sandbox,blob-or-file,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T14
+GET,/sandbox-configs/{id}/skills/{skillId}/files/content,sandbox,blob-or-file,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T14
+GET,/sandbox-configs/{id}/skills/{skillId}/install-events,sandbox,sse-or-event,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T14
+POST,/sandbox-configs/{id}/skills/{skillId}/reinstall,sandbox,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T14
+POST,/sandbox-configs/{id}/skills/{skillId}/stop,sandbox,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T14
+GET,/sandbox-configs/{id}/skills/{skillId}/transcript,sandbox,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T14
+GET,/sessions,chat,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T10-T13
+POST,/sessions,chat,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T10-T13
+DELETE,/sessions/{id},chat,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T10-T13
+GET,/sessions/{id},chat,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T10-T13
+PUT,/sessions/{id},chat,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T10-T13
+DELETE,/sessions/{id}/messages,chat,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T10-T13
+DELETE,/sessions/{id}/pin,chat,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T10-T13
+GET,/sessions/{session_id}/artifacts,chat,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T10-T13
+GET,/sessions/{session_id}/messages/{message_id}/artifacts,chat,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T10-T13
+GET,/sessions/{session_id}/messages/{message_id}/artifacts/{index}/download,chat,blob-or-file,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T10-T13
+GET,/sessions/{session_id}/messages/{message_id}/suggestions,chat,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T10-T13
+POST,/sessions/{session_id}/messages/{message_id}/suggestions,chat,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T10-T13
+POST,/sessions/{session_id}/pin,chat,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T10-T13
+POST,/sessions/{session_id}/stop,chat,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T10-T13
+POST,/sessions/{session_id}/suggestion-events,chat,sse-or-event,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T10-T13
+POST,/sessions/{session_id}/title,chat,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T10-T13
+DELETE,/sessions/batch,chat,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T10-T13
+GET,/sessions/continue-stream/{session_id},chat,sse-or-event,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T10-T13
+GET,/shared-agents,other,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+GET,/shared-knowledge-bases,other,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+GET,/skills,configuration,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+GET,/skills/catalog,configuration,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+POST,/skills/catalog,configuration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+DELETE,/skills/catalog/{id},configuration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+GET,/skills/catalog/{id}/files,configuration,blob-or-file,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+GET,/skills/catalog/{id}/files/content,configuration,blob-or-file,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+POST,/skills/catalog/{id}/install,configuration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+GET,/storage-backends,configuration,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+POST,/storage-backends,configuration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+DELETE,/storage-backends/{id},configuration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+GET,/storage-backends/{id},configuration,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+PUT,/storage-backends/{id},configuration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+PUT,/storage-backends/{id}/default,configuration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+POST,/storage-backends/{id}/test,configuration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+POST,/storage-backends/test,configuration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+GET,/storage-backends/types,configuration,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+GET,/system/admin/api-keys,system,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16/T17
+POST,/system/admin/api-keys,system,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16/T17
+DELETE,/system/admin/api-keys/{key_id},system,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16/T17
+GET,/system/admin/audit-log,system,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16/T17
+GET,/system/admin/list,system,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16/T17
+POST,/system/admin/promote,system,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16/T17
+POST,/system/admin/revoke,system,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16/T17
+GET,/system/admin/runtime/queues,system,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16/T17
+DELETE,/system/admin/runtime/queues/{queue}/archived,system,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16/T17
+GET,/system/admin/runtime/queues/{queue}/tasks,system,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16/T17
+POST,/system/admin/runtime/queues/{queue}/tasks/{task_id}/actions/{action},system,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16/T17
+DELETE,/system/admin/settings/{key},system,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16/T17
+GET,/system/admin/settings/{key},system,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16/T17
+PUT,/system/admin/settings/{key},system,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16/T17
+POST,/system/admin/tenants/apply-default-storage-quota,system,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16/T17
+POST,/system/admin/users/create,system,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16/T17
+POST,/system/admin/users/reset-password,system,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16/T17
+GET,/system/capabilities,system,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16/T17
+POST,/system/docreader/reconnect,system,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16/T17
+GET,/system/info,system,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16/T17
+GET,/system/parser-engines,system,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16/T17
+POST,/system/parser-engines/check,system,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16/T17
+POST,/system/sandbox-check,system,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16/T17
+POST,/system/storage-engine-check,system,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16/T17
+GET,/system/storage-engine-status,system,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T16/T17
+GET,/tenants,tenant,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T04/T16
+POST,/tenants,tenant,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T04/T16
+DELETE,/tenants/{id},tenant,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T04/T16
+GET,/tenants/{id},tenant,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T04/T16
+PUT,/tenants/{id},tenant,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T04/T16
+GET,/tenants/{id}/api-principal-config,tenant,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T04/T16
+PUT,/tenants/{id}/api-principal-config,tenant,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T04/T16
+POST,/tenants/{id}/api-principal-test-token,tenant,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T04/T16
+GET,/tenants/{id}/audit-log,tenant,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T04/T16
+GET,/tenants/{id}/invitations,tenant,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T04/T16
+POST,/tenants/{id}/invitations,tenant,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T04/T16
+DELETE,/tenants/{id}/invitations/{inv_id},tenant,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T04/T16
+POST,/tenants/{id}/invite-links,tenant,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T04/T16
+POST,/tenants/{id}/leave,tenant,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T04/T16
+GET,/tenants/{id}/members,tenant,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T04/T16
+POST,/tenants/{id}/members,tenant,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T04/T16
+DELETE,/tenants/{id}/members/{user_id},tenant,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T04/T16
+PUT,/tenants/{id}/members/{user_id},tenant,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T04/T16
+GET,/tenants/all,tenant,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T04/T16
+GET,/tenants/kv/{key},tenant,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T04/T16
+PUT,/tenants/kv/{key},tenant,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T04/T16
+GET,/tenants/kv/prompt-templates,tenant,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T04/T16
+GET,/tenants/kv/web-search-config,tenant,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T04/T16
+GET,/tenants/search,tenant,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T04/T16
+GET,/user/favorites,other,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+POST,/user/favorites,other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+DELETE,/user/favorites/{type}/{id},other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+GET,/vector-stores,configuration,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+POST,/vector-stores,configuration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+DELETE,/vector-stores/{id},configuration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+GET,/vector-stores/{id},configuration,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+PUT,/vector-stores/{id},configuration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+POST,/vector-stores/{id}/test,configuration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+POST,/vector-stores/test,configuration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+GET,/vector-stores/types,configuration,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+DELETE,/web-search-providers/{id},configuration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+GET,/web-search-providers/{id},configuration,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+PUT,/web-search-providers/{id},configuration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+POST,/web-search-providers/{id}/test,configuration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+POST,/web-search-providers/test,configuration,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+GET,/web-search-providers/types,configuration,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+GET,/web-search/providers,configuration,read,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T15/T17
+POST,/wechat/qrcode,other,sse-or-event,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+POST,/wechat/qrcode/status,other,sse-or-event,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up
+POST,/weknoracloud/credentials,other,mutation,swagger-2.0,internal/router/routes_*.go + handler annotation,requires-handler-dto-permission-review,T01 follow-up

@@ -1,0 +1,7 @@
+source_kind,source,source_sha,license,reuse_mode,target_boundary,decision,reason
+weknora-owned,frontend/src/api + request.ts,5db13a131e10e8ee2105211f665412ebc13bd98e,MIT plus third-party notices,behavioral extraction,packages/api-client,approved,preserve WeKnora API/auth semantics; rewrite without Vue runtime
+weknora-owned,frontend/src/router + stores,5db13a131e10e8ee2105211f665412ebc13bd98e,MIT plus third-party notices,behavioral extraction,packages/domain + apps/* adapters,approved,preserve URL/scope/capability behavior
+weknora-owned,cmd/desktop,5db13a131e10e8ee2105211f665412ebc13bd98e,MIT plus Wails notices,direct runtime preservation,apps/desktop adapter,approved,retain Wails/Go/Lite lifecycle
+reference-pattern,/Users/wuyongjun/trea/multica/packages/core,85b1fdbb44fd90aa90ce3353a95c2b1f3d115ddf,Multica License + additional conditions,clean-room architecture only,packages/contracts/domain,no source copy,business/API/UI semantics are not equivalent and license is not pure Apache-2.0
+reference-pattern,/Users/wuyongjun/trea/multica/packages/ui + packages/views,85b1fdbb44fd90aa90ce3353a95c2b1f3d115ddf,Multica License + additional conditions,clean-room architecture only,packages/ui/views,no source copy,"do not copy UI, brand, text, CSS or product-domain code"
+reference-pattern,/Users/wuyongjun/trea/multica/apps/mobile,85b1fdbb44fd90aa90ce3353a95c2b1f3d115ddf,Multica License + additional conditions,version/reference only,apps/mobile,verify independently,"Expo/RN versions are an input, not a source implementation"
