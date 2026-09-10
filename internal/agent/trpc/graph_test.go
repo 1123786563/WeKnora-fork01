@@ -95,6 +95,10 @@ func TestBuildGraphExecutesBatchAndPersistsPlans(t *testing.T) {
 	journal := &graphTestJournal{results: map[string]agentruntime.StoredToolResult{}}
 	exec := agentruntime.NewToolExecutor(store, journal, func(ctx context.Context, name string, _ json.RawMessage) (*types.ToolResult, error) {
 		require.NoError(t, agentruntime.BeforeToolDispatch(ctx))
+		if journal.calls == 0 {
+			require.Len(t, journal.plans, 2)
+		}
+		journal.order = append(journal.order, name)
 		journal.calls++
 		return &types.ToolResult{Success: true, Output: name + "-ok"}, nil
 	})
@@ -113,9 +117,10 @@ func TestBuildGraphExecutesBatchAndPersistsPlans(t *testing.T) {
 	}
 	t.Logf("model=%d plans=%v calls=%d", mdl.calls, journal.plans, journal.calls)
 	require.Equal(t, 2, len(journal.plans))
-	require.GreaterOrEqual(t, journal.calls, 2)
-	require.GreaterOrEqual(t, mdl.calls, 1)
-	require.GreaterOrEqual(t, finalized, 1)
+	require.Equal(t, 2, journal.calls)
+	require.Equal(t, []string{"one", "two"}, journal.order)
+	require.Equal(t, 2, mdl.calls)
+	require.Equal(t, 1, finalized)
 }
 
 type batchModel struct{ calls int }

@@ -169,10 +169,12 @@ func buildGraph(b GraphBindings) (*graph.Graph, error) {
 			return nil, err
 		}
 		if s.NextCallIndex > 0 {
-			id := s.PendingCallIDs[s.NextCallIndex-1]
-			if err := applyDurableResult(ctx, b, s, id); err != nil {
-				return nil, err
+			for _, id := range s.PendingCallIDs {
+				if err := applyDurableResult(ctx, b, s, id); err != nil {
+					return nil, err
+				}
 			}
+			id := s.PendingCallIDs[s.NextCallIndex-1]
 			if !s.AppliedCallIDs[id] {
 				return nil, fmt.Errorf("tool result %s was not durably applied", id)
 			}
