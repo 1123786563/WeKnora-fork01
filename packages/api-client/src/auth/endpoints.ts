@@ -1,6 +1,12 @@
 import type { ClientRequest } from '../client.ts';
 
 export interface LoginInput { email: string; password: string }
+export interface RegisterInput { username: string; email: string; password: string }
+export interface RegistrationResult { user: Record<string, unknown>; tenant?: Record<string, unknown> | null }
+export interface RegistrationConfig { registrationMode: string; complexPasswordEnabled: boolean }
+export interface OIDCConfig { enabled: boolean; providerDisplayName?: string }
+export interface OIDCURL { authorizationUrl: string; state: string }
+export interface InvitationLookup { tenantId: number; tenantName?: string; role: string; expiresAt: string }
 export interface AuthSession {
   token: string;
   refreshToken: string;
@@ -26,6 +32,16 @@ function requiredString(value: unknown, label: string): string {
   return value;
 }
 
+function requiredBoolean(value: unknown, label: string): boolean {
+  if (typeof value !== 'boolean') throw new Error(`${label} must be a boolean`);
+  return value;
+}
+
+function requiredSafeInteger(value: unknown, label: string): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value)) throw new Error(`${label} must be a safe integer`);
+  return value;
+}
+
 function successEnvelope(value: unknown): Record<string, unknown> {
   const root = record(value, 'auth response');
   if (root.success !== true) throw new Error(typeof root.message === 'string' ? root.message : 'Authentication request failed');
@@ -39,7 +55,7 @@ function parseSession(value: unknown): AuthSession {
     token: requiredString(data.token ?? data.access_token, 'access token'),
     refreshToken: requiredString(data.refresh_token ?? data.refreshToken, 'refresh token'),
     user: data.user && typeof data.user === 'object' ? record(data.user, 'user') : undefined,
-    tenant: data.tenant === null ? null : data.tenant && typeof data.tenant === 'object' ? record(data.tenant, 'tenant') : undefined,
+    tenant: data.tenant === null ? null : data.tenant && typeof data.tenant === 'object' ? record(data.tenant, 'tenant') : data.active_tenant && typeof data.active_tenant === 'object' ? record(data.active_tenant, 'active tenant') : undefined,
     memberships: Array.isArray(data.memberships) ? data.memberships : undefined,
   };
 }
@@ -48,6 +64,59 @@ export function createAuthApi(request: (input: ClientRequest) => Promise<unknown
   return {
     async login(input: LoginInput): Promise<AuthSession> {
       return parseSession(await request({ method: 'POST', path: '/api/v1/auth/login', body: input }));
+    },
+    async register(input: RegisterInput): Promise<RegistrationResult> {
+      const root = successEnvelope(await request({ method: 'POST', path: '/api/v1/auth/register', body: input }));
+      return {
+        user: record(root.user, 'registration user'),
+        tenant: root.tenant === null ? null : root.tenant === undefined ? undefined : record(root.tenant, 'registration tenant'),
+      };
+    },
+    async registrationConfig(): Promise<RegistrationConfig> {
+      const root = successEnvelope(await request({ method: 'GET', path: '/api/v1/auth/config' }));
+      return {
+        registrationMode: requiredString(root.registration_mode, 'registration mode'),
+        complexPasswordEnabled: requiredBoolean(root.complex_password_enabled, 'complex password enabled'),
+      };
+    },
+    async oidcConfig(): Promise<OIDCConfig> {
+      const root = successEnvelope(await request({ method: 'GET', path: '/api/v1/auth/oidc/config' }));
+      return {
+        enabled: requiredBoolean(root.enabled, 'OIDC enabled'),
+        providerDisplayName: root.provider_display_name === undefined ? undefined : requiredString(root.provider_display_name, 'OIDC provider display name'),
+      };
+    },
+    async oidcUrl(redirectURI: string): Promise<OIDCURL> {
+      const query = new URLSearchParams({ redirect_uri: redirectURI }).toString();
+      const root = successEnvelope(await request({ method: 'GET', path: `/api/v1/auth/oidc/url?${query}` }));
+      return {
+        authorizationUrl: requiredString(root.authorization_url, 'authorization URL'),
+        state: requiredString(root.state, 'OIDC state'),
+      };
+    },
+    async autoSetup(): Promise<AuthSession> {
+      return parseSession(await request({ method: 'POST', path: '/api/v1/auth/auto-setup', body: {} }));
+    },
+    async switchTenant(tenantId: number, refreshToken?: string): Promise<AuthSession> {
+      if (!Number.isSafeInteger(tenantId) || tenantId <= 0) throw new Error('tenantId must be a positive safe integer');
+      return parseSession(await request({ method: 'POST', path: '/api/v1/auth/switch-tenant', body: { tenant_id: tenantId, ...(refreshToken === undefined ? {} : { refresh_token: refreshToken }) } }));
+    },
+    async lookupInvitation(token: string): Promise<InvitationLookup> {
+      const root = successEnvelope(await request({ method: 'POST', path: '/api/v1/auth/invitations/lookup', body: { token } }));
+      const data = record(root.data, 'invitation lookup data');
+      return {
+        tenantId: requiredSafeInteger(data.tenant_id, 'tenantId'),
+        tenantName: data.tenant_name === undefined ? undefined : requiredString(data.tenant_name, 'tenant name'),
+        role: requiredString(data.role, 'invitation role'),
+        expiresAt: requiredString(data.expires_at, 'invitation expiry'),
+      };
+    },
+    async registerByInvite(input: { token: string; email: string; username: string; password: string }): Promise<AuthSession> {
+      return parseSession(await request({ method: 'POST', path: '/api/v1/auth/register-by-invite', body: input }));
+    },
+    async validate(): Promise<{ valid: boolean }> {
+      const root = successEnvelope(await request({ method: 'GET', path: '/api/v1/auth/validate' }));
+      return { valid: root.valid === undefined ? true : requiredBoolean(root.valid, 'token valid') };
     },
     async refresh(refreshToken: string): Promise<{ access_token: string; refresh_token: string }> {
       const root = successEnvelope(await request({ method: 'POST', path: '/api/v1/auth/refresh', body: { refreshToken } }));

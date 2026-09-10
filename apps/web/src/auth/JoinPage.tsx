@@ -1,0 +1,66 @@
+import { useEffect, useState } from 'react';
+import type { InvitationLookup, WeKnoraClient } from '@weknora/api-client';
+import { Button, Card, Status } from '@weknora/ui';
+import { readInviteToken } from './join.ts';
+
+export interface JoinPageProps {
+  client: WeKnoraClient;
+  onAuthenticated?: (session: Awaited<ReturnType<WeKnoraClient['auth']['registerByInvite']>>) => void;
+}
+
+export function JoinPage({ client, onAuthenticated }: JoinPageProps) {
+  const [token] = useState(() => readInviteToken(window.location.search));
+  const [lookup, setLookup] = useState<InvitationLookup | null>(null);
+  const [lookupState, setLookupState] = useState<'loading' | 'ready' | 'error'>(token ? 'loading' : 'error');
+  const [message, setMessage] = useState(token ? '' : 'This invitation link is missing its token.');
+  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!token) return;
+    let active = true;
+    void client.auth.lookupInvitation(token).then((next) => {
+      if (!active) return;
+      setLookup(next);
+      setLookupState('ready');
+    }).catch((error: unknown) => {
+      if (!active) return;
+      setLookupState('error');
+      setMessage(error instanceof Error ? error.message : 'This invitation link is invalid or expired.');
+    });
+    return () => { active = false; };
+  }, [client, token]);
+
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token) return;
+    setSubmitting(true);
+    setMessage('');
+    try {
+      const session = await client.auth.registerByInvite({ token, email, username, password });
+      onAuthenticated?.(session);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Invitation registration failed.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return <main className="wk-page"><Card>
+    <h1>Join workspace</h1>
+    {lookupState === 'loading' ? <Status>Checking invitation…</Status> : null}
+    {lookupState === 'error' ? <Status tone="error">{message}</Status> : null}
+    {lookupState === 'ready' && lookup ? <>
+      <p>Join <strong>{lookup.tenantName || `workspace ${lookup.tenantId}`}</strong> as {lookup.role}.</p>
+      <form className="wk-form" onSubmit={submit}>
+        <label>Username<input value={username} onChange={(event) => setUsername(event.target.value)} required minLength={2} /></label>
+        <label>Email<input value={email} onChange={(event) => setEmail(event.target.value)} type="email" required /></label>
+        <label>Password<input value={password} onChange={(event) => setPassword(event.target.value)} type="password" required minLength={6} /></label>
+        {message ? <Status tone="error">{message}</Status> : null}
+        <Button type="submit" disabled={submitting}>{submitting ? 'Creating account…' : 'Create account and join'}</Button>
+      </form>
+    </> : null}
+  </Card></main>;
+}

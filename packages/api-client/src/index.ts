@@ -8,7 +8,7 @@ export type { FetchLike, FetchResponseLike } from './transport/json.ts';
 export { AuthError, createRefreshCoordinator } from './auth/refresh-coordinator.ts';
 export type { AuthErrorCode, RefreshCoordinator, RefreshCoordinatorOptions, RefreshResponse } from './auth/refresh-coordinator.ts';
 export { createAuthApi } from './auth/endpoints.ts';
-export type { AuthApi, AuthMe, AuthSession, LoginInput } from './auth/endpoints.ts';
+export type { AuthApi, AuthMe, AuthSession, InvitationLookup, LoginInput, OIDCConfig, OIDCURL, RegisterInput, RegistrationConfig, RegistrationResult } from './auth/endpoints.ts';
 export type { KnowledgeDocumentListParams, KnowledgeDocumentUploadInput, KnowledgeDocumentSearchParams, KnowledgeTagListParams } from './knowledge/documents.ts';
 export type { KnowledgeDocument, KnowledgeProcessingStatus, KnowledgeDocumentListResponse, KnowledgeFolderNode, KnowledgeFolderTree, KnowledgeSearchResponse, KnowledgeTag } from '@weknora/contracts';
 export type { WikiPage, WikiPageListResponse, WikiPageRevision, WikiRevisionListResponse, WikiPageUpdateInput } from './wiki/pages.ts';

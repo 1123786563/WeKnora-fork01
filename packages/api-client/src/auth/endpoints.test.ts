@@ -32,3 +32,43 @@ test('does not treat a business-level logout failure as success', async () => {
   const ok = createAuthApi(async () => ({ success: true }));
   await ok.logout();
 });
+
+test('parses public registration, OIDC, Lite setup, and workspace auth endpoints', async () => {
+  const calls: Array<{ method: string; path: string; body?: unknown }> = [];
+  const auth = createAuthApi(async (request) => {
+    calls.push(request);
+    if (request.path === '/api/v1/auth/config') return { success: true, registration_mode: 'invite_only', complex_password_enabled: true };
+    if (request.path === '/api/v1/auth/oidc/config') return { success: true, enabled: true, provider_display_name: 'Acme SSO' };
+    if (request.path.startsWith('/api/v1/auth/oidc/url')) return { success: true, authorization_url: 'https://idp.test/authorize', state: 'signed-state' };
+    if (request.path === '/api/v1/auth/register') return { success: true, user: { id: 'u-1' }, tenant: { id: 7, name: 'Personal' } };
+    if (request.path === '/api/v1/auth/auto-setup') return { success: true, token: 'lite-access', refresh_token: 'lite-refresh' };
+    if (request.path === '/api/v1/auth/switch-tenant') return { success: true, token: 'tenant-access', refresh_token: 'tenant-refresh', active_tenant: { id: 8, name: 'Target' } };
+    if (request.path === '/api/v1/auth/invitations/lookup') return { success: true, data: { tenant_id: 7, tenant_name: 'Personal', role: 'viewer', expires_at: '2030-01-01T00:00:00Z' } };
+    if (request.path === '/api/v1/auth/register-by-invite') return { success: true, token: 'invite-access', refresh_token: 'invite-refresh' };
+    if (request.path === '/api/v1/auth/validate') return { success: true, valid: true };
+    throw new Error(`unexpected path ${request.path}`);
+  });
+
+  assert.deepEqual(await auth.registrationConfig(), { registrationMode: 'invite_only', complexPasswordEnabled: true });
+  assert.deepEqual(await auth.oidcConfig(), { enabled: true, providerDisplayName: 'Acme SSO' });
+  assert.deepEqual(await auth.oidcUrl('https://app.test/callback'), { authorizationUrl: 'https://idp.test/authorize', state: 'signed-state' });
+  assert.deepEqual(await auth.register({ username: 'alice', email: 'alice@example.test', password: 'password' }), { user: { id: 'u-1' }, tenant: { id: 7, name: 'Personal' } });
+  assert.deepEqual(await auth.autoSetup(), { token: 'lite-access', refreshToken: 'lite-refresh', user: undefined, tenant: undefined, memberships: undefined });
+  assert.deepEqual(await auth.switchTenant(8, 'refresh-1'), { token: 'tenant-access', refreshToken: 'tenant-refresh', user: undefined, tenant: { id: 8, name: 'Target' }, memberships: undefined });
+  assert.deepEqual(await auth.lookupInvitation('invite-token'), { tenantId: 7, tenantName: 'Personal', role: 'viewer', expiresAt: '2030-01-01T00:00:00Z' });
+  assert.deepEqual(await auth.registerByInvite({ token: 'invite-token', email: 'new@example.test', username: 'new', password: 'password' }), { token: 'invite-access', refreshToken: 'invite-refresh', user: undefined, tenant: undefined, memberships: undefined });
+  assert.deepEqual(await auth.validate(), { valid: true });
+  assert.deepEqual(calls.find((call) => call.path === '/api/v1/auth/switch-tenant')?.body, { tenant_id: 8, refresh_token: 'refresh-1' });
+});
+
+test('rejects malformed public auth responses instead of hiding them', async () => {
+  const auth = createAuthApi(async (request) => {
+    if (request.path === '/api/v1/auth/oidc/url?redirect_uri=https%3A%2F%2Fapp.test%2Fcallback') return { success: true, state: 'missing-url' };
+    if (request.path === '/api/v1/auth/invitations/lookup') return { success: true, data: { tenant_id: 9007199254740992, role: 'viewer', expires_at: '2030-01-01T00:00:00Z' } };
+    return { success: false, message: 'rejected' };
+  });
+
+  await assert.rejects(auth.oidcUrl('https://app.test/callback'), /authorization URL is required/);
+  await assert.rejects(auth.lookupInvitation('token'), /tenantId must be a safe integer/);
+  await assert.rejects(auth.registrationConfig(), /rejected/);
+});
