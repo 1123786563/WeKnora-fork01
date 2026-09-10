@@ -1,5 +1,5 @@
 export { createWeKnoraClient } from './client.ts';
-export type { WeKnoraClient, WeKnoraClientOptions, ClientRequest, KnowledgeBaseListParams, KnowledgeBaseMutationInput } from './client.ts';
+export type { WeKnoraClient, WeKnoraClientOptions, ClientRequest, KnowledgeBase, KnowledgeBaseListParams, KnowledgeBaseMutationInput } from './client.ts';
 export { ApiError } from './errors.ts';
 export type { HttpRequest, HttpResult, HttpStreamResult, HttpTransport, NativeFileSource } from './ports.ts';
 export type { BearerCredential, EmbedCredential, Credential, CredentialAdapter } from './ports.ts';
@@ -10,6 +10,8 @@ export type { AuthErrorCode, RefreshCoordinator, RefreshCoordinatorOptions, Refr
 export { createAuthApi } from './auth/endpoints.ts';
 export type { AuthApi, AuthMe, AuthSession, InvitationLookup, LoginInput, OIDCConfig, OIDCURL, RegisterInput, RegistrationConfig, RegistrationResult } from './auth/endpoints.ts';
 export type { KnowledgeDocumentListParams, KnowledgeDocumentUploadInput, KnowledgeDocumentUrlInput, KnowledgeDocumentManualInput, KnowledgeDocumentSearchParams, KnowledgeTagListParams } from './knowledge/documents.ts';
+export { createKnowledgeSettingsApi } from './knowledge/settings.ts';
+export type { ChunkingPreviewInput, ChunkingPreviewResult, KnowledgeBaseActivityEntry, KnowledgeBaseActivityResult, KnowledgeBaseConfigInput, KnowledgeBaseUpdateInput, ParserEngineInfo, ParserEnginesResult, StorageBackendView, VectorStoreView } from './knowledge/settings.ts';
 export { createKnowledgeFaqApi } from './knowledge/faq.ts';
 export type { FAQEntry, FAQEntryListResponse, FAQEntryFieldsUpdate, FAQEntryFieldsBatchRequest, FAQEntryPayload, FAQSearchInput } from './knowledge/faq.ts';
 export type { KnowledgeDocument, KnowledgeProcessingStatus, KnowledgeDocumentListResponse, KnowledgeFolderNode, KnowledgeFolderTree, KnowledgeSearchResponse, KnowledgeTag } from '@weknora/contracts';

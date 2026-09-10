@@ -63,9 +63,33 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-data-source-logs, .wk-data-source-editor { margin-top: 1rem; }
 .wk-data-source-logs h2, .wk-data-source-editor h2 { margin: 0; }
 .wk-data-source-item .wk-list-actions { flex-wrap: wrap; }
+.wk-knowledge-settings-page { max-width: 1180px; }
+.wk-settings-tabs { display: flex; gap: .5rem; max-width: 1180px; margin: 0 auto; padding: 1rem 1rem 0; }
+.wk-settings-tab { border: 1px solid #dce3ed; border-radius: 999px; background: #fff; color: #506078; cursor: pointer; padding: .5rem .8rem; }
+.wk-settings-tab.is-active { border-color: #2e6de6; color: #1849a9; background: #eff4ff; }
+.wk-settings-section { margin-top: 1rem; }
+.wk-settings-section h2 { margin: 0 0 .75rem; }
+.wk-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.wk-form-grid--three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.wk-form-grid--two { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: .75rem; }
+.wk-settings-section label { display: grid; gap: .35rem; color: #27364d; font-weight: 600; }
+.wk-settings-section input, .wk-settings-section textarea, .wk-settings-section select { width: 100%; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #172033; font: inherit; padding: .55rem .65rem; }
+.wk-settings-section input:read-only, .wk-settings-section select:disabled { background: #f7f9fc; color: #66758b; }
+.wk-settings-table { display: grid; gap: .6rem; max-width: 620px; }
+.wk-settings-table label { grid-template-columns: 8rem minmax(0, 1fr); align-items: center; }
+.wk-checkbox { display: flex !important; grid-template-columns: none !important; align-items: center; gap: .5rem !important; margin-top: .8rem; font-weight: 500 !important; }
+.wk-checkbox input { width: auto; }
+.wk-toggle-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .25rem 1rem; }
+.wk-preview-box { display: grid; gap: .75rem; margin-top: 1rem; border-top: 1px solid #eef1f5; padding-top: 1rem; }
+.wk-preview-result { border: 1px solid #dce3ed; border-radius: 6px; background: #f8fafc; padding: .75rem; }
+.wk-preview-result p { margin: 0 0 .5rem; }
+.wk-preview-result ol { margin: 0; padding-left: 1.25rem; max-height: 18rem; overflow: auto; }
+.wk-preview-result li { margin: .35rem 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.wk-settings-save { display: flex; justify-content: flex-end; margin-top: 1rem; }
 @media (max-width: 720px) { .wk-wiki-layout { grid-template-columns: 1fr; } }
 @media (max-width: 720px) { .wk-wiki-history-layout { grid-template-columns: 1fr; } }
 @media (max-width: 720px) { .wk-documents-layout { grid-template-columns: 1fr; } .wk-folder-panel { border-right: 0; border-bottom: 1px solid #edf0f5; padding: 0 0 1rem; } }
+@media (max-width: 720px) { .wk-form-grid, .wk-form-grid--three, .wk-form-grid--two, .wk-toggle-grid { grid-template-columns: 1fr; } .wk-settings-table label { grid-template-columns: 1fr; align-items: stretch; } .wk-settings-tabs { overflow-x: auto; } }
 
 .wk-integrations-page { max-width: 1040px; margin: 0 auto; padding: 2rem 1rem; }
 .wk-integrations-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; }

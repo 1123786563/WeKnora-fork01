@@ -17,6 +17,9 @@ import { createIdentityApi } from './identity/index.ts';
 import { createAdministrationApi } from './administration/index.ts';
 import { createSettingsApi } from './settings/index.ts';
 import { createEmbedApi } from './embed/index.ts';
+import { createKnowledgeSettingsApi } from './knowledge/settings.ts';
+
+export type { KnowledgeBase } from '@weknora/contracts';
 
 export interface ClientRequest {
   method: string;
@@ -100,6 +103,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
 
   const knowledgeDocuments = createKnowledgeDocumentsApi(request);
   const knowledgeFaq = createKnowledgeFaqApi(request);
+  const knowledgeSettings = createKnowledgeSettingsApi(request);
   const wiki = createWikiPagesApi(request);
   const dataSources = createDataSourcesApi(request);
   const auth = createAuthApi(request);
@@ -169,10 +173,12 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
       },
       documents: knowledgeDocuments,
       faq: knowledgeFaq,
+      settings: knowledgeSettings,
     },
     knowledge: {
       documents: knowledgeDocuments,
       faq: knowledgeFaq,
+      settings: knowledgeSettings,
     },
     wiki,
     dataSources,
