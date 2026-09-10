@@ -1,18 +1,15 @@
 import { createRoot } from 'react-dom/client';
 import { createWeKnoraClient } from '@weknora/api-client';
-import { createScopeController } from '@weknora/domain/scope';
 import { KnowledgeBasesPage } from './App.tsx';
 import { readLegacyPlatformSession } from './platform/legacy-session.ts';
 import { createBrowserTransport } from './platform/http.ts';
+import { createWebScopeRuntime } from './platform/scope-runtime.ts';
 import './styles.css';
 
 const session = readLegacyPlatformSession();
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? '';
-const scopeController = createScopeController({
-  origin: apiBaseUrl || window.location.origin,
-  userId: null,
-  tenantId: session.tenantId,
-});
+const scopeRuntime = createWebScopeRuntime(apiBaseUrl || window.location.origin, null, session.tenantId);
+const scopeController = scopeRuntime.controller;
 
 const client = createWeKnoraClient({
   baseURL: apiBaseUrl,
