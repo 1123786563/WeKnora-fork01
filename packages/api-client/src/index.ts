@@ -8,3 +8,4 @@ export { AuthError, createRefreshCoordinator } from './auth/refresh-coordinator.
 export type { AuthErrorCode, RefreshCoordinator, RefreshCoordinatorOptions, RefreshResponse } from './auth/refresh-coordinator.ts';
 export type { KnowledgeDocumentListParams, KnowledgeDocumentUploadInput } from './knowledge/documents.ts';
 export type { KnowledgeDocument, KnowledgeProcessingStatus, KnowledgeDocumentListResponse } from '@weknora/contracts';
+export type { WikiPage, WikiPageListResponse, WikiPageRevision, WikiRevisionListResponse, WikiPageUpdateInput } from './wiki/pages.ts';

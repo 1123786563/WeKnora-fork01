@@ -2,6 +2,7 @@ import { parseKnowledgeBaseListResponse, parseKnowledgeBaseResponse, type Knowle
 import { ApiError, errorFromResult } from './errors.ts';
 import type { HttpRequest, HttpResult, HttpTransport } from './ports.ts';
 import { createKnowledgeDocumentsApi } from './knowledge/documents.ts';
+import { createWikiPagesApi } from './wiki/pages.ts';
 
 export interface ClientRequest {
   method: string;
@@ -84,6 +85,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
   }
 
   const knowledgeDocuments = createKnowledgeDocumentsApi(request);
+  const wiki = createWikiPagesApi(request);
 
   return {
     request,
@@ -106,6 +108,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
     knowledge: {
       documents: knowledgeDocuments,
     },
+    wiki,
   };
 }
 
