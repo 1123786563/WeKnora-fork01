@@ -28,6 +28,9 @@ export interface KnowledgeBaseListResponse {
   data: KnowledgeBase[];
 }
 
+export type { ChatResponseType, ChatStreamEvent } from './chat/events.ts';
+export { responseType } from './chat/events.ts';
+
 export type KnowledgeProcessingStatus =
   | 'pending'
   | 'processing'

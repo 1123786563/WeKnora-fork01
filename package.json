@@ -4,8 +4,8 @@
   "type": "module",
   "packageManager": "pnpm@10.28.2",
   "scripts": {
-    "test:shared": "tsx --test packages/contracts/test/*.test.ts packages/domain/src/*.test.ts packages/domain/src/knowledge/*.test.ts packages/domain/src/wiki/*.test.ts packages/api-client/src/*.test.ts packages/api-client/src/knowledge/*.test.ts packages/api-client/src/wiki/*.test.ts",
-    "typecheck:shared": "tsc --noEmit --strict --target ES2022 --module NodeNext --moduleResolution NodeNext --allowImportingTsExtensions packages/contracts/src/index.ts packages/api-client/src/client.ts packages/api-client/src/datasource.ts packages/api-client/src/errors.ts packages/api-client/src/index.ts packages/api-client/src/ports.ts packages/api-client/src/transport/json.ts packages/api-client/src/knowledge/documents.ts packages/api-client/src/wiki/pages.ts packages/domain/src/query-key.ts packages/domain/src/knowledge/processing.ts packages/domain/src/wiki/diff.ts",
+    "test:shared": "tsx --test packages/contracts/test/*.test.ts packages/domain/src/*.test.ts packages/domain/src/knowledge/*.test.ts packages/domain/src/wiki/*.test.ts packages/domain/src/chat/*.test.ts packages/api-client/src/*.test.ts packages/api-client/src/knowledge/*.test.ts packages/api-client/src/wiki/*.test.ts",
+    "typecheck:shared": "tsc --noEmit --strict --target ES2022 --module NodeNext --moduleResolution NodeNext --allowImportingTsExtensions packages/contracts/src/index.ts packages/api-client/src/client.ts packages/api-client/src/datasource.ts packages/api-client/src/errors.ts packages/api-client/src/index.ts packages/api-client/src/ports.ts packages/api-client/src/transport/json.ts packages/api-client/src/knowledge/documents.ts packages/api-client/src/wiki/pages.ts packages/domain/src/query-key.ts packages/domain/src/knowledge/processing.ts packages/domain/src/wiki/diff.ts packages/domain/src/chat/reducer.ts",
     "test:web": "pnpm --filter @weknora/web test",
     "typecheck:web": "pnpm --filter @weknora/web exec tsc -p tsconfig.json --noEmit",
     "build:web": "pnpm --filter @weknora/web build"
