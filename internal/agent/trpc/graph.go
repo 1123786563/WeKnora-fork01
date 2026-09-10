@@ -167,14 +167,15 @@ func buildGraph(b GraphBindings) (*graph.Graph, error) {
 		}
 		if s.NextCallIndex > 0 {
 			id := s.PendingCallIDs[s.NextCallIndex-1]
-			if b.Tools != nil {
-				durable, verifyErr := b.Tools.VerifyResult(ctx, b.fenceFromContext(ctx), id)
-				if verifyErr != nil {
-					return nil, fmt.Errorf("durable tool result %s unavailable: %w", id, verifyErr)
-				}
-				if durable.Result.Output != toolOutputForCall(s, id) {
-					return nil, fmt.Errorf("durable tool result %s does not match applied result", id)
-				}
+			if b.Tools == nil {
+				return nil, fmt.Errorf("durable tool result %s cannot be verified without tool executor", id)
+			}
+			durable, verifyErr := b.Tools.VerifyResult(ctx, b.fenceFromContext(ctx), id)
+			if verifyErr != nil {
+				return nil, fmt.Errorf("durable tool result %s unavailable: %w", id, verifyErr)
+			}
+			if durable.Result.Output != toolOutputForCall(s, id) {
+				return nil, fmt.Errorf("durable tool result %s does not match applied result", id)
 			}
 			if !s.AppliedCallIDs[id] {
 				return nil, fmt.Errorf("tool result %s was not durably applied", id)

@@ -86,7 +86,11 @@ func graphBindingsWithFence(b GraphBindings, f agentruntime.Fence) GraphBindings
 
 func cloneState(in State) State {
 	out := in
-	out.Messages = append([]model.Message(nil), in.Messages...)
+	out.Messages = make([]model.Message, len(in.Messages))
+	for i, msg := range in.Messages {
+		raw, _ := json.Marshal(msg)
+		_ = json.Unmarshal(raw, &out.Messages[i])
+	}
 	out.PendingCallIDs = append([]string(nil), in.PendingCallIDs...)
 	out.AppliedCallIDs = map[string]bool{}
 	for k, v := range in.AppliedCallIDs {
@@ -96,10 +100,6 @@ func cloneState(in State) State {
 	out.UsageAttempts = map[string]json.RawMessage{}
 	for k, v := range in.UsageAttempts {
 		out.UsageAttempts[k] = append(json.RawMessage(nil), v...)
-	}
-	for i := range out.Messages {
-		out.Messages[i].ToolCalls = append([]model.ToolCall(nil), in.Messages[i].ToolCalls...)
-		out.Messages[i].ContentParts = append([]model.ContentPart(nil), in.Messages[i].ContentParts...)
 	}
 	return out
 }
