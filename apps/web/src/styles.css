@@ -8,3 +8,6 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-list { list-style: none; margin: 0; padding: 0; }
 .wk-list li { align-items: baseline; border-bottom: 1px solid #edf0f5; display: flex; justify-content: space-between; gap: 1rem; padding: 0.9rem 0; }
 .wk-list li span { color: #66758b; font-family: ui-monospace, monospace; font-size: 0.8rem; }
+.wk-form { display: flex; align-items: end; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.wk-form label { display: grid; gap: 0.25rem; }
+.wk-form input { border: 1px solid #b8c5d6; border-radius: 6px; padding: 0.55rem; }

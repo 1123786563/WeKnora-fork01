@@ -16,3 +16,15 @@ export async function loadKnowledgeBases(
     return { status: 'error', message: error instanceof Error ? error.message : 'Unable to load knowledge bases' };
   }
 }
+
+export async function saveKnowledgeBase(client: Pick<WeKnoraClient, 'knowledgeBases'>, id: string | null, input: { name: string; type?: 'document' | 'faq' }) {
+  if (!input.name.trim()) throw new Error('Knowledge base name is required');
+  return id
+    ? client.knowledgeBases.update(id, input)
+    : client.knowledgeBases.create(input);
+}
+
+export async function deleteKnowledgeBase(client: Pick<WeKnoraClient, 'knowledgeBases'>, id: string): Promise<void> {
+  if (!id.trim()) throw new Error('Knowledge base id is required');
+  await client.knowledgeBases.remove(id);
+}

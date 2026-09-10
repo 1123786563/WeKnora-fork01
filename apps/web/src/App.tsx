@@ -3,7 +3,7 @@ import type { WeKnoraClient } from '@weknora/api-client';
 import { createScopeController } from '@weknora/domain/scope';
 import { scopedKey } from '@weknora/domain';
 import { Button, Card, Status } from '@weknora/ui';
-import { loadKnowledgeBases, type KnowledgeBaseListState } from './knowledge-bases/list.ts';
+import { deleteKnowledgeBase, loadKnowledgeBases, saveKnowledgeBase, type KnowledgeBaseListState } from './knowledge-bases/list.ts';
 
 interface KnowledgeBasesPageProps {
   client: WeKnoraClient;
@@ -12,6 +12,9 @@ interface KnowledgeBasesPageProps {
 export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPageProps) {
   const [reloadToken, setReloadToken] = useState(0);
   const [state, setState] = useState<KnowledgeBaseListState>({ status: 'error', message: 'Loading…' });
+  const [name, setName] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
   const scope = scopeController.current();
   const queryKey = useMemo(() => scopedKey(scope.scope, 'knowledge-bases'), [scope.scope]);
 
@@ -24,6 +27,23 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
     return () => { active = false; };
   }, [client, reloadToken, scopeController, scope.scope, scope.signal]);
 
+  async function save(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMutationError(null);
+    try {
+      await saveKnowledgeBase(client, editingId, { name, type: 'document' });
+      setName('');
+      setEditingId(null);
+      setReloadToken((value) => value + 1);
+    } catch (error) { setMutationError(error instanceof Error ? error.message : 'Save failed'); }
+  }
+
+  async function remove(id: string) {
+    setMutationError(null);
+    try { await deleteKnowledgeBase(client, id); setReloadToken((value) => value + 1); }
+    catch (error) { setMutationError(error instanceof Error ? error.message : 'Delete failed'); }
+  }
+
   return (
     <main className="wk-page">
       <header className="wk-header">
@@ -35,6 +55,12 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
         <Button type="button" onClick={() => setReloadToken((value) => value + 1)}>Reload</Button>
       </header>
       <Card>
+        <form className="wk-form" onSubmit={save}>
+          <label>Knowledge base name <input value={name} onChange={(event) => setName(event.target.value)} required /></label>
+          <Button type="submit">{editingId ? 'Save changes' : 'Create knowledge base'}</Button>
+          {editingId ? <Button type="button" onClick={() => { setEditingId(null); setName(''); }}>Cancel</Button> : null}
+        </form>
+        {mutationError ? <Status tone="error">{mutationError}</Status> : null}
         <p className="wk-debug">scope key: {JSON.stringify(queryKey)}</p>
         {state.status === 'error' && state.message === 'Loading…' ? <Status>Loading knowledge bases…</Status> : null}
         {state.status === 'error' && state.message !== 'Loading…' ? (
@@ -46,7 +72,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
         {state.status === 'success' ? (
           state.items.length === 0 ? <Status>No knowledge bases returned by the backend.</Status> : (
             <ul className="wk-list">
-              {state.items.map((item) => <li key={item.id}><strong>{item.name}</strong><span>{item.id}</span></li>)}
+              {state.items.map((item) => <li key={item.id}><strong>{item.name}</strong><span>{item.id}</span><Button type="button" onClick={() => { setEditingId(item.id); setName(item.name); }}>Edit</Button><Button type="button" onClick={() => void remove(item.id)}>Delete</Button></li>)}
             </ul>
           )
         ) : null}
