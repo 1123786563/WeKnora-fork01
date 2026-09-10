@@ -338,11 +338,21 @@ func (m *existingModel) consumeStream(ctx context.Context, attempt attemptContex
 				result.FinishReason = chunk.FinishReason
 				completed = true
 			}
+			// Ollama's terminal Answer carries Done but no FinishReason. The
+			// thinking emitter also uses Done, solely to close its reasoning
+			// section; that signal cannot complete the model call.
+			if chunk.Done && chunk.ResponseType != types.ResponseTypeThinking {
+				completed = true
+			}
 			if chunk.Usage != nil {
 				result.Usage = *chunk.Usage
 			}
 			if len(chunk.ToolCalls) > 0 {
-				result.ToolCalls = mergeToolCalls(result.ToolCalls, chunk.ToolCalls, chunk.Done)
+				// Existing OpenAI/Anthropic Chat streams expose final snapshots;
+				// Ollama exposes complete objects on ToolCall events. Unmarked
+				// intermediate call payloads are deltas, regardless of JSON syntax.
+				snapshot := chunk.Done || chunk.ResponseType == types.ResponseTypeToolCall
+				result.ToolCalls = mergeToolCalls(result.ToolCalls, chunk.ToolCalls, snapshot)
 			}
 			if chunk.Content == "" || (chunk.Data != nil && chunk.Data["source"] != nil) {
 				continue
@@ -365,7 +375,7 @@ func (m *existingModel) consumeStream(ctx context.Context, attempt attemptContex
 	}
 }
 
-func mergeToolCalls(current, incoming []types.LLMToolCall, final bool) []types.LLMToolCall {
+func mergeToolCalls(current, incoming []types.LLMToolCall, snapshot bool) []types.LLMToolCall {
 	for i, call := range incoming {
 		index := -1
 		for j := range current {
@@ -383,9 +393,10 @@ func mergeToolCalls(current, incoming []types.LLMToolCall, final bool) []types.L
 		}
 		old := &current[index]
 		args := call.Function.Arguments
-		// Existing providers publish complete snapshots in their terminal chunk.
-		// Other Chat implementations can supply fragments with stable call IDs.
-		if final || json.Valid([]byte(args)) || strings.HasPrefix(args, old.Function.Arguments) {
+		// A valid scalar such as "x", true or 12 can still be only one delta
+		// inside a larger JSON object. Only an explicit snapshot replaces prior
+		// arguments; repeated/prefix-equal fragments must also be appended.
+		if snapshot {
 			if args != "" {
 				old.Function.Arguments = args
 			}

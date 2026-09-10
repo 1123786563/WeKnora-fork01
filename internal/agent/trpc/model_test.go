@@ -176,3 +176,78 @@ func TestModelErrorsCannotCreateSuccessfulPlans(t *testing.T) {
 	_, err = NewModel(f).GenerateContent(ctx, &model.Request{})
 	require.ErrorIs(t, err, context.Canceled)
 }
+
+func TestModelOllamaDoneWithoutFinishReason(t *testing.T) {
+	// Matches OllamaChat.ChatStream: complete tool objects arrive before a
+	// terminal Answer event with Done=true and an empty FinishReason.
+	call := types.LLMToolCall{
+		ID: "ollama-call", Type: "function",
+		Function: types.FunctionCall{Name: "lookup", Arguments: `{"q":"x"}`},
+	}
+	f := &modelChatFake{chunks: []types.StreamResponse{
+		{ResponseType: types.ResponseTypeThinking, Content: "reason"},
+		{ResponseType: types.ResponseTypeThinking, Done: true},
+		{ResponseType: types.ResponseTypeAnswer, Content: "answer"},
+		{ResponseType: types.ResponseTypeToolCall, ToolCalls: []types.LLMToolCall{call}},
+		{ResponseType: types.ResponseTypeAnswer, Done: true, Usage: &types.TokenUsage{TotalTokens: 11}},
+	}}
+	stream, err := NewModel(f).GenerateContent(context.Background(),
+		&model.Request{GenerationConfig: model.GenerationConfig{Stream: true}})
+	require.NoError(t, err)
+	var last *model.Response
+	for response := range stream {
+		last = response
+	}
+	require.NotNil(t, last)
+	require.Nil(t, last.Error)
+	require.True(t, last.Done)
+	require.Equal(t, "answer", last.Choices[0].Message.Content)
+	require.Equal(t, "reason", last.Choices[0].Message.ReasoningContent)
+	require.Equal(t, "ollama-call", last.Choices[0].Message.ToolCalls[0].ID)
+	require.Equal(t, 11, last.Usage.TotalTokens)
+
+	// A reasoning section's Done alone is not successful completion of the call.
+	f.chunks = f.chunks[:2]
+	stream, err = NewModel(f).GenerateContent(context.Background(),
+		&model.Request{GenerationConfig: model.GenerationConfig{Stream: true}})
+	require.NoError(t, err)
+	for response := range stream {
+		last = response
+	}
+	require.NotNil(t, last.Error)
+}
+
+func TestModelToolArgumentScalarFragmentsAreAppended(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		fragments []string
+		want      string
+	}{
+		{"string_value", []string{`{"q":`, `"x"`, `}`}, `{"q":"x"}`},
+		{"bool_value", []string{`{"q":`, `true`, `}`}, `{"q":true}`},
+		{"number_value", []string{`{"q":`, `12`, `}`}, `{"q":12}`},
+		{"null_value", []string{`{"q":`, `null`, `}`}, `{"q":null}`},
+		{"scalar_number", []string{`1`, `2`, `3`}, `123`},
+		{"scalar_bool", []string{`t`, `rue`}, `true`},
+		{"repeated_fragment", []string{`1`, `1`}, `11`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &modelChatFake{}
+			for _, fragment := range tt.fragments {
+				f.chunks = append(f.chunks, types.StreamResponse{ToolCalls: []types.LLMToolCall{{
+					ID: "c1", Type: "function", Function: types.FunctionCall{Name: "lookup", Arguments: fragment},
+				}}})
+			}
+			f.chunks = append(f.chunks, types.StreamResponse{Done: true, FinishReason: "tool_calls"})
+			stream, err := NewModel(f).GenerateContent(context.Background(),
+				&model.Request{GenerationConfig: model.GenerationConfig{Stream: true}})
+			require.NoError(t, err)
+			var last *model.Response
+			for response := range stream {
+				last = response
+			}
+			require.Nil(t, last.Error)
+			require.Equal(t, tt.want, string(last.Choices[0].Message.ToolCalls[0].Function.Arguments))
+		})
+	}
+}

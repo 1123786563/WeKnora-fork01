@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strings"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"trpc.group/trpc-go/trpc-agent-go/graph"
@@ -90,7 +91,7 @@ func (s *checkpointSaver) GetTuple(ctx context.Context, config map[string]any) (
 		if err != nil {
 			return nil, err
 		}
-		if err := s.validateLogs(ctx, envelope.Tuple.Checkpoint); err != nil {
+		if err := s.validateTupleLogs(ctx, &envelope.Tuple); err != nil {
 			return nil, err
 		}
 		return &envelope.Tuple, nil
@@ -137,7 +138,7 @@ func (s *checkpointSaver) List(ctx context.Context, config map[string]any, filte
 		if filter != nil && !matchesMetadata(envelope.Tuple.Metadata, filter.Metadata) {
 			continue
 		}
-		if err := s.validateLogs(ctx, envelope.Tuple.Checkpoint); err != nil {
+		if err := s.validateTupleLogs(ctx, &envelope.Tuple); err != nil {
 			return nil, err
 		}
 		result = append(result, &envelope.Tuple)
@@ -297,6 +298,12 @@ func (*checkpointSaver) Close() error { return nil }
 func encodeCheckpoint(envelope checkpointEnvelope, writes []graph.PendingWrite, seq int64, parent string) (
 	*agentruntime.CheckpointRecord, error,
 ) {
+	// Validate pending state at the write boundary as well as on recovery.
+	// The normalized values keep their concrete schemas when serialized.
+	writes, err := restorePendingWrites(writes)
+	if err != nil {
+		return nil, err
+	}
 	// Pending writes have a dedicated column and are never duplicated in state.
 	envelope.Tuple.PendingWrites = nil
 	state, err := json.Marshal(envelope)
@@ -338,29 +345,20 @@ func (s *checkpointSaver) decode(record agentruntime.CheckpointRecord) (*checkpo
 	}
 	// JSON's generic maps must be rehydrated to the graph's declared state types.
 	cp := envelope.Tuple.Checkpoint
-	if value, ok := cp.ChannelValues[StateKey]; ok {
-		raw, err := json.Marshal(value)
+	for channel, value := range cp.ChannelValues {
+		restored, err := restoreChannelValue(channel, value)
 		if err != nil {
 			return nil, err
 		}
-		var state State
-		if err := json.Unmarshal(raw, &state); err != nil {
-			return nil, err
-		}
-		cp.ChannelValues[StateKey] = state
+		cp.ChannelValues[channel] = restored
 	}
-	if value, ok := cp.ChannelValues[graph.StateKeyMessages]; ok {
-		raw, err := json.Marshal(value)
-		if err != nil {
-			return nil, err
-		}
-		var messages []model.Message
-		if err := json.Unmarshal(raw, &messages); err != nil {
-			return nil, err
-		}
-		cp.ChannelValues[graph.StateKeyMessages] = messages
+	// UseNumber runs before any generic Value is decoded, so a pending State's
+	// int64 cursor is never rounded through a float64 intermediate.
+	if err := decodeStrict(record.PendingWrites, &envelope.Tuple.PendingWrites); err != nil {
+		return nil, err
 	}
-	if err := json.Unmarshal(record.PendingWrites, &envelope.Tuple.PendingWrites); err != nil {
+	envelope.Tuple.PendingWrites, err = restorePendingWrites(envelope.Tuple.PendingWrites)
+	if err != nil {
 		return nil, err
 	}
 	return &envelope, nil
@@ -370,27 +368,125 @@ func validateGraphCheckpoint(cp *graph.Checkpoint) error {
 	if cp.Version != graph.CheckpointVersion {
 		return fmt.Errorf("unsupported SDK checkpoint version %d", cp.Version)
 	}
-	if value, ok := cp.ChannelValues[StateKey]; ok {
-		raw, err := json.Marshal(value)
-		if err != nil {
-			return err
-		}
-		var state State
-		if err := json.Unmarshal(raw, &state); err != nil {
+	for channel, value := range cp.ChannelValues {
+		if _, err := restoreChannelValue(channel, value); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (s *checkpointSaver) validateLogs(ctx context.Context, cp *graph.Checkpoint) error {
-	value, ok := cp.ChannelValues[StateKey]
-	if !ok {
+func restorePendingWrites(writes []graph.PendingWrite) ([]graph.PendingWrite, error) {
+	restored := make([]graph.PendingWrite, len(writes))
+	if writes == nil {
+		return nil, nil
+	}
+	for i, write := range writes {
+		if write.Channel == "" || write.TaskID == "" || write.Sequence < 0 {
+			return nil, fmt.Errorf("invalid pending write identity/channel/sequence")
+		}
+		value, err := restoreChannelValue(write.Channel, write.Value)
+		if err != nil {
+			return nil, fmt.Errorf("pending write %s: %w", write.Channel, err)
+		}
+		restored[i] = write
+		restored[i].Value = value
+	}
+	return restored, nil
+}
+
+// State channels and SDK input channels share one schema on both checkpoint
+// surfaces. Graph routing markers remain ordinary SDK values.
+func restoreChannelValue(channel string, value any) (any, error) {
+	key := strings.TrimPrefix(channel, graph.ChannelInputPrefix)
+	if key != StateKey && key != graph.StateKeyMessages {
+		return value, nil
+	}
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
+	}
+	if key == StateKey {
+		var state State
+		if err := decodeStrict(raw, &state); err != nil {
+			return nil, err
+		}
+		if err := validateCheckpointMessages(state.Messages); err != nil {
+			return nil, err
+		}
+		return state, nil
+	}
+	var messages []model.Message
+	if err := decodeStrict(raw, &messages); err != nil {
+		return nil, err
+	}
+	if err := validateCheckpointMessages(messages); err != nil {
+		return nil, err
+	}
+	return messages, nil
+}
+
+func validateCheckpointMessages(messages []model.Message) error {
+	for _, message := range messages {
+		if !message.Role.IsValid() {
+			return fmt.Errorf("invalid checkpoint message role")
+		}
+		if message.Role == model.RoleTool && message.ToolID == "" {
+			return fmt.Errorf("checkpoint tool message requires a tool reference")
+		}
+		for _, call := range message.ToolCalls {
+			if call.ID == "" || call.Function.Name == "" || !json.Valid(call.Function.Arguments) {
+				return fmt.Errorf("invalid checkpoint tool call")
+			}
+		}
+	}
+	return nil
+}
+
+func (s *checkpointSaver) validateTupleLogs(ctx context.Context, tuple *graph.CheckpointTuple) error {
+	for channel, value := range tuple.Checkpoint.ChannelValues {
+		if err := s.validateChannelLogs(ctx, channel, value); err != nil {
+			return err
+		}
+	}
+	for _, write := range tuple.PendingWrites {
+		if err := s.validateChannelLogs(ctx, write.Channel, write.Value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *checkpointSaver) validateChannelLogs(ctx context.Context, channel string, value any) error {
+	key := strings.TrimPrefix(channel, graph.ChannelInputPrefix)
+	var pending []string
+	applied := make(map[string]bool)
+	var messages []model.Message
+	switch key {
+	case StateKey:
+		state, ok := value.(State)
+		if !ok {
+			return fmt.Errorf("invalid graph state type %s", reflect.TypeOf(value))
+		}
+		pending, messages = state.PendingCallIDs, state.Messages
+		for id, done := range state.AppliedCallIDs {
+			applied[id] = done
+		}
+	case graph.StateKeyMessages:
+		var ok bool
+		messages, ok = value.([]model.Message)
+		if !ok {
+			return fmt.Errorf("invalid graph messages type %s", reflect.TypeOf(value))
+		}
+	default:
 		return nil
 	}
-	state, ok := value.(State)
-	if !ok {
-		return fmt.Errorf("invalid graph state type %s", reflect.TypeOf(value))
+	// Model plans can precede journal admission. Tool result messages cannot:
+	// their referenced call must already have a durable reusable result.
+	for _, message := range messages {
+		if message.Role == model.RoleTool {
+			applied[message.ToolID] = true
+		}
 	}
-	return s.store.ValidateCheckpointCalls(ctx, s.fence.RunKey, state.PendingCallIDs, state.AppliedCallIDs)
+	return s.store.ValidateCheckpointCalls(ctx, s.fence.RunKey, pending, applied)
 }

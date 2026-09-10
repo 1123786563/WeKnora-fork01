@@ -101,6 +101,7 @@ func (s *State) UnmarshalJSON(raw []byte) error {
 
 func decodeStrict(raw []byte, value any) error {
 	d := json.NewDecoder(bytes.NewReader(raw))
+	d.UseNumber()
 	d.DisallowUnknownFields()
 	if err := d.Decode(value); err != nil {
 		return err

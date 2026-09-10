@@ -175,3 +175,94 @@ func TestCheckpointRejectsPersistedUnknownEnvelope(t *testing.T) {
 	_, err = saver.Get(context.Background(), config)
 	require.ErrorContains(t, err, "version")
 }
+
+func TestCheckpointPendingStateAndMessagesRehydrateAfterReopen(t *testing.T) {
+	db, store, fence := checkpointDB(t)
+	require.NoError(t, db.Exec(`INSERT INTO agent_tool_calls
+		(tenant_id,run_id,call_id,call_seq,tool_name,tool_identity,args_hash,args,status,result)
+		VALUES (1,'r1','c1',1,'lookup','lookup','hash','{}','succeeded','"done"')`).Error)
+	state := State{
+		Version: 1, InputCursor: 9007199254740993,
+		PendingCallIDs: []string{"c1"}, AppliedCallIDs: map[string]bool{"c1": true}, NextCallIndex: 1,
+	}
+	messages := []model.Message{model.NewToolMessage("c1", "lookup", "done")}
+	saver := NewCheckpointSaver(store, fence)
+	config, err := saver.PutFull(context.Background(), graph.PutFullRequest{
+		Config:     CheckpointConfig(fence.RunKey, ""),
+		Checkpoint: graph.NewCheckpoint(map[string]any{StateKey: State{Version: 1}}, nil, nil),
+		PendingWrites: []graph.PendingWrite{
+			{TaskID: "task-1", Channel: graph.ChannelInputPrefix + StateKey, Value: state, Sequence: 1},
+			{TaskID: "task-2", Channel: graph.StateKeyMessages, Value: messages, Sequence: 2},
+		},
+	})
+	require.NoError(t, err)
+	require.NoError(t, saver.Close())
+	reopened := NewCheckpointSaver(repository.NewAgentRunStore(db), fence)
+	tuple, err := reopened.GetTuple(context.Background(), config)
+	require.NoError(t, err)
+	require.Equal(t, state, tuple.PendingWrites[0].Value)
+	require.Equal(t, messages, tuple.PendingWrites[1].Value)
+	// The same strict restoration applies to later PutWrites updates.
+	require.NoError(t, reopened.PutWrites(context.Background(), graph.PutWritesRequest{
+		Config: config, TaskID: "task-3", Writes: []graph.PendingWrite{{Channel: StateKey, Value: state, Sequence: 3}},
+	}))
+	tuple, err = NewCheckpointSaver(store, fence).GetTuple(context.Background(), config)
+	require.NoError(t, err)
+	require.Equal(t, state, tuple.PendingWrites[2].Value)
+
+	// Removing a result referenced only by a pending write must stop recovery.
+	require.NoError(t, db.Exec("DELETE FROM agent_tool_calls WHERE run_id='r1' AND call_id='c1'").Error)
+	_, err = reopened.GetTuple(context.Background(), config)
+	require.ErrorContains(t, err, "tool")
+	_, err = reopened.List(context.Background(), CheckpointConfig(fence.RunKey, ""), nil)
+	require.ErrorContains(t, err, "tool")
+}
+
+func TestCheckpointRejectsInvalidPendingChannelValues(t *testing.T) {
+	for _, tt := range []struct{ name, channel, value string }{
+		{"future_state", StateKey, `{"version":2}`},
+		{"future_input_state", graph.ChannelInputPrefix + StateKey, `{"version":2}`},
+		{"fractional_cursor", StateKey, `{"version":1,"input_cursor":1.5}`},
+		{"malformed_messages", graph.StateKeyMessages, `{"role":"tool","tool_id":"missing"}`},
+		{"invalid_role", graph.StateKeyMessages, `[{"role":"unknown"}]`},
+		{"missing_tool_id", graph.ChannelInputPrefix + graph.StateKeyMessages, `[{"role":"tool","content":"x"}]`},
+		{"unknown_message_field", graph.StateKeyMessages, `[{"role":"assistant","unknown":1}]`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			db, store, fence := checkpointDB(t)
+			saver := NewCheckpointSaver(store, fence)
+			config, err := saver.Put(context.Background(), graph.PutRequest{
+				Config:     CheckpointConfig(fence.RunKey, ""),
+				Checkpoint: graph.NewCheckpoint(map[string]any{StateKey: State{Version: 1}}, nil, nil),
+			})
+			require.NoError(t, err)
+			pending := []graph.PendingWrite{{TaskID: "pending", Channel: tt.channel, Value: json.RawMessage(tt.value)}}
+			err = saver.PutWrites(context.Background(), graph.PutWritesRequest{
+				Config: config, TaskID: "pending", Writes: pending,
+			})
+			require.Error(t, err)
+			// Simulate a corrupt/unsupported persisted snapshot, independent of the write validator.
+			raw, err := json.Marshal(pending)
+			require.NoError(t, err)
+			require.NoError(t, db.Exec("UPDATE agent_run_checkpoints SET pending_writes=?", string(raw)).Error)
+			_, err = NewCheckpointSaver(store, fence).GetTuple(context.Background(), config)
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestCheckpointPendingToolMessageRequiresDurableResult(t *testing.T) {
+	_, store, fence := checkpointDB(t)
+	saver := NewCheckpointSaver(store, fence)
+	config, err := saver.PutFull(context.Background(), graph.PutFullRequest{
+		Config:     CheckpointConfig(fence.RunKey, ""),
+		Checkpoint: graph.NewCheckpoint(map[string]any{StateKey: State{Version: 1}}, nil, nil),
+		PendingWrites: []graph.PendingWrite{{
+			TaskID: "pending", Channel: graph.StateKeyMessages,
+			Value: []model.Message{model.NewToolMessage("missing", "lookup", "unverified result")},
+		}},
+	})
+	require.NoError(t, err)
+	_, err = NewCheckpointSaver(store, fence).GetTuple(context.Background(), config)
+	require.ErrorContains(t, err, "tool")
+}
