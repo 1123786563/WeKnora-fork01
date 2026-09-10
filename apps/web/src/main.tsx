@@ -10,6 +10,7 @@ import { persistSelectedTenant, readLegacyPlatformSession } from './platform/leg
 import { createBrowserTransport } from './platform/http.ts';
 import { createBrowserCredentialAdapter, persistBrowserCredential } from './platform/credentials.ts';
 import { createWebScopeRuntime } from './platform/scope-runtime.ts';
+import { createWebPlatformAdapters } from './platform/adapters.ts';
 import { guardRoute, resolveRoute, routeRedirect } from './routes.tsx';
 import { ChatRoutePage } from './chat/ChatRoutePage.tsx';
 import { IntegrationsRoutePage } from './integrations/IntegrationsRoutePage.tsx';
@@ -56,6 +57,7 @@ client = createWeKnoraClient({
 });
 
 const root = createRoot(document.getElementById('root')!);
+const platformAdapters = createWebPlatformAdapters();
 
 function nextPathAfterAuth(): string {
   const next = new URLSearchParams(window.location.search).get('next');
@@ -90,12 +92,12 @@ function renderProtected() {
   });
   if (decision.kind === 'redirect') {
     if (decision.to === '/onboarding/workspace') {
-      if (window.location.pathname !== decision.to) window.history.replaceState({}, document.title, decision.to);
+      if (window.location.pathname !== decision.to) platformAdapters.replace(decision.to);
       root.render(<WorkspaceOnboardingPage client={client} scopeRuntime={scopeRuntime} onLogout={logout} />);
       return;
     }
     if (decision.reason === 'authentication-required') {
-      window.history.replaceState({}, document.title, decision.to);
+      platformAdapters.replace(decision.to);
       renderLogin();
       return;
     }

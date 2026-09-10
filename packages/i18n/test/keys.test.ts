@@ -12,3 +12,17 @@ test('formats interpolation and falls back to English/key without Vue runtime', 
   assert.equal(formatMessage('en-US', 'auth.login'), 'Sign in');
   assert.equal(isLocale('fr-FR'), false);
 });
+
+test('keeps the React foundation keys and placeholders aligned across every locale', () => {
+  const requiredKeys = ['auth.login', 'auth.email', 'auth.password', 'common.loading', 'common.retry', 'common.cancel', 'common.workspaceRequired', 'common.itemCount'];
+  for (const locale of supportedLocales) {
+    for (const key of requiredKeys) assert.ok(messages[locale][key], `${locale} is missing ${key}`);
+  }
+  assert.equal(formatMessage('en-US', 'common.itemCount', { count: 3 }), '3 items');
+  assert.equal(formatMessage('zh-CN', 'common.itemCount', { count: 3 }), '3 项');
+  const placeholders = (value: string) => [...value.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();
+  for (const key of requiredKeys) {
+    const expected = placeholders(messages['en-US'][key]);
+    for (const locale of supportedLocales) assert.deepEqual(placeholders(messages[locale][key]), expected, `${locale} placeholder mismatch for ${key}`);
+  }
+});
