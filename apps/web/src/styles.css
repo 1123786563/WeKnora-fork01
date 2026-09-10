@@ -92,7 +92,15 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-configuration-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: .75rem; }
 .wk-configuration-card-heading h2 { margin: 0 0 .25rem; }
 .wk-configuration-card-heading p { margin: 0; }
+.wk-administration-page { max-width: 1180px; }
+.wk-admin-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.wk-admin-grid h2 { margin: 0 0 .75rem; }
+.wk-admin-form { display: grid; gap: .8rem; }
+.wk-admin-form label { display: grid; gap: .35rem; font-weight: 600; }
+.wk-admin-form input, .wk-admin-form select, .wk-list-actions select { border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #172033; font: inherit; padding: .55rem .65rem; }
+.wk-list-actions select { max-width: 9rem; }
 @media (max-width: 720px) { .wk-configuration-grid { grid-template-columns: 1fr; } }
+@media (max-width: 720px) { .wk-admin-grid { grid-template-columns: 1fr; } }
 @media (max-width: 720px) { .wk-wiki-layout { grid-template-columns: 1fr; } }
 @media (max-width: 720px) { .wk-wiki-history-layout { grid-template-columns: 1fr; } }
 @media (max-width: 720px) { .wk-documents-layout { grid-template-columns: 1fr; } .wk-folder-panel { border-right: 0; border-bottom: 1px solid #edf0f5; padding: 0 0 1rem; } }

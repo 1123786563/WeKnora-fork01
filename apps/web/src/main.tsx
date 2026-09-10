@@ -21,6 +21,7 @@ import { FAQPage } from './faq/FAQPage.tsx';
 import { DataSourcesPage } from './data-sources/DataSourcesPage.tsx';
 import { KnowledgeSettingsPage } from './knowledge-settings/KnowledgeSettingsPage.tsx';
 import { ConfigurationPage } from './configuration/ConfigurationPage.tsx';
+import { AdministrationPage } from './administration/AdministrationPage.tsx';
 import './styles.css';
 
 const oidcCallback = parseOIDCCallbackHash(window.location.hash);
@@ -125,6 +126,10 @@ function renderProtected() {
     root.render(<KnowledgeSettingsPage client={client} knowledgeBaseId={route.knowledgeBaseId} />);
   } else if (route.path === '/platform/configuration') {
     root.render(<ConfigurationPage client={client} />);
+  } else if (route.path === '/platform/administration') {
+    root.render(<AdministrationPage client={client} tenantId={Number(scopeRuntime.current().scope.tenantId)} />);
+  } else if (route.path === '/platform/system') {
+    root.render(<AdministrationPage client={client} tenantId={Number(scopeRuntime.current().scope.tenantId)} systemAdmin />);
   } else if (route.kind === 'knowledge-base' && route.path.split('/').filter(Boolean).length === 2) {
     const knowledgeBaseId = decodeURIComponent(route.path.split('/')[2]!);
     root.render(<KnowledgeDocumentsPage client={client} knowledgeBaseId={knowledgeBaseId} onOpenDocument={(document) => window.location.assign(`/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}/documents/${encodeURIComponent(document.id)}`)} />);
