@@ -21,7 +21,7 @@
 
 | 任务 | 状态 | 实现文件/提交 | 测试与退出码 | 证据层级 | 问题/下一步 |
 |---|---|---|---|---|---|
-| T01 基线、契约和复用来源冻结 | review | `scripts/generate_react_migration_baseline.py`（本账本变更，提交待定） | `python3 scripts/generate_react_migration_baseline.py` 0；矩阵自检 0；`go test ./docs` 0；`cd frontend && npm test` 0（804/804）；`npm run type-check` 0；`npm run build` 0；`git diff --check` 0 | 静态：通过；现有 Vue mock/unit：通过；现有 Vue build：通过；真实后端/截图/Wails 包/原生：未完成 | API 行已全量覆盖但 handler DTO/权限逐行仍需审阅；真实后端 smoke 与生成器试点待补 |
+| T01 基线、契约和复用来源冻结 | review | `eb0e9a9` (`docs: freeze React migration baseline and contracts`) | `python3 scripts/generate_react_migration_baseline.py` 0；矩阵自检 0；`go test ./docs` 0；`cd frontend && npm test` 0（804/804）；`npm run type-check` 0；`npm run build` 0；`git diff --check` 0 | 静态：通过；现有 Vue mock/unit：通过；现有 Vue build：通过；真实后端/截图/Wails 包/原生：未完成 | API 行已全量覆盖但 handler DTO/权限逐行仍需审阅；真实后端 smoke 与生成器试点待补；首轮 reviewer 超时并关闭，tester 复核通过 |
 | T02 无框架 SDK与第一条真实 API 链路 | pending | — | — | — | 依赖 T01 |
 | T03 登录、刷新、OIDC与凭证隔离 | pending | — | — | — | 依赖 T02 |
 | T04 空间上下文、路由和能力守卫 | pending | — | — | — | 依赖 T03 |
@@ -58,6 +58,8 @@
 - 生成 `docs/migrations/react/route-parity.csv`（46 行入口/设置清单）、`api-contract-matrix.csv`（361 行 Swagger 操作）、`reuse-manifest.csv`、`version-matrix.md` 和 `runtime-baseline.md`。
 - 运行当前 Vue 基线：`npm ci --ignore-scripts`、804 个前端测试、`vue-tsc --build` 和 Vite 构建均退出码 0；`go test ./docs` 退出码 0。
 - 记录 Multica 仅作为架构模式参考；其源码、UI、品牌和业务模型不复制，因根许可证带附加条件而采用 clean-room 路线。
+- T01 范围提交：`eb0e9a9`；提交未包含用户提供的三份未跟踪权威输入文档。
+- 独立 tester 复核矩阵确定性、361 个 API 行、46 个入口行、6 个复用项和 `go test ./docs`；首轮 reviewer 因超时关闭，未产生可采纳 findings。
 
 ### 待完成
 
