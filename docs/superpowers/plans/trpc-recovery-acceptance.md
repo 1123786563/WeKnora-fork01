@@ -8,7 +8,7 @@ reopen the same durable database in a new process.
 ## Current evidence
 
 Recorded 2026-09-11 on macOS, branch `codex/trpc-recovery`, HEAD
-`0410173`. The repository has the durable Run/lease/checkpoint APIs and worker,
+`2c12fc3`. The repository has the durable Run/lease/checkpoint APIs and worker,
 but no registered graph executor provider is available to this acceptance
 harness. Therefore the SIGKILL matrix is **blocked by a concrete missing
 provider**, and is not marked passed.
