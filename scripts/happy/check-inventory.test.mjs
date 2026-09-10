@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { checkInventory, validateCommittedInventory } from './check-inventory.mjs';
 
 test('inventory cannot silently omit a route', () => {
@@ -17,7 +18,8 @@ test('rows require destinations and valid status', () => {
 });
 
 test('a complete inventory passes', () => {
-  checkInventory([{id:'home.open', route:'home', source:'index.tsx', interaction:'open', destination:'home', service:'navigation', task:'H02', status:'pending'}], ['home']);
+  const matrix = JSON.parse(fs.readFileSync('docs/migrations/happy/interaction-matrix.json'));
+  checkInventory(matrix.rows, matrix.rows.map(row => row.route));
 });
 
 test('invalid status is rejected', () => {
@@ -26,5 +28,10 @@ test('invalid status is rejected', () => {
 
 test('committed matrix covers every fixed production route', () => {
   const count = validateCommittedInventory({upstream:'/Users/wuyongjun/trea/happy', commit:'ac64b9b4677870f7b7a9eacfd0780959229717f1', matrixPath:'docs/migrations/happy/interaction-matrix.json'});
-  assert.ok(count >= 35);
+  assert.ok(count >= 60);
+});
+
+test('deleting a required capability fails validation', () => {
+  const matrix = JSON.parse(fs.readFileSync('docs/migrations/happy/interaction-matrix.json'));
+  assert.throws(() => checkInventory(matrix.rows.filter(row => row.id !== 'session.send'), matrix.rows.map(row => row.route)), /missing capability session.send/);
 });

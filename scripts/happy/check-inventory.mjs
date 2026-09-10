@@ -2,9 +2,15 @@ const REQUIRED = ['id', 'route', 'source', 'interaction', 'destination', 'servic
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 const STATUSES = new Set(['pending', 'accepted', 'blocked']);
+export const REQUIRED_CAPABILITIES = new Set([
+  'session.send','session.stop','session.retry','session.attach','session.openChanges','session.openFiles','session.openInfo','session.share',
+  'session.sidechat.create','session.sidechat.select','session.sidechat.close','session.permission.allow','session.permission.deny','session.permission.switch',
+  'session.model','session.effort','session.voice.start','session.voice.stop','session.goal.accept','session.goal.reject','session.question','session.resume','session.resume.copy',
+  'session.archive','session.delete','session.fork','session.sidechat.open'
+]);
 
 export function fixedRoutePaths(upstream, commit) {
-  return execFileSync('git', ['-C', upstream, 'ls-tree', '-r', '--name-only', commit, 'packages/happy-app/sources/app/(app)'], { encoding: 'utf8' })
+  return execFileSync('git', ['-C', upstream, 'ls-tree', '-r', '--name-only', commit, 'packages/happy-app/sources/app'], { encoding: 'utf8' })
     .trim().split('\n').filter(Boolean).filter(p => !p.includes('/dev/'))
     .map(p => p.replace('packages/happy-app/', ''));
 }
@@ -30,4 +36,5 @@ export function checkInventory(rows, routes) {
   for (const route of routes) {
     if (!rows.some(row => row.route === route)) throw new Error(`unmapped ${route}`);
   }
+  for (const id of REQUIRED_CAPABILITIES) if (!rows.some(row => row.id === id)) throw new Error(`missing capability ${id}`);
 }
