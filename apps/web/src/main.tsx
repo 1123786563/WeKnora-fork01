@@ -16,6 +16,7 @@ import { ChatRoutePage } from './chat/ChatRoutePage.tsx';
 import { IntegrationsRoutePage } from './integrations/IntegrationsRoutePage.tsx';
 import { KnowledgeDocumentsPage } from './documents/KnowledgeDocumentsPage.tsx';
 import { KnowledgeDocumentDetailPage } from './documents/KnowledgeDocumentDetailPage.tsx';
+import { WikiPage } from './wiki/WikiPage.tsx';
 import './styles.css';
 
 const oidcCallback = parseOIDCCallbackHash(window.location.hash);
@@ -112,6 +113,8 @@ function renderProtected() {
   }
   if (route.kind === 'knowledge-document') {
     root.render(<KnowledgeDocumentDetailPage client={client} documentId={route.documentId} onBack={() => window.location.assign(`/knowledgeBase/${encodeURIComponent(route.knowledgeBaseId)}`)} />);
+  } else if (route.kind === 'knowledge-wiki') {
+    root.render(<WikiPage client={client} knowledgeBaseId={route.knowledgeBaseId} />);
   } else if (route.kind === 'knowledge-base' && route.path.split('/').filter(Boolean).length === 2) {
     const knowledgeBaseId = decodeURIComponent(route.path.split('/')[2]!);
     root.render(<KnowledgeDocumentsPage client={client} knowledgeBaseId={knowledgeBaseId} onOpenDocument={(document) => window.location.assign(`/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}/documents/${encodeURIComponent(document.id)}`)} />);

@@ -5,6 +5,7 @@ export type RouteMatch =
   | { kind: 'platform'; path: string }
   | { kind: 'knowledge-base'; path: string }
   | { kind: 'knowledge-document'; path: string; knowledgeBaseId: string; documentId: string }
+  | { kind: 'knowledge-wiki'; path: string; knowledgeBaseId: string }
   | { kind: 'join'; path: '/join' }
   | { kind: 'onboarding'; path: '/onboarding/workspace' }
   | { kind: 'embed'; path: string }
@@ -19,6 +20,8 @@ export function resolveRoute(pathname: string): RouteMatch {
   if (path.startsWith('/embed/')) return { kind: 'embed', path };
   const documentMatch = path.match(/^\/knowledgeBase\/([^/]+)\/documents\/([^/]+)$/);
   if (documentMatch) return { kind: 'knowledge-document', path, knowledgeBaseId: decodeURIComponent(documentMatch[1]!), documentId: decodeURIComponent(documentMatch[2]!) };
+  const wikiMatch = path.match(/^\/knowledgeBase\/([^/]+)\/wiki$/);
+  if (wikiMatch) return { kind: 'knowledge-wiki', path, knowledgeBaseId: decodeURIComponent(wikiMatch[1]!) };
   if (path === '/knowledgeBase' || path.startsWith('/knowledgeBase/')) return { kind: 'knowledge-base', path };
   if (path === '/platform' || path.startsWith('/platform/')) return { kind: 'platform', path };
   if (path === '/creatChat' || path.startsWith('/creatChat/')) return { kind: 'platform', path: `/platform/creatChat${path.slice('/creatChat'.length)}` };
