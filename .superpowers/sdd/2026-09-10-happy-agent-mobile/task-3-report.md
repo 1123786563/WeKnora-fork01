@@ -13,7 +13,7 @@
 Command:
 
 ```text
-pnpm exec tsx --test packages/api-client/src/auth/login.test.ts apps/mobile/sources/weknora/auth/credentials.test.ts packages/api-client/src/auth.test.ts
+pnpm exec tsx --test packages/api-client/src/auth/login.test.ts apps/mobile/sources/weknora/auth/credentials.test.ts apps/mobile/sources/weknora/platform/origin-storage.test.ts packages/api-client/src/auth.test.ts
 ```
 
 Result: **14 tests passed, 0 failed**. This includes login field normalization and rejection, malformed tenant containers, product login/refresh wire paths, concurrent 401 retry with one refresh, selected-origin restart/clear, credential restart reads, clear, origin isolation, invalid stored data, and concurrent refresh single-flight/clear behavior.
