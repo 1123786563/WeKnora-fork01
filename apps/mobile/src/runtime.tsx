@@ -106,6 +106,7 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
   }, [refreshSession]);
 
   useEffect(() => {
+    if (hydrating) return;
     let active = true;
     async function consume(raw: string | null) {
       if (!raw) return;
@@ -127,7 +128,7 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
     void Linking.getInitialURL().then((url) => consume(url));
     const subscription = Linking.addEventListener('url', ({ url }) => { void consume(url); });
     return () => { active = false; subscription.remove(); };
-  }, [adoptSession]);
+  }, [adoptSession, hydrating]);
 
   async function login(email: string, password: string) {
     await adoptSession(await client.auth.login({ email, password }));
