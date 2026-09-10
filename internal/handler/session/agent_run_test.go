@@ -92,3 +92,20 @@ type ownedSessionForRun struct{ interfaces.SessionService }
 func (ownedSessionForRun) GetOwnedSession(context.Context, string) (*types.Session, error) {
 	return &types.Session{ID: "s"}, nil
 }
+
+func TestAgentRunHandlerAcceptsTenantAPIKeyOwnerScope(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	f := &runStoreFake{run: agentruntime.Run{Key: agentruntime.RunKey{TenantID: 7, RunID: "r"}, SessionID: "s", UserID: "api_tenant_key:7:99", Status: "succeeded"}}
+	h := &Handler{sessionService: ownedSessionForRun{}}
+	h.SetAgentRunService(service.NewAgentRunService(f))
+	r := gin.New()
+	r.GET("/sessions/:id/runs/:run_id", h.GetAgentRun)
+	ctx := context.WithValue(context.Background(), types.TenantIDContextKey, uint64(7))
+	ctx = types.WithPrincipal(ctx, types.Principal{Type: types.PrincipalAPITenant, ID: "99"})
+	ctx = types.WithTenantAPIKeyScope(ctx, types.TenantAPIKeyScope{KeyID: 99})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest("GET", "/sessions/s/runs/r", nil).WithContext(ctx))
+	if w.Code != 200 {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+}

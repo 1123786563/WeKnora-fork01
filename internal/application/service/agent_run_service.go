@@ -23,6 +23,7 @@ type AgentRunService struct {
 	store          agentruntime.RunStore
 	wake           func()
 	decisionPolicy func(context.Context, agentruntime.Decision) error
+	cancelHook     func(context.Context, agentruntime.RunKey) error
 	mu             sync.Mutex
 }
 
@@ -95,4 +96,11 @@ func (s *AgentRunService) Get(ctx context.Context, key agentruntime.RunKey) (age
 		return agentruntime.Run{}, fmt.Errorf("agent run store is required")
 	}
 	return s.store.Get(ctx, key)
+}
+
+// SetCancelHook installs best-effort active execution cancellation. Durable cancellation is recorded first.
+func (s *AgentRunService) SetCancelHook(hook func(context.Context, agentruntime.RunKey) error) {
+	if s != nil {
+		s.cancelHook = hook
+	}
 }

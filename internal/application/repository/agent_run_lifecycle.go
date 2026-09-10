@@ -29,6 +29,10 @@ func (s *AgentRunStore) CancelRun(ctx context.Context, key agentruntime.RunKey, 
 		if err := runScope(tx, key).Updates(map[string]any{"status": "canceled", "wait_reason": reason, "lease_owner": "", "lease_until": nil, "revision": gorm.Expr("revision+1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP")}).Error; err != nil {
 			return err
 		}
+		payload := `{"reason":"` + reason + `"}`
+		if err := tx.Create(&agentRunEventRow{TenantID: key.TenantID, RunID: key.RunID, Seq: nextEventSeq(tx, agentruntime.Fence{RunKey: key}), EventType: "cancellation_requested", Payload: payload}).Error; err != nil {
+			return err
+		}
 		return tx.Table("sessions").Where("tenant_id=? AND id=? AND active_agent_run_id=?", key.TenantID, run.SessionID, key.RunID).Update("active_agent_run_id", nil).Error
 	})
 }

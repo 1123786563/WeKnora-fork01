@@ -25,7 +25,14 @@ func (s *AgentRunService) Cancel(ctx context.Context, key agentruntime.RunKey) e
 	if !ok {
 		return errors.New("agent run store does not support lifecycle")
 	}
-	return store.CancelRun(ctx, key, "user_canceled")
+	err := store.CancelRun(ctx, key, "user_canceled")
+	if err != nil {
+		return err
+	}
+	if s.cancelHook != nil {
+		return s.cancelHook(ctx, key)
+	}
+	return nil
 }
 
 // DeleteSessionRuns durably fences and removes all runs belonging to a session.

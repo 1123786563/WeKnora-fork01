@@ -81,7 +81,8 @@ func (h *Handler) ownedRun(c *gin.Context) (context.Context, agentruntime.RunKey
 		c.JSON(http.StatusNotFound, gin.H{"error": "run not found"})
 		return ctx, key, agentruntime.Run{}, false
 	}
-	if !principalOK || principal.StorageID() != run.UserID {
+	ownerID := types.SessionOwnerIDFromContext(ctx)
+	if (!principalOK || principal.StorageID() != run.UserID) && ownerID != run.UserID {
 		c.JSON(http.StatusNotFound, gin.H{"error": "run not found"})
 		return ctx, key, agentruntime.Run{}, false
 	}
@@ -119,7 +120,11 @@ func (h *Handler) latestRunSeq(ctx context.Context, key agentruntime.RunKey) int
 	return seq
 }
 func runView(r agentruntime.Run) gin.H {
-	return gin.H{"run_id": r.Key.RunID, "session_id": r.SessionID, "status": r.Status, "wait_reason": r.WaitReason, "revision": r.Revision, "epoch": r.Epoch, "seq": int64(0), "capabilities": gin.H{"engine_type": "trpc", "durable_recovery": true}}
+	v := gin.H{"run_id": r.Key.RunID, "session_id": r.SessionID, "status": r.Status, "wait_reason": r.WaitReason, "revision": r.Revision, "epoch": r.Epoch, "seq": int64(0), "capabilities": gin.H{"engine_type": "trpc", "durable_recovery": true}}
+	if r.WaitReason != "" {
+		v["pending_id"] = r.WaitReason
+	}
+	return v
 }
 func runViewWithSeq(r agentruntime.Run, seq int64) gin.H { v := runView(r); v["seq"] = seq; return v }
 
@@ -238,11 +243,19 @@ func (h *Handler) PostAgentRunDecision(c *gin.Context) {
 			return
 		}
 	}
-	run, err := h.runService().Resolve(ctx, key, agentruntime.Decision{PendingID: req.PendingID, DecisionID: req.DecisionID, ToolCallID: req.ToolCallID, ExpectedRevision: req.ExpectedRevision, Action: req.Action, ArgsHash: req.ArgsHash, ResourceRef: req.ResourceRef, Reason: req.Reason, Result: raw})
+	decision := agentruntime.Decision{PendingID: req.PendingID, DecisionID: req.DecisionID, ToolCallID: req.ToolCallID, ExpectedRevision: req.ExpectedRevision, Action: req.Action, ArgsHash: req.ArgsHash, ResourceRef: req.ResourceRef, Reason: req.Reason, Result: raw}
+	if err := service.ValidateDecision(decision); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	run, err := h.runService().Resolve(ctx, key, decision)
 	if err != nil {
 		status := http.StatusConflict
 		if errors.Is(err, agentruntime.ErrNotFound) {
 			status = http.StatusNotFound
+		}
+		if strings.Contains(err.Error(), "approval policy is unavailable") {
+			status = http.StatusServiceUnavailable
 		}
 		c.JSON(status, gin.H{"error": err.Error()})
 		return
