@@ -11,7 +11,7 @@ export interface BrowserTransportOptions {
 
 function authHeader(credential: Credential | undefined): string | undefined {
   if (!credential || credential.kind === 'anonymous') return undefined;
-  return credential.kind === 'bearer' ? `Bearer ${credential.accessToken}` : credential.token;
+  return credential.kind === 'bearer' ? `Bearer ${credential.accessToken}` : `Embed ${credential.token}`;
 }
 
 function defaultRequestId(): string {
@@ -27,7 +27,11 @@ export function createBrowserTransport(options: BrowserTransportOptions = {}) {
       const headers = { ...request.headers };
       const authorization = authHeader(options.credential);
       if (authorization) headers.authorization = authorization;
-      if (options.tenantId) headers['x-tenant-id'] = options.tenantId;
+      if (options.credential?.kind !== 'embed' && options.tenantId) headers['x-tenant-id'] = options.tenantId;
+      if (options.credential?.kind === 'embed') {
+        if (options.credential.sessionSig) headers['x-embed-session'] = options.credential.sessionSig;
+        if (options.credential.visitorId) headers['x-embed-visitor'] = options.credential.visitorId;
+      }
       if (options.locale) headers['accept-language'] = options.locale;
       headers['x-request-id'] ??= options.requestId?.() ?? defaultRequestId();
       return base.send({ ...request, headers });

@@ -23,15 +23,18 @@ test('injects scoped auth headers without changing the shared transport', async 
   assert.equal(seen?.headers['x-request-id'], 'request-1');
 });
 
-test('does not send bearer headers for embed or anonymous profiles', async () => {
+test('isolates embed headers from bearer tenant context', async () => {
   const seen: Record<string, string>[] = [];
-  for (const credential of [{ kind: 'embed', token: 'visitor-token' } as const, { kind: 'anonymous' } as const]) {
-    const transport = createBrowserTransport({ credential, fetcher: (async (_url, init) => {
+  for (const credential of [{ kind: 'embed', token: 'visitor-token', sessionSig: 'sig-1', visitorId: 'visitor-1' } as const, { kind: 'anonymous' } as const]) {
+    const transport = createBrowserTransport({ credential, tenantId: 'must-not-leak', fetcher: (async (_url, init) => {
       seen.push(init?.headers ?? {});
       return { status: 204, headers: new Headers(), json: async () => undefined, text: async () => '' };
     }) satisfies FetchLike });
     await transport.send({ method: 'GET', url: 'https://api.test/files/x', headers: {} });
   }
-  assert.equal(seen[0]?.authorization, 'visitor-token');
+  assert.equal(seen[0]?.authorization, 'Embed visitor-token');
+  assert.equal(seen[0]?.['x-tenant-id'], undefined);
+  assert.equal(seen[0]?.['x-embed-session'], 'sig-1');
+  assert.equal(seen[0]?.['x-embed-visitor'], 'visitor-1');
   assert.equal(seen[1]?.authorization, undefined);
 });
