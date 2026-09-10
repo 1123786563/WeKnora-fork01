@@ -58,10 +58,16 @@ func buildGraph(b GraphBindings) (*graph.Graph, error) {
 		if err != nil {
 			return nil, err
 		}
+		persistedCapabilities := !s.Capabilities.IsEmpty()
 		if s.Version == 0 {
 			s = b.InitialState
 			if s.Version == 0 {
 				s.Version = StateVersion
+			}
+		}
+		if persistedCapabilities && !b.Capabilities.IsEmpty() {
+			if err := s.Capabilities.CompatibleWith(b.Capabilities); err != nil {
+				return nil, fmt.Errorf("capability compatibility: %w", err)
 			}
 		}
 		if s.AppliedCallIDs == nil {

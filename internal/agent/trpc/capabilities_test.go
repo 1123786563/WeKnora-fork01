@@ -36,3 +36,18 @@ func TestGraphRunnerReceivesCapabilitySnapshot(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, snapshot, r.bindings.InitialState.Capabilities)
 }
+
+func TestGraphRunnerRejectsCapabilityDrift(t *testing.T) {
+	_, err := NewGraphRunner(GraphBindings{
+		Model: &engineModel{}, Store: &minimalStore{},
+		Capabilities: CapabilitySnapshot{ToolIdentities: []string{"thinking"}},
+		InitialState: State{Version: StateVersion, Capabilities: CapabilitySnapshot{ToolIdentities: []string{"changed"}}},
+	})
+	require.ErrorContains(t, err, "capability compatibility")
+}
+
+func TestCloneStatePreservesNilSkillDigests(t *testing.T) {
+	cloned, err := cloneState(State{Version: StateVersion})
+	require.NoError(t, err)
+	require.Nil(t, cloned.Capabilities.SkillDigests)
+}

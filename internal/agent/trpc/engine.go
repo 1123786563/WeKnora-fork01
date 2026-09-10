@@ -36,6 +36,11 @@ func NewGraphRunner(b GraphBindings) (*GraphRunner, error) {
 	if b.InitialState.Version == 0 {
 		b.InitialState.Version = StateVersion
 	}
+	if !b.InitialState.Capabilities.IsEmpty() && !b.Capabilities.IsEmpty() {
+		if err := b.InitialState.Capabilities.CompatibleWith(b.Capabilities); err != nil {
+			return nil, fmt.Errorf("capability compatibility: %w", err)
+		}
+	}
 	if b.InitialState.Capabilities.IsEmpty() {
 		b.InitialState.Capabilities = b.Capabilities
 	}
@@ -121,9 +126,11 @@ func cloneState(in State) (State, error) {
 	out.Capabilities.ToolIdentities = append([]string(nil), in.Capabilities.ToolIdentities...)
 	out.Capabilities.DeferredNames = append([]string(nil), in.Capabilities.DeferredNames...)
 	out.Capabilities.ImageReferences = append([]string(nil), in.Capabilities.ImageReferences...)
-	out.Capabilities.SkillDigests = map[string]string{}
-	for k, v := range in.Capabilities.SkillDigests {
-		out.Capabilities.SkillDigests[k] = v
+	if in.Capabilities.SkillDigests != nil {
+		out.Capabilities.SkillDigests = map[string]string{}
+		for k, v := range in.Capabilities.SkillDigests {
+			out.Capabilities.SkillDigests[k] = v
+		}
 	}
 	return out, nil
 }
