@@ -682,6 +682,20 @@
 - Evidence: `docs/migrations/react/evidence/t24-lite-react-cli-package-2026-09-12.md`.
   This closes the local CLI packaging copy gap only; T24 remains `review`.
 
+### T24 React Docker candidate follow-up (2026-09-12)
+
+- Added the separate root-context `apps/web/Dockerfile` for the React
+  Web/Embed candidate and tightened `.dockerignore` to exclude native/build
+  outputs. `docker build --check` passed with no warnings; the actual image
+  build passed after the context was reduced from about 4.8 GB to about 24 KB.
+- The local container returned Web root, Web chat deep-link, and Embed route
+  HTTP 200 responses, and served React `BUILD_INFO.json` with commit `f231d1c`.
+  The container was removed afterward and no backend, registry, or production
+  service was used.
+- Evidence: `docs/migrations/react/evidence/t24-react-docker-candidate-2026-09-12.md`.
+  This is candidate static/runtime evidence; the Vue Docker image remains the
+  production/recovery input and T24 remains `review`.
+
 ### 本轮问题与裁定
 
 - 计划/设计原文仍写“方案 B 尚未批准”，与用户本轮批准相冲突；本实施分支按用户批准的方案 B 执行，未因旧措辞改变架构。

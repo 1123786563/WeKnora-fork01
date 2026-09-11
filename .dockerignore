@@ -22,11 +22,18 @@
 **/*.pyc
 
 # Node / 前端
-# The UI Dockerfile is intentionally built with the repository root as its
+# UI Dockerfiles are intentionally built with the repository root as their
 # context so the React workspace and shared packages remain available during
-# the migration. The Dockerfile copies only the legacy frontend inputs it
-# needs, while other image Dockerfiles continue to use this root ignore file.
+# the migration. The current Vue image and the React candidate each copy only
+# the inputs they need, while other image Dockerfiles continue to use this
+# root ignore file.
+node_modules/
 **/node_modules/
+apps/mobile/android/
+apps/mobile/ios/
+**/dist/
+**/build/
+**/*.tsbuildinfo
 WeKnora-Chrome-Extension/
 
 # 日志 / 临时文件
@@ -39,6 +46,8 @@ temp/
 # 本地构建产物 / 二进制
 WeKnora
 WeKnora-lite
+/WeKnora
+/WeKnora-lite
 /server
 /dist/
 /build/
