@@ -10,10 +10,10 @@ import {
   readReactPlatformState,
 } from './legacy-session.ts';
 
-function storage(initial: Record<string, string> = {}): Storage {
+function storage(initial: Record<string, string> = {}, options: { throwOnGet?: boolean } = {}): Storage {
   const values = { ...initial };
   return {
-    getItem(key) { return values[key] ?? null; },
+    getItem(key) { if (options.throwOnGet) throw new Error('storage unavailable'); return values[key] ?? null; },
     setItem(key, value) { values[key] = value; },
     removeItem(key) { delete values[key]; },
     clear() { for (const key of Object.keys(values)) delete values[key]; },
@@ -89,4 +89,13 @@ test('uses the durable fallback record when the canonical React record is damage
   browserStorage.setItem(REACT_SESSION_STORAGE_KEY, '{not-json');
 
   assert.deepEqual(importLegacyPlatformState(browserStorage), imported);
+});
+
+test('degrades to an anonymous state when browser storage reads are unavailable', () => {
+  assert.doesNotThrow(() => importLegacyPlatformState(storage({}, { throwOnGet: true })));
+  assert.deepEqual(importLegacyPlatformState(storage({}, { throwOnGet: true })), {
+    credential: { kind: 'anonymous' },
+    tenantId: null,
+    preferences: {},
+  });
 });

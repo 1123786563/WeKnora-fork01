@@ -23,6 +23,14 @@ const LEGACY_PREFERENCE_KEYS = [
 
 type BrowserStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
+function safeGetItem(storage: Pick<Storage, 'getItem'>, key: string): string | null {
+  try {
+    return storage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
 export interface LegacyPlatformAdapter {
   read(): LegacyPlatformSession;
 }
@@ -31,14 +39,14 @@ export interface LegacyPlatformAdapter {
 export function createLegacyPlatformAdapter(storage: Pick<Storage, 'getItem'>): LegacyPlatformAdapter {
   return {
     read(): LegacyPlatformSession {
-      const token = storage.getItem('weknora_token')?.trim() ?? '';
-      const tenantId = storage.getItem('weknora_selected_tenant_id')?.trim() || null;
+      const token = safeGetItem(storage, 'weknora_token')?.trim() ?? '';
+      const tenantId = safeGetItem(storage, 'weknora_selected_tenant_id')?.trim() || null;
       if (!token) return { credential: { kind: 'anonymous' }, tenantId };
 
       if (/^embed\s/i.test(token)) {
         return { credential: { kind: 'embed', token }, tenantId };
       }
-      const refreshToken = storage.getItem('weknora_refresh_token')?.trim() || undefined;
+      const refreshToken = safeGetItem(storage, 'weknora_refresh_token')?.trim() || undefined;
       return {
         credential: refreshToken
           ? { kind: 'bearer', accessToken: token, refreshToken }
@@ -90,7 +98,7 @@ function parseState(value: unknown): ReactPlatformState | null {
 }
 
 function readJson(storage: Pick<Storage, 'getItem'>, key: string): unknown | null {
-  const raw = storage.getItem(key);
+  const raw = safeGetItem(storage, key);
   if (!raw) return null;
   try {
     return JSON.parse(raw) as unknown;
@@ -114,7 +122,7 @@ export function readReactPlatformState(storage: Pick<Storage, 'getItem'>): React
 function collectLegacyPreferences(storage: Pick<Storage, 'getItem'>): Record<string, string> {
   const preferences: Record<string, string> = {};
   for (const key of LEGACY_PREFERENCE_KEYS) {
-    const value = storage.getItem(key);
+    const value = safeGetItem(storage, key);
     if (value !== null) preferences[key] = value;
   }
   return preferences;
@@ -129,7 +137,7 @@ export function importLegacyPlatformState(
   storage: BrowserStorage,
   now: () => string = () => new Date().toISOString(),
 ): ReactPlatformState {
-  const marker = storage.getItem(REACT_LEGACY_IMPORT_MARKER_KEY);
+  const marker = safeGetItem(storage, REACT_LEGACY_IMPORT_MARKER_KEY);
   const saved = readReactPlatformState(storage);
   if (marker === 'complete') return saved ?? anonymousState();
   if (marker === 'pending' && saved) return saved;
