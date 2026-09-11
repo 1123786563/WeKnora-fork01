@@ -2,10 +2,14 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	stderrors "errors"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/Tencent/WeKnora/internal/agent/approval"
+	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	chatpipeline "github.com/Tencent/WeKnora/internal/application/service/chat_pipeline"
 	"github.com/Tencent/WeKnora/internal/config"
@@ -185,7 +189,48 @@ func NewSessionService(cfg *config.Config,
 	// The durable tRPC worker resolves its graph executor lazily because the
 	// runtime is constructed before this service in the dependency graph.
 	RegisterGraphExecutor(svc.ExecuteDurableRun)
+	installDurableOAuthPark()
 	return svc
+}
+
+// installDurableOAuthPark wires the pre-execution OAuth wait of durable runs
+// into the persistence layer: a waiting_user run event for the recovery card
+// (carrying the authorization resource reference, never tokens), a linkage
+// marker on the planned tool call, and the waiting_user park itself.
+func installDurableOAuthPark() {
+	approval.SetDurableOAuthPark(func(
+		ctx context.Context,
+		fence agentruntime.Fence,
+		dispatch agentruntime.ToolDispatch,
+		pendingID string,
+		req approval.OAuthPendingRequest,
+	) error {
+		runs := RegisteredAgentRunService()
+		if runs == nil || runs.Store() == nil {
+			return agentruntime.ErrConflict
+		}
+		parkCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		if events, ok := runs.Store().(agentruntime.RunEventStore); ok {
+			payload, _ := json.Marshal(map[string]string{
+				"pending_id": pendingID, "wait_kind": "mcp_oauth",
+				"service_id": req.ServiceID, "service_name": req.ServiceName,
+				"mcp_tool": req.MCPToolName, "tool_call_id": dispatch.CallID,
+				"args_hash": dispatch.ArgsHash, "resource_ref": req.ResourceRef,
+			})
+			if _, err := events.AppendEvent(parkCtx, fence, agentruntime.RunEvent{
+				Type: "waiting_user", Payload: payload,
+			}); err != nil {
+				logger.Warnf(parkCtx, "durable oauth park event not persisted: %v", err)
+			}
+		}
+		if parker, ok := runs.Store().(agentruntime.ToolPreflightParker); ok {
+			if err := parker.ParkToolPreflightWait(parkCtx, fence, dispatch.CallID, pendingID, req.ResourceRef); err != nil {
+				return err
+			}
+		}
+		return runs.WaitForDecision(parkCtx, fence, pendingID)
+	})
 }
 
 // CreateSession creates a new conversation session

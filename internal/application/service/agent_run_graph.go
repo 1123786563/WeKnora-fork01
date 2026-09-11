@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
+	"github.com/Tencent/WeKnora/internal/agent/tools"
 	trpcagent "github.com/Tencent/WeKnora/internal/agent/trpc"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/logger"
@@ -402,13 +403,35 @@ func (s *sessionService) ExecuteDurableRun(ctx context.Context, fence agentrunti
 		return fmt.Errorf("durable run %s tool declarations: %w", fence.RunID, err)
 	}
 	executeTool := func(tctx context.Context, name string, args json.RawMessage) (*types.ToolResult, error) {
-		return caps.Tools.ExecuteTool(types.WithSessionID(tctx, run.SessionID), name, args)
+		tctx = types.WithSessionID(tctx, run.SessionID)
+		// MCP wrappers read the exec context for approval/OAuth metadata;
+		// without it the durable path would fail the preflight instead of
+		// parking. The run-scoped bus is detached from SSE lifetimes.
+		meta := &tools.ToolExecContext{
+			SessionID:          run.SessionID,
+			AssistantMessageID: run.AssistantMessageID,
+			RequestID:          run.RequestID,
+			UserID:             run.UserID,
+			EventBus:           bus,
+			ApprovalCtx:        tctx,
+		}
+		if dispatch, ok := agentruntime.ToolDispatchFromContext(tctx); ok {
+			meta.ToolCallID = dispatch.CallID
+		}
+		tctx = tools.WithToolExecContext(tctx, meta)
+		// Directory discovery and the call proxy are already dispatched when
+		// they hit OAuth, so a durable park there would misclassify as an
+		// unknown outcome; the non-interactive path returns a notice instead.
+		if name == tools.ToolDiscoverMCPTools || name == tools.ToolCallMCPTool {
+			tctx = types.WithMCPOAuthNonInteractive(tctx)
+		}
+		return caps.Tools.ExecuteTool(tctx, name, args)
 	}
-	tools := agentruntime.NewToolExecutor(store, journal, executeTool)
+	executorTools := agentruntime.NewToolExecutor(store, journal, executeTool)
 	bindings := trpcagent.GraphBindings{
 		Model:           trpcagent.NewModel(caps.Chat),
 		Store:           store,
-		Tools:           tools,
+		Tools:           executorTools,
 		Finalize:        eventStore.Finalize,
 		WaitForDecision: runs.WaitForDecision,
 		InitialState:    initial,
@@ -422,8 +445,16 @@ func (s *sessionService) ExecuteDurableRun(ctx context.Context, fence agentrunti
 	}
 	execErr := runner.Run(ctx, fence)
 	if execErr != nil {
-		if raw, merr := json.Marshal(map[string]string{"error": execErr.Error()}); merr == nil {
-			emit(context.WithoutCancel(ctx), agentruntime.RunEvent{Type: "run_failed", Payload: raw})
+		payload := map[string]string{"error": execErr.Error()}
+		eventType := "run_failed"
+		if errors.Is(execErr, agentruntime.ErrMCPOAuthWait) {
+			// The run is durably parked waiting for the user to reconnect
+			// authorization; this is a wait, not a failure.
+			eventType = "run_waiting"
+			payload = map[string]string{"wait_kind": "mcp_oauth"}
+		}
+		if raw, merr := json.Marshal(payload); merr == nil {
+			emit(context.WithoutCancel(ctx), agentruntime.RunEvent{Type: eventType, Payload: raw})
 		}
 	}
 	return execErr
