@@ -1,6 +1,6 @@
 # Semantica 实施台账
 
-状态：V01–V03、C01–C02 已完成并验证，其余 19 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
+状态：V01–C03 已完成并验证，其余 18 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
 
 状态值 pending / in_progress / blocked / implemented / verified。每项验证记录必须包含commit SHA、精确命令、退出码、环境、产物路径、失败/限制；无真实证据不标记verified。执行前记录实际基线与已有脏文件。
 
@@ -11,7 +11,7 @@
 | V03 | 中文质量与上线阈值评估基线 | V02 | verified | semantica 模式 30 题实测（正确率 0.767、泄漏 0、recall 0.925）；native 对照阻断于隔离测试部署+模型凭据，approved=false；见运行记录 2026-09-11 V03 与 evaluation-baseline.md |
 | C01 | 版本化协议和跨语言领域类型 | V01 | verified | proto 全 14 DTO+7RPC 双语言同源生成（幂等）；Go 全量映射+全 5 枚举表；uint64 十进制字符串边界；未知枚举不映射成功；见运行记录 2026-09-11 C01 |
 | C02 | 认证服务骨架和Go客户端 | C01 | verified | 真实 TLS+内部令牌 gRPC 服务（缺身份→UNAUTHENTICATED、未实现→UNIMPLEMENTED、健康真实）；Go 客户端 deadline/取消/错误映射+仅读操作重试；enabled=false 默认可启动；见运行记录 2026-09-11 C02 |
-| C03 | 事实与证据校验模型 | C01,V02 | pending | 尚未执行 |
+| C03 | 事实与证据校验模型 | C01,V02 | verified | codepoint 半开区间 span+原文校验、来源/推导分离、跨 scope 拒绝、循环 DAG 拒绝、多来源支持永不塌缩；见运行记录 2026-09-11 C03 |
 | I01 | 持久操作、幂等与worker租约 | C02 | pending | 尚未执行 |
 | I02 | 业务revision、outbox与授权版本 | C01 | pending | 尚未执行 |
 | I03 | 有来源的构图与generation原子发布 | C03,I01,I02,A03 | pending | 尚未执行 |
@@ -109,9 +109,23 @@
 - 提交 SHA：6738280（feat(semantic): c02 认证服务骨架和Go客户端）。
 - 剩余限制：业务 RPC 全部 UNIMPLEMENTED（后续任务实现）；流式业务 RPC 落地时拒绝路径需流式处理器配套；首次真实部署（O01）前服务从未在本机外暴露。
 
+### 2026-09-11 C03 事实与证据校验模型（verified）
+
+- 工作区：.worktrees/semantica（分支 codex/semantica）；基线 SHA：4ed4310（C02 台账提交）。
+- 修改文件：semantic/semantic_service/{evidence.py,facts.py}、semantic/tests/{test_evidence.py,test_facts.py}、semantic/semantic_service/contracts.py（跨文件增量，见下）、本台账、01 计划勾选。
+- 跨文件披露：contracts.py（C01 所有）新增 7 行 \`ASSERTION_KINDS = frozenset(...)\`（由既有 wire 枚举表派生，unspecified 排除），为 facts.py 提供唯一事实来源、避免枚举漂移；纯增量无行为变化，随本任务提交并在提交信息说明。
+- RED：`uv run --project semantic python -m pytest semantic/tests/test_evidence.py semantic/tests/test_facts.py -q` 收集错误（semantic_service.evidence/facts 不存在）。
+- 评审修复 RED（两批）：①规格 BLOCKER——upsert 按内容去重忽略支持集，第二文档对同一断言的支持被静默丢弃（违反规格 §4 多来源支持与必测场景 4）→ 先写 test_multi_source_support_is_never_dropped 复现（RED）→ 仅当内容+支持集全同才去重；②质量 MINOR 批次 9 项行为修复全部 RED-first（同 id 异内容报错、跨租户并存、迭代三色 DFS 3000+ 深链、DAG 重复 id 报错、枚举单源、空 object/value 拒绝、推导不得直引证据、kb_id 空白拒绝、空/空白引文拒绝）。
+- GREEN：`uv run --project semantic python -m pytest semantic/tests/ -q` 60 passed 退出码 0（契约 12+认证 9+证据 14+事实 25）。
+- 覆盖：中文/emoji codepoint span、越界/倒序/零宽、两端同现同缺、篡改引文/哈希/chunk、revision=0、悬空 evidence/premise、跨租户与跨 KB premise、自环/深埋环/重复 id、多来源支持并存、同 subject/predicate 异值并存、实体名称/别名为有来源断言。
+- 计划偏差记录：计划片段 extract_quote/validate_span 按原文实现；推导（rule/model）不得直接引用证据（支持经 premise 传递），为规格 §4/§7 推导语义的收紧；evidence 跨 scope 校验因 C01 Evidence DTO 无 scope 字段而归属装载层（I03），已在 docstring 与测试记录。
+- review：规格符合性 PASS（10 项；终审确认多来源支持路径全部符合规格 §4 与场景 4）；代码质量 PASS（18 项发现全部独立探针复核；新增对抗探针：菱形 DAG、500 premise 扇出、深度 2000 埋环、50000 深链、NBSP 引文等全部正确；遗留 2 项外观 nits 无需处理）。
+- 提交 SHA：（本记录与代码同批提交后补记）
+- 剩余限制：upsert 为校验时辅助函数，批量摄取性能归 I03；同 id 同内容不同支持的并存条目由调用方在 generation 间对账（I03 范围）。
+
 ## 当前边界
 
-- V01–V03、C01–C02 已完成（verified）；后续 19 个任务未开始。
+- V01–C03 已完成（verified）；后续 18 个任务未开始。
 - V01精确版本已冻结（semantica 0.6.8）；真实模型证据须在后续任务补齐，不是已经通过的前提。
 - V02 结论边界：持久图桥接/授权子图重建/注册规则推导已验证；模型推断 unverified（无凭据，未调用）；向量检索路径未验证。
 - V03 结论边界：semantica 模式检索质量/延迟为受控语料实测；native 对照与模型用量门槛未测（阻断记录见上）；上线门禁 approved=false 待用户确认。

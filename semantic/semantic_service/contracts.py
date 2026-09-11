@@ -331,6 +331,13 @@ _OPERATION_STATE_TO_WIRE = {
 _OPERATION_STATE_FROM_WIRE = {value: key for key, value in _OPERATION_STATE_TO_WIRE.items()}
 
 
+# Domain assertion kinds (derived from the wire enum table so C01 stays
+# the single source of truth; "unspecified" is excluded on purpose).
+ASSERTION_KINDS = frozenset(
+    kind for kind in _ASSERTION_KIND_TO_WIRE if kind != "unspecified"
+)
+
+
 def _enum_to_wire(tables: dict, domain: str, what: str) -> int:
     try:
         return tables[domain]
