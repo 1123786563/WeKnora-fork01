@@ -45,6 +45,16 @@ test('guards protected deep links and redirects no-tenant sessions to onboarding
     to: '/onboarding/workspace',
     reason: 'workspace-required',
   });
+  assert.deepEqual(guardRoute('/', authenticated), {
+    kind: 'redirect',
+    to: '/platform/knowledge-bases',
+    reason: 'capability-unavailable',
+  });
+  assert.deepEqual(guardRoute('/platform/knowledge-search?q=hello', authenticated), {
+    kind: 'redirect',
+    to: '/platform/knowledge-bases?q=hello',
+    reason: 'capability-unavailable',
+  });
 });
 
 test('honors explicit capability and organization invite compatibility rules', () => {
@@ -58,4 +68,9 @@ test('honors explicit capability and organization invite compatibility rules', (
   });
   assert.equal(routeRedirect('/join?code=org-invite'), '/platform/organizations?invite_code=org-invite');
   assert.equal(routeRedirect('/join'), '/platform/organizations');
+  assert.deepEqual(guardRoute('/platform/system/queue', { ...authenticated, isSystemAdmin: true }), {
+    kind: 'redirect',
+    to: '/platform/system',
+    reason: 'capability-unavailable',
+  });
 });
