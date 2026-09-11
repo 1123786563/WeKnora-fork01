@@ -31,6 +31,16 @@ Expo exports after this increment also passed:
 
 A fresh device or native-install run is not claimed here.
 
+## Isolated Lite HTTP evidence
+
+Using the already running isolated SQLite Lite process at `127.0.0.1:18082` (not production data), a new `orgprobe@example.test` owner and `orgviewer@example.test` viewer were registered in tenants 7 and 8. The owner created organization `6f37070c-0472-4376-9ce7-ec0821bfafa0` (`React Mobile Org`) and received `my_role: admin`; the owner list returned one organization and the organization member list returned both tenant members.
+
+- The viewer joined through the server-issued invite code and received `my_role: viewer`.
+- The owner updated tenant 8 from `viewer` to `editor`: HTTP 200, `Member role updated successfully`; a subsequent owner member list returned tenant 8 as `editor`.
+- The viewer attempted the same member-role mutation and received HTTP 403 with `Permission denied or invalid operation`; no local/client-side success was inferred.
+
+Credentials and access tokens were held only in shell variables and are not recorded here. This is real backend role evidence for the organization slice, not a mock. It does not cover every organization share/API-key path or native device interaction.
+
 ## Evidence boundary
 
 This proves the native route, typed organization API wiring, role-gated mutation composition, join-request decision payload, type safety, and regression compatibility. It does not claim live organization create/member/share/API-key results, real 403/409 permutations, native device interaction, or completion of the remaining T23 configuration/integration/sandbox management matrix.
