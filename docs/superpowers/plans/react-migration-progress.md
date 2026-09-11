@@ -758,6 +758,23 @@
   cross-account 403, real-device, production-storage, and full Web/mobile
   same-account comparison evidence remain open.
 
+### T21 Android native transport and negative follow-up (2026-09-12)
+
+- The current Android release now routes picked native files through the
+  cancellable Expo FileSystem multipart task. A real DocumentsUI selection of
+  the 144-byte TXT fixture returned HTTP 200 from the isolated Lite handler and
+  produced a server-backed 144-byte document row.
+- A real 10 MB DocumentsUI selection exposed `Cancel`; tapping it returned the
+  page to `Upload` without surfacing a network error. The controlled relay
+  showed that bytes already queued in Android/relay may still reach the server,
+  so this is client-side cancellation evidence only and does not claim server
+  rollback. A 1.10 MB fixture showed `文件大小不能超过1MB`; the isolated
+  handler returned HTTP 400, not the separate ingress-level HTTP 413 contract.
+- Full record: `docs/migrations/react/evidence/t21-android-native-upload-cancel-live-2026-09-12.md`.
+  T21 remains `review` pending server-side cancellation semantics, a real 413
+  ingress observation, Android cross-account 403, real-device and
+  production-storage evidence, and the complete Web/mobile comparison matrix.
+
 ### 本轮问题与裁定
 
 - 计划/设计原文仍写“方案 B 尚未批准”，与用户本轮批准相冲突；本实施分支按用户批准的方案 B 执行，未因旧措辞改变架构。

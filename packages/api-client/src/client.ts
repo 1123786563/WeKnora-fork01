@@ -1,6 +1,6 @@
 import { parseActionSuccessResponse, parseKnowledgeBaseListResponse, parseKnowledgeBaseResponse, type KnowledgeBase } from '@weknora/contracts';
 import { ApiError, createAbortError, errorFromResult, isNamedError } from './errors.ts';
-import type { HttpRequest, HttpResult, HttpTransport } from './ports.ts';
+import type { HttpRequest, HttpResult, HttpTransport, NativeFileSource } from './ports.ts';
 import { createKnowledgeDocumentsApi } from './knowledge/documents.ts';
 import { createKnowledgeFaqApi } from './knowledge/faq.ts';
 import { createWikiPagesApi } from './wiki/pages.ts';
@@ -26,6 +26,8 @@ export interface ClientRequest {
   path: string;
   headers?: Record<string, string>;
   body?: unknown;
+  nativeFile?: NativeFileSource;
+  multipartFields?: Record<string, string>;
   signal?: AbortSignal;
 }
 
@@ -79,7 +81,16 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
       signal: controller.signal,
     };
     try {
-      const result: HttpResult = await options.transport.send(request);
+      const result: HttpResult = input.nativeFile && options.transport.sendMultipartFile
+        ? await options.transport.sendMultipartFile({
+          method: request.method,
+          url: request.url,
+          headers: request.headers,
+          file: input.nativeFile,
+          fields: input.multipartFields ?? {},
+          signal: request.signal,
+        })
+        : await options.transport.send(request);
       if (controller.signal.aborted) {
         throw createAbortError();
       }

@@ -1,4 +1,5 @@
 import { createJsonTransport, type Credential, type FetchLike, type HttpTransport } from '@weknora/api-client';
+import { createAbortError, type NativeMultipartFileRequest } from '@weknora/api-client';
 
 export interface MobileTransportOptions {
   credential: () => Credential;
@@ -7,6 +8,40 @@ export interface MobileTransportOptions {
   isTransitioning?: () => boolean;
   locale?: () => string | undefined;
   fetcher?: FetchLike;
+}
+
+async function sendNativeMultipartFile(
+  request: NativeMultipartFileRequest,
+  headers: Record<string, string>,
+): Promise<{ status: number; headers: Record<string, string>; body: unknown }> {
+  if (request.signal?.aborted) throw createAbortError();
+  const LegacyFileSystem = await import('expo-file-system/legacy');
+  let cancelled = false;
+  const task = LegacyFileSystem.createUploadTask(request.url, request.file.uri, {
+    uploadType: LegacyFileSystem.FileSystemUploadType.MULTIPART,
+    fieldName: 'file',
+    mimeType: request.file.type,
+    parameters: request.fields,
+    headers,
+    sessionType: LegacyFileSystem.FileSystemSessionType.FOREGROUND,
+  });
+  const abort = () => {
+    cancelled = true;
+    void task.cancelAsync().catch(() => undefined);
+  };
+  request.signal?.addEventListener('abort', abort, { once: true });
+  try {
+    const result = await task.uploadAsync();
+    if (cancelled || request.signal?.aborted || !result) throw createAbortError();
+    let body: unknown = result.body;
+    try { body = JSON.parse(result.body); } catch { /* Preserve a non-JSON error body for the shared parser. */ }
+    return { status: result.status, headers: result.headers, body };
+  } catch (error) {
+    if (cancelled || request.signal?.aborted) throw createAbortError();
+    throw error;
+  } finally {
+    request.signal?.removeEventListener('abort', abort);
+  }
 }
 
 function authHeader(credential: Credential): string | undefined {
@@ -58,6 +93,15 @@ export function createMobileTransport(options: MobileTransportOptions): HttpTran
       }
       await options.refresh();
       return base.send(decorate(request));
+    },
+    sendMultipartFile: async (request) => {
+      const decorated = decorate({
+        method: request.method,
+        url: request.url,
+        headers: request.headers,
+        signal: request.signal,
+      });
+      return sendNativeMultipartFile(request, decorated.headers);
     },
     sendStream: base.sendStream ? sendStreamWithRefresh : undefined,
   };

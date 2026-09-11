@@ -6,7 +6,10 @@ import { authHeaderForFileDownload, toNativeFileSource } from './file-uris.ts';
 
 export async function pickNativeFile(): Promise<NativeFileSource | null> {
   const result = await DocumentPicker.getDocumentAsync({
-    copyToCacheDirectory: false,
+    // The cancellable native UploadTask requires a seekable file:// source;
+    // Android's DocumentsUI otherwise returns a content:// URI whose backing
+    // directory does not exist for expo-file-system's legacy task API.
+    copyToCacheDirectory: true,
     multiple: false,
     type: '*/*',
   });

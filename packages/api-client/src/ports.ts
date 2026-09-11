@@ -14,6 +14,15 @@ export interface NativeFileSource {
   size?: number;
 }
 
+export interface NativeMultipartFileRequest {
+  method: string;
+  url: string;
+  headers: Record<string, string>;
+  file: NativeFileSource;
+  fields: Record<string, string>;
+  signal?: AbortSignal;
+}
+
 export interface HttpResult {
   status: number;
   headers: Record<string, string>;
@@ -28,6 +37,7 @@ export interface HttpStreamResult {
 
 export interface HttpTransport {
   send(request: HttpRequest): Promise<HttpResult>;
+  sendMultipartFile?(request: NativeMultipartFileRequest): Promise<HttpResult>;
   sendStream?(request: HttpRequest): Promise<HttpStreamResult>;
 }
 

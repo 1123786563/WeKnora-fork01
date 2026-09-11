@@ -92,6 +92,35 @@ test('preserves cancellation and converts timeout to a typed error', async () =>
   );
 });
 
+test('routes native file uploads through the cancellable transport seam', async () => {
+  const calls: unknown[] = [];
+  const transport = {
+    send: async () => { throw new Error('generic fetch must not handle native uploads'); },
+    sendMultipartFile: async (request: unknown) => {
+      calls.push(request);
+      return { status: 200, headers: {}, body: { success: true, data: { id: 'doc-native' } } };
+    },
+  };
+  const client = createWeKnoraClient({ baseURL: 'https://api.example.test', transport });
+
+  const result = await client.knowledge.documents.upload('kb-1', {
+    file: { uri: 'content://picker/notes.txt', name: 'notes.txt', type: 'text/plain' },
+    metadata: { source: 'mobile' },
+  });
+
+  assert.equal(result.id, 'doc-native');
+  const call = calls[0] as Record<string, unknown>;
+  assert.ok(call.signal instanceof AbortSignal);
+  assert.deepEqual({ ...call, signal: undefined }, {
+    method: 'POST',
+    url: 'https://api.example.test/api/v1/knowledge-bases/kb-1/knowledge/file',
+    headers: { accept: 'application/json' },
+    file: { uri: 'content://picker/notes.txt', name: 'notes.txt', type: 'text/plain' },
+    fields: { metadata: JSON.stringify({ source: 'mobile' }) },
+    signal: undefined,
+  });
+});
+
 test('classifies abort-like errors when DOMException is unavailable', async () => {
   const globals = globalThis as typeof globalThis & { DOMException?: typeof DOMException };
   const originalDOMException = globals.DOMException;

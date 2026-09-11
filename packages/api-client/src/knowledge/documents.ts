@@ -91,20 +91,26 @@ export function createKnowledgeDocumentsApi(request: (input: ClientRequest) => P
     },
     async upload(knowledgeBaseId: string, input: KnowledgeDocumentUploadInput, signal?: AbortSignal): Promise<KnowledgeDocument> {
       const form = new FormData();
-      if (isNativeFileSource(input.file)) {
-        form.append('file', input.file as unknown as Blob);
+      const nativeFile = isNativeFileSource(input.file) ? input.file : undefined;
+      if (nativeFile) {
+        form.append('file', nativeFile as unknown as Blob);
       } else {
-        form.append('file', input.file, input.fileName);
+        form.append('file', input.file as Blob, input.fileName);
       }
-      if (input.tag_ids) form.append('tag_ids', input.tag_ids.join(','));
-      if (input.metadata) form.append('metadata', JSON.stringify(input.metadata));
-      if (input.process_config !== undefined) form.append('process_config', JSON.stringify(input.process_config));
-      if (input.enable_multimodel !== undefined) form.append('enable_multimodel', String(input.enable_multimodel));
-      if (input.channel) form.append('channel', input.channel);
+      const multipartFields: Record<string, string> = {};
+      if (input.fileName) multipartFields.fileName = input.fileName;
+      if (input.tag_ids) multipartFields.tag_ids = input.tag_ids.join(',');
+      if (input.metadata) multipartFields.metadata = JSON.stringify(input.metadata);
+      if (input.process_config !== undefined) multipartFields.process_config = JSON.stringify(input.process_config);
+      if (input.enable_multimodel !== undefined) multipartFields.enable_multimodel = String(input.enable_multimodel);
+      if (input.channel) multipartFields.channel = input.channel;
+      for (const [key, value] of Object.entries(multipartFields)) form.append(key, value);
       const response = await request({
         method: 'POST',
         path: `/api/v1/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}/knowledge/file`,
         body: form,
+        nativeFile,
+        multipartFields,
         signal,
       });
       if (typeof response !== 'object' || response === null || !('success' in response) || (response as { success?: unknown }).success !== true) {
