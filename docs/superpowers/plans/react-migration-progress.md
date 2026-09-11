@@ -652,6 +652,23 @@
   This is static/proxy evidence only; T24 remains `review` and T25 remains
   gated.
 
+### T24 release artifact fail-closed follow-up (2026-09-12)
+
+- Added `scripts/validate-release-lite-artifacts.sh` and wired it before
+  `gh release create` in `.github/workflows/release-lite.yml`. It requires
+  the Web CLI, desktop, and React candidate artifact globs, requires exactly
+  one React candidate archive, extracts it, and validates React
+  `BUILD_INFO.json`, Web/Embed entries, and both entry asset directories.
+- Removed the release command's `|| true`, so an upload or artifact failure
+  now fails the release job before `update-homebrew` can run. The unrelated
+  Windows pre-compile tolerance remains outside the publish step.
+- `scripts/test_validate_release_lite_artifacts.sh` passes its valid fixture
+  plus missing-checksum and non-React-`BUILD_INFO.json` negative fixtures;
+  `bash -n`, workflow YAML parsing, and `git diff --check` also pass. No
+  release, registry push, Homebrew push, or production service was run.
+- This hardens publication safety but does not make the React candidate the
+  production Lite artifact; T24 remains `review` and T25 remains gated.
+
 ### 本轮问题与裁定
 
 - 计划/设计原文仍写“方案 B 尚未批准”，与用户本轮批准相冲突；本实施分支按用户批准的方案 B 执行，未因旧措辞改变架构。
