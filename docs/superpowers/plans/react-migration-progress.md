@@ -323,6 +323,11 @@
 - `.github/workflows/mobile.yml` now explicitly exports both iOS and Android JavaScript bundles after mobile tests/typecheck. Workflow YAML parsing, `node scripts/check-react-boundaries.mjs`, and `git diff --check` passed locally.
 - This proves CI coverage is declared; it does not claim a hosted GitHub runner execution or native package/runtime acceptance.
 
+### T23 mobile data-source follow-up (2026-09-11)
+
+- Added the native knowledge-base data-source inventory route. It uses shared list/type seams, keeps connector `config` and credentials out of the UI, and exposes no mobile write/sync controls.
+- Mobile tests are 33/33, typecheck passes, and both iOS/Android Expo exports pass. This remains source/bundle evidence; live connector and native device acceptance are not claimed. Evidence: `docs/migrations/react/evidence/t23-mobile-data-sources-2026-09-11.md`.
+
 ### T25 retirement preflight (2026-09-11)
 
 - Read-only scan recorded in `docs/migrations/react/evidence/t25-retirement-preflight-2026-09-11.md`.
