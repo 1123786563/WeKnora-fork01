@@ -71,3 +71,20 @@
 ## Task status
 
 V01 implementation committed as `8a7bff2`; review fixes are committed in the same isolated worktree. Static regression evidence is available; live provider probing remains blocked until the fixed schema and service environment are available.
+
+- Task V01: fix round 1/5 (0 addressed, 2 open — missing short-circuit assertion; empty paths fail-closed; commits `8a7bff2..e343086`).
+- Task V01: fix round 2/5 (2 addressed, 0 open — re-review verified; commit `0bc7272`).
+- Task V01: complete (commits `8a7bff2..0bc7272`, review clean; live provider/schema remains blocked-env by design).
+- Remaining tasks pending; next dispatch V02.
+- Task V02: implementation commit `a17bf4d`; first review FAIL (6 blocking findings: schema default, HTTP classification, cleanup, idempotency, failure artifacts, embedded namespace enforcement).
+- Task V02: fix round 1/5 committed as `69e5248`; focused tests 5/5, py_compile and diff-check pass; re-review pending. Live OM-02–OM-10 experiments remain blocked-env; cleanup requires declared captured IDs and settled transactions.
+- Task V02: fix round 1 re-review FAIL; remaining blockers are cleanup write gating/path safety, namespace capture handling, idempotency replay proof, and HTTP failure artifacts. Fix round 2 dispatched.
+- Task V02: fix round 2 committed as `88f4129`; focused tests 7/7, py_compile and diff-check pass; re-review pending.
+- Task V02: fix round 2 re-review FAIL; remaining blockers are cleanup namespace/path validation, missing cleanup capture handling, and explicit same-resource replay identity assertion. Fix round 3 dispatched.
+- Task V02: fix round 3 committed as `8c9b477`; focused tests 8/8, py_compile and diff-check pass; final re-review pending. Cleanup requires declared captures and replay requires an explicit identity JSON Pointer.
+- Task V02: fix round 3 re-review FAIL; remaining blocker is namespace enforcement for string paths plus replay_identity pointer validation. Fix round 4 dispatched.
+- Task V02: fix round 4 committed as `0734cd0`; focused tests 9/9, py_compile and diff-check pass; final re-review pending. Live experiments remain blocked-env.
+- Task V02: fix round 4 re-review FAIL; capture references in paths require post-bind namespace validation. Fix round 5/5 dispatched (maximum).
+- Task V02: fix round 5 committed as `ee4f7ad`; focused tests 10/10 pass; definitive re-review pending. Captured request/cleanup paths are rebound and namespace-validated at runtime; live experiments remain blocked-env.
+- Task V02: fix round 5 re-review BLOCKED/FAIL. Remaining blocker: cleanup does not prove the target ID was created by the current run; a read-derived capture could be deleted. Max 5 fix rounds exhausted; V02 is blocked and downstream V03+ tasks must not dispatch until this ownership check is implemented and reviewed.
+- Task V02: ownership fix implemented after user-directed continuation. Successful write-step captures are tracked in `created_captures`; cleanup rejects read-derived/untracked captures. Added unit and run-level regressions; 12/12 focused tests pass.

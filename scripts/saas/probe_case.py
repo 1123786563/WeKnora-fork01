@@ -142,6 +142,12 @@ def _validate_path_namespace(path: str, namespace: str) -> None:
                 raise ValueError("path namespace mismatch")
 
 
+def _validate_cleanup_capture(capture: str, created_captures: set[str]) -> None:
+    """Allow cleanup only for IDs captured from a successful write step."""
+    if capture not in created_captures:
+        raise ValueError(f"cleanup capture was not created by this run: {capture}")
+
+
 def _walk(value: object):
     if isinstance(value, dict):
         for key, child in value.items():
@@ -179,6 +185,7 @@ def run_case(case: dict, base_url: str, namespace: str, allow_test_writes: bool,
     paths = ({x["operation_id"]: f'{x["method"]} {x["local_path"]}' for x in raw_schema["operations"]}
              if raw_schema and "operations" in raw_schema else operation_paths(schema.read_text(encoding="utf-8"), "/api/v3"))
     captures: dict[str, object] = {}
+    created_captures: set[str] = set()
     records = []
     output = artifact_root / str(case["id"])
     output.mkdir(parents=True, exist_ok=True)
@@ -205,6 +212,8 @@ def run_case(case: dict, base_url: str, namespace: str, allow_test_writes: bool,
             raise AssertionError(f"HTTP status {status}")
         for name, pointer in step.get("captures", {}).items():
             captures[name] = json_pointer(response, pointer)
+            if method in WRITE_METHODS:
+                created_captures.add(name)
         if "expected" in step:
             assert_subset(response, step["expected"])
         if step.get("replay"):
@@ -222,6 +231,7 @@ def run_case(case: dict, base_url: str, namespace: str, allow_test_writes: bool,
             raise ValueError("cleanup refused: unsettled transactions")
         if item["capture"] not in captures:
             raise ValueError(f"cleanup capture unavailable: {item['capture']}")
+        _validate_cleanup_capture(item["capture"], created_captures)
         target = captures[item["capture"]]
         if item.get("namespace", namespace) != namespace:
             raise ValueError("cleanup namespace mismatch")

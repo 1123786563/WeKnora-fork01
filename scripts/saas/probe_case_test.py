@@ -1,4 +1,8 @@
+import json
+import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 from scripts.saas.probe_case import assert_subset, json_pointer, validate_case
 
@@ -55,6 +59,31 @@ class ProbeTests(unittest.TestCase):
         path = _bind("/namespaces/${capture:ns}/customers", {"ns": "other"})
         with self.assertRaises(ValueError):
             _validate_path_namespace(path, "saas-x")
+
+    def test_cleanup_requires_capture_created_by_write_step(self):
+        from scripts.saas.probe_case import _validate_cleanup_capture
+        with self.assertRaises(ValueError):
+            _validate_cleanup_capture("customer_id", set())
+        _validate_cleanup_capture("customer_id", {"customer_id"})
+
+    def test_get_capture_cannot_be_cleaned_up(self):
+        from scripts.saas.probe_case import run_case
+        case = {
+            "id": "read-then-clean",
+            "operation_id": "read",
+            "request": {"method": "GET", "path": "/customers/c1", "captures": {"customer_id": "/id"}},
+            "cleanup": [{"capture": "customer_id", "path": "/customers/${capture:customer_id}"}],
+            "expected": {"id": "c1"},
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            schema = root / "schema.json"
+            schema.write_text(json.dumps({"operations": [{"operation_id": "read", "method": "GET", "local_path": "/customers/{id}"}]}))
+            with patch("scripts.saas.probe_case._request_json", return_value=(200, {"id": "c1"})) as request:
+                with self.assertRaises(ValueError):
+                    run_case(case, "http://openmeter", "saas-x", True, schema, root / "artifacts")
+            request.assert_called_once()
+
     def test_unknown_capture_rejected(self):
         case = {"id": "x", "operation_id": "get", "request": {"body": {"id": "${capture:nope}"}}, "expected": {}}
         with self.assertRaises(ValueError):

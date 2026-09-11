@@ -198,3 +198,26 @@ explicit namespace capture/value. Add a regression test where a capture
 resolves to `other`.
 
 V02 remains **FAIL** until resolved.
+
+## Round-5 definitive re-review: FAIL / BLOCKED
+
+Reviewed fix commit `ee4f7ad3d54b6906e8c62f4ad804f11afb693ea7`.
+
+Evidence: `python3 -m unittest scripts.saas.probe_case_test -v` passes 10/10;
+`git diff ee4f7ad^ ee4f7ad --check` passes. Runtime bound paths are now checked
+after capture substitution for both normal requests and cleanup, and the suite
+contains a captured cross-namespace path regression. Prior schema, write-gate,
+HTTP classification/artifact, cleanup guard, and replay identity fixes remain
+present.
+
+Remaining blocking issue from the task brief:
+
+Cleanup does not prove that the target was created by this run. Any capture
+declared by the case can be populated by a preceding GET (or another read),
+then supplied to cleanup and deleted. The brief requires cleanup to process
+only objects actually created in the explicit namespace. Track IDs created by
+successful write steps (and reject cleanup captures originating from reads or
+untracked values), with a regression test for GET-then-cleanup refusal.
+
+Because this is the maximum fix round, V02 is **BLOCKED/FAIL** pending that
+ownership check; the green focused suite does not establish acceptance.
