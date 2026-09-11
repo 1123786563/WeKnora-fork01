@@ -7,24 +7,71 @@ reopen the same durable database in a new process.
 
 ## Current evidence
 
-Recorded 2026-09-11 on macOS, branch `codex/trpc-recovery`, HEAD
-`2c12fc3`. The repository has the durable Run/lease/checkpoint APIs and worker,
-but no registered graph executor provider is available to this acceptance
-harness. Therefore the SIGKILL matrix is **blocked by a concrete missing
-provider**, and is not marked passed.
+Recorded 2026-09-12 on macOS (go1.26.3 darwin/arm64), branch
+`codex/trpc-recovery-r2`. The production chain is now wired end to end: the
+session service registers the real graph executor
+(`ExecuteDurableRun`), the container injects it into the durable worker with
+a boot-time gate, the recovery hook reconciles sandbox-bound runs through the
+provider sandbox-list query (`SessionBoundManager.ObserveInstance`), and the
+graph persists `run_started`, `attempt_replaced`, `tool_dispatched`,
+`tool_result`, `run_failed` and `run_completed` events through the
+fenced event store.
+
+The SIGKILL matrix runs against `internal/agent/recoverytest/provider`, a
+provider binary that owns the production stack (migrated database, durable
+worker with fenced leases, SDK graph, repository checkpoint saver, tool
+journal, durable decision parking, finalize transaction); only the chat model
+and the external side-effect endpoint are deterministic doubles.
 
 | Check | Command / setup | Result | Evidence |
 |---|---|---|---|
 | admission gate | `GOWORK=off go test ./internal/agent/recoverytest -run TestRecoveryAdmissionGate -count=1` | PASS | disabled admission is false; worker-only mode is drain-only; enabled admission is true |
 | inconsistent config | `GOWORK=off go test ./internal/agent/recoverytest -run TestRecoveryAdmissionGateRejectsInconsistentConfig -count=1` | PASS | `AdmissionEnabled=true` with `Enabled=false` is rejected before runtime construction |
-| crash harness contract | `GOWORK=off go test ./internal/agent/recoverytest -run TestCrash -count=1 -v` | SKIPPED | `TRPC_RECOVERY_GRAPH_PROVIDER` is unset; test reports the missing real provider |
-| race acceptance job | `.github/workflows/agent-recovery.yml` | CONFIGURED | SQLite/PostgreSQL matrix and `go test -race`; provider is opt-in and absence is reported |
+| SIGKILL matrix (SQLite) | `GOWORK=off go test ./internal/agent/recoverytest -run TestCrashMatrixSQLite -count=1 -v` | PASS 8/8 | after_admission, after_plan_before_dispatch, after_result_before_checkpoint, after_finalize each: exactly 1 external call, final status succeeded, 1 completed assistant row, 0 lost events; after_side_effect_before_result and waiting_user: 1 external call, parked at waiting_user; unknown_result_user_retry: explicit retry alone raises the external count to 2; idempotent_redelivery: redelivery deduplicated, count stays 1 |
+| crash after tool result | `GOWORK=off go test ./internal/agent/recoverytest -run TestCrashAfterToolResult -count=1` | SKIPPED | superseded by the matrix subtest above when run without `TRPC_RECOVERY_GRAPH_PROVIDER`; the env-gated variant remains for CI |
+| executor end to end | `GOWORK=off go test ./internal/application/service -run TestExecuteDurableRun -count=1` | PASS | fresh run completes through admission snapshot → capability rebuild → graph → finalize transaction; superseded fence rejected with ErrLeaseLost |
+| worker wait mapping | `GOWORK=off go test ./internal/application/service -run TestWorkerParksWaitClass -count=1` | PASS | unknown tool outcomes park durably at waiting_user/tool_outcome_unknown instead of terminating |
+| race | `GOWORK=off go test -race ./internal/agent/trpc ./internal/agent/runtime ./internal/application/repository -count=1` | PASS | recorded 2026-09-12 |
 
-The skipped case is intentionally not evidence for `ExternalCalls`, final
-status, assistant message count, or event loss. Those fields are read from a
-JSON report emitted by the provider after restart.
+Defects found and fixed by the matrix (recorded for audit):
 
-## Provider protocol and required matrix
+1. A mid-node SIGKILL leaves a pending branch write in the latest checkpoint.
+   The SDK executor only plans the resume frontier from `StateKeyNextNodes`
+   when no pending writes remain, so every resume returned nil without
+   executing a node or finalizing, and the worker marked the run succeeded
+   with an empty answer. The repository checkpoint saver now materializes
+   branch-marker pending writes at load time as frontier re-execution (nodes
+   are idempotent against the tool journal); value writes keep round-tripping
+   and the stored record keeps everything for audit.
+2. The graph schema seeds the state channel with a zero-valued state; the
+   first SDK checkpoint therefore carries a version-0 seed that strict
+   decoding rejected. Seeds are now accepted only when no execution-owned key
+   is present in the JSON.
+
+## Remaining matrix rows (not yet passed — do not treat as done)
+
+- two workers contending on the same database, expired-lease takeover, old
+  epoch writes rejected, unknown tool not started twice;
+- API reconnect, decision conflict, permission revocation, cancellation,
+  deletion, budget persistence and graph/schema incompatibility black-box
+  assertions;
+- sandbox alive/lost/destroyed fixtures (the hook queries the provider
+  sandbox list, but the three fixture states are not yet asserted end to end);
+- the same matrix on an isolated PostgreSQL schema (`TRPC_TEST_POSTGRES_DSN`
+  unset in this environment; the repository suite skips with an explicit
+  reason);
+- frontend engine selector and run-event replay consumption (Task 13 gaps);
+- durable steering routing (`RunInput`/`ApplyInput` have no production
+  caller yet), durable OAuth waiter and the external-action outbox
+  (Task 11 leftovers).
+
+Known migration limitation: a SQLite database that applied the intermediate
+branch revision of migration 000014 cannot upgrade through 000016 (the rebuild
+references columns the intermediate 000014 did not create). Upgrade from the
+pre-feature baseline (000013) is verified data-preserving; the feature was
+never released, so no released database can hold the intermediate state.
+
+## Provider protocol
 
 Set `TRPC_RECOVERY_GRAPH_PROVIDER` to an executable that owns the real graph,
 saver, and migrated database. The harness invokes it once with:
@@ -39,22 +86,6 @@ invokes the same executable with `--recovery-resume <barrier>` and the same
 arguments. Resume must print or write a JSON `CrashReport` with
 `external_calls`, `final_status`, `assistant_rows`, and `lost_events`.
 
-The release matrix must cover these barriers and assertions:
-
-- after admission, after plan, after external side effect before result, after
-  result before checkpoint, after `waiting_user`, and after finalization;
-- exactly one external side effect after a committed result;
-- an unknown result parks at `waiting_user`, and explicit retry alone increments
-  the external count to two;
-- idempotent provider redelivery leaves the external count at one;
-- two workers contend on the same DB, the expired lease is reclaimed, the old
-  epoch cannot write, and the unknown tool is not started twice;
-- API reconnect, decision conflict, permission revocation, cancellation,
-  deletion, budget persistence, graph/schema incompatibility, and sandbox
-  alive/lost/destroyed fixtures;
-- SQLite and isolated PostgreSQL schema. Cloud sandbox credentials are a
-  separate evidence row and cannot be inferred from contract tests.
-
 ## Gate semantics
 
 `AgentRecoveryAdmissionEnabled` is true only when both the worker and admission
@@ -66,5 +97,5 @@ worker must never silently fall back to builtin execution for a persisted tRPC
 run.
 
 Until every required matrix row has fresh command output and a provider report,
-the feature remains unavailable for rollout. The current record is therefore
-partial evidence, not a completion claim.
+the feature remains unavailable for rollout. The single-process SQLite matrix
+above is now green; the remaining rows keep the feature closed.
