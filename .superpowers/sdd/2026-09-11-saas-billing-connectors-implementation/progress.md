@@ -97,3 +97,5 @@ V01 implementation committed as `8a7bff2`; review fixes are committed in the sam
 - Task F02: brief generated; implementation dispatch follows F01 PASS.
 - Task F02: implementation commit `bb7e8c6`; coordinator verified 4/4 targeted tests, go vet, go build, and diff-check; independent review PASS (task-F02-review.md, B1–B7). PostgreSQL concurrency evidence remains blocked-env.
 - Task F03: brief generated; implementation dispatch follows F02 PASS.
+- Task F03: implementation commit `2f4462a` (RED-first: undefined symbols; GREEN: 12/12 targeted tests; vet/build/diff-check/gofmt pass); coordinator re-verified tests ok, vet 0, diff-check clean, scope = 9 owned files; independent review PASS (task-F03-review.md, C1–C9). Repository-layer runtime and PostgreSQL dialect remain blocked-env/not-run and are not marked pass.
+- Task F04: brief generation and dispatch follow F03 PASS.
