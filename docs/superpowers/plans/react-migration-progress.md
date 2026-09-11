@@ -329,6 +329,20 @@
 - A fresh isolated Lite process on `127.0.0.1:18082` accepted owner registration/login, API-key create (`201`), list (`200`, one row), and revoke (`200`) for a scoped `retrieve` key. The temporary SQLite data and process were discarded/stopped after the probe; no token was recorded.
 - This upgrades the API-key slice from source/bundle-only to isolated real-backend evidence, but does not complete the full server role/tenant 403 matrix or native device interaction. Evidence: `docs/migrations/react/evidence/t23-mobile-api-keys-2026-09-11.md`.
 
+### T23 native iOS API-key follow-up (2026-09-12)
+
+- The installed iPhone 17 Pro Release app opened the owner-only API-key screen,
+  created `ios-live-probe` with scoped `retrieve`, displayed the returned
+  token once, then revoked the key through the native confirmation dialog.
+  The final server-backed list was empty.
+- Authenticated `GET /api/v1/tenants/1/api-keys` returned `200` with an empty
+  data array after revoke. Screenshot:
+  `/tmp/weknora-ios-api-key-latest.png`, SHA-256
+  `3daed49db47610653b638f6dec41ca53615bb7bc7df4a257b941c94a894e9b31`.
+- This adds native iOS owner CRUD evidence only; non-owner 403/tenant
+  isolation and production secret-management evidence remain open. Evidence:
+  `docs/migrations/react/evidence/t23-mobile-api-keys-2026-09-11.md`.
+
 ### T24 mobile CI follow-up (2026-09-11)
 
 - `.github/workflows/mobile.yml` now explicitly exports both iOS and Android JavaScript bundles after mobile tests/typecheck. Workflow YAML parsing, `node scripts/check-react-boundaries.mjs`, and `git diff --check` passed locally.

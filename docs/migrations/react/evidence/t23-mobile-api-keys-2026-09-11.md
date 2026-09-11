@@ -40,3 +40,22 @@ written to the repository or included in this evidence.
 ## Evidence boundary
 
 This proves the native route wiring, Owner-only client-side affordance, scoped input validation, token non-persistence boundary, shared API client usage, type-safe mobile bundle source, and one isolated Lite create/list/revoke sequence. It does not claim the complete server role/tenant 403 matrix, native device interaction, or production secret-management acceptance; those remain open T23/T24 evidence.
+
+## Native iOS live follow-up — 2026-09-12 00:01 CST
+
+- On the installed `com.weknora.mobile` Release app running on iPhone 17 Pro
+  iOS 26.5, the authenticated owner opened Manage → Workspace API keys. The
+  screen displayed `Workspace role: owner` and the server-backed empty list.
+- Entered `ios-live-probe` with the default scoped `retrieve` capability and
+  created the key. The native screen displayed the returned token once and
+  rendered the server-created row. The row was then revoked through the
+  confirmation dialog; the screen returned to `No API keys returned.`.
+- An authenticated direct request to `GET /api/v1/tenants/1/api-keys` after
+  the revoke returned HTTP `200` with `{"data":[],"success":true}`.
+- Screenshot after revoke:
+  `/tmp/weknora-ios-api-key-latest.png` (SHA-256
+  `3daed49db47610653b638f6dec41ca53615bb7bc7df4a257b941c94a894e9b31`).
+
+This is native iOS plus isolated Lite owner create/list/revoke evidence. It
+does not close non-owner role/tenant negatives, physical-device behavior, or
+production secret-management acceptance.
