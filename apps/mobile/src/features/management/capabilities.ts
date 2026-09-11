@@ -11,6 +11,7 @@ export const MOBILE_CAPABILITIES: readonly MobileCapability[] = [
   { key: 'attachments', label: 'Chat attachments', support: 'core' },
   { key: 'approvals', label: 'Tool approvals', support: 'core' },
   { key: 'identity', label: 'Members, roles and audit', support: 'management', reason: 'Tenant context is server-owned; writes require an owner/admin role and remain server-authorized.' },
+  { key: 'organizations', label: 'Organizations and join requests', support: 'management', reason: 'Organization membership and writes remain server-authorized.' },
   { key: 'configuration', label: 'Agents, models, MCP and skills', support: 'read-only', reason: 'Mobile does not persist configuration writes.' },
   { key: 'wiki-faq', label: 'Wiki and FAQ', support: 'management', reason: 'Owner/admin editing uses server version and permission checks.' },
   { key: 'sandbox', label: 'Sandbox terminal', support: 'unsupported', reason: 'The ticket/WebSocket surface is not exposed as an arbitrary mobile shell.' },

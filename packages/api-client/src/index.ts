@@ -23,7 +23,7 @@ export { createChatSessionsApi } from './chat/sessions.ts';
 export type { ChatMessageListParams, ChatSessionListParams, ChatSessionsApi } from './chat/sessions.ts';
 export type { ChatMessage, ChatSession, ChatSessionListResponse } from '@weknora/contracts';
 export { createIdentityApi } from './identity/index.ts';
-export type { IdentityApi, TenantRole, TenantMember, TenantInvitation, AuditLog, Organization, OrganizationApi, OrganizationMember, OrganizationJoinRequest } from './identity/index.ts';
+export type { IdentityApi, TenantRole, TenantMember, TenantInvitation, AuditLog, Organization, OrganizationApi, OrganizationMember, OrganizationJoinRequest, OrganizationRole } from './identity/index.ts';
 export { createAdministrationApi } from './administration/index.ts';
 export type { AdministrationApi, ApiKey, SystemAdminUser, SystemSetting, RuntimeTask, RuntimeQueues, DeploymentCapabilities, APIPrincipalConfig } from './administration/index.ts';
 export { createSettingsApi } from './settings/index.ts';
