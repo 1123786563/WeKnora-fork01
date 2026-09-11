@@ -88,3 +88,33 @@ test('does not attach stale session context while a transition is active', async
   assert.equal(requests[0]?.authorization, undefined);
   assert.equal(requests[0]?.['x-tenant-id'], undefined);
 });
+
+test('refreshes once before retrying a bearer SSE handshake after 401', async () => {
+  let credential: Credential = { kind: 'bearer', accessToken: 'old-access', refreshToken: 'old-refresh' };
+  let refreshes = 0;
+  const authorizations: string[] = [];
+  const transport = createMobileTransport({
+    credential: () => credential,
+    refresh: async () => {
+      refreshes += 1;
+      credential = { kind: 'bearer', accessToken: 'new-access', refreshToken: 'new-refresh' };
+      return credential;
+    },
+    fetcher: async (_input, init) => {
+      authorizations.push((init?.headers as Record<string, string> | undefined)?.authorization ?? '');
+      return {
+        status: authorizations.length === 1 ? 401 : 200,
+        headers: new Headers({ 'content-type': 'text/event-stream' }),
+        body: null,
+        json: async () => ({}),
+        text: async () => '',
+      };
+    },
+  });
+
+  const result = await transport.sendStream!({ method: 'POST', url: 'https://api.example.test/api/v1/knowledge-chat/s-1', headers: {}, body: { query: 'hello' } });
+
+  assert.equal(result.status, 200);
+  assert.equal(refreshes, 1);
+  assert.deepEqual(authorizations, ['Bearer old-access', 'Bearer new-access']);
+});

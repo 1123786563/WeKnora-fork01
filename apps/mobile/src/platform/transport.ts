@@ -31,6 +31,21 @@ export function createMobileTransport(options: MobileTransportOptions): HttpTran
     return { ...request, headers };
   };
   const isIdempotentRead = (method: string) => ['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase());
+  async function sendStreamWithRefresh(request: Parameters<typeof base.send>[0]) {
+    const credential = options.credential();
+    let result = await base.sendStream!(decorate(request));
+    if (result.status !== 401 || options.isTransitioning?.() || !options.refresh || credential.kind !== 'bearer' || !credential.refreshToken) {
+      return result;
+    }
+    const latest = options.credential();
+    if (latest.kind === 'bearer' && latest.accessToken !== credential.accessToken) {
+      return base.sendStream!(decorate(request));
+    }
+    await options.refresh();
+    if (options.isTransitioning?.()) return result;
+    result = await base.sendStream!(decorate(request));
+    return result;
+  }
   return {
     send: async (request) => {
       const result = await base.send(decorate(request));
@@ -40,7 +55,7 @@ export function createMobileTransport(options: MobileTransportOptions): HttpTran
       await options.refresh();
       return base.send(decorate(request));
     },
-    sendStream: base.sendStream ? (request) => base.sendStream!(decorate(request)) : undefined,
+    sendStream: base.sendStream ? sendStreamWithRefresh : undefined,
   };
 }
 
