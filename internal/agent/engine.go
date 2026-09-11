@@ -66,6 +66,11 @@ type AgentEngine struct {
 	steerSink         types.SteerSink
 	allowSteerOverrun bool // one extra ReAct round after a loop-end inject past MaxIterations
 	steerOverruns     int  // how many times this turn has already used the extra round
+	// commercialGate, when set, routes this turn's billable outbound model
+	// calls through the commercial ExecutionGate (Begin before dispatch,
+	// Finish after trusted usage). nil keeps existing non-commercial
+	// behavior exactly; see commercial_adapter.go.
+	commercialGate *CommercialGateBinding
 }
 
 // maxSteerOverruns caps loop-end injects past MaxIterations. One extra round
@@ -664,6 +669,12 @@ func (e *AgentEngine) runReActIteration(
 	})
 
 	// 1. Think: Call LLM with function calling (includes retry + graceful degradation)
+	// Commercial boundary: Begin must pass BEFORE the real outbound call; a
+	// gate denial is a hard stop for this round (no ungated dispatch).
+	if err := e.beginBillableCall(ctx, round); err != nil {
+		retErr = err
+		return iterOutcomeBreak, err
+	}
 	e.lastSentMsgCount = len(*messagesPtr)
 	resp, err := e.callLLMWithRetry(ctx, messagesPtr, tools, state, query, state.CurrentRound, sessionID)
 	if err != nil {
@@ -707,6 +718,10 @@ func (e *AgentEngine) runReActIteration(
 			response.Usage.CacheReadTokens, response.Usage.CacheWriteTokens,
 			response.Usage.PromptCacheHitRate(), response.Usage.CacheStatus)
 	}
+	// Commercial boundary: settle this round's reservation with the trusted
+	// provider usage (no-op without a configured gate). Display usage above
+	// is untouched; abnormal cost halts further dispatch for this binding.
+	e.finishBillableCall(ctx, round, response.Usage)
 
 	// Detect stuck loops: if the LLM keeps returning the same content
 	// without tool calls (e.g., an unhandled finish reason), break early.

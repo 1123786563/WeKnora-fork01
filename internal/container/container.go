@@ -459,6 +459,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(ommeter.NewGatewayFromEnv, dig.As(new(domain.CommercialGateway))))
 	must(container.Provide(commercialsvc.NewFulfillmentService))
 	must(container.Invoke(startCommercialFulfillment))
+	// U05 execution gate: the billable outbound boundary (Begin reserves and
+	// persists dispatched intent before dispatch, Finish settles trusted
+	// usage). Registered only — no Invoke: arming an engine turn with it is
+	// an explicit SetCommercialGate by the commercial request path, so
+	// non-commercial behavior is unchanged.
+	must(container.Provide(commercialsvc.NewExecutionGateService))
 	logger.Debugf(ctx, "[Container] HTTP handlers registered")
 
 	// Wire the chat package's local image resolver so multimodal chat can read
