@@ -34,7 +34,13 @@
 - 门禁状态：功能默认关闭不变；SQLite 矩阵通过不等于发布门禁通过，剩余矩阵行见验收文档。
 
 ## 执行记录要求
+## 2026-09-12 第二轮（同分支续）
 
+- 43dbca6（Task 11）：durable steering 接通。SteerMessage 对 trpc 会话改走持久化 RunInput（steer_id 幂等、队列深度、waiting_user 不当决策消费）；图模型节点在安全边界消费 inject 输入，注入消息与 AppliedSteerIDs 同一 checkpoint 落盘（恰好一次边界）；after 输入持久化待后续受理。handler 3 测试 + 图 2 测试 + repository 1 测试通过。
+- 112da53 + 6292959 + worker 提交（Task 08 OAuth）：预执行 OAuth 等待改为持久化停靠。工具上下文携带 fence；DurableGate 在 Attempt==0 时以 mcp_oauth_ 前缀停靠并发出含 resource_ref 的 waiting_user 事件；planned 调用打标记供 retry 决策绑定；修复 ApplyDecision 无关联时的静默 no-op（被新测试钉死）；worker 映射 oauth 哨兵。剩余：黑盒 OAuth 场景、mcp_approve_ 前审批停靠。
+- 64df9d5（Task 13）：新会话引擎选择器（builtin/trpc，持久化设置）；现有会话只读引擎标识；SSE 断线有界退避重连；durable run 掉线后按已消费 seq 游标轮询事件经 applyRunEvent 恢复渲染，终态/游标过期停止。前端全套 818/818、i18n 审计、vue-tsc、build 通过。
+- 本轮复核发现并处理：会话服务四个文件的编辑在并发子代理会话中丢失，已全部重做并复验（build + 全部相关套件通过）。
+- 遗留：decisions 测试文件 12 处 lll + 1 处 gofumpt；双 worker 竞争/PostgreSQL/API 黑盒/沙箱三态矩阵行；after 跟进的自动受理；ValidateEngineUpdate 直接单测。
 每次任务追加开始/结束时间、实现者、固定 HEAD、失败测试原因、通过命令、审查问题与修复提交。保留历史记录，不用最终 PASS 覆盖中途失败。
 
 SDK 版本固定 v1.10.0（根模块，无子模块）。PostgreSQL 验收需要 `TRPC_TEST_POSTGRES_DSN`，未设置的组合保持未验收。
