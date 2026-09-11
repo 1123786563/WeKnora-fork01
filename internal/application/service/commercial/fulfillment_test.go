@@ -18,11 +18,13 @@ import (
 // provider is proven separately by the httptest evidence in
 // internal/infrastructure/openmeter/commercial_test.go.
 type stubGateway struct {
-	mu       sync.Mutex
-	saved    map[string]domain.BenefitReceipt // benefits the "remote" persisted
-	applies  int                              // grants that actually stored a benefit
-	applyErr error                            // returned AFTER saving (dropped response)
-	findable bool                             // FindBenefit reports saved benefits
+	mu        sync.Mutex
+	saved     map[string]domain.BenefitReceipt // benefits the "remote" persisted
+	applies   int                              // grants that actually stored a benefit
+	applyErr  error                            // returned AFTER saving (dropped response)
+	findable  bool                             // FindBenefit reports saved benefits
+	revokeErr error                            // returned by RevokeBenefit (revocation failure)
+	revokes   int                              // precise-credits revocation attempts (incl. failures)
 }
 
 func (g *stubGateway) ApplyBenefit(_ context.Context, req domain.BenefitRequest) (domain.BenefitReceipt, error) {
@@ -68,6 +70,32 @@ func (g *stubGateway) setFindable(v bool) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.findable = v
+}
+
+// RevokeBenefit is the C05 precise-credits revocation boundary of the same
+// stub: it counts revocation ATTEMPTS and can be made to fail to prove
+// that refund-success/revoke-failure recovery retries the revocation only
+// (a failed attempt followed by a successful retry counts >= 2).
+func (g *stubGateway) RevokeBenefit(_ context.Context, key string, credits domain.Credits) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.revokes++ // count attempts, including the failed one
+	if g.revokeErr != nil {
+		return g.revokeErr
+	}
+	return nil
+}
+
+func (g *stubGateway) revokeCount() int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.revokes
+}
+
+func (g *stubGateway) setRevokeErr(err error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.revokeErr = err
 }
 
 func setupFulfillment(t *testing.T, gw domain.CommercialGateway) (*FulfillmentService, *gorm.DB, *repocommercial.OrderStore) {

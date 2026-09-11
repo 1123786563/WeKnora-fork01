@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 
+	commercialsvc "github.com/Tencent/WeKnora/internal/application/service/commercial"
 	"github.com/Tencent/WeKnora/internal/commercial"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/gin-gonic/gin"
@@ -39,7 +40,8 @@ type ResourceWriteFunc func(tx *gorm.DB) error
 // authenticated context attached by the Auth middleware — never from a
 // path parameter.
 type CommercialHandler struct {
-	db *gorm.DB
+	db      *gorm.DB
+	refunds *commercialsvc.RefundService
 }
 
 // NewCommercialHandler builds the handler and makes sure the resource
@@ -48,6 +50,11 @@ type CommercialHandler struct {
 func NewCommercialHandler(db *gorm.DB) *CommercialHandler {
 	h := &CommercialHandler{db: db}
 	if db != nil {
+		// Refund wiring: the gateway/provider/eligibility arrive unconfigured
+		// until the container connects them (blocked-env), so refund request
+		// creation and review recording work while real channel payouts and
+		// revocations surface explicit unconfigured errors.
+		h.refunds, _ = commercialsvc.NewRefundService(db, nil, nil, nil)
 		_ = db.Exec(`CREATE TABLE IF NOT EXISTS commercial_resource_counters (
 			tenant_id BIGINT NOT NULL,
 			resource TEXT NOT NULL,
@@ -284,4 +291,113 @@ func (h *CommercialHandler) ReserveResource(tenantID uint64, resource string, de
 		}
 		return nil
 	})
+}
+
+// CreateRefund serves POST /commercial/refunds: a SPACE-SCOPED refund
+// request. The tenant comes exclusively from the authenticated context
+// (never a path parameter) and must own the order; the request only
+// registers intent — locks, channel calls and revocation happen solely
+// through the review/approval path, and until P03's occupancy-refundable
+// check exists approvals keep refunds in requested/reviewing.
+func (h *CommercialHandler) CreateRefund(c *gin.Context) {
+	tenantID, _, ok := commercialTenantScope(c)
+	if !ok {
+		c.JSON(http.StatusForbidden, gin.H{"error": ErrMissingTenantScope.Error()})
+		return
+	}
+	if h.refunds == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "refund service unavailable"})
+		return
+	}
+	var req struct {
+		OrderID      string `json:"order_id"`
+		OrderLineID  string `json:"order_line_id"`
+		AmountFen    int64  `json:"amount_fen"`
+		CreditsMicro int64  `json:"credits_micro"`
+		Reason       string `json:"reason"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.OrderID == "" || req.AmountFen <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "order_id and a positive amount_fen are required"})
+		return
+	}
+	state, err := h.refunds.CreateRequest(c.Request.Context(), tenantID, req.OrderID, req.OrderLineID,
+		commercial.CNYFen(req.AmountFen), commercial.Credits(req.CreditsMicro))
+	switch {
+	case err == nil:
+		c.JSON(http.StatusCreated, gin.H{
+			"id": state.ID, "order_id": state.OrderID, "state": state.State,
+			"amount_fen": int64(state.Amount), "credits_micro": int64(state.CreditAmount),
+		})
+	case errors.Is(err, commercialsvc.ErrRefundOrderMismatch):
+		c.JSON(http.StatusNotFound, gin.H{"error": "order not found for this tenant"})
+	case errors.Is(err, commercialsvc.ErrInvalidRefundOrderState):
+		c.JSON(http.StatusConflict, gin.H{"error": "order is not in a refundable state"})
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	}
+}
+
+// RequirePlatformRefundReviewer gates the ADMIN refund review path. Review
+// moves money out of the space, so it is a SEPARATE permission path from
+// the tenant billing gate above: the caller must carry the Admin role in
+// the authenticated context. Tenant billing authority alone never admits
+// a refund reviewer.
+func (h *CommercialHandler) RequirePlatformRefundReviewer() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if _, ok := types.TenantIDFromContext(c.Request.Context()); !ok {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": ErrMissingTenantScope.Error()})
+			return
+		}
+		if types.TenantRoleFromContext(c.Request.Context()) != types.TenantRoleAdmin {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"error": "Forbidden: refund review requires platform/admin authority",
+			})
+			return
+		}
+		c.Next()
+	}
+}
+
+// AdminReviewRefund serves POST /admin/refunds/:id/review: the platform
+// review decision on one refund. Approval records the manual basis
+// (period not started vs already effective); without a configured
+// eligibility policy (P03 pending) the refund honestly stays in review —
+// the response says so instead of pretending a payout.
+func (h *CommercialHandler) AdminReviewRefund(c *gin.Context) {
+	if h.refunds == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "refund service unavailable"})
+		return
+	}
+	var req struct {
+		Action string `json:"action"`
+		Note   string `json:"note"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.Action == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "action is required"})
+		return
+	}
+	id := c.Param("id")
+	reviewer := commercialUserID(c)
+	switch req.Action {
+	case "approve":
+		if reviewer == "" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "no authenticated reviewer"})
+			return
+		}
+		err := h.refunds.Approve(c.Request.Context(), id, reviewer)
+		if errors.Is(err, commercial.ErrRefundNotReady) {
+			c.JSON(http.StatusConflict, gin.H{
+				"error": "refund kept in review: eligibility policy (P03 occupancy check) not configured",
+				"id":    id, "state": commercial.RefundStateReviewing,
+			})
+			return
+		}
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"id": id, "state": commercial.RefundStatePending})
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported review action"})
+	}
 }

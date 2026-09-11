@@ -185,6 +185,52 @@ func (g *Gateway) FindBenefit(ctx context.Context, key string) (domain.BenefitRe
 	return receipt, nil
 }
 
+type settlementRequest struct {
+	IdempotencyKey string `json:"idempotencyKey"`
+	Amount         string `json:"amount"`
+}
+
+// RevokeBenefit claws back exactly credits from the grant settled under
+// key, mapped onto the SAME validated schema family (update-credit-grant
+// -external-settlement, schema_only per the V03 inventory): the grant is
+// first resolved by its idempotencyKey (list-credit-grants, scoped to the
+// customer carried on the context), then settled by the precise negative
+// amount under a revoke idempotency key derived from (key, credits) — a
+// replay of the same revocation can never revoke twice. Unconfigured
+// endpoint/credentials fail fast with ErrGatewayUnconfigured, exactly
+// like ApplyBenefit/FindBenefit (OM-01..OM-10 remain blocked-env; this
+// adapter carries no runtime evidence for revocation either).
+func (g *Gateway) RevokeBenefit(ctx context.Context, key string, credits domain.Credits) error {
+	if key == "" || credits <= 0 {
+		return domain.ErrInvalidBenefitRequest
+	}
+	if err := g.configured(); err != nil {
+		return err
+	}
+	customer := domain.BenefitCustomerFrom(ctx)
+	if customer == "" {
+		return fmt.Errorf("%w: no customer scope for revocation", domain.ErrGatewayIndeterminate)
+	}
+	var list grantListResponse
+	q := url.Values{"idempotencyKey": []string{key}}
+	if err := g.call(ctx, http.MethodGet,
+		fmt.Sprintf("/api/v3/openmeter/customers/%s/credits/grants?%s", url.PathEscape(customer), q.Encode()),
+		nil, &list); err != nil {
+		return err
+	}
+	if len(list.Items) == 0 {
+		// The grant never settled, so there is provably nothing to revoke.
+		return domain.ErrBenefitNotFound
+	}
+	body := settlementRequest{
+		IdempotencyKey: "revoke:" + key + ":" + credits.String(),
+		Amount:         (-credits).String(),
+	}
+	return g.call(ctx, http.MethodPatch,
+		fmt.Sprintf("/api/v3/openmeter/customers/%s/credits/grants/%s/settlement", url.PathEscape(customer), url.PathEscape(list.Items[0].ID)),
+		body, nil)
+}
+
 func (g *Gateway) configured() error {
 	if g.cfg.BaseURL == "" || g.cfg.APIKey == "" {
 		return fmt.Errorf("%w: openmeter %s endpoint/credentials not set (OM-01..OM-10 blocked-env)",

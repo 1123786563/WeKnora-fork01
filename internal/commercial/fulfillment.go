@@ -83,6 +83,13 @@ type BenefitReceipt struct {
 type CommercialGateway interface {
 	ApplyBenefit(ctx context.Context, req BenefitRequest) (BenefitReceipt, error)
 	FindBenefit(ctx context.Context, key string) (BenefitReceipt, error)
+	// RevokeBenefit claws back EXACTLY credits from the benefit settled
+	// under key (C05 precise-credits revocation). It must be idempotent on
+	// (key, credits): a replay after a lost response never revokes twice,
+	// and an unconfirmed revocation must surface as an error so the refund
+	// stays revocation_pending and recovery retries the revocation only —
+	// never a second payout.
+	RevokeBenefit(ctx context.Context, key string, credits Credits) error
 }
 
 // FulfillmentOutcome classifies a gateway result for state transitions.

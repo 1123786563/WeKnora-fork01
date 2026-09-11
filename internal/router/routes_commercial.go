@@ -30,7 +30,21 @@ func RegisterCommercialRoutes(r *gin.RouterGroup, commercialHandler *handler.Com
 		commercialGroup.GET("/usage", commercialHandler.Usage)
 		commercialGroup.GET("/orders", commercialHandler.Orders)
 		commercialGroup.POST("/orders", commercialHandler.NotImplemented)
+		// C05: space-scoped refund REQUEST. The group's billing gate and
+		// capability checks apply; the tenant comes from the authenticated
+		// context. The request registers intent only — money moves solely
+		// through the admin review path below.
+		commercialGroup.POST("/refunds", commercialHandler.CreateRefund)
 	}
+
+	// C05: platform refund REVIEW — a separate permission path from the
+	// tenant billing gate above (review moves money out of the space, so
+	// tenant billing authority alone must never admit a reviewer). It
+	// hangs DIRECTLY on the parent group with its own admin-authority
+	// guard; the id names the refund under review.
+	r.POST("/admin/refunds/:id/review",
+		commercialHandler.RequirePlatformRefundReviewer(),
+		commercialHandler.AdminReviewRefund)
 
 	// Provider payment callbacks: publicly reachable and authenticated by
 	// provider signature verification instead of session/API-key. They hang
