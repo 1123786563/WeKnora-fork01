@@ -245,6 +245,37 @@ func (s *AgentRunStore) EnsureToolPlan(
 	return record, err
 }
 
+// ParkToolPreflightWait marks a planned tool call as the subject of a durable
+// pre-execution wait (for example an MCP OAuth reauthorization). The row
+// stays planned: the call has not been dispatched, so no unknown-outcome
+// classification applies. A retry decision linked by the pending id clears
+// the marker and lets the next dispatch begin.
+func (s *AgentRunStore) ParkToolPreflightWait(
+	ctx context.Context, fence agentruntime.Fence, callID, pendingID, resourceRef string,
+) error {
+	if callID == "" || pendingID == "" {
+		return agentruntime.ErrConflict
+	}
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := s.lockToolRun(tx, fence); err != nil {
+			return err
+		}
+		update := toolCallScope(tx.Model(&agentToolCallRow{}), fence.RunKey, callID).
+			Where("status = ?", agentruntime.ToolStatusPlanned).
+			Updates(map[string]any{"unknown_reason": pendingID})
+		if update.Error != nil {
+			return update.Error
+		}
+		if update.RowsAffected != 1 {
+			return agentruntime.ErrConflict
+		}
+		// The authorization resource reference lives on the durable decision
+		// row; the tool row only carries the linkage marker.
+		_ = resourceRef
+		return nil
+	})
+}
+
 // BeginToolAttempt appends one attempt. A dispatch in this epoch is still live,
 // even for a read-only tool, and cannot be concurrently repeated.
 func (s *AgentRunStore) BeginToolAttempt(

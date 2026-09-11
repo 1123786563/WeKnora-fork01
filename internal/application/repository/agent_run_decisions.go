@@ -154,24 +154,55 @@ func (s *AgentRunStore) applyDecisionOnce(
 			if len(pendingRows) == 1 && d.ToolCallID == "" {
 				return agentruntime.ErrConflict
 			}
-			if len(pendingRows) == 0 && d.ToolCallID != "" {
+		}
+		preflightParked := false
+		if pendingErr != nil && !errors.Is(pendingErr, gorm.ErrRecordNotFound) {
+			return pendingErr
+		}
+		if len(pendingRows) == 0 {
+			// No unknown-outcome row: a durable pre-execution wait (for
+			// example an MCP OAuth park) links through the marker on a still
+			// planned call.
+			plannedQuery := tx.Table("agent_tool_calls").Select("call_id, args_hash").
+				Where("tenant_id = ? AND run_id = ? AND status = ? AND unknown_reason = ?",
+					key.TenantID, key.RunID, "planned", d.PendingID)
+			if d.ToolCallID != "" {
+				plannedQuery = plannedQuery.Where("call_id = ?", d.ToolCallID)
+			}
+			var plannedRows []struct{ CallID, ArgsHash string }
+			if err := plannedQuery.Find(&plannedRows).Error; err != nil {
+				return err
+			}
+			if len(plannedRows) > 1 {
+				return agentruntime.ErrConflict
+			}
+			if len(plannedRows) == 1 {
+				pending = plannedRows[0]
+				preflightParked = true
+			} else if d.ToolCallID != "" {
+				// The explicitly referenced call is in neither an unknown
+				// state nor marker-parked: the decision cannot bind to it.
 				return agentruntime.ErrConflict
 			}
 		}
-		if pendingErr == nil && len(pendingRows) == 1 {
+		if len(pendingRows) == 1 || preflightParked {
 			if d.ArgsHash == "" || d.ArgsHash != pending.ArgsHash {
 				return agentruntime.ErrConflict
 			}
-		} else if d.ToolCallID != "" || !errors.Is(pendingErr, gorm.ErrRecordNotFound) {
-			if errors.Is(pendingErr, gorm.ErrRecordNotFound) {
-				return agentruntime.ErrConflict
-			}
-			return pendingErr
+		}
+		if preflightParked && d.Action != "retry" {
+			// A pre-execution park has nothing dispatched: only a retry makes
+			// sense (terminate is handled by the status update below).
+			return agentruntime.ErrConflict
+		}
+		if len(pendingRows) == 0 && !preflightParked && d.Action == "provide_result" {
+			// A supplied result needs an unknown-outcome call to attach to.
+			return agentruntime.ErrConflict
 		}
 		if err := tx.Exec("INSERT INTO agent_run_decisions (tenant_id,run_id,decision_id,pending_id,tool_call_id,expected_revision,actor_id,action,result,reason,args_hash,resource_ref,applied) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", key.TenantID, key.RunID, d.DecisionID, d.PendingID, pending.CallID, d.ExpectedRevision, actor, d.Action, string(d.Result), d.Reason, d.ArgsHash, d.ResourceRef, true).Error; err != nil {
 			return err
 		}
-		if pendingErr == nil {
+		if pendingErr == nil && len(pendingRows) == 1 {
 			if d.Action == "provide_result" {
 				updated := tx.Table("agent_tool_calls").Where(
 					"tenant_id = ? AND run_id = ? AND call_id = ? AND status = 'unknown'",
@@ -202,6 +233,23 @@ func (s *AgentRunStore) applyDecisionOnce(
 				if err := tx.Create(&row).Error; err != nil {
 					return err
 				}
+			}
+		} else if preflightParked {
+			// A pre-execution park has nothing dispatched yet: only a retry
+			// makes sense (terminate is handled by the status update below),
+			// and the next dispatch creates the attempt row itself.
+			if d.Action != "retry" {
+				return agentruntime.ErrConflict
+			}
+			cleared := tx.Table("agent_tool_calls").Where(
+				"tenant_id = ? AND run_id = ? AND call_id = ? AND status = 'planned' AND unknown_reason = ?",
+				key.TenantID, key.RunID, pending.CallID, d.PendingID,
+			).Updates(map[string]any{"unknown_reason": ""})
+			if cleared.Error != nil {
+				return cleared.Error
+			}
+			if cleared.RowsAffected != 1 {
+				return agentruntime.ErrConflict
 			}
 		}
 		status := "queued"

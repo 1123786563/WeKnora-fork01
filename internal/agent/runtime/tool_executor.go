@@ -35,7 +35,26 @@ var (
 	// ErrToolNotDispatched rejects an execution adapter that bypassed the
 	// durable dispatch boundary and therefore cannot prove its outcome.
 	ErrToolNotDispatched = errors.New("tool execution did not enter the durable dispatch boundary")
+	// ErrMCPOAuthWait means an MCP tool needs OAuth reauthorization before it
+	// can run; the durable run has been parked at waiting_user with an
+	// mcp_oauth_ pending id.
+	ErrMCPOAuthWait = errors.New("mcp oauth authorization required")
 )
+
+// OAuthWaitError carries the durable park identity of a pre-execution OAuth
+// wait so callers can classify it with errors.Is and surfaces can deep-link
+// the reconnect flow.
+type OAuthWaitError struct {
+	PendingID  string
+	ServiceID  string
+	ToolCallID string
+}
+
+func (e *OAuthWaitError) Error() string {
+	return ErrMCPOAuthWait.Error() + ": service " + e.ServiceID
+}
+
+func (e *OAuthWaitError) Unwrap() error { return ErrMCPOAuthWait }
 
 // ToolPlan is the immutable, durable identity of one logical model tool call.
 // RecoveryPolicy is empty for the safe default (wait_user). Capability values
@@ -203,6 +222,9 @@ func CarryToolDispatch(from, to context.Context) context.Context {
 	if project, ok := from.Value(toolApprovalProjectionKey{}).(func(json.RawMessage) (json.RawMessage, error)); ok {
 		to = context.WithValue(to, toolApprovalProjectionKey{}, project)
 	}
+	if fence, ok := RunFenceFromContext(from); ok {
+		to = WithRunFence(to, fence)
+	}
 	return to
 }
 
@@ -216,6 +238,22 @@ func ToolDispatchFromContext(ctx context.Context) (ToolDispatch, bool) {
 	state.mu.Lock()
 	defer state.mu.Unlock()
 	return state.metadata, true
+}
+
+// runFenceContextKey carries the durable fence into tool execution so
+// pre-execution waits (MCP OAuth, approvals) can park the run durably.
+type runFenceContextKey struct{}
+
+// WithRunFence attaches the claiming worker's fence to a tool context.
+func WithRunFence(ctx context.Context, fence Fence) context.Context {
+	return context.WithValue(ctx, runFenceContextKey{}, fence)
+}
+
+// RunFenceFromContext reports the durable fence governing this execution, if
+// any. Absent for the builtin engine path.
+func RunFenceFromContext(ctx context.Context) (Fence, bool) {
+	fence, ok := ctx.Value(runFenceContextKey{}).(Fence)
+	return fence, ok
 }
 
 // ToolExecutor wraps the existing registry with a durable tool journal.
@@ -243,6 +281,13 @@ func NewToolExecutor(runs RunStore, journal ToolJournal, execute ToolExecuteFunc
 // apply boundary.
 type ToolResultReader interface {
 	LoadToolResult(context.Context, Fence, string) (StoredToolResult, error)
+}
+
+// ToolPreflightParker is an optional journal capability that marks a planned
+// tool call as the subject of a durable pre-execution wait (for example an
+// MCP OAuth reauthorization) so a later retry decision can link to it.
+type ToolPreflightParker interface {
+	ParkToolPreflightWait(ctx context.Context, fence Fence, callID, pendingID, resourceRef string) error
 }
 
 // VerifyResult reads the committed result by logical call ID when the journal
@@ -326,7 +371,7 @@ func (e *ToolExecutor) Execute(
 			return e.journal.ReviseToolPlan(approvalCtx, fence, plan.CallID, version, args)
 		},
 	}
-	dispatchCtx := context.WithValue(ctx, toolDispatchContextKey{}, state)
+	dispatchCtx := WithRunFence(context.WithValue(ctx, toolDispatchContextKey{}, state), fence)
 	result, executeErr := e.execute(dispatchCtx, record.Plan.Name, append(json.RawMessage(nil), record.Plan.Args...))
 	state.mu.Lock()
 	state.finished = true
