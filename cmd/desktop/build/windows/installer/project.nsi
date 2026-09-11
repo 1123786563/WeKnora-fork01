@@ -95,6 +95,8 @@ Section
     File "..\..\..\..\..\THIRD_PARTY_NOTICES.md"
     SetOutPath "$INSTDIR\licenses"
     File /r "..\..\..\..\..\licenses\*"
+    SetOutPath "$INSTDIR\web"
+    File /r "..\..\..\..\..\web\*"
     SetOutPath $INSTDIR
 
     CreateShortcut "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
