@@ -29,3 +29,31 @@ This proves that the iOS release app has a reachable native entry into the
 chat route without relying on a broken scheme deep link. It does not prove
 iOS authenticated SSE, provider behavior, approval/OAuth, attachments,
 steering, or recovery. Those remain open T22/T24 gates.
+
+## Follow-up: authenticated native SSE — 2026-09-11 23:56 CST
+
+- Restarted the same isolated FTS5 Lite server on `127.0.0.1:18084` and
+  authenticated the temporary owner account
+  `chatfts5_1789138760@example.test` through the native iOS login form.
+- Started a local OpenAI-compatible SSE mock on `127.0.0.1:19000`; the
+  configured tenant model `probe-remote-chat` points to
+  `http://127.0.0.1:19000/v1`.
+- On the iPhone 17 Pro iOS 26.5 simulator, tapped `Chat`, selected the real
+  `Probe KB`, typed `hello from ios`, and tapped `Send`. The native screen
+  rendered one user message and one completed assistant message, `Hello from
+  iOS`; `Send` returned and no error alert or duplicate assistant appeared.
+- Server-side SQLite evidence for the resulting session
+  `d1f41b92-b616-43d0-896e-d69ce7c89f99` contains exactly the completed user
+  and assistant rows. The authenticated `GET /api/v1/sessions` response also
+  returned the session with the selected KB in `last_request_state`.
+- Screenshot captured with `xcrun simctl io booted screenshot`:
+  `/tmp/weknora-ios-chat-latest.png` (SHA-256
+  `9e6cf4455037a98a0cc81c0ce9af6ea0949cba7ce4569bfcd844a74a4c94ec88`).
+
+### Evidence boundary
+
+This is real native iOS → isolated Lite → local OpenAI-compatible SSE mock
+evidence, not production-provider or physical-device acceptance. It does not
+close approval/OAuth, attachments, artifact download/share, steering,
+background interruption/continuation, remote stop-after-assistant-id, or
+production-provider gates.
