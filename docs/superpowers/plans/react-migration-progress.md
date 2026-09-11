@@ -18,6 +18,7 @@
 `pending` 未开始；`implementing` 正在实现/取证；`review` 已有实现但等待规格与质量评审；`accepted` 证据满足任务验收；`blocked` 有明确外部/授权/环境阻塞并记录下一步。
 
 > 注：T20/T24 表格行保留了本次 follow-up 前的汇总措辞；Android logout/layout follow-up 的最新结论与证据见下方 2026-09-11 追加记录，logout 已通过，但 T20/T24 仍因其他开放门槛保持 `review`。
+> 注：T21 表格行也保留了 Android completed-fixture follow-up 前的汇总措辞；最新 Android 上传完成、检索、下载和 Sharesheet 证据见下方 2026-09-12 追加记录，T21 仍因负例、真实设备和生产存储门槛保持 `review`。
 
 ## 任务状态
 
@@ -734,6 +735,28 @@
   This closes the Android emulator foreground network-recovery slice, but T20
   and T24 remain `review` for the broader iOS/network hardware, deployed,
   cross-OS, provider, role/tenant, performance, and browser acceptance matrix.
+
+### T21 Android completed upload/download/search follow-up (2026-09-12)
+
+- A current React Android release APK on `test36-small` used the real
+  DocumentsUI to select a 144-byte TXT fixture. The authenticated native list
+  rendered `android-t21-complete.txt, completed`; the backend returned
+  `parse_status=completed` and `pending_subtasks_count=0`, and the detail page
+  rendered the server document ID, `Type: txt`, and `Size: 144`.
+- The isolated Lite run used `go run -tags sqlite_fts5` plus a local
+  OpenAI-compatible embedding stub. The embedding request returned HTTP 200;
+  hybrid search for `completed upload fixture` returned one result whose
+  content matched the uploaded fixture. Authenticated download returned HTTP
+  200 with the expected filename and 144 bytes; the downloaded SHA-256 matched
+  the fixture exactly.
+- Native `Download and share` opened Android's Sharesheet, which showed
+  `Sharing 1 file` and `android-t21-complete.txt`. The current Android and
+  iOS completed-fixture runs therefore have matching 144-byte upload,
+  processing, search, and download-byte evidence. Full record:
+  `docs/migrations/react/evidence/t21-android-upload-complete-download-live-2026-09-12.md`.
+- T21 remains `review`: cancellation, large-file/413 negatives, Android
+  cross-account 403, real-device, production-storage, and full Web/mobile
+  same-account comparison evidence remain open.
 
 ### 本轮问题与裁定
 
