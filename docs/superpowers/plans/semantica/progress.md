@@ -77,7 +77,7 @@
 - 环境：macOS arm64；Python 3.12.13；semantica 0.6.8；隔离 Neo4j 5.26（semantica-v02-neo4j，127.0.0.1:17687）。
 - review：规格符合性 PASS（9 项通过；独立复算全部汇总统计与结果文件一致；3 项 MINOR：字段名与计划接口差异——已改 source_precision/source_recall/unanswerable_correct，台账勾选滞后——本次完成，leak 子串匹配备注——Q01 回访）。代码质量 PASS（0 BLOCKER、12 MINOR；已修复：大小写不敏感泄漏门+去重、数据集类别/必填校验、空数据集退出、argparse 用法错误退出码 1、逐案例错误行、recall 均值剔除空预期题（0.95→0.925 修正后重跑）、泄漏负载加入命中内容对象、document_revision 读自 fixture、别名清理、native available 语义与空延迟置 None；保留：共享 probe 标签串行约束已在 baseline 限制中记录）。
 - 阈值：acceptance-policy.json approved=false；泄漏 hard gate proposed_max=0（实测 0）；multihop/unanswerable 阈值=当前实测值（诚实下限，Q01/Q03 后必须上调）；native 与对照门禁 unmeasured。
-- 提交 SHA：（本记录与代码同批提交后补记）
+- 提交 SHA：2443e61（feat(semantic): v03 中文质量与上线阈值评估基线）。
 - 剩余限制：native 对照与模型模式质量/用量门槛待隔离测试部署+真实模型凭据；受控语料规模不代表生产规模；评测需串行运行（与 V02 共享 probe 标签）。
 
 ## 当前边界
