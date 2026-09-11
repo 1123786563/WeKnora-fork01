@@ -25,3 +25,15 @@ test('reads legacy bearer and tenant values without treating embed as bearer', (
     tenantId: 'tenant-7',
   });
 });
+
+test('imports the legacy refresh token with a bearer session', () => {
+  const adapter = createLegacyPlatformAdapter(storage({
+    weknora_token: 'access-token',
+    weknora_refresh_token: 'refresh-token',
+  }));
+
+  assert.deepEqual(adapter.read(), {
+    credential: { kind: 'bearer', accessToken: 'access-token', refreshToken: 'refresh-token' },
+    tenantId: null,
+  });
+});

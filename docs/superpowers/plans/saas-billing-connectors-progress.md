@@ -8,7 +8,7 @@
 | --- | --- | --- | --- | --- |
 | V01 | pending | 未实施 | 未运行 | 执行接口盘点 |
 | V02 | pending | 未实施 | 未运行 | 等待 V01 |
-| V03 | pending | 未实施 | 未运行 | 等待 V02 |
+| V03 | blocked | 待提交 | `python3 -m unittest scripts.saas.gate_test -v`：4/4 通过；`git diff --check` 通过；OM-01～OM-10 blocked-env（无 OpenMeter 服务／商户凭据，未伪造选模 pass） | 准备隔离环境后重跑两套官方模型实验；在 OM-01～OM-09 全部 runtime pass 前 gate 拒绝 P01～P03 |
 | F01 | pending | 未实施 | 未运行 | 等待 V03 |
 | F02 | pending | 未实施 | 未运行 | 等待 V03 |
 | F03 | pending | 未实施 | 未运行 | 等待 F01, F02 |
