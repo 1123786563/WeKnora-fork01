@@ -361,6 +361,18 @@ func (s *checkpointSaver) decode(record agentruntime.CheckpointRecord) (*checkpo
 	if err != nil {
 		return nil, err
 	}
+	// A crash mid-node leaves pending writes (typically the branch marker of a
+	// conditional edge) alongside the checkpointed frontier. The SDK executor
+	// only plans the frontier from StateKeyNextNodes when no pending writes
+	// remain, so leaving them in place makes every resume a silent no-op. The
+	// graph nodes are idempotent against the durable tool journal — a replayed
+	// frontier re-reads committed results instead of re-executing tools — so
+	// the saver materializes pending writes as frontier re-execution here.
+	// The stored record keeps the writes for audit; only the loaded view is
+	// resolved.
+	if len(envelope.Tuple.PendingWrites) > 0 && len(cp.NextNodes) > 0 {
+		envelope.Tuple.PendingWrites = nil
+	}
 	return &envelope, nil
 }
 
