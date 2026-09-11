@@ -387,6 +387,14 @@
 - Desktop 2/2 plus typecheck/build (121 modules), Embed 3/3 plus
   typecheck/build (68 modules), and `GOWORK=off go test ./internal/router`
   also passed against the shared-client change.
+- A fresh isolated Lite owner/member probe created a KB share, verified owner
+  and joined-member list visibility (`1`), rejected the joined member's
+  source-share deletion with HTTP `403`, then accepted owner removal and
+  verified the list returned `0`; temporary KB/organization data was deleted.
+- This supersedes the earlier T23 table wording that listed live share removal
+  as open; agent-share runtime, native organization interaction, full 403/409
+  permutations, and the remaining configuration/integration/sandbox matrix
+  are the outstanding boundaries for this slice.
 - This is bounded isolated Lite owner/native-device evidence only; non-owner
   403/409 permutations, production-provider acceptance, physical-device
   behavior, and the remaining T23 management matrix remain open.

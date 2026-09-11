@@ -44,3 +44,25 @@ Credentials and access tokens were held only in shell variables and are not reco
 ## Evidence boundary
 
 This proves the native route, typed organization API wiring, role-gated mutation composition, join-request decision payload, type safety, and regression compatibility. It does not claim live organization create/member/share/API-key results, real 403/409 permutations, native device interaction, or completion of the remaining T23 configuration/integration/sandbox management matrix.
+
+## Isolated Lite share-management follow-up — 2026-09-12
+
+Using a fresh isolated FTS5 Lite process on `127.0.0.1:18085`, an owner
+created a temporary knowledge base and organization, generated an invite code,
+and created an editor share. A second registered tenant joined the
+organization through that invite code.
+
+- The owner organization share list returned `1` record after share creation.
+- The joined tenant could read the organization share list and received the
+  same `1` record.
+- The joined tenant's attempt to delete the source knowledge-base share
+  returned HTTP `403`; no client-side success was inferred.
+- The owner removed the share successfully, and a subsequent owner list
+  returned `0`. The temporary KB and organization were then deleted with
+  successful responses; the Lite process was stopped and no production data
+  was used.
+
+This closes the isolated real-backend owner share create/list/remove path and
+the cross-tenant member read-versus-remove negative. Agent-share runtime,
+native organization interaction, full 403/409 permutations, and the remaining
+T23 configuration/integration/sandbox matrix remain open.
