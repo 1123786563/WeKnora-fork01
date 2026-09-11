@@ -407,8 +407,12 @@ func (h *Handler) steerDurableRun(
 		return
 	}
 	if reader, ok := store.(agentruntime.RunInputReader); ok {
-		injects, _ := reader.ListPendingInputs(ctx, key, "inject")
-		afters, _ := reader.ListPendingInputs(ctx, key, "after")
+		injects, injectErr := reader.ListPendingInputs(ctx, key, "inject")
+		afters, afterErr := reader.ListPendingInputs(ctx, key, "after")
+		if injectErr != nil || afterErr != nil {
+			c.JSON(503, gin.H{"error": "Failed to check steer queue"})
+			return
+		}
 		if len(injects)+len(afters) >= maxSteerQueueDepth {
 			c.JSON(400, gin.H{"error": "steer queue is full"})
 			return

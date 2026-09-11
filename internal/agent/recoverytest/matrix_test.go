@@ -79,7 +79,7 @@ func buildRecoveryProvider(t *testing.T) string {
 		}
 	})
 	if providerBuildErr != nil {
-		t.Skipf("recovery provider build failed: %v", providerBuildErr)
+		t.Fatalf("recovery provider build failed: %v", providerBuildErr)
 	}
 	return providerBinary
 }
