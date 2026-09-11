@@ -351,6 +351,10 @@
 - The current worktree Metro served the Android bundle (`1327 modules`, cold bundle time about `77.8s`) after opening the Expo dev-client URL through `10.0.2.2:8082`; the native host reached the React login UI. Android displayed a system `WeKnora isn't responding` dialog during this cold dev-client load, and no authenticated login, Workspace, upload, refresh, or logout sequence was accepted.
 - This is a documented runtime attempt and blocker, not Android acceptance. Evidence: `docs/migrations/react/evidence/t24-android-native-runtime-attempt-2026-09-11.md`. T24 stays `review`; T25 remains gated.
 
+### T24 full Go regression (2026-09-11)
+
+- `GOWORK=off go test ./...` exited `1`. Migration-relevant backend packages, including `internal/router`, passed; the complete run has two environment-sensitive groups: the Python skill verifier fixture sees host-installed packages that the test expects to be absent, and Notion/Azure/OpenAI fixture hostnames resolve to the SSRF-reserved `198.18.0.0/15` range. No test was skipped or weakened. Evidence: `docs/migrations/react/evidence/t24-go-regression-2026-09-11.md`.
+
 ### T23 mobile data-source follow-up (2026-09-11)
 
 - Added the native knowledge-base data-source inventory route. It uses shared list/type seams, keeps connector `config` and credentials out of the UI, and exposes no mobile write/sync controls.
