@@ -113,6 +113,38 @@ func buildGraph(b GraphBindings) (*graph.Graph, error) {
 			}
 			s.ModelAttemptID = ""
 		}
+		// Safe node boundary: consume durable inject inputs before the model
+		// call. The appended message and the steer id land in the same
+		// checkpoint the SDK saves after this node, which is the exactly-once
+		// boundary; the input rows themselves intentionally stay pending.
+		if b.Inputs != nil {
+			pending, perr := b.Inputs.ListPendingInputs(ctx, b.fenceFromContext(ctx).RunKey, "inject")
+			if perr != nil {
+				return nil, fmt.Errorf("list steering inputs: %w", perr)
+			}
+			applied := make(map[string]bool, len(s.AppliedSteerIDs))
+			for _, id := range s.AppliedSteerIDs {
+				applied[id] = true
+			}
+			for _, input := range pending {
+				if applied[input.SteerID] {
+					continue
+				}
+				var payload struct {
+					Role    string `json:"role"`
+					Content string `json:"content"`
+				}
+				if err := json.Unmarshal(input.Message, &payload); err != nil ||
+					payload.Role != string(model.RoleUser) || payload.Content == "" {
+					return nil, fmt.Errorf("invalid steering input %s", input.SteerID)
+				}
+				s.Messages = append(s.Messages, model.NewUserMessage(payload.Content))
+				s.AppliedSteerIDs = append(s.AppliedSteerIDs, input.SteerID)
+				applied[input.SteerID] = true
+				evtPayload, _ := json.Marshal(map[string]string{"steer_id": input.SteerID})
+				b.emitRunEvent(ctx, agentruntime.RunEvent{Type: "steer_injected", Payload: evtPayload})
+			}
+		}
 		// Stream keeps provider parity with the builtin engine; the frozen
 		// tool projection lets the model plan calls the journal can execute.
 		request := &model.Request{Messages: s.Messages, Tools: b.ModelTools}

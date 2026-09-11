@@ -130,3 +130,9 @@ type RunInputStore interface {
 	AppendInput(context.Context, RunKey, RunInput) error
 	ApplyInput(context.Context, Fence, string, CheckpointRecord) error
 }
+
+// RunInputReader lists steering inputs not yet consumed by the graph. The
+// durable worker reads pending inject inputs at safe node boundaries.
+type RunInputReader interface {
+	ListPendingInputs(context.Context, RunKey, string) ([]RunInput, error)
+}

@@ -22,14 +22,18 @@ const (
 // State contains only serializable execution data. Live capabilities belong to
 // worker assembly, never a checkpoint. Messages contain completed model outputs.
 type State struct {
-	Version         int                        `json:"version"`
-	Messages        []model.Message            `json:"messages,omitempty"`
-	PendingCallIDs  []string                   `json:"pending_call_ids,omitempty"`
-	NextCallIndex   int                        `json:"next_call_index"`
-	AppliedCallIDs  map[string]bool            `json:"applied_call_ids,omitempty"`
-	CompactionState json.RawMessage            `json:"compaction_state,omitempty"`
-	ModelAttemptID  string                     `json:"model_attempt_id,omitempty"`
-	InputCursor     int64                      `json:"input_cursor"`
+	Version         int             `json:"version"`
+	Messages        []model.Message `json:"messages,omitempty"`
+	PendingCallIDs  []string        `json:"pending_call_ids,omitempty"`
+	NextCallIndex   int             `json:"next_call_index"`
+	AppliedCallIDs  map[string]bool `json:"applied_call_ids,omitempty"`
+	CompactionState json.RawMessage `json:"compaction_state,omitempty"`
+	ModelAttemptID  string          `json:"model_attempt_id,omitempty"`
+	InputCursor     int64           `json:"input_cursor"`
+	// AppliedSteerIDs records steering inputs whose messages are already in
+	// Messages. The pending row stays unprocessed on purpose: the
+	// checkpointed state is the exactly-once boundary for injection.
+	AppliedSteerIDs []string                   `json:"applied_steer_ids,omitempty"`
 	UsageAttempts   map[string]json.RawMessage `json:"usage_attempts,omitempty"`
 	Capabilities    CapabilitySnapshot         `json:"capabilities"`
 }
@@ -120,7 +124,8 @@ func (s *State) UnmarshalJSON(raw []byte) error {
 func stateIsFreshSeed(raw []byte, next statePlain) bool {
 	if len(next.Messages) != 0 || len(next.PendingCallIDs) != 0 || next.NextCallIndex != 0 ||
 		len(next.AppliedCallIDs) != 0 || len(next.CompactionState) != 0 || next.ModelAttemptID != "" ||
-		next.InputCursor != 0 || len(next.UsageAttempts) != 0 || !next.Capabilities.IsEmpty() {
+		next.InputCursor != 0 || len(next.UsageAttempts) != 0 || len(next.AppliedSteerIDs) != 0 ||
+		!next.Capabilities.IsEmpty() {
 		return false
 	}
 	var presence map[string]json.RawMessage

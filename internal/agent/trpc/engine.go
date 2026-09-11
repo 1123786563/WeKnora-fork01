@@ -36,6 +36,14 @@ type GraphBindings struct {
 	// Deferred MCP discovery later in the run does not widen it: a resumed
 	// plan must see the same advertised set the checkpoint recorded.
 	ModelTools map[string]tool.Tool
+	// Inputs lists durable steering inputs. Inject inputs are consumed at the
+	// model node boundary; after inputs stay pending for follow-up runs.
+	Inputs RunInputSource
+}
+
+// RunInputSource reads durable steering inputs for one run.
+type RunInputSource interface {
+	ListPendingInputs(context.Context, agentruntime.RunKey, string) ([]agentruntime.RunInput, error)
 }
 
 // registryTool adapts a registry function definition to the SDK tool
