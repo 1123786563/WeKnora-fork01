@@ -79,6 +79,29 @@ type tenantMemberService struct {
 	audit     interfaces.AuditLogService     // optional; nil ⇒ no audit, business ops still succeed
 	userRepo  interfaces.UserRepository      // optional; used to clear stale home-tenant pointers
 	tokenRepo interfaces.AuthTokenRepository // optional; used to revoke sessions after removal
+	// connectionRevoker (optional, A02) revokes the departing member's
+	// personal app-connector connections. nil ⇒ hook disabled.
+	connectionRevoker PersonalConnectionRevoker
+}
+
+// PersonalConnectionRevoker is the member-removal hook surface (implemented
+// by repository.MCPOAuthBindingStore). When a member leaves a tenant, every
+// personal connection they own must become revoked with its auth_version
+// incremented, so outstanding credential references fail immediately. Space
+// connections are NOT touched: a space connection never silently defaults to
+// a personal one because a single member — even an admin — left.
+type PersonalConnectionRevoker interface {
+	RevokePersonalConnections(ctx context.Context, tenantID uint64, userID string) (int64, error)
+}
+
+// TenantMemberOption configures optional collaborators without breaking the
+// existing four-argument call sites.
+type TenantMemberOption func(*tenantMemberService)
+
+// WithPersonalConnectionRevoker registers the member-removal hook that
+// revokes personal connections after a successful removal.
+func WithPersonalConnectionRevoker(r PersonalConnectionRevoker) TenantMemberOption {
+	return func(s *tenantMemberService) { s.connectionRevoker = r }
 }
 
 // NewTenantMemberService constructs the service. Wired up via the DI
@@ -100,13 +123,18 @@ func NewTenantMemberService(
 	audit interfaces.AuditLogService,
 	userRepo interfaces.UserRepository,
 	tokenRepo interfaces.AuthTokenRepository,
+	opts ...TenantMemberOption,
 ) interfaces.TenantMemberService {
-	return &tenantMemberService{
+	s := &tenantMemberService{
 		repo:      repo,
 		audit:     audit,
 		userRepo:  userRepo,
 		tokenRepo: tokenRepo,
 	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // emitAudit is the per-mutation audit hook. Best-effort: a nil audit
@@ -415,6 +443,7 @@ func (s *tenantMemberService) RemoveMember(ctx context.Context, userID string, t
 		}
 		s.emitRemovalAudit(ctx, tenantID, userID)
 		s.cleanupRemovedMemberState(ctx, userID, tenantID)
+		s.revokeRemovedMemberConnections(ctx, tenantID, userID)
 		return nil
 	}
 	if err := s.repo.SoftDelete(ctx, userID, tenantID); err != nil {
@@ -422,7 +451,25 @@ func (s *tenantMemberService) RemoveMember(ctx context.Context, userID string, t
 	}
 	s.emitRemovalAudit(ctx, tenantID, userID)
 	s.cleanupRemovedMemberState(ctx, userID, tenantID)
+	s.revokeRemovedMemberConnections(ctx, tenantID, userID)
 	return nil
+}
+
+// revokeRemovedMemberConnections fires the A02 post-removal hook: the
+// departing member's personal connections are revoked and their
+// auth_version incremented. Best-effort and nil-safe for partial DI graphs:
+// the membership row is already gone and the dispatch-time membership check
+// in the credential resolver is the hard gate, so a hook failure is logged
+// and never fails the removal itself.
+func (s *tenantMemberService) revokeRemovedMemberConnections(ctx context.Context, tenantID uint64, userID string) {
+	if s.connectionRevoker == nil {
+		return
+	}
+	if _, err := s.connectionRevoker.RevokePersonalConnections(ctx, tenantID, userID); err != nil {
+		logger.Warnf(ctx,
+			"RemoveMember cleanup: failed to revoke personal connections for user %s tenant %d: %v",
+			userID, tenantID, err)
+	}
 }
 
 // cleanupRemovedMemberState drops stale home/preference pointers that
