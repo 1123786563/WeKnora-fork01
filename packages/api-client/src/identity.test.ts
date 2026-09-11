@@ -32,6 +32,51 @@ test('maps tenant members, invitations, leave, and audit cursor without swallowi
   ]);
 });
 
+test('accepts audit rows whose optional scope and request metadata are empty', async () => {
+  const identity = createIdentityApi(async () => ({
+    success: true,
+    data: [{
+      id: 1,
+      tenant_id: 7,
+      actor_user_id: 'owner-1',
+      actor_role: 'owner',
+      action: 'rbac.invitation_sent',
+      scope_type: '',
+      scope_id: '',
+      target_type: 'tenant_invitation',
+      target_id: '1',
+      target_user_id: 'invitee-1',
+      request_path: '',
+      request_method: '',
+      outcome: 'success',
+      details: { role: 'viewer' },
+      created_at: 'now',
+    }],
+    next_cursor: 1,
+  }));
+
+  assert.deepEqual(await identity.tenants.auditLog.list(7), {
+    items: [{
+      id: 1,
+      tenant_id: 7,
+      actor_user_id: 'owner-1',
+      actor_role: 'owner',
+      action: 'rbac.invitation_sent',
+      scope_type: '',
+      scope_id: '',
+      target_type: 'tenant_invitation',
+      target_id: '1',
+      target_user_id: 'invitee-1',
+      request_path: '',
+      request_method: '',
+      outcome: 'success',
+      details: { role: 'viewer' },
+      created_at: 'now',
+    }],
+    nextCursor: 1,
+  });
+});
+
 test('encodes tenant invitation ids and returns typed memberships', async () => {
   const requests: Array<{ method: string; path: string; body?: unknown }> = [];
   const identity = createIdentityApi(async (request) => {

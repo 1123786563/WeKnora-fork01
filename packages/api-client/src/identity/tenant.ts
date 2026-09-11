@@ -1,6 +1,6 @@
 import { parseActionSuccessResponse, type ActionSuccessResponse } from '@weknora/contracts';
 import type { ClientRequest } from '../client.ts';
-import { action, array, dataArray, dataRecord, encoded, numberValue, optionalNumber, optionalString, query, record, stringValue, success, withSignal, type IdentityRequest, type JsonRecord } from './common.ts';
+import { action, array, dataArray, dataRecord, encoded, numberValue, optionalNumber, optionalString, query, record, stringValue, stringValueAllowEmpty, success, withSignal, type IdentityRequest, type JsonRecord } from './common.ts';
 
 export type TenantRole = 'owner' | 'admin' | 'contributor' | 'viewer';
 export type TenantMemberStatus = 'active' | 'invited' | 'suspended';
@@ -61,16 +61,16 @@ function parseAudit(value: unknown, path: string): AuditLogPage {
     return {
       id: numberValue(row.id, `${itemPath}.id`),
       tenant_id: numberValue(row.tenant_id, `${itemPath}.tenant_id`),
-      actor_user_id: stringValue(row.actor_user_id, `${itemPath}.actor_user_id`),
-      actor_role: stringValue(row.actor_role, `${itemPath}.actor_role`),
+      actor_user_id: stringValueAllowEmpty(row.actor_user_id, `${itemPath}.actor_user_id`),
+      actor_role: stringValueAllowEmpty(row.actor_role, `${itemPath}.actor_role`),
       action: stringValue(row.action, `${itemPath}.action`),
-      scope_type: stringValue(row.scope_type, `${itemPath}.scope_type`),
-      scope_id: stringValue(row.scope_id, `${itemPath}.scope_id`),
-      target_type: stringValue(row.target_type, `${itemPath}.target_type`),
-      target_id: stringValue(row.target_id, `${itemPath}.target_id`),
-      target_user_id: stringValue(row.target_user_id, `${itemPath}.target_user_id`),
-      request_path: stringValue(row.request_path, `${itemPath}.request_path`),
-      request_method: stringValue(row.request_method, `${itemPath}.request_method`),
+      scope_type: stringValueAllowEmpty(row.scope_type, `${itemPath}.scope_type`),
+      scope_id: stringValueAllowEmpty(row.scope_id, `${itemPath}.scope_id`),
+      target_type: stringValueAllowEmpty(row.target_type, `${itemPath}.target_type`),
+      target_id: stringValueAllowEmpty(row.target_id, `${itemPath}.target_id`),
+      target_user_id: stringValueAllowEmpty(row.target_user_id, `${itemPath}.target_user_id`),
+      request_path: stringValueAllowEmpty(row.request_path, `${itemPath}.request_path`),
+      request_method: stringValueAllowEmpty(row.request_method, `${itemPath}.request_method`),
       outcome: stringValue(row.outcome, `${itemPath}.outcome`) as AuditOutcome,
       details: details === undefined ? null : details as Record<string, unknown> | string | null,
       created_at: stringValue(row.created_at, `${itemPath}.created_at`),

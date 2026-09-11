@@ -13,6 +13,11 @@ export function stringValue(value: unknown, path: string): string {
   return value;
 }
 
+export function stringValueAllowEmpty(value: unknown, path: string): string {
+  if (typeof value !== 'string') throw new Error(`${path} must be a string`);
+  return value;
+}
+
 export function numberValue(value: unknown, path: string): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value)) throw new Error(`${path} must be a safe integer`);
   return value;
