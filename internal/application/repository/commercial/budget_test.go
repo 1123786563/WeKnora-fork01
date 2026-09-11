@@ -271,3 +271,200 @@ func TestBudgetLockRefundsCompetesWithReserve(t *testing.T) {
 		t.Fatalf("held=%d want 0 or 60", acct.HeldMicro)
 	}
 }
+
+// assertBudgetNoSideEffects pins the rollback contract of a failed Reserve /
+// LockRefunds: no account hold, no task hold, no reservation row, no lot
+// hold, no allocation row — and the rolled-back rows keep their original
+// version, proving the guarded writes were undone, not merely netted out.
+func assertBudgetNoSideEffects(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	acct := budgetAccountRow(t, db)
+	if acct.HeldMicro != 0 || acct.RefundLockedMicro != 0 || acct.Version != 1 {
+		t.Fatalf("account held=%d refund_locked=%d version=%d want 0/0/1 (rolled back)", acct.HeldMicro, acct.RefundLockedMicro, acct.Version)
+	}
+	if task := budgetTaskRow(t, db, "r1"); task.HeldMicro != 0 || task.Version != 1 {
+		t.Fatalf("task held=%d version=%d want 0/1 (rolled back)", task.HeldMicro, task.Version)
+	}
+	var reservations int64
+	if err := db.Model(&ReservationRow{}).Count(&reservations).Error; err != nil {
+		t.Fatal(err)
+	}
+	if reservations != 0 {
+		t.Fatalf("reservations=%d want 0", reservations)
+	}
+	var lot BudgetLotRow
+	if err := db.Where("tenant_id = 7").First(&lot).Error; err != nil {
+		t.Fatal(err)
+	}
+	if lot.HeldMicro != 0 {
+		t.Fatalf("lot held=%d want 0", lot.HeldMicro)
+	}
+	var allocSum int64
+	if err := db.Model(&BudgetLotAllocationRow{}).Select("COALESCE(SUM(micro),0)").Scan(&allocSum).Error; err != nil {
+		t.Fatal(err)
+	}
+	if allocSum != 0 {
+		t.Fatalf("lot allocations=%d want 0", allocSum)
+	}
+}
+
+// TestBudgetReserveLotShortfallRollsBackAllWrites: live lot capacity below
+// account availability (or an expired lot — the allocation SELECT excludes
+// it, so the shortfall path is identical) must reject the reservation with a
+// REAL domain error and leave zero side effects.
+func TestBudgetReserveLotShortfallRollsBackAllWrites(t *testing.T) {
+	s, db := testBudgetStore(t)
+	seedBudget(t, db, 200, 200)
+	// Account and task both cover 60, but the only lot holds 50 live credits.
+	if err := db.Model(&BudgetLotRow{}).Where("tenant_id = 7 AND lot_id = ?", "lot1").Update("remaining_micro", 50).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Reserve(context.Background(), budgetRequest("r1", "shortfall", 60)); !errors.Is(err, ErrBudgetLotsInsufficient) {
+		t.Fatalf("got %v want ErrBudgetLotsInsufficient", err)
+	}
+	assertBudgetNoSideEffects(t, db)
+	// An expired lot is the same shape: excluded from allocation entirely.
+	past := time.Now().UTC().Add(-time.Minute)
+	if err := db.Model(&BudgetLotRow{}).Where("tenant_id = 7 AND lot_id = ?", "lot1").Updates(map[string]any{"remaining_micro": 200, "expires_at": past}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Reserve(context.Background(), budgetRequest("r1", "expired-lot", 60)); !errors.Is(err, ErrBudgetLotsInsufficient) {
+		t.Fatalf("got %v want ErrBudgetLotsInsufficient for expired lot", err)
+	}
+	assertBudgetNoSideEffects(t, db)
+}
+
+// TestBudgetReserveLotGuardMissRollsBackAllWrites: a lot capacity guard miss
+// (RowsAffected != 1 on the guarded lot UPDATE — live lot capacity was taken
+// between the lot read and the UPDATE, i.e. lot capacity below account
+// availability mid-transaction). The single-conn pool serializes whole
+// transactions, so the miss is simulated deterministically with a
+// RAISE(IGNORE) trigger: the guarded UPDATE affects zero rows without
+// erroring, exactly like a lost concurrent hold. The whole transaction —
+// account/task increments, reservation row, earlier lot holds — must roll
+// back; the under-allocated reservation must never surface as success.
+func TestBudgetReserveLotGuardMissRollsBackAllWrites(t *testing.T) {
+	s, db := testBudgetStore(t)
+	seedBudget(t, db, 200, 200)
+	if err := db.Exec(`CREATE TRIGGER lot_guard_miss BEFORE UPDATE ON commercial_budget_lots
+BEGIN
+	SELECT RAISE(IGNORE);
+END;`).Error; err != nil {
+		t.Fatal(err)
+	}
+	_, err := s.Reserve(context.Background(), budgetRequest("r1", "guard-miss", 60))
+	if err == nil {
+		t.Fatal("under-allocated reservation must not be returned as success")
+	}
+	if errors.Is(err, errBudgetCASRetry) {
+		t.Fatalf("retry sentinel leaked to API: %v", err)
+	}
+	if !errors.Is(err, ErrBudgetContention) {
+		t.Fatalf("got %v want ErrBudgetContention after retry exhaustion", err)
+	}
+	assertBudgetNoSideEffects(t, db)
+}
+
+// TestBudgetReserveInsertRaceRollsBackAllWrites: a reservation INSERT that
+// loses the (tenant, key) unique race mid-transaction must roll back the
+// account/task increments already applied in that transaction. The race is
+// simulated deterministically with a RAISE(ABORT) trigger on INSERT — the
+// statement fails while the transaction stays alive, exactly like a lost
+// unique-index race.
+func TestBudgetReserveInsertRaceRollsBackAllWrites(t *testing.T) {
+	s, db := testBudgetStore(t)
+	seedBudget(t, db, 200, 200)
+	if err := db.Exec(`CREATE TRIGGER reservation_insert_race BEFORE INSERT ON commercial_reservations
+BEGIN
+	SELECT RAISE(ABORT, 'reservation insert race');
+END;`).Error; err != nil {
+		t.Fatal(err)
+	}
+	_, err := s.Reserve(context.Background(), budgetRequest("r1", "insert-race", 60))
+	if !errors.Is(err, ErrBudgetContention) {
+		t.Fatalf("got %v want ErrBudgetContention after retry exhaustion", err)
+	}
+	if errors.Is(err, errBudgetCASRetry) {
+		t.Fatalf("retry sentinel leaked to API: %v", err)
+	}
+	assertBudgetNoSideEffects(t, db)
+}
+
+// TestBudgetRetrySentinelNeverCrossesAPI: when an account guard misses on
+// stale data but would pass on fresh data (a lost version race), the
+// errBudgetCASRetry sentinel must drive the internal retry loop — Reserve
+// and LockRefunds re-read and retry to exhaustion, and the caller sees a
+// real domain error, never the sentinel. The version race is simulated
+// deterministically: a RAISE(IGNORE) trigger makes the guarded account
+// UPDATE affect zero rows without erroring, while the fresh re-read still
+// sees full availability — precisely the would-pass-on-fresh-data case.
+func TestBudgetRetrySentinelNeverCrossesAPI(t *testing.T) {
+	s, db := testBudgetStore(t)
+	seedBudget(t, db, 200, 200)
+	if err := db.Exec(`CREATE TRIGGER account_version_race BEFORE UPDATE ON commercial_budget_accounts
+BEGIN
+	SELECT RAISE(IGNORE);
+END;`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Reserve(context.Background(), budgetRequest("r1", "version-race", 60)); err == nil || errors.Is(err, errBudgetCASRetry) {
+		t.Fatalf("Reserve must return success or a real domain error, got %v", err)
+	}
+	if err := s.LockRefunds(context.Background(), 7, 60); err == nil || errors.Is(err, errBudgetCASRetry) {
+		t.Fatalf("LockRefunds must return success or a real domain error, got %v", err)
+	}
+	assertBudgetNoSideEffects(t, db)
+}
+
+// TestBudgetReserveConcurrentSameKeyReplayIdempotent: 20 workers replaying
+// the SAME (tenant, key) concurrently must all observe the one held
+// reservation, with the hold counted exactly once against the account, the
+// task budget, and the lot.
+func TestBudgetReserveConcurrentSameKeyReplayIdempotent(t *testing.T) {
+	s, db := testBudgetStore(t)
+	seedBudget(t, db, 100, 100)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	seen := 0
+	firstID := ""
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			res, err := s.Reserve(context.Background(), budgetRequest("r1", "same-key", 30))
+			if err != nil {
+				t.Errorf("same-key replay: %v", err)
+				return
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			seen++
+			if firstID == "" {
+				firstID = res.ID
+			} else if res.ID != firstID {
+				t.Errorf("replay returned different reservation %q != %q", res.ID, firstID)
+			}
+		}()
+	}
+	wg.Wait()
+	if seen != 20 {
+		t.Fatalf("successful same-key replays=%d want 20", seen)
+	}
+	if acct := budgetAccountRow(t, db); acct.HeldMicro != 30 {
+		t.Fatalf("account held=%d want 30 counted once", acct.HeldMicro)
+	}
+	var reservations int64
+	if err := db.Model(&ReservationRow{}).Count(&reservations).Error; err != nil {
+		t.Fatal(err)
+	}
+	if reservations != 1 {
+		t.Fatalf("reservations=%d want 1", reservations)
+	}
+	var lot BudgetLotRow
+	if err := db.Where("tenant_id = 7").First(&lot).Error; err != nil {
+		t.Fatal(err)
+	}
+	if lot.HeldMicro != 30 {
+		t.Fatalf("lot held=%d want 30 counted once", lot.HeldMicro)
+	}
+}

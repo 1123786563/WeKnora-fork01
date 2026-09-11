@@ -30,8 +30,9 @@ var (
 
 // errBudgetCASRetry is an internal sentinel: a guarded UPDATE lost the
 // version race (or hit a transient unique-index race), the whole
-// transaction rolled back, and the caller must re-read and retry. It never
-// crosses the API surface.
+// transaction rolled back, and the caller must re-read and retry. The try*
+// helpers consume it with errors.Is to continue their retry loops on fresh
+// reads, so it never crosses the API surface.
 var errBudgetCASRetry = errors.New("budget_cas_retry")
 
 // budgetCASAttempts bounds the re-read/retry rounds of one Reserve or
@@ -231,9 +232,7 @@ func (s *BudgetStore) Reserve(ctx context.Context, req domain.BudgetRequest) (do
 func (s *BudgetStore) tryReserve(ctx context.Context, req domain.BudgetRequest) (domain.Reservation, bool, error) {
 	now := time.Now().UTC()
 	var out domain.Reservation
-	var retry bool
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		retry = false
 		// Idempotent replay: an existing identical hold succeeds without
 		// touching counters; the same key with different content conflicts.
 		var existing ReservationRow
@@ -324,8 +323,12 @@ func (s *BudgetStore) tryReserve(ctx context.Context, req domain.BudgetRequest) 
 			CreatedAt:  now,
 		}
 		if err := tx.Create(&row).Error; err != nil {
-			retry = true
-			return nil
+			// A unique-index loss (or any transient insert failure) must
+			// roll back the account/task increments already applied in
+			// this transaction: return the sentinel so GORM rolls the
+			// whole attempt back; returning nil would COMMIT partial
+			// state.
+			return errBudgetCASRetry
 		}
 
 		// Lot allocation, earliest-expiry-first, same transaction.
@@ -353,8 +356,12 @@ func (s *BudgetStore) tryReserve(ctx context.Context, req domain.BudgetRequest) 
 				return res.Error
 			}
 			if res.RowsAffected != 1 {
-				retry = true
-				return nil
+				// A concurrent hold took this lot's capacity between the
+				// read and the guarded UPDATE: return the sentinel so GORM
+				// rolls back every write of this attempt (earlier lot
+				// holds included); returning nil would COMMIT partial
+				// state and later replay it as success.
+				return errBudgetCASRetry
 			}
 			if err := tx.Create(&BudgetLotAllocationRow{TenantID: req.TenantID, LotID: lot.LotID, ReservationKey: req.Key, Micro: take}).Error; err != nil {
 				return err
@@ -368,10 +375,13 @@ func (s *BudgetStore) tryReserve(ctx context.Context, req domain.BudgetRequest) 
 		return nil
 	})
 	if err != nil {
+		// The sentinel means the transaction rolled back whole after a
+		// guarded miss or transient race: consume it here so the retry
+		// loop re-reads fresh data — it never crosses the API surface.
+		if errors.Is(err, errBudgetCASRetry) {
+			return domain.Reservation{}, true, nil
+		}
 		return domain.Reservation{}, false, err
-	}
-	if retry {
-		return domain.Reservation{}, true, nil
 	}
 	return out, false, nil
 }
@@ -398,9 +408,7 @@ func (s *BudgetStore) LockRefunds(ctx context.Context, tenantID uint64, amount d
 
 func (s *BudgetStore) tryLockRefunds(ctx context.Context, tenantID uint64, amount domain.Credits) (bool, error) {
 	now := time.Now().UTC()
-	var retry bool
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		retry = false
 		var acct BudgetAccountRow
 		if err := tx.Where("tenant_id = ?", tenantID).First(&acct).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -423,9 +431,12 @@ func (s *BudgetStore) tryLockRefunds(ctx context.Context, tenantID uint64, amoun
 		return nil
 	})
 	if err != nil {
+		if errors.Is(err, errBudgetCASRetry) {
+			return true, nil
+		}
 		return false, err
 	}
-	return retry, nil
+	return false, nil
 }
 
 // ApplyExternalBalance folds an independently read external balance into
@@ -451,9 +462,7 @@ func (s *BudgetStore) ApplyExternalBalance(ctx context.Context, tenantID uint64,
 }
 
 func (s *BudgetStore) tryApplyExternalBalance(ctx context.Context, tenantID uint64, verified domain.Credits, watermark string) (bool, error) {
-	var retry bool
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		retry = false
 		var acct BudgetAccountRow
 		if err := tx.Where("tenant_id = ?", tenantID).First(&acct).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -478,14 +487,17 @@ func (s *BudgetStore) tryApplyExternalBalance(ctx context.Context, tenantID uint
 			return res.Error
 		}
 		if res.RowsAffected != 1 {
-			retry = true
+			return errBudgetCASRetry
 		}
 		return nil
 	})
 	if err != nil {
+		if errors.Is(err, errBudgetCASRetry) {
+			return true, nil
+		}
 		return false, err
 	}
-	return retry, nil
+	return false, nil
 }
 
 // budgetAccountDenial re-reads the account after a failed guard and turns
