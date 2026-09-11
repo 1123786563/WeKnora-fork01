@@ -66,3 +66,29 @@ This closes the isolated real-backend owner share create/list/remove path and
 the cross-tenant member read-versus-remove negative. Agent-share runtime,
 native organization interaction, full 403/409 permutations, and the remaining
 T23 configuration/integration/sandbox matrix remain open.
+
+## Native iOS organization follow-up — 2026-09-12
+
+- Against the isolated Lite server on `127.0.0.1:18084`, the iPhone 17 Pro
+  iOS 26.5 Release app authenticated as the temporary organization owner and
+  opened Manage → Organizations. The native list rendered
+  `Native Organization Probe · admin · owner tenant 4`.
+- Opening the organization rendered its member, the shared
+  `Native Organization Probe KB · editor · nativeorgprobe`, and the native
+  Remove action. Tapping Remove opened the native confirmation dialog
+  `Remove knowledge-base share?`; confirming it removed the row and left
+  `No shared knowledge bases returned.`.
+- An authenticated direct GET of the same organization share endpoint returned
+  `total: 0` after the native confirmation. The temporary KB and organization
+  were then deleted successfully, and the temporary Lite process was stopped.
+- Before confirmation screenshot: `/tmp/weknora-ios-organization-latest.png`
+  (SHA-256
+  `9653fe219413440793628a9d93046a2dde113d472f963153ffbba91ff0de708a`);
+  after confirmation screenshot: `/tmp/weknora-ios-organization-removed.png`
+  (SHA-256
+  `cafb3d87f8b1f4fe28071521e93112a473972930f1cc5c56fd4255f710706fea`).
+
+This adds bounded native iOS owner organization/share removal evidence. It
+does not close native Android organization interaction, agent-share runtime,
+full 403/409 permutations, or the remaining T23 configuration/integration/
+sandbox matrix.

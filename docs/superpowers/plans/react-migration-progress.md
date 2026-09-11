@@ -395,6 +395,17 @@
   as open; agent-share runtime, native organization interaction, full 403/409
   permutations, and the remaining configuration/integration/sandbox matrix
   are the outstanding boundaries for this slice.
+- On the iPhone 17 Pro iOS 26.5 Release app, Manage → Organizations rendered
+  the real organization and shared KB. The native Remove confirmation removed
+  the share; a direct authenticated GET then returned `total: 0`. Screenshots:
+  `/tmp/weknora-ios-organization-latest.png` (SHA-256
+  `9653fe219413440793628a9d93046a2dde113d472f963153ffbba91ff0de708a`) and
+  `/tmp/weknora-ios-organization-removed.png` (SHA-256
+  `cafb3d87f8b1f4fe28071521e93112a473972930f1cc5c56fd4255f710706fea`).
+- This supersedes the earlier wording that listed native organization
+  interaction as open; native Android organization interaction, agent-share
+  runtime, full 403/409 permutations, and the remaining configuration/
+  integration/sandbox matrix remain open.
 - This is bounded isolated Lite owner/native-device evidence only; non-owner
   403/409 permutations, production-provider acceptance, physical-device
   behavior, and the remaining T23 management matrix remain open.
