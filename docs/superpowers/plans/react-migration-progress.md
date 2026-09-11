@@ -327,6 +327,7 @@
 
 - Added the native knowledge-base data-source inventory route. It uses shared list/type seams, keeps connector `config` and credentials out of the UI, and exposes no mobile write/sync controls.
 - Mobile tests are 33/33, typecheck passes, and both iOS/Android Expo exports pass. This remains source/bundle evidence; live connector and native device acceptance are not claimed. Evidence: `docs/migrations/react/evidence/t23-mobile-data-sources-2026-09-11.md`.
+- The capability matrix now also explicitly discloses system runtime queue/task controls as unsupported on mobile instead of leaving that administration row implicit.
 
 ### T25 retirement preflight (2026-09-11)
 
