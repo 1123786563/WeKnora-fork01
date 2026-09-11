@@ -49,6 +49,13 @@ if (!compose.includes('context: .') || !compose.includes('dockerfile: frontend/D
   failures.push('docker-compose.yml must use the repository root context with frontend/Dockerfile');
 }
 
+const mobileWorkflow = readFileSync(join(root, '.github/workflows/mobile.yml'), 'utf8');
+for (const platform of ['ios', 'android']) {
+  if (!mobileWorkflow.includes(`expo export --platform ${platform}`)) {
+    failures.push(`mobile CI must export the ${platform} JavaScript bundle`);
+  }
+}
+
 const nginx = readFileSync(join(root, 'frontend/nginx.conf'), 'utf8');
 for (const requiredRule of [
   'location /api/',
