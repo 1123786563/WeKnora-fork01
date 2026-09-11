@@ -2,12 +2,14 @@ import {
   parseCommercialSummary,
   parseOrderView,
   parseQuoteView,
+  parseRefundView,
   type CommercialSummary,
   type CreateOrderInput,
   type OrderView,
   type QuoteInput,
   type QuoteView,
   type RefundInput,
+  type RefundView,
 } from '@weknora/contracts';
 import type { ClientRequest } from './client.ts';
 import { ApiError } from './errors.ts';
@@ -63,6 +65,21 @@ export function createCommercialApi(request: (input: ClientRequest) => Promise<u
         throw new ApiError({ code: 'INVALID_RESPONSE', message: 'Invalid refund response fields' });
       }
       return { id, state };
+    },
+    async getRefund(id: string, signal?: AbortSignal): Promise<RefundView> {
+      return parseRefundView(unwrap(await request({
+        method: 'GET',
+        path: `/api/v1/commercial/refunds/${encodeURIComponent(id)}`,
+        signal,
+      })));
+    },
+    async reviewRefund(id: string, decision: 'approve' | 'reject', expectedVersion: number, signal?: AbortSignal): Promise<RefundView> {
+      return parseRefundView(unwrap(await request({
+        method: 'POST',
+        path: `/api/v1/commercial/refunds/${encodeURIComponent(id)}/review`,
+        body: { decision, expected_version: expectedVersion },
+        signal,
+      })));
     },
   };
 }

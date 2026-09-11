@@ -52,3 +52,31 @@ export function parseQuoteView(value:unknown):QuoteView {
  const expires_at=nonEmptyString(v.expires_at,'expires_at','quote');
  return {id,amount_fen,credit_delta:v.credit_delta,expires_at};
 }
+
+export interface RefundView { id:string; state:string; amount_fen:string; locked_credits:string; }
+
+// C05 refund lifecycle vocabulary (internal/commercial/refund.go). The wire
+// contract accepts exactly these states; 'refund_unknown' and 'rejected' exist
+// only as web-layer display fallbacks (refundMessage), never as server
+// projection states.
+const REFUND_VIEW_STATES = new Set<string>([
+  'requested',
+  'reviewing',
+  'pending',
+  'revocation_pending',
+  'completed',
+  'failed_confirmed',
+  'not_created_confirmed',
+]);
+
+export function parseRefundView(value:unknown):RefundView {
+  if(typeof value!=='object'||value===null||Array.isArray(value)) throw new Error('invalid refund');
+  const v=value as Record<string,unknown>;
+  const id=nonEmptyString(v.id,'id','refund');
+  if(typeof v.state!=='string'||!REFUND_VIEW_STATES.has(v.state)) throw new Error('invalid refund (state)');
+  const amount_fen=digitString(v.amount_fen,'amount_fen','refund');
+  // C05: locked credits are held credits and are never negative; a release is
+  // represented by a lower value (mirrors CommercialSummary.refund_locked).
+  const locked_credits=digitString(v.locked_credits,'locked_credits','refund');
+  return {id,state:v.state,amount_fen,locked_credits};
+}

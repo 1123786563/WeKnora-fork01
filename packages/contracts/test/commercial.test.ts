@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { parseCommercialSummary, parseOrderView, parseQuoteView } from '../src/commercial.ts';
+import { parseCommercialSummary, parseOrderView, parseQuoteView, parseRefundView } from '../src/commercial.ts';
 
 const order = { id: 'o1', payment: 'paid', fulfillment: 'pending', amount_fen: '100', currency: 'CNY' };
 
@@ -107,4 +107,54 @@ test('rejects malformed quote views', () => {
     { ...quote, expires_at: '' },
   ];
   for (const value of malformed) assert.throws(() => parseQuoteView(value), /invalid quote/);
+});
+
+const refund = { id: 'r1', state: 'revocation_pending', amount_fen: '9900', locked_credits: '500' };
+
+test('parses refund views field by field across every C05 state', () => {
+  // The wire vocabulary is exactly internal/commercial/refund.go's lifecycle.
+  const states = [
+    'requested',
+    'reviewing',
+    'pending',
+    'revocation_pending',
+    'completed',
+    'failed_confirmed',
+    'not_created_confirmed',
+  ];
+  for (const state of states) {
+    const value = parseRefundView({ ...refund, state });
+    assert.equal(value.id, 'r1');
+    assert.equal(value.state, state);
+    assert.equal(value.amount_fen, '9900');
+    assert.equal(value.locked_credits, '500');
+  }
+  assert.equal(parseRefundView({ ...refund, amount_fen: '0', locked_credits: '0' }).amount_fen, '0');
+});
+
+test('rejects malformed refund views', () => {
+  const malformed: unknown[] = [
+    null,
+    'refund',
+    42,
+    [refund],
+    { state: 'requested', amount_fen: '9900', locked_credits: '500' },
+    { ...refund, id: 42 },
+    { ...refund, id: '' },
+    { ...refund, amount_fen: 9900 },
+    { ...refund, amount_fen: '-1' },
+    { ...refund, amount_fen: '99.5' },
+    // C05: locked credits are held credits and are never negative — a release is
+    // represented by a lower value (mirrors CommercialSummary.refund_locked).
+    { ...refund, locked_credits: -1 },
+    { ...refund, locked_credits: '-1' },
+    { ...refund, locked_credits: '1.5' },
+    // Display-level fallbacks are not wire states: the server projection
+    // vocabulary is refund.go's, so these must be rejected on parse.
+    { ...refund, state: 'refund_unknown' },
+    { ...refund, state: 'rejected' },
+    { ...refund, state: 'refunded' },
+    { ...refund, state: 42 },
+  ];
+  for (const value of malformed) assert.throws(() => parseRefundView(value), /invalid refund/);
 });

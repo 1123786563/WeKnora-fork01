@@ -57,3 +57,5 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
 
 export { BillingPage } from './commercial/BillingPage.tsx';
 export { CheckoutPage } from './commercial/CheckoutPage.tsx';
+export { RefundPage } from './commercial/RefundPage.tsx';
+export { AdminCommercialPage } from './commercial/AdminCommercialPage.tsx';
