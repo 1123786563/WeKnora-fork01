@@ -20,6 +20,7 @@ export function ChatRoutePage({ client, scopeController }: ChatRoutePageProps) {
   const scope = scopeController.current();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [streamState, setStreamState] = useState(initialChatStreamState);
   const [agents, setAgents] = useState<AgentConfiguration[]>([]);
   const [disabledAgentIds, setDisabledAgentIds] = useState<string[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState(() => new URLSearchParams(window.location.search).get('agentId')?.trim() ?? '');
@@ -60,11 +61,13 @@ export function ChatRoutePage({ client, scopeController }: ChatRoutePageProps) {
   useEffect(() => {
     if (!selectedSessionId) {
       setMessages([]);
+      setStreamState(initialChatStreamState());
       return;
     }
     let active = true;
     setLoadingMessages(true);
     setError(undefined);
+    setStreamState(initialChatStreamState());
     void client.sessions.messages(selectedSessionId, { limit: 50, signal: scope.signal }).then(
       (result) => { if (active && scopeController.isCurrent(scope.scope)) setMessages(result); },
       (cause: unknown) => { if (active) setError(cause instanceof Error ? cause.message : 'Unable to load messages'); },
@@ -89,6 +92,38 @@ export function ChatRoutePage({ client, scopeController }: ChatRoutePageProps) {
     window.history.replaceState({}, '', `${url.pathname}${url.search}`);
   }
 
+  async function resolveToolApproval(pendingId: string, decision: 'approve' | 'reject'): Promise<void> {
+    await client.chat.approvals.resolveTool(pendingId, { decision }, scope.signal);
+  }
+
+  async function cancelOAuth(pendingId: string): Promise<void> {
+    await client.chat.approvals.cancelOAuth(pendingId, scope.signal);
+  }
+
+  async function authorizeOAuth(pendingId: string, serviceId: string): Promise<void> {
+    const authorization = await client.configuration.mcp.oauth.authorizeUrl(serviceId, {
+      redirectURI: `${window.location.origin}/api/v1/mcp-oauth/callback`,
+      frontendRedirect: `${window.location.origin}/`,
+    }, scope.signal);
+    if (!authorization.authorizationUrl || !authorization.authorizationAttempt) throw new Error('MCP authorization could not be started.');
+    const popup = window.open(authorization.authorizationUrl, 'mcp_oauth', 'width=600,height=720');
+    if (!popup) throw new Error('MCP authorization popup was blocked.');
+    try {
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        const status = await client.configuration.mcp.oauth.status(serviceId, authorization.authorizationAttempt, scope.signal);
+        if (status.authorized) {
+          await client.chat.approvals.resolveOAuth(pendingId, { serviceId, decision: 'authorize' }, scope.signal);
+          return;
+        }
+        if (popup.closed) throw new Error('MCP authorization was cancelled before completion.');
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 1500));
+      }
+      throw new Error('MCP authorization timed out.');
+    } finally {
+      try { popup.close(); } catch { /* cross-origin popup close may throw */ }
+    }
+  }
+
   async function createSession() {
     setError(undefined);
     try {
@@ -108,17 +143,19 @@ export function ChatRoutePage({ client, scopeController }: ChatRoutePageProps) {
   async function send(submission: ChatSubmission): Promise<void> {
     if (!selectedSessionId) throw new Error('Create or select a conversation first.');
     const sessionId = selectedSessionId;
+    setStreamState(initialChatStreamState());
     setMessages((current) => [...current, {
       id: `local-${Date.now()}`, session_id: sessionId, role: 'user', content: submission.content,
     }]);
-    let streamState = initialChatStreamState();
+    let runState = initialChatStreamState();
     const streamOptions = buildWebChatStreamOptions(sessionId, submission.content, selectedAgentId);
     await client.chat.stream(streamOptions, (event) => {
-      streamState = reduceChatStream(streamState, event);
-      if (streamState.phase === 'error') throw new Error(streamState.error ?? 'Chat stream failed');
-      if (streamState.answer) setMessages((current) => [...current.filter((item) => item.id !== `stream-${sessionId}`), {
-        id: `stream-${sessionId}`, session_id: sessionId, role: 'assistant', content: streamState.answer,
-        is_completed: streamState.phase === 'completed',
+      runState = reduceChatStream(runState, event);
+      setStreamState(runState);
+      if (runState.phase === 'error') throw new Error(runState.error ?? 'Chat stream failed');
+      if (runState.answer) setMessages((current) => [...current.filter((item) => item.id !== `stream-${sessionId}`), {
+        id: `stream-${sessionId}`, session_id: sessionId, role: 'assistant', content: runState.answer,
+        is_completed: runState.phase === 'completed',
       }]);
     });
   }
@@ -137,6 +174,11 @@ export function ChatRoutePage({ client, scopeController }: ChatRoutePageProps) {
     agents={agents.map((agent) => ({ id: agent.id, name: agent.name, disabled: disabledAgentIds.includes(agent.id) }))}
     selectedAgentId={selectedAgentId}
     onAgentChange={selectAgent}
+    toolApprovals={Object.values(streamState.approvals)}
+    oauthApprovals={Object.values(streamState.oauthApprovals)}
+    onResolveToolApproval={resolveToolApproval}
+    onAuthorizeOAuth={authorizeOAuth}
+    onCancelOAuth={cancelOAuth}
     send={send}
   />;
 }

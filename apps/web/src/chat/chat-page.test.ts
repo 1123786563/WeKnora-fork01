@@ -20,10 +20,17 @@ test('chat page exposes the selected agent and server-disabled state at the chat
     agents: [{ id: 'agent-1', name: 'Research' }, { id: 'agent-2', name: 'Disabled', disabled: true }],
     selectedAgentId: 'agent-1',
     onAgentChange: () => undefined,
+    toolApprovals: [{ pendingId: 'approval-1', toolName: 'search_docs', status: 'pending' }],
+    oauthApprovals: [{ pendingId: 'oauth-1', serviceId: 'mcp-1', serviceName: 'Docs MCP', toolName: 'search', status: 'pending' }],
+    onResolveToolApproval: async () => undefined,
+    onAuthorizeOAuth: async () => undefined,
+    onCancelOAuth: async () => undefined,
   }));
 
   assert.match(html, /id="wk-chat-agent"/);
   assert.match(html, /value="agent-1"/);
   assert.match(html, /Research/);
   assert.match(html, /Disabled · disabled/);
+  assert.match(html, /Approve search_docs/);
+  assert.match(html, /Authorize Docs MCP/);
 });
