@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, FlatList, KeyboardAvoidingView, Linking, Platform, Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import type { ChatMessage, ChatSession, ChatStreamEvent, TemporaryAttachment } from '@weknora/contracts';
+import type { ChatMessage, ChatSession, ChatStreamEvent, SteerDelivery, SteerQueueItem, TemporaryAttachment } from '@weknora/contracts';
 import { initialChatStreamState, reduceChatStream, type ChatStreamState } from '@weknora/domain/chat/reducer';
 import { artifactDownloadPath, normalizeArtifactList } from '@weknora/domain/chat/artifacts';
 import { normalizeToolResult } from '@weknora/domain/chat/tool-results';
@@ -29,6 +29,9 @@ export function ChatScreen() {
   const [pendingUser, setPendingUser] = useState<string | null>(null);
   const [streamState, setStreamState] = useState<ChatStreamState>(initialChatStreamState);
   const [attachments, setAttachments] = useState<TemporaryAttachment[]>([]);
+  const [steerQueue, setSteerQueue] = useState<SteerQueueItem[]>([]);
+  const [steerLoading, setSteerLoading] = useState(false);
+  const [steerBusy, setSteerBusy] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [attaching, setAttaching] = useState(false);
@@ -36,6 +39,7 @@ export function ChatScreen() {
   const streamController = useRef<AbortController | null>(null);
   const activeMessageId = useRef<string | undefined>(undefined);
   const activeOAuth = useRef<{ pendingId: string; serviceId: string; authorizationAttempt: string } | null>(null);
+  const steerAction = useRef<string | null>(null);
   const resuming = useRef(false);
 
   const loadSessions = useCallback(async () => {
@@ -60,26 +64,36 @@ export function ChatScreen() {
     catch (cause) { setError(errorText(cause, 'Unable to load attachments')); }
   }, [runtime.client]);
 
+  const loadSteerQueue = useCallback(async (sessionId: string) => {
+    setSteerLoading(true);
+    try { setSteerQueue((await runtime.client.chat.steer.list(sessionId)).items); }
+    catch (cause) { setError(errorText(cause, 'Unable to load steer queue')); }
+    finally { setSteerLoading(false); }
+  }, [runtime.client]);
+
   useEffect(() => { void loadSessions(); }, [loadSessions]);
   useEffect(() => {
     setStreamState(initialChatStreamState());
     activeMessageId.current = undefined;
     if (selectedSessionId) { void loadMessages(selectedSessionId); void loadAttachments(selectedSessionId); }
-    else { setMessages([]); setAttachments([]); }
-  }, [loadAttachments, loadMessages, selectedSessionId]);
+    if (selectedSessionId) void loadSteerQueue(selectedSessionId);
+    else { setMessages([]); setAttachments([]); setSteerQueue([]); }
+  }, [loadAttachments, loadMessages, loadSteerQueue, selectedSessionId]);
 
   const applyEvent = useCallback((event: ChatStreamEvent) => {
     if (typeof event.message_id === 'string' && event.message_id) activeMessageId.current = event.message_id;
     setStreamState((current) => reduceChatStream(current, event));
   }, []);
 
-  const finishRun = useCallback(async (sessionId: string) => {
+  const finishRun = useCallback(async (sessionId: string, controller: AbortController) => {
+    if (streamController.current !== controller) return;
     streamController.current = null;
     setSending(false);
     const refreshed = await loadMessages(sessionId);
+    await loadSteerQueue(sessionId);
     const incomplete = selectIncompleteAssistant(refreshed);
     if (!incomplete) setPendingUser(null);
-  }, [loadMessages]);
+  }, [loadMessages, loadSteerQueue]);
 
   const continueMessage = useCallback(async (sessionId: string, messageId: string) => {
     if (streamController.current || resuming.current) return;
@@ -90,7 +104,7 @@ export function ChatScreen() {
     setSending(true); setError(''); setStreamState(initialChatStreamState());
     try { await runtime.client.chat.continueStream(sessionId, messageId, applyEvent, controller.signal); }
     catch (cause) { if (!controller.signal.aborted) setError(errorText(cause, 'Unable to resume response')); }
-    finally { resuming.current = false; await finishRun(sessionId); }
+    finally { resuming.current = false; await finishRun(sessionId, controller); }
   }, [applyEvent, finishRun, runtime.client]);
 
   useEffect(() => {
@@ -129,7 +143,7 @@ export function ChatScreen() {
     try {
       const session = await runtime.client.sessions.create({ title: 'New conversation' });
       setSessions((current) => [session, ...current.filter((item) => item.id !== session.id)]);
-      setSelectedSessionId(session.id); setMessages([]); setAttachments([]); setPendingUser(null);
+      setSelectedSessionId(session.id); setMessages([]); setAttachments([]); setSteerQueue([]); setPendingUser(null);
     } catch (cause) { setError(errorText(cause, 'Unable to create conversation')); }
   }
 
@@ -137,13 +151,13 @@ export function ChatScreen() {
     if (selectedSessionId) return selectedSessionId;
     const session = await runtime.client.sessions.create({ title: 'New conversation' });
     setSessions((current) => [session, ...current]);
-    setSelectedSessionId(session.id);
+    setSelectedSessionId(session.id); setSteerQueue([]);
     return session.id;
   }
 
-  async function send(value = draft) {
+  async function send(value = draft, options: { allowWhileSending?: boolean } = {}) {
     const query = value.trim();
-    if (!query || sending) return;
+    if (!query || (sending && !options.allowWhileSending)) return;
     setError('');
     let sessionId: string;
     try { sessionId = await ensureSession(); } catch (cause) { setError(errorText(cause, 'Unable to create conversation')); return; }
@@ -160,7 +174,7 @@ export function ChatScreen() {
       }, applyEvent);
     } catch (cause) {
       if (!controller.signal.aborted) setError(errorText(cause, 'Unable to send message'));
-    } finally { await finishRun(sessionId); }
+    } finally { await finishRun(sessionId, controller); }
   }
 
   async function stop() {
@@ -212,6 +226,52 @@ export function ChatScreen() {
     } catch (cause) { setError(errorText(cause, 'Unable to cancel MCP authorization')); }
   }
 
+  async function enqueueSteer(delivery: SteerDelivery) {
+    const query = draft.trim();
+    if (!query) return;
+    if (!selectedSessionId || !sending) { await send(query); return; }
+    if (steerAction.current) return;
+    const sessionId = selectedSessionId;
+    steerAction.current = `enqueue:${delivery}`;
+    setSteerBusy(delivery); setError('');
+    try {
+      const result = await runtime.client.chat.steer.enqueue(sessionId, {
+        query,
+        delivery,
+        expectedAssistantMessageId: activeMessageId.current,
+        channel: 'mobile',
+      });
+      setDraft('');
+      if (result.status === 'new_run') await send(query, { allowWhileSending: true });
+      else await loadSteerQueue(sessionId);
+    } catch (cause) { setError(errorText(cause, 'Unable to steer response')); }
+    finally { steerAction.current = null; setSteerBusy(''); }
+  }
+
+  async function promoteSteer(item: SteerQueueItem) {
+    if (!selectedSessionId || steerAction.current) return;
+    const sessionId = selectedSessionId;
+    steerAction.current = `promote:${item.steer_id}`;
+    setSteerBusy(item.steer_id); setError('');
+    try {
+      await runtime.client.chat.steer.promote(sessionId, item.steer_id);
+      await loadSteerQueue(sessionId);
+    } catch (cause) { setError(errorText(cause, 'Unable to inject steer message')); }
+    finally { steerAction.current = null; setSteerBusy(''); }
+  }
+
+  async function removeSteer(item: SteerQueueItem) {
+    if (!selectedSessionId || steerAction.current) return;
+    const sessionId = selectedSessionId;
+    steerAction.current = `remove:${item.steer_id}`;
+    setSteerBusy(item.steer_id); setError('');
+    try {
+      await runtime.client.chat.steer.remove(sessionId, item.steer_id);
+      await loadSteerQueue(sessionId);
+    } catch (cause) { setError(errorText(cause, 'Unable to remove steer message')); }
+    finally { steerAction.current = null; setSteerBusy(''); }
+  }
+
   async function shareArtifact(messageId: string, artifact: ReturnType<typeof normalizeArtifactList>[number]) {
     try {
       const uri = await downloadKnowledgeFile({
@@ -233,6 +293,7 @@ export function ChatScreen() {
   const references = selectReferenceGroups(streamState);
   const pendingApprovals = Object.values(streamState.approvals).filter((approval) => approval.status === 'pending');
   const pendingOAuthApprovals = Object.values(streamState.oauthApprovals).filter((approval) => approval.status === 'pending');
+  const steerButtonsDisabled = !draft.trim() || Boolean(steerBusy);
 
   return <SafeAreaView style={{ flex: 1 }}>
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, borderBottomColor: '#eaecf0', borderBottomWidth: 1 }}>
@@ -252,6 +313,7 @@ export function ChatScreen() {
         {references.length ? <View style={{ marginBottom: 8 }}><Text style={{ fontWeight: '600' }}>References</Text>{references.flatMap((group) => group.items).map((reference) => <View key={reference.key} style={{ backgroundColor: '#f8f9fc', padding: 8, borderRadius: 8, marginTop: 4 }}><Text>{reference.title}</Text>{reference.snippet ? <Text selectable style={{ color: '#667085', fontSize: 12 }}>{reference.snippet}</Text> : null}</View>)}</View> : null}
         {pendingApprovals.map((approval) => <View key={approval.pendingId} style={{ backgroundColor: '#fff7ed', padding: 10, borderRadius: 8, marginBottom: 8 }}><Text>Tool approval required</Text><View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}><Pressable onPress={() => void approve(approval.pendingId, 'approve')}><Text style={{ color: '#16803c' }}>Approve</Text></Pressable><Pressable onPress={() => void approve(approval.pendingId, 'reject')}><Text style={{ color: '#b42318' }}>Reject</Text></Pressable></View></View>)}
         {pendingOAuthApprovals.map((approval) => <View key={approval.pendingId} style={{ backgroundColor: '#eef4ff', padding: 10, borderRadius: 8, marginBottom: 8 }}><Text>MCP authorization required{approval.serviceName ? ` · ${approval.serviceName}` : ''}</Text>{approval.toolName ? <Text style={{ color: '#667085', marginTop: 4 }}>Tool: {approval.toolName}</Text> : null}<View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}><Pressable onPress={() => void openOAuth(approval)}><Text style={{ color: '#2864dc' }}>Authorize</Text></Pressable><Pressable onPress={() => void cancelOAuth(approval)}><Text style={{ color: '#b42318' }}>Cancel</Text></Pressable></View></View>)}
+        {selectedSessionId ? <View style={{ backgroundColor: '#f8f9fc', padding: 10, borderRadius: 8, marginBottom: 8 }}><View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><Text style={{ fontWeight: '600' }}>Steer queue</Text><Pressable disabled={steerLoading} onPress={() => void loadSteerQueue(selectedSessionId)}><Text style={{ color: steerLoading ? '#98a2b3' : '#2864dc' }}>{steerLoading ? 'Loading…' : 'Refresh'}</Text></Pressable></View>{steerQueue.length === 0 ? <Text style={{ color: '#667085', marginTop: 6 }}>No queued instructions</Text> : steerQueue.map((item) => <View key={item.steer_id} style={{ backgroundColor: '#fff', padding: 8, borderRadius: 8, marginTop: 6 }}><Text selectable>{item.content}</Text><Text style={{ color: '#667085', fontSize: 12, marginTop: 4 }}>{item.delivery === 'inject' ? 'Injecting next' : 'After current response'}</Text><View style={{ flexDirection: 'row', gap: 12, marginTop: 6 }}>{item.delivery === 'after' ? <Pressable disabled={Boolean(steerBusy)} onPress={() => void promoteSteer(item)}><Text style={{ color: steerBusy === item.steer_id ? '#98a2b3' : '#2864dc' }}>Inject now</Text></Pressable> : null}<Pressable disabled={Boolean(steerBusy)} onPress={() => void removeSteer(item)}><Text style={{ color: steerBusy === item.steer_id ? '#98a2b3' : '#b42318' }}>Remove</Text></Pressable></View></View>)}</View> : null}
       </>}
       renderItem={({ item }) => <View style={{ alignSelf: item.role === 'user' ? 'flex-end' : 'stretch', maxWidth: '92%', backgroundColor: item.role === 'user' ? '#eff6ff' : '#f8f9fc', padding: 10, borderRadius: 10, marginBottom: 8 }}><Text style={{ fontWeight: '600', marginBottom: 4 }}>{item.role}</Text><Text selectable>{item.content}</Text>{item.role === 'assistant' && item.is_completed === false ? <Text style={{ color: '#667085', marginTop: 4 }}>Resuming…</Text> : null}{normalizeArtifactList(selectMessageArtifacts(item)).map((artifact) => <Pressable key={`${artifact.index}-${artifact.fileName}`} onPress={() => void shareArtifact(item.id, artifact)}><Text style={{ color: '#2864dc', marginTop: 6 }}>File: {artifact.fileName} · Share</Text></Pressable>)}{item.role === 'assistant' && item.data ? <Text style={{ color: '#667085' }}>{normalizeToolResult({ output: item.data }).text}</Text> : null}</View>}
     />
@@ -260,7 +322,7 @@ export function ChatScreen() {
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90} style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, padding: 12, borderTopColor: '#eaecf0', borderTopWidth: 1 }}>
       <Pressable accessibilityLabel="Attach file" onPress={() => void attach()}><Text style={{ color: attaching ? '#98a2b3' : '#2864dc' }}>{attaching ? '…' : '+'}</Text></Pressable>
       <TextInput accessibilityLabel="Chat message" value={draft} onChangeText={setDraft} multiline maxLength={20_000} placeholder="Ask WeKnora" style={{ flex: 1, maxHeight: 120, borderColor: '#d0d5dd', borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 }} />
-      {sending ? <Pressable accessibilityRole="button" onPress={() => void stop()}><Text style={{ color: '#b42318' }}>Stop</Text></Pressable> : <Pressable accessibilityRole="button" disabled={!draft.trim()} onPress={() => void send()}><Text style={{ color: draft.trim() ? '#2864dc' : '#98a2b3', fontWeight: '600' }}>Send</Text></Pressable>}
+      {sending ? <><Pressable accessibilityRole="button" onPress={() => void stop()}><Text style={{ color: '#b42318' }}>Stop</Text></Pressable><Pressable accessibilityLabel="Inject steering message" accessibilityRole="button" disabled={steerButtonsDisabled} onPress={() => void enqueueSteer('inject')}><Text style={{ color: steerButtonsDisabled ? '#98a2b3' : '#2864dc' }}>Inject</Text></Pressable><Pressable accessibilityLabel="Queue steering message" accessibilityRole="button" disabled={steerButtonsDisabled} onPress={() => void enqueueSteer('after')}><Text style={{ color: steerButtonsDisabled ? '#98a2b3' : '#2864dc' }}>After</Text></Pressable></> : <Pressable accessibilityRole="button" disabled={!draft.trim()} onPress={() => void send()}><Text style={{ color: draft.trim() ? '#2864dc' : '#98a2b3', fontWeight: '600' }}>Send</Text></Pressable>}
     </KeyboardAvoidingView>
   </SafeAreaView>;
 }
