@@ -13,3 +13,9 @@ test('describes missing sandbox skill availability without claiming the catalog 
 test('renders sandbox availability as a notice instead of replacing catalog results', () => {
   assert.match(page, /available === false \? <Status tone="warning">[\s\S]*?<\/Status> : null}\s*\{errors\[section\.key\]/);
 });
+
+test('renders structured model deletion occupancy instead of hiding it in a generic error', () => {
+  assert.match(page, /modelInUseDetails\(cause\)/);
+  assert.match(page, /Knowledge bases \(/);
+  assert.match(page, /Long-term memory/);
+});

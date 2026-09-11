@@ -4,6 +4,7 @@ import { Button, Card, Status } from '@weknora/ui';
 import { configurationSections, configurationStatus, type ConfigurationSectionKey } from './surface.ts';
 import { ConfigurationEditor } from './ConfigurationEditor.tsx';
 import { AgentOperations, ModelDebugPanel, SkillOperations } from './ConfigurationOperations.tsx';
+import { modelInUseDetails, modelUsageBindingLabel, type ModelUsageDetails } from './model-usage.ts';
 
 type Records = { agents: AgentConfiguration[]; models: ModelConfiguration[]; mcp: McpConfiguration[]; skills: SkillConfiguration[] };
 type EditableSection = Exclude<ConfigurationSectionKey, 'skills'>;
@@ -14,6 +15,12 @@ function values(record: Record<string, unknown>): string {
     .map(([key, value]) => `${key}: ${typeof value === 'string' ? value : JSON.stringify(value)}`).join(' · ');
 }
 
+function ModelUsageNotice({ modelName, details, onClose }: { modelName: string; details: ModelUsageDetails; onClose: () => void }) {
+  const knowledgeBaseTotal = Math.max(details.knowledge_base_total, details.knowledge_bases.length);
+  const agentTotal = Math.max(details.agent_total, details.agents.length);
+  return <Card className="wk-configuration-usage" role="alert"><div className="wk-settings-panel-heading"><div><h2>Model is still in use</h2><p className="wk-muted">{modelName} cannot be deleted until its active bindings are removed.</p></div><Button type="button" onClick={onClose}>Close</Button></div>{knowledgeBaseTotal > 0 ? <section><h3>Knowledge bases ({knowledgeBaseTotal})</h3><ul className="wk-list">{details.knowledge_bases.map((item) => <li key={item.id}><strong>{item.name || item.id}</strong><small>{item.bindings.map(modelUsageBindingLabel).join(' · ')}</small></li>)}</ul>{knowledgeBaseTotal > details.knowledge_bases.length ? <p className="wk-muted">Showing {details.knowledge_bases.length} of {knowledgeBaseTotal} knowledge-base bindings.</p> : null}</section> : null}{agentTotal > 0 ? <section><h3>Agents ({agentTotal})</h3><ul className="wk-list">{details.agents.map((item) => <li key={item.id}><strong>{item.name || item.id}</strong><small>{item.bindings.map(modelUsageBindingLabel).join(' · ')}</small></li>)}</ul>{agentTotal > details.agents.length ? <p className="wk-muted">Showing {details.agents.length} of {agentTotal} agent bindings.</p> : null}</section> : null}{details.long_term_memory.bindings.length > 0 ? <section><h3>Long-term memory</h3><p>{details.long_term_memory.bindings.map(modelUsageBindingLabel).join(' · ')}</p></section> : null}</Card>;
+}
+
 export function ConfigurationPage({ client }: { client: WeKnoraClient }) {
   const [records, setRecords] = useState<Records>({ agents: [], models: [], mcp: [], skills: [] });
   const [available, setAvailable] = useState<boolean | null>(null);
@@ -21,6 +28,7 @@ export function ConfigurationPage({ client }: { client: WeKnoraClient }) {
   const [loading, setLoading] = useState(true);
   const [editor, setEditor] = useState<{ section: EditableSection; record?: ConfigurationRecord } | null>(null);
   const [creator, setCreator] = useState<'all' | 'mine' | 'others'>('all');
+  const [usageConflict, setUsageConflict] = useState<{ modelName: string; details: ModelUsageDetails } | null>(null);
 
   async function load() {
     setLoading(true); setErrors({}); setAvailable(null);
@@ -50,14 +58,23 @@ export function ConfigurationPage({ client }: { client: WeKnoraClient }) {
   async function removeConfiguration(section: ConfigurationSectionKey, itemId: string) {
     if (section === 'skills') return;
     if (!window.confirm(`Remove this ${section} configuration?`)) return;
-    setErrors({});
+    setErrors({}); setUsageConflict(null);
     try { await client.configuration[section].remove(itemId); await load(); }
-    catch (cause) { setErrors({ [section]: message(cause, `Unable to remove ${section}`) }); }
+    catch (cause) {
+      const details = section === 'models' ? modelInUseDetails(cause) : null;
+      if (details) {
+        const model = records.models.find((item) => item.id === itemId);
+        setUsageConflict({ modelName: model?.name ?? itemId, details });
+        return;
+      }
+      setErrors({ [section]: message(cause, `Unable to remove ${section}`) });
+    }
   }
 
   return <main className="wk-page wk-configuration-page">
     <header className="wk-header"><div><p className="wk-eyebrow">Platform configuration</p><h1>Agents, models, MCP and skills</h1><p className="wk-muted">Manage supported configuration through typed APIs. Secrets are write-only, and configuration presence never proves provider health.</p></div><Button type="button" onClick={() => void load()} disabled={loading}>Reload</Button></header>
     {editor ? <ConfigurationEditor client={client} section={editor.section} record={editor.record} onSaved={() => { setEditor(null); void load(); }} onCancel={() => setEditor(null)} /> : null}
+    {usageConflict ? <ModelUsageNotice modelName={usageConflict.modelName} details={usageConflict.details} onClose={() => setUsageConflict(null)} /> : null}
     <div className="wk-configuration-operations"><label>Agent source<select value={creator} onChange={(event) => setCreator(event.target.value as typeof creator)}><option value="all">All agents</option><option value="mine">My agents</option><option value="others">Shared agents</option></select></label></div>
     <AgentOperations client={client} agents={records.agents} disabledIds={records.agents.filter((item) => (item as Record<string, unknown>).disabled_by_server === true).map((item) => item.id)} />
     <ModelDebugPanel client={client} models={records.models} />

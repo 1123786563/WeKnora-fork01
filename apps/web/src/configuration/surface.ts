@@ -12,6 +12,7 @@ export interface ConfigurationDraft {
   id?: string;
   name: string;
   description?: string;
+  avatar?: string;
   type?: string;
   source?: string;
   transportType?: string;
@@ -52,7 +53,7 @@ export function configurationPayload(section: ConfigurationSectionKey, draft: Co
   if (section === 'models') {
     return { name: draft.name.trim(), display_name: draft.name.trim(), description: draft.description ?? '', type: draft.type ?? '', source: draft.source ?? '', parameters: details };
   }
-  if (section === 'agents') return { name: draft.name.trim(), description: draft.description ?? '', config: details };
+  if (section === 'agents') return { name: draft.name.trim(), description: draft.description ?? '', avatar: draft.avatar ?? '', config: details };
   if (section === 'mcp') {
     const transportType = draft.transportType ?? 'sse';
     if (transportType !== 'sse' && transportType !== 'http-streamable' && transportType !== 'stdio') throw new Error('MCP transport type is invalid');

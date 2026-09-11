@@ -19,7 +19,7 @@ export function configurationDraftFromRecord(section: Exclude<ConfigurationSecti
   const row = value as Record<string, unknown>;
   const details = section === 'models' ? row.parameters : section === 'agents' ? row.config : row.auth_config;
   return {
-    id: text(row.id), name: text(row.name), description: text(row.description), type: text(row.type), source: text(row.source),
+    id: text(row.id), name: text(row.name), description: text(row.description), avatar: text(row.avatar), type: text(row.type), source: text(row.source),
     details: JSON.stringify(safeObject(details ?? {})), apiKey: '', appSecret: '', token: '',
     ...(section === 'mcp' ? { transportType: text(row.transport_type) || 'sse' } : {}),
     enabled: row.enabled !== false, url: text(row.url),

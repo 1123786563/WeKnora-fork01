@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { configurationDraftFromRecord, credentialInput, credentialStatusAfterClear, newConfigurationDraft, savedConfigurationId } from './editor.ts';
+import { configurationPayload } from './surface.ts';
 
 test('creates an editable draft from redacted records without restoring secret placeholders', () => {
   const draft = configurationDraftFromRecord('models', {
@@ -12,6 +13,16 @@ test('creates an editable draft from redacted records without restoring secret p
   assert.equal(draft.id, 'model-1');
   assert.equal(draft.details, '{"base_url":"https://model.test"}');
   assert.equal(draft.apiKey, '');
+});
+
+test('preserves an existing agent avatar through draft hydration and payload construction', async () => {
+  const draft = configurationDraftFromRecord('agents', {
+    id: 'agent-1', name: 'Research', avatar: 'https://cdn.test/avatar.png', config: {},
+  });
+  assert.equal(draft.avatar, 'https://cdn.test/avatar.png');
+  assert.deepEqual(configurationPayload('agents', draft), {
+    name: 'Research', description: '', avatar: 'https://cdn.test/avatar.png', config: {},
+  });
 });
 
 test('removes camelCase and nested secret keys from editable configuration details', () => {
