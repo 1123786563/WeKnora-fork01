@@ -85,3 +85,22 @@ test('preserves agent disabled state and skill availability from list envelopes'
     '/api/v1/skills?sandbox_config_id=sandbox%2F1',
   ]);
 });
+
+test('maps MCP OAuth authorization URL and status through the shared client', async () => {
+  const requests: unknown[] = [];
+  const api = createConfigurationApi(async (request) => {
+    requests.push(request);
+    if (request.method === 'POST') return { success: true, data: { authorization_url: 'https://idp.test/authorize', authorization_attempt: 'attempt-1' } };
+    return { success: true, data: { authorized: true, state: 'authorized', refresh_available: true, expires_at: '2030-01-01T00:00:00Z' } };
+  });
+  assert.deepEqual(await api.mcp.oauth.authorizeUrl('service/1', { redirectURI: 'https://api.test/api/v1/mcp-oauth/callback', frontendRedirect: 'weknora://mcp-oauth' }), {
+    authorizationUrl: 'https://idp.test/authorize', authorizationAttempt: 'attempt-1',
+  });
+  assert.deepEqual(await api.mcp.oauth.status('service/1', 'attempt/1'), {
+    authorized: true, state: 'authorized', refreshAvailable: true, expiresAt: '2030-01-01T00:00:00Z',
+  });
+  assert.deepEqual(requests, [
+    { method: 'POST', path: '/api/v1/mcp-services/service%2F1/oauth/authorize-url', body: { redirect_uri: 'https://api.test/api/v1/mcp-oauth/callback', frontend_redirect: 'weknora://mcp-oauth' } },
+    { method: 'GET', path: '/api/v1/mcp-services/service%2F1/oauth/status?authorization_attempt=attempt%2F1' },
+  ]);
+});

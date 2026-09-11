@@ -8,10 +8,12 @@ test('mobile replay uses the shared reducer for answer, approval, and references
     { response_type: 'answer', event_id: '1', content: 'hello' },
     { response_type: 'references', event_id: '2', data: { references: [{ knowledge_id: 'doc-1', knowledge_title: 'Guide', content: 'source' }] } },
     { response_type: 'tool_approval_required', event_id: '3', data: { pending_id: 'pending-1', tool_call_id: 'tool-1' } },
+    { response_type: 'mcp_oauth_required', event_id: '4', data: { pending_id: 'oauth-1', service_id: 'service-1', service_name: 'Docs' } },
   ] as const;
   const state = replayMobileChatEvents(events);
   assert.equal(state.answer, 'hello');
   assert.equal(state.approvals['pending-1']?.status, 'pending');
+  assert.equal(state.oauthApprovals['oauth-1']?.serviceName, 'Docs');
   assert.equal(selectReferenceGroups(state)[0]?.items[0]?.title, 'Guide');
   assert.equal(reduceChatStream(initialChatStreamState(), events[0]).answer, state.answer);
 });

@@ -30,3 +30,21 @@ test('unknown response types do not fabricate completion', () => {
   const state = reduceChatStream(initialChatStreamState(), { response_type: 'future_event' });
   assert.equal(state.phase, 'idle');
 });
+
+test('tracks MCP OAuth approval lifecycle separately from tool approval', () => {
+  let state = initialChatStreamState();
+  state = reduceChatStream(state, {
+    response_type: 'mcp_oauth_required',
+    event_id: 'oauth-1',
+    data: { pending_id: 'pending-oauth', service_id: 'svc-1', service_name: 'Docs', mcp_tool_name: 'search_docs' },
+  });
+  assert.equal(state.oauthApprovals['pending-oauth']?.status, 'pending');
+  assert.equal(state.oauthApprovals['pending-oauth']?.serviceId, 'svc-1');
+  state = reduceChatStream(state, {
+    response_type: 'mcp_oauth_resolved',
+    event_id: 'oauth-2',
+    data: { pending_id: 'pending-oauth', service_id: 'svc-1', authorized: true },
+  });
+  assert.equal(state.oauthApprovals['pending-oauth']?.status, 'resolved');
+  assert.equal(state.oauthApprovals['pending-oauth']?.authorized, true);
+});

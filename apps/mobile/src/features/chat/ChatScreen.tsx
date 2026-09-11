@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, FlatList, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, AppState, FlatList, KeyboardAvoidingView, Linking, Platform, Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import type { ChatMessage, ChatSession, ChatStreamEvent, TemporaryAttachment } from '@weknora/contracts';
 import { initialChatStreamState, reduceChatStream, type ChatStreamState } from '@weknora/domain/chat/reducer';
@@ -35,6 +35,7 @@ export function ChatScreen() {
   const [error, setError] = useState('');
   const streamController = useRef<AbortController | null>(null);
   const activeMessageId = useRef<string | undefined>(undefined);
+  const activeOAuth = useRef<{ pendingId: string; serviceId: string; authorizationAttempt: string } | null>(null);
   const resuming = useRef(false);
 
   const loadSessions = useCallback(async () => {
@@ -104,6 +105,25 @@ export function ChatScreen() {
     return () => subscription.remove();
   }, [continueMessage, loadMessages, selectedSessionId]);
 
+  useEffect(() => {
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      const hash = url.includes('#') ? url.slice(url.indexOf('#') + 1) : url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
+      const params = new URLSearchParams(hash);
+      if (!params.has('mcp_oauth_result') && !params.has('mcp_oauth_error')) return;
+      const pending = activeOAuth.current;
+      if (!pending) return;
+      activeOAuth.current = null;
+      if (params.get('mcp_oauth_error')) { setError(params.get('mcp_oauth_error') || 'MCP authorization failed'); return; }
+      void runtime.client.configuration.mcp.oauth.status(pending.serviceId, pending.authorizationAttempt).then((status) => {
+        if (!status.authorized) throw new Error('MCP authorization did not complete');
+        return runtime.client.chat.approvals.resolveOAuth(pending.pendingId, { serviceId: pending.serviceId, decision: 'authorize' });
+      }).then(() => {
+        applyEvent({ response_type: 'mcp_oauth_resolved', data: { pending_id: pending.pendingId, service_id: pending.serviceId, authorized: true }, event_id: `local-oauth-${pending.pendingId}` });
+      }).catch((cause) => setError(errorText(cause, 'Unable to finish MCP authorization')));
+    });
+    return () => subscription.remove();
+  }, [applyEvent, runtime.client]);
+
   async function createSession() {
     setError('');
     try {
@@ -172,6 +192,26 @@ export function ChatScreen() {
     } catch (cause) { setError(errorText(cause, 'Unable to resolve tool approval')); }
   }
 
+  async function openOAuth(approval: ChatStreamState['oauthApprovals'][string]) {
+    if (!approval.serviceId) { setError('MCP service id is missing'); return; }
+    try {
+      const result = await runtime.client.configuration.mcp.oauth.authorizeUrl(approval.serviceId, {
+        redirectURI: `${runtime.baseURL.replace(/\/+$/, '')}/api/v1/mcp-oauth/callback`,
+        frontendRedirect: 'weknora://mcp-oauth',
+      });
+      activeOAuth.current = { pendingId: approval.pendingId, serviceId: approval.serviceId, authorizationAttempt: result.authorizationAttempt };
+      await Linking.openURL(result.authorizationUrl);
+    } catch (cause) { setError(errorText(cause, 'Unable to start MCP authorization')); }
+  }
+
+  async function cancelOAuth(approval: ChatStreamState['oauthApprovals'][string]) {
+    if (!approval.serviceId) return;
+    try {
+      await runtime.client.chat.approvals.cancelOAuth(approval.pendingId);
+      applyEvent({ response_type: 'mcp_oauth_resolved', data: { pending_id: approval.pendingId, service_id: approval.serviceId, authorized: false }, event_id: `local-oauth-cancel-${approval.pendingId}` });
+    } catch (cause) { setError(errorText(cause, 'Unable to cancel MCP authorization')); }
+  }
+
   async function shareArtifact(messageId: string, artifact: ReturnType<typeof normalizeArtifactList>[number]) {
     try {
       const uri = await downloadKnowledgeFile({
@@ -192,6 +232,7 @@ export function ChatScreen() {
   ]), [liveAssistant, messages, pendingUser, selectedSessionId]);
   const references = selectReferenceGroups(streamState);
   const pendingApprovals = Object.values(streamState.approvals).filter((approval) => approval.status === 'pending');
+  const pendingOAuthApprovals = Object.values(streamState.oauthApprovals).filter((approval) => approval.status === 'pending');
 
   return <SafeAreaView style={{ flex: 1 }}>
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, borderBottomColor: '#eaecf0', borderBottomWidth: 1 }}>
@@ -210,6 +251,7 @@ export function ChatScreen() {
         {streamState.thinking ? <View style={{ backgroundColor: '#f8f9fc', padding: 10, borderRadius: 8, marginBottom: 8 }}><Text style={{ color: '#667085' }}>Thinking</Text><Text selectable style={{ color: '#667085' }}>{streamState.thinking}</Text></View> : null}
         {references.length ? <View style={{ marginBottom: 8 }}><Text style={{ fontWeight: '600' }}>References</Text>{references.flatMap((group) => group.items).map((reference) => <View key={reference.key} style={{ backgroundColor: '#f8f9fc', padding: 8, borderRadius: 8, marginTop: 4 }}><Text>{reference.title}</Text>{reference.snippet ? <Text selectable style={{ color: '#667085', fontSize: 12 }}>{reference.snippet}</Text> : null}</View>)}</View> : null}
         {pendingApprovals.map((approval) => <View key={approval.pendingId} style={{ backgroundColor: '#fff7ed', padding: 10, borderRadius: 8, marginBottom: 8 }}><Text>Tool approval required</Text><View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}><Pressable onPress={() => void approve(approval.pendingId, 'approve')}><Text style={{ color: '#16803c' }}>Approve</Text></Pressable><Pressable onPress={() => void approve(approval.pendingId, 'reject')}><Text style={{ color: '#b42318' }}>Reject</Text></Pressable></View></View>)}
+        {pendingOAuthApprovals.map((approval) => <View key={approval.pendingId} style={{ backgroundColor: '#eef4ff', padding: 10, borderRadius: 8, marginBottom: 8 }}><Text>MCP authorization required{approval.serviceName ? ` · ${approval.serviceName}` : ''}</Text>{approval.toolName ? <Text style={{ color: '#667085', marginTop: 4 }}>Tool: {approval.toolName}</Text> : null}<View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}><Pressable onPress={() => void openOAuth(approval)}><Text style={{ color: '#2864dc' }}>Authorize</Text></Pressable><Pressable onPress={() => void cancelOAuth(approval)}><Text style={{ color: '#b42318' }}>Cancel</Text></Pressable></View></View>)}
       </>}
       renderItem={({ item }) => <View style={{ alignSelf: item.role === 'user' ? 'flex-end' : 'stretch', maxWidth: '92%', backgroundColor: item.role === 'user' ? '#eff6ff' : '#f8f9fc', padding: 10, borderRadius: 10, marginBottom: 8 }}><Text style={{ fontWeight: '600', marginBottom: 4 }}>{item.role}</Text><Text selectable>{item.content}</Text>{item.role === 'assistant' && item.is_completed === false ? <Text style={{ color: '#667085', marginTop: 4 }}>Resuming…</Text> : null}{normalizeArtifactList(selectMessageArtifacts(item)).map((artifact) => <Pressable key={`${artifact.index}-${artifact.fileName}`} onPress={() => void shareArtifact(item.id, artifact)}><Text style={{ color: '#2864dc', marginTop: 6 }}>File: {artifact.fileName} · Share</Text></Pressable>)}{item.role === 'assistant' && item.data ? <Text style={{ color: '#667085' }}>{normalizeToolResult({ output: item.data }).text}</Text> : null}</View>}
     />

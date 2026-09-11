@@ -8,6 +8,8 @@ export type McpConfiguration = ConfigurationRecord & { enabled?: boolean; url?: 
 export type SkillConfiguration = ConfigurationRecord & { description?: string; skills_available?: boolean };
 export interface AgentConfigurationList { items: AgentConfiguration[]; disabledOwnAgentIds: string[] }
 export interface SkillConfigurationList { items: SkillConfiguration[]; skillsAvailable: boolean }
+export interface McpOAuthAuthorization { authorizationUrl: string; authorizationAttempt: string }
+export interface McpOAuthStatus { authorized: boolean; state: 'authorized' | 'refreshable' | 'reauth_required' | 'pending'; refreshAvailable: boolean; expiresAt?: string }
 export interface AgentConfigurationListOptions {
   creator?: 'all' | 'mine' | 'others';
   signal?: AbortSignal;
@@ -87,6 +89,29 @@ function id(value: string, name: string): string {
   return encodeURIComponent(value);
 }
 
+function parseOAuthAuthorization(value: unknown): McpOAuthAuthorization {
+  const envelope = record(value, '/mcp-services/oauth/authorize-url');
+  if (envelope.success !== true) throw new Error('/mcp-services/oauth/authorize-url.success must be true');
+  const data = record(envelope.data, '/mcp-services/oauth/authorize-url.data');
+  return {
+    authorizationUrl: required(data.authorization_url, '/mcp-services/oauth/authorize-url.data.authorization_url'),
+    authorizationAttempt: required(data.authorization_attempt, '/mcp-services/oauth/authorize-url.data.authorization_attempt'),
+  };
+}
+
+function parseOAuthStatus(value: unknown): McpOAuthStatus {
+  const envelope = record(value, '/mcp-services/oauth/status');
+  if (envelope.success !== true) throw new Error('/mcp-services/oauth/status.success must be true');
+  const data = record(envelope.data, '/mcp-services/oauth/status.data');
+  if (typeof data.authorized !== 'boolean') throw new Error('/mcp-services/oauth/status.data.authorized must be a boolean');
+  if (data.state !== 'authorized' && data.state !== 'refreshable' && data.state !== 'reauth_required' && data.state !== 'pending') {
+    throw new Error('/mcp-services/oauth/status.data.state is invalid');
+  }
+  if (typeof data.refresh_available !== 'boolean') throw new Error('/mcp-services/oauth/status.data.refresh_available must be a boolean');
+  if (data.expires_at !== undefined && typeof data.expires_at !== 'string') throw new Error('/mcp-services/oauth/status.data.expires_at must be a string');
+  return { authorized: data.authorized, state: data.state, refreshAvailable: data.refresh_available, ...(data.expires_at === undefined ? {} : { expiresAt: data.expires_at }) };
+}
+
 export function createConfigurationApi(request: (input: ClientRequest) => Promise<unknown>) {
   const collection = <T extends ConfigurationRecord>(path: string, parse: (value: unknown, path: string) => T) => ({
     async list(signal?: AbortSignal): Promise<T[]> {
@@ -112,6 +137,23 @@ export function createConfigurationApi(request: (input: ClientRequest) => Promis
   const agentCollection = collection<AgentConfiguration>('/api/v1/agents', parseAgent);
   const models = collection<ModelConfiguration>('/api/v1/models', parseModel);
   const mcp = collection<McpConfiguration>('/api/v1/mcp-services', parseMcp);
+  const mcpOAuth = {
+    async authorizeUrl(serviceId: string, input: { redirectURI: string; frontendRedirect?: string }, signal?: AbortSignal): Promise<McpOAuthAuthorization> {
+      if (typeof input.redirectURI !== 'string' || input.redirectURI.trim() === '') throw new Error('redirectURI must not be empty');
+      return parseOAuthAuthorization(await request({
+        method: 'POST', path: `/api/v1/mcp-services/${id(serviceId, 'serviceId')}/oauth/authorize-url`,
+        body: { redirect_uri: input.redirectURI, ...(input.frontendRedirect === undefined ? {} : { frontend_redirect: input.frontendRedirect }) },
+        ...(signal === undefined ? {} : { signal }),
+      }));
+    },
+    async status(serviceId: string, authorizationAttempt?: string, signal?: AbortSignal): Promise<McpOAuthStatus> {
+      const query = authorizationAttempt === undefined ? '' : `?authorization_attempt=${encodeURIComponent(authorizationAttempt)}`;
+      return parseOAuthStatus(await request({ method: 'GET', path: `/api/v1/mcp-services/${id(serviceId, 'serviceId')}/oauth/status${query}`, ...(signal === undefined ? {} : { signal }) }));
+    },
+    async revoke(serviceId: string, signal?: AbortSignal): Promise<ActionSuccessResponse> {
+      return parseActionSuccessResponse(await request({ method: 'DELETE', path: `/api/v1/mcp-services/${id(serviceId, 'serviceId')}/oauth/token`, ...(signal === undefined ? {} : { signal }) }));
+    },
+  };
   return {
     agents: {
       ...agentCollection,
@@ -127,7 +169,7 @@ export function createConfigurationApi(request: (input: ClientRequest) => Promis
       },
     },
     models,
-    mcp,
+    mcp: { ...mcp, oauth: mcpOAuth },
     skills: {
       async list(sandboxConfigId?: string, signal?: AbortSignal): Promise<SkillConfiguration[]> {
         const query = sandboxConfigId ? `?sandbox_config_id=${encodeURIComponent(sandboxConfigId)}` : '';

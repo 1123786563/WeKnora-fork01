@@ -16,6 +16,16 @@ export interface ChatApproval {
   decision?: string;
 }
 
+export interface ChatOAuthApproval {
+  pendingId: string;
+  serviceId?: string;
+  serviceName?: string;
+  toolName?: string;
+  status: 'pending' | 'resolved';
+  authorized?: boolean;
+  reason?: string;
+}
+
 export interface ChatStreamState {
   phase: ChatRunPhase;
   answer: string;
@@ -23,13 +33,14 @@ export interface ChatStreamState {
   references: unknown[];
   toolCalls: Record<string, ChatToolCall>;
   approvals: Record<string, ChatApproval>;
+  oauthApprovals: Record<string, ChatOAuthApproval>;
   seenEventIds: readonly string[];
   lastEventId?: string;
   error?: string;
 }
 
 export const initialChatStreamState = (): ChatStreamState => ({
-  phase: 'idle', answer: '', thinking: '', references: [], toolCalls: {}, approvals: {}, seenEventIds: [],
+  phase: 'idle', answer: '', thinking: '', references: [], toolCalls: {}, approvals: {}, oauthApprovals: {}, seenEventIds: [],
 });
 
 function text(value: unknown): string { return typeof value === 'string' ? value : ''; }
@@ -44,6 +55,7 @@ export function reduceChatStream(state: ChatStreamState, event: ChatStreamEvent)
     ...state,
     toolCalls: { ...state.toolCalls },
     approvals: { ...state.approvals },
+    oauthApprovals: { ...state.oauthApprovals },
     references: state.references.slice(),
     seenEventIds: eventId ? [...state.seenEventIds, eventId] : state.seenEventIds,
     ...(eventId ? { lastEventId: eventId } : {}),
@@ -78,6 +90,44 @@ export function reduceChatStream(state: ChatStreamState, event: ChatStreamEvent)
     case 'tool_approval_resolved': {
       const pendingId = text(data.pending_id ?? event.pending_id);
       if (pendingId) next.approvals[pendingId] = { ...(next.approvals[pendingId] ?? { pendingId }), pendingId, status: 'resolved', decision: text(data.decision ?? event.decision) || undefined };
+      break;
+    }
+    case 'mcp_oauth_required': {
+      const pendingId = text(data.pending_id ?? event.pending_id);
+      if (pendingId) {
+        next.oauthApprovals[pendingId] = {
+          pendingId,
+          serviceId: text(data.service_id ?? event.service_id) || undefined,
+          serviceName: text(data.service_name ?? event.service_name) || undefined,
+          toolName: text(data.mcp_tool_name ?? event.mcp_tool_name) || undefined,
+          status: 'pending',
+        };
+      }
+      next.phase = 'streaming';
+      break;
+    }
+    case 'mcp_oauth_resolved': {
+      const pendingId = text(data.pending_id ?? event.pending_id);
+      const serviceId = text(data.service_id ?? event.service_id) || undefined;
+      const authorizedValue = data.authorized ?? event.authorized;
+      const authorized = typeof authorizedValue === 'boolean' ? authorizedValue : undefined;
+      if (pendingId) {
+        const current = next.oauthApprovals[pendingId] ?? { pendingId, serviceId, status: 'pending' as const };
+        next.oauthApprovals[pendingId] = {
+          ...current,
+          ...(serviceId ? { serviceId } : {}),
+          status: 'resolved',
+          ...(authorized === undefined ? {} : { authorized }),
+          ...(text(data.reason ?? event.reason) ? { reason: text(data.reason ?? event.reason) } : {}),
+        };
+      }
+      if (authorized === true && serviceId) {
+        for (const [id, approval] of Object.entries(next.oauthApprovals)) {
+          if (id !== pendingId && approval.status === 'pending' && approval.serviceId === serviceId) {
+            next.oauthApprovals[id] = { ...approval, status: 'resolved', authorized: true };
+          }
+        }
+      }
       break;
     }
     case 'complete': next.phase = 'completed'; break;

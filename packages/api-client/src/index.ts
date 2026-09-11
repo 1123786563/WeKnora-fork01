@@ -40,6 +40,8 @@ export type {
   AgentConfigurationList,
   AgentConfigurationListOptions,
   ConfigurationApi,
+  McpOAuthAuthorization,
+  McpOAuthStatus,
   McpConfiguration,
   ModelConfiguration,
   SkillConfiguration,
