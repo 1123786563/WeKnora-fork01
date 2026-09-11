@@ -45,6 +45,35 @@ test('refreshes a bearer once before retrying an idempotent read after 401', asy
   assert.deepEqual(authorizations, ['Bearer old-access', 'Bearer new-access']);
 });
 
+test('reuses a credential rotated by another request without refreshing again', async () => {
+  let credential: Credential = { kind: 'bearer', accessToken: 'old-access', refreshToken: 'old-refresh' };
+  let refreshes = 0;
+  let calls = 0;
+  const authorizations: string[] = [];
+  const transport = createMobileTransport({
+    credential: () => credential,
+    refresh: async () => {
+      refreshes += 1;
+      throw new Error('the already-rotated credential must be reused');
+    },
+    fetcher: async (_input, init) => {
+      calls += 1;
+      authorizations.push((init?.headers as Record<string, string> | undefined)?.authorization ?? '');
+      if (calls === 1) {
+        credential = { kind: 'bearer', accessToken: 'new-access', refreshToken: 'new-refresh' };
+        return jsonResponse(401, { success: false, message: 'expired' });
+      }
+      return jsonResponse(200, { success: true, data: [] });
+    },
+  });
+
+  const result = await transport.send({ method: 'GET', url: 'https://api.example.test/api/v1/knowledge-bases', headers: {} });
+
+  assert.equal(result.status, 200);
+  assert.equal(refreshes, 0);
+  assert.deepEqual(authorizations, ['Bearer old-access', 'Bearer new-access']);
+});
+
 test('does not replay a write after 401', async () => {
   let refreshes = 0;
   let calls = 0;

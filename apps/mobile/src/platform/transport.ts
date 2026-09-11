@@ -48,10 +48,14 @@ export function createMobileTransport(options: MobileTransportOptions): HttpTran
   }
   return {
     send: async (request) => {
+      const credential = options.credential();
       const result = await base.send(decorate(request));
       if (options.isTransitioning?.()) return result;
-      const credential = options.credential();
       if (result.status !== 401 || !options.refresh || credential.kind !== 'bearer' || !isIdempotentRead(request.method)) return result;
+      const latest = options.credential();
+      if (latest.kind === 'bearer' && latest.accessToken !== credential.accessToken) {
+        return base.send(decorate(request));
+      }
       await options.refresh();
       return base.send(decorate(request));
     },
