@@ -1003,3 +1003,20 @@
   the isolated Lite server returned HTTP 500 because the fixture had no
   configured embedding model, which is recorded as a backend prerequisite
   rather than hidden as a UI success.
+
+### Web route dispatch audit follow-up (2026-09-12)
+
+- A read-only audit of `resolveRoute`, `guardRoute`, and `renderProtected`
+  found three additional inconsistencies: `/knowledgeBase` passed the guard
+  but had no-ID renderer branch, the public `/platform/dev/markdown` fixture
+  was treated as protected and had no React page, and the broad `/creatChat/*`
+  compatibility match normalized unknown suffixes before falling through to
+  `NotFoundPage`.
+- The route mapping now sends `/knowledgeBase` to the list page, mounts a safe
+  React `DevMarkdownPage` for the development fixture, and limits the legacy
+  alias to its registered exact path. RED→GREEN route tests cover all three;
+  the Web test suite passed 99/99, typecheck/build passed, and the full audit is
+  recorded in `docs/migrations/react/evidence/t04-route-dispatch-audit-2026-09-12.md`.
+- This closes only the static dispatch defects found in this audit. T04/T13
+  remain `review` for the broader live, native, and legacy renderer parity
+  gates; the pre-existing `>500 kB` build warning remains non-fatal.
