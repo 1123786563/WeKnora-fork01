@@ -89,6 +89,28 @@ test('invalidate advances generation and prevents a late refresh from writing cr
   assert.equal(credentials.writes.length, 0);
 });
 
+test('can invalidate a late refresh without clearing the current credential', async () => {
+  const credentials = adapter({ kind: 'bearer', accessToken: 'old-access', refreshToken: 'old-refresh' });
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => { release = resolve; });
+  const coordinator = createRefreshCoordinator({
+    credentials,
+    refresh: async () => {
+      await pending;
+      return { success: true, access_token: 'late-access', refresh_token: 'late-refresh' };
+    },
+  });
+
+  const refreshing = coordinator.refresh();
+  await coordinator.invalidate({ clear: false });
+  assert.deepEqual(credentials.value, { kind: 'bearer', accessToken: 'old-access', refreshToken: 'old-refresh' });
+  release();
+
+  await assert.rejects(refreshing, (error: unknown) => error instanceof AuthError && error.code === 'AUTH_INVALIDATED');
+  assert.deepEqual(credentials.value, { kind: 'bearer', accessToken: 'old-access', refreshToken: 'old-refresh' });
+  assert.equal(credentials.writes.length, 0);
+});
+
 test('embed profiles never invoke refresh and are not cleared', async () => {
   const credentials = adapter({ kind: 'embed', token: 'embed-token', visitorId: 'visitor-1' });
   let calls = 0;

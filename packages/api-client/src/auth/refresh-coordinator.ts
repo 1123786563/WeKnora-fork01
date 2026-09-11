@@ -91,8 +91,9 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
     return shared;
   }
 
-  async function invalidate(): Promise<void> {
+  async function invalidate(invalidateOptions?: { clear?: boolean }): Promise<void> {
     generation += 1;
+    if (invalidateOptions?.clear === false) return;
     await options.credentials.clear();
   }
 

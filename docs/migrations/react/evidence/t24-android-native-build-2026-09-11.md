@@ -37,5 +37,5 @@ sha256 75a4dcb77a19009b24be46292261b80cc03836d5227e746a9454071f247f8359
 
 - This proves the current React Native/Expo source can generate and compile an Android native debug package with the local SDK.
 - The first Gradle invocation failed only because the shell did not expose `ANDROID_HOME`; rerunning with the explicit SDK paths above passed.
-- `adb` is not installed in this environment, so no Android device/emulator was available for install, launch, login, refresh, AppState, upload, or logout evidence.
-- This is package-build evidence, not Android runtime acceptance; T20/T24 remain `review` and T25 remains gated.
+- `adb` was not on the initial shell `PATH`; the explicit SDK path exposed it. A `test36-small` AVD was booted and the APK was installed/launched for a separate runtime attempt. That attempt is recorded separately because the cold dev-client load produced a system ANR before authenticated business flows could be completed.
+- This remains package-build evidence, not Android runtime acceptance; T20/T24 remain `review` and T25 remains gated. See `t24-android-native-runtime-attempt-2026-09-11.md`.

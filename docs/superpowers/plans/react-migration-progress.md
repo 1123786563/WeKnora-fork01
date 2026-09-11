@@ -339,6 +339,18 @@
 - On the iPhone 17 Pro Simulator with the current worktree Metro and isolated Lite server, Workspace settled on the real `mobilet24's Workspace · owner · Current` row after 5 seconds; the native API keys screen then displayed `Workspace role: owner` and the server-backed empty state in the current authenticated runtime. This does not prove cold SecureStore-only restoration. Evidence: `docs/migrations/react/evidence/t24-ios-simulator-workspace-refresh-live-2026-09-11.md`.
 - Android native runtime, complete T24 release matrix and deployment evidence remain open; T24 stays `review` and T25 remains gated.
 
+### T24 session-race review follow-up (2026-09-11)
+
+- Independent review found two concrete runtime gaps in the previous Workspace patch: a late credential refresh could overwrite a switched session, and `/auth/me` reconciliation no longer persisted the server-confirmed active tenant. The patch now invalidates refresh generation without clearing the current credential before session adoption/workspace switching, applies refresh results only when the session epoch is current, and persists the reconciled tenant selection. The coordinator keeps its existing clearing invalidation for logout.
+- TDD evidence: the new coordinator regression was first run RED (the current credential became anonymous), then passed after the minimal implementation. Focused auth/workspace tests passed 14/14; full shared tests passed 159/159; mobile tests passed 38/38; mobile typecheck, boundary check, and `git diff --check` exited 0.
+- This closes the identified review findings in source/tests, but does not change release status: no fresh independent whole-branch review has been recorded after this patch, Android native business acceptance is still incomplete, and T24 remains `review`.
+
+### T24 Android native runtime attempt (2026-09-11)
+
+- The explicit SDK path exposed `/Users/wuyongjun/Library/Android/sdk/platform-tools/adb`; AVD `test36-small` booted as `emulator-5554`, and the recorded debug APK installed and launched as `com.weknora.mobile`.
+- The current worktree Metro served the Android bundle (`1327 modules`, cold bundle time about `77.8s`) after opening the Expo dev-client URL through `10.0.2.2:8082`; the native host reached the React login UI. Android displayed a system `WeKnora isn't responding` dialog during this cold dev-client load, and no authenticated login, Workspace, upload, refresh, or logout sequence was accepted.
+- This is a documented runtime attempt and blocker, not Android acceptance. Evidence: `docs/migrations/react/evidence/t24-android-native-runtime-attempt-2026-09-11.md`. T24 stays `review`; T25 remains gated.
+
 ### T23 mobile data-source follow-up (2026-09-11)
 
 - Added the native knowledge-base data-source inventory route. It uses shared list/type seams, keeps connector `config` and credentials out of the UI, and exposes no mobile write/sync controls.

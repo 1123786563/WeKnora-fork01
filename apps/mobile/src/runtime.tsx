@@ -1,7 +1,7 @@
 import { AppState, Linking } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { createRefreshCoordinator, createWeKnoraClient, type AuthSession, type Credential, type WeKnoraClient } from '@weknora/api-client';
+import { AuthError, createRefreshCoordinator, createWeKnoraClient, type AuthSession, type Credential, type WeKnoraClient } from '@weknora/api-client';
 import { resolveMobileApiBaseUrl } from './platform/transport.ts';
 import { createSecureCredentialAdapter } from './platform/credentials.ts';
 import { createServerAddressAdapter } from './platform/server.ts';
@@ -59,15 +59,17 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
     },
   }), [adapter, refreshClient]);
   const refreshSession = useCallback(async () => {
+    const startedAt = sessionEpoch.current();
     try {
       const next = await refreshCoordinator.refresh();
+      if (!sessionEpoch.isCurrent(startedAt)) throw new AuthError('AUTH_INVALIDATED', 'The credential was invalidated during refresh');
       updateCredential(next);
       return next;
     } catch (cause) {
-      updateCredential({ kind: 'anonymous' });
+      if (sessionEpoch.isCurrent(startedAt)) updateCredential({ kind: 'anonymous' });
       throw cause;
     }
-  }, [refreshCoordinator, updateCredential]);
+  }, [refreshCoordinator, sessionEpoch, updateCredential]);
   const transport = useMemo(() => createMobileTransport({
     credential: () => credentialRef.current,
     refresh: refreshSession,
@@ -78,6 +80,7 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
 
   const adoptSession = useCallback(async (session: AuthSession) => {
     sessionEpoch.invalidate();
+    await refreshCoordinator.invalidate({ clear: false });
     const next: Credential = { kind: 'bearer', accessToken: session.token, refreshToken: session.refreshToken };
     await adapter.write(next);
     updateCredential(next);
@@ -87,7 +90,7 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
       setTenantId(String(activeTenantId));
       await workspaceAdapter.write(activeTenantId);
     }
-  }, [adapter, sessionEpoch, updateCredential, workspaceAdapter]);
+  }, [adapter, refreshCoordinator, sessionEpoch, updateCredential, workspaceAdapter]);
 
   useEffect(() => {
     let active = true;
@@ -165,7 +168,8 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
     setWorkspaces(parseMobileWorkspaces(identity.memberships));
     const activeTenantId = toWorkspaceId(identity.tenant?.id);
     setTenantId(activeTenantId === null ? null : String(activeTenantId));
-  }), [client, sessionEpoch]);
+    await workspaceAdapter.write(activeTenantId);
+  }), [client, sessionEpoch, workspaceAdapter]);
 
   useEffect(() => {
     if (!shouldHydrateWorkspaceMemberships({ hydrating, credentialKind: credential.kind, workspaceCount: workspaces.length })) return;
@@ -176,6 +180,7 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
     const workspaceId = toWorkspaceId(id);
     if (workspaceId === null) throw new Error('workspace id must be a positive safe integer');
     sessionEpoch.invalidate();
+    await refreshCoordinator.invalidate({ clear: false });
     const refreshToken = credentialRef.current.kind === 'bearer' ? credentialRef.current.refreshToken : undefined;
     const session = await client.auth.switchTenant(workspaceId, refreshToken);
     const next: Credential = { kind: 'bearer', accessToken: session.token, refreshToken: session.refreshToken };
