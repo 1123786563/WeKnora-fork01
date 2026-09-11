@@ -59,7 +59,11 @@ pidof com.weknora.mobile: 3053
 The release APK launched without Metro. A bounded logcat inspection after
 launch found no `FATAL EXCEPTION`, `AndroidRuntime`, `ANR`, or
 `ReactNativeJS` failure lines. This proves release packaging, installation,
-and native host process startup on this emulator.
+and native host process startup on this emulator. A UIAutomator dump also
+showed the embedded React login surface with `WeKnora`, `Sign in to your
+workspace`, `Email`, `Password`, `Sign in`, `Continue with SSO`, `Create
+account`, `Join with invitation`, and `Change server`; no Metro URL was
+required for this release launch.
 
 ## Boundary
 
