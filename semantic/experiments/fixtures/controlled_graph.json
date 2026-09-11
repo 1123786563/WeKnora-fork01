@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "scope": {
+    "tenant_id": 1,
+    "kb_id": "kb-v02-probe"
+  },
+  "documents": [
+    {
+      "document_id": "d1",
+      "revision": 1,
+      "quote": "甲公司控股乙公司。"
+    },
+    {
+      "document_id": "d2",
+      "revision": 1,
+      "quote": "乙公司控股丙公司。"
+    },
+    {
+      "document_id": "d3",
+      "revision": 1,
+      "quote": "甲公司不再控股乙公司。"
+    },
+    {
+      "document_id": "d4",
+      "revision": 1,
+      "quote": "丙公司的密钥代号是松柏。"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "ent-jia",
+      "type": "Company",
+      "name": "甲公司",
+      "document_ids": [
+        "d1",
+        "d3"
+      ]
+    },
+    {
+      "id": "ent-yi",
+      "type": "Company",
+      "name": "乙公司",
+      "document_ids": [
+        "d1",
+        "d2",
+        "d3"
+      ]
+    },
+    {
+      "id": "ent-bing",
+      "type": "Company",
+      "name": "丙公司",
+      "document_ids": [
+        "d2",
+        "d4"
+      ]
+    },
+    {
+      "id": "ent-song",
+      "type": "Codename",
+      "name": "松柏",
+      "document_ids": [
+        "d4"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "assertion_id": "as-1",
+      "source": "ent-jia",
+      "target": "ent-yi",
+      "type": "controls",
+      "document_id": "d1",
+      "evidence_ids": [
+        "e-d1"
+      ],
+      "quote": "甲公司控股乙公司。"
+    },
+    {
+      "assertion_id": "as-2",
+      "source": "ent-yi",
+      "target": "ent-bing",
+      "type": "controls",
+      "document_id": "d2",
+      "evidence_ids": [
+        "e-d2"
+      ],
+      "quote": "乙公司控股丙公司。"
+    },
+    {
+      "assertion_id": "as-3",
+      "source": "ent-jia",
+      "target": "ent-yi",
+      "type": "divested",
+      "document_id": "d3",
+      "evidence_ids": [
+        "e-d3"
+      ],
+      "quote": "甲公司不再控股乙公司。"
+    },
+    {
+      "assertion_id": "as-4",
+      "source": "ent-bing",
+      "target": "ent-song",
+      "type": "codename",
+      "document_id": "d4",
+      "evidence_ids": [
+        "e-d4"
+      ],
+      "quote": "丙公司的密钥代号是松柏。"
+    }
+  ]
+}

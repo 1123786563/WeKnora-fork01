@@ -1,13 +1,13 @@
 # Semantica 实施台账
 
-状态：V01 已完成并验证，其余 23 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
+状态：V01、V02 已完成并验证，其余 22 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
 
 状态值 pending / in_progress / blocked / implemented / verified。每项验证记录必须包含commit SHA、精确命令、退出码、环境、产物路径、失败/限制；无真实证据不标记verified。执行前记录实际基线与已有脏文件。
 
 | 任务 | 名称 | 依赖 | 状态 | 证据/提交/阻断原因 |
 |---|---|---|---|---|
 | V01 | 冻结版本与最小安装契约 | 无 | verified | semantica==0.6.8（+graph-neo4j extra）冻结于上游 commit f73f599a；Python 3.12.13；见运行记录 2026-09-11 V01 与 capability-evidence.json |
-| V02 | 验证持久图桥接和两类推理 | V01 | pending | 尚未执行 |
+| V02 | 验证持久图桥接和两类推理 | V01 | verified | Neo4j 5.26 真实持久化+进程重启溯源通过；规则正/负/中文推导通过；模型推断无受批准凭据保持 unverified（未发起调用）；见运行记录 2026-09-11 V02 与 bridge-evidence.md |
 | V03 | 中文质量与上线阈值评估基线 | V02 | pending | 尚未执行 |
 | C01 | 版本化协议和跨语言领域类型 | V01 | pending | 尚未执行 |
 | C02 | 认证服务骨架和Go客户端 | C01 | pending | 尚未执行 |
@@ -50,8 +50,24 @@
 - 提交 SHA：f2ea1ea（feat(semantic): v01 冻结版本与最小安装契约；含 .python-version，因仓库 .gitignore 点号通配规则对它使用 git add -f，仅为保留 Python 3.12.13 补丁冻结）。
 - 剩余限制：仅静态导入/签名契约；未验证运行时行为（持久图、推理、模型代理留给 V02/V03）。
 
+### 2026-09-11 V02 验证持久图桥接和两类推理（verified）
+
+- 工作区：.worktrees/semantica（分支 codex/semantica）；基线 SHA：e89d5a22da5ba42e01b11a281043b4248c064663（V01 台账提交）。
+- 修改文件：semantic/experiments/{fixtures/controlled_graph.json,test_graph_bridge.py,test_reasoning_bridge.py,bridge_probe.py}、docs/superpowers/plans/semantica/bridge-evidence.md、本台账、00 计划勾选。
+- RED：`uv run --project semantic/experiments python -m pytest semantic/experiments/test_graph_bridge.py semantic/experiments/test_reasoning_bridge.py -q` 退出码 2，两文件 ModuleNotFoundError: No module named 'bridge_probe'（目标 probe 未实现；同环境 V01 契约测试 1 passed 证明测试环境本身正常）。
+- GREEN：同命令退出码 0（10 passed）。
+- 评审修复 RED：`... -m pytest semantic/experiments/test_reasoning_bridge.py -q` 退出码 1，test_model_probe_reports_failure_for_broken_approved_entry 复现质量评审 BLOCKER（AssertionError: 'completed' == 'failed'，配置失败的模型入口被伪装成成功）。
+- 评审修复 GREEN：两文件合跑退出码 0（终态 13 passed，含新增失败入口、生成失败存根、全行溯源用例；模块级夹具后约 5s）。
+- 回归：`uv run --project semantic/experiments python -m pytest semantic/experiments/ -q` 13 passed；9 次全目录合跑中 1 次在解释器退出阶段出现 libc++ recursive_mutex 原生崩溃（发生在 13 passed 打印之后，单文件/成对命令稳定），记入限制。
+- 环境：macOS arm64；uv 0.9.30；Python 3.12.13；semantica 0.6.8（neo4j driver 6.3.0）；隔离 Neo4j 5.26-community 容器 semantica-v02-neo4j（127.0.0.1:17687，口令经环境变量注入，证据文件不含明文口令）。
+- 证据：`uv run --project semantic/experiments python semantic/experiments/bridge_probe.py evidence --output docs/superpowers/plans/semantica/bridge-evidence.md` 退出码 0。实测：restart_verified=true（独立写进程退出后新连接读回）、attribution_fidelity_ok=true（含 d3/d4 全部 4 边 4 节点对照 fixture）、evidence_ids=[e-d1,e-d2]、甲→乙→丙两跳路径 + ContextRetriever 两跳扩展、规则正例 controls(a,c)/负例空推导/中文 controls(甲公司,丙公司)、冲突并存（d1/d3 同存各自溯源）、模型 unverified（无受批准凭据，未调用，无伪造用量；证据全文无"松柏"泄漏）。
+- review：规格符合性 PASS（9 项通过；2 项 MINOR：证据缺复现命令——已补，默认实验口令入码——记录接受）。代码质量首轮 FAIL（BLOCKER：配置失败入口被伪装 completed；另有 8 项 MINOR）→ 按 TDD 修复（先新增复现测试 RED，再修复，再 GREEN）→ 复审 PASS（BLOCKER 三条路径实测确认解决；attribution_fidelity_ok 经 DB 级篡改判别实验证明有效；复审新增 2 项 MINOR：证据口令明文——已改环境变量引用，生成失败分支缺回归测试——已补存根测试）。
+- 提交 SHA：（本记录与代码同批提交后补记）
+- 剩余限制：模型推断保持 unverified（无受批准模型入口凭据，Q03/O03 真实模型验收仍需凭据）；ContextRetriever 向量语义检索路径未验证；全目录合跑约 1/9 概率退出阶段原生崩溃（不影响测试结果，O03 CI 门禁需回访）；probe 写入端无跨进程锁需串行运行。
+
 ## 当前边界
 
-- V01 已完成（verified）；V02/V03 及后续 22 个任务未开始。
+- V01、V02 已完成（verified）；V03 及后续 21 个任务未开始。
 - V01精确版本已冻结（semantica 0.6.8）；V03数值门槛、真实模型证据须在后续任务补齐，不是已经通过的前提。
+- V02 结论边界：持久图桥接/授权子图重建/注册规则推导已验证；模型推断 unverified（无凭据，未调用）；向量检索路径未验证。
 - 未创建GitHub Issue或外部发布；没有分配虚构Issue编号。

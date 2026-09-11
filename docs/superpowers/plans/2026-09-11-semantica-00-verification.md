@@ -82,7 +82,7 @@ record = {"semantica_version": version("semantica"),
 
 **接口：** 新增 probe_roundtrip(fixture_path)->dict、probe_rule(facts,rules)->dict、probe_model(graph,query)->dict；返回 evidence_ids、result、engine_version、actual_backend。它们仅是实验脚本函数，不供生产导入。
 
-- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 def test_persistent_bridge_keeps_source_ids():
@@ -95,13 +95,13 @@ def test_rule_requires_both_premises():
     assert "controls(a,c)" not in result["conclusions"]
 ```
 
-- [ ] **2. 确认 RED**。执行 `uv run --project semantic/experiments python -m pytest semantic/experiments/test_graph_bridge.py semantic/experiments/test_reasoning_bridge.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [x] **2. 确认 RED**。执行 `uv run --project semantic/experiments python -m pytest semantic/experiments/test_graph_bridge.py semantic/experiments/test_reasoning_bridge.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 在隔离 Neo4j 写入 fixture，关闭客户端并重启实验服务后读取；显式转换为保持来源 ID 的内存子图，再执行检索，证明不是仅查询同一内存对象**
+- [x] **3. 在隔离 Neo4j 写入 fixture，关闭客户端并重启实验服务后读取；显式转换为保持来源 ID 的内存子图，再执行检索，证明不是仅查询同一内存对象**
 
-- [ ] **4. 按已核实 API 构造注册规则实验和模型自然语言推断实验，加入缺前提/冲突/中文 quote；只允许批准的模型入口，实际调用用量独立记录**
+- [x] **4. 按已核实 API 构造注册规则实验和模型自然语言推断实验，加入缺前提/冲突/中文 quote；只允许批准的模型入口，实际调用用量独立记录**
 
-- [ ] **5. 记录无法实现的持久图算法、代理配置或来源映射；能力标记 unavailable 时返回原因，不能改用全库图或直接模型凭据规避**
+- [x] **5. 记录无法实现的持久图算法、代理配置或来源映射；能力标记 unavailable 时返回原因，不能改用全库图或直接模型凭据规避**
 
 关键实现约束：
 
@@ -113,9 +113,9 @@ subgraph = build_probe_graph(allowed_rows)
 assert all("evidence_ids" in row for row in allowed_rows)
 ```
 
-- [ ] **6. 确认 GREEN 与验收**。重跑 `uv run --project semantic/experiments python -m pytest semantic/experiments/test_graph_bridge.py semantic/experiments/test_reasoning_bridge.py -q`，预期退出码 0；另完成：保留规则实际输出和模型原始用量摘要；无真实模型调用证据时模型能力保持 unverified；确认重启后仍能追踪来源。
+- [x] **6. 确认 GREEN 与验收**。重跑 `uv run --project semantic/experiments python -m pytest semantic/experiments/test_graph_bridge.py semantic/experiments/test_reasoning_bridge.py -q`，预期退出码 0；另完成：保留规则实际输出和模型原始用量摘要；无真实模型调用证据时模型能力保持 unverified；确认重启后仍能追踪来源。
 
-- [ ] **7. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 V02 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): v02 验证持久图桥接和两类推理`。
+- [x] **7. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 V02 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): v02 验证持久图桥接和两类推理`。
 
 ## V03：中文质量与上线阈值评估基线
 
