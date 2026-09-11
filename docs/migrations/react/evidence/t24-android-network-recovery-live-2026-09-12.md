@@ -4,7 +4,7 @@
 
 - App: `com.weknora.mobile` release APK built from the current React
   worktree; APK SHA-256:
-  `aab56dc0fdb7bf73a719ce3469573115c5a56249823b34d296af4bd240bb5a1e`.
+  `274c9fcaa9720de2fac6fc7648a61f06cd301b008ffad8552df4ce78c386399a`.
 - AVD: `test36-small`, Android API 36, serial `emulator-5554`.
 - Isolated Lite backend: `127.0.0.1:8080`, SQLite database and local files
   under `/tmp/weknora-react-t24-network-20260912*`; `adb reverse tcp:8080
@@ -23,8 +23,9 @@
   session when the app is foregrounded. The existing `AppState` listener still
   handles a background→foreground transition.
 - TDD evidence: the new test first failed with `Cannot find module
-  './network.ts'`; after the minimal implementation, the focused test passed
-  3/3. The full mobile suite passed 59/59 and `pnpm typecheck:mobile` exited 0.
+  './network.ts'`; after the minimal implementation and the confirmed-
+  reachability regression fix, the focused test passed 4/4. The full mobile
+  suite passed 61/61 and `pnpm typecheck:mobile` exited 0.
 - A production Android bundle export succeeded with 1171 modules. The native
   release build included the `react-native-community_netinfo` module and
   completed with `BUILD SUCCESSFUL` (640 actionable tasks). After the initial
@@ -42,7 +43,7 @@
    transports it reported a connected, validated `MOBILE[NR]` network.
 3. The recovered foreground app remained alive and on the authenticated
    knowledge-base route. The final current-HEAD rerun's backend log recorded a
-   real `POST /api/v1/auth/refresh` response with HTTP 200 at `03:27:37.417`
+   real `POST /api/v1/auth/refresh` response with HTTP 200 at `03:32:11.982`
    after the offline→online transition.
 4. The post-recovery UIAutomator dump contained `Knowledge bases`, `Workspace`,
    `Sign out`, and `No knowledge bases available.`; it contained no login or

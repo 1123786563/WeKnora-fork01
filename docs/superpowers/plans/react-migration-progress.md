@@ -717,16 +717,19 @@
 
 - Added the platform-neutral offline→online edge detector and wired the
   foreground authenticated-session recovery hook to the native
-  `@react-native-community/netinfo` subscription. The focused test passed 3/3,
-  the full mobile suite passed 59/59, mobile typecheck and Android Expo export
-  passed, and the Android release build completed successfully with the native
-  NetInfo module linked.
+  `@react-native-community/netinfo` subscription. Unknown reachability is now
+  held pending until NetInfo confirms `true`, with a regression test for the
+  transient `null` state. The focused test passed 4/4, the full mobile suite
+  passed 61/61, mobile typecheck and Android Expo export passed, and the
+  Android release build completed successfully with the native NetInfo module
+  linked.
 - On the `test36-small` Android API 36 emulator, the current release APK
   authenticated against an isolated Lite server, then survived disabling and
   re-enabling Wi-Fi and mobile data while foregrounded. Connectivity changed
-  from no active network to a connected/validated network; the Lite log
-  recorded a real HTTP 200 `POST /api/v1/auth/refresh`, and the authenticated
-  `Knowledge bases` route remained visible with no login or error state.
+  from no active network to a connected/validated network; the final
+  current-HEAD Lite log recorded a real HTTP 200 `POST /api/v1/auth/refresh` at
+  `03:32:11.982`, and the authenticated `Knowledge bases` route remained
+  visible with no login or error state.
 - Full record: `docs/migrations/react/evidence/t24-android-network-recovery-live-2026-09-12.md`.
   This closes the Android emulator foreground network-recovery slice, but T20
   and T24 remain `review` for the broader iOS/network hardware, deployed,
