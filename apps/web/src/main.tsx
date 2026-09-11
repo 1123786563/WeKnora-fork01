@@ -1,5 +1,5 @@
 import { createRoot } from 'react-dom/client';
-import { createRefreshCoordinator, createWeKnoraClient, type Credential } from '@weknora/api-client';
+import { createRefreshCoordinator, createWeKnoraClient, type AuthSession, type Credential } from '@weknora/api-client';
 import { Status } from '@weknora/ui';
 import { KnowledgeBasesPage } from './App.tsx';
 import { LoginPage } from './auth/LoginPage.tsx';
@@ -79,12 +79,14 @@ function nextPathAfterAuth(): string {
   return next && next.startsWith('/') && !next.startsWith('//') ? next : '/platform/knowledge-bases';
 }
 
+function completeAuthentication(next: AuthSession): void {
+  session = { ...session, credential: { kind: 'bearer', accessToken: next.token, refreshToken: next.refreshToken }, tenantId: null };
+  persistBrowserCredential(window.localStorage, session.credential);
+  window.location.assign(nextPathAfterAuth());
+}
+
 function renderLogin(error = initialLoginError) {
-  root.render(<LoginPage client={client} onAuthenticated={(next) => {
-    session = { ...session, credential: { kind: 'bearer', accessToken: next.token, refreshToken: next.refreshToken }, tenantId: null };
-    persistBrowserCredential(window.localStorage, session.credential);
-    window.location.assign(nextPathAfterAuth());
-  }} apiBaseUrl={apiBaseUrl} initialError={error} initialMode={route.kind === 'login' ? route.mode : 'login'} />);
+  root.render(<LoginPage client={client} onAuthenticated={completeAuthentication} apiBaseUrl={apiBaseUrl} initialError={error} initialMode={route.kind === 'login' ? route.mode : 'login'} />);
 }
 
 async function logout(): Promise<void> {
@@ -161,11 +163,7 @@ async function bootstrap() {
   if (route.kind === 'login') {
     const inviteToken = new URLSearchParams(window.location.search).get('token')?.trim();
     if (route.mode === 'register' && inviteToken) {
-      root.render(<JoinPage client={client} onAuthenticated={(next) => {
-        session = { ...session, credential: { kind: 'bearer', accessToken: next.token, refreshToken: next.refreshToken }, tenantId: null };
-        persistBrowserCredential(window.localStorage, session.credential);
-        window.location.assign(nextPathAfterAuth());
-      }} />);
+      root.render(<JoinPage client={client} onAuthenticated={completeAuthentication} />);
     } else renderLogin();
     return;
   }
