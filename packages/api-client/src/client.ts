@@ -3,6 +3,7 @@ import { ApiError, errorFromResult } from './errors.ts';
 import type { HttpRequest, HttpResult, HttpTransport } from './ports.ts';
 import { createKnowledgeDocumentsApi } from './knowledge/documents.ts';
 import { createWikiPagesApi } from './wiki/pages.ts';
+import { createCommercialApi } from './commercial.ts';
 import { createDataSourcesApi } from './datasource.ts';
 
 export interface ClientRequest {
@@ -88,6 +89,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
   const knowledgeDocuments = createKnowledgeDocumentsApi(request);
   const wiki = createWikiPagesApi(request);
   const dataSources = createDataSourcesApi(request);
+  const commercial = createCommercialApi(request);
 
   return {
     request,
@@ -112,6 +114,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
     },
     wiki,
     dataSources,
+    commercial,
   };
 }
 
