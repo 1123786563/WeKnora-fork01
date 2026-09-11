@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"time"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"trpc.group/trpc-go/trpc-agent-go/graph"
@@ -116,7 +117,11 @@ func buildGraph(b GraphBindings) (*graph.Graph, error) {
 		// Safe node boundary: consume durable inject inputs before the model
 		// call. The appended message and the steer id land in the same
 		// checkpoint the SDK saves after this node, which is the exactly-once
-		// boundary; the input rows themselves intentionally stay pending.
+		// boundary; consumed rows are then marked processed so the steer
+		// queue depth guard does not saturate. A crash between the mark and
+		// the checkpoint is safe: the resumed state still filters by
+		// AppliedSteerIDs.
+		consumed := make([]string, 0)
 		if b.Inputs != nil {
 			pending, perr := b.Inputs.ListPendingInputs(ctx, b.fenceFromContext(ctx).RunKey, "inject")
 			if perr != nil {
@@ -128,6 +133,7 @@ func buildGraph(b GraphBindings) (*graph.Graph, error) {
 			}
 			for _, input := range pending {
 				if applied[input.SteerID] {
+					consumed = append(consumed, input.SteerID)
 					continue
 				}
 				var payload struct {
@@ -141,8 +147,19 @@ func buildGraph(b GraphBindings) (*graph.Graph, error) {
 				s.Messages = append(s.Messages, model.NewUserMessage(payload.Content))
 				s.AppliedSteerIDs = append(s.AppliedSteerIDs, input.SteerID)
 				applied[input.SteerID] = true
+				consumed = append(consumed, input.SteerID)
 				evtPayload, _ := json.Marshal(map[string]string{"steer_id": input.SteerID})
 				b.emitRunEvent(ctx, agentruntime.RunEvent{Type: "steer_injected", Payload: evtPayload})
+			}
+		}
+		if len(consumed) > 0 {
+			if consumer, ok := b.Inputs.(agentruntime.RunInputConsumer); ok {
+				markCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+				if err := consumer.MarkInputsProcessed(markCtx, b.fenceFromContext(ctx).RunKey, consumed...); err != nil {
+					logger := ctx
+					_ = logger
+				}
+				cancel()
 			}
 		}
 		// Stream keeps provider parity with the builtin engine; the frozen

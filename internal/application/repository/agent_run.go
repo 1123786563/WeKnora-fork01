@@ -311,18 +311,31 @@ func (s *AgentRunStore) SaveCheckpoint(
 }
 
 // SetStatus durably records execution outcome under the current fence.
+// A terminal failure releases the session's active-run slot in the same
+// transaction: only non-terminal runs (including waiting_user) may hold it,
+// otherwise one failed run would wedge the session's future admissions.
 func (s *AgentRunStore) SetStatus(ctx context.Context, fence agentruntime.Fence, status, reason string) error {
 	if status != "succeeded" && status != "failed" && status != "waiting_user" {
 		return agentruntime.ErrConflict
 	}
-	result := s.fenced(s.db.WithContext(ctx), fence).Updates(map[string]any{"status": status, "wait_reason": reason, "lease_owner": "", "lease_until": nil, "revision": gorm.Expr("revision + 1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP")})
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected != 1 {
-		return agentruntime.ErrLeaseLost
-	}
-	return nil
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		result := s.fenced(tx, fence).Updates(map[string]any{"status": status, "wait_reason": reason, "lease_owner": "", "lease_until": nil, "revision": gorm.Expr("revision + 1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP")})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return agentruntime.ErrLeaseLost
+		}
+		if status == "failed" {
+			var row agentRunRow
+			if err := runScope(tx, fence.RunKey).Take(&row).Error; err != nil {
+				return err
+			}
+			return tx.Table("sessions").Where("tenant_id=? AND id=? AND active_agent_run_id=?",
+				fence.TenantID, row.SessionID, fence.RunID).Update("active_agent_run_id", nil).Error
+		}
+		return nil
+	})
 }
 
 // LoadCheckpoint returns the latest committed graph snapshot for one tenant/run.

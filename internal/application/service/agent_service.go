@@ -159,11 +159,14 @@ func NewAgentService(
 		messageService:       messageService,
 		memoryService:        memoryService,
 		storageResolver:      storageResolver,
-		toolApprovalGate:     toolApprovalGate,
-		sandboxMgr:           sandboxMgr,
-		sandboxResolver:      sandboxResolver,
-		sandboxPinner:        sandboxPinner,
-		sandboxPolicy:        sandboxPolicy,
+		// The durable wrapper parks pre-execution OAuth waits for fenced
+		// runs and delegates everything else to the live gate; the builtin
+		// engine never carries a run fence and is unaffected.
+		toolApprovalGate: approval.NewDurableGate(toolApprovalGate),
+		sandboxMgr:       sandboxMgr,
+		sandboxResolver:  sandboxResolver,
+		sandboxPinner:    sandboxPinner,
+		sandboxPolicy:    sandboxPolicy,
 	}
 }
 

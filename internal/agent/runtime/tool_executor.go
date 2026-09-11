@@ -348,6 +348,13 @@ func (e *ToolExecutor) Execute(
 	case "reuse":
 		return normalizedStoredResult(*record.Result), nil
 	case "wait_user":
+		if e.waitForDecision != nil {
+			persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			defer cancel()
+			if waitErr := e.waitForDecision(persistCtx, fence, plan.CallID); waitErr != nil {
+				return StoredToolResult{}, errors.Join(fmt.Errorf("%w: %s", ErrToolWaitUser, record.UnknownReason), waitErr)
+			}
+		}
 		return StoredToolResult{}, fmt.Errorf("%w: %s", ErrToolWaitUser, record.UnknownReason)
 	case "query":
 		return StoredToolResult{}, ErrToolRecoveryQuery

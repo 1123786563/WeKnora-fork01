@@ -66,6 +66,19 @@ func (s *AgentRunStore) ApplyInput(ctx context.Context, fence agentruntime.Fence
 	})
 }
 
+// MarkInputsProcessed marks steering inputs consumed after their messages
+// landed in a checkpointed AppliedSteerIDs set; unknown ids are ignored so a
+// replay after crash cannot fail on already-consumed rows.
+func (s *AgentRunStore) MarkInputsProcessed(ctx context.Context, key agentruntime.RunKey, steerIDs ...string) error {
+	if len(steerIDs) == 0 {
+		return nil
+	}
+	now := time.Now()
+	return s.db.WithContext(ctx).
+		Where("tenant_id = ? AND run_id = ? AND steer_id IN ?", key.TenantID, key.RunID, steerIDs).
+		Updates(map[string]any{"status": "processed", "processed_at": now, "cursor": gorm.Expr("cursor+1")}).Error
+}
+
 // ListPendingInputs returns unprocessed steering inputs of one mode in
 // insertion order. The graph consumes inject inputs at safe node boundaries;
 // after inputs stay pending until their follow-up is admitted.

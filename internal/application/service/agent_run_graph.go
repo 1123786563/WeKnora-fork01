@@ -385,6 +385,10 @@ func (s *sessionService) ExecuteDurableRun(ctx context.Context, fence agentrunti
 	if !ok {
 		return errors.New("run store does not provide the durable tool journal")
 	}
+	inputSource, ok := store.(trpcagent.RunInputSource)
+	if !ok {
+		return errors.New("run store does not provide the durable steering inputs")
+	}
 	eventStore, ok := store.(agentruntime.RunEventStore)
 	if !ok {
 		return errors.New("run store does not provide the durable event store")
@@ -438,6 +442,7 @@ func (s *sessionService) ExecuteDurableRun(ctx context.Context, fence agentrunti
 		Capabilities:    capabilities,
 		Events:          eventStore,
 		ModelTools:      modelTools,
+		Inputs:          inputSource,
 	}
 	runner, err := trpcagent.NewGraphRunner(bindings)
 	if err != nil {

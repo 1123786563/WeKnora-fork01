@@ -136,3 +136,10 @@ type RunInputStore interface {
 type RunInputReader interface {
 	ListPendingInputs(context.Context, RunKey, string) ([]RunInput, error)
 }
+
+// RunInputConsumer marks steering inputs consumed once their message is
+// checkpointed in AppliedSteerIDs; a crash between mark and checkpoint is
+// safe because the resumed state re-filters by AppliedSteerIDs.
+type RunInputConsumer interface {
+	MarkInputsProcessed(context.Context, RunKey, ...string) error
+}

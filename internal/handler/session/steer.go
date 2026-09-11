@@ -385,7 +385,10 @@ func (h *Handler) steerDurableRun(
 	key := agentruntime.RunKey{TenantID: session.TenantID, RunID: *session.ActiveAgentRunID}
 	run, getErr := runs.Get(ctx, key)
 	if getErr != nil {
-		if run.Status == "" || isTerminalRunStatus(run.Status) {
+		// Only a durable miss means no live run: a transient lookup failure
+		// must answer retryable, never new_run, or the client would start a
+		// second turn on top of the live one (mirrors liveAgentRun).
+		if getErr == agentruntime.ErrNotFound {
 			c.JSON(200, gin.H{"success": true, "status": "new_run", "steer_id": steerID})
 			return
 		}
