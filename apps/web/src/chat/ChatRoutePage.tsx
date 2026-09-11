@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { ChatMessage, ChatSession, WeKnoraClient } from '@weknora/api-client';
+import type { AgentConfiguration, ChatMessage, ChatSession, WeKnoraClient } from '@weknora/api-client';
 import { chatDraftKey } from '@weknora/domain/chat/draft';
 import { initialChatStreamState, reduceChatStream } from '@weknora/domain/chat/reducer';
 import { ChatPage, type ChatSubmission } from '@weknora/views';
 import type { ScopeController } from '@weknora/domain/scope';
 import { chatSessionIdFromPath } from './session-route.ts';
+import { buildWebChatStreamOptions, initialAgentSelection } from './agent-selection.ts';
 
 interface ChatRoutePageProps {
   client: WeKnoraClient;
@@ -19,6 +20,9 @@ export function ChatRoutePage({ client, scopeController }: ChatRoutePageProps) {
   const scope = scopeController.current();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [agents, setAgents] = useState<AgentConfiguration[]>([]);
+  const [disabledAgentIds, setDisabledAgentIds] = useState<string[]>([]);
+  const [selectedAgentId, setSelectedAgentId] = useState(() => new URLSearchParams(window.location.search).get('agentId')?.trim() ?? '');
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(() => chatSessionIdFromPath(window.location.pathname));
   const [draft, setDraft] = useState('');
   const [loadingSessions, setLoadingSessions] = useState(true);
@@ -36,6 +40,20 @@ export function ChatRoutePage({ client, scopeController }: ChatRoutePageProps) {
       (result) => { if (active && scopeController.isCurrent(scope.scope)) setSessions(result.data); },
       (cause: unknown) => { if (active) setError(cause instanceof Error ? cause.message : 'Unable to load sessions'); },
     ).finally(() => { if (active) setLoadingSessions(false); });
+    return () => { active = false; };
+  }, [client, scope.signal, scope.scope, scopeController]);
+
+  useEffect(() => {
+    let active = true;
+    void client.configuration.agents.listWithState({ creator: 'all', signal: scope.signal }).then(
+      (result) => {
+        if (!active || !scopeController.isCurrent(scope.scope)) return;
+        setAgents(result.items);
+        setDisabledAgentIds(result.disabledOwnAgentIds);
+        setSelectedAgentId((current) => initialAgentSelection(`?agentId=${encodeURIComponent(current)}`, result.items, result.disabledOwnAgentIds));
+      },
+      (cause: unknown) => { if (active) setError(cause instanceof Error ? cause.message : 'Unable to load agents'); },
+    );
     return () => { active = false; };
   }, [client, scope.signal, scope.scope, scopeController]);
 
@@ -63,6 +81,14 @@ export function ChatRoutePage({ client, scopeController }: ChatRoutePageProps) {
     window.history.pushState({}, '', `/platform/chat/${encodeURIComponent(sessionId)}`);
   }
 
+  function selectAgent(agentId: string) {
+    setSelectedAgentId(agentId);
+    const url = new URL(window.location.href);
+    if (agentId) url.searchParams.set('agentId', agentId);
+    else url.searchParams.delete('agentId');
+    window.history.replaceState({}, '', `${url.pathname}${url.search}`);
+  }
+
   async function createSession() {
     setError(undefined);
     try {
@@ -86,7 +112,8 @@ export function ChatRoutePage({ client, scopeController }: ChatRoutePageProps) {
       id: `local-${Date.now()}`, session_id: sessionId, role: 'user', content: submission.content,
     }]);
     let streamState = initialChatStreamState();
-    await client.chat.stream({ sessionId, mode: 'knowledge', body: { query: submission.content, channel: 'web' } }, (event) => {
+    const streamOptions = buildWebChatStreamOptions(sessionId, submission.content, selectedAgentId);
+    await client.chat.stream(streamOptions, (event) => {
       streamState = reduceChatStream(streamState, event);
       if (streamState.phase === 'error') throw new Error(streamState.error ?? 'Chat stream failed');
       if (streamState.answer) setMessages((current) => [...current.filter((item) => item.id !== `stream-${sessionId}`), {
@@ -107,6 +134,9 @@ export function ChatRoutePage({ client, scopeController }: ChatRoutePageProps) {
     onSelectSession={selectSession}
     onCreateSession={() => void createSession()}
     onDraftChange={updateDraft}
+    agents={agents.map((agent) => ({ id: agent.id, name: agent.name, disabled: disabledAgentIds.includes(agent.id) }))}
+    selectedAgentId={selectedAgentId}
+    onAgentChange={selectAgent}
     send={send}
   />;
 }

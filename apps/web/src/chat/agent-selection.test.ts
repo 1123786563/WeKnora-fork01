@@ -1,0 +1,27 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+
+import { buildWebChatStreamOptions, initialAgentSelection } from './agent-selection.ts';
+
+test('selected agent switches the web chat stream to agent mode with an explicit agent id', () => {
+  assert.deepEqual(buildWebChatStreamOptions('session/1', '  Summarize this  ', 'agent/1'), {
+    sessionId: 'session/1',
+    mode: 'agent',
+    body: { query: '  Summarize this  ', agent_enabled: true, agent_id: 'agent/1', channel: 'web' },
+  });
+});
+
+test('no selected agent keeps the web chat stream on knowledge mode', () => {
+  assert.deepEqual(buildWebChatStreamOptions('session-1', 'Question', ''), {
+    sessionId: 'session-1',
+    mode: 'knowledge',
+    body: { query: 'Question', channel: 'web' },
+  });
+});
+
+test('initial agent selection accepts a requested URL agent only when it is enabled', () => {
+  const agents = [{ id: 'agent/1', name: 'Research' }, { id: 'agent/2', name: 'Disabled' }];
+  assert.equal(initialAgentSelection('?agentId=agent%2F1', agents, ['agent/2']), 'agent/1');
+  assert.equal(initialAgentSelection('?agentId=agent%2F2', agents, ['agent/2']), '');
+  assert.equal(initialAgentSelection('?agentId=missing', agents, []), '');
+});

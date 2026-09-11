@@ -37,6 +37,12 @@ export class ApiError extends Error {
   }
 }
 
+function errorCodeValue(value: unknown): string | undefined {
+  if (typeof value === 'string' && value !== '') return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return undefined;
+}
+
 export function errorFromResult(status: number, body: unknown, headers: Record<string, string> = {}): ApiError {
   const record = typeof body === 'object' && body !== null ? body as Record<string, unknown> : undefined;
   const nested = typeof record?.error === 'object' && record.error !== null
@@ -50,8 +56,7 @@ export function errorFromResult(status: number, body: unknown, headers: Record<s
       : `Request failed with status ${status}`;
   const code = status === 413
     ? 'PAYLOAD_TOO_LARGE'
-    : typeof nested?.code === 'string' ? nested.code
-      : typeof record?.code === 'string' ? record.code : `HTTP_${status}`;
+    : errorCodeValue(nested?.code) ?? errorCodeValue(record?.code) ?? `HTTP_${status}`;
   const requestId = typeof nested?.requestId === 'string'
     ? nested.requestId
     : typeof nested?.request_id === 'string'

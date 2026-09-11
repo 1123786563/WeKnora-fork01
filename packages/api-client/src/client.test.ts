@@ -70,6 +70,23 @@ test('normalizes the backend success-false error envelope', async () => {
   );
 });
 
+test('preserves numeric backend error codes for structured lifecycle errors', async () => {
+  const client = createWeKnoraClient({
+    baseURL: 'https://api.example.test',
+    transport: createJsonTransport(async () => jsonResponse(400, {
+      success: false,
+      error: { code: 2300, message: 'model is in use', details: { marker: true } },
+    })),
+  });
+
+  await assert.rejects(
+    client.request({ method: 'DELETE', path: '/api/v1/models/model-1' }),
+    (error: unknown) => error instanceof ApiError
+      && error.code === '2300'
+      && (error.details as { marker?: boolean })?.marker === true,
+  );
+});
+
 test('preserves cancellation and converts timeout to a typed error', async () => {
   const aborted = new DOMException('Aborted', 'AbortError');
   const client = createWeKnoraClient({
