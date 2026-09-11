@@ -25,6 +25,7 @@ import { OrganizationsPage } from './organizations/OrganizationsPage.tsx';
 import { SettingsPage } from './settings/SettingsPage.tsx';
 import { KnowledgeBasesPage } from './App.tsx';
 import { NotFoundPage } from './NotFoundPage.tsx';
+import { DevMarkdownPage } from './DevMarkdownPage.tsx';
 import './styles.css';
 
 const oidcCallback = parseOIDCCallbackHash(window.location.hash);
@@ -134,6 +135,8 @@ function renderProtected() {
   }
   if (protectedPageForRoute(route) === 'knowledge-bases') {
     root.render(<KnowledgeBasesPage client={client} scopeController={scopeController} />);
+  } else if (protectedPageForRoute(route) === 'markdown-test') {
+    root.render(<DevMarkdownPage />);
   } else if (route.kind === 'knowledge-document') {
     root.render(<KnowledgeDocumentDetailPage client={client} documentId={route.documentId} onBack={() => window.location.assign(`/knowledgeBase/${encodeURIComponent(route.knowledgeBaseId)}`)} />);
   } else if (route.kind === 'knowledge-wiki') {

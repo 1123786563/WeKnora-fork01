@@ -37,7 +37,7 @@ export function resolveRoute(pathname: string): RouteMatch {
   const platformKnowledgeBaseMatch = path.match(/^\/platform\/knowledge-bases\/([^/]+)$/);
   if (platformKnowledgeBaseMatch) return { kind: 'knowledge-base', path, knowledgeBaseId: decodeURIComponent(platformKnowledgeBaseMatch[1]!) };
   if (path === '/platform' || path === '/platform/knowledge-bases' || path === '/platform/knowledge-search' || path === '/platform/agents' || path === '/platform/integrations' || path === '/platform/creatChat' || path === '/platform/organizations' || path === '/platform/settings' || path === '/platform/configuration' || path === '/platform/administration' || path === '/platform/system' || path === '/platform/dev/markdown' || path.startsWith('/platform/chat/') || path.startsWith('/platform/system/')) return { kind: 'platform', path };
-  if (path === '/creatChat' || path.startsWith('/creatChat/')) return { kind: 'platform', path: `/platform/creatChat${path.slice('/creatChat'.length)}` };
+  if (path === '/creatChat') return { kind: 'platform', path: '/platform/creatChat' };
   return { kind: 'not-found', path };
 }
 
@@ -58,8 +58,11 @@ export function routeRedirect(pathname: string): string | undefined {
   return match.path !== pathname.split('?')[0] ? `${match.path}${query}` : undefined;
 }
 
-export function protectedPageForRoute(route: RouteMatch): 'knowledge-bases' | 'other' {
-  return route.kind === 'platform' && route.path === '/platform/knowledge-bases' ? 'knowledge-bases' : 'other';
+export function protectedPageForRoute(route: RouteMatch): 'knowledge-bases' | 'markdown-test' | 'other' {
+  if (route.kind === 'knowledge-base' && !route.knowledgeBaseId) return 'knowledge-bases';
+  if (route.kind === 'platform' && route.path === '/platform/knowledge-bases') return 'knowledge-bases';
+  if (route.kind === 'platform' && route.path === '/platform/dev/markdown') return 'markdown-test';
+  return 'other';
 }
 
 export interface RouteGuardContext {
@@ -106,6 +109,7 @@ export function guardRoute(pathname: string, context: RouteGuardContext): RouteG
   if (path === '/platform' || path === '/platform/knowledge-search') {
     return { kind: 'redirect', to: routeRedirect(pathname) ?? '/platform/knowledge-bases', reason: 'capability-unavailable' };
   }
+  if (path === '/platform/dev/markdown') return { kind: 'allow' };
   if (!protectedPath(path)) return { kind: 'allow' };
   if (!context.authenticated) return { kind: 'redirect', to: `/login?next=${encodeURIComponent(pathname)}`, reason: 'authentication-required' };
   if (!context.tenantId) return { kind: 'redirect', to: '/onboarding/workspace', reason: 'workspace-required' };

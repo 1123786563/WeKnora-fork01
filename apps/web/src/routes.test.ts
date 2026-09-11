@@ -14,6 +14,7 @@ test('keeps legacy deep links and redirects the misspelled chat path compatibly'
   assert.equal(resolveRoute('/platform/settings?section=general').kind, 'platform');
   assert.equal(resolveRoute('/platform/integrations').kind, 'platform');
   assert.equal(routeRedirect('/creatChat?agentId=a'), '/platform/creatChat?agentId=a');
+  assert.equal(resolveRoute('/creatChat/unknown').kind, 'not-found');
   assert.equal(resolveRoute('/platform').kind, 'platform');
   assert.deepEqual(resolveRoute('/register'), { kind: 'login', path: '/register', mode: 'register' });
   assert.deepEqual(resolveRoute('/knowledgeBase/kb-1'), { kind: 'knowledge-base', path: '/knowledgeBase/kb-1', knowledgeBaseId: 'kb-1' });
@@ -36,6 +37,12 @@ test('does not treat embed or missing capability paths as authenticated platform
 
 test('maps the canonical knowledge-base platform route to the list page', () => {
   assert.equal(protectedPageForRoute(resolveRoute('/platform/knowledge-bases')), 'knowledge-bases');
+  assert.equal(protectedPageForRoute(resolveRoute('/knowledgeBase')), 'knowledge-bases');
+});
+
+test('keeps the development markdown fixture public and dispatchable', () => {
+  assert.equal(guardRoute('/platform/dev/markdown', { ...authenticated, authenticated: false, tenantId: null }).kind, 'allow');
+  assert.equal(protectedPageForRoute(resolveRoute('/platform/dev/markdown')), 'markdown-test');
 });
 
 test('guards protected deep links and redirects no-tenant sessions to onboarding', () => {
