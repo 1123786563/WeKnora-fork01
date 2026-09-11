@@ -1,7 +1,7 @@
 # T01 运行基线
 
 - Captured at: 2026-09-10
-- WeKnora HEAD: `0fe0e4b4e53659fbb91e8a822a0e85216d3cc578`
+- WeKnora HEAD: `c97ce2d02d9858ea1b415a9975a5454474aa20e4`
 - Multica HEAD (read-only): `85b1fdbb44fd90aa90ce3353a95c2b1f3d115ddf`
 - Vue SFC count: `200` (plan/inventory said 199; current is 200)
 - API TS count under `frontend/src/api`: `33`
@@ -27,4 +27,4 @@
 1. `frontend/node_modules` and root React workspace are absent; no build claim is made.
 2. The three authoritative input documents are currently untracked user files; this ledger must not overwrite or clean them.
 3. Swagger is a 2.0 document inventory, not proof of handler behavior; every generated row remains explicitly marked for handler/DTO/permission review.
-4. Real smoke and native/Wails package evidence require environment inputs not present in this T01 run.
+4. OpenAPI Generator 7.14.0 strict validation still reports 9 errors/1 warning; generated-client output is not adopted. Real smoke and native/Wails package evidence require additional environment inputs.
