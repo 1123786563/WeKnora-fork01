@@ -8,6 +8,7 @@ import (
 	stderrors "errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -24,6 +25,7 @@ import (
 
 const oidcNonceCookieName = "weknora_oidc_nonce"
 const oidcNonceCookieMaxAge = 600
+const mobileOIDCRedirectURI = "weknora://oidc"
 
 // AuthHandler implements HTTP request handlers for user authentication
 // Provides functionality for user registration, login, logout, and token management
@@ -315,6 +317,11 @@ func (h *AuthHandler) GetOIDCAuthorizationURL(c *gin.Context) {
 		c.Error(appErr)
 		return
 	}
+	frontendRedirectURI := strings.TrimSpace(c.Query("frontend_redirect_uri"))
+	if frontendRedirectURI != "" && frontendRedirectURI != mobileOIDCRedirectURI {
+		c.Error(errors.NewValidationError("unsupported OIDC frontend redirect_uri"))
+		return
+	}
 
 	resp, err := h.userService.GetOIDCAuthorizationURL(ctx, redirectURI)
 	if err != nil {
@@ -322,6 +329,13 @@ func (h *AuthHandler) GetOIDCAuthorizationURL(c *gin.Context) {
 		appErr := errors.NewForbiddenError("OIDC authorization unavailable").WithDetails(err.Error())
 		c.Error(appErr)
 		return
+	}
+	if frontendRedirectURI != "" {
+		if err := decorateOIDCMobileAuthorization(resp, frontendRedirectURI); err != nil {
+			logger.Errorf(ctx, "Failed to bind mobile OIDC redirect: %v", err)
+			c.Error(errors.NewInternalServerError("OIDC authorization unavailable").WithDetails(err.Error()))
+			return
+		}
 	}
 
 	// Bind the state nonce to this browser so an attacker cannot replay
@@ -413,8 +427,21 @@ func (h *AuthHandler) GetOIDCConfig(c *gin.Context) {
 func (h *AuthHandler) OIDCRedirectCallback(c *gin.Context) {
 	ctx := c.Request.Context()
 	frontendRedirectURI := "/"
+	state := strings.TrimSpace(c.Query("state"))
+	decodedState, stateErr := decodeOIDCState(state, c.Request)
+	if stateErr == nil && decodedState.FrontendRedirectURI != "" {
+		frontendRedirectURI = decodedState.FrontendRedirectURI
+	}
 
 	if providerError := strings.TrimSpace(c.Query("error")); providerError != "" {
+		if stateErr == nil && frontendRedirectURI == mobileOIDCRedirectURI {
+			c.Redirect(http.StatusFound, mobileOIDCRedirect(frontendRedirectURI, map[string]string{
+				"oidc_error":             providerError,
+				"oidc_error_description": strings.TrimSpace(c.Query("error_description")),
+				"state":                  state,
+			}))
+			return
+		}
 		redirectURL := frontendRedirectURI + "#oidc_error=" + urlQueryEscape(providerError)
 		if description := strings.TrimSpace(c.Query("error_description")); description != "" {
 			redirectURL += "&oidc_error_description=" + urlQueryEscape(description)
@@ -423,10 +450,8 @@ func (h *AuthHandler) OIDCRedirectCallback(c *gin.Context) {
 		return
 	}
 
-	state := strings.TrimSpace(c.Query("state"))
-	decodedState, err := decodeOIDCState(state, c.Request)
-	if err != nil {
-		logger.Errorf(ctx, "Failed to decode OIDC state: %v", err)
+	if stateErr != nil {
+		logger.Errorf(ctx, "Failed to decode OIDC state: %v", stateErr)
 		c.Redirect(http.StatusFound, frontendRedirectURI+"#oidc_error="+urlQueryEscape("invalid_state"))
 		return
 	}
@@ -435,7 +460,15 @@ func (h *AuthHandler) OIDCRedirectCallback(c *gin.Context) {
 
 	code := strings.TrimSpace(c.Query("code"))
 	if code == "" {
+		if frontendRedirectURI == mobileOIDCRedirectURI {
+			c.Redirect(http.StatusFound, mobileOIDCRedirect(frontendRedirectURI, map[string]string{"oidc_error": "missing_code", "state": state}))
+			return
+		}
 		c.Redirect(http.StatusFound, frontendRedirectURI+"#oidc_error="+urlQueryEscape("missing_code"))
+		return
+	}
+	if frontendRedirectURI == mobileOIDCRedirectURI {
+		c.Redirect(http.StatusFound, mobileOIDCRedirect(frontendRedirectURI, map[string]string{"oidc_code": code, "state": state}))
 		return
 	}
 
@@ -460,6 +493,47 @@ func (h *AuthHandler) OIDCRedirectCallback(c *gin.Context) {
 	c.Redirect(http.StatusFound, frontendRedirectURI+"#oidc_result="+urlQueryEscape(payload))
 }
 
+// OIDCExchange completes the native OIDC handoff. The provider authorization
+// code is short-lived and single-use; it is deliberately exchanged here so
+// WeKnora access and refresh tokens never cross a custom-scheme redirect.
+func (h *AuthHandler) OIDCExchange(c *gin.Context) {
+	ctx := c.Request.Context()
+	var req struct {
+		Code  string `json:"code" binding:"required"`
+		State string `json:"state" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.Error(errors.NewValidationError("OIDC code and state are required").WithDetails(err.Error()))
+		return
+	}
+	req.Code = strings.TrimSpace(req.Code)
+	req.State = strings.TrimSpace(req.State)
+	if req.Code == "" || req.State == "" {
+		c.Error(errors.NewValidationError("OIDC code and state are required"))
+		return
+	}
+	state, err := decodeOIDCState(req.State, c.Request)
+	if err != nil {
+		c.Error(errors.NewValidationError("Invalid OIDC state").WithDetails(err.Error()))
+		return
+	}
+	if state.FrontendRedirectURI != mobileOIDCRedirectURI {
+		c.Error(errors.NewValidationError("Invalid OIDC state").WithDetails("OIDC state is not a mobile handoff"))
+		return
+	}
+	resp, err := h.userService.LoginWithOIDC(ctx, req.Code, state.RedirectURI, h.resolveDefaultTenantMode(ctx))
+	if err != nil {
+		logger.Errorf(ctx, "Failed to complete native OIDC exchange: %v", err)
+		c.Error(errors.NewUnauthorizedError("OIDC exchange failed").WithDetails(err.Error()))
+		return
+	}
+	if !resp.Success {
+		c.JSON(http.StatusUnauthorized, dto.NewAuthOIDCCallbackResponse(resp))
+		return
+	}
+	c.JSON(http.StatusOK, dto.NewAuthOIDCCallbackResponse(resp))
+}
+
 func encodeOIDCCallbackPayload(resp *types.OIDCCallbackResponse) (string, error) {
 	payload, err := json.Marshal(dto.NewAuthOIDCCallbackResponse(resp))
 	if err != nil {
@@ -468,15 +542,68 @@ func encodeOIDCCallbackPayload(resp *types.OIDCCallbackResponse) (string, error)
 	return base64.RawURLEncoding.EncodeToString(payload), nil
 }
 
+func decorateOIDCMobileAuthorization(resp *types.OIDCAuthURLResponse, frontendRedirectURI string) error {
+	if resp == nil || resp.State == "" || resp.AuthorizationURL == "" {
+		return stderrors.New("OIDC authorization response is incomplete")
+	}
+	payload, err := secutils.VerifyOIDCState(resp.State)
+	if err != nil {
+		return err
+	}
+	state, err := secutils.SignOIDCState(&secutils.OIDCStatePayload{
+		Nonce: payload.Nonce, RedirectURI: payload.RedirectURI,
+		FrontendRedirectURI: frontendRedirectURI, IssuedAt: payload.IssuedAt,
+	})
+	if err != nil {
+		return err
+	}
+	authorizationURL, err := url.Parse(resp.AuthorizationURL)
+	if err != nil {
+		return err
+	}
+	query := authorizationURL.Query()
+	query.Set("state", state)
+	authorizationURL.RawQuery = query.Encode()
+	resp.State = state
+	resp.AuthorizationURL = authorizationURL.String()
+	return nil
+}
+
+func mobileOIDCRedirect(target string, params map[string]string) string {
+	u, err := url.Parse(target)
+	if err != nil {
+		return mobileOIDCRedirectURI
+	}
+	query := u.Query()
+	for key, value := range params {
+		if value != "" {
+			query.Set(key, value)
+		}
+	}
+	u.RawQuery = query.Encode()
+	return u.String()
+}
+
 type oidcStatePayload struct {
-	Nonce       string
-	RedirectURI string
+	Nonce               string
+	RedirectURI         string
+	FrontendRedirectURI string
 }
 
 func decodeOIDCState(raw string, req *http.Request) (*oidcStatePayload, error) {
 	payload, err := secutils.VerifyOIDCState(raw)
 	if err != nil {
 		return nil, err
+	}
+	frontendRedirectURI := strings.TrimSpace(payload.FrontendRedirectURI)
+	if frontendRedirectURI != "" {
+		if frontendRedirectURI != mobileOIDCRedirectURI {
+			return nil, errors.NewValidationError("unsupported OIDC frontend redirect_uri")
+		}
+		return &oidcStatePayload{
+			Nonce: payload.Nonce, RedirectURI: strings.TrimSpace(payload.RedirectURI),
+			FrontendRedirectURI: frontendRedirectURI,
+		}, nil
 	}
 	cookieNonce, err := req.Cookie(oidcNonceCookieName)
 	if err != nil || cookieNonce == nil || strings.TrimSpace(cookieNonce.Value) == "" {
@@ -486,8 +613,7 @@ func decodeOIDCState(raw string, req *http.Request) (*oidcStatePayload, error) {
 		return nil, errors.NewValidationError("oidc nonce mismatch")
 	}
 	return &oidcStatePayload{
-		Nonce:       payload.Nonce,
-		RedirectURI: strings.TrimSpace(payload.RedirectURI),
+		Nonce: payload.Nonce, RedirectURI: strings.TrimSpace(payload.RedirectURI),
 	}, nil
 }
 

@@ -82,3 +82,24 @@ test('rejects malformed public auth responses instead of hiding them', async () 
   await assert.rejects(auth.lookupInvitation('token'), /tenantId must be a safe integer/);
   await assert.rejects(auth.registrationConfig(), /rejected/);
 });
+
+test('keeps mobile OIDC redirect separate and exchanges its one-time code', async () => {
+  const calls: Array<{ method: string; path: string; body?: unknown }> = [];
+  const auth = createAuthApi(async (request) => {
+    calls.push(request);
+    if (request.path.startsWith('/api/v1/auth/oidc/url')) return { success: true, authorization_url: 'https://idp.test/authorize', state: 'mobile-state' };
+    if (request.path === '/api/v1/auth/oidc/exchange') return { success: true, token: 'access', refresh_token: 'refresh', tenant: null };
+    throw new Error(`unexpected path ${request.path}`);
+  });
+
+  assert.deepEqual(await auth.oidcUrl('https://api.test/api/v1/auth/oidc/callback', 'weknora://oidc'), {
+    authorizationUrl: 'https://idp.test/authorize', state: 'mobile-state',
+  });
+  assert.deepEqual(await auth.oidcExchange('provider-code', 'mobile-state'), {
+    token: 'access', refreshToken: 'refresh', tenant: null, user: undefined, memberships: undefined,
+  });
+  assert.equal(calls[0].path, '/api/v1/auth/oidc/url?redirect_uri=https%3A%2F%2Fapi.test%2Fapi%2Fv1%2Fauth%2Foidc%2Fcallback&frontend_redirect_uri=weknora%3A%2F%2Foidc');
+  assert.deepEqual(calls[1], {
+    method: 'POST', path: '/api/v1/auth/oidc/exchange', body: { code: 'provider-code', state: 'mobile-state' },
+  });
+});

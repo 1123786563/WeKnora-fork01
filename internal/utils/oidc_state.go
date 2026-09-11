@@ -19,9 +19,10 @@ const oidcStateMaxAge = 10 * time.Minute
 // OIDCStatePayload is the signed OIDC authorization state carried in the
 // redirect URL and validated on callback.
 type OIDCStatePayload struct {
-	Nonce       string `json:"nonce"`
-	RedirectURI string `json:"redirect_uri,omitempty"`
-	IssuedAt    int64  `json:"iat"`
+	Nonce               string `json:"nonce"`
+	RedirectURI         string `json:"redirect_uri,omitempty"`
+	FrontendRedirectURI string `json:"frontend_redirect_uri,omitempty"`
+	IssuedAt            int64  `json:"iat"`
 }
 
 var (

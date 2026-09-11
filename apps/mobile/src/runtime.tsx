@@ -9,7 +9,7 @@ import { createServerAddressAdapter } from './platform/server.ts';
 import { createMobileTransport } from './platform/transport.ts';
 import { createNetworkRecovery } from './platform/network.ts';
 import { createLatestAsyncWriter, createSessionEpoch, createSingleFlight, createWorkspaceSelectionAdapter, parseMobileWorkspaces, shouldHydrateWorkspaceMemberships, shouldRefreshMobileSession, toWorkspaceId, type MobileWorkspace } from './platform/workspace.ts';
-import { parseMobileOIDCCallback } from './platform/oidc.ts';
+import { matchesMobileOIDCState, MOBILE_OIDC_REDIRECT, parseMobileOIDCCallback } from './platform/oidc.ts';
 
 const OIDC_STATE_KEY = 'weknora.mobile.oidc-state';
 
@@ -146,7 +146,7 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
       if (!callback || !active) return;
       const expectedState = await SecureStore.getItemAsync(OIDC_STATE_KEY);
       await SecureStore.deleteItemAsync(OIDC_STATE_KEY);
-      if (callback.state && expectedState && callback.state !== expectedState) {
+      if (!matchesMobileOIDCState(callback, expectedState)) {
         setOidcError('The OIDC callback state did not match this device.');
         return;
       }
@@ -154,7 +154,11 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
         setOidcError(callback.message);
         return;
       }
-      try { await adoptSession(callback.session); setOidcError(''); }
+      try {
+        if (callback.kind !== 'code') return;
+        await adoptSession(await client.auth.oidcExchange(callback.code, callback.state));
+        setOidcError('');
+      }
       catch (cause) { setOidcError(cause instanceof Error ? cause.message : 'Unable to finish OIDC sign in'); }
     }
     void Linking.getInitialURL().then((url) => consume(url));
@@ -176,7 +180,8 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
     try {
       const config = await client.auth.oidcConfig();
       if (!config.enabled) throw new Error('Single sign-on is not enabled on this server');
-      const { authorizationUrl, state } = await client.auth.oidcUrl('weknora://oidc');
+      const redirectURI = `${baseURL.replace(/\/+$/, '')}/api/v1/auth/oidc/callback`;
+      const { authorizationUrl, state } = await client.auth.oidcUrl(redirectURI, MOBILE_OIDC_REDIRECT);
       await SecureStore.setItemAsync(OIDC_STATE_KEY, state);
       await Linking.openURL(authorizationUrl);
     } catch (cause) {

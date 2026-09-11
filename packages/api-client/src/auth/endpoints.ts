@@ -102,13 +102,18 @@ export function createAuthApi(request: (input: ClientRequest) => Promise<unknown
         providerDisplayName: root.provider_display_name === undefined ? undefined : requiredString(root.provider_display_name, 'OIDC provider display name'),
       };
     },
-    async oidcUrl(redirectURI: string): Promise<OIDCURL> {
-      const query = new URLSearchParams({ redirect_uri: redirectURI }).toString();
+    async oidcUrl(redirectURI: string, frontendRedirectURI?: string): Promise<OIDCURL> {
+      const queryParams = new URLSearchParams({ redirect_uri: redirectURI });
+      if (frontendRedirectURI !== undefined) queryParams.set('frontend_redirect_uri', frontendRedirectURI);
+      const query = queryParams.toString();
       const root = successEnvelope(await request({ method: 'GET', path: `/api/v1/auth/oidc/url?${query}` }));
       return {
         authorizationUrl: requiredString(root.authorization_url, 'authorization URL'),
         state: requiredString(root.state, 'OIDC state'),
       };
+    },
+    async oidcExchange(code: string, state: string): Promise<AuthSession> {
+      return parseSession(await request({ method: 'POST', path: '/api/v1/auth/oidc/exchange', body: { code, state } }));
     },
     async autoSetup(): Promise<AuthSession> {
       return parseSession(await request({ method: 'POST', path: '/api/v1/auth/auto-setup', body: {} }));
