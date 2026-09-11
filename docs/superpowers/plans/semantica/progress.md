@@ -1,6 +1,6 @@
 # Semantica 实施台账
 
-状态：V01–V03 已完成并验证，其余 21 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
+状态：V01–V03、C01 已完成并验证，其余 20 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
 
 状态值 pending / in_progress / blocked / implemented / verified。每项验证记录必须包含commit SHA、精确命令、退出码、环境、产物路径、失败/限制；无真实证据不标记verified。执行前记录实际基线与已有脏文件。
 
@@ -9,7 +9,7 @@
 | V01 | 冻结版本与最小安装契约 | 无 | verified | semantica==0.6.8（+graph-neo4j extra）冻结于上游 commit f73f599a；Python 3.12.13；见运行记录 2026-09-11 V01 与 capability-evidence.json |
 | V02 | 验证持久图桥接和两类推理 | V01 | verified | Neo4j 5.26 真实持久化+进程重启溯源通过；规则正/负/中文推导通过；模型推断无受批准凭据保持 unverified（未发起调用）；见运行记录 2026-09-11 V02 与 bridge-evidence.md |
 | V03 | 中文质量与上线阈值评估基线 | V02 | verified | semantica 模式 30 题实测（正确率 0.767、泄漏 0、recall 0.925）；native 对照阻断于隔离测试部署+模型凭据，approved=false；见运行记录 2026-09-11 V03 与 evaluation-baseline.md |
-| C01 | 版本化协议和跨语言领域类型 | V01 | pending | 尚未执行 |
+| C01 | 版本化协议和跨语言领域类型 | V01 | verified | proto 全 14 DTO+7RPC 双语言同源生成（幂等）；Go 全量映射+全 5 枚举表；uint64 十进制字符串边界；未知枚举不映射成功；见运行记录 2026-09-11 C01 |
 | C02 | 认证服务骨架和Go客户端 | C01 | pending | 尚未执行 |
 | C03 | 事实与证据校验模型 | C01,V02 | pending | 尚未执行 |
 | I01 | 持久操作、幂等与worker租约 | C02 | pending | 尚未执行 |
@@ -80,9 +80,24 @@
 - 提交 SHA：2443e61（feat(semantic): v03 中文质量与上线阈值评估基线）。
 - 剩余限制：native 对照与模型模式质量/用量门槛待隔离测试部署+真实模型凭据；受控语料规模不代表生产规模；评测需串行运行（与 V02 共享 probe 标签）。
 
+### 2026-09-11 C01 版本化协议和跨语言领域类型（verified）
+
+- 工作区：.worktrees/semantica（分支 codex/semantica）；基线 SHA：6da1df7（V03 台账提交）。
+- 修改文件：semantic/{pyproject.toml,uv.lock,.python-version}、semantic/proto/{semantic.proto,semantic.pb.go,semantic_grpc.pb.go}、semantic/semantic_service/{__init__.py,contracts.py,proto/*}、semantic/scripts/generate_proto.sh、semantic/tests/{test_contract.py,fixtures/contract-v1.json}、internal/types/semantic.go、internal/types/interfaces/semantic.go、internal/infrastructure/semantic/{mapping.go,contract_test.go}、本台账、01 计划勾选。
+- RED（Python）：`uv run --project semantic python -m pytest semantic/tests/test_contract.py -q` 退出码 2，ImportError: cannot import name 'contracts'（先建好 pyproject+包骨架使环境可用）。
+- RED（Go）：`go test ./internal/infrastructure/semantic -run TestContract -count=1` 退出码 1，no required module provides package .../semantic/proto（proto 生成物不存在）。
+- 评审修复 RED/GREEN（两轮）：第一轮 RED=Go 映射面缺失（undefined: ChunkToWire 等，编译失败）→ 实现全 14 DTO+全 5 枚举表映射 → GREEN；第二轮 RED=TestContractInvalidPurposeNeverDropsAccessScope（签名编译失败）→ SearchRequestToWire 改双返回值并传播授权信封错误 → GREEN。
+- GREEN（终态）：`uv run --project semantic python -m pytest semantic/tests/test_contract.py -q` 12 passed 退出码 0；`go test ./internal/infrastructure/semantic -run TestContract -count=1` ok 退出码 0。
+- 生成与幂等：`bash semantic/scripts/generate_proto.sh` 退出码 0，二次生成 sha256 逐文件一致；生成器锁定 grpcio-tools 1.80.0 / protoc-gen-go v1.36.11（=go.mod protobuf）/ protoc-gen-go-grpc v1.5.1（插件经 GOPROXY 代理安装，属授权依赖安装）。
+- 覆盖：契约 fixture 18 键双向驱动（domain-JSON→wire→bytes→domain）；最大 uint64 不经 float64（Go ,string 标签+自定义 Evidence 编组，Python to/from_json 十进制字符串）；空 span 保持 nil/None；中文逐字节；未知 wire 枚举→unspecified、未知领域枚举→错误（含嵌套 AccessScope 不得静默丢弃的专项测试）；非空 error_code 保留。
+- 环境：macOS arm64；Python 3.12.13；Go 1.26.3；grpcio 1.80.0/protobuf 6.33.x（uv.lock 锁定）。
+- review：规格符合性 PASS（11 项：4.1 全部字段逐字对齐、7 RPC、tag 纪律、DTO 约定、接口签名、核心断言、JSON 边界、同源生成、无 protobuf 穿透、包卫生、文档——其中能力协商失败行为已按建议补记 proto+接口注释）。代码质量首轮 FAIL（BLOCKER：Go 映射面仅 5/14 DTO、2/5 枚举表）→ RED-first 补全 → 复审发现修复引入的新 BLOCKER（SearchRequestToWire 丢弃 AccessScope 错误=授权信封静默丢弃，评审员实证）→ 再次 RED-first 修复 → 终审 PASS（评审员独立探针验证错误传播、边界值 2^64-1 接受/2^64 拒绝、全部 MINOR 关闭）。
+- 提交 SHA：（本记录与代码同批提交后补记）
+- 剩余限制：QueryLimits uint32 字段 Python 侧构造期未校验（protobuf to_wire 拒绝越界，Go json 原生拒绝；C02 观察项）；.python-version 因仓库 .gitignore 点号规则需 git add -f（沿用 V01 先例）；semantica==0.6.8 生产依赖按计划在首个导入它的任务（I03/A03）进入本包锁。
+
 ## 当前边界
 
-- V01–V03 已完成（verified）；后续 21 个任务未开始。
+- V01–V03、C01 已完成（verified）；后续 20 个任务未开始。
 - V01精确版本已冻结（semantica 0.6.8）；真实模型证据须在后续任务补齐，不是已经通过的前提。
 - V02 结论边界：持久图桥接/授权子图重建/注册规则推导已验证；模型推断 unverified（无凭据，未调用）；向量检索路径未验证。
 - V03 结论边界：semantica 模式检索质量/延迟为受控语料实测；native 对照与模型用量门槛未测（阻断记录见上）；上线门禁 approved=false 待用户确认。

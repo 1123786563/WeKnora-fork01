@@ -40,7 +40,7 @@
 
 **接口：** 实现总计划4.1全部 DTO 与7个RPC；Go SemanticClient 接口 Apply(ctx,types.SemanticApplyRequest)(types.SemanticOperation,error)、Delete(ctx,types.SemanticDocumentRevision)(types.SemanticOperation,error)、Get/Cancel(ctx,types.SemanticScopeKey,string)(types.SemanticOperation,error)、Search(ctx,types.SemanticSearchRequest)(types.SemanticSearchResponse,error)、Reason(ctx,types.SemanticReasonRequest)(types.SemanticReasonResponse,error)、Capabilities(ctx)(types.SemanticCapabilities,error)。ctx均为context.Context。
 
-- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 def test_optional_evidence_span_is_not_zero():
@@ -51,13 +51,13 @@ def test_optional_evidence_span_is_not_zero():
 # Go golden 测试必须额外 round-trip uint64 最大值，tenant/revision 不经 float64。
 ```
 
-- [ ] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_contract.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [x] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_contract.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 逐字段定义枚举、optional、oneof与RPC envelope；tenant和revision使用uint64，JSON公共边界把64位整数编码为十进制字符串**
+- [x] **3. 逐字段定义枚举、optional、oneof与RPC envelope；tenant和revision使用uint64，JSON公共边界把64位整数编码为十进制字符串**
 
-- [ ] **4. 用同一 proto 生成 Go/Python；固定生成器版本并写脚本，旧tag删除后reserved；Golden覆盖空span、中文、unknown enum、最大uint64和错误detail**
+- [x] **4. 用同一 proto 生成 Go/Python；固定生成器版本并写脚本，旧tag删除后reserved；Golden覆盖空span、中文、unknown enum、最大uint64和错误detail**
 
-- [ ] **5. 新增Go接口及显式映射，不把protobuf对象穿透业务层；记录schema版本兼容规则与capability协商失败行为**
+- [x] **5. 新增Go接口及显式映射，不把protobuf对象穿透业务层；记录schema版本兼容规则与capability协商失败行为**
 
 关键实现约束：
 
@@ -82,9 +82,9 @@ message DocumentRevision {
 }
 ```
 
-- [ ] **6. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_contract.py -q`，预期退出码 0；另完成：执行 go test ./internal/infrastructure/semantic -run TestContract -count=1；二次生成 git diff 无变化；不要求未知枚举映射成默认成功。
+- [x] **6. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_contract.py -q`，预期退出码 0；另完成：执行 go test ./internal/infrastructure/semantic -run TestContract -count=1；二次生成 git diff 无变化；不要求未知枚举映射成默认成功。
 
-- [ ] **7. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 C01 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): c01 版本化协议和跨语言领域类型`。
+- [x] **7. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 C01 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): c01 版本化协议和跨语言领域类型`。
 
 ## C02：认证服务骨架和Go客户端
 
