@@ -34,7 +34,11 @@ var versionedSQLiteColumns = map[string][]string{
 	"mcp_tool_approvals": {"enabled"},                        // 000091
 }
 
-const expectedSQLiteMigrationVersion = 13
+// Latest SQLite migration version. Bump when adding migrations: 000014
+// (recovery), 000015 (agent tool plan versions), 000016 (agent decision
+// linkage), 000017 (semantic control) landed after the original value 13
+// was pinned.
+const expectedSQLiteMigrationVersion = 17
 
 func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 	repoRoot := sqliteRepoRoot(t)

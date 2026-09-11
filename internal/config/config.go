@@ -121,6 +121,15 @@ type SemanticConfig struct {
 	// CallTimeout bounds a single RPC when the caller context has no
 	// deadline. Zero uses the client default.
 	CallTimeout time.Duration `yaml:"call_timeout" json:"call_timeout"`
+	// ScopeIssuingKey signs semantic access scopes (HMAC). Empty disables
+	// scope issuance - fail closed.
+	ScopeIssuingKey string `yaml:"scope_issuing_key" json:"scope_issuing_key"`
+	// ResolveToken is the service identity the semantic service presents
+	// when resolving scopes over the internal route. Empty disables the
+	// route entirely.
+	ResolveToken string `yaml:"resolve_token" json:"resolve_token"`
+	// ScopeTTL bounds an issued scope's lifetime. Zero uses the default.
+	ScopeTTL time.Duration `yaml:"scope_ttl" json:"scope_ttl"`
 }
 
 type VectorDatabaseConfig struct {

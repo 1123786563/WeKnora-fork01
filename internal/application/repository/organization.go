@@ -131,33 +131,37 @@ func (r *organizationRepository) AddTenantMember(ctx context.Context, member *ty
 
 // RemoveTenantMember removes the (org, tenant) membership row.
 func (r *organizationRepository) RemoveTenantMember(ctx context.Context, orgID string, tenantID uint64) error {
-	result := r.db.WithContext(ctx).
-		Where("organization_id = ? AND tenant_id = ?", orgID, tenantID).
-		Delete(&types.OrganizationTenantMember{})
-
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return ErrOrgMemberNotFound
-	}
-	return nil
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		result := tx.
+			Where("organization_id = ? AND tenant_id = ?", orgID, tenantID).
+			Delete(&types.OrganizationTenantMember{})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return ErrOrgMemberNotFound
+		}
+		// A01: org removal revokes every KB shared to this org.
+		return BumpOrgSharedKBSemanticEpochsTx(tx, orgID)
+	})
 }
 
 // UpdateTenantMemberRole updates the role for a (org, tenant) membership.
 func (r *organizationRepository) UpdateTenantMemberRole(ctx context.Context, orgID string, tenantID uint64, role types.OrgMemberRole) error {
-	result := r.db.WithContext(ctx).
-		Model(&types.OrganizationTenantMember{}).
-		Where("organization_id = ? AND tenant_id = ?", orgID, tenantID).
-		Update("role", role)
-
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return ErrOrgMemberNotFound
-	}
-	return nil
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		result := tx.
+			Model(&types.OrganizationTenantMember{}).
+			Where("organization_id = ? AND tenant_id = ?", orgID, tenantID).
+			Update("role", role)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return ErrOrgMemberNotFound
+		}
+		// A01: role changes re-scope every KB shared to this org.
+		return BumpOrgSharedKBSemanticEpochsTx(tx, orgID)
+	})
 }
 
 // ListTenantMembers lists all tenant memberships for an organization.

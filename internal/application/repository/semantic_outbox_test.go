@@ -63,6 +63,33 @@ func mutationFixture() SemanticMutation {
 	}
 }
 
+func TestOrgMemberRemovalBumpsSharedKBEpochs(t *testing.T) {
+	db := newSemanticTestDB(t)
+	// Real org + kb_shares rows (the REAL table name kb_shares).
+	require.NoError(t, db.Exec(
+		"INSERT INTO organizations (id, name, owner_id, owner_tenant_id) VALUES ('org-1', 'org', 'u-owner', 9)",
+	).Error)
+	require.NoError(t, db.Exec(
+		"INSERT INTO knowledge_bases (id, name, tenant_id, embedding_model_id, summary_model_id) VALUES ('kb-z', 'kb', 9, 'e1', 's1')",
+	).Error)
+	require.NoError(t, db.Exec(
+		"INSERT INTO kb_shares (id, knowledge_base_id, organization_id, source_tenant_id, shared_by_user_id, permission) VALUES ('sh-1', 'kb-z', 'org-1', 9, 'u1', 'viewer')",
+	).Error)
+
+	orgRepo := NewOrganizationRepository(db)
+
+	// Membership row so the removal has something to delete.
+	require.NoError(t, db.Exec(
+		"INSERT INTO organization_tenant_members (id, organization_id, tenant_id, role) VALUES ('m-1', 'org-1', 8, 'member')",
+	).Error)
+
+	require.NoError(t, orgRepo.RemoveTenantMember(context.Background(), "org-1", 8))
+	var epoch int64
+	require.NoError(t, db.Raw(
+		"SELECT epoch FROM semantic_access_epochs WHERE tenant_id = 9 AND kb_id = 'kb-z'").Scan(&epoch).Error)
+	require.Equal(t, int64(1), epoch, "org-shared KB epoch must bump on member removal")
+}
+
 func outboxCount(t *testing.T, db *gorm.DB) int64 {
 	t.Helper()
 	var count int64

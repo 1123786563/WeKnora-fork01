@@ -73,14 +73,35 @@ func (r *kbShareRepository) GetByKBAndOrg(ctx context.Context, kbID string, orgI
 
 // Update updates a share record
 func (r *kbShareRepository) Update(ctx context.Context, share *types.KnowledgeBaseShare) error {
-	return r.db.WithContext(ctx).Model(&types.KnowledgeBaseShare{}).
-		Where("id = ?", share.ID).
-		Updates(share).Error
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&types.KnowledgeBaseShare{}).
+			Where("id = ?", share.ID).
+			Updates(share)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return nil // no-op update must not kill live scopes
+		}
+		// A01: share permission changes re-scope org visibility of the
+		// source KB - bump its epoch in the same transaction.
+		return BumpKBSemanticEpochsTx(tx, share.SourceTenantID, share.KnowledgeBaseID)
+	})
 }
 
 // Delete soft deletes a share record
 func (r *kbShareRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&types.KnowledgeBaseShare{}).Error
+	var share types.KnowledgeBaseShare
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("id = ?", id).First(&share).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("id = ?", id).Delete(&types.KnowledgeBaseShare{}).Error; err != nil {
+			return err
+		}
+		// A01: removing a share revokes org visibility of the source KB.
+		return BumpKBSemanticEpochsTx(tx, share.SourceTenantID, share.KnowledgeBaseID)
+	})
 }
 
 // DeleteByKnowledgeBaseID soft deletes all share records for a knowledge base (e.g. when the KB is deleted)

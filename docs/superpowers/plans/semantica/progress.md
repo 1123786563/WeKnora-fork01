@@ -1,6 +1,6 @@
 # Semantica 实施台账
 
-状态：V01–C03、I01–I02 已完成并验证，其余 16 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
+状态：V01–C03、I01–I02 verified；A01 implemented（3 条 ACL 接线待完成）；其余 15 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
 
 状态值 pending / in_progress / blocked / implemented / verified。每项验证记录必须包含commit SHA、精确命令、退出码、环境、产物路径、失败/限制；无真实证据不标记verified。执行前记录实际基线与已有脏文件。
 
@@ -17,7 +17,7 @@
 | I03 | 有来源的构图与generation原子发布 | C03,I01,I02,A03 | pending | 尚未执行 |
 | I04 | 删除屏障、支持撤销和清理receipt | I03,A01 | pending | 尚未执行 |
 | I05 | 文档任务、attempt与终态协调 | I04 | pending | 尚未执行 |
-| A01 | 可信AccessScope与权限变更屏障 | C02,I02 | pending | 尚未执行 |
+| A01 | 可信AccessScope与权限变更屏障 | C02,I02 | implemented | 核心+内部解析+8 条 ACL 同事务 epoch 已测；3 条接线（克隆/临时文档到期/组织删除）未完成，完成前语义查询不得上线；见运行记录 2026-09-11 A01 与 acl-write-inventory.md |
 | A02 | 授权事实子图与缓存隔离 | A01,I03,I04 | pending | 尚未执行 |
 | A03 | 模型代理、原始用量与预算 | C02,I01,A01 | pending | 尚未执行 |
 | Q01 | GraphRAG检索与有界执行 | A02,V03 | pending | 尚未执行 |
@@ -152,9 +152,21 @@
 - 提交 SHA：3619e12（feat(semantic): i02 业务revision、outbox与授权版本）。
 - 剩余限制：PG 路径仓储行为仅经迁移合同覆盖（库级 SQL 与 sqlite 驱动同构；PG 专属仓储测试留后续）；outbox 领取谓词部分索引与确认事件清理归 I03；backend_states 列为 W03/I03 预留。
 
+### 2026-09-11 A01 可信AccessScope与权限变更屏障（implemented）
+
+- 工作区：.worktrees/semantica（分支 codex/semantica）；基线 SHA：22f2ca1（I02 台账提交）。
+- 修改文件：internal/application/service/{semantic_scope.go,semantic_scope_test.go}、internal/handler/{semantic_internal.go,semantic_internal_test.go}、internal/application/repository/{semantic_outbox.go(读API+3个Bump助手),tenant_member.go,kbshare.go,organization.go(同事务epoch接线)}、internal/config/config.go(ScopeIssuingKey≥32/ResolveToken/ScopeTTL≤15m)、internal/container/container.go、internal/router/{router.go,routes_infra.go}、internal/database/migration_sqlite_versioned_schema_test.go(迁移计数13→17修正)、docs/superpowers/plans/semantica/acl-write-inventory.md、本台账、03 计划勾选（步骤3/6 按实留空）。
+- RED（服务核心）：`go test ./internal/application/service -run TestSemanticScope -count=1` 编译失败（SemanticScopeService 未定义）；RED（内部入口）：`go test ./internal/handler -run TestSemanticInternal -count=1`（RegisterSemanticInternalRoutes 未定义）；评审修复 RED×3：组织表名错误（knowledge_base_shares→kb_shares，TestOrgMemberRemovalBumpsSharedKBEpochs 先失败）；快照漂移（TestSemanticScopeDriftWithoutEpochStillInvalidates 先失败）；短密钥漏洞（TestSemanticScopeShortKeyDisablesService/EmptyKeyForgedRefsNeverVerify 先失败——nil-and-continue 使空公钥伪造通过，评审员实证）。
+- GREEN：service 9 项（计划核心逐字：epoch 变更→ErrSemanticScopeChanged；另过期时钟/伪造/篡改字段/Resolve 快照（撤后旧 scope 拒绝+新 scope 排除+墓碑 revision）/保留旧版/无 epoch 漂移仍失效/短密钥禁用/空钥伪造拒绝）；handler 4 项（缺/错身份 401、快照 200、变更 409、伪造 403）；repository 全量含组织成员移除 epoch 回归；database 迁移测试修复后全绿；build/vet 净。
+- ACL 接线（同事务 epoch）：tenant_member UpdateRole/SoftDelete/Demote/RemoveOwner（RowsAffected 门控）；kbshare Update/Delete（源租户+KB）；organization RemoveTenantMember/UpdateTenantMemberRole（组织全部被分享 KB）；文档语义删除经 I02 WithSemanticMutation（deny+epoch 同事务，计划核心测试即经此路径）。
+- 内部入口：/api/v1/internal/semantic/scope/resolve，常量时间令牌（X-Semantic-Internal-Token），无令牌不挂载（容器双重 fail-closed：密钥<32B→nil 服务→nil handler→无路由）；仅返回授权快照不含知识内容；401/403/409 语义。
+- review：规格 PASS（9 项；条件：①组织删除补入清单——已补为第三条待接线；②Issue 调用方必须经 resolveKBReadTenant 取 owner tenant——已记入清单已知缺口，Q01 前强制；③敏感替换隐藏旧版建模归 I05——已记）；代码质量终审 PASS（原 BLOCKER kb_shares 表名+评审修复中自引入的短密钥 BLOCKER 均实证关闭；迁移计数预存失败 13→17 修复；遗留 follow-up：按 subject 快照+owner tenant 校验（Q01 前强制）、testutil 合并、少量边界测试）。
+- 提交 SHA：（本记录与代码同批提交后补记）
+- 剩余限制（verified 前必须完成）：三条 ACL 接线——knowledge_transfer 克隆（源+目标 KB）、temporary_document 到期清理、organization DeleteOrganization（撤分享前）；Issue 尚无生产调用方（Q04 接线时必须走 resolveKBReadTenant）；快照当前 KB 级非 subject 级（per-subject 过滤归 A02/Q01 接线）；内部入口部署形态（网络隔离）归 O01。
+
 ## 当前边界
 
-- V01–C03、I01–I02 已完成（verified）；后续 16 个任务未开始。
+- V01–C03、I01–I02 verified；A01 implemented（3 条接线未完成，语义查询上线门槛）；后续 15 个任务未开始。
 - V01精确版本已冻结（semantica 0.6.8）；真实模型证据须在后续任务补齐，不是已经通过的前提。
 - V02 结论边界：持久图桥接/授权子图重建/注册规则推导已验证；模型推断 unverified（无凭据，未调用）；向量检索路径未验证。
 - V03 结论边界：semantica 模式检索质量/延迟为受控语料实测；native 对照与模型用量门槛未测（阻断记录见上）；上线门禁 approved=false 待用户确认。

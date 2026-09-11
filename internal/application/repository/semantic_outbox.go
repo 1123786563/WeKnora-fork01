@@ -180,6 +180,125 @@ func isUniqueViolation(err error) bool {
 	return strings.Contains(message, "unique") || strings.Contains(message, "duplicate key")
 }
 
+// SemanticDocumentState is the visibility-relevant projection of one
+// document row for scope snapshots.
+type SemanticDocumentState struct {
+	DocumentID string
+	Revision   uint64
+	Deleted    bool
+}
+
+// CurrentEpoch returns the KB's authorization epoch (0 when never bumped).
+// A read error must be treated fail-closed by callers.
+func (r *SemanticControlRepository) CurrentEpoch(ctx context.Context, tenantID uint64, kbID string) (uint64, error) {
+	var epoch int64
+	err := r.db.WithContext(ctx).Raw(
+		"SELECT epoch FROM semantic_access_epochs WHERE tenant_id = ? AND kb_id = ?",
+		tenantID, kbID,
+	).Scan(&epoch).Error
+	if err != nil {
+		return 0, err
+	}
+	return uint64(epoch), nil
+}
+
+// ListDocumentStates returns every document revision row of the KB.
+func (r *SemanticControlRepository) ListDocumentStates(ctx context.Context, tenantID uint64, kbID string) ([]SemanticDocumentState, error) {
+	var rows []struct {
+		DocumentID string
+		Revision   int64
+		Deleted    bool
+	}
+	if err := r.db.WithContext(ctx).Raw(
+		"SELECT document_id, revision, deleted FROM semantic_document_revisions WHERE tenant_id = ? AND kb_id = ?",
+		tenantID, kbID,
+	).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	states := make([]SemanticDocumentState, 0, len(rows))
+	for _, row := range rows {
+		states = append(states, SemanticDocumentState{
+			DocumentID: row.DocumentID, Revision: uint64(row.Revision), Deleted: row.Deleted,
+		})
+	}
+	return states, nil
+}
+
+// ListDenials returns the deletion barriers of the KB as document -> highest
+// denied revision.
+func (r *SemanticControlRepository) ListDenials(ctx context.Context, tenantID uint64, kbID string) (map[string]uint64, error) {
+	var rows []struct {
+		DocumentID string
+		Revision   int64
+	}
+	if err := r.db.WithContext(ctx).Raw(
+		"SELECT document_id, MAX(revision) AS revision FROM semantic_denials WHERE tenant_id = ? AND kb_id = ? GROUP BY document_id",
+		tenantID, kbID,
+	).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	denials := make(map[string]uint64, len(rows))
+	for _, row := range rows {
+		denials[row.DocumentID] = uint64(row.Revision)
+	}
+	return denials, nil
+}
+
+// BumpTenantSemanticEpochsTx raises the authorization epoch of EVERY KB the
+// tenant owns, inside the caller's transaction. Member/role changes affect
+// all of a tenant's KBs at once; the same-transaction bump guarantees no
+// scope survives an ACL write (A01 wiring point).
+func BumpTenantSemanticEpochsTx(tx *gorm.DB, tenantID uint64) error {
+	var kbIDs []string
+	if err := tx.Raw(
+		"SELECT id FROM knowledge_bases WHERE tenant_id = ?", tenantID,
+	).Scan(&kbIDs).Error; err != nil {
+		return err
+	}
+	for _, kbID := range kbIDs {
+		if err := bumpEpoch(tx, tenantID, kbID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// BumpOrgSharedKBSemanticEpochsTx raises epochs for every KB shared to the
+// organization (org membership changes re-scope all of them at once),
+// inside the caller's transaction.
+func BumpOrgSharedKBSemanticEpochsTx(tx *gorm.DB, orgID string) error {
+	var rows []struct {
+		SourceTenantID  uint64
+		KnowledgeBaseID string
+	}
+	if err := tx.Raw(
+		"SELECT source_tenant_id, knowledge_base_id FROM kb_shares WHERE organization_id = ? AND deleted_at IS NULL",
+		orgID,
+	).Scan(&rows).Error; err != nil {
+		return err
+	}
+	for _, row := range rows {
+		if err := bumpEpoch(tx, row.SourceTenantID, row.KnowledgeBaseID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// BumpKBSemanticEpochsTx raises the epoch of the named KBs (source AND
+// target of transfers, shared KBs) inside the caller's transaction.
+func BumpKBSemanticEpochsTx(tx *gorm.DB, tenantID uint64, kbIDs ...string) error {
+	for _, kbID := range kbIDs {
+		if kbID == "" {
+			continue
+		}
+		if err := bumpEpoch(tx, tenantID, kbID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // ClaimOutboxEvents returns up to limit dispatchable events (unconfirmed,
 // past their next attempt, not held by another claim lease). Claiming sets
 // claimed_until = now + lease so a crashed dispatcher's events become

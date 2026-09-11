@@ -139,6 +139,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// because dig resolves Invokes eagerly from registered providers.
 	must(container.Provide(initSemanticClient))
 	must(container.Invoke(registerSemanticClientCleanup))
+	must(container.Provide(repository.NewSemanticControlRepository))
+	must(container.Provide(initSemanticScopeService))
+	must(container.Provide(initSemanticInternalHandler))
 	must(container.Provide(docparser.NewImageResolver))
 	must(container.Provide(initOllamaService))
 	must(container.Provide(initNeo4jClient))
@@ -1568,6 +1571,33 @@ func initSemanticClient(cfg *config.Config) (interfaces.SemanticClient, error) {
 		RootCAPEM:     rootCA,
 		CallTimeout:   cfg.Semantic.CallTimeout,
 	})
+}
+
+// initSemanticScopeService builds the access-scope issuer. Requires the
+// control repository and a configured issuing key; without the key it
+// returns nil (scope issuance disabled - fail closed).
+func initSemanticScopeService(cfg *config.Config, repo *repository.SemanticControlRepository) *service.SemanticScopeService {
+	if cfg.Semantic == nil || len(cfg.Semantic.ScopeIssuingKey) < 32 {
+		return nil
+	}
+	ttl := cfg.Semantic.ScopeTTL
+	if ttl <= 0 {
+		ttl = 5 * time.Minute
+	}
+	return service.NewSemanticScopeService(repo, service.SemanticScopeConfig{
+		Audience:   "weknora-semantic",
+		TTL:        ttl,
+		IssuingKey: []byte(cfg.Semantic.ScopeIssuingKey),
+	})
+}
+
+// initSemanticInternalHandler exposes the internal scope-resolution route
+// only when BOTH the resolve token and the scope service are configured.
+func initSemanticInternalHandler(cfg *config.Config, scopeService *service.SemanticScopeService) *handler.SemanticInternalHandler {
+	if cfg.Semantic == nil {
+		return nil
+	}
+	return handler.NewSemanticInternalHandler(cfg.Semantic.ResolveToken, scopeService)
 }
 
 // registerSemanticClientCleanup closes the semantic client on shutdown
