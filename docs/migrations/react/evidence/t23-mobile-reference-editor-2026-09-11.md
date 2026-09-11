@@ -85,3 +85,14 @@ pnpm typecheck:shared # exit 0
 node scripts/check-react-boundaries.mjs # exit 0
 git diff --check # exit 0
 ```
+
+The affected Web and native bundle checks were also rerun after the live
+follow-up:
+
+```text
+pnpm test:web # 64/64, exit 0
+pnpm typecheck:web # exit 0
+pnpm build:web # exit 0, 120 modules transformed
+pnpm --filter @weknora/mobile exec expo export --platform ios # exit 0, 1138 modules, 3.1 MB Hermes bundle
+pnpm --filter @weknora/mobile exec expo export --platform android # exit 0, 1161 modules, 3.2 MB Hermes bundle
+```

@@ -381,6 +381,9 @@
   `80b2a5ba2202a5eb35c0f5a3cd10318520ed2e5f5634be6c4315057d0c08e2f8`; and
   `/tmp/weknora-ios-wiki-latest.png`, SHA-256
   `92dc9a90f64f7af749041eba44e5c80288691fe0b260f0ec53840c450c994704`.
+- A post-fix affected-surface rerun passed Web 64/64, Web typecheck/build
+  (120 modules), iOS Expo export (1138 modules, 3.1 MB Hermes), and Android
+  Expo export (1161 modules, 3.2 MB Hermes).
 - This is bounded isolated Lite owner/native-device evidence only; non-owner
   403/409 permutations, production-provider acceptance, physical-device
   behavior, and the remaining T23 management matrix remain open.
