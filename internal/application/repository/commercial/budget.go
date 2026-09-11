@@ -86,8 +86,13 @@ type ReservationRow struct {
 	State      string    `gorm:"column:state;not null"`
 	Deadline   time.Time `gorm:"column:deadline;not null"`
 	Fence      string    `gorm:"column:fence;not null"`
-	Version    int64     `gorm:"column:version;not null;default:1"`
-	CreatedAt  time.Time `gorm:"column:created_at;not null"`
+	// Owner names the worker currently holding the lease (U04): a lease
+	// takeover rewrites it together with a fresh fence, so a stale worker
+	// that lost the lease can no longer commit results against this
+	// reservation.
+	Owner     string    `gorm:"column:owner;not null;default:''"`
+	Version   int64     `gorm:"column:version;not null;default:1"`
+	CreatedAt time.Time `gorm:"column:created_at;not null"`
 }
 
 func (ReservationRow) TableName() string { return "commercial_reservations" }
@@ -794,4 +799,365 @@ func budgetTaskDenial(tx *gorm.DB, tenantID uint64, ownerRun string, upper int64
 		return errBudgetCASRetry
 	}
 	return ErrTaskBudgetExhausted
+}
+
+// ---- U04: cancel, expiry, extension and lease-recovery primitives ----
+// All additions below are additive: Reserve, LockRefunds, and the
+// settlement methods above are untouched; the new primitives reuse the
+// same errBudgetCASRetry roll-back-whole-transaction discipline.
+
+var (
+	// ErrReservationNotHeld rejects releasing or taking over a reservation
+	// that is no longer unstarted: dispatched/settling/settled reservations
+	// may carry external spend and are NEVER zeroed by cancel or expiry.
+	ErrReservationNotHeld = errors.New("reservation_not_held")
+	// ErrLeaseFenceStale rejects a commit presented by a worker whose lease
+	// was taken over: the stored owner/fence pair moved on, so the stale
+	// worker result must be discarded.
+	ErrLeaseFenceStale = errors.New("lease_fence_stale")
+)
+
+// TaskBudgetExtensionRow records one applied task-limit extension, unique
+// per (tenant, run, key): replaying the same idempotency key never
+// increases the limit a second time.
+type TaskBudgetExtensionRow struct {
+	TenantID   uint64    `gorm:"column:tenant_id;primaryKey;autoIncrement:false"`
+	RunID      string    `gorm:"column:run_id;primaryKey"`
+	Key        string    `gorm:"column:key;primaryKey"`
+	ExtraMicro int64     `gorm:"column:extra_micro;not null"`
+	AppliedAt  time.Time `gorm:"column:applied_at;not null"`
+}
+
+func (TaskBudgetExtensionRow) TableName() string { return "commercial_task_budget_extensions" }
+
+// ReleaseReservation returns an unstarted reservation hold to the account,
+// task budget, and lots in ONE transaction. The reservation flip is a CAS
+// on BOTH state=held AND the read version: a concurrent dispatch that
+// changed either makes the guarded UPDATE miss, rolls the whole attempt
+// back, and the re-read then rejects with ErrReservationNotHeld. A
+// reservation can therefore never be released after a concurrent dispatch
+// won, and a second release of the same key rejects the same way, so there
+// is no double free.
+func (s *BudgetStore) ReleaseReservation(ctx context.Context, tenantID uint64, reservationKey string) error {
+	if tenantID == 0 || reservationKey == "" {
+		return ErrInvalidBudgetRequest
+	}
+	for attempt := 0; attempt < budgetCASAttempts; attempt++ {
+		retry, err := s.tryReleaseReservation(ctx, tenantID, reservationKey)
+		if err != nil {
+			return err
+		}
+		if !retry {
+			return nil
+		}
+	}
+	return ErrBudgetContention
+}
+
+func (s *BudgetStore) tryReleaseReservation(ctx context.Context, tenantID uint64, reservationKey string) (bool, error) {
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var res ReservationRow
+		if err := tx.Where("tenant_id = ? AND key = ?", tenantID, reservationKey).First(&res).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrReservationNotFound
+			}
+			return err
+		}
+		if res.State != domain.ReservationStateHeld {
+			return ErrReservationNotHeld
+		}
+		r := tx.Exec(`UPDATE commercial_reservations
+			SET state = ?, version = version + 1
+			WHERE tenant_id = ? AND key = ? AND state = ? AND version = ?`,
+			domain.ReservationStateReleased, tenantID, reservationKey,
+			domain.ReservationStateHeld, res.Version)
+		if r.Error != nil {
+			return r.Error
+		}
+		if r.RowsAffected != 1 {
+			return errBudgetCASRetry
+		}
+		var acct BudgetAccountRow
+		if err := tx.Where("tenant_id = ?", tenantID).First(&acct).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrBudgetAccountMissing
+			}
+			return err
+		}
+		r = tx.Exec(`UPDATE commercial_budget_accounts
+			SET held_micro = held_micro - ?, version = version + 1
+			WHERE tenant_id = ? AND version = ? AND held_micro >= ?`,
+			res.UpperMicro, tenantID, acct.Version, res.UpperMicro)
+		if r.Error != nil {
+			return r.Error
+		}
+		if r.RowsAffected != 1 {
+			return errBudgetCASRetry
+		}
+		var task TaskBudgetRow
+		if err := tx.Where("tenant_id = ? AND run_id = ?", tenantID, res.RunID).First(&task).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrTaskBudgetMissing
+			}
+			return err
+		}
+		ownerRun := task.RunID
+		if task.RootRunID != "" {
+			ownerRun = task.RootRunID
+			if err := tx.Where("tenant_id = ? AND run_id = ?", tenantID, ownerRun).First(&task).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return ErrTaskBudgetMissing
+				}
+				return err
+			}
+		}
+		r = tx.Exec(`UPDATE commercial_task_budgets
+			SET held_micro = held_micro - ?, version = version + 1
+			WHERE tenant_id = ? AND run_id = ? AND version = ? AND held_micro >= ?`,
+			res.UpperMicro, tenantID, ownerRun, task.Version, res.UpperMicro)
+		if r.Error != nil {
+			return r.Error
+		}
+		if r.RowsAffected != 1 {
+			return errBudgetCASRetry
+		}
+		var allocs []BudgetLotAllocationRow
+		if err := tx.Where("tenant_id = ? AND reservation_key = ?", tenantID, reservationKey).Find(&allocs).Error; err != nil {
+			return err
+		}
+		for _, a := range allocs {
+			r := tx.Exec(`UPDATE commercial_budget_lots
+				SET held_micro = held_micro - ?
+				WHERE tenant_id = ? AND lot_id = ? AND held_micro >= ?`,
+				a.Micro, tenantID, a.LotID, a.Micro)
+			if r.Error != nil {
+				return r.Error
+			}
+			if r.RowsAffected != 1 {
+				return errBudgetCASRetry
+			}
+			if err := tx.Where("tenant_id = ? AND lot_id = ? AND reservation_key = ?",
+				tenantID, a.LotID, reservationKey).Delete(&BudgetLotAllocationRow{}).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		if errors.Is(err, errBudgetCASRetry) {
+			return true, nil
+		}
+		return false, err
+	}
+	return false, nil
+}
+
+// MarkReservationDispatched flips an unstarted reservation to dispatched
+// with a version bump in one guarded UPDATE. This is the CAS complement of
+// ReleaseReservation: once dispatch wins, any concurrent release attempt
+// re-reads state dispatched and rejects with ErrReservationNotHeld, so a
+// dispatched reservation is never released (zeroed) by cancel or expiry.
+func (s *BudgetStore) MarkReservationDispatched(ctx context.Context, tenantID uint64, reservationKey string) error {
+	if tenantID == 0 || reservationKey == "" {
+		return ErrInvalidBudgetRequest
+	}
+	r := s.db.WithContext(ctx).Exec(`UPDATE commercial_reservations
+		SET state = ?, version = version + 1
+		WHERE tenant_id = ? AND key = ? AND state = ?`,
+		domain.ReservationStateDispatched, tenantID, reservationKey, domain.ReservationStateHeld)
+	if r.Error != nil {
+		return r.Error
+	}
+	if r.RowsAffected != 1 {
+		return ErrReservationNotHeld
+	}
+	return nil
+}
+
+// ExtendTaskLimit raises one run task budget limit by extra credits in ONE
+// transaction that first verifies, under the account version CAS, that the
+// CURRENT funded availability (verified minus unreflected, held, and
+// refund-locked) covers the extension and the verification window is still
+// open: a space balance alone is never authorization. Expired quota does
+// NOT extend validity: the deadline column is never touched, and an
+// already-expired task budget refuses with ErrTaskBudgetExpired. Idempotency
+// is the extension key: replaying the same (tenant, run, key) never
+// increases the limit twice.
+func (s *BudgetStore) ExtendTaskLimit(ctx context.Context, tenantID uint64, runID, key string, extra domain.Credits) error {
+	if tenantID == 0 || runID == "" || key == "" || extra <= 0 {
+		return ErrInvalidBudgetRequest
+	}
+	for attempt := 0; attempt < budgetCASAttempts; attempt++ {
+		retry, err := s.tryExtendTaskLimit(ctx, tenantID, runID, key, extra)
+		if err != nil {
+			return err
+		}
+		if !retry {
+			return nil
+		}
+	}
+	return ErrBudgetContention
+}
+
+func (s *BudgetStore) tryExtendTaskLimit(ctx context.Context, tenantID uint64, runID, key string, extra domain.Credits) (bool, error) {
+	now := time.Now().UTC()
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var existing TaskBudgetExtensionRow
+		err := tx.Where("tenant_id = ? AND run_id = ? AND key = ?", tenantID, runID, key).First(&existing).Error
+		if err == nil {
+			return nil // idempotent replay: this key already applied once
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		var acct BudgetAccountRow
+		if err := tx.Where("tenant_id = ?", tenantID).First(&acct).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrBudgetAccountMissing
+			}
+			return err
+		}
+		r := tx.Exec(`UPDATE commercial_budget_accounts
+			SET version = version + 1
+			WHERE tenant_id = ? AND version = ?
+			  AND verified_micro - unreflected_micro - held_micro - refund_locked_micro >= ?
+			  AND verified_until > ?`,
+			tenantID, acct.Version, int64(extra), now)
+		if r.Error != nil {
+			return r.Error
+		}
+		if r.RowsAffected != 1 {
+			return budgetAccountDenial(tx, tenantID, int64(extra), now)
+		}
+		var task TaskBudgetRow
+		if err := tx.Where("tenant_id = ? AND run_id = ?", tenantID, runID).First(&task).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrTaskBudgetMissing
+			}
+			return err
+		}
+		ownerRun := task.RunID
+		if task.RootRunID != "" {
+			ownerRun = task.RootRunID
+			if err := tx.Where("tenant_id = ? AND run_id = ?", tenantID, ownerRun).First(&task).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return ErrTaskBudgetMissing
+				}
+				return err
+			}
+		}
+		if !task.Deadline.After(now) {
+			return ErrTaskBudgetExpired
+		}
+		r = tx.Exec(`UPDATE commercial_task_budgets
+			SET limit_micro = limit_micro + ?, version = version + 1
+			WHERE tenant_id = ? AND run_id = ? AND version = ?`,
+			int64(extra), tenantID, ownerRun, task.Version)
+		if r.Error != nil {
+			return r.Error
+		}
+		if r.RowsAffected != 1 {
+			return errBudgetCASRetry
+		}
+		return tx.Create(&TaskBudgetExtensionRow{
+			TenantID: tenantID, RunID: runID, Key: key, ExtraMicro: int64(extra), AppliedAt: now,
+		}).Error
+	})
+	if err != nil {
+		if errors.Is(err, errBudgetCASRetry) {
+			return true, nil
+		}
+		return false, err
+	}
+	return false, nil
+}
+
+// TakeoverLease moves a reservation lease to newOwner and increments the
+// fence in ONE guarded transaction (state=held AND version CAS). The
+// returned fence is the new single-use commit token: the previous worker
+// stored owner/fence pair no longer matches, so its late commit is
+// rejected by VerifyLeaseCommit. Recovery never lets two workers commit
+// against one hold.
+func (s *BudgetStore) TakeoverLease(ctx context.Context, tenantID uint64, reservationKey, newOwner string) (string, error) {
+	if tenantID == 0 || reservationKey == "" || newOwner == "" {
+		return "", ErrInvalidBudgetRequest
+	}
+	var outcome string
+	for attempt := 0; attempt < budgetCASAttempts && outcome == ""; attempt++ {
+		fence, retry, err := s.tryTakeoverLease(ctx, tenantID, reservationKey, newOwner)
+		if err != nil {
+			return "", err
+		}
+		if !retry {
+			outcome = fence
+		}
+	}
+	if outcome == "" {
+		return "", ErrBudgetContention
+	}
+	return outcome, nil
+}
+
+func (s *BudgetStore) tryTakeoverLease(ctx context.Context, tenantID uint64, reservationKey, newOwner string) (string, bool, error) {
+	var fence string
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var res ReservationRow
+		if err := tx.Where("tenant_id = ? AND key = ?", tenantID, reservationKey).First(&res).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrReservationNotFound
+			}
+			return err
+		}
+		if res.State != domain.ReservationStateHeld {
+			return ErrReservationNotHeld
+		}
+		f, err := newReservationFence()
+		if err != nil {
+			return fmt.Errorf("fence: %w", err)
+		}
+		r := tx.Exec(`UPDATE commercial_reservations
+			SET owner = ?, fence = ?, version = version + 1
+			WHERE tenant_id = ? AND key = ? AND state = ? AND version = ?`,
+			newOwner, f, tenantID, reservationKey, domain.ReservationStateHeld, res.Version)
+		if r.Error != nil {
+			return r.Error
+		}
+		if r.RowsAffected != 1 {
+			return errBudgetCASRetry
+		}
+		fence = f
+		return nil
+	})
+	if err != nil {
+		if errors.Is(err, errBudgetCASRetry) {
+			return "", true, nil
+		}
+		return "", false, err
+	}
+	return fence, false, nil
+}
+
+// VerifyLeaseCommit checks that the owner/fence pair still matches the
+// stored lease before a worker result may commit. A worker that lost a
+// takeover fails with ErrLeaseFenceStale; a reservation no longer held
+// fails with ErrReservationNotHeld.
+func (s *BudgetStore) VerifyLeaseCommit(ctx context.Context, tenantID uint64, reservationKey, owner, fence string) error {
+	if tenantID == 0 || reservationKey == "" || owner == "" || fence == "" {
+		return ErrInvalidBudgetRequest
+	}
+	var res ReservationRow
+	err := s.db.WithContext(ctx).Where("tenant_id = ? AND key = ?", tenantID, reservationKey).First(&res).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return ErrReservationNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if res.Owner != owner || res.Fence != fence {
+		return ErrLeaseFenceStale
+	}
+	if res.State != domain.ReservationStateHeld {
+		return ErrReservationNotHeld
+	}
+	return nil
 }
