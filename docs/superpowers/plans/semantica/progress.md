@@ -120,7 +120,7 @@
 - 覆盖：中文/emoji codepoint span、越界/倒序/零宽、两端同现同缺、篡改引文/哈希/chunk、revision=0、悬空 evidence/premise、跨租户与跨 KB premise、自环/深埋环/重复 id、多来源支持并存、同 subject/predicate 异值并存、实体名称/别名为有来源断言。
 - 计划偏差记录：计划片段 extract_quote/validate_span 按原文实现；推导（rule/model）不得直接引用证据（支持经 premise 传递），为规格 §4/§7 推导语义的收紧；evidence 跨 scope 校验因 C01 Evidence DTO 无 scope 字段而归属装载层（I03），已在 docstring 与测试记录。
 - review：规格符合性 PASS（10 项；终审确认多来源支持路径全部符合规格 §4 与场景 4）；代码质量 PASS（18 项发现全部独立探针复核；新增对抗探针：菱形 DAG、500 premise 扇出、深度 2000 埋环、50000 深链、NBSP 引文等全部正确；遗留 2 项外观 nits 无需处理）。
-- 提交 SHA：（本记录与代码同批提交后补记）
+- 提交 SHA：1a6137a]（feat(semantic): c03 事实与证据校验模型）。
 - 剩余限制：upsert 为校验时辅助函数，批量摄取性能归 I03；同 id 同内容不同支持的并存条目由调用方在 generation 间对账（I03 范围）。
 
 ## 当前边界
