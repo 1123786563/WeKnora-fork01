@@ -173,6 +173,9 @@ importers:
       '@weknora/api-client':
         specifier: workspace:*
         version: link:../../packages/api-client
+      '@weknora/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       axios:
         specifier: ^1.10.0
         version: 1.20.0

@@ -35,7 +35,7 @@ const popupEntering = FadeIn
     .withInitialValues({
         opacity: 0,
         transform: [{ scale: 0.96 }, { translateY: 8 }],
-    })
+    } as any)
     .reduceMotion(ReduceMotion.System);
 
 const popupExiting = FadeOut

@@ -53,6 +53,7 @@
     "@revenuecat/purchases-js": "^1.24.3",
     "@shopify/flash-list": "~2.3.0",
     "@weknora/api-client": "workspace:*",
+    "@weknora/domain": "workspace:*",
     "@shopify/react-native-skia": "~2.5.3",
     "@slopus/happy-wire": "workspace:*",
     "@tauri-apps/api": "2.9.1",
