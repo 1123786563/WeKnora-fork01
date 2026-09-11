@@ -106,7 +106,7 @@
 - 生产边界：create_server 双重 fail-closed（config.validate+拒绝明文端口）；allow_plaintext 仅本地测试；enabled=false 默认返回 nil client 原系统不变；client 构造≠服务 ready（三处注释+接口文档）；容器清理经 ResourceCleaner 注册（nil 守卫）。
 - 计划偏差记录：计划示意片段 verified_service_identity(context)/time_remaining() 服务端截止检查并入拦截器与 gRPC 核心机制（拦截先于 handler；核心强制 deadline），未单独保留死函数；semantic_service 生产锁暂不含 semantica==0.6.8（I03 首个导入任务进入，C01 已记录）。
 - review：规格符合性 PASS（10 项：核心断言真实服务、fixture 真实端口+测试证书、fail-closed、UNIMPLEMENTED、健康真实、客户端契约、身份随行、可选配置、标准错误码、卫生）；代码质量终审 PASS（原 BLOCKER+16 MINOR+N1-N3 全部实证关闭；遗留非阻断 nits：closed-port TOCTOU、_free_port 窗口、deadline 测试通道进程退出关闭）。
-- 提交 SHA：（本记录与代码同批提交后补记）
+- 提交 SHA：6738280（feat(semantic): c02 认证服务骨架和Go客户端）。
 - 剩余限制：业务 RPC 全部 UNIMPLEMENTED（后续任务实现）；流式业务 RPC 落地时拒绝路径需流式处理器配套；首次真实部署（O01）前服务从未在本机外暴露。
 
 ## 当前边界
