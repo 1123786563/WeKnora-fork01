@@ -144,3 +144,110 @@ export function parseSyncStatusView(value: unknown): SyncStatusView {
     requires_reauthorization: v.requires_reauthorization,
   };
 }
+
+// ---------------------------------------------------------------------------
+// W05: external action approval (A03) contracts.
+// ---------------------------------------------------------------------------
+
+/** Action lifecycle states (internal/appconnector/action.go:30-36). */
+export type ActionState =
+  | 'awaiting_approval'
+  | 'authorized'
+  | 'queued'
+  | 'dispatched'
+  | 'succeeded'
+  | 'failed'
+  | 'unknown';
+
+export const ACTION_STATES: readonly ActionState[] = [
+  'awaiting_approval',
+  'authorized',
+  'queued',
+  'dispatched',
+  'succeeded',
+  'failed',
+  'unknown',
+];
+
+export function isActionState(value: unknown): value is ActionState {
+  return typeof value === 'string' && (ACTION_STATES as readonly string[]).includes(value);
+}
+
+/**
+ * Owner-free projection of one action: state (A03 vocabulary only), the
+ * digest an approval is bound to, the exact target and content snapshot,
+ * and a display connection name. No actor/owner identity crosses the wire.
+ */
+export interface ActionView {
+  id: string;
+  state: ActionState;
+  digest: string;
+  target: string;
+  content: string;
+  connection_name: string;
+}
+
+/** An ActionView plus the fence value an approval must echo back (CAS). */
+export interface ActionDetail {
+  action: ActionView;
+  expected_version: number;
+}
+
+/** Action risk categories (internal/appconnector/action.go). */
+export type ActionRisk = 'read' | 'write' | 'send' | 'delete';
+
+export interface PrepareActionInput {
+  connection_id: string;
+  target: string;
+  risk: ActionRisk;
+  content: string;
+  app_version?: string;
+}
+
+export interface ApproveActionInput {
+  digest: string;
+  expected_version: number;
+}
+
+export interface ExtendTaskBudgetInput {
+  additional_credits: number;
+  idempotency_key: string;
+}
+
+export interface TaskBudgetExtensionResult {
+  task_id: string;
+  additional_credits: number;
+}
+
+export function parseActionView(value: unknown): ActionView {
+  const v = asRecord(value, 'action');
+  const id = nonEmptyString(v.id, 'id', 'action');
+  const digest = nonEmptyString(v.digest, 'digest', 'action');
+  const target = nonEmptyString(v.target, 'target', 'action');
+  const content = nonEmptyString(v.content, 'content', 'action');
+  const connection_name = nonEmptyString(v.connection_name, 'connection_name', 'action');
+  if (!isActionState(v.state)) {
+    throw new Error('invalid action (state)');
+  }
+  // Explicit field-by-field reconstruction: owner/actor fields a server
+  // might attach are dropped here — the projection stays owner-free.
+  return { id, state: v.state, digest, target, content, connection_name };
+}
+
+export function parseActionDetail(value: unknown): ActionDetail {
+  const v = asRecord(value, 'action detail');
+  const action = parseActionView(v.action);
+  if (typeof v.expected_version !== 'number' || !Number.isSafeInteger(v.expected_version) || v.expected_version < 0) {
+    throw new Error('invalid action detail (expected_version)');
+  }
+  return { action, expected_version: v.expected_version };
+}
+
+export function parseTaskBudgetExtensionResult(value: unknown): TaskBudgetExtensionResult {
+  const v = asRecord(value, 'task budget extension');
+  const task_id = nonEmptyString(v.task_id, 'task_id', 'task budget extension');
+  if (typeof v.additional_credits !== 'number' || !Number.isSafeInteger(v.additional_credits) || v.additional_credits <= 0) {
+    throw new Error('invalid task budget extension (additional_credits)');
+  }
+  return { task_id, additional_credits: v.additional_credits };
+}

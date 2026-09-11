@@ -35,6 +35,11 @@ func RegisterCommercialRoutes(r *gin.RouterGroup, commercialHandler *handler.Com
 		// context. The request registers intent only — money moves solely
 		// through the admin review path below.
 		commercialGroup.POST("/refunds", commercialHandler.CreateRefund)
+		// W05: raise one task run's budget limit. Calls the U04
+		// BudgetService.Extend semantics (exactly-once per idempotency key,
+		// explicit pause reasons); a budget extension never authorizes an
+		// external write action — that approval lives on /apps/actions.
+		commercialGroup.POST("/tasks/:id/budget/extend", commercialHandler.ExtendTaskBudget)
 	}
 
 	// C05: platform refund REVIEW — a separate permission path from the

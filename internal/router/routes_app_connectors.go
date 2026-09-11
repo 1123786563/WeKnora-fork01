@@ -33,5 +33,13 @@ func RegisterAppConnectorRoutes(r *gin.RouterGroup, appConnectorHandler *handler
 		// A07: sync status of a data source - binding projection plus the
 		// live pause reason, with the data source looked up BY tenant.
 		appsGroup.GET("/datasources/:id/sync-status", appConnectorHandler.GetSyncStatus)
+		// W05: A03 action approval pipeline. GET reads the persisted
+		// tenant-scoped snapshot directly; the writes (prepare/approve/
+		// execute) fail closed (501) until SetActionService wires the A03
+		// service — no approval or dispatch is ever fabricated here.
+		appsGroup.POST("/actions/prepare", appConnectorHandler.PrepareAction)
+		appsGroup.GET("/actions/:id", appConnectorHandler.GetAction)
+		appsGroup.POST("/actions/:id/approve", appConnectorHandler.ApproveAction)
+		appsGroup.POST("/actions/:id/execute", appConnectorHandler.ExecuteAction)
 	}
 }

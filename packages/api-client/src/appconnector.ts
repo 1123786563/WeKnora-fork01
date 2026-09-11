@@ -1,12 +1,19 @@
 import {
+  parseActionDetail,
   parseConnectionView,
   parseInstallationView,
   parseSyncStatusView,
+  parseTaskBudgetExtensionResult,
+  type ActionDetail,
+  type ApproveActionInput,
   type ConnectionView,
   type CreateConnectionInput,
   type CreateInstallationInput,
+  type ExtendTaskBudgetInput,
   type InstallationView,
+  type PrepareActionInput,
   type SyncStatusView,
+  type TaskBudgetExtensionResult,
   type UpgradeInstallationInput,
 } from '@weknora/contracts';
 import type { ClientRequest } from './client.ts';
@@ -107,6 +114,72 @@ export function createAppConnectorApi(request: (input: ClientRequest) => Promise
       return parseSyncStatusView(unwrap(await request({
         method: 'GET',
         path: `/api/v1/apps/datasources/${encodeURIComponent(datasourceId)}/sync-status`,
+        signal,
+      })));
+    },
+    // ---- W05: A03 action approval pipeline ----
+    /**
+     * Prepare snapshots the exact call and parks it in awaiting_approval
+     * with a NEW digest. Editing content always goes through prepareAction
+     * again — an approval for the old digest never carries over.
+     */
+    async prepareAction(input: PrepareActionInput, signal?: AbortSignal): Promise<ActionDetail> {
+      const body: Record<string, unknown> = {
+        connection_id: input.connection_id,
+        target: input.target,
+        risk: input.risk,
+        content: input.content,
+      };
+      if (input.app_version !== undefined) body.app_version = input.app_version;
+      return parseActionDetail(unwrap(await request({
+        method: 'POST',
+        path: '/api/v1/apps/actions/prepare',
+        body,
+        signal,
+      })));
+    },
+    /**
+     * Approve binds a human decision to the CURRENT digest, CAS-guarded
+     * by expected_version. There is deliberately NO resend/retry-create
+     * method on this api: an unknown outcome resolves only by querying
+     * the provider (getAction reflects the server snapshot).
+     */
+    async approveAction(id: string, input: ApproveActionInput, signal?: AbortSignal): Promise<ActionDetail> {
+      return parseActionDetail(unwrap(await request({
+        method: 'POST',
+        path: `/api/v1/apps/actions/${encodeURIComponent(id)}/approve`,
+        body: { digest: input.digest, expected_version: input.expected_version },
+        signal,
+      })));
+    },
+    /** Execute consumes the approval and dispatches through the A03 pipeline. */
+    async executeAction(id: string, signal?: AbortSignal): Promise<ActionDetail> {
+      return parseActionDetail(unwrap(await request({
+        method: 'POST',
+        path: `/api/v1/apps/actions/${encodeURIComponent(id)}/execute`,
+        body: {},
+        signal,
+      })));
+    },
+    /** Get reads the SERVER snapshot of the exact target and content. */
+    async getAction(id: string, signal?: AbortSignal): Promise<ActionDetail> {
+      return parseActionDetail(unwrap(await request({
+        method: 'GET',
+        path: `/api/v1/apps/actions/${encodeURIComponent(id)}`,
+        signal,
+      })));
+    },
+    // ---- W05: task budget extension (U04 Extend semantics) ----
+    /**
+     * ExtendTaskBudget raises one task run's budget limit exactly once
+     * per idempotency key. It is a BUDGET decision only: it never
+     * carries or implies approval for any external write action.
+     */
+    async extendTaskBudget(taskId: string, input: ExtendTaskBudgetInput, signal?: AbortSignal): Promise<TaskBudgetExtensionResult> {
+      return parseTaskBudgetExtensionResult(unwrap(await request({
+        method: 'POST',
+        path: `/api/v1/commercial/tasks/${encodeURIComponent(taskId)}/budget/extend`,
+        body: { additional_credits: input.additional_credits, idempotency_key: input.idempotency_key },
         signal,
       })));
     },

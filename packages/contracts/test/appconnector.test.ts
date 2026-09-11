@@ -1,9 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  parseActionDetail,
+  parseActionView,
   parseConnectionView,
   parseInstallationView,
   parseSyncStatusView,
+  parseTaskBudgetExtensionResult,
 } from '../src/appconnector.ts';
 
 test('parseConnectionView round-trips personal and space connections', () => {
@@ -50,4 +53,34 @@ test('parseSyncStatusView handles bound, unbound, and paused sources', () => {
   assert.equal(paused.binding, null);
   assert.equal(paused.requires_reauthorization, true);
   assert.throws(() => parseSyncStatusView({ datasource_id: 'ds', state: 'ok', binding: null, requires_reauthorization: 'yes' }));
+});
+
+// ---- W05: action approval contracts ----
+
+test('parseActionView validates field-by-field, covers all 7 A03 states and stays owner-free', () => {
+  const leaked = parseActionView({ id: 'a1', state: 'awaiting_approval', digest: 'd', target: 't', content: '{"x":1}', connection_name: 'space:c1', actor_id: 'u1', owner_id: 'u1' });
+  assert.equal(leaked.state, 'awaiting_approval');
+  assert.equal(JSON.stringify(leaked).includes('actor_id'), false);
+  assert.equal(JSON.stringify(leaked).includes('owner_id'), false);
+  for (const state of ['authorized', 'queued', 'dispatched', 'succeeded', 'failed', 'unknown']) {
+    assert.equal(parseActionView({ id: 'a1', state, digest: 'd', target: 't', content: '{}', connection_name: 'c' }).state, state);
+  }
+});
+
+test('parseActionView rejects unknown states, empty digest and empty fields', () => {
+  assert.throws(() => parseActionView({ id: 'a1', state: 'retrying', digest: 'd', target: 't', content: '{}', connection_name: 'c' }));
+  assert.throws(() => parseActionView({ id: 'a1', state: 'unknown', digest: '', target: 't', content: '{}', connection_name: 'c' }));
+  assert.throws(() => parseActionView({ id: 'a1', state: 'unknown', digest: 'd', target: '', content: '{}', connection_name: 'c' }));
+  assert.throws(() => parseActionView({ id: 'a1', state: 'unknown', digest: 'd', target: 't', content: '', connection_name: 'c' }));
+  assert.throws(() => parseActionView(null));
+});
+
+test('parseActionDetail and parseTaskBudgetExtensionResult validate strictly', () => {
+  const view = { id: 'a1', state: 'unknown', digest: 'd', target: 't', content: '{}', connection_name: 'c' };
+  assert.equal(parseActionDetail({ action: view, expected_version: 4 }).expected_version, 4);
+  assert.throws(() => parseActionDetail({ action: view, expected_version: '4' }));
+  assert.throws(() => parseActionDetail({ action: view }));
+  assert.deepEqual(parseTaskBudgetExtensionResult({ task_id: 't9', additional_credits: 50 }), { task_id: 't9', additional_credits: 50 });
+  assert.throws(() => parseTaskBudgetExtensionResult({ task_id: 't9', additional_credits: 0 }));
+  assert.throws(() => parseTaskBudgetExtensionResult({ task_id: '', additional_credits: 5 }));
 });
