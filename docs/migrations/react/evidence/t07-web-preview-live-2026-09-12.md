@@ -28,11 +28,17 @@ The accessibility tree showed:
 - preview content `browser preview content` and `second line`;
 - button `Download Private preview fixture.md`.
 
+Clicking that button downloaded `/Users/wuyongjun/Downloads/Private preview
+fixture.md`. The downloaded file was 35 bytes and had SHA-256
+`7e0692730b4e720619c720841333d1a742a38cf2bb7ccc5036d673107671ea0c`, matching
+the authenticated preview response byte-for-byte.
+
 The browser initially showed the authoritative unavailable state while the
 document was `processing`; after the disposable isolated SQLite fixture was
 advanced to `completed`, the same route rendered the protected preview content
 and download action.
 
-This proves authenticated API bytes and the Web success-state renderer. The
-full native browser download-byte assertion and all legacy format variants
-remain separate acceptance work; T07 remains `review`.
+This proves authenticated API bytes, the Web success-state renderer, and the
+browser download byte/filename path for this Markdown fixture. Native chooser
+upload, search-to-reference/download, and all legacy format variants remain
+separate acceptance work; T07 remains `review`.
