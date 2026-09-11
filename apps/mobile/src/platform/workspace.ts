@@ -10,6 +10,22 @@ export interface WorkspaceSelectionStore {
   deleteItemAsync(key: string): Promise<void>;
 }
 
+export function shouldLoadWorkspaceRoute(input: {
+  hydrating: boolean;
+  credentialKind: 'anonymous' | 'bearer' | 'embed';
+}): boolean {
+  return !input.hydrating && input.credentialKind === 'bearer';
+}
+
+export function createSessionEpoch() {
+  let value = 0;
+  return {
+    current: () => value,
+    invalidate: () => { value += 1; },
+    isCurrent: (expected: number) => expected === value,
+  };
+}
+
 export function shouldHydrateWorkspaceMemberships(input: {
   hydrating: boolean;
   credentialKind: 'anonymous' | 'bearer' | 'embed';

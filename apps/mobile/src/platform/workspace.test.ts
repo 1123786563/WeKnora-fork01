@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createSingleFlight, createWorkspaceSelectionAdapter, parseMobileWorkspaces, shouldHydrateWorkspaceMemberships, toWorkspaceId } from './workspace.ts';
+import { createSessionEpoch, createSingleFlight, createWorkspaceSelectionAdapter, parseMobileWorkspaces, shouldHydrateWorkspaceMemberships, shouldLoadWorkspaceRoute, toWorkspaceId } from './workspace.ts';
 
 function store(initial: string | null = null) {
   let value = initial;
@@ -66,4 +66,21 @@ test('shares one in-flight workspace refresh instead of issuing concurrent auth 
   resolve('loaded');
   assert.equal(await third, 'loaded');
   assert.equal(calls, 2);
+});
+
+test('does not load the workspace route until a restored bearer session is ready', () => {
+  assert.equal(shouldLoadWorkspaceRoute({ hydrating: true, credentialKind: 'anonymous' }), false);
+  assert.equal(shouldLoadWorkspaceRoute({ hydrating: false, credentialKind: 'anonymous' }), false);
+  assert.equal(shouldLoadWorkspaceRoute({ hydrating: false, credentialKind: 'embed' }), false);
+  assert.equal(shouldLoadWorkspaceRoute({ hydrating: false, credentialKind: 'bearer' }), true);
+});
+
+test('invalidates a workspace refresh when the session changes', () => {
+  const epoch = createSessionEpoch();
+  const started = epoch.current();
+  assert.equal(epoch.isCurrent(started), true);
+  epoch.invalidate();
+  assert.equal(epoch.isCurrent(started), false);
+  const next = epoch.current();
+  assert.equal(epoch.isCurrent(next), true);
 });

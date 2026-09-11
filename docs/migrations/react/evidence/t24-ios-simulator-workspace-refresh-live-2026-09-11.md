@@ -1,8 +1,8 @@
 # T24 iOS Workspace refresh follow-up
 
-日期：2026-09-11  
-分支：`codex/react-multiclient`  
-设备：iPhone 17 Pro Simulator，iOS 26.5  
+日期：2026-09-11
+分支：`codex/react-multiclient`
+设备：iPhone 17 Pro Simulator，iOS 26.5
 运行时：当前 worktree Metro，`EXPO_PUBLIC_API_BASE_URL=http://127.0.0.1:18082`；隔离 Lite 服务和临时 SQLite 数据目录仅用于本次验证。
 
 ## 问题与修复
@@ -13,8 +13,10 @@
 
 - `refreshWorkspaces` 使用稳定的 `createSingleFlight` 回调，同一时间只允许一个 `auth/me` 请求；
 - Workspace 路由只依赖稳定的 `refreshWorkspaces`，不再依赖整个 runtime 对象；
+- Workspace route 在 SecureStore hydration 完成且凭证为 bearer 前不会发起 `auth/me`，匿名 deep-link 会回到登录页；
 - bearer 凭证恢复完成且没有缓存 memberships 时，Provider 自动补拉一次 `auth/me`；
-- 新增 memberships hydration 条件和 single-flight 回归测试。
+- refresh 结果带 session epoch 检查，迟到响应不会在 logout 或 workspace switch 后写回旧 memberships/tenant；
+- 新增 route readiness、session epoch、memberships hydration 和 single-flight 回归测试。
 
 ## 验证
 
@@ -29,7 +31,7 @@ exit 1；原有 3 项通过，新增 hydration/single-flight 2 项失败（缺�
 
 ```text
 node --import tsx --test 'apps/mobile/src/**/*.test.ts'
-36/36 passed，exit 0
+38/38 passed，exit 0
 
 pnpm --filter @weknora/mobile typecheck
 exit 0
@@ -42,11 +44,12 @@ exit 0
 
 1. 现有隔离 Lite 账号在真实 iOS 原生宿主中保持已认证状态，进入 Knowledge bases 后点击 `Workspace`。
 2. 页面在等待 5 秒后稳定显示 `mobilet24's Workspace · owner · Current`，没有继续显示加载指示器。
-3. 返回 Knowledge bases → Manage → Workspace API keys，页面显示 `Workspace role: owner`，并显示真实后端返回的 `No API keys returned.` 空态；这证明恢复后的 memberships 已可用于角色判定。
-4. 此次验证未记录账号密码、Bearer token 或临时数据库内容；隔离服务/数据仅用于本地探针。
+3. 返回 Knowledge bases → Manage → Workspace API keys，页面显示 `Workspace role: owner`，并显示真实后端返回的 `No API keys returned.` 空态；这证明当前运行时 memberships 可用于角色判定。
+4. 这次 follow-up 没有执行终止/重启原生进程后的 SecureStore-only 冷恢复，因此不把上述观察描述成已证明的 cold restore；原生认证、SecureStore 和真实登录证据见 T20/T24 既有证据文件。
+5. 此次验证未记录账号密码、Bearer token 或临时数据库内容；隔离服务/数据仅用于本地探针。
 
 ## 证据边界
 
-- 这是 iOS Simulator 的真实原生宿主、Metro 和隔离 Lite 后端证据，不是 mock 或仅 Expo export 证据。
+- 这是 iOS Simulator 的真实原生宿主、Metro 和隔离 Lite 后端证据，不是 mock 或仅 Expo export 证据；本文件只证明 Workspace 稳定性和当前角色呈现。
 - Android 没有可用设备或模拟器，Android 原生运行时仍未验收。
 - 没有把这次 follow-up 误记为完整 T24 接受；Wails Windows/Linux、部署环境、完整浏览器/角色矩阵以及 Android 原生运行仍是开放项。

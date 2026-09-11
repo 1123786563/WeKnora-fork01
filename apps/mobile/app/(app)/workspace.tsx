@@ -1,23 +1,26 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, SafeAreaView, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 import { useMobileRuntime } from '../../src/runtime.tsx';
+import { shouldLoadWorkspaceRoute } from '../../src/platform/workspace.ts';
 
 export default function WorkspaceRoute() {
   const router = useRouter();
-  const { refreshWorkspaces, switchWorkspace, tenantId, workspaces } = useMobileRuntime();
+  const { credential, hydrating, refreshWorkspaces, switchWorkspace, tenantId, workspaces } = useMobileRuntime();
+  const ready = shouldLoadWorkspaceRoute({ hydrating, credentialKind: credential.kind });
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
+    if (!ready) return;
     setLoading(true); setError('');
     try { await refreshWorkspaces(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to load workspaces'); }
     finally { setLoading(false); }
-  }, [refreshWorkspaces]);
+  }, [ready, refreshWorkspaces]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { if (ready) void load(); }, [load, ready]);
 
   async function select(id: number) {
     if (String(id) === tenantId) return;
@@ -25,6 +28,11 @@ export default function WorkspaceRoute() {
     try { await switchWorkspace(id); router.back(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to switch workspace'); }
     finally { setBusyId(null); }
+  }
+
+  if (!ready) {
+    if (hydrating) return <SafeAreaView style={{ flex: 1, justifyContent: 'center' }}><ActivityIndicator accessibilityLabel="Restoring session" /></SafeAreaView>;
+    return <Redirect href="/(auth)/login" />;
   }
 
   return <SafeAreaView style={{ flex: 1, padding: 16 }}>

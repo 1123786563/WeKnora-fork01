@@ -6,7 +6,7 @@ import { resolveMobileApiBaseUrl } from './platform/transport.ts';
 import { createSecureCredentialAdapter } from './platform/credentials.ts';
 import { createServerAddressAdapter } from './platform/server.ts';
 import { createMobileTransport } from './platform/transport.ts';
-import { createSingleFlight, createWorkspaceSelectionAdapter, parseMobileWorkspaces, shouldHydrateWorkspaceMemberships, toWorkspaceId, type MobileWorkspace } from './platform/workspace.ts';
+import { createSessionEpoch, createSingleFlight, createWorkspaceSelectionAdapter, parseMobileWorkspaces, shouldHydrateWorkspaceMemberships, toWorkspaceId, type MobileWorkspace } from './platform/workspace.ts';
 import { parseMobileOIDCCallback } from './platform/oidc.ts';
 
 const OIDC_STATE_KEY = 'weknora.mobile.oidc-state';
@@ -35,6 +35,7 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
   const adapter = useMemo(() => createSecureCredentialAdapter(), []);
   const serverAdapter = useMemo(() => createServerAddressAdapter(SecureStore), []);
   const workspaceAdapter = useMemo(() => createWorkspaceSelectionAdapter(SecureStore), []);
+  const sessionEpoch = useMemo(() => createSessionEpoch(), []);
   const [credential, setCredential] = useState<Credential>({ kind: 'anonymous' });
   const credentialRef = useRef<Credential>({ kind: 'anonymous' });
   const [hydrating, setHydrating] = useState(true);
@@ -76,6 +77,7 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
   const client = useMemo(() => createWeKnoraClient({ baseURL, transport }), [baseURL, transport]);
 
   const adoptSession = useCallback(async (session: AuthSession) => {
+    sessionEpoch.invalidate();
     const next: Credential = { kind: 'bearer', accessToken: session.token, refreshToken: session.refreshToken };
     await adapter.write(next);
     updateCredential(next);
@@ -85,7 +87,7 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
       setTenantId(String(activeTenantId));
       await workspaceAdapter.write(activeTenantId);
     }
-  }, [adapter, updateCredential, workspaceAdapter]);
+  }, [adapter, sessionEpoch, updateCredential, workspaceAdapter]);
 
   useEffect(() => {
     let active = true;
@@ -157,12 +159,13 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
     setBaseURL(next || resolveMobileApiBaseUrl(process.env.EXPO_PUBLIC_API_BASE_URL || ''));
   }
   const refreshWorkspaces = useMemo(() => createSingleFlight(async () => {
+    const startedAt = sessionEpoch.current();
     const identity = await client.auth.me();
+    if (!sessionEpoch.isCurrent(startedAt) || credentialRef.current.kind !== 'bearer') return;
     setWorkspaces(parseMobileWorkspaces(identity.memberships));
     const activeTenantId = toWorkspaceId(identity.tenant?.id);
     setTenantId(activeTenantId === null ? null : String(activeTenantId));
-    await workspaceAdapter.write(activeTenantId);
-  }), [client, workspaceAdapter]);
+  }), [client, sessionEpoch]);
 
   useEffect(() => {
     if (!shouldHydrateWorkspaceMemberships({ hydrating, credentialKind: credential.kind, workspaceCount: workspaces.length })) return;
@@ -172,6 +175,7 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
   async function switchWorkspace(id: number) {
     const workspaceId = toWorkspaceId(id);
     if (workspaceId === null) throw new Error('workspace id must be a positive safe integer');
+    sessionEpoch.invalidate();
     const refreshToken = credentialRef.current.kind === 'bearer' ? credentialRef.current.refreshToken : undefined;
     const session = await client.auth.switchTenant(workspaceId, refreshToken);
     const next: Credential = { kind: 'bearer', accessToken: session.token, refreshToken: session.refreshToken };
@@ -181,7 +185,7 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
     await workspaceAdapter.write(workspaceId);
     if (session.memberships) setWorkspaces(parseMobileWorkspaces(session.memberships));
   }
-  async function logout() { await refreshCoordinator.logout(); await workspaceAdapter.write(null); setWorkspaces([]); setTenantId(null); updateCredential({ kind: 'anonymous' }); }
+  async function logout() { sessionEpoch.invalidate(); await refreshCoordinator.logout(); await workspaceAdapter.write(null); setWorkspaces([]); setTenantId(null); updateCredential({ kind: 'anonymous' }); }
 
   return <RuntimeContext.Provider value={{ client, baseURL, credential, hydrating, oidcError, tenantId, workspaces, setServerAddress, refreshWorkspaces, switchWorkspace, register, registerByInvite, startOIDC, login, logout }}>{children}</RuntimeContext.Provider>;
 }
