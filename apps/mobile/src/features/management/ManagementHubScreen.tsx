@@ -18,7 +18,7 @@ export function ManagementHubScreen() {
   useEffect(() => { void load(); }, [load]);
   function open(capability: MobileCapability) {
     if (capability.key === 'configuration') router.push('/management/configuration');
-    else if (capability.key === 'identity') router.push('/management/identity');
+    else if (capability.key === 'identity') router.push('/management/administration');
   }
   return <SafeAreaView style={{ flex: 1, padding: 16 }}>
     <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}><Text accessibilityRole="header" style={{ fontSize: 24, fontWeight: '700' }}>Manage</Text><Pressable onPress={() => router.back()}><Text style={{ color: '#2864dc' }}>Back</Text></Pressable></View>
