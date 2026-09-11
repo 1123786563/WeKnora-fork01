@@ -135,7 +135,7 @@
 - 迁移器：pg_advisory_lock(835471001) 串行化；001 作幂等引导并记入 semantic.schema_migrations（实测重复运行仅 1 行）。
 - 计划偏差记录：CAS 守卫在计划 SQL 基础上增加 (state='accepted' AND lease_until IS NULL) 分支使未领取操作可被 superseded/取消路径触达（评审确认过期租约必为 running，该分支不可能服务失联 worker）；内联请求 4MiB 上限对应规格 §7 manifest_ref 大文档路径。
 - review：规格符合性 PASS（9 项；两核心断言逐字、接口签名、schema、租约纪律、状态机、四项验收扩展、worker、无 skip、卫生）；代码质量 PASS（原 BLOCKER+10 MINOR+复审新增 2 MINOR 全部实证关闭；遗留 nits：迁移引导注释措辞、重复测试已清理）。
-- 提交 SHA：（本记录与代码同批提交后补记）
+- 提交 SHA：8af2691（feat(semantic): i01 持久操作、幂等与worker租约）。
 - 剩余限制：renew 未校验租约存活（计划仅要求匹配 token；fencing 安全，评审确认）；连接为逐调用建立（池化归 O01）；retry_after 列预留 I05。
 
 ## 当前边界
