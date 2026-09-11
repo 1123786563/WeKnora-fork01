@@ -1,8 +1,10 @@
 # T24 React cross-client and candidate rerun (2026-09-12)
 
-The current branch HEAD `3823ad6` was rebuilt as a React Web/Embed candidate.
+Source commit `3823ad6` was rebuilt as a React Web/Embed candidate.
 `dist/react-web/web/BUILD_INFO.json` reports `renderer: react` and commit
-`3823ad6`; the artifact contains both `config.js` and `favicon.svg`.
+`3823ad6`; the artifact contains both `config.js` and `favicon.svg`. The later
+`46bc313` change only adds route assertions and does not change the bundle
+inputs.
 
 ## Verification
 

@@ -912,5 +912,5 @@
 
 ### T24 React cross-client rerun (2026-09-12)
 
-- Current HEAD `3823ad6` rebuilt a React Web/Embed candidate whose `BUILD_INFO.json` identifies the React renderer and whose artifact contains the runtime config and favicon assets. Shared 180/180, Web 94/94, Mobile 61/61, Desktop 2/2, and Embed 3/3 tests passed; all corresponding typechecks, Web/Embed builds, boundary/diff checks, and release preflight scripts passed.
+- Source commit `3823ad6` rebuilt a React Web/Embed candidate whose `BUILD_INFO.json` identifies the React renderer and whose artifact contains the runtime config and favicon assets; later route assertions are in `46bc313`. Shared 180/180, Web 94/94, Mobile 61/61, Desktop 2/2, and Embed 3/3 tests passed; all corresponding typechecks, Web/Embed builds, boundary/diff checks, and release preflight scripts passed.
 - This remains local static/Node/bundle/package evidence. Installed Wails Windows/Linux behavior, complete device and browser/role matrix, registry/deployed proxy behavior, provider-backed flows, and production rollback remain open, so T24 stays `review` and T25 remains gated.
