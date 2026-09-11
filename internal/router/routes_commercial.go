@@ -16,7 +16,7 @@ import (
 // commercial.CanManageBilling gate observable (unauthorized Admin 403,
 // authorised caller 501). Tenant scope is ALWAYS derived from the
 // authenticated context — no tenant path parameter exists by design.
-func RegisterCommercialRoutes(r *gin.RouterGroup, commercialHandler *handler.CommercialHandler) {
+func RegisterCommercialRoutes(r *gin.RouterGroup, commercialHandler *handler.CommercialHandler, callbacksHandlers ...*handler.PaymentCallbacksHandler) {
 	if commercialHandler == nil {
 		return
 	}
@@ -30,5 +30,28 @@ func RegisterCommercialRoutes(r *gin.RouterGroup, commercialHandler *handler.Com
 		commercialGroup.GET("/usage", commercialHandler.Usage)
 		commercialGroup.GET("/orders", commercialHandler.Orders)
 		commercialGroup.POST("/orders", commercialHandler.NotImplemented)
+	}
+
+	// Provider payment callbacks: publicly reachable and authenticated by
+	// provider signature verification instead of session/API-key. They hang
+	// DIRECTLY on the parent group — the capability/billing guards above
+	// would reject an unauthenticated provider call. There is no tenant
+	// parameter by design: the handler rebuilds the trusted tenant from the
+	// local order registry after Verify succeeds. With no provider wired
+	// yet the route still exists and fails closed (503 FAIL, nothing
+	// persisted); later tasks pass a configured callbacks handler.
+	var callbacks *handler.PaymentCallbacksHandler
+	for _, ch := range callbacksHandlers {
+		if ch != nil {
+			callbacks = ch
+			break
+		}
+	}
+	if callbacks == nil {
+		callbacks = handler.NewPaymentCallbacksHandler(nil, nil)
+	}
+	callbacksGroup := r.Group("/commercial/callbacks")
+	{
+		callbacksGroup.POST("/:provider", callbacks.HandleProviderCallback)
 	}
 }
