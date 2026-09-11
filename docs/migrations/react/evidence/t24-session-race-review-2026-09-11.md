@@ -22,8 +22,10 @@ race finding.
   started stale write to the previous credential when no newer write wins, and
   exposes the same guarded writer to session adoption and workspace switching.
 - `apps/mobile/src/runtime.tsx` captures an epoch for adoption and switching,
-  checks it after every asynchronous boundary, uses the guarded credential
-  writer, and clears the stored tenant when the adopted session has no tenant.
+  checks it after every asynchronous boundary, blocks workspace reconciliation
+  during session transitions, guards initial SecureStore hydration and server
+  address changes, uses the guarded credential writer, and clears the stored
+  tenant when the adopted session has no tenant.
 - `apps/mobile/src/platform/workspace.ts` serializes workspace-selection writes
   with newest-wins ordering; stale queued writes are skipped.
 
@@ -33,7 +35,7 @@ Focused command:
 
 ```text
 pnpm exec tsx --test packages/api-client/src/auth.test.ts apps/mobile/src/platform/workspace.test.ts
-exit 0 — 17/17
+exit 0 — 18/18
 ```
 
 The regression coverage includes an already-started credential write,
@@ -41,7 +43,7 @@ replacement of an invalidated in-flight refresh, and ordering of a delayed
 workspace selection write. The broader checks also passed:
 
 ```text
-pnpm test:shared       exit 0 — 161/161
+pnpm test:shared       exit 0 — 162/162
 pnpm test:mobile       exit 0 — 39/39
 pnpm typecheck:shared  exit 0
 pnpm typecheck:mobile  exit 0

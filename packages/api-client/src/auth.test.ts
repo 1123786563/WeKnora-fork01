@@ -167,6 +167,37 @@ test('does not reuse an invalidated in-flight refresh for a new session', async 
   assert.deepEqual(credentials.value, { kind: 'bearer', accessToken: 'access-2', refreshToken: 'old-refresh' });
 });
 
+test('restores a session write that was invalidated after adapter persistence started', async () => {
+  const base = adapter({ kind: 'bearer', accessToken: 'old-access', refreshToken: 'old-refresh' });
+  let release!: () => void;
+  let started!: () => void;
+  let calls = 0;
+  const writeStarted = new Promise<void>((resolve) => { started = resolve; });
+  const writeGate = new Promise<void>((resolve) => { release = resolve; });
+  const credentials: CredentialAdapter & { value: Credential } = {
+    get value() { return base.value; },
+    set value(value: Credential) { base.value = value; },
+    async read() { return base.read(); },
+    async write(value) {
+      calls += 1;
+      started();
+      if (calls === 1) await writeGate;
+      await base.write(value);
+    },
+    async clear() { await base.clear(); },
+  };
+  const coordinator = createRefreshCoordinator({ credentials, refresh: async () => ({}) });
+
+  const storing = coordinator.write({ kind: 'bearer', accessToken: 'new-access', refreshToken: 'new-refresh' });
+  await writeStarted;
+  await coordinator.invalidate({ clear: false });
+  release();
+
+  await assert.rejects(storing, (error: unknown) => error instanceof AuthError && error.code === 'AUTH_INVALIDATED');
+  assert.deepEqual(credentials.value, { kind: 'bearer', accessToken: 'old-access', refreshToken: 'old-refresh' });
+  assert.equal(calls, 2);
+});
+
 test('embed profiles never invoke refresh and are not cleared', async () => {
   const credentials = adapter({ kind: 'embed', token: 'embed-token', visitorId: 'visitor-1' });
   let calls = 0;

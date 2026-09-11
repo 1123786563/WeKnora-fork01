@@ -127,8 +127,15 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
       if (generation !== startGeneration || persistenceIntent !== intent) {
         throw new AuthError('AUTH_INVALIDATED', 'The credential was invalidated before it could be stored');
       }
+      const previous = await options.credentials.read();
+      if (generation !== startGeneration || persistenceIntent !== intent) {
+        throw new AuthError('AUTH_INVALIDATED', 'The credential was invalidated before it could be stored');
+      }
       await options.credentials.write(value);
       if (generation !== startGeneration || persistenceIntent !== intent) {
+        if (persistenceIntent === intent) {
+          await options.credentials.write(previous);
+        }
         throw new AuthError('AUTH_INVALIDATED', 'The credential was invalidated while it was being stored');
       }
     });
