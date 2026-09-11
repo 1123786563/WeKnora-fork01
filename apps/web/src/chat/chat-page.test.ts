@@ -10,7 +10,7 @@ import { ChatPage } from '@weknora/views';
 test('chat page exposes the selected agent and server-disabled state at the chat entry', () => {
   const html = renderToStaticMarkup(React.createElement(ChatPage, {
     sessions: [],
-    selectedSessionId: null,
+    selectedSessionId: 'session-1',
     messages: [],
     draft: '',
     onSelectSession: () => undefined,
@@ -25,6 +25,7 @@ test('chat page exposes the selected agent and server-disabled state at the chat
     onResolveToolApproval: async () => undefined,
     onAuthorizeOAuth: async () => undefined,
     onCancelOAuth: async () => undefined,
+    onSteer: async () => undefined,
   }));
 
   assert.match(html, /id="wk-chat-agent"/);
@@ -33,4 +34,5 @@ test('chat page exposes the selected agent and server-disabled state at the chat
   assert.match(html, /Disabled · disabled/);
   assert.match(html, /Approve search_docs/);
   assert.match(html, /Authorize Docs MCP/);
+  assert.match(html, /Queue follow-up/);
 });

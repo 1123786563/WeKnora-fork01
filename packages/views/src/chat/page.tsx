@@ -47,6 +47,7 @@ export interface ChatPageProps {
   onResolveToolApproval?(pendingId: string, decision: 'approve' | 'reject'): Promise<void>;
   onAuthorizeOAuth?(pendingId: string, serviceId: string): Promise<void>;
   onCancelOAuth?(pendingId: string): Promise<void>;
+  onSteer?(content: string): Promise<void>;
 }
 
 function ChatActionCards(props: Pick<ChatPageProps, 'toolApprovals' | 'oauthApprovals' | 'onResolveToolApproval' | 'onAuthorizeOAuth' | 'onCancelOAuth'>) {
@@ -74,6 +75,27 @@ function ChatActionCards(props: Pick<ChatPageProps, 'toolApprovals' | 'oauthAppr
       {approval.status === 'pending' && approval.serviceId && props.onAuthorizeOAuth && props.onCancelOAuth ? <div className="wk-list-actions"><button type="button" disabled={busy !== null} onClick={() => void run(approval.pendingId, () => props.onAuthorizeOAuth!(approval.pendingId, approval.serviceId!))}>Authorize {approval.serviceName ?? 'service'}</button><button type="button" disabled={busy !== null} onClick={() => void run(approval.pendingId, () => props.onCancelOAuth!(approval.pendingId))}>Cancel</button></div> : <small>{approval.authorized ? 'Authorized' : approval.reason ?? 'Resolved'}</small>}
     </div>)}
   </section>;
+}
+
+function SteerComposer({ onSteer }: { onSteer: (content: string) => Promise<void> }) {
+  const [draft, setDraft] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const content = draft.trim();
+    if (!content) return;
+    setBusy(true); setError(null);
+    try { await onSteer(content); setDraft(''); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Follow-up failed'); } finally { setBusy(false); }
+  }
+
+  return <form className="wk-chat-steer" onSubmit={(event) => void submit(event)}>
+    <label htmlFor="wk-chat-steer-draft">Follow-up while running</label>
+    <textarea id="wk-chat-steer-draft" rows={2} value={draft} onChange={(event) => setDraft(event.target.value)} disabled={busy} />
+    {error ? <p role="alert">{error}</p> : null}
+    <button type="submit" disabled={busy || !draft.trim()}>Queue follow-up</button>
+  </form>;
 }
 
 export function ChatPage(props: ChatPageProps) {
@@ -108,6 +130,7 @@ export function ChatPage(props: ChatPageProps) {
       {props.error ? <p role="alert">{props.error}</p> : null}
       {props.loadingMessages ? <p role="status">Loading messages…</p> : null}
       <MessageList messages={props.messages} pending={pending} onRetry={pending?.status === 'failed' ? () => void send({ content: pending.content, status: 'pending' }) : undefined} />
+      {props.selectedSessionId && props.onSteer ? <SteerComposer onSteer={props.onSteer} /> : null}
       <ChatComposer draft={props.draft} onDraftChange={props.onDraftChange} onSubmit={(submission) => void send(submission)} />
     </section>
   </main>;

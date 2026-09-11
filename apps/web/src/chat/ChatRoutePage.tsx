@@ -100,6 +100,11 @@ export function ChatRoutePage({ client, scopeController }: ChatRoutePageProps) {
     await client.chat.approvals.cancelOAuth(pendingId, scope.signal);
   }
 
+  async function steer(content: string): Promise<void> {
+    if (!selectedSessionId) throw new Error('Create or select a conversation first.');
+    await client.chat.steer.enqueue(selectedSessionId, { query: content, delivery: 'after', channel: 'web' }, scope.signal);
+  }
+
   async function authorizeOAuth(pendingId: string, serviceId: string): Promise<void> {
     const authorization = await client.configuration.mcp.oauth.authorizeUrl(serviceId, {
       redirectURI: `${window.location.origin}/api/v1/mcp-oauth/callback`,
@@ -179,6 +184,7 @@ export function ChatRoutePage({ client, scopeController }: ChatRoutePageProps) {
     onResolveToolApproval={resolveToolApproval}
     onAuthorizeOAuth={authorizeOAuth}
     onCancelOAuth={cancelOAuth}
+    onSteer={steer}
     send={send}
   />;
 }
