@@ -24,6 +24,29 @@ test('builds configuration payloads without putting secrets into the main resour
   });
 });
 
+test('rejects secret-shaped keys in arbitrary main-resource details', () => {
+  assert.throws(() => configurationPayload('models', {
+    name: 'Model', details: '{"provider":{"apiKey":"secret"}}',
+  }), /secret|credential/i);
+  assert.throws(() => configurationPayload('mcp', {
+    name: 'MCP', transportType: 'sse', details: '{"nested":{"clientSecret":"secret"}}',
+  }), /secret|credential/i);
+});
+
+test('includes the selected MCP transport type while preserving safe auth structure', () => {
+  assert.deepEqual(configurationPayload('mcp', {
+    name: 'MCP', transportType: 'http-streamable', url: 'https://mcp.test', details: JSON.stringify({
+      auth_type: 'api_key', api_key_header: 'X-API-Key', scopes: ['tools:read'],
+    }),
+  }), {
+    name: 'MCP', url: 'https://mcp.test', enabled: true, transport_type: 'http-streamable',
+    auth_config: { auth_type: 'api_key', api_key_header: 'X-API-Key', scopes: ['tools:read'] },
+  });
+  assert.throws(() => configurationPayload('mcp', {
+    name: 'MCP', transportType: 'ftp', details: '{}',
+  }), /transport/i);
+});
+
 test('rejects malformed configuration JSON instead of sending an empty object', () => {
   assert.deepEqual(parseConfigurationObject('{"enabled":true}', 'agent config'), { enabled: true });
   assert.throws(() => parseConfigurationObject('[]', 'agent config'), /must be a JSON object/);

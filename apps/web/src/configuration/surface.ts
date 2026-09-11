@@ -1,4 +1,5 @@
 export type ConfigurationSectionKey = 'agents' | 'models' | 'mcp' | 'skills';
+export type McpTransportType = 'sse' | 'http-streamable' | 'stdio';
 
 export const configurationSections: Array<{ key: ConfigurationSectionKey; title: string; description: string; writeSupport: 'read-only' | 'supported' }> = [
   { key: 'agents', title: 'Agents', description: 'Custom and built-in agent configurations available in this workspace.', writeSupport: 'supported' },
@@ -27,7 +28,22 @@ export function parseConfigurationObject(value: string, label: string): Record<s
   let parsed: unknown;
   try { parsed = JSON.parse(value); } catch { throw new Error(`${label} must be valid JSON`); }
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error(`${label} must be a JSON object`);
+  rejectSecretKeys(parsed, label);
   return parsed as Record<string, unknown>;
+}
+
+const secretKeys = new Set(['apikey', 'appsecret', 'accesstoken', 'refreshtoken', 'token', 'clientsecret', 'password', 'secret']);
+function isSecretKey(key: string): boolean { return secretKeys.has(key.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()); }
+function rejectSecretKeys(value: unknown, path: string): void {
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => rejectSecretKeys(item, `${path}[${index}]`));
+    return;
+  }
+  if (value === null || typeof value !== 'object') return;
+  Object.entries(value as Record<string, unknown>).forEach(([key, item]) => {
+    if (isSecretKey(key)) throw new Error(`${path}.${key} is a secret field; use the dedicated credentials endpoint`);
+    rejectSecretKeys(item, `${path}.${key}`);
+  });
 }
 
 export function configurationPayload(section: ConfigurationSectionKey, draft: ConfigurationDraft): Record<string, unknown> {
@@ -37,7 +53,11 @@ export function configurationPayload(section: ConfigurationSectionKey, draft: Co
     return { name: draft.name.trim(), display_name: draft.name.trim(), description: draft.description ?? '', type: draft.type ?? '', source: draft.source ?? '', parameters: details };
   }
   if (section === 'agents') return { name: draft.name.trim(), description: draft.description ?? '', config: details };
-  if (section === 'mcp') return { name: draft.name.trim(), url: draft.url ?? '', enabled: draft.enabled !== false, auth_config: details };
+  if (section === 'mcp') {
+    const transportType = draft.transportType ?? 'sse';
+    if (transportType !== 'sse' && transportType !== 'http-streamable' && transportType !== 'stdio') throw new Error('MCP transport type is invalid');
+    return { name: draft.name.trim(), url: draft.url ?? '', enabled: draft.enabled !== false, transport_type: transportType, auth_config: details };
+  }
   throw new Error('Skills are read-only');
 }
 

@@ -110,7 +110,10 @@ test('keeps model and MCP credentials on dedicated secret subresources', async (
   const api = createConfigurationApi(async (request) => {
     requests.push(request);
     if (request.method === 'DELETE') return undefined;
-    return { success: true, data: { fields: { api_key: { configured: true }, token: { configured: true } } } };
+    if ((request.path as string).includes('/models/')) {
+      return { success: true, data: { fields: { api_key: { configured: true }, app_secret: { configured: false } } } };
+    }
+    return { success: true, data: { fields: { api_key: { configured: false }, token: { configured: true } } } };
   });
 
   assert.deepEqual(await api.models.credentials.put('model/1', { apiKey: 'secret' }), {
@@ -129,7 +132,7 @@ test('keeps model and MCP credentials on dedicated secret subresources', async (
   ]);
 });
 
-test('maps MCP test and tool inventory responses without treating an empty response as success', async () => {
+test('maps MCP test and tool inventory responses including empty tools and descriptions', async () => {
   const requests: unknown[] = [];
   let toolsCall = 0;
   const api = createConfigurationApi(async (request) => {
@@ -137,16 +140,62 @@ test('maps MCP test and tool inventory responses without treating an empty respo
     if (request.path.endsWith('/test')) return { success: true, data: { success: false, message: 'connection refused' } };
     if (request.path.endsWith('/tools')) {
       toolsCall += 1;
-      return toolsCall === 1 ? { success: true, data: [{ name: 'search', description: 'Search sources' }] } : { success: true, data: [] };
+      return toolsCall === 1 ? { success: true, data: [{ name: 'search', description: '' }] } : { success: true, data: [] };
     }
     return { success: true, data: [{ name: 'search', description: 'Search sources' }] };
   });
 
   assert.deepEqual(await api.mcp.test('mcp/1'), { success: false, message: 'connection refused' });
-  assert.deepEqual(await api.mcp.tools('mcp/1'), [{ name: 'search', description: 'Search sources' }]);
+  assert.deepEqual(await api.mcp.tools('mcp/1'), [{ name: 'search', description: '' }]);
   assert.deepEqual(requests, [
     { method: 'POST', path: '/api/v1/mcp-services/mcp%2F1/test' },
     { method: 'GET', path: '/api/v1/mcp-services/mcp%2F1/tools' },
   ]);
-  await assert.rejects(() => api.mcp.tools('mcp/1'), /successful array/);
+  assert.deepEqual(await api.mcp.tools('mcp/1'), []);
+});
+
+test('fails closed when credential status omits a required field', async () => {
+  const api = createConfigurationApi(async () => ({
+    success: true,
+    data: { fields: { api_key: { configured: true } } },
+  }));
+
+  await assert.rejects(() => api.models.credentials.put('model-1', { apiKey: 'new-key' }), /app_secret/);
+});
+
+test('rejects an unexpected response body from credential DELETE', async () => {
+  const api = createConfigurationApi(async () => ({ success: true }));
+
+  await assert.rejects(() => api.models.credentials.remove('model-1', 'api_key'), /204|empty|undefined/);
+});
+
+test('accepts only an empty 204 response from MCP OAuth revoke', async () => {
+  const api = createConfigurationApi(async () => undefined);
+
+  await api.mcp.oauth.revoke('mcp-1');
+});
+
+test('preserves MCP test tools and resources and rejects malformed nested entries', async () => {
+  const api = createConfigurationApi(async () => ({
+    success: true,
+    data: {
+      success: true,
+      message: 'connected',
+      tools: [{ name: 'search', description: '', inputSchema: { type: 'object' } }],
+      resources: [{ uri: 'file:///docs', name: 'Docs', description: '', mimeType: 'text/plain' }],
+    },
+  }));
+
+  assert.deepEqual(await api.mcp.test('mcp-1'), {
+    success: true,
+    message: 'connected',
+    tools: [{ name: 'search', description: '', inputSchema: { type: 'object' } }],
+    resources: [{ uri: 'file:///docs', name: 'Docs', description: '', mimeType: 'text/plain' }],
+  });
+
+  const malformed = createConfigurationApi(async () => ({
+    success: true,
+    data: { success: true, tools: [{ description: 'missing name' }] },
+  }));
+  await assert.rejects(() => malformed.mcp.test('mcp-1'), /name/);
 });

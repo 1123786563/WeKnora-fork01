@@ -1,12 +1,15 @@
 import type { ConfigurationRecord } from '@weknora/api-client';
 import type { ConfigurationDraft, ConfigurationSectionKey } from './surface.ts';
 
-const secretKeys = new Set(['api_key', 'app_secret', 'token', 'password', 'secret', 'client_secret', 'access_token', 'refresh_token']);
+type EditableConfigurationSection = Exclude<ConfigurationSectionKey, 'skills'>;
+
+const secretKeys = new Set(['apikey', 'appsecret', 'token', 'password', 'secret', 'clientsecret', 'accesstoken', 'refreshtoken']);
+function isSecretKey(key: string): boolean { return secretKeys.has(key.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()); }
 
 function safeObject(value: unknown): Record<string, unknown> {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return {};
   return Object.fromEntries(Object.entries(value as Record<string, unknown>)
-    .filter(([key]) => !secretKeys.has(key.toLowerCase()))
+    .filter(([key]) => !isSecretKey(key))
     .map(([key, item]) => [key, item && typeof item === 'object' && !Array.isArray(item) ? safeObject(item) : item]));
 }
 
@@ -18,9 +21,22 @@ export function configurationDraftFromRecord(section: Exclude<ConfigurationSecti
   return {
     id: text(row.id), name: text(row.name), description: text(row.description), type: text(row.type), source: text(row.source),
     details: JSON.stringify(safeObject(details ?? {})), apiKey: '', appSecret: '', token: '',
+    ...(section === 'mcp' ? { transportType: text(row.transport_type) } : {}),
     enabled: row.enabled !== false, url: text(row.url),
     credentialStatus: safeObject(row.credentials),
   };
+}
+
+export function newConfigurationDraft(section: EditableConfigurationSection): ConfigurationDraft {
+  return {
+    name: '', description: '', type: section === 'models' ? 'KnowledgeQA' : '', source: section === 'models' ? 'custom' : '', details: '{}',
+    apiKey: '', appSecret: '', token: '', ...(section === 'mcp' ? { transportType: 'sse' } : {}),
+    enabled: true, url: '', credentialStatus: {},
+  };
+}
+
+export function credentialStatusAfterClear(status: Record<string, unknown> | undefined, field: string): Record<string, unknown> {
+  return { ...safeObject(status ?? {}), [field]: { configured: false } };
 }
 
 export function credentialInput(section: ConfigurationSectionKey, input: Pick<ConfigurationDraft, 'apiKey' | 'appSecret' | 'token'>): Record<string, string> {

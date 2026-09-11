@@ -4,7 +4,8 @@ import type { ClientRequest } from './client.ts';
 export interface ConfigurationRecord { id: string; name: string; [key: string]: unknown }
 export type AgentConfiguration = ConfigurationRecord & { config?: Record<string, unknown>; is_builtin?: boolean };
 export type ModelConfiguration = ConfigurationRecord & { type?: string; source?: string; parameters?: Record<string, unknown> };
-export type McpConfiguration = ConfigurationRecord & { enabled?: boolean; url?: string; tools?: unknown[] };
+export type McpTransportType = 'sse' | 'http-streamable' | 'stdio';
+export type McpConfiguration = ConfigurationRecord & { enabled?: boolean; url?: string; transport_type?: McpTransportType; tools?: unknown[] };
 export type SkillConfiguration = ConfigurationRecord & { description?: string; skills_available?: boolean };
 export interface AgentConfigurationList { items: AgentConfiguration[]; disabledOwnAgentIds: string[] }
 export interface SkillConfigurationList { items: SkillConfiguration[]; skillsAvailable: boolean }
@@ -29,9 +30,9 @@ function required(value: unknown, path: string): string {
   if (typeof value !== 'string' || value.trim() === '') throw new Error(`${path} must be a non-empty string`);
   return value;
 }
-const secretFields = new Set([
-  'api_key', 'app_secret', 'access_token', 'refresh_token', 'token', 'client_secret', 'password', 'secret',
-]);
+const secretFields = new Set(['apikey', 'appsecret', 'accesstoken', 'refreshtoken', 'token', 'clientsecret', 'password', 'secret']);
+function normalizedKey(key: string): string { return key.replace(/[^a-zA-Z0-9]/g, '').toLowerCase(); }
+function isSecretKey(key: string): boolean { return secretFields.has(normalizedKey(key)); }
 function credentialStatus(value: unknown): RecordValue {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return {};
   return Object.fromEntries(Object.entries(value as RecordValue).flatMap(([field, metadata]) => {
@@ -45,7 +46,7 @@ function withoutSecrets(value: unknown): unknown {
   if (value === null || typeof value !== 'object') return value;
   return Object.fromEntries(
     Object.entries(value as RecordValue)
-      .filter(([key]) => !secretFields.has(key.toLowerCase()))
+      .filter(([key]) => !isSecretKey(key))
       .map(([key, item]) => [key, key === 'credentials' ? credentialStatus(item) : withoutSecrets(item)]),
   );
 }
@@ -117,6 +118,38 @@ function parseOAuthStatus(value: unknown): McpOAuthStatus {
   return { authorized: data.authorized, state: data.state, refreshAvailable: data.refresh_available, ...(data.expires_at === undefined ? {} : { expiresAt: data.expires_at }) };
 }
 
+function parseMcpTool(value: unknown, path: string): McpTool {
+  const row = record(value, path);
+  const tool: McpTool = { name: required(row.name, `${path}.name`) };
+  if (row.description !== undefined) {
+    if (typeof row.description !== 'string') throw new Error(`${path}.description must be a string`);
+    tool.description = row.description;
+  }
+  if (row.inputSchema !== undefined) tool.inputSchema = row.inputSchema;
+  if (row.require_approval !== undefined) {
+    if (typeof row.require_approval !== 'boolean') throw new Error(`${path}.require_approval must be a boolean`);
+    tool.requireApproval = row.require_approval;
+  }
+  return tool;
+}
+
+function parseMcpResource(value: unknown, path: string): McpResource {
+  const row = record(value, path);
+  const resource: McpResource = {
+    uri: required(row.uri, `${path}.uri`),
+    name: required(row.name, `${path}.name`),
+  };
+  if (row.description !== undefined) {
+    if (typeof row.description !== 'string') throw new Error(`${path}.description must be a string`);
+    resource.description = row.description;
+  }
+  if (row.mimeType !== undefined) {
+    if (typeof row.mimeType !== 'string') throw new Error(`${path}.mimeType must be a string`);
+    resource.mimeType = row.mimeType;
+  }
+  return resource;
+}
+
 function parseCredentialStatus(value: unknown, fields: readonly string[], path: string): Record<string, boolean> {
   const envelope = record(value, path);
   if (envelope.success !== true) throw new Error(`${path}.success must be true`);
@@ -124,11 +157,15 @@ function parseCredentialStatus(value: unknown, fields: readonly string[], path: 
   const metadata = record(data.fields, `${path}.data.fields`);
   return Object.fromEntries(fields.map((field) => {
     const item = metadata[field];
-    if (item === undefined) return [field, false];
+    if (item === undefined) throw new Error(`${path}.data.fields.${field} is required`);
     const configured = record(item, `${path}.data.fields.${field}`).configured;
     if (typeof configured !== 'boolean') throw new Error(`${path}.data.fields.${field}.configured must be a boolean`);
     return [field, configured];
   }));
+}
+
+function parseNoContent(value: unknown, path: string): void {
+  if (value !== undefined) throw new Error(`${path} must be an empty 204 response`);
 }
 
 function credentialBody(input: Record<string, unknown>, fields: Record<string, string>, path: string): Record<string, string> {
@@ -156,23 +193,21 @@ function parseMcpTest(value: unknown): McpTestResult {
     if (typeof data.oauth_required !== 'boolean') throw new Error('/mcp-services/test.data.oauth_required must be a boolean');
     result.oauthRequired = data.oauth_required;
   }
+  if (data.tools !== undefined) {
+    if (!Array.isArray(data.tools)) throw new Error('/mcp-services/test.data.tools must be an array');
+    result.tools = data.tools.map((item, index) => parseMcpTool(item, `/mcp-services/test.data.tools[${index}]`));
+  }
+  if (data.resources !== undefined) {
+    if (!Array.isArray(data.resources)) throw new Error('/mcp-services/test.data.resources must be an array');
+    result.resources = data.resources.map((item, index) => parseMcpResource(item, `/mcp-services/test.data.resources[${index}]`));
+  }
   return result;
 }
 
 function parseMcpTools(value: unknown): McpTool[] {
   const envelope = record(value, '/mcp-services/tools');
-  if (envelope.success !== true || !Array.isArray(envelope.data) || envelope.data.length === 0) throw new Error('/mcp-services/tools must be a successful array envelope');
-  return envelope.data.map((item, index) => {
-    const row = record(item, `/mcp-services/tools.data[${index}]`);
-    const tool: McpTool = { name: required(row.name, `/mcp-services/tools.data[${index}].name`) };
-    if (row.description !== undefined) tool.description = required(row.description, `/mcp-services/tools.data[${index}].description`);
-    if (row.inputSchema !== undefined) tool.inputSchema = row.inputSchema;
-    if (row.require_approval !== undefined) {
-      if (typeof row.require_approval !== 'boolean') throw new Error(`/mcp-services/tools.data[${index}].require_approval must be a boolean`);
-      tool.requireApproval = row.require_approval;
-    }
-    return tool;
-  });
+  if (envelope.success !== true || !Array.isArray(envelope.data)) throw new Error('/mcp-services/tools must be a successful array envelope');
+  return envelope.data.map((item, index) => parseMcpTool(item, `/mcp-services/tools.data[${index}]`));
 }
 
 export function createConfigurationApi(request: (input: ClientRequest) => Promise<unknown>) {
@@ -213,8 +248,8 @@ export function createConfigurationApi(request: (input: ClientRequest) => Promis
       const query = authorizationAttempt === undefined ? '' : `?authorization_attempt=${encodeURIComponent(authorizationAttempt)}`;
       return parseOAuthStatus(await request({ method: 'GET', path: `/api/v1/mcp-services/${id(serviceId, 'serviceId')}/oauth/status${query}`, ...(signal === undefined ? {} : { signal }) }));
     },
-    async revoke(serviceId: string, signal?: AbortSignal): Promise<ActionSuccessResponse> {
-      return parseActionSuccessResponse(await request({ method: 'DELETE', path: `/api/v1/mcp-services/${id(serviceId, 'serviceId')}/oauth/token`, ...(signal === undefined ? {} : { signal }) }));
+    async revoke(serviceId: string, signal?: AbortSignal): Promise<void> {
+      parseNoContent(await request({ method: 'DELETE', path: `/api/v1/mcp-services/${id(serviceId, 'serviceId')}/oauth/token`, ...(signal === undefined ? {} : { signal }) }), '/mcp-services/oauth/token DELETE');
     },
   };
   const modelCredentials = {
@@ -228,7 +263,7 @@ export function createConfigurationApi(request: (input: ClientRequest) => Promis
       return { apiKey: body.api_key === undefined ? false : fields.api_key === true, appSecret: body.app_secret === undefined ? false : fields.app_secret === true };
     },
     async remove(modelId: string, field: 'api_key' | 'app_secret', signal?: AbortSignal): Promise<void> {
-      await request({ method: 'DELETE', path: `/api/v1/models/${id(modelId, 'modelId')}/credentials/${encodeURIComponent(field)}`, ...(signal === undefined ? {} : { signal }) });
+      parseNoContent(await request({ method: 'DELETE', path: `/api/v1/models/${id(modelId, 'modelId')}/credentials/${encodeURIComponent(field)}`, ...(signal === undefined ? {} : { signal }) }), '/models/credentials DELETE');
     },
   };
   const mcpCredentials = {
@@ -242,7 +277,7 @@ export function createConfigurationApi(request: (input: ClientRequest) => Promis
       return { apiKey: body.api_key === undefined ? false : fields.api_key === true, token: body.token === undefined ? false : fields.token === true };
     },
     async remove(serviceId: string, field: 'api_key' | 'token', signal?: AbortSignal): Promise<void> {
-      await request({ method: 'DELETE', path: `/api/v1/mcp-services/${id(serviceId, 'serviceId')}/credentials/${encodeURIComponent(field)}`, ...(signal === undefined ? {} : { signal }) });
+      parseNoContent(await request({ method: 'DELETE', path: `/api/v1/mcp-services/${id(serviceId, 'serviceId')}/credentials/${encodeURIComponent(field)}`, ...(signal === undefined ? {} : { signal }) }), '/mcp-services/credentials DELETE');
     },
   };
   return {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { configurationDraftFromRecord, credentialInput, savedConfigurationId } from './editor.ts';
+import { configurationDraftFromRecord, credentialInput, credentialStatusAfterClear, newConfigurationDraft, savedConfigurationId } from './editor.ts';
 
 test('creates an editable draft from redacted records without restoring secret placeholders', () => {
   const draft = configurationDraftFromRecord('models', {
@@ -14,6 +14,14 @@ test('creates an editable draft from redacted records without restoring secret p
   assert.equal(draft.apiKey, '');
 });
 
+test('removes camelCase and nested secret keys from editable configuration details', () => {
+  const draft = configurationDraftFromRecord('mcp', {
+    id: 'mcp-1', name: 'MCP', auth_config: { apiKey: 'redacted', nested: { clientSecret: 'redacted', label: 'safe' } },
+  });
+
+  assert.equal(draft.details, '{"nested":{"label":"safe"}}');
+});
+
 test('only sends newly entered non-empty credentials to the dedicated subresource', () => {
   assert.deepEqual(credentialInput('models', { apiKey: ' new-key ', appSecret: '' }), { apiKey: 'new-key' });
   assert.deepEqual(credentialInput('mcp', { token: 'token-1', apiKey: '   ' }), { token: 'token-1' });
@@ -24,4 +32,18 @@ test('uses the server id before writing credentials for a newly created resource
   assert.equal(savedConfigurationId(undefined, 'created-model'), 'created-model');
   assert.equal(savedConfigurationId('existing-model', 'ignored'), 'existing-model');
   assert.throws(() => savedConfigurationId(undefined, ''), /server id/);
+});
+
+test('preserves MCP transport type and defaults new MCP drafts to SSE', () => {
+  const draft = configurationDraftFromRecord('mcp', {
+    id: 'mcp-1', name: 'MCP', transport_type: 'stdio', auth_config: { auth_type: 'none' },
+  });
+  assert.equal(draft.transportType, 'stdio');
+  assert.equal(newConfigurationDraft('mcp').transportType, 'sse');
+});
+
+test('marks a cleared credential as unconfigured for the local editor state', () => {
+  assert.deepEqual(credentialStatusAfterClear({ api_key: { configured: true } }, 'api_key'), {
+    api_key: { configured: false },
+  });
 });

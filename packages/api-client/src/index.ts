@@ -44,6 +44,7 @@ export type {
   McpOAuthAuthorization,
   McpOAuthStatus,
   McpConfiguration,
+  McpTransportType,
   McpCredentialStatus,
   McpTestResult,
   McpTool,
