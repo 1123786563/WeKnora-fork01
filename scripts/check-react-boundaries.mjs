@@ -44,6 +44,11 @@ if (!dockerfile.includes('COPY frontend/package.json') || !dockerfile.includes('
   failures.push('frontend/Dockerfile is not root-context compatible');
 }
 
+const compose = readFileSync(join(root, 'docker-compose.yml'), 'utf8');
+if (!compose.includes('context: .') || !compose.includes('dockerfile: frontend/Dockerfile')) {
+  failures.push('docker-compose.yml must use the repository root context with frontend/Dockerfile');
+}
+
 const nginx = readFileSync(join(root, 'frontend/nginx.conf'), 'utf8');
 for (const requiredRule of [
   'location /api/',

@@ -307,6 +307,12 @@
 - The Lite SQLite migration directory ends at `000013`; it contains no `tenant_skills`/`tenant_skill_snapshots`/`tenant_skill_catalog` tables, while the tenant-skill reaper is wired unconditionally. The Lite smoke warning `no such table: tenant_skills` is therefore a pre-existing backend schema/feature-boundary gap, not a React regression. No migration or reaper behavior was changed in T24; Skills/sandbox live acceptance remains open and requires a separate backend schema decision.
 - T24 remains `review`: local static/typecheck/test/build, single-host Docker static smoke, candidate Nginx proxy behavior, isolated Lite backend and browser evidence are collected, but real registry/deployed Nginx, Wails installed package, complete browser/OS and role matrix, native package/runtime, performance baseline, and rollback rehearsal still need to be collected before T24 can be accepted.
 
+### T24 root-context Compose follow-up (2026-09-11)
+
+- Fixed `docker-compose.yml` to build `frontend/Dockerfile` with the repository root as context, matching the Dockerfile's `COPY frontend/...` and shared-package inputs.
+- Extended `scripts/check-react-boundaries.mjs` to fail if Compose drifts back to `./frontend` context. Boundary check passed; `docker compose config --quiet` passed with a temporary empty `.env` (the repository did not contain one).
+- This is static/configuration evidence only; it does not claim a registry push or deployed Compose runtime.
+
 ### T25 retirement preflight (2026-09-11)
 
 - Read-only scan recorded in `docs/migrations/react/evidence/t25-retirement-preflight-2026-09-11.md`.
