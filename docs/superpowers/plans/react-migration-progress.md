@@ -978,3 +978,15 @@
 - This closes the browser download byte/filename check for the Markdown
   fixture. Native chooser upload, search-to-reference/download, and all
   legacy format renderer variants remain open; T07 stays `review`.
+
+### Web canonical list route follow-up (2026-09-12)
+
+- Browser reproduction showed `/platform/knowledge-bases` passed the auth and
+  tenant guards but fell through to `NotFoundPage` because the protected
+  renderer omitted the list-page branch. `549bed8` adds the explicit route
+  mapping and mounts the existing `KnowledgeBasesPage`.
+- TDD evidence: the new route-to-page regression first failed with the missing
+  export, then passed after the minimal mapping and renderer wiring. Fresh Web
+  tests passed 98/98; Web typecheck/build, React boundary check, and diff
+  check all exited 0. Chrome then rendered the live Knowledge bases page and
+  loaded the fixture row from the isolated Lite backend.
