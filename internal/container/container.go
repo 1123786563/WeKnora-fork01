@@ -48,9 +48,11 @@ import (
 	weaviateRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/weaviate"
 	"github.com/Tencent/WeKnora/internal/application/service"
 	chatpipeline "github.com/Tencent/WeKnora/internal/application/service/chat_pipeline"
+	commercialsvc "github.com/Tencent/WeKnora/internal/application/service/commercial"
 	"github.com/Tencent/WeKnora/internal/application/service/file"
 	"github.com/Tencent/WeKnora/internal/application/service/memory"
 	"github.com/Tencent/WeKnora/internal/application/service/retriever"
+	domain "github.com/Tencent/WeKnora/internal/commercial"
 	"github.com/Tencent/WeKnora/internal/common"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/database"
@@ -77,6 +79,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/im/wecom"
 	"github.com/Tencent/WeKnora/internal/im/yunzhijia"
 	"github.com/Tencent/WeKnora/internal/infrastructure/docparser"
+	ommeter "github.com/Tencent/WeKnora/internal/infrastructure/openmeter"
 	infra_web_search "github.com/Tencent/WeKnora/internal/infrastructure/web_search"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/mcp"
@@ -450,6 +453,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewEmbedChannelHandler))
 	must(container.Provide(handler.NewWeKnoraCloudHandler))
 	must(container.Provide(handler.NewCommercialHandler))
+	// Commercial fulfillment: the V03-selected gateway (family official_v3;
+	// unconfigured env stays legal as blocked-env) and the background worker
+	// that drains paid orders' fulfillment outbox events into benefits.
+	must(container.Provide(ommeter.NewGatewayFromEnv, dig.As(new(domain.CommercialGateway))))
+	must(container.Provide(commercialsvc.NewFulfillmentService))
+	must(container.Invoke(startCommercialFulfillment))
 	logger.Debugf(ctx, "[Container] HTTP handlers registered")
 
 	// Wire the chat package's local image resolver so multimodal chat can read
@@ -1799,6 +1808,19 @@ func startAuditLogRetention(
 	runner.Start(context.Background())
 	cleaner.RegisterWithName("AuditLogRetentionRunner", func() error {
 		runner.Stop()
+		return nil
+	})
+}
+
+// startCommercialFulfillment registers the background recovery loop that
+// drains fulfillment outbox events into external benefits. Payment callbacks
+// only enqueue events; this loop runs after boot so callbacks never block on
+// the gateway. Stop is registered with the resource cleaner so a graceful
+// shutdown does not orphan the loop.
+func startCommercialFulfillment(svc *commercialsvc.FulfillmentService, cleaner interfaces.ResourceCleaner) {
+	svc.StartBackground(context.Background())
+	cleaner.RegisterWithName("CommercialFulfillment", func() error {
+		svc.Stop()
 		return nil
 	})
 }

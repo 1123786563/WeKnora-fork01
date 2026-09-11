@@ -1,0 +1,237 @@
+// Package openmeter implements the commercial benefit gateway against the
+// OpenMeter API family selected by V03 (selected-model.json, family
+// official_v3). Only that one model is implemented; every field maps onto
+// the schema recorded in the validated contract-case inventory
+// (docs/superpowers/specs/evidence/2026-09-10-saas-billing-interface-inventory.json,
+// operations create-credit-grant / list-credit-grant /
+// update-credit-grant-external-settlement, all status schema_only).
+//
+// OM-01..OM-10 remain blocked-env: no OpenMeter service or merchant
+// credentials were available, so this adapter carries no runtime evidence.
+// Construction always succeeds so operators can boot with the connector
+// unconfigured; calls then fail fast with ErrGatewayUnconfigured instead of
+// fabricating grants.
+package openmeter
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"os"
+	"strconv"
+	"time"
+
+	domain "github.com/Tencent/WeKnora/internal/commercial"
+)
+
+// FamilyOfficialV3 is the single model family this gateway implements, per
+// the V03 selected-model record.
+const FamilyOfficialV3 = "official_v3"
+
+// Environment references read by ConfigFromEnv.
+const (
+	EnvFamily  = "WEKNORA_COMMERCIAL_GATEWAY_FAMILY"
+	EnvBaseURL = "WEKNORA_COMMERCIAL_GATEWAY_URL"
+	EnvAPIKey  = "WEKNORA_COMMERCIAL_GATEWAY_API_KEY"
+)
+
+// Config holds the gateway config references. An empty BaseURL or APIKey is
+// legal at construction time and surfaces as ErrGatewayUnconfigured on call.
+type Config struct {
+	Family  string
+	BaseURL string
+	APIKey  string
+	Client  *http.Client
+}
+
+// ConfigFromEnv reads the config references; unset env means unconfigured.
+func ConfigFromEnv() Config {
+	return Config{
+		Family:  os.Getenv(EnvFamily),
+		BaseURL: os.Getenv(EnvBaseURL),
+		APIKey:  os.Getenv(EnvAPIKey),
+	}
+}
+
+// ErrUnsupportedFamily rejects anything but the V03-selected model.
+var ErrUnsupportedFamily = fmt.Errorf("gateway family must be %q", FamilyOfficialV3)
+
+// Gateway implements domain.CommercialGateway for the official_v3 model.
+type Gateway struct {
+	cfg    Config
+	client *http.Client
+}
+
+// NewGateway validates the family and returns the gateway. Unconfigured
+// endpoint/credentials are accepted here on purpose: the blocker is
+// environmental (blocked-env), and boot must not depend on it.
+func NewGateway(cfg Config) (*Gateway, error) {
+	if cfg.Family == "" {
+		cfg.Family = FamilyOfficialV3
+	}
+	if cfg.Family != FamilyOfficialV3 {
+		return nil, ErrUnsupportedFamily
+	}
+	client := cfg.Client
+	if client == nil {
+		client = &http.Client{Timeout: 10 * time.Second}
+	}
+	return &Gateway{cfg: cfg, client: client}, nil
+}
+
+// NewGatewayFromEnv builds the gateway from its environment references.
+func NewGatewayFromEnv() (*Gateway, error) {
+	return NewGateway(ConfigFromEnv())
+}
+
+type grantRequest struct {
+	IdempotencyKey string            `json:"idempotencyKey"`
+	Amount         string            `json:"amount"`
+	FeatureKey     string            `json:"featureKey,omitempty"`
+	EffectiveAt    string            `json:"effectiveAt"`
+	ExpiresAt      string            `json:"expiresAt,omitempty"`
+	Metadata       map[string]string `json:"metadata,omitempty"`
+}
+
+type grantResponse struct {
+	ID          string `json:"id"`
+	EffectiveAt string `json:"effectiveAt"`
+}
+
+type grantListResponse struct {
+	Items []grantResponse `json:"items"`
+}
+
+// ApplyBenefit creates one credit grant keyed by the request's
+// FulfillmentKey (create-credit-grant). The idempotencyKey is the
+// settlement identity, so a replay of the same key can never double-grant.
+// Timeouts and 5xx are indeterminate: the remote may have persisted the
+// grant while the response was lost, so they surface as
+// ErrGatewayIndeterminate, never as success.
+func (g *Gateway) ApplyBenefit(ctx context.Context, req domain.BenefitRequest) (domain.BenefitReceipt, error) {
+	if err := req.Validate(); err != nil {
+		return domain.BenefitReceipt{}, err
+	}
+	if err := g.configured(); err != nil {
+		return domain.BenefitReceipt{}, err
+	}
+	body := grantRequest{
+		IdempotencyKey: req.Key,
+		Amount:         req.Credits.String(),
+		FeatureKey:     req.PlanRef,
+		EffectiveAt:    req.EffectiveAt.UTC().Format(time.RFC3339Nano),
+		Metadata: map[string]string{
+			"tenantId": strconv.FormatUint(req.TenantID, 10),
+			"kind":     req.Kind,
+			"planRef":  req.PlanRef,
+		},
+	}
+	if !req.ExpiresAt.IsZero() {
+		body.ExpiresAt = req.ExpiresAt.UTC().Format(time.RFC3339Nano)
+	}
+	var resp grantResponse
+	if err := g.call(ctx, http.MethodPost,
+		fmt.Sprintf("/api/v3/openmeter/customers/%s/credits/grants", url.PathEscape(req.CustomerID)),
+		body, &resp); err != nil {
+		return domain.BenefitReceipt{}, err
+	}
+	if resp.ID == "" {
+		// A 2xx without a settlement identity proves nothing about the
+		// remote state; treat it as indeterminate, not as success.
+		return domain.BenefitReceipt{}, fmt.Errorf("%w: grant response carried no id", domain.ErrGatewayIndeterminate)
+	}
+	receipt := domain.BenefitReceipt{ExternalID: resp.ID}
+	if t, err := time.Parse(time.RFC3339Nano, resp.EffectiveAt); err == nil {
+		receipt.EffectiveAt = t
+	}
+	return receipt, nil
+}
+
+// FindBenefit maps the provider lookup (list-credit-grants filtered by
+// idempotencyKey, scoped to the customer carried on the context by the
+// worker) onto a receipt. An empty list is a provable miss
+// (ErrBenefitNotFound); an unresolvable customer scope is indeterminate:
+// claiming not-found without looking would license a duplicate grant.
+func (g *Gateway) FindBenefit(ctx context.Context, key string) (domain.BenefitReceipt, error) {
+	if key == "" {
+		return domain.BenefitReceipt{}, domain.ErrInvalidBenefitRequest
+	}
+	if err := g.configured(); err != nil {
+		return domain.BenefitReceipt{}, err
+	}
+	customer := domain.BenefitCustomerFrom(ctx)
+	if customer == "" {
+		return domain.BenefitReceipt{}, fmt.Errorf("%w: no customer scope for lookup", domain.ErrGatewayIndeterminate)
+	}
+	var list grantListResponse
+	q := url.Values{"idempotencyKey": []string{key}}
+	if err := g.call(ctx, http.MethodGet,
+		fmt.Sprintf("/api/v3/openmeter/customers/%s/credits/grants?%s", url.PathEscape(customer), q.Encode()),
+		nil, &list); err != nil {
+		return domain.BenefitReceipt{}, err
+	}
+	if len(list.Items) == 0 {
+		return domain.BenefitReceipt{}, domain.ErrBenefitNotFound
+	}
+	item := list.Items[0]
+	receipt := domain.BenefitReceipt{ExternalID: item.ID}
+	if t, err := time.Parse(time.RFC3339Nano, item.EffectiveAt); err == nil {
+		receipt.EffectiveAt = t
+	}
+	return receipt, nil
+}
+
+func (g *Gateway) configured() error {
+	if g.cfg.BaseURL == "" || g.cfg.APIKey == "" {
+		return fmt.Errorf("%w: openmeter %s endpoint/credentials not set (OM-01..OM-10 blocked-env)",
+			domain.ErrGatewayUnconfigured, FamilyOfficialV3)
+	}
+	return nil
+}
+
+func (g *Gateway) call(ctx context.Context, method, path string, req any, out any) error {
+	var reader io.Reader
+	if req != nil {
+		blob, err := json.Marshal(req)
+		if err != nil {
+			return err
+		}
+		reader = bytes.NewReader(blob)
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, method, g.cfg.BaseURL+path, reader)
+	if err != nil {
+		return err
+	}
+	httpReq.Header.Set("Authorization", "Bearer "+g.cfg.APIKey)
+	if req != nil {
+		httpReq.Header.Set("Content-Type", "application/json")
+	}
+	resp, err := g.client.Do(httpReq)
+	if err != nil {
+		// Timeouts and dropped connections cannot prove the remote state.
+		return fmt.Errorf("%w: %v", domain.ErrGatewayIndeterminate, err)
+	}
+	defer resp.Body.Close()
+	blob, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return fmt.Errorf("%w: reading response: %v", domain.ErrGatewayIndeterminate, err)
+	}
+	switch {
+	case resp.StatusCode >= 200 && resp.StatusCode < 300:
+	case resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != http.StatusTooManyRequests:
+		return fmt.Errorf("%w: %d %s", domain.ErrGatewayBusinessRefusal, resp.StatusCode, bytes.TrimSpace(blob))
+	default:
+		return fmt.Errorf("%w: %d %s", domain.ErrGatewayIndeterminate, resp.StatusCode, bytes.TrimSpace(blob))
+	}
+	if out == nil {
+		return nil
+	}
+	if err := json.Unmarshal(blob, out); err != nil {
+		return fmt.Errorf("%w: undecodable response: %v", domain.ErrGatewayIndeterminate, err)
+	}
+	return nil
+}
