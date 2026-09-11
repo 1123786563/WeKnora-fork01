@@ -29,6 +29,12 @@ public and dispatchable development fixture, and existing canonical/deep-link
 route behavior. The focused Web suite passed 99/99. Web typecheck and production
 build passed; build output retained the existing non-fatal `>500 kB` warning.
 
+The connected Chrome session then opened `http://127.0.0.1:5177/knowledgeBase`
+and exposed the rendered `Knowledge bases` heading and live fixture rows. It
+also opened `/platform/dev/markdown` and exposed the `Markdown rendering test`
+heading, editor, reset action, and escaped `<script>` text in the rendered
+fixture. No browser state was mutated beyond navigation.
+
 ## Remaining boundary
 
 This audit proves route classification and renderer dispatch. It does not claim
