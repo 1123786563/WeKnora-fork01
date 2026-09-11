@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, SafeAreaView, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMobileRuntime } from '../../runtime.tsx';
-import { editorRoute, selectFaqReferenceLabel, selectWikiReferenceLabel, type KnowledgeReferenceKind } from './reference.ts';
+import { editorRoute, selectFaqReferenceEditKey, selectFaqReferenceLabel, selectWikiReferenceEditKey, selectWikiReferenceLabel, type KnowledgeReferenceKind } from './reference.ts';
 
 interface ReferenceRow { id: string; label: string; detail: string; }
 
@@ -24,10 +24,10 @@ export function KnowledgeReferenceScreen({ kind }: { kind: KnowledgeReferenceKin
     try {
       if (kind === 'wiki') {
         const response = await runtime.client.wiki.list(kbId, { page: 1, page_size: 100 });
-        setRows(response.pages.map((page) => ({ id: page.id, label: selectWikiReferenceLabel(page), detail: page.summary || 'Read-only Wiki page' })));
+        setRows(response.pages.map((page) => ({ id: selectWikiReferenceEditKey(page), label: selectWikiReferenceLabel(page), detail: page.summary || 'Read-only Wiki page' })));
       } else {
         const response = await runtime.client.knowledge.faq.list(kbId, { page: 1, page_size: 100 });
-        setRows(response.data.map((entry) => ({ id: String(entry.id), label: selectFaqReferenceLabel(entry), detail: entry.answers[0] || 'Read-only FAQ entry' })));
+        setRows(response.data.map((entry) => ({ id: selectFaqReferenceEditKey(entry), label: selectFaqReferenceLabel(entry), detail: entry.answers[0] || 'Read-only FAQ entry' })));
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : `Unable to load ${kind}`);

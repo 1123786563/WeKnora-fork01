@@ -362,6 +362,29 @@
   remaining T23 management matrix. Evidence:
   `docs/migrations/react/evidence/t23-mobile-administration-2026-09-11.md`.
 
+### T23 native iOS Wiki/FAQ editor follow-up (2026-09-12)
+
+- The isolated FTS5 Lite owner probe used a local embedding mock so FAQ create
+  could execute. A temporary embedding model, FAQ KB, and Wiki KB were deleted
+  after the probe and the temporary server/mock were stopped.
+- The iPhone 17 Pro iOS 26.5 Release app created/loaded the real FAQ and Wiki
+  records, edited them natively, saved, refreshed, and retained the updated
+  server values. Wiki editing now addresses the server page by `slug` rather
+  than the list UUID; FAQ editing keeps its numeric server id. Evidence:
+  `docs/migrations/react/evidence/t23-mobile-reference-editor-2026-09-11.md`.
+- The live FAQ response exposed nullable `similar_questions` and
+  `negative_questions`; the parser regression was captured RED (3/4) then
+  GREEN (4/4). The reference edit-key regression was captured RED (3/5) then
+  GREEN (5/5). These are contract repairs, not loosened validation for the
+  required `answers` array.
+- Screenshots: `/tmp/weknora-ios-faq-latest.png`, SHA-256
+  `80b2a5ba2202a5eb35c0f5a3cd10318520ed2e5f5634be6c4315057d0c08e2f8`; and
+  `/tmp/weknora-ios-wiki-latest.png`, SHA-256
+  `92dc9a90f64f7af749041eba44e5c80288691fe0b260f0ec53840c450c994704`.
+- This is bounded isolated Lite owner/native-device evidence only; non-owner
+  403/409 permutations, production-provider acceptance, physical-device
+  behavior, and the remaining T23 management matrix remain open.
+
 ### T24 mobile CI follow-up (2026-09-11)
 
 - `.github/workflows/mobile.yml` now explicitly exports both iOS and Android JavaScript bundles after mobile tests/typecheck. Workflow YAML parsing, `node scripts/check-react-boundaries.mjs`, and `git diff --check` passed locally.

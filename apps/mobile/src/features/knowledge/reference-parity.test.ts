@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { editorRoute, referenceRoute, selectFaqReferenceLabel, selectWikiReferenceLabel } from './reference.ts';
+import { editorRoute, referenceRoute, selectFaqReferenceEditKey, selectFaqReferenceLabel, selectWikiReferenceEditKey, selectWikiReferenceLabel } from './reference.ts';
 
 test('mobile Wiki rows keep a readable title and revision marker', () => {
   assert.equal(
@@ -8,6 +8,10 @@ test('mobile Wiki rows keep a readable title and revision marker', () => {
     'Getting started · v4',
   );
   assert.equal(selectWikiReferenceLabel({ title: '', slug: 'fallback/page', version: 1 }), 'fallback/page · v1');
+});
+
+test('mobile Wiki editing addresses the server page by slug rather than opaque id', () => {
+  assert.equal(selectWikiReferenceEditKey({ id: 'page-id', slug: 'entity/acme' }), 'entity/acme');
 });
 
 test('mobile FAQ rows expose enabled and recommended state without inventing content', () => {
@@ -19,6 +23,10 @@ test('mobile FAQ rows expose enabled and recommended state without inventing con
     selectFaqReferenceLabel({ standard_question: '  ', is_enabled: false, is_recommended: true }),
     'Untitled FAQ · disabled · recommended',
   );
+});
+
+test('mobile FAQ editing keeps its numeric server identifier', () => {
+  assert.equal(selectFaqReferenceEditKey({ id: 42 }), '42');
 });
 
 test('mobile knowledge reference routes remain knowledge-base scoped', () => {

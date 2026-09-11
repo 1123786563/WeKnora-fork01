@@ -7,10 +7,18 @@ export function selectWikiReferenceLabel(row: { title: string; slug: string; ver
   return `${title} · v${row.version}`;
 }
 
+export function selectWikiReferenceEditKey(row: { id: string; slug: string }): string {
+  return row.slug;
+}
+
 export function selectFaqReferenceLabel(row: { standard_question: string; is_enabled: boolean; is_recommended: boolean }): string {
   const question = row.standard_question.trim() || 'Untitled FAQ';
   const state = row.is_enabled ? 'enabled' : 'disabled';
   return `${question} · ${state}${row.is_recommended ? ' · recommended' : ''}`;
+}
+
+export function selectFaqReferenceEditKey(row: { id: number }): string {
+  return String(row.id);
 }
 
 export function referenceRoute(kind: KnowledgeReferenceKind, kbId: string): Href {

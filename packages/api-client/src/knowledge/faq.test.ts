@@ -13,6 +13,18 @@ test('parses the nested FAQ list envelope and preserves explicit enabled filteri
   assert.equal(path, '/api/v1/knowledge-bases/kb%2Fa/faq/entries?keyword=how&is_enabled=false');
 });
 
+test('normalizes nullable FAQ negative questions from the backend', async () => {
+  const api = createKnowledgeFaqApi(async () => ({
+    success: true,
+    data: { total: 1, page: 1, page_size: 20, data: [{ ...entry, similar_questions: null, negative_questions: null }] },
+  }));
+
+  const result = await api.list('kb-1');
+
+  assert.deepEqual(result.data[0]?.similar_questions, []);
+  assert.deepEqual(result.data[0]?.negative_questions, []);
+});
+
 test('keeps FAQ writes typed and reports import task identity', async () => {
   const requests: Array<{ method: string; path: string; body?: unknown }> = [];
   const api = createKnowledgeFaqApi(async (request) => {
