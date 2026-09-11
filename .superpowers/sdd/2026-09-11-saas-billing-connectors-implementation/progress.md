@@ -99,3 +99,6 @@ V01 implementation committed as `8a7bff2`; review fixes are committed in the sam
 - Task F03: brief generated; implementation dispatch follows F02 PASS.
 - Task F03: implementation commit `2f4462a` (RED-first: undefined symbols; GREEN: 12/12 targeted tests; vet/build/diff-check/gofmt pass); coordinator re-verified tests ok, vet 0, diff-check clean, scope = 9 owned files; independent review PASS (task-F03-review.md, C1–C9). Repository-layer runtime and PostgreSQL dialect remain blocked-env/not-run and are not marked pass.
 - Task F04: brief generation and dispatch follow F03 PASS.
+- Task F04: implementer timed out at wall clock after creating all files; finisher subagent verified GREEN 12/12 (5 domain + 7 SQLite integration), vet/build/diff-check pass, and committed `af899ce` (10 files). Coordinator re-verified tests 12/12, vet 0, diff-check clean, scope exact.
+- Task F04: independent review PASS (task-F04-review.md, D1–D8); failed-issuance auto-retry noted as ops follow-up, non-blocking. PostgreSQL migration execution and external-issuer e2e remain blocked-env.
+- Task F05: brief generation and dispatch follow F04 PASS. F05 owns router.go/container.go edits per preflight ruling.
