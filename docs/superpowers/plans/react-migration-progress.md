@@ -770,9 +770,20 @@
   so this is client-side cancellation evidence only and does not claim server
   rollback. A 1.10 MB fixture showed `文件大小不能超过1MB`; the isolated
   handler returned HTTP 400, not the separate ingress-level HTTP 413 contract.
+- The same 1,100,000-byte native multipart shape was replayed through a
+  controlled local ingress: it returned HTTP 413 `Payload Too Large` at
+  `Content-Length=1,100,249`, and the backend row count stayed at 2. The
+  Android selection attempt was also logged as 413, but its follow-up list
+  refresh hit an expired-session HTTP 401, so this is transport/ingress
+  evidence rather than complete native 413 UI acceptance. This is not
+  production reverse-proxy evidence.
+- A separate tenant-2 account attempted the owner document download and
+  received HTTP 403 with `Permission denied to access this knowledge base`
+  and no file bytes. This is isolated backend permission evidence, not a
+  second-account native UI run.
 - Full record: `docs/migrations/react/evidence/t21-android-native-upload-cancel-live-2026-09-12.md`.
-  T21 remains `review` pending server-side cancellation semantics, a real 413
-  ingress observation, Android cross-account 403, real-device and
+  T21 remains `review` pending server-side cancellation semantics, production
+  413 ingress, Android second-account UI 403, real-device and
   production-storage evidence, and the complete Web/mobile comparison matrix.
 
 ### 本轮问题与裁定
