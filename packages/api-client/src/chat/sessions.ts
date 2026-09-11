@@ -1,4 +1,5 @@
 import {
+  parseActionSuccessResponse,
   parseChatMessageListResponse,
   parseChatSessionListResponse,
   parseChatSessionResponse,
@@ -21,6 +22,16 @@ export interface ChatMessageListParams {
   signal?: AbortSignal;
 }
 
+export interface ChatSessionUpdateInput {
+  title: string;
+  description?: string;
+}
+
+function sessionPath(sessionId: string): string {
+  if (typeof sessionId !== 'string' || sessionId.trim() === '') throw new Error('sessionId must not be empty');
+  return `/api/v1/sessions/${encodeURIComponent(sessionId)}`;
+}
+
 export function createChatSessionsApi(request: (input: ClientRequest) => Promise<unknown>) {
   return {
     async list(params: ChatSessionListParams = {}): Promise<ChatSessionListResponse> {
@@ -37,6 +48,19 @@ export function createChatSessionsApi(request: (input: ClientRequest) => Promise
     },
     async create(input: { title?: string; description?: string } = {}): Promise<ChatSession> {
       return parseChatSessionResponse(await request({ method: 'POST', path: '/api/v1/sessions', body: input }));
+    },
+    async update(sessionId: string, input: ChatSessionUpdateInput, signal?: AbortSignal): Promise<ChatSession> {
+      if (typeof input.title !== 'string' || input.title.trim() === '') throw new Error('title must not be empty');
+      return parseChatSessionResponse(await request({ method: 'PUT', path: sessionPath(sessionId), body: input, ...(signal === undefined ? {} : { signal }) }));
+    },
+    async remove(sessionId: string, signal?: AbortSignal): Promise<void> {
+      parseActionSuccessResponse(await request({ method: 'DELETE', path: sessionPath(sessionId), ...(signal === undefined ? {} : { signal }) }));
+    },
+    async pin(sessionId: string, signal?: AbortSignal): Promise<void> {
+      parseActionSuccessResponse(await request({ method: 'POST', path: `${sessionPath(sessionId)}/pin`, ...(signal === undefined ? {} : { signal }) }));
+    },
+    async unpin(sessionId: string, signal?: AbortSignal): Promise<void> {
+      parseActionSuccessResponse(await request({ method: 'DELETE', path: `${sessionPath(sessionId)}/pin`, ...(signal === undefined ? {} : { signal }) }));
     },
     async messages(sessionId: string, params: ChatMessageListParams = {}): Promise<ChatMessage[]> {
       const query = new URLSearchParams();

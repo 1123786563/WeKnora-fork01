@@ -63,6 +63,9 @@ export interface ChatPageProps {
   onCancelOAuth?(pendingId: string): Promise<void>;
   onSteer?(content: string): Promise<void>;
   stream?: ChatStreamPresentation;
+  onRenameSession?(sessionId: string): Promise<void>;
+  onToggleSessionPin?(sessionId: string, pinned: boolean): Promise<void>;
+  onDeleteSession?(sessionId: string): Promise<void>;
 }
 
 const SECRET_KEY = /(?:api[_-]?key|app[_-]?secret|access[_-]?token|refresh[_-]?token|client[_-]?secret|password|secret|token)/i;
@@ -164,6 +167,9 @@ export function ChatPage(props: ChatPageProps) {
       loading={props.loadingSessions}
       onSelect={props.onSelectSession}
       onCreate={props.onCreateSession}
+      onRename={props.onRenameSession}
+      onTogglePin={props.onToggleSessionPin}
+      onDelete={props.onDeleteSession}
     />
     <section className="wk-chat-main" aria-label="Chat">
       <h1>{props.selectedSessionId ? 'Conversation' : 'New conversation'}</h1>

@@ -140,6 +140,35 @@ export function ChatRoutePage({ client, scopeController }: ChatRoutePageProps) {
     }
   }
 
+  async function renameSession(sessionId: string): Promise<void> {
+    const current = sessions.find((session) => session.id === sessionId);
+    const title = window.prompt('Conversation title', current?.title ?? '')?.trim();
+    if (!title || title === current?.title) return;
+    try {
+      const updated = await client.sessions.update(sessionId, { title, description: current?.description }, scope.signal);
+      setSessions((items) => items.map((session) => session.id === sessionId ? updated : session));
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to rename conversation'); }
+  }
+
+  async function toggleSessionPin(sessionId: string, pinned: boolean): Promise<void> {
+    try {
+      await (pinned ? client.sessions.pin(sessionId, scope.signal) : client.sessions.unpin(sessionId, scope.signal));
+      setSessions((items) => items.map((session) => session.id === sessionId ? { ...session, is_pinned: pinned } : session));
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to update conversation pin'); }
+  }
+
+  async function deleteSession(sessionId: string): Promise<void> {
+    if (!window.confirm('Delete this conversation?')) return;
+    try {
+      await client.sessions.remove(sessionId, scope.signal);
+      setSessions((items) => items.filter((session) => session.id !== sessionId));
+      if (selectedSessionId === sessionId) {
+        setSelectedSessionId(null); setMessages([]); setStreamState(initialChatStreamState());
+        window.history.pushState({}, '', '/platform/creatChat');
+      }
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to delete conversation'); }
+  }
+
   function updateDraft(value: string) {
     setDraft(value);
     if (storageKey) window.localStorage.setItem(storageKey, value);
@@ -185,6 +214,9 @@ export function ChatRoutePage({ client, scopeController }: ChatRoutePageProps) {
     onAuthorizeOAuth={authorizeOAuth}
     onCancelOAuth={cancelOAuth}
     onSteer={steer}
+    onRenameSession={renameSession}
+    onToggleSessionPin={toggleSessionPin}
+    onDeleteSession={deleteSession}
     stream={{ phase: streamState.phase, thinking: streamState.thinking, references: streamState.references, toolCalls: Object.values(streamState.toolCalls) }}
     send={send}
   />;

@@ -20,7 +20,7 @@ export type { DataSource, DataSourceConnectorType, DataSourceResource, DataSourc
 export { buildChatStreamRequest, consumeChatStream, createServerSentEventParser, parseChatEvent } from './chat/stream.ts';
 export type { ChatStreamRequestOptions, ParsedServerSentEvent, ServerSentEventHandler } from './chat/stream.ts';
 export { createChatSessionsApi } from './chat/sessions.ts';
-export type { ChatMessageListParams, ChatSessionListParams, ChatSessionsApi } from './chat/sessions.ts';
+export type { ChatMessageListParams, ChatSessionListParams, ChatSessionUpdateInput, ChatSessionsApi } from './chat/sessions.ts';
 export type { ChatMessage, ChatSession, ChatSessionListResponse } from '@weknora/contracts';
 export { createIdentityApi } from './identity/index.ts';
 export type { IdentityApi, TenantRole, TenantMember, TenantInvitation, AuditLog, Organization, OrganizationApi, OrganizationMember, OrganizationJoinRequest, OrganizationRole, OrganizationShare } from './identity/index.ts';

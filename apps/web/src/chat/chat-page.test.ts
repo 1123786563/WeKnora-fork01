@@ -9,7 +9,7 @@ import { ChatPage } from '@weknora/views';
 
 test('chat page exposes the selected agent and server-disabled state at the chat entry', () => {
   const html = renderToStaticMarkup(React.createElement(ChatPage, {
-    sessions: [],
+    sessions: [{ id: 'session-1', title: 'Chat', is_pinned: true }],
     selectedSessionId: 'session-1',
     messages: [],
     draft: '',
@@ -26,6 +26,9 @@ test('chat page exposes the selected agent and server-disabled state at the chat
     onAuthorizeOAuth: async () => undefined,
     onCancelOAuth: async () => undefined,
     onSteer: async () => undefined,
+    onRenameSession: async () => undefined,
+    onToggleSessionPin: async () => undefined,
+    onDeleteSession: async () => undefined,
     stream: {
       phase: 'streaming',
       thinking: 'checking sources',
@@ -46,4 +49,7 @@ test('chat page exposes the selected agent and server-disabled state at the chat
   assert.match(html, /search_docs/);
   assert.match(html, /&lt;not markup&gt;/);
   assert.match(html, /\[redacted\]/);
+  assert.match(html, /Rename session-1/);
+  assert.match(html, /Unpin session-1/);
+  assert.match(html, /Delete session-1/);
 });
