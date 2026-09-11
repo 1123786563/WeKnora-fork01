@@ -92,7 +92,7 @@
 - 覆盖：契约 fixture 18 键双向驱动（domain-JSON→wire→bytes→domain）；最大 uint64 不经 float64（Go ,string 标签+自定义 Evidence 编组，Python to/from_json 十进制字符串）；空 span 保持 nil/None；中文逐字节；未知 wire 枚举→unspecified、未知领域枚举→错误（含嵌套 AccessScope 不得静默丢弃的专项测试）；非空 error_code 保留。
 - 环境：macOS arm64；Python 3.12.13；Go 1.26.3；grpcio 1.80.0/protobuf 6.33.x（uv.lock 锁定）。
 - review：规格符合性 PASS（11 项：4.1 全部字段逐字对齐、7 RPC、tag 纪律、DTO 约定、接口签名、核心断言、JSON 边界、同源生成、无 protobuf 穿透、包卫生、文档——其中能力协商失败行为已按建议补记 proto+接口注释）。代码质量首轮 FAIL（BLOCKER：Go 映射面仅 5/14 DTO、2/5 枚举表）→ RED-first 补全 → 复审发现修复引入的新 BLOCKER（SearchRequestToWire 丢弃 AccessScope 错误=授权信封静默丢弃，评审员实证）→ 再次 RED-first 修复 → 终审 PASS（评审员独立探针验证错误传播、边界值 2^64-1 接受/2^64 拒绝、全部 MINOR 关闭）。
-- 提交 SHA：（本记录与代码同批提交后补记）
+- 提交 SHA：3d4fa79（feat(semantic): c01 版本化协议和跨语言领域类型）。
 - 剩余限制：QueryLimits uint32 字段 Python 侧构造期未校验（protobuf to_wire 拒绝越界，Go json 原生拒绝；C02 观察项）；.python-version 因仓库 .gitignore 点号规则需 git add -f（沿用 V01 先例）；semantica==0.6.8 生产依赖按计划在首个导入它的任务（I03/A03）进入本包锁。
 
 ## 当前边界
