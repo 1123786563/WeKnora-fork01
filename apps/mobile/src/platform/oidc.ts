@@ -1,5 +1,26 @@
 export const MOBILE_OIDC_REDIRECT = 'weknora://oidc';
 
+export interface MobileOIDCPKCE {
+  verifier: string;
+  challenge: string;
+}
+
+function base64URL(bytes: Uint8Array): string {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+export async function createMobileOIDCPKCE(): Promise<MobileOIDCPKCE> {
+  const cryptoAPI = globalThis.crypto;
+  if (!cryptoAPI?.getRandomValues || !cryptoAPI.subtle) throw new Error('Secure PKCE support is unavailable on this device');
+  const random = new Uint8Array(32);
+  cryptoAPI.getRandomValues(random);
+  const verifier = base64URL(random);
+  const digest = await cryptoAPI.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  return { verifier, challenge: base64URL(new Uint8Array(digest)) };
+}
+
 export type MobileOIDCCallback =
   | { kind: 'code'; code: string; state: string }
   | { kind: 'error'; code: string; message: string; state?: string };

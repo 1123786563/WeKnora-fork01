@@ -21,8 +21,9 @@ const mobileOIDCTestRedirect = "weknora://oidc"
 
 type stubOIDCMobileUserService struct {
 	interfaces.UserService
-	authorizationURL func(context.Context, string) (*types.OIDCAuthURLResponse, error)
-	loginWithOIDC    func(context.Context, string, string, types.TenantProvisioningMode) (*types.OIDCCallbackResponse, error)
+	authorizationURL  func(context.Context, string) (*types.OIDCAuthURLResponse, error)
+	loginWithOIDC     func(context.Context, string, string, types.TenantProvisioningMode) (*types.OIDCCallbackResponse, error)
+	loginWithOIDCPKCE func(context.Context, string, string, types.TenantProvisioningMode, string) (*types.OIDCCallbackResponse, error)
 }
 
 func (s *stubOIDCMobileUserService) GetOIDCAuthorizationURL(ctx context.Context, redirectURI string) (*types.OIDCAuthURLResponse, error) {
@@ -33,11 +34,19 @@ func (s *stubOIDCMobileUserService) LoginWithOIDC(ctx context.Context, code, red
 	return s.loginWithOIDC(ctx, code, redirectURI, provisioning)
 }
 
+func (s *stubOIDCMobileUserService) LoginWithOIDCWithPKCE(ctx context.Context, code, redirectURI string, provisioning types.TenantProvisioningMode, codeVerifier string) (*types.OIDCCallbackResponse, error) {
+	return s.loginWithOIDCPKCE(ctx, code, redirectURI, provisioning, codeVerifier)
+}
+
 func mobileOIDCTestState(t *testing.T) string {
 	t.Helper()
+	challenge, err := secutils.OIDCCodeChallenge("mobile-verifier-value-abcdefghijklmnopqrstuvwxyz123456")
+	if err != nil {
+		t.Fatalf("OIDCCodeChallenge: %v", err)
+	}
 	state, err := secutils.SignOIDCState(&secutils.OIDCStatePayload{
 		Nonce: "mobile-nonce", RedirectURI: "https://api.example.test/api/v1/auth/oidc/callback",
-		FrontendRedirectURI: mobileOIDCTestRedirect, IssuedAt: time.Now().Unix(),
+		FrontendRedirectURI: mobileOIDCTestRedirect, CodeChallenge: challenge, IssuedAt: time.Now().Unix(),
 	})
 	if err != nil {
 		t.Fatalf("SignOIDCState: %v", err)
@@ -138,16 +147,20 @@ func TestOIDCMobileAuthorizationRejectsIllegalFrontendRedirect(t *testing.T) {
 
 func TestOIDCMobileExchangeUsesSignedStateAndReturnsSessionJSON(t *testing.T) {
 	state := mobileOIDCTestState(t)
-	var gotCode, gotRedirect string
+	var gotCode, gotRedirect, gotVerifier string
 	service := &stubOIDCMobileUserService{
 		authorizationURL: func(context.Context, string) (*types.OIDCAuthURLResponse, error) { return nil, nil },
 		loginWithOIDC: func(_ context.Context, code, redirect string, _ types.TenantProvisioningMode) (*types.OIDCCallbackResponse, error) {
 			gotCode, gotRedirect = code, redirect
 			return &types.OIDCCallbackResponse{Success: true, Token: "access", RefreshToken: "refresh"}, nil
 		},
+		loginWithOIDCPKCE: func(_ context.Context, code, redirect string, _ types.TenantProvisioningMode, verifier string) (*types.OIDCCallbackResponse, error) {
+			gotCode, gotRedirect, gotVerifier = code, redirect, verifier
+			return &types.OIDCCallbackResponse{Success: true, Token: "access", RefreshToken: "refresh"}, nil
+		},
 	}
 	r := mobileOIDCTestRouter(NewAuthHandler(&config.Config{}, service, nil, nil, nil))
-	body, _ := json.Marshal(map[string]string{"code": "provider-code", "state": state})
+	body, _ := json.Marshal(map[string]string{"code": "provider-code", "state": state, "code_verifier": "mobile-verifier-value-abcdefghijklmnopqrstuvwxyz123456"})
 	req := httptest.NewRequest(http.MethodPost, "/auth/oidc/exchange", strings.NewReader(string(body)))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -156,8 +169,8 @@ func TestOIDCMobileExchangeUsesSignedStateAndReturnsSessionJSON(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s, want 200", w.Code, w.Body.String())
 	}
-	if gotCode != "provider-code" || gotRedirect != "https://api.example.test/api/v1/auth/oidc/callback" {
-		t.Errorf("LoginWithOIDC args = code %q redirect %q", gotCode, gotRedirect)
+	if gotCode != "provider-code" || gotRedirect != "https://api.example.test/api/v1/auth/oidc/callback" || gotVerifier != "mobile-verifier-value-abcdefghijklmnopqrstuvwxyz123456" {
+		t.Errorf("LoginWithOIDC args = code %q redirect %q verifier %q", gotCode, gotRedirect, gotVerifier)
 	}
 	if !strings.Contains(w.Body.String(), `"token":"access"`) || !strings.Contains(w.Body.String(), `"refresh_token":"refresh"`) {
 		t.Errorf("exchange response did not contain the session: %s", w.Body.String())

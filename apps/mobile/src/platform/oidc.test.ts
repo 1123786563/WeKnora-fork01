@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { MOBILE_OIDC_REDIRECT, matchesMobileOIDCState, parseMobileOIDCCallback } from './oidc.ts';
+import { createMobileOIDCPKCE, MOBILE_OIDC_REDIRECT, matchesMobileOIDCState, parseMobileOIDCCallback } from './oidc.ts';
 
 test('parses only a one-time OIDC code and never a bearer payload', () => {
   assert.deepEqual(parseMobileOIDCCallback(`${MOBILE_OIDC_REDIRECT}?oidc_code=short-code&state=mobile-state`), {
@@ -26,4 +26,10 @@ test('requires the callback state to match the pending device state', () => {
   assert.equal(matchesMobileOIDCState(callback, 'mobile-state'), true);
   assert.equal(matchesMobileOIDCState(callback, 'other-state'), false);
   assert.equal(matchesMobileOIDCState(callback, null), false);
+});
+
+test('creates a standards-compliant S256 PKCE verifier and challenge', async () => {
+  const pkce = await createMobileOIDCPKCE();
+  assert.match(pkce.verifier, /^[A-Za-z0-9._~-]{43,128}$/);
+  assert.match(pkce.challenge, /^[A-Za-z0-9_-]{43}$/);
 });

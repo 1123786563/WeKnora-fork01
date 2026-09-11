@@ -323,7 +323,14 @@ func (h *AuthHandler) GetOIDCAuthorizationURL(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.userService.GetOIDCAuthorizationURL(ctx, redirectURI)
+	codeChallenge := strings.TrimSpace(c.Query("code_challenge"))
+	var resp *types.OIDCAuthURLResponse
+	var err error
+	if codeChallenge != "" {
+		resp, err = h.userService.GetOIDCAuthorizationURLWithPKCE(ctx, redirectURI, codeChallenge)
+	} else {
+		resp, err = h.userService.GetOIDCAuthorizationURL(ctx, redirectURI)
+	}
 	if err != nil {
 		logger.Errorf(ctx, "Failed to generate OIDC authorization URL: %v", err)
 		appErr := errors.NewForbiddenError("OIDC authorization unavailable").WithDetails(err.Error())
@@ -499,8 +506,9 @@ func (h *AuthHandler) OIDCRedirectCallback(c *gin.Context) {
 func (h *AuthHandler) OIDCExchange(c *gin.Context) {
 	ctx := c.Request.Context()
 	var req struct {
-		Code  string `json:"code" binding:"required"`
-		State string `json:"state" binding:"required"`
+		Code         string `json:"code" binding:"required"`
+		State        string `json:"state" binding:"required"`
+		CodeVerifier string `json:"code_verifier" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.Error(errors.NewValidationError("OIDC code and state are required").WithDetails(err.Error()))
@@ -508,7 +516,8 @@ func (h *AuthHandler) OIDCExchange(c *gin.Context) {
 	}
 	req.Code = strings.TrimSpace(req.Code)
 	req.State = strings.TrimSpace(req.State)
-	if req.Code == "" || req.State == "" {
+	req.CodeVerifier = strings.TrimSpace(req.CodeVerifier)
+	if req.Code == "" || req.State == "" || req.CodeVerifier == "" {
 		c.Error(errors.NewValidationError("OIDC code and state are required"))
 		return
 	}
@@ -521,7 +530,15 @@ func (h *AuthHandler) OIDCExchange(c *gin.Context) {
 		c.Error(errors.NewValidationError("Invalid OIDC state").WithDetails("OIDC state is not a mobile handoff"))
 		return
 	}
-	resp, err := h.userService.LoginWithOIDC(ctx, req.Code, state.RedirectURI, h.resolveDefaultTenantMode(ctx))
+	if state.CodeChallenge == "" {
+		c.Error(errors.NewValidationError("Invalid OIDC state").WithDetails("OIDC state is missing PKCE binding"))
+		return
+	}
+	if err := secutils.VerifyOIDCCodeChallenge(req.CodeVerifier, state.CodeChallenge); err != nil {
+		c.Error(errors.NewValidationError("Invalid OIDC PKCE verifier").WithDetails(err.Error()))
+		return
+	}
+	resp, err := h.userService.LoginWithOIDCWithPKCE(ctx, req.Code, state.RedirectURI, h.resolveDefaultTenantMode(ctx), req.CodeVerifier)
 	if err != nil {
 		logger.Errorf(ctx, "Failed to complete native OIDC exchange: %v", err)
 		c.Error(errors.NewUnauthorizedError("OIDC exchange failed").WithDetails(err.Error()))
@@ -552,7 +569,7 @@ func decorateOIDCMobileAuthorization(resp *types.OIDCAuthURLResponse, frontendRe
 	}
 	state, err := secutils.SignOIDCState(&secutils.OIDCStatePayload{
 		Nonce: payload.Nonce, RedirectURI: payload.RedirectURI,
-		FrontendRedirectURI: frontendRedirectURI, IssuedAt: payload.IssuedAt,
+		FrontendRedirectURI: frontendRedirectURI, CodeChallenge: payload.CodeChallenge, IssuedAt: payload.IssuedAt,
 	})
 	if err != nil {
 		return err
@@ -588,6 +605,7 @@ type oidcStatePayload struct {
 	Nonce               string
 	RedirectURI         string
 	FrontendRedirectURI string
+	CodeChallenge       string
 }
 
 func decodeOIDCState(raw string, req *http.Request) (*oidcStatePayload, error) {
@@ -602,7 +620,7 @@ func decodeOIDCState(raw string, req *http.Request) (*oidcStatePayload, error) {
 		}
 		return &oidcStatePayload{
 			Nonce: payload.Nonce, RedirectURI: strings.TrimSpace(payload.RedirectURI),
-			FrontendRedirectURI: frontendRedirectURI,
+			FrontendRedirectURI: frontendRedirectURI, CodeChallenge: payload.CodeChallenge,
 		}, nil
 	}
 	cookieNonce, err := req.Cookie(oidcNonceCookieName)

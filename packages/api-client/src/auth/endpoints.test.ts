@@ -103,3 +103,18 @@ test('keeps mobile OIDC redirect separate and exchanges its one-time code', asyn
     method: 'POST', path: '/api/v1/auth/oidc/exchange', body: { code: 'provider-code', state: 'mobile-state' },
   });
 });
+
+test('includes the mobile PKCE verifier in the server-side exchange body', async () => {
+  const calls: Array<{ method: string; path: string; body?: unknown }> = [];
+  const auth = createAuthApi(async (request) => {
+    calls.push(request);
+    return { success: true, token: 'access', refresh_token: 'refresh', tenant: null };
+  });
+
+  await auth.oidcExchange('provider-code', 'mobile-state', 'verifier-value');
+
+  assert.deepEqual(calls[0], {
+    method: 'POST', path: '/api/v1/auth/oidc/exchange',
+    body: { code: 'provider-code', state: 'mobile-state', code_verifier: 'verifier-value' },
+  });
+});

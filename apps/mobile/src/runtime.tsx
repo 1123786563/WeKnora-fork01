@@ -9,9 +9,10 @@ import { createServerAddressAdapter } from './platform/server.ts';
 import { createMobileTransport } from './platform/transport.ts';
 import { createNetworkRecovery } from './platform/network.ts';
 import { createLatestAsyncWriter, createSessionEpoch, createSingleFlight, createWorkspaceSelectionAdapter, parseMobileWorkspaces, shouldHydrateWorkspaceMemberships, shouldRefreshMobileSession, toWorkspaceId, type MobileWorkspace } from './platform/workspace.ts';
-import { matchesMobileOIDCState, MOBILE_OIDC_REDIRECT, parseMobileOIDCCallback } from './platform/oidc.ts';
+import { createMobileOIDCPKCE, matchesMobileOIDCState, MOBILE_OIDC_REDIRECT, parseMobileOIDCCallback } from './platform/oidc.ts';
 
 const OIDC_STATE_KEY = 'weknora.mobile.oidc-state';
+const OIDC_VERIFIER_KEY = 'weknora.mobile.oidc-verifier';
 
 interface MobileRuntimeValue {
   client: WeKnoraClient;
@@ -145,7 +146,9 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
       const callback = parseMobileOIDCCallback(raw);
       if (!callback || !active) return;
       const expectedState = await SecureStore.getItemAsync(OIDC_STATE_KEY);
+      const codeVerifier = await SecureStore.getItemAsync(OIDC_VERIFIER_KEY);
       await SecureStore.deleteItemAsync(OIDC_STATE_KEY);
+      await SecureStore.deleteItemAsync(OIDC_VERIFIER_KEY);
       if (!matchesMobileOIDCState(callback, expectedState)) {
         setOidcError('The OIDC callback state did not match this device.');
         return;
@@ -156,7 +159,8 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
       }
       try {
         if (callback.kind !== 'code') return;
-        await adoptSession(await client.auth.oidcExchange(callback.code, callback.state));
+        if (!codeVerifier) throw new Error('The OIDC PKCE verifier is missing on this device.');
+        await adoptSession(await client.auth.oidcExchange(callback.code, callback.state, codeVerifier));
         setOidcError('');
       }
       catch (cause) { setOidcError(cause instanceof Error ? cause.message : 'Unable to finish OIDC sign in'); }
@@ -181,8 +185,10 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
       const config = await client.auth.oidcConfig();
       if (!config.enabled) throw new Error('Single sign-on is not enabled on this server');
       const redirectURI = `${baseURL.replace(/\/+$/, '')}/api/v1/auth/oidc/callback`;
-      const { authorizationUrl, state } = await client.auth.oidcUrl(redirectURI, MOBILE_OIDC_REDIRECT);
+      const pkce = await createMobileOIDCPKCE();
+      const { authorizationUrl, state } = await client.auth.oidcUrl(redirectURI, MOBILE_OIDC_REDIRECT, pkce.challenge);
       await SecureStore.setItemAsync(OIDC_STATE_KEY, state);
+      await SecureStore.setItemAsync(OIDC_VERIFIER_KEY, pkce.verifier);
       await Linking.openURL(authorizationUrl);
     } catch (cause) {
       setOidcError(cause instanceof Error ? cause.message : 'Unable to start single sign-on');
