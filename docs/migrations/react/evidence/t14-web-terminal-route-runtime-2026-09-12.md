@@ -14,6 +14,9 @@ assets. It does not claim a real provider-backed shell session.
   handles binary output and JSON `ready`/`error`/`exited` frames, caps retained
   output at 1 MB, validates resize bounds, and rejects stale socket events
   after close or session changes. No bearer token is put in the WebSocket URL.
+- The terminal panel observes its rendered size and forwards bounded column/
+  row changes to the controller, which sends the resize control frame only for
+  a ready socket.
 - The same commit makes `/platform/knowledge-bases/:id` and its
   `/creatChat` deep link explicit, maps `/platform/agents` to the typed
   configuration surface, redirects the root and legacy knowledge-search path,

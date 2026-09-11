@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ChatMessage, ChatSession } from '@weknora/contracts';
 import { ChatComposer, type ChatSubmission } from './composer.tsx';
 import { MessageList, type PendingChatMessage } from './message-list.tsx';
@@ -74,6 +74,7 @@ export interface ChatPageProps {
   terminal?: ChatTerminalView;
   onOpenTerminal?(): Promise<void>;
   onTerminalInput?(input: string): Promise<void>;
+  onTerminalResize?(cols: number, rows: number): void;
   onCloseTerminal?(): void;
 }
 
@@ -152,9 +153,22 @@ function SteerComposer({ onSteer }: { onSteer: (content: string) => Promise<void
   </form>;
 }
 
-function TerminalPanel(props: Pick<ChatPageProps, 'terminal' | 'onOpenTerminal' | 'onTerminalInput' | 'onCloseTerminal'>) {
+function TerminalPanel(props: Pick<ChatPageProps, 'terminal' | 'onOpenTerminal' | 'onTerminalInput' | 'onTerminalResize' | 'onCloseTerminal'>) {
+  const panelRef = useRef<HTMLElement>(null);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!props.terminal || !props.onTerminalResize || typeof ResizeObserver === 'undefined' || !panelRef.current) return;
+    const notify = () => {
+      const element = panelRef.current;
+      if (!element) return;
+      props.onTerminalResize!(Math.max(1, Math.floor(element.clientWidth / 8)), Math.max(1, Math.floor(element.clientHeight / 16)));
+    };
+    const observer = new ResizeObserver(notify);
+    observer.observe(panelRef.current);
+    notify();
+    return () => observer.disconnect();
+  }, [props.onTerminalResize, props.terminal?.status]);
   if (!props.terminal && !props.onOpenTerminal) return null;
   async function sendInput(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -162,7 +176,7 @@ function TerminalPanel(props: Pick<ChatPageProps, 'terminal' | 'onOpenTerminal' 
     setBusy(true);
     try { await props.onTerminalInput(input); setInput(''); } finally { setBusy(false); }
   }
-  return <section aria-label="Sandbox terminal" className="wk-chat-terminal">
+  return <section ref={panelRef} aria-label="Sandbox terminal" className="wk-chat-terminal">
     <div className="wk-settings-panel-heading"><h2>Sandbox terminal</h2><span role="status">{props.terminal?.status ?? 'idle'}</span></div>
     {props.onOpenTerminal ? <button type="button" onClick={() => void props.onOpenTerminal!()}>Open terminal</button> : null}
     {props.terminal?.output ? <pre>{props.terminal.output}</pre> : null}
@@ -204,7 +218,7 @@ export function ChatPage(props: ChatPageProps) {
       {props.agents && props.onAgentChange ? <label htmlFor="wk-chat-agent">Agent<select id="wk-chat-agent" value={props.selectedAgentId ?? ''} onChange={(event) => props.onAgentChange?.(event.target.value)}><option value="">Knowledge chat</option>{props.agents.map((agent) => <option key={agent.id} value={agent.id} disabled={agent.disabled}>{agent.name}{agent.disabled ? ' · disabled' : ''}</option>)}</select></label> : null}
       <ChatActionCards {...props} />
       {props.stream ? <LiveResponse stream={props.stream} /> : null}
-      <TerminalPanel terminal={props.terminal} onOpenTerminal={props.onOpenTerminal} onTerminalInput={props.onTerminalInput} onCloseTerminal={props.onCloseTerminal} />
+      <TerminalPanel terminal={props.terminal} onOpenTerminal={props.onOpenTerminal} onTerminalInput={props.onTerminalInput} onTerminalResize={props.onTerminalResize} onCloseTerminal={props.onCloseTerminal} />
       {props.error ? <p role="alert">{props.error}</p> : null}
       {props.loadingMessages ? <p role="status">Loading messages…</p> : null}
       <MessageList messages={props.messages} pending={pending} onRetry={pending?.status === 'failed' ? () => void send({ content: pending.content, status: 'pending' }) : undefined} />

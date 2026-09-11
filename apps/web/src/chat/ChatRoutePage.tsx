@@ -209,6 +209,10 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '' }: Chat
     terminalController.current?.sendInput(input);
   }
 
+  function terminalResize(cols: number, rows: number): void {
+    terminalController.current?.resize(cols, rows);
+  }
+
   function closeTerminal(): void {
     terminalController.current?.close();
   }
@@ -259,6 +263,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '' }: Chat
     terminal={selectedSessionId ? terminal : undefined}
     onOpenTerminal={selectedSessionId ? openTerminal : undefined}
     onTerminalInput={selectedSessionId ? terminalInput : undefined}
+    onTerminalResize={selectedSessionId ? terminalResize : undefined}
     onCloseTerminal={selectedSessionId ? closeTerminal : undefined}
     stream={{ phase: streamState.phase, thinking: streamState.thinking, references: streamState.references, toolCalls: Object.values(streamState.toolCalls) }}
     send={send}
