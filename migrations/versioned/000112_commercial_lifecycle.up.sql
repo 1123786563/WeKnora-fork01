@@ -1,0 +1,26 @@
+CREATE TABLE commercial_subscriptions (
+    id TEXT PRIMARY KEY,
+    tenant_id BIGINT NOT NULL UNIQUE,
+    plan_key TEXT NOT NULL,
+    plan_version BIGINT NOT NULL,
+    plan_snapshot_json TEXT NOT NULL,
+    anchor TIMESTAMPTZ NOT NULL,
+    paid_until TIMESTAMPTZ NOT NULL,
+    future_interval_json TEXT NOT NULL DEFAULT '{}',
+    version BIGINT NOT NULL DEFAULT 1,
+    projection_plan_json TEXT NOT NULL DEFAULT '',
+    downgrade_reason TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE commercial_benefit_jobs (
+    key TEXT PRIMARY KEY,
+    tenant_id BIGINT NOT NULL,
+    subscription_id TEXT NOT NULL,
+    month_start TIMESTAMPTZ NOT NULL,
+    credits BIGINT NOT NULL,
+    state TEXT NOT NULL,
+    external_ref TEXT NOT NULL DEFAULT '',
+    order_line_id TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
