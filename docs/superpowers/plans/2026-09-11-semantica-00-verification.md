@@ -31,7 +31,7 @@
 
 **接口：** 产出 evidence.schema_version=1、python_version、semantica_version、source_revision、lock_hash、capabilities[name].status/signature/evidence_path；下游只读取该文件，不从文档猜测当前 API。
 
-- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 def test_required_import_contract():
@@ -44,13 +44,13 @@ def test_required_import_contract():
         ContextRetriever, Reasoner, GraphReasoner, GraphStore))
 ```
 
-- [ ] **2. 确认 RED**。执行 `uv run --project semantic/experiments python -m pytest semantic/experiments/test_import_contract.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [x] **2. 确认 RED**。执行 `uv run --project semantic/experiments python -m pytest semantic/experiments/test_import_contract.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 读取选定 release 的 pyproject、源码和安装元数据；以官方示例中的 0.6.8 为候选，核验可获取性与 Python 兼容要求。候选不可用时记录原因，再选择可验证的明确 release，禁止用 latest 漂移**
+- [x] **3. 读取选定 release 的 pyproject、源码和安装元数据；以官方示例中的 0.6.8 为候选，核验可获取性与 Python 兼容要求。候选不可用时记录原因，再选择可验证的明确 release，禁止用 latest 漂移**
 
-- [ ] **4. 为实验环境固定 Python patch 版本与必要 extras；逐项记录调用签名、包锁和上游源码提交。只安装实际需要的 graph/extract/reason 模块依赖**
+- [x] **4. 为实验环境固定 Python patch 版本与必要 extras；逐项记录调用签名、包锁和上游源码提交。只安装实际需要的 graph/extract/reason 模块依赖**
 
-- [ ] **5. 实现 verify_version.py，记录成功/失败/不可用原因，日志清除凭据；生成摘要包含命令及退出码，禁止只写布尔 passed**
+- [x] **5. 实现 verify_version.py，记录成功/失败/不可用原因，日志清除凭据；生成摘要包含命令及退出码，禁止只写布尔 passed**
 
 关键实现约束：
 
@@ -64,9 +64,9 @@ record = {"semantica_version": version("semantica"),
 # 对每个验证过的 callable 保存 str(signature(callable))，并写入真实测试结果。
 ```
 
-- [ ] **6. 确认 GREEN 与验收**。重跑 `uv run --project semantic/experiments python -m pytest semantic/experiments/test_import_contract.py -q`，预期退出码 0；另完成：在干净隔离环境重放一次 lock 安装；确认不依赖 docreader 虚拟环境；失败则停止涉及该能力的下游。
+- [x] **6. 确认 GREEN 与验收**。重跑 `uv run --project semantic/experiments python -m pytest semantic/experiments/test_import_contract.py -q`，预期退出码 0；另完成：在干净隔离环境重放一次 lock 安装；确认不依赖 docreader 虚拟环境；失败则停止涉及该能力的下游。
 
-- [ ] **7. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 V01 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): v01 冻结版本与最小安装契约`。
+- [x] **7. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 V01 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): v01 冻结版本与最小安装契约`。
 
 ## V02：验证持久图桥接和两类推理
 

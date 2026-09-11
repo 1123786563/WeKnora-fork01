@@ -1,0 +1,19 @@
+# V01 isolated experiment environment for upstream Semantica capability
+# verification. This project never imports production service code and the
+# production service never imports from here (see plans/00-verification).
+[project]
+name = "semantica-experiments"
+version = "0.0.0"
+description = "Isolated upstream capability experiments (V01-V03) for the WeKnora Semantica integration"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    # V01 freeze: exact upstream release. graph-neo4j extra carries the neo4j
+    # driver required by the persistent-graph bridge experiments (V02).
+    "semantica[graph-neo4j]==0.6.8",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.uv]
+package = false

@@ -1,12 +1,12 @@
 # Semantica 实施台账
 
-状态：仅计划完成，24个任务均未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
+状态：V01 已完成并验证，其余 23 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
 
 状态值 pending / in_progress / blocked / implemented / verified。每项验证记录必须包含commit SHA、精确命令、退出码、环境、产物路径、失败/限制；无真实证据不标记verified。执行前记录实际基线与已有脏文件。
 
 | 任务 | 名称 | 依赖 | 状态 | 证据/提交/阻断原因 |
 |---|---|---|---|---|
-| V01 | 冻结版本与最小安装契约 | 无 | pending | 尚未执行 |
+| V01 | 冻结版本与最小安装契约 | 无 | verified | semantica==0.6.8（+graph-neo4j extra）冻结于上游 commit f73f599a；Python 3.12.13；见运行记录 2026-09-11 V01 与 capability-evidence.json |
 | V02 | 验证持久图桥接和两类推理 | V01 | pending | 尚未执行 |
 | V03 | 中文质量与上线阈值评估基线 | V02 | pending | 尚未执行 |
 | C01 | 版本化协议和跨语言领域类型 | V01 | pending | 尚未执行 |
@@ -35,8 +35,23 @@
 
 每次执行新增一条记录，填写实际内容，不改写旧证据：日期、任务、基线SHA、锁文件hash、修改文件、RED命令及退出码、GREEN命令及退出码、真实环境、证据位置、review结果、提交SHA、剩余限制。
 
+### 2026-09-11 V01 冻结版本与最小安装契约（verified）
+
+- 工作区：.worktrees/semantica（分支 codex/semantica）；基线 SHA：d3702543491865afbbe2fba14231121d44e82d06。
+- 锁文件 hash（uv.lock sha256）：40dde78c3e19077419d36947bf6ee88bfe454239040304f59b152b549c395abe。
+- 上游冻结：semantica[graph-neo4j]==0.6.8（PyPI wheel sha256 0af4d9dd…5917d7；源码 tag v0.6.8 → commit f73f599a22c320676a45f247247038ca1fcf40f0）。Python 3.12.13（uv 托管），pytest>=8.0 为唯一 dev 依赖。
+- 修改文件：semantic/experiments/{pyproject.toml,uv.lock,.python-version,test_import_contract.py,verify_version.py}、docs/superpowers/plans/semantica/capability-evidence.json、本台账、00 计划勾选。
+- RED：`uv run --project semantic/experiments python -m pytest semantic/experiments/test_import_contract.py -q`（退出码 1，ModuleNotFoundError: No module named 'semantica'——测试环境 pytest/解释器正常，失败即目标能力缺失）。
+- GREEN：同命令退出码 0（1 passed；首次冷导入约 210s，重跑约 5s）。
+- 干净环境重放：复制 pyproject.toml+uv.lock+.python-version 到 /tmp/semantica-replay，`uv sync --frozen` 退出码 0，导入七类 API 成功（semantica 0.6.8 / Python 3.12.13）。与 docreader 项目环境（docreader/pyproject.toml 独立 uv 项目、无共享 venv）互不依赖。
+- 证据：`uv run --project semantic/experiments python semantic/experiments/verify_version.py --output docs/superpowers/plans/semantica/capability-evidence.json` 退出码 0；产物含 7 项 capability 的真实 inspect.signature、源码 commit、wheel/lock 哈希与合同测试实跑退出码。
+- 环境：macOS arm64（darwin/aarch64），uv 0.9.30；PyPI 大文件下载多次超时，torch 121MiB wheel 以 curl -C - 断点续传取回并经 sha256 校验后放入 UV_FIND_LINKS 本地目录完成安装（一次性引导手段，不进入仓库；干净重放使用 uv 缓存完成）。
+- review：规格符合性 PASS、代码质量 PASS（子代理复核：7 项签名与实机 inspect 一致、lock 哈希与 shasum 一致、tag→commit 独立复现一致、无凭据泄漏）。两个 MINOR（pin 常量硬编码、未交叉校验已装版本）已在提交前修复：verify_version.py 改为从 pyproject/uv.lock 解析 pin 并校验 installed==pinned；fail-closed 已实测（裸解释器运行退出码 1 并写入 failures）。
+- 提交 SHA：见下方追加记录。
+- 剩余限制：仅静态导入/签名契约；未验证运行时行为（持久图、推理、模型代理留给 V02/V03）。
+
 ## 当前边界
 
-- 本轮只编写计划，没有能力实验、测试运行、容器启动、模型调用或上线切换。
-- V01精确版本、V03数值门槛、真实模型证据须在执行阶段补齐；这些是明确任务产物，不是已经通过的前提。
+- V01 已完成（verified）；V02/V03 及后续 22 个任务未开始。
+- V01精确版本已冻结（semantica 0.6.8）；V03数值门槛、真实模型证据须在后续任务补齐，不是已经通过的前提。
 - 未创建GitHub Issue或外部发布；没有分配虚构Issue编号。
