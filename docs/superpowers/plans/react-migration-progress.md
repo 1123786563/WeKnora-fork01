@@ -896,3 +896,10 @@
   protected preview/download, search/reference rendering, and per-format
   renderer acceptance remain open. Full evidence is in
   `docs/migrations/react/evidence/t07-web-upload-live-2026-09-12.md`.
+
+### T14 Web terminal and route/runtime follow-up (2026-09-12)
+
+- `5431f30` adds the Web sandbox terminal panel and ticket-backed WebSocket controller. It uses binary PTY input/output, handles JSON terminal control frames, validates resize bounds, caps retained output, and ignores stale events after close or session changes. The controller derives the WebSocket origin and deployment sub-path from the configured API base and never adds a bearer token to the URL.
+- The same slice makes knowledge-base detail/chat deep links, `/platform/agents`, root/search redirects, `/platform/system/*`, and explicit 404 handling visible in route dispatch. React Web and Embed now load the runtime `config.js` contract and a bundled favicon in the candidate artifact.
+- Verification: Web tests 94/94, Web/shared typechecks, Web build (127 modules), Embed build (68 modules), React boundary check, and diff check passed. Evidence: `docs/migrations/react/evidence/t14-web-terminal-route-runtime-2026-09-12.md`.
+- T14 remains `review`: deterministic fake-socket tests do not prove real shell I/O/resize, provider paused/no-sandbox behavior, cross-tenant live switching, or browser E2E.
