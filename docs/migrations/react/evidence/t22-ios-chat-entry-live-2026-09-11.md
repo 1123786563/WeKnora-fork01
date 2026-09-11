@@ -57,3 +57,21 @@ evidence, not production-provider or physical-device acceptance. It does not
 close approval/OAuth, attachments, artifact download/share, steering,
 background interruption/continuation, remote stop-after-assistant-id, or
 production-provider gates.
+
+## Follow-up: native Stop / interrupted stream — 2026-09-11 23:58 CST
+
+- Replaced the mock with a delayed OpenAI-compatible stream, sent `Stop after
+  token` from the same native composer, and observed the native `Stop` action
+  while the request was in progress.
+- After the tap, the composer returned to `Send`. The session retained the
+  user message and the server-backed assistant row was incomplete
+  (`is_completed = 0`); the UI displayed `Resuming…` for that incomplete row.
+- SQLite evidence for session
+  `d1f41b92-b616-43d0-896e-d69ce7c89f99` recorded the user message and the
+  incomplete assistant row. Screenshot:
+  `/tmp/weknora-ios-chat-stop-latest.png` (SHA-256
+  `6b6e07c836c2197e1c1c8f7590bc4838673e8044744423968ab3f78a6cfa59dc`).
+
+This is bounded native cancellation evidence. Because the delayed fixture
+closed before a server assistant-id was persisted, it does not claim the
+remote stop-after-assistant-id contract or successful background continuation.
