@@ -9,6 +9,7 @@ import { useMobileRuntime } from '../../runtime.tsx';
 import { pickNativeFile } from '../../platform/files.ts';
 import { downloadKnowledgeFile, shareNativeFile } from '../../platform/files.ts';
 import { selectAssistantMessageId, selectIncompleteAssistant, selectMessageArtifacts, selectReferenceGroups, shouldRenderPendingUser } from './parity.ts';
+import { stopChatRun } from './stop-run.ts';
 
 function errorText(cause: unknown, fallback: string): string {
   return cause instanceof Error ? cause.message : fallback;
@@ -195,12 +196,15 @@ export function ChatScreen() {
   }
 
   async function stop() {
-    if (!selectedSessionId || !activeMessageId.current) return;
-    try { await runtime.client.chat.stop(selectedSessionId, activeMessageId.current); }
-    catch (cause) { setError(errorText(cause, 'Unable to stop response')); }
-    streamController.current?.abort();
-    applyEvent({ response_type: 'stop', event_id: `local-stop-${Date.now()}` });
-    setSending(false);
+    if (!selectedSessionId) return;
+    const messageId = activeMessageId.current;
+    try {
+      await stopChatRun(
+        messageId ? async () => { await runtime.client.chat.stop(selectedSessionId!, messageId); } : undefined,
+        () => streamController.current?.abort(),
+        () => { applyEvent({ response_type: 'stop', event_id: `local-stop-${Date.now()}` }); setSending(false); },
+      );
+    } catch (cause) { setError(errorText(cause, 'Unable to stop response')); }
   }
 
   async function attach() {
