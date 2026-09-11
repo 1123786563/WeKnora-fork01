@@ -1,25 +1,60 @@
+export type MobileCapabilityMode = 'native-write' | 'native-read' | 'web-handoff' | 'unsupported';
+export type MobileCapabilityRole = 'owner' | 'admin' | 'contributor' | 'viewer' | 'system_admin';
+export type ManagementRoute =
+  | '/management/configuration'
+  | '/management/administration'
+  | '/management/api-keys'
+  | '/management/organizations';
+
 export interface MobileCapability {
   key: string;
   label: string;
-  support: 'core' | 'read-only' | 'management' | 'unsupported';
-  reason?: string;
+  mode: MobileCapabilityMode;
+  reason: string;
+  requiredRoles: readonly MobileCapabilityRole[];
 }
 
+const TENANT_ROLES: readonly MobileCapabilityRole[] = ['owner', 'admin', 'contributor', 'viewer'];
+
 export const MOBILE_CAPABILITIES: readonly MobileCapability[] = [
-  { key: 'knowledge', label: 'Knowledge bases and files', support: 'core' },
-  { key: 'chat', label: 'Chat, SSE recovery and citations', support: 'core' },
-  { key: 'attachments', label: 'Chat attachments', support: 'core' },
-  { key: 'approvals', label: 'Tool approvals', support: 'core' },
-  { key: 'identity', label: 'Members, roles and audit', support: 'management', reason: 'Tenant context is server-owned; writes require an owner/admin role and remain server-authorized.' },
-  { key: 'api-keys', label: 'Workspace API keys', support: 'management', reason: 'Only the workspace owner can mint or revoke keys; tokens are displayed once and never persisted by mobile.' },
-  { key: 'system-runtime', label: 'System runtime queues', support: 'unsupported', reason: 'System-admin queue/task controls remain on Web/Desktop and are not exposed as a mobile mutation surface.' },
-  { key: 'organizations', label: 'Organizations and join requests', support: 'management', reason: 'Organization membership and writes remain server-authorized.' },
-  { key: 'configuration', label: 'Agents, models, MCP and skills', support: 'read-only', reason: 'Mobile does not persist configuration writes.' },
-  { key: 'wiki-faq', label: 'Wiki and FAQ', support: 'management', reason: 'Owner/admin editing uses server version and permission checks.' },
-  { key: 'sandbox', label: 'Sandbox terminal', support: 'unsupported', reason: 'The ticket/WebSocket surface is not exposed as an arbitrary mobile shell.' },
-  { key: 'offline-writes', label: 'Offline write queue', support: 'unsupported', reason: 'The migration explicitly does not add offline synchronization.' },
-  { key: 'embed-admin', label: 'Embed and IM administration', support: 'unsupported', reason: 'Mobile does not embed the administration iframe.' },
+  { key: 'knowledge', label: 'Knowledge bases and files', mode: 'native-write', reason: 'Native knowledge and file screens submit changes through the authenticated server API.', requiredRoles: TENANT_ROLES },
+  { key: 'chat', label: 'Chat, SSE recovery and citations', mode: 'native-write', reason: 'Authenticated tenant members can send messages and recover streams from the native chat surface.', requiredRoles: TENANT_ROLES },
+  { key: 'attachments', label: 'Chat attachments', mode: 'native-write', reason: 'Native attachment selection and upload use the authenticated tenant-scoped file API.', requiredRoles: TENANT_ROLES },
+  { key: 'approvals', label: 'Tool approvals', mode: 'native-write', reason: 'Approval decisions are submitted by the authenticated conversation participant and remain server-authorized.', requiredRoles: TENANT_ROLES },
+  { key: 'identity', label: 'Members, roles and audit', mode: 'native-write', reason: 'Tenant context is server-owned; writes require an owner/admin role and remain server-authorized.', requiredRoles: ['owner', 'admin'] },
+  { key: 'api-keys', label: 'Workspace API keys', mode: 'native-write', reason: 'Only the workspace owner can mint or revoke keys; tokens are displayed once and never persisted by mobile.', requiredRoles: ['owner'] },
+  { key: 'system-runtime', label: 'System runtime queues', mode: 'web-handoff', reason: 'System-admin queue/task controls remain on Web/Desktop and are not exposed as a native mobile mutation surface.', requiredRoles: ['system_admin'] },
+  { key: 'organizations', label: 'Organizations and join requests', mode: 'native-write', reason: 'Organization membership and writes require an organization admin and remain server-authorized.', requiredRoles: ['admin'] },
+  { key: 'configuration', label: 'Agents, models, MCP and skills', mode: 'native-read', reason: 'Mobile can inspect configuration through native lists but does not persist configuration writes.', requiredRoles: TENANT_ROLES },
+  { key: 'wiki-faq', label: 'Wiki and FAQ', mode: 'web-handoff', reason: 'The management hub has no workspace context for a reference editor; use the Web surface for this management entry.', requiredRoles: ['owner', 'admin'] },
+  { key: 'sandbox', label: 'Sandbox terminal', mode: 'unsupported', reason: 'The ticket/WebSocket surface is not exposed as an arbitrary mobile shell.', requiredRoles: TENANT_ROLES },
+  { key: 'offline-writes', label: 'Offline write queue', mode: 'unsupported', reason: 'The migration explicitly does not add offline synchronization.', requiredRoles: TENANT_ROLES },
+  { key: 'embed-admin', label: 'Embed and IM administration', mode: 'web-handoff', reason: 'Embed and IM administration remains a Web/desktop flow; mobile does not embed the administration iframe.', requiredRoles: ['owner', 'admin'] },
 ] as const;
+
+const MANAGEMENT_ROUTES: Readonly<Partial<Record<string, ManagementRoute>>> = {
+  configuration: '/management/configuration',
+  identity: '/management/administration',
+  'api-keys': '/management/api-keys',
+  organizations: '/management/organizations',
+};
+
+export type MobileCapabilityAction =
+  | { kind: 'route'; route: ManagementRoute }
+  | { kind: 'status'; label: string };
+
+export function capabilityModeLabel(mode: MobileCapabilityMode): string {
+  if (mode === 'native-write') return '原生可写';
+  if (mode === 'native-read') return '只读';
+  if (mode === 'web-handoff') return '转 Web';
+  return '不支持';
+}
+
+export function capabilityAction(capability: MobileCapability): MobileCapabilityAction {
+  const route = MANAGEMENT_ROUTES[capability.key];
+  if (route && (capability.mode === 'native-write' || capability.mode === 'native-read')) return { kind: 'route', route };
+  return { kind: 'status', label: capabilityModeLabel(capability.mode) };
+}
 
 export function mobileCapability(key: string): MobileCapability | undefined {
   return MOBILE_CAPABILITIES.find((capability) => capability.key === key);
@@ -32,5 +67,5 @@ export function projectMobileCapability(
   const serverKey = capability.key === 'organizations' ? 'organizations' : capability.key === 'api-keys' ? 'integrations.api' : capability.key === 'sandbox' ? 'settings.sandbox' : undefined;
   if (!serverKey || serverCapabilities[serverKey] === undefined) return capability;
   const server = serverCapabilities[serverKey];
-  return server.supported ? capability : { ...capability, support: 'unsupported', reason: server.reason || 'Disabled by the server deployment' };
+  return server.supported ? capability : { ...capability, mode: 'unsupported', reason: server.reason || 'Disabled by the server deployment' };
 }
