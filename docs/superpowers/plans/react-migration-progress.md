@@ -556,6 +556,22 @@
 - `frontend/src`, the Vue dependency graph, legacy Docker/Nginx workflows, Lite/desktop fallback branches, and legacy verification scripts still have active references. `cmd/desktop/wails.json` targets the React desktop renderer, but that does not make the old Lite release input disposable.
 - T25 remains `pending`; no Vue source or fallback artifact was deleted. T24 acceptance, independent old-artifact retention, installed Wails rollback, complete browser/role/tenant/deployment matrix, and iOS/Android runtime gates remain prerequisites.
 
+### T20 mobile refresh race follow-up (2026-09-12)
+
+- The mobile JSON transport now captures the credential used for the initial
+  request. If a concurrent request has already rotated the bearer after a
+  `401`, the retry reuses that newer credential and does not invoke the refresh
+  coordinator a second time. The existing rules remain unchanged: only
+  idempotent reads retry, write requests are not replayed, and transition-time
+  requests do not refresh.
+- TDD RED reproduced the duplicate-refresh path by rotating the credential
+  between the initial `401` and retry. GREEN is `node --import tsx --test
+  apps/mobile/src/platform/transport.test.ts` 6/6; the full mobile suite is
+  57/57, mobile typecheck and `git diff --check` exit 0. Commit: `3275e78`.
+- This is source-level concurrency evidence only; real refresh-token rotation,
+  provider/OIDC, and device network-recovery evidence remain open. T20/T24
+  stay `review`; T25 remains gated.
+
 ### 本轮问题与裁定
 
 - 计划/设计原文仍写“方案 B 尚未批准”，与用户本轮批准相冲突；本实施分支按用户批准的方案 B 执行，未因旧措辞改变架构。
