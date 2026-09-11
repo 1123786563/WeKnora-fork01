@@ -9,7 +9,7 @@ const config: ExpoConfig = {
   ios: { bundleIdentifier: 'com.weknora.mobile' },
   android: { package: 'com.weknora.mobile' },
   userInterfaceStyle: 'automatic',
-  plugins: ['expo-router', 'expo-secure-store', 'expo-dev-client'],
+  plugins: ['expo-router', 'expo-secure-store', 'expo-dev-client', './withAndroidCleartextTraffic.js'],
   experiments: { typedRoutes: true },
   extra: { apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL ?? '' },
 };

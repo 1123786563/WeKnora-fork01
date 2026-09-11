@@ -332,6 +332,9 @@ importers:
         specifier: ^0.1.2
         version: 0.1.2
     devDependencies:
+      '@expo/config-plugins':
+        specifier: ~55.0.11
+        version: 55.0.11
       '@types/react':
         specifier: ~19.2.10
         version: 19.2.18
