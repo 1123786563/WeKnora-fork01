@@ -7,10 +7,12 @@ import (
 	"io"
 	"net/http"
 	"testing"
+
+	secutils "github.com/Tencent/WeKnora/internal/utils"
 )
 
 func TestAzureOpenAIEmbedderBatchEmbedSendsConfiguredDimensions(t *testing.T) {
-	t.Parallel()
+	allowAzureTestEndpoint(t)
 
 	var requestBody map[string]any
 	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -65,7 +67,7 @@ func TestAzureOpenAIEmbedderBatchEmbedSendsConfiguredDimensions(t *testing.T) {
 }
 
 func TestAzureOpenAIEmbedderBatchEmbedOmitsDimensionsByDefault(t *testing.T) {
-	t.Parallel()
+	allowAzureTestEndpoint(t)
 
 	var requestBody map[string]any
 	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -105,7 +107,7 @@ func TestAzureOpenAIEmbedderBatchEmbedOmitsDimensionsByDefault(t *testing.T) {
 }
 
 func TestAzureOpenAIEmbedderBatchEmbedSendsDimensionsWhenOverrideEnabledRegardlessOfAPIVersion(t *testing.T) {
-	t.Parallel()
+	allowAzureTestEndpoint(t)
 
 	var requestBody map[string]any
 	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -147,6 +149,13 @@ func TestAzureOpenAIEmbedderBatchEmbedSendsDimensionsWhenOverrideEnabledRegardle
 	if got != float64(256) {
 		t.Fatalf("unexpected dimensions value: got %v want 256", got)
 	}
+}
+
+func allowAzureTestEndpoint(t *testing.T) {
+	t.Helper()
+	t.Setenv("SSRF_WHITELIST", "example-resource.openai.azure.com")
+	secutils.ResetSSRFWhitelistForTest()
+	t.Cleanup(secutils.ResetSSRFWhitelistForTest)
 }
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
