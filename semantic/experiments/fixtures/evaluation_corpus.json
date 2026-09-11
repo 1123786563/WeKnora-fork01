@@ -1,0 +1,349 @@
+{
+  "schema_version": 1,
+  "scope": {
+    "tenant_id": 1,
+    "kb_id": "kb-v03-eval"
+  },
+  "restricted_documents": [
+    "d04",
+    "d10"
+  ],
+  "documents": [
+    {
+      "document_id": "d01",
+      "revision": 1,
+      "quote": "甲公司控股乙公司。"
+    },
+    {
+      "document_id": "d02",
+      "revision": 1,
+      "quote": "乙公司控股丙公司。"
+    },
+    {
+      "document_id": "d03",
+      "revision": 1,
+      "quote": "甲公司不再控股乙公司。"
+    },
+    {
+      "document_id": "d04",
+      "revision": 1,
+      "quote": "丙公司的密钥代号是松柏。"
+    },
+    {
+      "document_id": "d05",
+      "revision": 1,
+      "quote": "丁公司与戊公司签订零部件供应协议。"
+    },
+    {
+      "document_id": "d06",
+      "revision": 1,
+      "quote": "戊公司为庚公司代工整机。"
+    },
+    {
+      "document_id": "d07",
+      "revision": 1,
+      "quote": "庚公司的旗舰产品命名为沧澜一号。"
+    },
+    {
+      "document_id": "d08",
+      "revision": 1,
+      "quote": "辛公司与壬公司在2024年终止合作。"
+    },
+    {
+      "document_id": "d09",
+      "revision": 1,
+      "quote": "壬公司总部位于杭州。"
+    },
+    {
+      "document_id": "d10",
+      "revision": 1,
+      "quote": "癸公司的备用密钥代号是青竹。"
+    },
+    {
+      "document_id": "d11",
+      "revision": 1,
+      "quote": "丁公司控股癸公司。"
+    },
+    {
+      "document_id": "d12",
+      "revision": 1,
+      "quote": "甲公司总部位于深圳。"
+    },
+    {
+      "document_id": "d13",
+      "revision": 1,
+      "quote": "戊公司自2025年起停止为庚公司代工。"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "ent-jia",
+      "type": "Company",
+      "name": "甲公司",
+      "document_ids": [
+        "d01",
+        "d03",
+        "d12"
+      ]
+    },
+    {
+      "id": "ent-yi",
+      "type": "Company",
+      "name": "乙公司",
+      "document_ids": [
+        "d01",
+        "d02",
+        "d03"
+      ]
+    },
+    {
+      "id": "ent-bing",
+      "type": "Company",
+      "name": "丙公司",
+      "document_ids": [
+        "d02",
+        "d04"
+      ]
+    },
+    {
+      "id": "ent-ding",
+      "type": "Company",
+      "name": "丁公司",
+      "document_ids": [
+        "d05",
+        "d11"
+      ]
+    },
+    {
+      "id": "ent-wu",
+      "type": "Company",
+      "name": "戊公司",
+      "document_ids": [
+        "d05",
+        "d06",
+        "d13"
+      ]
+    },
+    {
+      "id": "ent-geng",
+      "type": "Company",
+      "name": "庚公司",
+      "document_ids": [
+        "d06",
+        "d07",
+        "d13"
+      ]
+    },
+    {
+      "id": "ent-xin",
+      "type": "Company",
+      "name": "辛公司",
+      "document_ids": [
+        "d08"
+      ]
+    },
+    {
+      "id": "ent-ren",
+      "type": "Company",
+      "name": "壬公司",
+      "document_ids": [
+        "d08",
+        "d09"
+      ]
+    },
+    {
+      "id": "ent-gui",
+      "type": "Company",
+      "name": "癸公司",
+      "document_ids": [
+        "d10",
+        "d11"
+      ]
+    },
+    {
+      "id": "ent-song",
+      "type": "Codename",
+      "name": "松柏",
+      "document_ids": [
+        "d04"
+      ]
+    },
+    {
+      "id": "ent-canglan",
+      "type": "Product",
+      "name": "沧澜一号",
+      "document_ids": [
+        "d07"
+      ]
+    },
+    {
+      "id": "ent-qingzhu",
+      "type": "Codename",
+      "name": "青竹",
+      "document_ids": [
+        "d10"
+      ]
+    },
+    {
+      "id": "loc-shenzhen",
+      "type": "Location",
+      "name": "深圳",
+      "document_ids": [
+        "d12"
+      ]
+    },
+    {
+      "id": "loc-hangzhou",
+      "type": "Location",
+      "name": "杭州",
+      "document_ids": [
+        "d09"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "assertion_id": "as-01",
+      "source": "ent-jia",
+      "target": "ent-yi",
+      "type": "controls",
+      "document_id": "d01",
+      "evidence_ids": [
+        "e-d01"
+      ],
+      "quote": "甲公司控股乙公司。"
+    },
+    {
+      "assertion_id": "as-02",
+      "source": "ent-yi",
+      "target": "ent-bing",
+      "type": "controls",
+      "document_id": "d02",
+      "evidence_ids": [
+        "e-d02"
+      ],
+      "quote": "乙公司控股丙公司。"
+    },
+    {
+      "assertion_id": "as-03",
+      "source": "ent-jia",
+      "target": "ent-yi",
+      "type": "divested",
+      "document_id": "d03",
+      "evidence_ids": [
+        "e-d03"
+      ],
+      "quote": "甲公司不再控股乙公司。"
+    },
+    {
+      "assertion_id": "as-04",
+      "source": "ent-bing",
+      "target": "ent-song",
+      "type": "codename",
+      "document_id": "d04",
+      "evidence_ids": [
+        "e-d04"
+      ],
+      "quote": "丙公司的密钥代号是松柏。"
+    },
+    {
+      "assertion_id": "as-05",
+      "source": "ent-ding",
+      "target": "ent-wu",
+      "type": "supplies",
+      "document_id": "d05",
+      "evidence_ids": [
+        "e-d05"
+      ],
+      "quote": "丁公司与戊公司签订零部件供应协议。"
+    },
+    {
+      "assertion_id": "as-06",
+      "source": "ent-wu",
+      "target": "ent-geng",
+      "type": "manufactures_for",
+      "document_id": "d06",
+      "evidence_ids": [
+        "e-d06"
+      ],
+      "quote": "戊公司为庚公司代工整机。"
+    },
+    {
+      "assertion_id": "as-07",
+      "source": "ent-geng",
+      "target": "ent-canglan",
+      "type": "product_name",
+      "document_id": "d07",
+      "evidence_ids": [
+        "e-d07"
+      ],
+      "quote": "庚公司的旗舰产品命名为沧澜一号。"
+    },
+    {
+      "assertion_id": "as-08",
+      "source": "ent-xin",
+      "target": "ent-ren",
+      "type": "terminated",
+      "document_id": "d08",
+      "evidence_ids": [
+        "e-d08"
+      ],
+      "quote": "辛公司与壬公司在2024年终止合作。"
+    },
+    {
+      "assertion_id": "as-09",
+      "source": "ent-ren",
+      "target": "loc-hangzhou",
+      "type": "headquartered_in",
+      "document_id": "d09",
+      "evidence_ids": [
+        "e-d09"
+      ],
+      "quote": "壬公司总部位于杭州。"
+    },
+    {
+      "assertion_id": "as-10",
+      "source": "ent-gui",
+      "target": "ent-qingzhu",
+      "type": "codename",
+      "document_id": "d10",
+      "evidence_ids": [
+        "e-d10"
+      ],
+      "quote": "癸公司的备用密钥代号是青竹。"
+    },
+    {
+      "assertion_id": "as-11",
+      "source": "ent-ding",
+      "target": "ent-gui",
+      "type": "controls",
+      "document_id": "d11",
+      "evidence_ids": [
+        "e-d11"
+      ],
+      "quote": "丁公司控股癸公司。"
+    },
+    {
+      "assertion_id": "as-12",
+      "source": "ent-jia",
+      "target": "loc-shenzhen",
+      "type": "headquartered_in",
+      "document_id": "d12",
+      "evidence_ids": [
+        "e-d12"
+      ],
+      "quote": "甲公司总部位于深圳。"
+    },
+    {
+      "assertion_id": "as-13",
+      "source": "ent-wu",
+      "target": "ent-geng",
+      "type": "stopped_manufacturing",
+      "document_id": "d13",
+      "evidence_ids": [
+        "e-d13"
+      ],
+      "quote": "戊公司自2025年起停止为庚公司代工。"
+    }
+  ]
+}

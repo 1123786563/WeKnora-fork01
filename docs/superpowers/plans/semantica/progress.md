@@ -1,6 +1,6 @@
 # Semantica 实施台账
 
-状态：V01、V02 已完成并验证，其余 22 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
+状态：V01–V03 已完成并验证，其余 21 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
 
 状态值 pending / in_progress / blocked / implemented / verified。每项验证记录必须包含commit SHA、精确命令、退出码、环境、产物路径、失败/限制；无真实证据不标记verified。执行前记录实际基线与已有脏文件。
 
@@ -8,7 +8,7 @@
 |---|---|---|---|---|
 | V01 | 冻结版本与最小安装契约 | 无 | verified | semantica==0.6.8（+graph-neo4j extra）冻结于上游 commit f73f599a；Python 3.12.13；见运行记录 2026-09-11 V01 与 capability-evidence.json |
 | V02 | 验证持久图桥接和两类推理 | V01 | verified | Neo4j 5.26 真实持久化+进程重启溯源通过；规则正/负/中文推导通过；模型推断无受批准凭据保持 unverified（未发起调用）；见运行记录 2026-09-11 V02 与 bridge-evidence.md |
-| V03 | 中文质量与上线阈值评估基线 | V02 | pending | 尚未执行 |
+| V03 | 中文质量与上线阈值评估基线 | V02 | verified | semantica 模式 30 题实测（正确率 0.767、泄漏 0、recall 0.925）；native 对照阻断于隔离测试部署+模型凭据，approved=false；见运行记录 2026-09-11 V03 与 evaluation-baseline.md |
 | C01 | 版本化协议和跨语言领域类型 | V01 | pending | 尚未执行 |
 | C02 | 认证服务骨架和Go客户端 | C01 | pending | 尚未执行 |
 | C03 | 事实与证据校验模型 | C01,V02 | pending | 尚未执行 |
@@ -65,9 +65,25 @@
 - 提交 SHA：fb13414（feat(semantic): v02 验证持久图桥接和两类推理）。
 - 剩余限制：模型推断保持 unverified（无受批准模型入口凭据，Q03/O03 真实模型验收仍需凭据）；ContextRetriever 向量语义检索路径未验证；全目录合跑约 1/9 概率退出阶段原生崩溃（不影响测试结果，O03 CI 门禁需回访）；probe 写入端无跨进程锁需串行运行。
 
+### 2026-09-11 V03 中文质量与上线阈值评估基线（verified）
+
+- 工作区：.worktrees/semantica（分支 codex/semantica）；基线 SHA：ab25417（V02 台账提交）。
+- 修改文件：semantic/experiments/{evaluate.py,test_evaluate.py,fixtures/questions.jsonl,fixtures/evaluation_corpus.json}、docs/superpowers/plans/semantica/{semantica-results.jsonl,native-results.jsonl,evaluation-baseline.md,acceptance-policy.json}、本台账、00 计划勾选。
+- RED：`uv run --project semantic/experiments python -m pytest semantic/experiments/test_evaluate.py -q` 退出码 2，ModuleNotFoundError: No module named 'evaluate'（评分器未实现）。
+- GREEN：同命令退出码 0（5 passed）；评审修复 RED：新增 4 个行为测试失败（leak 大小写敏感、数据集无校验、空数据集静默通过），`... -m pytest semantic/experiments/test_evaluate.py -q` 4 failed/8 passed；修复后 12 passed 退出码 0。
+- semantica 实测：`uv run --project semantic/experiments python semantic/experiments/evaluate.py --backend semantica --dataset semantic/experiments/fixtures/questions.jsonl --output docs/superpowers/plans/semantica/semantica-results.jsonl` 退出码 0（30 题：正确率 0.767，fact/conflict/zh_locate/permission 1.0、multihop 0.4、unanswerable 0.2，source_precision 均值 0.628、source_recall 非空均值 0.925，p50 冷/热 0.032/0.015ms，p95 0.063/0.020ms，索引 741.4ms，tokens 0，泄漏 0）。
+- native 尝试：`... evaluate.py --backend native ... --output docs/superpowers/plans/semantica/native-results.jsonl` 退出码 2，30 条错误行+blocked_reason 全部落盘（未配置隔离测试端点；未连任何生产环境）。
+- 回归：四个实验测试文件合跑 26 passed 退出码 0（V01 1 + V02 13 + V03 12）。
+- 环境：macOS arm64；Python 3.12.13；semantica 0.6.8；隔离 Neo4j 5.26（semantica-v02-neo4j，127.0.0.1:17687）。
+- review：规格符合性 PASS（9 项通过；独立复算全部汇总统计与结果文件一致；3 项 MINOR：字段名与计划接口差异——已改 source_precision/source_recall/unanswerable_correct，台账勾选滞后——本次完成，leak 子串匹配备注——Q01 回访）。代码质量 PASS（0 BLOCKER、12 MINOR；已修复：大小写不敏感泄漏门+去重、数据集类别/必填校验、空数据集退出、argparse 用法错误退出码 1、逐案例错误行、recall 均值剔除空预期题（0.95→0.925 修正后重跑）、泄漏负载加入命中内容对象、document_revision 读自 fixture、别名清理、native available 语义与空延迟置 None；保留：共享 probe 标签串行约束已在 baseline 限制中记录）。
+- 阈值：acceptance-policy.json approved=false；泄漏 hard gate proposed_max=0（实测 0）；multihop/unanswerable 阈值=当前实测值（诚实下限，Q01/Q03 后必须上调）；native 与对照门禁 unmeasured。
+- 提交 SHA：（本记录与代码同批提交后补记）
+- 剩余限制：native 对照与模型模式质量/用量门槛待隔离测试部署+真实模型凭据；受控语料规模不代表生产规模；评测需串行运行（与 V02 共享 probe 标签）。
+
 ## 当前边界
 
-- V01、V02 已完成（verified）；V03 及后续 21 个任务未开始。
-- V01精确版本已冻结（semantica 0.6.8）；V03数值门槛、真实模型证据须在后续任务补齐，不是已经通过的前提。
+- V01–V03 已完成（verified）；后续 21 个任务未开始。
+- V01精确版本已冻结（semantica 0.6.8）；真实模型证据须在后续任务补齐，不是已经通过的前提。
 - V02 结论边界：持久图桥接/授权子图重建/注册规则推导已验证；模型推断 unverified（无凭据，未调用）；向量检索路径未验证。
+- V03 结论边界：semantica 模式检索质量/延迟为受控语料实测；native 对照与模型用量门槛未测（阻断记录见上）；上线门禁 approved=false 待用户确认。
 - 未创建GitHub Issue或外部发布；没有分配虚构Issue编号。

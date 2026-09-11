@@ -131,7 +131,7 @@ assert all("evidence_ids" in row for row in allowed_rows)
 
 **接口：** 定义 score_case(expected_evidence:set[str],actual_evidence:set[str])->dict；评估产物记录 correct、source_precision、source_recall、unanswerable_correct、latency_ms、tokens、query_mode；policy.approved 初值 false，只有明确验收决策可变 true。
 
-- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 def test_evidence_score_penalizes_unsupported_source():
@@ -140,13 +140,13 @@ def test_evidence_score_penalizes_unsupported_source():
     assert score["recall"] == 1.0
 ```
 
-- [ ] **2. 确认 RED**。执行 `uv run --project semantic/experiments python -m pytest semantic/experiments/test_evaluate.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [x] **2. 确认 RED**。执行 `uv run --project semantic/experiments python -m pytest semantic/experiments/test_evaluate.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 建立事实直答、多跳、冲突、无答案、中文定位与权限反例各至少5题；合成数据可公开，真实企业内容须获得授权且不进入仓库**
+- [x] **3. 建立事实直答、多跳、冲突、无答案、中文定位与权限反例各至少5题；合成数据可公开，真实企业内容须获得授权且不进入仓库**
 
-- [ ] **4. 同一文档版本/模型配置分别运行 native 与候选模式；区分冷启动和热查询，记录索引耗时、p50/p95与实际用量**
+- [x] **4. 同一文档版本/模型配置分别运行 native 与候选模式；区分冷启动和热查询，记录索引耗时、p50/p95与实际用量**
 
-- [ ] **5. 根据实测提出明确质量/延迟/单次用量阈值，写入 policy 的 proposed 部分和理由；用户未确认时上线门禁保持关闭，其他独立实现可以继续**
+- [x] **5. 根据实测提出明确质量/延迟/单次用量阈值，写入 policy 的 proposed 部分和理由；用户未确认时上线门禁保持关闭，其他独立实现可以继续**
 
 关键实现约束：
 
@@ -158,9 +158,9 @@ def score_case(expected_evidence, actual_evidence):
 # 权限泄漏独立 hard gate，不能通过平均分抵消。
 ```
 
-- [ ] **6. 确认 GREEN 与验收**。重跑 `uv run --project semantic/experiments python -m pytest semantic/experiments/test_evaluate.py -q`，预期退出码 0；另完成：评分器通过、至少30题完整结果和失败例均留档；policy 中不存在无实测支撑的 approved=true。
+- [x] **6. 确认 GREEN 与验收**。重跑 `uv run --project semantic/experiments python -m pytest semantic/experiments/test_evaluate.py -q`，预期退出码 0；另完成：评分器通过、至少30题完整结果和失败例均留档；policy 中不存在无实测支撑的 approved=true。
 
-- [ ] **7. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 V03 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): v03 中文质量与上线阈值评估基线`。
+- [x] **7. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 V03 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): v03 中文质量与上线阈值评估基线`。
 
 ## 实验命令与输出合同
 
