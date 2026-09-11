@@ -282,6 +282,12 @@
 - The Lite SQLite migration directory ends at `000013`; it contains no `tenant_skills`/`tenant_skill_snapshots`/`tenant_skill_catalog` tables, while the tenant-skill reaper is wired unconditionally. The Lite smoke warning `no such table: tenant_skills` is therefore a pre-existing backend schema/feature-boundary gap, not a React regression. No migration or reaper behavior was changed in T24; Skills/sandbox live acceptance remains open and requires a separate backend schema decision.
 - T24 remains `review`: local static/typecheck/test/build, single-host Docker static smoke, candidate Nginx proxy behavior, isolated Lite backend and browser evidence are collected, but real registry/deployed Nginx, Wails installed package, complete browser/OS and role matrix, native package/runtime, performance baseline, and rollback rehearsal still need to be collected before T24 can be accepted.
 
+### T25 retirement preflight (2026-09-11)
+
+- Read-only scan recorded in `docs/migrations/react/evidence/t25-retirement-preflight-2026-09-11.md`.
+- `frontend/src`, the Vue dependency graph, legacy Docker/Nginx workflows, Lite/desktop fallback branches, and legacy verification scripts still have active references. `cmd/desktop/wails.json` targets the React desktop renderer, but that does not make the old Lite release input disposable.
+- T25 remains `pending`; no Vue source or fallback artifact was deleted. T24 acceptance, independent old-artifact retention, installed Wails rollback, complete browser/role/tenant/deployment matrix, and iOS/Android runtime gates remain prerequisites.
+
 ### 本轮问题与裁定
 
 - 计划/设计原文仍写“方案 B 尚未批准”，与用户本轮批准相冲突；本实施分支按用户批准的方案 B 执行，未因旧措辞改变架构。
