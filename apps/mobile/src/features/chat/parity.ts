@@ -8,6 +8,14 @@ export function replayMobileChatEvents(events: readonly ChatStreamEvent[]): Chat
   return state;
 }
 
+export function selectAssistantMessageId(event: ChatStreamEvent): string | undefined {
+  const data = typeof event.data === 'object' && event.data !== null && !Array.isArray(event.data)
+    ? event.data as Record<string, unknown>
+    : undefined;
+  const candidates = [event.message_id, event.assistant_message_id, data?.assistant_message_id, data?.message_id];
+  return candidates.find((value): value is string => typeof value === 'string' && value.trim() !== '');
+}
+
 export function selectReferenceGroups(state: ChatStreamState): ChatReferenceGroup[] {
   return groupChatReferences(state.references);
 }

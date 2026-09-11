@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { initialChatStreamState, reduceChatStream } from '@weknora/domain/chat/reducer';
-import { replayMobileChatEvents, selectIncompleteAssistant, selectReferenceGroups, shouldRenderPendingUser } from './parity.ts';
+import { replayMobileChatEvents, selectAssistantMessageId, selectIncompleteAssistant, selectReferenceGroups, shouldRenderPendingUser } from './parity.ts';
 
 test('mobile replay uses the shared reducer for answer, approval, and references', () => {
   const events = [
@@ -30,4 +30,10 @@ test('mobile does not duplicate a user message after stream recovery reloads his
   const messages = [{ id: 'u', session_id: 's', role: 'user' as const, content: 'hello' }];
   assert.equal(shouldRenderPendingUser(messages, 'hello'), false);
   assert.equal(shouldRenderPendingUser(messages, 'new draft'), true);
+});
+
+test('mobile extracts the assistant id from the nested stream query event', () => {
+  assert.equal(selectAssistantMessageId({ response_type: 'agent_query', data: { assistant_message_id: 'assistant-1' } }), 'assistant-1');
+  assert.equal(selectAssistantMessageId({ message_id: 'assistant-2' }), 'assistant-2');
+  assert.equal(selectAssistantMessageId({ response_type: 'error', data: { error: 'failed' } }), undefined);
 });

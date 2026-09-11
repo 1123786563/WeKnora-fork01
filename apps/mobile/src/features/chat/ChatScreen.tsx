@@ -8,7 +8,7 @@ import { normalizeToolResult } from '@weknora/domain/chat/tool-results';
 import { useMobileRuntime } from '../../runtime.tsx';
 import { pickNativeFile } from '../../platform/files.ts';
 import { downloadKnowledgeFile, shareNativeFile } from '../../platform/files.ts';
-import { selectIncompleteAssistant, selectMessageArtifacts, selectReferenceGroups, shouldRenderPendingUser } from './parity.ts';
+import { selectAssistantMessageId, selectIncompleteAssistant, selectMessageArtifacts, selectReferenceGroups, shouldRenderPendingUser } from './parity.ts';
 
 function errorText(cause: unknown, fallback: string): string {
   return cause instanceof Error ? cause.message : fallback;
@@ -40,6 +40,7 @@ export function ChatScreen() {
   const activeMessageId = useRef<string | undefined>(undefined);
   const activeOAuth = useRef<{ pendingId: string; serviceId: string; authorizationAttempt: string } | null>(null);
   const steerAction = useRef<string | null>(null);
+  const failedAssistantMessageId = useRef<string | undefined>(undefined);
   const resuming = useRef(false);
 
   const loadSessions = useCallback(async () => {
@@ -75,13 +76,22 @@ export function ChatScreen() {
   useEffect(() => {
     setStreamState(initialChatStreamState());
     activeMessageId.current = undefined;
+    failedAssistantMessageId.current = undefined;
     if (selectedSessionId) { void loadMessages(selectedSessionId); void loadAttachments(selectedSessionId); }
     if (selectedSessionId) void loadSteerQueue(selectedSessionId);
     else { setMessages([]); setAttachments([]); setSteerQueue([]); }
   }, [loadAttachments, loadMessages, loadSteerQueue, selectedSessionId]);
 
   const applyEvent = useCallback((event: ChatStreamEvent) => {
-    if (typeof event.message_id === 'string' && event.message_id) activeMessageId.current = event.message_id;
+    const assistantMessageId = selectAssistantMessageId(event);
+    if (assistantMessageId) activeMessageId.current = assistantMessageId;
+    if ((event.response_type ?? event.type) === 'error') {
+      failedAssistantMessageId.current = assistantMessageId ?? activeMessageId.current;
+      const data = typeof event.data === 'object' && event.data !== null && !Array.isArray(event.data)
+        ? event.data as Record<string, unknown>
+        : undefined;
+      setError(typeof event.error === 'string' ? event.error : typeof data?.error === 'string' ? data.error : 'Chat stream failed');
+    }
     setStreamState((current) => reduceChatStream(current, event));
   }, []);
 
@@ -91,6 +101,10 @@ export function ChatScreen() {
     setSending(false);
     const refreshed = await loadMessages(sessionId);
     await loadSteerQueue(sessionId);
+    if (failedAssistantMessageId.current === activeMessageId.current && failedAssistantMessageId.current) {
+      setPendingUser(null);
+      return;
+    }
     const incomplete = selectIncompleteAssistant(refreshed);
     if (!incomplete) setPendingUser(null);
   }, [loadMessages, loadSteerQueue]);
@@ -101,6 +115,7 @@ export function ChatScreen() {
     const controller = new AbortController();
     streamController.current = controller;
     activeMessageId.current = messageId;
+    failedAssistantMessageId.current = undefined;
     setSending(true); setError(''); setStreamState(initialChatStreamState());
     try { await runtime.client.chat.continueStream(sessionId, messageId, applyEvent, controller.signal); }
     catch (cause) { if (!controller.signal.aborted) setError(errorText(cause, 'Unable to resume response')); }
@@ -113,7 +128,7 @@ export function ChatScreen() {
       void (async () => {
         const refreshed = await loadMessages(selectedSessionId);
         const incomplete = selectIncompleteAssistant(refreshed);
-        if (incomplete) await continueMessage(selectedSessionId, incomplete.id);
+        if (incomplete && incomplete.id !== failedAssistantMessageId.current) await continueMessage(selectedSessionId, incomplete.id);
       })();
     });
     return () => subscription.remove();
@@ -162,6 +177,8 @@ export function ChatScreen() {
     let sessionId: string;
     try { sessionId = await ensureSession(); } catch (cause) { setError(errorText(cause, 'Unable to create conversation')); return; }
     setDraft(''); setPendingUser(query); setStreamState(initialChatStreamState());
+    activeMessageId.current = undefined;
+    failedAssistantMessageId.current = undefined;
     const controller = new AbortController();
     streamController.current = controller;
     setSending(true);
@@ -315,7 +332,7 @@ export function ChatScreen() {
         {pendingOAuthApprovals.map((approval) => <View key={approval.pendingId} style={{ backgroundColor: '#eef4ff', padding: 10, borderRadius: 8, marginBottom: 8 }}><Text>MCP authorization required{approval.serviceName ? ` · ${approval.serviceName}` : ''}</Text>{approval.toolName ? <Text style={{ color: '#667085', marginTop: 4 }}>Tool: {approval.toolName}</Text> : null}<View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}><Pressable onPress={() => void openOAuth(approval)}><Text style={{ color: '#2864dc' }}>Authorize</Text></Pressable><Pressable onPress={() => void cancelOAuth(approval)}><Text style={{ color: '#b42318' }}>Cancel</Text></Pressable></View></View>)}
         {selectedSessionId ? <View style={{ backgroundColor: '#f8f9fc', padding: 10, borderRadius: 8, marginBottom: 8 }}><View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><Text style={{ fontWeight: '600' }}>Steer queue</Text><Pressable disabled={steerLoading} onPress={() => void loadSteerQueue(selectedSessionId)}><Text style={{ color: steerLoading ? '#98a2b3' : '#2864dc' }}>{steerLoading ? 'Loading…' : 'Refresh'}</Text></Pressable></View>{steerQueue.length === 0 ? <Text style={{ color: '#667085', marginTop: 6 }}>No queued instructions</Text> : steerQueue.map((item) => <View key={item.steer_id} style={{ backgroundColor: '#fff', padding: 8, borderRadius: 8, marginTop: 6 }}><Text selectable>{item.content}</Text><Text style={{ color: '#667085', fontSize: 12, marginTop: 4 }}>{item.delivery === 'inject' ? 'Injecting next' : 'After current response'}</Text><View style={{ flexDirection: 'row', gap: 12, marginTop: 6 }}>{item.delivery === 'after' ? <Pressable disabled={Boolean(steerBusy)} onPress={() => void promoteSteer(item)}><Text style={{ color: steerBusy === item.steer_id ? '#98a2b3' : '#2864dc' }}>Inject now</Text></Pressable> : null}<Pressable disabled={Boolean(steerBusy)} onPress={() => void removeSteer(item)}><Text style={{ color: steerBusy === item.steer_id ? '#98a2b3' : '#b42318' }}>Remove</Text></Pressable></View></View>)}</View> : null}
       </>}
-      renderItem={({ item }) => <View style={{ alignSelf: item.role === 'user' ? 'flex-end' : 'stretch', maxWidth: '92%', backgroundColor: item.role === 'user' ? '#eff6ff' : '#f8f9fc', padding: 10, borderRadius: 10, marginBottom: 8 }}><Text style={{ fontWeight: '600', marginBottom: 4 }}>{item.role}</Text><Text selectable>{item.content}</Text>{item.role === 'assistant' && item.is_completed === false ? <Text style={{ color: '#667085', marginTop: 4 }}>Resuming…</Text> : null}{normalizeArtifactList(selectMessageArtifacts(item)).map((artifact) => <Pressable key={`${artifact.index}-${artifact.fileName}`} onPress={() => void shareArtifact(item.id, artifact)}><Text style={{ color: '#2864dc', marginTop: 6 }}>File: {artifact.fileName} · Share</Text></Pressable>)}{item.role === 'assistant' && item.data ? <Text style={{ color: '#667085' }}>{normalizeToolResult({ output: item.data }).text}</Text> : null}</View>}
+      renderItem={({ item }) => <View style={{ alignSelf: item.role === 'user' ? 'flex-end' : 'stretch', maxWidth: '92%', backgroundColor: item.role === 'user' ? '#eff6ff' : '#f8f9fc', padding: 10, borderRadius: 10, marginBottom: 8 }}><Text style={{ fontWeight: '600', marginBottom: 4 }}>{item.role}</Text><Text selectable>{item.content}</Text>{item.role === 'assistant' && item.is_completed === false ? <Text style={{ color: '#667085', marginTop: 4 }}>{item.id === failedAssistantMessageId.current ? 'Response failed; send a new message to retry' : 'Resuming…'}</Text> : null}{normalizeArtifactList(selectMessageArtifacts(item)).map((artifact) => <Pressable key={`${artifact.index}-${artifact.fileName}`} onPress={() => void shareArtifact(item.id, artifact)}><Text style={{ color: '#2864dc', marginTop: 6 }}>File: {artifact.fileName} · Share</Text></Pressable>)}{item.role === 'assistant' && item.data ? <Text style={{ color: '#667085' }}>{normalizeToolResult({ output: item.data }).text}</Text> : null}</View>}
     />
     {attachments.length ? <ScrollView horizontal style={{ maxHeight: 38, paddingHorizontal: 12 }}><View style={{ flexDirection: 'row', gap: 8 }}>{attachments.map((attachment) => <View key={attachment.id} style={{ backgroundColor: '#f2f4f7', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 6 }}><Text>{attachment.file_name} · {attachment.status}</Text></View>)}</View></ScrollView> : null}
     <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingVertical: 6 }}><Pressable onPress={() => setDraft('Summarize the selected knowledge base')}><Text style={{ color: '#2864dc', fontSize: 12 }}>Summarize</Text></Pressable><Pressable onPress={() => setDraft('Find related files')}><Text style={{ color: '#2864dc', fontSize: 12 }}>Related files</Text></Pressable></View>
