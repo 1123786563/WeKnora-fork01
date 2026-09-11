@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createLatestAsyncWriter, createSessionEpoch, createSingleFlight, createWorkspaceSelectionAdapter, parseMobileWorkspaces, shouldHydrateWorkspaceMemberships, shouldLoadWorkspaceRoute, toWorkspaceId } from './workspace.ts';
+import { createLatestAsyncWriter, createSessionEpoch, createSingleFlight, createWorkspaceSelectionAdapter, parseMobileWorkspaces, shouldHydrateWorkspaceMemberships, shouldLoadWorkspaceRoute, shouldRefreshMobileSession, toWorkspaceId } from './workspace.ts';
 
 function store(initial: string | null = null) {
   let value = initial;
@@ -45,6 +45,12 @@ test('hydrates memberships only after a bearer session is restored without cache
   assert.equal(shouldHydrateWorkspaceMemberships({ hydrating: false, credentialKind: 'anonymous', workspaceCount: 0 }), false);
   assert.equal(shouldHydrateWorkspaceMemberships({ hydrating: false, credentialKind: 'bearer', workspaceCount: 1 }), false);
   assert.equal(shouldHydrateWorkspaceMemberships({ hydrating: false, credentialKind: 'bearer', workspaceCount: 0 }), true);
+});
+
+test('does not start a mobile refresh while a session transition is active', () => {
+  assert.equal(shouldRefreshMobileSession({ transitionCount: 1, credentialKind: 'bearer', hasRefreshToken: true }), false);
+  assert.equal(shouldRefreshMobileSession({ transitionCount: 0, credentialKind: 'bearer', hasRefreshToken: true }), true);
+  assert.equal(shouldRefreshMobileSession({ transitionCount: 0, credentialKind: 'anonymous', hasRefreshToken: false }), false);
 });
 
 test('shares one in-flight workspace refresh instead of issuing concurrent auth requests', async () => {

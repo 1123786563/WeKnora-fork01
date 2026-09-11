@@ -28,14 +28,20 @@ race finding.
   tenant when the adopted session has no tenant.
 - `apps/mobile/src/platform/workspace.ts` serializes workspace-selection writes
   with newest-wins ordering; stale queued writes are skipped.
+- `apps/mobile/src/runtime.tsx` now refuses refresh initiation while any session
+  transition is active, and the mobile transport omits Bearer and tenant
+  headers during that transition. Changing the server address clears the
+  persisted bearer credential and workspace selection before the new origin is
+  activated; the tenant ref is cleared synchronously so an old tenant header
+  cannot escape through a stale render.
 
 ## Verification
 
 Focused command:
 
 ```text
-pnpm exec tsx --test packages/api-client/src/auth.test.ts apps/mobile/src/platform/workspace.test.ts
-exit 0 — 18/18
+pnpm exec tsx --test packages/api-client/src/auth.test.ts apps/mobile/src/platform/workspace.test.ts apps/mobile/src/platform/transport.test.ts
+exit 0 — 23/23
 ```
 
 The regression coverage includes an already-started credential write,
@@ -44,7 +50,7 @@ workspace selection write. The broader checks also passed:
 
 ```text
 pnpm test:shared       exit 0 — 162/162
-pnpm test:mobile       exit 0 — 39/39
+pnpm test:mobile       exit 0 — 41/41
 pnpm typecheck:shared  exit 0
 pnpm typecheck:mobile  exit 0
 git diff --check       exit 0

@@ -4,6 +4,7 @@ export interface MobileTransportOptions {
   credential: () => Credential;
   refresh?: () => Promise<Credential>;
   tenantId?: () => string | null;
+  isTransitioning?: () => boolean;
   locale?: () => string | undefined;
   fetcher?: FetchLike;
 }
@@ -19,10 +20,11 @@ export function createMobileTransport(options: MobileTransportOptions): HttpTran
   const base = createJsonTransport(fetcher);
   const decorate = (request: Parameters<typeof base.send>[0]) => {
     const headers = { ...request.headers };
-    const credential = options.credential();
+    const transitioning = options.isTransitioning?.() ?? false;
+    const credential: Credential = transitioning ? { kind: 'anonymous' } : options.credential();
     const authorization = authHeader(credential);
     if (authorization) headers.authorization = authorization;
-    const tenantId = options.tenantId?.();
+    const tenantId = transitioning ? null : options.tenantId?.();
     if (tenantId && credential.kind !== 'embed') headers['x-tenant-id'] = tenantId;
     const locale = options.locale?.();
     if (locale) headers['accept-language'] = locale;
@@ -32,6 +34,7 @@ export function createMobileTransport(options: MobileTransportOptions): HttpTran
   return {
     send: async (request) => {
       const result = await base.send(decorate(request));
+      if (options.isTransitioning?.()) return result;
       const credential = options.credential();
       if (result.status !== 401 || !options.refresh || credential.kind !== 'bearer' || !isIdempotentRead(request.method)) return result;
       await options.refresh();

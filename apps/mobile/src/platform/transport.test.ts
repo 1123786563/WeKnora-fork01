@@ -66,3 +66,25 @@ test('does not replay a write after 401', async () => {
   assert.equal(calls, 1);
   assert.equal(refreshes, 0);
 });
+
+test('does not attach stale session context while a transition is active', async () => {
+  let refreshes = 0;
+  const requests: Record<string, string>[] = [];
+  const transport = createMobileTransport({
+    credential: () => ({ kind: 'bearer', accessToken: 'old-access', refreshToken: 'old-refresh' }),
+    tenantId: () => '7',
+    isTransitioning: () => true,
+    refresh: async () => { refreshes += 1; throw new Error('refresh must be blocked'); },
+    fetcher: async (_input, init) => {
+      requests.push((init?.headers as Record<string, string> | undefined) ?? {});
+      return jsonResponse(401, { success: false, message: 'transitioning' });
+    },
+  });
+
+  const result = await transport.send({ method: 'GET', url: 'https://api.example.test/api/v1/auth/me', headers: {} });
+
+  assert.equal(result.status, 401);
+  assert.equal(refreshes, 0);
+  assert.equal(requests[0]?.authorization, undefined);
+  assert.equal(requests[0]?.['x-tenant-id'], undefined);
+});

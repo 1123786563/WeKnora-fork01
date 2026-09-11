@@ -51,6 +51,14 @@ export function shouldHydrateWorkspaceMemberships(input: {
   return !input.hydrating && input.credentialKind === 'bearer' && input.workspaceCount === 0;
 }
 
+export function shouldRefreshMobileSession(input: {
+  transitionCount: number;
+  credentialKind: 'anonymous' | 'bearer' | 'embed';
+  hasRefreshToken: boolean;
+}): boolean {
+  return input.transitionCount === 0 && input.credentialKind === 'bearer' && input.hasRefreshToken;
+}
+
 export function createSingleFlight<T>(operation: () => Promise<T>): () => Promise<T> {
   let pending: Promise<T> | null = null;
   return () => {
