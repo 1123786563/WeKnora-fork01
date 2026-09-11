@@ -121,6 +121,20 @@ test('routes native file uploads through the cancellable transport seam', async 
   });
 });
 
+test('preserves multipart fields when a multipart request has no native file', async () => {
+  let received: unknown;
+  const transport = createJsonTransport(async (_input, init) => {
+    received = init?.body;
+    return jsonResponse(200, { success: true, data: { ok: true } });
+  });
+  const client = createWeKnoraClient({ baseURL: 'https://api.example.test', transport });
+
+  await client.request({ method: 'POST', path: '/api/v1/models/model-1/debug', multipartFields: { input: 'hello', options: '{}' } });
+
+  assert.ok(received instanceof FormData);
+  assert.deepEqual(Object.fromEntries((received as FormData).entries()), { input: 'hello', options: '{}' });
+});
+
 test('classifies abort-like errors when DOMException is unavailable', async () => {
   const globals = globalThis as typeof globalThis & { DOMException?: typeof DOMException };
   const originalDOMException = globals.DOMException;

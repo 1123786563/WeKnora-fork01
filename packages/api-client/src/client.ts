@@ -56,6 +56,13 @@ function joinURL(baseURL: string, path: string): string {
   return `${base}${suffix}`;
 }
 
+function multipartBody(fields: Record<string, string>): FormData {
+  if (typeof FormData === 'undefined') throw new Error('multipart form data is unavailable');
+  const form = new FormData();
+  for (const [key, value] of Object.entries(fields)) form.append(key, value);
+  return form;
+}
+
 function withQuery(path: string, params: Record<string, string | undefined>): string {
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) if (value !== undefined) query.set(key, value);
@@ -77,7 +84,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
       method: input.method,
       url: joinURL(options.baseURL, input.path),
       headers: { accept: 'application/json', ...input.headers },
-      body: input.body,
+      body: input.body ?? (input.multipartFields === undefined ? undefined : multipartBody(input.multipartFields)),
       signal: controller.signal,
     };
     try {
