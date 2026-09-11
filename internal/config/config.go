@@ -39,6 +39,34 @@ type Config struct {
 	// against window.location.origin — fine for typical single-origin
 	// deployments. Sourced from FRONTEND_BASE_URL env at startup.
 	FrontendBaseURL string `yaml:"frontend_base_url" json:"frontend_base_url"`
+	// O01 commercial rollout switches. Pointer booleans so "unset" means
+	// the SAFE-ON default (true): every lane stays open unless an operator
+	// explicitly closes it as a rollback-only action. Read through the
+	// Are*Enabled accessors so nil stays nil-safe. Env overrides:
+	// WEKNORA_COMMERCIAL_NEW_ORDERS / WEKNORA_COMMERCIAL_NEW_DISPATCH /
+	// WEKNORA_CONNECTOR_NEW_ACTIONS (parsed in
+	// applyCommercialRolloutDefaults).
+	CommercialNewOrders   *bool `yaml:"commercial_new_orders" json:"commercial_new_orders"`
+	CommercialNewDispatch *bool `yaml:"commercial_new_dispatch" json:"commercial_new_dispatch"`
+	ConnectorNewActions   *bool `yaml:"connector_new_actions" json:"connector_new_actions"`
+}
+
+// AreCommercialNewOrdersEnabled reports whether NEW commercial orders are
+// accepted. Nil config or unset pointer keeps the safe-on default (true).
+func (c *Config) AreCommercialNewOrdersEnabled() bool {
+	return c == nil || c.CommercialNewOrders == nil || *c.CommercialNewOrders
+}
+
+// AreCommercialNewDispatchEnabled reports whether NEW commercial
+// dispatches run. Nil keeps the safe-on default (true).
+func (c *Config) AreCommercialNewDispatchEnabled() bool {
+	return c == nil || c.CommercialNewDispatch == nil || *c.CommercialNewDispatch
+}
+
+// AreConnectorNewActionsEnabled reports whether NEW app-connector actions
+// run. Nil keeps the safe-on default (true).
+func (c *Config) AreConnectorNewActionsEnabled() bool {
+	return c == nil || c.ConnectorNewActions == nil || *c.ConnectorNewActions
 }
 
 // AgentConfig represents the global agent settings.
@@ -584,6 +612,7 @@ func LoadConfig() (*Config, error) {
 	applyKnowledgeBaseEnvOverrides(&cfg)
 	applyAuthAndTenantDefaults(&cfg)
 	applyAuditDefaults(&cfg)
+	applyCommercialRolloutDefaults(&cfg)
 
 	if err := ValidateConfig(&cfg); err != nil {
 		return nil, err
@@ -928,6 +957,34 @@ func applyAuthAndTenantDefaults(cfg *Config) {
 //
 // Env overrides (when set and parseable; out-of-range is ignored):
 //   - WEKNORA_AUDIT_RETENTION_DAYS (non-negative integer)
+//
+// applyCommercialRolloutDefaults applies env-var overrides for the O01
+// commercial rollout switches. Defaults stay safe-on: an unset or
+// unparseable env var never closes a lane, and config.yaml explicit
+// false (the rollback action) is preserved as-is.
+//
+// Env overrides (when set and parseable as boolean):
+//   - WEKNORA_COMMERCIAL_NEW_ORDERS
+//   - WEKNORA_COMMERCIAL_NEW_DISPATCH
+//   - WEKNORA_CONNECTOR_NEW_ACTIONS
+func applyCommercialRolloutDefaults(cfg *Config) {
+	applyRolloutSwitchEnv(&cfg.CommercialNewOrders, "WEKNORA_COMMERCIAL_NEW_ORDERS")
+	applyRolloutSwitchEnv(&cfg.CommercialNewDispatch, "WEKNORA_COMMERCIAL_NEW_DISPATCH")
+	applyRolloutSwitchEnv(&cfg.ConnectorNewActions, "WEKNORA_CONNECTOR_NEW_ACTIONS")
+}
+
+func applyRolloutSwitchEnv(field **bool, env string) {
+	value := strings.TrimSpace(os.Getenv(env))
+	if value == "" {
+		return
+	}
+	if parsed, err := strconv.ParseBool(value); err == nil {
+		*field = &parsed
+	} else {
+		fmt.Printf("[config] %s=%q is not a boolean, ignoring\n", env, value)
+	}
+}
+
 func applyAuditDefaults(cfg *Config) {
 	// Section omitted entirely -> apply the default and no env wiring
 	// is needed for the most common path.

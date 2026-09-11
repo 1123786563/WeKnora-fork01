@@ -467,6 +467,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// an explicit SetCommercialGate by the commercial request path, so
 	// non-commercial behavior is unchanged.
 	must(container.Provide(commercialsvc.NewExecutionGateService))
+	// O01 rollout recovery: categorized recovery queue plus audited
+	// replay of pause-safe operations, gated by the commercial rollout
+	// config switches (safe-on defaults). Registered only — the
+	// platform-operator capability check stays unset until OPS auth
+	// wiring lands, so Replay fails closed out of the box.
+	must(container.Provide(commercialsvc.NewRecoveryService))
 	logger.Debugf(ctx, "[Container] HTTP handlers registered")
 
 	// Wire the chat package's local image resolver so multimodal chat can read
