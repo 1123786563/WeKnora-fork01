@@ -29,6 +29,10 @@ test('chat page exposes the selected agent and server-disabled state at the chat
     onRenameSession: async () => undefined,
     onToggleSessionPin: async () => undefined,
     onDeleteSession: async () => undefined,
+    terminal: { status: 'ready', output: '$ ls' },
+    onOpenTerminal: async () => undefined,
+    onTerminalInput: async () => undefined,
+    onCloseTerminal: () => undefined,
     stream: {
       phase: 'streaming',
       thinking: 'checking sources',
@@ -52,4 +56,6 @@ test('chat page exposes the selected agent and server-disabled state at the chat
   assert.match(html, /Rename session-1/);
   assert.match(html, /Unpin session-1/);
   assert.match(html, /Delete session-1/);
+  assert.match(html, /Open terminal/);
+  assert.match(html, /\$ ls/);
 });

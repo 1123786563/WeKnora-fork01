@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AgentConfiguration, ChatMessage, ChatSession, WeKnoraClient } from '@weknora/api-client';
 import { chatDraftKey } from '@weknora/domain/chat/draft';
 import { initialChatStreamState, reduceChatStream } from '@weknora/domain/chat/reducer';
@@ -6,17 +6,19 @@ import { ChatPage, type ChatSubmission } from '@weknora/views';
 import type { ScopeController } from '@weknora/domain/scope';
 import { chatSessionIdFromPath } from './session-route.ts';
 import { buildWebChatStreamOptions, initialAgentSelection } from './agent-selection.ts';
+import { createWebTerminalController, webSocketTarget, type WebTerminalController, type WebTerminalSnapshot } from './terminal.ts';
 
 interface ChatRoutePageProps {
   client: WeKnoraClient;
   scopeController: ScopeController;
+  apiBaseUrl?: string;
 }
 
 function draftStorageKey(scope: ReturnType<ScopeController['current']>['scope'], sessionId: string): string {
   return JSON.stringify(chatDraftKey({ ...scope, sessionId }));
 }
 
-export function ChatRoutePage({ client, scopeController }: ChatRoutePageProps) {
+export function ChatRoutePage({ client, scopeController, apiBaseUrl = '' }: ChatRoutePageProps) {
   const scope = scopeController.current();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -29,6 +31,8 @@ export function ChatRoutePage({ client, scopeController }: ChatRoutePageProps) {
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [error, setError] = useState<string | undefined>();
+  const [terminal, setTerminal] = useState<WebTerminalSnapshot>({ status: 'idle', output: '' });
+  const terminalController = useRef<WebTerminalController | null>(null);
   const storageKey = useMemo(
     () => selectedSessionId ? draftStorageKey(scope.scope, selectedSessionId) : null,
     [scope.scope, selectedSessionId],
@@ -78,6 +82,28 @@ export function ChatRoutePage({ client, scopeController }: ChatRoutePageProps) {
   useEffect(() => {
     setDraft(storageKey ? window.localStorage.getItem(storageKey) ?? '' : '');
   }, [storageKey]);
+
+  useEffect(() => {
+    terminalController.current?.close();
+    terminalController.current = null;
+    setTerminal({ status: 'idle', output: '' });
+    if (!selectedSessionId) return;
+    const target = webSocketTarget(apiBaseUrl, window.location.origin);
+    const controller = createWebTerminalController({
+      sessionId: selectedSessionId,
+      wsOrigin: target.origin,
+      basePath: target.basePath,
+      issueTicket: (signal) => client.sandbox.issueTicket(selectedSessionId, signal),
+      socketFactory: (url) => new WebSocket(url) as unknown as import('./terminal.ts').WebTerminalSocket,
+    });
+    terminalController.current = controller;
+    const unsubscribe = controller.subscribe(setTerminal);
+    return () => {
+      unsubscribe();
+      controller.close();
+      if (terminalController.current === controller) terminalController.current = null;
+    };
+  }, [apiBaseUrl, client, scope.signal, selectedSessionId]);
 
   function selectSession(sessionId: string) {
     setSelectedSessionId(sessionId);
@@ -174,6 +200,19 @@ export function ChatRoutePage({ client, scopeController }: ChatRoutePageProps) {
     if (storageKey) window.localStorage.setItem(storageKey, value);
   }
 
+  async function openTerminal(): Promise<void> {
+    if (!terminalController.current) throw new Error('Select a conversation before opening the terminal.');
+    await terminalController.current.open({ provision: true, signal: scope.signal });
+  }
+
+  async function terminalInput(input: string): Promise<void> {
+    terminalController.current?.sendInput(input);
+  }
+
+  function closeTerminal(): void {
+    terminalController.current?.close();
+  }
+
   async function send(submission: ChatSubmission): Promise<void> {
     if (!selectedSessionId) throw new Error('Create or select a conversation first.');
     const sessionId = selectedSessionId;
@@ -217,6 +256,10 @@ export function ChatRoutePage({ client, scopeController }: ChatRoutePageProps) {
     onRenameSession={renameSession}
     onToggleSessionPin={toggleSessionPin}
     onDeleteSession={deleteSession}
+    terminal={selectedSessionId ? terminal : undefined}
+    onOpenTerminal={selectedSessionId ? openTerminal : undefined}
+    onTerminalInput={selectedSessionId ? terminalInput : undefined}
+    onCloseTerminal={selectedSessionId ? closeTerminal : undefined}
     stream={{ phase: streamState.phase, thinking: streamState.thinking, references: streamState.references, toolCalls: Object.values(streamState.toolCalls) }}
     send={send}
   />;

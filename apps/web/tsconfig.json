@@ -28,6 +28,7 @@
       "@weknora/domain/knowledge/folders": ["../../packages/domain/src/knowledge/folders.ts"],
       "@weknora/domain/knowledge/processing": ["../../packages/domain/src/knowledge/processing.ts"],
       "@weknora/domain/knowledge/preview": ["../../packages/domain/src/knowledge/preview.ts"],
+      "@weknora/domain/sandbox/terminal": ["../../packages/domain/src/sandbox/terminal.ts"],
       "@weknora/domain/wiki/diff": ["../../packages/domain/src/wiki/diff.ts"],
       "@weknora/ui": ["../../packages/ui/src/index.tsx"],
       "@weknora/views": ["../../packages/views/src/index.ts"]

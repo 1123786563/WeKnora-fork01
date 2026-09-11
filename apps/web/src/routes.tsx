@@ -3,7 +3,8 @@ import { isCapabilitySupported } from '@weknora/domain';
 export type RouteMatch =
   | { kind: 'login'; path: '/login' | '/register'; mode?: 'login' | 'register' }
   | { kind: 'platform'; path: string }
-  | { kind: 'knowledge-base'; path: string }
+  | { kind: 'knowledge-base'; path: string; knowledgeBaseId?: string }
+  | { kind: 'chat'; path: string; knowledgeBaseId?: string }
   | { kind: 'knowledge-document'; path: string; knowledgeBaseId: string; documentId: string }
   | { kind: 'knowledge-wiki'; path: string; knowledgeBaseId: string }
   | { kind: 'knowledge-faq'; path: string; knowledgeBaseId: string }
@@ -29,13 +30,22 @@ export function resolveRoute(pathname: string): RouteMatch {
   const settingsMatch = path.match(/^\/knowledgeBase\/([^/]+)\/settings$/);
   if (settingsMatch) return { kind: 'knowledge-settings', path, knowledgeBaseId: decodeURIComponent(settingsMatch[1]!) };
   if (path === '/knowledgeBase' || path.startsWith('/knowledgeBase/')) return { kind: 'knowledge-base', path };
-  if (path === '/platform' || path.startsWith('/platform/')) return { kind: 'platform', path };
+  const platformKnowledgeChatMatch = path.match(/^\/platform\/knowledge-bases\/([^/]+)\/creatChat$/);
+  if (platformKnowledgeChatMatch) return { kind: 'chat', path, knowledgeBaseId: decodeURIComponent(platformKnowledgeChatMatch[1]!) };
+  const platformKnowledgeBaseMatch = path.match(/^\/platform\/knowledge-bases\/([^/]+)$/);
+  if (platformKnowledgeBaseMatch) return { kind: 'knowledge-base', path, knowledgeBaseId: decodeURIComponent(platformKnowledgeBaseMatch[1]!) };
+  if (path === '/platform' || path === '/platform/knowledge-bases' || path === '/platform/knowledge-search' || path === '/platform/agents' || path === '/platform/integrations' || path === '/platform/creatChat' || path === '/platform/organizations' || path === '/platform/settings' || path === '/platform/configuration' || path === '/platform/administration' || path === '/platform/system' || path === '/platform/dev/markdown' || path.startsWith('/platform/chat/') || path.startsWith('/platform/system/')) return { kind: 'platform', path };
   if (path === '/creatChat' || path.startsWith('/creatChat/')) return { kind: 'platform', path: `/platform/creatChat${path.slice('/creatChat'.length)}` };
   return { kind: 'not-found', path };
 }
 
 export function routeRedirect(pathname: string): string | undefined {
   const match = resolveRoute(pathname);
+  if (match.path === '/') return '/platform/knowledge-bases';
+  if (match.path === '/platform/knowledge-search') {
+    const query = pathname.includes('?') ? pathname.slice(pathname.indexOf('?')) : '';
+    return `/platform/knowledge-bases${query}`;
+  }
   if (match.kind === 'join') {
     const query = new URLSearchParams(pathname.includes('?') ? pathname.slice(pathname.indexOf('?')) : '');
     const code = query.get('code')?.trim();
@@ -82,10 +92,19 @@ export function guardRoute(pathname: string, context: RouteGuardContext): RouteG
     if (!context.authenticated) return { kind: 'redirect', to: '/login', reason: 'authentication-required' };
     return context.tenantId ? { kind: 'redirect', to: '/platform/knowledge-bases', reason: 'workspace-required' } : { kind: 'allow' };
   }
+  if (path === '/') {
+    if (!context.authenticated) return { kind: 'redirect', to: `/login?next=${encodeURIComponent(pathname)}`, reason: 'authentication-required' };
+    if (!context.tenantId) return { kind: 'redirect', to: '/onboarding/workspace', reason: 'workspace-required' };
+    return { kind: 'redirect', to: '/platform/knowledge-bases', reason: 'capability-unavailable' };
+  }
+  if (path === '/platform' || path === '/platform/knowledge-search') {
+    return { kind: 'redirect', to: routeRedirect(pathname) ?? '/platform/knowledge-bases', reason: 'capability-unavailable' };
+  }
   if (!protectedPath(path)) return { kind: 'allow' };
   if (!context.authenticated) return { kind: 'redirect', to: `/login?next=${encodeURIComponent(pathname)}`, reason: 'authentication-required' };
   if (!context.tenantId) return { kind: 'redirect', to: '/onboarding/workspace', reason: 'workspace-required' };
   if (path.startsWith('/platform/system') && !context.isSystemAdmin) return { kind: 'redirect', to: '/platform/settings', reason: 'system-admin-required' };
+  if (path.startsWith('/platform/system/')) return { kind: 'redirect', to: '/platform/system', reason: 'capability-unavailable' };
   const capability = capabilityForPath(path);
   if (capability && !isCapabilitySupported(context.capabilities, capability, { liteMode: context.liteMode, edition: context.edition })) {
     return { kind: 'redirect', to: '/platform/knowledge-bases', reason: 'capability-unavailable' };

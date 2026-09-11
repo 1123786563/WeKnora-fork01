@@ -1,7 +1,6 @@
 import { createRoot } from 'react-dom/client';
 import { createRefreshCoordinator, createWeKnoraClient, type AuthSession, type Credential } from '@weknora/api-client';
 import { Status } from '@weknora/ui';
-import { KnowledgeBasesPage } from './App.tsx';
 import { LoginPage } from './auth/LoginPage.tsx';
 import { JoinPage } from './auth/JoinPage.tsx';
 import { WorkspaceOnboardingPage } from './auth/WorkspaceOnboardingPage.tsx';
@@ -24,6 +23,7 @@ import { ConfigurationPage } from './configuration/ConfigurationPage.tsx';
 import { AdministrationPage } from './administration/AdministrationPage.tsx';
 import { OrganizationsPage } from './organizations/OrganizationsPage.tsx';
 import { SettingsPage } from './settings/SettingsPage.tsx';
+import { NotFoundPage } from './NotFoundPage.tsx';
 import './styles.css';
 
 const oidcCallback = parseOIDCCallbackHash(window.location.hash);
@@ -133,7 +133,7 @@ function renderProtected() {
     root.render(<FAQPage client={client} knowledgeBaseId={route.knowledgeBaseId} />);
   } else if (route.kind === 'knowledge-settings') {
     root.render(<KnowledgeSettingsPage client={client} knowledgeBaseId={route.knowledgeBaseId} />);
-  } else if (route.path === '/platform/configuration') {
+  } else if (route.path === '/platform/configuration' || route.path === '/platform/agents') {
     root.render(<ConfigurationPage client={client} />);
   } else if (route.path === '/platform/administration') {
     root.render(<AdministrationPage client={client} tenantId={Number(scopeRuntime.current().scope.tenantId)} />);
@@ -143,15 +143,17 @@ function renderProtected() {
     root.render(<SettingsPage client={client} tenantId={Number(scopeRuntime.current().scope.tenantId)} />);
   } else if (route.path === '/platform/system') {
     root.render(<AdministrationPage client={client} tenantId={Number(scopeRuntime.current().scope.tenantId)} systemAdmin />);
-  } else if (route.kind === 'knowledge-base' && route.path.split('/').filter(Boolean).length === 2) {
-    const knowledgeBaseId = decodeURIComponent(route.path.split('/')[2]!);
+  } else if (route.kind === 'knowledge-base' && route.knowledgeBaseId) {
+    const knowledgeBaseId = route.knowledgeBaseId;
     root.render(<KnowledgeDocumentsPage client={client} knowledgeBaseId={knowledgeBaseId} onOpenDocument={(document) => window.location.assign(`/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}/documents/${encodeURIComponent(document.id)}`)} />);
-  } else if (route.path === '/platform/creatChat' || route.path.startsWith('/platform/chat/')) {
-    root.render(<ChatRoutePage client={client} scopeController={scopeController} />);
+  } else if (route.kind === 'chat' || route.path === '/platform/creatChat' || route.path.startsWith('/platform/chat/')) {
+    root.render(<ChatRoutePage client={client} scopeController={scopeController} apiBaseUrl={apiBaseUrl} />);
   } else if (route.path === '/platform/integrations') {
     root.render(<IntegrationsRoutePage client={client} />);
+  } else if (route.kind === 'not-found') {
+    root.render(<NotFoundPage path={route.path} />);
   } else {
-    root.render(<KnowledgeBasesPage client={client} scopeController={scopeController} />);
+    root.render(<NotFoundPage path={route.path} />);
   }
 }
 

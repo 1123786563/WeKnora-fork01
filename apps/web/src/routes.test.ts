@@ -21,11 +21,17 @@ test('keeps legacy deep links and redirects the misspelled chat path compatibly'
   assert.deepEqual(resolveRoute('/knowledgeBase/kb-1/wiki'), { kind: 'knowledge-wiki', path: '/knowledgeBase/kb-1/wiki', knowledgeBaseId: 'kb-1' });
   assert.deepEqual(resolveRoute('/knowledgeBase/kb-1/faq'), { kind: 'knowledge-faq', path: '/knowledgeBase/kb-1/faq', knowledgeBaseId: 'kb-1' });
   assert.deepEqual(resolveRoute('/knowledgeBase/kb-1/settings'), { kind: 'knowledge-settings', path: '/knowledgeBase/kb-1/settings', knowledgeBaseId: 'kb-1' });
+  assert.deepEqual(resolveRoute('/platform/knowledge-bases/kb-1/creatChat'), { kind: 'chat', path: '/platform/knowledge-bases/kb-1/creatChat', knowledgeBaseId: 'kb-1' });
+  assert.deepEqual(resolveRoute('/platform/agents'), { kind: 'platform', path: '/platform/agents' });
+  assert.equal(routeRedirect('/'), '/platform/knowledge-bases');
+  assert.equal(routeRedirect('/platform/knowledge-search?query=hello'), '/platform/knowledge-bases?query=hello');
 });
 
 test('does not treat embed or missing capability paths as authenticated platform routes', () => {
   assert.equal(resolveRoute('/embed/channel-1').kind, 'embed');
   assert.equal(resolveRoute('/unknown').kind, 'not-found');
+  assert.equal(resolveRoute('/platform/not-a-page').kind, 'not-found');
+  assert.equal(resolveRoute('/platform/system/queue').kind, 'platform');
 });
 
 test('guards protected deep links and redirects no-tenant sessions to onboarding', () => {

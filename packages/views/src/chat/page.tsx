@@ -41,6 +41,11 @@ export interface ChatStreamPresentation {
   toolCalls: readonly ChatToolCallView[];
 }
 
+export interface ChatTerminalView {
+  status: string;
+  output: string;
+}
+
 export interface ChatPageProps {
   sessions: readonly ChatSession[];
   selectedSessionId: string | null;
@@ -66,6 +71,10 @@ export interface ChatPageProps {
   onRenameSession?(sessionId: string): Promise<void>;
   onToggleSessionPin?(sessionId: string, pinned: boolean): Promise<void>;
   onDeleteSession?(sessionId: string): Promise<void>;
+  terminal?: ChatTerminalView;
+  onOpenTerminal?(): Promise<void>;
+  onTerminalInput?(input: string): Promise<void>;
+  onCloseTerminal?(): void;
 }
 
 const SECRET_KEY = /(?:api[_-]?key|app[_-]?secret|access[_-]?token|refresh[_-]?token|client[_-]?secret|password|secret|token)/i;
@@ -143,6 +152,25 @@ function SteerComposer({ onSteer }: { onSteer: (content: string) => Promise<void
   </form>;
 }
 
+function TerminalPanel(props: Pick<ChatPageProps, 'terminal' | 'onOpenTerminal' | 'onTerminalInput' | 'onCloseTerminal'>) {
+  const [input, setInput] = useState('');
+  const [busy, setBusy] = useState(false);
+  if (!props.terminal && !props.onOpenTerminal) return null;
+  async function sendInput(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!input.trim() || !props.onTerminalInput) return;
+    setBusy(true);
+    try { await props.onTerminalInput(input); setInput(''); } finally { setBusy(false); }
+  }
+  return <section aria-label="Sandbox terminal" className="wk-chat-terminal">
+    <div className="wk-settings-panel-heading"><h2>Sandbox terminal</h2><span role="status">{props.terminal?.status ?? 'idle'}</span></div>
+    {props.onOpenTerminal ? <button type="button" onClick={() => void props.onOpenTerminal!()}>Open terminal</button> : null}
+    {props.terminal?.output ? <pre>{props.terminal.output}</pre> : null}
+    {props.terminal && props.onTerminalInput ? <form onSubmit={(event) => void sendInput(event)}><label htmlFor="wk-chat-terminal-input">Terminal input</label><input id="wk-chat-terminal-input" value={input} onChange={(event) => setInput(event.target.value)} disabled={busy} /><button type="submit" disabled={busy || !input.trim()}>Send input</button></form> : null}
+    {props.terminal && props.onCloseTerminal ? <button type="button" onClick={props.onCloseTerminal}>Close terminal</button> : null}
+  </section>;
+}
+
 export function ChatPage(props: ChatPageProps) {
   const [pending, setPending] = useState<PendingChatMessage | undefined>();
 
@@ -176,6 +204,7 @@ export function ChatPage(props: ChatPageProps) {
       {props.agents && props.onAgentChange ? <label htmlFor="wk-chat-agent">Agent<select id="wk-chat-agent" value={props.selectedAgentId ?? ''} onChange={(event) => props.onAgentChange?.(event.target.value)}><option value="">Knowledge chat</option>{props.agents.map((agent) => <option key={agent.id} value={agent.id} disabled={agent.disabled}>{agent.name}{agent.disabled ? ' · disabled' : ''}</option>)}</select></label> : null}
       <ChatActionCards {...props} />
       {props.stream ? <LiveResponse stream={props.stream} /> : null}
+      <TerminalPanel terminal={props.terminal} onOpenTerminal={props.onOpenTerminal} onTerminalInput={props.onTerminalInput} onCloseTerminal={props.onCloseTerminal} />
       {props.error ? <p role="alert">{props.error}</p> : null}
       {props.loadingMessages ? <p role="status">Loading messages…</p> : null}
       <MessageList messages={props.messages} pending={pending} onRetry={pending?.status === 'failed' ? () => void send({ content: pending.content, status: 'pending' }) : undefined} />
