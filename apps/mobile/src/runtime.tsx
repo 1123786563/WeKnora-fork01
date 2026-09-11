@@ -6,7 +6,7 @@ import { resolveMobileApiBaseUrl } from './platform/transport.ts';
 import { createSecureCredentialAdapter } from './platform/credentials.ts';
 import { createServerAddressAdapter } from './platform/server.ts';
 import { createMobileTransport } from './platform/transport.ts';
-import { createSessionEpoch, createSingleFlight, createWorkspaceSelectionAdapter, parseMobileWorkspaces, shouldHydrateWorkspaceMemberships, toWorkspaceId, type MobileWorkspace } from './platform/workspace.ts';
+import { createLatestAsyncWriter, createSessionEpoch, createSingleFlight, createWorkspaceSelectionAdapter, parseMobileWorkspaces, shouldHydrateWorkspaceMemberships, toWorkspaceId, type MobileWorkspace } from './platform/workspace.ts';
 import { parseMobileOIDCCallback } from './platform/oidc.ts';
 
 const OIDC_STATE_KEY = 'weknora.mobile.oidc-state';
@@ -58,6 +58,7 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
       return { success: true, ...refreshed };
     },
   }), [adapter, refreshClient]);
+  const workspaceWriter = useMemo(() => createLatestAsyncWriter((value: number | null) => workspaceAdapter.write(value)), [workspaceAdapter]);
   const refreshSession = useCallback(async () => {
     const startedAt = sessionEpoch.current();
     try {
@@ -79,18 +80,19 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
   const client = useMemo(() => createWeKnoraClient({ baseURL, transport }), [baseURL, transport]);
 
   const adoptSession = useCallback(async (session: AuthSession) => {
-    sessionEpoch.invalidate();
+    const startedAt = sessionEpoch.invalidate();
     await refreshCoordinator.invalidate({ clear: false });
+    if (!sessionEpoch.isCurrent(startedAt)) throw new AuthError('AUTH_INVALIDATED', 'The session was superseded before it could be adopted');
     const next: Credential = { kind: 'bearer', accessToken: session.token, refreshToken: session.refreshToken };
-    await adapter.write(next);
+    await refreshCoordinator.write(next);
+    if (!sessionEpoch.isCurrent(startedAt)) throw new AuthError('AUTH_INVALIDATED', 'The session was superseded while it was being adopted');
+    const activeTenantId = toWorkspaceId(session.tenant?.id);
+    await workspaceWriter.write(activeTenantId);
+    if (!sessionEpoch.isCurrent(startedAt)) throw new AuthError('AUTH_INVALIDATED', 'The session was superseded while its workspace was being stored');
     updateCredential(next);
     setWorkspaces(parseMobileWorkspaces(session.memberships));
-    const activeTenantId = toWorkspaceId(session.tenant?.id);
-    if (activeTenantId !== null) {
-      setTenantId(String(activeTenantId));
-      await workspaceAdapter.write(activeTenantId);
-    }
-  }, [adapter, refreshCoordinator, sessionEpoch, updateCredential, workspaceAdapter]);
+    setTenantId(activeTenantId === null ? null : String(activeTenantId));
+  }, [refreshCoordinator, sessionEpoch, updateCredential, workspaceWriter]);
 
   useEffect(() => {
     let active = true;
@@ -165,11 +167,12 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
     const startedAt = sessionEpoch.current();
     const identity = await client.auth.me();
     if (!sessionEpoch.isCurrent(startedAt) || credentialRef.current.kind !== 'bearer') return;
-    setWorkspaces(parseMobileWorkspaces(identity.memberships));
     const activeTenantId = toWorkspaceId(identity.tenant?.id);
+    await workspaceWriter.write(activeTenantId);
+    if (!sessionEpoch.isCurrent(startedAt) || credentialRef.current.kind !== 'bearer') return;
+    setWorkspaces(parseMobileWorkspaces(identity.memberships));
     setTenantId(activeTenantId === null ? null : String(activeTenantId));
-    await workspaceAdapter.write(activeTenantId);
-  }), [client, sessionEpoch, workspaceAdapter]);
+  }), [client, sessionEpoch, workspaceWriter]);
 
   useEffect(() => {
     if (!shouldHydrateWorkspaceMemberships({ hydrating, credentialKind: credential.kind, workspaceCount: workspaces.length })) return;
@@ -179,18 +182,30 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
   async function switchWorkspace(id: number) {
     const workspaceId = toWorkspaceId(id);
     if (workspaceId === null) throw new Error('workspace id must be a positive safe integer');
-    sessionEpoch.invalidate();
+    const startedAt = sessionEpoch.invalidate();
     await refreshCoordinator.invalidate({ clear: false });
+    if (!sessionEpoch.isCurrent(startedAt)) throw new AuthError('AUTH_INVALIDATED', 'The workspace switch was superseded');
     const refreshToken = credentialRef.current.kind === 'bearer' ? credentialRef.current.refreshToken : undefined;
     const session = await client.auth.switchTenant(workspaceId, refreshToken);
+    if (!sessionEpoch.isCurrent(startedAt)) throw new AuthError('AUTH_INVALIDATED', 'The workspace switch was superseded');
     const next: Credential = { kind: 'bearer', accessToken: session.token, refreshToken: session.refreshToken };
-    await adapter.write(next);
+    await refreshCoordinator.write(next);
+    if (!sessionEpoch.isCurrent(startedAt)) throw new AuthError('AUTH_INVALIDATED', 'The workspace switch was superseded while storing credentials');
+    await workspaceWriter.write(workspaceId);
+    if (!sessionEpoch.isCurrent(startedAt)) throw new AuthError('AUTH_INVALIDATED', 'The workspace switch was superseded while storing its selection');
     updateCredential(next);
     setTenantId(String(workspaceId));
-    await workspaceAdapter.write(workspaceId);
     if (session.memberships) setWorkspaces(parseMobileWorkspaces(session.memberships));
   }
-  async function logout() { sessionEpoch.invalidate(); await refreshCoordinator.logout(); await workspaceAdapter.write(null); setWorkspaces([]); setTenantId(null); updateCredential({ kind: 'anonymous' }); }
+  async function logout() {
+    const startedAt = sessionEpoch.invalidate();
+    await refreshCoordinator.logout();
+    await workspaceWriter.write(null);
+    if (!sessionEpoch.isCurrent(startedAt)) return;
+    setWorkspaces([]);
+    setTenantId(null);
+    updateCredential({ kind: 'anonymous' });
+  }
 
   return <RuntimeContext.Provider value={{ client, baseURL, credential, hydrating, oidcError, tenantId, workspaces, setServerAddress, refreshWorkspaces, switchWorkspace, register, registerByInvite, startOIDC, login, logout }}>{children}</RuntimeContext.Provider>;
 }

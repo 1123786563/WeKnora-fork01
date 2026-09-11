@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createSessionEpoch, createSingleFlight, createWorkspaceSelectionAdapter, parseMobileWorkspaces, shouldHydrateWorkspaceMemberships, shouldLoadWorkspaceRoute, toWorkspaceId } from './workspace.ts';
+import { createLatestAsyncWriter, createSessionEpoch, createSingleFlight, createWorkspaceSelectionAdapter, parseMobileWorkspaces, shouldHydrateWorkspaceMemberships, shouldLoadWorkspaceRoute, toWorkspaceId } from './workspace.ts';
 
 function store(initial: string | null = null) {
   let value = initial;
@@ -83,4 +83,23 @@ test('invalidates a workspace refresh when the session changes', () => {
   assert.equal(epoch.isCurrent(started), false);
   const next = epoch.current();
   assert.equal(epoch.isCurrent(next), true);
+});
+
+test('serializes workspace writes with newest selection last', async () => {
+  const values: number[] = [];
+  let release!: () => void;
+  let started!: () => void;
+  const writeStarted = new Promise<void>((resolve) => { started = resolve; });
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const writer = createLatestAsyncWriter(async (value: number) => {
+    if (value === 1) { started(); await gate; }
+    values.push(value);
+  });
+
+  const first = writer.write(1);
+  await writeStarted;
+  const second = writer.write(2);
+  release();
+  await Promise.all([first, second]);
+  assert.deepEqual(values, [1, 2]);
 });

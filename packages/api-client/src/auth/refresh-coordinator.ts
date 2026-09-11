@@ -49,6 +49,33 @@ function isBearer(credential: Credential): credential is BearerCredential {
 export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
   let generation = 0;
   let inFlight: Promise<BearerCredential> | undefined;
+  let persistenceTail: Promise<void> = Promise.resolve();
+  let persistenceIntent = 0;
+
+  function enqueuePersistence(operation: () => Promise<void>): Promise<void> {
+    const task = persistenceTail.then(operation);
+    persistenceTail = task.catch(() => undefined);
+    return task;
+  }
+
+  async function persistRefresh(
+    refreshed: BearerCredential,
+    previous: BearerCredential,
+    startGeneration: number,
+  ): Promise<boolean> {
+    const intent = ++persistenceIntent;
+    return enqueuePersistence(async () => {
+      if (generation !== startGeneration) return;
+      await options.credentials.write(refreshed);
+      if (generation !== startGeneration) {
+        // An adapter write may already have started when invalidate() ran. If
+        // no newer session write superseded it, restore the pre-refresh value
+        // before exposing the invalidation to callers.
+        if (persistenceIntent === intent) await options.credentials.write(previous);
+        return;
+      }
+    }).then(() => generation === startGeneration && persistenceIntent === intent);
+  }
 
   async function clearBearerIfCurrent(startGeneration: number): Promise<void> {
     if (generation !== startGeneration) return;
@@ -67,7 +94,9 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
       if (generation !== startGeneration) {
         throw new AuthError('AUTH_INVALIDATED', 'The credential was invalidated during refresh');
       }
-      await options.credentials.write(refreshed);
+      if (!await persistRefresh(refreshed, current, startGeneration)) {
+        throw new AuthError('AUTH_INVALIDATED', 'The credential was invalidated during refresh');
+      }
       return refreshed;
     } catch (error: unknown) {
       if (generation !== startGeneration) {
@@ -91,14 +120,34 @@ export function createRefreshCoordinator(options: RefreshCoordinatorOptions) {
     return shared;
   }
 
+  function write(value: Credential): Promise<void> {
+    const startGeneration = generation;
+    const intent = ++persistenceIntent;
+    return enqueuePersistence(async () => {
+      if (generation !== startGeneration || persistenceIntent !== intent) {
+        throw new AuthError('AUTH_INVALIDATED', 'The credential was invalidated before it could be stored');
+      }
+      await options.credentials.write(value);
+      if (generation !== startGeneration || persistenceIntent !== intent) {
+        throw new AuthError('AUTH_INVALIDATED', 'The credential was invalidated while it was being stored');
+      }
+    });
+  }
+
   async function invalidate(invalidateOptions?: { clear?: boolean }): Promise<void> {
     generation += 1;
+    inFlight = undefined;
     if (invalidateOptions?.clear === false) return;
-    await options.credentials.clear();
+    const intent = ++persistenceIntent;
+    await enqueuePersistence(async () => {
+      if (persistenceIntent !== intent) return;
+      await options.credentials.clear();
+    });
   }
 
   return {
     refresh,
+    write,
     invalidate,
     logout: invalidate,
     getGeneration: () => generation,

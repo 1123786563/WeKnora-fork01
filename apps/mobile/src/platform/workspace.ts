@@ -21,8 +21,25 @@ export function createSessionEpoch() {
   let value = 0;
   return {
     current: () => value,
-    invalidate: () => { value += 1; },
+    invalidate: () => { value += 1; return value; },
     isCurrent: (expected: number) => expected === value,
+  };
+}
+
+/** Serialize platform writes so a late operation cannot finish after a newer one. */
+export function createLatestAsyncWriter<T>(write: (value: T) => Promise<void>) {
+  let sequence = 0;
+  let tail: Promise<void> = Promise.resolve();
+  return {
+    write(value: T): Promise<void> {
+      const current = ++sequence;
+      const task = tail.then(async () => {
+        if (current !== sequence) return;
+        await write(value);
+      });
+      tail = task.catch(() => undefined);
+      return task;
+    },
   };
 }
 

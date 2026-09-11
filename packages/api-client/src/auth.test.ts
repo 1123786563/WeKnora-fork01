@@ -111,6 +111,62 @@ test('can invalidate a late refresh without clearing the current credential', as
   assert.equal(credentials.writes.length, 0);
 });
 
+test('reconciles a refresh write that was already in progress when invalidated', async () => {
+  const base = adapter({ kind: 'bearer', accessToken: 'old-access', refreshToken: 'old-refresh' });
+  let writes = 0;
+  let release!: () => void;
+  let started!: () => void;
+  const writeStarted = new Promise<void>((resolve) => { started = resolve; });
+  const writeGate = new Promise<void>((resolve) => { release = resolve; });
+  const credentials: CredentialAdapter & { value: Credential } = {
+    get value() { return base.value; },
+    set value(value: Credential) { base.value = value; },
+    async read() { return base.read(); },
+    async write(value) {
+      writes += 1;
+      started();
+      if (writes === 1) await writeGate;
+      await base.write(value);
+    },
+    async clear() { await base.clear(); },
+  };
+  const coordinator = createRefreshCoordinator({ credentials, refresh: async () => ({ success: true, access_token: 'late-access' }) });
+
+  const refreshing = coordinator.refresh();
+  await writeStarted;
+  await coordinator.invalidate({ clear: false });
+  release();
+
+  await assert.rejects(refreshing, (error: unknown) => error instanceof AuthError && error.code === 'AUTH_INVALIDATED');
+  assert.deepEqual(credentials.value, { kind: 'bearer', accessToken: 'old-access', refreshToken: 'old-refresh' });
+  assert.equal(writes, 2);
+});
+
+test('does not reuse an invalidated in-flight refresh for a new session', async () => {
+  const credentials = adapter({ kind: 'bearer', accessToken: 'old-access', refreshToken: 'old-refresh' });
+  let calls = 0;
+  let releaseFirst!: () => void;
+  const firstPending = new Promise<void>((resolve) => { releaseFirst = resolve; });
+  const coordinator = createRefreshCoordinator({
+    credentials,
+    refresh: async () => {
+      calls += 1;
+      if (calls === 1) await firstPending;
+      return { success: true, access_token: `access-${calls}` };
+    },
+  });
+
+  const first = coordinator.refresh();
+  await coordinator.invalidate({ clear: false });
+  const second = coordinator.refresh();
+  assert.notEqual(first, second);
+  assert.deepEqual(await second, { kind: 'bearer', accessToken: 'access-2', refreshToken: 'old-refresh' });
+  releaseFirst();
+  await assert.rejects(first, (error: unknown) => error instanceof AuthError && error.code === 'AUTH_INVALIDATED');
+  assert.equal(calls, 2);
+  assert.deepEqual(credentials.value, { kind: 'bearer', accessToken: 'access-2', refreshToken: 'old-refresh' });
+});
+
 test('embed profiles never invoke refresh and are not cleared', async () => {
   const credentials = adapter({ kind: 'embed', token: 'embed-token', visitorId: 'visitor-1' });
   let calls = 0;
