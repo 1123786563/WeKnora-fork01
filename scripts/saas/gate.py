@@ -26,6 +26,19 @@ def validate_gate(report: dict) -> None:
     evidence = report.get("evidence")
     if not isinstance(evidence, (dict, list)) or not evidence:
         raise ValueError("runtime evidence and acknowledgement strategy required")
+    entries = evidence.values() if isinstance(evidence, dict) else evidence
+    runtime_checks = set()
+    for entry in entries:
+        if not isinstance(entry, dict) or entry.get("status") != "pass":
+            continue
+        if entry.get("evidence_type") in {"schema", "schema_only", "doc", "documentation"}:
+            continue
+        check = entry.get("check") or entry.get("check_id")
+        if check in REQUIRED_CHECKS and ("result" in entry or "response" in entry):
+            runtime_checks.add(check)
+    missing_runtime = sorted(REQUIRED_CHECKS - runtime_checks)
+    if missing_runtime:
+        raise ValueError("runtime evidence required for: " + ", ".join(missing_runtime))
     if not isinstance(report.get("settlement_ack_strategy"), str) or not report["settlement_ack_strategy"].strip():
         raise ValueError("runtime evidence and acknowledgement strategy required")
 
