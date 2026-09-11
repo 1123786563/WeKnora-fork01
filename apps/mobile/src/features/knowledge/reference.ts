@@ -16,3 +16,9 @@ export function selectFaqReferenceLabel(row: { standard_question: string; is_ena
 export function referenceRoute(kind: KnowledgeReferenceKind, kbId: string): Href {
   return `/knowledge/${encodeURIComponent(kbId)}/${kind}` as Href;
 }
+
+export function editorRoute(kind: KnowledgeReferenceKind, kbId: string, slug?: string): Href {
+  const query = new URLSearchParams({ kind });
+  if (slug) query.set('slug', slug);
+  return `/knowledge/${encodeURIComponent(kbId)}/editor?${query.toString()}` as Href;
+}

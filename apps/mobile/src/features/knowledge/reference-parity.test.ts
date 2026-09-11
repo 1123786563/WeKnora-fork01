@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { referenceRoute, selectFaqReferenceLabel, selectWikiReferenceLabel } from './reference.ts';
+import { editorRoute, referenceRoute, selectFaqReferenceLabel, selectWikiReferenceLabel } from './reference.ts';
 
 test('mobile Wiki rows keep a readable title and revision marker', () => {
   assert.equal(
@@ -24,4 +24,6 @@ test('mobile FAQ rows expose enabled and recommended state without inventing con
 test('mobile knowledge reference routes remain knowledge-base scoped', () => {
   assert.equal(referenceRoute('wiki', 'kb/one'), '/knowledge/kb%2Fone/wiki');
   assert.equal(referenceRoute('faq', 'kb-one'), '/knowledge/kb-one/faq');
+  assert.equal(editorRoute('wiki', 'kb-one'), '/knowledge/kb-one/editor?kind=wiki');
+  assert.equal(editorRoute('faq', 'kb-one', '42'), '/knowledge/kb-one/editor?kind=faq&slug=42');
 });
