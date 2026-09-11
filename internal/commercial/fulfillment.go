@@ -90,6 +90,18 @@ type CommercialGateway interface {
 	// stays revocation_pending and recovery retries the revocation only —
 	// never a second payout.
 	RevokeBenefit(ctx context.Context, key string, credits Credits) error
+	// Settle reports one call's final consumption to the provider under
+	// Settlement.ID — the revision-derived idempotency key — so a replay of
+	// the same revision (lost response, retry, crash recovery) can never
+	// double-settle. Ingest acceptance alone is NOT confirmation: a receipt
+	// proves only that the provider recorded the transaction.
+	Settle(ctx context.Context, s Settlement) (SettlementReceipt, error)
+	// ConfirmSettlement resolves the explicit confirmation of a previously
+	// settled transaction. A result counts as confirmed ONLY when it
+	// carries event/transaction correlation evidence (external id plus the
+	// watermark it advanced); a balance drop is never evidence. Unknown
+	// outcomes stay with the caller for reconciliation.
+	ConfirmSettlement(ctx context.Context, settlementID string) (SettlementReceipt, error)
 }
 
 // FulfillmentOutcome classifies a gateway result for state transitions.

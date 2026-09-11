@@ -231,6 +231,107 @@ func (g *Gateway) RevokeBenefit(ctx context.Context, key string, credits domain.
 		body, nil)
 }
 
+type settlementCallResponse struct {
+	ID        string `json:"id"`
+	Watermark string `json:"watermark,omitempty"`
+}
+
+// Settle maps one call's final consumption onto the V03-selected
+// official_v3 family (update-credit-grant-external-settlement, schema_only
+// in the validated inventory): the funding grant of the customer carried on
+// the context is resolved via list-credit-grants, then the precise negative
+// amount is settled under the settlement's revision-derived idempotency key
+// — a replay of the same revision can never double-settle. HONESTY NOTE:
+// grant resolution and the response correlation fields below are
+// schema_only; OM-01..OM-10 remain blocked-env and the V03 gate cannot
+// verify the ack strategy without the real service, so this adapter carries
+// NO runtime evidence. Ingest acceptance here is NOT confirmation: the
+// receipt carries a watermark only when the provider returned one.
+func (g *Gateway) Settle(ctx context.Context, st domain.Settlement) (domain.SettlementReceipt, error) {
+	if err := st.Validate(); err != nil {
+		return domain.SettlementReceipt{}, err
+	}
+	if err := g.configured(); err != nil {
+		return domain.SettlementReceipt{}, err
+	}
+	customer := domain.BenefitCustomerFrom(ctx)
+	if customer == "" {
+		return domain.SettlementReceipt{}, fmt.Errorf("%w: no customer scope for settlement", domain.ErrGatewayIndeterminate)
+	}
+	var list grantListResponse
+	if err := g.call(ctx, http.MethodGet,
+		fmt.Sprintf("/api/v3/openmeter/customers/%s/credits/grants", url.PathEscape(customer)),
+		nil, &list); err != nil {
+		return domain.SettlementReceipt{}, err
+	}
+	if len(list.Items) == 0 {
+		// No funding grant: provably nothing to settle against.
+		return domain.SettlementReceipt{}, domain.ErrBenefitNotFound
+	}
+	body := settlementRequest{
+		IdempotencyKey: st.ID,
+		Amount:         (-st.Amount).String(),
+	}
+	var resp settlementCallResponse
+	if err := g.call(ctx, http.MethodPatch,
+		fmt.Sprintf("/api/v3/openmeter/customers/%s/credits/grants/%s/settlement", url.PathEscape(customer), url.PathEscape(list.Items[0].ID)),
+		body, &resp); err != nil {
+		return domain.SettlementReceipt{}, err
+	}
+	if resp.ID == "" {
+		// A 2xx without a transaction identity proves nothing about the
+		// remote state; treat it as indeterminate, never as success.
+		return domain.SettlementReceipt{}, fmt.Errorf("%w: settlement response carried no id", domain.ErrGatewayIndeterminate)
+	}
+	return domain.SettlementReceipt{ExternalID: resp.ID, Watermark: resp.Watermark}, nil
+}
+
+// ConfirmSettlement resolves the explicit confirmation of a settled
+// transaction by re-issuing the SAME idempotent settlement call: the
+// provider answers with the current externally-recorded state of that exact
+// transaction key, so confirmation evidence is event/transaction
+// correlation, never an inferred balance drop. A response without a
+// watermark is NOT confirmation (ErrGatewayIndeterminate) — the caller
+// retains the settlement for reconciliation. Same schema_only/blocked-env
+// honesty note as Settle.
+func (g *Gateway) ConfirmSettlement(ctx context.Context, settlementID string) (domain.SettlementReceipt, error) {
+	if settlementID == "" {
+		return domain.SettlementReceipt{}, domain.ErrInvalidSettlement
+	}
+	if err := g.configured(); err != nil {
+		return domain.SettlementReceipt{}, err
+	}
+	customer := domain.BenefitCustomerFrom(ctx)
+	if customer == "" {
+		return domain.SettlementReceipt{}, fmt.Errorf("%w: no customer scope for settlement confirmation", domain.ErrGatewayIndeterminate)
+	}
+	var list grantListResponse
+	if err := g.call(ctx, http.MethodGet,
+		fmt.Sprintf("/api/v3/openmeter/customers/%s/credits/grants", url.PathEscape(customer)),
+		nil, &list); err != nil {
+		return domain.SettlementReceipt{}, err
+	}
+	if len(list.Items) == 0 {
+		return domain.SettlementReceipt{}, domain.ErrBenefitNotFound
+	}
+	// Idempotent replay of the same settlement key reads back the recorded
+	// transaction instead of creating a second one.
+	body := settlementRequest{IdempotencyKey: settlementID, Amount: "0"}
+	var resp settlementCallResponse
+	if err := g.call(ctx, http.MethodPatch,
+		fmt.Sprintf("/api/v3/openmeter/customers/%s/credits/grants/%s/settlement", url.PathEscape(customer), url.PathEscape(list.Items[0].ID)),
+		body, &resp); err != nil {
+		return domain.SettlementReceipt{}, err
+	}
+	if resp.ID == "" {
+		return domain.SettlementReceipt{}, fmt.Errorf("%w: confirmation carried no transaction identity", domain.ErrGatewayIndeterminate)
+	}
+	if resp.Watermark == "" {
+		return domain.SettlementReceipt{}, fmt.Errorf("%w: confirmation carried no watermark — not evidence of consumption", domain.ErrGatewayIndeterminate)
+	}
+	return domain.SettlementReceipt{ExternalID: resp.ID, Watermark: resp.Watermark}, nil
+}
+
 func (g *Gateway) configured() error {
 	if g.cfg.BaseURL == "" || g.cfg.APIKey == "" {
 		return fmt.Errorf("%w: openmeter %s endpoint/credentials not set (OM-01..OM-10 blocked-env)",
