@@ -1,7 +1,21 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { initialChatStreamState, reduceChatStream } from '@weknora/domain/chat/reducer';
-import { replayMobileChatEvents, selectAssistantMessageId, selectIncompleteAssistant, selectReferenceGroups, shouldRenderPendingUser } from './parity.ts';
+import { buildMobileChatRequestBody, replayMobileChatEvents, selectAssistantMessageId, selectIncompleteAssistant, selectReferenceGroups, shouldRenderLiveAssistant, shouldRenderPendingUser } from './parity.ts';
+
+test('mobile chat request carries the selected knowledge-base scope', () => {
+  assert.deepEqual(buildMobileChatRequestBody('hello', ['kb-1'], ['attachment-1']), {
+    query: 'hello',
+    knowledge_base_ids: ['kb-1'],
+    attachment_ids: ['attachment-1'],
+    channel: 'mobile',
+  });
+});
+
+test('mobile hides the live assistant after history has been reloaded', () => {
+  assert.equal(shouldRenderLiveAssistant(false, 'Hello from Android'), false);
+  assert.equal(shouldRenderLiveAssistant(true, 'Hello from Android'), true);
+});
 
 test('mobile replay uses the shared reducer for answer, approval, and references', () => {
   const events = [

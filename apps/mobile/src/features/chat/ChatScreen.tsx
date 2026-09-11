@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, FlatList, KeyboardAvoidingView, Linking, Platform, Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import type { ChatMessage, ChatSession, ChatStreamEvent, SteerDelivery, SteerQueueItem, TemporaryAttachment } from '@weknora/contracts';
+import type { ChatMessage, ChatSession, ChatStreamEvent, KnowledgeBase, SteerDelivery, SteerQueueItem, TemporaryAttachment } from '@weknora/contracts';
 import { initialChatStreamState, reduceChatStream, type ChatStreamState } from '@weknora/domain/chat/reducer';
 import { artifactDownloadPath, normalizeArtifactList } from '@weknora/domain/chat/artifacts';
 import { normalizeToolResult } from '@weknora/domain/chat/tool-results';
 import { useMobileRuntime } from '../../runtime.tsx';
 import { pickNativeFile } from '../../platform/files.ts';
 import { downloadKnowledgeFile, shareNativeFile } from '../../platform/files.ts';
-import { selectAssistantMessageId, selectIncompleteAssistant, selectMessageArtifacts, selectReferenceGroups, shouldRenderPendingUser } from './parity.ts';
+import { buildMobileChatRequestBody, selectAssistantMessageId, selectIncompleteAssistant, selectMessageArtifacts, selectReferenceGroups, shouldRenderLiveAssistant, shouldRenderPendingUser } from './parity.ts';
 import { stopChatRun } from './stop-run.ts';
 import { chatAppStateAction } from './appstate.ts';
 
@@ -25,6 +25,8 @@ export function ChatScreen() {
   const runtime = useMobileRuntime();
   const router = useRouter();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
+  const [selectedKnowledgeBaseId, setSelectedKnowledgeBaseId] = useState<string | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
@@ -54,6 +56,14 @@ export function ChatScreen() {
     finally { setLoading(false); }
   }, [runtime.client]);
 
+  const loadKnowledgeBases = useCallback(async () => {
+    try {
+      const result = await runtime.client.knowledgeBases.list();
+      setKnowledgeBases(result);
+      setSelectedKnowledgeBaseId((current) => current && result.some((item) => item.id === current) ? current : result[0]?.id || null);
+    } catch (cause) { setError(errorText(cause, 'Unable to load knowledge bases')); }
+  }, [runtime.client]);
+
   const loadMessages = useCallback(async (sessionId: string): Promise<ChatMessage[]> => {
     try {
       const result = await runtime.client.sessions.messages(sessionId, { limit: 50 });
@@ -75,6 +85,7 @@ export function ChatScreen() {
   }, [runtime.client]);
 
   useEffect(() => { void loadSessions(); }, [loadSessions]);
+  useEffect(() => { void loadKnowledgeBases(); }, [loadKnowledgeBases]);
   useEffect(() => {
     setStreamState(initialChatStreamState());
     activeMessageId.current = undefined;
@@ -177,6 +188,7 @@ export function ChatScreen() {
   async function send(value = draft, options: { allowWhileSending?: boolean } = {}) {
     const query = value.trim();
     if (!query || (sending && !options.allowWhileSending)) return;
+    if (!selectedKnowledgeBaseId) { setError('Select a knowledge base before sending a message'); return; }
     setError('');
     let sessionId: string;
     try { sessionId = await ensureSession(); } catch (cause) { setError(errorText(cause, 'Unable to create conversation')); return; }
@@ -190,7 +202,7 @@ export function ChatScreen() {
       await runtime.client.chat.stream({
         sessionId,
         mode: 'knowledge',
-        body: { query, channel: 'mobile', attachment_ids: attachments.map((attachment) => attachment.id) },
+        body: buildMobileChatRequestBody(query, [selectedKnowledgeBaseId], attachments.map((attachment) => attachment.id)),
         signal: controller.signal,
       }, applyEvent);
     } catch (cause) {
@@ -308,7 +320,7 @@ export function ChatScreen() {
     } catch (cause) { setError(errorText(cause, 'Unable to download artifact')); }
   }
 
-  const liveAssistant = streamState.answer ? [{ id: 'mobile-live-assistant', session_id: selectedSessionId || '', role: 'assistant' as const, content: streamState.answer, is_completed: streamState.phase === 'completed' }] : [];
+  const liveAssistant = shouldRenderLiveAssistant(sending, streamState.answer) ? [{ id: 'mobile-live-assistant', session_id: selectedSessionId || '', role: 'assistant' as const, content: streamState.answer, is_completed: streamState.phase === 'completed' }] : [];
   const displayMessages = useMemo(() => uniqueMessages([
     ...messages,
     ...(shouldRenderPendingUser(messages, pendingUser) ? [{ id: 'mobile-pending-user', session_id: selectedSessionId || '', role: 'user' as const, content: pendingUser! }] : []),
@@ -325,6 +337,7 @@ export function ChatScreen() {
       <View style={{ flexDirection: 'row', gap: 12 }}><Pressable onPress={() => router.push('/knowledge')}><Text style={{ color: '#2864dc' }}>Knowledge</Text></Pressable><Pressable onPress={() => router.push('/management')}><Text style={{ color: '#2864dc' }}>Manage</Text></Pressable><Pressable onPress={() => void createSession()}><Text style={{ color: '#2864dc' }}>New</Text></Pressable></View>
     </View>
     <FlatList horizontal data={sessions} keyExtractor={(item) => item.id} showsHorizontalScrollIndicator={false} style={{ maxHeight: 48, paddingHorizontal: 12, paddingTop: 8 }} renderItem={({ item }) => <Pressable onPress={() => { if (!sending) setSelectedSessionId(item.id); }} style={{ paddingHorizontal: 10, paddingVertical: 7, borderRadius: 14, backgroundColor: item.id === selectedSessionId ? '#dbeafe' : '#f2f4f7', marginRight: 6 }}><Text numberOfLines={1}>{item.title || 'Untitled'}</Text></Pressable>} ListEmptyComponent={loading ? <ActivityIndicator /> : <Text style={{ color: '#667085' }}>No conversations</Text>} />
+    <FlatList horizontal data={knowledgeBases} keyExtractor={(item) => item.id} showsHorizontalScrollIndicator={false} style={{ maxHeight: 48, paddingHorizontal: 12, paddingTop: 8 }} renderItem={({ item }) => <Pressable accessibilityRole="button" onPress={() => { if (!sending) setSelectedKnowledgeBaseId(item.id); }} style={{ paddingHorizontal: 10, paddingVertical: 7, borderRadius: 14, backgroundColor: item.id === selectedKnowledgeBaseId ? '#dcfce7' : '#f2f4f7', marginRight: 6 }}><Text numberOfLines={1}>{item.name}</Text></Pressable>} ListEmptyComponent={<Text style={{ color: '#667085' }}>No knowledge bases available</Text>} />
     {error ? <Text accessibilityRole="alert" style={{ color: '#b42318', paddingHorizontal: 12, paddingTop: 8 }}>{error}</Text> : null}
     <FlatList
       style={{ flex: 1, paddingHorizontal: 12 }}

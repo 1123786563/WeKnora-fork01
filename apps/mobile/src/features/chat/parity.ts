@@ -2,6 +2,23 @@ import { groupChatReferences, type ChatReferenceGroup } from '@weknora/domain/ch
 import { initialChatStreamState, type ChatStreamState, reduceChatStream } from '@weknora/domain/chat/reducer';
 import type { ChatMessage, ChatStreamEvent } from '@weknora/contracts';
 
+export function buildMobileChatRequestBody(
+  query: string,
+  knowledgeBaseIds: readonly string[],
+  attachmentIds: readonly string[] = [],
+): Record<string, unknown> {
+  return {
+    query,
+    knowledge_base_ids: [...knowledgeBaseIds],
+    attachment_ids: [...attachmentIds],
+    channel: 'mobile',
+  };
+}
+
+export function shouldRenderLiveAssistant(sending: boolean, answer: string): boolean {
+  return sending && answer.length > 0;
+}
+
 export function replayMobileChatEvents(events: readonly ChatStreamEvent[]): ChatStreamState {
   let state = initialChatStreamState();
   for (const event of events) state = reduceChatStream(state, event);
