@@ -384,6 +384,9 @@
 - A post-fix affected-surface rerun passed Web 64/64, Web typecheck/build
   (120 modules), iOS Expo export (1138 modules, 3.1 MB Hermes), and Android
   Expo export (1161 modules, 3.2 MB Hermes).
+- Desktop 2/2 plus typecheck/build (121 modules), Embed 3/3 plus
+  typecheck/build (68 modules), and `GOWORK=off go test ./internal/router`
+  also passed against the shared-client change.
 - This is bounded isolated Lite owner/native-device evidence only; non-owner
   403/409 permutations, production-provider acceptance, physical-device
   behavior, and the remaining T23 management matrix remain open.

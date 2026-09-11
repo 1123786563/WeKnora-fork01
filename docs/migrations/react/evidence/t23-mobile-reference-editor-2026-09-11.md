@@ -96,3 +96,15 @@ pnpm build:web # exit 0, 120 modules transformed
 pnpm --filter @weknora/mobile exec expo export --platform ios # exit 0, 1138 modules, 3.1 MB Hermes bundle
 pnpm --filter @weknora/mobile exec expo export --platform android # exit 0, 1161 modules, 3.2 MB Hermes bundle
 ```
+
+Shared-client consumers were also checked:
+
+```text
+pnpm test:desktop # 2/2, exit 0
+pnpm typecheck:desktop # exit 0
+pnpm build:desktop-renderer # exit 0, 121 modules transformed
+pnpm test:embed # 3/3, exit 0
+pnpm typecheck:embed # exit 0
+pnpm build:embed # exit 0, 68 modules transformed
+GOWORK=off go test ./internal/router -count=1 # exit 0
+```
