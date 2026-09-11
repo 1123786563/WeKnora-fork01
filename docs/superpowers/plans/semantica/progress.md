@@ -1,6 +1,6 @@
 # Semantica 实施台账
 
-状态：V01–C03、I01 已完成并验证，其余 17 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
+状态：V01–C03、I01–I02 已完成并验证，其余 16 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
 
 状态值 pending / in_progress / blocked / implemented / verified。每项验证记录必须包含commit SHA、精确命令、退出码、环境、产物路径、失败/限制；无真实证据不标记verified。执行前记录实际基线与已有脏文件。
 
@@ -13,7 +13,7 @@
 | C02 | 认证服务骨架和Go客户端 | C01 | verified | 真实 TLS+内部令牌 gRPC 服务（缺身份→UNAUTHENTICATED、未实现→UNIMPLEMENTED、健康真实）；Go 客户端 deadline/取消/错误映射+仅读操作重试；enabled=false 默认可启动；见运行记录 2026-09-11 C02 |
 | C03 | 事实与证据校验模型 | C01,V02 | verified | codepoint 半开区间 span+原文校验、来源/推导分离、跨 scope 拒绝、循环 DAG 拒绝、多来源支持永不塌缩；见运行记录 2026-09-11 C03 |
 | I01 | 持久操作、幂等与worker租约 | C02 | verified | 真实 PG（隔离容器）：幂等 accept/冲突检测、SKIP LOCKED 单胜领取、fencing token 失联接管、原子终态、取消 CAS 双向竞争；见运行记录 2026-09-11 I01 |
-| I02 | 业务revision、outbox与授权版本 | C01 | pending | 尚未执行 |
+| I02 | 业务revision、outbox与授权版本 | C01 | verified | PG96/SQLite17 六表；WithSemanticMutation 单事务（CAS+outbox+deny+epoch）；原子领取/确认/退避；同事务 BumpSemanticEpochTx 供 A01；见运行记录 2026-09-11 I02 |
 | I03 | 有来源的构图与generation原子发布 | C03,I01,I02,A03 | pending | 尚未执行 |
 | I04 | 删除屏障、支持撤销和清理receipt | I03,A01 | pending | 尚未执行 |
 | I05 | 文档任务、attempt与终态协调 | I04 | pending | 尚未执行 |
@@ -138,9 +138,23 @@
 - 提交 SHA：8af2691（feat(semantic): i01 持久操作、幂等与worker租约）。
 - 剩余限制：renew 未校验租约存活（计划仅要求匹配 token；fencing 安全，评审确认）；连接为逐调用建立（池化归 O01）；retry_after 列预留 I05。
 
+### 2026-09-11 I02 业务revision、outbox与授权版本（verified）
+
+- 工作区：.worktrees/semantica（分支 codex/semantica）；基线 SHA：b9fe468（I01 台账提交）。
+- 修改文件：migrations/versioned/000096_semantic_control.{up,down}.sql、migrations/sqlite/000017_semantic_control.{up,down}.sql、internal/types/semantic_control.go、internal/application/repository/{semantic_outbox.go,semantic_outbox_test.go}、internal/database/semantic_migration_test.go、go.mod/go.sum（tidy：lib/pq+mattn 转直接依赖）、本台账、02 计划勾选。
+- 迁移号核查：实施前实测 PG 最高 000095、SQLite 最高 000016 → 采纳计划建议 PG96/SQLite17，未改写任何已执行迁移。
+- RED：`go test ./internal/application/repository -run TestSemanticMutation -count=1` 编译失败（NewSemanticControlRepository/SemanticMutation 未定义）。
+- GREEN：`go test ./internal/application/repository -run 'TestSemantic|TestRevision|TestDelete|TestNonDelete|TestBump|TestOutbox|TestConcurrent' -count=1 -race` ok（12 项）；`go test ./internal/database -run TestSemanticMigration -count=1` ok（PG 3.5s + SQLite）；go vet/build/tidy -diff 全净。
+- 实测验收：回滚零逃逸（outbox 0 行+revision 回滚后重放成功，计划核心片段逐字）；CAS 过期 expected→ErrSemanticRevisionConflict（三种形态）；并发同文档恰一胜（-race ×10）；删除同事务写 deny+epoch 提升（普通更新不动 epoch）；并发首次 epoch 提升均成功（单语句 upsert，断言 epoch==2）；BumpSemanticEpochTx 随调用方事务回滚；outbox 原子领取（条件 UPDATE+RowsAffected）、租约持有/过期回收/退避/终态确认；迁移合同 up/down/up+双唯一键拒绝+事务失败零孤立事件（真实 PG 全 96 迁移链 + SQLite）。
+- 环境：业务测试库在隔离容器 semantica-i01-pg（127.0.0.1:15432）内另建 semantic_business_test，并设 `ALTER DATABASE ... SET app.skip_embedding='true'` 走无扩展路径（vector/pg_search 迁移均有该官方开关；曾试 pgvector 镜像仍缺 pg_search，弃用）；DSN 可经 SEMANTIC_TEST_BUSINESS_PG_DSN 覆盖；dropAllPublicTables 仅接受库名含 test 的 DSN（url 解析校验）；缺环境 t.Fatalf 不 skip。
+- 评审修复：规格 PASS（10 项，6 MINOR）+ 质量 PASS（无 BLOCKER，13 MINOR：1/2/3/4/5/6/7/8/9/10/12 已修复——唯一冲突检测收紧、原子领取、同事务 Bump 变体、epoch 单语句 upsert、payload_hash 归一化语义注记、领取计次、drop 守卫、I05 receipts 注记、真实重复插入断言、go mod tidy、本记录随提交；11/13 PG 路径仓储测试与时间戳来源统一留作后续；复审确认全部修复并 -race 复跑）。
+- 计划偏差记录：BumpSemanticEpoch 同时提供无 tx 版本（独立权限事件）与 Tx 版本（A01 同事务接线，计划原文要求）；receipts 表按 I05 契约注记将由其迁移扩展 (attempt, operation_id)。
+- 提交 SHA：（本记录与代码同批提交后补记）
+- 剩余限制：PG 路径仓储行为仅经迁移合同覆盖（库级 SQL 与 sqlite 驱动同构；PG 专属仓储测试留后续）；outbox 领取谓词部分索引与确认事件清理归 I03；backend_states 列为 W03/I03 预留。
+
 ## 当前边界
 
-- V01–C03、I01 已完成（verified）；后续 17 个任务未开始。
+- V01–C03、I01–I02 已完成（verified）；后续 16 个任务未开始。
 - V01精确版本已冻结（semantica 0.6.8）；真实模型证据须在后续任务补齐，不是已经通过的前提。
 - V02 结论边界：持久图桥接/授权子图重建/注册规则推导已验证；模型推断 unverified（无凭据，未调用）；向量检索路径未验证。
 - V03 结论边界：semantica 模式检索质量/延迟为受控语料实测；native 对照与模型用量门槛未测（阻断记录见上）；上线门禁 approved=false 待用户确认。

@@ -86,7 +86,7 @@ WHERE operation_id = :operation_id AND state = :expected
 
 **接口：** 定义 SemanticMutation{TenantID uint64, KBID,DocumentID string, ExpectedRevision uint64, Deleted bool, Payload []byte}；WithSemanticMutation(ctx,mutation,func(tx *gorm.DB)error)(revision uint64,err error)。业务资源修改、revision、outbox、删除屏障必须同事务，禁止另开隐含事务。
 
-- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 func TestSemanticMutationRollback(t *testing.T) {
@@ -101,15 +101,15 @@ func TestSemanticMutationRollback(t *testing.T) {
 }
 ```
 
-- [ ] **2. 确认 RED**。执行 `go test ./internal/application/repository -run TestSemanticMutation -count=1`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [x] **2. 确认 RED**。执行 `go test ./internal/application/repository -run TestSemanticMutation -count=1`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 实施前检查最新迁移号；当前建议PG96/SQLite17，如被占用则分配下一空号并同步本计划/台账，不重写已执行迁移**
+- [x] **3. 实施前检查最新迁移号；当前建议PG96/SQLite17，如被占用则分配下一空号并同步本计划/台账，不重写已执行迁移**
 
-- [ ] **4. 建立semantic_document_revisions、semantic_outbox、semantic_access_epochs、semantic_denials、semantic_backend_states与semantic_completion_receipts；唯一键包含tenant/KB/document或event身份，PG/SQLite分别实现等价CAS**
+- [x] **4. 建立semantic_document_revisions、semantic_outbox、semantic_access_epochs、semantic_denials、semantic_backend_states与semantic_completion_receipts；唯一键包含tenant/KB/document或event身份，PG/SQLite分别实现等价CAS**
 
-- [ ] **5. 实现transaction回调，按expected_revision CAS递增；删除同时创建deny并提高KB epoch。权限变更提供同事务BumpSemanticEpoch(tx,scope)入口给A01接线**
+- [x] **5. 实现transaction回调，按expected_revision CAS递增；删除同时创建deny并提高KB epoch。权限变更提供同事务BumpSemanticEpoch(tx,scope)入口给A01接线**
 
-- [ ] **6. 增加outbox领取/确认/失败退避；事件含完整revision/config与payload hash。收件方幂等，outbox只在对方持久接收后确认**
+- [x] **6. 增加outbox领取/确认/失败退避；事件含完整revision/config与payload hash。收件方幂等，outbox只在对方持久接收后确认**
 
 关键实现约束：
 
@@ -123,9 +123,9 @@ WHERE tenant_id=:tenant AND kb_id=:kb AND document_id=:doc
 COMMIT;
 ```
 
-- [ ] **7. 确认 GREEN 与验收**。重跑 `go test ./internal/application/repository -run TestSemanticMutation -count=1`，预期退出码 0；另完成：执行 go test ./internal/database -run TestSemanticMigration -count=1；PG真实迁移测试必须另连隔离库，验证up/down/up、唯一键和事务失败无孤立事件；SQLite不开服务时仍可使用native。
+- [x] **7. 确认 GREEN 与验收**。重跑 `go test ./internal/application/repository -run TestSemanticMutation -count=1`，预期退出码 0；另完成：执行 go test ./internal/database -run TestSemanticMigration -count=1；PG真实迁移测试必须另连隔离库，验证up/down/up、唯一键和事务失败无孤立事件；SQLite不开服务时仍可使用native。
 
-- [ ] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 I02 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): i02 业务revision、outbox与授权版本`。
+- [x] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 I02 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): i02 业务revision、outbox与授权版本`。
 
 ## I03：有来源的构图与generation原子发布
 
