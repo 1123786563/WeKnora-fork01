@@ -62,3 +62,6 @@ jobs:
 
       - name: Export iOS JavaScript bundle
         run: pnpm --filter @weknora/mobile exec expo export --platform ios --output-dir "$RUNNER_TEMP/weknora-mobile-ios"
+
+      - name: Export Android JavaScript bundle
+        run: pnpm --filter @weknora/mobile exec expo export --platform android --output-dir "$RUNNER_TEMP/weknora-mobile-android"

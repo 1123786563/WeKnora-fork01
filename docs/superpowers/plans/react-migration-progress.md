@@ -318,6 +318,11 @@
 - A fresh isolated Lite process on `127.0.0.1:18082` accepted owner registration/login, API-key create (`201`), list (`200`, one row), and revoke (`200`) for a scoped `retrieve` key. The temporary SQLite data and process were discarded/stopped after the probe; no token was recorded.
 - This upgrades the API-key slice from source/bundle-only to isolated real-backend evidence, but does not complete the full server role/tenant 403 matrix or native device interaction. Evidence: `docs/migrations/react/evidence/t23-mobile-api-keys-2026-09-11.md`.
 
+### T24 mobile CI follow-up (2026-09-11)
+
+- `.github/workflows/mobile.yml` now explicitly exports both iOS and Android JavaScript bundles after mobile tests/typecheck. Workflow YAML parsing, `node scripts/check-react-boundaries.mjs`, and `git diff --check` passed locally.
+- This proves CI coverage is declared; it does not claim a hosted GitHub runner execution or native package/runtime acceptance.
+
 ### T25 retirement preflight (2026-09-11)
 
 - Read-only scan recorded in `docs/migrations/react/evidence/t25-retirement-preflight-2026-09-11.md`.
