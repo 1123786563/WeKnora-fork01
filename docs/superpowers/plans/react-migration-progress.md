@@ -55,6 +55,11 @@
 - `c63529c` adds Web text-only live-response rendering for thinking, tool-call status/results, and references with nested secret redaction and React escaping. Verification and evidence: `docs/migrations/react/evidence/t10-t13-web-live-state-2026-09-12.md`.
 - Full Markdown/citation navigation, protected artifact UI, browser XSS/performance and native acceptance remain open; T13 stays `review`.
 
+### T11 follow-up (2026-09-12)
+
+- `fecbbb7` adds server-confirmed Web Rename, Pin/Unpin, and Delete actions backed by typed session mutations; failures do not optimistically alter the sidebar. Evidence: `docs/migrations/react/evidence/t11-web-session-management-2026-09-12.md`.
+- Title generation, source filtering, live permission/error matrix, and native acceptance remain open; T11 stays `review`.
+
 ## T01 证据记录
 
 ### 已完成
