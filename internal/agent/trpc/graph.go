@@ -101,7 +101,23 @@ func buildGraph(b GraphBindings) (*graph.Graph, error) {
 		if b.Model == nil {
 			return nil, fmt.Errorf("trpc model is required")
 		}
-		responseCh, err := b.Model.GenerateContent(ctx, &model.Request{Messages: s.Messages})
+		// A committed attempt id on re-entry means the previous model attempt
+		// never completed. Announce the replacement so replay clients drop the
+		// abandoned partial text instead of concatenating both attempts.
+		if s.ModelAttemptID != "" {
+			payload := map[string]string{"previous_attempt_id": s.ModelAttemptID}
+			if raw, merr := json.Marshal(payload); merr == nil {
+				b.emitRunEvent(ctx, agentruntime.RunEvent{
+					AttemptID: s.ModelAttemptID, Type: "attempt_replaced", Payload: raw,
+				})
+			}
+			s.ModelAttemptID = ""
+		}
+		// Stream keeps provider parity with the builtin engine; the frozen
+		// tool projection lets the model plan calls the journal can execute.
+		request := &model.Request{Messages: s.Messages, Tools: b.ModelTools}
+		request.Stream = true
+		responseCh, err := b.Model.GenerateContent(ctx, request)
 		if err != nil {
 			return nil, err
 		}
@@ -175,13 +191,22 @@ func buildGraph(b GraphBindings) (*graph.Graph, error) {
 					break
 				}
 			}
+			if raw, merr := json.Marshal(map[string]string{"call_id": id, "tool": call.Function.Name}); merr == nil {
+				b.emitRunEvent(ctx, agentruntime.RunEvent{Type: "tool_dispatched", Payload: raw})
+			}
 			result, err := b.Tools.Execute(ctx, b.fenceFromContext(ctx), agentruntime.ToolPlan{Version: 1, CallID: id, Name: call.Function.Name, Identity: call.Function.Name, ArgsHash: hashArgs(call.Function.Arguments), Args: call.Function.Arguments})
 			if err != nil {
 				return nil, err
 			}
 			if !s.AppliedCallIDs[id] {
-				s.Messages = append(s.Messages, model.Message{Role: model.RoleTool, ToolID: id, Content: result.Result.Output})
+				s.Messages = append(s.Messages, model.Message{
+					Role: model.RoleTool, ToolID: id, Content: result.Result.Output,
+				})
 				s.AppliedCallIDs[id] = true
+				payload := map[string]string{"call_id": id, "tool": call.Function.Name}
+				if raw, merr := json.Marshal(payload); merr == nil {
+					b.emitRunEvent(ctx, agentruntime.RunEvent{Type: "tool_result", Payload: raw})
+				}
 			}
 			s.NextCallIndex++
 		}

@@ -89,18 +89,52 @@ func (s State) Validate() error {
 	return nil
 }
 
+// statePlain mirrors State without its UnmarshalJSON, for strict decoding.
+type statePlain State
+
 // UnmarshalJSON validates recovery state before exposing any decoded values.
 func (s *State) UnmarshalJSON(raw []byte) error {
-	type plain State
-	var next plain
+	var next statePlain
 	if err := decodeStrict(raw, &next); err != nil {
 		return err
+	}
+	// The graph schema seeds the state channel with the zero State before the
+	// prepare node stamps the durable version, so the SDK's first checkpoint
+	// legitimately carries a version-0 seed. A seed is accepted only when no
+	// execution-owned key appears in the JSON at all: any populated field at
+	// version 0 stays rejected because only prepare can stamp StateVersion.
+	if next.Version == 0 && stateIsFreshSeed(raw, next) {
+		*s = State(next)
+		return nil
 	}
 	if err := State(next).Validate(); err != nil {
 		return err
 	}
 	*s = State(next)
 	return nil
+}
+
+// stateIsFreshSeed reports whether the raw JSON carries none of the
+// execution-owned state keys and every decoded value is zero. Used only to
+// accept the pre-prepare schema seed.
+func stateIsFreshSeed(raw []byte, next statePlain) bool {
+	if len(next.Messages) != 0 || len(next.PendingCallIDs) != 0 || next.NextCallIndex != 0 ||
+		len(next.AppliedCallIDs) != 0 || len(next.CompactionState) != 0 || next.ModelAttemptID != "" ||
+		next.InputCursor != 0 || len(next.UsageAttempts) != 0 || !next.Capabilities.IsEmpty() {
+		return false
+	}
+	var presence map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &presence); err != nil {
+		return false
+	}
+	for key := range presence {
+		switch key {
+		case "version", "next_call_index", "input_cursor", "capabilities":
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func decodeStrict(raw []byte, value any) error {

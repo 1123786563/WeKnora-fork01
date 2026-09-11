@@ -159,7 +159,7 @@ func NewSessionService(cfg *config.Config,
 	sandboxConfigRepo repository.TenantSandboxConfigRepository,
 	tenantSkillRepo repository.TenantSkillRepository,
 ) interfaces.SessionService {
-	return &sessionService{
+	svc := &sessionService{
 		cfg:                   cfg,
 		sessionRepo:           sessionRepo,
 		messageRepo:           messageRepo,
@@ -182,6 +182,10 @@ func NewSessionService(cfg *config.Config,
 		sandboxConfigRepo:     sandboxConfigRepo,
 		tenantSkillRepo:       tenantSkillRepo,
 	}
+	// The durable tRPC worker resolves its graph executor lazily because the
+	// runtime is constructed before this service in the dependency graph.
+	RegisterGraphExecutor(svc.ExecuteDurableRun)
+	return svc
 }
 
 // CreateSession creates a new conversation session
