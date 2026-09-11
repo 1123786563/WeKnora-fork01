@@ -313,6 +313,11 @@
 - Extended `scripts/check-react-boundaries.mjs` to fail if Compose drifts back to `./frontend` context. Boundary check passed; `docker compose config --quiet` passed with a temporary empty `.env` (the repository did not contain one).
 - This is static/configuration evidence only; it does not claim a registry push or deployed Compose runtime.
 
+### T23 API-key live follow-up (2026-09-11)
+
+- A fresh isolated Lite process on `127.0.0.1:18082` accepted owner registration/login, API-key create (`201`), list (`200`, one row), and revoke (`200`) for a scoped `retrieve` key. The temporary SQLite data and process were discarded/stopped after the probe; no token was recorded.
+- This upgrades the API-key slice from source/bundle-only to isolated real-backend evidence, but does not complete the full server role/tenant 403 matrix or native device interaction. Evidence: `docs/migrations/react/evidence/t23-mobile-api-keys-2026-09-11.md`.
+
 ### T25 retirement preflight (2026-09-11)
 
 - Read-only scan recorded in `docs/migrations/react/evidence/t25-retirement-preflight-2026-09-11.md`.

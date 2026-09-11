@@ -20,6 +20,23 @@ pnpm typecheck:mobile  # exit 0
 
 Focused TDD evidence: the API-key helper test first failed because the new module was absent; after the implementation it passed as part of the 32-test mobile suite.
 
+## Isolated live backend evidence
+
+Against a freshly started Lite binary on `127.0.0.1:18082` with a temporary
+SQLite database and no production data:
+
+```text
+POST /api/v1/auth/register                         201
+POST /api/v1/auth/login                            200
+GET  /api/v1/auth/me                               200 (tenant 9)
+POST /api/v1/tenants/9/api-keys                    201 (scoped retrieve key; token returned once)
+GET  /api/v1/tenants/9/api-keys                    200 (1 row)
+DELETE /api/v1/tenants/9/api-keys/1                200
+```
+
+The temporary process was stopped after the probe. The token value was not
+written to the repository or included in this evidence.
+
 ## Evidence boundary
 
-This proves the native route wiring, Owner-only client-side affordance, scoped input validation, token non-persistence boundary, shared API client usage, and type-safe mobile bundle source. It does not claim a live API-key create/revoke, server 403 matrix, native device interaction, or production secret-management acceptance; those remain open T23/T24 evidence.
+This proves the native route wiring, Owner-only client-side affordance, scoped input validation, token non-persistence boundary, shared API client usage, type-safe mobile bundle source, and one isolated Lite create/list/revoke sequence. It does not claim the complete server role/tenant 403 matrix, native device interaction, or production secret-management acceptance; those remain open T23/T24 evidence.
