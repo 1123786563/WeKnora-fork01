@@ -658,7 +658,8 @@
   `gh release create` in `.github/workflows/release-lite.yml`. It requires
   every Web CLI and desktop matrix artifact plus the React candidate globs,
   requires exactly one React candidate archive, extracts it, and validates React
-  `BUILD_INFO.json`, Web/Embed entries, and both entry asset directories.
+  `BUILD_INFO.json`, Web/Embed entries, both entry asset directories, and all
+  SHA-256 sidecars.
 - Removed the release command's `|| true`, so an upload or artifact failure
   now fails the release job before `update-homebrew` can run. The unrelated
   Windows pre-compile tolerance remains outside the publish step.

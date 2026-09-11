@@ -35,6 +35,15 @@ for desktop_artifact in \
   require_matches "WeKnora-Lite-App_*_${desktop_artifact}.sha256"
 done
 
+checksum_files=(
+  WeKnora-lite_*.tar.gz.sha256
+  WeKnora-react-web_*.tar.gz.sha256
+  WeKnora-Lite-App_*.sha256
+)
+for checksum_file in "${checksum_files[@]}"; do
+  shasum -a 256 -c "${checksum_file}"
+done
+
 react_archives=( WeKnora-react-web_*.tar.gz )
 if ((${#react_archives[@]} != 1)); then
   echo "expected exactly one React candidate archive, found ${#react_archives[@]}" >&2

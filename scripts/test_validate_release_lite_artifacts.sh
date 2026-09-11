@@ -13,7 +13,10 @@ printf 'embed\n' > "${FIXTURE}/WeKnora-react-web_vtest/web/embed.html"
 printf '%s\n' '{"renderer":"react","version":"vtest","commit":"fixture","entries":{"web":"index.html","embed":"embed.html"}}' \
   > "${FIXTURE}/WeKnora-react-web_vtest/web/BUILD_INFO.json"
 tar -czf "${FIXTURE}/WeKnora-react-web_vtest.tar.gz" -C "${FIXTURE}" WeKnora-react-web_vtest
-printf 'fixture  WeKnora-react-web_vtest.tar.gz\n' > "${FIXTURE}/WeKnora-react-web_vtest.tar.gz.sha256"
+(
+  cd "${FIXTURE}"
+  shasum -a 256 WeKnora-react-web_vtest.tar.gz > WeKnora-react-web_vtest.tar.gz.sha256
+)
 touch "${FIXTURE}/WeKnora-lite_vtest_linux_amd64.tar.gz" \
   "${FIXTURE}/WeKnora-lite_vtest_linux_amd64.tar.gz.sha256" \
   "${FIXTURE}/WeKnora-lite_vtest_linux_arm64.tar.gz" \
@@ -28,6 +31,13 @@ for desktop_artifact in \
   touch "${FIXTURE}/WeKnora-Lite-App_vtest_${desktop_artifact}" \
     "${FIXTURE}/WeKnora-Lite-App_vtest_${desktop_artifact}.sha256"
 done
+for archive in "${FIXTURE}"/WeKnora-lite_*.tar.gz "${FIXTURE}"/WeKnora-Lite-App_*; do
+  case "${archive}" in
+    *.sha256) continue ;;
+  esac
+  checksum="${archive}.sha256"
+  shasum -a 256 "${archive}" > "${checksum}"
+done
 
 "${SCRIPT}" "${FIXTURE}" >/dev/null
 
@@ -37,7 +47,6 @@ if "${SCRIPT}" "${FIXTURE}" >/dev/null 2>&1; then
   exit 1
 fi
 
-printf 'fixture  WeKnora-react-web_vtest.tar.gz\n' > "${FIXTURE}/WeKnora-react-web_vtest.tar.gz.sha256"
 rm "${FIXTURE}/WeKnora-react-web_vtest.tar.gz"
 mkdir -p "${FIXTURE}/WeKnora-react-web_vtest/web/assets" \
   "${FIXTURE}/WeKnora-react-web_vtest/web/embed/assets"
@@ -46,6 +55,10 @@ printf 'embed\n' > "${FIXTURE}/WeKnora-react-web_vtest/web/embed.html"
 printf '%s\n' '{"renderer":"vue","version":"vtest","commit":"fixture","entries":{"web":"index.html","embed":"embed.html"}}' \
   > "${FIXTURE}/WeKnora-react-web_vtest/web/BUILD_INFO.json"
 tar -czf "${FIXTURE}/WeKnora-react-web_vtest.tar.gz" -C "${FIXTURE}" WeKnora-react-web_vtest
+(
+  cd "${FIXTURE}"
+  shasum -a 256 WeKnora-react-web_vtest.tar.gz > WeKnora-react-web_vtest.tar.gz.sha256
+)
 if "${SCRIPT}" "${FIXTURE}" >/dev/null 2>&1; then
   echo "expected non-React BUILD_INFO fixture to fail" >&2
   exit 1
