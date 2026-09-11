@@ -1,18 +1,21 @@
 import { useEffect, useState } from 'react';
-import type { AgentConfiguration, McpConfiguration, ModelConfiguration, SkillConfiguration, WeKnoraClient } from '@weknora/api-client';
-import { Card, Status } from '@weknora/ui';
+import type { AgentConfiguration, ConfigurationRecord, McpConfiguration, ModelConfiguration, SkillConfiguration, WeKnoraClient } from '@weknora/api-client';
+import { Button, Card, Status } from '@weknora/ui';
 import { configurationSections, configurationStatus, type ConfigurationSectionKey } from './surface.ts';
+import { ConfigurationEditor } from './ConfigurationEditor.tsx';
 
 type Records = { agents: AgentConfiguration[]; models: ModelConfiguration[]; mcp: McpConfiguration[]; skills: SkillConfiguration[] };
+type EditableSection = Exclude<ConfigurationSectionKey, 'skills'>;
 
 function message(error: unknown, fallback: string): string { return error instanceof Error ? error.message : fallback; }
-function values(record: Record<string, unknown>): string { return Object.entries(record).filter(([key]) => !['id', 'name', 'config', 'parameters', 'auth_config'].includes(key)).map(([key, value]) => `${key}: ${typeof value === 'string' ? value : JSON.stringify(value)}`).join(' · '); }
+function values(record: Record<string, unknown>): string { return Object.entries(record).filter(([key]) => !['id', 'name', 'config', 'parameters', 'auth_config', 'credentials'].includes(key)).map(([key, value]) => `${key}: ${typeof value === 'string' ? value : JSON.stringify(value)}`).join(' · '); }
 
 export function ConfigurationPage({ client }: { client: WeKnoraClient }) {
   const [records, setRecords] = useState<Records>({ agents: [], models: [], mcp: [], skills: [] });
   const [available, setAvailable] = useState<boolean | null>(null);
   const [errors, setErrors] = useState<Partial<Record<ConfigurationSectionKey, string>>>({});
   const [loading, setLoading] = useState(true);
+  const [editor, setEditor] = useState<{ section: EditableSection; record?: ConfigurationRecord } | null>(null);
 
   async function load() {
     setLoading(true); setErrors({});
@@ -28,5 +31,9 @@ export function ConfigurationPage({ client }: { client: WeKnoraClient }) {
 
   useEffect(() => { void load(); }, [client]);
 
-  return <main className="wk-page wk-configuration-page"><header className="wk-header"><div><p className="wk-eyebrow">Platform configuration</p><h1>Agents, models, MCP and skills</h1><p className="wk-muted">Read-only inventory backed by the shared configuration API. Secrets are removed at the API boundary.</p></div><button type="button" className="wk-settings-tab" onClick={() => void load()} disabled={loading}>Reload</button></header><div className="wk-configuration-grid">{configurationSections.map((section) => { const items = records[section.key]; return <Card key={section.key} className="wk-configuration-card"><div className="wk-configuration-card-heading"><div><h2>{section.title}</h2><p className="wk-muted">{section.description}</p></div><span className="wk-role-badge">{section.writeSupport}</span></div>{errors[section.key] ? <Status tone="error">{errors[section.key]}</Status> : section.key === 'skills' && available === false ? <Status tone="warning">Skill catalog is unavailable in the current deployment.</Status> : loading ? <Status>Loading…</Status> : items.length === 0 ? <Status>No configured entries.</Status> : <ul className="wk-list">{items.map((item, index) => { const row = item as Record<string, unknown>; const status = configurationStatus(row); const disabled = section.key === 'agents' && row.disabled_by_server === true; return <li key={String(row.id ?? row.name ?? index)}><div className="wk-list-item-copy"><strong>{String(row.name ?? row.id ?? 'Unnamed')}</strong><span>{status}{disabled ? ' · disabled by server' : ''}</span><small>{values(row) || (section.key === 'skills' ? String(row.description ?? 'Catalog entry') : 'Configuration is present; health is verified by a separate operation.')}</small></div></li>; })}</ul>}</Card>; })}</div></main>;
+  function openEditor(section: ConfigurationSectionKey, record?: ConfigurationRecord) {
+    if (section !== 'skills') setEditor({ section, ...(record ? { record } : {}) });
+  }
+
+  return <main className="wk-page wk-configuration-page"><header className="wk-header"><div><p className="wk-eyebrow">Platform configuration</p><h1>Agents, models, MCP and skills</h1><p className="wk-muted">Manage supported configuration through typed APIs. Secrets are write-only, and configuration presence never proves provider health.</p></div><Button type="button" onClick={() => void load()} disabled={loading}>Reload</Button></header>{editor ? <ConfigurationEditor client={client} section={editor.section} record={editor.record} onSaved={() => { setEditor(null); void load(); }} onCancel={() => setEditor(null)} /> : null}<div className="wk-configuration-grid">{configurationSections.map((section) => { const items = records[section.key]; return <Card key={section.key} className="wk-configuration-card"><div className="wk-configuration-card-heading"><div><h2>{section.title}</h2><p className="wk-muted">{section.description}</p></div><div className="wk-list-actions"><span className="wk-role-badge">{section.writeSupport}</span>{section.writeSupport === 'supported' ? <Button type="button" onClick={() => openEditor(section.key)}>Add</Button> : null}</div></div>{errors[section.key] ? <Status tone="error">{errors[section.key]}</Status> : section.key === 'skills' && available === false ? <Status tone="warning">Skill catalog is unavailable in the current deployment.</Status> : loading ? <Status>Loading…</Status> : items.length === 0 ? <Status>No configured entries.</Status> : <ul className="wk-list">{items.map((item, index) => { const row = item as Record<string, unknown>; const status = configurationStatus(row); const disabled = section.key === 'agents' && row.disabled_by_server === true; return <li key={String(row.id ?? row.name ?? index)}><div className="wk-list-item-copy"><strong>{String(row.name ?? row.id ?? 'Unnamed')}</strong><span>{status}{disabled ? ' · disabled by server' : ''}</span><small>{values(row) || (section.key === 'skills' ? String(row.description ?? 'Catalog entry') : 'Configuration is present; use Test/health operations for provider state.')}</small></div>{section.writeSupport === 'supported' ? <div className="wk-list-actions"><Button type="button" onClick={() => openEditor(section.key, item)}>Edit</Button></div> : null}</li>; })}</ul>}</Card>; })}</div></main>;
 }

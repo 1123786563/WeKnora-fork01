@@ -104,3 +104,49 @@ test('maps MCP OAuth authorization URL and status through the shared client', as
     { method: 'GET', path: '/api/v1/mcp-services/service%2F1/oauth/status?authorization_attempt=attempt%2F1' },
   ]);
 });
+
+test('keeps model and MCP credentials on dedicated secret subresources', async () => {
+  const requests: unknown[] = [];
+  const api = createConfigurationApi(async (request) => {
+    requests.push(request);
+    if (request.method === 'DELETE') return undefined;
+    return { success: true, data: { fields: { api_key: { configured: true }, token: { configured: true } } } };
+  });
+
+  assert.deepEqual(await api.models.credentials.put('model/1', { apiKey: 'secret' }), {
+    apiKey: true,
+    appSecret: false,
+  });
+  assert.deepEqual(await api.mcp.credentials.put('mcp/1', { token: 'secret' }), {
+    apiKey: false,
+    token: true,
+  });
+  await api.models.credentials.remove('model/1', 'api_key');
+  assert.deepEqual(requests, [
+    { method: 'PUT', path: '/api/v1/models/model%2F1/credentials', body: { api_key: 'secret' } },
+    { method: 'PUT', path: '/api/v1/mcp-services/mcp%2F1/credentials', body: { token: 'secret' } },
+    { method: 'DELETE', path: '/api/v1/models/model%2F1/credentials/api_key' },
+  ]);
+});
+
+test('maps MCP test and tool inventory responses without treating an empty response as success', async () => {
+  const requests: unknown[] = [];
+  let toolsCall = 0;
+  const api = createConfigurationApi(async (request) => {
+    requests.push(request);
+    if (request.path.endsWith('/test')) return { success: true, data: { success: false, message: 'connection refused' } };
+    if (request.path.endsWith('/tools')) {
+      toolsCall += 1;
+      return toolsCall === 1 ? { success: true, data: [{ name: 'search', description: 'Search sources' }] } : { success: true, data: [] };
+    }
+    return { success: true, data: [{ name: 'search', description: 'Search sources' }] };
+  });
+
+  assert.deepEqual(await api.mcp.test('mcp/1'), { success: false, message: 'connection refused' });
+  assert.deepEqual(await api.mcp.tools('mcp/1'), [{ name: 'search', description: 'Search sources' }]);
+  assert.deepEqual(requests, [
+    { method: 'POST', path: '/api/v1/mcp-services/mcp%2F1/test' },
+    { method: 'GET', path: '/api/v1/mcp-services/mcp%2F1/tools' },
+  ]);
+  await assert.rejects(() => api.mcp.tools('mcp/1'), /successful array/);
+});

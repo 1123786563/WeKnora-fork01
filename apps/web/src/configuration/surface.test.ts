@@ -1,13 +1,33 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { configurationSections, configurationStatus } from './surface.ts';
+import { configurationPayload, configurationSections, configurationStatus, parseConfigurationObject } from './surface.ts';
 
 test('keeps the four T15 configuration surfaces explicit and capability-labelled', () => {
   assert.deepEqual(configurationSections.map((section) => section.key), ['agents', 'models', 'mcp', 'skills']);
+  assert.equal(configurationSections.find((section) => section.key === 'agents')?.writeSupport, 'supported');
+  assert.equal(configurationSections.find((section) => section.key === 'models')?.writeSupport, 'supported');
+  assert.equal(configurationSections.find((section) => section.key === 'mcp')?.writeSupport, 'supported');
   assert.equal(configurationSections.find((section) => section.key === 'skills')?.writeSupport, 'read-only');
   assert.equal(configurationStatus({ source: 'env', enabled: false }), 'environment-managed');
   assert.equal(configurationStatus({ enabled: true }), 'enabled');
+});
+
+test('builds configuration payloads without putting secrets into the main resource update', () => {
+  assert.deepEqual(configurationPayload('models', {
+    id: '', name: 'Model', description: 'remote', type: 'KnowledgeQA', source: 'custom',
+    details: '{"base_url":"https://model.example"}', transportType: 'sse', url: '', enabled: true,
+    apiKey: 'secret', appSecret: '',
+  }), {
+    name: 'Model', display_name: 'Model', description: 'remote', type: 'KnowledgeQA', source: 'custom',
+    parameters: { base_url: 'https://model.example' },
+  });
+});
+
+test('rejects malformed configuration JSON instead of sending an empty object', () => {
+  assert.deepEqual(parseConfigurationObject('{"enabled":true}', 'agent config'), { enabled: true });
+  assert.throws(() => parseConfigurationObject('[]', 'agent config'), /must be a JSON object/);
+  assert.throws(() => parseConfigurationObject('{', 'agent config'), /must be valid JSON/);
 });
 
 test('does not infer health from the mere presence of a configuration row', () => {

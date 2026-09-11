@@ -10,6 +10,11 @@ export interface AgentConfigurationList { items: AgentConfiguration[]; disabledO
 export interface SkillConfigurationList { items: SkillConfiguration[]; skillsAvailable: boolean }
 export interface McpOAuthAuthorization { authorizationUrl: string; authorizationAttempt: string }
 export interface McpOAuthStatus { authorized: boolean; state: 'authorized' | 'refreshable' | 'reauth_required' | 'pending'; refreshAvailable: boolean; expiresAt?: string }
+export interface ModelCredentialStatus { apiKey: boolean; appSecret: boolean }
+export interface McpCredentialStatus { apiKey: boolean; token: boolean }
+export interface McpTestResult { success: boolean; message?: string; description?: string; oauthRequired?: boolean; tools?: McpTool[]; resources?: McpResource[] }
+export interface McpTool { name: string; description?: string; inputSchema?: unknown; requireApproval?: boolean }
+export interface McpResource { uri: string; name: string; description?: string; mimeType?: string }
 export interface AgentConfigurationListOptions {
   creator?: 'all' | 'mine' | 'others';
   signal?: AbortSignal;
@@ -112,6 +117,64 @@ function parseOAuthStatus(value: unknown): McpOAuthStatus {
   return { authorized: data.authorized, state: data.state, refreshAvailable: data.refresh_available, ...(data.expires_at === undefined ? {} : { expiresAt: data.expires_at }) };
 }
 
+function parseCredentialStatus(value: unknown, fields: readonly string[], path: string): Record<string, boolean> {
+  const envelope = record(value, path);
+  if (envelope.success !== true) throw new Error(`${path}.success must be true`);
+  const data = record(envelope.data, `${path}.data`);
+  const metadata = record(data.fields, `${path}.data.fields`);
+  return Object.fromEntries(fields.map((field) => {
+    const item = metadata[field];
+    if (item === undefined) return [field, false];
+    const configured = record(item, `${path}.data.fields.${field}`).configured;
+    if (typeof configured !== 'boolean') throw new Error(`${path}.data.fields.${field}.configured must be a boolean`);
+    return [field, configured];
+  }));
+}
+
+function credentialBody(input: Record<string, unknown>, fields: Record<string, string>, path: string): Record<string, string> {
+  const body: Record<string, string> = {};
+  for (const [source, target] of Object.entries(fields)) {
+    const value = input[source];
+    if (value !== undefined) {
+      if (typeof value !== 'string') throw new Error(`${path}.${source} must be a string`);
+      body[target] = value;
+    }
+  }
+  if (Object.keys(body).length === 0) throw new Error(`${path} must include at least one credential field`);
+  return body;
+}
+
+function parseMcpTest(value: unknown): McpTestResult {
+  const envelope = record(value, '/mcp-services/test');
+  if (envelope.success !== true) throw new Error('/mcp-services/test.success must be true');
+  const data = record(envelope.data, '/mcp-services/test.data');
+  if (typeof data.success !== 'boolean') throw new Error('/mcp-services/test.data.success must be a boolean');
+  const result: McpTestResult = { success: data.success };
+  if (data.message !== undefined) result.message = required(data.message, '/mcp-services/test.data.message');
+  if (data.description !== undefined) result.description = required(data.description, '/mcp-services/test.data.description');
+  if (data.oauth_required !== undefined) {
+    if (typeof data.oauth_required !== 'boolean') throw new Error('/mcp-services/test.data.oauth_required must be a boolean');
+    result.oauthRequired = data.oauth_required;
+  }
+  return result;
+}
+
+function parseMcpTools(value: unknown): McpTool[] {
+  const envelope = record(value, '/mcp-services/tools');
+  if (envelope.success !== true || !Array.isArray(envelope.data) || envelope.data.length === 0) throw new Error('/mcp-services/tools must be a successful array envelope');
+  return envelope.data.map((item, index) => {
+    const row = record(item, `/mcp-services/tools.data[${index}]`);
+    const tool: McpTool = { name: required(row.name, `/mcp-services/tools.data[${index}].name`) };
+    if (row.description !== undefined) tool.description = required(row.description, `/mcp-services/tools.data[${index}].description`);
+    if (row.inputSchema !== undefined) tool.inputSchema = row.inputSchema;
+    if (row.require_approval !== undefined) {
+      if (typeof row.require_approval !== 'boolean') throw new Error(`/mcp-services/tools.data[${index}].require_approval must be a boolean`);
+      tool.requireApproval = row.require_approval;
+    }
+    return tool;
+  });
+}
+
 export function createConfigurationApi(request: (input: ClientRequest) => Promise<unknown>) {
   const collection = <T extends ConfigurationRecord>(path: string, parse: (value: unknown, path: string) => T) => ({
     async list(signal?: AbortSignal): Promise<T[]> {
@@ -154,6 +217,34 @@ export function createConfigurationApi(request: (input: ClientRequest) => Promis
       return parseActionSuccessResponse(await request({ method: 'DELETE', path: `/api/v1/mcp-services/${id(serviceId, 'serviceId')}/oauth/token`, ...(signal === undefined ? {} : { signal }) }));
     },
   };
+  const modelCredentials = {
+    async put(modelId: string, input: Record<string, unknown>, signal?: AbortSignal): Promise<ModelCredentialStatus> {
+      const body = credentialBody(input, { apiKey: 'api_key', appSecret: 'app_secret' }, 'model credentials');
+      const fields = parseCredentialStatus(await request({
+        method: 'PUT', path: `/api/v1/models/${id(modelId, 'modelId')}/credentials`,
+        body,
+        ...(signal === undefined ? {} : { signal }),
+      }), ['api_key', 'app_secret'], '/models/credentials');
+      return { apiKey: body.api_key === undefined ? false : fields.api_key === true, appSecret: body.app_secret === undefined ? false : fields.app_secret === true };
+    },
+    async remove(modelId: string, field: 'api_key' | 'app_secret', signal?: AbortSignal): Promise<void> {
+      await request({ method: 'DELETE', path: `/api/v1/models/${id(modelId, 'modelId')}/credentials/${encodeURIComponent(field)}`, ...(signal === undefined ? {} : { signal }) });
+    },
+  };
+  const mcpCredentials = {
+    async put(serviceId: string, input: Record<string, unknown>, signal?: AbortSignal): Promise<McpCredentialStatus> {
+      const body = credentialBody(input, { apiKey: 'api_key', token: 'token' }, 'MCP credentials');
+      const fields = parseCredentialStatus(await request({
+        method: 'PUT', path: `/api/v1/mcp-services/${id(serviceId, 'serviceId')}/credentials`,
+        body,
+        ...(signal === undefined ? {} : { signal }),
+      }), ['api_key', 'token'], '/mcp-services/credentials');
+      return { apiKey: body.api_key === undefined ? false : fields.api_key === true, token: body.token === undefined ? false : fields.token === true };
+    },
+    async remove(serviceId: string, field: 'api_key' | 'token', signal?: AbortSignal): Promise<void> {
+      await request({ method: 'DELETE', path: `/api/v1/mcp-services/${id(serviceId, 'serviceId')}/credentials/${encodeURIComponent(field)}`, ...(signal === undefined ? {} : { signal }) });
+    },
+  };
   return {
     agents: {
       ...agentCollection,
@@ -168,8 +259,18 @@ export function createConfigurationApi(request: (input: ClientRequest) => Promis
         }), '/api/v1/agents');
       },
     },
-    models,
-    mcp: { ...mcp, oauth: mcpOAuth },
+    models: { ...models, credentials: modelCredentials },
+    mcp: {
+      ...mcp,
+      credentials: mcpCredentials,
+      oauth: mcpOAuth,
+      async test(serviceId: string, signal?: AbortSignal): Promise<McpTestResult> {
+        return parseMcpTest(await request({ method: 'POST', path: `/api/v1/mcp-services/${id(serviceId, 'serviceId')}/test`, ...(signal === undefined ? {} : { signal }) }));
+      },
+      async tools(serviceId: string, signal?: AbortSignal): Promise<McpTool[]> {
+        return parseMcpTools(await request({ method: 'GET', path: `/api/v1/mcp-services/${id(serviceId, 'serviceId')}/tools`, ...(signal === undefined ? {} : { signal }) }));
+      },
+    },
     skills: {
       async list(sandboxConfigId?: string, signal?: AbortSignal): Promise<SkillConfiguration[]> {
         const query = sandboxConfigId ? `?sandbox_config_id=${encodeURIComponent(sandboxConfigId)}` : '';
