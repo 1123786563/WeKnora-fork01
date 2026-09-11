@@ -106,6 +106,29 @@ func TestOIDCTokenExchangeBlocksRedirectToInternalURL(t *testing.T) {
 	}
 }
 
+func TestOIDCTokenExchangeIncludesPKCEVerifier(t *testing.T) {
+	withOIDCSSRFWhitelist(t, "127.0.0.1")
+	var gotVerifier string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("ParseForm: %v", err)
+		}
+		gotVerifier = r.Form.Get("code_verifier")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"access"}`))
+	}))
+	defer server.Close()
+
+	svc := &userService{}
+	cfg := &config.OIDCAuthConfig{TokenEndpoint: server.URL, ClientID: "client-id", ClientSecret: "client-secret"}
+	if _, err := svc.exchangeOIDCCode(context.Background(), cfg, "code", "https://app.example/callback", "mobile-verifier"); err != nil {
+		t.Fatalf("exchangeOIDCCode: %v", err)
+	}
+	if gotVerifier != "mobile-verifier" {
+		t.Fatalf("code_verifier = %q, want mobile-verifier", gotVerifier)
+	}
+}
+
 func TestOIDCErrorsDoNotEchoSecrets(t *testing.T) {
 	withOIDCSSRFWhitelist(t, "127.0.0.1")
 
