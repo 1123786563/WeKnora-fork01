@@ -38,29 +38,36 @@ type gateRunStore struct{ fence agentruntime.Fence }
 func (s *gateRunStore) Admit(context.Context, agentruntime.Admission) (agentruntime.Run, error) {
 	return agentruntime.Run{}, nil
 }
+
 func (s *gateRunStore) Get(context.Context, agentruntime.RunKey) (agentruntime.Run, error) {
 	return agentruntime.Run{
 		Key: s.fence.RunKey, Owner: s.fence.Owner, Epoch: s.fence.Epoch, Status: "running",
 		LeaseUntil: time.Now().Add(time.Minute),
 	}, nil
 }
+
 func (s *gateRunStore) Claim(context.Context, agentruntime.RunKey, string, time.Duration) (agentruntime.Fence, error) {
 	return s.fence, nil
 }
+
 func (s *gateRunStore) Renew(context.Context, agentruntime.Fence, time.Duration) error {
 	return nil
 }
+
 func (s *gateRunStore) Scan(context.Context, int) ([]agentruntime.RunKey, error) {
 	return nil, nil
 }
+
 func (s *gateRunStore) SaveCheckpoint(
 	context.Context, agentruntime.Fence, agentruntime.CheckpointRecord,
 ) error {
 	return nil
 }
+
 func (s *gateRunStore) SetStatus(context.Context, agentruntime.Fence, string, string) error {
 	return nil
 }
+
 func (s *gateRunStore) LoadCheckpoint(
 	context.Context, agentruntime.RunKey,
 ) (agentruntime.CheckpointRecord, error) {
@@ -74,26 +81,31 @@ func (gateJournal) EnsureToolPlan(
 ) (agentruntime.ToolRecord, error) {
 	return agentruntime.ToolRecord{Plan: plan, Status: agentruntime.ToolStatusPlanned}, nil
 }
+
 func (gateJournal) BeginToolAttempt(
 	context.Context, agentruntime.Fence, string, ...int64,
 ) (agentruntime.ToolAttempt, error) {
 	return agentruntime.ToolAttempt{Number: 1}, nil
 }
+
 func (gateJournal) ReviseToolPlan(
 	context.Context, agentruntime.Fence, string, int64, json.RawMessage,
 ) (agentruntime.ToolPlan, error) {
 	return agentruntime.ToolPlan{}, nil
 }
+
 func (gateJournal) CommitToolResult(
 	context.Context, agentruntime.Fence, agentruntime.ToolAttempt, agentruntime.StoredToolResult,
 ) error {
 	return nil
 }
+
 func (gateJournal) CommitToolRejection(
 	context.Context, agentruntime.Fence, string, agentruntime.StoredToolResult,
 ) error {
 	return nil
 }
+
 func (gateJournal) MarkToolUnknown(
 	context.Context, agentruntime.Fence, agentruntime.ToolAttempt, string,
 ) error {
