@@ -372,6 +372,12 @@
 - The rebuilt release APK (`sha256 06139c246cc68cd6a8504543687fe16fe5ed337c612dc58c4c7fd4a3db7aeb00`) installed successfully. A temporary owner logged in against isolated Lite, saw the real empty KB state, tapped the now-visible action, and returned to `Sign in to your workspace` / `Sign in` within three seconds. Evidence: `docs/migrations/react/evidence/t20-android-release-logout-live-2026-09-11.md`.
 - Android SSE/chat, refresh/AppState/network recovery, provider callback, and complete role/tenant acceptance remain open; T20/T24 remain `review` and T25 remains gated.
 
+### T21 Android upload/share follow-up (2026-09-11)
+
+- Android release opened the real `DocumentsUI`, selected a pushed 65-byte text fixture, uploaded it through the authenticated multipart route, and rendered the resulting `processing` row and `File details` screen. The document detail displayed the server id, type, and size.
+- `Download and share` invoked the Android Sharesheet, which showed `Sharing 1 file` and `weknora-native-upload.txt`. The Lite parser remained in `processing`, so indexing/search/content completion is not claimed.
+- Evidence: `docs/migrations/react/evidence/t21-android-upload-share-live-2026-09-11.md`. T21 remains `review` pending processing completion, cancellation/large-file/permission negatives, and iOS counterpart evidence.
+
 ### T24 full Go regression (2026-09-11)
 
 - `GOWORK=off go test ./...` exited `1`. Migration-relevant backend packages, including `internal/router`, passed; the complete run has two environment-sensitive groups: the Python skill verifier fixture sees host-installed packages that the test expects to be absent, and Notion/Azure/OpenAI fixture hostnames resolve to the SSRF-reserved `198.18.0.0/15` range. No test was skipped or weakened. Evidence: `docs/migrations/react/evidence/t24-go-regression-2026-09-11.md`.
