@@ -74,6 +74,12 @@ client = createWeKnoraClient({
 const root = createRoot(document.getElementById('root')!);
 const platformAdapters = createWebPlatformAdapters();
 
+// Most route transitions intentionally use full navigations so authentication,
+// tenant scope, and capability guards are re-evaluated. Settings and legacy
+// integrations may use history.pushState; reload those history entries instead
+// of leaving the initial route's React tree mounted after Back/Forward.
+window.addEventListener('popstate', () => window.location.reload());
+
 function nextPathAfterAuth(): string {
   const next = new URLSearchParams(window.location.search).get('next');
   return next && next.startsWith('/') && !next.startsWith('//') ? next : '/platform/knowledge-bases';
