@@ -592,6 +592,53 @@
   T21 remains `review` pending parser completion, download-byte/filename
   verification, cancellation/large-file negatives, and real-device evidence.
 
+### T03/T06/T17 React Web live follow-up (2026-09-12)
+
+- In a fresh isolated SQLite Lite run on `127.0.0.1:18082`, Chrome tab
+  `948799908` used the React Web dev server at `127.0.0.1:5175`. Registration
+  returned `201`, login returned `200`, and the React route navigated to
+  `/platform/knowledge-bases` after the shared `auth.me` hydration.
+- The authenticated React knowledge-base surface created `React live
+  knowledge base` (`POST /api/v1/knowledge-bases`, `201`), rendered the server
+  row, edited it to `React live knowledge base updated` (`PUT
+  /api/v1/knowledge-bases/<server-id>`, `200`), and reloaded the list from the
+  backend. The rendered scope key included origin, user, tenant, and resource.
+- Direct navigation to `/platform/settings?section=tenant` rendered tenant
+  `1`, status `active`, and the owner capability labels. Saving
+  `React Web live settings current` produced `PUT /api/v1/tenants/1` HTTP
+  `200`; the page rendered the server-returned description and timestamp.
+- Evidence: `docs/migrations/react/evidence/t06-t17-web-live-2026-09-12.md`.
+  Fresh `GET /health` and React root probes returned HTTP `200`.
+- This is real browser plus isolated backend evidence, not mock evidence. It
+  strengthens T03/T06/T17 but does not close their remaining refresh/OIDC,
+  document/full role matrix, or other-settings gates; all three remain
+  `review`. The temporary database and account are outside the repository.
+
+- The same authenticated browser deep-linked to `/platform/chat/session-1`;
+  React mounted the chat route and rendered the server-backed `session not
+  found` error for the intentionally nonexistent ID. The Web bundle's
+  `/embed/channel-1` path rendered its explicit isolated-entry guard, while a
+  separate Embed dev entry at `127.0.0.1:5176/embed/channel-1` rendered
+  `Missing embed token.` without entering the Web login flow.
+- This adds real browser route/error-state and independent Embed-entry
+  evidence, but does not claim a valid third-party Embed session or a real
+  chat generation. T10/T11/T18 remain `review`. The expanded record is in
+  `docs/migrations/react/evidence/t06-t17-web-live-2026-09-12.md`.
+
+### T24 React bundle and route regression rerun (2026-09-12)
+
+- Fresh baseline generation and tests passed: baseline unittest 4/4, shared
+  164/164, Web 64/64, Embed 3/3, desktop 2/2, and mobile 57/57; all five
+  typechecks, the React boundary check, and `git diff --check` exited 0.
+- Fresh production builds passed for Web, Embed, the combined React Web/Embed
+  candidate, and the desktop renderer. `go test ./internal/router -run
+  'TestFrontendStatic' -count=1` also exited 0. Candidate artifact sizes and
+  module counts are recorded in
+  `docs/migrations/react/evidence/t24-react-bundle-rerun-2026-09-12.md`.
+- This strengthens static/release-input evidence only. T24 stays `review`
+  for the remaining deployed/cross-OS/performance/full-matrix gates; T25
+  stays gated and no Vue source was removed.
+
 ### 本轮问题与裁定
 
 - 计划/设计原文仍写“方案 B 尚未批准”，与用户本轮批准相冲突；本实施分支按用户批准的方案 B 执行，未因旧措辞改变架构。

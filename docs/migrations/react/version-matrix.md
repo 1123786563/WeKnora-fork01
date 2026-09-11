@@ -2,7 +2,7 @@
 
 ## Frozen repository inputs
 
-- WeKnora: `2057a8aa7fbe50ab235e11f0bb06ae086a5cc9a3`
+- WeKnora: `a062f641faad2f2505102e23e57c38e92fa77897`
 - Multica (read-only): `85b1fdbb44fd90aa90ce3353a95c2b1f3d115ddf`
 - WeKnora Go module: `module github.com/Tencent/WeKnora`; Wails requirement is `v2.12.0` (`go.mod`), while `cmd/desktop/wails.json` uses schema v2.
 - Existing frontend: Vue 3.5, Vite 7, TypeScript 6, Pinia 3, npm lockfile; no React workspace exists yet.
