@@ -32,7 +32,7 @@
 
 **接口：** OperationStore.accept(req:ApplyRequest)->Operation、claim(worker_id:str,lease_seconds:int)->Operation|None、transition(operation_id:str,lease_token:int,expected:str,next_state:str)->bool、cancel(scope:ScopeKey,operation_id:str)->Operation；以ScopeKey+idempotency_key唯一，payload_hash冲突报错。
 
-- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 def test_repeated_apply_returns_same_operation(operation_store, apply_request):
@@ -46,13 +46,13 @@ def test_stale_lease_cannot_publish(operation_store, claimed_operation):
                                           "staged", "publishing")
 ```
 
-- [ ] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_operations.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [x] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_operations.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 建立service专属schema与迁移器；operation表保存请求hash、阶段、租约到期、递增lease_token、错误码、重试时间；唯一键冲突查回原操作并校验payload**
+- [x] **3. 建立service专属schema与迁移器；operation表保存请求hash、阶段、租约到期、递增lease_token、错误码、重试时间；唯一键冲突查回原操作并校验payload**
 
-- [ ] **4. 使用事务和FOR UPDATE SKIP LOCKED领取，续租必须匹配token；每次接管增加token，过期worker不能写stage、结果或终态**
+- [x] **4. 使用事务和FOR UPDATE SKIP LOCKED领取，续租必须匹配token；每次接管增加token，过期worker不能写stage、结果或终态**
 
-- [ ] **5. 实现状态允许表、超时恢复与取消CAS；Cancel succeeded返回FAILED_PRECONDITION；终态不可逆，取消后关闭内部数据库/模型调用上下文**
+- [x] **5. 实现状态允许表、超时恢复与取消CAS；Cancel succeeded返回FAILED_PRECONDITION；终态不可逆，取消后关闭内部数据库/模型调用上下文**
 
 关键实现约束：
 
@@ -65,9 +65,9 @@ WHERE operation_id = :operation_id AND state = :expected
 -- worker领取在同一事务内递增token并写lease_until。
 ```
 
-- [ ] **6. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_operations.py -q`，预期退出码 0；另完成：真实PG双连接并发claim只有一个获租约；杀worker后新worker接管；Cancel/publish竞争只能一个终态成立；进程重启后幂等仍成立。
+- [x] **6. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_operations.py -q`，预期退出码 0；另完成：真实PG双连接并发claim只有一个获租约；杀worker后新worker接管；Cancel/publish竞争只能一个终态成立；进程重启后幂等仍成立。
 
-- [ ] **7. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 I01 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): i01 持久操作、幂等与worker租约`。
+- [x] **7. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 I01 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): i01 持久操作、幂等与worker租约`。
 
 ## I02：业务revision、outbox与授权版本
 

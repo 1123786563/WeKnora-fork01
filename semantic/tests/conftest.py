@@ -5,6 +5,7 @@ trustme certificate and internal service token, plus authenticated /
 unauthenticated client stubs. Nothing here is mocked at the transport layer.
 """
 
+import os
 import socket
 from types import SimpleNamespace
 
@@ -18,6 +19,71 @@ from semantic_service.proto import semantic_pb2_grpc as pb_grpc
 from semantic_service.server import create_server
 
 INTERNAL_TOKEN = "test-internal-token-7f3a"
+
+# I01: isolated PostgreSQL for the semantic service operations store. The
+# fixture FAILS (never skips) when the environment is missing.
+PG_DSN_ENV = "SEMANTIC_TEST_PG_DSN"
+DEFAULT_PG_DSN = "postgresql://semantic:semantic@127.0.0.1:15432/semantic_test"
+
+
+@pytest.fixture(scope="session")
+def pg_dsn():
+    dsn = os.environ.get(PG_DSN_ENV, DEFAULT_PG_DSN)
+    try:
+        from semantic_service.operations import OperationStore, apply_migrations
+
+        apply_migrations(dsn)
+        probe = OperationStore(dsn)
+        probe.close()
+    except Exception as exc:  # noqa: BLE001 - explicit environment failure
+        pytest.fail(
+            f"operations PostgreSQL unavailable at {dsn} ({exc}); start the isolated "
+            "test container (see docs/superpowers/plans/semantica/progress.md I01 record)"
+        )
+    return dsn
+
+
+@pytest.fixture()
+def operation_store(pg_dsn):
+    """A real OperationStore over the isolated PG, with per-test cleanup."""
+    from semantic_service.operations import OperationStore
+
+    store = OperationStore(pg_dsn)
+    store.clear_for_test()
+    yield store
+    store.close()
+
+
+@pytest.fixture()
+def apply_request():
+    from semantic_service.contracts import (
+        ApplyRequest,
+        ChunkSnapshot,
+        DocumentRevision,
+        IndexConfig,
+        ScopeKey,
+    )
+
+    return ApplyRequest(
+        document=DocumentRevision(
+            scope=ScopeKey(tenant_id=1, kb_id="kb-ops"), document_id="doc-1",
+            revision=1, content_hash="content-hash", deleted=False),
+        chunks=(ChunkSnapshot(chunk_id="c1", text="甲公司控股乙公司。", content_hash="ch1"),),
+        config=IndexConfig(
+            config_digest="digest", engine_version="semantica-0.6.8",
+            model_profile_ref="profile", prompt_version="p1",
+            rule_set_version="r1", schema_version="s1"),
+        idempotency_key="idem-1",
+        payload_hash="hash-1",
+    )
+
+
+@pytest.fixture()
+def claimed_operation(operation_store, apply_request):
+    operation_store.accept(apply_request)
+    operation = operation_store.claim(worker_id="worker-test", lease_seconds=30)
+    assert operation is not None
+    return operation
 
 
 def _free_port() -> int:

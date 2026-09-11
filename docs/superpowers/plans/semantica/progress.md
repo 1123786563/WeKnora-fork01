@@ -1,6 +1,6 @@
 # Semantica 实施台账
 
-状态：V01–C03 已完成并验证，其余 18 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
+状态：V01–C03、I01 已完成并验证，其余 17 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
 
 状态值 pending / in_progress / blocked / implemented / verified。每项验证记录必须包含commit SHA、精确命令、退出码、环境、产物路径、失败/限制；无真实证据不标记verified。执行前记录实际基线与已有脏文件。
 
@@ -12,7 +12,7 @@
 | C01 | 版本化协议和跨语言领域类型 | V01 | verified | proto 全 14 DTO+7RPC 双语言同源生成（幂等）；Go 全量映射+全 5 枚举表；uint64 十进制字符串边界；未知枚举不映射成功；见运行记录 2026-09-11 C01 |
 | C02 | 认证服务骨架和Go客户端 | C01 | verified | 真实 TLS+内部令牌 gRPC 服务（缺身份→UNAUTHENTICATED、未实现→UNIMPLEMENTED、健康真实）；Go 客户端 deadline/取消/错误映射+仅读操作重试；enabled=false 默认可启动；见运行记录 2026-09-11 C02 |
 | C03 | 事实与证据校验模型 | C01,V02 | verified | codepoint 半开区间 span+原文校验、来源/推导分离、跨 scope 拒绝、循环 DAG 拒绝、多来源支持永不塌缩；见运行记录 2026-09-11 C03 |
-| I01 | 持久操作、幂等与worker租约 | C02 | pending | 尚未执行 |
+| I01 | 持久操作、幂等与worker租约 | C02 | verified | 真实 PG（隔离容器）：幂等 accept/冲突检测、SKIP LOCKED 单胜领取、fencing token 失联接管、原子终态、取消 CAS 双向竞争；见运行记录 2026-09-11 I01 |
 | I02 | 业务revision、outbox与授权版本 | C01 | pending | 尚未执行 |
 | I03 | 有来源的构图与generation原子发布 | C03,I01,I02,A03 | pending | 尚未执行 |
 | I04 | 删除屏障、支持撤销和清理receipt | I03,A01 | pending | 尚未执行 |
@@ -123,9 +123,24 @@
 - 提交 SHA：1a6137a（feat(semantic): c03 事实与证据校验模型）。
 - 剩余限制：upsert 为校验时辅助函数，批量摄取性能归 I03；同 id 同内容不同支持的并存条目由调用方在 generation 间对账（I03 范围）。
 
+### 2026-09-11 I01 持久操作、幂等与worker租约（verified）
+
+- 工作区：.worktrees/semantica（分支 codex/semantica）；基线 SHA：4afdc09（C03 台账修正提交）。
+- 修改文件：semantic/migrations/001_operations.sql、semantic/semantic_service/{operations.py,worker.py}、semantic/tests/{test_operations.py,conftest.py（I01 扩展 fixture）}、semantic/{pyproject.toml,uv.lock}（psycopg[binary]==3.2.9）、本台账、02 计划勾选。
+- RED：`uv run --project semantic python -m pytest semantic/tests/test_operations.py -q` 收集错误（semantic_service.operations 不存在）。
+- 评审修复 RED（两批）：①规格 BLOCKER——状态表缺 (publishing,superseded)（规格 §6 发布 CAS 失败路径）→ 回归测试先行；②质量 BLOCKER——mark_result 两段事务存在崩溃窗口（终态已定但 result/租约未清且不可恢复）→ 改为单条守卫 UPDATE（原子终态+错误码+结果+租约释放）；另 8 项行为 MINOR（未领取 accepted CAS 分支、Not Found 异常类型、取消有界循环+scope 谓词、4MiB 内联上限、advisory lock 迁移器、accept 单往返、worker 边界、负例测试）与复审新增 2 项（renew 幽灵租约、RequestTooLargeError 语义）全部修复，多数先写失败测试。
+- GREEN：`uv run --project semantic python -m pytest semantic/tests/test_operations.py -q` 22 passed；全量 `uv run --project semantic python -m pytest semantic/tests/ -q` 82 passed 退出码 0（真实 PG）。
+- 验收实测：重复投递同 operation_id（含新实例"进程重启"）；同键异 payload→OperationConflictError；双线程双连接并发 claim 恰一胜（真实 PG FOR UPDATE SKIP LOCKED）；租约过期→新 worker 接管 token+1、旧 token 全部写入被拒（计划核心断言逐字通过）；取消/发布双向竞争恰一终态；终态不可逆；Cancel succeeded→FAILED_PRECONDITION；空库 claim None；未知/跨 scope 操作→OperationNotFoundError。
+- 环境：隔离容器 semantica-i01-pg（postgres:16-alpine，127.0.0.1:15432，semantic/semantic，库 semantic_test；DSN 可经 SEMANTIC_TEST_PG_DSN 覆盖）；缺环境时 fixture 显式失败并给出启动指引（实测坏 DSN→14 errors exit 1，无任何 skip）。
+- 迁移器：pg_advisory_lock(835471001) 串行化；001 作幂等引导并记入 semantic.schema_migrations（实测重复运行仅 1 行）。
+- 计划偏差记录：CAS 守卫在计划 SQL 基础上增加 (state='accepted' AND lease_until IS NULL) 分支使未领取操作可被 superseded/取消路径触达（评审确认过期租约必为 running，该分支不可能服务失联 worker）；内联请求 4MiB 上限对应规格 §7 manifest_ref 大文档路径。
+- review：规格符合性 PASS（9 项；两核心断言逐字、接口签名、schema、租约纪律、状态机、四项验收扩展、worker、无 skip、卫生）；代码质量 PASS（原 BLOCKER+10 MINOR+复审新增 2 MINOR 全部实证关闭；遗留 nits：迁移引导注释措辞、重复测试已清理）。
+- 提交 SHA：（本记录与代码同批提交后补记）
+- 剩余限制：renew 未校验租约存活（计划仅要求匹配 token；fencing 安全，评审确认）；连接为逐调用建立（池化归 O01）；retry_after 列预留 I05。
+
 ## 当前边界
 
-- V01–C03 已完成（verified）；后续 18 个任务未开始。
+- V01–C03、I01 已完成（verified）；后续 17 个任务未开始。
 - V01精确版本已冻结（semantica 0.6.8）；真实模型证据须在后续任务补齐，不是已经通过的前提。
 - V02 结论边界：持久图桥接/授权子图重建/注册规则推导已验证；模型推断 unverified（无凭据，未调用）；向量检索路径未验证。
 - V03 结论边界：semantica 模式检索质量/延迟为受控语料实测；native 对照与模型用量门槛未测（阻断记录见上）；上线门禁 approved=false 待用户确认。
