@@ -10,6 +10,23 @@ export interface WorkspaceSelectionStore {
   deleteItemAsync(key: string): Promise<void>;
 }
 
+export function shouldHydrateWorkspaceMemberships(input: {
+  hydrating: boolean;
+  credentialKind: 'anonymous' | 'bearer' | 'embed';
+  workspaceCount: number;
+}): boolean {
+  return !input.hydrating && input.credentialKind === 'bearer' && input.workspaceCount === 0;
+}
+
+export function createSingleFlight<T>(operation: () => Promise<T>): () => Promise<T> {
+  let pending: Promise<T> | null = null;
+  return () => {
+    if (pending) return pending;
+    pending = operation().finally(() => { pending = null; });
+    return pending;
+  };
+}
+
 export function createWorkspaceSelectionAdapter(store: WorkspaceSelectionStore) {
   const key = 'weknora.mobile.selected-workspace';
   return {

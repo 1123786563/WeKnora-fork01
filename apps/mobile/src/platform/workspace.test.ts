@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createWorkspaceSelectionAdapter, parseMobileWorkspaces, toWorkspaceId } from './workspace.ts';
+import { createSingleFlight, createWorkspaceSelectionAdapter, parseMobileWorkspaces, shouldHydrateWorkspaceMemberships, toWorkspaceId } from './workspace.ts';
 
 function store(initial: string | null = null) {
   let value = initial;
@@ -38,4 +38,32 @@ test('persists and clears the selected workspace id', async () => {
   assert.equal(await adapter.read(), 8);
   await adapter.write(null);
   assert.equal(await adapter.read(), null);
+});
+
+test('hydrates memberships only after a bearer session is restored without cached workspaces', () => {
+  assert.equal(shouldHydrateWorkspaceMemberships({ hydrating: true, credentialKind: 'bearer', workspaceCount: 0 }), false);
+  assert.equal(shouldHydrateWorkspaceMemberships({ hydrating: false, credentialKind: 'anonymous', workspaceCount: 0 }), false);
+  assert.equal(shouldHydrateWorkspaceMemberships({ hydrating: false, credentialKind: 'bearer', workspaceCount: 1 }), false);
+  assert.equal(shouldHydrateWorkspaceMemberships({ hydrating: false, credentialKind: 'bearer', workspaceCount: 0 }), true);
+});
+
+test('shares one in-flight workspace refresh instead of issuing concurrent auth requests', async () => {
+  let calls = 0;
+  let resolve!: (value: string) => void;
+  const refresh = createSingleFlight(() => {
+    calls += 1;
+    return new Promise<string>((complete) => { resolve = complete; });
+  });
+
+  const first = refresh();
+  const second = refresh();
+  assert.strictEqual(first, second);
+  assert.equal(calls, 1);
+  resolve('loaded');
+  assert.equal(await first, 'loaded');
+  const third = refresh();
+  assert.equal(calls, 2);
+  resolve('loaded');
+  assert.equal(await third, 'loaded');
+  assert.equal(calls, 2);
 });

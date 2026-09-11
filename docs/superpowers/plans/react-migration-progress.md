@@ -332,6 +332,13 @@
 - `.github/workflows/mobile.yml` now explicitly exports both iOS and Android JavaScript bundles after mobile tests/typecheck. Workflow YAML parsing, `node scripts/check-react-boundaries.mjs`, and `git diff --check` passed locally.
 - This proves CI coverage is declared; it does not claim a hosted GitHub runner execution or native package/runtime acceptance.
 
+### T24 iOS workspace refresh follow-up (2026-09-11)
+
+- Fixed a real native runtime loop in `apps/mobile/app/(app)/workspace.tsx` and `apps/mobile/src/runtime.tsx`: the route no longer depends on the unstable Provider object, workspace refreshes are single-flight, and a restored bearer session hydrates memberships when SecureStore has only the active tenant id.
+- Added RED→GREEN regression coverage for the hydration condition and concurrent refresh behavior. `node --import tsx --test 'apps/mobile/src/**/*.test.ts'` passed 36/36; `pnpm --filter @weknora/mobile typecheck` and `git diff --check` exited 0.
+- On the iPhone 17 Pro Simulator with the current worktree Metro and isolated Lite server, Workspace settled on the real `mobilet24's Workspace · owner · Current` row after 5 seconds; the native API keys screen then displayed `Workspace role: owner` and the server-backed empty state. Evidence: `docs/migrations/react/evidence/t24-ios-simulator-workspace-refresh-live-2026-09-11.md`.
+- Android native runtime, complete T24 release matrix and deployment evidence remain open; T24 stays `review` and T25 remains gated.
+
 ### T23 mobile data-source follow-up (2026-09-11)
 
 - Added the native knowledge-base data-source inventory route. It uses shared list/type seams, keeps connector `config` and credentials out of the UI, and exposes no mobile write/sync controls.

@@ -6,7 +6,7 @@ import { resolveMobileApiBaseUrl } from './platform/transport.ts';
 import { createSecureCredentialAdapter } from './platform/credentials.ts';
 import { createServerAddressAdapter } from './platform/server.ts';
 import { createMobileTransport } from './platform/transport.ts';
-import { createWorkspaceSelectionAdapter, parseMobileWorkspaces, toWorkspaceId, type MobileWorkspace } from './platform/workspace.ts';
+import { createSingleFlight, createWorkspaceSelectionAdapter, parseMobileWorkspaces, shouldHydrateWorkspaceMemberships, toWorkspaceId, type MobileWorkspace } from './platform/workspace.ts';
 import { parseMobileOIDCCallback } from './platform/oidc.ts';
 
 const OIDC_STATE_KEY = 'weknora.mobile.oidc-state';
@@ -156,13 +156,19 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
     const next = await serverAdapter.write(value);
     setBaseURL(next || resolveMobileApiBaseUrl(process.env.EXPO_PUBLIC_API_BASE_URL || ''));
   }
-  async function refreshWorkspaces() {
+  const refreshWorkspaces = useMemo(() => createSingleFlight(async () => {
     const identity = await client.auth.me();
     setWorkspaces(parseMobileWorkspaces(identity.memberships));
     const activeTenantId = toWorkspaceId(identity.tenant?.id);
     setTenantId(activeTenantId === null ? null : String(activeTenantId));
     await workspaceAdapter.write(activeTenantId);
-  }
+  }), [client, workspaceAdapter]);
+
+  useEffect(() => {
+    if (!shouldHydrateWorkspaceMemberships({ hydrating, credentialKind: credential.kind, workspaceCount: workspaces.length })) return;
+    void refreshWorkspaces().catch(() => undefined);
+  }, [credential.kind, hydrating, refreshWorkspaces, workspaces.length]);
+
   async function switchWorkspace(id: number) {
     const workspaceId = toWorkspaceId(id);
     if (workspaceId === null) throw new Error('workspace id must be a positive safe integer');
