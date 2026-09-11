@@ -21,7 +21,7 @@ export function configurationDraftFromRecord(section: Exclude<ConfigurationSecti
   return {
     id: text(row.id), name: text(row.name), description: text(row.description), type: text(row.type), source: text(row.source),
     details: JSON.stringify(safeObject(details ?? {})), apiKey: '', appSecret: '', token: '',
-    ...(section === 'mcp' ? { transportType: text(row.transport_type) } : {}),
+    ...(section === 'mcp' ? { transportType: text(row.transport_type) || 'sse' } : {}),
     enabled: row.enabled !== false, url: text(row.url),
     credentialStatus: safeObject(row.credentials),
   };

@@ -22,6 +22,11 @@ test('removes camelCase and nested secret keys from editable configuration detai
   assert.equal(draft.details, '{"nested":{"label":"safe"}}');
 });
 
+test('defaults legacy MCP records without transport_type to SSE', () => {
+  const draft = configurationDraftFromRecord('mcp', { id: 'mcp-1', name: 'Legacy MCP', auth_config: {} });
+  assert.equal(draft.transportType, 'sse');
+});
+
 test('only sends newly entered non-empty credentials to the dedicated subresource', () => {
   assert.deepEqual(credentialInput('models', { apiKey: ' new-key ', appSecret: '' }), { apiKey: 'new-key' });
   assert.deepEqual(credentialInput('mcp', { token: 'token-1', apiKey: '   ' }), { token: 'token-1' });
