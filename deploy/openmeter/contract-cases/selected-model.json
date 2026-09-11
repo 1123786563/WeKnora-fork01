@@ -1,0 +1,23 @@
+{
+  "status": "blocked-env",
+  "family": "official_v3",
+  "version": "v1.0.0-beta.232",
+  "operations": [],
+  "passing_checks": [],
+  "checks": {
+    "OM-01": "blocked-env", "OM-02": "blocked-env", "OM-03": "blocked-env",
+    "OM-04": "blocked-env", "OM-05": "blocked-env", "OM-06": "blocked-env",
+    "OM-07": "blocked-env", "OM-08": "blocked-env", "OM-09": "blocked-env",
+    "OM-10": "blocked-env"
+  },
+  "evidence": [{
+    "status": "blocked-env",
+    "reason": "OpenMeter endpoint and merchant credentials were unavailable; no business request was sent.",
+    "schema_evidence": "docs/superpowers/specs/evidence/2026-09-10-saas-billing-interface-inventory.json"
+  }],
+  "precision": "unverified",
+  "time_resolution": "unverified",
+  "settlement_ack_strategy": "query stable external settlement identity before fulfillment (candidate; unverified)",
+  "alternative": "Keep P01-P03 disabled and rerun OM-01 through OM-09 in isolated V2 and V3 namespaces when the service and credentials are available.",
+  "note": "This file is a blocked experiment record, not an authorized adapter contract. gate.py must reject it until all OM-01..OM-09 have runtime pass evidence."
+}

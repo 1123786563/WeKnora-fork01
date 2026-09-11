@@ -83,7 +83,7 @@ V3 schema 的本地 server 前缀为 `/api/v3`，paths 以 `/openmeter` 开始�
 
 ## 4. OpenMeter 能力实验
 
-当前 OM-01 为 blocked-env；其余业务实验均 pending，路径证据仅为 schema/doc。
+当前 OM-01 至 OM-10 均为 blocked-env：本轮没有可用 OpenMeter 服务或商户凭据，未发送业务请求。候选模型记录在 [selected-model.json](../../../deploy/openmeter/contract-cases/selected-model.json)，仅作阻断记录；`scripts/saas/gate.py` 会拒绝它，直到获得 OM-01 至 OM-09 的真实运行证据。时间精度、结算确认和退款链路保持 unverified，不据此开放适配器。
 
 | ID | 目标与准备 | 实验步骤及通过标准 | 关联 |
 | --- | --- | --- | --- |
