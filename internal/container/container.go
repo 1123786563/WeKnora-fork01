@@ -453,6 +453,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewEmbedChannelHandler))
 	must(container.Provide(handler.NewWeKnoraCloudHandler))
 	must(container.Provide(handler.NewCommercialHandler))
+	// W04 app-connector HTTP handler (installations, connections, sync status)
+	must(container.Provide(handler.NewAppConnectorHandler))
 	// Commercial fulfillment: the V03-selected gateway (family official_v3;
 	// unconfigured env stays legal as blocked-env) and the background worker
 	// that drains paid orders' fulfillment outbox events into benefits.

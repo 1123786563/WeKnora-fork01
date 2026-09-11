@@ -89,6 +89,7 @@ type RouterParams struct {
 	WikiPageHandler              *handler.WikiPageHandler
 	MemoryHandler                *handler.MemoryHandler
 	CommercialHandler            *handler.CommercialHandler
+	AppConnectorHandler          *handler.AppConnectorHandler
 }
 
 // NewRouter 创建新的路由
@@ -301,6 +302,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterWikiPageRoutes(v1, params.WikiPageHandler, rbacGuards)
 		RegisterMemoryRoutes(v1, params.MemoryHandler, rbacGuards)
 		RegisterCommercialRoutes(v1, params.CommercialHandler)
+		RegisterAppConnectorRoutes(v1, params.AppConnectorHandler)
 		RegisterChunkerDebugRoutes(v1, rbacGuards)
 
 		// Fail fast if any declared API-key policy points at a route

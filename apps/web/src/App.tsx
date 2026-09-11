@@ -59,3 +59,4 @@ export { BillingPage } from './commercial/BillingPage.tsx';
 export { CheckoutPage } from './commercial/CheckoutPage.tsx';
 export { RefundPage } from './commercial/RefundPage.tsx';
 export { AdminCommercialPage } from './commercial/AdminCommercialPage.tsx';
+export { AppsPage } from './appconnector/AppsPage.tsx';

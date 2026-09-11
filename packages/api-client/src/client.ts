@@ -4,6 +4,7 @@ import type { HttpRequest, HttpResult, HttpTransport } from './ports.ts';
 import { createKnowledgeDocumentsApi } from './knowledge/documents.ts';
 import { createWikiPagesApi } from './wiki/pages.ts';
 import { createCommercialApi } from './commercial.ts';
+import { createAppConnectorApi } from './appconnector.ts';
 import { createDataSourcesApi } from './datasource.ts';
 
 export interface ClientRequest {
@@ -90,6 +91,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
   const wiki = createWikiPagesApi(request);
   const dataSources = createDataSourcesApi(request);
   const commercial = createCommercialApi(request);
+  const apps = createAppConnectorApi(request);
 
   return {
     request,
@@ -115,6 +117,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
     wiki,
     dataSources,
     commercial,
+    apps,
   };
 }
 

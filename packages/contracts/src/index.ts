@@ -63,6 +63,8 @@ export interface KnowledgeDocumentListResponse {
 
 export type { OrderView, CommercialSummary, QuoteView, QuoteInput, CreateOrderInput, RefundInput, RefundView } from './commercial.ts';
 export { parseOrderView, parseCommercialSummary, parseQuoteView, parseRefundView } from './commercial.ts';
+export type { ConnectionView, InstallationView, SyncBindingView, SyncStatusView, ConnectionState, InstallationState, ConnectionKind, SyncPauseReason, CreateInstallationInput, UpgradeInstallationInput, CreateConnectionInput } from './appconnector.ts';
+export { parseConnectionView, parseInstallationView, parseSyncStatusView } from './appconnector.ts';
 
 function requireNonEmptyString(value: unknown, path: string): string {
   if (typeof value !== 'string' || value.trim() === '') {
