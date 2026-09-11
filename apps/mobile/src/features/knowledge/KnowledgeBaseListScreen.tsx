@@ -3,6 +3,8 @@ import { ActivityIndicator, FlatList, Pressable, SafeAreaView, Text, View } from
 import { useRouter } from 'expo-router';
 import type { KnowledgeBase } from '@weknora/contracts';
 import { useMobileRuntime } from '../../runtime.tsx';
+import { knowledgeHeaderLayout } from './header-layout.ts';
+import { signOutAndRedirect } from './sign-out.ts';
 
 export function KnowledgeBaseListScreen() {
   const runtime = useMobileRuntime();
@@ -22,9 +24,13 @@ export function KnowledgeBaseListScreen() {
   useEffect(() => { void load(); }, [load]);
 
   return <SafeAreaView style={{ flex: 1, padding: 16 }}>
-    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
-      <Text accessibilityRole="header" style={{ fontSize: 24, fontWeight: '700' }}>Knowledge bases</Text>
-      <View style={{ flexDirection: 'row', gap: 12 }}><Pressable accessibilityRole="button" onPress={() => router.push('/workspace')}><Text style={{ color: '#2864dc' }}>Workspace</Text></Pressable><Pressable accessibilityRole="button" onPress={() => router.push('/management')}><Text style={{ color: '#2864dc' }}>Manage</Text></Pressable><Pressable accessibilityRole="button" onPress={() => void runtime.logout()}><Text style={{ color: '#2864dc' }}>Sign out</Text></Pressable></View>
+    <View style={knowledgeHeaderLayout.container}>
+      <Text accessibilityRole="header" style={knowledgeHeaderLayout.title}>Knowledge bases</Text>
+      <View style={knowledgeHeaderLayout.actions}>
+        <Pressable accessibilityRole="button" onPress={() => router.push('/workspace')}><Text style={knowledgeHeaderLayout.actionText}>Workspace</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={() => router.push('/management')}><Text style={knowledgeHeaderLayout.actionText}>Manage</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={() => void signOutAndRedirect(runtime.logout, (path) => router.replace(path))}><Text style={knowledgeHeaderLayout.actionText}>Sign out</Text></Pressable>
+      </View>
     </View>
     {error ? <Text accessibilityRole="alert" style={{ color: '#b42318', marginBottom: 12 }}>{error}</Text> : null}
     {loading ? <ActivityIndicator accessibilityLabel="Loading knowledge bases" /> : <FlatList

@@ -17,6 +17,8 @@
 
 `pending` 未开始；`implementing` 正在实现/取证；`review` 已有实现但等待规格与质量评审；`accepted` 证据满足任务验收；`blocked` 有明确外部/授权/环境阻塞并记录下一步。
 
+> 注：T20/T24 表格行保留了本次 follow-up 前的汇总措辞；Android logout/layout follow-up 的最新结论与证据见下方 2026-09-11 追加记录，logout 已通过，但 T20/T24 仍因其他开放门槛保持 `review`。
+
 ## 任务状态
 
 | 任务 | 状态 | 实现文件/提交 | 测试与退出码 | 证据层级 | 问题/下一步 |
@@ -362,6 +364,13 @@
 - The first release login attempt consistently failed as `Network request failed` before reaching the isolated Lite backend. Root-cause evidence showed the Android merged manifest lacked cleartext HTTP permission even though the mobile server-address contract accepts HTTP(S). A red-to-green test and local Expo config plugin now add `android:usesCleartextTraffic="true"` during prebuild.
 - The rebuilt release APK authenticated a temporary owner against a fresh isolated Lite SQLite backend, rendered `Knowledge bases`, `Workspace`, and the real `No knowledge bases available.` state, then restored the SecureStore session after force-stop/relaunch without re-entering credentials.
 - This closes Android package, HTTP transport, password login, authenticated list, and Android cold-session evidence. It does not close Android SSE/chat, file operations, AppState/network recovery, logout, provider callback, or full role/tenant acceptance. Evidence: `docs/migrations/react/evidence/t20-android-release-live-2026-09-11.md`. T20/T24 stay `review`; T25 remains gated.
+
+### T20 Android logout/layout follow-up (2026-09-11)
+
+- The Android release header overflow was reproduced: `Sign out` was clipped outside the 720px viewport and could not be activated by a real tap. The title/actions layout now uses a column with a wrapping action row; `header-layout.test.ts` locks that reachability contract.
+- `signOutAndRedirect` now waits for session cleanup before replacing the route with `/(auth)/login`, and does not navigate when cleanup fails. Mobile tests pass 45/45 and mobile typecheck exits 0.
+- The rebuilt release APK (`sha256 06139c246cc68cd6a8504543687fe16fe5ed337c612dc58c4c7fd4a3db7aeb00`) installed successfully. A temporary owner logged in against isolated Lite, saw the real empty KB state, tapped the now-visible action, and returned to `Sign in to your workspace` / `Sign in` within three seconds. Evidence: `docs/migrations/react/evidence/t20-android-release-logout-live-2026-09-11.md`.
+- Android SSE/chat, refresh/AppState/network recovery, provider callback, and complete role/tenant acceptance remain open; T20/T24 remain `review` and T25 remains gated.
 
 ### T24 full Go regression (2026-09-11)
 
