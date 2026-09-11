@@ -11,14 +11,14 @@ function base64URL(bytes: Uint8Array): string {
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 
-export async function createMobileOIDCPKCE(): Promise<MobileOIDCPKCE> {
-  const cryptoAPI = globalThis.crypto;
-  if (!cryptoAPI?.getRandomValues || !cryptoAPI.subtle) throw new Error('Secure PKCE support is unavailable on this device');
-  const random = new Uint8Array(32);
-  cryptoAPI.getRandomValues(random);
+export async function createMobileOIDCPKCE(crypto: {
+  getRandomBytesAsync(byteCount: number): Promise<Uint8Array>;
+  digestStringAsync(algorithm: string, data: string, options: { encoding: string }): Promise<string>;
+}): Promise<MobileOIDCPKCE> {
+  const random = await crypto.getRandomBytesAsync(32);
   const verifier = base64URL(random);
-  const digest = await cryptoAPI.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
-  return { verifier, challenge: base64URL(new Uint8Array(digest)) };
+  const digest = await crypto.digestStringAsync('SHA-256', verifier, { encoding: 'base64' });
+  return { verifier, challenge: digest.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '') };
 }
 
 export type MobileOIDCCallback =

@@ -1,6 +1,7 @@
 import { AppState, Linking } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import * as SecureStore from 'expo-secure-store';
+import * as Crypto from 'expo-crypto';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AuthError, createRefreshCoordinator, createWeKnoraClient, type AuthSession, type Credential, type WeKnoraClient } from '@weknora/api-client';
 import { resolveMobileApiBaseUrl } from './platform/transport.ts';
@@ -185,7 +186,14 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
       const config = await client.auth.oidcConfig();
       if (!config.enabled) throw new Error('Single sign-on is not enabled on this server');
       const redirectURI = `${baseURL.replace(/\/+$/, '')}/api/v1/auth/oidc/callback`;
-      const pkce = await createMobileOIDCPKCE();
+      const pkce = await createMobileOIDCPKCE({
+        getRandomBytesAsync: Crypto.getRandomBytesAsync,
+        digestStringAsync: (algorithm, data, options) => Crypto.digestStringAsync(
+          algorithm as Crypto.CryptoDigestAlgorithm,
+          data,
+          { encoding: options.encoding as Crypto.CryptoEncoding },
+        ),
+      });
       const { authorizationUrl, state } = await client.auth.oidcUrl(redirectURI, MOBILE_OIDC_REDIRECT, pkce.challenge);
       await SecureStore.setItemAsync(OIDC_STATE_KEY, state);
       await SecureStore.setItemAsync(OIDC_VERIFIER_KEY, pkce.verifier);
