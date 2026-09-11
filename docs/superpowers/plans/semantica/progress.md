@@ -161,7 +161,7 @@
 - ACL 接线（同事务 epoch）：tenant_member UpdateRole/SoftDelete/Demote/RemoveOwner（RowsAffected 门控）；kbshare Update/Delete（源租户+KB）；organization RemoveTenantMember/UpdateTenantMemberRole（组织全部被分享 KB）；文档语义删除经 I02 WithSemanticMutation（deny+epoch 同事务，计划核心测试即经此路径）。
 - 内部入口：/api/v1/internal/semantic/scope/resolve，常量时间令牌（X-Semantic-Internal-Token），无令牌不挂载（容器双重 fail-closed：密钥<32B→nil 服务→nil handler→无路由）；仅返回授权快照不含知识内容；401/403/409 语义。
 - review：规格 PASS（9 项；条件：①组织删除补入清单——已补为第三条待接线；②Issue 调用方必须经 resolveKBReadTenant 取 owner tenant——已记入清单已知缺口，Q01 前强制；③敏感替换隐藏旧版建模归 I05——已记）；代码质量终审 PASS（原 BLOCKER kb_shares 表名+评审修复中自引入的短密钥 BLOCKER 均实证关闭；迁移计数预存失败 13→17 修复；遗留 follow-up：按 subject 快照+owner tenant 校验（Q01 前强制）、testutil 合并、少量边界测试）。
-- 提交 SHA：（本记录与代码同批提交后补记）
+- 提交 SHA：d0ffa3f（feat(semantic): a01 可信AccessScope与权限变更屏障）。
 - 剩余限制（verified 前必须完成）：三条 ACL 接线——knowledge_transfer 克隆（源+目标 KB）、temporary_document 到期清理、organization DeleteOrganization（撤分享前）；Issue 尚无生产调用方（Q04 接线时必须走 resolveKBReadTenant）；快照当前 KB 级非 subject 级（per-subject 过滤归 A02/Q01 接线）；内部入口部署形态（网络隔离）归 O01。
 
 ## 当前边界
