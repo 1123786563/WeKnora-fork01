@@ -914,3 +914,41 @@
 
 - Source commit `3823ad6` rebuilt a React Web/Embed candidate whose `BUILD_INFO.json` identifies the React renderer and whose artifact contains the runtime config and favicon assets; later route assertions are in `46bc313`. Shared 180/180, Web 94/94, Mobile 61/61, Desktop 2/2, and Embed 3/3 tests passed; all corresponding typechecks, Web/Embed builds, boundary/diff checks, and release preflight scripts passed.
 - This remains local static/Node/bundle/package evidence. Installed Wails Windows/Linux behavior, complete device and browser/role matrix, registry/deployed proxy behavior, provider-backed flows, and production rollback remain open, so T24 stays `review` and T25 remains gated.
+
+### T07 Web authenticated preview follow-up (2026-09-12)
+
+- `369ddb8` adds authenticated binary preview/download transport and removes
+  the unauthenticated anchor download path. Safe text/Markdown, image, and PDF
+  preview rendering is backed by cleaned-up Blob URLs; unsupported formats are
+  explicit download-only. Shared 182/182 and Web 96/96 tests plus both
+  typechecks passed. Evidence: `docs/migrations/react/evidence/t07-web-authenticated-preview-2026-09-12.md`.
+- T07 remains `review` pending live protected-byte/browser download and full
+  format-renderer evidence.
+
+### T20 mobile OIDC code-exchange follow-up (2026-09-12)
+
+- `708132a` adds the allowlisted `weknora://oidc` callback target, signed
+  frontend binding, short-lived provider-code handoff, native exchange route,
+  and mobile fail-closed callback parsing. OIDC/API-client focused tests,
+  handler tests, and mobile typecheck passed. Evidence:
+  `docs/migrations/react/evidence/t20-mobile-oidc-code-exchange-2026-09-12.md`.
+- T20 remains `review` pending external IdP/provider callback and physical
+  device deep-link evidence.
+
+### T22 mobile run-lifecycle follow-up (2026-09-12)
+
+- `2d72d0f` adds per-session SecureStore-backed run lifecycle state and wires
+  ChatScreen/AppState recovery so user Stop, failure, and completion cannot be
+  silently resumed while background interruption remains resumable. Mobile
+  71/71 and typecheck passed. Evidence:
+  `docs/migrations/react/evidence/t22-mobile-run-lifecycle-2026-09-12.md`.
+- T22 remains `review` pending provider/device continuation, approval/OAuth,
+  and remote stop-after-id runtime evidence.
+
+### T23 mobile capability matrix follow-up (2026-09-12)
+
+- `a56ab45` makes each management capability mode/reason/required roles
+  explicit and keeps non-native entries non-actionable in the Hub. Management
+  11/11, mobile 71/71, and mobile typecheck passed. Evidence:
+  `docs/migrations/react/evidence/t23-mobile-capability-matrix-2026-09-12.md`.
+- T23 remains `review` pending full role/tenant/device/provider acceptance.
