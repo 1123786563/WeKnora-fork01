@@ -572,6 +572,19 @@
   provider/OIDC, and device network-recovery evidence remain open. T20/T24
   stay `review`; T25 remains gated.
 
+### T21 iOS native picker follow-up (2026-09-12)
+
+- The current iPhone 17 Pro / iOS 26.5 Release host logged into an isolated
+  Lite account, opened a real knowledge base, and reached the native `Upload`
+  control. The system Files picker opened and its “On My iPhone” provider was
+  reachable, but it contained no selectable document; no upload or processing
+  success is claimed.
+- Evidence: `/tmp/weknora-ios-upload-picker.png`, SHA-256
+  `d08bafa8bf82bcda5849963089aeabc3a39c8756c20c0b549e13a9ae397f111a`; full
+  record: `docs/migrations/react/evidence/t21-ios-upload-picker-attempt-2026-09-12.md`.
+  T21 remains `review` pending an iOS-selectable fixture and the subsequent
+  multipart/processing/download/share chain.
+
 ### 本轮问题与裁定
 
 - 计划/设计原文仍写“方案 B 尚未批准”，与用户本轮批准相冲突；本实施分支按用户批准的方案 B 执行，未因旧措辞改变架构。
