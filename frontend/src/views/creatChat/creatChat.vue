@@ -43,6 +43,17 @@
                     </div>
                 </transition>
             </div>
+            <!-- 新会话执行引擎选择：builtin 为默认 ReAct 引擎；trpc 提供持久化运行与崩溃恢复（实验性） -->
+            <div class="engine-selector">
+                <span class="engine-selector__label">{{ $t('createChat.engine.label') }}</span>
+                <t-radio-group v-model="engineType">
+                    <t-radio-button value="builtin">{{ $t('createChat.engine.builtin') }}</t-radio-button>
+                    <t-radio-button value="trpc">
+                        {{ $t('createChat.engine.trpc') }}
+                        <span class="engine-selector__badge">{{ $t('createChat.engine.experimental') }}</span>
+                    </t-radio-button>
+                </t-radio-group>
+            </div>
             <InputField ref="inputFieldRef" @send-msg="sendMsg"></InputField>
         </div>
     </div>
@@ -181,6 +192,15 @@ onMounted(() => { fetchSuggestedQuestions(); });
 
 const inputFieldRef = ref();
 
+// 新会话执行引擎：写回 settings store 以持久化用户偏好；builtin 为默认值。
+// 会话创建后引擎不可更改，存量会话的身份以服务端 engine_type 为准。
+const engineType = computed({
+    get: () => settingsStore.agentEngineType,
+    set: (value: string | number | boolean) => {
+        settingsStore.setAgentEngineType(value === 'trpc' ? 'trpc' : 'builtin');
+    },
+});
+
 const handleSuggestedQuestionClick = (question: string) => {
     inputFieldRef.value?.triggerSend(question);
 };
@@ -205,6 +225,8 @@ async function createNewSession(value: string, modelId: string, mentionedItems: 
         knowledge_ids: selectedFiles,  // 所有选中的普通知识/文件
         allowed_tools: settingsStore.agentConfig.allowedTools
     };
+    // 会话执行引擎：builtin（默认 ReAct）或 trpc（持久化运行，实验性）
+    sessionData.engine_type = settingsStore.agentEngineType;
 
     try {
         const res = await createSessions(sessionData);
@@ -262,6 +284,32 @@ const handleKBEditorSuccess = (kbId: string) => {
     :deep(.answers-input) {
         position: static;
         transform: translateX(0);
+    }
+}
+
+.engine-selector {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 0 16px;
+    box-sizing: border-box;
+    color: var(--td-text-color-secondary);
+    font-size: 13px;
+
+    .engine-selector__label {
+        white-space: nowrap;
+    }
+
+    .engine-selector__badge {
+        margin-left: 6px;
+        padding: 0 6px;
+        border-radius: 4px;
+        font-size: 11px;
+        line-height: 18px;
+        color: var(--td-warning-color);
+        background: var(--td-warning-color-1);
+        border: 1px solid var(--td-warning-color-3);
     }
 }
 

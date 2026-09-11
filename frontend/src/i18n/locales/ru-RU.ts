@@ -1,4 +1,5 @@
 export default {
+  agentEngine: { label: 'Движок', builtin: 'Встроенный ReAct', trpc: 'tRPC Agent (устойчивое восстановление)' },
   agentRunRecovery: { title: 'Запуск требует внимания', defaultReason: 'Запуск приостановлен в ожидании безопасного решения.', tool: 'Инструмент: {name}', resultLabel: 'Результат инструмента', resultPlaceholder: 'Вставьте проверенный структурированный результат (JSON или текст)', retry: 'Повторить', provideResult: 'Указать результат', terminate: 'Завершить', failed: 'Не удалось обновить запуск' },
 
   platformApiKeys: {
@@ -4486,6 +4487,12 @@ export default {
   },
   createChat: {
     title: 'Привет, я WeKnora — ваши знания всегда под рукой',
+    engine: {
+      label: 'Движок',
+      builtin: 'Встроенный ReAct',
+      trpc: 'tRPC Agent',
+      experimental: 'Экспериментально'
+    },
     newSessionTitle: 'Новая сессия',
     messages: {
       createFailed: 'Не удалось создать сессию',

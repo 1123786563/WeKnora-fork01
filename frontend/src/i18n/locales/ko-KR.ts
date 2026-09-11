@@ -1,4 +1,5 @@
 export default {
+  agentEngine: { label: '엔진', builtin: '내장 ReAct', trpc: 'tRPC Agent(지속형 복구)' },
   agentRunRecovery: { title: '실행에 확인이 필요합니다', defaultReason: '안전한 복구 결정을 기다리며 실행이 일시 중지되었습니다.', tool: '도구: {name}', resultLabel: '도구 결과', resultPlaceholder: '확인한 구조화 결과(JSON 또는 텍스트)를 입력하세요', retry: '재시도', provideResult: '결과 제공', terminate: '종료', failed: '실행을 업데이트하지 못했습니다' },
 
   platformApiKeys: {
@@ -4486,6 +4487,12 @@ export default {
   },
   createChat: {
     title: '안녕하세요, WeKnora입니다 — 당신의 지식을 손끝에',
+    engine: {
+      label: '엔진',
+      builtin: '내장 ReAct',
+      trpc: 'tRPC Agent',
+      experimental: '실험적'
+    },
     newSessionTitle: '새 세션',
     messages: {
       createFailed: '세션 생성 실패',

@@ -13,6 +13,11 @@ import {
   refreshAccessTokenShared,
   runStreamWithAuthRetry,
 } from '@/utils/authRefresh';
+import {
+  STREAM_RETRY_DELAYS_MS,
+  isStreamRetryableError,
+  streamRetryDelayMs,
+} from '@/utils/streamBackoff';
 
 interface StreamOptions {
   // 请求方法 (默认POST)
@@ -38,6 +43,8 @@ export function useStream() {
   // 流式渲染缓冲
   let buffer: string[] = []
   let renderTimer: number | null = null
+  // 本次 startStream 已消耗的重连次数；每次新的 startStream 复位。
+  let streamRetries = 0
 
   // 启动流式请求
   const startStream = async (params: { session_id: any; query: any; knowledge_base_ids?: string[]; knowledge_ids?: string[]; tag_ids?: string[]; agent_enabled?: boolean; agent_id?: string; agent_source_tenant_id?: string | number; web_search_enabled?: boolean; summary_model_id?: string; mcp_service_ids?: string[]; skill_names?: string[]; mentioned_items?: Array<{id: string; name: string; type: string; kb_type?: string; kb_id?: string; kb_name?: string; service_id?: string; skill_name?: string}>; images?: Array<{data: string}>; attachment_uploads?: Array<{data: string; file_name: string; file_size: number}>; attachment_ids?: string[]; suggestion_attribution?: { suggestion_set_id: string; question_id: string }; run_id?: string; method: string; url: string; embed_token?: string; embed_session_sig?: string; embed_visitor_id?: string }) => {
@@ -48,6 +55,7 @@ export function useStream() {
     error.value = null;
     isStreaming.value = true;
     isLoading.value = true;
+    streamRetries = 0;
 
     // 获取API配置
     const apiUrl = getApiBaseUrl();
@@ -200,9 +208,28 @@ export function useStream() {
           }
         },
 
+        // Reconnect with bounded backoff instead of failing on the first
+        // transient drop: returning a delay makes fetch-event-source sleep
+        // and retry the request; throwing aborts it (the library's dispose
+        // also cancels a pending retry on user abort). Auth errors keep going
+        // to the refresh-and-replay wrapper, and superseded generations never
+        // reconnect. A retried POST replays the same body — durable runs
+        // dedupe by run_id, the builtin engine may restart the turn, which is
+        // why retries are capped and only transport-level / 5xx / 429
+        // failures qualify.
         onerror: (err) => {
           if (isStreamAuthError(err)) throw err;
-          throw new Error(`${i18n.global.t('error.streamFailed')}: ${err}`);
+          const failStream = (): never => {
+            throw new Error(`${i18n.global.t('error.streamFailed')}: ${err instanceof Error ? err.message : err}`);
+          };
+          if (myGeneration !== streamGeneration || streamAbort.signal.aborted) failStream();
+          const delay = streamRetryDelayMs(streamRetries);
+          if (delay === null || !isStreamRetryableError(err, streamAbort.signal.aborted)) {
+            failStream();
+          }
+          streamRetries += 1;
+          console.warn(`[Stream] connection lost (${err instanceof Error ? err.message : err}); reconnecting in ${delay}ms (retry ${streamRetries}/${STREAM_RETRY_DELAYS_MS.length})`);
+          return delay;
         },
 
         onclose: () => {

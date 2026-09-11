@@ -1,4 +1,5 @@
 export default {
+  agentEngine: { label: '引擎', builtin: '内置 ReAct', trpc: 'tRPC Agent（持久化恢复）' },
   agentRunRecovery: {
     title: '运行需要你的处理', defaultReason: '运行已暂停，请选择安全的恢复操作。',
     tool: '工具：{name}', resultLabel: '工具结果', resultPlaceholder: '粘贴已核验的结构化结果（JSON 或文本）',
@@ -4492,6 +4493,12 @@ export default {
   },
   createChat: {
     title: 'Hi，我是 WeKnora，让你的知识触手可及',
+    engine: {
+      label: '执行引擎',
+      builtin: '内置 ReAct',
+      trpc: 'tRPC Agent',
+      experimental: '实验性'
+    },
     newSessionTitle: '新会话',
     messages: {
       createFailed: '创建会话失败',

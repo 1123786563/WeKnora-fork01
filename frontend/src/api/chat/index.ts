@@ -2,7 +2,18 @@ import { get, post, put, del, postChat, getDown } from "../../utils/request";
 
 
 
-export async function createSessions(data = {}) {
+// engine_type selects the session's execution engine for its lifetime:
+// "builtin" (existing ReAct, also the default when omitted) or "trpc"
+// (durable tRPC agent runs with crash recovery).
+export interface CreateSessionPayload {
+  title?: string;
+  description?: string;
+  engine_type?: "builtin" | "trpc";
+  agent_config?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export async function createSessions(data: CreateSessionPayload = {}) {
   return post("/api/v1/sessions", data);
 }
 
