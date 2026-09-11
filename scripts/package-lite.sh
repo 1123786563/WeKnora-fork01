@@ -36,11 +36,11 @@ echo ""
 
 # ── Step 1: Build frontend (if not skipped) ──
 if [ "${REACT_FRONTEND:-0}" = "1" ]; then
-    echo ">> Building React Web renderer..."
+    echo ">> Building React Web/Embed renderer..."
     pnpm install --frozen-lockfile
-    pnpm run build:web
+    bash ./scripts/build_react_web_bundle.sh
     rm -rf web
-    cp -r apps/web/dist web
+    cp -r dist/react-web/web web
 elif [ "${SKIP_FRONTEND:-}" != "1" ]; then
     if [ -f frontend/package.json ]; then
         echo ">> Building frontend..."

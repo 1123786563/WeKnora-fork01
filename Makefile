@@ -266,9 +266,9 @@ build-prod:
 # 会先构建前端到 web/，再构建 Go 二进制；SKIP_FRONTEND=1 可跳过前端
 build-lite:
 	@if [ "$${REACT_FRONTEND:-0}" = "1" ]; then \
-		echo ">> Building React Web renderer for Lite..."; \
-		pnpm install --frozen-lockfile && pnpm run build:web && \
-		rm -rf web && cp -r apps/web/dist web; \
+			echo ">> Building React Web/Embed renderer for Lite..."; \
+			pnpm install --frozen-lockfile && bash ./scripts/build_react_web_bundle.sh && \
+			rm -rf web && cp -r dist/react-web/web web; \
 	elif [ -f frontend/package.json ] && [ "$${SKIP_FRONTEND:-}" != "1" ]; then \
 		echo ">> Building frontend for Lite..."; \
 		(cd frontend && npm ci --prefer-offline && npm run build) && \
