@@ -1,4 +1,5 @@
 export const knowledgeHeaderLayout = {
+  chatRoute: '/chat' as const,
   container: {
     flexDirection: 'column' as const,
     marginBottom: 12,

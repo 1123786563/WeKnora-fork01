@@ -27,6 +27,7 @@ export function KnowledgeBaseListScreen() {
     <View style={knowledgeHeaderLayout.container}>
       <Text accessibilityRole="header" style={knowledgeHeaderLayout.title}>Knowledge bases</Text>
       <View style={knowledgeHeaderLayout.actions}>
+        <Pressable accessibilityRole="button" onPress={() => router.push(knowledgeHeaderLayout.chatRoute)}><Text style={knowledgeHeaderLayout.actionText}>Chat</Text></Pressable>
         <Pressable accessibilityRole="button" onPress={() => router.push('/workspace')}><Text style={knowledgeHeaderLayout.actionText}>Workspace</Text></Pressable>
         <Pressable accessibilityRole="button" onPress={() => router.push('/management')}><Text style={knowledgeHeaderLayout.actionText}>Manage</Text></Pressable>
         <Pressable accessibilityRole="button" onPress={() => void signOutAndRedirect(runtime.logout, (path) => router.replace(path))}><Text style={knowledgeHeaderLayout.actionText}>Sign out</Text></Pressable>
