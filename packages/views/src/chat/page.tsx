@@ -27,6 +27,20 @@ export interface ChatOAuthApprovalPrompt {
   reason?: string;
 }
 
+export interface ChatToolCallView {
+  id: string;
+  name?: string;
+  status: 'pending' | 'completed' | 'failed';
+  result?: unknown;
+}
+
+export interface ChatStreamPresentation {
+  phase: 'idle' | 'streaming' | 'completed' | 'stopped' | 'error';
+  thinking: string;
+  references: readonly unknown[];
+  toolCalls: readonly ChatToolCallView[];
+}
+
 export interface ChatPageProps {
   sessions: readonly ChatSession[];
   selectedSessionId: string | null;
@@ -48,6 +62,34 @@ export interface ChatPageProps {
   onAuthorizeOAuth?(pendingId: string, serviceId: string): Promise<void>;
   onCancelOAuth?(pendingId: string): Promise<void>;
   onSteer?(content: string): Promise<void>;
+  stream?: ChatStreamPresentation;
+}
+
+const SECRET_KEY = /(?:api[_-]?key|app[_-]?secret|access[_-]?token|refresh[_-]?token|client[_-]?secret|password|secret|token)/i;
+
+function safeValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(safeValue);
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, SECRET_KEY.test(key) ? '[redacted]' : safeValue(item)]));
+  }
+  return value;
+}
+
+function displayValue(value: unknown): string {
+  value = safeValue(value);
+  if (typeof value === 'string') return value;
+  try { return JSON.stringify(value) ?? String(value); } catch { return '[unavailable]'; }
+}
+
+function LiveResponse({ stream }: { stream: ChatStreamPresentation }) {
+  const hasDetails = Boolean(stream.thinking) || stream.references.length > 0 || stream.toolCalls.length > 0;
+  if (!hasDetails) return null;
+  return <section aria-label="Live response" className="wk-chat-live-response">
+    <p role="status">Status: {stream.phase}</p>
+    {stream.thinking ? <details open><summary>Thinking</summary><p>{stream.thinking}</p></details> : null}
+    {stream.toolCalls.length > 0 ? <div><h2>Tool calls</h2><ul className="wk-list">{stream.toolCalls.map((tool) => <li key={tool.id}><strong>{tool.name ?? tool.id}</strong><small>{tool.status}{tool.result === undefined ? '' : ` · ${displayValue(tool.result)}`}</small></li>)}</ul></div> : null}
+    {stream.references.length > 0 ? <div><h2>References</h2><ul className="wk-list">{stream.references.map((reference, index) => <li key={index}><span>{displayValue(reference)}</span></li>)}</ul></div> : null}
+  </section>;
 }
 
 function ChatActionCards(props: Pick<ChatPageProps, 'toolApprovals' | 'oauthApprovals' | 'onResolveToolApproval' | 'onAuthorizeOAuth' | 'onCancelOAuth'>) {
@@ -127,6 +169,7 @@ export function ChatPage(props: ChatPageProps) {
       <h1>{props.selectedSessionId ? 'Conversation' : 'New conversation'}</h1>
       {props.agents && props.onAgentChange ? <label htmlFor="wk-chat-agent">Agent<select id="wk-chat-agent" value={props.selectedAgentId ?? ''} onChange={(event) => props.onAgentChange?.(event.target.value)}><option value="">Knowledge chat</option>{props.agents.map((agent) => <option key={agent.id} value={agent.id} disabled={agent.disabled}>{agent.name}{agent.disabled ? ' · disabled' : ''}</option>)}</select></label> : null}
       <ChatActionCards {...props} />
+      {props.stream ? <LiveResponse stream={props.stream} /> : null}
       {props.error ? <p role="alert">{props.error}</p> : null}
       {props.loadingMessages ? <p role="status">Loading messages…</p> : null}
       <MessageList messages={props.messages} pending={pending} onRetry={pending?.status === 'failed' ? () => void send({ content: pending.content, status: 'pending' }) : undefined} />

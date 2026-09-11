@@ -26,6 +26,12 @@ test('chat page exposes the selected agent and server-disabled state at the chat
     onAuthorizeOAuth: async () => undefined,
     onCancelOAuth: async () => undefined,
     onSteer: async () => undefined,
+    stream: {
+      phase: 'streaming',
+      thinking: 'checking sources',
+      references: [{ title: 'Guide <safe>' }],
+      toolCalls: [{ id: 'tool-1', name: 'search_docs', status: 'completed', result: { html: '<not markup>', api_key: 'secret' } }],
+    },
   }));
 
   assert.match(html, /id="wk-chat-agent"/);
@@ -35,4 +41,9 @@ test('chat page exposes the selected agent and server-disabled state at the chat
   assert.match(html, /Approve search_docs/);
   assert.match(html, /Authorize Docs MCP/);
   assert.match(html, /Queue follow-up/);
+  assert.match(html, /checking sources/);
+  assert.match(html, /Guide &lt;safe&gt;/);
+  assert.match(html, /search_docs/);
+  assert.match(html, /&lt;not markup&gt;/);
+  assert.match(html, /\[redacted\]/);
 });
