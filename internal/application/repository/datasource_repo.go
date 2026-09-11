@@ -150,6 +150,78 @@ func (r *DataSourceRepository) FindActive(ctx context.Context) ([]*types.DataSou
 	return dataSources, nil
 }
 
+// AppDataSourceBindingRow maps one app_datasource_bindings row (A07): the
+// app installation and space connection a team-synced data source executes
+// under, at the auth version its cursor was produced with.
+type AppDataSourceBindingRow struct {
+	ID                      string `gorm:"column:id"`
+	TenantID                uint64 `gorm:"column:tenant_id"`
+	DataSourceID            string `gorm:"column:datasource_id"`
+	InstallationID          string `gorm:"column:installation_id"`
+	ConnectionID            string `gorm:"column:connection_id"`
+	AuthVersion             int64  `gorm:"column:auth_version"`
+	RequiresReauthorization bool   `gorm:"column:requires_reauthorization"`
+}
+
+// TableName pins the relation created by migrations 000120 (PG) / 000040
+// (SQLite). The row is deliberately NOT part of interfaces.DataSourceRepository:
+// it backs the A07 scoped-sync path only.
+func (AppDataSourceBindingRow) TableName() string { return "app_datasource_bindings" }
+
+// FindAppDataSourceBinding loads the binding of one data source within a
+// tenant. A missing row returns a nil row with a nil error so the caller can
+// keep the legacy execution path.
+func (r *DataSourceRepository) FindAppDataSourceBinding(
+	ctx context.Context, tenantID uint64, dataSourceID string,
+) (*AppDataSourceBindingRow, error) {
+	if dataSourceID == "" {
+		return nil, errors.New("data source id is empty")
+	}
+	var row AppDataSourceBindingRow
+	err := r.db.WithContext(ctx).
+		Table("app_datasource_bindings").
+		Where("tenant_id = ? AND datasource_id = ?", tenantID, dataSourceID).
+		Take(&row).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &row, nil
+}
+
+// SaveAppDataSourceBinding upserts the (tenant_id, datasource_id) relation row.
+// Duplicate runs must not create duplicate entries: the unique key is updated
+// in place, never inserted twice.
+func (r *DataSourceRepository) SaveAppDataSourceBinding(
+	ctx context.Context, row *AppDataSourceBindingRow,
+) error {
+	if row == nil {
+		return errors.New("binding is nil")
+	}
+	if row.DataSourceID == "" {
+		return errors.New("data source id is empty")
+	}
+	updated := r.db.WithContext(ctx).
+		Table("app_datasource_bindings").
+		Where("tenant_id = ? AND datasource_id = ?", row.TenantID, row.DataSourceID).
+		Updates(map[string]interface{}{
+			"installation_id":          row.InstallationID,
+			"connection_id":            row.ConnectionID,
+			"auth_version":             row.AuthVersion,
+			"requires_reauthorization": row.RequiresReauthorization,
+			"updated_at":               time.Now().UTC(),
+		})
+	if updated.Error != nil {
+		return updated.Error
+	}
+	if updated.RowsAffected > 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).Table("app_datasource_bindings").Create(row).Error
+}
+
 // SyncLogRepository provides data access for sync logs
 type SyncLogRepository struct {
 	db *gorm.DB

@@ -11,8 +11,10 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/appconnector"
 	"github.com/Tencent/WeKnora/internal/application/access"
 	"github.com/Tencent/WeKnora/internal/datasource"
 	"github.com/Tencent/WeKnora/internal/logger"
@@ -35,6 +37,13 @@ type DataSourceService struct {
 	tenantRepo        interfaces.TenantRepository
 	tagService        interfaces.KnowledgeTagService
 	audit             interfaces.AuditLogService
+
+	// --- A07: scoped connector sync execution (additive, zero values = legacy path) ---
+	syncBindingStore appconnector.SyncBindingStore
+	syncSpaceState   SyncSpaceStateResolver
+	syncPlanActive   func(ctx context.Context, tenantID uint64) bool
+	syncFenceMu      sync.Mutex
+	syncFences       map[string]int64
 }
 
 // NewDataSourceService creates a new data source service
@@ -62,6 +71,96 @@ func NewDataSourceService(
 		tagService:        tagService,
 		audit:             audit,
 	}
+}
+
+// SyncSpaceStateResolver supplies the live installation/connection state behind
+// a stored binding. Returning nil marks the credentials as legacy — personal or
+// space ownership cannot be proven, so the binding requires reauthorization.
+type SyncSpaceStateResolver interface {
+	SpaceBindingState(ctx context.Context, tenantID uint64, connectionID string) *appconnector.BindingState
+}
+
+// SetSyncExecution installs the A07 scoped-sync hooks: the app_datasource_bindings
+// store, the live space-connection state resolver, and the plan gate (false =
+// expired/canceled plan → new syncs pause, persisted settlements still complete).
+// All parameters are optional; nil components keep the legacy behavior.
+func (s *DataSourceService) SetSyncExecution(
+	store appconnector.SyncBindingStore, spaceState SyncSpaceStateResolver, planActive func(ctx context.Context, tenantID uint64) bool,
+) {
+	s.syncBindingStore = store
+	s.syncSpaceState = spaceState
+	s.syncPlanActive = planActive
+	if s.syncFences == nil {
+		s.syncFences = make(map[string]int64)
+	}
+}
+
+// AuthorizeSyncExecution is the pre-dispatch gate for every team sync (A07).
+// Order matters: the plan gate runs first and applies to EVERY data source of
+// the tenant — legacy-path datasources cannot bypass an enabled space's budget —
+// then a bound data source must hold an active space connection on an active
+// installation; legacy credentials that cannot prove ownership, revoked or
+// pending-reauthorization connections pause with reason permission.
+func (s *DataSourceService) AuthorizeSyncExecution(ctx context.Context, ds *types.DataSource) error {
+	if s.syncPlanActive != nil && !s.syncPlanActive(ctx, ds.TenantID) {
+		return appconnector.NewSyncPausedError(appconnector.PauseReasonPlan,
+			"plan expired; new syncs paused, persisted settlements still complete")
+	}
+	if s.syncBindingStore == nil || ds == nil {
+		return nil
+	}
+	var state *appconnector.BindingState
+	if s.syncSpaceState != nil {
+		if row, err := s.syncBindingStore.FindSyncBinding(ctx, ds.TenantID, ds.ID); err == nil && row != nil {
+			state = s.syncSpaceState.SpaceBindingState(ctx, ds.TenantID, row.ConnectionID)
+		}
+	}
+	binding, err := appconnector.ResolveSyncBinding(ctx, s.syncBindingStore, ds.TenantID, ds.ID, state)
+	if errors.Is(err, appconnector.ErrSyncBindingNotFound) {
+		// No binding row: legacy execution path (still plan-gated above).
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if binding.RequiresReauthorization {
+		return appconnector.NewSyncPausedError(appconnector.PauseReasonPermission,
+			"connection requires reauthorization before team sync can run")
+	}
+	return nil
+}
+
+// TakeSyncFence grants a new exclusive lease for the data source's sync run and
+// returns the worker's fence token. A previous worker's checkpoints stop
+// advancing as soon as a newer fence exists.
+func (s *DataSourceService) TakeSyncFence(dsID string) int64 {
+	s.syncFenceMu.Lock()
+	defer s.syncFenceMu.Unlock()
+	if s.syncFences == nil {
+		s.syncFences = make(map[string]int64)
+	}
+	s.syncFences[dsID]++
+	return s.syncFences[dsID]
+}
+
+// CurrentSyncFence reports the fence a checkpoint must match to advance.
+func (s *DataSourceService) CurrentSyncFence(dsID string) int64 {
+	s.syncFenceMu.Lock()
+	defer s.syncFenceMu.Unlock()
+	return s.syncFences[dsID]
+}
+
+// currentSyncAuthVersion returns the auth version of the data source's binding
+// (0 when unbound — legacy credentials execute without a version stamp).
+func (s *DataSourceService) currentSyncAuthVersion(ctx context.Context, ds *types.DataSource) int64 {
+	if s.syncBindingStore == nil || ds == nil {
+		return 0
+	}
+	row, err := s.syncBindingStore.FindSyncBinding(ctx, ds.TenantID, ds.ID)
+	if err != nil || row == nil {
+		return 0
+	}
+	return row.AuthVersion
 }
 
 // CreateDataSource creates a new data source configuration
@@ -465,6 +564,22 @@ func (s *DataSourceService) ManualSync(ctx context.Context, dsID string) (*types
 		return nil, datasource.ErrDataSourceNotActive
 	}
 
+	// A07: resolve the space connection and current budget/plan state BEFORE
+	// scheduling. A pause keeps the persisted cursor (resume continues from the
+	// last checkpoint) and is recorded with its machine-readable reason.
+	if err := s.AuthorizeSyncExecution(ctx, ds); err != nil {
+		logger.Warnf(ctx, "sync for ds=%s paused before scheduling: %v", dsID, err)
+		var paused *appconnector.SyncPausedError
+		reason := ""
+		if errors.As(err, &paused) {
+			reason = paused.Reason
+		}
+		recordKBActivity(ctx, s.audit, ds.TenantID, ds.KnowledgeBaseID, types.AuditActionDataSourceSyncFailed,
+			"data_source", ds.ID, types.AuditOutcomeFailed,
+			map[string]any{"name": ds.Name, "type": ds.Type, "pause_reason": reason, "trigger": "manual"})
+		return nil, err
+	}
+
 	// Create sync log
 	syncLog := &types.SyncLog{
 		DataSourceID: dsID,
@@ -635,6 +750,27 @@ func (s *DataSourceService) ProcessSync(ctx context.Context, task *asynq.Task) e
 		return fmt.Errorf("%w: data source KB does not belong to its tenant", asynq.SkipRetry)
 	}
 	wasPaused := ds.Status == types.DataSourceStatusPaused
+
+	// A07: gate team-sync execution on the resolved space connection and the
+	// current budget/plan state. A pause records the reason, keeps the persisted
+	// cursor and does not flip the data source into error state; persisted
+	// settlements already handed off still complete (MaySettlePersistedSync).
+	if err := s.AuthorizeSyncExecution(ctx, ds); err != nil {
+		logger.Warnf(ctx, "sync for ds=%s paused before execution: %v", payload.DataSourceID, err)
+		syncLog.Status = types.SyncLogStatusFailed
+		syncLog.FinishedAt = timePtr(time.Now().UTC())
+		syncLog.ErrorMessage = err.Error()
+		_ = s.syncLogRepo.Update(ctx, syncLog)
+		var paused *appconnector.SyncPausedError
+		reason := ""
+		if errors.As(err, &paused) {
+			reason = paused.Reason
+		}
+		recordKBActivity(ctx, s.audit, ds.TenantID, ds.KnowledgeBaseID, types.AuditActionDataSourceSyncFailed,
+			"data_source", ds.ID, types.AuditOutcomeFailed,
+			map[string]any{"name": ds.Name, "type": ds.Type, "pause_reason": reason})
+		return nil
+	}
 
 	// Get connector
 	connector, err := s.connectorRegistry.Get(ds.Type)
@@ -994,6 +1130,11 @@ type streamSyncHandler struct {
 	tagIDs  []string
 	result  *types.SyncResult
 	syncLog *types.SyncLog
+	// A07 lease fence of this worker; currentFence reports the live holder.
+	workerFence  int64
+	currentFence func() int64
+	// authVersion is the binding version the run executes under (0 = legacy).
+	authVersion int64
 }
 
 // Emit ingests one streamed item. A canceled context aborts the stream so the
@@ -1016,6 +1157,25 @@ func (h *streamSyncHandler) Checkpoint(ctx context.Context, cursor *types.SyncCu
 	if cursor == nil {
 		return nil
 	}
+	// A07: a checkpoint only advances after the emitted content and its
+	// index-task handoff are durably persisted — Emit is synchronous, so by the
+	// time the connector offers a checkpoint everything before it is committed —
+	// and only while this worker still holds the lease fence. A stale worker
+	// that lost its lease must not overwrite the current holder's cursor.
+	if h.currentFence != nil && !appconnector.CanAdvanceCheckpoint(true, h.currentFence(), h.workerFence) {
+		logger.Warnf(ctx, "checkpoint refused for ds=%s: worker fence %d is no longer current",
+			h.ds.ID, h.workerFence)
+		return nil
+	}
+	// The persisted cursor carries the binding auth version and lease fence so
+	// a resume can tell which credential version and worker produced it.
+	if cursor.ConnectorCursor == nil {
+		cursor.ConnectorCursor = map[string]interface{}{}
+	}
+	if h.authVersion > 0 {
+		cursor.ConnectorCursor["_sync_auth_version"] = h.authVersion
+	}
+	cursor.ConnectorCursor["_sync_fence"] = h.workerFence
 	cursorJSON, err := cursor.ToJSON()
 	if err != nil {
 		return err
@@ -1071,7 +1231,16 @@ func (s *DataSourceService) processSyncStreaming(
 	}
 
 	result := &types.SyncResult{}
-	handler := &streamSyncHandler{svc: s, ds: ds, tagIDs: autoTagIDs, result: result, syncLog: syncLog}
+	// A07: acquire this run's exclusive lease fence; the checkpoint guard above
+	// refuses advances from any earlier worker still draining a timed-out run.
+	workerFence := s.TakeSyncFence(ds.ID)
+	authVersion := s.currentSyncAuthVersion(ctx, ds)
+	handler := &streamSyncHandler{
+		svc: s, ds: ds, tagIDs: autoTagIDs, result: result, syncLog: syncLog,
+		workerFence:  workerFence,
+		currentFence: func() int64 { return s.CurrentSyncFence(ds.ID) },
+		authVersion:  authVersion,
+	}
 
 	nextCursor, fetchErr := sc.FetchStream(ctx, config, startCursor, handler)
 	if fetchErr != nil {
