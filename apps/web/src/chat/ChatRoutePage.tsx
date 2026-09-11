@@ -185,6 +185,7 @@ export function ChatRoutePage({ client, scopeController }: ChatRoutePageProps) {
     onAuthorizeOAuth={authorizeOAuth}
     onCancelOAuth={cancelOAuth}
     onSteer={steer}
+    stream={{ phase: streamState.phase, thinking: streamState.thinking, references: streamState.references, toolCalls: Object.values(streamState.toolCalls) }}
     send={send}
   />;
 }
