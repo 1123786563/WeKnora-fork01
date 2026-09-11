@@ -575,15 +575,22 @@
 ### T21 iOS native picker follow-up (2026-09-12)
 
 - The current iPhone 17 Pro / iOS 26.5 Release host logged into an isolated
-  Lite account, opened a real knowledge base, and reached the native `Upload`
-  control. The system Files picker opened and its “On My iPhone” provider was
-  reachable, but it contained no selectable document; no upload or processing
-  success is claimed.
+  Lite account, opened a real knowledge base, reached the native `Upload`
+  control, and opened the system Files picker. After exposing a 26-byte TXT
+  fixture through the Simulator Files provider, selection returned to WeKnora;
+  the list showed `processing`, and the detail screen showed the server id,
+  `Type: txt`, and `Size: 26`.
+- `Download and share` opened the native iOS share panel with the document name
+  and size plus system actions. The isolated Lite parser left the document in
+  `processing` and the UI remained `Preparing...`, so completed parsing and
+  protected download bytes are not claimed.
 - Evidence: `/tmp/weknora-ios-upload-picker.png`, SHA-256
-  `d08bafa8bf82bcda5849963089aeabc3a39c8756c20c0b549e13a9ae397f111a`; full
+  `d08bafa8bf82bcda5849963089aeabc3a39c8756c20c0b549e13a9ae397f111a`, and
+  `/tmp/weknora-ios-upload-share.png`, SHA-256
+  `6d629b903414d45351fcc517f38020598b7d84b9ff58351cacfaef7117f2794c`; full
   record: `docs/migrations/react/evidence/t21-ios-upload-picker-attempt-2026-09-12.md`.
-  T21 remains `review` pending an iOS-selectable fixture and the subsequent
-  multipart/processing/download/share chain.
+  T21 remains `review` pending parser completion, download-byte/filename
+  verification, cancellation/large-file negatives, and real-device evidence.
 
 ### 本轮问题与裁定
 
