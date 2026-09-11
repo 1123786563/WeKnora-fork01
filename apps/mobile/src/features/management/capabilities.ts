@@ -12,6 +12,7 @@ export const MOBILE_CAPABILITIES: readonly MobileCapability[] = [
   { key: 'approvals', label: 'Tool approvals', support: 'core' },
   { key: 'identity', label: 'Members, roles and audit', support: 'management', reason: 'Tenant context is server-owned; writes require an owner/admin role and remain server-authorized.' },
   { key: 'api-keys', label: 'Workspace API keys', support: 'management', reason: 'Only the workspace owner can mint or revoke keys; tokens are displayed once and never persisted by mobile.' },
+  { key: 'system-runtime', label: 'System runtime queues', support: 'unsupported', reason: 'System-admin queue/task controls remain on Web/Desktop and are not exposed as a mobile mutation surface.' },
   { key: 'organizations', label: 'Organizations and join requests', support: 'management', reason: 'Organization membership and writes remain server-authorized.' },
   { key: 'configuration', label: 'Agents, models, MCP and skills', support: 'read-only', reason: 'Mobile does not persist configuration writes.' },
   { key: 'wiki-faq', label: 'Wiki and FAQ', support: 'management', reason: 'Owner/admin editing uses server version and permission checks.' },
