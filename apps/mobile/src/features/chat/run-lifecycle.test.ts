@@ -6,6 +6,7 @@ import {
   deserializeRunLifecycle,
   initialRunLifecycle,
   serializeRunLifecycle,
+  shouldApplyHydratedLifecycle,
   transitionRunLifecycle,
 } from './run-lifecycle.ts';
 
@@ -66,4 +67,10 @@ test('lifecycle persistence is scoped to a chat session', async () => {
 
   assert.deepEqual(await persistence.read('session-1'), stopped);
   assert.deepEqual(await persistence.read('session-2'), initialRunLifecycle());
+});
+
+test('late lifecycle hydration cannot overwrite a local mutation', () => {
+  assert.equal(shouldApplyHydratedLifecycle('session-1', 'session-1', 4, 4), true);
+  assert.equal(shouldApplyHydratedLifecycle('session-1', 'session-1', 4, 5), false);
+  assert.equal(shouldApplyHydratedLifecycle('session-1', 'session-2', 4, 4), false);
 });

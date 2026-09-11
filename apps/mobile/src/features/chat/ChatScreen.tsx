@@ -12,7 +12,7 @@ import { downloadKnowledgeFile, shareNativeFile } from '../../platform/files.ts'
 import { buildMobileChatRequestBody, selectAssistantMessageId, selectIncompleteAssistant, selectMessageArtifacts, selectReferenceGroups, shouldRenderLiveAssistant, shouldRenderPendingUser } from './parity.ts';
 import { stopChatRun } from './stop-run.ts';
 import { chatAppStateAction } from './appstate.ts';
-import { createRunLifecyclePersistence, initialRunLifecycle, transitionRunLifecycle, type RunLifecycleEvent } from './run-lifecycle.ts';
+import { createRunLifecyclePersistence, initialRunLifecycle, shouldApplyHydratedLifecycle, transitionRunLifecycle, type RunLifecycleEvent } from './run-lifecycle.ts';
 
 function errorText(cause: unknown, fallback: string): string {
   return cause instanceof Error ? cause.message : fallback;
@@ -51,9 +51,11 @@ export function ChatScreen() {
   const selectedSessionRef = useRef<string | null>(null);
   const runLifecycle = useRef(initialRunLifecycle());
   const lifecycleHydrated = useRef(false);
+  const lifecycleRevision = useRef(0);
   const lifecyclePersistence = useMemo(() => createRunLifecyclePersistence(SecureStore), []);
 
   const updateRunLifecycle = useCallback((sessionId: string, event: RunLifecycleEvent) => {
+    lifecycleRevision.current += 1;
     const next = transitionRunLifecycle(runLifecycle.current, event);
     runLifecycle.current = next;
     void lifecyclePersistence.write(sessionId, next).catch(() => undefined);
@@ -100,6 +102,7 @@ export function ChatScreen() {
   useEffect(() => { void loadKnowledgeBases(); }, [loadKnowledgeBases]);
   useEffect(() => {
     selectedSessionRef.current = selectedSessionId;
+    lifecycleRevision.current += 1;
     runLifecycle.current = initialRunLifecycle();
     lifecycleHydrated.current = !selectedSessionId;
     setStreamState(initialChatStreamState());
@@ -107,8 +110,9 @@ export function ChatScreen() {
     failedAssistantMessageId.current = undefined;
     if (selectedSessionId) {
       const sessionId = selectedSessionId;
+      const hydrationRevision = lifecycleRevision.current;
       void lifecyclePersistence.read(sessionId).then((stored) => {
-        if (selectedSessionRef.current !== sessionId) return;
+        if (!shouldApplyHydratedLifecycle(selectedSessionRef.current, sessionId, hydrationRevision, lifecycleRevision.current)) return;
         runLifecycle.current = stored;
         lifecycleHydrated.current = true;
       }).catch(() => {

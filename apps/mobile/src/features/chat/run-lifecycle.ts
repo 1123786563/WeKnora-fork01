@@ -62,6 +62,15 @@ export function canAutoResumeRun(state: RunLifecycle): boolean {
   return state.status === 'idle' || state.status === 'background-interrupted';
 }
 
+export function shouldApplyHydratedLifecycle(
+  currentSessionId: string | null,
+  hydratedSessionId: string,
+  hydrationRevision: number,
+  currentRevision: number,
+): boolean {
+  return currentSessionId === hydratedSessionId && hydrationRevision === currentRevision;
+}
+
 export function serializeRunLifecycle(state: RunLifecycle): string {
   return JSON.stringify(state);
 }
