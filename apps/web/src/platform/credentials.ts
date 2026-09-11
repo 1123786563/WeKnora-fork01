@@ -1,4 +1,5 @@
 import type { BearerCredential, Credential, CredentialAdapter } from '@weknora/api-client';
+import { persistReactPlatformState, readReactPlatformState } from './legacy-session.ts';
 
 const ACCESS_TOKEN_KEY = 'weknora_token';
 const REFRESH_TOKEN_KEY = 'weknora_refresh_token';
@@ -15,20 +16,27 @@ export function persistBrowserCredential(storage: CredentialStorage, credential:
     storage.setItem(ACCESS_TOKEN_KEY, credential.accessToken);
     if (credential.refreshToken) storage.setItem(REFRESH_TOKEN_KEY, credential.refreshToken);
     else storage.removeItem(REFRESH_TOKEN_KEY);
-    return;
-  }
-  if (credential.kind === 'embed') {
+  } else if (credential.kind === 'embed') {
     storage.setItem(ACCESS_TOKEN_KEY, credential.token);
     storage.removeItem(REFRESH_TOKEN_KEY);
-    return;
+  } else {
+    storage.removeItem(ACCESS_TOKEN_KEY);
+    storage.removeItem(REFRESH_TOKEN_KEY);
   }
-  storage.removeItem(ACCESS_TOKEN_KEY);
-  storage.removeItem(REFRESH_TOKEN_KEY);
+
+  const current = readReactPlatformState(storage) ?? {
+    credential: { kind: 'anonymous' } as const,
+    tenantId: null,
+    preferences: {},
+  };
+  persistReactPlatformState(storage, { ...current, credential });
 }
 
 export function createBrowserCredentialAdapter(storage: CredentialStorage): CredentialAdapter {
   return {
     async read(): Promise<Credential> {
+      const migrated = readReactPlatformState(storage);
+      if (migrated) return migrated.credential;
       const accessToken = nonEmpty(storage.getItem(ACCESS_TOKEN_KEY));
       if (!accessToken) return { kind: 'anonymous' };
       if (/^embed\s/i.test(accessToken)) return { kind: 'embed', token: accessToken };

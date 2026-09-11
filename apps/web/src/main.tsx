@@ -6,7 +6,7 @@ import { LoginPage } from './auth/LoginPage.tsx';
 import { JoinPage } from './auth/JoinPage.tsx';
 import { WorkspaceOnboardingPage } from './auth/WorkspaceOnboardingPage.tsx';
 import { parseOIDCCallbackHash } from './auth/oidc.ts';
-import { persistSelectedTenant, readLegacyPlatformSession } from './platform/legacy-session.ts';
+import { importLegacyPlatformState, persistSelectedTenant, readReactPlatformState, type ReactPlatformState } from './platform/legacy-session.ts';
 import { createBrowserTransport } from './platform/http.ts';
 import { createBrowserCredentialAdapter, persistBrowserCredential } from './platform/credentials.ts';
 import { createWebScopeRuntime } from './platform/scope-runtime.ts';
@@ -37,12 +37,17 @@ if (oidcCallback?.kind === 'success') {
 }
 
 const route = resolveRoute(window.location.pathname);
-let session = route.kind === 'embed' ? { credential: { kind: 'anonymous' } as const, tenantId: null } : readLegacyPlatformSession();
+const importedPlatformState = route.kind === 'embed' ? null : importLegacyPlatformState(window.localStorage);
+let session: ReactPlatformState = route.kind === 'embed'
+  ? { credential: { kind: 'anonymous' }, tenantId: null, preferences: {} }
+  : importedPlatformState!;
 const browserCredentialAdapter = route.kind === 'embed' ? undefined : createBrowserCredentialAdapter(window.localStorage);
-const currentCredential = (): Credential => route.kind === 'embed' ? session.credential : readLegacyPlatformSession().credential;
+const currentCredential = (): Credential => route.kind === 'embed'
+  ? session.credential
+  : readReactPlatformState(window.localStorage)?.credential ?? session.credential;
 const injectedApiBaseUrl = (window as Window & { __WEKNORA_API_BASE__?: unknown }).__WEKNORA_API_BASE__;
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || (typeof injectedApiBaseUrl === 'string' ? injectedApiBaseUrl : '');
-const liteMode = window.localStorage.getItem('weknora_lite_mode') === 'true';
+const liteMode = importedPlatformState?.preferences.weknora_lite_mode === 'true';
 const scopeRuntime = createWebScopeRuntime(apiBaseUrl || window.location.origin, null, session.tenantId, {
   liteMode,
   persistTenant: (tenantId) => persistSelectedTenant(window.localStorage, tenantId),
@@ -76,7 +81,7 @@ function nextPathAfterAuth(): string {
 
 function renderLogin(error = initialLoginError) {
   root.render(<LoginPage client={client} onAuthenticated={(next) => {
-    session = { credential: { kind: 'bearer', accessToken: next.token, refreshToken: next.refreshToken }, tenantId: null };
+    session = { ...session, credential: { kind: 'bearer', accessToken: next.token, refreshToken: next.refreshToken }, tenantId: null };
     persistBrowserCredential(window.localStorage, session.credential);
     window.location.assign(nextPathAfterAuth());
   }} apiBaseUrl={apiBaseUrl} initialError={error} initialMode={route.kind === 'login' ? route.mode : 'login'} />);
@@ -86,7 +91,7 @@ async function logout(): Promise<void> {
   try { await client.auth.logout(); } catch { /* local invalidation still wins */ }
   await browserCredentialAdapter?.clear();
   scopeRuntime.logout();
-  session = { credential: { kind: 'anonymous' }, tenantId: null };
+  session = { ...session, credential: { kind: 'anonymous' }, tenantId: null };
   window.location.assign('/login');
 }
 
@@ -157,7 +162,7 @@ async function bootstrap() {
     const inviteToken = new URLSearchParams(window.location.search).get('token')?.trim();
     if (route.mode === 'register' && inviteToken) {
       root.render(<JoinPage client={client} onAuthenticated={(next) => {
-        session = { credential: { kind: 'bearer', accessToken: next.token, refreshToken: next.refreshToken }, tenantId: null };
+        session = { ...session, credential: { kind: 'bearer', accessToken: next.token, refreshToken: next.refreshToken }, tenantId: null };
         persistBrowserCredential(window.localStorage, session.credential);
         window.location.assign(nextPathAfterAuth());
       }} />);
