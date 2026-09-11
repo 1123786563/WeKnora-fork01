@@ -10,6 +10,7 @@ import { pickNativeFile } from '../../platform/files.ts';
 import { downloadKnowledgeFile, shareNativeFile } from '../../platform/files.ts';
 import { selectAssistantMessageId, selectIncompleteAssistant, selectMessageArtifacts, selectReferenceGroups, shouldRenderPendingUser } from './parity.ts';
 import { stopChatRun } from './stop-run.ts';
+import { chatAppStateAction } from './appstate.ts';
 
 function errorText(cause: unknown, fallback: string): string {
   return cause instanceof Error ? cause.message : fallback;
@@ -125,7 +126,9 @@ export function ChatScreen() {
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state !== 'active' || !selectedSessionId || streamController.current) return;
+      const action = chatAppStateAction(state, Boolean(selectedSessionId), Boolean(streamController.current));
+      if (action === 'abort') { streamController.current?.abort(); return; }
+      if (action !== 'resume' || !selectedSessionId) return;
       void (async () => {
         const refreshed = await loadMessages(selectedSessionId);
         const incomplete = selectIncompleteAssistant(refreshed);
