@@ -29,7 +29,9 @@ export function resolveRoute(pathname: string): RouteMatch {
   if (faqMatch) return { kind: 'knowledge-faq', path, knowledgeBaseId: decodeURIComponent(faqMatch[1]!) };
   const settingsMatch = path.match(/^\/knowledgeBase\/([^/]+)\/settings$/);
   if (settingsMatch) return { kind: 'knowledge-settings', path, knowledgeBaseId: decodeURIComponent(settingsMatch[1]!) };
-  if (path === '/knowledgeBase' || path.startsWith('/knowledgeBase/')) return { kind: 'knowledge-base', path };
+  const knowledgeBaseMatch = path.match(/^\/knowledgeBase\/([^/]+)$/);
+  if (knowledgeBaseMatch) return { kind: 'knowledge-base', path, knowledgeBaseId: decodeURIComponent(knowledgeBaseMatch[1]!) };
+  if (path === '/knowledgeBase') return { kind: 'knowledge-base', path };
   const platformKnowledgeChatMatch = path.match(/^\/platform\/knowledge-bases\/([^/]+)\/creatChat$/);
   if (platformKnowledgeChatMatch) return { kind: 'chat', path, knowledgeBaseId: decodeURIComponent(platformKnowledgeChatMatch[1]!) };
   const platformKnowledgeBaseMatch = path.match(/^\/platform\/knowledge-bases\/([^/]+)$/);
