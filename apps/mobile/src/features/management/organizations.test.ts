@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { canManageOrganization, validateOrganizationDraft } from './organizations.ts';
+import { canManageOrganization, shareResourceId, shareResourceLabel, validateOrganizationDraft } from './organizations.ts';
 
 test('mobile organization writes are limited to organization admins', () => {
   assert.equal(canManageOrganization({ my_role: 'admin' }), true);
@@ -11,4 +11,15 @@ test('mobile organization writes are limited to organization admins', () => {
 test('mobile organization creation validates the server-owned name boundary', () => {
   assert.deepEqual(validateOrganizationDraft(' ', 'description'), ['Name is required']);
   assert.deepEqual(validateOrganizationDraft('Research', 'description'), []);
+});
+
+test('mobile shared-resource rows preserve the server id required for a confirmed removal', () => {
+  const knowledgeBase = { id: 'share-kb-1', knowledge_base_id: 'kb-1', knowledge_base_name: 'Support KB', permission: 'editor' };
+  const agent = { id: 'share-agent-1', agent_id: 'agent-1', agent_name: 'Support agent' };
+
+  assert.equal(shareResourceId(knowledgeBase, 'knowledge-base'), 'kb-1');
+  assert.equal(shareResourceId(agent, 'agent'), 'agent-1');
+  assert.equal(shareResourceLabel(knowledgeBase, 'knowledge-base'), 'Support KB');
+  assert.equal(shareResourceLabel(agent, 'agent'), 'Support agent');
+  assert.equal(shareResourceId({ id: 'missing-resource' }, 'agent'), null);
 });

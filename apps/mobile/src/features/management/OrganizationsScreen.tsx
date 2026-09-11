@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import type { Organization, OrganizationJoinRequest, OrganizationMember, OrganizationRole } from '@weknora/api-client';
+import type { Organization, OrganizationJoinRequest, OrganizationMember, OrganizationRole, OrganizationShare } from '@weknora/api-client';
 import { useMobileRuntime } from '../../runtime.tsx';
-import { canManageOrganization, validateOrganizationDraft } from './organizations.ts';
+import { canManageOrganization, shareResourceId, shareResourceLabel, validateOrganizationDraft } from './organizations.ts';
 
 const ORGANIZATION_ROLES: readonly OrganizationRole[] = ['admin', 'editor', 'viewer'];
 
@@ -15,6 +15,8 @@ export function OrganizationsScreen() {
   const [selected, setSelected] = useState<Organization | null>(null);
   const [members, setMembers] = useState<OrganizationMember[]>([]);
   const [requests, setRequests] = useState<OrganizationJoinRequest[]>([]);
+  const [knowledgeBaseShares, setKnowledgeBaseShares] = useState<OrganizationShare[]>([]);
+  const [agentShares, setAgentShares] = useState<OrganizationShare[]>([]);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(true);
@@ -29,7 +31,7 @@ export function OrganizationsScreen() {
       const deployment = await runtime.client.administration.capabilities();
       const capability = deployment.capabilities.organizations;
       if (capability && !capability.supported) {
-        setOrganizations([]); setSelected(null); setMembers([]); setRequests([]);
+        setOrganizations([]); setSelected(null); setMembers([]); setRequests([]); setKnowledgeBaseShares([]); setAgentShares([]);
         setError(capability.reason || 'Organizations are unavailable on this server');
         return;
       }
@@ -44,10 +46,20 @@ export function OrganizationsScreen() {
 
   const select = useCallback(async (organization: Organization) => {
     setSelected(organization); setError('');
-    const results = await Promise.allSettled([api.members.list(organization.id), api.joinRequests.list(organization.id)]);
+    setMembers([]); setRequests([]); setKnowledgeBaseShares([]); setAgentShares([]);
+    const results = await Promise.allSettled([
+      api.members.list(organization.id),
+      api.joinRequests.list(organization.id),
+      api.knowledgeBaseShares.listForOrganization(organization.id),
+      api.agentShares.listForOrganization(organization.id),
+    ]);
     if (results[0].status === 'fulfilled') setMembers(results[0].value.items); else setError(results[0].reason instanceof Error ? results[0].reason.message : 'Unable to load organization members');
     const joinRequestsResult = results[1];
     if (joinRequestsResult.status === 'fulfilled') setRequests(joinRequestsResult.value.items); else { const reason = joinRequestsResult.reason; setError((current) => current || (reason instanceof Error ? reason.message : 'Unable to load join requests')); }
+    const knowledgeBaseSharesResult = results[2];
+    if (knowledgeBaseSharesResult.status === 'fulfilled') setKnowledgeBaseShares(knowledgeBaseSharesResult.value.items); else { const reason = knowledgeBaseSharesResult.reason; setError((current) => current || (reason instanceof Error ? reason.message : 'Unable to load shared knowledge bases')); }
+    const agentSharesResult = results[3];
+    if (agentSharesResult.status === 'fulfilled') setAgentShares(agentSharesResult.value.items); else { const reason = agentSharesResult.reason; setError((current) => current || (reason instanceof Error ? reason.message : 'Unable to load shared agents')); }
   }, [api]);
 
   async function create() {
@@ -88,5 +100,33 @@ export function OrganizationsScreen() {
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to review join request'); }
   }
 
-  return <SafeAreaView style={{ flex: 1, padding: 16 }}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 10 }}><Pressable onPress={() => router.back()}><Text style={{ color: '#2864dc' }}>Back</Text></Pressable><Text accessibilityRole="header" style={{ flex: 1, fontSize: 22, fontWeight: '700' }}>Organizations</Text><Pressable onPress={() => void load()}><Text style={{ color: '#2864dc' }}>Refresh</Text></Pressable></View>{error ? <Text accessibilityRole="alert" style={{ color: '#b42318', marginBottom: 8 }}>{error}</Text> : null}{loading ? <ActivityIndicator accessibilityLabel="Loading organizations" /> : <ScrollView keyboardShouldPersistTaps="handled"><Text style={{ fontSize: 17, fontWeight: '700', marginBottom: 6 }}>Organizations</Text><FlatList scrollEnabled={false} data={organizations} keyExtractor={(item) => item.id} ListEmptyComponent={<Text style={{ color: '#667085', marginBottom: 12 }}>No organizations returned.</Text>} renderItem={({ item }) => <Pressable onPress={() => void select(item)} style={{ borderBottomColor: '#eaecf0', borderBottomWidth: 1, paddingVertical: 10, backgroundColor: selected?.id === item.id ? '#eff6ff' : 'transparent' }}><Text style={{ fontWeight: '600' }}>{item.name}</Text><Text style={{ color: '#667085', fontSize: 12 }}>{String(item.my_role || 'member')} · owner tenant {item.owner_tenant_id}</Text></Pressable>} /><Text style={{ fontSize: 17, fontWeight: '700', marginTop: 18, marginBottom: 6 }}>Create organization</Text><TextInput accessibilityLabel="Organization name" value={name} onChangeText={setName} placeholder="Name" style={{ borderColor: '#d0d5dd', borderWidth: 1, borderRadius: 8, padding: 10, marginBottom: 8 }} /><TextInput accessibilityLabel="Organization description" value={description} onChangeText={setDescription} placeholder="Description" multiline style={{ borderColor: '#d0d5dd', borderWidth: 1, borderRadius: 8, padding: 10, minHeight: 70, marginBottom: 8 }} /><Pressable accessibilityRole="button" disabled={saving} onPress={() => void create()} style={{ backgroundColor: '#2864dc', padding: 11, borderRadius: 8, alignItems: 'center', opacity: saving ? 0.5 : 1 }}><Text style={{ color: '#fff', fontWeight: '600' }}>{saving ? 'Creating…' : 'Create organization'}</Text></Pressable>{selected ? <><Text style={{ fontSize: 17, fontWeight: '700', marginTop: 18, marginBottom: 6 }}>{selected.name} members</Text><Text style={{ color: '#667085', marginBottom: 6 }}>{writable ? 'Organization admin controls' : 'Read-only organization membership'}</Text><FlatList scrollEnabled={false} data={members} keyExtractor={(item) => item.id} ListEmptyComponent={<Text style={{ color: '#667085' }}>No members returned.</Text>} renderItem={({ item }) => <View style={{ borderBottomColor: '#eaecf0', borderBottomWidth: 1, paddingVertical: 9 }}><View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><View><Text style={{ fontWeight: '600' }}>{item.tenant_name || item.username}</Text><Text style={{ color: '#667085', fontSize: 12 }}>{item.email} · {item.role}</Text></View>{writable ? <Pressable onPress={() => removeMember(item)}><Text style={{ color: '#b42318' }}>Remove</Text></Pressable> : null}</View>{writable ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>{ORGANIZATION_ROLES.map((nextRole) => <Pressable key={nextRole} onPress={() => void updateMemberRole(item, nextRole)} style={{ paddingHorizontal: 8, paddingVertical: 5, borderRadius: 12, backgroundColor: item.role === nextRole ? '#dbeafe' : '#f2f4f7' }}><Text>{nextRole}</Text></Pressable>)}</View> : null}</View>} /><Text style={{ fontSize: 17, fontWeight: '700', marginTop: 18, marginBottom: 6 }}>Pending join requests</Text><FlatList scrollEnabled={false} data={requests.filter((item) => item.status === 'pending')} keyExtractor={(item) => item.id} ListEmptyComponent={<Text style={{ color: '#667085' }}>No pending join requests.</Text>} renderItem={({ item }) => <View style={{ borderBottomColor: '#eaecf0', borderBottomWidth: 1, paddingVertical: 9, flexDirection: 'row', justifyContent: 'space-between' }}><View style={{ flex: 1 }}><Text style={{ fontWeight: '600' }}>{item.username}</Text><Text style={{ color: '#667085', fontSize: 12 }}>{item.requested_role} · {item.message || 'No message'}</Text></View>{writable ? <View style={{ flexDirection: 'row', gap: 8 }}><Pressable onPress={() => void reviewRequest(item, true)}><Text style={{ color: '#067647' }}>Approve</Text></Pressable><Pressable onPress={() => void reviewRequest(item, false)}><Text style={{ color: '#b42318' }}>Decline</Text></Pressable></View> : null}</View>} /></> : null}</ScrollView>}</SafeAreaView>;
+  function removeKnowledgeBaseShare(share: OrganizationShare) {
+    if (!selected || !writable) return;
+    const knowledgeBaseId = shareResourceId(share, 'knowledge-base');
+    if (!knowledgeBaseId) { setError('The server did not return a knowledge-base id; the share was not changed'); return; }
+    Alert.alert('Remove knowledge-base share?', shareResourceLabel(share, 'knowledge-base'), [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: () => void (async () => {
+        setError('');
+        try { await api.knowledgeBaseShares.remove(knowledgeBaseId, share.id); await select(selected); }
+        catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to remove knowledge-base share'); }
+      })() },
+    ]);
+  }
+
+  function removeAgentShare(share: OrganizationShare) {
+    if (!selected || !writable) return;
+    const agentId = shareResourceId(share, 'agent');
+    if (!agentId) { setError('The server did not return an agent id; the share was not changed'); return; }
+    Alert.alert('Remove agent share?', shareResourceLabel(share, 'agent'), [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: () => void (async () => {
+        setError('');
+        try { await api.agentShares.remove(agentId, share.id); await select(selected); }
+        catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to remove agent share'); }
+      })() },
+    ]);
+  }
+
+  return <SafeAreaView style={{ flex: 1, padding: 16 }}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 10 }}><Pressable onPress={() => router.back()}><Text style={{ color: '#2864dc' }}>Back</Text></Pressable><Text accessibilityRole="header" style={{ flex: 1, fontSize: 22, fontWeight: '700' }}>Organizations</Text><Pressable onPress={() => void load()}><Text style={{ color: '#2864dc' }}>Refresh</Text></Pressable></View>{error ? <Text accessibilityRole="alert" style={{ color: '#b42318', marginBottom: 8 }}>{error}</Text> : null}{loading ? <ActivityIndicator accessibilityLabel="Loading organizations" /> : <ScrollView keyboardShouldPersistTaps="handled"><Text style={{ fontSize: 17, fontWeight: '700', marginBottom: 6 }}>Organizations</Text><FlatList scrollEnabled={false} data={organizations} keyExtractor={(item) => item.id} ListEmptyComponent={<Text style={{ color: '#667085', marginBottom: 12 }}>No organizations returned.</Text>} renderItem={({ item }) => <Pressable onPress={() => void select(item)} style={{ borderBottomColor: '#eaecf0', borderBottomWidth: 1, paddingVertical: 10, backgroundColor: selected?.id === item.id ? '#eff6ff' : 'transparent' }}><Text style={{ fontWeight: '600' }}>{item.name}</Text><Text style={{ color: '#667085', fontSize: 12 }}>{String(item.my_role || 'member')} · owner tenant {item.owner_tenant_id}</Text></Pressable>} /><Text style={{ fontSize: 17, fontWeight: '700', marginTop: 18, marginBottom: 6 }}>Create organization</Text><TextInput accessibilityLabel="Organization name" value={name} onChangeText={setName} placeholder="Name" style={{ borderColor: '#d0d5dd', borderWidth: 1, borderRadius: 8, padding: 10, marginBottom: 8 }} /><TextInput accessibilityLabel="Organization description" value={description} onChangeText={setDescription} placeholder="Description" multiline style={{ borderColor: '#d0d5dd', borderWidth: 1, borderRadius: 8, padding: 10, minHeight: 70, marginBottom: 8 }} /><Pressable accessibilityRole="button" disabled={saving} onPress={() => void create()} style={{ backgroundColor: '#2864dc', padding: 11, borderRadius: 8, alignItems: 'center', opacity: saving ? 0.5 : 1 }}><Text style={{ color: '#fff', fontWeight: '600' }}>{saving ? 'Creating…' : 'Create organization'}</Text></Pressable>{selected ? <><Text style={{ fontSize: 17, fontWeight: '700', marginTop: 18, marginBottom: 6 }}>{selected.name} members</Text><Text style={{ color: '#667085', marginBottom: 6 }}>{writable ? 'Organization admin controls' : 'Read-only organization membership'}</Text><FlatList scrollEnabled={false} data={members} keyExtractor={(item) => item.id} ListEmptyComponent={<Text style={{ color: '#667085' }}>No members returned.</Text>} renderItem={({ item }) => <View style={{ borderBottomColor: '#eaecf0', borderBottomWidth: 1, paddingVertical: 9 }}><View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><View><Text style={{ fontWeight: '600' }}>{item.tenant_name || item.username}</Text><Text style={{ color: '#667085', fontSize: 12 }}>{item.email} · {item.role}</Text></View>{writable ? <Pressable onPress={() => removeMember(item)}><Text style={{ color: '#b42318' }}>Remove</Text></Pressable> : null}</View>{writable ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>{ORGANIZATION_ROLES.map((nextRole) => <Pressable key={nextRole} onPress={() => void updateMemberRole(item, nextRole)} style={{ paddingHorizontal: 8, paddingVertical: 5, borderRadius: 12, backgroundColor: item.role === nextRole ? '#dbeafe' : '#f2f4f7' }}><Text>{nextRole}</Text></Pressable>)}</View> : null}</View>} /><Text style={{ fontSize: 17, fontWeight: '700', marginTop: 18, marginBottom: 6 }}>Shared knowledge bases</Text><FlatList scrollEnabled={false} data={knowledgeBaseShares} keyExtractor={(item) => item.id} ListEmptyComponent={<Text style={{ color: '#667085' }}>No shared knowledge bases returned.</Text>} renderItem={({ item }) => <View style={{ borderBottomColor: '#eaecf0', borderBottomWidth: 1, paddingVertical: 9, flexDirection: 'row', justifyContent: 'space-between' }}><View style={{ flex: 1 }}><Text style={{ fontWeight: '600' }}>{shareResourceLabel(item, 'knowledge-base')}</Text><Text style={{ color: '#667085', fontSize: 12 }}>{String(item.permission || 'viewer')} · {String(item.shared_by_username || 'unknown sharer')}</Text></View>{writable ? <Pressable onPress={() => removeKnowledgeBaseShare(item)}><Text style={{ color: '#b42318' }}>Remove</Text></Pressable> : null}</View>} /><Text style={{ fontSize: 17, fontWeight: '700', marginTop: 18, marginBottom: 6 }}>Shared agents</Text><FlatList scrollEnabled={false} data={agentShares} keyExtractor={(item) => item.id} ListEmptyComponent={<Text style={{ color: '#667085' }}>No shared agents returned.</Text>} renderItem={({ item }) => <View style={{ borderBottomColor: '#eaecf0', borderBottomWidth: 1, paddingVertical: 9, flexDirection: 'row', justifyContent: 'space-between' }}><View style={{ flex: 1 }}><Text style={{ fontWeight: '600' }}>{shareResourceLabel(item, 'agent')}</Text><Text style={{ color: '#667085', fontSize: 12 }}>{String(item.permission || 'viewer')} · {String(item.shared_by_username || 'unknown sharer')}</Text></View>{writable ? <Pressable onPress={() => removeAgentShare(item)}><Text style={{ color: '#b42318' }}>Remove</Text></Pressable> : null}</View>} /><Text style={{ fontSize: 17, fontWeight: '700', marginTop: 18, marginBottom: 6 }}>Pending join requests</Text><FlatList scrollEnabled={false} data={requests.filter((item) => item.status === 'pending')} keyExtractor={(item) => item.id} ListEmptyComponent={<Text style={{ color: '#667085' }}>No pending join requests.</Text>} renderItem={({ item }) => <View style={{ borderBottomColor: '#eaecf0', borderBottomWidth: 1, paddingVertical: 9, flexDirection: 'row', justifyContent: 'space-between' }}><View style={{ flex: 1 }}><Text style={{ fontWeight: '600' }}>{item.username}</Text><Text style={{ color: '#667085', fontSize: 12 }}>{item.requested_role} · {item.message || 'No message'}</Text></View>{writable ? <View style={{ flexDirection: 'row', gap: 8 }}><Pressable onPress={() => void reviewRequest(item, true)}><Text style={{ color: '#067647' }}>Approve</Text></Pressable><Pressable onPress={() => void reviewRequest(item, false)}><Text style={{ color: '#b42318' }}>Decline</Text></Pressable></View> : null}</View>} /></> : null}</ScrollView>}</SafeAreaView>;
 }

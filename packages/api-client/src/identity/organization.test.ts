@@ -42,3 +42,34 @@ test('preserves organization sharing payloads and the server confirmation bounda
     { method: 'POST', path: '/api/v1/organizations/org%2F1/leave', body: {} },
   ]);
 });
+
+test('lists organization shared resources and removes them through encoded owner routes', async () => {
+  const requests: Array<{ method: string; path: string; body?: unknown }> = [];
+  const api = createOrganizationApi(async (request) => {
+    requests.push(request);
+    if (request.path === '/api/v1/organizations/org%2F1/shares') {
+      return { success: true, data: { shares: [{ id: 'kb-share-1', knowledge_base_id: 'kb/1', knowledge_base_name: 'Support' }], total: 1 } };
+    }
+    if (request.path === '/api/v1/organizations/org%2F1/agent-shares') {
+      return { success: true, data: { shares: [{ id: 'agent-share-1', agent_id: 'agent/1', agent_name: 'Support agent' }], total: 1 } };
+    }
+    return { success: true };
+  });
+
+  assert.deepEqual(await api.knowledgeBaseShares.listForOrganization('org/1'), {
+    items: [{ id: 'kb-share-1', knowledge_base_id: 'kb/1', knowledge_base_name: 'Support' }],
+    total: 1,
+  });
+  assert.deepEqual(await api.agentShares.listForOrganization('org/1'), {
+    items: [{ id: 'agent-share-1', agent_id: 'agent/1', agent_name: 'Support agent' }],
+    total: 1,
+  });
+  await api.knowledgeBaseShares.remove('kb/1', 'kb-share-1');
+  await api.agentShares.remove('agent/1', 'agent-share-1');
+  assert.deepEqual(requests, [
+    { method: 'GET', path: '/api/v1/organizations/org%2F1/shares' },
+    { method: 'GET', path: '/api/v1/organizations/org%2F1/agent-shares' },
+    { method: 'DELETE', path: '/api/v1/knowledge-bases/kb%2F1/shares/kb-share-1' },
+    { method: 'DELETE', path: '/api/v1/agents/agent%2F1/shares/agent-share-1' },
+  ]);
+});
