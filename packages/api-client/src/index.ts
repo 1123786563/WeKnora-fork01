@@ -2,6 +2,7 @@ export { createWeKnoraClient } from './client.ts';
 export type { WeKnoraClient, WeKnoraClientOptions, ClientRequest, KnowledgeBase, KnowledgeBaseListParams, KnowledgeBaseMutationInput } from './client.ts';
 export { ApiError, createAbortError, isNamedError } from './errors.ts';
 export type { HttpRequest, HttpResult, HttpStreamResult, HttpTransport, NativeFileSource, NativeMultipartFileRequest } from './ports.ts';
+export type { ClientBinaryResponse } from './client.ts';
 export type { BearerCredential, EmbedCredential, Credential, CredentialAdapter } from './ports.ts';
 export { createJsonTransport } from './transport/json.ts';
 export type { FetchLike, FetchResponseLike } from './transport/json.ts';

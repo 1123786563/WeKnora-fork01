@@ -10,7 +10,7 @@ import {
   type KnowledgeSearchResponse,
   type KnowledgeTag,
 } from '@weknora/contracts';
-import type { ClientRequest } from '../client.ts';
+import type { ClientBinaryResponse, ClientRequest } from '../client.ts';
 import type { NativeFileSource } from '../ports.ts';
 
 export interface KnowledgeDocumentListParams {
@@ -72,7 +72,10 @@ function isNativeFileSource(value: Blob | NativeFileSource): value is NativeFile
   return typeof Blob === 'undefined' || !(value instanceof Blob);
 }
 
-export function createKnowledgeDocumentsApi(request: (input: ClientRequest) => Promise<unknown>) {
+export function createKnowledgeDocumentsApi(
+  request: (input: ClientRequest) => Promise<unknown>,
+  requestBinary?: (input: ClientRequest) => Promise<ClientBinaryResponse>,
+) {
   const knowledgePath = (id: string, suffix = '') => `/api/v1/knowledge/${encodeURIComponent(id)}${suffix}`;
 
   async function parseDocumentMutation(response: unknown): Promise<KnowledgeDocument> {
@@ -172,6 +175,14 @@ export function createKnowledgeDocumentsApi(request: (input: ClientRequest) => P
     },
     previewPath(id: string): string {
       return knowledgePath(id, '/preview');
+    },
+    async preview(id: string, signal?: AbortSignal): Promise<ClientBinaryResponse> {
+      if (!requestBinary) throw new Error('Binary transport is unavailable');
+      return requestBinary({ method: 'GET', path: knowledgePath(id, '/preview'), signal });
+    },
+    async download(id: string, signal?: AbortSignal): Promise<ClientBinaryResponse> {
+      if (!requestBinary) throw new Error('Binary transport is unavailable');
+      return requestBinary({ method: 'GET', path: knowledgePath(id, '/download'), signal });
     },
     async reparse(id: string, process_config?: unknown): Promise<void> {
       await request({ method: 'POST', path: knowledgePath(id, '/reparse'), body: process_config === undefined ? undefined : { process_config } });

@@ -37,6 +37,8 @@ export interface HttpStreamResult {
 
 export interface HttpTransport {
   send(request: HttpRequest): Promise<HttpResult>;
+  /** Optional binary response path; JSON/native callers can keep using send. */
+  sendBinary?(request: HttpRequest): Promise<HttpResult>;
   sendMultipartFile?(request: NativeMultipartFileRequest): Promise<HttpResult>;
   sendStream?(request: HttpRequest): Promise<HttpStreamResult>;
 }

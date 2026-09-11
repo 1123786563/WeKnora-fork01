@@ -87,6 +87,32 @@ test('loads folders, tags, detail, search, and creates an authenticated download
   ]);
 });
 
+test('fetches preview and download bytes through the authenticated binary request seam', async () => {
+  const requests: Array<{ method: string; path: string; signal?: AbortSignal }> = [];
+  const api = createKnowledgeDocumentsApi(async (request) => {
+    throw new Error(`JSON request was not expected: ${request.path}`);
+  }, async (request) => {
+    requests.push(request);
+    return {
+      body: new Blob(['# private guide\n'], { type: 'text/markdown' }),
+      contentType: 'text/markdown',
+      headers: { 'content-type': 'text/markdown', 'x-request-id': 'binary-1' },
+    };
+  });
+  const controller = new AbortController();
+
+  const preview = await api.preview('doc/a', controller.signal);
+  const download = await api.download('doc/a');
+
+  assert.equal(await (preview.body as Blob).text(), '# private guide\n');
+  assert.equal(download.contentType, 'text/markdown');
+  assert.deepEqual(requests.map((request) => ({ method: request.method, path: request.path })), [
+    { method: 'GET', path: '/api/v1/knowledge/doc%2Fa/preview' },
+    { method: 'GET', path: '/api/v1/knowledge/doc%2Fa/download' },
+  ]);
+  assert.equal(requests[0]?.signal, controller.signal);
+});
+
 test('supports URL/manual sources and guarded document mutations', async () => {
   const requests: Array<{ method: string; path: string; body?: unknown }> = [];
   const api = createKnowledgeDocumentsApi(async (request) => {

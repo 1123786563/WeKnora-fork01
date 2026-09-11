@@ -12,6 +12,18 @@ const jsonResponse = (status: number, body: unknown, contentType = 'application/
   text: async () => typeof body === 'string' ? body : JSON.stringify(body),
 });
 
+const binaryResponse = (status: number, body: Blob | string, contentType: string) => ({
+  status,
+  headers: new Headers({
+    'content-type': contentType,
+    'content-disposition': 'attachment; filename="guide.md"',
+    'x-request-id': 'request-binary-1',
+  }),
+  json: async () => ({ error: 'unexpected json read' }),
+  text: async () => typeof body === 'string' ? body : await body.text(),
+  blob: async () => typeof body === 'string' ? new Blob([body], { type: contentType }) : body,
+});
+
 test('knowledgeBases.list uses a base URL subpath and parses its DTO', async () => {
   const requests: Request[] = [];
   const transport = createJsonTransport(async (input, init) => {
@@ -24,6 +36,22 @@ test('knowledgeBases.list uses a base URL subpath and parses its DTO', async () 
 
   assert.equal(result[0]?.id, 'kb-1');
   assert.equal(requests[0]?.url, 'https://api.example.test/weknora/api/v1/knowledge-bases?creator=mine');
+});
+
+test('requestBinary preserves protected bytes and response content headers', async () => {
+  const requests: Request[] = [];
+  const transport = createJsonTransport(async (input, init) => {
+    requests.push(new Request(input, init));
+    return binaryResponse(200, '# private guide\n', 'text/markdown; charset=utf-8');
+  });
+  const client = createWeKnoraClient({ baseURL: 'https://api.example.test', transport });
+
+  const result = await client.requestBinary({ method: 'GET', path: '/api/v1/knowledge/doc-1/preview' });
+
+  assert.equal(result.body, '# private guide\n');
+  assert.equal(result.contentType, 'text/markdown; charset=utf-8');
+  assert.equal(result.headers['content-disposition'], 'attachment; filename="guide.md"');
+  assert.equal(requests[0]?.headers.get('accept'), '*/*');
 });
 
 test('returns an empty body for 204', async () => {
