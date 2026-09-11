@@ -149,7 +149,7 @@
 - 环境：业务测试库在隔离容器 semantica-i01-pg（127.0.0.1:15432）内另建 semantic_business_test，并设 `ALTER DATABASE ... SET app.skip_embedding='true'` 走无扩展路径（vector/pg_search 迁移均有该官方开关；曾试 pgvector 镜像仍缺 pg_search，弃用）；DSN 可经 SEMANTIC_TEST_BUSINESS_PG_DSN 覆盖；dropAllPublicTables 仅接受库名含 test 的 DSN（url 解析校验）；缺环境 t.Fatalf 不 skip。
 - 评审修复：规格 PASS（10 项，6 MINOR）+ 质量 PASS（无 BLOCKER，13 MINOR：1/2/3/4/5/6/7/8/9/10/12 已修复——唯一冲突检测收紧、原子领取、同事务 Bump 变体、epoch 单语句 upsert、payload_hash 归一化语义注记、领取计次、drop 守卫、I05 receipts 注记、真实重复插入断言、go mod tidy、本记录随提交；11/13 PG 路径仓储测试与时间戳来源统一留作后续；复审确认全部修复并 -race 复跑）。
 - 计划偏差记录：BumpSemanticEpoch 同时提供无 tx 版本（独立权限事件）与 Tx 版本（A01 同事务接线，计划原文要求）；receipts 表按 I05 契约注记将由其迁移扩展 (attempt, operation_id)。
-- 提交 SHA：（本记录与代码同批提交后补记）
+- 提交 SHA：3619e12（feat(semantic): i02 业务revision、outbox与授权版本）。
 - 剩余限制：PG 路径仓储行为仅经迁移合同覆盖（库级 SQL 与 sqlite 驱动同构；PG 专属仓储测试留后续）；outbox 领取谓词部分索引与确认事件清理归 I03；backend_states 列为 W03/I03 预留。
 
 ## 当前边界
