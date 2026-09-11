@@ -66,6 +66,15 @@ func (h *PaymentCallbacksHandler) resolveByMerchantOrderID(provider, merchant, m
 // (C01 semantics) and the success response is repeated.
 func (h *PaymentCallbacksHandler) HandleProviderCallback(c *gin.Context) {
 	providerName := c.Param("provider")
+	// Alipay gets its own dispatch: its async-notify contract requires the
+	// exact plain-text "success" body as the only final ack (and any
+	// non-success body on failure, which makes Alipay retry), so it cannot
+	// share the WeChat JSON bodies. The verification flow itself is the
+	// same and reuses the helpers below.
+	if providerName == payment.ProviderAlipay {
+		h.handleAlipayNotify(c)
+		return
+	}
 	if h == nil || h.providers[providerName] == nil {
 		callbackFail(c, http.StatusServiceUnavailable, "unknown payment provider")
 		return
@@ -108,4 +117,55 @@ func (h *PaymentCallbacksHandler) HandleProviderCallback(c *gin.Context) {
 // status so the provider retries the notification.
 func callbackFail(c *gin.Context, status int, message string) {
 	c.JSON(status, gin.H{"code": "FAIL", "message": message})
+}
+
+// handleAlipayNotify serves the Alipay branch of the provider callback.
+// The flow mirrors the WeChat dispatch above — the RAW form body is read
+// exactly once, AlipayProvider.Verify authenticates it (out_trade_no,
+// seller_id, app_id, signature), the trusted tenant/order are rebuilt
+// server-side from the local attempt registry keyed by out_trade_no (the
+// merchant_order_id), and ConfirmPayment has durably recorded the fact
+// BEFORE the success ack — but the ack is Alipay's exact plain-text
+// "success". Every failure path answers a non-success body with a non-2xx
+// status so Alipay keeps retrying the notification; nothing is persisted
+// on those paths. A duplicate delivery of an already-confirmed notification
+// is idempotent: ConfirmPayment replays the original confirmation (C01)
+// and "success" is answered again, which stops the retry loop.
+func (h *PaymentCallbacksHandler) handleAlipayNotify(c *gin.Context) {
+	alipayFail := func(status int) {
+		c.String(status, "failure")
+	}
+	if h == nil || h.providers[payment.ProviderAlipay] == nil {
+		alipayFail(http.StatusServiceUnavailable)
+		return
+	}
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		alipayFail(http.StatusBadRequest)
+		return
+	}
+	fact, err := h.providers[payment.ProviderAlipay].Verify(c.Request.Context(), c.Request.Header, body)
+	if err != nil {
+		// Signature, app or seller verification failed: never ack success.
+		alipayFail(http.StatusUnauthorized)
+		return
+	}
+	attempt, err := h.resolveByMerchantOrderID(fact.Provider, fact.Merchant, fact.AttemptID)
+	if err != nil {
+		alipayFail(http.StatusNotFound)
+		return
+	}
+	fact.TenantID = attempt.TenantID
+	fact.OrderID = attempt.OrderID
+	if err := h.orders.ConfirmPayment(c.Request.Context(), fact); err != nil {
+		if errors.Is(err, domain.ErrPaymentMismatch) {
+			alipayFail(http.StatusConflict)
+			return
+		}
+		alipayFail(http.StatusInternalServerError)
+		return
+	}
+	// Exactly "success" (lowercase, plain text, no JSON, no trailing
+	// newline): the only body Alipay accepts as a final ack.
+	c.String(http.StatusOK, "success")
 }
