@@ -1,6 +1,6 @@
 # Semantica 实施台账
 
-状态：V01–V03、C01 已完成并验证，其余 20 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
+状态：V01–V03、C01–C02 已完成并验证，其余 19 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
 
 状态值 pending / in_progress / blocked / implemented / verified。每项验证记录必须包含commit SHA、精确命令、退出码、环境、产物路径、失败/限制；无真实证据不标记verified。执行前记录实际基线与已有脏文件。
 
@@ -10,7 +10,7 @@
 | V02 | 验证持久图桥接和两类推理 | V01 | verified | Neo4j 5.26 真实持久化+进程重启溯源通过；规则正/负/中文推导通过；模型推断无受批准凭据保持 unverified（未发起调用）；见运行记录 2026-09-11 V02 与 bridge-evidence.md |
 | V03 | 中文质量与上线阈值评估基线 | V02 | verified | semantica 模式 30 题实测（正确率 0.767、泄漏 0、recall 0.925）；native 对照阻断于隔离测试部署+模型凭据，approved=false；见运行记录 2026-09-11 V03 与 evaluation-baseline.md |
 | C01 | 版本化协议和跨语言领域类型 | V01 | verified | proto 全 14 DTO+7RPC 双语言同源生成（幂等）；Go 全量映射+全 5 枚举表；uint64 十进制字符串边界；未知枚举不映射成功；见运行记录 2026-09-11 C01 |
-| C02 | 认证服务骨架和Go客户端 | C01 | pending | 尚未执行 |
+| C02 | 认证服务骨架和Go客户端 | C01 | verified | 真实 TLS+内部令牌 gRPC 服务（缺身份→UNAUTHENTICATED、未实现→UNIMPLEMENTED、健康真实）；Go 客户端 deadline/取消/错误映射+仅读操作重试；enabled=false 默认可启动；见运行记录 2026-09-11 C02 |
 | C03 | 事实与证据校验模型 | C01,V02 | pending | 尚未执行 |
 | I01 | 持久操作、幂等与worker租约 | C02 | pending | 尚未执行 |
 | I02 | 业务revision、outbox与授权版本 | C01 | pending | 尚未执行 |
@@ -95,9 +95,23 @@
 - 提交 SHA：3d4fa79（feat(semantic): c01 版本化协议和跨语言领域类型）。
 - 剩余限制：QueryLimits uint32 字段 Python 侧构造期未校验（protobuf to_wire 拒绝越界，Go json 原生拒绝；C02 观察项）；.python-version 因仓库 .gitignore 点号规则需 git add -f（沿用 V01 先例）；semantica==0.6.8 生产依赖按计划在首个导入它的任务（I03/A03）进入本包锁。
 
+### 2026-09-11 C02 认证服务骨架和Go客户端（verified）
+
+- 工作区：.worktrees/semantica（分支 codex/semantica）；基线 SHA：12a1f8b（C01 台账提交）。
+- 修改文件：semantic/semantic_service/{server.py,auth.py,config.py}、semantic/tests/{conftest.py,test_rpc_auth.py}、semantic/{pyproject.toml,uv.lock}（新增 grpcio-health-checking==1.80.0、trustme==1.2.1 dev）、internal/infrastructure/semantic/{client.go,client_test.go}、internal/config/config.go 与 internal/container/container.go（范围化增量）、本台账、01 计划勾选。
+- RED：`uv run --project semantic python -m pytest semantic/tests/test_rpc_auth.py -q` 收集错误 ModuleNotFoundError: semantic_service.config（server 模块不存在；pytest/依赖环境已就绪）。
+- GREEN：`uv run --project semantic python -m pytest semantic/tests/ -q` 21 passed 退出码 0（契约 12 + 认证 9）；`go test ./internal/infrastructure/semantic -count=1` ok（含 -race）；`go vet ./internal/...`、gofmt、`go build ./cmd/...` 全部通过。
+- 评审修复循环（三轮，行为修复均 RED-first）：①容器 Invoke 在 Provide 之前导致 dig 即刻解析失败、服务无法启动（BLOCKER）→ 调整顺序并在两处新增行为测试（Get 重试端到端、重试退避中 ctx 到期须报 DEADLINE_EXCEEDED）；②修复引入的新 BLOCKER：ReadOnlyRetryAttempts<0 使 RPC 完全不被调用（评审员实证 nil capabilities）→ 先加 TestSemanticClientNegativeRetryStillInvokesOnce 复现（RED）→ 负值钳为 0（恰好一次调用）→ GREEN；③16 项 MINOR 全部修复（通道泄漏+fixture 工厂、try/finally 清理、单遍校验、allow_plaintext 更名修正语义、死代码删除、字节级常量时间比较+预编码、流式拒绝回归测试、元数据单值语义两端对齐、Close 幂等、重试语义文档化等）。
+- 实测行为：缺令牌/错令牌（含 TLS 已信）→UNAUTHENTICATED；匿名健康 Check 与流式 Watch 均拒绝；已认证未实现方法（GetCapabilities/Apply）→UNIMPLEMENTED 非假成功；未知健康服务名→NOT_FOUND；客户端 deadline→DEADLINE_EXCEEDED、取消→CANCELED、连接失败→UNAVAILABLE、错误逐字透传；仅 Capabilities/Get 透明重试（实测 2 次调用），Apply 恒不自动重试（实测 1 次调用）；调用方携带旧令牌被剥离（单一 x-semantic-token 值端到端断言）。
+- 生产边界：create_server 双重 fail-closed（config.validate+拒绝明文端口）；allow_plaintext 仅本地测试；enabled=false 默认返回 nil client 原系统不变；client 构造≠服务 ready（三处注释+接口文档）；容器清理经 ResourceCleaner 注册（nil 守卫）。
+- 计划偏差记录：计划示意片段 verified_service_identity(context)/time_remaining() 服务端截止检查并入拦截器与 gRPC 核心机制（拦截先于 handler；核心强制 deadline），未单独保留死函数；semantic_service 生产锁暂不含 semantica==0.6.8（I03 首个导入任务进入，C01 已记录）。
+- review：规格符合性 PASS（10 项：核心断言真实服务、fixture 真实端口+测试证书、fail-closed、UNIMPLEMENTED、健康真实、客户端契约、身份随行、可选配置、标准错误码、卫生）；代码质量终审 PASS（原 BLOCKER+16 MINOR+N1-N3 全部实证关闭；遗留非阻断 nits：closed-port TOCTOU、_free_port 窗口、deadline 测试通道进程退出关闭）。
+- 提交 SHA：（本记录与代码同批提交后补记）
+- 剩余限制：业务 RPC 全部 UNIMPLEMENTED（后续任务实现）；流式业务 RPC 落地时拒绝路径需流式处理器配套；首次真实部署（O01）前服务从未在本机外暴露。
+
 ## 当前边界
 
-- V01–V03、C01 已完成（verified）；后续 20 个任务未开始。
+- V01–V03、C01–C02 已完成（verified）；后续 19 个任务未开始。
 - V01精确版本已冻结（semantica 0.6.8）；真实模型证据须在后续任务补齐，不是已经通过的前提。
 - V02 结论边界：持久图桥接/授权子图重建/注册规则推导已验证；模型推断 unverified（无凭据，未调用）；向量检索路径未验证。
 - V03 结论边界：semantica 模式检索质量/延迟为受控语料实测；native 对照与模型用量门槛未测（阻断记录见上）；上线门禁 approved=false 待用户确认。

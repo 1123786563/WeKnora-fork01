@@ -77,6 +77,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/im/wecom"
 	"github.com/Tencent/WeKnora/internal/im/yunzhijia"
 	"github.com/Tencent/WeKnora/internal/infrastructure/docparser"
+	semanticinfra "github.com/Tencent/WeKnora/internal/infrastructure/semantic"
 	infra_web_search "github.com/Tencent/WeKnora/internal/infrastructure/web_search"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/mcp"
@@ -134,6 +135,10 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// External service clients
 	logger.Debugf(ctx, "[Container] Registering external service clients...")
 	must(container.Provide(initDocReaderClient))
+	// Semantic client + its cleanup: the Invoke must come AFTER the Provide
+	// because dig resolves Invokes eagerly from registered providers.
+	must(container.Provide(initSemanticClient))
+	must(container.Invoke(registerSemanticClientCleanup))
 	must(container.Provide(docparser.NewImageResolver))
 	must(container.Provide(initOllamaService))
 	must(container.Provide(initNeo4jClient))
@@ -1537,6 +1542,43 @@ func initDocReaderClient(cfg *config.Config) (interfaces.DocumentReader, error) 
 	default:
 		return docparser.NewGRPCDocumentReader(addr)
 	}
+}
+
+// initSemanticClient initializes the optional semantic knowledge service
+// client. Disabled (default) returns nil so the rest of the system starts
+// unchanged. The client dials lazily: a constructed client never implies
+// the service is reachable or ready.
+func initSemanticClient(cfg *config.Config) (interfaces.SemanticClient, error) {
+	if cfg.Semantic == nil || !cfg.Semantic.Enabled {
+		logger.Infof(context.Background(), "[Semantic] disabled, starting disconnected")
+		return nil, nil
+	}
+	var rootCA []byte
+	if cfg.Semantic.RootCAPath != "" {
+		ca, err := os.ReadFile(cfg.Semantic.RootCAPath)
+		if err != nil {
+			return nil, fmt.Errorf("semantic root CA: %w", err)
+		}
+		rootCA = ca
+	}
+	return semanticinfra.NewClient(semanticinfra.SemanticClientConfig{
+		Address:       cfg.Semantic.Address,
+		InternalToken: cfg.Semantic.InternalToken,
+		TLSServerName: cfg.Semantic.TLSServerName,
+		RootCAPEM:     rootCA,
+		CallTimeout:   cfg.Semantic.CallTimeout,
+	})
+}
+
+// registerSemanticClientCleanup closes the semantic client on shutdown
+// (no-op when the service is disabled).
+func registerSemanticClientCleanup(client interfaces.SemanticClient, cleaner interfaces.ResourceCleaner) {
+	if client == nil {
+		return
+	}
+	cleaner.RegisterWithName("SemanticClient", func() error {
+		return client.Close()
+	})
 }
 
 // initOllamaService initializes the Ollama service client

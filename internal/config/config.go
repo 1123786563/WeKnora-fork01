@@ -27,6 +27,7 @@ type Config struct {
 	Models          []ModelConfig          `yaml:"models"           json:"models"`
 	VectorDatabase  *VectorDatabaseConfig  `yaml:"vector_database"  json:"vector_database"`
 	DocReader       *DocReaderConfig       `yaml:"docreader"        json:"docreader"`
+	Semantic        *SemanticConfig        `yaml:"semantic"         json:"semantic"`
 	StreamManager   *StreamManagerConfig   `yaml:"stream_manager"   json:"stream_manager"`
 	ExtractManager  *ExtractManagerConfig  `yaml:"extract"          json:"extract"`
 	WebSearch       *WebSearchConfig       `yaml:"web_search"       json:"web_search"`
@@ -97,6 +98,29 @@ type DocReaderConfig struct {
 	Addr string `yaml:"addr" json:"addr"`
 	// Transport: "grpc" (default) or "http"
 	Transport string `yaml:"transport" json:"transport"`
+}
+
+// SemanticConfig configures the optional semantic knowledge service client
+// (the independent Semantica Python service). Disabled by default so
+// existing deployments start unchanged. A constructed client never implies
+// the service is ready - readiness is only observable through the service.
+type SemanticConfig struct {
+	// Enabled gates client construction; false (default) keeps the system
+	// fully functional without a semantic service.
+	Enabled bool `yaml:"enabled" json:"enabled"`
+	// Address of the semantic service (host:port).
+	Address string `yaml:"address" json:"address"`
+	// InternalToken is the approved internal service identity sent on every
+	// RPC. Required when enabled.
+	InternalToken string `yaml:"internal_token" json:"internal_token"`
+	// TLSServerName enables TLS verification; empty means plaintext, which
+	// is acceptable only for local tests.
+	TLSServerName string `yaml:"tls_server_name" json:"tls_server_name"`
+	// RootCAPath optionally points at a PEM CA bundle for private deployments.
+	RootCAPath string `yaml:"root_ca_path" json:"root_ca_path"`
+	// CallTimeout bounds a single RPC when the caller context has no
+	// deadline. Zero uses the client default.
+	CallTimeout time.Duration `yaml:"call_timeout" json:"call_timeout"`
 }
 
 type VectorDatabaseConfig struct {
