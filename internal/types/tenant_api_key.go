@@ -162,6 +162,11 @@ const (
 	APIKeyCapabilitySystemRuntimeRead    APIKeyCapability = "system_runtime_read"
 	APIKeyCapabilitySystemRuntimeManage  APIKeyCapability = "system_runtime_manage"
 	APIKeyCapabilitySystemAuditRead      APIKeyCapability = "system_audit_read"
+	// APIKeyCapabilityCommercial lets a key reach the commercial billing
+	// endpoints (plans, subscription summary, usage, orders). It is
+	// deliberately NOT implied by full access: purchase authority must be
+	// an explicit, separate grant.
+	APIKeyCapabilityCommercial APIKeyCapability = "commercial"
 )
 
 // NormalizeAPIKeyCapability maps an input capability string to a known
@@ -218,6 +223,8 @@ func NormalizeAPIKeyCapability(c APIKeyCapability) APIKeyCapability {
 		return APIKeyCapabilitySystemRuntimeManage
 	case APIKeyCapabilitySystemAuditRead:
 		return APIKeyCapabilitySystemAuditRead
+	case APIKeyCapabilityCommercial:
+		return APIKeyCapabilityCommercial
 	default:
 		return ""
 	}
