@@ -707,3 +707,21 @@ func (a *Adapter) IsEnabled(ctx context.Context, tenantID uint64, serviceID, too
 	}
 	return a.Svc.IsEnabled(ctx, tenantID, serviceID, toolName)
 }
+
+// PromptPersistedAction displays a PERSISTED app-connector action approval
+// request through the gate and blocks until a human decision arrives (or
+// the wait times out / the context is canceled). It is a pure DISPLAY/WAKE
+// adapter: the gate's in-memory pending map is never the authority for
+// persisted actions — the durable action store is. The caller must replay
+// the returned Decision against that store: an Approved decision maps to
+// ActionService.Approve with the action's CURRENT digest, and a decision
+// carrying ModifiedArgs must be replayed as a NEW snapshot + NEW digest
+// approval (Approve refuses digest mismatches), never as "approved, then
+// rewrite the args". A gate timeout or cancellation leaves the persisted
+// action awaiting_approval exactly as before.
+func (g *Gate) PromptPersistedAction(ctx context.Context, req PendingRequest) (Decision, error) {
+	if g == nil {
+		return Decision{}, fmt.Errorf("gate is nil")
+	}
+	return g.RequestAndWait(ctx, req)
+}
