@@ -990,3 +990,16 @@
   tests passed 98/98; Web typecheck/build, React boundary check, and diff
   check all exited 0. Chrome then rendered the live Knowledge bases page and
   loaded the fixture row from the isolated Lite backend.
+
+### Web knowledge-base deep-link follow-up (2026-09-12)
+
+- The live FAQ fixture exposed a second route bug: `/knowledgeBase/:id` was
+  classified as a knowledge-base route but dropped its identifier, so the
+  renderer could not mount the document page. `c3b9abb` preserves the decoded
+  `knowledgeBaseId` and keeps `/knowledgeBase` as the list route.
+- The route regression failed before the parser change and passed afterward;
+  the connected Chrome session then rendered the FAQ fixture's document page
+  and its FAQ route. The FAQ write was intentionally not claimed as passed:
+  the isolated Lite server returned HTTP 500 because the fixture had no
+  configured embedding model, which is recorded as a backend prerequisite
+  rather than hidden as a UI success.
