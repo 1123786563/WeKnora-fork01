@@ -56,6 +56,10 @@ export function routeRedirect(pathname: string): string | undefined {
   return match.path !== pathname.split('?')[0] ? `${match.path}${query}` : undefined;
 }
 
+export function protectedPageForRoute(route: RouteMatch): 'knowledge-bases' | 'other' {
+  return route.kind === 'platform' && route.path === '/platform/knowledge-bases' ? 'knowledge-bases' : 'other';
+}
+
 export interface RouteGuardContext {
   authenticated: boolean;
   tenantId: string | null;

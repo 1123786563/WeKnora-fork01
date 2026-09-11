@@ -10,7 +10,7 @@ import { createBrowserTransport } from './platform/http.ts';
 import { createBrowserCredentialAdapter, persistBrowserCredential } from './platform/credentials.ts';
 import { createWebScopeRuntime } from './platform/scope-runtime.ts';
 import { createWebPlatformAdapters } from './platform/adapters.ts';
-import { guardRoute, resolveRoute, routeRedirect } from './routes.tsx';
+import { guardRoute, protectedPageForRoute, resolveRoute, routeRedirect } from './routes.tsx';
 import { ChatRoutePage } from './chat/ChatRoutePage.tsx';
 import { IntegrationsRoutePage } from './integrations/IntegrationsRoutePage.tsx';
 import { KnowledgeDocumentsPage } from './documents/KnowledgeDocumentsPage.tsx';
@@ -23,6 +23,7 @@ import { ConfigurationPage } from './configuration/ConfigurationPage.tsx';
 import { AdministrationPage } from './administration/AdministrationPage.tsx';
 import { OrganizationsPage } from './organizations/OrganizationsPage.tsx';
 import { SettingsPage } from './settings/SettingsPage.tsx';
+import { KnowledgeBasesPage } from './App.tsx';
 import { NotFoundPage } from './NotFoundPage.tsx';
 import './styles.css';
 
@@ -131,7 +132,9 @@ function renderProtected() {
     root.render(<WorkspaceOnboardingPage client={client} scopeRuntime={scopeRuntime} onLogout={logout} />);
     return;
   }
-  if (route.kind === 'knowledge-document') {
+  if (protectedPageForRoute(route) === 'knowledge-bases') {
+    root.render(<KnowledgeBasesPage client={client} scopeController={scopeController} />);
+  } else if (route.kind === 'knowledge-document') {
     root.render(<KnowledgeDocumentDetailPage client={client} documentId={route.documentId} onBack={() => window.location.assign(`/knowledgeBase/${encodeURIComponent(route.knowledgeBaseId)}`)} />);
   } else if (route.kind === 'knowledge-wiki') {
     root.render(<WikiPage client={client} knowledgeBaseId={route.knowledgeBaseId} />);

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { guardRoute, resolveRoute, routeRedirect, type RouteGuardContext } from './routes.tsx';
+import { guardRoute, protectedPageForRoute, resolveRoute, routeRedirect, type RouteGuardContext } from './routes.tsx';
 
 const authenticated: RouteGuardContext = {
   authenticated: true,
@@ -32,6 +32,10 @@ test('does not treat embed or missing capability paths as authenticated platform
   assert.equal(resolveRoute('/unknown').kind, 'not-found');
   assert.equal(resolveRoute('/platform/not-a-page').kind, 'not-found');
   assert.equal(resolveRoute('/platform/system/queue').kind, 'platform');
+});
+
+test('maps the canonical knowledge-base platform route to the list page', () => {
+  assert.equal(protectedPageForRoute(resolveRoute('/platform/knowledge-bases')), 'knowledge-bases');
 });
 
 test('guards protected deep links and redirects no-tenant sessions to onboarding', () => {
