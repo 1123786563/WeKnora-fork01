@@ -16,7 +16,18 @@ tar -czf "${FIXTURE}/WeKnora-react-web_vtest.tar.gz" -C "${FIXTURE}" WeKnora-rea
 printf 'fixture  WeKnora-react-web_vtest.tar.gz\n' > "${FIXTURE}/WeKnora-react-web_vtest.tar.gz.sha256"
 touch "${FIXTURE}/WeKnora-lite_vtest_linux_amd64.tar.gz" \
   "${FIXTURE}/WeKnora-lite_vtest_linux_amd64.tar.gz.sha256" \
-  "${FIXTURE}/WeKnora-Lite-App_vtest_linux_amd64.tar.gz"
+  "${FIXTURE}/WeKnora-lite_vtest_linux_arm64.tar.gz" \
+  "${FIXTURE}/WeKnora-lite_vtest_linux_arm64.tar.gz.sha256" \
+  "${FIXTURE}/WeKnora-lite_vtest_darwin_amd64.tar.gz" \
+  "${FIXTURE}/WeKnora-lite_vtest_darwin_amd64.tar.gz.sha256" \
+  "${FIXTURE}/WeKnora-lite_vtest_darwin_arm64.tar.gz" \
+  "${FIXTURE}/WeKnora-lite_vtest_darwin_arm64.tar.gz.sha256"
+for desktop_artifact in \
+  macOS_universal.dmg macOS_amd64.dmg macOS_arm64.dmg \
+  linux_amd64.tar.gz windows_amd64_setup.exe; do
+  touch "${FIXTURE}/WeKnora-Lite-App_vtest_${desktop_artifact}" \
+    "${FIXTURE}/WeKnora-Lite-App_vtest_${desktop_artifact}.sha256"
+done
 
 "${SCRIPT}" "${FIXTURE}" >/dev/null
 

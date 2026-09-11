@@ -21,9 +21,19 @@ require_matches() {
 
 require_matches 'WeKnora-lite_*.tar.gz'
 require_matches 'WeKnora-lite_*.tar.gz.sha256'
+for platform in linux_amd64 linux_arm64 darwin_amd64 darwin_arm64; do
+  require_matches "WeKnora-lite_*_${platform}.tar.gz"
+  require_matches "WeKnora-lite_*_${platform}.tar.gz.sha256"
+done
 require_matches 'WeKnora-react-web_*.tar.gz'
 require_matches 'WeKnora-react-web_*.tar.gz.sha256'
 require_matches 'WeKnora-Lite-App_*'
+for desktop_artifact in \
+  macOS_universal.dmg macOS_amd64.dmg macOS_arm64.dmg \
+  linux_amd64.tar.gz windows_amd64_setup.exe; do
+  require_matches "WeKnora-Lite-App_*_${desktop_artifact}"
+  require_matches "WeKnora-Lite-App_*_${desktop_artifact}.sha256"
+done
 
 react_archives=( WeKnora-react-web_*.tar.gz )
 if ((${#react_archives[@]} != 1)); then
