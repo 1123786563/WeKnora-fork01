@@ -55,14 +55,12 @@ export interface RefundInput { order_id:string; amount_fen:string; reason:string
 export function parseOrderView(value:unknown):OrderView {
  if(typeof value!=='object'||value===null) throw new Error('invalid order');
  const v=value as Record<string,unknown>;
- if(typeof v.id!=='string'||typeof v.amount_fen!=='string'||!/^`+\d+`+$/.test(v.amount_fen)||
+ if(typeof v.id!=='string'||typeof v.amount_fen!=='string'||!/^\d+$/.test(v.amount_fen)||
     v.currency!=='CNY'||!['pending','paid','closed'].includes(String(v.payment))||
     !['pending','processing','fulfilled','attention'].includes(String(v.fulfillment))) throw new Error('invalid order');
  return v as unknown as OrderView;
 }
 ```
-
-（注意：上面正则片段按 brief 原文 `/^\d+$/` 抄写，以上显示转义仅为 markdown 展示。）
 
 client映射 GET `/api/v1/commercial/orders/:id`、`/summary`、POST `/quotes`、`/orders`、`/refunds`；服务端响应统一现有 `{success:true,data}` envelope，先取data再解析；summary也逐字段校验。写输入不接受tenant_id，由transport当前scope处理。索引导出与根typecheck/test命令纳入新文件。失败明确错误码，不自动重试付款创建的新key。
 
