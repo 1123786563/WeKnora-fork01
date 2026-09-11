@@ -713,6 +713,25 @@
   This is candidate static/runtime evidence; the Vue Docker image remains the
   production/recovery input and T24 remains `review`.
 
+### T20/T24 Android NetInfo network-recovery follow-up (2026-09-12)
+
+- Added the platform-neutral offline→online edge detector and wired the
+  foreground authenticated-session recovery hook to the native
+  `@react-native-community/netinfo` subscription. The focused test passed 2/2,
+  the full mobile suite passed 59/59, mobile typecheck and Android Expo export
+  passed, and the Android release build completed successfully with the native
+  NetInfo module linked.
+- On the `test36-small` Android API 36 emulator, the current release APK
+  authenticated against an isolated Lite server, then survived disabling and
+  re-enabling Wi-Fi and mobile data while foregrounded. Connectivity changed
+  from no active network to a connected/validated network; the Lite log
+  recorded a real HTTP 200 `POST /api/v1/auth/refresh`, and the authenticated
+  `Knowledge bases` route remained visible with no login or error state.
+- Full record: `docs/migrations/react/evidence/t24-android-network-recovery-live-2026-09-12.md`.
+  This closes the Android emulator foreground network-recovery slice, but T20
+  and T24 remain `review` for the broader iOS/network hardware, deployed,
+  cross-OS, provider, role/tenant, performance, and browser acceptance matrix.
+
 ### 本轮问题与裁定
 
 - 计划/设计原文仍写“方案 B 尚未批准”，与用户本轮批准相冲突；本实施分支按用户批准的方案 B 执行，未因旧措辞改变架构。

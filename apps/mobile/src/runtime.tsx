@@ -1,4 +1,5 @@
 import { AppState, Linking } from 'react-native';
+import NetInfo from '@react-native-community/netinfo';
 import * as SecureStore from 'expo-secure-store';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AuthError, createRefreshCoordinator, createWeKnoraClient, type AuthSession, type Credential, type WeKnoraClient } from '@weknora/api-client';
@@ -6,6 +7,7 @@ import { resolveMobileApiBaseUrl } from './platform/transport.ts';
 import { createSecureCredentialAdapter } from './platform/credentials.ts';
 import { createServerAddressAdapter } from './platform/server.ts';
 import { createMobileTransport } from './platform/transport.ts';
+import { createNetworkRecovery } from './platform/network.ts';
 import { createLatestAsyncWriter, createSessionEpoch, createSingleFlight, createWorkspaceSelectionAdapter, parseMobileWorkspaces, shouldHydrateWorkspaceMemberships, shouldRefreshMobileSession, toWorkspaceId, type MobileWorkspace } from './platform/workspace.ts';
 import { parseMobileOIDCCallback } from './platform/oidc.ts';
 
@@ -45,6 +47,7 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
   const [workspaces, setWorkspaces] = useState<MobileWorkspace[]>([]);
   const [oidcError, setOidcError] = useState('');
   const sessionTransitions = useRef(0);
+  const appActiveRef = useRef(AppState.currentState === 'active');
   const updateCredential = useCallback((next: Credential) => {
     credentialRef.current = next;
     setCredential(next);
@@ -127,6 +130,7 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
   }, [adapter, serverAdapter, sessionEpoch, updateCredential, updateTenantId, workspaceAdapter]);
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
+      appActiveRef.current = state === 'active';
       if (state !== 'active' || credentialRef.current.kind !== 'bearer' || !credentialRef.current.refreshToken) return;
       void refreshSession().catch(() => undefined);
     });
@@ -208,6 +212,14 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
     setWorkspaces(parseMobileWorkspaces(identity.memberships));
     updateTenantId(activeTenantId === null ? null : String(activeTenantId));
   }), [client, sessionEpoch, updateTenantId, workspaceWriter]);
+
+  useEffect(() => createNetworkRecovery({
+    subscribe: (listener) => NetInfo.addEventListener(listener),
+    onReconnect: () => {
+      if (!appActiveRef.current || credentialRef.current.kind !== 'bearer' || !credentialRef.current.refreshToken) return;
+      void refreshSession().catch(() => undefined);
+    },
+  }), [refreshSession]);
 
   useEffect(() => {
     if (!shouldHydrateWorkspaceMemberships({ hydrating, credentialKind: credential.kind, workspaceCount: workspaces.length })) return;
