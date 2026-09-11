@@ -22,3 +22,13 @@ export const MOBILE_CAPABILITIES: readonly MobileCapability[] = [
 export function mobileCapability(key: string): MobileCapability | undefined {
   return MOBILE_CAPABILITIES.find((capability) => capability.key === key);
 }
+
+export function projectMobileCapability(
+  capability: MobileCapability,
+  serverCapabilities: Record<string, { supported: boolean; reason?: string }>,
+): MobileCapability {
+  const serverKey = capability.key === 'organizations' ? 'organizations' : capability.key === 'sandbox' ? 'settings.sandbox' : undefined;
+  if (!serverKey || serverCapabilities[serverKey] === undefined) return capability;
+  const server = serverCapabilities[serverKey];
+  return server.supported ? capability : { ...capability, support: 'unsupported', reason: server.reason || 'Disabled by the server deployment' };
+}

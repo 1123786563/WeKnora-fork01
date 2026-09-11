@@ -5,17 +5,17 @@ Branch: `codex/react-multiclient`
 
 ## Implemented boundary
 
-- `apps/mobile/src/features/management/OrganizationsScreen.tsx` adds `/management/organizations` to the capability-gated management hub.
+- `apps/mobile/src/features/management/OrganizationsScreen.tsx` adds `/management/organizations` to the capability-gated management hub and rechecks the server capability on direct route entry.
 - The screen uses `client.identity.organizations` for organization listing/creation, member listing, organization member role updates/removal, and pending join-request approval/decline.
-- Organization member writes are exposed only when the server-projected organization `my_role` is `admin`; viewers can read the organization and pending-request state but do not receive write controls.
+- Organization member writes are exposed only when the server-projected organization `my_role` is `admin`; viewers can read the organization and pending-request state but do not receive write controls. A server capability of `supported: false` fails closed in both the hub and the direct route.
 - Organization creation validates the name locally and waits for the server-created record before selecting it. Mutation failures preserve the current local rows and display the server error. There is no offline queue.
 - The shared API index now exports `OrganizationRole` so the native route uses the same role contract as Web and desktop.
 
 ## Automated evidence
 
 ```text
-pnpm --filter @weknora/mobile exec tsx --test src/features/management/organizations.test.ts src/features/management/administration.test.ts src/features/management/capabilities.test.ts # 6/6, exit 0
-pnpm test:mobile                                                                                 # 29/29, exit 0
+pnpm --filter @weknora/mobile exec tsx --test src/features/management/organizations.test.ts src/features/management/administration.test.ts src/features/management/capabilities.test.ts # 7/7, exit 0
+pnpm test:mobile                                                                                 # 30/30, exit 0
 pnpm typecheck:mobile                                                                             # exit 0
 pnpm typecheck:shared                                                                             # exit 0
 pnpm test:shared                                                                                  # 157/157, exit 0

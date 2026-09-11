@@ -26,12 +26,19 @@ export function OrganizationsScreen() {
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
+      const deployment = await runtime.client.administration.capabilities();
+      const capability = deployment.capabilities.organizations;
+      if (capability && !capability.supported) {
+        setOrganizations([]); setSelected(null); setMembers([]); setRequests([]);
+        setError(capability.reason || 'Organizations are unavailable on this server');
+        return;
+      }
       const result = await api.list();
       setOrganizations(result.items);
       setSelected((current) => current ? result.items.find((item) => item.id === current.id) || null : null);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to load organizations'); }
     finally { setLoading(false); }
-  }, [api]);
+  }, [api, runtime.client]);
 
   useEffect(() => { void load(); }, [load]);
 
