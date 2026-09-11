@@ -9,7 +9,7 @@
 | V01 | review | 待提交 | `python3 -m unittest scripts.saas.contract_inventory_test -v`：3/3 通过；外部只读探测未运行（blocked-env） | 在固定官方 schema 文件上运行 hash 校验与四个 GET 探测 |
 | V02 | review | `待提交` | focused regression suite and diff checks pass; external OM-02～OM-10 remains blocked-env | 提交后复核 |
 | V03 | blocked | f84b98b | `python3 -m unittest scripts.saas.gate_test -v`：4/4 通过；`git diff --check` 通过；CLI 对 selected-model.json 返回 blocked；OM-01～OM-10 blocked-env（无 OpenMeter 服务／商户凭据，未伪造 pass） | 准备隔离环境后重跑两套官方模型实验；在 OM-01～OM-09 全部 runtime pass 前 gate 拒绝 P01～P03 |
-| F01 | pending | 未实施 | 未运行 | 等待 V03 |
+| F01 | done | eac3aac55f8ee67b135b37a61104d1973996e3e3 | `go test ./internal/commercial -run 'Test(MonthBoundary|ParseCredits|CreditsString)' -count=1`：通过；`go test ./internal/commercial -count=1`：通过；`git diff --check`：通过 | 提交后复核 |
 | F02 | pending | 未实施 | 未运行 | 等待 V03 |
 | F03 | pending | 未实施 | 未运行 | 等待 F01, F02 |
 | F04 | pending | 未实施 | 未运行 | 等待 F03 |
