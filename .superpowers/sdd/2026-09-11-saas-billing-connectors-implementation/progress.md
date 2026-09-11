@@ -88,3 +88,12 @@ V01 implementation committed as `8a7bff2`; review fixes are committed in the sam
 - Task V02: fix round 5 committed as `ee4f7ad`; focused tests 10/10 pass; definitive re-review pending. Captured request/cleanup paths are rebound and namespace-validated at runtime; live experiments remain blocked-env.
 - Task V02: fix round 5 re-review BLOCKED/FAIL. Remaining blocker: cleanup does not prove the target ID was created by the current run; a read-derived capture could be deleted. Max 5 fix rounds exhausted; V02 is blocked and downstream V03+ tasks must not dispatch until this ownership check is implemented and reviewed.
 - Task V02: ownership fix implemented after user-directed continuation. Successful write-step captures are tracked in `created_captures`; cleanup rejects read-derived/untracked captures. Added unit and run-level regressions; 12/12 focused tests pass.
+- Task V02: fresh ownership re-review FAIL; capture names were tracked but values could be overwritten by a later GET. Follow-up fix dispatched to track immutable created ID values and reject changed values.
+- Task V02: ownership fix commit `5e34e9e` passed independent final review; 13/13 focused tests, py_compile, and diff-check pass. External OpenMeter execution remains blocked-env.
+- Task V03: brief generated; implementation dispatch follows V02 PASS.
+- Task V03: implementation commits `f84b98b`, `108e924`, gate fix `6b8dcf5`; independent final review PASS. Gate tests 26/26, py_compile and diff-check pass; selected model remains blocked-env and exits 2.
+- Task F01: brief generated; implementation dispatch follows V03 PASS.
+- Task F01: implementation commit `5a1111e` + ledger commit `df1e575`; independent review PASS (task-F01-review.md); targeted Go tests and diff-check pass.
+- Task F02: brief generated; implementation dispatch follows F01 PASS.
+- Task F02: implementation commit `bb7e8c6`; coordinator verified 4/4 targeted tests, go vet, go build, and diff-check; independent review PASS (task-F02-review.md, B1–B7). PostgreSQL concurrency evidence remains blocked-env.
+- Task F03: brief generated; implementation dispatch follows F02 PASS.
