@@ -11,6 +11,7 @@ export const MOBILE_CAPABILITIES: readonly MobileCapability[] = [
   { key: 'attachments', label: 'Chat attachments', support: 'core' },
   { key: 'approvals', label: 'Tool approvals', support: 'core' },
   { key: 'identity', label: 'Members, roles and audit', support: 'management', reason: 'Tenant context is server-owned; writes require an owner/admin role and remain server-authorized.' },
+  { key: 'api-keys', label: 'Workspace API keys', support: 'management', reason: 'Only the workspace owner can mint or revoke keys; tokens are displayed once and never persisted by mobile.' },
   { key: 'organizations', label: 'Organizations and join requests', support: 'management', reason: 'Organization membership and writes remain server-authorized.' },
   { key: 'configuration', label: 'Agents, models, MCP and skills', support: 'read-only', reason: 'Mobile does not persist configuration writes.' },
   { key: 'wiki-faq', label: 'Wiki and FAQ', support: 'management', reason: 'Owner/admin editing uses server version and permission checks.' },
@@ -27,7 +28,7 @@ export function projectMobileCapability(
   capability: MobileCapability,
   serverCapabilities: Record<string, { supported: boolean; reason?: string }>,
 ): MobileCapability {
-  const serverKey = capability.key === 'organizations' ? 'organizations' : capability.key === 'sandbox' ? 'settings.sandbox' : undefined;
+  const serverKey = capability.key === 'organizations' ? 'organizations' : capability.key === 'api-keys' ? 'integrations.api' : capability.key === 'sandbox' ? 'settings.sandbox' : undefined;
   if (!serverKey || serverCapabilities[serverKey] === undefined) return capability;
   const server = serverCapabilities[serverKey];
   return server.supported ? capability : { ...capability, support: 'unsupported', reason: server.reason || 'Disabled by the server deployment' };

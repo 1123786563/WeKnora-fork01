@@ -5,6 +5,7 @@ import { MOBILE_CAPABILITIES, mobileCapability, projectMobileCapability } from '
 test('mobile capability matrix is explicit about core, read-only, and unsupported surfaces', () => {
   assert.equal(MOBILE_CAPABILITIES.filter((item) => item.support === 'core').length, 4);
   assert.equal(mobileCapability('sandbox')?.support, 'unsupported');
+  assert.equal(mobileCapability('api-keys')?.support, 'management');
   assert.match(mobileCapability('identity')?.reason || '', /server-owned/);
 });
 

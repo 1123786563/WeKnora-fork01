@@ -85,6 +85,7 @@ export function AdministrationScreen() {
   return <SafeAreaView style={{ flex: 1, padding: 16 }}>
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 10 }}><Pressable onPress={() => router.back()}><Text style={{ color: '#2864dc' }}>Back</Text></Pressable><Text accessibilityRole="header" style={{ flex: 1, fontSize: 22, fontWeight: '700' }}>Members and audit</Text><Pressable onPress={() => void load()}><Text style={{ color: '#2864dc' }}>Refresh</Text></Pressable></View>
     <Text style={{ color: '#667085', marginBottom: 10 }}>{role ? `Workspace role: ${role}` : 'Workspace role unavailable'} · server-confirmed tenant {runtime.tenantId || 'unknown'}</Text>
+    <Pressable accessibilityRole="button" onPress={() => router.push('/management/api-keys')} style={{ borderColor: '#2864dc', borderWidth: 1, padding: 10, borderRadius: 8, alignItems: 'center', marginBottom: 10 }}><Text style={{ color: '#2864dc', fontWeight: '600' }}>Manage API keys</Text></Pressable>
     {!writable ? <Text style={{ color: '#667085', marginBottom: 8 }}>Viewer/contributor access is read-only. Failed or forbidden writes are never treated as local success.</Text> : null}
     {error ? <Text accessibilityRole="alert" style={{ color: '#b42318', marginBottom: 8 }}>{error}</Text> : null}
     {loading ? <ActivityIndicator accessibilityLabel="Loading administration" /> : <ScrollView keyboardShouldPersistTaps="handled">
