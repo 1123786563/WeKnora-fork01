@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, FlatList, KeyboardAvoidingView, Linking, Platform, Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import * as SecureStore from 'expo-secure-store';
 import type { ChatMessage, ChatSession, ChatStreamEvent, KnowledgeBase, SteerDelivery, SteerQueueItem, TemporaryAttachment } from '@weknora/contracts';
 import { initialChatStreamState, reduceChatStream, type ChatStreamState } from '@weknora/domain/chat/reducer';
 import { artifactDownloadPath, normalizeArtifactList } from '@weknora/domain/chat/artifacts';
@@ -11,6 +12,7 @@ import { downloadKnowledgeFile, shareNativeFile } from '../../platform/files.ts'
 import { buildMobileChatRequestBody, selectAssistantMessageId, selectIncompleteAssistant, selectMessageArtifacts, selectReferenceGroups, shouldRenderLiveAssistant, shouldRenderPendingUser } from './parity.ts';
 import { stopChatRun } from './stop-run.ts';
 import { chatAppStateAction } from './appstate.ts';
+import { createRunLifecyclePersistence, initialRunLifecycle, transitionRunLifecycle, type RunLifecycleEvent } from './run-lifecycle.ts';
 
 function errorText(cause: unknown, fallback: string): string {
   return cause instanceof Error ? cause.message : fallback;
@@ -46,6 +48,16 @@ export function ChatScreen() {
   const steerAction = useRef<string | null>(null);
   const failedAssistantMessageId = useRef<string | undefined>(undefined);
   const resuming = useRef(false);
+  const selectedSessionRef = useRef<string | null>(null);
+  const runLifecycle = useRef(initialRunLifecycle());
+  const lifecycleHydrated = useRef(false);
+  const lifecyclePersistence = useMemo(() => createRunLifecyclePersistence(SecureStore), []);
+
+  const updateRunLifecycle = useCallback((sessionId: string, event: RunLifecycleEvent) => {
+    const next = transitionRunLifecycle(runLifecycle.current, event);
+    runLifecycle.current = next;
+    void lifecyclePersistence.write(sessionId, next).catch(() => undefined);
+  }, [lifecyclePersistence]);
 
   const loadSessions = useCallback(async () => {
     try {
@@ -87,26 +99,46 @@ export function ChatScreen() {
   useEffect(() => { void loadSessions(); }, [loadSessions]);
   useEffect(() => { void loadKnowledgeBases(); }, [loadKnowledgeBases]);
   useEffect(() => {
+    selectedSessionRef.current = selectedSessionId;
+    runLifecycle.current = initialRunLifecycle();
+    lifecycleHydrated.current = !selectedSessionId;
     setStreamState(initialChatStreamState());
     activeMessageId.current = undefined;
     failedAssistantMessageId.current = undefined;
-    if (selectedSessionId) { void loadMessages(selectedSessionId); void loadAttachments(selectedSessionId); }
+    if (selectedSessionId) {
+      const sessionId = selectedSessionId;
+      void lifecyclePersistence.read(sessionId).then((stored) => {
+        if (selectedSessionRef.current !== sessionId) return;
+        runLifecycle.current = stored;
+        lifecycleHydrated.current = true;
+      }).catch(() => {
+        if (selectedSessionRef.current === sessionId) lifecycleHydrated.current = true;
+      });
+      void loadMessages(sessionId); void loadAttachments(sessionId);
+    }
     if (selectedSessionId) void loadSteerQueue(selectedSessionId);
     else { setMessages([]); setAttachments([]); setSteerQueue([]); }
-  }, [loadAttachments, loadMessages, loadSteerQueue, selectedSessionId]);
+  }, [lifecyclePersistence, loadAttachments, loadMessages, loadSteerQueue, selectedSessionId]);
 
   const applyEvent = useCallback((event: ChatStreamEvent) => {
+    const type = event.response_type ?? event.type;
     const assistantMessageId = selectAssistantMessageId(event);
-    if (assistantMessageId) activeMessageId.current = assistantMessageId;
-    if ((event.response_type ?? event.type) === 'error') {
+    if (assistantMessageId) {
+      activeMessageId.current = assistantMessageId;
+      if (selectedSessionId) updateRunLifecycle(selectedSessionId, { type: 'assistant-message', id: assistantMessageId });
+    }
+    if (type === 'error') {
+      if (selectedSessionId) updateRunLifecycle(selectedSessionId, { type: 'failure' });
       failedAssistantMessageId.current = assistantMessageId ?? activeMessageId.current;
       const data = typeof event.data === 'object' && event.data !== null && !Array.isArray(event.data)
         ? event.data as Record<string, unknown>
         : undefined;
       setError(typeof event.error === 'string' ? event.error : typeof data?.error === 'string' ? data.error : 'Chat stream failed');
     }
+    if (type === 'complete' && selectedSessionId) updateRunLifecycle(selectedSessionId, { type: 'complete' });
+    if (type === 'stop' && selectedSessionId) updateRunLifecycle(selectedSessionId, { type: 'user-stop' });
     setStreamState((current) => reduceChatStream(current, event));
-  }, []);
+  }, [selectedSessionId, updateRunLifecycle]);
 
   const finishRun = useCallback(async (sessionId: string, controller: AbortController) => {
     if (streamController.current !== controller) return;
@@ -118,9 +150,16 @@ export function ChatScreen() {
       setPendingUser(null);
       return;
     }
+    if (runLifecycle.current.status === 'failed') {
+      setPendingUser(null);
+      return;
+    }
     const incomplete = selectIncompleteAssistant(refreshed);
-    if (!incomplete) setPendingUser(null);
-  }, [loadMessages, loadSteerQueue]);
+    if (!incomplete) {
+      updateRunLifecycle(sessionId, { type: 'complete' });
+      setPendingUser(null);
+    }
+  }, [loadMessages, loadSteerQueue, updateRunLifecycle]);
 
   const continueMessage = useCallback(async (sessionId: string, messageId: string) => {
     if (streamController.current || resuming.current) return;
@@ -129,25 +168,41 @@ export function ChatScreen() {
     streamController.current = controller;
     activeMessageId.current = messageId;
     failedAssistantMessageId.current = undefined;
+    updateRunLifecycle(sessionId, { type: 'start', assistantMessageId: messageId });
     setSending(true); setError(''); setStreamState(initialChatStreamState());
     try { await runtime.client.chat.continueStream(sessionId, messageId, applyEvent, controller.signal); }
-    catch (cause) { if (!controller.signal.aborted) setError(errorText(cause, 'Unable to resume response')); }
+    catch (cause) {
+      if (!controller.signal.aborted) {
+        updateRunLifecycle(sessionId, { type: 'failure' });
+        setError(errorText(cause, 'Unable to resume response'));
+      }
+    }
     finally { resuming.current = false; await finishRun(sessionId, controller); }
-  }, [applyEvent, finishRun, runtime.client]);
+  }, [applyEvent, finishRun, runtime.client, updateRunLifecycle]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
-      const action = chatAppStateAction(state, Boolean(selectedSessionId), Boolean(streamController.current));
-      if (action === 'abort') { streamController.current?.abort(); return; }
+      const action = chatAppStateAction(
+        state,
+        Boolean(selectedSessionId) && lifecycleHydrated.current,
+        Boolean(streamController.current),
+        runLifecycle.current,
+      );
+      if (action === 'abort') {
+        if (selectedSessionId) updateRunLifecycle(selectedSessionId, { type: 'background' });
+        streamController.current?.abort();
+        return;
+      }
       if (action !== 'resume' || !selectedSessionId) return;
       void (async () => {
         const refreshed = await loadMessages(selectedSessionId);
         const incomplete = selectIncompleteAssistant(refreshed);
         if (incomplete && incomplete.id !== failedAssistantMessageId.current) await continueMessage(selectedSessionId, incomplete.id);
+        else if (!incomplete) updateRunLifecycle(selectedSessionId, { type: 'complete' });
       })();
     });
     return () => subscription.remove();
-  }, [continueMessage, loadMessages, selectedSessionId]);
+  }, [continueMessage, loadMessages, selectedSessionId, updateRunLifecycle]);
 
   useEffect(() => {
     const subscription = Linking.addEventListener('url', ({ url }) => {
@@ -197,6 +252,7 @@ export function ChatScreen() {
     failedAssistantMessageId.current = undefined;
     const controller = new AbortController();
     streamController.current = controller;
+    updateRunLifecycle(sessionId, { type: 'start' });
     setSending(true);
     try {
       await runtime.client.chat.stream({
@@ -206,16 +262,21 @@ export function ChatScreen() {
         signal: controller.signal,
       }, applyEvent);
     } catch (cause) {
-      if (!controller.signal.aborted) setError(errorText(cause, 'Unable to send message'));
+      if (!controller.signal.aborted) {
+        updateRunLifecycle(sessionId, { type: 'failure' });
+        setError(errorText(cause, 'Unable to send message'));
+      }
     } finally { await finishRun(sessionId, controller); }
   }
 
   async function stop() {
     if (!selectedSessionId) return;
-    const messageId = activeMessageId.current;
+    const sessionId = selectedSessionId;
+    const messageId = activeMessageId.current ?? runLifecycle.current.assistantMessageId;
+    updateRunLifecycle(sessionId, { type: 'user-stop' });
     try {
       await stopChatRun(
-        messageId ? async () => { await runtime.client.chat.stop(selectedSessionId!, messageId); } : undefined,
+        messageId ? async () => { await runtime.client.chat.stop(sessionId, messageId); } : undefined,
         () => streamController.current?.abort(),
         () => { applyEvent({ response_type: 'stop', event_id: `local-stop-${Date.now()}` }); setSending(false); },
       );
