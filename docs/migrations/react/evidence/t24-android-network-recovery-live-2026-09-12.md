@@ -24,7 +24,7 @@
   handles a background→foreground transition.
 - TDD evidence: the new test first failed with `Cannot find module
   './network.ts'`; after the minimal implementation, the focused test passed
-  2/2. The full mobile suite passed 59/59 and `pnpm typecheck:mobile` exited 0.
+  3/3. The full mobile suite passed 59/59 and `pnpm typecheck:mobile` exited 0.
 - A production Android bundle export succeeded with 1171 modules. The native
   release build included the `react-native-community_netinfo` module and
   completed with `BUILD SUCCESSFUL` (640 actionable tasks).

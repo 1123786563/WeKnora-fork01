@@ -717,7 +717,7 @@
 
 - Added the platform-neutral offline→online edge detector and wired the
   foreground authenticated-session recovery hook to the native
-  `@react-native-community/netinfo` subscription. The focused test passed 2/2,
+  `@react-native-community/netinfo` subscription. The focused test passed 3/3,
   the full mobile suite passed 59/59, mobile typecheck and Android Expo export
   passed, and the Android release build completed successfully with the native
   NetInfo module linked.
