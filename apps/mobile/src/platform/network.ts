@@ -8,8 +8,9 @@ export interface NetworkRecoveryOptions {
   onReconnect(): void;
 }
 
-function isReachable(state: MobileNetworkState): boolean {
-  return state.isConnected === true && state.isInternetReachable !== false;
+function isReachable(state: MobileNetworkState): boolean | null {
+  if (state.isConnected === null) return null;
+  return state.isConnected && state.isInternetReachable !== false;
 }
 
 /** Call the runtime recovery hook only after an observed offline→online edge. */
@@ -17,7 +18,7 @@ export function createNetworkRecovery(options: NetworkRecoveryOptions): () => vo
   let previous: boolean | null = null;
   return options.subscribe((state) => {
     const current = isReachable(state);
-    if (previous === false && current) options.onReconnect();
-    previous = current;
+    if (previous === false && current === true) options.onReconnect();
+    if (current !== null) previous = current;
   });
 }

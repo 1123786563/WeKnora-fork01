@@ -50,3 +50,17 @@ test('treats a connected state with unknown reachability as online', () => {
 
   assert.equal(recoveries, 1);
 });
+
+test('does not treat an initial unknown network state as offline', () => {
+  const harness = subscriptionHarness();
+  let recoveries = 0;
+  createNetworkRecovery({
+    subscribe: harness.subscribe,
+    onReconnect: () => { recoveries += 1; },
+  });
+
+  harness.emit({ isConnected: null, isInternetReachable: null });
+  harness.emit({ isConnected: true, isInternetReachable: true });
+
+  assert.equal(recoveries, 0);
+});
