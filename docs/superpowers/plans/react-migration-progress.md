@@ -903,3 +903,9 @@
 - The same slice makes knowledge-base detail/chat deep links, `/platform/agents`, root/search redirects, `/platform/system/*`, and explicit 404 handling visible in route dispatch. React Web and Embed now load the runtime `config.js` contract and a bundled favicon in the candidate artifact.
 - Verification: Web tests 94/94, Web/shared typechecks, Web build (127 modules), Embed build (68 modules), React boundary check, and diff check passed. Evidence: `docs/migrations/react/evidence/t14-web-terminal-route-runtime-2026-09-12.md`.
 - T14 remains `review`: deterministic fake-socket tests do not prove real shell I/O/resize, provider paused/no-sandbox behavior, cross-tenant live switching, or browser E2E.
+
+### T16 Web organization actions follow-up (2026-09-12)
+
+- The organization detail now loads typed member, pending join-request, and shared knowledge-base data. It exposes confirmation-gated approve/reject, leave, and delete actions and only clears/reloads local state after a successful server response; failures leave the server-backed view intact.
+- Web tests remain 94/94, Web typecheck and diff check pass. Evidence: `docs/migrations/react/evidence/t16-web-organization-actions-2026-09-12.md`.
+- T16 remains `review`: role-specific 403/409, browser, live share mutation, and full cross-tenant/system-admin matrix evidence remain open.
