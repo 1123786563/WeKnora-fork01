@@ -18,6 +18,21 @@
 
 执行记录统一包含：检查 ID、提交和镜像 digest、配置摘要、时间、隔离空间／测试对象 ID、脱敏请求与响应、幂等键、前后状态、实际断言、清理方式和限制。外部结果不明的记录不能通过“删本地记录重测”掩盖。
 
+## 1A. 2026-09-11 单元／集成证据状态汇总（O03 收口）
+
+本节按[实施台账](../plans/saas-billing-connectors-progress.md)的真实证据，记录各检查当前可主张的最高层级；不改变各检查的最终通过标准（门槛仍以 runtime 联验为准），provider/browser 级一律保持 blocked-env/pending，**没有任何 pending/blocked-env 被改为 pass**。逐项证据（任务／提交／命令／结果）见[验收收口文档](../plans/saas-billing-connectors-acceptance.md)。
+
+- OM-01..OM-10：blocked-env（无 OpenMeter 服务／商户凭据；V03 gate f84b98b 持续拒绝 selected-model.json）。
+- COM-01..COM-07：unit/integration 层 pass（F02 bb7e8c6、F03 2f4462a、C01 19e64ef、C04 1e7de9a、C05 d22aad3、F04 af899ce；SQLite／域层定向测试）。
+- WX-02、ALI-02：unit 层 pass（C02 e269415 TestWechat 9/9、C03 187570b TestAlipay 14/14，回调验签／解密／重放）；WX-01/03/04、ALI-01/03/04 pending（无真实商户配置，且无下单／查单／退款链路证据）；WX-05、ALI-05 blocked-env。
+- BUD-01..BUD-08、USE-01..USE-06：integration/unit 层 pass（U01 5449a1c、U02 0cfa73e、U03 3ef3742、U04 a137c79、U05 0a38092、F01 5a1111e；SQLite + -race）。
+- CON-01..CON-08：integration/unit 层 pass（A01 a798e77、A02 1b5f149、A03 02cc527、A04 21bb6cd）。
+- FS-01..FS-03、NO-01..NO-03：integration 层 pass（httptest 桩：A05 0888fac TestFeishu 9/9、A06 1cfc957 TestNotion 12/12）；FS-04、NO-04 blocked-env（真实执行需用户指定目标与凭据）。
+- SYNC-01..SYNC-05：integration 层 pass（A07 0e30173，SQLite + 桩；真实飞书／Notion 端点 blocked-env）；OPS-01/OPS-03（O01 bf5ab4d）、OPS-02（O02 4e99dc9）integration 层 pass；OPS-04 unit 层 pass（W02 7adec10 纯函数），浏览器层未运行。
+- AC-01..AC-20：blocked-env（browser 层产品联验）。
+
+准入命令：`python3 scripts/saas/release_gate.py --report artifacts/saas-acceptance/report.json` 当前退出码 1（诚实预期；该命令缺项／blocked-env／skip／mock 替代真实提供方均退出 1，功能门槛可 `--without` 逐能力排除但始终列出未完成范围）。未完成范围清单见验收收口文档。
+
 ## 2. 官方 OpenMeter 固定版本接口目录
 
 来源为官方提交 `887e0cac903ccd06e74d61ed23c651651d10c7a9`，对应发布版本 `v1.0.0-beta.232`：
