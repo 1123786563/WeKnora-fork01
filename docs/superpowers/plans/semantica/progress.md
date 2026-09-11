@@ -62,7 +62,7 @@
 - 环境：macOS arm64；uv 0.9.30；Python 3.12.13；semantica 0.6.8（neo4j driver 6.3.0）；隔离 Neo4j 5.26-community 容器 semantica-v02-neo4j（127.0.0.1:17687，口令经环境变量注入，证据文件不含明文口令）。
 - 证据：`uv run --project semantic/experiments python semantic/experiments/bridge_probe.py evidence --output docs/superpowers/plans/semantica/bridge-evidence.md` 退出码 0。实测：restart_verified=true（独立写进程退出后新连接读回）、attribution_fidelity_ok=true（含 d3/d4 全部 4 边 4 节点对照 fixture）、evidence_ids=[e-d1,e-d2]、甲→乙→丙两跳路径 + ContextRetriever 两跳扩展、规则正例 controls(a,c)/负例空推导/中文 controls(甲公司,丙公司)、冲突并存（d1/d3 同存各自溯源）、模型 unverified（无受批准凭据，未调用，无伪造用量；证据全文无"松柏"泄漏）。
 - review：规格符合性 PASS（9 项通过；2 项 MINOR：证据缺复现命令——已补，默认实验口令入码——记录接受）。代码质量首轮 FAIL（BLOCKER：配置失败入口被伪装 completed；另有 8 项 MINOR）→ 按 TDD 修复（先新增复现测试 RED，再修复，再 GREEN）→ 复审 PASS（BLOCKER 三条路径实测确认解决；attribution_fidelity_ok 经 DB 级篡改判别实验证明有效；复审新增 2 项 MINOR：证据口令明文——已改环境变量引用，生成失败分支缺回归测试——已补存根测试）。
-- 提交 SHA：（本记录与代码同批提交后补记）
+- 提交 SHA：fb13414（feat(semantic): v02 验证持久图桥接和两类推理）。
 - 剩余限制：模型推断保持 unverified（无受批准模型入口凭据，Q03/O03 真实模型验收仍需凭据）；ContextRetriever 向量语义检索路径未验证；全目录合跑约 1/9 概率退出阶段原生崩溃（不影响测试结果，O03 CI 门禁需回访）；probe 写入端无跨进程锁需串行运行。
 
 ## 当前边界
