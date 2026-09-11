@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createConfigurationApi } from './configuration.ts';
+import type { NativeFileSource } from './ports.ts';
 
 const row = { id: 'model/1', name: 'Model', parameters: { api_key: 'must-not-return', base_url: 'https://model.test' } };
 
@@ -198,4 +199,89 @@ test('preserves MCP test tools and resources and rejects malformed nested entrie
     data: { success: true, tools: [{ description: 'missing name' }] },
   }));
   await assert.rejects(() => malformed.mcp.test('mcp-1'), /name/);
+});
+
+test('lists model providers and sends model debug as an injected multipart request', async () => {
+  const requests: any[] = [];
+  const file: NativeFileSource = { uri: 'file:///tmp/input.png', name: 'input.png', type: 'image/png' };
+  const api = createConfigurationApi(async (request) => {
+    requests.push(request);
+    if (request.path === '/api/v1/models/providers?model_type=chat') {
+      return { success: true, data: [{ value: 'openai', label: 'OpenAI', description: 'Chat', defaultUrls: {}, modelTypes: ['chat'] }] };
+    }
+    return { success: true, data: {
+      ok: false, elapsed_ms: 12, request: { input: 'hello' }, raw_response: { status: 429 }, observations: { stream: true }, error: 'rate limited',
+    } };
+  });
+
+  assert.deepEqual(await api.models.providers.list('chat'), [{ value: 'openai', label: 'OpenAI', description: 'Chat', defaultUrls: {}, modelTypes: ['chat'] }]);
+  assert.deepEqual(await api.models.debug('model/1', {
+    input: 'hello', documents: ['doc-1'], options: { temperature: 0, thinking: false }, file,
+  }), { ok: false, elapsedMs: 12, request: { input: 'hello' }, rawResponse: { status: 429 }, observations: { stream: true }, error: 'rate limited' });
+  assert.deepEqual(requests, [
+    { method: 'GET', path: '/api/v1/models/providers?model_type=chat' },
+    {
+      method: 'POST', path: '/api/v1/models/model%2F1/debug', nativeFile: file,
+      multipartFields: { input: 'hello', documents: '["doc-1"]', options: '{"temperature":0,"thinking":false}' },
+    },
+  ]);
+});
+
+test('maps catalog and installed-skill endpoints, including encoded file paths and accepted envelopes', async () => {
+  const requests: any[] = [];
+  const api = createConfigurationApi(async (request) => {
+    requests.push(request);
+    const path = request.path as string;
+    if (path === '/api/v1/skills/catalog') return request.method === 'GET'
+      ? { success: true, data: [{ id: 'cat/1', name: 'pdf', installations: [] }] }
+      : { success: true, data: { id: 'cat/1', name: 'pdf' } };
+    if (path.endsWith('/install')) return { success: true, data: { installs: {} } };
+    if (path.endsWith('/files')) return { success: true, data: [{ path: 'SKILL.md', size: 4 }] };
+    if (path.includes('/files/content')) return { success: true, data: { path: 'a/b.md', size: 3, encoding: 'utf-8', content: 'abc' } };
+    if (path === '/api/v1/sandbox-configs/cfg%2F1/skills') return { success: true, data: [{ id: 'skill/1', name: 'pdf', enabled: true, status: 'ready' }] };
+    if (path.endsWith('/reinstall')) return { success: true, data: { skill_id: 'skill/1' } };
+    if (path.endsWith('/stop') || request.method === 'PATCH') return { success: true, data: { id: 'skill/1', name: 'pdf', enabled: false, status: 'ready' } };
+    if (request.method === 'DELETE') return { success: true, data: { skill_id: 'skill/1' } };
+    return { success: true, data: { id: 'skill/1', name: 'pdf', enabled: true, status: 'ready' } };
+  });
+
+  assert.deepEqual((await api.skills.catalog.list())[0]?.name, 'pdf');
+  assert.equal((await api.skills.catalog.register({ source: '@owner/pdf' })).id, 'cat/1');
+  assert.deepEqual(await api.skills.catalog.install('cat/1', ['cfg/1']), { installs: {} });
+  assert.deepEqual(await api.skills.catalog.files('cat/1'), [{ path: 'SKILL.md', size: 4 }]);
+  assert.equal((await api.skills.catalog.file('cat/1', 'a/b.md')).content, 'abc');
+  await api.skills.catalog.remove('cat/1');
+
+  assert.equal((await api.skills.installed.list('cfg/1'))[0]?.status, 'ready');
+  assert.equal((await api.skills.installed.get('cfg/1', 'skill/1')).name, 'pdf');
+  await api.skills.installed.files('cfg/1', 'skill/1');
+  await api.skills.installed.file('cfg/1', 'skill/1', 'a/b.md');
+  assert.equal((await api.skills.installed.reinstall('cfg/1', 'skill/1')).skillId, 'skill/1');
+  assert.equal((await api.skills.installed.stop('cfg/1', 'skill/1')).enabled, false);
+  const enabled = false;
+  await api.skills.installed.update('cfg/1', 'skill/1', { enabled });
+  await api.skills.installed.remove('cfg/1', 'skill/1');
+
+  assert.deepEqual(requests.map((request) => `${request.method} ${request.path}`), [
+    'GET /api/v1/skills/catalog', 'POST /api/v1/skills/catalog', 'POST /api/v1/skills/catalog/cat%2F1/install',
+    'GET /api/v1/skills/catalog/cat%2F1/files', 'GET /api/v1/skills/catalog/cat%2F1/files/content?path=a%2Fb.md', 'DELETE /api/v1/skills/catalog/cat%2F1',
+    'GET /api/v1/sandbox-configs/cfg%2F1/skills', 'GET /api/v1/sandbox-configs/cfg%2F1/skills/skill%2F1',
+    'GET /api/v1/sandbox-configs/cfg%2F1/skills/skill%2F1/files', 'GET /api/v1/sandbox-configs/cfg%2F1/skills/skill%2F1/files/content?path=a%2Fb.md',
+    'POST /api/v1/sandbox-configs/cfg%2F1/skills/skill%2F1/reinstall', 'POST /api/v1/sandbox-configs/cfg%2F1/skills/skill%2F1/stop',
+    'PATCH /api/v1/sandbox-configs/cfg%2F1/skills/skill%2F1', 'DELETE /api/v1/sandbox-configs/cfg%2F1/skills/skill%2F1',
+  ]);
+});
+
+test('rejects malformed skill status and missing accepted data instead of returning empty success', async () => {
+  const malformedStatus = createConfigurationApi(async () => ({ success: true, data: [{ id: 's', name: 'skill', enabled: true, status: 'unknown' }] }));
+  await assert.rejects(() => malformedStatus.skills.installed.list('cfg'), /status/);
+
+  const missingData = createConfigurationApi(async () => ({ success: true }));
+  await assert.rejects(() => missingData.skills.catalog.install('cat', []), /data/);
+});
+
+test('accepts an actual 204 empty response only for a 204-compatible action', async () => {
+  const api = createConfigurationApi(async () => undefined);
+  await api.mcp.oauth.revoke('mcp-1');
+  await assert.rejects(() => api.skills.catalog.remove('cat-1'), /success|object|empty/);
 });

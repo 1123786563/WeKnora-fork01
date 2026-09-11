@@ -51,8 +51,23 @@ export type {
   McpResource,
   ModelCredentialStatus,
   ModelConfiguration,
+  ModelProvider,
+  ModelDebugOptions,
+  ModelDebugInput,
+  ModelDebugResult,
   SkillConfiguration,
   SkillConfigurationList,
+  SkillStatus,
+  SkillInstallStatus,
+  SkillCatalogInstallation,
+  SkillCatalog,
+  SkillCatalogInstallResult,
+  SkillFile,
+  SkillFileContent,
+  InstalledSkillEnv,
+  InstalledSkill,
+  SandboxSkillUpdate,
+  SkillAcceptedResult,
 } from './configuration.ts';
 export { createChatApprovalsApi } from './chat/approvals.ts';
 export type {

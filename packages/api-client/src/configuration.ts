@@ -1,5 +1,6 @@
 import { parseActionSuccessResponse, type ActionSuccessResponse } from '@weknora/contracts';
 import type { ClientRequest } from './client.ts';
+import type { NativeFileSource } from './ports.ts';
 
 export interface ConfigurationRecord { id: string; name: string; [key: string]: unknown }
 export type AgentConfiguration = ConfigurationRecord & { config?: Record<string, unknown>; is_builtin?: boolean };
@@ -20,6 +21,101 @@ export interface AgentConfigurationListOptions {
   creator?: 'all' | 'mine' | 'others';
   signal?: AbortSignal;
 }
+
+export interface ModelProvider {
+  value: string;
+  label: string;
+  description: string;
+  defaultUrls: Record<string, string>;
+  modelTypes: string[];
+}
+export interface ModelDebugOptions {
+  systemPrompt?: string;
+  temperature?: number;
+  topP?: number;
+  maxTokens?: number;
+  thinking?: boolean;
+}
+export interface ModelDebugInput {
+  input?: string;
+  documents?: string[];
+  options?: ModelDebugOptions;
+  file?: NativeFileSource;
+}
+export interface ModelDebugResult {
+  ok: boolean;
+  elapsedMs: number;
+  request: Record<string, unknown>;
+  rawResponse: unknown;
+  observations: Record<string, unknown>;
+  error?: string;
+}
+
+export type SkillStatus = 'installing' | 'ready' | 'failed' | 'removing';
+export type SkillInstallStatus = SkillStatus | 'removed';
+export interface SkillCatalogInstallation {
+  skillId: string;
+  sandboxConfigId: string;
+  sandboxConfigName?: string;
+  sandboxType?: string;
+  status: SkillInstallStatus;
+  enabled: boolean;
+  error?: string;
+  bundleSha256?: string;
+  updatedAt?: string;
+}
+export interface SkillCatalog {
+  id: string;
+  name: string;
+  version?: string;
+  description?: string;
+  bundleSha256?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  installations?: SkillCatalogInstallation[];
+}
+export interface SkillCatalogInstallResult {
+  installs: Record<string, string>;
+  errors?: Record<string, string>;
+}
+export interface SkillFile {
+  path: string;
+  size: number;
+}
+export interface SkillFileContent extends SkillFile {
+  encoding: 'utf-8' | 'base64' | 'binary';
+  content?: string;
+  mediaType?: string;
+  truncated?: boolean;
+  binary?: boolean;
+}
+export interface InstalledSkillEnv {
+  name: string;
+  description?: string;
+  required?: boolean;
+  isSet: boolean;
+}
+export interface InstalledSkill {
+  id: string;
+  name: string;
+  version?: string;
+  description?: string;
+  enabled: boolean;
+  status: SkillStatus;
+  error?: string;
+  bundleSha256?: string;
+  installedSnapshotId?: string;
+  installSessionId?: string;
+  installMessageId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  envs?: InstalledSkillEnv[];
+}
+export interface SandboxSkillUpdate {
+  enabled?: boolean;
+  envs?: Record<string, string>;
+}
+export interface SkillAcceptedResult { skillId: string }
 
 type RecordValue = Record<string, unknown>;
 function record(value: unknown, path: string): RecordValue {
@@ -168,6 +264,204 @@ function parseNoContent(value: unknown, path: string): void {
   if (value !== undefined) throw new Error(`${path} must be an empty 204 response`);
 }
 
+function successfulData(value: unknown, path: string): unknown {
+  const envelope = record(value, path);
+  if (envelope.success !== true) throw new Error(`${path}.success must be true`);
+  if (!Object.prototype.hasOwnProperty.call(envelope, 'data')) throw new Error(`${path}.data is required`);
+  return envelope.data;
+}
+
+function numberValue(value: unknown, path: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`${path} must be a finite number`);
+  return value;
+}
+
+function optionalString(row: RecordValue, field: string, path: string): string | undefined {
+  if (row[field] === undefined) return undefined;
+  if (typeof row[field] !== 'string') throw new Error(`${path}.${field} must be a string`);
+  return row[field] as string;
+}
+
+function stringMap(value: unknown, path: string, allowNull = false): Record<string, string> {
+  if (value === null && allowNull) return {};
+  const row = record(value, path);
+  return Object.fromEntries(Object.entries(row).map(([key, item]) => {
+    if (typeof item !== 'string') throw new Error(`${path}.${key} must be a string`);
+    return [key, item];
+  }));
+}
+
+function parseModelProvider(value: unknown, path: string): ModelProvider {
+  const row = record(value, path);
+  const modelTypes = row.modelTypes;
+  if (!Array.isArray(modelTypes) || modelTypes.some((item) => typeof item !== 'string')) throw new Error(`${path}.modelTypes must be a string array`);
+  return {
+    value: required(row.value, `${path}.value`),
+    label: required(row.label, `${path}.label`),
+    description: typeof row.description === 'string' ? row.description : (() => { throw new Error(`${path}.description must be a string`); })(),
+    defaultUrls: stringMap(row.defaultUrls, `${path}.defaultUrls`),
+    modelTypes: modelTypes as string[],
+  };
+}
+
+function modelDebugFields(options: ModelDebugOptions): Record<string, unknown> {
+  return {
+    ...(options.systemPrompt === undefined ? {} : { system_prompt: options.systemPrompt }),
+    ...(options.temperature === undefined ? {} : { temperature: options.temperature }),
+    ...(options.topP === undefined ? {} : { top_p: options.topP }),
+    ...(options.maxTokens === undefined ? {} : { max_tokens: options.maxTokens }),
+    ...(options.thinking === undefined ? {} : { thinking: options.thinking }),
+  };
+}
+
+function multipartForm(fields: Record<string, string>): FormData {
+  if (typeof FormData === 'undefined') throw new Error('multipart form data is unavailable');
+  const form = new FormData();
+  for (const [key, value] of Object.entries(fields)) form.append(key, value);
+  return form;
+}
+
+function parseModelDebug(value: unknown): ModelDebugResult {
+  const data = record(successfulData(value, '/models/debug'), '/models/debug.data');
+  if (typeof data.ok !== 'boolean') throw new Error('/models/debug.data.ok must be a boolean');
+  const elapsedMs = numberValue(data.elapsed_ms, '/models/debug.data.elapsed_ms');
+  if (elapsedMs < 0) throw new Error('/models/debug.data.elapsed_ms must not be negative');
+  const request = record(data.request, '/models/debug.data.request');
+  const observations = record(data.observations, '/models/debug.data.observations');
+  const error = optionalString(data, 'error', '/models/debug.data');
+  return { ok: data.ok, elapsedMs, request, rawResponse: data.raw_response, observations, ...(error === undefined ? {} : { error }) };
+}
+
+function parseSkillStatus(value: unknown, path: string): SkillStatus {
+  if (value !== 'installing' && value !== 'ready' && value !== 'failed' && value !== 'removing') throw new Error(`${path} has an invalid skill status`);
+  return value;
+}
+
+function parseInstallStatus(value: unknown, path: string): SkillInstallStatus {
+  if (value === 'removed') return value;
+  return parseSkillStatus(value, path);
+}
+
+function parseCatalogInstallation(value: unknown, path: string): SkillCatalogInstallation {
+  const row = record(value, path);
+  const result: SkillCatalogInstallation = {
+    skillId: required(row.skill_id, `${path}.skill_id`),
+    sandboxConfigId: required(row.sandbox_config_id, `${path}.sandbox_config_id`),
+    status: parseInstallStatus(row.status, `${path}.status`),
+    enabled: row.enabled === true,
+  };
+  if (typeof row.enabled !== 'boolean') throw new Error(`${path}.enabled must be a boolean`);
+  for (const [source, target] of [['sandbox_config_name', 'sandboxConfigName'], ['sandbox_type', 'sandboxType'], ['error', 'error'], ['bundle_sha256', 'bundleSha256'], ['updated_at', 'updatedAt']] as const) {
+    const item = optionalString(row, source, path);
+    if (item !== undefined) (result as unknown as Record<string, unknown>)[target] = item;
+  }
+  return result;
+}
+
+function parseCatalog(value: unknown, path: string, installationsRequired = true): SkillCatalog {
+  const row = record(value, path);
+  const result: SkillCatalog = {
+    id: required(row.id, `${path}.id`),
+    name: required(row.name, `${path}.name`),
+  };
+  for (const [source, target] of [['version', 'version'], ['description', 'description'], ['bundle_sha256', 'bundleSha256'], ['created_at', 'createdAt'], ['updated_at', 'updatedAt']] as const) {
+    const item = optionalString(row, source, path);
+    if (item !== undefined) (result as unknown as Record<string, unknown>)[target] = item;
+  }
+  if (row.installations !== undefined || installationsRequired) {
+    if (!Array.isArray(row.installations)) throw new Error(`${path}.installations must be an array`);
+    result.installations = row.installations.map((item, index) => parseCatalogInstallation(item, `${path}.installations[${index}]`));
+  }
+  return result;
+}
+
+function parseSkillFile(value: unknown, path: string): SkillFile {
+  const row = record(value, path);
+  const filePath = required(row.path, `${path}.path`);
+  const size = numberValue(row.size, `${path}.size`);
+  if (size < 0) throw new Error(`${path}.size must not be negative`);
+  return { path: filePath, size };
+}
+
+function parseSkillFileContent(value: unknown, path: string): SkillFileContent {
+  const row = record(value, path);
+  const file = parseSkillFile(value, path);
+  if (row.encoding !== 'utf-8' && row.encoding !== 'base64' && row.encoding !== 'binary') throw new Error(`${path}.encoding is invalid`);
+  const result: SkillFileContent = { ...file, encoding: row.encoding };
+  const content = optionalString(row, 'content', path);
+  const mediaType = optionalString(row, 'media_type', path);
+  if (content !== undefined) result.content = content;
+  if (mediaType !== undefined) result.mediaType = mediaType;
+  for (const field of ['truncated', 'binary'] as const) if (row[field] !== undefined) {
+    if (typeof row[field] !== 'boolean') throw new Error(`${path}.${field} must be a boolean`);
+    result[field] = row[field] as boolean;
+  }
+  return result;
+}
+
+function parseInstalledSkill(value: unknown, path: string): InstalledSkill {
+  const row = record(value, path);
+  const result: InstalledSkill = {
+    id: required(row.id, `${path}.id`),
+    name: required(row.name, `${path}.name`),
+    enabled: row.enabled === true,
+    status: parseSkillStatus(row.status, `${path}.status`),
+  };
+  if (typeof row.enabled !== 'boolean') throw new Error(`${path}.enabled must be a boolean`);
+  for (const [source, target] of [['version', 'version'], ['description', 'description'], ['error', 'error'], ['bundle_sha256', 'bundleSha256'], ['installed_snapshot_id', 'installedSnapshotId'], ['install_session_id', 'installSessionId'], ['install_message_id', 'installMessageId'], ['created_at', 'createdAt'], ['updated_at', 'updatedAt']] as const) {
+    const item = optionalString(row, source, path);
+    if (item !== undefined) (result as unknown as Record<string, unknown>)[target] = item;
+  }
+  if (row.envs !== undefined) {
+    if (!Array.isArray(row.envs)) throw new Error(`${path}.envs must be an array`);
+    result.envs = row.envs.map((item, index) => {
+      const env = record(item, `${path}.envs[${index}]`);
+      const parsed: InstalledSkillEnv = { name: required(env.name, `${path}.envs[${index}].name`), isSet: env.is_set === true };
+      if (typeof env.is_set !== 'boolean') throw new Error(`${path}.envs[${index}].is_set must be a boolean`);
+      const description = optionalString(env, 'description', `${path}.envs[${index}]`);
+      if (description !== undefined) parsed.description = description;
+      if (env.required !== undefined) {
+        if (typeof env.required !== 'boolean') throw new Error(`${path}.envs[${index}].required must be a boolean`);
+        parsed.required = env.required;
+      }
+      return parsed;
+    });
+  }
+  return result;
+}
+
+function parseSkillIdResult(value: unknown, path: string): SkillAcceptedResult {
+  const data = record(successfulData(value, path), `${path}.data`);
+  return { skillId: required(data.skill_id, `${path}.data.skill_id`) };
+}
+
+function parseCatalogList(value: unknown, path: string): SkillCatalog[] {
+  const data = successfulData(value, path);
+  if (!Array.isArray(data)) throw new Error(`${path}.data must be an array`);
+  return data.map((item, index) => parseCatalog(item, `${path}.data[${index}]`, false));
+}
+
+function parseInstalledList(value: unknown, path: string): InstalledSkill[] {
+  const data = successfulData(value, path);
+  if (!Array.isArray(data)) throw new Error(`${path}.data must be an array`);
+  return data.map((item, index) => parseInstalledSkill(item, `${path}.data[${index}]`));
+}
+
+function parseFileList(value: unknown, path: string): SkillFile[] {
+  const data = successfulData(value, path);
+  if (!Array.isArray(data)) throw new Error(`${path}.data must be an array`);
+  return data.map((item, index) => parseSkillFile(item, `${path}.data[${index}]`));
+}
+
+function parseFileContent(value: unknown, path: string): SkillFileContent {
+  return parseSkillFileContent(successfulData(value, path), `${path}.data`);
+}
+
+function parseActionEnvelope(value: unknown, path: string): void {
+  const envelope = record(value, path);
+  if (envelope.success !== true) throw new Error(`${path}.success must be true`);
+}
+
 function credentialBody(input: Record<string, unknown>, fields: Record<string, string>, path: string): Record<string, string> {
   const body: Record<string, string> = {};
   for (const [source, target] of Object.entries(fields)) {
@@ -294,7 +588,32 @@ export function createConfigurationApi(request: (input: ClientRequest) => Promis
         }), '/api/v1/agents');
       },
     },
-    models: { ...models, credentials: modelCredentials },
+    models: {
+      ...models,
+      credentials: modelCredentials,
+      providers: {
+        async list(modelType?: string, signal?: AbortSignal): Promise<ModelProvider[]> {
+          const query = modelType === undefined ? '' : `?model_type=${encodeURIComponent(modelType)}`;
+          const data = successfulData(await request({
+            method: 'GET', path: `/api/v1/models/providers${query}`, ...(signal === undefined ? {} : { signal }),
+          }), '/models/providers');
+          if (!Array.isArray(data)) throw new Error('/models/providers.data must be an array');
+          return data.map((item, index) => parseModelProvider(item, `/models/providers.data[${index}]`));
+        },
+      },
+      async debug(modelId: string, input: ModelDebugInput, signal?: AbortSignal): Promise<ModelDebugResult> {
+        const fields: Record<string, string> = {};
+        if (input.input !== undefined) fields.input = input.input;
+        if (input.documents !== undefined) fields.documents = JSON.stringify(input.documents);
+        if (input.options !== undefined) fields.options = JSON.stringify(modelDebugFields(input.options));
+        return parseModelDebug(await request({
+          method: 'POST', path: `/api/v1/models/${id(modelId, 'modelId')}/debug`,
+          ...(input.file === undefined ? {} : { nativeFile: input.file }),
+          ...(Object.keys(fields).length === 0 ? {} : { multipartFields: fields }),
+          ...(signal === undefined ? {} : { signal }),
+        }));
+      },
+    },
     mcp: {
       ...mcp,
       credentials: mcpCredentials,
@@ -316,6 +635,64 @@ export function createConfigurationApi(request: (input: ClientRequest) => Promis
         return parseSkillList(await request({
           method: 'GET', path: `/api/v1/skills${query}`, ...(signal === undefined ? {} : { signal }),
         }));
+      },
+      catalog: {
+        async list(signal?: AbortSignal): Promise<SkillCatalog[]> {
+          return parseCatalogList(await request({ method: 'GET', path: '/api/v1/skills/catalog', ...(signal === undefined ? {} : { signal }) }), '/skills/catalog');
+        },
+        async register(input: { source: string } | { file: NativeFileSource }, signal?: AbortSignal): Promise<SkillCatalog> {
+          if ('source' in input) {
+            const source = input.source.trim();
+            if (!source) throw new Error('skill catalog source must not be empty');
+            return parseCatalog(successfulData(await request({ method: 'POST', path: '/api/v1/skills/catalog', body: { source }, ...(signal === undefined ? {} : { signal }) }), '/skills/catalog'), '/skills/catalog.data', false);
+          }
+          return parseCatalog(successfulData(await request({ method: 'POST', path: '/api/v1/skills/catalog', nativeFile: input.file, ...(signal === undefined ? {} : { signal }) }), '/skills/catalog'), '/skills/catalog.data', false);
+        },
+        async install(catalogId: string, sandboxConfigIds: string[], signal?: AbortSignal): Promise<SkillCatalogInstallResult> {
+          if (!Array.isArray(sandboxConfigIds) || sandboxConfigIds.some((value) => typeof value !== 'string' || value.trim() === '')) throw new Error('sandboxConfigIds must be a string array');
+          const data = record(successfulData(await request({ method: 'POST', path: `/api/v1/skills/catalog/${id(catalogId, 'catalogId')}/install`, body: { sandbox_config_ids: sandboxConfigIds }, ...(signal === undefined ? {} : { signal }) }), '/skills/catalog/install'), '/skills/catalog/install.data');
+          const installs = stringMap(data.installs, '/skills/catalog/install.data.installs', true);
+          const errors = data.errors === undefined ? undefined : stringMap(data.errors, '/skills/catalog/install.data.errors', true);
+          return { installs, ...(errors === undefined ? {} : { errors }) };
+        },
+        async files(catalogId: string, signal?: AbortSignal): Promise<SkillFile[]> {
+          return parseFileList(await request({ method: 'GET', path: `/api/v1/skills/catalog/${id(catalogId, 'catalogId')}/files`, ...(signal === undefined ? {} : { signal }) }), '/skills/catalog/files');
+        },
+        async file(catalogId: string, filePath: string, signal?: AbortSignal): Promise<SkillFileContent> {
+          if (!filePath.trim()) throw new Error('filePath must not be empty');
+          return parseFileContent(await request({ method: 'GET', path: `/api/v1/skills/catalog/${id(catalogId, 'catalogId')}/files/content?path=${encodeURIComponent(filePath)}`, ...(signal === undefined ? {} : { signal }) }), '/skills/catalog/files/content');
+        },
+        async remove(catalogId: string, signal?: AbortSignal): Promise<void> {
+          parseActionEnvelope(await request({ method: 'DELETE', path: `/api/v1/skills/catalog/${id(catalogId, 'catalogId')}`, ...(signal === undefined ? {} : { signal }) }), '/skills/catalog DELETE');
+        },
+      },
+      installed: {
+        async list(configId: string, signal?: AbortSignal): Promise<InstalledSkill[]> {
+          return parseInstalledList(await request({ method: 'GET', path: `/api/v1/sandbox-configs/${id(configId, 'configId')}/skills`, ...(signal === undefined ? {} : { signal }) }), '/sandbox-configs/skills');
+        },
+        async get(configId: string, skillId: string, signal?: AbortSignal): Promise<InstalledSkill> {
+          return parseInstalledSkill(successfulData(await request({ method: 'GET', path: `/api/v1/sandbox-configs/${id(configId, 'configId')}/skills/${id(skillId, 'skillId')}`, ...(signal === undefined ? {} : { signal }) }), '/sandbox-configs/skill'), '/sandbox-configs/skill.data');
+        },
+        async files(configId: string, skillId: string, signal?: AbortSignal): Promise<SkillFile[]> {
+          return parseFileList(await request({ method: 'GET', path: `/api/v1/sandbox-configs/${id(configId, 'configId')}/skills/${id(skillId, 'skillId')}/files`, ...(signal === undefined ? {} : { signal }) }), '/sandbox-configs/skill/files');
+        },
+        async file(configId: string, skillId: string, filePath: string, signal?: AbortSignal): Promise<SkillFileContent> {
+          if (!filePath.trim()) throw new Error('filePath must not be empty');
+          return parseFileContent(await request({ method: 'GET', path: `/api/v1/sandbox-configs/${id(configId, 'configId')}/skills/${id(skillId, 'skillId')}/files/content?path=${encodeURIComponent(filePath)}`, ...(signal === undefined ? {} : { signal }) }), '/sandbox-configs/skill/files/content');
+        },
+        async reinstall(configId: string, skillId: string, instructions?: string, signal?: AbortSignal): Promise<SkillAcceptedResult> {
+          return parseSkillIdResult(await request({ method: 'POST', path: `/api/v1/sandbox-configs/${id(configId, 'configId')}/skills/${id(skillId, 'skillId')}/reinstall`, body: instructions === undefined ? {} : { instructions }, ...(signal === undefined ? {} : { signal }) }), '/sandbox-configs/skill/reinstall');
+        },
+        async stop(configId: string, skillId: string, signal?: AbortSignal): Promise<InstalledSkill> {
+          return parseInstalledSkill(successfulData(await request({ method: 'POST', path: `/api/v1/sandbox-configs/${id(configId, 'configId')}/skills/${id(skillId, 'skillId')}/stop`, ...(signal === undefined ? {} : { signal }) }), '/sandbox-configs/skill/stop'), '/sandbox-configs/skill/stop.data');
+        },
+        async update(configId: string, skillId: string, input: SandboxSkillUpdate, signal?: AbortSignal): Promise<InstalledSkill> {
+          if (input.enabled === undefined && input.envs === undefined) throw new Error('enabled or envs is required');
+          return parseInstalledSkill(successfulData(await request({ method: 'PATCH', path: `/api/v1/sandbox-configs/${id(configId, 'configId')}/skills/${id(skillId, 'skillId')}`, body: { ...(input.enabled === undefined ? {} : { enabled: input.enabled }), ...(input.envs === undefined ? {} : { envs: input.envs }) }, ...(signal === undefined ? {} : { signal }) }), '/sandbox-configs/skill/update'), '/sandbox-configs/skill/update.data');
+        },
+        async remove(configId: string, skillId: string, signal?: AbortSignal): Promise<SkillAcceptedResult> {
+          return parseSkillIdResult(await request({ method: 'DELETE', path: `/api/v1/sandbox-configs/${id(configId, 'configId')}/skills/${id(skillId, 'skillId')}`, ...(signal === undefined ? {} : { signal }) }), '/sandbox-configs/skill/delete');
+        },
       },
     },
   };
