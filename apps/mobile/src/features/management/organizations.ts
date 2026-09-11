@@ -2,6 +2,10 @@ export function canManageOrganization(organization: { my_role?: unknown; [key: s
   return organization.my_role === 'admin';
 }
 
+export function canCreateOrganization(workspaceRole: unknown): boolean {
+  return workspaceRole === 'owner' || workspaceRole === 'admin';
+}
+
 export function validateOrganizationDraft(name: string, _description: string): string[] {
   return name.trim() ? [] : ['Name is required'];
 }
