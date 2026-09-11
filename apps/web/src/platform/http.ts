@@ -84,6 +84,21 @@ export function createBrowserTransport(options: BrowserTransportOptions = {}) {
     return result;
   }
 
+  async function sendBinaryWithRefresh(request: HttpRequest): Promise<HttpResult> {
+    if (!base.sendBinary) throw new Error('Binary transport is unavailable');
+    const credential = currentCredential();
+    let result = await base.sendBinary(decorate(request, credential));
+    if (result.status !== 401 || !canRefresh(request, credential)) return result;
+
+    const latest = currentCredential();
+    if (credential?.kind === 'bearer' && latest?.kind === 'bearer' && latest.accessToken !== credential.accessToken) {
+      return base.sendBinary(decorate(request, latest));
+    }
+    await refreshOnce();
+    result = await base.sendBinary(decorate(request));
+    return result;
+  }
+
   async function sendStreamWithRefresh(request: HttpRequest): Promise<HttpStreamResult> {
     const credential = currentCredential();
     let result = await base.sendStream!(decorate(request, credential));
@@ -101,6 +116,9 @@ export function createBrowserTransport(options: BrowserTransportOptions = {}) {
   return {
     async send(request: Parameters<typeof base.send>[0]) {
       return sendWithRefresh(request);
+    },
+    async sendBinary(request: Parameters<typeof base.send>[0]) {
+      return sendBinaryWithRefresh(request);
     },
     async sendStream(request: Parameters<typeof base.send>[0]) {
       if (!base.sendStream) throw new Error('Streaming transport is unavailable');

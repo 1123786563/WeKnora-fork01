@@ -75,6 +75,51 @@ test('forwards streaming requests with the same scoped headers', async () => {
   assert.deepEqual(chunks, ['data: {}\n\n']);
 });
 
+test('forwards authenticated binary requests and retries them after bearer refresh', async () => {
+  let accessToken = 'expired-binary-access';
+  let refreshCalls = 0;
+  const requests: string[] = [];
+  const transport = createBrowserTransport({
+    credential: () => ({ kind: 'bearer', accessToken, refreshToken: 'refresh-binary' }),
+    tenantId: 'tenant-binary',
+    fetcher: (async (_url, init) => {
+      const authorization = init?.headers?.authorization ?? '';
+      requests.push(authorization);
+      if (authorization === 'Bearer expired-binary-access') {
+        return {
+          status: 401,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => ({ success: false }),
+          text: async () => '',
+        };
+      }
+      return {
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/pdf', 'content-disposition': 'inline' }),
+        json: async () => ({ success: false }),
+        text: async () => 'unexpected text read',
+        blob: async () => new Blob(['private pdf'], { type: 'application/pdf' }),
+      };
+    }) satisfies FetchLike,
+    refresh: async () => {
+      refreshCalls += 1;
+      accessToken = 'fresh-binary-access';
+    },
+  });
+
+  const result = await transport.sendBinary!({
+    method: 'GET',
+    url: 'https://api.test/api/v1/knowledge/doc-1/preview',
+    headers: {},
+  });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.headers['content-disposition'], 'inline');
+  assert.equal(await (result.body as Blob).text(), 'private pdf');
+  assert.equal(refreshCalls, 1);
+  assert.deepEqual(requests, ['Bearer expired-binary-access', 'Bearer fresh-binary-access']);
+});
+
 test('refreshes once and retries concurrent bearer requests after 401', async () => {
   let accessToken = 'expired-access';
   let refreshCalls = 0;
