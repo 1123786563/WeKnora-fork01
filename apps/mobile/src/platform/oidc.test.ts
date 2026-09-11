@@ -29,7 +29,18 @@ test('requires the callback state to match the pending device state', () => {
 });
 
 test('creates a standards-compliant S256 PKCE verifier and challenge', async () => {
-  const pkce = await createMobileOIDCPKCE();
+  let algorithm = '';
+  let encoding = '';
+  const pkce = await createMobileOIDCPKCE({
+    async getRandomBytesAsync() { return Uint8Array.from({ length: 32 }, (_, index) => index); },
+    async digestStringAsync(nextAlgorithm, _data, options) {
+      algorithm = nextAlgorithm;
+      encoding = options.encoding;
+      return 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM'.replace(/-/g, '+').replace(/_/g, '/') + '==';
+    },
+  });
   assert.match(pkce.verifier, /^[A-Za-z0-9._~-]{43,128}$/);
   assert.match(pkce.challenge, /^[A-Za-z0-9_-]{43}$/);
+  assert.equal(algorithm, 'SHA-256');
+  assert.equal(encoding, 'base64');
 });
