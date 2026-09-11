@@ -40,7 +40,7 @@ export interface ModelDebugInput {
   input?: string;
   documents?: string[];
   options?: ModelDebugOptions;
-  file?: NativeFileSource;
+  file?: Blob | NativeFileSource;
 }
 export interface ModelDebugResult {
   ok: boolean;
@@ -271,6 +271,13 @@ function successfulData(value: unknown, path: string): unknown {
   return envelope.data;
 }
 
+function acceptedData(value: unknown, path: string): { success: boolean; data: unknown } {
+  const envelope = record(value, path);
+  if (typeof envelope.success !== 'boolean') throw new Error(`${path}.success must be a boolean`);
+  if (!Object.prototype.hasOwnProperty.call(envelope, 'data')) throw new Error(`${path}.data is required`);
+  return { success: envelope.success, data: envelope.data };
+}
+
 function numberValue(value: unknown, path: string): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`${path} must be a finite number`);
   return value;
@@ -314,11 +321,16 @@ function modelDebugFields(options: ModelDebugOptions): Record<string, unknown> {
   };
 }
 
-function multipartForm(fields: Record<string, string>): FormData {
+function multipartForm(fields: Record<string, string>, file?: Blob): FormData {
   if (typeof FormData === 'undefined') throw new Error('multipart form data is unavailable');
   const form = new FormData();
   for (const [key, value] of Object.entries(fields)) form.append(key, value);
+  if (file !== undefined) form.append('file', file);
   return form;
+}
+
+function isNativeFileSource(value: Blob | NativeFileSource): value is NativeFileSource {
+  return typeof Blob === 'undefined' || !(value instanceof Blob);
 }
 
 function parseModelDebug(value: unknown): ModelDebugResult {
@@ -606,10 +618,13 @@ export function createConfigurationApi(request: (input: ClientRequest) => Promis
         if (input.input !== undefined) fields.input = input.input;
         if (input.documents !== undefined) fields.documents = JSON.stringify(input.documents);
         if (input.options !== undefined) fields.options = JSON.stringify(modelDebugFields(input.options));
+        const browserFile = input.file !== undefined && !isNativeFileSource(input.file) ? input.file : undefined;
+        const nativeFile = input.file !== undefined && isNativeFileSource(input.file) ? input.file : undefined;
         return parseModelDebug(await request({
           method: 'POST', path: `/api/v1/models/${id(modelId, 'modelId')}/debug`,
-          ...(input.file === undefined ? {} : { nativeFile: input.file }),
-          ...(Object.keys(fields).length === 0 ? {} : { multipartFields: fields }),
+          ...(browserFile === undefined ? {} : { body: multipartForm(fields, browserFile) }),
+          ...(nativeFile === undefined ? {} : { nativeFile }),
+          ...(browserFile !== undefined || Object.keys(fields).length === 0 ? {} : { multipartFields: fields }),
           ...(signal === undefined ? {} : { signal }),
         }));
       },
@@ -650,9 +665,11 @@ export function createConfigurationApi(request: (input: ClientRequest) => Promis
         },
         async install(catalogId: string, sandboxConfigIds: string[], signal?: AbortSignal): Promise<SkillCatalogInstallResult> {
           if (!Array.isArray(sandboxConfigIds) || sandboxConfigIds.some((value) => typeof value !== 'string' || value.trim() === '')) throw new Error('sandboxConfigIds must be a string array');
-          const data = record(successfulData(await request({ method: 'POST', path: `/api/v1/skills/catalog/${id(catalogId, 'catalogId')}/install`, body: { sandbox_config_ids: sandboxConfigIds }, ...(signal === undefined ? {} : { signal }) }), '/skills/catalog/install'), '/skills/catalog/install.data');
+          const envelope = acceptedData(await request({ method: 'POST', path: `/api/v1/skills/catalog/${id(catalogId, 'catalogId')}/install`, body: { sandbox_config_ids: sandboxConfigIds }, ...(signal === undefined ? {} : { signal }) }), '/skills/catalog/install');
+          const data = record(envelope.data, '/skills/catalog/install.data');
           const installs = stringMap(data.installs, '/skills/catalog/install.data.installs', true);
           const errors = data.errors === undefined ? undefined : stringMap(data.errors, '/skills/catalog/install.data.errors', true);
+          if (!envelope.success && (!errors || Object.keys(errors).length === 0)) throw new Error('/skills/catalog/install.data.errors is required for a partial result');
           return { installs, ...(errors === undefined ? {} : { errors }) };
         },
         async files(catalogId: string, signal?: AbortSignal): Promise<SkillFile[]> {

@@ -227,6 +227,24 @@ test('lists model providers and sends model debug as an injected multipart reque
   ]);
 });
 
+test('sends browser model debug files in the multipart body', async () => {
+  const requests: any[] = [];
+  const file = new Blob(['image'], { type: 'image/png' });
+  const api = createConfigurationApi(async (request) => {
+    requests.push(request);
+    return { success: true, data: {
+      ok: true, elapsed_ms: 4, request: {}, raw_response: 'described', observations: {},
+    } };
+  });
+
+  await api.models.debug('model-1', { input: 'describe', file });
+
+  const body = requests[0]?.body;
+  assert.ok(body instanceof FormData);
+  assert.equal(body.get('input'), 'describe');
+  assert.equal(await (body.get('file') as Blob).text(), 'image');
+});
+
 test('maps catalog and installed-skill endpoints, including encoded file paths and accepted envelopes', async () => {
   const requests: any[] = [];
   const api = createConfigurationApi(async (request) => {
@@ -278,6 +296,21 @@ test('rejects malformed skill status and missing accepted data instead of return
 
   const missingData = createConfigurationApi(async () => ({ success: true }));
   await assert.rejects(() => missingData.skills.catalog.install('cat', []), /data/);
+});
+
+test('returns per-config results from a partially accepted catalog install', async () => {
+  const api = createConfigurationApi(async () => ({
+    success: false,
+    data: {
+      installs: { 'cfg-1': 'skill-1' },
+      errors: { 'cfg-2': 'sandbox config not found' },
+    },
+  }));
+
+  assert.deepEqual(await api.skills.catalog.install('cat-1', ['cfg-1', 'cfg-2']), {
+    installs: { 'cfg-1': 'skill-1' },
+    errors: { 'cfg-2': 'sandbox config not found' },
+  });
 });
 
 test('accepts an actual 204 empty response only for a 204-compatible action', async () => {
