@@ -29,8 +29,9 @@ The accessibility tree showed:
 - button `Download Private preview fixture.md`.
 
 The browser initially showed the authoritative unavailable state while the
-document was `processing`; after the isolated fixture reached `completed`, the
-same route rendered the protected preview content and download action.
+document was `processing`; after the disposable isolated SQLite fixture was
+advanced to `completed`, the same route rendered the protected preview content
+and download action.
 
 This proves authenticated API bytes and the Web success-state renderer. The
 full native browser download-byte assertion and all legacy format variants
