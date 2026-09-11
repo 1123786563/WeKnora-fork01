@@ -146,6 +146,18 @@ func newDockerRemoteClientWithAPI(
 	return adapter
 }
 
+func newDockerRemoteClientWithAPIAndProtection(api dockerEngineAPI, settings dockerRuntimeSettings, lookup ProtectionLookup) *DockerRemoteClient {
+	adapter := &DockerRemoteClient{api: api, settings: settings}
+	if settings.IdleTTL > 0 {
+		sweeper := newDockerIdleSweeper(adapter, settings.IdleTTL)
+		if lookup != nil {
+			sweeper.SetProtectionLookup(lookup.ProtectsSandbox)
+		}
+		adapter.sweeper = sweeper
+	}
+	return adapter
+}
+
 // dockerSettingsFromConfig projects Config, applying the built-in defaults for
 // every value the workspace config leaves unset.
 func dockerSettingsFromConfig(cfg *Config) (dockerRuntimeSettings, error) {

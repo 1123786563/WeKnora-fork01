@@ -5,7 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
+	"github.com/google/uuid"
+
+	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/agent/tools"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/logger"
@@ -23,6 +27,17 @@ func (s *sessionService) AgentQA(
 	eventBus *event.EventBus,
 ) error {
 	sessionID := req.Session.ID
+	if req.Session != nil && req.Session.EngineType == "trpc" {
+		if !s.cfg.Agent.Recovery.AdmissionEnabled || RegisteredAgentRunService() == nil {
+			return errors.New("tRPC agent runs are disabled")
+		}
+		requestID := uuid.NewString()
+		user, _ := json.Marshal(map[string]any{"role": "user", "content": req.Query})
+		assistant, _ := json.Marshal(map[string]any{"role": "assistant", "content": ""})
+		snapshot, _ := json.Marshal(map[string]any{"version": 1, "query": req.Query, "scope": req.KnowledgeBaseIDs, "session_id": req.Session.ID})
+		_, err := RegisteredAgentRunService().Submit(ctx, agentruntime.Admission{Key: agentruntime.RunKey{TenantID: req.Session.TenantID, RunID: uuid.NewString()}, SessionID: req.Session.ID, UserID: req.Session.UserID, RequestID: requestID, AssistantMessageID: req.AssistantMessageID, RequestHash: requestID, Snapshot: snapshot, UserMessage: user, AssistantMessage: assistant, Deadline: time.Now().Add(30 * time.Minute)})
+		return err
+	}
 	// Propagate the session ID so stateful sandbox backends (CubeSandbox) can
 	// bind script execution to a per-session MicroVM instance.
 	ctx = types.WithSessionID(ctx, sessionID)

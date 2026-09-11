@@ -180,93 +180,28 @@ func (s *agentService) CreateAgentEngine(
 ) (interfaces.AgentEngine, error) {
 	logger.Infof(ctx, "Creating agent engine with custom EventBus")
 
-	// 1. Validate config
-	if err := s.ValidateConfig(config); err != nil {
-		return nil, fmt.Errorf("invalid agent config: %w", err)
-	}
-	if chatModel == nil {
-		return nil, fmt.Errorf("chat model is nil after initialization")
-	}
-
-	// 2. Build tool registry
-	toolRegistry := tools.NewToolRegistry()
-	if config.MaxToolOutputChars > 0 {
-		toolRegistry.SetMaxToolOutputSize(config.MaxToolOutputChars)
-	}
-	if err := s.registerTools(ctx, toolRegistry, config, rerankModel, chatModel, sessionID); err != nil {
-		return nil, fmt.Errorf("failed to register tools: %w", err)
-	}
-	s.registerMCPTools(ctx, toolRegistry, config)
-
-	// Register the shell first: file discovery needs a separate tool only
-	// when no shell is available. File access still follows the sandbox
-	// capability independently of the existing SkillsEnabled execution gate.
-	s.registerSandboxShellIfAllowed(ctx, toolRegistry, sessionID, config)
-	s.registerSandboxFileTools(ctx, toolRegistry, sessionID, config)
-	s.registerWebPageFiles(ctx, toolRegistry, config, sessionID, assistantMessageID)
-	// Advertise cached service summaries independently of @mentions. Concrete
-	// tool definitions are published after describe, before the next model request.
-	toolRegistry.PrepareMCPTools(ctx)
-
-	// 3. Resolve knowledge base and selected document metadata
-	kbInfos, selectedDocs := s.resolveKBAndDocInfos(ctx, config)
-
-	// 4. Resolve system prompt template
-	systemPromptTemplate := ""
-	if config.UseCustomSystemPrompt || config.SystemPrompt != "" {
-		systemPromptTemplate = config.ResolveSystemPrompt(config.WebSearchEnabled)
+	capabilities, err := s.prepareAgentCapabilities(
+		ctx, config, chatModel, rerankModel, eventBus, sessionID, assistantMessageID,
+	)
+	if err != nil {
+		return nil, err
 	}
 
-	// 5. Create engine
 	engine := agent.NewAgentEngine(
-		config, chatModel, toolRegistry, eventBus,
-		kbInfos, selectedDocs, sessionID,
-		systemPromptTemplate,
+		capabilities.Config, capabilities.Chat, capabilities.Tools, capabilities.EventBus,
+		capabilities.KnowledgeBases, capabilities.Documents, sessionID,
+		capabilities.SystemPrompt,
 	)
 	engine.SetAppConfig(s.cfg)
-	pinnedMCP := s.resolvePinnedMCPServiceInfos(ctx, config)
-	s.attachPinnedMCPToolNames(toolRegistry, pinnedMCP)
 	engine.SetPinnedMentions(
-		pinnedMCP,
-		s.resolvePinnedSkillInfos(config),
+		capabilities.PinnedMCP,
+		capabilities.PinnedSkills,
 	)
-
-	// Set VLM image describer for MCP tool result image analysis.
-	// When an MCP tool returns images, the engine uses VLM to generate text descriptions
-	// and appends them to the tool result content (since Chat Completions API does not
-	// reliably support images in tool role messages across providers).
-	if config.VLMModelID != "" {
-		if vlmModel, err := s.modelService.GetVLMModel(ctx, config.VLMModelID); err == nil {
-			engine.SetImageDescriber(func(ctx context.Context, imgBytes []byte, prompt string) (string, error) {
-				return vlmModel.Predict(ctx, [][]byte{imgBytes}, prompt)
-			})
-			logger.Infof(ctx, "VLM image describer set for MCP tool result analysis (model: %s)", config.VLMModelID)
-		} else {
-			logger.Warnf(ctx, "Failed to load VLM model %s for MCP image fallback: %v", config.VLMModelID, err)
-		}
+	if capabilities.ImageDescriber != nil {
+		engine.SetImageDescriber(capabilities.ImageDescriber)
 	}
-
-	// TenantSkills is the sandbox image. SkillDirs is a host skill tree used
-	// by tests (and any caller that still points at a host directory); the
-	// QA path no longer fills it.
-	//
-	// The shell is registered above by registerSandboxShellIfAllowed and
-	// follows SkillsEnabled rather than requiring a ready skill to already
-	// exist. offerSkills only gates the skills manager that feeds the model
-	// the installed-skill list and the read_file / shell_exec environment. A sandbox whose skills are still installing —
-	// or that simply has none yet — therefore gets a shell without an
-	// empty skills manager or skill tools that cannot succeed.
-	offerSkills := config.SkillsEnabled &&
-		(len(config.SkillDirs) > 0 || len(config.TenantSkills) > 0)
-	if offerSkills {
-		skillsManager, err := s.initializeSkillsManager(ctx, sessionID, config, toolRegistry)
-		if err != nil {
-			logger.Warnf(ctx, "Failed to initialize skills manager: %v", err)
-		} else if skillsManager != nil {
-			engine.SetSkillsManager(skillsManager)
-			logger.Infof(ctx, "Skills manager initialized with %d skills",
-				len(skillsManager.GetAllMetadata()))
-		}
+	if capabilities.Skills != nil {
+		engine.SetSkillsManager(capabilities.Skills)
 	}
 
 	return engine, nil

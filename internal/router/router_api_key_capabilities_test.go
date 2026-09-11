@@ -32,6 +32,10 @@ func TestConversationRoutesDeclareChatCapability(t *testing.T) {
 		{http.MethodPost, "/api/v1/agent-chat/:session_id"},
 		{http.MethodGet, "/api/v1/messages/:session_id/load"},
 		{http.MethodDelete, "/api/v1/messages/:session_id/:id"},
+		{http.MethodGet, "/api/v1/sessions/:id/runs/:run_id"},
+		{http.MethodGet, "/api/v1/sessions/:id/runs/:run_id/events"},
+		{http.MethodPost, "/api/v1/sessions/:session_id/runs/:run_id/decisions"},
+		{http.MethodPost, "/api/v1/sessions/:session_id/runs/:run_id/cancel"},
 	}
 
 	for _, tc := range cases {

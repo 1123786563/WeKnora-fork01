@@ -53,6 +53,23 @@ var dockerSweepThrottle = struct {
 	last map[string]time.Time
 }{last: make(map[string]time.Time)}
 
+type ProtectionLookup interface {
+	ProtectsSandbox(context.Context, RemoteSandboxSummary) (bool, error)
+}
+type ProtectionLookupFunc func(context.Context, RemoteSandboxSummary) (bool, error)
+
+func (f ProtectionLookupFunc) ProtectsSandbox(ctx context.Context, s RemoteSandboxSummary) (bool, error) {
+	return f(ctx, s)
+}
+
+var dockerResourceProtectionLookup ProtectionLookup
+
+// ConfigureDockerResourceProtection installs the durable Run-resource lookup
+// used by every subsequently constructed Docker sweeper.
+func ConfigureDockerResourceProtection(lookup ProtectionLookup) {
+	dockerResourceProtectionLookup = lookup
+}
+
 // dockerIdleSweeper reclaims containers that have not executed anything for
 // longer than their TTL.
 type dockerIdleSweeper struct {
@@ -61,10 +78,20 @@ type dockerIdleSweeper struct {
 
 	// now is injected by tests.
 	now func() time.Time
+	// protects is consulted immediately before deletion. It represents
+	// durable non-terminal Run references.
+	protects           func(context.Context, RemoteSandboxSummary) (bool, error)
+	protectionRequired bool
 }
 
 func newDockerIdleSweeper(cli *DockerRemoteClient, ttl time.Duration) *dockerIdleSweeper {
-	return &dockerIdleSweeper{client: cli, ttl: ttl, now: time.Now}
+	// Cleanup is fail-closed by default. Production wiring must install the
+	// durable Run-resource lookup before an idle container can be deleted.
+	var protects func(context.Context, RemoteSandboxSummary) (bool, error)
+	if dockerResourceProtectionLookup != nil {
+		protects = dockerResourceProtectionLookup.ProtectsSandbox
+	}
+	return &dockerIdleSweeper{client: cli, ttl: ttl, now: time.Now, protects: protects, protectionRequired: true}
 }
 
 // trigger runs a sweep in the background unless one ran recently. It detaches
@@ -125,11 +152,17 @@ func (s *dockerIdleSweeper) sweep(ctx context.Context) (int, error) {
 		if !s.isIdle(ctx, summary) {
 			continue
 		}
+		if s.isProtected(ctx, summary) {
+			continue
+		}
 		// Re-check immediately before deleting. Listing every container and
 		// stat'ing each one takes long enough on a busy daemon that a session
 		// can be resumed in between, and deleting it then destroys a sandbox
 		// the user is actively working in.
 		if !s.isIdle(ctx, summary) {
+			continue
+		}
+		if s.isProtected(ctx, summary) {
 			continue
 		}
 		if err := s.client.Delete(ctx, summary.ID); err != nil {
@@ -141,6 +174,39 @@ func (s *dockerIdleSweeper) sweep(ctx context.Context) (int, error) {
 		reclaimed++
 	}
 	return reclaimed, nil
+}
+
+func (s *dockerIdleSweeper) isProtected(ctx context.Context, summary RemoteSandboxSummary) bool {
+	if s == nil {
+		return true
+	}
+	if s.protects == nil {
+		return s.protectionRequired
+	}
+	protected, err := s.protects(ctx, summary)
+	return err != nil || protected
+}
+
+// SetProtectionChecker installs the durable resource guard used by recovery.
+// It is deliberately optional so existing Docker deployments retain the
+// original sweeper behavior until the run-resource repository is wired.
+func (s *dockerIdleSweeper) SetProtectionChecker(check func(RemoteSandboxSummary) bool) {
+	if s != nil {
+		if check == nil {
+			s.protects = nil
+			return
+		}
+		s.protects = func(_ context.Context, summary RemoteSandboxSummary) (bool, error) { return check(summary), nil }
+	}
+}
+
+// SetProtectionLookup wires durable run-resource state. Errors are treated as
+// protected so a repository outage cannot turn into destructive cleanup.
+func (s *dockerIdleSweeper) SetProtectionLookup(check func(context.Context, RemoteSandboxSummary) (bool, error)) {
+	if s != nil {
+		s.protects = check
+		s.protectionRequired = true
+	}
 }
 
 // isIdle decides whether one container has gone unused for longer than the

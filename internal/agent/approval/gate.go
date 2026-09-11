@@ -67,7 +67,7 @@ func pubsubChannel() string {
 	return pubsubChannelBase
 }
 
-// Checker answers per-tool MCP policy questions used during registration and execution.
+// Checker is retained as a source-compatible name for the policy checker.
 type Checker interface {
 	IsRequired(ctx context.Context, tenantID uint64, serviceID, toolName string) (bool, error)
 	IsEnabled(ctx context.Context, tenantID uint64, serviceID, toolName string) (bool, error)
@@ -106,6 +106,18 @@ type MCPApproval interface {
 	RequestAndWait(ctx context.Context, req PendingRequest) (Decision, error)
 }
 
+// ApprovalChecker is the side-effect-free policy path.
+type ApprovalChecker interface {
+	NeedsApproval(ctx context.Context, tenantID uint64, serviceID, toolName string) bool
+	IsEnabled(ctx context.Context, tenantID uint64, serviceID, toolName string) (bool, error)
+}
+
+// ApprovalWaiter owns execution-time in-process waiters. It is separate from
+// ApprovalChecker so recovery decisions cannot approve a new tool call.
+type ApprovalWaiter interface {
+	RequestAndWait(ctx context.Context, req PendingRequest) (Decision, error)
+}
+
 // OAuthPendingRequest carries everything needed to prompt the user to authorize
 // an OAuth-enabled MCP service mid-conversation and block until they do.
 type OAuthPendingRequest struct {
@@ -119,6 +131,7 @@ type OAuthPendingRequest struct {
 	ServiceName        string
 	MCPToolName        string
 	ToolCallID         string
+	ResourceRef        string
 	// WaitTimeout overrides the gate's default wait timeout when > 0. The wait
 	// is always bounded (either by this value, the gate default, or ctx
 	// cancellation) so the blocked goroutine never leaks.
@@ -496,6 +509,7 @@ func (g *Gate) RequestOAuthAndWait(ctx context.Context, req OAuthPendingRequest)
 		Metadata: map[string]interface{}{
 			"assistant_message_id": req.AssistantMessageID,
 			"pending_id":           pendingID,
+			"resource_ref":         req.ResourceRef,
 		},
 		RequestID: req.RequestID,
 	}); err != nil {

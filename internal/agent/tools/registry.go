@@ -7,6 +7,7 @@ import (
 	"sort"
 	"unicode/utf8"
 
+	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/common"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -93,6 +94,20 @@ func (r *ToolRegistry) ListTools() []string {
 	names := make([]string, 0, len(r.tools))
 	for name := range r.tools {
 		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// DeferredToolNames returns the stable identities retained for execution but
+// intentionally omitted from the model-facing tool definitions (for example,
+// deferred MCP tools). The result is sorted for durable snapshot equality.
+func (r *ToolRegistry) DeferredToolNames() []string {
+	names := make([]string, 0)
+	for name, deferred := range r.deferred {
+		if deferred {
+			names = append(names, name)
+		}
 	}
 	sort.Strings(names)
 	return names
@@ -226,6 +241,24 @@ func (r *ToolRegistry) execute(ctx context.Context, tool types.Tool, args json.R
 	if provider, ok := tool.(outputLimitProvider); ok {
 		if toolLimit := provider.OutputLimitChars(args); toolLimit > maxOutput {
 			maxOutput = toolLimit
+		}
+	}
+	// MCP wrappers own a later boundary, after policy, human approval and
+	// OAuth connection checks. Other tools dispatch after registry validation.
+	if _, durable := agentruntime.ToolDispatchFromContext(ctx); durable {
+		if preflight, ok := tool.(types.ToolPreflight); ok {
+			preparedCtx, err := preflight.Preflight(ctx, args)
+			if err != nil {
+				return nil, err
+			}
+			ctx = preparedCtx
+		}
+	}
+	switch tool.(type) {
+	case *MCPTool, *MCPRegisteredTool, *MCPCallTool:
+	default:
+		if err := agentruntime.BeforeToolDispatch(ctx); err != nil {
+			return nil, err
 		}
 	}
 	result, execErr := tool.Execute(WithOutputBudget(ctx, maxOutput), args)

@@ -93,6 +93,13 @@ require (
 )
 
 require (
+	github.com/bmatcuk/doublestar/v4 v4.10.0 // indirect
+	github.com/creack/pty v1.1.24 // indirect
+	trpc.group/trpc-go/trpc-a2a-go v0.2.5 // indirect
+	trpc.group/trpc-go/trpc-agent-go v1.10.0
+)
+
+require (
 	cloud.google.com/go/auth v0.20.0 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
@@ -164,7 +171,7 @@ require (
 	github.com/gabriel-vasile/mimetype v1.4.12 // indirect
 	github.com/getsentry/sentry-go v0.30.0 // indirect
 	github.com/gin-contrib/sse v1.1.0 // indirect
-	github.com/go-ego/gse v0.80.3 // indirect
+	github.com/go-ego/gse v1.0.0 // indirect
 	github.com/go-ini/ini v1.67.0 // indirect
 	github.com/go-json-experiment/json v0.0.0-20260214004413-d219187c3433 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
@@ -239,7 +246,7 @@ require (
 	github.com/mailru/easyjson v0.9.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.22 // indirect
-	github.com/mattn/go-sqlite3 v1.14.24 // indirect
+	github.com/mattn/go-sqlite3 v1.14.32 // indirect
 	github.com/milvus-io/milvus-proto/go-api/v2 v2.6.15 // indirect
 	github.com/milvus-io/milvus/pkg/v2 v2.6.7-0.20251201120310-af64f2acba38 // indirect
 	github.com/minio/crc64nvme v1.1.1 // indirect

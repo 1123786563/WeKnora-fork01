@@ -22,6 +22,7 @@ func newSweeperFixture(
 	engine.list = containers
 	docker := newTestDockerClient(t, engine)
 	sweeper := newDockerIdleSweeper(docker, ttl)
+	sweeper.SetProtectionChecker(func(RemoteSandboxSummary) bool { return false })
 	sweeper.now = func() time.Time { return now }
 	return sweeper, engine
 }
@@ -161,6 +162,20 @@ func TestDockerIdleSweeperHonoursPerContainerTTL(t *testing.T) {
 	})
 	engine.statResult[dockerActivityMarker] = container.PathStat{Mtime: now.Add(-2 * time.Hour)}
 
+	reclaimed, err := sweeper.sweep(context.Background())
+	require.NoError(t, err)
+	require.Zero(t, reclaimed)
+	require.Empty(t, engine.removed)
+}
+
+func TestDockerIdleSweeperProtectsReferencedSandbox(t *testing.T) {
+	now := time.Now().UTC()
+	sweeper, engine := newSweeperFixture(t, time.Minute, now, []container.Summary{{
+		ID: "referenced", State: "running", Created: now.Add(-2 * time.Hour).Unix(),
+		Labels: map[string]string{dockerManagedLabel: "true"},
+	}})
+	engine.statResult[dockerActivityMarker] = container.PathStat{Mtime: now.Add(-2 * time.Hour)}
+	sweeper.SetProtectionChecker(func(summary RemoteSandboxSummary) bool { return summary.ID == "referenced" })
 	reclaimed, err := sweeper.sweep(context.Background())
 	require.NoError(t, err)
 	require.Zero(t, reclaimed)

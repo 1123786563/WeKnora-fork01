@@ -67,7 +67,12 @@ func main() {
 		router *gin.Engine,
 		resourceCleaner interfaces.ResourceCleaner,
 		systemSettingSvc interfaces.SystemSettingService,
+		agentRuntime *container.AgentRuntime,
 	) error {
+		if err := container.ValidateAgentRuntimeConfig(cfg); err != nil {
+			return err
+		}
+
 		// Create HTTP server
 		server := &http.Server{
 			Handler: router,
@@ -86,6 +91,8 @@ func main() {
 		// effort: an error here only warns (Redis may legitimately be
 		// disabled in lite-mode deployments — the service no-ops in
 		// that case anyway).
+		agentRuntime.Start(ctx)
+
 		if err := systemSettingSvc.SubscribeRedis(ctx); err != nil {
 			logger.Warnf(ctx, "[system_settings] subscribe failed: %v", err)
 		}
@@ -119,6 +126,9 @@ func main() {
 				server.Close()
 			}
 
+			// Cancel the application context so the worker performs bounded drain.
+			done()
+			agentRuntime.Drain()
 			logger.Info(context.Background(), "Cleaning up resources...")
 			errs := resourceCleaner.Cleanup(shutdownCtx)
 			if len(errs) > 0 {

@@ -341,66 +341,92 @@ func (t *ShellExecTool) OutputLimitChars(args json.RawMessage) int {
 	return maxShellExecVisibleBytes
 }
 
-// Execute runs the requested command inside the current session's sandbox.
-func (t *ShellExecTool) Execute(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
-	logger.Infof(ctx, "[Tool][ShellExec] Execute started")
+type shellPreflightKey struct{}
 
+type preparedShellCall struct {
+	tool                        *ShellExecTool
+	args                        string
+	input                       ShellExecInput
+	command, sessionID, workDir string
+	timeout                     time.Duration
+	env, supplied               map[string]string
+}
+
+// Preflight checks availability, command/stdin/path safety and credentials.
+// Resolved secrets remain only in this call's context, never in its journal.
+func (t *ShellExecTool) Preflight(ctx context.Context, args json.RawMessage) (context.Context, error) {
+	prepared, rejected := t.prepareShellCall(ctx, args)
+	if rejected != nil {
+		return ctx, fmt.Errorf("%s", rejected.Error)
+	}
+	return context.WithValue(ctx, shellPreflightKey{}, prepared), nil
+}
+
+func (t *ShellExecTool) prepareShellCall(
+	ctx context.Context, args json.RawMessage,
+) (*preparedShellCall, *types.ToolResult) {
 	var input ShellExecInput
 	if err := json.Unmarshal(args, &input); err != nil {
-		return &types.ToolResult{
+		return nil, &types.ToolResult{
 			Success: false,
 			Error:   fmt.Sprintf("Failed to parse args: %v", err),
-		}, nil
+		}
 	}
 
 	if t.executor == nil {
-		return &types.ToolResult{
+		return nil, &types.ToolResult{
 			Success: false,
 			Error:   "shell_exec is not available in this deployment (remote sandbox required)",
-		}, nil
+		}
 	}
 	if input.SkillName != "" && t.skillEnvironment == nil {
-		return &types.ToolResult{Success: false, Error: "no skill environment is available for this call; omit skill_name for system commands"}, nil
+		return nil, &types.ToolResult{
+			Success: false,
+			Error:   "no skill environment is available for this call; omit skill_name for system commands",
+		}
 	}
 
 	if len(input.Stdin) > 65536 {
-		return &types.ToolResult{Success: false, Error: "stdin exceeds 65536 bytes; write the input to a workspace file and redirect from it"}, nil
+		return nil, &types.ToolResult{
+			Success: false,
+			Error:   "stdin exceeds 65536 bytes; write the input to a workspace file and redirect from it",
+		}
 	}
 	command := strings.TrimSpace(input.Command)
 	if command == "" {
-		return &types.ToolResult{
+		return nil, &types.ToolResult{
 			Success: false,
 			Error:   "command is required",
-		}, nil
+		}
 	}
 	if len(command) > shellExecMaxCommandBytes {
-		return &types.ToolResult{
+		return nil, &types.ToolResult{
 			Success: false,
 			Error: fmt.Sprintf(
 				"command too long (%d bytes; max %d). Put the file in write_sandbox_file, then run it with shell_exec",
 				len(command), shellExecMaxCommandBytes,
 			),
-		}, nil
+		}
 	}
 	if reason := checkShellExecBlacklist(command); reason != "" {
 		logger.Warnf(ctx, "[Tool][ShellExec] rejected by blacklist: %s command=%q",
 			reason, maskCommandAssignments(command))
-		return &types.ToolResult{
+		return nil, &types.ToolResult{
 			Success: false,
 			Error:   fmt.Sprintf("command rejected by shell_exec safety guard: %s", reason),
-		}, nil
+		}
 	}
 	if reason := rejectExecutableStdin(command, input.Stdin); reason != "" {
 		logger.Warnf(ctx, "[Tool][ShellExec] rejected executable stdin: %s command=%q",
 			reason, maskCommandAssignments(command))
-		return &types.ToolResult{Success: false, Error: reason}, nil
+		return nil, &types.ToolResult{Success: false, Error: reason}
 	}
 	sessionID := resolveSessionID(ctx)
 	if sessionID == "" {
-		return &types.ToolResult{
+		return nil, &types.ToolResult{
 			Success: false,
 			Error:   "no session ID in context; shell_exec must run inside an agent turn",
-		}, nil
+		}
 	}
 
 	workDir := strings.TrimSpace(input.WorkDir)
@@ -412,13 +438,13 @@ func (t *ShellExecTool) Execute(ctx context.Context, args json.RawMessage) (*typ
 	}
 	cleanWorkDir := path.Clean(workDir)
 	if !t.workDirAllowed(cleanWorkDir) {
-		return &types.ToolResult{
+		return nil, &types.ToolResult{
 			Success: false,
 			Error: fmt.Sprintf(
 				"work_dir %q is outside the allowed sandbox roots %s",
 				input.WorkDir, strings.Join(t.allowedWorkDirRoots(), ", "),
 			),
-		}, nil
+		}
 	}
 	workDir = cleanWorkDir
 
@@ -449,21 +475,21 @@ func (t *ShellExecTool) Execute(ctx context.Context, args json.RawMessage) (*typ
 	if t.envResolver != nil {
 		resolved, missing, rerr := t.envResolver.ResolveEnv(ctx, input.SkillName)
 		if rerr != nil {
-			return &types.ToolResult{
+			return nil, &types.ToolResult{
 				Success: false,
 				Error:   fmt.Sprintf("failed to resolve environment variables: %v", rerr),
-			}, nil
+			}
 		}
 		missing = stillMissing(missing, supplied)
 		if len(missing) > 0 {
-			return &types.ToolResult{
+			return nil, &types.ToolResult{
 				Success: false,
 				Error: fmt.Sprintf(
 					"skill %q needs the environment variable(s) %s, which nobody has set yet. "+
 						"Ask the user for them and pass them in this call's env, "+
 						"or have them set the values under Settings → Sandbox secrets.",
 					input.SkillName, strings.Join(missing, ", ")),
-			}, nil
+			}
 		}
 		if len(resolved) > 0 && env == nil {
 			env = make(map[string]string)
@@ -476,6 +502,26 @@ func (t *ShellExecTool) Execute(ctx context.Context, args json.RawMessage) (*typ
 		// `export KEY=test` would overwrite a working stored credential.
 		supplied = dropResolvedNames(supplied, resolved)
 	}
+
+	return &preparedShellCall{
+		tool: t, args: string(args), input: input, command: command, sessionID: sessionID,
+		workDir: workDir, timeout: timeout, env: env, supplied: supplied,
+	}, nil
+}
+
+// Execute runs the requested command inside the current session's sandbox.
+func (t *ShellExecTool) Execute(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
+	logger.Infof(ctx, "[Tool][ShellExec] Execute started")
+	prepared, ok := ctx.Value(shellPreflightKey{}).(*preparedShellCall)
+	if !ok || prepared.tool != t || prepared.args != string(args) {
+		var rejected *types.ToolResult
+		prepared, rejected = t.prepareShellCall(ctx, args)
+		if rejected != nil {
+			return rejected, nil
+		}
+	}
+	input, command, sessionID := prepared.input, prepared.command, prepared.sessionID
+	workDir, timeout, env, supplied := prepared.workDir, prepared.timeout, prepared.env, prepared.supplied
 	execCommand := command
 	if input.SkillName != "" && t.skillEnvironment != nil {
 		var prepErr error

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/agent/approval"
+	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/mcp"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -139,6 +140,14 @@ func (t *MCPTool) Execute(ctx context.Context, args json.RawMessage) (*types.Too
 
 	// Human approval gate for dangerous tools (issue #1173)
 	if t.gate != nil {
+		if _, durable := agentruntime.ToolDispatchFromContext(ctx); durable {
+			meta, ok := ToolExecFromContext(ctx)
+			tenantID, _ := types.TenantIDFromContext(ctx)
+			if (!ok || meta == nil || meta.EventBus == nil) &&
+				t.gate.NeedsApproval(ctx, tenantID, t.service.ID, t.mcpTool.Name) {
+				return nil, fmt.Errorf("required MCP approval context is unavailable")
+			}
+		}
 		if meta, ok := ToolExecFromContext(ctx); ok && meta != nil && meta.EventBus != nil {
 			tenantID, _ := types.TenantIDFromContext(ctx)
 			if t.gate.NeedsApproval(ctx, tenantID, t.service.ID, t.mcpTool.Name) {
@@ -166,6 +175,9 @@ func (t *MCPTool) Execute(ctx context.Context, args json.RawMessage) (*types.Too
 					ToolCallID:         meta.ToolCallID,
 				})
 				if waitErr != nil {
+					if _, durable := agentruntime.ToolDispatchFromContext(ctx); durable {
+						return nil, waitErr
+					}
 					return &types.ToolResult{
 						Success: false,
 						Error:   fmt.Sprintf("Tool approval failed: %v", waitErr),
@@ -208,7 +220,15 @@ func (t *MCPTool) Execute(ctx context.Context, args json.RawMessage) (*types.Too
 					}
 					freshCtx, freshCancel := context.WithTimeout(meta.ApprovalCtx, freshTimeout)
 					defer freshCancel()
-					ctx = freshCtx
+					ctx = WithToolExecContext(agentruntime.CarryToolDispatch(ctx, freshCtx), meta)
+				}
+				// Persist approved edits using the fresh, request-bound execution
+				// budget as well; the old per-tool context may have expired while
+				// waiting for the human. Request cancellation still propagates.
+				if len(decision.ModifiedArgs) > 0 {
+					if err := agentruntime.ApproveToolArguments(ctx, args); err != nil {
+						return nil, err
+					}
 				}
 			}
 		}
@@ -239,8 +259,14 @@ func (t *MCPTool) Execute(ctx context.Context, args json.RawMessage) (*types.Too
 			}()
 		}
 
+		if err := agentruntime.BeforeToolDispatch(callCtx); err != nil {
+			return nil, err
+		}
 		result, err := client.CallTool(callCtx, t.mcpTool.Name, input)
-		if err != nil && !isStdio {
+		_, durable := agentruntime.ToolDispatchFromContext(callCtx)
+		// The journal must classify uncertainty before retrying a durable call;
+		// an implicit transport reconnect may duplicate a successful side effect.
+		if err != nil && !isStdio && !durable {
 			logger.GetLogger(callCtx).Warnf("MCP tool call failed, retrying with fresh connection: %v", err)
 			_ = client.Disconnect()
 
@@ -258,6 +284,9 @@ func (t *MCPTool) Execute(ctx context.Context, args json.RawMessage) (*types.Too
 	result, err := connectAndCall(ctx)
 	if err != nil {
 		logger.GetLogger(ctx).Errorf("MCP tool call failed: %v", err)
+		if _, durable := agentruntime.ToolDispatchFromContext(ctx); durable {
+			return nil, err
+		}
 		return &types.ToolResult{
 			Success: false,
 			Error:   oauthAwareConnectError(t.service, err),

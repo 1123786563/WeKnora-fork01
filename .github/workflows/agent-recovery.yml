@@ -1,0 +1,52 @@
+name: agent recovery acceptance
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'internal/agent/**'
+      - 'internal/application/repository/agent_run*.go'
+      - 'internal/application/service/agent_run*.go'
+      - 'internal/container/agent_runtime.go'
+      - 'internal/agent/recoverytest/**'
+      - 'docs/superpowers/plans/trpc-recovery-acceptance.md'
+
+jobs:
+  recovery:
+    strategy:
+      fail-fast: false
+      matrix:
+        database: [sqlite, postgres]
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: weknora
+          POSTGRES_PASSWORD: weknora
+          POSTGRES_DB: weknora
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd="pg_isready -U weknora -d weknora"
+          --health-interval=10s --health-timeout=5s --health-retries=5
+    env:
+      CGO_ENABLED: '1'
+      GOWORK: off
+      TRPC_TEST_POSTGRES_DSN: postgres://weknora:weknora@localhost:5432/weknora?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Run recovery acceptance tests (${{ matrix.database }})
+        run: go test -race ./internal/agent/recoverytest -count=1 -v
+      - name: Record provider availability
+        if: always()
+        run: |
+          if [ -n "${TRPC_RECOVERY_GRAPH_PROVIDER:-}" ]; then
+            echo 'A real graph provider was configured; crash cases were eligible to run.'
+          else
+            echo 'TRPC_RECOVERY_GRAPH_PROVIDER is unset; SIGKILL cases were skipped.'
+            echo 'The gate and harness contract tests still ran; this job does not claim crash recovery.'
+          fi

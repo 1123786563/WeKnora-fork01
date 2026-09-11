@@ -948,6 +948,35 @@ func (m *SessionBoundManager) resolveSession(
 	return m.lifecycle.Resolve(ctx, key)
 }
 
+// ObserveExecution performs a recovery-only lookup. It never calls Create:
+// an absent binding or instance is reported as missing so the caller can park
+// the Run instead of silently switching to an empty workspace.
+func (m *SessionBoundManager) ObserveExecution(ctx context.Context, ref ExecutionRef, recovery ExecutionRecovery) (ExecutionObservation, error) {
+	if m == nil || recovery == nil {
+		return ExecutionObservation{State: "unknown"}, errors.New("sandbox execution recovery is unavailable")
+	}
+	if err := ref.Validate(); err != nil {
+		return ExecutionObservation{State: "unknown"}, err
+	}
+	if ref.Provider != string(m.client.Provider()) {
+		return ExecutionObservation{State: "unknown"}, errors.New("sandbox execution provider mismatch")
+	}
+	key := SessionSandboxKey{TenantID: ref.TenantID, SessionID: ref.SessionID}
+	binding, err := m.bindings.Get(ctx, key)
+	if err != nil {
+		return ExecutionObservation{State: "unknown"}, err
+	}
+	if binding != nil {
+		if err := binding.ValidateRecovery(key); err != nil {
+			return ExecutionObservation{State: "unknown"}, err
+		}
+	}
+	if binding == nil || binding.SandboxID != ref.InstanceID || binding.ConfigID != ref.ConfigID || binding.Generation != ref.Generation || binding.Provider != RemoteProvider(ref.Provider) || binding.TenantID != ref.TenantID || binding.SessionID != ref.SessionID {
+		return ExecutionObservation{State: "missing"}, nil
+	}
+	return recovery.Observe(ctx, ref)
+}
+
 // peekBoundSandboxState reads provider listing for the bound sandbox without
 // Connect. The bool is "a binding exists for this provider", not "List
 // returned a row": a list miss still reports bound so lookup cannot pretend

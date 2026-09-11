@@ -85,6 +85,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/models/limiter"
 	"github.com/Tencent/WeKnora/internal/models/utils/ollama"
 	"github.com/Tencent/WeKnora/internal/router"
+	"github.com/Tencent/WeKnora/internal/sandbox"
 	"github.com/Tencent/WeKnora/internal/storageallowlist"
 	"github.com/Tencent/WeKnora/internal/stream"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
@@ -155,6 +156,14 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewKnowledgeTagRepository))
 	must(container.Provide(repository.NewSessionRepository))
 	must(container.Provide(repository.NewMessageRepository))
+	must(container.Provide(repository.NewAgentRunStore))
+	// Install the durable resource guard before any Docker client is resolved;
+	// idle cleanup must fail closed when the lookup is unavailable.
+	must(container.Provide(service.NewGormAgentRunResourceRepository))
+	must(container.Invoke(registerAgentRunResourceProtection))
+	// Resolve the runtime through this wrapper so the durable resource
+	// repository is always connected to the post-claim recovery hook.
+	must(container.Provide(newAgentRuntime))
 	must(container.Provide(repository.NewMessageSuggestionRepository))
 	must(container.Provide(repository.NewModelRepository))
 	must(container.Provide(repository.NewUserRepository))
@@ -1800,4 +1809,12 @@ func startAuditLogRetention(
 		runner.Stop()
 		return nil
 	})
+}
+
+func registerAgentRunResourceProtection(repo *service.GormAgentRunResourceRepository) {
+	if repo == nil {
+		sandbox.ConfigureDockerResourceProtection(nil)
+		return
+	}
+	sandbox.ConfigureDockerResourceProtection(repo)
 }

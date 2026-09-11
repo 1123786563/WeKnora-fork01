@@ -5,11 +5,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	filesvc "github.com/Tencent/WeKnora/internal/application/service/file"
 	"io"
 	"os"
 	"regexp"
 	"strings"
+
+	filesvc "github.com/Tencent/WeKnora/internal/application/service/file"
 
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -203,6 +204,28 @@ func (t *DataAnalysisTool) Cleanup(ctx context.Context) {
 	t.createdTables = nil
 }
 
+type dataAnalysisPreflightKey struct{}
+
+type dataAnalysisPreflight struct {
+	tool *DataAnalysisTool
+	args string
+}
+
+// Preflight authorizes the knowledge before any durable dispatch or file load.
+func (t *DataAnalysisTool) Preflight(ctx context.Context, args json.RawMessage) (context.Context, error) {
+	var input DataAnalysisInput
+	if err := json.Unmarshal(args, &input); err != nil {
+		return ctx, err
+	}
+	if t.scopeEnforced {
+		_, err := authorizeKnowledgeInSearchTargets(ctx, t.searchTargets, input.KnowledgeID, t.knowledgeService)
+		if err != nil {
+			return ctx, err
+		}
+	}
+	return context.WithValue(ctx, dataAnalysisPreflightKey{}, dataAnalysisPreflight{tool: t, args: string(args)}), nil
+}
+
 // Execute executes the SQL query on DuckDB (only read-only queries are allowed)
 func (t *DataAnalysisTool) Execute(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
 	logger.Infof(ctx, "[Tool][DataAnalysis] Execute started for session: %s", t.sessionID)
@@ -214,8 +237,9 @@ func (t *DataAnalysisTool) Execute(ctx context.Context, args json.RawMessage) (*
 			Error:   fmt.Sprintf("Failed to parse input args: %v", err),
 		}, err
 	}
-	if t.scopeEnforced {
-		if _, err := authorizeKnowledgeInSearchTargets(ctx, t.searchTargets, input.KnowledgeID, t.knowledgeService); err != nil {
+	prepared, ok := ctx.Value(dataAnalysisPreflightKey{}).(dataAnalysisPreflight)
+	if !ok || prepared.tool != t || prepared.args != string(args) {
+		if _, err := t.Preflight(ctx, args); err != nil {
 			return &types.ToolResult{Success: false, Error: err.Error()}, err
 		}
 	}

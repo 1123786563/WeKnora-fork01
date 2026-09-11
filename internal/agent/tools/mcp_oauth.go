@@ -168,6 +168,7 @@ func waitForMCPOAuthAuthorization(
 		ServiceName:        service.Name,
 		MCPToolName:        mcpToolName,
 		ToolCallID:         toolCallID,
+		ResourceRef:        service.ID,
 		WaitTimeout:        oauthWaitTimeout(sess),
 	})
 	if waitErr != nil || !decision.Approved {

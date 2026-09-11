@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	stderrors "errors"
 	"net/http"
 
@@ -47,6 +48,7 @@ type Handler struct {
 	// selected agent so the sandbox is created with the same config a
 	// conversation turn would use.
 	terminalService *service.SandboxTerminalService
+	agentRunService *service.AgentRunService
 }
 
 // NewHandler creates a new instance of Handler with all necessary dependencies
@@ -144,10 +146,16 @@ func (h *Handler) CreateSession(c *gin.Context) {
 	)
 
 	// Create session object with base properties
+	engine, parseErr := types.ParseAgentEngine(string(request.EngineType))
+	if parseErr != nil {
+		c.Error(errors.NewBadRequestError(parseErr.Error()))
+		return
+	}
 	createdSession := &types.Session{
 		TenantID:    tenantID.(uint64),
 		Title:       request.Title,
 		Description: types.SanitizeClientSessionDescription(request.Description, ""),
+		EngineType:  string(engine),
 	}
 	// Attach the calling user as the session owner when available.
 	// API-key callers scope sessions per external user when configured;
@@ -314,6 +322,21 @@ func (h *Handler) UpdateSession(c *gin.Context) {
 
 	session.ID = id
 	session.TenantID = tenantID.(uint64)
+	if existing, loadErr := h.sessionService.GetOwnedSession(ctx, id); loadErr != nil {
+		c.Error(errors.NewNotFoundError(loadErr.Error()))
+		return
+	} else {
+		current, parseErr := types.ParseAgentEngine(existing.EngineType)
+		if parseErr != nil {
+			c.Error(errors.NewInternalServerError(parseErr.Error()))
+			return
+		}
+		if err := ValidateEngineUpdate(current, types.AgentEngineType(session.EngineType)); err != nil {
+			c.Error(errors.NewConflictError(err.Error()))
+			return
+		}
+		session.EngineType = string(current)
+	}
 
 	// Call service to update session
 	if err := h.sessionService.UpdateSession(ctx, &session); err != nil {
@@ -343,6 +366,20 @@ func (h *Handler) UpdateSession(c *gin.Context) {
 	})
 }
 
+// fenceSessionRuns prevents durable workers from taking over while legacy
+// session deletion/clearing removes the visible session state.
+func (h *Handler) fenceSessionRuns(ctx context.Context, sessionID string) error {
+	runs := h.runService()
+	if runs == nil {
+		return errors.NewServiceUnavailableError("durable agent runs are unavailable")
+	}
+	tenant, ok := types.TenantIDFromContext(ctx)
+	if !ok || tenant == 0 {
+		return errors.NewUnauthorizedError("Unauthorized")
+	}
+	return runs.DeleteSessionRuns(ctx, tenant, sessionID)
+}
+
 // DeleteSession godoc
 // @Summary      删除会话
 // @Description  删除指定的会话
@@ -366,6 +403,14 @@ func (h *Handler) DeleteSession(c *gin.Context) {
 		return
 	}
 
+	if _, ownErr := h.sessionService.GetOwnedSession(ctx, id); ownErr != nil {
+		c.Error(errors.NewNotFoundError("session not found"))
+		return
+	}
+	if err := h.fenceSessionRuns(ctx, id); err != nil {
+		c.Error(errors.NewInternalServerError(err.Error()))
+		return
+	}
 	// Call service to delete session
 	if err := h.sessionService.DeleteSession(ctx, id); err != nil {
 		if stderrors.Is(err, errors.ErrSessionNotFound) {
@@ -409,6 +454,14 @@ func (h *Handler) ClearSessionMessages(c *gin.Context) {
 	}
 
 	logger.Infof(ctx, "Clearing all messages for session: %s", id)
+	if _, ownErr := h.sessionService.GetOwnedSession(ctx, id); ownErr != nil {
+		c.Error(errors.NewNotFoundError("session not found"))
+		return
+	}
+	if err := h.fenceSessionRuns(ctx, id); err != nil {
+		c.Error(errors.NewInternalServerError(err.Error()))
+		return
+	}
 
 	if err := h.messageService.ClearSessionMessages(ctx, id); err != nil {
 		if stderrors.Is(err, errors.ErrSessionNotFound) {
@@ -457,6 +510,19 @@ func (h *Handler) BatchDeleteSessions(c *gin.Context) {
 	}
 
 	if req.DeleteAll {
+		sessions, listErr := h.sessionService.GetSessionsByTenant(ctx)
+		if listErr != nil {
+			c.Error(errors.NewInternalServerError(listErr.Error()))
+			return
+		}
+		for _, sess := range sessions {
+			if sess != nil {
+				if err := h.fenceSessionRuns(ctx, sess.ID); err != nil {
+					c.Error(errors.NewInternalServerError(err.Error()))
+					return
+				}
+			}
+		}
 		if err := h.sessionService.DeleteAllSessions(ctx); err != nil {
 			logger.ErrorWithFields(ctx, err, nil)
 			c.Error(errors.NewInternalServerError(err.Error()))
@@ -488,6 +554,16 @@ func (h *Handler) BatchDeleteSessions(c *gin.Context) {
 		return
 	}
 
+	for _, id := range sanitizedIDs {
+		if _, ownErr := h.sessionService.GetOwnedSession(ctx, id); ownErr != nil {
+			c.Error(errors.NewNotFoundError("session not found"))
+			return
+		}
+		if err := h.fenceSessionRuns(ctx, id); err != nil {
+			c.Error(errors.NewInternalServerError(err.Error()))
+			return
+		}
+	}
 	if err := h.sessionService.BatchDeleteSessions(ctx, sanitizedIDs); err != nil {
 		if stderrors.Is(err, errors.ErrSessionNotFound) {
 			logger.Warnf(ctx, "No visible sessions found for batch delete")
