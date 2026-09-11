@@ -28,13 +28,10 @@ export function OrganizationsScreen() {
     try {
       const result = await api.list();
       setOrganizations(result.items);
-      if (selected) {
-        const next = result.items.find((item) => item.id === selected.id);
-        if (next) setSelected(next);
-      }
+      setSelected((current) => current ? result.items.find((item) => item.id === current.id) || null : null);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to load organizations'); }
     finally { setLoading(false); }
-  }, [api, selected]);
+  }, [api]);
 
   useEffect(() => { void load(); }, [load]);
 
