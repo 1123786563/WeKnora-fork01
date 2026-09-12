@@ -87,3 +87,21 @@ React：`apps/web`、`apps/desktop`、`apps/mobile`、`apps/embed`，共享层 `
 | embed | minimal→必修完成 | 共享 markdown 渲染+knowledge_references 源列表、上传门控（data-URI 附件入 body）、embed.* i18n 域+default_locale | 已集成，header 模式/受保护资源预览待做 |
 
 live 基线截图：live-{agents,organizations,integrations-embed,integrations-api}.png（Round 17）。
+
+## KB 详情面审计结论（2026-09-12，Round 24 审计 / Round 26 起实施）
+
+成熟度：documents list=partial · document detail/preview=partial · processing timeline=missing · wiki=stub · FAQ=partial · graph=stub · knowledge-settings=partial。
+
+必修 10 项（实施中）：
+1. FAQ/Wiki 50 条硬上限无分页（静默丢数据）。
+2. reparse/cancel 未接入 UI（客户端已有，routes_knowledge.go:110）+ processing timeline 缺失。
+3. Documents 页调试文案泄漏（已修复 c5599c6）。
+4. 设置按钮绕过模型就绪门控（已修复 16b4437，openKbSettings 统一）。
+5. 六个详情面零权限门控。
+6. FAQ 型 KB 误渲染文档页（main.tsx 路由不分类型）。
+7. 详情面 i18n 零覆盖（knowledgeBase/knowledgeEditor/wikiBrowser/FAQ 键未移植——实施中）。
+8. 上传流程：无拖拽/多文件/上传确认弹窗。
+9. 批量删除无确认、move/tags 用 prompt()。
+10. 搜索无防抖 + loading 哨兵（已修复 16b4437）。
+
+live 证据：live-kb-documents.png、live-kb-detail.png（未初始化路由）、routing 不一致与 debug 泄漏均已在实施前修复。
