@@ -9,6 +9,12 @@ semantic:
   replicas: 1
   image: weknora/semantic:0.6.8
   secretName: weknora-semantic-secrets
+  # Either mount a TLS secret (recommended) or explicitly opt into
+  # plaintext for isolated internal deployments - the service refuses to
+  # boot otherwise (config validation is fail-closed).
+  tls:
+    secretName: ""
+  allowPlaintext: false
   resources:
     requests:
       cpu: 200m

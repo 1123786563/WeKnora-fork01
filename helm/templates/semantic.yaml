@@ -35,6 +35,17 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.semantic.secretName }}
                   key: query-dsn
+            {{- if .Values.semantic.tls.secretName }}
+            - name: SEMANTIC_TLS_CERT
+              value: /tls/tls.crt
+            - name: SEMANTIC_TLS_KEY
+              value: /tls/tls.key
+            {{- else if .Values.semantic.allowPlaintext }}
+            # Explicit operator opt-in for non-TLS internal transport
+            # (isolated/test deployments only - validated at boot).
+            - name: SEMANTIC_ALLOW_PLAINTEXT
+              value: "true"
+            {{- end }}
           readinessProbe:
             # Ready = migrations done + stores reachable + deletion
             # barriers synced. Restoring service stays NOT ready and

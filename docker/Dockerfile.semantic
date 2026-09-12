@@ -5,15 +5,15 @@ FROM python:3.12.13-slim@sha256:1bb16192c5f3fcd6d69e59359742e40e2a4f6ff627a2d2f6
 
 WORKDIR /service
 COPY semantic/pyproject.toml semantic/uv.lock ./
-COPY semantic/README.md ./
 RUN pip install --no-cache-dir uv==0.5.24 && uv sync --frozen --no-dev
 
 COPY semantic/semantic_service ./semantic_service
-COPY semantic/proto ./proto
 COPY semantic/rules ./rules
 COPY semantic/migrations ./migrations
 
-# API entry (gRPC server). The worker entry reuses the image with a
-# different command (compose/helm select the entry).
+# API entry (gRPC server + probes). The worker entry reuses the image
+# with a different command (compose/helm select the entry).
 EXPOSE 50051
-ENTRYPOINT ["uv", "run", "python", "-m", "semantic_service.server_entry"]
+# Run the frozen venv python DIRECTLY: uv run would re-sync with default
+# groups at boot (installing dev deps / requiring PyPI egress offline).
+ENTRYPOINT ["/service/.venv/bin/python", "-m", "semantic_service.server_entry"]

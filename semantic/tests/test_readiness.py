@@ -3,10 +3,12 @@ deletion barriers are synced from the business side (spec step 6)."""
 
 import pytest
 
+from semantic_service.server_entry import compute_readiness
+
 
 class HealthState:
-    """Readiness inputs (W03/I04 semantics): migrations + stores + the
-    deletion-barrier sync gate. /health (liveness) is NOT readiness."""
+    """Readiness inputs delegating to the SHIPPED fold (server_entry):
+    the tests pin the production computation, not a test-local copy."""
 
     def __init__(self):
         self.stores_connected = False
@@ -14,8 +16,8 @@ class HealthState:
         self.deletion_barriers_synced = False
 
     def ready(self):
-        return (self.migrations_ready and self.stores_connected
-                and self.deletion_barriers_synced)
+        return compute_readiness(self.migrations_ready, self.stores_connected,
+                                 self.deletion_barriers_synced)
 
 
 @pytest.fixture()
