@@ -187,7 +187,7 @@
 - GREEN：`go test ./internal/application/service -run TestSemanticModel -count=1` 11 passed（含 -race -count=3 稳定）；`uv run --project semantic python -m pytest semantic/tests/test_model_gateway.py -q` 3 passed（真实编译 Go HTTP：go test -c 服务 + 受控 provider + 持久台账计数；计划核心断言逐字通过 first==second && count==1）；handler/database/repository 全量 ok；build/vet 净。
 - 关键语义：claim 幂等（new/completed/in_flight/unknown；failed/reconciled 同 ID 阻断→409）；同 ID 重试返回已存结果（provider 恰一次）；预算准入先于 provider（拒绝时 0 调用；HTTP 402）；预占/实际/unknown 分离（finalize 退款、reconciling 保留对账、Reconcile 按观察用量结算并退款）；重试新 ID 关联 parent（无聚合重复计费）；受控入口唯一（OpenAI-compatible 适配器，凭据仅 Go config、json:"-" 不落盘不落日志；Python 仅经内部 HTTP + 服务身份令牌）。
 - review：规格首轮 FAIL（BLOCKER：provider 失败假成功）→ 修复+终审 PASS（含终审新 MINOR：Reconcile 幂等性——退款已加状态守卫建议，记录为后续）；质量首轮 FAIL（3 BLOCKER：PG 并发超限/死上下文台账/滞留 in_flight，均 overlay 探针实证）→ 三项修复后 PASS（评审员独立复跑：PG ok=2/spent=80、-race ×3、Python 3/3）。遗留 MINOR follow-up：claim 并发 PK 冲突→409、finalize 超支记账、messages JSON 编解码、Retry 父态守卫+返回体、deadline 头解析加固、provider 响应限长+缺用量→unknown、502 不泄露 base URL、Python 客户端 deadline 头/异常分类、路由前缀对齐、PG 服务层测试、BYOK 用量测试。
-- 提交 SHA：（本记录与代码同批提交后补记）
+- 提交 SHA：25dedb8（feat(semantic): a03 模型代理、原始用量与预算）。
 - 剩余限制：无真实模型凭据——真实模型调用/上游无旁路直连证明保持未通过（计划允许：记录阻断继续他项）；预算为任务本地 semantic_budgets（未接商业结算，未伪称）；模型能力凭据为静态受控入口（短期按操作凭据归 Q03/A02 接线强化）。
 
 ## 当前边界
