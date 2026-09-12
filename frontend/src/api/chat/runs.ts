@@ -1,4 +1,5 @@
 import { get, post } from '../../utils/request'
+import { parseSseRunEvents } from '../../utils/sseRunEvents'
 
 export interface RunView {
   run_id: string
@@ -30,8 +31,15 @@ export function getAgentRun(sessionId: string, runId: string): Promise<RunView> 
   return get(`/api/v1/sessions/${encodeURIComponent(sessionId)}/runs/${encodeURIComponent(runId)}`)
 }
 
-export function getAgentRunEvents(sessionId: string, runId: string, after = 0, limit = 100): Promise<RunEvent[]> {
-  return get(`/api/v1/sessions/${encodeURIComponent(sessionId)}/runs/${encodeURIComponent(runId)}/events?after=${after}&limit=${limit}`)
+// The events endpoint always answers with an SSE body (text/event-stream):
+// `once=1` makes the request return once the buffered events are flushed,
+// and the raw body is parsed into RunEvent[] here. A cursor the server no
+// longer keeps rejects with HTTP 409 code=cursor_expired.
+export async function getAgentRunEvents(sessionId: string, runId: string, after = 0, limit = 100): Promise<RunEvent[]> {
+  const body = await get<unknown>(
+    `/api/v1/sessions/${encodeURIComponent(sessionId)}/runs/${encodeURIComponent(runId)}/events?after=${after}&limit=${limit}&once=1`,
+  )
+  return parseSseRunEvents(body)
 }
 
 export function resolveAgentRunDecision(sessionId: string, runId: string, decision: RunDecision): Promise<RunView> {

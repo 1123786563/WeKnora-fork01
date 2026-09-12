@@ -1,4 +1,5 @@
 export default {
+  agentEngine: { label: 'エンジン', builtin: '内蔵 ReAct', trpc: 'tRPC Agent（永続的な復旧）' },
   agentRunRecovery: { title: '実行の確認が必要です', defaultReason: '安全な復旧の判断を待って実行を一時停止しました。', tool: 'ツール: {name}', resultLabel: 'ツール結果', resultPlaceholder: '確認済みの構造化結果（JSON またはテキスト）を入力', retry: '再試行', provideResult: '結果を提供', terminate: '終了', failed: '実行を更新できませんでした' },
 
   menu: {
@@ -2495,6 +2496,12 @@ export default {
   },
   createChat: {
     title: 'こんにちは、WeKnoraです。あなたのナレッジを、すぐそばに',
+    engine: {
+      label: 'エンジン',
+      builtin: '内蔵 ReAct',
+      trpc: 'tRPC Agent',
+      experimental: '実験的'
+    },
     newSessionTitle: '新しいセッション',
     messages: {
       createFailed: 'セッションの作成に失敗しました',

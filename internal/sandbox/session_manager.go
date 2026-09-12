@@ -971,10 +971,71 @@ func (m *SessionBoundManager) ObserveExecution(ctx context.Context, ref Executio
 			return ExecutionObservation{State: "unknown"}, err
 		}
 	}
-	if binding == nil || binding.SandboxID != ref.InstanceID || binding.ConfigID != ref.ConfigID || binding.Generation != ref.Generation || binding.Provider != RemoteProvider(ref.Provider) || binding.TenantID != ref.TenantID || binding.SessionID != ref.SessionID {
+	if !bindingMatchesRef(binding, ref) {
 		return ExecutionObservation{State: "missing"}, nil
 	}
 	return recovery.Observe(ctx, ref)
+}
+
+// bindingMatchesRef reports whether the durable binding is exactly the
+// instance the recovery reference was recorded against. A nil binding never
+// matches.
+func bindingMatchesRef(binding *SessionSandboxBinding, ref ExecutionRef) bool {
+	return binding != nil &&
+		binding.SandboxID == ref.InstanceID &&
+		binding.ConfigID == ref.ConfigID &&
+		binding.Generation == ref.Generation &&
+		binding.Provider == RemoteProvider(ref.Provider) &&
+		binding.TenantID == ref.TenantID &&
+		binding.SessionID == ref.SessionID
+}
+
+// ObserveInstance answers whether the sandbox instance a durable run was
+// bound to is still alive at the provider. It validates the durable binding
+// identity for ref — provider, config, instance and generation must all match
+// the session binding — and then queries the provider sandbox list through the
+// same peek path the UI uses. It never creates, connects or resumes an
+// instance, and it never reports a task-level result: command outcomes remain
+// the tool journal's responsibility, so a live instance observation is never
+// importable as a completed external effect.
+func (m *SessionBoundManager) ObserveInstance(ctx context.Context, ref ExecutionRef) (ExecutionObservation, error) {
+	if m == nil {
+		return ExecutionObservation{State: "unknown"}, errors.New("sandbox manager is unavailable")
+	}
+	if err := ref.Validate(); err != nil {
+		return ExecutionObservation{State: "unknown"}, err
+	}
+	if ref.Provider != string(m.client.Provider()) {
+		return ExecutionObservation{State: "unknown"}, errors.New("sandbox execution provider mismatch")
+	}
+	key := SessionSandboxKey{TenantID: ref.TenantID, SessionID: ref.SessionID}
+	binding, err := m.bindings.Get(ctx, key)
+	if err != nil {
+		return ExecutionObservation{State: "unknown"}, err
+	}
+	if binding != nil {
+		if err := binding.ValidateRecovery(key); err != nil {
+			return ExecutionObservation{State: "unknown"}, err
+		}
+	}
+	if !bindingMatchesRef(binding, ref) {
+		return ExecutionObservation{State: "missing"}, nil
+	}
+	state, bound, err := m.peekBoundSandboxState(ctx, ref.SessionID)
+	if err != nil {
+		return ExecutionObservation{State: "unknown"}, err
+	}
+	if !bound {
+		return ExecutionObservation{State: "missing"}, nil
+	}
+	switch state {
+	case RemoteStateRunning, RemoteStatePaused, RemoteStateTransitioning:
+		return ExecutionObservation{State: "running"}, nil
+	case RemoteStateUnknown:
+		return ExecutionObservation{State: "unknown"}, nil
+	default:
+		return ExecutionObservation{State: "missing"}, nil
+	}
 }
 
 // peekBoundSandboxState reads provider listing for the bound sandbox without

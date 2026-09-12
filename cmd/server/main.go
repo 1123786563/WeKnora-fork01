@@ -86,12 +86,19 @@ func main() {
 
 		ctx, done := context.WithCancel(context.Background())
 
+		// Start the durable tRPC run worker. An enabled runtime without a
+		// registered graph executor is a boot failure: every service has been
+		// constructed by this point, so the durable path could never execute.
+		if err := agentRuntime.Start(ctx); err != nil {
+			done()
+			return err
+		}
+
 		// Start the system_settings pubsub subscriber. Runs in its own
 		// goroutine and exits when ctx is cancelled at shutdown. Best-
 		// effort: an error here only warns (Redis may legitimately be
 		// disabled in lite-mode deployments — the service no-ops in
 		// that case anyway).
-		agentRuntime.Start(ctx)
 
 		if err := systemSettingSvc.SubscribeRedis(ctx); err != nil {
 			logger.Warnf(ctx, "[system_settings] subscribe failed: %v", err)

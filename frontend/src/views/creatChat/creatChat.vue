@@ -43,6 +43,7 @@
                     </div>
                 </transition>
             </div>
+            <!-- 执行引擎不再由用户选择：自定义智能体自动使用 tRPC（持久化恢复），内置类型沿用内置 ReAct -->
             <InputField ref="inputFieldRef" @send-msg="sendMsg"></InputField>
         </div>
     </div>
@@ -181,6 +182,9 @@ onMounted(() => { fetchSuggestedQuestions(); });
 
 const inputFieldRef = ref();
 
+// 执行引擎由所选智能体推导（见 settings store 的 nextSessionEngineType）：
+// 自定义智能体 → tRPC；内置类型 → 内置 ReAct。会话创建后引擎不可更改。
+
 const handleSuggestedQuestionClick = (question: string) => {
     inputFieldRef.value?.triggerSend(question);
 };
@@ -205,6 +209,8 @@ async function createNewSession(value: string, modelId: string, mentionedItems: 
         knowledge_ids: selectedFiles,  // 所有选中的普通知识/文件
         allowed_tools: settingsStore.agentConfig.allowedTools
     };
+    // 会话执行引擎：由所选智能体自动推导（自定义 → trpc，内置 → builtin）
+    sessionData.engine_type = settingsStore.nextSessionEngineType;
 
     try {
         const res = await createSessions(sessionData);
@@ -262,6 +268,32 @@ const handleKBEditorSuccess = (kbId: string) => {
     :deep(.answers-input) {
         position: static;
         transform: translateX(0);
+    }
+}
+
+.engine-selector {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 0 16px;
+    box-sizing: border-box;
+    color: var(--td-text-color-secondary);
+    font-size: 13px;
+
+    .engine-selector__label {
+        white-space: nowrap;
+    }
+
+    .engine-selector__badge {
+        margin-left: 6px;
+        padding: 0 6px;
+        border-radius: 4px;
+        font-size: 11px;
+        line-height: 18px;
+        color: var(--td-warning-color);
+        background: var(--td-warning-color-1);
+        border: 1px solid var(--td-warning-color-3);
     }
 }
 

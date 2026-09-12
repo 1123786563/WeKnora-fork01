@@ -70,10 +70,13 @@ type Run struct {
 
 // Admission contains the immutable request and initial business messages.
 type Admission struct {
-	Key                RunKey
-	SessionID          string
-	UserID             string
-	RequestID          string
+	Key       RunKey
+	SessionID string
+	UserID    string
+	RequestID string
+	// UserMessageID optionally reuses the handler-persisted user message row
+	// instead of creating a second one; empty generates a fresh id.
+	UserMessageID      string
 	AssistantMessageID string
 	RequestHash        string
 	Snapshot           json.RawMessage
@@ -125,8 +128,28 @@ type RunEventStore interface {
 	Finalize(context.Context, Fence, json.RawMessage) error
 }
 
+// RunEventTrimmer deletes retained events below a watermark so replay
+// cursors beyond the retention horizon answer the explicit reload error.
+type RunEventTrimmer interface {
+	TrimEventsBefore(context.Context, RunKey, int64) (int64, error)
+	LastEventSeq(context.Context, RunKey) (int64, error)
+}
+
 // RunInputStore persists and atomically applies steering inputs with a checkpoint.
 type RunInputStore interface {
 	AppendInput(context.Context, RunKey, RunInput) error
 	ApplyInput(context.Context, Fence, string, CheckpointRecord) error
+}
+
+// RunInputReader lists steering inputs not yet consumed by the graph. The
+// durable worker reads pending inject inputs at safe node boundaries.
+type RunInputReader interface {
+	ListPendingInputs(context.Context, RunKey, string) ([]RunInput, error)
+}
+
+// RunInputConsumer marks steering inputs consumed once their message is
+// checkpointed in AppliedSteerIDs; a crash between mark and checkpoint is
+// safe because the resumed state re-filters by AppliedSteerIDs.
+type RunInputConsumer interface {
+	MarkInputsProcessed(context.Context, RunKey, ...string) error
 }

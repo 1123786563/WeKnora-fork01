@@ -6,13 +6,22 @@ import (
 	"fmt"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
+	"github.com/Tencent/WeKnora/internal/types"
 	"trpc.group/trpc-go/trpc-agent-go/agent"
 	"trpc.group/trpc-go/trpc-agent-go/agent/graphagent"
 	"trpc.group/trpc-go/trpc-agent-go/graph"
 	"trpc.group/trpc-go/trpc-agent-go/model"
 	"trpc.group/trpc-go/trpc-agent-go/runner"
 	"trpc.group/trpc-go/trpc-agent-go/session/noop"
+	"trpc.group/trpc-go/trpc-agent-go/tool"
 )
+
+// RunEventSink persists run events during graph execution. Emissions are
+// best-effort at the graph layer: the repository assigns sequence numbers
+// under the run fence, and a failed append never masks a tool or model error.
+type RunEventSink interface {
+	AppendEvent(context.Context, agentruntime.Fence, agentruntime.RunEvent) (agentruntime.RunEvent, error)
+}
 
 type GraphBindings struct {
 	Model           model.Model
@@ -22,6 +31,65 @@ type GraphBindings struct {
 	InitialState    State
 	WaitForDecision func(context.Context, agentruntime.Fence, string) error
 	Capabilities    CapabilitySnapshot
+	Events          RunEventSink
+	// ModelTools is the frozen model-facing tool projection for this run.
+	// Deferred MCP discovery later in the run does not widen it: a resumed
+	// plan must see the same advertised set the checkpoint recorded.
+	ModelTools map[string]tool.Tool
+	// Inputs lists durable steering inputs. Inject inputs are consumed at the
+	// model node boundary; after inputs stay pending for follow-up runs.
+	Inputs RunInputSource
+}
+
+// RunInputSource reads durable steering inputs for one run.
+type RunInputSource interface {
+	ListPendingInputs(context.Context, agentruntime.RunKey, string) ([]agentruntime.RunInput, error)
+}
+
+// registryTool adapts a registry function definition to the SDK tool
+// declaration surface used by model requests.
+type registryTool struct{ decl *tool.Declaration }
+
+func (t registryTool) Declaration() *tool.Declaration { return t.decl }
+
+// DeclarationTools converts registry function definitions into the SDK tool
+// map. The definitions are the stable model-facing projection of the
+// request-scoped registry.
+func DeclarationTools(defs []types.FunctionDefinition) (map[string]tool.Tool, error) {
+	out := make(map[string]tool.Tool, len(defs))
+	for _, def := range defs {
+		if def.Name == "" {
+			return nil, fmt.Errorf("tool declaration requires a name")
+		}
+		schema := &tool.Schema{}
+		if len(def.Parameters) > 0 {
+			if err := json.Unmarshal(def.Parameters, schema); err != nil {
+				return nil, fmt.Errorf("tool %s input schema: %w", def.Name, err)
+			}
+		}
+		out[def.Name] = registryTool{decl: &tool.Declaration{
+			Name: def.Name, Description: def.Description, InputSchema: schema,
+		}}
+	}
+	return out, nil
+}
+
+// emitRunEvent appends a durable run event. Failures are logged by the caller
+// through the returned error only when they would hide state loss; event
+// delivery must never block graph progress.
+func (b GraphBindings) emitRunEvent(ctx context.Context, evt agentruntime.RunEvent) {
+	if b.Events == nil || evt.Type == "" {
+		return
+	}
+	payload := evt.Payload
+	if len(payload) == 0 {
+		payload = json.RawMessage("{}")
+	}
+	fenced := b.fenceFromContext(ctx)
+	event := agentruntime.RunEvent{AttemptID: evt.AttemptID, Type: evt.Type, Payload: payload}
+	if _, err := b.Events.AppendEvent(ctx, fenced, event); err != nil {
+		_ = err // event loss is tolerated; seq gaps are visible to replay clients
+	}
 }
 
 type GraphRunner struct{ bindings GraphBindings }

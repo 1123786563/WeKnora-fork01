@@ -148,6 +148,7 @@
                 <t-icon name="chevron-down" size="20px" />
             </div>
         </transition>
+        <!-- 引擎身份不再对用户展示：会话引擎由智能体类型在创建时自动推导 -->
         <div class="input-container" :class="{ 'is-embedded': embeddedMode }">
             <InputField ref="inputFieldRef" :auto-focus="focusComposerOnMount"
                 @send-msg="(query, modelId, mentionedItems, imageFiles, attachmentFiles) => sendMsg(query, modelId, mentionedItems, imageFiles, attachmentFiles)"
@@ -182,7 +183,8 @@ import InputField from '../../components/Input-field.vue';
 import botmsg from './components/botmsg.vue';
 import usermsg from './components/usermsg.vue';
 import { getMessageList, getSession } from "@/api/chat/index";
-import { getAgentRun } from '@/api/chat/runs';
+import { getAgentRun, getAgentRunEvents } from '@/api/chat/runs';
+import { createRunReplay, isTerminalRunStatus } from '@/utils/agentRunReplay';
 import { getSuggestedQuestions } from "@/api/agent/index";
 import { deleteTemporaryAttachment, uploadTemporaryAttachment } from '@/api/chat/temporary-attachments';
 import { useStream } from '../../api/chat/streame'
@@ -559,6 +561,7 @@ watch([() => route.params], async (newvalue) => {
         clearCitationChunkCache();
 
         // 切换会话时，重置状态
+        stopDurableRunRecovery();
         historyLoading.value = true;
         historyLoadingMore.value = false;
         hasMoreHistory.value = true;
@@ -822,6 +825,7 @@ const handleStopGeneration = () => {
     isReplying.value = false;
     if (recoverPollTimer) { clearTimeout(recoverPollTimer); recoverPollTimer = null; }
     isImRecovering.value = false;
+    stopDurableRunRecovery();
     markInFlightAssistantStopped(currentAssistantMessageId.value);
 };
 
@@ -1120,6 +1124,9 @@ const attachSteerFollowUp = async (completedAssistantId) => {
 
 const sendMsg = async (value, modelId = '', mentionedItems = [], imageFiles = [], attachmentFiles = []) => {
     stopStream();
+    // A new outgoing turn supersedes any durable-run catch-up still polling
+    // the previous run; the new stream (or its own recovery) owns the UI now.
+    stopDurableRunRecovery();
     prepareForNewOutgoingMessage();
     activitySessionId.value = String(session_id.value);
     isReplying.value = true;
@@ -1348,8 +1355,152 @@ const recoverIncompleteMessage = () => {
     recoverPollTimer = setTimeout(poll, RECOVER_POLL_INTERVAL);
 };
 
+// ---------------------------------------------------------------------------
+// Durable-run recovery (tRPC engine)
+//
+// When the normal SSE stream dies mid-run for a session whose active run is
+// durable (session.active_agent_run_id), the run keeps executing server-side
+// and every business event is persisted with a seq. Poll the events endpoint
+// with the last consumed seq cursor, fold events through the run replay
+// (seq dedupe + attempt replacement), and keep rendering into the in-flight
+// assistant message until the run reaches a terminal status.
+// ---------------------------------------------------------------------------
+const DURABLE_POLL_INTERVAL = 2000;
+const DURABLE_POLL_MAX_ATTEMPTS = 300; // ~10 min at 2s
+let durablePollTimer = null;
+
+const stopDurableRunRecovery = () => {
+    if (durablePollTimer) { clearTimeout(durablePollTimer); durablePollTimer = null; }
+};
+
+// Clear whatever partial answer the dead stream left on the in-flight
+// assistant message. The next replay update re-renders the full attempt text,
+// so a stale half-answer must not survive an attempt replacement.
+const resetInFlightAnswer = () => {
+    fullContent.value = '';
+    const target = findLastMessage((item) => item.role === 'assistant' && !item.is_completed);
+    if (!target) return;
+    if (target.isAgentMode && Array.isArray(target.agentEventStream)) {
+        for (const event of target.agentEventStream) {
+            if (event.type === 'answer' && !event.superseded) {
+                event.superseded = true;
+                event.done = true;
+            }
+        }
+    }
+    target.content = '';
+};
+
+// Feed one replay text update into the normal chunk pipeline so the catch-up
+// renders through the same path as live streaming. `reset` mirrors an attempt
+// replacement: drop the half-streamed text first, then replay the new text.
+const renderDurableReplayUpdate = (update) => {
+    if (!update.changed) return;
+    if (update.reset) resetInFlightAnswer();
+    if (update.delta) {
+        processStreamChunk({ response_type: 'answer', content: update.delta });
+        scrollToBottom();
+    }
+};
+
+const recoverDurableRun = async () => {
+    const sid = String(session_id.value || '');
+    if (!sid || props.embeddedMode) return false;
+    let runId = '';
+    try {
+        // agentRun may predate the message that was streaming; the session row
+        // is the source of truth for the currently active durable run.
+        const sessionRes = await getSession(sid);
+        runId = String(sessionRes?.data?.active_agent_run_id || sessionRes?.data?.active_run_id || '');
+    } catch (e) {
+        console.warn('[AgentRun] Failed to read session for durable recovery:', e);
+    }
+    if (!runId) return false;
+    let run = null;
+    try {
+        run = await getAgentRun(sid, runId);
+    } catch (e) {
+        console.warn('[AgentRun] No durable run to recover:', e);
+        return false;
+    }
+    agentRun.value = run;
+    if (isTerminalRunStatus(run?.status)) {
+        // The run finished while the connection was dying — the persisted
+        // messages already hold the final answer; just reload the thread.
+        created_at.value = '';
+        messagesList.splice(0);
+        getmsgList({ session_id: sid, limit: limit.value, created_at: '' });
+        error.value = null;
+        isReplying.value = false;
+        loading.value = false;
+        currentAssistantMessageId.value = '';
+        return true;
+    }
+    console.log('[AgentRun] Stream failed; recovering durable run', runId, 'status=', run?.status);
+    isReplying.value = true; // keep the "generating" indicator while we catch up
+    loading.value = false;
+    const replay = createRunReplay();
+    let attempts = 0;
+    let cursor = 0;
+    const poll = async () => {
+        durablePollTimer = null;
+        if (session_id.value !== sid) { stopDurableRunRecovery(); isReplying.value = false; return; }
+        attempts++;
+        try {
+            // Drain buffered events; the endpoint caps a page, so keep paging
+            // within one tick while a full page arrives.
+            for (let page = 0; page < 5; page++) {
+                const events = await getAgentRunEvents(sid, runId, cursor);
+                if (!events.length) break;
+                const update = replay.consume(events);
+                cursor = update.seq;
+                renderDurableReplayUpdate(update);
+                if (events.length < 256) break;
+            }
+            const current = await getAgentRun(sid, runId);
+            agentRun.value = current;
+            if (isTerminalRunStatus(current?.status)) {
+                stopDurableRunRecovery();
+                created_at.value = '';
+                messagesList.splice(0);
+                getmsgList({ session_id: sid, limit: limit.value, created_at: '' });
+                error.value = null;
+                isReplying.value = false;
+                currentAssistantMessageId.value = '';
+                return;
+            }
+        } catch (e) {
+            // cursor_expired (HTTP 409): the replay window is gone — the
+            // persisted messages are the snapshot, so reload and stop.
+            if (e?.$httpStatus === 409 || e?.status === 409) {
+                stopDurableRunRecovery();
+                created_at.value = '';
+                messagesList.splice(0);
+                getmsgList({ session_id: sid, limit: limit.value, created_at: '' });
+                error.value = null;
+                isReplying.value = false;
+                currentAssistantMessageId.value = '';
+                return;
+            }
+            console.warn('[AgentRun] Recovery poll failed:', e);
+            if (attempts >= DURABLE_POLL_MAX_ATTEMPTS) {
+                stopDurableRunRecovery();
+                MessagePlugin.error(t('error.streamFailed'));
+                error.value = null;
+                isReplying.value = false;
+                currentAssistantMessageId.value = '';
+                return;
+            }
+        }
+        durablePollTimer = setTimeout(poll, DURABLE_POLL_INTERVAL);
+    };
+    durablePollTimer = setTimeout(poll, DURABLE_POLL_INTERVAL);
+    error.value = null; // recovery owns the failure from here on
+    return true;
+};
+
 // Watch for stream errors and show message
-watch(error, (newError) => {
+watch(error, async (newError) => {
     if (!newError) return;
     // A failed attach to an in-flight IM reply isn't a real error — the answer is
     // produced on the IM side and never streams here. Recover quietly by polling to
@@ -1360,6 +1511,9 @@ watch(error, (newError) => {
         recoverIncompleteMessage();
         return;
     }
+    // Durable (tRPC) runs survive the dead connection: catch up from the
+    // persisted event log instead of surfacing a stream failure.
+    if (await recoverDurableRun()) return;
     MessagePlugin.error(newError);
     isReplying.value = false;
     loading.value = false;
@@ -1469,6 +1623,7 @@ const clearData = () => {
     // Stop any IM-reply recovery poll for the session we're leaving/switching.
     if (recoverPollTimer) { clearTimeout(recoverPollTimer); recoverPollTimer = null; }
     isImRecovering.value = false;
+    stopDurableRunRecovery();
 }
 onUnmounted(() => {
     if (!props.embeddedMode) sessionActivity.detach(activitySessionId.value);
@@ -1476,6 +1631,7 @@ onUnmounted(() => {
     window.removeEventListener(SESSION_MUTATION_EVENT, handleSessionMutation);
     clearMinimapFlash();
     if (recoverPollTimer) { clearTimeout(recoverPollTimer); recoverPollTimer = null; }
+    stopDurableRunRecovery();
 });
 onBeforeRouteLeave((to, from, next) => {
     clearData()

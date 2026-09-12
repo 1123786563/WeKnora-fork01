@@ -2,11 +2,13 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
 
+	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -350,9 +352,102 @@ func (h *Handler) resolveLiveAgentRun(ctx context.Context, c *gin.Context, sessi
 	return assistantID, true
 }
 
+// steerDurableRun routes a steering message for a tRPC-engine session into
+// the durable input list keyed by the session's active run. The persisted
+// steer_id makes retries idempotent; a waiting_user run keeps accepting
+// inputs that will be applied when a decision resumes it - an ordinary
+// message never acts as a decision.
+func (h *Handler) steerDurableRun(
+	ctx context.Context,
+	c *gin.Context,
+	session *types.Session,
+	query, delivery string,
+	req SteerMessageRequest,
+) {
+	runs := h.runService()
+	if runs == nil {
+		c.JSON(503, gin.H{"error": "durable agent runs are unavailable"})
+		return
+	}
+	steerID := req.SteerID
+	if steerID == "" {
+		steerID = uuid.New().String()
+	} else if _, err := uuid.Parse(steerID); err != nil {
+		c.JSON(400, gin.H{"error": "invalid steer_id"})
+		return
+	}
+	// No active durable run: behave like the builtin no-live-run path and let
+	// the client start a new turn through the normal agent-chat call.
+	if session.ActiveAgentRunID == nil || *session.ActiveAgentRunID == "" {
+		c.JSON(200, gin.H{"success": true, "status": "new_run", "steer_id": steerID})
+		return
+	}
+	key := agentruntime.RunKey{TenantID: session.TenantID, RunID: *session.ActiveAgentRunID}
+	run, getErr := runs.Get(ctx, key)
+	if getErr != nil {
+		// Only a durable miss means no live run: a transient lookup failure
+		// must answer retryable, never new_run, or the client would start a
+		// second turn on top of the live one (mirrors liveAgentRun).
+		if getErr == agentruntime.ErrNotFound {
+			c.JSON(200, gin.H{"success": true, "status": "new_run", "steer_id": steerID})
+			return
+		}
+		logger.ErrorWithFields(ctx, getErr, map[string]interface{}{"session_id": session.ID})
+		c.JSON(503, gin.H{"error": "Failed to look up running turn"})
+		return
+	}
+	if isTerminalRunStatus(run.Status) {
+		c.JSON(200, gin.H{"success": true, "status": "new_run", "steer_id": steerID})
+		return
+	}
+	store := runs.Store()
+	inputs, ok := store.(agentruntime.RunInputStore)
+	if !ok {
+		c.JSON(503, gin.H{"error": "durable steering is unavailable"})
+		return
+	}
+	if reader, ok := store.(agentruntime.RunInputReader); ok {
+		injects, injectErr := reader.ListPendingInputs(ctx, key, "inject")
+		afters, afterErr := reader.ListPendingInputs(ctx, key, "after")
+		if injectErr != nil || afterErr != nil {
+			c.JSON(503, gin.H{"error": "Failed to check steer queue"})
+			return
+		}
+		if len(injects)+len(afters) >= maxSteerQueueDepth {
+			c.JSON(400, gin.H{"error": "steer queue is full"})
+			return
+		}
+	}
+	message, err := json.Marshal(map[string]any{"role": "user", "content": query})
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Failed to encode steering message"})
+		return
+	}
+	if err := inputs.AppendInput(ctx, key, agentruntime.RunInput{
+		SteerID: steerID, Mode: delivery, Message: message,
+	}); err != nil {
+		if err == agentruntime.ErrConflict {
+			c.JSON(409, gin.H{"error": "steer_id already belongs to another message"})
+			return
+		}
+		logger.ErrorWithFields(ctx, err, map[string]interface{}{"session_id": session.ID})
+		c.JSON(500, gin.H{"error": "Failed to persist steering message"})
+		return
+	}
+	c.JSON(200, gin.H{
+		"success": true, "status": "queued", "steer_id": steerID, "delivery": delivery,
+	})
+}
+
+// isTerminalRunStatus reports whether a durable run can no longer consume
+// steering input.
+func isTerminalRunStatus(status string) bool {
+	return status == "succeeded" || status == "failed" || status == "canceled"
+}
+
 // steerEvent is one queued user message as stored in the StreamManager
 // sub-list. Data keys mirror what the injected user_message_injected event
-// carries so consumers can correlate queue → injection.
+// carries so consumers can correlate queue and injection.
 func steerEvent(id, query string, mentionedItems types.MentionedItems, channel string) interfaces.StreamEvent {
 	return interfaces.StreamEvent{
 		ID:      id,
@@ -489,9 +584,17 @@ func (h *Handler) SteerMessage(c *gin.Context) {
 
 	// Same ownership scope as StopSession: steer mutates an in-flight turn, so
 	// use the strict owner scope and reject cross-tenant access.
-	if _, err := h.sessionService.GetOwnedSession(ctx, sessionID); err != nil {
+	session, err := h.sessionService.GetOwnedSession(ctx, sessionID)
+	if err != nil {
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{"session_id": sessionID})
 		_ = c.Error(errors.NewNotFoundError("Session not found"))
+		return
+	}
+
+	// Durable tRPC runs are steered through the persisted input list, not the
+	// in-memory/Redis live-run marker: the run outlives any HTTP connection.
+	if session != nil && session.EngineType == "trpc" {
+		h.steerDurableRun(ctx, c, session, query, delivery, req)
 		return
 	}
 

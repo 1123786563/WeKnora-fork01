@@ -5,11 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
+	"strings"
 
-	"github.com/google/uuid"
-
-	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/agent/tools"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/logger"
@@ -21,23 +18,18 @@ import (
 // AgentQA performs agent-based question answering with conversation history and streaming support
 // customAgent is optional - if provided, uses custom agent configuration instead of tenant defaults
 // summaryModelID is optional - if provided, overrides the model from customAgent config
+// isBuiltinAgentID matches the client rule (builtin- prefixed ids): builtin
+// agents may run on either engine, custom agents only on tRPC.
+func isBuiltinAgentID(id string) bool {
+	return strings.HasPrefix(id, "builtin-") || types.IsBuiltinAgentID(id)
+}
+
 func (s *sessionService) AgentQA(
 	ctx context.Context,
 	req *types.QARequest,
 	eventBus *event.EventBus,
 ) error {
 	sessionID := req.Session.ID
-	if req.Session != nil && req.Session.EngineType == "trpc" {
-		if !s.cfg.Agent.Recovery.AdmissionEnabled || RegisteredAgentRunService() == nil {
-			return errors.New("tRPC agent runs are disabled")
-		}
-		requestID := uuid.NewString()
-		user, _ := json.Marshal(map[string]any{"role": "user", "content": req.Query})
-		assistant, _ := json.Marshal(map[string]any{"role": "assistant", "content": ""})
-		snapshot, _ := json.Marshal(map[string]any{"version": 1, "query": req.Query, "scope": req.KnowledgeBaseIDs, "session_id": req.Session.ID})
-		_, err := RegisteredAgentRunService().Submit(ctx, agentruntime.Admission{Key: agentruntime.RunKey{TenantID: req.Session.TenantID, RunID: uuid.NewString()}, SessionID: req.Session.ID, UserID: req.Session.UserID, RequestID: requestID, AssistantMessageID: req.AssistantMessageID, RequestHash: requestID, Snapshot: snapshot, UserMessage: user, AssistantMessage: assistant, Deadline: time.Now().Add(30 * time.Minute)})
-		return err
-	}
 	// Propagate the session ID so stateful sandbox backends (CubeSandbox) can
 	// bind script execution to a per-session MicroVM instance.
 	ctx = types.WithSessionID(ctx, sessionID)
@@ -51,6 +43,16 @@ func (s *sessionService) AgentQA(
 	if req.CustomAgent == nil {
 		logger.Warnf(ctx, "Custom agent not provided for session: %s", sessionID)
 		return errors.New("custom agent configuration is required for agent QA")
+	}
+
+	// Custom agents run exclusively on the tRPC engine: a custom agent
+	// arriving on a builtin-engine session is a routing mistake, not a silent
+	// ReAct fallback. The client locks the engine selector to tRPC whenever a
+	// custom agent is selected, so new sessions carry engine_type=trpc.
+	if req.Session != nil && req.Session.EngineType != "trpc" &&
+		!isBuiltinAgentID(req.CustomAgent.ID) {
+		return errors.New(
+			"custom agents run on the tRPC engine: create the session with engine_type=trpc")
 	}
 
 	// Resolve retrieval tenant using shared helper
@@ -151,6 +153,13 @@ func (s *sessionService) AgentQA(
 		}
 	} else {
 		logger.Infof(ctx, "knowledge_search is unavailable for the effective agent scope, skipping rerank model initialization")
+	}
+
+	// tRPC-engine sessions fork here: the resolved configuration and model
+	// identity are frozen into the admission snapshot and the durable worker
+	// executes the run. The builtin path below stays untouched.
+	if req.Session != nil && req.Session.EngineType == "trpc" {
+		return s.submitDurableAgentRun(ctx, req, agentConfig, effectiveModelID, agentModelSupportsVision)
 	}
 
 	// Load multi-turn history directly from DB (the single source of truth).

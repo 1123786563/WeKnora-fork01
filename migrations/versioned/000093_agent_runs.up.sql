@@ -56,8 +56,8 @@ CREATE TABLE agent_run_checkpoints (
     checkpoint_id VARCHAR(255) NOT NULL,
     parent_id VARCHAR(255) NOT NULL DEFAULT '',
     seq BIGINT NOT NULL,
-    state JSONB NOT NULL,
-    pending_writes JSONB NOT NULL,
+    state TEXT NOT NULL,
+    pending_writes TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (tenant_id, run_id, namespace, checkpoint_id),
@@ -83,9 +83,11 @@ CREATE TABLE agent_tool_calls (
     idempotency_expires_at TIMESTAMPTZ,
     status VARCHAR(32) NOT NULL DEFAULT 'planned',
     external_task_ref VARCHAR(512) NOT NULL DEFAULT '',
-    result JSONB,
+    -- Stored tool results round-trip through strict decoders that compare
+    -- bytes; TEXT preserves them exactly like the SQLite journal.
+    result TEXT,
     result_ref VARCHAR(1024) NOT NULL DEFAULT '',
-    output_files JSONB NOT NULL DEFAULT '[]'::jsonb,
+    output_files TEXT NOT NULL DEFAULT '[]',
     source VARCHAR(32) NOT NULL DEFAULT '',
     unknown_reason TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -138,7 +140,9 @@ CREATE TABLE agent_run_decisions (
     expected_revision BIGINT NOT NULL,
     actor_id VARCHAR(512) NOT NULL,
     action VARCHAR(32) NOT NULL,
-    result JSONB,
+    -- Retry/terminate decisions carry no result; an empty value must not
+    -- trip JSON parsing on insert. Kept as TEXT to match the journal.
+    result TEXT,
     reason TEXT NOT NULL DEFAULT '',
     applied BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,

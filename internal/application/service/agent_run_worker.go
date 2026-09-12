@@ -48,6 +48,14 @@ func (w *AgentRunWorker) SetRecoveryHook(hook func(context.Context, agentruntime
 	}
 }
 
+// Config exposes the worker configuration for startup gates.
+func (w *AgentRunWorker) Config() WorkerConfig {
+	if w == nil {
+		return WorkerConfig{}
+	}
+	return w.cfg
+}
+
 func NewAgentRunWorker(store agentruntime.RunStore, execute func(context.Context, agentruntime.Fence) error, cfg WorkerConfig) (*AgentRunWorker, error) {
 	if store == nil || execute == nil {
 		return nil, errors.New("agent worker store and executor are required")
@@ -154,6 +162,14 @@ func (w *AgentRunWorker) Tick(ctx context.Context) error {
 
 func (w *AgentRunWorker) runOne(ctx context.Context, id string, fence agentruntime.Fence) {
 	defer func() { w.mu.Lock(); delete(w.active, id); w.mu.Unlock() }()
+	// The persisted absolute deadline bounds this worker's claim: a run past
+	// its deadline fails with the explicit reason instead of looping forever
+	// while renewing its lease (spec: 预算与绝对截止时间 not reset on restart).
+	if run, err := w.store.Get(ctx, fence.RunKey); err == nil && !run.Deadline.IsZero() &&
+		time.Now().After(run.Deadline) {
+		_ = w.store.SetStatus(context.WithoutCancel(ctx), fence, "failed", "deadline_exceeded")
+		return
+	}
 	done := make(chan struct{})
 	defer close(done)
 	renewCtx, cancel := context.WithCancel(ctx)
@@ -183,6 +199,15 @@ func (w *AgentRunWorker) runOne(ctx context.Context, id string, fence agentrunti
 			return
 		}
 	}
+	// A persisted deadline also caps the execution context so a slow graph
+	// cannot outlive the budget; the heartbeat renewer gives up with it.
+	if run, getErr := w.store.Get(ctx, fence.RunKey); getErr == nil && !run.Deadline.IsZero() {
+		if until := time.Until(run.Deadline); until > 0 {
+			var deadlineCancel context.CancelFunc
+			renewCtx, deadlineCancel = context.WithDeadline(renewCtx, run.Deadline)
+			defer deadlineCancel()
+		}
+	}
 	err := w.execute(renewCtx, fence)
 	if renewCtx.Err() != nil {
 		return
@@ -192,12 +217,39 @@ func (w *AgentRunWorker) runOne(ctx context.Context, id string, fence agentrunti
 	}
 	status, reason := "succeeded", ""
 	if err != nil {
+		// Wait-class failures park durably instead of terminating: the run
+		// stays recoverable and only an explicit user decision resumes it.
+		// If the park itself loses the fence, the run remains non-terminal
+		// and the expiring lease triggers a bounded reclaim.
+		if reason, wait := durableWaitReason(err); wait {
+			if parkErr := w.store.SetStatus(context.Background(), fence, "waiting_user", reason); parkErr == nil {
+				return
+			}
+			return
+		}
 		status, reason = "failed", err.Error()
 	}
 	// A terminal state is durable and fenced; a cancelled/draining worker
 	// leaves the run non-terminal for lease based takeover.
 	if err := w.store.SetStatus(context.Background(), fence, status, reason); err != nil {
 		return
+	}
+}
+
+// durableWaitReason classifies executor failures that must park a run at
+// waiting_user instead of terminating it. Unknown tool outcomes and sandbox
+// unavailability are durable waits; provider-query gaps park as well until the
+// provider adapter integrates task-level observation.
+func durableWaitReason(err error) (string, bool) {
+	switch {
+	case errors.Is(err, agentruntime.ErrToolWaitUser):
+		return "tool_outcome_unknown", true
+	case errors.Is(err, agentruntime.ErrToolRecoveryQuery):
+		return "tool_outcome_query_required", true
+	case errors.Is(err, ErrSandboxUnavailable):
+		return "sandbox_unavailable", true
+	default:
+		return "", false
 	}
 }
 

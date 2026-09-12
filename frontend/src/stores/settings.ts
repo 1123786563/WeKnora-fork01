@@ -25,6 +25,7 @@ interface Settings {
   conversationModels: ConversationModels;
   selectedAgentId: string;  // 当前选中的智能体ID
   selectedAgentSourceTenantId: string | null;  // 当使用共享智能体时，来源空间 ID（用于后端 model/KB/MCP 解析）
+  agentEngineType?: "builtin" | "trpc";  // 新会话使用的执行引擎；仅创建会话时生效，存量会话以服务端 engine_type 为准
   autoCheckUpdate?: boolean; // 是否自动检查并下载更新
 }
 
@@ -105,6 +106,7 @@ const defaultSettings: Settings = {
   },
   selectedAgentId: BUILTIN_QUICK_ANSWER_ID,  // 默认选中快速问答模式
   selectedAgentSourceTenantId: null as string | null,  // 共享智能体来源空间 ID
+  agentEngineType: "builtin" as "builtin" | "trpc",  // 默认内置 ReAct 引擎
   autoCheckUpdate: true,
 };
 
@@ -174,6 +176,12 @@ export const useSettingsStore = defineStore("settings", {
     selectedAgentId: (state) => state.settings.selectedAgentId || BUILTIN_QUICK_ANSWER_ID,
     // 共享智能体来源空间 ID（可选）
     selectedAgentSourceTenantId: (state) => state.settings.selectedAgentSourceTenantId ?? null,
+    // 会话创建时的引擎推导：自定义智能体 → tRPC（持久化），内置类型 → 内置 ReAct。
+    // 用户不再手选引擎；该规则与后端守卫保持一致。
+    nextSessionEngineType: (state): "builtin" | "trpc" =>
+      String(state.settings.selectedAgentId || BUILTIN_QUICK_ANSWER_ID).startsWith("builtin-")
+        ? "builtin"
+        : "trpc",
   },
 
   actions: {
@@ -207,6 +215,12 @@ export const useSettingsStore = defineStore("settings", {
     // 启用/禁用 Agent
     toggleAgent(enabled: boolean) {
       this.settings.isAgentEnabled = enabled;
+      localStorage.setItem("WeKnora_settings", JSON.stringify(this.settings));
+    },
+
+    // 选择新会话的执行引擎（builtin / trpc）；非法值回落到 builtin
+    setAgentEngineType(engine: "builtin" | "trpc") {
+      this.settings.agentEngineType = engine === "trpc" ? "trpc" : "builtin";
       localStorage.setItem("WeKnora_settings", JSON.stringify(this.settings));
     },
     

@@ -1,4 +1,5 @@
 export default {
+  agentEngine: { label: 'Engine', builtin: 'Built-in ReAct', trpc: 'tRPC Agent (durable recovery)' },
   agentRunRecovery: {
     title: 'Run needs your attention', defaultReason: 'The run paused while waiting for a safe recovery decision.',
     tool: 'Tool: {name}', resultLabel: 'Tool result', resultPlaceholder: 'Paste the verified structured result (JSON or text)',
@@ -2499,6 +2500,12 @@ export default {
   },
   createChat: {
     title: 'Hi, I am WeKnora — your knowledge, within reach',
+    engine: {
+      label: 'Engine',
+      builtin: 'Built-in ReAct',
+      trpc: 'tRPC Agent',
+      experimental: 'Experimental'
+    },
     newSessionTitle: 'New Session',
     messages: {
       createFailed: 'Failed to create session',
