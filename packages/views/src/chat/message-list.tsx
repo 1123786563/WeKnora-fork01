@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef } from 'react';
 import type { ChatMessage, MessageSuggestionSet } from '@weknora/contracts';
 import { hasSessionChanged, scrollTopAfterPrepend, shouldStickToBottom } from '@weknora/domain/chat/session-state';
+import { renderChatMarkdown } from './markdown.ts';
 
 export interface PendingChatMessage {
   content: string;
@@ -19,10 +20,15 @@ export interface MessageListProps {
   onSuggestionClick?(questionId: string, text: string): void;
   onRefreshSuggestions?(): void;
   onDismissSuggestions?(): void;
+  onCitationClick?(citationId: string): void;
   sessionId?: string | null;
 }
 
-export function MessageList({ messages, pending, onRetry, loadingOlder = false, hasMore = false, onLoadOlder, suggestions, onSuggestionClick, onRefreshSuggestions, onDismissSuggestions, sessionId = null }: MessageListProps) {
+export function renderMessageHtml(message: Pick<ChatMessage, 'content'>): string {
+  return renderChatMarkdown(message.content);
+}
+
+export function MessageList({ messages, pending, onRetry, loadingOlder = false, hasMore = false, onLoadOlder, suggestions, onSuggestionClick, onRefreshSuggestions, onDismissSuggestions, onCitationClick, sessionId = null }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
   const previousSessionId = useRef<string | null>(sessionId);
@@ -52,12 +58,19 @@ export function MessageList({ messages, pending, onRetry, loadingOlder = false, 
     if (container.scrollTop <= 0 && hasMore && !loadingOlder) onLoadOlder?.();
   }
 
+  function onContentClick(event: React.MouseEvent<HTMLDivElement>): void {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    const citation = target.closest<HTMLElement>('[data-citation-id]')?.dataset.citationId;
+    if (citation) onCitationClick?.(citation);
+  }
+
   return <div ref={containerRef} className="wk-chat-message-scroll" onScroll={onScroll}>
     {hasMore ? <button type="button" disabled={loadingOlder} onClick={onLoadOlder}>{loadingOlder ? 'Loading history…' : 'Load older messages'}</button> : null}
     <ol className="wk-chat-messages" aria-label="Messages">
     {messages.map((message) => <li key={message.id} data-role={message.role}>
       <strong>{message.role}</strong>
-      <p>{message.content}</p>
+      <div className="wk-chat-message-content" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: renderMessageHtml(message) }} />
     </li>)}
     {pending ? <li data-role="user" data-status={pending.status}>
       <strong>user</strong>
