@@ -29,3 +29,23 @@ func TestAgentRecoveryDefaultDisabled(t *testing.T) {
 	require.True(t, admissionOff.RecoveryEnabled())
 	require.False(t, admissionOff.RecoveryAdmissionEnabled())
 }
+
+func TestAgentRecoveryEnvOverrides(t *testing.T) {
+	t.Setenv("WEKNORA_AGENT_RECOVERY_ENABLED", "true")
+	t.Setenv("WEKNORA_AGENT_RECOVERY_ADMISSION_ENABLED", "true")
+	cfg := &Config{Agent: &AgentConfig{}}
+
+	applyAgentEnvOverrides(cfg)
+
+	require.True(t, cfg.Agent.Recovery.RecoveryEnabled())
+	require.True(t, cfg.Agent.Recovery.RecoveryAdmissionEnabled())
+}
+
+func TestAgentRecoveryInvalidEnvKeepsDefault(t *testing.T) {
+	t.Setenv("WEKNORA_AGENT_RECOVERY_ENABLED", "not-a-bool")
+	cfg := &Config{Agent: &AgentConfig{}}
+
+	applyAgentEnvOverrides(cfg)
+
+	require.False(t, cfg.Agent.Recovery.RecoveryEnabled())
+}

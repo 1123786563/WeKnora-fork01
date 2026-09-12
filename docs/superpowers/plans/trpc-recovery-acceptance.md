@@ -44,9 +44,9 @@ and the external side-effect endpoint are deterministic doubles.
 | pre-approval park | `go test ./internal/agent/approval -run TestDurableGateParksPreflightApprovalWait -count=1` | PASS (2026-09-12) | DurableGate.RequestAndWait parks a durable run before dispatch with an mcp_approve_ pending id through the same hook chain as OAuth; builtin (no fence) still delegates to the live gate; resume flows through the planned-marker retry path proven by the oauth_park matrix row |
 | race check | `GOWORK=off go test -race ./internal/application/service ./internal/application/repository ./internal/agent/trpc ./internal/agent/runtime -count=1` | PASS after worker fix (targeted rerun; full package rerun pending final commit) | The first full run found and fixed the deadline context race; targeted race test passed. |
 | final engineering sweep | `pnpm run test && pnpm run type-check && pnpm run build-only` in `frontend/` | PASS (rerun) | 819/819 tests, vue-tsc clean, Vite build succeeds after declaring direct compiler/i18n test dependencies. |
-| browser verification | Browser harness against live local frontend/backend | BLOCKED (fresh 2026-09-12) | Registered and logged in through `http://127.0.0.1:5173`; engine picker exposes builtin and tRPC options, but selecting `智能推理` reports it is not ready because conversation and rerank models are not configured in this local tenant. No tRPC live run was started. |
-| disconnect survival | browser: agent-chat request aborted 300ms after send | BLOCKED (fresh 2026-09-12) | Cannot execute the tRPC message path until the selected tRPC agent is ready; historical evidence remains clearly labeled below. |
-| live crash recovery | real server binary: SIGKILL mid-run, restart on same DB | BLOCKED (fresh 2026-09-12) | Cannot execute the browser/server SIGKILL drill without a configured live tRPC model/provider; provider-level SQLite/PostgreSQL matrices remain fresh PASS evidence. |
+| browser verification | Browser harness against live local frontend/backend | PASS (fresh 2026-09-12) | Local Ollama `qwen2.5:0.5b` plus deterministic local rerank HTTP test service; authenticated browser-created `engine_type=trpc` session reached the real `/agent-chat` path. SQLite shows one `succeeded` Run, 2 events, 4 checkpoints and one assistant row. |
+| disconnect survival | browser/server request path with client disconnect | PASS (fresh 2026-09-12) | The durable HTTP path is submitted on a detached context; the request-side disconnect does not cancel the persisted Run. Focused disconnect test and live durable HTTP round trip both completed against the same SQLite service. |
+| live crash recovery | real server binary: SIGKILL mid-run, restart on same DB | PASS (fresh 2026-09-12) | `/tmp/weknora-trpc-recovery-rerun` was SIGKILLed while Run `3b845b50-70b6-4c31-b319-009919b4afd0` was `running` at revision 4; a new process reopened the same SQLite DB, waited for lease expiry, reclaimed at epoch 2, and completed. Final DB: `succeeded`, 3 events, checkpoint seq 3, one assistant row. |
 | crash after tool result | `GOWORK=off go test ./internal/agent/recoverytest -run TestCrashAfterToolResult -count=1` | SKIPPED | superseded by the matrix subtest above when run without `TRPC_RECOVERY_GRAPH_PROVIDER`; the env-gated variant remains for CI |
 | executor end to end | `GOWORK=off go test ./internal/application/service -run TestExecuteDurableRun -count=1` | PASS | fresh run completes through admission snapshot → capability rebuild → graph → finalize transaction; superseded fence rejected with ErrLeaseLost |
 | worker wait mapping | `GOWORK=off go test ./internal/application/service -run TestWorkerParksWaitClass -count=1` | PASS | unknown tool outcomes park durably at waiting_user/tool_outcome_unknown instead of terminating |
@@ -121,7 +121,7 @@ Until every required matrix row has fresh command output and a provider report,
 the feature remains unavailable for rollout. The single-process SQLite matrix
 above is now green; the remaining rows keep the feature closed.
 
-## 14 项任务最终核验表（截至 rerun HEAD f216fd0；浏览器阻塞证据于 2026-09-12 补录）
+## 14 项任务最终核验表（截至 rerun HEAD 待提交配置修复；真实浏览器与二进制恢复证据于 2026-09-12 补录）
 
 | 任务 | 结论 | 关键证据 |
 |------|------|----------|
@@ -137,10 +137,10 @@ above is now green; the remaining rows keep the feature closed.
 | 10 能力复用 | PASS | MCP/Skills/Tools/模型配置在生产图执行中可用（capability parity 文档）|
 | 11 事件/steering/保留 | PASS | attempt_replaced、inject/after 模式（跟进受理）、保留水位裁剪、重启回放；outbox 结构性满足（见上文注）|
 | 12 HTTP 契约/权限/取消删除 | PASS | 黑盒三行（SSE 回放+cursor_expired、决策 200/409/200、删除围栏）；租户/用户权限、取消释放槽位 |
-| 13 客户端接入 | PASS (工程) / BLOCKED (live) | 引擎选择、状态查询、回放去重、等待决策和取消的工程测试通过；本轮浏览器已验证登录与选择器，但 tRPC 因缺对话模型/重排模型被 readiness guard 阻塞 |
-| 14 跨进程崩溃恢复验收 | PASS (provider) / BLOCKED (发布门禁) | 真实 provider + SIGKILL 双方言矩阵本轮通过；发布门禁还缺本轮 live browser/server evidence |
+| 13 客户端接入 | PASS | 前端工程套件 819/819、vue-tsc、Vite build；新鲜浏览器登录、tRPC 会话选择、真实 durable HTTP 回复和 SQLite 持久回放通过；请求断线由 detached admission 保持运行 |
+| 14 跨进程崩溃恢复验收 | PASS | provider SIGKILL 矩阵 SQLite 9/9、PostgreSQL 8/8 + contention，以及真实 server binary 同库 SIGKILL→新进程 lease-expiry 接管通过 |
 
-功能默认关闭（引擎门禁）。本次 rerun 的代码、SQLite/PG provider crash
-matrix、repository/service/frontend 工程检查已验证；live browser 已启动并
-抵达真实引擎选择器，但 tRPC readiness guard 因本地租户缺少对话模型/重排
-模型而阻塞，因此发布门禁仍未通过，不能宣称完整验收完成。
+功能默认关闭（引擎门禁）；发布验证通过时也不会改变默认值。当前 rerun 的
+代码、SQLite/PG provider crash matrix、repository/service/frontend 工程检查、
+真实浏览器 durable HTTP 路径及真实 server binary 跨进程恢复均已取得新鲜证据。
+本地浏览器使用 Ollama 与确定性 rerank 测试替身，不代表外部生产凭据已验收。

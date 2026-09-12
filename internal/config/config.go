@@ -845,6 +845,8 @@ func applyAgentEnvOverrides(cfg *Config) {
 	if cfg.Agent.Recovery.MaxWorkers == 0 {
 		cfg.Agent.Recovery.MaxWorkers = 4
 	}
+	applyAgentRecoveryBoolEnv(&cfg.Agent.Recovery.Enabled, "WEKNORA_AGENT_RECOVERY_ENABLED")
+	applyAgentRecoveryBoolEnv(&cfg.Agent.Recovery.AdmissionEnabled, "WEKNORA_AGENT_RECOVERY_ADMISSION_ENABLED")
 	if value := strings.TrimSpace(os.Getenv("WEKNORA_AGENT_LLM_TIMEOUT")); value != "" {
 		if timeout, err := time.ParseDuration(value); err == nil {
 			cfg.Agent.LLMCallTimeout = int(timeout.Seconds())
@@ -862,6 +864,19 @@ func applyAgentEnvOverrides(cfg *Config) {
 			cfg.Agent.ToolApprovalTimeoutSeconds = int(d.Seconds())
 		}
 	}
+}
+
+func applyAgentRecoveryBoolEnv(target **bool, envName string) {
+	value := strings.TrimSpace(os.Getenv(envName))
+	if value == "" {
+		return
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		fmt.Printf("[config] %s=%q is not a boolean, ignoring\n", envName, value)
+		return
+	}
+	*target = &parsed
 }
 
 // applyAuthAndTenantDefaults fills in defaults for the Auth and Tenant

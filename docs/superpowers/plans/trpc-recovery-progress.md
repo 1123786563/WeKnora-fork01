@@ -2,7 +2,7 @@
 
 - 设计：[已批准规格](../specs/2026-09-10-dual-agent-trpc-recovery-design.md)
 - 计划：[实施计划](2026-09-10-dual-agent-trpc-recovery.md)
-- 当前阶段：生产链路已接通；本次 2026-09-12 rerun 在独立 worktree 重新验证 SQLite 9/9、PostgreSQL 8/8 SIGKILL 矩阵、双方言 worker contention、Run 存储和前端工程检查。功能保持默认关闭；本轮浏览器已完成本地注册、登录和引擎选择器核验，但 tRPC 智能推理因租户未配置对话模型/重排模型而被产品 readiness guard 阻塞，未伪报 live run 通过。
+- 当前阶段：生产链路已接通；本次 2026-09-12 rerun 在独立 worktree 重新验证 SQLite 9/9、PostgreSQL 8/8 SIGKILL 矩阵、双方言 worker contention、Run 存储、前端工程检查、真实浏览器 durable HTTP 和真实 server binary SIGKILL→新进程恢复。功能保持默认关闭；浏览器使用本地 Ollama 与确定性 rerank 测试替身，外部生产凭据仍不在本地验收范围。
 - 范围：两引擎分会话，复用现有能力，仅 tRPC 持久化恢复，未知结果等待用户。
 - 规划基线：`e91f8af`。重新执行工作树：`codex/trpc-recovery-r2`（自 `d370254` 起步）。
 
@@ -22,8 +22,8 @@
 | 10 | 能力完整复用 | implemented（缺口见下） | ded7719+850e8a0 + 6599817 | 生产执行器经 `prepareAgentCapabilities` 复用全部装配（工具注册/MCP/Skills/提示词/记忆召回/VLM）；能力快照漂移拒绝生效。剩余：恢复期延迟 MCP 集合比对、多模态端到端 |
 | 11 | 事件、投影、steering | verified | rerun recovery/service/handler suites | 事件生产调用点、finalize、RunInput inject/after、保留水位和回放重新验证；外部交付 outbox 按验收文档的数据库内结构性方案处理 |
 | 12 | HTTP 与生命周期 | verified | 3c789fc..2c12fc3（上轮，复审 PASS） | handler/router/lifecycle 测试 PASS；跨租户 404、引擎不可变、取消/删除围栏经复审确认；`ValidateEngineUpdate` 缺直接单测（小缺口） |
-| 13 | 客户端恢复交互 | verified (工程) / blocked (live) | rerun frontend + browser attempt | 前端测试 819/819、vue-tsc、Vite build PASS；本轮浏览器完成注册/登录并确认 builtin/tRPC 选择器，但 tRPC 选项被明确 readiness guard 拒绝（缺对话模型/重排模型），所以 live run/断线回放未执行 |
-| 14 | 崩溃矩阵与启用门禁 | verified (provider) / blocked (release) | rerun provider + browser attempt | 真实 provider 新进程重开：SQLite 9/9、PostgreSQL 8/8；双方言 worker contention PASS。发布门禁仍关闭，缺 fresh live tRPC browser/server SIGKILL evidence |
+| 13 | 客户端恢复交互 | verified | rerun frontend + browser + server | 前端测试 819/819、vue-tsc、Vite build PASS；浏览器真实 tRPC 会话选择、durable HTTP 回复、刷新回放和断线存活 PASS；单用户/assistant 行不变量保持 |
+| 14 | 崩溃矩阵与启用门禁 | verified | rerun provider + live binary | 真实 provider 新进程重开：SQLite 9/9、PostgreSQL 8/8；双方言 contention PASS；真实 server binary 在 running revision 4 被 SIGKILL 后新进程 lease-expiry 接管并完成 |
 
 ## 2026-09-12 rerun evidence
 
@@ -40,6 +40,21 @@
 - `d86f069`：真实 provider 二进制 + SIGKILL 矩阵；发现静默空恢复缺陷（SDK 在 pending branch write 时不规划恢复边界 → 恢复零执行即“成功”）。
 - `9bad9e0`：仅物化 branch 写（全量清除破坏 checkpoint 往返契约，被 -race 运行的测试发现）。
 - 门禁状态：功能默认关闭不变；SQLite 矩阵通过不等于发布门禁通过，剩余矩阵行见验收文档。
+
+## 2026-09-12 第十四轮（当前 rerun worktree）
+
+- 修复 `internal/config/config.go`：增加显式 `WEKNORA_AGENT_RECOVERY_ENABLED` 和
+  `WEKNORA_AGENT_RECOVERY_ADMISSION_ENABLED` 覆盖；未设置/非法值仍保持默认关闭，
+  `internal/config` 新增 2 个测试通过。此前 browser 请求虽创建了 trpc 会话，实际
+  因配置未生效落入 `tRPC agent runs are disabled`，该证据已作废并保留为历史线索。
+- 真实浏览器 + SQLite：本地 Ollama `qwen2.5:0.5b`、确定性 rerank 替身，真实
+  `/agent-chat` 创建 `trpc` Run 并由后台 worker/GraphAgent 完成；Run succeeded、
+  2 events、4 checkpoints、单 assistant 行。
+- 真实跨进程恢复：同一 SQLite DB 的 server binary 在 Run running/revision 4 时
+  `SIGKILL`；新进程等待租约过期后 epoch 2 接管，Run succeeded，3 events、checkpoint
+  seq 3、assistant 消息落库。此项不是同进程重建对象。
+- 独立审查：配置环境覆盖缺口被定位后先加测试再修复；其余规格/质量复核沿用本轮
+  分任务审查。完整命令、退出码和阻塞边界写入验收文档与 rerun ledger。
 
 ## 2026-09-12 第二轮（同分支续）
 
