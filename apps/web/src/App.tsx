@@ -29,6 +29,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
   }, []);
   const semanticContent = semanticRoute ? (
     <SemanticPage
+      key={semanticRoute.kbId + '/' + semanticRoute.documentId}
       knowledgeBaseId={semanticRoute.kbId}
       documentId={semanticRoute.documentId}
     />

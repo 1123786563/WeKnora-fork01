@@ -16,12 +16,12 @@ function modeLabel(mode: string): string {
 }
 
 /**
- * Evidence list with version-pinned citations (W02). Each item opens its
- * exact document/revision/chunk - never a silent jump to the current
- * revision. HONEST LIMITATION: an explicit historical-text-unavailability
- * notice requires an availability field on the evidence DTO (contracts
- * change, deferred to W03); today the link target itself reports the
- * mismatch when the historical revision is no longer readable.
+ * Evidence list with version-pinned citations (W02). Citations render as
+ * TEXT pinned to document/revision/chunk - they do NOT navigate (no
+ * document route exists yet; a dead link would unmount this page, which
+ * is worse than no link). HONEST LIMITATIONS: opening the pinned revision
+ * and an explicit historical-text-unavailability notice both require the
+ * documents route + availability DTO field (deferred to W03).
  */
 export function EvidencePanel({ result }: EvidencePanelProps) {
   if (!result) {
@@ -39,12 +39,9 @@ export function EvidencePanel({ result }: EvidencePanelProps) {
       <ul className="evidence-list">
         {result.evidence.map((item) => (
           <li key={item.evidence_id} className="evidence-item">
-            <a
-              className="evidence-link"
-              href={"#/documents/" + item.document_id + "?revision=" + item.revision + "&chunk=" + item.chunk_id}
-            >
+            <span className="evidence-ref">
               {item.document_id} @ 修订 {item.revision} / {item.chunk_id}
-            </a>
+            </span>
             {item.quote ? <blockquote className="evidence-quote">{item.quote}</blockquote> : null}
           </li>
         ))}

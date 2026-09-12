@@ -5,7 +5,7 @@ import {
   acceptSemanticResponse, beginSemanticQuery, cancelSemanticQuery,
   failSemanticQuery, initialSemanticQueryState,
 } from './view-model.ts';
-import { createSemanticClient, SemanticApiError } from '@weknora/api-client/semantic';
+import { createSemanticClient, SemanticAbortedError, SemanticApiError } from '@weknora/api-client/semantic';
 import type { SemanticDocumentStatus } from '@weknora/contracts/semantic';
 
 export interface SemanticPageProps {
@@ -25,6 +25,7 @@ export function SemanticPage({ baseUrl, knowledgeBaseId, documentId }: SemanticP
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [query, setQuery] = useState(initialSemanticQueryState());
   const [retryError, setRetryError] = useState<string | null>(null);
+  const searchAbortRef = useRef<AbortController | null>(null);
   const [input, setInput] = useState('');
   const abortRef = useRef<AbortController | null>(null);
 
@@ -81,6 +82,8 @@ export function SemanticPage({ baseUrl, knowledgeBaseId, documentId }: SemanticP
             .then(() => setRetryError(null))
             .catch((error: unknown) =>
               setRetryError(error instanceof Error ? error.message : '语义重试提交失败'));
+          // HONEST LIMITATION: the Go retry endpoint is not mounted yet
+          // (W03 deferral) - the submit surfaces a clear error until then.
         }}
       />
       <section className="semantic-search">
@@ -93,7 +96,7 @@ export function SemanticPage({ baseUrl, knowledgeBaseId, documentId }: SemanticP
         <ButtonLike onClick={() => void runSearch()} disabled={query.loading}>
           检索
         </ButtonLike>
-        <ButtonLike onClick={() => { abortRef.current?.abort(); setQuery((s) => cancelSemanticQuery(s)); }}>
+        <ButtonLike onClick={cancel}>
           取消
         </ButtonLike>
       </section>
