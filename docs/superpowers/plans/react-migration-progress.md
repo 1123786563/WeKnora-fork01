@@ -1292,3 +1292,22 @@
   Web typechecks plus diff check passed. Evidence:
   `docs/migrations/react/evidence/vue-react-parity/2026-09-12-mcp-settings-base.md`
   and `docs/migrations/react/evidence/vue-react-parity/2026-09-12-model-settings.md`.
+
+### R031 Sandbox settings and review repairs (2026-09-12)
+
+- Added the shared sandbox configuration API client for the existing list,
+  get, create, update, delete, inventory, and workspace-policy routes. Strict
+  envelope parsing and conflict-code normalization are covered by 3/3 focused
+  tests.
+- Added the Web Sandbox settings slice with loading/empty states, viewer/admin
+  gating, backend tabs/cards, script-policy confirmation, basic create/edit
+  entry, and server-backed deletion. Component tests passed 5/5 and the full
+  Web suite passed 269/269; shared and Web typechecks passed.
+- Independent review also found model type/parameter regressions and an MCP
+  policy fail-open. The model payload now emits exact `VLLM`/`ASR` values and
+  preserves unknown parameters; MCP policy controls fail closed when policy
+  loading fails. These repairs remain implementing-level evidence only.
+- Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-12-sandbox-settings.md`.
+  R031 remains `implementing`; Vue wizard/template/deep-check/inventory
+  states, localization, browser, real-backend, Wails, iOS, and Android
+  evidence are still open.

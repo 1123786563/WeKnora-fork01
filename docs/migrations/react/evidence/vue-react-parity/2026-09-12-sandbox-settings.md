@@ -1,0 +1,24 @@
+# Sandbox settings parity evidence
+
+Date: 2026-09-12
+
+## Scope
+
+The React Web settings route now uses the shared sandbox-configuration contract for loading, empty and role-gated states, backend tabs/cards, the workspace script kill-switch confirmation, basic create/edit entry, and server-backed deletion. The API client validates the existing sandbox-config routes, DTO envelopes, masked configuration records, and inventory conflict codes.
+
+This remains `implementing`. The Vue multi-step connection/template wizard, template catalog and polling, deep checks, inventory drawer and force-delete flow, exact field validation, six-locale copy, fixed-viewport screenshots, real backend, Wails, iOS, and Android evidence are not complete.
+
+## Evidence
+
+| Layer | Command / result | Classification |
+|---|---|---|
+| API contract | `pnpm exec tsx --test packages/api-client/src/sandbox-configurations.test.ts` — 3 passed, 0 failed | focused shared evidence |
+| Component SSR | `pnpm exec tsx --test apps/web/src/settings/SandboxSettingsPanel.test.tsx` — 5 passed, 0 failed | focused component evidence |
+| Full Web | `pnpm test:web` — 269 passed, 0 failed | Web regression evidence |
+| Typecheck | shared and Web TypeScript checks passed | static integration evidence |
+| Browser | protected settings route requires authenticated SSO; fixed-viewport recording reached React login only | browser boundary evidence |
+| Real backend / native | not run for this slice | missing evidence |
+
+## Remaining work
+
+Do not move R031 to `accepted` until the remaining Vue editor states and protected browser/native/runtime evidence are collected.
