@@ -4,9 +4,11 @@ import test from 'node:test';
 import {
   appendMessages,
   hasOlderMessages,
+  hasSessionChanged,
   shouldStickToBottom,
   scrollTopAfterPrepend,
   sessionGroups,
+  sessionPageCount,
 } from './session-state.ts';
 
 const message = (id: string, created_at: string, content = id) => ({
@@ -57,4 +59,15 @@ test('keeps the flat session mode available without dropping pinned rows', () =>
     { id: 'pinned', title: 'Pinned', is_pinned: true },
   ], new Date(), 'none');
   assert.deepEqual(groups.map((group) => group.key), ['pinned', 'all']);
+});
+
+test('calculates session pages from the server total', () => {
+  assert.equal(sessionPageCount(0, 30), 1);
+  assert.equal(sessionPageCount(31, 30), 2);
+  assert.equal(sessionPageCount(31, 0), 1);
+});
+
+test('detects a session switch for view-local layout state', () => {
+  assert.equal(hasSessionChanged('session-a', 'session-b'), true);
+  assert.equal(hasSessionChanged('session-a', 'session-a'), false);
 });

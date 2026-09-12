@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef } from 'react';
 import type { ChatMessage, MessageSuggestionSet } from '@weknora/contracts';
-import { scrollTopAfterPrepend, shouldStickToBottom } from '@weknora/domain/chat/session-state';
+import { hasSessionChanged, scrollTopAfterPrepend, shouldStickToBottom } from '@weknora/domain/chat/session-state';
 
 export interface PendingChatMessage {
   content: string;
@@ -19,15 +19,24 @@ export interface MessageListProps {
   onSuggestionClick?(questionId: string, text: string): void;
   onRefreshSuggestions?(): void;
   onDismissSuggestions?(): void;
+  sessionId?: string | null;
 }
 
-export function MessageList({ messages, pending, onRetry, loadingOlder = false, hasMore = false, onLoadOlder, suggestions, onSuggestionClick, onRefreshSuggestions, onDismissSuggestions }: MessageListProps) {
+export function MessageList({ messages, pending, onRetry, loadingOlder = false, hasMore = false, onLoadOlder, suggestions, onSuggestionClick, onRefreshSuggestions, onDismissSuggestions, sessionId = null }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
+  const previousSessionId = useRef<string | null>(sessionId);
   const previousLayout = useRef<{ firstId?: string; length: number; height: number; top: number }>({ length: 0, height: 0, top: 0 });
   useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) return;
+    if (hasSessionChanged(previousSessionId.current, sessionId)) {
+      previousSessionId.current = sessionId;
+      stickToBottom.current = true;
+      previousLayout.current = { length: 0, height: 0, top: 0 };
+      container.scrollTop = 0;
+      return;
+    }
     const previous = previousLayout.current;
     const firstId = messages[0]?.id;
     const prepended = previous.length > 0 && messages.length > previous.length && firstId !== previous.firstId;

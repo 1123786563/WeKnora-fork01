@@ -79,6 +79,9 @@ export interface ChatPageProps {
   onSessionGroupModeChange?(mode: 'none' | 'date'): void;
   sessionKeyword?: string;
   onSessionKeywordChange?(keyword: string): void;
+  sessionPage?: number;
+  sessionPageCount?: number;
+  onSessionPageChange?(page: number): void;
   onClearSession?(): Promise<void>;
   loadingOlderMessages?: boolean;
   hasMoreMessages?: boolean;
@@ -203,8 +206,15 @@ function TerminalPanel(props: Pick<ChatPageProps, 'terminal' | 'onOpenTerminal' 
 
 export function ChatPage(props: ChatPageProps) {
   const [pending, setPending] = useState<PendingChatMessage | undefined>();
+  const [sending, setSending] = useState(false);
+  const sendingRef = useRef(false);
+
+  useEffect(() => { setPending(undefined); }, [props.selectedSessionId]);
 
   async function send(submission: ChatSubmission) {
+    if (sendingRef.current) return;
+    sendingRef.current = true;
+    setSending(true);
     setPending(submission);
     try {
       await props.send(submission);
@@ -215,6 +225,9 @@ export function ChatPage(props: ChatPageProps) {
         status: 'failed',
         error: error instanceof Error ? error.message : 'Message failed to send',
       });
+    } finally {
+      sendingRef.current = false;
+      setSending(false);
     }
   }
 
@@ -236,6 +249,9 @@ export function ChatPage(props: ChatPageProps) {
       onGroupModeChange={props.onSessionGroupModeChange}
       keyword={props.sessionKeyword}
       onKeywordChange={props.onSessionKeywordChange}
+      page={props.sessionPage}
+      pageCount={props.sessionPageCount}
+      onPageChange={props.onSessionPageChange}
     />
     <section className="wk-chat-main" aria-label="Chat">
       <h1>{props.selectedSessionId ? 'Conversation' : 'New conversation'}</h1>
@@ -252,6 +268,7 @@ export function ChatPage(props: ChatPageProps) {
         loadingOlder={props.loadingOlderMessages}
         hasMore={props.hasMoreMessages}
         onLoadOlder={props.onLoadOlderMessages}
+        sessionId={props.selectedSessionId}
         suggestions={props.suggestions}
         onSuggestionClick={props.onSuggestionClick}
         onRefreshSuggestions={props.onRefreshSuggestions}
@@ -259,7 +276,7 @@ export function ChatPage(props: ChatPageProps) {
       />
       {props.selectedSessionId && props.onClearSession ? <button type="button" onClick={() => void props.onClearSession!()}>Clear messages</button> : null}
       {props.selectedSessionId && props.onSteer ? <SteerComposer onSteer={props.onSteer} /> : null}
-      <ChatComposer draft={props.draft} onDraftChange={props.onDraftChange} onSubmit={(submission) => void send(submission)} />
+      <ChatComposer draft={props.draft} disabled={sending || pending !== undefined || props.stream?.phase === 'streaming'} onDraftChange={props.onDraftChange} onSubmit={(submission) => void send(submission)} />
     </section>
   </main>;
 }

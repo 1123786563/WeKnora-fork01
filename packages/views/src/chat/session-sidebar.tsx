@@ -28,9 +28,12 @@ export interface SessionSidebarProps {
   onGroupModeChange?(mode: 'none' | 'date'): void;
   keyword?: string;
   onKeywordChange?(keyword: string): void;
+  page?: number;
+  pageCount?: number;
+  onPageChange?(page: number): void;
 }
 
-export function SessionSidebar({ sessions, selectedSessionId, loading = false, onSelect, onCreate, onRename, onTogglePin, onDelete, groups, source, sourceOptions, onSourceChange, groupMode, onGroupModeChange, keyword, onKeywordChange }: SessionSidebarProps) {
+export function SessionSidebar({ sessions, selectedSessionId, loading = false, onSelect, onCreate, onRename, onTogglePin, onDelete, groups, source, sourceOptions, onSourceChange, groupMode, onGroupModeChange, keyword, onKeywordChange, page = 1, pageCount = 1, onPageChange }: SessionSidebarProps) {
   const visibleGroups = groups ?? [{ key: 'all', items: sessions }];
   return <aside className="wk-chat-sidebar" aria-label="Sessions">
     <div className="wk-chat-sidebar-heading"><h2>Conversations</h2><button type="button" onClick={onCreate}>New chat</button></div>
@@ -44,5 +47,6 @@ export function SessionSidebar({ sessions, selectedSessionId, loading = false, o
         <div className="wk-chat-session-row"><button type="button" aria-current={session.id === selectedSessionId ? 'page' : undefined} onClick={() => onSelect(session.id)}>{session.is_pinned ? '★ ' : ''}{session.title || 'Untitled chat'}</button>{onRename ? <button type="button" aria-label={`Rename ${session.id}`} onClick={() => void onRename(session.id)}>Rename</button> : null}{onTogglePin ? <button type="button" aria-label={`${session.is_pinned ? 'Unpin' : 'Pin'} ${session.id}`} onClick={() => void onTogglePin(session.id, !session.is_pinned)}>{session.is_pinned ? 'Unpin' : 'Pin'}</button> : null}{onDelete ? <button type="button" aria-label={`Delete ${session.id}`} onClick={() => void onDelete(session.id)}>Delete</button> : null}</div>
       </li>)}</ul>
     </section>)}
+    {onPageChange && pageCount > 1 ? <nav className="wk-chat-session-pagination" aria-label="Conversation pages"><button type="button" disabled={page <= 1 || loading} onClick={() => onPageChange(Math.max(1, page - 1))}>Previous</button><span>Page {page} of {pageCount}</span><button type="button" disabled={page >= pageCount || loading} onClick={() => onPageChange(Math.min(pageCount, page + 1))}>Next</button></nav> : null}
   </aside>;
 }

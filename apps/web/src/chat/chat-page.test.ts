@@ -58,4 +58,5 @@ test('chat page exposes the selected agent and server-disabled state at the chat
   assert.match(html, /Delete session-1/);
   assert.match(html, /Open terminal/);
   assert.match(html, /\$ ls/);
+  assert.match(html, /id="wk-chat-draft"[^>]*disabled=""/);
 });

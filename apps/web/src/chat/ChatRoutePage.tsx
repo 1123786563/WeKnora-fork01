@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AgentConfiguration, ChatMessage, ChatSession, MessageSuggestionSet, WeKnoraClient } from '@weknora/api-client';
 import { chatDraftKey } from '@weknora/domain/chat/draft';
 import { initialChatStreamState, reduceChatStream } from '@weknora/domain/chat/reducer';
-import { appendMessages, hasOlderMessages, sessionGroups } from '@weknora/domain/chat/session-state';
+import { appendMessages, hasOlderMessages, sessionGroups, sessionPageCount } from '@weknora/domain/chat/session-state';
 import { ChatPage, type ChatSubmission } from '@weknora/views';
 import type { ScopeController } from '@weknora/domain/scope';
 import { chatSessionIdFromPath } from './session-route.ts';
@@ -14,18 +14,21 @@ interface ChatRoutePageProps {
   scopeController: ScopeController;
   apiBaseUrl?: string;
   knowledgeBaseId?: string;
+  canViewChannelSessions?: boolean;
 }
 
 function draftStorageKey(scope: ReturnType<ScopeController['current']>['scope'], sessionId: string): string {
   return JSON.stringify(chatDraftKey({ ...scope, sessionId }));
 }
 
-export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowledgeBaseId }: ChatRoutePageProps) {
+export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowledgeBaseId, canViewChannelSessions = false }: ChatRoutePageProps) {
   const scope = scopeController.current();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sessionSource, setSessionSource] = useState('web');
   const [sessionKeyword, setSessionKeyword] = useState('');
+  const [sessionPage, setSessionPage] = useState(1);
+  const [sessionPageCountValue, setSessionPageCountValue] = useState(1);
   const [sessionGroupMode, setSessionGroupMode] = useState<'none' | 'date'>('none');
   const [streamState, setStreamState] = useState(initialChatStreamState);
   const [agents, setAgents] = useState<AgentConfiguration[]>([]);
@@ -33,6 +36,8 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   const [selectedAgentId, setSelectedAgentId] = useState(() => new URLSearchParams(window.location.search).get('agentId')?.trim() ?? '');
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(() => chatSessionIdFromPath(window.location.pathname));
   const selectedSessionIdRef = useRef(selectedSessionId);
+  const chatRunIdRef = useRef(0);
+  const sendInFlightRef = useRef(false);
   const [draft, setDraft] = useState('');
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
@@ -40,6 +45,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
   const [suggestions, setSuggestions] = useState<MessageSuggestionSet | undefined>();
   const suggestionForMessage = useRef<string | null>(null);
+  const impressionForSuggestion = useRef<string | null>(null);
   const [error, setError] = useState<string | undefined>();
   const [terminal, setTerminal] = useState<WebTerminalSnapshot>({ status: 'idle', output: '' });
   const terminalController = useRef<WebTerminalController | null>(null);
@@ -55,12 +61,19 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   useEffect(() => {
     let active = true;
     setLoadingSessions(true);
-    void client.sessions.list({ page: 1, pageSize: 30, source: sessionSource || undefined, keyword: sessionKeyword || undefined, signal: scope.signal }).then(
-      (result) => { if (active && scopeController.isCurrent(scope.scope)) setSessions(result.data); },
+    void client.sessions.list({ page: sessionPage, pageSize: 30, source: sessionSource || undefined, keyword: sessionKeyword || undefined, signal: scope.signal }).then(
+      (result) => {
+        if (active && scopeController.isCurrent(scope.scope)) {
+          setSessions(result.data);
+          const pageCount = sessionPageCount(result.total, result.page_size);
+          setSessionPageCountValue(pageCount);
+          if (result.page !== sessionPage) setSessionPage(result.page);
+        }
+      },
       (cause: unknown) => { if (active) setError(cause instanceof Error ? cause.message : 'Unable to load sessions'); },
     ).finally(() => { if (active) setLoadingSessions(false); });
     return () => { active = false; };
-  }, [client, scope.signal, scope.scope, scopeController, sessionSource, sessionKeyword]);
+  }, [client, scope.signal, scope.scope, scopeController, sessionPage, sessionSource, sessionKeyword]);
 
   useEffect(() => {
     let active = true;
@@ -83,11 +96,13 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       setHasMoreMessages(false);
       setSuggestions(undefined);
       suggestionForMessage.current = null;
+      impressionForSuggestion.current = null;
       return;
     }
     let active = true;
     setSuggestions(undefined);
     suggestionForMessage.current = null;
+    impressionForSuggestion.current = null;
     setLoadingMessages(true);
     setError(undefined);
     setStreamState(initialChatStreamState());
@@ -107,6 +122,14 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     ).finally(() => { if (active) setLoadingMessages(false); });
     return () => { active = false; };
   }, [client, selectedSessionId, scope.signal, scope.scope, scopeController]);
+
+  useEffect(() => {
+    if (!suggestions || suggestions.status !== 'ready' || !selectedSessionId) return;
+    const key = `${selectedSessionId}:${suggestions.id}`;
+    if (impressionForSuggestion.current === key) return;
+    impressionForSuggestion.current = key;
+    void client.chat.suggestions.recordEvent(selectedSessionId, suggestions.id, 'impression', '', scope.signal).catch(() => undefined);
+  }, [client, scope.signal, selectedSessionId, suggestions]);
 
   async function loadSuggestions(sessionId: string, messageId: string, ensure: boolean, signal?: AbortSignal): Promise<void> {
     try {
@@ -130,14 +153,15 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   }
 
   async function loadOlderMessages(): Promise<void> {
-    if (!selectedSessionId || loadingOlderMessages || !hasMoreMessages) return;
+    const sessionId = selectedSessionId;
+    if (!sessionId || loadingOlderMessages || !hasMoreMessages) return;
     const oldest = messages[0]?.created_at;
     if (!oldest) { setHasMoreMessages(false); return; }
     setLoadingOlderMessages(true);
     try {
       const oldestId = messages[0]?.id;
-      const batch = await client.sessions.messages(selectedSessionId, { beforeTime: oldest, limit: 50, signal: scope.signal });
-      if (!scopeController.isCurrent(scope.scope)) return;
+      const batch = await client.sessions.messages(sessionId, { beforeTime: oldest, limit: 50, signal: scope.signal });
+      if (!scopeController.isCurrent(scope.scope) || selectedSessionIdRef.current !== sessionId) return;
       setMessages((current) => appendMessages(current, batch));
       setHasMoreMessages(hasOlderMessages(batch, 50) && batch[0]?.id !== oldestId);
     } catch (cause) {
@@ -172,6 +196,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   }, [apiBaseUrl, client, scope.signal, selectedSessionId]);
 
   function selectSession(sessionId: string) {
+    chatRunIdRef.current += 1;
     selectedSessionIdRef.current = sessionId;
     setSelectedSessionId(sessionId);
     window.history.pushState({}, '', `/platform/chat/${encodeURIComponent(sessionId)}`);
@@ -183,6 +208,16 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     if (agentId) url.searchParams.set('agentId', agentId);
     else url.searchParams.delete('agentId');
     window.history.replaceState({}, '', `${url.pathname}${url.search}`);
+  }
+
+  function changeSessionSource(source: string): void {
+    setSessionSource(source);
+    setSessionPage(1);
+  }
+
+  function changeSessionKeyword(keyword: string): void {
+    setSessionKeyword(keyword);
+    setSessionPage(1);
   }
 
   async function resolveToolApproval(pendingId: string, decision: 'approve' | 'reject'): Promise<void> {
@@ -311,39 +346,48 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   }
 
   async function send(submission: ChatSubmission): Promise<void> {
-    let sessionId = selectedSessionId;
-    if (!sessionId) {
-      const created = await client.sessions.create({ title: submission.content.slice(0, 80) });
-      setSessions((current) => [created, ...current.filter((item) => item.id !== created.id)]);
-      sessionId = created.id;
-      selectSession(sessionId);
-    }
-    setStreamState(initialChatStreamState());
-    let runState = initialChatStreamState();
-    const streamOptions = buildWebChatStreamOptions(sessionId, submission.content, selectedAgentId, knowledgeBaseId);
-    await client.chat.stream(streamOptions, (event) => {
-      runState = reduceChatStream(runState, event);
-      setStreamState(runState);
-      if (runState.phase === 'error') throw new Error(runState.error ?? 'Chat stream failed');
-      if (runState.answer) setMessages((current) => [...current.filter((item) => item.id !== `stream-${sessionId}`), {
-        id: `stream-${sessionId}`, session_id: sessionId, role: 'assistant', content: runState.answer,
-        is_completed: runState.phase === 'completed',
-      }]);
-      if (runState.phase === 'completed' && runState.assistantMessageId && runState.assistantMessageId !== suggestionForMessage.current) {
-        suggestionForMessage.current = runState.assistantMessageId;
-        void loadSuggestions(sessionId, runState.assistantMessageId, true, scope.signal);
-      }
-    });
-    // The server persists the user message before opening the stream. Refresh
-    // the bounded history after a successful turn so the UI replaces the
-    // transient assistant row with authoritative user/assistant message ids;
-    // the pending composer remains the sole visible sending/failed row.
+    if (sendInFlightRef.current) throw new Error('A chat request is already running.');
+    sendInFlightRef.current = true;
     try {
-      const persisted = await client.sessions.messages(sessionId, { limit: 50, signal: scope.signal });
-      if (scopeController.isCurrent(scope.scope) && selectedSessionIdRef.current === sessionId) setMessages(appendMessages([], persisted));
-    } catch {
-      // The streamed answer remains visible if the post-turn history refresh
-      // is unavailable; a later session selection reloads authoritative data.
+      let sessionId = selectedSessionId;
+      if (!sessionId) {
+        const created = await client.sessions.create({ title: submission.content.slice(0, 80) });
+        setSessions((current) => [created, ...current.filter((item) => item.id !== created.id)]);
+        sessionId = created.id;
+        selectSession(sessionId);
+      }
+      const runId = ++chatRunIdRef.current;
+      setStreamState(initialChatStreamState());
+      let runState = initialChatStreamState();
+      const streamOptions = buildWebChatStreamOptions(sessionId, submission.content, selectedAgentId, knowledgeBaseId);
+      await client.chat.stream(streamOptions, (event) => {
+        if (runId !== chatRunIdRef.current || selectedSessionIdRef.current !== sessionId) return;
+        runState = reduceChatStream(runState, event);
+        setStreamState(runState);
+        if (runState.phase === 'error') throw new Error(runState.error ?? 'Chat stream failed');
+        if (runState.answer) setMessages((current) => [...current.filter((item) => item.id !== `stream-${sessionId}`), {
+          id: `stream-${sessionId}`, session_id: sessionId, role: 'assistant', content: runState.answer,
+          is_completed: runState.phase === 'completed',
+        }]);
+        if (runState.phase === 'completed' && runState.assistantMessageId && runState.assistantMessageId !== suggestionForMessage.current) {
+          suggestionForMessage.current = runState.assistantMessageId;
+          void loadSuggestions(sessionId, runState.assistantMessageId, true, scope.signal);
+        }
+      });
+      if (runId !== chatRunIdRef.current || selectedSessionIdRef.current !== sessionId) return;
+      // The server persists the user message before opening the stream. Refresh
+      // the bounded history after a successful turn so the UI replaces the
+      // transient assistant row with authoritative user/assistant message ids;
+      // the pending composer remains the sole visible sending/failed row.
+      try {
+        const persisted = await client.sessions.messages(sessionId, { limit: 50, signal: scope.signal });
+        if (scopeController.isCurrent(scope.scope) && selectedSessionIdRef.current === sessionId) setMessages(appendMessages([], persisted));
+      } catch {
+        // The streamed answer remains visible if the post-turn history refresh
+        // is unavailable; a later session selection reloads authoritative data.
+      }
+    } finally {
+      sendInFlightRef.current = false;
     }
   }
 
@@ -372,10 +416,13 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     onDeleteSession={deleteSession}
     sessionGroups={sessionGroups(sessions, new Date(), sessionGroupMode)}
     sessionSource={sessionSource}
-    sessionSourceOptions={[{ value: '', label: 'All sources' }, { value: 'web', label: 'Web' }, { value: 'embed', label: 'Embed' }, { value: 'api', label: 'API' }, { value: 'feishu', label: 'Feishu' }, { value: 'wechat', label: 'WeChat' }, { value: 'slack', label: 'Slack' }]}
-    onSessionSourceChange={setSessionSource}
+    sessionSourceOptions={canViewChannelSessions ? [{ value: '', label: 'All sources' }, { value: 'web', label: 'Web' }, { value: 'embed', label: 'Embed' }, { value: 'api', label: 'API' }, { value: 'feishu', label: 'Feishu' }, { value: 'wechat', label: 'WeChat' }, { value: 'slack', label: 'Slack' }] : [{ value: 'web', label: 'Web' }]}
+    onSessionSourceChange={changeSessionSource}
     sessionKeyword={sessionKeyword}
-    onSessionKeywordChange={setSessionKeyword}
+    onSessionKeywordChange={changeSessionKeyword}
+    sessionPage={sessionPage}
+    sessionPageCount={sessionPageCountValue}
+    onSessionPageChange={setSessionPage}
     sessionGroupMode={sessionGroupMode}
     onSessionGroupModeChange={setSessionGroupMode}
     onClearSession={clearMessages}

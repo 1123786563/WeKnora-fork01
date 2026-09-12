@@ -32,6 +32,14 @@ test('auth/me with no active tenant clears the old tenant and exposes onboarding
   assert.equal(runtime.requiresWorkspace(), true);
 });
 
+test('exposes channel-session visibility only for active-tenant admins', () => {
+  const runtime = createWebScopeRuntime('https://api.test', null, null);
+  runtime.hydrate({ user: { id: 'user-2' }, tenant: { id: 7 }, memberships: [{ tenant_id: 7, role: 'viewer' }] });
+  assert.equal(runtime.canViewChannelSessions(), false);
+  runtime.hydrate({ user: { id: 'user-2' }, tenant: { id: 7 }, memberships: [{ tenant_id: 7, role: 'admin' }] });
+  assert.equal(runtime.canViewChannelSessions(), true);
+});
+
 test('switchTenant commits the new scope only after auth.switchTenant returns a session', async () => {
   const runtime = createWebScopeRuntime('https://api.test', 'user-1', 'tenant-a');
   const previous = runtime.current();

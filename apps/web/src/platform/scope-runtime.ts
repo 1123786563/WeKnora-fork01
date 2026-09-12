@@ -18,7 +18,22 @@ export interface WebScopeRuntime {
   can(capability?: string): boolean;
   capabilities(): CapabilityMap;
   isSystemAdmin(): boolean;
+  canViewChannelSessions(): boolean;
   key(resource: string, params?: unknown): readonly unknown[];
+}
+
+type WebTenantRole = 'owner' | 'admin' | 'contributor' | 'viewer';
+
+function membershipRole(memberships: unknown[] | undefined, tenantId: string | null): WebTenantRole {
+  if (!tenantId) return 'viewer';
+  for (const item of memberships ?? []) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+    const row = item as Record<string, unknown>;
+    const id = row.tenant_id ?? row.tenantId;
+    const role = row.role;
+    if (String(id) === tenantId && (role === 'owner' || role === 'admin' || role === 'contributor' || role === 'viewer')) return role;
+  }
+  return 'viewer';
 }
 
 export function createWebScopeRuntime(origin: string, userId: string | null = null, tenantId: string | null = null, options: { liteMode?: boolean; edition?: string; persistTenant?: (tenantId: string | null) => void } = {}): WebScopeRuntime {
@@ -27,6 +42,7 @@ export function createWebScopeRuntime(origin: string, userId: string | null = nu
   let liteMode = options.liteMode === true;
   let edition = options.edition;
   let systemAdmin = false;
+  let activeRole: WebTenantRole = 'viewer';
   const commitScope = (nextUserId: string | null, nextTenantId: string | null): ScopeHandle => {
     const handle = controller.switchScope(origin, nextUserId, nextTenantId);
     options.persistTenant?.(nextTenantId);
@@ -40,6 +56,7 @@ export function createWebScopeRuntime(origin: string, userId: string | null = nu
     systemAdmin = authMe.user.is_system_admin === true || authMe.user.isSystemAdmin === true;
     const maybeEdition = authMe.user.edition;
     if (typeof maybeEdition === 'string' && maybeEdition.trim()) edition = maybeEdition;
+    activeRole = membershipRole(authMe.memberships, nextTenantId);
     return commitScope(nextUserId, nextTenantId);
   };
   const switchTenant = async (
@@ -52,6 +69,7 @@ export function createWebScopeRuntime(origin: string, userId: string | null = nu
     if (!Number.isSafeInteger(numericTenantId) || numericTenantId <= 0) throw new Error('tenantId must be a positive safe integer');
     const session = await switcher(numericTenantId, refreshToken);
     await persistSession(session);
+    activeRole = membershipRole(session.memberships, tenantId);
     return commitScope(controller.current().scope.userId, tenantId);
   };
   return {
@@ -61,11 +79,12 @@ export function createWebScopeRuntime(origin: string, userId: string | null = nu
     setIdentity: commitScope,
     setTenant: (nextTenantId) => commitScope(controller.current().scope.userId, nextTenantId),
     switchTenant,
-    logout: () => { capabilitySnapshot = {}; systemAdmin = false; controller.logout(); options.persistTenant?.(null); },
+    logout: () => { capabilitySnapshot = {}; systemAdmin = false; activeRole = 'viewer'; controller.logout(); options.persistTenant?.(null); },
     requiresWorkspace: () => controller.current().scope.userId !== null && controller.current().scope.tenantId === null,
     can: (capability) => isCapabilitySupported(capabilitySnapshot, capability, { liteMode, edition }),
     capabilities: () => ({ ...capabilitySnapshot }),
     isSystemAdmin: () => systemAdmin,
+    canViewChannelSessions: () => systemAdmin || activeRole === 'owner' || activeRole === 'admin',
     key: (resource, params = {}) => scopedKey(controller.current().scope, resource, params),
   };
 }

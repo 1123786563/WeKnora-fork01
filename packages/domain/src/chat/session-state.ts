@@ -28,6 +28,14 @@ export function hasOlderMessages(batch: readonly ChatMessage[], pageSize: number
   return batch.length >= pageSize;
 }
 
+export function sessionPageCount(total: number, pageSize: number): number {
+  return pageSize > 0 && total > 0 ? Math.ceil(total / pageSize) : 1;
+}
+
+export function hasSessionChanged(previousSessionId: string | null, nextSessionId: string | null): boolean {
+  return previousSessionId !== nextSessionId;
+}
+
 export type SessionDateGroupKey = 'pinned' | 'today' | 'yesterday' | 'last7Days' | 'last30Days' | 'older' | 'all';
 export interface SessionGroup { key: SessionDateGroupKey; label: string; items: ChatSession[]; }
 
