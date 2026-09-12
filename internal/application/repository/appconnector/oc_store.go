@@ -19,6 +19,10 @@ var (
 	// stale or skipped binding generations, authorization version
 	// regressions, and in-place identity rewrites.
 	ErrOCBindingConflict = errors.New("oc_binding_conflict")
+	// ErrOCOutboxInvalid covers malformed outbox claim/complete/extend input
+	// (blank owner/id, non-positive fence or lease) rejected before any
+	// database access.
+	ErrOCOutboxInvalid = errors.New("oc_outbox_invalid")
 )
 
 // OCRuntimeRow is the registry row of one shared open-connector runtime.
@@ -184,6 +188,101 @@ func (s *OCStore) SaveBinding(ctx context.Context, b appconnector.OCBinding) err
 		return ErrOCBindingConflict
 	}
 	return nil
+}
+
+// ---------------------------------------------------------------------------
+// operations outbox claim/complete/extend (T05 control worker)
+//
+// SCHEMA ADAPTATION (coordinator ruling 1): the plan sketch modeled the lease
+// with a dedicated lease_until column, but the FROZEN T03 schema
+// (migrations/versioned/000121 + migrations/sqlite/000041) has NO lease_until:
+// the outbox carries (next_at, lease_owner, fence) only. The claim protocol
+// therefore doubles next_at as the lease deadline (visibility timeout):
+//
+//   - a row is claimable exactly when next_at <= now (never attempted, retry
+//     backoff elapsed, or a previous worker's lease expired);
+//   - claiming pushes next_at to now+lease, bumping fence and attempts, so
+//     the row is invisible to every other worker until the lease lapses;
+//   - renewal and retry scheduling are the same UPDATE, only the new deadline
+//     differs (renewal: now+lease; backoff: now+exponential delay);
+//   - Complete must match id AND lease_owner AND fence, so a worker whose
+//     lease expired and was taken over at fence+1 updates ZERO rows.
+//
+// CLAIM/OPERATION FIELD MAPPING (ruling 1): the frozen schema names are
+// resource_id / resource_version; the control-plane ControlOperation calls
+// them ConnectionID / AuthVersion. OperationFromRow in
+// internal/connectorcontrol performs the explicit mapping.
+// ---------------------------------------------------------------------------
+
+// outboxClaimSQL is one atomic claim. The UPDATE and its subselect run as a
+// single statement, so exactly one concurrent caller can win a row. On
+// PostgreSQL the subselect carries FOR UPDATE SKIP LOCKED (true queue
+// semantics under concurrency — sqlite cannot honor SKIP LOCKED, which is why
+// the double-claim acceptance runs on real PostgreSQL); on sqlite the
+// single-statement UPDATE is atomic under the database's serialized writer.
+// RETURNING (sqlite >= 3.35, always on PostgreSQL) yields the post-claim row
+// so no second read is needed.
+func outboxClaimSQL(dialect string) string {
+	lock := ""
+	if dialect == "postgres" {
+		lock = " FOR UPDATE SKIP LOCKED"
+	}
+	return "UPDATE connector_operations_outbox " +
+		"SET lease_owner = @owner, fence = fence + 1, attempts = attempts + 1, " +
+		"next_at = @until, updated_at = @now " +
+		"WHERE id IN (SELECT id FROM connector_operations_outbox " +
+		"WHERE next_at <= @now ORDER BY next_at, id LIMIT 1" + lock + ") " +
+		"RETURNING id, tenant_id, resource_id, resource_version, kind, attempts, " +
+		"next_at, lease_owner, fence, created_at, updated_at"
+}
+
+// ClaimNextOperation atomically leases the earliest due outbox operation to
+// owner: lease_owner/fence/attempts are bumped and next_at becomes the lease
+// deadline now+lease. It returns nil (nil error) when nothing is due.
+func (s *OCStore) ClaimNextOperation(ctx context.Context, owner string, now time.Time, lease time.Duration) (*OCOperationsOutboxRow, error) {
+	if owner == "" || lease <= 0 || now.IsZero() {
+		return nil, ErrOCOutboxInvalid
+	}
+	var row OCOperationsOutboxRow
+	err := s.db.WithContext(ctx).Raw(outboxClaimSQL(s.db.Dialector.Name()), map[string]interface{}{
+		"owner": owner,
+		"until": now.Add(lease),
+		"now":   now,
+	}).Scan(&row).Error
+	if err != nil {
+		return nil, err
+	}
+	if row.ID == "" {
+		return nil, nil
+	}
+	return &row, nil
+}
+
+// CompleteOperation removes a finished operation, but only if the caller still
+// holds the lease: the predicate is id AND lease_owner AND fence. A worker
+// whose lease was taken over at a higher fence updates ZERO rows (reported as
+// false, not an error).
+func (s *OCStore) CompleteOperation(ctx context.Context, id, owner string, fence int64) (bool, error) {
+	if id == "" || owner == "" || fence < 1 {
+		return false, ErrOCOutboxInvalid
+	}
+	res := s.db.WithContext(ctx).Exec(
+		"DELETE FROM connector_operations_outbox WHERE id = ? AND lease_owner = ? AND fence = ?",
+		id, owner, fence)
+	return res.RowsAffected > 0, res.Error
+}
+
+// ExtendOperation moves an operation's next_at deadline (lease renewal or
+// retry backoff) under the same lease_owner+fence predicate. false means the
+// caller no longer holds the lease; the row itself is left untouched.
+func (s *OCStore) ExtendOperation(ctx context.Context, id, owner string, fence int64, until, now time.Time) (bool, error) {
+	if id == "" || owner == "" || fence < 1 || until.IsZero() || now.IsZero() {
+		return false, ErrOCOutboxInvalid
+	}
+	res := s.db.WithContext(ctx).Exec(
+		"UPDATE connector_operations_outbox SET next_at = ?, updated_at = ? WHERE id = ? AND lease_owner = ? AND fence = ?",
+		until, now, id, owner, fence)
+	return res.RowsAffected > 0, res.Error
 }
 
 // GetBinding loads one tenant's binding for a local connection. Unscoped
