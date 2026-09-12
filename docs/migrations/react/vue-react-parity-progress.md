@@ -167,3 +167,8 @@
 ## 2026-09-12 Round 25（续）
 
 - Organizations live E2E：建组织→invite_code→直接 join 全链路通过；发现后端创建组织时忽略 require_approval 字段（审批门控分支实际不可达）——登记为后端待决项，前端分支保留。证据：evidence/vue-react-parity/2026-09-12-org-join-live-e2e.md。
+
+## 2026-09-12 Round 26
+
+- KB 详情面必修实施子代理派发（reparse/cancel+timeline、FAQ/Wiki 分页、权限门控、KB 类型路由、i18n 移植 knowledgeBase 等域）。
+- 上轮 org join live E2E 发现的 require_approval 后端忽略问题已登记后端待决项。
