@@ -20,6 +20,9 @@ URL, sandbox path, or provider location is copied into the shared model.
   responses cannot replace a newer preview.
 - `d58b4a6` rejects SVG MIME values with parameters (for example,
   `image/svg+xml; charset=utf-8`) as download-only as well.
+- `19e1c52` centralizes safe download names for Web and native file sinks;
+  path separators and control characters cannot become local paths while the
+  authenticated resource handle remains unchanged.
 
 ## Verification
 
@@ -30,6 +33,7 @@ URL, sandbox path, or provider location is copied into the shared model.
 - `pnpm test:shared`: 223/223, exit 0.
 - `pnpm test:web`: 112/112, exit 0.
 - `pnpm typecheck:shared` and `pnpm typecheck:web`: exit 0.
+- `pnpm typecheck:mobile`: exit 0.
 - `git diff --check`: exit 0 (existing CRLF normalization warning only for a
   user-owned dirty CSV file).
 
