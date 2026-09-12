@@ -652,3 +652,177 @@ main.wk-chat-page.wk-chat-page {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
+
+
+/* ---- Typed tool-result renderers (Vue reference: frontend/src/views/chat/components/tool-results/) ---- */
+.wk-tool-empty {
+  margin: 0;
+  color: #66758b;
+  font-size: 0.78rem;
+  font-style: italic;
+}
+
+.wk-tool-search-results,
+.wk-tool-web-results,
+.wk-tool-grep-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 14rem;
+  overflow-y: auto;
+}
+
+.wk-tool-search-results li,
+.wk-tool-web-results li,
+.wk-tool-grep-results li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding-left: 0.5rem;
+  border-left: 2px solid #edf0f5;
+}
+
+.wk-tool-row-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #1f2d3d;
+  word-break: break-word;
+}
+
+.wk-tool-row-title a {
+  color: #245a9b;
+}
+
+.wk-tool-row-index {
+  margin-right: 0.35rem;
+  color: #8a94a6;
+  font-weight: 600;
+  font-size: 0.7rem;
+}
+
+.wk-tool-row-meta {
+  color: #8a94a6;
+  font-size: 0.7rem;
+}
+
+.wk-tool-snippet {
+  margin: 0;
+  color: #4a5568;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.wk-tool-snippet-line {
+  margin: 0;
+  padding: 0.25rem 0.5rem;
+  background: #f6f8fa;
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  color: #24292f;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.wk-tool-table-wrap {
+  overflow-x: auto;
+  border: 1px solid #e3e8ef;
+  border-radius: 6px;
+}
+
+.wk-tool-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+}
+
+.wk-tool-table th {
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+  font-weight: 600;
+  background: #f6f8fa;
+  border-bottom: 2px solid #e3e8ef;
+  white-space: nowrap;
+}
+
+.wk-tool-table td {
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid #edf0f5;
+  vertical-align: top;
+  max-width: 24rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wk-tool-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* Terminal-styled shell exec result */
+.wk-tool-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.wk-tool-shell-command {
+  margin: 0;
+  padding: 0.5rem 0.7rem;
+  background: #1f2430;
+  color: #9ecbff;
+  border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.wk-tool-shell-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.75rem;
+  color: #8a94a6;
+  font-size: 0.72rem;
+}
+
+.wk-tool-shell-meta .is-error {
+  color: #c0392b;
+  font-weight: 600;
+}
+
+.wk-tool-shell-stream {
+  border: 1px solid #e3e8ef;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.wk-tool-shell-stream-label {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #52606d;
+  background: #f6f8fa;
+  border-bottom: 1px solid #e3e8ef;
+}
+
+.wk-tool-shell-stream.is-stderr .wk-tool-shell-stream-label {
+  color: #c0392b;
+}
+
+.wk-tool-shell-stream pre {
+  margin: 0;
+  padding: 0.5rem 0.7rem;
+  max-height: 16rem;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: #24292f;
+  background: #fff;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
