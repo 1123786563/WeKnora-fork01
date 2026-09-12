@@ -32,6 +32,11 @@ export function sessionPageCount(total: number, pageSize: number): number {
   return pageSize > 0 && total > 0 ? Math.ceil(total / pageSize) : 1;
 }
 
+/** True while a turn streams but no assistant answer content has arrived yet. */
+export function shouldShowTypingIndicator(messages: readonly ChatMessage[], streaming: boolean): boolean {
+  return streaming && !messages.some((message) => message.role === 'assistant' && message.content.trim() !== '');
+}
+
 export function hasSessionChanged(previousSessionId: string | null, nextSessionId: string | null): boolean {
   return previousSessionId !== nextSessionId;
 }

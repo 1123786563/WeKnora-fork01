@@ -1,8 +1,14 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ChatMessage, MessageSuggestionSet } from '@weknora/contracts';
 import { hasSessionChanged, scrollTopAfterPrepend, shouldStickToBottom } from '@weknora/domain/chat/session-state';
 import { isArtifactExpired, normalizeArtifactList, type ChatArtifact } from '@weknora/domain/chat/artifacts';
 import { assistantMessageExtras } from '@weknora/domain/chat/message-extras';
+import {
+  formatConversationTimestampLabel,
+  formatMessageTimestamp,
+  shouldShowConversationTimestamp,
+} from '@weknora/domain/chat/message-timestamps';
+import { copyAnswerText } from '@weknora/domain/chat/copy-answer';
 import { renderChatMarkdown } from './markdown.ts';
 import { hydrateMermaidBlocksWithBrowserDefaults } from './mermaid.ts';
 import { ArtifactPreview, artifactPreviewModel, type ArtifactPreviewPayload } from './artifact-preview.tsx';
@@ -28,7 +34,18 @@ export interface MessageListProps {
   onArtifactDownload?(messageId: string, artifactIndex: number): Promise<void>;
   onArtifactPreview?(messageId: string, artifactIndex: number): Promise<ArtifactPreviewPayload>;
   sessionId?: string | null;
+  /** True while the turn streams and no assistant content has arrived (Vue index.vue typing dots). */
+  typingIndicator?: boolean;
 }
+
+// TODO(migration): replace with @weknora/i18n chat labels once chat migrates
+// off local label maps.
+const TIMESTAMP_LABELS = {
+  today: 'Today',
+  yesterday: 'Yesterday',
+  thisYear: (model: { month: number; day: number }) => `${model.month}/${model.day}`,
+  otherYear: (model: { year: number; month: number; day: number }) => `${model.year}/${model.month}/${model.day}`,
+};
 
 export function messageArtifactItems(message: Record<string, unknown>): ChatArtifact[] {
   return normalizeArtifactList(Array.isArray(message.artifacts) ? message.artifacts : undefined);
@@ -36,6 +53,51 @@ export function messageArtifactItems(message: Record<string, unknown>): ChatArti
 
 export function renderMessageHtml(message: Pick<ChatMessage, 'content'>): string {
   return renderChatMarkdown(message.content);
+}
+
+export async function writeClipboardText(text: string, clipboard?: { writeText(t: string): Promise<void> }): Promise<void> {
+  const target = clipboard ?? (typeof navigator !== 'undefined' ? navigator.clipboard : undefined);
+  if (target?.writeText) {
+    await target.writeText(text);
+    return;
+  }
+  if (typeof document === 'undefined') throw new Error('Clipboard is unavailable');
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  try { document.execCommand('copy'); } finally { textarea.remove(); }
+}
+
+function CopyAnswerButton({ message }: { message: ChatMessage }) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<number | null>(null);
+  const text = copyAnswerText(message.content);
+  useEffect(() => () => { if (timer.current !== null) window.clearTimeout(timer.current); }, []);
+  if (!text) return null;
+  async function copy() {
+    try {
+      await writeClipboardText(text);
+      setCopied(true);
+      if (timer.current !== null) window.clearTimeout(timer.current);
+      timer.current = window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard permission denied: the button simply stays in place.
+    }
+  }
+  return <button type="button" className={copied ? 'wk-chat-copy is-copied' : 'wk-chat-copy'} onClick={() => void copy()} aria-label={copied ? 'Copied' : 'Copy answer'}>
+    {copied ? 'Copied' : 'Copy'}
+  </button>;
+}
+
+function TypingIndicator() {
+  return <li className="wk-chat-typing" role="status" aria-label="Assistant is typing">
+    <span className="wk-chat-avatar" aria-hidden="true">AI</span>
+    <span className="wk-chat-typing-dots" aria-hidden="true"><i /><i /><i /></span>
+  </li>;
 }
 
 function AssistantExtras(props: { message: ChatMessage }) {
@@ -61,12 +123,13 @@ function ArtifactList({ message, onDownload, onPreview }: { message: ChatMessage
   </section>;
 }
 
-export function MessageList({ messages, pending, onRetry, loadingOlder = false, hasMore = false, onLoadOlder, suggestions, onSuggestionClick, onRefreshSuggestions, onDismissSuggestions, onCitationClick, onArtifactDownload, onArtifactPreview, sessionId = null }: MessageListProps) {
+export function MessageList({ messages, pending, onRetry, loadingOlder = false, hasMore = false, onLoadOlder, suggestions, onSuggestionClick, onRefreshSuggestions, onDismissSuggestions, onCitationClick, onArtifactDownload, onArtifactPreview, sessionId = null, typingIndicator = false }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
   const previousSessionId = useRef<string | null>(sessionId);
   const previewRequestId = useRef(0);
   const [preview, setPreview] = useState<{ messageId: string; artifact: ChatArtifact; payload?: ArtifactPreviewPayload; loading: boolean; error?: string } | null>(null);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   useEffect(() => {
     previewRequestId.current += 1;
     setPreview(null);
@@ -109,6 +172,14 @@ export function MessageList({ messages, pending, onRetry, loadingOlder = false, 
     if (!container) return;
     stickToBottom.current = shouldStickToBottom({ scrollTop: container.scrollTop, scrollHeight: container.scrollHeight, clientHeight: container.clientHeight });
     if (container.scrollTop <= 0 && hasMore && !loadingOlder) onLoadOlder?.();
+    setShowScrollToBottom(container.scrollHeight - (container.scrollTop + container.clientHeight) > 200);
+  }
+
+  function scrollToBottom(): void {
+    const container = containerRef.current;
+    if (!container) return;
+    const reducedMotion = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    container.scrollTo({ top: container.scrollHeight, behavior: reducedMotion ? 'auto' : 'smooth' });
   }
 
   function onContentClick(event: React.MouseEvent<HTMLDivElement>): void {
@@ -134,21 +205,28 @@ export function MessageList({ messages, pending, onRetry, loadingOlder = false, 
   }
 
   return <div ref={containerRef} className="wk-chat-message-scroll" onScroll={onScroll}>
+    {showScrollToBottom ? <button type="button" className="wk-chat-scroll-bottom" aria-label="Scroll to bottom" onClick={scrollToBottom}>↓</button> : null}
     {hasMore ? <button type="button" disabled={loadingOlder} onClick={onLoadOlder}>{loadingOlder ? 'Loading history…' : 'Load older messages'}</button> : null}
     <ol className="wk-chat-messages" aria-label="Messages">
-    {messages.map((message) => {
+    {messages.map((message, index) => {
       const isAssistant = message.role === 'assistant';
-      return <li key={message.id} data-role={message.role} className={`wk-chat-message-row wk-chat-message-row--${message.role}`}>
+      const showSeparator = shouldShowConversationTimestamp(messages, index);
+      return <Fragment key={message.id}>
+        {showSeparator ? <li className="wk-chat-timestamp" role="separator" aria-label={formatConversationTimestampLabel(message.created_at, TIMESTAMP_LABELS)}>{formatConversationTimestampLabel(message.created_at, TIMESTAMP_LABELS)}</li> : null}
+        <li data-role={message.role} className={`wk-chat-message-row wk-chat-message-row--${message.role}`}>
         {isAssistant ? <span className="wk-chat-avatar" aria-hidden="true">AI</span> : null}
         <div className="wk-chat-message-body">
           <strong className="wk-chat-message-role">{message.role}</strong>
           <div className="wk-chat-message-bubble">
             <div className="wk-chat-message-content" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: renderMessageHtml(message) }} />
+            <span className="wk-chat-message-time">{formatMessageTimestamp(message.created_at)}</span>
           </div>
+          {isAssistant ? <CopyAnswerButton message={message} /> : null}
           {isAssistant ? <AssistantExtras message={message} /> : null}
           <ArtifactList message={message} onDownload={onArtifactDownload} onPreview={onArtifactPreview ? openArtifactPreview : undefined} />
         </div>
-      </li>;
+      </li>
+      </Fragment>;
     })}
     {pending ? <li data-role="user" data-status={pending.status} className="wk-chat-message-row wk-chat-message-row--user">
       <div className="wk-chat-message-body">
@@ -160,6 +238,7 @@ export function MessageList({ messages, pending, onRetry, loadingOlder = false, 
         </div>
       </div>
     </li> : null}
+    {typingIndicator ? <TypingIndicator /> : null}
     </ol>
     {preview ? <ArtifactPreview artifact={preview.artifact} payload={preview.payload} loading={preview.loading} error={preview.error} onClose={() => { previewRequestId.current += 1; setPreview(null); }} onDownload={onArtifactDownload ? () => void onArtifactDownload(preview.messageId, preview.artifact.index) : undefined} /> : null}
     {suggestions?.status === 'ready' && suggestions.questions.length > 0 ? <section className="wk-chat-suggestions" aria-label="Suggested questions">

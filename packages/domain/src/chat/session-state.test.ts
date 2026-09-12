@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   appendMessages,
+  shouldShowTypingIndicator,
   hasOlderMessages,
   hasSessionChanged,
   shouldStickToBottom,
@@ -70,4 +71,14 @@ test('calculates session pages from the server total', () => {
 test('detects a session switch for view-local layout state', () => {
   assert.equal(hasSessionChanged('session-a', 'session-b'), true);
   assert.equal(hasSessionChanged('session-a', 'session-a'), false);
+});
+
+test('shouldShowTypingIndicator is true only while streaming without assistant content', () => {
+  const user = { id: 'u1', session_id: 's', role: 'user' as const, content: 'hi' };
+  const emptyAssistant = { id: 'a1', session_id: 's', role: 'assistant' as const, content: '' };
+  const answering = { id: 'a2', session_id: 's', role: 'assistant' as const, content: 'partial' };
+  assert.equal(shouldShowTypingIndicator([user], true), true);
+  assert.equal(shouldShowTypingIndicator([user, emptyAssistant], true), true);
+  assert.equal(shouldShowTypingIndicator([user, answering], true), false);
+  assert.equal(shouldShowTypingIndicator([user], false), false);
 });

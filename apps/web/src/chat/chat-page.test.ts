@@ -210,3 +210,77 @@ test('starters are hidden once a session is open (message suggestions own that s
   }));
   assert.doesNotMatch(html, /wk-chat-starters/);
 });
+
+test('new-conversation view renders the starter-questions skeleton while loading', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatPage, {
+    sessions: [],
+    selectedSessionId: null,
+    messages: [],
+    draft: '',
+    onSelectSession: () => undefined,
+    onCreateSession: () => undefined,
+    onDraftChange: () => undefined,
+    send: async () => undefined,
+    agents: [{ id: 'agent-1', name: 'Research' }],
+    selectedAgentId: 'agent-1',
+    starterQuestions: [],
+    starterQuestionsLoading: true,
+  }));
+  assert.match(html, /wk-chat-starters--loading/);
+  assert.match(html, /aria-busy="true"/);
+  assert.match(html, /wk-chat-starter-skeleton/);
+});
+
+test('chat page passes the typing indicator while streaming without assistant content', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatPage, {
+    sessions: [],
+    selectedSessionId: null,
+    messages: [{ id: 'u1', session_id: 's', role: 'user', content: 'hello' }],
+    draft: '',
+    onSelectSession: () => undefined,
+    onCreateSession: () => undefined,
+    onDraftChange: () => undefined,
+    send: async () => undefined,
+    stream: { phase: 'streaming', thinking: '', references: [], toolCalls: [] },
+  }));
+  assert.match(html, /wk-chat-typing/);
+});
+
+test('chat page hides the typing indicator once thinking or tool calls arrive', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatPage, {
+    sessions: [],
+    selectedSessionId: null,
+    messages: [{ id: 'u1', session_id: 's', role: 'user', content: 'hello' }],
+    draft: '',
+    onSelectSession: () => undefined,
+    onCreateSession: () => undefined,
+    onDraftChange: () => undefined,
+    send: async () => undefined,
+    stream: { phase: 'streaming', thinking: 'checking', references: [], toolCalls: [] },
+  }));
+  assert.doesNotMatch(html, /wk-chat-typing/);
+});
+
+test('message list renders separators, per-message timestamps, and the copy-answer button', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatPage, {
+    sessions: [],
+    selectedSessionId: null,
+    messages: [
+      { id: 'u1', session_id: 's', role: 'user', content: 'hello', created_at: new Date(2024, 2, 5, 9, 0, 0).toISOString() },
+      { id: 'a1', session_id: 's', role: 'assistant', content: 'The answer is 42', created_at: new Date(2024, 2, 5, 9, 1, 0).toISOString() },
+      { id: 'u2', session_id: 's', role: 'user', content: 'next day', created_at: new Date(2024, 2, 6, 9, 0, 0).toISOString() },
+    ],
+    draft: '',
+    onSelectSession: () => undefined,
+    onCreateSession: () => undefined,
+    onDraftChange: () => undefined,
+    send: async () => undefined,
+  }));
+  assert.match(html, /wk-chat-timestamp/);
+  assert.match(html, /wk-chat-message-time/);
+  assert.match(html, /wk-chat-copy/);
+  assert.match(html, /aria-label="Copy answer"/);
+  assert.match(html, /The answer is 42/);
+  // Scroll-to-bottom only appears after the user scrolls up (client-only).
+  assert.doesNotMatch(html, /wk-chat-scroll-bottom/);
+});

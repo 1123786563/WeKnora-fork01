@@ -4,6 +4,7 @@ import type { ChatStreamEvent } from '@weknora/contracts';
 import { chatDraftKey } from '@weknora/domain/chat/draft';
 import { initialChatStreamState, reduceChatStream, type ChatApproval } from '@weknora/domain/chat/reducer';
 import { appendMessages, hasOlderMessages, sessionGroups, sessionPageCount } from '@weknora/domain/chat/session-state';
+import { readStoredGroupMode, storeGroupMode } from '@weknora/domain/chat/session-grouping';
 import { ChatPage, type ChatSubmission } from '@weknora/views';
 import type { ScopeController } from '@weknora/domain/scope';
 import { chatSessionIdFromPath } from './session-route.ts';
@@ -36,13 +37,15 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   const [sessionKeyword, setSessionKeyword] = useState('');
   const [sessionPage, setSessionPage] = useState(1);
   const [sessionPageCountValue, setSessionPageCountValue] = useState(1);
-  const [sessionGroupMode, setSessionGroupMode] = useState<'none' | 'date'>('none');
+  // Sidebar group-by toggle persists across reloads (Vue sessionGrouping.ts).
+  const [sessionGroupMode, setSessionGroupMode] = useState<'none' | 'date'>(() => readStoredGroupMode());
   const [streamState, setStreamState] = useState(initialChatStreamState);
   const [agents, setAgents] = useState<AgentConfiguration[]>([]);
   const [disabledAgentIds, setDisabledAgentIds] = useState<string[]>([]);
   // Empty-state suggested questions (creatChat view) come from the selected
   // agent's suggested-questions surface; absent without an agent selection.
   const [starterQuestions, setStarterQuestions] = useState<string[]>([]);
+  const [starterQuestionsLoading, setStarterQuestionsLoading] = useState(false);
   const [selectedAgentId, setSelectedAgentId] = useState(() => new URLSearchParams(window.location.search).get('agentId')?.trim() ?? '');
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(() => chatSessionIdFromPath(window.location.pathname));
   const selectedSessionIdRef = useRef(selectedSessionId);
@@ -258,11 +261,17 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   useEffect(() => {
     if (selectedSessionId || !selectedAgentId) {
       setStarterQuestions([]);
+      setStarterQuestionsLoading(false);
       return;
     }
     let active = true;
+    setStarterQuestionsLoading(true);
     void loadStarterQuestions(client.configuration.agents, selectedSessionId, selectedAgentId, scope.signal).then(
-      (questions) => { if (active) setStarterQuestions(questions); },
+      (questions) => {
+        if (!active) return;
+        setStarterQuestions(questions);
+        setStarterQuestionsLoading(false);
+      },
     );
     return () => { active = false; };
   }, [client, selectedAgentId, selectedSessionId, scope.signal]);
@@ -597,6 +606,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     selectedAgentId={selectedAgentId}
     onAgentChange={selectAgent}
     starterQuestions={starterQuestions}
+    starterQuestionsLoading={starterQuestionsLoading}
     onStarterQuestionClick={(question) => updateDraft(question)}
     toolApprovals={(() => {
       const live = Object.values(streamState.approvals);
@@ -623,7 +633,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     sessionPageCount={sessionPageCountValue}
     onSessionPageChange={setSessionPage}
     sessionGroupMode={sessionGroupMode}
-    onSessionGroupModeChange={setSessionGroupMode}
+    onSessionGroupModeChange={(mode) => { setSessionGroupMode(mode); storeGroupMode(mode); }}
     onClearSession={clearMessages}
     loadingOlderMessages={loadingOlderMessages}
     hasMoreMessages={hasMoreMessages}

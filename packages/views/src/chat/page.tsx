@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChatMessage, ChatSession, MessageSuggestionSet } from '@weknora/contracts';
+import { shouldShowTypingIndicator } from '@weknora/domain/chat/session-state';
 import { ChatComposer, type ChatSubmission } from './composer.tsx';
 import { MessageList, type PendingChatMessage } from './message-list.tsx';
 import { SessionSidebar } from './session-sidebar.tsx';
@@ -67,6 +68,8 @@ export interface ChatPageProps {
   onAgentChange?(agentId: string): void;
   /** Empty-state suggested questions for the new-conversation view. */
   starterQuestions?: readonly string[];
+  /** True while the agent suggested-questions request is in flight (skeleton chips). */
+  starterQuestionsLoading?: boolean;
   onStarterQuestionClick?(question: string): void;
   toolApprovals?: readonly ChatToolApprovalPrompt[];
   oauthApprovals?: readonly ChatOAuthApprovalPrompt[];
@@ -288,6 +291,14 @@ export function ChatPage(props: ChatPageProps) {
         </div>
       </header>
       <div className="wk-chat-conversation">
+        {!props.selectedSessionId && props.starterQuestionsLoading ? (
+          <section className="wk-chat-starters wk-chat-starters--loading" aria-label="Suggested questions loading" aria-busy="true">
+            <p>Suggested questions</p>
+            <ul>
+              {[0, 1, 2].map((index) => <li key={index}><span className="wk-chat-starter-skeleton" aria-hidden="true" /></li>)}
+            </ul>
+          </section>
+        ) : null}
         {!props.selectedSessionId && (props.starterQuestions?.length ?? 0) > 0 ? (
           <section className="wk-chat-starters" aria-label="Suggested questions">
             <p>Suggested questions</p>
@@ -314,6 +325,7 @@ export function ChatPage(props: ChatPageProps) {
           hasMore={props.hasMoreMessages}
           onLoadOlder={props.onLoadOlderMessages}
           sessionId={props.selectedSessionId}
+          typingIndicator={props.stream?.phase === 'streaming' && !props.stream.thinking && props.stream.toolCalls.length === 0 && shouldShowTypingIndicator(props.messages, true)}
           suggestions={props.suggestions}
           onSuggestionClick={props.onSuggestionClick}
           onRefreshSuggestions={props.onRefreshSuggestions}
