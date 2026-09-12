@@ -28,7 +28,6 @@ import {
 import {
   cancelParseDocuments,
   documentRowActions,
-  reparseDocument,
 } from "./actions.ts";
 import {
   loadKnowledgeDocuments,
@@ -151,6 +150,10 @@ export function KnowledgeDocumentsPage({
   const uploadController = useRef<AbortController | null>(null);
   const uploadPipelineController = useRef<AbortController | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
+  const [pendingReparse, setPendingReparse] = useState<{
+    document: KnowledgeDocument;
+    processConfig: unknown;
+  } | null>(null);
   const pageSize = 20;
 
   // Audit #6: KB-type routing — an FAQ KB must land on the FAQ route.
@@ -554,10 +557,28 @@ export function KnowledgeDocumentsPage({
     }
   }
 
-  async function reparseOne(id: string) {
+  function reparseOne(document: KnowledgeDocument) {
+    const metadata = document.metadata;
+    const storedOverrides =
+      metadata && typeof metadata === "object" && !Array.isArray(metadata)
+        ? (metadata as { process_overrides?: unknown }).process_overrides
+        : undefined;
+    setMutationError(null);
+    setPendingReparse({
+      document,
+      processConfig: storedOverrides ?? buildProcessConfig(),
+    });
+  }
+
+  async function confirmReparse() {
+    if (!pendingReparse) return;
     setMutationError(null);
     try {
-      await reparseDocument(client.knowledgeBases.documents, id);
+      await client.knowledgeBases.documents.reparse(
+        pendingReparse.document.id,
+        pendingReparse.processConfig,
+      );
+      setPendingReparse(null);
       setReloadToken((value) => value + 1);
     } catch (error) {
       setMutationError(errorMessage(error));
@@ -998,12 +1019,14 @@ export function KnowledgeDocumentsPage({
                       <Status tone={status.tone}>{status.label}</Status>
                       {canContribute ? (
                         <span className="wk-row-actions">
-                          <Button
-                            type="button"
-                            onClick={() => void reparseOne(document.id)}
-                          >
-                            {t("knowledgeBase.documents.reparse")}
-                          </Button>
+                          {actions.canReparse && !actions.canCancelParse ? (
+                            <Button
+                              type="button"
+                              onClick={() => reparseOne(document)}
+                            >
+                              {t("knowledgeBase.documents.reparse")}
+                            </Button>
+                          ) : null}
                           {actions.canCancelParse ? (
                             <Button
                               type="button"
@@ -1221,6 +1244,33 @@ export function KnowledgeDocumentsPage({
               {t("knowledgeBase.documents.delete")}
             </Button>
             <Button type="button" onClick={() => setConfirmingDelete(false)}>
+              {t("knowledgeBase.documents.cancel")}
+            </Button>
+          </div>
+        </Dialog>
+      ) : null}
+      {pendingReparse && canContribute ? (
+        <Dialog
+          open
+          title="Confirm reparse"
+          onClose={() => {
+            if (!uploading) setPendingReparse(null);
+          }}
+        >
+          <p>
+            Re-parse “{displayName(pendingReparse.document)}” using its saved
+            processing settings?
+          </p>
+          <p className="wk-muted">
+            The document will be processed again and its current parse result
+            may be replaced.
+          </p>
+          {mutationError ? <Status tone="error">{mutationError}</Status> : null}
+          <div className="wk-list-actions">
+            <Button type="button" onClick={() => void confirmReparse()}>
+              {t("knowledgeBase.documents.reparse")}
+            </Button>
+            <Button type="button" onClick={() => setPendingReparse(null)}>
               {t("knowledgeBase.documents.cancel")}
             </Button>
           </div>
