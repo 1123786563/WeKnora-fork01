@@ -1,0 +1,11 @@
+{
+  "plan_create": {
+    "status": 400,
+    "body": {
+      "type": "about:blank",
+      "title": "Bad Request",
+      "status": 400,
+      "detail": "request body has an error: doesn't match schema #/components/schemas/PlanCreate: Error at \"/key\": string doesn't match the regular expression \"^[a-z0-9]+(?:_[a-z0-9]+)*$\""
+    }
+  }
+}

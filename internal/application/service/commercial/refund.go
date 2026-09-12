@@ -130,7 +130,7 @@ func (s *RefundService) Approve(ctx context.Context, id, reviewer string) error 
 // channel vocabulary. Anything unproven (unknown, abnormal, empty) maps to
 // unknown: the caller stops at reviewing and re-queries the ORIGINAL
 // refund key — an unconfirmed outcome never unlocks and never re-keys.
-func mapChannelState(state string) string {
+func mapChannelState(state payment.AttemptState) domain.RefundChannelState {
 	switch state {
 	case payment.StateSucceeded:
 		return domain.RefundChannelSucceeded
@@ -162,7 +162,7 @@ func (s *RefundService) succeededAttempt(ctx context.Context, orderID string) (r
 func (s *RefundService) ProcessPayouts(ctx context.Context) error {
 	var rows []repocommercial.RefundRow
 	if err := s.db.WithContext(ctx).
-		Where("state IN ?", []string{domain.RefundStatePending, domain.RefundStateReviewing, domain.RefundStateRevocationPending}).
+		Where("state IN ?", []domain.RefundState{domain.RefundStatePending, domain.RefundStateReviewing, domain.RefundStateRevocationPending}).
 		Find(&rows).Error; err != nil {
 		return err
 	}
@@ -217,7 +217,7 @@ func (s *RefundService) driveRefund(ctx context.Context, rf repocommercial.Refun
 	return nil
 }
 
-func (s *RefundService) applyChannelResult(ctx context.Context, refundID, providerRefundID, channelState string) error {
+func (s *RefundService) applyChannelResult(ctx context.Context, refundID, providerRefundID string, channelState domain.RefundChannelState) error {
 	var pid *string
 	if providerRefundID != "" {
 		pid = &providerRefundID

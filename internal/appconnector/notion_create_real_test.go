@@ -20,6 +20,12 @@ func TestNotionRealControlledCreate(t *testing.T) {
 	if token == "" || parent == "" || strings.HasPrefix(parent, "xxxx") {
 		t.Skip("notion real credentials not configured (NOTION_TOKEN/NOTION_PARENT_PAGE_ID in artifacts/connector-real/notion.env); skip is not a pass — NO-04 stays blocked-env")
 	}
+	// NO-03: Execute persists the provider-confirmed page id through
+	// SaveProgress the instant the create is confirmed, and Query resolves
+	// the SAME page through LoadProgress — exactly as the production action
+	// store wires it. Without this hook Query cannot locate the created
+	// page, degrades to the advisory title search and reports unknown.
+	progress := map[string]NotionPageProgress{}
 	ad := &NotionCreateAdapter{
 		Policy: HTTPPolicy{
 			Scheme:     "https",
@@ -30,6 +36,8 @@ func TestNotionRealControlledCreate(t *testing.T) {
 		Token:                  func(ctx context.Context) (string, error) { return token, nil },
 		ApprovedParents:        []string{parent},
 		ConnectionCapabilities: func(ctx context.Context, a Action) ([]string, error) { return []string{NotionCapabilityInsert}, nil },
+		LoadProgress:           func(a Action) NotionPageProgress { return progress[a.ID] },
+		SaveProgress:           func(a Action, p NotionPageProgress) error { progress[a.ID] = p; return nil },
 	}
 	stamp := time.Now().Format("15:04:05")
 	args := map[string]any{

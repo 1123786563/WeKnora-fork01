@@ -1,0 +1,81 @@
+{
+  "before": {
+    "balances": [
+      {
+        "currency": "USD",
+        "live": "50",
+        "pending": "0",
+        "settled": "50"
+      }
+    ],
+    "retrieved_at": "2026-09-12T03:53:35.870153954Z"
+  },
+  "events": [
+    {
+      "time": "2026-09-12T03:49:35.859915Z",
+      "tokens": 200,
+      "status": 202
+    },
+    {
+      "time": "2026-09-12T03:52:20.859915Z",
+      "tokens": 300,
+      "status": 202
+    }
+  ],
+  "ingested_at": "2026-09-12T03:53:35.864943+00:00",
+  "balance_after": {
+    "balances": [
+      {
+        "currency": "USD",
+        "live": "50",
+        "pending": "0",
+        "settled": "50"
+      }
+    ],
+    "retrieved_at": "2026-09-12T03:53:44.893856726Z"
+  },
+  "transactions_after": {
+    "data": [
+      {
+        "amount": "20",
+        "available_balance": {
+          "after": "50",
+          "before": "30"
+        },
+        "booked_at": "2026-09-12T03:50:18.893166Z",
+        "created_at": "2026-09-12T03:50:18.888559Z",
+        "currency": "USD",
+        "id": "01M29VSK08JARCW50H866HHBB4",
+        "labels": {
+          "charge_id": "01M29VSK08JARCW50H866HHBB4"
+        },
+        "name": "OM0506 topup grant",
+        "type": "funded"
+      },
+      {
+        "amount": "30",
+        "available_balance": {
+          "after": "30",
+          "before": "0"
+        },
+        "booked_at": "2026-09-12T03:50:18.884225Z",
+        "created_at": "2026-09-12T03:50:18.878854Z",
+        "currency": "USD",
+        "id": "01M29VSJZYZQNY72CN1G4BKG4B",
+        "labels": {
+          "charge_id": "01M29VSJZYZQNY72CN1G4BKG4B"
+        },
+        "name": "OM0506 period grant",
+        "type": "funded"
+      }
+    ],
+    "meta": {
+      "page": {
+        "next": null,
+        "previous": null,
+        "size": 20
+      }
+    }
+  },
+  "observed_at": "2026-09-12T03:53:44.901419+00:00"
+}

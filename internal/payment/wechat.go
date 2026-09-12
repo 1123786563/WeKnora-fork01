@@ -48,9 +48,6 @@ var (
 	ErrUnknownCertSerial = errors.New("wechat_unknown_cert_serial")
 	// ErrStaleTimestamp reports a callback outside the clock-skew window.
 	ErrStaleTimestamp = errors.New("wechat_stale_timestamp")
-	// ErrReplayedNonce reports a (serial, nonce) pair already consumed
-	// by an accepted notification within the skew window.
-	ErrReplayedNonce = errors.New("wechat_replayed_nonce")
 	// ErrMerchantMismatch reports a decrypted mchid/appid that differs
 	// from the configured merchant application.
 	ErrMerchantMismatch = errors.New("wechat_merchant_mismatch")
@@ -126,8 +123,6 @@ type WechatProvider struct {
 	apiv3Key      []byte                    // resolved from APIv3KeyPath; nil when unset
 	client        *http.Client
 	now           func() time.Time
-	mu            sync.Mutex
-	nonces        map[string]time.Time // serial|nonce -> expiry (anti-replay)
 	keyOnce       sync.Once
 	mchPrivateKey *rsa.PrivateKey
 	keyErr        error
@@ -187,7 +182,6 @@ func newWechatProvider(cfg WechatConfig, platformKeys map[string]*rsa.PublicKey,
 		apiv3Key:     apiv3Key,
 		client:       &http.Client{Timeout: cfg.timeout()},
 		now:          time.Now,
-		nonces:       make(map[string]time.Time),
 	}
 }
 
@@ -220,10 +214,15 @@ type wechatPaymentResult struct {
 
 // Verify authenticates one payment callback end to end (WX-02): serial
 // selection from CONFIGURED references only, timestamp window,
-// anti-replay nonce guard, RSA-SHA256 signature over the raw body,
-// AES-256-GCM resource decryption and mchid/appid matching. The returned
-// fact carries no local identity — the caller resolves TenantID/OrderID
-// server-side.
+// RSA-SHA256 signature over the raw body, AES-256-GCM resource decryption
+// and mchid/appid matching. A redelivery of an ALREADY VERIFIED
+// notification is not rejected here: authenticity still comes from the
+// signature, freshness from the clock-skew window, and exactly-once
+// fulfillment from ConfirmPayment's transactional replay (C01), so the
+// duplicate reaches the store and gets the idempotent success ACK AC-03
+// requires instead of a 401 that keeps the provider retrying. The
+// returned fact carries no local identity — the caller resolves
+// TenantID/OrderID server-side.
 func (p *WechatProvider) Verify(ctx context.Context, header http.Header, body []byte) (commercial.PaymentFact, error) {
 	var fact commercial.PaymentFact
 	serial := header.Get("Wechatpay-Serial")
@@ -248,11 +247,6 @@ func (p *WechatProvider) Verify(ctx context.Context, header http.Header, body []
 	}
 	if err := VerifyWechatSignature(key, ts, nonce, body, signature); err != nil {
 		return fact, fmt.Errorf("%w: %v", ErrSignatureRejected, err)
-	}
-	// Signature verified: consume the nonce so a replayed notification is
-	// refused even though its signature would still verify.
-	if err := p.consumeNonce(serial, nonce, now, skew); err != nil {
-		return fact, err
 	}
 
 	var envelope wechatCallbackEnvelope
@@ -284,30 +278,9 @@ func (p *WechatProvider) Verify(ctx context.Context, header http.Header, body []
 		Transaction: result.TransactionID,
 		Amount:      commercial.CNYFen(result.Amount.Total),
 		Currency:    currency,
-		State:       mapWechatTradeState(result.TradeState),
+		State:       mapWechatTradeState(result.TradeState).String(),
 	}
 	return fact, nil
-}
-
-// consumeNonce records (serial, nonce) after a successful signature
-// verification; a second delivery inside the skew window is rejected.
-func (p *WechatProvider) consumeNonce(serial, nonce string, now time.Time, skew time.Duration) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	key := serial + "|" + nonce
-	if expiry, seen := p.nonces[key]; seen && now.Before(expiry) {
-		return fmt.Errorf("%w: %s", ErrReplayedNonce, nonce)
-	}
-	p.nonces[key] = now.Add(skew)
-	// Opportunistic prune so the guard cannot grow without bound.
-	if len(p.nonces) > 4096 {
-		for k, exp := range p.nonces {
-			if now.After(exp) {
-				delete(p.nonces, k)
-			}
-		}
-	}
-	return nil
 }
 
 // decryptResource opens the AES-256-GCM ciphertext exactly per WX-02:
@@ -339,7 +312,7 @@ func (p *WechatProvider) decryptResource(r wechatEncryptedResource) ([]byte, err
 }
 
 // mapWechatTradeState projects channel trade states onto domain states.
-func mapWechatTradeState(state string) string {
+func mapWechatTradeState(state string) AttemptState {
 	switch state {
 	case "SUCCESS":
 		return StateSucceeded
@@ -352,7 +325,7 @@ func mapWechatTradeState(state string) string {
 		// Refund/QueryRefund, so the fact still reports success.
 		return StateSucceeded
 	default:
-		return strings.ToLower(state)
+		return AttemptState(strings.ToLower(state))
 	}
 }
 
@@ -504,24 +477,24 @@ func (p *WechatProvider) QueryRefund(ctx context.Context, refundID string) (Refu
 	return RefundResult{State: mapWechatRefundState(out.Status), ProviderID: id}, nil
 }
 
-func mapWechatRefundState(status string) string {
+func mapWechatRefundState(status string) AttemptState {
 	switch status {
 	case "SUCCESS":
 		return StateSucceeded
 	case "PROCESSING", "ACCEPT":
 		return StatePending
 	case "ABNORMAL":
-		return "abnormal"
+		return AttemptState("abnormal")
 	case "CLOSED":
 		return StateClosed
 	default:
-		return strings.ToLower(status)
+		return AttemptState(strings.ToLower(status))
 	}
 }
 
 // stateIfTimeout keeps StateUnknown for transport timeouts only; other
 // errors return an empty state so the caller treats them as failures.
-func stateIfTimeout(err error, timeoutState string) string {
+func stateIfTimeout(err error, timeoutState AttemptState) AttemptState {
 	if isTimeoutErr(err) {
 		return timeoutState
 	}

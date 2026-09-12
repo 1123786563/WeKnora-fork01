@@ -1,0 +1,161 @@
+{
+  "case": "om02b-v3-subscription",
+  "namespace": "om02b-20260912",
+  "steps": [
+    {
+      "method": "GET",
+      "operation_id": "get-customer",
+      "request": null,
+      "status": 200,
+      "response": {
+        "created_at": "2026-09-12T03:24:18.50902Z",
+        "currency": "USD",
+        "id": "01M29T9Z6DVA4ATC501Y44G32D",
+        "key": "om02b-20260912-v3cust",
+        "labels": {},
+        "name": "OM-02B V3 Subscription Customer",
+        "updated_at": "2026-09-12T03:28:58.845542Z"
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "create-plan",
+      "request": {
+        "name": "OM-02B V3 Credits Plan",
+        "key": "om02b_20260912_v3plan4",
+        "currency": "USD",
+        "billing_cadence": "P1M",
+        "phases": [
+          {
+            "key": "main",
+            "name": "Main",
+            "rate_cards": [
+              {
+                "key": "om02_tokens",
+                "name": "OM-02B Tokens RC",
+                "feature": {
+                  "id": "01M29SXXZY6WECC4ZDQPWJVBVP"
+                },
+                "price": {
+                  "type": "unit",
+                  "amount": "0.01"
+                },
+                "billing_cadence": "P1M"
+              }
+            ]
+          }
+        ]
+      },
+      "status": 201,
+      "response": {
+        "billing_cadence": "P1M",
+        "created_at": "2026-09-12T03:29:10.202406Z",
+        "currency": "USD",
+        "id": "01M29TJW1T4F6963NWACQWJBYF",
+        "key": "om02b_20260912_v3plan4",
+        "name": "OM-02B V3 Credits Plan",
+        "phases": [
+          {
+            "key": "main",
+            "name": "Main",
+            "rate_cards": [
+              {
+                "billing_cadence": "P1M",
+                "feature": {
+                  "id": "01M29SXXZY6WECC4ZDQPWJVBVP"
+                },
+                "key": "om02_tokens",
+                "name": "OM-02B Tokens RC",
+                "price": {
+                  "amount": "0.01",
+                  "type": "unit"
+                }
+              }
+            ]
+          }
+        ],
+        "pro_rating_enabled": true,
+        "settlement_mode": "credit_then_invoice",
+        "status": "draft",
+        "updated_at": "2026-09-12T03:29:10.202407Z",
+        "version": 1
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "publish-plan",
+      "request": null,
+      "status": 200,
+      "response": {
+        "billing_cadence": "P1M",
+        "created_at": "2026-09-12T03:29:10.202406Z",
+        "currency": "USD",
+        "effective_from": "2026-09-12T03:29:10.215898Z",
+        "id": "01M29TJW1T4F6963NWACQWJBYF",
+        "key": "om02b_20260912_v3plan4",
+        "name": "OM-02B V3 Credits Plan",
+        "phases": [
+          {
+            "key": "main",
+            "name": "Main",
+            "rate_cards": [
+              {
+                "billing_cadence": "P1M",
+                "feature": {
+                  "id": "01M29SXXZY6WECC4ZDQPWJVBVP"
+                },
+                "key": "om02_tokens",
+                "name": "OM-02B Tokens RC",
+                "price": {
+                  "amount": "0.01",
+                  "type": "unit"
+                }
+              }
+            ]
+          }
+        ],
+        "pro_rating_enabled": true,
+        "settlement_mode": "credit_then_invoice",
+        "status": "active",
+        "updated_at": "2026-09-12T03:29:10.237343Z",
+        "version": 1
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "create-subscription",
+      "request": {
+        "customer": {
+          "key": "om02b-20260912-v3cust"
+        },
+        "plan": {
+          "key": "om02b_20260912_v3plan4"
+        },
+        "settlement_mode": "credit_then_invoice"
+      },
+      "status": 409,
+      "response": {
+        "type": "about:blank",
+        "title": "Conflict",
+        "status": 409,
+        "instance": "urn:request:817fb7fae384/bkDLTVCpj8-000378",
+        "extensions": {
+          "validationErrors": [
+            {
+              "code": "only_single_subscription_allowed_per_customer_at_a_time",
+              "field": "$.plans[?(@.key=='om02b_20260912_v3plan3' && @.version=='1' && @.id=='01M29TJGXR71RH15ACP74T0VFH')].subscriptions[?(@.customerId=='01M29T9Z6DVA4ATC501Y44G32D' && @.activeFrom=='2026-09-12 03:28:58.838824 +0000 UTC')]",
+              "message": "only single subscription is allowed per customer at a time",
+              "severity": "critical"
+            },
+            {
+              "code": "only_single_subscription_allowed_per_customer_at_a_time",
+              "field": "$.plans[?(@.key=='om02b_20260912_v3plan4' && @.version=='1' && @.id=='01M29TJW1T4F6963NWACQWJBYF')].subscriptions[?(@.customerId=='01M29T9Z6DVA4ATC501Y44G32D' && @.activeFrom=='2026-09-12 03:29:10.251944385 +0000 UTC')]",
+              "message": "only single subscription is allowed per customer at a time",
+              "severity": "critical"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

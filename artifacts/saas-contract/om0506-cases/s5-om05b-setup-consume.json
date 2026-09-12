@@ -1,0 +1,83 @@
+{
+  "entitlement": {
+    "status": 201,
+    "body": {
+      "activeFrom": "2026-09-12T03:50:18.904549Z",
+      "createdAt": "2026-09-12T03:50:18.907061Z",
+      "currentUsagePeriod": {
+        "from": "2026-09-12T03:50:00Z",
+        "to": "2026-09-13T03:50:00Z"
+      },
+      "customerId": "01M29VSJVY1C3M6XBB9WESS011",
+      "customerKey": "om0506-20260912-v2cust",
+      "featureId": "01M29SXXZY6WECC4ZDQPWJVBVP",
+      "featureKey": "om02_tokens",
+      "id": "01M29VSK0VVYPCDHYX951C2T9W",
+      "isSoftLimit": false,
+      "issue": {
+        "amount": 0
+      },
+      "issueAfterReset": 0,
+      "lastReset": "2026-09-12T03:50:00Z",
+      "measureUsageFrom": "2026-09-12T03:50:00Z",
+      "preserveOverageAtReset": false,
+      "type": "metered",
+      "updatedAt": "2026-09-12T03:50:18.907061Z",
+      "usagePeriod": {
+        "anchor": "2026-09-12T03:50:00Z",
+        "interval": "DAY",
+        "intervalISO": "P1D"
+      }
+    }
+  },
+  "grant1": {
+    "status": 201,
+    "body": {
+      "amount": 1000,
+      "createdAt": "2026-09-12T03:50:18.921414Z",
+      "effectiveAt": "2026-09-12T03:50:00Z",
+      "entitlementId": "01M29VSK0VVYPCDHYX951C2T9W",
+      "expiration": {
+        "count": 1,
+        "duration": "HOUR"
+      },
+      "expiresAt": "2026-09-12T04:50:00Z",
+      "id": "01M29VSK19VD2YMYGJ5J87K7W3",
+      "maxRolloverAmount": 1000,
+      "minRolloverAmount": 0,
+      "priority": 1,
+      "updatedAt": "2026-09-12T03:50:18.921414Z"
+    }
+  },
+  "grant2": {
+    "status": 201,
+    "body": {
+      "amount": 500,
+      "createdAt": "2026-09-12T03:50:18.948057Z",
+      "effectiveAt": "2026-09-12T03:50:00Z",
+      "entitlementId": "01M29VSK0VVYPCDHYX951C2T9W",
+      "expiration": {
+        "count": 1,
+        "duration": "HOUR"
+      },
+      "expiresAt": "2026-09-12T04:50:00Z",
+      "id": "01M29VSK24NCCZ35Q51JP86XQ3",
+      "maxRolloverAmount": 500,
+      "minRolloverAmount": 0,
+      "priority": 2,
+      "updatedAt": "2026-09-12T03:50:18.948057Z"
+    }
+  },
+  "value_after_consume_250": {
+    "hasAccess": true,
+    "balance": 1250,
+    "overage": 0,
+    "totalAvailableGrantAmount": 1500,
+    "usage": 250,
+    "grantBalances": {
+      "01M29VSK19VD2YMYGJ5J87K7W3": 750,
+      "01M29VSK24NCCZ35Q51JP86XQ3": 500
+    }
+  },
+  "observed_at": "2026-09-12T03:50:24.974525+00:00"
+}

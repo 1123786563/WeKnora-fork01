@@ -1,0 +1,45 @@
+{
+  "results": {
+    "s0-customers": "see per-section artifact",
+    "s1-om06b-setup": "see per-section artifact",
+    "s2-om06d-echo": "see per-section artifact",
+    "s3-om06a-om05a-setup": "see per-section artifact",
+    "s4-frac-plan": {
+      "plan_create": {
+        "status": 400,
+        "body": {
+          "type": "https://kongapi.info/konnect/bad-request",
+          "status": 400,
+          "title": "Bad Request",
+          "instance": "urn:request:817fb7fae384/bkDLTVCpj8-000704",
+          "detail": "Bad Request: key [allOf]: doesn't match all schemas from \"allOf\"",
+          "invalid_parameters": [
+            {
+              "field": "key",
+              "rule": "allOf",
+              "reason": "doesn't match all schemas from \"allOf\"",
+              "source": ""
+            }
+          ]
+        }
+      }
+    },
+    "s5-om05b-setup-consume": "see per-section artifact",
+    "s6-om05c-autogrant": {
+      "plan_create": {
+        "status": 400,
+        "body": {
+          "type": "about:blank",
+          "title": "Bad Request",
+          "status": 400,
+          "detail": "request body has an error: doesn't match schema #/components/schemas/PlanCreate: Error at \"/key\": string doesn't match the regular expression \"^[a-z0-9]+(?:_[a-z0-9]+)*$\""
+        }
+      }
+    },
+    "s7-om06a-burndown": "see per-section artifact",
+    "s8-om06e-late": "see per-section artifact",
+    "s10-om05b-reset": "see per-section artifact",
+    "s9-om06b-timelapse": "see per-section artifact"
+  },
+  "request_count": 52
+}

@@ -29,7 +29,12 @@ func RegisterCommercialRoutes(r *gin.RouterGroup, commercialHandler *handler.Com
 		commercialGroup.GET("/plans", commercialHandler.Plans)
 		commercialGroup.GET("/usage", commercialHandler.Usage)
 		commercialGroup.GET("/orders", commercialHandler.Orders)
-		commercialGroup.POST("/orders", commercialHandler.NotImplemented)
+		// P02: quote and order pipeline. The billing gate and capability
+		// checks above apply; tenant comes exclusively from the authenticated
+		// context. Checkout names the channel provider explicitly.
+		commercialGroup.POST("/quotes", commercialHandler.CreateQuote)
+		commercialGroup.POST("/orders", commercialHandler.CreateOrder)
+		commercialGroup.GET("/orders/:id", commercialHandler.GetOrder)
 		// C05: space-scoped refund REQUEST. The group's billing gate and
 		// capability checks apply; the tenant comes from the authenticated
 		// context. The request registers intent only — money moves solely
@@ -56,9 +61,10 @@ func RegisterCommercialRoutes(r *gin.RouterGroup, commercialHandler *handler.Com
 	// DIRECTLY on the parent group — the capability/billing guards above
 	// would reject an unauthenticated provider call. There is no tenant
 	// parameter by design: the handler rebuilds the trusted tenant from the
-	// local order registry after Verify succeeds. With no provider wired
-	// yet the route still exists and fails closed (503 FAIL, nothing
-	// persisted); later tasks pass a configured callbacks handler.
+	// local order registry after Verify succeeds. Production passes the
+	// container-built handler (db + ProvidersFromEnv channels); a nil
+	// argument falls back to a fail-closed handler (503 FAIL, nothing
+	// persisted) so tests and partial deployments stay honest.
 	var callbacks *handler.PaymentCallbacksHandler
 	for _, ch := range callbacksHandlers {
 		if ch != nil {

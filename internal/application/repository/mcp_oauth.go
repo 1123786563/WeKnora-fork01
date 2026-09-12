@@ -271,6 +271,20 @@ func (s *MCPOAuthBindingStore) IssueBindingState(
 	}).Error
 }
 
+// GetBindingState loads one pending binding row by state WITHOUT consuming
+// it. The public OAuth callback uses it to recover the tenant and the
+// initiating actor (the state itself is the only credential a provider
+// redirect carries) before calling CompleteBinding, which performs the real
+// one-time consumption. Unknown states return ErrOAuthBindingInvalid.
+func (s *MCPOAuthBindingStore) GetBindingState(ctx context.Context, state string) (MCPOAuthBindingRow, error) {
+	var row MCPOAuthBindingRow
+	err := s.db.WithContext(ctx).Where("state = ?", state).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return MCPOAuthBindingRow{}, ErrOAuthBindingInvalid
+	}
+	return row, err
+}
+
 // serviceIDFromRef extracts the service id carried inside a credential ref.
 func serviceIDFromRef(ref string) (string, bool) {
 	if !strings.HasPrefix(ref, CredentialRefPrefix) {

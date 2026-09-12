@@ -3,7 +3,7 @@ package commercial
 import "testing"
 
 func TestRefundUnknownKeepsLock(t *testing.T) {
-	for _, s := range []string{"pending", "unknown", "succeeded", "revocation_pending"} {
+	for _, s := range []RefundState{"pending", "unknown", "succeeded", "revocation_pending"} {
 		if CanUnlockRefund(s) {
 			t.Fatalf("unlocked %s", s)
 		}
@@ -19,12 +19,12 @@ func TestRefundUnknownKeepsLock(t *testing.T) {
 // outcomes all keep the lock; unrecognised values fail closed.
 func TestRefundUnlockRules(t *testing.T) {
 	cases := []struct {
-		state string
+		state RefundState
 		want  bool
 	}{
-		{RefundChannelPending, false},
-		{RefundChannelUnknown, false},
-		{RefundChannelSucceeded, false},
+		{RefundState(RefundChannelPending), false},
+		{RefundState(RefundChannelUnknown), false},
+		{RefundState(RefundChannelSucceeded), false},
 		{RefundStateRevocationPending, false},
 		{RefundStateCompleted, false},
 		{RefundStateRequested, false},
@@ -50,9 +50,9 @@ func TestRefundUnlockRules(t *testing.T) {
 // key — never a forced progression.
 func TestRefundChannelTransitionStateMachine(t *testing.T) {
 	cases := []struct {
-		current string
-		channel string
-		want    string
+		current RefundState
+		channel RefundChannelState
+		want    RefundState
 	}{
 		{RefundStatePending, RefundChannelSucceeded, RefundStateRevocationPending},
 		{RefundStateRevocationPending, RefundChannelSucceeded, RefundStateRevocationPending},

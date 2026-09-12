@@ -37,7 +37,7 @@ type Reservation struct {
 // in-flight reservation holds, then by refund-locked credits. A negative
 // component means the projection itself is broken and is an error; a fully
 // consumed projection is an ordinary "nothing to spend" zero, not an error,
-// so callers never mistake a healthy empty wallet for a broken one.
+// so callers never mistake a healthy zero space-credits balance projection for a broken one.
 func Available(verified, unreflected, held, refundLocked Credits) (Credits, error) {
 	if verified < 0 || unreflected < 0 || held < 0 || refundLocked < 0 {
 		return 0, errors.New("invalid_projection")

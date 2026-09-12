@@ -1,0 +1,207 @@
+{
+ "balance": {
+  "balances": [
+   {
+    "currency": "USD",
+    "live": "95",
+    "pending": "0",
+    "settled": "105"
+   }
+  ],
+  "retrieved_at": "2026-09-12T04:06:09.152151532Z"
+ },
+ "tx": {
+  "data": [
+   {
+    "amount": "60",
+    "available_balance": {
+     "after": "105",
+     "before": "45"
+    },
+    "booked_at": "2026-09-12T04:05:12.390258Z",
+    "created_at": "2026-09-12T04:05:12.370781Z",
+    "currency": "USD",
+    "id": "01M29WMVHJSXBA23QK0MRWFA8X",
+    "labels": {
+     "charge_id": "01M29WMVHJSXBA23QK0MRWFA8X"
+    },
+    "name": "OM0708 batch2",
+    "type": "funded"
+   },
+   {
+    "amount": "40",
+    "available_balance": {
+     "after": "45",
+     "before": "5"
+    },
+    "booked_at": "2026-09-12T04:05:12.361475Z",
+    "created_at": "2026-09-12T04:05:12.342382Z",
+    "currency": "USD",
+    "id": "01M29WMVGPTKG5ZJMYT5FT5YFG",
+    "labels": {
+     "charge_id": "01M29WMVGPTKG5ZJMYT5FT5YFG"
+    },
+    "name": "OM0708 batch1",
+    "type": "funded"
+   },
+   {
+    "amount": "5",
+    "available_balance": {
+     "after": "5",
+     "before": "0"
+    },
+    "booked_at": "2026-09-12T04:05:12.325191Z",
+    "created_at": "2026-09-12T04:05:12.272385Z",
+    "currency": "USD",
+    "id": "01M29WMVEGRN16N8NYR5N3ADVH",
+    "labels": {
+     "charge_id": "01M29WMVEGRN16N8NYR5N3ADVH"
+    },
+    "name": "OM0708 expiry grant",
+    "type": "funded"
+   }
+  ],
+  "meta": {
+   "page": {
+    "next": null,
+    "previous": null,
+    "size": 20
+   }
+  }
+ },
+ "voidProbe": {
+  "status": 200,
+  "body": {
+   "amount": "40",
+   "created_at": "2026-09-12T04:05:12.342382Z",
+   "currency": "USD",
+   "funding_method": "none",
+   "id": "01M29WMVGPTKG5ZJMYT5FT5YFG",
+   "key": "om0708-batch1",
+   "labels": {},
+   "name": "OM0708 batch1",
+   "priority": 3,
+   "status": "voided",
+   "tax_config": {
+    "tax_code": {
+     "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+    }
+   },
+   "updated_at": "2026-09-12T04:06:09.194376Z",
+   "voided_at": "2026-09-12T04:06:09.186221Z"
+  }
+ },
+ "log": [
+  {
+   "t": 37,
+   "op": "poll-balance",
+   "method": "GET",
+   "path": "/customers/01M29WMV6F84ZP0ZJ9WCAAKR46/credits/balance",
+   "status": 200,
+   "resBody": {
+    "balances": [
+     {
+      "currency": "USD",
+      "live": "95",
+      "pending": "0",
+      "settled": "105"
+     }
+    ],
+    "retrieved_at": "2026-09-12T04:06:09.152151532Z"
+   }
+  },
+  {
+   "t": 46,
+   "op": "list-transactions",
+   "method": "GET",
+   "path": "/customers/01M29WMV6F84ZP0ZJ9WCAAKR46/credits/transactions",
+   "status": 200,
+   "resBody": {
+    "data": [
+     {
+      "amount": "60",
+      "available_balance": {
+       "after": "105",
+       "before": "45"
+      },
+      "booked_at": "2026-09-12T04:05:12.390258Z",
+      "created_at": "2026-09-12T04:05:12.370781Z",
+      "currency": "USD",
+      "id": "01M29WMVHJSXBA23QK0MRWFA8X",
+      "labels": {
+       "charge_id": "01M29WMVHJSXBA23QK0MRWFA8X"
+      },
+      "name": "OM0708 batch2",
+      "type": "funded"
+     },
+     {
+      "amount": "40",
+      "available_balance": {
+       "after": "45",
+       "before": "5"
+      },
+      "booked_at": "2026-09-12T04:05:12.361475Z",
+      "created_at": "2026-09-12T04:05:12.342382Z",
+      "currency": "USD",
+      "id": "01M29WMVGPTKG5ZJMYT5FT5YFG",
+      "labels": {
+       "charge_id": "01M29WMVGPTKG5ZJMYT5FT5YFG"
+      },
+      "name": "OM0708 batch1",
+      "type": "funded"
+     },
+     {
+      "amount": "5",
+      "available_balance": {
+       "after": "5",
+       "before": "0"
+      },
+      "booked_at": "2026-09-12T04:05:12.325191Z",
+      "created_at": "2026-09-12T04:05:12.272385Z",
+      "currency": "USD",
+      "id": "01M29WMVEGRN16N8NYR5N3ADVH",
+      "labels": {
+       "charge_id": "01M29WMVEGRN16N8NYR5N3ADVH"
+      },
+      "name": "OM0708 expiry grant",
+      "type": "funded"
+     }
+    ],
+    "meta": {
+     "page": {
+      "next": null,
+      "previous": null,
+      "size": 20
+     }
+    }
+   }
+  },
+  {
+   "t": 61,
+   "op": "void-probe-empty",
+   "method": "POST",
+   "path": "/customers/01M29WMV6F84ZP0ZJ9WCAAKR46/credits/grants/01M29WMVGPTKG5ZJMYT5FT5YFG/void",
+   "status": 200,
+   "reqBody": {},
+   "resBody": {
+    "amount": "40",
+    "created_at": "2026-09-12T04:05:12.342382Z",
+    "currency": "USD",
+    "funding_method": "none",
+    "id": "01M29WMVGPTKG5ZJMYT5FT5YFG",
+    "key": "om0708-batch1",
+    "labels": {},
+    "name": "OM0708 batch1",
+    "priority": 3,
+    "status": "voided",
+    "tax_config": {
+     "tax_code": {
+      "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+     }
+    },
+    "updated_at": "2026-09-12T04:06:09.194376Z",
+    "voided_at": "2026-09-12T04:06:09.186221Z"
+   }
+  }
+ ]
+}

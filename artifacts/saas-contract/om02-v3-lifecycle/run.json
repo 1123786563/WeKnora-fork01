@@ -1,0 +1,22 @@
+{
+  "case": "om02-v3-lifecycle",
+  "namespace": "om02-20260912",
+  "steps": [
+    {
+      "method": "POST",
+      "operation_id": "create-customer",
+      "request": {
+        "name": "OM-02 V3 Credits Customer",
+        "key": "om02-20260912-v3cust"
+      },
+      "status": 409,
+      "response": {
+        "type": "about:blank",
+        "title": "Conflict",
+        "status": 409,
+        "detail": "conflict error: key \"om02-20260912-v3cust\" is already used by an another customer in the namespace default",
+        "instance": "urn:request:817fb7fae384/bkDLTVCpj8-000178"
+      }
+    }
+  ]
+}

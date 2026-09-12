@@ -1,0 +1,854 @@
+{
+ "results": {
+  "settlePending": {
+   "status": 400,
+   "body": {
+    "type": "about:blank",
+    "title": "Bad Request",
+    "status": 400,
+    "instance": "urn:request:817fb7fae384/bkDLTVCpj8-001105",
+    "extensions": {
+     "validationErrors": [
+      {
+       "code": "credit_grant_external_settlement_status_invalid",
+       "field": "$.status",
+       "message": "unsupported credit grant settlement status: pending",
+       "severity": "critical",
+       "status": "pending"
+      }
+     ]
+    }
+   },
+   "text": "{\"type\":\"about:blank\",\"title\":\"Bad Request\",\"status\":400,\"instance\":\"urn:request:817fb7fae384/bkDLTVCpj8-001105\",\"extensions\":{\"validationErrors\":[{\"code\":\"credit_grant_external_settlement_status_invalid\",\"field\":\"$.status\",\"message\":\"unsupported credit grant settlement status: pending\",\"severity\":\"critical\",\"status\":\"pending\"}]}}\n"
+  },
+  "settleCompletedAmount": {
+   "status": 400,
+   "body": {
+    "type": "https://kongapi.info/konnect/bad-request",
+    "status": 400,
+    "title": "Bad Request",
+    "instance": "urn:request:817fb7fae384/bkDLTVCpj8-001106",
+    "detail": "Bad Request:  [properties]: property \"amount\" is unsupported, status [allOf]: doesn't match all schemas from \"allOf\"",
+    "invalid_parameters": [
+     {
+      "field": "",
+      "rule": "properties",
+      "reason": "property \"amount\" is unsupported",
+      "source": ""
+     },
+     {
+      "field": "status",
+      "rule": "allOf",
+      "reason": "doesn't match all schemas from \"allOf\"",
+      "source": ""
+     }
+    ]
+   },
+   "text": "{\"type\":\"https://kongapi.info/konnect/bad-request\",\"status\":400,\"title\":\"Bad Request\",\"instance\":\"urn:request:817fb7fae384/bkDLTVCpj8-001106\",\"detail\":\"Bad Request:  [properties]: property \\\"amount\\\" is unsupported, status [allOf]: doesn't match all schemas from \\\"allOf\\\"\",\"invalid_parameters\":[{\"field\":\"\",\"rule\":\"properties\",\"reason\":\"property \\\"amount\\\" is unsupported\",\"source\":\"\"},{\"field\":\"status\",\"rule\":\"allOf\",\"reason\":\"doesn't match all schemas from \\\"allOf\\\"\",\"source\":\"\"}]}"
+  },
+  "g2AfterSettle": {
+   "status": 200,
+   "body": {
+    "amount": "60",
+    "created_at": "2026-09-12T04:05:12.370781Z",
+    "currency": "USD",
+    "funding_method": "none",
+    "id": "01M29WMVHJSXBA23QK0MRWFA8X",
+    "key": "om0708-batch2",
+    "labels": {},
+    "name": "OM0708 batch2",
+    "priority": 5,
+    "status": "active",
+    "tax_config": {
+     "tax_code": {
+      "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+     }
+    },
+    "updated_at": "2026-09-12T04:05:12.390462Z"
+   },
+   "text": "{\"amount\":\"60\",\"created_at\":\"2026-09-12T04:05:12.370781Z\",\"currency\":\"USD\",\"funding_method\":\"none\",\"id\":\"01M29WMVHJSXBA23QK0MRWFA8X\",\"key\":\"om0708-batch2\",\"labels\":{},\"name\":\"OM0708 batch2\",\"priority\":5,\"status\":\"active\",\"tax_config\":{\"tax_code\":{\"id\":\"01M25SMCRCBW1EXHCWHF6YWZ2P\"}},\"updated_at\":\"2026-09-12T04:05:12.390462Z\"}\n"
+  },
+  "custB": {
+   "status": 201,
+   "body": {
+    "created_at": "2026-09-12T04:08:10.027278Z",
+    "id": "01M29WT91B98CZ3JMQFJ1W2YEX",
+    "key": "om0708-20260912-custB",
+    "labels": {},
+    "name": "OM0708 Customer B",
+    "updated_at": "2026-09-12T04:08:10.027278Z"
+   },
+   "text": "{\"created_at\":\"2026-09-12T04:08:10.027278Z\",\"id\":\"01M29WT91B98CZ3JMQFJ1W2YEX\",\"key\":\"om0708-20260912-custB\",\"labels\":{},\"name\":\"OM0708 Customer B\",\"updated_at\":\"2026-09-12T04:08:10.027278Z\"}\n"
+  },
+  "planB": {
+   "status": 201,
+   "body": {
+    "billing_cadence": "P1M",
+    "created_at": "2026-09-12T04:08:10.201008Z",
+    "currency": "USD",
+    "id": "01M29WT96SFP0B15YK97R8YZ2H",
+    "key": "om0708_plan_b",
+    "name": "OM0708 Plan B",
+    "phases": [
+     {
+      "key": "main",
+      "name": "Main",
+      "rate_cards": [
+       {
+        "billing_cadence": "P1M",
+        "feature": {
+         "id": "01M29SXXZY6WECC4ZDQPWJVBVP"
+        },
+        "key": "om02_tokens",
+        "name": "RC om0708_plan_b",
+        "price": {
+         "amount": "0.02",
+         "type": "unit"
+        }
+       }
+      ]
+     }
+    ],
+    "pro_rating_enabled": true,
+    "settlement_mode": "credit_then_invoice",
+    "status": "draft",
+    "updated_at": "2026-09-12T04:08:10.201008Z",
+    "version": 1
+   },
+   "text": "{\"billing_cadence\":\"P1M\",\"created_at\":\"2026-09-12T04:08:10.201008Z\",\"currency\":\"USD\",\"id\":\"01M29WT96SFP0B15YK97R8YZ2H\",\"key\":\"om0708_plan_b\",\"name\":\"OM0708 Plan B\",\"phases\":[{\"key\":\"main\",\"name\":\"Main\",\"rate_cards\":[{\"billing_cadence\":\"P1M\",\"feature\":{\"id\":\"01M29SXXZY6WECC4ZDQPWJVBVP\"},\"key\":\"om02_tokens\",\"name\":\"RC om0708_plan_b\",\"price\":{\"amount\":\"0.02\",\"type\":\"unit\"}}]}],\"pro_rating_enabled\":true,\"settlement_mode\":\"credit_then_invoice\",\"status\":\"draft\",\"updated_at\":\"2026-09-12T04:08:10.201008Z\",\"version\":1}\n"
+  },
+  "pubB": {
+   "status": 200,
+   "body": {
+    "billing_cadence": "P1M",
+    "created_at": "2026-09-12T04:08:10.201008Z",
+    "currency": "USD",
+    "effective_from": "2026-09-12T04:08:10.223616Z",
+    "id": "01M29WT96SFP0B15YK97R8YZ2H",
+    "key": "om0708_plan_b",
+    "name": "OM0708 Plan B",
+    "phases": [
+     {
+      "key": "main",
+      "name": "Main",
+      "rate_cards": [
+       {
+        "billing_cadence": "P1M",
+        "feature": {
+         "id": "01M29SXXZY6WECC4ZDQPWJVBVP"
+        },
+        "key": "om02_tokens",
+        "name": "RC om0708_plan_b",
+        "price": {
+         "amount": "0.02",
+         "type": "unit"
+        }
+       }
+      ]
+     }
+    ],
+    "pro_rating_enabled": true,
+    "settlement_mode": "credit_then_invoice",
+    "status": "active",
+    "updated_at": "2026-09-12T04:08:10.238191Z",
+    "version": 1
+   },
+   "text": "{\"billing_cadence\":\"P1M\",\"created_at\":\"2026-09-12T04:08:10.201008Z\",\"currency\":\"USD\",\"effective_from\":\"2026-09-12T04:08:10.223616Z\",\"id\":\"01M29WT96SFP0B15YK97R8YZ2H\",\"key\":\"om0708_plan_b\",\"name\":\"OM0708 Plan B\",\"phases\":[{\"key\":\"main\",\"name\":\"Main\",\"rate_cards\":[{\"billing_cadence\":\"P1M\",\"feature\":{\"id\":\"01M29SXXZY6WECC4ZDQPWJVBVP\"},\"key\":\"om02_tokens\",\"name\":\"RC om0708_plan_b\",\"price\":{\"amount\":\"0.02\",\"type\":\"unit\"}}]}],\"pro_rating_enabled\":true,\"settlement_mode\":\"credit_then_invoice\",\"status\":\"active\",\"updated_at\":\"2026-09-12T04:08:10.238191Z\",\"version\":1}\n"
+  },
+  "planC": {
+   "status": 201,
+   "body": {
+    "billing_cadence": "P1M",
+    "created_at": "2026-09-12T04:08:10.259174Z",
+    "currency": "USD",
+    "id": "01M29WT98K0QFWV46QSKTPDG0T",
+    "key": "om0708_plan_c",
+    "name": "OM0708 Plan C",
+    "phases": [
+     {
+      "key": "main",
+      "name": "Main",
+      "rate_cards": [
+       {
+        "billing_cadence": "P1M",
+        "feature": {
+         "id": "01M29SXXZY6WECC4ZDQPWJVBVP"
+        },
+        "key": "om02_tokens",
+        "name": "RC om0708_plan_c",
+        "price": {
+         "amount": "0.03",
+         "type": "unit"
+        }
+       }
+      ]
+     }
+    ],
+    "pro_rating_enabled": true,
+    "settlement_mode": "credit_then_invoice",
+    "status": "draft",
+    "updated_at": "2026-09-12T04:08:10.259174Z",
+    "version": 1
+   },
+   "text": "{\"billing_cadence\":\"P1M\",\"created_at\":\"2026-09-12T04:08:10.259174Z\",\"currency\":\"USD\",\"id\":\"01M29WT98K0QFWV46QSKTPDG0T\",\"key\":\"om0708_plan_c\",\"name\":\"OM0708 Plan C\",\"phases\":[{\"key\":\"main\",\"name\":\"Main\",\"rate_cards\":[{\"billing_cadence\":\"P1M\",\"feature\":{\"id\":\"01M29SXXZY6WECC4ZDQPWJVBVP\"},\"key\":\"om02_tokens\",\"name\":\"RC om0708_plan_c\",\"price\":{\"amount\":\"0.03\",\"type\":\"unit\"}}]}],\"pro_rating_enabled\":true,\"settlement_mode\":\"credit_then_invoice\",\"status\":\"draft\",\"updated_at\":\"2026-09-12T04:08:10.259174Z\",\"version\":1}\n"
+  },
+  "pubC": {
+   "status": 200,
+   "body": {
+    "billing_cadence": "P1M",
+    "created_at": "2026-09-12T04:08:10.259174Z",
+    "currency": "USD",
+    "effective_from": "2026-09-12T04:08:10.27007Z",
+    "id": "01M29WT98K0QFWV46QSKTPDG0T",
+    "key": "om0708_plan_c",
+    "name": "OM0708 Plan C",
+    "phases": [
+     {
+      "key": "main",
+      "name": "Main",
+      "rate_cards": [
+       {
+        "billing_cadence": "P1M",
+        "feature": {
+         "id": "01M29SXXZY6WECC4ZDQPWJVBVP"
+        },
+        "key": "om02_tokens",
+        "name": "RC om0708_plan_c",
+        "price": {
+         "amount": "0.03",
+         "type": "unit"
+        }
+       }
+      ]
+     }
+    ],
+    "pro_rating_enabled": true,
+    "settlement_mode": "credit_then_invoice",
+    "status": "active",
+    "updated_at": "2026-09-12T04:08:10.272377Z",
+    "version": 1
+   },
+   "text": "{\"billing_cadence\":\"P1M\",\"created_at\":\"2026-09-12T04:08:10.259174Z\",\"currency\":\"USD\",\"effective_from\":\"2026-09-12T04:08:10.27007Z\",\"id\":\"01M29WT98K0QFWV46QSKTPDG0T\",\"key\":\"om0708_plan_c\",\"name\":\"OM0708 Plan C\",\"phases\":[{\"key\":\"main\",\"name\":\"Main\",\"rate_cards\":[{\"billing_cadence\":\"P1M\",\"feature\":{\"id\":\"01M29SXXZY6WECC4ZDQPWJVBVP\"},\"key\":\"om02_tokens\",\"name\":\"RC om0708_plan_c\",\"price\":{\"amount\":\"0.03\",\"type\":\"unit\"}}]}],\"pro_rating_enabled\":true,\"settlement_mode\":\"credit_then_invoice\",\"status\":\"active\",\"updated_at\":\"2026-09-12T04:08:10.272377Z\",\"version\":1}\n"
+  },
+  "subB": {
+   "status": 201,
+   "body": {
+    "billing_anchor": "2026-09-12T04:08:10.293454Z",
+    "created_at": "2026-09-12T04:08:10.294183Z",
+    "customer_id": "01M29WT91B98CZ3JMQFJ1W2YEX",
+    "id": "01M29WT99PCWSM599YKH8YBGF3",
+    "labels": {},
+    "plan_id": "01M29TJW1T4F6963NWACQWJBYF",
+    "settlement_mode": "credit_then_invoice",
+    "status": "active",
+    "updated_at": "2026-09-12T04:08:10.294183Z"
+   },
+   "text": "{\"billing_anchor\":\"2026-09-12T04:08:10.293454Z\",\"created_at\":\"2026-09-12T04:08:10.294183Z\",\"customer_id\":\"01M29WT91B98CZ3JMQFJ1W2YEX\",\"id\":\"01M29WT99PCWSM599YKH8YBGF3\",\"labels\":{},\"plan_id\":\"01M29TJW1T4F6963NWACQWJBYF\",\"settlement_mode\":\"credit_then_invoice\",\"status\":\"active\",\"updated_at\":\"2026-09-12T04:08:10.294183Z\"}\n"
+  },
+  "grantB": {
+   "status": 201,
+   "body": {
+    "amount": "50",
+    "created_at": "2026-09-12T04:08:10.315095Z",
+    "currency": "USD",
+    "funding_method": "none",
+    "id": "01M29WT9ABP81QPETTRH03TT92",
+    "key": "om0708-custB-grant1",
+    "labels": {},
+    "name": "custB burn budget",
+    "priority": 1,
+    "status": "active",
+    "tax_config": {
+     "tax_code": {
+      "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+     }
+    },
+    "updated_at": "2026-09-12T04:08:10.329607Z"
+   },
+   "text": "{\"amount\":\"50\",\"created_at\":\"2026-09-12T04:08:10.315095Z\",\"currency\":\"USD\",\"funding_method\":\"none\",\"id\":\"01M29WT9ABP81QPETTRH03TT92\",\"key\":\"om0708-custB-grant1\",\"labels\":{},\"name\":\"custB burn budget\",\"priority\":1,\"status\":\"active\",\"tax_config\":{\"tax_code\":{\"id\":\"01M25SMCRCBW1EXHCWHF6YWZ2P\"}},\"updated_at\":\"2026-09-12T04:08:10.329607Z\"}\n"
+  },
+  "grantCount0": 0,
+  "burnBase": {
+   "eventStatus": 202,
+   "before": "50",
+   "after": "49",
+   "delta": "-1.00",
+   "grantCount": 0
+  },
+  "changeProbe": {
+   "status": 400,
+   "body": {
+    "type": "https://kongapi.info/konnect/bad-request",
+    "status": 400,
+    "title": "Bad Request",
+    "instance": "urn:request:817fb7fae384/bkDLTVCpj8-001121",
+    "detail": "Bad Request: customer [required]: property \"customer\" is missing, plan [required]: property \"plan\" is missing, timing [required]: property \"timing\" is missing",
+    "invalid_parameters": [
+     {
+      "field": "customer",
+      "rule": "required",
+      "reason": "property \"customer\" is missing",
+      "source": ""
+     },
+     {
+      "field": "plan",
+      "rule": "required",
+      "reason": "property \"plan\" is missing",
+      "source": ""
+     },
+     {
+      "field": "timing",
+      "rule": "required",
+      "reason": "property \"timing\" is missing",
+      "source": ""
+     }
+    ]
+   },
+   "text": "{\"type\":\"https://kongapi.info/konnect/bad-request\",\"status\":400,\"title\":\"Bad Request\",\"instance\":\"urn:request:817fb7fae384/bkDLTVCpj8-001121\",\"detail\":\"Bad Request: customer [required]: property \\\"customer\\\" is missing, plan [required]: property \\\"plan\\\" is missing, timing [required]: property \\\"timing\\\" is missing\",\"invalid_parameters\":[{\"field\":\"customer\",\"rule\":\"required\",\"reason\":\"property \\\"customer\\\" is missing\",\"source\":\"\"},{\"field\":\"plan\",\"rule\":\"required\",\"reason\":\"property \\\"plan\\\" is missing\",\"source\":\"\"},{\"field\":\"timing\",\"rule\":\"required\",\"reason\":\"property \\\"timing\\\" is missing\",\"source\":\"\"}]}"
+  }
+ },
+ "log": [
+  {
+   "t": 64,
+   "op": "settle-pending",
+   "method": "POST",
+   "path": "/customers/01M29WMV6F84ZP0ZJ9WCAAKR46/credits/grants/01M29WMVHJSXBA23QK0MRWFA8X/settlement/external",
+   "status": 400,
+   "reqBody": {
+    "status": "pending"
+   },
+   "resBody": {
+    "type": "about:blank",
+    "title": "Bad Request",
+    "status": 400,
+    "instance": "urn:request:817fb7fae384/bkDLTVCpj8-001105",
+    "extensions": {
+     "validationErrors": [
+      {
+       "code": "credit_grant_external_settlement_status_invalid",
+       "field": "$.status",
+       "message": "unsupported credit grant settlement status: pending",
+       "severity": "critical",
+       "status": "pending"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "t": 95,
+   "op": "settle-completed-amount",
+   "method": "POST",
+   "path": "/customers/01M29WMV6F84ZP0ZJ9WCAAKR46/credits/grants/01M29WMVHJSXBA23QK0MRWFA8X/settlement/external",
+   "status": 400,
+   "reqBody": {
+    "status": "completed",
+    "amount": "10"
+   },
+   "resBody": {
+    "type": "https://kongapi.info/konnect/bad-request",
+    "status": 400,
+    "title": "Bad Request",
+    "instance": "urn:request:817fb7fae384/bkDLTVCpj8-001106",
+    "detail": "Bad Request:  [properties]: property \"amount\" is unsupported, status [allOf]: doesn't match all schemas from \"allOf\"",
+    "invalid_parameters": [
+     {
+      "field": "",
+      "rule": "properties",
+      "reason": "property \"amount\" is unsupported",
+      "source": ""
+     },
+     {
+      "field": "status",
+      "rule": "allOf",
+      "reason": "doesn't match all schemas from \"allOf\"",
+      "source": ""
+     }
+    ]
+   }
+  },
+  {
+   "t": 109,
+   "op": "get-g2-after-settle",
+   "method": "GET",
+   "path": "/customers/01M29WMV6F84ZP0ZJ9WCAAKR46/credits/grants/01M29WMVHJSXBA23QK0MRWFA8X",
+   "status": 200,
+   "resBody": {
+    "amount": "60",
+    "created_at": "2026-09-12T04:05:12.370781Z",
+    "currency": "USD",
+    "funding_method": "none",
+    "id": "01M29WMVHJSXBA23QK0MRWFA8X",
+    "key": "om0708-batch2",
+    "labels": {},
+    "name": "OM0708 batch2",
+    "priority": 5,
+    "status": "active",
+    "tax_config": {
+     "tax_code": {
+      "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+     }
+    },
+    "updated_at": "2026-09-12T04:05:12.390462Z"
+   }
+  },
+  {
+   "t": 158,
+   "op": "create-custB",
+   "method": "POST",
+   "path": "/customers",
+   "status": 201,
+   "reqBody": {
+    "key": "om0708-20260912-custB",
+    "name": "OM0708 Customer B"
+   },
+   "resBody": {
+    "created_at": "2026-09-12T04:08:10.027278Z",
+    "id": "01M29WT91B98CZ3JMQFJ1W2YEX",
+    "key": "om0708-20260912-custB",
+    "labels": {},
+    "name": "OM0708 Customer B",
+    "updated_at": "2026-09-12T04:08:10.027278Z"
+   }
+  },
+  {
+   "t": 311,
+   "op": "create-plan-b",
+   "method": "POST",
+   "path": "/plans",
+   "status": 201,
+   "reqBody": {
+    "name": "OM0708 Plan B",
+    "key": "om0708_plan_b",
+    "currency": "USD",
+    "billing_cadence": "P1M",
+    "phases": [
+     {
+      "key": "main",
+      "name": "Main",
+      "rate_cards": [
+       {
+        "key": "om02_tokens",
+        "name": "RC om0708_plan_b",
+        "feature": {
+         "id": "01M29SXXZY6WECC4ZDQPWJVBVP"
+        },
+        "price": {
+         "type": "unit",
+         "amount": "0.02"
+        },
+        "billing_cadence": "P1M"
+       }
+      ]
+     }
+    ]
+   },
+   "resBody": {
+    "billing_cadence": "P1M",
+    "created_at": "2026-09-12T04:08:10.201008Z",
+    "currency": "USD",
+    "id": "01M29WT96SFP0B15YK97R8YZ2H",
+    "key": "om0708_plan_b",
+    "name": "OM0708 Plan B",
+    "phases": [
+     {
+      "key": "main",
+      "name": "Main",
+      "rate_cards": [
+       {
+        "billing_cadence": "P1M",
+        "feature": {
+         "id": "01M29SXXZY6WECC4ZDQPWJVBVP"
+        },
+        "key": "om02_tokens",
+        "name": "RC om0708_plan_b",
+        "price": {
+         "amount": "0.02",
+         "type": "unit"
+        }
+       }
+      ]
+     }
+    ],
+    "pro_rating_enabled": true,
+    "settlement_mode": "credit_then_invoice",
+    "status": "draft",
+    "updated_at": "2026-09-12T04:08:10.201008Z",
+    "version": 1
+   }
+  },
+  {
+   "t": 347,
+   "op": "publish-plan-b",
+   "method": "POST",
+   "path": "/plans/01M29WT96SFP0B15YK97R8YZ2H/publish",
+   "status": 200,
+   "resBody": {
+    "billing_cadence": "P1M",
+    "created_at": "2026-09-12T04:08:10.201008Z",
+    "currency": "USD",
+    "effective_from": "2026-09-12T04:08:10.223616Z",
+    "id": "01M29WT96SFP0B15YK97R8YZ2H",
+    "key": "om0708_plan_b",
+    "name": "OM0708 Plan B",
+    "phases": [
+     {
+      "key": "main",
+      "name": "Main",
+      "rate_cards": [
+       {
+        "billing_cadence": "P1M",
+        "feature": {
+         "id": "01M29SXXZY6WECC4ZDQPWJVBVP"
+        },
+        "key": "om02_tokens",
+        "name": "RC om0708_plan_b",
+        "price": {
+         "amount": "0.02",
+         "type": "unit"
+        }
+       }
+      ]
+     }
+    ],
+    "pro_rating_enabled": true,
+    "settlement_mode": "credit_then_invoice",
+    "status": "active",
+    "updated_at": "2026-09-12T04:08:10.238191Z",
+    "version": 1
+   }
+  },
+  {
+   "t": 359,
+   "op": "create-plan-c",
+   "method": "POST",
+   "path": "/plans",
+   "status": 201,
+   "reqBody": {
+    "name": "OM0708 Plan C",
+    "key": "om0708_plan_c",
+    "currency": "USD",
+    "billing_cadence": "P1M",
+    "phases": [
+     {
+      "key": "main",
+      "name": "Main",
+      "rate_cards": [
+       {
+        "key": "om02_tokens",
+        "name": "RC om0708_plan_c",
+        "feature": {
+         "id": "01M29SXXZY6WECC4ZDQPWJVBVP"
+        },
+        "price": {
+         "type": "unit",
+         "amount": "0.03"
+        },
+        "billing_cadence": "P1M"
+       }
+      ]
+     }
+    ]
+   },
+   "resBody": {
+    "billing_cadence": "P1M",
+    "created_at": "2026-09-12T04:08:10.259174Z",
+    "currency": "USD",
+    "id": "01M29WT98K0QFWV46QSKTPDG0T",
+    "key": "om0708_plan_c",
+    "name": "OM0708 Plan C",
+    "phases": [
+     {
+      "key": "main",
+      "name": "Main",
+      "rate_cards": [
+       {
+        "billing_cadence": "P1M",
+        "feature": {
+         "id": "01M29SXXZY6WECC4ZDQPWJVBVP"
+        },
+        "key": "om02_tokens",
+        "name": "RC om0708_plan_c",
+        "price": {
+         "amount": "0.03",
+         "type": "unit"
+        }
+       }
+      ]
+     }
+    ],
+    "pro_rating_enabled": true,
+    "settlement_mode": "credit_then_invoice",
+    "status": "draft",
+    "updated_at": "2026-09-12T04:08:10.259174Z",
+    "version": 1
+   }
+  },
+  {
+   "t": 380,
+   "op": "publish-plan-c",
+   "method": "POST",
+   "path": "/plans/01M29WT98K0QFWV46QSKTPDG0T/publish",
+   "status": 200,
+   "resBody": {
+    "billing_cadence": "P1M",
+    "created_at": "2026-09-12T04:08:10.259174Z",
+    "currency": "USD",
+    "effective_from": "2026-09-12T04:08:10.27007Z",
+    "id": "01M29WT98K0QFWV46QSKTPDG0T",
+    "key": "om0708_plan_c",
+    "name": "OM0708 Plan C",
+    "phases": [
+     {
+      "key": "main",
+      "name": "Main",
+      "rate_cards": [
+       {
+        "billing_cadence": "P1M",
+        "feature": {
+         "id": "01M29SXXZY6WECC4ZDQPWJVBVP"
+        },
+        "key": "om02_tokens",
+        "name": "RC om0708_plan_c",
+        "price": {
+         "amount": "0.03",
+         "type": "unit"
+        }
+       }
+      ]
+     }
+    ],
+    "pro_rating_enabled": true,
+    "settlement_mode": "credit_then_invoice",
+    "status": "active",
+    "updated_at": "2026-09-12T04:08:10.272377Z",
+    "version": 1
+   }
+  },
+  {
+   "t": 398,
+   "op": "subscribe-custB-v3plan4",
+   "method": "POST",
+   "path": "/subscriptions",
+   "status": 201,
+   "reqBody": {
+    "customer": {
+     "key": "om0708-20260912-custB"
+    },
+    "plan": {
+     "key": "om02b_20260912_v3plan4"
+    },
+    "settlement_mode": "credit_then_invoice"
+   },
+   "resBody": {
+    "billing_anchor": "2026-09-12T04:08:10.293454Z",
+    "created_at": "2026-09-12T04:08:10.294183Z",
+    "customer_id": "01M29WT91B98CZ3JMQFJ1W2YEX",
+    "id": "01M29WT99PCWSM599YKH8YBGF3",
+    "labels": {},
+    "plan_id": "01M29TJW1T4F6963NWACQWJBYF",
+    "settlement_mode": "credit_then_invoice",
+    "status": "active",
+    "updated_at": "2026-09-12T04:08:10.294183Z"
+   }
+  },
+  {
+   "t": 427,
+   "op": "grant-custB-50",
+   "method": "POST",
+   "path": "/customers/01M29WT91B98CZ3JMQFJ1W2YEX/credits/grants",
+   "status": 201,
+   "reqBody": {
+    "key": "om0708-custB-grant1",
+    "name": "custB burn budget",
+    "funding_method": "none",
+    "currency": "USD",
+    "amount": "50",
+    "priority": 1
+   },
+   "resBody": {
+    "amount": "50",
+    "created_at": "2026-09-12T04:08:10.315095Z",
+    "currency": "USD",
+    "funding_method": "none",
+    "id": "01M29WT9ABP81QPETTRH03TT92",
+    "key": "om0708-custB-grant1",
+    "labels": {},
+    "name": "custB burn budget",
+    "priority": 1,
+    "status": "active",
+    "tax_config": {
+     "tax_code": {
+      "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+     }
+    },
+    "updated_at": "2026-09-12T04:08:10.329607Z"
+   }
+  },
+  {
+   "t": 429,
+   "op": "grants-before",
+   "method": "GET",
+   "path": "/customers/01M29WT91B98CZ3JMQFJ1W2YEX/credits/grants",
+   "status": 200,
+   "resBody": {
+    "data": [
+     {
+      "amount": "50",
+      "created_at": "2026-09-12T04:08:10.315095Z",
+      "currency": "USD",
+      "funding_method": "none",
+      "id": "01M29WT9ABP81QPETTRH03TT92",
+      "key": "om0708-custB-grant1",
+      "labels": {},
+      "name": "custB burn budget",
+      "priority": 1,
+      "status": "active",
+      "tax_config": {
+       "tax_code": {
+        "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+       }
+      },
+      "updated_at": "2026-09-12T04:08:10.329607Z"
+     }
+    ],
+    "meta": {
+     "page": {
+      "size": 20,
+      "number": 1,
+      "total": 1
+     }
+    }
+   }
+  },
+  {
+   "t": 433,
+   "op": "burn-base-100tok-before",
+   "method": "GET",
+   "path": "/customers/01M29WT91B98CZ3JMQFJ1W2YEX/credits/balance",
+   "status": 200,
+   "resBody": {
+    "balances": [
+     {
+      "currency": "USD",
+      "live": "50",
+      "pending": "0",
+      "settled": "50"
+     }
+    ],
+    "retrieved_at": "2026-09-12T04:08:10.341158313Z"
+   }
+  },
+  {
+   "t": 435,
+   "op": "burn-base-100tok",
+   "method": "POST",
+   "path": "/events",
+   "status": 202,
+   "reqBody": [
+    {
+     "id": "om0708-evt-burn-base-100tok-1789186090343",
+     "source": "om0708-probe",
+     "specversion": "1.0",
+     "type": "prompt",
+     "subject": "om0708-20260912-custB",
+     "data": {
+      "tokens": 100,
+      "model": "gpt-4",
+      "type": "input"
+     }
+    }
+   ],
+   "resBody": ""
+  },
+  {
+   "t": 4125,
+   "op": "burn-base-100tok-poll1",
+   "method": "GET",
+   "path": "/customers/01M29WT91B98CZ3JMQFJ1W2YEX/credits/balance",
+   "status": 200,
+   "resBody": {
+    "balances": [
+     {
+      "currency": "USD",
+      "live": "49",
+      "pending": "0",
+      "settled": "50"
+     }
+    ],
+    "retrieved_at": "2026-09-12T04:08:13.97904804Z"
+   }
+  },
+  {
+   "t": 4128,
+   "op": "gc-after-burn-base",
+   "method": "GET",
+   "path": "/customers/01M29WT91B98CZ3JMQFJ1W2YEX/credits/grants",
+   "status": 200,
+   "resBody": {
+    "data": [
+     {
+      "amount": "50",
+      "created_at": "2026-09-12T04:08:10.315095Z",
+      "currency": "USD",
+      "funding_method": "none",
+      "id": "01M29WT9ABP81QPETTRH03TT92",
+      "key": "om0708-custB-grant1",
+      "labels": {},
+      "name": "custB burn budget",
+      "priority": 1,
+      "status": "active",
+      "tax_config": {
+       "tax_code": {
+        "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+       }
+      },
+      "updated_at": "2026-09-12T04:08:10.329607Z"
+     }
+    ],
+    "meta": {
+     "page": {
+      "size": 20,
+      "number": 1,
+      "total": 1
+     }
+    }
+   }
+  },
+  {
+   "t": 4130,
+   "op": "change-probe-empty",
+   "method": "POST",
+   "path": "/subscriptions/01M29WT99PCWSM599YKH8YBGF3/change",
+   "status": 400,
+   "reqBody": {},
+   "resBody": {
+    "type": "https://kongapi.info/konnect/bad-request",
+    "status": 400,
+    "title": "Bad Request",
+    "instance": "urn:request:817fb7fae384/bkDLTVCpj8-001121",
+    "detail": "Bad Request: customer [required]: property \"customer\" is missing, plan [required]: property \"plan\" is missing, timing [required]: property \"timing\" is missing",
+    "invalid_parameters": [
+     {
+      "field": "customer",
+      "rule": "required",
+      "reason": "property \"customer\" is missing",
+      "source": ""
+     },
+     {
+      "field": "plan",
+      "rule": "required",
+      "reason": "property \"plan\" is missing",
+      "source": ""
+     },
+     {
+      "field": "timing",
+      "rule": "required",
+      "reason": "property \"timing\" is missing",
+      "source": ""
+     }
+    ]
+   }
+  }
+ ]
+}

@@ -5,6 +5,16 @@ import (
 	"errors"
 )
 
+// RefundState is the refund lifecycle vocabulary. It is a DISTINCT type
+// from the channel payout states (RefundChannelState) and from the
+// payment attempt states (payment.AttemptState): the compiler rejects
+// feeding a payment or channel state into a lifecycle transition.
+type RefundState string
+
+// String keeps the raw wire value available where persistence, SQL or
+// operator-facing projections need the plain string.
+func (s RefundState) String() string { return string(s) }
+
 // Refund lifecycle states. A request starts requested; manual review moves
 // it to reviewing; approval (only with a configured eligibility policy)
 // holds locks and starts the channel op in pending. Channel success is
@@ -12,23 +22,26 @@ import (
 // a confirmed precise-credits revocation completes it. failed_confirmed
 // and not_created_confirmed are the only states whose locks may release.
 const (
-	RefundStateRequested           = "requested"
-	RefundStateReviewing           = "reviewing"
-	RefundStatePending             = "pending"
-	RefundStateRevocationPending   = "revocation_pending"
-	RefundStateCompleted           = "completed"
-	RefundStateFailedConfirmed     = "failed_confirmed"
-	RefundStateNotCreatedConfirmed = "not_created_confirmed"
+	RefundStateRequested           RefundState = "requested"
+	RefundStateReviewing           RefundState = "reviewing"
+	RefundStatePending             RefundState = "pending"
+	RefundStateRevocationPending   RefundState = "revocation_pending"
+	RefundStateCompleted           RefundState = "completed"
+	RefundStateFailedConfirmed     RefundState = "failed_confirmed"
+	RefundStateNotCreatedConfirmed RefundState = "not_created_confirmed"
 )
 
-// Channel (provider-side) refund outcome vocabulary, aligned with the C02
-// Provider.Refund/QueryRefund result states.
+// RefundChannelState is the channel (provider-side) refund outcome
+// vocabulary, aligned with the C02 Provider.Refund/QueryRefund result
+// states. Distinct from RefundState and payment.AttemptState.
+type RefundChannelState string
+
 const (
-	RefundChannelPending    = "pending"
-	RefundChannelUnknown    = "unknown"
-	RefundChannelSucceeded  = "succeeded"
-	RefundChannelFailed     = "failed"
-	RefundChannelNotCreated = "not_created"
+	RefundChannelPending    RefundChannelState = "pending"
+	RefundChannelUnknown    RefundChannelState = "unknown"
+	RefundChannelSucceeded  RefundChannelState = "succeeded"
+	RefundChannelFailed     RefundChannelState = "failed"
+	RefundChannelNotCreated RefundChannelState = "not_created"
 )
 
 // Manual review bases recorded for every review decision: whether the
@@ -45,12 +58,14 @@ var (
 	ErrRefundNotReady = errors.New("refund_eligibility_not_ready")
 )
 
-// CanUnlockRefund reports whether a refund outcome releases its locked
-// credits: only a CONFIRMED failure or a CONFIRMED never-created refund
-// unlocks. Success, in-flight, and indeterminate outcomes keep the lock —
-// unrecognised values fail closed.
-func CanUnlockRefund(channelState string) bool {
-	return channelState == "failed_confirmed" || channelState == "not_created_confirmed"
+// CanUnlockRefund reports whether a refund LIFECYCLE state releases its
+// locked credits: only a CONFIRMED failure or a CONFIRMED never-created
+// refund unlocks. Success, in-flight, and indeterminate outcomes keep the
+// lock — unrecognised values fail closed. The parameter is deliberately
+// the lifecycle type: deciding an unlock from a channel or payment state
+// is now a compile error, not a silent fail-open.
+func CanUnlockRefund(state RefundState) bool {
+	return state == RefundStateFailedConfirmed || state == RefundStateNotCreatedConfirmed
 }
 
 // TransitionRefundOnChannel maps the stored refund state onto the next
@@ -58,7 +73,7 @@ func CanUnlockRefund(channelState string) bool {
 // still-processing channel keeps the current state; an unproven outcome
 // falls back to reviewing so recovery re-queries the ORIGINAL refund key
 // instead of forcing a progression.
-func TransitionRefundOnChannel(current, channelState string) string {
+func TransitionRefundOnChannel(current RefundState, channelState RefundChannelState) RefundState {
 	switch current {
 	case RefundStateCompleted, RefundStateFailedConfirmed, RefundStateNotCreatedConfirmed:
 		return current
@@ -83,7 +98,7 @@ func TransitionRefundOnChannel(current, channelState string) string {
 // precise-credits revocation; a failed revocation stays
 // revocation_pending so recovery retries the revocation and never pays
 // out a second time.
-func TransitionRefundOnRevocation(current string, confirmed bool) string {
+func TransitionRefundOnRevocation(current RefundState, confirmed bool) RefundState {
 	if current == RefundStateRevocationPending && confirmed {
 		return RefundStateCompleted
 	}
@@ -95,7 +110,7 @@ func TransitionRefundOnRevocation(current string, confirmed bool) string {
 type RefundRequestState struct {
 	ID           string
 	OrderID      string
-	State        string
+	State        RefundState
 	TenantID     uint64
 	Amount       CNYFen
 	CreditAmount Credits

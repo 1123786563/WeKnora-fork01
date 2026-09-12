@@ -1,0 +1,67 @@
+{
+  "case": "om02b-v2-subscription-observe",
+  "namespace": "om02b-20260912",
+  "steps": [
+    {
+      "method": "POST",
+      "operation_id": "ingestEvents",
+      "request": {
+        "id": "om02b-20260912-evt-3",
+        "source": "om02b-probe",
+        "specversion": "1.0",
+        "type": "prompt",
+        "subject": "om02b-20260912-v2cust",
+        "data": {
+          "tokens": "[REDACTED]",
+          "model": "gpt-4",
+          "type": "input"
+        }
+      },
+      "status": 204,
+      "response": {}
+    },
+    {
+      "method": "GET",
+      "operation_id": "getCustomerEntitlementValueV2",
+      "request": null,
+      "status": 200,
+      "response": {
+        "hasAccess": true,
+        "balance": 1,
+        "overage": 0,
+        "totalAvailableGrantAmount": 1,
+        "usage": 0,
+        "grantBalances": {
+          "01M29TEFH4M2QSDX21SXX5Q4NQ": 1
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "listCustomerEntitlementGrantsV2",
+      "request": null,
+      "status": 200,
+      "response": {
+        "items": [
+          {
+            "amount": 1,
+            "annotations": {
+              "issueAfterReset": true
+            },
+            "createdAt": "2026-09-12T03:26:46.308011Z",
+            "effectiveAt": "2026-09-12T03:26:00Z",
+            "entitlementId": "01M29TEFH1H7JFCJGB9XYAJ5M1",
+            "id": "01M29TEFH4M2QSDX21SXX5Q4NQ",
+            "maxRolloverAmount": 1,
+            "minRolloverAmount": 1,
+            "priority": 1,
+            "updatedAt": "2026-09-12T03:26:46.308011Z"
+          }
+        ],
+        "page": 1,
+        "pageSize": 100,
+        "totalCount": 1
+      }
+    }
+  ]
+}

@@ -1,0 +1,232 @@
+{
+  "t0": "2026-09-12T03:50:18.724281+00:00",
+  "polls": [
+    {
+      "t_plus_s": 38.5,
+      "observed_at": "2026-09-12T03:50:57.286497+00:00",
+      "live": "100",
+      "balance_raw": {
+        "balances": [
+          {
+            "currency": "USD",
+            "live": "100",
+            "pending": "3",
+            "settled": "100"
+          }
+        ],
+        "retrieved_at": "2026-09-12T03:50:57.334924367Z"
+      },
+      "grants": {
+        "om0506-20260912-b-pt1m": {
+          "status": "active",
+          "expires_at": "2026-09-12T03:51:18Z"
+        },
+        "om0506-20260912-b-pt3m": {
+          "status": "active",
+          "expires_at": "2026-09-12T03:53:18Z"
+        },
+        "om0506-20260912-d-leapday": {
+          "status": "active",
+          "expires_at": "2028-02-29T23:59:59Z"
+        },
+        "om0506-20260912-d-monthend-p1m": {
+          "status": "active",
+          "expires_at": "2028-02-29T00:00:00Z"
+        },
+        "om0506-20260912-d-sec-precision": {
+          "status": "active",
+          "expires_at": "2029-01-01T00:00:59Z"
+        }
+      }
+    },
+    {
+      "t_plus_s": 48.6,
+      "observed_at": "2026-09-12T03:51:07.336822+00:00",
+      "live": "100",
+      "balance_raw": {
+        "balances": [
+          {
+            "currency": "USD",
+            "live": "100",
+            "pending": "3",
+            "settled": "100"
+          }
+        ],
+        "retrieved_at": "2026-09-12T03:51:07.374757103Z"
+      },
+      "grants": {
+        "om0506-20260912-b-pt1m": {
+          "status": "active",
+          "expires_at": "2026-09-12T03:51:18Z"
+        },
+        "om0506-20260912-b-pt3m": {
+          "status": "active",
+          "expires_at": "2026-09-12T03:53:18Z"
+        },
+        "om0506-20260912-d-leapday": {
+          "status": "active",
+          "expires_at": "2028-02-29T23:59:59Z"
+        },
+        "om0506-20260912-d-monthend-p1m": {
+          "status": "active",
+          "expires_at": "2028-02-29T00:00:00Z"
+        },
+        "om0506-20260912-d-sec-precision": {
+          "status": "active",
+          "expires_at": "2029-01-01T00:00:59Z"
+        }
+      }
+    },
+    {
+      "t_plus_s": 58.6,
+      "observed_at": "2026-09-12T03:51:17.376203+00:00",
+      "live": "100",
+      "balance_raw": {
+        "balances": [
+          {
+            "currency": "USD",
+            "live": "100",
+            "pending": "3",
+            "settled": "100"
+          }
+        ],
+        "retrieved_at": "2026-09-12T03:51:17.430264461Z"
+      },
+      "grants": {
+        "om0506-20260912-b-pt1m": {
+          "status": "active",
+          "expires_at": "2026-09-12T03:51:18Z"
+        },
+        "om0506-20260912-b-pt3m": {
+          "status": "active",
+          "expires_at": "2026-09-12T03:53:18Z"
+        },
+        "om0506-20260912-d-leapday": {
+          "status": "active",
+          "expires_at": "2028-02-29T23:59:59Z"
+        },
+        "om0506-20260912-d-monthend-p1m": {
+          "status": "active",
+          "expires_at": "2028-02-29T00:00:00Z"
+        },
+        "om0506-20260912-d-sec-precision": {
+          "status": "active",
+          "expires_at": "2029-01-01T00:00:59Z"
+        }
+      }
+    },
+    {
+      "t_plus_s": 64.7,
+      "observed_at": "2026-09-12T03:51:23.416458+00:00",
+      "live": "60",
+      "balance_raw": {
+        "balances": [
+          {
+            "currency": "USD",
+            "live": "60",
+            "pending": "3",
+            "settled": "60"
+          }
+        ],
+        "retrieved_at": "2026-09-12T03:51:23.471307952Z"
+      },
+      "grants": {
+        "om0506-20260912-b-pt1m": {
+          "status": "expired",
+          "expires_at": "2026-09-12T03:51:18Z"
+        },
+        "om0506-20260912-b-pt3m": {
+          "status": "active",
+          "expires_at": "2026-09-12T03:53:18Z"
+        },
+        "om0506-20260912-d-leapday": {
+          "status": "active",
+          "expires_at": "2028-02-29T23:59:59Z"
+        },
+        "om0506-20260912-d-monthend-p1m": {
+          "status": "active",
+          "expires_at": "2028-02-29T00:00:00Z"
+        },
+        "om0506-20260912-d-sec-precision": {
+          "status": "active",
+          "expires_at": "2029-01-01T00:00:59Z"
+        }
+      }
+    },
+    {
+      "t_plus_s": 70.7,
+      "observed_at": "2026-09-12T03:51:29.434549+00:00",
+      "live": "60",
+      "balance_raw": {
+        "balances": [
+          {
+            "currency": "USD",
+            "live": "60",
+            "pending": "3",
+            "settled": "60"
+          }
+        ],
+        "retrieved_at": "2026-09-12T03:51:29.502514507Z"
+      },
+      "grants": {
+        "om0506-20260912-b-pt1m": {
+          "status": "expired",
+          "expires_at": "2026-09-12T03:51:18Z"
+        },
+        "om0506-20260912-b-pt3m": {
+          "status": "active",
+          "expires_at": "2026-09-12T03:53:18Z"
+        },
+        "om0506-20260912-d-leapday": {
+          "status": "active",
+          "expires_at": "2028-02-29T23:59:59Z"
+        },
+        "om0506-20260912-d-monthend-p1m": {
+          "status": "active",
+          "expires_at": "2028-02-29T00:00:00Z"
+        },
+        "om0506-20260912-d-sec-precision": {
+          "status": "active",
+          "expires_at": "2029-01-01T00:00:59Z"
+        }
+      }
+    }
+  ],
+  "post_expiry_confirmation": {
+    "t_plus_s": 78.8,
+    "balance_raw": {
+      "balances": [
+        {
+          "currency": "USD",
+          "live": "60",
+          "pending": "3",
+          "settled": "60"
+        }
+      ],
+      "retrieved_at": "2026-09-12T03:51:37.564956537Z"
+    },
+    "grants": {
+      "om0506-20260912-b-pt1m": {
+        "status": "expired",
+        "expires_at": "2026-09-12T03:51:18Z"
+      },
+      "om0506-20260912-b-pt3m": {
+        "status": "active",
+        "expires_at": "2026-09-12T03:53:18Z"
+      },
+      "om0506-20260912-d-leapday": {
+        "status": "active",
+        "expires_at": "2028-02-29T23:59:59Z"
+      },
+      "om0506-20260912-d-monthend-p1m": {
+        "status": "active",
+        "expires_at": "2028-02-29T00:00:00Z"
+      },
+      "om0506-20260912-d-sec-precision": {
+        "status": "active",
+        "expires_at": "2029-01-01T00:00:59Z"
+      }
+    }
+  },
+  "seen_expired": true
+}

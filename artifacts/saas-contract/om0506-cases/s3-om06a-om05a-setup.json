@@ -1,0 +1,83 @@
+{
+  "plan_create": {
+    "status": 400,
+    "id": null
+  },
+  "plan_publish": {
+    "status": 404
+  },
+  "subscription": {
+    "status": 400,
+    "body": {
+      "type": "https://kongapi.info/konnect/bad-request",
+      "status": 400,
+      "title": "Bad Request",
+      "instance": "urn:request:817fb7fae384/bkDLTVCpj8-000700",
+      "detail": "Bad Request: plan.key [allOf]: doesn't match all schemas from \"allOf\"",
+      "invalid_parameters": [
+        {
+          "field": "plan.key",
+          "rule": "allOf",
+          "reason": "doesn't match all schemas from \"allOf\"",
+          "source": ""
+        }
+      ]
+    }
+  },
+  "grants": {
+    "period": {
+      "status": 201,
+      "body": {
+        "amount": "30",
+        "created_at": "2026-09-12T03:50:18.878854Z",
+        "currency": "USD",
+        "expires_at": "2026-09-12T05:50:18Z",
+        "funding_method": "none",
+        "id": "01M29VSJZYZQNY72CN1G4BKG4B",
+        "key": "om0506-20260912-a-period",
+        "labels": {},
+        "name": "OM0506 period grant",
+        "priority": 3,
+        "status": "active",
+        "tax_config": {
+          "tax_code": {
+            "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+          }
+        },
+        "updated_at": "2026-09-12T03:50:18.88441Z"
+      }
+    },
+    "topup": {
+      "status": 201,
+      "body": {
+        "amount": "20",
+        "created_at": "2026-09-12T03:50:18.888559Z",
+        "currency": "USD",
+        "funding_method": "none",
+        "id": "01M29VSK08JARCW50H866HHBB4",
+        "key": "om0506-20260912-a-topup",
+        "labels": {},
+        "name": "OM0506 topup grant",
+        "priority": 7,
+        "status": "active",
+        "tax_config": {
+          "tax_code": {
+            "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+          }
+        },
+        "updated_at": "2026-09-12T03:50:18.893353Z"
+      }
+    }
+  },
+  "balance_before_burn": {
+    "balances": [
+      {
+        "currency": "USD",
+        "live": "50",
+        "pending": "0",
+        "settled": "50"
+      }
+    ],
+    "retrieved_at": "2026-09-12T03:50:18.897218858Z"
+  }
+}

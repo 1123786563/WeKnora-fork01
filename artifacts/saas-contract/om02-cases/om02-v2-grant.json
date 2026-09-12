@@ -1,0 +1,35 @@
+{
+  "id": "om02-v2-grant",
+  "operation_id": "createCustomerEntitlementGrantV2",
+  "request": [
+    {
+      "operation_id": "createCustomerEntitlementGrantV2",
+      "method": "POST",
+      "path": "/api/v2/customers/om02-20260912-v2cust/entitlements/om02_tokens/grants",
+      "body": {
+        "amount": 1000,
+        "priority": 1,
+        "effectiveAt": "2026-09-12T03:20:00Z",
+        "expiration": {
+          "duration": "HOUR",
+          "count": 1
+        }
+      },
+      "captures": {
+        "v2grant": "/id"
+      }
+    },
+    {
+      "operation_id": "getCustomerEntitlementValueV2",
+      "method": "GET",
+      "path": "/api/v2/customers/om02-20260912-v2cust/entitlements/om02_tokens/value"
+    },
+    {
+      "operation_id": "listCustomerEntitlementGrantsV2",
+      "method": "GET",
+      "path": "/api/v2/customers/om02-20260912-v2cust/entitlements/om02_tokens/grants"
+    }
+  ],
+  "captures": {},
+  "expected": {}
+}

@@ -19,6 +19,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/commercial"
@@ -157,11 +158,15 @@ func (c AlipayConfig) gateway() string {
 // basics above is guessed. Real-channel acceptance (ALI-01..05) therefore
 // remains blocked-env.
 type AlipayProvider struct {
-	cfg           AlipayConfig
-	alipayPubKey  *rsa.PublicKey // resolved from the configured reference only
-	client        *http.Client
-	now           func() time.Time
-	mchKeyOnce    bool
+	cfg          AlipayConfig
+	alipayPubKey *rsa.PublicKey // resolved from the configured reference only
+	client       *http.Client
+	now          func() time.Time
+	// mchKeyOnce serializes the lazy merchant-key load: concurrent first
+	// gateway calls block until the key (or its load error) is published,
+	// so no caller can observe mchKeyOnce=true with a still-nil key and
+	// panic in SignPKCS1v15.
+	mchKeyOnce    sync.Once
 	mchPrivateKey *rsa.PrivateKey
 	mchKeyErr     error
 }
@@ -652,21 +657,22 @@ func responseHeadOf(out interface{}) *alipayResponseHead {
 	}
 }
 
-// merchantKey lazily resolves the merchant private key from its configured
-// path reference; the result is memoized for the process.
+// merchantKey resolves the merchant private key from its configured path
+// reference exactly once, under sync.Once; concurrent first calls block on
+// the same initialization, and both the key and any load error are
+// memoized for the process (mirroring WechatProvider.merchantKey).
 func (p *AlipayProvider) merchantKey() (*rsa.PrivateKey, error) {
-	if !p.mchKeyOnce {
-		p.mchKeyOnce = true
+	p.mchKeyOnce.Do(func() {
 		if p.cfg.MerchantPrivKeyPath == "" {
 			p.mchKeyErr = fmt.Errorf("%w: merchant private key path not configured", ErrAlipayNotConfigured)
-			return nil, p.mchKeyErr
+			return
 		}
 		raw, err := os.ReadFile(p.cfg.MerchantPrivKeyPath)
 		if err != nil {
 			p.mchKeyErr = err
-			return nil, p.mchKeyErr
+			return
 		}
 		p.mchPrivateKey, p.mchKeyErr = parseRSAPrivateKey(raw)
-	}
+	})
 	return p.mchPrivateKey, p.mchKeyErr
 }

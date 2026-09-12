@@ -1,0 +1,31 @@
+{
+ "check": "ALI-05",
+ "captured_at_utc": "2026-09-12T05:46:21Z",
+ "environment": "official Alipay sandbox (openapi-sandbox.dl.alipaydev.com), app 9021********** (redacted)",
+ "payment": {
+  "out_trade_no": "omsb-****-REDACTED",
+  "method": "alipay.trade.page.pay (browser cashier; QR/wallet path failed with sandbox 人气太旺 error — documented)",
+  "observed_transition": "ACQ.TRADE_NOT_EXIST (pre-pay) -> WAIT_BUYER_PAY -> TRADE_SUCCESS",
+  "trade_no": "2026****REDACTED",
+  "total_amount": "0.01",
+  "buyer_logon_id": "***@sandbox.com"
+ },
+ "refund_chain": {
+  "command": "ALIPAY_SANDBOX_INTERACTIVE=1 ALIPAY_SANDBOX_PAID_ORDER=<redacted> go test ./internal/payment -run TestAlipaySandboxInteractivePaidRefundFlow -count=1 -v",
+  "result": "PASS (2.08s)",
+  "steps": "full refund (succeeded) -> QueryRefund (succeeded, after RefundOrderKey resolver fix) -> same-key re-file (idempotent succeeded, fund_change N path)",
+  "order_state_after_full_refund": "closed (full refund transitions the order) — pre-paid entry accepts succeeded|closed"
+ },
+ "fixes_required_by_runtime": [
+  "QueryRefund must send BOTH out_request_no and out_trade_no (single-id -> ACQ.INVALID_PARAMETER); added AlipayConfig.RefundOrderKey resolver, fails closed unwired",
+  "request signing must include sign_type (see ALI-01 evidence)",
+  "Close must parse business errors (alipayCloseResponse)"
+ ],
+ "channel_behaviors": [
+  "unpaid precreate orders invisible to query/close (TRADE_NOT_EXIST)",
+  "page.pay orders queryable as WAIT_BUYER_PAY before payment",
+  "full refund -> order closed",
+  "sandbox front intermittently returns Tengine 404 pages (retried)"
+ ],
+ "redaction": "identifiers (app id, seller pid, out_trade_no, trade_no, buyer identity, signed request payloads, QR image) removed from history; see REDACTION-NOTE.md"
+}

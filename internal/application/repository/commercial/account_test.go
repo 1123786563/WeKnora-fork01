@@ -19,6 +19,15 @@ func testAccountStore(t *testing.T) *AccountStore {
 	if err := db.AutoMigrate(&Account{}, &Grant{}); err != nil {
 		t.Fatal(err)
 	}
+	// Mirror the production SQLite pool (single writer): shared-cache
+	// in-memory SQLite reports SQLITE_LOCKED ("database table is locked")
+	// when two connections write concurrently, and busy_timeout does not
+	// retry that error. Serialising on one connection matches the
+	// deployed topology, where the unique constraints — not connection
+	// racing — decide the winner.
+	if sqlDB, err := db.DB(); err == nil {
+		sqlDB.SetMaxOpenConns(1)
+	}
 	return NewAccountStore(db)
 }
 

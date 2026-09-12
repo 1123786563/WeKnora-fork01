@@ -1,0 +1,43 @@
+{
+  "id": "om02b-v3-burn",
+  "operation_id": "ingest-metering-events",
+  "idempotency_key": "om02b-20260912-ingest-6",
+  "request": [
+    {
+      "operation_id": "get-customer-credit-balance",
+      "method": "GET",
+      "path": "/api/v3/openmeter/customers/01M29T9Z6DVA4ATC501Y44G32D/credits/balance"
+    },
+    {
+      "operation_id": "ingest-metering-events",
+      "method": "POST",
+      "path": "/api/v3/openmeter/events",
+      "body": [
+        {
+          "id": "om02b-20260912-evt-6",
+          "source": "om02b-probe",
+          "specversion": "1.0",
+          "type": "prompt",
+          "subject": "om02b-20260912-v3cust",
+          "data": {
+            "tokens": 250,
+            "model": "gpt-4",
+            "type": "input"
+          }
+        }
+      ]
+    },
+    {
+      "operation_id": "get-customer-credit-balance",
+      "method": "GET",
+      "path": "/api/v3/openmeter/customers/01M29T9Z6DVA4ATC501Y44G32D/credits/balance"
+    },
+    {
+      "operation_id": "list-credit-transactions",
+      "method": "GET",
+      "path": "/api/v3/openmeter/customers/01M29T9Z6DVA4ATC501Y44G32D/credits/transactions"
+    }
+  ],
+  "captures": {},
+  "expected": {}
+}

@@ -10,6 +10,7 @@ import (
 	"sync"
 	"testing"
 
+	commercialsvc "github.com/Tencent/WeKnora/internal/application/service/commercial"
 	"github.com/Tencent/WeKnora/internal/handler"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/gin-gonic/gin"
@@ -84,6 +85,25 @@ var commercialScopeDDL = []string{
 		external_id TEXT NOT NULL UNIQUE,
 		state TEXT NOT NULL,
 		PRIMARY KEY (plan_key, version))`,
+	`CREATE TABLE IF NOT EXISTS commercial_orders (
+		id TEXT PRIMARY KEY,
+		tenant_id INTEGER NOT NULL,
+		quote_id TEXT NOT NULL UNIQUE,
+		amount_fen INTEGER NOT NULL,
+		currency TEXT NOT NULL,
+		state TEXT NOT NULL,
+		version INTEGER NOT NULL DEFAULT 1)`,
+	`CREATE TABLE IF NOT EXISTS commercial_payment_attempts (
+		id TEXT PRIMARY KEY,
+		tenant_id INTEGER NOT NULL,
+		order_id TEXT NOT NULL,
+		provider TEXT NOT NULL,
+		merchant TEXT NOT NULL,
+		merchant_order_id TEXT NOT NULL,
+		provider_transaction_id TEXT,
+		amount_fen INTEGER NOT NULL,
+		currency TEXT NOT NULL,
+		state TEXT NOT NULL)`,
 	`CREATE TABLE IF NOT EXISTS scope_test_resources (
 		id TEXT PRIMARY KEY,
 		tenant_id INTEGER NOT NULL)`,
@@ -107,6 +127,9 @@ func serveWith(t *testing.T, db *gorm.DB, auth gin.HandlerFunc, method, path str
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	h := handler.NewCommercialHandler(db)
+	if orders, err := commercialsvc.NewOrderService(db, nil); err == nil {
+		h.SetOrderService(orders)
+	}
 	engine := gin.New()
 	engine.Use(auth)
 	v1 := engine.Group("/api/v1")
@@ -175,6 +198,35 @@ func TestCommercialScopeQueriesNeverCrossSpaces(t *testing.T) {
 	w, body = serveWith(t, db, authAs(202, "shared-user", "viewer"), http.MethodGet, "/api/v1/commercial/orders")
 	if w.Code != http.StatusOK || strings.TrimSpace(body) == "" || strings.Contains(body, "null") {
 		t.Fatalf("orders B status=%d body=%s", w.Code, body)
+	}
+}
+
+// TestCommercialSummaryBaseTierFallback locks the B05 fallback shape: a
+// space with NO purchased subscription reports base_tier=true with a null
+// subscription. GORM Raw().Scan() into a struct returns a nil error for
+// zero rows, so the row count — not gorm.ErrRecordNotFound — must drive
+// the branch (a regression here reports base_tier:false with a zero-value
+// subscription for every new space).
+func TestCommercialSummaryBaseTierFallback(t *testing.T) {
+	_, _, db := newCommercialScopeEngine(t, nil)
+	if err := db.Exec(`INSERT INTO commercial_subscriptions (id, tenant_id, plan_key, plan_version) VALUES ('sub-a', 101, 'pro', 3)`).Error; err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	w, body := serveWith(t, db, authAs(303, "fresh-user", "owner"), http.MethodGet, "/api/v1/commercial/summary")
+	if w.Code != http.StatusOK {
+		t.Fatalf("fresh space summary status = %d body=%s", w.Code, body)
+	}
+	if !strings.Contains(body, `"base_tier":true`) || !strings.Contains(body, `"subscription":null`) {
+		t.Fatalf("space without a purchase must fall back to the base tier: %s", body)
+	}
+
+	w, body = serveWith(t, db, authAs(101, "sub-user", "owner"), http.MethodGet, "/api/v1/commercial/summary")
+	if w.Code != http.StatusOK {
+		t.Fatalf("subscribed summary status = %d body=%s", w.Code, body)
+	}
+	if !strings.Contains(body, `"base_tier":false`) || strings.Contains(body, `"subscription":null`) {
+		t.Fatalf("subscribed space must report its subscription, not the base tier: %s", body)
 	}
 }
 
@@ -344,4 +396,43 @@ func serveScoped(t *testing.T, scope, auth gin.HandlerFunc, path string) (*httpt
 	w := httptest.NewRecorder()
 	engine.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
 	return w, w.Body.String()
+}
+
+// TestRefundReviewRequiresPlatformOperator: the refund review path is
+// platform-only. A space Admin — even one with full tenant billing
+// authority — must be rejected (403), because review moves money out of
+// a space and the refund ID is global: admitting space Admins would let
+// one space drive another space's refund. Only a caller carrying the
+// explicit platform-scope refund_review grant is admitted.
+func TestRefundReviewRequiresPlatformOperator(t *testing.T) {
+	_, _, db := newCommercialScopeEngine(t, nil)
+
+	post := func(auth gin.HandlerFunc) (*httptest.ResponseRecorder, string) {
+		return serveWith(t, db, auth, http.MethodPost, "/api/v1/admin/refunds/rfd_x/review")
+	}
+
+	// A space Admin is NOT a platform operator, regardless of grants in
+	// their own space.
+	if err := db.Exec(`INSERT INTO commercial_grants (tenant_id, user_id, capability) VALUES (101, 'space-admin', 'billing')`).Error; err != nil {
+		t.Fatalf("seed billing grant: %v", err)
+	}
+	w, body := post(authAs(101, "space-admin", "admin"))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("space admin review status = %d, want 403 body=%s", w.Code, body)
+	}
+
+	// An owner is equally rejected.
+	w, _ = post(authAs(101, "space-owner", "owner"))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("space owner review status = %d, want 403", w.Code)
+	}
+
+	// Only the explicit platform-scope refund_review grant admits.
+	if err := db.Exec(`INSERT INTO commercial_grants (tenant_id, user_id, capability) VALUES (0, 'platform-ops', 'refund_review')`).Error; err != nil {
+		t.Fatalf("seed platform grant: %v", err)
+	}
+	w, body = post(authAs(0, "platform-ops", "viewer"))
+	if w.Code == http.StatusForbidden {
+		t.Fatalf("platform reviewer rejected: %s", body)
+	}
 }

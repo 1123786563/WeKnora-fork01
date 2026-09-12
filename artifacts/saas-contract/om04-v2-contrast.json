@@ -1,0 +1,62 @@
+{
+  "check": "OM-04(d) V2 duplicate-grant contrast (no dedup key field exists)",
+  "customer_key": "om02-20260912-v2cust",
+  "request_body": {
+    "amount": 1,
+    "priority": 1,
+    "effectiveAt": "2026-09-12T03:45:00Z",
+    "expiration": {
+      "duration": "HOUR",
+      "count": 2
+    }
+  },
+  "note_first_attempt": "first attempt (effectiveAt 03:00Z) 400'd: 'grant effective date ... before the current usage period 2026-09-12 03:17:00 UTC' — recorded in om0304-request-log.json om04d-*",
+  "first": {
+    "status": 201,
+    "id": "01M29VDKCVD155EQCVYAYVW7S8",
+    "body": {
+      "amount": 1,
+      "createdAt": "2026-09-12T03:43:46.075916Z",
+      "effectiveAt": "2026-09-12T03:45:00Z",
+      "entitlementId": "01M29SXY0EGSN119ZV0TE08RXY",
+      "expiration": {
+        "count": 2,
+        "duration": "HOUR"
+      },
+      "expiresAt": "2026-09-12T05:45:00Z",
+      "id": "01M29VDKCVD155EQCVYAYVW7S8",
+      "maxRolloverAmount": 1,
+      "minRolloverAmount": 0,
+      "priority": 1,
+      "updatedAt": "2026-09-12T03:43:46.075916Z"
+    }
+  },
+  "duplicate": {
+    "status": 201,
+    "id": "01M29VDKE67Q5A5B84ECVH1VQW",
+    "body": {
+      "amount": 1,
+      "createdAt": "2026-09-12T03:43:46.118774Z",
+      "effectiveAt": "2026-09-12T03:45:00Z",
+      "entitlementId": "01M29SXY0EGSN119ZV0TE08RXY",
+      "expiration": {
+        "count": 2,
+        "duration": "HOUR"
+      },
+      "expiresAt": "2026-09-12T05:45:00Z",
+      "id": "01M29VDKE67Q5A5B84ECVH1VQW",
+      "maxRolloverAmount": 1,
+      "minRolloverAmount": 0,
+      "priority": 1,
+      "updatedAt": "2026-09-12T03:43:46.118774Z"
+    }
+  },
+  "grants_before": 1,
+  "grants_after": 3,
+  "newly_created_ids": [
+    "01M29VDKCVD155EQCVYAYVW7S8",
+    "01M29VDKE67Q5A5B84ECVH1VQW"
+  ],
+  "same_body_twice_created_two_grants": true,
+  "expected_observation": "second POST 201 with a DISTINCT id => V2 has no dedup; issuance family must be V3"
+}

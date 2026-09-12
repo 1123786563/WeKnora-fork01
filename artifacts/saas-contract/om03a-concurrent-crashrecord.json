@@ -1,0 +1,4 @@
+{
+  "check": "OM-03(a) concurrent same-key customer creation, N=8",
+  "section_crash": "Traceback (most recent call last):\n  File \"/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/saas-billing-connectors/artifacts/saas-contract/om0304-cases/om0304_experiment.py\", line 69, in run\n    RESULTS[key] = {\"check\": check, \"result\": fn()}\n  File \"/Users/wuyongjun/trea/WeKnora-fork01/.worktrees/saas-billing-connectors/artifacts/saas-contract/om0304-cases/om0304_experiment.py\", line 98, in om03a\n    attempts = sorted(ex.map(attempt, range(n)))\nTypeError: '<' not supported between instances of 'dict' and 'dict'\n"
+}

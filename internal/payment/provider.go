@@ -8,16 +8,28 @@ import (
 	"github.com/Tencent/WeKnora/internal/commercial"
 )
 
+// AttemptState is the provider-side attempt/refund state vocabulary. It is
+// a DISTINCT type from the refund lifecycle states (commercial.RefundState)
+// and from the channel refund outcome vocabulary
+// (commercial.RefundChannelState): the compiler rejects mixing a payment
+// attempt state into a refund transition or vice versa.
+type AttemptState string
+
 // Attempt/result states shared by every Provider implementation. The domain
-// acceptance state is "succeeded" (commercial.ValidatePayment); "unknown"
-// means a channel request timed out, so the caller must reconcile by
-// querying the ORIGINAL identifier instead of re-keying the order.
+// acceptance state is StateSucceeded (commercial.ValidatePayment);
+// StateUnknown means a channel request timed out, so the caller must
+// reconcile by querying the ORIGINAL identifier instead of re-keying the
+// order.
 const (
-	StatePending   = "pending"
-	StateSucceeded = "succeeded"
-	StateClosed    = "closed"
-	StateUnknown   = "unknown"
+	StatePending   AttemptState = "pending"
+	StateSucceeded AttemptState = "succeeded"
+	StateClosed    AttemptState = "closed"
+	StateUnknown   AttemptState = "unknown"
 )
+
+// String keeps the raw wire value available where the persistence layer or
+// logs need the plain string.
+func (s AttemptState) String() string { return string(s) }
 
 // ErrUnknownState reports that a channel request timed out: the remote
 // order may or may not exist, so the caller must Query the original
@@ -43,7 +55,7 @@ type OrderRequest struct {
 // the out_trade_no); CheckoutURL carries the customer-facing payment link
 // or code URL when the channel returns one.
 type AttemptResult struct {
-	State       string
+	State       AttemptState
 	ProviderID  string
 	CheckoutURL string
 }
@@ -58,7 +70,7 @@ type RefundRequest struct {
 
 // RefundResult reports the provider-side refund state keyed by RefundID.
 type RefundResult struct {
-	State      string
+	State      AttemptState
 	ProviderID string
 }
 

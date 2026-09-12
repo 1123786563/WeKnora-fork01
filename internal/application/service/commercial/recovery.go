@@ -179,18 +179,18 @@ func (s *RecoveryService) ListQueue(ctx context.Context) ([]RecoveryItem, error)
 	}
 	var refunds []repocommercial.RefundRow
 	if err := s.db.WithContext(ctx).
-		Where("state IN ?", []string{domain.RefundStatePending, domain.RefundStateRevocationPending}).
+		Where("state IN ?", []domain.RefundState{domain.RefundStatePending, domain.RefundStateRevocationPending}).
 		Find(&refunds).Error; err != nil {
 		return nil, err
 	}
 	for _, r := range refunds {
 		items = append(items, RecoveryItem{
-			Category:    domain.ClassifyRecovery(domain.OperationRefundQuery, r.State),
+			Category:    domain.ClassifyRecovery(domain.OperationRefundQuery, r.State.String()),
 			OperationID: r.ID,
 			Kind:        domain.OperationRefundQuery,
 			TenantID:    r.TenantID,
 			BusinessID:  r.OrderID,
-			State:       r.State,
+			State:       r.State.String(),
 			Attempts:    int(r.ChannelAttempts),
 		})
 	}

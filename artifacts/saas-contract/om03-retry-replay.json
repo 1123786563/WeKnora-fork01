@@ -1,0 +1,40 @@
+{
+  "check": "OM-03(b) response-lost retry: identical POST replay (customer + grant)",
+  "result": {
+    "customer_retry": {
+      "key": "om0304-20260912-cust2",
+      "cust_id": "01M29VB1KFJNT4AGKDB70811DJ",
+      "first": {
+        "status": 201,
+        "id": "01M29VB1KFJNT4AGKDB70811DJ"
+      },
+      "retry": {
+        "status": 409,
+        "id": null,
+        "error_detail": "Conflict"
+      },
+      "same_id_returned": false
+    },
+    "grant_retry": {
+      "grant_body_key": "om0304-20260912-grantA",
+      "first": {
+        "status": 201,
+        "id": "01M29VB2CR8R3CXKNC5D499451"
+      },
+      "retry": {
+        "status": 409,
+        "id": null,
+        "error_detail": "Conflict"
+      },
+      "list_matching_grants": [
+        {
+          "id": "01M29VB2CR8R3CXKNC5D499451",
+          "key": "om0304-20260912-grantA",
+          "amount": "10"
+        }
+      ],
+      "matching_count": 1,
+      "expected": "retry 409, exactly one grant with that key, same id as first"
+    }
+  }
+}

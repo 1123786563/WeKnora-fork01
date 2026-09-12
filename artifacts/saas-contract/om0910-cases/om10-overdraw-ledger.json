@@ -1,0 +1,30 @@
+{
+ "ledger": [
+  {
+   "type": "funded",
+   "amount": "5",
+   "after": "5",
+   "at": "04:25:06"
+  },
+  {
+   "type": "voided",
+   "amount": "-12",
+   "after": "0",
+   "at": "04:25:05"
+  },
+  {
+   "type": "funded",
+   "amount": "12",
+   "after": "12",
+   "at": "04:24:49"
+  }
+ ],
+ "balance": [
+  {
+   "currency": "USD",
+   "live": "0",
+   "pending": "0",
+   "settled": "5"
+  }
+ ]
+}

@@ -40,7 +40,7 @@ type RefundRow struct {
 	CreditsMicro     int64   `gorm:"column:credits_micro;not null"`
 	Reviewer         string  `gorm:"column:reviewer;not null;default:''"`
 	ProviderRefundID *string `gorm:"column:provider_refund_id;uniqueIndex"`
-	State            string  `gorm:"column:state;not null"`
+	State            domain.RefundState `gorm:"column:state;not null"`
 	Version          int64   `gorm:"column:version;not null;default:1"`
 	ChannelAttempts  int64   `gorm:"column:channel_attempts;not null;default:0"`
 	ReviewBasis      string  `gorm:"column:review_basis;not null;default:''"`
@@ -221,7 +221,7 @@ func (s *RefundStore) ApproveRefund(ctx context.Context, refundID, reviewer stri
 		// refusal inside it would roll the review record back.
 		res := s.db.WithContext(ctx).Model(&RefundRow{}).
 			Where("id = ? AND state IN ? AND version = ?", pre.ID,
-				[]string{domain.RefundStateRequested, domain.RefundStateReviewing}, pre.Version).
+				[]domain.RefundState{domain.RefundStateRequested, domain.RefundStateReviewing}, pre.Version).
 			Updates(map[string]interface{}{
 				"state":        domain.RefundStateReviewing,
 				"reviewer":     reviewer,
@@ -250,7 +250,7 @@ func (s *RefundStore) ApproveRefund(ctx context.Context, refundID, reviewer stri
 			// requested/reviewing and record WHY the review stopped.
 			res := tx.Model(&RefundRow{}).
 				Where("id = ? AND state IN ? AND version = ?", rf.ID,
-					[]string{domain.RefundStateRequested, domain.RefundStateReviewing}, rf.Version).
+					[]domain.RefundState{domain.RefundStateRequested, domain.RefundStateReviewing}, rf.Version).
 				Updates(map[string]interface{}{
 					"state":        domain.RefundStateReviewing,
 					"reviewer":     reviewer,
@@ -302,7 +302,7 @@ func (s *RefundStore) ApproveRefund(ctx context.Context, refundID, reviewer stri
 		}
 		res := tx.Model(&RefundRow{}).
 			Where("id = ? AND state IN ? AND version = ?", rf.ID,
-				[]string{domain.RefundStateRequested, domain.RefundStateReviewing}, rf.Version).
+				[]domain.RefundState{domain.RefundStateRequested, domain.RefundStateReviewing}, rf.Version).
 			Updates(map[string]interface{}{
 				"state":        domain.RefundStatePending,
 				"reviewer":     reviewer,
@@ -338,7 +338,7 @@ func (s *RefundStore) ApproveRefund(ctx context.Context, refundID, reviewer stri
 // if — and only if — the outcome is confirmed failed or confirmed
 // not-created. The payout outbox event moves to sent once the refund
 // leaves the payout stage.
-func (s *RefundStore) MarkRefundChannelResult(ctx context.Context, refundID string, providerRefundID *string, channelState string) error {
+func (s *RefundStore) MarkRefundChannelResult(ctx context.Context, refundID string, providerRefundID *string, channelState domain.RefundChannelState) error {
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var rf RefundRow
 		if err := tx.Where("id = ?", refundID).First(&rf).Error; err != nil {
@@ -368,7 +368,11 @@ func (s *RefundStore) MarkRefundChannelResult(ctx context.Context, refundID stri
 		if res.RowsAffected == 0 {
 			return ErrInvalidRefundState
 		}
-		if domain.CanUnlockRefund(next) {
+		// Locks release ONLY on a confirmed failed / never-created LIFECYCLE
+		// state — this was previously passed through the channel-state
+		// helper, conflating the two vocabularies; the typed states now
+		// make that mixing a compile error.
+		if next == domain.RefundStateFailedConfirmed || next == domain.RefundStateNotCreatedConfirmed {
 			if err := tx.Where("refund_id = ?", rf.ID).Delete(&RefundAllocationRow{}).Error; err != nil {
 				return err
 			}

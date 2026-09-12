@@ -1,0 +1,58 @@
+{
+ "om09": {
+  "grant_full": {
+   "amount": "25",
+   "created_at": "2026-09-12T04:24:22.455629Z",
+   "currency": "USD",
+   "funding_method": "external",
+   "id": "01M29XQYNQGYX7E9N0Y676R867",
+   "key": "om0910-recharge-3",
+   "labels": {},
+   "name": "external recharge",
+   "priority": 10,
+   "purchase": {
+    "amount": "25",
+    "availability_policy": "on_creation",
+    "currency": "USD",
+    "per_unit_cost_basis": "1",
+    "settlement_status": "settled"
+   },
+   "status": "active",
+   "tax_config": {
+    "tax_code": {
+     "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+    }
+   },
+   "updated_at": "2026-09-12T04:24:22.511467Z"
+  },
+  "settlement_transitions": {
+   "authorized": 200,
+   "settled": 200,
+   "repeat_settled": 412,
+   "pending_after": 400
+  },
+  "note": "repeat settled -> 412 Precondition Failed: payment confirmation is exactly-once; full transition log in om09-settlement.json attempts",
+  "transactions": [
+   {
+    "type": "funded",
+    "amount": "25",
+    "grant": "",
+    "labels": {
+     "charge_id": "01M29XQYNQGYX7E9N0Y676R867"
+    }
+   }
+  ],
+  "balance_after_settled": [
+   {
+    "currency": "USD",
+    "live": "25",
+    "pending": "0",
+    "settled": "25"
+   }
+  ],
+  "custom_invoicing_probe": {
+   "http": 400,
+   "note": "schema-only alternative path (requires app installation); documents v1v2 custom-invoicing as the invoice-side comparison"
+  }
+ }
+}

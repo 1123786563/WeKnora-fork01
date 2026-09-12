@@ -1,0 +1,49 @@
+{
+  "main": {
+    "create": 400,
+    "body": {
+      "type": "https://kongapi.info/konnect/bad-request",
+      "status": 400,
+      "title": "Bad Request",
+      "instance": "urn:request:817fb7fae384/bkDLTVCpj8-000773",
+      "detail": "Bad Request: key [allOf]: doesn't match all schemas from \"allOf\"",
+      "invalid_parameters": [
+        {
+          "field": "key",
+          "rule": "allOf",
+          "reason": "doesn't match all schemas from \"allOf\"",
+          "source": ""
+        }
+      ]
+    }
+  },
+  "frac": {
+    "create": 400,
+    "body": {
+      "type": "https://kongapi.info/konnect/bad-request",
+      "status": 400,
+      "title": "Bad Request",
+      "instance": "urn:request:817fb7fae384/bkDLTVCpj8-000774",
+      "detail": "Bad Request: key [allOf]: doesn't match all schemas from \"allOf\"",
+      "invalid_parameters": [
+        {
+          "field": "key",
+          "rule": "allOf",
+          "reason": "doesn't match all schemas from \"allOf\"",
+          "source": ""
+        }
+      ]
+    }
+  },
+  "balanceA_start": {
+    "balances": [
+      {
+        "currency": "USD",
+        "live": "50",
+        "pending": "0",
+        "settled": "50"
+      }
+    ],
+    "retrieved_at": "2026-09-12T03:53:11.704225498Z"
+  }
+}

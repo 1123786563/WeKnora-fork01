@@ -1,0 +1,360 @@
+{
+ "results": {
+  "txAll": [
+   {
+    "type": "voided",
+    "amount": "-20",
+    "name": "OM0708 batch4",
+    "after": "60",
+    "booked_at": "2026-09-12T04:07:05.542452Z"
+   },
+   {
+    "type": "voided",
+    "amount": "-20",
+    "name": "OM0708 batch3",
+    "after": "80",
+    "booked_at": "2026-09-12T04:07:05.514114Z"
+   },
+   {
+    "type": "funded",
+    "amount": "20",
+    "name": "OM0708 batch4",
+    "after": "100",
+    "booked_at": "2026-09-12T04:07:01.489708Z"
+   },
+   {
+    "type": "funded",
+    "amount": "20",
+    "name": "OM0708 batch3",
+    "after": "80",
+    "booked_at": "2026-09-12T04:07:01.464937Z"
+   },
+   {
+    "type": "expired",
+    "amount": "-5",
+    "name": "OM0708 expiry grant",
+    "after": "60",
+    "booked_at": "2026-09-12T04:06:12Z"
+   },
+   {
+    "type": "voided",
+    "amount": "-40",
+    "name": "OM0708 batch1",
+    "after": "65",
+    "booked_at": "2026-09-12T04:06:09.186221Z"
+   },
+   {
+    "type": "funded",
+    "amount": "60",
+    "name": "OM0708 batch2",
+    "after": "105",
+    "booked_at": "2026-09-12T04:05:12.390258Z"
+   },
+   {
+    "type": "funded",
+    "amount": "40",
+    "name": "OM0708 batch1",
+    "after": "45",
+    "booked_at": "2026-09-12T04:05:12.361475Z"
+   },
+   {
+    "type": "funded",
+    "amount": "5",
+    "name": "OM0708 expiry grant",
+    "after": "5",
+    "booked_at": "2026-09-12T04:05:12.325191Z"
+   }
+  ],
+  "settleCompleted": {
+   "status": 400,
+   "body": {
+    "type": "https://kongapi.info/konnect/bad-request",
+    "status": 400,
+    "title": "Bad Request",
+    "instance": "urn:request:817fb7fae384/bkDLTVCpj8-001096",
+    "detail": "Bad Request: status [allOf]: doesn't match all schemas from \"allOf\"",
+    "invalid_parameters": [
+     {
+      "field": "status",
+      "rule": "allOf",
+      "reason": "doesn't match all schemas from \"allOf\"",
+      "source": ""
+     }
+    ]
+   },
+   "text": "{\"type\":\"https://kongapi.info/konnect/bad-request\",\"status\":400,\"title\":\"Bad Request\",\"instance\":\"urn:request:817fb7fae384/bkDLTVCpj8-001096\",\"detail\":\"Bad Request: status [allOf]: doesn't match all schemas from \\\"allOf\\\"\",\"invalid_parameters\":[{\"field\":\"status\",\"rule\":\"allOf\",\"reason\":\"doesn't match all schemas from \\\"allOf\\\"\",\"source\":\"\"}]}"
+  },
+  "settleInvalid": {
+   "hint": "Bad Request: status [allOf]: doesn't match all schemas from \"allOf\""
+  },
+  "g2Final": {
+   "status": 200,
+   "body": {
+    "amount": "60",
+    "created_at": "2026-09-12T04:05:12.370781Z",
+    "currency": "USD",
+    "funding_method": "none",
+    "id": "01M29WMVHJSXBA23QK0MRWFA8X",
+    "key": "om0708-batch2",
+    "labels": {},
+    "name": "OM0708 batch2",
+    "priority": 5,
+    "status": "active",
+    "tax_config": {
+     "tax_code": {
+      "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+     }
+    },
+    "updated_at": "2026-09-12T04:05:12.390462Z"
+   },
+   "text": "{\"amount\":\"60\",\"created_at\":\"2026-09-12T04:05:12.370781Z\",\"currency\":\"USD\",\"funding_method\":\"none\",\"id\":\"01M29WMVHJSXBA23QK0MRWFA8X\",\"key\":\"om0708-batch2\",\"labels\":{},\"name\":\"OM0708 batch2\",\"priority\":5,\"status\":\"active\",\"tax_config\":{\"tax_code\":{\"id\":\"01M25SMCRCBW1EXHCWHF6YWZ2P\"}},\"updated_at\":\"2026-09-12T04:05:12.390462Z\"}\n"
+  },
+  "balFinal": {
+   "status": 200,
+   "body": {
+    "balances": [
+     {
+      "currency": "USD",
+      "live": "40",
+      "pending": "0",
+      "settled": "60"
+     }
+    ],
+    "retrieved_at": "2026-09-12T04:07:40.444593503Z"
+   },
+   "text": "{\"balances\":[{\"currency\":\"USD\",\"live\":\"40\",\"pending\":\"0\",\"settled\":\"60\"}],\"retrieved_at\":\"2026-09-12T04:07:40.444593503Z\"}\n"
+  }
+ },
+ "log": [
+  {
+   "t": 67,
+   "op": "list-transactions",
+   "method": "GET",
+   "path": "/customers/01M29WMV6F84ZP0ZJ9WCAAKR46/credits/transactions",
+   "status": 200,
+   "resBody": {
+    "data": [
+     {
+      "amount": "-20",
+      "available_balance": {
+       "after": "60",
+       "before": "80"
+      },
+      "booked_at": "2026-09-12T04:07:05.542452Z",
+      "created_at": "2026-09-12T04:07:05.564401Z",
+      "currency": "USD",
+      "id": "01M29WRA2KNTZR21BCPN8VQQSZ",
+      "labels": {
+       "charge_id": "01M29WR639VJF02FNRD7MK5J8R"
+      },
+      "name": "OM0708 batch4",
+      "type": "voided"
+     },
+     {
+      "amount": "-20",
+      "available_balance": {
+       "after": "80",
+       "before": "100"
+      },
+      "booked_at": "2026-09-12T04:07:05.514114Z",
+      "created_at": "2026-09-12T04:07:05.519685Z",
+      "currency": "USD",
+      "id": "01M29WRA1B5S1N3DRQYR4VPQQY",
+      "labels": {
+       "charge_id": "01M29WR611QN238EGFJ8EVXC6R"
+      },
+      "name": "OM0708 batch3",
+      "type": "voided"
+     },
+     {
+      "amount": "20",
+      "available_balance": {
+       "after": "100",
+       "before": "80"
+      },
+      "booked_at": "2026-09-12T04:07:01.489708Z",
+      "created_at": "2026-09-12T04:07:01.481626Z",
+      "currency": "USD",
+      "id": "01M29WR639VJF02FNRD7MK5J8R",
+      "labels": {
+       "charge_id": "01M29WR639VJF02FNRD7MK5J8R"
+      },
+      "name": "OM0708 batch4",
+      "type": "funded"
+     },
+     {
+      "amount": "20",
+      "available_balance": {
+       "after": "80",
+       "before": "60"
+      },
+      "booked_at": "2026-09-12T04:07:01.464937Z",
+      "created_at": "2026-09-12T04:07:01.409663Z",
+      "currency": "USD",
+      "id": "01M29WR611QN238EGFJ8EVXC6R",
+      "labels": {
+       "charge_id": "01M29WR611QN238EGFJ8EVXC6R"
+      },
+      "name": "OM0708 batch3",
+      "type": "funded"
+     },
+     {
+      "amount": "-5",
+      "available_balance": {
+       "after": "60",
+       "before": "65"
+      },
+      "booked_at": "2026-09-12T04:06:12Z",
+      "created_at": "2026-09-12T04:06:12Z",
+      "currency": "USD",
+      "id": "01M29WMVFQRWX3947DKVPJG33D",
+      "labels": {
+       "charge_id": "01M29WMVEGRN16N8NYR5N3ADVH"
+      },
+      "name": "OM0708 expiry grant",
+      "type": "expired"
+     },
+     {
+      "amount": "-40",
+      "available_balance": {
+       "after": "65",
+       "before": "105"
+      },
+      "booked_at": "2026-09-12T04:06:09.186221Z",
+      "created_at": "2026-09-12T04:06:09.191644Z",
+      "currency": "USD",
+      "id": "01M29WPK140XBAF081Z76SV6H0",
+      "labels": {
+       "charge_id": "01M29WMVGPTKG5ZJMYT5FT5YFG"
+      },
+      "name": "OM0708 batch1",
+      "type": "voided"
+     },
+     {
+      "amount": "60",
+      "available_balance": {
+       "after": "105",
+       "before": "45"
+      },
+      "booked_at": "2026-09-12T04:05:12.390258Z",
+      "created_at": "2026-09-12T04:05:12.370781Z",
+      "currency": "USD",
+      "id": "01M29WMVHJSXBA23QK0MRWFA8X",
+      "labels": {
+       "charge_id": "01M29WMVHJSXBA23QK0MRWFA8X"
+      },
+      "name": "OM0708 batch2",
+      "type": "funded"
+     },
+     {
+      "amount": "40",
+      "available_balance": {
+       "after": "45",
+       "before": "5"
+      },
+      "booked_at": "2026-09-12T04:05:12.361475Z",
+      "created_at": "2026-09-12T04:05:12.342382Z",
+      "currency": "USD",
+      "id": "01M29WMVGPTKG5ZJMYT5FT5YFG",
+      "labels": {
+       "charge_id": "01M29WMVGPTKG5ZJMYT5FT5YFG"
+      },
+      "name": "OM0708 batch1",
+      "type": "funded"
+     },
+     {
+      "amount": "5",
+      "available_balance": {
+       "after": "5",
+       "before": "0"
+      },
+      "booked_at": "2026-09-12T04:05:12.325191Z",
+      "created_at": "2026-09-12T04:05:12.272385Z",
+      "currency": "USD",
+      "id": "01M29WMVEGRN16N8NYR5N3ADVH",
+      "labels": {
+       "charge_id": "01M29WMVEGRN16N8NYR5N3ADVH"
+      },
+      "name": "OM0708 expiry grant",
+      "type": "funded"
+     }
+    ],
+    "meta": {
+     "page": {
+      "next": null,
+      "previous": null,
+      "size": 20
+     }
+    }
+   }
+  },
+  {
+   "t": 82,
+   "op": "settle-completed",
+   "method": "POST",
+   "path": "/customers/01M29WMV6F84ZP0ZJ9WCAAKR46/credits/grants/01M29WMVHJSXBA23QK0MRWFA8X/settlement/external",
+   "status": 400,
+   "reqBody": {
+    "status": "completed"
+   },
+   "resBody": {
+    "type": "https://kongapi.info/konnect/bad-request",
+    "status": 400,
+    "title": "Bad Request",
+    "instance": "urn:request:817fb7fae384/bkDLTVCpj8-001096",
+    "detail": "Bad Request: status [allOf]: doesn't match all schemas from \"allOf\"",
+    "invalid_parameters": [
+     {
+      "field": "status",
+      "rule": "allOf",
+      "reason": "doesn't match all schemas from \"allOf\"",
+      "source": ""
+     }
+    ]
+   }
+  },
+  {
+   "t": 84,
+   "op": "get-grant-b2",
+   "method": "GET",
+   "path": "/customers/01M29WMV6F84ZP0ZJ9WCAAKR46/credits/grants/01M29WMVHJSXBA23QK0MRWFA8X",
+   "status": 200,
+   "resBody": {
+    "amount": "60",
+    "created_at": "2026-09-12T04:05:12.370781Z",
+    "currency": "USD",
+    "funding_method": "none",
+    "id": "01M29WMVHJSXBA23QK0MRWFA8X",
+    "key": "om0708-batch2",
+    "labels": {},
+    "name": "OM0708 batch2",
+    "priority": 5,
+    "status": "active",
+    "tax_config": {
+     "tax_code": {
+      "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+     }
+    },
+    "updated_at": "2026-09-12T04:05:12.390462Z"
+   }
+  },
+  {
+   "t": 101,
+   "op": "bal-final",
+   "method": "GET",
+   "path": "/customers/01M29WMV6F84ZP0ZJ9WCAAKR46/credits/balance",
+   "status": 200,
+   "resBody": {
+    "balances": [
+     {
+      "currency": "USD",
+      "live": "40",
+      "pending": "0",
+      "settled": "60"
+     }
+    ],
+    "retrieved_at": "2026-09-12T04:07:40.444593503Z"
+   }
+  }
+ ]
+}

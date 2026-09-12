@@ -128,7 +128,7 @@ func TestWechatVerifyAcceptsValidSignature(t *testing.T) {
 	}
 	if fact.AttemptID != "out-1" || fact.Transaction != "txn-1" || fact.Merchant != "1900000001" ||
 		fact.Provider != ProviderWechat || fact.Amount != commercial.CNYFen(100) ||
-		fact.Currency != "CNY" || fact.State != StateSucceeded {
+		fact.Currency != "CNY" || fact.State != StateSucceeded.String() {
 		t.Fatalf("unexpected fact: %+v", fact)
 	}
 	if fact.TenantID != 0 || fact.OrderID != "" {
@@ -201,15 +201,27 @@ func TestWechatRejectsMerchantMismatch(t *testing.T) {
 	}
 }
 
-func TestWechatRejectsDuplicateNotification(t *testing.T) {
+func TestWechatDuplicateDeliveryIsIdempotent(t *testing.T) {
 	p, key, apiv3 := newCallbackFixture(t)
 	body := buildNotification(t, apiv3, "1900000001", "wx-test-app", "out-1", "txn-1", "SUCCESS", 100)
 	ts := strconv.FormatInt(time.Now().Unix(), 10)
 	h := callbackHeaders("PLAT-SERIAL-1", ts, "hdrnonce", signCallback(t, key, ts, "hdrnonce", body))
-	if _, err := p.Verify(context.Background(), h, body); err != nil {
+	first, err := p.Verify(context.Background(), h, body)
+	if err != nil {
 		t.Fatalf("first delivery rejected: %v", err)
 	}
-	if _, err := p.Verify(context.Background(), h, body); !errors.Is(err, ErrReplayedNonce) {
-		t.Fatalf("replayed notification accepted: %v", err)
+	// AC-03: a redelivery of the SAME verified notification must pass
+	// verification again and yield the SAME fact, so ConfirmPayment can
+	// replay the original success (exactly-once fulfillment) and answer
+	// the idempotent success ACK — not a 401 that keeps the provider
+	// retrying a payment it already delivered.
+	second, err := p.Verify(context.Background(), h, body)
+	if err != nil {
+		t.Fatalf("duplicate delivery rejected: %v", err)
+	}
+	if first.Provider != second.Provider || first.AttemptID != second.AttemptID ||
+		first.Transaction != second.Transaction || first.Amount != second.Amount ||
+		first.State != second.State {
+		t.Fatalf("duplicate delivery produced a different fact: %+v vs %+v", first, second)
 	}
 }

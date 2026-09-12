@@ -1,0 +1,75 @@
+{
+  "value_before_reset": {
+    "hasAccess": true,
+    "balance": 1250,
+    "overage": 0,
+    "totalAvailableGrantAmount": 1500,
+    "usage": 250,
+    "grantBalances": {
+      "01M29VSK19VD2YMYGJ5J87K7W3": 750,
+      "01M29VSK24NCCZ35Q51JP86XQ3": 500
+    }
+  },
+  "reset": {
+    "status": 400,
+    "request_effectiveAt": "2026-09-12T03:50:00Z",
+    "body": {
+      "type": "about:blank",
+      "title": "Bad Request",
+      "status": 400,
+      "detail": "validation error: reset at 2026-09-12 03:50:00 +0000 UTC must be after last reset at 2026-09-12 03:50:00 +0000 UTC",
+      "instance": "urn:request:817fb7fae384/bkDLTVCpj8-000731"
+    }
+  },
+  "value_after_reset": {
+    "hasAccess": true,
+    "balance": 1250,
+    "overage": 0,
+    "totalAvailableGrantAmount": 1500,
+    "usage": 250,
+    "grantBalances": {
+      "01M29VSK19VD2YMYGJ5J87K7W3": 750,
+      "01M29VSK24NCCZ35Q51JP86XQ3": 500
+    }
+  },
+  "grants_after_reset": {
+    "items": [
+      {
+        "amount": 1000,
+        "createdAt": "2026-09-12T03:50:18.921414Z",
+        "effectiveAt": "2026-09-12T03:50:00Z",
+        "entitlementId": "01M29VSK0VVYPCDHYX951C2T9W",
+        "expiration": {
+          "count": 1,
+          "duration": "HOUR"
+        },
+        "expiresAt": "2026-09-12T04:50:00Z",
+        "id": "01M29VSK19VD2YMYGJ5J87K7W3",
+        "maxRolloverAmount": 1000,
+        "minRolloverAmount": 0,
+        "priority": 1,
+        "updatedAt": "2026-09-12T03:50:18.921414Z"
+      },
+      {
+        "amount": 500,
+        "createdAt": "2026-09-12T03:50:18.948057Z",
+        "effectiveAt": "2026-09-12T03:50:00Z",
+        "entitlementId": "01M29VSK0VVYPCDHYX951C2T9W",
+        "expiration": {
+          "count": 1,
+          "duration": "HOUR"
+        },
+        "expiresAt": "2026-09-12T04:50:00Z",
+        "id": "01M29VSK24NCCZ35Q51JP86XQ3",
+        "maxRolloverAmount": 500,
+        "minRolloverAmount": 0,
+        "priority": 2,
+        "updatedAt": "2026-09-12T03:50:18.948057Z"
+      }
+    ],
+    "page": 1,
+    "pageSize": 100,
+    "totalCount": 2
+  },
+  "observed_at": "2026-09-12T03:50:57.251655+00:00"
+}

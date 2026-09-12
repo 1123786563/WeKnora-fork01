@@ -1,0 +1,112 @@
+{
+  "id": "om02b-v2-subscription",
+  "operation_id": "createPlan",
+  "request": [
+    {
+      "operation_id": "getCustomer",
+      "method": "GET",
+      "path": "/api/v1/customers/om02b-20260912-v2cust",
+      "captures": {
+        "v2cust": "/id"
+      },
+      "expected": {
+        "key": "om02b-20260912-v2cust"
+      }
+    },
+    {
+      "operation_id": "createPlan",
+      "method": "POST",
+      "path": "/api/v1/plans",
+      "body": {
+        "name": "OM-02B V2 Tokens Plan",
+        "key": "om02b_20260912_v2plan4",
+        "currency": "USD",
+        "billingCadence": "P1M",
+        "phases": [
+          {
+            "key": "main",
+            "name": "Main",
+            "rateCards": [
+              {
+                "type": "usage_based",
+                "key": "om02_tokens",
+                "name": "OM-02B Tokens RateCard",
+                "featureKey": "om02_tokens",
+                "price": {
+                  "type": "unit",
+                  "amount": "0.01"
+                },
+                "entitlementTemplate": {
+                  "type": "metered",
+                  "issueAfterReset": 1
+                },
+                "billingCadence": "P1M"
+              }
+            ],
+            "duration": null
+          }
+        ]
+      },
+      "captures": {
+        "v2plan": "/id"
+      }
+    },
+    {
+      "operation_id": "publishPlan",
+      "method": "POST",
+      "path": "/api/v1/plans/${capture:v2plan}/publish"
+    },
+    {
+      "operation_id": "createSubscription",
+      "method": "POST",
+      "path": "/api/v1/subscriptions",
+      "body": {
+        "plan": {
+          "key": "om02b_20260912_v2plan4"
+        },
+        "customerKey": "om02b-20260912-v2cust",
+        "name": "OM-02B V2 Sub"
+      },
+      "captures": {
+        "v2sub": "/id"
+      },
+      "expected": {
+        "status": "active"
+      }
+    },
+    {
+      "operation_id": "getSubscription",
+      "method": "GET",
+      "path": "/api/v1/subscriptions/${capture:v2sub}"
+    },
+    {
+      "operation_id": "listCustomerEntitlementsV2",
+      "method": "GET",
+      "path": "/api/v2/customers/om02b-20260912-v2cust/entitlements"
+    },
+    {
+      "operation_id": "ingestEvents",
+      "method": "POST",
+      "path": "/api/v1/events",
+      "body": {
+        "id": "om02b-20260912-evt-1",
+        "source": "om02b-probe",
+        "specversion": "1.0",
+        "type": "prompt",
+        "subject": "om02b-20260912-v2cust",
+        "data": {
+          "tokens": 250,
+          "model": "gpt-4",
+          "type": "input"
+        }
+      }
+    },
+    {
+      "operation_id": "getCustomerEntitlementValueV2",
+      "method": "GET",
+      "path": "/api/v2/customers/om02b-20260912-v2cust/entitlements/om02_tokens/value"
+    }
+  ],
+  "captures": {},
+  "expected": {}
+}

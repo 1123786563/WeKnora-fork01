@@ -35,6 +35,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/agent/approval"
 	"github.com/Tencent/WeKnora/internal/application/repository"
+	repoappconn "github.com/Tencent/WeKnora/internal/application/repository/appconnector"
 	dorisRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/doris"
 	elasticsearchRepoV7 "github.com/Tencent/WeKnora/internal/application/repository/retriever/elasticsearch/v7"
 	elasticsearchRepoV8 "github.com/Tencent/WeKnora/internal/application/repository/retriever/elasticsearch/v8"
@@ -47,6 +48,7 @@ import (
 	tencentVectorDBRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/tencentvectordb"
 	weaviateRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/weaviate"
 	"github.com/Tencent/WeKnora/internal/application/service"
+	appconnectorsvc "github.com/Tencent/WeKnora/internal/application/service/appconnector"
 	chatpipeline "github.com/Tencent/WeKnora/internal/application/service/chat_pipeline"
 	commercialsvc "github.com/Tencent/WeKnora/internal/application/service/commercial"
 	"github.com/Tencent/WeKnora/internal/application/service/file"
@@ -87,6 +89,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/models/embedding"
 	"github.com/Tencent/WeKnora/internal/models/limiter"
 	"github.com/Tencent/WeKnora/internal/models/utils/ollama"
+	"github.com/Tencent/WeKnora/internal/payment"
 	"github.com/Tencent/WeKnora/internal/router"
 	"github.com/Tencent/WeKnora/internal/storageallowlist"
 	"github.com/Tencent/WeKnora/internal/stream"
@@ -453,8 +456,13 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewEmbedChannelHandler))
 	must(container.Provide(handler.NewWeKnoraCloudHandler))
 	must(container.Provide(handler.NewCommercialHandler))
-	// W04 app-connector HTTP handler (installations, connections, sync status)
-	must(container.Provide(handler.NewAppConnectorHandler))
+	// W04/A02/A07/A03 app-connector HTTP surface: four single-lifecycle
+	// handlers (installations, connections incl. OAuth, sync status,
+	// actions), each owning its routes and write gate.
+	must(container.Provide(handler.NewAppInstallationHandler))
+	must(container.Provide(handler.NewAppConnectionHandler))
+	must(container.Provide(handler.NewAppSyncHandler))
+	must(container.Provide(handler.NewAppActionHandler))
 	// Commercial fulfillment: the V03-selected gateway (family official_v3;
 	// unconfigured env stays legal as blocked-env) and the background worker
 	// that drains paid orders' fulfillment outbox events into benefits.
@@ -466,7 +474,57 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// usage). Registered only — no Invoke: arming an engine turn with it is
 	// an explicit SetCommercialGate by the commercial request path, so
 	// non-commercial behavior is unchanged.
-	must(container.Provide(commercialsvc.NewExecutionGateService))
+	must(container.Provide(commercialsvc.NewExecutionGateService, dig.As(new(domain.ExecutionGate))))
+	// A03 action approval pipeline: the persisted action store and the
+	// dispatch-time credential guard (A02) are always constructed; the U05
+	// execution gate above arms budget reservation. The provider-specific
+	// dispatcher/unknown-resolver adapters stay nil out of the box — Execute
+	// then reports an explicit dispatch-unconfigured error instead of
+	// fabricating an outbound outcome. The handler is armed explicitly so
+	// /apps/actions prepare/approve/execute/get stop failing closed with 501.
+	must(container.Provide(repoappconn.NewActionStore, dig.As(new(appconnectorsvc.ActionStoreSource))))
+	must(container.Provide(repository.NewMCPOAuthBindingStore, dig.As(new(appconnectorsvc.ConnectionCredentialSource))))
+	must(container.Provide(appconnectorsvc.NewCredentialResolver, dig.As(new(appconnectorsvc.A02Guard))))
+	must(container.Provide(func(store appconnectorsvc.ActionStoreSource, guard appconnectorsvc.A02Guard,
+		gate domain.ExecutionGate) *appconnectorsvc.ActionService {
+		return appconnectorsvc.NewActionService(store, guard, gate, nil, nil)
+	}))
+	must(container.Invoke(func(h *handler.AppActionHandler, s *appconnectorsvc.ActionService) {
+		h.SetActionService(s)
+	}))
+	// A02 app OAuth registrations for the first-batch providers. Client
+	// registrations come from env (WEKNORA_APP_OAUTH_<APP>_CLIENT_ID / _SECRET);
+	// an app left unregistered fails closed at CreateConnection with an
+	// explicit 501 instead of minting an unusable connection.
+	must(container.Invoke(func(h *handler.AppConnectionHandler) {
+		providers := handler.DefaultAppOAuthProviderConfigs()
+		for appID := range providers {
+			prefix := "WEKNORA_APP_OAUTH_" + strings.ToUpper(appID) + "_"
+			providers[appID] = handler.AppOAuthProviderConfig{
+				AuthorizeURL: providers[appID].AuthorizeURL,
+				TokenURL:     providers[appID].TokenURL,
+				ClientID:     os.Getenv(prefix + "CLIENT_ID"),
+				ClientSecret: os.Getenv(prefix + "CLIENT_SECRET"),
+			}
+		}
+		h.SetAppOAuthProviders(providers)
+	}))
+	// P02 order pipeline: quote, order and payment status recovery. Channel
+	// adapters arrive from env when configured (WEKNORA_ALIPAY_* /
+	// WEKNORA_WECHAT_*); an empty map stays legal (blocked-env) — checkout
+	// then fails with an explicit unconfigured error while quoting and
+	// ordering still work against the database. A partially configured
+	// channel fails construction and therefore startup.
+	must(container.Provide(payment.ProvidersFromEnv))
+	must(container.Provide(commercialsvc.NewOrderService))
+	must(container.Invoke(func(h *handler.CommercialHandler, s *commercialsvc.OrderService) {
+		h.SetOrderService(s)
+	}))
+	// Provider payment callbacks share the same channel adapters: the
+	// router injects this handler into RegisterCommercialRoutes so a
+	// configured channel's notifications verify, confirm their order and
+	// drive fulfillment instead of answering 503 with nothing persisted.
+	must(container.Provide(handler.NewPaymentCallbacksHandler))
 	// O01 rollout recovery: categorized recovery queue plus audited
 	// replay of pause-safe operations, gated by the commercial rollout
 	// config switches (safe-on defaults). Registered only — the

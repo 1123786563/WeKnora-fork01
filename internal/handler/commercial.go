@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 
+	repocommercial "github.com/Tencent/WeKnora/internal/application/repository/commercial"
 	commercialsvc "github.com/Tencent/WeKnora/internal/application/service/commercial"
 	"github.com/Tencent/WeKnora/internal/commercial"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -42,6 +43,9 @@ type ResourceWriteFunc func(tx *gorm.DB) error
 type CommercialHandler struct {
 	db      *gorm.DB
 	refunds *commercialsvc.RefundService
+	// orders is the P02 order pipeline; nil until the container wires it,
+	// in which case order writes fail closed with 501.
+	orders *commercialsvc.OrderService
 }
 
 // NewCommercialHandler builds the handler and makes sure the resource
@@ -172,17 +176,21 @@ func (h *CommercialHandler) Summary(c *gin.Context) {
 		return
 	}
 	var row commercialSubscriptionRow
-	err := h.db.Raw(`SELECT id, plan_key, plan_version, paid_until, version, downgrade_reason
-		FROM commercial_subscriptions WHERE tenant_id = ? ORDER BY version DESC LIMIT 1`, tenantID).Scan(&row).Error
+	// Raw().Scan() into a struct returns a nil error and a zero-value row
+	// when no subscription exists — gorm.ErrRecordNotFound never fires — so
+	// the row count, not the error, decides the B05 base-tier fallback.
+	res := h.db.Raw(`SELECT id, plan_key, plan_version, paid_until, version, downgrade_reason
+		FROM commercial_subscriptions WHERE tenant_id = ? ORDER BY version DESC LIMIT 1`, tenantID).Scan(&row)
 	switch {
-	case err == nil:
+	case res.Error == nil && res.RowsAffected > 0:
 		c.JSON(http.StatusOK, gin.H{
 			"tenant_id":          tenantID,
 			"subscription":       row,
 			"base_tier":          false,
 			"can_manage_billing": commercial.CanManageBilling(role, true, h.hasBillingGrant(c, tenantID)),
 		})
-	case errors.Is(err, gorm.ErrRecordNotFound):
+	case res.Error == nil:
+		// No purchased subscription: the space is on the base tier (B05).
 		c.JSON(http.StatusOK, gin.H{
 			"tenant_id":          tenantID,
 			"subscription":       nil,
@@ -191,7 +199,7 @@ func (h *CommercialHandler) Summary(c *gin.Context) {
 			"can_manage_billing": commercial.CanManageBilling(role, true, h.hasBillingGrant(c, tenantID)),
 		})
 	default:
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": res.Error.Error()})
 	}
 }
 
@@ -239,15 +247,124 @@ func (h *CommercialHandler) Usage(c *gin.Context) {
 	c.JSON(http.StatusOK, usage)
 }
 
-// Orders lists the caller space orders. The order write path is owned by
-// a later task; until it lands the honest answer is an empty array.
+// SetOrderService wires the order pipeline (injection point for the
+// container). Until it is called, POST /commercial/orders fails closed
+// with 501 — the edge never fabricates a checkout.
+func (h *CommercialHandler) SetOrderService(s *commercialsvc.OrderService) { h.orders = s }
+
+// Orders lists the caller space orders.
 func (h *CommercialHandler) Orders(c *gin.Context) {
-	_, _, ok := commercialTenantScope(c)
+	tenantID, _, ok := commercialTenantScope(c)
 	if !ok {
 		c.JSON(http.StatusForbidden, gin.H{"error": ErrMissingTenantScope.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, []gin.H{})
+	if h.orders == nil {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "order pipeline not configured"})
+		return
+	}
+	list, err := h.orders.ListOrders(c.Request.Context(), tenantID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, list)
+}
+
+// CreateQuote serves POST /commercial/quotes: cut an exact-price offer for
+// the latest published version of one plan in the caller space.
+func (h *CommercialHandler) CreateQuote(c *gin.Context) {
+	tenantID, _, ok := commercialTenantScope(c)
+	if !ok {
+		c.JSON(http.StatusForbidden, gin.H{"error": ErrMissingTenantScope.Error()})
+		return
+	}
+	if h.orders == nil {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "order pipeline not configured"})
+		return
+	}
+	var req struct {
+		PlanKey string `json:"plan_key"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.PlanKey == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "plan_key is required"})
+		return
+	}
+	q, err := h.orders.CreateQuote(c.Request.Context(), tenantID, req.PlanKey)
+	switch {
+	case err == nil:
+		c.JSON(http.StatusCreated, q)
+	case errors.Is(err, repocommercial.ErrPlanNotFound):
+		c.JSON(http.StatusNotFound, gin.H{"error": "no published plan with this key"})
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	}
+}
+
+// CreateOrder serves POST /commercial/orders: consume a quote of the
+// caller space and open one pending order with a channel checkout.
+func (h *CommercialHandler) CreateOrder(c *gin.Context) {
+	tenantID, _, ok := commercialTenantScope(c)
+	if !ok {
+		c.JSON(http.StatusForbidden, gin.H{"error": ErrMissingTenantScope.Error()})
+		return
+	}
+	if h.orders == nil {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "order pipeline not configured"})
+		return
+	}
+	var req struct {
+		QuoteID  string `json:"quote_id"`
+		Provider string `json:"provider"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.QuoteID == "" || req.Provider == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "quote_id and provider are required"})
+		return
+	}
+	order, err := h.orders.CreateOrder(c.Request.Context(), tenantID, req.QuoteID, req.Provider)
+	switch {
+	case err == nil:
+		c.JSON(http.StatusCreated, order)
+	case errors.Is(err, commercialsvc.ErrPaymentProviderUnconfigured):
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+	case errors.Is(err, commercialsvc.ErrQuoteTenantMismatch):
+		c.JSON(http.StatusNotFound, gin.H{"error": "quote not found for this tenant"})
+	case errors.Is(err, repocommercial.ErrQuoteAlreadyUsed):
+		c.JSON(http.StatusConflict, gin.H{"error": "quote already used"})
+	case errors.Is(err, repocommercial.ErrQuoteExpired):
+		c.JSON(http.StatusConflict, gin.H{"error": "quote expired"})
+	case errors.Is(err, repocommercial.ErrQuoteVersionConflict):
+		c.JSON(http.StatusConflict, gin.H{"error": "subscription changed since the quote was cut"})
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	}
+}
+
+// GetOrder serves GET /commercial/orders/:id and performs payment status
+// recovery for pending orders: the channel is re-queried by the ORIGINAL
+// merchant order id and a succeeded fact confirms through the standard
+// transaction. Cross-space IDs answer 404, never content.
+func (h *CommercialHandler) GetOrder(c *gin.Context) {
+	tenantID, _, ok := commercialTenantScope(c)
+	if !ok {
+		c.JSON(http.StatusForbidden, gin.H{"error": ErrMissingTenantScope.Error()})
+		return
+	}
+	if h.orders == nil {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "order pipeline not configured"})
+		return
+	}
+	order, err := h.orders.RecoverOrderStatus(c.Request.Context(), tenantID, c.Param("id"))
+	switch {
+	case err == nil:
+		c.JSON(http.StatusOK, order)
+	case errors.Is(err, repocommercial.ErrOrderNotFound) || errors.Is(err, commercialsvc.ErrOrderTenantMismatch):
+		c.JSON(http.StatusNotFound, gin.H{"error": "order not found"})
+	case errors.Is(err, commercialsvc.ErrPaymentProviderUnconfigured):
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+	default:
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	}
 }
 
 // NotImplemented is the guarded placeholder write endpoint. The
@@ -337,20 +454,51 @@ func (h *CommercialHandler) CreateRefund(c *gin.Context) {
 	}
 }
 
-// RequirePlatformRefundReviewer gates the ADMIN refund review path. Review
-// moves money out of the space, so it is a SEPARATE permission path from
-// the tenant billing gate above: the caller must carry the Admin role in
-// the authenticated context. Tenant billing authority alone never admits
-// a refund reviewer.
+// PlatformRefundReviewerCapability is the explicit grant (a row in
+// commercial_grants with this capability, granted at platform scope
+// tenant_id = 0) that admits a human reviewer to the refund review path.
+// Review moves money out of a space, so it is a SEPARATE permission path
+// from tenant billing AND from space administration: a space Admin who
+// merely belongs to some tenant must never be able to drive a refund
+// — including one belonging to another tenant — by knowing its ID.
+const PlatformRefundReviewerCapability = "refund_review"
+
+// hasPlatformRefundReviewer reports platform refund-review authority:
+// either a platform API key (scope.IsPlatform) or a human user carrying
+// the explicit refund_review grant at platform scope (tenant_id = 0).
+// Any lookup failure fails closed (not a reviewer).
+func (h *CommercialHandler) hasPlatformRefundReviewer(c *gin.Context) bool {
+	if h == nil || h.db == nil {
+		return false
+	}
+	if scope, ok := types.TenantAPIKeyScopeFromContext(c.Request.Context()); ok {
+		return scope.IsPlatform()
+	}
+	userID := commercialUserID(c)
+	if userID == "" {
+		return false
+	}
+	var n int64
+	if err := h.db.Raw(`SELECT COUNT(*) FROM commercial_grants
+		WHERE tenant_id = 0 AND user_id = ? AND capability = ?`,
+		userID, PlatformRefundReviewerCapability).Scan(&n).Error; err != nil {
+		return false
+	}
+	return n > 0
+}
+
+// RequirePlatformRefundReviewer gates the platform refund review path.
+// Space administration (the Admin role inside any tenant) NEVER admits a
+// reviewer: the caller must be an authenticated platform operator — a
+// platform API key or a user holding the explicit platform-scope
+// refund_review grant. This closes the cross-space escalation where a
+// space Admin who learned a global refund ID could approve another
+// space's refund.
 func (h *CommercialHandler) RequirePlatformRefundReviewer() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if _, ok := types.TenantIDFromContext(c.Request.Context()); !ok {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": ErrMissingTenantScope.Error()})
-			return
-		}
-		if types.TenantRoleFromContext(c.Request.Context()) != types.TenantRoleAdmin {
+		if !h.hasPlatformRefundReviewer(c) {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"error": "Forbidden: refund review requires platform/admin authority",
+				"error": "Forbidden: refund review requires platform operator authority",
 			})
 			return
 		}
@@ -378,12 +526,13 @@ func (h *CommercialHandler) AdminReviewRefund(c *gin.Context) {
 	}
 	id := c.Param("id")
 	reviewer := commercialUserID(c)
+	if reviewer == "" {
+		// A platform API key carries no human user ID; the audit trail
+		// still needs a stable reviewer identity.
+		reviewer = "platform_operator"
+	}
 	switch req.Action {
 	case "approve":
-		if reviewer == "" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "no authenticated reviewer"})
-			return
-		}
 		err := h.refunds.Approve(c.Request.Context(), id, reviewer)
 		if errors.Is(err, commercial.ErrRefundNotReady) {
 			c.JSON(http.StatusConflict, gin.H{

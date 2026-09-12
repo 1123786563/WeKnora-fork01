@@ -1,0 +1,22 @@
+{
+  "case": "om02-v2-issuance",
+  "namespace": "om02-20260912",
+  "steps": [
+    {
+      "method": "POST",
+      "operation_id": "createCustomer",
+      "request": {
+        "key": "om02-20260912-v2cust",
+        "name": "OM-02 V2 Metered Customer"
+      },
+      "status": 409,
+      "response": {
+        "type": "about:blank",
+        "title": "Conflict",
+        "status": 409,
+        "detail": "conflict error: key \"om02-20260912-v2cust\" is already used by an another customer in the namespace default",
+        "instance": "urn:request:817fb7fae384/bkDLTVCpj8-000179"
+      }
+    }
+  ]
+}

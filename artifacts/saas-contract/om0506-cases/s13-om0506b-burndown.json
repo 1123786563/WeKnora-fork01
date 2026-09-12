@@ -1,0 +1,59 @@
+{
+ "burns": [
+  {
+   "label": "b1",
+   "tokens": 500,
+   "usd": "5.00",
+   "status": 202,
+   "settled_after_polls": 0,
+   "balance": {
+    "currency": "USD",
+    "live": "45",
+    "pending": "0",
+    "settled": "50"
+   }
+  },
+  {
+   "label": "b2",
+   "tokens": 2500,
+   "usd": "25.00",
+   "status": 202,
+   "settled_after_polls": -1,
+   "balance": {
+    "currency": "USD",
+    "live": "15",
+    "pending": "0",
+    "settled": "50"
+   }
+  },
+  {
+   "label": "b3",
+   "tokens": 1000,
+   "usd": "10.00",
+   "status": 202,
+   "settled_after_polls": -1,
+   "balance": {
+    "currency": "USD",
+    "live": "5",
+    "pending": "0",
+    "settled": "50"
+   }
+  }
+ ],
+ "transactions": [
+  {
+   "type": "funded",
+   "amount": "20",
+   "grant": "",
+   "at": "2026-09-12T03:59:05",
+   "after": "50"
+  },
+  {
+   "type": "funded",
+   "amount": "30",
+   "grant": "",
+   "at": "2026-09-12T03:59:05",
+   "after": "30"
+  }
+ ]
+}

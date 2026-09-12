@@ -89,7 +89,17 @@ type RouterParams struct {
 	WikiPageHandler              *handler.WikiPageHandler
 	MemoryHandler                *handler.MemoryHandler
 	CommercialHandler            *handler.CommercialHandler
-	AppConnectorHandler          *handler.AppConnectorHandler
+	// PaymentCallbacksHandler carries the C01-verified provider callback
+	// endpoint; nil falls back to a fail-closed handler (503, nothing
+	// persisted) inside RegisterCommercialRoutes.
+	PaymentCallbacksHandler *handler.PaymentCallbacksHandler
+	// The app-connector surface is served by four single-lifecycle
+	// handlers (installation / connection / sync / action), each with its
+	// own stores and write gate.
+	AppInstallationHandler *handler.AppInstallationHandler
+	AppConnectionHandler   *handler.AppConnectionHandler
+	AppSyncHandler         *handler.AppSyncHandler
+	AppActionHandler       *handler.AppActionHandler
 }
 
 // NewRouter 创建新的路由
@@ -301,8 +311,12 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterWeKnoraCloudRoutes(v1, params.WeKnoraCloudHandler, rbacGuards)
 		RegisterWikiPageRoutes(v1, params.WikiPageHandler, rbacGuards)
 		RegisterMemoryRoutes(v1, params.MemoryHandler, rbacGuards)
-		RegisterCommercialRoutes(v1, params.CommercialHandler)
-		RegisterAppConnectorRoutes(v1, params.AppConnectorHandler)
+		RegisterCommercialRoutes(v1, params.CommercialHandler, params.PaymentCallbacksHandler)
+		RegisterAppConnectorRoutes(v1,
+			params.AppInstallationHandler,
+			params.AppConnectionHandler,
+			params.AppSyncHandler,
+			params.AppActionHandler)
 		RegisterChunkerDebugRoutes(v1, rbacGuards)
 
 		// Fail fast if any declared API-key policy points at a route

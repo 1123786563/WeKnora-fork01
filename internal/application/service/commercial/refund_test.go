@@ -21,8 +21,8 @@ import (
 // tests prove refund STATE transitions against real SQLite transactions.
 type stubRefundProvider struct {
 	mu          sync.Mutex
-	refundState string // state returned by Refund
-	queryState  string // state returned by QueryRefund
+	refundState payment.AttemptState // state returned by Refund
+	queryState  payment.AttemptState // state returned by QueryRefund
 	refundCalls []string
 	queryCalls  []string
 }

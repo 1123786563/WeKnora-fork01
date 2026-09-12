@@ -60,6 +60,11 @@ class ProbeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             _validate_path_namespace(path, "saas-x")
 
+    def test_cleanup_rejects_overwritten_created_capture(self):
+        from scripts.saas.probe_case import _validate_cleanup_capture
+        with self.assertRaises(ValueError):
+            _validate_cleanup_capture("id", {"id": "A"}, {"id": "B"})
+
     def test_cleanup_requires_capture_created_by_write_step(self):
         from scripts.saas.probe_case import _validate_cleanup_capture
         with self.assertRaises(ValueError):

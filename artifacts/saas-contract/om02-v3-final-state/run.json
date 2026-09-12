@@ -1,0 +1,192 @@
+{
+  "case": "om02-v3-final-state",
+  "namespace": "om02-20260912",
+  "steps": [
+    {
+      "method": "GET",
+      "operation_id": "get-customer-credit-balance",
+      "request": null,
+      "status": 200,
+      "response": {
+        "balances": [
+          {
+            "currency": "USD",
+            "live": "250",
+            "pending": "0",
+            "settled": "250"
+          }
+        ],
+        "retrieved_at": "2026-09-12T03:19:44.109958603Z"
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list-credit-grants",
+      "request": null,
+      "status": 200,
+      "response": {
+        "data": [
+          {
+            "amount": "50",
+            "created_at": "2026-09-12T03:18:13.380108Z",
+            "currency": "USD",
+            "funding_method": "none",
+            "id": "01M29SYTM4CD9A6FEF936XKJZ3",
+            "key": "om02-20260912-grant-replay",
+            "labels": {},
+            "name": "OM-02 replay test",
+            "priority": 10,
+            "status": "active",
+            "tax_config": {
+              "tax_code": {
+                "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+              }
+            },
+            "updated_at": "2026-09-12T03:18:13.41679Z"
+          },
+          {
+            "amount": "100",
+            "created_at": "2026-09-12T03:18:38.334599Z",
+            "currency": "USD",
+            "expires_at": "2026-09-12T04:18:38Z",
+            "funding_method": "none",
+            "id": "01M29SZJZYYK9TZYYT1C3R3X7E",
+            "key": "om02-20260912-grant-2",
+            "labels": {},
+            "name": "OM-02 starter credits",
+            "priority": 10,
+            "status": "active",
+            "tax_config": {
+              "tax_code": {
+                "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+              }
+            },
+            "updated_at": "2026-09-12T03:18:38.350242Z"
+          },
+          {
+            "amount": "50",
+            "created_at": "2026-09-12T03:18:38.421303Z",
+            "currency": "USD",
+            "funding_method": "none",
+            "id": "01M29SZK2NJ27BKCD79Y6941J6",
+            "labels": {},
+            "name": "OM-02 replay test",
+            "priority": 10,
+            "status": "active",
+            "tax_config": {
+              "tax_code": {
+                "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+              }
+            },
+            "updated_at": "2026-09-12T03:18:38.428064Z"
+          },
+          {
+            "amount": "50",
+            "created_at": "2026-09-12T03:18:38.434871Z",
+            "currency": "USD",
+            "funding_method": "none",
+            "id": "01M29SZK32YE0YQEXH8H7J4G5G",
+            "labels": {},
+            "name": "OM-02 replay test",
+            "priority": 10,
+            "status": "active",
+            "tax_config": {
+              "tax_code": {
+                "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+              }
+            },
+            "updated_at": "2026-09-12T03:18:38.443661Z"
+          }
+        ],
+        "meta": {
+          "page": {
+            "size": 20,
+            "number": 1,
+            "total": 4
+          }
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list-credit-transactions",
+      "request": null,
+      "status": 200,
+      "response": {
+        "data": [
+          {
+            "amount": "50",
+            "available_balance": {
+              "after": "250",
+              "before": "200"
+            },
+            "booked_at": "2026-09-12T03:18:38.44308Z",
+            "created_at": "2026-09-12T03:18:38.434871Z",
+            "currency": "USD",
+            "id": "01M29SZK32YE0YQEXH8H7J4G5G",
+            "labels": {
+              "charge_id": "01M29SZK32YE0YQEXH8H7J4G5G"
+            },
+            "name": "OM-02 replay test",
+            "type": "funded"
+          },
+          {
+            "amount": "50",
+            "available_balance": {
+              "after": "200",
+              "before": "150"
+            },
+            "booked_at": "2026-09-12T03:18:38.427758Z",
+            "created_at": "2026-09-12T03:18:38.421303Z",
+            "currency": "USD",
+            "id": "01M29SZK2NJ27BKCD79Y6941J6",
+            "labels": {
+              "charge_id": "01M29SZK2NJ27BKCD79Y6941J6"
+            },
+            "name": "OM-02 replay test",
+            "type": "funded"
+          },
+          {
+            "amount": "100",
+            "available_balance": {
+              "after": "150",
+              "before": "50"
+            },
+            "booked_at": "2026-09-12T03:18:38.348724Z",
+            "created_at": "2026-09-12T03:18:38.334599Z",
+            "currency": "USD",
+            "id": "01M29SZJZYYK9TZYYT1C3R3X7E",
+            "labels": {
+              "charge_id": "01M29SZJZYYK9TZYYT1C3R3X7E"
+            },
+            "name": "OM-02 starter credits",
+            "type": "funded"
+          },
+          {
+            "amount": "50",
+            "available_balance": {
+              "after": "50",
+              "before": "0"
+            },
+            "booked_at": "2026-09-12T03:18:13.412662Z",
+            "created_at": "2026-09-12T03:18:13.380108Z",
+            "currency": "USD",
+            "id": "01M29SYTM4CD9A6FEF936XKJZ3",
+            "labels": {
+              "charge_id": "01M29SYTM4CD9A6FEF936XKJZ3"
+            },
+            "name": "OM-02 replay test",
+            "type": "funded"
+          }
+        ],
+        "meta": {
+          "page": {
+            "next": null,
+            "previous": null,
+            "size": 20
+          }
+        }
+      }
+    }
+  ]
+}

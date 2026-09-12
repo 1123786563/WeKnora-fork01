@@ -12,16 +12,25 @@ import (
 )
 
 // FS-04 controlled real execution (interface-verification spec): the user
-// designates a test chat and provides one-off app credentials; the REAL
-// FeishuSendAdapter sends one reviewed text message through the official
+// designates BOTH the test chat and the exact message content; the REAL
+// FeishuSendAdapter sends that reviewed text through the official
 // open.feishu.cn contract, the real message id is captured, and the message
 // is NOT recalled afterwards (cleanup follows external authority only).
-// Gated on FS_APP_ID/FS_APP_SECRET; a skip is never a pass.
+//
+// Credentials alone NEVER arm this test: FS_APP_ID/FS_APP_SECRET without an
+// explicit FS_TEST_CHAT_ID + FS_TEST_MESSAGE designation stays a skip — the
+// bot's first visible chat is never auto-picked as a send target.
+// A skip is never a pass.
 func TestFeishuRealControlledSend(t *testing.T) {
 	appID := os.Getenv("FS_APP_ID")
 	appSecret := os.Getenv("FS_APP_SECRET")
-	if appID == "" || appSecret == "" || strings.HasPrefix(appID, "cli_xxx") {
-		t.Skip("feishu real credentials not configured (FS_APP_ID/FS_APP_SECRET in artifacts/connector-real/feishu.env); skip is not a pass — FS-04 stays blocked-env")
+	// FS-04: the user must explicitly designate the target chat and the
+	// content; nothing is inferred from the bot's visible chats.
+	chatID := strings.TrimSpace(os.Getenv("FS_TEST_CHAT_ID"))
+	message := os.Getenv("FS_TEST_MESSAGE")
+	if appID == "" || appSecret == "" || strings.HasPrefix(appID, "cli_xxx") ||
+		chatID == "" || message == "" {
+		t.Skip("feishu real execution not designated: set FS_APP_ID/FS_APP_SECRET plus FS_TEST_CHAT_ID (the designated test group) and FS_TEST_MESSAGE (the reviewed content) in artifacts/connector-real/feishu.env; skip is not a pass — FS-04 stays blocked-env")
 	}
 	client := &http.Client{Timeout: 15 * time.Second}
 
@@ -48,7 +57,9 @@ func TestFeishuRealControlledSend(t *testing.T) {
 	}
 	t.Logf("tenant_access_token acquired (code=0)")
 
-	// Discover the bot's chat: the user adds the bot to one test group.
+	// Target cross-check (FS-04 目标核对): the DESIGNATED chat must be
+	// among the bot's visible chats. The listing only validates the
+	// designation — it never chooses a target.
 	req, _ := http.NewRequest(http.MethodGet, "https://open.feishu.cn/open-apis/im/v1/chats?page_size=20", nil)
 	req.Header.Set("Authorization", "Bearer "+tokResp.Token)
 	resp2, err := client.Do(req)
@@ -70,11 +81,20 @@ func TestFeishuRealControlledSend(t *testing.T) {
 	if err := json.Unmarshal(body2, &chats); err != nil {
 		t.Fatalf("chats response: %v", err)
 	}
-	if chats.Code != 0 || len(chats.Data.Items) == 0 {
-		t.Fatalf("no chats visible: code=%d msg=%s — add the bot to a test group first", chats.Code, chats.Msg)
+	if chats.Code != 0 {
+		t.Fatalf("list chats failed: code=%d msg=%s", chats.Code, chats.Msg)
 	}
-	chat := chats.Data.Items[0]
-	t.Logf("designated chat: %s (%s)", chat.ChatID, chat.Name)
+	designated := ""
+	for _, item := range chats.Data.Items {
+		if item.ChatID == chatID {
+			designated = item.Name
+			break
+		}
+	}
+	if designated == "" {
+		t.Fatalf("designated FS_TEST_CHAT_ID %s is not visible to the bot — add the bot to the designated test group first", chatID)
+	}
+	t.Logf("designated chat verified: %s (%s)", chatID, designated)
 
 	ad := &FeishuSendAdapter{
 		Policy: HTTPPolicy{
@@ -89,17 +109,16 @@ func TestFeishuRealControlledSend(t *testing.T) {
 		FirstAttemptAt: func(a Action) time.Time { return time.Now() },
 		Now:            func() time.Time { return time.Now() },
 	}
-	stamp := time.Now().Format("15:04:05")
 	args := map[string]any{
-		"chat_id":  chat.ChatID,
+		"chat_id":  chatID,
 		"msg_type": "text",
-		"content":  map[string]string{"text": "WeKnora FS-04 controlled send " + stamp},
+		"content":  map[string]string{"text": message},
 	}
 	rawArgs, _ := json.Marshal(args)
 	action := Action{
 		ID: "act_fs04_real_1", TenantID: 7, ActorID: "user_real",
 		ConnectionID: "conn_fs04", Version: "v1",
-		Target: chat.ChatID, Risk: RiskSend,
+		Target: chatID, Risk: RiskSend,
 		Args: json.RawMessage(rawArgs),
 	}
 	out, err := ad.Execute(context.Background(), action)

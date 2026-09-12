@@ -1,0 +1,38 @@
+{
+  "leapday": {
+    "status": 201,
+    "request": {
+      "effective_at": "2028-02-28T23:59:59Z",
+      "expires_after": "PT24H"
+    },
+    "echo": {
+      "effective_at": "2028-02-28T23:59:59Z",
+      "expires_at": "2028-02-29T23:59:59Z",
+      "status": "active"
+    }
+  },
+  "monthend-p1m": {
+    "status": 201,
+    "request": {
+      "effective_at": "2028-01-31T00:00:00Z",
+      "expires_after": "P1M"
+    },
+    "echo": {
+      "effective_at": "2028-01-31T00:00:00Z",
+      "expires_at": "2028-02-29T00:00:00Z",
+      "status": "active"
+    }
+  },
+  "sec-precision": {
+    "status": 201,
+    "request": {
+      "effective_at": "2028-12-31T23:59:59Z",
+      "expires_after": "PT1M"
+    },
+    "echo": {
+      "effective_at": "2028-12-31T23:59:59Z",
+      "expires_at": "2029-01-01T00:00:59Z",
+      "status": "active"
+    }
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "check": "OM-01",
+  "captured_at_utc": "2026-09-12T03:12:03.764788+00:00",
+  "base_url": "http://127.0.0.1:48888",
+  "release": "v1.0.0-beta.232",
+  "pinned_commit": "887e0cac903ccd06e74d61ed23c651651d10c7a9",
+  "image": "ghcr.io/openmeterio/openmeter:v1.0.0-beta.232 sha256:0a59132264bc72094c1405ada110c6e810d28f7336bde22aa814409bd58dd6c1",
+  "schema_verification": {
+    "api/openapi.yaml": "927d82ffe64709d1527f705f9af1c192b3c53596b152894bfad30a3d1d26e5f1 (match)",
+    "api/v3/openapi.yaml": "5ae852be96ca3102ff5878d2656d7ef20835e9aa4d0ae46b934d2b96aaedd7f1 (match)"
+  },
+  "config_summary": {
+    "meters": [
+      "api_requests_total (smoke-verified)",
+      "tokens_total"
+    ],
+    "auth": "local dev instance unauthenticated on loopback"
+  },
+  "four_get_reachability": {
+    "getCustomer": {
+      "http_status": 404,
+      "url_path": "/api/v1/customers/weknora-om01-probe-nonexistent",
+      "application_layer_error": "{\"type\":\"about:blank\",\"title\":\"Not Found\",\"status\":404,\"detail\":\"not found error: customer with id or key weknora-om01-probe-nonexistent not found in default na"
+    },
+    "queryMeter": {
+      "http_status": 400,
+      "url_path": "/api/v1/meters/weknora-om01-probe-nonexistent/query",
+      "application_layer_error": "{\"type\":\"about:blank\",\"title\":\"Bad Request\",\"status\":400,\"detail\":\"parameter \\\"meterIdOrSlug\\\" in path has an error: string doesn't match the regular expression"
+    },
+    "listCustomerEntitlementGrantsV2": {
+      "http_status": 400,
+      "url_path": "/api/v2/customers/weknora-om01-probe-nonexistent/entitlements/weknora-om01-probe-nonexistent/grants",
+      "application_layer_error": "{\"type\":\"about:blank\",\"title\":\"Bad Request\",\"status\":400,\"detail\":\"parameter \\\"entitlementIdOrFeatureKey\\\" in path has an error: string doesn't match the regula"
+    },
+    "getCustomerEntitlementHistoryV2": {
+      "http_status": 400,
+      "url_path": "/api/v2/customers/weknora-om01-probe-nonexistent/entitlements/weknora-om01-probe-nonexistent/history?windowSize=1h",
+      "application_layer_error": "{\"type\":\"about:blank\",\"title\":\"Bad Request\",\"status\":400,\"detail\":\"parameter \\\"entitlementIdOrFeatureKey\\\" in path has an error: string doesn't match the regula"
+    }
+  },
+  "v01_tool_raw_record": "artifacts/saas-contract/om01-probe-v1v2.json + om01-probe-v3.json (conservative: HTTPError -> blocked-env)",
+  "interpretation": "All four inventory GET routes answered at the application layer (handler-level 404 customer-not-found / 400 parameter-validation structured errors), proving route reachability against release v1.0.0-beta.232; no write was performed."
+}

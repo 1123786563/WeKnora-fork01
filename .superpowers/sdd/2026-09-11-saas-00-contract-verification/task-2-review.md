@@ -152,6 +152,32 @@ Remaining blockers:
 
 V02 remains **FAIL** until these cleanup and replay contract gaps are fixed.
 
+## Final V02 re-review: PASS
+
+Reviewed commit `5e34e9ecc6296acda98dafb20c4567130cf47b6a`.
+
+Evidence:
+
+- `python3 -m unittest scripts.saas.probe_case_test -v`: **PASS**, 13/13.
+- `python3 -m py_compile scripts/saas/probe_case.py scripts/saas/probe_case_test.py`: **PASS**.
+- `git diff HEAD^ HEAD --check` and `git diff --check`: **PASS**.
+- Immutable ownership scenario was exercised with mocked requests: a successful
+  write captured `id=A`, a later successful GET overwrote the same capture with
+  `id=B`, and cleanup raised `ValueError: cleanup capture was overwritten: id`.
+  The request mock recorded exactly the POST and GET; no DELETE was attempted.
+- Prior V02 guards remain green: write authorization and namespace checks,
+  bound path namespace checks, unsettled-transaction and cleanup ownership
+  checks, idempotency/replay identity validation, unknown capture rejection,
+  JSON Pointer handling, recursive response assertions, and failure artifact
+  coverage.
+
+The implementation satisfies the V02 immutable capture-value ownership
+requirement. External OpenMeter OM-02--OM-10 execution remains
+`blocked-env` as recorded elsewhere in this ledger; that environment limitation
+does not affect this runner-level acceptance.
+
+**Decision: PASS.**
+
 ## Round-3 re-review: FAIL
 
 Reviewed fix commit `8c9b477742ab357ccd8f8a27cda293d12f0d521d`.
@@ -199,6 +225,27 @@ resolves to `other`.
 
 V02 remains **FAIL** until resolved.
 
+## Round-6 ownership re-review: FAIL / BLOCKED
+
+Reviewed fix commit `60524ce00a0b1cc7671f326c476e8677f1857d32` against the V02
+plan and the prior ownership blocker. The focused suite passes `12/12`,
+`python3 -m py_compile scripts/saas/probe_case.py scripts/saas/probe_case_test.py`
+passes, and `git diff 60524ce^ 60524ce --check` passes.
+
+The fix adds `created_captures` and records capture names only after a 2xx write;
+cleanup rejects names never captured by a successful write. The GET-then-cleanup
+regression passes, and the prior namespace, unsettled-transaction, write-flag,
+artifact, and replay safeguards remain present.
+
+The ownership guarantee is still incomplete: ownership is tracked by capture
+name rather than by the created ID/value. A later successful GET (or another
+read step) can overwrite the same capture name, while the name remains in
+`created_captures`; cleanup then binds and DELETEs the read-derived ID. The
+runner therefore still permits deletion of an object not created by this run.
+Add a regression covering write capture `id=A`, read overwrite `id=B`, and
+cleanup refusal (or preserve immutable created ID/value per capture), then
+re-review. V02 remains **BLOCKED/FAIL**.
+
 ## Round-5 definitive re-review: FAIL / BLOCKED
 
 Reviewed fix commit `ee4f7ad3d54b6906e8c62f4ad804f11afb693ea7`.
@@ -221,3 +268,14 @@ untracked values), with a regression test for GET-then-cleanup refusal.
 
 Because this is the maximum fix round, V02 is **BLOCKED/FAIL** pending that
 ownership check; the green focused suite does not establish acceptance.
+
+## Final V02 re-review: PASS (commit `5e34e9ecc6296acda98dafb20c4567130cf47b6a`)
+
+The focused suite passes 13/13; both `py_compile` and `git diff --check` pass.
+The immutable ownership scenario was exercised: write capture `id=A`, later
+GET overwrite `id=B`, cleanup refused with `cleanup capture was overwritten`,
+and no DELETE was attempted. Existing V02 authorization, namespace, cleanup,
+idempotency/replay, assertion, pointer, and artifact guards remain green.
+
+**Decision: PASS.** External OpenMeter execution remains `blocked-env` as
+recorded above.

@@ -1,0 +1,731 @@
+{
+ "results": {
+  "changeToC": {
+   "status": 200,
+   "body": {
+    "current": {
+     "billing_anchor": "2026-09-12T04:08:10.293454Z",
+     "created_at": "2026-09-12T04:08:37.392846Z",
+     "customer_id": "01M29WT91B98CZ3JMQFJ1W2YEX",
+     "id": "01M29WV3RGCP58XH9XATEECC8H",
+     "labels": {
+      "openmeter_subscription.previous.id": "01M29WT99PCWSM599YKH8YBGF3",
+      "openmeter_subscription.superseding.id": "01M29WXBHRZW02XCB0SRM4CP7A"
+     },
+     "settlement_mode": "credit_then_invoice",
+     "status": "inactive",
+     "updated_at": "2026-09-12T04:09:50.938795Z"
+    },
+    "next": {
+     "billing_anchor": "2026-09-12T04:08:10.293454Z",
+     "created_at": "2026-09-12T04:09:50.904996Z",
+     "customer_id": "01M29WT91B98CZ3JMQFJ1W2YEX",
+     "id": "01M29WXBHRZW02XCB0SRM4CP7A",
+     "labels": {
+      "openmeter_subscription.previous.id": "01M29WV3RGCP58XH9XATEECC8H"
+     },
+     "plan_id": "01M29WT98K0QFWV46QSKTPDG0T",
+     "settlement_mode": "credit_then_invoice",
+     "status": "active",
+     "updated_at": "2026-09-12T04:09:50.904996Z"
+    }
+   },
+   "text": "{\"current\":{\"billing_anchor\":\"2026-09-12T04:08:10.293454Z\",\"created_at\":\"2026-09-12T04:08:37.392846Z\",\"customer_id\":\"01M29WT91B98CZ3JMQFJ1W2YEX\",\"id\":\"01M29WV3RGCP58XH9XATEECC8H\",\"labels\":{\"openmeter_subscription.previous.id\":\"01M29WT99PCWSM599YKH8YBGF3\",\"openmeter_subscription.superseding.id\":\"01M29WXBHRZW02XCB0SRM4CP7A\"},\"settlement_mode\":\"credit_then_invoice\",\"status\":\"inactive\",\"updated_at\":\"2026-09-12T04:09:50.938795Z\"},\"next\":{\"billing_anchor\":\"2026-09-12T04:08:10.293454Z\",\"created_at\":\"2026-09-12T04:09:50.904996Z\",\"customer_id\":\"01M29WT91B98CZ3JMQFJ1W2YEX\",\"id\":\"01M29WXBHRZW02XCB0SRM4CP7A\",\"labels\":{\"openmeter_subscription.previous.id\":\"01M29WV3RGCP58XH9XATEECC8H\"},\"plan_id\":\"01M29WT98K0QFWV46QSKTPDG0T\",\"settlement_mode\":\"credit_then_invoice\",\"status\":\"active\",\"updated_at\":\"2026-09-12T04:09:50.904996Z\"}}\n"
+  },
+  "fundedBeforeC": 1,
+  "burnC": {
+   "eventStatus": 202,
+   "before": "41",
+   "after": "38",
+   "delta": "-3.00"
+  },
+  "fundedAfterC": 1,
+  "changeDown": {
+   "status": 200,
+   "body": {
+    "current": {
+     "billing_anchor": "2026-09-12T04:08:10.293454Z",
+     "created_at": "2026-09-12T04:09:50.904996Z",
+     "customer_id": "01M29WT91B98CZ3JMQFJ1W2YEX",
+     "id": "01M29WXBHRZW02XCB0SRM4CP7A",
+     "labels": {
+      "openmeter_subscription.previous.id": "01M29WV3RGCP58XH9XATEECC8H",
+      "openmeter_subscription.superseding.id": "01M29WXFKRX037AJDVWDZ35QNW"
+     },
+     "settlement_mode": "credit_then_invoice",
+     "status": "inactive",
+     "updated_at": "2026-09-12T04:09:55.081114Z"
+    },
+    "next": {
+     "billing_anchor": "2026-09-12T04:08:10.293454Z",
+     "created_at": "2026-09-12T04:09:55.064271Z",
+     "customer_id": "01M29WT91B98CZ3JMQFJ1W2YEX",
+     "id": "01M29WXFKRX037AJDVWDZ35QNW",
+     "labels": {
+      "openmeter_subscription.previous.id": "01M29WXBHRZW02XCB0SRM4CP7A"
+     },
+     "plan_id": "01M29TJW1T4F6963NWACQWJBYF",
+     "settlement_mode": "credit_then_invoice",
+     "status": "active",
+     "updated_at": "2026-09-12T04:09:55.064271Z"
+    }
+   },
+   "text": "{\"current\":{\"billing_anchor\":\"2026-09-12T04:08:10.293454Z\",\"created_at\":\"2026-09-12T04:09:50.904996Z\",\"customer_id\":\"01M29WT91B98CZ3JMQFJ1W2YEX\",\"id\":\"01M29WXBHRZW02XCB0SRM4CP7A\",\"labels\":{\"openmeter_subscription.previous.id\":\"01M29WV3RGCP58XH9XATEECC8H\",\"openmeter_subscription.superseding.id\":\"01M29WXFKRX037AJDVWDZ35QNW\"},\"settlement_mode\":\"credit_then_invoice\",\"status\":\"inactive\",\"updated_at\":\"2026-09-12T04:09:55.081114Z\"},\"next\":{\"billing_anchor\":\"2026-09-12T04:08:10.293454Z\",\"created_at\":\"2026-09-12T04:09:55.064271Z\",\"customer_id\":\"01M29WT91B98CZ3JMQFJ1W2YEX\",\"id\":\"01M29WXFKRX037AJDVWDZ35QNW\",\"labels\":{\"openmeter_subscription.previous.id\":\"01M29WXBHRZW02XCB0SRM4CP7A\"},\"plan_id\":\"01M29TJW1T4F6963NWACQWJBYF\",\"settlement_mode\":\"credit_then_invoice\",\"status\":\"active\",\"updated_at\":\"2026-09-12T04:09:55.064271Z\"}}\n"
+  },
+  "burnDown": {
+   "eventStatus": 202,
+   "before": "38",
+   "after": "37",
+   "delta": "-1.00"
+  },
+  "cancel": {
+   "status": 200,
+   "body": {
+    "billing_anchor": "2026-09-12T04:08:10.293454Z",
+    "created_at": "2026-09-12T04:09:55.064271Z",
+    "customer_id": "01M29WT91B98CZ3JMQFJ1W2YEX",
+    "id": "01M29WXFKRX037AJDVWDZ35QNW",
+    "labels": {
+     "openmeter_subscription.previous.id": "01M29WXBHRZW02XCB0SRM4CP7A"
+    },
+    "plan_id": "01M29TJW1T4F6963NWACQWJBYF",
+    "settlement_mode": "credit_then_invoice",
+    "status": "inactive",
+    "updated_at": "2026-09-12T04:09:59.148919Z"
+   },
+   "text": "{\"billing_anchor\":\"2026-09-12T04:08:10.293454Z\",\"created_at\":\"2026-09-12T04:09:55.064271Z\",\"customer_id\":\"01M29WT91B98CZ3JMQFJ1W2YEX\",\"id\":\"01M29WXFKRX037AJDVWDZ35QNW\",\"labels\":{\"openmeter_subscription.previous.id\":\"01M29WXBHRZW02XCB0SRM4CP7A\"},\"plan_id\":\"01M29TJW1T4F6963NWACQWJBYF\",\"settlement_mode\":\"credit_then_invoice\",\"status\":\"inactive\",\"updated_at\":\"2026-09-12T04:09:59.148919Z\"}\n"
+  },
+  "cancelBurn": {
+   "status": 202,
+   "body": null,
+   "text": ""
+  },
+  "balAfterCancelBurn": "37",
+  "fundedAfterCancel": 1,
+  "grantsAfterCancel": [
+   {
+    "amount": "50",
+    "created_at": "2026-09-12T04:08:10.315095Z",
+    "currency": "USD",
+    "funding_method": "none",
+    "id": "01M29WT9ABP81QPETTRH03TT92",
+    "key": "om0708-custB-grant1",
+    "labels": {},
+    "name": "custB burn budget",
+    "priority": 1,
+    "status": "active",
+    "tax_config": {
+     "tax_code": {
+      "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+     }
+    },
+    "updated_at": "2026-09-12T04:08:10.329607Z"
+   }
+  ],
+  "resub": {
+   "status": 201,
+   "body": {
+    "billing_anchor": "2026-09-12T04:10:11.332121Z",
+    "created_at": "2026-09-12T04:10:11.332565Z",
+    "customer_id": "01M29WT91B98CZ3JMQFJ1W2YEX",
+    "id": "01M29WXZG4SN1DPZRQ88ZF5BA4",
+    "labels": {},
+    "plan_id": "01M29TJW1T4F6963NWACQWJBYF",
+    "settlement_mode": "credit_then_invoice",
+    "status": "active",
+    "updated_at": "2026-09-12T04:10:11.332565Z"
+   },
+   "text": "{\"billing_anchor\":\"2026-09-12T04:10:11.332121Z\",\"created_at\":\"2026-09-12T04:10:11.332565Z\",\"customer_id\":\"01M29WT91B98CZ3JMQFJ1W2YEX\",\"id\":\"01M29WXZG4SN1DPZRQ88ZF5BA4\",\"labels\":{},\"plan_id\":\"01M29TJW1T4F6963NWACQWJBYF\",\"settlement_mode\":\"credit_then_invoice\",\"status\":\"active\",\"updated_at\":\"2026-09-12T04:10:11.332565Z\"}\n"
+  }
+ },
+ "log": [
+  {
+   "t": 258,
+   "op": "change-to-c",
+   "method": "POST",
+   "path": "/subscriptions/01M29WV3RGCP58XH9XATEECC8H/change",
+   "status": 200,
+   "reqBody": {
+    "customer": {
+     "key": "om0708-20260912-custB"
+    },
+    "plan": {
+     "key": "om0708_plan_c"
+    },
+    "timing": "immediate"
+   },
+   "resBody": {
+    "current": {
+     "billing_anchor": "2026-09-12T04:08:10.293454Z",
+     "created_at": "2026-09-12T04:08:37.392846Z",
+     "customer_id": "01M29WT91B98CZ3JMQFJ1W2YEX",
+     "id": "01M29WV3RGCP58XH9XATEECC8H",
+     "labels": {
+      "openmeter_subscription.previous.id": "01M29WT99PCWSM599YKH8YBGF3",
+      "openmeter_subscription.superseding.id": "01M29WXBHRZW02XCB0SRM4CP7A"
+     },
+     "settlement_mode": "credit_then_invoice",
+     "status": "inactive",
+     "updated_at": "2026-09-12T04:09:50.938795Z"
+    },
+    "next": {
+     "billing_anchor": "2026-09-12T04:08:10.293454Z",
+     "created_at": "2026-09-12T04:09:50.904996Z",
+     "customer_id": "01M29WT91B98CZ3JMQFJ1W2YEX",
+     "id": "01M29WXBHRZW02XCB0SRM4CP7A",
+     "labels": {
+      "openmeter_subscription.previous.id": "01M29WV3RGCP58XH9XATEECC8H"
+     },
+     "plan_id": "01M29WT98K0QFWV46QSKTPDG0T",
+     "settlement_mode": "credit_then_invoice",
+     "status": "active",
+     "updated_at": "2026-09-12T04:09:50.904996Z"
+    }
+   }
+  },
+  {
+   "t": 278,
+   "op": "funded-before-c",
+   "method": "GET",
+   "path": "/customers/01M29WT91B98CZ3JMQFJ1W2YEX/credits/transactions",
+   "status": 200,
+   "resBody": {
+    "data": [
+     {
+      "amount": "-1",
+      "available_balance": {
+       "after": "49",
+       "before": "50"
+      },
+      "booked_at": "2026-09-12T04:08:37Z",
+      "created_at": "2026-09-12T04:08:37.517914Z",
+      "currency": "USD",
+      "id": "01M29WV3WDGXAM4R4HKFGJ7DJR",
+      "labels": {
+       "charge_id": "01M29WT9DHV4RXHG0X8TRFFDGK",
+       "feature_id": "01M29SXXZY6WECC4ZDQPWJVBVP",
+       "subscription_id": "01M29WT99PCWSM599YKH8YBGF3",
+       "subscription_item_id": "01M29WV3R1Z6GMQFHYPX23PNK8",
+       "subscription_phase_id": "01M29WT99Q2E6YH8MBYEWE791M"
+      },
+      "name": "OM-02B Tokens RC",
+      "type": "consumed"
+     },
+     {
+      "amount": "50",
+      "available_balance": {
+       "after": "50",
+       "before": "0"
+      },
+      "booked_at": "2026-09-12T04:08:10.328977Z",
+      "created_at": "2026-09-12T04:08:10.315095Z",
+      "currency": "USD",
+      "id": "01M29WT9ABP81QPETTRH03TT92",
+      "labels": {
+       "charge_id": "01M29WT9ABP81QPETTRH03TT92"
+      },
+      "name": "custB burn budget",
+      "type": "funded"
+     }
+    ],
+    "meta": {
+     "page": {
+      "next": null,
+      "previous": null,
+      "size": 20
+     }
+    }
+   }
+  },
+  {
+   "t": 394,
+   "op": "burn-planC-100tok-before",
+   "method": "GET",
+   "path": "/customers/01M29WT91B98CZ3JMQFJ1W2YEX/credits/balance",
+   "status": 200,
+   "resBody": {
+    "balances": [
+     {
+      "currency": "USD",
+      "live": "41",
+      "pending": "0",
+      "settled": "49"
+     }
+    ],
+    "retrieved_at": "2026-09-12T04:09:50.986546847Z"
+   }
+  },
+  {
+   "t": 416,
+   "op": "burn-planC-100tok",
+   "method": "POST",
+   "path": "/events",
+   "status": 202,
+   "reqBody": [
+    {
+     "id": "om0708-evt-burn-planC-100tok-1789186191099",
+     "source": "om0708-probe",
+     "specversion": "1.0",
+     "type": "prompt",
+     "subject": "om0708-20260912-custB",
+     "data": {
+      "tokens": 100,
+      "model": "gpt-4",
+      "type": "input"
+     }
+    }
+   ],
+   "resBody": ""
+  },
+  {
+   "t": 4333,
+   "op": "burn-planC-100tok-poll1",
+   "method": "GET",
+   "path": "/customers/01M29WT91B98CZ3JMQFJ1W2YEX/credits/balance",
+   "status": 200,
+   "resBody": {
+    "balances": [
+     {
+      "currency": "USD",
+      "live": "38",
+      "pending": "0",
+      "settled": "41"
+     }
+    ],
+    "retrieved_at": "2026-09-12T04:09:54.967812076Z"
+   }
+  },
+  {
+   "t": 4341,
+   "op": "funded-after-c",
+   "method": "GET",
+   "path": "/customers/01M29WT91B98CZ3JMQFJ1W2YEX/credits/transactions",
+   "status": 200,
+   "resBody": {
+    "data": [
+     {
+      "amount": "-8",
+      "available_balance": {
+       "after": "41",
+       "before": "49"
+      },
+      "booked_at": "2026-09-12T04:09:50Z",
+      "created_at": "2026-09-12T04:09:51.276833Z",
+      "currency": "USD",
+      "id": "01M29WXBXCRZT7C5N0JQ22FN6K",
+      "labels": {
+       "charge_id": "01M29WV3YRA157PK1XBFJ7FMST",
+       "feature_id": "01M29SXXZY6WECC4ZDQPWJVBVP",
+       "subscription_id": "01M29WV3RGCP58XH9XATEECC8H",
+       "subscription_item_id": "01M29WXBH6WPVB49JVBMXPV2BT",
+       "subscription_phase_id": "01M29WV3RK2YX2CBJMME19KD6R"
+      },
+      "name": "RC om0708_plan_b",
+      "type": "consumed"
+     },
+     {
+      "amount": "-1",
+      "available_balance": {
+       "after": "49",
+       "before": "50"
+      },
+      "booked_at": "2026-09-12T04:08:37Z",
+      "created_at": "2026-09-12T04:08:37.517914Z",
+      "currency": "USD",
+      "id": "01M29WV3WDGXAM4R4HKFGJ7DJR",
+      "labels": {
+       "charge_id": "01M29WT9DHV4RXHG0X8TRFFDGK",
+       "feature_id": "01M29SXXZY6WECC4ZDQPWJVBVP",
+       "subscription_id": "01M29WT99PCWSM599YKH8YBGF3",
+       "subscription_item_id": "01M29WV3R1Z6GMQFHYPX23PNK8",
+       "subscription_phase_id": "01M29WT99Q2E6YH8MBYEWE791M"
+      },
+      "name": "OM-02B Tokens RC",
+      "type": "consumed"
+     },
+     {
+      "amount": "50",
+      "available_balance": {
+       "after": "50",
+       "before": "0"
+      },
+      "booked_at": "2026-09-12T04:08:10.328977Z",
+      "created_at": "2026-09-12T04:08:10.315095Z",
+      "currency": "USD",
+      "id": "01M29WT9ABP81QPETTRH03TT92",
+      "labels": {
+       "charge_id": "01M29WT9ABP81QPETTRH03TT92"
+      },
+      "name": "custB burn budget",
+      "type": "funded"
+     }
+    ],
+    "meta": {
+     "page": {
+      "next": null,
+      "previous": null,
+      "size": 20
+     }
+    }
+   }
+  },
+  {
+   "t": 4382,
+   "op": "change-down-v3plan4",
+   "method": "POST",
+   "path": "/subscriptions/01M29WXBHRZW02XCB0SRM4CP7A/change",
+   "status": 200,
+   "reqBody": {
+    "customer": {
+     "key": "om0708-20260912-custB"
+    },
+    "plan": {
+     "key": "om02b_20260912_v3plan4"
+    },
+    "timing": "immediate"
+   },
+   "resBody": {
+    "current": {
+     "billing_anchor": "2026-09-12T04:08:10.293454Z",
+     "created_at": "2026-09-12T04:09:50.904996Z",
+     "customer_id": "01M29WT91B98CZ3JMQFJ1W2YEX",
+     "id": "01M29WXBHRZW02XCB0SRM4CP7A",
+     "labels": {
+      "openmeter_subscription.previous.id": "01M29WV3RGCP58XH9XATEECC8H",
+      "openmeter_subscription.superseding.id": "01M29WXFKRX037AJDVWDZ35QNW"
+     },
+     "settlement_mode": "credit_then_invoice",
+     "status": "inactive",
+     "updated_at": "2026-09-12T04:09:55.081114Z"
+    },
+    "next": {
+     "billing_anchor": "2026-09-12T04:08:10.293454Z",
+     "created_at": "2026-09-12T04:09:55.064271Z",
+     "customer_id": "01M29WT91B98CZ3JMQFJ1W2YEX",
+     "id": "01M29WXFKRX037AJDVWDZ35QNW",
+     "labels": {
+      "openmeter_subscription.previous.id": "01M29WXBHRZW02XCB0SRM4CP7A"
+     },
+     "plan_id": "01M29TJW1T4F6963NWACQWJBYF",
+     "settlement_mode": "credit_then_invoice",
+     "status": "active",
+     "updated_at": "2026-09-12T04:09:55.064271Z"
+    }
+   }
+  },
+  {
+   "t": 4521,
+   "op": "burn-down-100tok-before",
+   "method": "GET",
+   "path": "/customers/01M29WT91B98CZ3JMQFJ1W2YEX/credits/balance",
+   "status": 200,
+   "resBody": {
+    "balances": [
+     {
+      "currency": "USD",
+      "live": "38",
+      "pending": "0",
+      "settled": "41"
+     }
+    ],
+    "retrieved_at": "2026-09-12T04:09:55.089568903Z"
+   }
+  },
+  {
+   "t": 4522,
+   "op": "burn-down-100tok",
+   "method": "POST",
+   "path": "/events",
+   "status": 202,
+   "reqBody": [
+    {
+     "id": "om0708-evt-burn-down-100tok-1789186195226",
+     "source": "om0708-probe",
+     "specversion": "1.0",
+     "type": "prompt",
+     "subject": "om0708-20260912-custB",
+     "data": {
+      "tokens": 100,
+      "model": "gpt-4",
+      "type": "input"
+     }
+    }
+   ],
+   "resBody": ""
+  },
+  {
+   "t": 8439,
+   "op": "burn-down-100tok-poll1",
+   "method": "GET",
+   "path": "/customers/01M29WT91B98CZ3JMQFJ1W2YEX/credits/balance",
+   "status": 200,
+   "resBody": {
+    "balances": [
+     {
+      "currency": "USD",
+      "live": "37",
+      "pending": "0",
+      "settled": "38"
+     }
+    ],
+    "retrieved_at": "2026-09-12T04:09:59.09077356Z"
+   }
+  },
+  {
+   "t": 8466,
+   "op": "cancel-sub",
+   "method": "POST",
+   "path": "/subscriptions/01M29WXFKRX037AJDVWDZ35QNW/cancel",
+   "status": 200,
+   "reqBody": {},
+   "resBody": {
+    "billing_anchor": "2026-09-12T04:08:10.293454Z",
+    "created_at": "2026-09-12T04:09:55.064271Z",
+    "customer_id": "01M29WT91B98CZ3JMQFJ1W2YEX",
+    "id": "01M29WXFKRX037AJDVWDZ35QNW",
+    "labels": {
+     "openmeter_subscription.previous.id": "01M29WXBHRZW02XCB0SRM4CP7A"
+    },
+    "plan_id": "01M29TJW1T4F6963NWACQWJBYF",
+    "settlement_mode": "credit_then_invoice",
+    "status": "inactive",
+    "updated_at": "2026-09-12T04:09:59.148919Z"
+   }
+  },
+  {
+   "t": 8526,
+   "op": "bal-before-cancelburn",
+   "method": "GET",
+   "path": "/customers/01M29WT91B98CZ3JMQFJ1W2YEX/credits/balance",
+   "status": 200,
+   "resBody": {
+    "balances": [
+     {
+      "currency": "USD",
+      "live": "37",
+      "pending": "0",
+      "settled": "38"
+     }
+    ],
+    "retrieved_at": "2026-09-12T04:09:59.172949984Z"
+   }
+  },
+  {
+   "t": 8528,
+   "op": "burn-after-cancel-100tok",
+   "method": "POST",
+   "path": "/events",
+   "status": 202,
+   "reqBody": [
+    {
+     "id": "om0708-evt-burn-after-cancel-100tok-1789186199231",
+     "source": "om0708-probe",
+     "specversion": "1.0",
+     "type": "prompt",
+     "subject": "om0708-20260912-custB",
+     "data": {
+      "tokens": 100,
+      "model": "gpt-4",
+      "type": "input"
+     }
+    }
+   ],
+   "resBody": ""
+  },
+  {
+   "t": 20604,
+   "op": "bal-after-cancelburn",
+   "method": "GET",
+   "path": "/customers/01M29WT91B98CZ3JMQFJ1W2YEX/credits/balance",
+   "status": 200,
+   "resBody": {
+    "balances": [
+     {
+      "currency": "USD",
+      "live": "37",
+      "pending": "0",
+      "settled": "37"
+     }
+    ],
+    "retrieved_at": "2026-09-12T04:10:11.238645619Z"
+   }
+  },
+  {
+   "t": 20614,
+   "op": "funded-after-cancel",
+   "method": "GET",
+   "path": "/customers/01M29WT91B98CZ3JMQFJ1W2YEX/credits/transactions",
+   "status": 200,
+   "resBody": {
+    "data": [
+     {
+      "amount": "-1",
+      "available_balance": {
+       "after": "37",
+       "before": "38"
+      },
+      "booked_at": "2026-09-12T04:09:59Z",
+      "created_at": "2026-09-12T04:09:59.236175Z",
+      "currency": "USD",
+      "id": "01M29WXKP4VRD622GJP2F93GWX",
+      "labels": {
+       "charge_id": "01M29WXFQS28PFEP3BMA4QRN2G",
+       "feature_id": "01M29SXXZY6WECC4ZDQPWJVBVP",
+       "subscription_id": "01M29WXFKRX037AJDVWDZ35QNW",
+       "subscription_item_id": "01M29WXKKD81ZBBXGVP3V63AZB",
+       "subscription_phase_id": "01M29WXFKTK8F577X4XSJ0KPTT"
+      },
+      "name": "OM-02B Tokens RC",
+      "type": "consumed"
+     },
+     {
+      "amount": "-3",
+      "available_balance": {
+       "after": "38",
+       "before": "41"
+      },
+      "booked_at": "2026-09-12T04:09:55Z",
+      "created_at": "2026-09-12T04:09:55.142165Z",
+      "currency": "USD",
+      "id": "01M29WXFP69XP2Z037M6FWXPGS",
+      "labels": {
+       "charge_id": "01M29WXBYKTYG7QW21KYG0KZQ2",
+       "feature_id": "01M29SXXZY6WECC4ZDQPWJVBVP",
+       "subscription_id": "01M29WXBHRZW02XCB0SRM4CP7A",
+       "subscription_item_id": "01M29WXFKF6PBD9TG30XB3XBWC",
+       "subscription_phase_id": "01M29WXBHTCGK1559NP60EPBF0"
+      },
+      "name": "RC om0708_plan_c",
+      "type": "consumed"
+     },
+     {
+      "amount": "-8",
+      "available_balance": {
+       "after": "41",
+       "before": "49"
+      },
+      "booked_at": "2026-09-12T04:09:50Z",
+      "created_at": "2026-09-12T04:09:51.276833Z",
+      "currency": "USD",
+      "id": "01M29WXBXCRZT7C5N0JQ22FN6K",
+      "labels": {
+       "charge_id": "01M29WV3YRA157PK1XBFJ7FMST",
+       "feature_id": "01M29SXXZY6WECC4ZDQPWJVBVP",
+       "subscription_id": "01M29WV3RGCP58XH9XATEECC8H",
+       "subscription_item_id": "01M29WXBH6WPVB49JVBMXPV2BT",
+       "subscription_phase_id": "01M29WV3RK2YX2CBJMME19KD6R"
+      },
+      "name": "RC om0708_plan_b",
+      "type": "consumed"
+     },
+     {
+      "amount": "-1",
+      "available_balance": {
+       "after": "49",
+       "before": "50"
+      },
+      "booked_at": "2026-09-12T04:08:37Z",
+      "created_at": "2026-09-12T04:08:37.517914Z",
+      "currency": "USD",
+      "id": "01M29WV3WDGXAM4R4HKFGJ7DJR",
+      "labels": {
+       "charge_id": "01M29WT9DHV4RXHG0X8TRFFDGK",
+       "feature_id": "01M29SXXZY6WECC4ZDQPWJVBVP",
+       "subscription_id": "01M29WT99PCWSM599YKH8YBGF3",
+       "subscription_item_id": "01M29WV3R1Z6GMQFHYPX23PNK8",
+       "subscription_phase_id": "01M29WT99Q2E6YH8MBYEWE791M"
+      },
+      "name": "OM-02B Tokens RC",
+      "type": "consumed"
+     },
+     {
+      "amount": "50",
+      "available_balance": {
+       "after": "50",
+       "before": "0"
+      },
+      "booked_at": "2026-09-12T04:08:10.328977Z",
+      "created_at": "2026-09-12T04:08:10.315095Z",
+      "currency": "USD",
+      "id": "01M29WT9ABP81QPETTRH03TT92",
+      "labels": {
+       "charge_id": "01M29WT9ABP81QPETTRH03TT92"
+      },
+      "name": "custB burn budget",
+      "type": "funded"
+     }
+    ],
+    "meta": {
+     "page": {
+      "next": null,
+      "previous": null,
+      "size": 20
+     }
+    }
+   }
+  },
+  {
+   "t": 20623,
+   "op": "grantlist-after-cancel",
+   "method": "GET",
+   "path": "/customers/01M29WT91B98CZ3JMQFJ1W2YEX/credits/grants",
+   "status": 200,
+   "resBody": {
+    "data": [
+     {
+      "amount": "50",
+      "created_at": "2026-09-12T04:08:10.315095Z",
+      "currency": "USD",
+      "funding_method": "none",
+      "id": "01M29WT9ABP81QPETTRH03TT92",
+      "key": "om0708-custB-grant1",
+      "labels": {},
+      "name": "custB burn budget",
+      "priority": 1,
+      "status": "active",
+      "tax_config": {
+       "tax_code": {
+        "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+       }
+      },
+      "updated_at": "2026-09-12T04:08:10.329607Z"
+     }
+    ],
+    "meta": {
+     "page": {
+      "size": 20,
+      "number": 1,
+      "total": 1
+     }
+    }
+   }
+  },
+  {
+   "t": 20641,
+   "op": "resubscribe",
+   "method": "POST",
+   "path": "/subscriptions",
+   "status": 201,
+   "reqBody": {
+    "customer": {
+     "key": "om0708-20260912-custB"
+    },
+    "plan": {
+     "key": "om02b_20260912_v3plan4"
+    },
+    "settlement_mode": "credit_then_invoice"
+   },
+   "resBody": {
+    "billing_anchor": "2026-09-12T04:10:11.332121Z",
+    "created_at": "2026-09-12T04:10:11.332565Z",
+    "customer_id": "01M29WT91B98CZ3JMQFJ1W2YEX",
+    "id": "01M29WXZG4SN1DPZRQ88ZF5BA4",
+    "labels": {},
+    "plan_id": "01M29TJW1T4F6963NWACQWJBYF",
+    "settlement_mode": "credit_then_invoice",
+    "status": "active",
+    "updated_at": "2026-09-12T04:10:11.332565Z"
+   }
+  }
+ ]
+}

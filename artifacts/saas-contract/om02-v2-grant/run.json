@@ -1,0 +1,80 @@
+{
+  "case": "om02-v2-grant",
+  "namespace": "om02-20260912",
+  "steps": [
+    {
+      "method": "POST",
+      "operation_id": "createCustomerEntitlementGrantV2",
+      "request": {
+        "amount": 1000,
+        "priority": 1,
+        "effectiveAt": "2026-09-12T03:20:00Z",
+        "expiration": {
+          "duration": "HOUR",
+          "count": 1
+        }
+      },
+      "status": 201,
+      "response": {
+        "amount": 1000,
+        "createdAt": "2026-09-12T03:19:43.80577Z",
+        "effectiveAt": "2026-09-12T03:20:00Z",
+        "entitlementId": "01M29SXY0EGSN119ZV0TE08RXY",
+        "expiration": {
+          "count": 1,
+          "duration": "HOUR"
+        },
+        "expiresAt": "2026-09-12T04:20:00Z",
+        "id": "01M29T1JXXF1Z66102BZB83EJ4",
+        "maxRolloverAmount": 1000,
+        "minRolloverAmount": 0,
+        "priority": 1,
+        "updatedAt": "2026-09-12T03:19:43.80577Z"
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "getCustomerEntitlementValueV2",
+      "request": null,
+      "status": 200,
+      "response": {
+        "balance": 0,
+        "overage": 250,
+        "totalAvailableGrantAmount": 0,
+        "usage": 250,
+        "grantBalances": {
+          "01M29T1JXXF1Z66102BZB83EJ4": 0
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "listCustomerEntitlementGrantsV2",
+      "request": null,
+      "status": 200,
+      "response": {
+        "items": [
+          {
+            "amount": 1000,
+            "createdAt": "2026-09-12T03:19:43.80577Z",
+            "effectiveAt": "2026-09-12T03:20:00Z",
+            "entitlementId": "01M29SXY0EGSN119ZV0TE08RXY",
+            "expiration": {
+              "count": 1,
+              "duration": "HOUR"
+            },
+            "expiresAt": "2026-09-12T04:20:00Z",
+            "id": "01M29T1JXXF1Z66102BZB83EJ4",
+            "maxRolloverAmount": 1000,
+            "minRolloverAmount": 0,
+            "priority": 1,
+            "updatedAt": "2026-09-12T03:19:43.80577Z"
+          }
+        ],
+        "page": 1,
+        "pageSize": 100,
+        "totalCount": 1
+      }
+    }
+  ]
+}
