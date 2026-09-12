@@ -4,7 +4,7 @@ Date: 2026-09-12
 
 ## Scope
 
-The React Settings `members` entry now uses the existing tenant member, invitation, and audit APIs. It covers explicit loading/error/empty states, viewer read-only behavior, admin/owner search and pagination, invitation and pending-invitation revoke, role changes, member removal with confirmation, and lazy audit-log loading. No duplicate identity API was introduced.
+The React Settings `members` entry now uses the existing tenant member, invitation, and audit APIs. It covers explicit loading/error/empty states, viewer read-only behavior, admin/owner search and pagination, invitation with the Vue contributor default, share-link generation/copy fallback, role-permission summary, invitation and pending-invitation revoke, role changes, member removal with confirmation, and lazy audit-log loading. No duplicate identity API was introduced.
 
 This remains `implementing`. The Vue pending-invitation table and revoke/copy actions, permission popover, audit drawer, exact localized copy and visual states, authenticated browser, real-backend, Wails, iOS and Android evidence remain open.
 
