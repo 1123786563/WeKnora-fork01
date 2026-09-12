@@ -8,7 +8,6 @@ import (
 	"gorm.io/gorm"
 )
 
-
 // Lease dimension: worker crash recovery — takeover of a dead worker's
 // reservation under a fresh fence, and commit verification so a stale
 // worker can never settle a hold it no longer owns.

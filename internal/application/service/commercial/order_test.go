@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -87,8 +89,8 @@ func seedPublishedPlan(t *testing.T, db *gorm.DB) {
 }
 
 func TestOrderPipelineQuoteOrderRecover(t *testing.T) {
-	svc, provider, _ := newOrderTestEnv(t)
-	seedPublishedPlan(t, svc.db)
+	svc, provider, db := newOrderTestEnv(t)
+	seedPublishedPlan(t, db)
 	ctx := context.Background()
 
 	// Quote: exact price from the published definition.
@@ -144,7 +146,7 @@ func TestOrderPipelineQuoteOrderRecover(t *testing.T) {
 
 func TestOrderQuoteExpiryAndUnconfiguredProvider(t *testing.T) {
 	svc, _, db := newOrderTestEnv(t)
-	seedPublishedPlan(t, svc.db)
+	seedPublishedPlan(t, db)
 	ctx := context.Background()
 
 	// Unknown plan → not found.
@@ -173,5 +175,157 @@ func TestOrderQuoteExpiryAndUnconfiguredProvider(t *testing.T) {
 	}
 	if _, err := svc.CreateOrder(ctx, 101, q.ID, "wechat"); err == nil {
 		t.Fatal("expired quote accepted")
+	}
+}
+
+// TestOrderChannelFailureStillReturnsRecoverableOrder locks the write
+// contract: a channel failure AFTER the atomic open leaves a durable
+// pending order, and CreateOrder answers with the operation ID + state
+// (CheckoutError set, nil error) so the client recovers through
+// RecoverOrderStatus instead of retrying the consumed quote.
+func TestOrderChannelFailureStillReturnsRecoverableOrder(t *testing.T) {
+	svc, provider, db := newOrderTestEnv(t)
+	seedPublishedPlan(t, db)
+	provider.createErr = errors.New("channel timeout")
+	ctx := context.Background()
+	q, err := svc.CreateQuote(ctx, 101, "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	order, err := svc.CreateOrder(ctx, 101, q.ID, "wechat")
+	if err != nil {
+		t.Fatalf("channel failure must surface on the view, not as an error: %v", err)
+	}
+	if order.ID == "" || order.State != domain.OrderStatePending || order.CheckoutError == "" {
+		t.Fatalf("unrecoverable order answer: %+v", order)
+	}
+	// The quote is consumed: a retry would conflict, so the ID-carrying
+	// answer is the ONLY recovery path — and it works.
+	if _, err := svc.CreateOrder(ctx, 101, q.ID, "wechat"); !errors.Is(err, repocommercial.ErrQuoteAlreadyUsed) {
+		t.Fatalf("quote not consumed by the failed checkout: %v", err)
+	}
+	provider.mu.Lock()
+	provider.createErr = nil
+	provider.queryState = payment.StateSucceeded
+	provider.mu.Unlock()
+	got, err := svc.RecoverOrderStatus(ctx, 101, order.ID)
+	if err != nil || got.State != domain.OrderStatePaid {
+		t.Fatalf("recovery after channel failure: %+v %v", got, err)
+	}
+}
+
+func seedSecondPlan(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	def, _ := json.Marshal(domain.PlanVersion{Key: "lite", Version: 2, Price: 19_00, Monthly: 1_900_000})
+	if err := db.Create(&repocommercial.PlanRow{PlanKey: "lite", Version: 2, DefinitionJSON: string(def),
+		ExternalID: "ext-lite-2", State: domain.PlanStatePublished}).Error; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func seedChangePlanSubscription(t *testing.T, db *gorm.DB, tenantID uint64, plan domain.PlanVersion, anchor, paidUntil time.Time) {
+	t.Helper()
+	snap, _ := json.Marshal(plan)
+	if err := db.Create(&repocommercial.Subscription{ID: "sub-" + strconv.FormatUint(tenantID, 10),
+		TenantID: tenantID, PlanKey: plan.Key, PlanVersion: plan.Version, PlanSnapshotJSON: string(snap),
+		Anchor: anchor, PaidUntil: paidUntil, FutureIntervalJSON: "{}", Version: 1}).Error; err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestChangePlanUpgradeProratesRemainingPeriod: an upgrade settles as an
+// order for the price difference prorated over the REMAINING paid span
+// (B17): half the period left on a 50.00 difference charges 25.00, and the
+// answer is the standard recoverable pending-order contract.
+func TestChangePlanUpgradeProratesRemainingPeriod(t *testing.T) {
+	svc, _, db := newOrderTestEnv(t)
+	seedPublishedPlan(t, db)
+	now := time.Now()
+	current := domain.PlanVersion{Key: "std", Version: 1, Price: 49_00, Monthly: 4_900_000}
+	seedChangePlanSubscription(t, db, 101, current, now.Add(-15*24*time.Hour), now.Add(15*24*time.Hour))
+	ctx := context.Background()
+	q, err := svc.CreateQuote(ctx, 101, "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := svc.ChangePlan(ctx, 101, q.ID, 1, "wechat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.Change != "upgrade" || view.Order == nil {
+		t.Fatalf("unexpected change view: %+v", view)
+	}
+	if view.Order.AmountFen != 25_00 {
+		t.Fatalf("prorated upgrade amount = %d, want 2500", view.Order.AmountFen)
+	}
+	if view.Order.State != domain.OrderStatePending || view.Order.CheckoutURL == "" {
+		t.Fatalf("upgrade order not checkoutable: %+v", view.Order)
+	}
+}
+
+// TestChangePlanSchedulesDowngradeAtPeriodEnd: a cheaper target never cuts
+// the paid period short — the switch is recorded against paid_until under
+// the version guard, the quote is consumed by the change marker, and the
+// subscription version bumps so concurrent quotes must re-cut.
+func TestChangePlanSchedulesDowngradeAtPeriodEnd(t *testing.T) {
+	svc, _, db := newOrderTestEnv(t)
+	seedPublishedPlan(t, db)
+	seedSecondPlan(t, db)
+	now := time.Now()
+	current := domain.PlanVersion{Key: "pro", Version: 3, Price: 99_00, Monthly: 9_900_000}
+	paidUntil := now.Add(20 * 24 * time.Hour)
+	seedChangePlanSubscription(t, db, 101, current, now.Add(-10*24*time.Hour), paidUntil)
+	ctx := context.Background()
+	q, err := svc.CreateQuote(ctx, 101, "lite")
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := svc.ChangePlan(ctx, 101, q.ID, 1, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.Change != "scheduled_switch" || view.ScheduledPlanKey != "lite" {
+		t.Fatalf("unexpected change view: %+v", view)
+	}
+	if view.SubscriptionVersion != 2 {
+		t.Fatalf("subscription version not bumped: %+v", view)
+	}
+	var sub repocommercial.Subscription
+	if err := db.Where("tenant_id = ?", 101).First(&sub).Error; err != nil {
+		t.Fatal(err)
+	}
+	if sub.Version != 2 || !strings.Contains(sub.FutureIntervalJSON, "lite") {
+		t.Fatalf("scheduled downgrade not recorded: %+v", sub)
+	}
+	var used repocommercial.QuoteRow
+	if err := db.Where("id = ?", q.ID).First(&used).Error; err != nil || used.UsedOrderID == nil ||
+		!strings.HasPrefix(*used.UsedOrderID, "chg_") {
+		t.Fatalf("quote not consumed by the change marker: %+v %v", used, err)
+	}
+}
+
+// TestChangePlanVersionConflictAndMissingSubscription: a stale
+// expected_subscription_version answers ErrSubscriptionVersionConflict
+// (re-quote, never overwrite) and a base-tier space has nothing to change.
+func TestChangePlanVersionConflictAndMissingSubscription(t *testing.T) {
+	svc, _, db := newOrderTestEnv(t)
+	seedPublishedPlan(t, db)
+	now := time.Now()
+	current := domain.PlanVersion{Key: "std", Version: 1, Price: 49_00, Monthly: 4_900_000}
+	seedChangePlanSubscription(t, db, 101, current, now.Add(-15*24*time.Hour), now.Add(15*24*time.Hour))
+	ctx := context.Background()
+	q, err := svc.CreateQuote(ctx, 101, "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ChangePlan(ctx, 101, q.ID, 99, "wechat"); !errors.Is(err, repocommercial.ErrSubscriptionVersionConflict) {
+		t.Fatalf("stale expected version: %v", err)
+	}
+	q2, err := svc.CreateQuote(ctx, 202, "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ChangePlan(ctx, 202, q2.ID, 0, "wechat"); !errors.Is(err, ErrNoSubscriptionToChange) {
+		t.Fatalf("base-tier change: %v", err)
 	}
 }

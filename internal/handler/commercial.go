@@ -323,6 +323,12 @@ func (h *CommercialHandler) CreateOrder(c *gin.Context) {
 	}
 	order, err := h.orders.CreateOrder(c.Request.Context(), tenantID, req.QuoteID, req.Provider)
 	switch {
+	case err == nil && order.CheckoutError != "":
+		// The order is durably pending but the channel call failed: the
+		// answer still carries the operation ID and state (product contract:
+		// writes return an operation ID), and the client recovers through
+		// GET /commercial/orders/:id instead of retrying the consumed quote.
+		c.JSON(http.StatusAccepted, order)
 	case err == nil:
 		c.JSON(http.StatusCreated, order)
 	case errors.Is(err, commercialsvc.ErrPaymentProviderUnconfigured):
@@ -364,6 +370,58 @@ func (h *CommercialHandler) GetOrder(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
 	default:
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	}
+}
+
+// ChangePlan serves POST /commercial/plans/change (Commerce.ChangePlan):
+// quote_id names the TARGET plan quote; expected_subscription_version
+// guards concurrent changes. A price increase settles as a prorated
+// upgrade order (same recoverable checkout contract as CreateOrder);
+// anything else is scheduled to take effect at the end of the paid
+// period. A version conflict answers 409 with a re-quote signal.
+func (h *CommercialHandler) ChangePlan(c *gin.Context) {
+	tenantID, _, ok := commercialTenantScope(c)
+	if !ok {
+		c.JSON(http.StatusForbidden, gin.H{"error": ErrMissingTenantScope.Error()})
+		return
+	}
+	if h.orders == nil {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "order pipeline not configured"})
+		return
+	}
+	var req struct {
+		QuoteID                     string `json:"quote_id"`
+		ExpectedSubscriptionVersion *int64 `json:"expected_subscription_version"`
+		Provider                    string `json:"provider"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.QuoteID == "" || req.ExpectedSubscriptionVersion == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "quote_id and expected_subscription_version are required"})
+		return
+	}
+	view, err := h.orders.ChangePlan(c.Request.Context(), tenantID, req.QuoteID, *req.ExpectedSubscriptionVersion, req.Provider)
+	switch {
+	case err == nil:
+		if view.Order != nil && view.Order.CheckoutError != "" {
+			c.JSON(http.StatusAccepted, view)
+			return
+		}
+		c.JSON(http.StatusCreated, view)
+	case errors.Is(err, commercialsvc.ErrNoSubscriptionToChange):
+		c.JSON(http.StatusConflict, gin.H{"error": "no subscription to change; purchase a plan through POST /commercial/orders first"})
+	case errors.Is(err, repocommercial.ErrSubscriptionVersionConflict):
+		c.JSON(http.StatusConflict, gin.H{"error": "subscription changed since the quote was cut; cut a new quote and retry"})
+	case errors.Is(err, commercialsvc.ErrQuoteTenantMismatch):
+		c.JSON(http.StatusNotFound, gin.H{"error": "quote not found for this tenant"})
+	case errors.Is(err, commercialsvc.ErrPaymentProviderUnconfigured):
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+	case errors.Is(err, repocommercial.ErrQuoteAlreadyUsed):
+		c.JSON(http.StatusConflict, gin.H{"error": "quote already used"})
+	case errors.Is(err, repocommercial.ErrQuoteExpired):
+		c.JSON(http.StatusConflict, gin.H{"error": "quote expired"})
+	case errors.Is(err, repocommercial.ErrQuoteVersionConflict):
+		c.JSON(http.StatusConflict, gin.H{"error": "subscription changed since the quote was cut; cut a new quote and retry"})
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	}
 }
 

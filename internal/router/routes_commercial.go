@@ -35,6 +35,10 @@ func RegisterCommercialRoutes(r *gin.RouterGroup, commercialHandler *handler.Com
 		commercialGroup.POST("/quotes", commercialHandler.CreateQuote)
 		commercialGroup.POST("/orders", commercialHandler.CreateOrder)
 		commercialGroup.GET("/orders/:id", commercialHandler.GetOrder)
+		// Commerce.ChangePlan: an upgrade settles as a prorated order through
+		// the same checkout pipeline; anything else is scheduled for the end
+		// of the paid period. Conflicts answer with a re-quote signal.
+		commercialGroup.POST("/plans/change", commercialHandler.ChangePlan)
 		// C05: space-scoped refund REQUEST. The group's billing gate and
 		// capability checks apply; the tenant comes from the authenticated
 		// context. The request registers intent only — money moves solely

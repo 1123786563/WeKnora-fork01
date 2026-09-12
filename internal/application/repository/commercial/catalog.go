@@ -125,6 +125,19 @@ func (s *CatalogStore) Publish(ctx context.Context, planKey string, version int6
 	return out, nil
 }
 
+// LatestPublishedPlan returns the NEWEST published definition of a plan;
+// quoting always prices from this immutable row, never a draft.
+func (s *CatalogStore) LatestPublishedPlan(ctx context.Context, planKey string) (PlanRow, error) {
+	var row PlanRow
+	err := s.db.WithContext(ctx).
+		Where("plan_key = ? AND state = ?", planKey, domain.PlanStatePublished).
+		Order("version DESC").First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return PlanRow{}, ErrPlanNotFound
+	}
+	return row, err
+}
+
 // GetPlan returns the stored definition row for a plan version.
 func (s *CatalogStore) GetPlan(ctx context.Context, planKey string, version int64) (PlanRow, error) {
 	var row PlanRow
@@ -165,37 +178,50 @@ func (s *CatalogStore) ConsumeQuote(ctx context.Context, id string, subscription
 	}
 	var out QuoteRow
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		res := tx.Model(&QuoteRow{}).
-			Where("id = ? AND used_order_id IS NULL AND subscription_version = ? AND expires_at > ?", id, subscriptionVersion, now).
-			Update("used_order_id", orderID)
-		if res.Error != nil {
-			return res.Error
-		}
-		if err := tx.Where("id = ?", id).First(&out).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return ErrQuoteNotFound
-			}
-			return err
-		}
-		if res.RowsAffected == 1 {
-			used := orderID
-			out.UsedOrderID = &used
-			return nil
-		}
-		// Diagnose why the guarded update missed.
-		if out.UsedOrderID != nil {
-			return ErrQuoteAlreadyUsed
-		}
-		if !out.ExpiresAt.After(now) {
-			return ErrQuoteExpired
-		}
-		if out.SubscriptionVersion != subscriptionVersion {
-			return ErrQuoteVersionConflict
-		}
-		return ErrInvalidQuoteUsage
+		var err error
+		out, err = consumeQuoteTx(tx, id, subscriptionVersion, orderID, now)
+		return err
 	})
 	if err != nil {
 		return QuoteRow{}, err
 	}
 	return out, nil
+}
+
+// consumeQuoteTx is the transaction-scoped core of ConsumeQuote: it may run
+// inside a LARGER unit of work (order creation, plan-change scheduling) so
+// the guarded consumption, the order row and the attempt row commit or roll
+// back together.
+func consumeQuoteTx(tx *gorm.DB, id string, subscriptionVersion int64, orderID string, now time.Time) (QuoteRow, error) {
+	var out QuoteRow
+	{
+		res := tx.Model(&QuoteRow{}).
+			Where("id = ? AND used_order_id IS NULL AND subscription_version = ? AND expires_at > ?", id, subscriptionVersion, now).
+			Update("used_order_id", orderID)
+		if res.Error != nil {
+			return QuoteRow{}, res.Error
+		}
+		if err := tx.Where("id = ?", id).First(&out).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return QuoteRow{}, ErrQuoteNotFound
+			}
+			return QuoteRow{}, err
+		}
+		if res.RowsAffected == 1 {
+			used := orderID
+			out.UsedOrderID = &used
+			return out, nil
+		}
+		// Diagnose why the guarded update missed.
+		if out.UsedOrderID != nil {
+			return QuoteRow{}, ErrQuoteAlreadyUsed
+		}
+		if !out.ExpiresAt.After(now) {
+			return QuoteRow{}, ErrQuoteExpired
+		}
+		if out.SubscriptionVersion != subscriptionVersion {
+			return QuoteRow{}, ErrQuoteVersionConflict
+		}
+		return QuoteRow{}, ErrInvalidQuoteUsage
+	}
 }

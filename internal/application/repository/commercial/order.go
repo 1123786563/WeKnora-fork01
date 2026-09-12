@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	domain "github.com/Tencent/WeKnora/internal/commercial"
 	"gorm.io/gorm"
@@ -87,6 +88,12 @@ func NewOrderStore(db *gorm.DB) *OrderStore { return &OrderStore{db: db} }
 // CreateOrder registers a pending order. The quote_id unique index guarantees
 // a quote is consumable by exactly one order, concurrent creators included.
 func (s *OrderStore) CreateOrder(ctx context.Context, row OrderRow) error {
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return createOrderTx(tx, row)
+	})
+}
+
+func createOrderTx(tx *gorm.DB, row OrderRow) error {
 	if row.ID == "" || row.TenantID == 0 || row.QuoteID == "" || row.AmountFen <= 0 || row.Currency == "" {
 		return ErrInvalidOrderRow
 	}
@@ -98,14 +105,60 @@ func (s *OrderStore) CreateOrder(ctx context.Context, row OrderRow) error {
 		row.Version = 1
 	}
 	var existing OrderRow
-	err := s.db.WithContext(ctx).Where("quote_id = ?", row.QuoteID).First(&existing).Error
+	err := tx.Where("quote_id = ?", row.QuoteID).First(&existing).Error
 	if err == nil {
 		return ErrQuoteAlreadyUsed
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err
 	}
-	return s.db.WithContext(ctx).Create(&row).Error
+	return tx.Create(&row).Error
+}
+
+// OpenOrder is the atomic unit of work behind a checkout (and an upgrade):
+// it creates the pending order, CONSUMES the quote and registers the pending
+// attempt in ONE transaction. Any failure — stale quote, expiry, version
+// conflict, unique violation — rolls the whole unit back: no orphan order
+// row survives a refused checkout and no compensation delete is needed.
+func (s *OrderStore) OpenOrder(ctx context.Context, order OrderRow, attempt PaymentAttemptRow, quoteID string, subscriptionVersion int64, now time.Time) error {
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := createOrderTx(tx, order); err != nil {
+			return err
+		}
+		if _, err := consumeQuoteTx(tx, quoteID, subscriptionVersion, order.ID, now); err != nil {
+			return err
+		}
+		return registerAttemptTx(tx, attempt)
+	})
+}
+
+// ListOrdersByTenant returns a space's orders, newest first. The tenant
+// comes exclusively from the authenticated context; the query never
+// accepts a tenant from the caller's payload.
+func (s *OrderStore) ListOrdersByTenant(ctx context.Context, tenantID uint64) ([]OrderRow, error) {
+	if tenantID == 0 {
+		return nil, ErrOrderNotFound
+	}
+	var rows []OrderRow
+	if err := s.db.WithContext(ctx).
+		Where("tenant_id = ?", tenantID).Order("id DESC").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// FirstPendingAttempt returns the oldest still-pending attempt of an order —
+// the identifier payment recovery re-queries the channel with. An order with
+// no pending attempt reports ErrPaymentAttemptNotFound.
+func (s *OrderStore) FirstPendingAttempt(ctx context.Context, orderID string) (PaymentAttemptRow, error) {
+	var att PaymentAttemptRow
+	err := s.db.WithContext(ctx).
+		Where("order_id = ? AND state = ?", orderID, PaymentAttemptStatePending).
+		Order("id").First(&att).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return PaymentAttemptRow{}, ErrPaymentAttemptNotFound
+	}
+	return att, err
 }
 
 // GetOrder returns an order by ID; readers distinguish paid from fulfilled.
@@ -122,6 +175,12 @@ func (s *OrderStore) GetOrder(ctx context.Context, id string) (OrderRow, error) 
 // result arrives; ConfirmPayment only accepts facts whose merchant and
 // attempt were registered this way.
 func (s *OrderStore) RegisterAttempt(ctx context.Context, row PaymentAttemptRow) error {
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return registerAttemptTx(tx, row)
+	})
+}
+
+func registerAttemptTx(tx *gorm.DB, row PaymentAttemptRow) error {
 	if row.ID == "" || row.TenantID == 0 || row.OrderID == "" || row.Provider == "" ||
 		row.Merchant == "" || row.MerchantOrderID == "" || row.AmountFen <= 0 || row.Currency == "" {
 		return ErrInvalidPaymentAttempt
@@ -133,7 +192,7 @@ func (s *OrderStore) RegisterAttempt(ctx context.Context, row PaymentAttemptRow)
 		return ErrInvalidPaymentAttempt
 	}
 	row.State = PaymentAttemptStatePending
-	return s.db.WithContext(ctx).Create(&row).Error
+	return tx.Create(&row).Error
 }
 
 type paymentEventPayload struct {

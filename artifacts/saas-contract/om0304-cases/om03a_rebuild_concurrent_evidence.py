@@ -1,7 +1,19 @@
 #!/usr/bin/env python3
-"""Fix-up: rebuild om03a artifact from run-2 request log (sorted() crash lost
-the in-memory analysis AFTER the 8 concurrent POSTs had already fired), do the
-uniqueness GETs now, and normalize artifact filenames."""
+"""OM-03(a): rebuild the concurrent same-key customer-creation evidence from
+the run-2 request log.
+
+Why this exists: the run-2 driver crashed on sorted() AFTER the 8 concurrent
+POSTs had already fired, losing only the in-memory analysis — the requests
+themselves are primary evidence in om0304-request-log.json.
+
+Inputs : artifacts/saas-contract/om0304-request-log.json (run-2 entries),
+         live OpenMeter at http://127.0.0.1:48888 (read-only GETs for the
+         uniqueness cross-checks: by id, by key, list, prior run-1 customer).
+Outputs: artifacts/saas-contract/om03-concurrent-customer.json, plus one-time
+         renames of the om03b/om03c/om04d/om03a artifacts to canonical names.
+Caution: NOT idempotent — the artifact renames succeed exactly once and a
+second run fails on the missing source names; every call is a read-only GET.
+"""
 import json, shutil, urllib.request, urllib.error
 BASE = "http://127.0.0.1:48888"
 NS = "om0304-20260912"

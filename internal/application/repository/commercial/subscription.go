@@ -2,9 +2,19 @@ package commercial
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"gorm.io/gorm"
+)
+
+var (
+	// ErrSubscriptionNotFound reports a space with no purchased subscription
+	// (base tier): there is nothing to change yet.
+	ErrSubscriptionNotFound = errors.New("subscription_not_found")
+	// ErrSubscriptionVersionConflict reports a lost race: the subscription
+	// changed since the caller read it; the client must cut a new quote.
+	ErrSubscriptionVersionConflict = errors.New("subscription_version_conflict")
 )
 
 // Benefit job states. pending = claimed and awaiting issuance/confirmation,
@@ -100,6 +110,53 @@ func (s *SubscriptionStore) ListSubscriptions(ctx context.Context) ([]Subscripti
 	var subs []Subscription
 	err := s.db.WithContext(ctx).Order("id").Find(&subs).Error
 	return subs, err
+}
+
+// Current returns the tenant's subscription row. A space on the base tier
+// (no row yet) reports ErrSubscriptionNotFound — the caller decides whether
+// that is a first purchase instead of a plan change.
+func (s *SubscriptionStore) Current(ctx context.Context, tenantID uint64) (Subscription, error) {
+	var sub Subscription
+	err := s.db.WithContext(ctx).Where("tenant_id = ?", tenantID).First(&sub).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return Subscription{}, ErrSubscriptionNotFound
+	}
+	return sub, err
+}
+
+// LatestVersion returns the subscription version quotes are cut against:
+// the newest version of the space's row, or 0 while it is on the base tier.
+func (s *SubscriptionStore) LatestVersion(ctx context.Context, tenantID uint64) (int64, error) {
+	var version int64
+	err := s.db.WithContext(ctx).Raw(
+		`SELECT version FROM commercial_subscriptions
+		WHERE tenant_id = ? ORDER BY version DESC LIMIT 1`, tenantID).Scan(&version).Error
+	return version, err
+}
+
+// SchedulePlanChange atomically consumes the quote (marker records what
+// consumed it) and records the future plan interval under a version guard:
+// the guarded UPDATE bumps version only when the caller saw the current
+// one, so a concurrent change loses cleanly and the client re-quotes.
+func (s *SubscriptionStore) SchedulePlanChange(ctx context.Context, sub Subscription, quoteID string, quoteSubscriptionVersion int64, marker, futureIntervalJSON string, now time.Time) error {
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if _, err := consumeQuoteTx(tx, quoteID, quoteSubscriptionVersion, marker, now); err != nil {
+			return err
+		}
+		res := tx.Model(&Subscription{}).
+			Where("id = ? AND version = ?", sub.ID, sub.Version).
+			Updates(map[string]interface{}{
+				"future_interval_json": futureIntervalJSON,
+				"version":              sub.Version + 1,
+			})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return ErrSubscriptionVersionConflict
+		}
+		return nil
+	})
 }
 
 // ClaimBenefitJob inserts the job guarded by its unique key

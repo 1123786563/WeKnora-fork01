@@ -7,7 +7,6 @@ import (
 	"gorm.io/gorm"
 )
 
-
 // Settlement dimension: turning reservation holds into confirmed spend
 // (or releasing them), and folding confirmed settlements into the account
 // with watermark advancement.

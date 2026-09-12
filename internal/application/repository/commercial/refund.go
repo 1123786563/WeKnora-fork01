@@ -32,19 +32,19 @@ const OutboxKindRefundPayout = "refund_payout"
 // effective); review_note records why a review stopped (e.g. P03's
 // occupancy check unavailable).
 type RefundRow struct {
-	ID               string  `gorm:"primaryKey;column:id"`
-	TenantID         uint64  `gorm:"column:tenant_id;not null"`
-	OrderID          string  `gorm:"column:order_id;not null;index"`
-	OrderLineID      string  `gorm:"column:order_line_id;not null"`
-	AmountFen        int64   `gorm:"column:amount_fen;not null"`
-	CreditsMicro     int64   `gorm:"column:credits_micro;not null"`
-	Reviewer         string  `gorm:"column:reviewer;not null;default:''"`
-	ProviderRefundID *string `gorm:"column:provider_refund_id;uniqueIndex"`
+	ID               string             `gorm:"primaryKey;column:id"`
+	TenantID         uint64             `gorm:"column:tenant_id;not null"`
+	OrderID          string             `gorm:"column:order_id;not null;index"`
+	OrderLineID      string             `gorm:"column:order_line_id;not null"`
+	AmountFen        int64              `gorm:"column:amount_fen;not null"`
+	CreditsMicro     int64              `gorm:"column:credits_micro;not null"`
+	Reviewer         string             `gorm:"column:reviewer;not null;default:''"`
+	ProviderRefundID *string            `gorm:"column:provider_refund_id;uniqueIndex"`
 	State            domain.RefundState `gorm:"column:state;not null"`
-	Version          int64   `gorm:"column:version;not null;default:1"`
-	ChannelAttempts  int64   `gorm:"column:channel_attempts;not null;default:0"`
-	ReviewBasis      string  `gorm:"column:review_basis;not null;default:''"`
-	ReviewNote       string  `gorm:"column:review_note;not null;default:''"`
+	Version          int64              `gorm:"column:version;not null;default:1"`
+	ChannelAttempts  int64              `gorm:"column:channel_attempts;not null;default:0"`
+	ReviewBasis      string             `gorm:"column:review_basis;not null;default:''"`
+	ReviewNote       string             `gorm:"column:review_note;not null;default:''"`
 }
 
 func (RefundRow) TableName() string { return "commercial_refunds" }

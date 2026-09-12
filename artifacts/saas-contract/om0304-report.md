@@ -11,8 +11,8 @@
 | # | Command | Exit code |
 |---|---|---|
 | 1 | `python3 artifacts/saas-contract/om0304-cases/om0304_experiment.py` (main experiment: 8-way concurrent customer race, retry replays, plan publish replay, order-line grant dup/crash, V2 contrast attempt 1) | 0 (driver printed section status; OM-03(a) analysis crashed in-driver on `sorted()` AFTER the 8 POSTs fired — crash recorded in `om03a-concurrent-crashrecord.json`, requests preserved in request log) |
-| 2 | `python3 artifacts/saas-contract/om0304-cases/om0304_fixup.py` (rebuild OM-03(a) analysis from the request log + uniqueness GETs; normalize artifact names) | 0 |
-| 3 | `python3 artifacts/saas-contract/om0304-cases/om0304_fixup2.py` (V2 contrast retry with valid effectiveAt; plan version-uniqueness follow-up) | 0 |
+| 2 | `python3 artifacts/saas-contract/om0304-cases/om03a_rebuild_concurrent_evidence.py` (rebuild OM-03(a) analysis from the request log + read-only uniqueness GETs; one-time artifact renames — NOT idempotent) | 0 |
+| 3 | `python3 artifacts/saas-contract/om0304-cases/om04d_v2_grant_contrast_and_plan_version_uniqueness.py` (V2 contrast retry with valid effectiveAt — creates REAL grants, NOT idempotent; plan version-uniqueness follow-up via version-list endpoints) | 0 |
 
 Honest recording: the first execution of the experiment (before run-2) crashed mid-driver on the same `sorted()` bug after creating customer key `om0304-20260912-cust1` (id `01M29V7MWK3KRK6WZVX51PJ1KM`) server-side without saving artifacts; run-2 therefore used key `om0304-20260912-cust1r2` for a clean race. The run-1 customer is recorded in `om03-concurrent-customer.json` (`prior_run1_customer`).
 
@@ -52,7 +52,7 @@ Honest recording: the first execution of the experiment (before run-2) crashed m
 - `om04-v2-contrast.json` — (d) V2 double-issuance
 - `om0304-request-log.json` — all 35 executed requests with status + full bodies
 - `om03a-concurrent-crashrecord.json` — honest record of the in-driver analysis crash
-- Scripts: `om0304-cases/om0304_experiment.py`, `om0304_fixup.py`, `om0304_fixup2.py` (experiment scripts, not tracked-file changes)
+- Scripts: `om0304-cases/om0304_experiment.py`, `om03a_rebuild_concurrent_evidence.py` (read-only rebuild), `om04d_v2_grant_contrast_and_plan_version_uniqueness.py` (writes real grants; run only against the disposable evidence instance)
 
 ## Not verified / gaps
 

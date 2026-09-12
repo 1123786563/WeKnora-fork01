@@ -1,8 +1,19 @@
 #!/usr/bin/env python3
-"""Fix round 2: (1) V2 contrast retry with effectiveAt inside current usage
-period (first try 400'd: effective before usage period 03:17Z) and correct
-items/totalCount parsing; (2) prove plan version uniqueness via version-list
-endpoints. Updates om04-v2-contrast.json and om03-plan-replay.json in place."""
+"""OM-04(d) + OM-03(c) follow-ups against the live OpenMeter instance.
+
+(1) V2 duplicate-grant contrast, retried with an effectiveAt INSIDE the
+c    current usage period (the first attempt 400'd: effective before the
+    usage period 03:17Z) and with correct items/totalCount parsing — two
+    identical grant POSTs must demonstrate that V2 has NO dedup key.
+(2) Plan version uniqueness proven via the version-list endpoints instead
+    of a second publish attempt (which the state machine rejects with 400).
+
+Inputs : live OpenMeter at http://127.0.0.1:48888 (WRITES: two grant POSTs),
+         artifacts/saas-contract/om0304-request-log.json (appended).
+Outputs: om04-v2-contrast.json and om03-plan-replay.json updated in place.
+Caution: NOT idempotent — every run creates REAL grants on the target
+instance and appends to the request log; run only against the disposable
+om0304 evidence instance."""
 import json, urllib.request, urllib.error
 BASE = "http://127.0.0.1:48888"
 OP = urllib.request.build_opener(urllib.request.ProxyHandler({}))
