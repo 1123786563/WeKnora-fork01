@@ -355,3 +355,8 @@
 - api-client identity admin API 增补 deleteTenant（DELETE /api/v1/tenants/:id，routes_auth_tenant.go:18 Owner+）。
 - tenant delete danger zone 初版实施但判定为需要更完整的 state/role-gating 集成，回退未完成变更避免提交半成品——留待后续迭代。
 - 门禁：web 198/198、typecheck 0 错误。
+
+## 2026-09-12 Round 82
+
+- chat 打磨切片派发（分类型工具渲染器扩展、Last-Event-ID 重连、会话来源 badge）。
+- 前轮 chat UX retry 代理的工作已全部集成（62a77a9）。
