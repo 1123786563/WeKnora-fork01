@@ -39,6 +39,10 @@ export async function downloadKnowledgeFile(options: {
   return result.uri;
 }
 
+export async function readNativeTextFile(uri: string): Promise<string> {
+  return new File(uri).text();
+}
+
 export async function shareNativeFile(uri: string): Promise<void> {
   if (!(await Sharing.isAvailableAsync())) throw new Error('Native sharing is unavailable');
   await Sharing.shareAsync(uri);

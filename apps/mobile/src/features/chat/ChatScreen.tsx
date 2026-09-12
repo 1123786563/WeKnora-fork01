@@ -8,7 +8,8 @@ import { artifactDownloadPath, normalizeArtifactList } from '@weknora/domain/cha
 import { normalizeToolResult } from '@weknora/domain/chat/tool-results';
 import { useMobileRuntime } from '../../runtime.tsx';
 import { pickNativeFile } from '../../platform/files.ts';
-import { downloadKnowledgeFile, shareNativeFile } from '../../platform/files.ts';
+import { downloadKnowledgeFile, readNativeTextFile, shareNativeFile } from '../../platform/files.ts';
+import { classifyNativeArtifactPreview, NativeArtifactPreview } from './artifact-preview.tsx';
 import { buildMobileChatRequestBody, isCurrentChatRun, selectAssistantMessageId, selectIncompleteAssistant, selectMessageArtifacts, selectReferenceGroups, shouldRenderLiveAssistant, shouldRenderPendingUser, type ChatRunToken } from './parity.ts';
 import { stopChatRun } from './stop-run.ts';
 import { chatAppStateAction } from './appstate.ts';
@@ -42,6 +43,7 @@ export function ChatScreen() {
   const [sending, setSending] = useState(false);
   const [attaching, setAttaching] = useState(false);
   const [error, setError] = useState('');
+  const [artifactPreview, setArtifactPreview] = useState<{ artifact: ReturnType<typeof normalizeArtifactList>[number]; uri?: string; content?: string; loading: boolean; error?: string } | null>(null);
   const streamController = useRef<AbortController | null>(null);
   const activeRun = useRef<(ChatRunToken & { controller: AbortController }) | null>(null);
   const runSequence = useRef(0);
@@ -400,6 +402,19 @@ export function ChatScreen() {
     } catch (cause) { setError(errorText(cause, 'Unable to download artifact')); }
   }
 
+  async function openArtifact(messageId: string, artifact: ReturnType<typeof normalizeArtifactList>[number]) {
+    const model = classifyNativeArtifactPreview(artifact);
+    if (model.kind === 'download-only') { await shareArtifact(messageId, artifact); return; }
+    setArtifactPreview({ artifact, loading: true });
+    try {
+      const uri = await downloadKnowledgeFile({ baseURL: runtime.baseURL, path: artifactDownloadPath(selectedSessionId || '', messageId, artifact.index), fileName: artifact.fileName, credential: runtime.credential });
+      const content = model.kind === 'text' || model.kind === 'markdown' ? await readNativeTextFile(uri) : undefined;
+      setArtifactPreview((current) => current?.artifact === artifact ? { artifact, uri, content, loading: false } : current);
+    } catch (cause) {
+      setArtifactPreview((current) => current?.artifact === artifact ? { artifact, loading: false, error: errorText(cause, 'Unable to load artifact preview') } : current);
+    }
+  }
+
   const liveAssistant = shouldRenderLiveAssistant(sending, streamState.answer) ? [{ id: 'mobile-live-assistant', session_id: selectedSessionId || '', role: 'assistant' as const, content: streamState.answer, is_completed: streamState.phase === 'completed' }] : [];
   const displayMessages = useMemo(() => uniqueMessages([
     ...messages,
@@ -432,7 +447,7 @@ export function ChatScreen() {
         {pendingOAuthApprovals.map((approval) => <View key={approval.pendingId} style={{ backgroundColor: '#eef4ff', padding: 10, borderRadius: 8, marginBottom: 8 }}><Text>MCP authorization required{approval.serviceName ? ` · ${approval.serviceName}` : ''}</Text>{approval.toolName ? <Text style={{ color: '#667085', marginTop: 4 }}>Tool: {approval.toolName}</Text> : null}<View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}><Pressable onPress={() => void openOAuth(approval)}><Text style={{ color: '#2864dc' }}>Authorize</Text></Pressable><Pressable onPress={() => void cancelOAuth(approval)}><Text style={{ color: '#b42318' }}>Cancel</Text></Pressable></View></View>)}
         {selectedSessionId ? <View style={{ backgroundColor: '#f8f9fc', padding: 10, borderRadius: 8, marginBottom: 8 }}><View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><Text style={{ fontWeight: '600' }}>Steer queue</Text><Pressable disabled={steerLoading} onPress={() => void loadSteerQueue(selectedSessionId)}><Text style={{ color: steerLoading ? '#98a2b3' : '#2864dc' }}>{steerLoading ? 'Loading…' : 'Refresh'}</Text></Pressable></View>{steerQueue.length === 0 ? <Text style={{ color: '#667085', marginTop: 6 }}>No queued instructions</Text> : steerQueue.map((item) => <View key={item.steer_id} style={{ backgroundColor: '#fff', padding: 8, borderRadius: 8, marginTop: 6 }}><Text selectable>{item.content}</Text><Text style={{ color: '#667085', fontSize: 12, marginTop: 4 }}>{item.delivery === 'inject' ? 'Injecting next' : 'After current response'}</Text><View style={{ flexDirection: 'row', gap: 12, marginTop: 6 }}>{item.delivery === 'after' ? <Pressable disabled={Boolean(steerBusy)} onPress={() => void promoteSteer(item)}><Text style={{ color: steerBusy === item.steer_id ? '#98a2b3' : '#2864dc' }}>Inject now</Text></Pressable> : null}<Pressable disabled={Boolean(steerBusy)} onPress={() => void removeSteer(item)}><Text style={{ color: steerBusy === item.steer_id ? '#98a2b3' : '#b42318' }}>Remove</Text></Pressable></View></View>)}</View> : null}
       </>}
-      renderItem={({ item }) => <View style={{ alignSelf: item.role === 'user' ? 'flex-end' : 'stretch', maxWidth: '92%', backgroundColor: item.role === 'user' ? '#eff6ff' : '#f8f9fc', padding: 10, borderRadius: 10, marginBottom: 8 }}><Text style={{ fontWeight: '600', marginBottom: 4 }}>{item.role}</Text><Text selectable>{item.content}</Text>{item.role === 'assistant' && item.is_completed === false ? <Text style={{ color: '#667085', marginTop: 4 }}>{item.id === failedAssistantMessageId.current ? 'Response failed; send a new message to retry' : 'Resuming…'}</Text> : null}{normalizeArtifactList(selectMessageArtifacts(item)).map((artifact) => <Pressable key={`${artifact.index}-${artifact.fileName}`} onPress={() => void shareArtifact(item.id, artifact)}><Text style={{ color: '#2864dc', marginTop: 6 }}>File: {artifact.fileName} · Share</Text></Pressable>)}{item.role === 'assistant' && item.data ? <Text style={{ color: '#667085' }}>{normalizeToolResult({ output: item.data }).text}</Text> : null}</View>}
+      renderItem={({ item }) => <View style={{ alignSelf: item.role === 'user' ? 'flex-end' : 'stretch', maxWidth: '92%', backgroundColor: item.role === 'user' ? '#eff6ff' : '#f8f9fc', padding: 10, borderRadius: 10, marginBottom: 8 }}><Text style={{ fontWeight: '600', marginBottom: 4 }}>{item.role}</Text><Text selectable>{item.content}</Text>{item.role === 'assistant' && item.is_completed === false ? <Text style={{ color: '#667085', marginTop: 4 }}>{item.id === failedAssistantMessageId.current ? 'Response failed; send a new message to retry' : 'Resuming…'}</Text> : null}{normalizeArtifactList(selectMessageArtifacts(item)).map((artifact) => <Pressable key={`${artifact.index}-${artifact.fileName}`} onPress={() => void openArtifact(item.id, artifact)}><Text style={{ color: '#2864dc', marginTop: 6 }}>File: {artifact.fileName} · {classifyNativeArtifactPreview(artifact).kind === 'download-only' ? 'Share' : 'Preview'}</Text></Pressable>)}{item.role === 'assistant' && item.data ? <Text style={{ color: '#667085' }}>{normalizeToolResult({ output: item.data }).text}</Text> : null}</View>}
     />
     {attachments.length ? <ScrollView horizontal style={{ maxHeight: 38, paddingHorizontal: 12 }}><View style={{ flexDirection: 'row', gap: 8 }}>{attachments.map((attachment) => <View key={attachment.id} style={{ backgroundColor: '#f2f4f7', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 6 }}><Text>{attachment.file_name} · {attachment.status}</Text></View>)}</View></ScrollView> : null}
     <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingVertical: 6 }}><Pressable onPress={() => setDraft('Summarize the selected knowledge base')}><Text style={{ color: '#2864dc', fontSize: 12 }}>Summarize</Text></Pressable><Pressable onPress={() => setDraft('Find related files')}><Text style={{ color: '#2864dc', fontSize: 12 }}>Related files</Text></Pressable></View>
@@ -441,5 +456,6 @@ export function ChatScreen() {
       <TextInput accessibilityLabel="Chat message" value={draft} onChangeText={setDraft} multiline maxLength={20_000} placeholder="Ask WeKnora" style={{ flex: 1, maxHeight: 120, borderColor: '#d0d5dd', borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 }} />
       {sending ? <><Pressable accessibilityRole="button" onPress={() => void stop()}><Text style={{ color: '#b42318' }}>Stop</Text></Pressable><Pressable accessibilityLabel="Inject steering message" accessibilityRole="button" disabled={steerButtonsDisabled} onPress={() => void enqueueSteer('inject')}><Text style={{ color: steerButtonsDisabled ? '#98a2b3' : '#2864dc' }}>Inject</Text></Pressable><Pressable accessibilityLabel="Queue steering message" accessibilityRole="button" disabled={steerButtonsDisabled} onPress={() => void enqueueSteer('after')}><Text style={{ color: steerButtonsDisabled ? '#98a2b3' : '#2864dc' }}>After</Text></Pressable></> : <Pressable accessibilityRole="button" disabled={!draft.trim()} onPress={() => void send()}><Text style={{ color: draft.trim() ? '#2864dc' : '#98a2b3', fontWeight: '600' }}>Send</Text></Pressable>}
     </KeyboardAvoidingView>
+    {artifactPreview ? <NativeArtifactPreview artifact={artifactPreview.artifact} uri={artifactPreview.uri} content={artifactPreview.content} loading={artifactPreview.loading} error={artifactPreview.error} onClose={() => setArtifactPreview(null)} onDownload={artifactPreview.uri ? () => { void shareNativeFile(artifactPreview.uri!).catch((cause) => setArtifactPreview((current) => current ? { ...current, error: errorText(cause, 'Unable to share artifact') } : current)); } : undefined} /> : null}
   </SafeAreaView>;
 }
