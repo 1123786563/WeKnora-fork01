@@ -5,6 +5,7 @@ import { configurationSections, configurationStatus, type ConfigurationSectionKe
 import { ConfigurationEditor } from './ConfigurationEditor.tsx';
 import { AgentOperations, ModelDebugPanel, SkillOperations } from './ConfigurationOperations.tsx';
 import { modelInUseDetails, modelUsageBindingLabel, type ModelUsageDetails } from './model-usage.ts';
+import { filterAgentsByQuery, groupAgents, type AgentGroupKey } from './agent-groups.ts';
 
 type Records = { agents: AgentConfiguration[]; models: ModelConfiguration[]; mcp: McpConfiguration[]; skills: SkillConfiguration[] };
 type EditableSection = Exclude<ConfigurationSectionKey, 'skills'>;
@@ -29,6 +30,27 @@ export function ConfigurationPage({ client }: { client: WeKnoraClient }) {
   const [editor, setEditor] = useState<{ section: EditableSection; record?: ConfigurationRecord } | null>(null);
   const [creator, setCreator] = useState<'all' | 'mine' | 'others'>('all');
   const [usageConflict, setUsageConflict] = useState<{ modelName: string; details: ModelUsageDetails } | null>(null);
+  const [currentUserId, setCurrentUserId] = useState('');
+
+  function renderConfigurationRow(sectionKey: ConfigurationSectionKey, item: ConfigurationRecord, index: number) {
+    const row = item as Record<string, unknown>;
+    const status = configurationStatus(row);
+    const disabled = sectionKey === 'agents' && row.disabled_by_server === true;
+    return <li key={String(row.id ?? row.name ?? index)}><div className="wk-list-item-copy"><strong>{String(row.name ?? row.id ?? 'Unnamed')}</strong><span>{status}{disabled ? ' · disabled by server' : ''}{row.is_builtin === true ? ' · builtin' : ''}</span><small>{values(row) || (sectionKey === 'skills' ? String(row.description ?? 'Catalog entry') : 'Configuration is present; use Test/health operations for provider state.')}</small></div>{configurationSections.find((section) => section.key === sectionKey)?.writeSupport === 'supported' ? <div className="wk-list-actions"><Button type="button" onClick={() => openEditor(sectionKey, item)}>Edit</Button>{sectionKey === 'skills' ? null : <Button type="button" onClick={() => void removeConfiguration(sectionKey, String(row.id ?? ''))}>Remove</Button>}</div> : null}</li>;
+  }
+
+  function renderAgentGroups() {
+    const groups = groupAgents(records.agents, currentUserId);
+    const groupLabels: Record<AgentGroupKey, string> = { builtin: 'Built-in', mine: 'Created by me', shared: 'Shared with me' };
+    return <div className="wk-agent-groups"><label className="wk-agent-search">Search agents<input value={agentQuery} onChange={(event) => setAgentQuery(event.target.value)} placeholder="Filter by name or description" /></label>{(['builtin', 'mine', 'shared'] as AgentGroupKey[]).map((groupKey) => {
+      const group = filterAgentsByQuery(groups[groupKey], agentQuery);
+      if (group.length === 0) return null;
+      const isCollapsed = collapsedGroups[groupKey];
+      return <section key={groupKey} className="wk-agent-section"><button type="button" className="wk-agent-section-header" onClick={() => setCollapsedGroups((current) => ({ ...current, [groupKey]: !current[groupKey] }))}><strong>{groupLabels[groupKey]}</strong><span className="wk-agent-section-count">{group.length}</span><span aria-hidden="true">{isCollapsed ? '▸' : '▾'}</span></button>{isCollapsed ? null : <ul className="wk-list">{group.map((item, index) => renderConfigurationRow('agents', item, index))}</ul>}</section>;
+    })}</div>;
+  }
+  const [agentQuery, setAgentQuery] = useState('');
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<AgentGroupKey, boolean>>({ builtin: false, mine: false, shared: false });
 
   async function load() {
     setLoading(true); setErrors({}); setAvailable(null);
@@ -50,6 +72,7 @@ export function ConfigurationPage({ client }: { client: WeKnoraClient }) {
   }
 
   useEffect(() => { void load(); }, [client, creator]);
+  useEffect(() => { void client.auth.me().then((me) => setCurrentUserId(String(me.user?.id ?? ''))).catch(() => setCurrentUserId('')); }, [client]);
 
   function openEditor(section: ConfigurationSectionKey, record?: ConfigurationRecord) {
     if (section !== 'skills') setEditor({ section, ...(record ? { record } : {}) });
@@ -82,7 +105,7 @@ export function ConfigurationPage({ client }: { client: WeKnoraClient }) {
     <div className="wk-configuration-grid">{configurationSections.map((section) => { const items = records[section.key]; return <Card key={section.key} className="wk-configuration-card">
       <div className="wk-configuration-card-heading"><div><h2>{section.title}</h2><p className="wk-muted">{section.description}</p></div><div className="wk-list-actions"><span className="wk-role-badge">{section.writeSupport}</span>{section.writeSupport === 'supported' ? <Button type="button" onClick={() => openEditor(section.key)}>Add</Button> : null}</div></div>
       {section.key === 'skills' && !errors.skills && available === false ? <Status tone="warning">Sandbox-installed skills are unavailable for the current sandbox selection. The skill catalog remains available.</Status> : null}
-      {errors[section.key] ? <Status tone="error">{errors[section.key]}</Status> : loading ? <Status>Loading…</Status> : items.length === 0 ? <Status>No configured entries.</Status> : <ul className="wk-list">{items.map((item, index) => { const row = item as Record<string, unknown>; const status = configurationStatus(row); const disabled = section.key === 'agents' && row.disabled_by_server === true; return <li key={String(row.id ?? row.name ?? index)}><div className="wk-list-item-copy"><strong>{String(row.name ?? row.id ?? 'Unnamed')}</strong><span>{status}{disabled ? ' · disabled by server' : ''}</span><small>{values(row) || (section.key === 'skills' ? String(row.description ?? 'Catalog entry') : 'Configuration is present; use Test/health operations for provider state.')}</small></div>{section.writeSupport === 'supported' ? <div className="wk-list-actions"><Button type="button" onClick={() => openEditor(section.key, item)}>Edit</Button>{section.key === 'skills' ? null : <Button type="button" onClick={() => void removeConfiguration(section.key, String(row.id ?? ''))}>Remove</Button>}</div> : null}</li>; })}</ul>}
+      {errors[section.key] ? <Status tone="error">{errors[section.key]}</Status> : loading ? <Status>Loading…</Status> : section.key === 'agents' && items.length > 0 ? renderAgentGroups() : items.length === 0 ? <Status>No configured entries.</Status> : <ul className="wk-list">{items.map((item, index) => renderConfigurationRow(section.key, item, index))}</ul>}
     </Card>; })}</div>
   </main>;
 }

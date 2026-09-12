@@ -76,3 +76,9 @@ test('extracts tokens from query or hash without treating arbitrary URL text as 
   assert.equal(extractEmbedToken('https://host.test/embed/c-1#token=hash-token'), 'hash-token');
   assert.equal(extractEmbedToken('https://host.test/embed/c-1?next=token=not-a-token'), '');
 });
+
+test('treats an empty (null) channel/im list as an empty list, not a parse error', async () => {
+  const api = createEmbedApi(async () => ({ success: true, data: null }));
+  assert.deepEqual(await api.channels.listAll(), []);
+  assert.deepEqual(await api.im.listAll(), []);
+});

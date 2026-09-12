@@ -3,7 +3,9 @@ import { extractEmbedToken, type EmbedPayload, type EmbedPublicConfig, type Embe
 import { createEmbedClient, type EmbedClient } from '@weknora/api-client/embed';
 import { createJsonTransport, type FetchLike } from '@weknora/api-client/transport';
 import type { ChatStreamEvent } from '@weknora/contracts';
-import { createEmbedBridgeGuard, EMBED_MESSAGE_SOURCE } from '@weknora/views';
+import { createEmbedBridgeGuard, EMBED_MESSAGE_SOURCE, renderChatMarkdown } from '@weknora/views';
+
+import { attachmentUploadsFromFiles, imageDataUrisFromFiles, resolveEmbedLocale, sourceListFromReferences, translate } from './embed-ui.ts';
 import { channelIdFromPath, parentOriginFromReferrer, readStoredSession, readVisitorId, writeStoredSession } from './bootstrap.ts';
 
 interface EmbedRuntime {
@@ -74,6 +76,8 @@ export function EmbedApp() {
   const [error, setError] = useState('');
   const [locale, setLocale] = useState(() => new URLSearchParams(window.location.search).get('locale') || 'en-US');
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [pickedImages, setPickedImages] = useState<File[]>([]);
+  const [pickedAttachments, setPickedAttachments] = useState<File[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const activeAssistantRef = useRef('');
   const hostContextRef = useRef<Record<string, unknown>>({});
@@ -166,7 +170,7 @@ export function EmbedApp() {
   async function sendMessage(event?: FormEvent) {
     event?.preventDefault();
     const query = input.trim();
-    if (!runtime || !query || status === 'sending') return;
+    if (!runtime || (!query && pickedImages.length === 0 && pickedAttachments.length === 0) || status === 'sending') return;
     const controller = new AbortController();
     abortRef.current = controller;
     const localAssistantId = `assistant-${Date.now()}`;
@@ -176,6 +180,11 @@ export function EmbedApp() {
     setMessages((current) => [...current, userMessage, assistantMessage]);
     setInput('');
     setStatus('sending');
+    // Files become data-URI payloads (Vue useEmbedChatSession.ts behavior);
+    // the server strips them when the channel disables uploads.
+    const imageUris = await imageDataUrisFromFiles(pickedImages).catch(() => []);
+    const attachmentUploads = await attachmentUploadsFromFiles(pickedAttachments).catch(() => []);
+    setPickedImages([]); setPickedAttachments([]);
     postToHost({ type: 'message_sent', channel_id: channelId, session_id: runtime.session.id, query }, true);
     try {
       await client.embed.public.chat({
@@ -193,6 +202,8 @@ export function EmbedApp() {
           agent_id: runtime.config.agent_id,
           web_search_enabled: false,
           mentioned_items: [],
+          ...(imageUris.length > 0 ? { images: imageUris } : {}),
+          ...(attachmentUploads.length > 0 ? { attachment_uploads: attachmentUploads } : {}),
           query: hostContextRef.current.query_prefix ? `${textOf(hostContextRef.current.query_prefix)}${query}` : query,
         },
       }, (event) => {
@@ -240,6 +251,11 @@ export function EmbedApp() {
   }
 
   const primaryColor = typeof runtime?.config.primary_color === 'string' ? runtime.config.primary_color : '#2864dc';
+  // Channel default_locale wins over the URL locale (Vue EmbedPage.vue).
+  const effectiveLocale = resolveEmbedLocale(runtime?.config, locale);
+  const t = (key: string, fallback: string) => translate(effectiveLocale, key, fallback);
+  const allowImageUpload = runtime?.config.agent_image_upload_enabled === true;
+  const allowFileUpload = runtime?.config.allow_file_upload === true || allowImageUpload;
   const title = runtime ? titleFor(runtime.config) : 'WeKnora';
 
   return (
@@ -247,7 +263,7 @@ export function EmbedApp() {
       <header className="embed-header">
         <div className="embed-mark" aria-hidden="true">✦</div>
         <div className="embed-heading"><strong>{title}</strong><span>{runtime ? textOf(runtime.config.agent_name) || 'AI assistant' : 'AI assistant'}</span></div>
-        <button className="embed-icon-button" type="button" onClick={() => void startNewSession()} disabled={!runtime || status === 'sending' || messages.length === 0} aria-label="New conversation">＋</button>
+        <button className="embed-icon-button" type="button" onClick={() => void startNewSession()} disabled={!runtime || status === 'sending' || messages.length === 0} aria-label={t('embed.newChat', 'New conversation')}>＋</button>
       </header>
       <section className="embed-content" aria-live="polite">
         {status === 'loading' ? <p className="embed-state">Loading…</p> : null}
@@ -256,13 +272,17 @@ export function EmbedApp() {
         {status !== 'error' && messages.length === 0 && suggested.length > 0 ? <div className="embed-suggestions">{suggested.map((item, index) => <button type="button" key={`${textOf(item.question)}-${index}`} onClick={() => { setInput(textOf(item.question)); }}>{textOf(item.question)}</button>)}</div> : null}
         <div className="embed-messages">
           {messages.map((message, index) => <article className={`embed-message embed-message-${message.role === 'user' ? 'user' : 'assistant'}`} key={textOf(message.id) || `${message.role}-${index}`}>
-            <div className="embed-bubble">{textOf(message.content) || (message.error ? `Error: ${textOf(message.error)}` : '')}</div>
+            <div className="embed-bubble embed-bubble-assistant">
+            {message.role === 'user' ? textOf(message.content) : message.error && !textOf(message.content) ? <span>{'Error: ' + textOf(message.error)}</span> : null}
+            {message.role !== 'user' && textOf(message.content) ? <div className="embed-markdown" dangerouslySetInnerHTML={{ __html: renderChatMarkdown(textOf(message.content)) }} /> : null}
+            {message.role !== 'user' && sourceListFromReferences(message.references).length > 0 ? <ul className="embed-sources"><li className="embed-sources-title">{t('embed.referencesTitle', 'Sources')}</li>{sourceListFromReferences(message.references).map((source, sourceIndex) => <li key={source.knowledgeId + '-' + source.chunkId + '-' + sourceIndex} className="embed-source">{source.title}</li>)}</ul> : null}
+          </div>
           </article>)}
         </div>
       </section>
       <form className="embed-composer" onSubmit={(event) => void sendMessage(event)}>
-        <textarea value={input} onChange={(event) => setInput(event.target.value)} placeholder="Ask a question…" rows={1} disabled={!runtime || status === 'loading' || status === 'error'} />
-        {status === 'sending' ? <button type="button" className="embed-send" onClick={() => void stopMessage()}>Stop</button> : <button type="submit" className="embed-send" disabled={!runtime || !input.trim()}>Send</button>}
+        <textarea value={input} onChange={(event) => setInput(event.target.value)} placeholder={t('embed.inputPlaceholder', 'Ask a question…')} rows={1} disabled={!runtime || status === 'loading' || status === 'error'} />{allowFileUpload ? <label className="embed-upload">{'Attach'}<input type="file" multiple hidden onChange={(event) => setPickedAttachments(Array.from(event.target.files ?? []))} /></label> : null}{allowImageUpload ? <label className="embed-upload">{"Image"}<input type="file" accept="image/*" multiple hidden onChange={(event) => setPickedImages(Array.from(event.target.files ?? []))} /></label> : null}
+        {status === 'sending' ? <button type="button" className="embed-send" onClick={() => void stopMessage()}>{t('embed.stop', 'Stop')}</button> : <button type="submit" className="embed-send" disabled={!runtime || (!input.trim() && pickedImages.length === 0 && pickedAttachments.length === 0)}>{t('embed.send', 'Send')}</button>}
       </form>
     </main>
   );

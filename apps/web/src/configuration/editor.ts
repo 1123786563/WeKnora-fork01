@@ -18,20 +18,31 @@ function text(value: unknown): string { return typeof value === 'string' ? value
 export function configurationDraftFromRecord(section: Exclude<ConfigurationSectionKey, 'skills'>, value: ConfigurationRecord): ConfigurationDraft {
   const row = value as Record<string, unknown>;
   const details = section === 'models' ? row.parameters : section === 'agents' ? row.config : row.auth_config;
+  const safeDetails = safeObject(details ?? {});
+  // Agents lift the typed prompt/memory fields out of the raw config JSON so
+  // the editor never has to expose them as hand-edited JSON.
+  const agentTyped = section === 'agents' ? {
+    systemPrompt: text(safeDetails.system_prompt),
+    memoryEnabled: safeDetails.memory_enabled === true,
+  } : {};
+  const remainingDetails = section === 'agents' ? safeObject(Object.fromEntries(Object.entries(safeDetails).filter(([key]) => key !== 'system_prompt' && key !== 'memory_enabled'))) : safeDetails;
   return {
     id: text(row.id), name: text(row.name), description: text(row.description), avatar: text(row.avatar), type: text(row.type), source: text(row.source),
-    details: JSON.stringify(safeObject(details ?? {})), apiKey: '', appSecret: '', token: '',
+    details: JSON.stringify(remainingDetails), apiKey: '', appSecret: '', token: '',
     ...(section === 'mcp' ? { transportType: text(row.transport_type) || 'sse' } : {}),
     enabled: row.enabled !== false, url: text(row.url),
     credentialStatus: safeObject(row.credentials),
+    ...agentTyped,
   };
 }
 
 export function newConfigurationDraft(section: EditableConfigurationSection): ConfigurationDraft {
+  const agentTyped = section === 'agents' ? { systemPrompt: '', memoryEnabled: false } : {};
   return {
     name: '', description: '', type: section === 'models' ? 'KnowledgeQA' : '', source: section === 'models' ? 'custom' : '', details: '{}',
     apiKey: '', appSecret: '', token: '', ...(section === 'mcp' ? { transportType: 'sse' } : {}),
     enabled: true, url: '', credentialStatus: {},
+    ...agentTyped,
   };
 }
 

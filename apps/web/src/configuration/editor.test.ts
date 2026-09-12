@@ -21,7 +21,7 @@ test('preserves an existing agent avatar through draft hydration and payload con
   });
   assert.equal(draft.avatar, 'https://cdn.test/avatar.png');
   assert.deepEqual(configurationPayload('agents', draft), {
-    name: 'Research', description: '', avatar: 'https://cdn.test/avatar.png', config: {},
+    name: 'Research', description: '', avatar: 'https://cdn.test/avatar.png', config: { system_prompt: '', memory_enabled: false },
   });
 });
 
@@ -62,4 +62,32 @@ test('marks a cleared credential as unconfigured for the local editor state', ()
   assert.deepEqual(credentialStatusAfterClear({ api_key: { configured: true } }, 'api_key'), {
     api_key: { configured: false },
   });
+});
+
+test('agent drafts expose typed system prompt and memory fields instead of raw JSON', () => {
+  const draft = configurationDraftFromRecord('agents', {
+    id: 'agent-1', name: 'Helper', config: { system_prompt: 'You help.', memory_enabled: true, agent_mode: 'quick-answer' },
+  });
+  assert.equal(draft.systemPrompt, 'You help.');
+  assert.equal(draft.memoryEnabled, true);
+  const parsed: Record<string, unknown> = JSON.parse(draft.details);
+  assert.deepEqual(parsed, { agent_mode: 'quick-answer' }, 'typed fields are lifted out of the safe JSON');
+  assert.equal(newConfigurationDraft('agents').systemPrompt, '');
+  assert.equal(newConfigurationDraft('agents').memoryEnabled, false);
+  assert.equal(newConfigurationDraft('models').systemPrompt, undefined, 'only agents use typed prompt fields');
+});
+
+test('agent payloads merge typed fields back into config', () => {
+  const payload = configurationPayload('agents', {
+    name: 'Helper',
+    systemPrompt: 'Be terse.',
+    memoryEnabled: true,
+    details: '{"agent_mode":"smart-reasoning"}',
+  } as never);
+  assert.deepEqual(payload.config, { agent_mode: 'smart-reasoning', system_prompt: 'Be terse.', memory_enabled: true });
+});
+
+test('agent payloads default missing typed fields', () => {
+  const payload = configurationPayload('agents', { name: 'Bare', details: '{}' } as never);
+  assert.deepEqual(payload.config, { system_prompt: '', memory_enabled: false });
 });

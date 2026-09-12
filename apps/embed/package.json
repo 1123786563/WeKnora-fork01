@@ -11,6 +11,7 @@
   "dependencies": {
     "@weknora/api-client": "workspace:*",
     "@weknora/contracts": "workspace:*",
+    "@weknora/i18n": "workspace:*",
     "@weknora/views": "workspace:*",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"

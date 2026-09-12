@@ -23,6 +23,9 @@ export interface ConfigurationDraft {
   enabled?: boolean;
   url?: string;
   credentialStatus?: Record<string, unknown>;
+  /** Typed agent fields (lifted out of the raw config JSON). */
+  systemPrompt?: string;
+  memoryEnabled?: boolean;
 }
 
 export function parseConfigurationObject(value: string, label: string): Record<string, unknown> {
@@ -53,7 +56,10 @@ export function configurationPayload(section: ConfigurationSectionKey, draft: Co
   if (section === 'models') {
     return { name: draft.name.trim(), display_name: draft.name.trim(), description: draft.description ?? '', type: draft.type ?? '', source: draft.source ?? '', parameters: details };
   }
-  if (section === 'agents') return { name: draft.name.trim(), description: draft.description ?? '', avatar: draft.avatar ?? '', config: details };
+  if (section === 'agents') {
+    const config: Record<string, unknown> = { ...details, system_prompt: draft.systemPrompt ?? '', memory_enabled: draft.memoryEnabled === true };
+    return { name: draft.name.trim(), description: draft.description ?? '', avatar: draft.avatar ?? '', config };
+  }
   if (section === 'mcp') {
     const transportType = draft.transportType ?? 'sse';
     if (transportType !== 'sse' && transportType !== 'http-streamable' && transportType !== 'stdio') throw new Error('MCP transport type is invalid');

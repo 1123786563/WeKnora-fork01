@@ -34,8 +34,15 @@ function successRecord(value: unknown, path: string): EmbedPayload {
   return record(successData(value, path), `${path}.data`);
 }
 
+// List endpoints may legitimately return a null data payload for an empty
+// collection; surface that as an empty list instead of a parse error.
 function successArray(value: unknown, path: string): EmbedPayload[] {
   return array(successData(value, path), `${path}.data`) as EmbedPayload[];
+}
+
+function successList(value: unknown, path: string): EmbedPayload[] {
+  const data = successData(value, path);
+  return Array.isArray(data) ? (data as EmbedPayload[]) : [];
 }
 
 function rawData(value: unknown, path: string): unknown {
@@ -130,7 +137,7 @@ export function createEmbedApi(request: EmbedRequest, stream?: EmbedStream) {
       return successArray(await request(withSignal({ method: 'GET', path: `/api/v1/agents/${encoded(agentId, 'agentId')}/embed-channels` }, signal)), '/embed-channels') as EmbedChannel[];
     },
     async listAll(signal?: AbortSignal): Promise<EmbedChannel[]> {
-      return successArray(await request(withSignal({ method: 'GET', path: channelsPath }, signal)), channelsPath) as EmbedChannel[];
+      return successList(await request(withSignal({ method: 'GET', path: channelsPath }, signal)), channelsPath) as EmbedChannel[];
     },
     async create(agentId: string, input: EmbedPayload, signal?: AbortSignal): Promise<EmbedChannel> {
       return successRecord(await request(withSignal({ method: 'POST', path: `/api/v1/agents/${encoded(agentId, 'agentId')}/embed-channels`, body: input }, signal)), '/embed-channels') as EmbedChannel;
@@ -161,7 +168,8 @@ export function createEmbedApi(request: EmbedRequest, stream?: EmbedStream) {
       return rawArray(await request(withSignal({ method: 'GET', path: `/api/v1/agents/${encoded(agentId, 'agentId')}/im-channels` }, signal)), '/im-channels') as IMChannel[];
     },
     async listAll(signal?: AbortSignal): Promise<IMChannel[]> {
-      return rawArray(await request(withSignal({ method: 'GET', path: imPath }, signal)), imPath) as IMChannel[];
+      const envelope = record(await request(withSignal({ method: 'GET', path: imPath }, signal)), imPath);
+      return Array.isArray(envelope.data) ? (envelope.data as IMChannel[]) : [];
     },
     async create(agentId: string, input: EmbedPayload, signal?: AbortSignal): Promise<IMChannel> {
       return rawRecord(await request(withSignal({ method: 'POST', path: `/api/v1/agents/${encoded(agentId, 'agentId')}/im-channels`, body: input }, signal)), '/im-channels') as IMChannel;
