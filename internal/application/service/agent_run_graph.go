@@ -308,6 +308,16 @@ func (s *sessionService) ExecuteDurableRun(ctx context.Context, fence agentrunti
 	if run.Owner != fence.Owner || run.Epoch != fence.Epoch {
 		return fmt.Errorf("%w: durable run fence superseded", agentruntime.ErrLeaseLost)
 	}
+	// The worker's context carries no request identity: the run row is the
+	// authoritative tenant/owner scope for everything the graph touches
+	// (model resolution, tools, storage), so inject it here. Without this
+	// the first MustTenantIDFromContext in the model path panics.
+	ctx = context.WithValue(ctx, types.TenantIDContextKey, fence.TenantID)
+	if run.Owner != "" {
+		ctx = types.WithPrincipal(ctx, types.Principal{
+			Type: types.PrincipalWebUser, ID: run.Owner,
+		})
+	}
 	snapshot, err := ParseDurableRunSnapshot(run.Snapshot)
 	if err != nil {
 		return fmt.Errorf("durable run %s: %w", fence.RunID, err)
