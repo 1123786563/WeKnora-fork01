@@ -208,7 +208,7 @@ class OperationStore:
                 """
                 WITH candidate AS (
                     SELECT operation_id FROM semantic.operations
-                    WHERE state IN ('accepted', 'running')
+                    WHERE state IN ('accepted', 'running', 'staged', 'publishing')
                       AND (lease_until IS NULL OR lease_until <= now())
                     ORDER BY created_at
                     FOR UPDATE SKIP LOCKED
@@ -393,7 +393,7 @@ class OperationStore:
             rows = connection.execute(
                 """
                 SELECT operation_id FROM semantic.operations
-                WHERE state IN ('accepted', 'running')
+                WHERE state IN ('accepted', 'running', 'staged', 'publishing')
                   AND (lease_until IS NULL OR lease_until <= now())
                 ORDER BY created_at
                 LIMIT %s
