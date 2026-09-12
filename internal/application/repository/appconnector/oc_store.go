@@ -2,6 +2,7 @@ package appconnector
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -300,5 +301,128 @@ func (s *OCStore) GetBinding(ctx context.Context, tenant uint64, connection stri
 		TenantID: row.TenantID, ConnectionID: row.ConnectionID, RuntimeID: row.RuntimeID,
 		Provider: row.Provider, ExternalID: row.ExternalID, Alias: row.Alias,
 		AuthVersion: row.AuthVersion, BindingVersion: row.BindingVersion, State: row.State,
+	}, nil
+}
+
+// ---------------------------------------------------------------------------
+// reviewed action definitions (T06 catalog)
+//
+// DOMAIN↔ROW MAPPING (coordinator ruling 3): appconnector.OCDefinition ↔
+// OCDefinitionRow — RequiredScopes []string ↔ required_scopes JSON array,
+// InputSchema json.RawMessage ↔ input_schema TEXT, everything else 1:1
+// against the frozen connector_action_definitions PK(app_id, app_version,
+// action_id). Risk values are stored EXACTLY as reviewed: the row layer
+// never widens, narrows or invents vocabulary — the closed
+// read/write/send/delete set is enforced by the reviewing service before
+// publication (ValidateOCDefinition).
+// ---------------------------------------------------------------------------
+
+var (
+	// ErrOCDefinitionInvalid covers malformed definitions rejected before
+	// any database access: blank identity fields — including the degenerate
+	// empty action set (a definition with no action id).
+	ErrOCDefinitionInvalid = errors.New("oc_definition_invalid")
+	// ErrOCDefinitionConflict covers immutability violations: re-publishing
+	// an existing (app_id, app_version, action_id) with any reviewed-content
+	// change (schema, digest, scopes, risk, provider).
+	ErrOCDefinitionConflict = errors.New("oc_definition_conflict")
+)
+
+// ocScopesToRow marshals the required-scope list into its stored JSON
+// array form; nil and empty both store "[]" so a missing column value can
+// never masquerade as a different scope set.
+func ocScopesToRow(scopes []string) (string, error) {
+	if len(scopes) == 0 {
+		return "[]", nil
+	}
+	raw, err := json.Marshal(scopes)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}
+
+// ocScopesFromRow is the inverse mapping. Rows are only ever written by
+// ocScopesToRow; a value that fails to parse maps to nil (no scopes),
+// never to a widened set.
+func ocScopesFromRow(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	var scopes []string
+	if err := json.Unmarshal([]byte(raw), &scopes); err != nil {
+		return nil
+	}
+	return scopes
+}
+
+// SaveDefinition persists one reviewed action definition under the
+// immutability contract (ruling 5): the (app_id, app_version, action_id)
+// row is created once and NEVER overwritten. A re-publish of the same
+// triple is idempotent only when every reviewed field is byte-identical;
+// any change to schema, digest, scopes, risk or provider is a conflict —
+// scope/schema/risk changes require a NEW app_version. The published flag
+// is the one workflow field the platform may still flip on a frozen row
+// (staging a review and later publishing it, or taking a compromised
+// action down).
+func (s *OCStore) SaveDefinition(ctx context.Context, d appconnector.OCDefinition) error {
+	if d.AppID == "" || d.AppVersion == "" || d.ActionID == "" || d.Provider == "" {
+		return ErrOCDefinitionInvalid
+	}
+	scopes, err := ocScopesToRow(d.RequiredScopes)
+	if err != nil {
+		return err
+	}
+	row := OCDefinitionRow{
+		AppID: d.AppID, AppVersion: d.AppVersion, ActionID: d.ActionID,
+		Provider: d.Provider, SchemaDigest: d.SchemaDigest, InputSchema: string(d.InputSchema),
+		RequiredScopes: scopes, Risk: d.Risk, Published: d.Published,
+	}
+	var cur OCDefinitionRow
+	err = s.db.WithContext(ctx).Where("app_id = ? AND app_version = ? AND action_id = ?", d.AppID, d.AppVersion, d.ActionID).First(&cur).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return s.db.WithContext(ctx).Create(&row).Error
+	}
+	if err != nil {
+		return err
+	}
+	if cur.Provider == row.Provider && cur.SchemaDigest == row.SchemaDigest &&
+		cur.InputSchema == row.InputSchema && cur.RequiredScopes == row.RequiredScopes &&
+		cur.Risk == row.Risk {
+		if cur.Published == row.Published {
+			return nil // byte-identical re-publish stays idempotent
+		}
+		res := s.db.WithContext(ctx).Model(&OCDefinitionRow{}).
+			Where("app_id = ? AND app_version = ? AND action_id = ?", d.AppID, d.AppVersion, d.ActionID).
+			Update("published", row.Published)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return ErrOCDefinitionConflict
+		}
+		return nil
+	}
+	return ErrOCDefinitionConflict
+}
+
+// GetDefinition loads one definition by its exact frozen identity. The
+// caller (the catalog service) owns the published/no_auth/tenant gates;
+// this read carries no tenant dimension because (app, version, action)
+// has none — tenant scope is enforced by the resolution chain that
+// produces the key.
+func (s *OCStore) GetDefinition(ctx context.Context, app, version, action string) (appconnector.OCDefinition, error) {
+	if app == "" || version == "" || action == "" {
+		return appconnector.OCDefinition{}, ErrOCDefinitionInvalid
+	}
+	var row OCDefinitionRow
+	if err := s.db.WithContext(ctx).Where("app_id = ? AND app_version = ? AND action_id = ?", app, version, action).First(&row).Error; err != nil {
+		return appconnector.OCDefinition{}, err
+	}
+	return appconnector.OCDefinition{
+		AppID: row.AppID, AppVersion: row.AppVersion, ActionID: row.ActionID,
+		Provider: row.Provider, SchemaDigest: row.SchemaDigest,
+		InputSchema: json.RawMessage(row.InputSchema), RequiredScopes: ocScopesFromRow(row.RequiredScopes),
+		Risk: row.Risk, Published: row.Published,
 	}, nil
 }

@@ -216,3 +216,19 @@ func (s *InstallationStore) ConnectionUsable(ctx context.Context, c appconnector
 	}
 	return appconnector.CanUseConnection(c, c.TenantID, actor, spaceGrant), nil
 }
+
+// GetInstallationByID loads a tenant's installation by its row id (the
+// connection table stores installation ids, not app ids; T06 catalog
+// resolution needs the app/version pair behind a connection). Tenant
+// scope is part of the predicate: another tenant's installation id is
+// indistinguishable from a missing one.
+func (s *InstallationStore) GetInstallationByID(ctx context.Context, tenant uint64, installationID string) (appconnector.Installation, error) {
+	if tenant == 0 || installationID == "" {
+		return appconnector.Installation{}, ErrInstallationConflict
+	}
+	var row InstallationRow
+	if err := s.db.WithContext(ctx).Where("tenant_id = ? AND id = ?", tenant, installationID).First(&row).Error; err != nil {
+		return appconnector.Installation{}, err
+	}
+	return appconnector.Installation{ID: row.ID, AppID: row.AppID, Version: row.AppVersion, State: row.State, TenantID: row.TenantID}, nil
+}
