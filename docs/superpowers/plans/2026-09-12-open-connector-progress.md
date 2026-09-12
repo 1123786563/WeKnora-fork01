@@ -12,7 +12,7 @@
 | T02 只持受限 Token 的 HTTP 执行客户端 | passed | commit b37da57b（含 F-01 修复，初版 144ecb8b）；spec 审查 F-01 FAIL→修复→复审 PASS；质量审查 PASS（观察级 findings 记录在 SDD ledger）；go test -race 17/17、gofmt/vet 过；errorCode/meta.executionId/meta.auditPersisted 映射已钉死 |
 | T03 持久绑定、版本与租户作用域仓储 | passed | commit db971251（集成分支 fast-forward）；8 仓储测试行为级 RED→GREEN（含计划 TestOCBindingRejectsZeroTenant）；PG 000121 真实 up/down/up 独立容器实测（down 拒绝非空绑定、6 项约束负向全拒）；sqlite 000041 twin 由测试直接执行真实迁移 SQL；spec 审查 PASS + 质量审查 PASS（3 MINOR + 4 INFO 观察项记录在 SDD ledger；F-02 严格版本比对要求转入 T04） |
 | T04 授权与原始凭据解耦 | passed | commit b5f7b19b（集成分支 fast-forward）；A02Guard→Check(subject) 全量改造（含 DI :496 一行）；F-02 双重严格版本比对失效关闭；QR-F1/F2 调用方错误契约；Check 全路径零 LoadCredential；RED 15 项行为级失败→GREEN；-race 全绿；spec PASS + 质量 PASS（QF-1 handler 500 映射与 QF-6 nil dispatcher 为基线遗留，转 T13/T09/T10；残余 TOCTOU 归 T10 fence） |
-| T05 隔离管理凭据的控制 worker | pending | |
+| T05 隔离管理凭据的控制 worker | passed | commit 98bcd5a2（cherry-pick 到集成分支）；三段行为级 RED→GREEN（29 PASS+3 PG-skip，-race 过）；真实 PG 双 claim/排空/过期接管 -count=3 全过（实现者与质量审查者各自独立容器复跑）；next_at 兼任租约（冻结 schema 适配）；admin 客户端 allowlist 精确匹配+禁 redirect+错误无 secret；spec PASS + 质量 PASS（Q-01/Q-02 MINOR 与 F-03 加密归属转 T16/T08） |
 | T06 审核目录与版本固定 | pending | |
 | T07 可关联的 OAuth 与 API key 授权 | pending | 消费 T01 oauth_correlation（state/connectionRequestId 关联） |
 | T08 撤销、权限变化和远端清理 | pending | |
