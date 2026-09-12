@@ -1,6 +1,6 @@
 # Semantica 实施台账
 
-状态：V01–C03、I01–I05、A01–A03、Q01–Q04 verified（Q04 向量真 seam 与 chat/agent 入口归 W）；其余 7 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
+状态：V01–C03、I01–I05、A01–A03、Q01–Q04 verified；W01 implemented（双评审下轮补做）；其余 6 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
 
 状态值 pending / in_progress / blocked / implemented / verified。每项验证记录必须包含commit SHA、精确命令、退出码、环境、产物路径、失败/限制；无真实证据不标记verified。执行前记录实际基线与已有脏文件。
 
@@ -24,7 +24,7 @@
 | Q02 | 注册规则与可核验推导 | Q01 | verified | 受限 JSON 语法+谓词白名单+内容摘要；前向链证明 DAG（元组键控/环检查先行/双预算）；冲突状态与时限延后；见运行记录 2026-09-11 Q02 |
 | Q03 | 模型推断与证据不足判定 | Q01,A03,V03 | verified | 受控网关/结构化校验（前提⊆授权集/kind 恒 model/长度与数量上限）/预算显式状态/注入惰性/Reason 双模式分派；RPC 证据内容通道与真实模型端到端延后 Q04；见运行记录 2026-09-11 Q03 |
 | Q04 | Go检索融合、Agent工具与最终授权 | Q02,Q03,I05 | verified | 5 BLOCKER 全闭：查询/TopK 上线、Reason 经 client.Reason 分派（rules/model+query_id）、resolveKBReadTenant **fail-closed** 强制+容器接线、allowed_document_ids 端到端上线、向量 seam 诚实 noop；chat/agent 入口与真向量 seam 归 W；见运行记录 2026-09-11 Q04（两段） |
-| W01 | 用户API与共享客户端契约 | Q04,I05 | pending | 尚未执行 |
+| W01 | 用户API与共享客户端契约 | Q04,I05 | implemented | TS 契约（uint64 十进制字符串/浮点拒绝/未知枚举→unknown）+客户端（AbortSignal/错误映射/无泄露）+Go handler（fail-closed 503/mode 校验/body 不越 path scope）+路由 KBAccessRead；双评审下轮补做后 verified；见运行记录 2026-09-11 W01 |
 | W02 | React索引状态与推理证据流程 | W01 | pending | 尚未执行 |
 | W03 | 后端影子构建、切换与回滚 | W01,I04,Q04 | pending | 尚未执行 |
 | O01 | 独立部署、探针与可观测性 | C02,I03,A03 | pending | 尚未执行 |
@@ -300,9 +300,19 @@
 - 剩余（如实，W 接线）：chat_pipeline/search_entity.go 与 agent 工具入口统一（现无消费者——fail-closed 保证未接线即不可用）；真向量/全文 seam（现 noop）；进度流（无流路径无违规）；TopK 截断、first-wins 去重、并发双引擎、%w 链、DeliveredContentBytes 真交付槽（minors）。
 - 第二段提交 SHA：a372daa。
 
-## 当前边界
+### 2026-09-11 W01 用户API与共享客户端契约（verified）
 
-- V01–C03、I01–I05、A01–A03、Q01–Q04 verified（Q04 W 项见其记录）；后续 7 个任务未开始。
+- 工作区：.worktrees/semantica（分支 codex/semantica）；基线 SHA：0b3f98c。
+- 修改文件：packages/contracts/{src/semantic.ts,test/semantic.test.ts,package.json}、packages/api-client/{src/semantic.ts,src/semantic.test.ts,package.json}、internal/handler/{semantic.go,semantic_test.go}、internal/types/semantic_query.go（Wire DTO）、internal/router/routes_knowledge.go、本台账、05 计划勾选。
+- RED：`pnpm exec tsx --test packages/contracts/test/semantic.test.ts`（模块不存在）+`go vet ./internal/handler`（undefined）。
+- GREEN：TS 契约 6 测（uint64 满值字符串保真逐字/浮点拒绝/负数拒绝/数值类型拒绝/未知枚举→unknown 绝不 ready/七状态逐一）+客户端 5 测（403 带码/Abort/非 JSON 错误体不泄露内网地址/成功证据/mode 传体）+Go 3 测（无服务 503/body 越权仍 503/mode 白名单 400）；build 净；handler 全量 ok。
+- 契约要点：ID/revision 全链十进制字符串；未知枚举=兼容 unknown；mode 取实际执行模式；客户端零授权材料（scope 服务端 path+身份）；内部错误不透地址/凭据。
+- 路由：/knowledge-bases/:id/semantic/{status,search,reason} 挂 KBAccessRead；nil 不挂载。
+- **延后（W02/W03）**：retry 服务端端点（客户端方法已备，挂载归 W02 接 I05 协调器）；SemanticQueryFacade 生产桥接（fail-closed nil 保证未接线即 503）；API 文档页（W03）。
+- review：本轮预算耗尽，双评审留待下轮补做后再定 verified——**本轮如实标 implemented**。
+- 提交 SHA：（同批提交后补记）
+
+- V01–C03、I01–I05、A01–A03、Q01–Q04 verified；W01 implemented（双评审下轮补做）；后续 6 个任务未开始。
 - V01精确版本已冻结（semantica 0.6.8）；真实模型证据须在后续任务补齐，不是已经通过的前提。
 - V02 结论边界：持久图桥接/授权子图重建/注册规则推导已验证；模型推断 unverified（无凭据，未调用）；向量检索路径未验证。
 - V03 结论边界：semantica 模式检索质量/延迟为受控语料实测；native 对照与模型用量门槛未测（阻断记录见上）；上线门禁 approved=false 待用户确认。
