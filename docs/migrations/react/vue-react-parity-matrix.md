@@ -92,16 +92,18 @@ live 基线截图：live-{agents,organizations,integrations-embed,integrations-a
 
 成熟度：documents list=partial · document detail/preview=partial · processing timeline=missing · wiki=stub · FAQ=partial · graph=stub · knowledge-settings=partial。
 
-必修 10 项（实施中）：
+必修 10 项（eb47a9c 已实施 #1 #2 #3 #4 #7 #9 #10；实施中 #5 #6 #8）：
 1. FAQ/Wiki 50 条硬上限无分页（静默丢数据）。
 2. reparse/cancel 未接入 UI（客户端已有，routes_knowledge.go:110）+ processing timeline 缺失。
 3. Documents 页调试文案泄漏（已修复 c5599c6）。
 4. 设置按钮绕过模型就绪门控（已修复 16b4437，openKbSettings 统一）。
 5. 六个详情面零权限门控。
-6. FAQ 型 KB 误渲染文档页（main.tsx 路由不分类型）。
+6. FAQ 型 KB 误渲染文档页（main.tsx 路由不分类型）。——已实施：页面内自检 KB 类型并 replace 到 FAQ 路由；wiki/graph tab 按 indexing_strategy 门控。
 7. 详情面 i18n 零覆盖（knowledgeBase/knowledgeEditor/wikiBrowser/FAQ 键未移植——实施中）。
 8. 上传流程：无拖拽/多文件/上传确认弹窗。
 9. 批量删除无确认、move/tags 用 prompt()。
 10. 搜索无防抖 + loading 哨兵（已修复 16b4437）。
+
+实施后仍开放：卡片视图、tag 管理抽屉、FAQTagTooltip、wiki 目录树/索引徽标/文件夹操作、graph 交互画布/深度联动/远程搜索、详情面 fullscreen/焦点管理、docx/pptx 渲染、拖拽/多文件/上传确认弹窗（实施中）。
 
 live 证据：live-kb-documents.png、live-kb-detail.png（未初始化路由）、routing 不一致与 debug 泄漏均已在实施前修复。
