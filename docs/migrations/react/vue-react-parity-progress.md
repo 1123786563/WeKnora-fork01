@@ -425,3 +425,10 @@
 - **chat 流式全链路后端侧打通**：本地 mock LLM（OpenAI 兼容 SSE，:18090）+ config/builtin_models.yaml（KnowledgeQA mock-stream-model，SSRF_WHITELIST=192.168.3.30）→ curl 直连 knowledge-chat 端点验证 SSE token 流（Mock/LLM...）✅。
 - **发现真实前端缺陷**：creatChat 首次发送在会话创建后流请求未发出（静默挂起，无错误 UI）。已派发专项修复代理（复现脚本 chat-request-trace.cjs / chat-api-trace.cjs）。
 - 过程发现：后端 SSRF 防护正确拦截 127.0.0.1 与裸 IP base_url（安全特性验证 ✅）。
+
+## 2026-09-12 Round 104 专项：chat 流式全链路 UI 验证
+
+- **现有会话内发送：流式全链路 UI 验证通过**（chat-streaming-live-full.png）：用户消息 → 后端持久化 → mock LLM SSE → 助手回答 "Mock LLM 流式回答：知识库工作正常。" 完整渲染（头像/时间戳/Copy）。
+- 隔离确认：creatChat 首发挂起 bug 仅影响首次发送路径；已有会话发送正常。
+- 附带发现：失败消息的 Retry 状态渲染正常（截图中一条历史失败消息显示 controller is not defined + Retry——为修复代理 WIP 中的暂态或既有缺陷，待代理完成后复核）。
+- 多会话 WEB 来源 badge 列表渲染正常。
