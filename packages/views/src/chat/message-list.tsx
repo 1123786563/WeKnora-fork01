@@ -1,8 +1,9 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { ChatMessage, MessageSuggestionSet } from '@weknora/contracts';
 import { hasSessionChanged, scrollTopAfterPrepend, shouldStickToBottom } from '@weknora/domain/chat/session-state';
 import { isArtifactExpired, normalizeArtifactList, type ChatArtifact } from '@weknora/domain/chat/artifacts';
 import { renderChatMarkdown } from './markdown.ts';
+import { hydrateMermaidBlocks, type MermaidEngine } from './mermaid.ts';
 
 export interface PendingChatMessage {
   content: string;
@@ -68,6 +69,25 @@ export function MessageList({ messages, pending, onRetry, loadingOlder = false, 
     else if (stickToBottom.current) container.scrollTop = container.scrollHeight;
     previousLayout.current = { firstId, length: messages.length, height: container.scrollHeight, top: container.scrollTop };
   }, [messages.length, messages[0]?.id, messages.at(-1)?.content, pending?.content, pending?.status]);
+
+  useEffect(() => {
+    const root = containerRef.current;
+    if (!root || typeof window === 'undefined' || !root.querySelector('[data-markdown-diagram="mermaid"]')) return;
+    let disposed = false;
+    void Promise.all([import('mermaid'), import('dompurify')]).then(async ([mermaidModule, domPurifyModule]) => {
+      if (disposed) return;
+      const purifier = domPurifyModule.default(window);
+      await hydrateMermaidBlocks(
+        root,
+        mermaidModule.default as unknown as MermaidEngine,
+        (svg) => purifier.sanitize(svg, { USE_PROFILES: { svg: true, svgFilters: true } }),
+      );
+    }).catch(() => {
+      // The escaped Mermaid source remains visible when the optional renderer
+      // or sanitizer cannot load in a particular WebView/runtime.
+    });
+    return () => { disposed = true; };
+  }, [messages, pending?.content, pending?.status]);
 
   function onScroll() {
     const container = containerRef.current;
