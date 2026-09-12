@@ -1292,6 +1292,9 @@
   Web typechecks plus diff check passed. Evidence:
   `docs/migrations/react/evidence/vue-react-parity/2026-09-12-mcp-settings-base.md`
   and `docs/migrations/react/evidence/vue-react-parity/2026-09-12-model-settings.md`.
+- MCP test-result rendering now includes Vue-equivalent success/failure details,
+  expandable tool schemas, resource URI/MIME rows, and success empty state;
+  focused tests and the full Web suite pass (276/276).
 
 ### R031 Sandbox settings and review repairs (2026-09-12)
 

@@ -6,7 +6,7 @@ Date: 2026-09-12
 
 This slice covers the executable React replacement for `frontend/src/views/settings/McpSettings.vue`: service loading, viewer empty state, admin add entry, service cards, built-in restrictions, edit/delete actions, enable/disable submission locking, dedicated credential transport, metadata refresh/stale handling, tool policy updates, usage persistence, connection test feedback, and OAuth status/authorize/revoke controls.
 
-It does not claim parity for the Vue two-step `McpServiceDialog`, paginated tool/resource/test presentation, code import, advanced config/custom headers, six-locale copy, screenshot comparison, or real-backend/Wails/native acceptance. Metadata refresh/stale handling, usage generation, tool-policy writes, and OAuth status/authorize/revoke controls are now wired, but remain unverified outside focused tests.
+It does not claim parity for the Vue two-step `McpServiceDialog`, paginated tool/resource presentation, code import, advanced config/custom headers, six-locale copy, screenshot comparison, or real-backend/Wails/native acceptance. The test-result surface now preserves the Vue success/failure state, service description, expandable tool schemas, resource URI/MIME details, and empty state. Metadata refresh/stale handling, usage generation, tool-policy writes, and OAuth status/authorize/revoke controls are now wired, but remain unverified outside focused tests.
 
 ## Changes
 
@@ -26,7 +26,7 @@ It does not claim parity for the Vue two-step `McpServiceDialog`, paginated tool
 | RED | `pnpm exec tsx --test apps/web/src/settings/McpSettingsPanel.test.tsx` before implementation failed with `ERR_MODULE_NOT_FOUND` for the missing panel | regression proof |
 | Component/SSR | `pnpm exec tsx --test apps/web/src/settings/McpSettingsPanel.test.tsx` — 2 passed, 0 failed | focused component evidence |
 | Shared/API/component focused | `pnpm exec tsx --test packages/api-client/src/configuration.test.ts apps/web/src/settings/McpSettingsPanel.test.tsx apps/web/src/settings/model-settings.test.ts apps/web/src/settings/ModelSettingsPanel.test.tsx apps/web/src/documents/upload-pipeline.test.ts` — 32 passed, 0 failed | typed and component evidence |
-| Web test suite | `pnpm test:web` — 263 passed, 0 failed | Web unit/component regression evidence |
+| Web test suite | `pnpm test:web` — 276 passed, 0 failed | Web unit/component regression evidence |
 | Shared typecheck | `pnpm typecheck:shared` — 0 | shared static evidence |
 | Static | `git diff --check` — 0 | static evidence |
 | Web typecheck | `pnpm --filter @weknora/web exec tsc -p tsconfig.json --noEmit` — passed after preserving the parallel command-palette change and correcting its list response compatibility/type narrowing | Web static integration evidence |
