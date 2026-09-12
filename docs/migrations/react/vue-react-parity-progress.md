@@ -172,3 +172,7 @@
 
 - KB 详情面必修实施子代理派发（reparse/cancel+timeline、FAQ/Wiki 分页、权限门控、KB 类型路由、i18n 移植 knowledgeBase 等域）。
 - 上轮 org join live E2E 发现的 require_approval 后端忽略问题已登记后端待决项。
+
+## 2026-09-12 Round 26（续）
+
+- 多端门禁复验：desktop 测试 0 失败 + typecheck 干净；mobile 85/85 + typecheck 干净。共享层改动未破坏桌面/移动端。
