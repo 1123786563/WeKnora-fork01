@@ -147,6 +147,13 @@ export function createTenantAdminApi(request: IdentityRequest) {
       if ((typeof id !== 'string' || !id.trim()) && (typeof id !== 'number' || !Number.isSafeInteger(id) || id <= 0)) throw new Error('tenant.id is required');
       return data as Record<string, unknown> & { id: number | string };
     },
+    /** Port of Vue deleteTenant (DELETE /api/v1/tenants/:id). Owner+ per RBAC
+     *  (routes_auth_tenant.go:18). Irreversible — deletes the workspace and
+     *  all associated data. */
+    async deleteTenant(tenantId: number, signal?: AbortSignal): Promise<void> {
+      if (typeof tenantId !== 'number' || !Number.isSafeInteger(tenantId) || tenantId <= 0) throw new Error('tenantId must be a positive safe integer');
+      await request(withSignal({ method: 'DELETE', path: `/api/v1/tenants/${tenantId}` }, signal));
+    },
   };
 }
 
