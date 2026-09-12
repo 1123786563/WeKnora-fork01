@@ -439,6 +439,12 @@
 - live 复核：creatChat 首发流式渲染成功（Mock LLM 流式回答），composer 正常清空，无挂起。
 - 门禁：shared 326/326、web 207/207、typecheck×2、build:web 全绿。
 
+## 2026-09-12 Round 106 Task 2 independent verification
+
+- 独立复核确认根因链：pre-fix `send()` 先创建并注册 controller，随后 `selectSession()` teardown abort 当前 `streamAbortRef`；fetch 收到已 abort signal 后不发出 SSE 请求，`send()` 将 AbortError 当作有意取消静默返回。
+- 新增 `apps/web/src/chat/chat-route-page-send.test.ts` 覆盖 ChatRoutePage 首发接线：`POST /sessions` + `selectSession` 完成后才打开 non-aborted `knowledge-chat` stream；该测试在临时切回 b217a4d 的 `ChatRoutePage.tsx` 时红灯（stream-suppressed，无 history refresh），当前绿灯。
+- Runtime 复核：React Web :5181 与重建后的 Wails runtime 均验证 `create session -> knowledge-chat stream` 请求顺序、空 composer、无 Sending/failed pending、助手流式回答渲染；截图/trace 写入 `.superpowers/sdd/plan/task-2-*`。
+
 ## 2026-09-12 Task 1 canonical executable backlog
 
 Baseline source for this backlog: current branch `codex/react-multiclient`, task base `9b79558b6229d79d0ceebe22e1de4a439982c615`, route/alias rows `R001`-`R056` and nested surface rows `N001`-`N033` in `vue-react-parity-matrix.md`. The SDD ledger and task brief under `.superpowers/sdd` remain ignored scratch. Do not bulk-mark rows accepted; each slice must close its own state profile and evidence.
@@ -651,4 +657,3 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - **Evidence required:** screenshot matrix and state checklist showing normal/loading/empty/error/no-permission/disabled/editing/submitting/success/failure for each row.
 - **Review gate:** a row can move to `accepted` only when all applicable platform evidence and unresolved backend decisions are closed or explicitly out-of-scope by user decision.
 - **Commit boundary:** one acceptance-docs commit per row group.
-
