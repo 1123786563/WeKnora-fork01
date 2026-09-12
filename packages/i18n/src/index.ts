@@ -834,6 +834,8 @@ const onboardingMessages: Record<Locale, Record<string, string>> = {
 
 import { settingsMessages } from './settings.ts';
 export { settingsMessages };
+import { menuMessages } from './menu.ts';
+export { menuMessages };
 
 export function formatMessage(locale: Locale, key: string, values: MessageValues = {}): string {
   const template = messages[locale][key] ?? messages['en-US'][key] ?? key;
@@ -844,5 +846,5 @@ export function isLocale(value: string): value is Locale {
   return (supportedLocales as readonly string[]).includes(value);
 }
 export const messages: Record<Locale, Record<string, string>> = Object.fromEntries(
-  (Object.keys(baseMessages) as Locale[]).map((locale) => [locale, { ...baseMessages[locale], ...knowledgeListMessages[locale], ...authMessages[locale], ...onboardingMessages[locale], ...settingsMessages[locale] }]),
+  (Object.keys(baseMessages) as Locale[]).map((locale) => [locale, { ...baseMessages[locale], ...knowledgeListMessages[locale], ...authMessages[locale], ...onboardingMessages[locale], ...settingsMessages[locale], ...menuMessages[locale] }]),
 ) as Record<Locale, Record<string, string>>;
