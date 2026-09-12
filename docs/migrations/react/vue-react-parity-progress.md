@@ -76,3 +76,8 @@
 - 结构性发现：React 缺少 /platform 全局导航外壳（侧栏/图标轨/toast/新手引导/用户菜单），登记为高优待办（T04/T05 shell 范畴）。
 - 修复 KB 列表调试残留 scope key 泄漏。
 - chat 必修实施子代理进行中；settings 实施排队中。
+
+## 2026-09-12 Round 10
+
+- packages/i18n 新增 settings.ts：settings 页面 1038 个引用键 ×5 locale 全量迁移（字节级），合并链接入；新增键集一致性测试。i18n 12/12、shared 247/247、typecheck 通过。
+- 平台外壳实施子代理与 chat 实施子代理并行进行中。
