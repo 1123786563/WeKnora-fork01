@@ -355,6 +355,12 @@ func (s *OCConnectionService) begin(ctx context.Context, subject appconn.OCSubje
 		return "", err
 	}
 	if err := s.store.EnqueueOCOperation(ctx, uuid.NewString(), subject.TenantID, resource, attempt.AuthVersion, KindOCAuthorize, now); err != nil {
+		// Persistence-then-enqueue failure (T07 spec F-04 / T08 ruling 1c):
+		// the attempt row exists but no operation will ever drive it, so it
+		// terminates failed NOW rather than silently sticking in pending.
+		// The enqueue error still surfaces; a caller retry mints a fresh
+		// attempt (the failed row never revives).
+		_, _ = s.store.TerminateOCAttempt(ctx, subject.TenantID, attempt.ID, OCAttemptFailed, now)
 		return "", err
 	}
 	return attempt.ID, nil
@@ -389,7 +395,16 @@ func (s *OCConnectionService) ConfirmAt(ctx context.Context, attemptID string, n
 	if !ok {
 		return ErrOCAttemptState
 	}
-	return s.store.EnqueueOCOperation(ctx, uuid.NewString(), a.Subject.TenantID, attemptID, a.AuthVersion, KindOCConfirm, now)
+	if err := s.store.EnqueueOCOperation(ctx, uuid.NewString(), a.Subject.TenantID, attemptID, a.AuthVersion, KindOCConfirm, now); err != nil {
+		// The one-consume transition committed but the confirm operation
+		// never landed: nothing will ever drive the verification, so the
+		// attempt terminates failed NOW (no silent stuck-verifying; T08
+		// ruling 1c). The state machine is forward-only — reverting to
+		// authorizing is not an option.
+		_, _ = s.store.TerminateOCAttempt(ctx, a.Subject.TenantID, attemptID, OCAttemptFailed, now)
+		return err
+	}
+	return nil
 }
 
 // Cancel terminates a live attempt (owner gave up, or an operator cancelled).

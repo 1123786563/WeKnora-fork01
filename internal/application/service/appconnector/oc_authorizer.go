@@ -90,6 +90,19 @@ func NewSubjectGuard(src ConnectionCredentialSource) A02Guard {
 //	membership → active installation → explicit space grant →
 //	appconn.CanUseConnection → tenant-scoped OC binding.
 //
+// REVOCATION AND PERMISSION-EPOCH CONTRACT (plan T08): every input above is
+// re-queried from its authoritative row on EVERY call — this checker holds
+// no cached positive authorization, so an installation disabled, a scope
+// change (lost space grant), a member removal, or a revocation (which flips
+// the connection AND its binding to revoked while bumping AuthVersion, all
+// in one transaction) invalidates the very next Check. The local rows are
+// the authority: an unavailable control worker (pending remote cleanup in
+// the outbox) never re-opens a revoked connection — revoked connections
+// reject via CanUseConnection, revoked or pending bindings reject via
+// ErrConnectionRevoked, and a moved AuthVersion rejects via
+// ErrConnectionVersionStale. Operations already claimed before a revocation
+// may still complete (audit-only); nothing new is authorized after it.
+//
 // The AuthVersion comparison is deliberately STRICT (F-02): any inequality —
 // a stale caller or a moved counter — fails closed with
 // ErrConnectionVersionStale. T03's SaveBinding deliberately allows

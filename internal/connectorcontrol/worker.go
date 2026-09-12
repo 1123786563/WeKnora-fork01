@@ -343,6 +343,13 @@ func (w *ControlWorker) runClaimed(ctx context.Context, row *repoapp.OCOperation
 			// idempotent re-run after a partially-failed start
 		case op.Kind == KindConfirm && a.State == appconnectorsvc.OCAttemptVerifying:
 			// exactly the consumable state
+		case op.Kind == KindAuthorize && a.State == appconnectorsvc.OCAttemptVerifying && sealedSegment(op) != "":
+			// API-key handoff that already reached verification (T08 ruling
+			// 1a / T07 Q-3): the external connection exists under the ADOPTED
+			// alias, so the retry must re-drive the completion tail instead of
+			// permanently dropping the row and orphaning the attempt plus the
+			// external connection. OAuth rows keep the pinned drop semantics —
+			// their verifying-state driver is the confirm row, not this one.
 		default:
 			w.dropOperation(ctx, row, op, fmt.Errorf("attempt state %s cannot process %s", a.State, op.Kind))
 			return nil
@@ -402,18 +409,11 @@ func (w *ControlWorker) execute(ctx context.Context, op ControlOperation, bindin
 		if name == "" {
 			name = fmt.Sprintf("weknora-%d-%s-v%d", op.TenantID, op.ConnectionID, op.AuthVersion)
 		}
-		created, err := w.admin.CreateRuntimeToken(ctx, CreateTokenRequest{Name: name, ExternalID: binding.ExternalID, Actions: p.Actions})
-		if err != nil {
-			return err
-		}
-		// The token material is shown exactly once by upstream; persist it
-		// under a reference immediately. Only the reference is ever logged,
-		// returned or stored in the database.
-		ref := fmt.Sprintf("oc/runtime-token/%d/%s/%d", op.TenantID, op.ConnectionID, op.AuthVersion)
-		if err := w.secrets.PutSecret(ctx, ref, created.Token); err != nil {
-			return fmt.Errorf("persist token material: %w", err)
-		}
-		return nil
+		// mintRuntimeToken persists the material under the deterministic
+		// reference and reconciles a prior orphaned mint before re-casting
+		// (T08 ruling 1d). Only the reference is ever logged, returned or
+		// stored in the database.
+		return w.mintRuntimeToken(ctx, op.TenantID, op.ConnectionID, op.AuthVersion, name, binding.ExternalID, p.Actions)
 	case KindDeleteToken:
 		var p deleteTokenPayload
 		if err := decodePayload(op.Payload, &p); err != nil {
@@ -422,7 +422,12 @@ func (w *ControlWorker) execute(ctx context.Context, op ControlOperation, bindin
 		if p.TokenID == "" {
 			return permanentf("delete_token without token id")
 		}
-		return w.admin.RevokeRuntimeToken(ctx, p.TokenID)
+		// A 404 is idempotent success (the token is already gone — e.g. a
+		// delete whose success response was lost); anything else retries.
+		if err := w.admin.RevokeRuntimeToken(ctx, p.TokenID); err != nil && !IsNotFound(err) {
+			return err
+		}
+		return nil
 	case KindDeleteConnection:
 		var p deleteConnectionPayload
 		if len(op.Payload) > 0 {
@@ -448,7 +453,13 @@ func (w *ControlWorker) execute(ctx context.Context, op ControlOperation, bindin
 		if external == "" {
 			return permanentf("delete_connection without a resolvable external id")
 		}
-		return w.admin.DeleteRuntimeConnection(ctx, external)
+		// A 404 is idempotent success (the external connection is already
+		// gone — e.g. a delete whose success response was lost); anything
+		// else retries so a revocation is never silently dropped.
+		if err := w.admin.DeleteRuntimeConnection(ctx, external); err != nil && !IsNotFound(err) {
+			return err
+		}
+		return nil
 	case KindAuthorize:
 		p, err := decodeAttemptPayload(op)
 		if err != nil {
@@ -683,55 +694,99 @@ func (w *ControlWorker) executeAPIKeyHandoff(ctx context.Context, op ControlOper
 	if err != nil {
 		return err
 	}
-	// Retry idempotency: a partially-completed handoff (submit done, a later
-	// step failed) already created the external connection under the ADOPTED
-	// alias - resolving it first means the key is never submitted twice.
+	// Retry idempotency (T08 ruling 1a): once the attempt left pending, the
+	// external connection may already exist under the STORED alias — the
+	// runtime-minted one after adoption — so resolve FIRST and submit only
+	// when nothing resolves. A not-found is the only lookup outcome that may
+	// fall through to a submit; any other failure is transient, because a
+	// blind second submit could create a second live external connection
+	// (T07 Q-2 double-submit window).
 	var resolved RuntimeConnection
-	if attempt.State == appconnectorsvc.OCAttemptAuthorizing {
-		if prior, rerr := correlator.ResolveExternalConnection(ctx, attempt.Provider, attempt.Alias); rerr == nil {
+	if attempt.State == appconnectorsvc.OCAttemptAuthorizing || attempt.State == appconnectorsvc.OCAttemptVerifying {
+		prior, rerr := correlator.ResolveExternalConnection(ctx, attempt.Provider, attempt.Alias)
+		switch {
+		case rerr == nil:
 			resolved = prior
+		case IsNotFound(rerr):
+			// not created yet (or already gone): submit below
+		default:
+			return rerr
 		}
 	}
+	submitted := false
 	if resolved.ID == "" {
 		resolved, err = correlator.SubmitExternalCredential(ctx, attempt.Provider, attempt.Alias, apiKey)
 		if err != nil {
 			return err // transient: retried while the attempt window is open
 		}
+		submitted = true
 	}
-	// Walk the attempt to verifying: the external state exists now.
+	// Walk the attempt to verifying: the external state exists now. The
+	// advance stays AFTER the submit (pinned semantics: a failed first
+	// submit leaves a pending attempt — the handoff never started).
 	if attempt.State == appconnectorsvc.OCAttemptPending {
 		ok, err := w.store.AdvanceOCAttempt(ctx, op.TenantID, attempt.ID,
 			appconnectorsvc.OCAttemptPending, appconnectorsvc.OCAttemptAuthorizing, now)
 		if err != nil {
+			w.cleanupOrphanExternal(ctx, op, attempt, resolved, submitted, now)
 			return err
 		}
 		if !ok {
+			w.cleanupOrphanExternal(ctx, op, attempt, resolved, submitted, now)
 			return permanentf("attempt %s no longer awaiting handoff", attempt.ID)
 		}
 		attempt.State = appconnectorsvc.OCAttemptAuthorizing
 	}
 	// Adopt the runtime-minted alias BEFORE verification (R14 iv) so the
-	// frozen CanCompleteOCAttempt comparison stays authoritative.
+	// frozen CanCompleteOCAttempt comparison stays authoritative. When the
+	// adoption write itself fails after a fresh submit, the connection is
+	// attributable to NO stored alias — the extended cleanup triple
+	// (ruling 1a) schedules its deletion before the error surfaces.
 	if resolved.Alias != "" && resolved.Alias != attempt.Alias {
 		ok, err := w.store.AdoptOCAttemptAlias(ctx, op.TenantID, attempt.ID, attempt.Alias, resolved.Alias, now)
 		if err != nil {
+			w.cleanupOrphanExternal(ctx, op, attempt, resolved, submitted, now)
 			return err
 		}
 		if !ok {
+			w.cleanupOrphanExternal(ctx, op, attempt, resolved, submitted, now)
 			return permanentf("attempt %s alias adoption lost the race", attempt.ID)
 		}
 		attempt.Alias = resolved.Alias
 	}
-	ok, err := w.store.AdvanceOCAttempt(ctx, op.TenantID, attempt.ID,
-		appconnectorsvc.OCAttemptAuthorizing, appconnectorsvc.OCAttemptVerifying, now)
-	if err != nil {
-		return err
+	if attempt.State == appconnectorsvc.OCAttemptAuthorizing {
+		ok, err := w.store.AdvanceOCAttempt(ctx, op.TenantID, attempt.ID,
+			appconnectorsvc.OCAttemptAuthorizing, appconnectorsvc.OCAttemptVerifying, now)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return permanentf("attempt %s cannot enter verification", attempt.ID)
+		}
+		attempt.State = appconnectorsvc.OCAttemptVerifying
 	}
-	if !ok {
-		return permanentf("attempt %s cannot enter verification", attempt.ID)
-	}
-	attempt.State = appconnectorsvc.OCAttemptVerifying
 	return w.verifyAndActivate(ctx, op, attempt, resolved, nil)
+}
+
+// cleanupOrphanExternal reconciles a JUST-SUBMITTED external connection this
+// execution can no longer adopt (T08 ruling 1a, extended cleanup triple for
+// T07 Q-2 adopted-alias orphans): when the stored attempt alias still
+// differs from the runtime-minted one, no retry can ever resolve the
+// connection again, so its remote deletion is scheduled immediately. A
+// resolved (pre-existing) connection is never scheduled here — its owner is
+// whichever execution created it. Best-effort by design: the enqueue runs
+// in its own transaction and failures only log.
+func (w *ControlWorker) cleanupOrphanExternal(ctx context.Context, op ControlOperation, attempt *appconn.OCAuthorizationAttempt, resolved RuntimeConnection, submitted bool, now time.Time) {
+	if !submitted || resolved.ID == "" || resolved.Alias == attempt.Alias {
+		// Nothing provably orphaned: either this execution did not create the
+		// connection, or it is already attributable to the stored alias.
+		return
+	}
+	if oc, ok := w.store.(orphanCleaner); ok {
+		if err := oc.EnqueueOCOrphanCleanup(ctx, op.TenantID, attempt.ID, resolved.ID, now); err != nil {
+			logger.Warnf(ctx, "[connector-control] orphan cleanup scheduling for attempt %s failed: %v", attempt.ID, err)
+		}
+	}
 }
 
 // executeConfirm runs the worker-only activation path: resolve the external
@@ -783,16 +838,19 @@ func (w *ControlWorker) verifyAndActivate(ctx context.Context, op ControlOperati
 	}
 	if len(granted) > 0 {
 		name := fmt.Sprintf("weknora-%d-%s-v%d", op.TenantID, attempt.ConnectionID, op.AuthVersion)
-		created, err := w.admin.CreateRuntimeToken(ctx, CreateTokenRequest{Name: name, ExternalID: resolved.ID, Actions: granted})
-		if err != nil {
+		if err := w.mintRuntimeToken(ctx, op.TenantID, attempt.ConnectionID, op.AuthVersion, name, resolved.ID, granted); err != nil {
 			return err // token failure => NO activation
 		}
-		ref := fmt.Sprintf("oc/runtime-token/%d/%s/%d", op.TenantID, attempt.ConnectionID, op.AuthVersion)
-		if err := w.secrets.PutSecret(ctx, ref, created.Token); err != nil {
-			return fmt.Errorf("persist token material: %w", err) // still no activation
-		}
 	}
-	if err := w.store.ActivateOCAttempt(ctx, op.TenantID, attempt.ID, resolved.ID, now); err != nil {
+	// Re-bind-aware activation when the store carries it (T08 ruling 1b):
+	// idempotent on the same external id + generation, a CLEAR conflict
+	// otherwise. Stores without the additive method keep the frozen
+	// ActivateOCAttempt behavior.
+	activate := w.store.ActivateOCAttempt
+	if ra, ok := w.store.(rebindActivator); ok {
+		activate = ra.ActivateOCAttemptRebind
+	}
+	if err := activate(ctx, op.TenantID, attempt.ID, resolved.ID, now); err != nil {
 		if errors.Is(err, repoapp.ErrOCAttemptConflict) {
 			// Remote success / local failure: reconcile by THIS attempt's
 			// alias; the store guard never deletes the newest connection.
@@ -800,6 +858,40 @@ func (w *ControlWorker) verifyAndActivate(ctx context.Context, op ControlOperati
 			return permanentf("activation rejected for attempt %s", attempt.ID)
 		}
 		return err
+	}
+	return nil
+}
+
+// mintRuntimeToken mints one per-connection runtime token and persists its
+// material under the deterministic reference. Recast reconciliation (T08
+// ruling 1d / T05 risk-5): when the sink can READ BACK the record id of a
+// previous mint for this generation (a mint whose material persist failed
+// and whose row is retrying), that orphaned remote token is revoked BEFORE
+// the replacement is cast — retries never accumulate live orphans. The
+// record id is persisted first (while the sink can read) so the reconcile
+// reference outlives a failed material write; sinks without read-back keep
+// the legacy single-write behavior.
+func (w *ControlWorker) mintRuntimeToken(ctx context.Context, tenant uint64, connectionID string, authVersion int64, name, externalID string, actions []string) error {
+	ref := fmt.Sprintf("oc/runtime-token/%d/%s/%d", tenant, connectionID, authVersion)
+	src, canRead := w.secrets.(secretReader)
+	if canRead {
+		if prior, err := src.GetSecret(ctx, ref+"/record-id"); err == nil && prior != "" {
+			if err := w.admin.RevokeRuntimeToken(ctx, prior); err != nil {
+				return fmt.Errorf("reconcile prior token before re-cast: %w", err)
+			}
+		}
+	}
+	created, err := w.admin.CreateRuntimeToken(ctx, CreateTokenRequest{Name: name, ExternalID: externalID, Actions: actions})
+	if err != nil {
+		return err
+	}
+	if canRead {
+		if err := w.secrets.PutSecret(ctx, ref+"/record-id", created.TokenRecordID); err != nil {
+			return fmt.Errorf("persist token record id: %w", err)
+		}
+	}
+	if err := w.secrets.PutSecret(ctx, ref, created.Token); err != nil {
+		return fmt.Errorf("persist token material: %w", err)
 	}
 	return nil
 }
@@ -982,4 +1074,51 @@ func (s *FileSecretSink) PutSecret(ctx context.Context, ref, secret string) erro
 		return err
 	}
 	return os.Rename(tmp, final)
+}
+
+// GetSecret reads one reference's material back (T08 ruling 1d: the token
+// recast reconciliation resolves the previous mint's record id before a
+// replacement is cast). A missing file fails closed — never an empty
+// success that would masquerade as a known reference.
+func (s *FileSecretSink) GetSecret(ctx context.Context, ref string) (string, error) {
+	if ref == "" {
+		return "", errors.New("connectorcontrol: secret ref required")
+	}
+	sum := sha256.Sum256([]byte(ref))
+	data, err := os.ReadFile(filepath.Join(s.dir, hex.EncodeToString(sum[:])+".secret"))
+	if err != nil {
+		return "", err
+	}
+	secret := strings.TrimSpace(string(data))
+	if secret == "" {
+		return "", errors.New("connectorcontrol: secret material empty")
+	}
+	return secret, nil
+}
+
+// ---------------------------------------------------------------------------
+// optional store/sink capabilities (T08): additive interfaces asserted at
+// runtime so existing fakes and the frozen T03/T05/T07 faces keep compiling
+// and behaving exactly as before when they do not carry the new methods.
+// ---------------------------------------------------------------------------
+
+// rebindActivator is the OPTIONAL re-bind-aware activation (ruling 1b):
+// idempotent on the same external id + generation, a clear conflict
+// otherwise. Falls back to the frozen ActivateOCAttempt when absent.
+type rebindActivator interface {
+	ActivateOCAttemptRebind(ctx context.Context, tenant uint64, id, externalID string, now time.Time) error
+}
+
+// orphanCleaner is the OPTIONAL extended reconciliation enqueue (ruling 1a):
+// schedules the delete of an external connection that can no longer be
+// attributed to any stored attempt alias.
+type orphanCleaner interface {
+	EnqueueOCOrphanCleanup(ctx context.Context, tenant uint64, attemptID, externalID string, now time.Time) error
+}
+
+// secretReader is the OPTIONAL read side of a SecretSink (ruling 1d): sinks
+// that can read back enable the token recast reconciliation and its
+// record-id persistence.
+type secretReader interface {
+	GetSecret(ctx context.Context, ref string) (string, error)
 }
