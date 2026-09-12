@@ -197,3 +197,7 @@
 ## 2026-09-12 Round 30
 
 - embed 冷恢复缺陷根因定位：后端 CORS credentials+通配 origin 无效组合拦截带 Authorization 响应（后端共性缺陷，Vue 亦受影响）。登记后端待决项；embed 前端回退逻辑本身正确。证据：evidence/vue-react-parity/2026-09-12-embed-resume-defect.md。
+
+## 2026-09-12 Round 30（补）
+
+- embed 缺陷根因修正：非 CORS。preview-session 签发的 ems_ 令牌被 POST /embed/sessions 拒绝（401 invalid or expired token，curl 复现）——后端 embed 预览令牌语义待裁决。证据已补入 embed-resume-defect.md。
