@@ -1,0 +1,284 @@
+/*
+ * Platform shell — sidebar matching frontend/src/components/menu.vue.
+ * Vue uses TDesign CSS variables (--td-*); the React app defines its own
+ * palette, so the values below mirror the Vue defaults (light theme).
+ */
+.plat-shell {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  height: 100vh;
+  min-width: 600px;
+  background: #fff;
+}
+
+.plat-shell__aside {
+  --inset-x: 14px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-width: 260px;
+  width: 260px;
+  padding: 8px 6px 6px;
+  background: #f6f8fa;
+  border-right: 1px solid #e7ebf0;
+  box-shadow: 1px 0 0 rgba(0, 0, 0, 0.02);
+  overflow: hidden;
+  transition: width 0.25s ease, min-width 0.25s ease;
+}
+
+.plat-shell__aside--collapsed {
+  min-width: 60px;
+  width: 60px;
+  padding: 8px 3px 6px;
+}
+
+.plat-shell__logo-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 50px;
+  flex-shrink: 0;
+  padding: 0 10px 0 var(--inset-x);
+}
+
+.plat-shell__logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.plat-shell__logo-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: #2e6de6;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.plat-shell__logo-text {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1f2733;
+}
+
+.plat-shell__toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #66758b;
+  cursor: pointer;
+}
+
+.plat-shell__toggle:hover { background: #eceff4; }
+
+.plat-shell__top {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-top: 6px;
+}
+
+.plat-shell__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.plat-shell__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 8px;
+  padding: 9px 8px;
+  border-radius: 8px;
+  text-decoration: none;
+  color: #3d4a5c;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.plat-shell__aside--collapsed .plat-shell__item {
+  justify-content: center;
+  margin: 0 4px;
+  padding: 9px 0;
+}
+
+.plat-shell__item:hover { background: #eceff4; }
+
+.plat-shell__item--active,
+.plat-shell__item--active:hover {
+  background: rgba(46, 109, 230, 0.1);
+  color: #2e6de6;
+  font-weight: 500;
+}
+
+.plat-shell__item-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.plat-shell__item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.plat-shell__kb-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 10px 0 4px;
+  padding-top: 8px;
+  border-top: 1px solid #e7ebf0;
+}
+
+.plat-shell__kb-filter {
+  display: block;
+  margin: 0 8px;
+  padding: 6px 8px 6px calc(var(--inset-x) - 6px);
+  border-radius: 6px;
+  font-size: 13px;
+  color: #66758b;
+  text-decoration: none;
+}
+
+.plat-shell__kb-filter:hover { background: #eceff4; color: #3d4a5c; }
+
+.plat-shell__kb-filter--active {
+  color: #2e6de6;
+  font-weight: 600;
+}
+
+.plat-shell__bottom {
+  flex-shrink: 0;
+  padding: 4px 2px;
+}
+
+.plat-shell__user { position: relative; }
+
+.plat-shell__user-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 6px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.plat-shell__user-button:hover { background: #eceff4; }
+
+.plat-shell__avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, #2e6de6 0%, #1f56c2 100%);
+}
+
+.plat-shell__avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+.plat-shell__avatar-initial {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.plat-shell__user-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.plat-shell__user-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1f2733;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.plat-shell__user-email {
+  font-size: 12px;
+  color: #66758b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.plat-shell__dropdown {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: -4px;
+  right: -5px;
+  background: #fff;
+  border: 1px solid #e7ebf0;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+  z-index: 1000;
+}
+
+.plat-shell__dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  color: #1f2733;
+  text-decoration: none;
+}
+
+.plat-shell__dropdown-item:hover { background: #f2f5f9; }
+
+.plat-shell__dropdown-item--danger { color: #d54941; }
+
+.plat-shell__dropdown-item--danger:hover { background: #fbe9e8; }
+
+.plat-shell__dropdown-divider {
+  height: 1px;
+  background: #e7ebf0;
+  margin: 3px 0;
+}
+
+.plat-shell__outlet {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Pages rendered inside the shell previously assumed a full-width document
+ * flow (max-width column centered in the viewport). Give them a scrollable
+ * full-height area while keeping their own layout intact. */
+.plat-shell__outlet > * { min-height: 0; }
+.plat-shell__outlet .wk-page { height: 100%; overflow-y: auto; max-width: none; }
