@@ -217,3 +217,8 @@
 - FAQ 型 KB 路由 live 验证通过：/knowledgeBase/{faqId} 自动 replace 到 /faq（screenshots/live-faq-routing.png）；测试 FAQ KB（parity-faq-kb）入隔离库。
 - 矩阵标记 KB 详情必修 #1/#2/#3/#4/#7/#9/#10 已实施，#5/#6/#8 开放项登记。
 - 上传流程 + AgentSelector 实施子代理进行中。
+
+## 2026-09-12 Round 35
+
+- settings 视觉形态（抽屉/分组导航/图标/关闭行为）实施子代理派发：要求复用 packages/i18n settings.* 键、保留全部功能接线（角色门控/popstate/面板）、live 前后截图对比 settings-vue-live.png。
+- 上传流程 + AgentSelector 实施子代理继续。
