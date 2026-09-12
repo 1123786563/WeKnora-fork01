@@ -22,6 +22,10 @@ public storage URL or a client-side artifact download path.
 - `packages/api-client/src/chat/artifacts.ts` adds strict list parsing and a
   binary download seam. The parser drops `source_path`; bytes are fetched only
   through the authenticated message artifact route.
+- `packages/views/src/chat/tool-result.tsx` maps every normalized tool-result
+  renderer to a readable React view, preserves unknown results as plain text,
+  and recursively redacts secret-shaped fields before serialization. Live tool
+  calls in the chat page use this view rather than interpolating raw results.
 - `apps/web/src/chat/ChatRoutePage.tsx` now resolves message metadata through
   that API and hands the authenticated bytes to the Web save-file port.
 - `apps/web/src/styles.css` adds safe readable layout for Markdown code, tables,
@@ -33,17 +37,19 @@ Commands run from the isolated `codex/react-multiclient` worktree:
 
 | Command | Result |
 |---|---|
-| `pnpm test:shared` | exit 0; 212/212 |
+| `pnpm test:shared` | exit 0; 215/215 |
 | `pnpm typecheck:shared` | exit 0 |
 | `pnpm typecheck:web` | exit 0 |
 | `pnpm test:web` | exit 0; 107/107 |
 | `pnpm test:web` after artifact-save wiring | exit 0; 109/109 |
-| `pnpm build:web` | exit 0; 137 modules |
+| `pnpm build:web` | exit 0; 143 modules |
 
-Focused TDD coverage in `packages/views/src/chat/markdown.test.tsx` verifies
+Focused TDD coverage in `packages/views/src/chat/markdown.test.tsx` and
+`packages/views/src/chat/tool-result.test.tsx` verifies
 headings/tables/CJK, Mermaid metadata, readable math, XSS-safe raw HTML and
 unsafe URLs, citation button attributes, unclosed fences, and MessageList's
-shared renderer path.
+shared renderer path, known/unknown tool-result mapping, and recursive secret
+redaction.
 
 ## Evidence boundary
 

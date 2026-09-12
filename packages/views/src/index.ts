@@ -6,6 +6,8 @@ export { SessionSidebar } from './chat/session-sidebar.tsx';
 export type { SessionGroupView, SessionSidebarProps, SessionSourceOption } from './chat/session-sidebar.tsx';
 export { ChatPage } from './chat/page.tsx';
 export type { ChatAgentOption, ChatOAuthApprovalPrompt, ChatPageProps, ChatStreamPresentation, ChatTerminalView, ChatToolApprovalPrompt, ChatToolCallView } from './chat/page.tsx';
+export { ToolResultView, toolResultPresentation } from './chat/tool-result.tsx';
+export type { ToolResultPresentation, ToolResultViewInput } from './chat/tool-result.tsx';
 export { SETTINGS_SECTIONS, settingsSection } from './settings/registry.ts';
 export type { SettingsSection, SettingsScope, SettingsRole, SettingsOperation } from './settings/registry.ts';
 export { createEmbedBridgeGuard, EMBED_HOST_SOURCE, EMBED_MESSAGE_SOURCE } from './embed/bridge.ts';

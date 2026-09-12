@@ -3,6 +3,7 @@ import type { ChatMessage, ChatSession, MessageSuggestionSet } from '@weknora/co
 import { ChatComposer, type ChatSubmission } from './composer.tsx';
 import { MessageList, type PendingChatMessage } from './message-list.tsx';
 import { SessionSidebar } from './session-sidebar.tsx';
+import { ToolResultView } from './tool-result.tsx';
 
 export interface ChatAgentOption {
   id: string;
@@ -121,7 +122,7 @@ function LiveResponse({ stream }: { stream: ChatStreamPresentation }) {
   return <section aria-label="Live response" className="wk-chat-live-response">
     <p role="status">Status: {stream.phase}</p>
     {stream.thinking ? <details open><summary>Thinking</summary><p>{stream.thinking}</p></details> : null}
-    {stream.toolCalls.length > 0 ? <div><h2>Tool calls</h2><ul className="wk-list">{stream.toolCalls.map((tool) => <li key={tool.id}><strong>{tool.name ?? tool.id}</strong><small>{tool.status}{tool.result === undefined ? '' : ` · ${displayValue(tool.result)}`}</small></li>)}</ul></div> : null}
+    {stream.toolCalls.length > 0 ? <div><h2>Tool calls</h2><ul className="wk-list">{stream.toolCalls.map((tool) => <li key={tool.id}><strong>{tool.name ?? tool.id}</strong><small>{tool.status}</small>{tool.result === undefined ? null : <ToolResultView toolCall={tool} />}</li>)}</ul></div> : null}
     {stream.references.length > 0 ? <div><h2>References</h2><ul className="wk-list">{stream.references.map((reference, index) => <li key={index}><span>{displayValue(reference)}</span></li>)}</ul></div> : null}
   </section>;
 }
