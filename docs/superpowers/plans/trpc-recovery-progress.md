@@ -66,6 +66,11 @@
 - ac358c7：Task 11 尾巴两项落地——① 事件保留水位裁剪：完成的 Run 以 1000 事件为界裁剪（TrimEventsBefore/LastEventSeq，executor 收尾调用），重连游标早于保留起点返回显式 cursor_expired、保留起点内回放正常、裁剪幂等；② after 跟进受理：delivery=after 的停靠消息在当前 Run 成功后自动受理为下一个 durable Run（同一冻结快照身份、以停靠内容为 query、跟进 Run 以 queued 占据会话槽位、输入恰好消费一次——顺带修复 MarkInputsProcessed 缺 Model 导致的静默失败）。13 包回归 + 增量 lint 0 issues。
 - 剩余：outbox（事务性外发行）、mcp_approve_ 前审批停靠与 OAuth 黑盒场景、前端浏览器验证。
 
+## 2026-09-12 第八轮（同分支续）
+
+- ba01e91：OAuth 停靠黑盒场景加入双方言 SIGKILL 矩阵——provider 工具桥以生产链条（ParkToolPreflightWait + WaitForDecision，与 DurableGate 相同调用）在派发前停靠 Run，崩溃落在等待中且未写工具结果；恢复侧用户重试决策绑定 planned 标记行（决策查找回退到标记行），重排队后恰好一次副作用完成。SQLite 矩阵 9/9、PostgreSQL oauth_park PASS；增量 lint 0 issues。
+- 剩余：mcp_approve_ 前审批停靠（人工审批等待仍委托 live gate）、事务性 outbox 表（工具日志已持久化意图/尝试/结果且矩阵验证重放保证，但无独立 outbox 表）、前端浏览器验证。
+
 ## 执行记录要求
 每次任务追加开始/结束时间、实现者、固定 HEAD、失败测试原因、通过命令、审查问题与修复提交。保留历史记录，不用最终 PASS 覆盖中途失败。
 
