@@ -32,6 +32,7 @@ export function KnowledgeBaseListScreen() {
   const runtime = useMobileRuntime();
   const router = useRouter();
   const [items, setItems] = useState<KnowledgeBase[]>([]);
+  const [mineItems, setMineItems] = useState<KnowledgeBase[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [scope, setScope] = useState<KnowledgeBaseScope>("all");
@@ -50,8 +51,12 @@ export function KnowledgeBaseListScreen() {
     setLoading(true);
     setError("");
     try {
-      const next = await runtime.client.knowledgeBases.list();
+      const [next, mine] = await Promise.all([
+        runtime.client.knowledgeBases.list(),
+        runtime.client.knowledgeBases.list({ creator: "mine" }),
+      ]);
       setItems(next);
+      setMineItems(mine);
       setFavoriteIds(
         (current) =>
           new Set([
@@ -75,10 +80,16 @@ export function KnowledgeBaseListScreen() {
     void load();
   }, [load]);
 
-  const visibleItems = useMemo(
-    () => filterByScope(items, scope, undefined, favoriteIds, recentIds),
-    [items, scope, favoriteIds, recentIds],
-  );
+  const visibleItems = useMemo(() => {
+    const source = scope === "mine" ? mineItems : items;
+    return filterByScope(
+      source,
+      scope === "mine" ? "all" : scope,
+      undefined,
+      favoriteIds,
+      recentIds,
+    );
+  }, [items, mineItems, scope, favoriteIds, recentIds]);
   const sections = useMemo(
     () => groupKnowledgeBaseSections(visibleItems, undefined),
     [visibleItems],
