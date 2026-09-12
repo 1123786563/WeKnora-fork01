@@ -1079,3 +1079,14 @@
 - This closes the static query-dispatch gap only; browser tab interaction,
   provider callbacks, and integration mutation/permission evidence remain
   open, so T04/T18 stay `review`.
+
+### T24 full Go regression final rerun (2026-09-12)
+
+- `GOWORK=off go test ./...` exited 0 across the complete backend package
+  graph. The two prior environment-sensitive groups now pass with the current
+  explicit fixtures; the macOS linker emitted only non-fatal duplicate
+  `-lc++` warnings for test binaries.
+- Evidence: `docs/migrations/react/evidence/t24-go-regression-final-2026-09-12.md`.
+  This closes the full Go regression slice, but T24 remains `review` for the
+  deployed registry, installed-app cross-OS, provider, performance, and full
+  browser/native acceptance matrix. T25 remains gated.
