@@ -81,3 +81,9 @@
 
 - packages/i18n 新增 settings.ts：settings 页面 1038 个引用键 ×5 locale 全量迁移（字节级），合并链接入；新增键集一致性测试。i18n 12/12、shared 247/247、typecheck 通过。
 - 平台外壳实施子代理与 chat 实施子代理并行进行中。
+
+## 2026-09-12 Round 11
+
+- settings 实施子代理派发（角色门控/缺失 sections/envvars 编辑器/模型选择器/模型锁/密码策略/脏检查/popstate——i18n 键已就绪）。
+- 邀请与共享链接 live API E2E 通过：pending-count→accept→membership；invite-links→accept-by-token。证据：evidence/vue-react-parity/2026-09-12-invite-live-e2e.md。
+- chat 实施、平台外壳实施子代理继续进行中。
