@@ -344,3 +344,8 @@
 
 - settings 5 面板 i18n formatMessage 接线完成并集成（ec0da51）：Config(20)/Resource(12)/Ollama(16)/Cloud(12)/PersonalMemory(28) t() 调用点全部使用 settings.* 键。未匹配的 React 专有字符串保留 TODO(migration) 注释。
 - 门禁：typecheck:web 0 错误、web 198/198、shared 310/310 全绿。
+
+## 2026-09-12 Round 76
+
+- 终版全页 live 回归验证：7 个主页面路由全部正常加载（0 alerts, 0 errors），截图入库（final-*.png）。
+- 全量门禁复验：shared 310/310、web 198/198、desktop 2/0、mobile 85/85、typecheck×2 0 错误、build:web ✓。
