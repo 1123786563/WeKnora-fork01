@@ -89,6 +89,10 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
     try { return new Set(JSON.parse(window.localStorage.getItem('wk-kb-recents') ?? '[]') as string[]); } catch { return new Set(); }
   });
   const [collapsedSections, setCollapsedSections] = useState<ReadonlySet<string>>(new Set());
+  const [highlightId, setHighlightId] = useState<string | null>(() => {
+    const hl = new URLSearchParams(window.location.search).get('highlightKbId');
+    return hl || null;
+  });
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -401,7 +405,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
                       <button type="button" className="wk-kb-card-title" onClick={() => openKbSettings(kb)}>{String(card.name ?? '')}</button>
                       <button
                         type="button"
-                        className={favorites.has(card.id) ? 'wk-kb-star wk-kb-star-active' : 'wk-kb-star'}
+                        className={favorites.has(card.id) ? 'wk-kb-star wk-kb-star-active' : 'wk-kb-star'} data-highlight={highlightId === card.id || undefined}
                         aria-label={t('common.favorite')}
                         onClick={() => toggleFavorite(card.id)}
                       >{favorites.has(card.id) ? '★' : '☆'}</button>
