@@ -30,7 +30,10 @@
 | R02 | **done** | .worktrees/craft-r02 / codex/craft-r02 | 83e2ef5c | HEAD 80b9fcbf 审查 PASS_WITH_NITS → 合入 da6d169d；迁移 000121/000041；SQLite+真实 PG 双绿；外键偏离（写时校验+sessions FK）经审查者独立实证 |
 | R03 | **done** | .worktrees/craft-r03 / codex/craft-r03 | 21bf52fc | HEAD b9f28885 审查 PASS_WITH_NITS → 合入 86a651bb；真实镜像构建+复验（官方 release 摘要独立实测吻合）；nit 留档：ActiveRuns 生产接线无下游归属（协调器登记 W03/R05 装配）、lock 回填留发布链 |
 | R04 | **done** | .worktrees/craft-r04 / codex/craft-r04 | 86a651bb | HEAD 8a387eb7 审查 PASS_WITH_NITS（23/23 规格）→ 合入 785ceeb8；41 测试含 live；exactly-once POST、15 案矩阵；契约留档：unknown 绝不落库、ErrUnknown 唯一 pending 信号 |
-| R05 | implementing | .worktrees/craft-r05 / codex/craft-r05 | 785ceeb8 | 已派发（含 R04 unknown 契约 + R03 ActiveRuns 接线要求 + 共享装配文件最小改动约束）；R06–O05 等待依赖 |
+| R05 | **done** | .worktrees/craft-r05 / codex/craft-r05 | 785ceeb8 | HEAD b523c8f1 审查 PASS_WITH_NITS（16/16）→ 合入 9c02a7c4；ActiveRuns 真实接线闭合 R03 nit-1；fail-closed 生产执行器（W03 承接 dial）；契约留档：unknown 绝不落库、裸 idle 窄窗口 nit 转 W 链 |
+| R06 | implementing | .worktrees/craft-r06 / codex/craft-r06 | 9c02a7c4 | 已派发（含 R04/R05 契约） |
+| W01 | implementing | .worktrees/craft-w01 / codex/craft-w01 | 9c02a7c4 | 已派发；迁移 000122/000042 |
+| O01 | ready（排队） | — | — | 等实现席位；迁移 000123/000043 已预分配；R07–O05 等待依赖 |
 
 ## 调度纪要
 
