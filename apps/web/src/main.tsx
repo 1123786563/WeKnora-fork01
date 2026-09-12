@@ -1,6 +1,8 @@
 import { createRoot } from 'react-dom/client';
+import type { ReactNode } from 'react';
 import { createRefreshCoordinator, createWeKnoraClient, type AuthSession, type Credential } from '@weknora/api-client';
 import { Status } from '@weknora/ui';
+import { PlatformShell } from './platform/PlatformShell.tsx';
 import { LoginPage } from './auth/LoginPage.tsx';
 import { JoinPage } from './auth/JoinPage.tsx';
 import { WorkspaceOnboardingPage } from './auth/WorkspaceOnboardingPage.tsx';
@@ -120,6 +122,12 @@ async function logout(): Promise<void> {
   window.location.assign('/login');
 }
 
+// All protected /platform/* pages render inside the platform shell
+// (sidebar matching the Vue menu.vue). Auth/onboarding/embed pages stay bare.
+function renderShell(page: ReactNode): void {
+  root.render(<PlatformShell client={client} onLogout={logout}>{page}</PlatformShell>);
+}
+
 function renderProtected() {
   const pathname = `${window.location.pathname}${window.location.search}`;
   const current = scopeRuntime.current().scope;
@@ -150,40 +158,40 @@ function renderProtected() {
     return;
   }
   if (protectedPageForRoute(route) === 'knowledge-bases') {
-    root.render(<KnowledgeBasesPage client={client} scopeController={scopeController} />);
+    renderShell(<KnowledgeBasesPage client={client} scopeController={scopeController} />);
   } else if (protectedPageForRoute(route) === 'markdown-test') {
-    root.render(<DevMarkdownPage />);
+    renderShell(<DevMarkdownPage />);
   } else if (route.kind === 'knowledge-document') {
-    root.render(<KnowledgeDocumentDetailPage client={client} documentId={route.documentId} onBack={() => window.location.assign(`/knowledgeBase/${encodeURIComponent(route.knowledgeBaseId)}`)} />);
+    renderShell(<KnowledgeDocumentDetailPage client={client} documentId={route.documentId} onBack={() => window.location.assign(`/knowledgeBase/${encodeURIComponent(route.knowledgeBaseId)}`)} />);
   } else if (route.kind === 'knowledge-wiki') {
-    root.render(<WikiPage client={client} knowledgeBaseId={route.knowledgeBaseId} />);
+    renderShell(<WikiPage client={client} knowledgeBaseId={route.knowledgeBaseId} />);
   } else if (route.kind === 'knowledge-faq') {
-    root.render(<FAQPage client={client} knowledgeBaseId={route.knowledgeBaseId} />);
+    renderShell(<FAQPage client={client} knowledgeBaseId={route.knowledgeBaseId} />);
   } else if (route.kind === 'knowledge-settings') {
-    root.render(<KnowledgeSettingsPage client={client} knowledgeBaseId={route.knowledgeBaseId} />);
+    renderShell(<KnowledgeSettingsPage client={client} knowledgeBaseId={route.knowledgeBaseId} />);
   } else if (route.path === '/platform/configuration' || route.path === '/platform/agents') {
-    root.render(<ConfigurationPage client={client} />);
+    renderShell(<ConfigurationPage client={client} />);
   } else if (route.path === '/platform/administration') {
-    root.render(<AdministrationPage client={client} tenantId={Number(scopeRuntime.current().scope.tenantId)} />);
+    renderShell(<AdministrationPage client={client} tenantId={Number(scopeRuntime.current().scope.tenantId)} />);
   } else if (route.path === '/platform/organizations') {
-    root.render(<OrganizationsPage client={client} inviteCode={organizationInviteCode(pathname)} />);
+    renderShell(<OrganizationsPage client={client} inviteCode={organizationInviteCode(pathname)} />);
   } else if (route.path === '/platform/settings') {
-    root.render(<SettingsPage client={client} tenantId={Number(scopeRuntime.current().scope.tenantId)} />);
+    renderShell(<SettingsPage client={client} tenantId={Number(scopeRuntime.current().scope.tenantId)} />);
   } else if (route.path === '/platform/system') {
-    root.render(<AdministrationPage client={client} tenantId={Number(scopeRuntime.current().scope.tenantId)} systemAdmin />);
+    renderShell(<AdministrationPage client={client} tenantId={Number(scopeRuntime.current().scope.tenantId)} systemAdmin />);
   } else if (route.kind === 'knowledge-base' && route.knowledgeBaseId) {
     const knowledgeBaseId = route.knowledgeBaseId;
-    if (route.tab === 'wiki') root.render(<WikiPage client={client} knowledgeBaseId={knowledgeBaseId} initialSlug={route.slug} />);
-    else if (route.tab === 'graph') root.render(<KnowledgeGraphPage client={client} knowledgeBaseId={knowledgeBaseId} slug={route.slug} />);
-    else root.render(<KnowledgeDocumentsPage client={client} knowledgeBaseId={knowledgeBaseId} onOpenDocument={(document) => window.location.assign(`/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}/documents/${encodeURIComponent(document.id)}`)} />);
+    if (route.tab === 'wiki') renderShell(<WikiPage client={client} knowledgeBaseId={knowledgeBaseId} initialSlug={route.slug} />);
+    else if (route.tab === 'graph') renderShell(<KnowledgeGraphPage client={client} knowledgeBaseId={knowledgeBaseId} slug={route.slug} />);
+    else renderShell(<KnowledgeDocumentsPage client={client} knowledgeBaseId={knowledgeBaseId} onOpenDocument={(document) => window.location.assign(`/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}/documents/${encodeURIComponent(document.id)}`)} />);
   } else if (route.kind === 'chat' || route.path === '/platform/creatChat' || route.path.startsWith('/platform/chat/')) {
-    root.render(<ChatRoutePage client={client} scopeController={scopeController} apiBaseUrl={apiBaseUrl} knowledgeBaseId={route.kind === 'chat' ? route.knowledgeBaseId : undefined} canViewChannelSessions={scopeRuntime.canViewChannelSessions()} />);
+    renderShell(<ChatRoutePage client={client} scopeController={scopeController} apiBaseUrl={apiBaseUrl} knowledgeBaseId={route.kind === 'chat' ? route.knowledgeBaseId : undefined} canViewChannelSessions={scopeRuntime.canViewChannelSessions()} />);
   } else if (route.path === '/platform/integrations') {
-    root.render(<IntegrationsRoutePage client={client} tenantId={scopeRuntime.current().scope.tenantId} />);
+    renderShell(<IntegrationsRoutePage client={client} tenantId={scopeRuntime.current().scope.tenantId} />);
   } else if (route.kind === 'not-found') {
-    root.render(<NotFoundPage path={route.path} />);
+    renderShell(<NotFoundPage path={route.path} />);
   } else {
-    root.render(<NotFoundPage path={route.path} />);
+    renderShell(<NotFoundPage path={route.path} />);
   }
 }
 
