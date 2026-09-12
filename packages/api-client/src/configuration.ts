@@ -17,6 +17,8 @@ export interface McpCredentialStatus { apiKey: boolean; token: boolean }
 export interface McpTestResult { success: boolean; message?: string; description?: string; oauthRequired?: boolean; tools?: McpTool[]; resources?: McpResource[] }
 export interface McpTool { name: string; description?: string; inputSchema?: unknown; requireApproval?: boolean }
 export interface McpResource { uri: string; name: string; description?: string; mimeType?: string }
+export interface McpMetadata { serviceId: string; tools: McpTool[]; instructions: string; serverName: string; serverVersion: string; serverDescription: string; syncedAt: string; stale: boolean }
+export interface McpToolApproval { id: string; serviceId: string; toolName: string; requireApproval: boolean; enabled: boolean }
 export interface AgentConfigurationListOptions {
   creator?: 'all' | 'mine' | 'others';
   signal?: AbortSignal;
@@ -522,6 +524,18 @@ function parseMcpTools(value: unknown): McpTool[] {
   if (envelope.success !== true || !Array.isArray(envelope.data)) throw new Error('/mcp-services/tools must be a successful array envelope');
   return envelope.data.map((item, index) => parseMcpTool(item, `/mcp-services/tools.data[${index}]`));
 }
+function parseMcpMetadata(value: unknown): McpMetadata | null {
+  const data = successfulData(value, '/mcp-services/metadata');
+  if (data === null) return null;
+  const row = record(data, '/mcp-services/metadata.data');
+  if (typeof row.service_id !== 'string' || typeof row.instructions !== 'string' || typeof row.server_name !== 'string' || typeof row.server_version !== 'string' || typeof row.server_description !== 'string' || typeof row.synced_at !== 'string' || typeof row.stale !== 'boolean' || !Array.isArray(row.tools)) throw new Error('/mcp-services/metadata.data is malformed');
+  return { serviceId: row.service_id, instructions: row.instructions, serverName: row.server_name, serverVersion: row.server_version, serverDescription: row.server_description, syncedAt: row.synced_at, stale: row.stale, tools: row.tools.map((item, index) => parseMcpTool(item, `/mcp-services/metadata.data.tools[${index}]`)) };
+}
+function parseMcpApprovals(value: unknown): McpToolApproval[] {
+  const data = successfulData(value, '/mcp-services/tool-approvals');
+  if (!Array.isArray(data)) throw new Error('/mcp-services/tool-approvals.data must be an array');
+  return data.map((item, index) => { const row = record(item, `/mcp-services/tool-approvals.data[${index}]`); if (typeof row.id !== 'string' || typeof row.service_id !== 'string' || typeof row.tool_name !== 'string' || typeof row.require_approval !== 'boolean' || typeof row.enabled !== 'boolean') throw new Error(`/mcp-services/tool-approvals.data[${index}] is malformed`); return { id: row.id, serviceId: row.service_id, toolName: row.tool_name, requireApproval: row.require_approval, enabled: row.enabled }; });
+}
 
 export function createConfigurationApi(request: (input: ClientRequest) => Promise<unknown>) {
   const collection = <T extends ConfigurationRecord>(path: string, parse: (value: unknown, path: string) => T) => ({
@@ -662,6 +676,17 @@ export function createConfigurationApi(request: (input: ClientRequest) => Promis
       },
       async tools(serviceId: string, signal?: AbortSignal): Promise<McpTool[]> {
         return parseMcpTools(await request({ method: 'GET', path: `/api/v1/mcp-services/${id(serviceId, 'serviceId')}/tools`, ...(signal === undefined ? {} : { signal }) }));
+      },
+      metadata: {
+        async get(serviceId: string, signal?: AbortSignal): Promise<McpMetadata | null> { return parseMcpMetadata(await request({ method: 'GET', path: `/api/v1/mcp-services/${id(serviceId, 'serviceId')}/metadata`, ...(signal === undefined ? {} : { signal }) })); },
+        async refresh(serviceId: string, signal?: AbortSignal): Promise<McpMetadata> { const value = parseMcpMetadata(await request({ method: 'POST', path: `/api/v1/mcp-services/${id(serviceId, 'serviceId')}/metadata/refresh`, body: {}, ...(signal === undefined ? {} : { signal }) })); if (!value) throw new Error('/mcp-services/metadata/refresh must return metadata'); return value; },
+      },
+      usageInstructions: {
+        async generate(serviceId: string, language: string, signal?: AbortSignal): Promise<string> { const data = record(successfulData(await request({ method: 'POST', path: `/api/v1/mcp-services/${id(serviceId, 'serviceId')}/usage-instructions/generate`, body: { language }, ...(signal === undefined ? {} : { signal }) }), '/mcp-services/usage-instructions/generate'), '/mcp-services/usage-instructions/generate.data'); return required(data.usage_instructions, '/mcp-services/usage-instructions/generate.data.usage_instructions'); },
+      },
+      toolApprovals: {
+        async list(serviceId: string, signal?: AbortSignal): Promise<McpToolApproval[]> { return parseMcpApprovals(await request({ method: 'GET', path: `/api/v1/mcp-services/${id(serviceId, 'serviceId')}/tool-approvals`, ...(signal === undefined ? {} : { signal }) })); },
+        async update(serviceId: string, toolName: string, input: { enabled?: boolean; requireApproval?: boolean }, signal?: AbortSignal): Promise<void> { if (input.enabled === undefined && input.requireApproval === undefined) throw new Error('enabled or requireApproval is required'); parseActionEnvelope(await request({ method: 'PUT', path: `/api/v1/mcp-services/${id(serviceId, 'serviceId')}/tool-approvals/${encodeURIComponent(toolName)}`, body: { ...(input.enabled === undefined ? {} : { enabled: input.enabled }), ...(input.requireApproval === undefined ? {} : { require_approval: input.requireApproval }) }, ...(signal === undefined ? {} : { signal }) }), '/mcp-services/tool-approvals PUT'); },
       },
     },
     skills: {

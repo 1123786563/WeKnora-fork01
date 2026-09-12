@@ -201,6 +201,27 @@ test('preserves MCP test tools and resources and rejects malformed nested entrie
   await assert.rejects(() => malformed.mcp.test('mcp-1'), /name/);
 });
 
+test('maps MCP metadata, usage generation, and tool policy mutations to the shared routes', async () => {
+  const requests: unknown[] = [];
+  const api = createConfigurationApi(async (request) => {
+    requests.push(request);
+    if (request.path.endsWith('/metadata')) return { success: true, data: { service_id: 'mcp-1', tools: [{ name: 'search', description: 'Search' }], instructions: 'Use search', server_name: 'Docs', server_version: '1', server_description: 'Docs server', synced_at: '2030-01-01T00:00:00Z', stale: false } };
+    if (request.path.endsWith('/usage-instructions/generate')) return { success: true, data: { usage_instructions: 'Use the search tool.' } };
+    if (request.method === 'GET') return { success: true, data: [{ id: 'approval-1', service_id: 'mcp-1', tool_name: 'search', require_approval: true, enabled: false }] };
+    return { success: true };
+  });
+  assert.deepEqual(await api.mcp.metadata.get('mcp-1'), { serviceId: 'mcp-1', tools: [{ name: 'search', description: 'Search' }], instructions: 'Use search', serverName: 'Docs', serverVersion: '1', serverDescription: 'Docs server', syncedAt: '2030-01-01T00:00:00Z', stale: false });
+  assert.equal(await api.mcp.usageInstructions.generate('mcp-1', 'zh-CN'), 'Use the search tool.');
+  assert.deepEqual(await api.mcp.toolApprovals.list('mcp-1'), [{ id: 'approval-1', serviceId: 'mcp-1', toolName: 'search', requireApproval: true, enabled: false }]);
+  await api.mcp.toolApprovals.update('mcp-1', 'search/tool', { enabled: true, requireApproval: false });
+  assert.deepEqual(requests, [
+    { method: 'GET', path: '/api/v1/mcp-services/mcp-1/metadata' },
+    { method: 'POST', path: '/api/v1/mcp-services/mcp-1/usage-instructions/generate', body: { language: 'zh-CN' } },
+    { method: 'GET', path: '/api/v1/mcp-services/mcp-1/tool-approvals' },
+    { method: 'PUT', path: '/api/v1/mcp-services/mcp-1/tool-approvals/search%2Ftool', body: { enabled: true, require_approval: false } },
+  ]);
+});
+
 test('lists model providers and sends model debug as an injected multipart request', async () => {
   const requests: any[] = [];
   const file: NativeFileSource = { uri: 'file:///tmp/input.png', name: 'input.png', type: 'image/png' };
