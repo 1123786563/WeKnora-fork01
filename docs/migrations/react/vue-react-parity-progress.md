@@ -293,3 +293,9 @@
 
 - settings GeneralPreferencesPanel 落地：主题（light/dark/system）/语言/字号，localStorage 持久化（对齐 Vue GeneralSettings.vue 本地偏好语义）。domain local-preferences.ts + 4 测试。web 198/198、shared 296/296 全绿。
 - 四页实施代理的 embed 修复（channels.listAll/im.listAll 容忍 null data、tab 独立取数）+ AgentSelector/suggestions/upload pipeline 已集成（40a5d86）。
+
+## 2026-09-12 Round 58
+
+- 终版 React live 截图矩阵入库（final-react-{login,kb-list,settings-general,agents,organizations,creatChat}.png）——KB 列表页与 Vue 基准高度对齐：外壳侧栏+active 高亮、i18n 中文标题/描述、未初始化横幅、scope tabs（全部/我创建的/收藏/暂无最近访问）、分组节头（我创建的 · 3）、卡片（类型徽章+计数+警告+收藏星+全部操作按钮）、用户区。
+- 门禁：web 198/198、shared 296/296、typecheck 干净。
+- 移动端 Expo 构建验证通过（iOS 3.2MB + Android 3.3MB Hermes bundle）。
