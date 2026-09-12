@@ -956,6 +956,10 @@
   silently resumed while background interruption remains resumable. Mobile
   71/71 and typecheck passed. Evidence:
   `docs/migrations/react/evidence/t22-mobile-run-lifecycle-2026-09-12.md`.
+- `d884340` adds a lifecycle revision guard so a late SecureStore hydration
+  result cannot overwrite a newer local transition. Current mobile 75/75 and
+  typecheck passed; existing user-stopped/failed/completed states remain
+  non-resumable.
 - T22 remains `review` pending provider/device continuation, approval/OAuth,
   and remote stop-after-id runtime evidence.
 

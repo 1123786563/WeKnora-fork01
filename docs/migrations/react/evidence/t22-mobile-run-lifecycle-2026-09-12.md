@@ -11,6 +11,10 @@
 - Verification passed: mobile tests 71/71, mobile typecheck, and
   `git diff --check`. Deterministic tests cover persistence, stale cleanup,
   stop-after-id, and failed/completed negative recovery.
+- Follow-up commit `d884340` adds a lifecycle revision guard around async
+  hydration and local transitions, so a late SecureStore read cannot replace a
+  newer user stop/failure/completion state. Current mobile verification is
+  75/75 with typecheck passing.
 - Real provider approval/OAuth, device process-reclaim behavior, server
   continuation after interruption, and remote stop-after-id runtime evidence
   remain open; T22 stays `review`.
