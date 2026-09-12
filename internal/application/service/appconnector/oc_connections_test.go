@@ -737,6 +737,111 @@ func TestStoreCleanupMatchesAttemptAliasExternalAndNeverNewest(t *testing.T) {
 // API-key transient ciphertext (15-minute handoff, purpose-separated key)
 // ---------------------------------------------------------------------------
 
+// TestAttemptExpiryComparisonsNormalizeTimeZone pins the T07 quality Q-1
+// fix: stored expires_at is always UTC, so every store-level expires_at
+// predicate must compare against the UTC-normalized instant. A caller
+// supplying a non-UTC clock (UTC+8 desktop, UTC-5 host) must neither get a
+// valid transition rejected nor an expired one accepted.
+func TestAttemptExpiryComparisonsNormalizeTimeZone(t *testing.T) {
+	db := openOCConnectionDBMigrated(t)
+	store := appconnectorrepo.NewOCStore(db)
+	ctx := context.Background()
+	base := time.Unix(1700000000, 0).UTC()
+	cst := time.FixedZone("CST", 8*3600)  // UTC+8
+	est := time.FixedZone("EST", -5*3600) // UTC-5
+
+	if err := db.Create(&appconnectorrepo.InstallationRow{
+		ID: "inst-tz", TenantID: 7, AppID: "github", AppVersion: "1.0.0",
+		State: appconn.InstallationActive, Version: 1,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&appconnectorrepo.ConnectionRow{
+		TenantID: 7, ID: "c-tz", InstallationID: "inst-tz", Kind: appconn.ConnectionKindPersonal,
+		OwnerID: "alice", State: appconn.ConnectionActive, AuthVersion: 1,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	mkAttempt := func() appconn.OCAuthorizationAttempt {
+		t.Helper()
+		a, err := NewOCAttempt(appconn.OCSubject{TenantID: 7, ActorID: "alice"}, "c-tz", "rt-1", "github", 1, base)
+		if err != nil {
+			t.Fatal(err)
+		}
+		seedOCAttempt(t, db, a)
+		return a
+	}
+	seedVerified := func() appconn.OCAuthorizationAttempt {
+		t.Helper()
+		a := mkAttempt()
+		if ok, _ := store.AdvanceOCAttempt(ctx, 7, a.ID, OCAttemptPending, OCAttemptAuthorizing, base); !ok {
+			t.Fatal("seed authorizing failed")
+		}
+		if ok, _ := store.AdvanceOCAttempt(ctx, 7, a.ID, OCAttemptAuthorizing, OCAttemptVerifying, base.Add(time.Minute)); !ok {
+			t.Fatal("seed verifying failed")
+		}
+		return a
+	}
+
+	// (a) UTC+8 wall clock, valid instants: every transition and the
+	// activation must succeed (broken code serializes the +8 wall clock,
+	// which exceeds the UTC-stored expiry and rejects them).
+	a1 := mkAttempt()
+	if ok, _ := store.AdvanceOCAttempt(ctx, 7, a1.ID, OCAttemptPending, OCAttemptAuthorizing, base.Add(time.Minute).In(cst)); !ok {
+		t.Fatal("UTC+8 clock: valid advance rejected")
+	}
+	if ok, _ := store.AdvanceOCAttempt(ctx, 7, a1.ID, OCAttemptAuthorizing, OCAttemptVerifying, base.Add(2*time.Minute).In(cst)); !ok {
+		t.Fatal("UTC+8 clock: valid confirm transition rejected")
+	}
+	if ok, _ := store.AdoptOCAttemptAlias(ctx, 7, a1.ID, a1.Alias, "runtime-alias-tz", base.Add(3*time.Minute).In(cst)); !ok {
+		t.Fatal("UTC+8 clock: valid alias adoption rejected")
+	}
+	a2 := seedVerified()
+	if err := store.ActivateOCAttempt(ctx, 7, a2.ID, "ext-tz", base.Add(3*time.Minute).In(cst)); err != nil {
+		t.Fatalf("UTC+8 clock: valid activation rejected: %v", err)
+	}
+
+	// (b) UTC-5 wall clock, instants AFTER expiry: nothing may transition or
+	// activate (broken code reads the -5 wall clock as earlier than the
+	// UTC-stored expiry and wrongly satisfies the predicate).
+	past := base.Add(2 * time.Hour) // 1h45m after the 15-minute expiry
+	a3 := mkAttempt()
+	if ok, _ := store.AdvanceOCAttempt(ctx, 7, a3.ID, OCAttemptPending, OCAttemptAuthorizing, past.In(est)); ok {
+		t.Fatal("UTC-5 clock: expired advance accepted")
+	}
+	if ok, _ := store.AdoptOCAttemptAlias(ctx, 7, a3.ID, a3.Alias, "alias-late", past.In(est)); ok {
+		t.Fatal("UTC-5 clock: expired alias adoption accepted")
+	}
+	a4 := seedVerified()
+	if err := store.ActivateOCAttempt(ctx, 7, a4.ID, "ext-late", past.In(est)); err == nil {
+		t.Fatal("UTC-5 clock: expired activation accepted")
+	}
+	if got := attemptRow(t, db, a4.ID); got.State != OCAttemptVerifying {
+		t.Fatalf("expired activation must leave the attempt unconsumed, got %q", got.State)
+	}
+
+	// Service path: Confirm runs on the service clock; a deployment whose
+	// clock carries a non-UTC zone (UTC+8) must still confirm inside the
+	// window (this was the reviewer's public-path breakage).
+	seedOCSubjectFixture(t, db)
+	seedOCRuntime(t, db, "rt-1", true)
+	svc := NewOCConnectionService(&dbCredentialSource{db: db}, &dbInstallationLookup{db: db}, store,
+		WithNow(func() time.Time { return base.Add(time.Minute).In(cst) }))
+	attemptID, err := svc.BeginAt(ctx, appconn.OCSubject{TenantID: 7, ActorID: "alice"}, "c-personal", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := store.AdvanceOCAttempt(ctx, 7, attemptID, OCAttemptPending, OCAttemptAuthorizing, base); !ok {
+		t.Fatal("seed authorizing failed")
+	}
+	if err := svc.Confirm(ctx, attemptID); err != nil {
+		t.Fatalf("Confirm on a UTC+8 service clock must succeed inside the window: %v", err)
+	}
+	if got := attemptRow(t, db, attemptID); got.State != OCAttemptVerifying {
+		t.Fatalf("Confirm state = %q, want verifying", got.State)
+	}
+}
+
 func TestTransientCipherRoundTripAndSeparation(t *testing.T) {
 	c1, err := NewTransientCipherFromKey("test-key-one")
 	if err != nil {

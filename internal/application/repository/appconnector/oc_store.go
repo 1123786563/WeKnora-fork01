@@ -562,8 +562,11 @@ func (s *OCStore) AdvanceOCAttempt(ctx context.Context, tenant uint64, id, from,
 	if !allowed {
 		return false, ErrOCAttemptInvalid
 	}
+	// expires_at is stored UTC-only: normalize the caller's instant before
+	// it becomes a SQL predicate, or a non-UTC host clock skews the window
+	// (T07 quality Q-1).
 	res := s.db.WithContext(ctx).Model(&OCAuthorizationAttemptRow{}).
-		Where("id = ? AND tenant_id = ? AND state = ? AND expires_at > ?", id, tenant, from, now).
+		Where("id = ? AND tenant_id = ? AND state = ? AND expires_at > ?", id, tenant, from, now.UTC()).
 		Update("state", to)
 	if res.Error != nil {
 		return false, res.Error
@@ -582,7 +585,7 @@ func (s *OCStore) AdoptOCAttemptAlias(ctx context.Context, tenant uint64, id, fr
 		return false, ErrOCAttemptInvalid
 	}
 	res := s.db.WithContext(ctx).Model(&OCAuthorizationAttemptRow{}).
-		Where("id = ? AND tenant_id = ? AND alias = ? AND expires_at > ?", id, tenant, fromAlias, now).
+		Where("id = ? AND tenant_id = ? AND alias = ? AND expires_at > ?", id, tenant, fromAlias, now.UTC()).
 		Update("alias", toAlias)
 	if res.Error != nil {
 		return false, res.Error
@@ -644,9 +647,10 @@ func (s *OCStore) ActivateOCAttempt(ctx context.Context, tenant uint64, id, exte
 		if inst.State != appconnector.InstallationActive {
 			return ErrOCAttemptConflict
 		}
-		// One-consume: WHERE state = 'verifying' AND expires_at > now.
+		// One-consume: WHERE state = 'verifying' AND expires_at > now (UTC
+		// predicate - stored expiry is UTC-only, T07 quality Q-1).
 		res := tx.Model(&OCAuthorizationAttemptRow{}).
-			Where("id = ? AND tenant_id = ? AND state = ? AND expires_at > ?", id, tenant, ocAttemptVerifying, now).
+			Where("id = ? AND tenant_id = ? AND state = ? AND expires_at > ?", id, tenant, ocAttemptVerifying, now.UTC()).
 			Update("state", ocAttemptActive)
 		if res.Error != nil {
 			return res.Error
