@@ -28,6 +28,7 @@ import {
 import {
   cancelParseDocuments,
   documentRowActions,
+  filterReparseIds,
 } from "./actions.ts";
 import {
   loadKnowledgeDocuments,
@@ -534,10 +535,7 @@ export function KnowledgeDocumentsPage({
   // before the batch endpoint is called.
   function reparseSelected() {
     if (!selected.size) return;
-    const ids = [...selected].filter((id) => {
-      const item = items.find((candidate) => candidate.id === id);
-      return !item || !documentRowActions(item.parse_status).canCancelParse;
-    });
+    const ids = filterReparseIds([...selected], items);
     if (!ids.length) {
       setMutationError("All selected documents are already being processed.");
       return;

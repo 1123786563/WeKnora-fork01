@@ -12,7 +12,7 @@ It remains `implementing`. It does not claim parity for the remaining PDF workfl
 
 | Layer | Command / result | Classification |
 |---|---|---|
-| Focused pipeline | `pnpm exec tsx --test apps/web/src/documents/upload-pipeline.test.ts` — 7 passed, 0 failed | pure business regression evidence |
+| Focused upload/actions | `node --import tsx --test apps/web/src/documents/actions.test.ts apps/web/src/documents/upload-pipeline.test.ts` — 11 passed, 0 failed; includes batch reparse in-flight filtering | page action and pure business regression evidence |
 | Web full regression after multimodal/ASR wiring | `pnpm test:web` — 282 passed, 0 failed | Web regression evidence |
 | Parser engine contract/type integration | `client.knowledgeBases.settings.parserEngines()` loads the server registry; selected `parser_engine_rules` are included in file, URL, and manual `process_config` | shared-contract integration evidence |
 | Provider model inventory integration | `client.configuration.models.list()` supplies VLLM/ASR selector options with manual-ID fallback | shared-contract integration evidence |

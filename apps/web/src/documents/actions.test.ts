@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { cancelParseDocuments, documentRowActions, reparseDocument } from './actions.ts';
+import { cancelParseDocuments, documentRowActions, filterReparseIds, reparseDocument } from './actions.ts';
 
 test('cancel parse is only offered while a document is pending/processing/finalizing', () => {
   for (const active of ['pending', 'processing', 'finalizing']) {
@@ -18,6 +18,16 @@ test('reparse delegates to the client reparse endpoint', async () => {
   const calls: string[] = [];
   await reparseDocument({ reparse: async (id) => void calls.push(id), cancelParse: async () => {} }, 'doc-1');
   assert.deepEqual(calls, ['doc-1']);
+});
+
+test('batch reparse excludes documents already in flight', () => {
+  assert.deepEqual(
+    filterReparseIds(['done', 'working', 'missing'], [
+      { id: 'done', parse_status: 'completed' },
+      { id: 'working', parse_status: 'processing' },
+    ]),
+    ['done', 'missing'],
+  );
 });
 
 test('batch cancel only targets in-flight documents and skips settled ones', async () => {

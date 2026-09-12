@@ -9,6 +9,17 @@ export interface DocumentRowActions {
   canCancelParse: boolean;
 }
 
+/** Keep Vue batch-reparse semantics: never submit documents already parsing. */
+export function filterReparseIds(
+  ids: readonly string[],
+  documents: readonly { id: string; parse_status?: string }[],
+): string[] {
+  return ids.filter((id) => {
+    const document = documents.find((item) => item.id === id);
+    return !document || !documentRowActions(document.parse_status).canCancelParse;
+  });
+}
+
 export function documentRowActions(parseStatus: string | undefined): DocumentRowActions {
   let active = false;
   let known = false;
