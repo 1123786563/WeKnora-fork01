@@ -57,7 +57,7 @@
   分任务审查。完整命令、退出码和阻塞边界写入验收文档与 rerun ledger。
 - 工程 race 门禁最终复跑：`GOWORK=off go test -race ./internal/application/service
   ./internal/application/repository ./internal/agent/trpc ./internal/agent/runtime
-  ./internal/sandbox -count=1` exit 0；同时修复 3 个测试替身/异步测试同步缺口，生产代码行为未改动。
+  ./internal/sandbox -count=1` exit 0；同时修复 service 测试替身/异步测试的共享状态同步缺口，生产代码行为未改动。
 - 当前交付结论：工程门禁与双数据库真实恢复证据已通过，但 Task 10 的延迟 MCP
   集合比对、多模态端到端及部署专用 provider 证据仍不足；发布门禁保持关闭，不能标记整体完成。
 - 追加规格复审修复：`CapabilitySnapshot.CompatibleWith` 现在也拒绝 system prompt、

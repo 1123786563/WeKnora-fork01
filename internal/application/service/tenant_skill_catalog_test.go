@@ -440,6 +440,8 @@ func TestRemovingThePinnedInstallReclaimsTheReplacedZip(t *testing.T) {
 	})
 	skillID, err := fx.svc.InstallSkill(ctx, 7, "cfg-1", first)
 	require.NoError(t, err)
+	require.Eventually(t, fx.installFinished.Load, time.Second, 10*time.Millisecond,
+		"initial background install must finish before removing its pinned archive")
 	installed, err := fx.skillRepo.GetSkill(ctx, 7, "cfg-1", skillID)
 	require.NoError(t, err)
 	catalogID := installed.CatalogID
