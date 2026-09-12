@@ -109,6 +109,13 @@ func isCredentialArtifact(rel string) bool {
 		if _, ok := credentialArtifactNames[elem]; ok {
 			return true
 		}
+		// .env.local / .env.production / .env.development.local … carry the
+		// same real secrets as .env; only the explicitly share-safe
+		// .env.example template is exempt. (W01 review hardening, landed in
+		// W02.)
+		if strings.HasPrefix(elem, ".env.") && elem != ".env.example" {
+			return true
+		}
 		for _, suffix := range credentialArtifactSuffixes {
 			if strings.HasSuffix(elem, suffix) {
 				return true
