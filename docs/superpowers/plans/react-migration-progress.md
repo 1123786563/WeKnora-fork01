@@ -64,6 +64,19 @@
   download and device click-through evidence remain open, so T22/T24 stay
   `review`.
 
+### T23 mobile data-source management follow-up (2026-09-12)
+
+- The native knowledge-base data-source route now provides create/edit,
+  explicit credential validation, sync, pause/resume, logs, and
+  confirmation-gated delete using the existing authenticated SDK. Editing
+  never prefills server credentials; failed mutations leave the list unchanged
+  until reload. The focused form suite is 3/3, full mobile tests are 82/82,
+  mobile typecheck, iOS/Android Expo exports, boundary checks, and diff checks
+  pass. Evidence:
+  `docs/migrations/react/evidence/t23-mobile-data-source-management-follow-up-2026-09-12.md`.
+  Provider credentials, sync completion, role/tenant negatives, and device
+  click-through remain open, so T23/T24 stay `review`.
+
 ### T13 follow-up (2026-09-12)
 
 - `c63529c` adds Web text-only live-response rendering for thinking, tool-call status/results, and references with nested secret redaction and React escaping. Verification and evidence: `docs/migrations/react/evidence/t10-t13-web-live-state-2026-09-12.md`.
