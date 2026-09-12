@@ -1,0 +1,23 @@
+{
+  "id": "ses_000000000001AAAAAAAAAAAAAA",
+  "slug": "brave-canyon",
+  "projectID": "global",
+  "directory": "/private/tmp/redacted-session/work",
+  "path": "private/tmp/redacted-session/work",
+  "cost": 0,
+  "tokens": {
+    "input": 0,
+    "output": 0,
+    "reasoning": 0,
+    "cache": {
+      "read": 0,
+      "write": 0
+    }
+  },
+  "title": "New session - 2026-09-12T14:56:18.306Z",
+  "version": "1.18.4",
+  "time": {
+    "created": 1789224978306,
+    "updated": 1789224978306
+  }
+}

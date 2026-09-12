@@ -1,0 +1,190 @@
+[
+  {
+    "info": {
+      "id": "msg_000000000001AAAAAAAAAAAAAA",
+      "sessionID": "ses_000000000001AAAAAAAAAAAAAA",
+      "role": "user",
+      "time": {
+        "created": 1789224978380
+      },
+      "summary": {
+        "diffs": []
+      },
+      "agent": "build",
+      "model": {
+        "providerID": "mock",
+        "modelID": "mock-model"
+      }
+    },
+    "parts": [
+      {
+        "id": "prt_000000000001AAAAAAAAAAAAAA",
+        "sessionID": "ses_000000000001AAAAAAAAAAAAAA",
+        "messageID": "msg_000000000001AAAAAAAAAAAAAA",
+        "type": "text",
+        "text": "round one"
+      }
+    ]
+  },
+  {
+    "info": {
+      "id": "msg_000000000002BBBBBBBBBBBBBB",
+      "sessionID": "ses_000000000001AAAAAAAAAAAAAA",
+      "role": "assistant",
+      "time": {
+        "created": 1789224978607,
+        "completed": 1789224981387
+      },
+      "parentID": "msg_000000000001AAAAAAAAAAAAAA",
+      "modelID": "mock-model",
+      "providerID": "mock",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+        "cwd": "/private/tmp/redacted-session/work",
+        "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+          "read": 0,
+          "write": 0
+        }
+      },
+      "finish": "stop"
+    },
+    "parts": [
+      {
+        "id": "prt_000000000002BBBBBBBBBBBBBB",
+        "sessionID": "ses_000000000001AAAAAAAAAAAAAA",
+        "messageID": "msg_000000000002BBBBBBBBBBBBBB",
+        "type": "step-start"
+      },
+      {
+        "id": "prt_000000000003CCCCCCCCCCCCCC",
+        "sessionID": "ses_000000000001AAAAAAAAAAAAAA",
+        "messageID": "msg_000000000002BBBBBBBBBBBBBB",
+        "type": "text",
+        "text": "MOCK-REPLY-2",
+        "time": {
+          "start": 1789224981276,
+          "end": 1789224981383
+        }
+      },
+      {
+        "id": "prt_000000000004DDDDDDDDDDDDDD",
+        "sessionID": "ses_000000000001AAAAAAAAAAAAAA",
+        "messageID": "msg_000000000002BBBBBBBBBBBBBB",
+        "type": "step-finish",
+        "reason": "stop",
+        "cost": 0,
+        "tokens": {
+          "input": 0,
+          "output": 0,
+          "reasoning": 0,
+          "cache": {
+            "read": 0,
+            "write": 0
+          }
+        }
+      }
+    ]
+  },
+  {
+    "info": {
+      "id": "msg_000000000003CCCCCCCCCCCCCC",
+      "sessionID": "ses_000000000001AAAAAAAAAAAAAA",
+      "role": "user",
+      "time": {
+        "created": 1789224981198
+      },
+      "summary": {
+        "diffs": []
+      },
+      "agent": "build",
+      "model": {
+        "providerID": "mock",
+        "modelID": "mock-model"
+      }
+    },
+    "parts": [
+      {
+        "id": "prt_000000000005EEEEEEEEEEEEEE",
+        "sessionID": "ses_000000000001AAAAAAAAAAAAAA",
+        "messageID": "msg_000000000003CCCCCCCCCCCCCC",
+        "type": "text",
+        "text": "round two"
+      }
+    ]
+  },
+  {
+    "info": {
+      "id": "msg_000000000004DDDDDDDDDDDDDD",
+      "sessionID": "ses_000000000001AAAAAAAAAAAAAA",
+      "role": "assistant",
+      "time": {
+        "created": 1789224981388,
+        "completed": 1789224981514
+      },
+      "parentID": "msg_000000000003CCCCCCCCCCCCCC",
+      "modelID": "mock-model",
+      "providerID": "mock",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+        "cwd": "/private/tmp/redacted-session/work",
+        "root": "/"
+      },
+      "cost": 0,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+          "read": 0,
+          "write": 0
+        }
+      },
+      "finish": "stop"
+    },
+    "parts": [
+      {
+        "id": "prt_000000000006FFFFFFFFFFFFFF",
+        "sessionID": "ses_000000000001AAAAAAAAAAAAAA",
+        "messageID": "msg_000000000004DDDDDDDDDDDDDD",
+        "type": "step-start"
+      },
+      {
+        "id": "prt_000000000007GGGGGGGGGGGGGG",
+        "sessionID": "ses_000000000001AAAAAAAAAAAAAA",
+        "messageID": "msg_000000000004DDDDDDDDDDDDDD",
+        "type": "text",
+        "text": "MOCK-REPLY-3",
+        "time": {
+          "start": 1789224981405,
+          "end": 1789224981511
+        }
+      },
+      {
+        "id": "prt_000000000008HHHHHHHHHHHHHH",
+        "sessionID": "ses_000000000001AAAAAAAAAAAAAA",
+        "messageID": "msg_000000000004DDDDDDDDDDDDDD",
+        "type": "step-finish",
+        "reason": "stop",
+        "cost": 0,
+        "tokens": {
+          "input": 0,
+          "output": 0,
+          "reasoning": 0,
+          "cache": {
+            "read": 0,
+            "write": 0
+          }
+        }
+      }
+    ]
+  }
+]

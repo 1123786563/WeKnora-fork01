@@ -1,0 +1,21 @@
+data: {"id":"evt_000000000001AAAAAAAAAAAAAA","type":"server.connected","properties":{}}
+
+data: {"id":"evt_000000000002BBBBBBBBBBBBBB","type":"session.created","properties":{"sessionID":"ses_000000000001AAAAAAAAAAAAAA","info":{"id":"ses_000000000001AAAAAAAAAAAAAA","slug":"crisp-rocket","version":"1.18.4","projectID":"global","directory":"/private/tmp/redacted-session/work","path":"private/tmp/redacted-session/work","title":"New session - 2026-09-12T14:50:12.139Z","cost":0,"tokens":{"input":0,"output":0,"reasoning":0,"cache":{"read":0,"write":0}},"time":{"created":1789224612139,"updated":1789224612139}}}}
+
+data: {"id":"evt_000000000003CCCCCCCCCCCCCC","type":"session.status","properties":{"sessionID":"ses_000000000001AAAAAAAAAAAAAA","status":{"type":"idle"}}}
+
+data: {"id":"evt_000000000004DDDDDDDDDDDDDD","type":"session.idle","properties":{"sessionID":"ses_000000000001AAAAAAAAAAAAAA"}}
+
+data: {"id":"evt_000000000005EEEEEEEEEEEEEE","type":"message.updated","properties":{"sessionID":"ses_000000000001AAAAAAAAAAAAAA","info":{"id":"msg_000000000001AAAAAAAAAAAAAA","role":"user","sessionID":"ses_000000000001AAAAAAAAAAAAAA","time":{"created":1789224612424},"agent":"build","model":{"providerID":"opencode","modelID":"big-pickle"}}}}
+
+data: {"id":"evt_000000000006FFFFFFFFFFFFFF","type":"message.part.updated","properties":{"sessionID":"ses_000000000001AAAAAAAAAAAAAA","part":{"type":"text","text":"hello","messageID":"msg_000000000001AAAAAAAAAAAAAA","sessionID":"ses_000000000001AAAAAAAAAAAAAA","id":"prt_000000000001AAAAAAAAAAAAAA"},"time":1789224612429}}
+
+data: {"id":"evt_000000000007GGGGGGGGGGGGGG","type":"session.status","properties":{"sessionID":"ses_000000000001AAAAAAAAAAAAAA","status":{"type":"busy"}}}
+
+data: {"id":"evt_000000000008HHHHHHHHHHHHHH","type":"message.part.delta","properties":{"sessionID":"ses_000000000001AAAAAAAAAAAAAA","messageID":"msg_000000000002BBBBBBBBBBBBBB","partID":"prt_000000000002BBBBBBBBBBBBBB","field":"text","delta":"The"}}
+
+data: {"id":"evt_000000000009IIIIIIIIIIIIII","type":"message.updated","properties":{"sessionID":"ses_000000000001AAAAAAAAAAAAAA","info":{"id":"msg_000000000002BBBBBBBBBBBBBB","parentID":"msg_000000000001AAAAAAAAAAAAAA","role":"assistant","mode":"build","agent":"build","path":{"cwd":"/private/tmp/redacted-session/work","root":"/"},"cost":0,"tokens":{"total":14362,"input":12545,"output":25,"reasoning":0,"cache":{"write":0,"read":1792}},"modelID":"big-pickle","providerID":"opencode","time":{"created":1789224612433,"completed":1789224617431},"sessionID":"ses_000000000001AAAAAAAAAAAAAA","finish":"stop"}}}
+
+data: {"id":"evt_00000000000aJJJJJJJJJJJJJJ","type":"session.status","properties":{"sessionID":"ses_000000000001AAAAAAAAAAAAAA","status":{"type":"idle"}}}
+
+data: {"id":"evt_00000000000bKKKKKKKKKKKKKK","type":"session.idle","properties":{"sessionID":"ses_000000000001AAAAAAAAAAAAAA"}}

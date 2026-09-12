@@ -1,0 +1,44 @@
+{
+  "lock_format": 1,
+  "component": "opencode",
+  "version": "1.18.4",
+  "source_commit": "49c69c5ed3ccf706b61b3febb43c8aaff7f8325e",
+  "binary_sha256": "9449af91f517eacc2b0742fa93ae0da64fa6e5db7b714e30c62edea2a8de3f98",
+  "target": {
+    "os": "linux",
+    "arch": null,
+    "note": "container target; linux binary digest must be hashed separately after the image build pins it"
+  },
+  "container_digest": null,
+  "container_digest_status": "pending-verification (待测): image not yet built/pinned; pin by digest once the linux binary inside the image is hashed and matches binary_sha256 expectations for its arch",
+  "local_probe": {
+    "os": "darwin",
+    "arch": "arm64",
+    "binary_path": "/Users/wuyongjun/.opencode/bin/opencode",
+    "binary_sha256": "9449af91f517eacc2b0742fa93ae0da64fa6e5db7b714e30c62edea2a8de3f98",
+    "note": "binary_sha256 above was probed from this local darwin/arm64 binary (opencode --version => 1.18.4); the linux/amd64 or linux/arm64 container binary must be hashed on its own before container_digest can be pinned"
+  },
+  "health_check": {
+    "rule": "verify the runtime version together with the binary digest: `opencode --version` must output 1.18.4 AND the running binary/image digest must match this lock before the server is accepted",
+    "doc_info_version_warning": "GET /doc reports info.version=1.0.0; that is the static OpenAPI document constant and MUST NOT be used as the runtime version signal"
+  },
+  "pinned_protocol": {
+    "create_session": "POST /session -> 200 {\"id\": ...}",
+    "prompt": "POST /session/{id}/prompt_async {messageID, parts:[{type:\"text\",text}]} -> 204 No Content (only 204 means accepted)",
+    "events": "GET /event -> text/event-stream, flat {id,type,properties} event frames, heartbeat comments allowed",
+    "messages": "GET /session/{id}/message -> 200 [{info:{id,parentID,role,finish,time:{completed}}, parts:[objects]}]",
+    "abort": "POST /session/{id}/abort -> 200 \"true\"",
+    "status": "GET /session/status -> 200 {<sessionID>:{type:\"idle\"|\"busy\"|\"retry\",...}}",
+    "question_reply": "POST /question/{requestID}/reply {answers:[[string]]} -> 200 \"true\"",
+    "question_reject": "POST /question/{requestID}/reject -> 200 \"true\"",
+    "permission_reply": "POST /session/{sessionID}/permissions/{requestID} {response:\"once\"|\"reject\"} -> 200 \"true\""
+  },
+  "fixtures": [
+    "testdata/protocol-lock.json (this file)",
+    "testdata/fixture_session_created.json (real POST /session body, sanitized)",
+    "testdata/fixture_abort_response.json (real POST /session/{id}/abort body)",
+    "testdata/fixture_messages_empty.json (real GET /session/{id}/message on a fresh session)",
+    "testdata/fixture_messages_after_exchange.json (real GET /session/{id}/message after two mock-provider rounds)",
+    "testdata/fixture_event_stream.txt (real GET /event SSE frames, sanitized)"
+  ]
+}
