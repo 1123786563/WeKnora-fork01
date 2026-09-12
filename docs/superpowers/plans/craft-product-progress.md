@@ -31,9 +31,9 @@
 | R03 | **done** | .worktrees/craft-r03 / codex/craft-r03 | 21bf52fc | HEAD b9f28885 审查 PASS_WITH_NITS → 合入 86a651bb；真实镜像构建+复验（官方 release 摘要独立实测吻合）；nit 留档：ActiveRuns 生产接线无下游归属（协调器登记 W03/R05 装配）、lock 回填留发布链 |
 | R04 | **done** | .worktrees/craft-r04 / codex/craft-r04 | 86a651bb | HEAD 8a387eb7 审查 PASS_WITH_NITS（23/23 规格）→ 合入 785ceeb8；41 测试含 live；exactly-once POST、15 案矩阵；契约留档：unknown 绝不落库、ErrUnknown 唯一 pending 信号 |
 | R05 | **done** | .worktrees/craft-r05 / codex/craft-r05 | 785ceeb8 | HEAD b523c8f1 审查 PASS_WITH_NITS（16/16）→ 合入 9c02a7c4；ActiveRuns 真实接线闭合 R03 nit-1；fail-closed 生产执行器（W03 承接 dial）；契约留档：unknown 绝不落库、裸 idle 窄窗口 nit 转 W 链 |
-| R06 | implementing | .worktrees/craft-r06 / codex/craft-r06 | 9c02a7c4 | 已派发（含 R04/R05 契约） |
-| W01 | implementing | .worktrees/craft-w01 / codex/craft-w01 | 9c02a7c4 | 已派发；迁移 000122/000042 |
-| O01 | ready（排队） | — | — | 等实现席位；迁移 000123/000043 已预分配；R07–O05 等待依赖 |
+| R06 | review | .worktrees/craft-r06 / codex/craft-r06 | 9c02a7c4 | HEAD fa51f671：18 案矩阵含真库 dispatch 阻断；审查者进行中；Craft 决定走 CraftInteractionStore 端口，outbox 归 C02 |
+| W01 | **done** | .worktrees/craft-w01 / codex/craft-w01 | 9c02a7c4 | HEAD f594e2b9 审查 PASS_WITH_NITS（21/21）→ 合入 47f1f4b7；真实 PG 迁移链验证；W02 提示：不能重 Publish 补 preview checks、.env 变体凭据加固 |
+| O01 | implementing | .worktrees/craft-o01 / codex/craft-o01 | 9c02a7c4 | 已派发；迁移 000123/000043；R07–O05 等待依赖 |
 
 ## 调度纪要
 
