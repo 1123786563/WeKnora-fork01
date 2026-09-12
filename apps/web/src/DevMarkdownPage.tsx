@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { hydrateMermaidBlocksWithBrowserDefaults, renderChatMarkdown } from '@weknora/views';
 
 const DEFAULT_MARKDOWN = `# Markdown rendering fixture
 
@@ -7,13 +8,38 @@ This development-only page exercises the safe text boundary used by the React re
 - **bold** and *italic* text
 - [a link](https://example.com)
 
+<img src="x" onerror="alert('unsafe')">
+
+\`\`\`mermaid
+graph TD
+  A[Markdown] --> B[Sanitized SVG]
+\`\`\`
+
 \`\`\`text
 <script>alert('unsafe')</script>
 \`\`\`
 `;
 
+export function renderMarkdownFixture(markdown: string): string {
+  return renderChatMarkdown(markdown);
+}
+
 export function DevMarkdownPage() {
   const [markdown, setMarkdown] = useState(DEFAULT_MARKDOWN);
+  const outputRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const root = outputRef.current;
+    if (!root || typeof window === 'undefined' || !root.querySelector('[data-markdown-diagram="mermaid"]')) return;
+    let disposed = false;
+    void (async () => {
+      if (disposed) return;
+      await hydrateMermaidBlocksWithBrowserDefaults(root, 'wk-dev-mermaid');
+    })().catch(() => {
+      // Keep the escaped code block visible when the optional renderer fails.
+    });
+    return () => { disposed = true; };
+  }, [markdown]);
 
   return (
     <main className="wk-page wk-markdown-test-page">
@@ -29,8 +55,7 @@ export function DevMarkdownPage() {
         Markdown input
         <textarea value={markdown} onChange={(event) => setMarkdown(event.target.value)} rows={12} />
       </label>
-      <section aria-label="Rendered Markdown" className="wk-markdown-test-output">
-        <pre>{markdown}</pre>
+      <section ref={outputRef} aria-label="Rendered Markdown" className="wk-markdown-test-output" dangerouslySetInnerHTML={{ __html: renderMarkdownFixture(markdown) }}>
       </section>
     </main>
   );

@@ -44,6 +44,9 @@ public storage URL or a client-side artifact download path.
   that API and hands the authenticated bytes to the Web save-file port.
 - `apps/web/src/styles.css` adds safe readable layout for Markdown code, tables,
   math, and citation controls.
+- `apps/web/src/DevMarkdownPage.tsx` now uses the same shared renderer and
+  browser-only Mermaid hydration, so the development fixture exercises the
+  actual DOM boundary instead of displaying source inside a plain `<pre>`.
 
 ## Fresh verification
 
@@ -64,6 +67,7 @@ Commands run from the isolated `codex/react-multiclient` worktree:
 | `pnpm build:web`, `pnpm build:desktop-renderer`, `pnpm build:embed` | exit 0; Web 2,211 modules, Desktop 2,212 modules, Embed 2,144 modules |
 | `pnpm --filter @weknora/mobile exec expo export --platform ios` | exit 0 |
 | `pnpm --filter @weknora/mobile exec expo export --platform android` | exit 0 |
+| Browser fixture at `http://localhost:5174/platform/dev/markdown` | fixture login, rendered Mermaid SVG, zero rendered `script` elements, and sanitized SVG event attribute |
 
 Focused TDD coverage in `packages/views/src/chat/markdown.test.tsx`,
 `packages/views/src/chat/mermaid.test.tsx`, and
@@ -77,6 +81,6 @@ reference modeling with unsafe web destinations omitted.
 ## Evidence boundary
 
 This is source/Node/build evidence only. It does not prove browser XSS
-execution behavior, Mermaid rendering in a real browser/WebView, protected artifact download bytes
+execution behavior for every payload, Mermaid rendering in a native WebView, protected artifact download bytes
 or preview against a live backend, citation navigation against a live backend,
 or long-message performance. T13 therefore remains `review`.

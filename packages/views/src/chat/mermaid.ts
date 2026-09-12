@@ -53,3 +53,16 @@ export async function hydrateMermaidBlocks(
     }
   }
 }
+
+/** Load the optional browser-only renderer from this shared package boundary. */
+export async function hydrateMermaidBlocksWithBrowserDefaults(root: HTMLElement, prefix?: string): Promise<void> {
+  if (typeof window === 'undefined') return;
+  const [mermaidModule, domPurifyModule] = await Promise.all([import('mermaid'), import('dompurify')]);
+  const purifier = domPurifyModule.default(window);
+  await hydrateMermaidBlocks(
+    root,
+    mermaidModule.default as unknown as MermaidEngine,
+    (svg) => purifier.sanitize(svg, { USE_PROFILES: { svg: true, svgFilters: true } }),
+    prefix,
+  );
+}
