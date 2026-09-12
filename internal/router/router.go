@@ -194,6 +194,13 @@ func NewRouter(params RouterParams) *gin.Engine {
 	// middleware). The ticket is minted by an authenticated POST.
 	RegisterSandboxTerminalRoutes(r, params.SessionHandler)
 
+	// Craft controlled preview on its isolated origin (W02): the one-time
+	// capability paths carry their own authorization and the origin never
+	// receives main-site credentials, so this must also precede the global
+	// Auth middleware. A nil handler (craft not assembled) leaves the /p/
+	// routes answering 404.
+	session.RegisterCraftPreviewRoutes(r, session.RegisteredCraftPreviewRouteHandler())
+
 	// 认证中间件
 	r.Use(middleware.Auth(params.TenantService, params.UserService, params.TenantMemberService, params.TenantAPIKeyService, params.Config))
 
