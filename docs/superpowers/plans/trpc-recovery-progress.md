@@ -89,6 +89,11 @@
 - 浏览器验证（Playwright Chromium，SQLite + recovery/admission 开启 + SSRF 白名单本地 mock 模型）：UI 登录；引擎选择器双选项可选；trpc 会话引擎 chip 渲染；真实 HTTP 路径发消息 → durable run 受理 → 后台 worker 执行图 → mock 模型 → finalize 写入 assistant 消息；刷新后用户消息与持久回复回放。
 - 7d873a1：rollback 测试改用触发器注入失败（旧断言依赖已移除的冲突路径），事务回滚覆盖保持完整。
 
+## 2026-09-12 第十二轮（同分支续）
+
+- d394965：浏览器复查暴露的两个后续缺陷修复——① 重复用户消息行：handler SSE 路径与 admission 各插一条（不同 id）；Admission 新增 UserMessageID，受理复用 handler 已持久化的行，浏览器验证单用户行 + 单 assistant 行；② 断线中断受理：Submit 改在 detached context 上执行，客户端断线落在受理事务中间也不能中止——浏览器实测 agent-chat 请求发出 300ms 后 abort，run 仍受理并在后台 worker 成功完成（规格：HTTP 断线不取消 Run）。
+- 浏览器级验证全项 PASS：登录、引擎选择器、引擎 chip、真实 HTTP 路径 durable run 往返、刷新回放、断线存活、单行不变量。
+
 ## 执行记录要求
 每次任务追加开始/结束时间、实现者、固定 HEAD、失败测试原因、通过命令、审查问题与修复提交。保留历史记录，不用最终 PASS 覆盖中途失败。
 
