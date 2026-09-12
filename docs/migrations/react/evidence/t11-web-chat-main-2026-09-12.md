@@ -2,7 +2,8 @@
 
 ## Scope
 
-Commit `beb7333` completes the shared React Web chat main-interface slice:
+Commits `beb7333` and `56393e4` complete the shared React Web chat
+main-interface slice:
 typed session/history and suggestion contracts, session management controls,
 older-history pagination, source/search/date grouping, scoped drafts,
 server-confirmed clear, message-suggestion telemetry, and authoritative
@@ -18,16 +19,20 @@ post-stream history refresh.
   and only follows the live edge when the reader is near the bottom.
 - The Web route loads the selected session, creates a session on first send,
   forwards source and keyword filters, supports flat/date-grouped sidebar
-  views, and refreshes persisted history after a completed stream so the
-  transient assistant row is replaced by server-owned message IDs.
+  views with server-total pagination, and refreshes persisted history after a
+  completed stream so the transient assistant row is replaced by server-owned
+  message IDs. Active-tenant role state limits tenant-wide channel sources to
+  owner/admin users.
 - Suggestion generation is polled while the server reports `generating`; an
   old session/message request cannot overwrite the active session after a
-  switch or regeneration.
+  switch or regeneration. Concurrent sends are rejected and the Composer is
+  disabled while a request is in flight; message-list scroll baselines reset
+  on session changes, and ready sets emit one impression event.
 
 ## Verification
 
-- `pnpm test:shared`: exit 0, 201/201.
-- `pnpm test:web`: exit 0, 106/106.
+- `pnpm test:shared`: exit 0, 203/203.
+- `pnpm test:web`: exit 0, 107/107.
 - `pnpm typecheck:shared`: exit 0.
 - `pnpm typecheck:web`: exit 0.
 - `pnpm build:web`: exit 0; Vite transformed 135 modules. The existing
