@@ -137,6 +137,7 @@ jobs:
 
   # ── 2b. Build Desktop APP per platform (Wails) ──
   build-desktop-app:
+    needs: build-react-artifact
     strategy:
       fail-fast: false
       matrix:
@@ -202,6 +203,28 @@ jobs:
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
+      - name: Download React Web/Embed candidate for desktop backend
+        uses: actions/download-artifact@v8
+        with:
+          name: react-web-dist
+          path: react-artifact
+
+      - name: Prepare React static runtime resources
+        shell: bash
+        run: |
+          ARCHIVE="react-artifact/WeKnora-react-web${{ steps.ver.outputs.version }}.tar.gz"
+          ROOT="WeKnora-react-web${{ steps.ver.outputs.version }}"
+          test -f "${ARCHIVE}"
+          tar xzf "${ARCHIVE}"
+          test -s "${ROOT}/web/index.html"
+          test -s "${ROOT}/web/embed.html"
+          test -s "${ROOT}/web/BUILD_INFO.json"
+          rm -rf web
+          cp -R "${ROOT}/web" web
+          test -s web/index.html
+          test -s web/embed.html
+          test -s web/BUILD_INFO.json
+
       - name: Pre-compile Go packages (Windows)
         if: runner.os == 'Windows'
         shell: bash
@@ -264,6 +287,7 @@ jobs:
           if [ -d config ]; then
             cp -r config/* "${RESOURCES}/config/"
           fi
+          cp -R web "${RESOURCES}/"
 
           DMG_NAME="WeKnora-Lite-App_${{ steps.ver.outputs.version }}_${{ matrix.arch_label }}"
 
@@ -294,6 +318,7 @@ jobs:
           if [ -d config ]; then
             cp -r config "${ARCHIVE}/config"
           fi
+          cp -R web "${ARCHIVE}/"
           if [ -d migrations/sqlite ]; then
             mkdir -p "${ARCHIVE}/migrations/sqlite"
             cp -r migrations/sqlite/* "${ARCHIVE}/migrations/sqlite/"

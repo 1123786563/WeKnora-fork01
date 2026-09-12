@@ -485,6 +485,27 @@ func (s *userService) LoginWithOIDC(
 	code, redirectURI string,
 	provisioning types.TenantProvisioningMode,
 ) (*types.OIDCCallbackResponse, error) {
+	return s.loginWithOIDC(ctx, code, redirectURI, provisioning, "")
+}
+
+func (s *userService) LoginWithOIDCWithPKCE(
+	ctx context.Context,
+	code, redirectURI string,
+	provisioning types.TenantProvisioningMode,
+	codeVerifier string,
+) (*types.OIDCCallbackResponse, error) {
+	if strings.TrimSpace(codeVerifier) == "" {
+		return nil, errors.New("code_verifier is required")
+	}
+	return s.loginWithOIDC(ctx, code, redirectURI, provisioning, codeVerifier)
+}
+
+func (s *userService) loginWithOIDC(
+	ctx context.Context,
+	code, redirectURI string,
+	provisioning types.TenantProvisioningMode,
+	codeVerifier string,
+) (*types.OIDCCallbackResponse, error) {
 	if strings.TrimSpace(code) == "" {
 		return nil, errors.New("code is required")
 	}
@@ -497,7 +518,7 @@ func (s *userService) LoginWithOIDC(
 		return nil, err
 	}
 
-	tokenResp, err := s.exchangeOIDCCode(ctx, cfg, code, redirectURI)
+	tokenResp, err := s.exchangeOIDCCode(ctx, cfg, code, redirectURI, codeVerifier)
 	if err != nil {
 		return nil, err
 	}
@@ -1580,7 +1601,7 @@ func (s *userService) applyOIDCDiscoveryDocument(ctx context.Context, cfg *confi
 	return nil
 }
 
-func (s *userService) exchangeOIDCCode(ctx context.Context, cfg *config.OIDCAuthConfig, code, redirectURI string) (*oidcTokenResponse, error) {
+func (s *userService) exchangeOIDCCode(ctx context.Context, cfg *config.OIDCAuthConfig, code, redirectURI string, codeVerifier ...string) (*oidcTokenResponse, error) {
 	if err := validateOIDCEndpoint("token", cfg.TokenEndpoint, true); err != nil {
 		return nil, err
 	}
@@ -1591,6 +1612,9 @@ func (s *userService) exchangeOIDCCode(ctx context.Context, cfg *config.OIDCAuth
 	form.Set("redirect_uri", redirectURI)
 	form.Set("client_id", cfg.ClientID)
 	form.Set("client_secret", cfg.ClientSecret)
+	if len(codeVerifier) > 0 && strings.TrimSpace(codeVerifier[0]) != "" {
+		form.Set("code_verifier", strings.TrimSpace(codeVerifier[0]))
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.TokenEndpoint, strings.NewReader(form.Encode()))
 	if err != nil {
