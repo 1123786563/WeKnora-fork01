@@ -7,6 +7,8 @@ unauthenticated client stubs. Nothing here is mocked at the transport layer.
 
 import os
 import socket
+import tempfile
+from pathlib import Path
 from types import SimpleNamespace
 
 import grpc
@@ -90,6 +92,61 @@ def _free_port() -> int:
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         return sock.getsockname()[1]
+
+
+# A03: the model gateway fixture compiles and runs the REAL Go internal
+# handler server (go test -c binary) on a random local port, backed by a
+# real migrated SQLite database and a controlled provider.
+@pytest.fixture(scope="session")
+def go_model_server():
+    import socket
+    import subprocess
+    import time
+    import urllib.request
+
+    repo_root = Path(__file__).resolve().parents[2]
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    addr = f"127.0.0.1:{port}"
+    binary = Path(tempfile.mkdtemp(prefix="semantic-model-server-")) / "server.test"
+    build = subprocess.run(
+        ["go", "test", "-c", "-o", str(binary), "./internal/handler"],
+        cwd=repo_root, capture_output=True, text=True, timeout=600,
+    )
+    if build.returncode != 0:
+        pytest.fail(f"go test -c failed: {build.stderr[-2000:]}")
+    env = dict(os.environ, SEMANTIC_TEST_MODEL_ADDR=addr)
+    proc = subprocess.Popen(
+        [str(binary), "-test.run", "TestSemanticModelGatewayServer", "-test.v"],
+        cwd=repo_root, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    base = f"http://{addr}"
+    for _ in range(120):
+        try:
+            urllib.request.urlopen(base + "/internal/semantic/model/count?invocation_id=probe", timeout=1)
+            break
+        except Exception:
+            if proc.poll() is not None:
+                pytest.fail("Go model server exited during startup")
+            time.sleep(0.5)
+    else:
+        proc.kill()
+        pytest.fail("Go model server did not become ready")
+    yield SimpleNamespace(url=base, token="model-test-token")
+    proc.kill()
+    proc.wait()
+
+
+@pytest.fixture()
+def model_gateway(go_model_server):
+    from semantic_service.model_gateway import ModelGateway
+
+    return ModelGateway(
+        go_model_server.url,
+        go_model_server.token,
+        invocation_counter_url=go_model_server.url + "/internal/semantic/model/count",
+    )
 
 
 @pytest.fixture()

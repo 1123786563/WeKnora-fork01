@@ -130,6 +130,14 @@ type SemanticConfig struct {
 	ResolveToken string `yaml:"resolve_token" json:"resolve_token"`
 	// ScopeTTL bounds an issued scope's lifetime. Zero uses the default.
 	ScopeTTL time.Duration `yaml:"scope_ttl" json:"scope_ttl"`
+	// ModelProvider names the APPROVED model entry for the semantic
+	// pipeline (e.g. "openai-compatible"). Empty disables model calls.
+	ModelProvider string `yaml:"model_provider" json:"model_provider"`
+	// ModelBaseURL / ModelAPIKey / ModelName configure the approved entry.
+	// The key never reaches logs or the semantic service.
+	ModelBaseURL string `yaml:"model_base_url" json:"model_base_url"`
+	ModelAPIKey  string `yaml:"model_api_key" json:"-"` // secret: never marshaled
+	ModelName    string `yaml:"model_name" json:"model_name"`
 }
 
 type VectorDatabaseConfig struct {

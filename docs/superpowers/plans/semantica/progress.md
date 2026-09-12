@@ -1,6 +1,6 @@
 # Semantica 实施台账
 
-状态：V01–C03、I01–I02、A01 verified；其余 15 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
+状态：V01–C03、I01–I02、A01、A03 verified；其余 14 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
 
 状态值 pending / in_progress / blocked / implemented / verified。每项验证记录必须包含commit SHA、精确命令、退出码、环境、产物路径、失败/限制；无真实证据不标记verified。执行前记录实际基线与已有脏文件。
 
@@ -19,7 +19,7 @@
 | I05 | 文档任务、attempt与终态协调 | I04 | pending | 尚未执行 |
 | A01 | 可信AccessScope与权限变更屏障 | C02,I02 | verified | 11 条 ACL 接线+盘点修正（临时文档豁免实证）；短钥/伪造/漂移/过期均拒绝；完成评审 PASS；见运行记录 2026-09-11 A01（两段）与 acl-write-inventory.md |
 | A02 | 授权事实子图与缓存隔离 | A01,I03,I04 | pending | 尚未执行 |
-| A03 | 模型代理、原始用量与预算 | C02,I01,A01 | pending | 尚未执行 |
+| A03 | 模型代理、原始用量与预算 | C02,I01,A01 | verified | 原子预算准入/幂等台账/unknown对账/新ID重试/受控入口（PG并发与死上下文实证）；无凭据真实调用保持未通过；见运行记录 2026-09-11 A03 |
 | Q01 | GraphRAG检索与有界执行 | A02,V03 | pending | 尚未执行 |
 | Q02 | 注册规则与可核验推导 | Q01 | pending | 尚未执行 |
 | Q03 | 模型推断与证据不足判定 | Q01,A03,V03 | pending | 尚未执行 |
@@ -177,9 +177,22 @@
 - 提交 SHA：598f3be（feat(semantic): a01 收尾ACL接线与盘点修正）。
 - 剩余限制：Issue 生产调用方必须经 resolveKBReadTenant 取 owner tenant（Q04 接线强制，已在清单）；快照为 KB 级非 subject 级（A02/Q01 接线时细化）；端到端克隆流 bump 调用点测试为可选后续；内部入口网络隔离归 O01。
 
+### 2026-09-11 A03 模型代理、原始用量与预算（verified）
+
+- 工作区：.worktrees/semantica（分支 codex/semantica）；基线 SHA：ce425d2（A01 收尾台账提交）。
+- 修改文件：migrations/{versioned/000097_semantic_invocations.{up,down}.sql,sqlite/000018_semantic_invocations.{up,down}.sql}、internal/types/semantic_model.go、internal/application/service/{semantic_model.go,semantic_model_test.go}、internal/handler/{semantic_model_internal.go,semantic_model_gateway_server_test.go}、internal/infrastructure/semantic/model_provider.go、internal/config/config.go(ModelProvider/BaseURL/APIKey[json:"-"]/ModelName)、internal/container/container.go、internal/router/router.go、internal/database/{migration_sqlite_versioned_schema_test.go(18),semantic_migration_test.go(steps -2)}、semantic/semantic_service/model_gateway.py、semantic/tests/{test_model_gateway.py,conftest.py(go_model_server/model_gateway fixtures)}、本台账、03 计划勾选。
+- 迁移号：实施前实测 PG 最高 000096、SQLite 最高 000017 → 采用 000097/000018；合同测试 up/(-2)/up 双方言；迁移计数 17→18。
+- RED：`go test ./internal/application/service -run TestSemanticModel -count=1`（类型未定义）与 `uv run --project semantic python -m pytest semantic/tests/test_model_gateway.py -q`（模块缺失）。
+- 评审修复 RED 四批：①provider 失败被吞成 200 假成功（502 死代码）→TestSemanticModelProviderFailureSurfacesNotFakeSuccess 先失败；②PG 并发预算超限（10×40 vs 100 全部准入）→ 原子条件 UPDATE + TestSemanticModelConcurrentBudgetNeverOvershoots（评审员 overlay 探针实证修复前后）；③死上下文台账写丢失（真实 deadline 场景行滞留 in_flight→500）→ WithoutCancel+10s + TestSemanticModelRealDeadlineRecordsUnknown（provider 阻塞至真实 ctx 到期，先失败）；④预算拒绝滞留 in_flight → 删除可重试 + TestSemanticModelBudgetRefusalDoesNotStrandInFlight（先失败）。
+- GREEN：`go test ./internal/application/service -run TestSemanticModel -count=1` 11 passed（含 -race -count=3 稳定）；`uv run --project semantic python -m pytest semantic/tests/test_model_gateway.py -q` 3 passed（真实编译 Go HTTP：go test -c 服务 + 受控 provider + 持久台账计数；计划核心断言逐字通过 first==second && count==1）；handler/database/repository 全量 ok；build/vet 净。
+- 关键语义：claim 幂等（new/completed/in_flight/unknown；failed/reconciled 同 ID 阻断→409）；同 ID 重试返回已存结果（provider 恰一次）；预算准入先于 provider（拒绝时 0 调用；HTTP 402）；预占/实际/unknown 分离（finalize 退款、reconciling 保留对账、Reconcile 按观察用量结算并退款）；重试新 ID 关联 parent（无聚合重复计费）；受控入口唯一（OpenAI-compatible 适配器，凭据仅 Go config、json:"-" 不落盘不落日志；Python 仅经内部 HTTP + 服务身份令牌）。
+- review：规格首轮 FAIL（BLOCKER：provider 失败假成功）→ 修复+终审 PASS（含终审新 MINOR：Reconcile 幂等性——退款已加状态守卫建议，记录为后续）；质量首轮 FAIL（3 BLOCKER：PG 并发超限/死上下文台账/滞留 in_flight，均 overlay 探针实证）→ 三项修复后 PASS（评审员独立复跑：PG ok=2/spent=80、-race ×3、Python 3/3）。遗留 MINOR follow-up：claim 并发 PK 冲突→409、finalize 超支记账、messages JSON 编解码、Retry 父态守卫+返回体、deadline 头解析加固、provider 响应限长+缺用量→unknown、502 不泄露 base URL、Python 客户端 deadline 头/异常分类、路由前缀对齐、PG 服务层测试、BYOK 用量测试。
+- 提交 SHA：（本记录与代码同批提交后补记）
+- 剩余限制：无真实模型凭据——真实模型调用/上游无旁路直连证明保持未通过（计划允许：记录阻断继续他项）；预算为任务本地 semantic_budgets（未接商业结算，未伪称）；模型能力凭据为静态受控入口（短期按操作凭据归 Q03/A02 接线强化）。
+
 ## 当前边界
 
-- V01–C03、I01–I02、A01 verified（ACL 无漏接路径）；后续 15 个任务未开始。
+- V01–C03、I01–I02、A01、A03 verified；后续 14 个任务未开始。
 - V01精确版本已冻结（semantica 0.6.8）；真实模型证据须在后续任务补齐，不是已经通过的前提。
 - V02 结论边界：持久图桥接/授权子图重建/注册规则推导已验证；模型推断 unverified（无凭据，未调用）；向量检索路径未验证。
 - V03 结论边界：semantica 模式检索质量/延迟为受控语料实测；native 对照与模型用量门槛未测（阻断记录见上）；上线门禁 approved=false 待用户确认。

@@ -57,6 +57,7 @@ type RouterParams struct {
 	ModelHandler                 *handler.ModelHandler
 	ModelCredentialsHandler      *handler.ModelCredentialsHandler
 	SemanticInternalHandler      *handler.SemanticInternalHandler
+	SemanticModelInternalHandler *handler.SemanticModelInternalHandler
 	SandboxConfigHandler         *handler.SandboxConfigHandler
 	SandboxSkillHandler          *handler.SandboxSkillHandler
 	MeEnvVarHandler              *handler.MeEnvVarHandler
@@ -280,6 +281,9 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterModelRoutes(v1, params.ModelHandler, params.ModelCredentialsHandler, rbacGuards)
 		if params.SemanticInternalHandler != nil {
 			handler.RegisterSemanticInternalRoutes(v1, params.SemanticInternalHandler.ResolveToken(), params.SemanticInternalHandler.ScopeService())
+		}
+		if params.SemanticModelInternalHandler != nil {
+			handler.RegisterSemanticModelInternalRoutes(v1, params.SemanticModelInternalHandler.ResolveToken(), params.SemanticModelInternalHandler.ModelService())
 		}
 		RegisterSandboxConfigRoutes(v1, params.SandboxConfigHandler, params.SandboxSkillHandler, rbacGuards)
 		RegisterMyEnvVarRoutes(v1, params.MeEnvVarHandler)

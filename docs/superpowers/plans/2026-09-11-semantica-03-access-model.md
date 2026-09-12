@@ -146,7 +146,7 @@ cache_identity = (owner_tenant, kb_id, generation, scope_hash,
 
 **接口：** ModelGateway.invoke(invocation_id:str,operation_id:str,model_profile_ref:str,messages:list,budget_ref:str)->ModelResult；ModelResult含text、input_tokens、output_tokens、provider_request_id、status。ledger.claim仅获执行权的首次调用返回new，其余返回completed/in_flight/unknown，避免把本次claim误当重复请求。Go SemanticBudgetPort.Reserve/Finalize/Reconcile围绕invocation ID；复用已实现预算系统，否则建立本任务预算仓库和原始用量表，不伪称已接商业结算。
 
-- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 def test_retry_same_invocation_does_not_double_finalize(model_gateway):
@@ -157,15 +157,15 @@ def test_retry_same_invocation_does_not_double_finalize(model_gateway):
 # model_gateway fixture：真实Go内部HTTP+受控provider，计数来自持久调用表。
 ```
 
-- [ ] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_model_gateway.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [x] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_model_gateway.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 定义operation/query关联短期模型能力凭据，校验tenant、用途、model_profile、budget；禁止任意URL/长期key透传；验证Semantica各调用入口都经过该adapter**
+- [x] **3. 定义operation/query关联短期模型能力凭据，校验tenant、用途、model_profile、budget；禁止任意URL/长期key透传；验证Semantica各调用入口都经过该adapter**
 
-- [ ] **4. 把预算预占、调用记录、实际用量和未知结果分开；未发送前失败可释放，provider可能执行但响应丢失进入unknown并对账，不能盲重发同一invocation**
+- [x] **4. 把预算预占、调用记录、实际用量和未知结果分开；未发送前失败可释放，provider可能执行但响应丢失进入unknown并对账，不能盲重发同一invocation**
 
-- [ ] **5. 重试的新真实provider调用分配新的invocation ID，关联原任务；父任务只引用子调用，不再次记录聚合消费。平台模型与BYOK均记录原始用量但不自行创造收费规则**
+- [x] **5. 重试的新真实provider调用分配新的invocation ID，关联原任务；父任务只引用子调用，不再次记录聚合消费。平台模型与BYOK均记录原始用量但不自行创造收费规则**
 
-- [ ] **6. 传播deadline/cancel并限制输出token；生产凭据不落日志；PG97/SQLite18实施前重核迁移号，权限/额度不足返回明确错误**
+- [x] **6. 传播deadline/cancel并限制输出token；生产凭据不落日志；PG97/SQLite18实施前重核迁移号，权限/额度不足返回明确错误**
 
 关键实现约束：
 
@@ -179,6 +179,6 @@ reservation = budget.reserve(budget_ref, invocation_id, upper_bound)
 # provider调用后ledger.save_actual并按同一invocation finalize；未知结果保留预占待对账。
 ```
 
-- [ ] **7. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_model_gateway.py -q`，预期退出码 0；另完成：Go TestSemanticModel覆盖额度竞争、BYOK原始用量、unknown对账；真实模型至少一次证明上游无旁路直连；无凭据保持真实调用项未通过。
+- [x] **7. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_model_gateway.py -q`，预期退出码 0；另完成：Go TestSemanticModel覆盖额度竞争、BYOK原始用量、unknown对账；真实模型至少一次证明上游无旁路直连；无凭据保持真实调用项未通过。
 
-- [ ] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 A03 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): a03 模型代理、原始用量与预算`。
+- [x] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 A03 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): a03 模型代理、原始用量与预算`。

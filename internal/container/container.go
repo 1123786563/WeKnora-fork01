@@ -147,6 +147,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	}))
 	must(container.Provide(initSemanticScopeService))
 	must(container.Provide(initSemanticInternalHandler))
+	must(container.Provide(initSemanticModelService))
+	must(container.Provide(initSemanticModelInternalHandler))
 	must(container.Provide(docparser.NewImageResolver))
 	must(container.Provide(initOllamaService))
 	must(container.Provide(initNeo4jClient))
@@ -1607,6 +1609,30 @@ func initSemanticInternalHandler(cfg *config.Config, scopeService *service.Seman
 
 // registerSemanticClientCleanup closes the semantic client on shutdown
 // (no-op when the service is disabled).
+// initSemanticModelService builds the controlled model gateway. Without a
+// configured provider adapter it returns nil: no model calls are possible
+// (fail closed; real model verification stays explicitly unpassed without
+// credentials).
+func initSemanticModelService(cfg *config.Config, db *gorm.DB) *service.SemanticModelService {
+	if cfg.Semantic == nil || !cfg.Semantic.Enabled || cfg.Semantic.ModelProvider == "" {
+		return nil
+	}
+	provider := semanticinfra.NewModelProviderAdapter(cfg.Semantic)
+	if provider == nil {
+		return nil
+	}
+	return service.NewSemanticModelService(db, provider)
+}
+
+// initSemanticModelInternalHandler exposes the internal model endpoint only
+// when BOTH the resolve token and the gateway are configured.
+func initSemanticModelInternalHandler(cfg *config.Config, modelService *service.SemanticModelService) *handler.SemanticModelInternalHandler {
+	if cfg.Semantic == nil {
+		return nil
+	}
+	return handler.NewSemanticModelInternalHandler(cfg.Semantic.ResolveToken, modelService)
+}
+
 func registerSemanticClientCleanup(client interfaces.SemanticClient, cleaner interfaces.ResourceCleaner) {
 	if client == nil {
 		return
