@@ -1,0 +1,654 @@
+/*
+ * Chat visual-form parity layer (Vue reference: frontend/src/views/chat/index.vue,
+ * frontend/src/components/Input-field.vue, frontend/src/views/chat/components/
+ * botmsg.vue / usermsg.vue). Layout/visual only — the streaming, approval and
+ * steer behavior is untouched.
+ */
+/* Doubled class raises specificity above the legacy .wk-chat-page rules in
+   apps/web/src/styles.css, whose load order is not guaranteed. */
+main.wk-chat-page.wk-chat-page {
+  display: grid;
+  grid-template-columns: 264px minmax(0, 1fr);
+  gap: 0;
+  align-items: stretch;
+  height: calc(100vh - 64px);
+  margin: 0;
+  max-width: none;
+  padding: 0;
+}
+
+/* ---- Left session sidebar (Vue ~260px column) ---- */
+.wk-chat-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+  padding: 1rem 0.75rem;
+  border-right: 1px solid #edf0f5;
+  background: #fafbfc;
+  overflow-y: auto;
+}
+
+.wk-chat-sidebar-heading h2 {
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.wk-chat-sidebar-heading button,
+.wk-chat-header-clear {
+  border: 1px solid #b9d1f2;
+  border-radius: 8px;
+  background: #fff;
+  color: #245a9b;
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 0.3rem 0.7rem;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.wk-chat-sidebar-heading button:hover,
+.wk-chat-header-clear:hover {
+  background: #eef5ff;
+}
+
+.wk-chat-sidebar > label {
+  color: #66758b;
+  font-size: 0.75rem;
+  display: grid;
+  gap: 0.25rem;
+  margin: 0.5rem 0;
+}
+
+.wk-chat-sidebar select,
+.wk-chat-sidebar input {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  box-sizing: border-box;
+  color: inherit;
+  font-size: 0.85rem;
+  padding: 0.4rem 0.55rem;
+  width: 100%;
+}
+
+.wk-chat-sidebar input::placeholder {
+  color: rgba(0, 0, 0, 0.4);
+}
+
+.wk-chat-session-group h3 {
+  color: #66758b;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  margin: 0.9rem 0 0.35rem;
+  text-transform: uppercase;
+}
+
+.wk-chat-session-group ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.wk-chat-session-row {
+  align-items: center;
+  border-radius: 8px;
+  display: flex;
+  gap: 0.25rem;
+  padding: 2px;
+}
+
+.wk-chat-session-row > button:first-child {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: inherit;
+  cursor: pointer;
+  flex: 1;
+  font-size: 0.85rem;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0.4rem 0.5rem;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-chat-session-row > button:first-child:hover,
+.wk-chat-session-row > button[aria-current='page'] {
+  background: #eef5ff;
+}
+
+.wk-chat-session-row > button:not(:first-child) {
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #66758b;
+  cursor: pointer;
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  opacity: 0;
+  padding: 0.2rem 0.35rem;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+
+.wk-chat-session-row:hover > button:not(:first-child),
+.wk-chat-session-row > button:not(:first-child):focus-visible {
+  opacity: 1;
+}
+
+.wk-chat-session-row > button:not(:first-child):hover {
+  background: #eef5ff;
+  color: #245a9b;
+}
+
+.wk-chat-session-pagination {
+  align-items: center;
+  display: flex;
+  font-size: 0.78rem;
+  gap: 0.4rem;
+  justify-content: center;
+  margin-top: auto;
+  padding-top: 0.75rem;
+}
+
+/* ---- Right conversation column ---- */
+.wk-chat-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.wk-chat-header {
+  align-items: center;
+  border-bottom: 1px solid #edf0f5;
+  display: flex;
+  flex-shrink: 0;
+  gap: 0.75rem;
+  justify-content: space-between;
+  padding: 0.7rem 1.25rem;
+}
+
+.wk-chat-header-titles {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.wk-chat-header h1 {
+  font-size: 1rem;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-chat-header-agent {
+  color: #07c05f;
+  flex-shrink: 0;
+  font-size: 0.75rem;
+}
+
+.wk-chat-header-actions {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+  gap: 0.6rem;
+}
+
+.wk-chat-header-actions label {
+  align-items: center;
+  color: #66758b;
+  display: flex;
+  font-size: 0.78rem;
+  gap: 0.35rem;
+}
+
+.wk-chat-header-actions select {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  padding: 0.3rem 0.45rem;
+}
+
+.wk-chat-conversation {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: 0 1.25rem 1rem;
+}
+
+/* ---- Centered message column (Vue .msg_list max-width 960px) ---- */
+.wk-chat-message-scroll {
+  flex: 1;
+  margin: 0 auto;
+  max-height: none;
+  max-width: 960px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1rem 0.25rem 0.5rem;
+  scroll-behavior: smooth;
+  width: 100%;
+}
+
+.wk-chat-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.wk-chat-messages > li {
+  border-bottom: 0;
+  padding: 0;
+}
+
+.wk-chat-message-row {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+
+.wk-chat-message-row--user {
+  justify-content: flex-end;
+}
+
+/* Assistant avatar column (Vue botmsg left column) */
+.wk-chat-avatar {
+  align-items: center;
+  background: #07c05f;
+  border-radius: 50%;
+  color: #fff;
+  display: flex;
+  flex-shrink: 0;
+  font-size: 0.62rem;
+  font-weight: 600;
+  height: 28px;
+  justify-content: center;
+  margin-top: 2px;
+  width: 28px;
+}
+
+.wk-chat-message-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.wk-chat-message-row--user .wk-chat-message-body {
+  align-items: flex-end;
+}
+
+.wk-chat-message-role {
+  color: #66758b;
+  font-size: 0.7rem;
+  text-transform: capitalize;
+}
+
+.wk-chat-message-bubble {
+  border-radius: 8px;
+  box-sizing: border-box;
+  font-size: 16px;
+  line-height: 1.6;
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+  padding: 8px 12px;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* User bubble: right-aligned, distinct background (Vue usermsg) */
+.wk-chat-message-row--user .wk-chat-message-bubble {
+  background: var(--td-bg-color-secondarycontainer, #f0f2f5);
+  max-width: min(76%, 820px);
+  width: max-content;
+}
+
+/* Assistant bubble: plain on the page background (Vue botmsg) */
+.wk-chat-message-row--assistant .wk-chat-message-bubble {
+  background: transparent;
+  max-width: 100%;
+  padding: 2px 0;
+}
+
+.wk-chat-message-bubble p {
+  margin: 0.3rem 0 0;
+}
+
+.wk-chat-message-bubble p:first-child {
+  margin-top: 0;
+}
+
+.wk-chat-message-bubble > p:only-child {
+  margin: 0;
+}
+
+/* ---- Composer (Vue Input-field: rounded bar, circular green send) ---- */
+.wk-chat-composer {
+  flex-shrink: 0;
+  margin: 0.5rem auto 0;
+  max-width: 960px;
+  width: 100%;
+}
+
+.wk-chat-input-bar {
+  align-items: flex-end;
+  background: #fff;
+  border: 1px solid #dce3ed;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(15, 34, 58, 0.05);
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.5rem 0.5rem 0.5rem 0.9rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.wk-chat-input-bar:focus-within {
+  border-color: #07c05f;
+  box-shadow: 0 0 0 3px rgba(7, 192, 95, 0.15);
+}
+
+.wk-chat-input-bar textarea {
+  border: 0;
+  box-sizing: border-box;
+  flex: 1;
+  font: inherit;
+  line-height: 1.5;
+  min-height: 3rem;
+  outline: none;
+  padding: 0.35rem 0;
+  resize: none;
+}
+
+.wk-chat-input-bar textarea::placeholder {
+  color: rgba(0, 0, 0, 0.4);
+}
+
+.wk-chat-input-bar textarea:disabled {
+  background: transparent;
+  color: #66758b;
+  cursor: not-allowed;
+}
+
+.wk-chat-send {
+  align-items: center;
+  background: #07c05f;
+  border: 0;
+  border-radius: 50%;
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  font-size: 0.62rem;
+  font-weight: 600;
+  height: 38px;
+  justify-content: center;
+  line-height: 1.1;
+  padding: 0;
+  text-align: center;
+  transition: background-color 0.15s ease, opacity 0.15s ease;
+  width: 38px;
+}
+
+.wk-chat-send:hover:not(:disabled) {
+  background: #06a852;
+}
+
+.wk-chat-send:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* ---- Sandbox terminal: compact collapsible strip, not a raw block ---- */
+.wk-chat-terminal {
+  border: 1px solid #dce3ed;
+  border-radius: 10px;
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  margin: 0.5rem auto 0;
+  max-width: 960px;
+  padding: 0.5rem 0.75rem;
+  width: 100%;
+}
+
+.wk-chat-terminal .wk-settings-panel-heading {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.wk-chat-terminal h2 {
+  flex: 1;
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.wk-chat-terminal > div > span,
+.wk-chat-terminal span[role='status'] {
+  color: #66758b;
+  font-size: 0.72rem;
+}
+
+.wk-chat-terminal button {
+  border: 1px solid #b9d1f2;
+  border-radius: 7px;
+  background: #fff;
+  color: #245a9b;
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.55rem;
+}
+
+.wk-chat-terminal form {
+  align-items: center;
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+
+.wk-chat-terminal form label {
+  color: #66758b;
+  font-size: 0.72rem;
+}
+
+.wk-chat-terminal input {
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  flex: 1;
+  font-size: 0.78rem;
+  padding: 0.25rem 0.45rem;
+}
+
+.wk-chat-terminal pre {
+  background: #f6f8fb;
+  border-radius: 7px;
+  font-size: 0.72rem;
+  margin: 0.4rem 0 0;
+  max-height: 12rem;
+  overflow: auto;
+  padding: 0.5rem;
+}
+
+/* ---- Empty-state suggested questions on the new-conversation view ---- */
+.wk-chat-starters {
+  margin: 0 0 0.75rem;
+}
+
+.wk-chat-starters p {
+  margin: 0 0 0.25rem;
+  font-size: 0.85rem;
+  color: var(--wk-muted, #667085);
+}
+
+.wk-chat-starters ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.wk-chat-starters button {
+  border: 1px solid var(--wk-border, #e4e7ec);
+  border-radius: 999px;
+  padding: 0.25rem 0.75rem;
+  background: transparent;
+  cursor: pointer;
+}
+
+.wk-chat-starters button:hover,
+.wk-chat-starters button:focus-visible {
+  border-color: var(--wk-accent, #4a7dff);
+}
+
+/* ---- Visually hidden (keeps accessible labels without visible clutter) ---- */
+.wk-chat-visually-hidden {
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+/* ---- Reduced motion: no smooth scroll or animated transitions ---- */
+@media (prefers-reduced-motion: reduce) {
+  .wk-chat-message-scroll {
+    scroll-behavior: auto;
+  }
+
+  .wk-chat-input-bar,
+  .wk-chat-send,
+  .wk-chat-sidebar-heading button,
+  .wk-chat-header-clear,
+  .wk-chat-session-row > button:not(:first-child) {
+    transition: none;
+  }
+}
+
+/* --- Chat UX slice: timestamps, copy button, typing dots, scroll-to-bottom --- */
+
+.wk-chat-message-scroll {
+  position: relative;
+}
+
+.wk-chat-timestamp {
+  list-style: none;
+  display: flex;
+  justify-content: center;
+  margin: 12px 0 4px;
+}
+
+.wk-chat-timestamp::before {
+  content: attr(aria-label);
+  font-size: 12px;
+  color: var(--wk-text-muted, #8a8f99);
+  background: var(--wk-bg-subtle, #f2f3f5);
+  border-radius: 999px;
+  padding: 2px 10px;
+}
+
+.wk-chat-message-time {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--wk-text-muted, #8a8f99);
+  text-align: right;
+}
+
+.wk-chat-copy {
+  margin-top: 4px;
+  font-size: 12px;
+  border: 1px solid var(--wk-border, #dcdfe4);
+  border-radius: 999px;
+  background: transparent;
+  padding: 2px 10px;
+  cursor: pointer;
+}
+
+.wk-chat-copy.is-copied {
+  color: var(--wk-success, #1a7f37);
+  border-color: var(--wk-success, #1a7f37);
+}
+
+.wk-chat-typing {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+}
+
+.wk-chat-typing-dots {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.wk-chat-typing-dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--wk-text-muted, #8a8f99);
+  animation: wk-chat-typing-bounce 1.2s infinite ease-in-out;
+}
+
+.wk-chat-typing-dots i:nth-child(2) { animation-delay: 0.2s; }
+.wk-chat-typing-dots i:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes wk-chat-typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wk-chat-typing-dots i {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+.wk-chat-scroll-bottom {
+  position: sticky;
+  bottom: 12px;
+  display: block;
+  margin-left: auto;
+  margin-right: 16px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--wk-border, #dcdfe4);
+  background: var(--wk-bg-elevated, #fff);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.12);
+  cursor: pointer;
+  z-index: 2;
+}
+
+.wk-chat-starter-skeleton {
+  display: block;
+  height: 20px;
+  width: 70%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #eceef1 25%, #f6f7f8 50%, #eceef1 75%);
+  background-size: 200% 100%;
+  animation: wk-chat-skeleton 1.4s infinite ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wk-chat-starter-skeleton {
+    animation: none;
+  }
+}
+
+@keyframes wk-chat-skeleton {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
