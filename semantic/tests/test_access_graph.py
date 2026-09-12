@@ -198,6 +198,92 @@ def test_authorize_assertion_fail_closed_and_delegates(access_graph, deletion_se
     assert authorize_assertion("alias-hidden", Snapshot(), None, access_graph=access_graph) is False
 
 
+def test_memoized_false_not_poisoned_by_cycle_guard():
+    """Reviewer repro: a1<->a2 cycle with a premise-free fallback row.
+    visible('a0') must be True (reference AND least-fixpoint agree);
+    a context-tainted False memo for a1 must not survive."""
+    from semantic_service.access import AccessGraph
+
+    class Row:
+        def __init__(self, doc, visible, premises):
+            self.doc, self.visible, self.premises = doc, visible, premises
+
+    class NullDeletion:
+        def denied(self, scope, document_id, revision):
+            return False
+
+    class RowsGraph(AccessGraph):
+        def __init__(self, rows):
+            super().__init__(deletion=NullDeletion())
+            self.rows = rows
+
+        def _support_rows(self, assertion_id):
+            out = []
+            for r in self.rows.get(assertion_id, []):
+                out.append({
+                    "support_document_id": r.doc, "support_revision": 1,
+                    "visible": r.visible, "_premises": r.premises,
+                    "_scope": None,
+                })
+            return out
+
+        def _alias_index(self):
+            return {}
+
+    graph = RowsGraph({
+        # row ORDER matters (reviewer seed 20260204 trial 94)
+        "a2": [Row("d3", True, []), Row("d2", True, ["a1"]), Row("d1", True, [])],
+        "a1": [Row("d2", True, ["a2"])],
+        "a3": [Row("d2", False, ["a3", "a2"])],
+        "a0": [Row("d2", True, ["a3"]), Row("d2", True, ["a3", "a2"]),
+               Row("d1", True, ["a2", "a1"])],
+    })
+    allowed = {"d1", "d2", "d3"}
+    assert graph.visible("a2", allowed) is True
+    assert graph.visible("a1", allowed) is True
+    assert graph.visible("a0", allowed) is True, "tainted memo poisoned a1's True"
+
+
+def test_guard_refire_does_not_untaint_false():
+    """Reviewer trial-7857 repro: a2 is evaluated twice; the second walk's
+    guard RE-FIRE on an already-recorded id must still taint a2's False
+    (a2 is genuinely True via another row)."""
+    from semantic_service.access import AccessGraph
+
+    class NullDeletion:
+        def denied(self, scope, document_id, revision):
+            return False
+
+    class Row:
+        def __init__(self, doc, visible, premises):
+            self.doc, self.visible, self.premises = doc, visible, premises
+
+    class RowsGraph(AccessGraph):
+        def __init__(self, rows):
+            super().__init__(deletion=NullDeletion())
+            self.rows = rows
+
+        def _support_rows(self, assertion_id):
+            return [{"support_document_id": r.doc, "support_revision": 1,
+                     "visible": r.visible, "_premises": r.premises, "_scope": None}
+                    for r in self.rows.get(assertion_id, [])]
+
+        def _alias_index(self):
+            return {}
+
+    graph = RowsGraph({
+        "a0": [Row("d1", False, ["a1"]), Row("d1", True, ["a2"]),
+               Row("d1", True, ["a3", "a2", "a0"])],
+        "a1": [Row("d1", False, [])],
+        "a2": [Row("d1", True, ["a1", "a4"]), Row("d2", True, ["a4"])],
+        "a3": [Row("d1", True, ["a4", "a2"])],
+        "a4": [Row("d2", True, ["a2", "a4", "a0"]), Row("d2", True, ["a2"]),
+               Row("d1", True, [])],
+    })
+    allowed = {"d1", "d2"}
+    assert graph.visible("a3", allowed) is True, "idempotent guard re-fire untainted a2's False"
+
+
 def test_cache_epoch_and_scope_partition(pg_dsn):
     cache = ScopedCache()
     from semantic_service.access import cache_key

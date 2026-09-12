@@ -239,7 +239,7 @@
 - GREEN：`uv run --project semantic python -m pytest semantic/tests/test_access_graph.py -q` 12 passed；全量 semantic/tests/ 130 passed 退出码 0（真实服务 PG）。
 - 实测验收：两个计划核心断言逐字（松柏搜索空/隐藏前提杀导出边）；授权先行（allowed 集先于一切检查）；合取前提递归（活但不允许文档前提由 Python 递归拒绝——DB 可见旗标为 True 场景）；环安全（visiting 集合，评审员确认记忆化下依然可靠）；真实库游走排除隐藏断言与节点；节点/边/hop 上限全 enforced（星形恰 5）；截断标记；缓存 scope hash+epoch 双分区（10 要素键）+epoch 失配结构淘汰+verify 拒绝即删；跨租户同 KB 名不关联（tenant 99 不可见于 tenant 1）；记忆化 DAG 性能（深度 20 Fibonacci <5s）。
 - **延后记录（Q01 接线，如实）**：①步骤 3"向量候选阶段过滤"——向量库未接线（I03 抽取适配器未接，Q01 落地）；②步骤 5"按授权子图重算图指标"——排序/指标计算未实现（文档已如实声明）；③generation 未在 SQL 查询强制（读租约绑定归 Q01）；④evidence 字段未填充（Q01 证据链）；⑤access_graph fixture 在测试文件而非 conftest（总计划 §4.2 统一化归 Q01 提升）；⑥build_authorized_subgraph 签名偏差（allowed_documents 显式传入而非 snapshot 派生——Q01 适配）。
-- review：规格首轮 FAIL（2 BLOCKER：fail-open 存根/真实库游走缺失）→ 修复后 PASS（条件：本台账延后记录——即本记录；authorize 测试已补）；质量首轮 FAIL（3 BLOCKER：组合缺失/节点上限/指数爆炸，全部探针实证）→ 修复后 PASS 判定（终审消息在途，三项以 RED-first 判别测试+评审员复验方法论转绿）。
+- review：规格首轮 FAIL（2 BLOCKER：fail-open 存根/真实库游走缺失）→ 修复后 PASS（条件：台账延后记录+authorize 测试——均已补）；质量共三轮 FAIL→PASS：首轮 3 BLOCKER（组合缺失/节点上限/指数爆炸，探针实证）；终审一轮发现记忆化回归（环图 False 污染——评审员 400 随机图属性测试 2/400 错判+最小复现）→ 污染追踪修复（True 无条件缓存/False 仅未受环守卫污染时缓存）；再审一轮发现 set-len 幂等漏洞（守卫对已记录 id 重触发 len 不变——20,000 图 1 错判+trial-7857 复现）→ 单调计数器修复；终验 PASS：评审员以 70,000 随机环图（20k+50k 两种子）+行序敏感性 0 错判、性能全 O(n)（钻石 d=20→39 调用/环钻石 d=22→22 调用/Fibonacci d=30→31 调用）实证收敛；两复现均保留为测试（trial-94/trial-7857）。
 - 提交 SHA：59a8eb9（feat(semantic): a02 授权事实子图与缓存隔离）。
 
 ## 当前边界

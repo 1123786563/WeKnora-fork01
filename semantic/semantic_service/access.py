@@ -30,17 +30,24 @@ class AccessGraph:
         visible, (b) survives tombstones, (c) sits on an allowed document,
         and (d) if derived, has all premises visible (conjunctive).
 
-        Memoized per call: shared premises in DAGs are evaluated once
-        (cycle revisits still fail closed via the visiting set)."""
+        Memoized per call with TAINT tracking: True is always definitive
+        (a surviving row is a finite derivation regardless of context);
+        False is cached ONLY when the subtree evaluation never hit the
+        cycle guard - a guard-tainted False is context-dependent and must
+        not poison later reads (a cycle premise may be True via another
+        row in a clean context)."""
         memo: dict[str, bool] = {}
-        return self._visible(assertion_id, allowed_documents, frozenset(), memo)
+        guard_hits: list[int] = [0]  # monotone counter: re-fires COUNT
+        return self._visible(assertion_id, allowed_documents, frozenset(), memo, guard_hits)
 
     def _visible(self, assertion_id: str, allowed_documents: set[str], visiting: frozenset,
-                 memo: dict[str, bool]) -> bool:
+                 memo: dict[str, bool], guard_hits: "list[int]") -> bool:
         if assertion_id in memo:
             return memo[assertion_id]
-        if assertion_id in visiting:  # cycle guard: no finite derivation
+        if assertion_id in visiting:  # cycle guard: no finite derivation HERE
+            guard_hits[0] += 1
             return False
+        hits_at_entry = guard_hits[0]
         rows = self._support_rows(assertion_id)
         for row in rows:
             doc = row["support_document_id"]
@@ -52,12 +59,18 @@ class AccessGraph:
                 continue
             premises = row["_premises"]
             if premises and not all(
-                self._visible(p, allowed_documents, visiting | {assertion_id}, memo) for p in premises
+                self._visible(p, allowed_documents, visiting | {assertion_id}, memo, guard_hits)
+                for p in premises
             ):
                 continue
+            # True is definitive: cache unconditionally.
             memo[assertion_id] = True
             return True
-        memo[assertion_id] = False
+        # False is definitive only if NO cycle guard fired anywhere during
+        # THIS node's evaluation - including RE-FIRES on already-seen ids
+        # (the monotone counter counts every activation, unlike a set).
+        if guard_hits[0] == hits_at_entry:
+            memo[assertion_id] = False
         return False
 
     def _support_rows(self, assertion_id: str) -> list[dict]:
