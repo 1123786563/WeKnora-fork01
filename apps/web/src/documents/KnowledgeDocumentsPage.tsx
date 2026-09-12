@@ -125,6 +125,13 @@ export function KnowledgeDocumentsPage({
   const [chunkSize, setChunkSize] = useState(512);
   const [chunkOverlap, setChunkOverlap] = useState(50);
   const [chunkStrategy, setChunkStrategy] = useState("auto");
+  const [multimodalEnabled, setMultimodalEnabled] = useState(false);
+  const [vllmModelId, setVllmModelId] = useState("");
+  const [descriptionLanguage, setDescriptionLanguage] = useState("");
+  const [customInstructions, setCustomInstructions] = useState("");
+  const [asrEnabled, setAsrEnabled] = useState(false);
+  const [asrModelId, setAsrModelId] = useState("");
+  const [asrLanguage, setAsrLanguage] = useState("");
   const [uploadStates, setUploadStates] = useState<readonly UploadEntryState[]>(
     [],
   );
@@ -159,6 +166,16 @@ export function KnowledgeDocumentsPage({
           setChunkOverlap(chunking.chunk_overlap);
         if (typeof chunking.strategy === "string" && chunking.strategy)
           setChunkStrategy(chunking.strategy);
+        const config = kb as KBSurfaceKB & { vlm_config?: Record<string, unknown>; asr_config?: Record<string, unknown> };
+        const vlm = config.vlm_config ?? {};
+        setMultimodalEnabled(vlm.enabled === true || (kb as KBSurfaceKB & { enable_multimodel?: boolean }).enable_multimodel === true);
+        setVllmModelId(typeof vlm.model_id === "string" ? vlm.model_id : "");
+        setDescriptionLanguage(typeof vlm.description_language === "string" ? vlm.description_language : "");
+        setCustomInstructions(typeof vlm.custom_instructions === "string" ? vlm.custom_instructions : "");
+        const asr = config.asr_config ?? {};
+        setAsrEnabled(asr.enabled === true);
+        setAsrModelId(typeof asr.model_id === "string" ? asr.model_id : "");
+        setAsrLanguage(typeof asr.language === "string" ? asr.language : "");
         setCanContribute(
           computeKBPermissions(kb as KBSurfaceKB, me as KBSurfaceMe | null)
             .canContribute,
@@ -280,6 +297,15 @@ export function KnowledgeDocumentsPage({
     );
   }
 
+  function buildProcessConfig() {
+    return {
+      enable_multimodel: multimodalEnabled,
+      vlm_config: { enabled: multimodalEnabled, model_id: vllmModelId.trim(), description_language: descriptionLanguage.trim(), custom_instructions: customInstructions.trim() },
+      asr_config: { enabled: asrEnabled, model_id: asrModelId.trim(), language: asrLanguage.trim() },
+      chunking_config: { chunk_size: chunkSize, chunk_overlap: chunkOverlap, strategy: chunkStrategy },
+    };
+  }
+
   // Sequential uploads (one call per file) with per-file status; a per-file
   // failure keeps the dialog open so the errors stay visible (Vue parity).
   async function confirmUpload() {
@@ -297,13 +323,15 @@ export function KnowledgeDocumentsPage({
       setUploadError(t("knowledgeEditor.chunking.overlapDescription"));
       return;
     }
-    const processConfig = {
-      chunking_config: {
-        chunk_size: chunkSize,
-        chunk_overlap: chunkOverlap,
-        strategy: chunkStrategy,
-      },
-    };
+    if (multimodalEnabled && !vllmModelId.trim()) {
+      setUploadError("A VLM model is required when multimodal parsing is enabled.");
+      return;
+    }
+    if (asrEnabled && !asrModelId.trim()) {
+      setUploadError("An ASR model is required when audio transcription is enabled.");
+      return;
+    }
+    const processConfig = buildProcessConfig();
     setUploadError(null);
     setUploading(true);
     if (pendingUrl) {
@@ -404,17 +432,15 @@ export function KnowledgeDocumentsPage({
     try {
       if (!manualTitle.trim() || !manualContent.trim())
         throw new Error(t("knowledgeBase.documents.manualTitle"));
+      if (multimodalEnabled && !vllmModelId.trim())
+        throw new Error("A VLM model is required when multimodal parsing is enabled.");
+      if (asrEnabled && !asrModelId.trim())
+        throw new Error("An ASR model is required when audio transcription is enabled.");
       await client.knowledgeBases.documents.createManual(knowledgeBaseId, {
         title: manualTitle.trim(),
         content: manualContent,
         status: "pending",
-        process_config: {
-          chunking_config: {
-            chunk_size: chunkSize,
-            chunk_overlap: chunkOverlap,
-            strategy: chunkStrategy,
-          },
-        },
+        process_config: buildProcessConfig(),
       });
       setUrl("");
       setManualTitle("");
@@ -1083,6 +1109,20 @@ export function KnowledgeDocumentsPage({
                 <option value="legacy">Legacy</option>
               </select>
             </label>
+          </fieldset>
+          <fieldset className="wk-upload-confirm-multimodal">
+            <legend>Multimodal parsing</legend>
+            <label className="wk-checkbox"><input type="checkbox" checked={multimodalEnabled} onChange={(event) => setMultimodalEnabled(event.target.checked)} /> Enable VLM descriptions</label>
+            {multimodalEnabled ? <>
+              <label>VLM model ID <input required value={vllmModelId} onChange={(event) => setVllmModelId(event.target.value)} placeholder="tenant model id" /></label>
+              <label>Description language <input value={descriptionLanguage} onChange={(event) => setDescriptionLanguage(event.target.value)} placeholder="Auto" /></label>
+              <label>Custom instructions <textarea rows={3} value={customInstructions} onChange={(event) => setCustomInstructions(event.target.value)} /></label>
+            </> : null}
+          </fieldset>
+          <fieldset className="wk-upload-confirm-asr">
+            <legend>Audio transcription</legend>
+            <label className="wk-checkbox"><input type="checkbox" checked={asrEnabled} onChange={(event) => setAsrEnabled(event.target.checked)} /> Enable ASR</label>
+            {asrEnabled ? <><label>ASR model ID <input required value={asrModelId} onChange={(event) => setAsrModelId(event.target.value)} placeholder="tenant model id" /></label><label>Language <input value={asrLanguage} onChange={(event) => setAsrLanguage(event.target.value)} placeholder="Auto" /></label></> : null}
           </fieldset>
           {uploadError ? <Status tone="error">{uploadError}</Status> : null}
           <div className="wk-list-actions">
