@@ -187,3 +187,9 @@
 - Organizations live 复测：invite_code 参数触发的预览卡正确显示 already-member 分支（“您已经是该共享空间的成员”），组织列表含成员计数/角色（org-invite-preview-live.png）。
 - chat 视觉形态实施子代理派发（packages/views/chat + ChatRoutePage 渲染层；禁改 packages/i18n）。
 - KB 详情实施子代理继续。
+
+## 2026-09-12 Round 29
+
+- embed 渠道隔离链路搭建：agents/:id/embed-channels 创建渠道（allowed_origins 需含前端 origin）→ preview-session 签发 ems_ 令牌 → embed dev :5182（VITE_API_BASE_URL=:8080）。
+- 发现 embed 冷恢复缺陷：会话 resume 请求 GET /api/v1/embed/:ch/messages/:sid/load… 网络层 ERR_FAILED（初始 token 交换/会话创建成功）。已登记 embed 缺陷待查（后续结合 EmbedApp session probe 逻辑定位）。
+- chat 视觉形态实施完成并提交 54f2e59（web 175/175、build 绿）。
