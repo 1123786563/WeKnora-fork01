@@ -248,7 +248,7 @@ func (r *recordingOutbox) ExtendOperation(ctx context.Context, id, owner string,
 	return ok, err
 }
 
-func newTestWorker(owner string, outbox OutboxStore, bindings appconn.OCBindingStore, admin RuntimeAdmin, sink SecretSink, secret AdminSecret) *ControlWorker {
+func newTestWorker(owner string, outbox OutboxStore, bindings ControlStore, admin RuntimeAdmin, sink SecretSink, secret AdminSecret) *ControlWorker {
 	w, err := NewControlWorker(outbox, bindings, admin, sink, secret, WorkerConfig{
 		OwnerID:       owner,
 		Lease:         30 * time.Second,
@@ -726,6 +726,12 @@ func TestWorkerFailureSchedulesExponentialBackoffCapped(t *testing.T) {
 	}
 }
 
+// TestWorkerAuthorizeAndConfirmRejectUncorrelatedRows pins the WIRED
+// semantics (T07, per coordinator R13.1): the authorize/confirm kinds are
+// correlation-driven, and a row whose resource_id resolves to no
+// authorization attempt is a PERMANENT rejection - dropped, never retried,
+// never touching the admin client. (Pre-T07 this test pinned the held
+// ErrKindNotWiredYet placeholder; the wiring it announced is now in.)
 func TestWorkerAuthorizeAndConfirmHeldUntilCorrelationWiring(t *testing.T) {
 	for _, kind := range []string{KindAuthorize, KindConfirm} {
 		db := newWorkerTestDB(t)
@@ -735,15 +741,14 @@ func TestWorkerAuthorizeAndConfirmHeldUntilCorrelationWiring(t *testing.T) {
 		seedOp(t, db, "op1", kind, 7, "conn1", 1, 0, time.Unix(1699990000, 0).UTC())
 		admin := newFakeAdmin()
 		w := newTestWorker("wA", repoapp.NewOCStore(db), repoapp.NewOCStore(db), admin, &fakeSink{}, staticSecret("admin-secret-1"))
-		err := w.RunOnce(ctx)
-		if !errors.Is(err, ErrKindNotWiredYet) {
-			t.Fatalf("%s: expected ErrKindNotWiredYet, got %v", kind, err)
+		if err := w.RunOnce(ctx); err != nil {
+			t.Fatalf("%s: uncorrelated row must be a permanent drop, got %v", kind, err)
 		}
 		if calls, _ := admin.snapshot(); calls != 0 {
-			t.Fatalf("%s: must not touch admin client before T07 wiring", kind)
+			t.Fatalf("%s: must not touch admin client without a correlated attempt", kind)
 		}
-		if row := outboxRow(t, db, "op1"); row == nil {
-			t.Fatalf("%s: operation must stay queued", kind)
+		if row := outboxRow(t, db, "op1"); row != nil {
+			t.Fatalf("%s: uncorrelated row must be removed, not retried", kind)
 		}
 	}
 }

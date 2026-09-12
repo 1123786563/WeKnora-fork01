@@ -8,6 +8,7 @@ import (
 
 	appconnector "github.com/Tencent/WeKnora/internal/appconnector"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -425,4 +426,320 @@ func (s *OCStore) GetDefinition(ctx context.Context, app, version, action string
 		InputSchema: json.RawMessage(row.InputSchema), RequiredScopes: ocScopesFromRow(row.RequiredScopes),
 		Risk: row.Risk, Published: row.Published,
 	}, nil
+}
+
+// ---------------------------------------------------------------------------
+// authorization attempts + enqueue (T07 correlate-able OAuth / API key)
+//
+// PAYLOAD ADAPTATION (coordinator ruling 3, option a): the frozen outbox
+// schema has NO payload column, so authorize/confirm rows encode their
+// minimal payload into resource_id:
+//
+//	authorize (OAuth)     resource_id = <attempt id>
+//	authorize (API key)   resource_id = <attempt id>|<sealed transient cipher>
+//	confirm               resource_id = <attempt id>
+//	delete_connection
+//	  (cleanup enqueue)   resource_id = <attempt id>|<external id>
+//
+// The API-key transient ciphertext therefore lives exactly as long as its
+// outbox row: success completes (deletes) the row, and the attempt expiry
+// (15 minutes) turns a failing handoff into a permanent rejection that also
+// deletes the row - no migration, no second store.
+// ---------------------------------------------------------------------------
+
+var (
+	// ErrOCAttemptInvalid covers malformed attempt input rejected before any
+	// database access: missing identity fields, unknown states, or an
+	// illegal state-transition request.
+	ErrOCAttemptInvalid = errors.New("oc_attempt_invalid")
+	// ErrOCAttemptConflict covers rejected attempt writes: lost one-consume
+	// races (the conditional UPDATE matched zero rows), activation against a
+	// drifted connection version, or a disabled installation.
+	ErrOCAttemptConflict = errors.New("oc_attempt_conflict")
+	// ErrOCOperationInvalid covers malformed enqueue input rejected before
+	// any database access.
+	ErrOCOperationInvalid = errors.New("oc_operation_invalid")
+	// ErrOCRuntimeUnavailable: no enabled open-connector runtime is
+	// registered, so no authorization can start (fail closed).
+	ErrOCRuntimeUnavailable = errors.New("oc_runtime_unavailable")
+)
+
+// Attempt lifecycle states (plan T07): pending -> authorizing -> verifying
+// -> active; failed/expired/revoked are terminal and never revive. The
+// service layer owns the exported spellings; these row-layer constants keep
+// the SQL predicates independent of it.
+const (
+	ocAttemptPending     = "pending"
+	ocAttemptAuthorizing = "authorizing"
+	ocAttemptVerifying   = "verifying"
+	ocAttemptActive      = "active"
+	ocAttemptFailed      = "failed"
+	ocAttemptExpired     = "expired"
+	ocAttemptRevoked     = "revoked"
+)
+
+func validOCAttemptState(s string) bool {
+	switch s {
+	case ocAttemptPending, ocAttemptAuthorizing, ocAttemptVerifying, ocAttemptActive,
+		ocAttemptFailed, ocAttemptExpired, ocAttemptRevoked:
+		return true
+	}
+	return false
+}
+
+func ocAttemptRowFromDomain(row OCAuthorizationAttemptRow) appconnector.OCAuthorizationAttempt {
+	return appconnector.OCAuthorizationAttempt{
+		ID: row.ID,
+		Subject: appconnector.OCSubject{
+			TenantID: row.TenantID,
+			ActorID:  row.ActorID,
+		},
+		ConnectionID: row.ConnectionID,
+		RuntimeID:    row.RuntimeID,
+		Provider:     row.Provider,
+		Alias:        row.Alias,
+		State:        row.State,
+		AuthVersion:  row.AuthVersion,
+		ExpiresAt:    row.ExpiresAt,
+	}
+}
+
+// SaveOCAttempt inserts one new attempt row. Attempts are correlation
+// records, not grants: the row is created once by Begin and every later
+// change goes through the conditional-transition methods.
+func (s *OCStore) SaveOCAttempt(ctx context.Context, a appconnector.OCAuthorizationAttempt) error {
+	if a.ID == "" || a.Subject.TenantID == 0 || a.Subject.ActorID == "" ||
+		a.ConnectionID == "" || a.RuntimeID == "" || a.Provider == "" || a.Alias == "" ||
+		a.AuthVersion <= 0 || !validOCAttemptState(a.State) || a.ExpiresAt.IsZero() {
+		return ErrOCAttemptInvalid
+	}
+	row := OCAuthorizationAttemptRow{
+		ID: a.ID, TenantID: a.Subject.TenantID, ActorID: a.Subject.ActorID,
+		ConnectionID: a.ConnectionID, RuntimeID: a.RuntimeID, Provider: a.Provider,
+		Alias: a.Alias, State: a.State, AuthVersion: a.AuthVersion, ExpiresAt: a.ExpiresAt,
+	}
+	return s.db.WithContext(ctx).Create(&row).Error
+}
+
+// GetOCAttempt loads one attempt, tenant-scoped: another tenant's attempt id
+// is indistinguishable from a missing one.
+func (s *OCStore) GetOCAttempt(ctx context.Context, tenant uint64, id string) (appconnector.OCAuthorizationAttempt, error) {
+	if tenant == 0 || id == "" {
+		return appconnector.OCAuthorizationAttempt{}, ErrOCAttemptInvalid
+	}
+	var row OCAuthorizationAttemptRow
+	if err := s.db.WithContext(ctx).Where("tenant_id = ? AND id = ?", tenant, id).First(&row).Error; err != nil {
+		return appconnector.OCAuthorizationAttempt{}, err
+	}
+	return ocAttemptRowFromDomain(row), nil
+}
+
+// GetOCAttemptByID loads one attempt by its unguessable id alone. Only the
+// Confirm/Cancel paths (which hold the id the Begin call issued) may use it;
+// every authorization decision still re-derives the tenant from the row.
+func (s *OCStore) GetOCAttemptByID(ctx context.Context, id string) (appconnector.OCAuthorizationAttempt, error) {
+	if id == "" {
+		return appconnector.OCAuthorizationAttempt{}, ErrOCAttemptInvalid
+	}
+	var row OCAuthorizationAttemptRow
+	if err := s.db.WithContext(ctx).Where("id = ?", id).First(&row).Error; err != nil {
+		return appconnector.OCAuthorizationAttempt{}, err
+	}
+	return ocAttemptRowFromDomain(row), nil
+}
+
+// AdvanceOCAttempt performs one FORWARD lifecycle transition
+// (pending->authorizing, authorizing->verifying) as a conditional UPDATE:
+// the row must still sit in the from-state inside its expiry window. false
+// means the transition lost a race or the attempt moved on - the caller
+// treats that as a rejected replay, never an error.
+func (s *OCStore) AdvanceOCAttempt(ctx context.Context, tenant uint64, id, from, to string, now time.Time) (bool, error) {
+	if tenant == 0 || id == "" || !validOCAttemptState(from) || !validOCAttemptState(to) {
+		return false, ErrOCAttemptInvalid
+	}
+	allowed := (from == ocAttemptPending && to == ocAttemptAuthorizing) ||
+		(from == ocAttemptAuthorizing && to == ocAttemptVerifying)
+	if !allowed {
+		return false, ErrOCAttemptInvalid
+	}
+	res := s.db.WithContext(ctx).Model(&OCAuthorizationAttemptRow{}).
+		Where("id = ? AND tenant_id = ? AND state = ? AND expires_at > ?", id, tenant, from, now).
+		Update("state", to)
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected > 0, nil
+}
+
+// AdoptOCAttemptAlias rewrites the attempt's alias to the runtime-minted
+// one (API-key path, coordinator R14(iv)): the runtime's api-key connect
+// endpoint accepts no caller alias, so the worker persists the alias it got
+// BEFORE verification, keeping the frozen CanCompleteOCAttempt alias
+// comparison authoritative. Conditional on the current alias so a replayed
+// handoff can never overwrite a different generation.
+func (s *OCStore) AdoptOCAttemptAlias(ctx context.Context, tenant uint64, id, fromAlias, toAlias string, now time.Time) (bool, error) {
+	if tenant == 0 || id == "" || fromAlias == "" || toAlias == "" || fromAlias == toAlias {
+		return false, ErrOCAttemptInvalid
+	}
+	res := s.db.WithContext(ctx).Model(&OCAuthorizationAttemptRow{}).
+		Where("id = ? AND tenant_id = ? AND alias = ? AND expires_at > ?", id, tenant, fromAlias, now).
+		Update("alias", toAlias)
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected > 0, nil
+}
+
+// TerminateOCAttempt moves a live attempt (pending/authorizing/verifying)
+// into a terminal state (failed/expired/revoked). Terminal rows never change
+// again, so a replayed termination reports false without error.
+func (s *OCStore) TerminateOCAttempt(ctx context.Context, tenant uint64, id, to string, now time.Time) (bool, error) {
+	if tenant == 0 || id == "" {
+		return false, ErrOCAttemptInvalid
+	}
+	switch to {
+	case ocAttemptFailed, ocAttemptExpired, ocAttemptRevoked:
+	default:
+		return false, ErrOCAttemptInvalid
+	}
+	res := s.db.WithContext(ctx).Model(&OCAuthorizationAttemptRow{}).
+		Where("id = ? AND tenant_id = ? AND state IN (?, ?, ?)", id, tenant,
+			ocAttemptPending, ocAttemptAuthorizing, ocAttemptVerifying).
+		Update("state", to)
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected > 0, nil
+}
+
+// ActivateOCAttempt is the ONE-CONSUME activation (rulings 5/6): inside a
+// single transaction it re-checks the local connection (same authorization
+// generation) and its installation (still active), consumes the verifying
+// attempt with a conditional UPDATE, and inserts the active binding carrying
+// the persisted external id. A duplicate/replayed activation matches ZERO
+// rows and writes nothing.
+func (s *OCStore) ActivateOCAttempt(ctx context.Context, tenant uint64, id, externalID string, now time.Time) error {
+	if tenant == 0 || id == "" || externalID == "" || now.IsZero() {
+		return ErrOCAttemptInvalid
+	}
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var att OCAuthorizationAttemptRow
+		if err := tx.Where("tenant_id = ? AND id = ?", tenant, id).First(&att).Error; err != nil {
+			return err
+		}
+		// Local freshness re-check: the connection must still sit at the
+		// attempt's authorization generation...
+		var conn ConnectionRow
+		if err := tx.Where("tenant_id = ? AND id = ?", tenant, att.ConnectionID).First(&conn).Error; err != nil {
+			return err
+		}
+		if conn.AuthVersion != att.AuthVersion {
+			return ErrOCAttemptConflict
+		}
+		// ...and the installation behind it must still be active.
+		var inst InstallationRow
+		if err := tx.Where("id = ? AND tenant_id = ?", conn.InstallationID, tenant).First(&inst).Error; err != nil {
+			return err
+		}
+		if inst.State != appconnector.InstallationActive {
+			return ErrOCAttemptConflict
+		}
+		// One-consume: WHERE state = 'verifying' AND expires_at > now.
+		res := tx.Model(&OCAuthorizationAttemptRow{}).
+			Where("id = ? AND tenant_id = ? AND state = ? AND expires_at > ?", id, tenant, ocAttemptVerifying, now).
+			Update("state", ocAttemptActive)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return ErrOCAttemptConflict
+		}
+		binding := OCBindingRow{
+			TenantID: tenant, ConnectionID: att.ConnectionID, RuntimeID: att.RuntimeID,
+			Provider: att.Provider, ExternalID: externalID, Alias: att.Alias,
+			AuthVersion: att.AuthVersion, BindingVersion: 1, State: appconnector.OCBindingActive,
+		}
+		if err := tx.Create(&binding).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
+// CleanupFailedOCAttempt reconciles a remote success with a local failure:
+// the attempt is marked failed, and a remote delete_connection operation is
+// enqueued ONLY when the cleanup triple matches - this attempt, this
+// attempt's exact alias, and the external id resolved for it - AND no newer
+// activation has since bound that external connection (the newest connection
+// is never deleted).
+func (s *OCStore) CleanupFailedOCAttempt(ctx context.Context, tenant uint64, attemptID, alias, externalID string, now time.Time) error {
+	if tenant == 0 || attemptID == "" || alias == "" || externalID == "" {
+		return ErrOCAttemptInvalid
+	}
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var att OCAuthorizationAttemptRow
+		if err := tx.Where("tenant_id = ? AND id = ?", tenant, attemptID).First(&att).Error; err != nil {
+			return err
+		}
+		res := tx.Model(&OCAuthorizationAttemptRow{}).
+			Where("id = ? AND tenant_id = ? AND state IN (?, ?, ?)", attemptID, tenant,
+				ocAttemptPending, ocAttemptAuthorizing, ocAttemptVerifying).
+			Update("state", ocAttemptFailed)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			// Already terminal or active: nothing to reconcile for it.
+			return nil
+		}
+		if att.Alias != alias {
+			// The external connection cannot be attributed to this attempt:
+			// never delete something this attempt cannot prove it owns.
+			return nil
+		}
+		var bound int64
+		if err := tx.Model(&OCBindingRow{}).
+			Where("runtime_id = ? AND external_id = ? AND state = ?", att.RuntimeID, externalID, appconnector.OCBindingActive).
+			Count(&bound).Error; err != nil {
+			return err
+		}
+		if bound > 0 {
+			// A newer activation owns the external connection now.
+			return nil
+		}
+		row := OCOperationsOutboxRow{
+			ID: uuid.NewString(), TenantID: tenant,
+			ResourceID: attemptID + "|" + externalID, ResourceVersion: att.AuthVersion,
+			Kind: "delete_connection", NextAt: now.UTC(),
+			CreatedAt: now.UTC(), UpdatedAt: now.UTC(),
+		}
+		return tx.Create(&row).Error
+	})
+}
+
+// EnqueueOCOperation inserts one deferred control operation. nextAt is
+// stored normalized to UTC (T05-Q-03): the outbox clock is UTC-only.
+func (s *OCStore) EnqueueOCOperation(ctx context.Context, id string, tenant uint64, resourceID string, resourceVersion int64, kind string, nextAt time.Time) error {
+	if id == "" || tenant == 0 || resourceID == "" || resourceVersion < 1 || kind == "" || nextAt.IsZero() {
+		return ErrOCOperationInvalid
+	}
+	row := OCOperationsOutboxRow{
+		ID: id, TenantID: tenant, ResourceID: resourceID, ResourceVersion: resourceVersion,
+		Kind: kind, NextAt: nextAt.UTC(), CreatedAt: nextAt.UTC(), UpdatedAt: nextAt.UTC(),
+	}
+	return s.db.WithContext(ctx).Create(&row).Error
+}
+
+// EnabledOCRuntime returns the id of the enabled runtime authorizations are
+// placed against (phase one: one shared runtime per deployment).
+func (s *OCStore) EnabledOCRuntime(ctx context.Context) (string, error) {
+	var row OCRuntimeRow
+	err := s.db.WithContext(ctx).Where("enabled = ?", true).Order("id").First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", ErrOCRuntimeUnavailable
+	}
+	if err != nil {
+		return "", err
+	}
+	return row.ID, nil
 }

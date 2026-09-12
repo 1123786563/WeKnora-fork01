@@ -328,7 +328,7 @@ func TestAdminClientStartAuthorizationAndLookup(t *testing.T) {
 			io.WriteString(w, `{"authorizationUrl":"https://ext/auth","state":"st-9"}`)
 			return
 		}
-		io.WriteString(w, `{"id":"ext-1","alias":"alias-1","providerAccountId":"acct-9","provider":"github"}`)
+		io.WriteString(w, `{"success":true,"message":"OK","data":{"id":"ext-1","alias":"alias-1","providerAccountId":"acct-9","service":"github","status":"active"},"meta":{}}`)
 	})
 	c := mustClient(t, testClientConfig(srv.URL, staticSecret(testAdminSecret)))
 	ctx := context.Background()

@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,7 +29,10 @@ import (
 
 	appconn "github.com/Tencent/WeKnora/internal/appconnector"
 	repoapp "github.com/Tencent/WeKnora/internal/application/repository/appconnector"
+	appconnectorsvc "github.com/Tencent/WeKnora/internal/application/service/appconnector"
 	"github.com/Tencent/WeKnora/internal/logger"
+
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -68,9 +72,11 @@ var (
 	// ErrAdminSecretUnavailable: the dedicated admin secret mount is absent
 	// or unreadable — admin operations fail CLOSED.
 	ErrAdminSecretUnavailable = errors.New("connectorcontrol: admin secret unavailable")
-	// ErrKindNotWiredYet: kind is valid but its execution path lands with a
-	// later task (authorize/confirm correlation is T07). Operations stay
-	// queued; they are never silently dropped or half-executed.
+	// ErrKindNotWiredYet: historical placeholder error kept for import
+	// compatibility - authorize/confirm correlation is wired since T07
+	// (payload-less rows of payload-requiring kinds are permanent
+	// rejections instead; unavailable correlation endpoints surface
+	// ErrCorrelationUnavailable).
 	ErrKindNotWiredYet = errors.New("connectorcontrol: control kind not wired yet")
 )
 
@@ -195,22 +201,42 @@ func DefaultWorkerConfig(owner string) WorkerConfig {
 	}
 }
 
+// ControlStore is the persistence surface the worker needs beyond the
+// outbox claim/complete/extend contract: tenant bindings plus the T07
+// authorization-attempt correlation rows. *repoapp.OCStore satisfies it; the
+// widened parameter keeps NewControlWorker's arity unchanged (coordinator
+// R13.3) - every existing caller passes the concrete store.
+type ControlStore interface {
+	appconn.OCBindingStore
+	GetOCAttempt(ctx context.Context, tenant uint64, id string) (appconn.OCAuthorizationAttempt, error)
+	AdvanceOCAttempt(ctx context.Context, tenant uint64, id, from, to string, now time.Time) (bool, error)
+	TerminateOCAttempt(ctx context.Context, tenant uint64, id, to string, now time.Time) (bool, error)
+	AdoptOCAttemptAlias(ctx context.Context, tenant uint64, id, from, to string, now time.Time) (bool, error)
+	ActivateOCAttempt(ctx context.Context, tenant uint64, id, externalID string, now time.Time) error
+	CleanupFailedOCAttempt(ctx context.Context, tenant uint64, attemptID, alias, externalID string, now time.Time) error
+	EnqueueOCOperation(ctx context.Context, id string, tenant uint64, resourceID string, resourceVersion int64, kind string, nextAt time.Time) error
+}
+
 // ControlWorker drains the operations outbox exactly one operation per tick.
 type ControlWorker struct {
-	cfg      WorkerConfig
-	outbox   OutboxStore
-	bindings appconn.OCBindingStore
-	admin    RuntimeAdmin
-	secrets  SecretSink
-	secret   AdminSecret
-	now      func() time.Time
-	jitter   func() float64 // [0,1); injected for deterministic tests
+	cfg           WorkerConfig
+	outbox        OutboxStore
+	store         ControlStore
+	admin         RuntimeAdmin
+	secrets       SecretSink
+	secret        AdminSecret
+	correlator    RuntimeCorrelator // optional override; default derives from admin
+	correlatorSet bool
+	transient     appconnectorsvc.TransientCipher // optional override; default derives from env
+	transientSet  bool
+	now           func() time.Time
+	jitter        func() float64 // [0,1); injected for deterministic tests
 }
 
 // NewControlWorker validates its dependencies up front: every collaborator
 // must be present (fail-closed wiring, no silent no-ops).
-func NewControlWorker(outbox OutboxStore, bindings appconn.OCBindingStore, admin RuntimeAdmin, sink SecretSink, secret AdminSecret, cfg WorkerConfig) (*ControlWorker, error) {
-	if outbox == nil || bindings == nil || admin == nil || sink == nil || secret == nil {
+func NewControlWorker(outbox OutboxStore, store ControlStore, admin RuntimeAdmin, sink SecretSink, secret AdminSecret, cfg WorkerConfig) (*ControlWorker, error) {
+	if outbox == nil || store == nil || admin == nil || sink == nil || secret == nil {
 		return nil, errors.New("connectorcontrol: worker dependencies must all be non-nil")
 	}
 	if cfg.OwnerID == "" || cfg.Lease <= 0 || cfg.RenewInterval <= 0 || cfg.BackoffBase <= 0 || cfg.BackoffMax < cfg.BackoffBase {
@@ -220,14 +246,14 @@ func NewControlWorker(outbox OutboxStore, bindings appconn.OCBindingStore, admin
 		cfg.PollInterval = 500 * time.Millisecond
 	}
 	return &ControlWorker{
-		cfg:      cfg,
-		outbox:   outbox,
-		bindings: bindings,
-		admin:    admin,
-		secrets:  sink,
-		secret:   secret,
-		now:      time.Now,
-		jitter:   defaultJitter,
+		cfg:     cfg,
+		outbox:  outbox,
+		store:   store,
+		admin:   admin,
+		secrets: sink,
+		secret:  secret,
+		now:     time.Now,
+		jitter:  defaultJitter,
 	}, nil
 }
 
@@ -259,14 +285,20 @@ func (w *ControlWorker) runClaimed(ctx context.Context, row *repoapp.OCOperation
 		return nil
 	}
 
-	// 2. Binding freshness gate for kinds that could (re)activate a
-	// connection: the binding must exist, not be revoked/errored, and sit at
-	// exactly the operation's auth generation. A deactivated connection can
-	// never be reactivated by a stale create/authorize operation.
+	// 2. Freshness gates. create_token re-checks the tenant binding (it must
+	// exist, be live, and sit at exactly the operation's auth generation - a
+	// deactivated connection can never be reactivated by a stale operation).
+	// authorize/confirm gate on the ATTEMPT instead: the binding does not
+	// exist yet, because activation is what creates it. The attempt must
+	// belong to the operation's tenant (forgery reads as not-found), sit at
+	// the operation's authorization generation, be inside its 15-minute
+	// window, and be in a state the kind may still act on; failed/expired/
+	// revoked/active attempts never revive.
 	var binding *appconn.OCBinding
+	var attempt *appconn.OCAuthorizationAttempt
 	switch op.Kind {
-	case KindAuthorize, KindCreateToken, KindConfirm:
-		b, err := w.bindings.GetBinding(ctx, op.TenantID, op.ConnectionID)
+	case KindCreateToken:
+		b, err := w.store.GetBinding(ctx, op.TenantID, op.ConnectionID)
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				w.dropOperation(ctx, row, op, errors.New("binding not found"))
@@ -283,6 +315,39 @@ func (w *ControlWorker) runClaimed(ctx context.Context, row *repoapp.OCOperation
 			return nil
 		}
 		binding = &b
+	case KindAuthorize, KindConfirm:
+		a, err := w.store.GetOCAttempt(ctx, op.TenantID, attemptIDFromOperation(op))
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				w.dropOperation(ctx, row, op, errors.New("authorization attempt not found"))
+				return nil
+			}
+			return fmt.Errorf("connectorcontrol: load attempt for %s: %w", op.ID, err)
+		}
+		gateNow := w.now().UTC()
+		switch {
+		case a.AuthVersion != op.AuthVersion:
+			w.dropOperation(ctx, row, op, fmt.Errorf("stale attempt version %d (attempt at %d)", op.AuthVersion, a.AuthVersion))
+			return nil
+		case !gateNow.Before(a.ExpiresAt):
+			// The 15-minute window closed: mark the attempt expired, then
+			// drop. Dropping deletes the outbox row, which for an API-key
+			// handoff also deletes the transient ciphertext (ruling 7: the
+			// failed blob survives at most 15 minutes).
+			_, _ = w.store.TerminateOCAttempt(ctx, op.TenantID, a.ID, appconnectorsvc.OCAttemptExpired, gateNow)
+			w.dropOperation(ctx, row, op, errors.New("authorization attempt expired"))
+			return nil
+		case op.Kind == KindAuthorize && a.State == appconnectorsvc.OCAttemptPending:
+			// fresh start
+		case op.Kind == KindAuthorize && a.State == appconnectorsvc.OCAttemptAuthorizing:
+			// idempotent re-run after a partially-failed start
+		case op.Kind == KindConfirm && a.State == appconnectorsvc.OCAttemptVerifying:
+			// exactly the consumable state
+		default:
+			w.dropOperation(ctx, row, op, fmt.Errorf("attempt state %s cannot process %s", a.State, op.Kind))
+			return nil
+		}
+		attempt = &a
 	}
 
 	// 3. Admin credential gate: fail CLOSED. Without the dedicated mount the
@@ -294,7 +359,7 @@ func (w *ControlWorker) runClaimed(ctx context.Context, row *repoapp.OCOperation
 	}
 
 	// 4. Execute (single attempt per admin call, no redirects).
-	execErr := w.execute(ctx, op, binding)
+	execErr := w.execute(ctx, op, binding, attempt)
 	if execErr != nil {
 		if isPermanentError(execErr) {
 			w.dropOperation(ctx, row, op, execErr)
@@ -322,7 +387,7 @@ func (w *ControlWorker) runClaimed(ctx context.Context, row *repoapp.OCOperation
 // until T07 wires attempt/alias correlation — starting an external OAuth flow
 // whose state nobody can complete, or confirming without correlation, would
 // be worse than waiting.
-func (w *ControlWorker) execute(ctx context.Context, op ControlOperation, binding *appconn.OCBinding) error {
+func (w *ControlWorker) execute(ctx context.Context, op ControlOperation, binding *appconn.OCBinding, attempt *appconn.OCAuthorizationAttempt) error {
 	switch op.Kind {
 	case KindCreateToken:
 		var p createTokenPayload
@@ -360,12 +425,20 @@ func (w *ControlWorker) execute(ctx context.Context, op ControlOperation, bindin
 		return w.admin.RevokeRuntimeToken(ctx, p.TokenID)
 	case KindDeleteConnection:
 		var p deleteConnectionPayload
-		if err := decodePayload(op.Payload, &p); err != nil {
-			return err
+		if len(op.Payload) > 0 {
+			if err := decodePayload(op.Payload, &p); err != nil {
+				return err
+			}
 		}
 		external := p.ExternalID
+		// Cleanup rows (ruling 3a) carry the external id after "|" in
+		// resource_id; ordinary revocation rows keep the connection id there
+		// and resolve through the binding.
+		if external == "" && strings.ContainsRune(op.ConnectionID, '|') {
+			external = op.ConnectionID[strings.IndexByte(op.ConnectionID, '|')+1:]
+		}
 		if external == "" {
-			b, err := w.bindings.GetBinding(ctx, op.TenantID, op.ConnectionID)
+			b, err := w.store.GetBinding(ctx, op.TenantID, op.ConnectionID)
 			if err == nil {
 				external = b.ExternalID
 			} else if !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -376,11 +449,359 @@ func (w *ControlWorker) execute(ctx context.Context, op ControlOperation, bindin
 			return permanentf("delete_connection without a resolvable external id")
 		}
 		return w.admin.DeleteRuntimeConnection(ctx, external)
-	case KindAuthorize, KindConfirm:
-		return fmt.Errorf("%w: %s", ErrKindNotWiredYet, op.Kind)
+	case KindAuthorize:
+		p, err := decodeAttemptPayload(op)
+		if err != nil {
+			return err
+		}
+		if sealed := sealedSegment(op); sealed != "" {
+			// API-key path: the transient ciphertext rides resource_id
+			// (ruling 3a); this worker is the only decryptor.
+			return w.executeAPIKeyHandoff(ctx, op, attempt, sealed)
+		}
+		_ = p
+		// OAuth path: start the external authorization under the attempt's
+		// UUID alias via the pinned admin authorizations route (the alias is
+		// frozen at initiation - upstream freezes the target there). The
+		// upstream authorizationUrl/stateHandle are consumed by the T13/T14
+		// HTTP surface; the worker persists only the state transition.
+		if _, err := w.admin.StartAuthorization(ctx, attempt.Provider, attempt.Alias); err != nil {
+			return err
+		}
+		if attempt.State == appconnectorsvc.OCAttemptPending {
+			ok, err := w.store.AdvanceOCAttempt(ctx, op.TenantID, attempt.ID,
+				appconnectorsvc.OCAttemptPending, appconnectorsvc.OCAttemptAuthorizing, w.now().UTC())
+			if err != nil {
+				// Remote start already succeeded under our alias; a retry
+				// re-runs it idempotently, so a transient local failure is
+				// retried, not dropped.
+				return err
+			}
+			if !ok {
+				return permanentf("attempt %s no longer awaiting authorization", attempt.ID)
+			}
+		}
+		return nil
+	case KindConfirm:
+		p, err := decodeAttemptPayload(op)
+		if err != nil {
+			return err
+		}
+		return w.executeConfirm(ctx, op, attempt, p)
 	default:
 		return ErrUnsupportedControlKind
 	}
+}
+
+// ---------------------------------------------------------------------------
+// authorize/confirm execution (T07 correlation wiring)
+// ---------------------------------------------------------------------------
+
+// attemptPayload is the optional explicit payload for authorize/confirm
+// operations driven directly (tests, later HTTP surfaces); enqueued rows
+// carry the attempt id inside resource_id instead (ruling 3a).
+type attemptPayload struct {
+	AttemptID string   `json:"attemptID,omitempty"`
+	Actions   []string `json:"actions,omitempty"`
+}
+
+// decodeAttemptPayload decodes the optional payload; absent payloads are
+// legal (resource_id carries the correlation), malformed ones are permanent
+// rejections (never a silently degraded execution).
+func decodeAttemptPayload(op ControlOperation) (attemptPayload, error) {
+	if len(op.Payload) == 0 {
+		return attemptPayload{}, nil
+	}
+	if !json.Valid(op.Payload) {
+		return attemptPayload{}, permanentf("malformed operation payload")
+	}
+	var p attemptPayload
+	if err := json.Unmarshal(op.Payload, &p); err != nil {
+		return attemptPayload{}, permanentf("malformed operation payload")
+	}
+	return p, nil
+}
+
+// resourceIDSegment returns the resource_id payload before the first "|":
+// the attempt id for authorize/confirm rows and the attempt id of a cleanup
+// delete row.
+func resourceIDSegment(s string) string {
+	if i := strings.IndexByte(s, '|'); i >= 0 {
+		return s[:i]
+	}
+	return s
+}
+
+// attemptIDFromOperation resolves which attempt an operation targets: the
+// explicit payload id when present, else the resource_id segment. A
+// malformed payload yields a blank id, which the gate then treats as a
+// not-found attempt (permanent drop).
+func attemptIDFromOperation(op ControlOperation) string {
+	p, err := decodeAttemptPayload(op)
+	if err != nil || p.AttemptID == "" {
+		return resourceIDSegment(op.ConnectionID)
+	}
+	return p.AttemptID
+}
+
+// sealedSegment returns the transient ciphertext carried by an API-key
+// authorize row (after the "|"), or "" for OAuth rows.
+func sealedSegment(op ControlOperation) string {
+	if op.Kind != KindAuthorize {
+		return ""
+	}
+	if i := strings.IndexByte(op.ConnectionID, '|'); i >= 0 {
+		return op.ConnectionID[i+1:]
+	}
+	return ""
+}
+
+// ErrCorrelationUnavailable: the alias-to-external-connection correlation
+// cannot run - the runtime's correlation endpoints are not available to this
+// worker (unpinned/admin client without correlation support, or missing
+// transient key material). Operations stay queued (fail-closed, mirroring
+// ErrUnpinnedEndpoint); this is never a silent no-op.
+var ErrCorrelationUnavailable = errors.New("connectorcontrol: correlation endpoints unavailable")
+
+// correlationAdmin is the correlation surface the pinned RuntimeAdminClient
+// grew in T07 (coordinator R13.5/R14 grant).
+type correlationAdmin interface {
+	ListRuntimeConnections(ctx context.Context) ([]RuntimeConnection, error)
+	ConnectRuntimeAPIKey(ctx context.Context, service, apiKey string) (RuntimeConnection, error)
+}
+
+// RuntimeCorrelator bridges attempt aliases to external connections through
+// the T01-verified correlation chain (ruling 4): the exact attempt alias
+// resolves through the admin list endpoint (exact-match filter, no fallback
+// to a "default" or newest connection), the stable id projects through the
+// by-id lookup, and the API-key handoff submits the decrypted key to the
+// runtime's api-key connect endpoint.
+type RuntimeCorrelator interface {
+	// ResolveExternalConnection returns the external connection the runtime
+	// holds under EXACTLY this attempt alias.
+	ResolveExternalConnection(ctx context.Context, service, alias string) (RuntimeConnection, error)
+	// SubmitExternalCredential hands one transient provider API key to the
+	// runtime and returns the immediately-created external connection.
+	SubmitExternalCredential(ctx context.Context, service, alias, apiKey string) (RuntimeConnection, error)
+}
+
+// SetRuntimeCorrelator overrides the correlation implementation (tests, or a
+// deployment with a bespoke bridge). The default derives from the wired
+// admin client whenever it implements the pinned correlation endpoints.
+func (w *ControlWorker) SetRuntimeCorrelator(rc RuntimeCorrelator) {
+	w.correlator, w.correlatorSet = rc, true
+}
+
+// SetTransientCipher overrides the transient API-key cipher (tests).
+func (w *ControlWorker) SetTransientCipher(c appconnectorsvc.TransientCipher) {
+	w.transient, w.transientSet = c, true
+}
+
+func (w *ControlWorker) runtimeCorrelator() (RuntimeCorrelator, error) {
+	if w.correlatorSet {
+		if w.correlator == nil {
+			return nil, ErrCorrelationUnavailable
+		}
+		return w.correlator, nil
+	}
+	if ca, ok := w.admin.(correlationAdmin); ok {
+		return adminCorrelator{admin: ca}, nil
+	}
+	return nil, ErrCorrelationUnavailable
+}
+
+func (w *ControlWorker) transientCipher() (appconnectorsvc.TransientCipher, error) {
+	if w.transientSet {
+		if w.transient == nil {
+			return nil, ErrCorrelationUnavailable
+		}
+		return w.transient, nil
+	}
+	c, err := appconnectorsvc.NewTransientCipherFromEnv()
+	if err != nil {
+		return nil, ErrCorrelationUnavailable
+	}
+	return c, nil
+}
+
+// adminCorrelator is the DEFAULT correlation implementation over the pinned
+// admin client endpoints (R14: the real implementation is the default;
+// fail-closed applies only when the endpoints are unavailable).
+type adminCorrelator struct{ admin correlationAdmin }
+
+// ResolveExternalConnection lists the runtime's managed connections and
+// returns the one whose alias equals the attempt alias EXACTLY. No match is
+// a not-found AdminError (the authorization has not completed upstream);
+// multiple matches are an integrity violation and refuse to guess.
+func (a adminCorrelator) ResolveExternalConnection(ctx context.Context, service, alias string) (RuntimeConnection, error) {
+	conns, err := a.admin.ListRuntimeConnections(ctx)
+	if err != nil {
+		return RuntimeConnection{}, err
+	}
+	var match *RuntimeConnection
+	for i := range conns {
+		if conns[i].Alias == alias {
+			if match != nil {
+				return RuntimeConnection{}, &AdminError{Status: http.StatusConflict, Code: "ambiguous_alias"}
+			}
+			match = &conns[i]
+		}
+	}
+	if match == nil {
+		return RuntimeConnection{}, &AdminError{Status: http.StatusNotFound, Code: "connection_not_found"}
+	}
+	return *match, nil
+}
+
+// SubmitExternalCredential hands the decrypted API key to the runtime. The
+// runtime mints the new connection's alias itself (the pinned api-key
+// connect endpoint accepts no caller alias); the worker adopts that alias
+// into the attempt before verification (R14 iv).
+func (a adminCorrelator) SubmitExternalCredential(ctx context.Context, service, alias, apiKey string) (RuntimeConnection, error) {
+	_ = alias // the runtime mints its own alias; see call site
+	return a.admin.ConnectRuntimeAPIKey(ctx, service, apiKey)
+}
+
+// executeAPIKeyHandoff is the DEDICATED API-key path (plan T07): decrypt the
+// transient ciphertext, hand the key to the runtime once, adopt the
+// runtime-minted alias, then verify and activate exactly like an OAuth
+// confirm. The key material exists only inside this function; audit lines
+// and errors never carry it.
+func (w *ControlWorker) executeAPIKeyHandoff(ctx context.Context, op ControlOperation, attempt *appconn.OCAuthorizationAttempt, sealed string) error {
+	now := w.now().UTC()
+	cipher, err := w.transientCipher()
+	if err != nil {
+		return err
+	}
+	apiKey, err := cipher.Open(sealed, attempt.ID)
+	if err != nil {
+		// Undecryptable blob: poison. Dropping deletes the row - and with it
+		// the ciphertext (15-minute bound, ruling 7).
+		return permanentf("transient credential for attempt %s cannot be opened", attempt.ID)
+	}
+	correlator, err := w.runtimeCorrelator()
+	if err != nil {
+		return err
+	}
+	// Retry idempotency: a partially-completed handoff (submit done, a later
+	// step failed) already created the external connection under the ADOPTED
+	// alias - resolving it first means the key is never submitted twice.
+	var resolved RuntimeConnection
+	if attempt.State == appconnectorsvc.OCAttemptAuthorizing {
+		if prior, rerr := correlator.ResolveExternalConnection(ctx, attempt.Provider, attempt.Alias); rerr == nil {
+			resolved = prior
+		}
+	}
+	if resolved.ID == "" {
+		resolved, err = correlator.SubmitExternalCredential(ctx, attempt.Provider, attempt.Alias, apiKey)
+		if err != nil {
+			return err // transient: retried while the attempt window is open
+		}
+	}
+	// Walk the attempt to verifying: the external state exists now.
+	if attempt.State == appconnectorsvc.OCAttemptPending {
+		ok, err := w.store.AdvanceOCAttempt(ctx, op.TenantID, attempt.ID,
+			appconnectorsvc.OCAttemptPending, appconnectorsvc.OCAttemptAuthorizing, now)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return permanentf("attempt %s no longer awaiting handoff", attempt.ID)
+		}
+		attempt.State = appconnectorsvc.OCAttemptAuthorizing
+	}
+	// Adopt the runtime-minted alias BEFORE verification (R14 iv) so the
+	// frozen CanCompleteOCAttempt comparison stays authoritative.
+	if resolved.Alias != "" && resolved.Alias != attempt.Alias {
+		ok, err := w.store.AdoptOCAttemptAlias(ctx, op.TenantID, attempt.ID, attempt.Alias, resolved.Alias, now)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return permanentf("attempt %s alias adoption lost the race", attempt.ID)
+		}
+		attempt.Alias = resolved.Alias
+	}
+	ok, err := w.store.AdvanceOCAttempt(ctx, op.TenantID, attempt.ID,
+		appconnectorsvc.OCAttemptAuthorizing, appconnectorsvc.OCAttemptVerifying, now)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return permanentf("attempt %s cannot enter verification", attempt.ID)
+	}
+	attempt.State = appconnectorsvc.OCAttemptVerifying
+	return w.verifyAndActivate(ctx, op, attempt, resolved, nil)
+}
+
+// executeConfirm runs the worker-only activation path: resolve the external
+// connection through the exact attempt/alias correlation, gate on the frozen
+// CanCompleteOCAttempt check, optionally mint the connection token (failure
+// => NO activation), then atomically activate. Browser success flags never
+// reach this code.
+func (w *ControlWorker) executeConfirm(ctx context.Context, op ControlOperation, attempt *appconn.OCAuthorizationAttempt, p attemptPayload) error {
+	correlator, err := w.runtimeCorrelator()
+	if err != nil {
+		return err
+	}
+	resolved, err := correlator.ResolveExternalConnection(ctx, attempt.Provider, attempt.Alias)
+	if err != nil {
+		return err // transient (not connected yet / transport) => retried
+	}
+	return w.verifyAndActivate(ctx, op, attempt, resolved, p.Actions)
+}
+
+// verifyAndActivate performs the shared verification + activation tail:
+// provider match, account id presence, live connection status, the frozen
+// completion gate, optional token mint (never an empty grant), and the
+// one-consume atomic activation with reconciliation cleanup on local
+// failure.
+func (w *ControlWorker) verifyAndActivate(ctx context.Context, op ControlOperation, attempt *appconn.OCAuthorizationAttempt, resolved RuntimeConnection, actions []string) error {
+	now := w.now().UTC()
+	if !appconnectorsvc.CanCompleteOCAttempt(*attempt, attempt.Subject, resolved.Alias, op.AuthVersion, now) {
+		// Alias substitution or expiry: fail the attempt; the cleanup triple
+		// (attempt, alias, external id) protects anything not provably ours.
+		_ = w.store.CleanupFailedOCAttempt(ctx, op.TenantID, attempt.ID, resolved.Alias, resolved.ID, now)
+		return permanentf("completion gate rejected attempt %s (alias/expiry)", attempt.ID)
+	}
+	if resolved.Provider != attempt.Provider {
+		_ = w.store.CleanupFailedOCAttempt(ctx, op.TenantID, attempt.ID, resolved.Alias, resolved.ID, now)
+		return permanentf("provider mismatch for attempt %s", attempt.ID)
+	}
+	if resolved.ProviderAccountID == "" || (resolved.Status != "" && resolved.Status != "active") {
+		_ = w.store.CleanupFailedOCAttempt(ctx, op.TenantID, attempt.ID, resolved.Alias, resolved.ID, now)
+		return permanentf("external connection for attempt %s is not a live account connection", attempt.ID)
+	}
+	// Token issuance (optional, explicit grant only): whitespace-only
+	// entries collapse away (T06-Q-F5) and an empty grant NEVER mints -
+	// upstream treats [] as allow-all.
+	var granted []string
+	for _, a := range actions {
+		if t := strings.TrimSpace(a); t != "" {
+			granted = append(granted, t)
+		}
+	}
+	if len(granted) > 0 {
+		name := fmt.Sprintf("weknora-%d-%s-v%d", op.TenantID, attempt.ConnectionID, op.AuthVersion)
+		created, err := w.admin.CreateRuntimeToken(ctx, CreateTokenRequest{Name: name, ExternalID: resolved.ID, Actions: granted})
+		if err != nil {
+			return err // token failure => NO activation
+		}
+		ref := fmt.Sprintf("oc/runtime-token/%d/%s/%d", op.TenantID, attempt.ConnectionID, op.AuthVersion)
+		if err := w.secrets.PutSecret(ctx, ref, created.Token); err != nil {
+			return fmt.Errorf("persist token material: %w", err) // still no activation
+		}
+	}
+	if err := w.store.ActivateOCAttempt(ctx, op.TenantID, attempt.ID, resolved.ID, now); err != nil {
+		if errors.Is(err, repoapp.ErrOCAttemptConflict) {
+			// Remote success / local failure: reconcile by THIS attempt's
+			// alias; the store guard never deletes the newest connection.
+			_ = w.store.CleanupFailedOCAttempt(ctx, op.TenantID, attempt.ID, resolved.Alias, resolved.ID, now)
+			return permanentf("activation rejected for attempt %s", attempt.ID)
+		}
+		return err
+	}
+	return nil
 }
 
 type createTokenPayload struct {
@@ -420,8 +841,10 @@ func (w *ControlWorker) dropOperation(ctx context.Context, row *repoapp.OCOperat
 		logger.Warnf(ctx, "[connector-control] drop %s lost lease; superseded owner takes over", op.ID)
 		return
 	}
+	// resource_id may carry a transient ciphertext after "|" (API-key
+	// authorize rows): only the attempt-id segment is ever logged.
 	logger.Warnf(ctx, "[connector-control] dropped control operation %s (kind %s, tenant %d, connection %s): %v",
-		op.ID, op.Kind, op.TenantID, op.ConnectionID, cause)
+		op.ID, op.Kind, op.TenantID, resourceIDSegment(op.ConnectionID), cause)
 }
 
 // retryOperation schedules the next attempt with exponential backoff capped
@@ -529,7 +952,10 @@ func FileAdminSecretSource(path string) AdminSecret {
 // database only ever stores the reference.
 type FileSecretSink struct{ dir string }
 
-// NewFileSecretSink creates (and tightens) the secrets directory.
+// NewFileSecretSink creates the secrets directory with 0700 (an existing
+// directory is left as-is: tightening beyond the process umask here was a
+// T05-Q-01 comment overpromise - real at-rest encryption and permissions
+// hardening land with the T16 secret-store swap).
 func NewFileSecretSink(dir string) (*FileSecretSink, error) {
 	if dir == "" {
 		return nil, errors.New("connectorcontrol: secret dir required")
@@ -549,7 +975,9 @@ func (s *FileSecretSink) PutSecret(ctx context.Context, ref, secret string) erro
 	}
 	sum := sha256.Sum256([]byte(ref))
 	final := filepath.Join(s.dir, hex.EncodeToString(sum[:])+".secret")
-	tmp := final + ".tmp"
+	// Unique temp name per call: concurrent PutSecret calls for one ref must
+	// not clobber each other's temp file (T05-Q-02).
+	tmp := final + "." + uuid.NewString() + ".tmp"
 	if err := os.WriteFile(tmp, []byte(secret), 0o600); err != nil {
 		return err
 	}

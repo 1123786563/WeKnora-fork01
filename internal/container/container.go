@@ -493,7 +493,18 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// /apps/actions prepare/approve/execute/get stop failing closed with 501.
 	must(container.Provide(repoappconn.NewActionStore, dig.As(new(appconnectorsvc.ActionStoreSource))))
 	must(container.Provide(repository.NewMCPOAuthBindingStore, dig.As(new(appconnectorsvc.ConnectionCredentialSource))))
-	must(container.Provide(appconnectorsvc.NewSubjectGuard))
+	// R11 carry (T07): the interim permission-only NewSubjectGuard(src) is
+	// replaced by the FULL subject guard - the real OC store as the binding
+	// source and the installation catalog as the state source, so OC binding
+	// validation and install-active checks go live. No space-grant store
+	// exists yet, so space connections keep failing closed (the authorizer's
+	// nil-grant semantics), which only tightens the interim behavior.
+	must(container.Provide(repoappconn.NewOCStore))
+	must(container.Provide(repoappconn.NewInstallationStore))
+	must(container.Provide(func(src appconnectorsvc.ConnectionCredentialSource,
+		installs *repoappconn.InstallationStore, oc *repoappconn.OCStore) appconnectorsvc.A02Guard {
+		return appconnectorsvc.NewOCSubjectGuard(src, appconnectorsvc.NewInstallationStateSource(installs), nil, oc)
+	}))
 	must(container.Provide(func(store appconnectorsvc.ActionStoreSource, guard appconnectorsvc.A02Guard,
 		gate domain.ExecutionGate) *appconnectorsvc.ActionService {
 		return appconnectorsvc.NewActionService(store, guard, gate, nil, nil)

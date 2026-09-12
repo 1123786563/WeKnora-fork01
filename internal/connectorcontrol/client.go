@@ -121,11 +121,16 @@ type AuthorizationStart struct {
 }
 
 // RuntimeConnection is one external connection resolved by stable id.
+// Provider maps the wire field "service" (the runtime names the provider
+// dimension "service"; T05 originally parsed a nonexistent "provider" field -
+// corrected in T07 under the coordinator R14(iii) grant). Status carries the
+// managed-connection lifecycle state ("active" and friends) when present.
 type RuntimeConnection struct {
 	ID                string
 	Alias             string
 	ProviderAccountID string
 	Provider          string
+	Status            string
 }
 
 // AdminClientConfig configures the runtime admin client.
@@ -213,14 +218,15 @@ func NewRuntimeAdminClient(cfg AdminClientConfig) (*RuntimeAdminClient, error) {
 // internal static address by construction.
 func (c *RuntimeAdminClient) Address() string { return c.base }
 
-// do performs exactly ONE admin HTTP attempt. Redirects are never followed
-// (a redirect would re-send the Authorization header to another origin).
+// doRaw performs exactly ONE HTTP attempt on the runtime surface and
+// returns the raw status plus capped body. Redirects are never followed (a
+// redirect would re-send the Authorization header to another origin).
 // Fail-closed ordering: the secret is resolved before any network I/O, so a
-// missing mount costs zero HTTP calls.
-func (c *RuntimeAdminClient) do(ctx context.Context, method, path string, body []byte, out interface{}) error {
+// missing mount costs zero HTTP calls. Response bodies never enter errors.
+func (c *RuntimeAdminClient) doRaw(ctx context.Context, method, path string, body []byte) (int, []byte, error) {
 	secret, err := c.adminSecret(ctx)
 	if err != nil || secret == "" {
-		return ErrAdminSecretUnavailable
+		return 0, nil, ErrAdminSecretUnavailable
 	}
 	var reader io.Reader
 	if body != nil {
@@ -230,7 +236,7 @@ func (c *RuntimeAdminClient) do(ctx context.Context, method, path string, body [
 	defer cancel()
 	req, err := http.NewRequestWithContext(reqCtx, method, c.base+path, reader)
 	if err != nil {
-		return fmt.Errorf("connectorcontrol: build admin request: %w", err)
+		return 0, nil, fmt.Errorf("connectorcontrol: build admin request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+secret)
 	if body != nil {
@@ -244,24 +250,34 @@ func (c *RuntimeAdminClient) do(ctx context.Context, method, path string, body [
 	}
 	resp, err := noRedirect.Do(req)
 	if err != nil {
-		return fmt.Errorf("connectorcontrol: admin transport: %w", err)
+		return 0, nil, fmt.Errorf("connectorcontrol: admin transport: %w", err)
 	}
 	defer resp.Body.Close()
 	payload, err := io.ReadAll(io.LimitReader(resp.Body, AdminMaxResponseBytes+1))
 	if err != nil {
-		return fmt.Errorf("connectorcontrol: read admin response: %w", err)
+		return 0, nil, fmt.Errorf("connectorcontrol: read admin response: %w", err)
 	}
 	if len(payload) > AdminMaxResponseBytes {
-		return ErrAdminResponseTooLarge
+		return 0, nil, ErrAdminResponseTooLarge
 	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+	return resp.StatusCode, payload, nil
+}
+
+// do performs one ADMIN-surface call: the /api routes, whose success bodies
+// are plain objects and whose failures use {error:{code,message}}.
+func (c *RuntimeAdminClient) do(ctx context.Context, method, path string, body []byte, out interface{}) error {
+	status, payload, err := c.doRaw(ctx, method, path, body)
+	if err != nil {
+		return err
+	}
+	if status < 200 || status >= 300 {
 		var env struct {
 			Error struct {
 				Code string `json:"code"`
 			} `json:"error"`
 		}
 		_ = json.Unmarshal(payload, &env)
-		return &AdminError{Status: resp.StatusCode, Code: env.Error.Code}
+		return &AdminError{Status: status, Code: env.Error.Code}
 	}
 	if out != nil {
 		if err := json.Unmarshal(payload, out); err != nil {
@@ -346,25 +362,160 @@ func (c *RuntimeAdminClient) StartAuthorization(ctx context.Context, service, co
 	return AuthorizationStart{URL: resp.URL, State: resp.State}, nil
 }
 
+// runtimeEnvelope is the /v1 success envelope (contract §3.3):
+// {success:true, message:"OK", data:<payload>, meta:{...}}; failures carry
+// errorCode (NOT code) and no data. The admin /api routes use a different
+// error shape, which is why doRuntime exists beside do.
+type runtimeEnvelope struct {
+	Success   bool            `json:"success"`
+	Data      json.RawMessage `json:"data"`
+	ErrorCode string          `json:"errorCode"`
+}
+
+// doRuntime performs one /v1-surface call: the same single-attempt,
+// no-redirect, body-capped transport as do(), but parsing the /v1 envelope.
+// A non-2xx status or success=false surfaces as AdminError with the runtime
+// errorCode (e.g. connection_not_found).
+func (c *RuntimeAdminClient) doRuntime(ctx context.Context, method, path string, body []byte, out interface{}) error {
+	status, payload, err := c.doRaw(ctx, method, path, body)
+	if err != nil {
+		return err
+	}
+	if status < 200 || status >= 300 {
+		var env runtimeEnvelope
+		_ = json.Unmarshal(payload, &env)
+		return &AdminError{Status: status, Code: env.ErrorCode}
+	}
+	var env runtimeEnvelope
+	if err := json.Unmarshal(payload, &env); err != nil || !env.Success || len(env.Data) == 0 {
+		return ErrMalformedAdminResponse
+	}
+	if out != nil {
+		if err := json.Unmarshal(env.Data, out); err != nil {
+			return ErrMalformedAdminResponse
+		}
+	}
+	return nil
+}
+
+// managedConnectionWire is one serialized managed connection (upstream
+// runtime-api.ts RuntimeConnectedApp + providerAccountId/comment). The
+// provider dimension is the wire field "service".
+type managedConnectionWire struct {
+	ID                string `json:"id"`
+	Service           string `json:"service"`
+	Status            string `json:"status"`
+	Alias             string `json:"alias"`
+	ProviderAccountID string `json:"providerAccountId"`
+}
+
+func managedConnectionFromWire(w managedConnectionWire) (RuntimeConnection, error) {
+	if w.ID == "" || w.Alias == "" {
+		return RuntimeConnection{}, ErrMalformedAdminResponse
+	}
+	return RuntimeConnection{
+		ID:                w.ID,
+		Alias:             w.Alias,
+		ProviderAccountID: w.ProviderAccountID,
+		Provider:          w.Service,
+		Status:            w.Status,
+	}, nil
+}
+
 // LookupRuntimeConnection resolves one external connection by its stable id
-// (admin GET /v1/connections/by-id/:appId).
+// (admin GET /v1/connections/by-id/:appId; the response is a managed
+// connection wrapped in the /v1 envelope).
 func (c *RuntimeAdminClient) LookupRuntimeConnection(ctx context.Context, appID string) (RuntimeConnection, error) {
 	if strings.TrimSpace(appID) == "" {
 		return RuntimeConnection{}, permanentf("external connection id required")
 	}
-	var resp struct {
-		ID                string `json:"id"`
-		Alias             string `json:"alias"`
-		ProviderAccountID string `json:"providerAccountId"`
-		Provider          string `json:"provider"`
-	}
-	if err := c.do(ctx, http.MethodGet, "/v1/connections/by-id/"+url.PathEscape(appID), nil, &resp); err != nil {
+	var resp managedConnectionWire
+	if err := c.doRuntime(ctx, http.MethodGet, "/v1/connections/by-id/"+url.PathEscape(appID), nil, &resp); err != nil {
 		return RuntimeConnection{}, err
 	}
-	if resp.ID == "" {
-		return RuntimeConnection{}, ErrMalformedAdminResponse
+	return managedConnectionFromWire(resp)
+}
+
+// ListRuntimeConnections returns every managed connection (admin GET
+// /v1/connections). The pinned upstream implementation returns the complete
+// array in one response (connection-service.ts listManagedConnections - no
+// pagination exists at the pinned SHA), so the client-side exact-alias
+// correlation never truncates; the shared 2 MiB response cap bounds the
+// read. (Coordinator R14(i).)
+func (c *RuntimeAdminClient) ListRuntimeConnections(ctx context.Context) ([]RuntimeConnection, error) {
+	var resp []managedConnectionWire
+	if err := c.doRuntime(ctx, http.MethodGet, "/v1/connections", nil, &resp); err != nil {
+		return nil, err
 	}
-	return RuntimeConnection{ID: resp.ID, Alias: resp.Alias, ProviderAccountID: resp.ProviderAccountID, Provider: resp.Provider}, nil
+	out := make([]RuntimeConnection, 0, len(resp))
+	for _, w := range resp {
+		conn, err := managedConnectionFromWire(w)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, conn)
+	}
+	return out, nil
+}
+
+// ConnectionRequestStatus is the pollable state of one /v1 connection
+// request (fixture oauth_correlation.json: GET /v1/connection-requests/:id
+// data shape; appId is null until status becomes connected).
+type ConnectionRequestStatus struct {
+	ConnectionRequestID string
+	Service             string
+	Status              string // initiated | connected | failed | expired
+	AppID               string
+	ErrorCode           string
+}
+
+// PollConnectionRequest polls one connection request by its id. This is the
+// canonical correlation chain step whenever a connectionRequestId is known
+// (flows initiated through POST /v1/connections/:service/connect).
+func (c *RuntimeAdminClient) PollConnectionRequest(ctx context.Context, connectionRequestID string) (ConnectionRequestStatus, error) {
+	if strings.TrimSpace(connectionRequestID) == "" {
+		return ConnectionRequestStatus{}, permanentf("connection request id required")
+	}
+	var resp struct {
+		ConnectionRequestID string `json:"connectionRequestId"`
+		Service             string `json:"service"`
+		Status              string `json:"status"`
+		AppID               string `json:"appId"`
+		ErrorCode           string `json:"errorCode"`
+	}
+	if err := c.doRuntime(ctx, http.MethodGet, "/v1/connection-requests/"+url.PathEscape(connectionRequestID), nil, &resp); err != nil {
+		return ConnectionRequestStatus{}, err
+	}
+	if resp.ConnectionRequestID == "" {
+		return ConnectionRequestStatus{}, ErrMalformedAdminResponse
+	}
+	return ConnectionRequestStatus(resp), nil
+}
+
+// ConnectRuntimeAPIKey hands one transient provider API key to the runtime
+// (POST /v1/connections/:service/connect/api-key, body {apiKey}) and returns
+// the immediately-created external connection. NEWLY PINNED ENDPOINT (T07,
+// coordinator R14(ii)): request/response shapes from the pinned sources
+// (src/server/api/connection-routes.ts:77-105 api-key branch,
+// src/server/api/connection-input.ts apiKeyConnectionInput,
+// serializeManagedConnection); not fixture-pinned - T17/T18 must re-verify
+// against a real runtime. The key material exists only in the request body
+// of this one call and is never logged or persisted by the client.
+func (c *RuntimeAdminClient) ConnectRuntimeAPIKey(ctx context.Context, service, apiKey string) (RuntimeConnection, error) {
+	if strings.TrimSpace(service) == "" || strings.TrimSpace(apiKey) == "" {
+		return RuntimeConnection{}, permanentf("service and api key required")
+	}
+	body, err := json.Marshal(struct {
+		APIKey string `json:"apiKey"`
+	}{APIKey: apiKey})
+	if err != nil {
+		return RuntimeConnection{}, err
+	}
+	var resp managedConnectionWire
+	if err := c.doRuntime(ctx, http.MethodPost, "/v1/connections/"+url.PathEscape(service)+"/connect/api-key", body, &resp); err != nil {
+		return RuntimeConnection{}, err
+	}
+	return managedConnectionFromWire(resp)
 }
 
 // DeleteRuntimeConnection fails closed: the T01 contract evidence pins no
