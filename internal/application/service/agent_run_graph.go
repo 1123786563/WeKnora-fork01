@@ -458,6 +458,12 @@ func (s *sessionService) ExecuteDurableRun(ctx context.Context, fence agentrunti
 			eventType = "run_waiting"
 			payload = map[string]string{"wait_kind": "mcp_oauth"}
 		}
+		if errors.Is(execErr, agentruntime.ErrMCPApprovalWait) {
+			// The run is durably parked waiting for explicit human approval
+			// of the planned call; the decision endpoint resumes it.
+			eventType = "run_waiting"
+			payload = map[string]string{"wait_kind": "mcp_approve"}
+		}
 		if raw, merr := json.Marshal(payload); merr == nil {
 			emit(context.WithoutCancel(ctx), agentruntime.RunEvent{Type: eventType, Payload: raw})
 		}

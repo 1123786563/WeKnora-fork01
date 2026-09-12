@@ -150,6 +150,43 @@ func TestDurableGateParksPreflightOAuthWait(t *testing.T) {
 	require.Equal(t, "svc-1", waitErr.ServiceID)
 }
 
+func TestDurableGateParksPreflightApprovalWait(t *testing.T) {
+	prev := durableOAuthPark
+	parked := false
+	var gotFence agentruntime.Fence
+	var gotDispatch agentruntime.ToolDispatch
+	SetDurableOAuthPark(func(
+		_ context.Context, fence agentruntime.Fence, dispatch agentruntime.ToolDispatch,
+		pendingID string, _ OAuthPendingRequest,
+	) error {
+		parked = true
+		gotFence, gotDispatch = fence, dispatch
+		require.Contains(t, pendingID, "mcp_approve_")
+		require.LessOrEqual(t, len(pendingID), 64, "wait_reason column is VARCHAR(64)")
+		return nil
+	})
+	t.Cleanup(func() { SetDurableOAuthPark(prev) })
+
+	fence := agentruntime.Fence{RunKey: agentruntime.RunKey{TenantID: 7, RunID: "r-approve"}, Owner: "w", Epoch: 3}
+	gate := NewDurableGate(nil)
+	executor := agentruntime.NewToolExecutor(&gateRunStore{fence: fence}, gateJournal{},
+		func(ctx context.Context, _ string, _ json.RawMessage) (*types.ToolResult, error) {
+			_, err := gate.RequestAndWait(ctx, PendingRequest{ServiceID: "svc-approve"})
+			return nil, err
+		})
+	_, err := executor.Execute(context.Background(), fence, agentruntime.ToolPlan{
+		Version: 1, CallID: "c1", Name: "fetch", Identity: "fetch",
+		ArgsHash: "ah1", Args: []byte("{}"),
+	})
+	require.True(t, parked)
+	require.Equal(t, fence, gotFence)
+	require.Equal(t, "c1", gotDispatch.CallID)
+	require.ErrorIs(t, err, agentruntime.ErrMCPApprovalWait)
+	waitErr := &agentruntime.ApprovalWaitError{}
+	require.True(t, errors.As(err, &waitErr))
+	require.Equal(t, "svc-approve", waitErr.ServiceID)
+}
+
 func TestDurableGateDelegatesWithoutFence(t *testing.T) {
 	prev := durableOAuthPark
 	SetDurableOAuthPark(func(

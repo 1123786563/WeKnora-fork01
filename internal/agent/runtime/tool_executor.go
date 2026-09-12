@@ -39,6 +39,10 @@ var (
 	// can run; the durable run has been parked at waiting_user with an
 	// mcp_oauth_ pending id.
 	ErrMCPOAuthWait = errors.New("mcp oauth authorization required")
+	// ErrMCPApprovalWait means an MCP tool needs explicit human approval
+	// before it can run; the durable run has been parked at waiting_user with
+	// an mcp_approve_ pending id.
+	ErrMCPApprovalWait = errors.New("mcp tool approval required")
 )
 
 // OAuthWaitError carries the durable park identity of a pre-execution OAuth
@@ -55,6 +59,21 @@ func (e *OAuthWaitError) Error() string {
 }
 
 func (e *OAuthWaitError) Unwrap() error { return ErrMCPOAuthWait }
+
+// ApprovalWaitError carries the durable park identity of a pre-execution
+// human-approval wait; the planned call stays linked to the pending id until
+// the user retries or rejects through the decisions endpoint.
+type ApprovalWaitError struct {
+	PendingID  string
+	ServiceID  string
+	ToolCallID string
+}
+
+func (e *ApprovalWaitError) Error() string {
+	return ErrMCPApprovalWait.Error() + ": service " + e.ServiceID
+}
+
+func (e *ApprovalWaitError) Unwrap() error { return ErrMCPApprovalWait }
 
 // ToolPlan is the immutable, durable identity of one logical model tool call.
 // RecoveryPolicy is empty for the safe default (wait_user). Capability values

@@ -56,13 +56,32 @@ func (g *DurableGate) IsEnabled(ctx context.Context, tenantID uint64, serviceID,
 	return g.inner.IsEnabled(ctx, tenantID, serviceID, toolName)
 }
 
-// RequestAndWait delegates the human-approval wait to the wrapped live
-// gate. Approval waits on durable runs remain a later integration step.
+// RequestAndWait parks a durable run when the human-approval wait happens
+// before dispatch, mirroring the OAuth path: the run parks at waiting_user
+// with an mcp_approve_ pending id and an explicit user decision resumes it.
+// Without a fence (builtin engine) it delegates to the wrapped live gate.
 func (g *DurableGate) RequestAndWait(ctx context.Context, req PendingRequest) (Decision, error) {
-	if g == nil || g.inner == nil {
+	park := durableOAuthPark
+	fence, hasFence := agentruntime.RunFenceFromContext(ctx)
+	dispatch, hasDispatch := agentruntime.ToolDispatchFromContext(ctx)
+	if park == nil || !hasFence || !hasDispatch || dispatch.Attempt != 0 {
+		if g != nil && g.inner != nil {
+			return g.inner.RequestAndWait(ctx, req)
+		}
 		return Decision{}, errors.New("approval gate is unavailable")
 	}
-	return g.inner.RequestAndWait(ctx, req)
+	pendingID := "mcp_approve_" + uuid.NewString()
+	if err := park(ctx, fence, dispatch, pendingID, OAuthPendingRequest{
+		TenantID: req.TenantID, UserID: req.UserID, SessionID: req.SessionID,
+		AssistantMessageID: req.AssistantMessageID, RequestID: req.RequestID,
+		EventBus: req.EventBus, ServiceID: req.ServiceID, ServiceName: req.ServiceName,
+		MCPToolName: req.MCPToolName, ToolCallID: dispatch.CallID,
+	}); err != nil {
+		return Decision{}, err
+	}
+	return Decision{}, &agentruntime.ApprovalWaitError{
+		PendingID: pendingID, ServiceID: req.ServiceID, ToolCallID: dispatch.CallID,
+	}
 }
 
 // RequestOAuthAndWait parks a durable run when the OAuth reauthorization wait
