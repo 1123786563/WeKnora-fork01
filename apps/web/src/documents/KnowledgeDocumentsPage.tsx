@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { KnowledgeDocument, WeKnoraClient } from "@weknora/api-client";
+import type { KnowledgeDocument, ParserEngineInfo, WeKnoraClient } from "@weknora/api-client";
 import {
   processingStatusLabel,
   normalizeKnowledgeProcessingStatus,
@@ -125,6 +125,8 @@ export function KnowledgeDocumentsPage({
   const [chunkSize, setChunkSize] = useState(512);
   const [chunkOverlap, setChunkOverlap] = useState(50);
   const [chunkStrategy, setChunkStrategy] = useState("auto");
+  const [parserEngines, setParserEngines] = useState<ParserEngineInfo[]>([]);
+  const [parserRules, setParserRules] = useState<Array<{ file_types: string[]; engine: string }>>([]);
   const [multimodalEnabled, setMultimodalEnabled] = useState(false);
   const [vllmModelId, setVllmModelId] = useState("");
   const [descriptionLanguage, setDescriptionLanguage] = useState("");
@@ -166,6 +168,13 @@ export function KnowledgeDocumentsPage({
           setChunkOverlap(chunking.chunk_overlap);
         if (typeof chunking.strategy === "string" && chunking.strategy)
           setChunkStrategy(chunking.strategy);
+        if (Array.isArray(chunking.parser_engine_rules)) {
+          setParserRules(chunking.parser_engine_rules.flatMap((rule: unknown) => {
+            if (!rule || typeof rule !== "object") return [];
+            const row = rule as Record<string, unknown>;
+            return typeof row.engine === "string" && Array.isArray(row.file_types) && row.file_types.every((item) => typeof item === "string") ? [{ file_types: row.file_types as string[], engine: row.engine }] : [];
+          }));
+        }
         const config = kb as KBSurfaceKB & { vlm_config?: Record<string, unknown>; asr_config?: Record<string, unknown> };
         const vlm = config.vlm_config ?? {};
         setMultimodalEnabled(vlm.enabled === true || (kb as KBSurfaceKB & { enable_multimodel?: boolean }).enable_multimodel === true);
@@ -190,6 +199,12 @@ export function KnowledgeDocumentsPage({
       active = false;
     };
   }, [client, knowledgeBaseId]);
+
+  useEffect(() => {
+    let active = true;
+    void client.knowledgeBases.settings.parserEngines().then((result) => { if (active) setParserEngines(result.data); }).catch(() => { if (active) setParserEngines([]); });
+    return () => { active = false; };
+  }, [client]);
 
   useEffect(() => {
     let active = true;
@@ -299,6 +314,7 @@ export function KnowledgeDocumentsPage({
 
   function buildProcessConfig() {
     return {
+      parser_engine_rules: parserRules,
       enable_multimodel: multimodalEnabled,
       vlm_config: { enabled: multimodalEnabled, model_id: vllmModelId.trim(), description_language: descriptionLanguage.trim(), custom_instructions: customInstructions.trim() },
       asr_config: { enabled: asrEnabled, model_id: asrModelId.trim(), language: asrLanguage.trim() },
@@ -1109,6 +1125,11 @@ export function KnowledgeDocumentsPage({
                 <option value="legacy">Legacy</option>
               </select>
             </label>
+          </fieldset>
+          <fieldset className="wk-upload-confirm-parser">
+            <legend>Parser engine</legend>
+            <p className="wk-muted">Choose an available server parser for supported file types; blank keeps the server default.</p>
+            {parserEngines.length === 0 ? <p className="wk-muted">No parser engine registry was returned.</p> : [...new Set(parserEngines.flatMap((engine) => engine.FileTypes ?? []))].filter((fileType) => fileType !== "url").sort().map((fileType) => <label key={fileType}>.{fileType}<select value={parserRules.find((rule) => rule.file_types.includes(fileType))?.engine ?? ""} onChange={(event) => setParserRules((current) => { const remaining = current.filter((rule) => !rule.file_types.includes(fileType)); return event.target.value ? [...remaining, { file_types: [fileType], engine: event.target.value }] : remaining; })}><option value="">Server default</option>{parserEngines.filter((engine) => (engine.FileTypes ?? []).includes(fileType)).map((engine) => <option key={engine.Name} value={engine.Name} disabled={engine.Available === false}>{engine.Name}{engine.Available === false ? ` — ${engine.UnavailableReason || "unavailable"}` : ""}</option>)}</select></label>)}
           </fieldset>
           <fieldset className="wk-upload-confirm-multimodal">
             <legend>Multimodal parsing</legend>
