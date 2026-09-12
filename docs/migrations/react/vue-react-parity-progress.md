@@ -18,3 +18,9 @@
 5. chat 全链路（T10–T14）
 6. agents（T15）、organizations（T16）、integrations（T18）
 7. embed 入口（T18）、移动端对应页（T20–T23）
+
+## 2026-09-12 Round 1（续）
+
+- 建立截图对比环境（.parity-tools/shoot.cjs + playwright-core，复用全局 chromium 缓存），证据：evidence/vue-react-parity/2026-09-12-visual-harness.md。
+- Vue(5180)/React(5181) dev server 同视口截图 /login：React 与 Vue 基准存在整页级差异（无品牌区/页头/语言切换/i18n，英文硬编码）。证据：evidence/vue-react-parity/2026-09-12-login-visual-gap.md 与 screenshots/。
+- /login 状态改 implementing；并行差异分析（login、KB list）进行中，下轮据报告实施修复。
