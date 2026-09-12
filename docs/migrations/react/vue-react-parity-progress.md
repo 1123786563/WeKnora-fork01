@@ -461,6 +461,7 @@
 - 后续回归补齐 `validateMcpDraft`：名称、URL、stdio 和 step-2 使用说明在网络 mutation 前按 Vue 规则显式失败；聚焦测试现为 5/5。
 - 将 MCP 编辑器接入现有 Vue 对齐的 `wks-overlay`/`wks-modal` 响应式抽屉容器；聚焦测试 5/5。Web typecheck 仍只剩其他代理 onboarding 文件的两个既有错误，本轮新增 fixture 类型错误已修复。
 - 将 MCP 编辑器可见字段和操作补齐到共享 locale 键（导入、连接、认证、OAuth、高级配置、使用说明、导航和保存）；新增 locale key-set 测试，5 locale 一致，测试 1/1。
+- 浏览器验收尝试：Vue :5180、React :5181、后端 :8080 均在线，但 browser-use 缺少 macOS arm64 Node 24 `classic-level` 原生构建，备用浏览器控制面又无法加载 request-header policy；未执行登录/点击，R024 继续保持未验收。
 - 证据：`docs/migrations/react/evidence/vue-react-parity/2026-09-12-mcp-shared-copy.md`。
 - R024、R043–R046 保持 `implementing`：Vue `SettingDrawer` 精确视觉、完整编辑器 locale/校验、浏览器/真实后端/Wails/native 证据仍未完成。全 Web typecheck 被其他代理当前脏 onboarding 文件阻塞，未将该失败归因于 R024。
 

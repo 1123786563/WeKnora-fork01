@@ -29,6 +29,8 @@ This slice covers the React MCP settings list/card copy and the enabled-state la
 | Full Web typecheck/build | BLOCKED outside this slice | existing dirty `apps/web/src/auth/onboarding.ts` imports a missing `@weknora/domain/auth/onboarding`; `WorkspaceOnboardingPage.tsx` also has an implicit-any error. The MCP test fixture error found during this slice was fixed; the remaining output contains only the onboarding errors. |
 | Browser / real backend / Wails / iOS / Android | NOT COLLECTED | required before R024 or child rows can be `accepted` |
 
+The isolated services were reachable during this continuation (`Vue :5180`, `React :5181`, backend `:8080`), but browser evidence could not be collected: the browser-use runtime lacks the macOS arm64 Node 24 `classic-level` native build, and the desktop browser control surface reported that its browser request-header policy could not be loaded. No login, mutation, or screenshot claim is made from this attempt.
+
 ## Remaining R024 gaps
 
 R024 remains `implementing`: the React form is still an inline editor rather than a Vue `SettingDrawer`, several editor/detail strings remain hardcoded, and exact visual, validation, stdio, browser, real-backend, Wails, iOS, and Android evidence is not present. This report does not promote any matrix row to `accepted`.
