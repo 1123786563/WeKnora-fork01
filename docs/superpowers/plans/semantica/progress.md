@@ -1,6 +1,6 @@
 # Semantica 实施台账
 
-状态：V01–C03、I01–I05、A01–A03、Q01–Q03 verified（I05 Go 协调切片；Q03 证据内容通道与真实模型端到端延后）；其余 8 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
+状态：V01–C03、I01–I05、A01–A03、Q01–Q03 verified；Q04 implemented（门面核心+测试绿；5 项生产接线 BLOCKER 开放，见运行记录）；其余 7 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
 
 状态值 pending / in_progress / blocked / implemented / verified。每项验证记录必须包含commit SHA、精确命令、退出码、环境、产物路径、失败/限制；无真实证据不标记verified。执行前记录实际基线与已有脏文件。
 
@@ -23,7 +23,7 @@
 | Q01 | GraphRAG检索与有界执行 | A02,V03 | verified | 真实 PG+真实 gRPC：租约固定 generation/授权子图检索/来源校验（断言+证据双验）/模式诚实/证据稳定去重排序；deadline 中止开放；见运行记录 2026-09-11 Q01 |
 | Q02 | 注册规则与可核验推导 | Q01 | verified | 受限 JSON 语法+谓词白名单+内容摘要；前向链证明 DAG（元组键控/环检查先行/双预算）；冲突状态与时限延后；见运行记录 2026-09-11 Q02 |
 | Q03 | 模型推断与证据不足判定 | Q01,A03,V03 | verified | 受控网关/结构化校验（前提⊆授权集/kind 恒 model/长度与数量上限）/预算显式状态/注入惰性/Reason 双模式分派；RPC 证据内容通道与真实模型端到端延后 Q04；见运行记录 2026-09-11 Q03 |
-| Q04 | Go检索融合、Agent工具与最终授权 | Q02,Q03,I05 | pending | 尚未执行 |
+| Q04 | Go检索融合、Agent工具与最终授权 | Q02,Q03,I05 | implemented | 门面核心（内部签发 scope/RRF k=60 恒等去重/撤权整份丢弃+单次重试/降级显式模式/Search 交付验证）4 测试+race 绿；**生产接线 5 BLOCKER 开放**（见运行记录 2026-09-11 Q04）——修复后方可 verified |
 | W01 | 用户API与共享客户端契约 | Q04,I05 | pending | 尚未执行 |
 | W02 | React索引状态与推理证据流程 | W01 | pending | 尚未执行 |
 | W03 | 后端影子构建、切换与回滚 | W01,I04,Q04 | pending | 尚未执行 |
@@ -280,9 +280,21 @@
 - review：规格 PASS（0 BLOCKER，条件=台账记录即本记录）；质量三轮 FAIL→修复（B1 宽 except/B2 碰撞/B3 预算状态含未定义名回归/B4 证据内容）→ 终验待回复（条件全部落地：错误类定义+三测试、台账即本记录、minors 6/7/8 已实际入码、协议更名完成、EOF 换行）。
 - 提交 SHA：96a3253（feat(semantic): q03 模型推断与证据不足判定）。
 
+### 2026-09-11 Q04 Go检索融合、Agent工具与最终授权（implemented——核心就绪，生产接线 5 BLOCKER 开放）
+
+- 工作区：.worktrees/semantica（分支 codex/semantica）；基线 SHA：c839a1e（Q03 台账提交）。
+- 修改文件：internal/types/semantic_query.go（FusedEvidence/结果类型）、internal/application/service/{semantic_query.go,semantic_query_adapters.go,semantic_query_test.go(4 测)}、internal/container/container.go（initSemanticQueryService fail-closed 提供）。
+- RED：`go test ./internal/application/service -run TestSemanticQuery -count=1`（undefined: SemanticQueryService）。
+- 已交付核心（测试+race 绿）：计划核心断言逐字（撤权经真实 epoch bump→ErrSemanticScopeChanged、零内容交付）；scope **内部签发**（请求无授权材料）；RRF k=60 仅排名（原始分结构不可混合）+ document/revision/chunk 恒等去重（跨引擎同恒等恰一行、分数翻倍测试）；Reason 生成后 ValidateDelivery（变化整份丢弃+**单次新 scope 重算**再失败返回可重试错误）；Search 路径交付验证补齐；后端实际 mode 上报（不硬编码）；降级显式 "retrieval.degraded"。
+- review（两评审均 FAIL，如实）：规格 FAIL（核心 10 点中 1-5/9-10 PASS；BLOCKER：步骤 7 单次重试【已实现】、Reason 存根【已改诚实标记 retrieval.pending-reason+insufficient_evidence，真实分派延后】、统一入口未接线 chat/agent【延后 W】）；质量 FAIL（5 BLOCKER）。
+- **开放 BLOCKER（修复前不得 verified，下一轮首要）**：①普通检索引擎接线——vectorSearcher 复用 semantic gRPC 客户端且 mode="retrieval"（Python 仅支持 graphrag→FAILED_PRECONDITION；真实 seam 应接 WeKnora 自有检索栈；当前生产语义侧独跑、向量静默丢弃无 partial 标记）；②SemanticSearcher seam 仅携带 scope——线上 Search RPC Query/QueryID/Limits 为空（后端空种子）；③Reason 未调 SemanticClient.Reason（Q03 规则/模型分派未接——现诚实标记待接）；④Issue 信任调用方 TenantID——A01 结转条件要求 resolveKBReadTenant 解析 owner tenant+读权限；⑤**线上契约缺口**（预存，Q04 为首个生产调用方）：AccessScopeToWire 未携带 allowed_document_ids 而 Python 严格按其过滤——有效签名 scope 也会静默空结果。
+- 其余 minors 记录：双引擎并发、TopK 贯通、first-wins 去重、%w 链保留、双败测试、降级路径验证测试、DeliveredContentBytes 真实交付槽。
+- GREEN：`go test ./internal/application/service -run 'TestSemanticQuery' -count=1` 4 passed；`go test -race ./internal/application/service -run 'TestSemantic' -count=1` ok；`go build ./...` 净。
+- 提交 SHA：（本记录与代码同批提交后补记）
+
 ## 当前边界
 
-- V01–C03、I01–I05、A01–A03、Q01–Q03 verified（延后项见各自记录）；后续 8 个任务未开始。
+- V01–C03、I01–I05、A01–A03、Q01–Q03 verified；Q04 implemented（5 BLOCKER 开放）；后续 7 个任务未开始。
 - V01精确版本已冻结（semantica 0.6.8）；真实模型证据须在后续任务补齐，不是已经通过的前提。
 - V02 结论边界：持久图桥接/授权子图重建/注册规则推导已验证；模型推断 unverified（无凭据，未调用）；向量检索路径未验证。
 - V03 结论边界：semantica 模式检索质量/延迟为受控语料实测；native 对照与模型用量门槛未测（阻断记录见上）；上线门禁 approved=false 待用户确认。

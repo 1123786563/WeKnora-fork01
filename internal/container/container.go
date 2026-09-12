@@ -146,6 +146,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 		return repo
 	}))
 	must(container.Provide(initSemanticScopeService))
+	must(container.Provide(initSemanticQueryService))
 	must(container.Provide(initSemanticInternalHandler))
 	must(container.Provide(initSemanticModelService))
 	must(container.Provide(initSemanticModelInternalHandler))
@@ -1633,6 +1634,20 @@ func initSemanticModelInternalHandler(cfg *config.Config, modelService *service.
 		return nil
 	}
 	return handler.NewSemanticModelInternalHandler(cfg.Semantic.ResolveToken, modelService)
+}
+
+// initSemanticQueryService builds the unified query facade (Q04). It
+// stays nil unless the semantic pipeline is enabled - chat and agent
+// tools then route through it instead of backend bypass paths.
+func initSemanticQueryService(cfg *config.Config, scopes *service.SemanticScopeService,
+	client interfaces.SemanticClient) *service.SemanticQueryService {
+	if cfg.Semantic == nil || !cfg.Semantic.Enabled || client == nil || scopes == nil {
+		return nil
+	}
+	return service.NewSemanticQueryService(scopes,
+		service.NewSemanticClientSearcher(client),
+		service.NewSemanticClientVectorSearcher(client),
+		service.FusionConfig{RRFK: 60})
 }
 
 func registerSemanticClientCleanup(client interfaces.SemanticClient, cleaner interfaces.ResourceCleaner) {
