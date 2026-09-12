@@ -64,6 +64,7 @@ func TestCrashMatrixPostgreSQL(t *testing.T) {
 		"after_side_effect_before_result",
 		"unknown_result_user_retry",
 		"idempotent_redelivery",
+		"oauth_park",
 	} {
 		t.Run(name, func(t *testing.T) {
 			counter := newCounterServer()

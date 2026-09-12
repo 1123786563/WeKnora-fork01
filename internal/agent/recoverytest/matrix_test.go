@@ -106,6 +106,7 @@ func TestCrashMatrixSQLite(t *testing.T) {
 		{name: "waiting_user"},
 		{name: "unknown_result_user_retry"},
 		{name: "idempotent_redelivery"},
+		{name: "oauth_park"},
 	}
 	for _, tc := range matrix {
 		t.Run(tc.name, func(t *testing.T) {
@@ -118,7 +119,7 @@ func TestCrashMatrixSQLite(t *testing.T) {
 			want := tc.want
 			switch tc.name {
 			case "after_admission", "after_plan_before_dispatch", "after_result_before_checkpoint",
-				"after_finalize", "idempotent_redelivery":
+				"after_finalize", "idempotent_redelivery", "oauth_park":
 				want.externalCalls, want.finalStatus = 1, "succeeded"
 				want.assistantRows, want.lostEvents = 1, 0
 			case "after_side_effect_before_result", "waiting_user":

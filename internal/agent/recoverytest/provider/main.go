@@ -53,6 +53,7 @@ const (
 	caseUnknownUserRetry    = "unknown_result_user_retry"
 	caseIdempotentRedeliver = "idempotent_redelivery"
 	caseStaleWorkerHold     = "two_worker_contention"
+	caseOAuthPark           = "oauth_park"
 
 	toolName    = "counting_tool"
 	runID       = "matrix-run-1"
@@ -88,6 +89,7 @@ func main() {
 	case caseAfterAdmission, caseAfterPlan, caseAfterSideEffect, caseAfterResult,
 		caseWaitingUser, caseAfterFinalize, caseUnknownUserRetry, caseIdempotentRedeliver,
 		caseStaleWorkerHold,
+		caseOAuthPark,
 		"after_tool_result_before_checkpoint":
 	default:
 		fatal("unknown recovery case " + *crashCase)
@@ -180,8 +182,9 @@ func main() {
 	if err != nil {
 		fatal(fmt.Sprintf("wait for settled run: %v", err))
 	}
-	if parked && (*crashCase == caseUnknownUserRetry || *crashCase == caseWaitingUser) && *resume != "" {
-		if *crashCase == caseUnknownUserRetry {
+	if parked && (*crashCase == caseUnknownUserRetry || *crashCase == caseWaitingUser ||
+		*crashCase == caseOAuthPark) && *resume != "" {
+		if *crashCase == caseUnknownUserRetry || *crashCase == caseOAuthPark {
 			// The durable decision path requires an operator policy and an
 			// authenticated actor, exactly like the HTTP layer.
 			runs.SetDecisionPolicy(func(context.Context, agentruntime.Decision) error { return nil })
@@ -575,6 +578,29 @@ func newMatrixExecutor(
 	registry.PrepareMCPTools(context.Background())
 
 	toolBridge := func(ctx context.Context, name string, args json.RawMessage) (*types.ToolResult, error) {
+		if crashCase == caseOAuthPark && !resuming {
+			// Drive the production durable OAuth park chain exactly as the
+			// DurableGate does before dispatch: mark the planned call with the
+			// pending id, park the run, then block at the barrier so the crash
+			// lands mid-wait with no tool result written.
+			const oauthPending = "mcp_oauth_probe-0001"
+			if d, dok := agentruntime.ToolDispatchFromContext(ctx); dok {
+				if parkFence, fok := agentruntime.RunFenceFromContext(ctx); fok {
+					if parker, pok := runs.Store().(agentruntime.ToolPreflightParker); pok {
+						parkErr := parker.ParkToolPreflightWait(
+							ctx, parkFence, d.CallID, oauthPending, "svc-probe")
+						if parkErr != nil {
+							return nil, parkErr
+						}
+					}
+					if werr := runs.WaitForDecision(ctx, parkFence, oauthPending); werr != nil {
+						return nil, werr
+					}
+					touchBarrier(barrierPath)
+					blockForever()
+				}
+			}
+		}
 		if crashCase == caseAfterPlan && !resuming {
 			touchBarrier(barrierPath)
 			blockForever()
@@ -690,6 +716,15 @@ func applyUserRetry(
 		" WHERE tenant_id = 1 AND run_id = ? AND status = 'unknown' LIMIT 1"
 	if err := db.Raw(pendingQuery, runID).Scan(&pending).Error; err != nil {
 		return current, err
+	}
+	if pending.CallID == "" {
+		// A durable OAuth park marks a still planned row with the pending id;
+		// bind the retry decision to exactly that row.
+		plannedQuery := "SELECT call_id, args_hash FROM agent_tool_calls" +
+			" WHERE tenant_id = 1 AND run_id = ? AND status = 'planned' AND unknown_reason = ? LIMIT 1"
+		if err := db.Raw(plannedQuery, runID, current.WaitReason).Scan(&pending).Error; err != nil {
+			return current, err
+		}
 	}
 	return runs.Resolve(ctx, key, agentruntime.Decision{
 		PendingID:        current.WaitReason,
