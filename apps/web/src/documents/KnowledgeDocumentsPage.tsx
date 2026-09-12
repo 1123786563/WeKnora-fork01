@@ -122,6 +122,7 @@ export function KnowledgeDocumentsPage({
   const [pendingEntries, setPendingEntries] = useState<UploadEntry[]>([]);
   const [pendingUrl, setPendingUrl] = useState("");
   const [uploadTargetFolder, setUploadTargetFolder] = useState("");
+  const [newUploadFolder, setNewUploadFolder] = useState("");
   const [pendingTagIds, setPendingTagIds] = useState<string[]>([]);
   const [chunkSize, setChunkSize] = useState(512);
   const [chunkOverlap, setChunkOverlap] = useState(50);
@@ -313,9 +314,21 @@ export function KnowledgeDocumentsPage({
     setPendingEntries([]);
     setPendingUrl("");
     setUploadTargetFolder("");
+    setNewUploadFolder("");
     setPendingTagIds([]);
     setUploadStates([]);
     setUploading(false);
+  }
+
+  function chooseNewUploadFolder() {
+    const candidate = newUploadFolder.trim().replace(/^\/+|\/+$/g, "");
+    if (!candidate || candidate.split("/").some((part) => !part || part === "." || part === "..")) {
+      setUploadError("Folder path must contain valid non-empty segments.");
+      return;
+    }
+    setUploadTargetFolder(candidate);
+    setNewUploadFolder("");
+    setUploadError(null);
   }
 
   function removeStagedUpload(index: number) {
@@ -1086,7 +1099,7 @@ export function KnowledgeDocumentsPage({
               })}
             </ul>
           ) : null}
-          {pendingEntries.length > 0 || pendingUrl ? <label className="wk-upload-confirm-destination">Destination folder <select value={uploadTargetFolder} onChange={(event) => setUploadTargetFolder(event.target.value)}><option value="">Knowledge base root</option>{folders.map((folder) => <option key={folder.path} value={folder.path}>{folder.path}</option>)}</select></label> : null}
+          {pendingEntries.length > 0 || pendingUrl ? <fieldset className="wk-upload-confirm-destination"><legend>Destination folder</legend><select value={uploadTargetFolder} onChange={(event) => setUploadTargetFolder(event.target.value)}><option value="">Knowledge base root</option>{folders.map((folder) => <option key={folder.path} value={folder.path}>{folder.path}</option>)}</select><div className="wk-list-actions"><input value={newUploadFolder} onChange={(event) => setNewUploadFolder(event.target.value)} placeholder="New folder path, e.g. docs/spec" aria-label="New folder path" /><Button type="button" onClick={chooseNewUploadFolder}>Use new folder</Button></div></fieldset> : null}
           <label className="wk-upload-confirm-tags">
             Tags{" "}
             <select
