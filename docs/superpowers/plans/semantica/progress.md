@@ -320,8 +320,8 @@
 - GREEN：`pnpm exec tsx --test packages/domain/src/semantic.test.ts apps/web/src/semantic/view-model.test.ts` **12 passed**；`pnpm typecheck:shared` 0 错误；`pnpm typecheck:web` 0 错误（含 3 组件+页面）。
 - 交付：domain 纯函数（计划两条核心断言逐字：failed 原文可读可重试/deleting 不可重试；stale 可重试/ready 不可/unknown 不重试+标签；**所有语义状态原文恒可读**）；视图模型（**迟到响应丢弃**（query_id 失配）/**取消丢弃**（取消清 active id）/当前响应落位/**权限错误清空结果**（403/401）/模型推断恒标"非证明"）；SemanticPanel（重试钮仅 failed/stale——前端不充当授权，服务端再校验）；EvidencePanel（五模式实际标签/截断/generation/证据钉 document+revision+chunk）；SemanticPage（AbortSignal 全请求/取消即丢弃）；样式复用现有色板；Playwright 四场景 spec。
 - **阻断（如实）**：浏览器 E2E（上传→索引→问答→引用→重试→取消→撤权+截图+键盘无障碍）需真实 Go 服务栈运行（SEMANTIC_E2E_READY=1+baseURL）——本环境未部署生产服务（授权范围禁止），spec 已就绪待 O03 验收环境执行；不视为已通过。
-- review：双评审下轮补做。
-- 提交 SHA：9a14351。
+- review：规格 FAIL（根因：.gitignore `web/` 无锚匹配 apps/web——7 计划文件未入库+提交树破坏 typecheck；4 BLOCKER）→ 修复：①gitignore 锚定 /web/，7 文件入库；②onRetry 接通 retrySemanticIndex（服务端幂等提交——Go retry 端点仍延后 W03，如实）；③SemanticPage 经 #/semantic/:kb/:doc 哈希路由挂入 App（不重写导航）；④EvidencePanel 虚假注释改如实（历史不可取提示需 DTO 可用性字段——W03）；⑤playwright 版本钉 1.63.0。质量评审待下轮。
+- 提交 SHA：9a14351 + 修复段（下记）。
 
 - V01–C03、I01–I05、A01–A03、Q01–Q04、W01 verified；W02 implemented（E2E 阻断）；后续 5 个任务未开始。
 - V01精确版本已冻结（semantica 0.6.8）；真实模型证据须在后续任务补齐，不是已经通过的前提。

@@ -4,12 +4,30 @@ import { createScopeController } from '@weknora/domain/scope';
 import { scopedKey } from '@weknora/domain';
 import { Button, Card, Status } from '@weknora/ui';
 import { loadKnowledgeBases, type KnowledgeBaseListState } from './knowledge-bases/list.ts';
+import { SemanticPage } from './semantic/SemanticPage.tsx';
 
 interface KnowledgeBasesPageProps {
   client: WeKnoraClient;
   scopeController: ReturnType<typeof createScopeController>;
 }
+// Semantic deep-link (W02): #/semantic/:kbId/:documentId mounts the
+// semantic status + evidence flow without rewriting the KB navigation.
+function semanticRouteFromHash(): { kbId: string; documentId: string } | null {
+  const match = window.location.hash.match(/^#\/semantic\/([^/]+)\/([^/]+)$/);
+  if (!match) return null;
+  return { kbId: decodeURIComponent(match[1]), documentId: decodeURIComponent(match[2]) };
+}
+
 export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPageProps) {
+  const semanticRoute = semanticRouteFromHash();
+  if (semanticRoute) {
+    return (
+      <SemanticPage
+        knowledgeBaseId={semanticRoute.kbId}
+        documentId={semanticRoute.documentId}
+      />
+    );
+  }
   const [reloadToken, setReloadToken] = useState(0);
   const [state, setState] = useState<KnowledgeBaseListState>({ status: 'error', message: 'Loading…' });
   const scope = scopeController.current();

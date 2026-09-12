@@ -39,7 +39,7 @@ data/weknora.db-wal
 data/weknora.db-shm
 skills-lock.json
 
-web/
+/web/
 
 **/__pycache__
 /scripts/scale_dev_jobs.sh
