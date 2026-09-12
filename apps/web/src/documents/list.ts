@@ -8,6 +8,7 @@ export interface KnowledgeDocumentPage {
 }
 
 export type KnowledgeDocumentListState =
+  | { status: 'loading' }
   | { status: 'success'; page: KnowledgeDocumentPage }
   | { status: 'error'; message: string };
 

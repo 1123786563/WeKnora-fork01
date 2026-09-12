@@ -35,7 +35,7 @@ function errorMessage(error: unknown): string {
 
 export function KnowledgeDocumentsPage({ client, knowledgeBaseId, onOpenDocument }: KnowledgeDocumentsPageProps) {
   const [reloadToken, setReloadToken] = useState(0);
-  const [state, setState] = useState<KnowledgeDocumentListState>({ status: 'error', message: 'Loading…' });
+  const [state, setState] = useState<KnowledgeDocumentListState>({ status: 'loading' });
   const [folderState, setFolderState] = useState<{ status: 'loading' | 'success' | 'error'; tree?: Awaited<ReturnType<typeof client.knowledgeBases.documents.folders>>; message?: string }>({ status: 'loading' });
   const [tags, setTags] = useState<Awaited<ReturnType<typeof client.knowledgeBases.documents.tags>>>([]);
   const [query, setQuery] = useState('');
@@ -57,7 +57,7 @@ export function KnowledgeDocumentsPage({ client, knowledgeBaseId, onOpenDocument
 
   useEffect(() => {
     let active = true;
-    setState({ status: 'error', message: 'Loading…' });
+    setState({ status: 'loading' });
     void loadKnowledgeDocuments(client, knowledgeBaseId, {
       page, page_size: pageSize, keyword: query || undefined, parse_status: parseStatus || undefined,
       tag_ids: tagId || undefined,
@@ -156,8 +156,8 @@ export function KnowledgeDocumentsPage({ client, knowledgeBaseId, onOpenDocument
           <div className="wk-toolbar" role="search"><label>Search <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="File name or keyword" /></label><label>Status <select value={parseStatus} onChange={(event) => setParseStatus(event.target.value)}><option value="">All statuses</option><option value="pending">Pending</option><option value="processing">Processing</option><option value="finalizing">Finalizing</option><option value="completed">Completed</option><option value="failed">Failed</option><option value="deleting">Deleting</option><option value="cancelled">Cancelled</option></select></label><label>Tag <select value={tagId} onChange={(event) => setTagId(event.target.value)}><option value="">All tags</option>{tags.map((tag) => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</select></label></div>
           <div className="wk-list-actions"><span>{selectedOnPage} selected on this page{selected.size > selectedOnPage ? ` · ${selected.size} total` : ''}</span><Button type="button" disabled={!selected.size} onClick={() => void moveSelected()}>Move</Button><Button type="button" disabled={!selected.size} onClick={() => void updateSelectedTags()}>Set tags</Button><Button type="button" disabled={!selected.size} onClick={() => void deleteSelected()}>Delete</Button></div>
           {mutationError ? <Status tone="error">{mutationError}</Status> : null}
-          {state.status === 'error' && state.message === 'Loading…' ? <Status>Loading documents…</Status> : null}
-          {state.status === 'error' && state.message !== 'Loading…' ? <><Status tone="error">{state.message}</Status><Button type="button" onClick={() => setReloadToken((value) => value + 1)}>Try again</Button></> : null}
+          {state.status === 'loading' ? <Status>Loading documents…</Status> : null}
+          {state.status === 'error' ? <><Status tone="error">{state.message}</Status><Button type="button" onClick={() => setReloadToken((value) => value + 1)}>Try again</Button></> : null}
           {state.status === 'success' && state.page.items.length === 0 ? <Status>No documents match the current filters.</Status> : null}
           {state.status === 'success' && state.page.items.length > 0 ? <ul className="wk-list wk-document-list">{state.page.items.map((document) => { const status = documentStatus(document); return <li key={document.id}><input type="checkbox" aria-label={`Select ${displayName(document)}`} checked={selected.has(document.id)} onChange={() => toggleSelected(document.id)} /><div className="wk-list-item-copy"><button type="button" className="wk-document-link" onClick={() => onOpenDocument?.(document)}>{displayName(document)}</button><span>{document.folder_path || 'Root'}{document.file_type ? ` · ${document.file_type}` : ''}{document.source ? ` · ${document.source}` : ''}</span></div><Status tone={status.tone}>{status.label}</Status></li>; })}</ul> : null}
           {state.status === 'success' && state.page.total > pageSize ? <nav className="wk-pagination" aria-label="Document pages"><Button type="button" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>Previous</Button><span>Page {page} · {state.page.total} documents</span><Button type="button" disabled={page * pageSize >= state.page.total} onClick={() => setPage((value) => value + 1)}>Next</Button></nav> : null}
