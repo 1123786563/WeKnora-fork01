@@ -35,3 +35,15 @@ The capability snapshot and graph binding tests pass. Full production tRPC
 graph construction, durable OAuth waiter routing, and provider-specific
 sandbox reconciliation remain owned by the surrounding recovery tasks; this
 document does not claim those paths are enabled by the snapshot alone.
+
+The MCP catalog/exposure suite was also rerun on 2026-09-12:
+
+```text
+GOWORK=off go test ./internal/agent/tools \
+  -run 'TestMCP|TestRegistryModelProjection' -count=1
+```
+
+It passed, including deferred discovery, describe/call validation, refresh,
+history restoration, per-session projection and image-bearing MCP results.
+The remaining release evidence is specifically the same behavior across a
+provider process restart while the advertised MCP set changes.
