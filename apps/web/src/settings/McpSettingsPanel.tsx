@@ -4,6 +4,7 @@ import type { McpConfiguration, WeKnoraClient } from "@weknora/api-client";
 import { Button, Card, Status } from "@weknora/ui";
 import { McpTestResultBody } from "./McpTestResultBody.tsx";
 import { McpToolsDirectory } from "./McpToolsDirectory.tsx";
+import { createTranslator, useAppLocale } from "../i18n.ts";
 
 type McpService = McpConfiguration & {
   description?: string;
@@ -189,6 +190,7 @@ function McpServiceDetails({
   oauthEnabled: boolean;
   usageInstructions?: string;
 }) {
+  const t = createTranslator(useAppLocale());
   const [metadata, setMetadata] =
     useState<
       Awaited<
@@ -237,9 +239,7 @@ function McpServiceDetails({
       metadataResult.status === "rejected" ? metadataResult.reason : null;
     if (failure)
       setError(
-        failure instanceof Error
-          ? failure.message
-          : "Unable to load MCP metadata",
+          failure instanceof Error ? failure.message : t("mcpMetadata.failed"),
       );
     if (oauthEnabled) {
       try {
@@ -247,9 +247,7 @@ function McpServiceDetails({
       } catch (cause) {
         if (generation === loadGeneration.current)
           setError(
-            cause instanceof Error
-              ? cause.message
-              : "Unable to load MCP OAuth status",
+          cause instanceof Error ? cause.message : t("mcpMetadata.failed"),
           );
       }
     }
@@ -268,9 +266,7 @@ function McpServiceDetails({
       setMetadata(await client.configuration.mcp.metadata.refresh(serviceId));
     } catch (cause) {
       setError(
-        cause instanceof Error
-          ? cause.message
-          : "Unable to refresh MCP metadata",
+        cause instanceof Error ? cause.message : t("mcpMetadata.failed"),
       );
     } finally {
       setBusy(false);
@@ -283,9 +279,7 @@ function McpServiceDetails({
       setTestResult(await client.configuration.mcp.test(serviceId));
     } catch (cause) {
       setError(
-        cause instanceof Error
-          ? cause.message
-          : "Unable to test MCP connection",
+        cause instanceof Error ? cause.message : t("mcp.testResult.connectionFailed"),
       );
     } finally {
       setBusy(false);
@@ -307,9 +301,7 @@ function McpServiceDetails({
       setUsage(generated);
     } catch (cause) {
       setError(
-        cause instanceof Error
-          ? cause.message
-          : "Unable to generate usage instructions",
+        cause instanceof Error ? cause.message : t("mcpMetadata.generateFailed"),
       );
     } finally {
       setBusy(false);
@@ -346,7 +338,7 @@ function McpServiceDetails({
       });
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : "Unable to save tool policy",
+        cause instanceof Error ? cause.message : t("mcpMetadata.policySaveFailed"),
       );
     } finally {
       setBusy(false);
@@ -384,9 +376,7 @@ function McpServiceDetails({
       }
     } catch (cause) {
       setError(
-        cause instanceof Error
-          ? cause.message
-          : "Unable to authorize MCP service",
+        cause instanceof Error ? cause.message : t("mcpServiceDialog.oauthAuthorizeHint"),
       );
     } finally {
       setBusy(false);
@@ -405,9 +395,7 @@ function McpServiceDetails({
       });
     } catch (cause) {
       setError(
-        cause instanceof Error
-          ? cause.message
-          : "Unable to revoke MCP authorization",
+        cause instanceof Error ? cause.message : t("mcpMetadata.failed"),
       );
     } finally {
       setBusy(false);
@@ -417,40 +405,39 @@ function McpServiceDetails({
     <section className="wk-mcp-details">
       <div className="wk-settings-panel-heading">
         <div>
-          <h4>Tools and usage</h4>
+          <h4>{t("mcpMetadata.toolsAndUsage")}</h4>
           <p className="wk-muted">
-            Metadata is server-sourced; a stale snapshot is not treated as live
-            health.
+            {t("mcpMetadata.cacheHint")}
           </p>
         </div>
         <div className="wk-list-actions">
           <Button type="button" disabled={busy} onClick={() => void refresh()}>
-            Refresh
+            {t("common.refresh")}
           </Button>
           <Button
             type="button"
             disabled={busy}
             onClick={() => void testConnection()}
           >
-            Test connection
+            {t("mcpServiceDialog.testConnection")}
           </Button>
         </div>
       </div>
       {error ? <Status tone="error">{error}</Status> : null}
       {oauthEnabled ? (
         <div className="wk-mcp-oauth">
-          <strong>OAuth 2.0</strong>
+          <strong>{t("mcpServiceDialog.authTypeOAuth")}</strong>
           <span>{oauth?.state ?? "checking"}</span>
           <Button
             type="button"
             disabled={busy}
             onClick={() => void authorize()}
           >
-            {oauth?.authorized ? "Re-authorize" : "Authorize"}
+            {oauth?.authorized ? t("mcpServiceDialog.oauthReauthorize") : t("mcpServiceDialog.oauthAuthorize")}
           </Button>
           {oauth?.authorized || oauth?.state === "refreshable" ? (
             <Button type="button" disabled={busy} onClick={() => void revoke()}>
-              Revoke
+            {t("mcpServiceDialog.oauthRevoke")}
             </Button>
           ) : null}
         </div>
@@ -458,9 +445,9 @@ function McpServiceDetails({
       {metadata ? (
         <>
           <p className={metadata.stale ? "wk-mcp-stale" : "wk-muted"}>
-            {metadata.tools.length} tools · {metadata.serverName}{" "}
+            {t("mcpMetadata.toolCount", { count: metadata.tools.length })} · {metadata.serverName}{" "}
             {metadata.serverVersion} ·{" "}
-            {metadata.stale ? "Stale metadata" : `Synced ${metadata.syncedAt}`}
+            {metadata.stale ? t("mcpMetadata.stale") : `${t("mcpMetadata.syncedAt")}${metadata.syncedAt}`}
           </p>
           <McpToolsDirectory
             tools={metadata.tools}
@@ -479,20 +466,20 @@ function McpServiceDetails({
               disabled={busy || metadata.stale || !metadata}
               onClick={() => void generateUsage()}
             >
-              Generate usage instructions
+              {t("mcpMetadata.generateUsage")}
             </Button>
             {usage ? (
               <pre>{usage}</pre>
             ) : metadata.instructions ? (
               <pre>{metadata.instructions}</pre>
             ) : (
-              <p className="wk-muted">No usage instructions returned.</p>
+              <p className="wk-muted">{t("mcpMetadata.instructionsPlaceholder")}</p>
             )}
           </div>
         </>
       ) : (
         <Status>
-          {busy ? "Loading metadata…" : "Metadata is not synced."}
+          {busy ? t("mcpMetadata.fetching") : t("mcpMetadata.notSynced")}
         </Status>
       )}
       <McpTestResultBody result={testResult} approvals={approvals} busy={busy || Boolean(metadata?.stale) || Boolean(policyError)} onPolicyChange={(name, field, value) => void updateTool(name, field, value)} />
@@ -501,6 +488,7 @@ function McpServiceDetails({
 }
 
 export function McpSettingsPanel({ client, role, initialServices }: Props) {
+  const t = createTranslator(useAppLocale());
   const canEdit = role === "admin" || role === "owner";
   const [services, setServices] = useState<McpService[]>(() =>
     (initialServices ?? []).map(asService),
@@ -519,7 +507,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
       setServices((await client.configuration.mcp.list()).map(asService));
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : "Unable to load MCP services",
+        cause instanceof Error ? cause.message : t("mcpSettings.toasts.loadFailed"),
       );
     } finally {
       setLoading(false);
@@ -608,7 +596,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
       await load();
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : "Unable to save MCP service",
+        cause instanceof Error ? cause.message : t("mcpServiceDialog.toasts.updateFailed"),
       );
     } finally {
       setSaving(false);
@@ -630,7 +618,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
       setNotice(enabled ? "MCP service enabled." : "MCP service disabled.");
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : "Unable to update MCP service",
+        cause instanceof Error ? cause.message : t("mcpSettings.toasts.updateFailed"),
       );
     } finally {
       setBusyId(null);
@@ -654,7 +642,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
       setNotice("MCP service deleted.");
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : "Unable to delete MCP service",
+        cause instanceof Error ? cause.message : t("mcpSettings.toasts.deleteFailed"),
       );
     } finally {
       setBusyId(null);
@@ -663,28 +651,28 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
   if (loading)
     return (
       <Card data-testid="mcp-settings">
-        <Status>Loading MCP services…</Status>
+        <Status>{t("common.loading")}</Status>
       </Card>
     );
   return (
     <section className="wk-mcp-settings" data-testid="mcp-settings">
       <div className="wk-settings-panel-heading">
         <div>
-          <h3>MCP services</h3>
+          <h3>{t("mcpSettings.title")}</h3>
           <p className="wk-muted">
-            Connect external MCP servers and control which tools may be used.
+            {t("mcpSettings.description")}
           </p>
         </div>
         {canEdit ? (
           <Button type="button" onClick={() => { setDraft(draftFrom()); setStep(0); }}>
-            Add MCP service
+            {t("mcpSettings.addService")}
           </Button>
         ) : null}
       </div>
       {error ? <Status tone="error">{error}</Status> : null}
       {notice ? <Status tone="success">{notice}</Status> : null}
       {services.length === 0 ? (
-        <Status>No MCP services configured.</Status>
+        <Status>{t("mcpSettings.empty")}</Status>
       ) : (
         <div className="wk-mcp-grid">
           {services.map((service) => (
@@ -693,7 +681,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                 <div>
                   <h4 title={service.name}>{service.name}</h4>
                   {service.is_builtin ? (
-                    <span className="wk-mcp-badge">Built-in</span>
+                    <span className="wk-mcp-badge">{t("mcpSettings.builtin")}</span>
                   ) : null}
                 </div>
                 {canEdit ? (
@@ -702,26 +690,26 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                       type="button"
                       onClick={() => { setDraft(draftFrom(service)); setStep(0); }}
                     >
-                      Edit
+                      {t("common.edit")}
                     </Button>
                     {service.is_builtin ? null : (
                       <Button
                         type="button"
                         onClick={() => void remove(service)}
                       >
-                        Delete
+                        {t("common.delete")}
                       </Button>
                     )}
                   </div>
                 ) : null}
               </div>
               <p className="wk-muted wk-mcp-description">
-                {serviceDescription(service) || "No usage instructions."}
+                {serviceDescription(service) || t("mcpSettings.noUsageInstructions")}
               </p>
               <div className="wk-mcp-card-footer">
                 <span>
                   {service.transport_type === "http-streamable"
-                    ? "HTTP Streamable"
+                      ? "HTTP Streamable"
                     : service.transport_type === "stdio"
                       ? "stdio (unsupported editor)"
                       : "SSE"}
@@ -732,10 +720,10 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                     disabled={busyId === service.id}
                     onClick={() => void toggle(service)}
                   >
-                    {service.enabled === false ? "Enable" : "Disable"}
+                    {service.enabled === false ? t("mcpSettings.disabled") : t("mcpSettings.enabled")}
                   </Button>
                 ) : (
-                  <span>{service.enabled === false ? "Off" : "On"}</span>
+                  <span>{service.enabled === false ? t("mcpSettings.disabled") : t("mcpSettings.enabled")}</span>
                 )}
               </div>
             </Card>

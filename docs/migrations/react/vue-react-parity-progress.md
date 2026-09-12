@@ -454,6 +454,13 @@
 - 门禁：`tsc -b --noEmit`（web）✅；`pnpm --filter @weknora/web test` 229/229；`pnpm run test:shared` 330/330；`pnpm run build:web` ✅。
 - 提交：见本轮 commit 列表（S01/S02 为 docs-only 证据提交，S03 为功能+i18n+文档提交）。
 
+## 2026-09-12 R024 MCP shared-copy regression slice
+
+- 以 `frontend/src/views/settings/McpSettings.vue` 为行为基准复核 `apps/web/src/settings/McpSettingsPanel.tsx`：发现并修复 `enabled: true` 显示为“已禁用”的条件反转；列表/卡片/详情关键文案接入已有 `packages/i18n/src/settings.ts`，缺失动作键集中新增于 `packages/i18n/src/mcp.ts`，覆盖当前五种客户端 locale。
+- 回归：`pnpm --filter @weknora/web exec tsx --test src/settings/McpSettingsPanel.test.tsx` 4/4；断言 viewer/admin 分支、中文默认文案、中英文共享动作键及 JSON 导入行为；`git diff --check` 通过。
+- 证据：`docs/migrations/react/evidence/vue-react-parity/2026-09-12-mcp-shared-copy.md`。
+- R024、R043–R046 保持 `implementing`：Vue `SettingDrawer` 精确视觉、完整编辑器 locale/校验、浏览器/真实后端/Wails/native 证据仍未完成。全 Web typecheck 被其他代理当前脏 onboarding 文件阻塞，未将该失败归因于 R024。
+
 ## 2026-09-12 Task 1 canonical executable backlog
 
 Baseline source for this backlog: current branch `codex/react-multiclient`, task base `9b79558b6229d79d0ceebe22e1de4a439982c615`, route/alias rows `R001`-`R056` and nested surface rows `N001`-`N033` in `vue-react-parity-matrix.md`. The SDD ledger and task brief under `.superpowers/sdd` remain ignored scratch. Do not bulk-mark rows accepted; each slice must close its own state profile and evidence.

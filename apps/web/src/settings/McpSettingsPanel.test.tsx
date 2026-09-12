@@ -19,6 +19,7 @@ else nodeModule.register(`data:text/javascript,${encodeURIComponent(`
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
 const { McpSettingsPanel, importMcpConfig } = await import('./McpSettingsPanel.tsx');
+const { formatMessage } = await import('@weknora/i18n');
 
 const client = {} as never;
 
@@ -28,8 +29,8 @@ test('MCP settings keeps the Vue empty state for a viewer', () => {
     initialServices: [],
     role: 'viewer',
   }));
-  assert.match(html, /No MCP services configured/);
-  assert.doesNotMatch(html, /Add MCP service/);
+  assert.match(html, /暂无 MCP 服务/);
+  assert.doesNotMatch(html, /添加服务/);
 });
 
 test('MCP settings renders service metadata and admin actions', () => {
@@ -40,9 +41,23 @@ test('MCP settings renders service metadata and admin actions', () => {
   }));
   assert.match(html, /Docs/);
   assert.match(html, /Search docs/);
-  assert.match(html, /Edit/);
-  assert.match(html, /Delete/);
-  assert.match(html, /Add MCP service/);
+  assert.match(html, /编辑/);
+  assert.match(html, /删除/);
+  assert.match(html, /添加服务/);
+});
+
+test('MCP settings uses shared Vue-derived Chinese copy for the default locale', () => {
+  const html = renderToStaticMarkup(React.createElement(McpSettingsPanel, {
+    client,
+    initialServices: [{ id: 'mcp-1', name: 'Docs', description: '', enabled: true, transport_type: 'sse', is_builtin: false }],
+    role: 'admin',
+  }));
+  assert.match(html, /MCP 服务管理/);
+  assert.match(html, /管理外部 MCP/);
+  assert.match(html, /添加服务/);
+  assert.match(html, /已启用/);
+  assert.equal(formatMessage('zh-CN', 'mcpServiceDialog.testConnection'), '测试连接');
+  assert.equal(formatMessage('en-US', 'mcpServiceDialog.testConnection'), 'Test connection');
 });
 
 test('MCP JSON import maps transport, auth, and custom headers without saving', () => {
