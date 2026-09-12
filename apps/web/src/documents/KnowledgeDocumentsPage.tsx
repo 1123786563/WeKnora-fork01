@@ -121,6 +121,7 @@ export function KnowledgeDocumentsPage({
   // (Vue UploadConfirmDialog) before any upload call is issued.
   const [pendingEntries, setPendingEntries] = useState<UploadEntry[]>([]);
   const [pendingUrl, setPendingUrl] = useState("");
+  const [uploadTargetFolder, setUploadTargetFolder] = useState("");
   const [pendingTagIds, setPendingTagIds] = useState<string[]>([]);
   const [chunkSize, setChunkSize] = useState(512);
   const [chunkOverlap, setChunkOverlap] = useState(50);
@@ -300,6 +301,7 @@ export function KnowledgeDocumentsPage({
   function stageFiles(files: Iterable<File>) {
     const entries = toUploadEntries(files);
     if (entries.length === 0) return;
+    if (pendingEntries.length === 0) setUploadTargetFolder(folderPath ?? "");
     setPendingEntries((current) => [...current, ...entries]);
     setUploadStates([]);
     setUploadError(null);
@@ -310,6 +312,7 @@ export function KnowledgeDocumentsPage({
     uploadPipelineController.current = null;
     setPendingEntries([]);
     setPendingUrl("");
+    setUploadTargetFolder("");
     setPendingTagIds([]);
     setUploadStates([]);
     setUploading(false);
@@ -372,11 +375,11 @@ export function KnowledgeDocumentsPage({
             process_config: processConfig,
           },
         );
-        if (folderPath !== undefined && created.id) {
+        if (uploadTargetFolder && created.id) {
           await client.knowledgeBases.documents.moveToFolder(
             knowledgeBaseId,
             [created.id],
-            folderPath,
+            uploadTargetFolder,
           );
         }
         setPendingUrl("");
@@ -410,11 +413,11 @@ export function KnowledgeDocumentsPage({
             },
             signal,
           );
-          if (folderPath !== undefined && created.id) {
+          if (uploadTargetFolder && created.id) {
             await client.knowledgeBases.documents.moveToFolder(
               knowledgeBaseId,
               [created.id],
-              folderPath,
+              uploadTargetFolder,
             );
           }
           return created;
@@ -452,6 +455,7 @@ export function KnowledgeDocumentsPage({
         return;
       }
       setPendingUrl(normalizedUrl);
+      if (!pendingUrl && pendingEntries.length === 0) setUploadTargetFolder(folderPath ?? "");
       setPendingTagIds([]);
       setUploadError(null);
       setUrl("");
@@ -1082,6 +1086,7 @@ export function KnowledgeDocumentsPage({
               })}
             </ul>
           ) : null}
+          {pendingEntries.length > 0 || pendingUrl ? <label className="wk-upload-confirm-destination">Destination folder <select value={uploadTargetFolder} onChange={(event) => setUploadTargetFolder(event.target.value)}><option value="">Knowledge base root</option>{folders.map((folder) => <option key={folder.path} value={folder.path}>{folder.path}</option>)}</select></label> : null}
           <label className="wk-upload-confirm-tags">
             Tags{" "}
             <select
