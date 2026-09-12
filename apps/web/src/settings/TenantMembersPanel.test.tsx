@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import * as nodeModule from 'node:module';
+import test from 'node:test';
+import * as React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+const hooks = nodeModule as typeof nodeModule & { registerHooks?: (hooks: { resolve: (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => unknown }) => void };
+if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => specifier.endsWith('.css') ? { shortCircuit: true, url: 'data:text/javascript,export default {}' } : nextResolve(specifier, context) });
+(globalThis as typeof globalThis & { React: typeof React }).React = React;
+const { TenantMembersPanel } = await import('./TenantMembersPanel.tsx');
+const client = {} as never;
+const member = { user_id: 'u1', username: 'Alice', email: 'alice@example.com', role: 'viewer' as const, status: 'active' as const, joined_at: '2030-01-01' };
+test('tenant members keeps viewer state read-only', () => { const html = renderToStaticMarkup(React.createElement(TenantMembersPanel, { client, tenantId: 1, role: 'viewer', initialMembers: { items: [member], total: 1 } })); assert.match(html, /Alice/); assert.doesNotMatch(html, /Invite member|Send invitation|Remove/); });
+test('tenant members exposes manager search, invite and role controls', () => { const html = renderToStaticMarkup(React.createElement(TenantMembersPanel, { client, tenantId: 1, role: 'admin', initialMembers: { items: [member], total: 1 } })); assert.match(html, /Invite member/); assert.match(html, /Send invitation/); assert.match(html, /Role for Alice/); assert.match(html, /Remove/); });

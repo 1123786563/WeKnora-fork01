@@ -1329,3 +1329,15 @@
 - R033 remains `implementing`: exact Vue child-surface behavior, localization,
   visual comparison, real backend, browser, Wails, iOS, and Android evidence
   are still required.
+
+### R038 Tenant members settings entry follow-up (2026-09-12)
+
+- Connected the Settings `members` entry to the existing tenant identity
+  client. Viewer state is read-only; admin/owner state supports member search,
+  pagination, invitation, role updates, and removal with server-backed
+  requests and explicit loading/error/empty states.
+- Focused TenantMembers tests passed 2/2 and the Web typecheck passed. Evidence:
+  `docs/migrations/react/evidence/vue-react-parity/2026-09-12-tenant-members.md`.
+- R038 remains `implementing`: invitation table/revoke/copy, audit and
+  permission surfaces, localization, visual comparison, real backend,
+  browser, Wails, iOS, and Android evidence remain open.

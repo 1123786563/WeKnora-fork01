@@ -1,0 +1,60 @@
+import { useEffect, useState, type FormEvent } from 'react';
+import type { TenantMember, TenantRole, WeKnoraClient } from '@weknora/api-client';
+import { Button, Card, Status } from '@weknora/ui';
+
+type Role = 'viewer' | 'admin' | 'owner' | 'system-admin';
+type Props = { client: WeKnoraClient; tenantId: number; role: Role; initialMembers?: { items: TenantMember[]; total: number } };
+const roles: TenantRole[] = ['owner', 'admin', 'contributor', 'viewer'];
+
+export function TenantMembersPanel({ client, tenantId, role, initialMembers }: Props) {
+  const canManage = role === 'owner' || role === 'admin';
+  const [members, setMembers] = useState(initialMembers?.items ?? []);
+  const [total, setTotal] = useState(initialMembers?.total ?? 0);
+  const [query, setQuery] = useState('');
+  const [email, setEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState<TenantRole>('viewer');
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(initialMembers === undefined);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  async function load(nextPage = page, nextQuery = query) {
+    setLoading(true); setError(null);
+    try { const result = await client.identity.tenants.members.list(tenantId, { q: nextQuery.trim() || undefined, page: nextPage, pageSize: 50 }); setMembers(result.items); setTotal(result.total); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to load tenant members'); }
+    finally { setLoading(false); }
+  }
+  useEffect(() => { if (initialMembers === undefined) void load(1, ''); }, [client, tenantId]);
+  async function invite(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if (!canManage || !email.trim() || busy) return;
+    setBusy(true); setError(null); setNotice(null);
+    try { await client.identity.tenants.invitations.create(tenantId, { email: email.trim(), role: inviteRole }); setEmail(''); setNotice('Invitation sent.'); await load(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to invite member'); }
+    finally { setBusy(false); }
+  }
+  async function update(member: TenantMember, nextRole: TenantRole) {
+    if (!canManage || busy || member.role === nextRole) return;
+    setBusy(true); setError(null); setNotice(null);
+    try { await client.identity.tenants.members.updateRole(tenantId, member.user_id, nextRole); setNotice('Member role updated.'); await load(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to update member role'); }
+    finally { setBusy(false); }
+  }
+  async function remove(member: TenantMember) {
+    if (!canManage || busy || !window.confirm(`Remove ${member.username || member.email}?`)) return;
+    setBusy(true); setError(null); setNotice(null);
+    try { await client.identity.tenants.members.remove(tenantId, member.user_id); setNotice('Member removed.'); await load(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to remove member'); }
+    finally { setBusy(false); }
+  }
+  function search(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setPage(1); void load(1, query); }
+
+  return <section className="wk-tenant-members" data-testid="tenant-members-settings">
+    <div className="wk-settings-panel-heading"><div><h3>Workspace members</h3><p className="wk-muted">Invite colleagues and manage tenant roles. Server permissions remain authoritative.</p></div></div>
+    {error ? <Status tone="error">{error}</Status> : null}{notice ? <Status tone="success">{notice}</Status> : null}
+    <form className="wk-list-actions" onSubmit={search}><input aria-label="Search members" placeholder="Search by name or email" value={query} onChange={(event) => setQuery(event.target.value)} /><Button type="submit" disabled={loading}>Search</Button></form>
+    {canManage ? <form className="wk-settings-editor" onSubmit={(event) => void invite(event)}><h4>Invite member</h4><label>Email<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="invitee@example.com" /></label><label>Role<select value={inviteRole} onChange={(event) => setInviteRole(event.target.value as TenantRole)}>{roles.filter((item) => item !== 'owner').map((item) => <option key={item} value={item}>{item}</option>)}</select></label><Button type="submit" loading={busy}>Send invitation</Button></form> : null}
+    {loading ? <Status>Loading members…</Status> : members.length === 0 ? <Status>{query ? `No members found for “${query}”.` : 'No members configured.'}</Status> : <Card><p className="wk-muted">{total} member(s)</p><ul className="wk-list">{members.map((member) => <li key={member.user_id}><div className="wk-list-item-copy"><strong>{member.username}</strong><span>{member.email} · {member.status}</span></div><div className="wk-list-actions">{canManage ? <select aria-label={`Role for ${member.username}`} value={member.role} disabled={busy} onChange={(event) => void update(member, event.target.value as TenantRole)}>{roles.map((item) => <option key={item} value={item}>{item}</option>)}</select> : <span>{member.role}</span>}{canManage ? <Button type="button" disabled={busy || member.role === 'owner'} onClick={() => void remove(member)}>Remove</Button> : null}</div></li>)}</ul></Card>}
+    {total > 50 ? <div className="wk-list-actions"><Button type="button" disabled={page <= 1 || loading} onClick={() => { const next = page - 1; setPage(next); void load(next); }}>Previous</Button><span>Page {page}</span><Button type="button" disabled={page * 50 >= total || loading} onClick={() => { const next = page + 1; setPage(next); void load(next); }}>Next</Button></div> : null}
+  </section>;
+}
