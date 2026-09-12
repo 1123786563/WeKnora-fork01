@@ -349,3 +349,9 @@
 
 - 终版全页 live 回归验证：7 个主页面路由全部正常加载（0 alerts, 0 errors），截图入库（final-*.png）。
 - 全量门禁复验：shared 310/310、web 198/198、desktop 2/0、mobile 85/85、typecheck×2 0 错误、build:web ✓。
+
+## 2026-09-12 Round 79
+
+- api-client identity admin API 增补 deleteTenant（DELETE /api/v1/tenants/:id，routes_auth_tenant.go:18 Owner+）。
+- tenant delete danger zone 初版实施但判定为需要更完整的 state/role-gating 集成，回退未完成变更避免提交半成品——留待后续迭代。
+- 门禁：web 198/198、typecheck 0 错误。
