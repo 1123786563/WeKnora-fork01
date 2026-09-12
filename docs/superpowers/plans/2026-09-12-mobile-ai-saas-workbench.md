@@ -274,7 +274,7 @@ func (s *ExecutionCleanupStore) CompleteCleanup(ctx context.Context, claim Clean
 
 ## 9. 执行交接提示词
 
-> 在隔离工作区按本总计划和六个分册执行。先核对基线、未提交依赖、迁移序号与当前任务的真实前置。使用W台账，以最小行为做RED→GREEN→数据库/真实服务/原生验证，再做规格和质量审查。所有新增代码必须接通真实入口；纯函数测试或mock不能替代功能验收。不要改变空间、商业、Connection或既有Happy保留边界。对结果不明的执行先核对，不能重发付费任务。每任务显式范围提交；未通过review不进入依赖任务。缺环境标blocked-env并给出具体下一步。结束时报告所选发布profile的已交付和未交付能力，不把计划完成、编译成功或模拟器启动写成生产验收。
+交给 Code Agent 开始实施或恢复执行时，读取[完整执行提示词](2026-09-12-mobile-workbench-code-agent-prompt.md)。建立 DAG、选择并行任务或处理共享文件冲突时，读取[DAG 与并行调度参考](2026-09-12-mobile-workbench-execution-dag.md)。采用 Subagent-Driven 逐任务实施、独立规格与质量审查、串行集成和证据门禁。
 
 ## 10. 本轮自检与产物
 
