@@ -1,0 +1,47 @@
+/* Multi-file upload staging (Vue UploadConfirmDialog parity). */
+
+.wk-dropzone.is-active {
+  outline: 2px dashed var(--wk-accent, #4a7dff);
+  outline-offset: -4px;
+}
+
+.wk-dropzone-hint {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  color: var(--wk-muted, #667085);
+}
+
+.wk-upload-confirm-summary {
+  margin: 0 0 0.5rem;
+}
+
+.wk-upload-confirm-files {
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  max-height: 14rem;
+  overflow: auto;
+}
+
+.wk-upload-confirm-files li {
+  display: flex;
+  gap: 0.75rem;
+  align-items: baseline;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--wk-border, #e4e7ec);
+}
+
+.wk-upload-confirm-files li > span:first-child {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.wk-upload-confirm-tags {
+  display: block;
+  margin-bottom: 0.75rem;
+}
+
+.wk-upload-confirm-tags select {
+  min-width: 12rem;
+  min-height: 4rem;
+}
