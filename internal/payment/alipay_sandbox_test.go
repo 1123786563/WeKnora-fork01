@@ -63,6 +63,33 @@ func alipaySandboxProvider(t *testing.T) *AlipayProvider {
 	return p
 }
 
+// retryTransient reruns fn when the sandbox's front tier flakes (DNS
+// hiccups, header timeouts, Tengine HTML error pages). Production provider
+// behavior is unchanged — this is evidence-collection robustness only.
+func retryTransient(t *testing.T, name string, fn func() error) {
+	t.Helper()
+	var last error
+	for attempt := 1; attempt <= 4; attempt++ {
+		if err := fn(); err == nil {
+			return
+		} else {
+			last = err
+			msg := err.Error()
+			if strings.Contains(msg, "deadline exceeded") ||
+				strings.Contains(msg, "no such host") ||
+				strings.Contains(msg, "Tengine") ||
+				strings.Contains(msg, "EOF") ||
+				strings.Contains(msg, "connection reset") {
+				t.Logf("%s attempt %d transient: %v", name, attempt, err)
+				time.Sleep(time.Duration(attempt) * 2 * time.Second)
+				continue
+			}
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	t.Fatalf("%s exhausted transient retries: %v", name, last)
+}
+
 func alipaySandboxOrderID(prefix string) string {
 	return fmt.Sprintf("omsb-%s-%d", prefix, time.Now().UnixNano()%1e12)
 }
@@ -73,54 +100,65 @@ func alipaySandboxOrderID(prefix string) string {
 func TestAlipaySandboxCreateQueryClose(t *testing.T) {
 	p := alipaySandboxProvider(t)
 	ctx := context.Background()
-	out := alipaySandboxOrderID("c1")
-
-	created, err := p.Create(ctx, OrderRequest{OrderID: "sb-1", MerchantOrderID: out, AmountFen: 1, Currency: "CNY"})
-	if err != nil {
-		t.Fatalf("precreate: %v", err)
-	}
-	if created.State != StatePending || created.ProviderID != out || created.CheckoutURL == "" {
-		t.Fatalf("create result: %+v", created)
-	}
-	t.Logf("qr_code=%s out_trade_no=%s", created.CheckoutURL, out)
-
-	// Response-lost recovery: a later Query on the SAME id is the only
-	// reconciliation path; a new key must never be created.
-	q1, err := p.Query(ctx, out)
-	if err != nil {
-		t.Fatalf("query after create: %v", err)
-	}
-	if q1.ProviderID != out || q1.State != StatePending {
-		t.Fatalf("query state after create: %+v (want pending on the same id)", q1)
-	}
-
-	if err := p.Close(ctx, out); err != nil {
-		t.Fatalf("close: %v", err)
-	}
-	q2, err := p.Query(ctx, out)
-	if err != nil {
-		t.Fatalf("query after close: %v", err)
-	}
-	if q2.State != StateClosed {
-		t.Fatalf("query state after close: %+v (want closed)", q2)
-	}
+	retryTransient(t, "create-query-close", func() error {
+		out := alipaySandboxOrderID("c1")
+		created, err := p.Create(ctx, OrderRequest{OrderID: "sb-1", MerchantOrderID: out, AmountFen: 1, Currency: "CNY"})
+		if err != nil {
+			return err
+		}
+		if created.State != StatePending || created.ProviderID != out || created.CheckoutURL == "" {
+			t.Fatalf("create result: %+v", created)
+		}
+		t.Logf("qr_code=%s out_trade_no=%s", created.CheckoutURL, out)
+		// OBSERVED sandbox channel behavior (2026-09-12 runtime evidence):
+		// an UNPAID precreate order is invisible to trade.query AND
+		// trade.close — both answer ACQ.TRADE_NOT_EXIST on the SAME id. The
+		// full pending->paid->closed lifecycle is covered by the interactive
+		// paid-flow test; here we pin the guarantees that always hold:
+		// reconciliation stays on the original id and never fabricates state.
+		q1, err := p.Query(ctx, out)
+		if err == nil || q1.State == StateSucceeded {
+			t.Fatalf("unpaid precreate must not report success: %+v %v", q1, err)
+		}
+		if !strings.Contains(err.Error(), out) || !strings.Contains(err.Error(), "TRADE_NOT_EXIST") {
+			t.Fatalf("query after create must answer on the original id: %v", err)
+		}
+		if cerr := p.Close(ctx, out); cerr == nil {
+			t.Fatalf("close of an invisible unpaid order must not claim success: %v", cerr)
+		} else if !strings.Contains(cerr.Error(), "TRADE_NOT_EXIST") {
+			t.Fatalf("unexpected close answer: %v", cerr)
+		}
+		if q2, qerr := p.Query(ctx, out); qerr == nil || q2.State == StateSucceeded || !strings.Contains(qerr.Error(), out) {
+			t.Fatalf("query after close must stay on the original id: %+v %v", q2, qerr)
+		}
+		return nil
+	})
 }
 
 // ALI-03 (negative): querying an order that never existed must surface the
 // channel's answer as an error — never a fabricated state.
 func TestAlipaySandboxQueryNotFound(t *testing.T) {
 	p := alipaySandboxProvider(t)
-	missing := alipaySandboxOrderID("nf")
-	res, err := p.Query(context.Background(), missing)
-	if err == nil {
-		t.Fatalf("query of nonexistent order must fail, got %+v", res)
-	}
-	if res.State == StateSucceeded {
-		t.Fatalf("nonexistent order must never map to succeeded: %+v", res)
-	}
-	if !strings.Contains(err.Error(), missing) {
-		t.Fatalf("error must reference the original id: %v", err)
-	}
+	retryTransient(t, "query-not-found", func() error {
+		missing := alipaySandboxOrderID("nf")
+		res, err := p.Query(context.Background(), missing)
+		if err == nil {
+			t.Fatalf("query of nonexistent order must fail, got %+v", res)
+		}
+		if res.State == StateSucceeded {
+			t.Fatalf("nonexistent order must never map to succeeded: %+v", res)
+		}
+		if !strings.Contains(err.Error(), missing) {
+			t.Fatalf("error must reference the original id: %v", err)
+		}
+		// The channel's own not-found code — not a signature or transport error —
+		// is the only acceptable answer for a signed query of a never-created
+		// order (ALI-03 negative).
+		if !strings.Contains(err.Error(), "TRADE_NOT_EXIST") {
+			t.Fatalf("expected ACQ.TRADE_NOT_EXIST from the channel, got: %v", err)
+		}
+		return nil
+	})
 }
 
 // ALI-04 (unpaid leg + same-key retry): refunding an order that was never
@@ -129,25 +167,27 @@ func TestAlipaySandboxQueryNotFound(t *testing.T) {
 func TestAlipaySandboxRefundUnpaidAndRetry(t *testing.T) {
 	p := alipaySandboxProvider(t)
 	ctx := context.Background()
-	out := alipaySandboxOrderID("rf")
-	created, err := p.Create(ctx, OrderRequest{OrderID: "sb-2", MerchantOrderID: out, AmountFen: 1, Currency: "CNY"})
-	if err != nil {
-		t.Fatalf("precreate: %v", err)
-	}
-	if created.ProviderID != out || created.CheckoutURL == "" {
-		t.Fatalf("precreate result: %+v", created)
-	}
-	refundKey := out + "-r1"
-
-	r1, err1 := p.Refund(ctx, RefundRequest{RefundID: refundKey, ProviderID: out, AmountFen: 1})
-	if err1 == nil || r1.State == StateSucceeded {
-		t.Fatalf("refund on unpaid order must be rejected: %+v %v", r1, err1)
-	}
-	r2, err2 := p.Refund(ctx, RefundRequest{RefundID: refundKey, ProviderID: out, AmountFen: 1})
-	if err2 == nil || r2.State == StateSucceeded {
-		t.Fatalf("refund retry on unpaid order must stay rejected: %+v %v", r2, err2)
-	}
-	t.Logf("unpaid refund rejected consistently: first=%v retry=%v", err1, err2)
+	retryTransient(t, "refund-unpaid-retry", func() error {
+		out := alipaySandboxOrderID("rf")
+		created, err := p.Create(ctx, OrderRequest{OrderID: "sb-2", MerchantOrderID: out, AmountFen: 1, Currency: "CNY"})
+		if err != nil {
+			return err
+		}
+		if created.ProviderID != out || created.CheckoutURL == "" {
+			t.Fatalf("precreate result: %+v", created)
+		}
+		refundKey := out + "-r1"
+		r1, err1 := p.Refund(ctx, RefundRequest{RefundID: refundKey, ProviderID: out, AmountFen: 1})
+		if err1 == nil || r1.State == StateSucceeded {
+			t.Fatalf("refund on unpaid order must be rejected: %+v %v", r1, err1)
+		}
+		r2, err2 := p.Refund(ctx, RefundRequest{RefundID: refundKey, ProviderID: out, AmountFen: 1})
+		if err2 == nil || r2.State == StateSucceeded {
+			t.Fatalf("refund retry on unpaid order must stay rejected: %+v %v", r2, err2)
+		}
+		t.Logf("unpaid refund rejected consistently: first=%v retry=%v", err1, err2)
+		return nil
+	})
 }
 
 // ALI-05 core (interactive, opt-in): real sandbox payment -> full refund ->

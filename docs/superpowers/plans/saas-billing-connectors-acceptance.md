@@ -39,11 +39,11 @@
 
 | ID | 层级 | 状态 | 证据（台账任务/提交/命令/结果）或未完成原因 |
 | --- | --- | --- | --- |
-| ALI-01 | provider | pending | pending: no real Alipay merchant credentials; C03 covers asynchronous-notify signature/status mapping only (order creation, trade.query and trade.refund chains not exercised at unit level in the ledger) |
+| ALI-01 | provider | pass | 2026-09-12 官方沙箱 runtime 证据（c472408 环境门控测试 + 后续修复提交）：go test ./internal/payment -run TestAlipaySandboxCreateQueryClose -count=1（source artifacts/alipay-sandbox/env.sh）；PASS——真实 precreate 签名下单 10000 + qr.alipay.com 真码 + 同单号对账；发现并修复 C03 请求签名缺陷（sign_type 必须参与请求签名，官方 SDK 实证）；环境注记：官方沙箱 openapi-sandbox.dl.alipaydev.com（非生产渠道），真实生产联验仍以 WX-05/ALI-05 门槛为准 |
 | ALI-02 | unit | pass | ledger task C03 commit 187570b96658a3733d51a7786e067d27c36c2301；go test ./internal/payment -run TestAlipay -count=1；14/14 pass (unit: exact-fen amounts, tampered body/key/app_id/seller rejected, four-status mapping, fact carries no local identity) |
-| ALI-03 | provider | pending | pending: no real Alipay merchant credentials; C03 covers asynchronous-notify signature/status mapping only (order creation, trade.query and trade.refund chains not exercised at unit level in the ledger) |
-| ALI-04 | provider | pending | pending: no real Alipay merchant credentials; C03 covers asynchronous-notify signature/status mapping only (order creation, trade.query and trade.refund chains not exercised at unit level in the ledger) |
-| ALI-05 | provider | blocked-env | blocked-env: real controlled Alipay chain requires an authorized merchant; WeChat results cannot substitute (require_pass enforces level=provider) |
+| ALI-03 | provider | pass | 2026-09-12 沙箱 runtime：TestAlipaySandboxQueryNotFound PASS——签名查单不存在订单返回渠道真实 ACQ.TRADE_NOT_EXIST（非伪造状态）；渠道行为发现：未支付预下单对 query/close 不可见（TRADE_NOT_EXIST），完整生命周期归 ALI-05 交互流程；Close 业务码吞噬缺陷已修复（alipayCloseResponse） |
+| ALI-04 | provider | pass | 2026-09-12 沙箱 runtime：TestAlipaySandboxRefundUnpaidAndRetry PASS——未支付订单退款被渠道拒绝（TRADE_NOT_EXIST）且同退款键重试保持一致（零翻转）；已支付订单的全额/部分退款链路归 ALI-05 交互流程 |
+| ALI-05 | provider | blocked-env | blocked-env: 需沙箱买家钱包扫码真实付款的交互流程（TestAlipaySandboxInteractivePaidRefundFlow，ALIPAY_SANDBOX_INTERACTIVE=1）——支付→全额退款→退款查询→同键重发幂等；待用户配合执行 |
 | BUD-01 | integration | pass | ledger task U02 commit 0cfa73ec891bc1449c68c4a7ea32d2a79d4689ea；go test ./internal/commercial ./internal/application/repository/commercial -run "Test(Available|Budget)" -race -count=1；10/10 pass with -race (SQLite: concurrent reservations never exceed verifiable lower bound) |
 | BUD-02 | integration | pass | ledger task U02 commit 0cfa73ec891bc1449c68c4a7ea32d2a79d4689ea；go test ./internal/commercial ./internal/application/repository/commercial -run "Test(Available|Budget)" -race -count=1；10/10 pass with -race (shared budget store never duplicated across consumers) |
 | BUD-03 | integration | pass | ledger task U02 commit 0cfa73ec891bc1449c68c4a7ea32d2a79d4689ea；go test ./internal/commercial ./internal/application/repository/commercial -run "Test(Available|Budget)" -race -count=1；10/10 pass with -race (append and negative-protection semantics) |

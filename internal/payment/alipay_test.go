@@ -84,6 +84,29 @@ func alipayNotifyFixture(t *testing.T) (*AlipayProvider, *rsa.PrivateKey, Alipay
 	return p, alipayKey, cfg
 }
 
+// TestAlipayRequestSignContentIncludesSignType pins the REQUEST signing
+// rule verified against the official sandbox (2026-09-12 runtime evidence,
+// artifacts/alipay-sandbox): the gateway recomputes the signature over the
+// sorted k=v& content WITH sign_type present — excluding it (the async-notify
+// rule) is rejected with isv.invalid-signature. The official SDK signs the
+// same way.
+func TestAlipayRequestSignContentIncludesSignType(t *testing.T) {
+	form := url.Values{}
+	form.Set("app_id", "a1")
+	form.Set("method", "alipay.trade.query")
+	form.Set("format", "JSON")
+	form.Set("charset", "utf-8")
+	form.Set("sign_type", "RSA2")
+	form.Set("timestamp", "2026-09-12 13:00:00")
+	form.Set("version", "1.0")
+	form.Set("biz_content", `{"out_trade_no":"x"}`)
+	got := alipayRequestSignContent(form)
+	want := `app_id=a1&biz_content={"out_trade_no":"x"}&charset=utf-8&format=JSON&method=alipay.trade.query&sign_type=RSA2&timestamp=2026-09-12 13:00:00&version=1.0`
+	if got != want {
+		t.Fatalf("request sign content:\n got %s\nwant %s", got, want)
+	}
+}
+
 // alipaySignNotify signs an async-notify form exactly per the ALI-02
 // contract: sign (and sign_type) are excluded from the signed content, the
 // remaining keys are sorted and joined as k=v with &, RSA2 = RSA-SHA256
@@ -157,7 +180,7 @@ func TestAlipayVerifyRejectsWrongSeller(t *testing.T) {
 
 func TestAlipayVerifyMapsTradeStatuses(t *testing.T) {
 	p, key, _ := alipayNotifyFixture(t)
-	cases := map[string]string{
+	cases := map[string]AttemptState{
 		"TRADE_SUCCESS":  StateSucceeded,
 		"TRADE_FINISHED": StateSucceeded,
 		"WAIT_BUYER_PAY": StatePending,
@@ -169,7 +192,7 @@ func TestAlipayVerifyMapsTradeStatuses(t *testing.T) {
 		if err != nil {
 			t.Fatalf("status %s rejected: %v", status, err)
 		}
-		if fact.State != want {
+		if string(fact.State) != string(want) {
 			t.Fatalf("status %s mapped to %q, want %q", status, fact.State, want)
 		}
 		if fact.Provider != ProviderAlipay || fact.Merchant != "2088000000000001" ||

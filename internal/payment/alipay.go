@@ -192,6 +192,27 @@ func NewAlipayProvider(cfg AlipayConfig) (*AlipayProvider, error) {
 // except sign and sign_type, keys sorted, joined as k=v with &. Values are
 // used exactly as stored (already decoded once for notifications, plain
 // for outgoing requests), never re-encoded.
+// alipayRequestSignContent builds the signed content for OUTBOUND gateway
+// requests: unlike the async-notify rule, sign_type IS part of the signed
+// content (only sign is excluded). Verified against the official sandbox —
+// excluding sign_type here is rejected with isv.invalid-signature — and it
+// matches the official SDK's get_sign_content behavior.
+func alipayRequestSignContent(values url.Values) string {
+	keys := make([]string, 0, len(values))
+	for k := range values {
+		if k == "sign" {
+			continue
+		}
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, k+"="+values.Get(k))
+	}
+	return strings.Join(parts, "&")
+}
+
 func alipaySignContent(values url.Values) string {
 	keys := make([]string, 0, len(values))
 	for k := range values {
@@ -287,7 +308,7 @@ func (p *AlipayProvider) Verify(ctx context.Context, header http.Header, body []
 		Transaction: tradeNo,
 		Amount:      commercial.CNYFen(fen),
 		Currency:    "CNY",
-		State:       mapAlipayTradeStatus(tradeStatus),
+		State:       mapAlipayTradeStatus(tradeStatus).String(),
 	}
 	return fact, nil
 }
@@ -301,7 +322,7 @@ func (p *AlipayProvider) VerifySyncReturn(ctx context.Context, header http.Heade
 
 // mapAlipayTradeStatus projects channel trade statuses onto domain states.
 // Only TRADE_SUCCESS and TRADE_FINISHED are trusted success.
-func mapAlipayTradeStatus(status string) string {
+func mapAlipayTradeStatus(status string) AttemptState {
 	switch status {
 	case "TRADE_SUCCESS", "TRADE_FINISHED":
 		return StateSucceeded
@@ -310,7 +331,7 @@ func mapAlipayTradeStatus(status string) string {
 	case "TRADE_CLOSED":
 		return StateClosed
 	default:
-		return strings.ToLower(status)
+		return AttemptState(strings.ToLower(status))
 	}
 }
 
@@ -367,6 +388,13 @@ type alipayRefundQueryResponse struct {
 }
 
 // alipayResponseHead is the shared gateway response status block.
+// alipayCloseResponse carries the shared status block so Close FAILS on
+// business errors (e.g. ACQ.TRADE_NOT_EXIST) instead of swallowing them:
+// call() skips business-code validation when out is nil.
+type alipayCloseResponse struct {
+	alipayResponseHead
+}
+
 type alipayResponseHead struct {
 	Code    string "json:\"code\""
 	Msg     string "json:\"msg\""
@@ -419,7 +447,7 @@ func (p *AlipayProvider) Close(ctx context.Context, providerID string) error {
 	if providerID == "" {
 		return fmt.Errorf("%w: empty provider id", ErrInvalidRequest)
 	}
-	if err := p.call(ctx, "alipay.trade.close", alipayCloseBiz{OutTradeNo: providerID}, nil); err != nil {
+	if err := p.call(ctx, "alipay.trade.close", alipayCloseBiz{OutTradeNo: providerID}, &alipayCloseResponse{}); err != nil {
 		return fmt.Errorf("alipay close %s: %w", providerID, err)
 	}
 	return nil
@@ -473,7 +501,7 @@ func (p *AlipayProvider) QueryRefund(ctx context.Context, refundID string) (Refu
 }
 
 // mapAlipayRefundStatus projects refund statuses onto domain states.
-func mapAlipayRefundStatus(status string) string {
+func mapAlipayRefundStatus(status string) AttemptState {
 	switch status {
 	case "REFUND_SUCCESS":
 		return StateSucceeded
@@ -487,7 +515,7 @@ func mapAlipayRefundStatus(status string) string {
 			// while the refund is still being booked.
 			return StatePending
 		}
-		return strings.ToLower(status)
+		return AttemptState(strings.ToLower(status))
 	}
 }
 
@@ -518,10 +546,10 @@ func (p *AlipayProvider) call(ctx context.Context, method string, biz interface{
 	hash := alipaySignHash(p.cfg.signType())
 	var digest []byte
 	if hash == crypto.SHA1 {
-		sum := sha1.Sum([]byte(alipaySignContent(form)))
+		sum := sha1.Sum([]byte(alipayRequestSignContent(form)))
 		digest = sum[:]
 	} else {
-		sum := sha256.Sum256([]byte(alipaySignContent(form)))
+		sum := sha256.Sum256([]byte(alipayRequestSignContent(form)))
 		digest = sum[:]
 	}
 	sig, err := rsa.SignPKCS1v15(rand.Reader, mchKey, hash, digest[:])
@@ -602,6 +630,8 @@ func responseHeadOf(out interface{}) *alipayResponseHead {
 	case *alipayRefundResponse:
 		return &v.alipayResponseHead
 	case *alipayRefundQueryResponse:
+		return &v.alipayResponseHead
+	case *alipayCloseResponse:
 		return &v.alipayResponseHead
 	default:
 		return nil
