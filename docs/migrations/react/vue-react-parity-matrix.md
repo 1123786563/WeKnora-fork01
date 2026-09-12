@@ -81,9 +81,9 @@ React：`apps/web`、`apps/desktop`、`apps/mobile`、`apps/embed`，共享层 `
 
 | 页面 | 成熟度 | 必修项 | 实施状态 |
 |---|---|---|---|
-| organizations | partial | 审批门控 join（require_approval/requested_role/note）；org settings 精要（invite-link 生成复制、KB unshare、升级请求） | implementing（四页子代理） |
-| agents | partial/stub | 类型化 Agent 编辑器（name/description/system_prompt/memory）；分组列表 builtin/mine/shared + 搜索；聊天侧 AgentSelector 为后续 | implementing（四页子代理，6 为后续） |
-| integrations | near-full | API-key 列表/创建/吊销（administration.tenantApiKeys）；去 REACT MIGRATION SEAM 眉题；API tab 误拉 im-channels 的 live 缺陷 | implementing（四页子代理，live 缺陷已转告） |
-| embed | minimal | markdown+引用渲染；文件上传门控（allow_file_upload/agent_image_upload_enabled）；default_locale i18n | implementing（四页子代理） |
+| organizations | partial→必修完成 | 审批门控 join（role select+申请说明≤500字+already-member 分支）、invite-link 生成复制、KB unshare、升级请求（live 后端路由核实） | 已集成，live 复测待做 |
+| agents | stub→必修完成 | 类型化编辑器（system_prompt textarea+memory_enabled）、分组列表+计数+搜索；聊天侧 AgentSelector 与 prompt-studio/KB/MCP 绑定为后续 | 已集成，聊天侧选择器待做 |
+| integrations | near-full→必修完成 | API-key 表格（创建/一次性显示/复制/吊销）、按 tab 取数、im-channels 空数据容错（live 缺陷修复）、眉题移除 | 已集成，playground SSE 流式为后续 |
+| embed | minimal→必修完成 | 共享 markdown 渲染+knowledge_references 源列表、上传门控（data-URI 附件入 body）、embed.* i18n 域+default_locale | 已集成，header 模式/受保护资源预览待做 |
 
 live 基线截图：live-{agents,organizations,integrations-embed,integrations-api}.png（Round 17）。

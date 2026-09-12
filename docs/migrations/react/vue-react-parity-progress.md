@@ -152,3 +152,9 @@
 - KB 详情审计报告收货（成熟度：documents/detail partial、timeline missing、wiki/graph stub、FAQ partial；必修 10 项）。
 - 主代理即刻修复两项：#4 设置按钮统一模型就绪门控（openKbSettings helper，对齐 Vue handleCardClick）；#10 loading 哨兵替换为独立 status:'loading'。提交 16b4437。
 - 其余必修（reparse/cancel+timeline、FAQ/Wiki 分页、权限门控、KB 类型路由、上传流程、批量确认、i18n 移植）待四页代理释放 packages/i18n 后派发实施。
+
+## 2026-09-12 Round 25
+
+- 四页必修实施完成并集成（ab4af20，25 文件；含 i18n organization/agent/integrations/embed 四新域 ×5 locale + 键集一致性测试；API-key 表格、审批门控 join、org 设置精要、agent 类型化编辑器+分组、embed markdown/上传/i18n、API-tab live 缺陷双层修复）。
+- 门禁：shared 266/266、web 165/165、typecheck×2、build:web+embed 全绿；*.tsbuildinfo 入 gitignore。
+- 四页 live 复测（审批 join/API-key 创建/embed 渲染）下一轮执行；矩阵四行更新。
