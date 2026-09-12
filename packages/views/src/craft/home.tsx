@@ -37,7 +37,6 @@ export interface CraftHomeProps {
   recent: CraftSessionSummaryView[];
   nextCursor: string | null;
   knowledgeOptions: CraftKnowledgeOption[];
-  knowledgeLoading: boolean;
   attachments: CraftAttachmentDraft[];
   onCreate(input: CraftHomeCreateInput): void;
   onPickAttachments(files: File[]): void;

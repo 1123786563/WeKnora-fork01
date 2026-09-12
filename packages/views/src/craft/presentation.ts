@@ -13,10 +13,13 @@
 //      finish the main message, mirroring the W04 domain reducer.
 import {
   CRAFT_TERMINAL_RUN_STATUSES,
+  parseCraftEventPayload,
+  parseCraftRunEvent,
   type CraftFileVersionView,
   type CraftVersionCheckView,
   type CraftVersionView,
 } from '@weknora/contracts';
+import type { CraftEventFrame } from '@weknora/core/craft/controller';
 
 // ---------------------------------------------------------------------------
 // Locale + strings
@@ -428,6 +431,108 @@ export function projectAssistant(events: CraftLoggedEvent[], mainStatus: string)
     childStatus,
     workspaceUnavailable,
     complete: isMainRunTerminal(mainStatus),
+  };
+}
+
+
+// ---------------------------------------------------------------------------
+// Conversation turns (send-time archive) + the backend-fed message log
+// ---------------------------------------------------------------------------
+
+/** One archived conversation turn: the prompt and the FINAL assistant projection of its run. */
+export interface CraftTurnRecord {
+  prompt: string | null;
+  assistant: CraftAssistantProjection;
+}
+
+export interface CraftArchiveLiveTurnInput {
+  runId: string | null;
+  prompt: string | null;
+  projection: CraftAssistantProjection;
+}
+
+/**
+ * Archives the finished live turn when the user sends a new prompt.
+ *
+ * This is the B1 fix as a pure rule: archiving happens AT SEND TIME, on the
+ * sender's own event, BEFORE the new run's subscription resets the message
+ * log — never inside a render/effect that could observe the runId after it
+ * already flipped (that ordering silently dropped every previous turn).
+ *
+ * Guards: a run that never existed (first send of a fresh session) or a live
+ * turn without any content (no prompt, no streamed text, no tool facts)
+ * archives nothing.
+ */
+export function archiveLiveTurn(
+  turns: CraftTurnRecord[],
+  live: CraftArchiveLiveTurnInput,
+): { turns: CraftTurnRecord[]; archived: CraftTurnRecord | null } {
+  const hasContent = live.prompt !== null || live.projection.text !== '' || live.projection.tools.length > 0;
+  if (live.runId === null || !hasContent) return { turns, archived: null };
+  const record: CraftTurnRecord = { prompt: live.prompt, assistant: live.projection };
+  return { turns: [...turns, record], archived: record };
+}
+
+export interface CraftMessageSnapshot {
+  runId: string | null;
+  events: CraftLoggedEvent[];
+}
+
+export interface CraftMessageLog {
+  subscribe(listener: () => void): () => void;
+  getSnapshot(): CraftMessageSnapshot;
+  /** Feeds one raw SSE frame through the SAME contracts parsers the controller uses. */
+  ingest(frame: CraftEventFrame): void;
+  /** A new run replaces the log; reconnects of the same run keep it (seq dedupe). */
+  resetForRun(runId: string): void;
+}
+
+const EMPTY_MESSAGE_SNAPSHOT: CraftMessageSnapshot = { runId: null, events: [] };
+
+/**
+ * The ExternalStoreRuntime-equivalent message store: an in-memory projection
+ * fed exclusively by the backend run-event frames the assembly tees into it
+ * (the same frames the W04 controller consumes). Views read it through
+ * useSyncExternalStore; they never fetch or invent messages.
+ */
+export function createCraftMessageLog(): CraftMessageLog {
+  const listeners = new Set<() => void>();
+  let snapshot: CraftMessageSnapshot = EMPTY_MESSAGE_SNAPSHOT;
+
+  function publish(next: CraftMessageSnapshot): void {
+    snapshot = next;
+    for (const listener of listeners) listener();
+  }
+
+  return {
+    subscribe(listener: () => void): () => void {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    getSnapshot(): CraftMessageSnapshot {
+      return snapshot;
+    },
+    ingest(frame: CraftEventFrame): void {
+      // The controller owns keepalive/error/run frames; the log keeps only
+      // numbered run events (the persisted craft payloads).
+      if (frame.event !== undefined && !/^[0-9]+$/.test(frame.event)) return;
+      try {
+        const wire = parseCraftRunEvent(JSON.parse(frame.data));
+        const payload = parseCraftEventPayload(wire.payload);
+        if (payload === null) return; // foreign run events are not craft messages
+        if (snapshot.events.some((event) => event.seq === wire.seq)) return; // reconnect replay dedupe
+        publish({
+          runId: snapshot.runId,
+          events: [...snapshot.events, { seq: wire.seq, kind: payload.kind, data: payload.data }].sort((a, b) => a.seq - b.seq),
+        });
+      } catch {
+        // Contract violations surface through the controller's error path.
+      }
+    },
+    resetForRun(runId: string): void {
+      if (snapshot.runId === runId) return;
+      publish({ runId, events: [] });
+    },
   };
 }
 

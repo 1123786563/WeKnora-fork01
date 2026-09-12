@@ -10,6 +10,9 @@ import {
   formatBytes,
   entryFileOf,
   craftStrings,
+  archiveLiveTurn,
+  createCraftMessageLog,
+  type CraftTurnRecord,
 } from './presentation.ts';
 import type { CraftVersionView } from '@weknora/contracts';
 
@@ -150,6 +153,77 @@ test('byte and filename helpers', () => {
   const file = entryFileOf(version('v-1', 'run-1', []));
   assert.equal(file !== null && file.path, 'dist/index.html');
   assert.equal(entryFileOf(null), null);
+});
+
+
+// B1 regression: the second send in the SAME session must keep the previous
+// turn visible. The archive happens at send time (before the new run's
+// subscription resets the message log), so the reset can no longer erase it.
+test('second send archives the previous turn before the log resets (B1)', () => {
+  const log = createCraftMessageLog();
+  log.resetForRun('run-1');
+  const frame = (seq: number, kind: string, data: Record<string, unknown>) => ({
+    event: String(seq),
+    data: JSON.stringify({ seq, attempt_id: null, type: 'craft', payload: { workspace_id: 'ws-1', delegation_id: 'd', tool_call_id: null, kind, data } }),
+  });
+  log.ingest(frame(1, 'delegation.started', { prompt_message_id: 'm1' }));
+  log.ingest(frame(2, 'delegation.text', { text: '第一轮结果' }));
+
+  // Turn 1 finishes (Run projection succeeded) and the user sends turn 2.
+  const projection1 = projectAssistant(log.getSnapshot().events, 'succeeded');
+  assert.equal(projection1.complete, true);
+  const archive = archiveLiveTurn([], { runId: 'run-1', prompt: '第一句', projection: projection1 });
+  assert.equal(archive.archived !== null, true);
+
+  // The new run's subscription resets the store — exactly what used to erase
+  // the conversation when archiving (dead) relied on a runId effect.
+  log.resetForRun('run-2');
+  assert.deepEqual(log.getSnapshot().events, []);
+  assert.equal(log.getSnapshot().runId, 'run-2');
+
+  // The archived turn survives independent of the store.
+  assert.equal(archive.turns.length, 1);
+  assert.equal(archive.turns[0].prompt, '第一句');
+  assert.equal(archive.turns[0].assistant.text, '第一轮结果');
+  assert.equal(archive.turns[0].assistant.complete, true);
+
+  // Turn 2 streams into the reset store; both turns coexist.
+  log.ingest(frame(1, 'delegation.text', { text: '第二轮结果' }));
+  const projection2 = projectAssistant(log.getSnapshot().events, 'running');
+  const archive2 = archiveLiveTurn([...archive.turns], { runId: 'run-2', prompt: '第二句', projection: projection2 });
+  assert.equal(archive2.turns.length, 2);
+  assert.equal(archive2.turns[0].assistant.text, '第一轮结果');
+  assert.equal(archive2.turns[1].assistant.text, '第二轮结果');
+});
+
+test('archiveLiveTurn skips runs that never streamed and first sends', () => {
+  const empty = projectAssistant([], 'idle');
+  assert.equal(archiveLiveTurn([], { runId: null, prompt: '第一句', projection: empty }).archived, null);
+  assert.equal(archiveLiveTurn([], { runId: 'run-1', prompt: null, projection: empty }).archived, null);
+  const resumed = projectAssistant([{ seq: 1, kind: 'delegation.text', data: { text: '部分结果' } }], 'succeeded');
+  const resumedArchive = archiveLiveTurn([], { runId: 'run-1', prompt: null, projection: resumed });
+  assert.equal(resumedArchive.archived !== null, true);
+  assert.equal(resumedArchive.turns[0].prompt, null);
+  assert.equal(resumedArchive.turns[0].assistant.text, '部分结果');
+});
+
+test('message log dedupes reconnect replays and keeps only numbered craft frames', () => {
+  const log = createCraftMessageLog();
+  log.resetForRun('run-1');
+  const frame = (seq: number, kind: string) => ({
+    event: String(seq),
+    data: JSON.stringify({ seq, attempt_id: null, type: 'craft', payload: { workspace_id: 'ws-1', delegation_id: null, tool_call_id: null, kind, data: {} } }),
+  });
+  log.ingest(frame(1, 'delegation.started'));
+  log.ingest(frame(1, 'delegation.started'));
+  log.ingest({ event: 'run', data: '{}' });
+  log.ingest({ event: 'keepalive', data: '{}' });
+  log.ingest({ event: 'error', data: '{"code":"x"}' });
+  log.ingest({ data: 'not-json' });
+  assert.equal(log.getSnapshot().events.length, 1);
+  assert.equal(log.getSnapshot().events[0].seq, 1);
+  log.resetForRun('run-1');
+  assert.equal(log.getSnapshot().events.length, 1);
 });
 
 test('i18n dictionaries expose the same keys in zh and en', () => {

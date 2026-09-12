@@ -28,10 +28,10 @@ import {
   type CSSProperties,
 } from 'react';
 import type { CraftPreviewTicketView, CraftVersionView } from '@weknora/contracts';
-import { parseCraftEventPayload, parseCraftRunEvent } from '@weknora/contracts';
-import type { CraftEventFrame, CraftWorkbenchController } from '@weknora/core/craft/controller';
+import type { CraftWorkbenchController } from '@weknora/core/craft/controller';
 import { Button } from '@weknora/ui';
 import {
+  archiveLiveTurn,
   craftStrings,
   downloadFileName,
   entryFileOf,
@@ -43,73 +43,17 @@ import {
   type CraftInteractionAction,
   type CraftInteractionCard,
   type CraftLocale,
-  type CraftLoggedEvent,
+  type CraftMessageLog,
+  type CraftTurnRecord,
 } from './presentation.ts';
 import { CraftPreview } from './preview.tsx';
 import { CraftFiles } from './files.tsx';
 import './craft.css';
-
-// ---------------------------------------------------------------------------
-// Message log: the backend-projected external store
-// ---------------------------------------------------------------------------
-
-export interface CraftMessageSnapshot {
-  runId: string | null;
-  events: CraftLoggedEvent[];
-}
-
-export interface CraftMessageLog {
-  subscribe(listener: () => void): () => void;
-  getSnapshot(): CraftMessageSnapshot;
-  /** Feeds one raw SSE frame through the SAME contracts parsers the controller uses. */
-  ingest(frame: CraftEventFrame): void;
-  /** A new run replaces the log; reconnects of the same run keep it (seq dedupe). */
-  resetForRun(runId: string): void;
-}
-
-const EMPTY_SNAPSHOT: CraftMessageSnapshot = { runId: null, events: [] };
-
-export function createCraftMessageLog(): CraftMessageLog {
-  const listeners = new Set<() => void>();
-  let snapshot: CraftMessageSnapshot = EMPTY_SNAPSHOT;
-
-  function publish(next: CraftMessageSnapshot): void {
-    snapshot = next;
-    for (const listener of listeners) listener();
-  }
-
-  return {
-    subscribe(listener: () => void): () => void {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-    getSnapshot(): CraftMessageSnapshot {
-      return snapshot;
-    },
-    ingest(frame: CraftEventFrame): void {
-      // The controller owns keepalive/error/run frames; the log keeps only
-      // numbered run events (the persisted craft payloads).
-      if (frame.event !== undefined && !/^[0-9]+$/.test(frame.event)) return;
-      try {
-        const wire = parseCraftRunEvent(JSON.parse(frame.data));
-        const payload = parseCraftEventPayload(wire.payload);
-        if (payload === null) return; // foreign run events are not craft messages
-        const existing = snapshot.events.find((event) => event.seq === wire.seq);
-        if (existing !== undefined) return; // replay dedupe (reconnects re-send)
-        publish({
-          runId: snapshot.runId,
-          events: [...snapshot.events, { seq: wire.seq, kind: payload.kind, data: payload.data }].sort((a, b) => a.seq - b.seq),
-        });
-      } catch {
-        // Contract violations surface through the controller's error path.
-      }
-    },
-    resetForRun(runId: string): void {
-      if (snapshot.runId === runId) return;
-      publish({ runId, events: [] });
-    },
-  };
-}
+// The message log store (createCraftMessageLog) lives in presentation.ts so
+// its reset/dedupe semantics stay node-testable without importing CSS; it is
+// re-exported here because the assembly imports it from this module.
+export { createCraftMessageLog } from './presentation.ts';
+export type { CraftMessageSnapshot } from './presentation.ts';
 
 // ---------------------------------------------------------------------------
 // Workbench component
@@ -154,7 +98,6 @@ export interface CraftWorkbenchProps {
    */
   onEnrichedSend(prompt: string): Promise<void>;
   versions: CraftVersionView[];
-  versionsStatus: 'loading' | 'ready' | 'error';
   sessionUpdatedAt: string;
   snapshotVersionId: string | null;
   onRefreshVersions(): void;
@@ -184,11 +127,6 @@ function useEventCallback<A extends unknown[], R>(fn: (...args: A) => R): (...ar
   return useCallback((...args: A) => ref.current(...args), []);
 }
 
-interface TurnRecord {
-  prompt: string | null;
-  assistant: CraftAssistantProjection;
-}
-
 export function CraftWorkbench(props: CraftWorkbenchProps) {
   const strings = craftStrings(props.locale);
 
@@ -205,24 +143,36 @@ export function CraftWorkbench(props: CraftWorkbenchProps) {
   const projection = useMemo(() => projectAssistant(snapshot.events, mainStatus), [snapshot, mainStatus]);
 
   // --- conversation turns ----------------------------------------------------
-  const [turns, setTurns] = useState<TurnRecord[]>([]);
-  const [livePrompt, setLivePrompt] = useState<string | null>(props.initialPrompt);
-  const lastLiveRef = useRef<{ runId: string | null; prompt: string | null; projection: CraftAssistantProjection } | null>(null);
-  useEffect(() => {
-    lastLiveRef.current = { runId: controllerState?.runId ?? null, prompt: livePrompt, projection };
-  });
+  // B1 fix: the finished turn is archived AT SEND TIME, inside the sender's
+  // own event handler, while the message log still holds that run's events
+  // and BEFORE the new run's subscription resets the log. (The previous
+  // effect-based archive was dead code: an earlier-declared every-render ref
+  // write had already overwritten the old runId by the time the [runId]
+  // effect read it, so from the second send on the previous conversation
+  // silently vanished.)
+  const [turns, setTurns] = useState<CraftTurnRecord[]>([]);
+  const [livePrompt, setLivePrompt] = useState<string | null>(null);
+  // The run whose turn already lives in `turns`: its projection stays hidden
+  // from the live area until the NEXT run becomes current.
+  const [archivedRunId, setArchivedRunId] = useState<string | null>(null);
   const runId = controllerState?.runId ?? null;
-  const seenRunRef = useRef<string | null>(null);
+  const liveArchived = runId !== null && runId === archivedRunId;
+  const liveProjection: CraftAssistantProjection = liveArchived
+    ? { text: '', tools: [], interactions: [], artifactVersionIds: [], childStatus: 'idle', workspaceUnavailable: false, complete: false }
+    : projection;
   useEffect(() => {
-    if (seenRunRef.current === runId) return;
-    const previousRun = seenRunRef.current;
-    seenRunRef.current = runId;
-    const last = lastLiveRef.current;
-    if (last !== null && last.runId !== null && last.runId !== runId && (last.prompt !== null || last.projection.text !== '' || last.projection.tools.length > 0)) {
-      setTurns((prev) => [...prev, { prompt: last.prompt, assistant: last.projection }]);
-    }
+    // A new run takes over: un-hide the live area and follow the workspace version again.
+    if (archivedRunId !== null && runId !== null && runId !== archivedRunId) setArchivedRunId(null);
     if (runId !== null) setPinnedVersion(false);
-  }, [runId]);
+  }, [runId, archivedRunId]);
+  useEffect(() => {
+    // Scope reset/dispose: the conversation belonged to the dead scope.
+    if (controllerState === null) {
+      setTurns([]);
+      setLivePrompt(null);
+      setArchivedRunId(null);
+    }
+  }, [controllerState]);
 
   // --- versions + selection ---------------------------------------------------
   const versions = props.versions;
@@ -291,6 +241,17 @@ export function CraftWorkbench(props: CraftWorkbenchProps) {
   const handleSend = async (): Promise<void> => {
     const text = draft.trim();
     if (text === '' || sending) return;
+    // Archive the finished live turn NOW (B1): the composer only opens when
+    // the live run is terminal, so this projection is final, and the log is
+    // still populated — the reset that accompanies the new run's subscription
+    // can no longer erase the turn.
+    if (!liveArchived) {
+      const archive = archiveLiveTurn(turns, { runId, prompt: livePrompt, projection });
+      if (archive.archived !== null) {
+        setTurns(archive.turns);
+        setArchivedRunId(runId);
+      }
+    }
     setSending(true);
     setSendError(null);
     setDraft('');
@@ -302,6 +263,9 @@ export function CraftWorkbench(props: CraftWorkbenchProps) {
         await props.controller.submit(text);
       }
     } catch (error) {
+      // The send failed: the archived turn stays (it is real history); the
+      // failed prompt returns to the composer for an explicit retry.
+      setLivePrompt(null);
       setSendError(error instanceof Error ? error.message : String(error));
       setDraft(text);
     } finally {
@@ -387,8 +351,8 @@ export function CraftWorkbench(props: CraftWorkbenchProps) {
     setPinnedVersion(true);
   };
 
-  const statusLabel = statusLabelLocalized(props.locale, mainStatus, projection.childStatus);
-  const liveTurnEmpty = livePrompt === null && projection.text === '' && projection.tools.length === 0 && projection.interactions.length === 0 && props.versions.length === 0 && turns.length === 0;
+  const statusLabel = statusLabelLocalized(props.locale, mainStatus, liveProjection.childStatus);
+  const liveTurnEmpty = livePrompt === null && liveProjection.text === '' && liveProjection.tools.length === 0 && liveProjection.interactions.length === 0 && props.versions.length === 0 && turns.length === 0;
 
   const conversation = (
     <>
@@ -404,26 +368,26 @@ export function CraftWorkbench(props: CraftWorkbenchProps) {
         ) : null}
         {livePrompt !== null ? <div className="wk-craft-msg wk-craft-msg-user">{livePrompt}</div> : null}
         <div className="wk-craft-msg wk-craft-msg-assistant">
-          {projection.text !== '' ? projection.text : liveTurnEmpty ? strings.craftConversationEmpty : null}
-          {!projection.complete && projection.text !== '' ? <span className="wk-craft-msg-cursor" aria-hidden="true"> ▍</span> : null}
+          {liveProjection.text !== '' ? liveProjection.text : liveTurnEmpty ? strings.craftConversationEmpty : null}
+          {!liveProjection.complete && liveProjection.text !== '' ? <span className="wk-craft-msg-cursor" aria-hidden="true"> ▍</span> : null}
         </div>
-        {projection.tools.length > 0 || projection.childStatus !== 'idle' ? (
+        {liveProjection.tools.length > 0 || liveProjection.childStatus !== 'idle' ? (
           <details className="wk-craft-card">
-            <summary>{strings.craftDetailsChildStatus}: {projection.childStatus}</summary>
+            <summary>{strings.craftDetailsChildStatus}: {liveProjection.childStatus}</summary>
             <ul>
-              {projection.tools.map((tool) => (
+              {liveProjection.tools.map((tool) => (
                 <li key={tool.seq}><code>{tool.tool}</code> — {tool.status}</li>
               ))}
             </ul>
           </details>
         ) : null}
-        {projection.artifactVersionIds.map((versionId) => (
+        {liveProjection.artifactVersionIds.map((versionId) => (
           <div key={versionId} className="wk-craft-card">
             <p style={{ margin: 0 }}>{strings.craftVersionLabel}: <code>{versionId}</code></p>
           </div>
         ))}
-        {projection.workspaceUnavailable ? <p className="wk-craft-error" role="alert">{strings.craftErrorTitle}: workspace unavailable</p> : null}
-        {projection.interactions.map((card) => (
+        {liveProjection.workspaceUnavailable ? <p className="wk-craft-error" role="alert">{strings.craftErrorTitle}: workspace unavailable</p> : null}
+        {liveProjection.interactions.map((card) => (
           <InteractionCardView
             key={card.id}
             card={card}
