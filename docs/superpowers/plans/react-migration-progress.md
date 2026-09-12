@@ -1298,6 +1298,10 @@
 - MCP metadata tools now have Vue-equivalent search, 20-item pagination,
   description/parameters/schema detail tabs, policy controls, and fail-closed
   retry state; Web typecheck and the full suite pass (278/278).
+- MCP editor now accepts standard `mcpServers` JSON import without auto-save,
+  preserves custom headers and OAuth scopes, and sends bounded timeout/retry
+  configuration through the existing update contract; focused editor tests and
+  full Web regression pass (279/279).
 
 ### R031 Sandbox settings and review repairs (2026-09-12)
 

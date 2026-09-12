@@ -18,7 +18,7 @@ else nodeModule.register(`data:text/javascript,${encodeURIComponent(`
 `)}`, import.meta.url);
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
-const { McpSettingsPanel } = await import('./McpSettingsPanel.tsx');
+const { McpSettingsPanel, importMcpConfig } = await import('./McpSettingsPanel.tsx');
 
 const client = {} as never;
 
@@ -43,4 +43,14 @@ test('MCP settings renders service metadata and admin actions', () => {
   assert.match(html, /Edit/);
   assert.match(html, /Delete/);
   assert.match(html, /Add MCP service/);
+});
+
+test('MCP JSON import maps transport, auth, and custom headers without saving', () => {
+  const base = { name: '', description: '', usageInstructions: '', url: '', transportType: 'sse', enabled: true, authType: '', apiKeyHeader: '', apiKey: '', oauthScopes: '', headers: [], timeout: 30, retryCount: 3, retryDelay: 1, codeImport: '', codeImportError: '', authConfig: {} } as never;
+  const draft = importMcpConfig(JSON.stringify({ mcpServers: { docs: { url: 'https://example.com/mcp', headers: { Authorization: 'Bearer secret', 'X-Trace': 'yes' } } } }), base);
+  assert.equal(draft.name, 'docs');
+  assert.equal(draft.transportType, 'http-streamable');
+  assert.equal(draft.authType, 'api_key');
+  assert.equal(draft.apiKeyHeader, 'Authorization');
+  assert.deepEqual(draft.headers, [{ key: 'X-Trace', value: 'yes' }]);
 });
