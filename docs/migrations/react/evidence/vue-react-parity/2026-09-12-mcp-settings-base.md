@@ -28,8 +28,9 @@ It does not claim parity for the Vue two-step `McpServiceDialog`, paginated tool
 | Web test suite | `pnpm test:web` — 257 passed, 0 failed | Web unit/component regression evidence |
 | Shared typecheck | `pnpm typecheck:shared` — 0 | shared static evidence |
 | Static | `git diff --check` — 0 | static evidence |
-| Web typecheck | `pnpm --filter @weknora/web exec tsc -p tsconfig.json --noEmit` — blocked by pre-existing dirty `apps/web/src/platform/command-palette-search.ts` errors at lines 272, 304 | integration blocked |
-| Browser / real backend | not run in this slice | missing evidence |
+| Web typecheck | `pnpm --filter @weknora/web exec tsc -p tsconfig.json --noEmit` — passed after preserving the parallel command-palette change and correcting its list response compatibility/type narrowing | Web static integration evidence |
+| Browser | `browser-use` at fixed 1355×720 reached the React login page; protected MCP route could not be exercised because no authenticated SSO session was available | real browser boundary evidence; protected flow blocked |
+| Real backend | not run in this slice | missing evidence |
 | Wails / iOS / Android | not run in this slice | missing evidence |
 
 ## Next required work

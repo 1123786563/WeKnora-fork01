@@ -1255,12 +1255,15 @@
 - The upload confirmation slice now supports per-file status, cancellation,
   retry-after-error, tag selection, drag/drop staging, and removal of one
   staged file. Focused upload tests passed 6/6. Commit: `04f18ead`.
-- The current Web suite passed 258/258 and shared typecheck passed. Web
-  TypeScript remains blocked by unrelated dirty command-palette errors at
-  `apps/web/src/platform/command-palette-search.ts:272,304`; no unrelated
-  files were staged or changed by these slices.
+- The current Web suite passed 258/258 and shared/Web typechecks passed after
+  a compatibility/type-narrowing repair in the existing dirty command-palette
+  slice; its files remain uncommitted and no unrelated files were staged by
+  the MCP/upload commits.
 - Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-12-mcp-settings-base.md`
   and `docs/migrations/react/evidence/vue-react-parity/2026-09-12-upload-confirmation.md`.
   MCP rows R024/R043-R046/N016 and upload row N007 remain `implementing`;
   browser, real-backend, Wails, iOS, and Android acceptance is still absent
   for these slices.
+- A fixed 1355×720 browser recording reached the React login page but could
+  not enter protected routes without an authenticated SSO session. Recording:
+  `/Users/wuyongjun/.config/browser-harness/agent-workspace/recordings/react-parity-20260912`.
