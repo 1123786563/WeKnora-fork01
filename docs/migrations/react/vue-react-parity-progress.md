@@ -45,3 +45,15 @@
 - /login 视觉层与多语言对齐：完整移植渐变背景/动画节点/页头/语言切换/轮播/卡片样式（auth.css 逐值移植），5 locale 73 键文案程序化提取（locales.ts，零缺失），必填星号与注册卡对齐。证据：evidence/vue-react-parity/2026-09-12-login-visual-i18n.md + screenshots/login-react-visual-round4c.png。
 - web 131/131；auth 文件 typecheck 干净（App.tsx 错误为 KB 子代理 WIP）。
 - 仍开放：SVG 节点图标部分占位、showcase 垂直位置/分页圆点微调、locales.ts 迁入 packages/i18n、KB list 集成、其余页面。
+
+## 2026-09-12 Round 5
+
+- 修复轮播分页圆点可见性；浏览器交互验证语言切换（localStorage 持久化 + 整页文案切换 + 切回）与轮播分页点击，均通过。证据：evidence/vue-react-parity/2026-09-12-login-interactions.md + screenshots/login-round5-{default,en}.png；脚本 .parity-tools/verify-login.cjs。
+- KB list 实现子代理继续进行中（工作区持续有其修改）。
+
+## 2026-09-12 Round 6
+
+- /login 背景节点图标错位修复（node-1 双 path 合并，crop 对比证据）；提交 dc169d7、e0cc0a7。
+- KB list 子代理完成全部 8 项必修 + pin/duplicate/?scope=；主代理独立复核（全量测试/边界/端点真实性抽查）通过后集成提交 39a9180。证据：evidence/vue-react-parity/2026-09-12-kblist-integration.md。
+- 当前基线：shared 236/236、web 131/131、typecheck x2 干净、build:web 成功。
+- 下一步：KB 折叠分组节头、带后端的 KB 页截图对比、auth locales.ts 迁入 packages/i18n、继续矩阵后续页面（settings/chat/agents/organizations/integrations/embed）。
