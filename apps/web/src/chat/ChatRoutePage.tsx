@@ -9,6 +9,7 @@ import { chatSessionIdFromPath } from './session-route.ts';
 import { buildWebChatStreamOptions, initialAgentSelection } from './agent-selection.ts';
 import { createWebTerminalController, webSocketTarget, type WebTerminalController, type WebTerminalSnapshot } from './terminal.ts';
 import { saveArtifactDownload } from './artifact-download.ts';
+import { externalCitationTarget } from './citation.ts';
 
 interface ChatRoutePageProps {
   client: WeKnoraClient;
@@ -351,6 +352,11 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     setSuggestions(undefined);
   }
 
+  function openCitation(citationId: string): void {
+    const target = externalCitationTarget(citationId);
+    if (target) window.open(target, '_blank', 'noopener,noreferrer');
+  }
+
   async function openTerminal(): Promise<void> {
     if (!terminalController.current) throw new Error('Select a conversation before opening the terminal.');
     await terminalController.current.open({ provision: true, signal: scope.signal });
@@ -456,6 +462,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     onSuggestionClick={selectSuggestion}
     onRefreshSuggestions={refreshSuggestions}
     onDismissSuggestions={dismissSuggestions}
+    onCitationClick={openCitation}
     onArtifactDownload={downloadArtifact}
     terminal={selectedSessionId ? terminal : undefined}
     onOpenTerminal={selectedSessionId ? openTerminal : undefined}

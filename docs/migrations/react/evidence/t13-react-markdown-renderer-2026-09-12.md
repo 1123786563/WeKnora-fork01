@@ -30,6 +30,9 @@ public storage URL or a client-side artifact download path.
   grouping model for stream/history references, keeps safe web links as links,
   and exposes local document/tool chunk ids as activation buttons. The ChatPage
   combines persisted message reference metadata with current stream references.
+- `apps/web/src/chat/citation.ts` restricts host navigation to absolute HTTP(S)
+  citation ids; the Web chat route opens those targets in a new tab while local
+  chunk ids remain in the in-page activation path.
 - `apps/web/src/chat/ChatRoutePage.tsx` now resolves message metadata through
   that API and hands the authenticated bytes to the Web save-file port.
 - `apps/web/src/styles.css` adds safe readable layout for Markdown code, tables,
@@ -46,7 +49,8 @@ Commands run from the isolated `codex/react-multiclient` worktree:
 | `pnpm typecheck:web` | exit 0 |
 | `pnpm test:web` | exit 0; 107/107 |
 | `pnpm test:web` after artifact-save wiring | exit 0; 109/109 |
-| `pnpm build:web` | exit 0; 145 modules |
+| `pnpm test:web` after citation host wiring | exit 0; 110/110 |
+| `pnpm build:web` | exit 0; 146 modules |
 
 Focused TDD coverage in `packages/views/src/chat/markdown.test.tsx` and
 `packages/views/src/chat/tool-result.test.tsx` verifies
