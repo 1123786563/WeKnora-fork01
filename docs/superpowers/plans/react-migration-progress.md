@@ -1316,3 +1316,16 @@
   helper and made the settings route load its initial state from the shared
   `sandboxConfigurations` client instead of coercing an unrelated payload.
   Web typecheck and the 5/5 Sandbox component tests passed again.
+
+### R033 Skill settings entry follow-up (2026-09-12)
+
+- Connected the Settings `skills` entry to the existing typed catalog
+  operations. Administrators now reach registration, installation polling,
+  safe file listing/content reads, and stop-install controls; viewers receive
+  a read-only inventory. No second skill API was introduced.
+- Focused Skill component tests passed 2/2, the full Web suite passed 271/271,
+  and the Web typecheck passed. Evidence:
+  `docs/migrations/react/evidence/vue-react-parity/2026-09-12-skill-settings.md`.
+- R033 remains `implementing`: exact Vue child-surface behavior, localization,
+  visual comparison, real backend, browser, Wails, iOS, and Android evidence
+  are still required.

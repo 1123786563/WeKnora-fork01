@@ -15,6 +15,7 @@ import { LiveSectionsPanel, PortedSectionsPanel, readInitialLocale, settingsT } 
 import { McpSettingsPanel } from './McpSettingsPanel.tsx';
 import { ModelSettingsPanel } from './ModelSettingsPanel.tsx';
 import { SandboxSettingsPanel } from './SandboxSettingsPanel.tsx';
+import { SkillSettingsPanel } from './SkillSettingsPanel.tsx';
 
 function errorText(error: unknown, fallback: string): string { return error instanceof Error ? error.message : fallback; }
 
@@ -152,7 +153,10 @@ export function SettingsPage({ client, tenantId, role = 'owner' }: { client: WeK
   const sandboxPanel = selectedKey === 'sandbox'
     ? <SandboxSettingsPanel client={client} role={role} />
     : null;
-  const portedPanel = selectedKey === 'mcp' ? mcpPanel : selectedKey === 'models' ? modelPanel : selectedKey === 'sandbox' ? sandboxPanel : PARTIALLY_PORTED_SECTIONS.has(selectedKey)
+  const skillPanel = selectedKey === 'skills'
+    ? <SkillSettingsPanel client={client} role={role} initialSkills={Array.isArray(payload) ? payload as never : (((payload as { items?: unknown } | null)?.items ?? []) as never)} />
+    : null;
+  const portedPanel = selectedKey === 'mcp' ? mcpPanel : selectedKey === 'models' ? modelPanel : selectedKey === 'sandbox' ? sandboxPanel : selectedKey === 'skills' ? skillPanel : PARTIALLY_PORTED_SECTIONS.has(selectedKey)
     ? (selectedKey === 'sandbox'
         ? <PortedSectionsPanel section={selectedKey} />
         : <LiveSectionsPanel client={client} section={selectedKey} payload={payload} />)
