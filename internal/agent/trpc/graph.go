@@ -10,6 +10,7 @@ import (
 	"time"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
+	"github.com/Tencent/WeKnora/internal/logger"
 	"trpc.group/trpc-go/trpc-agent-go/graph"
 	"trpc.group/trpc-go/trpc-agent-go/model"
 )
@@ -155,9 +156,10 @@ func buildGraph(b GraphBindings) (*graph.Graph, error) {
 		if len(consumed) > 0 {
 			if consumer, ok := b.Inputs.(agentruntime.RunInputConsumer); ok {
 				markCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-				if err := consumer.MarkInputsProcessed(markCtx, b.fenceFromContext(ctx).RunKey, consumed...); err != nil {
-					logger := ctx
-					_ = logger
+				err := consumer.MarkInputsProcessed(markCtx,
+					b.fenceFromContext(ctx).RunKey, consumed...)
+				if err != nil {
+					logger.Warnf(ctx, "mark steer inputs processed failed: %v", err)
 				}
 				cancel()
 			}

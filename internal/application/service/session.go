@@ -225,7 +225,9 @@ func installDurableOAuthPark() {
 			}
 		}
 		if parker, ok := runs.Store().(agentruntime.ToolPreflightParker); ok {
-			if err := parker.ParkToolPreflightWait(parkCtx, fence, dispatch.CallID, pendingID, req.ResourceRef); err != nil {
+			err := parker.ParkToolPreflightWait(parkCtx, fence,
+				dispatch.CallID, pendingID, req.ResourceRef)
+			if err != nil {
 				return err
 			}
 		}

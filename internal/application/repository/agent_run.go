@@ -330,7 +330,10 @@ func (s *AgentRunStore) SetStatus(ctx context.Context, fence agentruntime.Fence,
 		return agentruntime.ErrConflict
 	}
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		result := s.fenced(tx, fence).Updates(map[string]any{"status": status, "wait_reason": reason, "lease_owner": "", "lease_until": nil, "revision": gorm.Expr("revision + 1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP")})
+		result := s.fenced(tx, fence).Updates(map[string]any{
+			"status": status, "wait_reason": reason, "lease_owner": "", "lease_until": nil,
+			"revision": gorm.Expr("revision + 1"), "updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
+		})
 		if result.Error != nil {
 			return result.Error
 		}

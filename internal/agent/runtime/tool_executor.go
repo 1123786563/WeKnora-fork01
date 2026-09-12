@@ -370,8 +370,11 @@ func (e *ToolExecutor) Execute(
 		if e.waitForDecision != nil {
 			persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 			defer cancel()
-			if waitErr := e.waitForDecision(persistCtx, fence, plan.CallID); waitErr != nil {
-				return StoredToolResult{}, errors.Join(fmt.Errorf("%w: %s", ErrToolWaitUser, record.UnknownReason), waitErr)
+			waitErr := e.waitForDecision(persistCtx, fence,
+				plan.CallID)
+			if waitErr != nil {
+				waitWrap := fmt.Errorf("%w: %s", ErrToolWaitUser, record.UnknownReason)
+				return StoredToolResult{}, errors.Join(waitWrap, waitErr)
 			}
 		}
 		return StoredToolResult{}, fmt.Errorf("%w: %s", ErrToolWaitUser, record.UnknownReason)
@@ -434,7 +437,9 @@ func (e *ToolExecutor) Execute(
 			return StoredToolResult{}, errors.Join(executeErr, markErr)
 		}
 		if e.waitForDecision != nil {
-			if waitErr := e.waitForDecision(persistCtx, fence, plan.CallID); waitErr != nil {
+			waitErr := e.waitForDecision(persistCtx, fence,
+				plan.CallID)
+			if waitErr != nil {
 				return StoredToolResult{}, errors.Join(executeErr, waitErr)
 			}
 		}

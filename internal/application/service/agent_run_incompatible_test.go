@@ -35,7 +35,10 @@ func TestExecuteDurableRunRejectsIncompatibleCheckpoint(t *testing.T) {
 	require.NoError(t, store.SaveCheckpoint(context.Background(), fence, agentruntime.CheckpointRecord{
 		Namespace: "tenant/1/run/" + key.RunID + "/graph/1",
 		ID:        "cp-foreign", ParentID: "", Seq: 1,
-		State:         jsonRaw(t, map[string]any{"version": 1, "graph_version": "foreign", "sdk_version": "v1.10.0", "tuple": map[string]any{}}),
+		State: jsonRaw(t, map[string]any{
+			"version": 1, "graph_version": "foreign",
+			"sdk_version": "v1.10.0", "tuple": map[string]any{},
+		}),
 		PendingWrites: jsonRaw(t, []any{}),
 	}))
 	// Release the claim so the executor can reclaim.
