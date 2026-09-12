@@ -7,6 +7,8 @@ import type {
 } from "@weknora/api-client";
 import { Button, Card, Status } from "@weknora/ui";
 import { ModelDebugPanel } from "./ModelDebugPanel.tsx";
+import { ModelUsageNotice } from "../configuration/ModelUsageNotice.tsx";
+import { modelInUseDetails, type ModelUsageDetails } from "../configuration/model-usage.ts";
 import {
   modelCredentialInput,
   modelDraftFromRecord,
@@ -55,6 +57,7 @@ export function ModelSettingsPanel({ client, role, initialModels }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [debugOpen, setDebugOpen] = useState(false);
+  const [usageConflict, setUsageConflict] = useState<{ modelName: string; details: ModelUsageDetails } | null>(null);
   const [connectionResult, setConnectionResult] = useState<Awaited<
     ReturnType<WeKnoraClient["configuration"]["models"]["connection"]["remote"]>
   > | null>(null);
@@ -115,6 +118,7 @@ export function ModelSettingsPanel({ client, role, initialModels }: Props) {
     if (!draft || busy || draft.source !== "remote") return;
     setBusy(true);
     setError(null);
+    setUsageConflict(null);
     setConnectionResult(null);
     const input = {
       source: draft.source,
@@ -213,11 +217,17 @@ export function ModelSettingsPanel({ client, role, initialModels }: Props) {
     if (!window.confirm(`Delete model “${label(model)}”?`)) return;
     setBusy(true);
     setError(null);
+    setUsageConflict(null);
     try {
       await client.configuration.models.remove(model.id);
       setNotice("Model deleted.");
       await reload();
     } catch (cause) {
+      const details = modelInUseDetails(cause);
+      if (details) {
+        setUsageConflict({ modelName: label(model), details });
+        return;
+      }
       setError(
         cause instanceof Error ? cause.message : "Unable to delete model",
       );
@@ -262,6 +272,7 @@ export function ModelSettingsPanel({ client, role, initialModels }: Props) {
       </div>
       {error ? <Status tone="error">{error}</Status> : null}
       {notice ? <Status tone="success">{notice}</Status> : null}
+      {usageConflict ? <ModelUsageNotice modelName={usageConflict.modelName} details={usageConflict.details} onClose={() => setUsageConflict(null)} /> : null}
       <nav className="wk-model-tabs" aria-label="Model type">
         <button
           type="button"

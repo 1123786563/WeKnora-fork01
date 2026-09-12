@@ -4,7 +4,8 @@ import { Button, Card, Status } from '@weknora/ui';
 import { configurationSections, configurationStatus, type ConfigurationSectionKey } from './surface.ts';
 import { ConfigurationEditor } from './ConfigurationEditor.tsx';
 import { AgentOperations, ModelDebugPanel, SkillOperations } from './ConfigurationOperations.tsx';
-import { modelInUseDetails, modelUsageBindingLabel, type ModelUsageDetails } from './model-usage.ts';
+import { modelInUseDetails, type ModelUsageDetails } from './model-usage.ts';
+import { ModelUsageNotice } from './ModelUsageNotice.tsx';
 import { filterAgentsByQuery, groupAgents, type AgentGroupKey } from './agent-groups.ts';
 
 type Records = { agents: AgentConfiguration[]; models: ModelConfiguration[]; mcp: McpConfiguration[]; skills: SkillConfiguration[] };
@@ -14,12 +15,6 @@ function message(error: unknown, fallback: string): string { return error instan
 function values(record: Record<string, unknown>): string {
   return Object.entries(record).filter(([key]) => !['id', 'name', 'config', 'parameters', 'auth_config', 'credentials'].includes(key))
     .map(([key, value]) => `${key}: ${typeof value === 'string' ? value : JSON.stringify(value)}`).join(' · ');
-}
-
-function ModelUsageNotice({ modelName, details, onClose }: { modelName: string; details: ModelUsageDetails; onClose: () => void }) {
-  const knowledgeBaseTotal = Math.max(details.knowledge_base_total, details.knowledge_bases.length);
-  const agentTotal = Math.max(details.agent_total, details.agents.length);
-  return <Card className="wk-configuration-usage" role="alert"><div className="wk-settings-panel-heading"><div><h2>Model is still in use</h2><p className="wk-muted">{modelName} cannot be deleted until its active bindings are removed.</p></div><Button type="button" onClick={onClose}>Close</Button></div>{knowledgeBaseTotal > 0 ? <section><h3>Knowledge bases ({knowledgeBaseTotal})</h3><ul className="wk-list">{details.knowledge_bases.map((item) => <li key={item.id}><strong>{item.name || item.id}</strong><small>{item.bindings.map(modelUsageBindingLabel).join(' · ')}</small></li>)}</ul>{knowledgeBaseTotal > details.knowledge_bases.length ? <p className="wk-muted">Showing {details.knowledge_bases.length} of {knowledgeBaseTotal} knowledge-base bindings.</p> : null}</section> : null}{agentTotal > 0 ? <section><h3>Agents ({agentTotal})</h3><ul className="wk-list">{details.agents.map((item) => <li key={item.id}><strong>{item.name || item.id}</strong><small>{item.bindings.map(modelUsageBindingLabel).join(' · ')}</small></li>)}</ul>{agentTotal > details.agents.length ? <p className="wk-muted">Showing {details.agents.length} of {agentTotal} agent bindings.</p> : null}</section> : null}{details.long_term_memory.bindings.length > 0 ? <section><h3>Long-term memory</h3><p>{details.long_term_memory.bindings.map(modelUsageBindingLabel).join(' · ')}</p></section> : null}</Card>;
 }
 
 export function ConfigurationPage({ client }: { client: WeKnoraClient }) {

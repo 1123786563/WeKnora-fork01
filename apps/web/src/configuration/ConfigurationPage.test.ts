@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const page = readFileSync(new URL('./ConfigurationPage.tsx', import.meta.url), 'utf8');
+const usageNotice = readFileSync(new URL('./ModelUsageNotice.tsx', import.meta.url), 'utf8');
 
 test('describes missing sandbox skill availability without claiming the catalog is unavailable', () => {
   assert.match(page, /sandbox-installed skills/i);
@@ -16,6 +17,6 @@ test('renders sandbox availability as a notice instead of replacing catalog resu
 
 test('renders structured model deletion occupancy instead of hiding it in a generic error', () => {
   assert.match(page, /modelInUseDetails\(cause\)/);
-  assert.match(page, /Knowledge bases \(/);
-  assert.match(page, /Long-term memory/);
+  assert.match(usageNotice, /Knowledge bases \(/);
+  assert.match(usageNotice, /Long-term memory/);
 });
