@@ -364,3 +364,7 @@
 ## 2026-09-12 Round 87
 
 - 门禁复验：shared 310/310、web 198/198 全绿。chat 打磨切片实施子代理运行中（tool-result.tsx/chat.css/tenant.ts 等 WIP）。
+
+## 2026-09-12 Round 89
+
+- chat 打磨切片完成集成（1c1c463，9 文件 +1014/-8）：分类型工具渲染器扩展（7 种新类型）、Last-Event-ID 重连、会话来源 badge。门禁：shared 320/320、web 202/202、typecheck×2、build:web 全绿。
