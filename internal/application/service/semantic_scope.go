@@ -123,14 +123,15 @@ func (s *SemanticScopeService) Issue(
 		return types.SemanticAccessScope{}, err
 	}
 	return types.SemanticAccessScope{
-		Scope:           scope,
-		SubjectID:       subjectID,
-		ScopeRef:        ref,
-		ScopeHash:       token.SnapshotSum,
-		PermissionEpoch: epoch,
-		ExpiresAt:       expiresAt.Format(time.RFC3339),
-		Audience:        s.config.Audience,
-		Purpose:         types.SemanticAccessPurpose(purpose),
+		Scope:              scope,
+		SubjectID:          subjectID,
+		ScopeRef:           ref,
+		ScopeHash:          token.SnapshotSum,
+		PermissionEpoch:    epoch,
+		ExpiresAt:          expiresAt.Format(time.RFC3339),
+		Audience:           s.config.Audience,
+		Purpose:            types.SemanticAccessPurpose(purpose),
+		AllowedDocumentIDs: snapshot.AllowedDocumentIDs,
 	}, nil
 }
 

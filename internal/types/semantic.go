@@ -216,6 +216,9 @@ type SemanticAccessScope struct {
 	Audience        string                `json:"audience"`
 	Purpose         SemanticAccessPurpose `json:"purpose"`
 	BudgetRef       string                `json:"budget_ref"`
+	// AllowedDocumentIDs carries the RESOLVED snapshot's authorized set to
+	// the semantic service (which filters strictly by it - Q04 wire fix).
+	AllowedDocumentIDs []string `json:"allowed_document_ids,omitempty"`
 }
 
 type SemanticQueryLimits struct {

@@ -1640,14 +1640,24 @@ func initSemanticModelInternalHandler(cfg *config.Config, modelService *service.
 // stays nil unless the semantic pipeline is enabled - chat and agent
 // tools then route through it instead of backend bypass paths.
 func initSemanticQueryService(cfg *config.Config, scopes *service.SemanticScopeService,
-	client interfaces.SemanticClient) *service.SemanticQueryService {
+	client interfaces.SemanticClient, kbService interfaces.KnowledgeBaseService,
+	shareSvc interfaces.KBShareService) *service.SemanticQueryService {
 	if cfg.Semantic == nil || !cfg.Semantic.Enabled || client == nil || scopes == nil {
 		return nil
 	}
+	resolver := func(ctx context.Context, tenantID uint64, kbID string) (uint64, error) {
+		kb, err := kbService.GetKnowledgeBaseByIDOnly(ctx, kbID)
+		if err != nil || kb == nil {
+			return 0, fmt.Errorf("semantic query: knowledge base %s not resolvable", kbID)
+		}
+		return service.ResolveKBReadTenant(ctx, kb, shareSvc)
+	}
 	return service.NewSemanticQueryService(scopes,
 		service.NewSemanticClientSearcher(client),
-		service.NewSemanticClientVectorSearcher(client),
-		service.FusionConfig{RRFK: 60})
+		service.NewNoopVectorSearcher(),
+		service.FusionConfig{RRFK: 60},
+		service.WithKBTenantResolver(resolver),
+		service.WithSemanticReasoner(service.NewSemanticClientReasoner(client)))
 }
 
 func registerSemanticClientCleanup(client interfaces.SemanticClient, cleaner interfaces.ResourceCleaner) {

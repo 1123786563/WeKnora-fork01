@@ -31,9 +31,13 @@ type fakeSemanticSearcher struct {
 	results   []types.SemanticEvidence
 	mode      string
 	err       error
+	capture   func(query string, topK int)
 }
 
-func (f *fakeSemanticSearcher) Search(ctx context.Context, issued types.SemanticAccessScope) ([]types.SemanticEvidence, string, error) {
+func (f *fakeSemanticSearcher) Search(ctx context.Context, issued types.SemanticAccessScope, query string, topK int) ([]types.SemanticEvidence, string, error) {
+	if f.capture != nil {
+		f.capture(query, topK)
+	}
 	if f.err != nil {
 		return nil, "", f.err
 	}
@@ -119,7 +123,8 @@ func newSemanticQueryFixture(t *testing.T) *semanticQueryFixture {
 		{EvidenceID: "e1", DocumentID: "d1", Revision: 1, ChunkID: "c1"},
 	}}
 	bumper := &epochBumperStub{repo: apprepo}
-	svc := NewSemanticQueryService(scopeSvc, searcher, &fakeVectorSearcher{}, FusionConfig{RRFK: 60})
+	svc := NewSemanticQueryService(scopeSvc, searcher, &fakeVectorSearcher{}, FusionConfig{RRFK: 60},
+		identityResolver())
 	return &semanticQueryFixture{svc: svc, scopeSvc: scopeSvc, epochRepo: bumper, delivered: 0, searcher: searcher}
 }
 
@@ -146,6 +151,67 @@ func TestSemanticQuerySearchHappyPathFusesRRF(t *testing.T) {
 	require.Equal(t, float64(1.0/61.0), result.Evidence[0].FusedScore, "RRF k=60: 1/(60+1) for rank 1")
 }
 
+func TestSemanticQueryCarriesQueryOnSeam(t *testing.T) {
+	f := newSemanticQueryFixture(t)
+	var seenQuery string
+	var seenTopK int
+	f.searcher.capture = func(query string, topK int) {
+		seenQuery, seenTopK = query, topK
+	}
+	_, err := f.svc.Search(context.Background(), "user-1", SearchRequest{
+		TenantID: 7, KBID: "kb-q04", Query: "甲控制丙", TopK: 5,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "甲控制丙", seenQuery, "the query MUST reach the semantic seam")
+	require.Equal(t, 5, seenTopK)
+}
+
+func TestSemanticQueryResolvesOwnerTenant(t *testing.T) {
+	f := newSemanticQueryFixture(t)
+	// A tenant resolver that maps kb -> OWNER tenant (not the caller's).
+	f.svc = NewSemanticQueryService(f.scopeSvc, f.searcher, &fakeVectorSearcher{}, FusionConfig{RRFK: 60},
+		WithKBTenantResolver(func(ctx context.Context, tenantID uint64, kbID string) (uint64, error) {
+			require.Equal(t, uint64(7), tenantID)
+			return 999, nil // owner tenant differs from the caller's
+		}))
+	result, err := f.svc.Search(context.Background(), "user-1", SearchRequest{
+		TenantID: 7, KBID: "kb-q04", Query: "q",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, result.Evidence, "scopes issue against the RESOLVED owner tenant")
+}
+
+func identityResolver() QueryOption {
+	return WithKBTenantResolver(func(ctx context.Context, tenantID uint64, kbID string) (uint64, error) {
+		return tenantID, nil
+	})
+}
+
+func TestSemanticQueryReasonDispatchesThroughClient(t *testing.T) {
+	f := newSemanticQueryFixture(t)
+	reasoner := &fakeSemanticReasoner{status: "supported", conclusion: "甲控制丙", mode: "rules"}
+	f.svc = NewSemanticQueryService(f.scopeSvc, f.searcher, &fakeVectorSearcher{}, FusionConfig{RRFK: 60},
+		identityResolver(), WithSemanticReasoner(reasoner))
+	result, err := f.QueryReason()
+	require.NoError(t, err)
+	require.Equal(t, "rules", result.Mode)
+	require.Equal(t, "supported", result.Status)
+	require.Equal(t, "甲控制丙", result.Conclusion)
+}
+
+type fakeSemanticReasoner struct {
+	status     string
+	conclusion string
+	mode       string
+}
+
+func (r *fakeSemanticReasoner) Reason(ctx context.Context, issued types.SemanticAccessScope, req ReasonRequest) (*types.SemanticReasonResult, error) {
+	return &types.SemanticReasonResult{
+		Mode: r.mode, Status: r.status, Conclusion: r.conclusion,
+		Evidence: []types.FusedEvidence{},
+	}, nil
+}
+
 func TestSemanticQueryRRFDedupsAcrossEngines(t *testing.T) {
 	f := newSemanticQueryFixture(t)
 	// Both engines return the SAME identity: fused score doubles, one row.
@@ -156,7 +222,7 @@ func TestSemanticQueryRRFDedupsAcrossEngines(t *testing.T) {
 		results: []types.SemanticEvidence{
 			{EvidenceID: "e1", DocumentID: "d1", Revision: 1, ChunkID: "c1"},
 		},
-	}, FusionConfig{RRFK: 60})
+	}, FusionConfig{RRFK: 60}, identityResolver())
 	result, err := f.svc.Search(context.Background(), "user-1", SearchRequest{
 		TenantID: 7, KBID: "kb-q04", Query: "q",
 	})

@@ -28,17 +28,28 @@ type SearchRequest struct {
 
 // ReasonRequest selects a reasoning mode over the same facade.
 type ReasonRequest struct {
-	TenantID uint64
-	KBID     string
-	Query    string
-	Mode     string
+	TenantID       uint64
+	KBID           string
+	Query          string
+	Mode           string // "rules" | "model"
+	RuleSetVersion string
 }
 
 // SemanticSearcher is the semantic-pipeline seam (gRPC client in
-// production, controlled fake in tests). It receives the ISSUED scope.
+// production, controlled fake in tests). It receives the ISSUED scope
+// plus the query and topK - the wire request is fully populated.
 type SemanticSearcher interface {
-	Search(ctx context.Context, issued types.SemanticAccessScope) ([]types.SemanticEvidence, string, error)
+	Search(ctx context.Context, issued types.SemanticAccessScope, query string, topK int) ([]types.SemanticEvidence, string, error)
 }
+
+// SemanticReasoner dispatches Reason requests through the Q03 modes.
+type SemanticReasoner interface {
+	Reason(ctx context.Context, issued types.SemanticAccessScope, req ReasonRequest) (*types.SemanticReasonResult, error)
+}
+
+// KBTenantResolver resolves the OWNER tenant for a KB (A01 carry-over:
+// callers must never trust their own tenant id for scope issuance).
+type KBTenantResolver func(ctx context.Context, tenantID uint64, kbID string) (uint64, error)
 
 // VectorSearcher is the ordinary-retrieval seam (vector/fulltext).
 type VectorSearcher interface {
@@ -51,18 +62,37 @@ type VectorSearcher interface {
 // before ANY content leaves: a permission change discards the whole
 // answer - never just the references.
 type SemanticQueryService struct {
-	scopes  *SemanticScopeService
-	sem     SemanticSearcher
-	vector  VectorSearcher
-	fusion  FusionConfig
+	scopes   *SemanticScopeService
+	sem      SemanticSearcher
+	vector   VectorSearcher
+	reasoner SemanticReasoner
+	fusion   FusionConfig
+	resolve  KBTenantResolver
 }
 
 func NewSemanticQueryService(scopes *SemanticScopeService, sem SemanticSearcher,
-	vector VectorSearcher, fusion FusionConfig) *SemanticQueryService {
+	vector VectorSearcher, fusion FusionConfig, opts ...QueryOption) *SemanticQueryService {
 	if fusion.RRFK <= 0 {
 		fusion.RRFK = 60
 	}
-	return &SemanticQueryService{scopes: scopes, sem: sem, vector: vector, fusion: fusion}
+	svc := &SemanticQueryService{scopes: scopes, sem: sem, vector: vector, fusion: fusion}
+	for _, opt := range opts {
+		opt(svc)
+	}
+	return svc
+}
+
+// QueryOption configures optional seams on the facade.
+type QueryOption func(*SemanticQueryService)
+
+// WithKBTenantResolver enforces owner-tenant resolution before issuance.
+func WithKBTenantResolver(resolve KBTenantResolver) QueryOption {
+	return func(s *SemanticQueryService) { s.resolve = resolve }
+}
+
+// WithSemanticReasoner wires the Q03 Reason dispatch.
+func WithSemanticReasoner(reasoner SemanticReasoner) QueryOption {
+	return func(s *SemanticQueryService) { s.reasoner = reasoner }
 }
 
 // Search runs authorized retrieval with RRF fusion. On semantic-backend
@@ -88,12 +118,31 @@ func (s *SemanticQueryService) Search(ctx context.Context, subjectID string, req
 // (the real Reason dispatch through the Q03 modes lands with the
 // W-wiring; see the ledger).
 func (s *SemanticQueryService) Reason(ctx context.Context, subjectID string, req ReasonRequest) (*types.SemanticReasonResult, error) {
-	scope, err := s.scopes.Issue(ctx, subjectID, types.SemanticScopeKey{
-		TenantID: req.TenantID, KBID: req.KBID}, "reason")
+	ownerTenant, err := s.resolveTenant(ctx, req.TenantID, req.KBID)
 	if err != nil {
 		return nil, err
 	}
-	evidence, mode, err := s.sem.Search(ctx, scope)
+	scope, err := s.scopes.Issue(ctx, subjectID, types.SemanticScopeKey{
+		TenantID: ownerTenant, KBID: req.KBID}, "reason")
+	if err != nil {
+		return nil, err
+	}
+	if s.reasoner != nil {
+		// Real Q03 dispatch (rules/model) through the issued scope.
+		result, err := s.reasoner.Reason(ctx, scope, req)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrSemanticQueryBackend, err)
+		}
+		if err := s.scopes.ValidateDelivery(ctx, scope); err != nil {
+			retried, retryErr := s.reasonOnce(ctx, subjectID, req)
+			if retryErr != nil {
+				return nil, fmt.Errorf("%w: %v / %v", ErrSemanticScopeChanged, err, retryErr)
+			}
+			return retried, nil
+		}
+		return result, nil
+	}
+	evidence, mode, err := s.sem.Search(ctx, scope, req.Query, 0)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrSemanticQueryBackend, err)
 	}
@@ -125,12 +174,26 @@ func (s *SemanticQueryService) Reason(ctx context.Context, subjectID string, req
 // and a FINAL delivery check whose failure is terminal (retryable error
 // surfaced to the caller - the plan forbids infinite recompute).
 func (s *SemanticQueryService) reasonOnce(ctx context.Context, subjectID string, req ReasonRequest) (*types.SemanticReasonResult, error) {
-	scope, err := s.scopes.Issue(ctx, subjectID, types.SemanticScopeKey{
-		TenantID: req.TenantID, KBID: req.KBID}, "reason")
+	ownerTenant, err := s.resolveTenant(ctx, req.TenantID, req.KBID)
 	if err != nil {
 		return nil, err
 	}
-	evidence, _, err := s.sem.Search(ctx, scope)
+	scope, err := s.scopes.Issue(ctx, subjectID, types.SemanticScopeKey{
+		TenantID: ownerTenant, KBID: req.KBID}, "reason")
+	if err != nil {
+		return nil, err
+	}
+	if s.reasoner != nil {
+		result, err := s.reasoner.Reason(ctx, scope, req)
+		if err != nil {
+			return nil, err
+		}
+		if err := s.scopes.ValidateDelivery(ctx, scope); err != nil {
+			return nil, fmt.Errorf("%w: retry delivery validation failed: %v", ErrSemanticScopeChanged, err)
+		}
+		return result, nil
+	}
+	evidence, _, err := s.sem.Search(ctx, scope, req.Query, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -145,15 +208,30 @@ func (s *SemanticQueryService) reasonOnce(ctx context.Context, subjectID string,
 	return result, nil
 }
 
+// resolveTenant applies the owner-tenant resolver. FAIL-CLOSED: with no
+// resolver configured the facade refuses to issue any scope - the
+// caller's tenant id is a LOOKUP key, never the issuance tenant (A01
+// carry-over; production must wire resolveKBReadTenant via the option).
+func (s *SemanticQueryService) resolveTenant(ctx context.Context, tenantID uint64, kbID string) (uint64, error) {
+	if s.resolve == nil {
+		return 0, fmt.Errorf("semantic query: no KB tenant resolver configured (fail closed)")
+	}
+	return s.resolve(ctx, tenantID, kbID)
+}
+
 // runAuthorizedSearch issues the scope, runs both engines and fuses; a
 // semantic failure degrades with an explicit mode.
 func (s *SemanticQueryService) runAuthorizedSearch(ctx context.Context, subjectID string, req SearchRequest) (types.SemanticAccessScope, []types.FusedEvidence, string, error) {
+	ownerTenant, err := s.resolveTenant(ctx, req.TenantID, req.KBID)
+	if err != nil {
+		return types.SemanticAccessScope{}, nil, "", err
+	}
 	scope, err := s.scopes.Issue(ctx, subjectID, types.SemanticScopeKey{
-		TenantID: req.TenantID, KBID: req.KBID}, "search")
+		TenantID: ownerTenant, KBID: req.KBID}, "search")
 	if err != nil {
 		return scope, nil, "", err
 	}
-	semEvidence, mode, semErr := s.sem.Search(ctx, scope)
+	semEvidence, mode, semErr := s.sem.Search(ctx, scope, req.Query, req.TopK)
 	vecEvidence, vecErr := s.vector.Search(ctx, req.Query)
 	if semErr != nil && vecErr != nil {
 		return scope, nil, "", fmt.Errorf("%w: semantic=%v vector=%v", ErrSemanticQueryBackend, semErr, vecErr)

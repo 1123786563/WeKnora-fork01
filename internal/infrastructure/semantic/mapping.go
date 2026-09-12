@@ -307,15 +307,16 @@ func AccessScopeToWire(access types.SemanticAccessScope) (*semanticpb.AccessScop
 		return nil, err
 	}
 	return &semanticpb.AccessScope{
-		Scope:           ScopeKeyToWire(access.Scope),
-		SubjectId:       access.SubjectID,
-		ScopeRef:        access.ScopeRef,
-		ScopeHash:       access.ScopeHash,
-		PermissionEpoch: access.PermissionEpoch,
-		ExpiresAt:       access.ExpiresAt,
-		Audience:        access.Audience,
-		Purpose:         purpose,
-		BudgetRef:       access.BudgetRef,
+		Scope:               ScopeKeyToWire(access.Scope),
+		SubjectId:           access.SubjectID,
+		ScopeRef:            access.ScopeRef,
+		ScopeHash:           access.ScopeHash,
+		PermissionEpoch:     access.PermissionEpoch,
+		ExpiresAt:           access.ExpiresAt,
+		Audience:            access.Audience,
+		Purpose:             purpose,
+		BudgetRef:           access.BudgetRef,
+		AllowedDocumentIds:  access.AllowedDocumentIDs,
 	}, nil
 }
 
