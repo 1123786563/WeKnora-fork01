@@ -19,7 +19,7 @@
 | 07 | 受理与后台接管 | verified | rerun `c76d688` + worker fix | 生产图执行器已注册并注入 worker；SQLite/PG 双 worker contention、deadline、等待映射和接管重新验证；本次修复 worker context 竞态 |
 | 08 | 持久化等待与决策 | verified | rerun recovery matrices | waiting_user、OAuth park、前审批、CAS/幂等/显式 retry 均由真实 provider 矩阵重新验证；builtin 仍保留 live gate |
 | 09 | Sandbox 恢复 | verified | rerun focused sandbox tests | `ObserveInstance` provider 查询、租户/session/generation 校验和 alive/unknown/missing 状态重新 PASS；不把实例存活冒充任务结果 |
-| 10 | 能力完整复用 | verified | ded7719+850e8a0 + 6599817 + rerun | 生产执行器经 `prepareAgentCapabilities` 复用全部装配；能力快照漂移、多模态 durable graph 与 `mcp_set_drift` provider 跨进程行为均有证据 |
+| 10 | 能力完整复用 | verified | ded7719+850e8a0 + 6599817 + `6ae7433f` | 生产执行器经 `prepareAgentCapabilities` 复用全部装配；真实生产 GraphAgent MCP discover/call、能力快照漂移、多模态 durable graph 与 `mcp_set_drift` provider 跨进程行为均有证据 |
 | 11 | 事件、投影、steering | verified | rerun recovery/service/handler suites | 事件生产调用点、finalize、RunInput inject/after、保留水位和回放重新验证；外部交付 outbox 按验收文档的数据库内结构性方案处理 |
 | 12 | HTTP 与生命周期 | verified | 3c789fc..2c12fc3（上轮，复审 PASS） | handler/router/lifecycle 测试 PASS；跨租户 404、引擎不可变、`ValidateEngineUpdate` 六用例、取消/删除围栏经复审确认 |
 | 13 | 客户端恢复交互 | verified | rerun frontend + browser + server | 前端测试 819/819、vue-tsc、Vite build PASS；浏览器真实 tRPC 会话选择、durable HTTP 回复、刷新回放和断线存活 PASS；单用户/assistant 行不变量保持 |
