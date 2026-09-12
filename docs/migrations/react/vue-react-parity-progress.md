@@ -391,3 +391,9 @@
 ## 2026-09-12 Round 98
 
 - tenant delete danger zone live 验证通过：owner 视角下 zone 渲染、确认名输入前删除按钮禁用（armed 语义生效）。6 个主页面 live 回归 6/6。截图 tenant-delete-zone-live.png 入库。
+
+## 2026-09-12 Round 99 收敛快照
+
+- 门禁：shared 326/326、web 204/204、typecheck 0 错误。live 回归 6/6 主页面正常。
+- settings 审计条目全部关闭（最后一项 tenant delete danger zone 已集成+live 验证）。
+- 剩余开放项均需外部因素：Wails 运行时交互（GUI）、iOS/Android 真机验收（设备）、后端 3 项语义裁决、矩阵逐页终审。
