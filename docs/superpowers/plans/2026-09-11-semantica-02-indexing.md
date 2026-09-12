@@ -195,7 +195,7 @@ with control_db.transaction() as tx:
 
 **接口：** DeletionService.apply(document:DocumentRevision)->Operation、cleanup(operation_id:str)->DeletionReceipt；DeletionReceipt含operation_id/tombstone_revision/graph/vector/object/cache/backup状态及完成时间。backup为retention_pending或expired，不伪装立即擦除备份。
 
-- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 def test_last_support_removes_derived_fact(index_store, two_source_fact):
@@ -206,13 +206,13 @@ def test_last_support_removes_derived_fact(index_store, two_source_fact):
     assert index_store.visible_assertion("derived-fact") is False
 ```
 
-- [ ] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_delete_races.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [x] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_delete_races.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. Delete接收单调tombstone并持久化，所有查询generation叠加最新deny；旧Apply与旧worker再次检查revision时被拒绝**
+- [x] **3. Delete接收单调tombstone并持久化，所有查询generation叠加最新deny；旧Apply与旧worker再次检查revision时被拒绝**
 
-- [ ] **4. 撤销原文来源、别名、等价和推导支持，沿premise反向依赖递归失效；保留还有有效来源的事实，禁止删除整个同名实体**
+- [x] **4. 撤销原文来源、别名、等价和推导支持，沿premise反向依赖递归失效；保留还有有效来源的事实，禁止删除整个同名实体**
 
-- [ ] **5. 按图/向量/对象/缓存推进receipt；单存储失败保持pending独立重试。GC保留期与消息重放窗口强制配置，墓碑不得早于窗口清除**
+- [x] **5. 按图/向量/对象/缓存推进receipt；单存储失败保持pending独立重试。GC保留期与消息重放窗口强制配置，墓碑不得早于窗口清除**
 
 - [ ] **6. 恢复模式默认不ready，先从Go重放当前deny/epoch再开放查询；备份保留期与逻辑不可见性分开报告**
 
@@ -227,9 +227,9 @@ if not visible_supports:
 # invalidate/recompute_supports 在deletion.py实现，使用幂等工作队列防循环。
 ```
 
-- [ ] **7. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_delete_races.py -q`，预期退出码 0；另完成：测试删除时服务离线、旧generation查询、旧Apply迟到、多来源删除、清理半失败及备份恢复；deny优先于历史索引，即便物理清理未完成也不可检索。
+- [x] **7. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_delete_races.py -q`，预期退出码 0；另完成：测试删除时服务离线、旧generation查询、旧Apply迟到、多来源删除、清理半失败及备份恢复；deny优先于历史索引，即便物理清理未完成也不可检索。
 
-- [ ] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 I04 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): i04 删除屏障、支持撤销和清理receipt`。
+- [x] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 I04 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): i04 删除屏障、支持撤销和清理receipt`。
 
 ## I05：文档任务、attempt与终态协调
 

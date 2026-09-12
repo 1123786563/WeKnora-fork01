@@ -1,6 +1,6 @@
 # Semantica 实施台账
 
-状态：V01–C03、I01–I03、A01、A03 verified；其余 13 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
+状态：V01–C03、I01–I04、A01、A03 verified；其余 12 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
 
 状态值 pending / in_progress / blocked / implemented / verified。每项验证记录必须包含commit SHA、精确命令、退出码、环境、产物路径、失败/限制；无真实证据不标记verified。执行前记录实际基线与已有脏文件。
 
@@ -15,7 +15,7 @@
 | I01 | 持久操作、幂等与worker租约 | C02 | verified | 真实 PG（隔离容器）：幂等 accept/冲突检测、SKIP LOCKED 单胜领取、fencing token 失联接管、原子终态、取消 CAS 双向竞争；见运行记录 2026-09-11 I01 |
 | I02 | 业务revision、outbox与授权版本 | C01 | verified | PG96/SQLite17 六表；WithSemanticMutation 单事务（CAS+outbox+deny+epoch）；原子领取/确认/退避；同事务 BumpSemanticEpochTx 供 A01；见运行记录 2026-09-11 I02 |
 | I03 | 有来源的构图与generation原子发布 | C03,I01,I02,A03 | verified | 真实 PG：manifest 持久化/CAS 原子发布（首发布 INSERT ON CONFLICT、同 base 条件 UPDATE，真线程单胜实证）/read lease+续期/staged|publishing 过期可回收；见运行记录 2026-09-11 I03 |
-| I04 | 删除屏障、支持撤销和清理receipt | I03,A01 | pending | 尚未执行 |
+| I04 | 删除屏障、支持撤销和清理receipt | I03,A01 | verified | 真实 PG：单调墓碑（deny 先于物理清理）/多来源撤销（合取前提递归失效）/分存储 receipt（backup 不伪装）/GC 窗口+清单闭包守卫；恢复模式重放归 I05；见运行记录 2026-09-11 I04 |
 | I05 | 文档任务、attempt与终态协调 | I04 | pending | 尚未执行 |
 | A01 | 可信AccessScope与权限变更屏障 | C02,I02 | verified | 11 条 ACL 接线+盘点修正（临时文档豁免实证）；短钥/伪造/漂移/过期均拒绝；完成评审 PASS；见运行记录 2026-09-11 A01（两段）与 acl-write-inventory.md |
 | A02 | 授权事实子图与缓存隔离 | A01,I03,I04 | pending | 尚未执行 |
@@ -203,9 +203,22 @@
 - 提交 SHA：6585ecc（feat(semantic): i03 有来源的构图与generation原子发布）。
 - 剩余限制：图/向量实际抽取适配未接线（Q01/A02 消费 manifest 闭包）；GC 未实现（read lease 保护 API 就绪，I04 落地清理）；operations.py claim/recoverable 扩展影响 I01 行为（回收更多状态——回归 I01 全量测试确认无破坏）。
 
+### 2026-09-11 I04 删除屏障、支持撤销和清理receipt（verified，步骤 6 延后）
+
+- 工作区：.worktrees/semantica（分支 codex/semantica）；基线 SHA：3718a29（I03 回收扩展提交）。
+- 修改文件：semantic/migrations/003_deletion_receipts.sql、semantic/semantic_service/indexing/{deletion.py,gc.py}、semantic/tests/{test_delete_races.py,conftest.py(clean_generations 容缺失表+deletion 清理)}、本台账、02 计划勾选（步骤 6 保持未勾）。
+- RED：`uv run --project semantic python -m pytest semantic/tests/test_delete_races.py -q`（fixture NameError/收集失败→业务断言失败）。
+- 评审修复 RED 三批（全部评审员探针复现→先测后修）：①支持行 PK 漏 revision（同文档高版本支持被 ON CONFLICT 静默丢弃，删除旧版误杀活事实）→ PK 加 support_revision + test_reapplied_higher_revision_restores_visibility；②合取前提语义（A∧B→C 杀 A 后 C 存活——NOT EXISTS any-visible 错）→ EXISTS-a-dead-premise + test_conjunctive_rule_dies_when_any_premise_dies（推导断言由第三方文档支持以隔离前提路径）；③GC 清墓碑复活（仅按时间窗清除，未重建的 active generation 仍供已删行）→ 清除条件加"无任何持久化 manifest 引用该 (doc,revision<=墓碑)"（回滚安全：覆盖全部持久化 generation）+ test_tombstone_sweep_requires_rebuilt_generation（stale manifest 在→0 清除；generation 行删→1 清除）。终审新 MINOR 亦折叠：死后插入的推导断言不再 born-visible（insert 同事务跑 fixpoint + test_derived_inserted_after_premise_death_is_born_invisible）。
+- 其余折叠：visible_assertion 单 SQL 折叠墓碑检查（去 N+1 连接）；重放感知插入（墓碑内支持行存 INVISIBLE——重放事件不可复活已删数据，test_replayed_support_after_delete_stores_invisible）；GCConfig 强制配置（无默认值）；gc.py 文档不再宣称未实现的产物删除；protect() 负例+租约分支测试（pin 后移指针：租约保护→释放即不保护）；实体自有来源删除不牵连他处事实；误导命名测试改名（late apply admitted-but-denied）；_scope 私有属性与死导入清除。
+- GREEN：`uv run --project semantic python -m pytest semantic/tests/test_delete_races.py -q` 17 passed；全量 semantic/tests/ 118 passed 退出码 0（真实服务 PG）。
+- 实测验收：核心断言逐字（删 d1 留 shared-fact、删 d2 去 shared-fact+derived-fact）；墓碑单调（高版本拒低版本、迟到低墓碑不降栏、重建高版本不拒）；多来源（单源删留事实、末源删失效、同名实体他事实存活——含实体自有来源损失场景）；合取前提递归失效（评审员加测深 2 链收敛、多支持前提部分删不过度失效）；receipt 分存储独立推进（半失败 pending 可独立重试、四 store 齐 completed_at、backup 恒 retention_pending 不伪装、mark 幂等 True→False）；GC 窗口 floor=max(retention,replay)且清单闭包守卫（跨租户 manifest 不钉他域墓碑——评审员探针）；重放写入不复活。
+- 计划偏差/延后记录（I05 接线）：①步骤 6 恢复模式（默认不 ready+从 Go 重放 deny/epoch 再开放查询）未实现——checkbox 保持未勾，归 I05 服务编排；②删除操作路由（apply 产生 accepted 操作可被索引 worker 领取；须打标并驱动终态）归 I05；③I03 publisher 的 assert_not_deleted（发布时墓碑拒绝）归 I05；④I01 预存 bug：operations.py:362 load_request 对已解码 JSONB dict 再 json.loads 会崩（评审员探针发现，worker 管道端到端未跑过）归 I05 首要修复。
+- review：规格 PASS（11 项；条件：台账+延后记录+共享 PG 并发写风险——本记录即为；推荐项全折叠：GCConfig 强制/protect 负例+sweep 测试/实体测试加强/…）；质量首轮 FAIL（3 BLOCKER：PK 缺列/合取语义/墓碑清除复活）→ 修复后终审 PASS（三项以原复现场景独立复验+四场景边缘探针；两项新 MINOR：born-visible 已当场折叠修复，共享 DB 修复为带外操作——提交信息注明"已跑过旧 003 的开发库需 DROP semantic.assertions 重建"）；注意共享隔离 PG 有并发写风险（评审期间发现外部 kb-race 命名空间行，运行套件时独占）。
+- 提交 SHA：（本记录与代码同批提交后补记）
+
 ## 当前边界
 
-- V01–C03、I01–I03、A01、A03 verified；后续 13 个任务未开始。
+- V01–C03、I01–I04、A01、A03 verified；后续 12 个任务未开始。
 - V01精确版本已冻结（semantica 0.6.8）；真实模型证据须在后续任务补齐，不是已经通过的前提。
 - V02 结论边界：持久图桥接/授权子图重建/注册规则推导已验证；模型推断 unverified（无凭据，未调用）；向量检索路径未验证。
 - V03 结论边界：semantica 模式检索质量/延迟为受控语料实测；native 对照与模型用量门槛未测（阻断记录见上）；上线门禁 approved=false 待用户确认。

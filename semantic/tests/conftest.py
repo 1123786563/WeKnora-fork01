@@ -29,6 +29,24 @@ DEFAULT_PG_DSN = "postgresql://semantic:semantic@127.0.0.1:15432/semantic_test"
 
 
 @pytest.fixture(scope="session")
+def generation_index_store(pg_dsn):
+    """The I03 IndexStore under a name that never collides with the
+    function-scoped deletion index_store fixture in test_delete_races."""
+    import psycopg
+
+    from semantic_service.indexing.store import IndexStore
+    from semantic_service.operations import apply_migrations
+
+    apply_migrations(pg_dsn)
+    migration = Path(__file__).resolve().parents[1] / "migrations" / "002_generations.sql"
+    with psycopg.connect(pg_dsn) as conn:
+        conn.execute(migration.read_text(encoding="utf-8"))
+        conn.execute("INSERT INTO semantic.schema_migrations (version) VALUES ('002_generations') ON CONFLICT DO NOTHING")
+        conn.commit()
+    return IndexStore(pg_dsn)
+
+
+@pytest.fixture(scope="session")
 def service_pg_dsn(pg_dsn):
     """The SERVICE database (semantic schema) - same isolated container."""
     return pg_dsn
@@ -203,16 +221,22 @@ def complete_manifest():
 def clean_generations(request):
     """Per-test cleanup of generation tables so tests are independent."""
     module_name = getattr(getattr(request, "module", None), "__name__", "") or ""
-    if "test_generation" not in module_name:
+    if "test_generation" not in module_name and "test_delete_races" not in module_name:
         yield
         return
     import psycopg
 
     def _clean():
+        import contextlib
+
         with psycopg.connect(os.environ.get(PG_DSN_ENV, DEFAULT_PG_DSN)) as conn:
-            conn.execute("DELETE FROM semantic.read_leases")
-            conn.execute("DELETE FROM semantic.active_generations")
-            conn.execute("DELETE FROM semantic.generations")
+            # Setup may run before the deletion fixtures (re)create I04
+            # tables - tolerate their absence on the first pass.
+            for table in ("semantic.read_leases", "semantic.active_generations",
+                          "semantic.generations", "semantic.deletion_receipts",
+                          "semantic.tombstones", "semantic.assertions"):
+                with contextlib.suppress(psycopg.errors.UndefinedTable):
+                    conn.execute("DELETE FROM " + table)
             conn.commit()
 
     _clean()
