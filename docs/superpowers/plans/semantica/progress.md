@@ -174,7 +174,7 @@
   3. 临时文档到期：**盘点修正而非接线**——TemporaryDocument 无 KnowledgeBaseID（会话级，types/temporary_document.go:24-48），从不进入知识库/语义索引，到期清理不影响语义可见性；清单结论改为"11 条已接线+1 条豁免+3 条归属后续"。
 - 评审（完成评审，聚焦增量）：PASS 6/6（组织删除顺序变异验证；transfer 判别力变异验证；临时文档豁免对照类型定义实证；清单完备；诚实测试注记成立；全电池绿）。遗留 nits：计数 10→11 与行号 24-38→24-48 已当场修复。
 - GREEN：repository 全量 ok；service 12 项（含 TestTransferBumps）；handler/database 不变绿；build/vet 净。
-- 提交 SHA：（本记录与代码同批提交后补记）
+- 提交 SHA：598f3be（feat(semantic): a01 收尾ACL接线与盘点修正）。
 - 剩余限制：Issue 生产调用方必须经 resolveKBReadTenant 取 owner tenant（Q04 接线强制，已在清单）；快照为 KB 级非 subject 级（A02/Q01 接线时细化）；端到端克隆流 bump 调用点测试为可选后续；内部入口网络隔离归 O01。
 
 ## 当前边界
