@@ -339,3 +339,8 @@
 ## 2026-09-12 Round 68
 
 - settings 面板 i18n 接线实施子代理派发（5 个面板：ConfigSettings/Resource/Ollama/Cloud/PersonalMemory → formatMessage + settings.* 键）。
+
+## 2026-09-12 Round 74
+
+- settings 5 面板 i18n formatMessage 接线完成并集成（ec0da51）：Config(20)/Resource(12)/Ollama(16)/Cloud(12)/PersonalMemory(28) t() 调用点全部使用 settings.* 键。未匹配的 React 专有字符串保留 TODO(migration) 注释。
+- 门禁：typecheck:web 0 错误、web 198/198、shared 310/310 全绿。
