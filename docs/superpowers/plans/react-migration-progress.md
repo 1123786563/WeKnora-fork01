@@ -1346,3 +1346,16 @@
   surface using the existing typed tenant APIs. Focused tests and Web
   typecheck remain green; invitation copy/link variants and the Vue permission
   popover are still open.
+
+### N005 Knowledge-base share dialog follow-up (2026-09-12)
+
+- Added a Web share dialog to manageable knowledge-base cards. It reuses the
+  existing organization/share endpoints for eligible-organization loading,
+  viewer/editor permission selection, current-share listing, confirmed
+  unshare, and list refresh after mutation.
+- Focused share-dialog test passed 1/1, the full Web suite passed 274/274, and
+  the Web typecheck passed. Evidence:
+  `docs/migrations/react/evidence/vue-react-parity/2026-09-12-kb-share-dialog.md`.
+- N005 remains `implementing`: upload-mask/progress linkage, exact Vue visual
+  and localized copy, browser, real-backend, Wails, iOS, and Android evidence
+  remain open.

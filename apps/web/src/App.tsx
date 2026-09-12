@@ -20,6 +20,7 @@ import {
   type KnowledgeBaseListPageState,
   type KnowledgeBaseSaveInput,
 } from './knowledge-bases/list.ts';
+import { KnowledgeBaseShareDialog } from './knowledge-bases/KnowledgeBaseShareDialog.tsx';
 
 interface KnowledgeBasesPageProps {
   client: WeKnoraClient;
@@ -104,6 +105,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
   const [type, setType] = useState<'document' | 'faq'>('document');
   const [embeddingModelId, setEmbeddingModelId] = useState('');
   const [summaryModelId, setSummaryModelId] = useState('');
+  const [sharingKb, setSharingKb] = useState<{ id: string; name: string } | null>(null);
   const [saving, setSaving] = useState(false);
 
   // Delete confirmation dialog state; DELETE fires only after confirm.
@@ -429,6 +431,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
                         <>
                           <Button type="button" onClick={() => openEdit(kb)}>{t('common.edit')}</Button>
                           <Button type="button" onClick={() => openCard(kb)}>{t('common.settings')}</Button>
+                          <Button type="button" onClick={() => setSharingKb({ id: card.id, name: String(card.name ?? '') })}>{t('common.share')}</Button>
                           <Button type="button" className="wk-kb-danger" onClick={() => setDeletingKb({ id: card.id, name: String(card.name ?? '') })}>{t('common.delete')}</Button>
                         </>
                       ) : null}
@@ -479,6 +482,8 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
           <Button type="button" onClick={() => setDeletingKb(null)}>{t('common.cancel')}</Button>
         </div>
       </Dialog>
+
+      <KnowledgeBaseShareDialog client={client} knowledgeBaseId={sharingKb?.id ?? ''} knowledgeBaseName={sharingKb?.name ?? ''} open={sharingKb !== null} onClose={() => setSharingKb(null)} onChanged={() => setReloadToken((value) => value + 1)} />
     </main>
   );
 }
