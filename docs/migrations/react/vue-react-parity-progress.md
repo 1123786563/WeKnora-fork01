@@ -268,3 +268,8 @@
 
 - settings 抽屉 section 标题本地化：SECTION_TITLE_KEYS 映射（models→模型管理 等），live 验证 h2 不再出现英文键名（live-settings-models-title.png）。提交 784b25a。
 - chat UX retry 代理进行中（session-state/message-list/chat-page 等文件持续更新）。
+
+## 2026-09-12 Round 53
+
+- Wails macOS 打包在干净树上复跑成功（含 chat UX 收尾内容），自签名 .app 生成。embed-resume-defect 记录文件追加复跑确认。
+- chat UX retry 代理的工作已于 62a77a9 集成，无遗留未提交内容。
