@@ -23,7 +23,9 @@
     "./chat/message-timestamps": "./src/chat/message-timestamps.ts",
     "./chat/copy-answer": "./src/chat/copy-answer.ts",
     "./chat/session-grouping": "./src/chat/session-grouping.ts",
-    "./sandbox/terminal": "./src/sandbox/terminal.ts"
+    "./sandbox/terminal": "./src/sandbox/terminal.ts",
+    "./settings/local-preferences": "./src/settings/local-preferences.ts",
+    "./settings/local-preferences.test": "./src/settings/local-preferences.test.ts"
   },
   "dependencies": {
     "@weknora/contracts": "workspace:*"

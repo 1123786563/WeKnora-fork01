@@ -15,6 +15,7 @@ export type {
   KnowledgeBaseViewer,
 } from './knowledge/list.ts';
 
+export * from './settings/local-preferences.ts';
 export type { RequestScope } from './scope.ts';
 export { createScopeController } from './scope.ts';
 export type { ScopeController, ScopeHandle, ScopeInput } from './scope.ts';

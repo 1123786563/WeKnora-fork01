@@ -2,7 +2,11 @@
   "compilerOptions": {
     "target": "ES2022",
     "useDefineForClassFields": true,
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "allowJs": false,
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -17,26 +21,66 @@
     "ignoreDeprecations": "6.0",
     "jsx": "react-jsx",
     "allowImportingTsExtensions": true,
-    "types": ["node"],
+    "types": [
+      "node"
+    ],
     "baseUrl": ".",
     "paths": {
-      "@weknora/api-client": ["../../packages/api-client/src/index.ts"],
-      "@weknora/contracts": ["../../packages/contracts/src/index.ts"],
-      "@weknora/domain": ["../../packages/domain/src/query-key.ts"],
-      "@weknora/domain/scope": ["../../packages/domain/src/scope.ts"],
-      "@weknora/domain/chat/reducer": ["../../packages/domain/src/chat/reducer.ts"],
-      "@weknora/domain/chat/session-state": ["../../packages/domain/src/chat/session-state.ts"],
-      "@weknora/domain/chat/message-timestamps": ["../../packages/domain/src/chat/message-timestamps.ts"],
-      "@weknora/domain/chat/copy-answer": ["../../packages/domain/src/chat/copy-answer.ts"],
-      "@weknora/domain/chat/session-grouping": ["../../packages/domain/src/chat/session-grouping.ts"],
-      "@weknora/domain/knowledge/folders": ["../../packages/domain/src/knowledge/folders.ts"],
-      "@weknora/domain/knowledge/processing": ["../../packages/domain/src/knowledge/processing.ts"],
-      "@weknora/domain/knowledge/preview": ["../../packages/domain/src/knowledge/preview.ts"],
-      "@weknora/domain/sandbox/terminal": ["../../packages/domain/src/sandbox/terminal.ts"],
-      "@weknora/domain/wiki/diff": ["../../packages/domain/src/wiki/diff.ts"],
-      "@weknora/ui": ["../../packages/ui/src/index.tsx"],
-      "@weknora/views": ["../../packages/views/src/index.ts"]
+      "@weknora/api-client": [
+        "../../packages/api-client/src/index.ts"
+      ],
+      "@weknora/contracts": [
+        "../../packages/contracts/src/index.ts"
+      ],
+      "@weknora/domain": [
+        "../../packages/domain/src/query-key.ts"
+      ],
+      "@weknora/domain/scope": [
+        "../../packages/domain/src/scope.ts"
+      ],
+      "@weknora/domain/chat/reducer": [
+        "../../packages/domain/src/chat/reducer.ts"
+      ],
+      "@weknora/domain/chat/session-state": [
+        "../../packages/domain/src/chat/session-state.ts"
+      ],
+      "@weknora/domain/chat/message-timestamps": [
+        "../../packages/domain/src/chat/message-timestamps.ts"
+      ],
+      "@weknora/domain/chat/copy-answer": [
+        "../../packages/domain/src/chat/copy-answer.ts"
+      ],
+      "@weknora/domain/chat/session-grouping": [
+        "../../packages/domain/src/chat/session-grouping.ts"
+      ],
+      "@weknora/domain/knowledge/folders": [
+        "../../packages/domain/src/knowledge/folders.ts"
+      ],
+      "@weknora/domain/knowledge/processing": [
+        "../../packages/domain/src/knowledge/processing.ts"
+      ],
+      "@weknora/domain/knowledge/preview": [
+        "../../packages/domain/src/knowledge/preview.ts"
+      ],
+      "@weknora/domain/sandbox/terminal": [
+        "../../packages/domain/src/sandbox/terminal.ts"
+      ],
+      "@weknora/domain/wiki/diff": [
+        "../../packages/domain/src/wiki/diff.ts"
+      ],
+      "@weknora/ui": [
+        "../../packages/ui/src/index.tsx"
+      ],
+      "@weknora/views": [
+        "../../packages/views/src/index.ts"
+      ],
+      "@weknora/domain/settings/local-preferences": [
+        "../../packages/domain/src/settings/local-preferences.ts"
+      ]
     }
   },
-  "include": ["src", "vite.config.ts"]
+  "include": [
+    "src",
+    "vite.config.ts"
+  ]
 }
