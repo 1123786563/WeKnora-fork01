@@ -22,6 +22,13 @@ export interface AgentConfigurationListOptions {
   signal?: AbortSignal;
 }
 
+/** GET /api/v1/agents/:id/suggested-questions (routes_agent.go, Viewer+). */
+export interface AgentSuggestedQuestionsOptions {
+  knowledgeBaseIds?: string[];
+  limit?: number;
+  signal?: AbortSignal;
+}
+
 export interface ModelProvider {
   value: string;
   label: string;
@@ -598,6 +605,23 @@ export function createConfigurationApi(request: (input: ClientRequest) => Promis
         return parseAgentList(await request({
           method: 'GET', path, ...(options.signal === undefined ? {} : { signal: options.signal }),
         }), '/api/v1/agents');
+      },
+      async suggestedQuestions(agentId: string, options: AgentSuggestedQuestionsOptions = {}): Promise<string[]> {
+        if (agentId.trim() === '') throw new Error('agentId must not be empty');
+        const query = new URLSearchParams();
+        if (options.knowledgeBaseIds?.length) query.set('knowledge_base_ids', options.knowledgeBaseIds.join(','));
+        if (options.limit !== undefined && options.limit > 0) query.set('limit', String(options.limit));
+        const suffix = query.toString();
+        const data = successfulData(await request({
+          method: 'GET',
+          path: `/api/v1/agents/${id(agentId, 'agentId')}/suggested-questions${suffix ? `?${suffix}` : ''}`,
+          ...(options.signal === undefined ? {} : { signal: options.signal }),
+        }), '/agents/suggested-questions');
+        const questions = (data as { questions?: unknown }).questions;
+        if (!Array.isArray(questions) || questions.some((item) => typeof item !== 'string')) {
+          throw new Error('/agents/suggested-questions.data.questions must be a string array');
+        }
+        return questions as string[];
       },
     },
     models: {

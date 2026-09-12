@@ -8,6 +8,7 @@ import { ChatPage, type ChatSubmission } from '@weknora/views';
 import type { ScopeController } from '@weknora/domain/scope';
 import { chatSessionIdFromPath } from './session-route.ts';
 import { buildWebChatStreamOptions, initialAgentSelection } from './agent-selection.ts';
+import { loadStarterQuestions } from './starter-questions.ts';
 import { createWebTerminalController, webSocketTarget, type WebTerminalController, type WebTerminalSnapshot } from './terminal.ts';
 import { saveArtifactDownload } from './artifact-download.ts';
 import { externalCitationTarget } from './citation.ts';
@@ -39,6 +40,9 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   const [streamState, setStreamState] = useState(initialChatStreamState);
   const [agents, setAgents] = useState<AgentConfiguration[]>([]);
   const [disabledAgentIds, setDisabledAgentIds] = useState<string[]>([]);
+  // Empty-state suggested questions (creatChat view) come from the selected
+  // agent's suggested-questions surface; absent without an agent selection.
+  const [starterQuestions, setStarterQuestions] = useState<string[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState(() => new URLSearchParams(window.location.search).get('agentId')?.trim() ?? '');
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(() => chatSessionIdFromPath(window.location.pathname));
   const selectedSessionIdRef = useRef(selectedSessionId);
@@ -248,6 +252,20 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       if (terminalController.current === controller) terminalController.current = null;
     };
   }, [apiBaseUrl, client, scope.signal, selectedSessionId]);
+
+  // Reload starters whenever the new-conversation view is shown and the agent
+  // selection changes; failures degrade to an empty list (starter-questions.ts).
+  useEffect(() => {
+    if (selectedSessionId || !selectedAgentId) {
+      setStarterQuestions([]);
+      return;
+    }
+    let active = true;
+    void loadStarterQuestions(client.configuration.agents, selectedSessionId, selectedAgentId, scope.signal).then(
+      (questions) => { if (active) setStarterQuestions(questions); },
+    );
+    return () => { active = false; };
+  }, [client, selectedAgentId, selectedSessionId, scope.signal]);
 
   function selectSession(sessionId: string) {
     chatRunIdRef.current += 1;
@@ -578,6 +596,8 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     agents={agents.map((agent) => ({ id: agent.id, name: agent.name, disabled: disabledAgentIds.includes(agent.id) }))}
     selectedAgentId={selectedAgentId}
     onAgentChange={selectAgent}
+    starterQuestions={starterQuestions}
+    onStarterQuestionClick={(question) => updateDraft(question)}
     toolApprovals={(() => {
       const live = Object.values(streamState.approvals);
       if (live.length > 0) return live;

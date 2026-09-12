@@ -65,6 +65,9 @@ export interface ChatPageProps {
   agents?: readonly ChatAgentOption[];
   selectedAgentId?: string;
   onAgentChange?(agentId: string): void;
+  /** Empty-state suggested questions for the new-conversation view. */
+  starterQuestions?: readonly string[];
+  onStarterQuestionClick?(question: string): void;
   toolApprovals?: readonly ChatToolApprovalPrompt[];
   oauthApprovals?: readonly ChatOAuthApprovalPrompt[];
   onResolveToolApproval?(pendingId: string, decision: 'approve' | 'reject', modifiedArgs?: Record<string, unknown>): Promise<void>;
@@ -285,6 +288,18 @@ export function ChatPage(props: ChatPageProps) {
         </div>
       </header>
       <div className="wk-chat-conversation">
+        {!props.selectedSessionId && (props.starterQuestions?.length ?? 0) > 0 ? (
+          <section className="wk-chat-starters" aria-label="Suggested questions">
+            <p>Suggested questions</p>
+            <ul>
+              {props.starterQuestions!.map((question, index) => (
+                <li key={index}>
+                  <button type="button" onClick={() => props.onStarterQuestionClick?.(question)}>{question}</button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
         <ChatActionCards {...props} />
         {props.stream ? <LiveResponse stream={props.stream} onStopStream={props.onStopStream} /> : null}
         <ReferenceList references={references} activeId={activeCitationId} onActivate={activateCitation} />

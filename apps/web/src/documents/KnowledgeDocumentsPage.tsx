@@ -4,6 +4,8 @@ import { processingStatusLabel, normalizeKnowledgeProcessingStatus } from '@wekn
 import { flattenKnowledgeFolders as flattenFolders } from '@weknora/domain/knowledge/folders';
 import { Button, Card, Dialog, Status } from '@weknora/ui';
 import { createTranslator, useAppLocale } from '../i18n.ts';
+import { formatBytes, runUploadPipeline, toUploadEntries, uploadSummary, type UploadEntry, type UploadEntryState } from './upload-pipeline.ts';
+import './documents.css';
 import { computeKBPermissions, kbTypeRedirectPath, resolveKBSurfaceTabs, type KBSurfaceKB, type KBSurfaceMe } from '../knowledge/permissions.ts';
 import { cancelParseDocuments, documentRowActions, reparseDocument } from './actions.ts';
 import { loadKnowledgeDocuments, type KnowledgeDocumentListState } from './list.ts';
@@ -56,13 +58,19 @@ export function KnowledgeDocumentsPage({ client, knowledgeBaseId, onOpenDocument
   const [moving, setMoving] = useState(false);
   const [moveTarget, setMoveTarget] = useState('');
   const [uploadSource, setUploadSource] = useState<UploadSource>('file');
-  const [file, setFile] = useState<File | null>(null);
+  // Multi-file upload parity: staged files wait behind a confirm dialog
+  // (Vue UploadConfirmDialog) before any upload call is issued.
+  const [pendingEntries, setPendingEntries] = useState<UploadEntry[]>([]);
+  const [pendingTagIds, setPendingTagIds] = useState<string[]>([]);
+  const [uploadStates, setUploadStates] = useState<readonly UploadEntryState[]>([]);
+  const [dragActive, setDragActive] = useState(false);
   const [url, setUrl] = useState('');
   const [manualTitle, setManualTitle] = useState('');
   const [manualContent, setManualContent] = useState('');
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const uploadController = useRef<AbortController | null>(null);
+  const uploadPipelineController = useRef<AbortController | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const pageSize = 20;
 
@@ -125,24 +133,66 @@ export function KnowledgeDocumentsPage({ client, knowledgeBaseId, onOpenDocument
     setSelected((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   }
 
+  function stageFiles(files: Iterable<File>) {
+    const entries = toUploadEntries(files);
+    if (entries.length === 0) return;
+    setPendingEntries(entries);
+    setUploadStates([]);
+    setUploadError(null);
+  }
+
+  function cancelStagedUploads() {
+    uploadPipelineController.current?.abort();
+    uploadPipelineController.current = null;
+    setPendingEntries([]); setPendingTagIds([]); setUploadStates([]); setUploading(false);
+  }
+
+  // Sequential uploads (one call per file) with per-file status; a per-file
+  // failure keeps the dialog open so the errors stay visible (Vue parity).
+  async function confirmUpload() {
+    if (pendingEntries.length === 0) return;
+    setUploadError(null);
+    setUploading(true);
+    const controller = new AbortController();
+    uploadPipelineController.current = controller;
+    try {
+      const finalStates = await runUploadPipeline({
+        entries: pendingEntries,
+        tagIds: pendingTagIds,
+        signal: controller.signal,
+        upload: (entry, tagIds, signal) => client.knowledgeBases.documents.upload(
+          knowledgeBaseId, { file: entry.file, fileName: entry.name, tag_ids: tagIds }, signal,
+        ),
+        onStateChange: setUploadStates,
+      });
+      setReloadToken((value) => value + 1);
+      if (finalStates.some((state) => state.status === 'error')) return;
+      setPendingEntries([]); setPendingTagIds([]); setUploadStates([]);
+    } catch (error) { setUploadError(errorMessage(error)); }
+    finally { if (uploadPipelineController.current === controller) uploadPipelineController.current = null; setUploading(false); }
+  }
+
   async function upload(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setUploadError(null);
+    if (uploadSource === 'file') {
+      // Files already staged by the input/dropzone: the confirm dialog owns them.
+      if (pendingEntries.length > 0) return;
+      setUploadError(t('knowledgeBase.documents.file'));
+      return;
+    }
     setUploading(true);
     const controller = new AbortController();
     uploadController.current = controller;
     try {
-      if (uploadSource === 'file') {
-        if (!file) throw new Error(t('knowledgeBase.documents.file'));
-        await client.knowledgeBases.documents.upload(knowledgeBaseId, { file, fileName: file.name }, controller.signal);
-      } else if (uploadSource === 'url') {
+      if (uploadSource === 'url') {
         if (!url.trim()) throw new Error(t('knowledgeBase.documents.url'));
         await client.knowledgeBases.documents.createFromUrl(knowledgeBaseId, { url: url.trim() });
       } else {
         if (!manualTitle.trim() || !manualContent.trim()) throw new Error(t('knowledgeBase.documents.manualTitle'));
         await client.knowledgeBases.documents.createManual(knowledgeBaseId, { title: manualTitle.trim(), content: manualContent, status: 'pending' });
       }
-      setFile(null); setUrl(''); setManualTitle(''); setManualContent(''); setReloadToken((value) => value + 1);
+      setUrl(''); setManualTitle(''); setManualContent(''); setReloadToken((value) => value + 1);
     } catch (error) { setUploadError(errorMessage(error)); }
     finally { if (uploadController.current === controller) uploadController.current = null; setUploading(false); }
   }
@@ -216,14 +266,18 @@ export function KnowledgeDocumentsPage({ client, knowledgeBaseId, onOpenDocument
     <Card>
       {canContribute ? <form className="wk-upload-panel" onSubmit={upload}>
         <div className="wk-toolbar"><label>{t('knowledgeBase.documents.source')} <select value={uploadSource} onChange={(event) => setUploadSource(event.target.value as UploadSource)}><option value="file">{t('knowledgeBase.documents.sourceFile')}</option><option value="url">{t('knowledgeBase.documents.sourceUrl')}</option><option value="manual">{t('knowledgeBase.documents.sourceManual')}</option></select></label>
-          {uploadSource === 'file' ? <label>{t('knowledgeBase.documents.file')} <input type="file" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /></label> : null}
+          {uploadSource === 'file' ? <label>{t('knowledgeBase.documents.file')} <input type="file" multiple onChange={(event) => { stageFiles(event.target.files ?? []); event.target.value = ''; }} /></label> : null}
           {uploadSource === 'url' ? <label>{t('knowledgeBase.documents.url')} <input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://…" /></label> : null}
           {uploadSource === 'manual' ? <><label>{t('knowledgeBase.documents.manualTitle')} <input value={manualTitle} onChange={(event) => setManualTitle(event.target.value)} /></label><label>{t('knowledgeBase.documents.manualContent')} <textarea value={manualContent} onChange={(event) => setManualContent(event.target.value)} rows={2} /></label></> : null}
           <Button type="submit" loading={uploading}>{uploadSource === 'file' ? t('knowledgeBase.documents.uploadFile') : uploadSource === 'url' ? t('knowledgeBase.documents.importUrl') : t('knowledgeBase.documents.createDocument')}</Button>{uploading ? <Button type="button" onClick={() => uploadController.current?.abort()}>{t('knowledgeBase.documents.cancel')}</Button> : null}
         </div>
         {uploadError ? <Status tone="error">{uploadError}</Status> : null}
       </form> : null}
-      <div className="wk-documents-layout">
+      <div className={dragActive && canContribute ? 'wk-documents-layout wk-dropzone is-active' : 'wk-documents-layout wk-dropzone'}
+        onDragOver={canContribute ? (event) => { event.preventDefault(); setDragActive(true); } : undefined}
+        onDragLeave={canContribute ? () => setDragActive(false) : undefined}
+        onDrop={canContribute ? (event) => { event.preventDefault(); setDragActive(false); stageFiles(event.dataTransfer.files); } : undefined}>
+        {dragActive && canContribute ? <p className="wk-dropzone-hint" role="status">Drop files to stage them for upload</p> : null}
         <aside className="wk-folder-panel"><strong>{t('knowledgeBase.documents.folders')}</strong>{folderState.status === 'loading' ? <Status>{t('knowledgeBase.documents.loadingFolders')}</Status> : null}{folderState.status === 'error' ? <Status tone="error">{folderState.message}</Status> : null}<ul className="wk-folder-list">{folders.map((folder) => <li key={folder.path} style={{ paddingLeft: `${folder.depth * 0.8}rem` }}><button type="button" className={folderPath === (folder.path || undefined) ? 'is-active' : ''} onClick={() => setFolderPath(folder.path || undefined)}>{folder.name} <span>{folder.total_count}</span></button></li>)}</ul></aside>
         <section className="wk-document-results">
           <div className="wk-toolbar" role="search"><label>{t('knowledgeBase.documents.search')} <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('knowledgeBase.documents.searchPlaceholder')} /></label><label>{t('knowledgeBase.documents.status')} <select value={parseStatus} onChange={(event) => setParseStatus(event.target.value)}><option value="">{t('knowledgeBase.documents.allStatuses')}</option><option value="pending">Pending</option><option value="processing">Processing</option><option value="finalizing">Finalizing</option><option value="completed">Completed</option><option value="failed">Failed</option><option value="deleting">Deleting</option><option value="cancelled">Cancelled</option></select></label><label>{t('knowledgeBase.documents.tag')} <select value={tagId} onChange={(event) => setTagId(event.target.value)}><option value="">{t('knowledgeBase.documents.allTags')}</option>{tags.map((tag) => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</select></label></div>
@@ -241,6 +295,29 @@ export function KnowledgeDocumentsPage({ client, knowledgeBaseId, onOpenDocument
         </section>
       </div>
     </Card>
+    {pendingEntries.length > 0 && canContribute ? <Dialog open title="Confirm upload" onClose={cancelStagedUploads}>
+      <p className="wk-upload-confirm-summary">{uploadSummary(pendingEntries).count} file(s), {uploadSummary(pendingEntries).totalLabel} total. Large files are chunked server-side using the knowledge base chunk configuration.</p>
+      <ul className="wk-upload-confirm-files">
+        {pendingEntries.map((entry, index) => {
+          const state = uploadStates[index];
+          return <li key={entry.name + index}>
+            <span>{entry.name}</span>
+            <span>{formatBytes(entry.size)}</span>
+            <Status tone={state?.status === 'done' ? 'success' : state?.status === 'error' ? 'error' : state?.status === 'uploading' ? 'warning' : 'neutral'}>
+              {state?.status === 'done' ? 'Uploaded' : state?.status === 'error' ? state.message ?? 'Failed' : state?.status === 'uploading' ? 'Uploading…' : 'Pending'}
+            </Status>
+          </li>;
+        })}
+      </ul>
+      <label className="wk-upload-confirm-tags">Tags <select multiple value={pendingTagIds} onChange={(event) => setPendingTagIds(Array.from(event.target.selectedOptions).map((option) => option.value))}>
+        {tags.map((tag) => <option key={tag.id} value={tag.id}>{tag.name}</option>)}
+      </select></label>
+      {uploadError ? <Status tone="error">{uploadError}</Status> : null}
+      <div className="wk-list-actions">
+        <Button type="button" loading={uploading} onClick={() => void confirmUpload()}>Upload {pendingEntries.length} file(s)</Button>
+        <Button type="button" onClick={cancelStagedUploads}>{t('knowledgeBase.documents.cancel')}</Button>
+      </div>
+    </Dialog> : null}
     {confirmingDelete && canContribute ? <Dialog open title={t('knowledgeBase.documents.delete')} onClose={() => setConfirmingDelete(false)}><p>{t('knowledgeBase.documents.selectedTotal', { count: selected.size })}</p><div className="wk-list-actions"><Button type="button" onClick={() => void deleteSelected()}>{t('knowledgeBase.documents.delete')}</Button><Button type="button" onClick={() => setConfirmingDelete(false)}>{t('knowledgeBase.documents.cancel')}</Button></div></Dialog> : null}
   </main>;
 }

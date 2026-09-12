@@ -95,3 +95,118 @@ test('chat page shows the artifacts-pending indicator only while streaming', () 
   assert.match(html, /Artifacts pending/);
   assert.match(html, /Status: streaming/);
 });
+test('new-conversation view renders the agent picker and the agent suggested questions', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatPage, {
+    sessions: [],
+    selectedSessionId: null,
+    messages: [],
+    draft: '',
+    onSelectSession: () => undefined,
+    onCreateSession: () => undefined,
+    onDraftChange: () => undefined,
+    send: async () => undefined,
+    agents: [{ id: 'agent-1', name: 'Research' }, { id: 'agent-2', name: 'Disabled agent', disabled: true }],
+    selectedAgentId: 'agent-1',
+    onAgentChange: () => undefined,
+    starterQuestions: ['What is WeKnora?', 'How do I upload files?'],
+    onStarterQuestionClick: () => undefined,
+  }));
+  // Agent picker (Vue AgentSelector semantics) renders the available agents.
+  assert.match(html, /id="wk-chat-agent"/);
+  assert.match(html, /value="agent-1"/);
+  assert.match(html, /Research/);
+  assert.match(html, /value="agent-2"/);
+  assert.match(html, /Disabled agent · disabled/);
+  // Empty-state starters from GET /api/v1/agents/:id/suggested-questions.
+  assert.match(html, /wk-chat-starters/);
+  assert.match(html, /Suggested questions/);
+  assert.match(html, /What is WeKnora?/);
+  assert.match(html, /How do I upload files?/);
+});
+
+test('new-conversation view renders no starters block without agent suggestions', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatPage, {
+    sessions: [],
+    selectedSessionId: null,
+    messages: [],
+    draft: '',
+    onSelectSession: () => undefined,
+    onCreateSession: () => undefined,
+    onDraftChange: () => undefined,
+    send: async () => undefined,
+    starterQuestions: [],
+  }));
+  assert.doesNotMatch(html, /wk-chat-starters/);
+});
+
+test('starters are hidden once a session is open (message suggestions own that state)', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatPage, {
+    sessions: [{ id: 'session-1', title: 'Chat', is_pinned: false }],
+    selectedSessionId: 'session-1',
+    messages: [],
+    draft: '',
+    onSelectSession: () => undefined,
+    onCreateSession: () => undefined,
+    onDraftChange: () => undefined,
+    send: async () => undefined,
+    starterQuestions: ['What is WeKnora?'],
+  }));
+  assert.doesNotMatch(html, /wk-chat-starters/);
+});
+
+test('new-conversation view renders the agent picker and the agent suggested questions', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatPage, {
+    sessions: [],
+    selectedSessionId: null,
+    messages: [],
+    draft: '',
+    onSelectSession: () => undefined,
+    onCreateSession: () => undefined,
+    onDraftChange: () => undefined,
+    send: async () => undefined,
+    agents: [{ id: 'agent-1', name: 'Research' }, { id: 'agent-2', name: 'Disabled agent', disabled: true }],
+    selectedAgentId: 'agent-1',
+    onAgentChange: () => undefined,
+    starterQuestions: ['What is WeKnora?', 'How do I upload files?'],
+    onStarterQuestionClick: () => undefined,
+  }));
+  assert.match(html, /id="wk-chat-agent"/);
+  assert.match(html, /value="agent-1"/);
+  assert.match(html, /Research/);
+  assert.match(html, /value="agent-2"/);
+  assert.match(html, /Disabled agent · disabled/);
+  assert.match(html, /wk-chat-starters/);
+  assert.match(html, /Suggested questions/);
+  assert.match(html, /What is WeKnora?/);
+  assert.match(html, /How do I upload files?/);
+});
+
+test('new-conversation view renders no starters block without agent suggestions', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatPage, {
+    sessions: [],
+    selectedSessionId: null,
+    messages: [],
+    draft: '',
+    onSelectSession: () => undefined,
+    onCreateSession: () => undefined,
+    onDraftChange: () => undefined,
+    send: async () => undefined,
+    starterQuestions: [],
+  }));
+  assert.doesNotMatch(html, /wk-chat-starters/);
+});
+
+test('starters are hidden once a session is open (message suggestions own that state)', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatPage, {
+    sessions: [{ id: 'session-1', title: 'Chat', is_pinned: false }],
+    selectedSessionId: 'session-1',
+    messages: [],
+    draft: '',
+    onSelectSession: () => undefined,
+    onCreateSession: () => undefined,
+    onDraftChange: () => undefined,
+    send: async () => undefined,
+    starterQuestions: ['What is WeKnora?'],
+  }));
+  assert.doesNotMatch(html, /wk-chat-starters/);
+});
