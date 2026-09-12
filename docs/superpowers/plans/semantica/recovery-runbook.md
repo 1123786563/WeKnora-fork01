@@ -1,6 +1,8 @@
 # 恢复手册（O02）
 
-## 快照恢复四步（代码即 RecoveryHarness）
+## 快照恢复四步（RecoveryHarness 语义，如实）
+
+> **如实边界**：演练中的"重放当前拒绝"从**服务侧墓碑权威**重推导可见性（断言行按墓碑置不可见）。生产接线中该步应由 Go 权威重放 deny/epoch（I04 屏障 + A01 epoch）——Go 侧重放编排归 O03 验收环境；维护模式在演练夹具中拒绝查询（readiness 门），生产 readiness 门已就绪（O01 server_entry /ready fail-closed）。
 
 ```
 restore_persistent_artifacts(snapshot)   # 断言支持行恢复；墓碑不回滚

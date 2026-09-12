@@ -98,6 +98,8 @@ class RecoveryHarness:
             value=document_id, support_document_id=document_id, support_revision=revision)
 
     def query(self, query_text: str) -> "QueryOutcome":
+        if not self.ready():
+            raise RuntimeError("semantic service in maintenance: queries refused until denials replayed")
         graph = PgAccessGraph(self._dsn, SCOPE, self._deletion)
         allowed = self._visible_documents()
         # Seed by alias matches AND assertions whose subject entity name

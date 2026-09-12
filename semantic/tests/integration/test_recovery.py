@@ -14,9 +14,12 @@ def test_restore_replays_denials_before_ready(recovery):
 
 
 def test_maintenance_mode_blocks_queries_semantically(recovery):
-    # Simulate restore-in-progress: denials NOT yet replayed.
+    # Restore-in-progress: denials NOT yet replayed - queries REFUSED.
     recovery.set_maintenance(True)
     assert recovery.ready() is False
+    import pytest
+    with pytest.raises(RuntimeError, match="maintenance"):
+        recovery.query("甲公司")
 
 
 def test_denied_document_never_visible_after_delete(recovery):
@@ -33,19 +36,13 @@ def test_surviving_document_stays_visible(recovery):
 
 def test_restore_with_new_deletion_keeps_barrier(recovery):
     """A deletion committed AFTER the snapshot survives the restore:
-    the tombstone is authoritative (Go replay), never resurrected."""
+    the tombstone is authoritative, never resurrected."""
     snapshot = recovery.snapshot()
     recovery.delete_document("d1", revision=2)
-    # Restoring the pre-delete snapshot must NOT resurrect d1: the business
-    # deny authority (tombstone) survives snapshot restore.
-    with psycopg_connect() as conn:
-        pass  # tombstones survive by design in restore_snapshot
+    # ACTUALLY restore the pre-delete assertion snapshot: the tombstone
+    # (deny authority) survives, so the restore must NOT resurrect d1.
+    recovery.restore_snapshot(snapshot)
+    recovery.replay_current_denials()
+    assert recovery.ready() is True
     outcome = recovery.query("甲公司")
-    assert "d1" not in outcome.document_ids
-
-
-def psycopg_connect():
-    import os
-    import psycopg
-    dsn = os.environ.get("SEMANTIC_TEST_PG_DSN", "postgresql://semantic:semantic@127.0.0.1:15432/semantic_test")
-    return psycopg.connect(dsn)
+    assert "d1" not in outcome.document_ids, "post-snapshot deletion survives restore"

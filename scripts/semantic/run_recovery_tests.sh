@@ -10,4 +10,8 @@ if ! uv run --project semantic python -c "import psycopg; psycopg.connect('$DSN'
   exit 1
 fi
 
-exec uv run --project semantic python -m pytest semantic/tests/integration -q "${1:-}"
+if [ $# -gt 0 ]; then
+  exec uv run --project semantic python -m pytest "$@"
+else
+  exec uv run --project semantic python -m pytest semantic/tests/integration -q
+fi

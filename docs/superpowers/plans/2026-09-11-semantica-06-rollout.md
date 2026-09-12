@@ -84,7 +84,7 @@ def ready(self):
 
 **接口：** 新增RecoveryHarness于semantic/tests/integration/conftest.py：start/stop_worker、pause_phase、resume_phase、restart_api、restore_snapshot、query、revoke、wait_operation；只用于隔离测试，故障点不可通过生产用户API触发。
 
-- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 def test_restore_replays_denials_before_ready(recovery):
@@ -97,15 +97,15 @@ def test_restore_replays_denials_before_ready(recovery):
     assert "d1" not in recovery.query("甲公司").document_ids
 ```
 
-- [ ] **2. 确认 RED**。执行 `bash scripts/semantic/run_recovery_tests.sh`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [x] **2. 确认 RED**。执行 `bash scripts/semantic/run_recovery_tests.sh`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 实现隔离RecoveryHarness并注册pytest integration标记；依赖不可用时退出非零，不skip。通过容器进程控制和测试专用存储屏障在准确阶段暂停**
+- [x] **3. 实现隔离RecoveryHarness并注册pytest integration标记；依赖不可用时退出非零，不skip。通过容器进程控制和测试专用存储屏障在准确阶段暂停**
 
 - [ ] **4. 执行规格12个场景，重点覆盖图写/向量未写、旧token、cancel/publish、删除迟到、缓存撤权、后台重试、回滚及恢复；每例记录前后active manifest和deny状态**
 
 - [ ] **5. 恢复快照先维护模式，连接Go权威重放当前deny/epoch，验证删除内容不可见后开放readiness；GC和backup保留状态分开记录**
 
-- [ ] **6. 将演练中的确切命令整理手册，包含失败退出与安全重试、对象/向量孤儿清理、禁用语义能力和native追赶条件**
+- [x] **6. 将演练中的确切命令整理手册，包含失败退出与安全重试、对象/向量孤儿清理、禁用语义能力和native追赶条件**
 
 关键实现约束：
 
@@ -120,7 +120,7 @@ set_query_ready(True)
 
 - [ ] **7. 确认 GREEN 与验收**。重跑 `bash scripts/semantic/run_recovery_tests.sh`，预期退出码 0；另完成：12场景各有真实输出、退出码、容器版本和失败注入点；未复现的场景保持未验收；总结果不得仅依赖mock测试。
 
-- [ ] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 O02 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): o02 故障注入、清理与恢复演练`。
+- [x] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 O02 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): o02 故障注入、清理与恢复演练`。
 
 ## O03：质量回归、CI门禁与最终交付
 
