@@ -816,15 +816,17 @@ func (x *Operation) GetErrorCode() string {
 }
 
 type Evidence struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	EvidenceId    string                 `protobuf:"bytes,1,opt,name=evidence_id,json=evidenceId,proto3" json:"evidence_id,omitempty"`
-	DocumentId    string                 `protobuf:"bytes,2,opt,name=document_id,json=documentId,proto3" json:"document_id,omitempty"`
-	Revision      uint64                 `protobuf:"varint,3,opt,name=revision,proto3" json:"revision,omitempty"`
-	ChunkId       string                 `protobuf:"bytes,4,opt,name=chunk_id,json=chunkId,proto3" json:"chunk_id,omitempty"`
-	ContentHash   string                 `protobuf:"bytes,5,opt,name=content_hash,json=contentHash,proto3" json:"content_hash,omitempty"`
-	Quote         string                 `protobuf:"bytes,6,opt,name=quote,proto3" json:"quote,omitempty"`
-	StartChar     *uint32                `protobuf:"varint,7,opt,name=start_char,json=startChar,proto3,oneof" json:"start_char,omitempty"`
-	EndChar       *uint32                `protobuf:"varint,8,opt,name=end_char,json=endChar,proto3,oneof" json:"end_char,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	EvidenceId  string                 `protobuf:"bytes,1,opt,name=evidence_id,json=evidenceId,proto3" json:"evidence_id,omitempty"`
+	DocumentId  string                 `protobuf:"bytes,2,opt,name=document_id,json=documentId,proto3" json:"document_id,omitempty"`
+	Revision    uint64                 `protobuf:"varint,3,opt,name=revision,proto3" json:"revision,omitempty"`
+	ChunkId     string                 `protobuf:"bytes,4,opt,name=chunk_id,json=chunkId,proto3" json:"chunk_id,omitempty"`
+	ContentHash string                 `protobuf:"bytes,5,opt,name=content_hash,json=contentHash,proto3" json:"content_hash,omitempty"`
+	Quote       string                 `protobuf:"bytes,6,opt,name=quote,proto3" json:"quote,omitempty"`
+	StartChar   *uint32                `protobuf:"varint,7,opt,name=start_char,json=startChar,proto3,oneof" json:"start_char,omitempty"`
+	EndChar     *uint32                `protobuf:"varint,8,opt,name=end_char,json=endChar,proto3,oneof" json:"end_char,omitempty"`
+	// Q01: assertions this evidence item supports (source protocol).
+	AssertionIds  []string `protobuf:"bytes,9,rep,name=assertion_ids,json=assertionIds,proto3" json:"assertion_ids,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -913,6 +915,13 @@ func (x *Evidence) GetEndChar() uint32 {
 		return *x.EndChar
 	}
 	return 0
+}
+
+func (x *Evidence) GetAssertionIds() []string {
+	if x != nil {
+		return x.AssertionIds
+	}
+	return nil
 }
 
 type Assertion struct {
@@ -1050,8 +1059,12 @@ type AccessScope struct {
 	Audience        string                 `protobuf:"bytes,7,opt,name=audience,proto3" json:"audience,omitempty"`
 	Purpose         AccessScope_Purpose    `protobuf:"varint,8,opt,name=purpose,proto3,enum=weknora.semantic.v1.AccessScope_Purpose" json:"purpose,omitempty"`
 	BudgetRef       string                 `protobuf:"bytes,9,opt,name=budget_ref,json=budgetRef,proto3" json:"budget_ref,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Q01: the resolved allowed document set for this search. The business
+	// side (Go) resolves the A01 scope snapshot and forwards it; the
+	// service never expands the set on its own.
+	AllowedDocumentIds []string `protobuf:"bytes,10,rep,name=allowed_document_ids,json=allowedDocumentIds,proto3" json:"allowed_document_ids,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *AccessScope) Reset() {
@@ -1147,14 +1160,23 @@ func (x *AccessScope) GetBudgetRef() string {
 	return ""
 }
 
+func (x *AccessScope) GetAllowedDocumentIds() []string {
+	if x != nil {
+		return x.AllowedDocumentIds
+	}
+	return nil
+}
+
 type QueryLimits struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	MaxHops       uint32                 `protobuf:"varint,1,opt,name=max_hops,json=maxHops,proto3" json:"max_hops,omitempty"`
-	MaxNodes      uint32                 `protobuf:"varint,2,opt,name=max_nodes,json=maxNodes,proto3" json:"max_nodes,omitempty"`
-	MaxEdges      uint32                 `protobuf:"varint,3,opt,name=max_edges,json=maxEdges,proto3" json:"max_edges,omitempty"`
-	TopK          uint32                 `protobuf:"varint,4,opt,name=top_k,json=topK,proto3" json:"top_k,omitempty"`
-	MaxTokens     uint32                 `protobuf:"varint,5,opt,name=max_tokens,json=maxTokens,proto3" json:"max_tokens,omitempty"`
-	DeadlineMs    uint32                 `protobuf:"varint,6,opt,name=deadline_ms,json=deadlineMs,proto3" json:"deadline_ms,omitempty"`
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	MaxHops    uint32                 `protobuf:"varint,1,opt,name=max_hops,json=maxHops,proto3" json:"max_hops,omitempty"`
+	MaxNodes   uint32                 `protobuf:"varint,2,opt,name=max_nodes,json=maxNodes,proto3" json:"max_nodes,omitempty"`
+	MaxEdges   uint32                 `protobuf:"varint,3,opt,name=max_edges,json=maxEdges,proto3" json:"max_edges,omitempty"`
+	TopK       uint32                 `protobuf:"varint,4,opt,name=top_k,json=topK,proto3" json:"top_k,omitempty"`
+	MaxTokens  uint32                 `protobuf:"varint,5,opt,name=max_tokens,json=maxTokens,proto3" json:"max_tokens,omitempty"`
+	DeadlineMs uint32                 `protobuf:"varint,6,opt,name=deadline_ms,json=deadlineMs,proto3" json:"deadline_ms,omitempty"`
+	// Q01 addition: appended AFTER the released fields - never renumber.
+	MaxEvidence   uint32 `protobuf:"varint,7,opt,name=max_evidence,json=maxEvidence,proto3" json:"max_evidence,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1227,6 +1249,13 @@ func (x *QueryLimits) GetMaxTokens() uint32 {
 func (x *QueryLimits) GetDeadlineMs() uint32 {
 	if x != nil {
 		return x.DeadlineMs
+	}
+	return 0
+}
+
+func (x *QueryLimits) GetMaxEvidence() uint32 {
+	if x != nil {
+		return x.MaxEvidence
 	}
 	return 0
 }
@@ -2111,7 +2140,7 @@ const file_semantic_proto_rawDesc = "" +
 	"\x19OPERATION_STATE_CANCELLED\x10\a\x12\x1e\n" +
 	"\x1aOPERATION_STATE_SUPERSEDED\x10\bB\x14\n" +
 	"\x12_result_generationB\r\n" +
-	"\v_error_code\"\x9c\x02\n" +
+	"\v_error_code\"\xc1\x02\n" +
 	"\bEvidence\x12\x1f\n" +
 	"\vevidence_id\x18\x01 \x01(\tR\n" +
 	"evidenceId\x12\x1f\n" +
@@ -2123,7 +2152,8 @@ const file_semantic_proto_rawDesc = "" +
 	"\x05quote\x18\x06 \x01(\tR\x05quote\x12\"\n" +
 	"\n" +
 	"start_char\x18\a \x01(\rH\x00R\tstartChar\x88\x01\x01\x12\x1e\n" +
-	"\bend_char\x18\b \x01(\rH\x01R\aendChar\x88\x01\x01B\r\n" +
+	"\bend_char\x18\b \x01(\rH\x01R\aendChar\x88\x01\x01\x12#\n" +
+	"\rassertion_ids\x18\t \x03(\tR\fassertionIdsB\r\n" +
 	"\v_start_charB\v\n" +
 	"\t_end_char\"\xa9\x04\n" +
 	"\tAssertion\x12!\n" +
@@ -2153,7 +2183,7 @@ const file_semantic_proto_rawDesc = "" +
 	"_object_idB\b\n" +
 	"\x06_valueB\r\n" +
 	"\v_valid_fromB\x0e\n" +
-	"\f_valid_until\"\xc5\x03\n" +
+	"\f_valid_until\"\xf7\x03\n" +
 	"\vAccessScope\x123\n" +
 	"\x05scope\x18\x01 \x01(\v2\x1d.weknora.semantic.v1.ScopeKeyR\x05scope\x12\x1d\n" +
 	"\n" +
@@ -2167,12 +2197,14 @@ const file_semantic_proto_rawDesc = "" +
 	"\baudience\x18\a \x01(\tR\baudience\x12B\n" +
 	"\apurpose\x18\b \x01(\x0e2(.weknora.semantic.v1.AccessScope.PurposeR\apurpose\x12\x1d\n" +
 	"\n" +
-	"budget_ref\x18\t \x01(\tR\tbudgetRef\"]\n" +
+	"budget_ref\x18\t \x01(\tR\tbudgetRef\x120\n" +
+	"\x14allowed_document_ids\x18\n" +
+	" \x03(\tR\x12allowedDocumentIds\"]\n" +
 	"\aPurpose\x12\x17\n" +
 	"\x13PURPOSE_UNSPECIFIED\x10\x00\x12\x12\n" +
 	"\x0ePURPOSE_SEARCH\x10\x01\x12\x12\n" +
 	"\x0ePURPOSE_REASON\x10\x02\x12\x11\n" +
-	"\rPURPOSE_INDEX\x10\x03\"\xb7\x01\n" +
+	"\rPURPOSE_INDEX\x10\x03\"\xda\x01\n" +
 	"\vQueryLimits\x12\x19\n" +
 	"\bmax_hops\x18\x01 \x01(\rR\amaxHops\x12\x1b\n" +
 	"\tmax_nodes\x18\x02 \x01(\rR\bmaxNodes\x12\x1b\n" +
@@ -2181,7 +2213,8 @@ const file_semantic_proto_rawDesc = "" +
 	"\n" +
 	"max_tokens\x18\x05 \x01(\rR\tmaxTokens\x12\x1f\n" +
 	"\vdeadline_ms\x18\x06 \x01(\rR\n" +
-	"deadlineMs\"\x8f\x02\n" +
+	"deadlineMs\x12!\n" +
+	"\fmax_evidence\x18\a \x01(\rR\vmaxEvidence\"\x8f\x02\n" +
 	"\rSearchRequest\x12:\n" +
 	"\x06header\x18\x01 \x01(\v2\".weknora.semantic.v1.RequestHeaderR\x06header\x12\x19\n" +
 	"\bquery_id\x18\x02 \x01(\tR\aqueryId\x12\x14\n" +

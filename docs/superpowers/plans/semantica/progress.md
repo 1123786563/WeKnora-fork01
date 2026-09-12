@@ -1,6 +1,6 @@
 # Semantica 实施台账
 
-状态：V01–C03、I01–I05、A01–A03 verified（I05 为 Go 协调切片；A02 含 Q01 延后项）；其余 11 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
+状态：V01–C03、I01–I05、A01–A03、Q01 verified（I05 Go 协调切片；Q01 deadline 中止开放）；其余 10 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
 
 状态值 pending / in_progress / blocked / implemented / verified。每项验证记录必须包含commit SHA、精确命令、退出码、环境、产物路径、失败/限制；无真实证据不标记verified。执行前记录实际基线与已有脏文件。
 
@@ -20,7 +20,7 @@
 | A01 | 可信AccessScope与权限变更屏障 | C02,I02 | verified | 11 条 ACL 接线+盘点修正（临时文档豁免实证）；短钥/伪造/漂移/过期均拒绝；完成评审 PASS；见运行记录 2026-09-11 A01（两段）与 acl-write-inventory.md |
 | A02 | 授权事实子图与缓存隔离 | A01,I03,I04 | verified | 真实 PG：授权先行可见性（合取前提/环安全/记忆化）/真实库有界子图游走（隐藏不入路径）/scope+epoch 分区缓存；向量过滤与排序重算延后 Q01；见运行记录 2026-09-11 A02 |
 | A03 | 模型代理、原始用量与预算 | C02,I01,A01 | verified | 原子预算准入/幂等台账/unknown对账/新ID重试/受控入口（PG并发与死上下文实证）；无凭据真实调用保持未通过；见运行记录 2026-09-11 A03 |
-| Q01 | GraphRAG检索与有界执行 | A02,V03 | pending | 尚未执行 |
+| Q01 | GraphRAG检索与有界执行 | A02,V03 | verified | 真实 PG+真实 gRPC：租约固定 generation/授权子图检索/来源校验（断言+证据双验）/模式诚实/证据稳定去重排序；deadline 中止开放；见运行记录 2026-09-11 Q01 |
 | Q02 | 注册规则与可核验推导 | Q01 | pending | 尚未执行 |
 | Q03 | 模型推断与证据不足判定 | Q01,A03,V03 | pending | 尚未执行 |
 | Q04 | Go检索融合、Agent工具与最终授权 | Q02,Q03,I05 | pending | 尚未执行 |
@@ -242,9 +242,22 @@
 - review：规格首轮 FAIL（2 BLOCKER：fail-open 存根/真实库游走缺失）→ 修复后 PASS（条件：台账延后记录+authorize 测试——均已补）；质量共三轮 FAIL→PASS：首轮 3 BLOCKER（组合缺失/节点上限/指数爆炸，探针实证）；终审一轮发现记忆化回归（环图 False 污染——评审员 400 随机图属性测试 2/400 错判+最小复现）→ 污染追踪修复（True 无条件缓存/False 仅未受环守卫污染时缓存）；再审一轮发现 set-len 幂等漏洞（守卫对已记录 id 重触发 len 不变——20,000 图 1 错判+trial-7857 复现）→ 单调计数器修复；终验 PASS：评审员以 70,000 随机环图（20k+50k 两种子）+行序敏感性 0 错判、性能全 O(n)（钻石 d=20→39 调用/环钻石 d=22→22 调用/Fibonacci d=30→31 调用）实证收敛；两复现均保留为测试（trial-94/trial-7857）。
 - 提交 SHA：59a8eb9（feat）+ 5883ecf（fix 记忆化环安全——评审三轮修复）。
 
+### 2026-09-11 Q01 GraphRAG检索与有界执行（verified，deadline 中止开放）
+
+- 工作区：.worktrees/semantica（分支 codex/semantica）；基线 SHA：45b2ac9（A02 修复台账提交）。
+- 修改文件：semantic/proto/semantic.proto（**只追加**：AccessScope.allowed_document_ids=10/QueryLimits.max_evidence=7/Evidence.assertion_ids=9；deadline_ms=6 不动）+ 全量重生成（pb.go/pb2.py/pb2.pyi 经 generate_proto.sh 幂等）、semantic/semantic_service/query/{search.py,adapter.py}、semantic/semantic_service/servicer.py、semantic/semantic_service/{server.py(每请求工厂),config.py(query_dsn)}、semantic/tests/{test_search.py,test_search_rpc.py,conftest.py(deletion_service/published_generation/search_stack 提升——A02 延后⑤)}、本台账、04 计划勾选（步骤 3 因 deadline 中止未做保持未勾）。
+- RED：`uv run --project semantic python -m pytest semantic/tests/test_search.py -q`（种子为空断言失败→servicer AttributeError 复现）。
+- 评审修复三轮：①规格 BLOCKER——servicer 读错 proto 形状（AccessScope 无 tenant_id 直读+线上契约无 allowed_document_ids）→ proto 追加字段+servicer 改读嵌套 scope+**真实 gRPC 三测**（round trip/不支持模式/无 generation→FAILED_PRECONDITION——评审员探针场景逐字复现）；②质量 2 BLOCKER——scope=None 服务器级图（跨请求污染）→ **每请求工厂**（PgAccessGraph 绑定请求自身 scope）；③规格终审新 BLOCKER——**QueryLimits 字段重编号破坏 C01 线上契约**（deadline_ms 6→7 被 Go 端静默解码为 max_evidence——评审员实证 Python 测试按名比对不可见）→ 追加不改号（max_evidence=7）+ 全量重生成 + `go test ./internal/infrastructure/semantic` 独立复验。
+- 折叠 minors（两评审）：证据 ID 亦入来源校验（不允许文档证据 raise 非静默丢弃——探针复现）；RankedEvidence.evidence_assertions 真实联动（死钩删除）；paths 端到端上线（RPC 测试断言）；截断 off-by-one（恰满不标记——探针复现）；NoActiveGeneration 专用异常（RuntimeError 一揽子消除）；种子语义如实（精确节点 id 匹配）；三条回归钉测试（max_evidence 边界/去重排序/走私证据拒绝——评审员终验指认缺失后补）；servicer 死导入与文档修正。
+- GREEN：`uv run --project semantic python -m pytest semantic/tests/ -q` **144 passed** 退出码 0（真实服务 PG；含 9 项 Q01 测试+3 项 RPC）；`go test ./internal/infrastructure/semantic -count=1` ok（双语言同源不变量）；`go build ./...` 净。
+- 实测验收：计划核心断言逐字（max_nodes=1→truncated/generation/证据文档⊆allowed）；租约协议逐字（pin→子图→adapter→校验→响应→finally release——happy+异常路径评审员探针验证）；模式诚实（非 graphrag→FAILED_PRECONDITION，无静默切换）；来源双验（图外断言+越权证据均 raise）；隐藏文档不入证据；证据 (doc,chunk,hash) 稳定去重排序；真实 gRPC 全链路（含 paths 上线）。
+- **延后/开放记录（如实）**：①步骤 3"超期中止数据库和模型操作"——deadline_ms 接受但未强制（步骤 3 checkbox 未勾；Q02/W 接线时随执行器落地）；②content_hash 位携带 support revision（Q02 来源协议细化——真 chunk hash 待向量适配器）；③向量候选过滤（W01 向量库落地后）；④排序重算仍开放（当前路径长度内部序）；⑤stale/partial 恒 False 未计算（Q02）；⑥lease-release-on-exception 测试钉（行为正确经探针验证，回归钉待 Q02 补）；⑦私有 _support_rows 跨模块访问与 hasattr(bind) 协议（Q02 清理）；⑧SearchLimits/QueryLimits 重复（Q02 组合）。
+- review：规格三轮 FAIL→PASS（BLOCKER×2：servicer/proto 契约缺口、字段重编号——后者为修复过程中引入又被评审员以 Go 线上编码实证抓回）；质量 FAIL→PASS（BLOCKER×2：servicer 崩溃、服务器级 scope 污染；终验残余 2 项——死导入与 3 回归钉——已当场折叠）。
+- 提交 SHA：（本记录与代码同批提交后补记）
+
 ## 当前边界
 
-- V01–C03、I01–I05、A01–A03 verified（I05 Go 协调切片；A02 延后项 Q01）；后续 11 个任务未开始。
+- V01–C03、I01–I05、A01–A03、Q01 verified（Q01 deadline 中止开放见其记录）；后续 10 个任务未开始。
 - V01精确版本已冻结（semantica 0.6.8）；真实模型证据须在后续任务补齐，不是已经通过的前提。
 - V02 结论边界：持久图桥接/授权子图重建/注册规则推导已验证；模型推断 unverified（无凭据，未调用）；向量检索路径未验证。
 - V03 结论边界：semantica 模式检索质量/延迟为受控语料实测；native 对照与模型用量门槛未测（阻断记录见上）；上线门禁 approved=false 待用户确认。

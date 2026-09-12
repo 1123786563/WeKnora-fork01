@@ -122,7 +122,7 @@ class Operation(_message.Message):
     def __init__(self, operation_id: _Optional[str] = ..., scope: _Optional[_Union[ScopeKey, _Mapping]] = ..., document_id: _Optional[str] = ..., revision: _Optional[int] = ..., state: _Optional[_Union[Operation.State, str]] = ..., stage: _Optional[str] = ..., lease_token: _Optional[int] = ..., result_generation: _Optional[str] = ..., error_code: _Optional[str] = ...) -> None: ...
 
 class Evidence(_message.Message):
-    __slots__ = ("evidence_id", "document_id", "revision", "chunk_id", "content_hash", "quote", "start_char", "end_char")
+    __slots__ = ("evidence_id", "document_id", "revision", "chunk_id", "content_hash", "quote", "start_char", "end_char", "assertion_ids")
     EVIDENCE_ID_FIELD_NUMBER: _ClassVar[int]
     DOCUMENT_ID_FIELD_NUMBER: _ClassVar[int]
     REVISION_FIELD_NUMBER: _ClassVar[int]
@@ -131,6 +131,7 @@ class Evidence(_message.Message):
     QUOTE_FIELD_NUMBER: _ClassVar[int]
     START_CHAR_FIELD_NUMBER: _ClassVar[int]
     END_CHAR_FIELD_NUMBER: _ClassVar[int]
+    ASSERTION_IDS_FIELD_NUMBER: _ClassVar[int]
     evidence_id: str
     document_id: str
     revision: int
@@ -139,7 +140,8 @@ class Evidence(_message.Message):
     quote: str
     start_char: int
     end_char: int
-    def __init__(self, evidence_id: _Optional[str] = ..., document_id: _Optional[str] = ..., revision: _Optional[int] = ..., chunk_id: _Optional[str] = ..., content_hash: _Optional[str] = ..., quote: _Optional[str] = ..., start_char: _Optional[int] = ..., end_char: _Optional[int] = ...) -> None: ...
+    assertion_ids: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, evidence_id: _Optional[str] = ..., document_id: _Optional[str] = ..., revision: _Optional[int] = ..., chunk_id: _Optional[str] = ..., content_hash: _Optional[str] = ..., quote: _Optional[str] = ..., start_char: _Optional[int] = ..., end_char: _Optional[int] = ..., assertion_ids: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class Assertion(_message.Message):
     __slots__ = ("assertion_id", "scope", "subject_id", "predicate", "object_id", "value", "kind", "evidence_ids", "premise_ids", "valid_from", "valid_until")
@@ -178,7 +180,7 @@ class Assertion(_message.Message):
     def __init__(self, assertion_id: _Optional[str] = ..., scope: _Optional[_Union[ScopeKey, _Mapping]] = ..., subject_id: _Optional[str] = ..., predicate: _Optional[str] = ..., object_id: _Optional[str] = ..., value: _Optional[str] = ..., kind: _Optional[_Union[Assertion.Kind, str]] = ..., evidence_ids: _Optional[_Iterable[str]] = ..., premise_ids: _Optional[_Iterable[str]] = ..., valid_from: _Optional[str] = ..., valid_until: _Optional[str] = ...) -> None: ...
 
 class AccessScope(_message.Message):
-    __slots__ = ("scope", "subject_id", "scope_ref", "scope_hash", "permission_epoch", "expires_at", "audience", "purpose", "budget_ref")
+    __slots__ = ("scope", "subject_id", "scope_ref", "scope_hash", "permission_epoch", "expires_at", "audience", "purpose", "budget_ref", "allowed_document_ids")
     class Purpose(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
         __slots__ = ()
         PURPOSE_UNSPECIFIED: _ClassVar[AccessScope.Purpose]
@@ -198,6 +200,7 @@ class AccessScope(_message.Message):
     AUDIENCE_FIELD_NUMBER: _ClassVar[int]
     PURPOSE_FIELD_NUMBER: _ClassVar[int]
     BUDGET_REF_FIELD_NUMBER: _ClassVar[int]
+    ALLOWED_DOCUMENT_IDS_FIELD_NUMBER: _ClassVar[int]
     scope: ScopeKey
     subject_id: str
     scope_ref: str
@@ -207,23 +210,26 @@ class AccessScope(_message.Message):
     audience: str
     purpose: AccessScope.Purpose
     budget_ref: str
-    def __init__(self, scope: _Optional[_Union[ScopeKey, _Mapping]] = ..., subject_id: _Optional[str] = ..., scope_ref: _Optional[str] = ..., scope_hash: _Optional[str] = ..., permission_epoch: _Optional[int] = ..., expires_at: _Optional[str] = ..., audience: _Optional[str] = ..., purpose: _Optional[_Union[AccessScope.Purpose, str]] = ..., budget_ref: _Optional[str] = ...) -> None: ...
+    allowed_document_ids: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, scope: _Optional[_Union[ScopeKey, _Mapping]] = ..., subject_id: _Optional[str] = ..., scope_ref: _Optional[str] = ..., scope_hash: _Optional[str] = ..., permission_epoch: _Optional[int] = ..., expires_at: _Optional[str] = ..., audience: _Optional[str] = ..., purpose: _Optional[_Union[AccessScope.Purpose, str]] = ..., budget_ref: _Optional[str] = ..., allowed_document_ids: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class QueryLimits(_message.Message):
-    __slots__ = ("max_hops", "max_nodes", "max_edges", "top_k", "max_tokens", "deadline_ms")
+    __slots__ = ("max_hops", "max_nodes", "max_edges", "top_k", "max_tokens", "deadline_ms", "max_evidence")
     MAX_HOPS_FIELD_NUMBER: _ClassVar[int]
     MAX_NODES_FIELD_NUMBER: _ClassVar[int]
     MAX_EDGES_FIELD_NUMBER: _ClassVar[int]
     TOP_K_FIELD_NUMBER: _ClassVar[int]
     MAX_TOKENS_FIELD_NUMBER: _ClassVar[int]
     DEADLINE_MS_FIELD_NUMBER: _ClassVar[int]
+    MAX_EVIDENCE_FIELD_NUMBER: _ClassVar[int]
     max_hops: int
     max_nodes: int
     max_edges: int
     top_k: int
     max_tokens: int
     deadline_ms: int
-    def __init__(self, max_hops: _Optional[int] = ..., max_nodes: _Optional[int] = ..., max_edges: _Optional[int] = ..., top_k: _Optional[int] = ..., max_tokens: _Optional[int] = ..., deadline_ms: _Optional[int] = ...) -> None: ...
+    max_evidence: int
+    def __init__(self, max_hops: _Optional[int] = ..., max_nodes: _Optional[int] = ..., max_edges: _Optional[int] = ..., top_k: _Optional[int] = ..., max_tokens: _Optional[int] = ..., deadline_ms: _Optional[int] = ..., max_evidence: _Optional[int] = ...) -> None: ...
 
 class SearchRequest(_message.Message):
     __slots__ = ("header", "query_id", "query", "access_scope", "limits", "mode")

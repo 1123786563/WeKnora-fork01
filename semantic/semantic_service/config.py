@@ -20,6 +20,9 @@ class SemanticServiceConfig:
     tls_cert_path: str = ""
     tls_key_path: str = ""
     allow_plaintext: bool = False
+    # Q01+: the query stack's control-DB DSN. Empty keeps the server in
+    # skeleton mode (Search RPC stays UNIMPLEMENTED - never fake success).
+    query_dsn: str = ""
 
     def validate(self) -> None:
         errors = []

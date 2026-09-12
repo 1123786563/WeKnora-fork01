@@ -28,6 +28,67 @@ PG_DSN_ENV = "SEMANTIC_TEST_PG_DSN"
 DEFAULT_PG_DSN = "postgresql://semantic:semantic@127.0.0.1:15432/semantic_test"
 
 
+@pytest.fixture()
+def deletion_service(pg_dsn, operation_store_factory):
+    """Shared A02/Q01 fact-store fixture over the real PG (per-test clean)."""
+    import psycopg
+
+    from semantic_service.indexing.deletion import DeletionService
+    from semantic_service.operations import apply_migrations
+
+    apply_migrations(pg_dsn)
+    migration = Path(__file__).resolve().parents[1] / "migrations" / "003_deletion_receipts.sql"
+    with psycopg.connect(pg_dsn) as conn:
+        conn.execute(migration.read_text(encoding="utf-8"))
+        conn.execute("DELETE FROM semantic.deletion_receipts")
+        conn.execute("DELETE FROM semantic.assertions")
+        conn.execute("DELETE FROM semantic.tombstones")
+        conn.commit()
+    operations = operation_store_factory()
+    operations.clear_for_test()
+    service = DeletionService(pg_dsn, operations)
+    yield service
+    service.close()
+
+
+@pytest.fixture()
+def published_generation(generation_index_store, pg_dsn):
+    """Q01: publish a complete generation for the search scope."""
+    import psycopg
+
+    from semantic_service.contracts import ScopeKey
+    from semantic_service.indexing.manifest import ArtifactRef, DocumentEntry, IndexManifest
+
+    scope = ScopeKey(tenant_id=1, kb_id="kb-q01")
+    manifest = IndexManifest(
+        scope=scope, generation="gen-q01", base_generation=None,
+        documents={"d1": DocumentEntry(document_id="d1", revision=1, content_hash="h1", artifact_ids=("a1",)),
+                   "d2": DocumentEntry(document_id="d2", revision=1, content_hash="h2", artifact_ids=("a2",))},
+        config_digest="d", artifacts=(ArtifactRef(kind="graph", artifact_id="a1", hash="h1"),),
+        complete=True)
+    with psycopg.connect(pg_dsn) as conn:
+        conn.execute("DELETE FROM semantic.read_leases WHERE kb_id = %s", ("kb-q01",))
+        conn.execute("DELETE FROM semantic.active_generations WHERE kb_id = %s", ("kb-q01",))
+        conn.execute("DELETE FROM semantic.generations WHERE kb_id = %s", ("kb-q01",))
+        conn.commit()
+    generation_index_store.save_manifest(manifest)
+    generation_index_store.publish(scope, None, manifest, lease_token=1)
+    return manifest
+
+
+@pytest.fixture()
+def search_stack(pg_dsn, deletion_service, published_generation):
+    """Seed Q01 facts so searches find evidence (imported by the RPC tests)."""
+    from semantic_service.contracts import ScopeKey
+
+    scope = ScopeKey(tenant_id=1, kb_id="kb-q01")
+    deletion_service.add_assertion_support(scope, "f1", "ent-a", "controls",
+        object_id="ent-b", support_document_id="d1", support_revision=1)
+    deletion_service.add_assertion_support(scope, "f2", "ent-b", "owns",
+        object_id="ent-c", support_document_id="d2", support_revision=1)
+    return deletion_service
+
+
 @pytest.fixture(scope="session")
 def generation_index_store(pg_dsn):
     """The I03 IndexStore under a name that never collides with the
