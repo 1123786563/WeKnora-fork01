@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
-import { IntegrationsPage, type APIPrincipalConfig, type IntegrationResource } from '@weknora/views';
+import { integrationKeyFromQuery, IntegrationsPage, type APIPrincipalConfig, type IntegrationResource } from '@weknora/views';
 
 export function IntegrationsRoutePage({ client }: { client: WeKnoraClient }) {
   const [embedChannels, setEmbedChannels] = useState<IntegrationResource[]>([]);
@@ -49,5 +49,5 @@ export function IntegrationsRoutePage({ client }: { client: WeKnoraClient }) {
     onCreatePrincipalTestToken: async (externalUserId: string) => { if (!tenantId) throw new Error('No active workspace selected.'); return client.administration.tenantApiKeys.createPrincipalTestToken(tenantId, externalUserId); },
   };
 
-  return <IntegrationsPage embedChannels={embedChannels} imChannels={imChannels} apiBaseUrl={window.location.origin} loading={loading} error={error} onReload={() => void load()} onOpenEmbed={(channel) => void openEmbed(channel)} actions={actions} />;
+  return <IntegrationsPage initialTab={integrationKeyFromQuery(window.location.search)} embedChannels={embedChannels} imChannels={imChannels} apiBaseUrl={window.location.origin} loading={loading} error={error} onReload={() => void load()} onOpenEmbed={(channel) => void openEmbed(channel)} actions={actions} />;
 }

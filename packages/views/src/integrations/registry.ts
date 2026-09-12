@@ -20,6 +20,16 @@ export const INTEGRATION_SECTIONS: readonly IntegrationSection[] = [
   { key: 'claw', viewId: 'ClawSkillLanding', apiDomain: null, minRole: 'viewer', external: true, externalUrl: 'https://clawhub.ai/lyingbug/weknora', operations: ['external', 'open'] },
 ] as const;
 
+export function integrationKeyFromQuery(search: string): IntegrationKey {
+  const query = new URLSearchParams(search.startsWith('?') ? search : `?${search}`);
+  const section = query.get('section')?.trim() || '';
+  const tab = query.get('tab')?.trim() || '';
+  if (!section && !tab) return 'embed';
+  const candidate = section === 'integrations' ? tab || 'im' : section || tab;
+  const normalized = candidate.startsWith('integration-') ? candidate.slice('integration-'.length) : candidate;
+  return INTEGRATION_SECTIONS.some((item) => item.key === normalized) ? normalized as IntegrationKey : 'embed';
+}
+
 export function integrationSection(key: string): IntegrationSection | undefined {
   return INTEGRATION_SECTIONS.find((item) => item.key === key);
 }

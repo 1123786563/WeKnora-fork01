@@ -1067,3 +1067,15 @@
 - `7cdece5` closes a follow-up interaction defect: changing the graph type
   filter after ego expansion now preserves the active mode and center. The
   focused graph suite is 3/3; Web regression is 103/103.
+
+### T04 Web integrations query follow-up (2026-09-12)
+
+- The React integrations route now consumes legacy `section`/`tab` aliases
+  and passes the resolved IM, Embed, API, CLI, Chrome, or Claw tab to the
+  shared page. Unknown values fail closed to the existing Embed tab.
+- TDD focused integration registry tests passed 3/3; Web 103/103 and shared
+  187/187, typechecks, Web build, boundary check, and diff check passed.
+  Evidence: `docs/migrations/react/evidence/t04-integrations-query-2026-09-12.md`.
+- This closes the static query-dispatch gap only; browser tab interaction,
+  provider callbacks, and integration mutation/permission evidence remain
+  open, so T04/T18 stay `review`.

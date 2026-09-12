@@ -10,7 +10,7 @@ export { SETTINGS_SECTIONS, settingsSection } from './settings/registry.ts';
 export type { SettingsSection, SettingsScope, SettingsRole, SettingsOperation } from './settings/registry.ts';
 export { createEmbedBridgeGuard, EMBED_HOST_SOURCE, EMBED_MESSAGE_SOURCE } from './embed/bridge.ts';
 export type { EmbedMessageEvent } from './embed/bridge.ts';
-export { INTEGRATION_SECTIONS, integrationSection } from './integrations/registry.ts';
+export { INTEGRATION_SECTIONS, integrationKeyFromQuery, integrationSection } from './integrations/registry.ts';
 export type { IntegrationKey, IntegrationOperation, IntegrationSection } from './integrations/registry.ts';
 export { IntegrationsPage } from './integrations/page.tsx';
 export type { APIPrincipalConfig, IntegrationActions, IntegrationPrincipalToken, IntegrationResource, IntegrationsPageProps } from './integrations/page.tsx';
