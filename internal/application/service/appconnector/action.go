@@ -34,7 +34,32 @@ var (
 	// authorized v1 actions must be re-Prepared under the current digest
 	// generation — an old approval is never auto-upgraded.
 	ErrActionRePrepareRequired = errors.New("action_reprepare_required")
+	// ErrNoDispatcher: Execute fails closed when no dispatcher is wired
+	// (T04-QF-6 carry): the container injects a nil dispatcher in phase
+	// one, and executing an approved action without the outbound boundary
+	// must be a clean refusal — never a panic, never a consumed approval.
+	ErrNoDispatcher = errors.New("no_dispatcher_configured")
+	// ErrOCClaimsNotWired documents the transitional wiring contract: the
+	// durable open-connector claim (key, fence, revocation serialization)
+	// is not wired, so OC dispatches take the frozen claim path and leave
+	// no durable idempotency record. Reserved for wiring diagnostics; the
+	// container gains the claim store with the OC runtime tasks.
+	ErrOCClaimsNotWired = errors.New("oc_claims_not_wired")
 )
+
+// ocSlotLeaseTTL bounds one dispatch's slot leases: a replica that crashes
+// mid-dispatch simply expires and the slot is reclaimed; no release path
+// ever re-sends a dispatched action.
+const ocSlotLeaseTTL = 90 * time.Second
+
+// OCDispatchClaimSource is the durable open-connector claim surface
+// (T10, implemented by repository/appconnector.OCStore): the atomic claim
+// that consumes the approval, mints the operation-scoped key and serializes
+// against revocations in ONE transaction.
+type OCDispatchClaimSource interface {
+	ClaimOCDispatch(ctx context.Context, subject appconn.OCSubject, actionID, reservationID string) (appconn.OCDispatchRecord, error)
+	GetOCDispatch(ctx context.Context, tenant uint64, actionID string) (appconn.OCDispatchRecord, error)
+}
 
 // ActionSnapshot is the exact, already-approved payload of an action. Args
 // are the NORMALIZED bytes persisted at Prepare time — the dispatch path
@@ -122,7 +147,23 @@ type ActionService struct {
 	approvalTTL  time.Duration
 	budgetUpper  commercial.Credits
 	budgetWindow time.Duration
+	// ocClaims is the T10 durable claim store for open-connector actions;
+	// slots is the optional distributed dispatch limiter. Both are wired
+	// additively (nil = native behavior preserved) so existing faces stay
+	// frozen.
+	ocClaims OCDispatchClaimSource
+	slots    *OCSlotLimiter
 }
+
+// UseOCDispatchClaims wires the durable open-connector claim store: with
+// it, OC dispatches claim atomically (key, fence, revocation serialization
+// in one transaction) and leave a durable idempotency record; without it the
+// frozen ClaimDispatch path keeps serving the transitional wiring.
+func (s *ActionService) UseOCDispatchClaims(src OCDispatchClaimSource) { s.ocClaims = src }
+
+// UseOCSlotLimiter wires the distributed dispatch slot limiter. Without it
+// dispatches are unlimited by default (native behavior preserved).
+func (s *ActionService) UseOCSlotLimiter(l *OCSlotLimiter) { s.slots = l }
 
 // NewActionService builds the service. gate/dispatcher/unknown may be nil
 // (tests inject stubs); store and guard are required.
@@ -252,6 +293,12 @@ func (s *ActionService) Approve(ctx context.Context, id, actor, digest string) e
 // bytes. On every execute the A02 connection guard and the U05 budget gate
 // are re-checked — a fee/budget pass authorizes spending, never writes.
 func (s *ActionService) Execute(ctx context.Context, id string) error {
+	// Fail closed BEFORE consuming anything: no dispatcher wired means no
+	// dispatch can ever happen — refuse instead of panicking at the call
+	// (T04-QF-6; plan fact: the container injects a nil dispatcher).
+	if s.dispatcher == nil {
+		return fmt.Errorf("%w: execute refused, action %s untouched", ErrNoDispatcher, id)
+	}
 	row, err := s.store.FindAction(ctx, id)
 	if err != nil {
 		return err
@@ -279,8 +326,38 @@ func (s *ActionService) Execute(ctx context.Context, id string) error {
 	); err != nil {
 		return fmt.Errorf("a02 recheck: %w", err)
 	}
+	// Open-connector actions prefer the durable claim (key, fence,
+	// revocation serialization). While the claim store is not wired the
+	// frozen ClaimDispatch path keeps serving — the nil-dispatcher gate
+	// above already blocks every real outbound dispatch in that wiring,
+	// and the durable record appears the moment the store is wired in.
+	oc, ocerr := ocBindingOf(row)
+	if ocerr != nil {
+		return ocerr
+	}
+	// Dispatch slots BEFORE the budget Begin (ruling 5): a request that
+	// cannot get a slot consumes no approval and no budget. The slots are
+	// DATABASE leases — a replica crash simply expires them; releasing a
+	// slot never re-sends a dispatched action.
+	var releaseSlots func(context.Context) error
+	if oc != nil && s.slots != nil {
+		rel, serr := s.slots.AcquireOCSlots(ctx, row.TenantID, row.ConnectionID, oc.Provider, row.ID, time.Now().Add(ocSlotLeaseTTL))
+		if serr != nil {
+			return fmt.Errorf("oc slots: %w", serr)
+		}
+		releaseSlots = rel
+	}
+	defer func() {
+		if releaseSlots != nil {
+			// Best-effort release on every exit path; the lease TTL is the
+			// backstop if this context is already dead.
+			_ = releaseSlots(context.Background())
+		}
+	}()
 	// U05 budget gate: Begin BEFORE the outbound call; denial is a hard
-	// stop. This reserves fees only — it is never a write approval.
+	// stop. This reserves fees only — it is never a write approval. The
+	// key is the stable Action ID, so racing requests on one action share
+	// ONE reservation (T10 ruling 5).
 	var reservationID string
 	if s.gate != nil {
 		res, err := s.gate.Begin(ctx, commercial.BudgetRequest{
@@ -298,7 +375,23 @@ func (s *ActionService) Execute(ctx context.Context, id string) error {
 	// Consume the approval count and write the dispatch intent atomically.
 	// A lost concurrency race aborts here with no over-consumption; a crash
 	// before this commit leaves the action authorized with the count intact.
-	if err := s.store.ClaimDispatch(ctx, id, row.ConnectionID, reservationID); err != nil {
+	// Open-connector actions with a wired claim store go through the
+	// durable claim (operation-scoped key, connection-lock serialization
+	// with revocations, loser reads the winner's reservation); native
+	// actions — and OC actions in the unwired transitional wiring — keep
+	// the frozen path.
+	if oc != nil && s.ocClaims != nil {
+		if _, cerr := s.ocClaims.ClaimOCDispatch(ctx,
+			appconn.OCSubject{TenantID: row.TenantID, ActorID: row.ActorID},
+			row.ID, reservationID,
+		); cerr != nil {
+			// Lost race or blocked claim: the winner (if any) holds the
+			// SHARED reservation — the loser must never cancel or settle
+			// it; orphaned pre-allocations with no winner are released by
+			// the existing commercial recovery.
+			return cerr
+		}
+	} else if err := s.store.ClaimDispatch(ctx, id, row.ConnectionID, reservationID); err != nil {
 		return err
 	}
 	claimed, err := s.store.FindAction(ctx, id)
@@ -330,6 +423,20 @@ func (s *ActionService) Execute(ctx context.Context, id string) error {
 		return ErrDispatchUnknown
 	}
 	return nil
+}
+
+// ocBindingOf parses a row's immutable open-connector execution binding;
+// nil means the action is native. A corrupt binding is a hard error — an OC
+// action must never dispatch with a silently dropped binding.
+func ocBindingOf(row repoappconn.ActionRow) (*appconn.OCExecutionBinding, error) {
+	if row.OCBindingJSON == "" {
+		return nil, nil
+	}
+	var b appconn.OCExecutionBinding
+	if err := json.Unmarshal([]byte(row.OCBindingJSON), &b); err != nil {
+		return nil, fmt.Errorf("corrupt oc_binding_json for %s: %w", row.ID, err)
+	}
+	return &b, nil
 }
 
 // snapshotOf rebuilds the full approval snapshot from a persisted row,

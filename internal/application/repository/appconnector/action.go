@@ -185,12 +185,19 @@ func (s *ActionStore) ClaimDispatch(ctx context.Context, id, providerKey, reserv
 			}
 			return err
 		}
-		now := time.Now()
-		if ap.Remaining <= 0 || !now.Before(ap.Expiry) {
+		// T10 tightening: the guard lives in the SQL predicate itself —
+		// action AND digest AND remaining>0 AND unexpired, exactly one row
+		// (the plan's claim core). The in-memory re-check above only maps
+		// a missing approval row to its sentinel. The in-memory expiry
+		// guard stays as a second belt: sqlite stores timestamps as text,
+		// and a bound UTC param can render in a different suffix format
+		// than a locally-written value, skewing a pure text comparison.
+		if ap.Remaining <= 0 || !time.Now().Before(ap.Expiry) {
 			return ErrApprovalExhausted
 		}
+		now := time.Now().UTC()
 		res := tx.Model(&ApprovalRow{}).
-			Where("args_digest = ? AND remaining = ?", ap.ArgsDigest, ap.Remaining).
+			Where("action_id = ? AND args_digest = ? AND remaining > 0 AND expiry > ?", row.ID, row.ArgsDigest, now).
 			Update("remaining", gorm.Expr("remaining - 1"))
 		if res.Error != nil {
 			return res.Error
