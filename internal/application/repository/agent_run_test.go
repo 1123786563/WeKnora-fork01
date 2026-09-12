@@ -211,9 +211,23 @@ func TestAgentRunAdmissionRollback(t *testing.T) {
 	// transaction - run row, user message, slot reservation - must roll back.
 	require.NoError(t, db.Exec(`INSERT INTO messages (id, request_id, session_id, role, content)
 		VALUES ('a1', 'old', 's2', 'assistant', '')`).Error)
-	require.NoError(t, db.Exec(`CREATE TRIGGER abort_assistant_insert BEFORE INSERT ON messages
-		WHEN NEW.role = 'assistant' AND NEW.session_id = 's1'
-		BEGIN SELECT RAISE(ABORT, 'triggered failure'); END`).Error)
+	if db.Name() == "sqlite" {
+		require.NoError(t, db.Exec(`CREATE TRIGGER abort_assistant_insert BEFORE INSERT ON messages
+			WHEN NEW.role = 'assistant' AND NEW.session_id = 's1'
+			BEGIN SELECT RAISE(ABORT, 'triggered failure'); END`).Error)
+	} else {
+		require.NoError(t, db.Exec(`CREATE OR REPLACE FUNCTION abort_assistant_insert_fn() RETURNS trigger
+		LANGUAGE plpgsql AS $fn$
+		BEGIN
+			IF NEW.role = 'assistant' AND NEW.session_id = 's1' THEN
+				RAISE EXCEPTION 'triggered failure';
+			END IF;
+			RETURN NEW;
+		END
+		$fn$`).Error)
+		require.NoError(t, db.Exec(`CREATE TRIGGER abort_assistant_insert BEFORE INSERT ON messages
+			FOR EACH ROW EXECUTE FUNCTION abort_assistant_insert_fn()`).Error)
+	}
 	_, err := NewAgentRunStore(db).Admit(context.Background(), testAdmission())
 	require.Error(t, err)
 	var count int64
