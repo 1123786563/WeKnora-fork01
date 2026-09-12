@@ -93,3 +93,13 @@
 - 矩阵更新：/platform/settings、/platform/chat/:chatid、/platform/creatChat 三行写入行级审计结论与实施状态。
 - 三个实施子代理并行：chat 必修（进行中）、平台外壳（进行中）、settings 必修（已派发）。
 - 观察到 chat 子代理同步修改 vite.config.ts 与 packages/domain/package.json（为新增 chat 模块接 exports/alias），属其文件域。
+
+## 2026-09-12 Round 12（续）
+
+- chat 必修 7 项完成并集成提交 ac8c763（主代理抽查端点与纯模块测试后落盘）。证据：evidence/vue-react-parity/2026-09-12-chat-integration.md。
+- 平台外壳、settings 实施子代理继续进行中。
+
+## 2026-09-12 Round 12（续二）
+
+- 平台外壳完成并集成：侧栏/折叠/导航高亮/KB 过滤/用户区包裹全部受保护路由；live 复核截图对比通过。提交 fe85f30。已知偏差（图标轨、图片 logo、会话列表并入、租户切换/铃/命令面板）登记于 evidence/vue-react-parity/2026-09-12-platform-shell.md。
+- chat 必修集成提交 ac8c763。settings 实施子代理进行中。
