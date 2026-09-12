@@ -1,23 +1,195 @@
 {
-  "status": "blocked-env",
+  "status": "runtime-pass",
   "family": "official_v3",
   "version": "v1.0.0-beta.232",
-  "operations": [],
-  "passing_checks": [],
+  "commit": "887e0cac903ccd06e74d61ed23c651651d10c7a9",
+  "operations": [
+    "create-customer",
+    "create-credit-grant",
+    "get-customer-credit-balance",
+    "list-credit-grants",
+    "get-credit-grant",
+    "update-credit-grant-external-settlement",
+    "void-credit-grant",
+    "list-credit-transactions",
+    "create-plan",
+    "publish-plan",
+    "create-subscription",
+    "change-subscription",
+    "cancel-subscription",
+    "ingest-metering-events",
+    "createCustomer",
+    "createCustomerEntitlementV2",
+    "createCustomerEntitlementGrantV2",
+    "getCustomerEntitlementValueV2",
+    "ingestEvents"
+  ],
+  "passing_checks": [
+    "OM-01",
+    "OM-02",
+    "OM-03",
+    "OM-04",
+    "OM-05",
+    "OM-06",
+    "OM-07",
+    "OM-08",
+    "OM-09"
+  ],
   "checks": {
-    "OM-01": "blocked-env", "OM-02": "blocked-env", "OM-03": "blocked-env",
-    "OM-04": "blocked-env", "OM-05": "blocked-env", "OM-06": "blocked-env",
-    "OM-07": "blocked-env", "OM-08": "blocked-env", "OM-09": "blocked-env",
-    "OM-10": "blocked-env"
+    "OM-01": "pass",
+    "OM-02": "pass",
+    "OM-03": "pass",
+    "OM-04": "pass",
+    "OM-05": "pass",
+    "OM-06": "pass",
+    "OM-07": "pass",
+    "OM-08": "pass",
+    "OM-09": "pass",
+    "OM-10": "pass"
   },
-  "evidence": [{
-    "status": "blocked-env",
-    "reason": "OpenMeter endpoint and merchant credentials were unavailable; no business request was sent.",
-    "schema_evidence": "docs/superpowers/specs/evidence/2026-09-10-saas-billing-interface-inventory.json"
-  }],
-  "precision": "unverified",
-  "time_resolution": "unverified",
-  "settlement_ack_strategy": "query stable external settlement identity before fulfillment (candidate; unverified)",
-  "alternative": "Keep P01-P03 disabled and rerun OM-01 through OM-09 in isolated V2 and V3 namespaces when the service and credentials are available.",
-  "note": "This file is a blocked experiment record, not an authorized adapter contract. gate.py must reject it until all OM-01..OM-09 have runtime pass evidence."
+  "evidence": [
+    {
+      "check": "OM-01",
+      "status": "pass",
+      "evidence_type": "runtime",
+      "artifact": "artifacts/saas-contract/om01-evidence.json",
+      "result": {
+        "image": "ghcr.io/openmeterio/openmeter:v1.0.0-beta.232 sha256:0a59132264bc72094c1405ada110c6e810d28f7336bde22aa814409bd58dd6c1",
+        "schema_sha256_match": [
+          "api/openapi.yaml",
+          "api/v3/openapi.yaml"
+        ],
+        "four_get_status": {
+          "getCustomer": 404,
+          "queryMeter": 400,
+          "listCustomerEntitlementGrantsV2": 400,
+          "getCustomerEntitlementHistoryV2": 400
+        },
+        "interpretation": "application-layer handler responses prove route reachability"
+      }
+    },
+    {
+      "check": "OM-02",
+      "status": "pass",
+      "evidence_type": "runtime",
+      "artifact": "artifacts/saas-contract/om02-differences.md",
+      "result": {
+        "v2_issuance": "201 grant amount 1000",
+        "v2_consumption": "usage 250 balance 1000->750",
+        "v3_issuance": "201 grant 100 USD active",
+        "v3_consumption": "rate-card burn live 100->97.5",
+        "v3_balance": "live/pending/settled per currency + ledger",
+        "subscription_both": "201 active",
+        "critical": "Idempotency-Key header double-issued; V3 body key dedups 409; V2 grants have no dedup",
+        "decision": "official_v3 credits authoritative; V2 usage-metering only"
+      }
+    },
+    {
+      "check": "OM-03",
+      "status": "pass",
+      "evidence_type": "runtime",
+      "artifact": "artifacts/saas-contract/om0304-report.md",
+      "result": {
+        "concurrent_customer_creation": "8 threads same key -> 1x201 + 7x409, one ULID",
+        "retry": "409, no same-id return, re-query by key required",
+        "plan_publish_replay": "second publish 400 state-guard, exactly one active version 1"
+      }
+    },
+    {
+      "check": "OM-04",
+      "status": "pass",
+      "evidence_type": "runtime",
+      "artifact": "artifacts/saas-contract/om0304-report.md",
+      "result": {
+        "duplicate_grant": "409 SQLSTATE 23505 chargecreditpurchase_namespace_customer_id_key",
+        "crash_retry": "409 no-dup, balance 50 not 100, exactly one funded 50 ledger entry",
+        "unique_query": "list-credit-grants by key -> 1 grant 1 id",
+        "v2_contrast": "identical body twice -> TWO 201 distinct ids (V2 must not issue)"
+      }
+    },
+    {
+      "check": "OM-05",
+      "status": "pass",
+      "evidence_type": "runtime",
+      "artifact": "artifacts/saas-contract/om0506-cases/s16-om0506b-v2-order.json",
+      "result": {
+        "period_reset": "usage 250->0 naturally, used value not refunded, grant remainders preserved",
+        "two_source_order": "grant priority1 750->650->0 then spill 150 into priority2 500->350",
+        "auto_grant": "single auto-grant at subscription creation (cross-period >=1h window disclosed unobserved)"
+      }
+    },
+    {
+      "check": "OM-06",
+      "status": "pass",
+      "evidence_type": "runtime",
+      "artifact": "artifacts/saas-contract/om0506-cases/s9-om06b-timelapse.json",
+      "result": {
+        "expiry_timelapse": "PT1M grant expired between t+59s/t+65s, live 100->60 exactly at expiry",
+        "month_end_leap": "2028-01-31+P1M -> 2028-02-29; 2028-02-28T23:59:59Z+PT24H -> 2028-02-29T23:59:59Z",
+        "precision": "exact decimal strings throughout",
+        "v3_disclosed": "per-grant attribution only at settlement; late event accepted 202 but not applied real-time (period-close unobserved)"
+      }
+    },
+    {
+      "check": "OM-07",
+      "status": "pass",
+      "evidence_type": "runtime",
+      "artifact": "artifacts/saas-contract/om0708-report.md",
+      "result": {
+        "upgrade_chain": "burn price followed plan exactly 1.00 -> 2.00 -> 3.00 -> 1.00 across change-subscription",
+        "no_reissue": "funded grant count 1->1 at every change",
+        "cancel": "post-cancel event 202 balance flat, grant stays active, re-subscribe 201"
+      }
+    },
+    {
+      "check": "OM-08",
+      "status": "pass",
+      "evidence_type": "runtime",
+      "artifact": "artifacts/saas-contract/om0708-report.md",
+      "result": {
+        "partial_void": "NOT supported (amount property 400) — adapter must split batches",
+        "full_void": "exact -40, batch2 untouched",
+        "repeat_void": "idempotent 200 zero balance change",
+        "expired_void": "409 already expired, balance unaffected",
+        "concurrent_burn_void": "consistent single ordering"
+      }
+    },
+    {
+      "check": "OM-09",
+      "status": "pass",
+      "evidence_type": "runtime",
+      "artifact": "artifacts/saas-contract/om0910-cases/om09-settlement.json",
+      "result": {
+        "external_grant": "201 with purchase terms {currency, per_unit_cost_basis}",
+        "settlement": "authorized 200 -> settled 200, purchase.settlement_status=settled",
+        "exactly_once": "repeat settled -> 412 Precondition Failed",
+        "no_double": "exactly one funded ledger entry, balance 25",
+        "custom_invoicing": "schema-only, live probe 400"
+      }
+    }
+  ],
+  "precision": "verified-exact-decimal-strings",
+  "time_resolution": "verified-second-precision-storage-minute-level-expiry-observed",
+  "settlement_ack_strategy": "query grant by key + purchase.settlement_status before fulfillment; payment confirmation exactly-once enforced by provider (412 on repeat); platform coordinator owns admission (no atomic provider interface)",
+  "om10_note": {
+    "check": "OM-10",
+    "status": "pass",
+    "evidence_type": "runtime",
+    "artifact": "artifacts/saas-contract/om0910-cases/om10-part2.json",
+    "result": {
+      "atomic_interface": "none exists in the complete v3 operation list",
+      "watermark": "live in-flight authority, settled only at period close",
+      "remote_change_detection": "void reflected in 1.1s",
+      "overdraw": "5 concurrent over-balance burns all 202, live clamped at 0 -> platform-side admission mandatory"
+    }
+  },
+  "alternative": "superseded: previous blocked-env record replaced by runtime evidence collected 2026-09-12 against the local docker instance of the pinned official release",
+  "note": "Runtime evidence collected against the official v1.0.0-beta.232 image running locally via docker compose (OM-01 digest-verified). Not a cloud production deployment; external payment channels (WX/ALI/FS/NO) remain separate blocked-env checks.",
+  "known_limits": [
+    "late-reported usage not applied real-time (period-close accounting unobserved)",
+    "V3 per-grant burn attribution only visible at settlement",
+    "void partial-per-batch not supported (adapter splits batches)",
+    "cross-period auto-grant non-duplication needs >=1h observation window",
+    "custom-invoicing path schema-only"
+  ]
 }

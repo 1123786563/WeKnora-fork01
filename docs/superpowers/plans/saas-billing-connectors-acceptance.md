@@ -4,7 +4,7 @@
 
 ## 明确声明（诚实性边界）
 
-1. **不宣称全链路成功**。命令 python3 scripts/saas/release_gate.py --report artifacts/saas-acceptance/report.json 对完整必需集（66 接口检查 ID + AC-01..AC-20）**退出码 1**，这是当前环境的正确诚实结果；在 provider 环境授权前该退出码是预期值，不是回归。
+1. **不宣称全链路成功**。命令 python3 scripts/saas/release_gate.py --report artifacts/saas-acceptance/report.json 对完整必需集（66 接口检查 ID + AC-01..AC-20）**退出码 1**，这是当前环境的正确诚实结果（2026-09-12 更新：OM-01..OM-10 已凭本地 docker 官方镜像 runtime 证据关闭，未完成由 40 项降为 30 项）；在剩余 provider（支付渠道/飞书/Notion）与 browser 环境授权前该退出码是预期值，不是回归。
 2. 证据只引用实施台账中真实存在的提交 SHA、定向测试命令与结果；artifacts/saas-acceptance/report.json（86 条 records：46 条 pass / 其余 blocked-env 或 pending）由本文表格逐行映射构建（键=ID，值=status/level/evidence）；artifacts/ 目录未跟踪不入库。
 3. 状态语义与验证清单一致：pass 仅指在标注层级（unit/integration）通过定向测试；provider/browser 级检查保持 blocked-env 或 pending，没有用 skip、mock 或 schema 冒充（require_pass 在 scripts/saas/release_gate.py 强制 WX-05/ALI-05/FS-04/NO-04 必须为 provider 层级）。
 
@@ -75,18 +75,16 @@
 | NO-02 | integration | pass | ledger task A06 commit 1cfc95770528cd681485a90e6a7ccf122f27bb23；go test ./internal/appconnector -run TestNotion -count=1；12/12 pass (out-of-parent-scope rejected pre-network; revoke after approval parks; snapshot byte-equal) |
 | NO-03 | integration | pass | ledger task A06 commit 1cfc95770528cd681485a90e6a7ccf122f27bb23；go test ./internal/appconnector -run TestNotion -count=1；12/12 pass (partial append BlocksDone persisted, only remaining blocks resent; crash resumes from persisted page_id exactly once) |
 | NO-04 | provider | blocked-env | blocked-env: real Notion page creation requires a user-designated test parent page and integration credentials; not claimed (require_pass enforces level=provider) |
-| OM-01 | provider | blocked-env | blocked-env: no OpenMeter service or merchant credentials in this environment; V03 gate f84b98b keeps rejecting deploy/openmeter/contract-cases/selected-model.json until OM-01..OM-09 have runtime evidence (python3 -m unittest scripts.saas.gate_test -v 4/4) |
-| OM-02 | provider | blocked-env | blocked-env: no OpenMeter service or merchant credentials in this environment; V03 gate f84b98b keeps rejecting deploy/openmeter/contract-cases/selected-model.json until OM-01..OM-09 have runtime evidence (python3 -m unittest scripts.saas.gate_test -v 4/4) |
-| OM-03 | provider | blocked-env | blocked-env: no OpenMeter service or merchant credentials in this environment; V03 gate f84b98b keeps rejecting deploy/openmeter/contract-cases/selected-model.json until OM-01..OM-09 have runtime evidence (python3 -m unittest scripts.saas.gate_test -v 4/4) |
-| OM-04 | provider | blocked-env | blocked-env: no OpenMeter service or merchant credentials in this environment; V03 gate f84b98b keeps rejecting deploy/openmeter/contract-cases/selected-model.json until OM-01..OM-09 have runtime evidence (python3 -m unittest scripts.saas.gate_test -v 4/4) |
-| OM-05 | provider | blocked-env | blocked-env: no OpenMeter service or merchant credentials in this environment; V03 gate f84b98b keeps rejecting deploy/openmeter/contract-cases/selected-model.json until OM-01..OM-09 have runtime evidence (python3 -m unittest scripts.saas.gate_test -v 4/4) |
-| OM-06 | provider | blocked-env | blocked-env: no OpenMeter service or merchant credentials in this environment; V03 gate f84b98b keeps rejecting deploy/openmeter/contract-cases/selected-model.json until OM-01..OM-09 have runtime evidence (python3 -m unittest scripts.saas.gate_test -v 4/4) |
-| OM-07 | provider | blocked-env | blocked-env: no OpenMeter service or merchant credentials in this environment; V03 gate f84b98b keeps rejecting deploy/openmeter/contract-cases/selected-model.json until OM-01..OM-09 have runtime evidence (python3 -m unittest scripts.saas.gate_test -v 4/4) |
-| OM-08 | provider | blocked-env | blocked-env: no OpenMeter service or merchant credentials in this environment; V03 gate f84b98b keeps rejecting deploy/openmeter/contract-cases/selected-model.json until OM-01..OM-09 have runtime evidence (python3 -m unittest scripts.saas.gate_test -v 4/4) |
-| OM-09 | provider | blocked-env | blocked-env: no OpenMeter service or merchant credentials in this environment; V03 gate f84b98b keeps rejecting deploy/openmeter/contract-cases/selected-model.json until OM-01..OM-09 have runtime evidence (python3 -m unittest scripts.saas.gate_test -v 4/4) |
-| OM-10 | provider | blocked-env | blocked-env: no OpenMeter service or merchant credentials in this environment; V03 gate f84b98b keeps rejecting deploy/openmeter/contract-cases/selected-model.json until OM-01..OM-09 have runtime evidence (python3 -m unittest scripts.saas.gate_test -v 4/4) |
-| OPS-01 | integration | pass | ledger task O01 commit bf5ab4d35ad357452ebe0f8a68e87769e5fc97cc；go test ./internal/commercial ./internal/application/service/commercial -run "Test(Rollback|Recovery)" -count=1；pass (paid recovery, settlement and unknown write recovery categories; outbox replay via C01 19e64ef) |
-| OPS-02 | integration | pass | ledger task O02 commit 4e99dc9；go test ./internal/commercial -run TestMigration -count=1；9/9 pass (deletion blocked while in-flight, no auto-delete without retention policy, history preserved) |
+| OM-01 | provider | pass | runtime pass 2026-09-12 local docker official v1.0.0-beta.232 (digest sha256:0a5913… matches pinned release); both official schemas hash-verified; four inventory GET routes application-layer reachable (404/400 handler-level). artifacts/saas-contract/om01-evidence.json |
+| OM-02 | provider | pass | runtime pass: V2/V3 all five aspects on isolated namespaced customers; V3 Credits authoritative (currency-decimal ledger, body-key dedup); CRITICAL: Idempotency-Key header NOT honored — observed double-issuance; V2 grants have no dedup. artifacts/saas-contract/om02-differences.md |
+| OM-03 | provider | pass | runtime pass: 8-way concurrent same-key customer creation 1×201+7×409 single ULID; retry 409 re-query-by-key; plan publish replay state-guarded one active version. artifacts/saas-contract/om0304-report.md |
+| OM-04 | provider | pass | runtime pass: grant dedup at DB constraint (SQLSTATE 23505 chargecreditpurchase_namespace_customer_id_key); duplicate+crash-retry exactly one funded 50 entry (balance 50 not 100); unique query by key; V2 contrast double-created → V2 must not issue. artifacts/saas-contract/om0304-report.md |
+| OM-05 | provider | pass | runtime pass: natural period reset (usage 250→0, used not refunded, grant remainders preserved); two-source priority burn with spill (750→650→0 then 500→350); auto-grant single at creation (cross-period ≥1h window disclosed unobserved). artifacts/saas-contract/om0506-cases/s16-om0506b-v2-order.json |
+| OM-06 | provider | pass | runtime pass: expiry time-lapse live 100→60 at expiry instant (t+59s/+65s); month-end/leap echo exact (2028-01-31+P1M→2028-02-29); exact decimal strings; V3 per-grant attribution settlement-only and late-report not applied real-time (both disclosed). artifacts/saas-contract/om0506-cases/s9-om06b-timelapse.json |
+| OM-07 | provider | pass | runtime pass: upgrade→consecutive→downgrade burn price follows plan exactly (1.00/2.00/3.00/1.00) with zero grant re-issuance; cancel stops burn, preserves grants, re-subscribe 201. artifacts/saas-contract/om0708-report.md |
+| OM-08 | provider | pass | runtime pass (partial-void unsupported, disclosed): full void exact with batch isolation; repeat void idempotent 200; expired void 409; concurrent burn+void consistent; adapter must split batches for partial refunds. artifacts/saas-contract/om0708-report.md |
+| OM-09 | provider | pass | runtime pass: external-funded grant with purchase terms; settlement authorized/settled 200 (purchase.settlement_status=settled); REPEAT settled → 412 exactly-once; single funded entry; custom-invoicing schema-only (400). artifacts/saas-contract/om0910-cases/om09-settlement.json |
+| OM-10 | provider | pass | runtime pass (conclusion: platform coordinator REQUIRED): no atomic check-and-consume interface in complete v3 surface; live is in-flight authority; void detection 1.1s; overdraw burns all 202 with live clamped at 0 → platform-side admission mandatory. artifacts/saas-contract/om0910-cases/om10-part2.json |
 | OPS-03 | integration | pass | ledger task O01 commit bf5ab4d35ad357452ebe0f8a68e87769e5fc97cc；go test ./internal/commercial ./internal/application/service/commercial -run "Test(Rollback|Recovery)" -count=1；pass (rollback keeps paid recovery + settlement; callbacks/query/refund paths stay runnable) |
 | OPS-04 | unit | pass | ledger task W02 commit 7adec104eefc0a4f87e5eb84ad090cc47d6269ec；pnpm --filter @weknora/web test；9/9 pass (unit: paid vs fulfilled, pending, closed, refund-processing states; browser/e2e not run -> browser level stays unfinished) |
 | SYNC-01 | integration | pass | ledger task A07 commit 0e30173103abd4f24e2c07b7c65c3ffc2c409537；go test ./internal/appconnector ./internal/application/service ./internal/datasource -run "Test(Sync|DataSource)" -count=1；pass (SQLite + stubs: checkpoint gate, cursor recovery without duplicates, lease fencing, pause reasons, source-deletion default-keep; real Feishu/Notion endpoints blocked-env) |
@@ -108,11 +106,11 @@
 
 ## 未完成范围（provider / browser / blocked-env / pending）
 
-- **Provider 级（blocked-env，需商户/服务授权）**：OM-01..OM-10（无 OpenMeter 服务与商户凭据；V03 gate f84b98b 持续拒绝 selected-model.json）、WX-05、ALI-05（无微信/支付宝测试商户）、FS-04（无用户指定的飞书测试会话凭据）、NO-04（无用户指定的 Notion 测试父页面与集成凭据）。
+- **Provider 级（blocked-env，需商户/服务授权）**：WX-05、ALI-05（真实支付渠道退款链路）；FS-04、NO-04（用户指定的真实飞书/Notion 测试目标与凭据）。（OM-01..OM-10 已于 2026-09-12 在本地 docker 官方镜像上取得 runtime 证据并全部 pass，见上表与 artifacts/saas-contract/；本地部署不等于云生产联验。）
 - **Pending（无真实商户配置，且台账中无下单/查单/退款链路的单元证据）**：WX-01、WX-03、WX-04、ALI-01、ALI-03、ALI-04。
 - **Browser / 产品联验（blocked-env）**：AC-01..AC-20；OPS-04 的浏览器层亦未运行（当前仅 W02 纯函数证据）。
 
-合计未完成 40 项：AC-01, AC-02, AC-03, AC-04, AC-05, AC-06, AC-07, AC-08, AC-09, AC-10, AC-11, AC-12, AC-13, AC-14, AC-15, AC-16, AC-17, AC-18, AC-19, AC-20, ALI-01, ALI-03, ALI-04, ALI-05, FS-04, NO-04, OM-01, OM-02, OM-03, OM-04, OM-05, OM-06, OM-07, OM-08, OM-09, OM-10, WX-01, WX-03, WX-04, WX-05。
+合计未完成 30 项：AC-01, AC-02, AC-03, AC-04, AC-05, AC-06, AC-07, AC-08, AC-09, AC-10, AC-11, AC-12, AC-13, AC-14, AC-15, AC-16, AC-17, AC-18, AC-19, AC-20, ALI-01, ALI-03, ALI-04, ALI-05, FS-04, NO-04, WX-01, WX-03, WX-04, WX-05。
 
 ## 门槛结论（对照验证清单 G0-G5）
 

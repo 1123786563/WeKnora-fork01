@@ -22,7 +22,7 @@
 
 本节按[实施台账](../plans/saas-billing-connectors-progress.md)的真实证据，记录各检查当前可主张的最高层级；不改变各检查的最终通过标准（门槛仍以 runtime 联验为准），provider/browser 级一律保持 blocked-env/pending，**没有任何 pending/blocked-env 被改为 pass**。逐项证据（任务／提交／命令／结果）见[验收收口文档](../plans/saas-billing-connectors-acceptance.md)。
 
-- OM-01..OM-10：blocked-env（无 OpenMeter 服务／商户凭据；V03 gate f84b98b 持续拒绝 selected-model.json）。
+- OM-01..OM-10：**runtime pass（2026-09-12，本地 docker 官方镜像 v1.0.0-beta.232，digest 已核）**。OM-01 版本/digest/四 GET 可达；OM-02 两模型五维度对照（V3 Credits 权威；关键发现：Idempotency-Key 头不被尊重会双发、V3 body key 才有真去重、V2 grant 无去重）；OM-03 并发同 key 1×201+7×409；OM-04 DB 约束级去重（SQLSTATE 23505）+崩溃重试恰一；OM-05 周期自然复位/已用不返还/优先级顺序消费；OM-06 到期时间流逝（live 100→60）+闰日/月末回显精确；OM-07 升降级链价格精确跟随且零重发；OM-08 void 整批精确/重复幂等/过期 409（部分退款需适配器拆批，已披露）；OM-09 外部结算 authorized/settled 200 且重复 settled 412 恰好一次；OM-10 无原子准入接口（平台侧准入必须）、超烧 202 全收 live 钳 0。证据：artifacts/saas-contract/om01-evidence.json、om02-differences.md、om0304-report.md、om0506-cases/s9+s16、om0708-report.md、om0910-cases/*、om0910-report.md；V03 gate 已放行（gate passed）。披露限制：迟报未实时入账（期结行为未观察）、V3 per-grant 归属仅结算可见、跨周期自动发放需 ≥1h 观察窗、custom-invoicing 仅 schema。本地部署非云生产，不据此宣称生产可用。
 - COM-01..COM-07：unit/integration 层 pass（F02 bb7e8c6、F03 2f4462a、C01 19e64ef、C04 1e7de9a、C05 d22aad3、F04 af899ce；SQLite／域层定向测试）。
 - WX-02、ALI-02：unit 层 pass（C02 e269415 TestWechat 9/9、C03 187570b TestAlipay 14/14，回调验签／解密／重放）；WX-01/03/04、ALI-01/03/04 pending（无真实商户配置，且无下单／查单／退款链路证据）；WX-05、ALI-05 blocked-env。
 - BUD-01..BUD-08、USE-01..USE-06：integration/unit 层 pass（U01 5449a1c、U02 0cfa73e、U03 3ef3742、U04 a137c79、U05 0a38092、F01 5a1111e；SQLite + -race）。
@@ -98,7 +98,7 @@ V3 schema 的本地 server 前缀为 `/api/v3`，paths 以 `/openmeter` 开始�
 
 ## 4. OpenMeter 能力实验
 
-当前 OM-01 至 OM-10 均为 blocked-env：本轮没有可用 OpenMeter 服务或商户凭据，未发送业务请求。候选模型记录在 [selected-model.json](../../../deploy/openmeter/contract-cases/selected-model.json)，仅作阻断记录；`scripts/saas/gate.py` 会拒绝它，直到获得 OM-01 至 OM-09 的真实运行证据。时间精度、结算确认和退款链路保持 unverified，不据此开放适配器。
+OM-01 至 OM-10 已于 2026-09-12 在本地 docker 官方镜像（v1.0.0-beta.232，digest 与钉死 release 一致）上取得真实运行证据，全部 runtime pass；[selected-model.json](../../../deploy/openmeter/contract-cases/selected-model.json) 已更新为 runtime-pass 记录（family=official_v3，含逐项 runtime result 载荷与已知限制），`scripts/saas/gate.py` 对其输出 gate passed（退出码 0）。权威模型为 V3 Credits：发放走 body key 去重、消费经订阅 rate card、结算经 external settlement（支付确认恰好一次，重复 412）；V2 仅作用量计量输入（无去重、不得发放）。平台协调器仍必须自担准入（提供方无原子接口且超烧全收）。时间精度（秒级存储/分钟级到期已观察）、结算确认（412 恰好一次）与退款链路（void 语义与限制）均已按证据记录；本地部署不等于云生产联验，生产开放仍以前述门槛为准。
 
 | ID | 目标与准备 | 实验步骤及通过标准 | 关联 |
 | --- | --- | --- | --- |
