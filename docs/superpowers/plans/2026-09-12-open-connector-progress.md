@@ -14,7 +14,7 @@
 | T04 授权与原始凭据解耦 | passed | commit b5f7b19b（集成分支 fast-forward）；A02Guard→Check(subject) 全量改造（含 DI :496 一行）；F-02 双重严格版本比对失效关闭；QR-F1/F2 调用方错误契约；Check 全路径零 LoadCredential；RED 15 项行为级失败→GREEN；-race 全绿；spec PASS + 质量 PASS（QF-1 handler 500 映射与 QF-6 nil dispatcher 为基线遗留，转 T13/T09/T10；残余 TOCTOU 归 T10 fence） |
 | T05 隔离管理凭据的控制 worker | passed | commit 98bcd5a2（cherry-pick 到集成分支）；三段行为级 RED→GREEN（29 PASS+3 PG-skip，-race 过）；真实 PG 双 claim/排空/过期接管 -count=3 全过（实现者与质量审查者各自独立容器复跑）；next_at 兼任租约（冻结 schema 适配）；admin 客户端 allowlist 精确匹配+禁 redirect+错误无 secret；spec PASS + 质量 PASS（Q-01/Q-02 MINOR 与 F-03 加密归属转 T16/T08） |
 | T06 审核目录与版本固定 | passed | commit 0bbd9249（集成分支 fast-forward）；17 项目录测试 RED→GREEN（含计划逐字 TestCatalogRejectsUnknownRisk 与 10 项矩阵）；jsonschema compile+metaschema 真校验（R2 santhosh-tekuri v6 偏差已记录）；SHA-256 常量独立逐位复核；冻结面（install.go 12 函数、T03/T05 仓储方法）逐字未动；spec PASS（A–D 全 ACCEPT）+ 质量 PASS（16 路并发首发 PK 竞态探针、published/Get 两态互斥、-race 全绿；8 INFO 归 T13/T07） |
-| T07 可关联的 OAuth 与 API key 授权 | pending | 消费 T01 oauth_correlation（state/connectionRequestId 关联） |
+| T07 可关联的 OAuth 与 API key 授权 | passed | commit a6819af5 + fix 54ab2277（集成分支 fast-forward）；R14 方案 A：admin authorizations 钉 UUID alias + 精确 alias 列表过滤相关 + api-key connect/api-key（源码钉死，T17/T18 复验）；R11 完整守卫换装落地；一次性消费条件更新经 16-goroutine 真并发探针；质量审查 Q-1 时区缺陷（BLOCKING）→修复→双审复审 PASS；真实 OAuth e2e blocked-env → T18；Q-2/Q-3（api-key 双提交/verifying 孤儿）→ T08 |
 | T08 撤销、权限变化和远端清理 | pending | |
 | T09 可信 Prepare 与完整审批快照 | pending | |
 | T10 原子 claim、全局幂等键与分布式限流 | pending | |
