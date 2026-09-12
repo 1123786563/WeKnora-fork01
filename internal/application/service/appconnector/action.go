@@ -103,10 +103,14 @@ type ActionSnapshot struct {
 // DispatchOutcome is the provider result of one dispatch attempt. Status
 // must be one of succeeded/failed/unknown; "unknown" means the outcome
 // could not be observed (crash window) and parks the action for a provider
-// query instead of a silent success or failure.
+// query instead of a silent success or failure. ExecutionID carries the
+// provider's meta.executionId when the envelope exposed one (T13 R15
+// additive extension): it lands on the durable dispatch record for
+// correlation; the classification itself never depends on it.
 type DispatchOutcome struct {
 	Status         string
 	ProviderResult string
+	ExecutionID    string
 }
 
 // ActionDispatcher performs the real outbound call with the snapshot's
@@ -650,15 +654,14 @@ func ocDispatchSettleOf(s *ActionService) OCDispatchSettleSource {
 // not overwrite the parked unknown: the action row is parked unknown too and
 // the provider query decides.
 func (s *ActionService) settleOCDispatchRecord(ctx context.Context, src OCDispatchSettleSource, rec appconn.OCDispatchRecord, claimed repoappconn.ActionRow, final DispatchOutcome) error {
-	// 1. Record (linearization point). The execution id stays empty in phase
-	// one: the outcome classification is authoritative here, and the
-	// provider's execution id lands on the record when later wiring surfaces
-	// it as a structured field.
+	// 1. Record (linearization point). The provider's execution id (when the
+	// envelope exposed one) is persisted for correlation; the outcome
+	// classification remains authoritative and never depends on it.
 	rerr := ocRetry(func() error {
 		octx, cancel := context.WithTimeout(ctx, ocRecoveryOpTimeout)
 		defer cancel()
 		return src.FinishOCDispatch(octx, rec.TenantID, rec.ActionID, rec.Fence,
-			appconn.ActionDispatched, final.Status, "")
+			appconn.ActionDispatched, final.Status, final.ExecutionID)
 	})
 	if rerr != nil {
 		if errors.Is(rerr, repoappconn.ErrOCDispatchConflict) {

@@ -32,6 +32,11 @@ func RegisterAppConnectorRoutes(
 			installations.POST("/:id/upgrade", installationHandler.UpgradeInstallation)
 			installations.POST("/:id/disable", installationHandler.DisableInstallation)
 		}
+		// T13: the tenant-reachable reviewed action catalog — a READ for
+		// every workspace member; the handler filters to actions reachable
+		// through this tenant's live bindings and active installations
+		// (published, scope-bearing, provider-matching only).
+		r.GET("/apps/catalog", installationHandler.ListOCCatalog)
 	}
 	if connectionHandler != nil {
 		connections := r.Group("/apps/connections", connectionHandler.RequireConnectionCapabilityForWrites())
@@ -42,6 +47,21 @@ func RegisterAppConnectorRoutes(
 			// minting a connection without credentials.
 			connections.POST("", connectionHandler.CreateConnection)
 			connections.POST("/:id/revoke", connectionHandler.RevokeConnection)
+			// T13: the correlate-able open-connector authorization
+			// attempts share the connection-management gate (existing
+			// management role; a personal connection admits only its
+			// owner — enforced in the handler). The receiver (the action
+			// handler, nil-guarded) is where the OC product state lives;
+			// the GATE is the existing connection-management one.
+			if actionHandler != nil {
+				connections.POST("/:id/authorization-attempts", actionHandler.BeginOCAuthorization)
+			}
+		}
+		// T13: attempt status is a READ for the tenant+actor that started
+		// it — no write gate (the handler enforces tenant+actor and never
+		// echoes state, token or credential).
+		if actionHandler != nil {
+			r.GET("/apps/authorization-attempts/:id", actionHandler.GetOCAuthorizationAttempt)
 		}
 		// A02: the provider redirect leg hangs DIRECTLY on the parent group
 		// (public; no bearer) — the opaque single-use state parameter is the
@@ -55,6 +75,11 @@ func RegisterAppConnectorRoutes(
 		r.GET("/apps/datasources/:id/sync-status", syncHandler.GetSyncStatus)
 	}
 	if actionHandler != nil {
+		// T13: the TRUSTED open-connector prepare. It carries the SAME
+		// action write gate as the native pipeline; the body admits ONLY
+		// connection_id/action_id/input — risk, version, runtime and alias
+		// are derived server-side and a client supplying them gets a 400.
+		r.POST("/apps/oc/actions/prepare", actionHandler.RequireActionCapabilityForWrites(), actionHandler.PrepareOCAction)
 		// W05: A03 action approval pipeline. GET reads the persisted
 		// tenant-scoped snapshot directly; the writes (prepare/approve/
 		// execute) fail closed (501) until SetActionService wires the A03

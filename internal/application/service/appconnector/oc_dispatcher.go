@@ -250,7 +250,11 @@ func (d *OCDispatcher) classify(oc *appconn.OCExecutionBinding, res openconnecto
 			// action row for the audit trail.
 			result += "; audit warning: meta.auditPersisted=false"
 		}
-		return DispatchOutcome{Status: appconn.ActionSucceeded, ProviderResult: result}
+		// T13 R15 extension: surface meta.executionId as a STRUCTURED field
+		// so the durable dispatch record can correlate the provider's
+		// execution without parsing result text. Classification is
+		// untouched.
+		return DispatchOutcome{Status: appconn.ActionSucceeded, ProviderResult: result, ExecutionID: res.ExecutionID}
 	case !res.Success && (res.HTTPStatus == http.StatusBadRequest || res.HTTPStatus == http.StatusForbidden) && res.Code != "":
 		// Pre-execution rejection PROVEN by T01: 400 invalid_input and 403
 		// authorization_failed/connection_not_allowed (the cross-connection
@@ -261,6 +265,7 @@ func (d *OCDispatcher) classify(oc *appconn.OCExecutionBinding, res openconnecto
 			Status: appconn.ActionFailed,
 			ProviderResult: fmt.Sprintf("pre-execution rejection http %d errorCode %s exec %s",
 				res.HTTPStatus, res.Code, res.ExecutionID),
+			ExecutionID: res.ExecutionID,
 		}
 	case res.HTTPStatus == http.StatusTooManyRequests:
 		return DispatchOutcome{Status: appconn.ActionUnknown, ProviderResult: d.noteThrottle(oc.Provider)}
