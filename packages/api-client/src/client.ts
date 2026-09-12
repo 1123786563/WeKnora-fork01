@@ -78,6 +78,16 @@ function withQuery(path: string, params: Record<string, string | undefined>): st
   return suffix ? `${path}?${suffix}` : path;
 }
 
+/** Pin/duplicate responses are success envelopes whose payload is not a full KnowledgeBase. */
+function parseKnowledgeBaseActionData(value: unknown): Record<string, unknown> {
+  if (value === null || typeof value !== 'object') throw new Error('knowledge-base action response must be an object');
+  const envelope = value as Record<string, unknown>;
+  if (envelope.success !== true) throw new Error('knowledge-base action failed');
+  const data = envelope.data;
+  if (data === null || typeof data !== 'object') throw new Error('knowledge-base action response.data must be an object');
+  return data as Record<string, unknown>;
+}
+
 export function createWeKnoraClient(options: WeKnoraClientOptions) {
   const timeoutMs = options.timeoutMs ?? 30_000;
 
@@ -234,6 +244,16 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
       },
       async remove(id: string): Promise<void> {
         await request({ method: 'DELETE', path: `/api/v1/knowledge-bases/${encodeURIComponent(id)}` });
+      },
+      async togglePin(id: string): Promise<{ is_pinned: boolean }> {
+        const data = parseKnowledgeBaseActionData(await request({ method: 'PUT', path: `/api/v1/knowledge-bases/${encodeURIComponent(id)}/pin` }));
+        return { is_pinned: data.is_pinned === true };
+      },
+      async duplicate(id: string): Promise<{ target_id: string }> {
+        const data = parseKnowledgeBaseActionData(await request({ method: 'POST', path: `/api/v1/knowledge-bases/${encodeURIComponent(id)}/duplicate` }));
+        const targetId = typeof data.target_id === 'string' && data.target_id ? data.target_id : (typeof data.id === 'string' ? data.id : '');
+        if (!targetId) throw new Error('knowledge-bases/duplicate.data.target_id must be a non-empty string');
+        return { target_id: targetId };
       },
       documents: knowledgeDocuments,
       faq: knowledgeFaq,

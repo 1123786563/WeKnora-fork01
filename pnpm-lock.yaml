@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      playwright-core:
+        specifier: ^1.63.0
+        version: 1.63.0
     devDependencies:
       '@types/node':
         specifier: 22.14.0
@@ -365,6 +369,9 @@ importers:
       '@weknora/domain':
         specifier: file:../../packages/domain
         version: file:packages/domain
+      '@weknora/i18n':
+        specifier: workspace:*
+        version: link:../../packages/i18n
       '@weknora/ui':
         specifier: file:../../packages/ui
         version: link:../../packages/ui
@@ -3524,6 +3531,11 @@ packages:
   pirates@4.0.7:
     resolution: {integrity: sha512-TfySrs/5nm8fQJDcBDuUng3VOUKsd7S+zqvbOTiGXHfxX4wK31ard+hoNuvkicM/2YFzlpDgABOevKSsB4G/FA==}
     engines: {node: '>= 6'}
+
+  playwright-core@1.63.0:
+    resolution: {integrity: sha512-rYCsBF/M5HjUch52bbtVONEFjv6Xu8sm8h72dNlR5bzIE1fvC/bxgspzkjSfU+MweEMmPM8KJebG6nnyxo5mCg==}
+    engines: {node: '>=20'}
+    hasBin: true
 
   plist@3.1.1:
     resolution: {integrity: sha512-ZIfcLJC+7E7FBFnDxm9MPmt7D+DidyQ26lewieO75AdhA2ayMtsJSES0iWzqJQbcVRSrTufQoy0DR94xHue0oA==}
@@ -7727,6 +7739,8 @@ snapshots:
   picomatch@4.0.7: {}
 
   pirates@4.0.7: {}
+
+  playwright-core@1.63.0: {}
 
   plist@3.1.1:
     dependencies:

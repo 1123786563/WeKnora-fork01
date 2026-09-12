@@ -24,3 +24,85 @@ test('supports a favorites-only view without treating missing favorite state as 
   const result = filterKnowledgeBases(items, { favoritesOnly: true });
   assert.deepEqual(result.items, [items[0]]);
 });
+
+// ---- kbListMerge / card gating parity (ported from frontend/src/views/knowledge) ----
+
+import { canDuplicateKBCard, canManageKBCard, isKnowledgeBaseInitialized, isSharedKbEditable, mergeAllScopeKnowledgeBases } from './list.ts';
+
+const owned = [
+  { id: 'kb-a', name: 'A', creator_id: 'user-1', created_at: '2024-01-01T00:00:00Z' },
+  { id: 'kb-b', name: 'B', creator_id: 'user-2', is_pinned: true, pinned_at: '2024-02-01T00:00:00Z' },
+  { id: 'kb-c', name: 'C', creator_id: 'user-1', is_pinned: true, pinned_at: '2024-03-01T00:00:00Z' },
+];
+
+test('merges shared knowledge bases without duplicating owned ids', () => {
+  const shared = [
+    { knowledge_base: { id: 'kb-a', name: 'A' }, permission: 'editor', shared_at: '2024-04-01T00:00:00Z', share_id: 's-1' },
+    { knowledge_base: { id: 'kb-d', name: 'D' }, permission: 'viewer', shared_at: '2024-04-02T00:00:00Z', share_id: 's-2' },
+  ];
+  const merged = mergeAllScopeKnowledgeBases(owned, shared, 'user-1');
+  const ids = merged.map((kb) => kb.id);
+  assert.equal(new Set(ids).size, ids.length, 'duplicate kb id rendered twice');
+  assert.equal(ids.filter((id) => id === 'kb-a').length, 1, 'owned KB lost to shared duplicate');
+  assert.equal(merged[0]?.id, 'kb-c', 'newest pinned first');
+});
+
+test('collapses duplicate shares of one knowledge base to the most-privileged permission', () => {
+  const shared = [
+    { knowledge_base: { id: 'kb-d' }, permission: 'viewer', shared_at: '2024-04-02T00:00:00Z', share_id: 's-1' },
+    { knowledge_base: { id: 'kb-d' }, permission: 'editor', shared_at: '2024-04-03T00:00:00Z', share_id: 's-2' },
+  ];
+  const merged = mergeAllScopeKnowledgeBases([], shared, 'user-1');
+  assert.equal(merged.length, 1);
+  assert.equal((merged[0] as { permission: string }).permission, 'editor');
+});
+
+test('orders merged cards pinned, mine, teammate, then shared editable before readonly', () => {
+  const shared = [
+    { knowledge_base: { id: 'kb-ro' }, permission: 'viewer', shared_at: '2024-04-02T00:00:00Z', share_id: 's-1' },
+    { knowledge_base: { id: 'kb-ed' }, permission: 'editor', shared_at: '2024-04-03T00:00:00Z', share_id: 's-2' },
+  ];
+  const merged = mergeAllScopeKnowledgeBases(owned, shared, 'user-1');
+  assert.deepEqual(merged.map((kb) => kb.id), ['kb-c', 'kb-b', 'kb-a', 'kb-ed', 'kb-ro']);
+});
+
+test('viewer role cannot manage or duplicate; creator and admin can manage', () => {
+  const kb = { id: 'kb-1', creator_id: 'user-9' };
+  assert.equal(canManageKBCard(kb, { userId: 'user-9', isAdmin: false }), true, 'creator match manages');
+  assert.equal(canManageKBCard(kb, { userId: 'user-1', isAdmin: false }), false, 'other member cannot manage');
+  assert.equal(canManageKBCard(kb, { userId: 'user-1', isAdmin: true }), true, 'admin fallback manages');
+  // Legacy KBs created before creator_id existed fall back to the role gate.
+  assert.equal(canManageKBCard({ id: 'kb-legacy' }, { userId: 'user-1', isAdmin: false }), false);
+  assert.equal(canManageKBCard({ id: 'kb-legacy' }, { userId: 'user-1', isAdmin: true }), true);
+  assert.equal(canDuplicateKBCard(kb, { userId: 'user-9', isAdmin: false, isContributor: true }), true);
+  assert.equal(canDuplicateKBCard(kb, { userId: 'user-9', isAdmin: false, isContributor: false }), false, 'viewer cannot duplicate');
+  assert.equal(canDuplicateKBCard({ id: 'kb-1', creator_id: 'user-2', isMine: false }, { userId: 'user-9', isAdmin: false, isContributor: true }), false, 'shared KB cannot be duplicated');
+});
+
+test('isSharedKbEditable mirrors the Vue EDITABLE_PERMS set', () => {
+  assert.equal(isSharedKbEditable('admin'), true);
+  assert.equal(isSharedKbEditable('editor'), true);
+  assert.equal(isSharedKbEditable('viewer'), false);
+  assert.equal(isSharedKbEditable(undefined), false);
+});
+
+test('isKnowledgeBaseInitialized follows the Vue summary/embedding model rule', () => {
+  assert.equal(isKnowledgeBaseInitialized({ summary_model_id: 'llm', embedding_model_id: 'emb' }), true);
+  assert.equal(isKnowledgeBaseInitialized({ summary_model_id: 'llm' }), false, 'embedding missing for RAG KB');
+  assert.equal(isKnowledgeBaseInitialized({ summary_model_id: '', embedding_model_id: 'emb' }), false, 'summary model required');
+  assert.equal(
+    isKnowledgeBaseInitialized({ summary_model_id: 'llm', indexing_strategy: { vector_enabled: false, keyword_enabled: false } }),
+    true,
+    'non-RAG KB does not need an embedding model',
+  );
+  assert.equal(
+    isKnowledgeBaseInitialized({ summary_model_id: 'llm', indexing_strategy: { wiki_enabled: true } }),
+    true,
+    'wiki-only strategy disables vector/keyword, so no embedding model is required (Vue rule)',
+  );
+  assert.equal(
+    isKnowledgeBaseInitialized({ summary_model_id: 'llm', indexing_strategy: { wiki_enabled: true, vector_enabled: true } }),
+    false,
+    'wiki KB with vector indexing still needs an embedding model',
+  );
+});
