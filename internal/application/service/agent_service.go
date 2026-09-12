@@ -114,6 +114,9 @@ type agentService struct {
 	sandboxResolver      sandbox.TenantSandboxResolver
 	sandboxPinner        *SessionSandboxPinner
 	sandboxPolicy        WorkspaceSandboxPolicy
+	// craft is the optional Craft delegation assembly. nil leaves every
+	// session on the unchanged builtin tool set.
+	craft *CraftDelegation
 }
 
 // NewAgentService creates a new agent service
@@ -140,6 +143,7 @@ func NewAgentService(
 	sandboxResolver sandbox.TenantSandboxResolver,
 	sandboxPinner *SessionSandboxPinner,
 	sandboxPolicy WorkspaceSandboxPolicy,
+	craftDelegation *CraftDelegation,
 ) interfaces.AgentService {
 	return &agentService{
 		cfg:                  cfg,
@@ -167,6 +171,7 @@ func NewAgentService(
 		sandboxResolver:  sandboxResolver,
 		sandboxPinner:    sandboxPinner,
 		sandboxPolicy:    sandboxPolicy,
+		craft:            craftDelegation,
 	}
 }
 
@@ -1050,6 +1055,12 @@ func (s *agentService) registerTools(
 			}
 			registry.RegisterTool(toolToRegister)
 		}
+	}
+
+	// Craft delegation (R05): opened only for Craft+tRPC sessions with a
+	// bound workspace; every other session keeps the unchanged tool set.
+	if err := s.registerCraftDelegateTool(ctx, registry, config, sessionID); err != nil {
+		return err
 	}
 
 	logger.Infof(ctx, "Registered %d tools", len(registry.ListTools()))
