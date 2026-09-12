@@ -8,6 +8,11 @@ export default defineConfig({
     alias: {
       '@weknora/api-client': fileURLToPath(new URL('../../packages/api-client/src/index.ts', import.meta.url)),
       '@weknora/contracts': fileURLToPath(new URL('../../packages/contracts/src/index.ts', import.meta.url)),
+      '@weknora/domain/chat/message-extras': fileURLToPath(new URL('../../packages/domain/src/chat/message-extras.ts', import.meta.url)),
+      '@weknora/domain/chat/copy-answer': fileURLToPath(new URL('../../packages/domain/src/chat/copy-answer.ts', import.meta.url)),
+      '@weknora/domain/chat/session-grouping': fileURLToPath(new URL('../../packages/domain/src/chat/session-grouping.ts', import.meta.url)),
+      '@weknora/domain/chat/message-timestamps': fileURLToPath(new URL('../../packages/domain/src/chat/message-timestamps.ts', import.meta.url)),
+      '@weknora/domain/auth/password-policy': fileURLToPath(new URL('../../packages/domain/src/auth/password-policy.ts', import.meta.url)),
       '@weknora/domain/scope': fileURLToPath(new URL('../../packages/domain/src/scope.ts', import.meta.url)),
       '@weknora/domain/chat/draft': fileURLToPath(new URL('../../packages/domain/src/chat/draft.ts', import.meta.url)),
       '@weknora/domain/chat/reducer': fileURLToPath(new URL('../../packages/domain/src/chat/reducer.ts', import.meta.url)),
