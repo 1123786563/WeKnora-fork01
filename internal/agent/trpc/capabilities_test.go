@@ -23,6 +23,15 @@ func TestCapabilitySnapshotRoundTripAndCompatibility(t *testing.T) {
 	require.NoError(t, before.CompatibleWith(after))
 	after.SkillDigests["skill1"] = "sha256:b"
 	require.ErrorContains(t, before.CompatibleWith(after), "skill capability digest changed")
+	after = before
+	after.SystemPrompt = "changed"
+	require.ErrorContains(t, before.CompatibleWith(after), "system prompt changed")
+	after = before
+	after.MemoryPrompt = "changed"
+	require.ErrorContains(t, before.CompatibleWith(after), "memory prompt changed")
+	after = before
+	after.ImageReferences = []string{"artifact://other"}
+	require.ErrorContains(t, before.CompatibleWith(after), "image references changed")
 }
 
 func TestCapabilitySnapshotRejectsDeferredToolOutsideRegistry(t *testing.T) {
@@ -44,6 +53,24 @@ func TestGraphRunnerRejectsCapabilityDrift(t *testing.T) {
 		InitialState: State{Version: StateVersion, Capabilities: CapabilitySnapshot{ToolIdentities: []string{"changed"}}},
 	})
 	require.ErrorContains(t, err, "capability compatibility")
+}
+
+func TestGraphRunnerRejectsDelayedMCPSetDrift(t *testing.T) {
+	_, err := NewGraphRunner(GraphBindings{
+		Model: &engineModel{}, Store: &minimalStore{},
+		Capabilities: CapabilitySnapshot{
+			ToolIdentities: []string{"thinking", "mcp/search"},
+			DeferredNames:  []string{"mcp/search"},
+		},
+		InitialState: State{
+			Version: StateVersion,
+			Capabilities: CapabilitySnapshot{
+				ToolIdentities: []string{"thinking", "mcp/other"},
+				DeferredNames:  []string{"mcp/other"},
+			},
+		},
+	})
+	require.ErrorContains(t, err, "tool capability set changed")
 }
 
 func TestCloneStatePreservesNilSkillDigests(t *testing.T) {

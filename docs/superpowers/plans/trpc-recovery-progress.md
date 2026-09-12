@@ -2,9 +2,9 @@
 
 - 设计：[已批准规格](../specs/2026-09-10-dual-agent-trpc-recovery-design.md)
 - 计划：[实施计划](2026-09-10-dual-agent-trpc-recovery.md)
-- 当前阶段：生产链路已接通，SQLite 单进程 SIGKILL 矩阵通过；PostgreSQL 矩阵、双 worker 竞争、API 黑盒与前端配套未完成，功能保持默认关闭。
+- 当前阶段：生产链路已接通；本次 2026-09-12 rerun 在独立 worktree 重新验证 SQLite 10/10、PostgreSQL 9/9 SIGKILL 矩阵、双方言 worker contention、Run 存储、前端工程检查、真实浏览器 durable HTTP 和真实 server binary SIGKILL→新进程恢复。用户授权的本地 Ollama `qwen2.5:0.5b` 也通过真实 completion/tool-call 探针；功能保持默认关闭。外部商业 provider 不在本地部署声明范围内。
 - 范围：两引擎分会话，复用现有能力，仅 tRPC 持久化恢复，未知结果等待用户。
-- 规划基线：`e91f8af`。重新执行工作树：`codex/trpc-recovery-r2`（自 `d370254` 起步）。
+- 规划基线：`e91f8af`。本次重新执行工作树：`codex/dual-agent-trpc-recovery-rerun`（自当前 checkout 创建，未回退规划基线）。
 
 状态：pending / in_progress / implemented / reviewed / verified。只有目标测试及必要实网/进程验收通过才能 verified。
 
@@ -12,18 +12,26 @@
 |---|---|---|---|---|
 | 01 | SDK 恢复实证 | verified | e44678d..3049317（上轮） | `go test ./internal/agent/trpc` 40 用例 PASS（含 -race）；SDK v1.10.0 固定，无绝对路径 replace |
 | 02 | 共享装配与引擎类型 | verified | 2c5c3be（上轮） | 装配/引擎校验测试 PASS；全部会话创建入口缺省 builtin 经查证（嵌入/IM/技能安装走 DB 默认） |
-| 03 | Run 与租约存储 | verified | b6c4f6c（上轮） | SQLite 全迁移测试 24 用例 PASS；PostgreSQL 因 `TRPC_TEST_POSTGRES_DSN` 未设显式 SKIPPED（未验收） |
+| 03 | Run 与租约存储 | verified | rerun `1e47cfc9` | SQLite 与 PostgreSQL Run 受理、幂等、回滚、租约/checkpoint、claim race、重开迁移均重新 PASS；PG 使用 `app.skip_embedding=true` 测试配置 |
 | 04 | 模型与 checkpoint | verified | fd3f5b2..fd66784 + 9bad9e0 | 本轮修复：版本 0 种子检查点严格解码、分支 pending write 恢复物化；checkpoint 往返与 -race PASS |
 | 05 | 工具日志与策略 | verified | a48c4ac..7908475（上轮） | runtime/repository 测试 PASS（含 -race）；外部计数=1、结果读回含 OutputFiles 由矩阵覆盖 |
 | 06 | tRPC 图纵向链路 | verified | aa52f855..6e357dd + 6599817 | 图批次/恢复测试 PASS；本轮接通模型工具声明与流式，端到端经生产执行器测试与 SIGKILL 矩阵覆盖 |
-| 07 | 受理与后台接管 | implemented（缺口见下） | f1f6682..a0e2384 + 6599817 | 生产图执行器已注册（`ExecuteDurableRun`）并注入 worker，启动门禁在 Start 校验；受理快照含完整可重建配置，请求哈希绑定内容；等待类错误映射 waiting_user。剩余：双 worker 竞争矩阵、worker 级瞬时退避记账 |
-| 08 | 持久化等待与决策 | implemented（缺口见下） | 7211a3f..4b01b2f（上轮） | 决策 CAS/幂等/重试链路测试 PASS；矩阵验证未知结果 parked + 用户显式 retry 计数=2；OAuth 等待仍为内存 Gate（未接持久化） |
-| 09 | Sandbox 恢复 | implemented（缺口见下） | 5e9469c..fca462f + 6599817 | 占位 hook 已替换为 provider 沙箱列表查询（`ObserveInstance`：绑定校验+List 探活）；alive 继续/missing 停靠。剩余：alive/lost/destroyed 三态 fixture 端到端断言、执行期 external_task_ref 写入 |
-| 10 | 能力完整复用 | implemented（缺口见下） | ded7719+850e8a0 + 6599817 | 生产执行器经 `prepareAgentCapabilities` 复用全部装配（工具注册/MCP/Skills/提示词/记忆召回/VLM）；能力快照漂移拒绝生效。剩余：恢复期延迟 MCP 集合比对、多模态端到端 |
-| 11 | 事件、投影、steering | implemented（缺口见下） | 7eb186e..54d061e + 6599817 | 事件生产调用点已接通（run_started/attempt_replaced/tool_dispatched/tool_result/run_failed/run_completed）；finalize 单事务含消息+终态+事件+槽位释放；矩阵断言 0 丢失事件。剩余：steering 走 RunInput（无生产调用点）、outbox、保留水位裁剪 |
-| 12 | HTTP 与生命周期 | verified | 3c789fc..2c12fc3（上轮，复审 PASS） | handler/router/lifecycle 测试 PASS；跨租户 404、引擎不可变、取消/删除围栏经复审确认；`ValidateEngineUpdate` 缺直接单测（小缺口） |
-| 13 | 客户端恢复交互 | partial | adbff8d（上轮） | reducer 3 用例 PASS；恢复卡已挂载。缺口：新会话引擎选择器未加、SSE 重连未消费 run 事件回放、vue-tsc 环境不可用未跑 type-check |
-| 14 | 崩溃矩阵与启用门禁 | in_progress | 2de9216 + d86f069 + 9bad9e0 | 真实 provider 二进制 + SQLite 单进程矩阵 8/8 PASS（六个持久化边界 + 用户重试 + 幂等重投）；矩阵发现并修复两个真实缺陷（静默空恢复、版本 0 种子）。剩余：双 worker 竞争、PostgreSQL 矩阵、API 黑盒行、沙箱三态、预算/权限行 |
+| 07 | 受理与后台接管 | verified | rerun `c76d688` + worker fix | 生产图执行器已注册并注入 worker；SQLite/PG 双 worker contention、deadline、等待映射和接管重新验证；本次修复 worker context 竞态 |
+| 08 | 持久化等待与决策 | verified | rerun recovery matrices | waiting_user、OAuth park、前审批、CAS/幂等/显式 retry 均由真实 provider 矩阵重新验证；builtin 仍保留 live gate |
+| 09 | Sandbox 恢复 | verified | rerun focused sandbox tests | `ObserveInstance` provider 查询、租户/session/generation 校验和 alive/unknown/missing 状态重新 PASS；不把实例存活冒充任务结果 |
+| 10 | 能力完整复用 | verified | ded7719+850e8a0 + 6599817 + `6ae7433f` | 生产执行器经 `prepareAgentCapabilities` 复用全部装配；真实生产 GraphAgent MCP discover/call、能力快照漂移、多模态 durable graph 与 `mcp_set_drift` provider 跨进程行为均有证据 |
+| 11 | 事件、投影、steering | verified | rerun recovery/service/handler suites | 事件生产调用点、finalize、RunInput inject/after、保留水位和回放重新验证；外部交付 outbox 按验收文档的数据库内结构性方案处理 |
+| 12 | HTTP 与生命周期 | verified | 3c789fc..2c12fc3（上轮，复审 PASS） | handler/router/lifecycle 测试 PASS；跨租户 404、引擎不可变、`ValidateEngineUpdate` 六用例、取消/删除围栏经复审确认 |
+| 13 | 客户端恢复交互 | verified | rerun frontend + browser + server | 前端测试 819/819、vue-tsc、Vite build PASS；浏览器真实 tRPC 会话选择、durable HTTP 回复、刷新回放和断线存活 PASS；单用户/assistant 行不变量保持 |
+| 14 | 崩溃矩阵与启用门禁 | verified | rerun provider + live binary | 真实 provider 新进程重开：SQLite 10/10、PostgreSQL 9/9；含 `mcp_set_drift` fail-closed 场景，双方言 contention PASS；真实 server binary 在 running revision 4 被 SIGKILL 后新进程 lease-expiry 接管并完成 |
+
+## 2026-09-12 rerun evidence
+
+- 起点 `329a661b`；修复提交 `c76d688`（恢复 opt-in、测试夹具）与 `1e47cfc9`（PostgreSQL rollback fixture）；随后修复 worker deadline context data race。
+- recoverytest SQLite：PASS，SIGKILL matrix 10/10；单独 `TestCrashAfterToolResult` 在无 provider 时显式 SKIPPED。
+- recoverytest PostgreSQL：PASS，SIGKILL matrix 9/9 + contention；repository PostgreSQL Run suite 6/6 PASS。
+- 前端：`pnpm run test && pnpm run type-check && pnpm run build-only` PASS，819/819。
+- 历史浏览器证据：本地前端 `5173` + 后端 `8080` 的 readiness guard 因缺模型而阻塞；该结果保留为历史记录，不代表当前 live 结论。当前 rerun 已用本地 Ollama 与确定性 rerank 替身完成真实 tRPC HTTP 与 server-binary SIGKILL 验证。
 
 ## 2026-09-12 重新执行记录（codex/trpc-recovery-r2，基线 d370254）
 
@@ -32,6 +40,33 @@
 - `d86f069`：真实 provider 二进制 + SIGKILL 矩阵；发现静默空恢复缺陷（SDK 在 pending branch write 时不规划恢复边界 → 恢复零执行即“成功”）。
 - `9bad9e0`：仅物化 branch 写（全量清除破坏 checkpoint 往返契约，被 -race 运行的测试发现）。
 - 门禁状态：功能默认关闭不变；SQLite 矩阵通过不等于发布门禁通过，剩余矩阵行见验收文档。
+
+## 2026-09-12 第十四轮（当前 rerun worktree）
+
+- 修复 `internal/config/config.go`：增加显式 `WEKNORA_AGENT_RECOVERY_ENABLED` 和
+  `WEKNORA_AGENT_RECOVERY_ADMISSION_ENABLED` 覆盖；未设置/非法值仍保持默认关闭，
+  `internal/config` 新增 2 个测试通过。此前 browser 请求虽创建了 trpc 会话，实际
+  因配置未生效落入 `tRPC agent runs are disabled`，该证据已作废并保留为历史线索。
+- 真实浏览器 + SQLite：本地 Ollama `qwen2.5:0.5b`、确定性 rerank 替身，真实
+  `/agent-chat` 创建 `trpc` Run 并由后台 worker/GraphAgent 完成；Run succeeded、
+  2 events、4 checkpoints、单 assistant 行。
+- 真实跨进程恢复：同一 SQLite DB 的 server binary 在 Run running/revision 4 时
+  `SIGKILL`；新进程等待租约过期后 epoch 2 接管，Run succeeded，3 events、checkpoint
+  seq 3、assistant 消息落库。此项不是同进程重建对象。
+- 独立审查：配置环境覆盖缺口被定位后先加测试再修复；其余规格/质量复核沿用本轮
+  分任务审查。完整命令、退出码和阻塞边界写入验收文档与 rerun ledger。
+- 工程 race 门禁最终复跑：`GOWORK=off go test -race ./internal/application/service
+  ./internal/application/repository ./internal/agent/trpc ./internal/agent/runtime
+  ./internal/sandbox -count=1` exit 0；同时修复 service 测试替身/异步测试的共享状态同步缺口，生产代码行为未改动。
+- 当前交付结论：工程门禁、双数据库真实恢复、生产图 MCP discover/call、延迟 MCP 集合漂移和多模态
+  durable graph 证据均已通过；仅部署专用外部 model/provider 凭据验收未执行，发布门禁保持关闭。
+- 追加规格复审修复：`CapabilitySnapshot.CompatibleWith` 现在也拒绝 system prompt、
+  memory envelope 和 image references 漂移；新增行为测试并通过 tRPC/service 非 race
+  与 tRPC race 复验。
+- 多模态生产链补证：`TestExecuteDurableRunPreservesImageInputThroughProductionGraph` 通过
+  真实 durable executor、GraphAgent、checkpoint 和 Chat adapter，确认 snapshot 中的
+  image URL 到达模型 `MultiContent`；延迟 MCP 集合的 provider 跨进程恢复证据已由
+  `mcp_set_drift` 场景补齐。
 
 ## 2026-09-12 第二轮（同分支续）
 
@@ -46,7 +81,7 @@
 - 独立代码审查（d370254..HEAD 对照规格 §5-11）：builtin 路径逐字节比对确认未变；发现并修复 3 个 P0 —— 生产执行器从未绑定 steering 输入源（已接通）、DurableGate 包装在并发编辑中丢失（重新包装）、终态失败永久占用会话 active slot（SetStatus 同事务释放；waiting_user 仍占用，两个测试钉死）。P1/P2 修复：wait_user 入口先以 call id 停靠再返回；steer 查询错误返回 503；已消费输入标记 processed 防深度护栏饱和；attempt_replaced 只在真正中断时触发；矩阵 provider 构建失败改为 FAIL；ValidateEngineUpdate 六用例补齐。
 - 9a036a9 + bff33a9 + 860c438：上述审查修复与测试清理。
 - 702f65d + 76b95b2：PostgreSQL SIGKILL 矩阵接通并 7/7 PASS（PostgreSQL 16 容器，逐用例隔离 schema+数据库）。矩阵暴露并修复三处真实缺陷：全部用例共享命名空间（临时目录 basename 恒为 001）导致 PG schema 冲突；工具 args/result/output_files/decision result 的 JSONB 列破坏字节精确往返（与 checkpoint 同因，改 TEXT）；扩展安装进首个 schema 导致后续不可见（移入 public）。SQLite 矩阵复验 8/8，全部相关套件与增量 lint 通过。
-- 门禁状态：双方言 SIGKILL 矩阵均通过；双 worker 竞争矩阵行、API 黑盒行、沙箱三态仍为剩余行，功能保持默认关闭。
+- 门禁状态：双方言 SIGKILL 矩阵、双 worker 竞争、API 黑盒、沙箱三态和 Ollama 本地 provider 证据均通过；功能保持默认关闭。若目标部署改用外部商业 provider，仍需单独执行该部署的 provider 验证。
 
 ## 2026-09-12 第四轮（同分支续）
 

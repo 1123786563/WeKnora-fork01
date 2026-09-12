@@ -1545,9 +1545,9 @@ func TestRunInstallDoesNotFailASkillThatIsAlreadyServing(t *testing.T) {
 	fx := newInstallFixture(t)
 	// The pointer has moved: the skill is installed, snapshotted and serving
 	// every new session. Only the row that says so is missing.
-	fx.skillRepo.updateFailsWhen = func(e *types.TenantSkillEntity) bool {
+	fx.skillRepo.setUpdateFailsWhen(func(e *types.TenantSkillEntity) bool {
 		return e.Status == types.SkillStatusReady
-	}
+	})
 
 	err := fx.svc.runInstall(context.Background(), 7, "cfg-1", "sk-1", fx.bundle)
 
@@ -1923,6 +1923,7 @@ type staleMark struct {
 
 type installFixture struct {
 	t          *testing.T
+	mu         sync.Mutex
 	svc        *TenantSkillService
 	bundle     *SkillBundle
 	configRepo *installConfigRepo
@@ -1933,9 +1934,10 @@ type installFixture struct {
 	// events are the coarse milestones the ordering tests read; commands is
 	// the full, ordered shell transcript so a new command can never hide
 	// behind an older substring match.
-	events      []string
-	commands    []string
-	fingerprint string
+	installFinished atomic.Bool
+	events          []string
+	commands        []string
+	fingerprint     string
 	// loadCheck* drive the per-language script verification pass, which is the
 	// last gate before the snapshot. exitCodes is consumed one entry per python
 	// pass and its last entry repeats, so a test about a single round writes one
@@ -2089,6 +2091,8 @@ func newInstallFixture(t *testing.T) *installFixture {
 }
 
 func (f *installFixture) record(event string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.events = append(f.events, event)
 }
 
@@ -2177,6 +2181,7 @@ func (f *installFixture) seedReadySkillWithSHA(sha256, snapshotID string) {
 }
 
 type installConfigRepo struct {
+	mu        sync.Mutex
 	fx        *installFixture
 	entity    *types.TenantSandboxConfigEntity
 	saved     *types.TenantSandboxConfigEntity
@@ -2196,6 +2201,8 @@ func (r *installConfigRepo) Create(context.Context, *types.TenantSandboxConfigEn
 func (r *installConfigRepo) GetByID(
 	_ context.Context, tenantID uint64, id string,
 ) (*types.TenantSandboxConfigEntity, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.entity == nil || r.entity.TenantID != tenantID || r.entity.ID != id {
 		return nil, nil
 	}
@@ -2246,6 +2253,8 @@ func (r *installConfigRepo) Update(ctx context.Context, e *types.TenantSandboxCo
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.updateErr != nil {
 		return r.updateErr
 	}
@@ -2302,6 +2311,12 @@ type installSkillRepo struct {
 	// which principal's value wins, so a fake that cannot distinguish
 	// principals would let the interesting bugs through.
 	userEnvs []*types.TenantUserEnvVar
+}
+
+func (r *installSkillRepo) setUpdateFailsWhen(fn func(*types.TenantSkillEntity) bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.updateFailsWhen = fn
 }
 
 func newInstallSkillRepo() *installSkillRepo {
@@ -3024,8 +3039,11 @@ func (m *installSandboxManager) InvalidateConfigSandboxes(
 	if m.fx.invalidateErr != nil {
 		return 0, m.fx.invalidateErr
 	}
+	m.fx.mu.Lock()
 	m.fx.staleMarks = append(m.fx.staleMarks, staleMark{tenantID: tenantID, configID: configID})
+	m.fx.mu.Unlock()
 	m.fx.record("mark-stale")
+	m.fx.installFinished.Store(true)
 	return 1, nil
 }
 
@@ -3036,7 +3054,9 @@ func (m *installSandboxManager) DestroySession(ctx context.Context, sessionID st
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	m.fx.mu.Lock()
 	m.fx.destroyedSandboxes = append(m.fx.destroyedSandboxes, sessionID)
+	m.fx.mu.Unlock()
 	m.fx.record("destroy-sandbox")
 	return nil
 }

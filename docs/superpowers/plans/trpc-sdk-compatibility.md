@@ -75,6 +75,10 @@ func graph.Interrupt(ctx context.Context, state State, key string, prompt any) (
 
 ## 测试命令与结果
 
+### 2026-09-12 rerun
+
+在 `codex/dual-agent-trpc-recovery-rerun`、起点 HEAD `329a661b` 重新运行固定 SDK 的 tRPC package tests；checkpoint reopen、stream terminal、interrupt payload/tool ID 和 SQLite pending writes 均 PASS。SDK 版本仍固定为 `v1.10.0`，未使用浮动版本或绝对路径 replace。
+
 实现前，在依赖安装完成后运行计划指定命令，确认 RED：
 
 ```text

@@ -172,8 +172,16 @@ func (w *AgentRunWorker) runOne(ctx context.Context, id string, fence agentrunti
 	}
 	done := make(chan struct{})
 	defer close(done)
-	renewCtx, cancel := context.WithCancel(ctx)
+	workerCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	executionCtx := workerCtx
+	if run, getErr := w.store.Get(ctx, fence.RunKey); getErr == nil && !run.Deadline.IsZero() {
+		if until := time.Until(run.Deadline); until > 0 {
+			var deadlineCancel context.CancelFunc
+			executionCtx, deadlineCancel = context.WithDeadline(workerCtx, run.Deadline)
+			defer deadlineCancel()
+		}
+	}
 	go func() {
 		ticker := time.NewTicker(w.cfg.Heartbeat)
 		defer ticker.Stop()
@@ -181,10 +189,10 @@ func (w *AgentRunWorker) runOne(ctx context.Context, id string, fence agentrunti
 			select {
 			case <-done:
 				return
-			case <-renewCtx.Done():
+			case <-workerCtx.Done():
 				return
 			case <-ticker.C:
-				if err := w.store.Renew(renewCtx, fence, w.cfg.Lease); err != nil {
+				if err := w.store.Renew(workerCtx, fence, w.cfg.Lease); err != nil {
 					cancel()
 					return
 				}
@@ -192,7 +200,7 @@ func (w *AgentRunWorker) runOne(ctx context.Context, id string, fence agentrunti
 		}
 	}()
 	if w.reconcile != nil {
-		if err := w.reconcile(renewCtx, fence); err != nil {
+		if err := w.reconcile(executionCtx, fence); err != nil {
 			if current, getErr := w.store.Get(context.Background(), fence.RunKey); getErr == nil && current.Status == "waiting_user" {
 				return
 			}
@@ -201,15 +209,8 @@ func (w *AgentRunWorker) runOne(ctx context.Context, id string, fence agentrunti
 	}
 	// A persisted deadline also caps the execution context so a slow graph
 	// cannot outlive the budget; the heartbeat renewer gives up with it.
-	if run, getErr := w.store.Get(ctx, fence.RunKey); getErr == nil && !run.Deadline.IsZero() {
-		if until := time.Until(run.Deadline); until > 0 {
-			var deadlineCancel context.CancelFunc
-			renewCtx, deadlineCancel = context.WithDeadline(renewCtx, run.Deadline)
-			defer deadlineCancel()
-		}
-	}
-	err := w.execute(renewCtx, fence)
-	if renewCtx.Err() != nil {
+	err := w.execute(executionCtx, fence)
+	if executionCtx.Err() != nil {
 		return
 	}
 	if current, getErr := w.store.Get(context.Background(), fence.RunKey); getErr == nil && current.Status == "waiting_user" {

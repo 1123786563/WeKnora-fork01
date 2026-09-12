@@ -83,9 +83,8 @@ type AgentConfig struct {
 }
 
 // AgentRecoveryConfig controls admission and background recovery for tRPC runs.
-// Enabled and AdmissionEnabled are opt-out: nil (unset in config) means true;
-// set enabled: false to disable. This makes durable recovery the default
-// behavior for fresh deployments while keeping an explicit off switch.
+// Enabled and AdmissionEnabled are opt-in: nil (unset in config) means false.
+// Both flags must be enabled before new durable tRPC runs are admitted.
 type AgentRecoveryConfig struct {
 	Enabled          *bool         `yaml:"enabled" json:"enabled"`
 	AdmissionEnabled *bool         `yaml:"admission_enabled" json:"admission_enabled"`
@@ -95,14 +94,14 @@ type AgentRecoveryConfig struct {
 	MaxWorkers       int           `yaml:"max_workers" json:"max_workers"`
 }
 
-// RecoveryEnabled resolves the opt-out flag: nil defaults to true.
+// RecoveryEnabled resolves the opt-in flag: nil defaults to false.
 func (c AgentRecoveryConfig) RecoveryEnabled() bool {
-	return c.Enabled == nil || *c.Enabled
+	return c.Enabled != nil && *c.Enabled
 }
 
-// RecoveryAdmissionEnabled resolves the opt-out flag: nil defaults to true.
+// RecoveryAdmissionEnabled resolves the opt-in flag: nil defaults to false.
 func (c AgentRecoveryConfig) RecoveryAdmissionEnabled() bool {
-	return c.AdmissionEnabled == nil || *c.AdmissionEnabled
+	return c.AdmissionEnabled != nil && *c.AdmissionEnabled
 }
 
 // IMConfig configures the IM integration service.
@@ -846,6 +845,8 @@ func applyAgentEnvOverrides(cfg *Config) {
 	if cfg.Agent.Recovery.MaxWorkers == 0 {
 		cfg.Agent.Recovery.MaxWorkers = 4
 	}
+	applyAgentRecoveryBoolEnv(&cfg.Agent.Recovery.Enabled, "WEKNORA_AGENT_RECOVERY_ENABLED")
+	applyAgentRecoveryBoolEnv(&cfg.Agent.Recovery.AdmissionEnabled, "WEKNORA_AGENT_RECOVERY_ADMISSION_ENABLED")
 	if value := strings.TrimSpace(os.Getenv("WEKNORA_AGENT_LLM_TIMEOUT")); value != "" {
 		if timeout, err := time.ParseDuration(value); err == nil {
 			cfg.Agent.LLMCallTimeout = int(timeout.Seconds())
@@ -863,6 +864,19 @@ func applyAgentEnvOverrides(cfg *Config) {
 			cfg.Agent.ToolApprovalTimeoutSeconds = int(d.Seconds())
 		}
 	}
+}
+
+func applyAgentRecoveryBoolEnv(target **bool, envName string) {
+	value := strings.TrimSpace(os.Getenv(envName))
+	if value == "" {
+		return
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		fmt.Printf("[config] %s=%q is not a boolean, ignoring\n", envName, value)
+		return
+	}
+	*target = &parsed
 }
 
 // applyAuthAndTenantDefaults fills in defaults for the Auth and Tenant
