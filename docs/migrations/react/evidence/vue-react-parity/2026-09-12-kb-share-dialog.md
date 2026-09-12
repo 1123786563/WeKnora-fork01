@@ -4,7 +4,7 @@ Date: 2026-09-12
 
 ## Scope
 
-The Web knowledge-base list now exposes a share action for manageable cards and a dialog that loads eligible organizations and current shares, supports viewer/editor permission selection, confirms unshare, and refreshes the list after a successful mutation. It reuses the existing organization share client and tenant-scoped transport.
+The Web knowledge-base list now exposes a localized share action for manageable cards and a dialog that loads eligible organizations and current shares, supports viewer/editor permission selection, confirms unshare, and refreshes the list after a successful mutation. It reuses the existing organization share client and tenant-scoped transport.
 
 This remains `implementing`. The Vue organization avatar/metadata presentation, exact six-locale copy, upload-mask/progress integration, screenshot comparison, authenticated browser, real-backend, Wails, iOS, and Android evidence remain open.
 

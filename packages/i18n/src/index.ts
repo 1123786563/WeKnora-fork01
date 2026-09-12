@@ -10,6 +10,9 @@ const baseMessages: Record<Locale, Record<string, string>> = {
   'ru-RU': { 'auth.login': 'Войти', 'auth.email': 'Эл. почта', 'auth.password': 'Пароль', 'common.loading': 'Загрузка…', 'common.retry': 'Повторить', 'common.cancel': 'Отмена', 'common.workspaceRequired': 'Сначала выберите рабочее пространство', 'common.itemCount': '{count} элементов', 'common.error': 'Произошла ошибка', 'common.empty': 'Здесь пока ничего нет', 'common.creator': "Автор", 'common.type': "Тип", 'common.knowledgeBases': 'Базы знаний', 'common.edit': 'Изменить', 'common.delete': 'Удалить', 'common.settings': 'Настройки', 'common.save': 'Сохранить', 'common.saveChanges': 'Сохранить изменения', 'common.search': 'Поиск', 'common.all': 'Все', 'common.mine': 'Мои', 'common.others': 'Чужие', 'common.previous': 'Назад', 'common.next': 'Далее', 'common.pageOf': 'Страница {page} из {total}', 'common.typeDocument': 'Документ', 'common.typeFaq': 'FAQ', 'common.name': 'Название', 'common.description': 'Описание', 'common.favorite': 'Избранное', 'common.embeddingModel': 'Модель встраивания', 'common.summaryModel': 'Модель резюме', 'common.disabled': 'Недоступно' },
 };
 
+const commonShareLabels: Record<Locale, string> = { 'zh-CN': '分享', 'en-US': 'Share', 'ja-JP': '共有', 'ko-KR': '공유', 'ru-RU': 'Поделиться' };
+for (const locale of supportedLocales) baseMessages[locale]['common.share'] = commonShareLabels[locale];
+
 // Ported verbatim from frontend/src/i18n/locales/*.ts -> knowledgeList block.
 // Keys are flattened with dot separators; values are byte-exact.
 const knowledgeListMessages: Record<Locale, Record<string, string>> = {
