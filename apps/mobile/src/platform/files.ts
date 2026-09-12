@@ -2,6 +2,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import { Directory, File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { createAbortError, type Credential, type NativeFileSource } from '@weknora/api-client';
+import { safeArtifactFileName } from '@weknora/domain/chat/artifacts';
 import { authHeaderForFileDownload, toNativeFileSource } from './file-uris.ts';
 
 export async function pickNativeFile(): Promise<NativeFileSource | null> {
@@ -30,7 +31,7 @@ export async function downloadKnowledgeFile(options: {
   signal?: AbortSignal;
 }): Promise<string> {
   if (options.signal?.aborted) throw createAbortError('Download was cancelled');
-  const destination = new File(new Directory(Paths.cache), options.fileName || 'download');
+  const destination = new File(new Directory(Paths.cache), safeArtifactFileName(options.fileName || 'download'));
   const result = await File.downloadFileAsync(`${options.baseURL.replace(/\/+$/, '')}${options.path}`, destination, {
     headers: bearerHeaders(options.credential),
     idempotent: true,

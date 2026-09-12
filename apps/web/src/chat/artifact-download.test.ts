@@ -25,3 +25,13 @@ test('rejects an empty artifact filename before invoking the file sink', async (
   );
   assert.equal(called, false);
 });
+
+test('sanitizes path separators before handing a protected filename to the browser sink', async () => {
+  let filename = '';
+  await saveArtifactDownload(
+    { fileName: '../report\\final.txt' },
+    { body: 'x' },
+    async (_content, value) => { filename = value; },
+  );
+  assert.equal(filename, '.._report_final.txt');
+});

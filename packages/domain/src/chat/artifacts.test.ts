@@ -6,6 +6,7 @@ import {
   isArtifactExpired,
   normalizeArtifactMetadata,
   resolveArtifactReference,
+  safeArtifactFileName,
 } from './artifacts.ts';
 
 const handle = 'resource://abcdefghijklmnopqrstuv';
@@ -34,6 +35,11 @@ test('keeps a public resource handle without exposing provider or sandbox paths'
   });
   assert.equal('url' in (artifact ?? {}), false);
   assert.equal('sourcePath' in (artifact ?? {}), false);
+});
+
+test('keeps the public name while preventing path traversal and control characters in local sinks', () => {
+  assert.equal(safeArtifactFileName('../private\\report\u0000.pdf'), '.._private_report.pdf');
+  assert.equal(safeArtifactFileName(' '), 'artifact');
 });
 
 test('rejects internal URLs as handles and resolves only public handles or sandbox names', () => {

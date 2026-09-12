@@ -93,6 +93,15 @@ export function normalizeArtifactList(values: readonly unknown[] | null | undefi
   });
 }
 
+/** Keep server-owned display names safe when passed to a browser or local filesystem sink. */
+export function safeArtifactFileName(value: string): string {
+  const sanitized = value
+    .replace(/[\\/]/g, '_')
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+    .trim();
+  return sanitized || 'artifact';
+}
+
 export function resolveArtifactReference(
   reference: unknown,
   artifacts: readonly ChatArtifact[] | null | undefined,
