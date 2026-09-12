@@ -57,5 +57,7 @@ describe, passed the returned `tool_ref` to `call_mcp_tool`, persisted the
 tool call, and the server handler observed exactly one invocation. The
 provider matrix uses a deterministic provider-level capability-set substitute
 for the cross-process drift assertion; it does not claim a live third-party
-MCP service was restarted. Deployment-specific external MCP/model credentials
-remain outside this local release evidence.
+MCP service was restarted. The user-authorized local Ollama `qwen2.5:0.5b`
+provider was also probed through `/api/chat` and returned both a deterministic
+completion and a real function tool call. Deployment-specific external
+MCP/model credentials remain outside this local release evidence.

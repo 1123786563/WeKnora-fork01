@@ -44,6 +44,7 @@ and the external side-effect endpoint are deterministic doubles.
 | pre-approval park | `go test ./internal/agent/approval -run TestDurableGateParksPreflightApprovalWait -count=1` | PASS (2026-09-12) | DurableGate.RequestAndWait parks a durable run before dispatch with an mcp_approve_ pending id through the same hook chain as OAuth; builtin (no fence) still delegates to the live gate; resume flows through the planned-marker retry path proven by the oauth_park matrix row |
 | race check | `GOWORK=off go test -race ./internal/application/service ./internal/application/repository ./internal/agent/trpc ./internal/agent/runtime ./internal/sandbox -count=1` | PASS (exit 0, fresh 2026-09-12) | service, repository, trpc, runtime and sandbox packages pass; all previously exposed service-test fake races were removed with synchronized fixtures and completion barriers. |
 | final engineering sweep | `pnpm run test && pnpm run type-check && pnpm run build-only` in `frontend/` | PASS (rerun) | 819/819 tests, vue-tsc clean, Vite build succeeds after declaring direct compiler/i18n test dependencies. |
+| local provider verification | Ollama HTTP API plus production graph test | PASS (fresh 2026-09-12) | User-authorized Ollama `qwen2.5:0.5b` listed by `/api/tags`; `/api/chat` produced a deterministic completion and a real function tool call. The production GraphAgent MCP discover/call test passed against a real local streamable MCP server. |
 | browser verification | Browser harness against live local frontend/backend | PASS (fresh 2026-09-12) | Local Ollama `qwen2.5:0.5b` plus deterministic local rerank HTTP test service; authenticated browser-created `engine_type=trpc` session reached the real `/agent-chat` path. SQLite shows one `succeeded` Run, 2 events, 4 checkpoints and one assistant row. |
 | disconnect survival | browser/server request path with client disconnect | PASS (fresh 2026-09-12) | The durable HTTP path is submitted on a detached context; the request-side disconnect does not cancel the persisted Run. Focused disconnect test and live durable HTTP round trip both completed against the same SQLite service. |
 | live crash recovery | real server binary: SIGKILL mid-run, restart on same DB | PASS (fresh 2026-09-12) | `/tmp/weknora-trpc-recovery-rerun` was SIGKILLed while Run `3b845b50-70b6-4c31-b319-009919b4afd0` was `running` at revision 4; a new process reopened the same SQLite DB, waited for lease expiry, reclaimed at epoch 2, and completed. Final DB: `succeeded`, 3 events, checkpoint seq 3, one assistant row. |
@@ -118,11 +119,11 @@ startup because it would admit work without a recovery worker. A disabled
 worker must never silently fall back to builtin execution for a persisted tRPC
 run.
 
-The engineering race gate, provider matrices and local live binary recovery
-are green. The feature remains unavailable for rollout until deployment-specific
-external model/provider evidence is collected; local browser evidence uses
-Ollama and a deterministic rerank substitute and is not production-provider
-acceptance.
+The engineering race gate, provider matrices, local live binary recovery, and
+user-authorized Ollama local provider evidence are green. The feature remains
+default-off as required by the release policy. This document does not claim
+acceptance for a separate commercial/external model provider deployment; such a
+deployment requires its own environment-specific evidence.
 
 ## 14 项任务最终核验表（截至 rerun HEAD；真实浏览器与二进制恢复证据于 2026-09-12 补录）
 
@@ -146,4 +147,4 @@ acceptance.
 功能默认关闭（引擎门禁）；发布验证通过时也不会改变默认值。当前 rerun 的
 代码、SQLite/PG provider crash matrix、repository/service/frontend 工程检查、
 真实浏览器 durable HTTP 路径及真实 server binary 跨进程恢复均已取得新鲜证据。
-本地浏览器使用 Ollama 与确定性 rerank 测试替身，不代表外部生产凭据已验收。
+本地浏览器使用 Ollama 与确定性 rerank 测试替身；Ollama 本地 provider 已按本轮授权重新探测通过，但不代表外部商业生产凭据已验收。

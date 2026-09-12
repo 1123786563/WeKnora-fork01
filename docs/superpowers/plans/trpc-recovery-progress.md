@@ -2,7 +2,7 @@
 
 - 设计：[已批准规格](../specs/2026-09-10-dual-agent-trpc-recovery-design.md)
 - 计划：[实施计划](2026-09-10-dual-agent-trpc-recovery.md)
-- 当前阶段：生产链路已接通；本次 2026-09-12 rerun 在独立 worktree 重新验证 SQLite 10/10、PostgreSQL 9/9 SIGKILL 矩阵、双方言 worker contention、Run 存储、前端工程检查、真实浏览器 durable HTTP 和真实 server binary SIGKILL→新进程恢复。功能保持默认关闭；浏览器使用本地 Ollama 与确定性 rerank 测试替身，外部生产凭据仍不在本地验收范围。
+- 当前阶段：生产链路已接通；本次 2026-09-12 rerun 在独立 worktree 重新验证 SQLite 10/10、PostgreSQL 9/9 SIGKILL 矩阵、双方言 worker contention、Run 存储、前端工程检查、真实浏览器 durable HTTP 和真实 server binary SIGKILL→新进程恢复。用户授权的本地 Ollama `qwen2.5:0.5b` 也通过真实 completion/tool-call 探针；功能保持默认关闭。外部商业 provider 不在本地部署声明范围内。
 - 范围：两引擎分会话，复用现有能力，仅 tRPC 持久化恢复，未知结果等待用户。
 - 规划基线：`e91f8af`。本次重新执行工作树：`codex/dual-agent-trpc-recovery-rerun`（自当前 checkout 创建，未回退规划基线）。
 
@@ -81,7 +81,7 @@
 - 独立代码审查（d370254..HEAD 对照规格 §5-11）：builtin 路径逐字节比对确认未变；发现并修复 3 个 P0 —— 生产执行器从未绑定 steering 输入源（已接通）、DurableGate 包装在并发编辑中丢失（重新包装）、终态失败永久占用会话 active slot（SetStatus 同事务释放；waiting_user 仍占用，两个测试钉死）。P1/P2 修复：wait_user 入口先以 call id 停靠再返回；steer 查询错误返回 503；已消费输入标记 processed 防深度护栏饱和；attempt_replaced 只在真正中断时触发；矩阵 provider 构建失败改为 FAIL；ValidateEngineUpdate 六用例补齐。
 - 9a036a9 + bff33a9 + 860c438：上述审查修复与测试清理。
 - 702f65d + 76b95b2：PostgreSQL SIGKILL 矩阵接通并 7/7 PASS（PostgreSQL 16 容器，逐用例隔离 schema+数据库）。矩阵暴露并修复三处真实缺陷：全部用例共享命名空间（临时目录 basename 恒为 001）导致 PG schema 冲突；工具 args/result/output_files/decision result 的 JSONB 列破坏字节精确往返（与 checkpoint 同因，改 TEXT）；扩展安装进首个 schema 导致后续不可见（移入 public）。SQLite 矩阵复验 8/8，全部相关套件与增量 lint 通过。
-- 门禁状态：双方言 SIGKILL 矩阵均通过；双 worker 竞争矩阵行、API 黑盒行、沙箱三态仍为剩余行，功能保持默认关闭。
+- 门禁状态：双方言 SIGKILL 矩阵、双 worker 竞争、API 黑盒、沙箱三态和 Ollama 本地 provider 证据均通过；功能保持默认关闭。若目标部署改用外部商业 provider，仍需单独执行该部署的 provider 验证。
 
 ## 2026-09-12 第四轮（同分支续）
 
