@@ -35,8 +35,9 @@
 | W01 | **done** | .worktrees/craft-w01 / codex/craft-w01 | 9c02a7c4 | HEAD f594e2b9 审查 PASS_WITH_NITS（21/21）→ 合入 47f1f4b7；真实 PG 迁移链验证；W02 提示：不能重 Publish 补 preview checks、.env 变体凭据加固 |
 | O01 | **done** | .worktrees/craft-o01 / codex/craft-o01 | 9c02a7c4 | HEAD 0e4ecb37 审查 PASS_WITH_NITS（19/19）→ 合入 9608c6ac；真实 PG 双方言验证；O02 提示：网关单调序列、唯一记账入口、并发 Append 冲突信号收紧 |
 | R07 | **done** | .worktrees/craft-r07 / codex/craft-r07 | 1b44296f | HEAD 6f1fb157 审查 PASS_WITH_NITS（18/18，审查者独立复跑 live PASS）→ 合入 b1e8950b；运行时链 R01–R07 全部完成 |
-| W02 | fixing（轮2） | .worktrees/craft-w02 / codex/craft-w02 | 1b44296f | 修复轮1 真实 nginx 配置过 9/10；轮2 剩1项：location /p/ 内需重申剥 Cookie/Authorization（nginx 继承规则实测验证）；已派最小修复 |
-| O02 | review | .worktrees/craft-o02 / codex/craft-o02 | 9608c6ac | HEAD a6709d34：三层 RED→GREEN、并发最后额度仅一通过、HMAC 短期凭据网关；发现 G4 部署缺口（commercial_reservations 迁移缺 owner 列，收费上线前 G4 须补，账面无影响）；审查者进行中 |
+| W02 | **done** | .worktrees/craft-w02 / codex/craft-w02 | 1b44296f | 经 2 轮修复（conf 副本→真实 nginx→继承规则修复，捕获法实测剥凭据）→ 合入 e3835d82；审查 FAIL→定向复审→协调器复核闭环 |
+| O02 | **done** | .worktrees/craft-o02 / codex/craft-o02 | 9608c6ac | HEAD a6709d34 审查 PASS_WITH_NITS（25/25）→ 合入 1c02390b；G4 缺口扩大记录（另 4 张商业表仅存 AutoMigrate），收费上线前 G4 须补（O05 门禁） |
+| W03 | implementing | .worktrees/craft-w03 / codex/craft-w03 | 1c02390b | 已派发（API 表全量+feature gate+Submit 受理）；W04–O05（除已完）等待依赖 |
 
 ## 调度纪要
 
