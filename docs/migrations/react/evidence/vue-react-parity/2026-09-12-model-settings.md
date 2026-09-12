@@ -6,7 +6,7 @@ Date: 2026-09-12
 
 This slice replaces the generic React model inventory for the settings `models` section with a typed Web panel based on the Vue `ModelSettings.vue` and `ModelEditorDialog.vue` contracts. It covers model-type tabs/counts, tenant-role add/edit/delete controls, built-in visibility, provider loading, remote/local source, base URL validation, embedding dimension validation, context window, vision, concurrency, and write-only model credentials.
 
-It remains `implementing`. Ollama download/search/progress, all provider-specific fields and custom-header editing, thinking-control selection, remote debug drawer, model-usage conflict navigation, six-locale copy, fixed-viewport Vue/React screenshots, and authenticated browser/Wails/mobile acceptance remain open.
+It remains `implementing`. The editor now exposes the existing model custom-header and chat thinking-control fields and warns explicitly that local/Ollama model download is not yet ported. Ollama download/search/progress, all provider-specific fields, remote test/embedding dimension checks, debug/usage surfaces, six-locale copy, fixed-viewport Vue/React screenshots, and authenticated browser/Wails/mobile acceptance remain open.
 
 ## Evidence
 
