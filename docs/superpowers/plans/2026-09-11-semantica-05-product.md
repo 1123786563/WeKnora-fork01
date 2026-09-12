@@ -35,7 +35,7 @@
 
 **接口：** 建议路由 GET /api/v1/knowledge-bases/:id/semantic/status、POST .../semantic/search、POST .../semantic/reason；POST /api/v1/knowledge/:id/semantic/retry。客户端getSemanticStatus、searchSemantic、reasonSemantic、retrySemanticIndex；ID/revision为十进制字符串，后端禁止body覆盖path scope。
 
-- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 test("semantic revision preserves uint64 precision", () => {
@@ -47,13 +47,13 @@ test("semantic revision preserves uint64 precision", () => {
 });
 ```
 
-- [ ] **2. 确认 RED**。执行 `pnpm exec tsx --test packages/contracts/test/semantic.test.ts packages/api-client/src/semantic.test.ts`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [x] **2. 确认 RED**。执行 `pnpm exec tsx --test packages/contracts/test/semantic.test.ts packages/api-client/src/semantic.test.ts`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 使用现有session/API key权限路由，不另建前端直连Python；读状态需资源可读，重试/配置变更需资源管理权限**
+- [x] **3. 使用现有session/API key权限路由，不另建前端直连Python；读状态需资源可读，重试/配置变更需资源管理权限**
 
-- [ ] **4. 定义带实际mode、status、generation、证据、推理类型和限制的DTO；未知枚举视为兼容未知状态，不能默认ready；内部错误不泄露服务地址/凭据**
+- [x] **4. 定义带实际mode、status、generation、证据、推理类型和限制的DTO；未知枚举视为兼容未知状态，不能默认ready；内部错误不泄露服务地址/凭据**
 
-- [ ] **5. 客户端支持AbortSignal，retry通过服务端幂等提交；所有scope由服务端根据path与身份决定；补充API文档及路由合同测试**
+- [x] **5. 客户端支持AbortSignal，retry通过服务端幂等提交；所有scope由服务端根据path与身份决定；补充API文档及路由合同测试**
 
 关键实现约束：
 

@@ -300,14 +300,14 @@
 - 剩余（如实，W 接线）：chat_pipeline/search_entity.go 与 agent 工具入口统一（现无消费者——fail-closed 保证未接线即不可用）；真向量/全文 seam（现 noop）；进度流（无流路径无违规）；TopK 截断、first-wins 去重、并发双引擎、%w 链、DeliveredContentBytes 真交付槽（minors）。
 - 第二段提交 SHA：a372daa。
 
-### 2026-09-11 W01 用户API与共享客户端契约（verified）
+### 2026-09-11 W01 用户API与共享客户端契约（implemented——规格评审 PASS；质量评审下轮补）
 
 - 工作区：.worktrees/semantica（分支 codex/semantica）；基线 SHA：0b3f98c。
 - 修改文件：packages/contracts/{src/semantic.ts,test/semantic.test.ts,package.json}、packages/api-client/{src/semantic.ts,src/semantic.test.ts,package.json}、internal/handler/{semantic.go,semantic_test.go}、internal/types/semantic_query.go（Wire DTO）、internal/router/routes_knowledge.go、本台账、05 计划勾选。
 - RED：`pnpm exec tsx --test packages/contracts/test/semantic.test.ts`（模块不存在）+`go vet ./internal/handler`（undefined）。
 - GREEN：TS 契约 6 测（uint64 满值字符串保真逐字/浮点拒绝/负数拒绝/数值类型拒绝/未知枚举→unknown 绝不 ready/七状态逐一）+客户端 5 测（403 带码/Abort/非 JSON 错误体不泄露内网地址/成功证据/mode 传体）+Go 3 测（无服务 503/body 越权仍 503/mode 白名单 400）；build 净；handler 全量 ok。
 - 契约要点：ID/revision 全链十进制字符串；未知枚举=兼容 unknown；mode 取实际执行模式；客户端零授权材料（scope 服务端 path+身份）；内部错误不透地址/凭据。
-- 路由：/knowledge-bases/:id/semantic/{status,search,reason} 挂 KBAccessRead；nil 不挂载。
+- 路由：RegisterSemanticUserRoutes（KBAccessRead）已定义但**未在 router.go 挂载**（404 而非 503——挂载与 facade 桥接归 W02）；nil 不挂载；裸 Group 未声明 apiKey 能力（API key 一律拒——fail-closed 方向，W02 需声明能力）。
 - **延后（W02/W03）**：retry 服务端端点（客户端方法已备，挂载归 W02 接 I05 协调器）；SemanticQueryFacade 生产桥接（fail-closed nil 保证未接线即 503）；API 文档页（W03）。
 - review：本轮预算耗尽，双评审留待下轮补做后再定 verified——**本轮如实标 implemented**。
 - 提交 SHA：01b78e1。
