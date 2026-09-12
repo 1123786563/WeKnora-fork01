@@ -103,6 +103,12 @@ type AlipayConfig struct {
 	AlipayPublicKeyPath string
 	MerchantPrivKeyPath string
 	Timeout             time.Duration
+	// RefundOrderKey resolves a refund id (out_request_no) to its ORIGINAL
+	// out_trade_no. alipay.trade.fastpay.refund.query requires both
+	// identifiers (sandbox-verified 2026-09-12: single-identifier calls fail
+	// with ACQ.INVALID_PARAMETER); without a resolver QueryRefund fails
+	// closed instead of issuing an invalid channel call.
+	RefundOrderKey func(refundID string) string
 }
 
 func (c AlipayConfig) timeout() time.Duration {
@@ -485,9 +491,17 @@ func (p *AlipayProvider) QueryRefund(ctx context.Context, refundID string) (Refu
 	if refundID == "" {
 		return RefundResult{}, fmt.Errorf("%w: empty refund id", ErrInvalidRequest)
 	}
+	orderKey := ""
+	if p.cfg.RefundOrderKey != nil {
+		orderKey = p.cfg.RefundOrderKey(refundID)
+	}
+	if orderKey == "" {
+		return RefundResult{ProviderID: refundID}, fmt.Errorf("%w: refund query needs the paired out_trade_no (RefundOrderKey not wired)", ErrNotConfigured)
+	}
 	var out alipayRefundQueryResponse
 	err := p.call(ctx, "alipay.trade.fastpay.refund.query", alipayRefundQueryBiz{
 		OutRequestNo: refundID,
+		OutTradeNo:   orderKey,
 	}, &out)
 	if err != nil {
 		return RefundResult{State: stateIfTimeout(err, StateUnknown), ProviderID: refundID},

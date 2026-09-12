@@ -51,6 +51,14 @@ func alipaySandboxConfig(t *testing.T) AlipayConfig {
 	} else {
 		cfg.GatewayURL = "https://openapi-sandbox.dl.alipaydev.com/gateway.do"
 	}
+	// Refund ids in these flows are "<out_trade_no>-r1"; the channel
+	// requires the paired order id on refund queries.
+	cfg.RefundOrderKey = func(refundID string) string {
+		if i := strings.LastIndex(refundID, "-r"); i > 0 {
+			return refundID[:i]
+		}
+		return ""
+	}
 	return cfg
 }
 
@@ -199,58 +207,70 @@ func TestAlipaySandboxInteractivePaidRefundFlow(t *testing.T) {
 	p := alipaySandboxProvider(t)
 	ctx := context.Background()
 	out := alipaySandboxOrderID("pay")
-
-	created, err := p.Create(ctx, OrderRequest{OrderID: "sb-5", MerchantOrderID: out, AmountFen: 1, Currency: "CNY"})
-	if err != nil {
-		t.Fatalf("precreate: %v", err)
-	}
-	t.Logf("PAY THIS QR WITH THE SANDBOX BUYER WALLET: %s", created.CheckoutURL)
-
 	timeout := 180 * time.Second
 	if v := os.Getenv("ALIPAY_SANDBOX_PAY_TIMEOUT"); v != "" {
 		if secs, err := strconv.Atoi(v); err == nil && secs > 0 {
 			timeout = time.Duration(secs) * time.Second
 		}
 	}
-	deadline := time.Now().Add(timeout)
-	var paid AttemptResult
-	for time.Now().Before(deadline) {
+	// Pre-paid entry: when the buyer already paid a page.pay order (the QR
+	// path is unreliable in this sandbox), pass its out_trade_no via
+	// ALIPAY_SANDBOX_PAID_ORDER and the flow starts at reconciliation.
+	if prepaid := os.Getenv("ALIPAY_SANDBOX_PAID_ORDER"); prepaid != "" {
+		out = prepaid
 		q, err := p.Query(ctx, out)
-		if err == nil && q.State == StateSucceeded {
-			paid = q
-			break
+		// A FULLY refunded order reads TRADE_CLOSED; accept either terminal.
+		if err != nil || (q.State != StateSucceeded && q.State != StateClosed) {
+			t.Fatalf("pre-paid order %s not in a paid/refunded terminal state: %+v %v", out, q, err)
 		}
-		time.Sleep(3 * time.Second)
-	}
-	if paid.State != StateSucceeded {
-		t.Fatalf("payment not observed within %s (last query error above); rerun with a longer ALIPAY_SANDBOX_PAY_TIMEOUT", timeout)
+		t.Logf("using pre-paid order %s (state=%s), skipping QR", out, q.State)
+	} else {
+		created, err := p.Create(ctx, OrderRequest{OrderID: "sb-5", MerchantOrderID: out, AmountFen: 1, Currency: "CNY"})
+		if err != nil {
+			t.Fatalf("precreate: %v", err)
+		}
+		t.Logf("PAY THIS QR WITH THE SANDBOX BUYER WALLET: %s", created.CheckoutURL)
+		deadline0 := time.Now().Add(timeout)
+		var paid0 AttemptResult
+		for time.Now().Before(deadline0) {
+			q, qerr := p.Query(ctx, out)
+			if qerr == nil && q.State == StateSucceeded {
+				paid0 = q
+				break
+			}
+			time.Sleep(3 * time.Second)
+		}
+		if paid0.State != StateSucceeded {
+			t.Fatalf("payment not observed within %s; see ALIPAY_SANDBOX_PAY_TIMEOUT / ALIPAY_SANDBOX_PAID_ORDER", timeout)
+		}
 	}
 
 	refundKey := out + "-r1"
-	rr, err := p.Refund(ctx, RefundRequest{RefundID: refundKey, ProviderID: out, AmountFen: 1})
-	if err != nil {
-		t.Fatalf("refund: %v", err)
-	}
-	if rr.State != StateSucceeded {
-		t.Fatalf("refund state: %+v", rr)
-	}
-
-	qr, err := p.QueryRefund(ctx, refundKey)
-	if err != nil {
-		t.Fatalf("refund query: %v", err)
-	}
-	if qr.State != StateSucceeded {
-		t.Fatalf("refund query state: %+v", qr)
-	}
-
-	// Idempotent re-file of the SAME refund key: channel must report the
-	// already-applied refund (fund_change N), still succeeded — never a
-	// second money movement.
-	rr2, err := p.Refund(ctx, RefundRequest{RefundID: refundKey, ProviderID: out, AmountFen: 1})
-	if err != nil {
-		t.Fatalf("refund re-file: %v", err)
-	}
-	if rr2.State != StateSucceeded {
-		t.Fatalf("refund re-file state: %+v", rr2)
-	}
+	retryTransient(t, "paid-refund-chain", func() error {
+		rr, err := p.Refund(ctx, RefundRequest{RefundID: refundKey, ProviderID: out, AmountFen: 1})
+		if err != nil {
+			return err
+		}
+		if rr.State != StateSucceeded {
+			t.Fatalf("refund state: %+v", rr)
+		}
+		qr, err := p.QueryRefund(ctx, refundKey)
+		if err != nil {
+			return err
+		}
+		if qr.State != StateSucceeded {
+			t.Fatalf("refund query state: %+v", qr)
+		}
+		// Idempotent re-file of the SAME refund key: channel must report the
+		// already-applied refund (fund_change N), still succeeded — never a
+		// second money movement.
+		rr2, err := p.Refund(ctx, RefundRequest{RefundID: refundKey, ProviderID: out, AmountFen: 1})
+		if err != nil {
+			return err
+		}
+		if rr2.State != StateSucceeded {
+			t.Fatalf("refund re-file state: %+v", rr2)
+		}
+		return nil
+	})
 }

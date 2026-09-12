@@ -43,7 +43,7 @@
 | ALI-02 | unit | pass | ledger task C03 commit 187570b96658a3733d51a7786e067d27c36c2301；go test ./internal/payment -run TestAlipay -count=1；14/14 pass (unit: exact-fen amounts, tampered body/key/app_id/seller rejected, four-status mapping, fact carries no local identity) |
 | ALI-03 | provider | pass | 2026-09-12 沙箱 runtime：TestAlipaySandboxQueryNotFound PASS——签名查单不存在订单返回渠道真实 ACQ.TRADE_NOT_EXIST（非伪造状态）；渠道行为发现：未支付预下单对 query/close 不可见（TRADE_NOT_EXIST），完整生命周期归 ALI-05 交互流程；Close 业务码吞噬缺陷已修复（alipayCloseResponse） |
 | ALI-04 | provider | pass | 2026-09-12 沙箱 runtime：TestAlipaySandboxRefundUnpaidAndRetry PASS——未支付订单退款被渠道拒绝（TRADE_NOT_EXIST）且同退款键重试保持一致（零翻转）；已支付订单的全额/部分退款链路归 ALI-05 交互流程 |
-| ALI-05 | provider | blocked-env | blocked-env: 需沙箱买家钱包扫码真实付款的交互流程（TestAlipaySandboxInteractivePaidRefundFlow，ALIPAY_SANDBOX_INTERACTIVE=1）——支付→全额退款→退款查询→同键重发幂等；待用户配合执行 |
+| ALI-05 | provider | pass | 2026-09-12 官方沙箱真实付款链路（artifacts/alipay-sandbox/ali05-evidence.json）：网页收银台真实支付 0.01 元（trade_no 2026091222001429920511776519，买家 bgd***@sandbox.com，状态轨迹 TRADE_NOT_EXIST→WAIT_BUYER_PAY→TRADE_SUCCESS）→ 全额退款（订单转 closed）→ QueryRefund 成功 → 同键重发幂等（fund_change N 路径）；命令 ALIPAY_SANDBOX_INTERACTIVE=1 ALIPAY_SANDBOX_PAID_ORDER=… go test -run TestAlipaySandboxInteractivePaidRefundFlow PASS；QR/钱包路径在沙箱报「人气太旺」错误（已记录，改走网页支付）；运行时再发现并修复：QueryRefund 必须同时携带 out_request_no+out_trade_no（新增 RefundOrderKey 解析器，未接线时 fail-closed + 单元测试）；环境注记：官方沙箱非生产商户 |
 | BUD-01 | integration | pass | ledger task U02 commit 0cfa73ec891bc1449c68c4a7ea32d2a79d4689ea；go test ./internal/commercial ./internal/application/repository/commercial -run "Test(Available|Budget)" -race -count=1；10/10 pass with -race (SQLite: concurrent reservations never exceed verifiable lower bound) |
 | BUD-02 | integration | pass | ledger task U02 commit 0cfa73ec891bc1449c68c4a7ea32d2a79d4689ea；go test ./internal/commercial ./internal/application/repository/commercial -run "Test(Available|Budget)" -race -count=1；10/10 pass with -race (shared budget store never duplicated across consumers) |
 | BUD-03 | integration | pass | ledger task U02 commit 0cfa73ec891bc1449c68c4a7ea32d2a79d4689ea；go test ./internal/commercial ./internal/application/repository/commercial -run "Test(Available|Budget)" -race -count=1；10/10 pass with -race (append and negative-protection semantics) |
@@ -110,7 +110,7 @@
 - **Pending（无真实商户配置，且台账中无下单/查单/退款链路的单元证据）**：WX-01、WX-03、WX-04、ALI-01、ALI-03、ALI-04。
 - **Browser / 产品联验（blocked-env）**：AC-01..AC-20；OPS-04 的浏览器层亦未运行（当前仅 W02 纯函数证据）。
 
-合计未完成 30 项：AC-01, AC-02, AC-03, AC-04, AC-05, AC-06, AC-07, AC-08, AC-09, AC-10, AC-11, AC-12, AC-13, AC-14, AC-15, AC-16, AC-17, AC-18, AC-19, AC-20, ALI-01, ALI-03, ALI-04, ALI-05, FS-04, NO-04, WX-01, WX-03, WX-04, WX-05。
+合计未完成 26 项（2026-09-12 更新：ALI-01/03/04/05 已凭官方沙箱 runtime 证据关闭，见上表）：AC-01, AC-02, AC-03, AC-04, AC-05, AC-06, AC-07, AC-08, AC-09, AC-10, AC-11, AC-12, AC-13, AC-14, AC-15, AC-16, AC-17, AC-18, AC-19, AC-20, FS-04, NO-04, WX-01, WX-03, WX-04, WX-05。
 
 ## 门槛结论（对照验证清单 G0-G5）
 

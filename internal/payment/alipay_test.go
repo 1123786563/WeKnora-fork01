@@ -352,10 +352,25 @@ func TestAlipayRefundUsesAlipayIdentifiers(t *testing.T) {
 	}
 }
 
+// QueryRefund fails closed without a RefundOrderKey resolver: the channel
+// requires the paired out_trade_no (sandbox-verified ACQ.INVALID_PARAMETER
+// otherwise), so an unwired caller must get a local error, never an invalid
+// channel call.
+func TestAlipayQueryRefundFailsClosedWithoutOrderKey(t *testing.T) {
+	p, _, _ := alipayGatewayFixture(t, func(r *http.Request) (string, error) {
+		t.Fatal("no channel call may be made without the resolver")
+		return "{}", nil
+	})
+	if _, err := p.QueryRefund(context.Background(), "rf-1"); err == nil {
+		t.Fatal("expected fail-closed error")
+	}
+}
+
 func TestAlipayQueryRefundMapsRefundStatus(t *testing.T) {
 	p, lastForm, _ := alipayGatewayFixture(t, func(r *http.Request) (string, error) {
 		return "{\"code\":\"10000\",\"msg\":\"Success\",\"out_request_no\":\"rf-1\",\"out_trade_no\":\"out-1\",\"refund_status\":\"REFUND_SUCCESS\",\"total_amount\":\"0.01\"}", nil
 	})
+	p.cfg.RefundOrderKey = func(refundID string) string { return "out-1" }
 	res, err := p.QueryRefund(context.Background(), "rf-1")
 	if err != nil {
 		t.Fatal(err)
