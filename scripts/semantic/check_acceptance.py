@@ -3,9 +3,10 @@
 check_acceptance(policy, evidence) -> list[str] of ALL blocking reasons.
 Release requires: policy.approved, zero permission leaks, complete
 evidence (contract/integration/recovery/browser/live_model all verified),
-metrics within explicit thresholds, and version/lock-hash
-consistency. Missing thresholds or missing real-model evidence leave the
-corresponding mode BLOCKED - never silently enabled.
+metrics within explicit thresholds, and version/lock-hash consistency.
+Threshold DIRECTION is encoded by suffix: names ending _max compare
+measured <= limit; names ending _min compare measured >= limit; any other
+name is rejected as invalid_threshold (fail closed on ambiguity).
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ from __future__ import annotations
 REQUIRED_LAYERS = ("contract", "integration", "recovery", "browser", "live_model")
 
 
-def check_acceptance(policy: dict, evidence: dict) -> list:
+def check_acceptance(policy: dict, evidence: dict) -> list[str]:
     errors: list[str] = []
     if policy.get("approved") is not True:
         errors.append("policy_not_approved")
@@ -24,17 +25,24 @@ def check_acceptance(policy: dict, evidence: dict) -> list:
     for layer in REQUIRED_LAYERS:
         if evidence.get(layer) != "verified":
             errors.append(f"missing_{layer}")
-    # Explicit threshold comparison: every threshold in policy must be met
-    # by the measured metrics; a missing measurement blocks.
     thresholds = policy.get("thresholds", {})
     metrics = evidence.get("metrics", {})
     for name, limit in thresholds.items():
         measured = metrics.get(name)
         if measured is None:
             errors.append(f"missing_metric:{name}")
-        elif measured > limit:
-            errors.append(f"threshold_exceeded:{name}")
-    # Version/commit/lock-hash consistency between policy and evidence.
+            continue
+        if not isinstance(measured, (int, float)) or not isinstance(limit, (int, float)):
+            errors.append(f"invalid_metric:{name}")
+            continue
+        if name.endswith("_max"):
+            if measured > limit:
+                errors.append(f"threshold_exceeded:{name}")
+        elif name.endswith("_min"):
+            if measured < limit:
+                errors.append(f"threshold_below:{name}")
+        else:
+            errors.append(f"invalid_threshold_name:{name}")
     for key in ("version", "lock_hash"):
         expected = policy.get(key)
         actual = evidence.get(key)
@@ -47,8 +55,12 @@ if __name__ == "__main__":
     import json
     import sys
 
-    policy = json.loads(sys.argv[1]) if len(sys.argv) > 1 else {}
-    evidence = json.loads(sys.argv[2]) if len(sys.argv) > 2 else {}
+    try:
+        policy = json.loads(sys.argv[1]) if len(sys.argv) > 1 else {}
+        evidence = json.loads(sys.argv[2]) if len(sys.argv) > 2 else {}
+    except (json.JSONDecodeError, IndexError) as exc:
+        print(f"usage: check_acceptance POLICY_JSON EVIDENCE_JSON ({exc})", file=sys.stderr)
+        sys.exit(2)
     problems = check_acceptance(policy, evidence)
     for problem in problems:
         print(problem)
