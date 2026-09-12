@@ -43,7 +43,7 @@ data/weknora.db-wal
 data/weknora.db-shm
 skills-lock.json
 
-web/
+/web/
 
 **/__pycache__
 /scripts/scale_dev_jobs.sh
@@ -66,3 +66,8 @@ miniprogram/project.private.config.json
 .weknora-sandbox-check-*
 
 *.tsbuildinfo
+
+# React apps build output (previously swallowed by the bare web/ rule)
+apps/web/dist/
+apps/embed/dist/
+apps/desktop/dist/
