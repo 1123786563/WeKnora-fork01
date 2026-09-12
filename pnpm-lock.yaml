@@ -430,6 +430,9 @@ importers:
       '@weknora/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@weknora/domain':
+        specifier: workspace:*
+        version: link:../domain
       react:
         specifier: '>=19'
         version: 19.3.0

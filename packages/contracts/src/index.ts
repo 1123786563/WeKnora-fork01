@@ -56,6 +56,27 @@ export interface ChatMessage {
   [key: string]: unknown;
 }
 
+export type MessageSuggestionStatus = 'generating' | 'ready' | 'suppressed' | 'failed';
+
+export interface MessageSuggestionItem {
+  id: string;
+  text: string;
+  category?: 'clarify' | 'deepen' | 'action' | string;
+  source: string;
+  knowledge_base_ids?: string[];
+}
+
+export interface MessageSuggestionSet {
+  id: string;
+  session_id: string;
+  assistant_message_id: string;
+  status: MessageSuggestionStatus;
+  allow_regenerate: boolean;
+  suppression_reason?: string;
+  questions: MessageSuggestionItem[];
+  generated_at?: string;
+}
+
 export type TemporaryAttachmentStatus = 'uploaded' | 'processing' | 'ready' | 'failed';
 
 export interface TemporaryAttachment {
@@ -448,6 +469,53 @@ export function parseChatMessageListResponse(value: unknown): ChatMessage[] {
       ...(updatedAt === undefined ? {} : { updated_at: updatedAt }),
     } as ChatMessage;
   });
+}
+
+function parseMessageSuggestionItem(value: unknown, path: string): MessageSuggestionItem {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new ContractError(path, 'expected an object');
+  const row = value as Record<string, unknown>;
+  const category = optionalString(row.category, `${path}.category`);
+  const knowledgeBaseIds = row.knowledge_base_ids === undefined || row.knowledge_base_ids === null
+    ? undefined
+    : (() => {
+      if (!Array.isArray(row.knowledge_base_ids)) throw new ContractError(`${path}.knowledge_base_ids`, 'expected an array');
+      return row.knowledge_base_ids.map((id, index) => requireNonEmptyString(id, `${path}.knowledge_base_ids[${index}]`));
+    })();
+  return {
+    ...row,
+    id: requireNonEmptyString(row.id, `${path}.id`),
+    text: requiredString(row.text, `${path}.text`),
+    source: requiredString(row.source, `${path}.source`),
+    ...(category === undefined ? {} : { category }),
+    ...(knowledgeBaseIds === undefined ? {} : { knowledge_base_ids: knowledgeBaseIds }),
+  } as MessageSuggestionItem;
+}
+
+function parseMessageSuggestionSet(value: unknown, path: string): MessageSuggestionSet {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new ContractError(path, 'expected an object');
+  const row = value as Record<string, unknown>;
+  const status = requiredString(row.status, `${path}.status`);
+  if (!['generating', 'ready', 'suppressed', 'failed'].includes(status)) throw new ContractError(`${path}.status`, 'unknown suggestion status');
+  if (typeof row.allow_regenerate !== 'boolean') throw new ContractError(`${path}.allow_regenerate`, 'expected a boolean');
+  if (!Array.isArray(row.questions)) throw new ContractError(`${path}.questions`, 'expected an array');
+  const suppressionReason = optionalString(row.suppression_reason, `${path}.suppression_reason`);
+  const generatedAt = optionalString(row.generated_at, `${path}.generated_at`);
+  return {
+    ...row,
+    id: requireNonEmptyString(row.id, `${path}.id`),
+    session_id: requireNonEmptyString(row.session_id, `${path}.session_id`),
+    assistant_message_id: requireNonEmptyString(row.assistant_message_id, `${path}.assistant_message_id`),
+    status: status as MessageSuggestionStatus,
+    allow_regenerate: row.allow_regenerate,
+    questions: row.questions.map((item, index) => parseMessageSuggestionItem(item, `${path}.questions[${index}]`)),
+    ...(suppressionReason === undefined ? {} : { suppression_reason: suppressionReason }),
+    ...(generatedAt === undefined ? {} : { generated_at: generatedAt }),
+  };
+}
+
+export function parseMessageSuggestionResponse(value: unknown): MessageSuggestionSet {
+  const result = actionEnvelope(value);
+  return parseMessageSuggestionSet(result.data, 'data');
 }
 
 function parseTemporaryAttachment(value: unknown, path: string): TemporaryAttachment {

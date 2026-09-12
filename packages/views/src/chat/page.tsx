@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ChatMessage, ChatSession } from '@weknora/contracts';
+import type { ChatMessage, ChatSession, MessageSuggestionSet } from '@weknora/contracts';
 import { ChatComposer, type ChatSubmission } from './composer.tsx';
 import { MessageList, type PendingChatMessage } from './message-list.tsx';
 import { SessionSidebar } from './session-sidebar.tsx';
@@ -71,6 +71,22 @@ export interface ChatPageProps {
   onRenameSession?(sessionId: string): Promise<void>;
   onToggleSessionPin?(sessionId: string, pinned: boolean): Promise<void>;
   onDeleteSession?(sessionId: string): Promise<void>;
+  sessionGroups?: readonly { key: string; label?: string; items: readonly ChatSession[] }[];
+  sessionSource?: string;
+  sessionSourceOptions?: readonly { value: string; label: string }[];
+  onSessionSourceChange?(source: string): void;
+  sessionGroupMode?: 'none' | 'date';
+  onSessionGroupModeChange?(mode: 'none' | 'date'): void;
+  sessionKeyword?: string;
+  onSessionKeywordChange?(keyword: string): void;
+  onClearSession?(): Promise<void>;
+  loadingOlderMessages?: boolean;
+  hasMoreMessages?: boolean;
+  onLoadOlderMessages?(): void;
+  suggestions?: MessageSuggestionSet;
+  onSuggestionClick?(questionId: string, text: string): void;
+  onRefreshSuggestions?(): void;
+  onDismissSuggestions?(): void;
   terminal?: ChatTerminalView;
   onOpenTerminal?(): Promise<void>;
   onTerminalInput?(input: string): Promise<void>;
@@ -212,6 +228,14 @@ export function ChatPage(props: ChatPageProps) {
       onRename={props.onRenameSession}
       onTogglePin={props.onToggleSessionPin}
       onDelete={props.onDeleteSession}
+      groups={props.sessionGroups}
+      source={props.sessionSource}
+      sourceOptions={props.sessionSourceOptions}
+      onSourceChange={props.onSessionSourceChange}
+      groupMode={props.sessionGroupMode}
+      onGroupModeChange={props.onSessionGroupModeChange}
+      keyword={props.sessionKeyword}
+      onKeywordChange={props.onSessionKeywordChange}
     />
     <section className="wk-chat-main" aria-label="Chat">
       <h1>{props.selectedSessionId ? 'Conversation' : 'New conversation'}</h1>
@@ -221,7 +245,19 @@ export function ChatPage(props: ChatPageProps) {
       <TerminalPanel terminal={props.terminal} onOpenTerminal={props.onOpenTerminal} onTerminalInput={props.onTerminalInput} onTerminalResize={props.onTerminalResize} onCloseTerminal={props.onCloseTerminal} />
       {props.error ? <p role="alert">{props.error}</p> : null}
       {props.loadingMessages ? <p role="status">Loading messages…</p> : null}
-      <MessageList messages={props.messages} pending={pending} onRetry={pending?.status === 'failed' ? () => void send({ content: pending.content, status: 'pending' }) : undefined} />
+      <MessageList
+        messages={props.messages}
+        pending={pending}
+        onRetry={pending?.status === 'failed' ? () => void send({ content: pending.content, status: 'pending' }) : undefined}
+        loadingOlder={props.loadingOlderMessages}
+        hasMore={props.hasMoreMessages}
+        onLoadOlder={props.onLoadOlderMessages}
+        suggestions={props.suggestions}
+        onSuggestionClick={props.onSuggestionClick}
+        onRefreshSuggestions={props.onRefreshSuggestions}
+        onDismissSuggestions={props.onDismissSuggestions}
+      />
+      {props.selectedSessionId && props.onClearSession ? <button type="button" onClick={() => void props.onClearSession!()}>Clear messages</button> : null}
       {props.selectedSessionId && props.onSteer ? <SteerComposer onSteer={props.onSteer} /> : null}
       <ChatComposer draft={props.draft} onDraftChange={props.onDraftChange} onSubmit={(submission) => void send(submission)} />
     </section>

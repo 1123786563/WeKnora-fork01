@@ -24,6 +24,7 @@ export type { ChatStreamRequestOptions, ParsedServerSentEvent, ServerSentEventHa
 export { createChatSessionsApi } from './chat/sessions.ts';
 export type { ChatMessageListParams, ChatSessionListParams, ChatSessionUpdateInput, ChatSessionsApi } from './chat/sessions.ts';
 export type { ChatMessage, ChatSession, ChatSessionListResponse } from '@weknora/contracts';
+export type { MessageSuggestionItem, MessageSuggestionSet, MessageSuggestionStatus } from '@weknora/contracts';
 export { createIdentityApi } from './identity/index.ts';
 export type { IdentityApi, TenantRole, TenantMember, TenantInvitation, AuditLog, Organization, OrganizationApi, OrganizationMember, OrganizationJoinRequest, OrganizationRole, OrganizationShare } from './identity/index.ts';
 export { createAdministrationApi } from './administration/index.ts';
@@ -83,6 +84,8 @@ export { createChatSteerApi } from './chat/steer.ts';
 export type { ChatSteerApi, EnqueueSteerInput } from './chat/steer.ts';
 export { createChatAttachmentsApi } from './chat/attachments.ts';
 export type { ChatAttachmentsApi, ChatAttachmentUploadInput } from './chat/attachments.ts';
+export { createChatSuggestionsApi } from './chat/suggestions.ts';
+export type { ChatSuggestionsApi, SuggestionEventType } from './chat/suggestions.ts';
 export type {
   ActionSuccessResponse,
   SteerDeleteResponse,

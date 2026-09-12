@@ -17,6 +17,7 @@
     "./chat/references": "./src/chat/references.ts",
     "./chat/artifacts": "./src/chat/artifacts.ts",
     "./chat/tool-results": "./src/chat/tool-results.ts",
+    "./chat/session-state": "./src/chat/session-state.ts",
     "./sandbox/terminal": "./src/sandbox/terminal.ts"
   },
   "dependencies": {

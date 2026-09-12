@@ -36,6 +36,7 @@ export interface ChatStreamState {
   oauthApprovals: Record<string, ChatOAuthApproval>;
   seenEventIds: readonly string[];
   lastEventId?: string;
+  assistantMessageId?: string;
   error?: string;
 }
 
@@ -51,6 +52,7 @@ function payload(event: ChatStreamEvent): Record<string, unknown> {
 export function reduceChatStream(state: ChatStreamState, event: ChatStreamEvent): ChatStreamState {
   const eventId = typeof event.event_id === 'string' && event.event_id ? event.event_id : undefined;
   if (eventId && state.seenEventIds.includes(eventId)) return state;
+  const data = payload(event);
   const next: ChatStreamState = {
     ...state,
     toolCalls: { ...state.toolCalls },
@@ -60,8 +62,9 @@ export function reduceChatStream(state: ChatStreamState, event: ChatStreamEvent)
     seenEventIds: eventId ? [...state.seenEventIds, eventId] : state.seenEventIds,
     ...(eventId ? { lastEventId: eventId } : {}),
   };
+  const assistantMessageId = text(event.message_id ?? data.message_id ?? data.assistant_message_id);
+  if (assistantMessageId) next.assistantMessageId = assistantMessageId;
   const kind = responseType(event);
-  const data = payload(event);
   switch (kind) {
     case 'answer': next.phase = 'streaming'; next.answer += text(event.content ?? data.content); break;
     case 'thinking': next.phase = 'streaming'; next.thinking += text(event.content ?? data.content); break;

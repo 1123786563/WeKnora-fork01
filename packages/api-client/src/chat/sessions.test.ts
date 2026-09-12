@@ -10,9 +10,19 @@ test('uses the server pagination and source query for session lists', async () =
     return { success: true, data: [], total: 0, page: 2, page_size: 30 };
   });
 
-  await api.list({ page: 2, pageSize: 30, source: 'web' });
+  await api.list({ page: 2, pageSize: 30, source: 'web', keyword: 'release' });
 
-  assert.deepEqual(requests, [{ method: 'GET', path: '/api/v1/sessions?page=2&page_size=30&source=web' }]);
+  assert.deepEqual(requests, [{ method: 'GET', path: '/api/v1/sessions?page=2&page_size=30&source=web&keyword=release' }]);
+});
+
+test('clears only the selected session after a server-confirmed action', async () => {
+  let request: { method: string; path: string; body?: unknown } | undefined;
+  const api = createChatSessionsApi(async (input) => {
+    request = input;
+    return { success: true };
+  });
+  await api.clear('session/1');
+  assert.deepEqual(request, { method: 'DELETE', path: '/api/v1/sessions/session%2F1/messages' });
 });
 
 test('loads message history without requesting public resource URLs', async () => {

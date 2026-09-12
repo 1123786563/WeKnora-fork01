@@ -3,7 +3,7 @@ export type { ChatComposerProps, ChatSubmission } from './chat/composer.tsx';
 export { MessageList } from './chat/message-list.tsx';
 export type { MessageListProps, PendingChatMessage } from './chat/message-list.tsx';
 export { SessionSidebar } from './chat/session-sidebar.tsx';
-export type { SessionSidebarProps } from './chat/session-sidebar.tsx';
+export type { SessionGroupView, SessionSidebarProps, SessionSourceOption } from './chat/session-sidebar.tsx';
 export { ChatPage } from './chat/page.tsx';
 export type { ChatAgentOption, ChatOAuthApprovalPrompt, ChatPageProps, ChatStreamPresentation, ChatTerminalView, ChatToolApprovalPrompt, ChatToolCallView } from './chat/page.tsx';
 export { SETTINGS_SECTIONS, settingsSection } from './settings/registry.ts';

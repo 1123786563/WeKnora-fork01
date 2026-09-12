@@ -13,6 +13,8 @@ export interface ChatSessionListParams {
   page?: number;
   pageSize?: number;
   source?: string;
+  keyword?: string;
+  agentId?: string;
   signal?: AbortSignal;
 }
 
@@ -39,6 +41,8 @@ export function createChatSessionsApi(request: (input: ClientRequest) => Promise
       if (params.page !== undefined) query.set('page', String(params.page));
       if (params.pageSize !== undefined) query.set('page_size', String(params.pageSize));
       if (params.source) query.set('source', params.source);
+      if (params.keyword) query.set('keyword', params.keyword);
+      if (params.agentId) query.set('agent_id', params.agentId);
       const suffix = query.toString();
       return parseChatSessionListResponse(await request({
         method: 'GET',
@@ -55,6 +59,9 @@ export function createChatSessionsApi(request: (input: ClientRequest) => Promise
     },
     async remove(sessionId: string, signal?: AbortSignal): Promise<void> {
       parseActionSuccessResponse(await request({ method: 'DELETE', path: sessionPath(sessionId), ...(signal === undefined ? {} : { signal }) }));
+    },
+    async clear(sessionId: string, signal?: AbortSignal): Promise<void> {
+      parseActionSuccessResponse(await request({ method: 'DELETE', path: `${sessionPath(sessionId)}/messages`, ...(signal === undefined ? {} : { signal }) }));
     },
     async pin(sessionId: string, signal?: AbortSignal): Promise<void> {
       parseActionSuccessResponse(await request({ method: 'POST', path: `${sessionPath(sessionId)}/pin`, ...(signal === undefined ? {} : { signal }) }));

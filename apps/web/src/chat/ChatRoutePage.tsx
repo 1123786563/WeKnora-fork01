@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { AgentConfiguration, ChatMessage, ChatSession, WeKnoraClient } from '@weknora/api-client';
+import type { AgentConfiguration, ChatMessage, ChatSession, MessageSuggestionSet, WeKnoraClient } from '@weknora/api-client';
 import { chatDraftKey } from '@weknora/domain/chat/draft';
 import { initialChatStreamState, reduceChatStream } from '@weknora/domain/chat/reducer';
+import { appendMessages, hasOlderMessages, sessionGroups } from '@weknora/domain/chat/session-state';
 import { ChatPage, type ChatSubmission } from '@weknora/views';
 import type { ScopeController } from '@weknora/domain/scope';
 import { chatSessionIdFromPath } from './session-route.ts';
@@ -23,14 +24,22 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   const scope = scopeController.current();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [sessionSource, setSessionSource] = useState('web');
+  const [sessionKeyword, setSessionKeyword] = useState('');
+  const [sessionGroupMode, setSessionGroupMode] = useState<'none' | 'date'>('none');
   const [streamState, setStreamState] = useState(initialChatStreamState);
   const [agents, setAgents] = useState<AgentConfiguration[]>([]);
   const [disabledAgentIds, setDisabledAgentIds] = useState<string[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState(() => new URLSearchParams(window.location.search).get('agentId')?.trim() ?? '');
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(() => chatSessionIdFromPath(window.location.pathname));
+  const selectedSessionIdRef = useRef(selectedSessionId);
   const [draft, setDraft] = useState('');
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [suggestions, setSuggestions] = useState<MessageSuggestionSet | undefined>();
+  const suggestionForMessage = useRef<string | null>(null);
   const [error, setError] = useState<string | undefined>();
   const [terminal, setTerminal] = useState<WebTerminalSnapshot>({ status: 'idle', output: '' });
   const terminalController = useRef<WebTerminalController | null>(null);
@@ -40,14 +49,18 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   );
 
   useEffect(() => {
+    selectedSessionIdRef.current = selectedSessionId;
+  }, [selectedSessionId]);
+
+  useEffect(() => {
     let active = true;
     setLoadingSessions(true);
-    void client.sessions.list({ page: 1, pageSize: 30, source: 'web', signal: scope.signal }).then(
+    void client.sessions.list({ page: 1, pageSize: 30, source: sessionSource || undefined, keyword: sessionKeyword || undefined, signal: scope.signal }).then(
       (result) => { if (active && scopeController.isCurrent(scope.scope)) setSessions(result.data); },
       (cause: unknown) => { if (active) setError(cause instanceof Error ? cause.message : 'Unable to load sessions'); },
     ).finally(() => { if (active) setLoadingSessions(false); });
     return () => { active = false; };
-  }, [client, scope.signal, scope.scope, scopeController]);
+  }, [client, scope.signal, scope.scope, scopeController, sessionSource, sessionKeyword]);
 
   useEffect(() => {
     let active = true;
@@ -67,18 +80,70 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     if (!selectedSessionId) {
       setMessages([]);
       setStreamState(initialChatStreamState());
+      setHasMoreMessages(false);
+      setSuggestions(undefined);
+      suggestionForMessage.current = null;
       return;
     }
     let active = true;
+    setSuggestions(undefined);
+    suggestionForMessage.current = null;
     setLoadingMessages(true);
     setError(undefined);
     setStreamState(initialChatStreamState());
     void client.sessions.messages(selectedSessionId, { limit: 50, signal: scope.signal }).then(
-      (result) => { if (active && scopeController.isCurrent(scope.scope)) setMessages(result); },
+      (result) => {
+        if (active && scopeController.isCurrent(scope.scope)) {
+          setMessages(appendMessages([], result));
+          setHasMoreMessages(hasOlderMessages(result, 50));
+          const assistant = result.filter((message) => message.role === 'assistant' && message.is_completed).at(-1);
+          if (assistant) {
+            suggestionForMessage.current = assistant.id;
+            void loadSuggestions(selectedSessionId, assistant.id, false, scope.signal);
+          }
+        }
+      },
       (cause: unknown) => { if (active) setError(cause instanceof Error ? cause.message : 'Unable to load messages'); },
     ).finally(() => { if (active) setLoadingMessages(false); });
     return () => { active = false; };
   }, [client, selectedSessionId, scope.signal, scope.scope, scopeController]);
+
+  async function loadSuggestions(sessionId: string, messageId: string, ensure: boolean, signal?: AbortSignal): Promise<void> {
+    try {
+      const result = ensure
+        ? await client.chat.suggestions.ensure(sessionId, messageId, false, signal)
+        : await client.chat.suggestions.get(sessionId, messageId, signal);
+      let current = result;
+      for (let attempt = 0; current.status === 'generating' && attempt < 120; attempt += 1) {
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 1000));
+        if (signal?.aborted || !scopeController.isCurrent(scope.scope) || selectedSessionIdRef.current !== sessionId) return;
+        current = await client.chat.suggestions.get(sessionId, messageId, signal);
+      }
+      if (scopeController.isCurrent(scope.scope) && selectedSessionIdRef.current === sessionId && suggestionForMessage.current === messageId) {
+        setSuggestions(current.status === 'ready' ? current : undefined);
+      }
+    } catch {
+      // A deployment may have suggestion generation disabled or may not have
+      // generated a set for an older message. This is not a chat-history error.
+      if (scopeController.isCurrent(scope.scope) && selectedSessionIdRef.current === sessionId && suggestionForMessage.current === messageId) setSuggestions(undefined);
+    }
+  }
+
+  async function loadOlderMessages(): Promise<void> {
+    if (!selectedSessionId || loadingOlderMessages || !hasMoreMessages) return;
+    const oldest = messages[0]?.created_at;
+    if (!oldest) { setHasMoreMessages(false); return; }
+    setLoadingOlderMessages(true);
+    try {
+      const oldestId = messages[0]?.id;
+      const batch = await client.sessions.messages(selectedSessionId, { beforeTime: oldest, limit: 50, signal: scope.signal });
+      if (!scopeController.isCurrent(scope.scope)) return;
+      setMessages((current) => appendMessages(current, batch));
+      setHasMoreMessages(hasOlderMessages(batch, 50) && batch[0]?.id !== oldestId);
+    } catch (cause) {
+      if (scopeController.isCurrent(scope.scope)) setError(cause instanceof Error ? cause.message : 'Unable to load older messages');
+    } finally { setLoadingOlderMessages(false); }
+  }
 
   useEffect(() => {
     setDraft(storageKey ? window.localStorage.getItem(storageKey) ?? '' : '');
@@ -107,6 +172,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   }, [apiBaseUrl, client, scope.signal, selectedSessionId]);
 
   function selectSession(sessionId: string) {
+    selectedSessionIdRef.current = sessionId;
     setSelectedSessionId(sessionId);
     window.history.pushState({}, '', `/platform/chat/${encodeURIComponent(sessionId)}`);
   }
@@ -190,15 +256,41 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       await client.sessions.remove(sessionId, scope.signal);
       setSessions((items) => items.filter((session) => session.id !== sessionId));
       if (selectedSessionId === sessionId) {
+        selectedSessionIdRef.current = null;
         setSelectedSessionId(null); setMessages([]); setStreamState(initialChatStreamState());
         window.history.pushState({}, '', '/platform/creatChat');
       }
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to delete conversation'); }
   }
 
+  async function clearMessages(): Promise<void> {
+    if (!selectedSessionId || !window.confirm('Clear messages in this conversation?')) return;
+    try {
+      await client.sessions.clear(selectedSessionId, scope.signal);
+      setMessages([]);
+      setSuggestions(undefined);
+      setHasMoreMessages(false);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to clear messages'); }
+  }
+
   function updateDraft(value: string) {
     setDraft(value);
     if (storageKey) window.localStorage.setItem(storageKey, value);
+  }
+
+  function selectSuggestion(questionId: string, text: string): void {
+    if (suggestions && selectedSessionId) void client.chat.suggestions.recordEvent(selectedSessionId, suggestions.id, 'click', questionId, scope.signal).catch(() => undefined);
+    updateDraft(text);
+  }
+
+  function refreshSuggestions(): void {
+    const messageId = streamState.assistantMessageId ?? messages.filter((message) => message.role === 'assistant' && message.is_completed).at(-1)?.id;
+    if (messageId && selectedSessionId) { suggestionForMessage.current = messageId; void loadSuggestions(selectedSessionId, messageId, true, scope.signal); }
+  }
+
+  function dismissSuggestions(): void {
+    if (suggestions && selectedSessionId) void client.chat.suggestions.recordEvent(selectedSessionId, suggestions.id, 'dismiss', '', scope.signal).catch(() => undefined);
+    setSuggestions(undefined);
   }
 
   async function openTerminal(): Promise<void> {
@@ -219,12 +311,14 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   }
 
   async function send(submission: ChatSubmission): Promise<void> {
-    if (!selectedSessionId) throw new Error('Create or select a conversation first.');
-    const sessionId = selectedSessionId;
+    let sessionId = selectedSessionId;
+    if (!sessionId) {
+      const created = await client.sessions.create({ title: submission.content.slice(0, 80) });
+      setSessions((current) => [created, ...current.filter((item) => item.id !== created.id)]);
+      sessionId = created.id;
+      selectSession(sessionId);
+    }
     setStreamState(initialChatStreamState());
-    setMessages((current) => [...current, {
-      id: `local-${Date.now()}`, session_id: sessionId, role: 'user', content: submission.content,
-    }]);
     let runState = initialChatStreamState();
     const streamOptions = buildWebChatStreamOptions(sessionId, submission.content, selectedAgentId, knowledgeBaseId);
     await client.chat.stream(streamOptions, (event) => {
@@ -235,7 +329,22 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
         id: `stream-${sessionId}`, session_id: sessionId, role: 'assistant', content: runState.answer,
         is_completed: runState.phase === 'completed',
       }]);
+      if (runState.phase === 'completed' && runState.assistantMessageId && runState.assistantMessageId !== suggestionForMessage.current) {
+        suggestionForMessage.current = runState.assistantMessageId;
+        void loadSuggestions(sessionId, runState.assistantMessageId, true, scope.signal);
+      }
     });
+    // The server persists the user message before opening the stream. Refresh
+    // the bounded history after a successful turn so the UI replaces the
+    // transient assistant row with authoritative user/assistant message ids;
+    // the pending composer remains the sole visible sending/failed row.
+    try {
+      const persisted = await client.sessions.messages(sessionId, { limit: 50, signal: scope.signal });
+      if (scopeController.isCurrent(scope.scope) && selectedSessionIdRef.current === sessionId) setMessages(appendMessages([], persisted));
+    } catch {
+      // The streamed answer remains visible if the post-turn history refresh
+      // is unavailable; a later session selection reloads authoritative data.
+    }
   }
 
   return <ChatPage
@@ -261,6 +370,22 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     onRenameSession={renameSession}
     onToggleSessionPin={toggleSessionPin}
     onDeleteSession={deleteSession}
+    sessionGroups={sessionGroups(sessions, new Date(), sessionGroupMode)}
+    sessionSource={sessionSource}
+    sessionSourceOptions={[{ value: '', label: 'All sources' }, { value: 'web', label: 'Web' }, { value: 'embed', label: 'Embed' }, { value: 'api', label: 'API' }, { value: 'feishu', label: 'Feishu' }, { value: 'wechat', label: 'WeChat' }, { value: 'slack', label: 'Slack' }]}
+    onSessionSourceChange={setSessionSource}
+    sessionKeyword={sessionKeyword}
+    onSessionKeywordChange={setSessionKeyword}
+    sessionGroupMode={sessionGroupMode}
+    onSessionGroupModeChange={setSessionGroupMode}
+    onClearSession={clearMessages}
+    loadingOlderMessages={loadingOlderMessages}
+    hasMoreMessages={hasMoreMessages}
+    onLoadOlderMessages={() => void loadOlderMessages()}
+    suggestions={suggestions}
+    onSuggestionClick={selectSuggestion}
+    onRefreshSuggestions={refreshSuggestions}
+    onDismissSuggestions={dismissSuggestions}
     terminal={selectedSessionId ? terminal : undefined}
     onOpenTerminal={selectedSessionId ? openTerminal : undefined}
     onTerminalInput={selectedSessionId ? terminalInput : undefined}

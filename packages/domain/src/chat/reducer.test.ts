@@ -31,6 +31,15 @@ test('unknown response types do not fabricate completion', () => {
   assert.equal(state.phase, 'idle');
 });
 
+test('retains the persisted assistant message id needed for history actions', () => {
+  const state = reduceChatStream(initialChatStreamState(), {
+    response_type: 'answer',
+    message_id: 'assistant-1',
+    content: 'answer',
+  });
+  assert.equal(state.assistantMessageId, 'assistant-1');
+});
+
 test('tracks MCP OAuth approval lifecycle separately from tool approval', () => {
   let state = initialChatStreamState();
   state = reduceChatStream(state, {
