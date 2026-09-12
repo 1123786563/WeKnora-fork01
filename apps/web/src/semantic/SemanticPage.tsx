@@ -24,6 +24,7 @@ export function SemanticPage({ baseUrl, knowledgeBaseId, documentId }: SemanticP
   const [status, setStatus] = useState<SemanticDocumentStatus | null>(null);
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [query, setQuery] = useState(initialSemanticQueryState());
+  const [retryError, setRetryError] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const abortRef = useRef<AbortController | null>(null);
 
@@ -73,8 +74,13 @@ export function SemanticPage({ baseUrl, knowledgeBaseId, documentId }: SemanticP
         loading={loadingStatus}
         onRetry={() => {
           // Server-side idempotent retry submission; the server re-checks
-          // authorization - this button never grants anything.
-          void client.retrySemanticIndex(documentId).catch(() => undefined);
+          // authorization - this button never grants anything. Errors
+          // surface as an alert (never silently swallowed).
+          void client
+            .retrySemanticIndex(documentId)
+            .then(() => setRetryError(null))
+            .catch((error: unknown) =>
+              setRetryError(error instanceof Error ? error.message : '语义重试提交失败'));
         }}
       />
       <section className="semantic-search">
@@ -91,6 +97,7 @@ export function SemanticPage({ baseUrl, knowledgeBaseId, documentId }: SemanticP
           取消
         </ButtonLike>
       </section>
+      {retryError ? <p className="semantic-error" role="alert">{retryError}</p> : null}
       {query.error ? <p className="semantic-error" role="alert">{query.error}</p> : null}
       <EvidencePanel result={query.result} />
     </main>

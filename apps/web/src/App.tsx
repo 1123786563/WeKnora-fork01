@@ -19,15 +19,20 @@ function semanticRouteFromHash(): { kbId: string; documentId: string } | null {
 }
 
 export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPageProps) {
-  const semanticRoute = semanticRouteFromHash();
-  if (semanticRoute) {
-    return (
-      <SemanticPage
-        knowledgeBaseId={semanticRoute.kbId}
-        documentId={semanticRoute.documentId}
-      />
-    );
-  }
+  // Hooks stay unconditional (Rules of Hooks); the semantic route decides
+  // CONTENT, not the hook shape.
+  const [semanticRoute, setSemanticRoute] = useState(() => semanticRouteFromHash());
+  useEffect(() => {
+    const onHashChange = () => setSemanticRoute(semanticRouteFromHash());
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+  const semanticContent = semanticRoute ? (
+    <SemanticPage
+      knowledgeBaseId={semanticRoute.kbId}
+      documentId={semanticRoute.documentId}
+    />
+  ) : null;
   const [reloadToken, setReloadToken] = useState(0);
   const [state, setState] = useState<KnowledgeBaseListState>({ status: 'error', message: 'Loading…' });
   const scope = scopeController.current();
@@ -41,6 +46,10 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
     });
     return () => { active = false; };
   }, [client, reloadToken, scopeController, scope.scope, scope.signal]);
+
+  if (semanticContent) {
+    return semanticContent;
+  }
 
   return (
     <main className="wk-page">
