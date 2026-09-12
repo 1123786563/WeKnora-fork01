@@ -201,3 +201,8 @@
 ## 2026-09-12 Round 30（补）
 
 - embed 缺陷根因修正：非 CORS。preview-session 签发的 ems_ 令牌被 POST /embed/sessions 拒绝（401 invalid or expired token，curl 复现）——后端 embed 预览令牌语义待裁决。证据已补入 embed-resume-defect.md。
+
+## 2026-09-12 Round 32
+
+- KB 详情面必修 6 项集成（eb47a9c，主代理门禁复核 + live 复测文档页 i18n/无调试泄漏）。证据：evidence/vue-react-parity/2026-09-12-kbdetail-integration.md。
+- 用户既有未提交修改（apps/mobile、docs/migrations/react/*.csv/md、package-lock）按要求原样保留。
