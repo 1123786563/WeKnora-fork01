@@ -227,7 +227,7 @@
 - 实测验收：旧 attempt 终态不扣新 attempt（核心测试逐字）；同键重复提交 1 行 1 计数；cancelled/superseded 终态不扣任何计数；重复终态幂等（恰一次扣减）；I02 命名空间行与 attempt 回执共存不互扰；未知终态拒绝；reconcile 从持久回执恢复丢失状态。
 - **范围收缩（评审判定 FAIL→切片 PASS 的条件，如实记录）**：本任务交付 Go 侧协调切片；以下项延后且原计划 checkbox 未勾：①步骤 3——业务写经 I02 事务 API 接入 + 实际发出 ApplyDocumentRevision RPC（当前 Submit 仅登记映射行，未发 RPC；同事务接线未做）；②步骤 6——semantic_status 独立状态机与仅重建语义重试入口（未建模）；③步骤 7 之"真实 RPC 至少一次文档→generation 闭环"（依赖①）；④I04 四项延后在本任务均未动：恢复模式重放、删除操作路由打标、publisher 墓碑拒绝、operations.py:362 load_request JSONB 崩溃修复（归后续 W/O 任务或 I05 续）；knowledge_process.go/knowledge_delete_plan.go/semantic_outbox.go 补齐同延后。
 - review：规格 FAIL→切片 PASS（条件=本记录显式延后；签名偏差（全 scope 元组替代 plan 的 operationID-only）已记录）；质量 FAIL（2 BLOCKER：命名空间过载/提交竞态，均探针实证）→ 修复后判别测试转绿；余 minors 全折叠（PG 回执语义经评审员分析确认等价——ON CONFLICT 推测插入阻塞至提交，恰一胜）。
-- 提交 SHA：（本记录与代码同批提交后补记）
+- 提交 SHA：6f89cce（feat(semantic): i05 文档任务、attempt与终态协调）。
 
 ## 当前边界
 
