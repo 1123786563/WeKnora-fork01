@@ -1,6 +1,6 @@
 # Semantica 实施台账
 
-状态：V01–C03、I01–I05、A01–A03、Q01–Q04、W01–W03、O01 verified；O02 implemented（进程级故障归 O03）；O03 未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
+状态：V01–C03、I01–I05、A01–A03、Q01–Q04、W01–W03、O01–O02 verified（O02 进程级故障/对象存储快照归 O03）；O03 未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
 
 状态值 pending / in_progress / blocked / implemented / verified。每项验证记录必须包含commit SHA、精确命令、退出码、环境、产物路径、失败/限制；无真实证据不标记verified。执行前记录实际基线与已有脏文件。
 
@@ -28,7 +28,7 @@
 | W02 | React索引状态与推理证据流程 | W01 | verified | domain 纯函数+视图模型+面板挂载+重试提交；双评审 PASS（规格两轮/质量三轮——含台账误记自我更正）；浏览器 E2E 阻断于真实服务栈（如实待 O03）；见运行记录 2026-09-11 W02 |
 | W03 | 后端影子构建、切换与回滚 | W01,I04,Q04 | verified | desired/active 状态机（SetDesired 仅意图/Promote CAS 恰一胜/Rollback 追赶强制+TOCTOU 护栏+三哨兵）+检查点迁移+运行手册；双评审 PASS（含 PG 实证 CAS）；前置自动化/编排/挂载如实延后；见运行记录 2026-09-11 W03 |
 | O01 | 独立部署、探针与可观测性 | C02,I03,A03 | verified | 就绪门槛（导入式纯函数+HTTP 级测试）+脱敏遥测+Dockerfile（真 digest buildx 通过+venv 直入口）+helm（TLS 卷挂载/明文门/默认关）+server_entry（活体验证 200/503/SIGTERM 优雅）；双评审 PASS（质量三轮含活体复现）；部署级启动归 O03；见运行记录 2026-09-11 O01 |
-| O02 | 故障注入、清理与恢复演练 | O01,I04,W03,Q04 | pending | 尚未执行 |
+| O02 | 故障注入、清理与恢复演练 | O01,I04,W03,Q04 | verified | 真实 PG 8 场景（恢复先重放拒绝逐字/维护拒绝查询/墓碑权威重推导/撤权排除/部分不混合）+四步手册+证据（每例 deny 前后）；双评审 PASS（规格三轮含诚实违规抓回更正）；进程级故障/对象存储快照归 O03 |
 | O03 | 质量回归、CI门禁与最终交付 | O02,W02,V03 | pending | 尚未执行 |
 
 ## 运行记录模板
