@@ -76,3 +76,14 @@ React：`apps/web`、`apps/desktop`、`apps/mobile`、`apps/embed`，共享层 `
 
 - 每完成一页闭环（差异清单→回归测试→修复→测试→截图对比→评审→提交），更新本矩阵对应行状态与证据路径，并在 vue-react-parity-progress.md 记账。
 - 禁止在差异未消除时将状态改为 accepted。
+
+## 四页审计结论（2026-09-12，Round 15 审计 / Round 16-18 实施）
+
+| 页面 | 成熟度 | 必修项 | 实施状态 |
+|---|---|---|---|
+| organizations | partial | 审批门控 join（require_approval/requested_role/note）；org settings 精要（invite-link 生成复制、KB unshare、升级请求） | implementing（四页子代理） |
+| agents | partial/stub | 类型化 Agent 编辑器（name/description/system_prompt/memory）；分组列表 builtin/mine/shared + 搜索；聊天侧 AgentSelector 为后续 | implementing（四页子代理，6 为后续） |
+| integrations | near-full | API-key 列表/创建/吊销（administration.tenantApiKeys）；去 REACT MIGRATION SEAM 眉题；API tab 误拉 im-channels 的 live 缺陷 | implementing（四页子代理，live 缺陷已转告） |
+| embed | minimal | markdown+引用渲染；文件上传门控（allow_file_upload/agent_image_upload_enabled）；default_locale i18n | implementing（四页子代理） |
+
+live 基线截图：live-{agents,organizations,integrations-embed,integrations-api}.png（Round 17）。
