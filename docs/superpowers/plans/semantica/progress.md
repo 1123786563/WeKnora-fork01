@@ -1,6 +1,6 @@
 # Semantica 实施台账
 
-状态：V01–C03、I01–I02、A01、A03 verified；其余 14 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
+状态：V01–C03、I01–I03、A01、A03 verified；其余 13 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
 
 状态值 pending / in_progress / blocked / implemented / verified。每项验证记录必须包含commit SHA、精确命令、退出码、环境、产物路径、失败/限制；无真实证据不标记verified。执行前记录实际基线与已有脏文件。
 
@@ -14,7 +14,7 @@
 | C03 | 事实与证据校验模型 | C01,V02 | verified | codepoint 半开区间 span+原文校验、来源/推导分离、跨 scope 拒绝、循环 DAG 拒绝、多来源支持永不塌缩；见运行记录 2026-09-11 C03 |
 | I01 | 持久操作、幂等与worker租约 | C02 | verified | 真实 PG（隔离容器）：幂等 accept/冲突检测、SKIP LOCKED 单胜领取、fencing token 失联接管、原子终态、取消 CAS 双向竞争；见运行记录 2026-09-11 I01 |
 | I02 | 业务revision、outbox与授权版本 | C01 | verified | PG96/SQLite17 六表；WithSemanticMutation 单事务（CAS+outbox+deny+epoch）；原子领取/确认/退避；同事务 BumpSemanticEpochTx 供 A01；见运行记录 2026-09-11 I02 |
-| I03 | 有来源的构图与generation原子发布 | C03,I01,I02,A03 | pending | 尚未执行 |
+| I03 | 有来源的构图与generation原子发布 | C03,I01,I02,A03 | verified | 真实 PG：manifest 持久化/CAS 原子发布（首发布 INSERT ON CONFLICT、同 base 条件 UPDATE，真线程单胜实证）/read lease+续期/staged|publishing 过期可回收；见运行记录 2026-09-11 I03 |
 | I04 | 删除屏障、支持撤销和清理receipt | I03,A01 | pending | 尚未执行 |
 | I05 | 文档任务、attempt与终态协调 | I04 | pending | 尚未执行 |
 | A01 | 可信AccessScope与权限变更屏障 | C02,I02 | verified | 11 条 ACL 接线+盘点修正（临时文档豁免实证）；短钥/伪造/漂移/过期均拒绝；完成评审 PASS；见运行记录 2026-09-11 A01（两段）与 acl-write-inventory.md |
@@ -190,9 +190,22 @@
 - 提交 SHA：25dedb8（feat(semantic): a03 模型代理、原始用量与预算）。
 - 剩余限制：无真实模型凭据——真实模型调用/上游无旁路直连证明保持未通过（计划允许：记录阻断继续他项）；预算为任务本地 semantic_budgets（未接商业结算，未伪称）；模型能力凭据为静态受控入口（短期按操作凭据归 Q03/A02 接线强化）。
 
+### 2026-09-11 I03 有来源的构图与generation原子发布（verified）
+
+- 工作区：.worktrees/semantica（分支 codex/semantica）；基线 SHA：62fc527（A03 台账提交）。
+- 修改文件：semantic/migrations/002_generations.sql（generations/active_generations/read_leases，幂等）、semantic/semantic_service/indexing/{__init__,manifest,builder,store,publisher}.py、semantic/tests/{test_generation_publish.py,conftest.py(index_store/service_pg_dsn/complete_manifest/清洁 fixture)}、本台账、02 计划勾选。
+- RED：`uv run --project semantic python -m pytest semantic/tests/test_generation_publish.py -q` 收集错误（semantic_service.indexing 不存在）。
+- 评审修复 RED 两批：①BLOCKER——crash 于 staged→publishing 后操作永久滞留（claim/recoverable 仅回收 accepted/running）→ 先加 test_publishing/staged_operation_with_expired_lease_is_reclaimable（RED：返回 None）→ claim/recoverable 候选集扩至 staged/publishing（fencing token 递增，旧 worker 写入必被拒）；②save_manifest 同 generation 异载荷静默丢弃 → test_save_manifest_conflict_on_divergent_payload（RED）→ RETURNING+归一化 JSON 比对 raise；③CAS 失败语义修正 failed→superseded（规格 §6 line 92；测试先行更新断言）。终审遗留 MINOR A–E 亦已折叠：陈旧重复测试删除、真实双线程同 base CAS 竞争测试（单胜实证）、swap 期间 pin 旧代可读测试、builder 三项测试（scope 不匹配/继承+新产物/空产物拒绝）、renew() 冗余导入清理。
+- GREEN：`uv run --project semantic python -m pytest semantic/tests/test_generation_publish.py -q` 16 passed；全量 `semantic/tests/` 101 passed 退出码 0（真实服务 PG：semantica-v02-i01 容器 127.0.0.1:15432/semantic_test）。
+- 实测验收：不完整 manifest 永不 active（计划核心断言逐字）；未持久化 complete 先行拒绝；CAS——首发布 INSERT ON CONFLICT 恰一胜 + 同 base 条件 UPDATE 真线程恰一胜（评审员双连接探针独立复现）；查询只见完整旧版或完整新版（active 指针仅指向已持久化 complete）；read lease pin 当前 active/到期感知 holds/release/renew（过期不可复活）；manifest 重启等值恢复（新 store 实例）；publisher 三段式（fenced staged→publishing→CAS→succeeded/superseded，LostLeaseError 类型化，三处返回值检查）；builder scope 校验/未变文档继承既有不可变产物/变更文档新产物/非删除空产物拒绝。
+- 计划偏差记录：publisher 为四段事务（fenced 转换/manifest 持久化/CAS/终态），计划伪代码的单事务 assert_live_operation+assert_not_deleted+assert_artifacts_verified+CAS 归 I04/I05 接线（store lease_token 占位注释已注明）；抽取适配器（Neo4j/向量）为 Protocol 接缝，实际接线归 I03 后续+Q01（builder 文档已如实限定）；claim 候选集扩展使过期 staged/publishing 可被回收并经 fencing 防旧 worker 复活（对 reclaim 的 publishing 操作须先对账 active 指针——publisher 文档已述）。
+- review：规格 PASS（11 项；5 项 MINOR 全部折叠进终版：fencing 事务差距记录/续期已补/builder 已测/docstring 已改写/台账本记录）；质量首轮 FAIL（BLOCKER 滞留窗口）→ 修复+终审 PASS（BLOCKER 回收测试判别力实证、CAS 真线程复验、fencing 分析确认无永久滞留与旧 worker 安全）。
+- 提交 SHA：（本记录与代码同批提交后补记）
+- 剩余限制：图/向量实际抽取适配未接线（Q01/A02 消费 manifest 闭包）；GC 未实现（read lease 保护 API 就绪，I04 落地清理）；operations.py claim/recoverable 扩展影响 I01 行为（回收更多状态——回归 I01 全量测试确认无破坏）。
+
 ## 当前边界
 
-- V01–C03、I01–I02、A01、A03 verified；后续 14 个任务未开始。
+- V01–C03、I01–I03、A01、A03 verified；后续 13 个任务未开始。
 - V01精确版本已冻结（semantica 0.6.8）；真实模型证据须在后续任务补齐，不是已经通过的前提。
 - V02 结论边界：持久图桥接/授权子图重建/注册规则推导已验证；模型推断 unverified（无凭据，未调用）；向量检索路径未验证。
 - V03 结论边界：semantica 模式检索质量/延迟为受控语料实测；native 对照与模型用量门槛未测（阻断记录见上）；上线门禁 approved=false 待用户确认。

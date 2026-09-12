@@ -29,6 +29,42 @@ DEFAULT_PG_DSN = "postgresql://semantic:semantic@127.0.0.1:15432/semantic_test"
 
 
 @pytest.fixture(scope="session")
+def service_pg_dsn(pg_dsn):
+    """The SERVICE database (semantic schema) - same isolated container."""
+    return pg_dsn
+
+
+@pytest.fixture(scope="session")
+def index_store(pg_dsn):
+    """A real IndexStore over the isolated service PG; schema applied once."""
+    import psycopg
+
+    from semantic_service.indexing.store import IndexStore
+    from semantic_service.operations import apply_migrations
+
+    apply_migrations(pg_dsn)
+    migration = Path(__file__).resolve().parents[1] / "migrations" / "002_generations.sql"
+    with psycopg.connect(pg_dsn) as conn:
+        conn.execute(migration.read_text(encoding="utf-8"))
+        conn.execute(
+            "INSERT INTO semantic.schema_migrations (version) VALUES ('002_generations') ON CONFLICT DO NOTHING")
+        conn.commit()
+    store = IndexStore(pg_dsn)
+    yield store
+    store.close()
+
+
+@pytest.fixture(scope="session")
+def operation_store_factory(pg_dsn):
+    """Session-scoped factory producing per-test OperationStores."""
+    from semantic_service.operations import OperationStore
+
+    def _make():
+        return OperationStore(pg_dsn)
+    return _make
+
+
+@pytest.fixture(scope="session")
 def pg_dsn():
     dsn = os.environ.get(PG_DSN_ENV, DEFAULT_PG_DSN)
     try:
@@ -46,11 +82,9 @@ def pg_dsn():
 
 
 @pytest.fixture()
-def operation_store(pg_dsn):
+def operation_store(operation_store_factory):
     """A real OperationStore over the isolated PG, with per-test cleanup."""
-    from semantic_service.operations import OperationStore
-
-    store = OperationStore(pg_dsn)
+    store = operation_store_factory()
     store.clear_for_test()
     yield store
     store.close()
@@ -147,6 +181,43 @@ def model_gateway(go_model_server):
         go_model_server.token,
         invocation_counter_url=go_model_server.url + "/internal/semantic/model/count",
     )
+
+
+@pytest.fixture(scope="session")
+def complete_manifest():
+    from semantic_service.contracts import ScopeKey
+    from semantic_service.indexing.manifest import ArtifactRef, DocumentEntry, IndexManifest
+
+    return IndexManifest(
+        scope=ScopeKey(tenant_id=1, kb_id="kb-gen"),
+        generation="gen-1",
+        base_generation=None,
+        documents={"d1": DocumentEntry(document_id="d1", revision=1, content_hash="h1", artifact_ids=("art-1",))},
+        config_digest="digest-1",
+        artifacts=(ArtifactRef(kind="graph", artifact_id="art-1", hash="hash-1"),),
+        complete=True,
+    )
+
+
+@pytest.fixture(autouse=True)
+def clean_generations(request):
+    """Per-test cleanup of generation tables so tests are independent."""
+    module_name = getattr(getattr(request, "module", None), "__name__", "") or ""
+    if "test_generation" not in module_name:
+        yield
+        return
+    import psycopg
+
+    def _clean():
+        with psycopg.connect(os.environ.get(PG_DSN_ENV, DEFAULT_PG_DSN)) as conn:
+            conn.execute("DELETE FROM semantic.read_leases")
+            conn.execute("DELETE FROM semantic.active_generations")
+            conn.execute("DELETE FROM semantic.generations")
+            conn.commit()
+
+    _clean()
+    yield
+    _clean()
 
 
 @pytest.fixture()

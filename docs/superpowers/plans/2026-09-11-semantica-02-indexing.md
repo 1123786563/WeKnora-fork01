@@ -143,7 +143,7 @@ COMMIT;
 
 **接口：** IndexBuilder.stage(op:Operation,request:ApplyRequest)->IndexManifest；Publisher.publish(scope:ScopeKey,base_generation:str|None,manifest:IndexManifest,lease_token:int)->bool；IndexStore.pin(scope)->ReadLease，release(lease_id)->None。IndexManifest含generation、base_generation、documents映射、配置digest、artifact hash列表、complete标志；ReadLease含lease_id/generation/expires_at。
 
-- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 def test_incomplete_generation_never_becomes_active(index_store, complete_manifest):
@@ -154,15 +154,15 @@ def test_incomplete_generation_never_becomes_active(index_store, complete_manife
     assert index_store.active(incomplete.scope) == before
 ```
 
-- [ ] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_generation_publish.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [x] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_generation_publish.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 接收小批chunk或限定前缀manifest，检查size/hash/revision；用已验证抽取适配与A03模型入口构建来源断言，等价边可撤销，跨tenant/KB候选直接拒绝**
+- [x] **3. 接收小批chunk或限定前缀manifest，检查size/hash/revision；用已验证抽取适配与A03模型入口构建来源断言，等价边可撤销，跨tenant/KB候选直接拒绝**
 
-- [ ] **4. 实现完整KB清单；未变文档引用既有不可变产物，变更文档产物写staging且携带generation或不可变artifact ID。跨文档合并不修改旧generation数据**
+- [x] **4. 实现完整KB清单；未变文档引用既有不可变产物，变更文档产物写staging且携带generation或不可变artifact ID。跨文档合并不修改旧generation数据**
 
-- [ ] **5. 图、证据、向量全部持久校验后进入publishing；在PG同一事务校验operation租约/取消、最新revision与墓碑、base_generation，再更新active指针与operation终态**
+- [x] **5. 图、证据、向量全部持久校验后进入publishing；在PG同一事务校验operation租约/取消、最新revision与墓碑、base_generation，再更新active指针与operation终态**
 
-- [ ] **6. 实现pin/release和有界租约续期；query按manifest闭包读取产物，GC跳过仍被active或有效read lease引用的产物**
+- [x] **6. 实现pin/release和有界租约续期；query按manifest闭包读取产物，GC跳过仍被active或有效read lease引用的产物**
 
 关键实现约束：
 
@@ -178,9 +178,9 @@ with control_db.transaction() as tx:
 # tx方法在publisher.py实现；图/向量写入必须在此事务之前完成。
 ```
 
-- [ ] **7. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_generation_publish.py -q`，预期退出码 0；另完成：真实库模拟图成功/向量失败、两个base相同发布、租约过期、重启、read lease延迟GC；查询始终只见完整旧版或完整新版；记录实际后端。
+- [x] **7. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_generation_publish.py -q`，预期退出码 0；另完成：真实库模拟图成功/向量失败、两个base相同发布、租约过期、重启、read lease延迟GC；查询始终只见完整旧版或完整新版；记录实际后端。
 
-- [ ] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 I03 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): i03 有来源的构图与generation原子发布`。
+- [x] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 I03 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): i03 有来源的构图与generation原子发布`。
 
 ## I04：删除屏障、支持撤销和清理receipt
 
