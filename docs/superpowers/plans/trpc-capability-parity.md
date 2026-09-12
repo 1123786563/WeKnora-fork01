@@ -2,7 +2,7 @@
 
 ## 2026-09-12 rerun evidence
 
-当前生产 executor 仍通过既有 service assembly 构造能力，再建立固定 SDK graph。独立 rerun 的 tRPC、service、recoverytest 和 sandbox focused suites 通过；SQLite/ PostgreSQL crash matrices 实际执行 provider-backed graph、saver、tool journal、durable waiting 和 finalize。能力漂移保持 fail-closed；浏览器能力展示未在本 worktree 重跑，不作为本轮 release evidence。
+当前生产 executor 仍通过既有 service assembly 构造能力，再建立固定 SDK graph。独立 rerun 的 tRPC、service、recoverytest 和 sandbox focused suites 通过；SQLite/ PostgreSQL crash matrices 实际执行 provider-backed graph、saver、tool journal、durable waiting 和 finalize。能力漂移保持 fail-closed；2026-09-12 的真实浏览器 durable HTTP 已验证会话级 tRPC 选择和最终消息，但浏览器能力展示本身不作为 capability parity 的唯一证据。
 
 The tRPC graph receives the request-scoped capability assembly used by the
 builtin agent. The graph checkpoint stores only `CapabilitySnapshot`; provider
@@ -12,11 +12,11 @@ and are rebuilt by the application on recovery.
 | Capability | Reuse entry point | Snapshot/evidence | Recovery behavior |
 |---|---|---|---|
 | RAG scope and rerank | `agentService.registerTools`, existing knowledge tools and reranker | Tool identities plus the request's existing KB/document scope | Rebuild the same authorized scope before resuming; no new scope is inferred from a checkpoint |
-| MCP deferred discovery | `registerMCPTools` → `ToolRegistry.RegisterDeferredTool` / `PrepareMCPTools` | Stable tool identities and `DeferredNames`; each session owns a registry | Re-register and prepare through the existing catalog, then compare the advertised set; sessions do not share deferred state |
+| MCP deferred discovery | `registerMCPTools` → `ToolRegistry.RegisterDeferredTool` / `PrepareMCPTools` | Stable tool identities and `DeferredNames`; each session owns a registry | Re-register and prepare through the existing catalog, then compare the advertised set; sessions do not share deferred state. A delayed-discovery end-to-end recovery evidence row remains outstanding. |
 | MCP approval and OAuth | Existing MCP preflight and approval interfaces | Approval is represented by the durable decision contract, not a live waiter | A pending decision must be resolved by the durable run service; the legacy in-memory Gate remains the builtin path |
 | Skills read/install/env | Existing `skills.Manager` and sandbox staging | Metadata-derived `sha256:` skill digests | Rebuild the manager and reject a changed digest instead of silently continuing |
 | Shell and file tools | Existing sandbox registration in `prepareAgentCapabilities` | Tool identities | Recreate the session-bound sandbox and tools; an unavailable resource remains a recovery decision |
-| Model stream, tool arguments and images | Existing `chat.Chat` through `trpc.NewModel` | Model attempt/usage in `State`; image references in snapshot | Provider credentials and limits are reloaded from current configuration; incomplete streams never become plans |
+| Model stream, tool arguments and images | Existing `chat.Chat` through `trpc.NewModel` | Model attempt/usage in `State`; image references in snapshot | Provider credentials and limits are reloaded from current configuration; incomplete streams never become plans; image references are now compared during capability recovery. A real multimodal durable graph run remains outstanding. |
 | VLM fallback | Existing `AgentCapabilities.ImageDescriber` | Image references are serializable; VLM handle is not | Re-resolve the configured VLM model; failure is reported rather than replaced with fabricated text |
 | Long-term memory | Existing memory service and `WrapMemoryForPrompt` envelope | `MemoryPrompt` in `CapabilitySnapshot` | The exact recalled envelope is restored; recovery does not perform a second implicit recall |
 | System prompt | Existing `BuildSystemPromptWithOptions` result | `SystemPrompt` in `CapabilitySnapshot` | The same prompt is restored before the user message |
