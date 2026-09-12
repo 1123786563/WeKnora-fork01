@@ -227,3 +227,9 @@
 
 - 上传 pipeline、AgentSelector、starter questions、embed CORS 修复集成（40a5d86）。门禁：shared 276/276、web 194/194、build 全绿；embed live 渲染成功。
 - 后端待决项维持登记：POST /sessions 不支持 agent_id；require_approval 创建字段被忽略；冷刷新审批持久端点。
+
+## 2026-09-12 Round 40
+
+- settings 抽屉视觉形态完成并收尾：固定遮罩 + 1080x780 模态 + 分组导航（账户/空间/模型/数据与扩展/系统管理/平台，图标 + settings.* 标签）+ ✕ 关闭回知识库列表；角色门控/popstate/全部面板功能接线保留；styles.css 追加式 wks-* 样式。遗留中间态（重复 import）已修复（aa77f7e）。
+- 门禁：web 194/194、typecheck:web 0 错误、build:web ✓。证据：screenshots/settings-form-{before,after}.png 对比 settings-vue-live.png。
+- settings 页状态：视觉形态 + 功能必修完成后仍维持 review（待全页截图矩阵与多端验收收敛）。

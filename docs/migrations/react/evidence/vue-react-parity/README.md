@@ -26,4 +26,5 @@
 - 2026-09-12-settings-i18n-keys — settings.* 文案全量迁入共享 i18n（2026-09-12，Round 10）
 - 2026-09-12-settings-integration — /platform/settings 必修 8 项集成复核（2026-09-12，Round 16）
 - 2026-09-12-settings-live-baseline — /platform/settings live 基线截图（2026-09-12，Round 13）
+- 2026-09-12-upload-selector-cors — 上传流程 / AgentSelector / embed CORS 修复集成（2026-09-12，Round 36）
 - 2026-09-12-visual-harness — Vue/React 截图对比环境（2026-09-12 建立）
