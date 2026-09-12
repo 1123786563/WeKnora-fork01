@@ -251,3 +251,8 @@
 ## 2026-09-12 Round 47
 
 - 集成核对基准确认：Vue 会话分组持久化键为 `weknora:session-group-mode`，默认模式 `none`（frontend/src/components/sessionGrouping.ts:5-6）。chat UX retry 代理交付时按此键名核验。
+
+## 2026-09-12 Round 48
+
+- chat UX 收尾切片完成集成（62a77a9：时间戳分隔/复制按钮/打字指示器/回到底部/分组持久化/creatChat 建议 + domain message-timestamps/copy-answer/session-grouping 模块与 3 个新测试文件）。
+- **根治 gitignore 缺陷**：裸 `web/` 规则锚定为 `/web/`（该规则此前静默吞掉 apps/web 下全部新源文件——resume/steer-submit/starter-questions/actions/processing-timeline/upload-pipeline/permissions/pagination/i18n.ts 等已全部补交入库），并为 apps/{web,embed,desktop}/dist 增加显式忽略。共享/前端门禁复验：shared 293/293、web 198/198、typecheck 干净。
