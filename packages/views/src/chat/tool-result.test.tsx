@@ -2,12 +2,19 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  chunkDetailView,
   databaseQueryView,
+  documentInfoView,
   grepResultsView,
+  knowledgeBaseListView,
+  planView,
+  relatedChunksView,
   searchResultsView,
   shellExecView,
+  thinkingView,
   toolResultPresentation,
   ToolResultView,
+  webFetchView,
   webSearchResultsView,
 } from './tool-result.tsx';
 
@@ -228,4 +235,130 @@ test('ToolResultView selects the typed renderer by display type', () => {
   assert.equal(renderType({ display_type: 'grep_results', data: {} }), 'GrepResultsRenderer');
   assert.equal(renderType({ display_type: 'shell_exec', data: {} }), 'ShellExecRenderer');
   assert.equal(renderType('plain output'), 'GenericToolResultRenderer');
+});
+
+/* ---- ChunkDetail ---- */
+
+test('chunkDetailView surfaces chunk content with metadata', () => {
+  const view = chunkDetailView({
+    chunk_id: 'c-9', knowledge_id: 'k-2', chunk_index: 4, content_length: 128,
+    content: 'Refunds are processed within 5 business days.',
+  });
+  assert.equal(view.chunkId, 'c-9');
+  assert.equal(view.knowledgeId, 'k-2');
+  assert.equal(view.chunkIndexLabel, '#4');
+  assert.equal(view.contentLength, 128);
+  assert.match(view.content, /5 business days/);
+});
+
+/* ---- RelatedChunks ---- */
+
+test('relatedChunksView lists chunk positions and scores', () => {
+  const view = relatedChunksView({
+    chunks: [
+      { index: 1, chunk_id: 'c1', chunk_index: 3, content: 'alpha', score: 0.8123 },
+      { index: 2, chunk_id: 'c2', chunk_index: 7, content: 'beta' },
+    ],
+  });
+  assert.equal(view.rows.length, 2);
+  assert.equal(view.rows[0]!.indexLabel, '#1');
+  assert.equal(view.rows[0]!.positionLabel, 'chunk #3');
+  assert.equal(view.rows[0]!.score, 0.8123);
+  assert.equal(view.rows[1]!.score, null);
+  assert.deepEqual(relatedChunksView({}).rows, []);
+});
+
+/* ---- KnowledgeBaseList ---- */
+
+test('knowledgeBaseListView lists names, ids and descriptions', () => {
+  const view = knowledgeBaseListView({
+    count: 2,
+    knowledge_bases: [
+      { index: 1, id: 'kb-1', name: 'HR policies', description: 'Internal HR docs' },
+      { index: 2, id: 'kb-2', name: 'FAQ', description: '' },
+    ],
+  });
+  assert.equal(view.count, 2);
+  assert.equal(view.rows[0]!.name, 'HR policies');
+  assert.equal(view.rows[0]!.id, 'kb-1');
+  assert.equal(view.rows[1]!.description, '');
+});
+
+/* ---- DocumentInfo ---- */
+
+test('documentInfoView collects title, type, size and metadata per document', () => {
+  const view = documentInfoView({
+    documents: [
+      {
+        title: 'Refunds.pdf', type: 'pdf', source: 'upload', knowledge_id: 'k-1',
+        chunk_count: 12, file_name: 'Refunds.pdf', file_type: 'pdf', file_size: 2048,
+        metadata: { author: 'Finance', pages: 9 },
+      },
+    ],
+  });
+  const row = view.rows[0]!;
+  assert.equal(row.title, 'Refunds.pdf');
+  assert.equal(row.sourceLabel, 'pdf · upload');
+  assert.equal(row.chunkCount, 12);
+  assert.equal(row.fileLabel, 'Refunds.pdf · (pdf) · 2.0 KB');
+  assert.deepEqual(row.metadata, [
+    { key: 'author', value: 'Finance' },
+    { key: 'pages', value: '9' },
+  ]);
+  assert.deepEqual(documentInfoView({}).rows, []);
+});
+
+/* ---- WebFetch ---- */
+
+test('webFetchView shows url, status and extracted content summary', () => {
+  const view = webFetchView({
+    results: [
+      { url: 'https://docs.example.com/guide', status: 'success', summary: 'How to install.', content_length: 4321, method: 'get' },
+      { url: 'https://blocked.example.com/x', status: 'failed', error_code: 'TIMEOUT', error_message: 'timed out' },
+    ],
+  });
+  assert.equal(view.rows[0]!.hostname, 'docs.example.com');
+  assert.equal(view.rows[0]!.statusKind, 'ok');
+  assert.equal(view.rows[0]!.summary, 'How to install.');
+  assert.equal(view.rows[0]!.method, 'GET');
+  assert.equal(view.rows[0]!.contentLengthLabel, '4321 chars');
+  assert.equal(view.rows[1]!.statusKind, 'failed');
+  assert.equal(view.rows[1]!.errorCode, 'TIMEOUT');
+  assert.equal(view.rows[1]!.errorMessage, 'timed out');
+});
+
+/* ---- Thinking / Plan ---- */
+
+test('thinkingView returns the reasoning text without falling through to raw output', () => {
+  assert.equal(thinkingView({ thought: 'Let me check the refund policy.' }), 'Let me check the refund policy.');
+  assert.equal(thinkingView({}, 'fallback reasoning'), 'fallback reasoning');
+  assert.equal(thinkingView({}), '');
+});
+
+test('planView keeps step status indicators', () => {
+  const view = planView({
+    task: 'Answer the refund question',
+    steps: [
+      { id: 's1', description: 'Search knowledge base', status: 'completed' },
+      { id: 's2', description: 'Draft answer', status: 'in_progress' },
+      { id: 's3', description: 'Cite sources', status: 'pending' },
+      { id: 's4', description: 'Unknown status', status: 'weird' },
+    ],
+  });
+  assert.equal(view.task, 'Answer the refund question');
+  assert.deepEqual(view.steps.map((step) => step.status), ['completed', 'in_progress', 'pending', 'pending']);
+  assert.deepEqual(planView({}).steps, []);
+});
+
+/* ---- Renderer routing ---- */
+
+test('typed renderers cover the expanded display types', () => {
+  for (const displayType of ['chunk_detail', 'related_chunks', 'knowledge_base_list', 'document_info', 'web_fetch_results', 'thinking', 'plan']) {
+    const presentation = toolResultPresentation({
+      id: 't',
+      result: { display_type: displayType, data: {} },
+    });
+    assert.notEqual(presentation.renderer, 'plain-text', displayType);
+    assert.equal(presentation.contentMode, 'structured-data', displayType);
+  }
 });

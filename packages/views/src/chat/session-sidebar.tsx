@@ -1,4 +1,5 @@
 import type { ChatSession } from '@weknora/contracts';
+import { sessionSourceBadge } from '@weknora/domain/chat/session-grouping';
 
 export interface SessionGroupView {
   key: string;
@@ -44,7 +45,7 @@ export function SessionSidebar({ sessions, selectedSessionId, loading = false, o
     {visibleGroups.map((group) => <section key={group.key} className="wk-chat-session-group">
       {group.label ? <h3>{group.label}</h3> : null}
       <ul>{group.items.map((session) => <li key={session.id}>
-        <div className="wk-chat-session-row"><button type="button" aria-current={session.id === selectedSessionId ? 'page' : undefined} onClick={() => onSelect(session.id)}>{session.is_pinned ? '★ ' : ''}{session.title || 'Untitled chat'}</button>{onRename ? <button type="button" aria-label={`Rename ${session.id}`} onClick={() => void onRename(session.id)}>Rename</button> : null}{onTogglePin ? <button type="button" aria-label={`${session.is_pinned ? 'Unpin' : 'Pin'} ${session.id}`} onClick={() => void onTogglePin(session.id, !session.is_pinned)}>{session.is_pinned ? 'Unpin' : 'Pin'}</button> : null}{onDelete ? <button type="button" aria-label={`Delete ${session.id}`} onClick={() => void onDelete(session.id)}>Delete</button> : null}</div>
+        <div className="wk-chat-session-row"><button type="button" aria-current={session.id === selectedSessionId ? 'page' : undefined} onClick={() => onSelect(session.id)}>{session.is_pinned ? '★ ' : ''}{session.title || 'Untitled chat'}</button><span className={['wk-chat-session-source', sessionSourceBadge(session).kind].filter(Boolean).join(' ')} title="Session source">{sessionSourceBadge(session).label}</span>{onRename ? <button type="button" aria-label={`Rename ${session.id}`} onClick={() => void onRename(session.id)}>Rename</button> : null}{onTogglePin ? <button type="button" aria-label={`${session.is_pinned ? 'Unpin' : 'Pin'} ${session.id}`} onClick={() => void onTogglePin(session.id, !session.is_pinned)}>{session.is_pinned ? 'Unpin' : 'Pin'}</button> : null}{onDelete ? <button type="button" aria-label={`Delete ${session.id}`} onClick={() => void onDelete(session.id)}>Delete</button> : null}</div>
       </li>)}</ul>
     </section>)}
     {onPageChange && pageCount > 1 ? <nav className="wk-chat-session-pagination" aria-label="Conversation pages"><button type="button" disabled={page <= 1 || loading} onClick={() => onPageChange(Math.max(1, page - 1))}>Previous</button><span>Page {page} of {pageCount}</span><button type="button" disabled={page >= pageCount || loading} onClick={() => onPageChange(Math.min(pageCount, page + 1))}>Next</button></nav> : null}

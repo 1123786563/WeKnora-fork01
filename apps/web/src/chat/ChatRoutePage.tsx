@@ -15,6 +15,7 @@ import { saveArtifactDownload } from './artifact-download.ts';
 import { externalCitationTarget } from './citation.ts';
 import { findResumeTargetMessage } from './resume.ts';
 import { buildSteerAction, isSteerConflict } from './steer-submit.ts';
+import { feedWithLastEventId, resumeStreamOptions, type LastEventIdHolder } from './stream-recovery.ts';
 import './chat.css';
 
 interface ChatRoutePageProps {
@@ -567,7 +568,18 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       const feed = createStreamFeed(sessionId, runId, `stream-${sessionId}`);
       setStreamState(initialChatStreamState());
       const streamOptions = { ...buildWebChatStreamOptions(sessionId, submission.content, selectedAgentId, knowledgeBaseId), signal: controller.signal };
-      await client.chat.stream(streamOptions, feed);
+      // Track the newest SSE event id so a mid-flight transport failure can
+      // resume exactly once with the Last-Event-ID header before the error
+      // surfaces (Vue parity: EventSource-style automatic reconnection).
+      const lastEventId: LastEventIdHolder = {};
+      try {
+        await client.chat.stream(streamOptions, feedWithLastEventId(feed, lastEventId));
+      } catch (cause) {
+        if (controller.signal.aborted) return;
+        const retry = resumeStreamOptions(streamOptions, lastEventId.id);
+        if (!retry) throw cause;
+        await client.chat.stream(retry, feedWithLastEventId(feed, lastEventId));
+      }
       if (runId !== chatRunIdRef.current || selectedSessionIdRef.current !== sessionId) return;
       // The server persists the user message before opening the stream. Refresh
       // the bounded history after a successful turn so the UI replaces the

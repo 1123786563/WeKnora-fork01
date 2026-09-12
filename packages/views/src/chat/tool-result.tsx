@@ -313,8 +313,255 @@ export function shellExecView(data: unknown, args?: unknown, output?: unknown): 
   };
 }
 
-/* ---------------- */
-/* React renderers  */
+
+export interface ChunkDetailViewModel {
+  chunkId: string;
+  knowledgeId: string;
+  chunkIndexLabel: string;
+  contentLength: number | null;
+  content: string;
+}
+
+/** Chunk detail (Vue ChunkDetail.vue): id/id/position meta plus full content. */
+export function chunkDetailView(data: unknown): ChunkDetailViewModel {
+  const d = record(data);
+  const index = num(d.chunk_index);
+  return {
+    chunkId: str(d.chunk_id),
+    knowledgeId: str(d.knowledge_id),
+    chunkIndexLabel: index !== null ? `#${index}` : '',
+    contentLength: num(d.content_length),
+    content: str(d.content),
+  };
+}
+
+export interface RelatedChunkRow {
+  key: string;
+  indexLabel: string;
+  positionLabel: string;
+  score: number | null;
+  content: string;
+}
+
+export interface RelatedChunksViewModel {
+  rows: RelatedChunkRow[];
+}
+
+/** Related chunks (Vue RelatedChunks.vue): per-chunk index/position links. */
+export function relatedChunksView(data: unknown): RelatedChunksViewModel {
+  const d = record(data);
+  return {
+    rows: records(d.chunks).map((item, i) => {
+      const index = num(item.index);
+      const position = num(item.chunk_index);
+      return {
+        key: str(item.chunk_id) || `chunk-${i}`,
+        indexLabel: `#${index ?? i + 1}`,
+        positionLabel: position !== null ? `chunk #${position}` : '',
+        score: num(item.score),
+        content: str(item.content),
+      };
+    }),
+  };
+}
+
+export interface KnowledgeBaseRow {
+  key: string;
+  indexLabel: string;
+  name: string;
+  id: string;
+  description: string;
+}
+
+export interface KnowledgeBaseListViewModel {
+  count: number;
+  rows: KnowledgeBaseRow[];
+}
+
+/** Knowledge-base list (Vue KnowledgeBaseList.vue): name/id/description cards. */
+export function knowledgeBaseListView(data: unknown): KnowledgeBaseListViewModel {
+  const d = record(data);
+  const rows = records(d.knowledge_bases);
+  return {
+    count: num(d.count) ?? rows.length,
+    rows: rows.map((item, i) => ({
+      key: str(item.id) || `kb-${i}`,
+      indexLabel: `#${num(item.index) ?? i + 1}`,
+      name: str(item.name) || LABELS.untitled,
+      id: str(item.id),
+      description: str(item.description),
+    })),
+  };
+}
+
+export interface DocumentInfoMetadataEntry {
+  key: string;
+  value: string;
+}
+
+export interface DocumentInfoRow {
+  key: string;
+  indexLabel: string;
+  title: string;
+  description: string;
+  sourceLabel: string;
+  knowledgeId: string;
+  faqId: string;
+  chunkCount: number | null;
+  faqAnswers: string[];
+  fileLabel: string;
+  metadata: DocumentInfoMetadataEntry[];
+}
+
+export interface DocumentInfoViewModel {
+  rows: DocumentInfoRow[];
+}
+
+function formatFileSize(size: number | null): string {
+  if (size === null || size <= 0) return '';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let value = size;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${unitIndex === 0 || value >= 10 ? Math.round(value) : value.toFixed(1)} ${units[unitIndex]}`;
+}
+
+function formatMetadataValue(value: unknown): string {
+  if (value === null || value === undefined) return LABELS.nullValue;
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value) ?? String(value);
+    } catch {
+      return String(value);
+    }
+  }
+  return String(value);
+}
+
+/** Document info (Vue DocumentInfo.vue): per-document metadata cards. */
+export function documentInfoView(data: unknown): DocumentInfoViewModel {
+  const d = record(data);
+  return {
+    rows: records(d.documents).map((item, i) => {
+      const type = str(item.type);
+      const source = str(item.source);
+      const fileParts = [
+        str(item.file_name),
+        str(item.file_type) ? `(${str(item.file_type)})` : '',
+        formatFileSize(num(item.file_size)),
+      ].filter(Boolean);
+      const metadata = record(item.metadata);
+      const faqId = str(item.faq_id);
+      return {
+        key: faqId || str(item.knowledge_id) || `doc-${i}`,
+        indexLabel: `#${i + 1}`,
+        title: str(item.title) || str(item.faq_question) || LABELS.untitled,
+        description: str(item.description),
+        sourceLabel: [type, source].filter(Boolean).join(' · '),
+        knowledgeId: str(item.knowledge_id),
+        faqId,
+        chunkCount: num(item.chunk_count),
+        faqAnswers: list(item.faq_answers).map(str),
+        fileLabel: fileParts.join(' · '),
+        metadata: Object.entries(metadata).map(([key, value]) => ({ key, value: formatMetadataValue(value) })),
+      };
+    }),
+  };
+}
+
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return '';
+  }
+}
+
+export interface WebFetchRow {
+  key: string;
+  indexLabel: string;
+  url: string;
+  hostname: string;
+  status: string;
+  statusKind: 'ok' | 'failed' | 'skipped' | '';
+  method: string;
+  errorCode: string;
+  errorMessage: string;
+  summary: string;
+  summaryFailed: boolean;
+  rawContent: string;
+  contentLengthLabel: string;
+  truncated: boolean;
+}
+
+export interface WebFetchViewModel {
+  rows: WebFetchRow[];
+}
+
+/** Web fetch (Vue WebFetchResults.vue): URL/status/summary/raw content cards. */
+export function webFetchView(data: unknown): WebFetchViewModel {
+  const d = record(data);
+  return {
+    rows: records(d.results).map((item, i) => {
+      const status = str(item.status);
+      const rawStatus = str(item.summary_status);
+      const length = num(item.content_length);
+      return {
+        key: str(item.url) || `fetch-${i}`,
+        indexLabel: `#${i + 1}`,
+        url: str(item.url),
+        hostname: hostnameOf(str(item.url)),
+        status,
+        statusKind: status === 'success' ? 'ok' : status === 'failed' ? 'failed' : status === 'skipped' ? 'skipped' : '',
+        method: str(item.method).toUpperCase(),
+        errorCode: str(item.error_code) || str(item.summary_error_code),
+        errorMessage: str(item.error_message) || str(item.error) || str(item.summary_error_message),
+        summary: str(item.summary),
+        summaryFailed: rawStatus === 'failed',
+        rawContent: str(item.raw_content),
+        contentLengthLabel: length !== null ? `${length} chars` : '',
+        truncated: bool(item.truncated),
+      };
+    }),
+  };
+}
+
+/** Thinking (Vue ThinkingDisplay.vue): the reasoning text itself. */
+export function thinkingView(data: unknown, output?: unknown): string {
+  const d = record(data);
+  return str(d.thought) || str(d.content) || str(output);
+}
+
+export interface PlanStepRow {
+  id: string;
+  description: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'skipped';
+}
+
+export interface PlanViewModel {
+  task: string;
+  steps: PlanStepRow[];
+}
+
+/** Plan (Vue PlanDisplay.vue): ordered steps with status check boxes. */
+export function planView(data: unknown): PlanViewModel {
+  const d = record(data);
+  return {
+    task: str(d.task),
+    steps: records(d.steps).map((item, i) => {
+      const status = str(item.status);
+      return {
+        id: str(item.id) || `step-${i + 1}`,
+        description: str(item.description),
+        status: status === 'in_progress' || status === 'completed' || status === 'skipped' ? status : 'pending',
+      };
+    }),
+  };
+}
+
 /* ---------------- */
 
 function EmptyState({ label }: { label: string }) {
@@ -421,6 +668,176 @@ export function ShellExecRenderer({ data, args, output }: { data: unknown; args?
   );
 }
 
+function InfoField({ label, children }: { label: string; children: React.ReactNode }) {
+  return <div className="wk-tool-info-field"><span className="wk-tool-info-label">{label}</span><span className="wk-tool-info-value">{children}</span></div>;
+}
+
+export function ChunkDetailRenderer({ data }: { data: unknown }) {
+  const view = chunkDetailView(data);
+  if (!view.chunkId && !view.knowledgeId && !view.content) return <EmptyState label={LABELS.noRecords} />;
+  return (
+    <div className="wk-tool-chunk-detail">
+      {view.chunkId ? <InfoField label="Chunk ID"><code>{view.chunkId}</code></InfoField> : null}
+      {view.knowledgeId ? <InfoField label="Document ID"><code>{view.knowledgeId}</code></InfoField> : null}
+      {view.chunkIndexLabel ? <InfoField label="Position">{view.chunkIndexLabel}</InfoField> : null}
+      {view.contentLength !== null ? <InfoField label="Content length">{view.contentLength} chars</InfoField> : null}
+      {view.content ? (
+        <div className="wk-tool-section">
+          <div className="wk-tool-section-title">Full content</div>
+          <div className="wk-tool-full-content">{view.content}</div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function RelatedChunksRenderer({ data }: { data: unknown }) {
+  const view = relatedChunksView(data);
+  if (!view.rows.length) return <EmptyState label={LABELS.noResults} />;
+  return (
+    <ul className="wk-tool-related-chunks">
+      {view.rows.map((row) => (
+        <li key={row.key}>
+          <div className="wk-tool-row-title">
+            <span className="wk-tool-row-index">{row.indexLabel}</span>
+            {row.positionLabel ? <span className="wk-tool-row-meta">{row.positionLabel}</span> : null}
+            {row.score !== null ? <span className="wk-tool-row-meta">score {row.score.toFixed(3)}</span> : null}
+          </div>
+          {row.content ? <p className="wk-tool-snippet">{row.content}</p> : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function KnowledgeBaseListRenderer({ data }: { data: unknown }) {
+  const view = knowledgeBaseListView(data);
+  if (!view.rows.length) return <EmptyState label={LABELS.noResults} />;
+  return (
+    <div className="wk-tool-kb-list">
+      <div className="wk-tool-section-title">{view.count} knowledge base{view.count === 1 ? '' : 's'}</div>
+      <ul className="wk-tool-kb-cards">
+        {view.rows.map((row) => (
+          <li key={row.key} className="wk-tool-card">
+            <div className="wk-tool-row-title">
+              <span className="wk-tool-row-index">{row.indexLabel}</span>
+              {row.name}
+            </div>
+            {row.id ? <div className="wk-tool-info-field"><span className="wk-tool-info-label">ID</span><span className="wk-tool-info-value"><code>{row.id}</code></span></div> : null}
+            {row.description ? <p className="wk-tool-snippet">{row.description}</p> : null}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+export function DocumentInfoRenderer({ data }: { data: unknown }) {
+  const view = documentInfoView(data);
+  if (!view.rows.length) return <EmptyState label={LABELS.noResults} />;
+  return (
+    <ul className="wk-tool-doc-list">
+      {view.rows.map((row) => (
+        <li key={row.key} className="wk-tool-card">
+          <div className="wk-tool-row-title">
+            <span className="wk-tool-row-index">{row.indexLabel}</span>
+            {row.title}
+            {row.chunkCount !== null ? <span className="wk-tool-row-meta">{row.chunkCount} chunks</span> : null}
+          </div>
+          {row.faqId ? <InfoField label="FAQ ID"><code>{row.faqId}</code></InfoField> : null}
+          {row.knowledgeId ? <InfoField label="Document ID"><code>{row.knowledgeId}</code></InfoField> : null}
+          {row.faqAnswers.length ? (
+            <InfoField label="Answers">
+              <ul className="wk-tool-faq-answers">{row.faqAnswers.map((answer, i) => <li key={i}>{answer}</li>)}</ul>
+            </InfoField>
+          ) : null}
+          {row.description ? <InfoField label="Description">{row.description}</InfoField> : null}
+          {row.sourceLabel ? <InfoField label="Source">{row.sourceLabel}</InfoField> : null}
+          {row.fileLabel ? <InfoField label="File">{row.fileLabel}</InfoField> : null}
+          {row.metadata.length ? (
+            <div className="wk-tool-section">
+              <div className="wk-tool-section-title">Metadata</div>
+              <ul className="wk-tool-metadata-list">
+                {row.metadata.map((entry) => <li key={entry.key}><span className="wk-tool-metadata-key">{entry.key}:</span> {entry.value}</li>)}
+              </ul>
+            </div>
+          ) : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function WebFetchRenderer({ data }: { data: unknown }) {
+  const view = webFetchView(data);
+  if (!view.rows.length) return <EmptyState label={LABELS.noResults} />;
+  return (
+    <ul className="wk-tool-web-fetch">
+      {view.rows.map((row) => (
+        <li key={row.key} className="wk-tool-card">
+          <div className="wk-tool-row-title">
+            <span className="wk-tool-row-index">{row.indexLabel}</span>
+            {row.url
+              ? <a href={row.url} target="_blank" rel="noopener noreferrer">{row.hostname || row.url}</a>
+              : <span>Unknown link</span>}
+            {row.status ? <span className={`wk-tool-status-pill is-${row.statusKind}`}>{row.status}</span> : null}
+            {row.method ? <span className="wk-tool-status-pill">{row.method}</span> : null}
+            {row.contentLengthLabel ? <span className="wk-tool-row-meta">{row.contentLengthLabel}</span> : null}
+            {row.truncated ? <span className="wk-tool-row-meta">truncated</span> : null}
+          </div>
+          {row.url ? <InfoField label="URL"><a href={row.url} target="_blank" rel="noopener noreferrer">{row.url}</a></InfoField> : null}
+          {row.errorCode ? <InfoField label="Error code">{row.errorCode}</InfoField> : null}
+          {row.errorMessage ? <p className="wk-tool-snippet is-error">{row.errorMessage}</p> : null}
+          {row.summary ? (
+            <div className="wk-tool-section">
+              <div className="wk-tool-section-title">Summary</div>
+              <div className="wk-tool-full-content">{row.summary}</div>
+            </div>
+          ) : null}
+          {row.summaryFailed ? <div className="wk-tool-section-title is-error">Summary generation failed</div> : null}
+          {row.rawContent ? (
+            <div className="wk-tool-section">
+              <div className="wk-tool-section-title">Raw text{row.contentLengthLabel ? ` (${row.contentLengthLabel})` : ''}</div>
+              <pre className="wk-tool-raw-content">{row.rawContent}</pre>
+            </div>
+          ) : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function ThinkingRenderer({ data, output }: { data: unknown; output?: unknown }) {
+  const thought = thinkingView(data, output);
+  if (!thought) return <EmptyState label={LABELS.emptyOutput} />;
+  return <div className="wk-tool-thinking wk-tool-full-content">{thought}</div>;
+}
+
+const PLAN_STATUS_ICONS: Readonly<Record<PlanStepRow['status'], string>> = Object.freeze({
+  pending: '○',
+  in_progress: '●',
+  completed: '✓',
+  skipped: '—',
+});
+
+export function PlanRenderer({ data }: { data: unknown }) {
+  const view = planView(data);
+  if (!view.steps.length) return <EmptyState label={LABELS.noRecords} />;
+  return (
+    <div className="wk-tool-plan">
+      {view.task ? <div className="wk-tool-section-title">{view.task}</div> : null}
+      <ul className="wk-tool-plan-steps">
+        {view.steps.map((step) => (
+          <li key={step.id} className={`wk-tool-plan-step is-${step.status}`}>
+            <span className="wk-tool-plan-icon" aria-hidden="true">{PLAN_STATUS_ICONS[step.status]}</span>
+            <span className="wk-tool-plan-description">{step.description}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function GenericToolResultRenderer({ title, text }: { title: string; text: string }) {
   return <pre>{text}</pre>;
 }
@@ -431,6 +848,13 @@ const TYPED_RENDERERS: Readonly<Partial<Record<NormalizedToolResult['renderer'],
   'database-query': DatabaseQueryRenderer,
   'grep-results': GrepResultsRenderer,
   'shell-exec': ShellExecRenderer,
+  'chunk-detail': ChunkDetailRenderer,
+  'related-chunks': RelatedChunksRenderer,
+  'knowledge-base-list': KnowledgeBaseListRenderer,
+  'document-info': DocumentInfoRenderer,
+  'web-fetch-results': WebFetchRenderer,
+  thinking: ThinkingRenderer,
+  plan: PlanRenderer,
 });
 
 export function ToolResultView({ toolCall }: { toolCall: ToolResultViewInput }) {

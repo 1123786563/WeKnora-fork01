@@ -5,6 +5,8 @@ import {
   DEFAULT_SESSION_GROUP_MODE,
   SESSION_GROUP_MODE_STORAGE_KEY,
   readStoredGroupMode,
+  resolveSessionOrigin,
+  sessionSourceBadge,
   storeGroupMode,
 } from './session-grouping.ts'
 
@@ -38,4 +40,24 @@ test('storeGroupMode round-trips through storage and no-ops without one', () => 
   assert.equal(storage.getItem(SESSION_GROUP_MODE_STORAGE_KEY), 'date')
   assert.equal(readStoredGroupMode(storage), 'date')
   assert.doesNotThrow(() => storeGroupMode('none', null))
+})
+
+test('resolveSessionOrigin classifies im, embed, api and web sessions', () => {
+  assert.deepEqual(resolveSessionOrigin({ id: '1', im_platform: 'Feishu' }), { kind: 'im', platform: 'feishu' })
+  assert.deepEqual(
+    resolveSessionOrigin({ id: '2', description: 'embed_channel:chan-9' }),
+    { kind: 'embed', channelId: 'chan-9' },
+  )
+  assert.deepEqual(resolveSessionOrigin({ id: '3', user_id: 'api_tenant_key:abc' }), { kind: 'api' })
+  assert.deepEqual(resolveSessionOrigin({ id: '4', user_id: 'api_external_user:xyz' }), { kind: 'api' })
+  assert.deepEqual(resolveSessionOrigin({ id: '5' }), { kind: 'web' })
+  // A bare embed marker without a channel id stays a web session.
+  assert.deepEqual(resolveSessionOrigin({ id: '6', description: 'embed_channel:' }), { kind: 'web' })
+})
+
+test('sessionSourceBadge renders Web / IM / Embed / API labels', () => {
+  assert.deepEqual(sessionSourceBadge({ id: '1' }), { kind: '', label: 'Web' })
+  assert.deepEqual(sessionSourceBadge({ id: '2', im_platform: 'slack' }), { kind: 'is-im', label: 'SLACK' })
+  assert.deepEqual(sessionSourceBadge({ id: '3', description: 'embed_channel:c1' }), { kind: 'is-embed', label: 'Embed' })
+  assert.deepEqual(sessionSourceBadge({ id: '4', user_id: 'api_tenant_key:k' }), { kind: 'is-api', label: 'API' })
 })

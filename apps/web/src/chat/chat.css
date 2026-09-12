@@ -826,3 +826,243 @@ main.wk-chat-page.wk-chat-page {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* Typed tool renderers: shared info-field / card primitives */
+.wk-tool-info-field {
+  display: flex;
+  gap: 0.6rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.wk-tool-info-label {
+  min-width: 6rem;
+  flex-shrink: 0;
+  color: #52606d;
+  font-weight: 500;
+}
+
+.wk-tool-info-value {
+  flex: 1;
+  color: #24292f;
+  word-break: break-word;
+}
+
+.wk-tool-info-value code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+  background: #f1f5f9;
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+}
+
+.wk-tool-section {
+  margin-top: 0.4rem;
+}
+
+.wk-tool-section-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #52606d;
+  margin-bottom: 0.2rem;
+}
+
+.wk-tool-section-title.is-error {
+  color: #c0392b;
+}
+
+.wk-tool-full-content {
+  font-size: 0.75rem;
+  line-height: 1.55;
+  color: #24292f;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.wk-tool-card {
+  border: 1px solid #e3e8ef;
+  border-radius: 6px;
+  padding: 0.5rem 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.wk-tool-status-pill {
+  font-size: 0.68rem;
+  border: 1px solid #e3e8ef;
+  border-radius: 10px;
+  padding: 0 0.45rem;
+  line-height: 1.5;
+  white-space: nowrap;
+  color: #52606d;
+}
+
+.wk-tool-status-pill.is-ok {
+  color: #0a7d33;
+  border-color: rgba(7, 192, 95, 0.35);
+}
+
+.wk-tool-status-pill.is-failed {
+  color: #c0392b;
+  border-color: rgba(192, 57, 43, 0.35);
+}
+
+/* chunk-detail */
+.wk-tool-chunk-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+/* related-chunks */
+.wk-tool-related-chunks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+/* knowledge-base-list */
+.wk-tool-kb-cards {
+  list-style: none;
+  margin: 0.3rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+/* document-info */
+.wk-tool-doc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.wk-tool-faq-answers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.wk-tool-metadata-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  font-size: 0.7rem;
+  color: #52606d;
+}
+
+.wk-tool-metadata-key {
+  font-weight: 600;
+}
+
+/* web-fetch */
+.wk-tool-web-fetch {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.wk-tool-web-fetch .wk-tool-snippet.is-error {
+  color: #c0392b;
+}
+
+.wk-tool-raw-content {
+  margin: 0.2rem 0 0;
+  padding: 0.4rem 0.6rem;
+  max-height: 12rem;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  background: #f6f8fa;
+  border: 1px solid #e3e8ef;
+  border-radius: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* plan */
+.wk-tool-plan-steps {
+  list-style: none;
+  margin: 0.3rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.wk-tool-plan-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: #52606d;
+}
+
+.wk-tool-plan-step.is-in_progress {
+  color: #24292f;
+  font-weight: 500;
+}
+
+.wk-tool-plan-step.is-completed .wk-tool-plan-description {
+  text-decoration: line-through;
+  color: #9aa5b1;
+}
+
+.wk-tool-plan-icon {
+  flex-shrink: 0;
+  width: 1rem;
+  text-align: center;
+}
+
+.wk-tool-plan-step.is-completed .wk-tool-plan-icon,
+.wk-tool-plan-step.is-in_progress .wk-tool-plan-icon {
+  color: #2563eb;
+}
+
+/* thinking */
+.wk-tool-thinking {
+  color: #52606d;
+}
+
+/* Sidebar session source badge */
+.wk-chat-session-source {
+  flex-shrink: 0;
+  font-size: 0.62rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #52606d;
+  background: #f1f5f9;
+  border: 1px solid #e3e8ef;
+  border-radius: 8px;
+  padding: 0 0.35rem;
+  line-height: 1.4;
+  margin-left: 0.35rem;
+}
+
+.wk-chat-session-source.is-im,
+.wk-chat-session-source.is-embed,
+.wk-chat-session-source.is-api {
+  color: #1d4ed8;
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
