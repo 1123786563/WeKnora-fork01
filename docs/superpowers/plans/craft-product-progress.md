@@ -26,11 +26,12 @@
 
 | ID | 状态 | 工作区/分支 | BASE | 说明 |
 |---|---|---|---|---|
-| R01 | review | .worktrees/craft-r01 / codex/craft-r01 | 83e2ef5c | HEAD 542105ac：候选检查补齐 + 双 lock + 1.18.4 真实 fixture + live 两轮验证（本地 mock provider）；审查者进行中 |
+| R01 | **done** | .worktrees/craft-r01 / codex/craft-r01 | 83e2ef5c | HEAD 542105ac 审查 PASS_WITH_NITS → 合入 21bf52fc；11/11 测试含 2 个 live（真实 1.18.4 二进制+本地 mock provider 两轮）；nit 留档：48 位 ID 回绕（R04+ 注意）、container_digest 待镜像 |
 | R02 | **done** | .worktrees/craft-r02 / codex/craft-r02 | 83e2ef5c | HEAD 80b9fcbf 审查 PASS_WITH_NITS → 合入 da6d169d；迁移 000121/000041；SQLite+真实 PG 双绿；外键偏离（写时校验+sessions FK）经审查者独立实证 |
-| R03–O05 | pending | — | — | 等待依赖 |
+| R03 | implementing | .worktrees/craft-r03 / codex/craft-r03 | 21bf52fc | 已派发（含 R02 审查 nit-2 owner 校验要求）；R04–O05 等待依赖 |
 
 ## 调度纪要
 
-- 并行组 #1（R01+R02）已按 DAG 候选集派发（G0 passed、G1 passed，两项均未完成，目录互不重叠：opencode 协议目录 vs craft/存储目录）。
-- 实现者上限 2 已满；下一动作：审查 R01/R02 → 修复复审 → 串行合入 `codex/craft-integration` → 重算 ready。
+- 并行组 #1（R01+R02）：两项均审查 PASS_WITH_NITS 后串行合入（da6d169d、21bf52fc），合并后受影响包全绿（含 live 与真实 PG）。
+- R03 已从集成 HEAD 21bf52fc 派发；ready 集合现为 {R03}（R04 需 R03 完成）。
+- 事件留档：R01/R02 实现期间 worktree 曾被外部进程删除，实现者重建并复验；两次审查均核对提交与报告吻合。
