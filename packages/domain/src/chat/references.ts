@@ -109,7 +109,7 @@ interface MutableDocumentReference extends ChatReferenceItem {
 function documentGroupKey(item: UnknownRecord, index: number): string {
   const knowledgeId = text(item.knowledge_id);
   if (knowledgeId) return knowledgeId;
-  const title = text(item.knowledge_title) || text(item.knowledge_filename);
+  const title = text(item.knowledge_title) || text(item.knowledge_filename) || text(item.title);
   const knowledgeBaseId = text(item.knowledge_base_id);
   if (title) return [knowledgeBaseId, title].filter(Boolean).join(':');
   return referenceId(item) || `reference-${index}`;
@@ -169,7 +169,7 @@ export function groupChatReferences(values: readonly unknown[] | null | undefine
 
     const knowledgeId = text(item.knowledge_id);
     const knowledgeBaseId = text(item.knowledge_base_id);
-    const title = text(item.knowledge_title) || text(item.knowledge_filename) || knowledgeId || 'Document';
+    const title = text(item.knowledge_title) || text(item.knowledge_filename) || text(item.title) || knowledgeId || 'Document';
     documents.set(groupKey, {
       key: `document:${groupKey}`,
       kind: 'document',
