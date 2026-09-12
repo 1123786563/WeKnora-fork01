@@ -278,7 +278,7 @@
 - 实测验收：计划核心断言逐字（伪造引用 "invented" → InvalidConclusion）；约束块逐字（4 状态集/无效状态/无证据 supported/越权前提）；kind 恒 model（rule 宣称拒绝）；长度/数量上限；预算耗尽显式状态（结构化 402）；网关传输错/失败状态类型化异常；查询通道注入惰性；围栏 JSON；Reason 双模式分派（RULES→CONCLUSION_KIND_RULE/MODEL→CONCLUSION_KIND_MODEL 上线）；未配置 UNIMPLEMENTED/未指定 INVALID_ARGUMENT/空 query_id INVALID_ARGUMENT；无网关拒绝推理；原始模型文本不 surfaced；无回写路径。
 - **延后记录（如实）**：①证据内容通道（B4，上述）；②真实模型端到端留证——无凭据（计划步骤 7 明示"未完成不标记模型模式 verified"——模型模式因此标记为经受控桩全链路验证、真实调用未验证）；③RPC rules 模式 facts 未接线（恒 insufficient_evidence——分发正确、事实馈送随 Q04）；④A03 集成测试（真实 Go 网关经 conftest fixture——评审员建议，Q04）；⑤invocation id 确定性化（重放幂等微调）。
 - review：规格 PASS（0 BLOCKER，条件=台账记录即本记录）；质量三轮 FAIL→修复（B1 宽 except/B2 碰撞/B3 预算状态含未定义名回归/B4 证据内容）→ 终验待回复（条件全部落地：错误类定义+三测试、台账即本记录、minors 6/7/8 已实际入码、协议更名完成、EOF 换行）。
-- 提交 SHA：（本记录与代码同批提交后补记）
+- 提交 SHA：96a3253（feat(semantic): q03 模型推断与证据不足判定）。
 
 ## 当前边界
 
