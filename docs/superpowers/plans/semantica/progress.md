@@ -310,7 +310,7 @@
 - 路由：/knowledge-bases/:id/semantic/{status,search,reason} 挂 KBAccessRead；nil 不挂载。
 - **延后（W02/W03）**：retry 服务端端点（客户端方法已备，挂载归 W02 接 I05 协调器）；SemanticQueryFacade 生产桥接（fail-closed nil 保证未接线即 503）；API 文档页（W03）。
 - review：本轮预算耗尽，双评审留待下轮补做后再定 verified——**本轮如实标 implemented**。
-- 提交 SHA：（同批提交后补记）
+- 提交 SHA：01b78e1。
 
 - V01–C03、I01–I05、A01–A03、Q01–Q04 verified；W01 implemented（双评审下轮补做）；后续 6 个任务未开始。
 - V01精确版本已冻结（semantica 0.6.8）；真实模型证据须在后续任务补齐，不是已经通过的前提。
