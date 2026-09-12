@@ -135,6 +135,32 @@ func TestSemanticConcurrentPromotionSingleWinner(t *testing.T) {
 	require.Equal(t, 1, winners, "exactly one concurrent promotion may win the CAS")
 }
 
+func TestSemanticRollbackOnUnpromopedScopeRejected(t *testing.T) {
+	f := newSemanticBackendFixture(t)
+	// No promotion happened: rollback must refuse with the dedicated
+	// sentinel, not a misleading "promotion rejected".
+	err := f.Rollback()
+	require.ErrorIs(t, err, ErrNotActiveSemantic)
+}
+
+func TestSemanticSetDesiredRejectsUnknownBackend(t *testing.T) {
+	f := newSemanticBackendFixture(t)
+	err := f.svc.SetDesired(context.Background(), f.scope, "magic-backend")
+	require.Error(t, err)
+}
+
+func TestSemanticTombstonedDocForcesCatchup(t *testing.T) {
+	f := newSemanticBackendFixture(t)
+	f.SetNativeCheckpoint(3)
+	// A DELETED document at revision 9: tombstones count by design (native
+	// must replay the deletion for the I04 barrier).
+	require.NoError(t, f.db.Exec(
+		"INSERT INTO semantic_document_revisions (tenant_id, kb_id, document_id, revision, deleted) VALUES (?, ?, ?, 9, 1)",
+		f.scope.TenantID, f.scope.KBID, "d-tomb").Error)
+	err := f.Rollback()
+	require.ErrorIs(t, err, ErrNativeCatchupRequired, "tombstones must force native catch-up")
+}
+
 func TestSemanticPromoteRequiresExpectedGeneration(t *testing.T) {
 	f := newSemanticBackendFixture(t)
 	err := f.svc.Promote(context.Background(), f.scope, "stale-gen")

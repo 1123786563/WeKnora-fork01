@@ -15,6 +15,12 @@ var (
 	ErrNativeCatchupRequired = errors.New("native backend catch-up required before rollback")
 	// ErrPromotionRejected: the CAS promotion precondition failed.
 	ErrPromotionRejected = errors.New("semantic backend promotion rejected")
+	// ErrRollbackRejected: the rollback CAS precondition failed (e.g. the
+	// scope was never promoted to semantic).
+	ErrRollbackRejected = errors.New("semantic backend rollback rejected")
+	// ErrNotActiveSemantic: rollback attempted while semantic is not the
+	// active backend (nothing to roll back).
+	ErrNotActiveSemantic = errors.New("semantic backend is not active")
 )
 
 // BackendService is the desired/active backend state machine (W03):
@@ -39,8 +45,9 @@ func (s *BackendService) SetDesired(ctx context.Context, scope types.SemanticSco
 }
 
 // Promote CAS-switches the active backend to semantic. The caller passes
-// the expected ACTIVE GENERATION; a mismatch (concurrent promotion or
-// moved generation) rejects with ErrPromotionRejected.
+// the expected ACTIVE GENERATION - a pure FENCING TOKEN against I03
+// republish (the CAS never writes active_generation; only an I03 publish
+// rotates it). A mismatch rejects with ErrPromotionRejected.
 func (s *BackendService) Promote(ctx context.Context, scope types.SemanticScopeKey, expectedActiveGeneration string) error {
 	changed, err := s.repo.CompareAndSwapBackend(ctx, scope, "native", "semantic", expectedActiveGeneration)
 	if err != nil {
@@ -65,6 +72,9 @@ func (s *BackendService) Rollback(ctx context.Context, scope types.SemanticScope
 	if err != nil {
 		return err
 	}
+	if state.ActiveBackend != "semantic" {
+		return fmt.Errorf("%w: active is %q, nothing to roll back", ErrNotActiveSemantic, state.ActiveBackend)
+	}
 	if latest > state.NativeCheckpoint {
 		return fmt.Errorf("%w: native at %d, source at %d", ErrNativeCatchupRequired, state.NativeCheckpoint, latest)
 	}
@@ -73,7 +83,15 @@ func (s *BackendService) Rollback(ctx context.Context, scope types.SemanticScope
 		return err
 	}
 	if !changed {
-		return fmt.Errorf("%w: rollback CAS failed", ErrPromotionRejected)
+		return fmt.Errorf("%w: rollback CAS failed", ErrRollbackRejected)
+	}
+	// TOCTOU guard: a mutation landing between the catch-up read and this
+	// CAS means native is transiently behind (same as normal indexing
+	// lag; the barrier still holds for all pre-check revisions). Surface
+	// it so operators can wait for the outbox consumer instead of a
+	// silent stale window.
+	if recheck, err := s.repo.LatestDocumentRevision(ctx, scope); err == nil && recheck > state.NativeCheckpoint {
+		return fmt.Errorf("%w: rolled back with native at %d but source moved to %d (await outbox catch-up)", ErrRollbackRejected, state.NativeCheckpoint, recheck)
 	}
 	return nil
 }
