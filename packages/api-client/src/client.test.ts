@@ -38,6 +38,59 @@ test('knowledgeBases.list uses a base URL subpath and parses its DTO', async () 
   assert.equal(requests[0]?.url, 'https://api.example.test/weknora/api/v1/knowledge-bases?creator=mine');
 });
 
+test('knowledgeBases.search posts to /api/v1/knowledge-search with the query and KB scope, parsing chunk hits', async () => {
+  const requests: Request[] = [];
+  const transport = createJsonTransport(async (input, init) => {
+    requests.push(new Request(input, init));
+    return jsonResponse(200, {
+      success: true,
+      data: [{
+        id: 'chunk-1',
+        content: 'full chunk text',
+        matched_content: 'full <em>chunk</em> text',
+        knowledge_id: 'doc-1',
+        knowledge_base_id: 'kb-1',
+        knowledge_title: 'Doc title',
+        knowledge_filename: 'doc.pdf',
+        chunk_index: 3,
+        score: 0.87,
+        match_type: 'vector',
+      }],
+    });
+  });
+  const client = createWeKnoraClient({ baseURL: 'https://api.example.test', transport });
+
+  const result = await client.knowledgeBases.search({ query: 'hello', knowledgeBaseIds: ['kb-1'] });
+
+  assert.equal(requests[0]?.url, 'https://api.example.test/api/v1/knowledge-search');
+  assert.equal(requests[0]?.method, 'POST');
+  assert.deepEqual(await requests[0]?.json(), { query: 'hello', knowledge_base_ids: ['kb-1'] });
+  assert.deepEqual(result, [{
+    id: 'chunk-1',
+    content: 'full chunk text',
+    matchedContent: 'full <em>chunk</em> text',
+    knowledgeId: 'doc-1',
+    knowledgeBaseId: 'kb-1',
+    knowledgeTitle: 'Doc title',
+    knowledgeFilename: 'doc.pdf',
+    chunkIndex: 3,
+    score: 0.87,
+    matchType: 'vector',
+  }]);
+});
+
+test('knowledgeBases.search refuses to call the backend with no KB/knowledge scope', async () => {
+  const client = createWeKnoraClient({
+    baseURL: 'https://api.example.test',
+    transport: { send: async () => { throw new Error('must not be called without a scope'); } },
+  });
+
+  await assert.rejects(
+    client.knowledgeBases.search({ query: 'hello', knowledgeBaseIds: [] }),
+    /at least one knowledgeBaseId or knowledgeId/,
+  );
+});
+
 test('requestBinary preserves protected bytes and response content headers', async () => {
   const requests: Request[] = [];
   const transport = createJsonTransport(async (input, init) => {

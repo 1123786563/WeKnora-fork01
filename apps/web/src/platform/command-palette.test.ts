@@ -12,6 +12,7 @@ import {
   RECENT_QUERIES_LIMIT,
   recentQueriesStorageKey,
   shortcutDigitFor,
+  visibleCommands,
   type KeyValueStorage,
 } from './command-palette.ts';
 
@@ -144,4 +145,18 @@ test('consumeCmdkParam extracts the query and strips it from the search string',
 test('consumeCmdkParam is a no-op when there is no cmdk param', () => {
   assert.deepEqual(consumeCmdkParam('?scope=mine'), { query: null, remainingSearch: '?scope=mine' });
   assert.deepEqual(consumeCmdkParam(''), { query: null, remainingSearch: '' });
+});
+
+test('visibleCommands hides "Open agents" without the agents capability', () => {
+  const visible = visibleCommands(COMMANDS, { canOpenAgents: false, canOpenOrganizations: true });
+  assert.deepEqual(visible.map((c) => c.id), ['new-chat', 'open-kb-list', 'open-organizations', 'open-settings']);
+});
+
+test('visibleCommands hides "Open shared spaces" without admin+organizations access', () => {
+  const visible = visibleCommands(COMMANDS, { canOpenAgents: true, canOpenOrganizations: false });
+  assert.deepEqual(visible.map((c) => c.id), ['new-chat', 'open-kb-list', 'open-agents', 'open-settings']);
+});
+
+test('visibleCommands keeps every command when both capabilities are granted', () => {
+  assert.equal(visibleCommands(COMMANDS, { canOpenAgents: true, canOpenOrganizations: true }).length, 5);
 });

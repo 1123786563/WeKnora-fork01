@@ -4,12 +4,12 @@
 // frontend/src/components/GlobalCommandPalette/commands.ts,
 // frontend/src/stores/commandPalette.ts.
 //
-// This module intentionally keeps semantic chunk/message/KB/agent search out
-// of scope for the React port (R011/N003, slice S03): that would require
-// touching document, chat, and knowledge-base search endpoints outside this
-// slice's file ownership. What is ported is the part that makes the palette
-// *visible and usable* — the static command catalogue, recent-query
-// persistence, keyboard navigation, and the global shortcut/`?cmdk=` wiring.
+// Real chunk/message/KB/agent/session search wiring lives in
+// command-palette-search.ts (added in the fix round after review found the
+// original slice only implemented the static command catalogue and never
+// called a search endpoint). This module keeps the static command catalogue,
+// capability filtering, recent-query persistence, keyboard-navigation
+// helpers, and the global shortcut/`?cmdk=` wiring.
 // "Product tour" is intentionally omitted from the command catalogue:
 // frontend/src/components/NewUserGuide.vue has no React port yet, so there is
 // nothing for that command to open.
@@ -46,6 +46,29 @@ export function filterCommands(
   return commands.filter((cmd) => {
     if (translate(cmd.labelKey).toLowerCase().includes(q)) return true;
     return cmd.keywords.some((keyword) => keyword.toLowerCase().includes(q));
+  });
+}
+
+/**
+ * Capability-gate the static quick-action catalogue like Vue's menu store
+ * does for the equivalent sidebar entries (frontend/src/stores/menu.ts
+ * visibleMenuArr): "Open agents" requires the `agents` deployment capability;
+ * "Open shared spaces" requires BOTH an admin-or-owner tenant role AND the
+ * `organizations` capability (menu.ts gates organizations on
+ * `authStore.hasRole('admin')` in addition to the capability flag). Vue's
+ * palette itself does not gate `buildCommands()`, but showing/letting users
+ * invoke a quick action whose destination page immediately 403s or renders
+ * empty is not real parity — this mirrors the *sidebar's* equivalent gate,
+ * which is the actual role/capability boundary for these two destinations.
+ */
+export function visibleCommands(
+  commands: readonly CommandDescriptor[],
+  access: { canOpenAgents: boolean; canOpenOrganizations: boolean },
+): CommandDescriptor[] {
+  return commands.filter((cmd) => {
+    if (cmd.id === 'open-agents') return access.canOpenAgents;
+    if (cmd.id === 'open-organizations') return access.canOpenOrganizations;
+    return true;
   });
 }
 
