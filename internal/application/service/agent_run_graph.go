@@ -212,10 +212,16 @@ func (s *sessionService) submitDurableAgentRun(
 	if err != nil {
 		return err
 	}
-	_, err = runs.Submit(ctx, agentruntime.Admission{
+	// Admission must survive a client disconnect: the durable run is durable
+	// by definition the moment the request reaches submission, and user
+	// cancellation flows through the durable cancel endpoint, not through
+	// aborting this transaction. Only the cancellation signal is detached;
+	// identity values still come from the request context.
+	_, err = runs.Submit(context.WithoutCancel(ctx), agentruntime.Admission{
 		Key:                agentruntime.RunKey{TenantID: req.Session.TenantID, RunID: uuid.NewString()},
 		SessionID:          req.Session.ID,
 		UserID:             req.Session.UserID,
+		UserMessageID:      req.UserMessageID,
 		RequestID:          uuid.NewString(),
 		AssistantMessageID: req.AssistantMessageID,
 		RequestHash:        hex.EncodeToString(digest[:]),

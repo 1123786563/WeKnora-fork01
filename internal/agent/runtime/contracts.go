@@ -70,10 +70,13 @@ type Run struct {
 
 // Admission contains the immutable request and initial business messages.
 type Admission struct {
-	Key                RunKey
-	SessionID          string
-	UserID             string
-	RequestID          string
+	Key       RunKey
+	SessionID string
+	UserID    string
+	RequestID string
+	// UserMessageID optionally reuses the handler-persisted user message row
+	// instead of creating a second one; empty generates a fresh id.
+	UserMessageID      string
 	AssistantMessageID string
 	RequestHash        string
 	Snapshot           json.RawMessage

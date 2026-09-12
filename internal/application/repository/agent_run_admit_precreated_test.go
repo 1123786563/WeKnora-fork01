@@ -47,3 +47,34 @@ func TestAgentRunAdmitToleratesPrecreatedAssistantMessage(t *testing.T) {
 	require.NoError(t, err, "admission must tolerate the handler-precreated assistant row")
 	require.NotEmpty(t, run2.Key.RunID)
 }
+
+// TestAgentRunAdmitReusesHandlerUserMessage pins the single-user-row
+// contract: when the handler already persisted the user message and
+// admission carries its id, no second user row appears.
+func TestAgentRunAdmitReusesHandlerUserMessage(t *testing.T) {
+	db := openRunTestDB(t)
+	store := NewAgentRunStore(db)
+	ctx := context.Background()
+
+	user, _ := json.Marshal(map[string]any{"role": "user", "content": "q"})
+	assistant, _ := json.Marshal(map[string]any{"role": "assistant", "content": ""})
+	_, err := store.Admit(ctx, agentruntime.Admission{
+		Key:       agentruntime.RunKey{TenantID: 1, RunID: "adm-user-r1"},
+		SessionID: "s1", UserID: "u1", RequestID: "adm-user-q1",
+		UserMessageID:      "umsg-handler-1",
+		AssistantMessageID: "amsg-handler-1", RequestHash: "adm-user-h1",
+		Snapshot:    json.RawMessage(`{"version":1}`),
+		UserMessage: user, AssistantMessage: assistant,
+		Deadline: time.Now().Add(time.Hour),
+	})
+	require.NoError(t, err)
+
+	var users int64
+	require.NoError(t, db.Table("messages").
+		Where("session_id = ? AND role = ?", "s1", "user").Count(&users).Error)
+	require.EqualValues(t, 1, users, "exactly one user message row must exist")
+	var id string
+	require.NoError(t, db.Table("messages").
+		Where("session_id = ? AND role = ?", "s1", "user").Select("id").Scan(&id).Error)
+	require.Equal(t, "umsg-handler-1", id, "the handler-persisted row id must be reused")
+}

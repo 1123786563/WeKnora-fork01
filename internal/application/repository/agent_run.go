@@ -87,6 +87,11 @@ func (s *AgentRunStore) Admit(ctx context.Context, in agentruntime.Admission) (a
 		return agentruntime.Run{}, err
 	}
 	assistant.ID = in.AssistantMessageID
+	if in.UserMessageID != "" {
+		// Reuse the handler-persisted user row: exactly one user message per
+		// request regardless of which side wrote it first.
+		user.ID = in.UserMessageID
+	}
 	var result agentruntime.Run
 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// The write locks this session before any reads. This also avoids a
