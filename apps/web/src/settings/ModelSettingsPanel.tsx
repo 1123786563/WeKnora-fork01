@@ -6,6 +6,7 @@ import type {
   WeKnoraClient,
 } from "@weknora/api-client";
 import { Button, Card, Status } from "@weknora/ui";
+import { ModelDebugPanel } from "./ModelDebugPanel.tsx";
 import {
   modelCredentialInput,
   modelDraftFromRecord,
@@ -53,6 +54,7 @@ export function ModelSettingsPanel({ client, role, initialModels }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [debugOpen, setDebugOpen] = useState(false);
   const [connectionResult, setConnectionResult] = useState<Awaited<
     ReturnType<WeKnoraClient["configuration"]["models"]["connection"]["remote"]>
   > | null>(null);
@@ -235,11 +237,24 @@ export function ModelSettingsPanel({ client, role, initialModels }: Props) {
           </p>
         </div>
         <div className="wk-list-actions">
+          <Button
+            type="button"
+            disabled={models.length === 0}
+            onClick={() => setDebugOpen(true)}
+          >
+            Debug model
+          </Button>
           <Button type="button" disabled={busy} onClick={() => void reload()}>
             Refresh
           </Button>
           {canCreate ? (
-            <Button type="button" onClick={() => { setConnectionResult(null); setDraft(newModelDraft()); }}>
+            <Button
+              type="button"
+              onClick={() => {
+                setConnectionResult(null);
+                setDraft(newModelDraft());
+              }}
+            >
               Add model
             </Button>
           ) : null}
@@ -306,7 +321,10 @@ export function ModelSettingsPanel({ client, role, initialModels }: Props) {
                   {canCreate || (role === "system-admin" && builtin) ? (
                     <Button
                       type="button"
-                      onClick={() => { setConnectionResult(null); setDraft(modelDraftFromRecord(model)); }}
+                      onClick={() => {
+                        setConnectionResult(null);
+                        setDraft(modelDraftFromRecord(model));
+                      }}
                     >
                       Edit
                     </Button>
@@ -535,7 +553,8 @@ export function ModelSettingsPanel({ client, role, initialModels }: Props) {
                     onChange={(event) => {
                       const next = { ...draft.customHeaders };
                       delete next[key];
-                      if (event.target.value.trim()) next[event.target.value] = value;
+                      if (event.target.value.trim())
+                        next[event.target.value] = value;
                       updateDraft("customHeaders", next);
                     }}
                   />
@@ -630,6 +649,13 @@ export function ModelSettingsPanel({ client, role, initialModels }: Props) {
             </div>
           </form>
         </div>
+      ) : null}
+      {debugOpen ? (
+        <ModelDebugPanel
+          client={client}
+          models={models}
+          onClose={() => setDebugOpen(false)}
+        />
       ) : null}
     </section>
   );
