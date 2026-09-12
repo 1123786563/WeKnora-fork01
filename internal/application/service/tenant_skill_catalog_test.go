@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
@@ -317,6 +318,10 @@ func TestRegisterCatalogKeepsTheReplacedZipForInstallsStillOnIt(t *testing.T) {
 	require.NoError(t, err)
 	skillID, err := fx.svc.InstallSkill(ctx, 7, "cfg-1", first)
 	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		current, getErr := fx.skillRepo.GetSkill(ctx, 7, "cfg-1", skillID)
+		return getErr == nil && current != nil && current.Status == types.SkillStatusReady
+	}, time.Second, 10*time.Millisecond, "initial background install must finish before changing its failure hook")
 	installed, err := fx.skillRepo.GetSkill(ctx, 7, "cfg-1", skillID)
 	require.NoError(t, err)
 	require.Empty(t, installed.BundleRef, "a fresh install reads the definition's copy")
@@ -359,14 +364,16 @@ func TestRegisterCatalogDoesNotMoveTheDefinitionWhenPinFails(t *testing.T) {
 	})
 	skillID, err := fx.svc.InstallSkill(ctx, 7, "cfg-1", first)
 	require.NoError(t, err)
+	require.Eventually(t, fx.installFinished.Load, time.Second, 10*time.Millisecond,
+		"initial background install must finish before changing its failure hook")
 	installed, err := fx.skillRepo.GetSkill(ctx, 7, "cfg-1", skillID)
 	require.NoError(t, err)
 	catalogID := installed.CatalogID
 	firstRef := fx.catalogRefFor(t, catalogID)
 
-	fx.skillRepo.updateFailsWhen = func(e *types.TenantSkillEntity) bool {
+	fx.skillRepo.setUpdateFailsWhen(func(e *types.TenantSkillEntity) bool {
 		return strings.TrimSpace(e.BundleRef) == firstRef
-	}
+	})
 
 	second := zipBundle(t, map[string]string{
 		"SKILL.md":           validSkillMD,

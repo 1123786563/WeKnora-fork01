@@ -4,7 +4,7 @@
 - 计划：[实施计划](2026-09-10-dual-agent-trpc-recovery.md)
 - 当前阶段：生产链路已接通；本次 2026-09-12 rerun 在独立 worktree 重新验证 SQLite 9/9、PostgreSQL 8/8 SIGKILL 矩阵、双方言 worker contention、Run 存储、前端工程检查、真实浏览器 durable HTTP 和真实 server binary SIGKILL→新进程恢复。功能保持默认关闭；浏览器使用本地 Ollama 与确定性 rerank 测试替身，外部生产凭据仍不在本地验收范围。
 - 范围：两引擎分会话，复用现有能力，仅 tRPC 持久化恢复，未知结果等待用户。
-- 规划基线：`e91f8af`。重新执行工作树：`codex/trpc-recovery-r2`（自 `d370254` 起步）。
+- 规划基线：`e91f8af`。本次重新执行工作树：`codex/dual-agent-trpc-recovery-rerun`（自当前 checkout 创建，未回退规划基线）。
 
 状态：pending / in_progress / implemented / reviewed / verified。只有目标测试及必要实网/进程验收通过才能 verified。
 
@@ -55,6 +55,9 @@
   seq 3、assistant 消息落库。此项不是同进程重建对象。
 - 独立审查：配置环境覆盖缺口被定位后先加测试再修复；其余规格/质量复核沿用本轮
   分任务审查。完整命令、退出码和阻塞边界写入验收文档与 rerun ledger。
+- 工程 race 门禁最终复跑：`GOWORK=off go test -race ./internal/application/service
+  ./internal/application/repository ./internal/agent/trpc ./internal/agent/runtime
+  ./internal/sandbox -count=1` exit 0；同时修复 3 个测试替身/异步测试同步缺口，生产代码行为未改动。
 
 ## 2026-09-12 第二轮（同分支续）
 

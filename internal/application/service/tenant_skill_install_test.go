@@ -1545,9 +1545,9 @@ func TestRunInstallDoesNotFailASkillThatIsAlreadyServing(t *testing.T) {
 	fx := newInstallFixture(t)
 	// The pointer has moved: the skill is installed, snapshotted and serving
 	// every new session. Only the row that says so is missing.
-	fx.skillRepo.updateFailsWhen = func(e *types.TenantSkillEntity) bool {
+	fx.skillRepo.setUpdateFailsWhen(func(e *types.TenantSkillEntity) bool {
 		return e.Status == types.SkillStatusReady
-	}
+	})
 
 	err := fx.svc.runInstall(context.Background(), 7, "cfg-1", "sk-1", fx.bundle)
 
@@ -1933,9 +1933,10 @@ type installFixture struct {
 	// events are the coarse milestones the ordering tests read; commands is
 	// the full, ordered shell transcript so a new command can never hide
 	// behind an older substring match.
-	events      []string
-	commands    []string
-	fingerprint string
+	installFinished atomic.Bool
+	events          []string
+	commands        []string
+	fingerprint     string
 	// loadCheck* drive the per-language script verification pass, which is the
 	// last gate before the snapshot. exitCodes is consumed one entry per python
 	// pass and its last entry repeats, so a test about a single round writes one
@@ -2302,6 +2303,12 @@ type installSkillRepo struct {
 	// which principal's value wins, so a fake that cannot distinguish
 	// principals would let the interesting bugs through.
 	userEnvs []*types.TenantUserEnvVar
+}
+
+func (r *installSkillRepo) setUpdateFailsWhen(fn func(*types.TenantSkillEntity) bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.updateFailsWhen = fn
 }
 
 func newInstallSkillRepo() *installSkillRepo {
@@ -3026,6 +3033,7 @@ func (m *installSandboxManager) InvalidateConfigSandboxes(
 	}
 	m.fx.staleMarks = append(m.fx.staleMarks, staleMark{tenantID: tenantID, configID: configID})
 	m.fx.record("mark-stale")
+	m.fx.installFinished.Store(true)
 	return 1, nil
 }
 
