@@ -12,6 +12,7 @@ import { OllamaSettingsPanel } from './OllamaSettingsPanel.tsx';
 import { CloudSettingsPanel } from './CloudSettingsPanel.tsx';
 import { EnvVarSettingsPanel } from './EnvVarSettingsPanel.tsx';
 import { LiveSectionsPanel, PortedSectionsPanel, readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
+import { McpSettingsPanel } from './McpSettingsPanel.tsx';
 
 function errorText(error: unknown, fallback: string): string { return error instanceof Error ? error.message : fallback; }
 
@@ -140,7 +141,10 @@ export function SettingsPage({ client, tenantId, role = 'owner' }: { client: WeK
   const ollamaPanel = selectedKey === 'ollama' ? <OllamaSettingsPanel client={client} initialValue={payload} /> : null;
   const cloudPanel = selectedKey === 'weknoracloud' ? <CloudSettingsPanel client={client} initialValue={payload} /> : null;
   const envVarPanel = selectedKey === 'envvars' ? <EnvVarSettingsPanel client={client} initialPayload={payload} onMutated={() => void load()} /> : null;
-  const portedPanel = PARTIALLY_PORTED_SECTIONS.has(selectedKey)
+  const mcpPanel = selectedKey === 'mcp'
+    ? <McpSettingsPanel client={client} role={role} initialServices={Array.isArray(payload) ? payload as never : []} />
+    : null;
+  const portedPanel = selectedKey === 'mcp' ? mcpPanel : PARTIALLY_PORTED_SECTIONS.has(selectedKey)
     ? (selectedKey === 'sandbox'
         ? <PortedSectionsPanel section={selectedKey} />
         : <LiveSectionsPanel client={client} section={selectedKey} payload={payload} />)
