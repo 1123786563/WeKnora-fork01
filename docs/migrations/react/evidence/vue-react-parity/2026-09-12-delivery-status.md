@@ -8,9 +8,9 @@
 |---|---|---|---|
 | /login /register /join | implementing | 邀请 token 全链路、OIDC+next、autoSetup、完整校验、品牌视觉、5 locale 语言切换（live 实测） |locales.ts 迁移收尾、注册/邀请视觉细节、Wails |
 | /onboarding/workspace | implementing | 创建工作区/邀请/策略重试/自动重定向（live API 实测） | 视觉（卡片/双列按钮）、MESSAGES 迁移 |
-| /platform/knowledge-bases | review | 前项 + 折叠分组节头完成（01bccd0，live 验证）；未初始化路由 live 验证 | 收藏/最近 scope、上传进度面板、共享详情抽屉、视觉微调 |
-| /platform/settings | implementing | 必修 8 项完成（角色门控/9 sections/envvars/模型选择器/模型锁/密码策略/脏检查/popstate，d1aa583；live 验证） | 抽屉/分组视觉形态、旧面板英文清扫、GeneralSettings 本地偏好、tenant 删除 |
-| /platform/chat/:chatid + creatChat | implementing | 必修 7 项完成（ac8c763）；creatChat live 基线 | 分类型工具渲染、modified_args UI、Last-Event-ID、来源分组、时间戳/小地图/复制、空态建议 |
+| /platform/knowledge-bases + 详情面 | review | 前项 + KB 详情面必修 6 项（eb47a9c：reparse/timeline/分页/权限门控/类型路由/i18n 927 键）+ 文档页 live 复测 | 拖拽/多文件/上传确认（实施中）、卡片视图、tag 抽屉、wiki 目录树、graph 画布 |
+| /platform/settings | implementing | 必修 8 项 + 抽屉/分组/图标视觉形态完成（settings-form-after.png 对比 Vue 基准） | 旧面板英文清扫、GeneralSettings 本地偏好、tenant 删除 |
+| /platform/chat/:chatid + creatChat | implementing | 必修 7 项 + 视觉形态（双栏/气泡/composer，54f2e59）+ 建议问题/AgentSelector（40a5d86） | 分类型工具渲染、modified_args UI、Last-Event-ID、来源分组、时间戳/小地图/复制、agent_id at session create（后端缺口） |
 | /platform 全局外壳 | implementing | 侧栏/折叠/导航高亮/KB 过滤/用户区（live 实测，fe85f30）；menu.* i18n 迁移（5b4bd51） | 图标轨、图片 logo、会话列表并入、租户切换/铃/命令面板 |
 | organizations / agents / integrations / embed | implementing | 审计完成（必修清单见矩阵）；live 基线截图入库；API-tab live 缺陷已转告实施代理 | 实施子代理进行中 |
 | 移动端 / Wails / 真后端全页面 E2E | pending | 环境已具备（后端 :8080 + 双 dev server + playwright 脚本） | 逐页截图矩阵、原生端验收 |
