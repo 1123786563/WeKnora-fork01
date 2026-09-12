@@ -163,3 +163,7 @@
 
 - 四页 live 复测通过：API tab 解析错误与眉题消失、API-key 创建表单渲染、agents 分组列表渲染、organizations 正常。证据：evidence/vue-react-parity/2026-09-12-fourpage-live-retest.md + screenshots/live-*-after.png。
 - 全局门禁（Round 25 起点）：shared 266/266、web 165/165、typecheck×2、build 全绿。
+
+## 2026-09-12 Round 25（续）
+
+- Organizations live E2E：建组织→invite_code→直接 join 全链路通过；发现后端创建组织时忽略 require_approval 字段（审批门控分支实际不可达）——登记为后端待决项，前端分支保留。证据：evidence/vue-react-parity/2026-09-12-org-join-live-e2e.md。
