@@ -20,7 +20,7 @@
 | T10 原子 claim、全局幂等键与分布式限流 | passed | commit 764e0287（集成分支 fast-forward）；27 项新测试；PG 20 并发单胜者 + Check 后撤销拒绝（T04-QF-2 关闭）+ 45 对死锁锤零死锁 + 崩溃 lease 回收不重发（实现者+质量审查者各自独立容器）；nil dispatcher fail-closed（T04-QF-6 关闭）；ReplayUntil=FirstSentAt+23h50m 不随重试推进；spec PASS（F-3 接线次序转 T13 强制）+ 质量 PASS（Q-1 孤立预占释放 → T11/T13） |
 | T11 HTTP dispatcher 与保守结果分类 | passed | commit ee8c6788（集成分支 fast-forward）；settleOutcome 计划草图逐字（unknown-first）；预发送 16+ 拒绝全 failed 零 HTTP；单次 POST + 持久 claim key 纪律；httptest 矩阵全过（质量审查者独立重搭 8 场景 16 子测试含 TCP hijack 断连）；CARRY T10-Q-1 零用量释放（比裁决更严）+ T10-Q-5 保留值语义；spec PASS + 质量 PASS（QF-5 释放后重占窗口 → T12 Reconcile 双 Finish / T13 不变式注释；QF-1 failed 白名单封闭性 → T18 契约复核） |
 | T12 崩溃、unknown 与结算恢复 | passed | commit 6506c0d3 + fix f587f4a2（集成分支 fast-forward）；ReplayAllowed 计划逐字 + 三边界；九项崩溃矩阵断言至多一次副作用；fence CAS 30s/90s；三项 CARRY 落地（QF-5 双 Finish 幂等、QF-3 有界 ctx、seam=NewOCRecovery+RunOnce）；QF-1 预置 commercial 缺陷（真实 gate Finish 在 Begin 后 100% 失败）修复：dispatched 态结算 + 真实 gate 端到端测试（审查者 /tmp 探针独立对照 + 8 并发不双计实测）；spec PASS + 质量 PASS 均经修复轮复审；QF-3 结果文本窗口 → T13/T17；QF-4 手动兜底语义记录 |
-| T13 产品 API、租户 DTO 与容器注入 | pending | |
+| T13 产品 API、租户 DTO 与容器注入 | passed | commit daa811d5 + fix 7ab47553（集成分支 fast-forward）；8 条路由 + 严格解码 + 错误矩阵全哨兵 4xx；全部 CARRY 落地（T10-F-3 接线守卫 + 反射奇偶、A02/REPREPARE 4xx、目录 DTO 约定、FileBackedOCTokenSource 零撤销窗口、RunOnce supervisor、execution_id 三行增量）；spec 审查 FAIL（F-1 CRITICAL：enabled 布线丢弃 dispatcher，行为级证实）→修复（生产构造器真实注入 + 守卫 + wiring 级测试）→复审 PASS；质量 PASS（dig 形状独立复证 F-1 关闭；6 INFO）；F-3 auth-URL → T15/T18；F-5 停机孤儿窗 → T14 |
 | T14 Agent 共用 Action 生命周期 | pending | |
 | T15 Vue 目录、连接和审批界面 | pending | |
 | T16 私网部署、观测、备份与升级 | pending | 必须配置 ADMIN_TOKEN（T01 已证无认证=完全开放）；ghcr 无 pinned SHA 镜像（R9 本地构建 digest 为准） |
