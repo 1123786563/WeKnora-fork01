@@ -10,7 +10,7 @@
 | --- | --- | --- |
 | T01 固定上游契约与失败关闭的证据门禁 | passed | commit e12a73ce（集成分支 HEAD）；规格审查 PASS + 质量审查 PASS（非阻塞 findings 记录在 SDD ledger）；oauth 真实 Provider 完成子项 blocked-env（R10，转 T18 关闭） |
 | T02 只持受限 Token 的 HTTP 执行客户端 | passed | commit b37da57b（含 F-01 修复，初版 144ecb8b）；spec 审查 F-01 FAIL→修复→复审 PASS；质量审查 PASS（观察级 findings 记录在 SDD ledger）；go test -race 17/17、gofmt/vet 过；errorCode/meta.executionId/meta.auditPersisted 映射已钉死 |
-| T03 持久绑定、版本与租户作用域仓储 | pending | |
+| T03 持久绑定、版本与租户作用域仓储 | passed | commit db971251（集成分支 fast-forward）；8 仓储测试行为级 RED→GREEN（含计划 TestOCBindingRejectsZeroTenant）；PG 000121 真实 up/down/up 独立容器实测（down 拒绝非空绑定、6 项约束负向全拒）；sqlite 000041 twin 由测试直接执行真实迁移 SQL；spec 审查 PASS + 质量审查 PASS（3 MINOR + 4 INFO 观察项记录在 SDD ledger；F-02 严格版本比对要求转入 T04） |
 | T04 授权与原始凭据解耦 | pending | 可与 T05 并行（写集不相交，预检 B 已核） |
 | T05 隔离管理凭据的控制 worker | pending | |
 | T06 审核目录与版本固定 | pending | |
