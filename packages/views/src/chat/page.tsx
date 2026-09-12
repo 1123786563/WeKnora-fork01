@@ -210,6 +210,8 @@ export function ChatPage(props: ChatPageProps) {
   const [activeCitationId, setActiveCitationId] = useState<string | null>(null);
   const references = useMemo(() => [...messageReferenceValues(props.messages), ...(props.stream?.references ?? [])], [props.messages, props.stream?.references]);
 
+  useEffect(() => { setActiveCitationId(null); }, [props.selectedSessionId]);
+
   function activateCitation(referenceId: string): void {
     setActiveCitationId(referenceId);
     props.onCitationClick?.(referenceId);
