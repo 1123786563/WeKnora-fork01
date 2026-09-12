@@ -817,6 +817,122 @@ func TestResolveUnknownSettlesNativePreAllocation(t *testing.T) {
 	}
 }
 
+// TestOCRecoveryAlignedRecordMarksSettlementDelivered is the QF-2 regression:
+// the alignment pass (action unknown, record terminal — a resolver that
+// crashed between its two writes) delivers the settlement AND marks it, so
+// the SAME RunOnce's settlement pass does not re-deliver.
+func TestOCRecoveryAlignedRecordMarksSettlementDelivered(t *testing.T) {
+	svc, _, _, gate, store, db := ocRecoveryEnv(t)
+	svc.unknown = nil
+	ocSeedAuthorizedOCAction(t, db, "act-qf2")
+	ocClaimFor(t, store, "act-qf2", "res-qf2")
+	// The resolver settled the record but died before the action write; the
+	// action row sits in unknown from an earlier sweep.
+	if err := store.FinishOCDispatch(context.Background(), 7, "act-qf2", 1, appconn.ActionDispatched, appconn.ActionSucceeded, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec("UPDATE app_actions SET state = 'unknown' WHERE id = 'act-qf2'").Error; err != nil {
+		t.Fatal(err)
+	}
+	loop := ocRecoveryFor(t, svc, store)
+	if err := loop.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if atomic.LoadInt32(&gate.finishes) != 1 {
+		t.Fatalf("settlement deliveries = %d, want exactly 1 (align delivers + marks)", gate.finishes)
+	}
+	if row := ocActionRow(t, db, "act-qf2"); row.State != appconn.ActionSucceeded {
+		t.Fatalf("action not aligned: %s", row.State)
+	}
+	if rec := ocRecord(t, db, "act-qf2"); rec.Fence != 2 {
+		t.Fatalf("delivery not marked: record fence = %d, want 2", rec.Fence)
+	}
+	// And the next pass stays quiet.
+	if err := loop.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if atomic.LoadInt32(&gate.finishes) != 1 {
+		t.Fatalf("marked record resettled: %d", gate.finishes)
+	}
+}
+
+// TestExecuteOCSettlesThroughRealGate drives the FULL worker-inline delivery
+// against the REAL commercial gate (QF-1 integration): Begin marks the
+// reservation dispatched, and Execute's settlement delivery must settle it —
+// one usage fact row, hold converted, reservation settled — not fail with
+// reservation_key_conflict behind a stub.
+func TestExecuteOCSettlesThroughRealGate(t *testing.T) {
+	svc, disp, _, _, store, db := ocRecoveryEnv(t)
+	// The real gate shares the OC database: commercial tables coexist.
+	if err := db.AutoMigrate(
+		&repocommercial.BudgetAccountRow{}, &repocommercial.TaskBudgetRow{}, &repocommercial.ReservationRow{},
+		&repocommercial.BudgetLotRow{}, &repocommercial.BudgetLotAllocationRow{},
+		&repocommercial.UsageRow{}, &repocommercial.UsageCurrentRow{}, &repocommercial.OutboxEvent{},
+	); err != nil {
+		t.Fatal(err)
+	}
+	end := time.Now().UTC().Add(time.Hour)
+	expiry := end
+	for _, row := range []any{
+		&repocommercial.BudgetAccountRow{TenantID: 7, VerifiedMicro: 1_000_000, Watermark: "w1", Version: 1, VerifiedUntil: end},
+		&repocommercial.TaskBudgetRow{TenantID: 7, RunID: "appaction:act-real", LimitMicro: 2_000_000, Deadline: end, Version: 1},
+		&repocommercial.BudgetLotRow{TenantID: 7, LotID: "lot1", RemainingMicro: 1_000_000, ExpiresAt: &expiry, IssuedAt: time.Now().UTC()},
+	} {
+		if err := db.Create(row).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	gate, err := commsvc.NewExecutionGateService(db, &nopGateway{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gate, err = gate.WithRates(func(version string) (commercial.PriceVersionRates, error) {
+		return commercial.PriceVersionRates{Version: version, Rates: map[string]commercial.DimensionRate{
+			// 1 micro per connector call: the service's default reservation
+			// upper bound is 1 credit, and a charge above it is abnormal_cost
+			// by the gate's contract — this test pins delivery, not the
+			// abnormal-cost stop signal.
+			commercial.DimensionConnector: {RateMicro: 1, Units: 1},
+		}}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc.gate = gate
+	ocSeedAuthorizedOCAction(t, db, "act-real")
+
+	if err := svc.Execute(context.Background(), "act-real"); err != nil {
+		t.Fatalf("Execute against the real gate failed: %v", err)
+	}
+	var usage int64
+	db.Model(&repocommercial.UsageRow{}).Where("call_id = ?", "act-real").Count(&usage)
+	if usage != 1 {
+		t.Fatalf("usage rows = %d, want exactly 1 (delivered through the real gate)", usage)
+	}
+	var res repocommercial.ReservationRow
+	if err := db.Where("tenant_id = ? AND run_id = ?", 7, "appaction:act-real").First(&res).Error; err != nil {
+		t.Fatal(err)
+	}
+	if res.State != commercial.ReservationStateSettled {
+		t.Fatalf("reservation state = %q, want settled (Begin left it dispatched)", res.State)
+	}
+	if rec := ocRecord(t, db, "act-real"); rec.State != appconn.ActionSucceeded {
+		t.Fatalf("record state = %s", rec.State)
+	}
+	if calls, _ := disp.stats(); calls != 1 {
+		t.Fatalf("POSTs = %d, want exactly 1", calls)
+	}
+	// The loop finds nothing left to do.
+	loop := ocRecoveryFor(t, svc, store)
+	if err := loop.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	db.Model(&repocommercial.UsageRow{}).Where("call_id = ?", "act-real").Count(&usage)
+	if usage != 1 {
+		t.Fatalf("usage rows after loop = %d, want 1 (no duplicate delivery)", usage)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------

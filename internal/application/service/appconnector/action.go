@@ -756,6 +756,14 @@ func (s *ActionService) finishUnknownFromRecord(ctx context.Context, rec appconn
 	if derr := deliverOCSettlement(ctx, s.gate, rec.TenantID, rec.ActionID, rec.ReservationID); derr != nil {
 		return true, derr
 	}
+	// Mark the delivery so the SAME RunOnce's settlement pass does not
+	// re-deliver (QF-2); a mark failure only costs one idempotent replay on
+	// the next pass.
+	if src := ocDispatchSettleOf(s); src != nil {
+		mctx, mcancel := context.WithTimeout(ctx, ocRecoveryOpTimeout)
+		defer mcancel()
+		_ = src.MarkOCDispatchSettled(mctx, rec.TenantID, rec.ActionID, rec.Fence, time.Now().UTC())
+	}
 	return true, nil
 }
 
