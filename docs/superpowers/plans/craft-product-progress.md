@@ -29,7 +29,8 @@
 | R01 | **done** | .worktrees/craft-r01 / codex/craft-r01 | 83e2ef5c | HEAD 542105ac 审查 PASS_WITH_NITS → 合入 21bf52fc；11/11 测试含 2 个 live（真实 1.18.4 二进制+本地 mock provider 两轮）；nit 留档：48 位 ID 回绕（R04+ 注意）、container_digest 待镜像 |
 | R02 | **done** | .worktrees/craft-r02 / codex/craft-r02 | 83e2ef5c | HEAD 80b9fcbf 审查 PASS_WITH_NITS → 合入 da6d169d；迁移 000121/000041；SQLite+真实 PG 双绿；外键偏离（写时校验+sessions FK）经审查者独立实证 |
 | R03 | **done** | .worktrees/craft-r03 / codex/craft-r03 | 21bf52fc | HEAD b9f28885 审查 PASS_WITH_NITS → 合入 86a651bb；真实镜像构建+复验（官方 release 摘要独立实测吻合）；nit 留档：ActiveRuns 生产接线无下游归属（协调器登记 W03/R05 装配）、lock 回填留发布链 |
-| R04 | implementing | .worktrees/craft-r04 / codex/craft-r04 | 86a651bb | 已派发（含 R01/R02/R03 审查 nit 落实要求）；R05–O05 等待依赖 |
+| R04 | **done** | .worktrees/craft-r04 / codex/craft-r04 | 86a651bb | HEAD 8a387eb7 审查 PASS_WITH_NITS（23/23 规格）→ 合入 785ceeb8；41 测试含 live；exactly-once POST、15 案矩阵；契约留档：unknown 绝不落库、ErrUnknown 唯一 pending 信号 |
+| R05 | implementing | .worktrees/craft-r05 / codex/craft-r05 | 785ceeb8 | 已派发（含 R04 unknown 契约 + R03 ActiveRuns 接线要求 + 共享装配文件最小改动约束）；R06–O05 等待依赖 |
 
 ## 调度纪要
 
