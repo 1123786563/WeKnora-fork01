@@ -74,6 +74,38 @@ func (s *AgentRunStore) ReadEvents(ctx context.Context, key agentruntime.RunKey,
 	return out, nil
 }
 
+// LastEventSeq returns the highest retained sequence for a run, or 0 when
+// no event exists. Finalize-time retention trimming uses it as the anchor.
+func (s *AgentRunStore) LastEventSeq(ctx context.Context, key agentruntime.RunKey) (int64, error) {
+	var last agentRunEventRow
+	err := s.db.WithContext(ctx).
+		Where("tenant_id = ? AND run_id = ?", key.TenantID, key.RunID).
+		Order("seq DESC").Take(&last).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return last.Seq, nil
+}
+
+// TrimEventsBefore deletes retained events with seq below the watermark for
+// one run; the run row and events at or above the watermark are untouched.
+// Trimming is what makes the replay cursor's explicit reload error reachable
+// in production.
+func (s *AgentRunStore) TrimEventsBefore(
+	ctx context.Context, key agentruntime.RunKey, watermark int64,
+) (int64, error) {
+	if watermark < 0 {
+		return 0, agentruntime.ErrConflict
+	}
+	result := s.db.WithContext(ctx).
+		Where("tenant_id = ? AND run_id = ? AND seq < ?", key.TenantID, key.RunID, watermark).
+		Delete(&agentRunEventRow{})
+	return result.RowsAffected, result.Error
+}
+
 // Finalize atomically completes the assistant message, run, completion event, and slot.
 func (s *AgentRunStore) Finalize(ctx context.Context, fence agentruntime.Fence, answer json.RawMessage) error {
 	if len(answer) == 0 || !json.Valid(answer) {

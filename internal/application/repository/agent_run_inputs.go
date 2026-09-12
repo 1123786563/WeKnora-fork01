@@ -74,7 +74,7 @@ func (s *AgentRunStore) MarkInputsProcessed(ctx context.Context, key agentruntim
 		return nil
 	}
 	now := time.Now()
-	return s.db.WithContext(ctx).
+	return s.db.WithContext(ctx).Model(&agentRunInputRow{}).
 		Where("tenant_id = ? AND run_id = ? AND steer_id IN ?", key.TenantID, key.RunID, steerIDs).
 		Updates(map[string]any{"status": "processed", "processed_at": now, "cursor": gorm.Expr("cursor+1")}).Error
 }

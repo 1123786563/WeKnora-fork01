@@ -125,6 +125,13 @@ type RunEventStore interface {
 	Finalize(context.Context, Fence, json.RawMessage) error
 }
 
+// RunEventTrimmer deletes retained events below a watermark so replay
+// cursors beyond the retention horizon answer the explicit reload error.
+type RunEventTrimmer interface {
+	TrimEventsBefore(context.Context, RunKey, int64) (int64, error)
+	LastEventSeq(context.Context, RunKey) (int64, error)
+}
+
 // RunInputStore persists and atomically applies steering inputs with a checkpoint.
 type RunInputStore interface {
 	AppendInput(context.Context, RunKey, RunInput) error

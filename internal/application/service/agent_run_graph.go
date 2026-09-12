@@ -461,6 +461,99 @@ func (s *sessionService) ExecuteDurableRun(ctx context.Context, fence agentrunti
 		if raw, merr := json.Marshal(payload); merr == nil {
 			emit(context.WithoutCancel(ctx), agentruntime.RunEvent{Type: eventType, Payload: raw})
 		}
+		return execErr
 	}
-	return execErr
+	admitAfterFollowUps(context.WithoutCancel(ctx), store, fence.RunKey, snapshot)
+	trimRetainedEvents(context.WithoutCancel(ctx), store, fence.RunKey)
+	return nil
+}
+
+// durableEventRetention bounds how many replay events each finished run
+// retains; older events are trimmed so reconnecting clients with stale
+// cursors receive the explicit reload error instead of silent gaps.
+const durableEventRetention = 1000
+
+// admitAfterFollowUps enqueues the next durable run for steering messages
+// that arrived with delivery=after: they were parked on the finished run
+// and are only admissible once it reached a terminal state (spec 11).
+func admitAfterFollowUps(
+	ctx context.Context, store agentruntime.RunStore,
+	key agentruntime.RunKey, snapshot DurableRunSnapshot,
+) {
+	reader, ok := store.(trpcagent.RunInputSource)
+	if !ok {
+		return
+	}
+	pending, err := reader.ListPendingInputs(ctx, key, "after")
+	if err != nil || len(pending) == 0 {
+		return
+	}
+	first := pending[0]
+	var payload struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	}
+	if jerr := json.Unmarshal(first.Message, &payload); jerr != nil || payload.Content == "" {
+		logger.Warnf(ctx, "durable run %s after input %s invalid", key.RunID, first.SteerID)
+		return
+	}
+	followSnapshot := snapshot
+	followSnapshot.Query = payload.Content
+	runs := RegisteredAgentRunService()
+	if runs == nil {
+		return
+	}
+	raw, merr := json.Marshal(followSnapshot)
+	if merr != nil {
+		return
+	}
+	user, _ := json.Marshal(map[string]any{"role": "user", "content": payload.Content})
+	assistant, _ := json.Marshal(map[string]any{"role": "assistant", "content": ""})
+	digest := sha256.Sum256(append(append([]byte(nil), raw...), []byte(first.SteerID)...))
+	next := agentruntime.Admission{
+		Key:                agentruntime.RunKey{TenantID: key.TenantID, RunID: uuid.NewString()},
+		SessionID:          runField(store, key, func(r agentruntime.Run) string { return r.SessionID }),
+		UserID:             runField(store, key, func(r agentruntime.Run) string { return r.UserID }),
+		RequestID:          "followup-" + first.SteerID,
+		AssistantMessageID: uuid.NewString(),
+		RequestHash:        hex.EncodeToString(digest[:]),
+		Snapshot:           raw,
+		UserMessage:        user,
+		AssistantMessage:   assistant,
+		Deadline:           time.Now().Add(30 * time.Minute),
+	}
+	if _, serr := runs.Submit(ctx, next); serr != nil {
+		logger.Warnf(ctx, "durable run %s follow-up admission failed: %v", key.RunID, serr)
+		return
+	}
+	if consumer, cok := store.(agentruntime.RunInputConsumer); cok {
+		_ = consumer.MarkInputsProcessed(ctx, key, first.SteerID)
+	}
+	logger.Infof(ctx, "durable run %s admitted follow-up run %s for steer %s",
+		key.RunID, next.Key.RunID, first.SteerID)
+}
+
+func runField(store agentruntime.RunStore, key agentruntime.RunKey, pick func(agentruntime.Run) string) string {
+	if run, err := store.Get(context.Background(), key); err == nil {
+		return pick(run)
+	}
+	return ""
+}
+
+func trimRetainedEvents(ctx context.Context, store agentruntime.RunStore, key agentruntime.RunKey) {
+	trimmer, ok := store.(agentruntime.RunEventTrimmer)
+	if !ok {
+		return
+	}
+	newest, err := trimmer.LastEventSeq(ctx, key)
+	if err != nil || newest <= durableEventRetention {
+		return
+	}
+	watermark := newest - durableEventRetention + 1
+	if watermark <= 0 {
+		return
+	}
+	if _, err := trimmer.TrimEventsBefore(ctx, key, watermark); err != nil {
+		logger.Warnf(ctx, "durable run %s event trim failed: %v", key.RunID, err)
+	}
 }
