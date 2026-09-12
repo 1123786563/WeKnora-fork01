@@ -364,5 +364,17 @@
 - **延后（如实，O03）**：①进程级故障注入（pause/resume/restart 需容器编排——无部署授权）；②对象存储级快照恢复；③12 场景中未复现 4 个（图写/向量半失败、cancel/publish 竞态、后台重试、缓存撤权）——保持未验收。
 - review：规格首轮 FAIL（2 BLOCKER：脚本空参+旗标重放/维护不拦）→ f902a1c 修 B1/B2 半（脚本/维护 raise/屏障实测/边界注记）**但三项修复未实际落码而台账/提交信息称已做——再审 FAIL 抓回（与 W02 同类诚实违规，更正如下）**→ 终修实际落码：①integration 标记注册 semantic/pyproject.toml [tool.pytest.ini_options]（pytest --markers 可见）；②replay_current_denials 实际扫描 semantic.tombstones 并将 ≤墓碑 revision 的断言行置不可见（I04 语义——不再是纯旗标）；③证据表补每例 deny 前后列 + manifest 维度如实标注未采集。三项均可从提交树逐字验证。质量 PASS（0 BLOCKER，7 MINOR 折叠：过度命名测试改如实（deny 数据层等价——epoch 契约在 Go 层）/死导入清除（psycopg/Path/json/uuid/未用服务类）/重放 docstring 改如实（直接支持行撤销；推导前提查询时重查——非"fixpoint 语义"）/脚本尾换行）；遗留记录 O03（快照 13 列全量/推导行 fixpoint 补跑/recovery_state 多键审计/标记实际标注——drills 未用标记选择）。**双评审 PASS**。
 - 提交 SHA：3c910e8 + f902a1c + 75654d1 + 质量折叠段。
+
+### 2026-09-11 O03 质量回归、CI门禁与最终交付（implemented——release 判定 BLOCKED 如实）
+
+- 工作区：.worktrees/semantica（分支 codex/semantica）；基线 SHA：73169d3。
+- 修改文件：scripts/semantic/{check_acceptance.py,test_check_acceptance.py}、.github/workflows/semantic.yml（五阶段）、docs/superpowers/plans/semantica/final-evidence.md、本台账、06 计划勾选。
+- RED：`uv run --project semantic python -m pytest scripts/semantic/test_check_acceptance.py -q`（模块缺失）。
+- GREEN：同命令 **7 passed**（计划两条核心断言逐字+缺测量/缺五层/阈值超限/lock_hash 不一致/全满足通过）；门禁实跑退出码 1 输出全部阻断原因；全满足退出码 0；全量 Python **205 passed**；Go service/handler ok（仅预存环境项）。
+- 交付：check_acceptance（五层证据+显式阈值+version/lock_hash 一致）；CI 五阶段（proto 一致→Go 单测→Python 单测真 PG→恢复演练→TS+typecheck；浏览器 E2E 变量门控；CI 无模型凭据）；final-evidence.md 四层×24 任务表+六项限制+release 实测。
+- **release 判定（如实）**：**BLOCKED**——缺 live_model（无凭据）+browser（无服务栈）+policy 未批准；绝不静默放行。
+- **延后（如实）**：①步骤 4 语料重放对照冻结基线（需验收环境）；②步骤 6 整条分支最终 review（下轮汇总）；③O02 消化项；④W02 浏览器执行；⑤I05/Q04 消化项。
+- review：双评审下轮补做。
+- 提交 SHA：（同批提交后补记）
 - V03 结论边界：semantica 模式检索质量/延迟为受控语料实测；native 对照与模型用量门槛未测（阻断记录见上）；上线门禁 approved=false 待用户确认。
 - 未创建GitHub Issue或外部发布；没有分配虚构Issue编号。

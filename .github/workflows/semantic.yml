@@ -1,0 +1,86 @@
+name: semantic
+
+# O03 CI gate: proto consistency -> focused Go/Python/TS units ->
+# real-PG control contracts + recovery drills -> browser E2E (gated).
+# No model credentials in CI: only controlled-provider contracts run;
+# real-model acceptance is a separate protected task.
+on:
+  push:
+    branches: [codex/semantica]
+  pull_request:
+
+jobs:
+  proto-consistency:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: bash semantic/scripts/generate_proto.sh
+      - run: git diff --exit-code -- semantic/proto semantic/semantic_service/proto semantic/semantic_service/proto/semantic_pb2.pyi
+
+  go-units:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: "1.26"}
+      - run: go build ./...
+      - run: go test ./internal/application/service ./internal/application/repository ./internal/handler ./internal/database -count=1
+
+  python-units:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: {POSTGRES_USER: semantic, POSTGRES_PASSWORD: semantic, POSTGRES_DB: semantic_test}
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 2s --health-timeout 3s --health-retries 30
+    env:
+      SEMANTIC_TEST_PG_DSN: postgresql://semantic:semantic@127.0.0.1:5432/semantic_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install uv && uv sync --project semantic --frozen
+      - run: uv run --project semantic python -m pytest semantic/tests -q
+
+  recovery-drills:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: {POSTGRES_USER: semantic, POSTGRES_PASSWORD: semantic, POSTGRES_DB: semantic_test}
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 2s --health-timeout 3s --health-retries 30
+    env:
+      SEMANTIC_TEST_PG_DSN: postgresql://semantic:semantic@127.0.0.1:5432/semantic_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install uv && uv sync --project semantic --frozen
+      - run: bash scripts/semantic/run_recovery_tests.sh
+
+  ts-units:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - run: corepack enable && pnpm install --frozen-lockfile
+      - run: pnpm exec tsx --test packages/contracts/test/semantic.test.ts packages/api-client/src/semantic.test.ts packages/domain/src/semantic.test.ts apps/web/src/semantic/view-model.test.ts
+      - run: pnpm typecheck:shared && pnpm typecheck:web
+
+  browser-e2e:
+    # Real-service browser flow; requires the gated deployment env.
+    if: ${{ vars.SEMANTIC_E2E_READY == '1' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - run: corepack enable && pnpm install --frozen-lockfile
+      - run: pnpm --filter @weknora/web exec playwright test --config playwright.semantic.config.ts

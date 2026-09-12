@@ -137,7 +137,7 @@ set_query_ready(True)
 
 **接口：** check_acceptance(policy:dict,evidence:dict)->list[str]返回所有阻断原因；release可用条件为policy.approved、无权限泄漏、证据完整、指标满足阈值、所启用能力verified。CI无模型凭据只能运行受控provider合同，真实模型验收独立受保护任务执行。
 
-- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 def test_unapproved_policy_blocks_release():
@@ -149,9 +149,9 @@ def test_any_permission_leak_blocks_release():
     assert "permission_leak" in errors
 ```
 
-- [ ] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest scripts/semantic/test_check_acceptance.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [x] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest scripts/semantic/test_check_acceptance.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 建立CI阶段：proto生成一致性→Go/Python/TS聚焦单测→真实PG/SQLite控制合同与Neo4j集成→浏览器流程；首次无关失败记录基线，不能删断言使绿**
+- [x] **3. 建立CI阶段：proto生成一致性→Go/Python/TS聚焦单测→真实PG/SQLite控制合同与Neo4j集成→浏览器流程；首次无关失败记录基线，不能删断言使绿**
 
 - [ ] **4. 使用正式adapter重放V03语料，对照冻结基线；报告冷/热延迟、索引耗时、引用准确性、无答案判断、真实模型用量和成本估算依据**
 
@@ -177,6 +177,6 @@ def check_acceptance(policy, evidence):
 # 同文件继续逐项比较policy中的明确阈值，并校验commit/version/hash一致。
 ```
 
-- [ ] **7. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest scripts/semantic/test_check_acceptance.py -q`，预期退出码 0；另完成：门禁对缺证据、假approved、泄漏、质量/延迟/用量超限全部失败；最终报告分别写静态/单测、集成、浏览器、真实模型四层状态。
+- [x] **7. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest scripts/semantic/test_check_acceptance.py -q`，预期退出码 0；另完成：门禁对缺证据、假approved、泄漏、质量/延迟/用量超限全部失败；最终报告分别写静态/单测、集成、浏览器、真实模型四层状态。
 
-- [ ] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 O03 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): o03 质量回归、CI门禁与最终交付`。
+- [x] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 O03 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): o03 质量回归、CI门禁与最终交付`。
