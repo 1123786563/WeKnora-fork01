@@ -527,7 +527,16 @@ export function ModelSettingsPanel({ client, role, initialModels }: Props) {
               <legend>Custom headers</legend>
               {Object.entries(draft.customHeaders).map(([key, value]) => (
                 <div className="wk-model-header-row" key={key}>
-                  <input value={key} aria-label="Header name" readOnly />
+                  <input
+                    value={key}
+                    aria-label="Header name"
+                    onChange={(event) => {
+                      const next = { ...draft.customHeaders };
+                      delete next[key];
+                      if (event.target.value.trim()) next[event.target.value] = value;
+                      updateDraft("customHeaders", next);
+                    }}
+                  />
                   <input
                     value={value}
                     aria-label="Header value"
