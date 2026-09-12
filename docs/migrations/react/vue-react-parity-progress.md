@@ -242,3 +242,8 @@
 ## 2026-09-12 Round 43
 
 - chat UX 切片首个实施代理中途失败（未留下任何变更，树保持干净全绿）；同范围重新派发（retry 代理），要求逐项报告状态。
+
+## 2026-09-12 Round 45
+
+- 尝试 Wails macOS 打包（REACT_FRONTEND=1 package-mac-app.sh）：web 构建步被 chat UX retry 代理进行中变更阻断（@weknora/domain/chat/copy-answer 模块未建、message-list readonly 断言）——时序问题非缺陷；chat UX 完成集成后重跑打包验证。
+- 顺带确认打包脚本对工作树清洁度敏感：与在途子代理并行时会互相干扰，后续打包统一在无在途实施时执行。
