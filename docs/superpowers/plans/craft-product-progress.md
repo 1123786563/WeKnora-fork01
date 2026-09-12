@@ -26,8 +26,8 @@
 
 | ID | 状态 | 工作区/分支 | BASE | 说明 |
 |---|---|---|---|---|
-| R01 | implementing | .worktrees/craft-r01 / codex/craft-r01 | 83e2ef5c | 恢复中断现场：候选 a4468c9c 检查补齐 + lock 文件 + 1.18.4 真实 fixture |
-| R02 | implementing | .worktrees/craft-r02 / codex/craft-r02 | 83e2ef5c | 全新实现；迁移号已修正 000121/000041 |
+| R01 | review | .worktrees/craft-r01 / codex/craft-r01 | 83e2ef5c | HEAD 542105ac：候选检查补齐 + 双 lock + 1.18.4 真实 fixture + live 两轮验证（本地 mock provider）；审查者进行中 |
+| R02 | **done** | .worktrees/craft-r02 / codex/craft-r02 | 83e2ef5c | HEAD 80b9fcbf 审查 PASS_WITH_NITS → 合入 da6d169d；迁移 000121/000041；SQLite+真实 PG 双绿；外键偏离（写时校验+sessions FK）经审查者独立实证 |
 | R03–O05 | pending | — | — | 等待依赖 |
 
 ## 调度纪要
