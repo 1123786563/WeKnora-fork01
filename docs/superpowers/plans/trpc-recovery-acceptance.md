@@ -136,7 +136,7 @@ acceptance.
 | 07 恢复 worker 与重开 | PASS | SIGKILL 矩阵 SQLite 10/10、PostgreSQL 9/9（含 oauth_park 与 mcp_set_drift）；接管/竞争/旧 epoch 拒绝全验证 |
 | 08 等待状态持久化 | PASS | waiting_user/OAuth/前审批（mcp_approve_）停靠均持久化；决策归属与幂等重试 |
 | 09 Sandbox 恢复 | PASS | ObserveInstance 四态 fixture（alive/lost/destroyed/无绑定）；实例存活不导入任务结果 |
-| 10 能力复用 | PASS | MCP/Skills/Tools/模型配置、提示词/记忆/VLM 装配与生产图路径已验证；多模态 durable graph 与延迟 MCP 集合漂移均有生产链行为/跨进程证据 |
+| 10 能力复用 | PASS | MCP catalog 与生产 GraphAgent discover/call（真实本地 streamable MCP handler 恰好一次）、Skills/Tools/模型配置、提示词/记忆/VLM 装配已验证；多模态 durable graph 与延迟 MCP 集合漂移均有生产链行为/跨进程证据 |
 | 11 事件/steering/保留 | PASS | attempt_replaced、inject/after 模式（跟进受理）、保留水位裁剪、重启回放；outbox 结构性满足（见上文注）|
 | 12 HTTP 契约/权限/取消删除 | PASS | 黑盒三行（SSE 回放+cursor_expired、决策 200/409/200、删除围栏）；租户/用户权限、取消释放槽位 |
 | 13 客户端接入 | PASS | 前端工程套件 819/819、vue-tsc、Vite build；新鲜浏览器登录、tRPC 会话选择、真实 durable HTTP 回复和 SQLite 持久回放通过；请求断线由 detached admission 保持运行 |

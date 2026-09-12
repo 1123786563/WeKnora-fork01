@@ -58,7 +58,7 @@
 - 工程 race 门禁最终复跑：`GOWORK=off go test -race ./internal/application/service
   ./internal/application/repository ./internal/agent/trpc ./internal/agent/runtime
   ./internal/sandbox -count=1` exit 0；同时修复 service 测试替身/异步测试的共享状态同步缺口，生产代码行为未改动。
-- 当前交付结论：工程门禁、双数据库真实恢复、延迟 MCP 集合漂移和多模态
+- 当前交付结论：工程门禁、双数据库真实恢复、生产图 MCP discover/call、延迟 MCP 集合漂移和多模态
   durable graph 证据均已通过；仅部署专用外部 model/provider 凭据验收未执行，发布门禁保持关闭。
 - 追加规格复审修复：`CapabilitySnapshot.CompatibleWith` 现在也拒绝 system prompt、
   memory envelope 和 image references 漂移；新增行为测试并通过 tRPC/service 非 race
