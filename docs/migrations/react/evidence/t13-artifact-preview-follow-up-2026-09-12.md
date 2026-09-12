@@ -18,6 +18,8 @@ URL, sandbox path, or provider location is copied into the shared model.
   sandboxed without permissions.
 - Preview requests are invalidated on chat-session changes and stale async
   responses cannot replace a newer preview.
+- `d58b4a6` rejects SVG MIME values with parameters (for example,
+  `image/svg+xml; charset=utf-8`) as download-only as well.
 
 ## Verification
 
