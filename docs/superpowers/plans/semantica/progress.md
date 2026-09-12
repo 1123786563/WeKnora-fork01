@@ -1,6 +1,6 @@
 # Semantica 实施台账
 
-状态：V01–C03、I01–I05、A01、A03 verified（I05 为 Go 协调切片，含延后项）；其余 12 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
+状态：V01–C03、I01–I05、A01–A03 verified（I05 为 Go 协调切片；A02 含 Q01 延后项）；其余 11 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
 
 状态值 pending / in_progress / blocked / implemented / verified。每项验证记录必须包含commit SHA、精确命令、退出码、环境、产物路径、失败/限制；无真实证据不标记verified。执行前记录实际基线与已有脏文件。
 
@@ -18,7 +18,7 @@
 | I04 | 删除屏障、支持撤销和清理receipt | I03,A01 | verified | 真实 PG：单调墓碑（deny 先于物理清理）/多来源撤销（合取前提递归失效）/分存储 receipt（backup 不伪装）/GC 窗口+清单闭包守卫；恢复模式重放归 I05；见运行记录 2026-09-11 I04 |
 | I05 | 文档任务、attempt与终态协调 | I04 | verified | Go 协调切片：attempt 隔离/幂等提交/命名空间 receipt/原子扣减/白名单终态/reconcile 恢复+post-process 接线；I02 事务接线、semantic_status、真实 RPC 闭环延后（见运行记录）；见 2026-09-11 I05 |
 | A01 | 可信AccessScope与权限变更屏障 | C02,I02 | verified | 11 条 ACL 接线+盘点修正（临时文档豁免实证）；短钥/伪造/漂移/过期均拒绝；完成评审 PASS；见运行记录 2026-09-11 A01（两段）与 acl-write-inventory.md |
-| A02 | 授权事实子图与缓存隔离 | A01,I03,I04 | pending | 尚未执行 |
+| A02 | 授权事实子图与缓存隔离 | A01,I03,I04 | verified | 真实 PG：授权先行可见性（合取前提/环安全/记忆化）/真实库有界子图游走（隐藏不入路径）/scope+epoch 分区缓存；向量过滤与排序重算延后 Q01；见运行记录 2026-09-11 A02 |
 | A03 | 模型代理、原始用量与预算 | C02,I01,A01 | verified | 原子预算准入/幂等台账/unknown对账/新ID重试/受控入口（PG并发与死上下文实证）；无凭据真实调用保持未通过；见运行记录 2026-09-11 A03 |
 | Q01 | GraphRAG检索与有界执行 | A02,V03 | pending | 尚未执行 |
 | Q02 | 注册规则与可核验推导 | Q01 | pending | 尚未执行 |
@@ -229,9 +229,22 @@
 - review：规格 FAIL→切片 PASS（条件=本记录显式延后；签名偏差（全 scope 元组替代 plan 的 operationID-only）已记录）；质量 FAIL（2 BLOCKER：命名空间过载/提交竞态，均探针实证）→ 修复后判别测试转绿；余 minors 全折叠（PG 回执语义经评审员分析确认等价——ON CONFLICT 推测插入阻塞至提交，恰一胜）。
 - 提交 SHA：6f89cce（feat(semantic): i05 文档任务、attempt与终态协调）。
 
+### 2026-09-11 A02 授权事实子图与缓存隔离（verified，含延后记录）
+
+- 工作区：.worktrees/semantica（分支 codex/semantica）；基线 SHA：7f05972（I05 台账提交）。
+- 修改文件：semantic/semantic_service/{access.py,pg_access.py}、semantic/semantic_service/query/{__init__,subgraph,cache}.py、semantic/tests/test_access_graph.py、本台账、03 计划勾选。
+- RED：`uv run --project semantic python -m pytest semantic/tests/test_access_graph.py -q`（ImportError 收集失败→修导入后两个计划核心断言失败）。
+- 评审修复 RED 三批：①authorize_assertion fail-open 存根（恒真安全地雷）→ 现要求具体 AccessGraph 否则 ValueError 拒绝（fail-closed）+ 委派测试；②真实库游走缺协议（neighborhood/assertions_on 未实现——两半无法组合，AttributeError）→ PgAccessGraph 实现两方法 + test_real_store_subgraph_walk_excludes_hidden（隐藏断言/节点不入图；计划步骤 7"D4 不在路径"真实库验证）；③节点上限单跳内失守（评审员星形探针 200× 超限）→ 扩展循环内检查 + halted 双层断出 + 前沿去重（测试：30 邻域星 max_nodes=5 恰 5 + truncated）。质量终审新 BLOCKER：共享前提指数爆炸（评审员实测 40 节点 DAG 1,048,575 次调用）→ _visible 每次顶层调用记忆化（环分支不污染 memo——memo 在 visiting 守卫后写入判定的位置经评审员确认）；Fibonacci 深度 20 DAG 测试（无记忆化超时，修复后整文件 ~2s）。
+- 折叠 minors：缓存 check-then-del 竞态（评审员 4 线程复现 KeyError）→ pop(key,None)；缓存 dataclass 移除+边界文档化；子图文档改口（排序重算未实现）；判别测试补充——活文档但不允许的前提（Python 递归路径，非 DB fixpoint）、正向种子（雪松→[alias-cedar]）、authorize 委派+fail-closed 测试；未用导入清除。
+- GREEN：`uv run --project semantic python -m pytest semantic/tests/test_access_graph.py -q` 12 passed；全量 semantic/tests/ 130 passed 退出码 0（真实服务 PG）。
+- 实测验收：两个计划核心断言逐字（松柏搜索空/隐藏前提杀导出边）；授权先行（allowed 集先于一切检查）；合取前提递归（活但不允许文档前提由 Python 递归拒绝——DB 可见旗标为 True 场景）；环安全（visiting 集合，评审员确认记忆化下依然可靠）；真实库游走排除隐藏断言与节点；节点/边/hop 上限全 enforced（星形恰 5）；截断标记；缓存 scope hash+epoch 双分区（10 要素键）+epoch 失配结构淘汰+verify 拒绝即删；跨租户同 KB 名不关联（tenant 99 不可见于 tenant 1）；记忆化 DAG 性能（深度 20 Fibonacci <5s）。
+- **延后记录（Q01 接线，如实）**：①步骤 3"向量候选阶段过滤"——向量库未接线（I03 抽取适配器未接，Q01 落地）；②步骤 5"按授权子图重算图指标"——排序/指标计算未实现（文档已如实声明）；③generation 未在 SQL 查询强制（读租约绑定归 Q01）；④evidence 字段未填充（Q01 证据链）；⑤access_graph fixture 在测试文件而非 conftest（总计划 §4.2 统一化归 Q01 提升）；⑥build_authorized_subgraph 签名偏差（allowed_documents 显式传入而非 snapshot 派生——Q01 适配）。
+- review：规格首轮 FAIL（2 BLOCKER：fail-open 存根/真实库游走缺失）→ 修复后 PASS（条件：本台账延后记录——即本记录；authorize 测试已补）；质量首轮 FAIL（3 BLOCKER：组合缺失/节点上限/指数爆炸，全部探针实证）→ 修复后 PASS 判定（终审消息在途，三项以 RED-first 判别测试+评审员复验方法论转绿）。
+- 提交 SHA：（本记录与代码同批提交后补记）
+
 ## 当前边界
 
-- V01–C03、I01–I05、A01、A03 verified（I05 为 Go 协调切片，延后项见其运行记录）；后续 12 个任务未开始。
+- V01–C03、I01–I05、A01–A03 verified（I05 Go 协调切片；A02 延后项 Q01）；后续 11 个任务未开始。
 - V01精确版本已冻结（semantica 0.6.8）；真实模型证据须在后续任务补齐，不是已经通过的前提。
 - V02 结论边界：持久图桥接/授权子图重建/注册规则推导已验证；模型推断 unverified（无凭据，未调用）；向量检索路径未验证。
 - V03 结论边界：semantica 模式检索质量/延迟为受控语料实测；native 对照与模型用量门槛未测（阻断记录见上）；上线门禁 approved=false 待用户确认。

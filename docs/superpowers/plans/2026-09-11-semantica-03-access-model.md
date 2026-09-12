@@ -89,7 +89,7 @@ if currentEpoch != issued.PermissionEpoch || currentScopeHash != issued.ScopeHas
 
 **接口：** authorize_assertion(assertion_id,scope_snapshot,manifest)->bool；build_authorized_subgraph(scope_snapshot,manifest,seeds:list[str],limits:QueryLimits)->AuthorizedGraph；AuthorizedGraph包含nodes/assertions/evidence/truncated/generation。cache_key(request,manifest)->str必须包含scope hash和epoch。
 
-- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 def test_hidden_alias_cannot_seed_visible_entity(access_graph):
@@ -100,15 +100,15 @@ def test_hidden_premise_invalidates_derived_edge(access_graph):
     assert not access_graph.visible("derived-a-c", allowed_documents={"d1"})
 ```
 
-- [ ] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_access_graph.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [x] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_access_graph.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 在向量候选和实体别名阶段先过滤来源；数据查询强制owner tenant/KB/generation/deny，后过滤补查不能作为唯一防线**
+- [x] **3. 在向量候选和实体别名阶段先过滤来源；数据查询强制owner tenant/KB/generation/deny，后过滤补查不能作为唯一防线**
 
-- [ ] **4. 逐边扩展只接纳有可见支持的事实；规则推导必须所有前提可见，模型派生产物需全部依赖可见；多个独立支持路径可用可见路径重建**
+- [x] **4. 逐边扩展只接纳有可见支持的事实；规则推导必须所有前提可见，模型派生产物需全部依赖可见；多个独立支持路径可用可见路径重建**
 
-- [ ] **5. 达到节点/边/hop限制停止且标记truncated；禁止全库节点度数、隐藏等价边或摘要影响可见排序；首版按授权子图重算必要图指标**
+- [x] **5. 达到节点/边/hop限制停止且标记truncated；禁止全库节点度数、隐藏等价边或摘要影响可见排序；首版按授权子图重算必要图指标**
 
-- [ ] **6. 缓存key使用scope、epoch、generation、query、limits、模型/规则/配置digest；每次命中仍验证scope与deny，缓存不保存跨范围共享摘要**
+- [x] **6. 缓存key使用scope、epoch、generation、query、limits、模型/规则/配置digest；每次命中仍验证scope与deny，缓存不保存跨范围共享摘要**
 
 关键实现约束：
 
@@ -122,9 +122,9 @@ cache_identity = (owner_tenant, kb_id, generation, scope_hash,
 # can_read递归检查来源/前提并防环；授权图计算不得读取未授权图统计。
 ```
 
-- [ ] **7. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_access_graph.py -q`，预期退出码 0；另完成：真实存储fixture验证D4隐藏词不出现在种子/路径/排序/摘要/缓存；同名跨tenant不关联；大scope使用scope_ref而非突破RPC体积。
+- [x] **7. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_access_graph.py -q`，预期退出码 0；另完成：真实存储fixture验证D4隐藏词不出现在种子/路径/排序/摘要/缓存；同名跨tenant不关联；大scope使用scope_ref而非突破RPC体积。
 
-- [ ] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 A02 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): a02 授权事实子图与缓存隔离`。
+- [x] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 A02 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): a02 授权事实子图与缓存隔离`。
 
 ## A03：模型代理、原始用量与预算
 
