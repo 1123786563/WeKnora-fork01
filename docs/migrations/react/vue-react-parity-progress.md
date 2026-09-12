@@ -445,6 +445,15 @@
 - 新增 `apps/web/src/chat/chat-route-page-send.test.ts` 覆盖 ChatRoutePage 首发接线：`POST /sessions` + `selectSession` 完成后才打开 non-aborted `knowledge-chat` stream；该测试在临时切回 b217a4d 的 `ChatRoutePage.tsx` 时红灯（stream-suppressed，无 history refresh），当前绿灯。
 - Runtime 复核：React Web :5181 与重建后的 Wails runtime 均验证 `create session -> knowledge-chat stream` 请求顺序、空 composer、无 Sending/failed pending、助手流式回答渲染；截图/trace 写入 `.superpowers/sdd/plan/task-2-*`。
 
+## 2026-09-12 Task 3 S01/S02/S03 closure (platform shell, auth, redirect, tenant-scope rows)
+
+- **S01（route/guard compatibility）**：复核，无代码改动。目标测试 `routes.test.ts`+`session-route.test.ts` 8/8；live 复核确认未登录/已登录重定向与 query 保留行为无回归；`?cmdk=` 现在因 S03 变更而在已登录场景下被剥离（此前遗留在 URL 上）。证据：`evidence/vue-react-parity/2026-09-12-s01-s02-reverification.md`。
+- **S02（public auth and no-tenant onboarding）**：复核，无代码改动。目标测试 `auth/*.test.ts` 19/19；确认无 mobile auth 测试文件（附加条款不适用）。证据同上文件。
+- **S03（platform shell / command palette）**：实现 R011/N003 缺口——`apps/web/src/platform/` 新增 `command-palette.ts`（纯逻辑，TDD red→green，17 测试）、`GlobalCommandPalette.tsx`（可见对话框组件）、`command-palette.css`；`packages/i18n/src/generated/commandPalette.ts`（5 locale，TDD red→green，4 测试）并接入 `packages/i18n/src/index.ts`；`PlatformShell.tsx` 接线（state/effect/handlers + 渲染）。MVP 范围：静态快捷操作 + 最近搜索 + 完整键盘导航 + 全局 ⌘K/Ctrl+K/裸 `/` 触发 + `?cmdk=` 一次性消费剥离；**有意不移植**语义检索/检索设置抽屉/KB chip/底部提示条/每项快捷徽标（记录在矩阵 note，非缺陷）。Live 复核（playwright-core，React :5181 与 desktop-renderer :5173 共享入口）确认弹层可见、过滤、键盘导航、`cmdk` 剥离均正常；Vue 对照截图确认核心交互对等。原生 Wails `wails dev` 在本会话卡在 `Compiling frontend:`（无 TTY 输出探测已知限制），改用其共享入口的 vite dev server 作为等价证据，并附 `pnpm --filter @weknora/desktop-renderer typecheck` 通过。证据：`evidence/vue-react-parity/2026-09-12-command-palette.md`。
+- 矩阵更新（精确、非批量）：R011 `pending`→`review`；N003 `pending`→`review`；R007 note 更新以反映命令面板缺口已闭合（new-user-guide 缺口仍待）。R009/N001/N002/N004/N005 等 S03 依赖但非本轮范围的行未改动。
+- 门禁：`tsc -b --noEmit`（web）✅；`pnpm --filter @weknora/web test` 229/229；`pnpm run test:shared` 330/330；`pnpm run build:web` ✅。
+- 提交：见本轮 commit 列表（S01/S02 为 docs-only 证据提交，S03 为功能+i18n+文档提交）。
+
 ## 2026-09-12 Task 1 canonical executable backlog
 
 Baseline source for this backlog: current branch `codex/react-multiclient`, task base `9b79558b6229d79d0ceebe22e1de4a439982c615`, route/alias rows `R001`-`R056` and nested surface rows `N001`-`N033` in `vue-react-parity-matrix.md`. The SDD ledger and task brief under `.superpowers/sdd` remain ignored scratch. Do not bulk-mark rows accepted; each slice must close its own state profile and evidence.

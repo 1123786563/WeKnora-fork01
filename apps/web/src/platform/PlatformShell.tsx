@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
 import type { createWeKnoraClient } from '@weknora/api-client';
+import { GlobalCommandPalette } from './GlobalCommandPalette.tsx';
+import {
+  clearRecentQueries,
+  consumeCmdkParam,
+  decideGlobalShortcutAction,
+  loadRecentQueries,
+  pushRecentQuery,
+  recentQueriesStorageKey,
+} from './command-palette.ts';
+import { readReactPlatformState } from './legacy-session.ts';
 import './shell.css';
 
 type Client = ReturnType<typeof createWeKnoraClient>;
@@ -73,7 +83,13 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
   const [pathname, setPathname] = useState(() => window.location.pathname);
   const [collapsed, setCollapsed] = useState(() => window.localStorage.getItem(COLLAPSE_STORAGE_KEY) === 'true');
   const [menuOpen, setMenuOpen] = useState(false);
-  const [user, setUser] = useState<{ name: string; email: string; avatar: string }>({ name: '', email: '', avatar: '' });
+  const [user, setUser] = useState<{ id: string; name: string; email: string; avatar: string }>({ id: '', name: '', email: '', avatar: '' });
+
+  // Global command palette (⌘K / Ctrl+K) — R011/N003. See GlobalCommandPalette.tsx.
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [paletteQuery, setPaletteQuery] = useState('');
+  const [recentQueries, setRecentQueries] = useState<string[]>([]);
+  const recentQueriesKey = recentQueriesStorageKey(user.id || null, readReactPlatformState(window.localStorage)?.tenantId ?? null);
 
   useEffect(() => {
     // Route transitions in this app mostly use full navigations and popstate
@@ -98,6 +114,7 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
       if (!active) return;
       const record = me.user as Record<string, unknown>;
       setUser({
+        id: typeof record.id === 'string' ? record.id : typeof record.id === 'number' ? String(record.id) : '',
         name: typeof record.username === 'string' && record.username ? record.username : '—',
         email: typeof record.email === 'string' ? record.email : '',
         avatar: typeof record.avatar === 'string' ? record.avatar : '',
@@ -105,6 +122,54 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
     }).catch(() => { /* menu falls back to placeholders; the page still works */ });
     return () => { active = false; };
   }, [client]);
+
+  // Recent ⌘K searches are namespaced per (user, tenant); reload whenever
+  // that identity resolves (mirrors Vue commandPaletteStore's auth watcher).
+  useEffect(() => {
+    setRecentQueries(loadRecentQueries(window.localStorage, recentQueriesKey));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recentQueriesKey]);
+
+  // `/platform/knowledge-search?q=...` redirects to `?cmdk=...` (routes.tsx).
+  // Consume it once on mount, open the palette, and strip the param so
+  // Back/Refresh doesn't reopen it (mirrors platform/index.vue's route.query.cmdk watcher).
+  useEffect(() => {
+    const { query, remainingSearch } = consumeCmdkParam(window.location.search);
+    if (query === null) return;
+    setPaletteQuery(query);
+    setPaletteOpen(true);
+    window.history.replaceState(window.history.state, '', `${window.location.pathname}${remainingSearch}${window.location.hash}`);
+    // Only ever consume the initial load's query string, matching Vue's
+    // one-shot behavior on the redirect landing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Global ⌘K / Ctrl+K shortcut, plus bare "/" when nothing editable is
+  // focused (mirrors GlobalCommandPalette.vue onGlobalKey()).
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tag = (target?.tagName ?? '').toUpperCase();
+      const isEditingTarget = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || !!target?.isContentEditable;
+      const action = decideGlobalShortcutAction(event, { open: paletteOpen, isEditingTarget });
+      if (action === 'none') return;
+      event.preventDefault();
+      if (action === 'toggle') setPaletteOpen((current) => !current);
+      else if (action === 'open') { setPaletteQuery(''); setPaletteOpen(true); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [paletteOpen]);
+
+  const closePalette = useCallback(() => setPaletteOpen(false), []);
+  const navigateFromPalette = useCallback((path: string) => { window.location.assign(path); }, []);
+  const recordPaletteSearch = useCallback((query: string) => {
+    setRecentQueries(pushRecentQuery(window.localStorage, recentQueriesKey, query));
+  }, [recentQueriesKey]);
+  const clearPaletteRecent = useCallback(() => {
+    clearRecentQueries(window.localStorage, recentQueriesKey);
+    setRecentQueries([]);
+  }, [recentQueriesKey]);
 
   const navItems = useMemo(() => buildNavItems(t, labels), [t, labels]);
 
@@ -206,6 +271,16 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
         </div>
       </aside>
       <div className="plat-shell__outlet">{children}</div>
+      <GlobalCommandPalette
+        open={paletteOpen}
+        initialQuery={paletteQuery}
+        recentQueries={recentQueries}
+        locale={locale}
+        onClose={closePalette}
+        onNavigate={navigateFromPalette}
+        onSearch={recordPaletteSearch}
+        onClearRecent={clearPaletteRecent}
+      />
     </div>
   );
 }
