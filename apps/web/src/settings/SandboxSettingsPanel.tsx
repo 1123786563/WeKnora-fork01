@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import type { SandboxBackendType, SandboxConfigRecord, SandboxConfigUpsert, WeKnoraClient } from '@weknora/api-client';
+import { parseSandboxConfigurationConflict, type SandboxBackendType, type SandboxConfigRecord, type SandboxConfigUpsert, type WeKnoraClient } from '@weknora/api-client';
 import { Button, Card, Status } from '@weknora/ui';
 import { roleAtLeast, type SettingsRole } from '@weknora/views';
 
@@ -40,7 +40,7 @@ export function SandboxSettingsPanel({ client, role, initialData }: Props) {
     if (!canEdit || busy || !window.confirm(`Delete sandbox configuration “${item.name}”?`)) return;
     setBusy(true); setError(null); setNotice(null);
     try { await client.sandboxConfigurations.remove(item.id); setNotice('Sandbox configuration deleted.'); await load(); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to delete sandbox configuration'); }
+    catch (cause) { const conflict = cause instanceof Error && 'code' in cause ? parseSandboxConfigurationConflict({ error: { code: (cause as Error & { code?: string }).code, message: cause.message, data: (cause as Error & { details?: unknown }).details } }) : null; setError(conflict ? `${conflict.message ?? conflict.code}${conflict.inventory ? ` (${conflict.inventory.sandboxCount} live sandbox(s))` : ''}` : cause instanceof Error ? cause.message : 'Unable to delete sandbox configuration'); }
     finally { setBusy(false); }
   }
   async function setScriptsDisabled(disabled: boolean) {

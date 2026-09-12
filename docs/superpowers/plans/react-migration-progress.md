@@ -1316,6 +1316,9 @@
   helper and made the settings route load its initial state from the shared
   `sandboxConfigurations` client instead of coercing an unrelated payload.
   Web typecheck and the 5/5 Sandbox component tests passed again.
+- Sandbox delete now parses the shared structured conflict error and shows the
+  backend-reported live sandbox count; focused Sandbox tests, Web typecheck,
+  and full Web regression passed (274/274).
 
 ### R033 Skill settings entry follow-up (2026-09-12)
 
