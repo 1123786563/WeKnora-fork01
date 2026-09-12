@@ -8,24 +8,24 @@
 
 | 任务 | 状态 | 备注 |
 | --- | --- | --- |
-| T01 固定版本契约探针与证据门禁 | in_progress | 实现与证据完成，待协调者 review |
-| T02 受限 Token HTTP 执行客户端 | pending | 消费 T01 fixtures 与 errorCode/meta 契约 |
-| T03 连接绑定与授权模型 | pending | |
-| T04 Token 生命周期管理 | pending | NewGrant 拒空 grant（T01 已证 upstream 空=放行） |
-| T05 审批与预算接入 | pending | |
-| T06 OAuth 关联流程 | pending | 消费 T01 oauth_correlation（state/connectionRequestId） |
-| T07 执行快照与幂等 | pending | 24h 窗口/指纹含 runtimeTokenId（T01 已证） |
-| T08 审计与补偿 | pending | auditPersisted 语义（T01 已证） |
-| T09 计量与计费 | pending | |
-| T10 产品流程 UI | pending | |
-| T11 前端连接管理 | pending | |
-| T12 运维与部署 | pending | |
-| T13 集成测试 | pending | |
-| T14 文档与示例 | pending | |
-| T15 监控告警 | pending | |
-| T16 共享实例部署 | pending | 必须配置 ADMIN_TOKEN（T01 已证无认证=完全开放）；ghcr 无 pinned SHA 镜像（R9） |
-| T17 租户开放验收 | pending | |
-| T18 发布验收 | pending | |
+| T01 固定上游契约与失败关闭的证据门禁 | passed | commit e12a73ce（集成分支 HEAD）；规格审查 PASS + 质量审查 PASS（非阻塞 findings 记录在 SDD ledger）；oauth 真实 Provider 完成子项 blocked-env（R10，转 T18 关闭） |
+| T02 只持受限 Token 的 HTTP 执行客户端 | pending | 消费 T01 fixtures 与 errorCode/meta 契约；NewGrant 拒空 grant（T01 已证 upstream 空=放行） |
+| T03 持久绑定、版本与租户作用域仓储 | pending | |
+| T04 授权与原始凭据解耦 | pending | 可与 T05 并行（写集不相交，预检 B 已核） |
+| T05 隔离管理凭据的控制 worker | pending | |
+| T06 审核目录与版本固定 | pending | |
+| T07 可关联的 OAuth 与 API key 授权 | pending | 消费 T01 oauth_correlation（state/connectionRequestId 关联） |
+| T08 撤销、权限变化和远端清理 | pending | |
+| T09 可信 Prepare 与完整审批快照 | pending | |
+| T10 原子 claim、全局幂等键与分布式限流 | pending | |
+| T11 HTTP dispatcher 与保守结果分类 | pending | 24h 窗口/指纹含 runtimeTokenId、auditPersisted=false 不否定结果（T01 已证） |
+| T12 崩溃、unknown 与结算恢复 | pending | |
+| T13 产品 API、租户 DTO 与容器注入 | pending | |
+| T14 Agent 共用 Action 生命周期 | pending | |
+| T15 Vue 目录、连接和审批界面 | pending | |
+| T16 私网部署、观测、备份与升级 | pending | 必须配置 ADMIN_TOKEN（T01 已证无认证=完全开放）；ghcr 无 pinned SHA 镜像（R9 本地构建 digest 为准） |
+| T17 多空间与故障注入集成验收 | pending | OC_TEST_DATABASE_URL 专用 PostgreSQL |
+| T18 真实 Provider、商业链路和灰度门禁 | pending | 关闭 T01 oauth blocked-env 子项；需真实账号/目标/内容授权 |
 
 ## T01 证据
 
