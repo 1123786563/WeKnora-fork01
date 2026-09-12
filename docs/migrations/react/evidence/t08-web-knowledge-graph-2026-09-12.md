@@ -35,6 +35,12 @@ All commands ran in the isolated `codex/react-multiclient` worktree:
 | `node scripts/check-react-boundaries.mjs` | 0 |
 | `git diff --check` | 0 |
 
+The shared Web renderer also passed the adjacent Embed and desktop checks:
+`pnpm test:embed` 3/3, `pnpm typecheck:embed` 0, `pnpm build:embed` 68
+modules, `pnpm test:desktop` 2/2, `pnpm typecheck:desktop` 0, and
+`pnpm build:desktop-renderer` 133 modules. The desktop build has the same
+existing non-fatal `>500 kB` warning.
+
 This is static, Node-test, and production-bundle evidence. It does not claim
 full browser graph interaction, graph performance at large knowledge-base
 size, role/tenant negative coverage, or production backend acceptance. T08

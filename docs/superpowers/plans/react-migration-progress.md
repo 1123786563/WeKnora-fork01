@@ -1061,3 +1061,6 @@
 - This does not claim full browser graph interaction, large-KB performance,
   role/tenant negative coverage, or production backend acceptance. T08 stays
   `review`; evidence: `docs/migrations/react/evidence/t08-web-knowledge-graph-2026-09-12.md`.
+- The shared renderer's adjacent Embed 3/3 and Desktop 2/2 tests, both
+  typechecks, and both production builds also passed after the graph slice;
+  this is cross-client bundle evidence, not native/installed acceptance.
