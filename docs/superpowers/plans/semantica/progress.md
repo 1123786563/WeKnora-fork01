@@ -335,8 +335,8 @@
 - 实测验收：计划核心断言逐字（native 检查点 8 < 源 9 → ErrNativeCatchupRequired）；SetDesired 只写意图（active 恒 native）；追赶后回滚成功（9≥9 → CAS semantic→native）；过期 expected generation Promote 拒绝；并发 Promote 恰一胜。
 - 交付：状态机（SetDesired/Promote/Rollback+双哨兵错误）；检查点列（native/semantic_checkpoint+last_error）；repo 五方法；运行手册（状态模型/影子/切换前置清单/回滚先补齐/失败处置/禁止事项）。
 - **延后（如实）**：①Promote 之"完整 manifest/capability/验收 policy"前置自动化——人工清单在手册，自动化归 O02/O03；②Rollback 之切换期 outbox 重放编排——检查点比较已实现，编排归 O02；③产品设置 API（desired 保存）挂载归 O01；④read lease 沿旧请求完成集成归 O02。
-- review：双评审下轮补做。
-- 提交 SHA：06c5316。
+- review：规格 PASS（0 BLOCKER，4 MINOR 全折叠：计划勾选补齐（步骤 4/5/6 核心语义已验、自动化/编排/挂载延后如上）/台账"05 计划勾选"误记更正（首段提交未含计划文件）/管理 API（handler/semantic.go 之 Promote/Rollback 端点）延后显式归 O01/手册"触发影子构建"改为如实"记录 desired——消费者归 O02"）。质量评审下轮补做。
+- 提交 SHA：06c5316 + 本更正段。
 - V01精确版本已冻结（semantica 0.6.8）；真实模型证据须在后续任务补齐，不是已经通过的前提。
 - V02 结论边界：持久图桥接/授权子图重建/注册规则推导已验证；模型推断 unverified（无凭据，未调用）；向量检索路径未验证。
 - V03 结论边界：semantica 模式检索质量/延迟为受控语料实测；native 对照与模型用量门槛未测（阻断记录见上）；上线门禁 approved=false 待用户确认。

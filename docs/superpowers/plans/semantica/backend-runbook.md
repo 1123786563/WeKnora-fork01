@@ -11,8 +11,9 @@
 
 ## 影子构建（SetDesired）
 
-`SetDesired(scope, "semantic")` **只写意图**：触发影子构建，active 保持 native，
-正式查询不受影响。部署镜像**永不**自动切换 active——切换必须经管理 API 显式动作。
+`SetDesired(scope, "semantic")` **只写意图**：记录 desired（影子构建的消费编排归
+O02 接线——今日尚无 desired 消费者），active 保持 native，正式查询不受影响。部署镜像
+**永不**自动切换 active——切换必须经管理 API 显式动作（管理 API 挂载归 O01）。
 
 ## 正式切换（Promote）
 
