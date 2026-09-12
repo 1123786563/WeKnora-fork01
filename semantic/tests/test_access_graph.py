@@ -20,26 +20,6 @@ OTHER_TENANT = ScopeKey(tenant_id=99, kb_id="kb-a02")
 
 
 @pytest.fixture()
-def deletion_service(pg_dsn, operation_store_factory):
-    import psycopg
-
-    from semantic_service.operations import apply_migrations
-
-    apply_migrations(pg_dsn)
-    migration = Path(__file__).resolve().parents[1] / "migrations" / "003_deletion_receipts.sql"
-    with psycopg.connect(pg_dsn) as conn:
-        conn.execute(migration.read_text(encoding="utf-8"))
-        conn.execute("DELETE FROM semantic.assertions")
-        conn.execute("DELETE FROM semantic.tombstones")
-        conn.commit()
-    operations = operation_store_factory()
-    operations.clear_for_test()
-    service = DeletionService(pg_dsn, operations)
-    yield service
-    service.close()
-
-
-@pytest.fixture()
 def access_graph(pg_dsn, deletion_service):
     return PgAccessGraph(pg_dsn, SCOPE, deletion_service)
 
