@@ -256,3 +256,10 @@
 
 - chat UX 收尾切片完成集成（62a77a9：时间戳分隔/复制按钮/打字指示器/回到底部/分组持久化/creatChat 建议 + domain message-timestamps/copy-answer/session-grouping 模块与 3 个新测试文件）。
 - **根治 gitignore 缺陷**：裸 `web/` 规则锚定为 `/web/`（该规则此前静默吞掉 apps/web 下全部新源文件——resume/steer-submit/starter-questions/actions/processing-timeline/upload-pipeline/permissions/pagination/i18n.ts 等已全部补交入库），并为 apps/{web,embed,desktop}/dist 增加显式忽略。共享/前端门禁复验：shared 293/293、web 198/198、typecheck 干净。
+
+## 2026-09-12 Round 50
+
+- chat UX 收尾切片完成集成（62a77a9）+ gitignore web/ 规则锚定（/web/），被吞源文件全部补交（c58caac/3340ff7）。
+- Wails macOS 打包验证通过：React bundle 构建 + wails build + 自签名 .app（codesign 校验通过）；集成修复 desktop vite alias 缺失（6c8775e）+ 后端 CORS X-Embed-Visitor。
+- 门禁：shared 293/293、web 198/198、typecheck×2、build:web 全绿。
+- 待办：embed CORS 修复后的 live 复测、四页剩余后续项、Wails 运行时交互验收、iOS/Android 原生验收。
