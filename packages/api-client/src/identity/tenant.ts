@@ -133,6 +133,23 @@ export function createTenantAuditLogApi(request: IdentityRequest) {
   };
 }
 
+/** Port of Vue CreateTenantDialog -> createTenant (POST /api/v1/tenants,
+ *  internal/handler/tenant.go:89-90: name required 1-128, description max 512).
+ *  Tenant self-service may be disabled server-side; failures surface as errors. */
+export function createTenantAdminApi(request: IdentityRequest) {
+  return {
+    async create(input: { name: string; description?: string }, signal?: AbortSignal): Promise<Record<string, unknown> & { id: number | string }> {
+      const name = typeof input.name === 'string' ? input.name.trim() : '';
+      if (name.length < 1 || name.length > 128) throw new Error('name must be 1-128 characters');
+      if (input.description !== undefined && input.description.length > 512) throw new Error('description must be at most 512 characters');
+      const data = dataRecord(await request(withSignal({ method: 'POST', path: '/api/v1/tenants', body: { name, ...(input.description === undefined ? {} : { description: input.description }) } }, signal)), 'POST /tenants data');
+      const id = data.id;
+      if ((typeof id !== 'string' || !id.trim()) && (typeof id !== 'number' || !Number.isSafeInteger(id) || id <= 0)) throw new Error('tenant.id is required');
+      return data as Record<string, unknown> & { id: number | string };
+    },
+  };
+}
+
 export type TenantMembersApi = ReturnType<typeof createTenantMembersApi>;
 export type TenantInvitationsApi = ReturnType<typeof createTenantInvitationsApi>;
 export type TenantAuditLogApi = ReturnType<typeof createTenantAuditLogApi>;

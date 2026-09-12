@@ -1,13 +1,14 @@
 import type { ClientRequest } from '../client.ts';
 import { createOrganizationApi } from './organization.ts';
-import { createTenantAuditLogApi, createTenantInvitationsApi, createTenantMembersApi } from './tenant.ts';
+import { createTenantAdminApi, createTenantAuditLogApi, createTenantInvitationsApi, createTenantMembersApi } from './tenant.ts';
 
 export function createIdentityApi(request: (input: ClientRequest) => Promise<unknown>) {
   const members = createTenantMembersApi(request);
   const invitations = createTenantInvitationsApi(request);
   const auditLog = createTenantAuditLogApi(request);
+  const admin = createTenantAdminApi(request);
   return {
-    tenants: { members, invitations, auditLog },
+    tenants: { members, invitations, auditLog, admin },
     invitations,
     organizations: createOrganizationApi(request),
   };
