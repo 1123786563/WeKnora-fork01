@@ -72,10 +72,20 @@ class RecoveryHarness:
         return bool(row and row[0] == "true")
 
     def replay_current_denials(self) -> None:
-        """Replay the CURRENT deny set from the business authority (the
-        tombstones ARE the authoritative record after Go replay writes
-        them) and mark readiness open."""
+        """Replay the CURRENT deny set: for every tombstone, re-apply the
+        deletion-barrier effects (assertion rows at/below the tombstone
+        revision become invisible - the I04 fixpoint semantics), then
+        mark readiness open. Re-derives visibility from the AUTHORITATIVE
+        tombstone record rather than trusting restored assertion flags."""
         with psycopg.connect(self._dsn) as conn:
+            tombstones = conn.execute(
+                "SELECT document_id, revision FROM semantic.tombstones"
+                " WHERE tenant_id = %s AND kb_id = %s", (SCOPE.tenant_id, SCOPE.kb_id)).fetchall()
+            for doc, rev in tombstones:
+                conn.execute(
+                    "UPDATE semantic.assertions SET visible = FALSE"
+                    " WHERE tenant_id = %s AND kb_id = %s AND support_document_id = %s AND support_revision <= %s",
+                    (SCOPE.tenant_id, SCOPE.kb_id, doc, rev))
             conn.execute(
                 "INSERT INTO semantic.recovery_state (key, value) VALUES ('denials_replayed', 'true')"
                 " ON CONFLICT (key) DO UPDATE SET value = 'true'")

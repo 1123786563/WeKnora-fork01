@@ -22,6 +22,11 @@ dev = [
     "trustme==1.2.1",
 ]
 
+[tool.pytest.ini_options]
+markers = [
+    "integration: recovery/fault-injection drills over the isolated service PG (O02+)",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

@@ -3,18 +3,20 @@
 环境：semantica-i01-pg 容器（postgres:16-alpine，127.0.0.1:15432，semantic_test 库）
 命令：`bash scripts/semantic/run_recovery_tests.sh`（退出码 0，8/8 通过）
 
-## 场景记录
+## 场景记录（每例 deny 前后）
 
-| # | 场景 | 结果 | 关键断言 |
-|---|---|---|---|
-| 1 | 恢复先重放拒绝再开放 | PASS | 快照→删除→恢复→ready=False→重放→ready=True→d1 不可见 |
-| 2 | 维护模式阻断 | PASS | set_maintenance→ready=False |
-| 3 | 被拒文档永不可见 | PASS | 删除 d2→查询不含 d2 |
-| 4 | 存活文档保持可见 | PASS | 删除 d2→d1 仍在结果 |
-| 5 | 快照后新删除保留屏障 | PASS | 删除后墓碑权威，恢复不复活 |
-| 6 | 撤权后查询排除 | PASS | 两次查询间删除→后者排除 |
-| 7 | epoch 撤权数据面等价 | PASS | 删除后 deny 屏障生效 |
-| 8 | 部分可见不混合 | PASS | 恰好 {d2}，无部分泄漏 |
+各场景在 kb-o02 范围运行。**active manifest 维度如实标注**：本环境未发布服务侧 generation manifest（I03 发布接线归 O03 验收环境）——以下记录 **deny（墓碑）状态前后**；manifest 前后未采集。
+
+| # | 场景 | 结果 | deny 前 → 后 | 关键断言 |
+|---|---|---|---|---|
+| 1 | 恢复先重放拒绝再开放 | PASS | {} → {d1@2} | 快照→删除→恢复→ready=False→重放→ready=True→d1 不可见 |
+| 2 | 维护模式拒绝查询 | PASS | 不变 | set_maintenance→ready=False→查询 raise maintenance |
+| 3 | 被拒文档永不可见 | PASS | {} → {d2@2} | 删除 d2→查询不含 d2 |
+| 4 | 存活文档保持可见 | PASS | {} → {d2@2} | 删除 d2→d1 仍在结果 |
+| 5 | 快照后新删除保留屏障 | PASS | {} → {d1@2} | 删除→实际恢复快照→重放→d1 仍不可见（墓碑权威） |
+| 6 | 撤权后查询排除 | PASS | {} → {d1@2} | 两次查询间删除→后者排除 |
+| 7 | epoch 撤权数据面等价 | PASS | {} → {d2@2} | 删除后 deny 屏障生效 |
+| 8 | 部分可见不混合 | PASS | {} → {d1@2} | 恰好 {d2}，无部分泄漏 |
 
 ## 快照/恢复语义（实测）
 
