@@ -5,6 +5,7 @@ import { MessageList, type PendingChatMessage } from './message-list.tsx';
 import { SessionSidebar } from './session-sidebar.tsx';
 import { ReferenceList } from './reference-list.tsx';
 import { ToolResultView } from './tool-result.tsx';
+import type { ArtifactPreviewPayload } from './artifact-preview.tsx';
 
 export interface ChatAgentOption {
   id: string;
@@ -94,6 +95,7 @@ export interface ChatPageProps {
   onDismissSuggestions?(): void;
   onCitationClick?(citationId: string): void;
   onArtifactDownload?(messageId: string, artifactIndex: number): Promise<void>;
+  onArtifactPreview?(messageId: string, artifactIndex: number): Promise<ArtifactPreviewPayload>;
   terminal?: ChatTerminalView;
   onOpenTerminal?(): Promise<void>;
   onTerminalInput?(input: string): Promise<void>;
@@ -284,6 +286,7 @@ export function ChatPage(props: ChatPageProps) {
         onDismissSuggestions={props.onDismissSuggestions}
         onCitationClick={activateCitation}
         onArtifactDownload={props.onArtifactDownload}
+        onArtifactPreview={props.onArtifactPreview}
       />
       {props.selectedSessionId && props.onClearSession ? <button type="button" onClick={() => void props.onClearSession!()}>Clear messages</button> : null}
       {props.selectedSessionId && props.onSteer ? <SteerComposer onSteer={props.onSteer} /> : null}

@@ -3,6 +3,8 @@ export type { ChatComposerProps, ChatSubmission } from './chat/composer.tsx';
 export { MessageList, renderMessageHtml } from './chat/message-list.tsx';
 export type { MessageListProps, PendingChatMessage } from './chat/message-list.tsx';
 export { renderChatMarkdown } from './chat/markdown.ts';
+export { ArtifactPreview, artifactPreviewModel } from './chat/artifact-preview.tsx';
+export type { ArtifactPreviewKind, ArtifactPreviewModel, ArtifactPreviewPayload, ArtifactPreviewProps } from './chat/artifact-preview.tsx';
 export { hydrateMermaidBlocks, hydrateMermaidBlocksWithBrowserDefaults, MERMAID_RENDER_CONFIG } from './chat/mermaid.ts';
 export type { MermaidEngine } from './chat/mermaid.ts';
 export { SessionSidebar } from './chat/session-sidebar.tsx';

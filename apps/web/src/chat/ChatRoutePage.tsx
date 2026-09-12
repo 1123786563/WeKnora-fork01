@@ -257,6 +257,16 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     }
   }
 
+  async function previewArtifact(messageId: string, artifactIndex: number) {
+    const sessionId = selectedSessionIdRef.current;
+    if (!sessionId) throw new Error('Select a conversation before previewing an artifact.');
+    const artifacts = await client.chat.artifacts.message(sessionId, messageId, scope.signal);
+    const artifact = artifacts.find((item) => item.index === artifactIndex);
+    if (!artifact) throw new Error('Artifact is no longer available.');
+    const response = await client.chat.artifacts.download(sessionId, messageId, artifact.index, scope.signal);
+    return { body: response.body, contentType: response.contentType };
+  }
+
   async function authorizeOAuth(pendingId: string, serviceId: string): Promise<void> {
     const authorization = await client.configuration.mcp.oauth.authorizeUrl(serviceId, {
       redirectURI: `${window.location.origin}/api/v1/mcp-oauth/callback`,
@@ -464,6 +474,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     onDismissSuggestions={dismissSuggestions}
     onCitationClick={openCitation}
     onArtifactDownload={downloadArtifact}
+    onArtifactPreview={previewArtifact}
     terminal={selectedSessionId ? terminal : undefined}
     onOpenTerminal={selectedSessionId ? openTerminal : undefined}
     onTerminalInput={selectedSessionId ? terminalInput : undefined}

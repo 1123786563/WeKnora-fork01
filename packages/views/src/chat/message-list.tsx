@@ -1,9 +1,10 @@
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ChatMessage, MessageSuggestionSet } from '@weknora/contracts';
 import { hasSessionChanged, scrollTopAfterPrepend, shouldStickToBottom } from '@weknora/domain/chat/session-state';
 import { isArtifactExpired, normalizeArtifactList, type ChatArtifact } from '@weknora/domain/chat/artifacts';
 import { renderChatMarkdown } from './markdown.ts';
 import { hydrateMermaidBlocksWithBrowserDefaults } from './mermaid.ts';
+import { ArtifactPreview, artifactPreviewModel, type ArtifactPreviewPayload } from './artifact-preview.tsx';
 
 export interface PendingChatMessage {
   content: string;
@@ -24,6 +25,7 @@ export interface MessageListProps {
   onDismissSuggestions?(): void;
   onCitationClick?(citationId: string): void;
   onArtifactDownload?(messageId: string, artifactIndex: number): Promise<void>;
+  onArtifactPreview?(messageId: string, artifactIndex: number): Promise<ArtifactPreviewPayload>;
   sessionId?: string | null;
 }
 
@@ -35,22 +37,29 @@ export function renderMessageHtml(message: Pick<ChatMessage, 'content'>): string
   return renderChatMarkdown(message.content);
 }
 
-function ArtifactList({ message, onDownload }: { message: ChatMessage; onDownload?: MessageListProps['onArtifactDownload'] }) {
+function ArtifactList({ message, onDownload, onPreview }: { message: ChatMessage; onDownload?: MessageListProps['onArtifactDownload']; onPreview?: (messageId: string, artifactIndex: number) => void | Promise<void> }) {
   const artifacts = messageArtifactItems(message);
   if (artifacts.length === 0) return null;
   return <section className="wk-chat-artifacts" aria-label="Artifacts">
     <h3>Artifacts</h3>
     <ul>{artifacts.map((artifact) => {
       const expired = isArtifactExpired(artifact);
-      return <li key={artifact.index}><span>{artifact.fileName}{artifact.version ? ` · v${artifact.version}` : ''}</span>{expired ? <small role="status">Expired</small> : onDownload ? <button type="button" onClick={() => void onDownload(message.id, artifact.index)}>Download</button> : <small>Available</small>}</li>;
+      const previewable = artifactPreviewModel(artifact).kind !== 'download-only';
+      return <li key={artifact.index}><span>{artifact.fileName}{artifact.version ? ` · v${artifact.version}` : ''}</span>{expired ? <small role="status">Expired</small> : <>{previewable && onPreview ? <button type="button" onClick={() => void onPreview(message.id, artifact.index)}>Preview</button> : null}{onDownload ? <button type="button" onClick={() => void onDownload(message.id, artifact.index)}>Download</button> : <small>Available</small>}</>}</li>;
     })}</ul>
   </section>;
 }
 
-export function MessageList({ messages, pending, onRetry, loadingOlder = false, hasMore = false, onLoadOlder, suggestions, onSuggestionClick, onRefreshSuggestions, onDismissSuggestions, onCitationClick, onArtifactDownload, sessionId = null }: MessageListProps) {
+export function MessageList({ messages, pending, onRetry, loadingOlder = false, hasMore = false, onLoadOlder, suggestions, onSuggestionClick, onRefreshSuggestions, onDismissSuggestions, onCitationClick, onArtifactDownload, onArtifactPreview, sessionId = null }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
   const previousSessionId = useRef<string | null>(sessionId);
+  const previewRequestId = useRef(0);
+  const [preview, setPreview] = useState<{ messageId: string; artifact: ChatArtifact; payload?: ArtifactPreviewPayload; loading: boolean; error?: string } | null>(null);
+  useEffect(() => {
+    previewRequestId.current += 1;
+    setPreview(null);
+  }, [sessionId]);
   const previousLayout = useRef<{ firstId?: string; length: number; height: number; top: number }>({ length: 0, height: 0, top: 0 });
   useLayoutEffect(() => {
     const container = containerRef.current;
@@ -98,13 +107,28 @@ export function MessageList({ messages, pending, onRetry, loadingOlder = false, 
     if (citation) onCitationClick?.(citation);
   }
 
+  async function openArtifactPreview(messageId: string, artifactIndex: number): Promise<void> {
+    if (!onArtifactPreview) return;
+    const message = messages.find((item) => item.id === messageId);
+    const artifact = message ? messageArtifactItems(message).find((item) => item.index === artifactIndex) : undefined;
+    if (!artifact) return;
+    const requestId = ++previewRequestId.current;
+    setPreview({ messageId, artifact, loading: true });
+    try {
+      const payload = await onArtifactPreview(messageId, artifactIndex);
+      if (requestId === previewRequestId.current) setPreview({ messageId, artifact, payload, loading: false });
+    } catch (cause) {
+      if (requestId === previewRequestId.current) setPreview({ messageId, artifact, loading: false, error: cause instanceof Error ? cause.message : 'Unable to load artifact preview' });
+    }
+  }
+
   return <div ref={containerRef} className="wk-chat-message-scroll" onScroll={onScroll}>
     {hasMore ? <button type="button" disabled={loadingOlder} onClick={onLoadOlder}>{loadingOlder ? 'Loading history…' : 'Load older messages'}</button> : null}
     <ol className="wk-chat-messages" aria-label="Messages">
     {messages.map((message) => <li key={message.id} data-role={message.role}>
       <strong>{message.role}</strong>
       <div className="wk-chat-message-content" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: renderMessageHtml(message) }} />
-      <ArtifactList message={message} onDownload={onArtifactDownload} />
+      <ArtifactList message={message} onDownload={onArtifactDownload} onPreview={onArtifactPreview ? openArtifactPreview : undefined} />
     </li>)}
     {pending ? <li data-role="user" data-status={pending.status}>
       <strong>user</strong>
@@ -113,6 +137,7 @@ export function MessageList({ messages, pending, onRetry, loadingOlder = false, 
       {pending.status === 'failed' && onRetry ? <button type="button" onClick={onRetry}>Retry</button> : null}
     </li> : null}
     </ol>
+    {preview ? <ArtifactPreview artifact={preview.artifact} payload={preview.payload} loading={preview.loading} error={preview.error} onClose={() => { previewRequestId.current += 1; setPreview(null); }} onDownload={onArtifactDownload ? () => void onArtifactDownload(preview.messageId, preview.artifact.index) : undefined} /> : null}
     {suggestions?.status === 'ready' && suggestions.questions.length > 0 ? <section className="wk-chat-suggestions" aria-label="Suggested questions">
       <div className="wk-chat-suggestions-heading"><h2>Suggested questions</h2><div><button type="button" onClick={onRefreshSuggestions} disabled={!suggestions.allow_regenerate}>Refresh</button><button type="button" onClick={onDismissSuggestions}>Dismiss</button></div></div>
       <div className="wk-chat-suggestions-grid">{suggestions.questions.map((question) => <button type="button" key={question.id} onClick={() => onSuggestionClick?.(question.id, question.text)}>{question.text}{question.source === 'faq' ? <small>FAQ</small> : null}</button>)}</div>
