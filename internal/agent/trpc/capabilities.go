@@ -66,6 +66,15 @@ func (s CapabilitySnapshot) CompatibleWith(current CapabilitySnapshot) error {
 	if !equalStringMap(s.SkillDigests, current.SkillDigests) {
 		return fmt.Errorf("skill capability digest changed")
 	}
+	if s.SystemPrompt != current.SystemPrompt {
+		return fmt.Errorf("system prompt changed")
+	}
+	if s.MemoryPrompt != current.MemoryPrompt {
+		return fmt.Errorf("memory prompt changed")
+	}
+	if !equalStrings(s.ImageReferences, current.ImageReferences) {
+		return fmt.Errorf("image references changed")
+	}
 	return nil
 }
 

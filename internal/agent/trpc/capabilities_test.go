@@ -23,6 +23,15 @@ func TestCapabilitySnapshotRoundTripAndCompatibility(t *testing.T) {
 	require.NoError(t, before.CompatibleWith(after))
 	after.SkillDigests["skill1"] = "sha256:b"
 	require.ErrorContains(t, before.CompatibleWith(after), "skill capability digest changed")
+	after = before
+	after.SystemPrompt = "changed"
+	require.ErrorContains(t, before.CompatibleWith(after), "system prompt changed")
+	after = before
+	after.MemoryPrompt = "changed"
+	require.ErrorContains(t, before.CompatibleWith(after), "memory prompt changed")
+	after = before
+	after.ImageReferences = []string{"artifact://other"}
+	require.ErrorContains(t, before.CompatibleWith(after), "image references changed")
 }
 
 func TestCapabilitySnapshotRejectsDeferredToolOutsideRegistry(t *testing.T) {
