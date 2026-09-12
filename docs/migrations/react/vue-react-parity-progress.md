@@ -233,3 +233,8 @@
 - settings 抽屉视觉形态完成并收尾：固定遮罩 + 1080x780 模态 + 分组导航（账户/空间/模型/数据与扩展/系统管理/平台，图标 + settings.* 标签）+ ✕ 关闭回知识库列表；角色门控/popstate/全部面板功能接线保留；styles.css 追加式 wks-* 样式。遗留中间态（重复 import）已修复（aa77f7e）。
 - 门禁：web 194/194、typecheck:web 0 错误、build:web ✓。证据：screenshots/settings-form-{before,after}.png 对比 settings-vue-live.png。
 - settings 页状态：视觉形态 + 功能必修完成后仍维持 review（待全页截图矩阵与多端验收收敛）。
+
+## 2026-09-12 Round 41
+
+- chat UX 收尾切片派发：消息时间戳分隔（messageTimestamp 移植 domain）、助手复制按钮、流式打字指示器、回到底部按钮、会话分组模式持久化、creatChat 空态建议问题 chips + 建会话后首条消息带 agent_id（后端 sessions 不收 agent_id 的缺口保持如实记录）。
+- settings 抽屉完成收尾（aa77f7e/0a946c2）后，主要页面域实施全部闭环；进入 UX 细节与验收收敛阶段。
