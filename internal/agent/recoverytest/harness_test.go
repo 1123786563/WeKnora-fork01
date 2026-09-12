@@ -43,7 +43,11 @@ func runCrashCase(t *testing.T, point string) CrashReport {
 	dbPath := filepath.Join(dir, "recovery.db")
 	barrierPath := filepath.Join(dir, "barrier")
 	reportPath := filepath.Join(dir, "report.json")
-	ns := "recoverytest-" + filepath.Base(dir)
+	// The namespace must differ per case: the temp-dir basename is "001"
+	// for every case, and the PostgreSQL provider derives its schema from
+	// this value - a shared namespace would make later cases resume the
+	// first case's terminal run instead of starting their own.
+	ns := "recoverytest-" + point + "-" + filepath.Base(dir)
 	args := []string{"--recovery-case", point, "--recovery-db", dbPath, "--recovery-barrier", barrierPath, "--recovery-report", reportPath}
 	env := append(os.Environ(), "TRPC_RECOVERY_TEST_NAMESPACE="+ns)
 
@@ -54,9 +58,18 @@ func runCrashCase(t *testing.T, point string) CrashReport {
 		t.Fatalf("start recovery provider: %v", err)
 	}
 	if err := waitForFile(barrierPath, 120*time.Second); err != nil {
-		_ = first.Process.Kill()
-		_ = first.Wait()
-		t.Fatalf("provider did not reach barrier %q: %v", point, err)
+		waitErr := first.Wait()
+		state := "exited"
+		if exitErr, ok := waitErr.(*exec.ExitError); ok {
+			state = "signal/exit: " + exitErr.String()
+		} else if waitErr != nil {
+			state = waitErr.Error()
+		}
+		reportDump := ""
+		if raw, rerr := os.ReadFile(reportPath); rerr == nil {
+			reportDump = " report: " + string(raw)
+		}
+		t.Fatalf("provider did not reach barrier %q: %v (process: %s%s)", point, err, state, reportDump)
 	}
 	if err := first.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
 		t.Fatalf("kill provider at %q: %v", point, err)
