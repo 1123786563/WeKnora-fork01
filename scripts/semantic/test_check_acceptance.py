@@ -36,7 +36,7 @@ def test_threshold_breach_blocks():
     assert "threshold_exceeded:p95_latency_ms_max" in errors
 
 
-def test_version_mismatch_blocks():
+def test_lock_hash_mismatch_blocks():
     policy = {"approved": True, "version": "abc123", "lock_hash": "lh1"}
     evidence = {"security_leaks": 0, "contract": "verified", "integration": "verified",
                 "recovery": "verified", "browser": "verified", "live_model": "verified",
