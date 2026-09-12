@@ -206,3 +206,8 @@
 
 - KB 详情面必修 6 项集成（eb47a9c，主代理门禁复核 + live 复测文档页 i18n/无调试泄漏）。证据：evidence/vue-react-parity/2026-09-12-kbdetail-integration.md。
 - 用户既有未提交修改（apps/mobile、docs/migrations/react/*.csv/md、package-lock）按要求原样保留。
+
+## 2026-09-12 Round 33
+
+- KB 上传流程 parity（多文件/拖拽/上传确认）与聊天侧 AgentSelector + creatChat 建议问题两个后续切片合并派发一个实施子代理（文件域：documents/chat/configuration 只读核查）。
+- embed preview-session 令牌被 /embed/sessions 拒绝的问题已登记后端待决（Round 30）；待后端裁决后补 embed 预览 live 验证。
