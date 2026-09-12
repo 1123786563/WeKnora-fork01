@@ -288,3 +288,8 @@
 
 - KB 列表收藏/最近 scope 完成（domain filterByScope + 测试；App.tsx scope tabs + 逐用户 localStorage 收藏/最近打开追踪）。提交见 git log。
 - 门禁：web 198/198、typecheck 干净。
+
+## 2026-09-12 Round 57
+
+- settings GeneralPreferencesPanel 落地：主题（light/dark/system）/语言/字号，localStorage 持久化（对齐 Vue GeneralSettings.vue 本地偏好语义）。domain local-preferences.ts + 4 测试。web 198/198、shared 296/296 全绿。
+- 四页实施代理的 embed 修复（channels.listAll/im.listAll 容忍 null data、tab 独立取数）+ AgentSelector/suggestions/upload pipeline 已集成（40a5d86）。
