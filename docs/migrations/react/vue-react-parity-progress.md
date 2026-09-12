@@ -263,3 +263,8 @@
 - Wails macOS 打包验证通过：React bundle 构建 + wails build + 自签名 .app（codesign 校验通过）；集成修复 desktop vite alias 缺失（6c8775e）+ 后端 CORS X-Embed-Visitor。
 - 门禁：shared 293/293、web 198/198、typecheck×2、build:web 全绿。
 - 待办：embed CORS 修复后的 live 复测、四页剩余后续项、Wails 运行时交互验收、iOS/Android 原生验收。
+
+## 2026-09-12 Round 52
+
+- settings 抽屉 section 标题本地化：SECTION_TITLE_KEYS 映射（models→模型管理 等），live 验证 h2 不再出现英文键名（live-settings-models-title.png）。提交 784b25a。
+- chat UX retry 代理进行中（session-state/message-list/chat-page 等文件持续更新）。
