@@ -349,7 +349,8 @@
 - **阻断（如实）**：步骤 7 之"真实启动关闭/启用 profile 各一次+日志扫描"——本环境授权范围禁止部署生产/启动真实服务栈；compose/helm 为声明验证（config/渲染），容器级启动留 O03 验收环境执行；不视为已通过。
 - **延后（如实）**：①步骤 5 worker shutdown 停止 claim+租约释放——I01 租约已有，shutdown 钩子归 O02 恢复演练；②步骤 6 PG/SQLite 配置文档——部署文档归 O03 交付物；③server_entry 模块（Dockerfile ENTRYPOINT 引用）——O02 随 worker 入口一并落地。
 - review：规格 PASS（0 BLOCKER，6 MINOR 折叠——含 server_entry 落地闭合探针悬空/步骤 4 过勾更正）；质量首轮 FAIL（4 BLOCKER：①Dockerfile COPY 不存在的 README——镜像不可构建；②ENTRYPOINT uv run 启动重装 dev 依赖需 PyPI；③helm 无 TLS/明文配置——SemanticServiceConfig 校验必崩（评审员实证复现）；④就绪测试测测试本地副本零判别力）→ 修复 a84b8f5：README COPY 删/proto 冗余删/ENTRYPOINT 直用 /service/.venv/bin/python/helm tls.secretName+allowPlaintext 显式门（渲染实证 SEMANTIC_ALLOW_PLAINTEXT 注入）/compute_readiness 导入式纯函数+测试改测**已交付实现**//ready 每探测重算（非启动快照）/SIGTERM 优雅停机/.gitignore 排除 hatch 构建镜像目录。**镜像构建与容器启动仍属 O03 验收范围**（授权禁部署——如阻断记录）。残留 minors 记录 O02/O03（x-api-key 特例/特殊字符 DSN 部分/操作中文误伤策略/时长记录等）。
-- 提交 SHA：bb48423 + 9bb8029（规格折叠）+ a84b8f5（质量修复）。
+- 质量再审 FAIL（B1 新根因：digest 65hex 非法——buildx 解析即拒（compose config 不验 FROM——先前"config OK"非可构建证据）；B3 半修：TLS 路径无 volumes 挂载必崩；B4 半修：/ready 引用已删 ready 变量 NameError（**8/8 绿却 /ready 崩——评审员实证启动**）+SIGTERM 同线程死锁）→ 终修：真 digest 229a2c5b…（docker image inspect 取得，64hex，**buildx --check 通过**）/helm volumes+volumeMounts 同门挂载（渲染 5 处）/Probes 提为可注入工厂+HTTP 级测试（/healthz 200+/ready 503 实测断言）+SIGTERM 经线程关停。**活体验证**：本地实启 server_entry——healthz=200、ready=503（fail-closed 生效）、SIGTERM 1 秒内优雅退出（评审员复现脚本同法）。9/9 测试。
+- 提交 SHA：bb48423 + 9bb8029 + a84b8f5 + 终修段（下记）。
 - V02 结论边界：持久图桥接/授权子图重建/注册规则推导已验证；模型推断 unverified（无凭据，未调用）；向量检索路径未验证。
 - V03 结论边界：semantica 模式检索质量/延迟为受控语料实测；native 对照与模型用量门槛未测（阻断记录见上）；上线门禁 approved=false 待用户确认。
 - 未创建GitHub Issue或外部发布；没有分配虚构Issue编号。

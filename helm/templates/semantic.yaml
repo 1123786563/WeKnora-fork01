@@ -65,4 +65,16 @@ spec:
             periodSeconds: 20
           resources:
             {{- toYaml .Values.semantic.resources | nindent 12 }}
+          {{- if .Values.semantic.tls.secretName }}
+          volumeMounts:
+            - name: semantic-tls
+              mountPath: /tls
+              readOnly: true
+          {{- end }}
+      {{- if .Values.semantic.tls.secretName }}
+      volumes:
+        - name: semantic-tls
+          secret:
+            secretName: {{ .Values.semantic.tls.secretName }}
+      {{- end }}
 {{- end }}

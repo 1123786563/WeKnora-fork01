@@ -32,6 +32,30 @@ def _readiness_inputs() -> dict:
 			"deletion_barriers_synced": False}
 
 
+def _make_probe_handler(current_ready):
+	"""/ready + /healthz handler factory with injectable readiness (the
+	tests boot the handler directly; main() wires the live inputs)."""
+	class Probes(BaseHTTPRequestHandler):
+		def do_GET(self):
+			if self.path == "/ready":
+				ready_now = current_ready()
+				self.send_response(200 if ready_now else 503)
+				self.end_headers()
+				self.wfile.write(b"ready" if ready_now else b"not-ready")
+			elif self.path == "/healthz":
+				self.send_response(200)
+				self.end_headers()
+				self.wfile.write(b"ok")
+			else:
+				self.send_response(404)
+				self.end_headers()
+
+		def log_message(self, *args):
+			return  # probe noise stays out of logs
+
+	return Probes
+
+
 def main() -> None:
 	config = SemanticServiceConfig(
 		address=os.environ.get("SEMANTIC_ADDRESS", "0.0.0.0:50051"),
@@ -51,30 +75,17 @@ def main() -> None:
 		return compute_readiness(inputs["migrations_ready"],
 			inputs["stores_connected"], inputs["deletion_barriers_synced"])
 
-	class Probes(BaseHTTPRequestHandler):
-		def do_GET(self):
-			if self.path == "/ready":
-				code = 200 if ready else 503
-				self.send_response(code)
-				self.end_headers()
-				self.wfile.write(b"ready" if current_ready() else b"not-ready")
-			elif self.path == "/healthz":
-				self.send_response(200)
-				self.end_headers()
-				self.wfile.write(b"ok")
-			else:
-				self.send_response(404)
-				self.end_headers()
-
-		def log_message(self, *args):
-			return  # probe noise stays out of logs
-
 	http_address = os.environ.get("SEMANTIC_HTTP_ADDRESS", "0.0.0.0:50052")
 	host, _, port = http_address.rpartition(":")
-	httpd = ThreadingHTTPServer((host or "0.0.0.0", int(port)), Probes)
+	httpd = ThreadingHTTPServer((host or "0.0.0.0", int(port)), _make_probe_handler(current_ready))
 	print(f"semantic service: grpc on {config.address}, probes on {http_address}", flush=True)
 	import signal
-	signal.signal(signal.SIGTERM, lambda *_: httpd.shutdown())
+	import threading
+	# shutdown() blocks until serve_forever returns - calling it from the
+	# signal handler (same thread) deadlocks. Delegate to a short-lived
+	# thread so the finally clause (gRPC graceful stop) actually runs.
+	signal.signal(signal.SIGTERM,
+		lambda *_: threading.Thread(target=httpd.shutdown, daemon=True).start())
 	try:
 		httpd.serve_forever()
 	finally:
