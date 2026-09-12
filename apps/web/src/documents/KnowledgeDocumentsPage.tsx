@@ -163,7 +163,6 @@ export function KnowledgeDocumentsPage({ client, knowledgeBaseId, onOpenDocument
           {state.status === 'success' && state.page.total > pageSize ? <nav className="wk-pagination" aria-label="Document pages"><Button type="button" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>Previous</Button><span>Page {page} · {state.page.total} documents</span><Button type="button" disabled={page * pageSize >= state.page.total} onClick={() => setPage((value) => value + 1)}>Next</Button></nav> : null}
         </section>
       </div>
-      <p className="wk-debug">tags loaded: {tags.map((tag) => tag.name).join(', ') || 'none'} · selection persists while paging</p>
     </Card>
   </main>;
 }
