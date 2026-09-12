@@ -16,12 +16,14 @@ This slice covers the React MCP settings list/card copy and the enabled-state la
 - Missing OAuth/action keys were added once in `packages/i18n/src/mcp.ts` for all current client locales and merged by `packages/i18n/src/index.ts`; no page-local translation table was introduced.
 - `validateMcpDraft` now rejects missing names, missing/invalid HTTP(S) URLs, unsupported stdio editing, and missing step-2 usage instructions before a mutation. The validator is pure and has direct regression coverage.
 - The existing editor is now mounted in the Vue-aligned `wks-overlay`/`wks-modal` container with a bounded 720px drawer, sticky heading, scrollable body, and a mobile viewport rule. This is a structural/layout repair; pixel comparison is still outstanding.
+- The remaining visible editor labels and placeholders in this slice use the existing Vue-derived keys for import, basic/connection/auth/advanced sections, custom headers, OAuth scopes, usage instructions, navigation, and save/cancel actions. `packages/i18n/test/mcpMessages.test.ts` verifies an identical key set across all supported locales.
 
 ## Evidence
 
 | Layer | Result | Command / artifact |
 |---|---|---|
 | Focused component/static markup and validation | PASS, 5/5 | `pnpm --filter @weknora/web exec tsx --test src/settings/McpSettingsPanel.test.tsx` |
+| MCP locale key set | PASS, 1/1 | `pnpm exec tsx --test packages/i18n/test/mcpMessages.test.ts` |
 | Shared locale contract | PASS through Web consumer | same test asserts zh-CN and en-US action copy |
 | Diff hygiene | PASS | `git diff --check` |
 | Full Web typecheck/build | BLOCKED outside this slice | existing dirty `apps/web/src/auth/onboarding.ts` imports a missing `@weknora/domain/auth/onboarding`; `WorkspaceOnboardingPage.tsx` also has an implicit-any error. The MCP test fixture error found during this slice was fixed; the remaining output contains only the onboarding errors. |

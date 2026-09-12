@@ -8,6 +8,8 @@ export const mcpMessages: Record<Locale, Record<string, string>> = {
     'mcpServiceDialog.oauthReauthorize': '重新授权',
     'mcpServiceDialog.oauthRevoke': '撤销授权',
     'mcpServiceDialog.testConnection': '测试连接',
+    'mcpServiceDialog.oauthScopes': 'Scopes（可选，空格分隔）',
+    'mcpMetadata.saveNext': '保存并下一步',
     'mcpSettings.toasts.updateFailed': '更新 MCP 服务失败',
   },
   'en-US': {
@@ -16,6 +18,8 @@ export const mcpMessages: Record<Locale, Record<string, string>> = {
     'mcpServiceDialog.oauthReauthorize': 'Re-authorize',
     'mcpServiceDialog.oauthRevoke': 'Revoke',
     'mcpServiceDialog.testConnection': 'Test connection',
+    'mcpServiceDialog.oauthScopes': 'Scopes (optional, space-separated)',
+    'mcpMetadata.saveNext': 'Save and continue',
     'mcpSettings.toasts.updateFailed': 'Unable to update MCP service',
   },
   'ja-JP': {
@@ -24,6 +28,8 @@ export const mcpMessages: Record<Locale, Record<string, string>> = {
     'mcpServiceDialog.oauthReauthorize': '再認証',
     'mcpServiceDialog.oauthRevoke': '認証を取り消す',
     'mcpServiceDialog.testConnection': '接続をテスト',
+    'mcpServiceDialog.oauthScopes': 'Scopes（任意、スペース区切り）',
+    'mcpMetadata.saveNext': '保存して次へ',
     'mcpSettings.toasts.updateFailed': 'MCP サービスの更新に失敗しました',
   },
   'ko-KR': {
@@ -32,6 +38,8 @@ export const mcpMessages: Record<Locale, Record<string, string>> = {
     'mcpServiceDialog.oauthReauthorize': '재인증',
     'mcpServiceDialog.oauthRevoke': '인증 취소',
     'mcpServiceDialog.testConnection': '연결 테스트',
+    'mcpServiceDialog.oauthScopes': 'Scopes (선택 사항, 공백으로 구분)',
+    'mcpMetadata.saveNext': '저장 후 다음',
     'mcpSettings.toasts.updateFailed': 'MCP 서비스 업데이트 실패',
   },
   'ru-RU': {
@@ -40,6 +48,8 @@ export const mcpMessages: Record<Locale, Record<string, string>> = {
     'mcpServiceDialog.oauthReauthorize': 'Авторизовать снова',
     'mcpServiceDialog.oauthRevoke': 'Отозвать',
     'mcpServiceDialog.testConnection': 'Проверить соединение',
+    'mcpServiceDialog.oauthScopes': 'Области (необязательно, через пробел)',
+    'mcpMetadata.saveNext': 'Сохранить и продолжить',
     'mcpSettings.toasts.updateFailed': 'Не удалось обновить MCP-сервис',
   },
 };
