@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/types"
@@ -15,7 +16,7 @@ import (
 func TestAgentQARejectsCustomAgentOnBuiltinSession(t *testing.T) {
 	// The builtin-agent check reads the builtin registry; load it the way
 	// the server does so builtin ids classify correctly in the test too.
-	if err := types.LoadBuiltinAgentsConfig("../../config"); err != nil {
+	if err := types.LoadBuiltinAgentsConfig(filepath.Join("..", "..", "..", "config")); err != nil {
 		t.Skipf("builtin agent config unavailable: %v", err)
 	}
 	svc := &sessionService{}

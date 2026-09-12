@@ -75,10 +75,12 @@ func TestSkillPythonVerifier(t *testing.T) {
 	}, {
 		name: "a requirement the venv does not carry",
 		files: map[string]string{
-			"requirements.txt": "# pinned\npandas==3.0.1\n-r other.txt\n",
+			// Use a package name reserved for this test rather than a popular
+			// distribution that may be installed in a developer or CI image.
+			"requirements.txt": "# pinned\nweknora_test_absent_dist==3.0.1\n-r other.txt\n",
 			"scripts/run.py":   "x = 1\n",
 		},
-		wantProblem: "requirements.txt declares pandas but it is not installed",
+		wantProblem: "requirements.txt declares weknora_test_absent_dist but it is not installed",
 		wantExit:    2,
 	}, {
 		// pip skips a line whose marker is false here, so refusing the install
@@ -148,6 +150,9 @@ func TestSkillPythonVerifier(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			if strings.Contains(tc.wantProblem, "pyproject.toml") && !pythonCanParsePyproject(t) {
+				t.Skip("python3 cannot parse pyproject.toml without tomllib")
+			}
 			root := writeSkillTree(t, tc.files)
 			entry := pythonFiles(tc.files)
 			if len(tc.optional) > 0 {
@@ -172,6 +177,15 @@ func TestSkillPythonVerifier(t *testing.T) {
 			}
 		})
 	}
+}
+
+func pythonCanParsePyproject(t *testing.T) bool {
+	t.Helper()
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		return false
+	}
+	return exec.Command(python, "-c", "import tomllib").Run() == nil
 }
 
 func verifierExitCode(t *testing.T, err error) int {
