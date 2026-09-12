@@ -9,7 +9,7 @@
 | 任务 | 状态 | 备注 |
 | --- | --- | --- |
 | T01 固定上游契约与失败关闭的证据门禁 | passed | commit e12a73ce（集成分支 HEAD）；规格审查 PASS + 质量审查 PASS（非阻塞 findings 记录在 SDD ledger）；oauth 真实 Provider 完成子项 blocked-env（R10，转 T18 关闭） |
-| T02 只持受限 Token 的 HTTP 执行客户端 | pending | 消费 T01 fixtures 与 errorCode/meta 契约；NewGrant 拒空 grant（T01 已证 upstream 空=放行） |
+| T02 只持受限 Token 的 HTTP 执行客户端 | passed | commit b37da57b（含 F-01 修复，初版 144ecb8b）；spec 审查 F-01 FAIL→修复→复审 PASS；质量审查 PASS（观察级 findings 记录在 SDD ledger）；go test -race 17/17、gofmt/vet 过；errorCode/meta.executionId/meta.auditPersisted 映射已钉死 |
 | T03 持久绑定、版本与租户作用域仓储 | pending | |
 | T04 授权与原始凭据解耦 | pending | 可与 T05 并行（写集不相交，预检 B 已核） |
 | T05 隔离管理凭据的控制 worker | pending | |
