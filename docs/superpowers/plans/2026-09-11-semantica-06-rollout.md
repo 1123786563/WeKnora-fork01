@@ -35,7 +35,7 @@
 
 **接口：** config包含SEMANTIC_ENABLED、内部地址/认证引用、数据库/对象前缀、模型入口、限制、租约、GC保留与重放窗口；readiness必须依赖迁移完成、存储可用、删除屏障同步；metrics仅低基数标签，tenant/KB放受控日志trace不作指标标签。
 
-- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 def test_restoring_service_is_not_ready(health_state):
@@ -45,11 +45,11 @@ def test_restoring_service_is_not_ready(health_state):
     assert health_state.ready() is False
 ```
 
-- [ ] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_readiness.py semantic/tests/test_telemetry.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [x] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_readiness.py semantic/tests/test_telemetry.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 固定基础镜像digest和V01锁，镜像分API/worker入口；生产profile默认关闭，内部RPC不publish公网或宿主业务端口，secret只引用不写入镜像**
+- [x] **3. 固定基础镜像digest和V01锁，镜像分API/worker入口；生产profile默认关闭，内部RPC不publish公网或宿主业务端口，secret只引用不写入镜像**
 
-- [ ] **4. 提供隔离PG/Neo4j/向量/对象存储测试环境，固定测试端口或容器网络名；健康探针区分存活和可用，恢复期间拒绝query**
+- [x] **4. 提供隔离PG/Neo4j/向量/对象存储测试环境，固定测试端口或容器网络名；健康探针区分存活和可用，恢复期间拒绝query**
 
 - [ ] **5. 记录operation/generation/trace及耗时、错误、截断、队列年龄、用量；默认不记录chunk、prompt、凭据；worker shutdown停止claim并释放或等待有效租约**
 
@@ -67,7 +67,7 @@ def ready(self):
 
 - [ ] **7. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_readiness.py semantic/tests/test_telemetry.py -q`，预期退出码 0；另完成：docker compose -f docker/compose.semantic.test.yml config校验；`helm template semantic ./helm`渲染；真实启动关闭profile与启用profile各验证一次；日志扫描无测试凭据/正文。
 
-- [ ] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 O01 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): o01 独立部署、探针与可观测性`。
+- [x] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 O01 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): o01 独立部署、探针与可观测性`。
 
 ## O02：故障注入、清理与恢复演练
 

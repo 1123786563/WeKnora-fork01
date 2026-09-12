@@ -1,6 +1,6 @@
 # Semantica 实施台账
 
-状态：V01–C03、I01–I05、A01–A03、Q01–Q04、W01–W03 verified；其余 4 个任务（O01–O03 + V03 收尾）未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
+状态：V01–C03、I01–I05、A01–A03、Q01–Q04、W01–W03 verified；O01 implemented（真实部署验证阻断——如实记录）；其余 3 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
 
 状态值 pending / in_progress / blocked / implemented / verified。每项验证记录必须包含commit SHA、精确命令、退出码、环境、产物路径、失败/限制；无真实证据不标记verified。执行前记录实际基线与已有脏文件。
 
@@ -27,7 +27,7 @@
 | W01 | 用户API与共享客户端契约 | Q04,I05 | verified | TS 契约（uint64 十进制字符串/浮点拒绝/未知枚举→unknown）+客户端（AbortSignal/错误映射/无泄露）+Go handler（fail-closed 503/mode 校验/body 不越 path scope）+路由定义；双评审 PASS；挂载/facade 桥/retry 归 W02；见运行记录 2026-09-11 W01 |
 | W02 | React索引状态与推理证据流程 | W01 | verified | domain 纯函数+视图模型+面板挂载+重试提交；双评审 PASS（规格两轮/质量三轮——含台账误记自我更正）；浏览器 E2E 阻断于真实服务栈（如实待 O03）；见运行记录 2026-09-11 W02 |
 | W03 | 后端影子构建、切换与回滚 | W01,I04,Q04 | verified | desired/active 状态机（SetDesired 仅意图/Promote CAS 恰一胜/Rollback 追赶强制+TOCTOU 护栏+三哨兵）+检查点迁移+运行手册；双评审 PASS（含 PG 实证 CAS）；前置自动化/编排/挂载如实延后；见运行记录 2026-09-11 W03 |
-| O01 | 独立部署、探针与可观测性 | C02,I03,A03 | pending | 尚未执行 |
+| O01 | 独立部署、探针与可观测性 | C02,I03,A03 | implemented | 就绪门槛（迁移+存储+删除屏障同步三合一）+脱敏遥测（凭据/prompt/chunk 全灭）+Dockerfile 锁定+隔离 compose+helm 双 profile 实渲染；真实启动验证阻断（授权禁部署）；见运行记录 2026-09-11 O01 |
 | O02 | 故障注入、清理与恢复演练 | O01,I04,W03,Q04 | pending | 尚未执行 |
 | O03 | 质量回归、CI门禁与最终交付 | O02,W02,V03 | pending | 尚未执行 |
 
@@ -338,6 +338,18 @@
 - review：规格 PASS（0 BLOCKER，4 MINOR 全折叠：计划勾选/台账更正/管理 API 延后显式/手册措辞如实）；质量 PASS（0 BLOCKER，8 MINOR 全折叠：哨兵三分（ErrRollbackRejected/ErrNotActiveSemantic）/未提升即回滚拒绝/fencing 注释/墓碑计数注释+测试/TOCTOU CAS 后复检护栏/last_error O01 注记/read-lease 与高水位措辞如实/失败表三哨兵/三新测试（未提升回滚/非法后端/墓碑追赶）——**-race 8 项全绿**）。**双评审 PASS**。
 - 提交 SHA：06c5316 + 7170015（规格 MINOR 折叠）+ 质量折叠段。
 - V01精确版本已冻结（semantica 0.6.8）；真实模型证据须在后续任务补齐，不是已经通过的前提。
+
+### 2026-09-11 O01 独立部署、探针与可观测性（implemented——真实启动验证阻断）
+
+- 工作区：.worktrees/semantica（分支 codex/semantica）；基线 SHA：1e91cd5。
+- 修改文件：docker/{Dockerfile.semantic,compose.semantic.test.yml}、helm/{templates/semantic.yaml,values.yaml(追加 semantic 块——预存文件)}、semantic/semantic_service/telemetry.py、semantic/tests/{test_readiness.py,test_telemetry.py}、本台账、06 计划勾选（步骤 1/2/3/4/8——5/6/7 部分见延后）。
+- RED：`uv run --project semantic python -m pytest semantic/tests/test_readiness.py semantic/tests/test_telemetry.py -q`（telemetry 模块缺失）。
+- GREEN：同命令 **8 passed**（就绪 4：**计划核心断言逐字**（恢复期屏障未同步→not ready）/全同步 ready/存活≠就绪/存储断连不 ready；脱敏 4：凭据 URI/Bearer+sk- 键/prompt CJK/低基数标签（tenant/kb 恒非指标标签））。
+- 交付物验证：`docker compose -f docker/compose.semantic.test.yml config` OK（端口 127.0.0.1 绑定 15432/17687/15051——不 publish 公网；健康探针区分 pg_isready/wget 存活 vs /ready 就绪）；`helm template` 双 profile 实渲染（禁用=0 semantic 资源；启用=Deployment+readiness(/ready)+liveness(/healthz)+secret 引用不落镜像）；Dockerfile digest 锁定 python:3.12.13-slim+uv==0.5.24+V01 锁。
+- **阻断（如实）**：步骤 7 之"真实启动关闭/启用 profile 各一次+日志扫描"——本环境授权范围禁止部署生产/启动真实服务栈；compose/helm 为声明验证（config/渲染），容器级启动留 O03 验收环境执行；不视为已通过。
+- **延后（如实）**：①步骤 5 worker shutdown 停止 claim+租约释放——I01 租约已有，shutdown 钩子归 O02 恢复演练；②步骤 6 PG/SQLite 配置文档——部署文档归 O03 交付物；③server_entry 模块（Dockerfile ENTRYPOINT 引用）——O02 随 worker 入口一并落地。
+- review：双评审下轮补做。
+- 提交 SHA：（同批提交后补记）
 - V02 结论边界：持久图桥接/授权子图重建/注册规则推导已验证；模型推断 unverified（无凭据，未调用）；向量检索路径未验证。
 - V03 结论边界：semantica 模式检索质量/延迟为受控语料实测；native 对照与模型用量门槛未测（阻断记录见上）；上线门禁 approved=false 待用户确认。
 - 未创建GitHub Issue或外部发布；没有分配虚构Issue编号。

@@ -1,0 +1,57 @@
+{{- if .Values.semantic.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-semantic
+  labels:
+    app: {{ .Release.Name }}-semantic
+spec:
+  replicas: {{ .Values.semantic.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-semantic
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-semantic
+    spec:
+      containers:
+        - name: semantic
+          image: {{ .Values.semantic.image }}
+          ports:
+            - containerPort: 50051
+              name: grpc
+          env:
+            - name: SEMANTIC_ADDRESS
+              value: "0.0.0.0:50051"
+            - name: SEMANTIC_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  # Secrets are REFERENCED, never written into the image.
+                  name: {{ .Values.semantic.secretName }}
+                  key: internal-token
+            - name: SEMANTIC_QUERY_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.semantic.secretName }}
+                  key: query-dsn
+          readinessProbe:
+            # Ready = migrations done + stores reachable + deletion
+            # barriers synced. Restoring service stays NOT ready and
+            # refuses queries (O01 core invariant).
+            httpGet:
+              path: /ready
+              port: 50052
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            # Liveness != readiness: process-up only restarts; it never
+            # gates query traffic.
+            httpGet:
+              path: /healthz
+              port: 50052
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.semantic.resources | nindent 12 }}
+{{- end }}
