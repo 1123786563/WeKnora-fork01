@@ -83,7 +83,7 @@
 .feature-tags { display: flex; gap: 12px; margin-bottom: 40px; flex-wrap: wrap; }
 .tag { display: inline-block; padding: 8px 20px; background: rgba(255,255,255,0.2); border-radius: 20px; color: var(--auth-text-anti); font-size: 14px; font-weight: 500; }
 .carousel-container { width: 100%; margin-top: 48px; }
-.screenshot-swiper { width: 100%; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.3); padding-bottom: 40px; position: relative; background: #fff; }
+.screenshot-swiper { width: 100%; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.3); padding-bottom: 40px; position: relative; }
 .slide-content { display: none; align-items: center; justify-content: center; background: #fff; }
 .slide-content.active { display: flex; opacity: 1; }
 .slide-image { width: 100%; height: 100%; display: block; object-fit: contain; }
