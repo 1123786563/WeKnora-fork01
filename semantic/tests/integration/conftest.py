@@ -8,19 +8,16 @@ user APIs.
 
 from __future__ import annotations
 
-import json
-import uuid
+
+
 
 import psycopg
 import pytest
 
 from semantic_service.contracts import ScopeKey
 from semantic_service.indexing.deletion import DeletionService
-from semantic_service.indexing.manifest import ArtifactRef, DocumentEntry, IndexManifest
 from semantic_service.pg_access import PgAccessGraph
-from semantic_service.query.search import SearchService
 from semantic_service.query.subgraph import QueryLimits, build_authorized_subgraph
-from semantic_service.query.adapter import FrozenGraphRAGAdapter
 
 SCOPE = ScopeKey(tenant_id=1, kb_id="kb-o02")
 
@@ -73,10 +70,11 @@ class RecoveryHarness:
 
     def replay_current_denials(self) -> None:
         """Replay the CURRENT deny set: for every tombstone, re-apply the
-        deletion-barrier effects (assertion rows at/below the tombstone
-        revision become invisible - the I04 fixpoint semantics), then
-        mark readiness open. Re-derives visibility from the AUTHORITATIVE
-        tombstone record rather than trusting restored assertion flags."""
+        DIRECT support-row revocation (assertion rows at/below the
+        tombstone revision become invisible); derived-premise visibility
+        is re-checked at QUERY time by the access walker. Then mark
+        readiness open. Re-derives from the AUTHORITATIVE tombstone
+        record rather than trusting restored assertion flags."""
         with psycopg.connect(self._dsn) as conn:
             tombstones = conn.execute(
                 "SELECT document_id, revision FROM semantic.tombstones"
