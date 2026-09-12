@@ -57,3 +57,9 @@
 - KB list 子代理完成全部 8 项必修 + pin/duplicate/?scope=；主代理独立复核（全量测试/边界/端点真实性抽查）通过后集成提交 39a9180。证据：evidence/vue-react-parity/2026-09-12-kblist-integration.md。
 - 当前基线：shared 236/236、web 131/131、typecheck x2 干净、build:web 成功。
 - 下一步：KB 折叠分组节头、带后端的 KB 页截图对比、auth locales.ts 迁入 packages/i18n、继续矩阵后续页面（settings/chat/agents/organizations/integrations/embed）。
+
+## 2026-09-12 Round 7
+
+- auth 73 键 ×5 locale 文案迁入 packages/i18n（authMessages），LoginPage 切换为共享 formatMessage；新增 3 例 i18n 回归测试。回归全绿（i18n 7/7、web 131/131、typecheck、浏览器交互复测）。提交见 git log。证据：evidence/vue-react-parity/2026-09-12-auth-i18n-shared.md。
+- 并行：settings 与 chat 两页逐项差异分析子代理进行中。
+- 待办：JoinPage/WorkspaceOnboardingPage MESSAGES 迁移、settings/chat 修复实施、KB 折叠节头、带后端截图对比。
