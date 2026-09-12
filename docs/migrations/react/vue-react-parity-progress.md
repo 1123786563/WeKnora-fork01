@@ -335,3 +335,7 @@
 - 分类型工具渲染器集成复核确认（a027bc3 已提交，门禁全绿）；矩阵 chat 行已是最新状态。
 - 全部实施代理空闲，工作树干净（仅余用户既有修改）。
 - 主要实施闭环已完成；进入验收收敛阶段。
+
+## 2026-09-12 Round 68
+
+- settings 面板 i18n 接线实施子代理派发（5 个面板：ConfigSettings/Resource/Ollama/Cloud/PersonalMemory → formatMessage + settings.* 键）。
