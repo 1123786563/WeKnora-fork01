@@ -16,6 +16,7 @@ import { externalCitationTarget } from './citation.ts';
 import { findResumeTargetMessage } from './resume.ts';
 import { buildSteerAction, isSteerConflict } from './steer-submit.ts';
 import { feedWithLastEventId, resumeStreamOptions, type LastEventIdHolder } from './stream-recovery.ts';
+import { prepareSendRun } from './send-run.ts';
 import './chat.css';
 
 interface ChatRoutePageProps {
@@ -554,20 +555,29 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   async function send(submission: ChatSubmission): Promise<void> {
     if (sendInFlightRef.current) throw new Error('A chat request is already running.');
     sendInFlightRef.current = true;
-    const controller = new AbortController();
-    streamAbortRef.current = controller;
+    // The stream controller is created inside prepareSendRun AFTER the inline
+    // session-create/selectSession teardown: selectSession aborts the
+    // registered controller, so a pre-installed one would abort this send
+    // before its HTTP request is ever issued.
+    let runController: AbortController | null = null;
     try {
-      let sessionId = selectedSessionId;
-      if (!sessionId) {
-        const created = await client.sessions.create({ title: submission.content.slice(0, 80) });
-        setSessions((current) => [created, ...current.filter((item) => item.id !== created.id)]);
-        sessionId = created.id;
-        selectSession(sessionId);
-      }
+      const run = await prepareSendRun({
+        selectedSessionId,
+        content: submission.content,
+        createSession: async (title) => {
+          const created = await client.sessions.create({ title });
+          setSessions((current) => [created, ...current.filter((item) => item.id !== created.id)]);
+          return created;
+        },
+        onSessionSelected: (created) => selectSession(created.id),
+      });
+      runController = run.controller;
+      streamAbortRef.current = runController;
+      const sessionId = run.sessionId;
       const runId = ++chatRunIdRef.current;
       const feed = createStreamFeed(sessionId, runId, `stream-${sessionId}`);
       setStreamState(initialChatStreamState());
-      const streamOptions = { ...buildWebChatStreamOptions(sessionId, submission.content, selectedAgentId, knowledgeBaseId), signal: controller.signal };
+      const streamOptions = { ...buildWebChatStreamOptions(sessionId, submission.content, selectedAgentId, knowledgeBaseId), signal: runController.signal };
       // Track the newest SSE event id so a mid-flight transport failure can
       // resume exactly once with the Last-Event-ID header before the error
       // surfaces (Vue parity: EventSource-style automatic reconnection).
@@ -575,7 +585,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       try {
         await client.chat.stream(streamOptions, feedWithLastEventId(feed, lastEventId));
       } catch (cause) {
-        if (controller.signal.aborted) return;
+        if (runController.signal.aborted) return;
         const retry = resumeStreamOptions(streamOptions, lastEventId.id);
         if (!retry) throw cause;
         await client.chat.stream(retry, feedWithLastEventId(feed, lastEventId));
@@ -595,11 +605,11 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     } catch (cause) {
       // A stop request or session switch aborts the stream on purpose; that is
       // not a failed submission.
-      if (controller.signal.aborted) return;
+      if (runController?.signal.aborted) return;
       throw cause;
     } finally {
       sendInFlightRef.current = false;
-      if (streamAbortRef.current === controller) streamAbortRef.current = null;
+      if (runController && streamAbortRef.current === runController) streamAbortRef.current = null;
     }
   }
 
