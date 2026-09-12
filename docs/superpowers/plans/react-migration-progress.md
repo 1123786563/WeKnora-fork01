@@ -1295,6 +1295,9 @@
 - MCP test-result rendering now includes Vue-equivalent success/failure details,
   expandable tool schemas, resource URI/MIME rows, and success empty state;
   focused tests and the full Web suite pass (276/276).
+- MCP metadata tools now have Vue-equivalent search, 20-item pagination,
+  description/parameters/schema detail tabs, policy controls, and fail-closed
+  retry state; Web typecheck and the full suite pass (278/278).
 
 ### R031 Sandbox settings and review repairs (2026-09-12)
 
