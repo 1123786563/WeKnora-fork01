@@ -2,7 +2,7 @@
 
 - 设计：[已批准规格](../specs/2026-09-10-dual-agent-trpc-recovery-design.md)
 - 计划：[实施计划](2026-09-10-dual-agent-trpc-recovery.md)
-- 当前阶段：生产链路已接通；本次 2026-09-12 rerun 在独立 worktree 重新验证 SQLite 9/9、PostgreSQL 8/8 SIGKILL 矩阵、双方言 worker contention、Run 存储和前端工程检查。功能保持默认关闭，浏览器人工级验证未在本次 worktree 重跑。
+- 当前阶段：生产链路已接通；本次 2026-09-12 rerun 在独立 worktree 重新验证 SQLite 9/9、PostgreSQL 8/8 SIGKILL 矩阵、双方言 worker contention、Run 存储和前端工程检查。功能保持默认关闭；本轮浏览器已完成本地注册、登录和引擎选择器核验，但 tRPC 智能推理因租户未配置对话模型/重排模型而被产品 readiness guard 阻塞，未伪报 live run 通过。
 - 范围：两引擎分会话，复用现有能力，仅 tRPC 持久化恢复，未知结果等待用户。
 - 规划基线：`e91f8af`。重新执行工作树：`codex/trpc-recovery-r2`（自 `d370254` 起步）。
 
@@ -22,8 +22,8 @@
 | 10 | 能力完整复用 | implemented（缺口见下） | ded7719+850e8a0 + 6599817 | 生产执行器经 `prepareAgentCapabilities` 复用全部装配（工具注册/MCP/Skills/提示词/记忆召回/VLM）；能力快照漂移拒绝生效。剩余：恢复期延迟 MCP 集合比对、多模态端到端 |
 | 11 | 事件、投影、steering | verified | rerun recovery/service/handler suites | 事件生产调用点、finalize、RunInput inject/after、保留水位和回放重新验证；外部交付 outbox 按验收文档的数据库内结构性方案处理 |
 | 12 | HTTP 与生命周期 | verified | 3c789fc..2c12fc3（上轮，复审 PASS） | handler/router/lifecycle 测试 PASS；跨租户 404、引擎不可变、取消/删除围栏经复审确认；`ValidateEngineUpdate` 缺直接单测（小缺口） |
-| 13 | 客户端恢复交互 | verified (工程) | rerun frontend | 前端测试 819/819、vue-tsc、Vite build PASS；引擎选择/恢复 reducer 与 SSE 回放代码已存在。本次未重跑 live browser 行，不能据此宣称人工验收完成 |
-| 14 | 崩溃矩阵与启用门禁 | verified (provider) | rerun provider | 真实 provider 新进程重开：SQLite 9/9、PostgreSQL 8/8；双方言 worker contention PASS。发布门禁仍保持关闭，因本次浏览器人工级证据未重跑 |
+| 13 | 客户端恢复交互 | verified (工程) / blocked (live) | rerun frontend + browser attempt | 前端测试 819/819、vue-tsc、Vite build PASS；本轮浏览器完成注册/登录并确认 builtin/tRPC 选择器，但 tRPC 选项被明确 readiness guard 拒绝（缺对话模型/重排模型），所以 live run/断线回放未执行 |
+| 14 | 崩溃矩阵与启用门禁 | verified (provider) / blocked (release) | rerun provider + browser attempt | 真实 provider 新进程重开：SQLite 9/9、PostgreSQL 8/8；双方言 worker contention PASS。发布门禁仍关闭，缺 fresh live tRPC browser/server SIGKILL evidence |
 
 ## 2026-09-12 rerun evidence
 
@@ -31,6 +31,7 @@
 - recoverytest SQLite：PASS，SIGKILL matrix 9/9；单独 `TestCrashAfterToolResult` 在无 provider 时显式 SKIPPED。
 - recoverytest PostgreSQL：PASS，SIGKILL matrix 8/8 + contention；repository PostgreSQL Run suite 6/6 PASS。
 - 前端：`pnpm run test && pnpm run type-check && pnpm run build-only` PASS，819/819。
+- 浏览器新鲜证据：本地前端 `5173` + 后端 `8080` 可登录；智能体选择器列出“智能推理”，选择后显示“未就绪，需要配置对话模型和重排模型”。因此 live tRPC run、断线和真实服务器 SIGKILL 行为保持 BLOCKED，不以 builtin 登录成功替代。
 
 ## 2026-09-12 重新执行记录（codex/trpc-recovery-r2，基线 d370254）
 
