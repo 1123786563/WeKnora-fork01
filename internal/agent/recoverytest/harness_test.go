@@ -53,7 +53,7 @@ func runCrashCase(t *testing.T, point string) CrashReport {
 	if err := first.Start(); err != nil {
 		t.Fatalf("start recovery provider: %v", err)
 	}
-	if err := waitForFile(barrierPath, 30*time.Second); err != nil {
+	if err := waitForFile(barrierPath, 120*time.Second); err != nil {
 		_ = first.Process.Kill()
 		_ = first.Wait()
 		t.Fatalf("provider did not reach barrier %q: %v", point, err)

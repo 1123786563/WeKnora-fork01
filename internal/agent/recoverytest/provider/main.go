@@ -17,8 +17,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
@@ -29,9 +31,11 @@ import (
 	"github.com/Tencent/WeKnora/internal/models/chat"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/golang-migrate/migrate/v4"
+	pgmigrate "github.com/golang-migrate/migrate/v4/database/postgres"
 	sqlite3migrate "github.com/golang-migrate/migrate/v4/database/sqlite3"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/google/uuid"
+	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -160,6 +164,104 @@ func main() {
 }
 
 func openMigratedDB(path string) (*gorm.DB, error) {
+	if dsn := os.Getenv("TRPC_RECOVERY_PG_DSN"); dsn != "" && os.Getenv("TRPC_RECOVERY_USE_PG") == "1" {
+		return openPostgresDB(dsn)
+	}
+	return openSQLiteDB(path)
+}
+
+// openPostgresDB opens an isolated schema in the configured PostgreSQL
+// instance and applies the versioned migrations, so the SIGKILL matrix can
+// run against the same durable semantics on the second supported dialect.
+func openPostgresDB(dsn string) (*gorm.DB, error) {
+	// The matrix never touches embeddings; skip the conditional migration so
+	// the provider runs against stock PostgreSQL without vector extensions.
+	if parsed, perr := url.Parse(dsn); perr == nil {
+		query := parsed.Query()
+		if query.Get("options") == "" {
+			query.Set("options", "-c app.skip_embedding=true")
+			parsed.RawQuery = query.Encode()
+			dsn = parsed.String()
+		}
+	}
+	admin, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	if err != nil {
+		return nil, err
+	}
+	// The schema is derived from the per-case namespace so the resume
+	// process reuses the crashed process's durable state instead of
+	// creating a fresh schema; a random name would lose the admitted run.
+	schema := "matrix_" + sanitizeSchemaName(os.Getenv("TRPC_RECOVERY_TEST_NAMESPACE"))
+	if schema == "matrix_" {
+		schema = "matrix_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	}
+	var schemaExists bool
+	if err := admin.Raw(
+		"SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = ?)", schema,
+	).Scan(&schemaExists).Error; err != nil {
+		return nil, err
+	}
+	if !schemaExists {
+		if err := admin.Exec("CREATE SCHEMA " + schema).Error; err != nil {
+			return nil, err
+		}
+		// Extensions are database-wide; if a previous process installed them
+		// into its own case schema they are invisible to later schemas, so
+		// move them to public (no-op when already there) before ensuring.
+		for _, extension := range []string{"uuid-ossp", "pg_trgm"} {
+			_ = admin.Exec(`ALTER EXTENSION "` + extension + `" SET SCHEMA public`).Error
+			stmt := `CREATE EXTENSION IF NOT EXISTS "` + extension + `" WITH SCHEMA public`
+			if err := admin.Exec(stmt).Error; err != nil {
+				return nil, err
+			}
+		}
+	}
+	// Migrations must run on a connection whose search_path is the case
+	// schema; the admin connection resolves unqualified names against
+	// public, which leaks objects across runs and breaks idempotent DDL.
+	schemaDSN := dsn + "&search_path=" + schema + ",public"
+	schemaConn, err := gorm.Open(postgres.Open(schemaDSN), &gorm.Config{})
+	if err != nil {
+		return nil, err
+	}
+	conn, err := schemaConn.DB()
+	if err != nil {
+		return nil, err
+	}
+	driver, err := pgmigrate.WithInstance(conn, &pgmigrate.Config{SchemaName: schema})
+	if err != nil {
+		return nil, err
+	}
+	migrator, err := migrate.NewWithDatabaseInstance(
+		"file://"+filepath.Join(repoRoot(), "migrations/versioned"), "postgres", driver)
+	if err != nil {
+		return nil, err
+	}
+	if err := migrator.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return nil, err
+	}
+	_, _ = migrator.Close()
+	_ = schemaConn
+	db, err := gorm.Open(postgres.Open(dsn+"&search_path="+schema+",public"), &gorm.Config{})
+	if err != nil {
+		return nil, err
+	}
+	seeds := []string{
+		"INSERT INTO tenants (id, name, business) VALUES (1, 'matrix', 'recoverytest') ON CONFLICT DO NOTHING",
+		"INSERT INTO users (id, username, email, password_hash, tenant_id)" +
+			" VALUES ('matrix-user','matrix','matrix@example.test','x',1) ON CONFLICT DO NOTHING",
+		"INSERT INTO sessions (id, tenant_id, title, user_id, engine_type)" +
+			" VALUES ('matrix-session',1,'matrix','matrix-user','trpc') ON CONFLICT DO NOTHING",
+	}
+	for _, seed := range seeds {
+		if err := db.Exec(seed).Error; err != nil {
+			return nil, err
+		}
+	}
+	return db, nil
+}
+
+func openSQLiteDB(path string) (*gorm.DB, error) {
 	dsn := "file:" + path + "?_foreign_keys=on&_busy_timeout=5000"
 	sqlDB, err := sql.Open("sqlite3", dsn)
 	if err != nil {
@@ -197,6 +299,21 @@ func openMigratedDB(path string) (*gorm.DB, error) {
 		return nil, err
 	}
 	return db, nil
+}
+
+// sanitizeSchemaName keeps the namespace-derived schema name a valid
+// PostgreSQL identifier.
+func sanitizeSchemaName(namespace string) string {
+	var b strings.Builder
+	for _, r := range namespace {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r == '-', r == '_', r == '.':
+			b.WriteRune('_')
+		}
+	}
+	return b.String()
 }
 
 func repoRoot() string {
