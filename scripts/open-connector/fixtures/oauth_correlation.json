@@ -1,0 +1,156 @@
+{
+  "case": "oauth_correlation",
+  "description": "OAuth correlation is exclusively server-side state: initiation mints a single-use state (15 min TTL); the callback carries ONLY state+code (no alias/connection id); unknown state is rejected 400 invalid_oauth_state; a real state with a fake authorization code advances the pending connection request to failed (provider token exchange rejected) — full provider round-trip requires real provider credentials (blocked-env for the happy path only).",
+  "evidence_kind": "runtime",
+  "method": "live-http",
+  "environment": {
+    "upstream_sha": "33dd4ad6ee22f9ce5158a1516a11d8b8566b5c8a",
+    "upstream_clone": ".oc-upstream-33dd4ad (isolated, detached at pinned SHA)",
+    "server": "node src/server/index.ts @ 127.0.0.1:31701 (oc-t01 throwaway instance)",
+    "database": "sqlite at OOMOL_CONNECT_DATA_DIR=/tmp/oc-t01-data-a (throwaway, deleted after probes)",
+    "admin_auth": "OOMOL_CONNECT_ADMIN_TOKEN set (locally minted, redacted)",
+    "runtime_auth": "stored oct_ runtime tokens minted via POST /api/runtime-tokens",
+    "egress": "OOMOL_CONNECT_EGRESS_TRUSTED_HOSTS=export.arxiv.org,api.crossref.org",
+    "custom_oauth": "OOMOL_CONNECT_ALLOWED_CUSTOM_OAUTH=github + OOMOL_CONNECT_ENCRYPTION_KEY (locally minted, redacted)",
+    "node": "host Node v26.7.0 running pinned sources via native TS execution; image probes use node:24-alpine build",
+    "image_digest": "sha256:fcd8d2b871360efcfc43ec051f3359b9de69c04be5d93eebd382633a2418d130"
+  },
+  "setup": [
+    {
+      "method": "PUT",
+      "path": "/api/oauth/configs/github",
+      "authorization": "Bearer oc-t01-admin-<redacted> (admin scope)",
+      "body": {
+        "clientId": "oc-t01-fake-client-id",
+        "clientSecret": "oc-t01-fake-client-secret"
+      }
+    },
+    "stored client config is required for /v1 connect (clientConfig inline is only read at top level by POST /api/oauth/authorizations, see notes)"
+  ],
+  "steps": [
+    {
+      "step": "legacy admin initiation",
+      "request": {
+        "method": "POST",
+        "path": "/api/oauth/authorizations",
+        "authorization": "Bearer oc-t01-admin-<redacted> (admin scope)",
+        "body": {
+          "service": "github"
+        }
+      },
+      "http_status": 200,
+      "response": {
+        "authorizationUrl": "https://github.com/login/oauth/authorize?client_id=oc-t01-fake-client-id&redirect_uri=http%3A%2F%2Flocalhost%3A31701%2Foauth%2Fcallback&response_type=code&state=78544e73-88ca-4d07-b382-7cee4fbb55e0&scope=read%3Auser+user%3Aemail+repo+workflow+delete_repo",
+        "state": "78544e73-88ca-4d07-b382-7cee4fbb55e0"
+      }
+    },
+    {
+      "step": "callback with unknown state",
+      "request": {
+        "method": "GET",
+        "path": "/oauth/callback?state=11111111-1111-1111-1111-111111111111&code=fake",
+        "authorization": "(public path, no auth)"
+      },
+      "http_status": 400,
+      "response": {
+        "error": {
+          "code": "invalid_oauth_state",
+          "message": "OAuth state is missing or expired."
+        }
+      }
+    },
+    {
+      "step": "/v1 connection-request initiation",
+      "request": {
+        "method": "POST",
+        "path": "/v1/connections/github/connect",
+        "authorization": "Bearer oc-t01-admin-<redacted> (admin scope)",
+        "body": {}
+      },
+      "http_status": 200,
+      "response": {
+        "authorizationUrl": "https://github.com/login/oauth/authorize?client_id=oc-t01-fake-client-id&redirect_uri=http%3A%2F%2Flocalhost%3A31701%2Foauth%2Fcallback&response_type=code&state=7c64e213-b8c7-4612-939c-a9918831f702&scope=read%3Auser+user%3Aemail+repo+workflow+delete_repo",
+        "stateHandle": "7c64e213-b8c7-4612-939c-a9918831f702",
+        "connectionRequestId": "2f4588c3-718a-46b9-a96a-36e2583bc353",
+        "status": "initiated",
+        "expiresAt": "2026-09-12T14:30:38.921Z"
+      }
+    },
+    {
+      "step": "poll before callback",
+      "request": {
+        "method": "GET",
+        "path": "/v1/connection-requests/2f4588c3-718a-46b9-a96a-36e2583bc353",
+        "authorization": "Bearer oc-t01-admin-<redacted> (admin scope)"
+      },
+      "http_status": 200,
+      "response": {
+        "connectionRequestId": "2f4588c3-718a-46b9-a96a-36e2583bc353",
+        "service": "github",
+        "status": "initiated",
+        "appId": null,
+        "errorCode": null,
+        "errorMessage": null,
+        "expiresAt": "2026-09-12T14:30:38.921Z",
+        "createdAt": 1789222838921,
+        "updatedAt": 1789222838921
+      }
+    },
+    {
+      "step": "callback with the real stateHandle and a fake code — state is consumed, token exchange fails at the provider",
+      "request": {
+        "method": "GET",
+        "path": "/oauth/callback?state=7c64e213-b8c7-4612-939c-a9918831f702&code=oc-t01-fake-code",
+        "authorization": "(public path, no auth)"
+      },
+      "http_status": 400,
+      "response": {
+        "error": {
+          "code": "provider_error",
+          "message": "OAuth connection failed."
+        }
+      }
+    },
+    {
+      "step": "poll after callback — request transitioned to failed",
+      "request": {
+        "method": "GET",
+        "path": "/v1/connection-requests/2f4588c3-718a-46b9-a96a-36e2583bc353",
+        "authorization": "Bearer oc-t01-admin-<redacted> (admin scope)"
+      },
+      "http_status": 200,
+      "response": {
+        "connectionRequestId": "2f4588c3-718a-46b9-a96a-36e2583bc353",
+        "service": "github",
+        "status": "failed",
+        "appId": null,
+        "errorCode": "provider_error",
+        "errorMessage": "OAuth connection failed.",
+        "expiresAt": "2026-09-12T14:30:38.921Z",
+        "createdAt": 1789222838921,
+        "updatedAt": 1789222838998
+      }
+    }
+  ],
+  "assertions": [
+    "POST /api/oauth/authorizations → {authorizationUrl, state} exactly (state is a UUID)",
+    "authorizationUrl points at github.com/login/oauth/authorize with the configured client_id and redirect_uri=http://localhost:31701/oauth/callback (OOMOL_CONNECT_ORIGIN default)",
+    "unknown state → 400 invalid_oauth_state 'OAuth state is missing or expired.'",
+    "POST /v1/connections/:service/connect → data {authorizationUrl, stateHandle, connectionRequestId, status:'initiated', expiresAt=+10min}",
+    "GET /v1/connection-requests/:id → {connectionRequestId, service, status, appId, errorCode, errorMessage, expiresAt, createdAt, updatedAt}",
+    "real state + fake code → callback 400 provider_error and the connection request moves initiated → failed (errorCode provider_error): the state correlated the callback to THIS request",
+    "full connected transition (status connected + appId) requires a real provider authorization code — NOT available in this environment (blocked-env for that sub-step only; no fabrication)"
+  ],
+  "result": "pass",
+  "source_refs": [
+    "src/oauth/oauth-flow-service.ts:102-161 (initiation shapes, +10min)",
+    "src/oauth/oauth-flow-service.ts:248-258 (claim-by-state correlation)",
+    "src/oauth/oauth-flow-service.ts:97 (state TTL 15min, single-use)",
+    "src/server/connect-server.ts:1075-1153 (callback)"
+  ],
+  "notes": [
+    "clientConfig fields are read from the TOP LEVEL of POST /api/oauth/authorizations body (clientId/clientSecret/requestedScopes/extra/secretExtra) — NOT nested under a clientConfig key (src/server/connect-server.ts:1238-1251)",
+    "/v1/connections/:service/connect accepts NO inline client config; it resolves the STORED config from PUT /api/oauth/configs/:service",
+    "custom client configs additionally require OOMOL_CONNECT_ALLOWED_CUSTOM_OAUTH=<service|*> and OOMOL_CONNECT_ENCRYPTION_KEY"
+  ]
+}

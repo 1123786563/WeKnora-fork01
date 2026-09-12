@@ -1,0 +1,80 @@
+{
+  "case": "empty_grant",
+  "description": "EMPTY-GRANT ASYMMETRY (upstream behavior): a stored token with allowedConnections=[] / allowedActions=[] / allowedProxies=[] treats empty connection/action allowlists as ALLOW-ALL. The call to connection beta is NOT denied by the grant layer (contrast with cross_connection 403) and proceeds until the provider rejects the fake API key. This upstream behavior is the reason WeKnora NewGrant must reject empty grants locally instead of relying on [] to mean deny.",
+  "evidence_kind": "runtime",
+  "method": "live-http",
+  "environment": {
+    "upstream_sha": "33dd4ad6ee22f9ce5158a1516a11d8b8566b5c8a",
+    "upstream_clone": ".oc-upstream-33dd4ad (isolated, detached at pinned SHA)",
+    "server": "node src/server/index.ts @ 127.0.0.1:31701 (oc-t01 throwaway instance)",
+    "database": "sqlite at OOMOL_CONNECT_DATA_DIR=/tmp/oc-t01-data-a (throwaway, deleted after probes)",
+    "admin_auth": "OOMOL_CONNECT_ADMIN_TOKEN set (locally minted, redacted)",
+    "runtime_auth": "stored oct_ runtime tokens minted via POST /api/runtime-tokens",
+    "egress": "OOMOL_CONNECT_EGRESS_TRUSTED_HOSTS=export.arxiv.org,api.crossref.org",
+    "custom_oauth": "OOMOL_CONNECT_ALLOWED_CUSTOM_OAUTH=github + OOMOL_CONNECT_ENCRYPTION_KEY (locally minted, redacted)",
+    "node": "host Node v26.7.0 running pinned sources via native TS execution; image probes use node:24-alpine build",
+    "image_digest": "sha256:fcd8d2b871360efcfc43ec051f3359b9de69c04be5d93eebd382633a2418d130"
+  },
+  "setup": [
+    {
+      "method": "POST",
+      "path": "/api/runtime-tokens",
+      "authorization": "Bearer oc-t01-admin-<redacted> (admin scope)",
+      "body": {
+        "name": "oc-t01-probe-open",
+        "allowedConnections": [],
+        "allowedActions": [],
+        "allowedProxies": [],
+        "blockedActions": []
+      }
+    },
+    "same dune alpha/beta connections as cross_connection"
+  ],
+  "steps": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/actions/dune.get_execution_status",
+        "authorization": "Bearer oct_<redacted> (stored runtime token oc-t01-probe-open)",
+        "headers": {
+          "x-oo-connector-alias": "beta"
+        },
+        "body": {
+          "input": {
+            "executionId": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      },
+      "http_status": 403,
+      "response": {
+        "success": false,
+        "message": "invalid API Key",
+        "data": {
+          "status": 401,
+          "details": {
+            "error": "invalid API Key"
+          }
+        },
+        "errorCode": "authorization_failed",
+        "meta": {
+          "executionId": "af4d8bc1-8d23-415f-805a-a7167fb01371",
+          "actionId": "dune.get_execution_status",
+          "auditPersisted": true
+        }
+      }
+    }
+  ],
+  "assertions": [
+    "errorCode is authorization_failed from the dune API ('invalid API Key'), NOT connection_not_allowed",
+    "the connection grant layer allowed the call (allowedConnections=[] == allow-all) and the executor actually ran with the fake beta key",
+    "direct contrast: identical request with the alpha-only token (cross_connection fixture) returns connection_not_allowed",
+    "allowedActions=[] similarly means allow-all actions (src/core/action-policy.ts:112-114)",
+    "allowedProxies=[] is the OPPOSITE (deny-all proxies) — see proxy_denied fixture; this asymmetry is the core trap for the local grant model"
+  ],
+  "result": "pass",
+  "source_refs": [
+    "src/core/action-policy.ts:112-114 (empty action allowlist skipped)",
+    "src/core/action-policy.ts:177-179 (empty connection allowlist == allowed)",
+    "src/core/action-policy.ts:160-171 (token proxy layer: empty == deny-all)"
+  ]
+}

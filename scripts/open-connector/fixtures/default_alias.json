@@ -1,0 +1,150 @@
+{
+  "case": "default_alias",
+  "description": "Default alias resolution: omitted/empty alias resolves to connectionName 'default' only — arxiv (no_auth) synthesizes the virtual connection arxiv:default and succeeds; an api_key-only provider with only a non-default alias does NOT fall back to that alias; an unknown named alias returns 404 connection_not_found.",
+  "evidence_kind": "runtime",
+  "method": "live-http",
+  "environment": {
+    "upstream_sha": "33dd4ad6ee22f9ce5158a1516a11d8b8566b5c8a",
+    "upstream_clone": ".oc-upstream-33dd4ad (isolated, detached at pinned SHA)",
+    "server": "node src/server/index.ts @ 127.0.0.1:31701 (oc-t01 throwaway instance)",
+    "database": "sqlite at OOMOL_CONNECT_DATA_DIR=/tmp/oc-t01-data-a (throwaway, deleted after probes)",
+    "admin_auth": "OOMOL_CONNECT_ADMIN_TOKEN set (locally minted, redacted)",
+    "runtime_auth": "stored oct_ runtime tokens minted via POST /api/runtime-tokens",
+    "egress": "OOMOL_CONNECT_EGRESS_TRUSTED_HOSTS=export.arxiv.org,api.crossref.org",
+    "custom_oauth": "OOMOL_CONNECT_ALLOWED_CUSTOM_OAUTH=github + OOMOL_CONNECT_ENCRYPTION_KEY (locally minted, redacted)",
+    "node": "host Node v26.7.0 running pinned sources via native TS execution; image probes use node:24-alpine build",
+    "image_digest": "sha256:fcd8d2b871360efcfc43ec051f3359b9de69c04be5d93eebd382633a2418d130"
+  },
+  "setup": [
+    "no setup for arxiv (no_auth providers synthesize virtual connections on demand)",
+    {
+      "method": "PUT",
+      "path": "/api/connections/accuweather",
+      "authorization": "Bearer oc-t01-admin-<redacted> (admin scope)",
+      "body": {
+        "authType": "api_key",
+        "values": {
+          "apiKey": "oc-t01-fake-key-accu"
+        },
+        "connectionName": "primary"
+      }
+    },
+    "accuweather connect is captured with the no-fallback request below; only a 'primary' alias exists for accuweather"
+  ],
+  "steps": [
+    {
+      "step": "omitted alias on no_auth provider resolves to arxiv:default",
+      "request": {
+        "method": "POST",
+        "path": "/v1/actions/arxiv.get_paper",
+        "authorization": "Bearer oct_<redacted> (stored runtime token oc-t01-probe-open)",
+        "body": {
+          "input": {
+            "id": "2301.00001"
+          }
+        }
+      },
+      "http_status": 200,
+      "response": {
+        "success": true,
+        "message": "OK",
+        "data": {
+          "found": true,
+          "paper": {
+            "id": "2301.00001v1",
+            "baseId": "2301.00001",
+            "version": 1,
+            "title": "NFTrig",
+            "summary": "NFTrig is a web-based application created for use as an educational tool to teach trigonometry and block chain technology. Creation of the application includes front and back end development as well as integration with other outside sources including MetaMask and OpenSea. The primary development languages include HTML, CSS (Bootstrap 5), and JavaScript as well as Solidity for smart contract creation. The application itself is hosted on Moralis utilizing their Web3 API. This technical report describes how the application was created, what the application requires, and smart contract design with security considerations in mind. The NFTrig application has underwent significant testing and validation prior to and after deployment. Future suggestions and recommendations for further development, maintenance, and use in other fields for education are also described.",
+            "publishedAt": "2022-12-21T18:07:06Z",
+            "updatedAt": "2022-12-21T18:07:06Z",
+            "authors": [
+              "Jordan Thompson",
+              "Ryan Benac",
+              "Kidus Olana",
+              "Talha Hassan",
+              "Andrew Sward",
+              "Tauheed Khan Mohd"
+            ],
+            "categories": [
+              "cs.HC"
+            ],
+            "primaryCategory": "cs.HC",
+            "abstractUrl": "https://arxiv.org/abs/2301.00001v1",
+            "pdfUrl": "https://arxiv.org/pdf/2301.00001v1",
+            "doi": null,
+            "journalRef": null,
+            "comment": null
+          }
+        },
+        "meta": {
+          "executionId": "3d4aa55f-4bba-446f-95c0-ba785f2833d6",
+          "actionId": "arxiv.get_paper",
+          "auditPersisted": true
+        }
+      }
+    },
+    {
+      "step": "omitted alias on api_key-only provider with only alias 'primary' — NO fallback, runtime demands credentials for the default alias",
+      "request": {
+        "method": "POST",
+        "path": "/v1/actions/accuweather.get_current_conditions",
+        "authorization": "Bearer oct_<redacted> (stored runtime token oc-t01-probe-open)",
+        "body": {
+          "input": {
+            "locationKey": "295017"
+          }
+        }
+      },
+      "http_status": 403,
+      "response": {
+        "success": false,
+        "message": "Configure accuweather API key credentials first.",
+        "data": {
+          "status": 401
+        },
+        "errorCode": "authorization_failed",
+        "meta": {
+          "executionId": "bfe9e864-672e-4133-8920-6000f75df01f",
+          "actionId": "accuweather.get_current_conditions",
+          "auditPersisted": true
+        }
+      }
+    },
+    {
+      "step": "unknown named alias",
+      "request": {
+        "method": "POST",
+        "path": "/v1/actions/accuweather.get_current_conditions",
+        "authorization": "Bearer oct_<redacted> (stored runtime token oc-t01-probe-open)",
+        "headers": {
+          "x-oo-connector-alias": "ghost"
+        },
+        "body": {}
+      },
+      "http_status": 404,
+      "response": {
+        "success": false,
+        "message": "accuweather connection not found: ghost.",
+        "data": null,
+        "errorCode": "connection_not_found",
+        "meta": {
+          "executionId": "4ffd91d9-c94c-4e10-ac61-5a3a4de427d3",
+          "actionId": "accuweather.get_current_conditions",
+          "auditPersisted": true
+        }
+      }
+    }
+  ],
+  "assertions": [
+    "arxiv call without alias header succeeds through the virtual arxiv:default connection",
+    "accuweather call without alias does NOT use the existing 'primary' connection — response references default-alias credentials, proving no client-side or server-side fallback",
+    "explicit alias 'ghost' → 404 connection_not_found 'accuweather connection not found: ghost.'"
+  ],
+  "result": "pass",
+  "source_refs": [
+    "src/connection-service.ts:21 (defaultConnectionName = \"default\")",
+    "src/connection-service.ts:250-252 (named alias missing → connection_not_found)",
+    "src/server/connect-server.ts:1290-1298 (readConnectionName precedence)"
+  ]
+}

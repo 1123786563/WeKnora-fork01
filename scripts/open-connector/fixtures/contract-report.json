@@ -1,0 +1,86 @@
+{
+  "sha": "33dd4ad6ee22f9ce5158a1516a11d8b8566b5c8a",
+  "image_digest": "sha256:fcd8d2b871360efcfc43ec051f3359b9de69c04be5d93eebd382633a2418d130",
+  "image_provenance": {
+    "method": "local docker build from the pinned commit (coordinator ruling R9)",
+    "build_command": "cd .oc-upstream-33dd4ad && git rev-parse HEAD && docker build -f docker/Dockerfile -t oc-t01-open-connector:33dd4ad .",
+    "build_commit": "33dd4ad6ee22f9ce5158a1516a11d8b8566b5c8a",
+    "digest_command": "docker image inspect --format '{{.Id}}' oc-t01-open-connector:33dd4ad",
+    "published_artifact_note": "ghcr.io/oomol-lab/open-connector has NO tag for the pinned SHA; tip is mutable and unverified for this commit. No upstream-published immutable digest is currently retrievable for the pinned SHA."
+  },
+  "generated_at": "2026-09-12",
+  "cases": [
+    {
+      "id": "cross_connection",
+      "kind": "runtime",
+      "passed": true,
+      "artifact": "scripts/open-connector/fixtures/cross_connection.json"
+    },
+    {
+      "id": "empty_grant",
+      "kind": "runtime",
+      "passed": true,
+      "artifact": "scripts/open-connector/fixtures/empty_grant.json"
+    },
+    {
+      "id": "default_alias",
+      "kind": "runtime",
+      "passed": true,
+      "artifact": "scripts/open-connector/fixtures/default_alias.json"
+    },
+    {
+      "id": "no_auth",
+      "kind": "runtime",
+      "passed": true,
+      "artifact": "scripts/open-connector/fixtures/no_auth.json"
+    },
+    {
+      "id": "admin_denied",
+      "kind": "runtime",
+      "passed": true,
+      "artifact": "scripts/open-connector/fixtures/admin_denied.json"
+    },
+    {
+      "id": "proxy_denied",
+      "kind": "runtime",
+      "passed": true,
+      "artifact": "scripts/open-connector/fixtures/proxy_denied.json"
+    },
+    {
+      "id": "oauth_correlation",
+      "kind": "runtime",
+      "passed": true,
+      "artifact": "scripts/open-connector/fixtures/oauth_correlation.json"
+    },
+    {
+      "id": "key_replay",
+      "kind": "runtime",
+      "passed": true,
+      "artifact": "scripts/open-connector/fixtures/key_replay.json"
+    },
+    {
+      "id": "key_conflict",
+      "kind": "runtime",
+      "passed": true,
+      "artifact": "scripts/open-connector/fixtures/key_conflict.json"
+    },
+    {
+      "id": "in_progress",
+      "kind": "runtime",
+      "passed": true,
+      "artifact": "scripts/open-connector/fixtures/in_progress.json"
+    },
+    {
+      "id": "expired_key",
+      "kind": "runtime",
+      "passed": true,
+      "artifact": "scripts/open-connector/fixtures/expired_key.json"
+    },
+    {
+      "id": "audit_failure",
+      "kind": "runtime",
+      "passed": true,
+      "artifact": "scripts/open-connector/fixtures/audit_failure.json"
+    }
+  ]
+}

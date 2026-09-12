@@ -1,0 +1,143 @@
+{
+  "case": "key_replay",
+  "description": "Idempotency-Key replay: repeating an identical POST /v1/actions/{id} (same key, same fingerprint) within the 24h window replays the original response — same meta.executionId, action NOT re-executed against the provider.",
+  "evidence_kind": "runtime",
+  "method": "live-http",
+  "environment": {
+    "upstream_sha": "33dd4ad6ee22f9ce5158a1516a11d8b8566b5c8a",
+    "upstream_clone": ".oc-upstream-33dd4ad (isolated, detached at pinned SHA)",
+    "server": "node src/server/index.ts @ 127.0.0.1:31701 (oc-t01 throwaway instance)",
+    "database": "sqlite at OOMOL_CONNECT_DATA_DIR=/tmp/oc-t01-data-a (throwaway, deleted after probes)",
+    "admin_auth": "OOMOL_CONNECT_ADMIN_TOKEN set (locally minted, redacted)",
+    "runtime_auth": "stored oct_ runtime tokens minted via POST /api/runtime-tokens",
+    "egress": "OOMOL_CONNECT_EGRESS_TRUSTED_HOSTS=export.arxiv.org,api.crossref.org",
+    "custom_oauth": "OOMOL_CONNECT_ALLOWED_CUSTOM_OAUTH=github + OOMOL_CONNECT_ENCRYPTION_KEY (locally minted, redacted)",
+    "node": "host Node v26.7.0 running pinned sources via native TS execution; image probes use node:24-alpine build",
+    "image_digest": "sha256:fcd8d2b871360efcfc43ec051f3359b9de69c04be5d93eebd382633a2418d130"
+  },
+  "setup": [],
+  "steps": [
+    {
+      "step": "first call with key oc-t01-replay2-*",
+      "request": {
+        "method": "POST",
+        "path": "/v1/actions/arxiv.get_paper",
+        "authorization": "Bearer oct_<redacted> (stored runtime token oc-t01-probe-open)",
+        "headers": {
+          "Idempotency-Key": "oc-t01-replay2-<random>"
+        },
+        "body": {
+          "input": {
+            "id": "2301.00001"
+          }
+        }
+      },
+      "http_status": 200,
+      "response": {
+        "success": true,
+        "message": "OK",
+        "data": {
+          "found": true,
+          "paper": {
+            "id": "2301.00001v1",
+            "baseId": "2301.00001",
+            "version": 1,
+            "title": "NFTrig",
+            "summary": "NFTrig is a web-based application created for use as an educational tool to teach trigonometry and block chain technology. Creation of the application includes front and back end development as well as integration with other outside sources including MetaMask and OpenSea. The primary development languages include HTML, CSS (Bootstrap 5), and JavaScript as well as Solidity for smart contract creation. The application itself is hosted on Moralis utilizing their Web3 API. This technical report describes how the application was created, what the application requires, and smart contract design with security considerations in mind. The NFTrig application has underwent significant testing and validation prior to and after deployment. Future suggestions and recommendations for further development, maintenance, and use in other fields for education are also described.",
+            "publishedAt": "2022-12-21T18:07:06Z",
+            "updatedAt": "2022-12-21T18:07:06Z",
+            "authors": [
+              "Jordan Thompson",
+              "Ryan Benac",
+              "Kidus Olana",
+              "Talha Hassan",
+              "Andrew Sward",
+              "Tauheed Khan Mohd"
+            ],
+            "categories": [
+              "cs.HC"
+            ],
+            "primaryCategory": "cs.HC",
+            "abstractUrl": "https://arxiv.org/abs/2301.00001v1",
+            "pdfUrl": "https://arxiv.org/pdf/2301.00001v1",
+            "doi": null,
+            "journalRef": null,
+            "comment": null
+          }
+        },
+        "meta": {
+          "executionId": "be1f37d8-99fd-4e5a-8c0d-001ac7915e98",
+          "actionId": "arxiv.get_paper",
+          "auditPersisted": true
+        }
+      }
+    },
+    {
+      "step": "second call, same key + identical input",
+      "request": {
+        "method": "POST",
+        "path": "/v1/actions/arxiv.get_paper",
+        "authorization": "Bearer oct_<redacted> (stored runtime token oc-t01-probe-open)",
+        "headers": {
+          "Idempotency-Key": "oc-t01-replay2-<random> (same key)"
+        },
+        "body": {
+          "input": {
+            "id": "2301.00001"
+          }
+        }
+      },
+      "http_status": 200,
+      "response": {
+        "success": true,
+        "message": "OK",
+        "data": {
+          "found": true,
+          "paper": {
+            "id": "2301.00001v1",
+            "baseId": "2301.00001",
+            "version": 1,
+            "title": "NFTrig",
+            "summary": "NFTrig is a web-based application created for use as an educational tool to teach trigonometry and block chain technology. Creation of the application includes front and back end development as well as integration with other outside sources including MetaMask and OpenSea. The primary development languages include HTML, CSS (Bootstrap 5), and JavaScript as well as Solidity for smart contract creation. The application itself is hosted on Moralis utilizing their Web3 API. This technical report describes how the application was created, what the application requires, and smart contract design with security considerations in mind. The NFTrig application has underwent significant testing and validation prior to and after deployment. Future suggestions and recommendations for further development, maintenance, and use in other fields for education are also described.",
+            "publishedAt": "2022-12-21T18:07:06Z",
+            "updatedAt": "2022-12-21T18:07:06Z",
+            "authors": [
+              "Jordan Thompson",
+              "Ryan Benac",
+              "Kidus Olana",
+              "Talha Hassan",
+              "Andrew Sward",
+              "Tauheed Khan Mohd"
+            ],
+            "categories": [
+              "cs.HC"
+            ],
+            "primaryCategory": "cs.HC",
+            "abstractUrl": "https://arxiv.org/abs/2301.00001v1",
+            "pdfUrl": "https://arxiv.org/pdf/2301.00001v1",
+            "doi": null,
+            "journalRef": null,
+            "comment": null
+          }
+        },
+        "meta": {
+          "executionId": "be1f37d8-99fd-4e5a-8c0d-001ac7915e98",
+          "actionId": "arxiv.get_paper",
+          "auditPersisted": true
+        }
+      }
+    }
+  ],
+  "assertions": [
+    "both responses HTTP 200 with the SAME meta.executionId (be1f37d8-99fd-4e5a-8c0d-001ac7915e98)",
+    "fingerprint = {actionId, connectionName (default == omitted), canonicalized input (sorted keys), runtimeTokenId}",
+    "key namespace is runtime-wide (no token prefix) — but the fingerprint binds runtimeTokenId, so a different token reusing the same raw key conflicts (see key_conflict)",
+    "corroborated upstream: 'replays completed idempotent action requests while preserving no-key behavior' (connect-server.test.ts:2794)"
+  ],
+  "result": "pass",
+  "source_refs": [
+    "src/server/actions/action-idempotency.ts:8 (24h fixed)",
+    "src/server/actions/action-idempotency.ts:62-71 (fingerprint incl. runtimeTokenId)",
+    "src/server/connect-server.ts:631-633 (replay)"
+  ]
+}

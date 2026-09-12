@@ -1,0 +1,38 @@
+{
+  "case": "expired_key",
+  "description": "24h window edge: an idempotency record expires exactly 24 hours after creation; replaying the same key after expiry re-executes instead of replaying. Proven with upstream's own controllable-clock unit test at the pinned SHA (never by mutating a shared instance's clock).",
+  "evidence_kind": "runtime-upstream-test",
+  "method": "runtime-upstream-test",
+  "environment": {
+    "upstream_sha": "33dd4ad6ee22f9ce5158a1516a11d8b8566b5c8a",
+    "upstream_clone": ".oc-upstream-33dd4ad (isolated, detached at pinned SHA)",
+    "server": "node src/server/index.ts @ 127.0.0.1:31701 (oc-t01 throwaway instance)",
+    "database": "sqlite at OOMOL_CONNECT_DATA_DIR=/tmp/oc-t01-data-a (throwaway, deleted after probes)",
+    "admin_auth": "OOMOL_CONNECT_ADMIN_TOKEN set (locally minted, redacted)",
+    "runtime_auth": "stored oct_ runtime tokens minted via POST /api/runtime-tokens",
+    "egress": "OOMOL_CONNECT_EGRESS_TRUSTED_HOSTS=export.arxiv.org,api.crossref.org",
+    "custom_oauth": "OOMOL_CONNECT_ALLOWED_CUSTOM_OAUTH=github + OOMOL_CONNECT_ENCRYPTION_KEY (locally minted, redacted)",
+    "node": "host Node v26.7.0 running pinned sources via native TS execution; image probes use node:24-alpine build",
+    "image_digest": "sha256:fcd8d2b871360efcfc43ec051f3359b9de69c04be5d93eebd382633a2418d130"
+  },
+  "setup": [
+    "cd .oc-upstream-33dd4ad (detached at pinned SHA) && npx vitest run src/server/actions/action-idempotency.test.ts --reporter=verbose"
+  ],
+  "steps": [
+    {
+      "command": "npx vitest run src/server/actions/action-idempotency.test.ts --reporter=verbose",
+      "exit_code": 0,
+      "test": "src/server/actions/action-idempotency.test.ts > action idempotency > expires records 24 hours after the supplied time",
+      "output_excerpt": " ✓ src/server/actions/action-idempotency.test.ts > action idempotency > reads optional keys within the public byte limit 1ms\n ✓ src/server/actions/action-idempotency.test.ts > action idempotency > canonicalizes action requests before hashing 0ms\n ✓ src/server/actions/action-idempotency.test.ts > action idempotency > binds stored-token requests without changing unscoped fingerprints 0ms\n ✓ src/server/actions/action-idempotency.test.ts > action idempotency > rejects action inputs beyond the fingerprint depth limit 0ms\n ✓ src/server/actions/action-idempotency.test.ts > action idempotency > expires records 24 hours after the supplied time 1ms\n      Tests  5 passed (5)\n"
+    }
+  ],
+  "assertions": [
+    "the test drives a supplied fake clock past 24h and asserts the claim expires (retention constant idempotencyRetentionHours = 24, src/server/actions/action-idempotency.ts:8)",
+    "method recorded per coordinator ruling 5: upstream test suite at the pinned commit, not a mutated production clock"
+  ],
+  "result": "pass",
+  "source_refs": [
+    "src/server/actions/action-idempotency.ts:8, 76-78",
+    "src/server/actions/action-idempotency.test.ts:86"
+  ]
+}
