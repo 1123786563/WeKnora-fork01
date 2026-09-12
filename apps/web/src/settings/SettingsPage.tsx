@@ -14,6 +14,7 @@ import { EnvVarSettingsPanel } from './EnvVarSettingsPanel.tsx';
 import { LiveSectionsPanel, PortedSectionsPanel, readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
 import { McpSettingsPanel } from './McpSettingsPanel.tsx';
 import { ModelSettingsPanel } from './ModelSettingsPanel.tsx';
+import { SandboxSettingsPanel } from './SandboxSettingsPanel.tsx';
 
 function errorText(error: unknown, fallback: string): string { return error instanceof Error ? error.message : fallback; }
 
@@ -40,7 +41,7 @@ export async function readSettingsSection(client: WeKnoraClient, key: string, te
     case 'members': return client.identity.tenants.members.list(tenantId, { pageSize: 50 });
     case 'mcp': return client.configuration.mcp.list();
     case 'skills': return client.configuration.skills.list();
-    case 'sandbox': return null;
+    case 'sandbox': return client.sandboxConfigurations.list();
     case 'system-global': return client.administration.settings.list();
     case 'runtime-queues': return client.administration.runtime.queues();
     case 'platform-api-keys': return client.administration.apiKeys.list();
@@ -148,7 +149,10 @@ export function SettingsPage({ client, tenantId, role = 'owner' }: { client: WeK
   const modelPanel = selectedKey === 'models'
     ? <ModelSettingsPanel client={client} role={role} initialModels={Array.isArray(payload) ? payload as never : []} />
     : null;
-  const portedPanel = selectedKey === 'mcp' ? mcpPanel : selectedKey === 'models' ? modelPanel : PARTIALLY_PORTED_SECTIONS.has(selectedKey)
+  const sandboxPanel = selectedKey === 'sandbox'
+    ? <SandboxSettingsPanel client={client} role={role} initialData={payload as never} />
+    : null;
+  const portedPanel = selectedKey === 'mcp' ? mcpPanel : selectedKey === 'models' ? modelPanel : selectedKey === 'sandbox' ? sandboxPanel : PARTIALLY_PORTED_SECTIONS.has(selectedKey)
     ? (selectedKey === 'sandbox'
         ? <PortedSectionsPanel section={selectedKey} />
         : <LiveSectionsPanel client={client} section={selectedKey} payload={payload} />)
