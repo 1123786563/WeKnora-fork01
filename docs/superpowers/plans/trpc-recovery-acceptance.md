@@ -28,6 +28,8 @@ and the external side-effect endpoint are deterministic doubles.
 | admission gate | `GOWORK=off go test ./internal/agent/recoverytest -run TestRecoveryAdmissionGate -count=1` | PASS | disabled admission is false; worker-only mode is drain-only; enabled admission is true |
 | inconsistent config | `GOWORK=off go test ./internal/agent/recoverytest -run TestRecoveryAdmissionGateRejectsInconsistentConfig -count=1` | PASS | `AdmissionEnabled=true` with `Enabled=false` is rejected before runtime construction |
 | SIGKILL matrix (SQLite) | `GOWORK=off go test ./internal/agent/recoverytest -run TestCrashMatrixSQLite -count=1 -v` | PASS 8/8 | after_admission, after_plan_before_dispatch, after_result_before_checkpoint, after_finalize each: exactly 1 external call, final status succeeded, 1 completed assistant row, 0 lost events; after_side_effect_before_result and waiting_user: 1 external call, parked at waiting_user; unknown_result_user_retry: explicit retry alone raises the external count to 2; idempotent_redelivery: redelivery deduplicated, count stays 1 |
+| SIGKILL matrix (PostgreSQL) | `docker run postgres:16-alpine` on 55432; `TRPC_RECOVERY_PG_DSN=postgres://... go test ./internal/agent/recoverytest -run TestCrashMatrixPostgreSQL -count=1 -v` | PASS 7/7 (2026-09-12) | per-case schemas with hashed names, versioned migrations, real fenced leases/claims/epochs on PostgreSQL; after_admission/after_plan/after_result/after_finalize succeed with 1 external call and 0 lost events; after_side_effect parks at waiting_user; unknown_result_user_retry reaches 2 calls only after the explicit retry decision; idempotent_redelivery stays at 1. Durable JSON columns are TEXT (byte-exact round-trip; empty retry results must not trip JSON parsing) |
+| PostgreSQL repository suite | `TRPC_TEST_POSTGRES_DSN=... go test ./internal/application/repository -count=1` | PASS | full suite incl. TestAgentRunPostgres (admission idempotency, guards, rollback, lease/checkpoint, concurrent claim, reopen+migrations) on PostgreSQL 16 |
 | crash after tool result | `GOWORK=off go test ./internal/agent/recoverytest -run TestCrashAfterToolResult -count=1` | SKIPPED | superseded by the matrix subtest above when run without `TRPC_RECOVERY_GRAPH_PROVIDER`; the env-gated variant remains for CI |
 | executor end to end | `GOWORK=off go test ./internal/application/service -run TestExecuteDurableRun -count=1` | PASS | fresh run completes through admission snapshot → capability rebuild → graph → finalize transaction; superseded fence rejected with ErrLeaseLost |
 | worker wait mapping | `GOWORK=off go test ./internal/application/service -run TestWorkerParksWaitClass -count=1` | PASS | unknown tool outcomes park durably at waiting_user/tool_outcome_unknown instead of terminating |
@@ -57,13 +59,10 @@ Defects found and fixed by the matrix (recorded for audit):
   assertions;
 - sandbox alive/lost/destroyed fixtures (the hook queries the provider
   sandbox list, but the three fixture states are not yet asserted end to end);
-- the same matrix on an isolated PostgreSQL schema (`TRPC_TEST_POSTGRES_DSN`
-  unset in this environment; the repository suite skips with an explicit
-  reason);
-- frontend engine selector and run-event replay consumption (Task 13 gaps);
-- durable steering routing (`RunInput`/`ApplyInput` have no production
-  caller yet), durable OAuth waiter and the external-action outbox
-  (Task 11 leftovers).
+- the external-action outbox and event retention watermark (Task 11
+  leftovers), and the after-mode steering follow-up admission path;
+- frontend browser-level verification of the two engine types (unit,
+  type-check and build pass; no live browser session in this environment).
 
 Known migration limitation: a SQLite database that applied the intermediate
 branch revision of migration 000014 cannot upgrade through 000016 (the rebuild
