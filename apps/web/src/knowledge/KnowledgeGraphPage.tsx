@@ -30,7 +30,7 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
     }
   }
 
-  useEffect(() => { void load(mode, mode === 'ego' ? center : undefined); }, [client, knowledgeBaseId, type]);
+  useEffect(() => { void load(mode, mode === 'ego' ? center : undefined); }, [client, knowledgeBaseId, type, depth]);
 
   const visible = useMemo(() => graph ? filterGraphNodes(graph, { query }) : null, [graph, query]);
   const positions = useMemo(() => visible ? layoutGraphNodes(visible.nodes, 760, 420) : [], [visible]);
