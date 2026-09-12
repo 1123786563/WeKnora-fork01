@@ -18,6 +18,7 @@
 - 2026-09-12-login-interactions — /login 交互验证与视觉收尾（2026-09-12，Round 5）
 - 2026-09-12-login-visual-gap — /login 首轮视觉对比证据（2026-09-12）
 - 2026-09-12-login-visual-i18n — /login 视觉与多语言对齐（2026-09-12，Round 4）
+- 2026-09-12-mobile-native-builds — iOS/Android 原生构建验证（2026-09-12，Round 55）
 - 2026-09-12-onboarding-functional-fixes — /onboarding/workspace 功能化（2026-09-12，Round 3）
 - 2026-09-12-org-join-live-e2e — Organizations join live E2E（2026-09-12，Round 25）
 - 2026-09-12-platform-shell — /platform 全局导航外壳落地（2026-09-12，Round 12 续）
@@ -28,3 +29,5 @@
 - 2026-09-12-settings-live-baseline — /platform/settings live 基线截图（2026-09-12，Round 13）
 - 2026-09-12-upload-selector-cors — 上传流程 / AgentSelector / embed CORS 修复集成（2026-09-12，Round 36）
 - 2026-09-12-visual-harness — Vue/React 截图对比环境（2026-09-12 建立）
+- 2026-09-12-wails-macos-react-rerun2 — Wails macOS 打包验证（React bundle，2026-09-12）
+- screenshot-matrix — 全页 live 截图矩阵（2026-09-12，Vue:5180 / React:5181 同后端 :8080，1440x900 zh-CN，账号 parity-test@local.dev）
