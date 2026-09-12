@@ -298,7 +298,7 @@
 - 评审终验条件全部落地：①resolveTenant fail-closed（无 resolver 拒签发）+ 容器接 kbService+ResolveKBReadTenant（真实读权限）；②Reason 适配器唯一 query_id（Python MODEL 模式 INVALID_ARGUMENT 门槛满足）；③向量 noop 诚实（真 seam 归 W）；④查询/TopK 上线；⑤allowed_document_ids 端到端（Issue←snapshot→wire→Python 严格过滤）。
 - GREEN：`go test -race ./internal/application/service -run 'TestSemantic' -count=1` ok（7 项 Q04）；`go build ./...`/`go vet` 净。
 - 剩余（如实，W 接线）：chat_pipeline/search_entity.go 与 agent 工具入口统一（现无消费者——fail-closed 保证未接线即不可用）；真向量/全文 seam（现 noop）；进度流（无流路径无违规）；TopK 截断、first-wins 去重、并发双引擎、%w 链、DeliveredContentBytes 真交付槽（minors）。
-- 第二段提交 SHA：（同批提交后补记）
+- 第二段提交 SHA：a372daa。
 
 ## 当前边界
 
