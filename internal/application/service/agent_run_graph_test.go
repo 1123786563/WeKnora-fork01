@@ -68,6 +68,29 @@ type durableRunModelService struct {
 	chat chat.Chat
 }
 
+type recordingDurableRunChat struct {
+	messages []chat.Message
+}
+
+func (m *recordingDurableRunChat) Chat(_ context.Context, messages []chat.Message, _ *chat.ChatOptions) (*types.ChatResponse, error) {
+	m.messages = append([]chat.Message(nil), messages...)
+	return &types.ChatResponse{Content: "ok", FinishReason: "stop"}, nil
+}
+
+func (m *recordingDurableRunChat) ChatStream(ctx context.Context, messages []chat.Message, opts *chat.ChatOptions) (<-chan types.StreamResponse, error) {
+	response, err := m.Chat(ctx, messages, opts)
+	if err != nil {
+		return nil, err
+	}
+	out := make(chan types.StreamResponse, 1)
+	out <- types.StreamResponse{ResponseType: types.ResponseTypeAnswer, Content: response.Content, Done: true, FinishReason: response.FinishReason}
+	close(out)
+	return out, nil
+}
+
+func (*recordingDurableRunChat) GetModelName() string { return "recording-durable-chat" }
+func (*recordingDurableRunChat) GetModelID() string   { return "recording-durable-chat-id" }
+
 func (s *durableRunModelService) GetChatModel(context.Context, string) (chat.Chat, error) {
 	return s.chat, nil
 }
@@ -203,6 +226,36 @@ func TestExecuteDurableRunCompletesFreshRun(t *testing.T) {
 	var active *string
 	require.NoError(t, db.Raw("SELECT active_agent_run_id FROM sessions WHERE id = 's1'").Scan(&active).Error)
 	require.Nil(t, active)
+}
+
+func TestExecuteDurableRunPreservesImageInputThroughProductionGraph(t *testing.T) {
+	db := openDurableRunTestDB(t)
+	store := repository.NewAgentRunStore(db)
+	prev := RegisteredAgentRunService()
+	RegisterAgentRunService(NewAgentRunService(store))
+	t.Cleanup(func() { RegisterAgentRunService(prev) })
+
+	config := &types.AgentConfig{AllowedTools: []string{tools.ToolThinking}, MultiTurnEnabled: true}
+	snapshot, err := BuildDurableRunSnapshot("describe image", []string{"artifact://image-1"}, "model-1", "", config)
+	require.NoError(t, err)
+	key := admitDurableRun(t, store, snapshot)
+	fence, err := store.Claim(durableRunCtx(), key, "worker-1", time.Minute)
+	require.NoError(t, err)
+
+	model := &recordingDurableRunChat{}
+	manager := mcp.NewMCPManager(nil)
+	t.Cleanup(manager.Shutdown)
+	svc := &sessionService{
+		messageRepo:  &durableRunMessageRepo{},
+		modelService: &durableRunModelService{chat: model},
+		agentService: &agentService{mcpManager: manager},
+	}
+	require.NoError(t, svc.ExecuteDurableRun(durableRunCtx(), fence))
+
+	require.Len(t, model.messages, 1)
+	require.Len(t, model.messages[0].MultiContent, 2)
+	require.Equal(t, "image_url", model.messages[0].MultiContent[1].Type)
+	require.Equal(t, "artifact://image-1", model.messages[0].MultiContent[1].ImageURL.URL)
 }
 
 func TestExecuteDurableRunRejectsSupersededFence(t *testing.T) {

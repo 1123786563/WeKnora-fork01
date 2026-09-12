@@ -55,6 +55,24 @@ func TestGraphRunnerRejectsCapabilityDrift(t *testing.T) {
 	require.ErrorContains(t, err, "capability compatibility")
 }
 
+func TestGraphRunnerRejectsDelayedMCPSetDrift(t *testing.T) {
+	_, err := NewGraphRunner(GraphBindings{
+		Model: &engineModel{}, Store: &minimalStore{},
+		Capabilities: CapabilitySnapshot{
+			ToolIdentities: []string{"thinking", "mcp/search"},
+			DeferredNames:  []string{"mcp/search"},
+		},
+		InitialState: State{
+			Version: StateVersion,
+			Capabilities: CapabilitySnapshot{
+				ToolIdentities: []string{"thinking", "mcp/other"},
+				DeferredNames:  []string{"mcp/other"},
+			},
+		},
+	})
+	require.ErrorContains(t, err, "tool capability set changed")
+}
+
 func TestCloneStatePreservesNilSkillDigests(t *testing.T) {
 	cloned, err := cloneState(State{Version: StateVersion})
 	require.NoError(t, err)
