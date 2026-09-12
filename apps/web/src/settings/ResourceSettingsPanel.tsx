@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import { Button, Card, Status } from '@weknora/ui';
 import { settingsResourceInput, settingsResourceRows } from './surface.ts';
+import { readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
 
 type ResourceSection = 'storage' | 'vectorstore' | 'websearch';
 type ResourceRow = Record<string, unknown>;
@@ -35,12 +36,39 @@ function apiFor(client: WeKnoraClient, section: ResourceSection): ResourceApi {
   return client.settings.webSearch.providers;
 }
 
-function resourceLabel(section: ResourceSection): string {
+function resourceLabel(section: ResourceSection): string { /* TODO(migration): keep English labels until per-section nouns are exposed via settings.* keys */
   return section === 'storage' ? 'storage backend' : section === 'vectorstore' ? 'vector store' : 'web-search provider';
 }
 
 export function ResourceSettingsPanel({ client, section, initialValue }: { client: WeKnoraClient; section: ResourceSection; initialValue: unknown }) {
   const api = apiFor(client, section);
+  const t = settingsT(readInitialLocale());
+  // Per-section i18n keys ported from the Vue settings editors.
+  const keys = section === 'storage' ? {
+    add: 'settings.storageBackend.createTitle', edit: 'settings.storageBackend.editTitle',
+    name: 'settings.storageBackend.nameLabel',
+    created: 'settings.storageBackend.saveSuccess', updated: 'settings.storageBackend.saveSuccess', list: 'settings.storage.title',
+    saveFailed: 'settings.storageBackend.saveFailed', deleteFailed: 'settings.storageBackend.deleteFailed',
+    deleteConfirm: 'settings.storageBackend.deleteConfirm', deleted: 'settings.storageBackend.deleted',
+    test: 'settings.storageBackend.testConnection', testFailed: 'settings.storageBackend.testFailed', testSuccess: 'settings.storageBackend.testSuccess',
+    setDefault: 'settings.storageBackend.setDefault', empty: 'settings.storageBackend.empty',
+  } : section === 'vectorstore' ? {
+    add: 'vectorStoreSettings.addStore', edit: 'vectorStoreSettings.editStore',
+    name: 'vectorStoreSettings.nameLabel',
+    created: 'vectorStoreSettings.toasts.storeCreated', updated: 'vectorStoreSettings.toasts.storeUpdated', list: 'vectorStoreSettings.storesTitle',
+    saveFailed: 'vectorStoreSettings.toasts.errorGeneric', deleteFailed: 'vectorStoreSettings.toasts.errorGeneric',
+    deleteConfirm: 'vectorStoreSettings.deleteConfirm', deleted: 'vectorStoreSettings.toasts.storeDeleted',
+    test: 'vectorStoreSettings.testConnection', testFailed: 'vectorStoreSettings.toasts.testFailed', testSuccess: 'vectorStoreSettings.toasts.testSuccess',
+    setDefault: 'settings.storageBackend.setDefault', empty: 'vectorStoreSettings.emptyDesc',
+  } : {
+    add: 'webSearchSettings.addProvider', edit: 'webSearchSettings.editProvider',
+    name: 'webSearchSettings.providerNameLabel',
+    created: 'webSearchSettings.toasts.providerCreated', updated: 'webSearchSettings.toasts.providerUpdated', list: 'webSearchSettings.providersTitle',
+    saveFailed: 'webSearchSettings.toasts.errorGeneric', deleteFailed: 'webSearchSettings.toasts.errorGeneric',
+    deleteConfirm: 'webSearchSettings.deleteConfirm', deleted: 'webSearchSettings.toasts.providerDeleted',
+    test: 'webSearchSettings.testConnection', testFailed: 'webSearchSettings.toasts.testFailed', testSuccess: 'webSearchSettings.toasts.testSuccess',
+    setDefault: 'webSearchSettings.setAsDefault', empty: 'webSearchSettings.noProvidersDesc',
+  };
   const [rows, setRows] = useState<ResourceRow[]>(() => settingsResourceRows(initialValue, section));
   const [name, setName] = useState('');
   const [type, setType] = useState('');
@@ -64,7 +92,7 @@ export function ResourceSettingsPanel({ client, section, initialValue }: { clien
   async function refresh() {
     setBusy(true); setError(null);
     try { setRows([...await api.list()]); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : `Unable to load ${resourceLabel(section)}s.`); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : t(keys.saveFailed)); {/* TODO(migration): load-failure toast has no per-section key */} }
     finally { setBusy(false); }
   }
 
@@ -74,32 +102,32 @@ export function ResourceSettingsPanel({ client, section, initialValue }: { clien
       const input = settingsResourceInput(name, type, configText);
       const saved = editingId ? await api.update(editingId, input) : await api.create(input);
       setRows((current) => editingId ? current.map((row) => rowId(row) === editingId ? saved : row) : [...current, saved]);
-      clearForm(); setNotice(`${resourceLabel(section)} saved.`);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : `Unable to save ${resourceLabel(section)}; the server value was kept.`); }
+      clearForm(); setNotice(t(editingId ? keys.updated : keys.created));
+    } catch (reason) { setError(reason instanceof Error ? reason.message : t(keys.saveFailed)); }
     finally { setBusy(false); }
   }
 
   async function test(id: string) {
     setBusy(true); setError(null); setNotice(null);
-    try { const result = await api.testById(id); if (!result.success) throw new Error(result.error || 'Connection test failed'); setNotice(result.message || 'Connection test succeeded.'); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'Connection test failed.'); }
+    try { const result = await api.testById(id); if (!result.success) throw new Error(result.error || t(keys.testFailed)); setNotice(result.message || t(keys.testSuccess)); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : t(keys.testFailed)); }
     finally { setBusy(false); }
   }
 
   async function remove(id: string) {
-    if (!id || !window.confirm(`Delete this ${resourceLabel(section)}?`)) return;
+    if (!id || !window.confirm(t(keys.deleteConfirm))) return;
     setBusy(true); setError(null); setNotice(null);
-    try { await api.remove(id); setRows((current) => current.filter((row) => rowId(row) !== id)); if (editingId === id) clearForm(); setNotice(`${resourceLabel(section)} deleted.`); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : `Unable to delete ${resourceLabel(section)}.`); }
+    try { await api.remove(id); setRows((current) => current.filter((row) => rowId(row) !== id)); if (editingId === id) clearForm(); setNotice(t(keys.deleted)); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : t(keys.deleteFailed)); }
     finally { setBusy(false); }
   }
 
   async function setDefault(id: string) {
     if (!api.setDefault) return;
     setBusy(true); setError(null); setNotice(null);
-    try { await api.setDefault(id); setNotice('Default storage backend updated.'); await refresh(); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to set the default storage backend.'); setBusy(false); }
+    try { await api.setDefault(id); setNotice(t('settings.storageBackend.defaultUpdated')); await refresh(); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : t('settings.storageBackend.saveFailed')); {/* TODO(migration): set-default failure has no dedicated key */} setBusy(false); }
   }
 
-  return <div className="wk-settings-resource"><Card><h3>{editingId ? `Edit ${resourceLabel(section)}` : `Add ${resourceLabel(section)}`}</h3>{error ? <Status tone="error">{error}</Status> : null}{notice ? <Status tone="success">{notice}</Status> : null}<form className="wk-settings-editor" onSubmit={(event) => void save(event)}><label>Name<input required value={name} onChange={(event) => setName(event.target.value)} /></label><label>Type<input required value={type} onChange={(event) => setType(event.target.value)} placeholder="Provider type" /></label><label>Safe configuration JSON<textarea rows={4} value={configText} onChange={(event) => setConfigText(event.target.value)} /></label><div className="wk-list-actions"><Button type="submit" loading={busy}>{editingId ? 'Save changes' : 'Create'}</Button>{editingId ? <Button type="button" disabled={busy} onClick={clearForm}>Cancel</Button> : null}</div></form></Card><Card><div className="wk-settings-panel-heading"><div><h3>Configured resources</h3><p className="wk-muted">Secrets are never prefilled from server responses. Test and delete operations wait for server confirmation.</p></div><Button type="button" disabled={busy} onClick={() => void refresh()}>Reload</Button></div>{rows.length === 0 ? <Status>No configured {resourceLabel(section)}s returned.</Status> : <ul className="wk-list">{rows.map((row, index) => { const id = rowId(row); return <li key={id || index}><div className="wk-list-item-copy"><strong>{rowText(row, 'name') || id || 'Unnamed resource'}</strong><span>{rowText(row, 'type') || 'type unavailable'}{row.default === true ? ' · default' : ''}</span></div><div className="wk-list-actions"><Button type="button" disabled={!id || busy} onClick={() => edit(row)}>Edit</Button><Button type="button" disabled={!id || busy} loading={busy} onClick={() => void test(id)}>Test</Button>{api.setDefault ? <Button type="button" disabled={!id || busy} onClick={() => void setDefault(id)}>Set default</Button> : null}<Button type="button" disabled={!id || busy} onClick={() => void remove(id)}>Delete</Button></div></li>; })}</ul>}</Card></div>;
+  return <div className="wk-settings-resource"><Card><h3>{editingId ? t(keys.edit) : t(keys.add)}</h3>{error ? <Status tone="error">{error}</Status> : null}{notice ? <Status tone="success">{notice}</Status> : null}<form className="wk-settings-editor" onSubmit={(event) => void save(event)}><label>{t(keys.name)}<input required value={name} onChange={(event) => setName(event.target.value)} /></label><label>Type<input required value={type} onChange={(event) => setType(event.target.value)} placeholder="Provider type" />{/* TODO(migration): no settings.* key for provider type placeholder */}</label><label>{/* TODO(migration): no settings.* key for safe config JSON */}Safe configuration JSON<textarea rows={4} value={configText} onChange={(event) => setConfigText(event.target.value)} /></label><div className="wk-list-actions"><Button type="submit" loading={busy}>{editingId ? t('common.save') : t(keys.add)}</Button>{editingId ? <Button type="button" disabled={busy} onClick={clearForm}>{t('common.cancel')}</Button> : null}</div></form></Card><Card><div className="wk-settings-panel-heading"><div><h3>{t(keys.list)}</h3><p className="wk-muted">Secrets are never prefilled from server responses. Test and delete operations wait for server confirmation.</p></div><Button type="button" disabled={busy} onClick={() => void refresh()}>{t('common.refresh')}</Button></div>{rows.length === 0 ? <Status>{t(keys.empty)}</Status> : <ul className="wk-list">{rows.map((row, index) => { const id = rowId(row); return <li key={id || index}><div className="wk-list-item-copy"><strong>{rowText(row, 'name') || id || 'Unnamed resource'}</strong><span>{rowText(row, 'type') || 'type unavailable'}{row.default === true ? ' · default' : ''}</span></div><div className="wk-list-actions"><Button type="button" disabled={!id || busy} onClick={() => edit(row)}>{t('common.edit')}</Button><Button type="button" disabled={!id || busy} loading={busy} onClick={() => void test(id)}>{t(keys.test)}</Button>{api.setDefault ? <Button type="button" disabled={!id || busy} onClick={() => void setDefault(id)}>{t(keys.setDefault)}</Button> : null}<Button type="button" disabled={!id || busy} onClick={() => void remove(id)}>{t('common.delete')}</Button></div></li>; })}</ul>}</Card></div>;
 }

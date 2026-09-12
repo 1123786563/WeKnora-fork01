@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import { Button, Card, Status } from '@weknora/ui';
 import { settingsConfigPatch, tenantModelIds } from './surface.ts';
+import { readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
 
 type ConfigSection = 'retrieval' | 'chathistory' | 'parser';
 type ConfigValues = Record<string, unknown>;
@@ -46,6 +47,9 @@ export function ConfigSettingsPanel({ client, section, initialValue, models, emb
   onSaved?: () => void;
 }) {
   const api = configApi(client, section);
+  const t = settingsT(readInitialLocale());
+  const saveSuccessKey = section === 'retrieval' ? 'retrievalSettings.toasts.saveSuccess' : section === 'chathistory' ? 'chatHistorySettings.toasts.saveSuccess' : 'settings.parser.saveSuccess';
+  const saveFailedKey = section === 'retrieval' ? 'retrievalSettings.toasts.saveFailed' : section === 'chathistory' ? 'chatHistorySettings.toasts.saveFailed' : 'settings.parser.saveFailed';
   const savedValues = useMemo(() => initialValues(section, initialValue), [section, initialValue]);
   const [values, setValues] = useState<ConfigValues>(savedValues);
   const [busy, setBusy] = useState(false);
@@ -66,9 +70,9 @@ export function ConfigSettingsPanel({ client, section, initialValue, models, emb
       const patch = settingsConfigPatch(section, values, allowedModelIds.length > 0 ? { allowedModelIds } : {});
       const saved = await api.update(patch);
       setValues((current) => ({ ...initialValues(section, saved), ...(section === 'parser' ? { mineru_api_key: '' } : {}) }));
-      setNotice('Settings saved by the server.');
+      setNotice(t(saveSuccessKey));
       onSaved?.();
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to save settings; the current form values were kept.'); }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : t(saveFailedKey, { message: '' })); }
     finally { setBusy(false); }
   }
 
@@ -77,8 +81,8 @@ export function ConfigSettingsPanel({ client, section, initialValue, models, emb
     setBusy(true); setError(null); setNotice(null);
     try {
       const result = await client.settings.parser.check(settingsConfigPatch('parser', values));
-      setNotice(result.connected ? 'Parser engine check succeeded.' : 'Parser engine check completed; no document reader is connected.');
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Parser engine check failed.'); }
+      setNotice(result.connected ? t('settings.parser.checkSuccess') : t('settings.parser.checkDoneStatusUpdated'));
+    } catch (reason) { setError(reason instanceof Error ? reason.message : t('settings.parser.checkFailed')); }
     finally { setBusy(false); }
   }
 
@@ -92,6 +96,6 @@ export function ConfigSettingsPanel({ client, section, initialValue, models, emb
     {modelOptions.map((model) => <option key={model.id} value={model.id}>{model.name ? model.name + ' (' + model.id + ')' : model.id}</option>)}
   </select>;
 
-  const title = section === 'retrieval' ? 'Retrieval parameters' : section === 'chathistory' ? 'Chat-history indexing' : 'Parser engine configuration';
-  return <Card><h3>{title}</h3>{error ? <Status tone="error">{error}</Status> : null}{notice ? <Status tone="success">{notice}</Status> : null}<form className="wk-settings-editor" onSubmit={(event) => void save(event)}>{section === 'retrieval' ? <><label>Embedding top K<input type="number" min={1} max={100} value={String(values.embedding_top_k)} onChange={(event) => setValue('embedding_top_k', event.target.value)} /></label><label>Vector threshold<input type="number" min={0} max={1} step={0.05} value={String(values.vector_threshold)} onChange={(event) => setValue('vector_threshold', event.target.value)} /></label><label>Keyword threshold<input type="number" min={0} max={1} step={0.05} value={String(values.keyword_threshold)} onChange={(event) => setValue('keyword_threshold', event.target.value)} /></label><label>Rerank top K<input type="number" min={1} max={100} value={String(values.rerank_top_k)} onChange={(event) => setValue('rerank_top_k', event.target.value)} /></label><label>Rerank threshold<input type="number" min={-10} max={10} step={0.1} value={String(values.rerank_threshold)} onChange={(event) => setValue('rerank_threshold', event.target.value)} /></label><label>Rerank model{modelOptions.length > 0 ? modelSelect('rerank_model_id', false) : <input value={String(values.rerank_model_id)} onChange={(event) => setValue('rerank_model_id', event.target.value)} />}</label></> : section === 'chathistory' ? <><label><input type="checkbox" checked={values.enabled === true} onChange={(event) => setValue('enabled', event.target.checked)} /> Enable chat-history indexing</label><label>Embedding model{modelOptions.length > 0 ? modelSelect('embedding_model_id', embeddingLocked === true || values.enabled !== true) : <input value={String(values.embedding_model_id)} disabled={embeddingLocked === true || values.enabled !== true} onChange={(event) => setValue('embedding_model_id', event.target.value)} />}</label>{embeddingLocked === true ? <p className="wk-muted" data-testid="embedding-locked-note">Indexed chat messages already exist; the embedding model is locked until the index is cleared.</p> : null}<p className="wk-muted">The server owns the generated knowledge-base identity and indexed-message statistics.</p></> : <><label>MinerU endpoint<input type="url" value={String(values.mineru_endpoint)} placeholder="https://parser.example" onChange={(event) => setValue('mineru_endpoint', event.target.value)} /></label><label>MinerU API key<input type="password" autoComplete="new-password" placeholder="Leave blank to keep the configured key" value={String(values.mineru_api_key)} onChange={(event) => setValue('mineru_api_key', event.target.value)} /></label><p className="wk-muted">The current API key is never returned to or prefilled in this form.</p></>}<div className="wk-list-actions"><Button type="submit" loading={busy} disabled={!dirty} data-testid="config-save">Save settings</Button>{section === 'parser' ? <Button type="button" disabled={busy} onClick={() => void testParser()}>Test parser engines</Button> : null}</div></form></Card>;
+  const title = section === 'retrieval' ? t('retrievalSettings.title') : section === 'chathistory' ? t('chatHistorySettings.title') : t('settings.parser.title');
+  return <Card><h3>{title}</h3>{error ? <Status tone="error">{error}</Status> : null}{notice ? <Status tone="success">{notice}</Status> : null}<form className="wk-settings-editor" onSubmit={(event) => void save(event)}>{section === 'retrieval' ? <><label>{t('retrievalSettings.embeddingTopKLabel')}<input type="number" min={1} max={100} value={String(values.embedding_top_k)} onChange={(event) => setValue('embedding_top_k', event.target.value)} /></label><label>{t('retrievalSettings.vectorThresholdLabel')}<input type="number" min={0} max={1} step={0.05} value={String(values.vector_threshold)} onChange={(event) => setValue('vector_threshold', event.target.value)} /></label><label>{t('retrievalSettings.keywordThresholdLabel')}<input type="number" min={0} max={1} step={0.05} value={String(values.keyword_threshold)} onChange={(event) => setValue('keyword_threshold', event.target.value)} /></label><label>{t('retrievalSettings.rerankTopKLabel')}<input type="number" min={1} max={100} value={String(values.rerank_top_k)} onChange={(event) => setValue('rerank_top_k', event.target.value)} /></label><label>{t('retrievalSettings.rerankThresholdLabel')}<input type="number" min={-10} max={10} step={0.1} value={String(values.rerank_threshold)} onChange={(event) => setValue('rerank_threshold', event.target.value)} /></label><label>{t('retrievalSettings.rerankModelLabel')}{modelOptions.length > 0 ? modelSelect('rerank_model_id', false) : <input value={String(values.rerank_model_id)} onChange={(event) => setValue('rerank_model_id', event.target.value)} />}</label></> : section === 'chathistory' ? <><label><input type="checkbox" checked={values.enabled === true} onChange={(event) => setValue('enabled', event.target.checked)} /> {t('chatHistorySettings.enableLabel')}</label><label>{t('chatHistorySettings.embeddingModelLabel')}{modelOptions.length > 0 ? modelSelect('embedding_model_id', embeddingLocked === true || values.enabled !== true) : <input value={String(values.embedding_model_id)} disabled={embeddingLocked === true || values.enabled !== true} onChange={(event) => setValue('embedding_model_id', event.target.value)} />}</label>{embeddingLocked === true ? <p className="wk-muted" data-testid="embedding-locked-note">{t('chatHistorySettings.embeddingModelLocked')}</p> : null}<p className="wk-muted">The server owns the generated knowledge-base identity and indexed-message statistics.</p></> : <><label>{t('settings.parser.selfHostedEndpoint')}{/* TODO(migration): MinerU endpoint label has no settings.* key */}<input type="url" value={String(values.mineru_endpoint)} placeholder="https://parser.example" onChange={(event) => setValue('mineru_endpoint', event.target.value)} /></label><label>MinerU API key{/* TODO(migration): no settings.* key */}<input type="password" autoComplete="new-password" placeholder="Leave blank to keep the configured key" value={String(values.mineru_api_key)} onChange={(event) => setValue('mineru_api_key', event.target.value)} /></label><p className="wk-muted">The current API key is never returned to or prefilled in this form.</p></>}<div className="wk-list-actions"><Button type="submit" loading={busy} disabled={!dirty} data-testid="config-save">{t('common.save')}</Button>{section === 'parser' ? <Button type="button" disabled={busy} onClick={() => void testParser()}>{t('settings.parser.testConnection')}</Button> : null}</div></form></Card>;
 }
