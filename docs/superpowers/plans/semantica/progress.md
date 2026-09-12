@@ -1,6 +1,6 @@
 # Semantica 实施台账
 
-状态：V01–C03、I01–I05、A01–A03、Q01–Q04、W01–W03、O01 verified（部署级启动验证归 O03）；O02/O03 未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
+状态：V01–C03、I01–I05、A01–A03、Q01–Q04、W01–W03、O01 verified；O02 implemented（进程级故障归 O03）；O03 未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
 
 状态值 pending / in_progress / blocked / implemented / verified。每项验证记录必须包含commit SHA、精确命令、退出码、环境、产物路径、失败/限制；无真实证据不标记verified。执行前记录实际基线与已有脏文件。
 
@@ -352,5 +352,17 @@
 - 质量再审 FAIL（B1 新根因：digest 65hex 非法——buildx 解析即拒（compose config 不验 FROM——先前"config OK"非可构建证据）；B3 半修：TLS 路径无 volumes 挂载必崩；B4 半修：/ready 引用已删 ready 变量 NameError（**8/8 绿却 /ready 崩——评审员实证启动**）+SIGTERM 同线程死锁）→ 终修：真 digest 229a2c5b…（docker image inspect 取得，64hex，**buildx --check 通过**）/helm volumes+volumeMounts 同门挂载（渲染 5 处）/Probes 提为可注入工厂+HTTP 级测试（/healthz 200+/ready 503 实测断言）+SIGTERM 经线程关停。**活体验证**：本地实启 server_entry——healthz=200、ready=503（fail-closed 生效）、SIGTERM 1 秒内优雅退出（评审员复现脚本同法）。9/9 测试。
 - 提交 SHA：bb48423 + 9bb8029 + a84b8f5 + 终修段（下记）。
 - V02 结论边界：持久图桥接/授权子图重建/注册规则推导已验证；模型推断 unverified（无凭据，未调用）；向量检索路径未验证。
+
+### 2026-09-11 O02 故障注入、清理与恢复演练（implemented——进程级故障归 O03）
+
+- 工作区：.worktrees/semantica（分支 codex/semantica）；基线 SHA：3617080。
+- 修改文件：semantic/tests/integration/{conftest.py(RecoveryHarness：snapshot/restore/maintenance/replay/query——服务侧断言+墓碑权威，非内存替代),test_recovery.py(5),test_authorization_races.py(3)}、scripts/semantic/run_recovery_tests.sh（PG 不可达退出非零）、docs/superpowers/plans/semantica/{recovery-evidence.md,recovery-runbook.md}、本台账、06 计划勾选。
+- RED：`bash scripts/semantic/run_recovery_tests.sh`（模块缺失→表名→kind 非空→种子语义四轮真业务失败）。
+- GREEN：`bash scripts/semantic/run_recovery_tests.sh` **8 passed 退出码 0**（真实服务 PG）；全量 semantic/tests/ **205 passed**。
+- 实测验收：**计划核心断言逐字**（快照→删除→恢复→ready False→重放→ready True→d1 不在查询）；维护阻断；被拒永不可见；存活保持可见；**快照后新删除保留屏障**（墓碑不入快照——恢复不复活删除权威）；撤权排除；部分不混合（恰 {d2}）。
+- 交付：RecoveryHarness（真实服务栈——故障点仅测试可达）；恢复四步手册（维护→重放→验证→开放）；证据 8 场景表。
+- **延后（如实，O03）**：①进程级故障注入（pause/resume/restart 需容器编排——无部署授权）；②对象存储级快照恢复；③12 场景中未复现 4 个（图写/向量半失败、cancel/publish 竞态、后台重试、缓存撤权）——保持未验收。
+- review：双评审下轮补做。
+- 提交 SHA：（同批提交后补记）
 - V03 结论边界：semantica 模式检索质量/延迟为受控语料实测；native 对照与模型用量门槛未测（阻断记录见上）；上线门禁 approved=false 待用户确认。
 - 未创建GitHub Issue或外部发布；没有分配虚构Issue编号。
