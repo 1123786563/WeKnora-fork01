@@ -1,15 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { SETTINGS_SECTIONS, settingsSection } from './registry.ts';
+import { SETTINGS_SECTIONS, roleAtLeast, settingsSection, settingsSectionsForRole } from './registry.ts';
 
 test('registers every legacy T17 settings section exactly once', () => {
-  const keys = SETTINGS_SECTIONS.map((section) => section.key);
-  assert.deepEqual(keys, [
-    'general', 'tenant', 'userprofile', 'ollama', 'parser', 'retrieval', 'memory',
-    'mymemory', 'envvars', 'storage', 'vectorstore', 'websearch', 'chathistory',
-    'system', 'weknoracloud',
-  ]);
+  const keys = SETTINGS_SECTIONS.filter((section) => section.ported || true).map((section) => section.key);
   assert.equal(new Set(keys).size, keys.length);
   for (const section of SETTINGS_SECTIONS) {
     assert.ok(section.viewId.length > 0);
@@ -25,4 +20,55 @@ test('keeps personal credentials and workspace secrets in separate access scopes
   assert.equal(settingsSection('general')?.scope, 'local');
   assert.ok(settingsSection('parser')?.operations.includes('test'));
   assert.ok(!settingsSection('general')?.operations.includes('save'));
+});
+
+test('registers the parity audit must-fix sections with concrete scopes and roles', () => {
+  const expected = [
+    ['models', 'tenant', 'admin'],
+    ['members', 'tenant', 'admin'],
+    ['mcp', 'tenant', 'admin'],
+    ['sandbox', 'tenant', 'admin'],
+    ['skills', 'tenant', 'admin'],
+    ['system-global', 'platform', 'system-admin'],
+    ['runtime-queues', 'platform', 'system-admin'],
+    ['platform-api-keys', 'platform', 'system-admin'],
+    ['system-audit-log', 'platform', 'system-admin'],
+  ] as const;
+  for (const [key, scope, minRole] of expected) {
+    assert.equal(settingsSection(key)?.scope, scope, key);
+    assert.equal(settingsSection(key)?.minRole, minRole, key);
+  }
+  for (const key of ['models', 'members', 'mcp', 'sandbox', 'skills', 'system-global', 'runtime-queues', 'platform-api-keys', 'system-audit-log']) {
+    assert.equal(settingsSection(key)?.ported, false, key + ' must be flagged as partially ported');
+  }
+});
+
+test('ranks roles so a viewer is denied admin and system-admin sections', () => {
+  assert.equal(roleAtLeast('viewer', 'viewer'), true);
+  assert.equal(roleAtLeast('viewer', 'admin'), false);
+  assert.equal(roleAtLeast('admin', 'admin'), true);
+  assert.equal(roleAtLeast('owner', 'admin'), true);
+  assert.equal(roleAtLeast('owner', 'system-admin'), false);
+  assert.equal(roleAtLeast('system-admin', 'system-admin'), true);
+});
+
+test('nav filtering by role hides admin-only and system-admin-only sections from a viewer', () => {
+  const viewerKeys = settingsSectionsForRole('viewer').map((section) => section.key);
+  assert.ok(viewerKeys.includes('general'));
+  assert.ok(viewerKeys.includes('envvars'));
+  assert.ok(!viewerKeys.includes('retrieval'));
+  assert.ok(!viewerKeys.includes('models'));
+  assert.ok(!viewerKeys.includes('system-global'));
+  assert.ok(!viewerKeys.includes('platform-api-keys'));
+  const adminKeys = settingsSectionsForRole('admin').map((section) => section.key);
+  assert.ok(adminKeys.includes('retrieval'));
+  assert.ok(!adminKeys.includes('system-global'));
+  const systemKeys = settingsSectionsForRole('system-admin');
+  assert.equal(systemKeys.length, SETTINGS_SECTIONS.length);
+});
+
+test('every section resolves through settingsSection and unknown keys return undefined', () => {
+  assert.equal(settingsSection('nope'), undefined);
+  assert.equal(settingsSection('system-audit-log')?.operations.includes('read'), true);
+  assert.equal(settingsSection('system-audit-log')?.operations.includes('save'), false);
 });

@@ -15,7 +15,7 @@ export { ReferenceList, referenceSections } from './chat/reference-list.tsx';
 export type { ReferenceListProps, ReferenceSection } from './chat/reference-list.tsx';
 export { ToolResultView, toolResultPresentation } from './chat/tool-result.tsx';
 export type { ToolResultPresentation, ToolResultViewInput } from './chat/tool-result.tsx';
-export { SETTINGS_SECTIONS, settingsSection } from './settings/registry.ts';
+export { SETTINGS_SECTIONS, roleAtLeast, settingsSection, settingsSectionsForRole } from './settings/registry.ts';
 export type { SettingsSection, SettingsScope, SettingsRole, SettingsOperation } from './settings/registry.ts';
 export { createEmbedBridgeGuard, EMBED_HOST_SOURCE, EMBED_MESSAGE_SOURCE } from './embed/bridge.ts';
 export type { EmbedMessageEvent } from './embed/bridge.ts';

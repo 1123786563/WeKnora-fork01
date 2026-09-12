@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { cloudCredentialPatch, memoryEnabledPatch, memoryItemPatch, memoryWorkspacePatch, ollamaModelInput, profilePasswordPatch, settingsConfigPatch, settingsResourceInput, settingsResourceRows, settingsSectionMeta, settingsValueEntries, tenantEditState, tenantPatch } from './surface.ts';
-import { SETTINGS_SECTIONS } from '@weknora/views';
+import { chatHistoryEmbeddingLocked, cloudCredentialPatch, envVarRemove, envVarSet, memoryEnabledPatch, memoryItemPatch, memoryWorkspacePatch, ollamaModelInput, profilePasswordPatch, settingsConfigPatch, settingsResourceInput, settingsResourceRows, settingsSectionMeta, settingsValueEntries, tenantEditState, tenantModelIds, tenantPatch } from './surface.ts';
+import { SETTINGS_SECTIONS, roleAtLeast, settingsSection, settingsSectionsForRole } from '@weknora/views';
 
 test('gives every registered settings section a concrete inventory description', () => {
   assert.equal(settingsSectionMeta('general')?.title, 'General and preferences');
@@ -89,4 +89,54 @@ test('requires both WeKnora Cloud credential fields without accepting a blank se
   assert.deepEqual(cloudCredentialPatch(' app-id ', ' app-secret '), { app_id: 'app-id', app_secret: 'app-secret' });
   assert.throws(() => cloudCredentialPatch('', 'secret'), /app ID/);
   assert.throws(() => cloudCredentialPatch('id', '  '), /app secret/);
+});
+
+test('builds skill and sandbox env-var mutation payloads with their scope ids', () => {
+  assert.deepEqual(envVarSet('skill', ' skill-1 ', ' API_KEY ', 'v1'), {
+    scope: 'skill', name: 'API_KEY', value: 'v1', body: { skill_id: 'skill-1', name: 'API_KEY', value: 'v1' },
+  });
+  assert.deepEqual(envVarSet('sandbox', 'cfg-1', 'TOKEN', 'v2').body, { sandbox_config_id: 'cfg-1', name: 'TOKEN', value: 'v2' });
+  assert.throws(() => envVarSet('skill', '  ', 'NAME', 'v'), /Skill ID/);
+  assert.throws(() => envVarSet('sandbox', 'cfg-1', '  ', 'v'), /name is required/);
+});
+
+test('builds skill and sandbox env-var removal payloads without a value', () => {
+  assert.deepEqual(envVarRemove('skill', 'skill-1', 'API_KEY'), { skill_id: 'skill-1', name: 'API_KEY' });
+  assert.deepEqual(envVarRemove('sandbox', 'cfg-1', 'TOKEN'), { sandbox_config_id: 'cfg-1', name: 'TOKEN' });
+  assert.throws(() => envVarRemove('sandbox', '', 'TOKEN'), /Sandbox config ID/);
+});
+
+test('extracts tenant model ids for selector option lists', () => {
+  assert.deepEqual(tenantModelIds([{ id: 'm-1', name: 'A' }, { id: 'm-2' }, null, { name: 'x' }, 'junk']), ['m-1', 'm-2']);
+  assert.deepEqual(tenantModelIds(undefined), []);
+});
+
+test('rejects saving model ids that are not in the tenant model list', () => {
+  const base = { embedding_top_k: 5, vector_threshold: 0.1, keyword_threshold: 0.2, rerank_top_k: 5, rerank_threshold: 0 };
+  const allowed = ['m-1', 'm-2'];
+  assert.throws(() => settingsConfigPatch('retrieval', { ...base, rerank_model_id: 'not-in-list' }, { allowedModelIds: allowed }), /rerank_model_id/);
+  assert.equal(settingsConfigPatch('retrieval', { ...base, rerank_model_id: ' m-2 ' }, { allowedModelIds: allowed }).rerank_model_id, 'm-2');
+  assert.equal(settingsConfigPatch('retrieval', { ...base, rerank_model_id: 'anything' }).rerank_model_id, 'anything');
+  assert.throws(() => settingsConfigPatch('chathistory', { enabled: true, embedding_model_id: 'ghost' }, { allowedModelIds: allowed }), /embedding_model_id/);
+  assert.equal(settingsConfigPatch('chathistory', { enabled: true, embedding_model_id: 'm-1' }, { allowedModelIds: allowed }).embedding_model_id, 'm-1');
+});
+
+test('locks the chat-history embedding model once messages are indexed', () => {
+  assert.equal(chatHistoryEmbeddingLocked({ has_indexed_messages: true }), true);
+  assert.equal(chatHistoryEmbeddingLocked({ has_indexed_messages: false }), false);
+  assert.equal(chatHistoryEmbeddingLocked(null), false);
+  assert.equal(chatHistoryEmbeddingLocked(undefined), false);
+});
+
+test('role helpers deny a viewer the admin-only registry sections', () => {
+  assert.equal(roleAtLeast('viewer', 'admin'), false);
+  const deniedButRegistered = settingsSection('platform-api-keys');
+  assert.ok(deniedButRegistered);
+  assert.equal(settingsSectionsForRole('viewer').some((section) => section.key === 'platform-api-keys'), false);
+});
+test('rejects weak new passwords through the ported password policy', () => {
+  assert.throws(() => profilePasswordPatch('old', 'abc123', 'abc123'), /password policy/);
+  assert.throws(() => profilePasswordPatch('old', 'abc123', 'abc123', { complexPasswordEnabled: true }), /password policy/);
+  assert.deepEqual(profilePasswordPatch('old', 'Str0ng!Pass', 'Str0ng!Pass', { complexPasswordEnabled: true }), { old_password: 'old', new_password: 'Str0ng!Pass' });
+  assert.deepEqual(profilePasswordPatch('old', 'abcdefgh1', 'abcdefgh1'), { old_password: 'old', new_password: 'abcdefgh1' });
 });

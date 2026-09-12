@@ -11,6 +11,7 @@
     "./knowledge/processing": "./src/knowledge/processing.ts",
     "./knowledge/preview": "./src/knowledge/preview.ts",
     "./scope": "./src/scope.ts",
+    "./auth/password-policy": "./src/auth/password-policy.ts",
     "./wiki/diff": "./src/wiki/diff.ts",
     "./chat/draft": "./src/chat/draft.ts",
     "./chat/reducer": "./src/chat/reducer.ts",

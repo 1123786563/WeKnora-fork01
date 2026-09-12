@@ -1,4 +1,5 @@
 import { SETTINGS_SECTIONS, type SettingsSection, type SettingsOperation, type SettingsRole, type SettingsScope } from '@weknora/views';
+import { validatePassword } from '@weknora/domain/auth/password-policy';
 
 export interface SettingsSectionMeta extends SettingsSection {
   readonly title: string;
@@ -71,11 +72,13 @@ export function tenantPatch(name: string, description: string): { name: string; 
   return { name: nextName, description: description.trim() };
 }
 
-export function profilePasswordPatch(oldPassword: string, newPassword: string, confirmation: string): { old_password: string; new_password: string } {
+export function profilePasswordPatch(oldPassword: string, newPassword: string, confirmation: string, options: { complexPasswordEnabled?: boolean } = {}): { old_password: string; new_password: string } {
   if (!oldPassword.trim()) throw new Error('Current password is required');
   if (!newPassword.trim()) throw new Error('New password is required');
   if (newPassword === oldPassword) throw new Error('New password must be different from the current password');
   if (newPassword !== confirmation) throw new Error('New passwords must match');
+  const policy = validatePassword(newPassword, options.complexPasswordEnabled === true);
+  if (!policy.valid) throw new Error('New password does not satisfy the password policy: ' + policy.violations.join(', '));
   return { old_password: oldPassword, new_password: newPassword };
 }
 
@@ -121,7 +124,14 @@ function finiteNumber(value: unknown, key: string, min: number, max: number): nu
   return parsed;
 }
 
-export function settingsConfigPatch(section: SettingsConfigSection, values: Record<string, unknown>): Record<string, unknown> {
+function modelIdSelection(value: unknown, allowedModelIds: readonly string[] | undefined, field: string): string {
+  const id = typeof value === 'string' ? value.trim() : '';
+  if (!id || !allowedModelIds || allowedModelIds.length === 0) return id;
+  if (!allowedModelIds.includes(id)) throw new Error(field + ' must be one of the tenant models');
+  return id;
+}
+
+export function settingsConfigPatch(section: SettingsConfigSection, values: Record<string, unknown>, options: { allowedModelIds?: readonly string[] } = {}): Record<string, unknown> {
   if (section === 'retrieval') {
     return {
       embedding_top_k: Math.trunc(finiteNumber(values.embedding_top_k, 'embedding_top_k', 1, 100)),
@@ -129,12 +139,12 @@ export function settingsConfigPatch(section: SettingsConfigSection, values: Reco
       keyword_threshold: finiteNumber(values.keyword_threshold, 'keyword_threshold', 0, 1),
       rerank_top_k: Math.trunc(finiteNumber(values.rerank_top_k, 'rerank_top_k', 1, 100)),
       rerank_threshold: finiteNumber(values.rerank_threshold, 'rerank_threshold', -10, 10),
-      rerank_model_id: typeof values.rerank_model_id === 'string' ? values.rerank_model_id.trim() : '',
+      rerank_model_id: modelIdSelection(values.rerank_model_id, options.allowedModelIds, 'rerank_model_id'),
     };
   }
   if (section === 'chathistory') {
     if (typeof values.enabled !== 'boolean') throw new Error('Chat history enabled must be a boolean');
-    return { enabled: values.enabled, embedding_model_id: typeof values.embedding_model_id === 'string' ? values.embedding_model_id.trim() : '' };
+    return { enabled: values.enabled, embedding_model_id: modelIdSelection(values.embedding_model_id, options.allowedModelIds, 'embedding_model_id') };
   }
   const endpoint = typeof values.mineru_endpoint === 'string' ? values.mineru_endpoint.trim() : '';
   if (endpoint) {
@@ -160,4 +170,45 @@ export function cloudCredentialPatch(appId: string, appSecret: string): { app_id
   if (!id) throw new Error('WeKnora Cloud app ID is required');
   if (!secret) throw new Error('WeKnora Cloud app secret is required');
   return { app_id: id, app_secret: secret };
+}
+export type EnvVarScope = 'skill' | 'sandbox';
+
+export interface EnvVarMutation {
+  readonly scope: EnvVarScope;
+  readonly name: string;
+  readonly value: string;
+  readonly body: Record<string, unknown>;
+}
+
+function envVarBody(scope: EnvVarScope, scopeId: string, name: string, value: string): Record<string, unknown> {
+  return scope === 'skill' ? { skill_id: scopeId, name, value } : { sandbox_config_id: scopeId, name, value };
+}
+
+export function envVarSet(scope: EnvVarScope, scopeId: string, name: string, value: string): EnvVarMutation {
+  const nextScopeId = scopeId.trim();
+  const nextName = name.trim();
+  if (!nextScopeId) throw new Error(scope === 'skill' ? 'Skill ID is required' : 'Sandbox config ID is required');
+  if (!nextName) throw new Error('Variable name is required');
+  return { scope, name: nextName, value, body: envVarBody(scope, nextScopeId, nextName, value) };
+}
+
+export function envVarRemove(scope: EnvVarScope, scopeId: string, name: string): Record<string, unknown> {
+  const nextScopeId = scopeId.trim();
+  const nextName = name.trim();
+  if (!nextScopeId) throw new Error(scope === 'skill' ? 'Skill ID is required' : 'Sandbox config ID is required');
+  if (!nextName) throw new Error('Variable name is required');
+  return scope === 'skill' ? { skill_id: nextScopeId, name: nextName } : { sandbox_config_id: nextScopeId, name: nextName };
+}
+
+export function tenantModelIds(models: unknown): string[] {
+  if (!Array.isArray(models)) return [];
+  return models
+    .filter((item): item is Record<string, unknown> => item !== null && typeof item === 'object' && !Array.isArray(item))
+    .map((item) => (typeof item.id === 'string' ? item.id : ''))
+    .filter((id) => id.length > 0);
+}
+
+export function chatHistoryEmbeddingLocked(stats: unknown): boolean {
+  if (stats === null || typeof stats !== 'object' || Array.isArray(stats)) return false;
+  return (stats as Record<string, unknown>).has_indexed_messages === true;
 }

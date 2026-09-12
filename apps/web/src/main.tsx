@@ -176,7 +176,7 @@ function renderProtected() {
   } else if (route.path === '/platform/organizations') {
     renderShell(<OrganizationsPage client={client} inviteCode={organizationInviteCode(pathname)} />);
   } else if (route.path === '/platform/settings') {
-    renderShell(<SettingsPage client={client} tenantId={Number(scopeRuntime.current().scope.tenantId)} />);
+    renderShell(<SettingsPage client={client} tenantId={Number(scopeRuntime.current().scope.tenantId)} role={scopeRuntime.role() === 'owner' ? 'owner' : scopeRuntime.role() === 'admin' ? 'admin' : 'viewer'} />);
   } else if (route.path === '/platform/system') {
     renderShell(<AdministrationPage client={client} tenantId={Number(scopeRuntime.current().scope.tenantId)} systemAdmin />);
   } else if (route.kind === 'knowledge-base' && route.knowledgeBaseId) {

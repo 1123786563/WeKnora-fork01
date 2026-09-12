@@ -19,6 +19,8 @@ export interface WebScopeRuntime {
   capabilities(): CapabilityMap;
   isSystemAdmin(): boolean;
   canViewChannelSessions(): boolean;
+  /** Active membership role in the current tenant scope ('viewer'|'contributor'|'admin'|'owner'). */
+  role(): WebTenantRole;
   key(resource: string, params?: unknown): readonly unknown[];
 }
 
@@ -85,6 +87,7 @@ export function createWebScopeRuntime(origin: string, userId: string | null = nu
     capabilities: () => ({ ...capabilitySnapshot }),
     isSystemAdmin: () => systemAdmin,
     canViewChannelSessions: () => systemAdmin || activeRole === 'owner' || activeRole === 'admin',
+    role: () => activeRole,
     key: (resource, params = {}) => scopedKey(controller.current().scope, resource, params),
   };
 }
