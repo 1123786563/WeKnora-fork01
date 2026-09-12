@@ -582,6 +582,18 @@ importers:
 
   packages/contracts: {}
 
+  packages/core:
+    dependencies:
+      '@weknora/api-client':
+        specifier: workspace:*
+        version: link:../api-client
+      '@weknora/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@weknora/domain':
+        specifier: workspace:*
+        version: link:../domain
+
   packages/domain:
     dependencies:
       '@weknora/contracts':
