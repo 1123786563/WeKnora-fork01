@@ -130,3 +130,8 @@
 
 - KB 列表折叠分组节头完成（KB 后续项 #11 关闭）：domain 分组函数 + App.tsx 折叠 chips；live 验证通过。提交 01bccd0。证据：evidence/vue-react-parity/2026-09-12-kb-sections.md。
 - 四页实施子代理继续（embed/organizations 已见其修改）。
+
+## 2026-09-12 Round 20
+
+- /register UI 级 live E2E 通过：客户端校验拦截（0 请求 + 4 内联错误）、有效注册恰好 1 请求、切回登录预填邮箱。证据：evidence/vue-react-parity/2026-09-12-register-live-e2e.md + screenshots/register-flow-live.png；脚本 .parity-tools/register-flow.cjs。
+- 四页实施子代理继续（organizations + packages/i18n 新域进行中）。
