@@ -120,3 +120,8 @@
 - settings 必修 8 项完成并集成（d1aa583 + 面板补交）：角色门控（scopeRuntime.role() 新增）、9 缺失 section（live 数据或显式未迁移提示）、envvars 编辑器、模型选择器+allow-list、chathistory 模型锁、密码策略（domain/auth/password-policy）、脏检查保存、popstate。vite alias 补齐后 build 恢复。
 - live 验证：ModelManagement 新 section + not-yet-ported 提示 + 真实数据渲染。
 - 四页（org/agents/integrations/embed）必修实施子代理进行中。
+
+## 2026-09-12 Round 17
+
+- 四页（org/agents/integrations/embed）live 基线截图入库：live-{agents,organizations,integrations-embed,integrations-api}.png。发现 live 缺陷并转告实施代理：integrations API tab 拉取 im-channels 且空数据 shape 触发解析错误；agents 页为共享/模型调试功能（英文，无列表）与审计一致。
+- 四页实施子代理进行中。
