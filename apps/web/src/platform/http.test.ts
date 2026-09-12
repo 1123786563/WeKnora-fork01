@@ -173,6 +173,25 @@ test('does not replay a JSON write after 401', async () => {
   assert.equal(refreshCalls, 0);
 });
 
+test('does not replay a streaming POST after 401', async () => {
+  let refreshCalls = 0;
+  let requests = 0;
+  const transport = createBrowserTransport({
+    credential: { kind: 'bearer', accessToken: 'expired-stream', refreshToken: 'refresh-stream' },
+    fetcher: (async () => {
+      requests += 1;
+      return { status: 401, headers: new Headers(), json: async () => ({ success: false }), text: async () => '', body: null };
+    }) satisfies FetchLike,
+    refresh: async () => { refreshCalls += 1; },
+  });
+
+  const result = await transport.sendStream!({ method: 'POST', url: 'https://api.test/api/v1/knowledge-chat/session-1', headers: {}, body: { query: 'must-not-duplicate' } });
+
+  assert.equal(result.status, 401);
+  assert.equal(requests, 1);
+  assert.equal(refreshCalls, 0);
+});
+
 test('does not refresh 403 responses or retry an unauthorized response twice', async () => {
   let refreshCalls = 0;
   let requests = 0;

@@ -5,13 +5,12 @@ any HTTP method after a 401. That was unsafe for non-idempotent operations such
 as knowledge-base creation, uploads, and approval actions.
 
 The adapter now allows automatic bearer refresh/retry for `GET`, `HEAD`, and
-`OPTIONS` only. A JSON `POST` receiving 401 is returned unchanged after one
-network attempt; it does not invoke the refresh callback or replay the body.
-The existing binary read refresh path remains covered, and streaming keeps its
-separate handshake behavior.
+`OPTIONS` only. A JSON `POST` or streaming `POST` receiving 401 is returned
+unchanged after one network attempt; it does not invoke the refresh callback or
+replay the body. The existing binary read refresh path remains covered.
 
 ```text
-node --import tsx --test apps/web/src/platform/http.test.ts   exit 0; 10/10
+node --import tsx --test apps/web/src/platform/http.test.ts   exit 0; 11/11
 ```
 
 This closes the Web JSON write-replay defect. It does not claim that a server

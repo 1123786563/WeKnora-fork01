@@ -1098,7 +1098,9 @@
   JSON/binary refresh retries to `GET`, `HEAD`, and `OPTIONS`; the existing
   streaming handshake path remains separate. A new regression proves a 401
   `POST` makes one request and does not invoke refresh.
-- Focused transport tests passed 10/10. Evidence:
+- Focused transport tests passed 11/11. JSON and streaming POST requests both
+  return the original 401 without invoking refresh or replaying their body.
+  Evidence:
   `docs/migrations/react/evidence/t03-web-write-replay-guard-2026-09-12.md`.
   This closes the client-side replay defect; provider, browser role/tenant,
   and deployed acceptance evidence remains open.
