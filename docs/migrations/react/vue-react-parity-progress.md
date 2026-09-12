@@ -69,3 +69,10 @@
 - onboarding/tenant/invitation 24 键 ×5 locale 迁入 packages/i18n（onboardingMessages）；JoinPage/WorkspaceOnboardingPage 弃用本地 MESSAGES；keys.test 的 auth.login 期望按 Vue 基准（en-US 'Login'）修正——非降低断言，Vue 为权威。i18n 10/10、shared 239/239、web 131/131 全绿。
 - 收到 settings（15 项，必修 8：缺 10 个 section、无角色门控、envvars 无编辑器、模型选择器缺失、chathistory 模型锁丢失、密码策略未移植、websearch 凭证管理缺失、i18n）与 chat（15 项，必修 7：无流取消、无 continue-stream 续传、composer 载荷缺附件/提及/模型、steer 并发缺失、审批卡不持久、session_title 丢弃、artifacts_pending 等事件未处理）两份行级差异报告。
 - chat 必修 7 项已派发实施子代理（持有 chat 文件）；settings 实施待 chat 完成后派发（避免 packages/i18n 与文件竞争），其 i18n 项由主代理统一执行。
+
+## 2026-09-12 Round 9
+
+- 搭建隔离真实后端环境（docker 基础设施 + make dev-app :8080 + 测试账号/测试 KB），React/Vue 双端 live 登录→KB 列表全链路打通。证据：evidence/vue-react-parity/2026-09-12-live-backend-e2e.md + screenshots/kblist-{react,vue}-live.png。
+- 结构性发现：React 缺少 /platform 全局导航外壳（侧栏/图标轨/toast/新手引导/用户菜单），登记为高优待办（T04/T05 shell 范畴）。
+- 修复 KB 列表调试残留 scope key 泄漏。
+- chat 必修实施子代理进行中；settings 实施排队中。

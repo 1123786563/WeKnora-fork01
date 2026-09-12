@@ -379,7 +379,6 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
             ) : null}
           </>
         ) : null}
-        <p className="wk-debug">scope key: {JSON.stringify(queryKey)}</p>
       </Card>
 
       <Dialog open={dialogOpen} title={editingId ? t('common.edit') + ' · ' + t('common.knowledgeBases') : t('knowledgeList.create')} onClose={() => setDialogOpen(false)}>
