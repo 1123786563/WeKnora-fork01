@@ -432,3 +432,9 @@
 - 隔离确认：creatChat 首发挂起 bug 仅影响首次发送路径；已有会话发送正常。
 - 附带发现：失败消息的 Retry 状态渲染正常（截图中一条历史失败消息显示 controller is not defined + Retry——为修复代理 WIP 中的暂态或既有缺陷，待代理完成后复核）。
 - 多会话 WEB 来源 badge 列表渲染正常。
+
+## 2026-09-12 Round 105
+
+- **creatChat 首发挂起 bug 修复并验证**（ad51b63）：根因为 selectSession 的 teardown abort 了 send 刚创建的 controller（AbortError 静默吞掉）。新模块 send-run.ts 固化「先建会话/选会话，再建 controller」顺序，3 回归测试。
+- live 复核：creatChat 首发流式渲染成功（Mock LLM 流式回答），composer 正常清空，无挂起。
+- 门禁：shared 326/326、web 207/207、typecheck×2、build:web 全绿。
