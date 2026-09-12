@@ -121,6 +121,7 @@ export function KnowledgeDocumentsPage({
   // (Vue UploadConfirmDialog) before any upload call is issued.
   const [pendingEntries, setPendingEntries] = useState<UploadEntry[]>([]);
   const [pendingUrl, setPendingUrl] = useState("");
+  const [pendingManual, setPendingManual] = useState<{ title: string; content: string } | null>(null);
   const [uploadTargetFolder, setUploadTargetFolder] = useState("");
   const [newUploadFolder, setNewUploadFolder] = useState("");
   const [pendingTagIds, setPendingTagIds] = useState<string[]>([]);
@@ -313,6 +314,7 @@ export function KnowledgeDocumentsPage({
     uploadPipelineController.current = null;
     setPendingEntries([]);
     setPendingUrl("");
+    setPendingManual(null);
     setUploadTargetFolder("");
     setNewUploadFolder("");
     setPendingTagIds([]);
@@ -353,7 +355,7 @@ export function KnowledgeDocumentsPage({
   // Sequential uploads (one call per file) with per-file status; a per-file
   // failure keeps the dialog open so the errors stay visible (Vue parity).
   async function confirmUpload() {
-    if (pendingEntries.length === 0 && !pendingUrl) return;
+    if (!pendingManual && pendingEntries.length === 0 && !pendingUrl) return;
     if (!Number.isInteger(chunkSize) || chunkSize < 100 || chunkSize > 4000) {
       setUploadError(t("knowledgeEditor.chunking.sizeDescription"));
       return;
@@ -378,6 +380,17 @@ export function KnowledgeDocumentsPage({
     const processConfig = buildProcessConfig();
     setUploadError(null);
     setUploading(true);
+    if (pendingManual) {
+      try {
+        await client.knowledgeBases.documents.createManual(knowledgeBaseId, { title: pendingManual.title, content: pendingManual.content, status: "pending", process_config: processConfig });
+        setPendingManual(null);
+        setPendingTagIds([]);
+        setReloadToken((value) => value + 1);
+      } catch (error) {
+        setUploadError(errorMessage(error));
+      } finally { setUploading(false); }
+      return;
+    }
     if (pendingUrl) {
       try {
         const created = await client.knowledgeBases.documents.createFromUrl(
@@ -484,16 +497,12 @@ export function KnowledgeDocumentsPage({
         throw new Error("A VLM model is required when multimodal parsing is enabled.");
       if (asrEnabled && !asrModelId.trim())
         throw new Error("An ASR model is required when audio transcription is enabled.");
-      await client.knowledgeBases.documents.createManual(knowledgeBaseId, {
-        title: manualTitle.trim(),
-        content: manualContent,
-        status: "pending",
-        process_config: buildProcessConfig(),
-      });
-      setUrl("");
+      setPendingManual({ title: manualTitle.trim(), content: manualContent });
+      setPendingTagIds([]);
+      setUploadError(null);
       setManualTitle("");
       setManualContent("");
-      setReloadToken((value) => value + 1);
+      return;
     } catch (error) {
       setUploadError(errorMessage(error));
     } finally {
@@ -1040,11 +1049,12 @@ export function KnowledgeDocumentsPage({
           </section>
         </div>
       </Card>
-      {(pendingEntries.length > 0 || pendingUrl) && canContribute ? (
+      {(pendingEntries.length > 0 || pendingUrl || pendingManual) && canContribute ? (
         <Dialog open title="Confirm upload" onClose={cancelStagedUploads}>
           <p className="wk-upload-confirm-summary">
-            {pendingUrl ? "1 URL ready to import" : ""}{pendingUrl && pendingEntries.length > 0 ? " + " : ""}{pendingEntries.length > 0 ? `${uploadSummary(pendingEntries).count} file(s), ${uploadSummary(pendingEntries).totalLabel} total` : ""}. Large files are chunked server-side using the knowledge base chunk configuration.
+            {pendingManual ? `Manual document “${pendingManual.title}” · ${pendingManual.content.length} characters` : <>{pendingUrl ? "1 URL ready to import" : ""}{pendingUrl && pendingEntries.length > 0 ? " + " : ""}{pendingEntries.length > 0 ? `${uploadSummary(pendingEntries).count} file(s), ${uploadSummary(pendingEntries).totalLabel} total` : ""}. Large files are chunked server-side using the knowledge base chunk configuration.</>}
           </p>
+          {pendingManual ? <div className="wk-upload-confirm-files"><strong>{pendingManual.title}</strong><p className="wk-muted">Manual source preview</p><pre>{pendingManual.content}</pre></div> : null}
           {pendingUrl ? (
             <ul className="wk-upload-confirm-files">
               <li>
@@ -1099,7 +1109,7 @@ export function KnowledgeDocumentsPage({
               })}
             </ul>
           ) : null}
-          {pendingEntries.length > 0 || pendingUrl ? <fieldset className="wk-upload-confirm-destination"><legend>Destination folder</legend><select value={uploadTargetFolder} onChange={(event) => setUploadTargetFolder(event.target.value)}><option value="">Knowledge base root</option>{folders.map((folder) => <option key={folder.path} value={folder.path}>{folder.path}</option>)}</select><div className="wk-list-actions"><input value={newUploadFolder} onChange={(event) => setNewUploadFolder(event.target.value)} placeholder="New folder path, e.g. docs/spec" aria-label="New folder path" /><Button type="button" onClick={chooseNewUploadFolder}>Use new folder</Button></div></fieldset> : null}
+          {!pendingManual && (pendingEntries.length > 0 || pendingUrl) ? <fieldset className="wk-upload-confirm-destination"><legend>Destination folder</legend><select value={uploadTargetFolder} onChange={(event) => setUploadTargetFolder(event.target.value)}><option value="">Knowledge base root</option>{folders.map((folder) => <option key={folder.path} value={folder.path}>{folder.path}</option>)}</select><div className="wk-list-actions"><input value={newUploadFolder} onChange={(event) => setNewUploadFolder(event.target.value)} placeholder="New folder path, e.g. docs/spec" aria-label="New folder path" /><Button type="button" onClick={chooseNewUploadFolder}>Use new folder</Button></div></fieldset> : null}
           <label className="wk-upload-confirm-tags">
             Tags{" "}
             <select
@@ -1186,6 +1196,7 @@ export function KnowledgeDocumentsPage({
             >
               {pendingUrl
                 ? pendingEntries.length > 0 ? "Import URL and upload files" : "Import URL"
+                : pendingManual ? "Create manual document"
                 : `Upload ${pendingEntries.length} file(s)`}
             </Button>
             <Button type="button" onClick={cancelStagedUploads}>
