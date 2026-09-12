@@ -1,5 +1,5 @@
 // Package config tests cover deployment defaults for the durable tRPC
-// recovery flags (opt-out: unset means enabled).
+// recovery flags (opt-in: unset means disabled).
 package config
 
 import (
@@ -8,20 +8,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestAgentRecoveryDefaultEnabled pins the opt-out default: a deployment
-// that says nothing about agent.recovery gets the durable worker and
-// admission enabled; an explicit false disables each independently.
-func TestAgentRecoveryDefaultEnabled(t *testing.T) {
+// TestAgentRecoveryDefaultDisabled pins the opt-in default: a deployment
+// that says nothing about agent.recovery cannot admit durable work.
+func TestAgentRecoveryDefaultDisabled(t *testing.T) {
 	unset := AgentRecoveryConfig{}
-	require.True(t, unset.RecoveryEnabled(), "unset recovery must default to enabled")
-	require.True(t, unset.RecoveryAdmissionEnabled(), "unset admission must default to enabled")
+	require.False(t, unset.RecoveryEnabled(), "unset recovery must default to disabled")
+	require.False(t, unset.RecoveryAdmissionEnabled(), "unset admission must default to disabled")
+
+	on := true
+	enabled := AgentRecoveryConfig{Enabled: &on, AdmissionEnabled: &on}
+	require.True(t, enabled.RecoveryEnabled())
+	require.True(t, enabled.RecoveryAdmissionEnabled())
 
 	off := false
-	disabled := AgentRecoveryConfig{Enabled: &off}
-	require.False(t, disabled.RecoveryEnabled())
-	require.True(t, disabled.RecoveryAdmissionEnabled())
+	workerOff := AgentRecoveryConfig{Enabled: &off, AdmissionEnabled: &on}
+	require.False(t, workerOff.RecoveryEnabled())
+	require.True(t, workerOff.RecoveryAdmissionEnabled())
 
-	admissionOff := AgentRecoveryConfig{AdmissionEnabled: &off}
+	admissionOff := AgentRecoveryConfig{Enabled: &on, AdmissionEnabled: &off}
 	require.True(t, admissionOff.RecoveryEnabled())
 	require.False(t, admissionOff.RecoveryAdmissionEnabled())
 }

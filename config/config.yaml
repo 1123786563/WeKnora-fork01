@@ -114,9 +114,9 @@ tenant:
 
 # Agent configuration
 agent:
-  # Durable tRPC run recovery. Enabled by default (opt-out): unset means true.
-  # Set enabled: false to disable the recovery worker; admission_enabled: false
-  # stops new durable admissions while letting existing runs drain.
+  # Durable tRPC run recovery is opt-in and remains disabled unless both flags
+  # are explicitly enabled. admission_enabled: false stops new admissions
+  # while letting existing runs drain.
   recovery:
-    enabled: true
-    admission_enabled: true
+    enabled: false
+    admission_enabled: false
