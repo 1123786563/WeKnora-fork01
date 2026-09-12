@@ -6,7 +6,7 @@ Date: 2026-09-12
 
 This slice covers the first executable React replacement for `frontend/src/views/settings/McpSettings.vue`: service loading, viewer empty state, admin add entry, service cards, built-in restrictions, edit/delete actions, enable/disable submission locking, and dedicated credential transport for a newly entered API key.
 
-It does not claim parity for the Vue two-step `McpServiceDialog`, metadata refresh/stale state, paginated tool policies, test result rendering, code import, usage generation, OAuth popup/callback, six-locale copy, screenshot comparison, or real-backend/Wails/native acceptance.
+It does not claim parity for the Vue two-step `McpServiceDialog`, paginated tool/resource/test presentation, code import, advanced config/custom headers, six-locale copy, screenshot comparison, or real-backend/Wails/native acceptance. Metadata refresh/stale handling, usage generation, tool-policy writes, and OAuth status/authorize/revoke controls are now wired, but remain unverified outside focused tests.
 
 ## Changes
 
@@ -16,6 +16,7 @@ It does not claim parity for the Vue two-step `McpServiceDialog`, metadata refre
 - `apps/web/src/settings/McpSettingsPanel.test.tsx` covers viewer empty state and admin card/action rendering using SSR.
 - `packages/api-client/src/configuration.ts` now exposes typed metadata, usage-generation, and tool-policy operations already registered by the MCP backend routes.
 - `packages/api-client/src/configuration.test.ts` verifies those paths, encoded tool names, response parsing, and write envelopes.
+- `McpServiceDetails` keeps metadata visible when tool-policy loading fails, blocks tool-policy writes against stale metadata, and exposes the backend OAuth authorization lifecycle after an existing service is opened.
 
 ## Evidence
 
@@ -24,6 +25,7 @@ It does not claim parity for the Vue two-step `McpServiceDialog`, metadata refre
 | RED | `pnpm exec tsx --test apps/web/src/settings/McpSettingsPanel.test.tsx` before implementation failed with `ERR_MODULE_NOT_FOUND` for the missing panel | regression proof |
 | Component/SSR | `pnpm exec tsx --test apps/web/src/settings/McpSettingsPanel.test.tsx` — 2 passed, 0 failed | focused component evidence |
 | Shared API contract | `pnpm exec tsx --test packages/api-client/src/configuration.test.ts apps/web/src/settings/McpSettingsPanel.test.tsx` — 21 passed, 0 failed | typed mock-contract evidence |
+| Web test suite | `pnpm test:web` — 257 passed, 0 failed | Web unit/component regression evidence |
 | Shared typecheck | `pnpm typecheck:shared` — 0 | shared static evidence |
 | Static | `git diff --check` — 0 | static evidence |
 | Web typecheck | `pnpm --filter @weknora/web exec tsc -p tsconfig.json --noEmit` — blocked by pre-existing dirty `apps/web/src/platform/command-palette-search.ts` errors at lines 272, 304 | integration blocked |
@@ -32,4 +34,4 @@ It does not claim parity for the Vue two-step `McpServiceDialog`, metadata refre
 
 ## Next required work
 
-The metadata/tool/test/usage operations are now wired, but exact test resource/tool rendering, two-step save gating, OAuth status/authorize/revoke, code import, advanced config/custom headers, Vue-derived localized validation/feedback, fixed-viewport screenshots, and real-backend role/tenant negative evidence remain before changing these rows to `review` or `accepted`.
+The metadata/tool/test/usage and OAuth operations are now wired, but exact two-step save gating, resource/test result detail, code import, advanced config/custom headers, Vue-derived localized validation/feedback, fixed-viewport screenshots, and real-backend role/tenant negative evidence remain before changing these rows to `review` or `accepted`.

@@ -134,6 +134,8 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-mcp-editor { background: #fff; border: 1px solid #cbd5e1; border-radius: 8px; box-shadow: 0 10px 30px rgba(23, 32, 51, .12); padding: 1rem; }
 .wk-mcp-details { border-top: 1px solid #edf0f5; margin-top: 1rem; padding-top: 1rem; }
 .wk-mcp-details .wk-settings-panel-heading { margin-bottom: .7rem; }
+.wk-mcp-oauth { align-items: center; display: flex; flex-wrap: wrap; gap: .6rem; margin: .8rem 0; }
+.wk-mcp-oauth span { color: #506078; font-size: .85rem; text-transform: capitalize; }
 .wk-mcp-stale { color: #b54708; font-size: .85rem; }
 .wk-mcp-tools { list-style: none; margin: 0; padding: 0; }
 .wk-mcp-tools li { align-items: center; border-bottom: 1px solid #edf0f5; display: grid; gap: .6rem; grid-template-columns: minmax(0, 1fr) auto auto; padding: .65rem 0; }
