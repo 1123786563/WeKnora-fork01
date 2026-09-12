@@ -290,7 +290,7 @@
 - **开放 BLOCKER（修复前不得 verified，下一轮首要）**：①普通检索引擎接线——vectorSearcher 复用 semantic gRPC 客户端且 mode="retrieval"（Python 仅支持 graphrag→FAILED_PRECONDITION；真实 seam 应接 WeKnora 自有检索栈；当前生产语义侧独跑、向量静默丢弃无 partial 标记）；②SemanticSearcher seam 仅携带 scope——线上 Search RPC Query/QueryID/Limits 为空（后端空种子）；③Reason 未调 SemanticClient.Reason（Q03 规则/模型分派未接——现诚实标记待接）；④Issue 信任调用方 TenantID——A01 结转条件要求 resolveKBReadTenant 解析 owner tenant+读权限；⑤**线上契约缺口**（预存，Q04 为首个生产调用方）：AccessScopeToWire 未携带 allowed_document_ids 而 Python 严格按其过滤——有效签名 scope 也会静默空结果。
 - 其余 minors 记录：双引擎并发、TopK 贯通、first-wins 去重、%w 链保留、双败测试、降级路径验证测试、DeliveredContentBytes 真实交付槽。
 - GREEN：`go test ./internal/application/service -run 'TestSemanticQuery' -count=1` 4 passed；`go test -race ./internal/application/service -run 'TestSemantic' -count=1` ok；`go build ./...` 净。
-- 提交 SHA：（本记录与代码同批提交后补记）
+- 提交 SHA：496e439（feat(semantic): q04 Go检索融合、Agent工具与最终授权——implemented 状态）。
 
 ## 当前边界
 
