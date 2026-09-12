@@ -95,12 +95,22 @@ export function deserializeRunLifecycle(value: string | null | undefined): RunLi
 
 export function createRunLifecyclePersistence(store: RunLifecycleStore) {
   const keyFor = (sessionId: string) => `weknora.mobile.chat.run-lifecycle.${sessionId}`;
+  const writes = new Map<string, Promise<void>>();
   return {
     read(sessionId: string): Promise<RunLifecycle> {
       return store.getItemAsync(keyFor(sessionId)).then(deserializeRunLifecycle);
     },
     write(sessionId: string, state: RunLifecycle): Promise<void> {
-      return store.setItemAsync(keyFor(sessionId), serializeRunLifecycle(state));
+      const previous = writes.get(sessionId) ?? Promise.resolve();
+      const next = previous
+        .catch(() => undefined)
+        .then(() => store.setItemAsync(keyFor(sessionId), serializeRunLifecycle(state)));
+      writes.set(sessionId, next);
+      next.then(
+        () => { if (writes.get(sessionId) === next) writes.delete(sessionId); },
+        () => { if (writes.get(sessionId) === next) writes.delete(sessionId); },
+      );
+      return next;
     },
   };
 }

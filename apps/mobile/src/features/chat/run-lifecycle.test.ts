@@ -74,3 +74,27 @@ test('late lifecycle hydration cannot overwrite a local mutation', () => {
   assert.equal(shouldApplyHydratedLifecycle('session-1', 'session-1', 4, 5), false);
   assert.equal(shouldApplyHydratedLifecycle('session-1', 'session-2', 4, 4), false);
 });
+
+test('lifecycle writes for one session are serialized so a late store completion cannot restore stale state', async () => {
+  const pending: Array<() => void> = [];
+  const values = new Map<string, string>();
+  const persistence = createRunLifecyclePersistence({
+    async getItemAsync(key) { return values.get(key) ?? null; },
+    async setItemAsync(key, value) {
+      await new Promise<void>((resolve) => pending.push(resolve));
+      values.set(key, value);
+    },
+  });
+  const running = { status: 'running' as const };
+  const stopped = { status: 'stopped' as const, assistantMessageId: 'assistant-1' };
+  const first = persistence.write('session-1', running);
+  const second = persistence.write('session-1', stopped);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(pending.length, 1);
+  pending.shift()!();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(pending.length, 1);
+  pending.shift()!();
+  await Promise.all([first, second]);
+  assert.deepEqual(await persistence.read('session-1'), stopped);
+});

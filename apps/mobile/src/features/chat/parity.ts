@@ -2,6 +2,15 @@ import { groupChatReferences, type ChatReferenceGroup } from '@weknora/domain/ch
 import { initialChatStreamState, type ChatStreamState, reduceChatStream } from '@weknora/domain/chat/reducer';
 import type { ChatMessage, ChatStreamEvent } from '@weknora/contracts';
 
+export interface ChatRunToken {
+  sessionId: string;
+  runId: string;
+}
+
+export function isCurrentChatRun(active: ChatRunToken | null, event: ChatRunToken): boolean {
+  return active?.sessionId === event.sessionId && active.runId === event.runId;
+}
+
 export function buildMobileChatRequestBody(
   query: string,
   knowledgeBaseIds: readonly string[],

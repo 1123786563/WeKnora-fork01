@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { initialChatStreamState, reduceChatStream } from '@weknora/domain/chat/reducer';
-import { buildMobileChatRequestBody, replayMobileChatEvents, selectAssistantMessageId, selectIncompleteAssistant, selectReferenceGroups, shouldRenderLiveAssistant, shouldRenderPendingUser } from './parity.ts';
+import { buildMobileChatRequestBody, isCurrentChatRun, replayMobileChatEvents, selectAssistantMessageId, selectIncompleteAssistant, selectReferenceGroups, shouldRenderLiveAssistant, shouldRenderPendingUser } from './parity.ts';
 
 test('mobile chat request carries the selected knowledge-base scope', () => {
   assert.deepEqual(buildMobileChatRequestBody('hello', ['kb-1'], ['attachment-1']), {
@@ -50,4 +50,10 @@ test('mobile extracts the assistant id from the nested stream query event', () =
   assert.equal(selectAssistantMessageId({ response_type: 'agent_query', data: { assistant_message_id: 'assistant-1' } }), 'assistant-1');
   assert.equal(selectAssistantMessageId({ message_id: 'assistant-2' }), 'assistant-2');
   assert.equal(selectAssistantMessageId({ response_type: 'error', data: { error: 'failed' } }), undefined);
+});
+
+test('mobile applies a stream event only to the session and run that created it', () => {
+  assert.equal(isCurrentChatRun({ sessionId: 'session-1', runId: 'run-1' }, { sessionId: 'session-1', runId: 'run-1' }), true);
+  assert.equal(isCurrentChatRun({ sessionId: 'session-2', runId: 'run-2' }, { sessionId: 'session-1', runId: 'run-1' }), false);
+  assert.equal(isCurrentChatRun({ sessionId: 'session-1', runId: 'run-2' }, { sessionId: 'session-1', runId: 'run-1' }), false);
 });

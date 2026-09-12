@@ -9,7 +9,7 @@ import { normalizeToolResult } from '@weknora/domain/chat/tool-results';
 import { useMobileRuntime } from '../../runtime.tsx';
 import { pickNativeFile } from '../../platform/files.ts';
 import { downloadKnowledgeFile, shareNativeFile } from '../../platform/files.ts';
-import { buildMobileChatRequestBody, selectAssistantMessageId, selectIncompleteAssistant, selectMessageArtifacts, selectReferenceGroups, shouldRenderLiveAssistant, shouldRenderPendingUser } from './parity.ts';
+import { buildMobileChatRequestBody, isCurrentChatRun, selectAssistantMessageId, selectIncompleteAssistant, selectMessageArtifacts, selectReferenceGroups, shouldRenderLiveAssistant, shouldRenderPendingUser, type ChatRunToken } from './parity.ts';
 import { stopChatRun } from './stop-run.ts';
 import { chatAppStateAction } from './appstate.ts';
 import { createRunLifecyclePersistence, initialRunLifecycle, shouldApplyHydratedLifecycle, transitionRunLifecycle, type RunLifecycleEvent } from './run-lifecycle.ts';
@@ -43,6 +43,8 @@ export function ChatScreen() {
   const [attaching, setAttaching] = useState(false);
   const [error, setError] = useState('');
   const streamController = useRef<AbortController | null>(null);
+  const activeRun = useRef<(ChatRunToken & { controller: AbortController }) | null>(null);
+  const runSequence = useRef(0);
   const activeMessageId = useRef<string | undefined>(undefined);
   const activeOAuth = useRef<{ pendingId: string; serviceId: string; authorizationAttempt: string } | null>(null);
   const steerAction = useRef<string | null>(null);
@@ -124,28 +126,33 @@ export function ChatScreen() {
     else { setMessages([]); setAttachments([]); setSteerQueue([]); }
   }, [lifecyclePersistence, loadAttachments, loadMessages, loadSteerQueue, selectedSessionId]);
 
-  const applyEvent = useCallback((event: ChatStreamEvent) => {
+  const applyEvent = useCallback((event: ChatStreamEvent, token?: ChatRunToken) => {
+    if (token && !isCurrentChatRun(activeRun.current, token)) return;
+    const eventSessionId = token?.sessionId ?? selectedSessionRef.current;
+    if (!eventSessionId) return;
     const type = event.response_type ?? event.type;
     const assistantMessageId = selectAssistantMessageId(event);
     if (assistantMessageId) {
       activeMessageId.current = assistantMessageId;
-      if (selectedSessionId) updateRunLifecycle(selectedSessionId, { type: 'assistant-message', id: assistantMessageId });
+      updateRunLifecycle(eventSessionId, { type: 'assistant-message', id: assistantMessageId });
     }
     if (type === 'error') {
-      if (selectedSessionId) updateRunLifecycle(selectedSessionId, { type: 'failure' });
+      updateRunLifecycle(eventSessionId, { type: 'failure' });
       failedAssistantMessageId.current = assistantMessageId ?? activeMessageId.current;
       const data = typeof event.data === 'object' && event.data !== null && !Array.isArray(event.data)
         ? event.data as Record<string, unknown>
         : undefined;
       setError(typeof event.error === 'string' ? event.error : typeof data?.error === 'string' ? data.error : 'Chat stream failed');
     }
-    if (type === 'complete' && selectedSessionId) updateRunLifecycle(selectedSessionId, { type: 'complete' });
-    if (type === 'stop' && selectedSessionId) updateRunLifecycle(selectedSessionId, { type: 'user-stop' });
+    if (type === 'complete') updateRunLifecycle(eventSessionId, { type: 'complete' });
+    if (type === 'stop') updateRunLifecycle(eventSessionId, { type: 'user-stop' });
     setStreamState((current) => reduceChatStream(current, event));
-  }, [selectedSessionId, updateRunLifecycle]);
+  }, [updateRunLifecycle]);
 
   const finishRun = useCallback(async (sessionId: string, controller: AbortController) => {
     if (streamController.current !== controller) return;
+    if (activeRun.current?.controller !== controller) return;
+    activeRun.current = null;
     streamController.current = null;
     setSending(false);
     const refreshed = await loadMessages(sessionId);
@@ -169,12 +176,14 @@ export function ChatScreen() {
     if (streamController.current || resuming.current) return;
     resuming.current = true;
     const controller = new AbortController();
+    const token: ChatRunToken = { sessionId, runId: `${sessionId}:${++runSequence.current}` };
+    activeRun.current = { ...token, controller };
     streamController.current = controller;
     activeMessageId.current = messageId;
     failedAssistantMessageId.current = undefined;
     updateRunLifecycle(sessionId, { type: 'start', assistantMessageId: messageId });
     setSending(true); setError(''); setStreamState(initialChatStreamState());
-    try { await runtime.client.chat.continueStream(sessionId, messageId, applyEvent, controller.signal); }
+    try { await runtime.client.chat.continueStream(sessionId, messageId, (event) => applyEvent(event, token), controller.signal); }
     catch (cause) {
       if (!controller.signal.aborted) {
         updateRunLifecycle(sessionId, { type: 'failure' });
@@ -255,6 +264,8 @@ export function ChatScreen() {
     activeMessageId.current = undefined;
     failedAssistantMessageId.current = undefined;
     const controller = new AbortController();
+    const token: ChatRunToken = { sessionId, runId: `${sessionId}:${++runSequence.current}` };
+    activeRun.current = { ...token, controller };
     streamController.current = controller;
     updateRunLifecycle(sessionId, { type: 'start' });
     setSending(true);
@@ -264,7 +275,7 @@ export function ChatScreen() {
         mode: 'knowledge',
         body: buildMobileChatRequestBody(query, [selectedKnowledgeBaseId], attachments.map((attachment) => attachment.id)),
         signal: controller.signal,
-      }, applyEvent);
+      }, (event) => applyEvent(event, token));
     } catch (cause) {
       if (!controller.signal.aborted) {
         updateRunLifecycle(sessionId, { type: 'failure' });
@@ -282,7 +293,11 @@ export function ChatScreen() {
       await stopChatRun(
         messageId ? async () => { await runtime.client.chat.stop(sessionId, messageId); } : undefined,
         () => streamController.current?.abort(),
-        () => { applyEvent({ response_type: 'stop', event_id: `local-stop-${Date.now()}` }); setSending(false); },
+        () => {
+          const token = activeRun.current && activeRun.current.sessionId === sessionId ? activeRun.current : undefined;
+          applyEvent({ response_type: 'stop', event_id: `local-stop-${Date.now()}` }, token || undefined);
+          setSending(false);
+        },
       );
     } catch (cause) { setError(errorText(cause, 'Unable to stop response')); }
   }

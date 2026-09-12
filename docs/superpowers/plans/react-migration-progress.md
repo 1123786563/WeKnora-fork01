@@ -1168,3 +1168,24 @@
   and shared typecheck passed.
 - Evidence: `docs/migrations/react/evidence/t09-settings-contract-2026-09-12.md`.
   Live provider, permission, and browser acceptance remain open.
+
+### T22/T24 mobile chat race and Desktop renderer follow-up (2026-09-12)
+
+- Added session/run tokens to native chat stream callbacks. Events from a
+  superseded run are ignored, and the first stream created after automatic
+  session creation now records assistant IDs and failure state against the
+  new session rather than the previous render closure.
+- Lifecycle persistence now serializes writes per session. A RED test
+  reproduced concurrent SecureStore writes; the GREEN regression confirms a
+  late completion cannot restore stale lifecycle state.
+- The cross-client build caught a missing Desktop Vite alias for
+  `@weknora/domain/chat/session-state`; the alias was added and the Desktop
+  production build passed.
+- Focused parity/lifecycle tests passed 7/7 and 8/8. Full mobile passed
+  77/77; shared 203/203; Web 107/107; Embed 3/3; Desktop 2/2. All five
+  typechecks, Web/Embed/Desktop builds, boundary check and diff check passed;
+  iOS and Android Expo exports also passed.
+- Evidence: `docs/migrations/react/evidence/t22-mobile-chat-race-follow-up-2026-09-12.md`.
+  This closes the source/build defects only. Native device, provider-backed
+  SSE, installed-app cross-OS and deployed acceptance remain open, so T22 and
+  T24 stay `review` and T25 remains gated.
