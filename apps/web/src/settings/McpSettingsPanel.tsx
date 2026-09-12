@@ -509,6 +509,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [step, setStep] = useState<0 | 1>(0);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   async function load() {
@@ -537,6 +538,16 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
     setError(null);
     setNotice(null);
     try {
+      if (step === 1) {
+        const instructions = draft.usageInstructions.trim();
+        if (!draft.id) throw new Error("Save the connection before editing usage instructions");
+        if (!instructions) throw new Error("Usage instructions are required");
+        await client.configuration.mcp.update(draft.id, { usage_instructions: instructions });
+        setDraft(null);
+        setNotice("MCP service saved.");
+        await load();
+        return;
+      }
       if (draft.transportType === "stdio")
         throw new Error(
           "stdio MCP services cannot be edited here; use a remote URL",
@@ -591,8 +602,9 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
           throw cause;
         }
       }
-      setDraft(null);
-      setNotice(draft.id ? "MCP service saved." : "MCP service created.");
+      setDraft((current) => current ? { ...current, id: saved.id } : current);
+      setStep(1);
+      setNotice("Connection saved. Sync tools and complete usage instructions.");
       await load();
     } catch (cause) {
       setError(
@@ -664,7 +676,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
           </p>
         </div>
         {canEdit ? (
-          <Button type="button" onClick={() => setDraft(draftFrom())}>
+          <Button type="button" onClick={() => { setDraft(draftFrom()); setStep(0); }}>
             Add MCP service
           </Button>
         ) : null}
@@ -688,7 +700,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                   <div className="wk-list-actions">
                     <Button
                       type="button"
-                      onClick={() => setDraft(draftFrom(service))}
+                      onClick={() => { setDraft(draftFrom(service)); setStep(0); }}
                     >
                       Edit
                     </Button>
@@ -747,11 +759,12 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
             <Button
               type="button"
               disabled={saving}
-              onClick={() => setDraft(null)}
+              onClick={() => { setDraft(null); setStep(0); }}
             >
               Close
             </Button>
           </div>
+          <div className="wk-mcp-steps" aria-label="MCP setup progress"><span className={step === 0 ? "is-active" : "is-done"}>1. Connection</span><span aria-hidden="true"> → </span><span className={step === 1 ? "is-active" : ""}>2. Tools and usage</span></div>
           <form
             className="wk-settings-editor"
             onSubmit={(event) => void save(event)}
@@ -1013,14 +1026,19 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
               />{" "}
               Enabled
             </label>
+            {step === 1 ? <label>
+              Usage instructions
+              <textarea required rows={5} value={draft.usageInstructions} placeholder="Explain when and how this MCP service should be used." onChange={(event) => setField("usageInstructions", event.target.value)} />
+            </label> : null}
             <div className="wk-list-actions">
+              {step === 1 ? <Button type="button" disabled={saving} onClick={() => setStep(0)}>Previous</Button> : null}
               <Button type="submit" loading={saving}>
-                {draft.id ? "Save changes" : "Create MCP service"}
+                {step === 0 ? "Save and continue" : "Save"}
               </Button>
               <Button
                 type="button"
                 disabled={saving}
-                onClick={() => setDraft(null)}
+                onClick={() => { setDraft(null); setStep(0); }}
               >
                 Cancel
               </Button>

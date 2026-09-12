@@ -20,6 +20,7 @@ It does not claim parity for the remaining Vue drawer visuals, six-locale copy, 
 - `packages/api-client/src/configuration.test.ts` verifies those paths, encoded tool names, response parsing, and write envelopes.
 - `McpServiceDetails` keeps metadata visible when tool-policy loading fails, blocks tool-policy writes against stale metadata, and exposes the backend OAuth authorization lifecycle after an existing service is opened.
 - MCP editor save now persists the editable `usage_instructions` field through the existing update route, matching the Vue dialog's generated/manual usage flow.
+- MCP editor now preserves Vue's two-step save lifecycle: connection save advances to tools/usage, previous returns to connection editing, and final save requires non-empty usage instructions before updating the saved service.
 - Independent review of the prior slice reported 7 Important and 3 Minor findings. The Important findings were repaired in this follow-up: missing default policy rows, usage persistence, stale usage fail-closed behavior, stale-response generation guards, backend-aligned system-admin visibility, bearer/stdio-safe edit hydration, and post-create credential failure recovery.
 
 ## Evidence
@@ -39,4 +40,4 @@ It does not claim parity for the remaining Vue drawer visuals, six-locale copy, 
 
 ## Next required work
 
-The metadata/tool/test/usage and OAuth operations are now wired, including structured test/resource details, standard `mcpServers` JSON import, custom headers, OAuth scopes, and bounded retry configuration. Exact Vue two-step save gating, localized validation/feedback, fixed-viewport screenshots, stdio/native behavior, and real-backend role/tenant negative evidence remain before changing these rows to `review` or `accepted`.
+The metadata/tool/test/usage and OAuth operations are now wired, including structured test/resource details, standard `mcpServers` JSON import, custom headers, OAuth scopes, bounded retry configuration, and the two-step save transition. Exact Vue drawer visuals/localized warning validation, fixed-viewport screenshots, stdio/native behavior, and real-backend role/tenant negative evidence remain before changing these rows to `review` or `accepted`.
