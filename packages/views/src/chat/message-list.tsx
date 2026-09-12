@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef } from 'react';
 import type { ChatMessage, MessageSuggestionSet } from '@weknora/contracts';
 import { hasSessionChanged, scrollTopAfterPrepend, shouldStickToBottom } from '@weknora/domain/chat/session-state';
+import { isArtifactExpired, normalizeArtifactList, type ChatArtifact } from '@weknora/domain/chat/artifacts';
 import { renderChatMarkdown } from './markdown.ts';
 
 export interface PendingChatMessage {
@@ -21,14 +22,31 @@ export interface MessageListProps {
   onRefreshSuggestions?(): void;
   onDismissSuggestions?(): void;
   onCitationClick?(citationId: string): void;
+  onArtifactDownload?(messageId: string, artifactIndex: number): Promise<void>;
   sessionId?: string | null;
+}
+
+export function messageArtifactItems(message: Record<string, unknown>): ChatArtifact[] {
+  return normalizeArtifactList(Array.isArray(message.artifacts) ? message.artifacts : undefined);
 }
 
 export function renderMessageHtml(message: Pick<ChatMessage, 'content'>): string {
   return renderChatMarkdown(message.content);
 }
 
-export function MessageList({ messages, pending, onRetry, loadingOlder = false, hasMore = false, onLoadOlder, suggestions, onSuggestionClick, onRefreshSuggestions, onDismissSuggestions, onCitationClick, sessionId = null }: MessageListProps) {
+function ArtifactList({ message, onDownload }: { message: ChatMessage; onDownload?: MessageListProps['onArtifactDownload'] }) {
+  const artifacts = messageArtifactItems(message);
+  if (artifacts.length === 0) return null;
+  return <section className="wk-chat-artifacts" aria-label="Artifacts">
+    <h3>Artifacts</h3>
+    <ul>{artifacts.map((artifact) => {
+      const expired = isArtifactExpired(artifact);
+      return <li key={artifact.index}><span>{artifact.fileName}{artifact.version ? ` · v${artifact.version}` : ''}</span>{expired ? <small role="status">Expired</small> : onDownload ? <button type="button" onClick={() => void onDownload(message.id, artifact.index)}>Download</button> : <small>Available</small>}</li>;
+    })}</ul>
+  </section>;
+}
+
+export function MessageList({ messages, pending, onRetry, loadingOlder = false, hasMore = false, onLoadOlder, suggestions, onSuggestionClick, onRefreshSuggestions, onDismissSuggestions, onCitationClick, onArtifactDownload, sessionId = null }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
   const previousSessionId = useRef<string | null>(sessionId);
@@ -71,6 +89,7 @@ export function MessageList({ messages, pending, onRetry, loadingOlder = false, 
     {messages.map((message) => <li key={message.id} data-role={message.role}>
       <strong>{message.role}</strong>
       <div className="wk-chat-message-content" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: renderMessageHtml(message) }} />
+      <ArtifactList message={message} onDownload={onArtifactDownload} />
     </li>)}
     {pending ? <li data-role="user" data-status={pending.status}>
       <strong>user</strong>

@@ -90,6 +90,8 @@ export interface ChatPageProps {
   onSuggestionClick?(questionId: string, text: string): void;
   onRefreshSuggestions?(): void;
   onDismissSuggestions?(): void;
+  onCitationClick?(citationId: string): void;
+  onArtifactDownload?(messageId: string, artifactIndex: number): Promise<void>;
   terminal?: ChatTerminalView;
   onOpenTerminal?(): Promise<void>;
   onTerminalInput?(input: string): Promise<void>;
@@ -273,6 +275,8 @@ export function ChatPage(props: ChatPageProps) {
         onSuggestionClick={props.onSuggestionClick}
         onRefreshSuggestions={props.onRefreshSuggestions}
         onDismissSuggestions={props.onDismissSuggestions}
+        onCitationClick={props.onCitationClick}
+        onArtifactDownload={props.onArtifactDownload}
       />
       {props.selectedSessionId && props.onClearSession ? <button type="button" onClick={() => void props.onClearSession!()}>Clear messages</button> : null}
       {props.selectedSessionId && props.onSteer ? <SteerComposer onSteer={props.onSteer} /> : null}

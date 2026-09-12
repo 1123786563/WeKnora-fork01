@@ -9,6 +9,7 @@
     "./transport": "./src/transport/json.ts"
   },
   "dependencies": {
-    "@weknora/contracts": "workspace:*"
+    "@weknora/contracts": "workspace:*",
+    "@weknora/domain": "workspace:*"
   }
 }

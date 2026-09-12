@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { renderChatMarkdown } from './markdown.ts';
-import { renderMessageHtml } from './message-list.tsx';
+import { messageArtifactItems, renderMessageHtml } from './message-list.tsx';
 
 test('renders Markdown structures used by assistant answers', () => {
   const html = renderChatMarkdown([
@@ -22,7 +22,7 @@ test('renders Markdown structures used by assistant answers', () => {
   assert.match(html, /<h1>标题<\/h1>/);
   assert.match(html, /<table>/);
   assert.match(html, /data-markdown-diagram="mermaid"/);
-  assert.match(html, /class="math-inline"/);
+  assert.match(html, /class="katex"/);
   assert.match(html, /中文/);
 });
 
@@ -63,4 +63,12 @@ test('message rendering uses the shared safe Markdown renderer', () => {
 
   assert.match(html, /<strong>回答<\/strong>/);
   assert.doesNotMatch(html, /white-space/);
+});
+
+test('message artifacts retain only public metadata for protected download actions', () => {
+  const artifacts = messageArtifactItems({
+    artifacts: [{ index: 0, file_name: 'report.csv', file_type: 'text/csv', file_size: 4, source_path: '/private/report.csv' }],
+  });
+
+  assert.deepEqual(artifacts, [{ index: 0, fileName: 'report.csv', fileType: 'text/csv', fileSize: 4 }]);
 });

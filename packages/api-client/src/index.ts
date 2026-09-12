@@ -86,6 +86,8 @@ export { createChatAttachmentsApi } from './chat/attachments.ts';
 export type { ChatAttachmentsApi, ChatAttachmentUploadInput } from './chat/attachments.ts';
 export { createChatSuggestionsApi } from './chat/suggestions.ts';
 export type { ChatSuggestionsApi, SuggestionEventType } from './chat/suggestions.ts';
+export { createChatArtifactsApi } from './chat/artifacts.ts';
+export type { ChatArtifactsApi } from './chat/artifacts.ts';
 export type {
   ActionSuccessResponse,
   SteerDeleteResponse,

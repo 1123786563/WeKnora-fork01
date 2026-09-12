@@ -12,12 +12,16 @@ public storage URL or a client-side artifact download path.
 
 - `packages/views/src/chat/markdown.ts` uses `marked` with GFM tables, fenced
   code, CJK text, unclosed-fence handling, controlled Mermaid code metadata,
-  readable TeX spans, and citation protocol conversion.
+  KaTeX rendering with `trust: false`, and citation protocol conversion.
 - Raw HTML is escaped at the renderer boundary. Link/image destinations are
   allow-listed; unsafe `javascript:`, `vbscript:`, and `data:` destinations are
   omitted.
 - `packages/views/src/chat/message-list.tsx` now renders message content via
-  the shared renderer and exposes a delegated `onCitationClick` seam.
+  the shared renderer, exposes a delegated `onCitationClick` seam, and shows
+  metadata-only artifact rows with an `onArtifactDownload` callback.
+- `packages/api-client/src/chat/artifacts.ts` adds strict list parsing and a
+  binary download seam. The parser drops `source_path`; bytes are fetched only
+  through the authenticated message artifact route.
 - `apps/web/src/styles.css` adds safe readable layout for Markdown code, tables,
   math, and citation controls.
 
@@ -27,7 +31,7 @@ Commands run from the isolated `codex/react-multiclient` worktree:
 
 | Command | Result |
 |---|---|
-| `pnpm test:shared` | exit 0; 208/208 |
+| `pnpm test:shared` | exit 0; 212/212 |
 | `pnpm typecheck:shared` | exit 0 |
 | `pnpm typecheck:web` | exit 0 |
 | `pnpm test:web` | exit 0; 107/107 |
@@ -41,6 +45,6 @@ shared renderer path.
 ## Evidence boundary
 
 This is source/Node/build evidence only. It does not prove browser XSS
-execution behavior, KaTeX typesetting, Mermaid SVG hydration, protected
-artifact download/preview, citation navigation against a live backend, or
-long-message performance. T13 therefore remains `review`.
+execution behavior, Mermaid SVG hydration, protected artifact download bytes
+or preview against a live backend, citation navigation against a live backend,
+or long-message performance. T13 therefore remains `review`.

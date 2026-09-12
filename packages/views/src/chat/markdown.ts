@@ -1,4 +1,5 @@
 import { marked, Renderer, type Tokens } from 'marked';
+import { renderToString as renderKatex } from 'katex';
 
 const CITATION_RE = /<(kb|web|wiki)\b([^>]*)\/>/gi;
 const ATTRIBUTE_RE = /([\w-]+)\s*=\s*(["'])(.*?)\2/g;
@@ -63,10 +64,19 @@ function restoreMath(html: string): string {
   const parts = html.split(/(<pre\b[\s\S]*?<\/pre>|<code\b[^>]*>[\s\S]*?<\/code>)/gi);
   for (let index = 0; index < parts.length; index += 2) {
     parts[index] = parts[index]!
-      .replace(/\$\$([\s\S]+?)\$\$/g, '<div class="math-block" role="math" data-format="tex">$1</div>')
-      .replace(/\$([^$\n]+)\$/g, '<span class="math-inline" role="math" data-format="tex">$1</span>');
+      .replace(/\$\$([\s\S]+?)\$\$/g, (_match, expression: string) => renderMath(expression, true))
+      .replace(/\$([^$\n]+)\$/g, (_match, expression: string) => renderMath(expression, false));
   }
   return parts.join('');
+}
+
+function renderMath(expression: string, displayMode: boolean): string {
+  try {
+    return renderKatex(expression, { displayMode, throwOnError: false, trust: false });
+  } catch {
+    const className = displayMode ? 'math-block' : 'math-inline';
+    return `<span class="${className}" role="math" data-format="tex">${escapeHtml(expression)}</span>`;
+  }
 }
 
 function createRenderer(): Renderer {

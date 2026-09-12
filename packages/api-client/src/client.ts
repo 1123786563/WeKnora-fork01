@@ -14,6 +14,7 @@ import { createChatApprovalsApi } from './chat/approvals.ts';
 import { createChatSteerApi } from './chat/steer.ts';
 import { createChatAttachmentsApi } from './chat/attachments.ts';
 import { createChatSuggestionsApi } from './chat/suggestions.ts';
+import { createChatArtifactsApi } from './chat/artifacts.ts';
 import { createIdentityApi } from './identity/index.ts';
 import { createAdministrationApi } from './administration/index.ts';
 import { createSettingsApi } from './settings/index.ts';
@@ -174,6 +175,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
   const chatSteer = createChatSteerApi(request);
   const chatAttachments = createChatAttachmentsApi(request);
   const chatSuggestions = createChatSuggestionsApi(request);
+  const chatArtifacts = createChatArtifactsApi(request, requestBinary);
   const identity = createIdentityApi(request);
   const administration = createAdministrationApi(request);
   const settings = createSettingsApi(request);
@@ -257,6 +259,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
       steer: chatSteer,
       attachments: chatAttachments,
       suggestions: chatSuggestions,
+      artifacts: chatArtifacts,
       stream: async (streamOptions: Parameters<typeof consumeChatStream>[1], onEvent: Parameters<typeof consumeChatStream>[2]) => {
         const streamRequest = buildChatStreamRequest(streamOptions);
         return consumeChatTransport(streamRequest, onEvent);
