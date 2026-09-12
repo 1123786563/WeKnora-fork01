@@ -125,3 +125,8 @@
 
 - 四页（org/agents/integrations/embed）live 基线截图入库：live-{agents,organizations,integrations-embed,integrations-api}.png。发现 live 缺陷并转告实施代理：integrations API tab 拉取 im-channels 且空数据 shape 触发解析错误；agents 页为共享/模型调试功能（英文，无列表）与审计一致。
 - 四页实施子代理进行中。
+
+## 2026-09-12 Round 19
+
+- KB 列表折叠分组节头完成（KB 后续项 #11 关闭）：domain 分组函数 + App.tsx 折叠 chips；live 验证通过。提交 01bccd0。证据：evidence/vue-react-parity/2026-09-12-kb-sections.md。
+- 四页实施子代理继续（embed/organizations 已见其修改）。
