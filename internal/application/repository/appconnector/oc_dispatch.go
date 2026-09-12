@@ -419,6 +419,195 @@ func (s *OCStore) ReleaseOCLease(ctx context.Context, id, owner string, fence in
 	return res.RowsAffected == 1, nil
 }
 
+// ---------------------------------------------------------------------------
+// T12 recovery queries and settlement CAS.
+//
+// The T10 claim semantics above are FROZEN; everything below is additive and
+// read/CAS-only. The durable dispatch record doubles as the settlement
+// outbox: a TERMINAL record (succeeded/failed) with a reservation_id IS the
+// settlement intent -- it was written atomically with the terminal state, in
+// the same row, so no second table is needed. Delivery is marked by a fence
+// bump: the claim leaves record.fence == action.fence, and
+// MarkOCDispatchSettled raises record.fence past action.fence, which is
+// exactly the predicate ListOCDispatchSettlementsDue excludes on.
+// ---------------------------------------------------------------------------
+
+// OCDispatchAlignment pairs one dispatch record with its action row's live
+// state and fence, for the reconciliation pass that re-aligns an action row
+// after a crash between the record write and the action write.
+type OCDispatchAlignment struct {
+	Record      appconnector.OCDispatchRecord
+	ActionState string
+	ActionFence int64
+}
+
+// ocDispatchTerminalStates are the states whose reservation needs settling.
+func ocDispatchTerminalStates() []string {
+	return []string{appconnector.ActionSucceeded, appconnector.ActionFailed}
+}
+
+// ListStaleOCDispatches returns dispatched records whose last heartbeat
+// (updated_at -- every claim/finish/sweep write refreshes it) is older than
+// staleAfter, oldest first, at most limit rows. The 90s default is strictly
+// slower than the 30s client deadline bound on the dispatch call, so a LIVE
+// dispatch sequence (claim -> bounded call -> finish) can never look stale.
+func (s *OCStore) ListStaleOCDispatches(ctx context.Context, now time.Time, staleAfter time.Duration, limit int) ([]appconnector.OCDispatchRecord, error) {
+	if now.IsZero() || staleAfter <= 0 || limit <= 0 {
+		return nil, ErrOCDispatchInvalid
+	}
+	var rows []OCDispatchRecordRow
+	if err := s.db.WithContext(ctx).
+		Where("state = ? AND updated_at <= ?", appconnector.ActionDispatched, now.UTC().Add(-staleAfter)).
+		Order("updated_at ASC").Limit(limit).
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]appconnector.OCDispatchRecord, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ocDispatchRecordDomain(r))
+	}
+	return out, nil
+}
+
+// ListMisalignedOCDispatches returns records whose state disagrees with their
+// action row while the action row is still in a recoverable state
+// (dispatched or unknown) -- the residue of a crash between the record write
+// and the action write. The record is the linearization point, so the ACTION
+// row is the one restored.
+func (s *OCStore) ListMisalignedOCDispatches(ctx context.Context, limit int) ([]OCDispatchAlignment, error) {
+	if limit <= 0 {
+		return nil, ErrOCDispatchInvalid
+	}
+	var rows []struct {
+		TenantID      uint64
+		ActionID      string
+		RuntimeID     string
+		Key           string
+		ExecutionID   string
+		State         string
+		ReservationID string
+		FirstSentAt   time.Time
+		ReplayUntil   time.Time
+		Fence         int64
+		ActionState   *string
+		ActionFence   *int64
+	}
+	err := s.db.WithContext(ctx).Raw(
+		"SELECT d.tenant_id, d.action_id, d.runtime_id, d.key, d.execution_id, d.state, "+
+			"d.reservation_id, d.first_sent_at, d.replay_until, d.fence, "+
+			"a.state AS action_state, a.fence AS action_fence "+
+			"FROM connector_dispatch_records d "+
+			"LEFT JOIN app_actions a ON a.tenant_id = d.tenant_id AND a.id = d.action_id "+
+			"WHERE (a.state = ? AND d.state <> ?) OR (a.state = ? AND d.state IN ?) "+
+			"ORDER BY d.updated_at ASC LIMIT ?",
+		appconnector.ActionDispatched, appconnector.ActionDispatched,
+		appconnector.ActionUnknown, ocDispatchTerminalStates(), limit).Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make([]OCDispatchAlignment, 0, len(rows))
+	for _, r := range rows {
+		al := OCDispatchAlignment{
+			Record: appconnector.OCDispatchRecord{
+				TenantID: r.TenantID, ActionID: r.ActionID, RuntimeID: r.RuntimeID,
+				Key: r.Key, ExecutionID: r.ExecutionID, State: r.State,
+				ReservationID: r.ReservationID, FirstSentAt: r.FirstSentAt,
+				ReplayUntil: r.ReplayUntil, Fence: r.Fence,
+			},
+		}
+		if r.ActionState != nil {
+			al.ActionState = *r.ActionState
+		}
+		if r.ActionFence != nil {
+			al.ActionFence = *r.ActionFence
+		}
+		out = append(out, al)
+	}
+	return out, nil
+}
+
+// ListUnknownOCDispatches returns records parked in unknown whose last state
+// change is not older than window, for the read-only provider-query pass.
+// A record the provider keeps answering "unknown" never refreshes its
+// updated_at, so it naturally ages out of this scan instead of being
+// re-queried forever.
+func (s *OCStore) ListUnknownOCDispatches(ctx context.Context, now time.Time, window time.Duration, limit int) ([]appconnector.OCDispatchRecord, error) {
+	if now.IsZero() || window <= 0 || limit <= 0 {
+		return nil, ErrOCDispatchInvalid
+	}
+	var rows []OCDispatchRecordRow
+	if err := s.db.WithContext(ctx).
+		Where("state = ? AND updated_at >= ?", appconnector.ActionUnknown, now.UTC().Add(-window)).
+		Order("updated_at ASC").Limit(limit).
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]appconnector.OCDispatchRecord, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ocDispatchRecordDomain(r))
+	}
+	return out, nil
+}
+
+// ListOCDispatchSettlementsDue returns terminal records carrying a
+// reservation whose settlement has not been marked delivered, and whose
+// terminal write is not older than window. "Not delivered" is the fence
+// invariant: the claim leaves record.fence == action.fence, and the delivery
+// mark raises record.fence above it. Rows older than the window stop being
+// retried -- a settlement that kept failing that long belongs to the EXISTING
+// commercial recovery, not a new ledger here.
+func (s *OCStore) ListOCDispatchSettlementsDue(ctx context.Context, now time.Time, window time.Duration, limit int) ([]appconnector.OCDispatchRecord, error) {
+	if now.IsZero() || window <= 0 || limit <= 0 {
+		return nil, ErrOCDispatchInvalid
+	}
+	var rows []OCDispatchRecordRow
+	err := s.db.WithContext(ctx).
+		Table("connector_dispatch_records").
+		Select("connector_dispatch_records.*").
+		Joins("LEFT JOIN app_actions a ON a.tenant_id = connector_dispatch_records.tenant_id AND a.id = connector_dispatch_records.action_id").
+		Where("connector_dispatch_records.state IN ?", ocDispatchTerminalStates()).
+		Where("connector_dispatch_records.reservation_id <> ''").
+		Where("connector_dispatch_records.updated_at >= ?", now.UTC().Add(-window)).
+		Where("connector_dispatch_records.fence <= COALESCE(a.fence, connector_dispatch_records.fence)").
+		Order("connector_dispatch_records.updated_at ASC").Limit(limit).
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make([]appconnector.OCDispatchRecord, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, ocDispatchRecordDomain(r))
+	}
+	return out, nil
+}
+
+// MarkOCDispatchSettled records that a terminal record's settlement was
+// DELIVERED, by bumping the record's fence past the action row's fence under
+// a terminal-state + fence CAS. ErrOCDispatchConflict means the row was
+// already marked (or moved on) -- success for a duplicate mark. The mark is
+// written only AFTER the settlement delivery: a crash in between leaves the
+// row due again, and the next pass re-delivers the IDENTICAL fact, which the
+// commercial settlement ledger treats as an idempotent replay.
+func (s *OCStore) MarkOCDispatchSettled(ctx context.Context, tenant uint64, actionID string, fence int64, now time.Time) error {
+	if tenant == 0 || actionID == "" || fence < 1 || now.IsZero() {
+		return ErrOCDispatchInvalid
+	}
+	res := s.db.WithContext(ctx).Model(&OCDispatchRecordRow{}).
+		Where("tenant_id = ? AND action_id = ? AND state IN ? AND fence = ?",
+			tenant, actionID, ocDispatchTerminalStates(), fence).
+		Updates(map[string]interface{}{
+			"fence":      gorm.Expr("fence + 1"),
+			"updated_at": now.UTC(),
+		})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected != 1 {
+		return ErrOCDispatchConflict
+	}
+	return nil
+}
+
 // NoteOCProviderRetryAfter durably stores a provider's 429 Retry-After
 // instant (fail-closed until it passes). The value only moves FORWARD — a
 // stale observation can never shorten a newer cooldown. Releasing the

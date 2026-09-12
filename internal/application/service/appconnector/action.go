@@ -60,6 +60,13 @@ var (
 // ever re-sends a dispatched action.
 const ocSlotLeaseTTL = 90 * time.Second
 
+// ocDispatchClientDeadline bounds the outbound dispatch call (T12): a hung
+// provider call converges to unknown under the bounded context (30s client
+// deadline), strictly inside the 90s no-heartbeat staleness bound of the
+// recovery sweep, so a LIVE dispatch sequence can never be mistaken for a
+// crashed worker.
+const ocDispatchClientDeadline = 30 * time.Second
+
 // OCDispatchClaimSource is the durable open-connector claim surface
 // (T10, implemented by repository/appconnector.OCStore): the atomic claim
 // that consumes the approval, mints the operation-scoped key and serializes
@@ -155,6 +162,9 @@ type ActionService struct {
 	approvalTTL  time.Duration
 	budgetUpper  commercial.Credits
 	budgetWindow time.Duration
+	// dispatchDeadline bounds the outbound dispatch call (T12 recovery hook);
+	// defaults to ocDispatchClientDeadline, overridable for tests.
+	dispatchDeadline time.Duration
 	// ocClaims is the T10 durable claim store for open-connector actions;
 	// slots is the optional distributed dispatch limiter. Both are wired
 	// additively (nil = native behavior preserved) so existing faces stay
@@ -180,14 +190,15 @@ func NewActionService(
 	dispatcher ActionDispatcher, unknown UnknownResolver,
 ) *ActionService {
 	return &ActionService{
-		store:        store,
-		guard:        guard,
-		gate:         gate,
-		dispatcher:   dispatcher,
-		unknown:      unknown,
-		approvalTTL:  30 * time.Minute,
-		budgetUpper:  1,
-		budgetWindow: 10 * time.Minute,
+		store:            store,
+		guard:            guard,
+		gate:             gate,
+		dispatcher:       dispatcher,
+		unknown:          unknown,
+		approvalTTL:      30 * time.Minute,
+		budgetUpper:      1,
+		budgetWindow:     10 * time.Minute,
+		dispatchDeadline: ocDispatchClientDeadline,
 	}
 }
 
@@ -343,6 +354,16 @@ func (s *ActionService) Execute(ctx context.Context, id string) error {
 	if ocerr != nil {
 		return ocerr
 	}
+	// T12 recovery hook: when the wired claim store also carries the settle
+	// face (the repository OCStore does), the durable dispatch record is
+	// settled FIRST below — it is the local linearization point and the
+	// settlement outbox in one row. A claim source without the face (the
+	// frozen stub wiring) keeps the pre-T12 finish order verbatim.
+	var ocSettle OCDispatchSettleSource
+	if oc != nil && s.ocClaims != nil {
+		ocSettle, _ = s.ocClaims.(OCDispatchSettleSource)
+	}
+	var ocRec appconn.OCDispatchRecord
 	// Dispatch slots BEFORE the budget Begin (ruling 5): a request that
 	// cannot get a slot consumes no approval and no budget. The slots are
 	// DATABASE leases — a replica crash simply expires them; releasing a
@@ -389,10 +410,11 @@ func (s *ActionService) Execute(ctx context.Context, id string) error {
 	// actions — and OC actions in the unwired transitional wiring — keep
 	// the frozen path.
 	if oc != nil && s.ocClaims != nil {
-		if _, cerr := s.ocClaims.ClaimOCDispatch(ctx,
+		rec, cerr := s.ocClaims.ClaimOCDispatch(ctx,
 			appconn.OCSubject{TenantID: row.TenantID, ActorID: row.ActorID},
 			row.ID, reservationID,
-		); cerr != nil {
+		)
+		if cerr != nil {
 			// Lost race or blocked claim: the winner (if any) holds the
 			// SHARED reservation — the loser must never cancel or settle
 			// it. A claim rejected while the row is still authorized is
@@ -401,6 +423,7 @@ func (s *ActionService) Execute(ctx context.Context, id string) error {
 			// lingering as an orphan hold (T10-Q-1).
 			return s.withClaimOrphanRelease(ctx, id, row.TenantID, cerr, reservationID)
 		}
+		ocRec = rec
 	} else if err := s.store.ClaimDispatch(ctx, id, row.ConnectionID, reservationID); err != nil {
 		return s.withClaimOrphanRelease(ctx, id, row.TenantID, err, reservationID)
 	}
@@ -412,21 +435,35 @@ func (s *ActionService) Execute(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	out, derr := s.dispatcher.Dispatch(ctx, snap, claimed.ProviderKey)
+	// T12: the outbound call runs under the bounded client deadline — a hung
+	// provider call converges to unknown instead of pinning the action, and
+	// stays strictly inside the 90s staleness bound of the recovery sweep.
+	dctx, cancel := context.WithTimeout(ctx, s.dispatchDeadline)
+	out, derr := s.dispatcher.Dispatch(dctx, snap, claimed.ProviderKey)
+	cancel()
 	final := settleOutcome(out, derr)
-	if err := s.store.FinishDispatch(ctx, id, claimed.Fence, final.Status, final.ProviderResult); err != nil {
-		return err
-	}
-	if s.gate != nil && reservationID != "" && final.Status != appconn.ActionUnknown {
-		if err := s.gate.Finish(ctx, reservationID, commercial.UsageFact{
-			TenantID: claimed.TenantID, RunID: "appaction:" + claimed.ID,
-			CallID: claimed.ID, AttemptID: claimed.ID, Funding: commercial.FundingPlatform,
-			Service: commercial.ServiceConnector, PriceVersion: "v1", Revision: 1,
-			OccurredAt: time.Now().UTC(),
-			Dimensions: map[string]int64{commercial.DimensionConnector: 1},
-			Status:     commercial.UsageStatusFinal,
-		}); err != nil {
+	if ocSettle != nil {
+		// T12 recovery hook: settle the DURABLE RECORD first (terminal result
+		// + settlement intent in ONE row), then the action row, then deliver
+		// the settlement. The T11 classification above is untouched.
+		if err := s.settleOCDispatchRecord(ctx, ocSettle, ocRec, claimed, final); err != nil {
 			return err
+		}
+	} else {
+		if err := s.store.FinishDispatch(ctx, id, claimed.Fence, final.Status, final.ProviderResult); err != nil {
+			return err
+		}
+		if s.gate != nil && reservationID != "" && final.Status != appconn.ActionUnknown {
+			if err := s.gate.Finish(ctx, reservationID, commercial.UsageFact{
+				TenantID: claimed.TenantID, RunID: "appaction:" + claimed.ID,
+				CallID: claimed.ID, AttemptID: claimed.ID, Funding: commercial.FundingPlatform,
+				Service: commercial.ServiceConnector, PriceVersion: "v1", Revision: 1,
+				OccurredAt: time.Now().UTC(),
+				Dimensions: map[string]int64{commercial.DimensionConnector: 1},
+				Status:     commercial.UsageStatusFinal,
+			}); err != nil {
+				return err
+			}
 		}
 	}
 	if final.Status == appconn.ActionUnknown {
@@ -570,7 +607,213 @@ func (s *ActionService) ResolveUnknown(ctx context.Context, id string) error {
 	}
 	switch out.Status {
 	case appconn.ActionSucceeded, appconn.ActionFailed:
-		return s.store.FinishUnknown(ctx, id, row.Fence, out.Status, out.ProviderResult)
+		return s.finishUnknownSettled(ctx, row, out.Status, out.ProviderResult)
 	}
 	return fmt.Errorf("%w: provider query not terminal: %s", ErrDispatchUnknown, out.Status)
+}
+
+// OCDispatchSettleSource is the T12 recovery-side extension of the claim
+// source: settling the durable dispatch record under its fence CAS and
+// marking the settlement delivery. It is satisfied by
+// repository/appconnector.OCStore; a claim source without it (the frozen
+// stub wiring) keeps the pre-T12 finish order verbatim.
+type OCDispatchSettleSource interface {
+	FinishOCDispatch(ctx context.Context, tenant uint64, actionID string, fence int64, from, to, executionID string) error
+	MarkOCDispatchSettled(ctx context.Context, tenant uint64, actionID string, fence int64, now time.Time) error
+}
+
+// ocDispatchSettleOf returns the settle face of the service's wired claim
+// source, or nil when the wiring does not carry it.
+func ocDispatchSettleOf(s *ActionService) OCDispatchSettleSource {
+	if s == nil || s.ocClaims == nil {
+		return nil
+	}
+	src, _ := s.ocClaims.(OCDispatchSettleSource)
+	return src
+}
+
+// settleOCDispatchRecord is the T12 finish path for open-connector dispatches
+// under the recovery settle face. Order (record first — it is the local
+// linearization point and the settlement outbox in one row):
+//
+//  1. dispatched -> final.Status on the RECORD, with a bounded retry that
+//     persists the ORIGINAL outcome (ruling 4: a local write failure never
+//     re-derives and never re-sends; exhaustion leaves both rows dispatched
+//     for the stale sweep to park unknown);
+//  2. dispatched -> final.Status on the ACTION row;
+//  3. terminal outcomes deliver the settlement with the stable fact
+//     (Revision=1); unknown keeps the hold — unknown is not free. A delivery
+//     failure returns an error while the intent stays durable: OCRecovery
+//     retries the settlement ALONE.
+//
+// If the recovery sweep won the record race meanwhile, the late outcome does
+// not overwrite the parked unknown: the action row is parked unknown too and
+// the provider query decides.
+func (s *ActionService) settleOCDispatchRecord(ctx context.Context, src OCDispatchSettleSource, rec appconn.OCDispatchRecord, claimed repoappconn.ActionRow, final DispatchOutcome) error {
+	// 1. Record (linearization point). The execution id stays empty in phase
+	// one: the outcome classification is authoritative here, and the
+	// provider's execution id lands on the record when later wiring surfaces
+	// it as a structured field.
+	rerr := ocRetry(func() error {
+		octx, cancel := context.WithTimeout(ctx, ocRecoveryOpTimeout)
+		defer cancel()
+		return src.FinishOCDispatch(octx, rec.TenantID, rec.ActionID, rec.Fence,
+			appconn.ActionDispatched, final.Status, "")
+	})
+	if rerr != nil {
+		if errors.Is(rerr, repoappconn.ErrOCDispatchConflict) {
+			if aerr := s.recoverAlignAction(ctx, claimed.ID, appconn.ActionUnknown,
+				"dispatch record swept to unknown; provider query required"); aerr != nil {
+				return errors.Join(aerr, ErrDispatchUnknown)
+			}
+			return fmt.Errorf("%w: dispatch record swept to unknown during finish", ErrDispatchUnknown)
+		}
+		return rerr
+	}
+	// 2. Action row follows the record; a crash here is repaired by
+	// OCRecovery's alignment pass.
+	if err := ocRetry(func() error {
+		octx, cancel := context.WithTimeout(ctx, ocRecoveryOpTimeout)
+		defer cancel()
+		return s.store.FinishDispatch(octx, claimed.ID, claimed.Fence, final.Status, final.ProviderResult)
+	}); err != nil {
+		if errors.Is(err, repoappconn.ErrActionState) {
+			// The action row already moved (a concurrent writer); the record
+			// is the authority — leave alignment to the loop.
+			return nil
+		}
+		return err
+	}
+	// 3. Settlement delivery.
+	if final.Status == appconn.ActionUnknown {
+		return nil
+	}
+	if derr := deliverOCSettlement(ctx, s.gate, rec.TenantID, rec.ActionID, rec.ReservationID); derr != nil {
+		return derr
+	}
+	// Best-effort delivery mark: a failure leaves the row due, and the loop
+	// re-delivers the IDENTICAL fact (idempotent at the ledger) before
+	// marking again.
+	octx, cancel := context.WithTimeout(ctx, ocRecoveryOpTimeout)
+	defer cancel()
+	_ = src.MarkOCDispatchSettled(octx, rec.TenantID, rec.ActionID, rec.Fence, time.Now().UTC())
+	return nil
+}
+
+// recoverAlignAction moves an action row into the state its durable dispatch
+// record already holds, under the row's current fence — the recovery-side
+// writer for the sweep and the alignment pass. A row that already agrees (or
+// was moved on by a concurrent writer) is a no-op; terminal action rows are
+// never rewritten by recovery.
+func (s *ActionService) recoverAlignAction(ctx context.Context, actionID, target, note string) error {
+	octx, cancel := context.WithTimeout(ctx, ocRecoveryOpTimeout)
+	defer cancel()
+	row, err := s.store.FindAction(octx, actionID)
+	if err != nil {
+		return fmt.Errorf("align %s: %w", actionID, err)
+	}
+	if row.State == target || (row.State != appconn.ActionDispatched && row.State != appconn.ActionUnknown) {
+		return nil
+	}
+	octx2, cancel2 := context.WithTimeout(ctx, ocRecoveryOpTimeout)
+	defer cancel2()
+	if row.State == appconn.ActionDispatched {
+		if err := s.store.FinishDispatch(octx2, actionID, row.Fence, target, note); err != nil {
+			if errors.Is(err, repoappconn.ErrActionState) {
+				return nil // a concurrent writer moved it first
+			}
+			return fmt.Errorf("align %s: %w", actionID, err)
+		}
+		return nil
+	}
+	if target == appconn.ActionUnknown {
+		return nil
+	}
+	if err := s.store.FinishUnknown(octx2, actionID, row.Fence, target, note); err != nil {
+		if errors.Is(err, repoappconn.ErrActionState) {
+			return nil
+		}
+		return fmt.Errorf("align %s: %w", actionID, err)
+	}
+	return nil
+}
+
+// finishUnknownFromRecord settles an action parked in unknown into the
+// terminal state its durable record already holds, then delivers the
+// settlement. It backs the loop's alignment pass for records resolved
+// terminally by a worker that crashed before writing the action row. The
+// bool reports whether the action row moved.
+func (s *ActionService) finishUnknownFromRecord(ctx context.Context, rec appconn.OCDispatchRecord, actionFence int64) (bool, error) {
+	octx, cancel := context.WithTimeout(ctx, ocRecoveryOpTimeout)
+	defer cancel()
+	if err := s.store.FinishUnknown(octx, rec.ActionID, actionFence, rec.State,
+		"recovered: terminal outcome restored from dispatch record"); err != nil {
+		if errors.Is(err, repoappconn.ErrActionState) {
+			return false, nil
+		}
+		return false, err
+	}
+	if derr := deliverOCSettlement(ctx, s.gate, rec.TenantID, rec.ActionID, rec.ReservationID); derr != nil {
+		return true, derr
+	}
+	return true, nil
+}
+
+// finishUnknownSettled is the T12 ResolveUnknown tail (precheck fact 6
+// closed): an unknown->terminal transition first settles the DURABLE RECORD
+// under its fence CAS — the terminal result and the settlement intent land
+// in ONE row — then the action row, then the settlement is delivered with
+// the stable fact. A settlement failure surfaces as an error while the
+// terminal writes stay durable; OCRecovery retries the settlement alone.
+// Actions without a durable record (native path) settle their recorded
+// pre-allocation directly.
+func (s *ActionService) finishUnknownSettled(ctx context.Context, row repoappconn.ActionRow, state, result string) error {
+	if src := ocDispatchSettleOf(s); src != nil {
+		octx, cancel := context.WithTimeout(ctx, ocRecoveryOpTimeout)
+		rec, gerr := s.ocClaims.GetOCDispatch(octx, row.TenantID, row.ID)
+		cancel()
+		if gerr == nil && rec.ActionID != "" {
+			ferr := ocRetry(func() error {
+				octx, cancel := context.WithTimeout(ctx, ocRecoveryOpTimeout)
+				defer cancel()
+				return src.FinishOCDispatch(octx, rec.TenantID, rec.ActionID, rec.Fence,
+					appconn.ActionUnknown, state, "")
+			})
+			if ferr != nil {
+				if errors.Is(ferr, repoappconn.ErrOCDispatchConflict) {
+					// Another resolver already moved the record; its own
+					// delivery owns this reservation.
+					return fmt.Errorf("resolve record %s: %w", row.ID, ferr)
+				}
+				return ferr
+			}
+			if aerr := ocRetry(func() error {
+				octx, cancel := context.WithTimeout(ctx, ocRecoveryOpTimeout)
+				defer cancel()
+				return s.store.FinishUnknown(octx, row.ID, row.Fence, state, result)
+			}); aerr != nil {
+				if errors.Is(aerr, repoappconn.ErrActionState) {
+					return nil // a concurrent writer moved the action row
+				}
+				return aerr // record terminal + action unknown: loop aligns + settles
+			}
+			if derr := deliverOCSettlement(ctx, s.gate, rec.TenantID, rec.ActionID, rec.ReservationID); derr != nil {
+				return derr
+			}
+			octx, cancel := context.WithTimeout(ctx, ocRecoveryOpTimeout)
+			defer cancel()
+			_ = src.MarkOCDispatchSettled(octx, rec.TenantID, rec.ActionID, rec.Fence, time.Now().UTC())
+			return nil
+		}
+		// No durable record (mixed wiring): fall through to the direct
+		// action-row settlement below.
+	}
+	if err := ocRetry(func() error {
+		octx, cancel := context.WithTimeout(ctx, ocRecoveryOpTimeout)
+		defer cancel()
+		return s.store.FinishUnknown(octx, row.ID, row.Fence, state, result)
+	}); err != nil {
+		return err
+	}
+	return deliverOCSettlement(ctx, s.gate, row.TenantID, row.ID, row.ReservationID)
 }
