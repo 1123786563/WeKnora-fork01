@@ -419,3 +419,9 @@
 
 - Android 模拟器（test36-small）原生应用交互验收通过：Gradle 重建 APK（补 netinfo 原生模块）→ dev client 连接 Metro → 真实登录 → KB 列表渲染真实后端数据。证据：2026-09-12-android-emulator-interaction.md + android-sim-*.png。
 - 测试账号密码临时切换后已恢复（Parity123456!，curl 验证）。
+
+## 2026-09-12 Round 103
+
+- **chat 流式全链路后端侧打通**：本地 mock LLM（OpenAI 兼容 SSE，:18090）+ config/builtin_models.yaml（KnowledgeQA mock-stream-model，SSRF_WHITELIST=192.168.3.30）→ curl 直连 knowledge-chat 端点验证 SSE token 流（Mock/LLM...）✅。
+- **发现真实前端缺陷**：creatChat 首次发送在会话创建后流请求未发出（静默挂起，无错误 UI）。已派发专项修复代理（复现脚本 chat-request-trace.cjs / chat-api-trace.cjs）。
+- 过程发现：后端 SSRF 防护正确拦截 127.0.0.1 与裸 IP base_url（安全特性验证 ✅）。
