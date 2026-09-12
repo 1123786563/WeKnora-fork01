@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import * as React from 'react';
-import type { McpTestResult } from '@weknora/api-client';
+import type { McpTestResult, McpTool } from '@weknora/api-client';
 
-export function McpTestResultBody({ result }: { result: McpTestResult | null }) {
+type PolicyField = 'enabled' | 'requireApproval';
+type Props = { result: McpTestResult | null; approvals?: { toolName: string; enabled: boolean; requireApproval: boolean }[]; busy?: boolean; onPolicyChange?: (name: string, field: PolicyField, value: boolean) => void };
+
+export function McpTestResultBody({ result, approvals = [], busy = false, onPolicyChange }: Props) {
   const [expanded, setExpanded] = useState<number | null>(null);
   if (!result) return null;
   const tools = result.tools ?? [];
@@ -13,6 +16,7 @@ export function McpTestResultBody({ result }: { result: McpTestResult | null }) 
     {result.success && result.description ? <div><span>Description</span><p>{result.description}</p></div> : null}
     {result.success && tools.length ? <section aria-label="MCP tools"><h5>Tools ({tools.length})</h5><ul className="wk-mcp-test-items">{tools.map((tool, index) => <li key={`${tool.name}-${index}`}>
       <button type="button" aria-expanded={expanded === index} onClick={() => setExpanded(expanded === index ? null : index)}>{tool.name} <span>{expanded === index ? '▴' : '▾'}</span></button>
+      <div className="wk-mcp-test-policy"><label><input type="checkbox" disabled={busy || !onPolicyChange} checked={approvals.find((row) => row.toolName === tool.name)?.enabled ?? true} onChange={(event) => onPolicyChange?.(tool.name, 'enabled', event.target.checked)} /> Enabled</label><label><input type="checkbox" disabled={busy || !onPolicyChange} checked={approvals.find((row) => row.toolName === tool.name)?.requireApproval ?? false} onChange={(event) => onPolicyChange?.(tool.name, 'requireApproval', event.target.checked)} /> Approval</label></div>
       {tool.description ? <p>{tool.description}</p> : null}
       {expanded === index && tool.inputSchema ? <pre>{JSON.stringify(tool.inputSchema, null, 2)}</pre> : null}
     </li>)}</ul></section> : null}

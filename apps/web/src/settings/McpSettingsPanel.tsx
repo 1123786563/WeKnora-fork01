@@ -495,7 +495,7 @@ function McpServiceDetails({
           {busy ? "Loading metadata…" : "Metadata is not synced."}
         </Status>
       )}
-      <McpTestResultBody result={testResult} />
+      <McpTestResultBody result={testResult} approvals={approvals} busy={busy || Boolean(metadata?.stale) || Boolean(policyError)} onPolicyChange={(name, field, value) => void updateTool(name, field, value)} />
     </section>
   );
 }

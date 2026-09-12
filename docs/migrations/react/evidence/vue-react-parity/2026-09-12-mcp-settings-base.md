@@ -4,6 +4,8 @@ Date: 2026-09-12
 
 ## Scope
 
+The test-result surface now renders tool/resource details and reuses the parent MCP policy mutation path for per-tool enabled and approval controls, matching the Vue behavior boundary without introducing a second policy API.
+
 This slice covers the executable React replacement for `frontend/src/views/settings/McpSettings.vue`: service loading, viewer empty state, admin add entry, service cards, built-in restrictions, edit/delete actions, enable/disable submission locking, dedicated credential transport, metadata refresh/stale handling, tool policy updates, usage persistence, connection test feedback, and OAuth status/authorize/revoke controls.
 
 It does not claim parity for the remaining Vue drawer visuals, six-locale copy, screenshot comparison, or real-backend/Wails/native acceptance. The React editor now includes standard `mcpServers` JSON import, HTTP(S) validation, custom headers, OAuth scopes, and bounded timeout/retry fields; it still explicitly rejects the unsupported stdio remote-editor path. The test-result surface preserves the Vue success/failure state, service description, expandable tool schemas, resource URI/MIME details, and empty state. The metadata tool directory has search, 20-item pagination, description/parameters/schema detail tabs, policy controls, and fail-closed retry state. Metadata refresh/stale handling, usage generation, tool-policy writes, and OAuth status/authorize/revoke controls are now wired, but remain unverified outside focused tests.
