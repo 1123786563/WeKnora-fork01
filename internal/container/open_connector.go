@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -309,9 +310,16 @@ func NewOCSupervisor(gate *OCShutdownGate, inflight *TrackingOCDispatcher, recov
 	return &OCSupervisor{gate: gate, inflight: inflight, recovery: recovery, drain: drain, logNotice: func(string, ...any) {}}
 }
 
-// AttachRunnerCancel lets Shutdown stop the periodic runner after the
-// drain (the loop must not race the final pass forever).
-func (s *OCSupervisor) AttachRunnerCancel(cancel context.CancelFunc) { s.stopRun = cancel }
+// AttachRunner hands the supervisor the periodic runner's cancel AND the
+// recovery instance the final shutdown pass drives (F-2 fix: without the
+// recovery reference the final RunOnce in Shutdown would be dead code —
+// both production call sites now attach the real recovery).
+func (s *OCSupervisor) AttachRunner(cancel context.CancelFunc, recovery OCRunOnce) {
+	s.stopRun = cancel
+	if recovery != nil {
+		s.recovery = recovery
+	}
+}
 
 // Shutdown executes the ruling-8 sequence. It always returns; a stuck
 // in-flight dispatch cannot extend the drain window.
@@ -354,18 +362,49 @@ func (s *OCSupervisor) Shutdown(ctx context.Context) {
 // dispatch arming (T10-F-3 MANDATE) + wiring
 // ---------------------------------------------------------------------------
 
+// ocServiceDispatcherNil reports whether the frozen ActionService's
+// private dispatcher field is nil. The dispatcher rides the frozen
+// NewActionService CONSTRUCTOR (no setter exists), so this nil-parity read
+// is what lets the arming fail fast on the F-1 defect class: a wiring that
+// built a dispatcher but never injected it. Only nil-ness is inspected —
+// reading VALUES out of unexported fields would panic; IsNil does not.
+func ocServiceDispatcherNil(svc *appconnectorsvc.ActionService) (bool, error) {
+	if svc == nil {
+		return true, errors.New("open-connector wiring: nil action service")
+	}
+	f := reflect.ValueOf(svc).Elem().FieldByName("dispatcher")
+	if !f.IsValid() || f.Kind() != reflect.Interface {
+		return true, errors.New("open-connector wiring: the action service's dispatcher field moved — frozen face changed, update the OC wiring")
+	}
+	return f.IsNil(), nil
+}
+
 // ArmOCDispatch wires the durable claim store and the slot limiter onto
 // the ActionService, enforcing the T10-F-3 mandate: a non-nil dispatcher
 // with a nil claim store is a WIRING VIOLATION — the error must surface at
 // STARTUP, because the no-durable-record fallback it would enable is
 // exactly what T10 retired. The disabled wiring (nil dispatcher, nil
 // claims) stays legal: that is the explicit refusing dispatcher.
+//
+// F-1 guard (spec review): the dispatcher parameter is NOT advisory. The
+// frozen ActionService accepts its dispatcher only through NewActionService,
+// so the arming refuses to bless a service whose dispatcher does not match
+// the wiring — constructing the service WITHOUT the wiring's dispatcher
+// and arming it anyway is a startup error, never a silently dropped
+// dispatch path (the enabled-path 503-everything defect).
 func ArmOCDispatch(svc *appconnectorsvc.ActionService, dispatcher appconnectorsvc.ActionDispatcher, claims appconnectorsvc.OCDispatchClaimSource, slots *appconnectorsvc.OCSlotLimiter) error {
 	if svc == nil {
 		return errors.New("open-connector wiring: the action service is required")
 	}
 	if dispatcher != nil && claims == nil {
 		return errors.New("open-connector wiring violation (T10-F-3): a real dispatcher requires the durable claim store — UseOCSlotLimiter and UseOCDispatchClaims must be wired before/with any non-nil dispatcher")
+	}
+	svcDispatcherNil, err := ocServiceDispatcherNil(svc)
+	if err != nil {
+		return err
+	}
+	if svcDispatcherNil != (dispatcher == nil) {
+		return errors.New("open-connector wiring violation (T13 F-1): the action service's dispatcher does not match the wiring — construct it with the wiring's dispatcher (NewOCArmedActionService does this) before arming; an armed dispatcher must never be dropped")
 	}
 	if claims != nil {
 		svc.UseOCDispatchClaims(claims)
@@ -376,7 +415,7 @@ func ArmOCDispatch(svc *appconnectorsvc.ActionService, dispatcher appconnectorsv
 	return nil
 }
 
-// OCWiring is the armed result of WireOpenConnector.
+// OCWiring is the armed result of PrepareOpenConnector.
 type OCWiring struct {
 	config     OCConfig
 	dispatcher appconnectorsvc.ActionDispatcher
@@ -400,8 +439,12 @@ func (w *OCWiring) Slots() *appconnectorsvc.OCSlotLimiter { return w.slots }
 // Supervisor returns the graceful-shutdown supervisor (always present).
 func (w *OCWiring) Supervisor() *OCSupervisor { return w.supervisor }
 
-// WireOpenConnector arms the ActionService's open-connector dispatch path
-// from the deployment config.
+// PrepareOpenConnector builds the complete open-connector dispatch wiring
+// from the deployment config WITHOUT touching an ActionService. Splitting
+// this out is the F-1 fix: the frozen ActionService takes its dispatcher
+// ONLY through NewActionService, so the service must be constructed AFTER
+// the wiring exists — NewOCArmedActionService composes the two and is the
+// single production path.
 //
 // Disabled (default): the dispatcher stays nil — that nil IS the plan's
 // "explicit refusing dispatcher": ActionService.Execute fails closed with
@@ -414,7 +457,8 @@ func (w *OCWiring) Supervisor() *OCSupervisor { return w.supervisor }
 // enabled-but-incomplete configuration is a STARTUP FAILURE, never a
 // fallback to some default connection. The full path (restricted-token
 // source → single-POST executor → OC dispatcher, gated durable claims,
-// four-scope limiter) is armed atomically through ArmOCDispatch.
+// four-scope limiter) is built atomically; dispatcher and claims can never
+// exist apart.
 //
 // budgetUpper CONFIG REQUIREMENT (ruling 7 carry): ActionService reserves
 // budget with Upper=1 credit per dispatch (frozen T04-T12 face; no setter
@@ -424,9 +468,9 @@ func (w *OCWiring) Supervisor() *OCSupervisor { return w.supervisor }
 // deployment requirement is: only publish actions whose price is at most
 // the default upper, or extend ActionService with a configurable upper
 // before publishing priced actions.
-func WireOpenConnector(svc *appconnectorsvc.ActionService, cfg OCConfig, ocStore *repoappconn.OCStore, httpClient *http.Client) (*OCWiring, error) {
-	if svc == nil || ocStore == nil {
-		return nil, errors.New("open-connector wiring: the action service and the OC store are required")
+func PrepareOpenConnector(cfg OCConfig, ocStore *repoappconn.OCStore, httpClient *http.Client) (*OCWiring, error) {
+	if ocStore == nil {
+		return nil, errors.New("open-connector wiring: the OC store is required")
 	}
 	gate := &OCShutdownGate{}
 	if !cfg.Enabled {
@@ -462,9 +506,6 @@ func WireOpenConnector(svc *appconnectorsvc.ActionService, cfg OCConfig, ocStore
 		return nil, fmt.Errorf("open-connector slot limiter: %w", err)
 	}
 	claims := &GatedOCClaims{OCDispatchClaimSource: ocStore, gate: gate}
-	if err := ArmOCDispatch(svc, tracking, claims, slots); err != nil {
-		return nil, err
-	}
 	return &OCWiring{
 		config:     cfg,
 		dispatcher: tracking,
@@ -472,6 +513,45 @@ func WireOpenConnector(svc *appconnectorsvc.ActionService, cfg OCConfig, ocStore
 		slots:      slots,
 		supervisor: NewOCSupervisor(gate, tracking, nil, cfg.DrainTimeout),
 	}, nil
+}
+
+// ArmActionService wires this prepared wiring's claims and slots onto svc
+// under the T10-F-3 + F-1 guards (dispatcher parity included — see
+// ArmOCDispatch). The service must already have been constructed with
+// w.Dispatcher(); NewOCArmedActionService is the composition that
+// guarantees it.
+func (w *OCWiring) ArmActionService(svc *appconnectorsvc.ActionService) error {
+	if w == nil {
+		return errors.New("open-connector wiring: nil wiring")
+	}
+	return ArmOCDispatch(svc, w.dispatcher, w.claims, w.slots)
+}
+
+// NewOCArmedActionService is the PRODUCTION constructor: it prepares the
+// OC wiring, builds the ActionService WITH the wiring's dispatcher (the
+// frozen constructor is the only injection point — this ordering is the
+// F-1 fix), then arms claims+slots atomically. An error return fails
+// container STARTUP (rulings 5/8). Tests must exercise dispatch arming
+// through this path, never by bypassing it with NewActionService.
+func NewOCArmedActionService(
+	store appconnectorsvc.ActionStoreSource,
+	guard appconnectorsvc.A02Guard,
+	gate domain.ExecutionGate,
+	ocStore *repoappconn.OCStore,
+	cfg OCConfig,
+	httpClient *http.Client,
+) (*appconnectorsvc.ActionService, *OCWiring, error) {
+	wiring, err := PrepareOpenConnector(cfg, ocStore, httpClient)
+	if err != nil {
+		return nil, nil, err
+	}
+	// F-1: the armed dispatcher rides the CONSTRUCTOR — this is the only
+	// seam the frozen ActionService offers, so the wiring must exist first.
+	svc := appconnectorsvc.NewActionService(store, guard, gate, wiring.Dispatcher(), nil)
+	if err := wiring.ArmActionService(svc); err != nil {
+		return nil, nil, err
+	}
+	return svc, wiring, nil
 }
 
 // ocHTTPClient is the dispatch-path HTTP client: 30s timeout, matching the
@@ -483,21 +563,18 @@ func ocHTTPClient() *http.Client { return &http.Client{Timeout: 30 * time.Second
 // STARTUP, which is exactly what rulings 5/8 demand)
 // ---------------------------------------------------------------------------
 
-// newOCArmedActionService builds the ActionService and arms its
-// open-connector dispatch path from the environment (see WireOpenConnector
-// for the disabled / enabled semantics and the budgetUpper note).
+// newOCArmedActionService is the dig constructor: it delegates to the
+// PRODUCTION path (NewOCArmedActionService) with the env config — the
+// dispatcher reaches the service through the frozen constructor and the
+// T10-F-3/F-1 guards run at startup (see PrepareOpenConnector for the
+// disabled/enabled semantics and the budgetUpper note).
 func newOCArmedActionService(
 	store appconnectorsvc.ActionStoreSource,
 	guard appconnectorsvc.A02Guard,
 	gate domain.ExecutionGate,
 	oc *repoappconn.OCStore,
 ) (*appconnectorsvc.ActionService, *OCWiring, error) {
-	svc := appconnectorsvc.NewActionService(store, guard, gate, nil, nil)
-	wiring, err := WireOpenConnector(svc, OCConfigFromEnv(), oc, ocHTTPClient())
-	if err != nil {
-		return nil, nil, err
-	}
-	return svc, wiring, nil
+	return NewOCArmedActionService(store, guard, gate, oc, OCConfigFromEnv(), ocHTTPClient())
 }
 
 // newOCProductServices builds the T13 LOCAL product services the handlers
@@ -547,9 +624,10 @@ func startOCRecoveryRunner(
 		logger.Errorf(context.Background(), "[OpenConnector] recovery pass: %v", err)
 	})
 	// The supervisor hands still-draining records to this recovery on
-	// shutdown; attach the runner's cancel so the periodic loop stops then.
+	// shutdown: attach BOTH the runner's cancel and the recovery itself so
+	// the final Shutdown pass drives the real RunOnce (F-2).
 	ctx, cancel := context.WithCancel(context.Background())
-	wiring.Supervisor().AttachRunnerCancel(cancel)
+	wiring.Supervisor().AttachRunner(cancel, recovery)
 	go runner.Run(ctx)
 	cleaner.RegisterWithName("OpenConnector", func() error {
 		wiring.Supervisor().Shutdown(context.Background())

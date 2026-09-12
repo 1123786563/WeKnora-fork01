@@ -19,6 +19,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"reflect"
 )
 
 // ocTestStore opens an in-memory OC store with the binding tables. Each
@@ -130,19 +131,30 @@ func (s ocTestSink) GetSecret(ctx context.Context, ref string) (string, error) {
 	return string(data), nil
 }
 
-// TestArmOCDispatchEnforcesT10F3 pins the wiring MANDATE: a non-nil
-// dispatcher without the durable claim store is a startup error, and the
-// arming order wires claims+slots before/with the dispatcher.
-func TestArmOCDispatchEnforcesT10F3(t *testing.T) {
-	svc := appconnectorsvc.NewActionService(nil, nil, nil, nil, nil)
+// TestArmOCDispatchEnforcesT10F3AndF1Parity pins the wiring MANDATE and
+// the F-1 guard: a non-nil dispatcher without the durable claim store is a
+// startup error, and the arming refuses a service whose dispatcher does
+// not match the wiring (the dropped-dispatcher defect class).
+func TestArmOCDispatchEnforcesT10F3AndF1Parity(t *testing.T) {
+	svc := appconnectorsvc.NewActionService(nil, nil, nil, &ocFakeDispatcher{}, nil)
 	real := &ocFakeDispatcher{}
-	// dispatcher != nil && claims == nil → error.
+	// T10-F-3: dispatcher != nil && claims == nil → error.
 	if err := ArmOCDispatch(svc, real, nil, nil); err == nil {
 		t.Fatal("dispatcher without claims accepted")
 	}
-	// nil dispatcher (the disabled / explicit-refusing wiring) + no claims: fine.
-	if err := ArmOCDispatch(svc, nil, nil, nil); err != nil {
+	// nil dispatcher (the disabled / explicit-refusing wiring) + no claims:
+	// fine — but only when the SERVICE was also built without one.
+	if err := ArmOCDispatch(svc, nil, nil, nil); err == nil {
+		t.Fatal("F-1: arming blessed a service whose dispatcher disagrees with the wiring")
+	}
+	bare := appconnectorsvc.NewActionService(nil, nil, nil, nil, nil)
+	if err := ArmOCDispatch(bare, nil, nil, nil); err != nil {
 		t.Fatalf("disabled wiring rejected: %v", err)
+	}
+	// F-1: a service constructed WITHOUT the wiring's dispatcher must not
+	// be armable with it (the defect the spec review caught).
+	if err := ArmOCDispatch(bare, real, &ocStubClaims{}, nil); err == nil {
+		t.Fatal("F-1: dispatcher silently dropped — arming accepted a service built without it")
 	}
 }
 
@@ -153,42 +165,53 @@ func (d *ocFakeDispatcher) Dispatch(ctx context.Context, snap appconnectorsvc.Ac
 	return appconnectorsvc.DispatchOutcome{Status: appconn.ActionSucceeded}, nil
 }
 
-// TestWireOpenConnectorDisabledInjectsRefusingDispatcher: disabled config
-// leaves the dispatcher nil (the ErrNoDispatcher refusal — Execute fails
-// closed BEFORE consuming anything) and wires no claims/slots.
-func TestWireOpenConnectorDisabledInjectsRefusingDispatcher(t *testing.T) {
-	store := ocTestStore(t)
-	svc := appconnectorsvc.NewActionService(nil, nil, nil, nil, nil)
-	w, err := WireOpenConnector(svc, OCConfig{}, store, http.DefaultClient)
+// ocEnabledTestConfig is a complete enabled config against a disposable
+// local server address.
+func ocEnabledTestConfig(t *testing.T) OCConfig {
+	t.Helper()
+	return OCConfig{
+		Enabled: true, RuntimeAddr: "http://127.0.0.1:8080",
+		TokenDir: t.TempDir(), SlotOwner: "oc-test-owner",
+	}
+}
+
+// TestNewOCArmedActionServiceDisabledKeepsRefusingDispatcher: disabled
+// config leaves the service's dispatcher nil (the ErrNoDispatcher refusal —
+// Execute fails closed BEFORE consuming anything) and wires no
+// claims/slots.
+func TestNewOCArmedActionServiceDisabledKeepsRefusingDispatcher(t *testing.T) {
+	store := ocTestStore(t, "disabled")
+	svc, w, err := NewOCArmedActionService(nil, nil, nil, store, OCConfig{}, http.DefaultClient)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if w.Enabled() || w.Dispatcher() != nil || w.Claims() != nil || w.Slots() != nil {
 		t.Fatalf("disabled wiring armed a dispatch path: %+v", w)
 	}
+	if !ocReflectDispatcherNil(t, svc) {
+		t.Fatal("disabled wiring injected a dispatcher")
+	}
+	if err := svc.Execute(context.Background(), "any"); !errors.Is(err, appconnectorsvc.ErrNoDispatcher) {
+		t.Fatalf("disabled wiring stopped refusing: %v", err)
+	}
 }
 
-// TestWireOpenConnectorEnabledRequiresFullConfig: enabled-but-incomplete
-// configuration is a STARTUP error — never a fallback to a default
-// connection.
-func TestWireOpenConnectorEnabledRequiresFullConfig(t *testing.T) {
-	store := ocTestStore(t)
-	svc := appconnectorsvc.NewActionService(nil, nil, nil, nil, nil)
+// TestNewOCArmedActionServiceEnabledRequiresFullConfig: enabled-but-
+// incomplete configuration is a STARTUP error — never a fallback to a
+// default connection.
+func TestNewOCArmedActionServiceEnabledRequiresFullConfig(t *testing.T) {
+	store := ocTestStore(t, "incomplete")
 	for name, cfg := range map[string]OCConfig{
 		"no runtime addr": {Enabled: true, TokenDir: t.TempDir()},
 		"no token dir":    {Enabled: true, RuntimeAddr: "http://127.0.0.1:8080"},
 	} {
-		if _, err := WireOpenConnector(svc, cfg, store, http.DefaultClient); err == nil {
+		if _, _, err := NewOCArmedActionService(nil, nil, nil, store, cfg, http.DefaultClient); err == nil {
 			t.Fatalf("%s accepted", name)
 		}
 	}
 	// Complete config: the full path is armed — dispatcher + claims +
 	// slots together (T10-F-3).
-	complete := OCConfig{
-		Enabled: true, RuntimeAddr: "http://127.0.0.1:8080",
-		TokenDir: t.TempDir(), SlotOwner: "oc-test-owner",
-	}
-	w, err := WireOpenConnector(svc, complete, store, http.DefaultClient)
+	w, err := PrepareOpenConnector(ocEnabledTestConfig(t), store, http.DefaultClient)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -382,5 +405,79 @@ func TestOCProductRoutesRegisterWithoutConflict(t *testing.T) {
 		if !registered[want] {
 			t.Fatalf("route %s missing from the registered engine", want)
 		}
+	}
+}
+
+// ocReflectDispatcherNil reads the frozen ActionService's private
+// dispatcher field (nil-ness only — reading values from unexported fields
+// panics; IsNil does not).
+func ocReflectDispatcherNil(t *testing.T, svc *appconnectorsvc.ActionService) bool {
+	t.Helper()
+	f := reflect.ValueOf(svc).Elem().FieldByName("dispatcher")
+	if !f.IsValid() || f.Kind() != reflect.Interface {
+		t.Fatal("action service dispatcher field not found — frozen face changed")
+	}
+	return f.IsNil()
+}
+
+// TestProductionWiringInjectsDispatcherIntoService is the F-1 regression:
+// through the PRODUCTION constructor (no NewActionService bypass), an
+// enabled+complete config leaves the service's dispatcher NON-nil and
+// Execute no longer refuses with ErrNoDispatcher. On the pre-fix wiring
+// this exact scenario left svc.dispatcher nil and every dispatch 503'd —
+// the behavioral RED ran as TestF1Repro_EnabledWiringDropsDispatcher
+// (reflected nil + ErrNoDispatcher under the old WireOpenConnector API).
+func TestProductionWiringInjectsDispatcherIntoService(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared&_busy_timeout=5000"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s, err := db.DB(); err == nil {
+		s.SetMaxOpenConns(1)
+	}
+	if err := db.AutoMigrate(&repoappconn.ActionRow{}); err != nil {
+		t.Fatal(err)
+	}
+	store := ocTestStore(t, "f1")
+	svc, w, err := NewOCArmedActionService(repoappconn.NewActionStore(db), nil, nil, store, ocEnabledTestConfig(t), http.DefaultClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !w.Enabled() || w.Claims() == nil || w.Slots() == nil {
+		t.Fatal("enabled wiring incomplete")
+	}
+	// Reflection: the armed dispatcher actually reached the service.
+	if ocReflectDispatcherNil(t, svc) {
+		t.Fatal("F-1 regression: service dispatcher is nil after production wiring")
+	}
+	// Behavior: Execute proceeds past the dispatcher gate — the refusal for
+	// a missing action is record-not-found, NOT ErrNoDispatcher.
+	execErr := svc.Execute(context.Background(), "missing-action")
+	if errors.Is(execErr, appconnectorsvc.ErrNoDispatcher) {
+		t.Fatal("F-1 regression: execute still refuses with ErrNoDispatcher")
+	}
+	if execErr == nil {
+		t.Fatal("expected a not-found error for a missing action")
+	}
+}
+
+// TestSupervisorAttachRunnerArmsFinalRecovery pins the F-2 fix: the
+// production attach path hands the supervisor the REAL recovery, so the
+// final Shutdown pass is not dead code.
+func TestSupervisorAttachRunnerArmsFinalRecovery(t *testing.T) {
+	store := ocTestStore(t, "f2")
+	w, err := PrepareOpenConnector(ocEnabledTestConfig(t), store, http.DefaultClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := &ocCountingRecovery{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	// Exactly what startOCRecoveryRunner does.
+	w.Supervisor().AttachRunner(cancel, rec)
+	w.Supervisor().gate.Close() // no in-flight to drain; shutdown returns fast
+	w.Supervisor().Shutdown(ctx)
+	if atomic.LoadInt32(&rec.calls) == 0 {
+		t.Fatal("F-2: final recovery pass never ran — supervisor holds no recovery")
 	}
 }
