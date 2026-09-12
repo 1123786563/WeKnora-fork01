@@ -47,7 +47,7 @@
             <div class="engine-selector">
                 <span class="engine-selector__label">{{ $t('createChat.engine.label') }}</span>
                 <t-radio-group v-model="engineType">
-                    <t-radio-button value="builtin">{{ $t('createChat.engine.builtin') }}</t-radio-button>
+                    <t-radio-button value="builtin" :disabled="customAgentSelected">{{ $t('createChat.engine.builtin') }}</t-radio-button>
                     <t-radio-button value="trpc">
                         {{ $t('createChat.engine.trpc') }}
                         <span class="engine-selector__badge">{{ $t('createChat.engine.experimental') }}</span>
@@ -70,7 +70,7 @@ import { ref, watch, onMounted, nextTick, computed } from 'vue';
 import ContextualGuide from '@/components/ContextualGuide.vue';
 import InputField from '@/components/Input-field.vue';
 import { createSessions } from "@/api/chat/index";
-import { getSuggestedQuestions } from "@/api/agent/index";
+import { getSuggestedQuestions, isBuiltinAgent, BUILTIN_QUICK_ANSWER_ID } from "@/api/agent/index";
 import type { SuggestedQuestion } from "@/api/agent/index";
 import { useMenuStore } from '@/stores/menu';
 import { useSettingsStore } from '@/stores/settings';
@@ -200,6 +200,10 @@ const engineType = computed({
         settingsStore.setAgentEngineType(value === 'trpc' ? 'trpc' : 'builtin');
     },
 });
+
+// 自定义智能体只在 tRPC 引擎上运行：选中自定义智能体时锁定 builtin 选项。
+const customAgentSelected = computed(() =>
+    !isBuiltinAgent(String(settingsStore.selectedAgentId || BUILTIN_QUICK_ANSWER_ID)));
 
 const handleSuggestedQuestionClick = (question: string) => {
     inputFieldRef.value?.triggerSend(question);

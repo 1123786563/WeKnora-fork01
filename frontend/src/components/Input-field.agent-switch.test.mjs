@@ -138,3 +138,26 @@ test('stop waits for the API before confirming discard', () => {
     'queue discard must wait for stop API success',
   )
 })
+
+
+test('selecting a custom agent locks the engine preference to trpc', () => {
+  const code = inputField.slice(inputField.indexOf('watch([selectedAgentId'), inputField.indexOf('  if (newKbMode'))
+  const engines = []
+  const settingsStore = reactive({
+    _isApplyingSessionState: false,
+    setAgentEngineType: e => engines.push(e),
+    selectKnowledgeBases: () => {},
+  })
+  const isBuiltinAgent = id => id.startsWith('builtin-')
+  const deps = [ref('agent-custom-1'), ref([]), ref('all')]
+  const watch = (_d, cb) => cb(['agent-custom-1', [], 'all'], ['builtin-quick-answer'])
+  const selectedAgentId = ref('agent-custom-1')
+  const agentKnowledgeBases = ref([])
+  const agentKBSelectionMode = ref('all')
+  vm.runInNewContext(ts.transpile(code), {
+    settingsStore, isBuiltinAgent, watch,
+    selectedAgentId, agentKnowledgeBases, agentKBSelectionMode,
+    ref, computed,
+  })
+  assert.deepEqual(engines, ['trpc'])
+})

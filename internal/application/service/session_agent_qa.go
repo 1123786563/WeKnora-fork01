@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/Tencent/WeKnora/internal/agent/tools"
 	"github.com/Tencent/WeKnora/internal/event"
@@ -17,6 +18,12 @@ import (
 // AgentQA performs agent-based question answering with conversation history and streaming support
 // customAgent is optional - if provided, uses custom agent configuration instead of tenant defaults
 // summaryModelID is optional - if provided, overrides the model from customAgent config
+// isBuiltinAgentID matches the client rule (builtin- prefixed ids): builtin
+// agents may run on either engine, custom agents only on tRPC.
+func isBuiltinAgentID(id string) bool {
+	return strings.HasPrefix(id, "builtin-") || types.IsBuiltinAgentID(id)
+}
+
 func (s *sessionService) AgentQA(
 	ctx context.Context,
 	req *types.QARequest,
@@ -36,6 +43,16 @@ func (s *sessionService) AgentQA(
 	if req.CustomAgent == nil {
 		logger.Warnf(ctx, "Custom agent not provided for session: %s", sessionID)
 		return errors.New("custom agent configuration is required for agent QA")
+	}
+
+	// Custom agents run exclusively on the tRPC engine: a custom agent
+	// arriving on a builtin-engine session is a routing mistake, not a silent
+	// ReAct fallback. The client locks the engine selector to tRPC whenever a
+	// custom agent is selected, so new sessions carry engine_type=trpc.
+	if req.Session != nil && req.Session.EngineType != "trpc" &&
+		!isBuiltinAgentID(req.CustomAgent.ID) {
+		return errors.New(
+			"custom agents run on the tRPC engine: create the session with engine_type=trpc")
 	}
 
 	// Resolve retrieval tenant using shared helper
