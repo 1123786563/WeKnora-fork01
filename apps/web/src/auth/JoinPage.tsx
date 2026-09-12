@@ -3,7 +3,12 @@ import type { InvitationLookup, WeKnoraClient } from '@weknora/api-client';
 import { Button, Card, Status } from '@weknora/ui';
 import { readInviteToken } from './join.ts';
 import { validateRegister } from './validation.ts';
-import { formatMessage } from '@weknora/i18n';
+import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
+
+const storedLocale = (): Locale => {
+  const stored = window.localStorage.getItem('locale');
+  return stored && isLocale(stored) ? stored : 'zh-CN';
+};
 
 export interface JoinPageProps {
   client: WeKnoraClient;
@@ -74,9 +79,9 @@ export function JoinPage({ client, onAuthenticated }: JoinPageProps) {
         <label>Username<input value={username} onChange={(event) => setUsername(event.target.value)} required minLength={2} /></label>
         <label>Email<input value={email} onChange={(event) => setEmail(event.target.value)} type="email" required /></label>
         <label>Password<input value={password} onChange={(event) => setPassword(event.target.value)} type="password" required minLength={8} maxLength={32} disabled={submitting} />
-        {(fieldErrors.password ?? []).map((key) => <Status key={key} tone="error">{formatMessage('zh-CN', key)}</Status>)}</label>
+        {(fieldErrors.password ?? []).map((key) => <Status key={key} tone="error">{formatMessage(storedLocale(), key)}</Status>)}</label>
       <label>Confirm password<input value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} type="password" required disabled={submitting} />
-        {(fieldErrors.confirmPassword ?? []).map((key) => <Status key={key} tone="error">{formatMessage('zh-CN', key)}</Status>)}</label>
+        {(fieldErrors.confirmPassword ?? []).map((key) => <Status key={key} tone="error">{formatMessage(storedLocale(), key)}</Status>)}</label>
         {message ? <Status tone="error">{message}</Status> : null}
         <Button type="submit" disabled={submitting}>{submitting ? 'Creating account…' : 'Create account and join'}</Button>
       </form>
