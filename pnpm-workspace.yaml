@@ -4,6 +4,7 @@ packages:
   - packages/domain
   - packages/core
   - packages/ui
+  - packages/views
   - apps/web
   - apps/mobile
   - packages/happy-wire
