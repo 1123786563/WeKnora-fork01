@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { filterGraphNodes, layoutGraphNodes } from './graph.ts';
+import { filterGraphNodes, graphQueryParams, layoutGraphNodes } from './graph.ts';
 
 const graph = {
   nodes: [
@@ -23,4 +23,10 @@ test('lays out every graph node at a bounded non-overlapping display position', 
   assert.equal(positions.length, 2);
   assert.ok(positions.every((position) => position.x >= 32 && position.x <= 608 && position.y >= 32 && position.y <= 328));
   assert.notDeepEqual(positions[0], positions[1]);
+});
+
+test('builds a type-filter query without losing the active ego center', () => {
+  assert.deepEqual(graphQueryParams('ego', 'docs/next', 2, 'entity'), {
+    mode: 'ego', center: 'docs/next', depth: 2, limit: 500, types: ['entity'],
+  });
 });

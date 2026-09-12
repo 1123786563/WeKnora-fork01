@@ -1,4 +1,4 @@
-import type { WikiGraphData, WikiGraphNode } from '@weknora/api-client';
+import type { WikiGraphData, WikiGraphNode, WikiGraphQueryParams } from '@weknora/api-client';
 
 export interface GraphFilter {
   query?: string;
@@ -9,6 +9,20 @@ export interface GraphNodePosition {
   slug: string;
   x: number;
   y: number;
+}
+
+export function graphQueryParams(
+  mode: 'overview' | 'ego',
+  center: string,
+  depth: number,
+  type: string,
+): WikiGraphQueryParams {
+  return {
+    mode,
+    ...(mode === 'ego' && center ? { center, depth } : {}),
+    limit: 500,
+    ...(type === 'all' ? {} : { types: [type] }),
+  };
 }
 
 export function filterGraphNodes(graph: WikiGraphData, filter: GraphFilter = {}): WikiGraphData {

@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { WikiGraphData, WeKnoraClient } from '@weknora/api-client';
 import { Button, Card, Status } from '@weknora/ui';
-import { filterGraphNodes, layoutGraphNodes } from './graph.ts';
+import { filterGraphNodes, graphQueryParams, layoutGraphNodes } from './graph.ts';
 
 export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: WeKnoraClient; knowledgeBaseId: string; slug?: string }) {
   const [graph, setGraph] = useState<WikiGraphData | null>(null);
   const [status, setStatus] = useState<{ kind: 'loading' | 'success' | 'error'; message?: string }>({ kind: 'loading' });
-  const [mode, setMode] = useState<'overview' | 'ego'>('overview');
+  const [mode, setMode] = useState<'overview' | 'ego'>(() => slug ? 'ego' : 'overview');
   const [center, setCenter] = useState(slug ?? '');
   const [depth, setDepth] = useState(1);
   const [query, setQuery] = useState('');
@@ -16,10 +16,7 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
     setStatus({ kind: 'loading' });
     try {
       const result = await client.wiki.graph(knowledgeBaseId, {
-        mode: nextMode,
-        ...(nextMode === 'ego' && nextCenter ? { center: nextCenter, depth } : {}),
-        limit: 500,
-        ...(type === 'all' ? {} : { types: [type] }),
+        ...graphQueryParams(nextMode, nextCenter ?? '', depth, type),
       });
       setGraph(result);
       setMode(nextMode);
@@ -30,7 +27,7 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
     }
   }
 
-  useEffect(() => { void load(slug ? 'ego' : 'overview', slug); }, [client, knowledgeBaseId, type]);
+  useEffect(() => { void load(mode, mode === 'ego' ? center : undefined); }, [client, knowledgeBaseId, type]);
 
   const visible = useMemo(() => graph ? filterGraphNodes(graph, { query }) : null, [graph, query]);
   const positions = useMemo(() => visible ? layoutGraphNodes(visible.nodes, 760, 420) : [], [visible]);
