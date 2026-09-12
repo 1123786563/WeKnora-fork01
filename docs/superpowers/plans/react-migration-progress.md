@@ -1189,3 +1189,15 @@
   This closes the source/build defects only. Native device, provider-backed
   SSE, installed-app cross-OS and deployed acceptance remain open, so T22 and
   T24 stay `review` and T25 remains gated.
+
+### T24 React Wails macOS rerun (2026-09-12)
+
+- Rebuilt the React Wails macOS arm64 artifact after the Desktop alias fix
+  with `REACT_FRONTEND=1 ./scripts/package-mac-app.sh`; Wails `v2.12.0`
+  exited 0 and the assembled app was re-signed.
+- Resource, commit identity, and `codesign --verify --deep --strict` smoke
+  all passed. Evidence:
+  `docs/migrations/react/evidence/t24-wails-macos-react-rerun-2026-09-12.md`.
+- This strengthens only the macOS arm64 installed-artifact slice. Windows,
+  Linux, runtime interaction, rollback rehearsal, and the complete release
+  matrix remain open; T24 stays `review` and T25 remains gated.
