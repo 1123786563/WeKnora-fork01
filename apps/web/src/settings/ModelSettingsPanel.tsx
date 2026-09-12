@@ -122,7 +122,9 @@ export function ModelSettingsPanel({ client, role, initialModels }: Props) {
       dimension:
         typeof draft.dimension === "number" ? draft.dimension : undefined,
       customHeaders: draft.customHeaders,
-      modelId: draft.id,
+      apiKey: draft.apiKey.trim() || undefined,
+      appSecret: draft.appSecret.trim() || undefined,
+      modelId: draft.id || undefined,
     };
     try {
       const result =

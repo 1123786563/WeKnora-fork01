@@ -176,6 +176,27 @@ test('accepts only an empty 204 response from MCP OAuth revoke', async () => {
   await api.mcp.oauth.revoke('mcp-1');
 });
 
+test('sends unsaved model credentials to the connection probe', async () => {
+  const requests: unknown[] = [];
+  const api = createConfigurationApi(async (request) => {
+    requests.push(request);
+    return { success: true, data: { available: true, message: 'ok' } };
+  });
+
+  await api.models.connection.remote({
+    modelName: 'new-model',
+    baseUrl: ' https://model.test ',
+    apiKey: 'draft-key',
+    appSecret: 'draft-secret',
+  });
+
+  assert.deepEqual(requests, [{
+    method: 'POST',
+    path: '/api/v1/initialization/remote/check',
+    body: { modelName: 'new-model', baseUrl: 'https://model.test', apiKey: 'draft-key', appSecret: 'draft-secret' },
+  }]);
+});
+
 test('preserves MCP test tools and resources and rejects malformed nested entries', async () => {
   const api = createConfigurationApi(async () => ({
     success: true,
