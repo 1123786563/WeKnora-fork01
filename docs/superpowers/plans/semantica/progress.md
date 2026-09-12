@@ -348,8 +348,8 @@
 - 交付物验证：`docker compose -f docker/compose.semantic.test.yml config` OK（端口 127.0.0.1 绑定 15432/17687/15051——不 publish 公网；健康探针区分 pg_isready/wget 存活 vs /ready 就绪）；`helm template` 双 profile 实渲染（禁用=0 semantic 资源；启用=Deployment+readiness(/ready)+liveness(/healthz)+secret 引用不落镜像）；Dockerfile digest 锁定 python:3.12.13-slim+uv==0.5.24+V01 锁。
 - **阻断（如实）**：步骤 7 之"真实启动关闭/启用 profile 各一次+日志扫描"——本环境授权范围禁止部署生产/启动真实服务栈；compose/helm 为声明验证（config/渲染），容器级启动留 O03 验收环境执行；不视为已通过。
 - **延后（如实）**：①步骤 5 worker shutdown 停止 claim+租约释放——I01 租约已有，shutdown 钩子归 O02 恢复演练；②步骤 6 PG/SQLite 配置文档——部署文档归 O03 交付物；③server_entry 模块（Dockerfile ENTRYPOINT 引用）——O02 随 worker 入口一并落地。
-- review：双评审下轮补做。
-- 提交 SHA：bb48423。
+- review：规格 PASS（0 BLOCKER，6 MINOR 折叠：步骤 4 过勾更正（向量/对象存储未含——向量适配未接线时无需，O02 恢复环境再评估）/server_entry **已落地**（gRPC+HTTP /ready+/healthz:50052——此前 Dockerfile/helm/compose 探针指向悬空，现闭合；恢复期 barrier=False→503 拒查询）/docker-compose.yml 与 dev profile 延后显式（O03 部署文档时一并）/k8s Service+worker Deployment 随启用演练（O03）/时长·队列年龄·用量记录随 worker（O02））。质量评审下轮补做。
+- 提交 SHA：bb48423 + 本折叠段。
 - V02 结论边界：持久图桥接/授权子图重建/注册规则推导已验证；模型推断 unverified（无凭据，未调用）；向量检索路径未验证。
 - V03 结论边界：semantica 模式检索质量/延迟为受控语料实测；native 对照与模型用量门槛未测（阻断记录见上）；上线门禁 approved=false 待用户确认。
 - 未创建GitHub Issue或外部发布；没有分配虚构Issue编号。

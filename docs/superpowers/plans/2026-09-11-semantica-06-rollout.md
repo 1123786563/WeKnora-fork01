@@ -49,7 +49,7 @@ def test_restoring_service_is_not_ready(health_state):
 
 - [x] **3. 固定基础镜像digest和V01锁，镜像分API/worker入口；生产profile默认关闭，内部RPC不publish公网或宿主业务端口，secret只引用不写入镜像**
 
-- [x] **4. 提供隔离PG/Neo4j/向量/对象存储测试环境，固定测试端口或容器网络名；健康探针区分存活和可用，恢复期间拒绝query**
+- [ ] **4. 提供隔离PG/Neo4j/向量/对象存储测试环境，固定测试端口或容器网络名；健康探针区分存活和可用，恢复期间拒绝query**
 
 - [ ] **5. 记录operation/generation/trace及耗时、错误、截断、队列年龄、用量；默认不记录chunk、prompt、凭据；worker shutdown停止claim并释放或等待有效租约**
 
