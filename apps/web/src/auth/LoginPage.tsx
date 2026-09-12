@@ -2,7 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import type { AuthSession, InvitationLookup, WeKnoraClient } from '@weknora/api-client';
 import { validateLogin, validateRegister, type FieldErrors } from './validation.ts';
 import { landingModeForInvite, storePendingInviteToken } from './invite-flow.ts';
-import { AUTH_LOCALES, LANGUAGE_OPTIONS, type AuthLocale } from './locales.ts';
+import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
+
+const LANGUAGE_OPTIONS: { value: Locale; label: string; shortLabel: string; flag: string }[] = [
+  { value: 'zh-CN', label: '简体中文', shortLabel: '中文', flag: '🇨🇳' },
+  { value: 'en-US', label: 'English', shortLabel: 'EN', flag: '🇺🇸' },
+  { value: 'ru-RU', label: 'Русский', shortLabel: 'RU', flag: '🇷🇺' },
+  { value: 'ko-KR', label: '한국어', shortLabel: '한국어', flag: '🇰🇷' },
+  { value: 'ja-JP', label: '日本語', shortLabel: '日本語', flag: '🇯🇵' },
+];
 import weknoraLogo from './assets/weknora.png';
 import screenshot1 from './assets/screenshot-1.svg';
 import screenshot2 from './assets/screenshot-2.svg';
@@ -32,17 +40,14 @@ const SLIDES = [
 
 const LOCALE_STORAGE_KEY = 'locale';
 
-function readInitialLocale(): AuthLocale {
+function readInitialLocale(): Locale {
   const stored = window.localStorage.getItem(LOCALE_STORAGE_KEY);
-  return LANGUAGE_OPTIONS.some((option) => option.value === stored) ? (stored as AuthLocale) : 'zh-CN';
+  return stored && isLocale(stored) ? stored : 'zh-CN';
 }
 
 export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, initialMode = 'login', inviteToken = '', onInviteAccepted }: LoginPageProps) {
-  const [locale, setLocale] = useState<AuthLocale>(readInitialLocale);
-  const t = (key: string, params?: Record<string, string | number>): string => {
-    const template = AUTH_LOCALES[locale][key] ?? key;
-    return params ? template.replace(/\{(\w+)\}/g, (_, name) => String(params[name] ?? `{${name}}`)) : template;
-  };
+  const [locale, setLocale] = useState<Locale>(readInitialLocale);
+  const t = (key: string, params?: Record<string, string | number>): string => formatMessage(locale, key, params);
   const [mode, setMode] = useState<'login' | 'register'>(initialMode);
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -107,7 +112,7 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
     return () => document.removeEventListener('click', close);
   }, [showLanguageMenu]);
 
-  function selectLanguage(next: AuthLocale) {
+  function selectLanguage(next: Locale) {
     setLocale(next);
     window.localStorage.setItem(LOCALE_STORAGE_KEY, next);
     setShowLanguageMenu(false);
