@@ -83,7 +83,7 @@ finally:
 
 **接口：** RuleRegistry.load(version:str)->RuleSet、RuleReasoner.reason(request:ReasonRequest)->ReasonResponse；RuleSet含version/digest/rules，规则只由部署注册，客户端只能指定已授权版本。事实推导DAG由assertion ID和rule ID组成。测试facts元组最后一项为assertion ID（a1/a2），其来源evidence另在fixture中绑定，不能混用两种ID。
 
-- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 def test_transitive_rule_cannot_infer_without_second_edge(rule_reasoner):
@@ -98,13 +98,13 @@ def test_proof_lists_both_premises(rule_reasoner):
     assert set(result.premise_ids) == {"a1", "a2"}
 ```
 
-- [ ] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_reason_rules.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [x] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_reason_rules.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 定义受限规则JSON grammar、谓词白名单和版本digest，禁止eval/任意SPARQL/执行代码；reason_fixture测试fixture调用正式适配而非另一套推理器**
+- [x] **3. 定义受限规则JSON grammar、谓词白名单和版本digest，禁止eval/任意SPARQL/执行代码；reason_fixture测试fixture调用正式适配而非另一套推理器**
 
-- [ ] **4. 将授权断言映射到已验证Reasoner输入，保存前提ID和规则ID回映射；限制轮数/事实数/时限，检测证明DAG环**
+- [x] **4. 将授权断言映射到已验证Reasoner输入，保存前提ID和规则ID回映射；限制轮数/事实数/时限，检测证明DAG环**
 
-- [ ] **5. 输出supported/insufficient_evidence/conflicting_evidence/budget_exhausted，规则证明不得把缺失当否定；文本解释从证明结构产生，不补造新前提**
+- [x] **5. 输出supported/insufficient_evidence/conflicting_evidence/budget_exhausted，规则证明不得把缺失当否定；文本解释从证明结构产生，不补造新前提**
 
 关键实现约束：
 
@@ -116,9 +116,9 @@ if proof.has_cycle or not registry.contains(proof.rule_id, requested_version):
 # 输出conclusion_kind="rule"；不自动持久化为source类型。
 ```
 
-- [ ] **6. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_reason_rules.py -q`，预期退出码 0；另完成：缺前提、隐藏前提、冲突、恶意规则、未知版本、递归限额有测试；黄金规则结果可人工逐条复核。
+- [x] **6. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_reason_rules.py -q`，预期退出码 0；另完成：缺前提、隐藏前提、冲突、恶意规则、未知版本、递归限额有测试；黄金规则结果可人工逐条复核。
 
-- [ ] **7. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 Q02 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): q02 注册规则与可核验推导`。
+- [x] **7. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 Q02 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): q02 注册规则与可核验推导`。
 
 ## Q03：模型推断与证据不足判定
 

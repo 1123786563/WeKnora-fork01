@@ -1,6 +1,6 @@
 # Semantica 实施台账
 
-状态：V01–C03、I01–I05、A01–A03、Q01 verified（I05 Go 协调切片；Q01 deadline 中止开放）；其余 10 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
+状态：V01–C03、I01–I05、A01–A03、Q01–Q02 verified（I05 Go 协调切片；Q01 deadline/Q02 冲突与时限延后）；其余 9 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
 
 状态值 pending / in_progress / blocked / implemented / verified。每项验证记录必须包含commit SHA、精确命令、退出码、环境、产物路径、失败/限制；无真实证据不标记verified。执行前记录实际基线与已有脏文件。
 
@@ -21,7 +21,7 @@
 | A02 | 授权事实子图与缓存隔离 | A01,I03,I04 | verified | 真实 PG：授权先行可见性（合取前提/环安全/记忆化）/真实库有界子图游走（隐藏不入路径）/scope+epoch 分区缓存；向量过滤与排序重算延后 Q01；见运行记录 2026-09-11 A02 |
 | A03 | 模型代理、原始用量与预算 | C02,I01,A01 | verified | 原子预算准入/幂等台账/unknown对账/新ID重试/受控入口（PG并发与死上下文实证）；无凭据真实调用保持未通过；见运行记录 2026-09-11 A03 |
 | Q01 | GraphRAG检索与有界执行 | A02,V03 | verified | 真实 PG+真实 gRPC：租约固定 generation/授权子图检索/来源校验（断言+证据双验）/模式诚实/证据稳定去重排序；deadline 中止开放；见运行记录 2026-09-11 Q01 |
-| Q02 | 注册规则与可核验推导 | Q01 | pending | 尚未执行 |
+| Q02 | 注册规则与可核验推导 | Q01 | verified | 受限 JSON 语法+谓词白名单+内容摘要；前向链证明 DAG（元组键控/环检查先行/双预算）；冲突状态与时限延后；见运行记录 2026-09-11 Q02 |
 | Q03 | 模型推断与证据不足判定 | Q01,A03,V03 | pending | 尚未执行 |
 | Q04 | Go检索融合、Agent工具与最终授权 | Q02,Q03,I05 | pending | 尚未执行 |
 | W01 | 用户API与共享客户端契约 | Q04,I05 | pending | 尚未执行 |
@@ -255,9 +255,21 @@
 - review：规格三轮 FAIL→PASS（BLOCKER×2：servicer/proto 契约缺口、字段重编号——后者为修复过程中引入又被评审员以 Go 线上编码实证抓回）；质量 FAIL→PASS（BLOCKER×2：servicer 崩溃、服务器级 scope 污染；终验残余 2 项——死导入与 3 回归钉——已当场折叠）。
 - 提交 SHA：8768acb（feat(semantic): q01 GraphRAG检索与有界执行）。
 
+### 2026-09-11 Q02 注册规则与可核验推导（verified，两项如实延后）
+
+- 工作区：.worktrees/semantica（分支 codex/semantica）；基线 SHA：ae14823（Q01 夹具统一提交）。
+- 修改文件：semantic/rules/test-control-v1.json（版本化控股传递规则+内容摘要）、semantic/semantic_service/query/{rules.py,reason_rules.py}、semantic/tests/test_reason_rules.py（18 测）、本台账、04 计划勾选。
+- RED：`uv run --project semantic python -m pytest semantic/tests/test_reason_rules.py -q`（模块缺失→digest 失配→字典迭代变更）。
+- 评审修复两批：①规格 MINOR——死环检查（字符串 vs 元组恒 False）→ 元组比较+**环检查移至 already-known 跳过之前**（终审指认初版排序仍不可达，重排后 InvalidProof 对新事实真实触发——test_self_deriving_rule_raises_invalid_proof_for_new_facts 钉住）；conflicting_evidence 显式 RESERVED 注记。②质量 3 BLOCKER——死环检查（同上）/注册表路径穿越（../x、绝对路径——存在性预言+字段泄露；评审员五形态探针）→ 严格版本正则先行拒绝零探测/空洞授权测试（自证循环）→ 真实不变量 test_premises_subset_of_input_fact_ids。终审更正落定：Minor4 前提映射改按**事实元组**键控（评审员碰撞场景：调用方 id 与派生 id 碰撞致 premise 归属损坏——现 test_id_collision_with_derived_namespace_is_safe 钉住源 id 存活）；语法加固（未绑定结论变量/重复规则 id/缺失摘要拒绝）；穿越/篡改/环三测试补齐。
+- GREEN：`uv run --project semantic python -m pytest semantic/tests/test_reason_rules.py -q` 18 passed；全量 semantic/tests/ **162 passed** 退出码 0。
+- 实测验收：两个计划核心断言逐字（单边→insufficient_evidence；双前提 {a1,a2}）；多跳纯源 {a1,a2,a3}；预算诚实（评审员验证 11 跳需 ceil(log2(11))=4 轮）；缺失前提绝非否定；解释仅自证明结构；结论 id 不作源前提；未注册/穿越版本拒绝；摘要篡改拒绝；环规则 InvalidProof（新事实）+DAG 不变量；id 碰撞免疫；部署专用（无上传路径）。
+- **延后记录（终审条件，如实）**：①conflicting_evidence——v1 白名单仅肯定谓词无可表达冲突（Q03+ 语法扩展激活，绝不占位输出）；②时限（三限之"时限"）——reasoner 逐轮检查归 Q03/W；③服务端授权前提子集强制——spec §5 上游过滤后输入已授权（不变量钉住），服务端检查随存储集成（Q04）；④递归 rule_ids/解释展开 Q03；⑤谓词索引性能（实测 N=400 19ms/轮）Q03。
+- review：规格 PASS（3 MINOR 全折叠）；质量首轮 FAIL（3 BLOCKER 探针实证）→ 修复+终审 PASS（条件：台账更正两项声明——InvalidProof 可达性（已重排+测试）与 Minor4（已实现+钉测试）——本记录即更正后状态）。
+- 提交 SHA：（本记录与代码同批提交后补记）
+
 ## 当前边界
 
-- V01–C03、I01–I05、A01–A03、Q01 verified（Q01 deadline 中止开放见其记录）；后续 10 个任务未开始。
+- V01–C03、I01–I05、A01–A03、Q01–Q02 verified（延后项见各自记录）；后续 9 个任务未开始。
 - V01精确版本已冻结（semantica 0.6.8）；真实模型证据须在后续任务补齐，不是已经通过的前提。
 - V02 结论边界：持久图桥接/授权子图重建/注册规则推导已验证；模型推断 unverified（无凭据，未调用）；向量检索路径未验证。
 - V03 结论边界：semantica 模式检索质量/延迟为受控语料实测；native 对照与模型用量门槛未测（阻断记录见上）；上线门禁 approved=false 待用户确认。

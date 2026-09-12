@@ -1,0 +1,15 @@
+{
+  "version": "test-control-v1",
+  "digest": "sha256:788b8353a681f3e92312a0279e5929f65ffa95b1e577ca351d48fbf7dd8358a6",
+  "rules": [
+    {
+      "rule_id": "control-transitivity",
+      "description": "controls(a,b) AND controls(b,c) => controls(a,c)",
+      "if": [
+        {"subject": "?x", "predicate": "controls", "object": "?y"},
+        {"subject": "?y", "predicate": "controls", "object": "?z"}
+      ],
+      "then": {"subject": "?x", "predicate": "controls", "object": "?z"}
+    }
+  ]
+}
