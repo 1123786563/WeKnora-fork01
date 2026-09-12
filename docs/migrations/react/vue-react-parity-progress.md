@@ -176,3 +176,8 @@
 ## 2026-09-12 Round 26（续）
 
 - 多端门禁复验：desktop 测试 0 失败 + typecheck 干净；mobile 85/85 + typecheck 干净。共享层改动未破坏桌面/移动端。
+
+## 2026-09-12 Round 27
+
+- chat 会话页 live 基线（真实 session id 80fd9cf5…）：会话侧栏/沙箱终端控制/消息输入可用（screenshots/live-chat-session.png），但视觉形态与 Vue（botmsg 排版/引用卡片/输入区组合）差距大——登记为「chat 视觉形态」大项，排在 KB 详情实施之后。
+- KB 详情审计结论已入矩阵（Round 26），KB 详情实施子代理进行中。
