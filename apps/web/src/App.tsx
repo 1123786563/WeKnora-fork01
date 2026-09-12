@@ -44,7 +44,7 @@ function readScopeFromUrl(): 'all' | 'mine' {
   return value === 'mine' ? 'mine' : 'all';
 }
 
-function writeScopeToUrl(space: 'all' | 'mine'): void {
+function writeScopeToUrl(space: 'all' | 'mine' | 'favorites' | 'recents'): void {
   const url = new URL(window.location.href);
   if (space === 'all') url.searchParams.delete('scope');
   else url.searchParams.set('scope', space);
@@ -80,11 +80,14 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
   const [pageState, setPageState] = useState<KnowledgeBaseListPageState>({ status: 'loading' });
   const [viewer, setViewer] = useState<Viewer>({ userId: '', isAdmin: false, isContributor: false });
   const [modelsReady, setModelsReady] = useState<boolean | null>(null);
-  const [space, setSpaceState] = useState<'all' | 'mine'>(readScopeFromUrl);
+  const [space, setSpaceState] = useState<'all' | 'mine' | 'favorites' | 'recents'>(readScopeFromUrl);
   const [query, setQuery] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '');
   const [creator, setCreator] = useState<KnowledgeBaseCreatorFilter>('all');
   const [page, setPage] = useState(1);
   const [favorites, setFavorites] = useState<Set<string>>(readFavorites);
+  const [recents, setRecents] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(window.localStorage.getItem('wk-kb-recents') ?? '[]') as string[]); } catch { return new Set(); }
+  });
   const [collapsedSections, setCollapsedSections] = useState<ReadonlySet<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -107,7 +110,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
   const scope = scopeController.current();
   const queryKey = useMemo(() => scopedKey(scope.scope, 'knowledge-bases'), [scope.scope]);
 
-  const setSpace = (next: 'all' | 'mine') => {
+  const setSpace = (next: 'all' | 'mine' | 'favorites' | 'recents') => {
     setSpaceState(next);
     writeScopeToUrl(next);
   };
@@ -149,13 +152,19 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
     return mergeAllScopeKnowledgeBases(pageState.owned, pageState.shared, viewer.userId || undefined);
   }, [pageState, space, viewer.userId]);
 
-  const filtered = useMemo(() => filterKnowledgeBases(cards, {
+  const scopedCards = useMemo(() => {
+    if (space === 'favorites') return cards.filter((c) => favorites.has(c.id));
+    if (space === 'recents') return cards.filter((c) => recents.has(c.id));
+    return cards;
+  }, [cards, space, favorites, recents]);
+
+  const filtered = useMemo(() => filterKnowledgeBases(scopedCards, {
     query,
     creator: space === 'mine' ? creator : 'all',
     currentUserId: viewer.userId || undefined,
     page,
     pageSize: 12,
-  }), [cards, creator, page, query, space, viewer.userId]);
+  }), [scopedCards, creator, page, query, space, favorites, recents, viewer.userId]);
 
   // Vue KnowledgeBaseList.vue:97-185 — collapsible sections in the all-scope view.
   const sections = useMemo(() => {
@@ -278,6 +287,13 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
 
   function openCard(kb: Record<string, unknown>) {
     const id = String(kb.id);
+    try {
+      const raw = window.localStorage.getItem('wk-kb-recents');
+      const list: string[] = raw ? JSON.parse(raw) : [];
+      const next = [id, ...list.filter((v) => v !== id)].slice(0, 20);
+      window.localStorage.setItem('wk-kb-recents', JSON.stringify(next));
+      setRecents(new Set(next));
+    } catch { /* storage unavailable */ }
     if (isKnowledgeBaseInitialized(kb as never)) {
       window.location.assign(`/knowledgeBase/${encodeURIComponent(id)}`);
       return;
@@ -320,6 +336,8 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
         <div className="wk-kb-scope" role="tablist" aria-label={t('common.knowledgeBases')}>
           <button type="button" role="tab" aria-selected={space === 'all'} className={space === 'all' ? 'wk-kb-scope-tab wk-kb-scope-tab-active' : 'wk-kb-scope-tab'} onClick={() => setSpace('all')}>{t('common.all')}</button>
           <button type="button" role="tab" aria-selected={space === 'mine'} className={space === 'mine' ? 'wk-kb-scope-tab wk-kb-scope-tab-active' : 'wk-kb-scope-tab'} onClick={() => setSpace('mine')}>{t('knowledgeList.sections.mine')}</button>
+          <button type="button" role="tab" aria-selected={space === 'favorites'} className={space === 'favorites' ? 'wk-kb-scope-tab wk-kb-scope-tab-active' : 'wk-kb-scope-tab'} onClick={() => setSpace('favorites')}>{t('common.favorite')}</button>
+          <button type="button" role="tab" aria-selected={space === 'recents'} className={space === 'recents' ? 'wk-kb-scope-tab wk-kb-scope-tab-active' : 'wk-kb-scope-tab'} onClick={() => setSpace('recents')}>{t('knowledgeList.empty.recentsTitle')}</button>
         </div>
         {isLoading ? (
           <div className="wk-kb-grid" aria-busy="true" aria-label={t('common.loading')}>

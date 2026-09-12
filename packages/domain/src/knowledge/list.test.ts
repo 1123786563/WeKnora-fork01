@@ -138,3 +138,31 @@ test('groupKnowledgeBaseSections keeps empty sections out of the result', () => 
   const sections = groupKnowledgeBaseSections([kb('m1', { isMine: true, creator_id: 'me' }) as never], 'me');
   assert.deepEqual(sections.map((s: { key: string }) => s.key), ['mine']);
 });
+
+import { filterByScope } from './list.ts';
+
+function kbx(id: string, extra: Record<string, unknown> = {}) {
+  return { id, name: id, ...extra } as Record<string, unknown> & { id: string };
+}
+
+test('filterByScope: all returns everything; mine returns only own creations', () => {
+  const rows = [
+    kbx('a', { isMine: true, creator_id: 'me' }),
+    kbx('b', { isMine: true, creator_id: 'other', is_shared: true }),
+    kbx('c', { isMine: false }),
+  ] as never[];
+  assert.equal(filterByScope(rows, 'all', 'me').length, 3);
+  assert.deepEqual(filterByScope(rows, 'mine', 'me').map((r: { id: string }) => r.id), ['a']);
+});
+
+test('filterByScope: favorites returns only favorited ids', () => {
+  const rows = [kbx('fav1'), kbx('fav2'), kbx('nofav')] as never[];
+  const result = filterByScope(rows, 'favorites', 'me', new Set(['fav1']));
+  assert.deepEqual(result.map((r: { id: string }) => r.id), ['fav1']);
+});
+
+test('filterByScope: recents returns only recents ids', () => {
+  const rows = [kbx('r1'), kbx('r2')] as never[];
+  const result = filterByScope(rows, 'recents', 'me', new Set(), new Set(['r2']));
+  assert.deepEqual(result.map((r: { id: string }) => r.id), ['r2']);
+});

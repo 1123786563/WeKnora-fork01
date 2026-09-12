@@ -253,3 +253,26 @@ export function groupKnowledgeBaseSections<T extends Record<string, unknown> & {
     .filter((key) => buckets[key].length > 0)
     .map((key) => ({ key, labelKey: labelKeys[key], items: buckets[key] }));
 }
+
+export type KnowledgeBaseScope = 'all' | 'mine' | 'favorites' | 'recents';
+
+/** Port of Vue KnowledgeBaseList.vue scope filtering: all / mine / favorites /
+ *  recents. Favorites and recents are caller-provided id sets (Vue stores them
+ *  in per-user localStorage). */
+export function filterByScope<T extends { id: string }>(
+  rows: readonly T[],
+  scope: KnowledgeBaseScope,
+  currentUserId: string | undefined,
+  favoriteIds: ReadonlySet<string> = new Set(),
+  recentIds: ReadonlySet<string> = new Set(),
+): T[] {
+  switch (scope) {
+    case 'all': return [...rows];
+    case 'favorites': return rows.filter((r) => favoriteIds.has(r.id));
+    case 'recents': return rows.filter((r) => recentIds.has(r.id));
+    case 'mine': return rows.filter((r) => {
+      const creator = (r as Record<string, unknown>).creator_id;
+      return typeof creator === 'string' && creator === currentUserId;
+    });
+  }
+}
