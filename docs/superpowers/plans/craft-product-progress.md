@@ -19,7 +19,7 @@
 | G0 | passed | 本节；worktree/分支/dirty 清单已核验 |
 | G1 主 Runtime | passed | `go test ./internal/agent/runtime/...` ok；`./internal/agent/trpc/...` ok；账目 13 轮浏览器/二进制崩溃证据为该基线祖先 |
 | G2 React 基础 | unverified | apps/web @main 仅为迁移 seam（知识库/文档/连接器页）；完整对话/附件工作台在 react-multiclient 专项（未合入）。只阻塞 W04/W05（远端），不影响 R 链 |
-| G3 恢复验收 | passed (SQLite) | SIGKILL 矩阵 SQLite 9/9 + 双工作者竞争/epoch 拒绝 PASS（自带 provider 构建）；PG 矩阵用本地 paradedb 运行中；遗留 `TestCrashAfterToolResult` 为已废弃变体（需 counter URL，验收文档已注明 superseded） |
+| G3 恢复验收 | passed | SIGKILL 矩阵 SQLite 9/9 + PostgreSQL 8/8（本地 paradedb，DSN 经 env 注入）+ 双工作者竞争/epoch 拒绝双方言 PASS，全部 @83e2ef5c 真实 provider 二进制；遗留 `TestCrashAfterToolResult` 为已废弃变体（激活需 counter URL，验收文档注明 superseded） |
 | G4 商业契约 | passed | `go test ./internal/commercial/... ./internal/application/service/commercial/...` 均 ok；saas-billing 已于 700ef410 合入并 PG 验证 |
 
 ## 任务状态（27 项）
