@@ -300,7 +300,7 @@ export function KnowledgeDocumentsPage({
   function stageFiles(files: Iterable<File>) {
     const entries = toUploadEntries(files);
     if (entries.length === 0) return;
-    setPendingEntries(entries);
+    setPendingEntries((current) => [...current, ...entries]);
     setUploadStates([]);
     setUploadError(null);
   }
@@ -380,13 +380,16 @@ export function KnowledgeDocumentsPage({
           );
         }
         setPendingUrl("");
-        setPendingTagIds([]);
         setReloadToken((value) => value + 1);
       } catch (error) {
         setUploadError(errorMessage(error));
-      } finally {
         setUploading(false);
+        return;
       }
+    }
+    if (pendingEntries.length === 0) {
+      setPendingTagIds([]);
+      setUploading(false);
       return;
     }
     const controller = new AbortController();
@@ -1023,9 +1026,7 @@ export function KnowledgeDocumentsPage({
       {(pendingEntries.length > 0 || pendingUrl) && canContribute ? (
         <Dialog open title="Confirm upload" onClose={cancelStagedUploads}>
           <p className="wk-upload-confirm-summary">
-            {pendingUrl
-              ? "1 URL ready to import."
-              : `${uploadSummary(pendingEntries).count} file(s), ${uploadSummary(pendingEntries).totalLabel} total. Large files are chunked server-side using the knowledge base chunk configuration.`}
+            {pendingUrl ? "1 URL ready to import" : ""}{pendingUrl && pendingEntries.length > 0 ? " + " : ""}{pendingEntries.length > 0 ? `${uploadSummary(pendingEntries).count} file(s), ${uploadSummary(pendingEntries).totalLabel} total` : ""}. Large files are chunked server-side using the knowledge base chunk configuration.
           </p>
           {pendingUrl ? (
             <ul className="wk-upload-confirm-files">
@@ -1166,7 +1167,7 @@ export function KnowledgeDocumentsPage({
               onClick={() => void confirmUpload()}
             >
               {pendingUrl
-                ? "Import URL"
+                ? pendingEntries.length > 0 ? "Import URL and upload files" : "Import URL"
                 : `Upload ${pendingEntries.length} file(s)`}
             </Button>
             <Button type="button" onClick={cancelStagedUploads}>
