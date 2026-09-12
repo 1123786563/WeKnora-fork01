@@ -2,6 +2,7 @@ import { createRoot } from 'react-dom/client';
 import { createJsonTransport, createWeKnoraClient } from '@weknora/api-client';
 import { createScopeController } from '@weknora/domain/scope';
 import { KnowledgeBasesPage } from './App.tsx';
+import { CraftRoutes } from './features/craft/routes.tsx';
 import { authorizationHeader, readLegacyPlatformSession } from './platform/legacy-session.ts';
 import './styles.css';
 
@@ -26,6 +27,12 @@ const client = createWeKnoraClient({
 
 // Migration seam: the legacy Vue route is /platform/knowledge-bases.
 // This entry only proves the React list slice; it does not claim Vue migration completion.
+// W05 craft mounts at /craft and /craft/:sessionId through the same assembly
+// (legacy session + shared scope + shared client) — no second router.
 createRoot(document.getElementById('root')!).render(
-  <KnowledgeBasesPage client={client} scopeController={scopeController} />,
+  window.location.pathname === '/craft' || window.location.pathname.startsWith('/craft/') ? (
+    <CraftRoutes client={client} scopeController={scopeController} session={session} apiBaseUrl={apiBaseUrl} />
+  ) : (
+    <KnowledgeBasesPage client={client} scopeController={scopeController} />
+  ),
 );

@@ -542,12 +542,18 @@ importers:
       '@weknora/contracts':
         specifier: file:../../packages/contracts
         version: link:../../packages/contracts
+      '@weknora/core':
+        specifier: file:../../packages/core
+        version: file:packages/core
       '@weknora/domain':
         specifier: file:../../packages/domain
         version: file:packages/domain
       '@weknora/ui':
         specifier: file:../../packages/ui
         version: link:../../packages/ui
+      '@weknora/views':
+        specifier: file:../../packages/views
+        version: file:packages/views(react@19.3.0)
       react:
         specifier: ^19.2.0
         version: 19.3.0
@@ -633,6 +639,28 @@ importers:
       react:
         specifier: '>=19'
         version: 19.3.0
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.0
+        version: 19.3.0
+
+  packages/views:
+    dependencies:
+      '@weknora/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@weknora/core':
+        specifier: workspace:*
+        version: link:../core
+      '@weknora/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@weknora/ui':
+        specifier: workspace:*
+        version: link:../ui
+      react:
+        specifier: '>=19'
+        version: 19.2.0
     devDependencies:
       '@types/react':
         specifier: ^19.2.0
@@ -3207,8 +3235,16 @@ packages:
   '@weknora/api-client@file:packages/api-client':
     resolution: {directory: packages/api-client, type: directory}
 
+  '@weknora/core@file:packages/core':
+    resolution: {directory: packages/core, type: directory}
+
   '@weknora/domain@file:packages/domain':
     resolution: {directory: packages/domain, type: directory}
+
+  '@weknora/views@file:packages/views':
+    resolution: {directory: packages/views, type: directory}
+    peerDependencies:
+      react: '>=19'
 
   '@xmldom/xmldom@0.8.15':
     resolution: {integrity: sha512-/5NV/vDALVFDXgLmfsy9TRCBlKwO2LNBFzpzvb9iIj+jR+eSc6DLYYvVOdivT/jm7MtU6TebYuRmzEOI7w40UA==}
@@ -10869,9 +10905,23 @@ snapshots:
     dependencies:
       '@weknora/contracts': link:packages/contracts
 
+  '@weknora/core@file:packages/core':
+    dependencies:
+      '@weknora/api-client': link:packages/api-client
+      '@weknora/contracts': link:packages/contracts
+      '@weknora/domain': link:packages/domain
+
   '@weknora/domain@file:packages/domain':
     dependencies:
       '@weknora/contracts': link:packages/contracts
+
+  '@weknora/views@file:packages/views(react@19.3.0)':
+    dependencies:
+      '@weknora/contracts': link:packages/contracts
+      '@weknora/core': link:packages/core
+      '@weknora/domain': link:packages/domain
+      '@weknora/ui': link:packages/ui
+      react: 19.3.0
 
   '@xmldom/xmldom@0.8.15': {}
 
