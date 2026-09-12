@@ -1,5 +1,9 @@
 # tRPC capability parity
 
+## 2026-09-12 rerun evidence
+
+当前生产 executor 仍通过既有 service assembly 构造能力，再建立固定 SDK graph。独立 rerun 的 tRPC、service、recoverytest 和 sandbox focused suites 通过；SQLite/ PostgreSQL crash matrices 实际执行 provider-backed graph、saver、tool journal、durable waiting 和 finalize。能力漂移保持 fail-closed；浏览器能力展示未在本 worktree 重跑，不作为本轮 release evidence。
+
 The tRPC graph receives the request-scoped capability assembly used by the
 builtin agent. The graph checkpoint stores only `CapabilitySnapshot`; provider
 clients, registries, sandbox handles, and approval waiters remain live objects

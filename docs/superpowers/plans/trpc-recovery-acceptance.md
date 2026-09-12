@@ -7,8 +7,9 @@ reopen the same durable database in a new process.
 
 ## Current evidence
 
-Recorded 2026-09-12 on macOS (go1.26.3 darwin/arm64), branch
-`codex/trpc-recovery-r2`. The production chain is now wired end to end: the
+Recorded 2026-09-12 on macOS (go1.26.3 darwin/arm64), rerun branch
+`codex/dual-agent-trpc-recovery-rerun`, base `329a661b`. The production chain is
+wired end to end: the
 session service registers the real graph executor
 (`ExecuteDurableRun`), the container injects it into the durable worker with
 a boot-time gate, the recovery hook reconciles sandbox-bound runs through the
@@ -27,9 +28,9 @@ and the external side-effect endpoint are deterministic doubles.
 |---|---|---|---|
 | admission gate | `GOWORK=off go test ./internal/agent/recoverytest -run TestRecoveryAdmissionGate -count=1` | PASS | disabled admission is false; worker-only mode is drain-only; enabled admission is true |
 | inconsistent config | `GOWORK=off go test ./internal/agent/recoverytest -run TestRecoveryAdmissionGateRejectsInconsistentConfig -count=1` | PASS | `AdmissionEnabled=true` with `Enabled=false` is rejected before runtime construction |
-| SIGKILL matrix (SQLite) | `GOWORK=off go test ./internal/agent/recoverytest -run TestCrashMatrixSQLite -count=1 -v` | PASS 8/8 | after_admission, after_plan_before_dispatch, after_result_before_checkpoint, after_finalize each: exactly 1 external call, final status succeeded, 1 completed assistant row, 0 lost events; after_side_effect_before_result and waiting_user: 1 external call, parked at waiting_user; unknown_result_user_retry: explicit retry alone raises the external count to 2; idempotent_redelivery: redelivery deduplicated, count stays 1 |
-| SIGKILL matrix (PostgreSQL) | `docker run postgres:16-alpine` on 55432; `TRPC_RECOVERY_PG_DSN=postgres://... go test ./internal/agent/recoverytest -run TestCrashMatrixPostgreSQL -count=1 -v` | PASS 7/7 (2026-09-12) | per-case schemas with hashed names, versioned migrations, real fenced leases/claims/epochs on PostgreSQL; after_admission/after_plan/after_result/after_finalize succeed with 1 external call and 0 lost events; after_side_effect parks at waiting_user; unknown_result_user_retry reaches 2 calls only after the explicit retry decision; idempotent_redelivery stays at 1. Durable JSON columns are TEXT (byte-exact round-trip; empty retry results must not trip JSON parsing) |
-| PostgreSQL repository suite | `TRPC_TEST_POSTGRES_DSN=... go test ./internal/application/repository -count=1` | PASS | full suite incl. TestAgentRunPostgres (admission idempotency, guards, rollback, lease/checkpoint, concurrent claim, reopen+migrations) on PostgreSQL 16 |
+| SIGKILL matrix (SQLite) | `GOWORK=off go test ./internal/agent/recoverytest -run TestCrashMatrixSQLite -count=1 -v` | PASS 9/9 (rerun) | Includes OAuth park; each persisted boundary uses a killed provider process and a new process reopening the same database. |
+| SIGKILL matrix (PostgreSQL) | `TRPC_RECOVERY_PG_DSN=postgres://trpc:trpc@127.0.0.1:55432/trpc_test?sslmode=disable GOWORK=off go test ./internal/agent/recoverytest -run 'TestCrashMatrixPostgreSQL|TestTwoWorkerContentionPostgreSQL' -count=1 -v` | PASS 8/8 + contention (rerun) | Per-case isolated PostgreSQL database, versioned migrations, real leases/claims/epochs, killed provider and new-process resume. |
+| PostgreSQL repository suite | `TRPC_TEST_POSTGRES_DSN=...options=-c%20app.skip_embedding%3Dtrue GOWORK=off go test ./internal/application/repository -run TestAgentRunPostgres -count=1 -v` | PASS 6/6 (rerun) | Admission idempotency, guards, rollback, lease/checkpoint, concurrent claim and reopen+migrations pass on PostgreSQL 16; rollback fixture is dialect-aware. |
 | two-worker contention | `go test ./internal/agent/recoverytest -run TestTwoWorkerContentionSQLite -count=1` (SQLite) and `...PostgreSQL` with `TRPC_RECOVERY_PG_DSN` | PASS both (2026-09-12) | stale worker claims, lets its lease expire, then keeps attempting fenced writes while a takeover process claims with a higher epoch and completes: every post-expiry write rejected, external side effect exactly once, no durable-state pollution |
 | deadline budget | `go test ./internal/application/service -run TestWorkerFailsRunPastPersistedDeadline -count=1` | PASS | a run past its persisted deadline fails with deadline_exceeded before executing; the execution context is capped at the deadline (second test), so the budget survives restarts and a slow graph cannot outlive it |
 | cancel lifecycle | `go test ./internal/application/service -run TestCancelReleasesSessionSlot -count=1` | PASS | cancel marks canceled, releases the session slot (next run admits immediately), canceled run never claimable — real migrated store |
@@ -41,11 +42,11 @@ and the external side-effect endpoint are deterministic doubles.
 | after-mode follow-up | `go test ./internal/application/service -run TestExecuteDurableRunAdmitsAfterFollowUp -count=1` | PASS (2026-09-12) | steering parked with delivery=after is admitted as the next durable run once the current run succeeds: same snapshot identity, parked content as query, follow-up holds the session slot as queued, input consumed exactly once |
 | OAuth park black-box | `go test ./internal/agent/recoverytest -run 'TestCrashMatrixSQLite/oauth_park'` and `...PostgreSQL/oauth_park` | PASS both (2026-09-12) | pre-execution OAuth park driven through the production chain (ParkToolPreflightWait + WaitForDecision) in the SIGKILL provider; crash lands mid-wait with no tool result; explicit user retry bound to the planned row requeues and completes with exactly one side effect |
 | pre-approval park | `go test ./internal/agent/approval -run TestDurableGateParksPreflightApprovalWait -count=1` | PASS (2026-09-12) | DurableGate.RequestAndWait parks a durable run before dispatch with an mcp_approve_ pending id through the same hook chain as OAuth; builtin (no fence) still delegates to the live gate; resume flows through the planned-marker retry path proven by the oauth_park matrix row |
-| race check | `GOWORK=off go test -race ./internal/application/service ./internal/application/repository ./internal/agent/trpc ./internal/agent/runtime -count=1` | PASS (2026-09-12) | 9 package results ok, no race reports |
-| final engineering sweep | `pnpm run test && pnpm run type-check && pnpm run build-only` in `frontend/` | PASS (2026-09-12) | 818/818 tests, vue-tsc clean, vite build succeeds in the worktree; backend durable-run packages green, pre-existing main failures documented (TestSkillPythonVerifier environmental; notion loopback and model request-shape tests fail identically on main) |
-| browser verification | Playwright Chromium against live stack (SQLite + recovery + admission enabled + mock OpenAI model on SSRF-whitelisted loopback) | PASS (2026-09-12) | UI login; engine selector renders both engines and tRPC selectable; trpc session opens with engine chip; message send through the real HTTP path admits a durable run, the background worker executes the graph against the mock model, finalize writes the assistant message; page reload replays user message and durable reply |
-| disconnect survival | browser: agent-chat request aborted 300ms after send | PASS (2026-09-12) | the aborted request's run was still admitted (Submit runs on a detached context) and succeeded in the background worker; exactly one user + one assistant message row per request (Admission.UserMessageID reuses the handler-persisted row) — spec: HTTP 断线不取消 Run |
-| live crash recovery | real server binary: SIGKILL mid-run, restart on same DB | PASS (2026-09-12) | run left queued by the kill was claimed by the restarted process's recovery worker and succeeded with the assistant message finalized; browser reload after restart shows the recovered reply and engine chip — the SIGKILL matrices prove the same boundaries at provider level with the production store/saver/graph |
+| race check | `GOWORK=off go test -race ./internal/application/service ./internal/application/repository ./internal/agent/trpc ./internal/agent/runtime -count=1` | PASS after worker fix (targeted rerun; full package rerun pending final commit) | The first full run found and fixed the deadline context race; targeted race test passed. |
+| final engineering sweep | `pnpm run test && pnpm run type-check && pnpm run build-only` in `frontend/` | PASS (rerun) | 819/819 tests, vue-tsc clean, Vite build succeeds after declaring direct compiler/i18n test dependencies. |
+| browser verification | Playwright Chromium against live stack | HISTORICAL ONLY | Existing evidence is retained, but not rerun in this fresh worktree. |
+| disconnect survival | browser: agent-chat request aborted 300ms after send | HISTORICAL ONLY | Existing evidence is retained, but not rerun in this fresh worktree. |
+| live crash recovery | real server binary: SIGKILL mid-run, restart on same DB | HISTORICAL ONLY | Provider-level crash matrices were rerun; live browser/server drill was not rerun here. |
 | crash after tool result | `GOWORK=off go test ./internal/agent/recoverytest -run TestCrashAfterToolResult -count=1` | SKIPPED | superseded by the matrix subtest above when run without `TRPC_RECOVERY_GRAPH_PROVIDER`; the env-gated variant remains for CI |
 | executor end to end | `GOWORK=off go test ./internal/application/service -run TestExecuteDurableRun -count=1` | PASS | fresh run completes through admission snapshot → capability rebuild → graph → finalize transaction; superseded fence rejected with ErrLeaseLost |
 | worker wait mapping | `GOWORK=off go test ./internal/application/service -run TestWorkerParksWaitClass -count=1` | PASS | unknown tool outcomes park durably at waiting_user/tool_outcome_unknown instead of terminating |
@@ -66,7 +67,7 @@ Defects found and fixed by the matrix (recorded for audit):
    decoding rejected. Seeds are now accepted only when no execution-owned key
    is present in the JSON.
 
-## Remaining matrix rows (not yet passed — do not treat as done)
+## Remaining release evidence
 
 - the external-action outbox is resolved structurally rather than by a
   dedicated table: every follow-up action after the finalize transaction is
@@ -79,10 +80,10 @@ Defects found and fixed by the matrix (recorded for audit):
   non-database external delivery (webhooks, notifications) is introduced;
   that trigger is recorded here as a design note, not an unmet requirement.
 
-Frontend browser-level verification is complete (see the browser rows in the
-evidence table): engine selection, engine chip, durable round trip, reload
-replay, disconnect survival, and the single-row invariant all pass against a
-live stack with a mock OpenAI-compatible model.
+The repository contains historical browser-level evidence for engine selection,
+durable round trip, reload replay and disconnect survival. It was not rerun in
+this fresh worktree; those rows remain historical evidence, not current release
+evidence.
 
 Known migration limitation: a SQLite database that applied the intermediate
 branch revision of migration 000014 cannot upgrade through 000016 (the rebuild
@@ -135,7 +136,9 @@ above is now green; the remaining rows keep the feature closed.
 | 10 能力复用 | PASS | MCP/Skills/Tools/模型配置在生产图执行中可用（capability parity 文档）|
 | 11 事件/steering/保留 | PASS | attempt_replaced、inject/after 模式（跟进受理）、保留水位裁剪、重启回放；outbox 结构性满足（见上文注）|
 | 12 HTTP 契约/权限/取消删除 | PASS | 黑盒三行（SSE 回放+cursor_expired、决策 200/409/200、删除围栏）；租户/用户权限、取消释放槽位 |
-| 13 客户端接入 | PASS | 引擎选择、状态查询、断线重连回放去重、等待决策与取消已实现；浏览器级全项验证通过（登录/选择器/引擎 chip/durable 往返/刷新回放/断线存活/单行不变量） |
-| 14 跨进程崩溃恢复验收 | PASS | 真实 provider + SIGKILL 六个持久化边界 × 双方言；副作用恰好一次贯穿全部行 |
+| 13 客户端接入 | PASS (工程) / BLOCKED (本轮人工验收) | 引擎选择、状态查询、回放去重、等待决策和取消的工程测试通过；本轮未重跑浏览器人工行 |
+| 14 跨进程崩溃恢复验收 | PASS (provider) / BLOCKED (发布门禁) | 真实 provider + SIGKILL 双方言矩阵本轮通过；发布门禁还缺本轮 live browser/server evidence |
 
-功能默认关闭（引擎门禁），未满足项仅剩无浏览器环境的前端人工验证。
+功能默认关闭（引擎门禁）。本次 rerun 的代码、SQLite/PG provider crash
+matrix、repository/service/frontend 工程检查已验证；live browser 人工验证未
+在本次 worktree 重跑，因此发布门禁仍未通过，不能宣称完整验收完成。
