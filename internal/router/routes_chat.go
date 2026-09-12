@@ -110,6 +110,19 @@ func RegisterSessionRoutes(
 		sessions.GET("/:id/messages/:message_id/artifacts", handler.ListMessageArtifacts)
 		sessions.GET("/:id/messages/:message_id/artifacts/:index/download", handler.DownloadMessageArtifact)
 	}
+
+	// Craft workbench API (W03): the create/list group carries the same
+	// Viewer+ guard and chat API-key capability as the sessions group, and
+	// the per-session craft routes mount inside the sessions group itself so
+	// they inherit its auth chain. Handlers come from the container-level
+	// registration — when the craft assembly is not wired both are nil and
+	// nothing is mounted (fail-closed, no silent shims).
+	craftSessions := g.apiKeyGroup(r.Group("/craft/sessions", g.Viewer()), apiKeyChat(apiKeyFullAccess()))
+	var craftHandler *session.CraftSessionHandler
+	if api := session.RegisteredCraftSessionHandler(); api != nil {
+		craftHandler = session.NewCraftSessionHandler(api)
+	}
+	session.RegisterCraftSessionRoutes(craftSessions, sessions, craftHandler, session.RegisteredCraftPreviewRouteHandler())
 }
 
 // RegisterChatRoutes 注册路由。Chat endpoints are tenant-member usage

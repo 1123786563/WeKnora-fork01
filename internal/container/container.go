@@ -324,6 +324,21 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	}))
 	must(container.Provide(service.NewCraftDelegation))
 
+	// Craft product HTTP surface (W03): the version store (W01), the preview
+	// check store + preview service (W02; the preview stays disabled until
+	// its isolated https origin is configured) and the craft session service
+	// behind the workbench HTTP entrance. The handlers register themselves
+	// for route mounting — routes_chat.go mounts the authenticated surface,
+	// router.go mounts the pre-auth preview origin. The R03 workspace
+	// resolver still has no honest production dial and remains
+	// uninstantiated: the executor above fails closed, which is the recorded
+	// assembly boundary (craft runtime deployment task).
+	must(container.Provide(repository.NewCraftVersionStore))
+	must(container.Provide(repository.NewCraftPreviewCheckStore))
+	must(container.Provide(newCraftPreviewService))
+	must(container.Provide(newCraftSessionService))
+	must(container.Invoke(registerCraftHTTPHandlers))
+
 	must(container.Provide(service.NewAgentService))
 
 	// Session service (depends on agent service)
@@ -1932,4 +1947,76 @@ func startCommercialFulfillment(svc *commercialsvc.FulfillmentService, cleaner i
 		svc.Stop()
 		return nil
 	})
+}
+
+// craftFeatureGateFromEnv reads the craft feature gate following the
+// WEKNORA_* env-switch convention (like the commercial rollout switches):
+// craft is disabled unless WEKNORA_CRAFT_ENABLED is true, and even when
+// enabled only the kinds listed in WEKNORA_CRAFT_KINDS are open. A valid
+// kind is not an open kind.
+func craftFeatureGateFromEnv() service.CraftFeatureGate {
+	gate := service.CraftFeatureGate{Enabled: false}
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("WEKNORA_CRAFT_ENABLED"))) {
+	case "true", "1", "yes":
+		gate.Enabled = true
+	}
+	kinds := make([]string, 0, 4)
+	for _, raw := range strings.Split(os.Getenv("WEKNORA_CRAFT_KINDS"), ",") {
+		kind := strings.TrimSpace(raw)
+		if craft.KnownKind(kind) {
+			kinds = append(kinds, kind)
+		}
+	}
+	if len(kinds) == 0 {
+		kinds = []string{craft.KindWeb}
+	}
+	gate.Kinds = kinds
+	return gate
+}
+
+// newCraftSessionService assembles W03's craft session service from the
+// already-registered craft stores and the existing session, upload, file and
+// model services. New runs are admitted through the live agent run service.
+func newCraftSessionService(
+	db *gorm.DB,
+	sessions interfaces.SessionService,
+	store craft.Store,
+	versions craft.VersionStore,
+	documents interfaces.TemporaryDocumentService,
+	files interfaces.FileService,
+	models interfaces.ModelService,
+	runtime *AgentRuntime,
+) (*service.CraftSessionService, error) {
+	runs := runtime.Runs
+	if runs == nil {
+		runs = service.RegisteredAgentRunService()
+	}
+	return service.NewCraftSessionService(service.CraftSessionConfig{
+		DB: db, Sessions: sessions, Store: store, Versions: versions,
+		Runs: runs, ActiveRuns: service.CraftActiveRunsQuery(db),
+		TemporaryDocs: documents, Files: files, Models: models,
+		Gate: craftFeatureGateFromEnv(),
+	})
+}
+
+// newCraftPreviewService assembles W02's preview service. Without a
+// configured isolated https preview origin the feature stays disabled:
+// issuance answers unavailable and the isolated origin 404s.
+func newCraftPreviewService(
+	versions craft.VersionStore,
+	files interfaces.FileService,
+	checks craft.PreviewCheckStore,
+) *service.CraftPreviewService {
+	return service.NewCraftPreviewService(versions, files, checks, service.CraftPreviewConfig{
+		AppOrigin:     strings.TrimSpace(os.Getenv("WEKNORA_CRAFT_APP_ORIGIN")),
+		PreviewOrigin: strings.TrimSpace(os.Getenv("WEKNORA_CRAFT_PREVIEW_ORIGIN")),
+	})
+}
+
+// registerCraftHTTPHandlers installs the craft handlers for route mounting.
+// The session service itself is the registered API surface; routes_chat.go
+// wraps it in the HTTP handler at mounting time.
+func registerCraftHTTPHandlers(svc *service.CraftSessionService, previews *service.CraftPreviewService) {
+	session.RegisterCraftSessionHandler(svc)
+	session.RegisterCraftPreviewRouteHandler(session.NewCraftPreviewHandler(previews))
 }

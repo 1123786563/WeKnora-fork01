@@ -196,7 +196,11 @@ func TestCraftVersionsMigrationDownDropsVersionTables(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.NoError(t, migrator.Up())
-	require.NoError(t, migrator.Steps(-1))
+	// Roll back to the version just before W01 explicitly instead of a
+	// relative Steps(-1): later chain entries (craft usage 43, craft budget
+	// 44, craft sessions 45) now sit above W01, and the pinned rule is about
+	// the W01 down script itself, not about W01 being the chain head.
+	require.NoError(t, migrator.Migrate(41))
 
 	for _, table := range []string{"craft_versions", "craft_version_files"} {
 		var count int
