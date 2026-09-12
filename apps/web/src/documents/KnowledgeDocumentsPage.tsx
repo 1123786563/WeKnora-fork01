@@ -127,6 +127,7 @@ export function KnowledgeDocumentsPage({
   const [chunkStrategy, setChunkStrategy] = useState("auto");
   const [parserEngines, setParserEngines] = useState<ParserEngineInfo[]>([]);
   const [parserRules, setParserRules] = useState<Array<{ file_types: string[]; engine: string }>>([]);
+  const [pdfForceScanned, setPdfForceScanned] = useState(false);
   const [tenantModels, setTenantModels] = useState<ModelConfiguration[]>([]);
   const [multimodalEnabled, setMultimodalEnabled] = useState(false);
   const [vllmModelId, setVllmModelId] = useState("");
@@ -278,6 +279,7 @@ export function KnowledgeDocumentsPage({
   );
   const vllmModels = useMemo(() => tenantModels.filter((model) => String(model.type ?? '').toLowerCase() === 'vllm'), [tenantModels]);
   const asrModels = useMemo(() => tenantModels.filter((model) => String(model.type ?? '').toLowerCase() === 'asr'), [tenantModels]);
+  const hasPdf = useMemo(() => pendingEntries.some((entry) => entry.name.toLowerCase().endsWith('.pdf')), [pendingEntries]);
   const items = state.status === "success" ? state.page.items : [];
   const selectedOnPage = items.filter((item) => selected.has(item.id)).length;
   const pageTotal = state.status === "success" ? state.page.total : 0;
@@ -324,6 +326,7 @@ export function KnowledgeDocumentsPage({
   function buildProcessConfig() {
     return {
       parser_engine_rules: parserRules,
+      ...(pdfForceScanned && hasPdf ? { parser_engine_overrides: { pdf_force_scanned: "true" } } : {}),
       enable_multimodel: multimodalEnabled,
       vlm_config: { enabled: multimodalEnabled, model_id: vllmModelId.trim(), description_language: descriptionLanguage.trim(), custom_instructions: customInstructions.trim() },
       asr_config: { enabled: asrEnabled, model_id: asrModelId.trim(), language: asrLanguage.trim() },
@@ -1138,6 +1141,7 @@ export function KnowledgeDocumentsPage({
           <fieldset className="wk-upload-confirm-parser">
             <legend>Parser engine</legend>
             <p className="wk-muted">Choose an available server parser for supported file types; blank keeps the server default.</p>
+            {hasPdf ? <label className="wk-checkbox"><input type="checkbox" checked={pdfForceScanned} onChange={(event) => setPdfForceScanned(event.target.checked)} /> Force scanned-PDF parsing</label> : null}
             {parserEngines.length === 0 ? <p className="wk-muted">No parser engine registry was returned.</p> : [...new Set(parserEngines.flatMap((engine) => engine.FileTypes ?? []))].filter((fileType) => fileType !== "url").sort().map((fileType) => <label key={fileType}>.{fileType}<select value={parserRules.find((rule) => rule.file_types.includes(fileType))?.engine ?? ""} onChange={(event) => setParserRules((current) => { const remaining = current.filter((rule) => !rule.file_types.includes(fileType)); return event.target.value ? [...remaining, { file_types: [fileType], engine: event.target.value }] : remaining; })}><option value="">Server default</option>{parserEngines.filter((engine) => (engine.FileTypes ?? []).includes(fileType)).map((engine) => <option key={engine.Name} value={engine.Name} disabled={engine.Available === false}>{engine.Name}{engine.Available === false ? ` — ${engine.UnavailableReason || "unavailable"}` : ""}</option>)}</select></label>)}
           </fieldset>
           <fieldset className="wk-upload-confirm-multimodal">
