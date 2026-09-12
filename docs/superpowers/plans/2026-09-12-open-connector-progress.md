@@ -17,7 +17,7 @@
 | T07 可关联的 OAuth 与 API key 授权 | passed | commit a6819af5 + fix 54ab2277（集成分支 fast-forward）；R14 方案 A：admin authorizations 钉 UUID alias + 精确 alias 列表过滤相关 + api-key connect/api-key（源码钉死，T17/T18 复验）；R11 完整守卫换装落地；一次性消费条件更新经 16-goroutine 真并发探针；质量审查 Q-1 时区缺陷（BLOCKING）→修复→双审复审 PASS；真实 OAuth e2e blocked-env → T18；Q-2/Q-3（api-key 双提交/verifying 孤儿）→ T08 |
 | T08 撤销、权限变化和远端清理 | passed | commit 62396d31（集成分支 fast-forward）；25 项新测试（含计划逐字 TestOCRevokeVersionGuard）；撤销单事务+幂等+行数守卫+FOR UPDATE 锁契约（文档化给 T10）；裁决 1 四项孤儿/重绑修复各有测试；PG 8 并发撤销恰一次（实现者+质量审查者独立容器各复跑一遍，-count=3 稳定）；spec PASS + 质量 PASS（Q-1 MAJOR-latent mint 守卫缺失 → T09 硬前置；Q-2/Q-3 sweeper → T17/T18） |
 | T09 可信 Prepare 与完整审批快照 | passed | commit b61389a7（集成分支 fast-forward）；digest v2 全字段结构化材料（含 OC/AuthVersion/DigestVersion，无文本拼接）；v1 审批强制重新 Prepare（行级双门禁）；HARD PREREQ：T08 mint 对账 404 守卫 + 双测试落地；PG 000122 v1 回填/守卫/再 up 实测（sqlite 000042 twin 全序列复现）；spec PASS（4 项解释全 ACCEPT，13 findings 非阻塞）+ 质量 PASS（7 项 -race digest 决定论探针、原子性/安全面/守卫分类全核验；MINOR-1 handler 映射 → T13） |
-| T10 原子 claim、全局幂等键与分布式限流 | pending | |
+| T10 原子 claim、全局幂等键与分布式限流 | passed | commit 764e0287（集成分支 fast-forward）；27 项新测试；PG 20 并发单胜者 + Check 后撤销拒绝（T04-QF-2 关闭）+ 45 对死锁锤零死锁 + 崩溃 lease 回收不重发（实现者+质量审查者各自独立容器）；nil dispatcher fail-closed（T04-QF-6 关闭）；ReplayUntil=FirstSentAt+23h50m 不随重试推进；spec PASS（F-3 接线次序转 T13 强制）+ 质量 PASS（Q-1 孤立预占释放 → T11/T13） |
 | T11 HTTP dispatcher 与保守结果分类 | pending | 24h 窗口/指纹含 runtimeTokenId、auditPersisted=false 不否定结果（T01 已证） |
 | T12 崩溃、unknown 与结算恢复 | pending | |
 | T13 产品 API、租户 DTO 与容器注入 | pending | |
