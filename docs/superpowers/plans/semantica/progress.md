@@ -214,7 +214,7 @@
 - 实测验收：核心断言逐字（删 d1 留 shared-fact、删 d2 去 shared-fact+derived-fact）；墓碑单调（高版本拒低版本、迟到低墓碑不降栏、重建高版本不拒）；多来源（单源删留事实、末源删失效、同名实体他事实存活——含实体自有来源损失场景）；合取前提递归失效（评审员加测深 2 链收敛、多支持前提部分删不过度失效）；receipt 分存储独立推进（半失败 pending 可独立重试、四 store 齐 completed_at、backup 恒 retention_pending 不伪装、mark 幂等 True→False）；GC 窗口 floor=max(retention,replay)且清单闭包守卫（跨租户 manifest 不钉他域墓碑——评审员探针）；重放写入不复活。
 - 计划偏差/延后记录（I05 接线）：①步骤 6 恢复模式（默认不 ready+从 Go 重放 deny/epoch 再开放查询）未实现——checkbox 保持未勾，归 I05 服务编排；②删除操作路由（apply 产生 accepted 操作可被索引 worker 领取；须打标并驱动终态）归 I05；③I03 publisher 的 assert_not_deleted（发布时墓碑拒绝）归 I05；④I01 预存 bug：operations.py:362 load_request 对已解码 JSONB dict 再 json.loads 会崩（评审员探针发现，worker 管道端到端未跑过）归 I05 首要修复。
 - review：规格 PASS（11 项；条件：台账+延后记录+共享 PG 并发写风险——本记录即为；推荐项全折叠：GCConfig 强制/protect 负例+sweep 测试/实体测试加强/…）；质量首轮 FAIL（3 BLOCKER：PK 缺列/合取语义/墓碑清除复活）→ 修复后终审 PASS（三项以原复现场景独立复验+四场景边缘探针；两项新 MINOR：born-visible 已当场折叠修复，共享 DB 修复为带外操作——提交信息注明"已跑过旧 003 的开发库需 DROP semantic.assertions 重建"）；注意共享隔离 PG 有并发写风险（评审期间发现外部 kb-race 命名空间行，运行套件时独占）。
-- 提交 SHA：（本记录与代码同批提交后补记）
+- 提交 SHA：7a10f69（feat(semantic): i04 删除屏障、支持撤销和清理receipt）。
 
 ## 当前边界
 
