@@ -36,4 +36,4 @@ It does not claim parity for the remaining Vue drawer visuals, six-locale copy, 
 
 ## Next required work
 
-The metadata/tool/test/usage and OAuth operations are now wired, but exact two-step save gating, resource/test result detail, code import, advanced config/custom headers, Vue-derived localized validation/feedback, fixed-viewport screenshots, and real-backend role/tenant negative evidence remain before changing these rows to `review` or `accepted`.
+The metadata/tool/test/usage and OAuth operations are now wired, including structured test/resource details, standard `mcpServers` JSON import, custom headers, OAuth scopes, and bounded retry configuration. Exact Vue two-step save gating, localized validation/feedback, fixed-viewport screenshots, stdio/native behavior, and real-backend role/tenant negative evidence remain before changing these rows to `review` or `accepted`.
