@@ -110,6 +110,10 @@ type stubGate struct {
 	begins    int32
 	finishes  int32
 	finishErr error
+
+	mu              sync.Mutex
+	lastReservation string
+	lastFact        commercial.UsageFact
 }
 
 func (g *stubGate) Begin(ctx context.Context, req commercial.BudgetRequest) (commercial.Reservation, error) {
@@ -123,8 +127,18 @@ func (g *stubGate) Finish(ctx context.Context, reservationID string, fact commer
 	if g.finishErr != nil {
 		return g.finishErr
 	}
+	g.mu.Lock()
+	g.lastReservation = reservationID
+	g.lastFact = fact
+	g.mu.Unlock()
 	atomic.AddInt32(&g.finishes, 1)
 	return nil
+}
+
+func (g *stubGate) lastFinish() (string, commercial.UsageFact) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.lastReservation, g.lastFact
 }
 
 func sendAction() appconn.Action {
@@ -517,6 +531,44 @@ func TestUnknownOutcomeResolvedViaProviderQuery(t *testing.T) {
 	}
 }
 
+// TestDispatchTimeoutRemainsUnknown pins the crash-window rule: a dispatch
+// error that is NOT a proven pre-send rejection (here: a deadline exceeded
+// after the request left the process) can never be recorded as failed — the
+// provider outcome is unknown and only a provider query may resolve it.
+func TestDispatchTimeoutRemainsUnknown(t *testing.T) {
+	got := settleOutcome(DispatchOutcome{}, context.DeadlineExceeded)
+	if got.Status != appconn.ActionUnknown {
+		t.Fatalf("got %s", got.Status)
+	}
+}
+
+// TestSettleOutcomeClassification pins the full T11 mapping: only a proven
+// pre-send rejection (ErrDispatchNotStarted) settles as failed; every other
+// dispatch error and every invalid provider status settles as unknown; the
+// three valid provider statuses pass through unchanged.
+func TestSettleOutcomeClassification(t *testing.T) {
+	got := settleOutcome(DispatchOutcome{}, fmt.Errorf("binding drift: %w", ErrDispatchNotStarted))
+	if got.Status != appconn.ActionFailed || got.ProviderResult != "dispatch rejected before send" {
+		t.Fatalf("pre-send rejection = %+v", got)
+	}
+	for _, err := range []error{context.DeadlineExceeded, errors.New("transport reset"), context.Canceled} {
+		got := settleOutcome(DispatchOutcome{}, err)
+		if got.Status != appconn.ActionUnknown || got.ProviderResult != "provider outcome unavailable" {
+			t.Fatalf("err %v mapped to %+v", err, got)
+		}
+	}
+	for _, status := range []string{appconn.ActionSucceeded, appconn.ActionFailed, appconn.ActionUnknown} {
+		got := settleOutcome(DispatchOutcome{Status: status, ProviderResult: "passthrough"}, nil)
+		if got.Status != status || got.ProviderResult != "passthrough" {
+			t.Fatalf("status %s mapped to %+v", status, got)
+		}
+	}
+	got = settleOutcome(DispatchOutcome{Status: "sideways"}, nil)
+	if got.Status != appconn.ActionUnknown || got.ProviderResult != "invalid provider outcome" {
+		t.Fatalf("invalid provider status mapped to %+v", got)
+	}
+}
+
 // seedActionRow inserts an action row directly, bypassing Prepare — used to
 // materialize LEGACY rows (digest_version 1, oc_binding_json) exactly as
 // migration 000122 leaves pre-existing data.
@@ -663,5 +715,151 @@ func TestSnapshotCarriesPersistedOCBinding(t *testing.T) {
 	}
 	if snap.AuthVersion != 1 || snap.DigestVersion != 2 {
 		t.Fatalf("snapshot auth/digest version=%d/%d", snap.AuthVersion, snap.DigestVersion)
+	}
+}
+
+// stubClaimSource stands in for the durable OC claim with a configurable
+// outcome (and an optional side effect run before the error is returned, to
+// materialize states like "another request's claim already went through").
+type stubClaimSource struct {
+	err    error
+	before func(context.Context)
+	calls  int32
+}
+
+func (s *stubClaimSource) ClaimOCDispatch(ctx context.Context, subject appconn.OCSubject, actionID, reservationID string) (appconn.OCDispatchRecord, error) {
+	atomic.AddInt32(&s.calls, 1)
+	if s.before != nil {
+		s.before(ctx)
+	}
+	return appconn.OCDispatchRecord{}, s.err
+}
+
+func (s *stubClaimSource) GetOCDispatch(ctx context.Context, tenant uint64, actionID string) (appconn.OCDispatchRecord, error) {
+	return appconn.OCDispatchRecord{}, nil
+}
+
+// newClaimReleaseEnv seeds one AUTHORIZED open-connector action over a stub
+// claim source whose rejection is configured per test, with a recording
+// budget gate wired.
+func newClaimReleaseEnv(t *testing.T, claimErr error, before func(context.Context)) (*ActionService, *stubGate, *stubClaimSource, *gorm.DB) {
+	t.Helper()
+	db := openActionDB(t, memDSN(t))
+	gate := &stubGate{}
+	disp := &stubDispatcher{outcome: DispatchOutcome{Status: appconn.ActionSucceeded, ProviderResult: "ok"}}
+	svc := NewActionService(repoappconn.NewActionStore(db), &stubGuard{}, gate, disp, nil)
+	claims := &stubClaimSource{err: claimErr, before: before}
+	svc.UseOCDispatchClaims(claims)
+	seedActionRow(t, db, "act-orphan", appconn.ActionAuthorized, "ocdigest-orphan", ocBindingJSONForExecute(), 2, 0)
+	if err := svc.store.SaveApproval(context.Background(), "act-orphan", "ocdigest-orphan", "boss", time.Now().Add(time.Hour), 5); err != nil {
+		t.Fatal(err)
+	}
+	return svc, gate, claims, db
+}
+
+// TestExecuteClaimConflictReleasesOrphanReservation is the T10-Q-1 carry: a
+// claim rejected while the row is still authorized proves the outbound call
+// never happened, so the budget pre-allocation is settled with ZERO usage
+// instead of lingering as an orphan hold the recovery would retain forever.
+func TestExecuteClaimConflictReleasesOrphanReservation(t *testing.T) {
+	svc, gate, claims, db := newClaimReleaseEnv(t, repoappconn.ErrOCDispatchConflict, nil)
+	ctx := context.Background()
+
+	err := svc.Execute(ctx, "act-orphan")
+	if !errors.Is(err, repoappconn.ErrOCDispatchConflict) {
+		t.Fatalf("err = %v, want ErrOCDispatchConflict", err)
+	}
+	if atomic.LoadInt32(&claims.calls) != 1 {
+		t.Fatalf("claim calls = %d", claims.calls)
+	}
+	if atomic.LoadInt32(&gate.finishes) != 1 {
+		t.Fatalf("orphan release finishes = %d, want 1", gate.finishes)
+	}
+	resID, fact := gate.lastFinish()
+	if resID != "res-1" {
+		t.Fatalf("released reservation = %q, want the Begin reservation", resID)
+	}
+	if fact.Dimensions[commercial.DimensionConnector] != 0 || fact.Status != commercial.UsageStatusFinal ||
+		fact.RunID != "appaction:act-orphan" || fact.CallID != "act-orphan" {
+		t.Fatalf("zero-usage fact = %+v", fact)
+	}
+	var row repoappconn.ActionRow
+	if err := db.Where("id = ?", "act-orphan").First(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	if row.State != appconn.ActionAuthorized || row.Fence != 0 {
+		t.Fatalf("rejected claim mutated the action: %+v", row)
+	}
+	var ap repoappconn.ApprovalRow
+	if err := db.Where("action_id = ?", "act-orphan").First(&ap).Error; err != nil {
+		t.Fatal(err)
+	}
+	if ap.Remaining != 5 {
+		t.Fatalf("approval consumed on rejected claim: %d", ap.Remaining)
+	}
+}
+
+// TestExecuteClaimExhaustionReleasesOrphanReservation: an exhausted approval
+// is equally winnerless — the claim transaction rejected before any state
+// move, so the pre-allocation settles at zero usage.
+func TestExecuteClaimExhaustionReleasesOrphanReservation(t *testing.T) {
+	svc, gate, _, _ := newClaimReleaseEnv(t, repoappconn.ErrApprovalExhausted, nil)
+	if err := svc.Execute(context.Background(), "act-orphan"); !errors.Is(err, repoappconn.ErrApprovalExhausted) {
+		t.Fatalf("err = %v, want ErrApprovalExhausted", err)
+	}
+	if atomic.LoadInt32(&gate.finishes) != 1 {
+		t.Fatalf("finishes = %d, want 1 (zero-usage release)", gate.finishes)
+	}
+}
+
+// TestExecuteClaimLostRaceNeverSettlesWinnersReservation: a LOST claim race
+// (ErrOCDispatchClaimed) means the winner still owns the shared reservation —
+// the loser must never cancel or settle it.
+func TestExecuteClaimLostRaceNeverSettlesWinnersReservation(t *testing.T) {
+	svc, gate, _, _ := newClaimReleaseEnv(t, repoappconn.ErrOCDispatchClaimed, nil)
+	if err := svc.Execute(context.Background(), "act-orphan"); !errors.Is(err, repoappconn.ErrOCDispatchClaimed) {
+		t.Fatalf("err = %v, want ErrOCDispatchClaimed", err)
+	}
+	if atomic.LoadInt32(&gate.finishes) != 0 {
+		t.Fatalf("finishes = %d, want 0 (winner owns the reservation)", gate.finishes)
+	}
+}
+
+// TestExecuteClaimConflictWithLiveWinnerHoldsReservation: ErrOCDispatchConflict
+// where the row has ALREADY moved to dispatched means another request's claim
+// is live (mixed wiring: the frozen native path claimed first) — the shared
+// reservation belongs to that winner and must not be zero-settled here.
+func TestExecuteClaimConflictWithLiveWinnerHoldsReservation(t *testing.T) {
+	db := openActionDB(t, memDSN(t))
+	gate := &stubGate{}
+	disp := &stubDispatcher{outcome: DispatchOutcome{Status: appconn.ActionSucceeded, ProviderResult: "ok"}}
+	svc := NewActionService(repoappconn.NewActionStore(db), &stubGuard{}, gate, disp, nil)
+	claims := &stubClaimSource{
+		err: repoappconn.ErrOCDispatchConflict,
+		before: func(ctx context.Context) {
+			// Simulate the winner's claim committing first.
+			if err := db.Exec("UPDATE app_actions SET state = ?, fence = fence + 1 WHERE id = ?", appconn.ActionDispatched, "act-orphan").Error; err != nil {
+				t.Error(err)
+			}
+		},
+	}
+	svc.UseOCDispatchClaims(claims)
+	seedActionRow(t, db, "act-orphan", appconn.ActionAuthorized, "ocdigest-orphan", ocBindingJSONForExecute(), 2, 0)
+	if err := svc.store.SaveApproval(context.Background(), "act-orphan", "ocdigest-orphan", "boss", time.Now().Add(time.Hour), 5); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.Execute(context.Background(), "act-orphan"); !errors.Is(err, repoappconn.ErrOCDispatchConflict) {
+		t.Fatalf("err = %v, want ErrOCDispatchConflict", err)
+	}
+	if atomic.LoadInt32(&gate.finishes) != 0 {
+		t.Fatalf("finishes = %d, want 0 (live winner owns the reservation)", gate.finishes)
+	}
+	var row repoappconn.ActionRow
+	if err := db.Where("id = ?", "act-orphan").First(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	if row.State != appconn.ActionDispatched {
+		t.Fatalf("winner's dispatched state overwritten: %s", row.State)
 	}
 }

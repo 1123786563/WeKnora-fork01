@@ -39,6 +39,14 @@ var (
 	// one, and executing an approved action without the outbound boundary
 	// must be a clean refusal — never a panic, never a consumed approval.
 	ErrNoDispatcher = errors.New("no_dispatcher_configured")
+	// ErrDispatchNotStarted proves a dispatch was rejected BEFORE any
+	// network call left the process (T11): only such provably unstarted
+	// rejections may settle as failed; every other dispatch error leaves the
+	// provider outcome unknown. It is raised exclusively by pre-send gates —
+	// nil/incomplete dispatcher wiring, a missing durable claim record,
+	// snapshot/binding drift or a token failure — never around a call that
+	// may already have reached the provider.
+	ErrDispatchNotStarted = errors.New("dispatch_not_started")
 	// ErrOCClaimsNotWired documents the transitional wiring contract: the
 	// durable open-connector claim (key, fence, revocation serialization)
 	// is not wired, so OC dispatches take the frozen claim path and leave
@@ -387,12 +395,14 @@ func (s *ActionService) Execute(ctx context.Context, id string) error {
 		); cerr != nil {
 			// Lost race or blocked claim: the winner (if any) holds the
 			// SHARED reservation — the loser must never cancel or settle
-			// it; orphaned pre-allocations with no winner are released by
-			// the existing commercial recovery.
-			return cerr
+			// it. A claim rejected while the row is still authorized is
+			// provably usage-free (the outbound call never happened), so
+			// its pre-allocation is settled with ZERO usage here instead of
+			// lingering as an orphan hold (T10-Q-1).
+			return s.withClaimOrphanRelease(ctx, id, row.TenantID, cerr, reservationID)
 		}
 	} else if err := s.store.ClaimDispatch(ctx, id, row.ConnectionID, reservationID); err != nil {
-		return err
+		return s.withClaimOrphanRelease(ctx, id, row.TenantID, err, reservationID)
 	}
 	claimed, err := s.store.FindAction(ctx, id)
 	if err != nil {
@@ -423,6 +433,59 @@ func (s *ActionService) Execute(ctx context.Context, id string) error {
 		return ErrDispatchUnknown
 	}
 	return nil
+}
+
+// withClaimOrphanRelease settles the budget pre-allocation of a REJECTED
+// claim with zero usage (T10-Q-1) and returns the claim error. The release
+// fires only when the claim error proves the dispatch never started AND the
+// row is still authorized — i.e. no winner exists for the Action-ID-stable
+// shared reservation:
+//
+//   - ErrApprovalExhausted / ErrOCDispatchConflict leave the row authorized
+//     (the claim transaction rejected before any state move), so the
+//     reservation is provably usage-free and settles at zero;
+//   - ErrOCDispatchClaimed (lost race) or any conflict where the row has
+//     already moved to dispatched means a LIVE winner owns the shared
+//     reservation — the loser must never cancel or settle it.
+//
+// A crash between Begin and claim still leaves an orphan for the commercial
+// recovery; this path only covers rejections observable in-process.
+func (s *ActionService) withClaimOrphanRelease(ctx context.Context, id string, tenant uint64, claimErr error, reservationID string) error {
+	if s.gate == nil || reservationID == "" {
+		return claimErr
+	}
+	if !errors.Is(claimErr, repoappconn.ErrApprovalExhausted) && !errors.Is(claimErr, repoappconn.ErrOCDispatchConflict) {
+		// A lost race (or an ambiguous conflict): a winner may own the
+		// shared reservation — never settle it from the losing request.
+		return claimErr
+	}
+	current, err := s.store.FindAction(ctx, id)
+	if err != nil {
+		// The winnerless proof is unavailable: keep the hold (fail-safe
+		// over-hold) and surface the claim error alongside the proof
+		// failure.
+		return errors.Join(claimErr, err)
+	}
+	if current.State != appconn.ActionAuthorized {
+		// Another request's claim went through: the reservation has a
+		// winner — leave it to the winner's own settlement.
+		return claimErr
+	}
+	// Zero-usage settle: the commercial gate exposes no Cancel, and a final
+	// fact of zero connector usage settles the reservation with no charge —
+	// the orphan hold disappears.
+	release := s.gate.Finish(context.Background(), reservationID, commercial.UsageFact{
+		TenantID: tenant, RunID: "appaction:" + id,
+		CallID: id, AttemptID: id, Funding: commercial.FundingPlatform,
+		Service: commercial.ServiceConnector, PriceVersion: "v1", Revision: 1,
+		OccurredAt: time.Now().UTC(),
+		Dimensions: map[string]int64{commercial.DimensionConnector: 0},
+		Status:     commercial.UsageStatusFinal,
+	})
+	if release != nil {
+		return errors.Join(claimErr, release)
+	}
+	return claimErr
 }
 
 // ocBindingOf parses a row's immutable open-connector execution binding;
@@ -462,17 +525,25 @@ func snapshotOf(row repoappconn.ActionRow) (ActionSnapshot, error) {
 	}, nil
 }
 
-// settleOutcome maps a dispatcher result to a terminal state; unknown
-// outcomes park the action for provider-query resolution.
+// settleOutcome maps a dispatcher result to a terminal state. The only
+// error that may settle as FAILED is a proven pre-send rejection
+// (ErrDispatchNotStarted — no network call ever left the process); every
+// other dispatch error leaves the provider outcome UNKNOWN, because the
+// request may already have reached the provider and produced side effects.
+// Unknown outcomes park the action for provider-query resolution — they are
+// never re-queued into the dispatch path.
 func settleOutcome(out DispatchOutcome, derr error) DispatchOutcome {
 	if derr != nil {
-		return DispatchOutcome{Status: appconn.ActionFailed, ProviderResult: derr.Error()}
+		if errors.Is(derr, ErrDispatchNotStarted) {
+			return DispatchOutcome{Status: appconn.ActionFailed, ProviderResult: "dispatch rejected before send"}
+		}
+		return DispatchOutcome{Status: appconn.ActionUnknown, ProviderResult: "provider outcome unavailable"}
 	}
 	switch out.Status {
 	case appconn.ActionSucceeded, appconn.ActionFailed, appconn.ActionUnknown:
 		return out
 	default:
-		return DispatchOutcome{Status: appconn.ActionFailed, ProviderResult: "invalid dispatch outcome"}
+		return DispatchOutcome{Status: appconn.ActionUnknown, ProviderResult: "invalid provider outcome"}
 	}
 }
 
