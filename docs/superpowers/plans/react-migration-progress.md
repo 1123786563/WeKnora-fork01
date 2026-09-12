@@ -1341,3 +1341,8 @@
 - R038 remains `implementing`: invitation table/revoke/copy, audit and
   permission surfaces, localization, visual comparison, real backend,
   browser, Wails, iOS, and Android evidence remain open.
+
+- Follow-up added pending-invitation loading/revoke and a lazy audit-log
+  surface using the existing typed tenant APIs. Focused tests and Web
+  typecheck remain green; invitation copy/link variants and the Vue permission
+  popover are still open.
