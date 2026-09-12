@@ -1,6 +1,6 @@
 # Semantica 实施台账
 
-状态：V01–C03、I01–I02 verified；A01 implemented（3 条 ACL 接线待完成）；其余 15 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
+状态：V01–C03、I01–I02、A01 verified；其余 15 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
 
 状态值 pending / in_progress / blocked / implemented / verified。每项验证记录必须包含commit SHA、精确命令、退出码、环境、产物路径、失败/限制；无真实证据不标记verified。执行前记录实际基线与已有脏文件。
 
@@ -17,7 +17,7 @@
 | I03 | 有来源的构图与generation原子发布 | C03,I01,I02,A03 | pending | 尚未执行 |
 | I04 | 删除屏障、支持撤销和清理receipt | I03,A01 | pending | 尚未执行 |
 | I05 | 文档任务、attempt与终态协调 | I04 | pending | 尚未执行 |
-| A01 | 可信AccessScope与权限变更屏障 | C02,I02 | implemented | 核心+内部解析+8 条 ACL 同事务 epoch 已测；3 条接线（克隆/临时文档到期/组织删除）未完成，完成前语义查询不得上线；见运行记录 2026-09-11 A01 与 acl-write-inventory.md |
+| A01 | 可信AccessScope与权限变更屏障 | C02,I02 | verified | 11 条 ACL 接线+盘点修正（临时文档豁免实证）；短钥/伪造/漂移/过期均拒绝；完成评审 PASS；见运行记录 2026-09-11 A01（两段）与 acl-write-inventory.md |
 | A02 | 授权事实子图与缓存隔离 | A01,I03,I04 | pending | 尚未执行 |
 | A03 | 模型代理、原始用量与预算 | C02,I01,A01 | pending | 尚未执行 |
 | Q01 | GraphRAG检索与有界执行 | A02,V03 | pending | 尚未执行 |
@@ -164,9 +164,22 @@
 - 提交 SHA：d0ffa3f（feat(semantic): a01 可信AccessScope与权限变更屏障）。
 - 剩余限制（verified 前必须完成）：三条 ACL 接线——knowledge_transfer 克隆（源+目标 KB）、temporary_document 到期清理、organization DeleteOrganization（撤分享前）；Issue 尚无生产调用方（Q04 接线时必须走 resolveKBReadTenant）；快照当前 KB 级非 subject 级（per-subject 过滤归 A02/Q01 接线）；内部入口部署形态（网络隔离）归 O01。
 
+### 2026-09-11 A01 收尾：三条待接线（verified）
+
+- 工作区：.worktrees/semantica（分支 codex/semantica）；基线：d4f250a（A01 首段台账提交 d0ffa3f 之后）。
+- 修改文件：internal/application/repository/{kbshare.go(DeleteByOrganizationID tx+bump),semantic_outbox.go(BumpKBSemanticEpochs 服务层方法),semantic_outbox_test.go}、internal/application/service/{knowledge.go(semanticEpochs 字段+构造参数),semantic_scope.go(SemanticEpochBumper 接口),semantic_scope_test.go(TestTransferBumps+短钥/空钥两测),knowledge_transfer.go(bumpTransferEpochs×2 调用点)}、internal/container/container.go(dig 适配器)、acl-write-inventory.md（11 接线+盘点修正+无漏接结论）、本台账、03 计划勾选（步骤 3/6 补勾）。
+- 接线（补齐三条）：
+  1. 组织删除：kbshare.DeleteByOrganizationID 同事务**先 bump 后删**（顺序关键——bump 读取被删行）；RED-first（TestOrgShareStrippingBumpsSharedKBEpochs 在旧代码失败 epoch 0≠1，评审员 /tmp 变异复现：先删后 bump 同样失败）。
+  2. 文档克隆：executeKnowledgeClone 删除批后+克隆批后 bump 源+目标 KB（SemanticEpochBumper 接口经 dig 适配注入 knowledgeService；可恢复多文档流程无单一事务，取自有短事务；nil 安全）。诚实记录：TestTransferBumpsSourceAndTargetEpochs 为接线后补写（确认性测试），其判别力经评审员 no-op 变异验证（失败 0≠1）；两调用点位置经代码审读确认（端到端克隆流测试列为可选后续）。
+  3. 临时文档到期：**盘点修正而非接线**——TemporaryDocument 无 KnowledgeBaseID（会话级，types/temporary_document.go:24-48），从不进入知识库/语义索引，到期清理不影响语义可见性；清单结论改为"11 条已接线+1 条豁免+3 条归属后续"。
+- 评审（完成评审，聚焦增量）：PASS 6/6（组织删除顺序变异验证；transfer 判别力变异验证；临时文档豁免对照类型定义实证；清单完备；诚实测试注记成立；全电池绿）。遗留 nits：计数 10→11 与行号 24-38→24-48 已当场修复。
+- GREEN：repository 全量 ok；service 12 项（含 TestTransferBumps）；handler/database 不变绿；build/vet 净。
+- 提交 SHA：（本记录与代码同批提交后补记）
+- 剩余限制：Issue 生产调用方必须经 resolveKBReadTenant 取 owner tenant（Q04 接线强制，已在清单）；快照为 KB 级非 subject 级（A02/Q01 接线时细化）；端到端克隆流 bump 调用点测试为可选后续；内部入口网络隔离归 O01。
+
 ## 当前边界
 
-- V01–C03、I01–I02 verified；A01 implemented（3 条接线未完成，语义查询上线门槛）；后续 15 个任务未开始。
+- V01–C03、I01–I02、A01 verified（ACL 无漏接路径）；后续 15 个任务未开始。
 - V01精确版本已冻结（semantica 0.6.8）；真实模型证据须在后续任务补齐，不是已经通过的前提。
 - V02 结论边界：持久图桥接/授权子图重建/注册规则推导已验证；模型推断 unverified（无凭据，未调用）；向量检索路径未验证。
 - V03 结论边界：semantica 模式检索质量/延迟为受控语料实测；native 对照与模型用量门槛未测（阻断记录见上）；上线门禁 approved=false 待用户确认。

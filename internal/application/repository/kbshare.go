@@ -111,7 +111,15 @@ func (r *kbShareRepository) DeleteByKnowledgeBaseID(ctx context.Context, kbID st
 
 // DeleteByOrganizationID soft deletes all share records for an organization (e.g. when the org is deleted)
 func (r *kbShareRepository) DeleteByOrganizationID(ctx context.Context, orgID string) error {
-	return r.db.WithContext(ctx).Where("organization_id = ?", orgID).Delete(&types.KnowledgeBaseShare{}).Error
+	// A01 (org deletion path): stripping every share of an organization is
+	// an org-wide revocation - bump the epochs of the affected KBs in the
+	// SAME transaction, BEFORE the rows the bump reads are deleted.
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := BumpOrgSharedKBSemanticEpochsTx(tx, orgID); err != nil {
+			return err
+		}
+		return tx.Where("organization_id = ?", orgID).Delete(&types.KnowledgeBaseShare{}).Error
+	})
 }
 
 // ListByKnowledgeBase lists all share records for a knowledge base

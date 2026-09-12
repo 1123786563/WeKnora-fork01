@@ -90,6 +90,29 @@ func TestOrgMemberRemovalBumpsSharedKBEpochs(t *testing.T) {
 	require.Equal(t, int64(1), epoch, "org-shared KB epoch must bump on member removal")
 }
 
+func TestOrgShareStrippingBumpsSharedKBEpochs(t *testing.T) {
+	db := newSemanticTestDB(t)
+	require.NoError(t, db.Exec(
+		"INSERT INTO organizations (id, name, owner_id, owner_tenant_id) VALUES ('org-2', 'org', 'u-owner', 9)",
+	).Error)
+	require.NoError(t, db.Exec(
+		"INSERT INTO knowledge_bases (id, name, tenant_id, embedding_model_id, summary_model_id) VALUES ('kb-y', 'kb', 9, 'e1', 's1')",
+	).Error)
+	require.NoError(t, db.Exec(
+		"INSERT INTO kb_shares (id, knowledge_base_id, organization_id, source_tenant_id, shared_by_user_id, permission) VALUES ('sh-2', 'kb-y', 'org-2', 9, 'u1', 'viewer')",
+	).Error)
+
+	shareRepo := NewKBShareRepository(db)
+	require.NoError(t, shareRepo.DeleteByOrganizationID(context.Background(), "org-2"))
+	var epoch int64
+	require.NoError(t, db.Raw(
+		"SELECT epoch FROM semantic_access_epochs WHERE tenant_id = 9 AND kb_id = 'kb-y'").Scan(&epoch).Error)
+	require.Equal(t, int64(1), epoch, "stripping an org's shares must bump the shared KBs' epochs")
+	var shares int64
+	db.Table("kb_shares").Where("organization_id = ? AND deleted_at IS NULL", "org-2").Count(&shares)
+	require.Zero(t, shares, "shares must actually be soft-deleted")
+}
+
 func outboxCount(t *testing.T, db *gorm.DB) int64 {
 	t.Helper()
 	var count int64

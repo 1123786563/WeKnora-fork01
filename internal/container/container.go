@@ -140,6 +140,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(initSemanticClient))
 	must(container.Invoke(registerSemanticClientCleanup))
 	must(container.Provide(repository.NewSemanticControlRepository))
+	// The control repository implements SemanticEpochBumper (transfer-flow
+	// epoch bumps wired into the knowledge service).
+	must(container.Provide(func(repo *repository.SemanticControlRepository) service.SemanticEpochBumper {
+		return repo
+	}))
 	must(container.Provide(initSemanticScopeService))
 	must(container.Provide(initSemanticInternalHandler))
 	must(container.Provide(docparser.NewImageResolver))

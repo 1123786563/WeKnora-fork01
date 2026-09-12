@@ -15,14 +15,14 @@
 | 组织成员移除 | repository/organization.go `RemoveTenantMember` | 自有 tx | 该组织全部被分享 KB epoch |
 | 组织成员角色变更 | repository/organization.go `UpdateTenantMemberRole` | 自有 tx | 该组织全部被分享 KB epoch |
 | 文档删除/替换（语义侧） | repository/semantic_outbox.go `WithSemanticMutation` | 单事务 | deny 屏障+epoch（I02） |
+| 文档移动/克隆 | service/knowledge_transfer.go `executeKnowledgeClone`（经 `bumpTransferEpochs`） | 删除批后+克隆批后（可恢复多文档流程，无单一事务；每批自有短事务） | 源+目标 KB epoch（SemanticEpochBumper，nil 安全） |
+| 组织删除 | repository/kbshare.go `DeleteByOrganizationID`（service/organization.go `DeleteOrganization` 调用） | 自有 tx | 先 bump 该组织全部被分享 KB epoch 再删行（同事务，顺序保证 bump 可读被删行） |
 
-## 待接线（A01 未完成项）
+## 盘点修正
 
-| 写入口 | 文件/函数 | 现状 | 所需接线 |
-|---|---|---|---|
-| 文档移动/克隆 | service/knowledge_transfer.go `planKnowledgeClone`/`executeKnowledgeClone` | 业务写无 epoch | 源+目标 KB epoch 同事务 |
-| 临时文档到期 | service/temporary_document.go（TTL 清理） | 到期不触发 epoch | 到期清理事务 bump 对应 KB epoch |
-| 组织删除 | service/organization.go `DeleteOrganization`（经 shareRepo.DeleteByOrganizationID 撤销全部分享） | 无 epoch、无事务 | 撤分享前 bump 该组织全部被分享 KB epoch（同事务） |
+| 原列项 | 核实结果 | 处置 |
+|---|---|---|
+| 临时文档到期（service/temporary_document.go CleanupExpired） | TemporaryDocument 无 KnowledgeBaseID（会话级资源，types/temporary_document.go:24-48），从不进入知识库、从不被语义索引 | 无需 epoch 接线——到期清理不影响任何语义可见性（非缺失） |
 
 ## 由后续任务接线（归属明确）
 
@@ -37,4 +37,4 @@
 - 规格 §6"敏感替换可指定立即隐藏旧版本"尚未建模：`AllowRetainedPrevious` 目前为全局常量 true，`SemanticMutation` 无按次隐藏旧版本字段（I05 建模）。
 - Issue 的 scope key 目前由调用方给定；Q 任务接线时必须经 `resolveKBReadTenant` 取资源 owner tenant，并校验 subject 读权限（A01 评审条件 2）。
 
-结论：**三条待接线路径未完成前，语义查询不得上线**（Q01+ 依赖 A01 verified）。
+结论：**ACL 写入口已无漏接路径**（11 条已接线 + 1 条盘点修正豁免 + 3 条归属后续任务）；剩余上线条件为 Issue 生产调用方经 resolveKBReadTenant 取 owner tenant（Q04 接线时强制）。

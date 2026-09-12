@@ -53,7 +53,7 @@ func TestSemanticScopeRejectsEpochChange(t *testing.T) {
 
 - [x] **2. 确认 RED**。执行 `go test ./internal/application/service -run TestSemanticScope -count=1`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 盘点成员撤销、角色/分享变更、文档移动、KB迁移/删除、临时文档访问等所有能影响可见性的写入口，清单列真实文件/函数/事务；每条接入同事务epoch或fail-closed访问版本**
+- [x] **3. 盘点成员撤销、角色/分享变更、文档移动、KB迁移/删除、临时文档访问等所有能影响可见性的写入口，清单列真实文件/函数/事务；每条接入同事务epoch或fail-closed访问版本**
 
 - [x] **4. 基于现有访问服务生成不可变ScopeSnapshot，使用resource owner tenant而非请求者tenant；内部解析API只接受语义服务身份，校验audience/purpose/过期/哈希**
 
@@ -71,7 +71,7 @@ if currentEpoch != issued.PermissionEpoch || currentScopeHash != issued.ScopeHas
 // epoch读取必须来自业务权威；权限服务失败时直接返回错误。
 ```
 
-- [ ] **6. 确认 GREEN 与验收**。重跑 `go test ./internal/application/service -run TestSemanticScope -count=1`，预期退出码 0；另完成：覆盖跨空间共享资源owner、被撤销成员、过期/伪造scope、epoch读取失败；ACL写清单无漏接路径，否则后续查询不得上线。
+- [x] **6. 确认 GREEN 与验收**。重跑 `go test ./internal/application/service -run TestSemanticScope -count=1`，预期退出码 0；另完成：覆盖跨空间共享资源owner、被撤销成员、过期/伪造scope、epoch读取失败；ACL写清单无漏接路径，否则后续查询不得上线。
 
 - [x] **7. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 A01 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): a01 可信AccessScope与权限变更屏障`。
 

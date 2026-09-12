@@ -116,6 +116,25 @@ func (f *semanticScopeFixture) ValidateDelivery(scope types.SemanticAccessScope)
 	return f.svc.ValidateDelivery(context.Background(), scope)
 }
 
+func TestTransferBumpsSourceAndTargetEpochs(t *testing.T) {
+	f := newSemanticScopeFixture(t)
+	// The knowledge service wiring: bumpTransferEpochs must raise BOTH KBs'
+	// epochs through the real control repository (transfer clone path).
+	source := &types.KnowledgeBase{ID: "kb-src", TenantID: 1}
+	target := &types.KnowledgeBase{ID: "kb-dst", TenantID: 1}
+	svc := &knowledgeService{semanticEpochs: f.repo}
+	require.NoError(t, svc.bumpTransferEpochs(context.Background(), source, target))
+	for _, kb := range []string{"kb-src", "kb-dst"} {
+		var epoch int64
+		require.NoError(t, f.db.Raw(
+			"SELECT epoch FROM semantic_access_epochs WHERE tenant_id = 1 AND kb_id = ?", kb).Scan(&epoch).Error)
+		require.Equal(t, int64(1), epoch, "KB %s epoch must bump on transfer", kb)
+	}
+	// Nil bumper stays nil-safe (control plane absent).
+	nilSvc := &knowledgeService{}
+	require.NoError(t, nilSvc.bumpTransferEpochs(context.Background(), source, target))
+}
+
 func TestSemanticScopeShortKeyDisablesService(t *testing.T) {
 	f := newSemanticScopeFixture(t)
 	// A short HMAC key is indistinguishable from the publicly-known empty

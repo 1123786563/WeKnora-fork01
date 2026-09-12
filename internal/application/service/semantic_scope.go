@@ -27,6 +27,13 @@ var (
 	ErrSemanticScopeChanged = errors.New("semantic scope changed")
 )
 
+// SemanticEpochBumper raises KB authorization epochs after visibility-
+// changing writes (transfer flows). Implemented by the semantic control
+// repository; nil-safe for callers that run without the control plane.
+type SemanticEpochBumper interface {
+	BumpKBSemanticEpochs(ctx context.Context, tenantID uint64, kbIDs ...string) error
+}
+
 // SemanticScopeConfig controls scope issuance.
 type SemanticScopeConfig struct {
 	Audience   string

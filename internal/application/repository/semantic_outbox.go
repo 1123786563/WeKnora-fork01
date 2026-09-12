@@ -263,6 +263,16 @@ func BumpTenantSemanticEpochsTx(tx *gorm.DB, tenantID uint64) error {
 	return nil
 }
 
+// BumpKBSemanticEpochs raises the named KBs' epochs in its own short
+// transaction - the service-layer entry for transfer flows (clone/move
+// source+target) where the business writes are resumable multi-document
+// operations without one enclosing transaction.
+func (r *SemanticControlRepository) BumpKBSemanticEpochs(ctx context.Context, tenantID uint64, kbIDs ...string) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return BumpKBSemanticEpochsTx(tx, tenantID, kbIDs...)
+	})
+}
+
 // BumpOrgSharedKBSemanticEpochsTx raises epochs for every KB shared to the
 // organization (org membership changes re-scope all of them at once),
 // inside the caller's transaction.

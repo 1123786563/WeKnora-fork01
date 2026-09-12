@@ -352,6 +352,10 @@ func (s *knowledgeService) executeKnowledgeClone(
 		if err := deleteReferencedKnowledge(ctx, s, target.ID, plan.remove); err != nil {
 			return err
 		}
+		// A01: removing documents from the target KB invalidates scopes.
+		if err := s.bumpTransferEpochs(ctx, source, target); err != nil {
+			return err
+		}
 		done += len(plan.remove)
 		if progress != nil {
 			progress(done, total)
@@ -368,7 +372,24 @@ func (s *knowledgeService) executeKnowledgeClone(
 			progress(done, total)
 		}
 	}
+	// A01: newly cloned documents change the target KB's visibility; bump
+	// both KBs once the batch lands (per-document additions cannot widen an
+	// already-issued scope, but a fresh scope must not miss the transfer).
+	if err := s.bumpTransferEpochs(ctx, source, target); err != nil {
+		return err
+	}
 	return nil
+}
+
+// bumpTransferEpochs invalidates outstanding scopes after a transfer
+// changed document visibility in the source and/or target KB. Nil bumper
+// (control plane absent) skips the bump; delivery-time validation remains
+// the hard gate.
+func (s *knowledgeService) bumpTransferEpochs(ctx context.Context, source, target *types.KnowledgeBase) error {
+	if s.semanticEpochs == nil || source == nil || target == nil {
+		return nil
+	}
+	return s.semanticEpochs.BumpKBSemanticEpochs(ctx, target.TenantID, source.ID, target.ID)
 }
 
 // acknowledgeMovedReparse completes transfer admission, not document parsing.
