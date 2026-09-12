@@ -135,3 +135,9 @@
 
 - /register UI 级 live E2E 通过：客户端校验拦截（0 请求 + 4 内联错误）、有效注册恰好 1 请求、切回登录预填邮箱。证据：evidence/vue-react-parity/2026-09-12-register-live-e2e.md + screenshots/register-flow-live.png；脚本 .parity-tools/register-flow.cjs。
 - 四页实施子代理继续（organizations + packages/i18n 新域进行中）。
+
+## 2026-09-12 Round 21
+
+- live 验证未初始化 KB 卡片 → settings 路由（KB 必修 #16）。KB 详情面深入 E2E 待租户配置测试模型。
+- KB 详情面（documents/document detail/preview/processing timeline/wiki/FAQ/graph）只读审计子代理派发。
+- 四页实施子代理继续。
