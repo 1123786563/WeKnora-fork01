@@ -87,8 +87,12 @@ func NewClient(baseURL string, hc *http.Client) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: unparsable", ErrInvalidBaseURL)
 	}
+	// u.ForceQuery models a bare trailing "?" (url.Parse keeps it and
+	// u.String() preserves it): accepting such a base would turn every action
+	// path into a rawQuery and POST to the root, so it is rejected as "has
+	// query" per the frozen pre-network validation rules.
 	if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" ||
-		u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.RawFragment != "" {
+		u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.RawFragment != "" {
 		return nil, ErrInvalidBaseURL
 	}
 	if hc == nil {

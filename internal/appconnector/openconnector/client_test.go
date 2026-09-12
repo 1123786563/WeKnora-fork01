@@ -174,9 +174,13 @@ func TestNewClientRejectsUnsafeBaseURL(t *testing.T) {
 		"http://user:pass@127.0.0.1:1",
 		"https://token@oc.internal",
 		"http://127.0.0.1:1/?q=1",
+		// A bare trailing "?" is a query separator that survives url.Parse
+		// (ForceQuery=true, u.String() keeps it): accepting it would route
+		// every action path into the rawQuery, so it must be rejected.
+		"http://127.0.0.1:1/?",
 		"http://127.0.0.1:1/#frag",
-		// NOTE: a bare trailing "?" or "#" is NOT listed — url.Parse normalizes
-		// both away, so such URLs carry no query/fragment at all.
+		// NOTE: only a bare trailing "#" is omitted — that one IS normalized
+		// away by url.Parse (u.String() drops it), so it carries no fragment.
 	} {
 		if _, err := NewClient(base, http.DefaultClient); err == nil {
 			t.Fatalf("unsafe base URL accepted: %q", base)
