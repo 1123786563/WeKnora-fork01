@@ -2,7 +2,7 @@
 
 - 设计：[已批准规格](../specs/2026-09-10-dual-agent-trpc-recovery-design.md)
 - 计划：[实施计划](2026-09-10-dual-agent-trpc-recovery.md)
-- 当前阶段：生产链路已接通；本次 2026-09-12 rerun 在独立 worktree 重新验证 SQLite 9/9、PostgreSQL 8/8 SIGKILL 矩阵、双方言 worker contention、Run 存储、前端工程检查、真实浏览器 durable HTTP 和真实 server binary SIGKILL→新进程恢复。功能保持默认关闭；浏览器使用本地 Ollama 与确定性 rerank 测试替身，外部生产凭据仍不在本地验收范围。
+- 当前阶段：生产链路已接通；本次 2026-09-12 rerun 在独立 worktree 重新验证 SQLite 10/10、PostgreSQL 9/9 SIGKILL 矩阵、双方言 worker contention、Run 存储、前端工程检查、真实浏览器 durable HTTP 和真实 server binary SIGKILL→新进程恢复。功能保持默认关闭；浏览器使用本地 Ollama 与确定性 rerank 测试替身，外部生产凭据仍不在本地验收范围。
 - 范围：两引擎分会话，复用现有能力，仅 tRPC 持久化恢复，未知结果等待用户。
 - 规划基线：`e91f8af`。本次重新执行工作树：`codex/dual-agent-trpc-recovery-rerun`（自当前 checkout 创建，未回退规划基线）。
 
@@ -28,8 +28,8 @@
 ## 2026-09-12 rerun evidence
 
 - 起点 `329a661b`；修复提交 `c76d688`（恢复 opt-in、测试夹具）与 `1e47cfc9`（PostgreSQL rollback fixture）；随后修复 worker deadline context data race。
-- recoverytest SQLite：PASS，SIGKILL matrix 9/9；单独 `TestCrashAfterToolResult` 在无 provider 时显式 SKIPPED。
-- recoverytest PostgreSQL：PASS，SIGKILL matrix 8/8 + contention；repository PostgreSQL Run suite 6/6 PASS。
+- recoverytest SQLite：PASS，SIGKILL matrix 10/10；单独 `TestCrashAfterToolResult` 在无 provider 时显式 SKIPPED。
+- recoverytest PostgreSQL：PASS，SIGKILL matrix 9/9 + contention；repository PostgreSQL Run suite 6/6 PASS。
 - 前端：`pnpm run test && pnpm run type-check && pnpm run build-only` PASS，819/819。
 - 历史浏览器证据：本地前端 `5173` + 后端 `8080` 的 readiness guard 因缺模型而阻塞；该结果保留为历史记录，不代表当前 live 结论。当前 rerun 已用本地 Ollama 与确定性 rerank 替身完成真实 tRPC HTTP 与 server-binary SIGKILL 验证。
 

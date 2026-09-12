@@ -28,8 +28,8 @@ and the external side-effect endpoint are deterministic doubles.
 |---|---|---|---|
 | admission gate | `GOWORK=off go test ./internal/agent/recoverytest -run TestRecoveryAdmissionGate -count=1` | PASS | disabled admission is false; worker-only mode is drain-only; enabled admission is true |
 | inconsistent config | `GOWORK=off go test ./internal/agent/recoverytest -run TestRecoveryAdmissionGateRejectsInconsistentConfig -count=1` | PASS | `AdmissionEnabled=true` with `Enabled=false` is rejected before runtime construction |
-| SIGKILL matrix (SQLite) | `GOWORK=off go test ./internal/agent/recoverytest -run TestCrashMatrixSQLite -count=1 -v` | PASS 9/9 (rerun) | Includes OAuth park; each persisted boundary uses a killed provider process and a new process reopening the same database. |
-| SIGKILL matrix (PostgreSQL) | `TRPC_RECOVERY_PG_DSN=postgres://trpc:trpc@127.0.0.1:55432/trpc_test?sslmode=disable GOWORK=off go test ./internal/agent/recoverytest -run 'TestCrashMatrixPostgreSQL|TestTwoWorkerContentionPostgreSQL' -count=1 -v` | PASS 8/8 + contention (rerun) | Per-case isolated PostgreSQL database, versioned migrations, real leases/claims/epochs, killed provider and new-process resume. |
+| SIGKILL matrix (SQLite) | `GOWORK=off go test ./internal/agent/recoverytest -run TestCrashMatrixSQLite -count=1 -v` | PASS 10/10 (fresh) | Includes OAuth park and MCP set drift; each persisted boundary uses a killed provider process and a new process reopening the same database. |
+| SIGKILL matrix (PostgreSQL) | `TRPC_RECOVERY_PG_DSN=postgres://trpc:trpc@127.0.0.1:55432/trpc_test?sslmode=disable GOWORK=off go test ./internal/agent/recoverytest -run 'TestCrashMatrixPostgreSQL|TestTwoWorkerContentionPostgreSQL' -count=1 -v` | PASS 9/9 + contention (fresh) | Per-case isolated PostgreSQL database, versioned migrations, real leases/claims/epochs, killed provider and new-process resume. |
 | PostgreSQL repository suite | `TRPC_TEST_POSTGRES_DSN=...options=-c%20app.skip_embedding%3Dtrue GOWORK=off go test ./internal/application/repository -run TestAgentRunPostgres -count=1 -v` | PASS 6/6 (rerun) | Admission idempotency, guards, rollback, lease/checkpoint, concurrent claim and reopen+migrations pass on PostgreSQL 16; rollback fixture is dialect-aware. |
 | two-worker contention | `go test ./internal/agent/recoverytest -run TestTwoWorkerContentionSQLite -count=1` (SQLite) and `...PostgreSQL` with `TRPC_RECOVERY_PG_DSN` | PASS both (2026-09-12) | stale worker claims, lets its lease expire, then keeps attempting fenced writes while a takeover process claims with a higher epoch and completes: every post-expiry write rejected, external side effect exactly once, no durable-state pollution |
 | deadline budget | `go test ./internal/application/service -run TestWorkerFailsRunPastPersistedDeadline -count=1` | PASS | a run past its persisted deadline fails with deadline_exceeded before executing; the execution context is capped at the deadline (second test), so the budget survives restarts and a slow graph cannot outlive it |
@@ -133,7 +133,7 @@ acceptance.
 | 04 checkpoint/pending writes | PASS | 真实 SDK saver 挂接；pending 写物化为前沿重执行；版本/SDK 封套校验 |
 | 05 工具日志与结果不明处理 | PASS | 副作用前意图持久化；unknown → 持久等待；显式重试后执行；幂等重投不重复（矩阵 after_side_effect/unknown_retry/idempotent 行）|
 | 06 Graph 执行器 | PASS | ExecuteDurableRun 生产链路（受理→后台→GraphAgent→日志→checkpoint→事件→finalize 事务）；SDK 源固定 v1.10.0 |
-| 07 恢复 worker 与重开 | PASS | SIGKILL 矩阵 SQLite 9/9、PostgreSQL 8/8（含 oauth_park）；接管/竞争/旧 epoch 拒绝全验证 |
+| 07 恢复 worker 与重开 | PASS | SIGKILL 矩阵 SQLite 10/10、PostgreSQL 9/9（含 oauth_park 与 mcp_set_drift）；接管/竞争/旧 epoch 拒绝全验证 |
 | 08 等待状态持久化 | PASS | waiting_user/OAuth/前审批（mcp_approve_）停靠均持久化；决策归属与幂等重试 |
 | 09 Sandbox 恢复 | PASS | ObserveInstance 四态 fixture（alive/lost/destroyed/无绑定）；实例存活不导入任务结果 |
 | 10 能力复用 | PASS | MCP/Skills/Tools/模型配置、提示词/记忆/VLM 装配与生产图路径已验证；多模态 durable graph 与延迟 MCP 集合漂移均有生产链行为/跨进程证据 |
