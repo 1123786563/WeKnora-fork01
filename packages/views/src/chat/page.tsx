@@ -101,22 +101,6 @@ export interface ChatPageProps {
   onCloseTerminal?(): void;
 }
 
-const SECRET_KEY = /(?:api[_-]?key|app[_-]?secret|access[_-]?token|refresh[_-]?token|client[_-]?secret|password|secret|token)/i;
-
-function safeValue(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(safeValue);
-  if (value !== null && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, SECRET_KEY.test(key) ? '[redacted]' : safeValue(item)]));
-  }
-  return value;
-}
-
-function displayValue(value: unknown): string {
-  value = safeValue(value);
-  if (typeof value === 'string') return value;
-  try { return JSON.stringify(value) ?? String(value); } catch { return '[unavailable]'; }
-}
-
 export function messageReferenceValues(messages: readonly ChatMessage[]): unknown[] {
   const references: unknown[] = [];
   for (const message of messages) {
@@ -130,13 +114,12 @@ export function messageReferenceValues(messages: readonly ChatMessage[]): unknow
 }
 
 function LiveResponse({ stream }: { stream: ChatStreamPresentation }) {
-  const hasDetails = Boolean(stream.thinking) || stream.references.length > 0 || stream.toolCalls.length > 0;
+  const hasDetails = Boolean(stream.thinking) || stream.toolCalls.length > 0;
   if (!hasDetails) return null;
   return <section aria-label="Live response" className="wk-chat-live-response">
     <p role="status">Status: {stream.phase}</p>
     {stream.thinking ? <details open><summary>Thinking</summary><p>{stream.thinking}</p></details> : null}
     {stream.toolCalls.length > 0 ? <div><h2>Tool calls</h2><ul className="wk-list">{stream.toolCalls.map((tool) => <li key={tool.id}><strong>{tool.name ?? tool.id}</strong><small>{tool.status}</small>{tool.result === undefined ? null : <ToolResultView toolCall={tool} />}</li>)}</ul></div> : null}
-    {stream.references.length > 0 ? <div><h2>References</h2><ul className="wk-list">{stream.references.map((reference, index) => <li key={index}><span>{displayValue(reference)}</span></li>)}</ul></div> : null}
   </section>;
 }
 
