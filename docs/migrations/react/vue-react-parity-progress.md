@@ -397,3 +397,19 @@
 - 门禁：shared 326/326、web 204/204、typecheck 0 错误。live 回归 6/6 主页面正常。
 - settings 审计条目全部关闭（最后一项 tenant delete danger zone 已集成+live 验证）。
 - 剩余开放项均需外部因素：Wails 运行时交互（GUI）、iOS/Android 真机验收（设备）、后端 3 项语义裁决、矩阵逐页终审。
+
+## 2026-09-12 iOS 模拟器交互验收（Round 100 专项）
+
+环境：iPhone 17 Pro 模拟器（iOS 26.5，UDID 5EECD8BB），原生 dev client com.weknora.mobile（expo run:ios Hermes 构建），后端 make dev-app 于 :8080。
+
+已验证（全部有截图证据 screenshots/ios-sim-*.png）：
+1. 原生应用构建+安装+启动 ✅（修复 ios/Podfile.lock 缺失 react-native-netinfo 的 pod install）
+2. 登录界面渲染：品牌标题/Email/Password/Sign in/SSO/注册/邀请/Change server 全入口 ✅
+3. Change server → Save server 服务器地址配置流程实测走通 ✅
+4. 真实网络链路：应用→后端请求被后端接收（后端日志记录 client_ip=192.168.3.30 的 auth/login POST）✅
+5. 真实凭据登录成功（parity-test@local.dev，后端返回 200 Login successful）✅
+6. 登录后跳转 knowledge/index，KB 列表渲染真实后端数据（parity-faq-kb / Parity KB Demo / 产品知识库）✅
+
+环境限制（如实记录）：
+- 模拟器 loopback 断连（Safari 到 localhost 失败），改用 LAN IP 192.168.3.30:8080 作为 API 地址——应用的多服务器配置设计恰好覆盖此场景。
+- axe 键盘注入在特殊字符/时序上不稳定，登录验收期间临时将测试账号密码改为纯字母数字（Parity12345678）；已改回原密码 Parity123456!（见下轮）。
