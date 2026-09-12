@@ -2,6 +2,7 @@ packages:
   - packages/contracts
   - packages/api-client
   - packages/domain
+  - packages/core
   - packages/ui
   - apps/web
   - apps/mobile

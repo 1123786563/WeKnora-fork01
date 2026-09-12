@@ -1,0 +1,14 @@
+{
+  "name": "@weknora/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./craft/controller": "./src/craft/controller.ts"
+  },
+  "dependencies": {
+    "@weknora/api-client": "workspace:*",
+    "@weknora/contracts": "workspace:*",
+    "@weknora/domain": "workspace:*"
+  }
+}

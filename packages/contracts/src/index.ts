@@ -67,6 +67,8 @@ export type { ConnectionView, InstallationView, SyncBindingView, SyncStatusView,
 export { parseConnectionView, parseInstallationView, parseSyncStatusView } from './appconnector.ts';
 export type { ActionView, ActionState, ActionDetail, ActionRisk, PrepareActionInput, ApproveActionInput, ExtendTaskBudgetInput, TaskBudgetExtensionResult } from './appconnector.ts';
 export { ACTION_STATES, isActionState, parseActionView, parseActionDetail, parseTaskBudgetExtensionResult } from './appconnector.ts';
+export type { CraftSessionKind, CraftRunStatus, CraftTerminalRunStatus, CraftCheckStatus, CraftEventKind, CraftSessionCreatedView, CraftSessionSummaryView, CraftSessionPageView, CraftRunView, CraftFileVersionView, CraftVersionCheckView, CraftVersionView, CraftVersionsPageView, CraftWorkspaceRefView, CraftWorkspaceView, CraftInputView, CraftPreviewTicketView, CraftRunEventView, CraftEventPayloadView } from './craft/index.ts';
+export { CRAFT_SESSION_KINDS, CRAFT_RUN_STATUSES, CRAFT_TERMINAL_RUN_STATUSES, CRAFT_CHECK_STATUSES, CRAFT_EVENT_KINDS, parseCraftSessionCreated, parseCraftSessionPage, parseCraftRunView, parseCraftVersionView, parseCraftVersionsPage, parseCraftWorkspaceView, parseCraftInputView, parseCraftPreviewTicket, parseCraftRunEvent, parseCraftEventPayload } from './craft/index.ts';
 
 function requireNonEmptyString(value: unknown, path: string): string {
   if (typeof value !== 'string' || value.trim() === '') {
