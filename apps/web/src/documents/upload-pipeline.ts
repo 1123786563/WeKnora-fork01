@@ -39,6 +39,11 @@ export function uploadSummary(entries: readonly UploadEntry[]): { count: number;
   return { count: entries.length, totalLabel: formatBytes(total) };
 }
 
+/** Remove one staged item without mutating the caller's list or upload state. */
+export function removeUploadEntry(entries: readonly UploadEntry[], index: number): UploadEntry[] {
+  return entries.filter((_, entryIndex) => entryIndex !== index);
+}
+
 export interface RunUploadPipelineInput {
   entries: readonly UploadEntry[];
   tagIds?: string[];

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { formatBytes, runUploadPipeline, toUploadEntries, uploadSummary, type UploadEntry } from './upload-pipeline.ts';
+import { formatBytes, removeUploadEntry, runUploadPipeline, toUploadEntries, uploadSummary, type UploadEntry } from './upload-pipeline.ts';
 
 function entry(name: string): File {
   return new File(['x'], name);
@@ -81,4 +81,10 @@ test('upload summary lists file names plus sizes for the confirm dialog', () => 
   assert.equal(summary.count, 2);
   assert.equal(summary.totalLabel, '1.5 KB');
   assert.equal(formatBytes(512), '512 B');
+});
+
+test('removing a staged item preserves order and does not mutate the batch', () => {
+  const entries = toUploadEntries([entry('a.pdf'), entry('b.pdf'), entry('c.pdf')]);
+  assert.deepEqual(removeUploadEntry(entries, 1).map((item) => item.name), ['a.pdf', 'c.pdf']);
+  assert.deepEqual(entries.map((item) => item.name), ['a.pdf', 'b.pdf', 'c.pdf']);
 });

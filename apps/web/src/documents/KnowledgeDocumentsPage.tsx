@@ -4,7 +4,7 @@ import { processingStatusLabel, normalizeKnowledgeProcessingStatus } from '@wekn
 import { flattenKnowledgeFolders as flattenFolders } from '@weknora/domain/knowledge/folders';
 import { Button, Card, Dialog, Status } from '@weknora/ui';
 import { createTranslator, useAppLocale } from '../i18n.ts';
-import { formatBytes, runUploadPipeline, toUploadEntries, uploadSummary, type UploadEntry, type UploadEntryState } from './upload-pipeline.ts';
+import { formatBytes, removeUploadEntry, runUploadPipeline, toUploadEntries, uploadSummary, type UploadEntry, type UploadEntryState } from './upload-pipeline.ts';
 import './documents.css';
 import { computeKBPermissions, kbTypeRedirectPath, resolveKBSurfaceTabs, type KBSurfaceKB, type KBSurfaceMe } from '../knowledge/permissions.ts';
 import { cancelParseDocuments, documentRowActions, reparseDocument } from './actions.ts';
@@ -145,6 +145,12 @@ export function KnowledgeDocumentsPage({ client, knowledgeBaseId, onOpenDocument
     uploadPipelineController.current?.abort();
     uploadPipelineController.current = null;
     setPendingEntries([]); setPendingTagIds([]); setUploadStates([]); setUploading(false);
+  }
+
+  function removeStagedUpload(index: number) {
+    if (uploading) return;
+    setPendingEntries((current) => removeUploadEntry(current, index));
+    setUploadStates((current) => current.filter((_, stateIndex) => stateIndex !== index));
   }
 
   // Sequential uploads (one call per file) with per-file status; a per-file
@@ -306,6 +312,7 @@ export function KnowledgeDocumentsPage({ client, knowledgeBaseId, onOpenDocument
             <Status tone={state?.status === 'done' ? 'success' : state?.status === 'error' ? 'error' : state?.status === 'uploading' ? 'warning' : 'neutral'}>
               {state?.status === 'done' ? 'Uploaded' : state?.status === 'error' ? state.message ?? 'Failed' : state?.status === 'uploading' ? 'Uploading…' : 'Pending'}
             </Status>
+            <Button type="button" disabled={uploading} onClick={() => removeStagedUpload(index)}>Remove</Button>
           </li>;
         })}
       </ul>
