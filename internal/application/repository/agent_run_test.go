@@ -203,8 +203,17 @@ func TestAgentRunAdmissionGuards(t *testing.T) {
 
 func TestAgentRunAdmissionRollback(t *testing.T) {
 	db := openRunTestDB(t)
+	// A precreated assistant row is the production contract (the SSE handler
+	// persists the placeholder first) and must NOT abort admission anymore;
+	// see TestAgentRunAdmitToleratesPrecreatedAssistantMessage. Rollback is
+	// instead exercised through a database-level failure after the run row
+	// insert: a trigger aborts the assistant message insert, so the whole
+	// transaction - run row, user message, slot reservation - must roll back.
 	require.NoError(t, db.Exec(`INSERT INTO messages (id, request_id, session_id, role, content)
 		VALUES ('a1', 'old', 's2', 'assistant', '')`).Error)
+	require.NoError(t, db.Exec(`CREATE TRIGGER abort_assistant_insert BEFORE INSERT ON messages
+		WHEN NEW.role = 'assistant' AND NEW.session_id = 's1'
+		BEGIN SELECT RAISE(ABORT, 'triggered failure'); END`).Error)
 	_, err := NewAgentRunStore(db).Admit(context.Background(), testAdmission())
 	require.Error(t, err)
 	var count int64
