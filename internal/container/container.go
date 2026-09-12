@@ -506,7 +506,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 		return appconnectorsvc.NewOCSubjectGuard(src, appconnectorsvc.NewInstallationStateSource(installs), nil, oc)
 	}))
 	// T13 open-connector product wiring (open_connector.go). The
-	// ActionService is built THROUGH WireOpenConnector so the T10-F-3
+	// ActionService is built THROUGH PrepareOpenConnector/NewOCArmedActionService
+	// (the F-1 production constructor composes wiring and service) so the T10-F-3
 	// mandate is enforced at construction: a real dispatcher never exists
 	// without the durable claim store and the slot limiter, and
 	// dispatcher-without-claims is a STARTUP FAILURE. Disabled by default:

@@ -12,7 +12,10 @@ import (
 	"github.com/Tencent/WeKnora/internal/agent/approval"
 	"github.com/Tencent/WeKnora/internal/agent/skills"
 	"github.com/Tencent/WeKnora/internal/agent/tools"
+	appconn "github.com/Tencent/WeKnora/internal/appconnector"
 	"github.com/Tencent/WeKnora/internal/application/repository"
+	repoappconn "github.com/Tencent/WeKnora/internal/application/repository/appconnector"
+	appconnectorsvc "github.com/Tencent/WeKnora/internal/application/service/appconnector"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/logger"
@@ -278,6 +281,66 @@ func (s *agentService) registerMCPTools(
 			logger.Infof(ctx, "Registered %d MCP service(s) for on-demand discovery", registered)
 		}
 	}
+}
+
+// registerOpenConnectorTool mounts the open-connector app action tool
+// (tools.ToolAppConnector) on the AUTHENTICATED session assembly path,
+// gated by installation visibility: only a tenant with at least one ACTIVE
+// app installation has any connector surface to expose, and per-action
+// authorization stays with the facade's trusted prepare chain and the human
+// actions surface — mounting the tool grants no permission by itself.
+//
+// The facade chain is built here from s.db rather than injected through
+// NewAgentService (which already takes 23 parameters), following the
+// userEnvResolver precedent: this is the only place in the agent path that
+// touches the open-connector stores. The tool itself performs no external
+// writes and allocates no budget (it only prepares and queries), so it
+// cannot widen the Begin→claim orphan window.
+func (s *agentService) registerOpenConnectorTool(
+	ctx context.Context,
+	toolRegistry *tools.ToolRegistry,
+) {
+	tenantID, ok := types.TenantIDFromContext(ctx)
+	if !ok || tenantID == 0 {
+		return
+	}
+	if s.db == nil {
+		logger.Warnf(ctx, "app_connector not registered: no database handle on the agent service")
+		return
+	}
+	visible, err := tenantHasActiveInstallation(ctx, s.db, tenantID)
+	if err != nil {
+		logger.Warnf(ctx, "app_connector visibility check failed for tenant %d: %v", tenantID, err)
+		return
+	}
+	if !visible {
+		return
+	}
+	oc := repoappconn.NewOCStore(s.db)
+	installs := repoappconn.NewInstallationStore(s.db)
+	catalog := appconnectorsvc.NewOCCatalog(oc, oc, installs, installs)
+	facade := appconnectorsvc.NewOCToolBindingService(
+		repoappconn.NewActionStore(s.db), catalog, oc, appconnectorsvc.NewOCToolBindingStore(s.db),
+	)
+	toolRegistry.RegisterTool(tools.NewAppConnectorTool(facade))
+	logger.Infof(ctx, "Registered app_connector tool for tenant %d (installation-visible)", tenantID)
+}
+
+// tenantHasActiveInstallation reports whether the tenant currently has at
+// least one ACTIVE app installation — the coarse visibility gate for the
+// open-connector tool. Everything finer (connection reachability, reviewed
+// definitions, approvals) is enforced per call by the facade and the action
+// pipeline.
+func tenantHasActiveInstallation(ctx context.Context, db *gorm.DB, tenant uint64) (bool, error) {
+	var count int64
+	if err := db.WithContext(ctx).
+		Model(&repoappconn.InstallationRow{}).
+		Where("tenant_id = ? AND state = ?", tenant, appconn.InstallationActive).
+		Limit(1).
+		Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 // resolveKBAndDocInfos loads knowledge base metadata and selected document info for prompt.

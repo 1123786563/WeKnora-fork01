@@ -256,6 +256,14 @@ func (r *ToolRegistry) execute(ctx context.Context, tool types.Tool, args json.R
 	}
 	switch tool.(type) {
 	case *MCPTool, *MCPRegisteredTool, *MCPCallTool:
+	case *AppConnectorTool:
+		// The open-connector app tool parks for human approval BEFORE any
+		// durable dispatch boundary (its wait surfaces as an
+		// agentruntime.OCActionWaitError). Eagerly beginning an attempt here
+		// would journal that wait as an unknown external outcome — the exact
+		// misclassification the MCP wrappers avoid by owning their boundary.
+		// The tool calls BeforeToolDispatch itself, after its gates, right
+		// before returning an observable answer.
 	default:
 		if err := agentruntime.BeforeToolDispatch(ctx); err != nil {
 			return nil, err
