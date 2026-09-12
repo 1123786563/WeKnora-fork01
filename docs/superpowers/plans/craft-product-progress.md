@@ -39,7 +39,7 @@
 | O02 | **done** | .worktrees/craft-o02 / codex/craft-o02 | 9608c6ac | HEAD a6709d34 审查 PASS_WITH_NITS（25/25）→ 合入 1c02390b；G4 缺口扩大记录（另 4 张商业表仅存 AutoMigrate），收费上线前 G4 须补（O05 门禁） |
 | W03 | **done** | .worktrees/craft-w03 / codex/craft-w03 | 1c02390b | HEAD a6b30a09 审查 PASS_WITH_NITS → 合入 a8bfb241；API 表逐条过（幂等/Submit/gate/限流/身份注入拒绝）；fail-closed 边界确认；G2 复验通过（apps/web 构建+包导出） |
 | W04 | **done** | .worktrees/craft-w04 / codex/craft-w04 | a8bfb241 | HEAD dcccb683 审查 PASS_WITH_NITS（14/14，与后端真实 SSE 协议交叉验证）→ 合入 8412e9a0；@weknora/core 由 W04 自建；C03 承接退避与快照合并 |
-| W05 | implementing | .worktrees/craft-w05 / codex/craft-w05 | 8412e9a0 | 已派发（views 新包+Home/Workbench/Preview/Files+assistant-ui 决策）；W06–O05（除已完）等待依赖 |
+| W05 | review | .worktrees/craft-w05 / codex/craft-w05 | 8412e9a0 | HEAD acd41746：@weknora/views 新包+web 路由 gate；assistant-ui 等效实现（零第三方依赖，可迁移适配器）；R06 三形态交互卡；9 个 data-testid 备 W06；审查者进行中 |
 
 ## 调度纪要
 
