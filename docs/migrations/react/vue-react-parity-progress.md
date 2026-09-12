@@ -158,3 +158,8 @@
 - 四页必修实施完成并集成（ab4af20，25 文件；含 i18n organization/agent/integrations/embed 四新域 ×5 locale + 键集一致性测试；API-key 表格、审批门控 join、org 设置精要、agent 类型化编辑器+分组、embed markdown/上传/i18n、API-tab live 缺陷双层修复）。
 - 门禁：shared 266/266、web 165/165、typecheck×2、build:web+embed 全绿；*.tsbuildinfo 入 gitignore。
 - 四页 live 复测（审批 join/API-key 创建/embed 渲染）下一轮执行；矩阵四行更新。
+
+## 2026-09-12 Round 25
+
+- 四页 live 复测通过：API tab 解析错误与眉题消失、API-key 创建表单渲染、agents 分组列表渲染、organizations 正常。证据：evidence/vue-react-parity/2026-09-12-fourpage-live-retest.md + screenshots/live-*-after.png。
+- 全局门禁（Round 25 起点）：shared 266/266、web 165/165、typecheck×2、build 全绿。
