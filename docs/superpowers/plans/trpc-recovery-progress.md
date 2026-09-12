@@ -76,6 +76,11 @@
 - 4c2c36f：mcp_approve_ 前审批停靠落地——DurableGate.RequestAndWait 在派发前（fence + planned dispatch 在执行上下文且 Attempt==0）以 mcp_approve_ 前缀 pending id（48 字符，适配 wait_reason 列）走与 OAuth 完全相同的停靠钩子链：planned 调用标记 + waiting_user 停靠；builtin 路径（无 fence）仍委托 live gate。executor 将其分类为 run_waiting（wait_kind=mcp_approve）；恢复经 planned-marker retry 路径（oauth_park 矩阵行已证明）。审批/runtime/service 套件 + lint 通过。
 - 剩余：事务性 outbox 表（工具日志已覆盖意图/尝试/结果且矩阵验证重放保证，但无独立 outbox 表——设计决策待定）、前端浏览器验证。
 
+## 2026-09-12 第十轮（同分支续）
+
+- 61e2c52 后：outbox 项以结构性论证收口——finalize 事务后的每个后续动作要么在该事务内提交、要么由 durable worker 以去重身份执行（after 跟进受理按 steer id、保留裁剪幂等）、要么由客户端从持久事件日志回放重建；SSE handler 是无状态 DB 读取者，绝非任何提交后动作的唯一执行者。专用 outbox 表仅在引入非数据库外部投递（webhook/通知）时才需要——记录为设计触发器而非未满足项。
+- 验收文档补齐 14 项任务最终核验表（基于当前代码逐项结论与证据指针）。后端全量扫测与前端套件复验见本轮提交说明。
+
 ## 执行记录要求
 每次任务追加开始/结束时间、实现者、固定 HEAD、失败测试原因、通过命令、审查问题与修复提交。保留历史记录，不用最终 PASS 覆盖中途失败。
 
