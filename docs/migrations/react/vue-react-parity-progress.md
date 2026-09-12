@@ -211,3 +211,9 @@
 
 - KB 上传流程 parity（多文件/拖拽/上传确认）与聊天侧 AgentSelector + creatChat 建议问题两个后续切片合并派发一个实施子代理（文件域：documents/chat/configuration 只读核查）。
 - embed preview-session 令牌被 /embed/sessions 拒绝的问题已登记后端待决（Round 30）；待后端裁决后补 embed 预览 live 验证。
+
+## 2026-09-12 Round 34
+
+- FAQ 型 KB 路由 live 验证通过：/knowledgeBase/{faqId} 自动 replace 到 /faq（screenshots/live-faq-routing.png）；测试 FAQ KB（parity-faq-kb）入隔离库。
+- 矩阵标记 KB 详情必修 #1/#2/#3/#4/#7/#9/#10 已实施，#5/#6/#8 开放项登记。
+- 上传流程 + AgentSelector 实施子代理进行中。
