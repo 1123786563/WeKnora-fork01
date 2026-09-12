@@ -20,6 +20,9 @@ nodes, and a readable node list fallback.
   expose a `graph` method.
 - After the implementation, the focused graph tests passed 2/2 and the focused
   Wiki API tests passed 6/6.
+- A follow-up RED test caught that changing the type filter after ego expansion
+  could lose the active center; `7cdece5` centralizes query construction and
+  preserves the current mode/center. The focused graph suite now passes 3/3.
 
 ## Verification
 

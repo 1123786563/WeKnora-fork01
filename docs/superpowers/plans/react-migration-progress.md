@@ -1064,3 +1064,6 @@
 - The shared renderer's adjacent Embed 3/3 and Desktop 2/2 tests, both
   typechecks, and both production builds also passed after the graph slice;
   this is cross-client bundle evidence, not native/installed acceptance.
+- `7cdece5` closes a follow-up interaction defect: changing the graph type
+  filter after ego expansion now preserves the active mode and center. The
+  focused graph suite is 3/3; Web regression is 103/103.
