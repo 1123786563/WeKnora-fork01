@@ -44,6 +44,18 @@ export function removeUploadEntry(entries: readonly UploadEntry[], index: number
   return entries.filter((_, entryIndex) => entryIndex !== index);
 }
 
+/** Normalize only web URLs accepted by the URL-import endpoint. */
+export function normalizeUploadUrl(value: string): string | null {
+  const candidate = value.trim();
+  if (!candidate) return null;
+  try {
+    const parsed = new URL(candidate);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 export interface RunUploadPipelineInput {
   entries: readonly UploadEntry[];
   tagIds?: string[];

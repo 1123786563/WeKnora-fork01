@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { formatBytes, removeUploadEntry, runUploadPipeline, toUploadEntries, uploadSummary, type UploadEntry } from './upload-pipeline.ts';
+import { formatBytes, normalizeUploadUrl, removeUploadEntry, runUploadPipeline, toUploadEntries, uploadSummary, type UploadEntry } from './upload-pipeline.ts';
 
 function entry(name: string): File {
   return new File(['x'], name);
@@ -87,4 +87,10 @@ test('removing a staged item preserves order and does not mutate the batch', () 
   const entries = toUploadEntries([entry('a.pdf'), entry('b.pdf'), entry('c.pdf')]);
   assert.deepEqual(removeUploadEntry(entries, 1).map((item) => item.name), ['a.pdf', 'c.pdf']);
   assert.deepEqual(entries.map((item) => item.name), ['a.pdf', 'b.pdf', 'c.pdf']);
+});
+
+test('URL staging accepts HTTP(S), trims it, and rejects unsafe schemes', () => {
+  assert.equal(normalizeUploadUrl('  https://example.com/docs?q=1  '), 'https://example.com/docs?q=1');
+  assert.equal(normalizeUploadUrl('javascript:alert(1)'), null);
+  assert.equal(normalizeUploadUrl(''), null);
 });

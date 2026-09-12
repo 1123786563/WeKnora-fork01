@@ -4,7 +4,7 @@ import { processingStatusLabel, normalizeKnowledgeProcessingStatus } from '@wekn
 import { flattenKnowledgeFolders as flattenFolders } from '@weknora/domain/knowledge/folders';
 import { Button, Card, Dialog, Status } from '@weknora/ui';
 import { createTranslator, useAppLocale } from '../i18n.ts';
-import { formatBytes, removeUploadEntry, runUploadPipeline, toUploadEntries, uploadSummary, type UploadEntry, type UploadEntryState } from './upload-pipeline.ts';
+import { formatBytes, normalizeUploadUrl, removeUploadEntry, runUploadPipeline, toUploadEntries, uploadSummary, type UploadEntry, type UploadEntryState } from './upload-pipeline.ts';
 import './documents.css';
 import { computeKBPermissions, kbTypeRedirectPath, resolveKBSurfaceTabs, type KBSurfaceKB, type KBSurfaceMe } from '../knowledge/permissions.ts';
 import { cancelParseDocuments, documentRowActions, reparseDocument } from './actions.ts';
@@ -61,6 +61,7 @@ export function KnowledgeDocumentsPage({ client, knowledgeBaseId, onOpenDocument
   // Multi-file upload parity: staged files wait behind a confirm dialog
   // (Vue UploadConfirmDialog) before any upload call is issued.
   const [pendingEntries, setPendingEntries] = useState<UploadEntry[]>([]);
+  const [pendingUrl, setPendingUrl] = useState('');
   const [pendingTagIds, setPendingTagIds] = useState<string[]>([]);
   const [uploadStates, setUploadStates] = useState<readonly UploadEntryState[]>([]);
   const [dragActive, setDragActive] = useState(false);
@@ -144,7 +145,7 @@ export function KnowledgeDocumentsPage({ client, knowledgeBaseId, onOpenDocument
   function cancelStagedUploads() {
     uploadPipelineController.current?.abort();
     uploadPipelineController.current = null;
-    setPendingEntries([]); setPendingTagIds([]); setUploadStates([]); setUploading(false);
+    setPendingEntries([]); setPendingUrl(''); setPendingTagIds([]); setUploadStates([]); setUploading(false);
   }
 
   function removeStagedUpload(index: number) {
@@ -156,9 +157,17 @@ export function KnowledgeDocumentsPage({ client, knowledgeBaseId, onOpenDocument
   // Sequential uploads (one call per file) with per-file status; a per-file
   // failure keeps the dialog open so the errors stay visible (Vue parity).
   async function confirmUpload() {
-    if (pendingEntries.length === 0) return;
+    if (pendingEntries.length === 0 && !pendingUrl) return;
     setUploadError(null);
     setUploading(true);
+    if (pendingUrl) {
+      try {
+        await client.knowledgeBases.documents.createFromUrl(knowledgeBaseId, { url: pendingUrl, tag_ids: pendingTagIds });
+        setPendingUrl(''); setPendingTagIds([]); setReloadToken((value) => value + 1);
+      } catch (error) { setUploadError(errorMessage(error)); }
+      finally { setUploading(false); }
+      return;
+    }
     const controller = new AbortController();
     uploadPipelineController.current = controller;
     try {
@@ -173,7 +182,7 @@ export function KnowledgeDocumentsPage({ client, knowledgeBaseId, onOpenDocument
       });
       setReloadToken((value) => value + 1);
       if (finalStates.some((state) => state.status === 'error')) return;
-      setPendingEntries([]); setPendingTagIds([]); setUploadStates([]);
+      setPendingEntries([]); setPendingUrl(''); setPendingTagIds([]); setUploadStates([]);
     } catch (error) { setUploadError(errorMessage(error)); }
     finally { if (uploadPipelineController.current === controller) uploadPipelineController.current = null; setUploading(false); }
   }
@@ -187,17 +196,18 @@ export function KnowledgeDocumentsPage({ client, knowledgeBaseId, onOpenDocument
       setUploadError(t('knowledgeBase.documents.file'));
       return;
     }
+    if (uploadSource === 'url') {
+      const normalizedUrl = normalizeUploadUrl(url);
+      if (!normalizedUrl) { setUploadError(t('knowledgeBase.documents.url')); return; }
+      setPendingUrl(normalizedUrl); setPendingTagIds([]); setUploadError(null); setUrl('');
+      return;
+    }
     setUploading(true);
     const controller = new AbortController();
     uploadController.current = controller;
     try {
-      if (uploadSource === 'url') {
-        if (!url.trim()) throw new Error(t('knowledgeBase.documents.url'));
-        await client.knowledgeBases.documents.createFromUrl(knowledgeBaseId, { url: url.trim() });
-      } else {
-        if (!manualTitle.trim() || !manualContent.trim()) throw new Error(t('knowledgeBase.documents.manualTitle'));
-        await client.knowledgeBases.documents.createManual(knowledgeBaseId, { title: manualTitle.trim(), content: manualContent, status: 'pending' });
-      }
+      if (!manualTitle.trim() || !manualContent.trim()) throw new Error(t('knowledgeBase.documents.manualTitle'));
+      await client.knowledgeBases.documents.createManual(knowledgeBaseId, { title: manualTitle.trim(), content: manualContent, status: 'pending' });
       setUrl(''); setManualTitle(''); setManualContent(''); setReloadToken((value) => value + 1);
     } catch (error) { setUploadError(errorMessage(error)); }
     finally { if (uploadController.current === controller) uploadController.current = null; setUploading(false); }
@@ -301,9 +311,10 @@ export function KnowledgeDocumentsPage({ client, knowledgeBaseId, onOpenDocument
         </section>
       </div>
     </Card>
-    {pendingEntries.length > 0 && canContribute ? <Dialog open title="Confirm upload" onClose={cancelStagedUploads}>
-      <p className="wk-upload-confirm-summary">{uploadSummary(pendingEntries).count} file(s), {uploadSummary(pendingEntries).totalLabel} total. Large files are chunked server-side using the knowledge base chunk configuration.</p>
-      <ul className="wk-upload-confirm-files">
+    {(pendingEntries.length > 0 || pendingUrl) && canContribute ? <Dialog open title="Confirm upload" onClose={cancelStagedUploads}>
+      <p className="wk-upload-confirm-summary">{pendingUrl ? '1 URL ready to import.' : `${uploadSummary(pendingEntries).count} file(s), ${uploadSummary(pendingEntries).totalLabel} total. Large files are chunked server-side using the knowledge base chunk configuration.`}</p>
+      {pendingUrl ? <ul className="wk-upload-confirm-files"><li><span>{pendingUrl}</span><span>URL</span><Button type="button" disabled={uploading} onClick={cancelStagedUploads}>Remove</Button></li></ul> : null}
+      {pendingEntries.length > 0 ? <ul className="wk-upload-confirm-files">
         {pendingEntries.map((entry, index) => {
           const state = uploadStates[index];
           return <li key={entry.name + index}>
@@ -315,13 +326,13 @@ export function KnowledgeDocumentsPage({ client, knowledgeBaseId, onOpenDocument
             <Button type="button" disabled={uploading} onClick={() => removeStagedUpload(index)}>Remove</Button>
           </li>;
         })}
-      </ul>
+      </ul> : null}
       <label className="wk-upload-confirm-tags">Tags <select multiple value={pendingTagIds} onChange={(event) => setPendingTagIds(Array.from(event.target.selectedOptions).map((option) => option.value))}>
         {tags.map((tag) => <option key={tag.id} value={tag.id}>{tag.name}</option>)}
       </select></label>
       {uploadError ? <Status tone="error">{uploadError}</Status> : null}
       <div className="wk-list-actions">
-        <Button type="button" loading={uploading} onClick={() => void confirmUpload()}>Upload {pendingEntries.length} file(s)</Button>
+        <Button type="button" loading={uploading} onClick={() => void confirmUpload()}>{pendingUrl ? 'Import URL' : `Upload ${pendingEntries.length} file(s)`}</Button>
         <Button type="button" onClick={cancelStagedUploads}>{t('knowledgeBase.documents.cancel')}</Button>
       </div>
     </Dialog> : null}

@@ -1253,8 +1253,9 @@
   controls. Shared metadata and policy routes are backed by the existing Go
   MCP endpoints. Commits: `3cb1def3`, `4120b926`, `f24070ac`.
 - The upload confirmation slice now supports per-file status, cancellation,
-  retry-after-error, tag selection, drag/drop staging, and removal of one
-  staged file. Focused upload tests passed 6/6. Commit: `04f18ead`.
+  retry-after-error, tag selection, drag/drop staging, removal of one staged
+  file, and URL confirmation with HTTP(S) validation. Focused upload tests
+  passed 7/7. Commits: `04f18ead` plus the current URL-confirmation slice.
 - The current Web suite passed 258/258 and shared/Web typechecks passed after
   a compatibility/type-narrowing repair in the existing dirty command-palette
   slice; its files remain uncommitted and no unrelated files were staged by
