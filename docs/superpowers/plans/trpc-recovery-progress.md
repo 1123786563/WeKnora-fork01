@@ -33,7 +33,6 @@
 - `9bad9e0`：仅物化 branch 写（全量清除破坏 checkpoint 往返契约，被 -race 运行的测试发现）。
 - 门禁状态：功能默认关闭不变；SQLite 矩阵通过不等于发布门禁通过，剩余矩阵行见验收文档。
 
-## 执行记录要求
 ## 2026-09-12 第二轮（同分支续）
 
 - 43dbca6（Task 11）：durable steering 接通。SteerMessage 对 trpc 会话改走持久化 RunInput（steer_id 幂等、队列深度、waiting_user 不当决策消费）；图模型节点在安全边界消费 inject 输入，注入消息与 AppliedSteerIDs 同一 checkpoint 落盘（恰好一次边界）；after 输入持久化待后续受理。handler 3 测试 + 图 2 测试 + repository 1 测试通过。
@@ -41,6 +40,15 @@
 - 64df9d5（Task 13）：新会话引擎选择器（builtin/trpc，持久化设置）；现有会话只读引擎标识；SSE 断线有界退避重连；durable run 掉线后按已消费 seq 游标轮询事件经 applyRunEvent 恢复渲染，终态/游标过期停止。前端全套 818/818、i18n 审计、vue-tsc、build 通过。
 - 本轮复核发现并处理：会话服务四个文件的编辑在并发子代理会话中丢失，已全部重做并复验（build + 全部相关套件通过）。
 - 遗留：decisions 测试文件 12 处 lll + 1 处 gofumpt；双 worker 竞争/PostgreSQL/API 黑盒/沙箱三态矩阵行；after 跟进的自动受理；ValidateEngineUpdate 直接单测。
+
+## 2026-09-12 第三轮（同分支续）
+
+- 独立代码审查（d370254..HEAD 对照规格 §5-11）：builtin 路径逐字节比对确认未变；发现并修复 3 个 P0 —— 生产执行器从未绑定 steering 输入源（已接通）、DurableGate 包装在并发编辑中丢失（重新包装）、终态失败永久占用会话 active slot（SetStatus 同事务释放；waiting_user 仍占用，两个测试钉死）。P1/P2 修复：wait_user 入口先以 call id 停靠再返回；steer 查询错误返回 503；已消费输入标记 processed 防深度护栏饱和；attempt_replaced 只在真正中断时触发；矩阵 provider 构建失败改为 FAIL；ValidateEngineUpdate 六用例补齐。
+- 9a036a9 + bff33a9 + 860c438：上述审查修复与测试清理。
+- 702f65d + 76b95b2：PostgreSQL SIGKILL 矩阵接通并 7/7 PASS（PostgreSQL 16 容器，逐用例隔离 schema+数据库）。矩阵暴露并修复三处真实缺陷：全部用例共享命名空间（临时目录 basename 恒为 001）导致 PG schema 冲突；工具 args/result/output_files/decision result 的 JSONB 列破坏字节精确往返（与 checkpoint 同因，改 TEXT）；扩展安装进首个 schema 导致后续不可见（移入 public）。SQLite 矩阵复验 8/8，全部相关套件与增量 lint 通过。
+- 门禁状态：双方言 SIGKILL 矩阵均通过；双 worker 竞争矩阵行、API 黑盒行、沙箱三态仍为剩余行，功能保持默认关闭。
+
+## 执行记录要求
 每次任务追加开始/结束时间、实现者、固定 HEAD、失败测试原因、通过命令、审查问题与修复提交。保留历史记录，不用最终 PASS 覆盖中途失败。
 
 SDK 版本固定 v1.10.0（根模块，无子模块）。PostgreSQL 验收需要 `TRPC_TEST_POSTGRES_DSN`，未设置的组合保持未验收。
