@@ -33,7 +33,7 @@
 | R05 | **done** | .worktrees/craft-r05 / codex/craft-r05 | 785ceeb8 | HEAD b523c8f1 审查 PASS_WITH_NITS（16/16）→ 合入 9c02a7c4；ActiveRuns 真实接线闭合 R03 nit-1；fail-closed 生产执行器（W03 承接 dial）；契约留档：unknown 绝不落库、裸 idle 窄窗口 nit 转 W 链 |
 | R06 | **done** | .worktrees/craft-r06 / codex/craft-r06 | 9c02a7c4 | HEAD fa51f671 审查 PASS_WITH_NITS → 合入 1b44296f；停止时序/决定时序 fail-closed 全有真库证据；通道分离设计经独立验证（C02 承接 outbox） |
 | W01 | **done** | .worktrees/craft-w01 / codex/craft-w01 | 9c02a7c4 | HEAD f594e2b9 审查 PASS_WITH_NITS（21/21）→ 合入 47f1f4b7；真实 PG 迁移链验证；W02 提示：不能重 Publish 补 preview checks、.env 变体凭据加固 |
-| O01 | review | .worktrees/craft-o01 / codex/craft-o01 | 9c02a7c4 | HEAD 0e4ecb37：Step 7 全案过（含 PG）；审查者进行中 |
+| O01 | **done** | .worktrees/craft-o01 / codex/craft-o01 | 9c02a7c4 | HEAD 0e4ecb37 审查 PASS_WITH_NITS（19/19）→ 合入 9608c6ac；真实 PG 双方言验证；O02 提示：网关单调序列、唯一记账入口、并发 Append 冲突信号收紧 |
 | R07 | implementing | .worktrees/craft-r07 / codex/craft-r07 | 1b44296f | 已派发（CRAFT_LIVE 纵向两轮验收） |
 | W02 | implementing | .worktrees/craft-w02 / codex/craft-w02 | 1b44296f | 已派发（含 W01 审查三条）；W03–O05 等待依赖 |
 
