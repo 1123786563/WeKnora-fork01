@@ -1,6 +1,6 @@
 # Semantica 实施台账
 
-状态：V01–C03、I01–I05、A01–A03、Q01–Q04 verified；W01 implemented（双评审下轮补做）；其余 6 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
+状态：V01–C03、I01–I05、A01–A03、Q01–Q04、W01 verified（W01 路由挂载/facade 桥/retry 端点归 W02）；其余 6 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
 
 状态值 pending / in_progress / blocked / implemented / verified。每项验证记录必须包含commit SHA、精确命令、退出码、环境、产物路径、失败/限制；无真实证据不标记verified。执行前记录实际基线与已有脏文件。
 
@@ -24,7 +24,7 @@
 | Q02 | 注册规则与可核验推导 | Q01 | verified | 受限 JSON 语法+谓词白名单+内容摘要；前向链证明 DAG（元组键控/环检查先行/双预算）；冲突状态与时限延后；见运行记录 2026-09-11 Q02 |
 | Q03 | 模型推断与证据不足判定 | Q01,A03,V03 | verified | 受控网关/结构化校验（前提⊆授权集/kind 恒 model/长度与数量上限）/预算显式状态/注入惰性/Reason 双模式分派；RPC 证据内容通道与真实模型端到端延后 Q04；见运行记录 2026-09-11 Q03 |
 | Q04 | Go检索融合、Agent工具与最终授权 | Q02,Q03,I05 | verified | 5 BLOCKER 全闭：查询/TopK 上线、Reason 经 client.Reason 分派（rules/model+query_id）、resolveKBReadTenant **fail-closed** 强制+容器接线、allowed_document_ids 端到端上线、向量 seam 诚实 noop；chat/agent 入口与真向量 seam 归 W；见运行记录 2026-09-11 Q04（两段） |
-| W01 | 用户API与共享客户端契约 | Q04,I05 | implemented | TS 契约（uint64 十进制字符串/浮点拒绝/未知枚举→unknown）+客户端（AbortSignal/错误映射/无泄露）+Go handler（fail-closed 503/mode 校验/body 不越 path scope）+路由 KBAccessRead；双评审下轮补做后 verified；见运行记录 2026-09-11 W01 |
+| W01 | 用户API与共享客户端契约 | Q04,I05 | verified | TS 契约（uint64 十进制字符串/浮点拒绝/未知枚举→unknown）+客户端（AbortSignal/错误映射/无泄露）+Go handler（fail-closed 503/mode 校验/body 不越 path scope）+路由定义；双评审 PASS；挂载/facade 桥/retry 归 W02；见运行记录 2026-09-11 W01 |
 | W02 | React索引状态与推理证据流程 | W01 | pending | 尚未执行 |
 | W03 | 后端影子构建、切换与回滚 | W01,I04,Q04 | pending | 尚未执行 |
 | O01 | 独立部署、探针与可观测性 | C02,I03,A03 | pending | 尚未执行 |
@@ -300,7 +300,7 @@
 - 剩余（如实，W 接线）：chat_pipeline/search_entity.go 与 agent 工具入口统一（现无消费者——fail-closed 保证未接线即不可用）；真向量/全文 seam（现 noop）；进度流（无流路径无违规）；TopK 截断、first-wins 去重、并发双引擎、%w 链、DeliveredContentBytes 真交付槽（minors）。
 - 第二段提交 SHA：a372daa。
 
-### 2026-09-11 W01 用户API与共享客户端契约（implemented——规格评审 PASS；质量评审下轮补）
+### 2026-09-11 W01 用户API与共享客户端契约（verified——双评审 PASS）
 
 - 工作区：.worktrees/semantica（分支 codex/semantica）；基线 SHA：0b3f98c。
 - 修改文件：packages/contracts/{src/semantic.ts,test/semantic.test.ts,package.json}、packages/api-client/{src/semantic.ts,src/semantic.test.ts,package.json}、internal/handler/{semantic.go,semantic_test.go}、internal/types/semantic_query.go（Wire DTO）、internal/router/routes_knowledge.go、本台账、05 计划勾选。
@@ -309,7 +309,8 @@
 - 契约要点：ID/revision 全链十进制字符串；未知枚举=兼容 unknown；mode 取实际执行模式；客户端零授权材料（scope 服务端 path+身份）；内部错误不透地址/凭据。
 - 路由：RegisterSemanticUserRoutes（KBAccessRead）已定义但**未在 router.go 挂载**（404 而非 503——挂载与 facade 桥接归 W02）；nil 不挂载；裸 Group 未声明 apiKey 能力（API key 一律拒——fail-closed 方向，W02 需声明能力）。
 - **延后（W02/W03）**：retry 服务端端点（客户端方法已备，挂载归 W02 接 I05 协调器）；SemanticQueryFacade 生产桥接（fail-closed nil 保证未接线即 503）；API 文档页（W03）。
-- review：本轮预算耗尽，双评审留待下轮补做后再定 verified——**本轮如实标 implemented**。
+- review：规格 PASS（8/8 点；3 MINOR 已折叠：台账措辞更正+计划勾选+路由措辞如实）；质量 PASS（无 BLOCKER；8 MINOR 记录归 W02 桥接轮折叠：成功体非 JSON 泄漏护栏/parseStatusRaw 弱类型/枚举三处手工同步/空 document_id 400/错误码映射哨兵/模式白名单复用常量/成功路径+404 路由+status 客户端测试/strict tsconfig）。
+- 提交 SHA：01b78e1。
 - 提交 SHA：01b78e1。
 
 - V01–C03、I01–I05、A01–A03、Q01–Q04 verified；W01 implemented（双评审下轮补做）；后续 6 个任务未开始。
