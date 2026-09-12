@@ -50,6 +50,31 @@ type Draft = {
   authConfig: Record<string, unknown>;
 };
 
+export type McpDraftValidationError =
+  | "nameRequired"
+  | "urlRequired"
+  | "urlInvalid"
+  | "stdioUnsupported"
+  | "usageRequired";
+
+/** Mirrors the Vue form rules before any network mutation is attempted. */
+export function validateMcpDraft(
+  draft: Draft,
+  step: 0 | 1,
+): McpDraftValidationError | null {
+  if (!draft.name.trim()) return "nameRequired";
+  if (step === 1 && !draft.usageInstructions.trim()) return "usageRequired";
+  if (draft.transportType === "stdio") return "stdioUnsupported";
+  if (!draft.url.trim()) return "urlRequired";
+  try {
+    const url = new URL(draft.url.trim());
+    if (!["http:", "https:"].includes(url.protocol)) return "urlInvalid";
+  } catch {
+    return "urlInvalid";
+  }
+  return null;
+}
+
 function asService(value: McpConfiguration): McpService {
   return value as McpService;
 }
@@ -521,7 +546,19 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
   }
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!draft || saving || !draft.name.trim() || !draft.url.trim()) return;
+    if (!draft || saving) return;
+    const validation = validateMcpDraft(draft, step);
+    if (validation) {
+      const messageKey: Record<McpDraftValidationError, string> = {
+        nameRequired: "mcpServiceDialog.rules.nameRequired",
+        urlRequired: "mcpServiceDialog.rules.urlRequired",
+        urlInvalid: "mcpServiceDialog.rules.urlInvalid",
+        stdioUnsupported: "mcpServiceDialog.codeImport.errors.stdioUnsupported",
+        usageRequired: "mcpMetadata.instructionsRequired",
+      };
+      setError(t(messageKey[validation]));
+      return;
+    }
     setSaving(true);
     setError(null);
     setNotice(null);
@@ -536,18 +573,6 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
         await load();
         return;
       }
-      if (draft.transportType === "stdio")
-        throw new Error(
-          "stdio MCP services cannot be edited here; use a remote URL",
-        );
-      let parsedUrl: URL;
-      try {
-        parsedUrl = new URL(draft.url.trim());
-      } catch {
-        throw new Error("Service URL must be a valid URL");
-      }
-      if (!["http:", "https:"].includes(parsedUrl.protocol))
-        throw new Error("Service URL must use HTTP or HTTPS");
       const headers = Object.fromEntries(
         draft.headers
           .map(({ key, value }) => [key.trim(), value.trim()])

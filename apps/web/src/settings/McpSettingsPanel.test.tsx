@@ -18,7 +18,7 @@ else nodeModule.register(`data:text/javascript,${encodeURIComponent(`
 `)}`, import.meta.url);
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
-const { McpSettingsPanel, importMcpConfig } = await import('./McpSettingsPanel.tsx');
+const { McpSettingsPanel, importMcpConfig, validateMcpDraft } = await import('./McpSettingsPanel.tsx');
 const { formatMessage } = await import('@weknora/i18n');
 
 const client = {} as never;
@@ -68,4 +68,13 @@ test('MCP JSON import maps transport, auth, and custom headers without saving', 
   assert.equal(draft.authType, 'api_key');
   assert.equal(draft.apiKeyHeader, 'Authorization');
   assert.deepEqual(draft.headers, [{ key: 'X-Trace', value: 'yes' }]);
+});
+
+test('MCP draft validation mirrors Vue submit rules before mutation', () => {
+  const base = { name: 'Docs', description: '', usageInstructions: 'Use for docs', url: 'https://example.com/mcp', transportType: 'sse', enabled: true, authType: '', apiKeyHeader: '', apiKey: '', oauthScopes: '', headers: [], timeout: 30, retryCount: 3, retryDelay: 1, codeImport: '', codeImportError: '', authConfig: {} } as never;
+  assert.equal(validateMcpDraft({ ...base, name: '' }, 0), 'nameRequired');
+  assert.equal(validateMcpDraft({ ...base, url: 'not a url' }, 0), 'urlInvalid');
+  assert.equal(validateMcpDraft({ ...base, usageInstructions: '' }, 1), 'usageRequired');
+  assert.equal(validateMcpDraft({ ...base, transportType: 'stdio' }, 0), 'stdioUnsupported');
+  assert.equal(validateMcpDraft(base, 0), null);
 });

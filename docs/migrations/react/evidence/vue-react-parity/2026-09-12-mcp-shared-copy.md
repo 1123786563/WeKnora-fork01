@@ -14,12 +14,13 @@ This slice covers the React MCP settings list/card copy and the enabled-state la
 - The React card rendered `enabled: true` as the disabled label. The condition was corrected so true renders `mcpSettings.enabled` and false renders `mcpSettings.disabled`.
 - The list heading, description, empty state, add/edit/delete labels, built-in label, usage fallback, state labels, MCP detail headings and connection actions now read the shared i18n contract.
 - Missing OAuth/action keys were added once in `packages/i18n/src/mcp.ts` for all current client locales and merged by `packages/i18n/src/index.ts`; no page-local translation table was introduced.
+- `validateMcpDraft` now rejects missing names, missing/invalid HTTP(S) URLs, unsupported stdio editing, and missing step-2 usage instructions before a mutation. The validator is pure and has direct regression coverage.
 
 ## Evidence
 
 | Layer | Result | Command / artifact |
 |---|---|---|
-| Focused component/static markup | PASS, 4/4 | `pnpm --filter @weknora/web exec tsx --test src/settings/McpSettingsPanel.test.tsx` |
+| Focused component/static markup and validation | PASS, 5/5 | `pnpm --filter @weknora/web exec tsx --test src/settings/McpSettingsPanel.test.tsx` |
 | Shared locale contract | PASS through Web consumer | same test asserts zh-CN and en-US action copy |
 | Diff hygiene | PASS | `git diff --check` |
 | Full Web typecheck/build | BLOCKED outside this slice | existing dirty `apps/web/src/auth/onboarding.ts` imports a missing `@weknora/domain/auth/onboarding`; `WorkspaceOnboardingPage.tsx` also has an implicit-any error |
