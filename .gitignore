@@ -71,3 +71,5 @@ miniprogram/project.private.config.json
 apps/web/dist/
 apps/embed/dist/
 apps/desktop/dist/
+apps/mobile/dist-ios/
+apps/mobile/dist-android/
