@@ -6,7 +6,11 @@ Date: 2026-09-12
 
 This slice replaces the generic React model inventory for the settings `models` section with a typed Web panel based on the Vue `ModelSettings.vue` and `ModelEditorDialog.vue` contracts. It covers model-type tabs/counts, tenant-role add/edit/delete controls, built-in visibility, provider loading, remote/local source, base URL validation, embedding dimension validation, context window, vision, concurrency, and write-only model credentials.
 
-It remains `implementing`. The editor now exposes the existing model custom-header and chat thinking-control fields, wires remote chat/embedding/rerank/ASR connection tests through the existing initialization routes, and warns explicitly that local/Ollama model download is not yet ported. Ollama download/search/progress, all provider-specific fields, local-model test/dimension checks, debug/usage surfaces, six-locale copy, fixed-viewport Vue/React screenshots, and authenticated browser/Wails/mobile acceptance remain open.
+It remains `implementing`. The editor now exposes the existing model custom-header and chat thinking-control fields, wires remote chat/embedding/rerank/ASR connection tests through the existing initialization routes, and warns explicitly that local/Ollama model download is not yet ported. Ollama download/search/progress, all provider-specific fields, local-model test/dimension checks, model-usage surface, six-locale copy, fixed-viewport Vue/React screenshots, and authenticated browser/Wails/mobile acceptance remain open.
+
+## Debug panel slice
+
+`apps/web/src/settings/ModelDebugPanel.tsx` now exposes the existing `/api/v1/models/:id/debug` contract for configured Chat, Embedding, Rerank, VLLM, and ASR models. It supports type-specific input, chat parameters, file selection for VLLM/ASR, and structured result/request/observations output. The focused SSR test covers the entry and input surface; API multipart/debug route tests cover the transport. This is not runtime acceptance.
 
 ## Evidence
 
