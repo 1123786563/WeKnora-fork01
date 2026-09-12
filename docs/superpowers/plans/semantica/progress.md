@@ -336,7 +336,7 @@
 - 交付：状态机（SetDesired/Promote/Rollback+双哨兵错误）；检查点列（native/semantic_checkpoint+last_error）；repo 五方法；运行手册（状态模型/影子/切换前置清单/回滚先补齐/失败处置/禁止事项）。
 - **延后（如实）**：①Promote 之"完整 manifest/capability/验收 policy"前置自动化——人工清单在手册，自动化归 O02/O03；②Rollback 之切换期 outbox 重放编排——检查点比较已实现，编排归 O02；③产品设置 API（desired 保存）挂载归 O01；④read lease 沿旧请求完成集成归 O02。
 - review：双评审下轮补做。
-- 提交 SHA：（同批提交后补记）
+- 提交 SHA：06c5316。
 - V01精确版本已冻结（semantica 0.6.8）；真实模型证据须在后续任务补齐，不是已经通过的前提。
 - V02 结论边界：持久图桥接/授权子图重建/注册规则推导已验证；模型推断 unverified（无凭据，未调用）；向量检索路径未验证。
 - V03 结论边界：semantica 模式检索质量/延迟为受控语料实测；native 对照与模型用量门槛未测（阻断记录见上）；上线门禁 approved=false 待用户确认。
