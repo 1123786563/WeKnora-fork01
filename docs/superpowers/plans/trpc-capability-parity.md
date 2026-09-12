@@ -12,7 +12,7 @@ and are rebuilt by the application on recovery.
 | Capability | Reuse entry point | Snapshot/evidence | Recovery behavior |
 |---|---|---|---|
 | RAG scope and rerank | `agentService.registerTools`, existing knowledge tools and reranker | Tool identities plus the request's existing KB/document scope | Rebuild the same authorized scope before resuming; no new scope is inferred from a checkpoint |
-| MCP deferred discovery | `registerMCPTools` → `ToolRegistry.RegisterDeferredTool` / `PrepareMCPTools` | Stable tool identities and `DeferredNames`; each session owns a registry | Re-register and prepare through the existing catalog, then compare the advertised set; sessions do not share deferred state. A delayed-discovery end-to-end recovery evidence row remains outstanding. |
+| MCP deferred discovery | `registerMCPTools` → `ToolRegistry.RegisterDeferredTool` / `PrepareMCPTools` | Stable tool identities and `DeferredNames`; each session owns a registry | Re-register and prepare through the existing catalog, then compare the advertised set; sessions do not share deferred state. Catalog/exposure tests cover list/describe/call and the provider SIGKILL matrix covers changed deferred-set identity fail-closed behavior with zero side effects. |
 | MCP approval and OAuth | Existing MCP preflight and approval interfaces | Approval is represented by the durable decision contract, not a live waiter | A pending decision must be resolved by the durable run service; the legacy in-memory Gate remains the builtin path |
 | Skills read/install/env | Existing `skills.Manager` and sandbox staging | Metadata-derived `sha256:` skill digests | Rebuild the manager and reject a changed digest instead of silently continuing |
 | Shell and file tools | Existing sandbox registration in `prepareAgentCapabilities` | Tool identities | Recreate the session-bound sandbox and tools; an unavailable resource remains a recovery decision |
@@ -45,5 +45,7 @@ GOWORK=off go test ./internal/agent/tools \
 
 It passed, including deferred discovery, describe/call validation, refresh,
 history restoration, per-session projection and image-bearing MCP results.
-The remaining release evidence is specifically the same behavior across a
-provider process restart while the advertised MCP set changes.
+The provider matrix uses a deterministic provider-level capability-set
+substitute for the cross-process drift assertion; it does not claim a live
+third-party MCP service was restarted. Deployment-specific external MCP/model
+credentials remain outside this local release evidence.
