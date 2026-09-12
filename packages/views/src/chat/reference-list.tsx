@@ -27,7 +27,10 @@ function idsFor(item: ChatReferenceItem): string[] {
 function ReferenceItem({ item, activeId, onActivate }: { item: ChatReferenceItem; activeId?: string | null; onActivate?: (referenceId: string) => void }) {
   const ids = idsFor(item);
   const active = Boolean(activeId && ids.includes(activeId));
-  const summary = item.kind === 'document' ? item.content ?? item.snippet : item.snippet ?? item.content;
+  // Keep the panel bounded for large retrieved chunks; the shared model's
+  // snippet is intentionally capped while the full content stays available to
+  // a future explicit preview action.
+  const summary = item.snippet ?? item.content;
   const activate = (id: string) => onActivate?.(id);
 
   return <article className={`wk-chat-reference wk-chat-reference--${item.kind}${active ? ' is-active' : ''}`}>
