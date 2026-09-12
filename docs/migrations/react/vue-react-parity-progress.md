@@ -324,3 +324,8 @@
 ## 2026-09-12 Round 63
 
 - chat 分类型工具结果渲染器实施派发（search/database/grep/shell-exec + fallback；当前为通用 pre dump）。工具渲染器是 chat 审计后续项中用户可见度最高的改进。
+
+## 2026-09-12 Round 66
+
+- chat 分类型工具结果渲染器集成（a027bc3，3 文件 +750/-9）：SearchResults、WebSearchResults、DatabaseQuery、GrepResults、ShellExec 5 种渲染器 + fallback；密钥脱敏保留；dispatch 按 display_type（对齐 Vue ToolResultRenderer.vue）；17 测试（14 新，TDD）。
+- 门禁：shared 310/310、web 198/198、typecheck×2 干净、build:web ✓。
