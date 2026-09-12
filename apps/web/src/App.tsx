@@ -6,6 +6,7 @@ import {
   canManageKBCard,
   isKnowledgeBaseInitialized,
   isSharedKbEditable,
+  groupKnowledgeBaseSections,
   mergeAllScopeKnowledgeBases,
   type KnowledgeBaseCreatorFilter,
   type MergedKnowledgeBase,
@@ -84,6 +85,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
   const [creator, setCreator] = useState<KnowledgeBaseCreatorFilter>('all');
   const [page, setPage] = useState(1);
   const [favorites, setFavorites] = useState<Set<string>>(readFavorites);
+  const [collapsedSections, setCollapsedSections] = useState<ReadonlySet<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -154,6 +156,12 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
     page,
     pageSize: 12,
   }), [cards, creator, page, query, space, viewer.userId]);
+
+  // Vue KnowledgeBaseList.vue:97-185 — collapsible sections in the all-scope view.
+  const sections = useMemo(() => {
+    if (space !== 'all' || pageState.status !== 'success') return [];
+    return groupKnowledgeBaseSections(cards, viewer.userId || undefined);
+  }, [space, pageState, cards, viewer.userId]);
 
   useEffect(() => { setPage(1); }, [creator, query, space]);
 
@@ -322,8 +330,34 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
         ) : null}
         {pageState.status === 'success' && filtered.total > 0 ? (
           <>
+            {space === 'all' && sections.length > 0 ? (
+              <div className="wk-kb-sections" role="list">
+                {sections.map((section) => {
+                  const collapsed = collapsedSections.has(section.key);
+                  return (
+                    <button
+                      key={section.key}
+                      type="button"
+                      className="wk-kb-section-toggle"
+                      aria-expanded={!collapsed}
+                      onClick={() => setCollapsedSections((current) => {
+                        const next = new Set(current);
+                        if (next.has(section.key)) next.delete(section.key); else next.add(section.key);
+                        return next;
+                      })}
+                    >
+                      {t(section.labelKey)} · {section.items.length}
+                      <span aria-hidden="true">{collapsed ? '+' : '−'}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
             <div className="wk-kb-grid">
-              {filtered.items.map((card) => {
+              {(space === 'all' && sections.length > 0
+                ? sections.flatMap((section) => (collapsedSections.has(section.key) ? [] : section.items))
+                : filtered.items
+              ).slice((page - 1) * 12, page * 12).map((card) => {
                 const kb = card as Record<string, unknown>;
                 const initialized = isKnowledgeBaseInitialized(card as never);
                 const manageable = canManageKBCard(card as Record<string, unknown>, { userId: viewer.userId, isAdmin: viewer.isAdmin });

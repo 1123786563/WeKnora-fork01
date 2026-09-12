@@ -380,3 +380,8 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
   justify-content: flex-end;
   margin-top: 12px;
 }
+
+/* KB list collapsible section headers (Vue KnowledgeBaseList.vue:97-185) */
+.wk-kb-sections { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.wk-kb-section-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border: 1px solid #dcdcdc; border-radius: 16px; background: #fff; font-size: 13px; cursor: pointer; }
+.wk-kb-section-toggle:hover { border-color: var(--auth-brand, #07C05F); color: #07C05F; }

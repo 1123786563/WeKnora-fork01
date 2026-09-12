@@ -1,7 +1,8 @@
 import type { RequestScope } from './scope.ts';
 export { isCapabilitySupported, normalizeCapabilityMap } from './access/capability.ts';
 export type { CapabilityDescriptor, CapabilityMap } from './access/capability.ts';
-export { canDuplicateKBCard, canManageKBCard, filterKnowledgeBases, isKnowledgeBaseInitialized, isSharedKbEditable, mergeAllScopeKnowledgeBases } from './knowledge/list.ts';
+export { canDuplicateKBCard, canManageKBCard, filterKnowledgeBases, groupKnowledgeBaseSections, isKnowledgeBaseInitialized, isSharedKbEditable, mergeAllScopeKnowledgeBases } from './knowledge/list.ts';
+export type { KnowledgeBaseSection } from './knowledge/list.ts';
 export type {
   KnowledgeBaseCreatorFilter,
   KnowledgeBaseListFilter,

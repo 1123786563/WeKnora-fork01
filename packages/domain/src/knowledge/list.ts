@@ -207,3 +207,49 @@ export function isKnowledgeBaseInitialized(kb: {
   if (needsEmbedding && (!kb.embedding_model_id || kb.embedding_model_id === '')) return false;
   return true;
 }
+export interface KnowledgeBaseSection<T> {
+  key: 'pinned' | 'mine' | 'tenantOthers' | 'sharedEditable' | 'sharedReadonly';
+  /** i18n key suffix under knowledgeList.sections.* */
+  labelKey: string;
+  items: T[];
+}
+
+/** Port of Vue KnowledgeBaseList.vue section grouping (lines 97-185, 932-949):
+ *  pinned (newest pinned_at first), mine, tenant others, shared editable,
+ *  shared readonly. Empty sections are omitted; sharedByMe is not derivable
+ *  from the merged rows and is handled by the shared-KB source data. */
+export function groupKnowledgeBaseSections<T extends Record<string, unknown> & { id: string }>(
+  rows: readonly T[],
+  currentUserId: string | undefined,
+): KnowledgeBaseSection<T>[] {
+  const buckets: Record<KnowledgeBaseSection<T>['key'], T[]> = {
+    pinned: [], mine: [], tenantOthers: [], sharedEditable: [], sharedReadonly: [],
+  };
+  const pinnedTime = (value: unknown): number => {
+    const parsed = Date.parse(typeof value === 'string' ? value : '');
+    return Number.isNaN(parsed) ? 0 : parsed;
+  };
+  for (const row of rows) {
+    const isSharedEntry = row.isMine === false;
+    if (row.is_pinned === true) { buckets.pinned.push(row); continue; }
+    if (isSharedEntry) {
+      const permission = typeof row.permission === 'string' ? row.permission : undefined;
+      buckets[isSharedKbEditable(permission) ? 'sharedEditable' : 'sharedReadonly'].push(row);
+      continue;
+    }
+    const creator = typeof row.creator_id === 'string' ? row.creator_id : undefined;
+    if (currentUserId && creator && creator === currentUserId) buckets.mine.push(row);
+    else buckets.tenantOthers.push(row);
+  }
+  buckets.pinned.sort((a, b) => pinnedTime(b.pinned_at) - pinnedTime(a.pinned_at));
+  const labelKeys: Record<string, string> = {
+    pinned: 'knowledgeList.sections.pinned',
+    mine: 'knowledgeList.sections.mine',
+    tenantOthers: 'knowledgeList.sections.tenantOthers',
+    sharedEditable: 'knowledgeList.sections.sharedEditable',
+    sharedReadonly: 'knowledgeList.sections.sharedReadonly',
+  };
+  return (Object.keys(buckets) as KnowledgeBaseSection<T>['key'][])
+    .filter((key) => buckets[key].length > 0)
+    .map((key) => ({ key, labelKey: labelKeys[key], items: buckets[key] }));
+}

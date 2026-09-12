@@ -106,3 +106,35 @@ test('isKnowledgeBaseInitialized follows the Vue summary/embedding model rule', 
     'wiki KB with vector indexing still needs an embedding model',
   );
 });
+
+import { groupKnowledgeBaseSections } from './list.ts';
+
+function kb(id: string, extra: Record<string, unknown> = {}): Record<string, unknown> & { id: string } {
+  return { id, name: id, ...extra } as Record<string, unknown> & { id: string };
+}
+
+test('groupKnowledgeBaseSections: pinned first, then mine, tenantOthers, sharedEditable, sharedReadonly', () => {
+  const rows = [
+    kb('p1', { is_pinned: true, pinned_at: '2026-01-02', isMine: true, creator_id: 'me' }),
+    kb('m1', { isMine: true, creator_id: 'me' }),
+    kb('t1', { isMine: true, creator_id: 'someone-else' }),
+    kb('se1', { isMine: false, permission: 'editor', creator_id: 'x' }),
+    kb('sr1', { isMine: false, permission: 'view', creator_id: 'x' }),
+    kb('p2', { is_pinned: true, pinned_at: '2026-01-03', isMine: false, permission: 'view' }),
+  ] as never[];
+  const sections = groupKnowledgeBaseSections(rows, 'me');
+  const keys = sections.map((s: { key: string }) => s.key);
+  assert.deepEqual(keys, ['pinned', 'mine', 'tenantOthers', 'sharedEditable', 'sharedReadonly']);
+  const byKey = Object.fromEntries(sections.map((s: { key: string; items: { id: string }[] }) => [s.key, s.items.map((i) => i.id)]));
+  assert.deepEqual(byKey.pinned, ['p2', 'p1']); // newest pinned_at first (Vue:932-949)
+  assert.deepEqual(byKey.mine, ['m1']);
+  assert.deepEqual(byKey.tenantOthers, ['t1']);
+  assert.deepEqual(byKey.sharedEditable, ['se1']);
+  assert.deepEqual(byKey.sharedReadonly, ['sr1']);
+  for (const s of sections) assert.ok(s.items.length > 0, 'empty sections are omitted');
+});
+
+test('groupKnowledgeBaseSections keeps empty sections out of the result', () => {
+  const sections = groupKnowledgeBaseSections([kb('m1', { isMine: true, creator_id: 'me' }) as never], 'me');
+  assert.deepEqual(sections.map((s: { key: string }) => s.key), ['mine']);
+});
