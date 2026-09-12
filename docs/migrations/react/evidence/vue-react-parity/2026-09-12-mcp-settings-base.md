@@ -17,6 +17,7 @@ It does not claim parity for the remaining Vue drawer visuals, six-locale copy, 
 - `packages/api-client/src/configuration.ts` now exposes typed metadata, usage-generation, and tool-policy operations already registered by the MCP backend routes.
 - `packages/api-client/src/configuration.test.ts` verifies those paths, encoded tool names, response parsing, and write envelopes.
 - `McpServiceDetails` keeps metadata visible when tool-policy loading fails, blocks tool-policy writes against stale metadata, and exposes the backend OAuth authorization lifecycle after an existing service is opened.
+- MCP editor save now persists the editable `usage_instructions` field through the existing update route, matching the Vue dialog's generated/manual usage flow.
 - Independent review of the prior slice reported 7 Important and 3 Minor findings. The Important findings were repaired in this follow-up: missing default policy rows, usage persistence, stale usage fail-closed behavior, stale-response generation guards, backend-aligned system-admin visibility, bearer/stdio-safe edit hydration, and post-create credential failure recovery.
 
 ## Evidence
