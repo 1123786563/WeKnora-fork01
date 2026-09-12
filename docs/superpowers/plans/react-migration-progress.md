@@ -1268,3 +1268,27 @@
 - A fixed 1355×720 browser recording reached the React login page but could
   not enter protected routes without an authenticated SSO session. Recording:
   `/Users/wuyongjun/.config/browser-harness/agent-workspace/recordings/react-parity-20260912`.
+
+### T15 MCP review repair and R027 model settings follow-up (2026-09-12)
+
+- Independent MCP review found 7 Important and 3 Minor findings. The
+  Important behavior defects were repaired: missing default tool-policy rows
+  now appear immediately after a successful write; generated usage text is
+  persisted through the existing MCP update route; stale metadata blocks
+  generation and policy writes; metadata/policy/OAuth loads use a generation
+  guard; MCP writes no longer appear for system-admin-only UI sessions when
+  the routes require tenant Admin; bearer and stdio records are preserved for
+  safe display/edit handling; and a post-create credential failure retains
+  the returned service ID for recovery instead of creating a duplicate.
+- R027 now has a typed Web model panel and pure model contract helper. It
+  maps UI types to the backend `KnowledgeQA|Embedding|Rerank|VLLM|ASR`
+  vocabulary, validates remote URLs and embedding dimensions, loads provider
+  metadata, renders type tabs/cards, gates built-in operations by role, and
+  writes credentials through the dedicated model subresource. It remains
+  `implementing` because Ollama download/progress, provider-specific fields,
+  custom headers, debug/usage flows, localization, visual and runtime/native
+  evidence remain.
+- Focused MCP/model/upload tests passed 32/32; Web passed 263/263; shared and
+  Web typechecks plus diff check passed. Evidence:
+  `docs/migrations/react/evidence/vue-react-parity/2026-09-12-mcp-settings-base.md`
+  and `docs/migrations/react/evidence/vue-react-parity/2026-09-12-model-settings.md`.

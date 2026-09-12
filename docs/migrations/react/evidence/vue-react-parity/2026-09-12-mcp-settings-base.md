@@ -4,7 +4,7 @@ Date: 2026-09-12
 
 ## Scope
 
-This slice covers the first executable React replacement for `frontend/src/views/settings/McpSettings.vue`: service loading, viewer empty state, admin add entry, service cards, built-in restrictions, edit/delete actions, enable/disable submission locking, and dedicated credential transport for a newly entered API key.
+This slice covers the executable React replacement for `frontend/src/views/settings/McpSettings.vue`: service loading, viewer empty state, admin add entry, service cards, built-in restrictions, edit/delete actions, enable/disable submission locking, dedicated credential transport, metadata refresh/stale handling, tool policy updates, usage persistence, connection test feedback, and OAuth status/authorize/revoke controls.
 
 It does not claim parity for the Vue two-step `McpServiceDialog`, paginated tool/resource/test presentation, code import, advanced config/custom headers, six-locale copy, screenshot comparison, or real-backend/Wails/native acceptance. Metadata refresh/stale handling, usage generation, tool-policy writes, and OAuth status/authorize/revoke controls are now wired, but remain unverified outside focused tests.
 
@@ -17,6 +17,7 @@ It does not claim parity for the Vue two-step `McpServiceDialog`, paginated tool
 - `packages/api-client/src/configuration.ts` now exposes typed metadata, usage-generation, and tool-policy operations already registered by the MCP backend routes.
 - `packages/api-client/src/configuration.test.ts` verifies those paths, encoded tool names, response parsing, and write envelopes.
 - `McpServiceDetails` keeps metadata visible when tool-policy loading fails, blocks tool-policy writes against stale metadata, and exposes the backend OAuth authorization lifecycle after an existing service is opened.
+- Independent review of the prior slice reported 7 Important and 3 Minor findings. The Important findings were repaired in this follow-up: missing default policy rows, usage persistence, stale usage fail-closed behavior, stale-response generation guards, backend-aligned system-admin visibility, bearer/stdio-safe edit hydration, and post-create credential failure recovery.
 
 ## Evidence
 
@@ -24,8 +25,8 @@ It does not claim parity for the Vue two-step `McpServiceDialog`, paginated tool
 |---|---|---|
 | RED | `pnpm exec tsx --test apps/web/src/settings/McpSettingsPanel.test.tsx` before implementation failed with `ERR_MODULE_NOT_FOUND` for the missing panel | regression proof |
 | Component/SSR | `pnpm exec tsx --test apps/web/src/settings/McpSettingsPanel.test.tsx` — 2 passed, 0 failed | focused component evidence |
-| Shared API contract | `pnpm exec tsx --test packages/api-client/src/configuration.test.ts apps/web/src/settings/McpSettingsPanel.test.tsx` — 21 passed, 0 failed | typed mock-contract evidence |
-| Web test suite | `pnpm test:web` — 257 passed, 0 failed | Web unit/component regression evidence |
+| Shared/API/component focused | `pnpm exec tsx --test packages/api-client/src/configuration.test.ts apps/web/src/settings/McpSettingsPanel.test.tsx apps/web/src/settings/model-settings.test.ts apps/web/src/settings/ModelSettingsPanel.test.tsx apps/web/src/documents/upload-pipeline.test.ts` — 32 passed, 0 failed | typed and component evidence |
+| Web test suite | `pnpm test:web` — 263 passed, 0 failed | Web unit/component regression evidence |
 | Shared typecheck | `pnpm typecheck:shared` — 0 | shared static evidence |
 | Static | `git diff --check` — 0 | static evidence |
 | Web typecheck | `pnpm --filter @weknora/web exec tsc -p tsconfig.json --noEmit` — passed after preserving the parallel command-palette change and correcting its list response compatibility/type narrowing | Web static integration evidence |

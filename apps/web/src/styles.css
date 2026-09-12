@@ -123,6 +123,16 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-settings-editor label { display: grid; gap: .35rem; font-weight: 600; }
 .wk-settings-editor input, .wk-settings-editor textarea { box-sizing: border-box; width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #172033; font: inherit; padding: .55rem .65rem; }
 .wk-mcp-settings { display: grid; gap: 1rem; }
+.wk-model-settings { display: grid; gap: 1rem; }
+.wk-model-tabs { display: flex; flex-wrap: wrap; gap: .35rem; border-bottom: 1px solid #edf0f5; }
+.wk-model-tabs button { background: transparent; border: 0; border-bottom: 2px solid transparent; color: #506078; cursor: pointer; padding: .65rem .75rem; }
+.wk-model-tabs button.is-active { border-bottom-color: #2e6de6; color: #172033; font-weight: 650; }
+.wk-model-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem; }
+.wk-model-card { min-width: 0; }
+.wk-model-card-header { align-items: flex-start; display: flex; gap: .7rem; justify-content: space-between; }
+.wk-model-card h4 { margin: .2rem 0 0; overflow-wrap: anywhere; }
+.wk-model-type { color: #2e6de6; font-size: .75rem; text-transform: uppercase; }
+.wk-model-editor { background: #fff; border: 1px solid #cbd5e1; border-radius: 8px; box-shadow: 0 10px 30px rgba(23, 32, 51, .12); padding: 1rem; }
 .wk-mcp-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem; }
 .wk-mcp-card { min-width: 0; }
 .wk-mcp-card-header, .wk-mcp-card-footer { align-items: center; display: flex; gap: .7rem; justify-content: space-between; }
@@ -148,6 +158,7 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-mcp-test-error { background: #fef3f2; color: #b42318; }
 @media (max-width: 720px) { .wk-mcp-tools li { align-items: flex-start; grid-template-columns: 1fr 1fr; } .wk-mcp-tools li > div { grid-column: 1 / -1; } }
 @media (max-width: 720px) { .wk-mcp-grid { grid-template-columns: 1fr; } }
+@media (max-width: 720px) { .wk-model-grid { grid-template-columns: 1fr; } }
 .wk-settings-values { display: grid; gap: .65rem; margin: 1rem 0 0; }
 .wk-settings-values div { display: grid; grid-template-columns: minmax(8rem, 14rem) minmax(0, 1fr); gap: .8rem; border-bottom: 1px solid #edf0f5; padding: .55rem 0; }
 .wk-settings-values dt { color: #506078; font-weight: 650; overflow-wrap: anywhere; }
