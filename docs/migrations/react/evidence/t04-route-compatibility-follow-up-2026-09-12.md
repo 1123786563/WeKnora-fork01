@@ -41,3 +41,14 @@ This is static, Node test, and production-bundle evidence. It does not claim
 full browser route coverage, native/Wails runtime coverage, or live
 organization invitation mutation coverage. T04/T10/T11/T16 and T24 remain
 `review` under the existing ledger gates.
+
+## Runtime correction
+
+The first live check of
+`/platform/knowledge-bases/kb-route?tab=graph&slug=docs/start` still showed
+Documents. The route resolver unit test passed, so the initial Web entry was
+checked separately and found to pass only `window.location.pathname` to the
+resolver. `apps/web/src/main.tsx` now passes pathname plus search. After a
+fresh reload of the same connected Chrome tab, the page rendered `Knowledge
+graph` and `selected slug: docs/start`. This correction was followed by a
+fresh Web test/typecheck/build run: 100/100, 0, and 0 respectively.

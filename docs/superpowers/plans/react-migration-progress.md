@@ -1037,3 +1037,8 @@
   the existing non-fatal `>500 kB` warning. Full browser/native/live invite
   acceptance is not claimed; T04/T10/T11/T16/T24 remain `review`.
 - Evidence: `docs/migrations/react/evidence/t04-route-compatibility-follow-up-2026-09-12.md`.
+- A live graph deep-link initially exposed a dispatcher gap: the initial
+  entry passed only `pathname`, so the resolver's tested `tab`/`slug` handling
+  was bypassed. `main.tsx` now passes pathname plus search; a fresh reload
+  rendered `Knowledge graph` with `selected slug: docs/start`. The follow-up
+  Web test/typecheck/build remained 100/100, 0, and 0.

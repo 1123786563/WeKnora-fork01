@@ -40,7 +40,7 @@ if (oidcCallback?.kind === 'success') {
 }
 
 const development = (import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV ?? false;
-const route = resolveRoute(window.location.pathname, { development });
+const route = resolveRoute(`${window.location.pathname}${window.location.search}`, { development });
 const importedPlatformState = route.kind === 'embed' ? null : importLegacyPlatformState(window.localStorage);
 let session: ReactPlatformState = route.kind === 'embed'
   ? { credential: { kind: 'anonymous' }, tenantId: null, preferences: {} }
