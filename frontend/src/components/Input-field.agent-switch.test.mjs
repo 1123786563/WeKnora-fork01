@@ -140,24 +140,24 @@ test('stop waits for the API before confirming discard', () => {
 })
 
 
-test('selecting a custom agent locks the engine preference to trpc', () => {
-  const code = inputField.slice(inputField.indexOf('watch([selectedAgentId'), inputField.indexOf('  if (newKbMode'))
-  const engines = []
-  const settingsStore = reactive({
-    _isApplyingSessionState: false,
-    setAgentEngineType: e => engines.push(e),
-    selectKnowledgeBases: () => {},
-  })
-  const isBuiltinAgent = id => id.startsWith('builtin-')
-  const deps = [ref('agent-custom-1'), ref([]), ref('all')]
-  const watch = (_d, cb) => cb(['agent-custom-1', [], 'all'], ['builtin-quick-answer'])
-  const selectedAgentId = ref('agent-custom-1')
-  const agentKnowledgeBases = ref([])
-  const agentKBSelectionMode = ref('all')
-  vm.runInNewContext(ts.transpile(code), {
-    settingsStore, isBuiltinAgent, watch,
-    selectedAgentId, agentKnowledgeBases, agentKBSelectionMode,
-    ref, computed,
-  })
-  assert.deepEqual(engines, ['trpc'])
+test('session engine derives from the agent type: custom -> trpc, builtin -> builtin', () => {
+  const code = settingsStore.slice(
+    settingsStore.indexOf('nextSessionEngineType'),
+    settingsStore.indexOf('actions:')
+  )
+  const BUILTIN_QUICK_ANSWER_ID = 'builtin-quick-answer'
+  const cases = [
+    { selectedAgentId: 'agent-custom-1', want: 'trpc' },
+    { selectedAgentId: BUILTIN_QUICK_ANSWER_ID, want: 'builtin' },
+    { selectedAgentId: 'builtin-smart-reasoning', want: 'builtin' },
+    { selectedAgentId: '', want: 'builtin' },
+  ]
+  for (const c of cases) {
+    const state = reactive({ settings: { selectedAgentId: c.selectedAgentId } })
+    const { nextSessionEngineType } = vm.runInNewContext(
+      ts.transpile('const getters = {' + code + '}; ({ nextSessionEngineType: getters.nextSessionEngineType })'),
+      { state, BUILTIN_QUICK_ANSWER_ID }
+    )
+    assert.equal(nextSessionEngineType(state), c.want, c.selectedAgentId || '(default)')
+  }
 })

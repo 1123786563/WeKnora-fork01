@@ -179,6 +179,12 @@ export const useSettingsStore = defineStore("settings", {
     // 新会话执行引擎（缺省/非法值回落 builtin）
     agentEngineType: (state): "builtin" | "trpc" =>
       state.settings.agentEngineType === "trpc" ? "trpc" : "builtin",
+    // 会话创建时的引擎推导：自定义智能体 → tRPC（持久化），内置类型 → 内置 ReAct。
+    // 用户不再手选引擎；该规则与后端守卫保持一致。
+    nextSessionEngineType: (state): "builtin" | "trpc" =>
+      String(state.settings.selectedAgentId || BUILTIN_QUICK_ANSWER_ID).startsWith("builtin-")
+        ? "builtin"
+        : "trpc",
   },
 
   actions: {

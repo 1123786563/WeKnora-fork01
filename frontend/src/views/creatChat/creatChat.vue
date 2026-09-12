@@ -43,17 +43,7 @@
                     </div>
                 </transition>
             </div>
-            <!-- 新会话执行引擎选择：builtin 为默认 ReAct 引擎；trpc 提供持久化运行与崩溃恢复（实验性） -->
-            <div class="engine-selector">
-                <span class="engine-selector__label">{{ $t('createChat.engine.label') }}</span>
-                <t-radio-group v-model="engineType">
-                    <t-radio-button value="builtin" :disabled="customAgentSelected">{{ $t('createChat.engine.builtin') }}</t-radio-button>
-                    <t-radio-button value="trpc">
-                        {{ $t('createChat.engine.trpc') }}
-                        <span class="engine-selector__badge">{{ $t('createChat.engine.experimental') }}</span>
-                    </t-radio-button>
-                </t-radio-group>
-            </div>
+            <!-- 执行引擎不再由用户选择：自定义智能体自动使用 tRPC（持久化恢复），内置类型沿用内置 ReAct -->
             <InputField ref="inputFieldRef" @send-msg="sendMsg"></InputField>
         </div>
     </div>
@@ -70,7 +60,7 @@ import { ref, watch, onMounted, nextTick, computed } from 'vue';
 import ContextualGuide from '@/components/ContextualGuide.vue';
 import InputField from '@/components/Input-field.vue';
 import { createSessions } from "@/api/chat/index";
-import { getSuggestedQuestions, isBuiltinAgent, BUILTIN_QUICK_ANSWER_ID } from "@/api/agent/index";
+import { getSuggestedQuestions } from "@/api/agent/index";
 import type { SuggestedQuestion } from "@/api/agent/index";
 import { useMenuStore } from '@/stores/menu';
 import { useSettingsStore } from '@/stores/settings';
@@ -192,18 +182,8 @@ onMounted(() => { fetchSuggestedQuestions(); });
 
 const inputFieldRef = ref();
 
-// 新会话执行引擎：写回 settings store 以持久化用户偏好；builtin 为默认值。
-// 会话创建后引擎不可更改，存量会话的身份以服务端 engine_type 为准。
-const engineType = computed({
-    get: () => settingsStore.agentEngineType,
-    set: (value: string | number | boolean) => {
-        settingsStore.setAgentEngineType(value === 'trpc' ? 'trpc' : 'builtin');
-    },
-});
-
-// 自定义智能体只在 tRPC 引擎上运行：选中自定义智能体时锁定 builtin 选项。
-const customAgentSelected = computed(() =>
-    !isBuiltinAgent(String(settingsStore.selectedAgentId || BUILTIN_QUICK_ANSWER_ID)));
+// 执行引擎由所选智能体推导（见 settings store 的 nextSessionEngineType）：
+// 自定义智能体 → tRPC；内置类型 → 内置 ReAct。会话创建后引擎不可更改。
 
 const handleSuggestedQuestionClick = (question: string) => {
     inputFieldRef.value?.triggerSend(question);
@@ -229,8 +209,8 @@ async function createNewSession(value: string, modelId: string, mentionedItems: 
         knowledge_ids: selectedFiles,  // 所有选中的普通知识/文件
         allowed_tools: settingsStore.agentConfig.allowedTools
     };
-    // 会话执行引擎：builtin（默认 ReAct）或 trpc（持久化运行，实验性）
-    sessionData.engine_type = settingsStore.agentEngineType;
+    // 会话执行引擎：由所选智能体自动推导（自定义 → trpc，内置 → builtin）
+    sessionData.engine_type = settingsStore.nextSessionEngineType;
 
     try {
         const res = await createSessions(sessionData);
