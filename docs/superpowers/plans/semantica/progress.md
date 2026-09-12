@@ -25,7 +25,7 @@
 | Q03 | 模型推断与证据不足判定 | Q01,A03,V03 | verified | 受控网关/结构化校验（前提⊆授权集/kind 恒 model/长度与数量上限）/预算显式状态/注入惰性/Reason 双模式分派；RPC 证据内容通道与真实模型端到端延后 Q04；见运行记录 2026-09-11 Q03 |
 | Q04 | Go检索融合、Agent工具与最终授权 | Q02,Q03,I05 | verified | 5 BLOCKER 全闭：查询/TopK 上线、Reason 经 client.Reason 分派（rules/model+query_id）、resolveKBReadTenant **fail-closed** 强制+容器接线、allowed_document_ids 端到端上线、向量 seam 诚实 noop；chat/agent 入口与真向量 seam 归 W；见运行记录 2026-09-11 Q04（两段） |
 | W01 | 用户API与共享客户端契约 | Q04,I05 | verified | TS 契约（uint64 十进制字符串/浮点拒绝/未知枚举→unknown）+客户端（AbortSignal/错误映射/无泄露）+Go handler（fail-closed 503/mode 校验/body 不越 path scope）+路由定义；双评审 PASS；挂载/facade 桥/retry 归 W02；见运行记录 2026-09-11 W01 |
-| W02 | React索引状态与推理证据流程 | W01 | implemented | domain 纯函数+视图模型（迟到丢弃/取消/权限清空/模型≠证明）+面板组件+样式复用+typecheck；浏览器 E2E 阻断于真实服务栈（spec 就绪）；双评审待下轮；见运行记录 2026-09-11 W02 |
+| W02 | React索引状态与推理证据流程 | W01 | implemented | domain 纯函数+视图模型+面板挂载+重试提交；规格评审 FAIL→修复→**终审 PASS**；质量评审待下轮；浏览器 E2E 阻断于真实服务栈（spec 就绪 SEMANTIC_E2E_READY=1）；见运行记录 2026-09-11 W02 |
 | W03 | 后端影子构建、切换与回滚 | W01,I04,Q04 | pending | 尚未执行 |
 | O01 | 独立部署、探针与可观测性 | C02,I03,A03 | pending | 尚未执行 |
 | O02 | 故障注入、清理与恢复演练 | O01,I04,W03,Q04 | pending | 尚未执行 |
