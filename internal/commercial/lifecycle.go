@@ -58,6 +58,25 @@ func (s Subscription) DueMonths(now time.Time) []time.Time {
 // MonthEnd returns the exclusive end of the benefit month starting at start.
 func MonthEnd(start time.Time) time.Time { return MonthBoundary(start, 1) }
 
+// MonthWindowAt returns the [start, end) benefit-month window that contains
+// at, derived from the billing anchor with the same month-end clamping the
+// monthly grants use. It bounds the prorated monthly-credit delta of an
+// upgrade (design 6.2: the delta covers only the remaining part of the
+// current month and expires with it).
+func MonthWindowAt(anchor, at time.Time) (time.Time, time.Time) {
+	if anchor.IsZero() {
+		return at, MonthEnd(at)
+	}
+	start := anchor
+	for {
+		next := MonthBoundary(start, 1)
+		if next.After(at) {
+			return start, next
+		}
+		start = next
+	}
+}
+
 // Projection is the plan a tenant is currently served on.
 type Projection struct {
 	Plan       PlanVersion

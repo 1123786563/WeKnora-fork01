@@ -276,7 +276,16 @@ func (s *FulfillmentService) fulfillEvent(ctx context.Context, ev repocommercial
 		// Not payable (still pending): leave the event for a later pass.
 		return s.completeEvent(ctx, ev, repocommercial.OutboxStatePending)
 	}
-	for _, line := range s.lines(order) {
+	var lines []FulfillmentLine
+	if row.Kind == domain.OrderKindUpgrade {
+		lines, err = s.prepareUpgrade(ctx, row, now)
+	} else {
+		lines = s.lines(order)
+	}
+	if err != nil {
+		return err
+	}
+	for _, line := range lines {
 		rec, err := s.ensureRecord(ctx, order, line, now)
 		if err != nil {
 			return err
@@ -303,6 +312,142 @@ func (s *FulfillmentService) fulfillEvent(ctx context.Context, ev repocommercial
 // ensureRecord claims the unique FulfillmentRecord for one order line,
 // creating it with the pinned effective time on first sight. Concurrent or
 // restarted workers converge on the same stored row.
+// benefitKindPlanSwitch marks the LOCAL plan-switch marker record of an
+// upgrade order. It is settled inside the database transaction, never sent
+// to the external gateway, and its applied state plus local receipt are what
+// make the switch exactly-once across passes and crashes.
+const benefitKindPlanSwitch = "plan_switch"
+
+// prepareUpgrade drives the UPGRADE settlement of a paid upgrade order
+// (design 6.2): in ONE transaction it claims the unique plan-switch marker,
+// pins the prorated monthly-credit delta line and switches the subscription
+// to the target plan — keeping anchor and paid_until, the paid interval is
+// never reset and no already-used monthly grant is re-issued. A crash at
+// any point either lands the whole switch or leaves it for the next pass to
+// discover; the pinned delta line is then granted through the SAME gateway
+// path as every other benefit line. The returned lines mirror the order's
+// still-pending benefit records, so replays re-drive exactly what storage
+// says is outstanding — never a recomputation from the already-switched
+// subscription.
+func (s *FulfillmentService) prepareUpgrade(ctx context.Context, row repocommercial.OrderRow, now time.Time) ([]FulfillmentLine, error) {
+	var q repocommercial.QuoteRow
+	if err := s.db.WithContext(ctx).Where("id = ?", row.QuoteID).First(&q).Error; err != nil {
+		return nil, fmt.Errorf("upgrade quote %s: %w", row.QuoteID, err)
+	}
+	var snap struct {
+		PlanKey      string `json:"plan_key"`
+		PlanVersion  int64  `json:"plan_version"`
+		PriceFen     int64  `json:"price_fen"`
+		CreditsMicro int64  `json:"credits_micro"`
+	}
+	if err := json.Unmarshal([]byte(q.SnapshotJSON), &snap); err != nil {
+		return nil, fmt.Errorf("upgrade quote snapshot %s: %w", row.QuoteID, err)
+	}
+	var plan repocommercial.PlanRow
+	if err := s.db.WithContext(ctx).Where("plan_key = ? AND version = ?", snap.PlanKey, snap.PlanVersion).First(&plan).Error; err != nil {
+		return nil, fmt.Errorf("upgrade plan %s v%d: %w", snap.PlanKey, snap.PlanVersion, err)
+	}
+	var sub repocommercial.Subscription
+	if err := s.db.WithContext(ctx).Where("tenant_id = ?", row.TenantID).First(&sub).Error; err != nil {
+		return nil, fmt.Errorf("upgrade subscription tenant=%d: %w", row.TenantID, err)
+	}
+	var current domain.PlanVersion
+	if err := json.Unmarshal([]byte(sub.PlanSnapshotJSON), &current); err != nil {
+		return nil, fmt.Errorf("subscription snapshot tenant=%d: %w", row.TenantID, err)
+	}
+
+	// Prorated monthly-credit delta for the REMAINING part of the current
+	// benefit month (design 6.2: 只补额度差额, floor to credit precision; the
+	// delta batch expires with the current month).
+	monthStart, monthEnd := domain.MonthWindowAt(sub.Anchor, now)
+	monthSpan := monthEnd.Sub(monthStart)
+	remaining := monthEnd.Sub(now)
+	if remaining < 0 {
+		remaining = 0
+	}
+	if monthSpan > 0 && remaining > monthSpan {
+		remaining = monthSpan
+	}
+	var delta int64
+	if snap.CreditsMicro > int64(current.Monthly) && monthSpan > 0 && remaining > 0 {
+		// big.Rat proration (floor to credit precision, design 6.2): a
+		// naive credits×nanoseconds product overflows int64.
+		prorated, err := domain.Prorate(snap.CreditsMicro-int64(current.Monthly),
+			int64(remaining), int64(monthSpan), false)
+		if err != nil {
+			return nil, err
+		}
+		delta = prorated
+	}
+
+	switchKey := domain.FulfillmentKey(row.ID, "plan_switch")
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		marker := FulfillmentRecord{
+			Key: switchKey, TenantID: row.TenantID, OrderID: row.ID, LineID: "plan_switch",
+			Kind: benefitKindPlanSwitch, PlanRef: snap.PlanKey,
+			CustomerID: OrderCustomerID(row.TenantID), Credits: 0,
+			EffectiveAt: domain.FirstEffectiveAt(time.Time{}, now), ExpiresAt: monthEnd,
+			ExternalID: "local:" + row.ID, State: domain.FulfillmentStateApplied,
+			LeaseUntil: now,
+		}
+		res := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&marker)
+		if res.Error != nil {
+			return res.Error
+		}
+		if delta > 0 {
+			deltaRec := FulfillmentRecord{
+				Key: domain.FulfillmentKey(row.ID, "upgrade_delta"), TenantID: row.TenantID,
+				OrderID: row.ID, LineID: "upgrade_delta",
+				Kind: domain.BenefitKindSubscription, PlanRef: snap.PlanKey,
+				CustomerID: OrderCustomerID(row.TenantID), Credits: delta,
+				EffectiveAt: domain.FirstEffectiveAt(time.Time{}, now), ExpiresAt: monthEnd,
+				State: fulfillmentRecordPending, LeaseUntil: now,
+			}
+			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&deltaRec).Error; err != nil {
+				return err
+			}
+		}
+		if res.RowsAffected == 1 {
+			// First pass owns the switch: apply it under the version guard so a
+			// concurrent writer loses cleanly instead of half-applying.
+			upd := tx.Model(&repocommercial.Subscription{}).
+				Where("id = ? AND version = ?", sub.ID, sub.Version).
+				Updates(map[string]interface{}{
+					"plan_key":           snap.PlanKey,
+					"plan_version":       snap.PlanVersion,
+					"plan_snapshot_json": plan.DefinitionJSON,
+					"version":            sub.Version + 1,
+				})
+			if upd.Error != nil {
+				return upd.Error
+			}
+			if upd.RowsAffected == 0 {
+				return fmt.Errorf("upgrade switch lost the subscription version race for %s", sub.ID)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	// Replay-safe line set: exactly the order's still-pending benefit
+	// records (a pinned delta survives crashes; a completed one is never
+	// re-driven).
+	var pending []FulfillmentRecord
+	if err := s.db.WithContext(ctx).
+		Where("order_id = ? AND state = ?", row.ID, fulfillmentRecordPending).
+		Find(&pending).Error; err != nil {
+		return nil, err
+	}
+	lines := make([]FulfillmentLine, 0, len(pending))
+	for _, rec := range pending {
+		lines = append(lines, FulfillmentLine{
+			ID: rec.LineID, Kind: rec.Kind, PlanRef: rec.PlanRef,
+			Credits: domain.Credits(rec.Credits), ExpiresAt: rec.ExpiresAt,
+		})
+	}
+	return lines, nil
+}
 func (s *FulfillmentService) ensureRecord(ctx context.Context, order domain.Order, line FulfillmentLine, now time.Time) (FulfillmentRecord, error) {
 	candidate := FulfillmentRecord{
 		Key:         domain.FulfillmentKey(order.ID, line.ID),

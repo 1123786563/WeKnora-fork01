@@ -315,3 +315,70 @@ func TestLifecycleTickExternalIssuerFailureKeepsKeyStable(t *testing.T) {
 		t.Fatalf("key changed after replay: %+v err=%v", job, err)
 	}
 }
+
+// TestLifecycleTickAppliesDueScheduledChange proves the scheduled-switch
+// consumer (design 6.2: 降级在已付费覆盖区间结束后切换): once the effective
+// time passes, the tick switches the subscription to the scheduled plan
+// (from the arrangement's own immutable snapshot), clears the arrangement,
+// bumps the version and — critically — never touches a purchased future
+// interval. A second tick applies nothing more.
+func TestLifecycleTickAppliesDueScheduledChange(t *testing.T) {
+	svc, store := testLifecycle(t, Issuer{})
+	ctx := context.Background()
+	now := time.Date(2026, 9, 12, 8, 0, 0, 0, time.UTC)
+	anchor := time.Date(2026, 8, 12, 8, 0, 0, 0, time.UTC)
+	paidUntil := time.Date(2026, 9, 12, 7, 0, 0, 0, time.UTC) // already past
+
+	current := domain.PlanVersion{Key: "pro", Version: 3, Monthly: domain.Credits(1000)}
+	currentJSON, _ := json.Marshal(current)
+	target := domain.PlanVersion{Key: "lite", Version: 2, Monthly: domain.Credits(500)}
+	targetJSON, _ := json.Marshal(target)
+	change := domain.ScheduledPlanChange{
+		PlanKey: "lite", PlanVersion: 2, PlanSnapshotJSON: string(targetJSON),
+		EffectiveAt: paidUntil, QuoteID: "qt_chg", CreatedAt: anchor,
+	}
+	changeJSON, err := change.JSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveSubscription(ctx, &repocommercial.Subscription{
+		ID: "sub-sched", TenantID: 501, PlanKey: "pro", PlanVersion: 3,
+		PlanSnapshotJSON: string(currentJSON), Anchor: anchor, PaidUntil: paidUntil,
+		FutureIntervalJSON:  `{"renewal":"purchased-early-renewal"}`,
+		ScheduledChangeJSON: changeJSON, Version: 4,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.Tick(ctx, now); err != nil {
+		t.Fatal(err)
+	}
+	sub, err := store.Current(ctx, 501)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sub.PlanKey != "lite" || sub.PlanVersion != 2 || sub.PlanSnapshotJSON != string(targetJSON) {
+		t.Fatalf("scheduled switch not applied: %+v", sub)
+	}
+	if sub.ScheduledChangeJSON != "" {
+		t.Fatalf("arrangement not cleared: %q", sub.ScheduledChangeJSON)
+	}
+	if sub.Version != 5 {
+		t.Fatalf("version not advanced: %d", sub.Version)
+	}
+	if sub.FutureIntervalJSON != `{"renewal":"purchased-early-renewal"}` {
+		t.Fatalf("purchased future interval was clobbered: %q", sub.FutureIntervalJSON)
+	}
+
+	// Second tick: exactly once.
+	if err := svc.Tick(ctx, now.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	sub2, err := store.Current(ctx, 501)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sub2.Version != 5 || sub2.ScheduledChangeJSON != "" {
+		t.Fatalf("second tick re-applied: %+v", sub2)
+	}
+}

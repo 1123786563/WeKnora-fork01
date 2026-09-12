@@ -12,6 +12,14 @@ const (
 	OrderStateFulfilled = "fulfilled"
 )
 
+// Order kinds select the fulfillment policy. A purchase order settles as
+// credit top-up; an upgrade order switches the subscription plan (keeping
+// the paid interval) and grants only the prorated monthly-credit delta.
+const (
+	OrderKindPurchase = "purchase"
+	OrderKindUpgrade  = "upgrade"
+)
+
 // ErrPaymentMismatch reports a payment fact that does not match its order:
 // a different order, tenant, amount, or currency, or a non-succeeded state.
 var ErrPaymentMismatch = errors.New("payment_mismatch")

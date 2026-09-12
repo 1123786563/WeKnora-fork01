@@ -410,6 +410,8 @@ func (h *CommercialHandler) ChangePlan(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": "no subscription to change; purchase a plan through POST /commercial/orders first"})
 	case errors.Is(err, repocommercial.ErrSubscriptionVersionConflict):
 		c.JSON(http.StatusConflict, gin.H{"error": "subscription changed since the quote was cut; cut a new quote and retry"})
+	case errors.Is(err, repocommercial.ErrScheduledChangeExists):
+		c.JSON(http.StatusConflict, gin.H{"error": "a scheduled plan change is already pending for this space"})
 	case errors.Is(err, commercialsvc.ErrQuoteTenantMismatch):
 		c.JSON(http.StatusNotFound, gin.H{"error": "quote not found for this tenant"})
 	case errors.Is(err, commercialsvc.ErrPaymentProviderUnconfigured):

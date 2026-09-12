@@ -294,8 +294,13 @@ func TestChangePlanSchedulesDowngradeAtPeriodEnd(t *testing.T) {
 	if err := db.Where("tenant_id = ?", 101).First(&sub).Error; err != nil {
 		t.Fatal(err)
 	}
-	if sub.Version != 2 || !strings.Contains(sub.FutureIntervalJSON, "lite") {
+	if sub.Version != 2 || !strings.Contains(sub.ScheduledChangeJSON, "lite") {
 		t.Fatalf("scheduled downgrade not recorded: %+v", sub)
+	}
+	// The purchased-future-interval column is NEVER touched by a scheduled
+	// switch (design 6.2: 已有提前续费区间不被悄悄改写).
+	if sub.FutureIntervalJSON != "{}" {
+		t.Fatalf("scheduled switch overwrote the future interval: %q", sub.FutureIntervalJSON)
 	}
 	var used repocommercial.QuoteRow
 	if err := db.Where("id = ?", q.ID).First(&used).Error; err != nil || used.UsedOrderID == nil ||
@@ -327,5 +332,61 @@ func TestChangePlanVersionConflictAndMissingSubscription(t *testing.T) {
 	}
 	if _, err := svc.ChangePlan(ctx, 202, q2.ID, 0, "wechat"); !errors.Is(err, ErrNoSubscriptionToChange) {
 		t.Fatalf("base-tier change: %v", err)
+	}
+}
+
+// TestOpenOrderClaimLosesWholeUnitOnStaleVersion proves the ATOMIC claim:
+// an upgrade command whose claimed subscription version is stale is
+// rejected inside the transaction — no order row, no consumed quote, no
+// attempt survive the lost race, so a concurrent upgrade can never bill
+// twice against the same version.
+func TestOpenOrderClaimLosesWholeUnitOnStaleVersion(t *testing.T) {
+	svc, _, db := newOrderTestEnv(t)
+	seedPublishedPlan(t, db)
+	now := time.Now()
+	current := domain.PlanVersion{Key: "std", Version: 1, Price: 49_00, Monthly: 4_900_000}
+	seedChangePlanSubscription(t, db, 101, current, now.Add(-15*24*time.Hour), now.Add(15*24*time.Hour))
+	ctx := context.Background()
+	q, err := svc.CreateQuote(ctx, 101, "pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := repocommercial.NewOrderStore(db)
+	// First upgrade wins the claim (version 1 -> 2).
+	if err := store.OpenOrder(ctx, repocommercial.OpenOrderCommand{
+		OrderID: "ord_win", AttemptID: "att_win", TenantID: 101, QuoteID: q.ID,
+		Kind: domain.OrderKindUpgrade, AmountFen: 25_00, Currency: "CNY",
+		Provider: "wechat", Merchant: "wechat", MerchantOrderID: "mo_win",
+		SubscriptionVersion: 1, ClaimSubscriptionID: "sub-101", ClaimVersion: 1,
+		Now: now,
+	}); err != nil {
+		t.Fatalf("winning upgrade claim rejected: %v", err)
+	}
+	var qrow repocommercial.QuoteRow
+	if err := db.Where("id = ?", q.ID).First(&qrow).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&repocommercial.QuoteRow{ID: "qt_second", TenantID: 101,
+		SubscriptionVersion: 2, SnapshotJSON: qrow.SnapshotJSON, ExpiresAt: now.Add(time.Hour)}).Error; err != nil {
+		t.Fatal(err)
+	}
+	// Second upgrade claims the STALE version 1: the whole unit must lose.
+	err = store.OpenOrder(ctx, repocommercial.OpenOrderCommand{
+		OrderID: "ord_lose", AttemptID: "att_lose", TenantID: 101, QuoteID: "qt_second",
+		Kind: domain.OrderKindUpgrade, AmountFen: 25_00, Currency: "CNY",
+		Provider: "wechat", Merchant: "wechat", MerchantOrderID: "mo_lose",
+		SubscriptionVersion: 2, ClaimSubscriptionID: "sub-101", ClaimVersion: 1,
+		Now: now,
+	})
+	if !errors.Is(err, repocommercial.ErrSubscriptionVersionConflict) {
+		t.Fatalf("stale claim accepted: %v", err)
+	}
+	var orders int64
+	if err := db.Model(&repocommercial.OrderRow{}).Where("id = ?", "ord_lose").Count(&orders).Error; err != nil || orders != 0 {
+		t.Fatalf("losing claim left an order row: count=%d err=%v", orders, err)
+	}
+	var used int64
+	if err := db.Model(&repocommercial.QuoteRow{}).Where("id = ? AND used_order_id IS NOT NULL", "qt_second").Count(&used).Error; err != nil || used != 0 {
+		t.Fatalf("losing claim consumed its quote: count=%d err=%v", used, err)
 	}
 }

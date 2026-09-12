@@ -75,6 +75,11 @@ func NewOrderService(db *gorm.DB, providers map[string]payment.Provider) (*Order
 	if providers == nil {
 		providers = map[string]payment.Provider{}
 	}
+	// Additive column upgrades (order kind, scheduled plan change) so a
+	// deployment created before them migrates in place.
+	if err := db.AutoMigrate(&repocommercial.OrderRow{}, &repocommercial.Subscription{}); err != nil {
+		return nil, err
+	}
 	return &OrderService{
 		quotes:    repocommercial.NewCatalogStore(db),
 		orders:    repocommercial.NewOrderStore(db),
@@ -176,7 +181,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, tenantID uint64, quoteID
 	if err != nil {
 		return OrderView{}, err
 	}
-	return s.openOrder(ctx, tenantID, q, providerName, snap.PriceFen)
+	return s.openOrder(ctx, tenantID, q, providerName, snap.PriceFen, domain.OrderKindPurchase, nil)
 }
 
 // quoteForTenant loads and validates the quote snapshot for a tenant.
@@ -198,10 +203,19 @@ func (s *OrderService) quoteForTenant(ctx context.Context, tenantID uint64, quot
 	return q, snap, nil
 }
 
+// subscriptionClaim identifies the subscription version an upgrade
+// atomically claims inside OpenOrder's transaction, so two upgrades cut
+// against the same version can never both open (and later pay) — the
+// second loses the whole unit and must re-quote.
+type subscriptionClaim struct {
+	id      string
+	version int64
+}
+
 // openOrder runs the shared checkout path: atomic quote+order+attempt unit,
 // then the channel call. A channel failure returns the PENDING order view
 // with CheckoutError set and a nil error — the write already succeeded.
-func (s *OrderService) openOrder(ctx context.Context, tenantID uint64, q repocommercial.QuoteRow, providerName string, amountFen int64) (OrderView, error) {
+func (s *OrderService) openOrder(ctx context.Context, tenantID uint64, q repocommercial.QuoteRow, providerName string, amountFen int64, kind string, claim *subscriptionClaim) (OrderView, error) {
 	provider, ok := s.providers[providerName]
 	if !ok || provider == nil {
 		return OrderView{}, fmt.Errorf("%w: %q", ErrPaymentProviderUnconfigured, providerName)
@@ -210,16 +224,25 @@ func (s *OrderService) openOrder(ctx context.Context, tenantID uint64, q repocom
 	if err != nil {
 		return OrderView{}, err
 	}
+	if claim != nil && claim.version != subVersion {
+		// The subscription moved between the read and the open: refuse now
+		// instead of letting the atomic claim inside the transaction be the
+		// only loser (same error either way, cheaper to detect early).
+		return OrderView{}, repocommercial.ErrSubscriptionVersionConflict
+	}
 	id := "ord_" + newLeaseToken()
 	merchantOrderID := "mo_" + newLeaseToken()
-	if err := s.orders.OpenOrder(ctx, repocommercial.OrderRow{
-		ID: id, TenantID: tenantID, QuoteID: q.ID,
-		AmountFen: amountFen, Currency: "CNY",
-	}, repocommercial.PaymentAttemptRow{
-		ID: "att_" + newLeaseToken(), TenantID: tenantID, OrderID: id,
+	cmd := repocommercial.OpenOrderCommand{
+		OrderID: id, AttemptID: "att_" + newLeaseToken(), TenantID: tenantID,
+		QuoteID: q.ID, Kind: kind, AmountFen: amountFen, Currency: "CNY",
 		Provider: providerName, Merchant: providerName, MerchantOrderID: merchantOrderID,
-		AmountFen: amountFen, Currency: "CNY",
-	}, q.ID, subVersion, time.Now()); err != nil {
+		SubscriptionVersion: subVersion, Now: time.Now(),
+	}
+	if claim != nil {
+		cmd.ClaimSubscriptionID = claim.id
+		cmd.ClaimVersion = claim.version
+	}
+	if err := s.orders.OpenOrder(ctx, cmd); err != nil {
 		return OrderView{}, err
 	}
 	res, err := provider.Create(ctx, payment.OrderRequest{
@@ -380,38 +403,38 @@ func (s *OrderService) ChangePlan(ctx context.Context, tenantID uint64, quoteID 
 			// free switch would bypass the paid-upgrade path entirely.
 			amount = 1
 		}
-		order, err := s.openOrder(ctx, tenantID, q, providerName, amount)
+		order, err := s.openOrder(ctx, tenantID, q, providerName, amount, domain.OrderKindUpgrade,
+			&subscriptionClaim{id: sub.ID, version: sub.Version})
 		if err != nil {
 			return ChangePlanView{}, err
 		}
-		return ChangePlanView{Change: "upgrade", Order: &order}, nil
+		return ChangePlanView{Change: domain.ChangeKindUpgrade.String(), Order: &order}, nil
 	}
 
-	// SCHEDULED switch (downgrade or lateral): takes effect at paid_until.
-	// The quote is consumed with a marker (no order row: nothing is charged)
-	// and the future interval is recorded under the version guard, so the
-	// arrangement is durable, visible in the subscription row, and a
-	// concurrent change loses cleanly to a re-quote answer.
-	future := struct {
-		PlanKey     string `json:"plan_key"`
-		PlanVersion int64  `json:"plan_version"`
-		EffectiveAt string `json:"effective_at"`
-		QuoteID     string `json:"quote_id"`
-	}{PlanKey: snap.PlanKey, PlanVersion: snap.PlanVersion,
-		EffectiveAt: sub.PaidUntil.UTC().Format(time.RFC3339), QuoteID: q.ID}
-	futureJSON, err := json.Marshal(future)
+	// SCHEDULED switch (downgrade or lateral): takes effect at paid_until —
+	// the paid interval is never cut short and a purchased future interval
+	// (early renewal) is never overwritten: the arrangement lives in its OWN
+	// column, one pending switch at a time. The quote is consumed with a
+	// marker (no order row: nothing is charged) and the version guard makes
+	// a concurrent change lose cleanly to a re-quote answer.
+	targetPlan, err := s.quotes.GetPlan(ctx, snap.PlanKey, snap.PlanVersion)
 	if err != nil {
 		return ChangePlanView{}, err
 	}
+	change := domain.ScheduledPlanChange{
+		PlanKey: snap.PlanKey, PlanVersion: snap.PlanVersion,
+		PlanSnapshotJSON: targetPlan.DefinitionJSON,
+		EffectiveAt:      sub.PaidUntil, QuoteID: q.ID, CreatedAt: now,
+	}
 	marker := "chg_" + newLeaseToken()
-	if err := s.subs.SchedulePlanChange(ctx, sub, q.ID, q.SubscriptionVersion, marker, string(futureJSON), now); err != nil {
+	if err := s.subs.SchedulePlanChange(ctx, sub, change, q.ID, q.SubscriptionVersion, marker, now); err != nil {
 		return ChangePlanView{}, err
 	}
 	return ChangePlanView{
-		Change:               "scheduled_switch",
+		Change:               domain.ChangeKindScheduledSwitch.String(),
 		ScheduledPlanKey:     snap.PlanKey,
 		ScheduledPlanVersion: snap.PlanVersion,
-		EffectiveAt:          future.EffectiveAt,
+		EffectiveAt:          change.EffectiveAt.UTC().Format(time.RFC3339),
 		SubscriptionVersion:  sub.Version + 1,
 	}, nil
 }

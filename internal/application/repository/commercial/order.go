@@ -40,6 +40,7 @@ type OrderRow struct {
 	ID        string `gorm:"primaryKey;column:id"`
 	TenantID  uint64 `gorm:"column:tenant_id;not null"`
 	QuoteID   string `gorm:"column:quote_id;uniqueIndex;not null"`
+	Kind      string `gorm:"column:kind;not null;default:'purchase'"`
 	AmountFen int64  `gorm:"column:amount_fen;not null"`
 	Currency  string `gorm:"column:currency;not null"`
 	State     string `gorm:"column:state;not null"`
@@ -115,20 +116,90 @@ func createOrderTx(tx *gorm.DB, row OrderRow) error {
 	return tx.Create(&row).Error
 }
 
+// OpenOrderCommand is the SINGLE input from which the order row and its
+// payment-attempt row are derived: identity, tenant, amount and currency
+// exist exactly once, so the two persisted rows cannot drift apart and no
+// caller can atomically commit inconsistent data (the repository validates
+// the command once, then derives both rows).
+type OpenOrderCommand struct {
+	OrderID   string
+	AttemptID string
+	TenantID  uint64
+	QuoteID   string
+	// Kind selects the fulfillment policy (domain.OrderKindPurchase /
+	// OrderKindUpgrade); empty defaults to purchase.
+	Kind            string
+	AmountFen       int64
+	Currency        string
+	Provider        string
+	Merchant        string
+	MerchantOrderID string
+	// SubscriptionVersion guards quote consumption (the quote must have
+	// been cut against this version of the subscription).
+	SubscriptionVersion int64
+	// ClaimSubscriptionID / ClaimVersion: when set (upgrade orders), the
+	// SAME transaction atomically advances the subscription version — a
+	// concurrent upgrade based on a stale version loses the WHOLE unit
+	// (order + quote + attempt), never just an after-the-fact check.
+	ClaimSubscriptionID string
+	ClaimVersion        int64
+	Now                 time.Time
+}
+
+func (c *OpenOrderCommand) validate() error {
+	if c.OrderID == "" || c.AttemptID == "" || c.TenantID == 0 || c.QuoteID == "" ||
+		c.AmountFen <= 0 || c.Currency == "" || c.Provider == "" || c.Merchant == "" ||
+		c.MerchantOrderID == "" || c.Now.IsZero() {
+		return ErrInvalidOrderRow
+	}
+	if c.Kind == "" {
+		c.Kind = domain.OrderKindPurchase
+	}
+	if c.Kind != domain.OrderKindPurchase && c.Kind != domain.OrderKindUpgrade {
+		return ErrInvalidOrderRow
+	}
+	if c.ClaimSubscriptionID != "" && c.ClaimVersion <= 0 {
+		return ErrInvalidOrderRow
+	}
+	return nil
+}
+
 // OpenOrder is the atomic unit of work behind a checkout (and an upgrade):
-// it creates the pending order, CONSUMES the quote and registers the pending
-// attempt in ONE transaction. Any failure — stale quote, expiry, version
+// optionally claiming the subscription version, creating the pending order,
+// consuming the quote and registering the pending attempt in ONE
+// transaction. Any failure — stale claim, stale quote, expiry, version
 // conflict, unique violation — rolls the whole unit back: no orphan order
 // row survives a refused checkout and no compensation delete is needed.
-func (s *OrderStore) OpenOrder(ctx context.Context, order OrderRow, attempt PaymentAttemptRow, quoteID string, subscriptionVersion int64, now time.Time) error {
+func (s *OrderStore) OpenOrder(ctx context.Context, cmd OpenOrderCommand) error {
+	if err := cmd.validate(); err != nil {
+		return err
+	}
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := createOrderTx(tx, order); err != nil {
+		if cmd.ClaimSubscriptionID != "" {
+			res := tx.Model(&Subscription{}).
+				Where("id = ? AND version = ?", cmd.ClaimSubscriptionID, cmd.ClaimVersion).
+				Update("version", gorm.Expr("version + 1"))
+			if res.Error != nil {
+				return res.Error
+			}
+			if res.RowsAffected == 0 {
+				return ErrSubscriptionVersionConflict
+			}
+		}
+		if err := createOrderTx(tx, OrderRow{
+			ID: cmd.OrderID, TenantID: cmd.TenantID, QuoteID: cmd.QuoteID,
+			Kind: cmd.Kind, AmountFen: cmd.AmountFen, Currency: cmd.Currency,
+		}); err != nil {
 			return err
 		}
-		if _, err := consumeQuoteTx(tx, quoteID, subscriptionVersion, order.ID, now); err != nil {
+		if _, err := consumeQuoteTx(tx, cmd.QuoteID, cmd.SubscriptionVersion, cmd.OrderID, cmd.Now); err != nil {
 			return err
 		}
-		return registerAttemptTx(tx, attempt)
+		return registerAttemptTx(tx, PaymentAttemptRow{
+			ID: cmd.AttemptID, TenantID: cmd.TenantID, OrderID: cmd.OrderID,
+			Provider: cmd.Provider, Merchant: cmd.Merchant, MerchantOrderID: cmd.MerchantOrderID,
+			AmountFen: cmd.AmountFen, Currency: cmd.Currency,
+		})
 	})
 }
 

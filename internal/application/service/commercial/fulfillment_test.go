@@ -2,8 +2,10 @@ package commercial
 
 import (
 	"context"
+	"encoding/json"
 	"sync"
 	"testing"
+	"time"
 
 	repocommercial "github.com/Tencent/WeKnora/internal/application/repository/commercial"
 	domain "github.com/Tencent/WeKnora/internal/commercial"
@@ -175,6 +177,124 @@ func fulfillEvents(t *testing.T, db *gorm.DB) []repocommercial.OutboxEvent {
 // success; once FindBenefit can see the saved benefit (reconciliation), a
 // rerun discovers it instead of re-granting, fulfills the order exactly once,
 // and leaves no duplicate outbox events.
+// TestFulfillmentUpgradeSwitchesPlanAndGrantsDelta proves the upgrade
+// settlement (design 6.2): a PAID upgrade order switches the subscription
+// to the target plan — keeping anchor and paid_until, never re-issuing used
+// monthly grants — and grants exactly ONE prorated monthly-credit delta for
+// the remaining part of the current month. A replay pass neither switches
+// nor grants again.
+func TestFulfillmentUpgradeSwitchesPlanAndGrantsDelta(t *testing.T) {
+	gw := &stubGateway{findable: true}
+	svc, db, store := setupFulfillment(t, gw)
+	if err := db.AutoMigrate(&repocommercial.Subscription{}, &repocommercial.PlanRow{}, &repocommercial.QuoteRow{}); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	ctx := context.Background()
+
+	// Target plan definition (published) + quote snapshot for it.
+	target := domain.PlanVersion{Key: "premium", Version: 1, Price: 199_00, Monthly: 19_900_000}
+	targetJSON, _ := json.Marshal(target)
+	if err := db.Create(&repocommercial.PlanRow{PlanKey: "premium", Version: 1,
+		DefinitionJSON: string(targetJSON), State: domain.PlanStatePublished}).Error; err != nil {
+		t.Fatal(err)
+	}
+	snap := `{"plan_key":"premium","plan_version":1,"price_fen":19900,"credits_micro":19900000}`
+	if err := db.Create(&repocommercial.QuoteRow{ID: "qt_up", TenantID: 101,
+		SubscriptionVersion: 1, SnapshotJSON: snap, ExpiresAt: now.Add(time.Hour)}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	// Current subscription on the cheaper plan; anchor == now so the
+	// current month is fully remaining and the delta equals the full
+	// monthly difference.
+	current := domain.PlanVersion{Key: "pro", Version: 3, Price: 99_00, Monthly: 9_900_000}
+	currentJSON, _ := json.Marshal(current)
+	paidUntil := now.Add(30 * 24 * time.Hour)
+	sub := repocommercial.Subscription{
+		ID: "sub-101", TenantID: 101, PlanKey: "pro", PlanVersion: 3,
+		PlanSnapshotJSON: string(currentJSON), Anchor: now, PaidUntil: paidUntil,
+		FutureIntervalJSON: "{}", Version: 1,
+	}
+	if err := db.Create(&sub).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	// Paid upgrade order through the real C01 path.
+	if err := store.CreateOrder(ctx, repocommercial.OrderRow{
+		ID: "ord_up", TenantID: 101, QuoteID: "qt_up", Kind: domain.OrderKindUpgrade,
+		AmountFen: 50_00, Currency: "CNY"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RegisterAttempt(ctx, repocommercial.PaymentAttemptRow{
+		ID: "att_up", TenantID: 101, OrderID: "ord_up", Provider: "alipay", Merchant: "weknora",
+		MerchantOrderID: "mo_up", AmountFen: 50_00, Currency: "CNY"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ConfirmPayment(ctx, domain.PaymentFact{
+		TenantID: 101, OrderID: "ord_up", AttemptID: "mo_up", Provider: "alipay", Merchant: "weknora",
+		Transaction: "txn_up", Amount: 50_00, Currency: "CNY", State: "succeeded"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.Recover(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	var after repocommercial.Subscription
+	if err := db.Where("tenant_id = ?", 101).First(&after).Error; err != nil {
+		t.Fatal(err)
+	}
+	if after.PlanKey != "premium" || after.PlanVersion != 1 {
+		t.Fatalf("plan not switched: %+v", after)
+	}
+	if !after.PaidUntil.Equal(paidUntil) || !after.Anchor.Equal(now) {
+		t.Fatalf("paid interval was reset: anchor=%v paid_until=%v", after.Anchor, after.PaidUntil)
+	}
+	if after.Version != 2 || after.PlanSnapshotJSON != string(targetJSON) {
+		t.Fatalf("snapshot/version not switched: v=%d snap=%s", after.Version, after.PlanSnapshotJSON)
+	}
+	if got := orderState(t, db, "ord_up"); got != domain.OrderStateFulfilled {
+		t.Fatalf("upgrade order state = %s, want fulfilled", got)
+	}
+	// Exactly one delta grant, for the FULL monthly difference (the whole
+	// current month remained).
+	if gw.appliedCount() != 1 {
+		t.Fatalf("delta grants = %d, want 1; records=%+v", gw.appliedCount(), fulfillmentRecords(t, db, "ord_up"))
+	}
+	recs := fulfillmentRecords(t, db, "ord_up")
+	var deltaSeen bool
+	for _, r := range recs {
+		if r.LineID == "upgrade_delta" {
+			deltaSeen = true
+			// Full monthly difference minus sub-millisecond proration loss.
+			if r.Credits < 9_999_000 || r.Credits > 10_000_000 {
+				t.Fatalf("delta credits = %d, want ~10000000", r.Credits)
+			}
+			if r.State != domain.FulfillmentStateApplied {
+				t.Fatalf("delta state = %s", r.State)
+			}
+		}
+	}
+	if !deltaSeen {
+		t.Fatalf("no upgrade_delta record: %+v", recs)
+	}
+
+	// Replay: neither the switch nor the grant happens twice.
+	if err := svc.Recover(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if gw.appliedCount() != 1 {
+		t.Fatalf("replay granted again: %d", gw.appliedCount())
+	}
+	var after2 repocommercial.Subscription
+	if err := db.Where("tenant_id = ?", 101).First(&after2).Error; err != nil {
+		t.Fatal(err)
+	}
+	if after2.Version != 2 {
+		t.Fatalf("replay bumped version again: %d", after2.Version)
+	}
+}
 func TestFulfillmentWorkerSavedThenDroppedRecoversExactlyOnce(t *testing.T) {
 	gw := &stubGateway{applyErr: domain.ErrGatewayIndeterminate}
 	svc, db, store := setupFulfillment(t, gw)

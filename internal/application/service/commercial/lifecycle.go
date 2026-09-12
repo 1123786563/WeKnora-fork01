@@ -72,6 +72,22 @@ func (s *LifecycleService) Tick(ctx context.Context, now time.Time) error {
 		return err
 	}
 	for _, row := range rows {
+		// A scheduled plan switch whose effective time (the paid_until it
+		// was cut against) has passed is applied FIRST — exactly once under
+		// the stored-JSON guard — so the rest of the tick projects the
+		// switched plan, not the stale one (design 6.2: 降级在已付费覆盖
+		// 区间结束后切换).
+		applied, err := s.applyDueScheduledChange(ctx, row, now)
+		if err != nil {
+			return err
+		}
+		if applied {
+			fresh, err := s.store.Current(ctx, row.TenantID)
+			if err != nil {
+				return err
+			}
+			row = fresh
+		}
 		sub, err := toDomainSubscription(row)
 		if err != nil {
 			return err
@@ -90,6 +106,18 @@ func (s *LifecycleService) Tick(ctx context.Context, now time.Time) error {
 		}
 	}
 	return nil
+}
+
+// applyDueScheduledChange applies a due scheduled plan switch through the
+// store's exactly-once guard. The arrangement carries its own immutable
+// plan snapshot, so applying never re-resolves the catalog at effective
+// time; a malformed or absent record is a clean no-op.
+func (s *LifecycleService) applyDueScheduledChange(ctx context.Context, row repocommercial.Subscription, now time.Time) (bool, error) {
+	change, ok := domain.ParseScheduledPlanChange(row.ScheduledChangeJSON)
+	if !ok || !change.Due(now) {
+		return false, nil
+	}
+	return s.store.ApplyDueScheduledChange(ctx, row, now)
 }
 
 func (s *LifecycleService) issueDueMonths(ctx context.Context, sub domain.Subscription, now time.Time) error {

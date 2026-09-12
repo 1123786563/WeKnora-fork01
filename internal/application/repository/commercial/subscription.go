@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	domain "github.com/Tencent/WeKnora/internal/commercial"
 	"gorm.io/gorm"
 )
 
@@ -15,6 +16,10 @@ var (
 	// ErrSubscriptionVersionConflict reports a lost race: the subscription
 	// changed since the caller read it; the client must cut a new quote.
 	ErrSubscriptionVersionConflict = errors.New("subscription_version_conflict")
+	// ErrScheduledChangeExists reports that a scheduled switch is already
+	// pending: a second arrangement must explicitly supersede it, never
+	// silently overwrite it.
+	ErrScheduledChangeExists = errors.New("scheduled_change_exists")
 )
 
 // Benefit job states. pending = claimed and awaiting issuance/confirmation,
@@ -42,9 +47,14 @@ type Subscription struct {
 	Anchor             time.Time `gorm:"column:anchor;not null"`
 	PaidUntil          time.Time `gorm:"column:paid_until;not null"`
 	FutureIntervalJSON string    `gorm:"column:future_interval_json;not null;default:'{}'"`
-	Version            int64     `gorm:"column:version;not null;default:1"`
-	ProjectionPlanJSON string    `gorm:"column:projection_plan_json;not null;default:''"`
-	DowngradeReason    string    `gorm:"column:downgrade_reason;not null;default:''"`
+	// ScheduledChangeJSON carries ONE pending scheduled plan switch in the
+	// domain ScheduledPlanChange shape. It deliberately does NOT reuse
+	// future_interval_json: that column holds PURCHASED future intervals
+	// (e.g. early renewals), which a downgrade must never overwrite.
+	ScheduledChangeJSON string `gorm:"column:scheduled_change_json;not null;default:''"`
+	Version             int64  `gorm:"column:version;not null;default:1"`
+	ProjectionPlanJSON  string `gorm:"column:projection_plan_json;not null;default:''"`
+	DowngradeReason     string `gorm:"column:downgrade_reason;not null;default:''"`
 }
 
 func (Subscription) TableName() string { return "commercial_subscriptions" }
@@ -87,8 +97,8 @@ func (s *SubscriptionStore) SaveSubscription(ctx context.Context, sub *Subscript
 	}
 	return s.db.WithContext(ctx).Exec(`INSERT INTO commercial_subscriptions
 		(id, tenant_id, plan_key, plan_version, plan_snapshot_json, anchor, paid_until,
-		 future_interval_json, version, projection_plan_json, downgrade_reason)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 future_interval_json, scheduled_change_json, version, projection_plan_json, downgrade_reason)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET
 			tenant_id = excluded.tenant_id,
 			plan_key = excluded.plan_key,
@@ -97,11 +107,12 @@ func (s *SubscriptionStore) SaveSubscription(ctx context.Context, sub *Subscript
 			anchor = excluded.anchor,
 			paid_until = excluded.paid_until,
 			future_interval_json = excluded.future_interval_json,
+			scheduled_change_json = excluded.scheduled_change_json,
 			version = excluded.version,
 			projection_plan_json = excluded.projection_plan_json,
 			downgrade_reason = excluded.downgrade_reason`,
 		sub.ID, sub.TenantID, sub.PlanKey, sub.PlanVersion, sub.PlanSnapshotJSON,
-		sub.Anchor, sub.PaidUntil, sub.FutureIntervalJSON, sub.Version,
+		sub.Anchor, sub.PaidUntil, sub.FutureIntervalJSON, sub.ScheduledChangeJSON, sub.Version,
 		sub.ProjectionPlanJSON, sub.DowngradeReason).Error
 }
 
@@ -134,20 +145,34 @@ func (s *SubscriptionStore) LatestVersion(ctx context.Context, tenantID uint64) 
 	return version, err
 }
 
-// SchedulePlanChange atomically consumes the quote (marker records what
-// consumed it) and records the future plan interval under a version guard:
-// the guarded UPDATE bumps version only when the caller saw the current
-// one, so a concurrent change loses cleanly and the client re-quotes.
-func (s *SubscriptionStore) SchedulePlanChange(ctx context.Context, sub Subscription, quoteID string, quoteSubscriptionVersion int64, marker, futureIntervalJSON string, now time.Time) error {
+// SchedulePlanChange atomically consumes the quote (the marker records what
+// consumed it) and records the scheduled switch in its OWN column under a
+// version guard: a purchased future interval in future_interval_json is
+// never touched, and a second pending arrangement is refused instead of
+// silently overwriting the first. The guarded UPDATE bumps version only
+// when the caller saw the current one, so a concurrent change loses
+// cleanly and the client re-quotes.
+func (s *SubscriptionStore) SchedulePlanChange(ctx context.Context, sub Subscription, change domain.ScheduledPlanChange, quoteID string, quoteSubscriptionVersion int64, marker string, now time.Time) error {
+	blob, err := change.JSON()
+	if err != nil {
+		return err
+	}
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var current Subscription
+		if err := tx.Where("id = ?", sub.ID).First(&current).Error; err != nil {
+			return err
+		}
+		if current.ScheduledChangeJSON != "" {
+			return ErrScheduledChangeExists
+		}
 		if _, err := consumeQuoteTx(tx, quoteID, quoteSubscriptionVersion, marker, now); err != nil {
 			return err
 		}
 		res := tx.Model(&Subscription{}).
-			Where("id = ? AND version = ?", sub.ID, sub.Version).
+			Where("id = ? AND version = ? AND scheduled_change_json = ''", sub.ID, sub.Version).
 			Updates(map[string]interface{}{
-				"future_interval_json": futureIntervalJSON,
-				"version":              sub.Version + 1,
+				"scheduled_change_json": blob,
+				"version":               sub.Version + 1,
 			})
 		if res.Error != nil {
 			return res.Error
@@ -157,6 +182,32 @@ func (s *SubscriptionStore) SchedulePlanChange(ctx context.Context, sub Subscrip
 		}
 		return nil
 	})
+}
+
+// ApplyDueScheduledChange applies a scheduled switch whose effective time
+// has passed: the subscription's plan fields switch to the scheduled
+// target (snapshot resolved from the immutable published catalog row),
+// the arrangement is cleared and the version advances — all in ONE
+// transaction guarded on the exact stored JSON, so concurrent ticks
+// apply it exactly once and a lost race is a clean no-op.
+func (s *SubscriptionStore) ApplyDueScheduledChange(ctx context.Context, sub Subscription, now time.Time) (bool, error) {
+	change, ok := domain.ParseScheduledPlanChange(sub.ScheduledChangeJSON)
+	if !ok || !change.Due(now) {
+		return false, nil
+	}
+	res := s.db.WithContext(ctx).Model(&Subscription{}).
+		Where("id = ? AND version = ? AND scheduled_change_json = ?", sub.ID, sub.Version, sub.ScheduledChangeJSON).
+		Updates(map[string]interface{}{
+			"plan_key":              change.PlanKey,
+			"plan_version":          change.PlanVersion,
+			"plan_snapshot_json":    change.PlanSnapshotJSON,
+			"scheduled_change_json": "",
+			"version":               sub.Version + 1,
+		})
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected == 1, nil
 }
 
 // ClaimBenefitJob inserts the job guarded by its unique key
