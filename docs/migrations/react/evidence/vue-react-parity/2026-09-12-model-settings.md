@@ -6,7 +6,7 @@ Date: 2026-09-12
 
 This slice replaces the generic React model inventory for the settings `models` section with a typed Web panel based on the Vue `ModelSettings.vue` and `ModelEditorDialog.vue` contracts. It covers model-type tabs/counts, tenant-role add/edit/delete controls, built-in visibility, provider loading, remote/local source, base URL validation, embedding dimension validation, context window, vision, concurrency, and write-only model credentials.
 
-It remains `implementing`. The editor now exposes the existing model custom-header and chat thinking-control fields and warns explicitly that local/Ollama model download is not yet ported. Ollama download/search/progress, all provider-specific fields, remote test/embedding dimension checks, debug/usage surfaces, six-locale copy, fixed-viewport Vue/React screenshots, and authenticated browser/Wails/mobile acceptance remain open.
+It remains `implementing`. The editor now exposes the existing model custom-header and chat thinking-control fields, wires remote chat/embedding/rerank/ASR connection tests through the existing initialization routes, and warns explicitly that local/Ollama model download is not yet ported. Ollama download/search/progress, all provider-specific fields, local-model test/dimension checks, debug/usage surfaces, six-locale copy, fixed-viewport Vue/React screenshots, and authenticated browser/Wails/mobile acceptance remain open.
 
 ## Evidence
 
@@ -16,6 +16,8 @@ It remains `implementing`. The editor now exposes the existing model custom-head
 | Pure model contract | `pnpm exec tsx --test apps/web/src/settings/model-settings.test.ts` — 2 passed, 0 failed | focused business evidence |
 | Component SSR | `pnpm exec tsx --test apps/web/src/settings/ModelSettingsPanel.test.tsx` — 2 passed, 0 failed | focused component evidence |
 | Web typecheck | `pnpm --filter @weknora/web exec tsc -p tsconfig.json --noEmit` — passed | Web static integration evidence |
+| Shared/API focused | `pnpm typecheck:shared` plus `packages/api-client/src/configuration.test.ts` — 22 passed, 0 failed | shared contract and route evidence |
+| Full Web | `pnpm test:web` — 279 passed, 0 failed | Web regression evidence |
 | Browser | protected route requires an authenticated session; the available fixed-viewport recording reached React login and could not enter settings | browser boundary evidence; protected flow missing |
 | Real backend / native | not run in this slice | missing evidence |
 

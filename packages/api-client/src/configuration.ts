@@ -13,6 +13,8 @@ export interface SkillConfigurationList { items: SkillConfiguration[]; skillsAva
 export interface McpOAuthAuthorization { authorizationUrl: string; authorizationAttempt: string }
 export interface McpOAuthStatus { authorized: boolean; state: 'authorized' | 'refreshable' | 'reauth_required' | 'pending'; refreshAvailable: boolean; expiresAt?: string }
 export interface ModelCredentialStatus { apiKey: boolean; appSecret: boolean }
+export interface ModelConnectionTestInput { source?: 'remote' | 'local'; modelName: string; baseUrl?: string; apiKey?: string; provider?: string; interfaceType?: string; dimension?: number; supportsDimensionOverride?: boolean; customHeaders?: Record<string, string>; extraConfig?: Record<string, string>; appSecret?: string; modelId?: string }
+export interface ModelConnectionTestResult { available: boolean; message: string; dimension?: number }
 export interface McpCredentialStatus { apiKey: boolean; token: boolean }
 export interface McpTestResult { success: boolean; message?: string; description?: string; oauthRequired?: boolean; tools?: McpTool[]; resources?: McpResource[] }
 export interface McpTool { name: string; description?: string; inputSchema?: unknown; requireApproval?: boolean }
@@ -318,6 +320,20 @@ function parseModelProvider(value: unknown, path: string): ModelProvider {
     defaultUrls: stringMap(row.defaultUrls, `${path}.defaultUrls`),
     modelTypes: modelTypes as string[],
   };
+}
+
+function parseModelConnectionTest(value: unknown, path: string): ModelConnectionTestResult {
+  const data = record(successfulData(value, path), `${path}.data`);
+  if (typeof data.available !== 'boolean') throw new Error(`${path}.data.available must be a boolean`);
+  if (typeof data.message !== 'string') throw new Error(`${path}.data.message must be a string`);
+  const result: ModelConnectionTestResult = { available: data.available, message: data.message };
+  if (data.dimension !== undefined) { if (typeof data.dimension !== 'number' || data.dimension < 0) throw new Error(`${path}.data.dimension must be a non-negative number`); result.dimension = data.dimension; }
+  return result;
+}
+
+function modelConnectionBody(input: ModelConnectionTestInput): Record<string, unknown> {
+  if (!input.modelName.trim()) throw new Error('modelName must not be empty');
+  return { ...input, modelName: input.modelName.trim(), ...(input.baseUrl === undefined ? {} : { baseUrl: input.baseUrl.trim() }) };
 }
 
 function modelDebugFields(options: ModelDebugOptions): Record<string, unknown> {
@@ -649,6 +665,20 @@ export function createConfigurationApi(request: (input: ClientRequest) => Promis
           }), '/models/providers');
           if (!Array.isArray(data)) throw new Error('/models/providers.data must be an array');
           return data.map((item, index) => parseModelProvider(item, `/models/providers.data[${index}]`));
+        },
+      },
+      connection: {
+        async remote(input: ModelConnectionTestInput, signal?: AbortSignal): Promise<ModelConnectionTestResult> {
+          return parseModelConnectionTest(await request({ method: 'POST', path: '/api/v1/initialization/remote/check', body: modelConnectionBody(input), ...(signal === undefined ? {} : { signal }) }), '/initialization/remote/check');
+        },
+        async embedding(input: ModelConnectionTestInput, signal?: AbortSignal): Promise<ModelConnectionTestResult> {
+          return parseModelConnectionTest(await request({ method: 'POST', path: '/api/v1/initialization/embedding/test', body: modelConnectionBody(input), ...(signal === undefined ? {} : { signal }) }), '/initialization/embedding/test');
+        },
+        async rerank(input: ModelConnectionTestInput, signal?: AbortSignal): Promise<ModelConnectionTestResult> {
+          return parseModelConnectionTest(await request({ method: 'POST', path: '/api/v1/initialization/rerank/check', body: modelConnectionBody(input), ...(signal === undefined ? {} : { signal }) }), '/initialization/rerank/check');
+        },
+        async asr(input: ModelConnectionTestInput, signal?: AbortSignal): Promise<ModelConnectionTestResult> {
+          return parseModelConnectionTest(await request({ method: 'POST', path: '/api/v1/initialization/asr/check', body: modelConnectionBody(input), ...(signal === undefined ? {} : { signal }) }), '/initialization/asr/check');
         },
       },
       async debug(modelId: string, input: ModelDebugInput, signal?: AbortSignal): Promise<ModelDebugResult> {

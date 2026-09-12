@@ -248,6 +248,20 @@ test('lists model providers and sends model debug as an injected multipart reque
   ]);
 });
 
+test('maps model connection checks to the existing initialization routes', async () => {
+  const requests: any[] = [];
+  const api = createConfigurationApi(async (request) => { requests.push(request); return { success: true, data: { available: true, message: 'ok', dimension: 768 } }; });
+  const input = { modelName: 'embed-v1', baseUrl: 'https://model.test/', provider: 'openai', customHeaders: { 'X-Trace': 'yes' }, modelId: 'model/1' };
+  assert.deepEqual(await api.models.connection.remote(input), { available: true, message: 'ok', dimension: 768 });
+  assert.deepEqual(await api.models.connection.embedding(input), { available: true, message: 'ok', dimension: 768 });
+  assert.deepEqual(await api.models.connection.rerank(input), { available: true, message: 'ok', dimension: 768 });
+  assert.deepEqual(await api.models.connection.asr(input), { available: true, message: 'ok', dimension: 768 });
+  assert.deepEqual(requests.map((request) => request.path), ['/api/v1/initialization/remote/check', '/api/v1/initialization/embedding/test', '/api/v1/initialization/rerank/check', '/api/v1/initialization/asr/check']);
+  assert.equal(requests[0].body.baseUrl, 'https://model.test/');
+  assert.deepEqual(requests[0].body.customHeaders, { 'X-Trace': 'yes' });
+  await assert.rejects(() => api.models.connection.remote({ modelName: ' ' }), /modelName must not be empty/);
+});
+
 test('sends browser model debug files in the multipart body', async () => {
   const requests: any[] = [];
   const file = new Blob(['image'], { type: 'image/png' });
