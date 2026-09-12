@@ -39,7 +39,9 @@ data/weknora.db-wal
 data/weknora.db-shm
 skills-lock.json
 
-web/
+/web/
+apps/web/dist/
+apps/web/tsconfig.tsbuildinfo
 
 **/__pycache__
 /scripts/scale_dev_jobs.sh
