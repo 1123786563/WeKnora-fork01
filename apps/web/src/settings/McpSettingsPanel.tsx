@@ -757,31 +757,35 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
       )}
       {draft ? (
         <div
-          className="wk-mcp-editor"
-          role="dialog"
-          aria-modal="true"
-          aria-label={draft.id ? "Edit MCP service" : "Add MCP service"}
+          className="wks-overlay wk-mcp-overlay"
+          data-testid="mcp-editor-overlay"
         >
-          <div className="wk-settings-panel-heading">
-            <div>
-              <h3>{draft.id ? "Edit MCP service" : "Add MCP service"}</h3>
-              <p className="wk-muted">
-                Save the connection before testing or syncing tools.
-              </p>
-            </div>
-            <Button
-              type="button"
-              disabled={saving}
-              onClick={() => { setDraft(null); setStep(0); }}
-            >
-              Close
-            </Button>
-          </div>
-          <div className="wk-mcp-steps" aria-label="MCP setup progress"><span className={step === 0 ? "is-active" : "is-done"}>1. Connection</span><span aria-hidden="true"> → </span><span className={step === 1 ? "is-active" : ""}>2. Tools and usage</span></div>
-          <form
-            className="wk-settings-editor"
-            onSubmit={(event) => void save(event)}
+          <div
+            className="wks-modal wks-mcp-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-label={draft.id ? t("mcpServiceDialog.editTitle") : t("mcpServiceDialog.addTitle")}
           >
+            <div className="wk-settings-panel-heading">
+              <div>
+                <h3>{draft.id ? t("mcpServiceDialog.editTitle") : t("mcpServiceDialog.addTitle")}</h3>
+                <p className="wk-muted">
+                  {t("mcpMetadata.connection")} · {t("mcpMetadata.cacheHint")}
+                </p>
+              </div>
+              <Button
+                type="button"
+                disabled={saving}
+                onClick={() => { setDraft(null); setStep(0); }}
+              >
+                {t("common.close")}
+              </Button>
+            </div>
+            <div className="wk-mcp-steps" aria-label={t("mcpMetadata.setupProgress")}><span className={step === 0 ? "is-active" : "is-done"}>1. {t("mcpMetadata.connection")}</span><span aria-hidden="true"> → </span><span className={step === 1 ? "is-active" : ""}>2. {t("mcpMetadata.toolsAndUsage")}</span></div>
+            <form
+              className="wk-settings-editor"
+              onSubmit={(event) => void save(event)}
+            >
             <details className="wk-mcp-code-import">
               <summary>Import MCP JSON</summary>
               <p className="wk-muted">
@@ -1056,15 +1060,16 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                 Cancel
               </Button>
             </div>
-          </form>
-          {draft.id ? (
-            <McpServiceDetails
-              client={client}
-              serviceId={draft.id}
-              oauthEnabled={draft.authType === "oauth"}
-              usageInstructions={draft.usageInstructions}
-            />
-          ) : null}
+            </form>
+            {draft.id ? (
+              <McpServiceDetails
+                client={client}
+                serviceId={draft.id}
+                oauthEnabled={draft.authType === "oauth"}
+                usageInstructions={draft.usageInstructions}
+              />
+            ) : null}
+          </div>
         </div>
       ) : null}
     </section>

@@ -71,7 +71,7 @@ test('MCP JSON import maps transport, auth, and custom headers without saving', 
 });
 
 test('MCP draft validation mirrors Vue submit rules before mutation', () => {
-  const base = { name: 'Docs', description: '', usageInstructions: 'Use for docs', url: 'https://example.com/mcp', transportType: 'sse', enabled: true, authType: '', apiKeyHeader: '', apiKey: '', oauthScopes: '', headers: [], timeout: 30, retryCount: 3, retryDelay: 1, codeImport: '', codeImportError: '', authConfig: {} } as never;
+  const base = { name: 'Docs', description: '', usageInstructions: 'Use for docs', url: 'https://example.com/mcp', transportType: 'sse', enabled: true, authType: '', apiKeyHeader: '', apiKey: '', oauthScopes: '', headers: [], timeout: 30, retryCount: 3, retryDelay: 1, codeImport: '', codeImportError: '', authConfig: {} } as Parameters<typeof validateMcpDraft>[0];
   assert.equal(validateMcpDraft({ ...base, name: '' }, 0), 'nameRequired');
   assert.equal(validateMcpDraft({ ...base, url: 'not a url' }, 0), 'urlInvalid');
   assert.equal(validateMcpDraft({ ...base, usageInstructions: '' }, 1), 'usageRequired');

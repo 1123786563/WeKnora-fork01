@@ -148,6 +148,13 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-mcp-card-footer { border-top: 1px solid #edf0f5; padding-top: .65rem; }
 .wk-mcp-card-footer > span { color: #66758b; font-size: .82rem; }
 .wk-mcp-editor { background: #fff; border: 1px solid #cbd5e1; border-radius: 8px; box-shadow: 0 10px 30px rgba(23, 32, 51, .12); padding: 1rem; }
+.wks-mcp-drawer { width: min(720px, 100%); height: min(780px, calc(100vh - 40px)); max-height: calc(100vh - 40px); overflow-y: auto; padding: 1.25rem 1.5rem 2rem; }
+.wk-mcp-overlay { z-index: 1200; }
+.wks-mcp-drawer .wk-settings-panel-heading { position: sticky; top: 0; z-index: 1; background: #fff; padding-top: .25rem; }
+.wks-mcp-drawer .wk-settings-editor { max-width: none; }
+.wks-mcp-drawer .wk-settings-editor fieldset { border: 1px solid #edf0f5; border-radius: 8px; display: grid; gap: .7rem; padding: .8rem; }
+.wks-mcp-drawer .wk-settings-editor select { box-sizing: border-box; width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #172033; font: inherit; padding: .55rem .65rem; }
+@media (max-width: 720px) { .wks-mcp-drawer { height: calc(100vh - 24px); max-height: calc(100vh - 24px); padding: 1rem; } }
 .wk-mcp-details { border-top: 1px solid #edf0f5; margin-top: 1rem; padding-top: 1rem; }
 .wk-mcp-details .wk-settings-panel-heading { margin-bottom: .7rem; }
 .wk-mcp-oauth { align-items: center; display: flex; flex-wrap: wrap; gap: .6rem; margin: .8rem 0; }

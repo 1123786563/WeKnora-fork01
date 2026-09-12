@@ -15,6 +15,7 @@ This slice covers the React MCP settings list/card copy and the enabled-state la
 - The list heading, description, empty state, add/edit/delete labels, built-in label, usage fallback, state labels, MCP detail headings and connection actions now read the shared i18n contract.
 - Missing OAuth/action keys were added once in `packages/i18n/src/mcp.ts` for all current client locales and merged by `packages/i18n/src/index.ts`; no page-local translation table was introduced.
 - `validateMcpDraft` now rejects missing names, missing/invalid HTTP(S) URLs, unsupported stdio editing, and missing step-2 usage instructions before a mutation. The validator is pure and has direct regression coverage.
+- The existing editor is now mounted in the Vue-aligned `wks-overlay`/`wks-modal` container with a bounded 720px drawer, sticky heading, scrollable body, and a mobile viewport rule. This is a structural/layout repair; pixel comparison is still outstanding.
 
 ## Evidence
 
@@ -23,7 +24,7 @@ This slice covers the React MCP settings list/card copy and the enabled-state la
 | Focused component/static markup and validation | PASS, 5/5 | `pnpm --filter @weknora/web exec tsx --test src/settings/McpSettingsPanel.test.tsx` |
 | Shared locale contract | PASS through Web consumer | same test asserts zh-CN and en-US action copy |
 | Diff hygiene | PASS | `git diff --check` |
-| Full Web typecheck/build | BLOCKED outside this slice | existing dirty `apps/web/src/auth/onboarding.ts` imports a missing `@weknora/domain/auth/onboarding`; `WorkspaceOnboardingPage.tsx` also has an implicit-any error |
+| Full Web typecheck/build | BLOCKED outside this slice | existing dirty `apps/web/src/auth/onboarding.ts` imports a missing `@weknora/domain/auth/onboarding`; `WorkspaceOnboardingPage.tsx` also has an implicit-any error. The MCP test fixture error found during this slice was fixed; the remaining output contains only the onboarding errors. |
 | Browser / real backend / Wails / iOS / Android | NOT COLLECTED | required before R024 or child rows can be `accepted` |
 
 ## Remaining R024 gaps
