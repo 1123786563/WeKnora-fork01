@@ -22,6 +22,7 @@ It remains `implementing`. It does not claim parity for the remaining PDF workfl
 | New destination path | New folder path input rejects empty/traversal segments and applies the path through the existing move-to-folder contract | folder-routing validation evidence |
 | Manual confirmation | Manual title/content are staged, previewed, and only submitted after confirmation; failures keep the modal state | confirmation-flow integration evidence |
 | Reparse confirmation | A completed/failed document opens a confirmation dialog with its saved process overrides; only the confirm action calls `POST /api/v1/knowledge/:id/reparse`, and failures keep the dialog open | confirmation-flow integration evidence |
+| Batch reparse confirmation | Selected in-flight documents are excluded before confirmation; the batch endpoint is called only after the confirmation action, then selection is cleared on success | batch confirmation integration evidence |
 | Web typecheck | `pnpm --filter @weknora/web exec tsc -p tsconfig.json --noEmit` — passed | Web static integration evidence |
 | Web test suite | `pnpm test:web` — 279 passed, 0 failed | Web regression evidence |
 | Static | `git diff --check` — 0 | static evidence |

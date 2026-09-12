@@ -154,6 +154,7 @@ export function KnowledgeDocumentsPage({
     document: KnowledgeDocument;
     processConfig: unknown;
   } | null>(null);
+  const [pendingBatchReparse, setPendingBatchReparse] = useState<string[] | null>(null);
   const pageSize = 20;
 
   // Audit #6: KB-type routing — an FAQ KB must land on the FAQ route.
@@ -529,12 +530,29 @@ export function KnowledgeDocumentsPage({
     }
   }
 
-  // Audit must-fix #1: batch reparse (POST /api/v1/knowledge/batch-reparse).
-  async function reparseSelected() {
+  // Vue's batch popconfirm filters documents that are already being parsed
+  // before the batch endpoint is called.
+  function reparseSelected() {
     if (!selected.size) return;
+    const ids = [...selected].filter((id) => {
+      const item = items.find((candidate) => candidate.id === id);
+      return !item || !documentRowActions(item.parse_status).canCancelParse;
+    });
+    if (!ids.length) {
+      setMutationError("All selected documents are already being processed.");
+      return;
+    }
+    setMutationError(null);
+    setPendingBatchReparse(ids);
+  }
+
+  async function confirmBatchReparse() {
+    if (!pendingBatchReparse) return;
     setMutationError(null);
     try {
-      await client.knowledgeBases.batchReparse(knowledgeBaseId, [...selected]);
+      await client.knowledgeBases.batchReparse(knowledgeBaseId, pendingBatchReparse);
+      setPendingBatchReparse(null);
+      setSelected(new Set());
       setReloadToken((value) => value + 1);
     } catch (error) {
       setMutationError(errorMessage(error));
@@ -1271,6 +1289,29 @@ export function KnowledgeDocumentsPage({
               {t("knowledgeBase.documents.reparse")}
             </Button>
             <Button type="button" onClick={() => setPendingReparse(null)}>
+              {t("knowledgeBase.documents.cancel")}
+            </Button>
+          </div>
+        </Dialog>
+      ) : null}
+      {pendingBatchReparse && canContribute ? (
+        <Dialog
+          open
+          title="Confirm batch reparse"
+          onClose={() => setPendingBatchReparse(null)}
+        >
+          <p>
+            Re-parse {pendingBatchReparse.length} selected document(s)?
+          </p>
+          <p className="wk-muted">
+            Documents already being processed were excluded before this confirmation.
+          </p>
+          {mutationError ? <Status tone="error">{mutationError}</Status> : null}
+          <div className="wk-list-actions">
+            <Button type="button" onClick={() => void confirmBatchReparse()}>
+              {t("knowledgeBase.documents.reparse")}
+            </Button>
+            <Button type="button" onClick={() => setPendingBatchReparse(null)}>
               {t("knowledgeBase.documents.cancel")}
             </Button>
           </div>
