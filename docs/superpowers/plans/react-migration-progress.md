@@ -1090,3 +1090,15 @@
   This closes the full Go regression slice, but T24 remains `review` for the
   deployed registry, installed-app cross-OS, provider, performance, and full
   browser/native acceptance matrix. T25 remains gated.
+
+### T03 Web write replay guard follow-up (2026-09-12)
+
+- Review found that the browser transport could refresh and replay a
+  non-idempotent JSON request after HTTP 401. `http.ts` now limits automatic
+  JSON/binary refresh retries to `GET`, `HEAD`, and `OPTIONS`; the existing
+  streaming handshake path remains separate. A new regression proves a 401
+  `POST` makes one request and does not invoke refresh.
+- Focused transport tests passed 10/10. Evidence:
+  `docs/migrations/react/evidence/t03-web-write-replay-guard-2026-09-12.md`.
+  This closes the client-side replay defect; provider, browser role/tenant,
+  and deployed acceptance evidence remains open.

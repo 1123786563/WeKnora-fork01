@@ -22,6 +22,10 @@ function defaultRequestId(): string {
   return `weknora-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function isIdempotentRead(method: string): boolean {
+  return ['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase());
+}
+
 export function createBrowserTransport(options: BrowserTransportOptions = {}) {
   const fetcher = options.fetcher ?? ((input, init) => fetch(input, init));
   const base = createJsonTransport(fetcher);
@@ -54,6 +58,7 @@ export function createBrowserTransport(options: BrowserTransportOptions = {}) {
     return credential?.kind === 'bearer'
       && Boolean(credential.refreshToken)
       && Boolean(options.refresh)
+      && isIdempotentRead(request.method)
       && (options.shouldRefresh?.(request) ?? true);
   }
 

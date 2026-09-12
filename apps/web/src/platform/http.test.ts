@@ -154,6 +154,25 @@ test('refreshes once and retries concurrent bearer requests after 401', async ()
   assert.deepEqual(requests, ['Bearer expired-access', 'Bearer expired-access', 'Bearer fresh-access', 'Bearer fresh-access']);
 });
 
+test('does not replay a JSON write after 401', async () => {
+  let refreshCalls = 0;
+  let requests = 0;
+  const transport = createBrowserTransport({
+    credential: { kind: 'bearer', accessToken: 'expired-write', refreshToken: 'refresh-write' },
+    fetcher: (async () => {
+      requests += 1;
+      return { status: 401, headers: new Headers(), json: async () => ({ success: false }), text: async () => '' };
+    }) satisfies FetchLike,
+    refresh: async () => { refreshCalls += 1; },
+  });
+
+  const result = await transport.send({ method: 'POST', url: 'https://api.test/api/v1/knowledge-bases', headers: {}, body: { name: 'must-not-duplicate' } });
+
+  assert.equal(result.status, 401);
+  assert.equal(requests, 1);
+  assert.equal(refreshCalls, 0);
+});
+
 test('does not refresh 403 responses or retry an unauthorized response twice', async () => {
   let refreshCalls = 0;
   let requests = 0;
