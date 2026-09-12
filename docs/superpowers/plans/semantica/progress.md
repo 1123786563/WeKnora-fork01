@@ -200,7 +200,7 @@
 - 实测验收：不完整 manifest 永不 active（计划核心断言逐字）；未持久化 complete 先行拒绝；CAS——首发布 INSERT ON CONFLICT 恰一胜 + 同 base 条件 UPDATE 真线程恰一胜（评审员双连接探针独立复现）；查询只见完整旧版或完整新版（active 指针仅指向已持久化 complete）；read lease pin 当前 active/到期感知 holds/release/renew（过期不可复活）；manifest 重启等值恢复（新 store 实例）；publisher 三段式（fenced staged→publishing→CAS→succeeded/superseded，LostLeaseError 类型化，三处返回值检查）；builder scope 校验/未变文档继承既有不可变产物/变更文档新产物/非删除空产物拒绝。
 - 计划偏差记录：publisher 为四段事务（fenced 转换/manifest 持久化/CAS/终态），计划伪代码的单事务 assert_live_operation+assert_not_deleted+assert_artifacts_verified+CAS 归 I04/I05 接线（store lease_token 占位注释已注明）；抽取适配器（Neo4j/向量）为 Protocol 接缝，实际接线归 I03 后续+Q01（builder 文档已如实限定）；claim 候选集扩展使过期 staged/publishing 可被回收并经 fencing 防旧 worker 复活（对 reclaim 的 publishing 操作须先对账 active 指针——publisher 文档已述）。
 - review：规格 PASS（11 项；5 项 MINOR 全部折叠进终版：fencing 事务差距记录/续期已补/builder 已测/docstring 已改写/台账本记录）；质量首轮 FAIL（BLOCKER 滞留窗口）→ 修复+终审 PASS（BLOCKER 回收测试判别力实证、CAS 真线程复验、fencing 分析确认无永久滞留与旧 worker 安全）。
-- 提交 SHA：（本记录与代码同批提交后补记）
+- 提交 SHA：6585ecc（feat(semantic): i03 有来源的构图与generation原子发布）。
 - 剩余限制：图/向量实际抽取适配未接线（Q01/A02 消费 manifest 闭包）；GC 未实现（read lease 保护 API 就绪，I04 落地清理）；operations.py claim/recoverable 扩展影响 I01 行为（回收更多状态——回归 I01 全量测试确认无破坏）。
 
 ## 当前边界
