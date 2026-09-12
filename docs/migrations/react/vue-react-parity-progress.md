@@ -247,3 +247,7 @@
 
 - 尝试 Wails macOS 打包（REACT_FRONTEND=1 package-mac-app.sh）：web 构建步被 chat UX retry 代理进行中变更阻断（@weknora/domain/chat/copy-answer 模块未建、message-list readonly 断言）——时序问题非缺陷；chat UX 完成集成后重跑打包验证。
 - 顺带确认打包脚本对工作树清洁度敏感：与在途子代理并行时会互相干扰，后续打包统一在无在途实施时执行。
+
+## 2026-09-12 Round 47
+
+- 集成核对基准确认：Vue 会话分组持久化键为 `weknora:session-group-mode`，默认模式 `none`（frontend/src/components/sessionGrouping.ts:5-6）。chat UX retry 代理交付时按此键名核验。
