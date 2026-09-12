@@ -1031,6 +1031,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
               client={client}
               serviceId={draft.id}
               oauthEnabled={draft.authType === "oauth"}
+              usageInstructions={draft.usageInstructions}
             />
           ) : null}
         </div>
