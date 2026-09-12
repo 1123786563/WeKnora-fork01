@@ -57,6 +57,7 @@ test('sandbox configuration API maps exact routes and preserves masked secrets',
   assert.equal((await api.update('sandbox/1', { name: 'Updated', config })).id, 'sandbox/1');
   assert.equal((await api.setWorkspacePolicy(true)).workspaceScriptsDisabled, false);
   await api.remove('sandbox/1');
+  await api.remove('sandbox/1', undefined, true);
 
   assert.deepEqual(requests, [
     { method: 'GET', path: '/api/v1/sandbox-configs' },
@@ -66,6 +67,7 @@ test('sandbox configuration API maps exact routes and preserves masked secrets',
     { method: 'PUT', path: '/api/v1/sandbox-configs/sandbox%2F1', body: { name: 'Updated', config } },
     { method: 'PUT', path: '/api/v1/sandbox-configs/workspace-policy', body: { scripts_disabled: true } },
     { method: 'DELETE', path: '/api/v1/sandbox-configs/sandbox%2F1' },
+    { method: 'DELETE', path: '/api/v1/sandbox-configs/sandbox%2F1?force=true' },
   ]);
 });
 

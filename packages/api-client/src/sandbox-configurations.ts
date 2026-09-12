@@ -87,7 +87,7 @@ export interface SandboxConfigurationsApi {
   get(id: string, signal?: AbortSignal): Promise<SandboxConfigRecord>;
   create(input: SandboxConfigUpsert, signal?: AbortSignal): Promise<SandboxConfigRecord>;
   update(id: string, input: SandboxConfigUpsert, signal?: AbortSignal): Promise<SandboxConfigRecord>;
-  remove(id: string, signal?: AbortSignal): Promise<void>;
+  remove(id: string, signal?: AbortSignal, force?: boolean): Promise<void>;
   inventory(id: string, signal?: AbortSignal): Promise<SandboxInventory>;
   setWorkspacePolicy(scriptsDisabled: boolean, signal?: AbortSignal): Promise<{ workspaceScriptsDisabled: boolean }>;
 }
@@ -194,8 +194,8 @@ export function createSandboxConfigurationsApi(request: Request): SandboxConfigu
     async update(id, input, signal) {
       return sandboxRecord(data(await request(withSignal({ method: 'PUT', path: `${basePath}/${encoded(id, 'id')}`, body: input }, signal)), `${basePath}/:id`), `${basePath}/:id.data`);
     },
-    async remove(id, signal) {
-      successful(await request(withSignal({ method: 'DELETE', path: `${basePath}/${encoded(id, 'id')}` }, signal)), `${basePath}/:id`);
+    async remove(id, signal, force = false) {
+      successful(await request(withSignal({ method: 'DELETE', path: `${basePath}/${encoded(id, 'id')}${force ? '?force=true' : ''}` }, signal)), `${basePath}/:id`);
     },
     async inventory(id, signal) {
       return inventory(data(await request(withSignal({ method: 'GET', path: `${basePath}/${encoded(id, 'id')}/sandboxes` }, signal)), `${basePath}/:id/sandboxes`), `${basePath}/:id/sandboxes.data`);
