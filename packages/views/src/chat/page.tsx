@@ -6,6 +6,7 @@ import { MessageList, type PendingChatMessage } from './message-list.tsx';
 import { SessionSidebar } from './session-sidebar.tsx';
 import { ReferenceList } from './reference-list.tsx';
 import { ToolResultView } from './tool-result.tsx';
+import { ToolApprovalCard } from './tool-approval.tsx';
 import type { ArtifactPreviewPayload } from './artifact-preview.tsx';
 
 export interface ChatAgentOption {
@@ -19,6 +20,8 @@ export interface ChatToolApprovalPrompt {
   toolName?: string;
   status: 'pending' | 'resolved';
   decision?: string;
+  /** Original tool call arguments, rendered editable in the approval card. */
+  arguments?: Record<string, unknown>;
 }
 
 export interface ChatOAuthApprovalPrompt {
@@ -149,10 +152,14 @@ function ChatActionCards(props: Pick<ChatPageProps, 'toolApprovals' | 'oauthAppr
   return <section aria-label="Chat actions" className="wk-chat-actions">
     <h2>Actions</h2>
     {error ? <p role="alert">{error}</p> : null}
-    {toolApprovals.map((approval) => <div key={`tool-${approval.pendingId}`} className="wk-chat-action-card">
-      <strong>Tool approval: {approval.toolName ?? 'unknown tool'}</strong>
-      {approval.status === 'pending' && props.onResolveToolApproval ? <div className="wk-list-actions"><button type="button" disabled={busy !== null} onClick={() => void run(approval.pendingId, () => props.onResolveToolApproval!(approval.pendingId, 'approve'))}>Approve {approval.toolName ?? 'tool'}</button><button type="button" disabled={busy !== null} onClick={() => void run(approval.pendingId, () => props.onResolveToolApproval!(approval.pendingId, 'reject'))}>Reject</button></div> : <small>{approval.decision ? `Resolved: ${approval.decision}` : 'Resolved'}</small>}
-    </div>)}
+    {toolApprovals.map((approval) => <ToolApprovalCard
+      key={`tool-${approval.pendingId}`}
+      approval={approval}
+      busy={busy !== null}
+      onResolve={props.onResolveToolApproval
+        ? (pendingId, decision, modifiedArgs) => run(pendingId, () => props.onResolveToolApproval!(pendingId, decision, modifiedArgs))
+        : undefined}
+    />)}
     {oauthApprovals.map((approval) => <div key={`oauth-${approval.pendingId}`} className="wk-chat-action-card">
       <strong>MCP authorization: {approval.serviceName ?? approval.serviceId ?? 'service'}</strong>
       {approval.toolName ? <small>Tool: {approval.toolName}</small> : null}

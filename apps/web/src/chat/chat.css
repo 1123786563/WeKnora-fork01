@@ -1066,3 +1066,81 @@ main.wk-chat-page.wk-chat-page {
   background: #eff6ff;
   border-color: #bfdbfe;
 }
+
+/* ---- Tool approval args editor (editable modified_args before approve) ---- */
+.wk-chat-approval-card .wk-chat-approval-editor {
+  display: grid;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+
+.wk-chat-approval-card .wk-chat-approval-args-toggle {
+  justify-self: start;
+  border: 1px solid #b9d1f2;
+  border-radius: 8px;
+  background: #fff;
+  color: #245a9b;
+  cursor: pointer;
+  font-size: 0.78rem;
+  padding: 0.25rem 0.6rem;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.wk-chat-approval-card .wk-chat-approval-args-toggle:hover {
+  background: #eef5ff;
+}
+
+.wk-chat-approval-card .wk-chat-approval-args {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.wk-chat-approval-card .wk-chat-approval-args-input {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: #24313f;
+  background: #fbfcfe;
+  border: 1px solid #d8e0ea;
+  border-radius: 8px;
+  padding: 0.45rem 0.55rem;
+  resize: vertical;
+}
+
+.wk-chat-approval-card .wk-chat-approval-args-input:focus {
+  outline: none;
+  border-color: #245a9b;
+}
+
+.wk-chat-approval-card .wk-chat-approval-error {
+  margin: 0;
+  color: #b42318;
+  font-size: 0.75rem;
+}
+
+.wk-chat-approval-card .wk-list-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.wk-chat-approval-card .wk-list-actions button {
+  border: 1px solid #b9d1f2;
+  border-radius: 8px;
+  background: #fff;
+  color: #245a9b;
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 0.3rem 0.75rem;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.wk-chat-approval-card .wk-list-actions button:hover:not(:disabled) {
+  background: #eef5ff;
+}
+
+.wk-chat-approval-card .wk-list-actions button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

@@ -46,7 +46,7 @@ test('chat page exposes the selected agent and server-disabled state at the chat
   assert.match(html, /value="agent-1"/);
   assert.match(html, /Research/);
   assert.match(html, /Disabled · disabled/);
-  assert.match(html, /Approve search_docs/);
+  assert.match(html, /同意/);
   assert.match(html, /Authorize Docs MCP/);
   assert.match(html, /Queue follow-up/);
   assert.match(html, /checking sources/);
@@ -60,6 +60,55 @@ test('chat page exposes the selected agent and server-disabled state at the chat
   assert.match(html, /Open terminal/);
   assert.match(html, /\$ ls/);
   assert.match(html, /id="wk-chat-draft"[^>]*disabled=""/);
+});
+
+test('chat page renders an expandable args editor on the pending tool approval card', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatPage, {
+    sessions: [{ id: 'session-1', title: 'Chat', is_pinned: false }],
+    selectedSessionId: 'session-1',
+    messages: [],
+    draft: '',
+    onSelectSession: () => undefined,
+    onCreateSession: () => undefined,
+    onDraftChange: () => undefined,
+    send: async () => undefined,
+    toolApprovals: [{
+      pendingId: 'approval-1',
+      toolName: 'search_docs',
+      status: 'pending',
+      arguments: { query: 'install guide', limit: 5 },
+    }],
+    onResolveToolApproval: async () => undefined,
+  }));
+  // The expandable editor prefills the textarea with the original arguments.
+  assert.match(html, /查看参数/);
+  assert.match(html, /wk-chat-approval-args-input/);
+  // SSR escapes the textarea body; the original arguments are the prefilled draft.
+  assert.match(html, /&quot;query&quot;: &quot;install guide&quot;/);
+  assert.match(html, /&quot;limit&quot;: 5/);
+  assert.match(html, /<details class="wk-chat-approval-args"><summary class="wk-chat-approval-args-toggle">查看参数<\/summary>/);
+  // Approve/Reject are the resolution actions; no error is shown for valid args.
+  assert.match(html, /同意/);
+  assert.match(html, /拒绝/);
+  assert.doesNotMatch(html, /wk-chat-approval-error/);
+});
+
+test('chat page hides the args editor for resolved tool approvals', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatPage, {
+    sessions: [{ id: 'session-1', title: 'Chat', is_pinned: false }],
+    selectedSessionId: 'session-1',
+    messages: [],
+    draft: '',
+    onSelectSession: () => undefined,
+    onCreateSession: () => undefined,
+    onDraftChange: () => undefined,
+    send: async () => undefined,
+    toolApprovals: [{ pendingId: 'approval-1', toolName: 'search_docs', status: 'resolved', decision: 'approve' }],
+    onResolveToolApproval: async () => undefined,
+  }));
+  assert.match(html, /Resolved: approve/);
+  assert.doesNotMatch(html, /wk-chat-approval-args-input/);
+  assert.doesNotMatch(html, /查看参数/);
 });
 
 test('chat page hides the steer composer and stop button when idle', () => {
