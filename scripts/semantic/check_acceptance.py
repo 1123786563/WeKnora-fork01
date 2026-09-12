@@ -3,7 +3,7 @@
 check_acceptance(policy, evidence) -> list[str] of ALL blocking reasons.
 Release requires: policy.approved, zero permission leaks, complete
 evidence (contract/integration/recovery/browser/live_model all verified),
-metrics within explicit thresholds, and commit/version/lock-hash
+metrics within explicit thresholds, and version/lock-hash
 consistency. Missing thresholds or missing real-model evidence leave the
 corresponding mode BLOCKED - never silently enabled.
 """

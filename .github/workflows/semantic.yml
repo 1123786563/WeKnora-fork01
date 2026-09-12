@@ -21,6 +21,15 @@ jobs:
 
   go-units:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: {POSTGRES_USER: semantic, POSTGRES_PASSWORD: semantic, POSTGRES_DB: semantic_test}
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 2s --health-timeout 3s --health-retries 30
+    env:
+      SEMANTIC_TEST_BUSINESS_PG_DSN: postgresql://semantic:semantic@127.0.0.1:5432/semantic_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -73,6 +82,15 @@ jobs:
       - run: corepack enable && pnpm install --frozen-lockfile
       - run: pnpm exec tsx --test packages/contracts/test/semantic.test.ts packages/api-client/src/semantic.test.ts packages/domain/src/semantic.test.ts apps/web/src/semantic/view-model.test.ts
       - run: pnpm typecheck:shared && pnpm typecheck:web
+
+  acceptance-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install uv && uv sync --project semantic --frozen
+      - run: uv run --project semantic python -m pytest scripts/semantic/test_check_acceptance.py -q
 
   browser-e2e:
     # Real-service browser flow; requires the gated deployment env.
