@@ -8,6 +8,7 @@ import type { ScopeController } from '@weknora/domain/scope';
 import { chatSessionIdFromPath } from './session-route.ts';
 import { buildWebChatStreamOptions, initialAgentSelection } from './agent-selection.ts';
 import { createWebTerminalController, webSocketTarget, type WebTerminalController, type WebTerminalSnapshot } from './terminal.ts';
+import { saveArtifactDownload } from './artifact-download.ts';
 
 interface ChatRoutePageProps {
   client: WeKnoraClient;
@@ -233,6 +234,28 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     await client.chat.steer.enqueue(selectedSessionId, { query: content, delivery: 'after', channel: 'web' }, scope.signal);
   }
 
+  async function downloadArtifact(messageId: string, artifactIndex: number): Promise<void> {
+    const sessionId = selectedSessionIdRef.current;
+    if (!sessionId) throw new Error('Select a conversation before downloading an artifact.');
+    try {
+      const artifacts = await client.chat.artifacts.message(sessionId, messageId, scope.signal);
+      const artifact = artifacts.find((item) => item.index === artifactIndex);
+      if (!artifact) throw new Error('Artifact is no longer available.');
+      const response = await client.chat.artifacts.download(sessionId, messageId, artifact.index, scope.signal);
+      await saveArtifactDownload(artifact, response, async (content, filename) => {
+        const blob = content instanceof Blob ? content : new Blob([content]);
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = filename;
+        anchor.click();
+        URL.revokeObjectURL(url);
+      });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to download artifact');
+    }
+  }
+
   async function authorizeOAuth(pendingId: string, serviceId: string): Promise<void> {
     const authorization = await client.configuration.mcp.oauth.authorizeUrl(serviceId, {
       redirectURI: `${window.location.origin}/api/v1/mcp-oauth/callback`,
@@ -433,6 +456,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     onSuggestionClick={selectSuggestion}
     onRefreshSuggestions={refreshSuggestions}
     onDismissSuggestions={dismissSuggestions}
+    onArtifactDownload={downloadArtifact}
     terminal={selectedSessionId ? terminal : undefined}
     onOpenTerminal={selectedSessionId ? openTerminal : undefined}
     onTerminalInput={selectedSessionId ? terminalInput : undefined}

@@ -22,6 +22,8 @@ public storage URL or a client-side artifact download path.
 - `packages/api-client/src/chat/artifacts.ts` adds strict list parsing and a
   binary download seam. The parser drops `source_path`; bytes are fetched only
   through the authenticated message artifact route.
+- `apps/web/src/chat/ChatRoutePage.tsx` now resolves message metadata through
+  that API and hands the authenticated bytes to the Web save-file port.
 - `apps/web/src/styles.css` adds safe readable layout for Markdown code, tables,
   math, and citation controls.
 
@@ -35,6 +37,7 @@ Commands run from the isolated `codex/react-multiclient` worktree:
 | `pnpm typecheck:shared` | exit 0 |
 | `pnpm typecheck:web` | exit 0 |
 | `pnpm test:web` | exit 0; 107/107 |
+| `pnpm test:web` after artifact-save wiring | exit 0; 109/109 |
 | `pnpm build:web` | exit 0; 137 modules |
 
 Focused TDD coverage in `packages/views/src/chat/markdown.test.tsx` verifies

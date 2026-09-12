@@ -53,7 +53,7 @@
 ### T13 follow-up (2026-09-12)
 
 - `c63529c` adds Web text-only live-response rendering for thinking, tool-call status/results, and references with nested secret redaction and React escaping. Verification and evidence: `docs/migrations/react/evidence/t10-t13-web-live-state-2026-09-12.md`.
-- The current React Web increment adds `packages/views/src/chat/markdown.ts`, wires `MessageList` through a safe `marked`/KaTeX renderer, and adds strict metadata-only artifact list/download seams in `@weknora/api-client`. Fresh verification is `pnpm test:shared` 212/212, `pnpm typecheck:shared` 0, `pnpm typecheck:web` 0, `pnpm test:web` 107/107, `pnpm build:web` 0, and `git diff --check` 0. Evidence: `docs/migrations/react/evidence/t13-react-markdown-renderer-2026-09-12.md`.
+- The current React Web increment adds `packages/views/src/chat/markdown.ts`, wires `MessageList` through a safe `marked`/KaTeX renderer, adds strict metadata-only artifact list/download seams in `@weknora/api-client`, and connects the Web save-file action. Fresh verification is `pnpm test:shared` 212/212, `pnpm typecheck:shared` 0, `pnpm typecheck:web` 0, `pnpm test:web` 109/109, `pnpm build:web` 0, and `git diff --check` 0. Evidence: `docs/migrations/react/evidence/t13-react-markdown-renderer-2026-09-12.md`.
 - Mermaid remains a controlled code-block fallback without SVG hydration. Citation navigation, protected artifact live download/preview, browser XSS/performance and native acceptance remain open; T13 stays `review`.
 
 ### T11 follow-up (2026-09-12)
