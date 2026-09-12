@@ -7,6 +7,7 @@ export interface WebChatStreamOptions {
   sessionId: string;
   mode: 'knowledge' | 'agent';
   body: Record<string, unknown>;
+  signal?: AbortSignal;
 }
 
 export function initialAgentSelection(

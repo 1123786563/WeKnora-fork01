@@ -42,6 +42,7 @@ export interface ChatStreamPresentation {
   thinking: string;
   references: readonly unknown[];
   toolCalls: readonly ChatToolCallView[];
+  artifactsPending?: boolean;
 }
 
 export interface ChatTerminalView {
@@ -66,10 +67,11 @@ export interface ChatPageProps {
   onAgentChange?(agentId: string): void;
   toolApprovals?: readonly ChatToolApprovalPrompt[];
   oauthApprovals?: readonly ChatOAuthApprovalPrompt[];
-  onResolveToolApproval?(pendingId: string, decision: 'approve' | 'reject'): Promise<void>;
+  onResolveToolApproval?(pendingId: string, decision: 'approve' | 'reject', modifiedArgs?: Record<string, unknown>): Promise<void>;
   onAuthorizeOAuth?(pendingId: string, serviceId: string): Promise<void>;
   onCancelOAuth?(pendingId: string): Promise<void>;
   onSteer?(content: string): Promise<void>;
+  onStopStream?(): void;
   stream?: ChatStreamPresentation;
   onRenameSession?(sessionId: string): Promise<void>;
   onToggleSessionPin?(sessionId: string, pinned: boolean): Promise<void>;
@@ -115,11 +117,12 @@ export function messageReferenceValues(messages: readonly ChatMessage[]): unknow
   return references;
 }
 
-function LiveResponse({ stream }: { stream: ChatStreamPresentation }) {
-  const hasDetails = Boolean(stream.thinking) || stream.toolCalls.length > 0;
-  if (!hasDetails) return null;
+function LiveResponse({ stream, onStopStream }: { stream: ChatStreamPresentation; onStopStream?: () => void }) {
+  if (stream.phase !== 'streaming' && !stream.thinking && stream.toolCalls.length === 0) return null;
   return <section aria-label="Live response" className="wk-chat-live-response">
     <p role="status">Status: {stream.phase}</p>
+    {stream.phase === 'streaming' && stream.artifactsPending ? <p role="status" className="wk-chat-artifacts-pending">Artifacts pending…</p> : null}
+    {stream.phase === 'streaming' && onStopStream ? <button type="button" className="wk-chat-stop" onClick={onStopStream}>Stop</button> : null}
     {stream.thinking ? <details open><summary>Thinking</summary><p>{stream.thinking}</p></details> : null}
     {stream.toolCalls.length > 0 ? <div><h2>Tool calls</h2><ul className="wk-list">{stream.toolCalls.map((tool) => <li key={tool.id}><strong>{tool.name ?? tool.id}</strong><small>{tool.status}</small>{tool.result === undefined ? null : <ToolResultView toolCall={tool} />}</li>)}</ul></div> : null}
   </section>;
@@ -267,7 +270,7 @@ export function ChatPage(props: ChatPageProps) {
       <h1>{props.selectedSessionId ? 'Conversation' : 'New conversation'}</h1>
       {props.agents && props.onAgentChange ? <label htmlFor="wk-chat-agent">Agent<select id="wk-chat-agent" value={props.selectedAgentId ?? ''} onChange={(event) => props.onAgentChange?.(event.target.value)}><option value="">Knowledge chat</option>{props.agents.map((agent) => <option key={agent.id} value={agent.id} disabled={agent.disabled}>{agent.name}{agent.disabled ? ' · disabled' : ''}</option>)}</select></label> : null}
       <ChatActionCards {...props} />
-      {props.stream ? <LiveResponse stream={props.stream} /> : null}
+      {props.stream ? <LiveResponse stream={props.stream} onStopStream={props.onStopStream} /> : null}
       <ReferenceList references={references} activeId={activeCitationId} onActivate={activateCitation} />
       <TerminalPanel terminal={props.terminal} onOpenTerminal={props.onOpenTerminal} onTerminalInput={props.onTerminalInput} onTerminalResize={props.onTerminalResize} onCloseTerminal={props.onCloseTerminal} />
       {props.error ? <p role="alert">{props.error}</p> : null}
@@ -289,7 +292,9 @@ export function ChatPage(props: ChatPageProps) {
         onArtifactPreview={props.onArtifactPreview}
       />
       {props.selectedSessionId && props.onClearSession ? <button type="button" onClick={() => void props.onClearSession!()}>Clear messages</button> : null}
-      {props.selectedSessionId && props.onSteer ? <SteerComposer onSteer={props.onSteer} /> : null}
+      {/* A follow-up queue only makes sense while a turn is actually running;
+          when idle the main composer handles the message (a steer would 409). */}
+      {props.selectedSessionId && props.onSteer && props.stream?.phase === 'streaming' ? <SteerComposer onSteer={props.onSteer} /> : null}
       <ChatComposer draft={props.draft} disabled={sending || pending !== undefined || props.stream?.phase === 'streaming'} onDraftChange={props.onDraftChange} onSubmit={(submission) => void send(submission)} />
     </section>
   </main>;

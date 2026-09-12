@@ -11,6 +11,7 @@ export default defineConfig({
       '@weknora/domain/scope': fileURLToPath(new URL('../../packages/domain/src/scope.ts', import.meta.url)),
       '@weknora/domain/chat/draft': fileURLToPath(new URL('../../packages/domain/src/chat/draft.ts', import.meta.url)),
       '@weknora/domain/chat/reducer': fileURLToPath(new URL('../../packages/domain/src/chat/reducer.ts', import.meta.url)),
+      '@weknora/domain/chat/message-extras': fileURLToPath(new URL('../../packages/domain/src/chat/message-extras.ts', import.meta.url)),
       '@weknora/domain/chat/session-state': fileURLToPath(new URL('../../packages/domain/src/chat/session-state.ts', import.meta.url)),
       '@weknora/domain/chat/artifacts': fileURLToPath(new URL('../../packages/domain/src/chat/artifacts.ts', import.meta.url)),
       '@weknora/domain/chat/references': fileURLToPath(new URL('../../packages/domain/src/chat/references.ts', import.meta.url)),

@@ -57,3 +57,51 @@ test('tracks MCP OAuth approval lifecycle separately from tool approval', () => 
   assert.equal(state.oauthApprovals['pending-oauth']?.status, 'resolved');
   assert.equal(state.oauthApprovals['pending-oauth']?.authorized, true);
 });
+
+test('session_title patches the session title on the stream state', () => {
+  let state = reduceChatStream(initialChatStreamState(), {
+    response_type: 'session_title',
+    event_id: 'title-1',
+    content: 'New title',
+    data: { session_id: 'session-1', title: 'New title' },
+  });
+  assert.equal(state.sessionTitle, 'New title');
+  // data.title wins over bare content when both exist
+  state = reduceChatStream(state, {
+    response_type: 'session_title',
+    event_id: 'title-2',
+    content: 'from content',
+    data: { session_id: 'session-1', title: 'from data' },
+  });
+  assert.equal(state.sessionTitle, 'from data');
+});
+
+test('artifacts_pending toggles during streaming and clears on completion', () => {
+  let state = initialChatStreamState();
+  state = reduceChatStream(state, { response_type: 'answer', event_id: 'a', content: 'x' });
+  assert.equal(state.artifactsPending, false);
+  state = reduceChatStream(state, { response_type: 'artifacts_pending', event_id: 'b', data: { count: 2 } });
+  assert.equal(state.artifactsPending, true);
+  state = reduceChatStream(state, { response_type: 'complete', event_id: 'c' });
+  assert.equal(state.artifactsPending, false);
+});
+
+test('user_message_injected records an injected user bubble', () => {
+  let state = reduceChatStream(initialChatStreamState(), {
+    response_type: 'user_message_injected',
+    event_id: 'inject-1',
+    data: { steer_id: 'steer-1', message_id: 'assistant-1', content: 'hello again', user_message_id: 'user-1' },
+  });
+  assert.deepEqual(state.injectedUserMessages, [{
+    steerId: 'steer-1',
+    content: 'hello again',
+    userMessageId: 'user-1',
+  }]);
+  state = reduceChatStream(state, {
+    response_type: 'user_message_injected',
+    event_id: 'inject-2',
+    data: { steer_id: 'steer-2', content: 'and more' },
+  });
+  assert.equal(state.injectedUserMessages.length, 2);
+  assert.equal(state.injectedUserMessages[1]?.userMessageId, undefined);
+});

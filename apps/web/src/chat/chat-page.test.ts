@@ -26,6 +26,7 @@ test('chat page exposes the selected agent and server-disabled state at the chat
     onAuthorizeOAuth: async () => undefined,
     onCancelOAuth: async () => undefined,
     onSteer: async () => undefined,
+    onStopStream: () => undefined,
     onRenameSession: async () => undefined,
     onToggleSessionPin: async () => undefined,
     onDeleteSession: async () => undefined,
@@ -59,4 +60,38 @@ test('chat page exposes the selected agent and server-disabled state at the chat
   assert.match(html, /Open terminal/);
   assert.match(html, /\$ ls/);
   assert.match(html, /id="wk-chat-draft"[^>]*disabled=""/);
+});
+
+test('chat page hides the steer composer and stop button when idle', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatPage, {
+    sessions: [{ id: 'session-1', title: 'Chat', is_pinned: false }],
+    selectedSessionId: 'session-1',
+    messages: [],
+    draft: '',
+    onSelectSession: () => undefined,
+    onCreateSession: () => undefined,
+    onDraftChange: () => undefined,
+    send: async () => undefined,
+    onSteer: async () => undefined,
+    onStopStream: () => undefined,
+    stream: { phase: 'idle', thinking: '', references: [], toolCalls: [] },
+  }));
+  assert.doesNotMatch(html, /Queue follow-up/);
+  assert.doesNotMatch(html, /class="wk-chat-stop"/);
+});
+
+test('chat page shows the artifacts-pending indicator only while streaming', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatPage, {
+    sessions: [{ id: 'session-1', title: 'Chat', is_pinned: false }],
+    selectedSessionId: 'session-1',
+    messages: [],
+    draft: '',
+    onSelectSession: () => undefined,
+    onCreateSession: () => undefined,
+    onDraftChange: () => undefined,
+    send: async () => undefined,
+    stream: { phase: 'streaming', thinking: '', references: [], toolCalls: [], artifactsPending: true },
+  }));
+  assert.match(html, /Artifacts pending/);
+  assert.match(html, /Status: streaming/);
 });

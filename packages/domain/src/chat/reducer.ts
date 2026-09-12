@@ -26,6 +26,12 @@ export interface ChatOAuthApproval {
   reason?: string;
 }
 
+export interface ChatInjectedUserMessage {
+  steerId: string;
+  content: string;
+  userMessageId?: string;
+}
+
 export interface ChatStreamState {
   phase: ChatRunPhase;
   answer: string;
@@ -38,10 +44,14 @@ export interface ChatStreamState {
   lastEventId?: string;
   assistantMessageId?: string;
   error?: string;
+  sessionTitle?: string;
+  artifactsPending: boolean;
+  injectedUserMessages: readonly ChatInjectedUserMessage[];
 }
 
 export const initialChatStreamState = (): ChatStreamState => ({
   phase: 'idle', answer: '', thinking: '', references: [], toolCalls: {}, approvals: {}, oauthApprovals: {}, seenEventIds: [],
+  artifactsPending: false, injectedUserMessages: [],
 });
 
 function text(value: unknown): string { return typeof value === 'string' ? value : ''; }
@@ -133,8 +143,25 @@ export function reduceChatStream(state: ChatStreamState, event: ChatStreamEvent)
       }
       break;
     }
-    case 'complete': next.phase = 'completed'; break;
-    case 'stop': next.phase = 'stopped'; break;
+    case 'session_title': {
+      const title = text(data.title) || text(event.content);
+      if (title) next.sessionTitle = title;
+      break;
+    }
+    case 'artifacts_pending': next.artifactsPending = true; break;
+    case 'user_message_injected': {
+      const steerId = text(data.steer_id);
+      if (steerId) {
+        next.injectedUserMessages = [...state.injectedUserMessages, {
+          steerId,
+          content: text(data.content),
+          ...(text(data.user_message_id) ? { userMessageId: text(data.user_message_id) } : {}),
+        }];
+      }
+      break;
+    }
+    case 'complete': next.phase = 'completed'; next.artifactsPending = false; break;
+    case 'stop': next.phase = 'stopped'; next.artifactsPending = false; break;
     case 'error': next.phase = 'error'; next.error = text(event.error ?? data.error ?? event.content) || 'Chat stream failed'; break;
     default: break;
   }

@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ChatMessage, MessageSuggestionSet } from '@weknora/contracts';
 import { hasSessionChanged, scrollTopAfterPrepend, shouldStickToBottom } from '@weknora/domain/chat/session-state';
 import { isArtifactExpired, normalizeArtifactList, type ChatArtifact } from '@weknora/domain/chat/artifacts';
+import { assistantMessageExtras } from '@weknora/domain/chat/message-extras';
 import { renderChatMarkdown } from './markdown.ts';
 import { hydrateMermaidBlocksWithBrowserDefaults } from './mermaid.ts';
 import { ArtifactPreview, artifactPreviewModel, type ArtifactPreviewPayload } from './artifact-preview.tsx';
@@ -35,6 +36,16 @@ export function messageArtifactItems(message: Record<string, unknown>): ChatArti
 
 export function renderMessageHtml(message: Pick<ChatMessage, 'content'>): string {
   return renderChatMarkdown(message.content);
+}
+
+function AssistantExtras(props: { message: ChatMessage }) {
+  const extras = assistantMessageExtras(props.message);
+  if (!extras.thinking && extras.toolCalls.length === 0) return null;
+  return <details className='wk-chat-message-extras'>
+    <summary>Thinking &amp; tools</summary>
+    {extras.thinking ? <pre>{extras.thinking}</pre> : null}
+    {extras.toolCalls.length > 0 ? <ul className='wk-list'>{extras.toolCalls.map((call) => <li key={call.id}><strong>{call.name ?? call.id}</strong><small>{call.status}</small></li>)}</ul> : null}
+  </details>;
 }
 
 function ArtifactList({ message, onDownload, onPreview }: { message: ChatMessage; onDownload?: MessageListProps['onArtifactDownload']; onPreview?: (messageId: string, artifactIndex: number) => void | Promise<void> }) {
@@ -128,6 +139,7 @@ export function MessageList({ messages, pending, onRetry, loadingOlder = false, 
     {messages.map((message) => <li key={message.id} data-role={message.role}>
       <strong>{message.role}</strong>
       <div className="wk-chat-message-content" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: renderMessageHtml(message) }} />
+      {message.role === 'assistant' ? <AssistantExtras message={message} /> : null}
       <ArtifactList message={message} onDownload={onArtifactDownload} onPreview={onArtifactPreview ? openArtifactPreview : undefined} />
     </li>)}
     {pending ? <li data-role="user" data-status={pending.status}>

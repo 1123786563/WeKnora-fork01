@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AgentConfiguration, ChatMessage, ChatSession, MessageSuggestionSet, WeKnoraClient } from '@weknora/api-client';
+import type { ChatStreamEvent } from '@weknora/contracts';
 import { chatDraftKey } from '@weknora/domain/chat/draft';
-import { initialChatStreamState, reduceChatStream } from '@weknora/domain/chat/reducer';
+import { initialChatStreamState, reduceChatStream, type ChatApproval } from '@weknora/domain/chat/reducer';
 import { appendMessages, hasOlderMessages, sessionGroups, sessionPageCount } from '@weknora/domain/chat/session-state';
 import { ChatPage, type ChatSubmission } from '@weknora/views';
 import type { ScopeController } from '@weknora/domain/scope';
@@ -10,6 +11,8 @@ import { buildWebChatStreamOptions, initialAgentSelection } from './agent-select
 import { createWebTerminalController, webSocketTarget, type WebTerminalController, type WebTerminalSnapshot } from './terminal.ts';
 import { saveArtifactDownload } from './artifact-download.ts';
 import { externalCitationTarget } from './citation.ts';
+import { findResumeTargetMessage } from './resume.ts';
+import { buildSteerAction, isSteerConflict } from './steer-submit.ts';
 
 interface ChatRoutePageProps {
   client: WeKnoraClient;
@@ -40,6 +43,13 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   const selectedSessionIdRef = useRef(selectedSessionId);
   const chatRunIdRef = useRef(0);
   const sendInFlightRef = useRef(false);
+  // Aborts the in-flight chat stream on stop / session switch / unmount.
+  const streamAbortRef = useRef<AbortController | null>(null);
+  // Per-assistant-message approval snapshots so pending/resolved cards survive
+  // the post-turn history refresh and revisiting a session.
+  const approvalMemoryRef = useRef<Map<string, ChatApproval[]>>(new Map());
+  // continue-stream is started at most once per persisted incomplete message.
+  const resumeStartedRef = useRef<Map<string, string>>(new Map());
   const [draft, setDraft] = useState('');
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
@@ -59,6 +69,12 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   useEffect(() => {
     selectedSessionIdRef.current = selectedSessionId;
   }, [selectedSessionId]);
+
+  useEffect(() => () => {
+    chatRunIdRef.current += 1;
+    streamAbortRef.current?.abort();
+    streamAbortRef.current = null;
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -124,6 +140,41 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     ).finally(() => { if (active) setLoadingMessages(false); });
     return () => { active = false; };
   }, [client, selectedSessionId, scope.signal, scope.scope, scopeController]);
+
+  // Resume an interrupted turn: when the newest persisted assistant message is
+  // incomplete, attach to it via the continue-stream GET and feed the same
+  // reducer so the partial answer keeps streaming after a reload.
+  useEffect(() => {
+    if (!selectedSessionId || loadingMessages || sendInFlightRef.current) return;
+    const resumeId = findResumeTargetMessage(messages);
+    if (!resumeId) return;
+    const sessionId = selectedSessionId;
+    if (resumeStartedRef.current.get(sessionId) === resumeId) return;
+    resumeStartedRef.current.set(sessionId, resumeId);
+    const controller = new AbortController();
+    streamAbortRef.current = controller;
+    const runId = ++chatRunIdRef.current;
+    setStreamState(initialChatStreamState());
+    const feed = createStreamFeed(sessionId, runId, resumeId);
+    void client.chat.continueStream(sessionId, resumeId, feed, controller.signal).catch(() => {
+      // Non-IM resume failures surface as errors; the partial answer stays.
+      if (runId === chatRunIdRef.current && selectedSessionIdRef.current === sessionId) {
+        setError('Unable to resume the interrupted answer');
+      }
+    }).finally(() => {
+      if (streamAbortRef.current === controller) streamAbortRef.current = null;
+    });
+  }, [client, loadingMessages, messages, selectedSessionId]);
+
+  // session_title SSE: patch the session title and notify the sidebar (the
+  // sidebar renders from the sessions list).
+  useEffect(() => {
+    const title = streamState.sessionTitle;
+    if (!title || !selectedSessionId) return;
+    setSessions((current) => current.map((session) => session.id === selectedSessionId && session.title !== title
+      ? { ...session, title }
+      : session));
+  }, [selectedSessionId, streamState.sessionTitle]);
 
   useEffect(() => {
     if (!suggestions || suggestions.status !== 'ready' || !selectedSessionId) return;
@@ -199,6 +250,8 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
 
   function selectSession(sessionId: string) {
     chatRunIdRef.current += 1;
+    streamAbortRef.current?.abort();
+    streamAbortRef.current = null;
     selectedSessionIdRef.current = sessionId;
     setSelectedSessionId(sessionId);
     window.history.pushState({}, '', `/platform/chat/${encodeURIComponent(sessionId)}`);
@@ -222,17 +275,53 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     setSessionPage(1);
   }
 
-  async function resolveToolApproval(pendingId: string, decision: 'approve' | 'reject'): Promise<void> {
-    await client.chat.approvals.resolveTool(pendingId, { decision }, scope.signal);
+  function rememberApprovalSnapshot(assistantMessageId: string | undefined, approvals: ChatApproval[]): void {
+    if (assistantMessageId && approvals.length > 0) approvalMemoryRef.current.set(assistantMessageId, approvals);
+  }
+
+  function rememberApprovalResolution(pendingId: string, decision: string): void {
+    for (const [messageId, approvals] of approvalMemoryRef.current) {
+      approvalMemoryRef.current.set(messageId, approvals.map((approval) => approval.pendingId === pendingId
+        ? { ...approval, status: 'resolved' as const, decision }
+        : approval));
+    }
+  }
+
+  async function resolveToolApproval(pendingId: string, decision: 'approve' | 'reject', modifiedArgs?: Record<string, unknown>): Promise<void> {
+    await client.chat.approvals.resolveTool(pendingId, { decision, ...(modifiedArgs ? { modifiedArgs } : {}) }, scope.signal);
+    rememberApprovalResolution(pendingId, decision);
   }
 
   async function cancelOAuth(pendingId: string): Promise<void> {
     await client.chat.approvals.cancelOAuth(pendingId, scope.signal);
   }
 
+  function newSteerId(): string {
+    const uuid = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : undefined;
+    return uuid ?? 'steer-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+  }
+
   async function steer(content: string): Promise<void> {
-    if (!selectedSessionId) throw new Error('Create or select a conversation first.');
-    await client.chat.steer.enqueue(selectedSessionId, { query: content, delivery: 'after', channel: 'web' }, scope.signal);
+    const sessionId = selectedSessionId;
+    if (!sessionId) throw new Error('Create or select a conversation first.');
+    const streaming = streamState.phase === 'streaming';
+    const action = buildSteerAction({
+      streaming,
+      content,
+      assistantMessageId: streamState.assistantMessageId,
+      newSteerId,
+    });
+    if (action.kind === 'send') return send(action.submission);
+    try {
+      await client.chat.steer.enqueue(sessionId, action.input, scope.signal);
+    } catch (cause) {
+      if (!isSteerConflict(cause)) throw cause;
+      // 409: the run moved past the message id we expected. Re-base onto the
+      // freshest assistant message id and retry once.
+      const rebased = streamState.assistantMessageId;
+      if (!rebased || rebased === action.input.expectedAssistantMessageId) throw cause;
+      await client.chat.steer.enqueue(sessionId, { ...action.input, expectedAssistantMessageId: rebased }, scope.signal);
+    }
   }
 
   async function downloadArtifact(messageId: string, artifactIndex: number): Promise<void> {
@@ -384,9 +473,60 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     terminalController.current?.close();
   }
 
+  // Shared reducer feed for both the send POST stream and the continue-stream
+  // GET resume; keeps the live stream state, the transient assistant row
+  // (with thinking/toolCalls folded in so they survive the history refresh),
+  // the approval snapshot memory, and mid-run injected user bubbles in sync.
+  function createStreamFeed(sessionId: string, runId: number, transientId: string): (event: ChatStreamEvent) => void {
+    let runState = initialChatStreamState();
+    const injectedId = (steerId: string, userMessageId?: string) => userMessageId ?? `injected-${steerId}`;
+    return (event: ChatStreamEvent) => {
+      if (runId !== chatRunIdRef.current || selectedSessionIdRef.current !== sessionId) return;
+      runState = reduceChatStream(runState, event);
+      setStreamState(runState);
+      rememberApprovalSnapshot(runState.assistantMessageId, Object.values(runState.approvals));
+      if (runState.phase === 'error') throw new Error(runState.error ?? 'Chat stream failed');
+      const injectedRows = runState.injectedUserMessages.map((injected) => ({
+        id: injectedId(injected.steerId, injected.userMessageId),
+        session_id: sessionId, role: 'user' as const, content: injected.content, is_completed: true,
+      }));
+      const hasLiveAssistant = Boolean(runState.answer) || Boolean(runState.thinking) || Object.keys(runState.toolCalls).length > 0;
+      if (hasLiveAssistant || injectedRows.length > 0) {
+        const injectedIds = new Set(injectedRows.map((row) => row.id));
+        setMessages((current) => [...current.filter((item) => item.id !== transientId && !injectedIds.has(item.id)), ...injectedRows, ...(hasLiveAssistant ? [{
+          id: transientId, session_id: sessionId, role: 'assistant' as const, content: runState.answer,
+          is_completed: runState.phase === 'completed',
+          thinking: runState.thinking,
+          tool_calls: Object.values(runState.toolCalls),
+          tool_approvals: Object.values(runState.approvals),
+        }] : [])]);
+      }
+      if (runState.phase === 'completed' && runState.assistantMessageId && runState.assistantMessageId !== suggestionForMessage.current) {
+        suggestionForMessage.current = runState.assistantMessageId;
+        void loadSuggestions(sessionId, runState.assistantMessageId, true, scope.signal);
+      }
+    };
+  }
+
+  async function stopStream(): Promise<void> {
+    const sessionId = selectedSessionIdRef.current;
+    if (!sessionId || streamState.phase !== 'streaming') return;
+    const messageId = streamState.assistantMessageId;
+    const controller = streamAbortRef.current;
+    streamAbortRef.current = null;
+    controller?.abort();
+    chatRunIdRef.current += 1;
+    if (messageId) {
+      try { await client.chat.stop(sessionId, messageId, scope.signal); } catch { /* local stop still applies */ }
+    }
+    setStreamState((current) => ({ ...current, phase: 'stopped', artifactsPending: false }));
+  }
+
   async function send(submission: ChatSubmission): Promise<void> {
     if (sendInFlightRef.current) throw new Error('A chat request is already running.');
     sendInFlightRef.current = true;
+    const controller = new AbortController();
+    streamAbortRef.current = controller;
     try {
       let sessionId = selectedSessionId;
       if (!sessionId) {
@@ -396,23 +536,10 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
         selectSession(sessionId);
       }
       const runId = ++chatRunIdRef.current;
+      const feed = createStreamFeed(sessionId, runId, `stream-${sessionId}`);
       setStreamState(initialChatStreamState());
-      let runState = initialChatStreamState();
-      const streamOptions = buildWebChatStreamOptions(sessionId, submission.content, selectedAgentId, knowledgeBaseId);
-      await client.chat.stream(streamOptions, (event) => {
-        if (runId !== chatRunIdRef.current || selectedSessionIdRef.current !== sessionId) return;
-        runState = reduceChatStream(runState, event);
-        setStreamState(runState);
-        if (runState.phase === 'error') throw new Error(runState.error ?? 'Chat stream failed');
-        if (runState.answer) setMessages((current) => [...current.filter((item) => item.id !== `stream-${sessionId}`), {
-          id: `stream-${sessionId}`, session_id: sessionId, role: 'assistant', content: runState.answer,
-          is_completed: runState.phase === 'completed',
-        }]);
-        if (runState.phase === 'completed' && runState.assistantMessageId && runState.assistantMessageId !== suggestionForMessage.current) {
-          suggestionForMessage.current = runState.assistantMessageId;
-          void loadSuggestions(sessionId, runState.assistantMessageId, true, scope.signal);
-        }
-      });
+      const streamOptions = { ...buildWebChatStreamOptions(sessionId, submission.content, selectedAgentId, knowledgeBaseId), signal: controller.signal };
+      await client.chat.stream(streamOptions, feed);
       if (runId !== chatRunIdRef.current || selectedSessionIdRef.current !== sessionId) return;
       // The server persists the user message before opening the stream. Refresh
       // the bounded history after a successful turn so the UI replaces the
@@ -425,8 +552,14 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
         // The streamed answer remains visible if the post-turn history refresh
         // is unavailable; a later session selection reloads authoritative data.
       }
+    } catch (cause) {
+      // A stop request or session switch aborts the stream on purpose; that is
+      // not a failed submission.
+      if (controller.signal.aborted) return;
+      throw cause;
     } finally {
       sendInFlightRef.current = false;
+      if (streamAbortRef.current === controller) streamAbortRef.current = null;
     }
   }
 
@@ -444,7 +577,13 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     agents={agents.map((agent) => ({ id: agent.id, name: agent.name, disabled: disabledAgentIds.includes(agent.id) }))}
     selectedAgentId={selectedAgentId}
     onAgentChange={selectAgent}
-    toolApprovals={Object.values(streamState.approvals)}
+    toolApprovals={(() => {
+      const live = Object.values(streamState.approvals);
+      if (live.length > 0) return live;
+      const latestAssistantId = streamState.assistantMessageId
+        ?? messages.filter((message) => message.role === 'assistant').at(-1)?.id;
+      return latestAssistantId ? approvalMemoryRef.current.get(latestAssistantId) ?? [] : [];
+    })()}
     oauthApprovals={Object.values(streamState.oauthApprovals)}
     onResolveToolApproval={resolveToolApproval}
     onAuthorizeOAuth={authorizeOAuth}
@@ -480,7 +619,8 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     onTerminalInput={selectedSessionId ? terminalInput : undefined}
     onTerminalResize={selectedSessionId ? terminalResize : undefined}
     onCloseTerminal={selectedSessionId ? closeTerminal : undefined}
-    stream={{ phase: streamState.phase, thinking: streamState.thinking, references: streamState.references, toolCalls: Object.values(streamState.toolCalls) }}
+    stream={{ phase: streamState.phase, thinking: streamState.thinking, references: streamState.references, toolCalls: Object.values(streamState.toolCalls), artifactsPending: streamState.artifactsPending }}
+    onStopStream={() => void stopStream()}
     send={send}
   />;
 }
