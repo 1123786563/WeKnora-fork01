@@ -56,6 +56,11 @@
 - 2f4b75b：schema 不兼容拒绝——当前 namespace 下外来 graph_version envelope 的恢复以显式错误失败；外来 namespace 按 namespace-per-graph-version 方案天然隔离。
 - 全套件复验：12 个相关包全部 ok；增量 lint 0 issues。剩余行见验收文档（API 重连 SSE 黑盒、沙箱三态、outbox/保留水位、after 跟进、前端浏览器验证）。
 
+## 2026-09-12 第五轮（同分支续）
+
+- a664a00：API 黑盒三行在真实迁移库上钉死（真实 ownership scope）：events 端点按 seq 顺序回放重连游标之后的事件、保留裁剪后返回显式 cursor_expired（once 模式排干不挂起 recorder）；decisions 端点对首次/冲突/幂等重试返回 200/409/200；会话删除把已认领 Run 终态围栏、删除持久行（任何 worker 无法复活）并释放槽位。
+- 全套件复验：handler/session 全部 ok；增量 lint 0 issues。剩余行：沙箱三态 fixture 端到端（仓储层状态已单测）、outbox/保留水位裁剪、after 跟进受理、OAuth 黑盒场景与 mcp_approve_ 前审批停靠、前端浏览器验证。
+
 ## 执行记录要求
 每次任务追加开始/结束时间、实现者、固定 HEAD、失败测试原因、通过命令、审查问题与修复提交。保留历史记录，不用最终 PASS 覆盖中途失败。
 

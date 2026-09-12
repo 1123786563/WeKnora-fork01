@@ -35,6 +35,7 @@ and the external side-effect endpoint are deterministic doubles.
 | cancel lifecycle | `go test ./internal/application/service -run TestCancelReleasesSessionSlot -count=1` | PASS | cancel marks canceled, releases the session slot (next run admits immediately), canceled run never claimable — real migrated store |
 | schema incompatibility | `go test ./internal/application/service -run TestExecuteDurableRunRejectsIncompatibleCheckpoint -count=1` | PASS | foreign graph_version envelope in the current namespace fails resume with the explicit error before any execution; foreign namespaces stay isolated |
 | permission revocation | `go test ./internal/application/repository -run TestAgentRunToolRejectsRevokedSessionAndCanceledRun -count=1` | PASS | dispatch is rejected for revoked sessions and canceled runs at the journal boundary |
+| API black-box rows | `go test ./internal/handler/session -run 'TestAgentRunEventsEndpoint|TestAgentRunDecisionConflict|TestSessionDeleteRaces' -count=1` | PASS (2026-09-12) | events endpoint replays seq order after a reconnect cursor and answers cursor_expired when retention trimmed below it; decisions endpoint 200/409/200 for first/conflicting/idempotent payloads; session deletion fences a claimed run terminally, removes durable rows, releases the slot — all on the migrated store with real ownership scoping |
 | crash after tool result | `GOWORK=off go test ./internal/agent/recoverytest -run TestCrashAfterToolResult -count=1` | SKIPPED | superseded by the matrix subtest above when run without `TRPC_RECOVERY_GRAPH_PROVIDER`; the env-gated variant remains for CI |
 | executor end to end | `GOWORK=off go test ./internal/application/service -run TestExecuteDurableRun -count=1` | PASS | fresh run completes through admission snapshot → capability rebuild → graph → finalize transaction; superseded fence rejected with ErrLeaseLost |
 | worker wait mapping | `GOWORK=off go test ./internal/application/service -run TestWorkerParksWaitClass -count=1` | PASS | unknown tool outcomes park durably at waiting_user/tool_outcome_unknown instead of terminating |
@@ -57,11 +58,9 @@ Defects found and fixed by the matrix (recorded for audit):
 
 ## Remaining matrix rows (not yet passed — do not treat as done)
 
-- API reconnect through the run-events SSE endpoint against a live
-  recovery worker, decision-conflict HTTP envelope, and session deletion
-  racing an active run (unit and repository layers cover the pieces);
 - sandbox alive/lost/destroyed fixtures (the hook queries the provider
-  sandbox list, but the three fixture states are not yet asserted end to end);
+  sandbox list and the repository states are unit-covered; the three fixture
+  states are not yet asserted through the full container hook end to end);
 - the external-action outbox and event retention watermark (Task 11
   leftovers), and the after-mode steering follow-up admission path;
 - frontend browser-level verification of the two engine types (unit,
