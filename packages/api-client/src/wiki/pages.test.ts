@@ -63,3 +63,11 @@ test('rejects malformed Wiki graph rows instead of rendering fabricated nodes', 
   }));
   await assert.rejects(api.graph('kb-1'), /Invalid Wiki graph node link_count/);
 });
+
+test('rejects unsafe Wiki revision pagination and versions', async () => {
+  const invalidPagination = createWikiPagesApi(async () => ({ revisions: [], total: 1.5, current_version: 1 }));
+  await assert.rejects(invalidPagination.revisions('kb-1', 'docs/start'), /Invalid Wiki revision pagination/);
+
+  const invalidVersion = createWikiPagesApi(async () => ({ id: 'r-1', slug: 'docs/start', title: 'Start', summary: 'Old', version: -1 }));
+  await assert.rejects(invalidVersion.getRevision('kb-1', 'docs/start', 1), /Invalid Wiki revision version/);
+});

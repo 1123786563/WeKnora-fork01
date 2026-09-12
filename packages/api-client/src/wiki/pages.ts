@@ -115,14 +115,15 @@ function list(value: unknown): WikiPageListResponse {
 function revisionList(value: unknown): WikiRevisionListResponse {
   const row = object(value, 'Invalid Wiki revision list response');
   if (!Array.isArray(row.revisions)) throw new Error('Invalid Wiki revision list');
-  if (typeof row.total !== 'number' || typeof row.current_version !== 'number') throw new Error('Invalid Wiki revision pagination');
+  if (!Number.isSafeInteger(row.total) || (row.total as number) < 0 || !Number.isSafeInteger(row.current_version) || (row.current_version as number) < 0) throw new Error('Invalid Wiki revision pagination');
   const revisions = row.revisions.map((item) => {
     const revision = object(item, 'Invalid Wiki revision');
     for (const key of ['id', 'slug', 'title', 'summary']) if (typeof revision[key] !== 'string') throw new Error(`Invalid Wiki revision field: ${key}`);
-    if (typeof revision.version !== 'number') throw new Error('Invalid Wiki revision version');
+    if (!Number.isSafeInteger(revision.version) || (revision.version as number) < 1) throw new Error('Invalid Wiki revision version');
+    for (const key of ['content', 'edit_source', 'edited_at']) if (revision[key] !== undefined && typeof revision[key] !== 'string') throw new Error(`Invalid Wiki revision field: ${key}`);
     return revision as WikiPageRevision;
   });
-  return { revisions, total: row.total, current_version: row.current_version };
+  return { revisions, total: row.total as number, current_version: row.current_version as number };
 }
 
 function graph(value: unknown): WikiGraphData {
@@ -182,6 +183,7 @@ export function createWikiPagesApi(request: (input: ClientRequest) => Promise<un
       const value = object(await request({ method: 'GET', path: `${base(kbId)}/revisions/${pathSlug(slug)}?version=${encodeURIComponent(String(version))}` }), 'Invalid Wiki revision response');
       for (const key of ['id', 'slug', 'title', 'summary']) if (typeof value[key] !== 'string') throw new Error(`Invalid Wiki revision field: ${key}`);
       if (typeof value.version !== 'number' || !Number.isSafeInteger(value.version) || value.version < 1) throw new Error('Invalid Wiki revision version');
+      for (const key of ['content', 'edit_source', 'edited_at']) if (value[key] !== undefined && typeof value[key] !== 'string') throw new Error(`Invalid Wiki revision field: ${key}`);
       return value as WikiPageRevision;
     },
     async graph(kbId: string, params: WikiGraphQueryParams = {}): Promise<WikiGraphData> {

@@ -1115,3 +1115,13 @@
 - Evidence: `docs/migrations/react/evidence/t04-integrations-scope-tenant-2026-09-12.md`.
   This closes the stale local-storage scope defect; full browser role/tenant
   and provider callback evidence remains open.
+
+### T08 Wiki revision contract follow-up (2026-09-12)
+
+- The shared Wiki revision parser now rejects unsafe pagination/version values
+  and validates optional revision fields in both list and detail responses.
+  Focused tests passed 7/7; shared passed 188/188 and Web 106/106, with both
+  typechecks, boundary, and diff checks passing.
+- Evidence: `docs/migrations/react/evidence/t08-wiki-revision-contract-2026-09-12.md`.
+  Live conflict/revert/import/export and provider/browser acceptance remain
+  open.
