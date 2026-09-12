@@ -654,6 +654,13 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - **Review gate:** if a Vue web feature has no native equivalent, record platform delta explicitly rather than accepting silently.
 - **Commit boundary:** one mobile slice commit per feature family.
 
+### Checkpoint 2026-09-12 — continued parity execution
+
+- `fc507a1c` added backend-backed upload chunking overrides (`chunk_size`, `chunk_overlap`, `strategy`) for file, URL, and manual sources; `d4a80d4c` preserves the selected folder by using the existing post-create move route. Evidence remains implementing because parser-engine rules, advanced processing sections, mixed batches, dedicated folder picker, localized copy, browser, and native evidence are open.
+- `898b7b70` persists MCP `usage_instructions` on editor save, after rechecking the older independent review against current HEAD. Focused MCP/API tests passed 24/24; full Web regression passed 279/279; Web typecheck passed.
+- Mobile KB list work (`4356e9dd`, `db8ebec7`) adds role-gated create, scopes, local favorite/recent state and shared grouping; `Mine` now uses the real `creator=mine` API. Mobile knowledge tests passed 20/20 and mobile typecheck passed. N031 remains implementing pending detail/upload/localization and iOS/Android runtime evidence.
+- Parallel command-palette/API-client work remains dirty and excluded from these commits.
+
 ### Slice S15 — final acceptance and visual/state evidence gate
 
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
