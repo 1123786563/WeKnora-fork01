@@ -1255,8 +1255,8 @@
 - The upload confirmation slice now supports per-file status, cancellation,
   retry-after-error, tag selection, drag/drop staging, removal of one staged
   file, and URL confirmation with HTTP(S) validation. Focused upload tests
-  passed 7/7. Commits: `04f18ead` plus the current URL-confirmation slice.
-- The current Web suite passed 258/258 and shared/Web typechecks passed after
+  passed 7/7. Commits: `04f18ead` and `7d42afb2`.
+- The current Web suite passed 263/263 and shared/Web typechecks passed after
   a compatibility/type-narrowing repair in the existing dirty command-palette
   slice; its files remain uncommitted and no unrelated files were staged by
   the MCP/upload commits.
