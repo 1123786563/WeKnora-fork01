@@ -23,6 +23,7 @@ interface MobileRuntimeValue {
   oidcError: string;
   tenantId: string | null;
   workspaces: MobileWorkspace[];
+  canCreateTenant: boolean;
   setServerAddress(value: string): Promise<void>;
   refreshWorkspaces(): Promise<void>;
   switchWorkspace(id: number): Promise<void>;
@@ -47,6 +48,7 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
   const [tenantId, setTenantId] = useState<string | null>(null);
   const tenantIdRef = useRef<string | null>(null);
   const [workspaces, setWorkspaces] = useState<MobileWorkspace[]>([]);
+  const [canCreateTenant, setCanCreateTenant] = useState(false);
   const [oidcError, setOidcError] = useState('');
   const sessionTransitions = useRef(0);
   const appActiveRef = useRef(AppState.currentState === 'active');
@@ -111,6 +113,7 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
       const activeTenantId = toWorkspaceId(session.tenant?.id);
       await workspaceWriter.write(activeTenantId);
       if (!sessionEpoch.isCurrent(startedAt)) throw new AuthError('AUTH_INVALIDATED', 'The session was superseded while its workspace was being stored');
+      setCanCreateTenant(false);
       updateCredential(next);
       setWorkspaces(parseMobileWorkspaces(session.memberships));
       updateTenantId(activeTenantId === null ? null : String(activeTenantId));
@@ -211,6 +214,7 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
       updateCredential({ kind: 'anonymous' });
       updateTenantId(null);
       setWorkspaces([]);
+      setCanCreateTenant(false);
       await refreshCoordinator.invalidate();
       await workspaceWriter.write(null);
       const next = await serverAdapter.write(value);
@@ -228,6 +232,7 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
     const activeTenantId = toWorkspaceId(identity.tenant?.id);
     await workspaceWriter.write(activeTenantId);
     if (!sessionEpoch.isCurrent(startedAt) || credentialRef.current.kind !== 'bearer') return;
+    setCanCreateTenant(identity.capabilities?.can_create_tenant === true);
     setWorkspaces(parseMobileWorkspaces(identity.memberships));
     updateTenantId(activeTenantId === null ? null : String(activeTenantId));
   }), [client, sessionEpoch, updateTenantId, workspaceWriter]);
@@ -276,6 +281,7 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
       await workspaceWriter.write(null);
       if (!sessionEpoch.isCurrent(startedAt)) return;
       setWorkspaces([]);
+      setCanCreateTenant(false);
       updateTenantId(null);
       updateCredential({ kind: 'anonymous' });
     } finally {
@@ -283,7 +289,7 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  return <RuntimeContext.Provider value={{ client, baseURL, credential, hydrating, oidcError, tenantId, workspaces, setServerAddress, refreshWorkspaces, switchWorkspace, register, registerByInvite, startOIDC, login, logout }}>{children}</RuntimeContext.Provider>;
+  return <RuntimeContext.Provider value={{ client, baseURL, credential, hydrating, oidcError, tenantId, workspaces, canCreateTenant, setServerAddress, refreshWorkspaces, switchWorkspace, register, registerByInvite, startOIDC, login, logout }}>{children}</RuntimeContext.Provider>;
 }
 
 export function useMobileRuntime(): MobileRuntimeValue {

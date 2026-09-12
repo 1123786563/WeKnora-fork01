@@ -110,3 +110,42 @@ test('honors explicit capability and organization invite compatibility rules', (
     reason: 'capability-unavailable',
   });
 });
+
+test('normalizes Vue legacy integration URLs into settings without losing unrelated query values', () => {
+  const cases = [
+    ['', 'integration-im'],
+    ['?tab=embed', 'integration-embed'],
+    ['?section=integrations&tab=api', 'integration-api'],
+    ['?section=claw&tab=embed', 'integration-claw'],
+    ['?section=integration-cli&tab=api', 'integration-cli'],
+    ['?tab=unknown', 'integration-im'],
+    ['?section=general&tab=api', 'general'],
+    ['?section=unknown&tab=api', 'unknown'],
+  ] as const;
+  for (const [search, section] of cases) {
+    assert.equal(routeRedirect(`/platform/integrations${search}`), `/platform/settings?section=${section}`);
+  }
+  const destination = routeRedirect('/platform/integrations?section=integrations&tab=embed&agentId=agent-1&filter=a&filter=b');
+  assert.ok(destination);
+  const query = new URL(destination, 'https://example.test').searchParams;
+  assert.equal(query.get('section'), 'integration-embed');
+  assert.equal(query.has('tab'), false);
+  assert.equal(query.get('agentId'), 'agent-1');
+  assert.deepEqual(query.getAll('filter'), ['a', 'b']);
+});
+
+test('guards legacy integration URLs before forwarding to the Vue settings destination', () => {
+  const path = '/platform/integrations?tab=embed';
+  assert.deepEqual(guardRoute(path, { ...authenticated, authenticated: false, tenantId: null }), {
+    kind: 'redirect', to: `/login?next=${encodeURIComponent(path)}`, reason: 'authentication-required',
+  });
+  assert.deepEqual(guardRoute(path, { ...authenticated, tenantId: null }), {
+    kind: 'redirect', to: '/onboarding/workspace', reason: 'workspace-required',
+  });
+  assert.deepEqual(guardRoute(path, authenticated), {
+    kind: 'redirect', to: '/platform/settings?section=integration-embed', reason: 'capability-unavailable',
+  });
+  assert.deepEqual(guardRoute(path, { ...authenticated, capabilities: { integrations: { supported: false } } }), {
+    kind: 'redirect', to: '/platform/settings?section=integration-embed', reason: 'capability-unavailable',
+  });
+});

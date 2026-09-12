@@ -5,5 +5,5 @@ import { useMobileRuntime } from '../src/runtime.tsx';
 export default function IndexRoute() {
   const runtime = useMobileRuntime();
   if (runtime.hydrating) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator /></View>;
-  return <Redirect href={runtime.credential?.kind === 'bearer' ? '/(app)/knowledge' : '/(auth)/login'} />;
+  return <Redirect href={runtime.credential?.kind === 'bearer' ? (runtime.tenantId ? '/(app)/knowledge' : '/onboarding') : '/(auth)/login'} />;
 }

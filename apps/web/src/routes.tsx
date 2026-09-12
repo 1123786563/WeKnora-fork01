@@ -1,3 +1,4 @@
+import { integrationSettingsQuery } from '@weknora/views';
 import { isCapabilitySupported } from '@weknora/domain';
 
 export type RouteMatch =
@@ -70,6 +71,7 @@ export function routeRedirect(pathname: string): string | undefined {
     const code = query.get('code')?.trim();
     return code ? `/platform/organizations?invite_code=${encodeURIComponent(code)}` : '/platform/organizations';
   }
+  if (match.path === '/platform/integrations') return `/platform/settings?${integrationSettingsQuery(pathname.includes('?') ? pathname.slice(pathname.indexOf('?')) : '', true)}`;
   if (match.path === '/platform/tenant') return '/platform/settings';
   if (match.path === '/platform/system' || match.path === '/platform/system/settings' || match.path === '/platform/system/admins') return '/platform/settings?section=system-global';
   if (match.path === '/platform/system/queues') return '/platform/settings?section=runtime-queues';
@@ -145,6 +147,7 @@ export function guardRoute(pathname: string, context: RouteGuardContext): RouteG
   if (!context.tenantId) return { kind: 'redirect', to: '/onboarding/workspace', reason: 'workspace-required' };
   if (path.startsWith('/platform/system') && !context.isSystemAdmin) return { kind: 'redirect', to: '/platform/settings', reason: 'system-admin-required' };
   if (path === '/platform/system' || path === '/platform/system/settings' || path === '/platform/system/admins' || path === '/platform/system/queues') return { kind: 'redirect', to: routeRedirect(pathname) ?? '/platform/settings', reason: 'capability-unavailable' };
+  if (path === '/platform/integrations') return { kind: 'redirect', to: routeRedirect(pathname)!, reason: 'capability-unavailable' };
   const capability = capabilityForPath(path);
   if (capability && !isCapabilitySupported(context.capabilities, capability, { liteMode: context.liteMode, edition: context.edition })) {
     return { kind: 'redirect', to: '/platform/knowledge-bases', reason: 'capability-unavailable' };

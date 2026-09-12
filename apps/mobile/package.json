@@ -91,7 +91,8 @@
     "use-sync-external-store": "^1.5.0",
     "warn-once": "^0.1.0",
     "whatwg-fetch": "^3.6.20",
-    "whatwg-url-minimum": "^0.1.2"
+    "whatwg-url-minimum": "^0.1.2",
+    "@weknora/i18n": "workspace:*"
   },
   "devDependencies": {
     "@expo/config-plugins": "~55.0.11",

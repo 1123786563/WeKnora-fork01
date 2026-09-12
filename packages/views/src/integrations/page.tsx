@@ -30,6 +30,7 @@ export interface IntegrationActions {
 }
 
 export interface IntegrationsPageProps {
+  embedded?: boolean;
   embedChannels: readonly IntegrationResource[];
   imChannels: readonly IntegrationResource[];
   apiBaseUrl: string;
@@ -49,7 +50,7 @@ function labelFor(key: IntegrationKey): string {
   return ({ im: 'IM channels', embed: 'Embed channels', api: 'API access', cli: 'CLI', chrome: 'Browser extension', claw: 'Claw skill' })[key];
 }
 
-export function IntegrationsPage({ embedChannels, imChannels, apiBaseUrl, apiKeys = [], apiKeysLoading = false, activeTab, onTabChange, initialTab = 'embed', loading = false, error, onReload, onOpenEmbed, actions = {} }: IntegrationsPageProps) {
+export function IntegrationsPage({ embedded = false, embedChannels, imChannels, apiBaseUrl, apiKeys = [], apiKeysLoading = false, activeTab, onTabChange, initialTab = 'embed', loading = false, error, onReload, onOpenEmbed, actions = {} }: IntegrationsPageProps) {
   const [tab, setTabState] = useState<IntegrationKey>(initialTab);
   useEffect(() => { if (activeTab) setTabState(activeTab); }, [activeTab]);
   const setTab = (key: IntegrationKey) => { setTabState(key); onTabChange?.(key); };
@@ -87,13 +88,13 @@ export function IntegrationsPage({ embedChannels, imChannels, apiBaseUrl, apiKey
   const runPlayground = () => run(async () => { const path = playgroundPath.trim().replace('{session_id}', encodeURIComponent(sessionId.trim())); if (!apiKey.trim()) throw new Error('Enter an API key for this request.'); let body: unknown; try { body = JSON.parse(playgroundBody); } catch { throw new Error('Request body must be valid JSON.'); } const headers: Record<string, string> = { 'Content-Type': 'application/json', Accept: 'text/event-stream', 'X-API-Key': apiKey.trim() }; if (principalToken) headers[principalToken.headerName] = principalToken.token; const response = await fetch(`${apiBaseUrl.replace(/\/$/, '')}${path}`, { method: 'POST', headers, body: JSON.stringify(body) }); const text = await response.text(); if (!response.ok) throw new Error(`HTTP ${response.status}: ${text.slice(0, 500)}`); setPlaygroundOutput(text); });
   return (
     <main className="wk-integrations-page">
-      <header className="wk-integrations-header">
+      {!embedded ? <><header className="wk-integrations-header">
         <div><h1>Integrations</h1><p className="wk-muted">Manage visitor channels and connect external clients.</p></div>
         {onReload ? <button className="wk-button" type="button" onClick={onReload}>Reload</button> : null}
       </header>
       <nav className="wk-integrations-tabs" aria-label="Integrations">
         {INTEGRATION_SECTIONS.map((item) => <button type="button" key={item.key} className={item.key === tab ? 'is-active' : ''} onClick={() => setTab(item.key)}>{labelFor(item.key)}</button>)}
-      </nav>
+      </nav></> : null}
       <section className="wk-integrations-panel">
         <div className="wk-integrations-panel-heading"><div><h2>{labelFor(section.key)}</h2><p>{section.external ? 'Open the maintained integration guide or marketplace listing.' : `Owned by the ${section.apiDomain} API domain.`}</p></div>{section.minRole === 'owner' ? <span className="wk-role-badge">Owner</span> : null}</div>
         {loading ? <p className="wk-status">Loading integrations…</p> : null}

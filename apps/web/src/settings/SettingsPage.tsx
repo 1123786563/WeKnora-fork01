@@ -1,3 +1,6 @@
+import { isCapabilitySupported, type CapabilityMap } from '@weknora/domain';
+import { integrationTabForSection, integrationSettingsQuery, selectSettingsQuery, INTEGRATION_SECTIONS } from '@weknora/views';
+import { IntegrationsRoutePage } from '../integrations/IntegrationsRoutePage.tsx';
 import { useCallback, useEffect, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import type { SettingsRole } from '@weknora/views';
@@ -53,7 +56,7 @@ export async function readSettingsSection(client: WeKnoraClient, key: string, te
 }
 
 function requestedSection(search: string): string {
-  const requested = new URLSearchParams(search).get('section');
+  const requested = integrationSettingsQuery(search).get('section');
   return requested && settingsSectionMeta(requested) ? requested : SETTINGS_SECTIONS[0]!.key;
 }
 
@@ -62,7 +65,7 @@ function sectionTitleFor(locale: Locale, key: string, fallback: string): string 
   return titleKey ? formatMessage(locale, titleKey) : fallback;
 }
 
-export function SettingsPage({ client, tenantId, role = 'owner' }: { client: WeKnoraClient; tenantId: number; role?: SettingsRole }) {
+export function SettingsPage({ client, tenantId, role = 'owner', capabilities = {}, liteMode = false }: { client: WeKnoraClient; tenantId: number; role?: SettingsRole; capabilities?: CapabilityMap; liteMode?: boolean }) {
   const locale = readInitialLocale();
   const t = settingsT(locale);
   const [selectedKey, setSelectedKey] = useState(() => requestedSection(window.location.search));
@@ -76,11 +79,13 @@ export function SettingsPage({ client, tenantId, role = 'owner' }: { client: WeK
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const section = settingsSectionMeta(selectedKey)!;
-  const visibleSections = settingsSectionsForRole(role);
+  const integrationSupported = (key: string) => { const capability = INTEGRATION_SECTIONS.find((item) => item.key === integrationTabForSection(key))?.capability; return !capability || isCapabilitySupported(capabilities, capability, { liteMode }); };
+  const integrationTab = integrationTabForSection(selectedKey);
+  const visibleSections = settingsSectionsForRole(role).filter((item) => integrationSupported(item.key));
   const roleDenied = !roleAtLeast(role, section.minRole);
 
   async function load() {
-    if (roleDenied) { setPayload(null); setError(null); setLoading(false); return; }
+    if (integrationTab || roleDenied) { setPayload(null); setError(null); setLoading(false); return; }
     setLoading(true); setError(null); setNotice(null);
     try {
       const next = await readSettingsSection(client, selectedKey, tenantId); setPayload(next);
@@ -94,6 +99,13 @@ export function SettingsPage({ client, tenantId, role = 'owner' }: { client: WeK
   }
 
   useEffect(() => { void load(); }, [client, selectedKey, role]);
+  useEffect(() => {
+    if (!integrationTab) return;
+    const next = integrationSupported(selectedKey) ? selectedKey : 'general';
+    if (next !== selectedKey) { setSelectedKey(next); setNotice(t('settings.capabilityUnavailable')); }
+    const query = selectSettingsQuery(next, window.location.search);
+    window.history.replaceState(null, '', `/platform/settings?${query}`);
+  }, [selectedKey, capabilities, liteMode]);
   useEffect(() => { void client.auth.registrationConfig().then((config) => setComplexPasswordEnabled(config.complexPasswordEnabled)).catch(() => setComplexPasswordEnabled(false)); }, [client]);
 
   useEffect(() => {
@@ -105,7 +117,7 @@ export function SettingsPage({ client, tenantId, role = 'owner' }: { client: WeK
   const select = useCallback((key: string) => {
     const next = settingsSectionMeta(key) ? key : SETTINGS_SECTIONS[0]!.key;
     setSelectedKey(next);
-    window.history.pushState(null, '', `/platform/settings?section=${encodeURIComponent(next)}`);
+    window.history.pushState(null, '', `/platform/settings?${selectSettingsQuery(next, window.location.search)}`);
   }, []);
 
   async function saveTenant(event: React.FormEvent<HTMLFormElement>) {
@@ -208,14 +220,14 @@ export function SettingsPage({ client, tenantId, role = 'owner' }: { client: WeK
             </nav>
             <section className="wks-content" aria-live="polite">
               <div className="wks-content-wrapper">
-                <div className="wk-settings-section wks-section">
+                {integrationTab ? (deniedPanel ?? <IntegrationsRoutePage key={`${tenantId}:${integrationTab}`} client={client} tenantId={String(tenantId)} activeTab={integrationTab} embedded />) : <div className="wk-settings-section wks-section">
                   <div className="wk-settings-panel-heading">
                     <div><h2>{sectionTitleFor(locale, selectedKey, section.title)}</h2><p className="wk-muted">{section.description}</p></div>
                     <button type="button" className="wks-reload" onClick={() => void load()} disabled={loading}>{t('common.refresh')}</button>
                   </div>
                   {selectedKey === 'tenant' && role === 'owner' ? <TenantDeleteZone client={client} tenantId={tenantId} tenantName={tenantDraft.name || String(tenantId)} onDeleted={() => { window.location.assign('/login'); }} /> : null}
                   {deniedPanel ?? (error ? <Status tone="error">{error}</Status> : loading ? <Status>Loading from {section.apiDomain}…</Status> : <>{notice ? <Status tone="success">{notice}</Status> : null}{resourcePanel ?? configPanel ?? ollamaPanel ?? cloudPanel ?? envVarPanel ?? portedPanel ?? (selectedKey === 'tenant' ? <form className="wk-settings-editor" onSubmit={(event) => void saveTenant(event)}><label>Name<input required value={tenantDraft.name} onChange={(event) => setTenantDraft((current) => ({ ...current, name: event.target.value }))} /></label><label>Description<textarea rows={3} value={tenantDraft.description} onChange={(event) => setTenantDraft((current) => ({ ...current, description: event.target.value }))} /></label><Button type="submit" loading={saving}>Save tenant information</Button></form> : selectedKey === 'userprofile' ? <form className="wk-settings-editor" onSubmit={(event) => void changePassword(event)}><p className="wk-muted">Profile identity fields are server-owned. Change your password only after entering the current credential and confirming the new one.</p><label>Current password<input required type="password" autoComplete="current-password" value={passwordDraft.oldPassword} onChange={(event) => setPasswordDraft((current) => ({ ...current, oldPassword: event.target.value }))} /></label><label>New password<input required type="password" autoComplete="new-password" value={passwordDraft.newPassword} onChange={(event) => setPasswordDraft((current) => ({ ...current, newPassword: event.target.value }))} /></label><label>Confirm new password<input required type="password" autoComplete="new-password" value={passwordDraft.confirmation} onChange={(event) => setPasswordDraft((current) => ({ ...current, confirmation: event.target.value }))} /></label><Button type="submit" loading={saving}>Change password</Button></form> : selectedKey === 'memory' ? <div className="wk-settings-memory"><MemoryWorkspacePanel client={client} initialConfig={((payload as Record<string, unknown> | null)?.workspace)} /><PersonalMemorySettingsPanel client={client} initialSettings={((payload as Record<string, unknown> | null)?.personal)} /></div> : selectedKey === 'mymemory' ? <PersonalMemoryPanel client={client} initialItems={payload} /> : <p className="wk-settings-read-note">Read result received from the server. This inventory view does not turn unsupported save, reset, test, or delete operations into a generic editor.</p>)}<dl className="wk-settings-values">{settingsValueEntries(payload).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{value}</dd></div>)}</dl></>)}
-                </div>
+                </div>}
               </div>
             </section>
           </div>
@@ -257,6 +269,7 @@ const NAV_GROUP_DEFS: ReadonlyArray<{ key: string; labelKey: string; sections: r
   { key: 'account', labelKey: 'settings.navGroups.account', sections: ['general', 'userprofile', 'mymemory', 'envvars'] },
   { key: 'workspace', labelKey: 'settings.navGroups.workspace', sections: ['tenant', 'members', 'chathistory', 'memory'] },
   { key: 'models_runtime', labelKey: 'settings.navGroups.modelsRuntime', sections: ['models', 'ollama', 'weknoracloud'] },
+  { key: 'integrations', labelKey: 'integrations.title', sections: INTEGRATION_SECTIONS.map((item) => `integration-${item.key}`) },
   { key: 'data_extensions', labelKey: 'settings.navGroups.dataExtensions', sections: ['vectorstore', 'parser', 'storage', 'sandbox', 'skills', 'websearch', 'mcp'] },
   { key: 'system_administration', labelKey: 'settings.navGroups.systemAdministration', sections: ['system-global', 'runtime-queues', 'platform-api-keys', 'system-audit-log'] },
   { key: 'platform', labelKey: 'settings.navGroups.platform', sections: ['system'] },
@@ -302,6 +315,8 @@ export interface SettingsNavGroupView {
 }
 
 export function settingsSectionLabel(locale: Locale, key: string): string {
+  const integrationTab = integrationTabForSection(key);
+  if (integrationTab) return formatMessage(locale, `integrations.tabs.${integrationTab}`);
   const labelKey = SECTION_LABEL_KEYS[key];
   if (labelKey) return formatMessage(locale, labelKey);
   return settingsSectionMeta(key)?.title ?? key;

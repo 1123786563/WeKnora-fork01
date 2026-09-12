@@ -6,8 +6,9 @@ import { parseIntegrationTenantId } from './tenant.ts';
 
 // Each integrations tab fetches only the data it renders, so a missing or
 // empty collection on one tab can never break the others.
-export function IntegrationsRoutePage({ client, tenantId }: { client: WeKnoraClient; tenantId: string | null }) {
-  const [tab, setTab] = useState<IntegrationKey>(integrationKeyFromQuery(window.location.search));
+export function IntegrationsRoutePage({ client, tenantId, activeTab, embedded = false }: { client: WeKnoraClient; tenantId: string | null; activeTab?: IntegrationKey; embedded?: boolean }) {
+  const [localTab, setTab] = useState<IntegrationKey>(integrationKeyFromQuery(window.location.search));
+  const tab = activeTab ?? localTab;
   const [embedChannels, setEmbedChannels] = useState<IntegrationResource[]>([]);
   const [imChannels, setImChannels] = useState<IntegrationResource[]>([]);
   const [apiKeys, setApiKeys] = useState<ApiKeyRow[]>([]);
@@ -41,7 +42,7 @@ export function IntegrationsRoutePage({ client, tenantId }: { client: WeKnoraCli
     setLoading(false);
   }, [client, tab, activeTenantId]);
 
-  useEffect(() => { if (activeTenantId !== null) void client.administration.tenantApiKeys.principalConfig(activeTenantId).then(setPrincipal).catch(() => setPrincipal(null)); else setPrincipal(null); }, [activeTenantId, client]);
+  useEffect(() => { if (tab === 'api' && activeTenantId !== null) void client.administration.tenantApiKeys.principalConfig(activeTenantId).then(setPrincipal).catch(() => setPrincipal(null)); else setPrincipal(null); }, [activeTenantId, client, tab]);
 
   async function openEmbed(channel: IntegrationResource) {
     try {
@@ -81,5 +82,5 @@ export function IntegrationsRoutePage({ client, tenantId }: { client: WeKnoraCli
     if (tab === 'api') void loadApiKeys();
   };
 
-  return <IntegrationsPage initialTab={tab} activeTab={tab} onTabChange={setTab} embedChannels={embedChannels} imChannels={imChannels} apiKeys={apiKeys} apiKeysLoading={apiKeysLoading} apiBaseUrl={window.location.origin} loading={loading} error={error} onReload={reload} onOpenEmbed={(channel) => void openEmbed(channel)} actions={actions} />;
+  return <IntegrationsPage embedded={embedded} initialTab={tab} activeTab={tab} onTabChange={setTab} embedChannels={embedChannels} imChannels={imChannels} apiKeys={apiKeys} apiKeysLoading={apiKeysLoading} apiBaseUrl={window.location.origin} loading={loading} error={error} onReload={reload} onOpenEmbed={(channel) => void openEmbed(channel)} actions={actions} />;
 }

@@ -27,3 +27,4 @@ export { apiKeyAccessMode, apiKeyValueDisplay, isFreshKeyVisible } from './integ
 export type { ApiKeyRow } from './integrations/apiKeys.ts';
 export { buildEmbedUpdatePayload } from './integrations/form.ts';
 export type { EmbedResourceLike } from './integrations/form.ts';
+export { integrationTabForSection, normalizeIntegrationSettingsSection, integrationSettingsQuery, selectSettingsQuery } from './integrations/settings-route.ts';
