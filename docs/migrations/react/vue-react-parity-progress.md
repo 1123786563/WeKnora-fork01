@@ -414,3 +414,8 @@
 - 模拟器 loopback 断连（Safari 到 localhost 失败），改用 LAN IP 192.168.3.30:8080 作为 API 地址——应用的多服务器配置设计恰好覆盖此场景。
 - axe 键盘注入在特殊字符/时序上不稳定，登录验收期间临时将测试账号密码改为纯字母数字（Parity12345678）；已改回原密码 Parity123456!（见下轮）。
 - 补充：测试账号密码已恢复为 Parity123456!（curl 验证登录成功），web E2E 脚本不受影响。
+
+## 2026-09-12 Android 模拟器交互验收（Round 101 专项）
+
+- Android 模拟器（test36-small）原生应用交互验收通过：Gradle 重建 APK（补 netinfo 原生模块）→ dev client 连接 Metro → 真实登录 → KB 列表渲染真实后端数据。证据：2026-09-12-android-emulator-interaction.md + android-sim-*.png。
+- 测试账号密码临时切换后已恢复（Parity123456!，curl 验证）。
