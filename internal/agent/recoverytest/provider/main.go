@@ -197,7 +197,8 @@ func main() {
 				fatal(fmt.Sprintf("user retry: %v", err))
 			}
 			var waitErr error
-			final, parked, waitErr = waitForSettled(ctx, store)
+			final, waitErr = waitForCompleted(ctx, store)
+			parked = false
 			if waitErr != nil {
 				fatal(fmt.Sprintf("wait after retry: %v", waitErr))
 			}
@@ -696,6 +697,32 @@ func waitForSettled(ctx context.Context, store *repository.AgentRunStore) (agent
 		select {
 		case <-ctx.Done():
 			return run, false, ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+}
+
+// waitForCompleted is used after a retry decision. A second waiting_user state
+// is not a settled result there: it means the resumed graph parked again and
+// must be surfaced as a timeout/failure rather than reported as a successful
+// recovery matrix row.
+func waitForCompleted(ctx context.Context, store *repository.AgentRunStore) (agentruntime.Run, error) {
+	key := agentruntime.RunKey{TenantID: 1, RunID: runID}
+	deadline := time.Now().Add(120 * time.Second)
+	for {
+		run, err := store.Get(ctx, key)
+		if err != nil {
+			return run, err
+		}
+		if run.Status == "succeeded" || run.Status == "failed" || run.Status == "canceled" {
+			return run, nil
+		}
+		if time.Now().After(deadline) {
+			return run, fmt.Errorf("run did not complete after retry, status=%s wait_reason=%s", run.Status, run.WaitReason)
+		}
+		select {
+		case <-ctx.Done():
+			return run, ctx.Err()
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
