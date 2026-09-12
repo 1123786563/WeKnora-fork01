@@ -349,7 +349,7 @@
 - **阻断（如实）**：步骤 7 之"真实启动关闭/启用 profile 各一次+日志扫描"——本环境授权范围禁止部署生产/启动真实服务栈；compose/helm 为声明验证（config/渲染），容器级启动留 O03 验收环境执行；不视为已通过。
 - **延后（如实）**：①步骤 5 worker shutdown 停止 claim+租约释放——I01 租约已有，shutdown 钩子归 O02 恢复演练；②步骤 6 PG/SQLite 配置文档——部署文档归 O03 交付物；③server_entry 模块（Dockerfile ENTRYPOINT 引用）——O02 随 worker 入口一并落地。
 - review：双评审下轮补做。
-- 提交 SHA：（同批提交后补记）
+- 提交 SHA：bb48423。
 - V02 结论边界：持久图桥接/授权子图重建/注册规则推导已验证；模型推断 unverified（无凭据，未调用）；向量检索路径未验证。
 - V03 结论边界：semantica 模式检索质量/延迟为受控语料实测；native 对照与模型用量门槛未测（阻断记录见上）；上线门禁 approved=false 待用户确认。
 - 未创建GitHub Issue或外部发布；没有分配虚构Issue编号。
