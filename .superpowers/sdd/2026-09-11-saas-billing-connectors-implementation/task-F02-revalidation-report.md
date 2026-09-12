@@ -12,19 +12,13 @@ used here is the assigned F02 revalidation requirement: exercise real
 PostgreSQL with `AccountStore` and the production account migration, and prove
 that exactly one bind succeeds for each conflicting pair.
 
-## RED
+## Test-first evidence
 
-Before the fixture existed, the new test file referenced a deliberately
-undefined `testAccountPGStore` helper. This command failed as expected:
-
-```text
-go test -tags commercial_integration ./internal/application/repository/commercial -run '^TestAccountPG' -count=1
-# github.com/Tencent/WeKnora/internal/application/repository/commercial [github.com/Tencent/WeKnora/internal/application/repository/commercial.test]
-internal/application/repository/commercial/account_pg_test.go:17:7: undefined: testAccountPGStore
-internal/application/repository/commercial/account_pg_test.go:28:7: undefined: testAccountPGStore
-FAIL	github.com/Tencent/WeKnora/internal/application/repository/commercial [build failed]
-FAIL
-```
+No valid behavior RED was captured for this revalidation. The production
+`AccountStore` and its SQLite coverage existed before this evidence-only test
+addition. The earlier deliberate absence of `testAccountPGStore` produced a
+compile failure, but that only demonstrated a missing test fixture, not a
+failing product behavior; it must not be represented as an expected RED.
 
 The test-side fixture then added an isolated PostgreSQL schema, applied
 `migrations/versioned/000110_commercial_accounts.up.sql`, and created the real
@@ -55,3 +49,13 @@ test-tagged and calls `t.Skip("blocked-env: SAAS_TEST_PG_DSN is required")`
 when absent, so no PostgreSQL connection, migration, or concurrent database
 execution was claimed. Supply an isolated PostgreSQL DSN and rerun the tagged
 command above for runtime evidence.
+
+## Review fix
+
+Following independent review, fixture cleanup is centralized and checks every
+resource-release error with `t.Errorf`: the isolated schema pool closes before
+`DROP SCHEMA ... CASCADE`, the schema drop is checked, and the PostgreSQL admin
+pool close is checked. Cleanup is registered before schema creation, so the
+same checked cleanup applies when isolated-connection initialization fails
+after schema creation. This preserves cleanup safety without changing
+production behavior.

@@ -4,6 +4,7 @@ package commercial
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"net/url"
@@ -92,32 +93,41 @@ func testAccountPGStore(t *testing.T) *AccountStore {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var pool *sql.DB
 	schema := fmt.Sprintf("saas_account_%d", time.Now().UnixNano())
+	schemaCreated := false
+	cleanup := func() {
+		if pool != nil {
+			if err := pool.Close(); err != nil {
+				t.Errorf("close isolated schema pool: %v", err)
+			}
+		}
+		if schemaCreated {
+			if err := admin.Exec("DROP SCHEMA " + schema + " CASCADE").Error; err != nil {
+				t.Errorf("drop isolated schema: %v", err)
+			}
+		}
+		if err := adminPool.Close(); err != nil {
+			t.Errorf("close PostgreSQL admin pool: %v", err)
+		}
+	}
+	t.Cleanup(cleanup)
 	if err := admin.Exec("CREATE SCHEMA " + schema).Error; err != nil {
-		adminPool.Close()
 		t.Fatalf("create isolated schema: %v", err)
 	}
+	schemaCreated = true
 	query := parsed.Query()
 	query.Set("search_path", schema)
 	parsed.RawQuery = query.Encode()
 	db, err := gorm.Open(postgres.Open(parsed.String()), &gorm.Config{})
 	if err != nil {
-		admin.Exec("DROP SCHEMA " + schema + " CASCADE")
-		adminPool.Close()
 		t.Fatalf("open isolated schema connection: %v", err)
 	}
-	pool, err := db.DB()
+	pool, err = db.DB()
 	if err != nil {
-		admin.Exec("DROP SCHEMA " + schema + " CASCADE")
-		adminPool.Close()
 		t.Fatal(err)
 	}
 	pool.SetMaxOpenConns(20)
-	t.Cleanup(func() {
-		pool.Close()
-		admin.Exec("DROP SCHEMA " + schema + " CASCADE")
-		adminPool.Close()
-	})
 	migration, err := os.ReadFile("../../../../migrations/versioned/000110_commercial_accounts.up.sql")
 	if err != nil {
 		t.Fatal(err)
