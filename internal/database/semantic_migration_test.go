@@ -76,9 +76,9 @@ func TestSemanticMigrationSQLite(t *testing.T) {
 	require.NoError(t, migrator.Up())
 	requireSemanticTables(t, sqlDB, "sqlite", true)
 
-	// Down removes exactly the semantic tables (000017-000019); Up
+	// Down removes exactly the semantic tables (000017-000020); Up
 	// reinstates them.
-	require.NoError(t, migrator.Steps(-3))
+	require.NoError(t, migrator.Steps(-4))
 	requireSemanticTables(t, sqlDB, "sqlite", false)
 	require.NoError(t, migrator.Up())
 	requireSemanticTables(t, sqlDB, "sqlite", true)
@@ -171,8 +171,8 @@ func TestSemanticMigrationPostgres(t *testing.T) {
 	require.NoError(t, sqlDB.QueryRow("SELECT COUNT(*) FROM semantic_outbox WHERE event_id = 'ev-3'").Scan(&count))
 	require.Zero(t, count, "rolled-back transaction must not leave outbox events")
 
-	// Down drops the semantic tables (000096-000098), Up restores them.
-	require.NoError(t, migrator.Steps(-3))
+	// Down drops the semantic tables (000096-000099), Up restores them.
+	require.NoError(t, migrator.Steps(-4))
 	requireSemanticTables(t, sqlDB, "postgres", false)
 	require.NoError(t, migrator.Up())
 	requireSemanticTables(t, sqlDB, "postgres", true)

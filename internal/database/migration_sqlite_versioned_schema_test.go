@@ -37,9 +37,9 @@ var versionedSQLiteColumns = map[string][]string{
 // Latest SQLite migration version. Bump when adding migrations: 000014
 // (recovery), 000015 (agent tool plan versions), 000016 (agent decision
 // linkage), 000017 (semantic control), 000018 (semantic invocations),
-// 000019 (semantic task attempts) landed after the original value 13
-// was pinned.
-const expectedSQLiteMigrationVersion = 19
+// 000019 (semantic task attempts), 000020 (backend checkpoints) landed
+// after the original value 13 was pinned.
+const expectedSQLiteMigrationVersion = 20
 
 func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 	repoRoot := sqliteRepoRoot(t)

@@ -1,6 +1,6 @@
 # Semantica 实施台账
 
-状态：V01–C03、I01–I05、A01–A03、Q01–Q04、W01–W02 verified（W02 浏览器 E2E 阻断于真实服务栈——如实记录待 O03）；其余 5 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
+状态：V01–C03、I01–I05、A01–A03、Q01–Q04、W01–W02 verified；W03 implemented（双评审下轮）；其余 4 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
 
 状态值 pending / in_progress / blocked / implemented / verified。每项验证记录必须包含commit SHA、精确命令、退出码、环境、产物路径、失败/限制；无真实证据不标记verified。执行前记录实际基线与已有脏文件。
 
@@ -26,7 +26,7 @@
 | Q04 | Go检索融合、Agent工具与最终授权 | Q02,Q03,I05 | verified | 5 BLOCKER 全闭：查询/TopK 上线、Reason 经 client.Reason 分派（rules/model+query_id）、resolveKBReadTenant **fail-closed** 强制+容器接线、allowed_document_ids 端到端上线、向量 seam 诚实 noop；chat/agent 入口与真向量 seam 归 W；见运行记录 2026-09-11 Q04（两段） |
 | W01 | 用户API与共享客户端契约 | Q04,I05 | verified | TS 契约（uint64 十进制字符串/浮点拒绝/未知枚举→unknown）+客户端（AbortSignal/错误映射/无泄露）+Go handler（fail-closed 503/mode 校验/body 不越 path scope）+路由定义；双评审 PASS；挂载/facade 桥/retry 归 W02；见运行记录 2026-09-11 W01 |
 | W02 | React索引状态与推理证据流程 | W01 | verified | domain 纯函数+视图模型+面板挂载+重试提交；双评审 PASS（规格两轮/质量三轮——含台账误记自我更正）；浏览器 E2E 阻断于真实服务栈（如实待 O03）；见运行记录 2026-09-11 W02 |
-| W03 | 后端影子构建、切换与回滚 | W01,I04,Q04 | pending | 尚未执行 |
+| W03 | 后端影子构建、切换与回滚 | W01,I04,Q04 | implemented | desired/active 状态机（SetDesired 仅意图/Promote CAS 恰一胜/Rollback 追赶强制）+检查点迁移+运行手册；双评审下轮；见运行记录 2026-09-11 W03 |
 | O01 | 独立部署、探针与可观测性 | C02,I03,A03 | pending | 尚未执行 |
 | O02 | 故障注入、清理与恢复演练 | O01,I04,W03,Q04 | pending | 尚未执行 |
 | O03 | 质量回归、CI门禁与最终交付 | O02,W02,V03 | pending | 尚未执行 |
@@ -324,7 +324,19 @@
 - 质量 review：首轮 FAIL（2 BLOCKER：①重试按钮指向不存在端点而台账称已交付——修复为注释如实声明 W03 延后+错误 role=alert+成功后状态刷新；②证据死路由链接+虚假注释——修复为钉版本非导航文本+注释如实）→ 修复段 8b03d9e 部分 minors 未实际落码被再审抓回（**台账曾误记四项已折叠——更正**：该段仅 B1/B2/键控真实落地）→ 终修段实际落码：搜索独立 AbortController（runSearch 写 searchAbortRef+卸载中止 effect）/SemanticAbortedError instanceof 分支（网络错误"语义检索失败"不再误标取消）/runSearch 清 retryError/接受重试后 getSemanticStatus 刷新面板/queryId+随机后缀/cancel 恢复双半（abort+cancelSemanticQuery 静默丢弃）/E2E selector .evidence-link→.evidence-ref。遗留 W03/O03：LABELS 类型护栏+parseSemanticStatus 贯通/keep-on-500 测试/页面级渲染测试/E2E 深链+session fixture。
 - 提交 SHA：9a14351 + 241dbe3 + 85e3e33 + 8b03d9e + 87cdf4a（质量终修——四项 minors 实际落码+台账自我更正）。质量评审三轮：首轮 FAIL（2 BLOCKER）→ 8b03d9e 修复 B1/B2/键控但**四 minors 仅脚手架且台账误记**→ 再审 FAIL 抓回 → 87cdf4a 实际落码+cancel 双半恢复+selector 更正+台账如实更正 → **终审 PASS**（逐行验证+独立运行全绿+取消语义全序遍历）。残余 nits 记录 W03/O03（死 abortRef 可删/重试刷新块与状态 effect 去重/LABELS 护栏/页面渲染测试/E2E 深链+session fixture）。
 
-- V01–C03、I01–I05、A01–A03、Q01–Q04、W01 verified；W02 implemented（E2E 阻断）；后续 5 个任务未开始。
+- V01–C03、I01–I05、A01–A03、Q01–Q04、W01–W02 verified；W03 implemented（双评审下轮）；后续 4 个任务未开始。
+
+### 2026-09-11 W03 后端影子构建、切换与回滚（implemented——双评审下轮）
+
+- 工作区：.worktrees/semantica（分支 codex/semantica）；基线 SHA：5751d17。
+- 修改文件：migrations/{versioned/000099_semantic_backend_checkpoints.{up,down}.sql,sqlite/000020 同对}、internal/application/service/{semantic_backend.go,semantic_backend_test.go}、internal/application/repository/semantic_outbox.go（BackendStateView/SetDesiredBackend/BackendState/CompareAndSwapBackend/LatestDocumentRevision 五方法）、internal/database/{migration_sqlite_versioned_schema_test.go(20),semantic_migration_test.go(steps -4)}、docs/superpowers/plans/semantica/backend-runbook.md、本台账、05 计划勾选。
+- RED：`go test ./internal/application/service -run TestSemanticBackend -count=1`（undefined: BackendService ×3）。
+- GREEN：`go test ./internal/application/service -run 'TestSemanticRollback|TestSemanticSetDesired|TestSemanticPromote|TestSemanticConcurrent' -count=1` **5 passed**（含 -race 并发 Promote 4 路恰一胜）；database 迁移合同 steps -4 双方言 ok；`go build ./...` 净。
+- 实测验收：计划核心断言逐字（native 检查点 8 < 源 9 → ErrNativeCatchupRequired）；SetDesired 只写意图（active 恒 native）；追赶后回滚成功（9≥9 → CAS semantic→native）；过期 expected generation Promote 拒绝；并发 Promote 恰一胜。
+- 交付：状态机（SetDesired/Promote/Rollback+双哨兵错误）；检查点列（native/semantic_checkpoint+last_error）；repo 五方法；运行手册（状态模型/影子/切换前置清单/回滚先补齐/失败处置/禁止事项）。
+- **延后（如实）**：①Promote 之"完整 manifest/capability/验收 policy"前置自动化——人工清单在手册，自动化归 O02/O03；②Rollback 之切换期 outbox 重放编排——检查点比较已实现，编排归 O02；③产品设置 API（desired 保存）挂载归 O01；④read lease 沿旧请求完成集成归 O02。
+- review：双评审下轮补做。
+- 提交 SHA：（同批提交后补记）
 - V01精确版本已冻结（semantica 0.6.8）；真实模型证据须在后续任务补齐，不是已经通过的前提。
 - V02 结论边界：持久图桥接/授权子图重建/注册规则推导已验证；模型推断 unverified（无凭据，未调用）；向量检索路径未验证。
 - V03 结论边界：semantica 模式检索质量/延迟为受控语料实测；native 对照与模型用量门槛未测（阻断记录见上）；上线门禁 approved=false 待用户确认。

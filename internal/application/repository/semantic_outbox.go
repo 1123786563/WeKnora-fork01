@@ -267,6 +267,70 @@ func BumpTenantSemanticEpochsTx(tx *gorm.DB, tenantID uint64) error {
 // transaction - the service-layer entry for transfer flows (clone/move
 // source+target) where the business writes are resumable multi-document
 // operations without one enclosing transaction.
+// BackendStateView is the persisted backend state machine snapshot.
+type BackendStateView struct {
+	DesiredBackend     string
+	ActiveBackend      string
+	ActiveGeneration   string
+	NativeCheckpoint   int64
+	SemanticCheckpoint int64
+}
+
+// SetDesiredBackend records the desired backend WITHOUT touching active
+// (W03: shadow-build intent only; deployment images never auto-switch).
+func (r *SemanticControlRepository) SetDesiredBackend(ctx context.Context, scope types.SemanticScopeKey, backend string) error {
+	return r.db.WithContext(ctx).Exec(
+		"INSERT INTO semantic_backend_states (tenant_id, kb_id, desired_backend, active_backend) VALUES (?, ?, ?, 'native')"+
+			" ON CONFLICT (tenant_id, kb_id) DO UPDATE SET desired_backend = excluded.desired_backend, updated_at = CURRENT_TIMESTAMP",
+		scope.TenantID, scope.KBID, backend,
+	).Error
+}
+
+// BackendState loads the persisted state machine row for a scope.
+func (r *SemanticControlRepository) BackendState(ctx context.Context, scope types.SemanticScopeKey) (BackendStateView, error) {
+	var view BackendStateView
+	err := r.db.WithContext(ctx).Raw(
+		"SELECT desired_backend, active_backend, active_generation, native_checkpoint, semantic_checkpoint"+
+			" FROM semantic_backend_states WHERE tenant_id = ? AND kb_id = ?",
+		scope.TenantID, scope.KBID,
+	).Scan(&view).Error
+	if err != nil {
+		return BackendStateView{}, err
+	}
+	if view.ActiveBackend == "" {
+		view.DesiredBackend = "native"
+		view.ActiveBackend = "native"
+	}
+	return view, nil
+}
+
+// CompareAndSwapBackend atomically switches the active backend iff the
+// current row matches expectedBackend AND expectedGeneration. Returns
+// false when the precondition fails (never a blind switch).
+func (r *SemanticControlRepository) CompareAndSwapBackend(ctx context.Context, scope types.SemanticScopeKey,
+	expectedBackend, newBackend, expectedGeneration string) (bool, error) {
+	result := r.db.WithContext(ctx).Exec(
+		"UPDATE semantic_backend_states SET active_backend = ?, updated_at = CURRENT_TIMESTAMP"+
+			" WHERE tenant_id = ? AND kb_id = ? AND active_backend = ? AND active_generation = ?",
+		newBackend, scope.TenantID, scope.KBID, expectedBackend, expectedGeneration,
+	)
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected == 1, nil
+}
+
+// LatestDocumentRevision is the newest semantic document revision in the
+// scope (the source-of-truth the native index must catch up to).
+func (r *SemanticControlRepository) LatestDocumentRevision(ctx context.Context, scope types.SemanticScopeKey) (int64, error) {
+	var latest int64
+	err := r.db.WithContext(ctx).Raw(
+		"SELECT COALESCE(MAX(revision), 0) FROM semantic_document_revisions WHERE tenant_id = ? AND kb_id = ?",
+		scope.TenantID, scope.KBID,
+	).Scan(&latest).Error
+	return latest, err
+}
+
 func (r *SemanticControlRepository) BumpKBSemanticEpochs(ctx context.Context, tenantID uint64, kbIDs ...string) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		return BumpKBSemanticEpochsTx(tx, tenantID, kbIDs...)
