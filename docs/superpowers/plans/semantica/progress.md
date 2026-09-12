@@ -1,6 +1,6 @@
 # Semantica 实施台账
 
-状态：V01–C03、I01–I05、A01–A03、Q01–Q04、W01 verified；W02 implemented（浏览器 E2E 阻断于真实服务栈——如实记录）；其余 5 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
+状态：V01–C03、I01–I05、A01–A03、Q01–Q04、W01–W02 verified（W02 浏览器 E2E 阻断于真实服务栈——如实记录待 O03）；其余 5 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
 
 状态值 pending / in_progress / blocked / implemented / verified。每项验证记录必须包含commit SHA、精确命令、退出码、环境、产物路径、失败/限制；无真实证据不标记verified。执行前记录实际基线与已有脏文件。
 
@@ -25,7 +25,7 @@
 | Q03 | 模型推断与证据不足判定 | Q01,A03,V03 | verified | 受控网关/结构化校验（前提⊆授权集/kind 恒 model/长度与数量上限）/预算显式状态/注入惰性/Reason 双模式分派；RPC 证据内容通道与真实模型端到端延后 Q04；见运行记录 2026-09-11 Q03 |
 | Q04 | Go检索融合、Agent工具与最终授权 | Q02,Q03,I05 | verified | 5 BLOCKER 全闭：查询/TopK 上线、Reason 经 client.Reason 分派（rules/model+query_id）、resolveKBReadTenant **fail-closed** 强制+容器接线、allowed_document_ids 端到端上线、向量 seam 诚实 noop；chat/agent 入口与真向量 seam 归 W；见运行记录 2026-09-11 Q04（两段） |
 | W01 | 用户API与共享客户端契约 | Q04,I05 | verified | TS 契约（uint64 十进制字符串/浮点拒绝/未知枚举→unknown）+客户端（AbortSignal/错误映射/无泄露）+Go handler（fail-closed 503/mode 校验/body 不越 path scope）+路由定义；双评审 PASS；挂载/facade 桥/retry 归 W02；见运行记录 2026-09-11 W01 |
-| W02 | React索引状态与推理证据流程 | W01 | implemented | domain 纯函数+视图模型+面板挂载+重试提交；规格评审 FAIL→修复→**终审 PASS**；质量评审待下轮；浏览器 E2E 阻断于真实服务栈（spec 就绪 SEMANTIC_E2E_READY=1）；见运行记录 2026-09-11 W02 |
+| W02 | React索引状态与推理证据流程 | W01 | verified | domain 纯函数+视图模型+面板挂载+重试提交；双评审 PASS（规格两轮/质量三轮——含台账误记自我更正）；浏览器 E2E 阻断于真实服务栈（如实待 O03）；见运行记录 2026-09-11 W02 |
 | W03 | 后端影子构建、切换与回滚 | W01,I04,Q04 | pending | 尚未执行 |
 | O01 | 独立部署、探针与可观测性 | C02,I03,A03 | pending | 尚未执行 |
 | O02 | 故障注入、清理与恢复演练 | O01,I04,W03,Q04 | pending | 尚未执行 |
@@ -322,7 +322,7 @@
 - **阻断（如实）**：浏览器 E2E（上传→索引→问答→引用→重试→取消→撤权+截图+键盘无障碍）需真实 Go 服务栈运行（SEMANTIC_E2E_READY=1+baseURL）——本环境未部署生产服务（授权范围禁止），spec 已就绪待 O03 验收环境执行；不视为已通过。
 - review：规格首轮 FAIL（根因：.gitignore `web/` 无锚匹配 apps/web——7 计划文件未入库+提交树破坏 typecheck；4 BLOCKER）→ 修复段 241dbe3：①gitignore 锚定 /web/，7 文件入库；②onRetry 接通 retrySemanticIndex；③SemanticPage 经 #/semantic/:kb/:doc 哈希路由挂入 App；④EvidencePanel 注释改如实；⑤playwright 钉 1.63.0。**终审 PASS**（四 BLOCKER 全闭——干净树三命令全绿复现）；残余 minors 折叠：重试错误 role=alert 呈现（不再吞）+Rules-of-Hooks 修正（钩子无条件+hashchange 响应式）；遗留记录：E2E spec 场景 1 路径需改 #/semantic 深链（O03 前修正）、Date.now queryId、权限驱动显示（服务端权威保留）。
 - 质量 review：首轮 FAIL（2 BLOCKER：①重试按钮指向不存在端点而台账称已交付——修复为注释如实声明 W03 延后+错误 role=alert+成功后状态刷新；②证据死路由链接+虚假注释——修复为钉版本非导航文本+注释如实）→ 修复段 8b03d9e 部分 minors 未实际落码被再审抓回（**台账曾误记四项已折叠——更正**：该段仅 B1/B2/键控真实落地）→ 终修段实际落码：搜索独立 AbortController（runSearch 写 searchAbortRef+卸载中止 effect）/SemanticAbortedError instanceof 分支（网络错误"语义检索失败"不再误标取消）/runSearch 清 retryError/接受重试后 getSemanticStatus 刷新面板/queryId+随机后缀/cancel 恢复双半（abort+cancelSemanticQuery 静默丢弃）/E2E selector .evidence-link→.evidence-ref。遗留 W03/O03：LABELS 类型护栏+parseSemanticStatus 贯通/keep-on-500 测试/页面级渲染测试/E2E 深链+session fixture。
-- 提交 SHA：9a14351 + 241dbe3 + 85e3e33 + 质量修复段（下记）。
+- 提交 SHA：9a14351 + 241dbe3 + 85e3e33 + 8b03d9e + 87cdf4a（质量终修——四项 minors 实际落码+台账自我更正）。质量评审三轮：首轮 FAIL（2 BLOCKER）→ 8b03d9e 修复 B1/B2/键控但**四 minors 仅脚手架且台账误记**→ 再审 FAIL 抓回 → 87cdf4a 实际落码+cancel 双半恢复+selector 更正+台账如实更正 → **终审 PASS**（逐行验证+独立运行全绿+取消语义全序遍历）。残余 nits 记录 W03/O03（死 abortRef 可删/重试刷新块与状态 effect 去重/LABELS 护栏/页面渲染测试/E2E 深链+session fixture）。
 
 - V01–C03、I01–I05、A01–A03、Q01–Q04、W01 verified；W02 implemented（E2E 阻断）；后续 5 个任务未开始。
 - V01精确版本已冻结（semantica 0.6.8）；真实模型证据须在后续任务补齐，不是已经通过的前提。
