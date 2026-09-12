@@ -150,10 +150,16 @@ func (s *AgentRunStore) Admit(ctx context.Context, in agentruntime.Admission) (a
 		}
 		// BeforeCreate unconditionally generates an ID. It was already applied
 		// during normalization; skip it here to preserve the admitted IDs.
-		if e := tx.Session(&gorm.Session{SkipHooks: true}).Create(&user).Error; e != nil {
+		// The HTTP handler persists the assistant placeholder (and on retries
+		// the user message) before admission runs, so both creates are
+		// idempotent by id: an existing row is reused, never a conflict.
+		// Finalization owns the assistant row content by id regardless.
+		if e := tx.Session(&gorm.Session{SkipHooks: true}).
+			Clauses(clause.OnConflict{DoNothing: true}).Create(&user).Error; e != nil {
 			return e
 		}
-		if e := tx.Session(&gorm.Session{SkipHooks: true}).Create(&assistant).Error; e != nil {
+		if e := tx.Session(&gorm.Session{SkipHooks: true}).
+			Clauses(clause.OnConflict{DoNothing: true}).Create(&assistant).Error; e != nil {
 			return e
 		}
 		result = row.view()
