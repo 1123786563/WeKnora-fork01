@@ -107,6 +107,7 @@ func TestCrashMatrixSQLite(t *testing.T) {
 		{name: "unknown_result_user_retry"},
 		{name: "idempotent_redelivery"},
 		{name: "oauth_park"},
+		{name: "mcp_set_drift"},
 	}
 	for _, tc := range matrix {
 		t.Run(tc.name, func(t *testing.T) {
@@ -128,6 +129,9 @@ func TestCrashMatrixSQLite(t *testing.T) {
 			case "unknown_result_user_retry":
 				want.externalCalls, want.finalStatus = 2, "succeeded"
 				want.assistantRows, want.lostEvents = 1, 0
+			case "mcp_set_drift":
+				want.externalCalls, want.finalStatus = 0, "failed"
+				want.assistantRows, want.lostEvents = 0, 0
 			}
 			if report.ExternalCalls != want.externalCalls ||
 				report.FinalStatus != want.finalStatus ||

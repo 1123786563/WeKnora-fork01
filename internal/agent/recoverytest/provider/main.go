@@ -54,8 +54,11 @@ const (
 	caseIdempotentRedeliver = "idempotent_redelivery"
 	caseStaleWorkerHold     = "two_worker_contention"
 	caseOAuthPark           = "oauth_park"
+	caseMCPSetDrift         = "mcp_set_drift"
 
 	toolName    = "counting_tool"
+	mcpToolA    = "mcp_orders_search"
+	mcpToolB    = "mcp_orders_lookup"
 	runID       = "matrix-run-1"
 	requestID   = "matrix-request-1"
 	assistantID = "matrix-assistant-1"
@@ -90,6 +93,7 @@ func main() {
 		caseWaitingUser, caseAfterFinalize, caseUnknownUserRetry, caseIdempotentRedeliver,
 		caseStaleWorkerHold,
 		caseOAuthPark,
+		caseMCPSetDrift,
 		"after_tool_result_before_checkpoint":
 	default:
 		fatal("unknown recovery case " + *crashCase)
@@ -403,7 +407,7 @@ func admitMatrixRun(ctx context.Context, store *repository.AgentRunStore) error 
 
 // ---- deterministic chat model ----
 
-type scriptedModel struct{}
+type scriptedModel struct{ toolName string }
 
 func (*scriptedModel) GetModelName() string { return "matrix-model" }
 func (*scriptedModel) GetModelID() string   { return "matrix-model" }
@@ -427,7 +431,7 @@ func (m *scriptedModel) ChatStream(
 	return ch, nil
 }
 
-func (*scriptedModel) respond(messages []chat.Message) *types.ChatResponse {
+func (m *scriptedModel) respond(messages []chat.Message) *types.ChatResponse {
 	for _, msg := range messages {
 		if msg.Role == "tool" {
 			return &types.ChatResponse{Content: "recovered answer", FinishReason: "stop"}
@@ -437,16 +441,24 @@ func (*scriptedModel) respond(messages []chat.Message) *types.ChatResponse {
 		FinishReason: "tool_calls",
 		ToolCalls: []types.LLMToolCall{{
 			ID: "call-matrix-1", Type: "function",
-			Function: types.FunctionCall{Name: toolName, Arguments: `{"tick":1}`},
+			Function: types.FunctionCall{Name: m.toolName, Arguments: `{"tick":1}`},
 		}},
 	}
 }
 
 // ---- counting tool (external side effect via HTTP) ----
 
-type countingTool struct{ counterURL string }
+type countingTool struct {
+	counterURL string
+	name       string
+}
 
-func (t *countingTool) Name() string        { return toolName }
+func (t *countingTool) Name() string {
+	if t.name != "" {
+		return t.name
+	}
+	return toolName
+}
 func (t *countingTool) Description() string { return "increments an external counter once" }
 func (t *countingTool) Parameters() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{"tick":{"type":"number"}}}`)
@@ -574,8 +586,18 @@ func newMatrixExecutor(
 	resuming bool,
 ) func(context.Context, agentruntime.Fence) error {
 	journal := &barrierJournal{inner: store, barrier: barrierPath, crashCase: crashCase, resuming: resuming}
+	modelToolName := toolName
+	capabilityToolName := toolName
+	if crashCase == caseMCPSetDrift {
+		modelToolName = mcpToolA
+		capabilityToolName = mcpToolA
+		if resuming {
+			modelToolName = mcpToolB
+			capabilityToolName = mcpToolB
+		}
+	}
 	registry := tools.NewToolRegistry()
-	registry.RegisterTool(&countingTool{counterURL: counterURL})
+	registry.RegisterTool(&countingTool{counterURL: counterURL, name: modelToolName})
 	registry.PrepareMCPTools(context.Background())
 
 	toolBridge := func(ctx context.Context, name string, args json.RawMessage) (*types.ToolResult, error) {
@@ -602,7 +624,7 @@ func newMatrixExecutor(
 				}
 			}
 		}
-		if crashCase == caseAfterPlan && !resuming {
+		if (crashCase == caseAfterPlan || crashCase == caseMCPSetDrift) && !resuming {
 			touchBarrier(barrierPath)
 			blockForever()
 		}
@@ -629,7 +651,7 @@ func newMatrixExecutor(
 	}
 
 	modelTools, err := trpcagent.DeclarationTools([]types.FunctionDefinition{{
-		Name: toolName, Description: "increments an external counter once",
+		Name: modelToolName, Description: "increments an external counter once",
 		Parameters: json.RawMessage(`{"type":"object","properties":{"tick":{"type":"number"}}}`),
 	}})
 	if err != nil {
@@ -638,7 +660,7 @@ func newMatrixExecutor(
 
 	build := func() *trpcagent.GraphRunner {
 		bindings := trpcagent.GraphBindings{
-			Model: trpcagent.NewModel(&scriptedModel{}),
+			Model: trpcagent.NewModel(&scriptedModel{toolName: modelToolName}),
 			Store: store,
 			Tools: agentruntime.NewToolExecutor(store, journal, toolBridge),
 			WaitForDecision: func(ctx context.Context, fence agentruntime.Fence, pending string) error {
@@ -662,9 +684,12 @@ func newMatrixExecutor(
 				Version:  trpcagent.StateVersion,
 				Messages: []model.Message{model.NewUserMessage("count one")},
 			},
-			Capabilities: trpcagent.CapabilitySnapshot{ToolIdentities: []string{toolName}},
-			Events:       store,
-			ModelTools:   modelTools,
+			Capabilities: trpcagent.CapabilitySnapshot{
+				ToolIdentities: []string{capabilityToolName},
+				DeferredNames:  []string{capabilityToolName},
+			},
+			Events:     store,
+			ModelTools: modelTools,
 		}
 		runner, err := trpcagent.NewGraphRunner(bindings)
 		if err != nil {

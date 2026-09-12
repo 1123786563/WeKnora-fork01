@@ -117,9 +117,9 @@ startup because it would admit work without a recovery worker. A disabled
 worker must never silently fall back to builtin execution for a persisted tRPC
 run.
 
-Until deployment-specific external model/provider evidence is collected, the
-feature remains unavailable for rollout. The engineering race gate, provider
-matrices and local live binary recovery are green; local browser evidence uses
+The engineering race gate, provider matrices and local live binary recovery
+are green. The feature remains unavailable for rollout until deployment-specific
+external model/provider evidence is collected; local browser evidence uses
 Ollama and a deterministic rerank substitute and is not production-provider
 acceptance.
 
@@ -136,11 +136,11 @@ acceptance.
 | 07 恢复 worker 与重开 | PASS | SIGKILL 矩阵 SQLite 9/9、PostgreSQL 8/8（含 oauth_park）；接管/竞争/旧 epoch 拒绝全验证 |
 | 08 等待状态持久化 | PASS | waiting_user/OAuth/前审批（mcp_approve_）停靠均持久化；决策归属与幂等重试 |
 | 09 Sandbox 恢复 | PASS | ObserveInstance 四态 fixture（alive/lost/destroyed/无绑定）；实例存活不导入任务结果 |
-| 10 能力复用 | PARTIAL | MCP/Skills/Tools/模型配置、提示词/记忆/VLM 装配与生产图路径已验证；多模态 durable graph 已通过 `TestExecuteDurableRunPreservesImageInputThroughProductionGraph`，但恢复期延迟 MCP 集合比对仍缺新鲜证据 |
+| 10 能力复用 | PASS | MCP/Skills/Tools/模型配置、提示词/记忆/VLM 装配与生产图路径已验证；多模态 durable graph 与延迟 MCP 集合漂移均有生产链行为/跨进程证据 |
 | 11 事件/steering/保留 | PASS | attempt_replaced、inject/after 模式（跟进受理）、保留水位裁剪、重启回放；outbox 结构性满足（见上文注）|
 | 12 HTTP 契约/权限/取消删除 | PASS | 黑盒三行（SSE 回放+cursor_expired、决策 200/409/200、删除围栏）；租户/用户权限、取消释放槽位 |
 | 13 客户端接入 | PASS | 前端工程套件 819/819、vue-tsc、Vite build；新鲜浏览器登录、tRPC 会话选择、真实 durable HTTP 回复和 SQLite 持久回放通过；请求断线由 detached admission 保持运行 |
-| 14 跨进程崩溃恢复验收 | PARTIAL | provider SIGKILL 矩阵 SQLite 9/9、PostgreSQL 8/8 + contention，以及真实 server binary 同库 SIGKILL→新进程 lease-expiry 接管通过；Task 10 的延迟 MCP 动态公开集合专门恢复证据尚未补齐，多模态 durable graph 路径已有生产 executor 测试证据 |
+| 14 跨进程崩溃恢复验收 | PASS | provider SIGKILL 矩阵 SQLite 10/10、PostgreSQL 9/9 + contention，以及真实 server binary 同库 SIGKILL→新进程 lease-expiry 接管通过；`mcp_set_drift` 验证延迟 MCP 集合变化在新进程恢复时 fail-closed 且无副作用 |
 
 功能默认关闭（引擎门禁）；发布验证通过时也不会改变默认值。当前 rerun 的
 代码、SQLite/PG provider crash matrix、repository/service/frontend 工程检查、
