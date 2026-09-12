@@ -4,6 +4,7 @@
 |---|---|---|
 | agents | screenshots/matrix-vue-agents.png | screenshots/matrix-react-agents.png |
 | creatChat | screenshots/matrix-vue-creatChat.png | screenshots/matrix-react-creatChat.png |
+| chat-session (80fd9cf5) | screenshots/matrix-vue-chat-session.png | screenshots/matrix-react-chat-session.png |
 | integrations-embed | screenshots/matrix-vue-integrations-embed.png | screenshots/matrix-react-integrations-embed.png |
 | kb-list | screenshots/matrix-vue-kb-list.png | screenshots/matrix-react-kb-list.png |
 | organizations | screenshots/matrix-vue-organizations.png | screenshots/matrix-react-organizations.png |

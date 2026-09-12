@@ -273,3 +273,8 @@
 
 - Wails macOS 打包在干净树上复跑成功（含 chat UX 收尾内容），自签名 .app 生成。embed-resume-defect 记录文件追加复跑确认。
 - chat UX retry 代理的工作已于 62a77a9 集成，无遗留未提交内容。
+
+## 2026-09-12 Round 54
+
+- chat 会话页双端矩阵截图入库（同 session 80fd9cf5，用户消息双端一致呈现）。Vue 侧流式 404 为环境限制（租户无 chat 模型 + dev 代理路径），非 React 缺陷；React 侧显示 continue-stream 恢复提示（必修 #2 行为生效）。矩阵索引已更新。
+- Upload/AgentSelector retry 代理完成（内容已在 40a5d86 集成）。
