@@ -278,3 +278,8 @@
 
 - chat 会话页双端矩阵截图入库（同 session 80fd9cf5，用户消息双端一致呈现）。Vue 侧流式 404 为环境限制（租户无 chat 模型 + dev 代理路径），非 React 缺陷；React 侧显示 continue-stream 恢复提示（必修 #2 行为生效）。矩阵索引已更新。
 - Upload/AgentSelector retry 代理完成（内容已在 40a5d86 集成）。
+
+## 2026-09-12 Round 55
+
+- iOS/Android Expo 导出构建通过（Hermes 3.2MB/3.3MB）；构建产物目录加入 gitignore。证据：evidence/vue-react-parity/2026-09-12-mobile-native-builds.md。
+- 原生交互验收限制如实登记：需模拟器/真机环境，当前会话无 GUI 设备。
