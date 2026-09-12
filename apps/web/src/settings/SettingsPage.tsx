@@ -51,6 +51,11 @@ function requestedSection(search: string): string {
   return requested && settingsSectionMeta(requested) ? requested : SETTINGS_SECTIONS[0]!.key;
 }
 
+function sectionTitleFor(locale: Locale, key: string, fallback: string): string {
+  const titleKey = SECTION_TITLE_KEYS[key];
+  return titleKey ? formatMessage(locale, titleKey) : fallback;
+}
+
 export function SettingsPage({ client, tenantId, role = 'owner' }: { client: WeKnoraClient; tenantId: number; role?: SettingsRole }) {
   const locale = readInitialLocale();
   const t = settingsT(locale);
@@ -184,7 +189,7 @@ export function SettingsPage({ client, tenantId, role = 'owner' }: { client: WeK
               <div className="wks-content-wrapper">
                 <div className="wk-settings-section wks-section">
                   <div className="wk-settings-panel-heading">
-                    <div><h2>{section.title}</h2><p className="wk-muted">{section.description}</p></div>
+                    <div><h2>{sectionTitleFor(locale, selectedKey, section.title)}</h2><p className="wk-muted">{section.description}</p></div>
                     <button type="button" className="wks-reload" onClick={() => void load()} disabled={loading}>{t('common.refresh')}</button>
                   </div>
                   {deniedPanel ?? (error ? <Status tone="error">{error}</Status> : loading ? <Status>Loading from {section.apiDomain}…</Status> : <>{notice ? <Status tone="success">{notice}</Status> : null}{resourcePanel ?? configPanel ?? ollamaPanel ?? cloudPanel ?? envVarPanel ?? portedPanel ?? (selectedKey === 'tenant' ? <form className="wk-settings-editor" onSubmit={(event) => void saveTenant(event)}><label>Name<input required value={tenantDraft.name} onChange={(event) => setTenantDraft((current) => ({ ...current, name: event.target.value }))} /></label><label>Description<textarea rows={3} value={tenantDraft.description} onChange={(event) => setTenantDraft((current) => ({ ...current, description: event.target.value }))} /></label><Button type="submit" loading={saving}>Save tenant information</Button></form> : selectedKey === 'userprofile' ? <form className="wk-settings-editor" onSubmit={(event) => void changePassword(event)}><p className="wk-muted">Profile identity fields are server-owned. Change your password only after entering the current credential and confirming the new one.</p><label>Current password<input required type="password" autoComplete="current-password" value={passwordDraft.oldPassword} onChange={(event) => setPasswordDraft((current) => ({ ...current, oldPassword: event.target.value }))} /></label><label>New password<input required type="password" autoComplete="new-password" value={passwordDraft.newPassword} onChange={(event) => setPasswordDraft((current) => ({ ...current, newPassword: event.target.value }))} /></label><label>Confirm new password<input required type="password" autoComplete="new-password" value={passwordDraft.confirmation} onChange={(event) => setPasswordDraft((current) => ({ ...current, confirmation: event.target.value }))} /></label><Button type="submit" loading={saving}>Change password</Button></form> : selectedKey === 'memory' ? <div className="wk-settings-memory"><MemoryWorkspacePanel client={client} initialConfig={((payload as Record<string, unknown> | null)?.workspace)} /><PersonalMemorySettingsPanel client={client} initialSettings={((payload as Record<string, unknown> | null)?.personal)} /></div> : selectedKey === 'mymemory' ? <PersonalMemoryPanel client={client} initialItems={payload} /> : <p className="wk-settings-read-note">Read result received from the server. This inventory view does not turn unsupported save, reset, test, or delete operations into a generic editor.</p>)}<dl className="wk-settings-values">{settingsValueEntries(payload).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{value}</dd></div>)}</dl></>)}
@@ -207,6 +212,25 @@ import { formatMessage, type Locale } from '@weknora/i18n';
 // 模型 / 发布集成 / 数据与扩展 / 系统管理 / 平台). Every React registry section
 // must land in one of these groups; anything unknown falls into the fallback
 // group at the bottom so role gating can still surface it.
+// Localized section titles (settings.* keys exist in packages/i18n/src/settings.ts).
+const SECTION_TITLE_KEYS: Record<string, string> = {
+  general: 'general.title',
+  userprofile: 'userProfile.title',
+  memory: 'memoryWorkspaceSettings.title',
+  tenant: 'tenant.title',
+  members: 'tenantMember.title',
+  chathistory: 'chatHistorySettings.title',
+  models: 'settings.modelManagement',
+  ollama: 'ollamaSettings.title',
+  weknoracloud: 'settings.weknoraCloud.title',
+  vectorstore: 'vectorStoreSettings.title',
+  parser: 'settings.parser.title',
+  websearch: 'webSearchSettings.title',
+  mcp: 'settings.mcpService',
+  system: 'system.title',
+  skills: 'settings.skills.title',
+};
+
 const NAV_GROUP_DEFS: ReadonlyArray<{ key: string; labelKey: string; sections: readonly string[] }> = [
   { key: 'account', labelKey: 'settings.navGroups.account', sections: ['general', 'userprofile', 'mymemory', 'envvars'] },
   { key: 'workspace', labelKey: 'settings.navGroups.workspace', sections: ['tenant', 'members', 'chathistory', 'memory'] },
