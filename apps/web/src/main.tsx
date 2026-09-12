@@ -10,7 +10,7 @@ import { createBrowserTransport } from './platform/http.ts';
 import { createBrowserCredentialAdapter, persistBrowserCredential } from './platform/credentials.ts';
 import { createWebScopeRuntime } from './platform/scope-runtime.ts';
 import { createWebPlatformAdapters } from './platform/adapters.ts';
-import { guardRoute, protectedPageForRoute, resolveRoute, routeRedirect } from './routes.tsx';
+import { guardRoute, organizationInviteCode, protectedPageForRoute, resolveRoute, routeRedirect } from './routes.tsx';
 import { ChatRoutePage } from './chat/ChatRoutePage.tsx';
 import { IntegrationsRoutePage } from './integrations/IntegrationsRoutePage.tsx';
 import { KnowledgeDocumentsPage } from './documents/KnowledgeDocumentsPage.tsx';
@@ -23,6 +23,7 @@ import { ConfigurationPage } from './configuration/ConfigurationPage.tsx';
 import { AdministrationPage } from './administration/AdministrationPage.tsx';
 import { OrganizationsPage } from './organizations/OrganizationsPage.tsx';
 import { SettingsPage } from './settings/SettingsPage.tsx';
+import { KnowledgeGraphPage } from './knowledge/KnowledgeGraphPage.tsx';
 import { KnowledgeBasesPage } from './App.tsx';
 import { NotFoundPage } from './NotFoundPage.tsx';
 import { DevMarkdownPage } from './DevMarkdownPage.tsx';
@@ -38,7 +39,8 @@ if (oidcCallback?.kind === 'success') {
   window.history.replaceState({}, document.title, '/login');
 }
 
-const route = resolveRoute(window.location.pathname);
+const development = (import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV ?? false;
+const route = resolveRoute(window.location.pathname, { development });
 const importedPlatformState = route.kind === 'embed' ? null : importLegacyPlatformState(window.localStorage);
 let session: ReactPlatformState = route.kind === 'embed'
   ? { credential: { kind: 'anonymous' }, tenantId: null, preferences: {} }
@@ -114,6 +116,7 @@ function renderProtected() {
     capabilities: scopeRuntime.capabilities(),
     isSystemAdmin: scopeRuntime.isSystemAdmin(),
     liteMode,
+    development,
   });
   if (decision.kind === 'redirect') {
     if (decision.to === '/onboarding/workspace') {
@@ -150,16 +153,18 @@ function renderProtected() {
   } else if (route.path === '/platform/administration') {
     root.render(<AdministrationPage client={client} tenantId={Number(scopeRuntime.current().scope.tenantId)} />);
   } else if (route.path === '/platform/organizations') {
-    root.render(<OrganizationsPage client={client} />);
+    root.render(<OrganizationsPage client={client} inviteCode={organizationInviteCode(pathname)} />);
   } else if (route.path === '/platform/settings') {
     root.render(<SettingsPage client={client} tenantId={Number(scopeRuntime.current().scope.tenantId)} />);
   } else if (route.path === '/platform/system') {
     root.render(<AdministrationPage client={client} tenantId={Number(scopeRuntime.current().scope.tenantId)} systemAdmin />);
   } else if (route.kind === 'knowledge-base' && route.knowledgeBaseId) {
     const knowledgeBaseId = route.knowledgeBaseId;
-    root.render(<KnowledgeDocumentsPage client={client} knowledgeBaseId={knowledgeBaseId} onOpenDocument={(document) => window.location.assign(`/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}/documents/${encodeURIComponent(document.id)}`)} />);
+    if (route.tab === 'wiki') root.render(<WikiPage client={client} knowledgeBaseId={knowledgeBaseId} initialSlug={route.slug} />);
+    else if (route.tab === 'graph') root.render(<KnowledgeGraphPage knowledgeBaseId={knowledgeBaseId} slug={route.slug} />);
+    else root.render(<KnowledgeDocumentsPage client={client} knowledgeBaseId={knowledgeBaseId} onOpenDocument={(document) => window.location.assign(`/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}/documents/${encodeURIComponent(document.id)}`)} />);
   } else if (route.kind === 'chat' || route.path === '/platform/creatChat' || route.path.startsWith('/platform/chat/')) {
-    root.render(<ChatRoutePage client={client} scopeController={scopeController} apiBaseUrl={apiBaseUrl} />);
+    root.render(<ChatRoutePage client={client} scopeController={scopeController} apiBaseUrl={apiBaseUrl} knowledgeBaseId={route.kind === 'chat' ? route.knowledgeBaseId : undefined} />);
   } else if (route.path === '/platform/integrations') {
     root.render(<IntegrationsRoutePage client={client} />);
   } else if (route.kind === 'not-found') {

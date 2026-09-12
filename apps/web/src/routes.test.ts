@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { guardRoute, protectedPageForRoute, resolveRoute, routeRedirect, type RouteGuardContext } from './routes.tsx';
+import { guardRoute, organizationInviteCode, protectedPageForRoute, resolveRoute, routeRedirect, type RouteGuardContext } from './routes.tsx';
 
 const authenticated: RouteGuardContext = {
   authenticated: true,
@@ -15,7 +15,16 @@ test('keeps legacy deep links and redirects the misspelled chat path compatibly'
   assert.equal(resolveRoute('/platform/integrations').kind, 'platform');
   assert.equal(routeRedirect('/creatChat?agentId=a'), '/platform/creatChat?agentId=a');
   assert.equal(resolveRoute('/creatChat/unknown').kind, 'not-found');
+  assert.deepEqual(guardRoute('/creatChat', { ...authenticated, authenticated: false, tenantId: null }), {
+    kind: 'redirect',
+    to: '/login?next=%2FcreatChat',
+    reason: 'authentication-required',
+  });
   assert.equal(resolveRoute('/platform').kind, 'platform');
+  assert.equal(resolveRoute('/platform/tenant').kind, 'platform');
+  assert.deepEqual(resolveRoute('/platform/system/queues'), { kind: 'platform', path: '/platform/system/queues' });
+  assert.deepEqual(resolveRoute('/platform/system/settings'), { kind: 'platform', path: '/platform/system/settings' });
+  assert.equal(resolveRoute('/platform/system/unknown').kind, 'not-found');
   assert.deepEqual(resolveRoute('/register'), { kind: 'login', path: '/register', mode: 'register' });
   assert.deepEqual(resolveRoute('/knowledgeBase/kb-1'), { kind: 'knowledge-base', path: '/knowledgeBase/kb-1', knowledgeBaseId: 'kb-1' });
   assert.deepEqual(resolveRoute('/knowledgeBase/kb-1/documents/doc-1'), { kind: 'knowledge-document', path: '/knowledgeBase/kb-1/documents/doc-1', knowledgeBaseId: 'kb-1', documentId: 'doc-1' });
@@ -23,16 +32,24 @@ test('keeps legacy deep links and redirects the misspelled chat path compatibly'
   assert.deepEqual(resolveRoute('/knowledgeBase/kb-1/faq'), { kind: 'knowledge-faq', path: '/knowledgeBase/kb-1/faq', knowledgeBaseId: 'kb-1' });
   assert.deepEqual(resolveRoute('/knowledgeBase/kb-1/settings'), { kind: 'knowledge-settings', path: '/knowledgeBase/kb-1/settings', knowledgeBaseId: 'kb-1' });
   assert.deepEqual(resolveRoute('/platform/knowledge-bases/kb-1/creatChat'), { kind: 'chat', path: '/platform/knowledge-bases/kb-1/creatChat', knowledgeBaseId: 'kb-1' });
+  assert.deepEqual(resolveRoute('/platform/knowledge-bases/kb-1?tab=wiki&slug=docs/start'), { kind: 'knowledge-base', path: '/platform/knowledge-bases/kb-1', knowledgeBaseId: 'kb-1', tab: 'wiki', slug: 'docs/start' });
+  assert.equal(resolveRoute('/knowledgeBase/%E0%A4%A').kind, 'not-found');
   assert.deepEqual(resolveRoute('/platform/agents'), { kind: 'platform', path: '/platform/agents' });
   assert.equal(routeRedirect('/'), '/platform/knowledge-bases');
-  assert.equal(routeRedirect('/platform/knowledge-search?query=hello'), '/platform/knowledge-bases?query=hello');
+  assert.equal(routeRedirect('/platform/knowledge-search?query=hello'), '/platform/knowledge-bases?cmdk=');
+  assert.equal(routeRedirect('/platform/knowledge-search'), '/platform/knowledge-bases?cmdk=');
+  assert.equal(routeRedirect('/platform/knowledge-search?q=hello'), '/platform/knowledge-bases?cmdk=hello');
+  assert.equal(routeRedirect('/platform/tenant'), '/platform/settings');
+  assert.equal(routeRedirect('/platform/system/queues'), '/platform/settings?section=runtime-queues');
+  assert.equal(routeRedirect('/platform/system/admins'), '/platform/settings?section=system-global');
+  assert.equal(resolveRoute('/platform/dev/markdown', { development: false }).kind, 'not-found');
 });
 
 test('does not treat embed or missing capability paths as authenticated platform routes', () => {
   assert.equal(resolveRoute('/embed/channel-1').kind, 'embed');
   assert.equal(resolveRoute('/unknown').kind, 'not-found');
   assert.equal(resolveRoute('/platform/not-a-page').kind, 'not-found');
-  assert.equal(resolveRoute('/platform/system/queue').kind, 'platform');
+  assert.equal(resolveRoute('/platform/system/queue').kind, 'not-found');
 });
 
 test('maps the canonical knowledge-base platform route to the list page', () => {
@@ -41,8 +58,9 @@ test('maps the canonical knowledge-base platform route to the list page', () => 
 });
 
 test('keeps the development markdown fixture public and dispatchable', () => {
-  assert.equal(guardRoute('/platform/dev/markdown', { ...authenticated, authenticated: false, tenantId: null }).kind, 'allow');
-  assert.equal(protectedPageForRoute(resolveRoute('/platform/dev/markdown')), 'markdown-test');
+  assert.equal(resolveRoute('/platform/dev/markdown').kind, 'not-found');
+  assert.equal(guardRoute('/platform/dev/markdown', { ...authenticated, authenticated: false, tenantId: null, development: false }).kind, 'allow');
+  assert.equal(protectedPageForRoute(resolveRoute('/platform/dev/markdown', { development: true })), 'markdown-test');
 });
 
 test('guards protected deep links and redirects no-tenant sessions to onboarding', () => {
@@ -63,7 +81,7 @@ test('guards protected deep links and redirects no-tenant sessions to onboarding
   });
   assert.deepEqual(guardRoute('/platform/knowledge-search?q=hello', authenticated), {
     kind: 'redirect',
-    to: '/platform/knowledge-bases?q=hello',
+    to: '/platform/knowledge-bases?cmdk=hello',
     reason: 'capability-unavailable',
   });
 });
@@ -78,10 +96,17 @@ test('honors explicit capability and organization invite compatibility rules', (
     reason: 'capability-unavailable',
   });
   assert.equal(routeRedirect('/join?code=org-invite'), '/platform/organizations?invite_code=org-invite');
+  assert.equal(organizationInviteCode('/platform/organizations?invite_code=org-invite'), 'org-invite');
   assert.equal(routeRedirect('/join'), '/platform/organizations');
-  assert.deepEqual(guardRoute('/platform/system/queue', { ...authenticated, isSystemAdmin: true }), {
+  assert.equal(resolveRoute('/platform/system/queue').kind, 'not-found');
+  assert.deepEqual(guardRoute('/platform/system/queues', { ...authenticated, isSystemAdmin: true }), {
     kind: 'redirect',
-    to: '/platform/system',
+    to: '/platform/settings?section=runtime-queues',
+    reason: 'capability-unavailable',
+  });
+  assert.deepEqual(guardRoute('/platform/system', { ...authenticated, isSystemAdmin: true }), {
+    kind: 'redirect',
+    to: '/platform/settings?section=system-global',
     reason: 'capability-unavailable',
   });
 });

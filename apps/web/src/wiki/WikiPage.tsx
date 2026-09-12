@@ -4,7 +4,7 @@ import { diffWikiRevision } from '@weknora/domain/wiki/diff';
 import { Button, Card, Status } from '@weknora/ui';
 import { saveWikiPage, type WikiSaveState } from './editor.ts';
 
-export function WikiPage({ client, knowledgeBaseId }: { client: WeKnoraClient; knowledgeBaseId: string }) {
+export function WikiPage({ client, knowledgeBaseId, initialSlug }: { client: WeKnoraClient; knowledgeBaseId: string; initialSlug?: string }) {
   const [keyword, setKeyword] = useState('');
   const [pages, setPages] = useState<WikiPageModel[]>([]);
   const [selected, setSelected] = useState<WikiPageModel | null>(null);
@@ -24,10 +24,17 @@ export function WikiPage({ client, knowledgeBaseId }: { client: WeKnoraClient; k
 
   async function loadPages() {
     setState({ status: 'loading' });
-    try { const response = await client.wiki.list(knowledgeBaseId, { page: 1, page_size: 50, keyword: keyword || undefined }); setPages(response.pages); setState({ status: 'success' }); }
+    try {
+      const response = await client.wiki.list(knowledgeBaseId, { page: 1, page_size: 50, keyword: keyword || undefined });
+      setPages(response.pages);
+      const requested = initialSlug?.trim();
+      const requestedPage = requested ? response.pages.find((page) => page.slug === requested) : undefined;
+      if (requestedPage) choose(requestedPage);
+      setState({ status: 'success' });
+    }
     catch (error) { setState({ status: 'error', message: error instanceof Error ? error.message : 'Unable to load Wiki pages' }); }
   }
-  useEffect(() => { void loadPages(); }, [client, knowledgeBaseId, keyword]);
+  useEffect(() => { void loadPages(); }, [client, knowledgeBaseId, keyword, initialSlug]);
 
   function choose(page: WikiPageModel) { setSelected(page); setTitle(page.title); setSlug(page.slug); setSummary(page.summary); setContent(page.content); setVersion(page.version); setSaveState(null); }
   function newPage() { setSelected(null); setTitle(''); setSlug(''); setSummary(''); setContent(''); setVersion(1); setSaveState(null); }

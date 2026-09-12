@@ -3,7 +3,7 @@ import { isCapabilitySupported } from '@weknora/domain';
 export type RouteMatch =
   | { kind: 'login'; path: '/login' | '/register'; mode?: 'login' | 'register' }
   | { kind: 'platform'; path: string }
-  | { kind: 'knowledge-base'; path: string; knowledgeBaseId?: string }
+  | { kind: 'knowledge-base'; path: string; knowledgeBaseId?: string; tab?: 'documents' | 'wiki' | 'graph'; slug?: string }
   | { kind: 'chat'; path: string; knowledgeBaseId?: string }
   | { kind: 'knowledge-document'; path: string; knowledgeBaseId: string; documentId: string }
   | { kind: 'knowledge-wiki'; path: string; knowledgeBaseId: string }
@@ -14,29 +14,46 @@ export type RouteMatch =
   | { kind: 'embed'; path: string }
   | { kind: 'not-found'; path: string };
 
-export function resolveRoute(pathname: string): RouteMatch {
+export function resolveRoute(pathname: string, options: { development?: boolean } = {}): RouteMatch {
   const path = pathname.split('?')[0] || '/';
+  const development = options.development ?? false;
+  const query = new URLSearchParams(pathname.includes('?') ? pathname.slice(pathname.indexOf('?')) : '');
+  const knowledgeBaseView = (): { tab?: 'documents' | 'wiki' | 'graph'; slug?: string } => {
+    const requestedTab = query.get('tab');
+    const tab = requestedTab === 'wiki' || requestedTab === 'graph' || requestedTab === 'documents' ? requestedTab : undefined;
+    const slug = query.get('slug')?.trim() || undefined;
+    return { ...(tab ? { tab } : {}), ...(slug ? { slug } : {}) };
+  };
+  const decodeSegment = (value: string): string | undefined => {
+    try { return decodeURIComponent(value); } catch { return undefined; }
+  };
   if (path === '/login') return { kind: 'login', path: '/login' };
   if (path === '/register') return { kind: 'login', path: '/register', mode: 'register' };
   if (path === '/join') return { kind: 'join', path: '/join' };
   if (path === '/onboarding/workspace') return { kind: 'onboarding', path };
   if (path.startsWith('/embed/')) return { kind: 'embed', path };
   const documentMatch = path.match(/^\/knowledgeBase\/([^/]+)\/documents\/([^/]+)$/);
-  if (documentMatch) return { kind: 'knowledge-document', path, knowledgeBaseId: decodeURIComponent(documentMatch[1]!), documentId: decodeURIComponent(documentMatch[2]!) };
+  if (documentMatch) {
+    const knowledgeBaseId = decodeSegment(documentMatch[1]!);
+    const documentId = decodeSegment(documentMatch[2]!);
+    return knowledgeBaseId === undefined || documentId === undefined
+      ? { kind: 'not-found', path }
+      : { kind: 'knowledge-document', path, knowledgeBaseId, documentId };
+  }
   const wikiMatch = path.match(/^\/knowledgeBase\/([^/]+)\/wiki$/);
-  if (wikiMatch) return { kind: 'knowledge-wiki', path, knowledgeBaseId: decodeURIComponent(wikiMatch[1]!) };
+  if (wikiMatch) { const knowledgeBaseId = decodeSegment(wikiMatch[1]!); return knowledgeBaseId === undefined ? { kind: 'not-found', path } : { kind: 'knowledge-wiki', path, knowledgeBaseId }; }
   const faqMatch = path.match(/^\/knowledgeBase\/([^/]+)\/faq$/);
-  if (faqMatch) return { kind: 'knowledge-faq', path, knowledgeBaseId: decodeURIComponent(faqMatch[1]!) };
+  if (faqMatch) { const knowledgeBaseId = decodeSegment(faqMatch[1]!); return knowledgeBaseId === undefined ? { kind: 'not-found', path } : { kind: 'knowledge-faq', path, knowledgeBaseId }; }
   const settingsMatch = path.match(/^\/knowledgeBase\/([^/]+)\/settings$/);
-  if (settingsMatch) return { kind: 'knowledge-settings', path, knowledgeBaseId: decodeURIComponent(settingsMatch[1]!) };
+  if (settingsMatch) { const knowledgeBaseId = decodeSegment(settingsMatch[1]!); return knowledgeBaseId === undefined ? { kind: 'not-found', path } : { kind: 'knowledge-settings', path, knowledgeBaseId }; }
   const knowledgeBaseMatch = path.match(/^\/knowledgeBase\/([^/]+)$/);
-  if (knowledgeBaseMatch) return { kind: 'knowledge-base', path, knowledgeBaseId: decodeURIComponent(knowledgeBaseMatch[1]!) };
+  if (knowledgeBaseMatch) { const knowledgeBaseId = decodeSegment(knowledgeBaseMatch[1]!); return knowledgeBaseId === undefined ? { kind: 'not-found', path } : { kind: 'knowledge-base', path, knowledgeBaseId, ...knowledgeBaseView() }; }
   if (path === '/knowledgeBase') return { kind: 'knowledge-base', path };
   const platformKnowledgeChatMatch = path.match(/^\/platform\/knowledge-bases\/([^/]+)\/creatChat$/);
-  if (platformKnowledgeChatMatch) return { kind: 'chat', path, knowledgeBaseId: decodeURIComponent(platformKnowledgeChatMatch[1]!) };
+  if (platformKnowledgeChatMatch) { const knowledgeBaseId = decodeSegment(platformKnowledgeChatMatch[1]!); return knowledgeBaseId === undefined ? { kind: 'not-found', path } : { kind: 'chat', path, knowledgeBaseId }; }
   const platformKnowledgeBaseMatch = path.match(/^\/platform\/knowledge-bases\/([^/]+)$/);
-  if (platformKnowledgeBaseMatch) return { kind: 'knowledge-base', path, knowledgeBaseId: decodeURIComponent(platformKnowledgeBaseMatch[1]!) };
-  if (path === '/platform' || path === '/platform/knowledge-bases' || path === '/platform/knowledge-search' || path === '/platform/agents' || path === '/platform/integrations' || path === '/platform/creatChat' || path === '/platform/organizations' || path === '/platform/settings' || path === '/platform/configuration' || path === '/platform/administration' || path === '/platform/system' || path === '/platform/dev/markdown' || path.startsWith('/platform/chat/') || path.startsWith('/platform/system/')) return { kind: 'platform', path };
+  if (platformKnowledgeBaseMatch) { const knowledgeBaseId = decodeSegment(platformKnowledgeBaseMatch[1]!); return knowledgeBaseId === undefined ? { kind: 'not-found', path } : { kind: 'knowledge-base', path, knowledgeBaseId, ...knowledgeBaseView() }; }
+  if (path === '/platform' || path === '/platform/knowledge-bases' || path === '/platform/knowledge-search' || path === '/platform/agents' || path === '/platform/integrations' || path === '/platform/creatChat' || path === '/platform/tenant' || path === '/platform/organizations' || path === '/platform/settings' || path === '/platform/configuration' || path === '/platform/administration' || path === '/platform/system' || path === '/platform/system/settings' || path === '/platform/system/admins' || path === '/platform/system/queues' || (development && path === '/platform/dev/markdown') || path.startsWith('/platform/chat/')) return { kind: 'platform', path };
   if (path === '/creatChat') return { kind: 'platform', path: '/platform/creatChat' };
   return { kind: 'not-found', path };
 }
@@ -45,14 +62,17 @@ export function routeRedirect(pathname: string): string | undefined {
   const match = resolveRoute(pathname);
   if (match.path === '/') return '/platform/knowledge-bases';
   if (match.path === '/platform/knowledge-search') {
-    const query = pathname.includes('?') ? pathname.slice(pathname.indexOf('?')) : '';
-    return `/platform/knowledge-bases${query}`;
+    const query = new URLSearchParams(pathname.includes('?') ? pathname.slice(pathname.indexOf('?')) : '');
+    return `/platform/knowledge-bases?cmdk=${encodeURIComponent(query.get('q') ?? '')}`;
   }
   if (match.kind === 'join') {
     const query = new URLSearchParams(pathname.includes('?') ? pathname.slice(pathname.indexOf('?')) : '');
     const code = query.get('code')?.trim();
     return code ? `/platform/organizations?invite_code=${encodeURIComponent(code)}` : '/platform/organizations';
   }
+  if (match.path === '/platform/tenant') return '/platform/settings';
+  if (match.path === '/platform/system' || match.path === '/platform/system/settings' || match.path === '/platform/system/admins') return '/platform/settings?section=system-global';
+  if (match.path === '/platform/system/queues') return '/platform/settings?section=runtime-queues';
   if (match.kind !== 'platform') return undefined;
   const query = pathname.includes('?') ? pathname.slice(pathname.indexOf('?')) : '';
   return match.path !== pathname.split('?')[0] ? `${match.path}${query}` : undefined;
@@ -65,6 +85,11 @@ export function protectedPageForRoute(route: RouteMatch): 'knowledge-bases' | 'm
   return 'other';
 }
 
+export function organizationInviteCode(pathname: string): string | undefined {
+  const code = new URLSearchParams(pathname.includes('?') ? pathname.slice(pathname.indexOf('?')) : '').get('invite_code')?.trim();
+  return code || undefined;
+}
+
 export interface RouteGuardContext {
   authenticated: boolean;
   tenantId: string | null;
@@ -72,6 +97,7 @@ export interface RouteGuardContext {
   isSystemAdmin: boolean;
   liteMode?: boolean;
   edition?: string;
+  development?: boolean;
 }
 
 export type RouteGuardDecision =
@@ -90,7 +116,9 @@ function capabilityForPath(path: string): string | undefined {
 }
 
 export function guardRoute(pathname: string, context: RouteGuardContext): RouteGuardDecision {
-  const path = pathname.split('?')[0] || '/';
+  const rawPath = pathname.split('?')[0] || '/';
+  const resolved = resolveRoute(pathname, { development: context.development });
+  const path = resolved.kind === 'platform' && resolved.path === '/platform/creatChat' ? resolved.path : rawPath;
   if (path.startsWith('/embed/')) return { kind: 'allow' };
   if (path === '/login' || path === '/register') return { kind: 'allow' };
   if (path === '/join') {
@@ -109,12 +137,14 @@ export function guardRoute(pathname: string, context: RouteGuardContext): RouteG
   if (path === '/platform' || path === '/platform/knowledge-search') {
     return { kind: 'redirect', to: routeRedirect(pathname) ?? '/platform/knowledge-bases', reason: 'capability-unavailable' };
   }
+  if (path === '/platform/tenant') return { kind: 'redirect', to: '/platform/settings', reason: 'capability-unavailable' };
+  if (resolved.kind === 'not-found') return { kind: 'allow' };
   if (path === '/platform/dev/markdown') return { kind: 'allow' };
   if (!protectedPath(path)) return { kind: 'allow' };
   if (!context.authenticated) return { kind: 'redirect', to: `/login?next=${encodeURIComponent(pathname)}`, reason: 'authentication-required' };
   if (!context.tenantId) return { kind: 'redirect', to: '/onboarding/workspace', reason: 'workspace-required' };
   if (path.startsWith('/platform/system') && !context.isSystemAdmin) return { kind: 'redirect', to: '/platform/settings', reason: 'system-admin-required' };
-  if (path.startsWith('/platform/system/')) return { kind: 'redirect', to: '/platform/system', reason: 'capability-unavailable' };
+  if (path === '/platform/system' || path === '/platform/system/settings' || path === '/platform/system/admins' || path === '/platform/system/queues') return { kind: 'redirect', to: routeRedirect(pathname) ?? '/platform/settings', reason: 'capability-unavailable' };
   const capability = capabilityForPath(path);
   if (capability && !isCapabilitySupported(context.capabilities, capability, { liteMode: context.liteMode, edition: context.edition })) {
     return { kind: 'redirect', to: '/platform/knowledge-bases', reason: 'capability-unavailable' };

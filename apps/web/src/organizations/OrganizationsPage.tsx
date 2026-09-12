@@ -5,7 +5,7 @@ import { organizationRoleLabel } from './summary.ts';
 
 function errorText(error: unknown, fallback: string): string { return error instanceof Error ? error.message : fallback; }
 
-export function OrganizationsPage({ client }: { client: WeKnoraClient }) {
+export function OrganizationsPage({ client, inviteCode }: { client: WeKnoraClient; inviteCode?: string }) {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [selected, setSelected] = useState<Organization | null>(null);
   const [members, setMembers] = useState<OrganizationMember[]>([]);
@@ -16,7 +16,31 @@ export function OrganizationsPage({ client }: { client: WeKnoraClient }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [invitePreview, setInvitePreview] = useState<Record<string, unknown> | null>(null);
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [inviteAction, setInviteAction] = useState<'idle' | 'joining' | 'requesting'>('idle');
+  const [activeInviteCode, setActiveInviteCode] = useState(inviteCode);
   const organizationsApi = client.identity.organizations;
+
+  function clearInviteFromUrl() {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('invite_code');
+    window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
+  }
+
+  useEffect(() => { setActiveInviteCode(inviteCode); }, [inviteCode]);
+
+  useEffect(() => {
+    if (!activeInviteCode) { setInvitePreview(null); return; }
+    let active = true;
+    setInviteLoading(true);
+    void organizationsApi.preview(activeInviteCode).then((preview) => {
+      if (active) setInvitePreview(preview);
+    }).catch((reason) => {
+      if (active) setError(errorText(reason, 'Unable to preview this organization invitation'));
+    }).finally(() => { if (active) setInviteLoading(false); });
+    return () => { active = false; };
+  }, [activeInviteCode, organizationsApi]);
 
   async function load() {
     setLoading(true); setError(null);
@@ -63,5 +87,24 @@ export function OrganizationsPage({ client }: { client: WeKnoraClient }) {
     catch (reason) { setError(errorText(reason, 'Unable to delete organization; the server state was kept.')); }
   }
 
-  return <main className="wk-page wk-organizations-page"><header className="wk-header"><div><p className="wk-eyebrow">Workspace organizations</p><h1>Organizations</h1><p className="wk-muted">Manage organization membership and shared-resource visibility through server-owned permissions.</p></div><Button type="button" onClick={() => void load()} disabled={loading}>Reload</Button></header>{error ? <Status tone="error">{error}</Status> : null}<div className="wk-organization-layout"><Card><h2>Organizations</h2>{loading ? <Status>Loading…</Status> : organizations.length === 0 ? <Status>No organizations returned.</Status> : <ul className="wk-list">{organizations.map((organization) => <li key={organization.id} className={selected?.id === organization.id ? 'is-selected' : ''}><button type="button" className="wk-organization-select" onClick={() => void select(organization)}><strong>{organization.name}</strong><span>{String(organization.member_count ?? 0)} members · {String(organization.share_count ?? 0)} KB shares · {String(organization.my_role ?? 'member')}</span></button></li>)}</ul>}</Card><Card><h2>Create organization</h2><form className="wk-admin-form" onSubmit={create}><label>Name<input required value={name} onChange={(event) => setName(event.target.value)} /></label><label>Description<textarea rows={3} value={description} onChange={(event) => setDescription(event.target.value)} /></label><Button type="submit" loading={saving}>Create organization</Button></form></Card>{selected ? <Card className="wk-organization-detail"><div className="wk-settings-panel-heading"><div><h2>{selected.name}</h2><p className="wk-muted">{selected.description || 'No description.'}</p></div><div className="wk-list-actions"><Button type="button" onClick={() => void leaveOrganization()}>Leave</Button><Button type="button" onClick={() => void deleteOrganization()}>Delete</Button></div></div><h3>Members</h3>{members.length === 0 ? <Status>No members returned.</Status> : <ul className="wk-list">{members.map((member) => <li key={member.id}><div className="wk-list-item-copy"><strong>{member.tenant_name ?? member.username}</strong><span>{member.email} · {organizationRoleLabel(member.role)}</span></div><div className="wk-list-actions"><select value={member.role} onChange={(event) => void updateMemberRole(member, event.target.value as 'admin' | 'editor' | 'viewer')}><option value="admin">Admin</option><option value="editor">Editor</option><option value="viewer">Viewer</option></select><Button type="button" onClick={() => void removeMember(member)}>Remove</Button></div></li>)}</ul>}<h3>Join requests</h3>{requests.filter((request) => request.status === 'pending').length === 0 ? <Status>No pending join requests.</Status> : <ul className="wk-list">{requests.filter((request) => request.status === 'pending').map((request) => <li key={request.id}><div className="wk-list-item-copy"><strong>{request.username}</strong><span>{String(request.requested_role)} · {request.created_at}</span></div><div className="wk-list-actions"><Button type="button" onClick={() => void reviewRequest(request, true)}>Approve</Button><Button type="button" onClick={() => void reviewRequest(request, false)}>Reject</Button></div></li>)}</ul>}<h3>Shared knowledge bases</h3>{sharedResources.length === 0 ? <Status>No shared knowledge bases returned.</Status> : <ul className="wk-list">{sharedResources.map((resource, index) => <li key={String(resource.share_id ?? resource.id ?? index)}><div className="wk-list-item-copy"><strong>{String(resource.knowledge_base_name ?? resource.name ?? resource.knowledge_base_id ?? 'Shared knowledge base')}</strong><span>{String(resource.permission ?? 'permission unavailable')} · source tenant {String(resource.source_tenant_id ?? 'unknown')}</span></div></li>)}</ul>}</Card> : null}</div></main>;
+  async function acceptInvite() {
+    if (!activeInviteCode) return;
+    setInviteAction('joining'); setError(null);
+    try { const joined = await organizationsApi.join({ invite_code: activeInviteCode }); setInvitePreview(null); setActiveInviteCode(undefined); clearInviteFromUrl(); await load(); await select(joined); }
+    catch (reason) { setError(errorText(reason, 'Unable to join organization; no local row was added.')); }
+    finally { setInviteAction('idle'); }
+  }
+
+  async function requestInvite() {
+    if (!activeInviteCode) return;
+    setInviteAction('requesting'); setError(null);
+    try { await organizationsApi.submitJoinRequest({ invite_code: activeInviteCode, role: 'viewer' }); setInvitePreview(null); setActiveInviteCode(undefined); clearInviteFromUrl(); }
+    catch (reason) { setError(errorText(reason, 'Unable to submit organization join request.')); }
+    finally { setInviteAction('idle'); }
+  }
+
+  const inviteName = typeof invitePreview?.name === 'string' ? invitePreview.name : 'Organization invitation';
+  const inviteDescription = typeof invitePreview?.description === 'string' ? invitePreview.description : 'Review this invitation before joining.';
+
+  return <main className="wk-page wk-organizations-page"><header className="wk-header"><div><p className="wk-eyebrow">Workspace organizations</p><h1>Organizations</h1><p className="wk-muted">Manage organization membership and shared-resource visibility through server-owned permissions.</p></div><Button type="button" onClick={() => void load()} disabled={loading}>Reload</Button></header>{error ? <Status tone="error">{error}</Status> : null}{activeInviteCode ? <Card><h2>{inviteName}</h2>{inviteLoading ? <Status>Checking invitation…</Status> : <><p className="wk-muted">{inviteDescription}</p><div className="wk-list-actions"><Button type="button" loading={inviteAction === 'joining'} onClick={() => void acceptInvite()}>Join organization</Button><Button type="button" loading={inviteAction === 'requesting'} onClick={() => void requestInvite()}>Request to join</Button></div></>}</Card> : null}<div className="wk-organization-layout"><Card><h2>Organizations</h2>{loading ? <Status>Loading…</Status> : organizations.length === 0 ? <Status>No organizations returned.</Status> : <ul className="wk-list">{organizations.map((organization) => <li key={organization.id} className={selected?.id === organization.id ? 'is-selected' : ''}><button type="button" className="wk-organization-select" onClick={() => void select(organization)}><strong>{organization.name}</strong><span>{String(organization.member_count ?? 0)} members · {String(organization.share_count ?? 0)} KB shares · {String(organization.my_role ?? 'member')}</span></button></li>)}</ul>}</Card><Card><h2>Create organization</h2><form className="wk-admin-form" onSubmit={create}><label>Name<input required value={name} onChange={(event) => setName(event.target.value)} /></label><label>Description<textarea rows={3} value={description} onChange={(event) => setDescription(event.target.value)} /></label><Button type="submit" loading={saving}>Create organization</Button></form></Card>{selected ? <Card className="wk-organization-detail"><div className="wk-settings-panel-heading"><div><h2>{selected.name}</h2><p className="wk-muted">{selected.description || 'No description.'}</p></div><div className="wk-list-actions"><Button type="button" onClick={() => void leaveOrganization()}>Leave</Button><Button type="button" onClick={() => void deleteOrganization()}>Delete</Button></div></div><h3>Members</h3>{members.length === 0 ? <Status>No members returned.</Status> : <ul className="wk-list">{members.map((member) => <li key={member.id}><div className="wk-list-item-copy"><strong>{member.tenant_name ?? member.username}</strong><span>{member.email} · {organizationRoleLabel(member.role)}</span></div><div className="wk-list-actions"><select value={member.role} onChange={(event) => void updateMemberRole(member, event.target.value as 'admin' | 'editor' | 'viewer')}><option value="admin">Admin</option><option value="editor">Editor</option><option value="viewer">Viewer</option></select><Button type="button" onClick={() => void removeMember(member)}>Remove</Button></div></li>)}</ul>}<h3>Join requests</h3>{requests.filter((request) => request.status === 'pending').length === 0 ? <Status>No pending join requests.</Status> : <ul className="wk-list">{requests.filter((request) => request.status === 'pending').map((request) => <li key={request.id}><div className="wk-list-item-copy"><strong>{request.username}</strong><span>{String(request.requested_role)} · {request.created_at}</span></div><div className="wk-list-actions"><Button type="button" onClick={() => void reviewRequest(request, true)}>Approve</Button><Button type="button" onClick={() => void reviewRequest(request, false)}>Reject</Button></div></li>)}</ul>}<h3>Shared knowledge bases</h3>{sharedResources.length === 0 ? <Status>No shared knowledge bases returned.</Status> : <ul className="wk-list">{sharedResources.map((resource, index) => <li key={String(resource.share_id ?? resource.id ?? index)}><div className="wk-list-item-copy"><strong>{String(resource.knowledge_base_name ?? resource.name ?? resource.knowledge_base_id ?? 'Shared knowledge base')}</strong><span>{String(resource.permission ?? 'permission unavailable')} · source tenant {String(resource.source_tenant_id ?? 'unknown')}</span></div></li>)}</ul>}</Card> : null}</div></main>;
 }

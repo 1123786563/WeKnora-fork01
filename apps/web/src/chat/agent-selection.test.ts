@@ -19,6 +19,14 @@ test('no selected agent keeps the web chat stream on knowledge mode', () => {
   });
 });
 
+test('keeps a knowledge-base chat deep-link scoped to its knowledge base', () => {
+  assert.deepEqual(buildWebChatStreamOptions('session-1', 'Question', '', 'kb-1'), {
+    sessionId: 'session-1',
+    mode: 'knowledge',
+    body: { query: 'Question', channel: 'web', knowledge_base_ids: ['kb-1'] },
+  });
+});
+
 test('initial agent selection accepts a requested URL agent only when it is enabled', () => {
   const agents = [{ id: 'agent/1', name: 'Research' }, { id: 'agent/2', name: 'Disabled' }];
   assert.equal(initialAgentSelection('?agentId=agent%2F1', agents, ['agent/2']), 'agent/1');

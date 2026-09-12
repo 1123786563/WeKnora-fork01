@@ -20,12 +20,13 @@ export function initialAgentSelection(
     : '';
 }
 
-export function buildWebChatStreamOptions(sessionId: string, content: string, agentId: string | undefined): WebChatStreamOptions {
+export function buildWebChatStreamOptions(sessionId: string, content: string, agentId: string | undefined, knowledgeBaseId?: string): WebChatStreamOptions {
   const selected = agentId?.trim();
-  if (!selected) return { sessionId, mode: 'knowledge', body: { query: content, channel: 'web' } };
+  const knowledgeBaseIds = knowledgeBaseId?.trim() ? { knowledge_base_ids: [knowledgeBaseId.trim()] } : {};
+  if (!selected) return { sessionId, mode: 'knowledge', body: { query: content, channel: 'web', ...knowledgeBaseIds } };
   return {
     sessionId,
     mode: 'agent',
-    body: { query: content, agent_enabled: true, agent_id: selected, channel: 'web' },
+    body: { query: content, agent_enabled: true, agent_id: selected, channel: 'web', ...knowledgeBaseIds },
   };
 }

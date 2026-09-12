@@ -17,7 +17,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [type, setType] = useState<'document' | 'faq'>('document');
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(() => new URLSearchParams(window.location.search).get('cmdk') ?? '');
   const [creator, setCreator] = useState<KnowledgeBaseCreatorFilter>('all');
   const [page, setPage] = useState(1);
   const [saving, setSaving] = useState(false);

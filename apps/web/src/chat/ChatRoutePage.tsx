@@ -12,13 +12,14 @@ interface ChatRoutePageProps {
   client: WeKnoraClient;
   scopeController: ScopeController;
   apiBaseUrl?: string;
+  knowledgeBaseId?: string;
 }
 
 function draftStorageKey(scope: ReturnType<ScopeController['current']>['scope'], sessionId: string): string {
   return JSON.stringify(chatDraftKey({ ...scope, sessionId }));
 }
 
-export function ChatRoutePage({ client, scopeController, apiBaseUrl = '' }: ChatRoutePageProps) {
+export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowledgeBaseId }: ChatRoutePageProps) {
   const scope = scopeController.current();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -225,7 +226,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '' }: Chat
       id: `local-${Date.now()}`, session_id: sessionId, role: 'user', content: submission.content,
     }]);
     let runState = initialChatStreamState();
-    const streamOptions = buildWebChatStreamOptions(sessionId, submission.content, selectedAgentId);
+    const streamOptions = buildWebChatStreamOptions(sessionId, submission.content, selectedAgentId, knowledgeBaseId);
     await client.chat.stream(streamOptions, (event) => {
       runState = reduceChatStream(runState, event);
       setStreamState(runState);

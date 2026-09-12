@@ -1020,3 +1020,20 @@
 - This closes only the static dispatch defects found in this audit. T04/T13
   remain `review` for the broader live, native, and legacy renderer parity
   gates; the pre-existing `>500 kB` build warning remains non-fatal.
+
+### Web route compatibility follow-up (2026-09-12)
+
+- The second route audit closes the remaining static compatibility gaps in the
+  current React candidate: safe URI decoding, explicit tenant/system mappings,
+  knowledge-base tab/slug dispatch, legacy `q` to `cmdk` search mapping, and a
+  fail-closed default for the development-only Markdown route.
+- Knowledge-base chat now forwards its route id as `knowledge_base_ids`; Wiki
+  selects a requested slug after loading; and organization invite preview,
+  join, and request actions consume `invite_code` from the URL only after a
+  successful server mutation.
+- Verification: Web 100/100, shared 184/184, Embed 3/3, Desktop 2/2;
+  Web/shared typechecks, Web/Embed/Desktop builds, React boundary check, and
+  `git diff --check` all exited 0. Web build transformed 131 modules and kept
+  the existing non-fatal `>500 kB` warning. Full browser/native/live invite
+  acceptance is not claimed; T04/T10/T11/T16/T24 remain `review`.
+- Evidence: `docs/migrations/react/evidence/t04-route-compatibility-follow-up-2026-09-12.md`.
