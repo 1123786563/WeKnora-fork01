@@ -7,7 +7,8 @@
     ".": "./src/query-key.ts",
     "./scope": "./src/scope.ts",
     "./wiki/diff": "./src/wiki/diff.ts",
-    "./mobile": "./src/mobile/auth-return.ts"
+    "./mobile": "./src/mobile/auth-return.ts",
+    "./semantic": "./src/semantic.ts"
   },
   "dependencies": {
     "@weknora/contracts": "workspace:*"

@@ -1,6 +1,6 @@
 # Semantica 实施台账
 
-状态：V01–C03、I01–I05、A01–A03、Q01–Q04、W01 verified（W01 路由挂载/facade 桥/retry 端点归 W02）；其余 6 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
+状态：V01–C03、I01–I05、A01–A03、Q01–Q04、W01 verified；W02 implemented（浏览器 E2E 阻断于真实服务栈——如实记录）；其余 5 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
 
 状态值 pending / in_progress / blocked / implemented / verified。每项验证记录必须包含commit SHA、精确命令、退出码、环境、产物路径、失败/限制；无真实证据不标记verified。执行前记录实际基线与已有脏文件。
 
@@ -25,7 +25,7 @@
 | Q03 | 模型推断与证据不足判定 | Q01,A03,V03 | verified | 受控网关/结构化校验（前提⊆授权集/kind 恒 model/长度与数量上限）/预算显式状态/注入惰性/Reason 双模式分派；RPC 证据内容通道与真实模型端到端延后 Q04；见运行记录 2026-09-11 Q03 |
 | Q04 | Go检索融合、Agent工具与最终授权 | Q02,Q03,I05 | verified | 5 BLOCKER 全闭：查询/TopK 上线、Reason 经 client.Reason 分派（rules/model+query_id）、resolveKBReadTenant **fail-closed** 强制+容器接线、allowed_document_ids 端到端上线、向量 seam 诚实 noop；chat/agent 入口与真向量 seam 归 W；见运行记录 2026-09-11 Q04（两段） |
 | W01 | 用户API与共享客户端契约 | Q04,I05 | verified | TS 契约（uint64 十进制字符串/浮点拒绝/未知枚举→unknown）+客户端（AbortSignal/错误映射/无泄露）+Go handler（fail-closed 503/mode 校验/body 不越 path scope）+路由定义；双评审 PASS；挂载/facade 桥/retry 归 W02；见运行记录 2026-09-11 W01 |
-| W02 | React索引状态与推理证据流程 | W01 | pending | 尚未执行 |
+| W02 | React索引状态与推理证据流程 | W01 | implemented | domain 纯函数+视图模型（迟到丢弃/取消/权限清空/模型≠证明）+面板组件+样式复用+typecheck；浏览器 E2E 阻断于真实服务栈（spec 就绪）；双评审待下轮；见运行记录 2026-09-11 W02 |
 | W03 | 后端影子构建、切换与回滚 | W01,I04,Q04 | pending | 尚未执行 |
 | O01 | 独立部署、探针与可观测性 | C02,I03,A03 | pending | 尚未执行 |
 | O02 | 故障注入、清理与恢复演练 | O01,I04,W03,Q04 | pending | 尚未执行 |
@@ -311,9 +311,19 @@
 - **延后（W02/W03）**：retry 服务端端点（客户端方法已备，挂载归 W02 接 I05 协调器）；SemanticQueryFacade 生产桥接（fail-closed nil 保证未接线即 503）；API 文档页（W03）。
 - review：规格 PASS（8/8 点；3 MINOR 已折叠：台账措辞更正+计划勾选+路由措辞如实）；质量 PASS（无 BLOCKER；8 MINOR 记录归 W02 桥接轮折叠：成功体非 JSON 泄漏护栏/parseStatusRaw 弱类型/枚举三处手工同步/空 document_id 400/错误码映射哨兵/模式白名单复用常量/成功路径+404 路由+status 客户端测试/strict tsconfig）。
 - 提交 SHA：01b78e1。
-- 提交 SHA：01b78e1。
 
-- V01–C03、I01–I05、A01–A03、Q01–Q04 verified；W01 implemented（双评审下轮补做）；后续 6 个任务未开始。
+### 2026-09-11 W02 React索引状态与推理证据流程（implemented——浏览器 E2E 阻断）
+
+- 工作区：.worktrees/semantica（分支 codex/semantica）；基线 SHA：a78de30。
+- 修改文件：packages/domain/{src/semantic.ts,src/semantic.test.ts,package.json(./semantic export)}、apps/web/src/semantic/{view-model.ts,view-model.test.ts,SemanticPanel.tsx,EvidencePanel.tsx,SemanticPage.tsx}、apps/web/{styles.css,tests/semantic-flow.spec.ts,playwright.semantic.config.ts,package.json(devDep @playwright/test+脚本)}、根 package.json（typecheck:shared 纳入 4 新文件）、pnpm-lock.yaml、本台账、05 计划勾选（步骤 7 部分——E2E 阻断）。
+- RED：`pnpm exec tsx --test packages/domain/src/semantic.test.ts`（模块不存在）；视图模型取消语义先红（迟到响应仍渲染——cancel 未清 active id）后绿。
+- GREEN：`pnpm exec tsx --test packages/domain/src/semantic.test.ts apps/web/src/semantic/view-model.test.ts` **12 passed**；`pnpm typecheck:shared` 0 错误；`pnpm typecheck:web` 0 错误（含 3 组件+页面）。
+- 交付：domain 纯函数（计划两条核心断言逐字：failed 原文可读可重试/deleting 不可重试；stale 可重试/ready 不可/unknown 不重试+标签；**所有语义状态原文恒可读**）；视图模型（**迟到响应丢弃**（query_id 失配）/**取消丢弃**（取消清 active id）/当前响应落位/**权限错误清空结果**（403/401）/模型推断恒标"非证明"）；SemanticPanel（重试钮仅 failed/stale——前端不充当授权，服务端再校验）；EvidencePanel（五模式实际标签/截断/generation/证据钉 document+revision+chunk）；SemanticPage（AbortSignal 全请求/取消即丢弃）；样式复用现有色板；Playwright 四场景 spec。
+- **阻断（如实）**：浏览器 E2E（上传→索引→问答→引用→重试→取消→撤权+截图+键盘无障碍）需真实 Go 服务栈运行（SEMANTIC_E2E_READY=1+baseURL）——本环境未部署生产服务（授权范围禁止），spec 已就绪待 O03 验收环境执行；不视为已通过。
+- review：双评审下轮补做。
+- 提交 SHA：（同批提交后补记）
+
+- V01–C03、I01–I05、A01–A03、Q01–Q04、W01 verified；W02 implemented（E2E 阻断）；后续 5 个任务未开始。
 - V01精确版本已冻结（semantica 0.6.8）；真实模型证据须在后续任务补齐，不是已经通过的前提。
 - V02 结论边界：持久图桥接/授权子图重建/注册规则推导已验证；模型推断 unverified（无凭据，未调用）；向量检索路径未验证。
 - V03 结论边界：semantica 模式检索质量/延迟为受控语料实测；native 对照与模型用量门槛未测（阻断记录见上）；上线门禁 approved=false 待用户确认。

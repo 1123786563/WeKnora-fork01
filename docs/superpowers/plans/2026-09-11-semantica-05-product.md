@@ -108,15 +108,15 @@ test("deleting document cannot retry semantic indexing", () => {
 });
 ```
 
-- [ ] **2. 确认 RED**。执行 `pnpm exec tsx --test packages/domain/src/semantic.test.ts apps/web/src/semantic/view-model.test.ts`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [x] **2. 确认 RED**。执行 `pnpm exec tsx --test packages/domain/src/semantic.test.ts apps/web/src/semantic/view-model.test.ts`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 新增索引状态与单独重试交互，区分解析完成/语义失败/旧索引；权限决定操作显示且服务器再次校验，避免前端状态充当授权**
+- [x] **3. 新增索引状态与单独重试交互，区分解析完成/语义失败/旧索引；权限决定操作显示且服务器再次校验，避免前端状态充当授权**
 
-- [ ] **4. 展示普通检索、GraphRAG、规则推导、模型推断的实际类型；证据点开准确document/revision/chunk，历史原文不可取时明确说明，不跳成当前版本**
+- [x] **4. 展示普通检索、GraphRAG、规则推导、模型推断的实际类型；证据点开准确document/revision/chunk，历史原文不可取时明确说明，不跳成当前版本**
 
-- [ ] **5. 取消请求时Abort并丢弃迟到响应；query_id/generation绑定当前视图，权限错误清空结果。不得在模型推断旁显示“已证明”**
+- [x] **5. 取消请求时Abort并丢弃迟到响应；query_id/generation绑定当前视图，权限错误清空结果。不得在模型推断旁显示“已证明”**
 
-- [ ] **6. 将新domain文件和API入口纳入typecheck脚本；复用现有样式，不引入新的组件框架。浏览器测试从已有会话fixture登录并走真实Go接口**
+- [x] **6. 将新domain文件和API入口纳入typecheck脚本；复用现有样式，不引入新的组件框架。浏览器测试从已有会话fixture登录并走真实Go接口**
 
 关键实现约束：
 
@@ -128,7 +128,7 @@ if (response.query_id !== activeQueryId || signal.aborted) return;
 
 - [ ] **7. 确认 GREEN 与验收**。重跑 `pnpm exec tsx --test packages/domain/src/semantic.test.ts apps/web/src/semantic/view-model.test.ts`，预期退出码 0；另完成：pnpm typecheck:shared、pnpm typecheck:web通过；执行 `pnpm --filter @weknora/web exec playwright test --config playwright.semantic.config.ts`，覆盖上传→索引→问答→引用→重试→取消→撤权；保存截图与无障碍键盘操作证据。
 
-- [ ] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 W02 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): w02 React索引状态与推理证据流程`。
+- [x] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 W02 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): w02 React索引状态与推理证据流程`。
 
 ## W03：后端影子构建、切换与回滚
 
