@@ -91,6 +91,7 @@ export function KnowledgeDocumentsScreen() {
       <Text accessibilityRole="header" style={{ flex: 1, fontSize: 21, fontWeight: '700' }}>Files</Text>
       <Pressable accessibilityRole="button" disabled={!kbId} onPress={() => kbId && router.push(referenceRoute('wiki', kbId))}><Text style={{ color: '#2864dc' }}>Wiki</Text></Pressable>
       <Pressable accessibilityRole="button" disabled={!kbId} onPress={() => kbId && router.push(referenceRoute('faq', kbId))}><Text style={{ color: '#2864dc' }}>FAQ</Text></Pressable>
+      <Pressable accessibilityRole="button" disabled={!kbId} onPress={() => kbId && router.push(`/knowledge/${encodeURIComponent(kbId)}/graph`)}><Text style={{ color: '#2864dc' }}>Graph</Text></Pressable>
       <Pressable accessibilityRole="button" disabled={!kbId} onPress={() => kbId && router.push(`/knowledge/${encodeURIComponent(kbId)}/data-sources`)}><Text style={{ color: '#2864dc' }}>Sources</Text></Pressable>
       <Pressable accessibilityRole="button" onPress={() => uploading ? uploadController.current?.abort() : void upload()}><Text style={{ color: '#2864dc' }}>{uploading ? 'Cancel' : 'Upload'}</Text></Pressable>
     </View>
