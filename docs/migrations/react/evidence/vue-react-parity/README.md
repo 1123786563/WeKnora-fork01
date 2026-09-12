@@ -2,6 +2,7 @@
 
 由主代理维护。每份证据对应一次逐页闭环的实测记录；截图在同目录 screenshots/。
 
+- 2026-09-12-baseline-and-inventory — Task 1 canonical executable inventory baseline（2026-09-12）
 - 2026-09-12-auth-functional-fixes — /login /register /join 鉴权功能修复（2026-09-12，Round 2）
 - 2026-09-12-auth-i18n-shared — auth 文案迁入共享 i18n 包（2026-09-12，Round 7）
 - 2026-09-12-chat-integration — /platform/chat 必修 7 项集成复核（2026-09-12，Round 12）

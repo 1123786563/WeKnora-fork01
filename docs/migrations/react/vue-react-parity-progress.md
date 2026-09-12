@@ -438,3 +438,217 @@
 - **creatChat 首发挂起 bug 修复并验证**（ad51b63）：根因为 selectSession 的 teardown abort 了 send 刚创建的 controller（AbortError 静默吞掉）。新模块 send-run.ts 固化「先建会话/选会话，再建 controller」顺序，3 回归测试。
 - live 复核：creatChat 首发流式渲染成功（Mock LLM 流式回答），composer 正常清空，无挂起。
 - 门禁：shared 326/326、web 207/207、typecheck×2、build:web 全绿。
+
+## 2026-09-12 Task 1 canonical executable backlog
+
+Baseline source for this backlog: current branch `codex/react-multiclient`, task base `9b79558b6229d79d0ceebe22e1de4a439982c615`, route/alias rows `R001`-`R056` and nested surface rows `N001`-`N033` in `vue-react-parity-matrix.md`. The SDD ledger and task brief under `.superpowers/sdd` remain ignored scratch. Do not bulk-mark rows accepted; each slice must close its own state profile and evidence.
+
+### Slice S00 — inventory baseline gate (this commit)
+
+- **Depends on:** none.
+- **Rows:** R001-R056, N001-N033.
+- **Files owned:** `docs/migrations/react/vue-react-parity-matrix.md`, `docs/migrations/react/vue-react-parity-progress.md`, `docs/migrations/react/evidence/vue-react-parity/2026-09-12-baseline-and-inventory.md`, `docs/migrations/react/evidence/vue-react-parity/README.md`.
+- **Do not touch/stage:** `frontend/**`, `apps/mobile/expo-env.d.ts`, `apps/web/src/chat/ChatRoutePage.tsx`, `apps/web/src/chat/send-run.ts`, `apps/web/src/chat/send-run.test.ts`, `packages/api-client/src/identity/tenant.ts`.
+- **Failing-test target:** none expected; this is executable documentation. Guard with existing route/inventory tests below.
+- **Targeted command:** `pnpm --filter @weknora/web exec tsx --test src/routes.test.ts src/chat/session-route.test.ts && pnpm --filter @weknora/mobile exec tsx --test src/features/knowledge/reference-parity.test.ts`.
+- **Live scenario:** none; record existing services and known test account/data identifiers.
+- **Evidence required:** `docs/migrations/react/evidence/vue-react-parity/2026-09-12-baseline-and-inventory.md` with branch, HEAD, Vue source commit, status, service ports, account/data IDs, counts, tests.
+- **Review gate:** self-review row coverage: every `route-parity.csv` row has a row ID; React-only aliases R054-R056 are explicit; pending rows are not omitted.
+- **Commit boundary:** one docs-only commit, e.g. `docs(migration): establish canonical parity inventory`.
+- **Validation result (Task 1):** inventory sanity check passed (`R rows 56`, `N rows 33`, `route parity rows 53`, no missing/duplicate IDs); web route tests passed 8/8; mobile reference-parity test passed 5/5.
+
+### Slice S01 — route/guard compatibility and hidden aliases
+
+- **Depends on:** S00.
+- **Rows:** R001, R005, R006, R011, R018, R019, R054, R055, R056, N003.
+- **Files owned:** `apps/web/src/routes.tsx`, `apps/web/src/routes.test.ts`, `apps/web/src/main.tsx`, `apps/web/src/NotFoundPage.tsx`, `apps/web/src/DevMarkdownPage.tsx`, `apps/web/src/DevMarkdownPage.test.ts`.
+- **Boundary:** no page body work; no `PlatformShell`, chat, settings, or API-client edits unless a route test proves an interface break.
+- **Failing-test target:** add/adjust `apps/web/src/routes.test.ts` cases for each row: query preservation, malformed segment, no-tenant redirect, system-admin gate, development-only markdown, `/creatChat` alias.
+- **Targeted command:** `pnpm --filter @weknora/web exec tsx --test src/routes.test.ts src/chat/session-route.test.ts`.
+- **Live scenario:** browser-open `/`, `/join?code=<code>`, `/platform/knowledge-search?q=hello`, `/platform/system/queues`, `/creatChat?agentId=a` against React :5181; compare final URL and shell/not-found state.
+- **Evidence required:** screenshots or trace table in `docs/migrations/react/evidence/vue-react-parity/<date>-route-compatibility.md`.
+- **Review gate:** route table must prove no pending Vue route is silently dropped and no React-only alias is counted as Vue parity.
+- **Commit boundary:** single commit touching only route files/tests/evidence.
+
+### Slice S02 — public auth and no-tenant onboarding
+
+- **Depends on:** S01 for guards.
+- **Rows:** R002, R003, R004, R005.
+- **Files owned:** `apps/web/src/auth/LoginPage.tsx`, `apps/web/src/auth/JoinPage.tsx`, `apps/web/src/auth/WorkspaceOnboardingPage.tsx`, `apps/web/src/auth/validation.ts`, `apps/web/src/auth/invite-flow.ts`, `apps/web/src/auth/join.ts`, `apps/web/src/auth/onboarding.ts`, `apps/web/src/auth/oidc.ts`, `apps/web/src/auth/session-persist.ts`, `apps/web/src/auth/JoinPage.test.ts`, `apps/web/src/auth/invite-flow.test.ts`, `apps/web/src/auth/oidc.test.ts`, `apps/web/src/auth/onboarding.test.ts`, `apps/web/src/auth/session-persist.test.ts`, `apps/web/src/auth/validation.test.ts`, `packages/api-client/src/auth/endpoints.ts`, `packages/domain/src/auth/password-policy.ts`, `packages/i18n/src/index.ts`, `apps/mobile/app/(auth)/login.tsx`, `apps/mobile/app/(auth)/register.tsx`, `apps/mobile/app/(auth)/server.tsx`.
+- **Boundary:** no platform shell, settings, knowledge, or chat edits; mobile native auth changes stay under `apps/mobile/app/(auth)` and platform credential/server/workspace files.
+- **Failing-test target:** `apps/web/src/auth/validation.test.ts`, `apps/web/src/auth/invite-flow.test.ts`, `apps/web/src/auth/onboarding.test.ts`, `apps/web/src/auth/session-persist.test.ts`, plus mobile auth tests if files exist.
+- **Targeted command:** `pnpm --filter @weknora/web exec tsx --test src/auth/*.test.ts`.
+- **Live scenario:** login, registration validation, invite token, OIDC callback hash parse, no-tenant redirect, onboarding create/accept/reject using `parity-test@local.dev`.
+- **Evidence required:** web screenshots for zh-CN/en-US and mobile simulator screenshots when mobile files change.
+- **Review gate:** compare Vue `Login.vue` and `WorkspaceOnboarding.vue` state branches line-by-line; preserve six-language keys and no secret logging.
+- **Commit boundary:** one auth/onboarding commit; do not include shell/KB/chat changes.
+
+### Slice S03 — platform shell, navigation, command palette, KB list chrome
+
+- **Depends on:** S01, S02.
+- **Rows:** R007, R009, R011, N001, N002, N003, N004, N005.
+- **Files owned:** `apps/web/src/platform/PlatformShell.tsx`, `apps/web/src/platform/scope-runtime.ts`, `apps/web/src/platform/adapters.ts`, `apps/web/src/App.tsx`, `apps/web/src/knowledge-bases/list.ts`, `packages/domain/src/knowledge/list.ts`, `packages/i18n/src/menu.ts`, `packages/i18n/src/generated/knowledgeSurfaces.ts`, `apps/web/src/platform/adapters.test.ts`, `apps/web/src/platform/credentials.test.ts`, `apps/web/src/platform/http.test.ts`, `apps/web/src/platform/legacy-session.test.ts`, `apps/web/src/platform/scope-runtime.test.ts`, `apps/web/src/knowledge-bases/list.test.ts`.
+- **Boundary:** no document detail/upload code, no settings panels, no chat implementation. If command palette needs a component, create it in `apps/web/src/platform/` and tests there.
+- **Failing-test target:** `apps/web/src/platform/scope-runtime.test.ts`, `apps/web/src/knowledge-bases/list.test.ts`, a new `apps/web/src/platform/command-palette.test.tsx` if R011 is implemented.
+- **Targeted command:** `pnpm --filter @weknora/web exec tsx --test src/platform/*.test.ts src/knowledge-bases/list.test.ts`.
+- **Live scenario:** React :5181 `/platform/knowledge-bases?cmdk=hello`, collapsed sections, favorites/recents, user menu logout, tenant/capability unavailable redirects.
+- **Evidence required:** Vue/React 1440x900 screenshots plus Wails runtime screenshot when shell files change.
+- **Review gate:** platform shell cannot own per-page business mutations; R011 stays pending until a visible command palette exists.
+- **Commit boundary:** one shell/list commit.
+
+### Slice S04 — KB documents, upload, preview, and file proxies
+
+- **Depends on:** S03.
+- **Rows:** R006, R010, R047, R048, R049, R050, N006, N007, N008, N009.
+- **Files owned:** `apps/web/src/documents/KnowledgeDocumentsPage.tsx`, `apps/web/src/documents/KnowledgeDocumentDetailPage.tsx`, `apps/web/src/documents/actions.ts`, `apps/web/src/documents/list.ts`, `apps/web/src/documents/preview.ts`, `apps/web/src/documents/processing-timeline.ts`, `apps/web/src/documents/upload-pipeline.ts`, `apps/web/src/knowledge/permissions.ts`, `packages/api-client/src/knowledge/documents.ts`, `packages/domain/src/knowledge/processing.ts`, `packages/domain/src/knowledge/preview.ts`, `apps/mobile/app/(app)/knowledge/[id].tsx`, `apps/mobile/app/(app)/knowledge/document/[id].tsx`, `apps/mobile/src/features/knowledge/KnowledgeDocumentsScreen.tsx`, `apps/mobile/src/features/knowledge/KnowledgeDocumentDetailScreen.tsx`.
+- **Boundary:** no FAQ/wiki/graph/settings tabs except routing handoff; no chat artifact route R051.
+- **Failing-test target:** `apps/web/src/documents/actions.test.ts`, `apps/web/src/documents/list.test.ts`, `apps/web/src/documents/preview.test.ts`, `apps/web/src/documents/processing-timeline.test.ts`, `apps/web/src/documents/upload-pipeline.test.ts`, `packages/domain/src/knowledge/processing.test.ts`, `packages/domain/src/knowledge/preview.test.ts`, `apps/mobile/src/features/knowledge/parity.test.ts` if native files change.
+- **Targeted command:** `pnpm --filter @weknora/web exec tsx --test src/documents/*.test.ts src/knowledge/permissions.test.ts && pnpm exec tsx --test packages/domain/src/knowledge/processing.test.ts packages/domain/src/knowledge/preview.test.ts`.
+- **Live scenario:** upload File/URL/manual, cancel/retry, processing timeline, open preview/download through `/files`, `/r/:token`, `/api/v1/files/presigned`, KB file route.
+- **Evidence required:** screenshots/traces for normal/loading/empty/error/no-permission/disabled/editing/submitting/success/failure and proxy expiry.
+- **Review gate:** never edit Vue implementation; protected file URLs must not expose internal storage paths.
+- **Commit boundary:** one documents/file-proxy commit.
+
+### Slice S05 — KB FAQ, Wiki, graph, data sources, and KB settings
+
+- **Depends on:** S04 for KB access/preview primitives.
+- **Rows:** R010, N010, N011, N012, N013.
+- **Files owned:** `apps/web/src/faq/FAQPage.tsx`, `apps/web/src/faq/import-export.ts`, `apps/web/src/wiki/WikiPage.tsx`, `apps/web/src/wiki/editor.ts`, `apps/web/src/knowledge/KnowledgeGraphPage.tsx`, `apps/web/src/knowledge/graph.ts`, `apps/web/src/data-sources/DataSourcesPage.tsx`, `apps/web/src/data-sources/form.ts`, `apps/web/src/knowledge-settings/KnowledgeSettingsPage.tsx`, `apps/web/src/knowledge-settings/form.ts`, `packages/api-client/src/knowledge/faq.ts`, `packages/api-client/src/knowledge/settings.ts`, `packages/api-client/src/wiki/pages.ts`, `packages/api-client/src/datasource.ts`, `packages/domain/src/wiki/diff.ts`, `packages/i18n/src/generated/knowledgeSurfaces.ts`, `packages/i18n/src/generated/knowledgeSurfacesSupplemental.ts`, mobile knowledge editor/reference/data-source files.
+- **Boundary:** no list shell changes except link targets; no generic settings modal changes.
+- **Failing-test target:** `apps/web/src/faq/import-export.test.ts`, `apps/web/src/wiki/editor.test.ts`, `apps/web/src/knowledge/graph.test.ts`, `apps/web/src/data-sources/form.test.ts`, `apps/web/src/knowledge-settings/form.test.ts`, `packages/domain/src/wiki/diff.test.ts`.
+- **Targeted command:** `pnpm --filter @weknora/web exec tsx --test src/faq/*.test.ts src/wiki/*.test.ts src/knowledge/*.test.ts src/data-sources/*.test.ts src/knowledge-settings/*.test.ts && pnpm exec tsx --test packages/domain/src/wiki/diff.test.ts`.
+- **Live scenario:** FAQ pagination/import/export, wiki edit/diff, graph depth/remote search, data source create/test/sync/logs, KB settings save failure and success.
+- **Evidence required:** Vue/React screenshots for each tab and mobile screenshots if native files change.
+- **Review gate:** no generic JSON editor may substitute for Vue-specific controls; every hidden tab state must have evidence.
+- **Commit boundary:** one KB advanced commit or split into FAQ/wiki and settings/data-source commits only if row ownership remains disjoint.
+
+### Slice S06 — settings local/user/tenant resource panels
+
+- **Depends on:** S03.
+- **Rows:** R008, R021, R022, R023, R025, R026, R028, R029, R030, R032, R034, R035, R036, R037, R039, R040, R041, R042, N014, N015.
+- **Files owned:** `apps/web/src/settings/SettingsPage.tsx`, `apps/web/src/settings/surface.ts`, `apps/web/src/settings/CloudSettingsPanel.tsx`, `apps/web/src/settings/ConfigSettingsPanel.tsx`, `apps/web/src/settings/EnvVarSettingsPanel.tsx`, `apps/web/src/settings/GeneralPreferencesPanel.tsx`, `apps/web/src/settings/OllamaSettingsPanel.tsx`, `apps/web/src/settings/PersonalMemoryPanel.tsx`, `apps/web/src/settings/ResourceSettingsPanel.tsx`, `apps/web/src/settings/TenantDeleteZone.tsx`, `packages/api-client/src/settings/index.ts`, `packages/i18n/src/settings.ts`.
+- **Boundary:** do not implement registry `ported:false` rows R024/R027/R031/R033/R038/R043-R046 here.
+- **Failing-test target:** `apps/web/src/settings/surface.test.ts`, `packages/views/src/settings/registry.test.ts`, `packages/i18n/test/authMessages.test.ts`, `packages/i18n/test/keys.test.ts`, `packages/i18n/test/knowledgeList.test.ts`, `packages/i18n/test/knowledgeSurfaces.test.ts`, `packages/i18n/test/portedDomains.test.ts`, `packages/i18n/test/settingsMessages.test.ts` when copy changes.
+- **Targeted command:** `pnpm --filter @weknora/web exec tsx --test src/settings/surface.test.ts && pnpm exec tsx --test packages/views/src/settings/registry.test.ts packages/i18n/test/*.test.ts`.
+- **Live scenario:** role-denied deep link, edit/save/failure for tenant/profile/env/resource/cloud, unavailable capability, close/back behavior, light/dark/long i18n labels.
+- **Evidence required:** modal screenshots for viewer/admin/owner and one API failure trace.
+- **Review gate:** secrets redacted; dirty form cannot be lost on failed save.
+- **Commit boundary:** one settings-panels commit.
+
+### Slice S07 — system administration and platform admin URLs
+
+- **Depends on:** S01, S06.
+- **Rows:** R018, R056, N017 and system-admin parts of R008.
+- **Files owned:** `apps/web/src/administration/AdministrationPage.tsx`, `apps/web/src/administration/summary.ts`, `packages/api-client/src/administration/index.ts`, `apps/web/src/routes.tsx`, `apps/web/src/settings/SettingsPage.tsx` only for system-section links.
+- **Boundary:** no tenant member UI (R038) or organization page changes.
+- **Failing-test target:** `apps/web/src/administration/summary.test.ts`, `apps/web/src/routes.test.ts` system cases.
+- **Targeted command:** `pnpm --filter @weknora/web exec tsx --test src/administration/*.test.ts src/routes.test.ts`.
+- **Live scenario:** system admin and non-admin deep links `/platform/system/*`, `/platform/administration`, queues/settings/API keys/audit-log read states.
+- **Evidence required:** screenshot/trace table proving 403 and system-admin success.
+- **Review gate:** never expose admin controls to non-system-admin; compatibility redirects remain stable.
+- **Commit boundary:** one administration commit.
+
+### Slice S08 — chat route, sessions, composer, stream state
+
+- **Depends on:** S01, S03.
+- **Rows:** R014, R015, R016, N018, N019, N026.
+- **Files owned:** `apps/web/src/chat/ChatRoutePage.tsx`, `apps/web/src/chat/send-run.ts`, `apps/web/src/chat/session-route.ts`, `apps/web/src/chat/resume.ts`, `apps/web/src/chat/stream-recovery.ts`, `apps/web/src/chat/starter-questions.ts`, `apps/web/src/chat/agent-selection.ts`, `apps/web/src/chat/steer-submit.ts`, `packages/views/src/chat/page.tsx`, `packages/views/src/chat/composer.tsx`, `packages/views/src/chat/message-list.tsx`, `packages/views/src/chat/session-sidebar.tsx`, `packages/api-client/src/chat/sessions.ts`, `packages/api-client/src/chat/stream.ts`, `packages/api-client/src/chat/suggestions.ts`, `packages/api-client/src/chat/steer.ts`, `packages/domain/src/chat/reducer.ts`, `packages/domain/src/chat/session-state.ts`, `packages/domain/src/chat/draft.ts`, `apps/web/src/platform/adapters.test.ts`, `apps/web/src/platform/credentials.test.ts`, `apps/web/src/platform/http.test.ts`, `apps/web/src/platform/legacy-session.test.ts`, `apps/web/src/platform/scope-runtime.test.ts`, `apps/web/src/knowledge-bases/list.test.ts`.
+- **Boundary:** only this slice may touch the active dirty chat files named above; do not mix with docs-only or settings changes.
+- **Failing-test target:** `apps/web/src/chat/send-run.test.ts`, `apps/web/src/chat/session-route.test.ts`, `apps/web/src/chat/resume.test.ts`, `packages/domain/src/chat/reducer.test.ts`, `packages/views/src/chat/composer.test.tsx`.
+- **Targeted command:** `pnpm --filter @weknora/web exec tsx --test src/chat/*.test.ts && pnpm exec tsx --test packages/domain/src/chat/*.test.ts packages/views/src/chat/*.test.tsx`.
+- **Live scenario:** creatChat first send, existing session send, cancel, continue-stream, retry, source badge, session grouping using mock stream model.
+- **Evidence required:** UI screenshots and backend trace confirming POST/stream order; include failure retry state.
+- **Review gate:** generation/AbortController ordering must be proven; no duplicate user/assistant messages.
+- **Commit boundary:** one chat-core commit.
+
+### Slice S09 — chat rich renderers, artifacts, references, approvals, sandbox terminal
+
+- **Depends on:** S08, S04.
+- **Rows:** R016, R051, R052, N020, N021, N022, N023, N024.
+- **Files owned:** `packages/views/src/chat/markdown.ts`, `packages/views/src/chat/mermaid.ts`, `packages/views/src/chat/reference-list.tsx`, `packages/views/src/chat/tool-result.tsx`, `packages/views/src/chat/tool-approval.tsx`, `packages/views/src/chat/artifact-preview.tsx`, `apps/web/src/chat/artifact-download.ts`, `apps/web/src/chat/artifact-preview.test.ts`, `apps/web/src/chat/citation.ts`, `apps/web/src/chat/terminal.ts`, `packages/api-client/src/chat/approvals.ts`, `packages/api-client/src/chat/artifacts.ts`, `packages/api-client/src/chat/attachments.ts`, `packages/api-client/src/sandbox/terminal.ts`, `packages/domain/src/chat/references.ts`, `packages/domain/src/chat/artifacts.ts`, `packages/domain/src/chat/tool-results.ts`, `packages/domain/src/sandbox/terminal.ts`, `apps/mobile/src/features/chat/artifact-preview.ts`, `apps/mobile/src/features/chat/artifact-preview.tsx`, `apps/mobile/src/features/chat/artifact-preview.test.ts`.
+- **Boundary:** no core session/composer state changes unless S08 tests first fail and ownership is handed off.
+- **Failing-test target:** `packages/views/src/chat/tool-result.test.tsx`, `packages/views/src/chat/tool-approval.test.tsx`, `packages/views/src/chat/markdown.test.tsx`, `apps/web/src/chat/terminal.test.ts`, `packages/domain/src/sandbox/terminal.test.ts`.
+- **Targeted command:** `pnpm exec tsx --test packages/views/src/chat/*.test.tsx packages/views/src/chat/*.test.ts packages/domain/src/chat/*.test.ts packages/domain/src/sandbox/terminal.test.ts && pnpm --filter @weknora/web exec tsx --test src/chat/terminal.test.ts src/chat/artifact-*.test.ts src/chat/citation.test.ts`.
+- **Live scenario:** markdown/XSS, tool result variants, approval modified_args, artifact download/preview through message file proxy, real terminal WS ticket/input/resize.
+- **Evidence required:** screenshots for renderer variants and WS trace excluding JWT in query string.
+- **Review gate:** unknown tools degrade readably; secrets are redacted; approval errors cannot default-approve.
+- **Commit boundary:** one chat-rich-surfaces commit.
+
+### Slice S10 — agents, models, MCP, sandbox config, skills
+
+- **Depends on:** S03, S06.
+- **Rows:** R012, R024, R027, R031, R033, R043, R044, R045, R046, R055, N016, N025, N026.
+- **Files owned:** `apps/web/src/configuration/ConfigurationPage.tsx`, `apps/web/src/configuration/ConfigurationEditor.tsx`, `apps/web/src/configuration/ConfigurationOperations.tsx`, `apps/web/src/configuration/agent-groups.ts`, `apps/web/src/configuration/editor.ts`, `apps/web/src/configuration/management.ts`, `apps/web/src/configuration/model-usage.ts`, `apps/web/src/configuration/surface.ts`, `apps/web/src/settings/PortedSectionsPanel.tsx`, `packages/api-client/src/configuration.ts`, `packages/i18n/src/generated/agent.ts`, `packages/i18n/src/settings.ts` only for new settings keys.
+- **Boundary:** no chat AgentSelector behavior unless S08 hands off; no organization/identity changes.
+- **Failing-test target:** `apps/web/src/configuration/agent-groups.test.ts`, `apps/web/src/configuration/editor.test.ts`, `apps/web/src/configuration/management.test.ts`, `apps/web/src/configuration/model-usage.test.ts`, `apps/web/src/configuration/surface.test.ts`, `apps/web/src/configuration/ConfigurationPage.test.ts`, `apps/web/src/configuration/ConfigurationOperations.test.tsx`, `packages/views/src/settings/registry.test.ts` for ported flag changes.
+- **Targeted command:** `pnpm --filter @weknora/web exec tsx --test src/configuration/*.test.ts src/configuration/*.test.tsx && pnpm exec tsx --test packages/views/src/settings/registry.test.ts`.
+- **Live scenario:** agent list/edit/share, model create/test/delete conflict, MCP service dialog/test body/tools list/OAuth, sandbox config, skill install timeline/file panel.
+- **Evidence required:** screenshots for normal/loading/empty/error/no-permission/disabled/editing/submitting/success/failure across admin/viewer roles.
+- **Review gate:** registry rows cannot flip `ported:true` until exact Vue nested panels have tests and live evidence.
+- **Commit boundary:** one configuration commit or smaller row-group commits if registry ownership is non-overlapping.
+
+### Slice S11 — organizations, tenant members, sharing and approvals
+
+- **Depends on:** S03, S06.
+- **Rows:** R017, R038, N027.
+- **Files owned:** `apps/web/src/organizations/OrganizationsPage.tsx`, `apps/web/src/organizations/join.ts`, `apps/web/src/organizations/settings-actions.ts`, `apps/web/src/organizations/summary.ts`, `apps/web/src/settings/PortedSectionsPanel.tsx` only for tenant-member entry point, `packages/api-client/src/identity/organization.ts`, `packages/api-client/src/identity/tenant.ts`, `packages/i18n/src/generated/organization.ts`, mobile management organization files.
+- **Boundary:** do not stage unrelated dirty `packages/api-client/src/identity/tenant.ts` unless this slice explicitly owns tenant member implementation.
+- **Failing-test target:** `apps/web/src/organizations/join.test.ts`, `apps/web/src/organizations/settings-actions.test.ts`, `apps/web/src/organizations/summary.test.ts`, `packages/api-client/src/identity/organization.test.ts`, `apps/mobile/src/features/management/organizations.test.ts` when native files change.
+- **Targeted command:** `pnpm --filter @weknora/web exec tsx --test src/organizations/*.test.ts && pnpm exec tsx --test packages/api-client/src/identity/organization.test.ts`.
+- **Live scenario:** create org, invite link, join already-member and approval request, member role change/delete, KB unshare, backend `require_approval` behavior.
+- **Evidence required:** role matrix screenshots/traces for viewer/admin/owner and backend gap note if field remains ignored.
+- **Review gate:** backend gaps are recorded, not papered over by front-end-only acceptance.
+- **Commit boundary:** one organizations/members commit.
+
+### Slice S12 — integrations, embed management, and isolated embed runtime
+
+- **Depends on:** S08 for chat embed composer; S10 for agent channel management if channel config changes.
+- **Rows:** R013, R020, R053, N028, N029.
+- **Files owned:** `apps/web/src/integrations/IntegrationsRoutePage.tsx`, `apps/web/src/integrations/tenant.ts`, `packages/views/src/integrations/page.tsx`, `packages/views/src/integrations/registry.ts`, `packages/views/src/integrations/apiKeys.ts`, `packages/views/src/integrations/form.ts`, `apps/embed/src/EmbedApp.tsx`, `apps/embed/src/bootstrap.ts`, `apps/embed/src/embed-ui.ts`, `apps/embed/src/main.tsx`, `packages/views/src/embed/bridge.ts`, `packages/api-client/src/embed/client.ts`, `packages/api-client/src/embed/index.ts`, `packages/i18n/src/generated/embed.ts`, `packages/i18n/src/generated/integrations.ts`.
+- **Boundary:** no main-account auth/session storage changes; embed credentials stay isolated.
+- **Failing-test target:** `packages/views/src/integrations/apiKeys.test.ts`, `packages/views/src/integrations/form.test.ts`, `packages/views/src/integrations/page.test.tsx`, `packages/views/src/integrations/registry.test.ts`, `apps/embed/src/bootstrap.test.ts`, `apps/embed/src/embed-ui.test.ts`, `packages/views/src/embed/bridge.test.ts`, `packages/api-client/src/embed/client.test.ts`, `packages/api-client/src/embed/index.test.ts`.
+- **Targeted command:** `pnpm exec tsx --test packages/views/src/integrations/*.test.ts packages/views/src/integrations/*.test.tsx apps/embed/src/*.test.ts packages/views/src/embed/bridge.test.ts packages/api-client/src/embed/*.test.ts`.
+- **Live scenario:** API key create/one-time display/revoke, IM tab empty shape, embed channel preview token, iframe postMessage, file upload/download through `/api/v1/embed/:channel_id/files`.
+- **Evidence required:** web/settings tab screenshots, iframe screenshot, CORS/network trace, default_locale proof.
+- **Review gate:** Bearer credentials must never leak into embed client; backend preview-token semantic gaps stay unresolved until server decision.
+- **Commit boundary:** one integrations/embed commit.
+
+### Slice S13 — Wails desktop runtime parity
+
+- **Depends on:** web slices being clean for touched pages (S03-S12 as applicable).
+- **Rows:** all web-shared protected rows R001-R019, R021-R052, R054-R056 and N033 where desktop is applicable.
+- **Files owned:** `apps/desktop/src/main.tsx`, `apps/desktop/src/platform/credentials.ts`, `apps/desktop/src/platform/files.ts`, `apps/desktop/src/platform/navigation.ts`, `apps/desktop/src/platform/wails.ts`, `apps/desktop/vite.config.ts`, `scripts/build_react_web_bundle.sh`, Wails packaging docs/evidence only when packaging changes.
+- **Boundary:** desktop adapters only; page code remains with owning web slice.
+- **Failing-test target:** `apps/desktop/src/platform/wails.test.ts`.
+- **Targeted command:** `pnpm --filter @weknora/desktop-renderer test && pnpm --filter @weknora/desktop-renderer typecheck && pnpm run build:desktop-renderer`.
+- **Live scenario:** Wails app launch, local service auth, navigation/back, file open/save, KB list, chat send, upload if platform files change.
+- **Evidence required:** Wails runtime screenshots and packaging/codesign logs.
+- **Review gate:** do not run packaging while other slices have active dirty files; Wails data path and Lite service behavior preserved.
+- **Commit boundary:** one desktop-adapter commit.
+
+### Slice S14 — mobile native parity and platform deltas
+
+- **Depends on:** API/domain contracts from relevant web slices; S02 for auth, S04/S05 for KB, S08/S09 for chat, S11 for org management.
+- **Rows:** R002, R003, R009, R010, R016, R017, R050, R051, N030, N031, N032.
+- **Files owned:** `apps/mobile/app/index.tsx`, `apps/mobile/app/(auth)/login.tsx`, `apps/mobile/app/(auth)/register.tsx`, `apps/mobile/app/(auth)/server.tsx`, `apps/mobile/app/(app)/knowledge/index.tsx`, `apps/mobile/app/(app)/knowledge/[id].tsx`, `apps/mobile/app/(app)/knowledge/document/[id].tsx`, `apps/mobile/app/(app)/knowledge/[id]/faq.tsx`, `apps/mobile/app/(app)/knowledge/[id]/wiki.tsx`, `apps/mobile/app/(app)/knowledge/[id]/editor.tsx`, `apps/mobile/app/(app)/knowledge/[id]/data-sources.tsx`, `apps/mobile/app/(app)/chat/index.tsx`, `apps/mobile/app/(app)/management/index.tsx`, `apps/mobile/app/(app)/management/organizations.tsx`, `apps/mobile/app/(app)/management/configuration.tsx`, `apps/mobile/app/(app)/management/administration.tsx`, `apps/mobile/app/(app)/management/api-keys.tsx`, `apps/mobile/app/(app)/management/identity.tsx`, `apps/mobile/src/features/knowledge/KnowledgeBaseListScreen.tsx`, `apps/mobile/src/features/knowledge/KnowledgeDocumentsScreen.tsx`, `apps/mobile/src/features/knowledge/KnowledgeDocumentDetailScreen.tsx`, `apps/mobile/src/features/knowledge/KnowledgeEditorScreen.tsx`, `apps/mobile/src/features/knowledge/KnowledgeReferenceScreen.tsx`, `apps/mobile/src/features/knowledge/DataSourcesScreen.tsx`, `apps/mobile/src/features/chat/ChatScreen.tsx`, `apps/mobile/src/features/management/OrganizationsScreen.tsx`, `apps/mobile/src/features/management/ConfigurationScreen.tsx`, `apps/mobile/src/features/management/AdministrationScreen.tsx`, `apps/mobile/src/features/management/ApiKeysScreen.tsx`, `apps/mobile/src/features/management/IdentityScreen.tsx`, `apps/mobile/src/platform/credentials.ts`, `apps/mobile/src/platform/network.ts`, `apps/mobile/src/platform/server.ts`, `apps/mobile/src/platform/transport.ts`, `apps/mobile/src/platform/workspace.ts`, mobile package/config only if needed.
+- **Boundary:** mobile must not import DOM `packages/views`; no web CSS or Wails files.
+- **Failing-test target:** `apps/mobile/src/features/knowledge/data-source-form.test.ts`, `apps/mobile/src/features/knowledge/data-sources.test.ts`, `apps/mobile/src/features/knowledge/editor.test.ts`, `apps/mobile/src/features/knowledge/header-layout.test.ts`, `apps/mobile/src/features/knowledge/parity.test.ts`, `apps/mobile/src/features/knowledge/reference-parity.test.ts`, `apps/mobile/src/features/knowledge/sign-out.test.ts`, `apps/mobile/src/features/chat/appstate.test.ts`, `apps/mobile/src/features/chat/artifact-preview.test.ts`, `apps/mobile/src/features/chat/parity.test.ts`, `apps/mobile/src/features/chat/run-lifecycle.test.ts`, `apps/mobile/src/features/chat/stop-run.test.ts`, `apps/mobile/src/features/management/administration.test.ts`, `apps/mobile/src/features/management/api-keys.test.ts`, `apps/mobile/src/features/management/capabilities.test.ts`, `apps/mobile/src/features/management/configuration-form.test.ts`, `apps/mobile/src/features/management/organizations.test.ts`.
+- **Targeted command:** `pnpm --filter @weknora/mobile test && pnpm --filter @weknora/mobile typecheck`.
+- **Live scenario:** iOS and Android simulator login, server selection, KB list/detail/reference edit, chat send/stop/artifact preview, organization read/join if implemented.
+- **Evidence required:** simulator screenshots with device/UDID or emulator name, server URL, account, KB names.
+- **Review gate:** if a Vue web feature has no native equivalent, record platform delta explicitly rather than accepting silently.
+- **Commit boundary:** one mobile slice commit per feature family.
+
+### Slice S15 — final acceptance and visual/state evidence gate
+
+- **Depends on:** all row-owning slices for rows being accepted.
+- **Rows:** any rows proposed for `accepted`; never all rows by default.
+- **Files owned:** `docs/migrations/react/vue-react-parity-matrix.md`, `docs/migrations/react/vue-react-parity-progress.md`, `docs/migrations/react/evidence/vue-react-parity/README.md`, `docs/migrations/react/evidence/vue-react-parity/screenshot-matrix.md`, and the row-specific `docs/migrations/react/evidence/vue-react-parity/<date>-<row-group>.md` evidence file only.
+- **Boundary:** no product code changes in acceptance-only commits; failed evidence goes back to owning slice.
+- **Failing-test target:** row-specific tests from owning slices plus full gates only after targeted success.
+- **Targeted command:** minimum `pnpm run test:shared && pnpm run test:web && pnpm run typecheck:shared && pnpm run typecheck:web && pnpm run build:web`; add desktop/mobile/embed commands when accepting platform rows.
+- **Live scenario:** Vue :5180 and React :5181 same backend :8080, 1440x900 zh-CN plus en-US spot checks; Wails/iOS/Android/embed where applicable.
+- **Evidence required:** screenshot matrix and state checklist showing normal/loading/empty/error/no-permission/disabled/editing/submitting/success/failure for each row.
+- **Review gate:** a row can move to `accepted` only when all applicable platform evidence and unresolved backend decisions are closed or explicitly out-of-scope by user decision.
+- **Commit boundary:** one acceptance-docs commit per row group.
+
