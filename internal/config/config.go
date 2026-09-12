@@ -55,13 +55,26 @@ type AgentConfig struct {
 }
 
 // AgentRecoveryConfig controls admission and background recovery for tRPC runs.
+// Enabled and AdmissionEnabled are opt-out: nil (unset in config) means true;
+// set enabled: false to disable. This makes durable recovery the default
+// behavior for fresh deployments while keeping an explicit off switch.
 type AgentRecoveryConfig struct {
-	Enabled          bool          `yaml:"enabled" json:"enabled"`
-	AdmissionEnabled bool          `yaml:"admission_enabled" json:"admission_enabled"`
+	Enabled          *bool         `yaml:"enabled" json:"enabled"`
+	AdmissionEnabled *bool         `yaml:"admission_enabled" json:"admission_enabled"`
 	Lease            time.Duration `yaml:"lease" json:"lease"`
 	Heartbeat        time.Duration `yaml:"heartbeat" json:"heartbeat"`
 	ScanInterval     time.Duration `yaml:"scan_interval" json:"scan_interval"`
 	MaxWorkers       int           `yaml:"max_workers" json:"max_workers"`
+}
+
+// RecoveryEnabled resolves the opt-out flag: nil defaults to true.
+func (c AgentRecoveryConfig) RecoveryEnabled() bool {
+	return c.Enabled == nil || *c.Enabled
+}
+
+// RecoveryAdmissionEnabled resolves the opt-out flag: nil defaults to true.
+func (c AgentRecoveryConfig) RecoveryAdmissionEnabled() bool {
+	return c.AdmissionEnabled == nil || *c.AdmissionEnabled
 }
 
 // IMConfig configures the IM integration service.

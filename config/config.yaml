@@ -111,3 +111,12 @@ extract:
 tenant:
   # Enable cross-tenant access (can be enabled for intranet environments)
   enable_cross_tenant_access: false
+
+# Agent configuration
+agent:
+  # Durable tRPC run recovery. Enabled by default (opt-out): unset means true.
+  # Set enabled: false to disable the recovery worker; admission_enabled: false
+  # stops new durable admissions while letting existing runs drain.
+  recovery:
+    enabled: true
+    admission_enabled: true

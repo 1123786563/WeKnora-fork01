@@ -172,7 +172,7 @@ func (s *sessionService) submitDurableAgentRun(
 	modelID string,
 	supportsVision bool,
 ) error {
-	if s.cfg == nil || s.cfg.Agent == nil || !s.cfg.Agent.Recovery.AdmissionEnabled {
+	if s.cfg == nil || s.cfg.Agent == nil || !s.cfg.Agent.Recovery.RecoveryAdmissionEnabled() {
 		return errors.New("tRPC agent runs are disabled")
 	}
 	runs := RegisteredAgentRunService()

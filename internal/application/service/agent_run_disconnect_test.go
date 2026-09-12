@@ -23,7 +23,7 @@ func TestSubmitDurableAgentRunSurvivesDisconnect(t *testing.T) {
 	RegisterAgentRunService(NewAgentRunService(store))
 	t.Cleanup(func() { RegisterAgentRunService(prev) })
 	svc := newDurableRunSessionService(t, db)
-	svc.cfg = &config.Config{Agent: &config.AgentConfig{Recovery: config.AgentRecoveryConfig{AdmissionEnabled: true}}}
+	svc.cfg = &config.Config{Agent: &config.AgentConfig{Recovery: config.AgentRecoveryConfig{}}}
 
 	cancelled, cancel := context.WithCancel(context.Background())
 	cancel() // the disconnect already happened

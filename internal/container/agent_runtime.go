@@ -163,7 +163,7 @@ func NewAgentRuntime(cfg *config.Config, store *repository.AgentRunStore, execut
 	}
 	r := cfg.Agent.Recovery
 	c := service.DefaultWorkerConfig()
-	c.Enabled = r.Enabled
+	c.Enabled = r.RecoveryEnabled()
 	if r.Lease > 0 {
 		c.Lease = r.Lease
 	}
@@ -231,7 +231,8 @@ func (r *AgentRuntime) Drain() {
 // Enabled controls the worker; AdmissionEnabled controls new work, so an
 // operator can close admission while allowing existing runs to drain.
 func AgentRecoveryAdmissionEnabled(cfg *config.Config) bool {
-	return cfg != nil && cfg.Agent != nil && cfg.Agent.Recovery.Enabled && cfg.Agent.Recovery.AdmissionEnabled
+	return cfg != nil && cfg.Agent != nil &&
+		cfg.Agent.Recovery.RecoveryEnabled() && cfg.Agent.Recovery.RecoveryAdmissionEnabled()
 }
 
 // ValidateAgentRuntimeConfig is called by startup wiring before constructing
@@ -241,10 +242,10 @@ func ValidateAgentRuntimeConfig(cfg *config.Config) error {
 		return nil
 	}
 	r := cfg.Agent.Recovery
-	if r.AdmissionEnabled && !r.Enabled {
+	if r.RecoveryAdmissionEnabled() && !r.RecoveryEnabled() {
 		return errors.New("tRPC recovery admission requires the recovery worker to be enabled")
 	}
-	if !r.Enabled {
+	if !r.RecoveryEnabled() {
 		return nil
 	}
 	c := service.DefaultWorkerConfig()
