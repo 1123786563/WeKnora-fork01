@@ -45,6 +45,7 @@ and the external side-effect endpoint are deterministic doubles.
 | final engineering sweep | `pnpm run test && pnpm run type-check && pnpm run build-only` in `frontend/` | PASS (2026-09-12) | 818/818 tests, vue-tsc clean, vite build succeeds in the worktree; backend durable-run packages green, pre-existing main failures documented (TestSkillPythonVerifier environmental; notion loopback and model request-shape tests fail identically on main) |
 | browser verification | Playwright Chromium against live stack (SQLite + recovery + admission enabled + mock OpenAI model on SSRF-whitelisted loopback) | PASS (2026-09-12) | UI login; engine selector renders both engines and tRPC selectable; trpc session opens with engine chip; message send through the real HTTP path admits a durable run, the background worker executes the graph against the mock model, finalize writes the assistant message; page reload replays user message and durable reply |
 | disconnect survival | browser: agent-chat request aborted 300ms after send | PASS (2026-09-12) | the aborted request's run was still admitted (Submit runs on a detached context) and succeeded in the background worker; exactly one user + one assistant message row per request (Admission.UserMessageID reuses the handler-persisted row) — spec: HTTP 断线不取消 Run |
+| live crash recovery | real server binary: SIGKILL mid-run, restart on same DB | PASS (2026-09-12) | run left queued by the kill was claimed by the restarted process's recovery worker and succeeded with the assistant message finalized; browser reload after restart shows the recovered reply and engine chip — the SIGKILL matrices prove the same boundaries at provider level with the production store/saver/graph |
 | crash after tool result | `GOWORK=off go test ./internal/agent/recoverytest -run TestCrashAfterToolResult -count=1` | SKIPPED | superseded by the matrix subtest above when run without `TRPC_RECOVERY_GRAPH_PROVIDER`; the env-gated variant remains for CI |
 | executor end to end | `GOWORK=off go test ./internal/application/service -run TestExecuteDurableRun -count=1` | PASS | fresh run completes through admission snapshot → capability rebuild → graph → finalize transaction; superseded fence rejected with ErrLeaseLost |
 | worker wait mapping | `GOWORK=off go test ./internal/application/service -run TestWorkerParksWaitClass -count=1` | PASS | unknown tool outcomes park durably at waiting_user/tool_outcome_unknown instead of terminating |
@@ -76,9 +77,12 @@ Defects found and fixed by the matrix (recorded for audit):
   handler is a stateless DB reader and never the sole executor of a
   post-commit action. A dedicated outbox table becomes necessary only when
   non-database external delivery (webhooks, notifications) is introduced;
-  that trigger is recorded here as a design note, not an unmet requirement;
-- frontend browser-level verification of the two engine types (unit,
-  type-check and build pass; no live browser session in this environment).
+  that trigger is recorded here as a design note, not an unmet requirement.
+
+Frontend browser-level verification is complete (see the browser rows in the
+evidence table): engine selection, engine chip, durable round trip, reload
+replay, disconnect survival, and the single-row invariant all pass against a
+live stack with a mock OpenAI-compatible model.
 
 Known migration limitation: a SQLite database that applied the intermediate
 branch revision of migration 000014 cannot upgrade through 000016 (the rebuild
@@ -131,7 +135,7 @@ above is now green; the remaining rows keep the feature closed.
 | 10 能力复用 | PASS | MCP/Skills/Tools/模型配置在生产图执行中可用（capability parity 文档）|
 | 11 事件/steering/保留 | PASS | attempt_replaced、inject/after 模式（跟进受理）、保留水位裁剪、重启回放；outbox 结构性满足（见上文注）|
 | 12 HTTP 契约/权限/取消删除 | PASS | 黑盒三行（SSE 回放+cursor_expired、决策 200/409/200、删除围栏）；租户/用户权限、取消释放槽位 |
-| 13 客户端接入 | PASS（浏览器级未验证） | 引擎选择、断线重连回放去重、等待决策与取消已实现并有单测/类型检查/构建；无浏览器环境，见剩余行 |
+| 13 客户端接入 | PASS | 引擎选择、状态查询、断线重连回放去重、等待决策与取消已实现；浏览器级全项验证通过（登录/选择器/引擎 chip/durable 往返/刷新回放/断线存活/单行不变量） |
 | 14 跨进程崩溃恢复验收 | PASS | 真实 provider + SIGKILL 六个持久化边界 × 双方言；副作用恰好一次贯穿全部行 |
 
 功能默认关闭（引擎门禁），未满足项仅剩无浏览器环境的前端人工验证。

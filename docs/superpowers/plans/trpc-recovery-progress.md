@@ -94,6 +94,12 @@
 - d394965：浏览器复查暴露的两个后续缺陷修复——① 重复用户消息行：handler SSE 路径与 admission 各插一条（不同 id）；Admission 新增 UserMessageID，受理复用 handler 已持久化的行，浏览器验证单用户行 + 单 assistant 行；② 断线中断受理：Submit 改在 detached context 上执行，客户端断线落在受理事务中间也不能中止——浏览器实测 agent-chat 请求发出 300ms 后 abort，run 仍受理并在后台 worker 成功完成（规格：HTTP 断线不取消 Run）。
 - 浏览器级验证全项 PASS：登录、引擎选择器、引擎 chip、真实 HTTP 路径 durable run 往返、刷新回放、断线存活、单行不变量。
 
+## 2026-09-12 第十三轮（同分支续）
+
+- 真实服务器二进制级崩溃恢复验证：agent-chat 请求发出后 SIGKILL 服务器（run 停留 queued），同库重启后恢复 worker 认领并成功完成，assistant 消息落库；浏览器刷新可见恢复的回复与引擎 chip。与 SIGKILL 矩阵（provider 级、双方言、六个持久化边界）互补，覆盖真实二进制 + 真实 HTTP 路径。
+- 文档矛盾消除：14 项任务表 Task 13 与剩余行中过期的"浏览器级未验证"表述更新为已验证。
+- 最终全量扫测：后端 86 包 ok（service/notion/chat/embedding 4 个失败均为 main 上预存并已记录）；前端 818/818、vue-tsc、build 全过。
+
 ## 执行记录要求
 每次任务追加开始/结束时间、实现者、固定 HEAD、失败测试原因、通过命令、审查问题与修复提交。保留历史记录，不用最终 PASS 覆盖中途失败。
 
