@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { KnowledgeDocument, ParserEngineInfo, WeKnoraClient } from "@weknora/api-client";
+import type { KnowledgeDocument, ModelConfiguration, ParserEngineInfo, WeKnoraClient } from "@weknora/api-client";
 import {
   processingStatusLabel,
   normalizeKnowledgeProcessingStatus,
@@ -127,6 +127,7 @@ export function KnowledgeDocumentsPage({
   const [chunkStrategy, setChunkStrategy] = useState("auto");
   const [parserEngines, setParserEngines] = useState<ParserEngineInfo[]>([]);
   const [parserRules, setParserRules] = useState<Array<{ file_types: string[]; engine: string }>>([]);
+  const [tenantModels, setTenantModels] = useState<ModelConfiguration[]>([]);
   const [multimodalEnabled, setMultimodalEnabled] = useState(false);
   const [vllmModelId, setVllmModelId] = useState("");
   const [descriptionLanguage, setDescriptionLanguage] = useState("");
@@ -208,6 +209,12 @@ export function KnowledgeDocumentsPage({
 
   useEffect(() => {
     let active = true;
+    void client.configuration.models.list().then((models) => { if (active) setTenantModels(models); }).catch(() => { if (active) setTenantModels([]); });
+    return () => { active = false; };
+  }, [client]);
+
+  useEffect(() => {
+    let active = true;
     setState({ status: "loading" });
     void loadKnowledgeDocuments(client, knowledgeBaseId, {
       page,
@@ -269,6 +276,8 @@ export function KnowledgeDocumentsPage({
     () => (folderState.tree ? flattenFolders(folderState.tree) : []),
     [folderState.tree],
   );
+  const vllmModels = useMemo(() => tenantModels.filter((model) => String(model.type ?? '').toLowerCase() === 'vllm'), [tenantModels]);
+  const asrModels = useMemo(() => tenantModels.filter((model) => String(model.type ?? '').toLowerCase() === 'asr'), [tenantModels]);
   const items = state.status === "success" ? state.page.items : [];
   const selectedOnPage = items.filter((item) => selected.has(item.id)).length;
   const pageTotal = state.status === "success" ? state.page.total : 0;
@@ -1135,7 +1144,7 @@ export function KnowledgeDocumentsPage({
             <legend>Multimodal parsing</legend>
             <label className="wk-checkbox"><input type="checkbox" checked={multimodalEnabled} onChange={(event) => setMultimodalEnabled(event.target.checked)} /> Enable VLM descriptions</label>
             {multimodalEnabled ? <>
-              <label>VLM model ID <input required value={vllmModelId} onChange={(event) => setVllmModelId(event.target.value)} placeholder="tenant model id" /></label>
+              <label>VLM model ID {vllmModels.length > 0 ? <select required value={vllmModelId} onChange={(event) => setVllmModelId(event.target.value)}><option value="">Select a VLM model</option>{vllmModels.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select> : <input required value={vllmModelId} onChange={(event) => setVllmModelId(event.target.value)} placeholder="tenant model id" />}</label>
               <label>Description language <input value={descriptionLanguage} onChange={(event) => setDescriptionLanguage(event.target.value)} placeholder="Auto" /></label>
               <label>Custom instructions <textarea rows={3} value={customInstructions} onChange={(event) => setCustomInstructions(event.target.value)} /></label>
             </> : null}
@@ -1143,7 +1152,7 @@ export function KnowledgeDocumentsPage({
           <fieldset className="wk-upload-confirm-asr">
             <legend>Audio transcription</legend>
             <label className="wk-checkbox"><input type="checkbox" checked={asrEnabled} onChange={(event) => setAsrEnabled(event.target.checked)} /> Enable ASR</label>
-            {asrEnabled ? <><label>ASR model ID <input required value={asrModelId} onChange={(event) => setAsrModelId(event.target.value)} placeholder="tenant model id" /></label><label>Language <input value={asrLanguage} onChange={(event) => setAsrLanguage(event.target.value)} placeholder="Auto" /></label></> : null}
+            {asrEnabled ? <><label>ASR model ID {asrModels.length > 0 ? <select required value={asrModelId} onChange={(event) => setAsrModelId(event.target.value)}><option value="">Select an ASR model</option>{asrModels.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}</select> : <input required value={asrModelId} onChange={(event) => setAsrModelId(event.target.value)} placeholder="tenant model id" />}</label><label>Language <input value={asrLanguage} onChange={(event) => setAsrLanguage(event.target.value)} placeholder="Auto" /></label></> : null}
           </fieldset>
           {uploadError ? <Status tone="error">{uploadError}</Status> : null}
           <div className="wk-list-actions">
