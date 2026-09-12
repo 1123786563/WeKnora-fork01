@@ -58,6 +58,11 @@ export function ModelSettingsPanel({ client, role, initialModels }: Props) {
   const [notice, setNotice] = useState<string | null>(null);
   const [debugOpen, setDebugOpen] = useState(false);
   const [usageConflict, setUsageConflict] = useState<{ modelName: string; details: ModelUsageDetails } | null>(null);
+  const [ollamaAvailable, setOllamaAvailable] = useState<boolean | null>(null);
+  const [ollamaModels, setOllamaModels] = useState<Awaited<ReturnType<WeKnoraClient["settings"]["ollama"]["models"]>>>([]);
+  const [ollamaBusy, setOllamaBusy] = useState(false);
+  const [ollamaTask, setOllamaTask] = useState<string | null>(null);
+  const [ollamaProgress, setOllamaProgress] = useState<string | null>(null);
   const [connectionResult, setConnectionResult] = useState<Awaited<
     ReturnType<WeKnoraClient["configuration"]["models"]["connection"]["remote"]>
   > | null>(null);
@@ -107,6 +112,26 @@ export function ModelSettingsPanel({ client, role, initialModels }: Props) {
       })
       .finally(() => setLoadingProviders(false));
   }, [client, draft?.type]);
+  useEffect(() => {
+    if (!draft || draft.source !== "local") {
+      setOllamaAvailable(null);
+      setOllamaModels([]);
+      setOllamaTask(null);
+      setOllamaProgress(null);
+      return;
+    }
+    let active = true;
+    setOllamaBusy(true);
+    void Promise.all([client.settings.ollama.status(), client.settings.ollama.models()])
+      .then(([status, items]) => {
+        if (!active) return;
+        setOllamaAvailable(status.available);
+        setOllamaModels(items);
+      })
+      .catch(() => { if (active) setOllamaAvailable(false); })
+      .finally(() => { if (active) setOllamaBusy(false); });
+    return () => { active = false; };
+  }, [client, draft?.source]);
 
   function updateDraft<K extends keyof ModelDraft>(
     key: K,
@@ -161,6 +186,53 @@ export function ModelSettingsPanel({ client, role, initialModels }: Props) {
         cause instanceof Error ? cause.message : "Unable to load models",
       );
     }
+  }
+  function payloadString(value: unknown, keys: string[]): string | null {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    for (const key of keys) {
+      const candidate = (value as Record<string, unknown>)[key];
+      if (typeof candidate === "string" && candidate.trim()) return candidate;
+    }
+    return null;
+  }
+  async function downloadOllamaModel() {
+    if (!draft || draft.source !== "local" || !draft.name.trim() || ollamaBusy) return;
+    setOllamaBusy(true);
+    setError(null);
+    try {
+      const result = await client.settings.ollama.download(draft.name.trim());
+      const task = payloadString(result, ["task_id", "taskId", "id"]);
+      setOllamaTask(task);
+      setOllamaProgress(payloadString(result, ["progress", "status"]));
+      setNotice("Ollama model download started.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to download Ollama model");
+    } finally { setOllamaBusy(false); }
+  }
+  async function refreshOllamaProgress() {
+    if (!ollamaTask || ollamaBusy) return;
+    setOllamaBusy(true);
+    try {
+      const result = await client.settings.ollama.progress(ollamaTask);
+      setOllamaProgress(payloadString(result, ["progress", "status"]) ?? "reported");
+      setOllamaModels(await client.settings.ollama.models());
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to refresh Ollama progress");
+    } finally { setOllamaBusy(false); }
+  }
+  async function checkOllamaDimension() {
+    if (!draft || draft.source !== "local" || draft.type !== "embedding" || !draft.name.trim() || ollamaBusy) return;
+    setOllamaBusy(true);
+    try {
+      const result = await client.settings.ollama.checkModels([draft.name.trim()]);
+      const dimension = result.dimension ?? result.embedding_dimension;
+      if (typeof dimension === "number" && Number.isInteger(dimension)) {
+        updateDraft("dimension", dimension);
+        setNotice(`Ollama embedding dimension detected: ${dimension}.`);
+      } else setError("Ollama did not report an embedding dimension.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to check Ollama model dimension");
+    } finally { setOllamaBusy(false); }
   }
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -433,10 +505,22 @@ export function ModelSettingsPanel({ client, role, initialModels }: Props) {
               </select>
             </label>
             {draft.source === "local" ? (
-              <Status tone="warning">
-                Local models require the Ollama service and are not downloadable
-                from this React surface yet.
-              </Status>
+              <>
+                <Status tone={ollamaAvailable ? "success" : "warning"}>
+                  {ollamaBusy ? "Checking Ollama…" : ollamaAvailable ? "Ollama is available." : "Ollama is unavailable."}
+                </Status>
+                <label>
+                  Ollama model
+                  <input list="wk-ollama-models" required value={draft.name} onChange={(event) => updateDraft("name", event.target.value)} />
+                  <datalist id="wk-ollama-models">{ollamaModels.map((item) => <option key={item.name} value={item.name} />)}</datalist>
+                </label>
+                <div className="wk-list-actions">
+                  <Button type="button" disabled={ollamaBusy || !ollamaAvailable || !draft.name.trim()} onClick={() => void downloadOllamaModel()}>Download model</Button>
+                  {ollamaTask ? <Button type="button" disabled={ollamaBusy} onClick={() => void refreshOllamaProgress()}>Refresh progress</Button> : null}
+                  {draft.type === "embedding" ? <Button type="button" disabled={ollamaBusy || !ollamaAvailable || !draft.name.trim()} onClick={() => void checkOllamaDimension()}>Check dimension</Button> : null}
+                </div>
+                {ollamaTask || ollamaProgress ? <Status>Task {ollamaTask ?? "accepted"} · {ollamaProgress ?? "started"}</Status> : null}
+              </>
             ) : null}
             {draft.source === "remote" ? (
               <>

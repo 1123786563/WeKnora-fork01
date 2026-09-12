@@ -20,6 +20,7 @@ It remains `implementing`. The editor now exposes the existing model custom-head
 | Pure model contract | `pnpm exec tsx --test apps/web/src/settings/model-settings.test.ts` — 2 passed, 0 failed | focused business evidence |
 | Component SSR | `node --import tsx --test apps/web/src/settings/ModelDebugPanel.test.tsx apps/web/src/settings/ModelSettingsPanel.test.tsx` — 3 passed, 0 failed | focused component evidence |
 | Model usage conflict UI | `node --import tsx --test apps/web/src/configuration/ModelUsageNotice.test.tsx apps/web/src/configuration/ConfigurationPage.test.ts apps/web/src/settings/ModelSettingsPanel.test.tsx` — 6 passed, 0 failed | shared structured deletion-conflict rendering and existing configuration integration |
+| Ollama contract | `pnpm typecheck:web` and existing `packages/api-client/src/settings/index.ts` route contract for status/models/check/download/progress | shared route wiring; runtime Ollama evidence still required |
 | Web typecheck | `pnpm --filter @weknora/web exec tsc -p tsconfig.json --noEmit` — passed | Web static integration evidence |
 | Shared/API focused | `pnpm typecheck:shared` plus `packages/api-client/src/configuration.test.ts` — 22 passed, 0 failed | shared contract and route evidence |
 | Full Web | `pnpm test:web` — 280 passed, 0 failed | Web regression evidence |
@@ -28,4 +29,4 @@ It remains `implementing`. The editor now exposes the existing model custom-head
 
 ## Remaining work
 
-Implement the remaining Vue editor states and provider-specific behavior before moving R027 from `implementing` to `review`; Ollama/local-model behavior, localization, browser/native evidence and a full Web pass are not page acceptance.
+Implement the remaining Vue editor states and provider-specific behavior before moving R027 from `implementing` to `review`; complete provider-specific fields, localization, browser/native evidence and a full Web pass are not page acceptance.
