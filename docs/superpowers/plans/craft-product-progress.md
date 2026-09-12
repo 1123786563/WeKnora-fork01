@@ -38,7 +38,7 @@
 | W02 | **done** | .worktrees/craft-w02 / codex/craft-w02 | 1b44296f | 经 2 轮修复（conf 副本→真实 nginx→继承规则修复，捕获法实测剥凭据）→ 合入 e3835d82；审查 FAIL→定向复审→协调器复核闭环 |
 | O02 | **done** | .worktrees/craft-o02 / codex/craft-o02 | 9608c6ac | HEAD a6709d34 审查 PASS_WITH_NITS（25/25）→ 合入 1c02390b；G4 缺口扩大记录（另 4 张商业表仅存 AutoMigrate），收费上线前 G4 须补（O05 门禁） |
 | W03 | **done** | .worktrees/craft-w03 / codex/craft-w03 | 1c02390b | HEAD a6b30a09 审查 PASS_WITH_NITS → 合入 a8bfb241；API 表逐条过（幂等/Submit/gate/限流/身份注入拒绝）；fail-closed 边界确认；G2 复验通过（apps/web 构建+包导出） |
-| W04 | implementing | .worktrees/craft-w04 / codex/craft-w04 | a8bfb241 | 已派发（contracts/api-client/domain/core 四层；packages/core 由本任务创建）；W05–O05（除已完）等待依赖 |
+| W04 | review | .worktrees/craft-w04 / codex/craft-w04 | a8bfb241 | HEAD dcccb683：四层契约/状态/api/controller，test:shared 97/97、web 构建过；@weknora/core 新包；interaction HTTP 路由缺口归 W05；审查者进行中 |
 
 ## 调度纪要
 
