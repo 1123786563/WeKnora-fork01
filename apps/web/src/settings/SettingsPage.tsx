@@ -150,7 +150,7 @@ export function SettingsPage({ client, tenantId, role = 'owner' }: { client: WeK
     ? <ModelSettingsPanel client={client} role={role} initialModels={Array.isArray(payload) ? payload as never : []} />
     : null;
   const sandboxPanel = selectedKey === 'sandbox'
-    ? <SandboxSettingsPanel client={client} role={role} initialData={payload as never} />
+    ? <SandboxSettingsPanel client={client} role={role} />
     : null;
   const portedPanel = selectedKey === 'mcp' ? mcpPanel : selectedKey === 'models' ? modelPanel : selectedKey === 'sandbox' ? sandboxPanel : PARTIALLY_PORTED_SECTIONS.has(selectedKey)
     ? (selectedKey === 'sandbox'

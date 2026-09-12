@@ -1,14 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import type { SandboxBackendType, SandboxConfigRecord, SandboxConfigUpsert, WeKnoraClient } from '@weknora/api-client';
 import { Button, Card, Status } from '@weknora/ui';
+import { roleAtLeast, type SettingsRole } from '@weknora/views';
 
-type Role = 'viewer' | 'admin' | 'owner' | 'system-admin';
-type Props = { client: WeKnoraClient; role: Role; initialData?: { items: SandboxConfigRecord[]; workspaceScriptsDisabled: boolean } };
+type Props = { client: WeKnoraClient; role: SettingsRole; initialData?: { items: SandboxConfigRecord[]; workspaceScriptsDisabled: boolean } };
 
 const backends: SandboxBackendType[] = ['cube', 'e2b', 'docker'];
 
 export function SandboxSettingsPanel({ client, role, initialData }: Props) {
-  const canEdit = role === 'admin' || role === 'owner';
+  const canEdit = roleAtLeast(role, 'admin');
   const [data, setData] = useState(initialData);
   const [loading, setLoading] = useState(initialData === undefined);
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +29,7 @@ export function SandboxSettingsPanel({ client, role, initialData }: Props) {
   const filtered = filter === 'all' ? items : items.filter((item) => item.sandbox_type === filter);
   function startCreate(type: SandboxBackendType = 'docker') { setEditingId(null); setDraft({ name: '', description: '', config: { sandbox_type: type, [type]: {} } }); }
   function startEdit(item: SandboxConfigRecord) { setEditingId(item.id); setDraft({ name: item.name, description: item.description, config: item.config }); }
-  async function save(event: React.FormEvent<HTMLFormElement>) {
+  async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!draft || busy || !draft.name.trim()) return;
     setBusy(true); setError(null); setNotice(null);
     try { if (editingId) await client.sandboxConfigurations.update(editingId, { ...draft, name: draft.name.trim() }); else await client.sandboxConfigurations.create({ ...draft, name: draft.name.trim() }); setDraft(null); setNotice(editingId ? 'Sandbox configuration updated.' : 'Sandbox configuration created.'); await load(); }

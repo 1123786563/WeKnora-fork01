@@ -1311,3 +1311,8 @@
   R031 remains `implementing`; Vue wizard/template/deep-check/inventory
   states, localization, browser, real-backend, Wails, iOS, and Android
   evidence are still open.
+
+- Follow-up review aligned Sandbox role checks with the shared `roleAtLeast`
+  helper and made the settings route load its initial state from the shared
+  `sandboxConfigurations` client instead of coercing an unrelated payload.
+  Web typecheck and the 5/5 Sandbox component tests passed again.
