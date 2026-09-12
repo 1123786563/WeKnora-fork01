@@ -162,6 +162,14 @@ func (w *AgentRunWorker) Tick(ctx context.Context) error {
 
 func (w *AgentRunWorker) runOne(ctx context.Context, id string, fence agentruntime.Fence) {
 	defer func() { w.mu.Lock(); delete(w.active, id); w.mu.Unlock() }()
+	// The persisted absolute deadline bounds this worker's claim: a run past
+	// its deadline fails with the explicit reason instead of looping forever
+	// while renewing its lease (spec: 预算与绝对截止时间 not reset on restart).
+	if run, err := w.store.Get(ctx, fence.RunKey); err == nil && !run.Deadline.IsZero() &&
+		time.Now().After(run.Deadline) {
+		_ = w.store.SetStatus(context.WithoutCancel(ctx), fence, "failed", "deadline_exceeded")
+		return
+	}
 	done := make(chan struct{})
 	defer close(done)
 	renewCtx, cancel := context.WithCancel(ctx)
@@ -189,6 +197,15 @@ func (w *AgentRunWorker) runOne(ctx context.Context, id string, fence agentrunti
 				return
 			}
 			return
+		}
+	}
+	// A persisted deadline also caps the execution context so a slow graph
+	// cannot outlive the budget; the heartbeat renewer gives up with it.
+	if run, getErr := w.store.Get(ctx, fence.RunKey); getErr == nil && !run.Deadline.IsZero() {
+		if until := time.Until(run.Deadline); until > 0 {
+			var deadlineCancel context.CancelFunc
+			renewCtx, deadlineCancel = context.WithDeadline(renewCtx, run.Deadline)
+			defer deadlineCancel()
 		}
 	}
 	err := w.execute(renewCtx, fence)
