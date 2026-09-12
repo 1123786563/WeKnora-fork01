@@ -193,3 +193,7 @@
 - embed 渠道隔离链路搭建：agents/:id/embed-channels 创建渠道（allowed_origins 需含前端 origin）→ preview-session 签发 ems_ 令牌 → embed dev :5182（VITE_API_BASE_URL=:8080）。
 - 发现 embed 冷恢复缺陷：会话 resume 请求 GET /api/v1/embed/:ch/messages/:sid/load… 网络层 ERR_FAILED（初始 token 交换/会话创建成功）。已登记 embed 缺陷待查（后续结合 EmbedApp session probe 逻辑定位）。
 - chat 视觉形态实施完成并提交 54f2e59（web 175/175、build 绿）。
+
+## 2026-09-12 Round 30
+
+- embed 冷恢复缺陷根因定位：后端 CORS credentials+通配 origin 无效组合拦截带 Authorization 响应（后端共性缺陷，Vue 亦受影响）。登记后端待决项；embed 前端回退逻辑本身正确。证据：evidence/vue-react-parity/2026-09-12-embed-resume-defect.md。
