@@ -181,3 +181,9 @@
 
 - chat 会话页 live 基线（真实 session id 80fd9cf5…）：会话侧栏/沙箱终端控制/消息输入可用（screenshots/live-chat-session.png），但视觉形态与 Vue（botmsg 排版/引用卡片/输入区组合）差距大——登记为「chat 视觉形态」大项，排在 KB 详情实施之后。
 - KB 详情审计结论已入矩阵（Round 26），KB 详情实施子代理进行中。
+
+## 2026-09-12 Round 28
+
+- Organizations live 复测：invite_code 参数触发的预览卡正确显示 already-member 分支（“您已经是该共享空间的成员”），组织列表含成员计数/角色（org-invite-preview-live.png）。
+- chat 视觉形态实施子代理派发（packages/views/chat + ChatRoutePage 渲染层；禁改 packages/i18n）。
+- KB 详情实施子代理继续。
