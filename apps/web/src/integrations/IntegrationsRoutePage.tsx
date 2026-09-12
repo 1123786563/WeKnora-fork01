@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import { integrationKeyFromQuery, IntegrationsPage, type APIPrincipalConfig, type IntegrationResource } from '@weknora/views';
+import { parseIntegrationTenantId } from './tenant.ts';
 
-export function IntegrationsRoutePage({ client }: { client: WeKnoraClient }) {
+export function IntegrationsRoutePage({ client, tenantId }: { client: WeKnoraClient; tenantId: string | null }) {
   const [embedChannels, setEmbedChannels] = useState<IntegrationResource[]>([]);
   const [imChannels, setImChannels] = useState<IntegrationResource[]>([]);
   const [loading, setLoading] = useState(true);
@@ -22,7 +23,8 @@ export function IntegrationsRoutePage({ client }: { client: WeKnoraClient }) {
   }
 
   useEffect(() => { void load(); }, [client]);
-  useEffect(() => { const id = Number(window.localStorage.getItem('weknora_selected_tenant_id') || 0); if (id) void client.administration.tenantApiKeys.principalConfig(id).then(setPrincipal).catch(() => setPrincipal(null)); }, [client]);
+  const activeTenantId = parseIntegrationTenantId(tenantId);
+  useEffect(() => { if (activeTenantId !== null) void client.administration.tenantApiKeys.principalConfig(activeTenantId).then(setPrincipal).catch(() => setPrincipal(null)); else setPrincipal(null); }, [activeTenantId, client]);
 
   async function openEmbed(channel: IntegrationResource) {
     try {
@@ -34,7 +36,6 @@ export function IntegrationsRoutePage({ client }: { client: WeKnoraClient }) {
     }
   }
 
-  const tenantId = Number(window.localStorage.getItem('weknora_selected_tenant_id') || 0);
   const actions = {
     principal,
     onCreateEmbed: async (input: Record<string, unknown>) => { await client.embed.channels.create(String(input.agent_id || ''), input); },
@@ -45,8 +46,8 @@ export function IntegrationsRoutePage({ client }: { client: WeKnoraClient }) {
     onUpdateIm: async (id: string, input: Record<string, unknown>) => { await client.embed.im.update(id, input); },
     onToggleIm: async (id: string) => { await client.embed.im.toggle(id); },
     onDeleteIm: async (id: string) => { await client.embed.im.remove(id); },
-    onSavePrincipal: async (input: { mode: APIPrincipalConfig['mode']; requireDirectHeader: boolean; hmacSecret?: string }) => { if (!tenantId) throw new Error('No active workspace selected.'); setPrincipal(await client.administration.tenantApiKeys.updatePrincipalConfig(tenantId, input)); },
-    onCreatePrincipalTestToken: async (externalUserId: string) => { if (!tenantId) throw new Error('No active workspace selected.'); return client.administration.tenantApiKeys.createPrincipalTestToken(tenantId, externalUserId); },
+    onSavePrincipal: async (input: { mode: APIPrincipalConfig['mode']; requireDirectHeader: boolean; hmacSecret?: string }) => { if (activeTenantId === null) throw new Error('No active workspace selected.'); setPrincipal(await client.administration.tenantApiKeys.updatePrincipalConfig(activeTenantId, input)); },
+    onCreatePrincipalTestToken: async (externalUserId: string) => { if (activeTenantId === null) throw new Error('No active workspace selected.'); return client.administration.tenantApiKeys.createPrincipalTestToken(activeTenantId, externalUserId); },
   };
 
   return <IntegrationsPage initialTab={integrationKeyFromQuery(window.location.search)} embedChannels={embedChannels} imChannels={imChannels} apiBaseUrl={window.location.origin} loading={loading} error={error} onReload={() => void load()} onOpenEmbed={(channel) => void openEmbed(channel)} actions={actions} />;

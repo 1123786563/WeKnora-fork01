@@ -1102,3 +1102,14 @@
   `docs/migrations/react/evidence/t03-web-write-replay-guard-2026-09-12.md`.
   This closes the client-side replay defect; provider, browser role/tenant,
   and deployed acceptance evidence remains open.
+
+### T04 integrations scope tenant follow-up (2026-09-12)
+
+- The Web integrations route no longer reads the legacy selected-tenant key
+  for API Principal operations. It consumes the current authenticated scope
+  tenant and fails closed for malformed/non-positive identifiers. Focused
+  tenant parsing passed 1/1; Web passed 105/105, with typecheck, build,
+  boundary, and diff checks passing.
+- Evidence: `docs/migrations/react/evidence/t04-integrations-scope-tenant-2026-09-12.md`.
+  This closes the stale local-storage scope defect; full browser role/tenant
+  and provider callback evidence remains open.
