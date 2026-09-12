@@ -31,7 +31,7 @@
 - recoverytest SQLite：PASS，SIGKILL matrix 9/9；单独 `TestCrashAfterToolResult` 在无 provider 时显式 SKIPPED。
 - recoverytest PostgreSQL：PASS，SIGKILL matrix 8/8 + contention；repository PostgreSQL Run suite 6/6 PASS。
 - 前端：`pnpm run test && pnpm run type-check && pnpm run build-only` PASS，819/819。
-- 浏览器新鲜证据：本地前端 `5173` + 后端 `8080` 可登录；智能体选择器列出“智能推理”，选择后显示“未就绪，需要配置对话模型和重排模型”。因此 live tRPC run、断线和真实服务器 SIGKILL 行为保持 BLOCKED，不以 builtin 登录成功替代。
+- 历史浏览器证据：本地前端 `5173` + 后端 `8080` 的 readiness guard 因缺模型而阻塞；该结果保留为历史记录，不代表当前 live 结论。当前 rerun 已用本地 Ollama 与确定性 rerank 替身完成真实 tRPC HTTP 与 server-binary SIGKILL 验证。
 
 ## 2026-09-12 重新执行记录（codex/trpc-recovery-r2，基线 d370254）
 

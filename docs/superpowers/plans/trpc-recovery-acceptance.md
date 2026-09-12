@@ -42,7 +42,7 @@ and the external side-effect endpoint are deterministic doubles.
 | after-mode follow-up | `go test ./internal/application/service -run TestExecuteDurableRunAdmitsAfterFollowUp -count=1` | PASS (2026-09-12) | steering parked with delivery=after is admitted as the next durable run once the current run succeeds: same snapshot identity, parked content as query, follow-up holds the session slot as queued, input consumed exactly once |
 | OAuth park black-box | `go test ./internal/agent/recoverytest -run 'TestCrashMatrixSQLite/oauth_park'` and `...PostgreSQL/oauth_park` | PASS both (2026-09-12) | pre-execution OAuth park driven through the production chain (ParkToolPreflightWait + WaitForDecision) in the SIGKILL provider; crash lands mid-wait with no tool result; explicit user retry bound to the planned row requeues and completes with exactly one side effect |
 | pre-approval park | `go test ./internal/agent/approval -run TestDurableGateParksPreflightApprovalWait -count=1` | PASS (2026-09-12) | DurableGate.RequestAndWait parks a durable run before dispatch with an mcp_approve_ pending id through the same hook chain as OAuth; builtin (no fence) still delegates to the live gate; resume flows through the planned-marker retry path proven by the oauth_park matrix row |
-| race check | `GOWORK=off go test -race ./internal/application/service ./internal/application/repository ./internal/agent/trpc ./internal/agent/runtime -count=1` | PASS after worker fix (targeted rerun; full package rerun pending final commit) | The first full run found and fixed the deadline context race; targeted race test passed. |
+| race check | `GOWORK=off go test -race ./internal/application/service ./internal/application/repository ./internal/agent/trpc ./internal/agent/runtime ./internal/sandbox -count=1` | PARTIAL (exit 1, fresh 2026-09-12) | repository/trpc/runtime/sandbox passed; service package still fails in unrelated skill/API/singleflight tests and reports unrelated races: `TestSkillInstallerIsHiddenFromThePicker`, `TestTenantAPIKeyServiceAuthenticateThrottlesLastUsedUpdates`, `TestQueryTemplatesEnsureAndReplaceDoNotShareSingleflight`, `TestRegisterCatalogDoesNotMoveTheDefinitionWhenPinFails`, `TestInstallSessionIgnoresATenantOverrideOfTheInstallerAgent`, `TestSkillPythonVerifier`. Durable-focused race tests pass. |
 | final engineering sweep | `pnpm run test && pnpm run type-check && pnpm run build-only` in `frontend/` | PASS (rerun) | 819/819 tests, vue-tsc clean, Vite build succeeds after declaring direct compiler/i18n test dependencies. |
 | browser verification | Browser harness against live local frontend/backend | PASS (fresh 2026-09-12) | Local Ollama `qwen2.5:0.5b` plus deterministic local rerank HTTP test service; authenticated browser-created `engine_type=trpc` session reached the real `/agent-chat` path. SQLite shows one `succeeded` Run, 2 events, 4 checkpoints and one assistant row. |
 | disconnect survival | browser/server request path with client disconnect | PASS (fresh 2026-09-12) | The durable HTTP path is submitted on a detached context; the request-side disconnect does not cancel the persisted Run. Focused disconnect test and live durable HTTP round trip both completed against the same SQLite service. |
@@ -81,9 +81,9 @@ Defects found and fixed by the matrix (recorded for audit):
   that trigger is recorded here as a design note, not an unmet requirement.
 
 The repository contains historical browser-level evidence for engine selection,
-durable round trip, reload replay and disconnect survival. The fresh browser
-attempt reached the authenticated product and engine picker, then stopped at
-the product's explicit missing-model readiness guard. Historical rows remain
+durable round trip, reload replay and disconnect survival. Fresh rerun evidence
+also covers a real local tRPC HTTP request and a real server-binary
+SIGKILL/restart against the same SQLite database. Historical rows remain
 historical evidence, not current release evidence.
 
 Known migration limitation: a SQLite database that applied the intermediate
@@ -117,9 +117,10 @@ startup because it would admit work without a recovery worker. A disabled
 worker must never silently fall back to builtin execution for a persisted tRPC
 run.
 
-Until every required matrix row has fresh command output and a provider report,
-the feature remains unavailable for rollout. The single-process SQLite matrix
-above is now green; the remaining rows keep the feature closed.
+Until the engineering race gate is clean and deployment-specific external
+model/provider evidence is collected, the feature remains unavailable for
+rollout. The provider matrices and local live binary recovery are green; the
+service-wide race failures above keep the release gate closed.
 
 ## 14 项任务最终核验表（截至 rerun HEAD 待提交配置修复；真实浏览器与二进制恢复证据于 2026-09-12 补录）
 
