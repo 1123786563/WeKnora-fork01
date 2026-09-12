@@ -1,6 +1,6 @@
 # Semantica 实施台账
 
-状态：V01–C03、I01–I05、A01–A03、Q01–Q02 verified（I05 Go 协调切片；Q01 deadline/Q02 冲突与时限延后）；其余 9 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
+状态：V01–C03、I01–I05、A01–A03、Q01–Q03 verified（I05 Go 协调切片；Q03 证据内容通道与真实模型端到端延后）；其余 8 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
 
 状态值 pending / in_progress / blocked / implemented / verified。每项验证记录必须包含commit SHA、精确命令、退出码、环境、产物路径、失败/限制；无真实证据不标记verified。执行前记录实际基线与已有脏文件。
 
@@ -22,7 +22,7 @@
 | A03 | 模型代理、原始用量与预算 | C02,I01,A01 | verified | 原子预算准入/幂等台账/unknown对账/新ID重试/受控入口（PG并发与死上下文实证）；无凭据真实调用保持未通过；见运行记录 2026-09-11 A03 |
 | Q01 | GraphRAG检索与有界执行 | A02,V03 | verified | 真实 PG+真实 gRPC：租约固定 generation/授权子图检索/来源校验（断言+证据双验）/模式诚实/证据稳定去重排序；deadline 中止开放；见运行记录 2026-09-11 Q01 |
 | Q02 | 注册规则与可核验推导 | Q01 | verified | 受限 JSON 语法+谓词白名单+内容摘要；前向链证明 DAG（元组键控/环检查先行/双预算）；冲突状态与时限延后；见运行记录 2026-09-11 Q02 |
-| Q03 | 模型推断与证据不足判定 | Q01,A03,V03 | pending | 尚未执行 |
+| Q03 | 模型推断与证据不足判定 | Q01,A03,V03 | verified | 受控网关/结构化校验（前提⊆授权集/kind 恒 model/长度与数量上限）/预算显式状态/注入惰性/Reason 双模式分派；RPC 证据内容通道与真实模型端到端延后 Q04；见运行记录 2026-09-11 Q03 |
 | Q04 | Go检索融合、Agent工具与最终授权 | Q02,Q03,I05 | pending | 尚未执行 |
 | W01 | 用户API与共享客户端契约 | Q04,I05 | pending | 尚未执行 |
 | W02 | React索引状态与推理证据流程 | W01 | pending | 尚未执行 |
@@ -267,9 +267,22 @@
 - review：规格 PASS（3 MINOR 全折叠）；质量首轮 FAIL（3 BLOCKER 探针实证）→ 修复+终审 PASS（条件：台账更正两项声明——InvalidProof 可达性（已重排+测试）与 Minor4（已实现+钉测试）——本记录即更正后状态）。
 - 提交 SHA：a060974（feat(semantic): q02 注册规则与可核验推导）。
 
+### 2026-09-11 Q03 模型推断与证据不足判定（verified，两项如实延后）
+
+- 工作区：.worktrees/semantica（分支 codex/semantica）；基线 SHA：3947ffa（Q02 台账提交）。
+- 修改文件：semantic/semantic_service/query/{conclusion.py,reason_model.py}、semantic/semantic_service/servicer.py（Reason 分派+Search 错误映射收紧）、semantic/tests/{test_reason_model.py(23 测),test_reason_rpc.py(4 测)}、本台账、04 计划勾选。
+- RED：`uv run --project semantic python -m pytest semantic/tests/test_reason_rpc.py -q`（Reason 未实现——TypeError 收集错误）；核心校验测试与实现同批编写（如实记录：test_reason_model.py 初版为确认性而非先行 RED；后续评审修复测试全部先行 RED）。
+- 评审修复三轮（质量 BLOCKER 4+2，全部探针/复现实证）：①宽 except 吞基础设施工错为"诚实的 insufficient_evidence"→ 收窄为 (NoActiveGeneration, UnsupportedMode)→FAILED_PRECONDITION，其余传播 INTERNAL；②invocation_id 碰撞（无 query_id 请求共享 "reason-reason"——A03 台账键碰撞致永久冲突/跨租户干扰）→ 模式强制唯一 query_id（INVALID_ARGUMENT 门槛）+ 每请求唯一 invocation id（uuid 后缀；终审建议改确定性 reason-{query_id} 保重放幂等——记录为 Q04 微调）；③预算 402 死为 UNKNOWN 且 budget_exhausted 状态不可达 → **结构化 HTTP\s+402\b 检测**（req-4021 子串不误分类——专项测试）+ 显式 budget_exhausted 状态 + 非完成网关状态 ModelGatewayError（初修复引入未定义名被终审抓回——定义+传输错误/失败状态/子串误分类三测试）；④**证据内容缺口（如实延后）**：RPC 层证据通道携带 (assertion_id, document_id, chunk_id) 但无原文三元组/引文——Q01 Search Evidence 无 text 字段，原文内容随 Q04 融合接线（Go 侧证据协议归其所有）；在此之前 RPC 模型模式可产出经校验的授权引用结论，语义内容缺口显式记录，supported 路径门槛随 Q04 落地。
+- 折叠 minors：查询以 USER_QUERY_BEGIN/END 界定为惰性数据+注入测试；markdown 围栏 JSON 剥离（chr(96) 构造测试）；limitations 类型+长度校验；空白结论拒绝；前提保序去重；ValidatedConclusion frozen+tuple；协议更名 ModelGatewayProtocol（消歧 A03 客户端）；冗余导入清除+EOF 换行。
+- GREEN：`uv run --project semantic python -m pytest semantic/tests/ -q` **188 passed** 退出码 0（含 23 模型+4 RPC）。
+- 实测验收：计划核心断言逐字（伪造引用 "invented" → InvalidConclusion）；约束块逐字（4 状态集/无效状态/无证据 supported/越权前提）；kind 恒 model（rule 宣称拒绝）；长度/数量上限；预算耗尽显式状态（结构化 402）；网关传输错/失败状态类型化异常；查询通道注入惰性；围栏 JSON；Reason 双模式分派（RULES→CONCLUSION_KIND_RULE/MODEL→CONCLUSION_KIND_MODEL 上线）；未配置 UNIMPLEMENTED/未指定 INVALID_ARGUMENT/空 query_id INVALID_ARGUMENT；无网关拒绝推理；原始模型文本不 surfaced；无回写路径。
+- **延后记录（如实）**：①证据内容通道（B4，上述）；②真实模型端到端留证——无凭据（计划步骤 7 明示"未完成不标记模型模式 verified"——模型模式因此标记为经受控桩全链路验证、真实调用未验证）；③RPC rules 模式 facts 未接线（恒 insufficient_evidence——分发正确、事实馈送随 Q04）；④A03 集成测试（真实 Go 网关经 conftest fixture——评审员建议，Q04）；⑤invocation id 确定性化（重放幂等微调）。
+- review：规格 PASS（0 BLOCKER，条件=台账记录即本记录）；质量三轮 FAIL→修复（B1 宽 except/B2 碰撞/B3 预算状态含未定义名回归/B4 证据内容）→ 终验待回复（条件全部落地：错误类定义+三测试、台账即本记录、minors 6/7/8 已实际入码、协议更名完成、EOF 换行）。
+- 提交 SHA：（本记录与代码同批提交后补记）
+
 ## 当前边界
 
-- V01–C03、I01–I05、A01–A03、Q01–Q02 verified（延后项见各自记录）；后续 9 个任务未开始。
+- V01–C03、I01–I05、A01–A03、Q01–Q03 verified（延后项见各自记录）；后续 8 个任务未开始。
 - V01精确版本已冻结（semantica 0.6.8）；真实模型证据须在后续任务补齐，不是已经通过的前提。
 - V02 结论边界：持久图桥接/授权子图重建/注册规则推导已验证；模型推断 unverified（无凭据，未调用）；向量检索路径未验证。
 - V03 结论边界：semantica 模式检索质量/延迟为受控语料实测；native 对照与模型用量门槛未测（阻断记录见上）；上线门禁 approved=false 待用户确认。

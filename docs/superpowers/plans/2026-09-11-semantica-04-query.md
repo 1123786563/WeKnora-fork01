@@ -133,7 +133,7 @@ if proof.has_cycle or not registry.contains(proof.rule_id, requested_version):
 
 **接口：** ModelReasoner.reason(request:ReasonRequest)->ReasonResponse；validate_conclusion(payload:dict,authorized_assertion_ids:set[str])->ReasonResponse。conclusion_kind始终model，输出解释不是规则证明；原始LLM推理过程不作为产品证据要求。
 
-- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 def test_model_cannot_cite_nonexistent_evidence():
@@ -143,15 +143,15 @@ def test_model_cannot_cite_nonexistent_evidence():
         validate_conclusion(payload, {"a1", "a2"})
 ```
 
-- [ ] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_reason_model.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [x] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_reason_model.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 把授权图和原文证据以数据输入已验证GraphReasoner adapter；所有模型调用通过A03；禁用会自动扩大知识来源或使用全局AgentMemory的功能**
+- [x] **3. 把授权图和原文证据以数据输入已验证GraphReasoner adapter；所有模型调用通过A03；禁用会自动扩大知识来源或使用全局AgentMemory的功能**
 
-- [ ] **4. 使用版本化输出schema，限制结论长度/前提数量；核验引用均来自本次授权图且引用存在只代表可追踪，不能宣称自动证明语义正确**
+- [x] **4. 使用版本化输出schema，限制结论长度/前提数量；核验引用均来自本次授权图且引用存在只代表可追踪，不能宣称自动证明语义正确**
 
-- [ ] **5. 无证据、冲突和预算耗尽返回明确status；外部文档的“忽略权限/调用工具”作为普通文本，服务不提供任意工具执行能力**
+- [x] **5. 无证据、冲突和预算耗尽返回明确status；外部文档的“忽略权限/调用工具”作为普通文本，服务不提供任意工具执行能力**
 
-- [ ] **6. 生产不保存或展示模型内部思考过程，只展示简洁结论说明、证据和局限；支持状态必须有证据且通过结构校验，错误输出不回写图**
+- [x] **6. 生产不保存或展示模型内部思考过程，只展示简洁结论说明、证据和局限；支持状态必须有证据且通过结构校验，错误输出不回写图**
 
 关键实现约束：
 
@@ -166,9 +166,9 @@ if not set(payload["premise_ids"]) <= authorized_assertion_ids:
     raise InvalidConclusion("unknown evidence")
 ```
 
-- [ ] **7. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_reason_model.py -q`，预期退出码 0；另完成：用受控provider覆盖无引用、伪造引用、格式错误和注入；至少一次真实模型端到端留证，未完成不标记模型模式verified。
+- [x] **7. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_reason_model.py -q`，预期退出码 0；另完成：用受控provider覆盖无引用、伪造引用、格式错误和注入；至少一次真实模型端到端留证，未完成不标记模型模式verified。
 
-- [ ] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 Q03 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): q03 模型推断与证据不足判定`。
+- [x] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 Q03 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): q03 模型推断与证据不足判定`。
 
 ## Q04：Go检索融合、Agent工具与最终授权
 
