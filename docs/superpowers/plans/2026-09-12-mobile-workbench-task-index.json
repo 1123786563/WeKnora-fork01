@@ -1,0 +1,818 @@
+{
+  "schema_version": 1,
+  "baseline_sha": "700ef41033a7d1b371abbc8cbac22ade25135ee0",
+  "status": "planning_only_not_executed",
+  "scope": "37 incremental W tasks plus explicitly inherited H requirements",
+  "tasks": [
+    {
+      "id": "W01",
+      "title": "统一 DTO、事件和能力合同",
+      "plan": "2026-09-12-mobile-workbench-01-core.md",
+      "status": "pending",
+      "depends_on": [],
+      "conditional_dependencies": {},
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `packages/contracts/src/mobile/execution.ts`、`packages/contracts/test/mobile-execution.test.ts`",
+        "Create: `internal/workbench/contracts.go`、`internal/workbench/contracts_test.go`",
+        "Modify: `packages/contracts/src/index.ts`（导出）、`package.json`（共享测试入口）"
+      ],
+      "red_command": "pnpm exec tsx --test packages/contracts/test/mobile-execution.test.ts"
+    },
+    {
+      "id": "W02",
+      "title": "持久 Run 驱动分流与所有权查询",
+      "plan": "2026-09-12-mobile-workbench-01-core.md",
+      "status": "pending",
+      "depends_on": [
+        "W01"
+      ],
+      "conditional_dependencies": {},
+      "inherited_dependencies": [],
+      "files": [
+        "Modify: `internal/agent/runtime/contracts.go`、`internal/application/repository/agent_run.go`、`internal/application/service/agent_run_worker.go`",
+        "Create: `internal/application/repository/agent_run_driver.go`、`internal/application/repository/agent_run_driver_test.go`",
+        "Create: `migrations/versioned/000121_workbench_runs.{up,down}.sql`、`migrations/sqlite/000041_workbench_runs.{up,down}.sql`（执行前核对序号空闲）",
+        "Modify: `internal/database/migration.go`（SQLite受控迁移入口）",
+        "Create: `internal/database/workbench_migration.go`、`internal/database/workbench_migration_test.go`"
+      ],
+      "red_command": "go test ./internal/application/repository -run TestWorkbenchDriver -count=1"
+    },
+    {
+      "id": "W03",
+      "title": "所有权 facade、快照和标准 SSE",
+      "plan": "2026-09-12-mobile-workbench-01-core.md",
+      "status": "pending",
+      "depends_on": [
+        "W02"
+      ],
+      "conditional_dependencies": {},
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `internal/handler/session/workbench_read.go`、`internal/handler/session/workbench_read_test.go`",
+        "Create: `internal/application/repository/agent_run_snapshot.go`、`internal/application/repository/agent_run_snapshot_test.go`",
+        "Create: `internal/router/routes_workbench.go`",
+        "Modify: `internal/router/router.go`、`internal/handler/session/agent_run.go`（复用 DTO，不破坏旧 event 名）"
+      ],
+      "red_command": "go test ./internal/handler/session -run TestWorkbenchSSE -count=1"
+    },
+    {
+      "id": "W04",
+      "title": "请求幂等、预算绑定和平台执行入口",
+      "plan": "2026-09-12-mobile-workbench-01-core.md",
+      "status": "pending",
+      "depends_on": [
+        "W02",
+        "W03"
+      ],
+      "conditional_dependencies": {},
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `internal/application/service/workbench/admission.go`、`internal/application/service/workbench/admission_test.go`",
+        "Create: `internal/application/repository/workbench_request.go`、`internal/application/repository/workbench_request_test.go`",
+        "Create: `internal/handler/session/workbench_start.go`",
+        "Modify: `internal/router/routes_workbench.go`、`internal/container/agent_runtime.go`",
+        "Create: `migrations/versioned/000122_workbench_requests.{up,down}.sql`、`migrations/sqlite/000042_workbench_requests.{up,down}.sql`"
+      ],
+      "red_command": "go test ./internal/application/service/workbench -run TestAdmission -count=1"
+    },
+    {
+      "id": "W05",
+      "title": "有类型的命令与跨权限域交互",
+      "plan": "2026-09-12-mobile-workbench-01-core.md",
+      "status": "pending",
+      "depends_on": [
+        "W04"
+      ],
+      "conditional_dependencies": {},
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `internal/workbench/interaction.go`、`internal/workbench/interaction_test.go`",
+        "Create: `internal/handler/session/workbench_commands.go`、`internal/handler/session/workbench_commands_test.go`",
+        "Create: `internal/application/service/workbench/interaction.go`",
+        "Modify: `internal/router/routes_workbench.go`"
+      ],
+      "red_command": "go test ./internal/workbench -run TestInteraction -count=1"
+    },
+    {
+      "id": "W06",
+      "title": "共享 SDK 与请求对账接口",
+      "plan": "2026-09-12-mobile-workbench-01-core.md",
+      "status": "pending",
+      "depends_on": [
+        "W01",
+        "W03",
+        "W04",
+        "W05"
+      ],
+      "conditional_dependencies": {},
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `packages/api-client/src/mobile/executions.ts`、`packages/api-client/src/mobile/executions.test.ts`",
+        "Modify: `packages/api-client/src/index.ts`、`package.json`"
+      ],
+      "red_command": "pnpm exec tsx --test packages/api-client/src/mobile/executions.test.ts"
+    },
+    {
+      "id": "W07",
+      "title": "产品会话作用域与刷新失效",
+      "plan": "2026-09-12-mobile-workbench-02-client.md",
+      "status": "pending",
+      "depends_on": [
+        "W06"
+      ],
+      "conditional_dependencies": {},
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `apps/mobile/sources/weknora/platform/product-session.ts`、`apps/mobile/sources/weknora/platform/product-session.test.ts`",
+        "Modify: `apps/mobile/sources/weknora/auth/session.tsx`、`apps/mobile/sources/app/_layout.tsx`"
+      ],
+      "red_command": "pnpm exec tsx --test apps/mobile/sources/weknora/platform/product-session.test.ts"
+    },
+    {
+      "id": "W08",
+      "title": "原生 OIDC 一次性交换",
+      "plan": "2026-09-12-mobile-workbench-02-client.md",
+      "status": "pending",
+      "depends_on": [
+        "W07"
+      ],
+      "conditional_dependencies": {},
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `internal/application/repository/mobile_auth_exchange.go`、`internal/application/repository/mobile_auth_exchange_test.go`",
+        "Create: `internal/handler/auth_mobile_exchange.go`、`internal/handler/auth_mobile_exchange_test.go`",
+        "Modify: `internal/handler/auth.go`、`internal/router/routes_auth_tenant.go`、`packages/api-client/src/auth/oidc.ts`、`apps/mobile/sources/weknora/auth/AuthReturnScreen.tsx`",
+        "Create: `migrations/versioned/000123_mobile_auth_exchange.{up,down}.sql`、`migrations/sqlite/000043_mobile_auth_exchange.{up,down}.sql`",
+        "Create: `packages/api-client/src/auth/native-oidc.test.ts`"
+      ],
+      "red_command": "go test ./internal/application/repository -run TestMobileExchange -count=1"
+    },
+    {
+      "id": "W09",
+      "title": "原生流解码、持久投影与 cursor 提交",
+      "plan": "2026-09-12-mobile-workbench-02-client.md",
+      "status": "pending",
+      "depends_on": [
+        "W01",
+        "W03",
+        "W06",
+        "W07"
+      ],
+      "conditional_dependencies": {},
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `packages/domain/src/mobile/execution-cache.ts`、`packages/domain/src/mobile/execution-cache.test.ts`",
+        "Create: `apps/mobile/sources/weknora/platform/stream-transport.ts`、`apps/mobile/sources/weknora/platform/stream-transport.test.ts`",
+        "Create: `apps/mobile/sources/weknora/platform/execution-storage.ts`",
+        "Modify: `packages/domain/package.json`、`apps/mobile/package.json`、`pnpm-lock.yaml`"
+      ],
+      "red_command": "pnpm exec tsx --test packages/domain/src/mobile/execution-cache.test.ts"
+    },
+    {
+      "id": "W10",
+      "title": "Happy 会话视图模型和产品导航",
+      "plan": "2026-09-12-mobile-workbench-02-client.md",
+      "status": "pending",
+      "depends_on": [
+        "W05",
+        "W06",
+        "W07",
+        "W09"
+      ],
+      "conditional_dependencies": {},
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `apps/mobile/sources/weknora/conversations/view-model.ts`、`apps/mobile/sources/weknora/conversations/view-model.test.ts`",
+        "Modify: `apps/mobile/sources/-session/SessionView.tsx`、`apps/mobile/sources/components/ChatList.tsx`、`apps/mobile/sources/app/(app)/index.tsx`",
+        "Create: `apps/mobile/sources/weknora/conversations/ConversationScreen.tsx`"
+      ],
+      "red_command": "pnpm exec tsx --test apps/mobile/sources/weknora/conversations/view-model.test.ts"
+    },
+    {
+      "id": "W11",
+      "title": "工作台列表、Agent 和空间入口",
+      "plan": "2026-09-12-mobile-workbench-02-client.md",
+      "status": "pending",
+      "depends_on": [
+        "W03",
+        "W07",
+        "W10"
+      ],
+      "conditional_dependencies": {},
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `internal/application/repository/workbench_list.go`、`internal/application/repository/workbench_list_test.go`",
+        "Create: `apps/mobile/sources/weknora/workbench/WorkbenchScreen.tsx`、`apps/mobile/sources/weknora/workbench/list-query.ts`、`apps/mobile/sources/weknora/workbench/list-query.test.ts`",
+        "Modify: `internal/router/routes_workbench.go`、`packages/api-client/src/mobile/executions.ts`、`apps/mobile/sources/app/(app)/index.tsx`"
+      ],
+      "red_command": "pnpm exec tsx --test apps/mobile/sources/weknora/workbench/list-query.test.ts"
+    },
+    {
+      "id": "W12",
+      "title": "前后台恢复控制器与两条真实链路",
+      "plan": "2026-09-12-mobile-workbench-02-client.md",
+      "status": "pending",
+      "depends_on": [
+        "W09",
+        "W10",
+        "W11"
+      ],
+      "conditional_dependencies": {
+        "oidc": [
+          "W08"
+        ]
+      },
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `apps/mobile/sources/weknora/executions/recovery.ts`、`apps/mobile/sources/weknora/executions/recovery.test.ts`",
+        "Modify: `apps/mobile/sources/weknora/conversations/ConversationScreen.tsx`",
+        "Create: `docs/evidence/mobile-workbench/W12-native-recovery.md`"
+      ],
+      "red_command": "pnpm exec tsx --test apps/mobile/sources/weknora/executions/recovery.test.ts"
+    },
+    {
+      "id": "W13",
+      "title": "设备注册与账号切换撤销",
+      "plan": "2026-09-12-mobile-workbench-03-notifications.md",
+      "status": "pending",
+      "depends_on": [
+        "W07"
+      ],
+      "conditional_dependencies": {},
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `internal/application/repository/mobile_device.go`、`internal/application/repository/mobile_device_test.go`",
+        "Create: `internal/handler/mobile_device.go`、`internal/handler/mobile_device_test.go`",
+        "Create: `apps/mobile/sources/weknora/notifications/registration.ts`",
+        "Modify: `internal/router/routes_workbench.go`",
+        "Create: `migrations/versioned/000124_mobile_devices.{up,down}.sql`、`migrations/sqlite/000044_mobile_devices.{up,down}.sql`"
+      ],
+      "red_command": "go test ./internal/application/repository -run TestMobileDevice -count=1"
+    },
+    {
+      "id": "W14",
+      "title": "事务事件到通知 Outbox",
+      "plan": "2026-09-12-mobile-workbench-03-notifications.md",
+      "status": "pending",
+      "depends_on": [
+        "W03",
+        "W05",
+        "W13"
+      ],
+      "conditional_dependencies": {},
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `internal/application/repository/mobile_notification.go`、`internal/application/repository/mobile_notification_test.go`",
+        "Create: `internal/application/service/workbench/notification.go`",
+        "Modify: `internal/application/repository/agent_run_events.go`",
+        "Create: `migrations/versioned/000125_mobile_notifications.{up,down}.sql`、`migrations/sqlite/000045_mobile_notifications.{up,down}.sql`"
+      ],
+      "red_command": "go test ./internal/application/repository -run TestNotificationOutbox -count=1"
+    },
+    {
+      "id": "W15",
+      "title": "供应商投递、回执与重试",
+      "plan": "2026-09-12-mobile-workbench-03-notifications.md",
+      "status": "pending",
+      "depends_on": [
+        "W14"
+      ],
+      "conditional_dependencies": {},
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `internal/notification/provider.go`、`internal/notification/provider_test.go`、`internal/notification/expo.go`",
+        "Create: `internal/application/service/workbench/notification_worker.go`",
+        "Modify: `internal/container/container.go`、`internal/config/config.go`"
+      ],
+      "red_command": "go test ./internal/notification -run TestPush -count=1"
+    },
+    {
+      "id": "W16",
+      "title": "安全深链与待处理卡",
+      "plan": "2026-09-12-mobile-workbench-03-notifications.md",
+      "status": "pending",
+      "depends_on": [
+        "W10",
+        "W11",
+        "W13",
+        "W14",
+        "W15"
+      ],
+      "conditional_dependencies": {},
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `apps/mobile/sources/weknora/notifications/deep-link.ts`、`apps/mobile/sources/weknora/notifications/deep-link.test.ts`",
+        "Create: `apps/mobile/sources/weknora/notifications/NotificationRouter.tsx`",
+        "Modify: `apps/mobile/sources/app/_layout.tsx`、`apps/mobile/sources/weknora/workbench/WorkbenchScreen.tsx`"
+      ],
+      "red_command": "pnpm exec tsx --test apps/mobile/sources/weknora/notifications/deep-link.test.ts"
+    },
+    {
+      "id": "W17",
+      "title": "固定上游与能力探针",
+      "plan": "2026-09-12-mobile-workbench-04-paseo.md",
+      "status": "pending",
+      "depends_on": [
+        "W01"
+      ],
+      "conditional_dependencies": {},
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `services/paseo-adapter/package.json`、`services/paseo-adapter/tsconfig.json`、`services/paseo-adapter/src/capabilities.ts`、`services/paseo-adapter/src/capabilities.test.ts`",
+        "Create: `docs/migrations/paseo/compatibility.json`、`docs/evidence/mobile-workbench/W17-paseo-probe.md`",
+        "Modify: `pnpm-workspace.yaml`、`pnpm-lock.yaml`"
+      ],
+      "red_command": "pnpm exec tsx --test services/paseo-adapter/src/capabilities.test.ts"
+    },
+    {
+      "id": "W18",
+      "title": "执行目标、工作目录与当前授权",
+      "plan": "2026-09-12-mobile-workbench-04-paseo.md",
+      "status": "pending",
+      "depends_on": [
+        "W02",
+        "W03",
+        "W17"
+      ],
+      "conditional_dependencies": {},
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `internal/execution/target.go`、`internal/execution/target_test.go`",
+        "Create: `internal/application/repository/execution_target.go`、`internal/application/repository/execution_target_test.go`",
+        "Create: `internal/handler/execution_target.go`",
+        "Modify: `internal/router/routes_workbench.go`",
+        "Create: `migrations/versioned/000126_execution_targets.{up,down}.sql`、`migrations/sqlite/000046_execution_targets.{up,down}.sql`"
+      ],
+      "red_command": "go test ./internal/execution -run TestTarget -count=1"
+    },
+    {
+      "id": "W19",
+      "title": "薄 SDK Bridge 与固定命令协议",
+      "plan": "2026-09-12-mobile-workbench-04-paseo.md",
+      "status": "pending",
+      "depends_on": [
+        "W17",
+        "W18"
+      ],
+      "conditional_dependencies": {},
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `services/paseo-adapter/src/protocol.ts`、`services/paseo-adapter/src/bridge.ts`、`services/paseo-adapter/src/bridge.test.ts`、`services/paseo-adapter/src/sdk-port.ts`",
+        "Create: `internal/execution/bridge.go`、`internal/execution/bridge_test.go`"
+      ],
+      "red_command": "pnpm exec tsx --test services/paseo-adapter/src/bridge.test.ts"
+    },
+    {
+      "id": "W20",
+      "title": "分发命令日志与不确定启动恢复",
+      "plan": "2026-09-12-mobile-workbench-04-paseo.md",
+      "status": "pending",
+      "depends_on": [
+        "W04",
+        "W19"
+      ],
+      "conditional_dependencies": {},
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `internal/application/repository/execution_dispatch.go`、`internal/application/repository/execution_dispatch_test.go`",
+        "Create: `internal/application/service/workbench/remote_dispatch.go`",
+        "Create: `services/paseo-adapter/src/command-log.ts`、`services/paseo-adapter/src/command-log.test.ts`",
+        "Create: `migrations/versioned/000127_execution_dispatch.{up,down}.sql`、`migrations/sqlite/000047_execution_dispatch.{up,down}.sql`"
+      ],
+      "red_command": "pnpm exec tsx --test services/paseo-adapter/src/command-log.test.ts"
+    },
+    {
+      "id": "W21",
+      "title": "远程事件去重和产品快照",
+      "plan": "2026-09-12-mobile-workbench-04-paseo.md",
+      "status": "pending",
+      "depends_on": [
+        "W03",
+        "W20"
+      ],
+      "conditional_dependencies": {},
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `internal/application/repository/execution_observation.go`、`internal/application/repository/execution_observation_test.go`",
+        "Create: `services/paseo-adapter/src/events.ts`、`services/paseo-adapter/src/events.test.ts`",
+        "Modify: `internal/handler/session/workbench_read.go`",
+        "Create: `migrations/versioned/000128_execution_observations.{up,down}.sql`、`migrations/sqlite/000048_execution_observations.{up,down}.sql`"
+      ],
+      "red_command": "pnpm exec tsx --test services/paseo-adapter/src/events.test.ts"
+    },
+    {
+      "id": "W22",
+      "title": "远程取消、审批和工作目录锁",
+      "plan": "2026-09-12-mobile-workbench-04-paseo.md",
+      "status": "pending",
+      "depends_on": [
+        "W05",
+        "W18",
+        "W20",
+        "W21"
+      ],
+      "conditional_dependencies": {},
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `internal/execution/control.go`、`internal/execution/control_test.go`",
+        "Create: `services/paseo-adapter/src/control.ts`、`services/paseo-adapter/src/control.test.ts`",
+        "Modify: `internal/application/service/workbench/interaction.go`、`internal/application/service/agent_run_lifecycle.go`"
+      ],
+      "red_command": "go test ./internal/execution -run TestCanceledRun -count=1"
+    },
+    {
+      "id": "W23",
+      "title": "个人节点出站注册与撤销",
+      "plan": "2026-09-12-mobile-workbench-04-paseo.md",
+      "status": "pending",
+      "depends_on": [
+        "W18",
+        "W19",
+        "W20",
+        "W21",
+        "W22"
+      ],
+      "conditional_dependencies": {},
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `services/paseo-adapter/src/node-connector.ts`、`services/paseo-adapter/src/node-connector.test.ts`",
+        "Create: `internal/execution/registration.go`、`internal/execution/registration_test.go`",
+        "Create: `internal/handler/execution_registration.go`",
+        "Create: `migrations/versioned/000129_execution_registrations.{up,down}.sql`、`migrations/sqlite/000049_execution_registrations.{up,down}.sql`"
+      ],
+      "red_command": "pnpm exec tsx --test services/paseo-adapter/src/node-connector.test.ts"
+    },
+    {
+      "id": "W24",
+      "title": "受控工具、可信用量与预算树接线",
+      "plan": "2026-09-12-mobile-workbench-04-paseo.md",
+      "status": "pending",
+      "depends_on": [
+        "W04",
+        "W20",
+        "W21",
+        "W22"
+      ],
+      "conditional_dependencies": {},
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `internal/execution/usage_policy.go`、`internal/execution/usage_policy_test.go`",
+        "Create: `internal/application/service/workbench/remote_usage.go`、`internal/application/service/workbench/remote_usage_test.go`",
+        "Modify: `internal/application/service/commercial/execution.go`、`internal/container/agent_runtime.go`",
+        "Create: `docs/evidence/mobile-workbench/W24-billing.md`"
+      ],
+      "red_command": "go test ./internal/execution -run TestRemoteUsage -count=1"
+    },
+    {
+      "id": "W25",
+      "title": "会话附件上传、取消和校验",
+      "plan": "2026-09-12-mobile-workbench-05-resources-voice.md",
+      "status": "pending",
+      "depends_on": [
+        "W07",
+        "W10"
+      ],
+      "conditional_dependencies": {},
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `apps/mobile/sources/weknora/resources/upload.ts`、`apps/mobile/sources/weknora/resources/upload.test.ts`",
+        "Modify: `internal/handler/session/temporary_document.go`、`packages/api-client/src/knowledge/documents.ts`",
+        "Create: `internal/handler/session/mobile_upload_test.go`"
+      ],
+      "red_command": "pnpm exec tsx --test apps/mobile/sources/weknora/resources/upload.test.ts"
+    },
+    {
+      "id": "W26",
+      "title": "远程文件导入与不可变产物版本",
+      "plan": "2026-09-12-mobile-workbench-05-resources-voice.md",
+      "status": "pending",
+      "depends_on": [
+        "W18",
+        "W21",
+        "W25"
+      ],
+      "conditional_dependencies": {},
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `internal/application/repository/artifact_version.go`、`internal/application/repository/artifact_version_test.go`",
+        "Create: `services/paseo-adapter/src/artifact-export.ts`、`services/paseo-adapter/src/artifact-export.test.ts`",
+        "Modify: `internal/handler/session/artifact_download.go`",
+        "Create: `migrations/versioned/000130_artifact_versions.{up,down}.sql`、`migrations/sqlite/000050_artifact_versions.{up,down}.sql`"
+      ],
+      "red_command": "go test ./internal/application/repository -run TestArtifactVersion -count=1"
+    },
+    {
+      "id": "W27",
+      "title": "隔离预览与 AWS 组件来源",
+      "plan": "2026-09-12-mobile-workbench-05-resources-voice.md",
+      "status": "pending",
+      "depends_on": [
+        "W25"
+      ],
+      "conditional_dependencies": {
+        "remote": [
+          "W26"
+        ]
+      },
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `apps/mobile/sources/weknora/resources/preview-policy.ts`、`apps/mobile/sources/weknora/resources/preview-policy.test.ts`、`apps/mobile/sources/weknora/resources/ArtifactPreview.tsx`",
+        "Create: `internal/handler/artifact_preview.go`、`internal/handler/artifact_preview_test.go`",
+        "Create: `docs/migrations/aws-mobile/source-manifest.json`"
+      ],
+      "red_command": "pnpm exec tsx --test apps/mobile/sources/weknora/resources/preview-policy.test.ts"
+    },
+    {
+      "id": "W28",
+      "title": "知识引用与专业结果注册器",
+      "plan": "2026-09-12-mobile-workbench-05-resources-voice.md",
+      "status": "pending",
+      "depends_on": [
+        "W10",
+        "W25",
+        "W27"
+      ],
+      "conditional_dependencies": {},
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `apps/mobile/sources/weknora/renderers/registry.ts`、`apps/mobile/sources/weknora/renderers/registry.test.ts`、`apps/mobile/sources/weknora/renderers/KnowledgeCitation.tsx`、`apps/mobile/sources/weknora/renderers/DataAnalysisResult.tsx`",
+        "Modify: `apps/mobile/sources/weknora/conversations/ConversationScreen.tsx`"
+      ],
+      "red_command": "pnpm exec tsx --test apps/mobile/sources/weknora/renderers/registry.test.ts"
+    },
+    {
+      "id": "W29",
+      "title": "按住说话、转写确认与文本提交",
+      "plan": "2026-09-12-mobile-workbench-05-resources-voice.md",
+      "status": "pending",
+      "depends_on": [
+        "W10",
+        "W25"
+      ],
+      "conditional_dependencies": {},
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `apps/mobile/sources/weknora/voice/dictation.ts`、`apps/mobile/sources/weknora/voice/dictation.test.ts`、`apps/mobile/sources/weknora/voice/DictationInput.tsx`",
+        "Modify: `apps/mobile/sources/weknora/conversations/ConversationScreen.tsx`"
+      ],
+      "red_command": "pnpm exec tsx --test apps/mobile/sources/weknora/voice/dictation.test.ts"
+    },
+    {
+      "id": "W30",
+      "title": "语音会话授权、短期令牌和结算",
+      "plan": "2026-09-12-mobile-workbench-05-resources-voice.md",
+      "status": "pending",
+      "depends_on": [
+        "W04",
+        "W29"
+      ],
+      "conditional_dependencies": {
+        "remote": [
+          "W24"
+        ]
+      },
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `internal/voice/session.go`、`internal/voice/session_test.go`、`internal/voice/provider.go`",
+        "Create: `internal/handler/mobile_voice.go`、`internal/handler/mobile_voice_test.go`",
+        "Create: `internal/application/repository/voice_session.go`",
+        "Create: `migrations/versioned/000131_voice_sessions.{up,down}.sql`、`migrations/sqlite/000051_voice_sessions.{up,down}.sql`",
+        "Modify: `internal/router/routes_workbench.go`、`internal/container/container.go`"
+      ],
+      "red_command": "go test ./internal/voice -run TestVoice -count=1"
+    },
+    {
+      "id": "W31",
+      "title": "实时语音、打断与后台进度展示",
+      "plan": "2026-09-12-mobile-workbench-05-resources-voice.md",
+      "status": "pending",
+      "depends_on": [
+        "W12",
+        "W15",
+        "W30"
+      ],
+      "conditional_dependencies": {},
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `apps/mobile/sources/weknora/voice/realtime.ts`、`apps/mobile/sources/weknora/voice/realtime.test.ts`、`apps/mobile/sources/weknora/voice/VoicePanel.tsx`",
+        "Create: `apps/mobile/sources/weknora/notifications/live-progress.ts`",
+        "Modify: `apps/mobile/sources/weknora/conversations/ConversationScreen.tsx`"
+      ],
+      "red_command": "pnpm exec tsx --test apps/mobile/sources/weknora/voice/realtime.test.ts"
+    },
+    {
+      "id": "W32",
+      "title": "高级交互能力端口与保留清单闭合",
+      "plan": "2026-09-12-mobile-workbench-06-delivery.md",
+      "status": "pending",
+      "depends_on": [
+        "W10",
+        "W16",
+        "W22",
+        "W28",
+        "W31"
+      ],
+      "conditional_dependencies": {},
+      "inherited_dependencies": [
+        "H24-H33 and their documented subtasks"
+      ],
+      "files": [
+        "Create: `apps/mobile/sources/weknora/conversations/advanced.ts`、`apps/mobile/sources/weknora/conversations/advanced.test.ts`",
+        "Modify: `docs/migrations/happy/interaction-matrix.json`、`apps/mobile/sources/-session/SessionView.tsx`",
+        "Create: `docs/evidence/mobile-workbench/W32-interaction-parity.md`",
+        "Modify: `docs/migrations/happy/source-manifest.json`（实际目标路径校正）"
+      ],
+      "red_command": "pnpm exec tsx --test apps/mobile/sources/weknora/conversations/advanced.test.ts"
+    },
+    {
+      "id": "W33",
+      "title": "删除墓碑、远程停止和迟到用量",
+      "plan": "2026-09-12-mobile-workbench-06-delivery.md",
+      "status": "pending",
+      "depends_on": [
+        "W02",
+        "W04"
+      ],
+      "conditional_dependencies": {
+        "remote": [
+          "W21",
+          "W22",
+          "W24"
+        ],
+        "resources": [
+          "W26"
+        ]
+      },
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `internal/execution/cleanup.go`、`internal/execution/cleanup_test.go`",
+        "Create: `internal/application/repository/execution_cleanup.go`、`internal/application/repository/execution_cleanup_test.go`",
+        "Modify: `internal/application/repository/agent_run_lifecycle.go`、`internal/application/service/agent_run_lifecycle.go`",
+        "Create: `migrations/versioned/000132_execution_cleanup.{up,down}.sql`、`migrations/sqlite/000052_execution_cleanup.{up,down}.sql`"
+      ],
+      "red_command": "go test ./internal/execution -run TestCleanup -count=1"
+    },
+    {
+      "id": "W34",
+      "title": "安全部署、能力开关与可观测性",
+      "plan": "2026-09-12-mobile-workbench-06-delivery.md",
+      "status": "pending",
+      "depends_on": [
+        "W03",
+        "W07",
+        "W13",
+        "W14",
+        "W15",
+        "W33"
+      ],
+      "conditional_dependencies": {
+        "remote": [
+          "W19",
+          "W20",
+          "W21",
+          "W22",
+          "W24"
+        ],
+        "voice": [
+          "W30"
+        ]
+      },
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `deploy/mobile-workbench/compose.yaml`、`deploy/mobile-workbench/README.md`",
+        "Create: `internal/execution/deployment_policy.go`、`internal/execution/deployment_policy_test.go`",
+        "Modify: `internal/config/config.go`、`internal/container/agent_runtime.go`",
+        "Create: `docs/evidence/mobile-workbench/W34-deployment.md`"
+      ],
+      "red_command": "go test ./internal/execution -run TestManagedNode -count=1"
+    },
+    {
+      "id": "W35",
+      "title": "事件保留、备份恢复与崩溃演练",
+      "plan": "2026-09-12-mobile-workbench-06-delivery.md",
+      "status": "pending",
+      "depends_on": [
+        "W03",
+        "W33",
+        "W34"
+      ],
+      "conditional_dependencies": {
+        "remote": [
+          "W20",
+          "W21",
+          "W22",
+          "W24"
+        ]
+      },
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `internal/execution/restore_policy.go`、`internal/execution/restore_policy_test.go`",
+        "Create: `scripts/mobile-workbench/fault-scenarios.mjs`",
+        "Create: `docs/evidence/mobile-workbench/W35-recovery.md`",
+        "Modify: `internal/application/repository/agent_run_events.go`、`deploy/mobile-workbench/README.md`"
+      ],
+      "red_command": "go test ./internal/execution -run TestRestore -count=1"
+    },
+    {
+      "id": "W36",
+      "title": "原生升级、兼容窗口与性能验收",
+      "plan": "2026-09-12-mobile-workbench-06-delivery.md",
+      "status": "pending",
+      "depends_on": [
+        "W12",
+        "W16",
+        "W34"
+      ],
+      "conditional_dependencies": {
+        "resources": [
+          "W27"
+        ],
+        "voice": [
+          "W31"
+        ],
+        "full_happy": [
+          "W32"
+        ]
+      },
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `packages/domain/src/mobile/compatibility.ts`、`packages/domain/src/mobile/compatibility.test.ts`",
+        "Create: `docs/evidence/mobile-workbench/W36-native-release.md`、`docs/evidence/mobile-workbench/W36-performance.md`",
+        "Modify: `apps/mobile/package.json`、`deploy/mobile-workbench/README.md`",
+        "Modify: `pnpm-lock.yaml`（仅依赖确实变化时同步）"
+      ],
+      "red_command": "pnpm exec tsx --test packages/domain/src/mobile/compatibility.test.ts"
+    },
+    {
+      "id": "W37",
+      "title": "完整验收门禁与分阶段交付报告",
+      "plan": "2026-09-12-mobile-workbench-06-delivery.md",
+      "status": "pending",
+      "depends_on": [
+        "W35",
+        "W36"
+      ],
+      "conditional_dependencies": {
+        "core": [
+          "W01",
+          "W02",
+          "W03",
+          "W04",
+          "W05",
+          "W06",
+          "W07",
+          "W09",
+          "W10",
+          "W11",
+          "W12",
+          "W13",
+          "W14",
+          "W15",
+          "W16",
+          "W33",
+          "W34",
+          "W35",
+          "W36"
+        ],
+        "oidc": [
+          "W08"
+        ],
+        "remote": [
+          "W17",
+          "W18",
+          "W19",
+          "W20",
+          "W21",
+          "W22",
+          "W24",
+          "W26"
+        ],
+        "personal_node": [
+          "W23"
+        ],
+        "resources": [
+          "W25",
+          "W26",
+          "W27",
+          "W28"
+        ],
+        "voice": [
+          "W29",
+          "W30",
+          "W31"
+        ],
+        "full_happy": [
+          "W32"
+        ]
+      },
+      "inherited_dependencies": [],
+      "files": [
+        "Create: `scripts/mobile-workbench/check-acceptance.mjs`、`scripts/mobile-workbench/check-acceptance.test.mjs`",
+        "Create: `docs/evidence/mobile-workbench/acceptance.json`、`docs/evidence/mobile-workbench/release-report.md`",
+        "Modify: `docs/superpowers/plans/mobile-workbench-progress.md`（实现时建立的唯一W台账）"
+      ],
+      "red_command": "node --test scripts/mobile-workbench/check-acceptance.test.mjs"
+    }
+  ]
+}

@@ -43,7 +43,7 @@
 
 **Interfaces：**
 
-Produces `DeviceRegistration{DeviceID,OwnerID,Environment,TokenCiphertext string; Revision int64; RevokedAt *time.Time}`，`NewMobileDeviceStore(db *gorm.DB)`；`Bind(ctx context.Context,row DeviceRegistration) error`、`Revoke(ctx,owner,device string,revision int64) error`、`ListActive(ctx,owner,environment string)([]DeviceRegistration,error)`。PUT/DELETE `/mobile/devices/:id`。
+Produces `DeviceRegistration{DeviceID,OwnerID,Environment,TokenCiphertext string; Revision int64; RevokedAt *time.Time}`，`NewMobileDeviceStore(db *gorm.DB,environment string)`；`Bind(ctx context.Context,row DeviceRegistration) error`、`Revoke(ctx,owner,device string,revision int64) error`、`ListActive(ctx,owner,environment string)([]DeviceRegistration,error)`。PUT/DELETE `/mobile/devices/:id`。
 
 - [ ] **Step 1：写失败测试。** 以下代码放入本任务 Test 文件；一个测试失败必须定位到本任务行为，不接受环境故障冒充 RED。
 
@@ -55,7 +55,7 @@ import (
  "github.com/stretchr/testify/require"
 )
 func TestMobileDeviceRevocationIsOwnerScoped(t *testing.T) {
- s:=NewMobileDeviceStore(openRunTestDB(t)); ctx:=context.Background()
+ s:=NewMobileDeviceStore(openRunTestDB(t),"dev"); ctx:=context.Background()
  require.NoError(t,s.Bind(ctx,DeviceRegistration{DeviceID:"d",OwnerID:"u1",Environment:"dev",TokenCiphertext:"encrypted",Revision:1}))
  require.Error(t,s.Revoke(ctx,"other","d",1))
  require.NoError(t,s.Revoke(ctx,"u1","d",1))
@@ -78,7 +78,7 @@ go test ./internal/application/repository -run TestMobileDevice -count=1
 UPDATE mobile_devices SET revoked_at = CURRENT_TIMESTAMP, revision = revision + 1
 WHERE device_id = ? AND owner_id = ? AND environment = ? AND revision = ? AND revoked_at IS NULL;
 ```
-Bind内部加Environment参数的RevokeByEnvironment供handler调用；原Revoke仅用于单环境store，NewMobileDeviceStore在生产必须绑定固定环境，禁止跨环境更新。
+NewMobileDeviceStore绑定environment，所有SQL自动带它；Bind拒绝row.Environment不匹配，ListActive拒绝调用参数environment不匹配。handler不接受客户端改写服务器环境。
 
 - [ ] **Step 4：接通实际入口。**
 
@@ -95,7 +95,7 @@ registration.ts在系统通知权限已允许后取得token，登录成功绑定
 - [ ] **Step 6：范围提交。** 在隔离实现分支执行，显式列出 Step 1–4 产生的文件；审核暂存 diff 后提交。更新本计划台账，不覆盖其他计划状态。
 
 ```bash
-git add internal/application/repository/mobile_device.go internal/application/repository/mobile_device_test.go internal/handler/mobile_device.go internal/handler/mobile_device_test.go apps/mobile/sources/weknora/notifications/registration.ts internal/router/routes_workbench.go migrations/versioned/000124_mobile_devices.up.sql migrations/versioned/000124_mobile_devices.down.sql migrations/sqlite/000044_mobile_devices.up.sql migrations/sqlite/000044_mobile_devices.down.sql
+git add 'internal/application/repository/mobile_device.go' 'internal/application/repository/mobile_device_test.go' 'internal/handler/mobile_device.go' 'internal/handler/mobile_device_test.go' 'apps/mobile/sources/weknora/notifications/registration.ts' 'internal/router/routes_workbench.go' 'migrations/versioned/000124_mobile_devices.up.sql' 'migrations/versioned/000124_mobile_devices.down.sql' 'migrations/sqlite/000044_mobile_devices.up.sql' 'migrations/sqlite/000044_mobile_devices.down.sql'
 git diff --cached --check
 git diff --cached --stat
 git commit -m "feat(notifications): register and revoke scoped devices"
@@ -114,7 +114,7 @@ git commit -m "feat(notifications): register and revoke scoped devices"
 
 **Interfaces：**
 
-Produces `NotificationIntent{EventID,OwnerID,DeviceID,Kind,RunID string; ExpiresAt time.Time}`；`NewNotificationStore(db *gorm.DB)`；`Enqueue(ctx,intent) error`、`Claim(ctx,worker string,limit int,lease time.Duration)([]NotificationDelivery,error)`；Delivery包含ID/Intent/Attempt/Fence。唯一event/owner/device/environment。
+Produces `NotificationIntent{EventID,OwnerID,DeviceID,Environment,Kind,RunID string; ExpiresAt time.Time}`；`NewNotificationStore(db *gorm.DB)`；`Enqueue(ctx,intent) error`、`Claim(ctx,worker string,limit int,lease time.Duration)([]NotificationDelivery,error)`；Delivery包含ID/Intent/Attempt/Fence。唯一event/owner/device/environment。
 
 - [ ] **Step 1：写失败测试。** 以下代码放入本任务 Test 文件；一个测试失败必须定位到本任务行为，不接受环境故障冒充 RED。
 
@@ -127,8 +127,11 @@ import (
  "github.com/stretchr/testify/require"
 )
 func TestNotificationOutboxDeduplicates(t *testing.T) {
- s:=NewNotificationStore(openRunTestDB(t)); ctx:=context.Background()
- in:=NotificationIntent{EventID:"e",OwnerID:"u1",DeviceID:"d",Kind:"completed",RunID:"r",ExpiresAt:time.Now().Add(time.Hour)}
+ db:=openRunTestDB(t); ctx:=context.Background()
+ _,err:=NewAgentRunStore(db).Admit(ctx,testAdmission());require.NoError(t,err)
+ require.NoError(t,NewMobileDeviceStore(db,"dev").Bind(ctx,DeviceRegistration{DeviceID:"d",OwnerID:"u1",Environment:"dev",TokenCiphertext:"encrypted",Revision:1}))
+ s:=NewNotificationStore(db)
+ in:=NotificationIntent{EventID:"e",OwnerID:"u1",DeviceID:"d",Environment:"dev",Kind:"completed",RunID:"r1",ExpiresAt:time.Now().Add(time.Hour)}
  require.NoError(t,s.Enqueue(ctx,in));require.NoError(t,s.Enqueue(ctx,in))
  rows,err:=s.Claim(ctx,"worker",10,time.Minute);require.NoError(t,err);require.Len(t,rows,1)
 }
@@ -146,11 +149,11 @@ go test ./internal/application/repository -run TestNotificationOutbox -count=1
 
 消息状态与通知意图必须在同事务，或从持久事件按原子checkpoint消费；本计划选后者减少侵入。消费者在事务里读取seq后事件、插入唯一意图、推进消费cursor；重启后重复读由唯一键吸收。
 ```sql
-INSERT INTO mobile_notification_intents(event_id, owner_id, device_id, kind, run_id, expires_at)
-VALUES (?, ?, ?, ?, ?, ?)
-ON CONFLICT(event_id, owner_id, device_id) DO NOTHING;
+INSERT INTO mobile_notification_intents(event_id, owner_id, device_id, environment, kind, run_id, expires_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(event_id, owner_id, device_id, environment) DO NOTHING;
 ```
-最终表加environment维度并同步唯一键；过期、撤销设备不claim，已在flight投递前再查。
+environment为设备所属应用环境；过期、撤销设备不claim，已在flight投递前再查。
 
 - [ ] **Step 4：接通实际入口。**
 
@@ -167,7 +170,7 @@ ON CONFLICT(event_id, owner_id, device_id) DO NOTHING;
 - [ ] **Step 6：范围提交。** 在隔离实现分支执行，显式列出 Step 1–4 产生的文件；审核暂存 diff 后提交。更新本计划台账，不覆盖其他计划状态。
 
 ```bash
-git add internal/application/repository/mobile_notification.go internal/application/repository/mobile_notification_test.go internal/application/service/workbench/notification.go internal/application/repository/agent_run_events.go migrations/versioned/000125_mobile_notifications.up.sql migrations/versioned/000125_mobile_notifications.down.sql migrations/sqlite/000045_mobile_notifications.up.sql migrations/sqlite/000045_mobile_notifications.down.sql
+git add 'internal/application/repository/mobile_notification.go' 'internal/application/repository/mobile_notification_test.go' 'internal/application/service/workbench/notification.go' 'internal/application/repository/agent_run_events.go' 'migrations/versioned/000125_mobile_notifications.up.sql' 'migrations/versioned/000125_mobile_notifications.down.sql' 'migrations/sqlite/000045_mobile_notifications.up.sql' 'migrations/sqlite/000045_mobile_notifications.down.sql'
 git diff --cached --check
 git diff --cached --stat
 git commit -m "feat(notifications): derive durable intents from run events"
@@ -234,7 +237,7 @@ func ClassifyPushFailure(code string)(revoke,retry bool) {
 - [ ] **Step 6：范围提交。** 在隔离实现分支执行，显式列出 Step 1–4 产生的文件；审核暂存 diff 后提交。更新本计划台账，不覆盖其他计划状态。
 
 ```bash
-git add internal/notification/provider.go internal/notification/provider_test.go internal/notification/expo.go internal/application/service/workbench/notification_worker.go internal/container/container.go internal/config/config.go
+git add 'internal/notification/provider.go' 'internal/notification/provider_test.go' 'internal/notification/expo.go' 'internal/application/service/workbench/notification_worker.go' 'internal/container/container.go' 'internal/config/config.go'
 git diff --cached --check
 git diff --cached --stat
 git commit -m "feat(notifications): deliver pushes with receipts and bounded retries"
@@ -242,7 +245,7 @@ git commit -m "feat(notifications): deliver pushes with receipts and bounded ret
 
 ### W16：安全深链与待处理卡
 
-**依赖：** W10、W13–W15。
+**依赖：** W10、W11、W13–W15。
 
 **Files：**
 
@@ -306,10 +309,8 @@ tenant仅提示导航，API身份由W07当前作用域，无法访问时清理�
 - [ ] **Step 6：范围提交。** 在隔离实现分支执行，显式列出 Step 1–4 产生的文件；审核暂存 diff 后提交。更新本计划台账，不覆盖其他计划状态。
 
 ```bash
-git add apps/mobile/sources/weknora/notifications/deep-link.ts apps/mobile/sources/weknora/notifications/deep-link.test.ts apps/mobile/sources/weknora/notifications/NotificationRouter.tsx apps/mobile/sources/app/_layout.tsx apps/mobile/sources/weknora/workbench/WorkbenchScreen.tsx
+git add 'apps/mobile/sources/weknora/notifications/deep-link.ts' 'apps/mobile/sources/weknora/notifications/deep-link.test.ts' 'apps/mobile/sources/weknora/notifications/NotificationRouter.tsx' 'apps/mobile/sources/app/_layout.tsx' 'apps/mobile/sources/weknora/workbench/WorkbenchScreen.tsx'
 git diff --cached --check
 git diff --cached --stat
 git commit -m "feat(mobile): route notification links through product authorization"
 ```
-
-

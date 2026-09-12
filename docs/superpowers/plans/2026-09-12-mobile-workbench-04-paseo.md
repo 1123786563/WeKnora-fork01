@@ -89,7 +89,7 @@ export function requireCore(c:PaseoCapabilities){
 - [ ] **Step 6：范围提交。** 在隔离实现分支执行，显式列出 Step 1–4 产生的文件；审核暂存 diff 后提交。更新本计划台账，不覆盖其他计划状态。
 
 ```bash
-git add services/paseo-adapter/package.json services/paseo-adapter/tsconfig.json services/paseo-adapter/src/capabilities.ts services/paseo-adapter/src/capabilities.test.ts docs/migrations/paseo/compatibility.json docs/evidence/mobile-workbench/W17-paseo-probe.md pnpm-workspace.yaml pnpm-lock.yaml
+git add 'services/paseo-adapter/package.json' 'services/paseo-adapter/tsconfig.json' 'services/paseo-adapter/src/capabilities.ts' 'services/paseo-adapter/src/capabilities.test.ts' 'docs/migrations/paseo/compatibility.json' 'docs/evidence/mobile-workbench/W17-paseo-probe.md' 'pnpm-workspace.yaml' 'pnpm-lock.yaml'
 git diff --cached --check
 git diff --cached --stat
 git commit -m "feat(paseo): pin SDK and validate core capabilities"
@@ -97,7 +97,7 @@ git commit -m "feat(paseo): pin SDK and validate core capabilities"
 
 ### W18：执行目标、工作目录与当前授权
 
-**依赖：** W02、W17。
+**依赖：** W02、W03、W17。
 
 **Files：**
 
@@ -156,7 +156,7 @@ GET execution-targets只返回授权目标；注册和撤销路由分别验证�
 - [ ] **Step 6：范围提交。** 在隔离实现分支执行，显式列出 Step 1–4 产生的文件；审核暂存 diff 后提交。更新本计划台账，不覆盖其他计划状态。
 
 ```bash
-git add internal/execution/target.go internal/execution/target_test.go internal/application/repository/execution_target.go internal/application/repository/execution_target_test.go internal/handler/execution_target.go internal/router/routes_workbench.go migrations/versioned/000126_execution_targets.up.sql migrations/versioned/000126_execution_targets.down.sql migrations/sqlite/000046_execution_targets.up.sql migrations/sqlite/000046_execution_targets.down.sql
+git add 'internal/execution/target.go' 'internal/execution/target_test.go' 'internal/application/repository/execution_target.go' 'internal/application/repository/execution_target_test.go' 'internal/handler/execution_target.go' 'internal/router/routes_workbench.go' 'migrations/versioned/000126_execution_targets.up.sql' 'migrations/versioned/000126_execution_targets.down.sql' 'migrations/sqlite/000046_execution_targets.up.sql' 'migrations/sqlite/000046_execution_targets.down.sql'
 git diff --cached --check
 git diff --cached --stat
 git commit -m "feat(execution): scope targets and workspaces to product owners"
@@ -173,7 +173,7 @@ git commit -m "feat(execution): scope targets and workspaces to product owners"
 
 **Interfaces：**
 
-Produces TS `StartCommand{commandID,runID,attemptID,targetID,workspaceRef,prompt,provider string;epoch:number;expiresAt:number}`；`PaseoPort{create(input:{cwd:string;prompt:string;provider:string}):Promise<{id:string}>;observe(id:string):Promise<{state:string}>;cancel(id:string):Promise<void>}`。Bridge通过受控workspace resolver获得cwd；其他操作W21/W22扩展。Go请求同字段的JSON协议，带version=1。
+Produces TS `StartCommand{commandID:string;runID:string;attemptID:string;targetID:string;workspaceRef:string;prompt:string;provider:string;epoch:number;expiresAt:number}`；`PaseoPort{create(input:{cwd:string;prompt:string;provider:string}):Promise<{id:string}>;observe(id:string):Promise<{state:string}>;cancel(id:string):Promise<void>}`。Bridge通过受控workspace resolver获得cwd；其他操作W21/W22扩展。Go请求同字段的JSON协议，带version=1。
 
 - [ ] **Step 1：写失败测试。** 以下代码放入本任务 Test 文件；一个测试失败必须定位到本任务行为，不接受环境故障冒充 RED。
 
@@ -224,7 +224,7 @@ sdk-port.ts只引用W17确认的公开SDK方法。已知create接`client.agents.
 - [ ] **Step 6：范围提交。** 在隔离实现分支执行，显式列出 Step 1–4 产生的文件；审核暂存 diff 后提交。更新本计划台账，不覆盖其他计划状态。
 
 ```bash
-git add services/paseo-adapter/src/protocol.ts services/paseo-adapter/src/bridge.ts services/paseo-adapter/src/bridge.test.ts services/paseo-adapter/src/sdk-port.ts internal/execution/bridge.go internal/execution/bridge_test.go
+git add 'services/paseo-adapter/src/protocol.ts' 'services/paseo-adapter/src/bridge.ts' 'services/paseo-adapter/src/bridge.test.ts' 'services/paseo-adapter/src/sdk-port.ts' 'internal/execution/bridge.go' 'internal/execution/bridge_test.go'
 git diff --cached --check
 git diff --cached --stat
 git commit -m "feat(paseo): bridge typed execution commands to the pinned SDK"
@@ -244,6 +244,7 @@ git commit -m "feat(paseo): bridge typed execution commands to the pinned SDK"
 **Interfaces：**
 
 Produces `DispatchRecord{CommandID,RunID,AttemptID,PayloadHash,State,ExternalID string;TenantID uint64;Epoch int64}`；Go store ClaimDispatch/SaveReceipt/ReconcileUnknown。TS `dispatchOnce(log:CommandLog,id:string,hash:string,start:()=>Promise<string>):Promise<string>`；CommandLog.begin(id,hash):Promise<'new'|'unknown'|{externalID:string}>、complete(id,externalID):Promise<void>。
+Go精确签名：`ClaimDispatch(ctx context.Context,key runtime.RunKey,commandID,worker string,lease time.Duration)(DispatchRecord,error)`；`SaveReceipt(ctx context.Context,record DispatchRecord,externalID string)error`；`ReconcileUnknown(ctx context.Context,record DispatchRecord,observedState,externalID string)error`。所有写入复查record.Epoch及tenant/key。
 
 - [ ] **Step 1：写失败测试。** 以下代码放入本任务 Test 文件；一个测试失败必须定位到本任务行为，不接受环境故障冒充 RED。
 
@@ -298,7 +299,7 @@ remote worker使用W02 driver专用Scan/Claim，运行控制Epoch更新与命令
 - [ ] **Step 6：范围提交。** 在隔离实现分支执行，显式列出 Step 1–4 产生的文件；审核暂存 diff 后提交。更新本计划台账，不覆盖其他计划状态。
 
 ```bash
-git add internal/application/repository/execution_dispatch.go internal/application/repository/execution_dispatch_test.go internal/application/service/workbench/remote_dispatch.go services/paseo-adapter/src/command-log.ts services/paseo-adapter/src/command-log.test.ts migrations/versioned/000127_execution_dispatch.up.sql migrations/versioned/000127_execution_dispatch.down.sql migrations/sqlite/000047_execution_dispatch.up.sql migrations/sqlite/000047_execution_dispatch.down.sql
+git add 'internal/application/repository/execution_dispatch.go' 'internal/application/repository/execution_dispatch_test.go' 'internal/application/service/workbench/remote_dispatch.go' 'services/paseo-adapter/src/command-log.ts' 'services/paseo-adapter/src/command-log.test.ts' 'migrations/versioned/000127_execution_dispatch.up.sql' 'migrations/versioned/000127_execution_dispatch.down.sql' 'migrations/sqlite/000047_execution_dispatch.up.sql' 'migrations/sqlite/000047_execution_dispatch.down.sql'
 git diff --cached --check
 git diff --cached --stat
 git commit -m "feat(paseo): persist dispatch uncertainty without duplicate starts"
@@ -318,6 +319,7 @@ git commit -m "feat(paseo): persist dispatch uncertainty without duplicate start
 **Interfaces：**
 
 Produces `SourceEvent{bindingID,generation,eventID,attemptID,type:string;payload:Record<string,unknown>}`；`sourceKey(e:SourceEvent):string`。Go IngestSourceEvent(ctx,binding,source)读取绑定解析tenant/run，事务插入来源唯一键并分配产品seq；产品事件W01格式。
+Go `SourceObservation{BindingID,Generation,EventID,AttemptID,Type,PayloadHash string;Payload json.RawMessage}`；`IngestSourceEvent(ctx context.Context,bindingID string,source SourceObservation)(runtime.RunEvent,error)`。
 
 - [ ] **Step 1：写失败测试。** 以下代码放入本任务 Test 文件；一个测试失败必须定位到本任务行为，不接受环境故障冒充 RED。
 
@@ -363,7 +365,7 @@ export function sourceKey(e:SourceEvent){return JSON.stringify([e.bindingID,e.ge
 - [ ] **Step 6：范围提交。** 在隔离实现分支执行，显式列出 Step 1–4 产生的文件；审核暂存 diff 后提交。更新本计划台账，不覆盖其他计划状态。
 
 ```bash
-git add internal/application/repository/execution_observation.go internal/application/repository/execution_observation_test.go services/paseo-adapter/src/events.ts services/paseo-adapter/src/events.test.ts internal/handler/session/workbench_read.go migrations/versioned/000128_execution_observations.up.sql migrations/versioned/000128_execution_observations.down.sql migrations/sqlite/000048_execution_observations.up.sql migrations/sqlite/000048_execution_observations.down.sql
+git add 'internal/application/repository/execution_observation.go' 'internal/application/repository/execution_observation_test.go' 'services/paseo-adapter/src/events.ts' 'services/paseo-adapter/src/events.test.ts' 'internal/handler/session/workbench_read.go' 'migrations/versioned/000128_execution_observations.up.sql' 'migrations/versioned/000128_execution_observations.down.sql' 'migrations/sqlite/000048_execution_observations.up.sql' 'migrations/sqlite/000048_execution_observations.down.sql'
 git diff --cached --check
 git diff --cached --stat
 git commit -m "feat(paseo): project deduplicated source events into product runs"
@@ -428,7 +430,7 @@ Paseo能力不支持审批/追加就返回unavailable；不得以bash模拟。�
 - [ ] **Step 6：范围提交。** 在隔离实现分支执行，显式列出 Step 1–4 产生的文件；审核暂存 diff 后提交。更新本计划台账，不覆盖其他计划状态。
 
 ```bash
-git add internal/execution/control.go internal/execution/control_test.go services/paseo-adapter/src/control.ts services/paseo-adapter/src/control.test.ts internal/application/service/workbench/interaction.go internal/application/service/agent_run_lifecycle.go
+git add 'internal/execution/control.go' 'internal/execution/control_test.go' 'services/paseo-adapter/src/control.ts' 'services/paseo-adapter/src/control.test.ts' 'internal/application/service/workbench/interaction.go' 'internal/application/service/agent_run_lifecycle.go'
 git diff --cached --check
 git diff --cached --stat
 git commit -m "feat(paseo): distinguish product cancellation from process termination"
@@ -495,7 +497,7 @@ export function validateNodeGrant(g:NodeGrant,e:{targetID:string;epoch:number},o
 - [ ] **Step 6：范围提交。** 在隔离实现分支执行，显式列出 Step 1–4 产生的文件；审核暂存 diff 后提交。更新本计划台账，不覆盖其他计划状态。
 
 ```bash
-git add services/paseo-adapter/src/node-connector.ts services/paseo-adapter/src/node-connector.test.ts internal/execution/registration.go internal/execution/registration_test.go internal/handler/execution_registration.go migrations/versioned/000129_execution_registrations.up.sql migrations/versioned/000129_execution_registrations.down.sql migrations/sqlite/000049_execution_registrations.up.sql migrations/sqlite/000049_execution_registrations.down.sql
+git add 'services/paseo-adapter/src/node-connector.ts' 'services/paseo-adapter/src/node-connector.test.ts' 'internal/execution/registration.go' 'internal/execution/registration_test.go' 'internal/handler/execution_registration.go' 'migrations/versioned/000129_execution_registrations.up.sql' 'migrations/versioned/000129_execution_registrations.down.sql' 'migrations/sqlite/000049_execution_registrations.up.sql' 'migrations/sqlite/000049_execution_registrations.down.sql'
 git diff --cached --check
 git diff --cached --stat
 git commit -m "feat(paseo): enroll revocable outbound personal nodes"
@@ -561,10 +563,8 @@ func AllowModelSettlement(source,funding string) bool {
 - [ ] **Step 6：范围提交。** 在隔离实现分支执行，显式列出 Step 1–4 产生的文件；审核暂存 diff 后提交。更新本计划台账，不覆盖其他计划状态。
 
 ```bash
-git add internal/execution/usage_policy.go internal/execution/usage_policy_test.go internal/application/service/workbench/remote_usage.go internal/application/service/workbench/remote_usage_test.go internal/application/service/commercial/execution.go internal/container/agent_runtime.go docs/evidence/mobile-workbench/W24-billing.md
+git add 'internal/execution/usage_policy.go' 'internal/execution/usage_policy_test.go' 'internal/application/service/workbench/remote_usage.go' 'internal/application/service/workbench/remote_usage_test.go' 'internal/application/service/commercial/execution.go' 'internal/container/agent_runtime.go' 'docs/evidence/mobile-workbench/W24-billing.md'
 git diff --cached --check
 git diff --cached --stat
 git commit -m "feat(billing): account only trusted remote execution usage"
 ```
-
-

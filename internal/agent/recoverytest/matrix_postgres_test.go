@@ -65,6 +65,7 @@ func TestCrashMatrixPostgreSQL(t *testing.T) {
 		"unknown_result_user_retry",
 		"idempotent_redelivery",
 		"oauth_park",
+		"mcp_set_drift",
 	} {
 		t.Run(name, func(t *testing.T) {
 			counter := newCounterServer()
@@ -77,12 +78,18 @@ func TestCrashMatrixPostgreSQL(t *testing.T) {
 			if name == "after_side_effect_before_result" {
 				wantStatus = "waiting_user"
 			}
+			if name == "mcp_set_drift" {
+				wantStatus = "failed"
+			}
 			if report.FinalStatus != wantStatus {
 				t.Fatalf("case %s status=%s want=%s report=%#v", name, report.FinalStatus, wantStatus, report)
 			}
 			wantCalls := 1
 			if name == "unknown_result_user_retry" {
 				wantCalls = 2
+			}
+			if name == "mcp_set_drift" {
+				wantCalls = 0
 			}
 			if report.ExternalCalls != wantCalls {
 				t.Fatalf("case %s calls=%d want=%d", name, report.ExternalCalls, wantCalls)

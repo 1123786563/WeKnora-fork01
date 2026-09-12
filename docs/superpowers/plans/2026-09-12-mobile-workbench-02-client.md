@@ -75,11 +75,11 @@ export function createProductScope(initial:{origin:string;userId:string|null;ten
   switchTo(next:typeof initial){controller.switchScope(next.origin,next.userId,next.tenantId);},
   capture(){const h=controller.current();return {generation:h.scope.generation,signal:h.signal};},
   accept(generation:number){return controller.isCurrent(generation);},
-  logout(){controller.switchScope(initial.origin,null,null);},
+  logout(){const current=controller.current().scope;controller.switchScope(current.origin,null,null);},
  };
 }
 ```
-logout 实际 origin 应跟随当前 scope，加入切 origin 再 logout 的失败测试后修正上面最小实现；不要把初始服务器写死到最终代码。
+补充切origin后logout仍保持当前origin、清除user/tenant的测试；生产Provider同时清除SecureStore与通知绑定。
 
 - [ ] **Step 4：接通实际入口。**
 
@@ -89,14 +89,14 @@ Provider 将 refresh invalidate 与 scope advance 绑定；用户/空间从产�
 
 - 两个并发401只刷新一次；刷新中退出/切 origin不写回旧 token。
 - draft/cache key在W09按origin/user/tenant隔离；登录凭证不存普通设置。
-- `pnpm exec tsx --test packages/api-client/src/auth/refresh-coordinator.test.ts apps/mobile/sources/weknora/platform/product-session.test.ts`（执行前核对现有测试名）；双平台真实登录、切空间后列表不串数据。
+- `pnpm exec tsx --test packages/api-client/src/auth.test.ts apps/mobile/sources/weknora/platform/product-session.test.ts`；双平台真实登录、切空间后列表不串数据。
 
 规格审查核对本任务接口与架构覆盖；质量审查核对权限、竞态、持久化和错误路径。修复发现后重跑受影响检查，审查通过前不进入依赖任务。
 
 - [ ] **Step 6：范围提交。** 在隔离实现分支执行，显式列出 Step 1–4 产生的文件；审核暂存 diff 后提交。更新本计划台账，不覆盖其他计划状态。
 
 ```bash
-git add apps/mobile/sources/weknora/platform/product-session.ts apps/mobile/sources/weknora/platform/product-session.test.ts apps/mobile/sources/weknora/auth/session.tsx apps/mobile/sources/app/_layout.tsx
+git add 'apps/mobile/sources/weknora/platform/product-session.ts' 'apps/mobile/sources/weknora/platform/product-session.test.ts' 'apps/mobile/sources/weknora/auth/session.tsx' 'apps/mobile/sources/app/_layout.tsx'
 git diff --cached --check
 git diff --cached --stat
 git commit -m "feat(mobile): bind product identity to invalidatable scope"
@@ -110,8 +110,9 @@ git commit -m "feat(mobile): bind product identity to invalidatable scope"
 
 - Create: `internal/application/repository/mobile_auth_exchange.go`、`internal/application/repository/mobile_auth_exchange_test.go`
 - Create: `internal/handler/auth_mobile_exchange.go`、`internal/handler/auth_mobile_exchange_test.go`
-- Modify: `internal/handler/auth.go`、`internal/router/routes_infra.go`、`packages/api-client/src/auth/oidc.ts`、`apps/mobile/sources/weknora/auth/AuthReturnScreen.tsx`
+- Modify: `internal/handler/auth.go`、`internal/router/routes_auth_tenant.go`、`packages/api-client/src/auth/oidc.ts`、`apps/mobile/sources/weknora/auth/AuthReturnScreen.tsx`
 - Create: `migrations/versioned/000123_mobile_auth_exchange.{up,down}.sql`、`migrations/sqlite/000043_mobile_auth_exchange.{up,down}.sql`
+- Create: `packages/api-client/src/auth/native-oidc.test.ts`
 
 **Interfaces：**
 
@@ -169,7 +170,7 @@ subject 只在 CAS 成功事务内读取；失败返回统一无效，不泄漏�
 - [ ] **Step 6：范围提交。** 在隔离实现分支执行，显式列出 Step 1–4 产生的文件；审核暂存 diff 后提交。更新本计划台账，不覆盖其他计划状态。
 
 ```bash
-git add internal/application/repository/mobile_auth_exchange.go internal/application/repository/mobile_auth_exchange_test.go internal/handler/auth_mobile_exchange.go internal/handler/auth_mobile_exchange_test.go internal/handler/auth.go internal/router/routes_infra.go packages/api-client/src/auth/oidc.ts apps/mobile/sources/weknora/auth/AuthReturnScreen.tsx migrations/versioned/000123_mobile_auth_exchange.up.sql migrations/versioned/000123_mobile_auth_exchange.down.sql migrations/sqlite/000043_mobile_auth_exchange.up.sql migrations/sqlite/000043_mobile_auth_exchange.down.sql
+git add 'internal/application/repository/mobile_auth_exchange.go' 'internal/application/repository/mobile_auth_exchange_test.go' 'internal/handler/auth_mobile_exchange.go' 'internal/handler/auth_mobile_exchange_test.go' 'internal/handler/auth.go' 'internal/router/routes_auth_tenant.go' 'packages/api-client/src/auth/oidc.ts' 'apps/mobile/sources/weknora/auth/AuthReturnScreen.tsx' 'migrations/versioned/000123_mobile_auth_exchange.up.sql' 'migrations/versioned/000123_mobile_auth_exchange.down.sql' 'migrations/sqlite/000043_mobile_auth_exchange.up.sql' 'migrations/sqlite/000043_mobile_auth_exchange.down.sql' 'packages/api-client/src/auth/native-oidc.test.ts'
 git diff --cached --check
 git diff --cached --stat
 git commit -m "feat(auth): support one-time native OIDC exchange"
@@ -239,7 +240,7 @@ export async function commitEvent(event:ExecutionEvent,save:(event:ExecutionEven
 - [ ] **Step 6：范围提交。** 在隔离实现分支执行，显式列出 Step 1–4 产生的文件；审核暂存 diff 后提交。更新本计划台账，不覆盖其他计划状态。
 
 ```bash
-git add packages/domain/src/mobile/execution-cache.ts packages/domain/src/mobile/execution-cache.test.ts apps/mobile/sources/weknora/platform/stream-transport.ts apps/mobile/sources/weknora/platform/stream-transport.test.ts apps/mobile/sources/weknora/platform/execution-storage.ts packages/domain/package.json apps/mobile/package.json pnpm-lock.yaml
+git add 'packages/domain/src/mobile/execution-cache.ts' 'packages/domain/src/mobile/execution-cache.test.ts' 'apps/mobile/sources/weknora/platform/stream-transport.ts' 'apps/mobile/sources/weknora/platform/stream-transport.test.ts' 'apps/mobile/sources/weknora/platform/execution-storage.ts' 'packages/domain/package.json' 'apps/mobile/package.json' 'pnpm-lock.yaml'
 git diff --cached --check
 git diff --cached --stat
 git commit -m "feat(mobile): persist streamed execution projections safely"
@@ -311,7 +312,7 @@ export function createSendController(send:(text:string,requestID:string)=>Promis
 - [ ] **Step 6：范围提交。** 在隔离实现分支执行，显式列出 Step 1–4 产生的文件；审核暂存 diff 后提交。更新本计划台账，不覆盖其他计划状态。
 
 ```bash
-git add apps/mobile/sources/weknora/conversations/view-model.ts apps/mobile/sources/weknora/conversations/view-model.test.ts apps/mobile/sources/-session/SessionView.tsx apps/mobile/sources/components/ChatList.tsx apps/mobile/sources/app/(app)/index.tsx apps/mobile/sources/weknora/conversations/ConversationScreen.tsx
+git add 'apps/mobile/sources/weknora/conversations/view-model.ts' 'apps/mobile/sources/weknora/conversations/view-model.test.ts' 'apps/mobile/sources/-session/SessionView.tsx' 'apps/mobile/sources/components/ChatList.tsx' 'apps/mobile/sources/app/(app)/index.tsx' 'apps/mobile/sources/weknora/conversations/ConversationScreen.tsx'
 git diff --cached --check
 git diff --cached --stat
 git commit -m "feat(mobile): connect Happy conversations to product state"
@@ -382,7 +383,7 @@ Go查询按运行快照中的agent_id/产品消息归属筛选，不使用只适
 - [ ] **Step 6：范围提交。** 在隔离实现分支执行，显式列出 Step 1–4 产生的文件；审核暂存 diff 后提交。更新本计划台账，不覆盖其他计划状态。
 
 ```bash
-git add internal/application/repository/workbench_list.go internal/application/repository/workbench_list_test.go apps/mobile/sources/weknora/workbench/WorkbenchScreen.tsx apps/mobile/sources/weknora/workbench/list-query.ts apps/mobile/sources/weknora/workbench/list-query.test.ts internal/router/routes_workbench.go packages/api-client/src/mobile/executions.ts apps/mobile/sources/app/(app)/index.tsx
+git add 'internal/application/repository/workbench_list.go' 'internal/application/repository/workbench_list_test.go' 'apps/mobile/sources/weknora/workbench/WorkbenchScreen.tsx' 'apps/mobile/sources/weknora/workbench/list-query.ts' 'apps/mobile/sources/weknora/workbench/list-query.test.ts' 'internal/router/routes_workbench.go' 'packages/api-client/src/mobile/executions.ts' 'apps/mobile/sources/app/(app)/index.tsx'
 git diff --cached --check
 git diff --cached --stat
 git commit -m "feat(workbench): list owned executions in native workspace"
@@ -450,10 +451,9 @@ ConversationScreen订阅AppState并在卸载时清理；恢复失败显示重试
 - [ ] **Step 6：范围提交。** 在隔离实现分支执行，显式列出 Step 1–4 产生的文件；审核暂存 diff 后提交。更新本计划台账，不覆盖其他计划状态。
 
 ```bash
-git add apps/mobile/sources/weknora/executions/recovery.ts apps/mobile/sources/weknora/executions/recovery.test.ts apps/mobile/sources/weknora/conversations/ConversationScreen.tsx docs/evidence/mobile-workbench/W12-native-recovery.md
+git add 'apps/mobile/sources/weknora/executions/recovery.ts' 'apps/mobile/sources/weknora/executions/recovery.test.ts' 'apps/mobile/sources/weknora/conversations/ConversationScreen.tsx' 'docs/evidence/mobile-workbench/W12-native-recovery.md'
 git diff --cached --check
 git diff --cached --stat
 git commit -m "feat(mobile): recover executions across app lifecycle"
 ```
-
 

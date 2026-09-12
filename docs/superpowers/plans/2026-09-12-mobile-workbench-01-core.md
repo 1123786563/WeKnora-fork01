@@ -101,16 +101,17 @@ Go 对 int64 转客户端数字前检查 ≤ 9007199254740991；超限返回 `se
 
 - [ ] **Step 5：GREEN、回归与独立审查。** 重跑 Step 2，预期全部 PASS、无意外 skip；再完成以下可判定验收，记录命令、退出码和证据。
 
-- 缺 run_id、空 attempt_id、数组 payload、非 ISO 时间、未知 schema_version 均拒绝。
+- 缺 run_id、缺 attempt_id、数组 payload、非 ISO 时间、未知 schema_version 均拒绝。
 - capability forbidden 与 unavailable 不混淆；空原因只允许 supported。
 - 保留原 contracts 导出；`pnpm run test:shared` 回归，不安装新 schema 框架。
+- 旧runtime生命周期事件的attempt_id可能为空，保留空串表示无具体尝试；不能伪造持久Attempt。新远程工具/文本事件必须映射真实Attempt。
 
 规格审查核对本任务接口与架构覆盖；质量审查核对权限、竞态、持久化和错误路径。修复发现后重跑受影响检查，审查通过前不进入依赖任务。
 
 - [ ] **Step 6：范围提交。** 在隔离实现分支执行，显式列出 Step 1–4 产生的文件；审核暂存 diff 后提交。更新本计划台账，不覆盖其他计划状态。
 
 ```bash
-git add packages/contracts/src/mobile/execution.ts packages/contracts/test/mobile-execution.test.ts packages/contracts/src/index.ts internal/workbench/contracts.go internal/workbench/contracts_test.go package.json
+git add 'packages/contracts/src/mobile/execution.ts' 'packages/contracts/test/mobile-execution.test.ts' 'packages/contracts/src/index.ts' 'internal/workbench/contracts.go' 'internal/workbench/contracts_test.go' 'package.json'
 git diff --cached --check
 git diff --cached --stat
 git commit -m "feat(workbench): define versioned execution contracts"
@@ -125,10 +126,13 @@ git commit -m "feat(workbench): define versioned execution contracts"
 - Modify: `internal/agent/runtime/contracts.go`、`internal/application/repository/agent_run.go`、`internal/application/service/agent_run_worker.go`
 - Create: `internal/application/repository/agent_run_driver.go`、`internal/application/repository/agent_run_driver_test.go`
 - Create: `migrations/versioned/000121_workbench_runs.{up,down}.sql`、`migrations/sqlite/000041_workbench_runs.{up,down}.sql`（执行前核对序号空闲）
+- Modify: `internal/database/migration.go`（SQLite受控迁移入口）
+- Create: `internal/database/workbench_migration.go`、`internal/database/workbench_migration_test.go`
 
 **Interfaces：**
 
 Produces：`Run.Driver/TargetID/BudgetRef string`、`Admission.Driver/TargetID/BudgetRef string`；`(*AgentRunStore).ScanDriver(ctx context.Context, driver string, limit int) ([]runtime.RunKey,error)`；`GetOwnedRun(ctx context.Context, tenant uint64, owner, runID string) (runtime.Run,error)`。旧 `Scan(ctx,limit)` 仅查 platform；旧 Admission.Driver 空值映射 platform。Paseo 与 tRPC 的 engine_type 不混写。
+精确 claim 签名：`ClaimDriver(ctx context.Context,key runtime.RunKey,driver,owner string,lease time.Duration)(runtime.Fence,error)`。platform仍要求Session.EngineType=trpc；paseo走独立driver准入，不强改Session.EngineType。
 
 - [ ] **Step 1：写失败测试。** 以下代码放入本任务 Test 文件；一个测试失败必须定位到本任务行为，不接受环境故障冒充 RED。
 
@@ -171,9 +175,17 @@ CREATE INDEX agent_runs_driver_scan ON agent_runs(driver, status, lease_until);
 ```
 读取与 claim 必须同时检查 driver；只在 Scan 过滤不足以阻止调用错误 Claim。新增 `ClaimDriver` 与原 Claim(platform) 包装，签名同 Claim 加 driver 参数。
 
+已核实两库存在 engine_type='trpc' CHECK。PostgreSQL在新增driver后替换为组合约束：
+```sql
+ALTER TABLE agent_runs DROP CONSTRAINT ck_agent_runs_engine;
+ALTER TABLE agent_runs ADD CONSTRAINT ck_agent_runs_engine
+CHECK ((driver = 'platform' AND engine_type = 'trpc') OR (driver = 'paseo' AND engine_type = ''));
+```
+SQLite需受控重建父表：专用单连接在事务外关闭foreign_keys；事务中按`migrations/sqlite/000014_agent_runs.up.sql`的agent_runs完整列声明建立新表并加入三字段及组合CHECK；显式列名复制全部旧行；替换父表并恢复三个原索引和新driver索引；foreign_key_check无结果才提交；finally恢复foreign_keys。不可在foreign_keys=ON时DROP父表触发级联删除。执行窗口关闭新准入并排空writer，迁移失败回滚原表。测试在迁移前插入checkpoint/tool/input/event/decision真实子行，迁移后逐表行数与摘要不变；down前存在paseo行直接拒绝，生产回退用兼容二进制，不自动删除远程数据。
+
 - [ ] **Step 4：接通实际入口。**
 
-`AgentRunWorker` 继续调用原 Scan/Claim，其语义收紧为 platform；远程 W20 使用 ScanDriver/ClaimDriver。GetOwnedRun 的 SQL 包含 tenant_id、owner_id、run_id；不先按裸 run_id 查询再应用客户端 tenant。Admit 保存 driver 前验证 platform/paseo 白名单；Paseo 的 EngineType 使用独立兼容值策略：允许空值且不进入 ParseAgentEngine，旧 platform 仍 trpc，迁移前核对数据库 CHECK。
+`AgentRunWorker` 继续调用原 Scan/Claim，其语义收紧为 platform；远程 W20 使用 ScanDriver/ClaimDriver。GetOwnedRun 的 SQL 包含 tenant_id、owner_id、run_id；不先按裸 run_id 查询再应用客户端 tenant。Admit 保存 driver 前验证 platform/paseo 白名单；Paseo行EngineType为空且不进入ParseAgentEngine；组合CHECK按Step 3迁移。Admit中原`Session.EngineType != trpc`检查仅对platform生效；paseo必须通过W18目标准入而非借改变会话引擎绕过。
 
 - [ ] **Step 5：GREEN、回归与独立审查。** 重跑 Step 2，预期全部 PASS、无意外 skip；再完成以下可判定验收，记录命令、退出码和证据。
 
@@ -186,7 +198,7 @@ CREATE INDEX agent_runs_driver_scan ON agent_runs(driver, status, lease_until);
 - [ ] **Step 6：范围提交。** 在隔离实现分支执行，显式列出 Step 1–4 产生的文件；审核暂存 diff 后提交。更新本计划台账，不覆盖其他计划状态。
 
 ```bash
-git add internal/agent/runtime/contracts.go internal/application/repository/agent_run.go internal/application/repository/agent_run_driver.go internal/application/repository/agent_run_driver_test.go internal/application/service/agent_run_worker.go migrations/versioned/000121_workbench_runs.up.sql migrations/versioned/000121_workbench_runs.down.sql migrations/sqlite/000041_workbench_runs.up.sql migrations/sqlite/000041_workbench_runs.down.sql
+git add 'internal/agent/runtime/contracts.go' 'internal/application/repository/agent_run.go' 'internal/application/repository/agent_run_driver.go' 'internal/application/repository/agent_run_driver_test.go' 'internal/application/service/agent_run_worker.go' 'migrations/versioned/000121_workbench_runs.up.sql' 'migrations/versioned/000121_workbench_runs.down.sql' 'migrations/sqlite/000041_workbench_runs.up.sql' 'migrations/sqlite/000041_workbench_runs.down.sql' 'internal/database/migration.go' 'internal/database/workbench_migration.go' 'internal/database/workbench_migration_test.go'
 git diff --cached --check
 git diff --cached --stat
 git commit -m "feat(runtime): isolate platform and remote run drivers"
@@ -263,7 +275,7 @@ ReadRunSnapshot 在同一个可重复读/一致事务中读取权威消息投影
 - [ ] **Step 6：范围提交。** 在隔离实现分支执行，显式列出 Step 1–4 产生的文件；审核暂存 diff 后提交。更新本计划台账，不覆盖其他计划状态。
 
 ```bash
-git add internal/handler/session/workbench_read.go internal/handler/session/workbench_read_test.go internal/application/repository/agent_run_snapshot.go internal/application/repository/agent_run_snapshot_test.go internal/router/routes_workbench.go internal/router/router.go internal/handler/session/agent_run.go
+git add 'internal/handler/session/workbench_read.go' 'internal/handler/session/workbench_read_test.go' 'internal/application/repository/agent_run_snapshot.go' 'internal/application/repository/agent_run_snapshot_test.go' 'internal/router/routes_workbench.go' 'internal/router/router.go' 'internal/handler/session/agent_run.go'
 git diff --cached --check
 git diff --cached --stat
 git commit -m "feat(workbench): serve owned snapshots and replayable events"
@@ -279,11 +291,12 @@ git commit -m "feat(workbench): serve owned snapshots and replayable events"
 - Create: `internal/application/repository/workbench_request.go`、`internal/application/repository/workbench_request_test.go`
 - Create: `internal/handler/session/workbench_start.go`
 - Modify: `internal/router/routes_workbench.go`、`internal/container/agent_runtime.go`
-- Create: 请求协调记录迁移（见总计划序号表）
+- Create: `migrations/versioned/000122_workbench_requests.{up,down}.sql`、`migrations/sqlite/000042_workbench_requests.{up,down}.sql`
 
 **Interfaces：**
 
 Produces `StartInput{SessionID,AgentID,TargetID,WorkspaceRef,RequestID,Text string; BudgetUpper int64}`；`AdmissionCoordinator.Start(ctx context.Context,in StartInput) (runtime.Run,error)`；`LookupRequest(ctx,requestID) (RequestState,error)`，RequestState 为 pending/admitted/rejected/unknown + run_id。请求记录以可信 tenant/actor/request_id 唯一，hash 覆盖会话、目标、输入和预算。
+`RequestState{State,RunID,Reason string}`；`LookupRequest(ctx context.Context,requestID string)(RequestState,error)`的tenant/actor由认证上下文解析。`NewAdmissionCoordinator(db *gorm.DB,runs *repository.AgentRunStore,budget TaskBudgetPort,publish func(context.Context,runtime.RunKey)error)*AdmissionCoordinator`；TaskBudgetPort定义`Ensure(ctx context.Context,tenant uint64,owner,requestID string,upper int64,deadline time.Time)(string,error)`、`ReleaseUnstarted(ctx context.Context,budgetRef string)error`，实现包装已有预算store，不新建钱包。
 
 - [ ] **Step 1：写失败测试。** 以下代码放入本任务 Test 文件；一个测试失败必须定位到本任务行为，不接受环境故障冒充 RED。
 
@@ -336,7 +349,7 @@ func admitThenPublish(admit func() error, publish func() error) error {
 - [ ] **Step 6：范围提交。** 在隔离实现分支执行，显式列出 Step 1–4 产生的文件；审核暂存 diff 后提交。更新本计划台账，不覆盖其他计划状态。
 
 ```bash
-git add internal/application/service/workbench/admission.go internal/application/service/workbench/admission_test.go internal/application/repository/workbench_request.go internal/application/repository/workbench_request_test.go internal/handler/session/workbench_start.go internal/router/routes_workbench.go internal/container/agent_runtime.go
+git add 'internal/application/service/workbench/admission.go' 'internal/application/service/workbench/admission_test.go' 'internal/application/repository/workbench_request.go' 'internal/application/repository/workbench_request_test.go' 'internal/handler/session/workbench_start.go' 'internal/router/routes_workbench.go' 'internal/container/agent_runtime.go' 'migrations/versioned/000122_workbench_requests.up.sql' 'migrations/versioned/000122_workbench_requests.down.sql' 'migrations/sqlite/000042_workbench_requests.up.sql' 'migrations/sqlite/000042_workbench_requests.down.sql'
 git diff --cached --check
 git diff --cached --stat
 git commit -m "feat(workbench): admit idempotent budgeted executions"
@@ -408,7 +421,7 @@ func ValidateInteractionAction(kind, action string) error {
 - [ ] **Step 6：范围提交。** 在隔离实现分支执行，显式列出 Step 1–4 产生的文件；审核暂存 diff 后提交。更新本计划台账，不覆盖其他计划状态。
 
 ```bash
-git add internal/workbench/interaction.go internal/workbench/interaction_test.go internal/handler/session/workbench_commands.go internal/handler/session/workbench_commands_test.go internal/application/service/workbench/interaction.go internal/router/routes_workbench.go
+git add 'internal/workbench/interaction.go' 'internal/workbench/interaction_test.go' 'internal/handler/session/workbench_commands.go' 'internal/handler/session/workbench_commands_test.go' 'internal/application/service/workbench/interaction.go' 'internal/router/routes_workbench.go'
 git diff --cached --check
 git diff --cached --stat
 git commit -m "feat(workbench): route typed commands and scoped decisions"
@@ -475,10 +488,8 @@ start 不自带重试。上层在 TIMEOUT 后调用 lookup，unknown/pending 只
 - [ ] **Step 6：范围提交。** 在隔离实现分支执行，显式列出 Step 1–4 产生的文件；审核暂存 diff 后提交。更新本计划台账，不覆盖其他计划状态。
 
 ```bash
-git add packages/api-client/src/mobile/executions.ts packages/api-client/src/mobile/executions.test.ts packages/api-client/src/index.ts package.json
+git add 'packages/api-client/src/mobile/executions.ts' 'packages/api-client/src/mobile/executions.test.ts' 'packages/api-client/src/index.ts' 'package.json'
 git diff --cached --check
 git diff --cached --stat
 git commit -m "feat(sdk): add execution facade and request reconciliation"
 ```
-
-

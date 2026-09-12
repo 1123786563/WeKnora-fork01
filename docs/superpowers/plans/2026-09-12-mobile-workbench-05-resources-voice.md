@@ -91,7 +91,7 @@ export function validateUpload(f:UploadInput,limit:number){
 - [ ] **Step 6：范围提交。** 在隔离实现分支执行，显式列出 Step 1–4 产生的文件；审核暂存 diff 后提交。更新本计划台账，不覆盖其他计划状态。
 
 ```bash
-git add apps/mobile/sources/weknora/resources/upload.ts apps/mobile/sources/weknora/resources/upload.test.ts internal/handler/session/temporary_document.go packages/api-client/src/knowledge/documents.ts internal/handler/session/mobile_upload_test.go
+git add 'apps/mobile/sources/weknora/resources/upload.ts' 'apps/mobile/sources/weknora/resources/upload.test.ts' 'internal/handler/session/temporary_document.go' 'packages/api-client/src/knowledge/documents.ts' 'internal/handler/session/mobile_upload_test.go'
 git diff --cached --check
 git diff --cached --stat
 git commit -m "feat(mobile): upload scoped attachments with cancellation"
@@ -122,8 +122,10 @@ import (
  "github.com/stretchr/testify/require"
 )
 func TestArtifactVersionIsImmutable(t *testing.T) {
- s:=NewArtifactVersionStore(openRunTestDB(t));ctx:=context.Background()
- v:=ArtifactVersion{TenantID:1,ID:"v1",RunID:"r",SessionID:"s1",Digest:"a",ObjectKey:"k1",MIME:"text/plain",ScanState:"clean",Size:1}
+ db:=openRunTestDB(t);ctx:=context.Background()
+ _,err:=NewAgentRunStore(db).Admit(ctx,testAdmission());require.NoError(t,err)
+ s:=NewArtifactVersionStore(db)
+ v:=ArtifactVersion{TenantID:1,ID:"v1",RunID:"r1",SessionID:"s1",Digest:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",ObjectKey:"k1",MIME:"text/plain",ScanState:"clean",Size:1}
  require.NoError(t,s.Insert(ctx,v))
  v.ObjectKey="k2"; require.Error(t,s.Insert(ctx,v))
 }
@@ -161,7 +163,7 @@ Bridge导出以已授权根目录描述符为边界逐段打开，拒绝..、绝
 - [ ] **Step 6：范围提交。** 在隔离实现分支执行，显式列出 Step 1–4 产生的文件；审核暂存 diff 后提交。更新本计划台账，不覆盖其他计划状态。
 
 ```bash
-git add internal/application/repository/artifact_version.go internal/application/repository/artifact_version_test.go services/paseo-adapter/src/artifact-export.ts services/paseo-adapter/src/artifact-export.test.ts internal/handler/session/artifact_download.go migrations/versioned/000130_artifact_versions.up.sql migrations/versioned/000130_artifact_versions.down.sql migrations/sqlite/000050_artifact_versions.up.sql migrations/sqlite/000050_artifact_versions.down.sql
+git add 'internal/application/repository/artifact_version.go' 'internal/application/repository/artifact_version_test.go' 'services/paseo-adapter/src/artifact-export.ts' 'services/paseo-adapter/src/artifact-export.test.ts' 'internal/handler/session/artifact_download.go' 'migrations/versioned/000130_artifact_versions.up.sql' 'migrations/versioned/000130_artifact_versions.down.sql' 'migrations/sqlite/000050_artifact_versions.up.sql' 'migrations/sqlite/000050_artifact_versions.down.sql'
 git diff --cached --check
 git diff --cached --stat
 git commit -m "feat(artifacts): import immutable scoped execution outputs"
@@ -230,7 +232,7 @@ export function previewHeaders(){return {
 - [ ] **Step 6：范围提交。** 在隔离实现分支执行，显式列出 Step 1–4 产生的文件；审核暂存 diff 后提交。更新本计划台账，不覆盖其他计划状态。
 
 ```bash
-git add apps/mobile/sources/weknora/resources/preview-policy.ts apps/mobile/sources/weknora/resources/preview-policy.test.ts apps/mobile/sources/weknora/resources/ArtifactPreview.tsx internal/handler/artifact_preview.go internal/handler/artifact_preview_test.go docs/migrations/aws-mobile/source-manifest.json
+git add 'apps/mobile/sources/weknora/resources/preview-policy.ts' 'apps/mobile/sources/weknora/resources/preview-policy.test.ts' 'apps/mobile/sources/weknora/resources/ArtifactPreview.tsx' 'internal/handler/artifact_preview.go' 'internal/handler/artifact_preview_test.go' 'docs/migrations/aws-mobile/source-manifest.json'
 git diff --cached --check
 git diff --cached --stat
 git commit -m "feat(artifacts): isolate generated previews from product credentials"
@@ -287,14 +289,14 @@ export function selectRenderer(kind:string):'citation'|'table'|'file'|'text'{
 
 - 真实知识问答引用可打开获准来源，撤销后拒绝；数据分析附件→表格/文件真实链路。
 - 巨大表格、长中文、未知type、损坏payload、RTL/大字体和无障碍标签。
-- 未接通的专业类型不得以placeholder卡片标完成；原Happy普通文本/工具回归。
+- 未接通的专业类型不得以空壳卡片标完成；原Happy普通文本/工具回归。
 
 规格审查核对本任务接口与架构覆盖；质量审查核对权限、竞态、持久化和错误路径。修复发现后重跑受影响检查，审查通过前不进入依赖任务。
 
 - [ ] **Step 6：范围提交。** 在隔离实现分支执行，显式列出 Step 1–4 产生的文件；审核暂存 diff 后提交。更新本计划台账，不覆盖其他计划状态。
 
 ```bash
-git add apps/mobile/sources/weknora/renderers/registry.ts apps/mobile/sources/weknora/renderers/registry.test.ts apps/mobile/sources/weknora/renderers/KnowledgeCitation.tsx apps/mobile/sources/weknora/renderers/DataAnalysisResult.tsx apps/mobile/sources/weknora/conversations/ConversationScreen.tsx
+git add 'apps/mobile/sources/weknora/renderers/registry.ts' 'apps/mobile/sources/weknora/renderers/registry.test.ts' 'apps/mobile/sources/weknora/renderers/KnowledgeCitation.tsx' 'apps/mobile/sources/weknora/renderers/DataAnalysisResult.tsx' 'apps/mobile/sources/weknora/conversations/ConversationScreen.tsx'
 git diff --cached --check
 git diff --cached --stat
 git commit -m "feat(mobile): render authorized knowledge and specialist results"
@@ -311,17 +313,19 @@ git commit -m "feat(mobile): render authorized knowledge and specialist results"
 
 **Interfaces：**
 
-Produces `applyTranscript(text:string,setDraft:(text:string)=>void):void`；`DictationPort{start():Promise<void>;stop():Promise<{uri:string;durationMs:number}>;cancel():Promise<void>;transcribe(uri:string):Promise<string>}`。转写服务通过产品鉴权与预算，不直用长期模型key。
+Produces `createDictationController(transcribe:()=>Promise<string>,setDraft:(text:string)=>void,getDraft:()=>string,send:(text:string)=>Promise<void>)`，`finish():Promise<void>`、`confirm():Promise<void>`。`DictationPort{start():Promise<void>;stop():Promise<{uri:string;durationMs:number}>;cancel():Promise<void>;transcribe(uri:string):Promise<string>}`。转写服务通过产品鉴权与预算，不直用长期模型key。
 
 - [ ] **Step 1：写失败测试。** 以下代码放入本任务 Test 文件；一个测试失败必须定位到本任务行为，不接受环境故障冒充 RED。
 
 ```ts
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyTranscript } from './dictation.ts';
-test('transcript updates editable draft without sending',()=>{
- let draft='';applyTranscript('删除这个文件',value=>{draft=value;});
- assert.equal(draft,'删除这个文件');
+import { createDictationController } from './dictation.ts';
+test('transcription remains a draft until explicit confirmation',async()=>{
+ let draft='';const sent:string[]=[];
+ const c=createDictationController(async()=>'删除这个文件',value=>{draft=value;},()=>draft,async text=>{sent.push(text);});
+ await c.finish();assert.equal(draft,'删除这个文件');assert.deepEqual(sent,[]);
+ draft='保留这个文件';await c.confirm();assert.deepEqual(sent,['保留这个文件']);
 });
 ```
 
@@ -331,14 +335,19 @@ test('transcript updates editable draft without sending',()=>{
 pnpm exec tsx --test apps/mobile/sources/weknora/voice/dictation.test.ts
 ```
 
-预期：applyTranscript未定义。
+预期：createDictationController未定义。
 
 - [ ] **Step 3：实现最小行为。**
 
 ```ts
-export function applyTranscript(text:string,setDraft:(text:string)=>void){setDraft(text.trim());}
+export function createDictationController(transcribe:()=>Promise<string>,setDraft:(text:string)=>void,getDraft:()=>string,send:(text:string)=>Promise<void>){
+ return {async finish(){setDraft((await transcribe()).trim());},async confirm(){
+  const draft=getDraft().trim();if(!draft)throw new Error('TRANSCRIPT_REQUIRED');
+  await send(draft);setDraft('');
+ }};
+}
 ```
-录音状态idle/recording/transcribing/ready/error；权限拒绝回文本输入；松开停止、取消删除临时音频。默认每次最长60秒，能力配置可收紧。接口中不接收send函数，转写不能自动执行任务。
+录音状态idle/recording/transcribing/ready/error；权限拒绝回文本输入；松开停止、取消删除临时音频。默认每次最长60秒，能力配置可收紧。getDraft读取W10当前草稿，confirm消费用户最新编辑值并使用同一发送单飞控制器；finish不直接提交。
 
 - [ ] **Step 4：接通实际入口。**
 
@@ -355,7 +364,7 @@ DictationInput调用原生音频端口；来电/后台/切空间触发cancel。�
 - [ ] **Step 6：范围提交。** 在隔离实现分支执行，显式列出 Step 1–4 产生的文件；审核暂存 diff 后提交。更新本计划台账，不覆盖其他计划状态。
 
 ```bash
-git add apps/mobile/sources/weknora/voice/dictation.ts apps/mobile/sources/weknora/voice/dictation.test.ts apps/mobile/sources/weknora/voice/DictationInput.tsx apps/mobile/sources/weknora/conversations/ConversationScreen.tsx
+git add 'apps/mobile/sources/weknora/voice/dictation.ts' 'apps/mobile/sources/weknora/voice/dictation.test.ts' 'apps/mobile/sources/weknora/voice/DictationInput.tsx' 'apps/mobile/sources/weknora/conversations/ConversationScreen.tsx'
 git diff --cached --check
 git diff --cached --stat
 git commit -m "feat(mobile): add reviewable voice dictation"
@@ -363,7 +372,7 @@ git commit -m "feat(mobile): add reviewable voice dictation"
 
 ### W30：语音会话授权、短期令牌和结算
 
-**依赖：** W04、W24、W29。
+**依赖：** W04、W29；平台语音要求既有商业网关验证，远程绑定语音另需W24。
 
 **Files：**
 
@@ -426,7 +435,7 @@ VoiceSession保存tenant/owner/session/run/providerRef/deadline/usage状态；�
 - [ ] **Step 6：范围提交。** 在隔离实现分支执行，显式列出 Step 1–4 产生的文件；审核暂存 diff 后提交。更新本计划台账，不覆盖其他计划状态。
 
 ```bash
-git add internal/voice/session.go internal/voice/session_test.go internal/voice/provider.go internal/handler/mobile_voice.go internal/handler/mobile_voice_test.go internal/application/repository/voice_session.go migrations/versioned/000131_voice_sessions.up.sql migrations/versioned/000131_voice_sessions.down.sql migrations/sqlite/000051_voice_sessions.up.sql migrations/sqlite/000051_voice_sessions.down.sql internal/router/routes_workbench.go internal/container/container.go
+git add 'internal/voice/session.go' 'internal/voice/session_test.go' 'internal/voice/provider.go' 'internal/handler/mobile_voice.go' 'internal/handler/mobile_voice_test.go' 'internal/application/repository/voice_session.go' 'migrations/versioned/000131_voice_sessions.up.sql' 'migrations/versioned/000131_voice_sessions.down.sql' 'migrations/sqlite/000051_voice_sessions.up.sql' 'migrations/sqlite/000051_voice_sessions.down.sql' 'internal/router/routes_workbench.go' 'internal/container/container.go'
 git diff --cached --check
 git diff --cached --stat
 git commit -m "feat(voice): authorize short-lived budgeted sessions"
@@ -444,16 +453,19 @@ git commit -m "feat(voice): authorize short-lived budgeted sessions"
 
 **Interfaces：**
 
-Produces `interruptPlayback(stopAudio:()=>void):void`；RealtimeVoicePort.connect(grant: {token:string;expiresAt:string}):Promise<void>, close():Promise<void>, mute(value:boolean):void。与W30 wire统一ExpiresAt RFC3339，音频停止与产品cancel分离。
+Produces `createVoiceControls(ports:{stopAudio:()=>void;closeVoice:()=>Promise<void>;cancelRun:()=>Promise<void>})，返回interrupt():void、endVoice():Promise<void>、cancelTask():Promise<void>`；RealtimeVoicePort.connect(grant: {token:string;expiresAt:string}):Promise<void>, close():Promise<void>, mute(value:boolean):void。与W30 wire统一ExpiresAt RFC3339，音频停止与产品cancel分离。
 
 - [ ] **Step 1：写失败测试。** 以下代码放入本任务 Test 文件；一个测试失败必须定位到本任务行为，不接受环境故障冒充 RED。
 
 ```ts
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { interruptPlayback } from './realtime.ts';
-test('interrupt stops audio without canceling execution',()=>{
- let stopped=0;interruptPlayback(()=>{stopped++;});assert.equal(stopped,1);
+import { createVoiceControls } from './realtime.ts';
+test('interrupt and end voice do not cancel the task',async()=>{
+ const calls:string[]=[];
+ const c=createVoiceControls({stopAudio:()=>{calls.push('audio');},closeVoice:async()=>{calls.push('close');},cancelRun:async()=>{calls.push('cancel');}});
+ c.interrupt();await c.endVoice();assert.deepEqual(calls,['audio','close']);
+ await c.cancelTask();assert.deepEqual(calls,['audio','close','cancel']);
 });
 ```
 
@@ -463,12 +475,12 @@ test('interrupt stops audio without canceling execution',()=>{
 pnpm exec tsx --test apps/mobile/sources/weknora/voice/realtime.test.ts
 ```
 
-预期：interruptPlayback未定义。
+预期：createVoiceControls未定义。
 
 - [ ] **Step 3：实现最小行为。**
 
 ```ts
-export function interruptPlayback(stopAudio:()=>void){stopAudio();}
+export function createVoiceControls(p:{stopAudio:()=>void;closeVoice:()=>Promise<void>;cancelRun:()=>Promise<void>}){return {interrupt:()=>p.stopAudio(),endVoice:()=>p.closeVoice(),cancelTask:()=>p.cancelRun()};}
 ```
 VoicePanel分别提供静音、停止播放、结束语音连接；取消Agent仍是明确的产品命令。语音触发高风险操作必须出现W05结构化审批卡，口头模糊回复不自动批准。
 
@@ -487,10 +499,8 @@ VoicePanel分别提供静音、停止播放、结束语音连接；取消Agent�
 - [ ] **Step 6：范围提交。** 在隔离实现分支执行，显式列出 Step 1–4 产生的文件；审核暂存 diff 后提交。更新本计划台账，不覆盖其他计划状态。
 
 ```bash
-git add apps/mobile/sources/weknora/voice/realtime.ts apps/mobile/sources/weknora/voice/realtime.test.ts apps/mobile/sources/weknora/voice/VoicePanel.tsx apps/mobile/sources/weknora/notifications/live-progress.ts apps/mobile/sources/weknora/conversations/ConversationScreen.tsx
+git add 'apps/mobile/sources/weknora/voice/realtime.ts' 'apps/mobile/sources/weknora/voice/realtime.test.ts' 'apps/mobile/sources/weknora/voice/VoicePanel.tsx' 'apps/mobile/sources/weknora/notifications/live-progress.ts' 'apps/mobile/sources/weknora/conversations/ConversationScreen.tsx'
 git diff --cached --check
 git diff --cached --stat
 git commit -m "feat(mobile): separate realtime voice controls from task execution"
 ```
-
-
