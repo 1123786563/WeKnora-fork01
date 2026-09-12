@@ -44,8 +44,14 @@ type ActionRow struct {
 	ProviderResult string `gorm:"column:provider_result;not null;default:''"`
 	ReservationID  string `gorm:"column:reservation_id;not null;default:''"`
 	Fence          int64  `gorm:"column:fence;not null;default:0"`
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	// OCBindingJSON is the marshaled appconnector.OCExecutionBinding for
+	// open-connector actions ('' for native ones); DigestVersion records the
+	// digest generation of ArgsDigest (migration 000122/000042 default 1 for
+	// pre-existing rows; every new write carries 2).
+	OCBindingJSON string `gorm:"column:oc_binding_json;not null;default:''"`
+	DigestVersion int64  `gorm:"column:digest_version;not null;default:1"`
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 func (ActionRow) TableName() string { return "app_actions" }
@@ -87,15 +93,31 @@ type ActionStore struct{ db *gorm.DB }
 func NewActionStore(db *gorm.DB) *ActionStore { return &ActionStore{db: db} }
 
 // CreateAction persists a new action in the given initial state with its
-// normalized snapshot and digest.
+// normalized snapshot, digest, open-connector execution binding JSON and
+// digest generation — all in the row's single INSERT (one transaction).
+// Every NEW row carries the current digest generation; the migration's
+// legacy default 1 applies only to rows that already existed before it.
 func (s *ActionStore) CreateAction(ctx context.Context, a appconnector.Action, snapshot, digest, state string) error {
 	if a.ID == "" || a.TenantID == 0 || snapshot == "" || digest == "" || state == "" {
 		return ErrActionState
+	}
+	ocJSON := ""
+	if a.OC != nil {
+		b, err := json.Marshal(a.OC)
+		if err != nil {
+			return err
+		}
+		ocJSON = string(b)
+	}
+	digestVersion := int64(a.DigestVersion)
+	if digestVersion == 0 {
+		digestVersion = appconnector.CurrentDigestVersion
 	}
 	row := ActionRow{
 		ID: a.ID, TenantID: a.TenantID, ActorID: a.ActorID, ConnectionID: a.ConnectionID,
 		AppVersion: a.Version, Target: a.Target, Risk: a.Risk, AuthVersion: a.AuthVersion,
 		ArgsSnapshot: snapshot, ArgsDigest: digest, State: state,
+		OCBindingJSON: ocJSON, DigestVersion: digestVersion,
 	}
 	return s.db.WithContext(ctx).Create(&row).Error
 }

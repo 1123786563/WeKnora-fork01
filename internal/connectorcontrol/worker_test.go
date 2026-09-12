@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -780,3 +781,125 @@ func TestWorkerRenewalExtendsLeaseDuringExecution(t *testing.T) {
 }
 
 var _ = errors.New
+
+// ---------------------------------------------------------------------------
+// T09 HARD PREREQUISITE: mint-path reconciliation revoke guard (T08 dual
+// review Q-1/F-1). The two delete paths already treat an admin 404 from
+// RevokeRuntimeToken as idempotent success; the mint reconciliation revoke
+// must too — a retried mint whose orphaned prior token was ALREADY revoked
+// upstream (404) must proceed with the re-cast instead of failing forever.
+// ---------------------------------------------------------------------------
+
+// readBackSink is a SecretSink with a working read side (secretReader), so
+// mintRuntimeToken takes the reconciliation path.
+type readBackSink struct {
+	mu   sync.Mutex
+	data map[string]string
+	puts []string
+}
+
+func (s *readBackSink) PutSecret(ctx context.Context, ref, secret string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.data == nil {
+		s.data = map[string]string{}
+	}
+	s.data[ref] = secret
+	s.puts = append(s.puts, ref)
+	return nil
+}
+
+func (s *readBackSink) GetSecret(ctx context.Context, ref string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.data[ref], nil
+}
+
+// reconcileAdmin injects an independent revoke result while recording every
+// admin call, so the mint seam can be driven with precise errors.
+type reconcileAdmin struct {
+	mu        sync.Mutex
+	revokeErr error
+	revoked   []string
+	created   int
+}
+
+func (a *reconcileAdmin) CreateRuntimeToken(ctx context.Context, req CreateTokenRequest) (RuntimeTokenCreated, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.created++
+	return RuntimeTokenCreated{TokenRecordID: "rec-new", Token: "tok-new"}, nil
+}
+
+func (a *reconcileAdmin) RevokeRuntimeToken(ctx context.Context, tokenRecordID string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.revoked = append(a.revoked, tokenRecordID)
+	return a.revokeErr
+}
+
+func (a *reconcileAdmin) StartAuthorization(ctx context.Context, service, connectionName string) (AuthorizationStart, error) {
+	return AuthorizationStart{}, nil
+}
+
+func (a *reconcileAdmin) LookupRuntimeConnection(ctx context.Context, appID string) (RuntimeConnection, error) {
+	return RuntimeConnection{}, nil
+}
+
+func (a *reconcileAdmin) DeleteRuntimeConnection(ctx context.Context, appID string) error {
+	return nil
+}
+
+// TestMintReconcileTreatsAlreadyRevokedAsSuccess drives the
+// reconcile-retry-after-404 scenario at the mint seam: the sink read back a
+// prior record id (an earlier mint whose material persist failed and whose
+// row is retrying) and the remote token is ALREADY revoked — the admin 404
+// must count as done and the replacement token must be cast and persisted.
+func TestMintReconcileTreatsAlreadyRevokedAsSuccess(t *testing.T) {
+	sink := &readBackSink{data: map[string]string{
+		"oc/runtime-token/7/conn-1/3/record-id": "rec-prior",
+	}}
+	admin := &reconcileAdmin{revokeErr: &AdminError{Status: http.StatusNotFound, Code: "token_not_found"}}
+	w := &ControlWorker{admin: admin, secrets: sink}
+
+	if err := w.mintRuntimeToken(context.Background(), 7, "conn-1", 3, "weknora-7-conn-1-v3", "ext-1", []string{"github.search"}); err != nil {
+		t.Fatalf("already-revoked orphan blocked the re-cast: %v", err)
+	}
+	admin.mu.Lock()
+	created, revoked := admin.created, append([]string(nil), admin.revoked...)
+	admin.mu.Unlock()
+	if created != 1 {
+		t.Fatalf("replacement token not minted (created=%d)", created)
+	}
+	if len(revoked) != 1 || revoked[0] != "rec-prior" {
+		t.Fatalf("prior record id not reconciled: %v", revoked)
+	}
+	sink.mu.Lock()
+	material := sink.data["oc/runtime-token/7/conn-1/3"]
+	record := sink.data["oc/runtime-token/7/conn-1/3/record-id"]
+	sink.mu.Unlock()
+	if material != "tok-new" || record != "rec-new" {
+		t.Fatalf("replacement token not persisted (material=%q record=%q)", material, record)
+	}
+}
+
+// TestMintReconcileStillFailsOnRealErrors pins that only the 404 is
+// idempotent: any other revoke failure still aborts the mint BEFORE a second
+// token is cast, exactly like the two delete paths in the same file.
+func TestMintReconcileStillFailsOnRealErrors(t *testing.T) {
+	sink := &readBackSink{data: map[string]string{
+		"oc/runtime-token/7/conn-1/3/record-id": "rec-prior",
+	}}
+	admin := &reconcileAdmin{revokeErr: &AdminError{Status: http.StatusInternalServerError, Code: "runtime_unavailable"}}
+	w := &ControlWorker{admin: admin, secrets: sink}
+
+	if err := w.mintRuntimeToken(context.Background(), 7, "conn-1", 3, "weknora-7-conn-1-v3", "ext-1", []string{"github.search"}); err == nil {
+		t.Fatal("real revoke failure was swallowed")
+	}
+	admin.mu.Lock()
+	created := admin.created
+	admin.mu.Unlock()
+	if created != 0 {
+		t.Fatalf("second token cast while orphan state unknown (created=%d)", created)
+	}
+}

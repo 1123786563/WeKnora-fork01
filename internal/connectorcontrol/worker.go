@@ -876,7 +876,13 @@ func (w *ControlWorker) mintRuntimeToken(ctx context.Context, tenant uint64, con
 	src, canRead := w.secrets.(secretReader)
 	if canRead {
 		if prior, err := src.GetSecret(ctx, ref+"/record-id"); err == nil && prior != "" {
-			if err := w.admin.RevokeRuntimeToken(ctx, prior); err != nil {
+			// T08 dual review Q-1/F-1 (T09 hard prerequisite): an admin 404
+			// here is idempotent success — the orphan was already revoked
+			// (earlier partial reconcile, remote GC) — same guard as the two
+			// delete paths above; without it a retried mint whose orphan is
+			// gone could never succeed. Any other error still aborts BEFORE
+			// a second token is cast.
+			if err := w.admin.RevokeRuntimeToken(ctx, prior); err != nil && !IsNotFound(err) {
 				return fmt.Errorf("reconcile prior token before re-cast: %w", err)
 			}
 		}

@@ -73,6 +73,8 @@ type stubDispatcher struct {
 	lastArgs  []byte
 	lastKey   string
 	lastFence int64
+	lastSnap  ActionSnapshot
+	snapshots []ActionSnapshot
 }
 
 func (d *stubDispatcher) Dispatch(ctx context.Context, snap ActionSnapshot, providerKey string) (DispatchOutcome, error) {
@@ -82,6 +84,8 @@ func (d *stubDispatcher) Dispatch(ctx context.Context, snap ActionSnapshot, prov
 	d.lastArgs = append([]byte(nil), snap.Args...)
 	d.lastKey = providerKey
 	d.lastFence = snap.Fence
+	d.lastSnap = snap
+	d.snapshots = append(d.snapshots, snap)
 	return d.outcome, d.err
 }
 
@@ -510,5 +514,154 @@ func TestUnknownOutcomeResolvedViaProviderQuery(t *testing.T) {
 	}
 	if calls, _ := disp.stats(); calls != 1 {
 		t.Fatalf("dispatch called again on unknown: %d", calls)
+	}
+}
+
+// seedActionRow inserts an action row directly, bypassing Prepare — used to
+// materialize LEGACY rows (digest_version 1, oc_binding_json) exactly as
+// migration 000122 leaves pre-existing data.
+func seedActionRow(t *testing.T, db *gorm.DB, id, state, digest, ocJSON string, digestVersion int64, fence int64) {
+	t.Helper()
+	if err := db.Exec(`INSERT INTO app_actions
+		(id, tenant_id, actor_id, connection_id, app_version, target, risk, auth_version,
+		 args_snapshot, args_digest, state, provider_key, provider_result, reservation_id, fence,
+		 oc_binding_json, digest_version)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		id, 7, "u1", "conn-1", "1.0.0", "mail.send", "send", 1,
+		"{\"to\":\"a@b.c\"}", digest, state, "", "", "", fence, ocJSON, digestVersion).Error; err != nil {
+		t.Fatal(err)
+	}
+}
+
+// newServiceWithDB builds the stub service over a DB the test can seed
+// legacy rows into directly.
+func newServiceWithDB(t *testing.T) (*ActionService, *stubDispatcher, *stubResolver, *gorm.DB) {
+	t.Helper()
+	db := openActionDB(t, memDSN(t))
+	disp := &stubDispatcher{outcome: DispatchOutcome{Status: appconn.ActionSucceeded, ProviderResult: "ok"}}
+	res := &stubResolver{outcome: DispatchOutcome{Status: appconn.ActionSucceeded, ProviderResult: "provider:ok"}}
+	svc := NewActionService(repoappconn.NewActionStore(db), &stubGuard{}, nil, disp, res)
+	return svc, disp, res, db
+}
+
+// TestNativePrepareRejectsClientSuppliedOCBinding pins ruling 4: OC fields
+// are filled ONLY server-side by PrepareOC. A caller smuggling a full
+// execution binding through the native Prepare path is rejected — runtime,
+// alias and external identity must never arrive from a client payload.
+func TestNativePrepareRejectsClientSuppliedOCBinding(t *testing.T) {
+	svc, _, _, _, _ := newService(t, memDSN(t))
+	a := sendAction()
+	a.OC = &appconn.OCExecutionBinding{
+		RuntimeID: "rt-1", Provider: "github", ExternalID: "ext-1", Alias: "alias-1",
+		ActionID: "github.search", SchemaDigest: "d1", BindingVersion: 1,
+	}
+	if _, err := svc.Prepare(context.Background(), a); !errors.Is(err, ErrInvalidAction) {
+		t.Fatalf("client-supplied OC binding accepted: %v", err)
+	}
+}
+
+// TestPrepareWritesCurrentDigestGenerationAndCleanNativeRows pins the
+// persistence contract: every NEW row carries digest_version 2 (never the
+// migration legacy default 1) and native actions persist an EMPTY
+// oc_binding_json; the dispatch snapshot carries the row's AuthVersion and
+// digest generation, and no OC binding for native actions.
+func TestPrepareWritesCurrentDigestGenerationAndCleanNativeRows(t *testing.T) {
+	svc, disp, _, _, _ := newService(t, memDSN(t))
+	ctx := context.Background()
+	id, err := svc.Prepare(ctx, sendAction())
+	if err != nil {
+		t.Fatal(err)
+	}
+	row, err := svc.store.FindAction(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.DigestVersion != 2 {
+		t.Fatalf("new row digest_version=%d, want 2", row.DigestVersion)
+	}
+	if row.OCBindingJSON != "" {
+		t.Fatalf("native row persisted oc_binding_json=%q", row.OCBindingJSON)
+	}
+	if err := svc.Approve(ctx, id, "boss", row.ArgsDigest); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Execute(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	disp.mu.Lock()
+	snap := disp.lastSnap
+	disp.mu.Unlock()
+	if snap.AuthVersion != row.AuthVersion {
+		t.Fatalf("snapshot auth version=%d, want %d", snap.AuthVersion, row.AuthVersion)
+	}
+	if snap.DigestVersion != 2 {
+		t.Fatalf("snapshot digest version=%d, want 2", snap.DigestVersion)
+	}
+	if snap.OC != nil {
+		t.Fatalf("native snapshot carried an OC binding: %+v", snap.OC)
+	}
+}
+
+// TestLegacyV1RowsRequireRePrepare pins ruling 3: rows still on digest
+// generation 1 (set by the migration on pre-existing data) can NEVER
+// continue an old approval — Approve and Execute both refuse them — while
+// terminal recovery semantics stay intact: a v1 row parked in unknown still
+// resolves through the provider query with its OLD digest untouched.
+func TestLegacyV1RowsRequireRePrepare(t *testing.T) {
+	svc, _, res, db := newServiceWithDB(t)
+	ctx := context.Background()
+	seedActionRow(t, db, "act-v1-pending", appconn.ActionAwaitingApproval, "legacydigest1", "", 1, 0)
+	if err := svc.Approve(ctx, "act-v1-pending", "boss", "legacydigest1"); !errors.Is(err, ErrActionRePrepareRequired) {
+		t.Fatalf("v1 pending approve: %v", err)
+	}
+	seedActionRow(t, db, "act-v1-authorized", appconn.ActionAuthorized, "legacydigest2", "", 1, 0)
+	if err := svc.Execute(ctx, "act-v1-authorized"); !errors.Is(err, ErrActionRePrepareRequired) {
+		t.Fatalf("v1 authorized execute: %v", err)
+	}
+	// Recovery semantics: a v1 row in unknown still resolves via the
+	// provider query (old digest preserved — no rewrite, no re-queue).
+	seedActionRow(t, db, "act-v1-unknown", appconn.ActionUnknown, "legacydigest3", "", 1, 4)
+	if err := svc.ResolveUnknown(ctx, "act-v1-unknown"); err != nil {
+		t.Fatalf("v1 unknown resolution broken: %v", err)
+	}
+	after, _ := svc.store.FindAction(ctx, "act-v1-unknown")
+	if after.State != appconn.ActionSucceeded || after.ArgsDigest != "legacydigest3" || after.DigestVersion != 1 {
+		t.Fatalf("v1 recovery mutated the legacy row: %+v", after)
+	}
+	if res.calls != 1 {
+		t.Fatalf("provider queries=%d", res.calls)
+	}
+}
+
+// TestSnapshotCarriesPersistedOCBinding pins the full-snapshot contract for
+// OC actions: the dispatcher receives the parsed immutable execution
+// binding persisted at Prepare time, together with the row's auth version
+// and digest generation.
+func TestSnapshotCarriesPersistedOCBinding(t *testing.T) {
+	svc, disp, _, db := newServiceWithDB(t)
+	ctx := context.Background()
+	ocJSON := `{"RuntimeID":"rt-9","Provider":"github","ExternalID":"ext-9","Alias":"alias-9","ActionID":"github.search","SchemaDigest":"dd-9","BindingVersion":7}`
+	seedActionRow(t, db, "act-oc-1", appconn.ActionAuthorized, "ocdigest1", ocJSON, 2, 0)
+	if err := svc.store.SaveApproval(ctx, "act-oc-1", "ocdigest1", "boss", time.Now().Add(time.Hour), 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Execute(ctx, "act-oc-1"); err != nil {
+		t.Fatal(err)
+	}
+	disp.mu.Lock()
+	snap := disp.lastSnap
+	disp.mu.Unlock()
+	if snap.OC == nil {
+		t.Fatal("OC action snapshot lost its execution binding")
+	}
+	want := appconn.OCExecutionBinding{
+		RuntimeID: "rt-9", Provider: "github", ExternalID: "ext-9", Alias: "alias-9",
+		ActionID: "github.search", SchemaDigest: "dd-9", BindingVersion: 7,
+	}
+	if *snap.OC != want {
+		t.Fatalf("snapshot binding=%+v, want %+v", *snap.OC, want)
+	}
+	if snap.AuthVersion != 1 || snap.DigestVersion != 2 {
+		t.Fatalf("snapshot auth/digest version=%d/%d", snap.AuthVersion, snap.DigestVersion)
 	}
 }

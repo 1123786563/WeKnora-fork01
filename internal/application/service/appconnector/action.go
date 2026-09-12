@@ -2,6 +2,7 @@ package appconnector
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -27,6 +28,12 @@ var (
 	// the action is parked in unknown and resolves ONLY via a provider
 	// query, never by re-queueing into the normal dispatch path.
 	ErrDispatchUnknown = errors.New("dispatch_unknown")
+	// ErrActionRePrepareRequired: the row's digest was computed under the
+	// legacy generation 1 (or an unknown one), whose material did not bind
+	// the action identity, risk or OC execution fields. Old pending or
+	// authorized v1 actions must be re-Prepared under the current digest
+	// generation — an old approval is never auto-upgraded.
+	ErrActionRePrepareRequired = errors.New("action_reprepare_required")
 )
 
 // ActionSnapshot is the exact, already-approved payload of an action. Args
@@ -44,6 +51,13 @@ type ActionSnapshot struct {
 	State        string
 	Fence        int64
 	Args         []byte
+	// AuthVersion, OC and DigestVersion carry the T09 full approval
+	// snapshot: the connection's permission generation, the immutable
+	// open-connector execution binding (nil for native actions), and the
+	// digest generation the row's digest was computed under.
+	AuthVersion   int64
+	OC            *appconn.OCExecutionBinding
+	DigestVersion int
 }
 
 // DispatchOutcome is the provider result of one dispatch attempt. Status
@@ -138,9 +152,28 @@ func (s *ActionService) Prepare(ctx context.Context, a appconn.Action) (string, 
 	if a.TenantID == 0 || a.ActorID == "" || a.ConnectionID == "" || a.Target == "" || a.Risk == "" {
 		return "", ErrInvalidAction
 	}
+	// Ruling 4: OC execution fields are filled ONLY server-side by
+	// PrepareOC (from the tenant's live binding and the reviewed
+	// definition). A client-supplied runtime/alias/external identity
+	// arriving through the native path is rejected outright.
+	if a.OC != nil {
+		return "", fmt.Errorf("%w: client-supplied open-connector binding", ErrInvalidAction)
+	}
 	if a.ID == "" {
 		a.ID = "act_" + uuid.NewString()
 	}
+	// New writes always carry the current digest generation; the migration
+	// default 1 belongs to pre-existing rows only.
+	a.DigestVersion = appconn.CurrentDigestVersion
+	return s.persistPrepared(ctx, a)
+}
+
+// persistPrepared normalizes, digests and persists one fully-built action
+// (oc_binding_json, args snapshot and digest land in the row's single
+// INSERT), then applies any covering scope pre-authorization. It is the
+// shared tail of the native Prepare path and of PrepareOC (oc_prepare.go),
+// which builds its Action exclusively from server-side sources.
+func (s *ActionService) persistPrepared(ctx context.Context, a appconn.Action) (string, error) {
 	norm, err := appconn.NormalizeArgs(a.Args)
 	if err != nil {
 		return "", err
@@ -192,6 +225,12 @@ func (s *ActionService) Approve(ctx context.Context, id, actor, digest string) e
 	if actor == "" {
 		return fmt.Errorf("%w: empty actor", ErrInvalidAction)
 	}
+	// Ruling 3: legacy-generation rows never continue an old approval —
+	// their digest material did not bind the action identity, risk or OC
+	// fields, so the row must be re-Prepared under the current generation.
+	if row.DigestVersion != appconn.CurrentDigestVersion {
+		return fmt.Errorf("%w: digest generation %d", ErrActionRePrepareRequired, row.DigestVersion)
+	}
 	if digest != row.ArgsDigest {
 		return ErrActionDigestMismatch
 	}
@@ -219,6 +258,12 @@ func (s *ActionService) Execute(ctx context.Context, id string) error {
 	}
 	if row.State != appconn.ActionAuthorized {
 		return fmt.Errorf("execute from %s: %w", row.State, ErrActionState)
+	}
+	// Ruling 3: an old authorized v1 action must re-Prepare — its legacy
+	// digest did not bind the full execution identity, so executing it on
+	// the strength of an old approval is refused (no auto-upgrade).
+	if row.DigestVersion != appconn.CurrentDigestVersion {
+		return fmt.Errorf("%w: digest generation %d", ErrActionRePrepareRequired, row.DigestVersion)
 	}
 	// A02 re-check: the PERSISTED row's subject may still use the
 	// connection (tenant scope, state, strict auth_version, membership,
@@ -260,7 +305,10 @@ func (s *ActionService) Execute(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	snap := snapshotOf(claimed)
+	snap, err := snapshotOf(claimed)
+	if err != nil {
+		return err
+	}
 	out, derr := s.dispatcher.Dispatch(ctx, snap, claimed.ProviderKey)
 	final := settleOutcome(out, derr)
 	if err := s.store.FinishDispatch(ctx, id, claimed.Fence, final.Status, final.ProviderResult); err != nil {
@@ -284,13 +332,27 @@ func (s *ActionService) Execute(ctx context.Context, id string) error {
 	return nil
 }
 
-func snapshotOf(row repoappconn.ActionRow) ActionSnapshot {
+// snapshotOf rebuilds the full approval snapshot from a persisted row,
+// including the connection's auth version, the digest generation and the
+// parsed open-connector execution binding. A corrupt oc_binding_json is a
+// hard error — an OC action must never dispatch with a silently dropped
+// binding.
+func snapshotOf(row repoappconn.ActionRow) (ActionSnapshot, error) {
+	var oc *appconn.OCExecutionBinding
+	if row.OCBindingJSON != "" {
+		var b appconn.OCExecutionBinding
+		if err := json.Unmarshal([]byte(row.OCBindingJSON), &b); err != nil {
+			return ActionSnapshot{}, fmt.Errorf("corrupt oc_binding_json for %s: %w", row.ID, err)
+		}
+		oc = &b
+	}
 	return ActionSnapshot{
 		ID: row.ID, TenantID: row.TenantID, ActorID: row.ActorID,
 		ConnectionID: row.ConnectionID, Version: row.AppVersion,
 		Target: row.Target, Risk: row.Risk, Digest: row.ArgsDigest,
 		State: row.State, Fence: row.Fence, Args: []byte(row.ArgsSnapshot),
-	}
+		AuthVersion: row.AuthVersion, OC: oc, DigestVersion: int(row.DigestVersion),
+	}, nil
 }
 
 // settleOutcome maps a dispatcher result to a terminal state; unknown
@@ -320,7 +382,11 @@ func (s *ActionService) ResolveUnknown(ctx context.Context, id string) error {
 	if s.unknown == nil {
 		return fmt.Errorf("%w: no provider query configured", ErrDispatchUnknown)
 	}
-	out, qerr := s.unknown.QueryProvider(ctx, snapshotOf(row), row.ProviderKey)
+	snap, serr := snapshotOf(row)
+	if serr != nil {
+		return serr
+	}
+	out, qerr := s.unknown.QueryProvider(ctx, snap, row.ProviderKey)
 	if qerr != nil {
 		return qerr
 	}
