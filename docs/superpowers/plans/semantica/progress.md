@@ -253,7 +253,7 @@
 - 实测验收：计划核心断言逐字（max_nodes=1→truncated/generation/证据文档⊆allowed）；租约协议逐字（pin→子图→adapter→校验→响应→finally release——happy+异常路径评审员探针验证）；模式诚实（非 graphrag→FAILED_PRECONDITION，无静默切换）；来源双验（图外断言+越权证据均 raise）；隐藏文档不入证据；证据 (doc,chunk,hash) 稳定去重排序；真实 gRPC 全链路（含 paths 上线）。
 - **延后/开放记录（如实）**：①步骤 3"超期中止数据库和模型操作"——deadline_ms 接受但未强制（步骤 3 checkbox 未勾；Q02/W 接线时随执行器落地）；②content_hash 位携带 support revision（Q02 来源协议细化——真 chunk hash 待向量适配器）；③向量候选过滤（W01 向量库落地后）；④排序重算仍开放（当前路径长度内部序）；⑤stale/partial 恒 False 未计算（Q02）；⑥lease-release-on-exception 测试钉（行为正确经探针验证，回归钉待 Q02 补）；⑦私有 _support_rows 跨模块访问与 hasattr(bind) 协议（Q02 清理）；⑧SearchLimits/QueryLimits 重复（Q02 组合）。
 - review：规格三轮 FAIL→PASS（BLOCKER×2：servicer/proto 契约缺口、字段重编号——后者为修复过程中引入又被评审员以 Go 线上编码实证抓回）；质量 FAIL→PASS（BLOCKER×2：servicer 崩溃、服务器级 scope 污染；终验残余 2 项——死导入与 3 回归钉——已当场折叠）。
-- 提交 SHA：（本记录与代码同批提交后补记）
+- 提交 SHA：8768acb（feat(semantic): q01 GraphRAG检索与有界执行）。
 
 ## 当前边界
 
