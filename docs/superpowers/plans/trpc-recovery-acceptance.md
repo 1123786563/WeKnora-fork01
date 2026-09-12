@@ -40,6 +40,7 @@ and the external side-effect endpoint are deterministic doubles.
 | event retention trim | `go test ./internal/application/repository -run TestAgentRunEventRetentionTrim -count=1` | PASS (2026-09-12) | finished runs trim below a 1000-event watermark via TrimEventsBefore/LastEventSeq wired into the executor; replay from below the retained start answers cursor_expired, replay from the retained start keeps working, trims idempotent |
 | after-mode follow-up | `go test ./internal/application/service -run TestExecuteDurableRunAdmitsAfterFollowUp -count=1` | PASS (2026-09-12) | steering parked with delivery=after is admitted as the next durable run once the current run succeeds: same snapshot identity, parked content as query, follow-up holds the session slot as queued, input consumed exactly once |
 | OAuth park black-box | `go test ./internal/agent/recoverytest -run 'TestCrashMatrixSQLite/oauth_park'` and `...PostgreSQL/oauth_park` | PASS both (2026-09-12) | pre-execution OAuth park driven through the production chain (ParkToolPreflightWait + WaitForDecision) in the SIGKILL provider; crash lands mid-wait with no tool result; explicit user retry bound to the planned row requeues and completes with exactly one side effect |
+| pre-approval park | `go test ./internal/agent/approval -run TestDurableGateParksPreflightApprovalWait -count=1` | PASS (2026-09-12) | DurableGate.RequestAndWait parks a durable run before dispatch with an mcp_approve_ pending id through the same hook chain as OAuth; builtin (no fence) still delegates to the live gate; resume flows through the planned-marker retry path proven by the oauth_park matrix row |
 | crash after tool result | `GOWORK=off go test ./internal/agent/recoverytest -run TestCrashAfterToolResult -count=1` | SKIPPED | superseded by the matrix subtest above when run without `TRPC_RECOVERY_GRAPH_PROVIDER`; the env-gated variant remains for CI |
 | executor end to end | `GOWORK=off go test ./internal/application/service -run TestExecuteDurableRun -count=1` | PASS | fresh run completes through admission snapshot → capability rebuild → graph → finalize transaction; superseded fence rejected with ErrLeaseLost |
 | worker wait mapping | `GOWORK=off go test ./internal/application/service -run TestWorkerParksWaitClass -count=1` | PASS | unknown tool outcomes park durably at waiting_user/tool_outcome_unknown instead of terminating |
@@ -62,8 +63,6 @@ Defects found and fixed by the matrix (recorded for audit):
 
 ## Remaining matrix rows (not yet passed — do not treat as done)
 
-- the mcp_approve_ pre-approval durable park (human-approval waits on
-  durable runs still delegate to the live gate);
 - the external-action outbox (a transactional outbox row per external
   dispatch) remains unimplemented; the tool journal already persists intent,
   attempts and results, and the SIGKILL matrix verifies its replay
