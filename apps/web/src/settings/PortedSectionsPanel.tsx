@@ -37,10 +37,10 @@ function summary(row: Record<string, unknown>): string {
   return '(unnamed)';
 }
 
-const NOT_YET_PORTED_NOTE = '此分区的完整编辑器尚未迁移（not yet ported）。以下是已接入 API 的只读数据；编辑能力为后续工作，不会静默缺失。';
+const NOT_YET_PORTED_NOTE = () => formatMessage(readInitialLocale(), 'settings.notYetPorted');
 
 export function PortedSectionsPanel({ section }: { section: string }) {
-  return <Card data-testid={'ported-panel-' + section}><p className="wk-muted">{NOT_YET_PORTED_NOTE}</p></Card>;
+  return <Card data-testid={'ported-panel-' + section}><p className="wk-muted">{NOT_YET_PORTED_NOTE()}</p></Card>;
 }
 
 export function LiveSectionsPanel({ client, section, payload }: { client: WeKnoraClient; section: string; payload: unknown }) {
@@ -48,7 +48,7 @@ export function LiveSectionsPanel({ client, section, payload }: { client: WeKnor
   const rows = rowsOf(payload);
   const totals = payload !== null && typeof payload === 'object' && !Array.isArray(payload) ? (payload as Record<string, unknown>) : {};
   return <Card data-testid={'live-panel-' + section}>
-    <p className="wk-muted">{NOT_YET_PORTED_NOTE}</p>
+    <p className="wk-muted">{NOT_YET_PORTED_NOTE()}</p>
     {section === 'runtime-queues' && typeof totals.available === 'boolean'
       ? <Status tone={totals.available ? 'success' : 'error'}>{totals.available ? 'Runtime queues are available.' : 'Runtime queues are unavailable.'}</Status>
       : null}
