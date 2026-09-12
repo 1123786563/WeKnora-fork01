@@ -61,6 +61,11 @@
 - a664a00：API 黑盒三行在真实迁移库上钉死（真实 ownership scope）：events 端点按 seq 顺序回放重连游标之后的事件、保留裁剪后返回显式 cursor_expired（once 模式排干不挂起 recorder）；decisions 端点对首次/冲突/幂等重试返回 200/409/200；会话删除把已认领 Run 终态围栏、删除持久行（任何 worker 无法复活）并释放槽位。
 - 全套件复验：handler/session 全部 ok；增量 lint 0 issues。剩余行：沙箱三态 fixture 端到端（仓储层状态已单测）、outbox/保留水位裁剪、after 跟进受理、OAuth 黑盒场景与 mcp_approve_ 前审批停靠、前端浏览器验证。
 
+## 2026-09-12 第七轮（同分支续）
+
+- ac358c7：Task 11 尾巴两项落地——① 事件保留水位裁剪：完成的 Run 以 1000 事件为界裁剪（TrimEventsBefore/LastEventSeq，executor 收尾调用），重连游标早于保留起点返回显式 cursor_expired、保留起点内回放正常、裁剪幂等；② after 跟进受理：delivery=after 的停靠消息在当前 Run 成功后自动受理为下一个 durable Run（同一冻结快照身份、以停靠内容为 query、跟进 Run 以 queued 占据会话槽位、输入恰好消费一次——顺带修复 MarkInputsProcessed 缺 Model 导致的静默失败）。13 包回归 + 增量 lint 0 issues。
+- 剩余：outbox（事务性外发行）、mcp_approve_ 前审批停靠与 OAuth 黑盒场景、前端浏览器验证。
+
 ## 执行记录要求
 每次任务追加开始/结束时间、实现者、固定 HEAD、失败测试原因、通过命令、审查问题与修复提交。保留历史记录，不用最终 PASS 覆盖中途失败。
 

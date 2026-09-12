@@ -37,6 +37,8 @@ and the external side-effect endpoint are deterministic doubles.
 | permission revocation | `go test ./internal/application/repository -run TestAgentRunToolRejectsRevokedSessionAndCanceledRun -count=1` | PASS | dispatch is rejected for revoked sessions and canceled runs at the journal boundary |
 | API black-box rows | `go test ./internal/handler/session -run 'TestAgentRunEventsEndpoint|TestAgentRunDecisionConflict|TestSessionDeleteRaces' -count=1` | PASS (2026-09-12) | events endpoint replays seq order after a reconnect cursor and answers cursor_expired when retention trimmed below it; decisions endpoint 200/409/200 for first/conflicting/idempotent payloads; session deletion fences a claimed run terminally, removes durable rows, releases the slot — all on the migrated store with real ownership scoping |
 | sandbox fixture states | `go test ./internal/sandbox -run TestObserveInstance -count=1` | PASS (2026-09-12) | real SessionBoundManager + memory binding store + fixture remote client: alive→running (continue), binding whose instance the provider list dropped→unknown (park), generation mismatch→missing, no binding→missing; instance liveness never imports as a task result |
+| event retention trim | `go test ./internal/application/repository -run TestAgentRunEventRetentionTrim -count=1` | PASS (2026-09-12) | finished runs trim below a 1000-event watermark via TrimEventsBefore/LastEventSeq wired into the executor; replay from below the retained start answers cursor_expired, replay from the retained start keeps working, trims idempotent |
+| after-mode follow-up | `go test ./internal/application/service -run TestExecuteDurableRunAdmitsAfterFollowUp -count=1` | PASS (2026-09-12) | steering parked with delivery=after is admitted as the next durable run once the current run succeeds: same snapshot identity, parked content as query, follow-up holds the session slot as queued, input consumed exactly once |
 | crash after tool result | `GOWORK=off go test ./internal/agent/recoverytest -run TestCrashAfterToolResult -count=1` | SKIPPED | superseded by the matrix subtest above when run without `TRPC_RECOVERY_GRAPH_PROVIDER`; the env-gated variant remains for CI |
 | executor end to end | `GOWORK=off go test ./internal/application/service -run TestExecuteDurableRun -count=1` | PASS | fresh run completes through admission snapshot → capability rebuild → graph → finalize transaction; superseded fence rejected with ErrLeaseLost |
 | worker wait mapping | `GOWORK=off go test ./internal/application/service -run TestWorkerParksWaitClass -count=1` | PASS | unknown tool outcomes park durably at waiting_user/tool_outcome_unknown instead of terminating |
@@ -59,10 +61,10 @@ Defects found and fixed by the matrix (recorded for audit):
 
 ## Remaining matrix rows (not yet passed — do not treat as done)
 
-- the external-action outbox and event retention watermark trim (Task 11
-  leftovers), and the after-mode steering follow-up admission path;
 - the mcp_approve_ pre-approval durable park and an OAuth black-box
   recovery scenario in the SIGKILL provider;
+- the external-action outbox (a transactional outbox row per external
+  dispatch) remains unimplemented;
 - frontend browser-level verification of the two engine types (unit,
   type-check and build pass; no live browser session in this environment).
 
