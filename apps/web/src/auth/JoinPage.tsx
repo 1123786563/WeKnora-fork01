@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { InvitationLookup, WeKnoraClient } from '@weknora/api-client';
 import { Button, Card, Status } from '@weknora/ui';
 import { readInviteToken } from './join.ts';
+import { validateRegister } from './validation.ts';
 
 export interface JoinPageProps {
   client: WeKnoraClient;
@@ -16,7 +17,18 @@ export function JoinPage({ client, onAuthenticated }: JoinPageProps) {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
+  const [complexPasswordEnabled, setComplexPasswordEnabled] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void client.auth.registrationConfig().then((config) => {
+      if (active) setComplexPasswordEnabled(config.complexPasswordEnabled);
+    }).catch(() => { /* fail open like Vue loadAuthConfig */ });
+    return () => { active = false; };
+  }, [client]);
 
   useEffect(() => {
     if (!token) return;
@@ -36,6 +48,9 @@ export function JoinPage({ client, onAuthenticated }: JoinPageProps) {
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!token) return;
+    const errors = validateRegister({ username, email, password, confirmPassword }, complexPasswordEnabled);
+    setFieldErrors(errors);
+    if (Object.keys(errors).length) return;
     setSubmitting(true);
     setMessage('');
     try {
@@ -57,7 +72,10 @@ export function JoinPage({ client, onAuthenticated }: JoinPageProps) {
       <form className="wk-form" onSubmit={submit}>
         <label>Username<input value={username} onChange={(event) => setUsername(event.target.value)} required minLength={2} /></label>
         <label>Email<input value={email} onChange={(event) => setEmail(event.target.value)} type="email" required /></label>
-        <label>Password<input value={password} onChange={(event) => setPassword(event.target.value)} type="password" required minLength={6} /></label>
+        <label>Password<input value={password} onChange={(event) => setPassword(event.target.value)} type="password" required minLength={8} maxLength={32} disabled={submitting} />
+        {(fieldErrors.password ?? []).map((key) => <Status key={key} tone="error">{key}</Status>)}</label>
+      <label>Confirm password<input value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} type="password" required disabled={submitting} />
+        {(fieldErrors.confirmPassword ?? []).map((key) => <Status key={key} tone="error">{key}</Status>)}</label>
         {message ? <Status tone="error">{message}</Status> : null}
         <Button type="submit" disabled={submitting}>{submitting ? 'Creating account…' : 'Create account and join'}</Button>
       </form>

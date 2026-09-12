@@ -6,6 +6,10 @@ export interface RegistrationResult { user: Record<string, unknown>; tenant?: Re
 export interface RegistrationConfig { registrationMode: string; complexPasswordEnabled: boolean }
 export interface OIDCConfig { enabled: boolean; providerDisplayName?: string }
 export interface OIDCURL { authorizationUrl: string; state: string }
+export interface AcceptInvitationByTokenResult {
+  membership: { tenantId: number };
+  tenantName?: string;
+}
 export interface InvitationLookup { tenantId: number; tenantName?: string; role: string; expiresAt: string }
 export interface AuthSession {
   token: string;
@@ -131,6 +135,21 @@ export function createAuthApi(request: (input: ClientRequest) => Promise<unknown
         tenantName: data.tenant_name === undefined ? undefined : requiredString(data.tenant_name, 'tenant name'),
         role: requiredString(data.role, 'invitation role'),
         expiresAt: requiredString(data.expires_at, 'invitation expiry'),
+      };
+    },
+    /** Port of Vue acceptInvitationByToken (POST /api/v1/me/invitations/accept-by-token,
+     *  internal/router/routes_auth_tenant.go:175). Authenticated; returns the new
+     *  membership so the caller can refresh and switch scope. */
+    async acceptInvitationByToken(token: string): Promise<AcceptInvitationByTokenResult> {
+      if (typeof token !== 'string' || token.trim() === '') throw new Error('token is required');
+      const root = successEnvelope(await request({ method: 'POST', path: '/api/v1/me/invitations/accept-by-token', body: { token } }));
+      const data = root.data && typeof root.data === 'object' && !Array.isArray(root.data) ? record(root.data, 'accept-by-token data') : root;
+      const membership = record(data.membership, 'accept-by-token membership');
+      const tenantId = membership.tenant_id;
+      if (typeof tenantId !== 'number' || !Number.isSafeInteger(tenantId) || tenantId <= 0) throw new Error('membership.tenant_id must be a positive safe integer');
+      return {
+        membership: { tenantId },
+        tenantName: typeof data.tenant_name === 'string' ? data.tenant_name : undefined,
       };
     },
     async registerByInvite(input: { token: string; email: string; username: string; password: string }): Promise<AuthSession> {

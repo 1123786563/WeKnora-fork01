@@ -5,6 +5,8 @@ import { LoginPage } from './auth/LoginPage.tsx';
 import { JoinPage } from './auth/JoinPage.tsx';
 import { WorkspaceOnboardingPage } from './auth/WorkspaceOnboardingPage.tsx';
 import { parseOIDCCallbackHash } from './auth/oidc.ts';
+import { computeAuthLanding } from './auth/session-persist.ts';
+import { readPendingInviteToken, clearPendingInviteToken } from './auth/invite-flow.ts';
 import { importLegacyPlatformState, persistSelectedTenant, readReactPlatformState, type ReactPlatformState } from './platform/legacy-session.ts';
 import { createBrowserTransport } from './platform/http.ts';
 import { createBrowserCredentialAdapter, persistBrowserCredential } from './platform/credentials.ts';
@@ -33,7 +35,14 @@ const oidcCallback = parseOIDCCallbackHash(window.location.hash);
 let initialLoginError: string | undefined;
 if (oidcCallback?.kind === 'success') {
   persistBrowserCredential(window.localStorage, { kind: 'bearer', accessToken: oidcCallback.session.token, refreshToken: oidcCallback.session.refreshToken });
-  window.history.replaceState({}, document.title, '/platform/knowledge-bases');
+  // Vue App.vue redeems a pending invite token after the OIDC round-trip and
+  // honours ?next; keep the query so bootstrap can apply both.
+  const pendingInvite = readPendingInviteToken(window.sessionStorage);
+  const nextParam = new URLSearchParams(window.location.search).get('next');
+  const target = pendingInvite
+    ? `/login?token=${encodeURIComponent(pendingInvite)}`
+    : nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//') ? nextParam : '/platform/knowledge-bases';
+  window.history.replaceState({}, document.title, target);
 } else if (oidcCallback?.kind === 'error') {
   initialLoginError = oidcCallback.message;
   window.history.replaceState({}, document.title, '/login');
@@ -90,13 +99,17 @@ function nextPathAfterAuth(): string {
 }
 
 function completeAuthentication(next: AuthSession): void {
-  session = { ...session, credential: { kind: 'bearer', accessToken: next.token, refreshToken: next.refreshToken }, tenantId: null };
+  const landing = computeAuthLanding(next, nextPathAfterAuth());
+  session = { ...session, credential: { kind: 'bearer', accessToken: next.token, refreshToken: next.refreshToken }, tenantId: landing.activeTenantId };
   persistBrowserCredential(window.localStorage, session.credential);
-  window.location.assign(nextPathAfterAuth());
+  // Vue Login.vue:584-590 — apply the active-tenant override when the server
+  // dropped us into a non-home tenant so X-Tenant-ID stays consistent.
+  if (landing.activeTenantId) scopeRuntime.setTenant(landing.activeTenantId);
+  window.location.assign(landing.target);
 }
 
-function renderLogin(error = initialLoginError) {
-  root.render(<LoginPage client={client} onAuthenticated={completeAuthentication} apiBaseUrl={apiBaseUrl} initialError={error} initialMode={route.kind === 'login' ? route.mode : 'login'} />);
+function renderLogin(error = initialLoginError, inviteToken = '') {
+  root.render(<LoginPage client={client} onAuthenticated={completeAuthentication} apiBaseUrl={apiBaseUrl} initialError={error} initialMode={route.kind === 'login' ? route.mode : 'login'} inviteToken={inviteToken} onInviteAccepted={() => window.location.assign('/platform/knowledge-bases')} />);
 }
 
 async function logout(): Promise<void> {
@@ -180,15 +193,50 @@ async function bootstrap() {
     return;
   }
   if (route.kind === 'login') {
-    const inviteToken = new URLSearchParams(window.location.search).get('token')?.trim();
-    if (route.mode === 'register' && inviteToken) {
-      root.render(<JoinPage client={client} onAuthenticated={completeAuthentication} />);
-    } else renderLogin();
+    const inviteToken = new URLSearchParams(window.location.search).get('token')?.trim() ?? '';
+    if (inviteToken) {
+      // Vue Login.vue:798-801 — an existing session redeems the token directly.
+      if (session.credential.kind === 'bearer') {
+        try {
+          await client.auth.acceptInvitationByToken(inviteToken);
+          clearPendingInviteToken(window.sessionStorage);
+        } catch { /* Vue acceptAndEnter: an invalid token still enters the app */ }
+        window.location.assign('/platform/knowledge-bases');
+        return;
+      }
+      // Vue Login.vue:803-808 — invite_only stays on the login card; open
+      // deployments render the registration form.
+      let registrationMode = 'self_serve';
+      try { registrationMode = (await client.auth.registrationConfig()).registrationMode; } catch { /* fail open like loadAuthConfig */ }
+      if (registrationMode === 'invite_only') {
+        renderLogin(undefined, inviteToken);
+      } else {
+        root.render(<JoinPage client={client} onAuthenticated={completeAuthentication} />);
+      }
+      return;
+    }
+    // Vue Login.vue:817-831 — lite-edition transparent auto-setup on /login.
+    const AUTO_SETUP_FAILED_KEY = 'weknora_auto_setup_failed';
+    if (window.localStorage.getItem(AUTO_SETUP_FAILED_KEY) !== 'true') {
+      try {
+        const autoSession = await client.auth.autoSetup();
+        window.localStorage.setItem('weknora_lite_mode', 'true');
+        completeAuthentication(autoSession);
+        return;
+      } catch {
+        window.localStorage.setItem(AUTO_SETUP_FAILED_KEY, 'true');
+      }
+    }
+    renderLogin();
     return;
   }
   if (route.kind === 'join') {
     const redirect = routeRedirect(`${window.location.pathname}${window.location.search}`);
-    if (session.credential.kind !== 'bearer') {
+    const joinToken = new URLSearchParams(window.location.search).get('token')?.trim();
+    if (joinToken) {
+      // Vue share-links land on /login|/register?token — never dead-end /join.
+      window.location.replace(`/register?token=${encodeURIComponent(joinToken)}`);
+    } else if (session.credential.kind !== 'bearer') {
       window.location.replace(`/login?next=${encodeURIComponent(`${window.location.pathname}${window.location.search}`)}`);
     } else if (redirect) window.location.replace(redirect);
     return;
