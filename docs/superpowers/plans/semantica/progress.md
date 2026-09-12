@@ -1,6 +1,6 @@
 # Semantica 实施台账
 
-状态：V01–C03、I01–I05、A01–A03、Q01–Q04、W01–W02 verified；W03 implemented（双评审下轮）；其余 4 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
+状态：V01–C03、I01–I05、A01–A03、Q01–Q04、W01–W03 verified；其余 4 个任务（O01–O03 + V03 收尾）未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
 
 状态值 pending / in_progress / blocked / implemented / verified。每项验证记录必须包含commit SHA、精确命令、退出码、环境、产物路径、失败/限制；无真实证据不标记verified。执行前记录实际基线与已有脏文件。
 
@@ -26,7 +26,7 @@
 | Q04 | Go检索融合、Agent工具与最终授权 | Q02,Q03,I05 | verified | 5 BLOCKER 全闭：查询/TopK 上线、Reason 经 client.Reason 分派（rules/model+query_id）、resolveKBReadTenant **fail-closed** 强制+容器接线、allowed_document_ids 端到端上线、向量 seam 诚实 noop；chat/agent 入口与真向量 seam 归 W；见运行记录 2026-09-11 Q04（两段） |
 | W01 | 用户API与共享客户端契约 | Q04,I05 | verified | TS 契约（uint64 十进制字符串/浮点拒绝/未知枚举→unknown）+客户端（AbortSignal/错误映射/无泄露）+Go handler（fail-closed 503/mode 校验/body 不越 path scope）+路由定义；双评审 PASS；挂载/facade 桥/retry 归 W02；见运行记录 2026-09-11 W01 |
 | W02 | React索引状态与推理证据流程 | W01 | verified | domain 纯函数+视图模型+面板挂载+重试提交；双评审 PASS（规格两轮/质量三轮——含台账误记自我更正）；浏览器 E2E 阻断于真实服务栈（如实待 O03）；见运行记录 2026-09-11 W02 |
-| W03 | 后端影子构建、切换与回滚 | W01,I04,Q04 | implemented | desired/active 状态机（SetDesired 仅意图/Promote CAS 恰一胜/Rollback 追赶强制）+检查点迁移+运行手册；双评审下轮；见运行记录 2026-09-11 W03 |
+| W03 | 后端影子构建、切换与回滚 | W01,I04,Q04 | verified | desired/active 状态机（SetDesired 仅意图/Promote CAS 恰一胜/Rollback 追赶强制+TOCTOU 护栏+三哨兵）+检查点迁移+运行手册；双评审 PASS（含 PG 实证 CAS）；前置自动化/编排/挂载如实延后；见运行记录 2026-09-11 W03 |
 | O01 | 独立部署、探针与可观测性 | C02,I03,A03 | pending | 尚未执行 |
 | O02 | 故障注入、清理与恢复演练 | O01,I04,W03,Q04 | pending | 尚未执行 |
 | O03 | 质量回归、CI门禁与最终交付 | O02,W02,V03 | pending | 尚未执行 |
