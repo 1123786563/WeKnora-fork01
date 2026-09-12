@@ -22,7 +22,7 @@ test('semantic panel shows status and retry only when retryable', async ({ page 
 
 test('evidence citations pin document/revision/chunk', async ({ page }) => {
   await page.goto('/knowledge-bases');
-  const link = page.locator('.evidence-link').first();
+  const link = page.locator('.evidence-ref').first();
   if (await link.count()) {
     await expect(link).toContainText(/修订 \d+/);
   }

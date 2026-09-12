@@ -48,9 +48,11 @@ export function SemanticPage({ baseUrl, knowledgeBaseId, documentId }: SemanticP
   }, [client, knowledgeBaseId, documentId]);
 
   const runSearch = async () => {
-    const queryId = String(Date.now());
+    const queryId = String(Date.now()) + '-' + String(Math.random()).slice(2, 8);
     const controller = new AbortController();
-    abortRef.current = controller;
+    searchAbortRef.current?.abort();
+    searchAbortRef.current = controller;
+    setRetryError(null);
     setQuery(beginSemanticQuery(query, queryId));
     try {
       const result = await client.searchSemantic(knowledgeBaseId, input, controller.signal);
@@ -58,15 +60,23 @@ export function SemanticPage({ baseUrl, knowledgeBaseId, documentId }: SemanticP
     } catch (error) {
       if (error instanceof SemanticApiError) {
         setQuery((state) => failSemanticQuery(state, queryId, error.message, error.status));
-      } else {
+      } else if (error instanceof SemanticAbortedError) {
         setQuery((state) => failSemanticQuery(state, queryId, '请求已取消'));
+      } else {
+        setQuery((state) => failSemanticQuery(state, queryId, '语义检索失败'));
       }
     }
   };
 
   const cancel = () => {
-    abortRef.current?.abort?.();
+    searchAbortRef.current?.abort();
+    // Cancel BOTH: abort the request AND close the query state so the
+    // abort error path silently discards (no user-facing banner).
+    setQuery((state) => cancelSemanticQuery(state));
   };
+
+  // Abort any in-flight search when the page unmounts.
+  useEffect(() => () => searchAbortRef.current?.abort(), []);
 
   return (
     <main className="wk-page">
@@ -79,7 +89,25 @@ export function SemanticPage({ baseUrl, knowledgeBaseId, documentId }: SemanticP
           // surface as an alert (never silently swallowed).
           void client
             .retrySemanticIndex(documentId)
-            .then(() => setRetryError(null))
+            .then(() => {
+              setRetryError(null);
+              // Accepted retry: refresh the status panel so the new state
+              // is reflected immediately.
+              setLoadingStatus(true);
+              const controller = new AbortController();
+              abortRef.current = controller;
+              client
+                .getSemanticStatus(knowledgeBaseId, documentId, controller.signal)
+                .then((value) => {
+                  if (!controller.signal.aborted) {
+                    setStatus({ ...value, semantic_status: value.semantic_status as SemanticDocumentStatus['semantic_status'] });
+                    setLoadingStatus(false);
+                  }
+                })
+                .catch(() => {
+                  if (!controller.signal.aborted) setLoadingStatus(false);
+                });
+            })
             .catch((error: unknown) =>
               setRetryError(error instanceof Error ? error.message : '语义重试提交失败'));
           // HONEST LIMITATION: the Go retry endpoint is not mounted yet
