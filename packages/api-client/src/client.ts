@@ -8,6 +8,7 @@ import { createDataSourcesApi } from './datasource.ts';
 import { createAuthApi } from './auth/endpoints.ts';
 import { createChatSessionsApi } from './chat/sessions.ts';
 import { createSandboxTerminalApi } from './sandbox/terminal.ts';
+import { createSandboxConfigurationsApi } from './sandbox-configurations.ts';
 import { createConfigurationApi } from './configuration.ts';
 import { buildChatStreamRequest, consumeChatStream, consumeStreamResult, createServerSentEventParser, parseChatEvent } from './chat/stream.ts';
 import { createChatApprovalsApi } from './chat/approvals.ts';
@@ -86,6 +87,64 @@ function parseKnowledgeBaseActionData(value: unknown): Record<string, unknown> {
   const data = envelope.data;
   if (data === null || typeof data !== 'object') throw new Error('knowledge-base action response.data must be an object');
   return data as Record<string, unknown>;
+}
+
+/**
+ * POST /api/v1/knowledge-search (internal/handler/session/qa.go SearchKnowledge,
+ * Viewer+; routed at internal/router/routes_chat.go:127). Semantic/keyword
+ * chunk search across one or more knowledge bases, without LLM summarization —
+ * the backend the Vue GlobalCommandPalette's useCmdkSearch() chunk group calls
+ * via knowledgeSemanticSearch() (frontend/src/api/knowledge-base/index.ts:634).
+ * The backend requires at least one of knowledge_base_ids/knowledge_ids/a tag
+ * scope (qa.go:826-830) — callers must not invoke this with an empty scope.
+ */
+export interface KnowledgeChunkSearchParams {
+  query: string;
+  knowledgeBaseIds: readonly string[];
+  knowledgeIds?: readonly string[];
+  signal?: AbortSignal;
+}
+
+export interface KnowledgeChunkSearchHit {
+  id: string;
+  content: string;
+  matchedContent: string;
+  knowledgeId: string;
+  knowledgeBaseId: string;
+  knowledgeTitle: string;
+  knowledgeFilename: string;
+  chunkIndex: number;
+  score: number;
+  matchType: string;
+}
+
+function parseKnowledgeChunkSearchHit(value: unknown, index: number): KnowledgeChunkSearchHit {
+  const path = `/knowledge-search.data[${index}]`;
+  if (value === null || typeof value !== 'object') throw new Error(`${path} must be an object`);
+  const row = value as Record<string, unknown>;
+  if (typeof row.id !== 'string') throw new Error(`${path}.id must be a string`);
+  if (typeof row.knowledge_id !== 'string') throw new Error(`${path}.knowledge_id must be a string`);
+  return {
+    id: row.id,
+    content: typeof row.content === 'string' ? row.content : '',
+    matchedContent: typeof row.matched_content === 'string' ? row.matched_content : '',
+    knowledgeId: row.knowledge_id,
+    knowledgeBaseId: typeof row.knowledge_base_id === 'string' ? row.knowledge_base_id : '',
+    knowledgeTitle: typeof row.knowledge_title === 'string' ? row.knowledge_title : '',
+    knowledgeFilename: typeof row.knowledge_filename === 'string' ? row.knowledge_filename : '',
+    chunkIndex: typeof row.chunk_index === 'number' ? row.chunk_index : 0,
+    score: typeof row.score === 'number' ? row.score : 0,
+    matchType: typeof row.match_type === 'string' ? row.match_type : '',
+  };
+}
+
+function parseKnowledgeChunkSearchResponse(value: unknown): KnowledgeChunkSearchHit[] {
+  if (value === null || typeof value !== 'object') throw new Error('/knowledge-search response must be an object');
+  const envelope = value as Record<string, unknown>;
+  if (envelope.success !== true) throw new Error('/knowledge-search request failed');
+  const data = envelope.data;
+  if (!Array.isArray(data)) throw new Error('/knowledge-search.data must be an array');
+  return data.map((item, index) => parseKnowledgeChunkSearchHit(item, index));
 }
 
 export function createWeKnoraClient(options: WeKnoraClientOptions) {
@@ -180,6 +239,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
   const auth = createAuthApi(request);
   const sessions = createChatSessionsApi(request);
   const sandbox = createSandboxTerminalApi(request);
+  const sandboxConfigurations = createSandboxConfigurationsApi(request);
   const configuration = createConfigurationApi(request);
   const chatApprovals = createChatApprovalsApi(request);
   const chatSteer = createChatSteerApi(request);
@@ -255,6 +315,17 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
       async remove(id: string): Promise<void> {
         await request({ method: 'DELETE', path: `/api/v1/knowledge-bases/${encodeURIComponent(id)}` });
       },
+      async search(params: KnowledgeChunkSearchParams): Promise<KnowledgeChunkSearchHit[]> {
+        if (params.query.trim() === '') throw new Error('query must not be empty');
+        if (params.knowledgeBaseIds.length === 0 && (params.knowledgeIds ?? []).length === 0) {
+          throw new Error('search requires at least one knowledgeBaseId or knowledgeId');
+        }
+        const body: Record<string, unknown> = { query: params.query, knowledge_base_ids: [...params.knowledgeBaseIds] };
+        if (params.knowledgeIds?.length) body.knowledge_ids = [...params.knowledgeIds];
+        return parseKnowledgeChunkSearchResponse(await request({
+          method: 'POST', path: '/api/v1/knowledge-search', body, ...(params.signal === undefined ? {} : { signal: params.signal }),
+        }));
+      },
       async togglePin(id: string): Promise<{ is_pinned: boolean }> {
         const data = parseKnowledgeBaseActionData(await request({ method: 'PUT', path: `/api/v1/knowledge-bases/${encodeURIComponent(id)}/pin` }));
         return { is_pinned: data.is_pinned === true };
@@ -283,6 +354,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
     embed,
     sessions,
     sandbox,
+    sandboxConfigurations,
     configuration,
     chat: {
       approvals: chatApprovals,

@@ -24,7 +24,7 @@ export function ModelSettingsPanel({ client, role, initialModels }: Props) {
   const visible = useMemo(() => filter === 'all' ? models : models.filter((item) => modelType(item) === filter), [filter, models]);
 
   useEffect(() => { setModels(initialModels); }, [initialModels]);
-  useEffect(() => { if (!draft) return; setLoadingProviders(true); void client.configuration.models.providers.list(draft.type).then(setProviders).catch(() => setProviders([])).finally(() => setLoadingProviders(false)); }, [client, draft?.type]);
+  useEffect(() => { if (!draft) return; setLoadingProviders(true); void client.configuration.models.providers.list(draft.type).then((items) => setProviders(items.length > 0 ? items : [{ value: 'generic', label: 'Generic', description: '', defaultUrls: {}, modelTypes: [] }])).catch(() => { setProviders([{ value: 'generic', label: 'Generic', description: '', defaultUrls: {}, modelTypes: [] }]); setError('Unable to load model providers; using Generic.'); }).finally(() => setLoadingProviders(false)); }, [client, draft?.type]);
 
   function updateDraft<K extends keyof ModelDraft>(key: K, value: ModelDraft[K]) { setDraft((current) => current ? { ...current, [key]: value } : current); }
   async function reload() { try { setModels(await client.configuration.models.list()); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to load models'); } }

@@ -17,6 +17,7 @@ export interface ModelDraft {
   customHeaders: Record<string, string>;
   apiKey: string;
   appSecret: string;
+  originalParameters?: Record<string, unknown>;
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -32,8 +33,8 @@ export function modelType(value: Pick<ModelConfiguration, 'type'>): ModelType {
   return 'chat';
 }
 
-function backendModelType(type: ModelType): 'KnowledgeQA' | 'Embedding' | 'Rerank' | 'VLLM' | 'ASR' {
-  return type === 'chat' ? 'KnowledgeQA' : type[0]!.toUpperCase() + type.slice(1) as 'Embedding' | 'Rerank' | 'VLLM' | 'ASR';
+export function backendModelType(type: ModelType): 'KnowledgeQA' | 'Embedding' | 'Rerank' | 'VLLM' | 'ASR' {
+  return ({ chat: 'KnowledgeQA', embedding: 'Embedding', rerank: 'Rerank', vllm: 'VLLM', asr: 'ASR' } as const)[type];
 }
 
 export function modelDraftFromRecord(value: ModelConfiguration): ModelDraft {
@@ -56,18 +57,20 @@ export function modelDraftFromRecord(value: ModelConfiguration): ModelDraft {
     customHeaders: Object.fromEntries(Object.entries(record(parameters.custom_headers)).filter(([, item]) => typeof item === 'string')) as Record<string, string>,
     apiKey: '',
     appSecret: '',
+    originalParameters: { ...parameters, embedding_parameters: embedding },
   };
 }
 
 export function newModelDraft(): ModelDraft {
-  return { name: '', displayName: '', type: 'chat', source: 'remote', provider: 'generic', baseUrl: '', dimension: '', supportsVision: false, contextWindow: '', maxConcurrency: '', thinkingControl: '', customHeaders: {}, apiKey: '', appSecret: '' };
+  return { name: '', displayName: '', type: 'chat', source: 'remote', provider: 'generic', baseUrl: '', dimension: '', supportsVision: false, contextWindow: '', maxConcurrency: '', thinkingControl: '', customHeaders: {}, apiKey: '', appSecret: '', originalParameters: {} };
 }
 
 export function validateModelDraft(draft: ModelDraft): string[] {
   const errors: string[] = [];
   if (!draft.name.trim()) errors.push('modelNameRequired');
   else if (draft.name.trim().length > 100) errors.push('modelNameMax');
-  if (draft.source === 'remote' && draft.provider !== 'weknoracloud') {
+  if (draft.type === 'rerank' && draft.source !== 'remote') errors.push('rerankRemoteOnly');
+  if ((draft.source === 'remote' || draft.type === 'rerank') && draft.provider !== 'weknoracloud') {
     if (!draft.baseUrl.trim()) errors.push('baseUrlRequired');
     else { try { new URL(draft.baseUrl.trim()); } catch { errors.push('baseUrlInvalid'); } }
   }
@@ -76,14 +79,15 @@ export function validateModelDraft(draft: ModelDraft): string[] {
 }
 
 export function modelPayload(draft: ModelDraft): Record<string, unknown> {
-  const parameters: Record<string, unknown> = { base_url: draft.baseUrl.trim(), provider: draft.provider };
-  if (draft.type === 'embedding' && typeof draft.dimension === 'number') parameters.embedding_parameters = { dimension: draft.dimension, truncate_prompt_tokens: 0, supports_dimension_override: false };
+  const originalParameters = draft.originalParameters ?? {};
+  const parameters: Record<string, unknown> = { ...originalParameters, base_url: draft.baseUrl.trim(), provider: draft.provider };
+  if (draft.type === 'embedding' && typeof draft.dimension === 'number') parameters.embedding_parameters = { ...record(originalParameters.embedding_parameters), dimension: draft.dimension };
   if ((draft.type === 'chat' || draft.type === 'vllm') && typeof draft.contextWindow === 'number' && draft.contextWindow >= 1024) parameters.context_window = Math.round(draft.contextWindow);
   if (['chat', 'embedding', 'vllm'].includes(draft.type) && typeof draft.maxConcurrency === 'number' && draft.maxConcurrency > 0) parameters.max_concurrency = draft.maxConcurrency;
   if (draft.type === 'vllm' || (draft.type === 'chat' && draft.supportsVision)) parameters.supports_vision = true;
   if (draft.thinkingControl && draft.type === 'chat' && draft.source === 'remote') parameters.extra_config = { thinking_control: draft.thinkingControl };
   if (Object.keys(draft.customHeaders).length > 0) parameters.custom_headers = draft.customHeaders;
-  return { name: draft.name.trim(), display_name: draft.displayName.trim() || draft.name.trim(), description: '', type: backendModelType(draft.type), source: draft.source, parameters };
+  return { name: draft.name.trim(), display_name: draft.displayName.trim() || draft.name.trim(), description: '', type: backendModelType(draft.type), source: draft.type === 'rerank' ? 'remote' : draft.source, parameters };
 }
 
 export function modelCredentialInput(draft: ModelDraft): Record<string, string> {

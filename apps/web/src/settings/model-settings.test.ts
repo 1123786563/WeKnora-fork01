@@ -13,8 +13,17 @@ test('model type and payload preserve Vue model fields and isolate credentials',
   assert.equal(modelType({ type: 'EmbeddingModel' }), 'embedding');
   assert.deepEqual(modelPayload(baseDraft), {
     name: 'text-embedding-3-small', display_name: 'text-embedding-3-small', description: '', type: 'Embedding', source: 'remote',
-    parameters: { base_url: 'https://api.openai.com/v1', provider: 'openai', embedding_parameters: { dimension: 1536, truncate_prompt_tokens: 0, supports_dimension_override: false } },
+    parameters: { base_url: 'https://api.openai.com/v1', provider: 'openai', embedding_parameters: { dimension: 1536 } },
   });
+});
+
+test('model payload uses the exact backend type vocabulary and preserves unknown parameters', () => {
+  for (const [type, backend] of [['chat', 'KnowledgeQA'], ['embedding', 'Embedding'], ['rerank', 'Rerank'], ['vllm', 'VLLM'], ['asr', 'ASR']] as const) {
+    const payload = modelPayload({ ...baseDraft, type, source: type === 'rerank' ? 'local' : 'remote', originalParameters: { max_output_tokens: 2048 } });
+    assert.equal(payload.type, backend);
+    assert.equal((payload.parameters as Record<string, unknown>).max_output_tokens, 2048);
+    if (type === 'rerank') assert.equal(payload.source, 'remote');
+  }
 });
 
 test('model validation mirrors Vue required, URL, and embedding dimension rules', () => {

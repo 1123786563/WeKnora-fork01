@@ -1,5 +1,5 @@
 export { createWeKnoraClient } from './client.ts';
-export type { WeKnoraClient, WeKnoraClientOptions, ClientRequest, KnowledgeBase, KnowledgeBaseListParams, KnowledgeBaseMutationInput } from './client.ts';
+export type { WeKnoraClient, WeKnoraClientOptions, ClientRequest, KnowledgeBase, KnowledgeBaseListParams, KnowledgeBaseMutationInput, KnowledgeChunkSearchParams, KnowledgeChunkSearchHit } from './client.ts';
 export { ApiError, createAbortError, isNamedError } from './errors.ts';
 export type { HttpRequest, HttpResult, HttpStreamResult, HttpTransport, NativeFileSource, NativeMultipartFileRequest } from './ports.ts';
 export type { ClientBinaryResponse } from './client.ts';
@@ -37,6 +37,20 @@ export { createEmbedClient } from './embed/client.ts';
 export type { EmbedClient, EmbedClientOptions } from './embed/client.ts';
 export { createSandboxTerminalApi, parseSandboxTerminalTicket } from './sandbox/terminal.ts';
 export type { SandboxTerminalApi, SandboxTerminalTicket } from './sandbox/terminal.ts';
+export { createSandboxConfigurationsApi, parseSandboxConfigurationConflict } from './sandbox-configurations.ts';
+export type {
+  CubeSandboxConfig,
+  DockerSandboxConfig,
+  E2BSandboxConfig,
+  SandboxBackendType,
+  SandboxConfigRecord,
+  SandboxConfigUpsert,
+  SandboxConfigurationConflict,
+  SandboxConfigurationConflictCode,
+  SandboxConfigurationsApi,
+  SandboxInventory,
+  TenantSandboxConfig,
+} from './sandbox-configurations.ts';
 export { createConfigurationApi } from './configuration.ts';
 export type {
   AgentConfiguration,
