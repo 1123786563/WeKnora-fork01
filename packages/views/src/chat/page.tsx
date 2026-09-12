@@ -267,35 +267,51 @@ export function ChatPage(props: ChatPageProps) {
       onPageChange={props.onSessionPageChange}
     />
     <section className="wk-chat-main" aria-label="Chat">
-      <h1>{props.selectedSessionId ? 'Conversation' : 'New conversation'}</h1>
-      {props.agents && props.onAgentChange ? <label htmlFor="wk-chat-agent">Agent<select id="wk-chat-agent" value={props.selectedAgentId ?? ''} onChange={(event) => props.onAgentChange?.(event.target.value)}><option value="">Knowledge chat</option>{props.agents.map((agent) => <option key={agent.id} value={agent.id} disabled={agent.disabled}>{agent.name}{agent.disabled ? ' · disabled' : ''}</option>)}</select></label> : null}
-      <ChatActionCards {...props} />
-      {props.stream ? <LiveResponse stream={props.stream} onStopStream={props.onStopStream} /> : null}
-      <ReferenceList references={references} activeId={activeCitationId} onActivate={activateCitation} />
-      <TerminalPanel terminal={props.terminal} onOpenTerminal={props.onOpenTerminal} onTerminalInput={props.onTerminalInput} onTerminalResize={props.onTerminalResize} onCloseTerminal={props.onCloseTerminal} />
-      {props.error ? <p role="alert">{props.error}</p> : null}
-      {props.loadingMessages ? <p role="status">Loading messages…</p> : null}
-      <MessageList
-        messages={props.messages}
-        pending={pending}
-        onRetry={pending?.status === 'failed' ? () => void send({ content: pending.content, status: 'pending' }) : undefined}
-        loadingOlder={props.loadingOlderMessages}
-        hasMore={props.hasMoreMessages}
-        onLoadOlder={props.onLoadOlderMessages}
-        sessionId={props.selectedSessionId}
-        suggestions={props.suggestions}
-        onSuggestionClick={props.onSuggestionClick}
-        onRefreshSuggestions={props.onRefreshSuggestions}
-        onDismissSuggestions={props.onDismissSuggestions}
-        onCitationClick={activateCitation}
-        onArtifactDownload={props.onArtifactDownload}
-        onArtifactPreview={props.onArtifactPreview}
-      />
-      {props.selectedSessionId && props.onClearSession ? <button type="button" onClick={() => void props.onClearSession!()}>Clear messages</button> : null}
-      {/* A follow-up queue only makes sense while a turn is actually running;
-          when idle the main composer handles the message (a steer would 409). */}
-      {props.selectedSessionId && props.onSteer && props.stream?.phase === 'streaming' ? <SteerComposer onSteer={props.onSteer} /> : null}
-      <ChatComposer draft={props.draft} disabled={sending || pending !== undefined || props.stream?.phase === 'streaming'} onDraftChange={props.onDraftChange} onSubmit={(submission) => void send(submission)} />
+      <header className="wk-chat-header">
+        <div className="wk-chat-header-titles">
+          <h1>{(() => {
+            const selected = props.sessions.find((session) => session.id === props.selectedSessionId);
+            return selected?.title || (props.selectedSessionId ? 'Conversation' : 'New conversation');
+          })()}</h1>
+          {(() => {
+            const selectedAgent = props.agents?.find((agent) => agent.id === props.selectedAgentId);
+            const agentName = props.selectedAgentId ? selectedAgent?.name ?? 'Knowledge chat' : 'Knowledge chat';
+            return agentName ? <span className="wk-chat-header-agent" role="note">{agentName}</span> : null;
+          })()}
+        </div>
+        <div className="wk-chat-header-actions">
+          {props.agents && props.onAgentChange ? <label htmlFor="wk-chat-agent">Agent<select id="wk-chat-agent" value={props.selectedAgentId ?? ''} onChange={(event) => props.onAgentChange?.(event.target.value)}><option value="">Knowledge chat</option>{props.agents.map((agent) => <option key={agent.id} value={agent.id} disabled={agent.disabled}>{agent.name}{agent.disabled ? ' · disabled' : ''}</option>)}</select></label> : null}
+          {props.selectedSessionId && props.onClearSession ? <button type="button" className="wk-chat-header-clear" onClick={() => void props.onClearSession!()}>Clear messages</button> : null}
+        </div>
+      </header>
+      <div className="wk-chat-conversation">
+        <ChatActionCards {...props} />
+        {props.stream ? <LiveResponse stream={props.stream} onStopStream={props.onStopStream} /> : null}
+        <ReferenceList references={references} activeId={activeCitationId} onActivate={activateCitation} />
+        <TerminalPanel terminal={props.terminal} onOpenTerminal={props.onOpenTerminal} onTerminalInput={props.onTerminalInput} onTerminalResize={props.onTerminalResize} onCloseTerminal={props.onCloseTerminal} />
+        {props.error ? <p role="alert">{props.error}</p> : null}
+        {props.loadingMessages ? <p role="status">Loading messages…</p> : null}
+        <MessageList
+          messages={props.messages}
+          pending={pending}
+          onRetry={pending?.status === 'failed' ? () => void send({ content: pending.content, status: 'pending' }) : undefined}
+          loadingOlder={props.loadingOlderMessages}
+          hasMore={props.hasMoreMessages}
+          onLoadOlder={props.onLoadOlderMessages}
+          sessionId={props.selectedSessionId}
+          suggestions={props.suggestions}
+          onSuggestionClick={props.onSuggestionClick}
+          onRefreshSuggestions={props.onRefreshSuggestions}
+          onDismissSuggestions={props.onDismissSuggestions}
+          onCitationClick={activateCitation}
+          onArtifactDownload={props.onArtifactDownload}
+          onArtifactPreview={props.onArtifactPreview}
+        />
+        {/* A follow-up queue only makes sense while a turn is actually running;
+            when idle the main composer handles the message (a steer would 409). */}
+        {props.selectedSessionId && props.onSteer && props.stream?.phase === 'streaming' ? <SteerComposer onSteer={props.onSteer} /> : null}
+        <ChatComposer draft={props.draft} disabled={sending || pending !== undefined || props.stream?.phase === 'streaming'} onDraftChange={props.onDraftChange} onSubmit={(submission) => void send(submission)} />
+      </div>
     </section>
   </main>;
 }

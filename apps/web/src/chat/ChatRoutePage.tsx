@@ -13,6 +13,7 @@ import { saveArtifactDownload } from './artifact-download.ts';
 import { externalCitationTarget } from './citation.ts';
 import { findResumeTargetMessage } from './resume.ts';
 import { buildSteerAction, isSteerConflict } from './steer-submit.ts';
+import './chat.css';
 
 interface ChatRoutePageProps {
   client: WeKnoraClient;

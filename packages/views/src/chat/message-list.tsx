@@ -136,17 +136,29 @@ export function MessageList({ messages, pending, onRetry, loadingOlder = false, 
   return <div ref={containerRef} className="wk-chat-message-scroll" onScroll={onScroll}>
     {hasMore ? <button type="button" disabled={loadingOlder} onClick={onLoadOlder}>{loadingOlder ? 'Loading history…' : 'Load older messages'}</button> : null}
     <ol className="wk-chat-messages" aria-label="Messages">
-    {messages.map((message) => <li key={message.id} data-role={message.role}>
-      <strong>{message.role}</strong>
-      <div className="wk-chat-message-content" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: renderMessageHtml(message) }} />
-      {message.role === 'assistant' ? <AssistantExtras message={message} /> : null}
-      <ArtifactList message={message} onDownload={onArtifactDownload} onPreview={onArtifactPreview ? openArtifactPreview : undefined} />
-    </li>)}
-    {pending ? <li data-role="user" data-status={pending.status}>
-      <strong>user</strong>
-      <p>{pending.content}</p>
-      {pending.status === 'pending' ? <p role="status">Sending…</p> : <p role="alert">{pending.error ?? 'Message failed to send'}</p>}
-      {pending.status === 'failed' && onRetry ? <button type="button" onClick={onRetry}>Retry</button> : null}
+    {messages.map((message) => {
+      const isAssistant = message.role === 'assistant';
+      return <li key={message.id} data-role={message.role} className={`wk-chat-message-row wk-chat-message-row--${message.role}`}>
+        {isAssistant ? <span className="wk-chat-avatar" aria-hidden="true">AI</span> : null}
+        <div className="wk-chat-message-body">
+          <strong className="wk-chat-message-role">{message.role}</strong>
+          <div className="wk-chat-message-bubble">
+            <div className="wk-chat-message-content" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: renderMessageHtml(message) }} />
+          </div>
+          {isAssistant ? <AssistantExtras message={message} /> : null}
+          <ArtifactList message={message} onDownload={onArtifactDownload} onPreview={onArtifactPreview ? openArtifactPreview : undefined} />
+        </div>
+      </li>;
+    })}
+    {pending ? <li data-role="user" data-status={pending.status} className="wk-chat-message-row wk-chat-message-row--user">
+      <div className="wk-chat-message-body">
+        <strong className="wk-chat-message-role">user</strong>
+        <div className="wk-chat-message-bubble">
+          <p>{pending.content}</p>
+          {pending.status === 'pending' ? <p role="status">Sending…</p> : <p role="alert">{pending.error ?? 'Message failed to send'}</p>}
+          {pending.status === 'failed' && onRetry ? <button type="button" onClick={onRetry}>Retry</button> : null}
+        </div>
+      </div>
     </li> : null}
     </ol>
     {preview ? <ArtifactPreview artifact={preview.artifact} payload={preview.payload} loading={preview.loading} error={preview.error} onClose={() => { previewRequestId.current += 1; setPreview(null); }} onDownload={onArtifactDownload ? () => void onArtifactDownload(preview.messageId, preview.artifact.index) : undefined} /> : null}
