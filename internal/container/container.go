@@ -57,6 +57,7 @@ import (
 	domain "github.com/Tencent/WeKnora/internal/commercial"
 	"github.com/Tencent/WeKnora/internal/common"
 	"github.com/Tencent/WeKnora/internal/config"
+	"github.com/Tencent/WeKnora/internal/craft"
 	"github.com/Tencent/WeKnora/internal/database"
 	"github.com/Tencent/WeKnora/internal/datasource"
 	"github.com/Tencent/WeKnora/internal/datasource/connector/feishu/core"
@@ -304,6 +305,25 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	}))
 	// Expose Gate as MCPApproval interface so AgentService and others can depend on the abstraction.
 	must(container.Provide(func(g *approval.Gate) approval.MCPApproval { return g }))
+
+	// Craft delegation assembly (R05): the durable Craft store, the real
+	// active-run check and the delegation service handed to the agent
+	// service. CraftActiveRunsQuery is the production CraftRunActivity the
+	// Craft workspace resolver assembles against (R03 nit-1) — the real
+	// agent_runs query, never an always-false stub. The sandboxed OpenCode
+	// dial and the pinned runtime digest are owned by the Craft runtime
+	// deployment task; until it lands the executor fails closed with
+	// craft.ErrUnsupported, so no builtin session and no live sub-execution
+	// is affected — craft_delegate only opens for tRPC sessions that already
+	// have a bound Craft workspace.
+	must(container.Provide(repository.NewCraftStore))
+	must(container.Provide(service.CraftActiveRunsQuery))
+	must(container.Provide(func() craft.Executor {
+		return service.NewUnavailableCraftExecutor(
+			"the craft opencode runtime dial is not assembled yet (craft runtime deployment task)")
+	}))
+	must(container.Provide(service.NewCraftDelegation))
+
 	must(container.Provide(service.NewAgentService))
 
 	// Session service (depends on agent service)
