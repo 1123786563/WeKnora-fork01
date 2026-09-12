@@ -114,3 +114,9 @@
 - Vue 顶层 menu.* 26 键 ×5 locale 迁入 packages/i18n（menu.ts）；PlatformShell 本地 NAV_LABELS 删除，改用 formatMessage（个人设置用 general.personalSettings，对齐 Vue UserMenu.vue:79）。提交 5b4bd51。
 - 收到 organizations/agents/integrations/embed 四页审计（A 部分：审批门控 join 与 org settings 弹窗缺失；B：AgentEditor 6753 行与聊天侧 AgentSelector 缺失，页面为 JSON 编辑器 stub；C：API-key 管理 API 表缺失、playground 非 SSE；D：embed 缺 markdown/引用渲染与文件上传/ignore default_locale）。待派发实施。
 - web 全量 146/146；typecheck:web 现存错误仅 settings 实施子代理 WIP 文件（surface.test.ts 重复标识符，其收尾时自愈）。
+
+## 2026-09-12 Round 16
+
+- settings 必修 8 项完成并集成（d1aa583 + 面板补交）：角色门控（scopeRuntime.role() 新增）、9 缺失 section（live 数据或显式未迁移提示）、envvars 编辑器、模型选择器+allow-list、chathistory 模型锁、密码策略（domain/auth/password-policy）、脏检查保存、popstate。vite alias 补齐后 build 恢复。
+- live 验证：ModelManagement 新 section + not-yet-ported 提示 + 真实数据渲染。
+- 四页（org/agents/integrations/embed）必修实施子代理进行中。
