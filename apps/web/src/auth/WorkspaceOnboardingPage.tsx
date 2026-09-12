@@ -3,6 +3,7 @@ import type { TenantInvitation, WeKnoraClient } from '@weknora/api-client';
 import { Button, Card, Status } from '@weknora/ui';
 import type { WebScopeRuntime } from '../platform/scope-runtime.ts';
 import { onboardingView, validateCreateTenant, type OnboardingPolicyInput } from './onboarding.ts';
+import { formatMessage } from '@weknora/i18n';
 
 export interface WorkspaceOnboardingPageProps {
   client: WeKnoraClient;
@@ -10,34 +11,7 @@ export interface WorkspaceOnboardingPageProps {
   onLogout: () => Promise<void> | void;
 }
 
-const MESSAGES: Record<string, string> = {
-  'auth.workspaceOnboarding.title': 'Choose a workspace',
-  'auth.workspaceOnboarding.inviteOnlyTitle': 'Join a workspace',
-  'auth.workspaceOnboarding.description': 'Your account is signed in, but it does not have an active workspace yet.',
-  'auth.workspaceOnboarding.inviteOnlyDescription': 'This deployment is invitation-only. Accept an invitation to continue.',
-  'auth.workspaceOnboarding.loadingPolicy': 'Checking workspace access…',
-  'auth.workspaceOnboarding.policyLoadFailed': 'Unable to load workspace access.',
-  'auth.workspaceOnboarding.retry': 'Retry',
-  'auth.workspaceOnboarding.inviteOnlyNotice': 'Self-serve workspace creation is disabled. Accept an invitation from a workspace administrator.',
-  'auth.workspaceOnboarding.create': 'Create a workspace',
-  'auth.workspaceOnboarding.invitations': 'My invitations',
-  'auth.workspaceOnboarding.help': 'Create a workspace, or accept an invitation you received by email.',
-  'auth.workspaceOnboarding.inviteOnlyHelp': 'You can accept an invitation at any time; ask the workspace administrator if you do not have one.',
-  'auth.logout': 'Sign out',
-  'tenant.create.nameLabel': 'Workspace name',
-  'tenant.create.namePlaceholder': 'e.g. Product Team',
-  'tenant.create.nameRequired': 'Workspace name is required.',
-  'tenant.create.nameTooLong': 'Workspace name cannot exceed 128 characters.',
-  'tenant.create.descriptionLabel': 'Description (optional)',
-  'tenant.create.descriptionTooLong': 'Description cannot exceed 512 characters.',
-  'tenantInvitation.myInbox.empty': 'No pending invitations.',
-  'tenantInvitation.myInbox.accept': 'Accept',
-  'tenantInvitation.myInbox.decline': 'Decline',
-  'tenantInvitation.myInbox.acceptSuccess': 'Invitation accepted.',
-  'tenantInvitation.myInbox.declineSuccess': 'Invitation declined.',
-};
-
-function msg(key: string): string { return MESSAGES[key] ?? key; }
+const msg = (key: string): string => formatMessage('zh-CN', key);
 
 export function WorkspaceOnboardingPage({ client, scopeRuntime, onLogout }: WorkspaceOnboardingPageProps) {
   const [policy, setPolicy] = useState<OnboardingPolicyInput | null>(null);

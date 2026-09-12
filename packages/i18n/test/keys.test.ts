@@ -9,7 +9,8 @@ test('keeps the five locales present in the current source inventory aligned', (
 
 test('formats interpolation and falls back to English/key without Vue runtime', () => {
   assert.equal(formatMessage('en-US', 'missing', { name: 'x' }), 'missing');
-  assert.equal(formatMessage('en-US', 'auth.login'), 'Sign in');
+  // Vue baseline (frontend/src/i18n/locales/en-US.ts auth.login) is authoritative.
+  assert.equal(formatMessage('en-US', 'auth.login'), 'Login');
   assert.equal(isLocale('fr-FR'), false);
 });
 

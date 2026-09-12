@@ -10,6 +10,12 @@ const SAMPLE_KEYS = [
   'auth.passwordMustContainSpecialChar',
   'inviteRegister.bannerTitle',
   'language.languageSaved',
+  'auth.workspaceOnboarding.create',
+  'auth.workspaceOnboarding.inviteOnlyNotice',
+  'tenant.create.nameLabel',
+  'tenant.create.nameRequired',
+  'tenantInvitation.myInbox.acceptButton',
+  'tenantInvitation.myInbox.declineSuccess',
 ];
 
 test('auth message keys exist in every supported locale', () => {
