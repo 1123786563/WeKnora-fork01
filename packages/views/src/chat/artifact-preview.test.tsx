@@ -27,4 +27,8 @@ test('unknown artifact types remain explicitly download-only', () => {
     kind: 'download-only',
     label: 'Download to view',
   });
+  assert.deepEqual(artifactPreviewModel({ fileName: 'diagram.svg', fileType: 'image/svg+xml; charset=utf-8' }), {
+    kind: 'download-only',
+    label: 'Download to view',
+  });
 });

@@ -23,7 +23,7 @@ export function artifactPreviewModel(artifact: Pick<ChatArtifact, 'fileName' | '
   const ext = extension(artifact.fileName);
   if (type === 'text/html' || type === 'application/xhtml+xml' || ext === 'html' || ext === 'htm') return { kind: 'download-only', label: 'Download to view' };
   if (type === 'application/pdf' || ext === 'pdf') return { kind: 'pdf', label: 'PDF preview' };
-  if (type.startsWith('image/') && type !== 'image/svg+xml' && type !== 'image/svg') return { kind: 'image', label: 'Image preview' };
+  if (type.startsWith('image/') && !type.startsWith('image/svg')) return { kind: 'image', label: 'Image preview' };
   if (ext === 'md' || ext === 'markdown' || type === 'text/markdown') return { kind: 'markdown', label: 'Markdown preview' };
   if (type.startsWith('text/') || ['csv', 'tsv', 'txt', 'log', 'json', 'xml', 'yaml', 'yml', 'mmd', 'mermaid'].includes(ext)) return { kind: 'text', label: 'Text preview' };
   return { kind: 'download-only', label: 'Download to view' };
