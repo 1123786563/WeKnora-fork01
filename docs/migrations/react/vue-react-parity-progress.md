@@ -87,3 +87,9 @@
 - settings 实施子代理派发（角色门控/缺失 sections/envvars 编辑器/模型选择器/模型锁/密码策略/脏检查/popstate——i18n 键已就绪）。
 - 邀请与共享链接 live API E2E 通过：pending-count→accept→membership；invite-links→accept-by-token。证据：evidence/vue-react-parity/2026-09-12-invite-live-e2e.md。
 - chat 实施、平台外壳实施子代理继续进行中。
+
+## 2026-09-12 Round 12
+
+- 矩阵更新：/platform/settings、/platform/chat/:chatid、/platform/creatChat 三行写入行级审计结论与实施状态。
+- 三个实施子代理并行：chat 必修（进行中）、平台外壳（进行中）、settings 必修（已派发）。
+- 观察到 chat 子代理同步修改 vite.config.ts 与 packages/domain/package.json（为新增 chat 模块接 exports/alias），属其文件域。
