@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChatMessage, ChatSession, MessageSuggestionSet } from '@weknora/contracts';
 import { ChatComposer, type ChatSubmission } from './composer.tsx';
 import { MessageList, type PendingChatMessage } from './message-list.tsx';
 import { SessionSidebar } from './session-sidebar.tsx';
+import { ReferenceList } from './reference-list.tsx';
 import { ToolResultView } from './tool-result.tsx';
 
 export interface ChatAgentOption {
@@ -116,6 +117,18 @@ function displayValue(value: unknown): string {
   try { return JSON.stringify(value) ?? String(value); } catch { return '[unavailable]'; }
 }
 
+export function messageReferenceValues(messages: readonly ChatMessage[]): unknown[] {
+  const references: unknown[] = [];
+  for (const message of messages) {
+    const row = message as Record<string, unknown>;
+    for (const key of ['knowledge_references', 'references']) {
+      const value = row[key];
+      if (Array.isArray(value)) references.push(...value);
+    }
+  }
+  return references;
+}
+
 function LiveResponse({ stream }: { stream: ChatStreamPresentation }) {
   const hasDetails = Boolean(stream.thinking) || stream.references.length > 0 || stream.toolCalls.length > 0;
   if (!hasDetails) return null;
@@ -211,6 +224,13 @@ export function ChatPage(props: ChatPageProps) {
   const [pending, setPending] = useState<PendingChatMessage | undefined>();
   const [sending, setSending] = useState(false);
   const sendingRef = useRef(false);
+  const [activeCitationId, setActiveCitationId] = useState<string | null>(null);
+  const references = useMemo(() => [...messageReferenceValues(props.messages), ...(props.stream?.references ?? [])], [props.messages, props.stream?.references]);
+
+  function activateCitation(referenceId: string): void {
+    setActiveCitationId(referenceId);
+    props.onCitationClick?.(referenceId);
+  }
 
   useEffect(() => { setPending(undefined); }, [props.selectedSessionId]);
 
@@ -261,6 +281,7 @@ export function ChatPage(props: ChatPageProps) {
       {props.agents && props.onAgentChange ? <label htmlFor="wk-chat-agent">Agent<select id="wk-chat-agent" value={props.selectedAgentId ?? ''} onChange={(event) => props.onAgentChange?.(event.target.value)}><option value="">Knowledge chat</option>{props.agents.map((agent) => <option key={agent.id} value={agent.id} disabled={agent.disabled}>{agent.name}{agent.disabled ? ' · disabled' : ''}</option>)}</select></label> : null}
       <ChatActionCards {...props} />
       {props.stream ? <LiveResponse stream={props.stream} /> : null}
+      <ReferenceList references={references} activeId={activeCitationId} onActivate={activateCitation} />
       <TerminalPanel terminal={props.terminal} onOpenTerminal={props.onOpenTerminal} onTerminalInput={props.onTerminalInput} onTerminalResize={props.onTerminalResize} onCloseTerminal={props.onCloseTerminal} />
       {props.error ? <p role="alert">{props.error}</p> : null}
       {props.loadingMessages ? <p role="status">Loading messages…</p> : null}
@@ -276,7 +297,7 @@ export function ChatPage(props: ChatPageProps) {
         onSuggestionClick={props.onSuggestionClick}
         onRefreshSuggestions={props.onRefreshSuggestions}
         onDismissSuggestions={props.onDismissSuggestions}
-        onCitationClick={props.onCitationClick}
+        onCitationClick={activateCitation}
         onArtifactDownload={props.onArtifactDownload}
       />
       {props.selectedSessionId && props.onClearSession ? <button type="button" onClick={() => void props.onClearSession!()}>Clear messages</button> : null}

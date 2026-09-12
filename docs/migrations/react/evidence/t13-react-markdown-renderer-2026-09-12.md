@@ -26,6 +26,10 @@ public storage URL or a client-side artifact download path.
   renderer to a readable React view, preserves unknown results as plain text,
   and recursively redacts secret-shaped fields before serialization. Live tool
   calls in the chat page use this view rather than interpolating raw results.
+- `packages/views/src/chat/reference-list.tsx` reuses the shared reference
+  grouping model for stream/history references, keeps safe web links as links,
+  and exposes local document/tool chunk ids as activation buttons. The ChatPage
+  combines persisted message reference metadata with current stream references.
 - `apps/web/src/chat/ChatRoutePage.tsx` now resolves message metadata through
   that API and hands the authenticated bytes to the Web save-file port.
 - `apps/web/src/styles.css` adds safe readable layout for Markdown code, tables,
@@ -37,19 +41,19 @@ Commands run from the isolated `codex/react-multiclient` worktree:
 
 | Command | Result |
 |---|---|
-| `pnpm test:shared` | exit 0; 215/215 |
+| `pnpm test:shared` | exit 0; 217/217 |
 | `pnpm typecheck:shared` | exit 0 |
 | `pnpm typecheck:web` | exit 0 |
 | `pnpm test:web` | exit 0; 107/107 |
 | `pnpm test:web` after artifact-save wiring | exit 0; 109/109 |
-| `pnpm build:web` | exit 0; 143 modules |
+| `pnpm build:web` | exit 0; 145 modules |
 
 Focused TDD coverage in `packages/views/src/chat/markdown.test.tsx` and
 `packages/views/src/chat/tool-result.test.tsx` verifies
 headings/tables/CJK, Mermaid metadata, readable math, XSS-safe raw HTML and
 unsafe URLs, citation button attributes, unclosed fences, and MessageList's
-shared renderer path, known/unknown tool-result mapping, and recursive secret
-redaction.
+shared renderer path, known/unknown tool-result mapping, recursive secret
+redaction, and grouped reference modeling with unsafe web destinations omitted.
 
 ## Evidence boundary
 
