@@ -146,3 +146,9 @@
 
 - live 发现并转告 KB 详情审计代理：①设置按钮（App.tsx:398 无条件 /knowledgeBase/:id/settings）与卡片点击（openCard 模型就绪分支 → /platform/settings）对同一未初始化 KB 路由不一致；②Documents 页调试文案 "tags loaded: none…" 泄漏。截图 live-kb-documents.png。
 - 文档页功能骨架（上传/文件夹/过滤/批量）在 live 可用。
+
+## 2026-09-12 Round 24
+
+- KB 详情审计报告收货（成熟度：documents/detail partial、timeline missing、wiki/graph stub、FAQ partial；必修 10 项）。
+- 主代理即刻修复两项：#4 设置按钮统一模型就绪门控（openKbSettings helper，对齐 Vue handleCardClick）；#10 loading 哨兵替换为独立 status:'loading'。提交 16b4437。
+- 其余必修（reparse/cancel+timeline、FAQ/Wiki 分页、权限门控、KB 类型路由、上传流程、批量确认、i18n 移植）待四页代理释放 packages/i18n 后派发实施。
