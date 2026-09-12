@@ -387,3 +387,7 @@
 - chat 审批 modified_args 编辑器完成集成（f887acd，5 文件 +272/-5）：查看参数 <details> 展开编辑、JSON 校验（无效输入阻断 + role=alert）、同意传 modified_args、拒绝免校验。6 单测 + 2 SSR 测试。
 - 门禁：web 204/204、typecheck 0 错误、build:web ✓。
 - 已知限制：domain ChatApproval 类型无 arguments/toolName 字段（domain 越界未改），live 流 reducer 暂无法填充 args——视图层以 {} 回退，待 domain 层后续扩展。
+
+## 2026-09-12 Round 98
+
+- tenant delete danger zone live 验证通过：owner 视角下 zone 渲染、确认名输入前删除按钮禁用（armed 语义生效）。6 个主页面 live 回归 6/6。截图 tenant-delete-zone-live.png 入库。
