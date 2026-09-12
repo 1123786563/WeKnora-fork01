@@ -162,7 +162,10 @@ export function KnowledgeDocumentsPage({ client, knowledgeBaseId, onOpenDocument
     setUploading(true);
     if (pendingUrl) {
       try {
-        await client.knowledgeBases.documents.createFromUrl(knowledgeBaseId, { url: pendingUrl, tag_ids: pendingTagIds });
+        const created = await client.knowledgeBases.documents.createFromUrl(knowledgeBaseId, { url: pendingUrl, tag_ids: pendingTagIds });
+        if (folderPath !== undefined && created.id) {
+          await client.knowledgeBases.documents.moveToFolder(knowledgeBaseId, [created.id], folderPath);
+        }
         setPendingUrl(''); setPendingTagIds([]); setReloadToken((value) => value + 1);
       } catch (error) { setUploadError(errorMessage(error)); }
       finally { setUploading(false); }
@@ -175,9 +178,15 @@ export function KnowledgeDocumentsPage({ client, knowledgeBaseId, onOpenDocument
         entries: pendingEntries,
         tagIds: pendingTagIds,
         signal: controller.signal,
-        upload: (entry, tagIds, signal) => client.knowledgeBases.documents.upload(
-          knowledgeBaseId, { file: entry.file, fileName: entry.name, tag_ids: tagIds }, signal,
-        ),
+        upload: async (entry, tagIds, signal) => {
+          const created = await client.knowledgeBases.documents.upload(
+            knowledgeBaseId, { file: entry.file, fileName: entry.name, tag_ids: tagIds }, signal,
+          );
+          if (folderPath !== undefined && created.id) {
+            await client.knowledgeBases.documents.moveToFolder(knowledgeBaseId, [created.id], folderPath);
+          }
+          return created;
+        },
         onStateChange: setUploadStates,
       });
       setReloadToken((value) => value + 1);
