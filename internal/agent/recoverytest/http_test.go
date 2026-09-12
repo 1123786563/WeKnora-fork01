@@ -7,6 +7,8 @@ import (
 	"github.com/Tencent/WeKnora/internal/container"
 )
 
+func boolPtr(v bool) *bool { return &v }
+
 func TestRecoveryAdmissionGate(t *testing.T) {
 	cases := []struct {
 		name string
@@ -14,9 +16,9 @@ func TestRecoveryAdmissionGate(t *testing.T) {
 		want bool
 	}{
 		{name: "nil", want: false},
-		{name: "disabled", cfg: &config.Config{Agent: &config.AgentConfig{}}, want: false},
-		{name: "worker only drains", cfg: &config.Config{Agent: &config.AgentConfig{Recovery: config.AgentRecoveryConfig{Enabled: true}}}, want: false},
-		{name: "admission enabled", cfg: &config.Config{Agent: &config.AgentConfig{Recovery: config.AgentRecoveryConfig{Enabled: true, AdmissionEnabled: true}}}, want: true},
+		{name: "disabled", cfg: &config.Config{Agent: &config.AgentConfig{Recovery: config.AgentRecoveryConfig{Enabled: boolPtr(false)}}}, want: false},
+		{name: "worker only drains", cfg: &config.Config{Agent: &config.AgentConfig{Recovery: config.AgentRecoveryConfig{Enabled: boolPtr(true), AdmissionEnabled: boolPtr(false)}}}, want: false},
+		{name: "admission enabled", cfg: &config.Config{Agent: &config.AgentConfig{Recovery: config.AgentRecoveryConfig{Enabled: boolPtr(true), AdmissionEnabled: boolPtr(true)}}}, want: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -28,7 +30,7 @@ func TestRecoveryAdmissionGate(t *testing.T) {
 }
 
 func TestRecoveryAdmissionGateRejectsInconsistentConfig(t *testing.T) {
-	cfg := &config.Config{Agent: &config.AgentConfig{Recovery: config.AgentRecoveryConfig{AdmissionEnabled: true}}}
+	cfg := &config.Config{Agent: &config.AgentConfig{Recovery: config.AgentRecoveryConfig{Enabled: boolPtr(false), AdmissionEnabled: boolPtr(true)}}}
 	if err := container.ValidateAgentRuntimeConfig(cfg); err == nil {
 		t.Fatal("expected admission to require an enabled recovery worker")
 	}
