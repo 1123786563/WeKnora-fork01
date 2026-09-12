@@ -283,3 +283,8 @@
 
 - iOS/Android Expo 导出构建通过（Hermes 3.2MB/3.3MB）；构建产物目录加入 gitignore。证据：evidence/vue-react-parity/2026-09-12-mobile-native-builds.md。
 - 原生交互验收限制如实登记：需模拟器/真机环境，当前会话无 GUI 设备。
+
+## 2026-09-12 Round 56
+
+- KB 列表收藏/最近 scope 完成（domain filterByScope + 测试；App.tsx scope tabs + 逐用户 localStorage 收藏/最近打开追踪）。提交见 git log。
+- 门禁：web 198/198、typecheck 干净。
