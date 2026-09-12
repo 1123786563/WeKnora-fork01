@@ -28,7 +28,7 @@
 |---|---|---|---|---|
 | R01 | **done** | .worktrees/craft-r01 / codex/craft-r01 | 83e2ef5c | HEAD 542105ac 审查 PASS_WITH_NITS → 合入 21bf52fc；11/11 测试含 2 个 live（真实 1.18.4 二进制+本地 mock provider 两轮）；nit 留档：48 位 ID 回绕（R04+ 注意）、container_digest 待镜像 |
 | R02 | **done** | .worktrees/craft-r02 / codex/craft-r02 | 83e2ef5c | HEAD 80b9fcbf 审查 PASS_WITH_NITS → 合入 da6d169d；迁移 000121/000041；SQLite+真实 PG 双绿；外键偏离（写时校验+sessions FK）经审查者独立实证 |
-| R03 | implementing | .worktrees/craft-r03 / codex/craft-r03 | 21bf52fc | 已派发（含 R02 审查 nit-2 owner 校验要求）；R04–O05 等待依赖 |
+| R03 | review | .worktrees/craft-r03 / codex/craft-r03 | 21bf52fc | HEAD b9f28885：RED→GREEN、16 服务测试、真实 arm64 镜像构建+验收全绿（非 root/inputs ro/持久 data/钉扎 linux 摘要）；审查者进行中；R04–O05 等待依赖 |
 
 ## 调度纪要
 
