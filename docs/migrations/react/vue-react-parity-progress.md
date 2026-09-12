@@ -103,3 +103,8 @@
 
 - 平台外壳完成并集成：侧栏/折叠/导航高亮/KB 过滤/用户区包裹全部受保护路由；live 复核截图对比通过。提交 fe85f30。已知偏差（图标轨、图片 logo、会话列表并入、租户切换/铃/命令面板）登记于 evidence/vue-react-parity/2026-09-12-platform-shell.md。
 - chat 必修集成提交 ac8c763。settings 实施子代理进行中。
+
+## 2026-09-12 Round 13
+
+- settings 双端 live 基线截图入库（settings-{react,vue}-live.png）：证实审计结论（Vue 抽屉+分组+中文 vs React 英文平铺只读）。settings 实施子代理进行中。
+- org/agents/integrations/embed 四页差异审计子代理派发（只读）。
