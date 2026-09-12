@@ -141,3 +141,8 @@
 - live 验证未初始化 KB 卡片 → settings 路由（KB 必修 #16）。KB 详情面深入 E2E 待租户配置测试模型。
 - KB 详情面（documents/document detail/preview/processing timeline/wiki/FAQ/graph）只读审计子代理派发。
 - 四页实施子代理继续。
+
+## 2026-09-12 Round 22
+
+- live 发现并转告 KB 详情审计代理：①设置按钮（App.tsx:398 无条件 /knowledgeBase/:id/settings）与卡片点击（openCard 模型就绪分支 → /platform/settings）对同一未初始化 KB 路由不一致；②Documents 页调试文案 "tags loaded: none…" 泄漏。截图 live-kb-documents.png。
+- 文档页功能骨架（上传/文件夹/过滤/批量）在 live 可用。
