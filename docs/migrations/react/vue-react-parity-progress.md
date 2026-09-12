@@ -33,3 +33,9 @@
 - 测试：web 124/124（新增 12 例回归）；typecheck web/shared 通过。
 - KB list 页实现由并行子代理进行中（App.tsx/knowledge-bases/domain/api-client/i18n knowledgeList 键），完成后主代理集成复核。
 - 仍开放：auth 文案 i18n（5 locale）+ 语言切换、品牌视觉/轮播、WorkspaceOnboardingPage 功能化、KB list 全部必修项、其余页面矩阵推进。
+
+## 2026-09-12 Round 3
+
+- 完成 /onboarding/workspace 功能化：策略加载/重试、can_create_tenant 分叉、创建工作区（新 api-client tenants.admin.create，后端 tenant.go:89-90 依据）、我的邀请接受/拒绝与计数联动、有效租户自动重定向。证据：evidence/vue-react-parity/2026-09-12-onboarding-functional-fixes.md；提交 b95e622、c5607f4。
+- 测试：web 128/128（新增 onboarding 4 例）；typecheck 通过。
+- KB list 实现子代理仍在进行；auth i18n 键迁移待其释放 packages/i18n 后由主代理执行。
