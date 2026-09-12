@@ -844,6 +844,10 @@ import { integrationsMessages } from './generated/integrations.ts';
 export { integrationsMessages };
 import { embedMessages } from './generated/embed.ts';
 export { embedMessages };
+import { knowledgeSurfacesMessages } from './generated/knowledgeSurfaces.ts';
+export { knowledgeSurfacesMessages };
+import { knowledgeSurfacesSupplementalMessages } from './generated/knowledgeSurfacesSupplemental.ts';
+export { knowledgeSurfacesSupplementalMessages };
 
 export function formatMessage(locale: Locale, key: string, values: MessageValues = {}): string {
   const template = messages[locale][key] ?? messages['en-US'][key] ?? key;
@@ -854,5 +858,5 @@ export function isLocale(value: string): value is Locale {
   return (supportedLocales as readonly string[]).includes(value);
 }
 export const messages: Record<Locale, Record<string, string>> = Object.fromEntries(
-  (Object.keys(baseMessages) as Locale[]).map((locale) => [locale, { ...baseMessages[locale], ...knowledgeListMessages[locale], ...authMessages[locale], ...onboardingMessages[locale], ...settingsMessages[locale], ...menuMessages[locale], ...organizationMessages[locale], ...agentMessages[locale], ...integrationsMessages[locale], ...embedMessages[locale] }]),
+  (Object.keys(baseMessages) as Locale[]).map((locale) => [locale, { ...baseMessages[locale], ...knowledgeListMessages[locale], ...authMessages[locale], ...onboardingMessages[locale], ...settingsMessages[locale], ...menuMessages[locale], ...organizationMessages[locale], ...agentMessages[locale], ...integrationsMessages[locale], ...embedMessages[locale], ...knowledgeSurfacesMessages[locale], ...knowledgeSurfacesSupplementalMessages[locale] }]),
 ) as Record<Locale, Record<string, string>>;

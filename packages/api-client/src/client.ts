@@ -242,6 +242,16 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
       async update(id: string, input: KnowledgeBaseMutationInput): Promise<KnowledgeBase> {
         return parseKnowledgeBaseResponse(await request({ method: 'PUT', path: `/api/v1/knowledge-bases/${encodeURIComponent(id)}`, body: input }));
       },
+      /** POST /api/v1/knowledge/batch-reparse (routes_knowledge.go:129, Contributor+;
+ *  payload {kb_id, ids} per internal/handler/knowledge.go:2580-2584). */
+      async batchReparse(knowledgeBaseId: string, documentIds: readonly string[]): Promise<void> {
+        if (documentIds.length === 0) return;
+        await request({
+          method: 'POST',
+          path: '/api/v1/knowledge/batch-reparse',
+          body: { kb_id: knowledgeBaseId, ids: [...documentIds] },
+        });
+      },
       async remove(id: string): Promise<void> {
         await request({ method: 'DELETE', path: `/api/v1/knowledge-bases/${encodeURIComponent(id)}` });
       },

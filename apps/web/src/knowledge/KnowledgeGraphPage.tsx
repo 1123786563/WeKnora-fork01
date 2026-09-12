@@ -2,8 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import type { WikiGraphData, WeKnoraClient } from '@weknora/api-client';
 import { Button, Card, Status } from '@weknora/ui';
 import { filterGraphNodes, graphQueryParams, layoutGraphNodes } from './graph.ts';
+import { createTranslator, useAppLocale } from '../i18n.ts';
 
 export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: WeKnoraClient; knowledgeBaseId: string; slug?: string }) {
+  const t = createTranslator(useAppLocale());
+
   const [graph, setGraph] = useState<WikiGraphData | null>(null);
   const [status, setStatus] = useState<{ kind: 'loading' | 'success' | 'error'; message?: string }>({ kind: 'loading' });
   const [mode, setMode] = useState<'overview' | 'ego'>(() => slug ? 'ego' : 'overview');
@@ -39,7 +42,7 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
       <header className="wk-header">
         <div>
           <p className="wk-eyebrow">Knowledge base · {knowledgeBaseId}</p>
-          <h1>Knowledge graph</h1>
+          <h1>{t('knowledgeBase.graph.title')}</h1>
           <p className="wk-muted">Server-backed Wiki links with bounded overview and neighbor expansion.</p>
         </div>
         <div className="wk-list-actions">

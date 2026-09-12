@@ -13,6 +13,30 @@ import {
 import type { ClientBinaryResponse, ClientRequest } from '../client.ts';
 import type { NativeFileSource } from '../ports.ts';
 
+/** Minimal trace-node view (structurally compatible with the domain type). */
+export interface KnowledgeSpanNodeView {
+  name?: string;
+  stage?: string;
+  status?: string;
+  start_time?: string;
+  end_time?: string;
+  duration_ms?: number;
+  children?: KnowledgeSpanNodeView[];
+  [key: string]: unknown;
+}
+
+/** GET /knowledge/:id/spans response (routes_knowledge.go:105 → GetKnowledgeSpans).
+ *  Loose view: the trace tree is backend-owned and only read for display. */
+export interface KnowledgeSpansResponse {
+  knowledge_id?: string;
+  attempt?: number;
+  parse_status?: string;
+  current_stage?: string;
+  trace?: KnowledgeSpanNodeView | null;
+  last_error?: { error_code?: string; error_message?: string } | null;
+  [key: string]: unknown;
+}
+
 export interface KnowledgeDocumentListParams {
   page?: number;
   page_size?: number;
@@ -175,6 +199,11 @@ export function createKnowledgeDocumentsApi(
     },
     previewPath(id: string): string {
       return knowledgePath(id, '/preview');
+    },
+    async spans(id: string): Promise<KnowledgeSpansResponse> {
+      const response = await request({ method: 'GET', path: knowledgePath(id, '/spans') });
+      if (typeof response !== 'object' || response === null || Array.isArray(response)) throw new Error('Invalid knowledge spans response');
+      return response as KnowledgeSpansResponse;
     },
     async preview(id: string, signal?: AbortSignal): Promise<ClientBinaryResponse> {
       if (!requestBinary) throw new Error('Binary transport is unavailable');

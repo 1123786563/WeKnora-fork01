@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { KnowledgeBase, ParserEngineInfo, StorageBackendView, VectorStoreView, WeKnoraClient } from '@weknora/api-client';
 import { Button, Card, Status } from '@weknora/ui';
+import { createTranslator, useAppLocale } from '../i18n.ts';
 import { DataSourcesPage } from '../data-sources/DataSourcesPage.tsx';
 import { buildKnowledgeBaseSettingsInput, formFromKnowledgeBase, updateParserRule, type KnowledgeBaseSettingsForm } from './form.ts';
 
@@ -11,6 +12,7 @@ function parserGroups(engines: ParserEngineInfo[]): string[] { return [...new Se
 function ruleFor(form: KnowledgeBaseSettingsForm, fileType: string): string { return form.parserRules.find((rule) => rule.file_types.some((type) => type.toLowerCase() === fileType.toLowerCase()))?.engine ?? ''; }
 
 export function KnowledgeSettingsPage({ client, knowledgeBaseId }: { client: WeKnoraClient; knowledgeBaseId: string }) {
+  const t = createTranslator(useAppLocale());
   const [tab, setTab] = useState<Tab>('settings');
   const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeBase | null>(null);
   const [form, setForm] = useState<KnowledgeBaseSettingsForm | null>(null);
@@ -64,8 +66,8 @@ export function KnowledgeSettingsPage({ client, knowledgeBaseId }: { client: WeK
   if (tab === 'sources') return <><nav className="wk-settings-tabs"><button type="button" className="wk-settings-tab" onClick={() => setTab('settings')}>Knowledge base settings</button><button type="button" className="wk-settings-tab is-active">Data sources</button></nav><DataSourcesPage client={client} knowledgeBaseId={knowledgeBaseId} /></>;
 
   return <main className="wk-page wk-knowledge-settings-page">
-    <nav className="wk-settings-tabs"><button type="button" className="wk-settings-tab is-active">Knowledge base settings</button><button type="button" className="wk-settings-tab" onClick={() => setTab('sources')}>Data sources</button></nav>
-    <header className="wk-header"><div><p className="wk-eyebrow">Knowledge base · {knowledgeBaseId}</p><h1>Advanced settings</h1><p className="wk-muted">Configure parsing, chunking, indexing and runtime bindings through their concrete server contracts.</p></div><Button type="button" onClick={() => void load()} disabled={loading}>Reload</Button></header>
+    <nav className="wk-settings-tabs"><button type="button" className="wk-settings-tab is-active">{t('knowledgeBase.settings.title')}</button><button type="button" className="wk-settings-tab" onClick={() => setTab('sources')}>Data sources</button></nav>
+    <header className="wk-header"><div><p className="wk-eyebrow">Knowledge base · {knowledgeBaseId}</p><h1>{t('knowledgeBase.settings.title')}</h1><p className="wk-muted">Configure parsing, chunking, indexing and runtime bindings through their concrete server contracts.</p></div><Button type="button" onClick={() => void load()} disabled={loading}>Reload</Button></header>
     {message ? <Status tone={message.tone}>{message.text}</Status> : null}
     {loading || !form || !knowledgeBase ? <Card><Status>Loading knowledge base settings…</Status></Card> : <form onSubmit={save}>
       <Card className="wk-settings-section"><h2>General</h2><div className="wk-form-grid"><label>Name<input required value={form.name} onChange={(event) => setField('name', event.target.value)} /></label><label>Description<textarea rows={3} value={form.description} onChange={(event) => setField('description', event.target.value)} /></label></div></Card>

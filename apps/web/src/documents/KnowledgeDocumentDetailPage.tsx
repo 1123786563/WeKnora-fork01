@@ -2,6 +2,10 @@ import { useEffect, useState } from 'react';
 import type { KnowledgeDocument, WeKnoraClient } from '@weknora/api-client';
 import { Button, Card, Status } from '@weknora/ui';
 import { buildDocumentPreview, DocumentPreviewContent, isInlinePreviewKind, previewBodyAsBlob, readPreviewText, type InlinePreviewKind } from './preview.ts';
+import { createTranslator, useAppLocale } from '../i18n.ts';
+import { isKnowledgeProcessingActive } from '@weknora/domain/knowledge/processing';
+import { startProcessingTimeline, type ProcessingTimelineSubscription } from './processing-timeline.ts';
+import type { KnowledgeTimelineStep } from '@weknora/domain/knowledge/processing';
 
 interface KnowledgeDocumentDetailPageProps {
   client: WeKnoraClient;
@@ -10,7 +14,10 @@ interface KnowledgeDocumentDetailPageProps {
 }
 
 export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: KnowledgeDocumentDetailPageProps) {
+  const locale = useAppLocale();
+  const t = createTranslator(locale);
   const [state, setState] = useState<{ status: 'loading' } | { status: 'success'; document: KnowledgeDocument } | { status: 'error'; message: string }>({ status: 'loading' });
+  const [timelineSteps, setTimelineSteps] = useState<KnowledgeTimelineStep[]>([]);
   useEffect(() => {
     let active = true;
     setState({ status: 'loading' });
@@ -18,10 +25,31 @@ export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: Know
     return () => { active = false; };
   }, [client, documentId]);
 
-  return <main className="wk-page wk-document-detail-page"><header className="wk-header"><div><p className="wk-eyebrow">Document detail</p><h1>{state.status === 'success' ? state.document.file_name || state.document.title || documentId : documentId}</h1></div><Button type="button" onClick={onBack}>Back to documents</Button></header>
+  // Must-fix #2: processing timeline — poll the spans endpoint every 2s while
+  // the document is pending/processing/finalizing; quiesce stop at terminal.
+  const parseStatus = state.status === 'success' ? state.document.parse_status : undefined;
+  useEffect(() => {
+    if (!isKnowledgeProcessingActive(parseStatus)) {
+      setTimelineSteps([]);
+      return;
+    }
+    let subscription: ProcessingTimelineSubscription | undefined;
+    void client.knowledgeBases.documents.get(documentId).then((document) => {
+      if (!isKnowledgeProcessingActive(document.parse_status)) return;
+      subscription = startProcessingTimeline({
+        documentId,
+        getSpans: (id) => client.knowledgeBases.documents.spans(id),
+        onUpdate: (steps) => setTimelineSteps(steps),
+      });
+    }).catch(() => {});
+    return () => subscription?.stop();
+  }, [client, documentId, parseStatus]);
+
+  return <main className="wk-page wk-document-detail-page"><header className="wk-header"><div><p className="wk-eyebrow">{t('knowledgeBase.detail.eyebrow')}</p><h1>{state.status === 'success' ? state.document.file_name || state.document.title || documentId : documentId}</h1></div><Button type="button" onClick={onBack}>{t('knowledgeBase.detail.back')}</Button></header>
     {state.status === 'loading' ? <Status>Loading document…</Status> : null}
     {state.status === 'error' ? <Status tone="error">{state.message}</Status> : null}
-    {state.status === 'success' ? <DocumentDetail client={client} document={state.document} previewPath={client.knowledgeBases.documents.previewPath(documentId)} downloadPath={client.knowledgeBases.documents.downloadPath(documentId)} /> : null}
+    {state.status === 'success' && timelineSteps.length > 0 ? <Card><section aria-label={t('knowledgeBase.timeline.title')} className="wk-processing-timeline"><strong>{t('knowledgeBase.timeline.title')}</strong><ol>{timelineSteps.map((step) => <li key={step.stage} data-state={step.state}>{t('knowledgeBase.timeline.stage.' + step.stage)} — {t('knowledgeBase.timeline.' + step.state)}</li>)}</ol></section></Card> : null}
+  {state.status === 'success' ? <DocumentDetail client={client} document={state.document} previewPath={client.knowledgeBases.documents.previewPath(documentId)} downloadPath={client.knowledgeBases.documents.downloadPath(documentId)} /> : null}
   </main>;
 }
 
