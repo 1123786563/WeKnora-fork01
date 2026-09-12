@@ -247,7 +247,7 @@ if not visible_supports:
 
 **接口：** 定义 SemanticTaskCoordinator.Submit(ctx,scope,documentID,attempt uint64)error、Reconcile(ctx,operationID string)error、Cancel(ctx,operationID string)error；receipt唯一键(scope,documentID,attempt,operationID)。semantic_status独立于parse_status，native分支继续原任务。
 
-- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 func TestSemanticCompletionCannotDrainNewAttempt(t *testing.T) {
@@ -261,13 +261,13 @@ func TestSemanticCompletionCannotDrainNewAttempt(t *testing.T) {
 }
 ```
 
-- [ ] **2. 确认 RED**。执行 `go test ./internal/application/service -run TestSemanticCompletion -count=1`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [x] **2. 确认 RED**。执行 `go test ./internal/application/service -run TestSemanticCompletion -count=1`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
 - [ ] **3. 使用I02事务API接入创建/更新/重解析/删除，复查实际调用链，禁止先更新业务再单独发消息；标准chunk落库后产生manifest**
 
-- [ ] **4. 将业务任务与operation建立持久映射；Go只提交并协调状态，重试复用idempotency key；Python内部phase不创建重复Go子任务**
+- [x] **4. 将业务任务与operation建立持久映射；Go只提交并协调状态，重试复用idempotency key；Python内部phase不创建重复Go子任务**
 
-- [ ] **5. 在同事务写completion receipt并对匹配attempt的pending计数完成一次；取消/被替代operation不得扣新计数，operation成功后重复通知无副作用**
+- [x] **5. 在同事务写completion receipt并对匹配attempt的pending计数完成一次；取消/被替代operation不得扣新计数，operation成功后重复通知无副作用**
 
 - [ ] **6. 区分解析完成、语义失败、stale和deleting；新增只重建语义的重试入口，保留原parse和普通索引结果**
 
@@ -284,4 +284,4 @@ ON CONFLICT DO NOTHING;
 
 - [ ] **7. 确认 GREEN 与验收**。重跑 `go test ./internal/application/service -run TestSemanticCompletion -count=1`，预期退出码 0；另完成：运行现有knowledge_post_process相关回归；验证丢响应、重复终态、取消、重解析和删除；真实RPC至少完成一次文档→generation闭环。
 
-- [ ] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 I05 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): i05 文档任务、attempt与终态协调`。
+- [x] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 I05 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): i05 文档任务、attempt与终态协调`。

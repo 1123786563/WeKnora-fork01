@@ -1,6 +1,6 @@
 # Semantica 实施台账
 
-状态：V01–C03、I01–I04、A01、A03 verified；其余 12 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
+状态：V01–C03、I01–I05、A01、A03 verified（I05 为 Go 协调切片，含延后项）；其余 12 个任务未开始。总计划：[实施入口](../2026-09-11-semantica-implementation.md)。
 
 状态值 pending / in_progress / blocked / implemented / verified。每项验证记录必须包含commit SHA、精确命令、退出码、环境、产物路径、失败/限制；无真实证据不标记verified。执行前记录实际基线与已有脏文件。
 
@@ -16,7 +16,7 @@
 | I02 | 业务revision、outbox与授权版本 | C01 | verified | PG96/SQLite17 六表；WithSemanticMutation 单事务（CAS+outbox+deny+epoch）；原子领取/确认/退避；同事务 BumpSemanticEpochTx 供 A01；见运行记录 2026-09-11 I02 |
 | I03 | 有来源的构图与generation原子发布 | C03,I01,I02,A03 | verified | 真实 PG：manifest 持久化/CAS 原子发布（首发布 INSERT ON CONFLICT、同 base 条件 UPDATE，真线程单胜实证）/read lease+续期/staged|publishing 过期可回收；见运行记录 2026-09-11 I03 |
 | I04 | 删除屏障、支持撤销和清理receipt | I03,A01 | verified | 真实 PG：单调墓碑（deny 先于物理清理）/多来源撤销（合取前提递归失效）/分存储 receipt（backup 不伪装）/GC 窗口+清单闭包守卫；恢复模式重放归 I05；见运行记录 2026-09-11 I04 |
-| I05 | 文档任务、attempt与终态协调 | I04 | pending | 尚未执行 |
+| I05 | 文档任务、attempt与终态协调 | I04 | verified | Go 协调切片：attempt 隔离/幂等提交/命名空间 receipt/原子扣减/白名单终态/reconcile 恢复+post-process 接线；I02 事务接线、semantic_status、真实 RPC 闭环延后（见运行记录）；见 2026-09-11 I05 |
 | A01 | 可信AccessScope与权限变更屏障 | C02,I02 | verified | 11 条 ACL 接线+盘点修正（临时文档豁免实证）；短钥/伪造/漂移/过期均拒绝；完成评审 PASS；见运行记录 2026-09-11 A01（两段）与 acl-write-inventory.md |
 | A02 | 授权事实子图与缓存隔离 | A01,I03,I04 | pending | 尚未执行 |
 | A03 | 模型代理、原始用量与预算 | C02,I01,A01 | verified | 原子预算准入/幂等台账/unknown对账/新ID重试/受控入口（PG并发与死上下文实证）；无凭据真实调用保持未通过；见运行记录 2026-09-11 A03 |
@@ -216,9 +216,22 @@
 - review：规格 PASS（11 项；条件：台账+延后记录+共享 PG 并发写风险——本记录即为；推荐项全折叠：GCConfig 强制/protect 负例+sweep 测试/实体测试加强/…）；质量首轮 FAIL（3 BLOCKER：PK 缺列/合取语义/墓碑清除复活）→ 修复后终审 PASS（三项以原复现场景独立复验+四场景边缘探针；两项新 MINOR：born-visible 已当场折叠修复，共享 DB 修复为带外操作——提交信息注明"已跑过旧 003 的开发库需 DROP semantic.assertions 重建"）；注意共享隔离 PG 有并发写风险（评审期间发现外部 kb-race 命名空间行，运行套件时独占）。
 - 提交 SHA：7a10f69（feat(semantic): i04 删除屏障、支持撤销和清理receipt）。
 
+### 2026-09-11 I05 文档任务、attempt与终态协调（verified——Go 协调切片；范围收缩如实记录）
+
+- 工作区：.worktrees/semantica（分支 codex/semantica）；基线 SHA：e129cbb（I04 台账提交）。
+- 修改文件：migrations/{versioned/000098_semantic_task_attempts.{up,down}.sql,sqlite/000019_semantic_task_attempts.{up,down}.sql}（ receipts 扩展 attempt/operation_id 列 + task_operations + attempt_counters）、internal/application/service/{semantic_tasks.go,semantic_tasks_test.go,knowledge_post_process.go(semanticTasks 字段+构造参数+成功尾部提交钩子)}、internal/container/container.go、internal/database/{migration_sqlite_versioned_schema_test.go(19),semantic_migration_test.go(11 表+steps -3)}、migrations/versioned/000096_semantic_control.up.sql(注释更新)、本台账、02 计划勾选（步骤 1/2/4/5/8；3/6/7 保持未勾）。
+- RED：`go test ./internal/application/service -run TestSemanticCompletion -count=1`（undefined: SemanticTaskCoordinator）。
+- 评审修复 RED 两批：①receipt 命名空间过载（revision=attempt/task_key=operationID——与 I02 修订回执共享 PK 空间；评审员探针：碰撞行永久卡死计数器+reconcile 串读）→ 000098 改为 ALTER 扩展专用 attempt/operation_id 列 + Complete 写命名空间回执 + Reconcile 只读 attempt 命名空间；判别测试 TestSemanticReceiptsAreAttemptNamespaced（先播种碰撞 I02 行，RED：计数卡 1，GREEN：归零且双方行共存）。②Submit SELECT-then-INSERT 并发竞态（评审员 8 goroutine 探针 1 失败 database is locked/PG 23505——幂等契约破坏）→ INSERT ON CONFLICT (idempotency_key) DO NOTHING + RowsAffected==1 才计 pending；TestSemanticConcurrentSubmitIsIdempotent（8 goroutine 全 NoError/1 行/pending 1）。
+- 折叠 minors：终态白名单 {succeeded,failed,cancelled,superseded}（未知状态报错不吞）；reconcile 判别化（先置回 pending 再恢复——no-op 会失败）；semanticOperationID >128 哈希截断；未用 error 移除；post-process 误导注释更正（reconcile 不补提交）；000096 过期注释更新。
+- GREEN：`go test ./internal/application/service -run 'TestSemantic' -count=1` ok（含 8 项 I05 测试：核心逐字断言/命名空间/并发提交/幂等键/取消不扣/reconcile 恢复）；database 11 表 steps -3 双方言 ok；handler/repository ok；build/vet 净；TestSkillPythonVerifier 失败为预存环境项（干净 HEAD 复验同样失败，与 I05 无关）。
+- 实测验收：旧 attempt 终态不扣新 attempt（核心测试逐字）；同键重复提交 1 行 1 计数；cancelled/superseded 终态不扣任何计数；重复终态幂等（恰一次扣减）；I02 命名空间行与 attempt 回执共存不互扰；未知终态拒绝；reconcile 从持久回执恢复丢失状态。
+- **范围收缩（评审判定 FAIL→切片 PASS 的条件，如实记录）**：本任务交付 Go 侧协调切片；以下项延后且原计划 checkbox 未勾：①步骤 3——业务写经 I02 事务 API 接入 + 实际发出 ApplyDocumentRevision RPC（当前 Submit 仅登记映射行，未发 RPC；同事务接线未做）；②步骤 6——semantic_status 独立状态机与仅重建语义重试入口（未建模）；③步骤 7 之"真实 RPC 至少一次文档→generation 闭环"（依赖①）；④I04 四项延后在本任务均未动：恢复模式重放、删除操作路由打标、publisher 墓碑拒绝、operations.py:362 load_request JSONB 崩溃修复（归后续 W/O 任务或 I05 续）；knowledge_process.go/knowledge_delete_plan.go/semantic_outbox.go 补齐同延后。
+- review：规格 FAIL→切片 PASS（条件=本记录显式延后；签名偏差（全 scope 元组替代 plan 的 operationID-only）已记录）；质量 FAIL（2 BLOCKER：命名空间过载/提交竞态，均探针实证）→ 修复后判别测试转绿；余 minors 全折叠（PG 回执语义经评审员分析确认等价——ON CONFLICT 推测插入阻塞至提交，恰一胜）。
+- 提交 SHA：（本记录与代码同批提交后补记）
+
 ## 当前边界
 
-- V01–C03、I01–I04、A01、A03 verified；后续 12 个任务未开始。
+- V01–C03、I01–I05、A01、A03 verified（I05 为 Go 协调切片，延后项见其运行记录）；后续 12 个任务未开始。
 - V01精确版本已冻结（semantica 0.6.8）；真实模型证据须在后续任务补齐，不是已经通过的前提。
 - V02 结论边界：持久图桥接/授权子图重建/注册规则推导已验证；模型推断 unverified（无凭据，未调用）；向量检索路径未验证。
 - V03 结论边界：semantica 模式检索质量/延迟为受控语料实测；native 对照与模型用量门槛未测（阻断记录见上）；上线门禁 approved=false 待用户确认。

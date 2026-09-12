@@ -259,6 +259,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewChunkExtractService, dig.Name("chunkExtractor")))
 	must(container.Provide(service.NewDataTableSummaryService, dig.Name("dataTableSummary")))
 	must(container.Provide(service.NewImageMultimodalService, dig.Name("imageMultimodal")))
+	// I05: attempt-isolated semantic task coordinator over the business DB.
+	must(container.Provide(service.NewSemanticTaskCoordinator))
 	must(container.Provide(service.NewKnowledgePostProcessService, dig.Name("knowledgePostProcess")))
 	must(container.Provide(service.NewKnowledgeAutoTagService, dig.Name("knowledgeAutoTag")))
 

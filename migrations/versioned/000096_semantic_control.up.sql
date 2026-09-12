@@ -56,9 +56,9 @@ CREATE TABLE IF NOT EXISTS semantic_backend_states (
     PRIMARY KEY (tenant_id, kb_id)
 );
 
--- Reserved for I05's idempotent subtask completion. I05's contract adds
--- (attempt, operation_id) columns via its own migration; this table lands
--- the scope identity now so both dialects share the same baseline.
+-- I05's idempotent subtask completion: migration 000098 adds the
+-- attempt-namespaced (attempt, operation_id) columns; the revision and
+-- task_key columns below remain the I02 revision-receipt namespace.
 CREATE TABLE IF NOT EXISTS semantic_completion_receipts (
     tenant_id BIGINT NOT NULL,
     kb_id VARCHAR(255) NOT NULL,
