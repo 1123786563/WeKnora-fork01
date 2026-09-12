@@ -1042,3 +1042,18 @@
   was bypassed. `main.tsx` now passes pathname plus search; a fresh reload
   rendered `Knowledge graph` with `selected slug: docs/start`. The follow-up
   Web test/typecheck/build remained 100/100, 0, and 0.
+
+### T08 Web knowledge graph follow-up (2026-09-12)
+
+- The React Wiki graph placeholder is now a bounded server-backed graph view.
+  The shared client strictly parses graph nodes/edges/meta and supports
+  overview and ego queries; Web adds type/query filters, keyboard-accessible
+  SVG nodes, readable list fallback, explicit loading/error/empty states, and
+  neighbor expansion.
+- TDD focused graph tests passed 2/2 and Wiki API tests passed 6/6. Fresh Web
+  102/102, shared 186/186, Web/shared typechecks, Web build (132 modules),
+  React boundary check, and diff check all exited 0. The existing non-fatal
+  `>500 kB` bundle warning remains.
+- This does not claim full browser graph interaction, large-KB performance,
+  role/tenant negative coverage, or production backend acceptance. T08 stays
+  `review`; evidence: `docs/migrations/react/evidence/t08-web-knowledge-graph-2026-09-12.md`.

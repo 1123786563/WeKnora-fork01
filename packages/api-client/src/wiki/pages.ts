@@ -36,6 +36,46 @@ export interface WikiRevisionListResponse {
   current_version: number;
 }
 
+export interface WikiGraphQueryParams {
+  mode?: 'overview' | 'ego';
+  center?: string;
+  depth?: number;
+  types?: string[];
+  limit?: number;
+}
+
+export interface WikiGraphNode {
+  slug: string;
+  title: string;
+  page_type: string;
+  link_count: number;
+  familiar?: boolean;
+  [key: string]: unknown;
+}
+
+export interface WikiGraphEdge {
+  source: string;
+  target: string;
+  [key: string]: unknown;
+}
+
+export interface WikiGraphMeta {
+  mode: string;
+  total: number;
+  returned: number;
+  truncated: boolean;
+  center?: string;
+  depth?: number;
+  familiar_count?: number;
+  [key: string]: unknown;
+}
+
+export interface WikiGraphData {
+  nodes: WikiGraphNode[];
+  edges: WikiGraphEdge[];
+  meta: WikiGraphMeta;
+}
+
 export interface WikiPageUpdateInput {
   title?: string;
   content?: string;
@@ -85,6 +125,31 @@ function revisionList(value: unknown): WikiRevisionListResponse {
   return { revisions, total: row.total, current_version: row.current_version };
 }
 
+function graph(value: unknown): WikiGraphData {
+  const row = object(value, 'Invalid Wiki graph response');
+  if (!Array.isArray(row.nodes)) throw new Error('Invalid Wiki graph nodes');
+  if (!Array.isArray(row.edges)) throw new Error('Invalid Wiki graph edges');
+  const nodes = row.nodes.map((item) => {
+    const node = object(item, 'Invalid Wiki graph node');
+    for (const key of ['slug', 'title', 'page_type']) if (typeof node[key] !== 'string') throw new Error(`Invalid Wiki graph node ${key}`);
+    if (typeof node.link_count !== 'number' || !Number.isSafeInteger(node.link_count) || node.link_count < 0) throw new Error('Invalid Wiki graph node link_count');
+    if (node.familiar !== undefined && typeof node.familiar !== 'boolean') throw new Error('Invalid Wiki graph node familiar');
+    return node as WikiGraphNode;
+  });
+  const edges = row.edges.map((item) => {
+    const edge = object(item, 'Invalid Wiki graph edge');
+    if (typeof edge.source !== 'string' || typeof edge.target !== 'string') throw new Error('Invalid Wiki graph edge endpoints');
+    return edge as WikiGraphEdge;
+  });
+  const meta = object(row.meta, 'Invalid Wiki graph meta');
+  if (typeof meta.mode !== 'string' || meta.mode.trim() === '') throw new Error('Invalid Wiki graph meta mode');
+  for (const key of ['total', 'returned']) if (typeof meta[key] !== 'number' || !Number.isSafeInteger(meta[key]) || meta[key] < 0) throw new Error(`Invalid Wiki graph meta ${key}`);
+  if (typeof meta.truncated !== 'boolean') throw new Error('Invalid Wiki graph meta truncated');
+  for (const key of ['center']) if (meta[key] !== undefined && typeof meta[key] !== 'string') throw new Error(`Invalid Wiki graph meta ${key}`);
+  for (const key of ['depth', 'familiar_count']) if (meta[key] !== undefined && (typeof meta[key] !== 'number' || !Number.isSafeInteger(meta[key]) || meta[key] < 0)) throw new Error(`Invalid Wiki graph meta ${key}`);
+  return { nodes, edges, meta: meta as WikiGraphMeta };
+}
+
 export function createWikiPagesApi(request: (input: ClientRequest) => Promise<unknown>) {
   const base = (kbId: string) => `/api/v1/knowledgebase/${encodeURIComponent(kbId)}/wiki`;
   return {
@@ -118,6 +183,16 @@ export function createWikiPagesApi(request: (input: ClientRequest) => Promise<un
       for (const key of ['id', 'slug', 'title', 'summary']) if (typeof value[key] !== 'string') throw new Error(`Invalid Wiki revision field: ${key}`);
       if (typeof value.version !== 'number' || !Number.isSafeInteger(value.version) || value.version < 1) throw new Error('Invalid Wiki revision version');
       return value as WikiPageRevision;
+    },
+    async graph(kbId: string, params: WikiGraphQueryParams = {}): Promise<WikiGraphData> {
+      const query = new URLSearchParams();
+      if (params.mode !== undefined) query.set('mode', params.mode);
+      if (params.center !== undefined && params.center !== '') query.set('center', params.center);
+      if (params.depth !== undefined) query.set('depth', String(params.depth));
+      if (params.types !== undefined && params.types.length > 0) query.set('types', params.types.join(','));
+      if (params.limit !== undefined) query.set('limit', String(params.limit));
+      const suffix = query.toString();
+      return graph(await request({ method: 'GET', path: `${base(kbId)}/graph${suffix ? `?${suffix}` : ''}` }));
     },
     async revert(kbId: string, slug: string, version: number): Promise<WikiPage> {
       return page(await request({ method: 'POST', path: `${base(kbId)}/revert`, body: { slug, version } }));

@@ -38,3 +38,28 @@ test('loads a full historical revision with its version-specific query', async (
   assert.equal(revision.content, 'Old body');
   assert.equal(path, '/api/v1/knowledgebase/kb-1/wiki/revisions/docs/start?version=1');
 });
+
+test('loads and strictly parses a bounded Wiki graph query', async () => {
+  let path = '';
+  const api = createWikiPagesApi(async (request) => {
+    path = request.path;
+    return {
+      nodes: [{ slug: 'docs/start', title: 'Start', page_type: 'summary', link_count: 2, familiar: true }],
+      edges: [{ source: 'docs/start', target: 'docs/next' }],
+      meta: { mode: 'ego', total: 2, returned: 1, truncated: true, center: 'docs/start', depth: 2, familiar_count: 1 },
+    };
+  });
+  const graph = await api.graph('kb/a', { mode: 'ego', center: 'docs/start', depth: 2, types: ['summary', 'entity'], limit: 50 });
+  assert.equal(graph.nodes[0]?.familiar, true);
+  assert.equal(graph.edges[0]?.target, 'docs/next');
+  assert.equal(path, '/api/v1/knowledgebase/kb%2Fa/wiki/graph?mode=ego&center=docs%2Fstart&depth=2&types=summary%2Centity&limit=50');
+});
+
+test('rejects malformed Wiki graph rows instead of rendering fabricated nodes', async () => {
+  const api = createWikiPagesApi(async () => ({
+    nodes: [{ slug: 'docs/start', title: 'Start', page_type: 'summary', link_count: -1 }],
+    edges: [],
+    meta: { mode: 'overview', total: 1, returned: 1, truncated: false },
+  }));
+  await assert.rejects(api.graph('kb-1'), /Invalid Wiki graph node link_count/);
+});

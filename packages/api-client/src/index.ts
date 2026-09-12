@@ -16,7 +16,8 @@ export type { ChunkingPreviewInput, ChunkingPreviewResult, KnowledgeBaseActivity
 export { createKnowledgeFaqApi } from './knowledge/faq.ts';
 export type { FAQEntry, FAQEntryListResponse, FAQEntryFieldsUpdate, FAQEntryFieldsBatchRequest, FAQEntryPayload, FAQSearchInput } from './knowledge/faq.ts';
 export type { KnowledgeDocument, KnowledgeProcessingStatus, KnowledgeDocumentListResponse, KnowledgeFolderNode, KnowledgeFolderTree, KnowledgeSearchResponse, KnowledgeTag } from '@weknora/contracts';
-export type { WikiPage, WikiPageListResponse, WikiPageRevision, WikiRevisionListResponse, WikiPageUpdateInput } from './wiki/pages.ts';
+export { createWikiPagesApi } from './wiki/pages.ts';
+export type { WikiPage, WikiPageListResponse, WikiPageRevision, WikiRevisionListResponse, WikiPageUpdateInput, WikiGraphData, WikiGraphEdge, WikiGraphMeta, WikiGraphNode, WikiGraphQueryParams } from './wiki/pages.ts';
 export type { DataSource, DataSourceConnectorType, DataSourceResource, DataSourceSyncLog } from './datasource.ts';
 export { buildChatStreamRequest, consumeChatStream, createServerSentEventParser, parseChatEvent } from './chat/stream.ts';
 export type { ChatStreamRequestOptions, ParsedServerSentEvent, ServerSentEventHandler } from './chat/stream.ts';
