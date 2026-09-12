@@ -81,6 +81,14 @@
 - 61e2c52 后：outbox 项以结构性论证收口——finalize 事务后的每个后续动作要么在该事务内提交、要么由 durable worker 以去重身份执行（after 跟进受理按 steer id、保留裁剪幂等）、要么由客户端从持久事件日志回放重建；SSE handler 是无状态 DB 读取者，绝非任何提交后动作的唯一执行者。专用 outbox 表仅在引入非数据库外部投递（webhook/通知）时才需要——记录为设计触发器而非未满足项。
 - 验收文档补齐 14 项任务最终核验表（基于当前代码逐项结论与证据指针）。后端全量扫测与前端套件复验见本轮提交说明。
 
+## 2026-09-12 第十一轮（同分支续）
+
+- 浏览器级验证完成并暴露两个真实生产缺陷（均已修复）：
+  - c9e6941：SSE handler 在受理前已持久化 assistant 占位消息（重试时还包括用户消息），Admit 事务对这些行 UNIQUE 冲突——durable run 在真实 HTTP 路径下永远无法受理（单测与跨进程测试全绿也发现不了）。修复：Admit 内两条消息创建按 id 幂等（OnConflict DoNothing），finalize 仍按 id 拥有 assistant 行内容。
+  - dfd2596：后台 worker 交给 ExecuteDurableRun 的上下文无请求身份，模型路径首个 MustTenantIDFromContext panic 直接击穿服务进程。修复：executor 从 durable run 行注入租户与 owner principal。
+- 浏览器验证（Playwright Chromium，SQLite + recovery/admission 开启 + SSRF 白名单本地 mock 模型）：UI 登录；引擎选择器双选项可选；trpc 会话引擎 chip 渲染；真实 HTTP 路径发消息 → durable run 受理 → 后台 worker 执行图 → mock 模型 → finalize 写入 assistant 消息；刷新后用户消息与持久回复回放。
+- 7d873a1：rollback 测试改用触发器注入失败（旧断言依赖已移除的冲突路径），事务回滚覆盖保持完整。
+
 ## 执行记录要求
 每次任务追加开始/结束时间、实现者、固定 HEAD、失败测试原因、通过命令、审查问题与修复提交。保留历史记录，不用最终 PASS 覆盖中途失败。
 
