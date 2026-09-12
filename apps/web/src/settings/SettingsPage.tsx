@@ -202,7 +202,6 @@ export function SettingsPage({ client, tenantId, role = 'owner' }: { client: WeK
 // frontend/src/views/settings/Settings.vue navGroups/navItems).
 import type { ReactNode } from 'react';
 import { formatMessage, type Locale } from '@weknora/i18n';
-import { settingsSectionMeta } from './surface.ts';
 
 // Ported from frontend/src/views/settings/Settings.vue navGroups (账户 / 空间 /
 // 模型 / 发布集成 / 数据与扩展 / 系统管理 / 平台). Every React registry section
