@@ -222,3 +222,8 @@
 
 - settings 视觉形态（抽屉/分组导航/图标/关闭行为）实施子代理派发：要求复用 packages/i18n settings.* 键、保留全部功能接线（角色门控/popstate/面板）、live 前后截图对比 settings-vue-live.png。
 - 上传流程 + AgentSelector 实施子代理继续。
+
+## 2026-09-12 Round 36
+
+- 上传 pipeline、AgentSelector、starter questions、embed CORS 修复集成（40a5d86）。门禁：shared 276/276、web 194/194、build 全绿；embed live 渲染成功。
+- 后端待决项维持登记：POST /sessions 不支持 agent_id；require_approval 创建字段被忽略；冷刷新审批持久端点。
