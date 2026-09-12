@@ -1243,3 +1243,24 @@
 - This strengthens only the macOS arm64 installed-artifact slice. Windows,
   Linux, runtime interaction, rollback rehearsal, and the complete release
   matrix remain open; T24 stays `review` and T25 remains gated.
+
+### T15 MCP settings and N007 upload confirmation follow-up (2026-09-12)
+
+- MCP settings now has a concrete Web service panel for viewer/admin states,
+  built-in restrictions, CRUD/toggle/delete flows, credential subresource
+  writes, metadata refresh/stale handling, tool-policy operations, usage
+  generation, connection-test results, and OAuth status/authorize/revoke
+  controls. Shared metadata and policy routes are backed by the existing Go
+  MCP endpoints. Commits: `3cb1def3`, `4120b926`, `f24070ac`.
+- The upload confirmation slice now supports per-file status, cancellation,
+  retry-after-error, tag selection, drag/drop staging, and removal of one
+  staged file. Focused upload tests passed 6/6. Commit: `04f18ead`.
+- The current Web suite passed 258/258 and shared typecheck passed. Web
+  TypeScript remains blocked by unrelated dirty command-palette errors at
+  `apps/web/src/platform/command-palette-search.ts:272,304`; no unrelated
+  files were staged or changed by these slices.
+- Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-12-mcp-settings-base.md`
+  and `docs/migrations/react/evidence/vue-react-parity/2026-09-12-upload-confirmation.md`.
+  MCP rows R024/R043-R046/N016 and upload row N007 remain `implementing`;
+  browser, real-backend, Wails, iOS, and Android acceptance is still absent
+  for these slices.
