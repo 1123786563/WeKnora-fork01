@@ -35,8 +35,8 @@
 | W01 | **done** | .worktrees/craft-w01 / codex/craft-w01 | 9c02a7c4 | HEAD f594e2b9 审查 PASS_WITH_NITS（21/21）→ 合入 47f1f4b7；真实 PG 迁移链验证；W02 提示：不能重 Publish 补 preview checks、.env 变体凭据加固 |
 | O01 | **done** | .worktrees/craft-o01 / codex/craft-o01 | 9c02a7c4 | HEAD 0e4ecb37 审查 PASS_WITH_NITS（19/19）→ 合入 9608c6ac；真实 PG 双方言验证；O02 提示：网关单调序列、唯一记账入口、并发 Append 冲突信号收紧 |
 | R07 | **done** | .worktrees/craft-r07 / codex/craft-r07 | 1b44296f | HEAD 6f1fb157 审查 PASS_WITH_NITS（18/18，审查者独立复跑 live PASS）→ 合入 b1e8950b；运行时链 R01–R07 全部完成 |
-| W02 | fixing | .worktrees/craft-w02 / codex/craft-w02 | 1b44296f | 审查 FAIL（阻断：preview.conf 是 Go 源副本非 nginx 配置；其余 24/26 项达标）；已退回实现者修复重审 |
-| O02 | implementing | .worktrees/craft-o02 / codex/craft-o02 | 9608c6ac | 已派发（G4 映射+受控网关）；W03–O05（除 O02 外）等待依赖 |
+| W02 | fixing（轮2） | .worktrees/craft-w02 / codex/craft-w02 | 1b44296f | 修复轮1 真实 nginx 配置过 9/10；轮2 剩1项：location /p/ 内需重申剥 Cookie/Authorization（nginx 继承规则实测验证）；已派最小修复 |
+| O02 | review | .worktrees/craft-o02 / codex/craft-o02 | 9608c6ac | HEAD a6709d34：三层 RED→GREEN、并发最后额度仅一通过、HMAC 短期凭据网关；发现 G4 部署缺口（commercial_reservations 迁移缺 owner 列，收费上线前 G4 须补，账面无影响）；审查者进行中 |
 
 ## 调度纪要
 
