@@ -30,6 +30,11 @@ and the external side-effect endpoint are deterministic doubles.
 | SIGKILL matrix (SQLite) | `GOWORK=off go test ./internal/agent/recoverytest -run TestCrashMatrixSQLite -count=1 -v` | PASS 8/8 | after_admission, after_plan_before_dispatch, after_result_before_checkpoint, after_finalize each: exactly 1 external call, final status succeeded, 1 completed assistant row, 0 lost events; after_side_effect_before_result and waiting_user: 1 external call, parked at waiting_user; unknown_result_user_retry: explicit retry alone raises the external count to 2; idempotent_redelivery: redelivery deduplicated, count stays 1 |
 | SIGKILL matrix (PostgreSQL) | `docker run postgres:16-alpine` on 55432; `TRPC_RECOVERY_PG_DSN=postgres://... go test ./internal/agent/recoverytest -run TestCrashMatrixPostgreSQL -count=1 -v` | PASS 7/7 (2026-09-12) | per-case schemas with hashed names, versioned migrations, real fenced leases/claims/epochs on PostgreSQL; after_admission/after_plan/after_result/after_finalize succeed with 1 external call and 0 lost events; after_side_effect parks at waiting_user; unknown_result_user_retry reaches 2 calls only after the explicit retry decision; idempotent_redelivery stays at 1. Durable JSON columns are TEXT (byte-exact round-trip; empty retry results must not trip JSON parsing) |
 | PostgreSQL repository suite | `TRPC_TEST_POSTGRES_DSN=... go test ./internal/application/repository -count=1` | PASS | full suite incl. TestAgentRunPostgres (admission idempotency, guards, rollback, lease/checkpoint, concurrent claim, reopen+migrations) on PostgreSQL 16 |
+| two-worker contention | `go test ./internal/agent/recoverytest -run TestTwoWorkerContentionSQLite -count=1` (SQLite) and `...PostgreSQL` with `TRPC_RECOVERY_PG_DSN` | PASS both (2026-09-12) | stale worker claims, lets its lease expire, then keeps attempting fenced writes while a takeover process claims with a higher epoch and completes: every post-expiry write rejected, external side effect exactly once, no durable-state pollution |
+| deadline budget | `go test ./internal/application/service -run TestWorkerFailsRunPastPersistedDeadline -count=1` | PASS | a run past its persisted deadline fails with deadline_exceeded before executing; the execution context is capped at the deadline (second test), so the budget survives restarts and a slow graph cannot outlive it |
+| cancel lifecycle | `go test ./internal/application/service -run TestCancelReleasesSessionSlot -count=1` | PASS | cancel marks canceled, releases the session slot (next run admits immediately), canceled run never claimable — real migrated store |
+| schema incompatibility | `go test ./internal/application/service -run TestExecuteDurableRunRejectsIncompatibleCheckpoint -count=1` | PASS | foreign graph_version envelope in the current namespace fails resume with the explicit error before any execution; foreign namespaces stay isolated |
+| permission revocation | `go test ./internal/application/repository -run TestAgentRunToolRejectsRevokedSessionAndCanceledRun -count=1` | PASS | dispatch is rejected for revoked sessions and canceled runs at the journal boundary |
 | crash after tool result | `GOWORK=off go test ./internal/agent/recoverytest -run TestCrashAfterToolResult -count=1` | SKIPPED | superseded by the matrix subtest above when run without `TRPC_RECOVERY_GRAPH_PROVIDER`; the env-gated variant remains for CI |
 | executor end to end | `GOWORK=off go test ./internal/application/service -run TestExecuteDurableRun -count=1` | PASS | fresh run completes through admission snapshot → capability rebuild → graph → finalize transaction; superseded fence rejected with ErrLeaseLost |
 | worker wait mapping | `GOWORK=off go test ./internal/application/service -run TestWorkerParksWaitClass -count=1` | PASS | unknown tool outcomes park durably at waiting_user/tool_outcome_unknown instead of terminating |
@@ -52,11 +57,9 @@ Defects found and fixed by the matrix (recorded for audit):
 
 ## Remaining matrix rows (not yet passed — do not treat as done)
 
-- two workers contending on the same database, expired-lease takeover, old
-  epoch writes rejected, unknown tool not started twice;
-- API reconnect, decision conflict, permission revocation, cancellation,
-  deletion, budget persistence and graph/schema incompatibility black-box
-  assertions;
+- API reconnect through the run-events SSE endpoint against a live
+  recovery worker, decision-conflict HTTP envelope, and session deletion
+  racing an active run (unit and repository layers cover the pieces);
 - sandbox alive/lost/destroyed fixtures (the hook queries the provider
   sandbox list, but the three fixture states are not yet asserted end to end);
 - the external-action outbox and event retention watermark (Task 11

@@ -48,6 +48,14 @@
 - 702f65d + 76b95b2：PostgreSQL SIGKILL 矩阵接通并 7/7 PASS（PostgreSQL 16 容器，逐用例隔离 schema+数据库）。矩阵暴露并修复三处真实缺陷：全部用例共享命名空间（临时目录 basename 恒为 001）导致 PG schema 冲突；工具 args/result/output_files/decision result 的 JSONB 列破坏字节精确往返（与 checkpoint 同因，改 TEXT）；扩展安装进首个 schema 导致后续不可见（移入 public）。SQLite 矩阵复验 8/8，全部相关套件与增量 lint 通过。
 - 门禁状态：双方言 SIGKILL 矩阵均通过；双 worker 竞争矩阵行、API 黑盒行、沙箱三态仍为剩余行，功能保持默认关闭。
 
+## 2026-09-12 第四轮（同分支续）
+
+- 4a35419：双 worker 竞争矩阵行补齐并在双方言 PASS。stale worker 以短租约认领后在 barrier 停靠、放任租约过期，随后持续用过期 fence 尝试 fenced 写；接管进程以更高 epoch 认领并完成 Run：过期后所有写被拒绝（不污染接管所恢复的持久状态），外部副作用恰好一次。SQLite 与 PostgreSQL（隔离 schema）均通过。
+- b20925d：持久化绝对截止时间在 worker 强制执行——过期 Run 以 deadline_exceeded 显式失败且不执行；执行 context 被截止时间封顶，慢图不能靠续租超支预算；预算跨重启不重置（从持久行读取）。两个测试钉死两半。
+- a3cf79f：取消生命周期在真实迁移库上钉死——取消置 canceled、释放会话槽位（下一个 Run 立即可受理）、已取消 Run 永不再认领。
+- 2f4b75b：schema 不兼容拒绝——当前 namespace 下外来 graph_version envelope 的恢复以显式错误失败；外来 namespace 按 namespace-per-graph-version 方案天然隔离。
+- 全套件复验：12 个相关包全部 ok；增量 lint 0 issues。剩余行见验收文档（API 重连 SSE 黑盒、沙箱三态、outbox/保留水位、after 跟进、前端浏览器验证）。
+
 ## 执行记录要求
 每次任务追加开始/结束时间、实现者、固定 HEAD、失败测试原因、通过命令、审查问题与修复提交。保留历史记录，不用最终 PASS 覆盖中途失败。
 
