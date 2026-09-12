@@ -90,6 +90,11 @@ function record(value: unknown, label: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+function nonNegativeInteger(value: unknown, label: string): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) throw new Error(`Invalid ${label}`);
+  return value;
+}
+
 function envelopeData(value: unknown, label: string): unknown {
   const body = record(value, label);
   if (body.success !== true) throw new Error(`Invalid ${label} response`);
@@ -101,25 +106,23 @@ function parseParserEngines(value: unknown): ParserEnginesResult {
   if (body.code !== 0 || !Array.isArray(body.data)) throw new Error('Invalid parser engines response');
   const data = body.data.map((item, index) => {
     const engine = record(item, `parser engine ${index}`);
-    if (typeof engine.Name !== 'string' || engine.Name.trim() === '' || typeof engine.Description !== 'string' || !Array.isArray(engine.FileTypes) || engine.FileTypes.some((type) => typeof type !== 'string')) {
+    if (typeof engine.Name !== 'string' || engine.Name.trim() === '' || typeof engine.Description !== 'string' || !Array.isArray(engine.FileTypes) || engine.FileTypes.some((type) => typeof type !== 'string') || (engine.Available !== undefined && typeof engine.Available !== 'boolean') || (engine.UnavailableReason !== undefined && typeof engine.UnavailableReason !== 'string')) {
       throw new Error(`Invalid parser engine ${index}`);
     }
     return engine as unknown as ParserEngineInfo;
   });
-  return {
-    data,
-    ...(typeof body.connected === 'boolean' ? { connected: body.connected } : {}),
-    ...(typeof body.docreader_addr === 'string' ? { docreader_addr: body.docreader_addr } : {}),
-    ...(typeof body.docreader_transport === 'string' ? { docreader_transport: body.docreader_transport } : {}),
-  };
+  if (body.connected !== undefined && typeof body.connected !== 'boolean') throw new Error('Invalid parser engines response');
+  if (body.docreader_addr !== undefined && typeof body.docreader_addr !== 'string') throw new Error('Invalid parser engines response');
+  if (body.docreader_transport !== undefined && typeof body.docreader_transport !== 'string') throw new Error('Invalid parser engines response');
+  return { data, ...(body.connected === undefined ? {} : { connected: body.connected }), ...(body.docreader_addr === undefined ? {} : { docreader_addr: body.docreader_addr }), ...(body.docreader_transport === undefined ? {} : { docreader_transport: body.docreader_transport }) };
 }
 
 function parseChunkingPreview(value: unknown): ChunkingPreviewResult {
   const body = record(value, 'chunking preview');
-  if (typeof body.selected_tier !== 'string' || !Array.isArray(body.tier_chain) || !Array.isArray(body.rejected) || !Array.isArray(body.chunks)) throw new Error('Invalid chunking preview response');
+  if (typeof body.selected_tier !== 'string' || body.selected_tier.trim() === '' || !Array.isArray(body.tier_chain) || body.tier_chain.some((item) => typeof item !== 'string') || !Array.isArray(body.rejected) || !Array.isArray(body.chunks)) throw new Error('Invalid chunking preview response');
   const stats = record(body.stats, 'chunking preview stats');
-  if (Object.values(stats).some((item) => typeof item !== 'number')) throw new Error('Invalid chunking preview stats');
-  return { selected_tier: body.selected_tier, tier_chain: body.tier_chain.filter((item): item is string => typeof item === 'string'), rejected: body.rejected, chunks: body.chunks.map((item) => record(item, 'chunking preview chunk')), stats: stats as Record<string, number>, profile: body.profile === null || body.profile === undefined ? body.profile : record(body.profile, 'chunking preview profile') };
+  if (Object.values(stats).some((item) => typeof item !== 'number' || !Number.isFinite(item))) throw new Error('Invalid chunking preview stats');
+  return { selected_tier: body.selected_tier, tier_chain: body.tier_chain as string[], rejected: body.rejected, chunks: body.chunks.map((item) => record(item, 'chunking preview chunk')), stats: stats as Record<string, number>, profile: body.profile === null || body.profile === undefined ? body.profile : record(body.profile, 'chunking preview profile') };
 }
 
 function parseStorageBackends(value: unknown): { data: StorageBackendView[]; default_storage_backend_id?: string | null } {
@@ -131,6 +134,7 @@ function parseStorageBackends(value: unknown): { data: StorageBackendView[]; def
     if (typeof backend.config !== 'object' || backend.config === null || Array.isArray(backend.config)) throw new Error(`Invalid storage backend config ${index}`);
     return backend as unknown as StorageBackendView;
   });
+  if (body.default_storage_backend_id !== undefined && body.default_storage_backend_id !== null && (typeof body.default_storage_backend_id !== 'string' || body.default_storage_backend_id.trim() === '')) throw new Error('Invalid default storage backend');
   return { data, ...(body.default_storage_backend_id === undefined ? {} : { default_storage_backend_id: body.default_storage_backend_id as string | null }) };
 }
 
@@ -150,10 +154,11 @@ function parseActivity(value: unknown): KnowledgeBaseActivityResult {
   if (body.success !== true || !Array.isArray(body.data)) throw new Error('Invalid knowledge base activity response');
   const data = body.data.map((item, index) => {
     const entry = record(item, `knowledge base activity ${index}`);
-    if (typeof entry.id !== 'number' || typeof entry.action !== 'string' || typeof entry.outcome !== 'string' || typeof entry.created_at !== 'string') throw new Error(`Invalid knowledge base activity ${index}`);
+    if (typeof entry.action !== 'string' || typeof entry.outcome !== 'string' || typeof entry.created_at !== 'string') throw new Error(`Invalid knowledge base activity ${index}`);
+    nonNegativeInteger(entry.id, `knowledge base activity ${index}`);
     return entry as unknown as KnowledgeBaseActivityEntry;
   });
-  return { success: true, data, ...(typeof body.next_cursor === 'number' ? { next_cursor: body.next_cursor } : {}) };
+  return { success: true, data, ...(body.next_cursor === undefined ? {} : { next_cursor: nonNegativeInteger(body.next_cursor, 'knowledge base activity cursor') }) };
 }
 
 export function createKnowledgeSettingsApi(request: (input: ClientRequest) => Promise<unknown>) {

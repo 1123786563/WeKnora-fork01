@@ -1125,3 +1125,12 @@
 - Evidence: `docs/migrations/react/evidence/t08-wiki-revision-contract-2026-09-12.md`.
   Live conflict/revert/import/export and provider/browser acceptance remain
   open.
+
+### T09 settings contract follow-up (2026-09-12)
+
+- The shared knowledge-settings parser now rejects unsafe Activity numbers,
+  malformed optional parser fields, non-finite chunk statistics, invalid tier
+  entries, and invalid default storage identifiers. Focused tests passed 4/4
+  and shared typecheck passed.
+- Evidence: `docs/migrations/react/evidence/t09-settings-contract-2026-09-12.md`.
+  Live provider, permission, and browser acceptance remain open.

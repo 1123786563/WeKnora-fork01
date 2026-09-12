@@ -40,3 +40,19 @@ test('rejects malformed parser and resource responses instead of fabricating set
   const api = createKnowledgeSettingsApi(async () => ({ code: 0, data: [{ Name: 'broken' }] }));
   await assert.rejects(api.parserEngines(), /Invalid parser engine/);
 });
+
+test('rejects unsafe activity numbers and malformed optional parser fields', async () => {
+  const activity = createKnowledgeSettingsApi(async () => ({ success: true, data: [{ id: 1.5, action: 'kb.updated', outcome: 'success', created_at: '2026-09-11T00:00:00Z' }] }));
+  await assert.rejects(activity.activity('kb-1'), /Invalid knowledge base activity/);
+
+  const parser = createKnowledgeSettingsApi(async () => ({ code: 0, data: [{ Name: 'builtin', Description: 'Built in', FileTypes: ['txt'], Available: 'yes' }] }));
+  await assert.rejects(parser.parserEngines(), /Invalid parser engine/);
+});
+
+test('rejects malformed chunking stats and default storage identifiers', async () => {
+  const chunking = createKnowledgeSettingsApi(async () => ({ selected_tier: 'recursive', tier_chain: ['recursive', 1], rejected: [], chunks: [], stats: { count: Number.NaN } }));
+  await assert.rejects(chunking.previewChunking({ text: 'hello', chunking_config: {} }), /Invalid chunking preview/);
+
+  const storage = createKnowledgeSettingsApi(async () => ({ success: true, data: [], default_storage_backend_id: 42 }));
+  await assert.rejects(storage.storageBackends(), /Invalid default storage backend/);
+});
