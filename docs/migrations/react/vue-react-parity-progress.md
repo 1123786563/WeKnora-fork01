@@ -299,3 +299,9 @@
 - 终版 React live 截图矩阵入库（final-react-{login,kb-list,settings-general,agents,organizations,creatChat}.png）——KB 列表页与 Vue 基准高度对齐：外壳侧栏+active 高亮、i18n 中文标题/描述、未初始化横幅、scope tabs（全部/我创建的/收藏/暂无最近访问）、分组节头（我创建的 · 3）、卡片（类型徽章+计数+警告+收藏星+全部操作按钮）、用户区。
 - 门禁：web 198/198、shared 296/296、typecheck 干净。
 - 移动端 Expo 构建验证通过（iOS 3.2MB + Android 3.3MB Hermes bundle）。
+
+## 2026-09-12 Round 59
+
+- Wails macOS 打包成功（干净树 + 全部 chat UX 收尾内容）：wails build 22.4s → 打包 → 自签名 → codesign verify 通过。产物 dist/WeKnora Lite.app。
+- 此前阻断根因（chat WIP 的 copy-answer/session-grouping 模块缺失）已随 62a77a9 集成消除；desktop vite alias 补齐后构建链路恢复。
+- 当前 Wails 验证级别：构建+签名+资源冒烟 ✓。运行时交互验收（点击聊天/上传等）需 GUI 操作。
