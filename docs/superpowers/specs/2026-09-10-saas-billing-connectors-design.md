@@ -237,6 +237,8 @@ Owner 转移在一个事务中改变管理归属；原 Owner 不保留隐式账�
 
 ## 9. App、Installation 与 Connection
 
+2026-09-12 补充：open-connector 首期采用私网共享运行时，由 WeKnora 管理租户隔离，并以按连接限制的 Token 执行。该部署决策已由用户确认，见 [ADR-0001](../../adr/0001-open-connector-shared-runtime.md)。详细接入建议见 [集成设计稿](2026-09-12-open-connector-integration-design.md)；其他技术细节仍待评审，本节原有连接权限与审批约束继续有效。
+
 App/Version 包含能力清单、参数 schema、风险分类、提供方和适配器、凭据类型、外部 scope、费用展示和兼容版本。Installation 固定已审核版本；新增 scope 或扩大写入范围必须重新授权，不能静默升级权限。停用阻止新派发，卸载与凭据撤销分别处理，历史记录保留。
 
 Connection 保存凭据引用，令牌加密且只供服务端适配器使用；API、日志、提示词与工具结果不返回密钥。OAuth 发起与回调绑定空间、成员、Installation、state 和一次性有效期；按提供方要求使用 PKCE，校验重放、跨空间换绑、重定向和 token refresh 竞态。个人连接的授权人离开空间立即失效；团队调度只使用空间连接与可审计的执行主体。

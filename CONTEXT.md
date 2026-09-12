@@ -2,6 +2,8 @@
 
 本词汇表记录当前已确认的产品概念。商业能力的设计决策见 `docs/superpowers/specs/2026-09-10-saas-billing-connectors-design.md`。
 
+open-connector 部署与租户隔离决策见 [ADR-0001](docs/adr/0001-open-connector-shared-runtime.md)，技术建议见 [集成设计稿](docs/superpowers/specs/2026-09-12-open-connector-integration-design.md)。
+
 ## 语义知识
 
 **语义知识服务**：负责从知识资源构建语义图谱，并提供 GraphRAG 检索和基于证据的推理能力的服务。
