@@ -1,0 +1,19 @@
+{
+ "custA": "01M29VSJNXH782W6DA0C9V4ZQG",
+ "transactions": [
+  {
+   "type": "funded",
+   "amount": "20",
+   "grant": "",
+   "at": "2026-09-12T03:50:18",
+   "after": "50"
+  },
+  {
+   "type": "funded",
+   "amount": "30",
+   "grant": "",
+   "at": "2026-09-12T03:50:18",
+   "after": "30"
+  }
+ ]
+}

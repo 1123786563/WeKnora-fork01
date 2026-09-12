@@ -1,0 +1,20 @@
+{
+  "plan_create": {
+    "status": 400,
+    "body": {
+      "type": "https://kongapi.info/konnect/bad-request",
+      "status": 400,
+      "title": "Bad Request",
+      "instance": "urn:request:817fb7fae384/bkDLTVCpj8-000704",
+      "detail": "Bad Request: key [allOf]: doesn't match all schemas from \"allOf\"",
+      "invalid_parameters": [
+        {
+          "field": "key",
+          "rule": "allOf",
+          "reason": "doesn't match all schemas from \"allOf\"",
+          "source": ""
+        }
+      ]
+    }
+  }
+}

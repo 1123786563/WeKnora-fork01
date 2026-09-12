@@ -1,0 +1,25 @@
+{
+ "subscription": {
+  "status": 201,
+  "id": "01M29W9MZQAYXZGWS4CGBEJ98M",
+  "state": "active",
+  "detail": ""
+ },
+ "grants": {
+  "period": {
+   "status": 201,
+   "id": "01M29W9N2KTSNMZJYFZW7ACB0H",
+   "priority": 3,
+   "amount": "30",
+   "expires_at": "2026-09-12T05:59:05Z",
+   "detail": ""
+  },
+  "topup": {
+   "status": 201,
+   "id": "01M29W9N4EYBG3KG2QK6EEDZJX",
+   "priority": 7,
+   "amount": "20",
+   "detail": ""
+  }
+ }
+}

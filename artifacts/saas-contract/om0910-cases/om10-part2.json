@@ -1,0 +1,44 @@
+{
+ "om10": {},
+ "custB": "01M29XRS3A2KTWY4HPRKWHY401",
+ "grant": "01M29XRS68FW5EPD7BY1S6ZSRR",
+ "remote_change_detection": {
+  "void_http": 200,
+  "detected_after_s": 1.1,
+  "final_balance": {
+   "currency": "USD",
+   "live": "0",
+   "pending": "0",
+   "settled": "0"
+  }
+ },
+ "ledger_after_void": [
+  {
+   "type": "voided",
+   "amount": "-12",
+   "grant": ""
+  },
+  {
+   "type": "funded",
+   "amount": "12",
+   "grant": ""
+  }
+ ],
+ "overdraw_grant": {
+  "http": 201,
+  "id": "01M29XS9XNDPHTHZ2Y43G87KH8"
+ },
+ "overdraw_ingest": [
+  202,
+  202,
+  202,
+  202,
+  202
+ ],
+ "overdraw_final_balance": {
+  "currency": "USD",
+  "live": "0",
+  "pending": "0",
+  "settled": "5"
+ }
+}

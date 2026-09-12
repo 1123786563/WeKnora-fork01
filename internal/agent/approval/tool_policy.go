@@ -2,10 +2,52 @@ package approval
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"fmt"
 
 	"github.com/Tencent/WeKnora/internal/types"
 )
+
+// ErrToolDefinitionChanged marks an advertised MCP tool that no longer
+// matches its admin-pinned version (input schema or risk). Callers must
+// park the installation in pending re-review instead of executing it.
+var ErrToolDefinitionChanged = errors.New("mcp_tool_definition_changed")
+
+// ToolPin is the admin-reviewed version pin of one MCP tool: the digest of
+// its canonical input schema plus its risk category. External readOnly
+// hints are advisory metadata and are intentionally not pinned.
+type ToolPin struct {
+	ToolName     string
+	SchemaDigest string
+	Risk         string
+}
+
+// PinToolDigest fingerprints one reviewed tool definition. Identical
+// canonical schemas with identical risk produce identical digests.
+func PinToolDigest(canonicalInputSchema string, risk string) string {
+	h := sha256.New()
+	h.Write([]byte(canonicalInputSchema))
+	h.Write([]byte{0})
+	h.Write([]byte(risk))
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// VerifyToolPin compares one advertised tool against its pin; any schema or
+// risk drift wraps ErrToolDefinitionChanged. This is the version-pinned
+// schema/risk integration point the connector-side MCP adapter reports
+// through: the enabled-tools policy above stays a pure allowlist, while
+// this check decides reviewed-version equality.
+func VerifyToolPin(pin ToolPin, advertisedName, canonicalInputSchema, risk string) error {
+	if advertisedName != pin.ToolName {
+		return fmt.Errorf("%w: advertised %q, pinned %q", ErrToolDefinitionChanged, advertisedName, pin.ToolName)
+	}
+	if PinToolDigest(canonicalInputSchema, risk) != pin.SchemaDigest {
+		return fmt.Errorf("%w: tool %q schema/risk digest changed", ErrToolDefinitionChanged, pin.ToolName)
+	}
+	return nil
+}
 
 type enabledChecker interface {
 	IsEnabled(context.Context, uint64, string, string) (bool, error)

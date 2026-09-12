@@ -1,0 +1,31 @@
+{
+  "id": "om02-v2-consumption",
+  "operation_id": "ingestEvents",
+  "idempotency_key": "om02-20260912-ingest-1",
+  "request": [
+    {
+      "operation_id": "ingestEvents",
+      "method": "POST",
+      "path": "/api/v1/events",
+      "body": {
+        "id": "om02-20260912-evt-1",
+        "source": "om02-probe",
+        "specversion": "1.0",
+        "type": "prompt",
+        "subject": "om02-20260912-v2cust",
+        "data": {
+          "tokens": 250,
+          "model": "gpt-4",
+          "type": "input"
+        }
+      }
+    },
+    {
+      "operation_id": "getCustomerEntitlementValueV2",
+      "method": "GET",
+      "path": "/api/v2/customers/om02-20260912-v2cust/entitlements/om02_tokens/value"
+    }
+  ],
+  "captures": {},
+  "expected": {}
+}

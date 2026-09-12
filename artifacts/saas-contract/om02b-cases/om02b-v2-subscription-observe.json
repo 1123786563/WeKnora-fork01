@@ -1,0 +1,36 @@
+{
+  "id": "om02b-v2-subscription-observe",
+  "operation_id": "ingestEvents",
+  "idempotency_key": "om02b-20260912-ingest-3",
+  "request": [
+    {
+      "operation_id": "ingestEvents",
+      "method": "POST",
+      "path": "/api/v1/events",
+      "body": {
+        "id": "om02b-20260912-evt-3",
+        "source": "om02b-probe",
+        "specversion": "1.0",
+        "type": "prompt",
+        "subject": "om02b-20260912-v2cust",
+        "data": {
+          "tokens": 250,
+          "model": "gpt-4",
+          "type": "input"
+        }
+      }
+    },
+    {
+      "operation_id": "getCustomerEntitlementValueV2",
+      "method": "GET",
+      "path": "/api/v2/customers/om02b-20260912-v2cust/entitlements/om02_tokens/value"
+    },
+    {
+      "operation_id": "listCustomerEntitlementGrantsV2",
+      "method": "GET",
+      "path": "/api/v2/customers/om02b-20260912-v2cust/entitlements/om02_tokens/grants"
+    }
+  ],
+  "captures": {},
+  "expected": {}
+}

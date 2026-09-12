@@ -33,7 +33,7 @@ W01依赖商业HTTP契约；W04依赖A01/A02/A07；W05依赖A03/U04；只有完�
 
 packages/contracts/api-client：明确wire契约；apps/web/src/commercial与appconnector：按业务流分文件；不复制凭据或业务规则到UI。当前Node测试仅覆盖状态/契约，真实浏览器流程由O03验收。
 
-### Task W01: 共享商业契约与API client
+### Task 1: W01: 共享商业契约与API client
 
 **Files:**
 - Create: `packages/contracts/src/commercial.ts`、`packages/contracts/test/commercial.test.ts`
@@ -120,7 +120,7 @@ git add packages/contracts/src/commercial.ts packages/contracts/test/commercial.
 git commit -m "feat: expose typed space commerce client"
 ```
 
-### Task W02: 空间购买、充值与订单结果页面
+### Task 2: W02: 空间购买、充值与订单结果页面
 
 **Files:**
 - Create: `apps/web/src/commercial/order-state.ts`、`apps/web/src/commercial/order-state.test.ts`
@@ -203,7 +203,7 @@ git add apps/web/src/commercial/order-state.ts apps/web/src/commercial/order-sta
 git commit -m "feat: show scoped checkout and fulfillment states"
 ```
 
-### Task W03: 账单授权、退款申请和平台审核页面
+### Task 3: W03: 账单授权、退款申请和平台审核页面
 
 **Files:**
 - Create: `apps/web/src/commercial/refund-state.ts`、`apps/web/src/commercial/refund-state.test.ts`
@@ -277,7 +277,7 @@ git add apps/web/src/commercial/refund-state.ts apps/web/src/commercial/refund-s
 git commit -m "feat: separate refund requests from platform review"
 ```
 
-### Task W04: 应用目录、连接与同步页面及API
+### Task 4: W04: 应用目录、连接与同步页面及API
 
 **Files:**
 - Create: `packages/contracts/src/appconnector.ts`、`packages/api-client/src/appconnector.ts`
@@ -352,7 +352,7 @@ git add packages/contracts/src/appconnector.ts packages/api-client/src/appconnec
 git commit -m "feat: expose space apps connections and sync status"
 ```
 
-### Task W05: 任务预算与具体写操作审批交互
+### Task 5: W05: 任务预算与具体写操作审批交互
 
 **Files:**
 - Create: `apps/web/src/appconnector/action-state.ts`、`apps/web/src/appconnector/action-state.test.ts`

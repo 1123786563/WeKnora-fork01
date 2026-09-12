@@ -1,0 +1,34 @@
+{
+  "case": "om02-v3-idempotency",
+  "namespace": "om02-20260912",
+  "steps": [
+    {
+      "method": "POST",
+      "operation_id": "create-credit-grant",
+      "request": {
+        "name": "OM-02 replay test",
+        "funding_method": "none",
+        "currency": "USD",
+        "amount": "50"
+      },
+      "status": 201,
+      "response": {
+        "amount": "50",
+        "created_at": "2026-09-12T03:18:38.421303Z",
+        "currency": "USD",
+        "funding_method": "none",
+        "id": "01M29SZK2NJ27BKCD79Y6941J6",
+        "labels": {},
+        "name": "OM-02 replay test",
+        "priority": 10,
+        "status": "active",
+        "tax_config": {
+          "tax_code": {
+            "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+          }
+        },
+        "updated_at": "2026-09-12T03:18:38.428064Z"
+      }
+    }
+  ]
+}

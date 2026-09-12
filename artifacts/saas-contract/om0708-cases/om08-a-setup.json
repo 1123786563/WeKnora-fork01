@@ -1,0 +1,487 @@
+{
+ "results": {
+  "customer": {
+   "status": 201,
+   "body": {
+    "created_at": "2026-09-12T04:05:12.015308Z",
+    "id": "01M29WMV6F84ZP0ZJ9WCAAKR46",
+    "key": "om0708-20260912-custA",
+    "labels": {},
+    "name": "OM0708 Customer A",
+    "updated_at": "2026-09-12T04:05:12.015309Z"
+   },
+   "text": "{\"created_at\":\"2026-09-12T04:05:12.015308Z\",\"id\":\"01M29WMV6F84ZP0ZJ9WCAAKR46\",\"key\":\"om0708-20260912-custA\",\"labels\":{},\"name\":\"OM0708 Customer A\",\"updated_at\":\"2026-09-12T04:05:12.015309Z\"}\n"
+  },
+  "subscription": {
+   "status": 201,
+   "body": {
+    "billing_anchor": "2026-09-12T04:05:12.104141Z",
+    "created_at": "2026-09-12T04:05:12.172185Z",
+    "customer_id": "01M29WMV6F84ZP0ZJ9WCAAKR46",
+    "id": "01M29WMVBC0K52YDPAWH4M603D",
+    "labels": {},
+    "plan_id": "01M29TJW1T4F6963NWACQWJBYF",
+    "settlement_mode": "credit_then_invoice",
+    "status": "active",
+    "updated_at": "2026-09-12T04:05:12.172185Z"
+   },
+   "text": "{\"billing_anchor\":\"2026-09-12T04:05:12.104141Z\",\"created_at\":\"2026-09-12T04:05:12.172185Z\",\"customer_id\":\"01M29WMV6F84ZP0ZJ9WCAAKR46\",\"id\":\"01M29WMVBC0K52YDPAWH4M603D\",\"labels\":{},\"plan_id\":\"01M29TJW1T4F6963NWACQWJBYF\",\"settlement_mode\":\"credit_then_invoice\",\"status\":\"active\",\"updated_at\":\"2026-09-12T04:05:12.172185Z\"}\n"
+  },
+  "grantExp": {
+   "status": 201,
+   "body": {
+    "amount": "5",
+    "created_at": "2026-09-12T04:05:12.272385Z",
+    "currency": "USD",
+    "expires_at": "2026-09-12T04:06:12Z",
+    "funding_method": "none",
+    "id": "01M29WMVEGRN16N8NYR5N3ADVH",
+    "key": "om0708-exp",
+    "labels": {},
+    "name": "OM0708 expiry grant",
+    "priority": 1,
+    "status": "active",
+    "tax_config": {
+     "tax_code": {
+      "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+     }
+    },
+    "updated_at": "2026-09-12T04:05:12.328336Z"
+   },
+   "text": "{\"amount\":\"5\",\"created_at\":\"2026-09-12T04:05:12.272385Z\",\"currency\":\"USD\",\"expires_at\":\"2026-09-12T04:06:12Z\",\"funding_method\":\"none\",\"id\":\"01M29WMVEGRN16N8NYR5N3ADVH\",\"key\":\"om0708-exp\",\"labels\":{},\"name\":\"OM0708 expiry grant\",\"priority\":1,\"status\":\"active\",\"tax_config\":{\"tax_code\":{\"id\":\"01M25SMCRCBW1EXHCWHF6YWZ2P\"}},\"updated_at\":\"2026-09-12T04:05:12.328336Z\"}\n"
+  },
+  "grantB1": {
+   "status": 201,
+   "body": {
+    "amount": "40",
+    "created_at": "2026-09-12T04:05:12.342382Z",
+    "currency": "USD",
+    "funding_method": "none",
+    "id": "01M29WMVGPTKG5ZJMYT5FT5YFG",
+    "key": "om0708-batch1",
+    "labels": {},
+    "name": "OM0708 batch1",
+    "priority": 3,
+    "status": "active",
+    "tax_config": {
+     "tax_code": {
+      "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+     }
+    },
+    "updated_at": "2026-09-12T04:05:12.361694Z"
+   },
+   "text": "{\"amount\":\"40\",\"created_at\":\"2026-09-12T04:05:12.342382Z\",\"currency\":\"USD\",\"funding_method\":\"none\",\"id\":\"01M29WMVGPTKG5ZJMYT5FT5YFG\",\"key\":\"om0708-batch1\",\"labels\":{},\"name\":\"OM0708 batch1\",\"priority\":3,\"status\":\"active\",\"tax_config\":{\"tax_code\":{\"id\":\"01M25SMCRCBW1EXHCWHF6YWZ2P\"}},\"updated_at\":\"2026-09-12T04:05:12.361694Z\"}\n"
+  },
+  "grantB2": {
+   "status": 201,
+   "body": {
+    "amount": "60",
+    "created_at": "2026-09-12T04:05:12.370781Z",
+    "currency": "USD",
+    "funding_method": "none",
+    "id": "01M29WMVHJSXBA23QK0MRWFA8X",
+    "key": "om0708-batch2",
+    "labels": {},
+    "name": "OM0708 batch2",
+    "priority": 5,
+    "status": "active",
+    "tax_config": {
+     "tax_code": {
+      "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+     }
+    },
+    "updated_at": "2026-09-12T04:05:12.390462Z"
+   },
+   "text": "{\"amount\":\"60\",\"created_at\":\"2026-09-12T04:05:12.370781Z\",\"currency\":\"USD\",\"funding_method\":\"none\",\"id\":\"01M29WMVHJSXBA23QK0MRWFA8X\",\"key\":\"om0708-batch2\",\"labels\":{},\"name\":\"OM0708 batch2\",\"priority\":5,\"status\":\"active\",\"tax_config\":{\"tax_code\":{\"id\":\"01M25SMCRCBW1EXHCWHF6YWZ2P\"}},\"updated_at\":\"2026-09-12T04:05:12.390462Z\"}\n"
+  },
+  "balance0": {
+   "status": 200,
+   "body": {
+    "balances": [
+     {
+      "currency": "USD",
+      "live": "105",
+      "pending": "0",
+      "settled": "105"
+     }
+    ],
+    "retrieved_at": "2026-09-12T04:05:12.406986395Z"
+   },
+   "text": "{\"balances\":[{\"currency\":\"USD\",\"live\":\"105\",\"pending\":\"0\",\"settled\":\"105\"}],\"retrieved_at\":\"2026-09-12T04:05:12.406986395Z\"}\n"
+  },
+  "burn": {
+   "status": 202,
+   "body": null,
+   "text": ""
+  }
+ },
+ "log": [
+  {
+   "t": 188,
+   "op": "create-customer",
+   "method": "POST",
+   "path": "/customers",
+   "status": 201,
+   "reqBody": {
+    "key": "om0708-20260912-custA",
+    "name": "OM0708 Customer A"
+   },
+   "resBody": {
+    "created_at": "2026-09-12T04:05:12.015308Z",
+    "id": "01M29WMV6F84ZP0ZJ9WCAAKR46",
+    "key": "om0708-20260912-custA",
+    "labels": {},
+    "name": "OM0708 Customer A",
+    "updated_at": "2026-09-12T04:05:12.015309Z"
+   }
+  },
+  {
+   "t": 378,
+   "op": "create-subscription",
+   "method": "POST",
+   "path": "/subscriptions",
+   "status": 201,
+   "reqBody": {
+    "customer": {
+     "key": "om0708-20260912-custA"
+    },
+    "plan": {
+     "key": "om02b_20260912_v3plan4"
+    },
+    "settlement_mode": "credit_then_invoice"
+   },
+   "resBody": {
+    "billing_anchor": "2026-09-12T04:05:12.104141Z",
+    "created_at": "2026-09-12T04:05:12.172185Z",
+    "customer_id": "01M29WMV6F84ZP0ZJ9WCAAKR46",
+    "id": "01M29WMVBC0K52YDPAWH4M603D",
+    "labels": {},
+    "plan_id": "01M29TJW1T4F6963NWACQWJBYF",
+    "settlement_mode": "credit_then_invoice",
+    "status": "active",
+    "updated_at": "2026-09-12T04:05:12.172185Z"
+   }
+  },
+  {
+   "t": 456,
+   "op": "create-grant-exp",
+   "method": "POST",
+   "path": "/customers/01M29WMV6F84ZP0ZJ9WCAAKR46/credits/grants",
+   "status": 201,
+   "reqBody": {
+    "key": "om0708-exp",
+    "name": "OM0708 expiry grant",
+    "funding_method": "none",
+    "currency": "USD",
+    "amount": "5",
+    "priority": 1,
+    "expires_after": "PT1M"
+   },
+   "resBody": {
+    "amount": "5",
+    "created_at": "2026-09-12T04:05:12.272385Z",
+    "currency": "USD",
+    "expires_at": "2026-09-12T04:06:12Z",
+    "funding_method": "none",
+    "id": "01M29WMVEGRN16N8NYR5N3ADVH",
+    "key": "om0708-exp",
+    "labels": {},
+    "name": "OM0708 expiry grant",
+    "priority": 1,
+    "status": "active",
+    "tax_config": {
+     "tax_code": {
+      "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+     }
+    },
+    "updated_at": "2026-09-12T04:05:12.328336Z"
+   }
+  },
+  {
+   "t": 484,
+   "op": "create-grant-b1",
+   "method": "POST",
+   "path": "/customers/01M29WMV6F84ZP0ZJ9WCAAKR46/credits/grants",
+   "status": 201,
+   "reqBody": {
+    "key": "om0708-batch1",
+    "name": "OM0708 batch1",
+    "funding_method": "none",
+    "currency": "USD",
+    "amount": "40",
+    "priority": 3
+   },
+   "resBody": {
+    "amount": "40",
+    "created_at": "2026-09-12T04:05:12.342382Z",
+    "currency": "USD",
+    "funding_method": "none",
+    "id": "01M29WMVGPTKG5ZJMYT5FT5YFG",
+    "key": "om0708-batch1",
+    "labels": {},
+    "name": "OM0708 batch1",
+    "priority": 3,
+    "status": "active",
+    "tax_config": {
+     "tax_code": {
+      "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+     }
+    },
+    "updated_at": "2026-09-12T04:05:12.361694Z"
+   }
+  },
+  {
+   "t": 522,
+   "op": "create-grant-b2",
+   "method": "POST",
+   "path": "/customers/01M29WMV6F84ZP0ZJ9WCAAKR46/credits/grants",
+   "status": 201,
+   "reqBody": {
+    "key": "om0708-batch2",
+    "name": "OM0708 batch2",
+    "funding_method": "none",
+    "currency": "USD",
+    "amount": "60",
+    "priority": 5
+   },
+   "resBody": {
+    "amount": "60",
+    "created_at": "2026-09-12T04:05:12.370781Z",
+    "currency": "USD",
+    "funding_method": "none",
+    "id": "01M29WMVHJSXBA23QK0MRWFA8X",
+    "key": "om0708-batch2",
+    "labels": {},
+    "name": "OM0708 batch2",
+    "priority": 5,
+    "status": "active",
+    "tax_config": {
+     "tax_code": {
+      "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+     }
+    },
+    "updated_at": "2026-09-12T04:05:12.390462Z"
+   }
+  },
+  {
+   "t": 535,
+   "op": "get-balance",
+   "method": "GET",
+   "path": "/customers/01M29WMV6F84ZP0ZJ9WCAAKR46/credits/balance",
+   "status": 200,
+   "resBody": {
+    "balances": [
+     {
+      "currency": "USD",
+      "live": "105",
+      "pending": "0",
+      "settled": "105"
+     }
+    ],
+    "retrieved_at": "2026-09-12T04:05:12.406986395Z"
+   }
+  },
+  {
+   "t": 570,
+   "op": "ingest-burn",
+   "method": "POST",
+   "path": "/events",
+   "status": 202,
+   "reqBody": [
+    {
+     "id": "om0708-evt-burn10-1789185912422",
+     "source": "om0708-probe",
+     "specversion": "1.0",
+     "type": "prompt",
+     "subject": "om0708-20260912-custA",
+     "data": {
+      "tokens": 1000,
+      "model": "gpt-4",
+      "type": "input"
+     }
+    }
+   ],
+   "resBody": ""
+  },
+  {
+   "t": 4397,
+   "op": "poll-balance",
+   "method": "GET",
+   "path": "/customers/01M29WMV6F84ZP0ZJ9WCAAKR46/credits/balance",
+   "status": 200,
+   "resBody": {
+    "balances": [
+     {
+      "currency": "USD",
+      "live": "95",
+      "pending": "0",
+      "settled": "105"
+     }
+    ],
+    "retrieved_at": "2026-09-12T04:05:16.0763901Z"
+   }
+  },
+  {
+   "t": 8433,
+   "op": "poll-balance",
+   "method": "GET",
+   "path": "/customers/01M29WMV6F84ZP0ZJ9WCAAKR46/credits/balance",
+   "status": 200,
+   "resBody": {
+    "balances": [
+     {
+      "currency": "USD",
+      "live": "95",
+      "pending": "0",
+      "settled": "105"
+     }
+    ],
+    "retrieved_at": "2026-09-12T04:05:20.284197398Z"
+   }
+  },
+  {
+   "t": 12465,
+   "op": "poll-balance",
+   "method": "GET",
+   "path": "/customers/01M29WMV6F84ZP0ZJ9WCAAKR46/credits/balance",
+   "status": 200,
+   "resBody": {
+    "balances": [
+     {
+      "currency": "USD",
+      "live": "95",
+      "pending": "0",
+      "settled": "105"
+     }
+    ],
+    "retrieved_at": "2026-09-12T04:05:24.320370394Z"
+   }
+  },
+  {
+   "t": 16490,
+   "op": "poll-balance",
+   "method": "GET",
+   "path": "/customers/01M29WMV6F84ZP0ZJ9WCAAKR46/credits/balance",
+   "status": 200,
+   "resBody": {
+    "balances": [
+     {
+      "currency": "USD",
+      "live": "95",
+      "pending": "0",
+      "settled": "105"
+     }
+    ],
+    "retrieved_at": "2026-09-12T04:05:28.351628283Z"
+   }
+  },
+  {
+   "t": 20515,
+   "op": "poll-balance",
+   "method": "GET",
+   "path": "/customers/01M29WMV6F84ZP0ZJ9WCAAKR46/credits/balance",
+   "status": 200,
+   "resBody": {
+    "balances": [
+     {
+      "currency": "USD",
+      "live": "95",
+      "pending": "0",
+      "settled": "105"
+     }
+    ],
+    "retrieved_at": "2026-09-12T04:05:32.375281909Z"
+   }
+  },
+  {
+   "t": 24528,
+   "op": "poll-balance",
+   "method": "GET",
+   "path": "/customers/01M29WMV6F84ZP0ZJ9WCAAKR46/credits/balance",
+   "status": 200,
+   "resBody": {
+    "balances": [
+     {
+      "currency": "USD",
+      "live": "95",
+      "pending": "0",
+      "settled": "105"
+     }
+    ],
+    "retrieved_at": "2026-09-12T04:05:36.400910203Z"
+   }
+  },
+  {
+   "t": 28538,
+   "op": "poll-balance",
+   "method": "GET",
+   "path": "/customers/01M29WMV6F84ZP0ZJ9WCAAKR46/credits/balance",
+   "status": 200,
+   "resBody": {
+    "balances": [
+     {
+      "currency": "USD",
+      "live": "95",
+      "pending": "0",
+      "settled": "105"
+     }
+    ],
+    "retrieved_at": "2026-09-12T04:05:40.41298994Z"
+   }
+  },
+  {
+   "t": 32571,
+   "op": "poll-balance",
+   "method": "GET",
+   "path": "/customers/01M29WMV6F84ZP0ZJ9WCAAKR46/credits/balance",
+   "status": 200,
+   "resBody": {
+    "balances": [
+     {
+      "currency": "USD",
+      "live": "95",
+      "pending": "0",
+      "settled": "105"
+     }
+    ],
+    "retrieved_at": "2026-09-12T04:05:44.424515646Z"
+   }
+  },
+  {
+   "t": 36612,
+   "op": "poll-balance",
+   "method": "GET",
+   "path": "/customers/01M29WMV6F84ZP0ZJ9WCAAKR46/credits/balance",
+   "status": 200,
+   "resBody": {
+    "balances": [
+     {
+      "currency": "USD",
+      "live": "95",
+      "pending": "0",
+      "settled": "105"
+     }
+    ],
+    "retrieved_at": "2026-09-12T04:05:48.457373418Z"
+   }
+  },
+  {
+   "t": 40652,
+   "op": "poll-balance",
+   "method": "GET",
+   "path": "/customers/01M29WMV6F84ZP0ZJ9WCAAKR46/credits/balance",
+   "status": 200,
+   "resBody": {
+    "balances": [
+     {
+      "currency": "USD",
+      "live": "95",
+      "pending": "0",
+      "settled": "105"
+     }
+    ],
+    "retrieved_at": "2026-09-12T04:05:52.498724184Z"
+   }
+  }
+ ]
+}

@@ -1,0 +1,93 @@
+{
+  "case": "om02b-v3-burn",
+  "namespace": "om02b-20260912",
+  "steps": [
+    {
+      "method": "GET",
+      "operation_id": "get-customer-credit-balance",
+      "request": null,
+      "status": 200,
+      "response": {
+        "balances": [
+          {
+            "currency": "USD",
+            "live": "100",
+            "pending": "0",
+            "settled": "100"
+          }
+        ],
+        "retrieved_at": "2026-09-12T03:29:29.308830898Z"
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "ingest-metering-events",
+      "request": [
+        {
+          "id": "om02b-20260912-evt-6",
+          "source": "om02b-probe",
+          "specversion": "1.0",
+          "type": "prompt",
+          "subject": "om02b-20260912-v3cust",
+          "data": {
+            "tokens": "[REDACTED]",
+            "model": "gpt-4",
+            "type": "input"
+          }
+        }
+      ],
+      "status": 202,
+      "response": {}
+    },
+    {
+      "method": "GET",
+      "operation_id": "get-customer-credit-balance",
+      "request": null,
+      "status": 200,
+      "response": {
+        "balances": [
+          {
+            "currency": "USD",
+            "live": "100",
+            "pending": "0",
+            "settled": "100"
+          }
+        ],
+        "retrieved_at": "2026-09-12T03:29:29.360121856Z"
+      }
+    },
+    {
+      "method": "GET",
+      "operation_id": "list-credit-transactions",
+      "request": null,
+      "status": 200,
+      "response": {
+        "data": [
+          {
+            "amount": "100",
+            "available_balance": {
+              "after": "100",
+              "before": "0"
+            },
+            "booked_at": "2026-09-12T03:28:58.891168Z",
+            "created_at": "2026-09-12T03:28:58.866677Z",
+            "currency": "USD",
+            "id": "01M29TJGZJF471873N57NHF85R",
+            "labels": {
+              "charge_id": "01M29TJGZJF471873N57NHF85R"
+            },
+            "name": "OM-02B subscription credits",
+            "type": "funded"
+          }
+        ],
+        "meta": {
+          "page": {
+            "next": null,
+            "previous": null,
+            "size": 20
+          }
+        }
+      }
+    }
+  ]
+}

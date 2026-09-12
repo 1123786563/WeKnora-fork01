@@ -33,7 +33,7 @@ F01～F05、V03确认策略；U03依赖C04适配，C05依赖U02/U03，构成单�
 
 commercial：用量与预算规则；repository：CAS原子占用和用量事实；service：确认水位与恢复；agent/model入口：出站前准入。
 
-### Task U01: 实际调用身份、资金来源与用量去重
+### Task 1: U01: 实际调用身份、资金来源与用量去重
 
 **Files:**
 - Create: `internal/commercial/usage.go`、`internal/commercial/usage_test.go`
@@ -102,7 +102,7 @@ git add internal/commercial/usage.go internal/commercial/usage_test.go internal/
 git commit -m "feat: persist physical call usage without parent double count"
 ```
 
-### Task U02: 跨进程任务预算与额度原子预占
+### Task 2: U02: 跨进程任务预算与额度原子预占
 
 **Files:**
 - Create: `internal/commercial/budget.go`、`internal/commercial/budget_test.go`
@@ -248,7 +248,7 @@ git add internal/commercial/budget.go internal/commercial/budget_test.go interna
 git commit -m "feat: reserve task budgets atomically across workers"
 ```
 
-### Task U03: 最终消费与外部确认水位交接
+### Task 3: U03: 最终消费与外部确认水位交接
 
 **Files:**
 - Create: `internal/commercial/settlement.go`、`internal/commercial/settlement_test.go`
@@ -317,7 +317,7 @@ git add internal/commercial/settlement.go internal/commercial/settlement_test.go
 git commit -m "feat: hand off reserved usage only after confirmed settlement"
 ```
 
-### Task U04: 取消、到期、追加与恢复租约
+### Task 4: U04: 取消、到期、追加与恢复租约
 
 **Files:**
 - Create: `internal/commercial/reservation_state.go`、`internal/commercial/reservation_state_test.go`
@@ -385,7 +385,7 @@ git add internal/commercial/reservation_state.go internal/commercial/reservation
 git commit -m "feat: reconcile cancelled and expired reservations safely"
 ```
 
-### Task U05: 主子 Runtime、模型与平台服务的收费准入接线
+### Task 5: U05: 主子 Runtime、模型与平台服务的收费准入接线
 
 **Files:**
 - Create: `internal/commercial/execution.go`、`internal/commercial/execution_test.go`

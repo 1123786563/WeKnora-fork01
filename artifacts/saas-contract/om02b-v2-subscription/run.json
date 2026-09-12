@@ -1,0 +1,184 @@
+{
+  "case": "om02b-v2-subscription",
+  "namespace": "om02b-20260912",
+  "steps": [
+    {
+      "method": "GET",
+      "operation_id": "getCustomer",
+      "request": null,
+      "status": 200,
+      "response": {
+        "createdAt": "2026-09-12T03:24:15.313296Z",
+        "id": "01M29T9W2HQVWYK10H0VKSNFDX",
+        "key": "om02b-20260912-v2cust",
+        "name": "OM-02B V2 Subscription Customer",
+        "updatedAt": "2026-09-12T03:24:15.313296Z"
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "createPlan",
+      "request": {
+        "name": "OM-02B V2 Tokens Plan",
+        "key": "om02b_20260912_v2plan4",
+        "currency": "USD",
+        "billingCadence": "P1M",
+        "phases": [
+          {
+            "key": "main",
+            "name": "Main",
+            "rateCards": [
+              {
+                "type": "usage_based",
+                "key": "om02_tokens",
+                "name": "OM-02B Tokens RateCard",
+                "featureKey": "om02_tokens",
+                "price": {
+                  "type": "unit",
+                  "amount": "0.01"
+                },
+                "entitlementTemplate": {
+                  "type": "metered",
+                  "issueAfterReset": 1
+                },
+                "billingCadence": "P1M"
+              }
+            ],
+            "duration": null
+          }
+        ]
+      },
+      "status": 201,
+      "response": {
+        "billingCadence": "P1M",
+        "createdAt": "2026-09-12T03:26:46.199946Z",
+        "currency": "USD",
+        "id": "01M29TEFDQ51V48SYMJHQF9N5A",
+        "key": "om02b_20260912_v2plan4",
+        "name": "OM-02B V2 Tokens Plan",
+        "phases": [
+          {
+            "duration": null,
+            "key": "main",
+            "name": "Main",
+            "rateCards": [
+              {
+                "billingCadence": "P1M",
+                "entitlementTemplate": {
+                  "isSoftLimit": false,
+                  "issueAfterReset": 1,
+                  "type": "metered",
+                  "usagePeriod": "P1M"
+                },
+                "featureKey": "om02_tokens",
+                "key": "om02_tokens",
+                "name": "OM-02B Tokens RateCard",
+                "price": {
+                  "amount": "0.01",
+                  "type": "unit"
+                },
+                "type": "usage_based"
+              }
+            ]
+          }
+        ],
+        "proRatingConfig": {
+          "enabled": true,
+          "mode": "prorate_prices"
+        },
+        "settlementMode": "credit_then_invoice",
+        "status": "draft",
+        "updatedAt": "2026-09-12T03:26:46.199947Z",
+        "validationErrors": null,
+        "version": 1
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "publishPlan",
+      "request": null,
+      "status": 200,
+      "response": {
+        "billingCadence": "P1M",
+        "createdAt": "2026-09-12T03:26:46.199946Z",
+        "currency": "USD",
+        "effectiveFrom": "2026-09-12T03:26:46.212046Z",
+        "id": "01M29TEFDQ51V48SYMJHQF9N5A",
+        "key": "om02b_20260912_v2plan4",
+        "name": "OM-02B V2 Tokens Plan",
+        "phases": [
+          {
+            "duration": null,
+            "key": "main",
+            "name": "Main",
+            "rateCards": [
+              {
+                "billingCadence": "P1M",
+                "entitlementTemplate": {
+                  "isSoftLimit": false,
+                  "issueAfterReset": 1,
+                  "type": "metered",
+                  "usagePeriod": "P1M"
+                },
+                "featureKey": "om02_tokens",
+                "key": "om02_tokens",
+                "name": "OM-02B Tokens RateCard",
+                "price": {
+                  "amount": "0.01",
+                  "type": "unit"
+                },
+                "type": "usage_based"
+              }
+            ]
+          }
+        ],
+        "proRatingConfig": {
+          "enabled": true,
+          "mode": "prorate_prices"
+        },
+        "settlementMode": "credit_then_invoice",
+        "status": "active",
+        "updatedAt": "2026-09-12T03:26:46.216908Z",
+        "validationErrors": null,
+        "version": 1
+      }
+    },
+    {
+      "method": "POST",
+      "operation_id": "createSubscription",
+      "request": {
+        "plan": {
+          "key": "om02b_20260912_v2plan4"
+        },
+        "customerKey": "om02b-20260912-v2cust",
+        "name": "OM-02B V2 Sub"
+      },
+      "status": 201,
+      "response": {
+        "activeFrom": "2026-09-12T03:26:46.29075Z",
+        "alignment": {
+          "billablesMustAlign": true
+        },
+        "billingAnchor": "2026-09-12T03:26:46.29075Z",
+        "billingCadence": "P1M",
+        "createdAt": "2026-09-12T03:26:46.291479Z",
+        "currency": "USD",
+        "customerId": "01M29T9W2HQVWYK10H0VKSNFDX",
+        "id": "01M29TEFGKVEJ6BXCX6YDZF9BW",
+        "name": "OM-02B V2 Sub",
+        "plan": {
+          "id": "01M29TEFDQ51V48SYMJHQF9N5A",
+          "key": "om02b_20260912_v2plan4",
+          "version": 1
+        },
+        "proRatingConfig": {
+          "enabled": true,
+          "mode": "prorate_prices"
+        },
+        "settlementMode": "credit_then_invoice",
+        "status": "active",
+        "updatedAt": "2026-09-12T03:26:46.291479Z"
+      }
+    }
+  ]
+}

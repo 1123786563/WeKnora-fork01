@@ -1,0 +1,622 @@
+[
+  {
+    "ts": "2026-09-12T03:53:09.641514+00:00",
+    "label": "v3-plan-main",
+    "method": "POST",
+    "path": "/api/v3/openmeter/plans",
+    "request_body": {
+      "name": "OM0506 V3 main",
+      "key": "om0506-20260912_v3plan1",
+      "currency": "USD",
+      "billing_cadence": "P1M",
+      "phases": [
+        {
+          "key": "main",
+          "name": "Main",
+          "rate_cards": [
+            {
+              "key": "om02_tokens",
+              "name": "OM0506 main RC",
+              "feature": {
+                "id": "01M29SXXZY6WECC4ZDQPWJVBVP"
+              },
+              "price": {
+                "type": "unit",
+                "amount": "0.01"
+              },
+              "billing_cadence": "P1M"
+            }
+          ]
+        }
+      ]
+    },
+    "status": 400,
+    "response_json": {
+      "type": "https://kongapi.info/konnect/bad-request",
+      "status": 400,
+      "title": "Bad Request",
+      "instance": "urn:request:817fb7fae384/bkDLTVCpj8-000773",
+      "detail": "Bad Request: key [allOf]: doesn't match all schemas from \"allOf\"",
+      "invalid_parameters": [
+        {
+          "field": "key",
+          "rule": "allOf",
+          "reason": "doesn't match all schemas from \"allOf\"",
+          "source": ""
+        }
+      ]
+    }
+  },
+  {
+    "ts": "2026-09-12T03:53:09.671706+00:00",
+    "label": "v3-plan-frac",
+    "method": "POST",
+    "path": "/api/v3/openmeter/plans",
+    "request_body": {
+      "name": "OM0506 V3 frac",
+      "key": "om0506-20260912_v3planf",
+      "currency": "USD",
+      "billing_cadence": "P1M",
+      "phases": [
+        {
+          "key": "main",
+          "name": "Main",
+          "rate_cards": [
+            {
+              "key": "om02_tokens",
+              "name": "OM0506 frac RC",
+              "feature": {
+                "id": "01M29SXXZY6WECC4ZDQPWJVBVP"
+              },
+              "price": {
+                "type": "unit",
+                "amount": "0.0033"
+              },
+              "billing_cadence": "P1M"
+            }
+          ]
+        }
+      ]
+    },
+    "status": 400,
+    "response_json": {
+      "type": "https://kongapi.info/konnect/bad-request",
+      "status": 400,
+      "title": "Bad Request",
+      "instance": "urn:request:817fb7fae384/bkDLTVCpj8-000774",
+      "detail": "Bad Request: key [allOf]: doesn't match all schemas from \"allOf\"",
+      "invalid_parameters": [
+        {
+          "field": "key",
+          "rule": "allOf",
+          "reason": "doesn't match all schemas from \"allOf\"",
+          "source": ""
+        }
+      ]
+    }
+  },
+  {
+    "ts": "2026-09-12T03:53:11.678122+00:00",
+    "label": "v3-balance",
+    "method": "GET",
+    "path": "/api/v3/openmeter/customers/01M29VSJNXH782W6DA0C9V4ZQG/credits/balance",
+    "request_body": null,
+    "status": 200,
+    "response_json": {
+      "balances": [
+        {
+          "currency": "USD",
+          "live": "50",
+          "pending": "0",
+          "settled": "50"
+        }
+      ],
+      "retrieved_at": "2026-09-12T03:53:11.704225498Z"
+    }
+  },
+  {
+    "ts": "2026-09-12T03:53:11.706826+00:00",
+    "label": "v3-ingest",
+    "method": "POST",
+    "path": "/api/v3/openmeter/events",
+    "request_body": [
+      {
+        "id": "om0506-20260912-a2-evt-burn1",
+        "source": "om0506-probe",
+        "specversion": "1.0",
+        "type": "prompt",
+        "subject": "om0506-20260912-custA",
+        "data": {
+          "tokens": 500,
+          "model": "gpt-4",
+          "type": "input"
+        }
+      }
+    ],
+    "status": 202,
+    "response_json": null
+  },
+  {
+    "ts": "2026-09-12T03:53:19.718252+00:00",
+    "label": "v3-balance",
+    "method": "GET",
+    "path": "/api/v3/openmeter/customers/01M29VSJNXH782W6DA0C9V4ZQG/credits/balance",
+    "request_body": null,
+    "status": 200,
+    "response_json": {
+      "balances": [
+        {
+          "currency": "USD",
+          "live": "50",
+          "pending": "0",
+          "settled": "50"
+        }
+      ],
+      "retrieved_at": "2026-09-12T03:53:19.741327026Z"
+    }
+  },
+  {
+    "ts": "2026-09-12T03:53:19.743832+00:00",
+    "label": "v3-ingest",
+    "method": "POST",
+    "path": "/api/v3/openmeter/events",
+    "request_body": [
+      {
+        "id": "om0506-20260912-a2-evt-burn2",
+        "source": "om0506-probe",
+        "specversion": "1.0",
+        "type": "prompt",
+        "subject": "om0506-20260912-custA",
+        "data": {
+          "tokens": 2500,
+          "model": "gpt-4",
+          "type": "input"
+        }
+      }
+    ],
+    "status": 202,
+    "response_json": null
+  },
+  {
+    "ts": "2026-09-12T03:53:27.754296+00:00",
+    "label": "v3-balance",
+    "method": "GET",
+    "path": "/api/v3/openmeter/customers/01M29VSJNXH782W6DA0C9V4ZQG/credits/balance",
+    "request_body": null,
+    "status": 200,
+    "response_json": {
+      "balances": [
+        {
+          "currency": "USD",
+          "live": "50",
+          "pending": "0",
+          "settled": "50"
+        }
+      ],
+      "retrieved_at": "2026-09-12T03:53:27.7763365Z"
+    }
+  },
+  {
+    "ts": "2026-09-12T03:53:27.769633+00:00",
+    "label": "v3-ingest",
+    "method": "POST",
+    "path": "/api/v3/openmeter/events",
+    "request_body": [
+      {
+        "id": "om0506-20260912-a2-evt-burn3",
+        "source": "om0506-probe",
+        "specversion": "1.0",
+        "type": "prompt",
+        "subject": "om0506-20260912-custA",
+        "data": {
+          "tokens": 1500,
+          "model": "gpt-4",
+          "type": "input"
+        }
+      }
+    ],
+    "status": 202,
+    "response_json": null
+  },
+  {
+    "ts": "2026-09-12T03:53:35.777223+00:00",
+    "label": "v3-balance",
+    "method": "GET",
+    "path": "/api/v3/openmeter/customers/01M29VSJNXH782W6DA0C9V4ZQG/credits/balance",
+    "request_body": null,
+    "status": 200,
+    "response_json": {
+      "balances": [
+        {
+          "currency": "USD",
+          "live": "50",
+          "pending": "0",
+          "settled": "50"
+        }
+      ],
+      "retrieved_at": "2026-09-12T03:53:35.800593395Z"
+    }
+  },
+  {
+    "ts": "2026-09-12T03:53:35.796513+00:00",
+    "label": "v3-list-grants",
+    "method": "GET",
+    "path": "/api/v3/openmeter/customers/01M29VSJNXH782W6DA0C9V4ZQG/credits/grants",
+    "request_body": null,
+    "status": 200,
+    "response_json": {
+      "data": [
+        {
+          "amount": "30",
+          "created_at": "2026-09-12T03:50:18.878854Z",
+          "currency": "USD",
+          "expires_at": "2026-09-12T05:50:18Z",
+          "funding_method": "none",
+          "id": "01M29VSJZYZQNY72CN1G4BKG4B",
+          "key": "om0506-20260912-a-period",
+          "labels": {},
+          "name": "OM0506 period grant",
+          "priority": 3,
+          "status": "active",
+          "tax_config": {
+            "tax_code": {
+              "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+            }
+          },
+          "updated_at": "2026-09-12T03:50:18.88441Z"
+        },
+        {
+          "amount": "20",
+          "created_at": "2026-09-12T03:50:18.888559Z",
+          "currency": "USD",
+          "funding_method": "none",
+          "id": "01M29VSK08JARCW50H866HHBB4",
+          "key": "om0506-20260912-a-topup",
+          "labels": {},
+          "name": "OM0506 topup grant",
+          "priority": 7,
+          "status": "active",
+          "tax_config": {
+            "tax_code": {
+              "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+            }
+          },
+          "updated_at": "2026-09-12T03:50:18.893353Z"
+        }
+      ],
+      "meta": {
+        "page": {
+          "size": 20,
+          "number": 1,
+          "total": 2
+        }
+      }
+    }
+  },
+  {
+    "ts": "2026-09-12T03:53:35.800927+00:00",
+    "label": "v3-tx",
+    "method": "GET",
+    "path": "/api/v3/openmeter/customers/01M29VSJNXH782W6DA0C9V4ZQG/credits/transactions",
+    "request_body": null,
+    "status": 200,
+    "response_json": {
+      "data": [
+        {
+          "amount": "20",
+          "available_balance": {
+            "after": "50",
+            "before": "30"
+          },
+          "booked_at": "2026-09-12T03:50:18.893166Z",
+          "created_at": "2026-09-12T03:50:18.888559Z",
+          "currency": "USD",
+          "id": "01M29VSK08JARCW50H866HHBB4",
+          "labels": {
+            "charge_id": "01M29VSK08JARCW50H866HHBB4"
+          },
+          "name": "OM0506 topup grant",
+          "type": "funded"
+        },
+        {
+          "amount": "30",
+          "available_balance": {
+            "after": "30",
+            "before": "0"
+          },
+          "booked_at": "2026-09-12T03:50:18.884225Z",
+          "created_at": "2026-09-12T03:50:18.878854Z",
+          "currency": "USD",
+          "id": "01M29VSJZYZQNY72CN1G4BKG4B",
+          "labels": {
+            "charge_id": "01M29VSJZYZQNY72CN1G4BKG4B"
+          },
+          "name": "OM0506 period grant",
+          "type": "funded"
+        }
+      ],
+      "meta": {
+        "page": {
+          "next": null,
+          "previous": null,
+          "size": 20
+        }
+      }
+    }
+  },
+  {
+    "ts": "2026-09-12T03:53:35.850136+00:00",
+    "label": "v3-balance",
+    "method": "GET",
+    "path": "/api/v3/openmeter/customers/01M29VSJNXH782W6DA0C9V4ZQG/credits/balance",
+    "request_body": null,
+    "status": 200,
+    "response_json": {
+      "balances": [
+        {
+          "currency": "USD",
+          "live": "50",
+          "pending": "0",
+          "settled": "50"
+        }
+      ],
+      "retrieved_at": "2026-09-12T03:53:35.870153954Z"
+    }
+  },
+  {
+    "ts": "2026-09-12T03:53:35.859956+00:00",
+    "label": "v3-ingest",
+    "method": "POST",
+    "path": "/api/v3/openmeter/events",
+    "request_body": [
+      {
+        "id": "om0506-20260912-a2-evt-late240",
+        "source": "om0506-probe",
+        "specversion": "1.0",
+        "type": "prompt",
+        "subject": "om0506-20260912-custA",
+        "data": {
+          "tokens": 200,
+          "model": "gpt-4",
+          "type": "input"
+        },
+        "time": "2026-09-12T03:49:35.859915Z"
+      }
+    ],
+    "status": 202,
+    "response_json": null
+  },
+  {
+    "ts": "2026-09-12T03:53:35.864090+00:00",
+    "label": "v3-ingest",
+    "method": "POST",
+    "path": "/api/v3/openmeter/events",
+    "request_body": [
+      {
+        "id": "om0506-20260912-a2-evt-late75",
+        "source": "om0506-probe",
+        "specversion": "1.0",
+        "type": "prompt",
+        "subject": "om0506-20260912-custA",
+        "data": {
+          "tokens": 300,
+          "model": "gpt-4",
+          "type": "input"
+        },
+        "time": "2026-09-12T03:52:20.859915Z"
+      }
+    ],
+    "status": 202,
+    "response_json": null
+  },
+  {
+    "ts": "2026-09-12T03:53:44.874891+00:00",
+    "label": "v3-balance",
+    "method": "GET",
+    "path": "/api/v3/openmeter/customers/01M29VSJNXH782W6DA0C9V4ZQG/credits/balance",
+    "request_body": null,
+    "status": 200,
+    "response_json": {
+      "balances": [
+        {
+          "currency": "USD",
+          "live": "50",
+          "pending": "0",
+          "settled": "50"
+        }
+      ],
+      "retrieved_at": "2026-09-12T03:53:44.893856726Z"
+    }
+  },
+  {
+    "ts": "2026-09-12T03:53:44.888662+00:00",
+    "label": "v3-tx",
+    "method": "GET",
+    "path": "/api/v3/openmeter/customers/01M29VSJNXH782W6DA0C9V4ZQG/credits/transactions",
+    "request_body": null,
+    "status": 200,
+    "response_json": {
+      "data": [
+        {
+          "amount": "20",
+          "available_balance": {
+            "after": "50",
+            "before": "30"
+          },
+          "booked_at": "2026-09-12T03:50:18.893166Z",
+          "created_at": "2026-09-12T03:50:18.888559Z",
+          "currency": "USD",
+          "id": "01M29VSK08JARCW50H866HHBB4",
+          "labels": {
+            "charge_id": "01M29VSK08JARCW50H866HHBB4"
+          },
+          "name": "OM0506 topup grant",
+          "type": "funded"
+        },
+        {
+          "amount": "30",
+          "available_balance": {
+            "after": "30",
+            "before": "0"
+          },
+          "booked_at": "2026-09-12T03:50:18.884225Z",
+          "created_at": "2026-09-12T03:50:18.878854Z",
+          "currency": "USD",
+          "id": "01M29VSJZYZQNY72CN1G4BKG4B",
+          "labels": {
+            "charge_id": "01M29VSJZYZQNY72CN1G4BKG4B"
+          },
+          "name": "OM0506 period grant",
+          "type": "funded"
+        }
+      ],
+      "meta": {
+        "page": {
+          "next": null,
+          "previous": null,
+          "size": 20
+        }
+      }
+    }
+  },
+  {
+    "ts": "2026-09-12T03:53:44.901751+00:00",
+    "label": "v2-value",
+    "method": "GET",
+    "path": "/api/v2/customers/om0506-20260912-v2cust/entitlements/om02_tokens/value",
+    "request_body": null,
+    "status": 200,
+    "response_json": {
+      "hasAccess": true,
+      "balance": 1250,
+      "overage": 0,
+      "totalAvailableGrantAmount": 1500,
+      "usage": 250,
+      "grantBalances": {
+        "01M29VSK19VD2YMYGJ5J87K7W3": 750,
+        "01M29VSK24NCCZ35Q51JP86XQ3": 500
+      }
+    }
+  },
+  {
+    "ts": "2026-09-12T03:53:44.937710+00:00",
+    "label": "v2-reset-main",
+    "method": "POST",
+    "path": "/api/v2/customers/om0506-20260912-v2cust/entitlements/om02_tokens/reset",
+    "request_body": {
+      "effectiveAt": "2026-09-12T03:53:00Z",
+      "retainAnchor": true
+    },
+    "status": 204,
+    "response_json": null
+  },
+  {
+    "ts": "2026-09-12T03:53:48.970038+00:00",
+    "label": "v2-value",
+    "method": "GET",
+    "path": "/api/v2/customers/om0506-20260912-v2cust/entitlements/om02_tokens/value",
+    "request_body": null,
+    "status": 200,
+    "response_json": {
+      "hasAccess": true,
+      "balance": 1250,
+      "overage": 0,
+      "totalAvailableGrantAmount": 1250,
+      "usage": 0,
+      "grantBalances": {
+        "01M29VSK19VD2YMYGJ5J87K7W3": 750,
+        "01M29VSK24NCCZ35Q51JP86XQ3": 500
+      }
+    }
+  },
+  {
+    "ts": "2026-09-12T03:53:49.009516+00:00",
+    "label": "v2-list-grants",
+    "method": "GET",
+    "path": "/api/v2/customers/om0506-20260912-v2cust/entitlements/om02_tokens/grants",
+    "request_body": null,
+    "status": 200,
+    "response_json": {
+      "items": [
+        {
+          "amount": 1000,
+          "createdAt": "2026-09-12T03:50:18.921414Z",
+          "effectiveAt": "2026-09-12T03:50:00Z",
+          "entitlementId": "01M29VSK0VVYPCDHYX951C2T9W",
+          "expiration": {
+            "count": 1,
+            "duration": "HOUR"
+          },
+          "expiresAt": "2026-09-12T04:50:00Z",
+          "id": "01M29VSK19VD2YMYGJ5J87K7W3",
+          "maxRolloverAmount": 1000,
+          "minRolloverAmount": 0,
+          "priority": 1,
+          "updatedAt": "2026-09-12T03:50:18.921414Z"
+        },
+        {
+          "amount": 500,
+          "createdAt": "2026-09-12T03:50:18.948057Z",
+          "effectiveAt": "2026-09-12T03:50:00Z",
+          "entitlementId": "01M29VSK0VVYPCDHYX951C2T9W",
+          "expiration": {
+            "count": 1,
+            "duration": "HOUR"
+          },
+          "expiresAt": "2026-09-12T04:50:00Z",
+          "id": "01M29VSK24NCCZ35Q51JP86XQ3",
+          "maxRolloverAmount": 500,
+          "minRolloverAmount": 0,
+          "priority": 2,
+          "updatedAt": "2026-09-12T03:50:18.948057Z"
+        }
+      ],
+      "page": 1,
+      "pageSize": 100,
+      "totalCount": 2
+    }
+  },
+  {
+    "ts": "2026-09-12T03:53:49.015795+00:00",
+    "label": "v2-create-plan",
+    "method": "POST",
+    "path": "/api/v1/plans",
+    "request_body": {
+      "name": "OM0506 V2 Plan",
+      "key": "om0506-20260912_v2plan1",
+      "currency": "USD",
+      "billingCadence": "P1M",
+      "phases": [
+        {
+          "key": "main",
+          "name": "Main",
+          "rateCards": [
+            {
+              "type": "usage_based",
+              "key": "om02_tokens",
+              "name": "OM0506 V2 RC",
+              "featureKey": "om02_tokens",
+              "price": {
+                "type": "unit",
+                "amount": "0.01"
+              },
+              "entitlementTemplate": {
+                "type": "metered",
+                "issueAfterReset": 1
+              },
+              "billingCadence": "P1M"
+            }
+          ],
+          "duration": null
+        }
+      ]
+    },
+    "status": 400,
+    "response_json": {
+      "type": "about:blank",
+      "title": "Bad Request",
+      "status": 400,
+      "detail": "request body has an error: doesn't match schema #/components/schemas/PlanCreate: Error at \"/key\": string doesn't match the regular expression \"^[a-z0-9]+(?:_[a-z0-9]+)*$\""
+    }
+  }
+]

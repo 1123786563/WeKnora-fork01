@@ -33,7 +33,7 @@ V03 冻结契约后执行外部相关任务；F01/F02 的纯逻辑可先做，�
 
 `internal/commercial`：单位与规则；repository/commercial：映射、目录、订阅；service/commercial：周期调度；handler/router：空间商业 API。具体迁移文件由拥有表的任务创建，必须同时提供 PG/SQLite up/down。
 
-### Task F01: 金额、Credits 和月周期原语
+### Task 1: F01: 金额、Credits 和月周期原语
 
 **Files:**
 - Create: `internal/commercial/amount.go`、`internal/commercial/amount_test.go`
@@ -111,7 +111,7 @@ git add internal/commercial/amount.go internal/commercial/amount_test.go interna
 git commit -m "feat: add fixed precision commercial units and cycles"
 ```
 
-### Task F02: 空间商业权限与唯一 Customer 映射
+### Task 2: F02: 空间商业权限与唯一 Customer 映射
 
 **Files:**
 - Create: `internal/commercial/access.go`、`internal/commercial/access_test.go`
@@ -194,7 +194,7 @@ git add internal/commercial/access.go internal/commercial/access_test.go interna
 git commit -m "feat: isolate space commercial authority"
 ```
 
-### Task F03: 不可变套餐目录与分段升级报价
+### Task 3: F03: 不可变套餐目录与分段升级报价
 
 **Files:**
 - Create: `internal/commercial/catalog.go`、`internal/commercial/quote.go`、`internal/commercial/quote_test.go`
@@ -274,7 +274,7 @@ git add internal/commercial/catalog.go internal/commercial/quote.go internal/com
 git commit -m "feat: version catalog and quote remaining paid intervals"
 ```
 
-### Task F04: 周期发放与到期降级投影
+### Task 4: F04: 周期发放与到期降级投影
 
 **Files:**
 - Create: `internal/commercial/lifecycle.go`、`internal/commercial/lifecycle_test.go`
@@ -346,7 +346,7 @@ git add internal/commercial/lifecycle.go internal/commercial/lifecycle_test.go i
 git commit -m "feat: schedule idempotent monthly benefits and downgrade"
 ```
 
-### Task F05: 原子资源配额与商业路由权限
+### Task 5: F05: 原子资源配额与商业路由权限
 
 **Files:**
 - Create: `internal/commercial/quota.go`、`internal/commercial/quota_test.go`

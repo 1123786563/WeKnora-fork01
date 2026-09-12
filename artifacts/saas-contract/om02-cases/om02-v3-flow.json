@@ -1,0 +1,54 @@
+{
+  "id": "om02-v3-flow",
+  "operation_id": "create-credit-grant",
+  "request": [
+    {
+      "operation_id": "create-credit-grant",
+      "method": "POST",
+      "path": "/api/v3/openmeter/customers/01M29SXXWD6Y35PN7FP4FTWRPX/credits/grants",
+      "body": {
+        "name": "OM-02 starter credits",
+        "funding_method": "none",
+        "currency": "USD",
+        "amount": "100",
+        "expires_after": "PT1H",
+        "key": "om02-20260912-grant-2"
+      },
+      "captures": {
+        "v3grant": "/id"
+      }
+    },
+    {
+      "operation_id": "get-customer-credit-balance",
+      "method": "GET",
+      "path": "/api/v3/openmeter/customers/01M29SXXWD6Y35PN7FP4FTWRPX/credits/balance"
+    },
+    {
+      "operation_id": "create-credit-adjustment",
+      "method": "POST",
+      "path": "/api/v3/openmeter/customers/01M29SXXWD6Y35PN7FP4FTWRPX/credits/adjustments",
+      "body": {
+        "name": "OM-02 manual deduction",
+        "currency": "USD",
+        "amount": "-30"
+      }
+    },
+    {
+      "operation_id": "get-customer-credit-balance",
+      "method": "GET",
+      "path": "/api/v3/openmeter/customers/01M29SXXWD6Y35PN7FP4FTWRPX/credits/balance"
+    },
+    {
+      "operation_id": "list-credit-transactions",
+      "method": "GET",
+      "path": "/api/v3/openmeter/customers/01M29SXXWD6Y35PN7FP4FTWRPX/credits/transactions"
+    },
+    {
+      "operation_id": "list-credit-grants",
+      "method": "GET",
+      "path": "/api/v3/openmeter/customers/01M29SXXWD6Y35PN7FP4FTWRPX/credits/grants"
+    }
+  ],
+  "captures": {},
+  "expected": {}
+}

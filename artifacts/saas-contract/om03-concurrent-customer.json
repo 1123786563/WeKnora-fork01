@@ -1,0 +1,87 @@
+{
+  "check": "OM-03(a) concurrent same-key customer creation, N=8 (ThreadPoolExecutor+Barrier, run-2 key cust1r2)",
+  "method_note": "8 threads, threading.Barrier(8) for simultaneity; analysis rebuilt from om0304-request-log.json because the driver crashed on sorted() AFTER the POSTs fired (crash recorded, requests are primary evidence)",
+  "attempts": [
+    {
+      "worker": 0,
+      "status": 409,
+      "returned_id": null,
+      "request_name": "OM03 concurrent candidate 0"
+    },
+    {
+      "worker": 1,
+      "status": 409,
+      "returned_id": null,
+      "request_name": "OM03 concurrent candidate 1"
+    },
+    {
+      "worker": 2,
+      "status": 409,
+      "returned_id": null,
+      "request_name": "OM03 concurrent candidate 2"
+    },
+    {
+      "worker": 3,
+      "status": 409,
+      "returned_id": null,
+      "request_name": "OM03 concurrent candidate 3"
+    },
+    {
+      "worker": 4,
+      "status": 409,
+      "returned_id": null,
+      "request_name": "OM03 concurrent candidate 4"
+    },
+    {
+      "worker": 5,
+      "status": 409,
+      "returned_id": null,
+      "request_name": "OM03 concurrent candidate 5"
+    },
+    {
+      "worker": 6,
+      "status": 201,
+      "returned_id": "01M29VB1DAMEEEFAY2XFZAFEBC",
+      "request_name": "OM03 concurrent candidate 6"
+    },
+    {
+      "worker": 7,
+      "status": 409,
+      "returned_id": null,
+      "request_name": "OM03 concurrent candidate 7"
+    }
+  ],
+  "summary": {
+    "key": "om0304-20260912-cust1r2",
+    "n_attempts": 8,
+    "n_201": 1,
+    "n_409": 7,
+    "other_statuses": [],
+    "distinct_returned_ids": [
+      "01M29VB1DAMEEEFAY2XFZAFEBC"
+    ],
+    "expected": "exactly one 201 winner, seven 409, one distinct id"
+  },
+  "get_by_id": {
+    "status": 200,
+    "id": "01M29VB1DAMEEEFAY2XFZAFEBC",
+    "key": "om0304-20260912-cust1r2"
+  },
+  "get_by_key": {
+    "status": 404,
+    "id": null,
+    "key": null
+  },
+  "list_filtered_client_side": {
+    "status": 200,
+    "ids_with_same_key": [
+      "01M29VB1DAMEEEFAY2XFZAFEBC"
+    ],
+    "count": 1
+  },
+  "prior_run1_customer": {
+    "id": "01M29V7MWK3KRK6WZVX51PJ1KM",
+    "status": 200,
+    "key": "om0304-20260912-cust1"
+  }
+}

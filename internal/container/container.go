@@ -35,6 +35,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/agent/approval"
 	"github.com/Tencent/WeKnora/internal/application/repository"
+	repoappconn "github.com/Tencent/WeKnora/internal/application/repository/appconnector"
 	dorisRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/doris"
 	elasticsearchRepoV7 "github.com/Tencent/WeKnora/internal/application/repository/retriever/elasticsearch/v7"
 	elasticsearchRepoV8 "github.com/Tencent/WeKnora/internal/application/repository/retriever/elasticsearch/v8"
@@ -47,10 +48,13 @@ import (
 	tencentVectorDBRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/tencentvectordb"
 	weaviateRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/weaviate"
 	"github.com/Tencent/WeKnora/internal/application/service"
+	appconnectorsvc "github.com/Tencent/WeKnora/internal/application/service/appconnector"
 	chatpipeline "github.com/Tencent/WeKnora/internal/application/service/chat_pipeline"
+	commercialsvc "github.com/Tencent/WeKnora/internal/application/service/commercial"
 	"github.com/Tencent/WeKnora/internal/application/service/file"
 	"github.com/Tencent/WeKnora/internal/application/service/memory"
 	"github.com/Tencent/WeKnora/internal/application/service/retriever"
+	domain "github.com/Tencent/WeKnora/internal/commercial"
 	"github.com/Tencent/WeKnora/internal/common"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/database"
@@ -77,6 +81,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/im/wecom"
 	"github.com/Tencent/WeKnora/internal/im/yunzhijia"
 	"github.com/Tencent/WeKnora/internal/infrastructure/docparser"
+	ommeter "github.com/Tencent/WeKnora/internal/infrastructure/openmeter"
 	infra_web_search "github.com/Tencent/WeKnora/internal/infrastructure/web_search"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/mcp"
@@ -84,6 +89,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/models/embedding"
 	"github.com/Tencent/WeKnora/internal/models/limiter"
 	"github.com/Tencent/WeKnora/internal/models/utils/ollama"
+	"github.com/Tencent/WeKnora/internal/payment"
 	"github.com/Tencent/WeKnora/internal/router"
 	"github.com/Tencent/WeKnora/internal/sandbox"
 	"github.com/Tencent/WeKnora/internal/storageallowlist"
@@ -458,6 +464,82 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewIMHandler))
 	must(container.Provide(handler.NewEmbedChannelHandler))
 	must(container.Provide(handler.NewWeKnoraCloudHandler))
+	must(container.Provide(handler.NewCommercialHandler))
+	// W04/A02/A07/A03 app-connector HTTP surface: four single-lifecycle
+	// handlers (installations, connections incl. OAuth, sync status,
+	// actions), each owning its routes and write gate.
+	must(container.Provide(handler.NewAppInstallationHandler))
+	must(container.Provide(handler.NewAppConnectionHandler))
+	must(container.Provide(handler.NewAppSyncHandler))
+	must(container.Provide(handler.NewAppActionHandler))
+	// Commercial fulfillment: the V03-selected gateway (family official_v3;
+	// unconfigured env stays legal as blocked-env) and the background worker
+	// that drains paid orders' fulfillment outbox events into benefits.
+	must(container.Provide(ommeter.NewGatewayFromEnv, dig.As(new(domain.CommercialGateway))))
+	must(container.Provide(commercialsvc.NewFulfillmentService))
+	must(container.Invoke(startCommercialFulfillment))
+	// U05 execution gate: the billable outbound boundary (Begin reserves and
+	// persists dispatched intent before dispatch, Finish settles trusted
+	// usage). Registered only — no Invoke: arming an engine turn with it is
+	// an explicit SetCommercialGate by the commercial request path, so
+	// non-commercial behavior is unchanged.
+	must(container.Provide(commercialsvc.NewExecutionGateService, dig.As(new(domain.ExecutionGate))))
+	// A03 action approval pipeline: the persisted action store and the
+	// dispatch-time credential guard (A02) are always constructed; the U05
+	// execution gate above arms budget reservation. The provider-specific
+	// dispatcher/unknown-resolver adapters stay nil out of the box — Execute
+	// then reports an explicit dispatch-unconfigured error instead of
+	// fabricating an outbound outcome. The handler is armed explicitly so
+	// /apps/actions prepare/approve/execute/get stop failing closed with 501.
+	must(container.Provide(repoappconn.NewActionStore, dig.As(new(appconnectorsvc.ActionStoreSource))))
+	must(container.Provide(repository.NewMCPOAuthBindingStore, dig.As(new(appconnectorsvc.ConnectionCredentialSource))))
+	must(container.Provide(appconnectorsvc.NewCredentialResolver, dig.As(new(appconnectorsvc.A02Guard))))
+	must(container.Provide(func(store appconnectorsvc.ActionStoreSource, guard appconnectorsvc.A02Guard,
+		gate domain.ExecutionGate) *appconnectorsvc.ActionService {
+		return appconnectorsvc.NewActionService(store, guard, gate, nil, nil)
+	}))
+	must(container.Invoke(func(h *handler.AppActionHandler, s *appconnectorsvc.ActionService) {
+		h.SetActionService(s)
+	}))
+	// A02 app OAuth registrations for the first-batch providers. Client
+	// registrations come from env (WEKNORA_APP_OAUTH_<APP>_CLIENT_ID / _SECRET);
+	// an app left unregistered fails closed at CreateConnection with an
+	// explicit 501 instead of minting an unusable connection.
+	must(container.Invoke(func(h *handler.AppConnectionHandler) {
+		providers := handler.DefaultAppOAuthProviderConfigs()
+		for appID := range providers {
+			prefix := "WEKNORA_APP_OAUTH_" + strings.ToUpper(appID) + "_"
+			providers[appID] = handler.AppOAuthProviderConfig{
+				AuthorizeURL: providers[appID].AuthorizeURL,
+				TokenURL:     providers[appID].TokenURL,
+				ClientID:     os.Getenv(prefix + "CLIENT_ID"),
+				ClientSecret: os.Getenv(prefix + "CLIENT_SECRET"),
+			}
+		}
+		h.SetAppOAuthProviders(providers)
+	}))
+	// P02 order pipeline: quote, order and payment status recovery. Channel
+	// adapters arrive from env when configured (WEKNORA_ALIPAY_* /
+	// WEKNORA_WECHAT_*); an empty map stays legal (blocked-env) — checkout
+	// then fails with an explicit unconfigured error while quoting and
+	// ordering still work against the database. A partially configured
+	// channel fails construction and therefore startup.
+	must(container.Provide(payment.ProvidersFromEnv))
+	must(container.Provide(commercialsvc.NewOrderService))
+	must(container.Invoke(func(h *handler.CommercialHandler, s *commercialsvc.OrderService) {
+		h.SetOrderService(s)
+	}))
+	// Provider payment callbacks share the same channel adapters: the
+	// router injects this handler into RegisterCommercialRoutes so a
+	// configured channel's notifications verify, confirm their order and
+	// drive fulfillment instead of answering 503 with nothing persisted.
+	must(container.Provide(handler.NewPaymentCallbacksHandler))
+	// O01 rollout recovery: categorized recovery queue plus audited
+	// replay of pause-safe operations, gated by the commercial rollout
+	// config switches (safe-on defaults). Registered only — the
+	// platform-operator capability check stays unset until OPS auth
+	// wiring lands, so Replay fails closed out of the box.
+	must(container.Provide(commercialsvc.NewRecoveryService))
 	logger.Debugf(ctx, "[Container] HTTP handlers registered")
 
 	// Wire the chat package's local image resolver so multimodal chat can read
@@ -1817,4 +1899,17 @@ func registerAgentRunResourceProtection(repo *service.GormAgentRunResourceReposi
 		return
 	}
 	sandbox.ConfigureDockerResourceProtection(repo)
+}
+
+// startCommercialFulfillment registers the background recovery loop that
+// drains fulfillment outbox events into external benefits. Payment callbacks
+// only enqueue events; this loop runs after boot so callbacks never block on
+// the gateway. Stop is registered with the resource cleaner so a graceful
+// shutdown does not orphan the loop.
+func startCommercialFulfillment(svc *commercialsvc.FulfillmentService, cleaner interfaces.ResourceCleaner) {
+	svc.StartBackground(context.Background())
+	cleaner.RegisterWithName("CommercialFulfillment", func() error {
+		svc.Stop()
+		return nil
+	})
 }

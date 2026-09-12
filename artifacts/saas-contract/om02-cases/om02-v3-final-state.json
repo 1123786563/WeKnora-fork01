@@ -1,0 +1,23 @@
+{
+  "id": "om02-v3-final-state",
+  "operation_id": "get-customer-credit-balance",
+  "request": [
+    {
+      "operation_id": "get-customer-credit-balance",
+      "method": "GET",
+      "path": "/api/v3/openmeter/customers/01M29SXXWD6Y35PN7FP4FTWRPX/credits/balance"
+    },
+    {
+      "operation_id": "list-credit-grants",
+      "method": "GET",
+      "path": "/api/v3/openmeter/customers/01M29SXXWD6Y35PN7FP4FTWRPX/credits/grants"
+    },
+    {
+      "operation_id": "list-credit-transactions",
+      "method": "GET",
+      "path": "/api/v3/openmeter/customers/01M29SXXWD6Y35PN7FP4FTWRPX/credits/transactions"
+    }
+  ],
+  "captures": {},
+  "expected": {}
+}

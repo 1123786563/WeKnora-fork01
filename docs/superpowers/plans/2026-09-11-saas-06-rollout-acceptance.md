@@ -33,7 +33,7 @@ O01依赖C04/C05/U03/A03；O02依赖A07与影子计量；O03在各门槛完成�
 
 operations文档负责逐状态runbook；cmd/saas-migrate只迁移指定空间；release_gate检查真实证据完整性。
 
-### Task O01: 运营恢复队列、审计与收费开关
+### Task 1: O01: 运营恢复队列、审计与收费开关
 
 **Files:**
 - Create: `internal/commercial/rollout.go`、`internal/commercial/rollout_test.go`
@@ -108,7 +108,7 @@ git add internal/commercial/rollout.go internal/commercial/rollout_test.go inter
 git commit -m "feat: recover commercial work across rollout pauses"
 ```
 
-### Task O02: 旧空间与数据源迁移、影子计量和注销保留
+### Task 2: O02: 旧空间与数据源迁移、影子计量和注销保留
 
 **Files:**
 - Create: `internal/commercial/migration.go`、`internal/commercial/migration_test.go`
@@ -181,7 +181,7 @@ git add internal/commercial/migration.go internal/commercial/migration_test.go c
 git commit -m "feat: migrate spaces without invented commercial state"
 ```
 
-### Task O03: 按证据收口全部接口与产品联验
+### Task 3: O03: 按证据收口全部接口与产品联验
 
 **Files:**
 - Create: `scripts/saas/release_gate.py`、`scripts/saas/release_gate_test.py`

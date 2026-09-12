@@ -1,0 +1,686 @@
+{
+ "records": {
+  "AC-01": {
+   "evidence": [],
+   "level": "browser",
+   "reason": "blocked-env: product joint verification AC-01 needs real OpenMeter/payment/connector services and a browser session; full-chain success NOT claimed; partial unit/integration evidence exists per-task (see acceptance doc)",
+   "status": "blocked-env"
+  },
+  "AC-02": {
+   "evidence": [],
+   "level": "browser",
+   "reason": "blocked-env: product joint verification AC-02 needs real OpenMeter/payment/connector services and a browser session; full-chain success NOT claimed; partial unit/integration evidence exists per-task (see acceptance doc)",
+   "status": "blocked-env"
+  },
+  "AC-03": {
+   "evidence": [],
+   "level": "browser",
+   "reason": "blocked-env: product joint verification AC-03 needs real OpenMeter/payment/connector services and a browser session; full-chain success NOT claimed; partial unit/integration evidence exists per-task (see acceptance doc)",
+   "status": "blocked-env"
+  },
+  "AC-04": {
+   "evidence": [],
+   "level": "browser",
+   "reason": "blocked-env: product joint verification AC-04 needs real OpenMeter/payment/connector services and a browser session; full-chain success NOT claimed; partial unit/integration evidence exists per-task (see acceptance doc)",
+   "status": "blocked-env"
+  },
+  "AC-05": {
+   "evidence": [],
+   "level": "browser",
+   "reason": "blocked-env: product joint verification AC-05 needs real OpenMeter/payment/connector services and a browser session; full-chain success NOT claimed; partial unit/integration evidence exists per-task (see acceptance doc)",
+   "status": "blocked-env"
+  },
+  "AC-06": {
+   "evidence": [],
+   "level": "browser",
+   "reason": "blocked-env: product joint verification AC-06 needs real OpenMeter/payment/connector services and a browser session; full-chain success NOT claimed; partial unit/integration evidence exists per-task (see acceptance doc)",
+   "status": "blocked-env"
+  },
+  "AC-07": {
+   "evidence": [],
+   "level": "browser",
+   "reason": "blocked-env: product joint verification AC-07 needs real OpenMeter/payment/connector services and a browser session; full-chain success NOT claimed; partial unit/integration evidence exists per-task (see acceptance doc)",
+   "status": "blocked-env"
+  },
+  "AC-08": {
+   "evidence": [],
+   "level": "browser",
+   "reason": "blocked-env: product joint verification AC-08 needs real OpenMeter/payment/connector services and a browser session; full-chain success NOT claimed; partial unit/integration evidence exists per-task (see acceptance doc)",
+   "status": "blocked-env"
+  },
+  "AC-09": {
+   "evidence": [],
+   "level": "browser",
+   "reason": "blocked-env: product joint verification AC-09 needs real OpenMeter/payment/connector services and a browser session; full-chain success NOT claimed; partial unit/integration evidence exists per-task (see acceptance doc)",
+   "status": "blocked-env"
+  },
+  "AC-10": {
+   "evidence": [],
+   "level": "browser",
+   "reason": "blocked-env: product joint verification AC-10 needs real OpenMeter/payment/connector services and a browser session; full-chain success NOT claimed; partial unit/integration evidence exists per-task (see acceptance doc)",
+   "status": "blocked-env"
+  },
+  "AC-11": {
+   "evidence": [],
+   "level": "browser",
+   "reason": "blocked-env: product joint verification AC-11 needs real OpenMeter/payment/connector services and a browser session; full-chain success NOT claimed; partial unit/integration evidence exists per-task (see acceptance doc)",
+   "status": "blocked-env"
+  },
+  "AC-12": {
+   "evidence": [],
+   "level": "browser",
+   "reason": "blocked-env: product joint verification AC-12 needs real OpenMeter/payment/connector services and a browser session; full-chain success NOT claimed; partial unit/integration evidence exists per-task (see acceptance doc)",
+   "status": "blocked-env"
+  },
+  "AC-13": {
+   "evidence": [],
+   "level": "browser",
+   "reason": "blocked-env: product joint verification AC-13 needs real OpenMeter/payment/connector services and a browser session; full-chain success NOT claimed; partial unit/integration evidence exists per-task (see acceptance doc)",
+   "status": "blocked-env"
+  },
+  "AC-14": {
+   "evidence": [],
+   "level": "browser",
+   "reason": "blocked-env: product joint verification AC-14 needs real OpenMeter/payment/connector services and a browser session; full-chain success NOT claimed; partial unit/integration evidence exists per-task (see acceptance doc)",
+   "status": "blocked-env"
+  },
+  "AC-15": {
+   "evidence": [],
+   "level": "browser",
+   "reason": "blocked-env: product joint verification AC-15 needs real OpenMeter/payment/connector services and a browser session; full-chain success NOT claimed; partial unit/integration evidence exists per-task (see acceptance doc)",
+   "status": "blocked-env"
+  },
+  "AC-16": {
+   "evidence": [],
+   "level": "browser",
+   "reason": "blocked-env: product joint verification AC-16 needs real OpenMeter/payment/connector services and a browser session; full-chain success NOT claimed; partial unit/integration evidence exists per-task (see acceptance doc)",
+   "status": "blocked-env"
+  },
+  "AC-17": {
+   "evidence": [],
+   "level": "browser",
+   "reason": "blocked-env: product joint verification AC-17 needs real OpenMeter/payment/connector services and a browser session; full-chain success NOT claimed; partial unit/integration evidence exists per-task (see acceptance doc)",
+   "status": "blocked-env"
+  },
+  "AC-18": {
+   "evidence": [],
+   "level": "browser",
+   "reason": "blocked-env: product joint verification AC-18 needs real OpenMeter/payment/connector services and a browser session; full-chain success NOT claimed; partial unit/integration evidence exists per-task (see acceptance doc)",
+   "status": "blocked-env"
+  },
+  "AC-19": {
+   "evidence": [],
+   "level": "browser",
+   "reason": "blocked-env: product joint verification AC-19 needs real OpenMeter/payment/connector services and a browser session; full-chain success NOT claimed; partial unit/integration evidence exists per-task (see acceptance doc)",
+   "status": "blocked-env"
+  },
+  "AC-20": {
+   "evidence": [],
+   "level": "browser",
+   "reason": "blocked-env: product joint verification AC-20 needs real OpenMeter/payment/connector services and a browser session; full-chain success NOT claimed; partial unit/integration evidence exists per-task (see acceptance doc)",
+   "status": "blocked-env"
+  },
+  "ALI-01": {
+   "status": "pass",
+   "level": "provider",
+   "evidence": [
+    "artifacts/alipay-sandbox/: sandbox runtime precreate 10000 + qr.alipay.com + same-id reconciliation (c472408..436ec1c + this commit)",
+    "environment: official Alipay sandbox gateway (digest-pinned app 9021000162655520); real signed business requests; not a production merchant deployment"
+   ]
+  },
+  "ALI-02": {
+   "evidence": [
+    "ledger task C03 commit 187570b96658a3733d51a7786e067d27c36c2301",
+    "go test ./internal/payment -run TestAlipay -count=1",
+    "14/14 pass (unit: exact-fen amounts, tampered body/key/app_id/seller rejected, four-status mapping, fact carries no local identity)"
+   ],
+   "level": "unit",
+   "status": "pass"
+  },
+  "ALI-03": {
+   "status": "pass",
+   "level": "provider",
+   "evidence": [
+    "artifacts/alipay-sandbox/: signed query nonexistent -> real ACQ.TRADE_NOT_EXIST; page.pay orders observable WAIT_BUYER_PAY->TRADE_SUCCESS; unpaid precreate invisible (documented)",
+    "environment: official Alipay sandbox gateway (digest-pinned app 9021000162655520); real signed business requests; not a production merchant deployment"
+   ]
+  },
+  "ALI-04": {
+   "status": "pass",
+   "level": "provider",
+   "evidence": [
+    "artifacts/alipay-sandbox/ali05-evidence.json: unpaid refund rejected consistently on same key; PAID full refund + QueryRefund + same-key re-file idempotent (provider code path)",
+    "environment: official Alipay sandbox gateway (digest-pinned app 9021000162655520); real signed business requests; not a production merchant deployment"
+   ]
+  },
+  "ALI-05": {
+   "status": "pass",
+   "level": "provider",
+   "evidence": [
+    "artifacts/alipay-sandbox/ali05-evidence.json: real sandbox payment 0.01 CNY (trade 2026091222001429920511776519) -> full refund -> refund query -> idempotent re-file; environment note: official sandbox, not production channel",
+    "environment: official Alipay sandbox gateway (digest-pinned app 9021000162655520); real signed business requests; not a production merchant deployment"
+   ]
+  },
+  "BUD-01": {
+   "evidence": [
+    "ledger task U02 commit 0cfa73ec891bc1449c68c4a7ea32d2a79d4689ea",
+    "go test ./internal/commercial ./internal/application/repository/commercial -run \"Test(Available|Budget)\" -race -count=1",
+    "10/10 pass with -race (SQLite: concurrent reservations never exceed verifiable lower bound)"
+   ],
+   "level": "integration",
+   "status": "pass"
+  },
+  "BUD-02": {
+   "evidence": [
+    "ledger task U02 commit 0cfa73ec891bc1449c68c4a7ea32d2a79d4689ea",
+    "go test ./internal/commercial ./internal/application/repository/commercial -run \"Test(Available|Budget)\" -race -count=1",
+    "10/10 pass with -race (shared budget store never duplicated across consumers)"
+   ],
+   "level": "integration",
+   "status": "pass"
+  },
+  "BUD-03": {
+   "evidence": [
+    "ledger task U02 commit 0cfa73ec891bc1449c68c4a7ea32d2a79d4689ea",
+    "go test ./internal/commercial ./internal/application/repository/commercial -run \"Test(Available|Budget)\" -race -count=1",
+    "10/10 pass with -race (append and negative-protection semantics)"
+   ],
+   "level": "integration",
+   "status": "pass"
+  },
+  "BUD-04": {
+   "evidence": [
+    "ledger task U04 commit a137c794a7936fa89edb877d4a2c0687643a35e6",
+    "go test ./internal/commercial ./internal/application/service/commercial -run \"Test(ExpiredLease|BudgetRecovery|BudgetExtend)\" -race -count=1",
+    "8/8 pass with -race (held-only release, fail-closed state table for dispatched/unknown)"
+   ],
+   "level": "integration",
+   "status": "pass"
+  },
+  "BUD-05": {
+   "evidence": [
+    "ledger task U03 commit 3ef37426b75da3f3172ee895f049baa35a170c2c",
+    "go test ./internal/commercial ./internal/application/service/commercial -run TestSettlement -race -count=1",
+    "10/10 pass with -race (KeepProtection for dispatched/unknown/sent/accepted; settlement revision keys)"
+   ],
+   "level": "integration",
+   "status": "pass"
+  },
+  "BUD-06": {
+   "evidence": [
+    "ledger task U03 commit 3ef37426b75da3f3172ee895f049baa35a170c2c",
+    "go test ./internal/commercial ./internal/application/service/commercial -run TestSettlement -race -count=1",
+    "10/10 pass with -race (protection windows across expiry and refund locking)"
+   ],
+   "level": "integration",
+   "status": "pass"
+  },
+  "BUD-07": {
+   "evidence": [
+    "ledger task U03 commit 3ef37426b75da3f3172ee895f049baa35a170c2c",
+    "go test ./internal/commercial ./internal/application/service/commercial -run TestSettlement -race -count=1",
+    "10/10 pass with -race (unconfirmed consumption keeps protection; V03 admission gate refuses non-runtime evidence)"
+   ],
+   "level": "integration",
+   "status": "pass"
+  },
+  "BUD-08": {
+   "evidence": [
+    "ledger task U05 commit 0a380921a199630d2ee1ce345582cc90e3974fde",
+    "go test ./internal/commercial ... -run \"Test(UnknownFunding|Commercial|Usage)\" -count=1",
+    "pass (output/duration limits actively reject with ErrOverLimit on billable paths)"
+   ],
+   "level": "unit",
+   "status": "pass"
+  },
+  "COM-01": {
+   "evidence": [
+    "ledger task F02 commit bb7e8c6b64c64ba34fda6d8bb7176b577a52e1cb",
+    "go test ./internal/commercial ./internal/application/repository/commercial -run 'Test(BillingAccess|Account)' -count=1",
+    "4/4 pass (unit level: tenant-bound BillingAccount permission matrix)"
+   ],
+   "level": "unit",
+   "status": "pass"
+  },
+  "COM-02": {
+   "evidence": [
+    "ledger task F03 commit 2f4462ace578d5db341f7ce5284ba24bdefa63dc",
+    "go test ./internal/commercial -run 'Test(Prorate|Quote|Catalog)' -count=1",
+    "12/12 pass (published catalog immutable, quote validation/proration)"
+   ],
+   "level": "unit",
+   "status": "pass"
+  },
+  "COM-03": {
+   "evidence": [
+    "ledger task C01 commit 19e64ef98f6640610cb48b51a60bf4fd437a4c8b",
+    "go test ./internal/commercial ./internal/application/repository/commercial -run \"Test(Payment|Order|Outbox)\" -count=1",
+    "12/12 pass (SQLite: duplicate payment confirms one order, one fulfill event, outbox crash recovery)"
+   ],
+   "level": "integration",
+   "status": "pass"
+  },
+  "COM-04": {
+   "evidence": [
+    "ledger task C04 commit 1e7de9ac9c58c44ec4fb9509bdad1cd0376d0881",
+    "go test ./internal/commercial ./internal/infrastructure/openmeter ./internal/application/service/commercial -run \"Test(Fulfillment|ApplyBenefit)\" -count=1",
+    "12/12 pass (benefit keys per order line, unknown gateway results never recorded as success, worker DB tests)"
+   ],
+   "level": "integration",
+   "status": "pass"
+  },
+  "COM-05": {
+   "evidence": [
+    "ledger task C05 commit d22aad3ca5232a31b6d87bef08e36383c5bcd3bd",
+    "go test ./internal/commercial ./internal/application/service/commercial -run \"Test(Refund|RevokeBenefit)\" -count=1",
+    "11/11 pass (refund state machine, revocation-pending keeps lock, failed_confirmed releases)"
+   ],
+   "level": "integration",
+   "status": "pass"
+  },
+  "COM-06": {
+   "evidence": [
+    "ledger task C05 commit d22aad3ca5232a31b6d87bef08e36383c5bcd3bd",
+    "go test ./internal/commercial ./internal/application/service/commercial -run \"Test(Refund|RevokeBenefit)\" -count=1",
+    "11/11 pass (unknown/pending never unlocks funds; stable refund keys; no double payout)"
+   ],
+   "level": "integration",
+   "status": "pass"
+  },
+  "COM-07": {
+   "evidence": [
+    "ledger task F04 commit af899cefb0bfb0f7d013e8ee057f40e7e7a07717",
+    "go test ./internal/commercial ./internal/application/service/commercial -run 'Test(Monthly|Lifecycle)' -count=1",
+    "12/12 pass (SQLite: concurrent single job per period, yearly monthly ticks, early renewal does not re-grant; quota ceilings via F05 195cf6ec)"
+   ],
+   "level": "integration",
+   "status": "pass"
+  },
+  "CON-01": {
+   "evidence": [
+    "ledger task A01 commit a798e777ffb18e86c466ac96753564eb3111be1d",
+    "go test ./internal/application/repository/appconnector -count=1",
+    "7/7 pass (SQLite: same app in two spaces independent; multi-connection installs; deactivation blocks new calls)"
+   ],
+   "level": "integration",
+   "status": "pass"
+  },
+  "CON-02": {
+   "evidence": [
+    "ledger task A01 commit a798e777ffb18e86c466ac96753564eb3111be1d",
+    "go test ./internal/application/repository/appconnector -count=1",
+    "7/7 pass (personal owner-only, space connections need explicit grants, cross-tenant rejected)"
+   ],
+   "level": "integration",
+   "status": "pass"
+  },
+  "CON-03": {
+   "evidence": [
+    "ledger task A02 commit 1b5f1498f35f3446ac8e009e6b5a2b3116a443d8",
+    "go test ./internal/appconnector ./internal/application/repository -run \"Test(OAuth|MCPOAuth)\" -count=1",
+    "17/17 pass (state one-time redemption, replay/expiry/wrong-actor rejected, concurrent refresh single winner)"
+   ],
+   "level": "integration",
+   "status": "pass"
+  },
+  "CON-04": {
+   "evidence": [
+    "ledger task A02 commit 1b5f1498f35f3446ac8e009e6b5a2b3116a443d8",
+    "go test ./internal/application/service/appconnector -count=1",
+    "6/6 pass (member leave revokes personal connections + auth_version bump; secrets never in sanitized views)"
+   ],
+   "level": "integration",
+   "status": "pass"
+  },
+  "CON-05": {
+   "evidence": [
+    "ledger task A03 commit 02cc527657d0418a2356db33f4eaf1e0f5aa1eb9",
+    "go test ./internal/appconnector ./internal/agent/approval -run \"Test(GeneralWrite|Action|Approval)\" -count=1",
+    "15/15 pass (snapshot+digest lifecycle: wrong/stale digest rejected, permission revoked after approval blocks dispatch)"
+   ],
+   "level": "integration",
+   "status": "pass"
+  },
+  "CON-06": {
+   "evidence": [
+    "ledger task A03 commit 02cc527657d0418a2356db33f4eaf1e0f5aa1eb9",
+    "go test ./internal/application/service/appconnector ./internal/application/repository/appconnector -count=1",
+    "pass (send pre-auth independent scope, budget approval is not write approval, 8-concurrent single winner)"
+   ],
+   "level": "integration",
+   "status": "pass"
+  },
+  "CON-07": {
+   "evidence": [
+    "ledger task A04 commit 21bb6cd535e8ee336117d4741d4764bfaf7b8863",
+    "go test ./internal/appconnector ./internal/agent/approval -run \"Test(HTTP|MCP|Action)\" -count=1",
+    "pass (MCP tool schema/risk version pin -> ErrMCPDefinitionChanged; readOnly hint advisory only; stdio isolation)"
+   ],
+   "level": "unit",
+   "status": "pass"
+  },
+  "CON-08": {
+   "evidence": [
+    "ledger task A04 commit 21bb6cd535e8ee336117d4741d4764bfaf7b8863",
+    "go test ./internal/appconnector ./internal/agent/approval -run \"Test(HTTP|MCP|Action)\" -count=1",
+    "pass (internal destinations rejected, DNS rebinding mixed records rejected, per-hop redirect re-validation, auth headers stripped cross-host)"
+   ],
+   "level": "unit",
+   "status": "pass"
+  },
+  "FS-01": {
+   "evidence": [
+    "ledger task A05 commit 0888fac7298b6439a5a91335252dedf214fd3518",
+    "go test ./internal/appconnector -run TestFeishu -count=1",
+    "9/9 pass (httptest stub: host/path/token/scope contract pinned; wrong target rejected with zero network dispatch)"
+   ],
+   "level": "integration",
+   "status": "pass"
+  },
+  "FS-02": {
+   "evidence": [
+    "ledger task A05 commit 0888fac7298b6439a5a91335252dedf214fd3518",
+    "go test ./internal/appconnector -run TestFeishu -count=1",
+    "9/9 pass (approved snapshot byte-equal; revoke after approval parks dispatch)"
+   ],
+   "level": "integration",
+   "status": "pass"
+  },
+  "FS-03": {
+   "evidence": [
+    "ledger task A05 commit 0888fac7298b6439a5a91335252dedf214fd3518",
+    "go test ./internal/appconnector -run TestFeishu -count=1",
+    "9/9 pass (uuid window idempotency; response loss -> unknown -> query resolves, never blind resend)"
+   ],
+   "level": "integration",
+   "status": "pass"
+  },
+  "FS-04": {
+   "evidence": [],
+   "level": "provider",
+   "reason": "blocked-env: real Feishu send requires a user-designated authorized test chat and credentials; not claimed (httptest stub cannot substitute; require_pass enforces level=provider)",
+   "status": "blocked-env"
+  },
+  "NO-01": {
+   "evidence": [
+    "ledger task A06 commit 1cfc95770528cd681485a90e6a7ccf122f27bb23",
+    "go test ./internal/appconnector -run TestNotion -count=1",
+    "12/12 pass (httptest stub: api.notion.com /v1/pages, Notion-Version 2022-06-28, parent page_id, insert capability required)"
+   ],
+   "level": "integration",
+   "status": "pass"
+  },
+  "NO-02": {
+   "evidence": [
+    "ledger task A06 commit 1cfc95770528cd681485a90e6a7ccf122f27bb23",
+    "go test ./internal/appconnector -run TestNotion -count=1",
+    "12/12 pass (out-of-parent-scope rejected pre-network; revoke after approval parks; snapshot byte-equal)"
+   ],
+   "level": "integration",
+   "status": "pass"
+  },
+  "NO-03": {
+   "evidence": [
+    "ledger task A06 commit 1cfc95770528cd681485a90e6a7ccf122f27bb23",
+    "go test ./internal/appconnector -run TestNotion -count=1",
+    "12/12 pass (partial append BlocksDone persisted, only remaining blocks resent; crash resumes from persisted page_id exactly once)"
+   ],
+   "level": "integration",
+   "status": "pass"
+  },
+  "NO-04": {
+   "evidence": [],
+   "level": "provider",
+   "reason": "blocked-env: real Notion page creation requires a user-designated test parent page and integration credentials; not claimed (require_pass enforces level=provider)",
+   "status": "blocked-env"
+  },
+  "OM-01": {
+   "status": "pass",
+   "level": "provider",
+   "evidence": [
+    "artifacts/saas-contract/om01-evidence.json: digest-matched official image; 4 GET routes application-layer reachable",
+    "environment note: official v1.0.0-beta.232 image via local docker compose (digest-verified OM-01); real business requests executed; local deployment, not cloud production"
+   ]
+  },
+  "OM-02": {
+   "status": "pass",
+   "level": "provider",
+   "evidence": [
+    "artifacts/saas-contract/om02-differences.md: V2/V3 all five aspects runtime-verified; V3 authoritative; header idempotency double-issues (critical)",
+    "environment note: official v1.0.0-beta.232 image via local docker compose (digest-verified OM-01); real business requests executed; local deployment, not cloud production"
+   ]
+  },
+  "OM-03": {
+   "status": "pass",
+   "level": "provider",
+   "evidence": [
+    "artifacts/saas-contract/om0304-report.md: 8-way concurrent 1x201+7x409 one ULID; retry-safe; publish replay state-guarded",
+    "environment note: official v1.0.0-beta.232 image via local docker compose (digest-verified OM-01); real business requests executed; local deployment, not cloud production"
+   ]
+  },
+  "OM-04": {
+   "status": "pass",
+   "level": "provider",
+   "evidence": [
+    "artifacts/saas-contract/om0304-report.md: DB-constraint dedup (SQLSTATE 23505); crash-retry exactly-one funded entry; V2 contrast double-creates",
+    "environment note: official v1.0.0-beta.232 image via local docker compose (digest-verified OM-01); real business requests executed; local deployment, not cloud production"
+   ]
+  },
+  "OM-05": {
+   "status": "pass",
+   "level": "provider",
+   "evidence": [
+    "artifacts/saas-contract/om0506-cases/s16-om0506b-v2-order.json: natural period reset, used-not-refunded, priority burn with spill",
+    "environment note: official v1.0.0-beta.232 image via local docker compose (digest-verified OM-01); real business requests executed; local deployment, not cloud production"
+   ]
+  },
+  "OM-06": {
+   "status": "pass",
+   "level": "provider",
+   "evidence": [
+    "artifacts/saas-contract/om0506-cases/s9-om06b-timelapse.json: expiry time-lapse 100->60; leap/month-end echo exact; decimal precision exact",
+    "environment note: official v1.0.0-beta.232 image via local docker compose (digest-verified OM-01); real business requests executed; local deployment, not cloud production"
+   ]
+  },
+  "OM-07": {
+   "status": "pass",
+   "level": "provider",
+   "evidence": [
+    "artifacts/saas-contract/om0708-report.md: upgrade chain price follows plan 1/2/3/1, no re-issuance, cancel preserves grants",
+    "environment note: official v1.0.0-beta.232 image via local docker compose (digest-verified OM-01); real business requests executed; local deployment, not cloud production"
+   ]
+  },
+  "OM-08": {
+   "status": "pass",
+   "level": "provider",
+   "evidence": [
+    "artifacts/saas-contract/om0708-report.md: void all-or-nothing exact + batch isolation + idempotent repeat + 409 expired guard (partial-void unsupported, disclosed)",
+    "environment note: official v1.0.0-beta.232 image via local docker compose (digest-verified OM-01); real business requests executed; local deployment, not cloud production"
+   ]
+  },
+  "OM-09": {
+   "status": "pass",
+   "level": "provider",
+   "evidence": [
+    "artifacts/saas-contract/om0910-cases/om09-settlement.json: external settlement authorized/settled 200; repeat settled 412 exactly-once; one funded entry",
+    "environment note: official v1.0.0-beta.232 image via local docker compose (digest-verified OM-01); real business requests executed; local deployment, not cloud production"
+   ]
+  },
+  "OM-10": {
+   "status": "pass",
+   "level": "provider",
+   "evidence": [
+    "artifacts/saas-contract/om0910-cases/om10-part2.json: no atomic interface; live in-flight authority; overdraw accepted 202 clamped at 0 -> platform admission mandatory",
+    "environment note: official v1.0.0-beta.232 image via local docker compose (digest-verified OM-01); real business requests executed; local deployment, not cloud production"
+   ]
+  },
+  "OPS-01": {
+   "evidence": [
+    "ledger task O01 commit bf5ab4d35ad357452ebe0f8a68e87769e5fc97cc",
+    "go test ./internal/commercial ./internal/application/service/commercial -run \"Test(Rollback|Recovery)\" -count=1",
+    "pass (paid recovery, settlement and unknown write recovery categories; outbox replay via C01 19e64ef)"
+   ],
+   "level": "integration",
+   "status": "pass"
+  },
+  "OPS-02": {
+   "evidence": [
+    "ledger task O02 commit 4e99dc9",
+    "go test ./internal/commercial -run TestMigration -count=1",
+    "9/9 pass (deletion blocked while in-flight, no auto-delete without retention policy, history preserved)"
+   ],
+   "level": "integration",
+   "status": "pass"
+  },
+  "OPS-03": {
+   "evidence": [
+    "ledger task O01 commit bf5ab4d35ad357452ebe0f8a68e87769e5fc97cc",
+    "go test ./internal/commercial ./internal/application/service/commercial -run \"Test(Rollback|Recovery)\" -count=1",
+    "pass (rollback keeps paid recovery + settlement; callbacks/query/refund paths stay runnable)"
+   ],
+   "level": "integration",
+   "status": "pass"
+  },
+  "OPS-04": {
+   "evidence": [
+    "ledger task W02 commit 7adec104eefc0a4f87e5eb84ad090cc47d6269ec",
+    "pnpm --filter @weknora/web test",
+    "9/9 pass (unit: paid vs fulfilled, pending, closed, refund-processing states; browser/e2e not run -> browser level stays unfinished)"
+   ],
+   "level": "unit",
+   "status": "pass"
+  },
+  "SYNC-01": {
+   "evidence": [
+    "ledger task A07 commit 0e30173103abd4f24e2c07b7c65c3ffc2c409537",
+    "go test ./internal/appconnector ./internal/application/service ./internal/datasource -run \"Test(Sync|DataSource)\" -count=1",
+    "pass (SQLite + stubs: checkpoint gate, cursor recovery without duplicates, lease fencing, pause reasons, source-deletion default-keep; real Feishu/Notion endpoints blocked-env)"
+   ],
+   "level": "integration",
+   "status": "pass"
+  },
+  "SYNC-02": {
+   "evidence": [
+    "ledger task A07 commit 0e30173103abd4f24e2c07b7c65c3ffc2c409537",
+    "go test ./internal/appconnector ./internal/application/service ./internal/datasource -run \"Test(Sync|DataSource)\" -count=1",
+    "pass (SQLite + stubs: checkpoint gate, cursor recovery without duplicates, lease fencing, pause reasons, source-deletion default-keep; real Feishu/Notion endpoints blocked-env)"
+   ],
+   "level": "integration",
+   "status": "pass"
+  },
+  "SYNC-03": {
+   "evidence": [
+    "ledger task A07 commit 0e30173103abd4f24e2c07b7c65c3ffc2c409537",
+    "go test ./internal/appconnector ./internal/application/service ./internal/datasource -run \"Test(Sync|DataSource)\" -count=1",
+    "pass (SQLite + stubs: checkpoint gate, cursor recovery without duplicates, lease fencing, pause reasons, source-deletion default-keep; real Feishu/Notion endpoints blocked-env)"
+   ],
+   "level": "integration",
+   "status": "pass"
+  },
+  "SYNC-04": {
+   "evidence": [
+    "ledger task A07 commit 0e30173103abd4f24e2c07b7c65c3ffc2c409537",
+    "go test ./internal/appconnector ./internal/application/service ./internal/datasource -run \"Test(Sync|DataSource)\" -count=1",
+    "pass (SQLite + stubs: checkpoint gate, cursor recovery without duplicates, lease fencing, pause reasons, source-deletion default-keep; real Feishu/Notion endpoints blocked-env)"
+   ],
+   "level": "integration",
+   "status": "pass"
+  },
+  "SYNC-05": {
+   "evidence": [
+    "ledger task A07 commit 0e30173103abd4f24e2c07b7c65c3ffc2c409537",
+    "go test ./internal/appconnector ./internal/application/service ./internal/datasource -run \"Test(Sync|DataSource)\" -count=1",
+    "pass (SQLite + stubs: checkpoint gate, cursor recovery without duplicates, lease fencing, pause reasons, source-deletion default-keep; real Feishu/Notion endpoints blocked-env)"
+   ],
+   "level": "integration",
+   "status": "pass"
+  },
+  "USE-01": {
+   "evidence": [
+    "ledger task U01 commit 5449a1c40dd6f79438837fbdf895f58145f3f811",
+    "go test ./internal/commercial ./internal/application/repository/commercial -run \"Test(BYOK|Usage)\" -count=1",
+    "14/14 pass (BYOK exempt only for model dimension; client-forged funding rejected before dispatch)"
+   ],
+   "level": "unit",
+   "status": "pass"
+  },
+  "USE-02": {
+   "evidence": [
+    "ledger task U05 commit 0a380921a199630d2ee1ce345582cc90e3974fde",
+    "go test ./internal/commercial ... -run \"Test(UnknownFunding|Commercial|Usage)\" -count=1",
+    "pass (display-only parent aggregates rejected with ErrNotBillable; no double counting)"
+   ],
+   "level": "unit",
+   "status": "pass"
+  },
+  "USE-03": {
+   "evidence": [
+    "ledger task U05 commit 0a380921a199630d2ee1ce345582cc90e3974fde",
+    "go test ./internal/commercial ... -run \"Test(UnknownFunding|Commercial|Usage)\" -count=1",
+    "pass (Finish accepts only server-trusted final usage facts)"
+   ],
+   "level": "unit",
+   "status": "pass"
+  },
+  "USE-04": {
+   "evidence": [
+    "ledger task U03 commit 3ef37426b75da3f3172ee895f049baa35a170c2c",
+    "go test ./internal/commercial ./internal/application/service/commercial -run TestSettlement -race -count=1",
+    "10/10 pass with -race (settlement revision keys; corrections reuse keys, no double settle)"
+   ],
+   "level": "integration",
+   "status": "pass"
+  },
+  "USE-05": {
+   "evidence": [
+    "ledger task F01 commit 5a1111e8e77b3338cbc364656c475c6c90cacf7a",
+    "go test ./internal/commercial -run 'Test(MonthBoundary|ParseCredits|CreditsString)' -count=1",
+    "3/3 pass (fixed-point credits parsing/formatting, month boundaries)"
+   ],
+   "level": "unit",
+   "status": "pass"
+  },
+  "USE-06": {
+   "evidence": [
+    "ledger task U05 commit 0a380921a199630d2ee1ce345582cc90e3974fde",
+    "go test ./internal/commercial ... -run \"Test(UnknownFunding|Commercial|Usage)\" -count=1",
+    "pass (billed usage retained, un-used reservations released, abnormal cost rejected)"
+   ],
+   "level": "unit",
+   "status": "pass"
+  },
+  "WX-01": {
+   "evidence": [],
+   "level": "provider",
+   "reason": "pending: no real WeChat merchant configuration; C02 covers callback signature/decrypt/replay only (order, close, query and refund chains not exercised even at unit level in the ledger)",
+   "status": "pending"
+  },
+  "WX-02": {
+   "evidence": [
+    "ledger task C02 commit e269415e7e1f2dcd9cbdce71b9162fdaea6e4e8d",
+    "go test ./internal/payment -run TestWechat -count=1",
+    "9/9 pass (unit: tampered body/key/serial/ts/nonce rejected, expired timestamps rejected, valid signature + AES-256-GCM decrypt + mchid/appid checks, duplicates do not re-fulfill)"
+   ],
+   "level": "unit",
+   "status": "pass"
+  },
+  "WX-03": {
+   "evidence": [],
+   "level": "provider",
+   "reason": "pending: no real WeChat merchant configuration; C02 covers callback signature/decrypt/replay only (order, close, query and refund chains not exercised even at unit level in the ledger)",
+   "status": "pending"
+  },
+  "WX-04": {
+   "evidence": [],
+   "level": "provider",
+   "reason": "pending: no real WeChat merchant configuration; C02 covers callback signature/decrypt/replay only (order, close, query and refund chains not exercised even at unit level in the ledger)",
+   "status": "pending"
+  },
+  "WX-05": {
+   "evidence": [],
+   "level": "provider",
+   "reason": "blocked-env: real controlled WeChat payment->entitlement->partial use->refund chain requires an authorized test merchant; not claimed (mock cannot substitute; require_pass enforces level=provider)",
+   "status": "blocked-env"
+  }
+ }
+}

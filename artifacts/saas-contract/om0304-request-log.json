@@ -1,0 +1,1294 @@
+{
+  "base_url": "http://127.0.0.1:48888",
+  "namespace": "om0304-20260912",
+  "request_count": 36,
+  "requests": [
+    {
+      "ts": "2026-09-12T03:42:21.783191+00:00",
+      "label": "om03a-concurrent-6",
+      "method": "POST",
+      "path": "/api/v3/openmeter/customers",
+      "request_body": {
+        "key": "om0304-20260912-cust1r2",
+        "name": "OM03 concurrent candidate 6"
+      },
+      "status": 201,
+      "response_json": {
+        "created_at": "2026-09-12T03:42:22.122461Z",
+        "id": "01M29VB1DAMEEEFAY2XFZAFEBC",
+        "key": "om0304-20260912-cust1r2",
+        "labels": {},
+        "name": "OM03 concurrent candidate 6",
+        "updated_at": "2026-09-12T03:42:22.122467Z"
+      }
+    },
+    {
+      "ts": "2026-09-12T03:42:21.782916+00:00",
+      "label": "om03a-concurrent-0",
+      "method": "POST",
+      "path": "/api/v3/openmeter/customers",
+      "request_body": {
+        "key": "om0304-20260912-cust1r2",
+        "name": "OM03 concurrent candidate 0"
+      },
+      "status": 409,
+      "response_json": {
+        "type": "about:blank",
+        "title": "Conflict",
+        "status": 409,
+        "detail": "conflict error: key \"om0304-20260912-cust1r2\" is already used by an another customer in the namespace default",
+        "instance": "urn:request:817fb7fae384/bkDLTVCpj8-000558"
+      }
+    },
+    {
+      "ts": "2026-09-12T03:42:21.783328+00:00",
+      "label": "om03a-concurrent-2",
+      "method": "POST",
+      "path": "/api/v3/openmeter/customers",
+      "request_body": {
+        "key": "om0304-20260912-cust1r2",
+        "name": "OM03 concurrent candidate 2"
+      },
+      "status": 409,
+      "response_json": {
+        "type": "about:blank",
+        "title": "Conflict",
+        "status": 409,
+        "detail": "conflict error: key \"om0304-20260912-cust1r2\" is already used by an another customer in the namespace default",
+        "instance": "urn:request:817fb7fae384/bkDLTVCpj8-000560"
+      }
+    },
+    {
+      "ts": "2026-09-12T03:42:21.783387+00:00",
+      "label": "om03a-concurrent-4",
+      "method": "POST",
+      "path": "/api/v3/openmeter/customers",
+      "request_body": {
+        "key": "om0304-20260912-cust1r2",
+        "name": "OM03 concurrent candidate 4"
+      },
+      "status": 409,
+      "response_json": {
+        "type": "about:blank",
+        "title": "Conflict",
+        "status": 409,
+        "detail": "conflict error: key \"om0304-20260912-cust1r2\" is already used by an another customer in the namespace default",
+        "instance": "urn:request:817fb7fae384/bkDLTVCpj8-000553"
+      }
+    },
+    {
+      "ts": "2026-09-12T03:42:21.783126+00:00",
+      "label": "om03a-concurrent-5",
+      "method": "POST",
+      "path": "/api/v3/openmeter/customers",
+      "request_body": {
+        "key": "om0304-20260912-cust1r2",
+        "name": "OM03 concurrent candidate 5"
+      },
+      "status": 409,
+      "response_json": {
+        "type": "about:blank",
+        "title": "Conflict",
+        "status": 409,
+        "detail": "conflict error: key \"om0304-20260912-cust1r2\" is already used by an another customer in the namespace default",
+        "instance": "urn:request:817fb7fae384/bkDLTVCpj8-000554"
+      }
+    },
+    {
+      "ts": "2026-09-12T03:42:21.782564+00:00",
+      "label": "om03a-concurrent-7",
+      "method": "POST",
+      "path": "/api/v3/openmeter/customers",
+      "request_body": {
+        "key": "om0304-20260912-cust1r2",
+        "name": "OM03 concurrent candidate 7"
+      },
+      "status": 409,
+      "response_json": {
+        "type": "about:blank",
+        "title": "Conflict",
+        "status": 409,
+        "detail": "conflict error: key \"om0304-20260912-cust1r2\" is already used by an another customer in the namespace default",
+        "instance": "urn:request:817fb7fae384/bkDLTVCpj8-000555"
+      }
+    },
+    {
+      "ts": "2026-09-12T03:42:21.783032+00:00",
+      "label": "om03a-concurrent-1",
+      "method": "POST",
+      "path": "/api/v3/openmeter/customers",
+      "request_body": {
+        "key": "om0304-20260912-cust1r2",
+        "name": "OM03 concurrent candidate 1"
+      },
+      "status": 409,
+      "response_json": {
+        "type": "about:blank",
+        "title": "Conflict",
+        "status": 409,
+        "detail": "conflict error: key \"om0304-20260912-cust1r2\" is already used by an another customer in the namespace default",
+        "instance": "urn:request:817fb7fae384/bkDLTVCpj8-000556"
+      }
+    },
+    {
+      "ts": "2026-09-12T03:42:21.783273+00:00",
+      "label": "om03a-concurrent-3",
+      "method": "POST",
+      "path": "/api/v3/openmeter/customers",
+      "request_body": {
+        "key": "om0304-20260912-cust1r2",
+        "name": "OM03 concurrent candidate 3"
+      },
+      "status": 409,
+      "response_json": {
+        "type": "about:blank",
+        "title": "Conflict",
+        "status": 409,
+        "detail": "conflict error: key \"om0304-20260912-cust1r2\" is already used by an another customer in the namespace default",
+        "instance": "urn:request:817fb7fae384/bkDLTVCpj8-000557"
+      }
+    },
+    {
+      "ts": "2026-09-12T03:42:22.303117+00:00",
+      "label": "om03b-cust-first",
+      "method": "POST",
+      "path": "/api/v3/openmeter/customers",
+      "request_body": {
+        "key": "om0304-20260912-cust2",
+        "name": "OM03 response-lost retry customer"
+      },
+      "status": 201,
+      "response_json": {
+        "created_at": "2026-09-12T03:42:22.31988Z",
+        "id": "01M29VB1KFJNT4AGKDB70811DJ",
+        "key": "om0304-20260912-cust2",
+        "labels": {},
+        "name": "OM03 response-lost retry customer",
+        "updated_at": "2026-09-12T03:42:22.319882Z"
+      }
+    },
+    {
+      "ts": "2026-09-12T03:42:22.460895+00:00",
+      "label": "om03b-cust-retry",
+      "method": "POST",
+      "path": "/api/v3/openmeter/customers",
+      "request_body": {
+        "key": "om0304-20260912-cust2",
+        "name": "OM03 response-lost retry customer"
+      },
+      "status": 409,
+      "response_json": {
+        "type": "about:blank",
+        "title": "Conflict",
+        "status": 409,
+        "detail": "conflict error: key \"om0304-20260912-cust2\" is already used by an another customer in the namespace default",
+        "instance": "urn:request:817fb7fae384/bkDLTVCpj8-000562"
+      }
+    },
+    {
+      "ts": "2026-09-12T03:42:22.469354+00:00",
+      "label": "om03b-grant-first",
+      "method": "POST",
+      "path": "/api/v3/openmeter/customers/01M29VB1KFJNT4AGKDB70811DJ/credits/grants",
+      "request_body": {
+        "name": "OM03 grant replay",
+        "funding_method": "none",
+        "currency": "USD",
+        "amount": "10",
+        "key": "om0304-20260912-grantA"
+      },
+      "status": 201,
+      "response_json": {
+        "amount": "10",
+        "created_at": "2026-09-12T03:42:23.1284Z",
+        "currency": "USD",
+        "funding_method": "none",
+        "id": "01M29VB2CR8R3CXKNC5D499451",
+        "key": "om0304-20260912-grantA",
+        "labels": {},
+        "name": "OM03 grant replay",
+        "priority": 10,
+        "status": "active",
+        "tax_config": {
+          "tax_code": {
+            "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+          }
+        },
+        "updated_at": "2026-09-12T03:42:23.402451Z"
+      }
+    },
+    {
+      "ts": "2026-09-12T03:42:23.456367+00:00",
+      "label": "om03b-grant-retry",
+      "method": "POST",
+      "path": "/api/v3/openmeter/customers/01M29VB1KFJNT4AGKDB70811DJ/credits/grants",
+      "request_body": {
+        "name": "OM03 grant replay",
+        "funding_method": "none",
+        "currency": "USD",
+        "amount": "10",
+        "key": "om0304-20260912-grantA"
+      },
+      "status": 409,
+      "response_json": {
+        "type": "about:blank",
+        "title": "Conflict",
+        "status": 409,
+        "detail": "conflict error: charge conflicts with an existing charge: db: constraint failed: ERROR: duplicate key value violates unique constraint \"chargecreditpurchase_namespace_customer_id_key\" (SQLSTATE 23505)",
+        "instance": "urn:request:817fb7fae384/bkDLTVCpj8-000564"
+      }
+    },
+    {
+      "ts": "2026-09-12T03:42:23.461665+00:00",
+      "label": "om03b-grant-list",
+      "method": "GET",
+      "path": "/api/v3/openmeter/customers/01M29VB1KFJNT4AGKDB70811DJ/credits/grants",
+      "request_body": null,
+      "status": 200,
+      "response_json": {
+        "data": [
+          {
+            "amount": "10",
+            "created_at": "2026-09-12T03:42:23.1284Z",
+            "currency": "USD",
+            "funding_method": "none",
+            "id": "01M29VB2CR8R3CXKNC5D499451",
+            "key": "om0304-20260912-grantA",
+            "labels": {},
+            "name": "OM03 grant replay",
+            "priority": 10,
+            "status": "active",
+            "tax_config": {
+              "tax_code": {
+                "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+              }
+            },
+            "updated_at": "2026-09-12T03:42:23.402451Z"
+          }
+        ],
+        "meta": {
+          "page": {
+            "size": 20,
+            "number": 1,
+            "total": 1
+          }
+        }
+      }
+    },
+    {
+      "ts": "2026-09-12T03:42:23.471253+00:00",
+      "label": "om03c-plan-create",
+      "method": "POST",
+      "path": "/api/v3/openmeter/plans",
+      "request_body": {
+        "name": "OM0304 Replay Plan",
+        "key": "om0304_20260912_plan1",
+        "currency": "USD",
+        "billing_cadence": "P1M",
+        "phases": [
+          {
+            "key": "main",
+            "name": "Main",
+            "rate_cards": [
+              {
+                "key": "om02_tokens",
+                "name": "OM0304 Tokens RC",
+                "feature": {
+                  "id": "01M29SXXZY6WECC4ZDQPWJVBVP"
+                },
+                "price": {
+                  "type": "unit",
+                  "amount": "0.01"
+                },
+                "billing_cadence": "P1M"
+              }
+            ]
+          }
+        ]
+      },
+      "status": 201,
+      "response_json": {
+        "billing_cadence": "P1M",
+        "created_at": "2026-09-12T03:42:23.485907Z",
+        "currency": "USD",
+        "id": "01M29VB2QX88HBFT46M758RX6V",
+        "key": "om0304_20260912_plan1",
+        "name": "OM0304 Replay Plan",
+        "phases": [
+          {
+            "key": "main",
+            "name": "Main",
+            "rate_cards": [
+              {
+                "billing_cadence": "P1M",
+                "feature": {
+                  "id": "01M29SXXZY6WECC4ZDQPWJVBVP"
+                },
+                "key": "om02_tokens",
+                "name": "OM0304 Tokens RC",
+                "price": {
+                  "amount": "0.01",
+                  "type": "unit"
+                }
+              }
+            ]
+          }
+        ],
+        "pro_rating_enabled": true,
+        "settlement_mode": "credit_then_invoice",
+        "status": "draft",
+        "updated_at": "2026-09-12T03:42:23.485907Z",
+        "version": 1
+      }
+    },
+    {
+      "ts": "2026-09-12T03:42:23.519825+00:00",
+      "label": "om03c-publish-1",
+      "method": "POST",
+      "path": "/api/v3/openmeter/plans/01M29VB2QX88HBFT46M758RX6V/publish",
+      "request_body": null,
+      "status": 200,
+      "response_json": {
+        "billing_cadence": "P1M",
+        "created_at": "2026-09-12T03:42:23.485907Z",
+        "currency": "USD",
+        "effective_from": "2026-09-12T03:42:23.522254Z",
+        "id": "01M29VB2QX88HBFT46M758RX6V",
+        "key": "om0304_20260912_plan1",
+        "name": "OM0304 Replay Plan",
+        "phases": [
+          {
+            "key": "main",
+            "name": "Main",
+            "rate_cards": [
+              {
+                "billing_cadence": "P1M",
+                "feature": {
+                  "id": "01M29SXXZY6WECC4ZDQPWJVBVP"
+                },
+                "key": "om02_tokens",
+                "name": "OM0304 Tokens RC",
+                "price": {
+                  "amount": "0.01",
+                  "type": "unit"
+                }
+              }
+            ]
+          }
+        ],
+        "pro_rating_enabled": true,
+        "settlement_mode": "credit_then_invoice",
+        "status": "active",
+        "updated_at": "2026-09-12T03:42:23.552123Z",
+        "version": 1
+      }
+    },
+    {
+      "ts": "2026-09-12T03:42:23.570734+00:00",
+      "label": "om03c-publish-2-replay",
+      "method": "POST",
+      "path": "/api/v3/openmeter/plans/01M29VB2QX88HBFT46M758RX6V/publish",
+      "request_body": null,
+      "status": 400,
+      "response_json": {
+        "type": "about:blank",
+        "title": "Bad Request",
+        "status": 400,
+        "detail": "validation error: invalid Plan: only Plans in [draft scheduled] can be published/rescheduled, but it has active state",
+        "instance": "urn:request:817fb7fae384/bkDLTVCpj8-000568"
+      }
+    },
+    {
+      "ts": "2026-09-12T03:42:23.574670+00:00",
+      "label": "om03c-plan-get",
+      "method": "GET",
+      "path": "/api/v3/openmeter/plans/01M29VB2QX88HBFT46M758RX6V",
+      "request_body": null,
+      "status": 200,
+      "response_json": {
+        "billing_cadence": "P1M",
+        "created_at": "2026-09-12T03:42:23.485907Z",
+        "currency": "USD",
+        "effective_from": "2026-09-12T03:42:23.522254Z",
+        "id": "01M29VB2QX88HBFT46M758RX6V",
+        "key": "om0304_20260912_plan1",
+        "name": "OM0304 Replay Plan",
+        "phases": [
+          {
+            "key": "main",
+            "name": "Main",
+            "rate_cards": [
+              {
+                "billing_cadence": "P1M",
+                "feature": {
+                  "id": "01M29SXXZY6WECC4ZDQPWJVBVP"
+                },
+                "key": "om02_tokens",
+                "name": "OM0304 Tokens RC",
+                "price": {
+                  "amount": "0.01",
+                  "type": "unit"
+                }
+              }
+            ]
+          }
+        ],
+        "pro_rating_enabled": true,
+        "settlement_mode": "credit_then_invoice",
+        "status": "active",
+        "updated_at": "2026-09-12T03:42:23.552123Z",
+        "version": 1
+      }
+    },
+    {
+      "ts": "2026-09-12T03:42:23.578506+00:00",
+      "label": "om03c-plan-get-by-key",
+      "method": "GET",
+      "path": "/api/v3/openmeter/plans/om0304_20260912_plan1",
+      "request_body": null,
+      "status": 404,
+      "response_json": {
+        "type": "https://kongapi.info/konnect/not-found",
+        "status": 404,
+        "title": "Not Found",
+        "instance": "urn:request:817fb7fae384/bkDLTVCpj8-000570",
+        "detail": "The requested entity was not found"
+      }
+    },
+    {
+      "ts": "2026-09-12T03:42:23.580543+00:00",
+      "label": "om04-cust3-create",
+      "method": "POST",
+      "path": "/api/v3/openmeter/customers",
+      "request_body": {
+        "key": "om0304-20260912-cust3",
+        "name": "OM04 order-line customer"
+      },
+      "status": 201,
+      "response_json": {
+        "created_at": "2026-09-12T03:42:23.584184Z",
+        "id": "01M29VB2V0SBADSVYJNFBZYBKN",
+        "key": "om0304-20260912-cust3",
+        "labels": {},
+        "name": "OM04 order-line customer",
+        "updated_at": "2026-09-12T03:42:23.584185Z"
+      }
+    },
+    {
+      "ts": "2026-09-12T03:42:23.599500+00:00",
+      "label": "om04a-orderline-first",
+      "method": "POST",
+      "path": "/api/v3/openmeter/customers/01M29VB2V0SBADSVYJNFBZYBKN/credits/grants",
+      "request_body": {
+        "name": "OM04 order line 1",
+        "funding_method": "none",
+        "currency": "USD",
+        "amount": "50",
+        "key": "om0304-orderline-1"
+      },
+      "status": 201,
+      "response_json": {
+        "amount": "50",
+        "created_at": "2026-09-12T03:42:23.609674Z",
+        "currency": "USD",
+        "funding_method": "none",
+        "id": "01M29VB2VS4YCAP26QFDQRG9XX",
+        "key": "om0304-orderline-1",
+        "labels": {},
+        "name": "OM04 order line 1",
+        "priority": 10,
+        "status": "active",
+        "tax_config": {
+          "tax_code": {
+            "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+          }
+        },
+        "updated_at": "2026-09-12T03:42:23.706151Z"
+      }
+    },
+    {
+      "ts": "2026-09-12T03:42:23.713396+00:00",
+      "label": "om04a-orderline-duplicate",
+      "method": "POST",
+      "path": "/api/v3/openmeter/customers/01M29VB2V0SBADSVYJNFBZYBKN/credits/grants",
+      "request_body": {
+        "name": "OM04 order line 1",
+        "funding_method": "none",
+        "currency": "USD",
+        "amount": "50",
+        "key": "om0304-orderline-1"
+      },
+      "status": 409,
+      "response_json": {
+        "type": "about:blank",
+        "title": "Conflict",
+        "status": 409,
+        "detail": "conflict error: charge conflicts with an existing charge: db: constraint failed: ERROR: duplicate key value violates unique constraint \"chargecreditpurchase_namespace_customer_id_key\" (SQLSTATE 23505)",
+        "instance": "urn:request:817fb7fae384/bkDLTVCpj8-000573"
+      }
+    },
+    {
+      "ts": "2026-09-12T03:42:23.723363+00:00",
+      "label": "om04a-balance-after-dup",
+      "method": "GET",
+      "path": "/api/v3/openmeter/customers/01M29VB2V0SBADSVYJNFBZYBKN/credits/balance",
+      "request_body": null,
+      "status": 200,
+      "response_json": {
+        "balances": [
+          {
+            "currency": "USD",
+            "live": "50",
+            "pending": "0",
+            "settled": "50"
+          }
+        ],
+        "retrieved_at": "2026-09-12T03:42:23.725967922Z"
+      }
+    },
+    {
+      "ts": "2026-09-12T03:42:23.760937+00:00",
+      "label": "om04b-orderline-crash-reissue",
+      "method": "POST",
+      "path": "/api/v3/openmeter/customers/01M29VB2V0SBADSVYJNFBZYBKN/credits/grants",
+      "request_body": {
+        "name": "OM04 order line 1",
+        "funding_method": "none",
+        "currency": "USD",
+        "amount": "50",
+        "key": "om0304-orderline-1"
+      },
+      "status": 409,
+      "response_json": {
+        "type": "about:blank",
+        "title": "Conflict",
+        "status": 409,
+        "detail": "conflict error: charge conflicts with an existing charge: db: constraint failed: ERROR: duplicate key value violates unique constraint \"chargecreditpurchase_namespace_customer_id_key\" (SQLSTATE 23505)",
+        "instance": "urn:request:817fb7fae384/bkDLTVCpj8-000575"
+      }
+    },
+    {
+      "ts": "2026-09-12T03:42:23.766280+00:00",
+      "label": "om04b-balance-after-crash",
+      "method": "GET",
+      "path": "/api/v3/openmeter/customers/01M29VB2V0SBADSVYJNFBZYBKN/credits/balance",
+      "request_body": null,
+      "status": 200,
+      "response_json": {
+        "balances": [
+          {
+            "currency": "USD",
+            "live": "50",
+            "pending": "0",
+            "settled": "50"
+          }
+        ],
+        "retrieved_at": "2026-09-12T03:42:23.76879143Z"
+      }
+    },
+    {
+      "ts": "2026-09-12T03:42:23.789811+00:00",
+      "label": "om04b-transactions",
+      "method": "GET",
+      "path": "/api/v3/openmeter/customers/01M29VB2V0SBADSVYJNFBZYBKN/credits/transactions",
+      "request_body": null,
+      "status": 200,
+      "response_json": {
+        "data": [
+          {
+            "amount": "50",
+            "available_balance": {
+              "after": "50",
+              "before": "0"
+            },
+            "booked_at": "2026-09-12T03:42:23.704084Z",
+            "created_at": "2026-09-12T03:42:23.609674Z",
+            "currency": "USD",
+            "id": "01M29VB2VS4YCAP26QFDQRG9XX",
+            "labels": {
+              "charge_id": "01M29VB2VS4YCAP26QFDQRG9XX"
+            },
+            "name": "OM04 order line 1",
+            "type": "funded"
+          }
+        ],
+        "meta": {
+          "page": {
+            "next": null,
+            "previous": null,
+            "size": 20
+          }
+        }
+      }
+    },
+    {
+      "ts": "2026-09-12T03:42:23.815713+00:00",
+      "label": "om04c-grant-list",
+      "method": "GET",
+      "path": "/api/v3/openmeter/customers/01M29VB2V0SBADSVYJNFBZYBKN/credits/grants",
+      "request_body": null,
+      "status": 200,
+      "response_json": {
+        "data": [
+          {
+            "amount": "50",
+            "created_at": "2026-09-12T03:42:23.609674Z",
+            "currency": "USD",
+            "funding_method": "none",
+            "id": "01M29VB2VS4YCAP26QFDQRG9XX",
+            "key": "om0304-orderline-1",
+            "labels": {},
+            "name": "OM04 order line 1",
+            "priority": 10,
+            "status": "active",
+            "tax_config": {
+              "tax_code": {
+                "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+              }
+            },
+            "updated_at": "2026-09-12T03:42:23.706151Z"
+          }
+        ],
+        "meta": {
+          "page": {
+            "size": 20,
+            "number": 1,
+            "total": 1
+          }
+        }
+      }
+    },
+    {
+      "ts": "2026-09-12T03:42:23.823290+00:00",
+      "label": "om04d-v2-grants-before",
+      "method": "GET",
+      "path": "/api/v2/customers/om02-20260912-v2cust/entitlements/om02_tokens/grants",
+      "request_body": null,
+      "status": 200,
+      "response_json": {
+        "items": [
+          {
+            "amount": 1000,
+            "createdAt": "2026-09-12T03:19:43.80577Z",
+            "effectiveAt": "2026-09-12T03:20:00Z",
+            "entitlementId": "01M29SXY0EGSN119ZV0TE08RXY",
+            "expiration": {
+              "count": 1,
+              "duration": "HOUR"
+            },
+            "expiresAt": "2026-09-12T04:20:00Z",
+            "id": "01M29T1JXXF1Z66102BZB83EJ4",
+            "maxRolloverAmount": 1000,
+            "minRolloverAmount": 0,
+            "priority": 1,
+            "updatedAt": "2026-09-12T03:19:43.80577Z"
+          }
+        ],
+        "page": 1,
+        "pageSize": 100,
+        "totalCount": 1
+      }
+    },
+    {
+      "ts": "2026-09-12T03:42:23.845682+00:00",
+      "label": "om04d-v2-grant-first",
+      "method": "POST",
+      "path": "/api/v2/customers/om02-20260912-v2cust/entitlements/om02_tokens/grants",
+      "request_body": {
+        "amount": 1,
+        "priority": 1,
+        "effectiveAt": "2026-09-12T03:00:00Z",
+        "expiration": {
+          "duration": "HOUR",
+          "count": 1
+        }
+      },
+      "status": 400,
+      "response_json": {
+        "type": "about:blank",
+        "title": "Bad Request",
+        "status": 400,
+        "detail": "validation error: grant effective date 2026-09-12 03:00:00 +0000 UTC is before the current usage period 2026-09-12 03:17:00 +0000 UTC",
+        "instance": "urn:request:817fb7fae384/bkDLTVCpj8-000580"
+      }
+    },
+    {
+      "ts": "2026-09-12T03:42:23.858993+00:00",
+      "label": "om04d-v2-grant-duplicate",
+      "method": "POST",
+      "path": "/api/v2/customers/om02-20260912-v2cust/entitlements/om02_tokens/grants",
+      "request_body": {
+        "amount": 1,
+        "priority": 1,
+        "effectiveAt": "2026-09-12T03:00:00Z",
+        "expiration": {
+          "duration": "HOUR",
+          "count": 1
+        }
+      },
+      "status": 400,
+      "response_json": {
+        "type": "about:blank",
+        "title": "Bad Request",
+        "status": 400,
+        "detail": "validation error: grant effective date 2026-09-12 03:00:00 +0000 UTC is before the current usage period 2026-09-12 03:17:00 +0000 UTC",
+        "instance": "urn:request:817fb7fae384/bkDLTVCpj8-000581"
+      }
+    },
+    {
+      "ts": "2026-09-12T03:42:23.866540+00:00",
+      "label": "om04d-v2-grants-after",
+      "method": "GET",
+      "path": "/api/v2/customers/om02-20260912-v2cust/entitlements/om02_tokens/grants",
+      "request_body": null,
+      "status": 200,
+      "response_json": {
+        "items": [
+          {
+            "amount": 1000,
+            "createdAt": "2026-09-12T03:19:43.80577Z",
+            "effectiveAt": "2026-09-12T03:20:00Z",
+            "entitlementId": "01M29SXY0EGSN119ZV0TE08RXY",
+            "expiration": {
+              "count": 1,
+              "duration": "HOUR"
+            },
+            "expiresAt": "2026-09-12T04:20:00Z",
+            "id": "01M29T1JXXF1Z66102BZB83EJ4",
+            "maxRolloverAmount": 1000,
+            "minRolloverAmount": 0,
+            "priority": 1,
+            "updatedAt": "2026-09-12T03:19:43.80577Z"
+          }
+        ],
+        "page": 1,
+        "pageSize": 100,
+        "totalCount": 1
+      }
+    },
+    {
+      "label": "om04d2-before",
+      "method": "GET",
+      "path": "/api/v2/customers/om02-20260912-v2cust/entitlements/om02_tokens/grants",
+      "request_body": null,
+      "status": 200,
+      "response_json": {
+        "items": [
+          {
+            "amount": 1000,
+            "createdAt": "2026-09-12T03:19:43.80577Z",
+            "effectiveAt": "2026-09-12T03:20:00Z",
+            "entitlementId": "01M29SXY0EGSN119ZV0TE08RXY",
+            "expiration": {
+              "count": 1,
+              "duration": "HOUR"
+            },
+            "expiresAt": "2026-09-12T04:20:00Z",
+            "id": "01M29T1JXXF1Z66102BZB83EJ4",
+            "maxRolloverAmount": 1000,
+            "minRolloverAmount": 0,
+            "priority": 1,
+            "updatedAt": "2026-09-12T03:19:43.80577Z"
+          }
+        ],
+        "page": 1,
+        "pageSize": 100,
+        "totalCount": 1
+      }
+    },
+    {
+      "label": "om04d2-first",
+      "method": "POST",
+      "path": "/api/v2/customers/om02-20260912-v2cust/entitlements/om02_tokens/grants",
+      "request_body": {
+        "amount": 1,
+        "priority": 1,
+        "effectiveAt": "2026-09-12T03:45:00Z",
+        "expiration": {
+          "duration": "HOUR",
+          "count": 2
+        }
+      },
+      "status": 201,
+      "response_json": {
+        "amount": 1,
+        "createdAt": "2026-09-12T03:43:46.075916Z",
+        "effectiveAt": "2026-09-12T03:45:00Z",
+        "entitlementId": "01M29SXY0EGSN119ZV0TE08RXY",
+        "expiration": {
+          "count": 2,
+          "duration": "HOUR"
+        },
+        "expiresAt": "2026-09-12T05:45:00Z",
+        "id": "01M29VDKCVD155EQCVYAYVW7S8",
+        "maxRolloverAmount": 1,
+        "minRolloverAmount": 0,
+        "priority": 1,
+        "updatedAt": "2026-09-12T03:43:46.075916Z"
+      }
+    },
+    {
+      "label": "om04d2-duplicate",
+      "method": "POST",
+      "path": "/api/v2/customers/om02-20260912-v2cust/entitlements/om02_tokens/grants",
+      "request_body": {
+        "amount": 1,
+        "priority": 1,
+        "effectiveAt": "2026-09-12T03:45:00Z",
+        "expiration": {
+          "duration": "HOUR",
+          "count": 2
+        }
+      },
+      "status": 201,
+      "response_json": {
+        "amount": 1,
+        "createdAt": "2026-09-12T03:43:46.118774Z",
+        "effectiveAt": "2026-09-12T03:45:00Z",
+        "entitlementId": "01M29SXY0EGSN119ZV0TE08RXY",
+        "expiration": {
+          "count": 2,
+          "duration": "HOUR"
+        },
+        "expiresAt": "2026-09-12T05:45:00Z",
+        "id": "01M29VDKE67Q5A5B84ECVH1VQW",
+        "maxRolloverAmount": 1,
+        "minRolloverAmount": 0,
+        "priority": 1,
+        "updatedAt": "2026-09-12T03:43:46.118774Z"
+      }
+    },
+    {
+      "label": "om04d2-after",
+      "method": "GET",
+      "path": "/api/v2/customers/om02-20260912-v2cust/entitlements/om02_tokens/grants",
+      "request_body": null,
+      "status": 200,
+      "response_json": {
+        "items": [
+          {
+            "amount": 1000,
+            "createdAt": "2026-09-12T03:19:43.80577Z",
+            "effectiveAt": "2026-09-12T03:20:00Z",
+            "entitlementId": "01M29SXY0EGSN119ZV0TE08RXY",
+            "expiration": {
+              "count": 1,
+              "duration": "HOUR"
+            },
+            "expiresAt": "2026-09-12T04:20:00Z",
+            "id": "01M29T1JXXF1Z66102BZB83EJ4",
+            "maxRolloverAmount": 1000,
+            "minRolloverAmount": 0,
+            "priority": 1,
+            "updatedAt": "2026-09-12T03:19:43.80577Z"
+          },
+          {
+            "amount": 1,
+            "createdAt": "2026-09-12T03:43:46.075916Z",
+            "effectiveAt": "2026-09-12T03:45:00Z",
+            "entitlementId": "01M29SXY0EGSN119ZV0TE08RXY",
+            "expiration": {
+              "count": 2,
+              "duration": "HOUR"
+            },
+            "expiresAt": "2026-09-12T05:45:00Z",
+            "id": "01M29VDKCVD155EQCVYAYVW7S8",
+            "maxRolloverAmount": 1,
+            "minRolloverAmount": 0,
+            "priority": 1,
+            "updatedAt": "2026-09-12T03:43:46.075916Z"
+          },
+          {
+            "amount": 1,
+            "createdAt": "2026-09-12T03:43:46.118774Z",
+            "effectiveAt": "2026-09-12T03:45:00Z",
+            "entitlementId": "01M29SXY0EGSN119ZV0TE08RXY",
+            "expiration": {
+              "count": 2,
+              "duration": "HOUR"
+            },
+            "expiresAt": "2026-09-12T05:45:00Z",
+            "id": "01M29VDKE67Q5A5B84ECVH1VQW",
+            "maxRolloverAmount": 1,
+            "minRolloverAmount": 0,
+            "priority": 1,
+            "updatedAt": "2026-09-12T03:43:46.118774Z"
+          }
+        ],
+        "page": 1,
+        "pageSize": 100,
+        "totalCount": 3
+      }
+    },
+    {
+      "label": "om03c2-plan-versions",
+      "method": "GET",
+      "path": "/api/v3/openmeter/plans/01M29VB2QX88HBFT46M758RX6V/versions",
+      "request_body": null,
+      "status": 404,
+      "response_json": {
+        "type": "https://kongapi.info/konnect/not-found",
+        "status": 404,
+        "title": "Not Found",
+        "instance": "urn:request:817fb7fae384/bkDLTVCpj8-000607",
+        "detail": "The requested route was not found"
+      }
+    },
+    {
+      "label": "om03c2-plans-list",
+      "method": "GET",
+      "path": "/api/v3/openmeter/plans?limit=100",
+      "request_body": null,
+      "status": 200,
+      "response_json": {
+        "data": [
+          {
+            "billing_cadence": "P1M",
+            "created_at": "2026-09-12T03:26:10.337016Z",
+            "currency": "USD",
+            "id": "01M29TDCD1CM3AWYT3FZB6H378",
+            "key": "om02b_20260912_v2plan",
+            "name": "OM-02B V2 Tokens Plan",
+            "phases": [
+              {
+                "duration": "P1M",
+                "key": "main",
+                "name": "Main",
+                "rate_cards": [
+                  {
+                    "billing_cadence": "P1M",
+                    "entitlement": {
+                      "is_soft_limit": false,
+                      "type": "metered",
+                      "usage_period": "P1M"
+                    },
+                    "feature": {
+                      "id": "01M29SXXZY6WECC4ZDQPWJVBVP"
+                    },
+                    "key": "om02_tokens",
+                    "name": "OM-02B Tokens RateCard",
+                    "price": {
+                      "amount": "0.01",
+                      "type": "unit"
+                    }
+                  }
+                ]
+              }
+            ],
+            "pro_rating_enabled": true,
+            "settlement_mode": "credit_then_invoice",
+            "status": "draft",
+            "updated_at": "2026-09-12T03:26:10.337017Z",
+            "validation_errors": [
+              {
+                "code": "plan_has_last_phase_with_duration",
+                "field": "$.phases[?(@.key=='main')].duration",
+                "message": "duration must not be set for the last plan phase"
+              },
+              {
+                "code": "entitlement_template_issue_after_reset_required",
+                "field": "$.phases[?(@.key=='main')].ratecards[?(@.key=='om02_tokens')].entitlementTemplate.issueAfterReset",
+                "message": "issueAfterReset is required for metered entitlement templates"
+              }
+            ],
+            "version": 1
+          },
+          {
+            "billing_cadence": "P1M",
+            "created_at": "2026-09-12T03:26:37.923851Z",
+            "currency": "USD",
+            "id": "01M29TE7B35NFENT6MW35A87ZZ",
+            "key": "om02b_20260912_v2plan3",
+            "name": "OM-02B V2 Tokens Plan",
+            "phases": [
+              {
+                "key": "main",
+                "name": "Main",
+                "rate_cards": [
+                  {
+                    "billing_cadence": "P1M",
+                    "entitlement": {
+                      "is_soft_limit": false,
+                      "type": "metered",
+                      "usage_period": "P1M"
+                    },
+                    "feature": {
+                      "id": "01M29SXXZY6WECC4ZDQPWJVBVP"
+                    },
+                    "key": "om02_tokens",
+                    "name": "OM-02B Tokens RateCard",
+                    "price": {
+                      "amount": "0.01",
+                      "type": "unit"
+                    }
+                  }
+                ]
+              }
+            ],
+            "pro_rating_enabled": true,
+            "settlement_mode": "credit_then_invoice",
+            "status": "draft",
+            "updated_at": "2026-09-12T03:26:37.923852Z",
+            "validation_errors": [
+              {
+                "code": "entitlement_template_issue_after_reset_required",
+                "field": "$.phases[?(@.key=='main')].ratecards[?(@.key=='om02_tokens')].entitlementTemplate.issueAfterReset",
+                "message": "issueAfterReset is required for metered entitlement templates"
+              }
+            ],
+            "version": 1
+          },
+          {
+            "billing_cadence": "P1M",
+            "created_at": "2026-09-12T03:26:46.199946Z",
+            "currency": "USD",
+            "effective_from": "2026-09-12T03:26:46.212046Z",
+            "id": "01M29TEFDQ51V48SYMJHQF9N5A",
+            "key": "om02b_20260912_v2plan4",
+            "name": "OM-02B V2 Tokens Plan",
+            "phases": [
+              {
+                "key": "main",
+                "name": "Main",
+                "rate_cards": [
+                  {
+                    "billing_cadence": "P1M",
+                    "entitlement": {
+                      "is_soft_limit": false,
+                      "limit": 1,
+                      "type": "metered",
+                      "usage_period": "P1M"
+                    },
+                    "feature": {
+                      "id": "01M29SXXZY6WECC4ZDQPWJVBVP"
+                    },
+                    "key": "om02_tokens",
+                    "name": "OM-02B Tokens RateCard",
+                    "price": {
+                      "amount": "0.01",
+                      "type": "unit"
+                    }
+                  }
+                ]
+              }
+            ],
+            "pro_rating_enabled": true,
+            "settlement_mode": "credit_then_invoice",
+            "status": "active",
+            "updated_at": "2026-09-12T03:26:46.216908Z",
+            "version": 1
+          },
+          {
+            "billing_cadence": "P1M",
+            "created_at": "2026-09-12T03:28:28.96529Z",
+            "currency": "USD",
+            "id": "01M29THKS5TKQKMM1K21BH0YBD",
+            "key": "om02b_20260912_v3plan",
+            "name": "OM-02B V3 Credits Plan",
+            "phases": [
+              {
+                "key": "main",
+                "name": "Main",
+                "rate_cards": [
+                  {
+                    "billing_cadence": "P0D",
+                    "feature": {
+                      "id": "01M29SXXZY6WECC4ZDQPWJVBVP"
+                    },
+                    "key": "om02_tokens",
+                    "name": "OM-02B Tokens RC",
+                    "price": {
+                      "amount": "0.01",
+                      "type": "unit"
+                    }
+                  }
+                ]
+              }
+            ],
+            "pro_rating_enabled": true,
+            "settlement_mode": "credit_then_invoice",
+            "status": "draft",
+            "updated_at": "2026-09-12T03:28:28.96529Z",
+            "validation_errors": [
+              {
+                "code": "billing_cadence_invalid_value",
+                "field": "$.phases[?(@.key=='main')].ratecards[?(@.key=='om02_tokens')].billingCadence",
+                "message": "billing cadence must be positive and 1 hour long duration at least"
+              },
+              {
+                "code": "billing_cadence_invalid_value",
+                "field": "$.phases[?(@.key=='main')].ratecards[?(@.key=='om02_tokens')].billingCadence",
+                "message": "billing cadence must be positive and 1 hour long duration at least"
+              },
+              {
+                "code": "rate_card_billing_cadence_unaligned",
+                "field": "$.phases[?(@.key=='main')].rateCards[?(@.key=='om02_tokens')].billingCadence",
+                "message": "ratecards with prices must have compatible billing cadence"
+              }
+            ],
+            "version": 1
+          },
+          {
+            "billing_cadence": "P1M",
+            "created_at": "2026-09-12T03:28:49.016789Z",
+            "currency": "USD",
+            "id": "01M29TJ7BR7SPMT6M2QPTA4C51",
+            "key": "om02b_20260912_v3plan2",
+            "name": "OM-02B V3 Credits Plan",
+            "phases": [
+              {
+                "key": "main",
+                "name": "Main",
+                "rate_cards": [
+                  {
+                    "billing_cadence": "P0D",
+                    "feature": {
+                      "id": "01M29SXXZY6WECC4ZDQPWJVBVP"
+                    },
+                    "key": "om02_tokens",
+                    "name": "OM-02B Tokens RC",
+                    "price": {
+                      "amount": "0.01",
+                      "type": "unit"
+                    }
+                  }
+                ]
+              }
+            ],
+            "pro_rating_enabled": true,
+            "settlement_mode": "credit_then_invoice",
+            "status": "draft",
+            "updated_at": "2026-09-12T03:28:49.01679Z",
+            "validation_errors": [
+              {
+                "code": "billing_cadence_invalid_value",
+                "field": "$.phases[?(@.key=='main')].ratecards[?(@.key=='om02_tokens')].billingCadence",
+                "message": "billing cadence must be positive and 1 hour long duration at least"
+              },
+              {
+                "code": "billing_cadence_invalid_value",
+                "field": "$.phases[?(@.key=='main')].ratecards[?(@.key=='om02_tokens')].billingCadence",
+                "message": "billing cadence must be positive and 1 hour long duration at least"
+              },
+              {
+                "code": "rate_card_billing_cadence_unaligned",
+                "field": "$.phases[?(@.key=='main')].rateCards[?(@.key=='om02_tokens')].billingCadence",
+                "message": "ratecards with prices must have compatible billing cadence"
+              }
+            ],
+            "version": 1
+          },
+          {
+            "billing_cadence": "P1M",
+            "created_at": "2026-09-12T03:28:58.808266Z",
+            "currency": "USD",
+            "effective_from": "2026-09-12T03:28:58.820816Z",
+            "id": "01M29TJGXR71RH15ACP74T0VFH",
+            "key": "om02b_20260912_v3plan3",
+            "name": "OM-02B V3 Credits Plan",
+            "phases": [
+              {
+                "key": "main",
+                "name": "Main",
+                "rate_cards": [
+                  {
+                    "billing_cadence": "P1M",
+                    "feature": {
+                      "id": "01M29SXXZY6WECC4ZDQPWJVBVP"
+                    },
+                    "key": "om02_tokens",
+                    "name": "OM-02B Tokens RC",
+                    "price": {
+                      "amount": "0.01",
+                      "type": "unit"
+                    }
+                  }
+                ]
+              }
+            ],
+            "pro_rating_enabled": true,
+            "settlement_mode": "credit_then_invoice",
+            "status": "active",
+            "updated_at": "2026-09-12T03:28:58.823538Z",
+            "version": 1
+          },
+          {
+            "billing_cadence": "P1M",
+            "created_at": "2026-09-12T03:29:10.202406Z",
+            "currency": "USD",
+            "effective_from": "2026-09-12T03:29:10.215898Z",
+            "id": "01M29TJW1T4F6963NWACQWJBYF",
+            "key": "om02b_20260912_v3plan4",
+            "name": "OM-02B V3 Credits Plan",
+            "phases": [
+              {
+                "key": "main",
+                "name": "Main",
+                "rate_cards": [
+                  {
+                    "billing_cadence": "P1M",
+                    "feature": {
+                      "id": "01M29SXXZY6WECC4ZDQPWJVBVP"
+                    },
+                    "key": "om02_tokens",
+                    "name": "OM-02B Tokens RC",
+                    "price": {
+                      "amount": "0.01",
+                      "type": "unit"
+                    }
+                  }
+                ]
+              }
+            ],
+            "pro_rating_enabled": true,
+            "settlement_mode": "credit_then_invoice",
+            "status": "active",
+            "updated_at": "2026-09-12T03:29:10.237343Z",
+            "version": 1
+          },
+          {
+            "billing_cadence": "P1M",
+            "created_at": "2026-09-12T03:42:23.485907Z",
+            "currency": "USD",
+            "effective_from": "2026-09-12T03:42:23.522254Z",
+            "id": "01M29VB2QX88HBFT46M758RX6V",
+            "key": "om0304_20260912_plan1",
+            "name": "OM0304 Replay Plan",
+            "phases": [
+              {
+                "key": "main",
+                "name": "Main",
+                "rate_cards": [
+                  {
+                    "billing_cadence": "P1M",
+                    "feature": {
+                      "id": "01M29SXXZY6WECC4ZDQPWJVBVP"
+                    },
+                    "key": "om02_tokens",
+                    "name": "OM0304 Tokens RC",
+                    "price": {
+                      "amount": "0.01",
+                      "type": "unit"
+                    }
+                  }
+                ]
+              }
+            ],
+            "pro_rating_enabled": true,
+            "settlement_mode": "credit_then_invoice",
+            "status": "active",
+            "updated_at": "2026-09-12T03:42:23.552123Z",
+            "version": 1
+          }
+        ],
+        "meta": {
+          "page": {
+            "size": 20,
+            "number": 1,
+            "total": 8
+          }
+        }
+      }
+    }
+  ]
+}

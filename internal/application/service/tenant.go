@@ -3,8 +3,11 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/commercial"
 	werrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -19,15 +22,52 @@ type ListTenantsParams struct {
 	Name     string // Filter by tenant name
 }
 
+// TenantDeletionGuard gates workspace deletion on in-flight commercial work
+// (O02). Implementations must be explicit state flips plus read-only checks:
+// stop NEW commercial scheduling (already-dispatched work still settles),
+// revoke the tenant's app-connector connections, list pending settlement /
+// payment / refund records, and report the configured retention policy
+// version. A guard NEVER cascade-deletes pending commercial records.
+type TenantDeletionGuard interface {
+	// DisableNewScheduling stops new commercial dispatch for the tenant.
+	DisableNewScheduling(ctx context.Context, tenantID uint64) error
+	// RevokeConnections revokes the tenant's app-connector connections so no
+	// new dispatch races the deletion.
+	RevokeConnections(ctx context.Context, tenantID uint64) error
+	// PendingCommercialWork lists unsettled commercial records (e.g.
+	// "settlement:41", "payment:7", "refund:3") that block deletion.
+	PendingCommercialWork(ctx context.Context, tenantID uint64) ([]string, error)
+	// RetentionPolicyVersion returns the configured retention policy
+	// version, "" when none is configured.
+	RetentionPolicyVersion() string
+}
+
+// TenantServiceOption customizes tenant service construction.
+type TenantServiceOption func(*tenantService)
+
+// WithDeletionGuard wires the commercial deletion guard (O02). Without it
+// the legacy deletion path is kept for deployments without the commercial
+// module; see guardCommercialDeletion.
+func WithDeletionGuard(g TenantDeletionGuard) TenantServiceOption {
+	return func(s *tenantService) { s.deletionGuard = g }
+}
+
 // tenantService implements the TenantService interface
 type tenantService struct {
-	repo        interfaces.TenantRepository // Repository for tenant data operations
-	storageRepo interfaces.StorageBackendRepository
+	repo          interfaces.TenantRepository // Repository for tenant data operations
+	storageRepo   interfaces.StorageBackendRepository
+	deletionGuard TenantDeletionGuard // optional commercial retention guard (O02)
 }
 
 // NewTenantService creates a new tenant service instance
-func NewTenantService(repo interfaces.TenantRepository, storageRepo interfaces.StorageBackendRepository) interfaces.TenantService {
-	return &tenantService{repo: repo, storageRepo: storageRepo}
+func NewTenantService(repo interfaces.TenantRepository, storageRepo interfaces.StorageBackendRepository, opts ...TenantServiceOption) interfaces.TenantService {
+	s := &tenantService{repo: repo, storageRepo: storageRepo}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(s)
+		}
+	}
+	return s
 }
 
 // CreateTenant creates a new tenant
@@ -190,6 +230,18 @@ func (s *tenantService) DeleteTenant(ctx context.Context, id uint64) error {
 		logger.Infof(ctx, "Deleting tenant, ID: %d, name: %s", id, tenant.Name)
 	}
 
+	// O02: commercial retention — before deleting any tenant resource, stop
+	// NEW commercial scheduling, revoke connector connections, and refuse the
+	// deletion while in-flight commercial records (pending settlement /
+	// payment / refund) exist. Pending commercial records are never
+	// cascade-deleted; they stay under the configured retention policy.
+	if err := s.guardCommercialDeletion(ctx, id); err != nil {
+		logger.ErrorWithFields(ctx, err, map[string]interface{}{
+			"tenant_id": id,
+		})
+		return err
+	}
+
 	err = s.repo.DeleteTenant(ctx, id)
 	if err != nil {
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{
@@ -199,6 +251,36 @@ func (s *tenantService) DeleteTenant(ctx context.Context, id uint64) error {
 	}
 
 	logger.Infof(ctx, "Workspace deleted successfully, ID: %d", id)
+	return nil
+}
+
+// guardCommercialDeletion runs the pre-deletion commercial checks (O02).
+// A nil guard (commercial module not wired in this deployment) keeps the
+// legacy deletion path; the guard itself never deletes commercial records.
+func (s *tenantService) guardCommercialDeletion(ctx context.Context, id uint64) error {
+	if s.deletionGuard == nil {
+		logger.Warnf(ctx, "No commercial deletion guard wired; using legacy deletion path, tenant ID: %d", id)
+		return nil
+	}
+	if err := s.deletionGuard.DisableNewScheduling(ctx, id); err != nil {
+		return fmt.Errorf("disable new commercial scheduling for tenant %d: %w", id, err)
+	}
+	if err := s.deletionGuard.RevokeConnections(ctx, id); err != nil {
+		return fmt.Errorf("revoke connections for tenant %d: %w", id, err)
+	}
+	pending, err := s.deletionGuard.PendingCommercialWork(ctx, id)
+	if err != nil {
+		return fmt.Errorf("list pending commercial work for tenant %d: %w", id, err)
+	}
+	decision := commercial.CheckDeletionReadiness(commercial.DeletionReadinessInput{
+		Pending:                pending,
+		RetentionPolicyVersion: s.deletionGuard.RetentionPolicyVersion(),
+	})
+	if !decision.Allow {
+		return fmt.Errorf("tenant %d deletion refused: %d pending commercial record(s) must settle first: %s",
+			id, len(decision.BlockedBy), strings.Join(decision.BlockedBy, ", "))
+	}
+	logger.Infof(ctx, "Tenant %d deletion allowed; commercial records kept under retention policy %q (auto_delete=%v)", id, decision.RetentionPolicyVersion, decision.AutoDelete)
 	return nil
 }
 

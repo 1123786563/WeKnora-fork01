@@ -1,0 +1,22 @@
+{
+ "om10": {
+  "custB": "01M29XRS3A2KTWY4HPRKWHY401",
+  "subscription": {
+   "http": 201,
+   "state": "active",
+   "id": "01M29XRS4VFB3DWSYQC2HFSYMB"
+  },
+  "grant": {
+   "http": 201,
+   "id": "01M29XRS68FW5EPD7BY1S6ZSRR",
+   "amount": "12"
+  },
+  "watermark_samples": [
+   {
+    "t": 1,
+    "live": "10",
+    "pending": "0"
+   }
+  ]
+ }
+}

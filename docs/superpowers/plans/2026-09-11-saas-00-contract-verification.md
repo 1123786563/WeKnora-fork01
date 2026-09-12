@@ -33,7 +33,7 @@
 
 `scripts/saas/` 负责可复现验证；`deploy/openmeter/contract-cases/` 保存脱敏案例与选模；`artifacts/` 存执行证据。脚本使用 Python 标准库，不安装依赖。
 
-### Task V01: 固定版本接口盘点与只读健康探测
+### Task 1: V01: 固定版本接口盘点与只读健康探测
 
 **Files:**
 - Create: `scripts/saas/contract_inventory.py`、`scripts/saas/contract_inventory_test.py`
@@ -117,7 +117,7 @@ git add scripts/saas/__init__.py scripts/saas/contract_inventory.py scripts/saas
 git commit -m "test: pin official commercial API inventory"
 ```
 
-### Task V02: 可重复执行的业务契约实验驱动器
+### Task 2: V02: 可重复执行的业务契约实验驱动器
 
 **Files:**
 - Create: `scripts/saas/probe_case.py`、`scripts/saas/probe_case_test.py`
@@ -189,7 +189,7 @@ git add scripts/saas/probe_case.py scripts/saas/probe_case_test.py deploy/openme
 git commit -m "test: add isolated commercial contract probe runner"
 ```
 
-### Task V03: 执行两套官方模型实验并冻结唯一接入契约
+### Task 3: V03: 执行两套官方模型实验并冻结唯一接入契约
 
 **Files:**
 - Create: `scripts/saas/gate.py`、`scripts/saas/gate_test.py`

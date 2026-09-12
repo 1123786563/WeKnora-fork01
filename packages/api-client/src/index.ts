@@ -3,6 +3,10 @@ export type { WeKnoraClient, WeKnoraClientOptions, ClientRequest, KnowledgeBaseL
 export { ApiError } from './errors.ts';
 export type { HttpRequest, HttpResult, HttpTransport } from './ports.ts';
 export type { BearerCredential, EmbedCredential, Credential, CredentialAdapter } from './ports.ts';
+export { createCommercialApi } from './commercial.ts';
+export { createAppConnectorApi } from './appconnector.ts';
+export type { ConnectionView, InstallationView, SyncStatusView, SyncBindingView, SyncPauseReason, CreateInstallationInput, UpgradeInstallationInput, CreateConnectionInput } from '@weknora/contracts';
+export type { OrderView, CommercialSummary, QuoteView, QuoteInput, CreateOrderInput, RefundInput, RefundView } from '@weknora/contracts';
 export { createJsonTransport } from './transport/json.ts';
 export { AuthError, createRefreshCoordinator } from './auth/refresh-coordinator.ts';
 export type { AuthErrorCode, RefreshCoordinator, RefreshCoordinatorOptions, RefreshResponse } from './auth/refresh-coordinator.ts';

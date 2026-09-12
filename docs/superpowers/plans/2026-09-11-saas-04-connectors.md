@@ -33,7 +33,7 @@ A01/A02可在商业接口实验期间实现；A03及后续收费执行依赖U05�
 
 appconnector：纯契约与适配；repository/service/appconnector：持久权限、intent、恢复；原datasource接口保持兼容；原approval Gate变为产品持久审批的交互适配。
 
-### Task A01: 空间安装、版本与两类连接
+### Task 1: A01: 空间安装、版本与两类连接
 
 **Files:**
 - Create: `internal/appconnector/model.go`、`internal/appconnector/access.go`、`internal/appconnector/access_test.go`
@@ -105,7 +105,7 @@ git add internal/appconnector/model.go internal/appconnector/access.go internal/
 git commit -m "feat: add space installations and scoped connections"
 ```
 
-### Task A02: OAuth绑定、凭据引用和撤销接线
+### Task 2: A02: OAuth绑定、凭据引用和撤销接线
 
 **Files:**
 - Create: `internal/appconnector/oauth.go`、`internal/appconnector/oauth_test.go`
@@ -178,7 +178,7 @@ git add internal/appconnector/oauth.go internal/appconnector/oauth_test.go inter
 git commit -m "feat: bind connector credentials to revocable space principals"
 ```
 
-### Task A03: 持久化Action审批与未知结果状态
+### Task 3: A03: 持久化Action审批与未知结果状态
 
 **Files:**
 - Create: `internal/appconnector/action.go`、`internal/appconnector/action_test.go`
@@ -255,7 +255,7 @@ git add internal/appconnector/action.go internal/appconnector/action_test.go int
 git commit -m "feat: persist exact connector approvals and dispatch intent"
 ```
 
-### Task A04: MCP和受控HTTP统一执行适配
+### Task 4: A04: MCP和受控HTTP统一执行适配
 
 **Files:**
 - Create: `internal/appconnector/adapter.go`、`internal/appconnector/http_policy.go`、`internal/appconnector/http_policy_test.go`
@@ -327,7 +327,7 @@ git add internal/appconnector/adapter.go internal/appconnector/http_policy.go in
 git commit -m "feat: constrain connector network and MCP execution"
 ```
 
-### Task A05: 飞书发送消息的审批和结果核对
+### Task 5: A05: 飞书发送消息的审批和结果核对
 
 **Files:**
 - Create: `internal/appconnector/feishu_send.go`、`internal/appconnector/feishu_send_test.go`
@@ -392,7 +392,7 @@ git add internal/appconnector/feishu_send.go internal/appconnector/feishu_send_t
 git commit -m "feat: send approved Feishu messages with recoverable results"
 ```
 
-### Task A06: Notion页面创建与部分完成恢复
+### Task 6: A06: Notion页面创建与部分完成恢复
 
 **Files:**
 - Create: `internal/appconnector/notion_create.go`、`internal/appconnector/notion_create_test.go`
@@ -459,7 +459,7 @@ git add internal/appconnector/notion_create.go internal/appconnector/notion_crea
 git commit -m "feat: resume approved Notion page creation without duplicates"
 ```
 
-### Task A07: 飞书和Notion同步迁移、游标与暂停
+### Task 7: A07: 飞书和Notion同步迁移、游标与暂停
 
 **Files:**
 - Create: `internal/appconnector/sync.go`、`internal/appconnector/sync_test.go`

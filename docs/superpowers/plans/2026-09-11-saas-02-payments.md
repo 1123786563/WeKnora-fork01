@@ -33,7 +33,7 @@ F01～F05 与 V03；C05 的可退锁定还依赖 U02/U03（预算计划中的任
 
 payment：渠道协议；repository/commercial：交易与 Outbox；service/commercial：履约与退款；infrastructure/openmeter：唯一官方商业模型适配。
 
-### Task C01: 订单、支付尝试与持久化 Outbox
+### Task 1: C01: 订单、支付尝试与持久化 Outbox
 
 **Files:**
 - Create: `internal/commercial/order.go`、`internal/commercial/order_test.go`
@@ -110,7 +110,7 @@ git add internal/commercial/order.go internal/commercial/order_test.go internal/
 git commit -m "feat: persist payment facts with fulfillment outbox"
 ```
 
-### Task C02: 支付适配接口与微信验签链路
+### Task 2: C02: 支付适配接口与微信验签链路
 
 **Files:**
 - Create: `internal/payment/provider.go`、`internal/payment/wechat.go`、`internal/payment/wechat_test.go`
@@ -191,7 +191,7 @@ git add internal/payment/provider.go internal/payment/wechat.go internal/payment
 git commit -m "feat: verify WeChat payments before fulfillment"
 ```
 
-### Task C03: 支付宝独立支付与退款适配
+### Task 3: C03: 支付宝独立支付与退款适配
 
 **Files:**
 - Create: `internal/payment/alipay.go`、`internal/payment/alipay_test.go`
@@ -261,7 +261,7 @@ git add internal/payment/alipay.go internal/payment/alipay_test.go internal/hand
 git commit -m "feat: add independent Alipay payment verification"
 ```
 
-### Task C04: 付款到权益的幂等履约工作进程
+### Task 4: C04: 付款到权益的幂等履约工作进程
 
 **Files:**
 - Create: `internal/commercial/fulfillment.go`、`internal/commercial/fulfillment_test.go`
@@ -332,7 +332,7 @@ git add internal/commercial/fulfillment.go internal/commercial/fulfillment_test.
 git commit -m "feat: recover paid orders without duplicate benefits"
 ```
 
-### Task C05: 退款锁定、渠道出款与精确撤权
+### Task 5: C05: 退款锁定、渠道出款与精确撤权
 
 **Files:**
 - Create: `internal/commercial/refund.go`、`internal/commercial/refund_test.go`

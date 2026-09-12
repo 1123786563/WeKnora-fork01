@@ -1,0 +1,22 @@
+{
+  "case": "om02-v2-balance-after",
+  "namespace": "om02-20260912",
+  "steps": [
+    {
+      "method": "GET",
+      "operation_id": "getCustomerEntitlementValueV2",
+      "request": null,
+      "status": 200,
+      "response": {
+        "hasAccess": true,
+        "balance": 750,
+        "overage": 0,
+        "totalAvailableGrantAmount": 1000,
+        "usage": 250,
+        "grantBalances": {
+          "01M29T1JXXF1Z66102BZB83EJ4": 750
+        }
+      }
+    }
+  ]
+}

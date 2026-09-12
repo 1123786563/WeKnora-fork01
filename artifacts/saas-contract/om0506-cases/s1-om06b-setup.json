@@ -1,0 +1,63 @@
+{
+  "customer": {
+    "key": "om0506-20260912-custB",
+    "status": 201,
+    "id": "01M29VSJR4NMMCDKA7MPGTCDAJ"
+  },
+  "pt1m": {
+    "status": 201,
+    "body": {
+      "amount": "40",
+      "created_at": "2026-09-12T03:50:18.794609Z",
+      "currency": "USD",
+      "expires_at": "2026-09-12T03:51:18Z",
+      "funding_method": "none",
+      "id": "01M29VSJXAHVNH4RD6P9RQQGQY",
+      "key": "om0506-20260912-b-pt1m",
+      "labels": {},
+      "name": "OM0506 PT1M",
+      "priority": 10,
+      "status": "active",
+      "tax_config": {
+        "tax_code": {
+          "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+        }
+      },
+      "updated_at": "2026-09-12T03:50:18.817332Z"
+    }
+  },
+  "pt3m": {
+    "status": 201,
+    "body": {
+      "amount": "60",
+      "created_at": "2026-09-12T03:50:18.822347Z",
+      "currency": "USD",
+      "expires_at": "2026-09-12T03:53:18Z",
+      "funding_method": "none",
+      "id": "01M29VSJY6MVC07R7FJEBABZTC",
+      "key": "om0506-20260912-b-pt3m",
+      "labels": {},
+      "name": "OM0506 PT3M",
+      "priority": 10,
+      "status": "active",
+      "tax_config": {
+        "tax_code": {
+          "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+        }
+      },
+      "updated_at": "2026-09-12T03:50:18.829681Z"
+    }
+  },
+  "t0": "2026-09-12T03:50:18.724281+00:00",
+  "balance_t0": {
+    "balances": [
+      {
+        "currency": "USD",
+        "live": "100",
+        "pending": "0",
+        "settled": "100"
+      }
+    ],
+    "retrieved_at": "2026-09-12T03:50:18.833264199Z"
+  }
+}

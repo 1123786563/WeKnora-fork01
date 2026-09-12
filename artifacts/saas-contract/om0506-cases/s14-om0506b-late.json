@@ -1,0 +1,32 @@
+{
+ "before": {
+  "currency": "USD",
+  "live": "5",
+  "pending": "0",
+  "settled": "50"
+ },
+ "late_event": {
+  "status": 202,
+  "event_time": "2026-09-12T03:55:41.397335+00:00",
+  "tokens": 200,
+  "usd": "2.00"
+ },
+ "after": {
+  "currency": "USD",
+  "live": "5",
+  "pending": "0",
+  "settled": "50"
+ },
+ "tx_count": 2,
+ "tx_sample_keys": [
+  "amount",
+  "available_balance",
+  "booked_at",
+  "created_at",
+  "currency",
+  "id",
+  "labels",
+  "name",
+  "type"
+ ]
+}

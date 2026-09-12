@@ -1,0 +1,124 @@
+{
+  "id": "om02b-v3-subscription",
+  "operation_id": "create-plan",
+  "request": [
+    {
+      "operation_id": "get-customer",
+      "method": "GET",
+      "path": "/api/v3/openmeter/customers/01M29T9Z6DVA4ATC501Y44G32D",
+      "captures": {
+        "v3cust": "/id"
+      },
+      "expected": {
+        "key": "om02b-20260912-v3cust"
+      }
+    },
+    {
+      "operation_id": "create-plan",
+      "method": "POST",
+      "path": "/api/v3/openmeter/plans",
+      "body": {
+        "name": "OM-02B V3 Credits Plan",
+        "key": "om02b_20260912_v3plan4",
+        "currency": "USD",
+        "billing_cadence": "P1M",
+        "phases": [
+          {
+            "key": "main",
+            "name": "Main",
+            "rate_cards": [
+              {
+                "key": "om02_tokens",
+                "name": "OM-02B Tokens RC",
+                "feature": {
+                  "id": "01M29SXXZY6WECC4ZDQPWJVBVP"
+                },
+                "price": {
+                  "type": "unit",
+                  "amount": "0.01"
+                },
+                "billing_cadence": "P1M"
+              }
+            ]
+          }
+        ]
+      },
+      "captures": {
+        "v3plan": "/id"
+      }
+    },
+    {
+      "operation_id": "publish-plan",
+      "method": "POST",
+      "path": "/api/v3/openmeter/plans/${capture:v3plan}/publish"
+    },
+    {
+      "operation_id": "create-subscription",
+      "method": "POST",
+      "path": "/api/v3/openmeter/subscriptions",
+      "body": {
+        "customer": {
+          "key": "om02b-20260912-v3cust"
+        },
+        "plan": {
+          "key": "om02b_20260912_v3plan4"
+        },
+        "settlement_mode": "credit_then_invoice"
+      },
+      "captures": {
+        "v3sub": "/id"
+      }
+    },
+    {
+      "operation_id": "create-credit-grant",
+      "method": "POST",
+      "path": "/api/v3/openmeter/customers/${capture:v3cust}/credits/grants",
+      "body": {
+        "name": "OM-02B subscription credits",
+        "funding_method": "none",
+        "currency": "USD",
+        "amount": "100",
+        "key": "om02b-20260912-grant-2"
+      },
+      "captures": {
+        "v3grant": "/id"
+      }
+    },
+    {
+      "operation_id": "get-customer-credit-balance",
+      "method": "GET",
+      "path": "/api/v3/openmeter/customers/${capture:v3cust}/credits/balance"
+    },
+    {
+      "operation_id": "ingest-metering-events",
+      "method": "POST",
+      "path": "/api/v3/openmeter/events",
+      "body": [
+        {
+          "id": "om02b-20260912-evt-5",
+          "source": "om02b-probe",
+          "specversion": "1.0",
+          "type": "prompt",
+          "subject": "om02b-20260912-v3cust",
+          "data": {
+            "tokens": 250,
+            "model": "gpt-4",
+            "type": "input"
+          }
+        }
+      ]
+    },
+    {
+      "operation_id": "get-customer-credit-balance",
+      "method": "GET",
+      "path": "/api/v3/openmeter/customers/${capture:v3cust}/credits/balance"
+    },
+    {
+      "operation_id": "list-credit-transactions",
+      "method": "GET",
+      "path": "/api/v3/openmeter/customers/${capture:v3cust}/credits/transactions"
+    }
+  ],
+  "captures": {},
+  "expected": {}
+}

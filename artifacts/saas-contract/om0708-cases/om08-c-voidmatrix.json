@@ -1,0 +1,572 @@
+{
+ "results": {
+  "balAfterVoid1": {
+   "status": 200,
+   "body": {
+    "balances": [
+     {
+      "currency": "USD",
+      "live": "50",
+      "pending": "0",
+      "settled": "60"
+     }
+    ],
+    "retrieved_at": "2026-09-12T04:06:29.918868079Z"
+   },
+   "text": "{\"balances\":[{\"currency\":\"USD\",\"live\":\"50\",\"pending\":\"0\",\"settled\":\"60\"}],\"retrieved_at\":\"2026-09-12T04:06:29.918868079Z\"}\n"
+  },
+  "entitlement": {
+   "status": 404,
+   "body": {
+    "type": "https://kongapi.info/konnect/not-found",
+    "status": 404,
+    "title": "Not Found",
+    "instance": "urn:request:817fb7fae384/bkDLTVCpj8-001058",
+    "detail": "The requested route was not found"
+   },
+   "text": "{\"type\":\"https://kongapi.info/konnect/not-found\",\"status\":404,\"title\":\"Not Found\",\"instance\":\"urn:request:817fb7fae384/bkDLTVCpj8-001058\",\"detail\":\"The requested route was not found\"}"
+  },
+  "partialVoid": {
+   "status": 400,
+   "body": {
+    "type": "https://kongapi.info/konnect/bad-request",
+    "status": 400,
+    "title": "Bad Request",
+    "instance": "urn:request:817fb7fae384/bkDLTVCpj8-001059",
+    "detail": "Bad Request:  [properties]: property \"amount\" is unsupported",
+    "invalid_parameters": [
+     {
+      "field": "",
+      "rule": "properties",
+      "reason": "property \"amount\" is unsupported",
+      "source": ""
+     }
+    ]
+   },
+   "text": "{\"type\":\"https://kongapi.info/konnect/bad-request\",\"status\":400,\"title\":\"Bad Request\",\"instance\":\"urn:request:817fb7fae384/bkDLTVCpj8-001059\",\"detail\":\"Bad Request:  [properties]: property \\\"amount\\\" is unsupported\",\"invalid_parameters\":[{\"field\":\"\",\"rule\":\"properties\",\"reason\":\"property \\\"amount\\\" is unsupported\",\"source\":\"\"}]}"
+  },
+  "g2After": {
+   "status": 200,
+   "body": {
+    "amount": "60",
+    "created_at": "2026-09-12T04:05:12.370781Z",
+    "currency": "USD",
+    "funding_method": "none",
+    "id": "01M29WMVHJSXBA23QK0MRWFA8X",
+    "key": "om0708-batch2",
+    "labels": {},
+    "name": "OM0708 batch2",
+    "priority": 5,
+    "status": "active",
+    "tax_config": {
+     "tax_code": {
+      "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+     }
+    },
+    "updated_at": "2026-09-12T04:05:12.390462Z"
+   },
+   "text": "{\"amount\":\"60\",\"created_at\":\"2026-09-12T04:05:12.370781Z\",\"currency\":\"USD\",\"funding_method\":\"none\",\"id\":\"01M29WMVHJSXBA23QK0MRWFA8X\",\"key\":\"om0708-batch2\",\"labels\":{},\"name\":\"OM0708 batch2\",\"priority\":5,\"status\":\"active\",\"tax_config\":{\"tax_code\":{\"id\":\"01M25SMCRCBW1EXHCWHF6YWZ2P\"}},\"updated_at\":\"2026-09-12T04:05:12.390462Z\"}\n"
+  },
+  "balAfterPartial": {
+   "status": 200,
+   "body": {
+    "balances": [
+     {
+      "currency": "USD",
+      "live": "50",
+      "pending": "0",
+      "settled": "60"
+     }
+    ],
+    "retrieved_at": "2026-09-12T04:06:30.056242564Z"
+   },
+   "text": "{\"balances\":[{\"currency\":\"USD\",\"live\":\"50\",\"pending\":\"0\",\"settled\":\"60\"}],\"retrieved_at\":\"2026-09-12T04:06:30.056242564Z\"}\n"
+  },
+  "geStatus": {
+   "status": 200,
+   "body": {
+    "amount": "5",
+    "created_at": "2026-09-12T04:05:12.272385Z",
+    "currency": "USD",
+    "expires_at": "2026-09-12T04:06:12Z",
+    "funding_method": "none",
+    "id": "01M29WMVEGRN16N8NYR5N3ADVH",
+    "key": "om0708-exp",
+    "labels": {},
+    "name": "OM0708 expiry grant",
+    "priority": 1,
+    "status": "expired",
+    "tax_config": {
+     "tax_code": {
+      "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+     }
+    },
+    "updated_at": "2026-09-12T04:05:12.328336Z"
+   },
+   "text": "{\"amount\":\"5\",\"created_at\":\"2026-09-12T04:05:12.272385Z\",\"currency\":\"USD\",\"expires_at\":\"2026-09-12T04:06:12Z\",\"funding_method\":\"none\",\"id\":\"01M29WMVEGRN16N8NYR5N3ADVH\",\"key\":\"om0708-exp\",\"labels\":{},\"name\":\"OM0708 expiry grant\",\"priority\":1,\"status\":\"expired\",\"tax_config\":{\"tax_code\":{\"id\":\"01M25SMCRCBW1EXHCWHF6YWZ2P\"}},\"updated_at\":\"2026-09-12T04:05:12.328336Z\"}\n"
+  },
+  "voidExpired": {
+   "status": 409,
+   "body": {
+    "type": "about:blank",
+    "title": "Conflict",
+    "status": 409,
+    "detail": "conflict error: credit grant 01M29WMVEGRN16N8NYR5N3ADVH has already expired",
+    "instance": "urn:request:817fb7fae384/bkDLTVCpj8-001063"
+   },
+   "text": "{\"type\":\"about:blank\",\"title\":\"Conflict\",\"status\":409,\"detail\":\"conflict error: credit grant 01M29WMVEGRN16N8NYR5N3ADVH has already expired\",\"instance\":\"urn:request:817fb7fae384/bkDLTVCpj8-001063\"}\n"
+  },
+  "balAfterExpVoid": {
+   "status": 200,
+   "body": {
+    "balances": [
+     {
+      "currency": "USD",
+      "live": "50",
+      "pending": "0",
+      "settled": "60"
+     }
+    ],
+    "retrieved_at": "2026-09-12T04:06:30.089336086Z"
+   },
+   "text": "{\"balances\":[{\"currency\":\"USD\",\"live\":\"50\",\"pending\":\"0\",\"settled\":\"60\"}],\"retrieved_at\":\"2026-09-12T04:06:30.089336086Z\"}\n"
+  },
+  "repeatVoidB1": {
+   "status": 200,
+   "body": {
+    "amount": "40",
+    "created_at": "2026-09-12T04:05:12.342382Z",
+    "currency": "USD",
+    "funding_method": "none",
+    "id": "01M29WMVGPTKG5ZJMYT5FT5YFG",
+    "key": "om0708-batch1",
+    "labels": {},
+    "name": "OM0708 batch1",
+    "priority": 3,
+    "status": "voided",
+    "tax_config": {
+     "tax_code": {
+      "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+     }
+    },
+    "updated_at": "2026-09-12T04:06:09.194376Z",
+    "voided_at": "2026-09-12T04:06:09.186221Z"
+   },
+   "text": "{\"amount\":\"40\",\"created_at\":\"2026-09-12T04:05:12.342382Z\",\"currency\":\"USD\",\"funding_method\":\"none\",\"id\":\"01M29WMVGPTKG5ZJMYT5FT5YFG\",\"key\":\"om0708-batch1\",\"labels\":{},\"name\":\"OM0708 batch1\",\"priority\":3,\"status\":\"voided\",\"tax_config\":{\"tax_code\":{\"id\":\"01M25SMCRCBW1EXHCWHF6YWZ2P\"}},\"updated_at\":\"2026-09-12T04:06:09.194376Z\",\"voided_at\":\"2026-09-12T04:06:09.186221Z\"}\n"
+  },
+  "balAfterRepeat": {
+   "status": 200,
+   "body": {
+    "balances": [
+     {
+      "currency": "USD",
+      "live": "50",
+      "pending": "0",
+      "settled": "60"
+     }
+    ],
+    "retrieved_at": "2026-09-12T04:06:30.113921342Z"
+   },
+   "text": "{\"balances\":[{\"currency\":\"USD\",\"live\":\"50\",\"pending\":\"0\",\"settled\":\"60\"}],\"retrieved_at\":\"2026-09-12T04:06:30.113921342Z\"}\n"
+  },
+  "tx": {
+   "status": 200,
+   "body": {
+    "data": [
+     {
+      "amount": "-5",
+      "available_balance": {
+       "after": "60",
+       "before": "65"
+      },
+      "booked_at": "2026-09-12T04:06:12Z",
+      "created_at": "2026-09-12T04:06:12Z",
+      "currency": "USD",
+      "id": "01M29WMVFQRWX3947DKVPJG33D",
+      "labels": {
+       "charge_id": "01M29WMVEGRN16N8NYR5N3ADVH"
+      },
+      "name": "OM0708 expiry grant",
+      "type": "expired"
+     },
+     {
+      "amount": "-40",
+      "available_balance": {
+       "after": "65",
+       "before": "105"
+      },
+      "booked_at": "2026-09-12T04:06:09.186221Z",
+      "created_at": "2026-09-12T04:06:09.191644Z",
+      "currency": "USD",
+      "id": "01M29WPK140XBAF081Z76SV6H0",
+      "labels": {
+       "charge_id": "01M29WMVGPTKG5ZJMYT5FT5YFG"
+      },
+      "name": "OM0708 batch1",
+      "type": "voided"
+     },
+     {
+      "amount": "60",
+      "available_balance": {
+       "after": "105",
+       "before": "45"
+      },
+      "booked_at": "2026-09-12T04:05:12.390258Z",
+      "created_at": "2026-09-12T04:05:12.370781Z",
+      "currency": "USD",
+      "id": "01M29WMVHJSXBA23QK0MRWFA8X",
+      "labels": {
+       "charge_id": "01M29WMVHJSXBA23QK0MRWFA8X"
+      },
+      "name": "OM0708 batch2",
+      "type": "funded"
+     },
+     {
+      "amount": "40",
+      "available_balance": {
+       "after": "45",
+       "before": "5"
+      },
+      "booked_at": "2026-09-12T04:05:12.361475Z",
+      "created_at": "2026-09-12T04:05:12.342382Z",
+      "currency": "USD",
+      "id": "01M29WMVGPTKG5ZJMYT5FT5YFG",
+      "labels": {
+       "charge_id": "01M29WMVGPTKG5ZJMYT5FT5YFG"
+      },
+      "name": "OM0708 batch1",
+      "type": "funded"
+     },
+     {
+      "amount": "5",
+      "available_balance": {
+       "after": "5",
+       "before": "0"
+      },
+      "booked_at": "2026-09-12T04:05:12.325191Z",
+      "created_at": "2026-09-12T04:05:12.272385Z",
+      "currency": "USD",
+      "id": "01M29WMVEGRN16N8NYR5N3ADVH",
+      "labels": {
+       "charge_id": "01M29WMVEGRN16N8NYR5N3ADVH"
+      },
+      "name": "OM0708 expiry grant",
+      "type": "funded"
+     }
+    ],
+    "meta": {
+     "page": {
+      "next": null,
+      "previous": null,
+      "size": 20
+     }
+    }
+   },
+   "text": "{\"data\":[{\"amount\":\"-5\",\"available_balance\":{\"after\":\"60\",\"before\":\"65\"},\"booked_at\":\"2026-09-12T04:06:12Z\",\"created_at\":\"2026-09-12T04:06:12Z\",\"currency\":\"USD\",\"id\":\"01M29WMVFQRWX3947DKVPJG33D\",\"labels\":{\"charge_id\":\"01M29WMVEGRN16N8NYR5N3ADVH\"},\"name\":\"OM0708 expiry grant\",\"type\":\"expired\"},{\"amount\":\"-40\",\"available_balance\":{\"after\":\"65\",\"before\":\"105\"},\"booked_at\":\"2026-09-12T04:06:09.186221Z\",\"created_at\":\"2026-09-12T04:06:09.191644Z\",\"currency\":\"USD\",\"id\":\"01M29WPK140XBAF081Z76SV6H0\",\"labels\":{\"charge_id\":\"01M29WMVGPTKG5ZJMYT5FT5YFG\"},\"name\":\"OM0708 batch1\",\"type\":\"voided\"},{\"amount\":\"60\",\"available_balance\":{\"after\":\"105\",\"before\":\"45\"},\"booked_at\":\"2026-09-12T04:05:12.390258Z\",\"created_at\":\"2026-09-12T04:05:12.370781Z\",\"currency\":\"USD\",\"id\":\"01M29WMVHJSXBA23QK0MRWFA8X\",\"labels\":{\"charge_id\":\"01M29WMVHJSXBA23QK0MRWFA8X\"},\"name\":\"OM0708 batch2\",\"type\":\"funded\"},{\"amount\":\"40\",\"available_balance\":{\"after\":\"45\",\"before\":\"5\"},\"booked_at\":\"2026-09-12T04:05:12.361475Z\",\"created_at\":\"2026-09-12T04:05:12.342382Z\",\"currency\":\"USD\",\"id\":\"01M29WMVGPTKG5ZJMYT5FT5YFG\",\"labels\":{\"charge_id\":\"01M29WMVGPTKG5ZJMYT5FT5YFG\"},\"name\":\"OM0708 batch1\",\"type\":\"funded\"},{\"amount\":\"5\",\"available_balance\":{\"after\":\"5\",\"before\":\"0\"},\"booked_at\":\"2026-09-12T04:05:12.325191Z\",\"created_at\":\"2026-09-12T04:05:12.272385Z\",\"currency\":\"USD\",\"id\":\"01M29WMVEGRN16N8NYR5N3ADVH\",\"labels\":{\"charge_id\":\"01M29WMVEGRN16N8NYR5N3ADVH\"},\"name\":\"OM0708 expiry grant\",\"type\":\"funded\"}],\"meta\":{\"page\":{\"next\":null,\"previous\":null,\"size\":20}}}\n"
+  }
+ },
+ "log": [
+  {
+   "t": 118,
+   "op": "balance-after-void-b1",
+   "method": "GET",
+   "path": "/customers/01M29WMV6F84ZP0ZJ9WCAAKR46/credits/balance",
+   "status": 200,
+   "resBody": {
+    "balances": [
+     {
+      "currency": "USD",
+      "live": "50",
+      "pending": "0",
+      "settled": "60"
+     }
+    ],
+    "retrieved_at": "2026-09-12T04:06:29.918868079Z"
+   }
+  },
+  {
+   "t": 173,
+   "op": "v2-entitlement",
+   "method": "GET",
+   "path": "http://127.0.0.1:48888/api/v2/entitlements/01M29WMV6F84ZP0ZJ9WCAAKR46/om02_tokens",
+   "status": 404,
+   "resBody": {
+    "type": "https://kongapi.info/konnect/not-found",
+    "status": 404,
+    "title": "Not Found",
+    "instance": "urn:request:817fb7fae384/bkDLTVCpj8-001058",
+    "detail": "The requested route was not found"
+   }
+  },
+  {
+   "t": 179,
+   "op": "void-b2-partial-amount",
+   "method": "POST",
+   "path": "/customers/01M29WMV6F84ZP0ZJ9WCAAKR46/credits/grants/01M29WMVHJSXBA23QK0MRWFA8X/void",
+   "status": 400,
+   "reqBody": {
+    "amount": "10"
+   },
+   "resBody": {
+    "type": "https://kongapi.info/konnect/bad-request",
+    "status": 400,
+    "title": "Bad Request",
+    "instance": "urn:request:817fb7fae384/bkDLTVCpj8-001059",
+    "detail": "Bad Request:  [properties]: property \"amount\" is unsupported",
+    "invalid_parameters": [
+     {
+      "field": "",
+      "rule": "properties",
+      "reason": "property \"amount\" is unsupported",
+      "source": ""
+     }
+    ]
+   }
+  },
+  {
+   "t": 184,
+   "op": "get-grant-b2",
+   "method": "GET",
+   "path": "/customers/01M29WMV6F84ZP0ZJ9WCAAKR46/credits/grants/01M29WMVHJSXBA23QK0MRWFA8X",
+   "status": 200,
+   "resBody": {
+    "amount": "60",
+    "created_at": "2026-09-12T04:05:12.370781Z",
+    "currency": "USD",
+    "funding_method": "none",
+    "id": "01M29WMVHJSXBA23QK0MRWFA8X",
+    "key": "om0708-batch2",
+    "labels": {},
+    "name": "OM0708 batch2",
+    "priority": 5,
+    "status": "active",
+    "tax_config": {
+     "tax_code": {
+      "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+     }
+    },
+    "updated_at": "2026-09-12T04:05:12.390462Z"
+   }
+  },
+  {
+   "t": 203,
+   "op": "balance-after-partial",
+   "method": "GET",
+   "path": "/customers/01M29WMV6F84ZP0ZJ9WCAAKR46/credits/balance",
+   "status": 200,
+   "resBody": {
+    "balances": [
+     {
+      "currency": "USD",
+      "live": "50",
+      "pending": "0",
+      "settled": "60"
+     }
+    ],
+    "retrieved_at": "2026-09-12T04:06:30.056242564Z"
+   }
+  },
+  {
+   "t": 210,
+   "op": "get-grant-exp",
+   "method": "GET",
+   "path": "/customers/01M29WMV6F84ZP0ZJ9WCAAKR46/credits/grants/01M29WMVEGRN16N8NYR5N3ADVH",
+   "status": 200,
+   "resBody": {
+    "amount": "5",
+    "created_at": "2026-09-12T04:05:12.272385Z",
+    "currency": "USD",
+    "expires_at": "2026-09-12T04:06:12Z",
+    "funding_method": "none",
+    "id": "01M29WMVEGRN16N8NYR5N3ADVH",
+    "key": "om0708-exp",
+    "labels": {},
+    "name": "OM0708 expiry grant",
+    "priority": 1,
+    "status": "expired",
+    "tax_config": {
+     "tax_code": {
+      "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+     }
+    },
+    "updated_at": "2026-09-12T04:05:12.328336Z"
+   }
+  },
+  {
+   "t": 217,
+   "op": "void-expired-grant",
+   "method": "POST",
+   "path": "/customers/01M29WMV6F84ZP0ZJ9WCAAKR46/credits/grants/01M29WMVEGRN16N8NYR5N3ADVH/void",
+   "status": 409,
+   "reqBody": {},
+   "resBody": {
+    "type": "about:blank",
+    "title": "Conflict",
+    "status": 409,
+    "detail": "conflict error: credit grant 01M29WMVEGRN16N8NYR5N3ADVH has already expired",
+    "instance": "urn:request:817fb7fae384/bkDLTVCpj8-001063"
+   }
+  },
+  {
+   "t": 236,
+   "op": "balance-after-exp-void",
+   "method": "GET",
+   "path": "/customers/01M29WMV6F84ZP0ZJ9WCAAKR46/credits/balance",
+   "status": 200,
+   "resBody": {
+    "balances": [
+     {
+      "currency": "USD",
+      "live": "50",
+      "pending": "0",
+      "settled": "60"
+     }
+    ],
+    "retrieved_at": "2026-09-12T04:06:30.089336086Z"
+   }
+  },
+  {
+   "t": 241,
+   "op": "void-b1-repeat",
+   "method": "POST",
+   "path": "/customers/01M29WMV6F84ZP0ZJ9WCAAKR46/credits/grants/01M29WMVGPTKG5ZJMYT5FT5YFG/void",
+   "status": 200,
+   "reqBody": {},
+   "resBody": {
+    "amount": "40",
+    "created_at": "2026-09-12T04:05:12.342382Z",
+    "currency": "USD",
+    "funding_method": "none",
+    "id": "01M29WMVGPTKG5ZJMYT5FT5YFG",
+    "key": "om0708-batch1",
+    "labels": {},
+    "name": "OM0708 batch1",
+    "priority": 3,
+    "status": "voided",
+    "tax_config": {
+     "tax_code": {
+      "id": "01M25SMCRCBW1EXHCWHF6YWZ2P"
+     }
+    },
+    "updated_at": "2026-09-12T04:06:09.194376Z",
+    "voided_at": "2026-09-12T04:06:09.186221Z"
+   }
+  },
+  {
+   "t": 255,
+   "op": "balance-after-repeat",
+   "method": "GET",
+   "path": "/customers/01M29WMV6F84ZP0ZJ9WCAAKR46/credits/balance",
+   "status": 200,
+   "resBody": {
+    "balances": [
+     {
+      "currency": "USD",
+      "live": "50",
+      "pending": "0",
+      "settled": "60"
+     }
+    ],
+    "retrieved_at": "2026-09-12T04:06:30.113921342Z"
+   }
+  },
+  {
+   "t": 306,
+   "op": "list-transactions",
+   "method": "GET",
+   "path": "/customers/01M29WMV6F84ZP0ZJ9WCAAKR46/credits/transactions",
+   "status": 200,
+   "resBody": {
+    "data": [
+     {
+      "amount": "-5",
+      "available_balance": {
+       "after": "60",
+       "before": "65"
+      },
+      "booked_at": "2026-09-12T04:06:12Z",
+      "created_at": "2026-09-12T04:06:12Z",
+      "currency": "USD",
+      "id": "01M29WMVFQRWX3947DKVPJG33D",
+      "labels": {
+       "charge_id": "01M29WMVEGRN16N8NYR5N3ADVH"
+      },
+      "name": "OM0708 expiry grant",
+      "type": "expired"
+     },
+     {
+      "amount": "-40",
+      "available_balance": {
+       "after": "65",
+       "before": "105"
+      },
+      "booked_at": "2026-09-12T04:06:09.186221Z",
+      "created_at": "2026-09-12T04:06:09.191644Z",
+      "currency": "USD",
+      "id": "01M29WPK140XBAF081Z76SV6H0",
+      "labels": {
+       "charge_id": "01M29WMVGPTKG5ZJMYT5FT5YFG"
+      },
+      "name": "OM0708 batch1",
+      "type": "voided"
+     },
+     {
+      "amount": "60",
+      "available_balance": {
+       "after": "105",
+       "before": "45"
+      },
+      "booked_at": "2026-09-12T04:05:12.390258Z",
+      "created_at": "2026-09-12T04:05:12.370781Z",
+      "currency": "USD",
+      "id": "01M29WMVHJSXBA23QK0MRWFA8X",
+      "labels": {
+       "charge_id": "01M29WMVHJSXBA23QK0MRWFA8X"
+      },
+      "name": "OM0708 batch2",
+      "type": "funded"
+     },
+     {
+      "amount": "40",
+      "available_balance": {
+       "after": "45",
+       "before": "5"
+      },
+      "booked_at": "2026-09-12T04:05:12.361475Z",
+      "created_at": "2026-09-12T04:05:12.342382Z",
+      "currency": "USD",
+      "id": "01M29WMVGPTKG5ZJMYT5FT5YFG",
+      "labels": {
+       "charge_id": "01M29WMVGPTKG5ZJMYT5FT5YFG"
+      },
+      "name": "OM0708 batch1",
+      "type": "funded"
+     },
+     {
+      "amount": "5",
+      "available_balance": {
+       "after": "5",
+       "before": "0"
+      },
+      "booked_at": "2026-09-12T04:05:12.325191Z",
+      "created_at": "2026-09-12T04:05:12.272385Z",
+      "currency": "USD",
+      "id": "01M29WMVEGRN16N8NYR5N3ADVH",
+      "labels": {
+       "charge_id": "01M29WMVEGRN16N8NYR5N3ADVH"
+      },
+      "name": "OM0708 expiry grant",
+      "type": "funded"
+     }
+    ],
+    "meta": {
+     "page": {
+      "next": null,
+      "previous": null,
+      "size": 20
+     }
+    }
+   }
+  }
+ ]
+}

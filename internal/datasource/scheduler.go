@@ -29,9 +29,26 @@ type Scheduler struct {
 	dsRepo       interfaces.DataSourceRepository
 	syncLogRepo  interfaces.SyncLogRepository
 	taskEnqueuer interfaces.TaskEnqueuer
+	// syncGate authorizes a scheduled sync before any task is created (A07):
+	// it resolves the space connection and the current budget/plan state and
+	// returns a typed pause error when the sync must not start. nil keeps the
+	// pre-A07 behavior. It is a plain func (not an appconnector interface) so
+	// this package never imports the application layer.
+	syncGate SyncGateFunc
 
 	mu      sync.Mutex
 	entries map[string]cron.EntryID // dataSourceID → cron entry ID
+}
+
+// SyncGateFunc authorizes one scheduled sync run. Returning an error pauses
+// that run (no sync log, no task); the data source keeps its cursor.
+type SyncGateFunc func(ctx context.Context, ds *types.DataSource) error
+
+// SetSyncGate installs the A07 authorization hook (space connection + budget).
+func (s *Scheduler) SetSyncGate(gate SyncGateFunc) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.syncGate = gate
 }
 
 // NewScheduler creates a new Scheduler.
@@ -150,6 +167,19 @@ func (s *Scheduler) triggerSync(dataSourceID string, tenantID uint64) {
 	if running, _ := s.syncLogRepo.HasRunningSync(ctx, dataSourceID); running {
 		logger.Infof(ctx, "[Scheduler] skipping sync for ds=%s (previous sync still running)", dataSourceID)
 		return
+	}
+
+	// A07 layer 0: resolve the space connection and current budget/plan state
+	// BEFORE creating any sync log or task. A paused run leaves the persisted
+	// cursor untouched so resume continues where the last checkpoint stopped.
+	s.mu.Lock()
+	gate := s.syncGate
+	s.mu.Unlock()
+	if gate != nil {
+		if err := gate(ctx, ds); err != nil {
+			logger.Infof(ctx, "[Scheduler] sync for ds=%s paused before dispatch: %v", dataSourceID, err)
+			return
+		}
 	}
 
 	syncLog := &types.SyncLog{

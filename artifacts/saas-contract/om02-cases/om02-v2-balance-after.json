@@ -1,0 +1,11 @@
+{
+  "id": "om02-v2-balance-after",
+  "operation_id": "getCustomerEntitlementValueV2",
+  "request": {
+    "operation_id": "getCustomerEntitlementValueV2",
+    "method": "GET",
+    "path": "/api/v2/customers/om02-20260912-v2cust/entitlements/om02_tokens/value"
+  },
+  "captures": {},
+  "expected": {}
+}

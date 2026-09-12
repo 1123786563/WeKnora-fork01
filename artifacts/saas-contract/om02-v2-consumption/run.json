@@ -1,0 +1,37 @@
+{
+  "case": "om02-v2-consumption",
+  "namespace": "om02-20260912",
+  "steps": [
+    {
+      "method": "POST",
+      "operation_id": "ingestEvents",
+      "request": {
+        "id": "om02-20260912-evt-1",
+        "source": "om02-probe",
+        "specversion": "1.0",
+        "type": "prompt",
+        "subject": "om02-20260912-v2cust",
+        "data": {
+          "tokens": "[REDACTED]",
+          "model": "gpt-4",
+          "type": "input"
+        }
+      },
+      "status": 204,
+      "response": {}
+    },
+    {
+      "method": "GET",
+      "operation_id": "getCustomerEntitlementValueV2",
+      "request": null,
+      "status": 200,
+      "response": {
+        "balance": 0,
+        "overage": 0,
+        "totalAvailableGrantAmount": 0,
+        "usage": 0,
+        "grantBalances": {}
+      }
+    }
+  ]
+}

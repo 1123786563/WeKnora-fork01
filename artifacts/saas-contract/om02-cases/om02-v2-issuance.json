@@ -1,0 +1,78 @@
+{
+  "id": "om02-v2-issuance",
+  "operation_id": "createCustomer",
+  "request": [
+    {
+      "operation_id": "createCustomer",
+      "method": "POST",
+      "path": "/api/v1/customers",
+      "body": {
+        "key": "om02-20260912-v2cust",
+        "name": "OM-02 V2 Metered Customer"
+      },
+      "captures": {
+        "v2cust": "/id"
+      },
+      "expected": {
+        "key": "om02-20260912-v2cust"
+      }
+    },
+    {
+      "operation_id": "createCustomer",
+      "method": "POST",
+      "path": "/api/v1/features",
+      "body": {
+        "key": "om02_tokens",
+        "name": "OM-02 Tokens",
+        "meterSlug": "tokens_total"
+      },
+      "captures": {
+        "v2feature": "/id"
+      }
+    },
+    {
+      "operation_id": "createCustomerEntitlementV2",
+      "method": "POST",
+      "path": "/api/v2/customers/om02-20260912-v2cust/entitlements",
+      "body": {
+        "featureKey": "om02_tokens",
+        "type": "metered",
+        "usagePeriod": {
+          "interval": "DAY"
+        }
+      },
+      "captures": {
+        "v2ent": "/id"
+      }
+    },
+    {
+      "operation_id": "createCustomerEntitlementGrantV2",
+      "method": "POST",
+      "path": "/api/v2/customers/om02-20260912-v2cust/entitlements/om02_tokens/grants",
+      "body": {
+        "amount": 1000,
+        "priority": 1,
+        "effectiveAt": "2026-09-12T03:00:00Z",
+        "expiration": {
+          "duration": "hour",
+          "count": 1
+        }
+      },
+      "captures": {
+        "v2grant": "/id"
+      }
+    },
+    {
+      "operation_id": "getCustomerEntitlementValueV2",
+      "method": "GET",
+      "path": "/api/v2/customers/om02-20260912-v2cust/entitlements/om02_tokens/value"
+    },
+    {
+      "operation_id": "listCustomerEntitlementGrantsV2",
+      "method": "GET",
+      "path": "/api/v2/customers/om02-20260912-v2cust/entitlements/om02_tokens/grants"
+    }
+  ],
+  "captures": {},
+  "expected": {}
+}

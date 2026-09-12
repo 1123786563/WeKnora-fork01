@@ -1,0 +1,27 @@
+{
+  "custA": {
+    "key": "om0506-20260912-custA",
+    "status": 201,
+    "id": "01M29VSJNXH782W6DA0C9V4ZQG"
+  },
+  "custB": {
+    "key": "om0506-20260912-custB",
+    "status": 201,
+    "id": "01M29VSJR4NMMCDKA7MPGTCDAJ"
+  },
+  "custF": {
+    "key": "om0506-20260912-custF",
+    "status": 201,
+    "id": "01M29VSJV67RBTYECB77NKAFD0"
+  },
+  "v2cust": {
+    "key": "om0506-20260912-v2cust",
+    "status": 201,
+    "id": "01M29VSJVY1C3M6XBB9WESS011"
+  },
+  "v2sub": {
+    "key": "om0506-20260912-v2sub",
+    "status": 201,
+    "id": "01M29VSJWFAYBFJ7B8RWVS4RG5"
+  }
+}

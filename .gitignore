@@ -60,3 +60,17 @@ miniprogram/project.private.config.json
 
 # Staging dir for the Docker sandbox self-check probe (removed after each run)
 .weknora-sandbox-check-*
+
+# Local real-execution connector credentials (FS-04/NO-04) — never commit
+artifacts/connector-real/
+
+# Local-only sandbox evidence: ids, payer data, signed requests, keys
+artifacts/alipay-sandbox/env.sh
+artifacts/alipay-sandbox/*.b64
+artifacts/alipay-sandbox/paid_order.txt
+artifacts/alipay-sandbox/pay_url.txt
+artifacts/alipay-sandbox/pay.html
+artifacts/alipay-sandbox/qr.png
+artifacts/alipay-sandbox/order_id.txt
+artifacts/alipay-sandbox/ali05-evidence.json
+DSH_*.txt

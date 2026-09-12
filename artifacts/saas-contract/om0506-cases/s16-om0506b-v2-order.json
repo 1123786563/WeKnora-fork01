@@ -1,0 +1,43 @@
+{
+ "before": {
+  "hasAccess": true,
+  "balance": 1250,
+  "overage": 0,
+  "totalAvailableGrantAmount": 1250,
+  "usage": 0,
+  "grantBalances": {
+   "01M29VSK19VD2YMYGJ5J87K7W3": 750,
+   "01M29VSK24NCCZ35Q51JP86XQ3": 500
+  }
+ },
+ "burn1": {
+  "status": 204,
+  "tokens": 100
+ },
+ "after_burn1": {
+  "hasAccess": true,
+  "balance": 1150,
+  "overage": 0,
+  "totalAvailableGrantAmount": 1250,
+  "usage": 100,
+  "grantBalances": {
+   "01M29VSK19VD2YMYGJ5J87K7W3": 650,
+   "01M29VSK24NCCZ35Q51JP86XQ3": 500
+  }
+ },
+ "burn2": {
+  "status": 204,
+  "tokens": 800
+ },
+ "after_burn2": {
+  "hasAccess": true,
+  "balance": 350,
+  "overage": 0,
+  "totalAvailableGrantAmount": 1250,
+  "usage": 900,
+  "grantBalances": {
+   "01M29VSK19VD2YMYGJ5J87K7W3": 0,
+   "01M29VSK24NCCZ35Q51JP86XQ3": 350
+  }
+ }
+}
