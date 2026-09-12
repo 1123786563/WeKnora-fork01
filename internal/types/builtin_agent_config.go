@@ -40,9 +40,8 @@ type builtinAgentsFile struct {
 // ---------------------------------------------------------------------------
 
 var (
-	builtinAgentEntries     map[string]*BuiltinAgentEntry // keyed by agent ID
-	builtinAgentEntriesMu   sync.RWMutex
-	builtinAgentEntriesOnce sync.Once
+	builtinAgentEntries   map[string]*BuiltinAgentEntry // keyed by agent ID
+	builtinAgentEntriesMu sync.RWMutex
 )
 
 // LoadBuiltinAgentsConfig loads built-in agent definitions from the given
@@ -53,39 +52,33 @@ var (
 // If the file does not exist, the function is a no-op and the hard-coded
 // defaults in BuiltinAgentRegistry remain effective.
 func LoadBuiltinAgentsConfig(configDir string) error {
-	var loadErr error
-	builtinAgentEntriesOnce.Do(func() {
-		filePath := filepath.Join(configDir, "builtin_agents.yaml")
-		data, err := os.ReadFile(filePath)
-		if err != nil {
-			if os.IsNotExist(err) {
-				// File not found – perfectly fine, keep using hard-coded defaults.
-				return
-			}
-			loadErr = fmt.Errorf("read builtin_agents.yaml: %w", err)
-			return
+	filePath := filepath.Join(configDir, "builtin_agents.yaml")
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
 		}
+		return fmt.Errorf("read builtin_agents.yaml: %w", err)
+	}
 
-		var file builtinAgentsFile
-		if err := yaml.Unmarshal(data, &file); err != nil {
-			loadErr = fmt.Errorf("parse builtin_agents.yaml: %w", err)
-			return
-		}
+	var file builtinAgentsFile
+	if err := yaml.Unmarshal(data, &file); err != nil {
+		return fmt.Errorf("parse builtin_agents.yaml: %w", err)
+	}
 
-		builtinAgentEntriesMu.Lock()
-		defer builtinAgentEntriesMu.Unlock()
+	builtinAgentEntriesMu.Lock()
+	defer builtinAgentEntriesMu.Unlock()
 
-		builtinAgentEntries = make(map[string]*BuiltinAgentEntry, len(file.BuiltinAgents))
-		for i := range file.BuiltinAgents {
-			entry := &file.BuiltinAgents[i]
-			builtinAgentEntries[entry.ID] = entry
-		}
+	builtinAgentEntries = make(map[string]*BuiltinAgentEntry, len(file.BuiltinAgents))
+	for i := range file.BuiltinAgents {
+		entry := &file.BuiltinAgents[i]
+		builtinAgentEntries[entry.ID] = entry
+	}
 
-		// Rebuild the BuiltinAgentRegistry so that IsBuiltinAgentID / GetBuiltinAgent
-		// continue to work transparently.
-		rebuildRegistryFromConfig()
-	})
-	return loadErr
+	// Rebuild the registry on every successful load so tests and reloads cannot
+	// permanently retain an earlier missing or incomplete configuration.
+	rebuildRegistryFromConfig()
+	return nil
 }
 
 // rebuildRegistryFromConfig replaces the BuiltinAgentRegistry entries with
