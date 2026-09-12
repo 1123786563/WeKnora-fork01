@@ -148,12 +148,7 @@
                 <t-icon name="chevron-down" size="20px" />
             </div>
         </transition>
-        <!-- 只读引擎身份：会话创建时固化，服务端 session 返回 engine_type -->
-        <div v-if="!embeddedMode && sessionEngineType" class="session-engine-chip" role="status"
-            :aria-label="t('agentEngine.label')">
-            <span class="session-engine-chip__dot" aria-hidden="true"></span>
-            {{ t('agentEngine.label') }}: {{ sessionEngineLabel }}
-        </div>
+        <!-- 引擎身份不再对用户展示：会话引擎由智能体类型在创建时自动推导 -->
         <div class="input-container" :class="{ 'is-embedded': embeddedMode }">
             <InputField ref="inputFieldRef" :auto-focus="focusComposerOnMount"
                 @send-msg="(query, modelId, mentionedItems, imageFiles, attachmentFiles) => sendMsg(query, modelId, mentionedItems, imageFiles, attachmentFiles)"
@@ -288,14 +283,6 @@ const route = useRoute();
 const session_id = ref(props.session_id || route.params.chatid);
 const currentSession = ref(null);
 const agentRun = ref(null);
-
-// 会话引擎身份（只读）：builtin 为默认 ReAct；trpc 为持久化 tRPC 运行。
-const sessionEngineType = computed(() => {
-    const engine = String(currentSession.value?.engine_type || '').trim();
-    return engine === 'trpc' ? 'trpc' : engine === 'builtin' ? 'builtin' : '';
-});
-const sessionEngineLabel = computed(() =>
-    sessionEngineType.value === 'trpc' ? t('agentEngine.trpc') : t('agentEngine.builtin'));
 
 // 拉 session 详情，并按其 last_request_state 把输入栏状态恢复到当时的发起态。
 // 嵌入式（embeddedMode）由宿主页面注入 agent/KB，所以跳过整套恢复逻辑，
@@ -1916,29 +1903,6 @@ onBeforeRouteUpdate((to, from, next) => {
     flex-direction: column;
     gap: 8px;
     padding-left: 4px;
-}
-
-.session-engine-chip {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    width: fit-content;
-    margin: 0 auto 6px;
-    padding: 2px 10px;
-    border-radius: 999px;
-    border: 1px solid var(--td-border-level-2-color);
-    background: var(--td-bg-color-container);
-    color: var(--td-text-color-secondary);
-    font-size: 12px;
-    line-height: 20px;
-    user-select: none;
-
-    .session-engine-chip__dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: var(--td-brand-color);
-    }
 }
 
 .input-container {
