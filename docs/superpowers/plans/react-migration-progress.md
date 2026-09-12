@@ -77,6 +77,18 @@
   Provider credentials, sync completion, role/tenant negatives, and device
   click-through remain open, so T23/T24 stay `review`.
 
+### T23 mobile configuration management follow-up (2026-09-12)
+
+- The native Configuration screen now writes Agent, Model, and MCP records,
+  with dedicated write-only credential fields and recursive secret-key
+  rejection for JSON configuration. Skills remain read-only and are recorded
+  as a separate capability. Focused capability/configuration tests are 6/6,
+  full mobile tests are 85/85, mobile typecheck, iOS/Android Expo exports,
+  boundary checks, and diff checks pass. Evidence:
+  `docs/migrations/react/evidence/t23-mobile-configuration-management-follow-up-2026-09-12.md`.
+  Live provider credentials/connectivity, role/tenant negatives, and device
+  click-through remain open, so T23/T24 stay `review`.
+
 ### T13 follow-up (2026-09-12)
 
 - `c63529c` adds Web text-only live-response rendering for thinking, tool-call status/results, and references with nested secret redaction and React escaping. Verification and evidence: `docs/migrations/react/evidence/t10-t13-web-live-state-2026-09-12.md`.
