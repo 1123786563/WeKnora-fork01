@@ -52,6 +52,7 @@ const (
 	caseAfterFinalize       = "after_finalize"
 	caseUnknownUserRetry    = "unknown_result_user_retry"
 	caseIdempotentRedeliver = "idempotent_redelivery"
+	caseStaleWorkerHold     = "two_worker_contention"
 
 	toolName    = "counting_tool"
 	runID       = "matrix-run-1"
@@ -86,6 +87,7 @@ func main() {
 	switch *crashCase {
 	case caseAfterAdmission, caseAfterPlan, caseAfterSideEffect, caseAfterResult,
 		caseWaitingUser, caseAfterFinalize, caseUnknownUserRetry, caseIdempotentRedeliver,
+		caseStaleWorkerHold,
 		"after_tool_result_before_checkpoint":
 	default:
 		fatal("unknown recovery case " + *crashCase)
@@ -120,6 +122,48 @@ func main() {
 			touchBarrier(*barrier)
 			blockForever()
 		}
+	}
+
+	if *crashCase == caseStaleWorkerHold && *resume == "" {
+		// Phase A: the stale worker claims the run with a short lease, parks
+		// at the barrier, lets the lease expire (paused worker), then keeps
+		// attempting fenced writes with its superseded fence while a takeover
+		// process completes the run. Every post-expiry write must be
+		// rejected, so nothing pollutes the durable state the takeover uses.
+		claimKey := agentruntime.RunKey{TenantID: 1, RunID: runID}
+		fence, err := store.Claim(ctx, claimKey, "stale-worker", 700*time.Millisecond)
+		if err != nil {
+			fatal(fmt.Sprintf("stale claim: %v", err))
+		}
+		touchBarrier(*barrier)
+		time.Sleep(1500 * time.Millisecond)
+		rejected := 0
+		deadline := time.Now().Add(60 * time.Second)
+		for time.Now().Before(deadline) {
+			err := store.SaveCheckpoint(ctx, fence, agentruntime.CheckpointRecord{
+				Namespace: "stale-fence-probe", ID: "stale-write",
+				Seq: 1, State: json.RawMessage(`{"stale":true}`), PendingWrites: json.RawMessage(`[]`),
+			})
+			if err != nil {
+				rejected++
+			}
+			// Stop once the takeover finished the run and at least one
+			// write attempt after takeover was rejected.
+			key := agentruntime.RunKey{TenantID: 1, RunID: runID}
+			if run, getErr := store.Get(ctx, key); getErr == nil &&
+				run.Status == "succeeded" && rejected > 0 {
+				out := crashReport{
+					ExternalCalls: counterCount(counterURL),
+					FinalStatus:   "stale-rejected",
+				}
+				raw, _ := json.Marshal(out)
+				_ = os.WriteFile(*report, append(raw, '\n'), 0o644)
+				fmt.Println(string(raw))
+				return
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+		fatal("stale worker never observed takeover completion")
 	}
 
 	executor := newMatrixExecutor(store, runs, counterURL, *crashCase, *barrier, *resume != "")
