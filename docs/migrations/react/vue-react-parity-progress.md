@@ -63,3 +63,9 @@
 - auth 73 键 ×5 locale 文案迁入 packages/i18n（authMessages），LoginPage 切换为共享 formatMessage；新增 3 例 i18n 回归测试。回归全绿（i18n 7/7、web 131/131、typecheck、浏览器交互复测）。提交见 git log。证据：evidence/vue-react-parity/2026-09-12-auth-i18n-shared.md。
 - 并行：settings 与 chat 两页逐项差异分析子代理进行中。
 - 待办：JoinPage/WorkspaceOnboardingPage MESSAGES 迁移、settings/chat 修复实施、KB 折叠节头、带后端截图对比。
+
+## 2026-09-12 Round 8
+
+- onboarding/tenant/invitation 24 键 ×5 locale 迁入 packages/i18n（onboardingMessages）；JoinPage/WorkspaceOnboardingPage 弃用本地 MESSAGES；keys.test 的 auth.login 期望按 Vue 基准（en-US 'Login'）修正——非降低断言，Vue 为权威。i18n 10/10、shared 239/239、web 131/131 全绿。
+- 收到 settings（15 项，必修 8：缺 10 个 section、无角色门控、envvars 无编辑器、模型选择器缺失、chathistory 模型锁丢失、密码策略未移植、websearch 凭证管理缺失、i18n）与 chat（15 项，必修 7：无流取消、无 continue-stream 续传、composer 载荷缺附件/提及/模型、steer 并发缺失、审批卡不持久、session_title 丢弃、artifacts_pending 等事件未处理）两份行级差异报告。
+- chat 必修 7 项已派发实施子代理（持有 chat 文件）；settings 实施待 chat 完成后派发（避免 packages/i18n 与文件竞争），其 i18n 项由主代理统一执行。
