@@ -493,7 +493,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// /apps/actions prepare/approve/execute/get stop failing closed with 501.
 	must(container.Provide(repoappconn.NewActionStore, dig.As(new(appconnectorsvc.ActionStoreSource))))
 	must(container.Provide(repository.NewMCPOAuthBindingStore, dig.As(new(appconnectorsvc.ConnectionCredentialSource))))
-	must(container.Provide(appconnectorsvc.NewCredentialResolver, dig.As(new(appconnectorsvc.A02Guard))))
+	must(container.Provide(appconnectorsvc.NewSubjectGuard))
 	must(container.Provide(func(store appconnectorsvc.ActionStoreSource, guard appconnectorsvc.A02Guard,
 		gate domain.ExecutionGate) *appconnectorsvc.ActionService {
 		return appconnectorsvc.NewActionService(store, guard, gate, nil, nil)

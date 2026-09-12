@@ -67,11 +67,16 @@ type UnknownResolver interface {
 	QueryProvider(ctx context.Context, snap ActionSnapshot, providerKey string) (DispatchOutcome, error)
 }
 
-// A02Guard re-checks, on EVERY execute, that the connection is still
-// usable: active state, unchanged auth_version, and live owner membership.
-// It is satisfied by the package's CredentialResolver.
+// A02Guard re-checks, on EVERY execute, that the PERSISTED subject may
+// still use the connection: subject shape, tenant scope, strict
+// auth_version, live membership, active installation, explicit grant for
+// space connections and (for open-connector connections) an active
+// tenant-scoped binding. It NEVER loads credential material — the native
+// branch resolves credentials only after this check passes, and the OC
+// branch never resolves them at all. It is satisfied by the package's
+// OCAuthorizer via NewA02Guard/NewSubjectGuard.
 type A02Guard interface {
-	Resolve(ctx context.Context, connectionID string, expectedVersion int64) ([]byte, error)
+	Check(ctx context.Context, subject appconn.OCSubject, connectionID string, expectedVersion int64) error
 }
 
 // ActionStoreSource is the persistence surface the service needs; it is
@@ -215,10 +220,18 @@ func (s *ActionService) Execute(ctx context.Context, id string) error {
 	if row.State != appconn.ActionAuthorized {
 		return fmt.Errorf("execute from %s: %w", row.State, ErrActionState)
 	}
-	// A02 re-check: connection still active, auth_version unchanged, owner
-	// still a member. A permission revoked between approval and execute
-	// blocks dispatch here, before any reservation or intent is written.
-	if _, err := s.guard.Resolve(ctx, row.ConnectionID, row.AuthVersion); err != nil {
+	// A02 re-check: the PERSISTED row's subject may still use the
+	// connection (tenant scope, state, strict auth_version, membership,
+	// installation, grant, OC binding). A permission revoked between
+	// approval and execute blocks dispatch here, before any reservation or
+	// intent is written. The subject is always built from the persisted
+	// row's tenant/actor — never from the calling operator, and never a
+	// synthetic admin identity, so background or recovery callers cannot
+	// bypass a member's revocation.
+	if err := s.guard.Check(ctx,
+		appconn.OCSubject{TenantID: row.TenantID, ActorID: row.ActorID},
+		row.ConnectionID, row.AuthVersion,
+	); err != nil {
 		return fmt.Errorf("a02 recheck: %w", err)
 	}
 	// U05 budget gate: Begin BEFORE the outbound call; denial is a hard

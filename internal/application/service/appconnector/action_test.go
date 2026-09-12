@@ -42,13 +42,27 @@ func memDSN(t *testing.T) string {
 	return "file:" + t.Name() + "?mode=memory&cache=shared&_busy_timeout=5000"
 }
 
-type stubGuard struct{ err error }
+type stubGuard struct {
+	mu               sync.Mutex
+	err              error
+	lastSubject      appconn.OCSubject
+	lastConnectionID string
+	lastVersion      int64
+}
 
-func (g *stubGuard) Resolve(ctx context.Context, connectionID string, expectedVersion int64) ([]byte, error) {
-	if g.err != nil {
-		return nil, g.err
-	}
-	return []byte("cred"), nil
+func (g *stubGuard) Check(ctx context.Context, subject appconn.OCSubject, connectionID string, expectedVersion int64) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.lastSubject = subject
+	g.lastConnectionID = connectionID
+	g.lastVersion = expectedVersion
+	return g.err
+}
+
+func (g *stubGuard) lastCall() (appconn.OCSubject, string, int64) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.lastSubject, g.lastConnectionID, g.lastVersion
 }
 
 type stubDispatcher struct {
@@ -193,6 +207,35 @@ func TestApprovalLifecycleHappyPath(t *testing.T) {
 	}
 	if atomic.LoadInt32(&gate.finishes) != 1 {
 		t.Fatalf("gate finishes=%d", gate.finishes)
+	}
+}
+
+// TestExecuteChecksPersistedSubject pins the T04 wiring: the A02 re-check
+// carries the PERSISTED row's tenant/actor (never the calling operator and
+// never a synthetic admin identity), together with the row's connection id
+// and auth_version.
+func TestExecuteChecksPersistedSubject(t *testing.T) {
+	svc, _, _, _, guard := newService(t, memDSN(t))
+	ctx := context.Background()
+	id, err := svc.Prepare(ctx, sendAction())
+	if err != nil {
+		t.Fatal(err)
+	}
+	row, err := svc.store.FindAction(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Approve(ctx, id, "boss", row.ArgsDigest); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Execute(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	subject, connectionID, version := guard.lastCall()
+	want := appconn.OCSubject{TenantID: 7, ActorID: "u1"}
+	if subject != want || connectionID != "conn-1" || version != row.AuthVersion {
+		t.Fatalf("guard saw (%+v, %s, %d), want (%+v, conn-1, %d)",
+			subject, connectionID, version, want, row.AuthVersion)
 	}
 }
 
