@@ -1327,3 +1327,10 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 在途（1）：R013 embed config drawer（embedWizard.ts/test 等 6 文件，其 TDD 红 4 项属中间态——step gates/create payload/deploy drawer/wizard walk）。全量 web 门禁等其转绿后复跑。
 - shared 436/436（+17 integrations 向导测试）、mobile 146/146 不变。
 
+- R013 embed config drawer 当前工作树状态：`packages/views/src/integrations/embedWizard.ts` 与 `page.tsx` 已完成 Vue 5 步创建向导、编辑态部署步、域名白名单校验、创建/更新载荷、密钥显示/轮换、iframe/widget/secure 代码和 Node/Go 示例的实现；纯逻辑及既有 integrations 视图测试 58/58、独立渲染夹具 5/5、正式 `pnpm test:web` 702/702、`pnpm typecheck:web`、`pnpm typecheck:shared` 和 `pnpm build:web` 通过，`git diff --check` 通过。渲染夹具与其他共享全局 JSDOM 文件合并运行时出现 4 项隔离假失败，已按独立运行结果记录；因此 R013 仍保持 `implementing`，不宣称浏览器、真实后端或 Wails/native 验收。
+
+## 2026-09-14 Round N+9 协调条目 — round-5 双端批扫快照
+
+- 20 路由×双端全量重扫（accept-20260914-round5/，40 张）：非 settings 路由 3.35-5.89%；settings 系 37.9-41.3%——差异主体仍是背板模糊放大的底页内容噪声（overlay CSS 双端逐值一致），抽屉内部经前轮 chrome/视觉切片后对齐良好。
+- 该快照为 embed drawer 切片在途时的中间态（integrations 路由含其新向导 WIP）；其收口后建议再做一次 integrations 单路由复拍。
+
