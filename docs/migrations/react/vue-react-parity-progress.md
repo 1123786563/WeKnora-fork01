@@ -686,6 +686,12 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   an implicit-any diagnostic in `WorkspaceOnboardingPage.tsx`; these are
   outside the R038 two-file commit. No browser screenshot or full Vue visual
   comparison is claimed, so R038 remains `review`.
+- R038 fix round 1 (`ea39080a`, report `bea2f635`) adds React-owned responsive
+  member-header CSS, localized title/search labels, an accessible clear action,
+  and jsdom interaction coverage for loading/search/clear state. Focused tests
+  pass 4/4; Web regression is 285/286 because the pre-existing onboarding
+  module-resolution test still fails. Independent scoped re-review is pending,
+  and no visual/browser acceptance is claimed.
 
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
 - **Rows:** any rows proposed for `accepted`; never all rows by default.
