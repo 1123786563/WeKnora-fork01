@@ -1,5 +1,5 @@
 -- O03: Craft sandbox residency, snapshots and resource reclamation,
--- PostgreSQL dialect of SQLite 000048_craft_lifecycle (same logical
+-- PostgreSQL dialect of SQLite 000052_craft_lifecycle (same logical
 -- constraints).
 --
 -- craft_lifecycle_states is the durable sweep ledger of ONE reclaimable

@@ -1,5 +1,5 @@
 -- O01: Craft physical model-call usage ledger, SQLite dialect of PG
--- 000123_craft_usage (same logical constraints: one row per revision of one
+-- 000127_craft_usage (same logical constraints: one row per revision of one
 -- physical attempt per tenant, main and OC child runtimes recorded
 -- separately, retries are new attempt facts, redelivery is idempotent,
 -- corrections append revisions without overwriting, unknown facts carry no

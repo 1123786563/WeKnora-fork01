@@ -1,5 +1,5 @@
 -- C05: Craft recovery snapshots, SQLite dialect of PG
--- 000126_craft_snapshots (same logical constraints; craft_workspaces is the
+-- 000130_craft_snapshots (same logical constraints; craft_workspaces is the
 -- retention root).
 --
 -- craft_snapshots stores one immutable recovery snapshot per quiescent

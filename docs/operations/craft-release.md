@@ -112,7 +112,7 @@ kind 封闭集：`web/document/spreadsheet/slides`（`craft.KnownKind`）；集�
 1. **先备份**（第 7 节窗口）。
 2. `WEKNORA_CRAFT_ENABLED=false` 停新准入（回退第 1 步语义）。
 3. 等 Run 收敛（回退第 3 步判据）。
-4. 应用迁移（`scripts/migrate.sh` / 部署管线）：craft 迁移链 PG 000121–000128、SQLite 000041–000048，全部带 down 逆序。
+4. 应用迁移（`scripts/migrate.sh` / 部署管线）：craft 迁移链 PG 000125–000132、SQLite 000045–000052（2026-09-13 重编号：main 先合入的 open-connector 占用 000121–000124/000041–000044，craft 侧整体 +4 让路，内容与 down 逆序不变），全部带 down 逆序。
 5. 起新版本服务，`WEKNORA_CRAFT_ENABLED` 按原阶段恢复。
 6. 重跑门禁：`python3 scripts/check-craft-release.py …`（head 已变 → 重新生成证据）+ 抽一条浏览器 spec 冒烟。
 

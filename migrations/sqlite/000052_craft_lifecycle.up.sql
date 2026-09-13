@@ -1,5 +1,5 @@
 -- O03: Craft sandbox residency, snapshots and resource reclamation,
--- SQLite dialect of PG 000128_craft_lifecycle (same logical constraints).
+-- SQLite dialect of PG 000132_craft_lifecycle (same logical constraints).
 --
 -- craft_lifecycle_states is the durable sweep ledger of ONE reclaimable
 -- resource. A row is the tombstone that blocks new dispatch/restore the

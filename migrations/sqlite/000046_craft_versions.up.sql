@@ -1,5 +1,5 @@
 -- W01: immutable Craft artifact versions, SQLite dialect of PG
--- 000122_craft_versions (same logical constraints and the same referential
+-- 000126_craft_versions (same logical constraints and the same referential
 -- design: versions cascade away with their craft_workspaces parent; run
 -- identity is logical, not a physical FK onto the recovery journal tables).
 CREATE TABLE craft_versions (

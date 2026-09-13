@@ -1,5 +1,5 @@
 -- W03: Craft sessions and the HTTP entrance's durable state, SQLite dialect
--- of PG 000125_craft_sessions (same logical constraints and the same
+-- of PG 000129_craft_sessions (same logical constraints and the same
 -- referential design: sessions rows are the retention root).
 CREATE TABLE craft_sessions (
     session_id VARCHAR(36) NOT NULL PRIMARY KEY,

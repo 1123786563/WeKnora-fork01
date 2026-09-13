@@ -1,5 +1,5 @@
 -- R02: Craft workspaces and delegation journals, SQLite dialect of PG
--- 000121_craft (same logical constraints and the same referential design:
+-- 000125_craft (same logical constraints and the same referential design:
 -- the workspace FK targets the sessions primary key, and delegations do not
 -- physically FK the agent journal tables because the recovery program
 -- replays the 000014 down script verbatim; run/tool call identity is
