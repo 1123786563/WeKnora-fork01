@@ -68,6 +68,23 @@ import {
   loadKnowledgeDocuments,
   type KnowledgeDocumentListState,
 } from "./list.ts";
+import {
+  computeSupportedFileTypes,
+  computeUnsupportedFileTypes,
+  dateRangeToTimeParams,
+  documentsKBSettingsPath,
+  isFilteringDocuments,
+} from "./page-chrome.ts";
+import {
+  DocumentEmptyState,
+  DocumentsBreadcrumb,
+  ParserHint,
+  SearchIcon,
+  DOCUMENT_FILE_TYPE_OPTIONS,
+  DOCUMENT_PARSE_STATUS_OPTIONS,
+  DOCUMENT_SOURCE_OPTIONS,
+  type KBChromeListItem,
+} from "./DocumentsPageChrome.tsx";
 
 interface KnowledgeDocumentsPageProps {
   client: WeKnoraClient;
@@ -75,7 +92,6 @@ interface KnowledgeDocumentsPageProps {
   onOpenDocument?: (document: KnowledgeDocument) => void;
 }
 
-type UploadSource = "file" | "url" | "manual";
 type UploadDialogMode = "file" | "manual" | "reparse";
 /** Vue UploadConfirmResult per-URL append: one shared normalize helper. */
 
@@ -478,7 +494,7 @@ export function UploadSectionNav(props: UploadSectionNavProps) {
 
 // --- Add-source dropdown (Vue KbUploadSourceDropdown parity) -------------------
 
-export type UploadSourceDropdownAction = "file" | "folder" | "url";
+export type UploadSourceDropdownAction = "file" | "folder" | "url" | "manual";
 
 export interface UploadSourceDropdownProps {
   /** Vue tooltip prop — the uploadConfirm.continueAdd copy in this dialog. */
@@ -567,7 +583,7 @@ export function UploadSourceDropdown(props: UploadSourceDropdownProps) {
               onClick={() => handleAction(item.key)}
               style={{ display: "flex", alignItems: "center", gap: "6px", padding: "6px 8px", border: "none", borderRadius: "6px", background: "transparent", cursor: "pointer", textAlign: "left", fontSize: "0.9rem" }}
             >
-              <span aria-hidden>{item.key === "file" ? "📄" : item.key === "folder" ? "📁" : "🔗"}</span>
+              <span aria-hidden>{item.key === "file" ? "📄" : item.key === "folder" ? "📁" : item.key === "url" ? "🔗" : "✍️"}</span>
               {item.label}
             </button>
           ))}
@@ -1463,17 +1479,27 @@ export function KnowledgeDocumentsPage({
     Awaited<ReturnType<typeof client.knowledgeBases.documents.tags>>
   >([]);
   const [kbMeta, setKbMeta] = useState<KBSurfaceKB | null>(null);
+  const [kbList, setKbList] = useState<KBChromeListItem[]>([]);
   const [canContribute, setCanContribute] = useState(true);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState(query);
   const [parseStatus, setParseStatus] = useState("");
   const [tagId, setTagId] = useState("");
+  // Vue selectedFileType / selectedSource / updatedTimeRange filter refs.
+  const [fileType, setFileType] = useState("");
+  const [source, setSource] = useState("");
+  const [updatedFrom, setUpdatedFrom] = useState("");
+  const [updatedTo, setUpdatedTo] = useState("");
   const [folderPath, setFolderPath] = useState<string | undefined>(undefined);
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [moving, setMoving] = useState(false);
   const [moveTarget, setMoveTarget] = useState("");
-  const [uploadSource, setUploadSource] = useState<UploadSource>("file");
+  // Vue page-level KbUploadSourceDropdown (doc-filter-actions) + its menu state.
+  const [pageSourceMenuOpen, setPageSourceMenuOpen] = useState(false);
+  // Vue include-manual entry (handleManualCreate) — a dialog feeding the
+  // existing pendingManual staging instead of uiStore.openManualEditor.
+  const [manualDialogOpen, setManualDialogOpen] = useState(false);
   // Multi-file upload parity: staged files wait behind a confirm dialog
   // (Vue UploadConfirmDialog) before any upload call is issued.
   const [pendingEntries, setPendingEntries] = useState<UploadEntry[]>([]);
@@ -1508,12 +1534,10 @@ export function KnowledgeDocumentsPage({
     [],
   );
   const [dragActive, setDragActive] = useState(false);
-  const [url, setUrl] = useState("");
   const [manualTitle, setManualTitle] = useState("");
   const [manualContent, setManualContent] = useState("");
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const uploadController = useRef<AbortController | null>(null);
   const uploadPipelineController = useRef<AbortController | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [pendingReparse, setPendingReparse] = useState<{
@@ -1522,6 +1546,16 @@ export function KnowledgeDocumentsPage({
   } | null>(null);
   const [pendingBatchReparse, setPendingBatchReparse] = useState<string[] | null>(null);
   const pageSize = 20;
+
+  // Vue isFiltering: any active filter (search descends the folder subtree).
+  const filtering = isFilteringDocuments({
+    keyword: debouncedQuery,
+    tagIds: tagId ? [tagId] : [],
+    fileType,
+    parseStatus,
+    source,
+    timeRange: [updatedFrom, updatedTo],
+  });
 
   function seedConfirmFromKb() {
     // Vue visible-watch: re-seed from the KB, then pick the default section
@@ -1584,8 +1618,10 @@ export function KnowledgeDocumentsPage({
     void Promise.all([
       client.knowledgeBases.settings.get(knowledgeBaseId),
       client.auth.me().catch(() => null),
-    ])
-      .then(([kb, me]) => {
+      // Vue KBSwitcherDropdown input: the tenant KB list behind the crumb menu.
+      client.knowledgeBases.list().catch(() => []),
+    ] as const)
+      .then(([kb, me, list]) => {
         if (!active) return;
         setKbMeta(kb as KBSurfaceKB);
         setMe(me as KBSurfaceMe | null);
@@ -1593,6 +1629,13 @@ export function KnowledgeDocumentsPage({
         setCanContribute(
           computeKBPermissions(kb as KBSurfaceKB, me as KBSurfaceMe | null)
             .canContribute,
+        );
+        setKbList(
+          (list as { id: unknown; name: unknown; type?: unknown }[]).map((item) => ({
+            id: String(item.id),
+            name: String(item.name),
+            type: typeof item.type === "string" ? item.type : undefined,
+          })),
         );
         const redirect = kbTypeRedirectPath(kb as KBSurfaceKB);
         if (redirect) window.location.replace(redirect);
@@ -1633,8 +1676,12 @@ export function KnowledgeDocumentsPage({
       keyword: debouncedQuery || undefined,
       parse_status: parseStatus || undefined,
       tag_ids: tagId || undefined,
+      file_type: fileType || undefined,
+      source: source || undefined,
+      ...dateRangeToTimeParams(updatedFrom || updatedTo ? [updatedFrom, updatedTo] : undefined),
       folder_path: folderPath,
-      folder_recursive: folderPath !== undefined,
+      // Vue: browsing lists one folder level; filtering descends the subtree.
+      folder_recursive: folderPath !== undefined && filtering,
     }).then((next) => {
       if (active) setState(next);
     });
@@ -1644,9 +1691,14 @@ export function KnowledgeDocumentsPage({
   }, [
     client,
     folderPath,
+    filtering,
+    fileType,
     knowledgeBaseId,
     page,
     parseStatus,
+    source,
+    updatedFrom,
+    updatedTo,
     debouncedQuery,
     reloadToken,
   ]);
@@ -1681,7 +1733,7 @@ export function KnowledgeDocumentsPage({
 
   useEffect(() => {
     setPage(1);
-  }, [folderPath, parseStatus, query, tagId]);
+  }, [folderPath, parseStatus, query, tagId, fileType, source, updatedFrom, updatedTo]);
 
   const folders = useMemo(
     () => (folderState.tree ? flattenFolders(folderState.tree) : []),
@@ -1689,6 +1741,22 @@ export function KnowledgeDocumentsPage({
   );
   const vllmModels = useMemo(() => tenantModels.filter((model) => String(model.type ?? "").toLowerCase() === 'vllm'), [tenantModels]);
   const asrModels = useMemo(() => tenantModels.filter((model) => String(model.type ?? '').toLowerCase() === 'asr'), [tenantModels]);
+  // Vue supportedFileTypes / unsupportedFileTypes computeds: the KB's
+  // chunking_config.parser_engine_rules resolved against the tenant engines.
+  const parserRules = useMemo(() => {
+    const chunking = kbMeta?.chunking_config as { parser_engine_rules?: unknown } | null | undefined;
+    return Array.isArray(chunking?.parser_engine_rules)
+      ? (chunking.parser_engine_rules as { file_types: string[]; engine: string }[])
+      : [];
+  }, [kbMeta]);
+  const supportedFileTypes = useMemo(
+    () => computeSupportedFileTypes(parserEngines, parserRules),
+    [parserEngines, parserRules],
+  );
+  const unsupportedFileTypes = useMemo(
+    () => computeUnsupportedFileTypes(parserEngines, parserRules),
+    [parserEngines, parserRules],
+  );
 
   const dialogMode: UploadDialogMode = pendingReparse ? "reparse" : pendingManual ? "manual" : "file";
   // Vue batchFileExts: files + URL paths + manual markdown media + reparse type.
@@ -1803,6 +1871,8 @@ export function KnowledgeDocumentsPage({
     setStageNotice(null);
     setSourceMenuOpen(false);
     setSourceUrlDialogOpen(false);
+    setPageSourceMenuOpen(false);
+    setManualDialogOpen(false);
     resetDestinationPicker();
     setChunkingMoreOpen(false);
   }
@@ -2046,56 +2116,20 @@ export function KnowledgeDocumentsPage({
     }
   }
 
-  async function upload(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  // Vue handleManualCreate: the dropdown's manual entry stages title/content
+  // into the existing pendingManual confirm-dialog flow.
+  function stageManualCreate() {
+    if (!manualTitle.trim() || !manualContent.trim()) {
+      setUploadError(t("knowledgeBase.documents.manualTitle"));
+      return;
+    }
+    if (pendingEntries.length === 0 && pendingUrls.length === 0) setUploadTargetFolder(folderPath ?? "");
+    setPendingManual({ title: manualTitle.trim(), content: manualContent });
+    setPendingTagIds([]);
     setUploadError(null);
-    if (uploadSource === "file") {
-      // Files already staged by the input/dropzone: the confirm dialog owns them.
-      if (pendingEntries.length > 0) return;
-      setUploadError(t("knowledgeBase.documents.file"));
-      return;
-    }
-    if (uploadSource === "url") {
-      const normalizedUrl = normalizeUploadUrl(url);
-      if (!normalizedUrl) {
-        setUploadError(t("knowledgeBase.documents.url"));
-        return;
-      }
-      if (pendingUrls.includes(normalizedUrl)) {
-        setStageNotice({ tone: "warning", text: ct("uploadConfirm.urlDuplicate") });
-        return;
-      }
-      setPendingUrls((current) => [...current, normalizedUrl]);
-      if (pendingUrls.length === 0 && pendingEntries.length === 0) setUploadTargetFolder(folderPath ?? "");
-      setPendingTagIds([]);
-      setUploadError(null);
-      setUrl("");
-      setStageNotice({ tone: "neutral", text: ct("uploadConfirm.urlAdded") });
-      return;
-    }
-    setUploading(true);
-    const controller = new AbortController();
-    uploadController.current = controller;
-    try {
-      if (!manualTitle.trim() || !manualContent.trim())
-        throw new Error(t("knowledgeBase.documents.manualTitle"));
-      if (confirmState.multimodalEnabled && !confirmState.vllmModelId.trim())
-        throw new Error(ct("uploadConfirm.vlmModelSelectRequired"));
-      if (confirmState.asrEnabled && !confirmState.asrModelId.trim())
-        throw new Error(ct("uploadConfirm.asrModelSelectRequired"));
-      setPendingManual({ title: manualTitle.trim(), content: manualContent });
-      setPendingTagIds([]);
-      setUploadError(null);
-      setManualTitle("");
-      setManualContent("");
-      return;
-    } catch (error) {
-      setUploadError(errorMessage(error));
-    } finally {
-      if (uploadController.current === controller)
-        uploadController.current = null;
-      setUploading(false);
-    }
+    setManualTitle("");
+    setManualContent("");
+    setManualDialogOpen(false);
   }
 
   async function deleteSelected() {
@@ -2332,11 +2366,27 @@ export function KnowledgeDocumentsPage({
 
   return (
     <main className="wk-page wk-documents-page">
-      <header className="wk-header">
-        <div>
-          <p className="wk-eyebrow">Knowledge base · {knowledgeBaseId}</p>
-          <h1>{t("knowledgeBase.documents.title")}</h1>
-          <p className="wk-muted">{t("knowledgeBase.documents.subtitle")}</p>
+      <header className="wk-header wk-document-header">
+        <div className="document-header-title">
+          <DocumentsBreadcrumb
+            t={t}
+            knowledgeBaseId={knowledgeBaseId}
+            kbName={typeof kbMeta?.name === "string" ? kbMeta.name : null}
+            kbList={kbList}
+            kbMeta={{
+              type: typeof kbMeta?.type === "string" ? kbMeta.type : undefined,
+              description: typeof kbMeta?.description === "string" ? kbMeta.description : undefined,
+              createdAt: typeof kbMeta?.created_at === "string" ? kbMeta.created_at.slice(0, 10) : undefined,
+            }}
+            supportedFileTypes={[...supportedFileTypes]}
+            canManage={canContribute}
+          />
+          <p className="document-subtitle">{t("knowledgeEditor.document.subtitle")}</p>
+          <ParserHint
+            t={t}
+            types={unsupportedFileTypes}
+            onConfigure={() => window.location.assign(documentsKBSettingsPath(knowledgeBaseId))}
+          />
           {!canContribute ? (
             <Status tone="warning">
               {t("knowledgeBase.documents.viewerReadonly")}
@@ -2375,89 +2425,7 @@ export function KnowledgeDocumentsPage({
         </div>
       </header>
       <Card>
-        {canContribute ? (
-          <form className="wk-upload-panel" onSubmit={upload}>
-            <div className="wk-toolbar">
-              <label>
-                {t("knowledgeBase.documents.source")}{" "}
-                <select
-                  value={uploadSource}
-                  onChange={(event) =>
-                    setUploadSource(event.target.value as UploadSource)
-                  }
-                >
-                  <option value="file">
-                    {t("knowledgeBase.documents.sourceFile")}
-                  </option>
-                  <option value="url">
-                    {t("knowledgeBase.documents.sourceUrl")}
-                  </option>
-                  <option value="manual">
-                    {t("knowledgeBase.documents.sourceManual")}
-                  </option>
-                </select>
-              </label>
-              {uploadSource === "file" ? (
-                <label>
-                  {t("knowledgeBase.documents.file")}{" "}
-                  <input
-                    type="file"
-                    multiple
-                    onChange={(event) => {
-                      stageFiles(event.target.files ?? []);
-                      event.target.value = "";
-                    }}
-                  />
-                </label>
-              ) : null}
-              {uploadSource === "url" ? (
-                <label>
-                  {t("knowledgeBase.documents.url")}{" "}
-                  <input
-                    value={url}
-                    onChange={(event) => setUrl(event.target.value)}
-                    placeholder="https://…"
-                  />
-                </label>
-              ) : null}
-              {uploadSource === "manual" ? (
-                <>
-                  <label>
-                    {t("knowledgeBase.documents.manualTitle")}{" "}
-                    <input
-                      value={manualTitle}
-                      onChange={(event) => setManualTitle(event.target.value)}
-                    />
-                  </label>
-                  <label>
-                    {t("knowledgeBase.documents.manualContent")}{" "}
-                    <textarea
-                      value={manualContent}
-                      onChange={(event) => setManualContent(event.target.value)}
-                      rows={2}
-                    />
-                  </label>
-                </>
-              ) : null}
-              <Button type="submit" loading={uploading}>
-                {uploadSource === "file"
-                  ? t("knowledgeBase.documents.uploadFile")
-                  : uploadSource === "url"
-                    ? t("knowledgeBase.documents.importUrl")
-                    : t("knowledgeBase.documents.createDocument")}
-              </Button>
-              {uploading ? (
-                <Button
-                  type="button"
-                  onClick={() => uploadController.current?.abort()}
-                >
-                  {t("knowledgeBase.documents.cancel")}
-                </Button>
-              ) : null}
-            </div>
-            {uploadError && !uploadDialogOpen ? <Status tone="error">{uploadError}</Status> : null}
-          </form>
-        ) : null}
+        {uploadError && !uploadDialogOpen ? <Status tone="error">{uploadError}</Status> : null}
         <div
           className={
             dragActive && canContribute
@@ -2521,49 +2489,134 @@ export function KnowledgeDocumentsPage({
             </ul>
           </aside>
           <section className="wk-document-results">
-            <div className="wk-toolbar" role="search">
-              <label>
-                {t("knowledgeBase.documents.search")}{" "}
+            <div className="doc-filter-bar">
+              <div className="doc-search-input">
+                <SearchIcon size={16} className="doc-search-icon" />
                 <input
+                  className="doc-search-field"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder={t("knowledgeBase.documents.searchPlaceholder")}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") setDebouncedQuery(query);
+                  }}
+                  placeholder={t("knowledgeBase.docSearchPlaceholder")}
+                  aria-label={t("knowledgeBase.docSearchPlaceholder")}
                 />
-              </label>
-              <label>
-                {t("knowledgeBase.documents.status")}{" "}
-                <select
-                  value={parseStatus}
-                  onChange={(event) => setParseStatus(event.target.value)}
-                >
-                  <option value="">
-                    {t("knowledgeBase.documents.allStatuses")}
-                  </option>
-                  <option value="pending">Pending</option>
-                  <option value="processing">Processing</option>
-                  <option value="finalizing">Finalizing</option>
-                  <option value="completed">Completed</option>
-                  <option value="failed">Failed</option>
-                  <option value="deleting">Deleting</option>
-                  <option value="cancelled">Cancelled</option>
-                </select>
-              </label>
-              <label>
-                {t("knowledgeBase.documents.tag")}{" "}
-                <select
-                  value={tagId}
-                  onChange={(event) => setTagId(event.target.value)}
-                >
-                  <option value="">
-                    {t("knowledgeBase.documents.allTags")}
-                  </option>
-                  {tags.map((tag) => (
-                    <option key={tag.id} value={tag.id}>
-                      {tag.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              </div>
+              <div className="doc-filter-bar__filters">
+                <label className="doc-filter-field">
+                  <span className="wk-visually-hidden">{t("knowledgeBase.allTags")}</span>
+                  <select
+                    className="doc-filter-control"
+                    value={tagId}
+                    onChange={(event) => setTagId(event.target.value)}
+                  >
+                    <option value="">{t("knowledgeBase.allTags")}</option>
+                    {tags.map((tag) => (
+                      <option key={tag.id} value={tag.id}>
+                        {tag.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="doc-filter-field">
+                  <span className="wk-visually-hidden">{t("knowledgeBase.fileTypeFilter")}</span>
+                  <select
+                    className="doc-filter-control"
+                    value={fileType}
+                    onChange={(event) => setFileType(event.target.value)}
+                  >
+                    <option value="">{t("knowledgeBase.allFileTypes")}</option>
+                    {DOCUMENT_FILE_TYPE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.labelKey ? t(option.labelKey) : option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="doc-filter-field">
+                  <span className="wk-visually-hidden">{t("knowledgeBase.parseStatusFilter")}</span>
+                  <select
+                    className="doc-filter-control"
+                    value={parseStatus}
+                    onChange={(event) => setParseStatus(event.target.value)}
+                  >
+                    <option value="">{t("knowledgeBase.allParseStatuses")}</option>
+                    {DOCUMENT_PARSE_STATUS_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {t(option.labelKey ?? option.value)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="doc-filter-field">
+                  <span className="wk-visually-hidden">{t("knowledgeBase.sourceFilter")}</span>
+                  <select
+                    className="doc-filter-control"
+                    value={source}
+                    onChange={(event) => setSource(event.target.value)}
+                  >
+                    <option value="">{t("knowledgeBase.allSources")}</option>
+                    {DOCUMENT_SOURCE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {t(option.labelKey ?? option.value)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="doc-filter-field doc-filter-field--wide doc-date-range">
+                  <input
+                    type="date"
+                    className="doc-date-input"
+                    value={updatedFrom}
+                    max={updatedTo || undefined}
+                    aria-label={t("knowledgeBase.updatedTimeFrom")}
+                    title={t("knowledgeBase.updatedTimeFrom")}
+                    onChange={(event) => setUpdatedFrom(event.target.value)}
+                  />
+                  <span className="doc-date-range-sep" aria-hidden>—</span>
+                  <input
+                    type="date"
+                    className="doc-date-input"
+                    value={updatedTo}
+                    min={updatedFrom || undefined}
+                    aria-label={t("knowledgeBase.updatedTimeTo")}
+                    title={t("knowledgeBase.updatedTimeTo")}
+                    onChange={(event) => setUpdatedTo(event.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="doc-filter-bar__trailing">
+                {canContribute ? (
+                  <div className="doc-filter-actions">
+                    <UploadSourceDropdown
+                      tooltip={t("knowledgeBase.addDocument")}
+                      items={[
+                        { key: "file", label: ct("upload.uploadDocument") },
+                        { key: "folder", label: ct("upload.uploadFolder") },
+                        { key: "url", label: t("knowledgeBase.importURL") },
+                        { key: "manual", label: t("knowledgeBase.typeManual") },
+                      ]}
+                      open={pageSourceMenuOpen}
+                      onToggle={() => setPageSourceMenuOpen((open) => !open)}
+                      onFiles={(files) => stageFiles(files)}
+                      onSelect={(key) => {
+                        setPageSourceMenuOpen(false);
+                        if (key === "url") {
+                          setSourceUrlValue("");
+                          setSourceUrlDialogOpen(true);
+                        }
+                        if (key === "manual") {
+                          setManualTitle("");
+                          setManualContent("");
+                          setUploadError(null);
+                          setManualDialogOpen(true);
+                        }
+                      }}
+                    />
+                  </div>
+                ) : null}
+              </div>
             </div>
             <div className="wk-list-actions">
               <span>
@@ -2677,7 +2730,12 @@ export function KnowledgeDocumentsPage({
               </>
             ) : null}
             {state.status === "success" && items.length === 0 ? (
-              <Status>{t("knowledgeBase.documents.noDocuments")}</Status>
+              <DocumentEmptyState
+                t={t}
+                variant={
+                  filtering ? "search" : folderPath !== undefined ? "folder" : "illustration"
+                }
+              />
             ) : null}
             {state.status === "success" && items.length > 0 ? (
               <ul className="wk-list wk-document-list">
@@ -2990,6 +3048,41 @@ export function KnowledgeDocumentsPage({
             >
               {ct("uploadConfirm.cancel")}
             </Button>
+          </div>
+        </Dialog>
+      ) : null}
+      {manualDialogOpen && canContribute ? (
+        <Dialog
+          open
+          title={t("knowledgeBase.documents.createDocument")}
+          onClose={() => setManualDialogOpen(false)}
+        >
+          <div className="wk-upload-url-dialog">
+            <label>
+              {t("knowledgeBase.documents.manualTitle")}{" "}
+              <input
+                autoFocus
+                value={manualTitle}
+                onChange={(event) => setManualTitle(event.target.value)}
+              />
+            </label>
+            <label>
+              {t("knowledgeBase.documents.manualContent")}{" "}
+              <textarea
+                value={manualContent}
+                onChange={(event) => setManualContent(event.target.value)}
+                rows={6}
+              />
+            </label>
+            {uploadError ? <Status tone="error">{uploadError}</Status> : null}
+            <div className="wk-list-actions">
+              <Button type="button" onClick={stageManualCreate}>
+                {ct("common.confirm")}
+              </Button>
+              <Button type="button" onClick={() => setManualDialogOpen(false)}>
+                {ct("uploadConfirm.cancel")}
+              </Button>
+            </div>
           </div>
         </Dialog>
       ) : null}

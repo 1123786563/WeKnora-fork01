@@ -5,14 +5,14 @@ import * as React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 type ResolveHook = (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => unknown;
-const resolveCSS: ResolveHook = (specifier, context, nextResolve) => specifier.endsWith('.css')
+const resolveCSS: ResolveHook = (specifier, context, nextResolve) => specifier.endsWith('.css') || specifier.endsWith('.svg')
   ? { shortCircuit: true, url: 'data:text/javascript,export default {}' }
   : nextResolve(specifier, context);
 const hooks = nodeModule as typeof nodeModule & { registerHooks?: (hooks: { resolve: ResolveHook }) => void };
 if (hooks.registerHooks) hooks.registerHooks({ resolve: resolveCSS });
 else nodeModule.register(`data:text/javascript,${encodeURIComponent(`
   export async function resolve(specifier, context, nextResolve) {
-    if (specifier.endsWith('.css')) return { shortCircuit: true, url: 'data:text/javascript,export default {}' };
+    if (specifier.endsWith('.css') || specifier.endsWith('.svg')) return { shortCircuit: true, url: 'data:text/javascript,export default {}' };
     return nextResolve(specifier, context);
   }
 `)}`, import.meta.url);

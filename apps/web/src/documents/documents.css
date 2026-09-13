@@ -386,3 +386,392 @@
   background: var(--wk-accent, #4a7dff);
   transition: width 0.2s ease;
 }
+/* --- Documents page chrome (Vue KnowledgeBase.vue document branch) ------------ */
+
+.document-header-title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.document-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.document-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--wk-text, #101828);
+}
+
+.doc-kb-switcher { position: relative; display: inline-flex; }
+
+.breadcrumb-link {
+  border: none;
+  background: transparent;
+  padding: 4px 8px;
+  margin: -4px -8px;
+  font: inherit;
+  color: var(--wk-muted, #66758b);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 6px;
+  transition: all 0.12s ease;
+}
+
+.breadcrumb-link:hover:not(:disabled) {
+  color: var(--wk-brand, #00a870);
+  background: var(--wk-surface, #fff);
+}
+
+.breadcrumb-link:disabled {
+  cursor: not-allowed;
+  color: var(--wk-muted, #98a2b8);
+}
+
+.breadcrumb-link.dropdown { padding-right: 6px; }
+
+.breadcrumb-link.dropdown .breadcrumb-caret { transition: transform 0.12s ease; }
+.breadcrumb-link.dropdown:hover:not(:disabled) .breadcrumb-caret { transform: translateY(1px); }
+
+.breadcrumb-separator {
+  flex-shrink: 0;
+  color: var(--wk-muted, #98a2b8);
+}
+
+.breadcrumb-current {
+  color: var(--wk-text, #101828);
+  font-weight: 600;
+}
+
+/* KB switcher menu (Vue KBSwitcherDropdown popup) */
+.doc-switcher-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 200;
+  min-width: 180px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--wk-surface, #fff);
+  border: 1px solid var(--wk-border, #e3e8f0);
+  border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.12);
+  display: flex;
+  flex-direction: column;
+}
+
+.doc-switcher-item {
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 14px;
+  color: var(--wk-text, #101828);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.doc-switcher-item:hover { background: rgba(0, 0, 0, 0.04); }
+.doc-switcher-item.is-active {
+  color: var(--wk-brand, #00a870);
+  font-weight: 600;
+}
+
+/* Info card + settings gear (Vue .kb-title-actions / KBInfoPopover) */
+.kb-title-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+
+.kb-info-host { position: relative; display: inline-flex; }
+
+.kb-info-button,
+.kb-settings-button {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.05);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--wk-muted, #66758b);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 0;
+}
+
+.kb-info-button:hover,
+.kb-settings-button:hover {
+  color: var(--wk-brand, #00a870);
+  background: rgba(0, 0, 0, 0.09);
+}
+
+/* display:flex below would defeat the [hidden] attribute's UA display:none; restate it. */
+.kb-info-card[hidden],
+.doc-switcher-menu[hidden] { display: none; }
+
+.kb-info-card {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 200;
+  width: 320px;
+  padding: 14px 16px;
+  background: var(--wk-surface, #fff);
+  border: 1px solid var(--wk-border, #e3e8f0);
+  border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 13px;
+  text-align: left;
+}
+
+.kb-info-card-header {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--wk-text, #101828);
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--wk-border, #e3e8f0);
+}
+
+.kb-info-card-row {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.kb-info-card-label {
+  flex-shrink: 0;
+  width: 64px;
+  color: var(--wk-muted, #98a2b8);
+}
+
+.kb-info-card-value {
+  color: var(--wk-text, #101828);
+  word-break: break-word;
+}
+
+.kb-info-filetype {
+  display: inline-block;
+  margin: 0 4px 4px 0;
+  padding: 0 6px;
+  border: 1px solid var(--wk-border, #e4e7ec);
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+/* Vue .document-subtitle */
+.document-subtitle {
+  margin: 0;
+  color: var(--wk-muted, #66758b);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+}
+
+/* Vue .parser-hint warning line */
+.parser-hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 2px 0 0;
+  color: var(--wk-warning, #b54708);
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.parser-hint:hover { color: #d97706; }
+.parser-hint:hover .parser-hint-link { text-decoration: underline; }
+
+.parser-hint-icon { flex-shrink: 0; }
+
+.parser-hint-link {
+  color: var(--wk-brand, #0052d9);
+  margin-left: 2px;
+  white-space: nowrap;
+}
+
+/* Vue .doc-filter-bar: search row + filter row + trailing actions */
+.doc-filter-bar {
+  padding: 0 0 12px 0;
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    'search trailing'
+    'filters filters';
+  gap: 8px 12px;
+  align-items: center;
+}
+
+.doc-search-input {
+  grid-area: search;
+  min-width: 0;
+  width: 100%;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.doc-search-icon {
+  position: absolute;
+  left: 10px;
+  color: var(--wk-muted, #98a2b8);
+  pointer-events: none;
+}
+
+.doc-search-field {
+  width: 100%;
+  padding: 8px 12px 8px 32px;
+  font-size: 13px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--wk-text, #101828);
+  outline: none;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.doc-search-field:focus {
+  border-color: var(--wk-brand, #0052d9);
+  background: var(--wk-surface, #fff);
+}
+
+.doc-filter-bar__filters {
+  grid-area: filters;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  overflow-x: auto;
+  flex-wrap: nowrap;
+  scrollbar-width: thin;
+}
+
+.doc-filter-bar__trailing {
+  grid-area: trailing;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.doc-filter-field {
+  width: 140px;
+  flex-shrink: 0;
+}
+
+.doc-filter-field--wide { width: 280px; }
+
+.doc-filter-control,
+.doc-date-input {
+  width: 100%;
+  height: 32px;
+  padding: 0 8px;
+  font-size: 13px;
+  border: 1px solid var(--wk-border, #e4e7ec);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.02);
+  color: var(--wk-text, #101828);
+}
+
+.doc-filter-control:focus,
+.doc-date-input:focus {
+  border-color: var(--wk-brand, #0052d9);
+  background: var(--wk-surface, #fff);
+  outline: none;
+}
+
+.doc-date-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.doc-date-range .doc-date-input {
+  flex: 1 1 0;
+  min-width: 0;
+  width: auto;
+}
+
+.doc-date-range-sep { color: var(--wk-muted, #98a2b8); flex-shrink: 0; }
+
+/* Vue .doc-empty-state + empty-knowledge illustration */
+.doc-empty-state {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  min-height: 100%;
+}
+
+.doc-empty-folder {
+  margin: 0;
+  color: var(--wk-muted, #66758b);
+  font-size: 14px;
+}
+
+.doc-empty-illustration {
+  display: flex;
+  flex-flow: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.doc-empty-illustration .empty-img {
+  width: 162px;
+  height: 162px;
+}
+
+.doc-empty-illustration .empty-txt {
+  color: var(--wk-muted, #667085);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 26px;
+  margin: 12px 0 16px 0;
+}
+
+.doc-empty-illustration .empty-type-txt {
+  color: var(--wk-muted, #98a2b8);
+  text-align: center;
+  font-size: 12px;
+  font-weight: 400;
+  width: 217px;
+}
+
+@media (max-width: 960px) {
+  .doc-filter-bar {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'search'
+      'trailing'
+      'filters';
+  }
+}
+
