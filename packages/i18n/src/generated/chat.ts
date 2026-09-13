@@ -22,7 +22,7 @@ export const chatMessages: Record<string, Record<string, string>> = {
     'chat.sandbox.start': '启动终端',
     'chat.sandbox.tabArtifacts': '产物',
     'chatHeader.moreActions': '更多对话操作',
-    'chatHeader.deleteSession': '删除会话',
+    'chatHeader.deleteSession': '删除对话',
     'chatHeader.toggleSandboxPanel': '沙箱终端',
     'createChat.title': 'Hi，我是 WeKnora，让你的知识触手可及',
     'input.placeholder': '直接向模型提问',

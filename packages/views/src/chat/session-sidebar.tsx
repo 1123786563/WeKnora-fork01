@@ -103,7 +103,7 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
               {onTogglePin ? <button type="button" role="menuitem" onClick={() => void onTogglePin(session.id, !session.is_pinned)}>{session.is_pinned ? t.unpin : t.pin}</button> : null}
               {onRename ? <button type="button" role="menuitem" onClick={() => void onRename(session.id)}>{t.renameSession}</button> : null}
               {onClear ? <button type="button" role="menuitem" onClick={() => void onClear(session.id)}>{t.clearMessages}</button> : null}
-              {onDelete ? <button type="button" role="menuitem" className="is-danger" onClick={() => void onDelete(session.id)}>{t.deleteSession}</button> : null}
+              {onDelete ? <button type="button" role="menuitem" className="is-danger" onClick={() => void onDelete(session.id)}>{t.deleteRecord}</button> : null}
             </div>
           </details> : null}
         </li>;

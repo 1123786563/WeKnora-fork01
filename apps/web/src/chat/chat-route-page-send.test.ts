@@ -44,6 +44,9 @@ async function renderChatRoutePage(input: {
               globalThis.__weknoraCapturedChatPageProps = props;
               return null;
             }
+            export function openContextualGuide() {
+              return false;
+            }
           `,
         }));
         build.onLoad({ filter: /\.css$/ }, () => ({ loader: 'js', contents: '' }));

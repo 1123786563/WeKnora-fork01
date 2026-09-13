@@ -101,6 +101,8 @@ unpin: '取消置顶',
 renameSession: '修改标题',
 /** menu.clearMessages */
 clearMessages: '清空消息',
+/** upload.deleteRecord (Vue menu.vue session-row delete option) */
+deleteRecord: '删除记录',
 /** chatHeader.deleteSession */
 deleteSession: '删除对话',
 /** agent.copy */
@@ -224,6 +226,7 @@ const CHAT_COPY_TABLES: Record<ChatCopyLocale, ChatCopyTable> = {
   unpin: 'Unpin',
   renameSession: 'Rename',
   clearMessages: 'Clear Messages',
+  deleteRecord: 'Delete Record',
   deleteSession: 'Delete Conversation',
   copy: 'Copy',
   copied: 'Copied',
@@ -302,6 +305,7 @@ const CHAT_COPY_TABLES: Record<ChatCopyLocale, ChatCopyTable> = {
   unpin: 'ピン留めを解除',
   renameSession: 'タイトルを変更',
   clearMessages: 'メッセージをクリア',
+  deleteRecord: '記録を削除',
   deleteSession: '会話を削除',
   copy: 'コピー',
   copied: 'コピーしました',
@@ -380,6 +384,7 @@ const CHAT_COPY_TABLES: Record<ChatCopyLocale, ChatCopyTable> = {
   unpin: '고정 해제',
   renameSession: '제목 수정',
   clearMessages: '메시지 지우기',
+  deleteRecord: '기록 삭제',
   deleteSession: '대화 삭제',
   copy: '복사',
   copied: '복사됨',
@@ -458,6 +463,7 @@ const CHAT_COPY_TABLES: Record<ChatCopyLocale, ChatCopyTable> = {
   unpin: 'Открепить',
   renameSession: 'Переименовать',
   clearMessages: 'Очистить сообщения',
+  deleteRecord: 'Удалить запись',
   deleteSession: 'Удалить диалог',
   copy: 'Копировать',
   copied: 'Скопировано',

@@ -12,6 +12,9 @@ const baseProps = {
   selectedSessionId: 'session-1',
   messages: [],
   draft: '',
+  // Pin the Vue-baseline locale: Node resolves navigator.language ('en-US'),
+  // but these assertions verify the zh-CN copy byte-exact.
+  locale: 'zh-CN',
   onSelectSession: () => undefined,
   onCreateSession: () => undefined,
   onDraftChange: () => undefined,
@@ -170,6 +173,7 @@ test('new-conversation view renders the agent picker and the agent suggested que
     onAgentChange: () => undefined,
     starterQuestions: ['What is WeKnora?', 'How do I upload files?'],
     onStarterQuestionClick: () => undefined,
+    locale: 'zh-CN',
   }));
   // Agent picker (Vue AgentSelector semantics) renders the available agents.
   assert.match(html, /id="wk-chat-agent"/);
@@ -200,6 +204,7 @@ test('new-conversation view keeps the welcome heading but no question cards with
     onDraftChange: () => undefined,
     send: async () => undefined,
     starterQuestions: [],
+    locale: 'zh-CN',
   }));
   // Vue creatChat.vue always shows the welcome heading; the cards stay absent.
   assert.match(html, /Hi，我是 WeKnora，让你的知识触手可及/);
@@ -275,6 +280,7 @@ test('message list renders the Vue anatomy: date separators, user pill, plain as
       { id: 'a1', session_id: 's', role: 'assistant', content: 'The answer is 42', created_at: new Date(2024, 2, 5, 9, 1, 0).toISOString() },
       { id: 'u2', session_id: 's', role: 'user', content: 'next day', created_at: new Date(2024, 2, 6, 9, 0, 0).toISOString() },
     ],
+    locale: 'zh-CN',
     draft: '',
     onSelectSession: () => undefined,
     onCreateSession: () => undefined,
@@ -314,6 +320,7 @@ test('session sidebar renders time-group headers, full titles, and the hover ⋯
     onRenameSession: async () => undefined,
     onToggleSessionPin: async () => undefined,
     onDeleteSession: async () => undefined,
+    locale: 'zh-CN',
     sessionGroups: [
       { key: 'yesterday', label: 'yesterday', items: [{ id: 'session-1', title: '修复后首发截图', is_pinned: false }] },
       { key: 'older', label: 'older', items: [{ id: 'session-2', title: 'creatChat首发修复验证', is_pinned: false }] },

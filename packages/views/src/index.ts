@@ -2,6 +2,16 @@ export { ChatComposer, createChatSubmission } from './chat/composer.tsx';
 export type { ChatComposerProps, ChatSubmission } from './chat/composer.tsx';
 export { MessageList, renderMessageHtml } from './chat/message-list.tsx';
 export type { MessageListProps, PendingChatMessage } from './chat/message-list.tsx';
+export {
+  CHAT_COPY,
+  CHAT_COPY_LOCALES,
+  chatCopy,
+  formatChatCopy,
+  resolveChatCopy,
+  resolveChatLocale,
+  sessionGroupLabel,
+} from './chat/chat-copy.ts';
+export type { ChatCopyKey, ChatCopyLocale, ChatCopyTable } from './chat/chat-copy.ts';
 export { renderChatMarkdown } from './chat/markdown.ts';
 export { ArtifactPreview, artifactPreviewModel } from './chat/artifact-preview.tsx';
 export type { ArtifactPreviewKind, ArtifactPreviewModel, ArtifactPreviewPayload, ArtifactPreviewProps } from './chat/artifact-preview.tsx';

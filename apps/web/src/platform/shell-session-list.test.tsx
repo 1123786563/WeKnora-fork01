@@ -140,7 +140,7 @@ test('(c) selecting a session on a chat route asks the chat page for an in-place
   assert.deepEqual(events, ['session-1'], 'shell dispatches the session route-change event with the target id');
 });
 
-test('(d) row ⋯ menu wires 置顶/取消置顶/清空消息/删除会话 to the session API actions', async () => {
+test('(d) row ⋯ menu wires 置顶/取消置顶/清空消息/删除记录 to the session API actions', async () => {
   const calls: string[] = [];
   const client = fakeClient({
     pin: async (sessionId: string) => { calls.push(`pin:${sessionId}`); },
@@ -183,8 +183,9 @@ test('(d) row ⋯ menu wires 置顶/取消置顶/清空消息/删除会话 to th
     assert.ok(clearItem, 'expected the 清空消息 menu item');
     await act(async () => { (clearItem as HTMLButtonElement).click(); await settle(5); });
     assert.ok(calls.includes('clear:session-3'));
-    const deleteItem = [...menu3.querySelectorAll('[role="menuitem"]')].find((node) => node.textContent === '删除会话');
-    assert.ok(deleteItem, 'expected the 删除会话 menu item');
+    // Vue menu.vue row menu uses upload.deleteRecord (删除记录), not chatHeader.deleteSession.
+    const deleteItem = [...menu3.querySelectorAll('[role="menuitem"]')].find((node) => node.textContent === '删除记录');
+    assert.ok(deleteItem, 'expected the 删除记录 menu item');
     await act(async () => { (deleteItem as HTMLButtonElement).click(); await settle(5); });
     assert.ok(calls.includes('remove:session-3'));
   } finally {
@@ -219,7 +220,7 @@ test('(e) deleting a non-active session only refreshes the shell list; no in-pag
       ?.querySelector('details.wk-chat-session-menu') as HTMLDetailsElement;
     assert.ok(menu3);
     menu3.open = true;
-    const deleteItem = [...menu3.querySelectorAll('[role="menuitem"]')].find((node) => node.textContent === '删除会话') as HTMLButtonElement;
+    const deleteItem = [...menu3.querySelectorAll('[role="menuitem"]')].find((node) => node.textContent === '删除记录') as HTMLButtonElement;
     assert.ok(deleteItem);
     await act(async () => { deleteItem.click(); await settle(5); });
     assert.deepEqual(removed, ['session-3']);
