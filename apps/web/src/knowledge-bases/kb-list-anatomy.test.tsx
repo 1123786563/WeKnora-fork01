@@ -206,3 +206,88 @@ test('favorites star still persists to localStorage (existing behavior kept)', a
   const favRailItem = Array.from(container.querySelectorAll('.kb-list-rail-item'))[1];
   assert.match(favRailItem.getAttribute('title') ?? '', /\(1\)/, 'rail favorites tooltip reflects the star count (Vue tooltipText)');
 });
+
+// R009 rail drag-expand slice (Vue ListSpaceSidebar.vue:146-235, 296-343): the
+// collapsed icon strip and the 208px expanded nav panel are two states of the
+// same rail; the right-edge resize handle drags the width and snaps
+// (>= 120px -> expand, else collapse), persisting via
+// localStorage['sidebar-collapsed-list-expanded'].
+
+test('(b) rail drag past the 120px snap threshold expands into the panel with full labels + counts and drags back collapsed', async () => {
+  const container = await mountPage(makeClient());
+  const rail = container.querySelector('.kb-list-rail') as HTMLElement;
+  assert.ok(rail);
+  assert.equal(rail.classList.contains('kb-list-rail-expanded'), false, 'starts collapsed (Vue default)');
+  assert.ok(rail.querySelector('.kb-list-rail-strip'), 'collapsed strip DOM');
+  assert.equal(rail.querySelector('.kb-list-rail-panel'), null, 'no expanded panel while collapsed');
+  const handle = rail.querySelector('.kb-list-rail-handle');
+  assert.ok(handle, 'right-edge resize handle present (Vue .resize-handle)');
+
+  // Drag right by +90px from 56 -> 146 (< 120 delta from collapsed start? no:
+  // Vue compares the absolute width, 146 >= 120 -> expands on release).
+  await act(async () => {
+    handle.dispatchEvent(new dom.window.MouseEvent('mousedown', { bubbles: true, cancelable: true, clientX: 100 }));
+  });
+  assert.equal(rail.classList.contains('kb-list-rail-dragging'), true, 'dragging class disables the width transition');
+  assert.equal((rail as HTMLElement).style.width, '56px', 'inline width tracks from the collapsed start (ListSpaceSidebar.vue:3)');
+  assert.equal(document.body.style.cursor, 'col-resize', 'body cursor matches Vue onDragStart');
+  await act(async () => {
+    document.dispatchEvent(new dom.window.MouseEvent('mousemove', { bubbles: true, clientX: 190 }));
+  });
+  assert.equal((rail as HTMLElement).style.width, '146px', 'drag width follows the pointer (clamped to [56, 228])');
+  await act(async () => {
+    document.dispatchEvent(new dom.window.MouseEvent('mouseup', { bubbles: true }));
+  });
+  assert.equal(rail.classList.contains('kb-list-rail-expanded'), true, 'width 146 >= snap threshold 120 expands');
+  assert.equal((rail as HTMLElement).style.width, '', 'expanded width comes from CSS (208px), not inline');
+  assert.equal(document.body.style.cursor, '', 'body cursor restored on drag end');
+  const panel = rail.querySelector('.kb-list-rail-panel');
+  assert.ok(panel, 'expanded nav panel DOM (Vue .expanded-panel, ListSpaceSidebar.vue:77)');
+  const labels = Array.from(panel.querySelectorAll('.kb-list-rail-panel-label')).map((el) => el.textContent);
+  assert.deepEqual(labels, ['全部', '收藏', '最近', '本空间'], 'expanded panel renders the full text labels');
+  const counts = Array.from(panel.querySelectorAll('.kb-list-rail-panel-count')).map((el) => el.textContent);
+  assert.deepEqual(counts, ['3', '3'], 'count badges: all + mine always, favorites/recents hidden at 0 (Vue :83/:93/:101/:109)');
+  assert.equal(panel.querySelectorAll('.kb-list-rail-divider').length, 1, 'divider between recents and workspace (Vue :103)');
+  const activeLabel = panel.querySelector('.kb-list-rail-panel-item-active .kb-list-rail-panel-label');
+  assert.equal(activeLabel?.textContent, '本空间', 'active state carried into the expanded panel');
+  assert.equal(dom.window.localStorage.getItem('sidebar-collapsed-list-expanded'), 'true', 'expanded state persisted (Vue storageKey :198/:232)');
+
+  // Drag back: 208 - 110 = 98 < 120 -> collapse to the strip.
+  await act(async () => {
+    handle.dispatchEvent(new dom.window.MouseEvent('mousedown', { bubbles: true, cancelable: true, clientX: 300 }));
+  });
+  await act(async () => {
+    document.dispatchEvent(new dom.window.MouseEvent('mousemove', { bubbles: true, clientX: 190 }));
+  });
+  assert.equal((rail as HTMLElement).style.width, '98px');
+  await act(async () => {
+    document.dispatchEvent(new dom.window.MouseEvent('mouseup', { bubbles: true }));
+  });
+  assert.equal(rail.classList.contains('kb-list-rail-expanded'), false, 'drag under the threshold collapses back');
+  assert.ok(rail.querySelector('.kb-list-rail-strip'), 'collapsed strip DOM restored');
+  assert.equal(rail.querySelector('.kb-list-rail-panel'), null, 'panel unmounted after collapse');
+  assert.equal(dom.window.localStorage.getItem('sidebar-collapsed-list-expanded'), 'false', 'collapsed state persisted');
+});
+
+test('(b) rail expanded state round-trips through localStorage (Vue storageKey sidebar-collapsed-list-expanded)', async () => {
+  dom.window.localStorage.setItem('sidebar-collapsed-list-expanded', 'true');
+  const container = await mountPage(makeClient());
+  const rail = container.querySelector('.kb-list-rail') as HTMLElement;
+  assert.ok(rail);
+  assert.equal(rail.classList.contains('kb-list-rail-expanded'), true, 'seeds expanded from localStorage like Vue (:200)');
+  assert.ok(rail.querySelector('.kb-list-rail-panel'), 'panel mounted directly');
+  assert.equal(rail.querySelector('.kb-list-rail-strip'), null, 'strip not rendered while expanded (Vue v-if/v-else)');
+});
+
+test('(b) expanded panel keeps the ?scope deep-link semantics (setSpace path unchanged)', async () => {
+  dom.window.localStorage.setItem('sidebar-collapsed-list-expanded', 'true');
+  const container = await mountPage(makeClient());
+  const fav = Array.from(container.querySelectorAll('.kb-list-rail-panel-item'))[1] as HTMLButtonElement;
+  assert.equal(fav?.textContent, '收藏', 'favorites panel item present');
+  await act(async () => {
+    fav.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  });
+  await act(async () => {});
+  assert.equal(dom.window.location.search, '?scope=favorites', 'panel click still writes ?scope to the URL');
+  assert.equal(fav.classList.contains('kb-list-rail-panel-item-active'), true, 'panel item reflects the active scope');
+});

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import { createScopeController, scopedKey, filterKnowledgeBases } from '@weknora/domain';
 import {
@@ -97,6 +97,13 @@ const SECTION_ICONS: Record<string, KbIconName> = {
 type KbListRow =
   | { kind: 'header'; key: string; labelKey: string; count: number; expanded: boolean }
   | { kind: 'card'; card: MergedKnowledgeBase };
+
+// Expanded-panel count badge visibility (Vue ListSpaceSidebar.vue:83/93/101/109):
+// all/mine render whenever the count is defined (including 0); favorites and
+// recents hide an empty count.
+function railCountVisible(key: KbListSpace, count: number): boolean {
+  return key === 'favorites' || key === 'recents' ? count > 0 : true;
+}
 
 export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPageProps) {
   const locale = useMemo(resolveLocale, []);
@@ -257,6 +264,62 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
       window.removeEventListener('keydown', onKey);
     };
   }, [menuFor]);
+
+  // R009 rail drag-expand (Vue ListSpaceSidebar.vue:160-235): the icon strip
+  // and the expanded nav panel are two states of one rail. The right-edge
+  // resize handle drags the width between 56 and 228; on release it snaps to
+  // 208px (expanded) when the dragged width reached 120, else back to 56.
+  // The expanded state persists under the same storage key Vue uses
+  // (collapsedKey default 'sidebar-collapsed-list' + '-expanded').
+  const KB_RAIL_STORAGE_KEY = 'sidebar-collapsed-list-expanded';
+  const KB_RAIL_COLLAPSED_WIDTH = 56;
+  const KB_RAIL_EXPANDED_WIDTH = 208;
+  const KB_RAIL_SNAP_THRESHOLD = 120;
+  const KB_RAIL_MAX_DRAG_WIDTH = KB_RAIL_EXPANDED_WIDTH + 20;
+
+  const [railExpanded, setRailExpanded] = useState(() => {
+    try { return window.localStorage.getItem(KB_RAIL_STORAGE_KEY) === 'true'; } catch { return false; }
+  });
+  const [railDragging, setRailDragging] = useState(false);
+  const [railDragWidth, setRailDragWidth] = useState<number | null>(null);
+  const railDrag = useRef<{ startX: number; startWidth: number; width: number } | null>(null);
+
+  const onRailDragStart = (event: ReactMouseEvent<HTMLElement>) => {
+    event.preventDefault();
+    const startWidth = railExpanded ? KB_RAIL_EXPANDED_WIDTH : KB_RAIL_COLLAPSED_WIDTH;
+    railDrag.current = { startX: event.clientX, startWidth, width: startWidth };
+    setRailDragWidth(startWidth);
+    setRailDragging(true);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
+
+  useEffect(() => {
+    if (!railDragging) return;
+    const onMove = (event: MouseEvent) => {
+      const drag = railDrag.current;
+      if (!drag) return;
+      drag.width = Math.max(KB_RAIL_COLLAPSED_WIDTH, Math.min(KB_RAIL_MAX_DRAG_WIDTH, drag.startWidth + (event.clientX - drag.startX)));
+      setRailDragWidth(drag.width);
+    };
+    const onUp = () => {
+      const width = railDrag.current?.width ?? KB_RAIL_COLLAPSED_WIDTH;
+      railDrag.current = null;
+      const shouldExpand = width >= KB_RAIL_SNAP_THRESHOLD;
+      setRailExpanded(shouldExpand);
+      try { window.localStorage.setItem(KB_RAIL_STORAGE_KEY, String(shouldExpand)); } catch { /* storage unavailable */ }
+      setRailDragging(false);
+      setRailDragWidth(null);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [railDragging]);
 
   const railItems: { key: KbListSpace; label: string; icon: KbIconName; count: number }[] = [
     { key: 'all', label: t('listSpaceSidebar.all'), icon: 'layers', count: mergedCards.length },
@@ -522,21 +585,67 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
   return (
     <main className="wk-page kb-list-page">
       <div className="kb-list-container">
-        {/* Vue ListSpaceSidebar collapsed icon strip (全部/收藏/最近/本空间) */}
-        <aside className="kb-list-rail" aria-label={t('common.knowledgeBases')}>
-          {railItems.map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              className={space === item.key ? 'kb-list-rail-item kb-list-rail-item-active' : 'kb-list-rail-item'}
-              title={`${item.label} (${item.count})`}
-              aria-pressed={space === item.key}
-              onClick={() => setSpace(item.key)}
-            >
-              <KbIcon name={item.icon} size={16} />
-              <span className="kb-list-rail-label">{item.label}</span>
-            </button>
-          ))}
+        {/* Vue ListSpaceSidebar dual state: collapsed icon strip ↔ expanded
+            nav panel, toggled by dragging the right-edge resize handle
+            (ListSpaceSidebar.vue:2-150). The collapsed strip keeps the
+            label (count) tooltip; the expanded panel shows the full label
+            plus a count badge (Vue .expanded-panel, :77-144). */}
+        <aside
+          className={[
+            'kb-list-rail',
+            railExpanded ? 'kb-list-rail-expanded' : '',
+            railDragging ? 'kb-list-rail-dragging' : '',
+          ].filter(Boolean).join(' ')}
+          aria-label={t('common.knowledgeBases')}
+          style={railDragging && railDragWidth !== null ? { width: railDragWidth } : undefined}
+        >
+          {railExpanded ? (
+            <nav className="kb-list-rail-panel">
+              {railItems.map((item, index) => (
+                <Fragment key={item.key}>
+                  {index === 3 ? <div className="kb-list-rail-divider" aria-hidden="true" /> : null}
+                  <button
+                    type="button"
+                    className={space === item.key ? 'kb-list-rail-panel-item kb-list-rail-panel-item-active' : 'kb-list-rail-panel-item'}
+                    aria-pressed={space === item.key}
+                    onClick={() => setSpace(item.key)}
+                  >
+                    <span className="kb-list-rail-panel-left">
+                      <KbIcon name={item.icon} size={16} />
+                      <span className="kb-list-rail-panel-label">{item.label}</span>
+                    </span>
+                    {railCountVisible(item.key, item.count) ? <span className="kb-list-rail-panel-count">{item.count}</span> : null}
+                  </button>
+                </Fragment>
+              ))}
+            </nav>
+          ) : (
+            <div className="kb-list-rail-strip">
+              {railItems.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  className={space === item.key ? 'kb-list-rail-item kb-list-rail-item-active' : 'kb-list-rail-item'}
+                  title={`${item.label} (${item.count})`}
+                  aria-pressed={space === item.key}
+                  onClick={() => setSpace(item.key)}
+                >
+                  <KbIcon name={item.icon} size={16} />
+                  <span className="kb-list-rail-label">{item.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {/* Vue .resize-handle (:146-149): mousedown starts the drag; the
+              mouseup snap threshold (>= 120px) decides expand vs collapse. */}
+          <div
+            className="kb-list-rail-handle"
+            role="separator"
+            aria-orientation="vertical"
+            onMouseDown={onRailDragStart}
+          >
+            <div className="kb-list-rail-handle-line" />
+          </div>
         </aside>
         <div className="kb-list-content">
           {/* Vue header: title + 28x28 create icon button + subtitle */}

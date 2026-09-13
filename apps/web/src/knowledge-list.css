@@ -102,12 +102,37 @@
 .kb-list-rail {
   width: 56px;
   flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+  min-height: 0;
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.kb-list-rail.kb-list-rail-expanded {
+  width: 208px;
+}
+
+/* Vue .dragging: kill the width transition while the pointer drags (:311-313) */
+.kb-list-rail.kb-list-rail-dragging {
+  transition: none;
+}
+
+/* Collapsed strip (Vue .icon-strip, :346-362) */
+.kb-list-rail-strip {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
   padding: 12px 0 6px;
+  flex: 1;
   min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+}
+
+.kb-list-rail-strip::-webkit-scrollbar {
+  display: none;
 }
 
 .kb-list-rail-item {
@@ -147,6 +172,132 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: center;
+}
+
+/* Drag handle on the right edge (Vue .resize-handle / .resize-handle-line,
+   :317-343); extends 6px over the content area like Vue absolute right: -6px. */
+.kb-list-rail-handle {
+  position: absolute;
+  top: 0;
+  right: -6px;
+  bottom: 0;
+  width: 12px;
+  cursor: col-resize;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.kb-list-rail-handle-line {
+  width: 2px;
+  height: 40px;
+  border-radius: 1px;
+  background: #c9d0da;
+  opacity: 0.45;
+  transition: opacity 0.2s ease, background 0.2s ease;
+}
+
+.kb-list-rail-handle:hover .kb-list-rail-handle-line,
+.kb-list-rail-dragging .kb-list-rail-handle-line {
+  opacity: 1;
+  background: #07c05f;
+}
+
+/* Expanded nav panel (Vue .expanded-panel, :425-440) */
+.kb-list-rail-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  width: 100%;
+  padding: 12px 8px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  border-right: 1px solid #e3e7ee;
+}
+
+.kb-list-rail-panel::-webkit-scrollbar {
+  display: none;
+}
+
+/* Nav items inside the expanded panel (Vue .sidebar-item, :443-530) */
+.kb-list-rail-panel-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: #1d2129;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.kb-list-rail-panel-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.kb-list-rail-panel-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.kb-list-rail-panel-count {
+  font-size: 12px;
+  color: #646e74;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 8px;
+  background: #f0f3f8;
+  margin-left: 6px;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.kb-list-rail-panel-item:hover {
+  background: #f0f3f8;
+}
+
+.kb-list-rail-panel-item:hover .kb-list-rail-panel-count {
+  color: #1d2129;
+}
+
+.kb-list-rail-panel-item-active,
+.kb-list-rail-panel-item-active:hover {
+  background: #eef4ef;
+  color: #07c05f;
+}
+
+.kb-list-rail-panel-item-active .kb-list-rail-panel-count {
+  background: #eef4ef;
+  color: #07c05f;
+}
+
+/* Divider between the reserved scopes and the workspace entry
+   (Vue .sidebar-divider, :532-536) */
+.kb-list-rail-divider {
+  height: 1px;
+  margin: 6px 4px;
+  background: #e3e7ee;
+  flex-shrink: 0;
 }
 
 /* ---------- uninitialized warning banner (KnowledgeBaseList.vue:30-34, 2096-2113) ---------- */
