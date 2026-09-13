@@ -237,6 +237,9 @@ test('clicking an embed card opens the deploy drawer: key reveal, rotate, snippe
   await act(async () => { iframeTab!.click(); });
   const previewButton = Array.from(container.querySelectorAll<HTMLButtonElement>('.wk-embed-code-panel button')).find((button) => button.textContent === '预览');
   await act(async () => { previewButton!.click(); });
+  // The views panel defers the iframe until the drawer lays out (Vue nextTick
+  // parity, layoutReady gate); flush the deferred mount before asserting.
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 60)); });
   assert.equal(previews.length, 0, 'preview stays in the current Vue-shaped drawer');
   assert.ok(container.querySelector('.wk-embed-preview-drawer'), 'preview drawer rendered');
   assert.ok(container.querySelector('.wk-embed-preview-drawer iframe'), 'preview iframe mounted');

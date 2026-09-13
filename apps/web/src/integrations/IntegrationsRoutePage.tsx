@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { formatMessage } from '@weknora/i18n';
 import type { WeKnoraClient } from '@weknora/api-client';
 import type { ApiKeyRow, IntegrationAgentOption, IntegrationKnowledgeBaseOption, IntegrationWeChatQrPorts } from '@weknora/views';
 import { integrationKeyFromQuery, IntegrationsPage, type APIPrincipalConfig, type IntegrationKey, type IntegrationResource } from '@weknora/views';
 import { parseIntegrationTenantId } from './tenant.ts';
 import { ApiPlaygroundDrawer } from './ApiPlaygroundDrawer.tsx';
+import { EmbedPreviewModal } from './EmbedPreviewModal.tsx';
 
 // Each integrations tab fetches only the data it renders, so a missing or
 // empty collection on one tab can never break the others.
@@ -21,6 +22,20 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, embedded = 
   const [agents, setAgents] = useState<IntegrationAgentOption[]>([]);
   const [knowledgeBases, setKnowledgeBases] = useState<IntegrationKnowledgeBaseOption[]>([]);
   const [apiPlaygroundOpen, setApiPlaygroundOpen] = useState(false);
+  // Vue EmbedChannelPreview: the preview opens in-page, never a new tab. The
+  // deploy-step preview panel lives in @weknora/views; this route-level modal
+  // serves its no-token fallback arm (page.tsx onOpenEmbed call, L338).
+  const [embedPreview, setEmbedPreview] = useState<{ channelId: string; token: string; title?: string; locale?: string; refreshKey: number } | null>(null);
+  // Vue previewNonce (AgentEmbedChannelPanel.vue L1022): bumped per open and
+  // folded into the iframe URL as ?r= so a re-preview with the same token
+  // fully reloads the latest saved config.
+  const embedPreviewNonce = useRef(0);
+  // Vue openPreviewForChannel warns previewUnavailable in place (L1007-1010):
+  // a shell-local alert keeps the page mounted, unlike the page-level error
+  // which unmounts every integrations panel. The key is not migrated into
+  // @weknora/i18n yet, so the zh-CN verbatim string is used (the shell fixes
+  // zh-CN like the API playground translator on this page).
+  const [embedPreviewNotice, setEmbedPreviewNotice] = useState('');
   const activeTenantId = parseIntegrationTenantId(tenantId);
 
   async function loadEmbed() {
@@ -63,12 +78,24 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, embedded = 
   useEffect(() => { if (tab === 'api' && activeTenantId !== null) void client.administration.tenantApiKeys.principalConfig(activeTenantId).then(setPrincipal).catch(() => setPrincipal(null)); else setPrincipal(null); }, [activeTenantId, client, tab]);
 
   async function openEmbed(channel: IntegrationResource) {
+    // Vue openPreviewForChannel (AgentEmbedChannelPanel.vue L993-1036): an
+    // unavailable preview session warns in place and never falls back to a
+    // new tab; a fresh token opens the in-page modal with the channel locale
+    // (previewLocale L1021) and a fresh ?r= nonce (previewNonce L1022).
     try {
       const preview = await client.embed.channels.previewSession(channel.id);
-      const url = window.location.origin + '/embed/' + encodeURIComponent(channel.id) + '#token=' + encodeURIComponent(preview.sessionToken);
-      window.open(url, '_blank', 'noopener,noreferrer');
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Unable to open Embed preview.');
+      if (!preview.sessionToken) throw new Error('Embed preview session is unavailable.');
+      setEmbedPreviewNotice('');
+      embedPreviewNonce.current += 1;
+      setEmbedPreview({
+        channelId: channel.id,
+        token: preview.sessionToken,
+        title: typeof channel.name === 'string' && channel.name ? channel.name : undefined,
+        locale: typeof channel.default_locale === 'string' && channel.default_locale ? channel.default_locale : undefined,
+        refreshKey: embedPreviewNonce.current,
+      });
+    } catch {
+      setEmbedPreviewNotice('预览暂时不可用，请确认渠道已启用且 Redis 可用');
     }
   }
 
@@ -120,6 +147,8 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, embedded = 
   };
 
   return <>
+    {embedPreviewNotice ? <p className="wk-status wk-status-error" role="alert">{embedPreviewNotice}</p> : null}
+    <EmbedPreviewModal open={embedPreview !== null} channelId={embedPreview?.channelId ?? ''} token={embedPreview?.token ?? ''} title={embedPreview?.title} apiBaseUrl={window.location.origin} locale={embedPreview?.locale} refreshKey={embedPreview?.refreshKey} onClose={() => setEmbedPreview(null)} />
     <IntegrationsPage embedded={embedded} initialTab={tab} activeTab={tab} onTabChange={setTab} embedChannels={embedChannels} imChannels={imChannels} apiKeys={apiKeys} apiKeysLoading={apiKeysLoading} apiBaseUrl={window.location.origin} loading={loading} error={error} onReload={reload} onOpenEmbed={(channel) => void openEmbed(channel)} onOpenApiPlayground={() => setApiPlaygroundOpen(true)} actions={actions} agents={agents} knowledgeBases={knowledgeBases} />
     <ApiPlaygroundDrawer open={apiPlaygroundOpen} onClose={() => setApiPlaygroundOpen(false)} apiKey={apiKeys.find((key) => key.api_key)?.api_key ?? ''} mode={principal?.mode ?? 'tenant'} agents={agents.map((agent) => ({ id: agent.id, name: agent.name }))} apiBaseUrl={window.location.origin} mintToken={actions.onCreatePrincipalTestToken} t={(key, values) => formatMessage('zh-CN', key, values)} />
   </>;
