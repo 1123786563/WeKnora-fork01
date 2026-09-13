@@ -1,5 +1,11 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-14 Round N+9 — R023 GeneralSettings 复核
+
+- Vue `GeneralSettings.vue` 与 React `GeneralPreferencesPanel` 对照复核：语言、主题、界面字体、代码字体、预览、字号分段及 settings drawer 挂载路径均已有实现。
+- focused settings tests 10/10 通过；此前 `typecheck:web` 与 `build:web` 已通过；R023 由 `implementing` 调整为 `review`。
+- 未宣称最终通过：缺少本轮浏览器 computed-style、Wails/native 证据，且 React 字体 localStorage 尚未采用 Vue 的 user-scoped key。
+
 ## 2026-09-14 Round N+8 — N006/R013 深水切片收口
 
 - N006 文档标签：Vue 多选筛选、标签 chips、单文档/批量标签对话框、全选/取消选择、成功反馈和筛选变化清空选择已接入；聚焦 19/19。
