@@ -1307,3 +1307,10 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 派发（2）：R013/N029 embed 配置向导（交接 §6 三段拆分）、FAQ B1 编辑抽屉 + B3 条目卡（apps/web/src/faq，B2 标签管理已由并发侧 ed93dd21 落地）。
 - 并发协调者 WIP：R043 MCP popup 相关文件（McpSettingsPanel*/styles.css/matrix/progress），本方继续避开。
 
+
+## 2026-09-14 Round N+8 协调条目 — 矩阵更新 + 在途监理
+
+- 矩阵更新（6adc2a45）：R009 行补 rail drag-to-expand（07911648）；N006 行已由并发侧更新 tag pagination（82eb7bb8）。
+- 门禁：shared 中 embedWizard.test.ts 1 红为 embed 切片在途 TDD（embed config drawer 切片运行中）；mobile 146/146、embed 7/7、desktop 2/2 全绿。
+- 在途（2）：embed config drawer、FAQ B1 编辑抽屉 + B3 条目卡。
+
