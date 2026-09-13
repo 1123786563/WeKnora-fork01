@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { KnowledgeDocument, ModelConfiguration, ParserEngineInfo, WeKnoraClient } from "@weknora/api-client";
+import type { KnowledgeDocument, KnowledgeTag, ModelConfiguration, ParserEngineInfo, WeKnoraClient } from "@weknora/api-client";
 import {
   processingStatusLabel,
   normalizeKnowledgeProcessingStatus,
@@ -64,6 +64,16 @@ import {
   documentRowActions,
   filterReparseIds,
 } from "./actions.ts";
+import {
+  commonTagIds,
+  documentTags,
+  joinTagIds,
+  tagFilterLabel,
+  tagFilterTitle,
+  tagUpdatesFor,
+} from "./tags.ts";
+import { TagFilterPanel, TagPickerDialog } from "./TagPickerDialog.tsx";
+import { tagSurfaceT } from "./tags-locale.ts";
 import {
   loadKnowledgeDocuments,
   type KnowledgeDocumentListState,
@@ -1465,6 +1475,9 @@ export function KnowledgeDocumentsPage({
   const t = createTranslator(locale);
   // Dialog copy: shared i18n keys first, then the Vue-ported uploadConfirm table.
   const ct: UploadDialogT = uploadConfirmT(locale);
+  // Tag surfaces: shared i18n first, byte-exact Vue fallback for the keys
+  // packages/i18n still misses (common.confirm/common.clear/tenant.loadMore).
+  const tt = tagSurfaceT(locale);
   const [reloadToken, setReloadToken] = useState(0);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [state, setState] = useState<KnowledgeDocumentListState>({
@@ -1484,7 +1497,20 @@ export function KnowledgeDocumentsPage({
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState(query);
   const [parseStatus, setParseStatus] = useState("");
-  const [tagId, setTagId] = useState("");
+  // Vue selectedTagIds/tagFilterCleared/tagFilterPanelVisible (KnowledgeBase.vue L534-547):
+  // multi-select tag filter with a trigger label + popup chip panel.
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [tagFilterCleared, setTagFilterCleared] = useState(false);
+  const [tagFilterOpen, setTagFilterOpen] = useState(false);
+  // Vue tagEditDialog/batchTagDialogVisible (L444, L734): per-document and batch tagging.
+  const [tagDialog, setTagDialog] = useState<
+    | { mode: "batch" }
+    | { mode: "single"; document: KnowledgeDocument }
+    | null
+  >(null);
+  const [tagDialogSaving, setTagDialogSaving] = useState(false);
+  // Success feedback channel next to mutationError (Vue MessagePlugin.success).
+  const [actionNotice, setActionNotice] = useState<{ tone: "success" | "neutral"; text: string } | null>(null);
   // Vue selectedFileType / selectedSource / updatedTimeRange filter refs.
   const [fileType, setFileType] = useState("");
   const [source, setSource] = useState("");
@@ -1550,7 +1576,7 @@ export function KnowledgeDocumentsPage({
   // Vue isFiltering: any active filter (search descends the folder subtree).
   const filtering = isFilteringDocuments({
     keyword: debouncedQuery,
-    tagIds: tagId ? [tagId] : [],
+    tagIds: selectedTagIds,
     fileType,
     parseStatus,
     source,
@@ -1675,7 +1701,7 @@ export function KnowledgeDocumentsPage({
       page_size: pageSize,
       keyword: debouncedQuery || undefined,
       parse_status: parseStatus || undefined,
-      tag_ids: tagId || undefined,
+      tag_ids: joinTagIds(selectedTagIds),
       file_type: fileType || undefined,
       source: source || undefined,
       ...dateRangeToTimeParams(updatedFrom || updatedTo ? [updatedFrom, updatedTo] : undefined),
@@ -1696,6 +1722,7 @@ export function KnowledgeDocumentsPage({
     knowledgeBaseId,
     page,
     parseStatus,
+    selectedTagIds,
     source,
     updatedFrom,
     updatedTo,
@@ -1733,7 +1760,14 @@ export function KnowledgeDocumentsPage({
 
   useEffect(() => {
     setPage(1);
-  }, [folderPath, parseStatus, query, tagId, fileType, source, updatedFrom, updatedTo]);
+  }, [folderPath, parseStatus, query, selectedTagIds, fileType, source, updatedFrom, updatedTo]);
+
+  // Vue watch(selectedTagIds, docSearchKeyword, …) (KnowledgeBase.vue L2261-2266):
+  // clear the selection on any filter/kb change so batch ops never act on
+  // documents the user can no longer see.
+  useEffect(() => {
+    setSelected(new Set());
+  }, [debouncedQuery, selectedTagIds, fileType, parseStatus, source, updatedFrom, updatedTo, knowledgeBaseId]);
 
   const folders = useMemo(
     () => (folderState.tree ? flattenFolders(folderState.tree) : []),
@@ -1794,6 +1828,44 @@ export function KnowledgeDocumentsPage({
 
   const items = state.status === "success" ? state.page.items : [];
   const selectedOnPage = items.filter((item) => selected.has(item.id)).length;
+  const allOnPageSelected = items.length > 0 && selectedOnPage === items.length;
+  const selectedDocuments = items.filter((item) => selected.has(item.id));
+  // Vue tagMap/activeTagFilterLabel/activeTagFilterTitle (KnowledgeBase.vue L684-729).
+  const tagNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const tag of tags) map.set(tag.id, tag.name);
+    return map;
+  }, [tags]);
+  const tagTriggerLabel = (() => {
+    const label = tagFilterLabel(selectedTagIds, tagFilterCleared);
+    if (label.kind === "single") return tagNameById.get(label.id) ?? t("knowledgeBase.allTags");
+    if (label.kind === "multi") return t("knowledgeBase.tagFilterMulti", { count: selectedTagIds.length });
+    if (label.kind === "placeholder") return t("knowledgeBase.tagFilterPlaceholder");
+    return t("knowledgeBase.allTags");
+  })();
+  const tagTriggerTitle = tagFilterTitle(
+    selectedTagIds,
+    (id) => tagNameById.get(id),
+    t("knowledgeBase.tagFilterTitle"),
+  );
+
+  // Vue handleTagRowClick (KnowledgeBase.vue L948-959): chip click toggles one tag.
+  function toggleTagFilter(tagId: string) {
+    setTagFilterCleared(false);
+    setSelectedTagIds((current) =>
+      current.includes(tagId) ? current.filter((value) => value !== tagId) : [...current, tagId],
+    );
+  }
+
+  // Vue clearTagFilter (KnowledgeBase.vue L961-964): drop to the placeholder state.
+  function clearTagFilter() {
+    setTagFilterCleared(true);
+    setSelectedTagIds([]);
+  }
+
+  function toggleAllOnPage() {
+    setSelected(allOnPageSelected ? new Set() : new Set(items.map((item) => item.id)));
+  }
   const pageTotal = state.status === "success" ? state.page.total : 0;
   const tabs = useMemo(
     () => (kbMeta ? resolveKBSurfaceTabs(kbMeta) : ["documents" as const]),
@@ -2255,30 +2327,51 @@ export function KnowledgeDocumentsPage({
     }
   }
 
-  async function updateSelectedTags() {
-    if (!selected.size) return;
-    const raw = window.prompt(
-      "Set tag IDs for selected documents (comma-separated; empty clears tags):",
-      tagId,
-    );
-    if (raw === null) return;
+  // Vue onBatchTagConfirm (KnowledgeBase.vue L2169-2191) + handleKnowledgeTagChange
+  // (L1005-1012): one PUT /knowledge/tags with an updates row per document, then
+  // success feedback, selection cleared, list and tags reloaded.
+  async function submitTagDialog(tagIds: string[]) {
+    if (!tagDialog || tagDialogSaving) return;
+    const targets = tagDialog.mode === "batch" ? selectedDocuments : [tagDialog.document];
+    if (targets.length === 0) return;
+    setTagDialogSaving(true);
     setMutationError(null);
     try {
-      await client.knowledgeBases.documents.updateTags(
-        Object.fromEntries(
-          [...selected].map((id) => [
-            id,
-            raw
-              .split(",")
-              .map((value) => value.trim())
-              .filter(Boolean),
-          ]),
-        ),
-      );
+      await client.knowledgeBases.documents.updateTags(tagUpdatesFor(targets, tagIds));
+      setTagDialog(null);
+      setSelected(new Set());
+      setActionNotice({
+        tone: "success",
+        text: tagDialog.mode === "single"
+          ? tt("knowledgeBase.tagUpdateSuccess")
+          : tt("knowledgeBase.batchTagSuccess", { count: targets.length }),
+      });
+      // reloadToken drives both the document list and the tag list effects.
       setReloadToken((value) => value + 1);
     } catch (error) {
       setMutationError(errorMessage(error));
+    } finally {
+      setTagDialogSaving(false);
     }
+  }
+
+  // Vue createKnowledgeBaseTag (POST /knowledge-bases/:id/tags); api-client has
+  // no binding yet, same as the graph extract actions above.
+  async function createKnowledgeTag(name: string): Promise<KnowledgeTag> {
+    const data = await client.request({
+      method: "POST",
+      path: `/api/v1/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}/tags`,
+      body: { name },
+    }) as { code?: unknown; data?: unknown };
+    if (!data || typeof data !== "object" || data.code !== 0) throw new Error("Tag create failed");
+    const payload = (data.data ?? {}) as { id?: unknown; name?: unknown };
+    if (payload.id === undefined) throw new Error("Tag create failed");
+    const created: KnowledgeTag = {
+      id: String(payload.id),
+      name: typeof payload.name === "string" ? payload.name : name,
+    };
+    setTags((current) => (current.some((tag) => tag.id === created.id) ? current : [...current, created]));
+    return created;
   }
 
   function goToSection(key: UploadConfirmSectionKey) {
@@ -2504,21 +2597,32 @@ export function KnowledgeDocumentsPage({
                 />
               </div>
               <div className="doc-filter-bar__filters">
-                <label className="doc-filter-field">
-                  <span className="wk-visually-hidden">{t("knowledgeBase.allTags")}</span>
-                  <select
-                    className="doc-filter-control"
-                    value={tagId}
-                    onChange={(event) => setTagId(event.target.value)}
+                <div className="doc-filter-field doc-tag-filter">
+                  <button
+                    type="button"
+                    className="doc-tag-filter-trigger doc-filter-control"
+                    aria-haspopup="true"
+                    aria-expanded={tagFilterOpen}
+                    aria-label={t("knowledgeBase.tagFilterTitle")}
+                    title={tagTriggerTitle}
+                    onClick={() => setTagFilterOpen((open) => !open)}
                   >
-                    <option value="">{t("knowledgeBase.allTags")}</option>
-                    {tags.map((tag) => (
-                      <option key={tag.id} value={tag.id}>
-                        {tag.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                    <span className="doc-tag-filter-trigger__label">{tagTriggerLabel}</span>
+                    <span className="doc-tag-filter-trigger__caret" aria-hidden>
+                      {tagFilterOpen ? "▴" : "▾"}
+                    </span>
+                  </button>
+                  {tagFilterOpen ? (
+                    <TagFilterPanel
+                      t={tt}
+                      tags={tags}
+                      selectedIds={selectedTagIds}
+                      onToggle={toggleTagFilter}
+                      onClear={clearTagFilter}
+                      onClose={() => setTagFilterOpen(false)}
+                    />
+                  ) : null}
+                </div>
                 <label className="doc-filter-field">
                   <span className="wk-visually-hidden">{t("knowledgeBase.fileTypeFilter")}</span>
                   <select
@@ -2619,6 +2723,16 @@ export function KnowledgeDocumentsPage({
               </div>
             </div>
             <div className="wk-list-actions">
+              <label className="wk-select-all">
+                <input
+                  type="checkbox"
+                  checked={allOnPageSelected}
+                  disabled={items.length === 0}
+                  onChange={toggleAllOnPage}
+                  aria-label={t("knowledgeBase.selectAll")}
+                />
+                {t("knowledgeBase.selectAll")}
+              </label>
               <span>
                 {t("knowledgeBase.documents.selectedOnPage", {
                   count: selectedOnPage,
@@ -2627,6 +2741,14 @@ export function KnowledgeDocumentsPage({
                   ? ` · ${t("knowledgeBase.documents.selectedTotal", { count: selected.size })}`
                   : ""}
               </span>
+              {/* Vue DocumentBatchBar: 取消选择 keeps batch mode escapable. */}
+              <Button
+                type="button"
+                disabled={!selected.size}
+                onClick={() => setSelected(new Set())}
+              >
+                {t("knowledgeBase.clearSelection")}
+              </Button>
               {canContribute ? (
                 <>
                   <Button
@@ -2646,12 +2768,13 @@ export function KnowledgeDocumentsPage({
                   >
                     {t("knowledgeBase.documents.move")}
                   </Button>
+                  {/* Vue DocumentBatchBar 批量打标签 → BatchTagDialog (L2164-2167). */}
                   <Button
                     type="button"
                     disabled={!selected.size}
-                    onClick={() => void updateSelectedTags()}
+                    onClick={() => setTagDialog({ mode: "batch" })}
                   >
-                    {t("knowledgeBase.documents.setTags")}
+                    {tt("knowledgeBase.batchTag")}
                   </Button>
                   <Button
                     type="button"
@@ -2715,6 +2838,7 @@ export function KnowledgeDocumentsPage({
             {mutationError ? (
               <Status tone="error">{mutationError}</Status>
             ) : null}
+            {actionNotice ? <Status tone={actionNotice.tone}>{actionNotice.text}</Status> : null}
             {state.status === "loading" ? (
               <Status>{t("knowledgeBase.documents.loadingDocuments")}</Status>
             ) : null}
@@ -2766,10 +2890,24 @@ export function KnowledgeDocumentsPage({
                           {document.file_type ? ` · ${document.file_type}` : ""}
                           {document.source ? ` · ${document.source}` : ""}
                         </span>
+                        {documentTags(document).length > 0 ? (
+                          <span className="wk-row-tag-chips">
+                            {documentTags(document).map((tag) => (
+                              <span key={tag.id} className="row-tag">{tag.name}</span>
+                            ))}
+                          </span>
+                        ) : null}
                       </div>
                       <Status tone={status.tone}>{status.label}</Status>
                       {canContribute ? (
                         <span className="wk-row-actions">
+                          {/* Vue row tag cell: click opens TagEditDialog (L333). */}
+                          <Button
+                            type="button"
+                            onClick={() => setTagDialog({ mode: "single", document })}
+                          >
+                            {tt("knowledgeBase.tagLabel")}
+                          </Button>
                           {actions.canReparse && !actions.canCancelParse ? (
                             <Button
                               type="button"
@@ -3124,6 +3262,27 @@ export function KnowledgeDocumentsPage({
             </Button>
           </div>
         </Dialog>
+      ) : null}
+      {tagDialog ? (
+        // Mounted fresh per open, so preSelectedIds re-seed like the Vue
+        // dialogs' watch(visible) (BatchTagDialog.vue L126-135).
+        <TagPickerDialog
+          open
+          t={tt}
+          tags={tags}
+          mode={tagDialog.mode}
+          count={tagDialog.mode === "batch" ? selectedDocuments.length : 1}
+          preSelectedIds={
+            tagDialog.mode === "single"
+              ? documentTags(tagDialog.document).map((tag) => tag.id)
+              : commonTagIds(selectedDocuments)
+          }
+          canManage={canContribute}
+          confirmLoading={tagDialogSaving}
+          createTag={canContribute ? (name) => createKnowledgeTag(name) : undefined}
+          onConfirm={(tagIds) => void submitTagDialog(tagIds)}
+          onClose={() => setTagDialog(null)}
+        />
       ) : null}
     </main>
   );
