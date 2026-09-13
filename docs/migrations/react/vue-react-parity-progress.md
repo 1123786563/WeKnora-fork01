@@ -1327,7 +1327,7 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 在途（1）：R013 embed config drawer（embedWizard.ts/test 等 6 文件，其 TDD 红 4 项属中间态——step gates/create payload/deploy drawer/wizard walk）。全量 web 门禁等其转绿后复跑。
 - shared 436/436（+17 integrations 向导测试）、mobile 146/146 不变。
 
-- R013 embed config drawer 当前工作树状态：`packages/views/src/integrations/embedWizard.ts` 与 `page.tsx` 已完成 Vue 5 步创建向导、编辑态部署步、域名白名单校验、创建/更新载荷、密钥显示/轮换、iframe/widget/secure 代码和 Node/Go 示例的实现；纯逻辑及既有 integrations 视图测试 58/58、独立渲染夹具 5/5、正式 `pnpm test:web` 702/702、`pnpm typecheck:web`、`pnpm typecheck:shared` 和 `pnpm build:web` 通过，`git diff --check` 通过。渲染夹具与其他共享全局 JSDOM 文件合并运行时出现 4 项隔离假失败，已按独立运行结果记录；因此 R013 仍保持 `implementing`，不宣称浏览器、真实后端或 Wails/native 验收。
+- R013 embed config drawer 当前工作树状态：`packages/views/src/integrations/embedWizard.ts` 与 `page.tsx` 已完成 Vue 5 步创建向导、编辑态部署步、域名白名单校验、创建/更新载荷、密钥显示/轮换、iframe/widget/secure 代码和 Node/Go 示例，并新增当前页 720px 预览 drawer（iframe/widget、短期 preview token、加载态、关闭语义）；纯逻辑/独立渲染夹具 6/6，正式 `pnpm test:web` 706/706，`pnpm typecheck:web` 在并行 FAQ/API playground 未提交改动下被外部错误阻塞，Vite 编译通过。浏览器已验证 React 创建态与 drawer 视觉，Vue 当前会话落 `/login`，所以同条件视觉、真实后端和 Wails/native 仍未验收；R013 保持 `implementing`。
 
 ## 2026-09-14 Round N+9 协调条目 — round-5 双端批扫快照
 
@@ -1341,4 +1341,3 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 遗留登记（详见证据 §6）：EmbedChannelPreview 模态对应物、prod 通配符标志接线位置、admin 字段级门控、内联改名死代码清理、API playground SSE（未动）。
 - 全门禁：shared 436/436、web 702/702、mobile 146/146、typecheck:web 0、build:web ✓。
 - R018 admin 四路由双端截图入库（state-coverage-20260914/）。
-

@@ -79,10 +79,10 @@ pnpm run typecheck:web → 通过（exit 0）
 ## 7. 已知小偏差与遗留
 
 1. Vue 抽屉为浮层（SettingDrawer 560px），React 复用内联 wk-channel-create 面板容器（与 IM 切片同一偏差，浮层壳属全局 Drawer 原语课题）。
-2. **预览形态**：Vue 点「预览」打开 EmbedChannelPreview 模态（区分 iframe/widget 模式、草稿外观、locale 透传）；React 部署步「预览」经既有 onOpenEmbed 端口新标签页打开（previewSession token）。**EmbedChannelPreview 的 React 对应物仍未实施**（交接 §6 ③ 预览模态部分），为下一切片候选。
+2. **预览形态**：Vue 点「预览」打开 EmbedChannelPreview 模态（区分 iframe/widget 模式、草稿外观、locale 透传）；React 现已在当前页面打开 720px 右侧预览 drawer，使用 `onPreviewSession` 获取短期 token，提供 iframe 设备框、widget 模拟宿主页/浮窗、加载态、遮罩/Escape/关闭按钮。草稿外观与 locale 透传及真实后端浏览器验证仍未完成。
 3. **prod 通配符闸**：Vue 以 import.meta.env.PROD 决定 wildcard 校验；React 端 `validateEmbedAllowedOrigins(origins, prod=false)` 显式传参，当前调用未接生产标志（默认 dev 语义），接生产标志需协调者定夺（route page 可按 location/host 注入）。
 4. admin 门控：Vue 非管理员禁用字段/隐藏页脚；React 页面即管理壳，未复刻字段级禁用（服务端仍强制），与 IM 切片一致。
 5. 轮换结果判定：Vue 直接读轮换响应；React onRotateEmbed 契约为 Promise<void>，实现以 onEmbedDetail 复取成功作为成功信号（复取失败显示 resetKeyFailed）。如需精确，可后续把 onRotateEmbed 升级为返回渠道。
 6. Vue embed 卡片 admin 下拉（预览/启停）未复刻为下拉：开关与删除保留为卡片按钮，预览入口在部署步。
 7. 新增内联样式仍以语义 class（wk-embed-*）存于 page.tsx，与 IM 向导样式一并待协调者批准后并入 styles.css 的 wk-integrations 区块。
-8. 遗留登记建议：(R013/N028-(2)) embed 配置抽屉 → **本切片已完成步骤 1-6 主体**（预览模态除外，见第 2 条）；当前浮层壳、逐值视觉对照、admin 门控与 prod 通配符注入仍未验收；(3) API playground 分步抽屉（SSE）→ 未动，维持原登记。
+8. 遗留登记建议：(R013/N028-(2)) embed 配置抽屉 → **本切片已完成步骤 1-6 主体及基础预览 drawer**（见第 2 条）；逐值视觉对照、admin 门控、prod 通配符注入、草稿外观/locale 透传和真实后端预览仍未验收；(3) API playground 分步抽屉（SSE）→ 未动，维持原登记。
