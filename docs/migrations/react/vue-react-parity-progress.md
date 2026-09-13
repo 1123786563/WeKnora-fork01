@@ -1161,3 +1161,12 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 已知问题（移交移动端切片）：apps/mobile onboarding-component.test.ts 在 `node --import tsx --test` 下 MODULE_NOT_FOUND 失败（pass 0/fail 1），`npx tsx --test` 下 4/4 通过；已在 HEAD（不含本轮修改）复现，判定为在途/运行器兼容问题，非本轮引入。恢复命令：`cd apps/mobile && node --import tsx --test src/features/auth/onboarding-component.test.ts`。
 - 矩阵更新：R007 上下文引导 LANDED；剩余：user-menu 重新打开入口、引导 i18n 键回填 packages/i18n、各引导 live 复验。
 - 下一步：R007 收尾切片、R031 会话标题 api-client、N005 浏览器/原生证据、74 个 review 行验收证据、移动端 onboarding 测试运行器修复。
+
+## 2026-09-14 Round N+6 协调条目 — R009 转绿 + 全量门禁 + 在途清单
+
+- R009 anatomy 全部 7 测试转绿（单文件）；全量 test:web 623 中 622 绿——唯一失败是 kb-list-anatomy.test.tsx 在全量并行负载下的文件级超时（44.7s，单跑 7/7 秒级通过），集成时需处理（疑似 jsdom 重 DOM + 并行负载的 settle 膨胀）。
+- 门禁快照：shared 393/393、web 622/623（唯一红=R009 在途文件超时）、mobile 118/118、build ✓ 7.79s。
+- 上传链路核验：新 anatomy 保留 upsert/patch/summarize 与 highlight URL 清理；findUploadTargetPage 移除属架构性正确（merged cards 单列表使跨 scope 翻页跳转不再需要）。
+- 在途（5）：R009 anatomy（收尾中）、R013 深水区、N006 batch/tag、R017 RBAC+壳层、FAQ 收尾。
+- 并发协调者协同：账本/矩阵双轨更新已互认（其 R038/N003 条目与我的派发条目并存）；继续精确路径 add，避免 git add -A。
+
