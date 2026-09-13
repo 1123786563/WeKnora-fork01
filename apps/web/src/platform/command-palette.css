@@ -145,3 +145,37 @@
   color: #8a94a3;
   font-size: 13px;
 }
+
+/* Vue GlobalCommandPalette.vue:794-824 — hotkey hint footer. tdesign token
+   values from light theme: component-stroke #e7e7e7,
+   text-color-placeholder rgba(0,0,0,.4), bg-color-secondarycontainer
+   #f3f3f3, text-color-secondary rgba(0,0,0,.6). */
+.cmdk__footer {
+  display: flex;
+  gap: 16px;
+  padding: 8px 14px;
+  border-top: 1px solid #e7e7e7;
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.4);
+  flex-wrap: wrap;
+}
+
+.cmdk__hotkey {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cmdk__hotkey kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  min-width: 16px;
+  font-size: 10px;
+  font-family: inherit;
+  line-height: 14px;
+  text-align: center;
+  background: #f3f3f3;
+  border: 1px solid #e7e7e7;
+  border-radius: 3px;
+  color: rgba(0, 0, 0, 0.6);
+}

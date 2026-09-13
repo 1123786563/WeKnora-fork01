@@ -195,6 +195,14 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
             })}
             {trimmed && items.length === 0 && <p className="cmdk__empty">{t('commandPalette.empty.noResults')}</p>}
           </div>
+          {/* Vue GlobalCommandPalette.vue:142-150 — hotkey hint footer. */}
+          <div className="cmdk__footer">
+            <span className="cmdk__hotkey"><kbd>↑</kbd><kbd>↓</kbd> {t('commandPalette.hotkey.select')}</span>
+            <span className="cmdk__hotkey"><kbd>↵</kbd> {t('commandPalette.hotkey.enter')}</span>
+            <span className="cmdk__hotkey"><kbd>⌘</kbd><kbd>1</kbd>-<kbd>9</kbd> {t('commandPalette.hotkey.cmdNumber')}</span>
+            <span className="cmdk__hotkey"><kbd>⌘</kbd><kbd>↵</kbd> {t('commandPalette.hotkey.cmdEnter')}</span>
+            <span className="cmdk__hotkey"><kbd>Esc</kbd> {t('commandPalette.hotkey.esc')}</span>
+          </div>
         </div>
       </div>
     </div>
