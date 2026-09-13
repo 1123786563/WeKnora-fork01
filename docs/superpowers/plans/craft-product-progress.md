@@ -43,7 +43,7 @@
 | W06 | **done** | .worktrees/craft-w06 / codex/craft-w06 | d9054bd0 | HEAD 9e6481bf 审查 PASS_WITH_NITS（11/11，审查者独立复跑 6/6+DB 哈希核对）→ 合入 f931f02b。**B 阶段全部完成**（15/27）。留档：R02↔R04 messageID 上游立项、Scan 叙事修正、harness 进程组清理、decide 路由/preview 回写归 C 阶段决策 |
 | C01 | **done** | .worktrees/craft-c01 / codex/craft-c01 | f931f02b | HEAD 072201a7 审查 PASS_WITH_NITS（14/14，真实 ACL 入口核验）→ 合入 3e05038b；Build 端点+挂载协调器裁定归 C06 生产装配（与 C05 协调文件） |
 | C03 | **done** | .worktrees/craft-c03 / codex/craft-c03 | 3e05038b | HEAD 2e721e2f 审查 PASS_WITH_NITS（19/19+W04 三 nit 闭合）→ 合入 0302b8dd；128/128 复验；W05 待办：statusLabel 补 idle 措辞 |
-| C02 | implementing | .worktrees/craft-c02 / codex/craft-c02 | 256fbb78 | 已派发（决定投递+outbox+kill 故障矩阵+双标签浏览器；挂载接线留集成） |
+| C02 | review | .worktrees/craft-c02 / codex/craft-c02 | 256fbb78 | HEAD 291843cb+协调器重编号 34368d85：生产 store+同事务 outbox+202 decide 路由+kill 矩阵+双标签浏览器全过；迁移重编号 000127/000047（避免与 C05 碰撞）；挂载一行接线留集成；审查者进行中 |
 | C04 | **done** | .worktrees/craft-c04 / codex/craft-c04 | f931f02b | HEAD 7d0aebc4 审查 PASS_WITH_NITS（19/19+矩阵复验）→ 合入 256fbb78；容器装配裁定归 C05（含 nit-2/3） |
 | C05 | **done** | .worktrees/craft-c05 / codex/craft-c05 | 256fbb78 | HEAD faf500e9 审查 PASS_WITH_NITS（21/21，安全闭环无伪造路径）→ 合入 ae664bcb；迁移 000126/000046；C04 装配落实；C06 接线提示与 6 卫生 nit 留档 |
 | D02 | implementing | .worktrees/craft-d02 / codex/craft-d02 | ae664bcb | 已派发（openpyxl+LibreOffice 重算+XLSX 导出+浏览器）；C06/D01/D03/O03/O04/O05 等待依赖或席位 |
