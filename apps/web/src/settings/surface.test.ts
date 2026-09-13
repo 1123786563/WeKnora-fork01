@@ -30,6 +30,13 @@ test('gives every registered settings section a concrete inventory description',
   assert.equal(SETTINGS_SECTIONS.every((section) => settingsSectionMeta(section.key)), true);
 });
 
+test('system-admin settings keep Vue-localized section titles on direct role-denied links', () => {
+  assert.equal(settingsSectionMeta('system-global')?.title, '系统全局设置');
+  assert.equal(settingsSectionMeta('runtime-queues')?.title, '运行时队列');
+  assert.equal(settingsSectionMeta('platform-api-keys')?.title, '平台 API Key');
+  assert.equal(settingsSectionMeta('system-audit-log')?.title, '审计日志');
+});
+
 test('keeps settings operations explicit and does not display secret-shaped fields', () => {
   const section = settingsSectionMeta('storage');
   assert.deepEqual(section?.operations, ['read', 'save', 'test', 'delete', 'unavailable']);

@@ -1658,3 +1658,10 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 详情抽屉支持 Vue 同语义的 Escape 关闭；新增日期、结果色调、目标摘要纯函数回归，刷新/游标加载和键盘行激活保持不变。
 - 验证：SettingsPage 定向测试 15/15；Web TypeScript 检查通过；完整 Web 回归与 diff-check 待本轮结束前执行。
 - 证据层：本轮为 Vue `SystemAuditLog.vue` 源码对照和 React DOM/单元验证；真实 system-admin 后端、同条件截图/computed-style、Wails 与移动端证据仍待补齐，N017 继续保持 review。
+
+## 2026-09-14 Round N+37 — N017 系统设置直链权限拒绝标题
+
+- Vue 的系统管理入口在非 system-admin 直链/权限拒绝状态不应泄漏 React registry 的 `SystemAuditLog` 等英文 viewId。React settings registry 为四个新增 system-admin 分区补齐 Vue 对应的中文标题与描述，保持 role-denied 状态可读且不改变权限判断。
+- 新增 surface 回归覆盖 system-global、runtime-queues、platform-api-keys、system-audit-log 四个标题；N017 审计详情抽屉与此前行为回归保持。
+- 验证：SettingsPage + surface 定向测试 35/35；完整 Web、Web TypeScript 与 `git diff --check` 待本轮结束前执行。
+- 证据层：本轮为 Vue 设置导航/权限语义对照与 React DOM/单元验证；system-admin 真实权限矩阵、同条件截图/computed-style、Wails 与移动端证据仍待补齐，N017 继续保持 review。
