@@ -8,11 +8,10 @@ import {
   isSharedKbEditable,
   groupKnowledgeBaseSections,
   mergeAllScopeKnowledgeBases,
-  type KnowledgeBaseCreatorFilter,
   type MergedKnowledgeBase,
 } from '@weknora/domain';
 import { formatMessage, isLocale, type Locale, type MessageValues } from '@weknora/i18n';
-import { Button, Card, Dialog, Status } from '@weknora/ui';
+import { Button, Dialog, Status } from '@weknora/ui';
 import {
   isContextualGuideDone,
   markContextualGuideDone,
@@ -26,7 +25,10 @@ import {
   type KnowledgeBaseSaveInput,
 } from './knowledge-bases/list.ts';
 import { KnowledgeBaseShareDialog } from './knowledge-bases/KnowledgeBaseShareDialog.tsx';
-import { findUploadTargetPage, patchUploadTask, summarizeUploadTasks, upsertUploadTask, type UploadTaskState } from './knowledge-bases/upload-progress.ts';
+import { patchUploadTask, summarizeUploadTasks, upsertUploadTask, type UploadTaskState } from './knowledge-bases/upload-progress.ts';
+import { KbIcon, type KbIconName } from './knowledge-bases/kb-list-icons.tsx';
+import { KB_EMPTY_SVG } from './knowledge-bases/empty-kb-svg.ts';
+import './knowledge-list.css';
 
 interface KnowledgeBasesPageProps {
   client: WeKnoraClient;
@@ -39,6 +41,8 @@ interface Viewer {
   isContributor: boolean;
 }
 
+type KbListSpace = 'all' | 'mine' | 'favorites' | 'recents';
+
 const SKELETON_CARD_COUNT = 6;
 
 function resolveLocale(): Locale {
@@ -46,12 +50,12 @@ function resolveLocale(): Locale {
   return isLocale(language) ? language : isLocale(language.split('-')[0] ?? '') ? (language.split('-')[0] as Locale) : 'en-US';
 }
 
-function readScopeFromUrl(): 'all' | 'mine' {
+function readScopeFromUrl(): KbListSpace {
   const value = new URLSearchParams(window.location.search).get('scope');
-  return value === 'mine' ? 'mine' : 'all';
+  return value === 'mine' || value === 'favorites' || value === 'recents' ? value : 'all';
 }
 
-function writeScopeToUrl(space: 'all' | 'mine' | 'favorites' | 'recents'): void {
+function writeScopeToUrl(space: KbListSpace): void {
   const url = new URL(window.location.href);
   if (space === 'all') url.searchParams.delete('scope');
   else url.searchParams.set('scope', space);
@@ -79,6 +83,21 @@ function membershipRole(memberships: unknown, tenantId: string | null): string {
   return 'viewer';
 }
 
+// Vue KnowledgeBaseList.vue:2203-2283 — section rows render inline in the
+// grid with per-section icons (pinned/mine/tenant/shared).
+const SECTION_ICONS: Record<string, KbIconName> = {
+  pinned: 'pin',
+  mine: 'user',
+  tenantOthers: 'usergroup',
+  sharedByMe: 'share',
+  sharedEditable: 'usergroup',
+  sharedReadonly: 'usergroup',
+};
+
+type KbListRow =
+  | { kind: 'header'; key: string; labelKey: string; count: number; expanded: boolean }
+  | { kind: 'card'; card: MergedKnowledgeBase };
+
 export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPageProps) {
   const locale = useMemo(resolveLocale, []);
   const t = useCallback((key: string, values: MessageValues = {}) => formatMessage(locale, key, values), [locale]);
@@ -86,15 +105,14 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
   const [reloadToken, setReloadToken] = useState(0);
   const [pageState, setPageState] = useState<KnowledgeBaseListPageState>({ status: 'loading' });
   const [viewer, setViewer] = useState<Viewer>({ userId: '', isAdmin: false, isContributor: false });
-  const [space, setSpaceState] = useState<'all' | 'mine' | 'favorites' | 'recents'>(readScopeFromUrl);
+  const [space, setSpaceState] = useState<KbListSpace>(readScopeFromUrl);
   const [query, setQuery] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '');
-  const [creator, setCreator] = useState<KnowledgeBaseCreatorFilter>('all');
-  const [page, setPage] = useState(1);
   const [favorites, setFavorites] = useState<Set<string>>(readFavorites);
   const [recents, setRecents] = useState<Set<string>>(() => {
     try { return new Set(JSON.parse(window.localStorage.getItem('wk-kb-recents') ?? '[]') as string[]); } catch { return new Set(); }
   });
   const [collapsedSections, setCollapsedSections] = useState<ReadonlySet<string>>(new Set());
+  const [menuFor, setMenuFor] = useState<string | null>(null);
   const [highlightId, setHighlightId] = useState<string | null>(() => {
     const hl = new URLSearchParams(window.location.search).get('highlightKbId');
     return hl || null;
@@ -121,10 +139,17 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
   const [deleting, setDeleting] = useState(false);
   const deleteGuard = useRef(createDeleteGuard(client));
 
+  // URL deep-link scope (?scope=) wins; otherwise the default follows the
+  // viewer role once known (Vue KnowledgeBaseList.vue:816-830: contributor
+  // lands on the workspace scope, viewers on "all").
+  const urlHasScope = new URLSearchParams(window.location.search).has('scope');
+  const userPickedScope = useRef(false);
+
   const scope = scopeController.current();
   const queryKey = useMemo(() => scopedKey(scope.scope, 'knowledge-bases'), [scope.scope]);
 
-  const setSpace = (next: 'all' | 'mine' | 'favorites' | 'recents') => {
+  const setSpace = (next: KbListSpace) => {
+    userPickedScope.current = true;
     setSpaceState(next);
     writeScopeToUrl(next);
   };
@@ -147,42 +172,98 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, scopeController]);
 
+  // Vue defaultScope (KnowledgeBaseList.vue:826): contributor -> 'mine'.
+  useEffect(() => {
+    if (urlHasScope || userPickedScope.current || !viewer.isContributor) return;
+    setSpaceState((current) => (current === 'all' ? 'mine' : current));
+  }, [urlHasScope, viewer.isContributor]);
+
   useEffect(() => {
     let active = true;
     setPageState({ status: 'loading' });
-    void loadKnowledgeBaseListPage(client, scope.signal, { creator }).then((next) => {
+    void loadKnowledgeBaseListPage(client, scope.signal).then((next) => {
       if (active && scopeController.isCurrent(scope.scope)) setPageState(next);
     }).catch(() => { /* aborted */ });
     return () => { active = false; };
-  }, [client, creator, reloadToken, scopeController, scope.scope, scope.signal]);
+  }, [client, reloadToken, scopeController, scope.scope, scope.signal]);
 
-  const cards = useMemo<MergedKnowledgeBase[]>(() => {
+  // Vue renders the empty state on list failure (fetchList never surfaces an
+  // error view, KnowledgeBaseList.vue:1227-1242); keep a console breadcrumb
+  // for diagnostics but never leak the raw payload into the UI.
+  useEffect(() => {
+    if (pageState.status === 'error') console.error('[kb-list] load failed:', pageState.message);
+  }, [pageState]);
+
+  // Merged (owned + shared) cards drive the "all" scope and the rail counts.
+  const mergedCards = useMemo<MergedKnowledgeBase[]>(() => {
     if (pageState.status !== 'success') return [];
-    if (space === 'mine') return pageState.owned.map((kb) => ({ ...kb, isMine: true as const }));
     return mergeAllScopeKnowledgeBases(pageState.owned, pageState.shared, viewer.userId || undefined);
-  }, [pageState, space, viewer.userId]);
+  }, [pageState, viewer.userId]);
 
-  const scopedCards = useMemo(() => {
-    if (space === 'favorites') return cards.filter((c) => favorites.has(c.id));
-    if (space === 'recents') return cards.filter((c) => recents.has(c.id));
-    return cards;
-  }, [cards, space, favorites, recents]);
+  const scopedCards = useMemo<MergedKnowledgeBase[]>(() => {
+    if (space === 'mine') {
+      if (pageState.status !== 'success') return [];
+      return pageState.owned.map((kb) => ({ ...kb, isMine: true as const }));
+    }
+    if (space === 'favorites') return mergedCards.filter((c) => favorites.has(c.id));
+    if (space === 'recents') return mergedCards.filter((c) => recents.has(c.id));
+    return mergedCards;
+  }, [favorites, mergedCards, pageState, recents, space]);
 
+  // ?q= keeps working as a deep link even though the page renders no search
+  // box (Vue has none on this surface; search lives in the command palette).
   const filtered = useMemo(() => filterKnowledgeBases(scopedCards, {
     query,
-    creator: space === 'mine' ? creator : 'all',
     currentUserId: viewer.userId || undefined,
-    page,
-    pageSize: 12,
-  }), [scopedCards, creator, page, query, space, favorites, recents, viewer.userId]);
+    pageSize: Number.MAX_SAFE_INTEGER,
+  }), [query, scopedCards, viewer.userId]);
 
-  // Vue KnowledgeBaseList.vue:97-185 — collapsible sections in the all-scope view.
+  // Vue KnowledgeBaseList.vue:97-185 — collapsible section headers render
+  // inline in the grid for every scope (pinned / mine / tenant / shared).
   const sections = useMemo(() => {
-    if (space !== 'all' || pageState.status !== 'success') return [];
-    return groupKnowledgeBaseSections(cards, viewer.userId || undefined);
-  }, [space, pageState, cards, viewer.userId]);
+    if (pageState.status !== 'success') return [];
+    return groupKnowledgeBaseSections(scopedCards, viewer.userId || undefined);
+  }, [pageState, scopedCards, viewer.userId]);
 
-  useEffect(() => { setPage(1); }, [creator, query, space]);
+  const rows = useMemo<KbListRow[]>(() => {
+    if (sections.length === 0) return filtered.items.map((card) => ({ kind: 'card' as const, card }));
+    const out: KbListRow[] = [];
+    for (const section of sections) {
+      const collapsed = collapsedSections.has(section.key);
+      out.push({ kind: 'header', key: section.key, labelKey: section.labelKey, count: section.items.length, expanded: !collapsed });
+      if (!collapsed) for (const item of section.items) out.push({ kind: 'card', card: item });
+    }
+    return out;
+  }, [collapsedSections, filtered.items, sections]);
+
+  const toggleSection = (key: string) => {
+    setCollapsedSections((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  // Close the per-card more menu on any outside click / Escape.
+  useEffect(() => {
+    if (!menuFor) return;
+    const close = () => setMenuFor(null);
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') setMenuFor(null); };
+    window.addEventListener('click', close);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('click', close);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [menuFor]);
+
+  const railItems: { key: KbListSpace; label: string; icon: KbIconName; count: number }[] = [
+    { key: 'all', label: t('listSpaceSidebar.all'), icon: 'layers', count: mergedCards.length },
+    { key: 'favorites', label: t('listSpaceSidebar.favorites'), icon: 'star', count: favorites.size },
+    { key: 'recents', label: t('listSpaceSidebar.recents'), icon: 'history', count: recents.size },
+    { key: 'mine', label: t('listSpaceSidebar.workspace'), icon: 'workspace', count: pageState.status === 'success' ? pageState.owned.length : 0 },
+  ];
 
   useEffect(() => {
     type UploadEventDetail = { uploadId?: string; kbId?: string | number; fileName?: string; progress?: number; status?: UploadTaskState['status']; error?: string };
@@ -252,24 +333,12 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
   }, []);
 
   const uploadSummaries = useMemo(() => summarizeUploadTasks(uploadTasks, (kbId) => {
-    const match = cards.find((card) => String(card.id) === kbId);
+    const match = mergedCards.find((card) => String(card.id) === kbId);
     return match ? String(match.name ?? '') : t('knowledgeList.uploadProgress.unknownKb', { id: kbId });
-  }), [cards, t, uploadTasks]);
+  }), [mergedCards, t, uploadTasks]);
 
   useEffect(() => {
     if (!highlightId || pageState.status !== 'success') return;
-    const highlightCards = filterKnowledgeBases(scopedCards, {
-      query,
-      creator: space === 'mine' ? creator : 'all',
-      currentUserId: viewer.userId || undefined,
-      page: 1,
-      pageSize: Math.max(scopedCards.length, 1),
-    }).items;
-    const targetPage = findUploadTargetPage(highlightCards, highlightId);
-    if (targetPage !== null && targetPage !== page) {
-      setPage(targetPage);
-      return;
-    }
     const escaped = typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(highlightId) : highlightId.replace(/[^a-zA-Z0-9_-]/g, '\\$&');
     const element = document.querySelector<HTMLElement>(`[data-kb-id="${escaped}"]`);
     if (element) element.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -280,11 +349,11 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
       setHighlightId(null);
     }, 3000);
     return () => clearTimeout(timer);
-  }, [creator, highlightId, page, pageState.status, query, scopedCards, space, viewer.userId]);
+  }, [highlightId, pageState.status]);
 
   const hasUninitialized = useMemo(
-    () => cards.some((kb) => !isKnowledgeBaseInitialized(kb as never)),
-    [cards],
+    () => pageState.status === 'success' && pageState.owned.some((kb) => !isKnowledgeBaseInitialized(kb as never)),
+    [pageState],
   );
 
   // Vue KnowledgeBaseList.vue:1195-1197 — the kbList tour's trigger condition
@@ -294,7 +363,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
     && viewer.isContributor
     && !dialogOpen
     && (space === 'all' || space === 'mine')
-    && cards.length === 0;
+    && scopedCards.length === 0;
   useEffect(() => {
     if (!kbListGuideWhen) return;
     openContextualGuide('kbList');
@@ -445,158 +514,207 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
   }
 
   const isLoading = pageState.status === 'loading';
+  const listVisible = pageState.status === 'success' && filtered.total > 0;
+  // Vue authority: a failed list fetch renders the same empty state as an
+  // empty result (KnowledgeBaseList.vue:633-643) — no raw error output.
+  const emptyVisible = pageState.status === 'error' || (pageState.status === 'success' && filtered.total === 0);
 
   return (
-    <main className="wk-page">
-      <header className="wk-header">
-        <div>
-          <h1>{t('common.knowledgeBases')}</h1>
-          <p className="wk-muted">{t('knowledgeList.subtitle')}</p>
-        </div>
-        {viewer.isContributor ? <Button type="button" data-guide="kb-list-create" onClick={openCreate}>+ {t('knowledgeList.create')}</Button> : null}
-      </header>
-      {error ? <Status tone="error">{error}</Status> : null}
-      {notice ? <Status tone="success">{notice}</Status> : null}
-      {hasUninitialized ? <Status tone="warning">{t('knowledgeList.uninitializedBanner')}</Status> : null}
-      {uploadSummaries.length ? <div className="wk-upload-progress-panel" aria-live="polite">
-        {uploadSummaries.map((summary) => <div className="wk-upload-progress-item" key={summary.kbId}>
-          <div className="wk-upload-progress-icon" aria-hidden="true">{summary.completed === summary.total ? '✓' : '↑'}</div>
-          <div className="wk-upload-progress-content">
-            <div className="wk-upload-progress-title">{summary.completed === summary.total ? t('knowledgeList.uploadProgress.completedTitle', { name: summary.kbName }) : t('knowledgeList.uploadProgress.uploadingTitle', { name: summary.kbName })}</div>
-            <div className="wk-upload-progress-subtitle">{summary.completed === summary.total ? t('knowledgeList.uploadProgress.completedDetail', { total: summary.total }) : t('knowledgeList.uploadProgress.detail', { completed: summary.completed, total: summary.total })}</div>
-            <div className="wk-upload-progress-subtitle">{summary.completed === summary.total ? t('knowledgeList.uploadProgress.refreshing') : t('knowledgeList.uploadProgress.keepPageOpen')}</div>
-            {summary.hasError ? <div className="wk-upload-progress-subtitle wk-upload-progress-error">{t('knowledgeList.uploadProgress.errorTip')}</div> : null}
-            <div className="wk-upload-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={summary.progress}><div className="wk-upload-progress-fill" style={{ width: `${summary.progress}%` }} /></div>
-          </div>
-        </div>)}
-      </div> : null}
-      <Card>
-        <div className="wk-toolbar" role="search">
-          <input
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={t('knowledgeList.subtitle')}
-            aria-label={t('common.search')}
-          />
-          <select value={creator} onChange={(event) => setCreator(event.target.value as KnowledgeBaseCreatorFilter)} aria-label={t('common.creator')}>
-            <option value="all">{t('common.all')}</option>
-            <option value="mine">{t('common.mine')}</option>
-            <option value="others">{t('common.others')}</option>
-          </select>
-          <span className="wk-debug">{t('common.itemCount', { count: filtered.total })}</span>
-        </div>
-        <div className="wk-kb-scope" role="tablist" aria-label={t('common.knowledgeBases')}>
-          <button type="button" role="tab" aria-selected={space === 'all'} className={space === 'all' ? 'wk-kb-scope-tab wk-kb-scope-tab-active' : 'wk-kb-scope-tab'} onClick={() => setSpace('all')}>{t('common.all')}</button>
-          <button type="button" role="tab" aria-selected={space === 'mine'} className={space === 'mine' ? 'wk-kb-scope-tab wk-kb-scope-tab-active' : 'wk-kb-scope-tab'} onClick={() => setSpace('mine')}>{t('knowledgeList.sections.mine')}</button>
-          <button type="button" role="tab" aria-selected={space === 'favorites'} className={space === 'favorites' ? 'wk-kb-scope-tab wk-kb-scope-tab-active' : 'wk-kb-scope-tab'} onClick={() => setSpace('favorites')}>{t('common.favorite')}</button>
-          <button type="button" role="tab" aria-selected={space === 'recents'} className={space === 'recents' ? 'wk-kb-scope-tab wk-kb-scope-tab-active' : 'wk-kb-scope-tab'} onClick={() => setSpace('recents')}>{t('knowledgeList.empty.recentsTitle')}</button>
-        </div>
-        {isLoading ? (
-          <div className="wk-kb-grid" aria-busy="true" aria-label={t('common.loading')}>
-            {Array.from({ length: SKELETON_CARD_COUNT }, (_, index) => <div className="wk-kb-skeleton" key={index} />)}
-          </div>
-        ) : null}
-        {pageState.status === 'error' ? (
-          <>
-            <Status tone="error">{pageState.message}</Status>
-            <Button type="button" onClick={() => setReloadToken((value) => value + 1)}>{t('common.retry')}</Button>
-          </>
-        ) : null}
-        {pageState.status === 'success' && filtered.total === 0 ? (
-          <div className="wk-kb-empty">
-            <h2>{t('knowledgeList.empty.title')}</h2>
-            <p>{space === 'mine' ? t('knowledgeList.empty.description') : t('knowledgeList.empty.sharedDescription')}</p>
-            {viewer.isContributor ? <Button type="button" className="empty-state-btn" data-guide="kb-list-create" onClick={openCreate}>+ {t('knowledgeList.create')}</Button> : null}
-          </div>
-        ) : null}
-        {pageState.status === 'success' && filtered.total > 0 ? (
-          <>
-            {space === 'all' && sections.length > 0 ? (
-              <div className="wk-kb-sections" role="list">
-                {sections.map((section) => {
-                  const collapsed = collapsedSections.has(section.key);
+    <main className="wk-page kb-list-page">
+      <div className="kb-list-container">
+        {/* Vue ListSpaceSidebar collapsed icon strip (全部/收藏/最近/本空间) */}
+        <aside className="kb-list-rail" aria-label={t('common.knowledgeBases')}>
+          {railItems.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              className={space === item.key ? 'kb-list-rail-item kb-list-rail-item-active' : 'kb-list-rail-item'}
+              title={`${item.label} (${item.count})`}
+              aria-pressed={space === item.key}
+              onClick={() => setSpace(item.key)}
+            >
+              <KbIcon name={item.icon} size={16} />
+              <span className="kb-list-rail-label">{item.label}</span>
+            </button>
+          ))}
+        </aside>
+        <div className="kb-list-content">
+          {/* Vue header: title + 28x28 create icon button + subtitle */}
+          <header className="kb-list-header">
+            <div className="kb-list-title-row">
+              <h1>{t('common.knowledgeBases')}</h1>
+              {viewer.isContributor ? (
+                <button
+                  type="button"
+                  className="kb-list-header-action"
+                  data-guide="kb-list-create"
+                  title={t('knowledgeList.create')}
+                  aria-label={t('knowledgeList.create')}
+                  onClick={openCreate}
+                >
+                  <KbIcon name="folder-add" size={16} />
+                </button>
+              ) : null}
+            </div>
+            <p className="kb-list-subtitle">{t('knowledgeList.subtitle')}</p>
+          </header>
+          <div className="kb-list-main">
+            {error ? <Status tone="error">{error}</Status> : null}
+            {notice ? <Status tone="success">{notice}</Status> : null}
+            {/* Vue amber uninitialized banner (KnowledgeBaseList.vue:30-34) */}
+            {hasUninitialized ? (
+              <div className="kb-list-warning" role="status">
+                <KbIcon name="info-circle" size={16} />
+                <span>{t('knowledgeList.uninitializedBanner')}</span>
+              </div>
+            ) : null}
+            {uploadSummaries.length ? <div className="wk-upload-progress-panel" aria-live="polite">
+              {uploadSummaries.map((summary) => <div className="wk-upload-progress-item" key={summary.kbId}>
+                <div className="wk-upload-progress-icon" aria-hidden="true">{summary.completed === summary.total ? '✓' : '↑'}</div>
+                <div className="wk-upload-progress-content">
+                  <div className="wk-upload-progress-title">{summary.completed === summary.total ? t('knowledgeList.uploadProgress.completedTitle', { name: summary.kbName }) : t('knowledgeList.uploadProgress.uploadingTitle', { name: summary.kbName })}</div>
+                  <div className="wk-upload-progress-subtitle">{summary.completed === summary.total ? t('knowledgeList.uploadProgress.completedDetail', { total: summary.total }) : t('knowledgeList.uploadProgress.detail', { completed: summary.completed, total: summary.total })}</div>
+                  <div className="wk-upload-progress-subtitle">{summary.completed === summary.total ? t('knowledgeList.uploadProgress.refreshing') : t('knowledgeList.uploadProgress.keepPageOpen')}</div>
+                  {summary.hasError ? <div className="wk-upload-progress-subtitle wk-upload-progress-error">{t('knowledgeList.uploadProgress.errorTip')}</div> : null}
+                  <div className="wk-upload-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={summary.progress}><div className="wk-upload-progress-fill" style={{ width: `${summary.progress}%` }} /></div>
+                </div>
+              </div>)}
+            </div> : null}
+            {isLoading ? (
+              <div className="kb-list-grid" aria-busy="true" aria-label={t('common.loading')}>
+                {Array.from({ length: SKELETON_CARD_COUNT }, (_, index) => <div className="kb-list-skeleton" key={index} />)}
+              </div>
+            ) : null}
+            {emptyVisible && space !== 'favorites' && space !== 'recents' ? (
+              <div className="kb-list-empty">
+                <div className="kb-list-empty-img" aria-hidden="true" dangerouslySetInnerHTML={{ __html: KB_EMPTY_SVG }} />
+                <span className="kb-list-empty-title">{t('knowledgeList.empty.title')}</span>
+                <span className="kb-list-empty-desc">{t('knowledgeList.empty.description')}</span>
+                {viewer.isContributor ? <Button type="button" className="kb-list-empty-btn" data-guide="kb-list-create" onClick={openCreate}>{t('knowledgeList.create')}</Button> : null}
+              </div>
+            ) : null}
+            {/* Vue favorites/recents empty states carry a scope hint, never the
+                create CTA (KnowledgeBaseList.vue:645-659) */}
+            {emptyVisible && (space === 'favorites' || space === 'recents') ? (
+              <div className="kb-list-empty">
+                <span className="kb-list-empty-icon" aria-hidden="true"><KbIcon name={space === 'favorites' ? 'star' : 'history'} size={48} /></span>
+                <span className="kb-list-empty-title">{t(space === 'favorites' ? 'knowledgeList.empty.favoritesTitle' : 'knowledgeList.empty.recentsTitle')}</span>
+                <span className="kb-list-empty-desc">{t(space === 'favorites' ? 'knowledgeList.empty.favoritesDescription' : 'knowledgeList.empty.recentsDescription')}</span>
+              </div>
+            ) : null}
+            {listVisible ? (
+              <div className="kb-list-grid">
+                {rows.map((row) => {
+                  if (row.kind === 'header') {
+                    return (
+                      <button
+                        key={'sec-' + row.key}
+                        type="button"
+                        className="kb-list-section-header"
+                        aria-expanded={row.expanded}
+                        onClick={() => toggleSection(row.key)}
+                      >
+                        <KbIcon name={SECTION_ICONS[row.key] ?? 'user'} size={14} />
+                        <span>{t(row.labelKey)}</span>
+                        <span className="kb-list-section-count">{row.count}</span>
+                        <span className="kb-list-section-toggle" aria-hidden="true"><KbIcon name={row.expanded ? 'chevron-down' : 'chevron-right'} size={14} /></span>
+                      </button>
+                    );
+                  }
+                  const card = row.card;
+                  const kb = card as Record<string, unknown>;
+                  const initialized = isKnowledgeBaseInitialized(card as never);
+                  const manageable = canManageKBCard(kb, { userId: viewer.userId, isAdmin: viewer.isAdmin });
+                  const duplicable = canDuplicateKBCard(kb, { userId: viewer.userId, isContributor: viewer.isContributor });
+                  const isWiki = (card as { indexing_strategy?: { wiki_enabled?: boolean } }).indexing_strategy?.wiki_enabled === true;
+                  const isSharedCard = card.isMine === false;
+                  const isFaq = card.type === 'faq';
+                  const count = isFaq
+                    ? (typeof card.chunk_count === 'number' ? card.chunk_count : 0)
+                    : (typeof card.knowledge_count === 'number' ? card.knowledge_count : 0);
+                  const extractEnabled = (card as { extract_config?: { enabled?: boolean } }).extract_config?.enabled === true;
+                  const vlmEnabled = (card as { vlm_config?: { enabled?: boolean } }).vlm_config?.enabled === true;
+                  const questionEnabled = (card as { question_generation_config?: { enabled?: boolean } }).question_generation_config?.enabled === true;
+                  const shareCount = typeof card.share_count === 'number' ? card.share_count : 0;
+                  const favorited = favorites.has(card.id);
+                  const cardClasses = [
+                    'kb-list-card',
+                    isFaq ? 'kb-list-card-faq' : 'kb-list-card-document',
+                    initialized ? '' : 'kb-list-card-uninitialized',
+                    highlightId === card.id ? 'kb-list-flash' : '',
+                  ].filter(Boolean).join(' ');
                   return (
-                    <button
-                      key={section.key}
-                      type="button"
-                      className="wk-kb-section-toggle"
-                      aria-expanded={!collapsed}
-                      onClick={() => setCollapsedSections((current) => {
-                        const next = new Set(current);
-                        if (next.has(section.key)) next.delete(section.key); else next.add(section.key);
-                        return next;
-                      })}
-                    >
-                      {t(section.labelKey)} · {section.items.length}
-                      <span aria-hidden="true">{collapsed ? '+' : '−'}</span>
-                    </button>
+                    <article key={card.id} data-kb-id={card.id} className={cardClasses} onClick={() => openCard(kb)}>
+                      <button
+                        type="button"
+                        className={favorited ? 'kb-favorite-star kb-favorite-star-active' : 'kb-favorite-star'}
+                        aria-label={favorited ? t('knowledgeList.accessibility.unfavorite') : t('knowledgeList.accessibility.favorite')}
+                        onClick={(event) => { event.stopPropagation(); toggleFavorite(card.id); }}
+                      >
+                        <KbIcon name={favorited ? 'star-filled' : 'star'} size={14} />
+                      </button>
+                      <div className="kb-list-card-head">
+                        <span className="kb-list-card-title" title={String(card.name ?? '')}>
+                          {isWiki ? <span className="kb-list-card-wiki-chip">{t('knowledgeList.features.wiki')}</span> : null}
+                          <span className="kb-list-card-title-text">{String(card.name ?? '')}</span>
+                        </span>
+                        <button
+                          type="button"
+                          className={menuFor === card.id ? 'kb-list-card-more kb-list-card-more-open' : 'kb-list-card-more'}
+                          aria-label={t('common.settings')}
+                          aria-haspopup="menu"
+                          aria-expanded={menuFor === card.id}
+                          onClick={(event) => { event.stopPropagation(); setMenuFor((current) => (current === card.id ? null : card.id)); }}
+                        >
+                          <KbIcon name="dots" size={16} />
+                        </button>
+                      </div>
+                      {menuFor === card.id ? (
+                        <div className="kb-list-more-menu" role="menu" onClick={(event) => event.stopPropagation()}>
+                          <button type="button" role="menuitem" onClick={() => { setMenuFor(null); void togglePin(kb); }}>
+                            <KbIcon name="pin" size={14} />{card.is_pinned ? t('knowledgeList.pin.unpin') : t('knowledgeList.pin.pin')}
+                          </button>
+                          {duplicable ? (
+                            <button type="button" role="menuitem" onClick={() => { setMenuFor(null); void duplicate(kb); }}>
+                              <KbIcon name="copy" size={14} />{t('knowledgeList.menu.duplicate')}
+                            </button>
+                          ) : null}
+                          {manageable ? (
+                            <>
+                              <button type="button" role="menuitem" onClick={() => { setMenuFor(null); openKbSettings(kb); }}>
+                                <KbIcon name="settings" size={14} />{t('common.settings')}
+                              </button>
+                              <button type="button" role="menuitem" className="kb-list-menu-danger" onClick={() => { setMenuFor(null); setDeletingKb({ id: card.id, name: String(card.name ?? '') }); }}>
+                                <KbIcon name="trash" size={14} />{t('common.delete')}
+                              </button>
+                            </>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      <p className="kb-list-card-desc">{String(card.description ?? '') || t('knowledgeBase.noDescription')}</p>
+                      <div className="kb-list-card-bottom">
+                        <div className="kb-list-badges">
+                          <span className={'kb-list-badge ' + (isFaq ? 'kb-list-badge-faq' : 'kb-list-badge-document')}>
+                            <KbIcon name={isFaq ? 'chat' : 'folder'} size={14} />
+                            <span className="kb-list-badge-count">{count}</span>
+                          </span>
+                          {extractEnabled ? <span className="kb-list-badge kb-list-badge-icon-only kb-list-badge-relation" title={t('knowledgeList.features.knowledgeGraph')}><KbIcon name="relation" size={14} /></span> : null}
+                          {vlmEnabled ? <span className="kb-list-badge kb-list-badge-icon-only kb-list-badge-multimodal" title={t('knowledgeList.features.multimodal')}><KbIcon name="image" size={14} /></span> : null}
+                          {questionEnabled ? <span className="kb-list-badge kb-list-badge-icon-only kb-list-badge-question" title={t('knowledgeList.features.questionGeneration')}><KbIcon name="help-circle" size={14} /></span> : null}
+                          {shareCount > 0 ? <span className="kb-list-badge kb-list-badge-icon-only kb-list-badge-shared" title={t('knowledgeList.sharedToOrgs', { count: shareCount })}><KbIcon name="share" size={14} /></span> : null}
+                        </div>
+                        {isSharedCard && typeof card.org_name === 'string' && card.org_name ? (
+                          <span className="kb-list-org-chip" title={card.org_name}><KbIcon name="workspace" size={14} />{card.org_name}</span>
+                        ) : null}
+                      </div>
+                    </article>
                   );
                 })}
               </div>
             ) : null}
-            <div className="wk-kb-grid">
-              {(space === 'all' && sections.length > 0
-                ? sections.flatMap((section) => (collapsedSections.has(section.key) ? [] : section.items))
-                : filtered.items
-              ).slice((page - 1) * 12, page * 12).map((card) => {
-                const kb = card as Record<string, unknown>;
-                const initialized = isKnowledgeBaseInitialized(card as never);
-                const manageable = canManageKBCard(card as Record<string, unknown>, { userId: viewer.userId, isAdmin: viewer.isAdmin });
-                const duplicable = canDuplicateKBCard(card as Record<string, unknown>, { userId: viewer.userId, isContributor: viewer.isContributor });
-                const isWiki = (card as { indexing_strategy?: { wiki_enabled?: boolean } }).indexing_strategy?.wiki_enabled === true;
-                const isSharedCard = card.isMine === false;
-                const sharedEditable = card.isMine === false && isSharedKbEditable(card.permission);
-                const count = typeof card.knowledge_count === 'number' ? card.knowledge_count : 0;
-                return (
-                  <article key={card.id} data-kb-id={card.id} className={`${initialized ? 'wk-kb-card' : 'wk-kb-card wk-kb-card-warning'}${highlightId === card.id ? ' wk-kb-flash' : ''}`}>
-                    <div className="wk-kb-card-head">
-                      <button type="button" className="wk-kb-card-title" onClick={() => openCard(kb)}>{String(card.name ?? '')}</button>
-                      <button
-                        type="button"
-                        className={favorites.has(card.id) ? 'wk-kb-star wk-kb-star-active' : 'wk-kb-star'} data-highlight={highlightId === card.id || undefined}
-                        aria-label={t('common.favorite')}
-                        onClick={() => toggleFavorite(card.id)}
-                      >{favorites.has(card.id) ? '★' : '☆'}</button>
-                    </div>
-                    <p className="wk-kb-card-desc">{String(card.description ?? '')}</p>
-                    <div className="wk-kb-badges">
-                      <span className="wk-kb-badge">{card.type === 'faq' ? t('common.typeFaq') : t('common.typeDocument')} · {count}</span>
-                      {isWiki ? <span className="wk-kb-badge wk-kb-badge-wiki">{t('knowledgeList.features.wiki')}</span> : null}
-                      {isSharedCard ? (
-                        <span className="wk-kb-badge">{sharedEditable ? t('knowledgeList.sections.sharedEditable') : t('knowledgeList.sections.sharedReadonly')}</span>
-                      ) : null}
-                      {typeof card.share_count === 'number' && card.share_count > 0 ? (
-                        <span className="wk-kb-badge">{t('knowledgeList.sharedToOrgs', { count: card.share_count })}</span>
-                      ) : null}
-                      {!initialized ? <span className="wk-kb-badge wk-kb-badge-warning">⚠</span> : null}
-                    </div>
-                    <div className="wk-kb-card-actions">
-                      <Button type="button" onClick={() => void togglePin(kb)}>{card.is_pinned ? t('knowledgeList.pin.unpin') : t('knowledgeList.pin.pin')}</Button>
-                      {duplicable ? <Button type="button" onClick={() => void duplicate(kb)}>{t('knowledgeList.menu.duplicate')}</Button> : null}
-                      {manageable ? (
-                        <>
-                          <Button type="button" onClick={() => openEdit(kb)}>{t('common.edit')}</Button>
-                          <Button type="button" onClick={() => openKbSettings(kb)}>{t('common.settings')}</Button>
-                          <Button type="button" onClick={() => setSharingKb({ id: card.id, name: String(card.name ?? '') })}>{t('common.share')}</Button>
-                          <Button type="button" className="wk-kb-danger" onClick={() => setDeletingKb({ id: card.id, name: String(card.name ?? '') })}>{t('common.delete')}</Button>
-                        </>
-                      ) : null}
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-            {filtered.pageCount > 1 ? (
-              <nav className="wk-pagination" aria-label={t('common.knowledgeBases')}>
-                <Button type="button" disabled={filtered.page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>{t('common.previous')}</Button>
-                <span>{t('common.pageOf', { page: filtered.page, total: filtered.pageCount })}</span>
-                <Button type="button" disabled={filtered.page >= filtered.pageCount} onClick={() => setPage((value) => value + 1)}>{t('common.next')}</Button>
-              </nav>
-            ) : null}
-          </>
-        ) : null}
-      </Card>
+          </div>
+        </div>
+      </div>
 
       <Dialog open={dialogOpen} title={editingId ? t('common.edit') + ' · ' + t('common.knowledgeBases') : t('knowledgeList.create')} onClose={() => setDialogOpen(false)}>
         <form className="wk-form" onSubmit={save}>

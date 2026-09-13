@@ -1076,6 +1076,13 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   - R038 分页按钮 TDesign 化（e4284ff5）：React 蓝 #2e6de6 描边方块 → Vue t-pagination 默认（无边框、3px 圆角、24px、当前页品牌绿 #07c05f 白字、hover 品牌绿文字、禁用箭头 rgba(0,0,0,.26)）；数值取自 :5180 live 探针（.parity-tools/vue-pager-probe.cjs，gitignored 工具），修复后 :5181 逐值一致。
 - 验证：TenantMembersPanel+surface 28/28、platform 面板 34/34；全门禁（footer 081a9c15 落地前集成树）：shared 392/392、web 616/616、mobile 118/118、desktop 2/2、embed 7/7、typecheck shared/web 0、build:web ✓3.42s。
 
+## 2026-09-14 Round N+5 追加 — R009 知识库列表 anatomy slice
+
+- Vue→React 对照完成：列表横向筛选替换为竖直 scope rail；卡片改为紧凑响应式栅格；分组标题支持折叠；补齐 hover 收藏/更多菜单、类型/能力徽章、未初始化警告、骨架和 Vue 空态插画；失败请求回退空态且不泄露原始错误。
+- TDD 先行钉死 7 项：rail、grid/card、section collapse、warning、error fallback、Vue exact card-menu actions、favorite persistence；Focused 7/7，Web 回归 623/623，`typecheck:web`、`build:web`、`git diff --check` 均通过。
+- 移除 React 菜单中 Vue 不存在的“编辑/分享”入口；既有 editor/share 组件保留给其 owning flow。截图证据与边界见 `evidence/vue-react-parity/2026-09-14-r009-kb-list-anatomy.md`。
+- 状态仍为 `review`：当前轮未重新取得浏览器 computed-style/真实后端/Wails/iOS/Android 证据；既有 paired 1440x900 artifacts 仅作对照材料，不替代交互与平台验收。
+
 
 ## 2026-09-13 Round N+4（终）— 四切片集成 + 登录 toast parity + 时间脆弱测试修复
 
@@ -1154,4 +1161,3 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 已知问题（移交移动端切片）：apps/mobile onboarding-component.test.ts 在 `node --import tsx --test` 下 MODULE_NOT_FOUND 失败（pass 0/fail 1），`npx tsx --test` 下 4/4 通过；已在 HEAD（不含本轮修改）复现，判定为在途/运行器兼容问题，非本轮引入。恢复命令：`cd apps/mobile && node --import tsx --test src/features/auth/onboarding-component.test.ts`。
 - 矩阵更新：R007 上下文引导 LANDED；剩余：user-menu 重新打开入口、引导 i18n 键回填 packages/i18n、各引导 live 复验。
 - 下一步：R007 收尾切片、R031 会话标题 api-client、N005 浏览器/原生证据、74 个 review 行验收证据、移动端 onboarding 测试运行器修复。
-

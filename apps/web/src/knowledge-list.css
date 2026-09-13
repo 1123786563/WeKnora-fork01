@@ -1,0 +1,649 @@
+/*
+ * R009 kb-list anatomy slice (apps/web/src/App.tsx KnowledgeBasesPage).
+ * Ported from the Vue authority frontend/src/views/knowledge/KnowledgeBaseList.vue
+ * (styles: lines 1789-2925) + frontend/src/components/ListSpaceSidebar.vue
+ * (icon rail, lines 295-422). Scoped to .kb-list-* so it cannot collide with
+ * styles.css; imported only by App.tsx.
+ */
+
+/* ---------- page frame (KnowledgeBaseList.vue:1790-1858) ---------- */
+
+/* Double-class specificity: the shell resets .wk-page max-width, and these
+   page paddings must win over the generic .wk-page padding regardless of
+   stylesheet order (styles.css is imported after this file). */
+.wk-page.kb-list-page {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  padding: 20px 28px 0;
+}
+
+.kb-list-container {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.kb-list-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.kb-list-main {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0 0 8px;
+}
+
+/* ---------- header (KnowledgeBaseList.vue:7-20, 1808-1915) ---------- */
+
+.kb-list-header {
+  margin-bottom: 16px;
+}
+
+.kb-list-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kb-list-title-row h1 {
+  margin: 0;
+  color: #17233d;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 32px;
+}
+
+/* Vue .header-action-btn: 28x28 icon button beside the page title; the
+   tooltip/aria carries「新建知识库」(KnowledgeBaseList.vue:11-16). */
+.kb-list-header-action {
+  padding: 0;
+  min-width: 28px;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #f2f4f8;
+  border: 1px solid #e3e7ee;
+  border-radius: 6px;
+  color: #646e74;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+
+.kb-list-header-action:hover {
+  color: #1d2129;
+}
+
+.kb-list-header-action svg {
+  color: #07c05f;
+}
+
+.kb-list-subtitle {
+  margin: 4px 0 0;
+  color: #8a94a6;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+}
+
+/* ---------- icon rail (ListSpaceSidebar.vue:4-74, 345-422) ---------- */
+
+.kb-list-rail {
+  width: 56px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 0 6px;
+  min-height: 0;
+}
+
+.kb-list-rail-item {
+  width: 50px;
+  padding: 5px 0 2px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  cursor: pointer;
+  color: #646e74;
+  font: inherit;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.kb-list-rail-item:hover {
+  background: #f0f3f8;
+  color: #1d2129;
+}
+
+.kb-list-rail-item-active,
+.kb-list-rail-item-active:hover {
+  background: #eef4ef;
+  color: #07c05f;
+}
+
+.kb-list-rail-label {
+  font-size: 11px;
+  line-height: 1.25;
+  max-width: 52px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+}
+
+/* ---------- uninitialized warning banner (KnowledgeBaseList.vue:30-34, 2096-2113) ---------- */
+
+.kb-list-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  background: #fdf3e7;
+  border: 1px solid #f7d8b0;
+  border-radius: 6px;
+  color: #cf6b1d;
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.kb-list-warning svg {
+  color: inherit;
+  flex-shrink: 0;
+}
+
+/* ---------- card grid (KnowledgeBaseList.vue:2196-2201, 2811-2840) ---------- */
+
+@keyframes kbListFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.kb-list-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr;
+  animation: kbListFadeIn 0.32s ease-out;
+}
+
+@media (min-width: 900px) { .kb-list-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1250px) { .kb-list-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 1600px) { .kb-list-grid { grid-template-columns: repeat(4, 1fr); } }
+@media (min-width: 1900px) { .kb-list-grid { grid-template-columns: repeat(5, 1fr); } }
+@media (min-width: 2200px) { .kb-list-grid { grid-template-columns: repeat(6, 1fr); } }
+
+/* ---------- section headers (KnowledgeBaseList.vue:96-185, 2203-2283) ---------- */
+
+.kb-list-section-header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #fff;
+  box-shadow: 0 -8px 0 0 #fff, 0 4px 0 0 #fff;
+  padding: 6px 4px 6px 0;
+  border: none;
+  color: #646e74;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+  cursor: pointer;
+  user-select: none;
+  text-align: left;
+  width: 100%;
+}
+
+.kb-list-section-header:hover {
+  color: #1d2129;
+}
+
+.kb-list-section-count {
+  margin-left: 2px;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: #f2f4f8;
+  color: #646e74;
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+}
+
+.kb-list-section-toggle {
+  margin-left: 4px;
+  opacity: 0.7;
+}
+
+.kb-list-section-header:hover .kb-list-section-toggle {
+  opacity: 1;
+}
+
+/* ---------- compact card (KnowledgeBaseList.vue:187-293, 2285-2455) ---------- */
+
+.kb-list-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  height: 136px;
+  min-height: 136px;
+  padding: 12px 14px;
+  border: 1px solid #e3e7ee;
+  border-radius: 8px;
+  /* NB: no overflow-hidden — the corner ::after carries its own radius, and
+     the per-card more menu must be able to escape the 136px card box (Vue's
+     t-popup teleports the menu to body). */
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.kb-list-card:hover {
+  border-color: #07c05f;
+  box-shadow: 0 4px 12px rgba(7, 192, 95, 0.12);
+}
+
+.kb-list-card-document {
+  background: linear-gradient(135deg, #ffffff 0%, rgba(7, 192, 95, 0.04) 100%);
+}
+
+.kb-list-card-document::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 60px;
+  height: 60px;
+  background: linear-gradient(135deg, rgba(7, 192, 95, 0.08) 0%, transparent 100%);
+  border-radius: 0 12px 0 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.kb-list-card-document:hover {
+  background: linear-gradient(135deg, #ffffff 0%, rgba(7, 192, 95, 0.08) 100%);
+}
+
+.kb-list-card-faq {
+  background: linear-gradient(135deg, #ffffff 0%, rgba(0, 82, 217, 0.04) 100%);
+}
+
+.kb-list-card-faq::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 60px;
+  height: 60px;
+  background: linear-gradient(135deg, rgba(0, 82, 217, 0.08) 0%, transparent 100%);
+  border-radius: 0 12px 0 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.kb-list-card-faq:hover {
+  border-color: #0052d9;
+  box-shadow: 0 4px 12px rgba(0, 82, 217, 0.12);
+  background: linear-gradient(135deg, #ffffff 0%, rgba(0, 82, 217, 0.08) 100%);
+}
+
+.kb-list-card-uninitialized {
+  opacity: 0.9;
+}
+
+@keyframes kbListFlash {
+  0% { border-color: #07c05f; box-shadow: 0 0 0 0 rgba(7, 192, 95, 0.4); transform: scale(1); }
+  50% { border-color: #07c05f; box-shadow: 0 0 0 8px rgba(7, 192, 95, 0); transform: scale(1.02); }
+  100% { border-color: #07c05f; box-shadow: 0 0 0 0 rgba(7, 192, 95, 0); transform: scale(1); }
+}
+
+.kb-list-card.kb-list-flash {
+  animation: kbListFlash 0.6s ease-in-out 3;
+  border-color: #07c05f;
+}
+
+/* favorite star floats over the top-right corner; revealed on card hover
+   like Vue .kb-favorite-star (lines 2375-2409) */
+.kb-favorite-star {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 3;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: #8a94a6;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.kb-favorite-star:hover {
+  background: #f2f4f8;
+  color: #e37318;
+}
+
+.kb-list-card:hover .kb-favorite-star {
+  opacity: 1;
+}
+
+.kb-favorite-star-active,
+.kb-list-card:hover .kb-favorite-star-active {
+  opacity: 1;
+  color: #e37318;
+}
+
+.kb-list-card-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 6px;
+  position: relative;
+  z-index: 1;
+}
+
+.kb-list-card-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: #1d2129;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 22px;
+  letter-spacing: 0.01em;
+  text-align: left;
+  cursor: pointer;
+}
+
+.kb-list-card-wiki-chip {
+  flex-shrink: 0;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: rgba(124, 77, 255, 0.1);
+  color: #7c4dff;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+/* Vue .more-wrap (lines 2523-2553): the three-dot control only becomes
+   visible while the card is hovered; clicking opens the popup menu. */
+.kb-list-card-more {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #8a94a6;
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.2s ease;
+}
+
+.kb-list-card:hover .kb-list-card-more {
+  opacity: 0.6;
+}
+
+.kb-list-card-more:hover,
+.kb-list-card-more-open {
+  background: #edf0f5;
+  opacity: 1 !important;
+  color: #1d2129;
+}
+
+.kb-list-more-menu {
+  position: absolute;
+  top: 32px;
+  right: 6px;
+  z-index: 30;
+  min-width: 132px;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid #e3e7ee;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(23, 35, 61, 0.12);
+  display: flex;
+  flex-direction: column;
+}
+
+.kb-list-more-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #1d2129;
+  font-size: 13px;
+  line-height: 18px;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.kb-list-more-menu button:hover {
+  background: #f2f4f8;
+}
+
+.kb-list-more-menu button.kb-list-menu-danger {
+  color: #d54941;
+}
+
+.kb-list-menu-divider {
+  height: 1px;
+  margin: 4px 6px;
+  background: #edf0f5;
+}
+
+.kb-list-card-desc {
+  margin: 0 0 6px;
+  flex: 1;
+  min-height: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  position: relative;
+  z-index: 1;
+  color: #646e74;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
+}
+
+.kb-list-card-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 0.5px solid #e3e7ee;
+  position: relative;
+  z-index: 1;
+}
+
+.kb-list-badges {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.kb-list-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.kb-list-badge-document {
+  background: rgba(7, 192, 95, 0.08);
+  color: #0a9059;
+}
+
+.kb-list-badge-faq {
+  background: rgba(0, 82, 217, 0.08);
+  color: #0052d9;
+}
+
+.kb-list-badge-icon-only {
+  width: 22px;
+  padding: 0;
+}
+
+.kb-list-badge-relation {
+  background: rgba(124, 77, 255, 0.08);
+  color: #7c4dff;
+}
+
+.kb-list-badge-multimodal {
+  background: rgba(255, 152, 0, 0.08);
+  color: #e37318;
+}
+
+.kb-list-badge-question {
+  background: rgba(0, 150, 136, 0.08);
+  color: #009688;
+}
+
+.kb-list-badge-shared {
+  background: rgba(0, 82, 217, 0.08);
+  color: #0052d9;
+}
+
+.kb-list-org-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(7, 192, 95, 0.06);
+  color: #646e74;
+  font-size: 12px;
+  font-weight: 500;
+  max-width: 140px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+
+.kb-list-org-chip svg {
+  color: #07c05f;
+  flex-shrink: 0;
+}
+
+/* ---------- skeleton (KnowledgeBaseList.vue:74-89) ---------- */
+
+.kb-list-skeleton {
+  height: 136px;
+  border: 1px solid #e3e7ee;
+  border-radius: 8px;
+  background: linear-gradient(100deg, #f2f4f8 40%, #f8fafc 50%, #f2f4f8 60%);
+  background-size: 200% 100%;
+  animation: kbListShimmer 1.4s ease infinite;
+}
+
+@keyframes kbListShimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+/* ---------- empty state (KnowledgeBaseList.vue:633-643, 2774-2809) ---------- */
+
+.kb-list-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+}
+
+.kb-list-empty-img svg {
+  width: 162px;
+  height: 162px;
+  display: block;
+  margin-bottom: 20px;
+}
+
+.kb-list-empty-icon {
+  display: inline-flex;
+  color: #a5aebd;
+  margin-bottom: 16px;
+}
+
+.kb-list-empty-title {
+  color: #8a94a6;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 26px;
+  margin-bottom: 8px;
+}
+
+.kb-list-empty-desc {
+  color: #a5aebd;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+}
+
+.kb-list-empty-btn {
+  margin-top: 20px;
+  background: linear-gradient(135deg, #07c05f 0%, #00a67e 100%);
+  border: none;
+  color: #fff;
+}
+
+.kb-list-empty-btn:hover {
+  background: linear-gradient(135deg, #07c05f 0%, #069155 100%);
+}
