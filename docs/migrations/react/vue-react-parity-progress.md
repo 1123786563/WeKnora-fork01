@@ -674,6 +674,19 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 ### Slice S15 — final acceptance and visual/state evidence gate
 
+### Checkpoint 2026-09-13 — R038 member list header repair
+
+- `f0340a3f` adds a Vue-aligned, always-mounted member-list header to
+  `apps/web/src/settings/TenantMembersPanel.tsx`, including the server-backed
+  member count badge and persistent search controls. The focused regression
+  test first failed because the header/count markers were absent, then passed
+  3/3 after the repair.
+- `git diff --check` passed. `pnpm typecheck:web` remains blocked by the
+  pre-existing `@weknora/domain/auth/onboarding` module-resolution error and
+  an implicit-any diagnostic in `WorkspaceOnboardingPage.tsx`; these are
+  outside the R038 two-file commit. No browser screenshot or full Vue visual
+  comparison is claimed, so R038 remains `review`.
+
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
 - **Rows:** any rows proposed for `accepted`; never all rows by default.
 - **Files owned:** `docs/migrations/react/vue-react-parity-matrix.md`, `docs/migrations/react/vue-react-parity-progress.md`, `docs/migrations/react/evidence/vue-react-parity/README.md`, `docs/migrations/react/evidence/vue-react-parity/screenshot-matrix.md`, and the row-specific `docs/migrations/react/evidence/vue-react-parity/<date>-<row-group>.md` evidence file only.
