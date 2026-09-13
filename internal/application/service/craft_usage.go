@@ -6,6 +6,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/commercial"
 	"github.com/Tencent/WeKnora/internal/craft"
+	"github.com/Tencent/WeKnora/internal/metrics"
 )
 
 // CraftUsageStore is the persistence port of the usage ledger: the durable
@@ -14,6 +15,7 @@ import (
 type CraftUsageStore interface {
 	craft.UsageSink
 	Facts(ctx context.Context, tenant uint64, runID string) ([]craft.UsageFact, error)
+	FactsBySession(ctx context.Context, tenant uint64, sessionID string) ([]craft.UsageFact, error)
 	FactsByDelegation(ctx context.Context, tenant uint64, delegationID string) ([]craft.UsageFact, error)
 	Revisions(ctx context.Context, tenant uint64, callID, attemptID string) ([]craft.UsageFact, error)
 }
@@ -158,7 +160,11 @@ func (s *CraftUsageService) CorrectLateUsage(ctx context.Context, in PhysicalCal
 		return err
 	}
 	f.Status = craft.UsageStatusCorrected
-	return s.store.Correct(ctx, f)
+	if err := s.store.Correct(ctx, f); err != nil {
+		return err
+	}
+	metrics.CraftReconciled("corrected")
+	return nil
 }
 
 // ObserveOCAggregate cross-checks one OC aggregate usage event against the
@@ -192,6 +198,11 @@ func (s *CraftUsageService) ObserveOCAggregate(ctx context.Context, agg OCDelega
 		verdict.Recorded.Output == agg.Totals.Output &&
 		verdict.Recorded.Cached == agg.Totals.Cached &&
 		verdict.Recorded.Facts == agg.Totals.Facts
+	if verdict.Matched {
+		metrics.CraftReconciled("matched")
+	} else {
+		metrics.CraftReconciled("mismatched")
+	}
 	return verdict, nil
 }
 
@@ -201,6 +212,12 @@ func (s *CraftUsageService) ObserveOCAggregate(ctx context.Context, agg OCDelega
 // and funding.
 func (s *CraftUsageService) Facts(ctx context.Context, tenant uint64, runID string) ([]craft.UsageFact, error) {
 	return s.store.Facts(ctx, tenant, runID)
+}
+
+// SessionFacts returns the CURRENT revision of every physical attempt
+// recorded across one session's runs — the O04 usage view's read side.
+func (s *CraftUsageService) SessionFacts(ctx context.Context, tenant uint64, sessionID string) ([]craft.UsageFact, error) {
+	return s.store.FactsBySession(ctx, tenant, sessionID)
 }
 
 // Totals folds the run's current facts into observed totals. Unknown facts

@@ -14,6 +14,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/craft"
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
+	"github.com/Tencent/WeKnora/internal/metrics"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/gin-gonic/gin"
 )
@@ -127,6 +128,12 @@ func RegisterCraftSessionRoutes(craftSessions, sessions craftRouteGroup, craftHa
 		sessions.POST("/:session_id/craft/inputs", craftHandler.PostCraftInput)
 		sessions.POST("/:session_id/craft/runs", craftHandler.PostCraftRun)
 	}
+	if usageHandler := RegisteredCraftUsageHandler(); usageHandler != nil {
+		// O04: the usage + execution-diagnostics read (aggregation, as_of,
+		// main/child calls, sandbox residency, checks, failure reasons).
+		usageHolder := NewCraftUsageHandler(usageHandler)
+		sessions.GET("/:id/craft/usage", usageHolder.GetCraftUsage)
+	}
 	if snapshotHandler := RegisteredCraftSnapshotHandler(); snapshotHandler != nil {
 		// C05: the recovery snapshot surface — the workbench's "continue
 		// from this version" entrance and its idempotent restore.
@@ -138,7 +145,21 @@ func RegisterCraftSessionRoutes(craftSessions, sessions craftRouteGroup, craftHa
 		// W02's authenticated ticket issuance endpoint, mounted at its exact
 		// path (same route as RegisterCraftPreviewIssueRoute, which stays
 		// available for raw gin groups).
-		sessions.POST("/:session_id/craft/versions/:version_id/preview", previewHandler.IssueCraftPreview)
+		sessions.POST("/:session_id/craft/versions/:version_id/preview",
+			craftPreviewFailureMetrics(previewHandler.IssueCraftPreview))
+	}
+}
+
+// craftPreviewFailureMetrics counts a failed craft preview issuance at the
+// HTTP seam (O04's craft_preview_failures_total): any 4xx/5xx answer is one
+// failure event. The preview handler itself stays untouched — the metric
+// lives at the mounting seam this file owns.
+func craftPreviewFailureMetrics(next gin.HandlerFunc) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		next(c)
+		if c.Writer.Status() >= http.StatusBadRequest {
+			metrics.CraftPreviewFailure()
+		}
 	}
 }
 
