@@ -17,7 +17,7 @@
 
 - 文档列表补齐 Vue `toggleSelectRow` 的当前页 Shift 区间增删、最后选择锚点及筛选/全选重置语义；普通点击仍只切换当前行。
 - 专项选择测试 3/3，上传确认回归 24/24，正式 Web 761/761，`typecheck:web` 通过；证据 `evidence/vue-react-parity/2026-09-14-n006-shift-selection.md`。
-- N006 仍为 `review`：真实浏览器 Shift/框选、后端批量链路、视觉与 Wails/native 证据未闭环。
+- N006 仍为 `review`：本轮补齐 Vue `useMarqueeSelect` 的 6px 左键框选、起点 add/subtract 固定模式、控件目标过滤和相交行更新；专项选择测试 5/5，正式 Web 763/763，`typecheck:web` 与 `build:web` 通过。证据 `evidence/vue-react-parity/2026-09-14-n006-marquee-selection.md`。真实浏览器 Shift/框选、后端批量链路、视觉与 Wails/native 证据未闭环。
 
 ## 2026-09-14 Round N+19 — N005 custom organization picker slice
 
@@ -1385,4 +1385,3 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 上一批三切片（FAQ B5+B6 / embed 预览模态 / R009 org 轨）agent 全部 unavailable 终止且树无残留交付——已按原任务重派发（范围收窄：B5 只做 tooltip、embed 只做预览模态、org 轨只做分组+过滤），并要求先写证据再完善、完成即报。
 - 经验：大范围 prompt + 多任务点会拉长在途时间增加失联风险；后续切片一律单点任务。
 - 门禁快照：shared 436/436、mobile 146/146、embed 7/7、desktop 2/2 全绿。
-

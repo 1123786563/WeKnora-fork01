@@ -85,7 +85,7 @@ import {
   documentsKBSettingsPath,
   isFilteringDocuments,
 } from "./page-chrome.ts";
-import { toggleDocumentSelection } from "./selection.ts";
+import { toggleDocumentSelection, useMarqueeSelection } from "./selection.ts";
 import {
   DocumentEmptyState,
   DocumentsBreadcrumb,
@@ -1530,6 +1530,7 @@ export function KnowledgeDocumentsPage({
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const lastSelectedIndex = useRef(-1);
+  const documentListRef = useRef<HTMLUListElement | null>(null);
   const [moving, setMoving] = useState(false);
   const [moveTarget, setMoveTarget] = useState("");
   // Vue page-level KbUploadSourceDropdown (doc-filter-actions) + its menu state.
@@ -1927,6 +1928,14 @@ export function KnowledgeDocumentsPage({
       return result.selected;
     });
   }
+
+  const marquee = useMarqueeSelection({
+    containerRef: documentListRef,
+    selected,
+    setSelected,
+    enabled: canContribute && items.length > 0,
+    onSelectionStart: () => setMoving(false),
+  });
 
   function stageFiles(files: Iterable<File>) {
     const entries = toUploadEntries(files);
@@ -2906,12 +2915,23 @@ export function KnowledgeDocumentsPage({
               />
             ) : null}
             {state.status === "success" && items.length > 0 ? (
-              <ul className="wk-list wk-document-list">
+              <ul
+                ref={documentListRef}
+                className={`wk-list wk-document-list${marquee.visible ? " is-marquee-active" : ""}`}
+                onMouseDown={marquee.onMouseDown}
+              >
+                {marquee.visible ? (
+                  <li
+                    className={`wk-document-marquee-box is-${marquee.mode}`}
+                    style={{ left: marquee.left, top: marquee.top, width: marquee.width, height: marquee.height }}
+                    aria-hidden="true"
+                  />
+                ) : null}
                 {items.map((document) => {
                   const status = documentStatus(document, t);
                   const actions = documentRowActions(document.parse_status);
                   return (
-                    <li key={document.id}>
+                    <li key={document.id} data-select-id={document.id}>
                       <input
                         type="checkbox"
                         aria-label={t("knowledgeBase.documents.select", {
