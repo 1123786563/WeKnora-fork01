@@ -810,6 +810,14 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   This is bundle evidence only; it is not Android native build, launch, or
   interaction acceptance.
 
+- **Mobile data-source resource selection:** editing an existing native data
+  source now loads resources through the existing typed `resources(id)` API,
+  renders selectable resource rows, preserves existing `resource_ids`, and
+  writes the selected IDs into the update config. Focused wiring tests pass
+  4/4; the full mobile suite remains 92/92 and typecheck passes. Vue's lazy
+  hierarchical loading, Drive root-token flow, new-source temporary resource
+  setup, localization, real backend, and native-device evidence remain open.
+
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
 - **Rows:** any rows proposed for `accepted`; never all rows by default.
 - **Files owned:** `docs/migrations/react/vue-react-parity-matrix.md`, `docs/migrations/react/vue-react-parity-progress.md`, `docs/migrations/react/evidence/vue-react-parity/README.md`, `docs/migrations/react/evidence/vue-react-parity/screenshot-matrix.md`, and the row-specific `docs/migrations/react/evidence/vue-react-parity/<date>-<row-group>.md` evidence file only.

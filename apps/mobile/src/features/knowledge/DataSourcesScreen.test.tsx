@@ -24,7 +24,7 @@ async function mount(role: string) {
       validateCredentials: async () => ({ success: true }),
       create: async () => ({}), update: async () => ({}), putCredentials: async () => ({}),
       sync: async () => ({ success: true }), pause: async () => ({ success: true }), resume: async () => ({ success: true }),
-      remove: async () => undefined, logs: async () => [],
+      remove: async () => undefined, logs: async () => [], resources: async () => [{ external_id: 'page-1', name: 'Project docs', type: 'page' }],
     } },
   };
   Object.assign(globalThis, { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true, __dataSourcesRuntime: runtime });
@@ -64,5 +64,20 @@ test('admin can test a connector before saving and sees the server result', asyn
     assert.ok(testButton, 'editor should expose a pre-save connection test');
     await act(async () => testButton?.click());
     assert.match(page.host.textContent ?? '', /Connection successful/);
+  } finally { await page.close(); }
+});
+
+test('editing a data source loads and selects server resources for the next save', async () => {
+  const page = await mount('admin');
+  try {
+    const edit = [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Edit');
+    assert.ok(edit);
+    await act(async () => edit?.click());
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+    assert.match(page.host.textContent ?? '', /Project docs/);
+    const resource = [...page.host.querySelectorAll('button')].find((item) => item.textContent?.includes('Project docs'));
+    assert.ok(resource);
+    await act(async () => resource?.click());
+    assert.match(page.host.textContent ?? '', /✓ Project docs/);
   } finally { await page.close(); }
 });
