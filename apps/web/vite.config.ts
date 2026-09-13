@@ -6,12 +6,9 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@weknora/api-client/semantic': fileURLToPath(new URL('../../packages/api-client/src/semantic.ts', import.meta.url)),
       '@weknora/api-client': fileURLToPath(new URL('../../packages/api-client/src/index.ts', import.meta.url)),
-      '@weknora/contracts/semantic': fileURLToPath(new URL('../../packages/contracts/src/semantic.ts', import.meta.url)),
       '@weknora/contracts': fileURLToPath(new URL('../../packages/contracts/src/index.ts', import.meta.url)),
       '@weknora/core/craft/controller': fileURLToPath(new URL('../../packages/core/src/craft/controller.ts', import.meta.url)),
-      '@weknora/domain/semantic': fileURLToPath(new URL('../../packages/domain/src/semantic.ts', import.meta.url)),
       '@weknora/domain/scope': fileURLToPath(new URL('../../packages/domain/src/scope.ts', import.meta.url)),
       '@weknora/domain/craft/state': fileURLToPath(new URL('../../packages/domain/src/craft/state.ts', import.meta.url)),
       '@weknora/domain/craft/reconnect': fileURLToPath(new URL('../../packages/domain/src/craft/reconnect.ts', import.meta.url)),
