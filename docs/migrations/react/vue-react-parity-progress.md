@@ -702,6 +702,15 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   as page acceptance. Browser/Vue screenshot comparison and native evidence
   remain absent, so R038 stays `review`.
 
+- **Mobile gate audit:** running `pnpm --filter @weknora/mobile typecheck` in
+  this target worktree still fails because `apps/mobile/app/onboarding.tsx`
+  imports the missing `apps/mobile/src/features/auth/OnboardingScreen.tsx`,
+  and Expo route typing rejects `/onboarding` in the current route manifest.
+  The existing onboarding component test also imports that missing screen.
+  A delegated attempt landed on the repository default `main` worktree and
+  made no target changes; its result is discarded. This remains an
+  implementing/blocked-by-code gap and is not accepted.
+
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
 - **Rows:** any rows proposed for `accepted`; never all rows by default.
 - **Files owned:** `docs/migrations/react/vue-react-parity-matrix.md`, `docs/migrations/react/vue-react-parity-progress.md`, `docs/migrations/react/evidence/vue-react-parity/README.md`, `docs/migrations/react/evidence/vue-react-parity/screenshot-matrix.md`, and the row-specific `docs/migrations/react/evidence/vue-react-parity/<date>-<row-group>.md` evidence file only.
