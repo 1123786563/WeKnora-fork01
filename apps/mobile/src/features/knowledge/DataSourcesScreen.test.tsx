@@ -75,8 +75,8 @@ test('sync log drawer renders summary and expandable counters', async () => {
   try {
     await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Logs')?.click());
     await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
-    assert.match(page.host.textContent ?? '', /Total 1 · Success 1 · Failed 0 · Items 4/);
-    const row = [...page.host.querySelectorAll('button')].find((item) => item.textContent?.includes('success'));
+    assert.match(page.host.textContent ?? '', /Runs 1 · Success 1 · Failed 0 · Items 4/);
+    const row = [...page.host.querySelectorAll('button')].find((item) => item.textContent?.includes('Success'));
     assert.ok(row);
     await act(async () => row?.click());
     assert.match(page.host.textContent ?? '', /Created 3 · Updated 1 · Deleted 0 · Skipped 0 · Failed 0/);

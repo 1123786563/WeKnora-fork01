@@ -923,6 +923,12 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   localization, full Vue log presentation, visual/runtime and native evidence are
   still open.
 
+- **N031 mobile sync-log i18n slice:** shared i18n now supplies the Vue sync
+  history, summary, status, and detail labels in all five repository locales;
+  the native log panel consumes the active mobile locale. i18n suite 1/1,
+  DataSources DOM 19/19, mobile full 99/99, both typechecks and diff check pass.
+  Main data-source/editor copy and runtime evidence remain open.
+
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
 - **Rows:** any rows proposed for `accepted`; never all rows by default.
 - **Files owned:** `docs/migrations/react/vue-react-parity-matrix.md`, `docs/migrations/react/vue-react-parity-progress.md`, `docs/migrations/react/evidence/vue-react-parity/README.md`, `docs/migrations/react/evidence/vue-react-parity/screenshot-matrix.md`, and the row-specific `docs/migrations/react/evidence/vue-react-parity/<date>-<row-group>.md` evidence file only.
