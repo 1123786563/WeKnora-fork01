@@ -36,7 +36,28 @@ test('loads message history without requesting public resource URLs', async () =
   assert.equal(path, '/api/v1/messages/session-1/load?before_time=2026-09-10T10%3A00%3A00Z&limit=20');
 });
 
-test('creates an empty server session only after an explicit new-chat action', async () => {
+test('fetches one typed session by id for consumers that need a single title (GET /api/v1/sessions/:id)', async () => {
+    const requests: Array<{ method: string; path: string; signal?: AbortSignal }> = [];
+    const api = createChatSessionsApi(async (input) => {
+      requests.push({ method: input.method, path: input.path, signal: input.signal });
+      return { success: true, data: { id: 'session/1', title: '  季度盘点助手  ', is_pinned: false } };
+    });
+
+    const controller = new AbortController();
+    assert.deepEqual(await api.get('session/1', controller.signal), {
+      id: 'session/1',
+      title: '  季度盘点助手  ',
+      is_pinned: false,
+    });
+    assert.deepEqual(requests, [{ method: 'GET', path: '/api/v1/sessions/session%2F1', signal: controller.signal }]);
+  });
+
+  test('refuses to fetch a session without an id', async () => {
+    const api = createChatSessionsApi(async () => { throw new Error('must not request'); });
+    await assert.rejects(() => api.get('   '), /sessionId must not be empty/);
+  });
+
+  test('creates an empty server session only after an explicit new-chat action', async () => {
   let request: { method: string; path: string; body?: unknown } | undefined;
   const api = createChatSessionsApi(async (input) => {
     request = input;

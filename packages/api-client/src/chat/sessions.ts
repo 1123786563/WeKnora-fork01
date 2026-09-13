@@ -50,6 +50,15 @@ export function createChatSessionsApi(request: (input: ClientRequest) => Promise
         signal: params.signal,
       }));
     },
+    /**
+     * Fetches one session — the sandbox settings inventory resolves live
+     * session ids into titles with it (frontend/src/views/settings/
+     * SandboxSettings.vue:332 GET /api/v1/sessions/:id, route
+     * internal/router/routes_chat.go:55).
+     */
+    async get(sessionId: string, signal?: AbortSignal): Promise<ChatSession> {
+      return parseChatSessionResponse(await request({ method: 'GET', path: sessionPath(sessionId), ...(signal === undefined ? {} : { signal }) }));
+    },
     async create(input: { title?: string; description?: string } = {}): Promise<ChatSession> {
       return parseChatSessionResponse(await request({ method: 'POST', path: '/api/v1/sessions', body: input }));
     },

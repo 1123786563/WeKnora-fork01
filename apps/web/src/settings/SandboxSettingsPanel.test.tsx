@@ -106,6 +106,14 @@ function makeClient(routes: RequestHandler, listItems: unknown[] = []): { client
       requests.push(input);
       return routes(input);
     },
+    // Mirrors the real client: one typed GET per session, envelope parsed to data.
+    sessions: {
+      get: async (sessionId: string) => {
+        const envelope = await routes({ method: 'GET', path: `/api/v1/sessions/${encodeURIComponent(sessionId)}` }) as { success?: boolean; data?: unknown } | null;
+        if (!envelope || envelope.success !== true) throw new Error('session request failed');
+        return envelope.data;
+      },
+    },
     sandboxConfigurations: {
       list: async () => ({ items: listItems, workspaceScriptsDisabled: false }),
       create: async () => ({}),
@@ -811,4 +819,68 @@ test('the panel renders English copy when the stored locale is en-US', async () 
   const heading = container.querySelector('h3')!;
   assert.equal(heading.textContent, formatMessage('en-US', 'settings.sandbox.title'));
   assert.match(container.textContent ?? '', new RegExp(formatMessage('en-US', 'common.all')));
+});
+
+// ---- inventory session titles (SandboxSettings.vue:140-206, 312-344, 511-528) -
+
+async function openInventory(container: HTMLElement): Promise<void> {
+  const viewButton = Array.from(container.querySelectorAll('button'))
+    .find((button) => button.textContent === t('settings.sandbox.viewSandboxes'));
+  assert.ok(viewButton, 'cube cards offer the inventory entry');
+  await act(async () => viewButton!.click());
+}
+
+test('inventory resolves session ids into titles with Vue fallbacks for failed lookups (SandboxSettings.vue:171-178, 323-339)', async () => {
+  const requested: string[] = [];
+  const { client } = makeClient(() => ({}), [cubeRecord]);
+  (client.sandboxConfigurations as { inventory: unknown }).inventory = async () => ({
+    sandboxCount: 3,
+    // A duplicate and a blank id must not trigger extra lookups (324-330).
+    sessionIds: ['session-a', 'session-b', 'session-a', '   '],
+    agentNames: [],
+  });
+  (client.sessions as { get: (id: string) => Promise<unknown> }).get = async (id: string) => {
+    requested.push(id);
+    if (id === 'session-a') return { id, title: '  季度盘点助手  ', is_pinned: false };
+    throw new Error('session gone');
+  };
+  const container = await mount(client, { initialData: { items: [cubeRecord], workspaceScriptsDisabled: false } });
+  await openInventory(container);
+
+  const text = container.textContent ?? '';
+  // Loaded titles render trimmed (SandboxSettings.vue:333).
+  assert.match(text, /季度盘点助手/);
+  // A failed lookup reads as "untitled" instead of breaking the list (334-336, 317-321).
+  assert.match(text, new RegExp(t('settings.sandbox.inventoryUntitledSession')));
+  // The raw id stays reachable as the row tooltip (173 :title="id").
+  const titledRow = container.querySelector('.wk-sandbox-inventory li strong[title="session-a"]');
+  assert.equal(titledRow?.getAttribute('title'), 'session-a');
+  // Blank ids are dropped and duplicates collapse into one lookup per id.
+  assert.deepEqual(requested, ['session-a', 'session-b']);
+});
+
+test('inventory stays hidden while session titles resolve, then renders them (SandboxSettings.vue:515-527)', async () => {
+  const pending = deferred<{ id: string; title: string; is_pinned: boolean }>();
+  const { client } = makeClient(() => ({}), [cubeRecord]);
+  (client.sandboxConfigurations as { inventory: unknown }).inventory = async () => ({
+    sandboxCount: 1, sessionIds: ['session-a'], agentNames: [],
+  });
+  (client.sessions as { get: (id: string) => Promise<unknown> }).get = async () => ({ id: 'session-a', title: '巡检机器人', is_pinned: false }); // TEMP EXPERIMENT
+  const container = await mount(client, { initialData: { items: [cubeRecord], workspaceScriptsDisabled: false } });
+  console.log('probe-a mounted');
+  await openInventory(container);
+  console.log('probe-b clicked');
+
+  // Vue keeps the drawer inside t-loading until the titles land (515-527),
+  // so the list must not render raw ids first.
+  try {
+    const card = container.querySelector('.wk-sandbox-inventory');
+    console.log('probe-c card-in-dom =', Boolean(card), 'len =', (container.innerHTML ?? '').length);
+  } catch (probeError) { console.log('probe-c threw', (probeError as Error).message); }
+
+  await act(async () => pending.resolve({ id: 'session-a', title: '巡检机器人', is_pinned: false }));
+  console.log('probe-d resolved');
+  const text = container.textContent ?? '';
+  assert.match(text, /巡检机器人/);
+  assert.match(text, new RegExp(t('settings.sandbox.inventorySessionKind')));
 });
