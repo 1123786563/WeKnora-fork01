@@ -2111,8 +2111,12 @@ func wireCraftInteractionRegistrar(executor craft.Executor, assembly *CraftInter
 	if !ok || assembly == nil {
 		return
 	}
+	// BASE wrapped the executor's emission path with the registrar at
+	// construction using the executor's OWN opencode client; the
+	// post-construction install reuses that same client (assembly.Client
+	// may legitimately be nil when its own dial failed).
 	runtime.setInteractionEmitter(craftInteractionRegistrar(
-		assembly.Client, runtime.store, assembly.Store, assembly.Runs, runtime.emit))
+		runtime.client, runtime.store, assembly.Store, assembly.Runs, runtime.emit))
 }
 
 // registerCraftHTTPHandlers installs the craft handlers for route mounting.
