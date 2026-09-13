@@ -740,6 +740,11 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Wails S13 运行验证入库（4869c476）：打包+codesign+CDP 登录页冒烟；打包链路修复 esbuild 依赖声明（7db7e4d8）与 desktop vite 别名（bbc892ba）。
 - 第二波派发（2）：AgentEditorModal 核心移植（分区轨/校验/载荷，分阶段交付）；Wails CDP 运行时交互取证（登录→KB→智能体→共享空间→设置→聊天 全链路截图+断言，仅取证不改代码）。
 
+## 2026-09-13 Round N+1（续14）— KB 卡点击语义对齐
+
+- 修复（5ce821fd）：KB 卡标题/卡体点击与 设置 动作语义反转（Wails CDP 取证发现 #2）——对齐 Vue KnowledgeBaseList：卡点击 handleCardClick（已初始化→文档页，未初始化→该 KB 设置页），设置动作 handleSettingsById→goSettings 无条件进设置（废止 Audit #4 的租户模型门，Vue 中该门仅在创建向导 initialSection）；顺带移除死代码 modelsReady（type==='llm' 永假——后端词表 KnowledgeQA/Embedding/Rerank/VLLM/ASR，取证发现 #3）。web 全量 564/564、tsc 0；:5181 live 复验卡点击按 Vue 规则导航。
+- 观察登记：登录后引导聚光背板（wk-guide__backdrop）覆盖卡片属既定引导行为（首访状态），穿透点击仅在引导完成后可用。
+
 ## 2026-09-13 Round N+1（续13）— AgentEditorModal 集成与证据补录
 
 - AgentEditorModal 核心移植集成确认：其源文件随 bfefe805 入库（代理自行提交，含 agent-editor-fallback.ts 570 行 5 语回退表、agent-editor.ts 分区/校验/载荷纯逻辑、AgentEditorModal.tsx 分区轨模态、agent-editor.css、双测试文件）。主代理独立复核：agents 35/35 + configuration 22/22；live 对等 cards 4=4、rail 4=4、品牌绿一致；R012 review-round-1 三问题（内置卡不渲染/主色/轨道标签）已修。证据文档由主代理代笔补录（3ca8ba42）：2026-09-13-agent-editor-modal.md。开放：DB 收藏（/user/favorites 接线）、agentEditor.* 键回填 packages/i18n、引导组件。
