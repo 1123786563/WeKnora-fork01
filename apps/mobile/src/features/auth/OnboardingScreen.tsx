@@ -15,6 +15,7 @@ export function OnboardingScreen() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [error, setError] = useState('');
+  const [invitationError, setInvitationError] = useState('');
   const [saving, setSaving] = useState(false);
   const [respondingId, setRespondingId] = useState<number | null>(null);
 
@@ -27,9 +28,9 @@ export function OnboardingScreen() {
   useEffect(() => { if (runtime.tenantId) router.replace('/(app)/knowledge'); }, [router, runtime.tenantId]);
 
   async function loadInvitations() {
-    setShowInvitations(true); setInvitations(null); setError('');
+    setShowInvitations(true); setInvitations(null); setInvitationError(''); setError('');
     try { const page = await runtime.client.identity.tenants.invitations.listMine(); setInvitations(page.items.filter((item) => item.status === 'pending')); }
-    catch (cause) { setInvitations([]); setError(cause instanceof Error ? cause.message : 'Unable to load invitations'); }
+    catch (cause) { setInvitations(null); setInvitationError(cause instanceof Error ? cause.message : 'Unable to load invitations'); }
   }
   async function createWorkspace() {
     const trimmed = name.trim();
@@ -61,8 +62,8 @@ export function OnboardingScreen() {
       </>}
       {error ? <Text accessibilityRole="alert" style={{ color: '#b42318' }}>{error}</Text> : null}
       {showCreate ? <View style={{ borderTopColor: '#eaecf0', borderTopWidth: 1, gap: 10, paddingTop: 14 }}><Text style={{ fontSize: 18, fontWeight: '700' }}>Create workspace</Text><TextInput accessibilityLabel="Workspace name" value={name} onChangeText={setName} placeholder="Workspace name" maxLength={128} editable={!saving} style={inputStyle} /><TextInput accessibilityLabel="Workspace description" value={description} onChangeText={setDescription} placeholder="Description" maxLength={512} editable={!saving} style={inputStyle} /><Pressable disabled={saving} onPress={() => void createWorkspace()} style={{ backgroundColor: '#2864dc', borderRadius: 10, opacity: saving ? 0.5 : 1, padding: 12 }}><Text style={{ color: '#fff', textAlign: 'center' }}>{saving ? 'Creating…' : 'Create'}</Text></Pressable></View> : null}
-      {showInvitations ? <View style={{ borderTopColor: '#eaecf0', borderTopWidth: 1, gap: 8, paddingTop: 14 }}><Text style={{ fontSize: 18, fontWeight: '700' }}>Invitations</Text>{invitations === null ? <ActivityIndicator accessibilityLabel="Loading invitations" /> : invitations.length === 0 ? <Text style={{ color: '#667085' }}>没有待处理</Text> : invitations.map((invitation) => <View key={invitation.id}><Text>{invitation.tenant_name || `Workspace ${invitation.tenant_id}`} · {invitation.role}</Text><View style={{ flexDirection: 'row', gap: 8 }}><Pressable disabled={respondingId !== null} testID={`accept-${invitation.id}`} onPress={() => void respond(invitation, true)}><Text style={{ color: '#067647' }}>Accept</Text></Pressable><Pressable disabled={respondingId !== null} testID={`decline-${invitation.id}`} onPress={() => void respond(invitation, false)}><Text style={{ color: '#b42318' }}>Decline</Text></Pressable></View></View>)}</View> : null}
-      <Pressable testID="logout" onPress={() => void runtime.logout().then(() => router.replace('/(auth)/login'))}><Text style={{ color: '#667085', textAlign: 'center' }}>Log out</Text></Pressable>
+      {showInvitations ? <View style={{ borderTopColor: '#eaecf0', borderTopWidth: 1, gap: 8, paddingTop: 14 }}><Text style={{ fontSize: 18, fontWeight: '700' }}>Invitations</Text>{invitationError ? <Text accessibilityRole="alert" style={{ color: '#b42318' }}>{invitationError}</Text> : invitations === null ? <ActivityIndicator accessibilityLabel="Loading invitations" /> : invitations.length === 0 ? <Text style={{ color: '#667085' }}>没有待处理</Text> : invitations.map((invitation) => <View key={invitation.id}><Text>{invitation.tenant_name || `Workspace ${invitation.tenant_id}`} · {invitation.role}</Text><View style={{ flexDirection: 'row', gap: 8 }}><Pressable disabled={respondingId !== null} testID={`accept-${invitation.id}`} onPress={() => void respond(invitation, true)}><Text style={{ color: '#067647' }}>Accept</Text></Pressable><Pressable disabled={respondingId !== null} testID={`decline-${invitation.id}`} onPress={() => void respond(invitation, false)}><Text style={{ color: '#b42318' }}>Decline</Text></Pressable></View></View>)}</View> : null}
+      <Pressable testID="logout" onPress={() => void runtime.logout().then(() => router.replace('/(auth)/login')).catch((cause) => setError(cause instanceof Error ? cause.message : 'Unable to log out'))}><Text style={{ color: '#667085', textAlign: 'center' }}>Log out</Text></Pressable>
     </View>
   </ScrollView></SafeAreaView>;
 }

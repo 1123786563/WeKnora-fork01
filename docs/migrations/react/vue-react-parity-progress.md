@@ -754,6 +754,12 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   removes the package-boundary masking identified by review. Device and real
   backend evidence remain outstanding.
 
+- **Mobile onboarding error-state repair:** invitation loading failures now
+  remain an explicit error rather than rendering the empty inbox; logout
+  failures remain on the page with an alert. Native tests pass 91/91 and
+  mobile typecheck passes. This is still review pending simulator/device and
+  real-backend evidence.
+
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
 - **Rows:** any rows proposed for `accepted`; never all rows by default.
 - **Files owned:** `docs/migrations/react/vue-react-parity-matrix.md`, `docs/migrations/react/vue-react-parity-progress.md`, `docs/migrations/react/evidence/vue-react-parity/README.md`, `docs/migrations/react/evidence/vue-react-parity/screenshot-matrix.md`, and the row-specific `docs/migrations/react/evidence/vue-react-parity/<date>-<row-group>.md` evidence file only.
