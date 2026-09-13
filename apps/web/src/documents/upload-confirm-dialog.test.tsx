@@ -266,6 +266,28 @@ test('scanned-PDF override renders with its label and hint only for PDF batches'
   assert.doesNotMatch(withoutPdf, /wk-pdf-force-scanned/);
 });
 
+test('active section keeps Vue v-show sections mounted but hides inactive panels', () => {
+  const html = sectionsHtml({});
+  assert.match(html, /data-section="parser"/);
+  const active = renderToStaticMarkup(React.createElement(UploadConfirmSections, {
+    state: defaultUploadConfirmUIState(),
+    update: noop,
+    activeSection: 'chunking',
+    hasPdf: true,
+    multimodalIssue: false,
+    asrIssue: false,
+    parserEngines: [{ Name: 'mineru', Description: '', FileTypes: ['pdf'], Available: true }],
+    vllmModels: [],
+    asrModels: [],
+    moreOpen: false,
+    onToggleMore: noop,
+    t: uploadConfirmT('zh-CN'),
+  }));
+  assert.match(active, /data-section="parser" style="display:none"/);
+  assert.match(active, /data-section="chunking"/);
+  assert.doesNotMatch(active, /data-section="chunking" style="display:none"/);
+});
+
 test('chunking more options stay collapsed until the toggle opens them', () => {
   const collapsed = sectionsHtml({ moreOpen: false });
   assert.match(collapsed, /更多处理选项/);

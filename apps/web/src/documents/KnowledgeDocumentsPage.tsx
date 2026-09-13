@@ -616,6 +616,8 @@ export interface UploadConfirmSectionsProps {
   asrModels: ModelConfiguration[];
   moreOpen: boolean;
   onToggleMore: () => void;
+  /** Vue v-show activeSection: keep inactive sections mounted, but hidden. */
+  activeSection?: UploadConfirmSectionKey;
   /** Vue isGraphSectionAvailable: gate the graph section (v-if parity). */
   graphAvailable?: boolean;
   /** The UploadGraphSettings element rendered inside the gated graph fieldset. */
@@ -662,12 +664,13 @@ const MULTIMODAL_LANGUAGE_OPTIONS = [
  */
 export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
   const { state, update, t } = props;
+  const sectionStyle = (key: UploadConfirmSectionKey): React.CSSProperties | undefined => props.activeSection === undefined ? undefined : { display: props.activeSection === key ? undefined : "none" };
   const parserFileTypes = [...new Set(props.parserEngines.flatMap((engine) => engine.FileTypes ?? []))]
     .filter((fileType) => fileType !== "url")
     .sort();
   return (
     <>
-      <fieldset className="wk-upload-confirm-parser" id="wk-upload-section-parser" data-section="parser">
+      <fieldset className="wk-upload-confirm-parser" id="wk-upload-section-parser" data-section="parser" style={sectionStyle("parser")}>
         <legend>{t("settings.parserEngine")}</legend>
         {props.hasPdf ? (
           <div className="setting-row" style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start", marginBottom: "0.5rem" }}>
@@ -718,7 +721,7 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
           ))
         )}
       </fieldset>
-      <fieldset className="wk-upload-confirm-chunking" id="wk-upload-section-chunking" data-section="chunking">
+      <fieldset className="wk-upload-confirm-chunking" id="wk-upload-section-chunking" data-section="chunking" style={sectionStyle("chunking")}>
         <legend>{t("knowledgeEditor.chunking.title")}</legend>
         <label>
           {t("knowledgeEditor.chunking.strategyLabel")}{" "}
@@ -837,7 +840,7 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
           </div>
         ) : null}
       </fieldset>
-      <fieldset className="wk-upload-confirm-multimodal" id="wk-upload-section-multimodal" data-section="multimodal">
+      <fieldset className="wk-upload-confirm-multimodal" id="wk-upload-section-multimodal" data-section="multimodal" style={sectionStyle("multimodal")}>
         <legend>{t("knowledgeEditor.sidebar.multimodal")}</legend>
         {props.multimodalIssue ? (
           <p className="wk-muted" role="note">{t("uploadConfirm.multimodalSetupHint")}</p>
@@ -899,7 +902,7 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
           </>
         ) : null}
       </fieldset>
-      <fieldset className="wk-upload-confirm-asr" id="wk-upload-section-asr" data-section="asr">
+      <fieldset className="wk-upload-confirm-asr" id="wk-upload-section-asr" data-section="asr" style={sectionStyle("asr")}>
         <legend>{t("knowledgeEditor.sidebar.asr")}</legend>
         {props.asrIssue ? (
           <p className="wk-muted" role="note">{t("uploadConfirm.asrSetupHint")}</p>
@@ -947,7 +950,7 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
           </>
         ) : null}
       </fieldset>
-      <fieldset className="wk-upload-confirm-question" id="wk-upload-section-question" data-section="question">
+      <fieldset className="wk-upload-confirm-question" id="wk-upload-section-question" data-section="question" style={sectionStyle("question")}>
         <legend>{t("knowledgeEditor.advanced.questionGeneration.label")}</legend>
         <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
           <label className="wk-checkbox" style={{ flex: 1 }}>
@@ -987,7 +990,7 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
         ) : null}
       </fieldset>
       {props.graphAvailable && props.graphSettings ? (
-        <fieldset className="wk-upload-confirm-graph" id="wk-upload-section-graph" data-section="graph">
+        <fieldset className="wk-upload-confirm-graph" id="wk-upload-section-graph" data-section="graph" style={sectionStyle("graph")}>
           {props.graphSettings}
         </fieldset>
       ) : null}
@@ -3147,7 +3150,7 @@ export function KnowledgeDocumentsPage({
             </fieldset>
           ) : null}
           {dialogMode !== "reparse" ? (
-            <fieldset className="wk-upload-confirm-tags" id="wk-upload-section-tags" data-section="tags">
+            <fieldset className="wk-upload-confirm-tags" id="wk-upload-section-tags" data-section="tags" style={{ display: activeSection === "tags" ? undefined : "none" }}>
               <legend>{ct("uploadConfirm.tabTags")}</legend>
               <p className="wk-muted" style={{ margin: "0 0 0.4rem", fontSize: "0.85rem" }}>{ct("uploadConfirm.tagsDescription")}</p>
               <label>
@@ -3191,6 +3194,7 @@ export function KnowledgeDocumentsPage({
             asrModels={asrModels}
             moreOpen={chunkingMoreOpen}
             onToggleMore={() => setChunkingMoreOpen((open) => !open)}
+            activeSection={activeSection}
             graphAvailable={graphAvailable}
             graphSettings={
               <UploadGraphSettings
