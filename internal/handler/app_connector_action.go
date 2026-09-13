@@ -86,6 +86,11 @@ type appActionView struct {
 	Target         string `json:"target"`
 	Content        string `json:"content"`
 	ConnectionName string `json:"connection_name"`
+	// Risk is the FROZEN risk category from the persisted snapshot
+	// (R18 / T15-C-2): the approval template displays account/target/risk/
+	// args, and the risk recorded at prepare time is the exact value an
+	// approval binds to — never re-derived, never client-supplied.
+	Risk string `json:"risk"`
 }
 
 type appActionDetailView struct {
@@ -119,6 +124,7 @@ func (h *AppActionHandler) actionDetailFor(c *gin.Context, tenantID uint64, row 
 		Action: appActionView{
 			ID: row.ID, State: row.State, Digest: row.ArgsDigest,
 			Target: row.Target, Content: row.ArgsSnapshot, ConnectionName: name,
+			Risk: row.Risk,
 		},
 		ExpectedVersion: row.Fence,
 	}

@@ -47,6 +47,8 @@ export interface AppConnectionView {
   kind: 'personal' | 'space' | string
   state: string
   owner_id?: string | null
+  /** Live authorization generation (R18): the fence a revoke must echo. */
+  auth_version: number
 }
 
 /** Authorization-attempt status (POST/GET authorization-attempts). */
@@ -65,6 +67,8 @@ export interface AppActionView {
   target: string
   content: string
   connection_name: string
+  /** Frozen risk category from the persisted snapshot (R18). */
+  risk: string
 }
 
 export interface AppActionDetailView {
@@ -124,9 +128,9 @@ export async function getAuthorizationAttempt(
 }
 
 // RevokeConnection is the A02 local revocation. The server CAS-checks
-// auth_version against expectedVersion; the connection list DTO does not
-// expose the live auth_version (see the T15 report), so callers pass the
-// best version they hold and surface a 409 VERSION_CONFLICT honestly.
+// auth_version against expectedVersion; the connection list DTO carries the
+// live auth_version (R18), so callers echo the value they just read and
+// surface a 409 VERSION_CONFLICT honestly when it went stale.
 // The local transaction is the authorization authority — a 200 means the
 // connection is locally revoked; the REMOTE cleanup (token/connection
 // deletion upstream) runs asynchronously afterwards.

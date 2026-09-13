@@ -302,6 +302,7 @@ func newOCProductEngine(t *testing.T, opts ...ocEngineOpt) *ocTestEnv {
 	// Mirror of RegisterAppConnectorRoutes' OC product additions.
 	v1.GET("/apps/catalog", installationHandler.ListOCCatalog)
 	connections := v1.Group("/apps/connections", connectionHandler.RequireConnectionCapabilityForWrites())
+	connections.GET("", connectionHandler.ListConnections)
 	connections.POST("/:id/authorization-attempts", actionHandler.BeginOCAuthorization)
 	v1.GET("/apps/authorization-attempts/:id", actionHandler.GetOCAuthorizationAttempt)
 	v1.POST("/apps/oc/actions/prepare", actionHandler.RequireActionCapabilityForWrites(), actionHandler.PrepareOCAction)
@@ -550,6 +551,66 @@ func ocPrepareBody(action string) string {
 		return `{"connection_id":"conn-gh","action_id":"github.get_current_user","input":{"target":"octocat","q":"hi"}}`
 	}
 	return `{"connection_id":"conn-gh","action_id":"` + action + `","input":{"q":"hi"}}`
+}
+
+// ---------------------------------------------------------------------------
+// R18 narrow write-set extension (T15-C-1 / T15-C-2): the tenant-facing DTOs
+// surface the fields the UI needs — the live auth_version a revoke CAS must
+// echo, and the frozen risk the approval template displays.
+// ---------------------------------------------------------------------------
+
+func TestOCViewsSurfaceAuthVersionAndRisk(t *testing.T) {
+	env := newOCProductEngine(t)
+
+	// conn-gh is seeded at AuthVersion 3 (a distinctive, non-default
+	// generation): the list view must pass the PERSISTED value through,
+	// proving it is read from the row rather than defaulted.
+	w := ocDo(t, env, http.MethodGet, "/api/v1/apps/connections", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("list status=%d body=%s", w.Code, w.Body.String())
+	}
+	var listResp struct {
+		Data []map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &listResp); err != nil {
+		t.Fatalf("bad list body: %v", err)
+	}
+	byID := map[string]map[string]any{}
+	for _, row := range listResp.Data {
+		if id, _ := row["id"].(string); id != "" {
+			byID[id] = row
+		}
+	}
+	if row, ok := byID["conn-gh"]; !ok {
+		t.Fatal("conn-gh missing from connection list")
+	} else if v, _ := row["auth_version"].(float64); v != 3 {
+		t.Fatalf("conn-gh auth_version=%v want 3 (persisted pass-through)", row["auth_version"])
+	}
+	if row, ok := byID["conn-gl"]; !ok {
+		t.Fatal("conn-gl missing from connection list")
+	} else if v, _ := row["auth_version"].(float64); v != 1 {
+		t.Fatalf("conn-gl auth_version=%v want 1", row["auth_version"])
+	}
+
+	// The frozen risk recorded at prepare time (github.get_current_user is
+	// reviewed with risk=read) must appear on the action detail view.
+	pw := ocDo(t, env, http.MethodPost, "/api/v1/apps/oc/actions/prepare", ocPrepareBody(""))
+	if pw.Code != http.StatusCreated {
+		t.Fatalf("prepare status=%d body=%s", pw.Code, pw.Body.String())
+	}
+	id, _, _, _, _ := ocActionDetail(t, pw.Body.String())
+	gw := ocDo(t, env, http.MethodGet, "/api/v1/apps/actions/"+id, "")
+	if gw.Code != http.StatusOK {
+		t.Fatalf("get action status=%d body=%s", gw.Code, gw.Body.String())
+	}
+	data := ocJSONData(t, gw.Body.String())
+	action, _ := data["action"].(map[string]any)
+	if action == nil {
+		t.Fatal("action detail has no action object")
+	}
+	if r, _ := action["risk"].(string); r != "read" {
+		t.Fatalf("action risk=%v want read (frozen at prepare)", action["risk"])
+	}
 }
 
 func TestOCPrepareEndpointHappyPath(t *testing.T) {

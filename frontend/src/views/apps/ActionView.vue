@@ -33,7 +33,8 @@
             <span class="action-view__mono">{{ action.target || '—' }}</span>
           </t-descriptions-item>
           <t-descriptions-item :label="t('apps.actions.riskLabel')">
-            <t-tooltip :content="t('apps.actions.riskUnknownHint')">
+            <t-tag v-if="riskLabel" :theme="riskTheme" size="small">{{ riskLabel }}</t-tag>
+            <t-tooltip v-else :content="t('apps.actions.riskUnknownHint')">
               <span class="action-view__risk-missing">—</span>
             </t-tooltip>
           </t-descriptions-item>
@@ -252,10 +253,23 @@ const errorMessage = (e: unknown): string => {
 }
 
 // --- display helpers ------------------------------------------------------
-// The T13 action-detail DTO does not expose the frozen risk field (it is
-// persisted on the row but has no JSON tag on the view — T15 report concern
-// T15-C-2). The UI shows an honest em-dash with a hint instead of guessing
-// from any other source.
+// The frozen risk from the persisted snapshot (R18 / T15-C-2): displayed
+// verbatim with the same category coloring the catalog uses. An empty
+// payload (a backend predating the field) degrades to an honest em-dash
+// with a hint — never a guess from any other source.
+const riskValue = computed(() => String(action.value?.risk || ''))
+const riskTheme = computed<'success' | 'warning' | 'danger' | 'default'>(() => {
+  if (riskValue.value === 'read') return 'success'
+  if (riskValue.value === 'write') return 'warning'
+  if (riskValue.value === 'send' || riskValue.value === 'delete') return 'danger'
+  return 'default'
+})
+const riskLabel = computed(() => {
+  if (!riskValue.value) return ''
+  const key = 'apps.risk.' + riskValue.value
+  const label = t(key)
+  return label === key ? riskValue.value : label
+})
 
 const stateTheme = computed<'success' | 'warning' | 'danger' | 'default'>(() => {
   const state = action.value?.state || ''

@@ -236,16 +236,15 @@ const errorMessage = (e: unknown): string => {
   return typeof err?.message === 'string' ? err.message : ''
 }
 
-// Revoke with the best-known authorization version. The list DTO does not
-// expose the live auth_version (T15 report concern T15-C-1): connections
-// start at version 1 and stay there while active, so 1 is the honest
-// best-known value; a stale guess can only produce a safe 409 (the server's
-// CAS refuses), which we surface and follow with a re-read — never a
+// Revoke echoes the LIVE auth_version the list DTO now carries (R18 /
+// T15-C-1). The defensive ?? 1 fallback covers a stale backend predating
+// the field; a stale guess can only produce a safe 409 (the server's CAS
+// refuses), which we surface and follow with a re-read — never a
 // fabricated success.
 const revoke = async (row: AppConnectionView) => {
   revokingId.value = row.id
   try {
-    await revokeConnection(row.id, 1)
+    await revokeConnection(row.id, Number(row.auth_version ?? 1))
     // 200 = the LOCAL revocation committed (authority). Remote cleanup is
     // asynchronous and unobservable from this DTO — say exactly that.
     MessagePlugin.success(t('apps.connections.revokeSuccess'))
