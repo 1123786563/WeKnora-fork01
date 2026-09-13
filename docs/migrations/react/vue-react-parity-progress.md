@@ -18,6 +18,7 @@
 - 文档列表补齐 Vue `toggleSelectRow` 的当前页 Shift 区间增删、最后选择锚点及筛选/全选重置语义；普通点击仍只切换当前行。
 - 专项选择测试 3/3，上传确认回归 24/24，正式 Web 761/761，`typecheck:web` 通过；证据 `evidence/vue-react-parity/2026-09-14-n006-shift-selection.md`。
 - N006 仍为 `review`：本轮补齐 Vue `useMarqueeSelect` 的 6px 左键框选、起点 add/subtract 固定模式、控件目标过滤和相交行更新；专项选择测试 5/5，正式 Web 763/763，`typecheck:web` 与 `build:web` 通过。证据 `evidence/vue-react-parity/2026-09-14-n006-marquee-selection.md`。真实浏览器 Shift/框选、后端批量链路、视觉与 Wails/native 证据未闭环。
+- N006 标签 chip overflow 随后补齐：按 Vue `useTagChipsOverflow` 的 82px 估算、32px 溢出胶囊预留和 ResizeObserver 响应式上限渲染，标签全量名称保留在 tooltip。专项 tags 测试 11/11 通过；本轮全量类型检查受并行 FAQ 测试缺少导出阻断，未将该阻塞归因于 N006。
 
 ## 2026-09-14 Round N+19 — N005 custom organization picker slice
 

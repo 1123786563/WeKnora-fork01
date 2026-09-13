@@ -13,8 +13,9 @@ Date: 2026-09-14
 ## Verification
 
 - Focused selection tests: 5/5 passed, including add/subtract marquee semantics and existing Shift-range semantics.
+- Focused tag tests: 11/11 passed, including the responsive Vue overflow-limit calculation.
 - Web test suite: 763/763 passed.
-- `pnpm typecheck:web`: passed.
+- `pnpm typecheck:web`: passed before the subsequent chip-only change; the later rerun is blocked by parallel FAQ test files missing exports from `FAQPage`.
 - `pnpm build:web`: passed (2341 modules transformed; existing large-chunk warning only).
 
 ## Evidence boundary
