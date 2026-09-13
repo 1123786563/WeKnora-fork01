@@ -1208,3 +1208,12 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 深链接/刷新/前进后退 sweep（402fe1c6）：8 路由×双端×{直达、原地刷新、后退、前进} 全部稳定，无漂移无意外重定向；证据 deeplink-reload-20260914/。登记 a11y 层级小项：React 平台路由 DOM 序首标题为壳层会话区 h2（视觉无碍）。
 - R009 错误态契约 live 验证：强制 500 下 raw JSON 零外露、.kb-list-empty 空态呈现（截图入其证据目录）——与 Vue "列表失败回退空态" 语义一致。
 - 五切片仍在途（R009 收尾 + 四个第五批切片）；kb-list-anatomy.test.tsx 在全量并行下文件级超时问题待其收口时处理。
+
+## 2026-09-14 Round N+6（终）— 五切片全部收口 + 全门禁绿
+
+- 全部在途切片完成并集成：R009 anatomy（80ab0a0a 自提交，7/7 + live 双端截图闭环）、N006 batch/tag（cbcc64a3，98/98）、R017 RBAC+壳层子筛选（92115a7b，26/26+119/119）、FAQ 收尾（e95f9a1c，19/19）、R013 IM 向导（page.tsx 终态由并发协调者入库 3bbc2b a6；42/42+6/6+typecheck 0）。
+- FAQ A1 落地（e94a45bb）：api-client faq.importProgress（后端 faq.go:506 / types.FAQImportProgress faq.go:425），6/6；A2 轮询接线为下一切片（视图已就绪）。
+- 协调者直接修复累积：登录 toast parity、members apiDomain 泄漏、分页器宽度/按钮 TDesign 化（部分与并发协调者协同完成）、fixture 时间脆弱修复。
+- 最终全门禁：shared 419/419、web 670/670、mobile 118/118、embed 7/7、desktop 2/2、typecheck×3 0、build:web ✓ 3.42s。
+- 遗留队列（下轮）：FAQ A2 轮询接线（api-client 已就绪）、A3 faqManager.import.* 目录回填、A4 Excel 解析依赖决策、B1-B7 精确交接、R013 embed 抽屉 + API playground SSE、R009 图标轨拖拽展开/org 轨条目、acceptance 证据批扫（Wails/iOS/Android）、mobile devDeps lockfile 收口、六语待用户答复。
+
