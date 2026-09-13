@@ -215,6 +215,13 @@ func (h *Handler) GetAgentRunEvents(c *gin.Context) {
 			after = emit(page)
 			current, getErr := h.runService().Get(ctx, key)
 			if getErr == nil && (current.Status == "succeeded" || current.Status == "failed" || current.Status == "canceled") {
+				// Close the stream WITH the terminal run projection: clients
+				// (the craft workbench among them) learn the run's final status
+				// from this frame instead of having to infer it from a snapshot
+				// whose active-run slot has already been released (W06 browser
+				// acceptance finding).
+				c.SSEvent("run", runViewWithSeq(current, after))
+				c.Writer.Flush()
 				return
 			}
 		case <-keep.C:

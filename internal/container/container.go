@@ -318,10 +318,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// have a bound Craft workspace.
 	must(container.Provide(repository.NewCraftStore))
 	must(container.Provide(service.CraftActiveRunsQuery))
-	must(container.Provide(func() craft.Executor {
-		return service.NewUnavailableCraftExecutor(
-			"the craft opencode runtime dial is not assembled yet (craft runtime deployment task)")
-	}))
+	// W06 (coordinator-authorized): the executor assembly is env-driven —
+	// CRAFT_OPENCODE_BASE_URL assembles the real R01 Client -> R04 Executor
+	// -> CraftDelegateService chain on the local pinned serve (see
+	// craft_runtime.go); without it the R05 fail-closed executor stays and
+	// the default-off semantics are unchanged.
+	must(container.Provide(newCraftRuntimeExecutor))
 	must(container.Provide(service.NewCraftDelegation))
 
 	// Craft product HTTP surface (W03): the version store (W01), the preview
@@ -337,7 +339,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewCraftPreviewCheckStore))
 	must(container.Provide(newCraftPreviewService))
 	must(container.Provide(newCraftSessionService))
-	must(container.Invoke(registerCraftHTTPHandlers))
+	// The craft handler registration is deferred until every provider the
+	// session service needs (SessionService, TemporaryDocumentService, ...)
+	// is registered: dig.Invoke resolves eagerly, and W03's original position
+	// above panicked at boot because those providers appear later in the
+	// registration order (first observed booting the real server in W06).
 
 	must(container.Provide(service.NewAgentService))
 
@@ -436,6 +442,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Invoke(chatpipeline.NewPluginWikiBoost))
 	must(container.Invoke(chatpipeline.NewPluginMemoryAffinity))
 	logger.Debugf(ctx, "[Container] Chat pipeline plugins registered")
+	// Craft handler registration now that its full dependency set exists
+	// (W03's eager Invoke position is moved here — see the craft block above).
+	must(container.Invoke(registerCraftHTTPHandlers))
 
 	// TenantSkillService is provided next to SessionService (handlers need
 	// it), but Invoke constructs the whole chain. SessionService needs
