@@ -104,6 +104,12 @@
 - Vue authoritative review identified the Wiki left browser anatomy as a separate inset-search/sidebar surface, with 98px list rows, two-line summaries, compact metadata, selected/hover background and centered empty copy.
 - React `WikiPage` now uses scoped `wk-wiki-sidebar`/`wk-wiki-page-item` structure and Vue-derived tokens while retaining existing editor/save-conflict/history/diff behavior.
 - Focused Wiki/editor tests: 4/4. Current full Web run: 657/664; the seven failures are from concurrent document/tag work (`tagId` runtime error and tag-copy assertions), not N011.
+
+## 2026-09-14 Round N+8 — N011 Wiki default reader/editor mode
+
+- Vue-authoritative review confirms selected Wiki pages default to a read-only reader; editing is entered explicitly, while New page opens the editor. React now follows that state transition and returns to the reader after save/reload/revert.
+- Added a scoped reader surface with title, summary, content, Edit and History actions; the editor remains available for create/edit flows and is hidden while reading.
+- Full Web suite: 793/793 passed. Web typecheck: passed. This is static/unit evidence; browser, real-backend, Wails, and native evidence remain open.
 - Status remains `review`; no new browser computed-style, real-backend, Wails, iOS or Android evidence claimed. Index/tree/list modes, folder actions, graph and reader states remain open.
 
 ## 2026-09-12 Round 1 基线
@@ -1398,4 +1404,3 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - embed 预览模态集成（b59f1458）：EmbedChannelPreviewDrawer faithful port（locale 透传/r=nonce 每开必增/iframe 延迟挂载/previewUnavailable zh 告警/零 window.open）+ 壳层回退臂；embedWizardRender flush 修复授权；integrations 48/48。
 - R009 org 轨集成（3adf4bef）：rail org 分组条目（countByOrg>0、collapsed divider+截断+tooltip、expanded 共享给我标题+计数）+ ?scope=<orgId> per-space 过滤 + 空态/深链/stale 守卫；anatomy 16/16。
 - 全门禁：shared 436/436、web 793/793、mobile 146/146、typecheck:web 0、build:web ✓ 3.97s。
-

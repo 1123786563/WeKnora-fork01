@@ -70,6 +70,9 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-wiki-empty-icon { color: #07c05f; font-size: 36px; line-height: 1; }
 .wk-sr-only { height: 1px; margin: -1px; overflow: hidden; position: absolute; width: 1px; clip: rect(0 0 0 0); }
 .wk-wiki-editor { display: grid; gap: .7rem; }
+.wk-wiki-reader { min-width: 0; }
+.wk-wiki-reader .wk-header { align-items: flex-start; margin-bottom: 1rem; }
+.wk-wiki-reader-content { background: #f8fafc; border: 1px solid #d8e0eb; border-radius: 6px; box-sizing: border-box; font: inherit; line-height: 1.65; margin: 0; min-height: 22rem; overflow: auto; padding: 1rem; white-space: pre-wrap; }
 .wk-wiki-editor label { display: grid; gap: .25rem; }
 .wk-wiki-editor input, .wk-wiki-editor textarea { border: 1px solid #b8c5d6; border-radius: 6px; box-sizing: border-box; font: inherit; padding: .55rem; width: 100%; }
 .wk-faq-page { max-width: 1180px; }
