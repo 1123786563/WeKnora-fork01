@@ -1,0 +1,11 @@
+{
+  "name": "craft-web-report",
+  "version": "1.0.0",
+  "digest": "4e0b2be03ba88d25fb79a8f5db8501600109fd96ceb10b0d18748900ad80146f",
+  "digest_of": "SKILL.md",
+  "artifact_kind": "web",
+  "tool_requirements": [
+    "read_file",
+    "shell_exec"
+  ]
+}
