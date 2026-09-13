@@ -37,6 +37,7 @@ export default defineConfig({
       '@weknora/contracts': fileURLToPath(new URL('../../packages/contracts/src/index.ts', import.meta.url)),
       '@weknora/domain/auth/onboarding': fileURLToPath(new URL('../../packages/domain/src/auth/onboarding.ts', import.meta.url)),
       '@weknora/domain/settings/local-preferences': fileURLToPath(new URL('../../packages/domain/src/settings/local-preferences.ts', import.meta.url)),
+      '@weknora/domain/settings/theme': fileURLToPath(new URL('../../packages/domain/src/settings/theme.ts', import.meta.url)),
       '@weknora/domain/scope': fileURLToPath(new URL('../../packages/domain/src/scope.ts', import.meta.url)),
       '@weknora/domain/auth/password-policy': fileURLToPath(new URL('../../packages/domain/src/auth/password-policy.ts', import.meta.url)),
       '@weknora/domain/chat/draft': fileURLToPath(new URL('../../packages/domain/src/chat/draft.ts', import.meta.url)),

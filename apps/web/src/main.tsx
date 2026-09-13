@@ -12,6 +12,7 @@ import { readPendingInviteToken, clearPendingInviteToken } from './auth/invite-f
 import { importLegacyPlatformState, persistSelectedTenant, readReactPlatformState, type ReactPlatformState } from './platform/legacy-session.ts';
 import { createBrowserTransport } from './platform/http.ts';
 import { createBrowserCredentialAdapter, persistBrowserCredential } from './platform/credentials.ts';
+import { initTheme } from './theme.ts';
 import { createWebScopeRuntime } from './platform/scope-runtime.ts';
 import { createWebPlatformAdapters } from './platform/adapters.ts';
 import { guardRoute, organizationInviteCode, protectedPageForRoute, resolveRoute, routeRedirect } from './routes.tsx';
@@ -88,6 +89,9 @@ client = createWeKnoraClient({
 });
 
 const root = createRoot(document.getElementById('root')!);
+// Vue useTheme.initTheme parity: apply the stored theme on startup and
+// re-apply on weknora:theme-changed / OS scheme changes (theme.ts).
+initTheme();
 const platformAdapters = createWebPlatformAdapters();
 
 // Most route transitions intentionally use full navigations so authentication,
