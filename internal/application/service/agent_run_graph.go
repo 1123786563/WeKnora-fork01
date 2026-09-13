@@ -466,20 +466,7 @@ func (s *sessionService) ExecuteDurableRun(ctx context.Context, fence agentrunti
 	}
 	execErr := runner.Run(ctx, fence)
 	if execErr != nil {
-		payload := map[string]string{"error": execErr.Error()}
-		eventType := "run_failed"
-		if errors.Is(execErr, agentruntime.ErrMCPOAuthWait) {
-			// The run is durably parked waiting for the user to reconnect
-			// authorization; this is a wait, not a failure.
-			eventType = "run_waiting"
-			payload = map[string]string{"wait_kind": "mcp_oauth"}
-		}
-		if errors.Is(execErr, agentruntime.ErrMCPApprovalWait) {
-			// The run is durably parked waiting for explicit human approval
-			// of the planned call; the decision endpoint resumes it.
-			eventType = "run_waiting"
-			payload = map[string]string{"wait_kind": "mcp_approve"}
-		}
+		eventType, payload := durableRunFailureEvent(execErr)
 		if raw, merr := json.Marshal(payload); merr == nil {
 			emit(context.WithoutCancel(ctx), agentruntime.RunEvent{Type: eventType, Payload: raw})
 		}
@@ -488,6 +475,38 @@ func (s *sessionService) ExecuteDurableRun(ctx context.Context, fence agentrunti
 	admitAfterFollowUps(context.WithoutCancel(ctx), store, fence.RunKey, snapshot)
 	trimRetainedEvents(context.WithoutCancel(ctx), store, fence.RunKey)
 	return nil
+}
+
+// durableRunFailureEvent classifies a durable run's terminal error into the
+// run event surfaces present. Waits are durable PARKS, not failures: MCP
+// OAuth/approval waits and open-connector action waits each carry their OWN
+// wait kind (an OC wait is never MCP OAuth/approval), so a waiting client can
+// present the right surface — the reconnect flow, the decisions endpoint, or
+// the app actions surface that resolves an open-connector action.
+func durableRunFailureEvent(execErr error) (string, map[string]string) {
+	payload := map[string]string{"error": execErr.Error()}
+	eventType := "run_failed"
+	if errors.Is(execErr, agentruntime.ErrMCPOAuthWait) {
+		// The run is durably parked waiting for the user to reconnect
+		// authorization; this is a wait, not a failure.
+		eventType = "run_waiting"
+		payload = map[string]string{"wait_kind": "mcp_oauth"}
+	}
+	if errors.Is(execErr, agentruntime.ErrMCPApprovalWait) {
+		// The run is durably parked waiting for explicit human approval
+		// of the planned call; the decision endpoint resumes it.
+		eventType = "run_waiting"
+		payload = map[string]string{"wait_kind": "mcp_approve"}
+	}
+	if errors.Is(execErr, agentruntime.ErrOCActionApprovalWait) {
+		// The run is durably parked waiting for the HUMAN approval (or the
+		// read-only provider query) of an open-connector app action the
+		// model prepared; the actions surface resolves it. Its own wait
+		// kind — an OC wait is never MCP OAuth/approval.
+		eventType = "run_waiting"
+		payload = map[string]string{"wait_kind": "oc_action"}
+	}
+	return eventType, payload
 }
 
 // durableEventRetention bounds how many replay events each finished run

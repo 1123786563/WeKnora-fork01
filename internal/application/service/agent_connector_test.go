@@ -2,8 +2,11 @@ package service
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
 
+	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/agent/tools"
 	appconn "github.com/Tencent/WeKnora/internal/appconnector"
 	repoappconn "github.com/Tencent/WeKnora/internal/application/repository/appconnector"
@@ -141,4 +144,44 @@ func TestRealSessionAssemblyGatesAppConnectorOnInstallationVisibility(t *testing
 			t.Fatal("tool must not be offered without a tenant")
 		}
 	})
+}
+
+// ---------------------------------------------------------------------------
+// R17 extension: the durable run graph must classify an open-connector
+// approval wait as run_waiting (its own wait kind, never MCP OAuth/approval)
+// so surfaces can present the waiting state and the actions surface can
+// resolve it. The mapping lives in durableRunFailureEvent (agent_run_graph.go);
+// this asserts it for every wait family and for plain failures, including
+// wrapped errors (the sentinel survives %w wrapping on the direct-return
+// path).
+// ---------------------------------------------------------------------------
+
+func TestDurableRunMapsOCApprovalWaitToRunWaiting(t *testing.T) {
+	ocWait := fmt.Errorf("tool call parked: %w", &agentruntime.OCActionWaitError{
+		ActionID: "ocact_wait", ToolCallID: "call-wait", State: "awaiting_approval",
+	})
+	eventType, payload := durableRunFailureEvent(ocWait)
+	if eventType != "run_waiting" {
+		t.Fatalf("an OC approval wait must map to run_waiting, got %s", eventType)
+	}
+	if payload["wait_kind"] != "oc_action" {
+		t.Fatalf("run_waiting must carry the OC-specific wait kind, got %v", payload)
+	}
+
+	// The two MCP wait families keep their own kinds - an OC wait must never
+	// masquerade as either.
+	eventType, payload = durableRunFailureEvent(fmt.Errorf("x: %w", agentruntime.ErrMCPOAuthWait))
+	if eventType != "run_waiting" || payload["wait_kind"] != "mcp_oauth" {
+		t.Fatalf("mcp oauth mapping regressed: %s %v", eventType, payload)
+	}
+	eventType, payload = durableRunFailureEvent(fmt.Errorf("x: %w", agentruntime.ErrMCPApprovalWait))
+	if eventType != "run_waiting" || payload["wait_kind"] != "mcp_approve" {
+		t.Fatalf("mcp approval mapping regressed: %s %v", eventType, payload)
+	}
+
+	// Everything else is still a failure carrying the error text.
+	eventType, payload = durableRunFailureEvent(errors.New("boom"))
+	if eventType != "run_failed" || payload["error"] != "boom" {
+		t.Fatalf("generic failure mapping regressed: %s %v", eventType, payload)
+	}
 }
