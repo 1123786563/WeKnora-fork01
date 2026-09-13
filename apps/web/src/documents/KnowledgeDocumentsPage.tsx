@@ -1544,6 +1544,15 @@ export function KnowledgeDocumentsPage({
   const [confirmState, setConfirmState] = useState<UploadConfirmUIState>(() => uploadConfirmStateFromKb(null));
   const [chunkingMoreOpen, setChunkingMoreOpen] = useState(false);
   const [stageNotice, setStageNotice] = useState<{ tone: "neutral" | "warning" | "error"; text: string } | null>(null);
+  const stageNoticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showStageNotice = (text: string, tone: "neutral" | "warning" | "error") => {
+    setStageNotice({ tone, text });
+    if (stageNoticeTimer.current) clearTimeout(stageNoticeTimer.current);
+    stageNoticeTimer.current = setTimeout(() => setStageNotice(null), 3000);
+  };
+  useEffect(() => () => {
+    if (stageNoticeTimer.current) clearTimeout(stageNoticeTimer.current);
+  }, []);
   const [parserEngines, setParserEngines] = useState<ParserEngineInfo[]>([]);
   const [tenantModels, setTenantModels] = useState<ModelConfiguration[]>([]);
   // Vue editorResources.systemInfo (GET /api/v1/system/info): gates the graph section.
@@ -1900,8 +1909,8 @@ export function KnowledgeDocumentsPage({
     setPendingEntries(merged.entries);
     setUploadStates([]);
     setUploadError(null);
-    if (merged.addedCount > 0) setStageNotice({ tone: "neutral", text: ct("uploadConfirm.filesAdded", { count: merged.addedCount }) });
-    else if (merged.duplicateCount > 0) setStageNotice({ tone: "warning", text: ct("uploadConfirm.filesAllDuplicate") });
+    if (merged.addedCount > 0) showStageNotice(ct("uploadConfirm.filesAdded", { count: merged.addedCount }), "neutral");
+    else if (merged.duplicateCount > 0) showStageNotice(ct("uploadConfirm.filesAllDuplicate"), "warning");
   }
 
   // Vue appendUrl: append to the staged URL list, dedupe with a warning.
@@ -1913,12 +1922,12 @@ export function KnowledgeDocumentsPage({
       return false;
     }
     if (pendingUrls.includes(normalized)) {
-      setStageNotice({ tone: "warning", text: ct("uploadConfirm.urlDuplicate") });
+      showStageNotice(ct("uploadConfirm.urlDuplicate"), "warning");
       return false;
     }
     setPendingUrls((current) => [...current, normalized]);
     setUploadError(null);
-    setStageNotice({ tone: "neutral", text: ct("uploadConfirm.urlAdded") });
+    showStageNotice(ct("uploadConfirm.urlAdded"), "neutral");
     return true;
   }
 
@@ -2459,6 +2468,7 @@ export function KnowledgeDocumentsPage({
 
   return (
     <main className="wk-page wk-documents-page">
+      {stageNotice ? <div className={`wk-documents-toast ${stageNotice.tone}`} role="alert" aria-live="polite">{stageNotice.text}</div> : null}
       <header className="wk-header wk-document-header">
         <div className="document-header-title">
           <DocumentsBreadcrumb
@@ -3006,7 +3016,6 @@ export function KnowledgeDocumentsPage({
             onRemoveUrl={removeStagedUrl}
             onRemoveEntry={removeStagedUpload}
           />
-          {stageNotice ? <Status tone={stageNotice.tone === "error" ? "error" : stageNotice.tone === "warning" ? "warning" : "neutral"}>{stageNotice.text}</Status> : null}
           {sourceUrlDialogOpen ? (
             <Dialog
               open
@@ -3163,7 +3172,7 @@ export function KnowledgeDocumentsPage({
                 llmModelId={llmModelId}
                 canRunExtract={graphAdmin}
                 runExtractAction={runGraphExtractAction}
-                onNotify={(message, tone) => setStageNotice({ tone, text: message })}
+                onNotify={showStageNotice}
                 onChange={updateNodeExtract}
                 t={ct}
               />

@@ -1,5 +1,23 @@
 /* Multi-file upload staging (Vue UploadConfirmDialog parity). */
 
+.wk-documents-toast {
+  position: fixed;
+  top: 1.25rem;
+  left: 50%;
+  z-index: 1000;
+  max-width: min(30rem, calc(100vw - 2rem));
+  padding: 0.625rem 0.875rem;
+  border: 1px solid var(--wk-border, #e4e7ec);
+  border-radius: 6px;
+  background: var(--wk-surface, #fff);
+  box-shadow: 0 6px 20px rgb(16 24 40 / 14%);
+  color: var(--wk-text, #101828);
+  font-size: 0.875rem;
+  transform: translateX(-50%);
+}
+.wk-documents-toast.error { border-color: var(--wk-danger, #d92d20); color: var(--wk-danger, #b42318); }
+.wk-documents-toast.warning { border-color: var(--wk-warning, #b54708); color: var(--wk-warning, #9a3412); }
+
 .wk-dropzone.is-active {
   outline: 2px dashed var(--wk-accent, #4a7dff);
   outline-offset: -4px;
@@ -1029,4 +1047,3 @@
   font-size: 11px;
   padding: 0 5px;
 }
-
