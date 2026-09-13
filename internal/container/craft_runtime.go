@@ -42,6 +42,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/agent/opencode"
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
@@ -110,10 +111,7 @@ func newCraftRuntimeExecutor(
 	if outputDir == "" {
 		outputDir = craftLocalOutputDir
 	}
-	runtimeDigest := strings.TrimSpace(os.Getenv(craftOpenCodeRuntimeDigestEnv))
-	if runtimeDigest == "" {
-		runtimeDigest = craftLocalRuntimeDigest
-	}
+	runtimeDigest := craftRuntimeDigestFromEnv()
 	client, err := opencode.NewClient(baseURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("craft local runtime client %s: %w", baseURL, err)
@@ -148,17 +146,18 @@ func newCraftRuntimeExecutor(
 // the sub-prompt with the session workspace, execute through the R04
 // executor, then publish the finished output as an immutable version.
 type localCraftRuntime struct {
-	db            *gorm.DB
-	client        *opencode.Client
-	store         craft.Store
-	files         interfaces.FileService
-	inner         craft.Executor
-	artifacts     *service.CraftArtifactService
-	emit          func(context.Context, craft.Task, string, json.RawMessage) error
-	workDir       string
-	outputDir     string
-	runtimeDigest string
-	sessionsRoot  string
+	db              *gorm.DB
+	client          *opencode.Client
+	store           craft.Store
+	files           interfaces.FileService
+	inner           craft.Executor
+	artifacts       *service.CraftArtifactService
+	emit            func(context.Context, craft.Task, string, json.RawMessage) error
+	workDir         string
+	outputDir       string
+	runtimeDigest   string
+	sessionsRoot    string
+	snapshotCapture func(context.Context, craft.Task, string)
 }
 
 // Execute runs one delegation through the real chain.
@@ -203,6 +202,12 @@ func (e *localCraftRuntime) Execute(ctx context.Context, task craft.Task) (craft
 	published.Files = version.Files
 	if raw, merr := json.Marshal(map[string]any{"version_id": version.ID}); merr == nil {
 		_ = e.emit(ctx, task, "artifact.published", raw)
+	}
+	if e.snapshotCapture != nil {
+		// C05: the round just completed verifiably, so this is the natural
+		// quiescent point to capture the files+session snapshot of the
+		// published version (best effort — see newCraftSnapshotService).
+		e.snapshotCapture(ctx, task, version.ID)
 	}
 	logger.Infof(ctx, "[CraftRuntime] delegation %s published version %s (%d files)",
 		task.ID, version.ID, len(version.Files))
@@ -532,6 +537,242 @@ func craftRunEventEmitter(runs craftRunEventSink) func(context.Context, craft.Ta
 		}
 		if _, err := runs.AppendEvent(ctx, task.Fence, agentruntime.RunEvent{Type: "craft", Payload: payload}); err != nil {
 			return err
+		}
+		return nil
+	}
+}
+
+// -----------------------------------------------------------------------------
+// C05 assembly: recovery snapshots + the C04 recovery program hook.
+// -----------------------------------------------------------------------------
+
+// craftRuntimeDigestFromEnv is the W06 runtime identity semantic shared by
+// the executor, the C04 recovery config and the C05 snapshot service:
+// CRAFT_OPENCODE_RUNTIME_DIGEST overrides, the honest local-serve default
+// otherwise.
+func craftRuntimeDigestFromEnv() string {
+	if digest := strings.TrimSpace(os.Getenv(craftOpenCodeRuntimeDigestEnv)); digest != "" {
+		return digest
+	}
+	return craftLocalRuntimeDigest
+}
+
+// setSnapshotCapture installs the best-effort post-publish capture hook (the
+// snapshot service registers itself once assembled; without it versions
+// still publish, they are just not restorable).
+func (e *localCraftRuntime) setSnapshotCapture(capture func(context.Context, craft.Task, string)) {
+	e.snapshotCapture = capture
+}
+
+// localCraftSnapshotSource is the local single-serve implementation of the
+// C05 isolated-state source: the OpenCode persistent data is read through
+// the serve process that owns it (a consistent point-in-time read — it never
+// copies a SQLite file mid-write or a half-written WAL), files materialize
+// into a fresh generation directory under the serve workspace root, and the
+// provider's isolated-data capability is exactly "the serve still carries
+// the session".
+type localCraftSnapshotSource struct {
+	runtime *localCraftRuntime
+	files   interfaces.FileService
+}
+
+var _ service.CraftSnapshotSource = (*localCraftSnapshotSource)(nil)
+
+func (s *localCraftSnapshotSource) Quiescent(ctx context.Context, ws craft.Workspace) (bool, string, error) {
+	status, err := s.runtime.client.Status(ctx, ws.OpenCodeSessionID)
+	if err != nil {
+		return false, "", err
+	}
+	if status != "idle" {
+		return false, "opencode session status is " + status, nil
+	}
+	return true, "", nil
+}
+
+func (s *localCraftSnapshotSource) ExportSessionData(ctx context.Context, ws craft.Workspace) (craft.SessionExport, error) {
+	messages, err := s.runtime.client.Messages(ctx, ws.OpenCodeSessionID)
+	if err != nil {
+		return craft.SessionExport{}, fmt.Errorf("read opencode session %s: %w", ws.OpenCodeSessionID, err)
+	}
+	records := make([]craft.SessionRecord, 0, len(messages))
+	for _, m := range messages {
+		parts := make([]string, 0, len(m.Parts))
+		for _, p := range m.Parts {
+			parts = append(parts, string(p))
+		}
+		records = append(records, craft.SessionRecord{
+			ID: m.ID, ParentID: m.ParentID, Role: m.Role,
+			Finish: m.Finish, CompletedAt: m.CompletedAt, Parts: parts,
+		})
+	}
+	return craft.SessionExport{
+		OpenCodeSessionID: ws.OpenCodeSessionID,
+		SchemaVersion:     "opencode-1.18.4/messages-v1",
+		Records:           records,
+	}, nil
+}
+
+// RestoreGeneration materializes the version files into a fresh generation
+// directory under the serve workspace root (every object re-read through
+// controlled storage and verified against its manifest digest) and verifies
+// the OpenCode session still exists with the snapshot's message chain as a
+// verifiable prefix. The candidate binding it returns is not live until the
+// service's CAS wins.
+func (s *localCraftSnapshotSource) RestoreGeneration(
+	ctx context.Context, ws craft.Workspace, files []craft.File, export craft.SessionExport,
+) (craft.Workspace, error) {
+	live, err := s.runtime.client.Messages(ctx, ws.OpenCodeSessionID)
+	if err != nil {
+		return craft.Workspace{}, fmt.Errorf("%w: opencode session %s no longer answers; its persistent data is not restorable through this provider: %v",
+			craft.ErrUnsupported, ws.OpenCodeSessionID, err)
+	}
+	if err := craft.SessionChainPrefix(export.Records, s.recordsWithParts(live)); err != nil {
+		return craft.Workspace{}, fmt.Errorf("%w: the opencode session no longer carries the snapshot chain: %v", craft.ErrConflict, err)
+	}
+
+	generation := fmt.Sprintf("restore-%d", time.Now().UTC().UnixNano())
+	root := filepath.Join(s.runtime.sessionsRoot, "restored", ws.ID, generation)
+	for _, f := range files {
+		if err := craft.ValidateArtifactPath(f.Path); err != nil {
+			return craft.Workspace{}, err
+		}
+		reader, rerr := s.files.GetFile(ctx, f.Ref)
+		if rerr != nil {
+			return craft.Workspace{}, fmt.Errorf("craft: read snapshot object %s: %w", f.Path, rerr)
+		}
+		content, ierr := io.ReadAll(io.LimitReader(reader, craftLocalMaxReadBytes+1))
+		_ = reader.Close()
+		if ierr != nil {
+			return craft.Workspace{}, ierr
+		}
+		if int64(len(content)) != f.Bytes {
+			return craft.Workspace{}, fmt.Errorf("%w: restored file %s stores %d bytes, manifest pins %d",
+				craft.ErrConflict, f.Path, len(content), f.Bytes)
+		}
+		sum := sha256.Sum256(content)
+		if hex.EncodeToString(sum[:]) != f.SHA256 {
+			return craft.Workspace{}, fmt.Errorf("%w: restored file %s fails its manifest digest",
+				craft.ErrConflict, f.Path)
+		}
+		target := filepath.Join(root, filepath.FromSlash(f.Path))
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return craft.Workspace{}, err
+		}
+		if err := os.WriteFile(target, content, 0o644); err != nil {
+			return craft.Workspace{}, err
+		}
+	}
+	logger.Infof(ctx, "[CraftRuntime] restored generation %s from %d verified files", generation, len(files))
+	return craft.Workspace{
+		Scope: ws.Scope, ID: ws.ID, SandboxID: ws.SandboxID,
+		Generation: generation, OpenCodeSessionID: ws.OpenCodeSessionID,
+		RuntimeDigest: ws.RuntimeDigest,
+	}, nil
+}
+
+// recordsWithParts converts live messages including their verbatim parts.
+func (s *localCraftSnapshotSource) recordsWithParts(messages []opencode.Message) []craft.SessionRecord {
+	records := make([]craft.SessionRecord, 0, len(messages))
+	for _, m := range messages {
+		parts := make([]string, 0, len(m.Parts))
+		for _, p := range m.Parts {
+			parts = append(parts, string(p))
+		}
+		records = append(records, craft.SessionRecord{
+			ID: m.ID, ParentID: m.ParentID, Role: m.Role,
+			Finish: m.Finish, CompletedAt: m.CompletedAt, Parts: parts,
+		})
+	}
+	return records
+}
+
+func (s *localCraftSnapshotSource) ReleaseGeneration(ctx context.Context, candidate craft.Workspace) error {
+	if candidate.Generation == "" {
+		return nil
+	}
+	root := filepath.Join(s.runtime.sessionsRoot, "restored", candidate.ID, candidate.Generation)
+	if err := os.RemoveAll(root); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
+func (s *localCraftSnapshotSource) IsolatedDataRestore() bool { return true }
+
+// newCraftSnapshotService assembles the C05 snapshot service onto the local
+// real runtime. Without CRAFT_OPENCODE_BASE_URL the executor is the R05
+// fail-closed one and this provider answers a nil service: the snapshot
+// routes then never mount, and captures simply do not happen.
+func newCraftSnapshotService(
+	db *gorm.DB,
+	sessions interfaces.SessionService,
+	store craft.Store,
+	versions craft.VersionStore,
+	files interfaces.FileService,
+	executor craft.Executor,
+) (*service.CraftSnapshotService, error) {
+	runtime, ok := executor.(*localCraftRuntime)
+	if !ok {
+		return nil, nil
+	}
+	source := &localCraftSnapshotSource{runtime: runtime, files: files}
+	svc, err := service.NewCraftSnapshotService(service.CraftSnapshotConfig{
+		DB: db, Sessions: sessions, Store: store, Versions: versions,
+		Snapshots: repository.NewCraftSnapshotStore(db), Files: files,
+		Source: source, ActiveRuns: service.CraftActiveRunsQuery(db),
+		RuntimeDigest: runtime.runtimeDigest,
+	})
+	if err != nil {
+		return nil, err
+	}
+	// Best-effort post-publish capture: the delegation just completed, the
+	// runtime is idle and no delegation of this workspace is pending, which
+	// is exactly the C05 quiescence gate. A failed capture only leaves that
+	// version without a restorable snapshot (the workbench then shows the
+	// download-only reason) — the published version itself is untouched.
+	runtime.setSnapshotCapture(func(ctx context.Context, task craft.Task, versionID string) {
+		if _, err := svc.Capture(ctx, task.Scope, versionID); err != nil {
+			logger.Warnf(ctx, "[CraftRuntime] post-publish snapshot capture failed for version %s: %v", versionID, err)
+		}
+	})
+	return svc, nil
+}
+
+// craftRecoveryReconcileBudget bounds one craft reconciliation inside the
+// worker recovery hook even when the delegation carries no persisted
+// deadline (C04 review nit-2, assembly half).
+const craftRecoveryReconcileBudget = 15 * time.Minute
+
+// newCraftRecoveryHook chains C04's post-failure reconciliation program into
+// the worker recovery path: every unfinished craft delegation of the claimed
+// run is reconciled (reuse / collect / observe / durable wait) before the
+// graph executes. An unknown outcome or a sandbox-class problem parks the
+// run durably inside Reconcile; the returned error then skips execution.
+func newCraftRecoveryHook(
+	db *gorm.DB,
+	recovery *service.CraftRecovery,
+) func(context.Context, agentruntime.Fence) error {
+	return func(ctx context.Context, fence agentruntime.Fence) error {
+		if db == nil || recovery == nil {
+			return nil
+		}
+		var ids []string
+		if err := db.WithContext(ctx).Table("craft_delegations").
+			Where("tenant_id = ? AND run_id = ? AND result_json IS NULL", fence.TenantID, fence.RunID).
+			Order("created_at, id").Pluck("id", &ids).Error; err != nil {
+			// Transient read: leave the run non-terminal so the expiring
+			// lease triggers a bounded reclaim.
+			return err
+		}
+		for _, id := range ids {
+			taskCtx, cancel := context.WithTimeout(ctx, craftRecoveryReconcileBudget)
+			_, err := recovery.Reconcile(taskCtx, fence, id)
+			cancel()
+			if err != nil {
+				// Reconcile already persisted its durable wait classes; the
+				// error skips graph execution for this claim.
+				return err
+			}
 		}
 		return nil
 	}

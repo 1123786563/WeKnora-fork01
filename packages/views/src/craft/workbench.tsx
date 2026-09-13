@@ -104,6 +104,16 @@ export interface CraftWorkbenchProps {
   onIssuePreview(versionId: string): Promise<CraftPreviewTicketView>;
   onDownload(versionId: string, path: string): void | Promise<void>;
   /**
+   * C05 restore entrance (optional until the assembly wires the POST
+   * /craft/restore call): when provided and the caller may write, the
+   * version bar offers "continue editing from this version" for versions
+   * with a complete recovery snapshot. The assembly owns the request id,
+   * the workspace revision and the reload; the workbench only reflects
+   * restorability and reports errors.
+   */
+  restorableVersionIds?: string[];
+  onRestoreVersion?(versionId: string): Promise<void>;
+  /**
    * Interaction decisions stay props callbacks: the backend interaction HTTP
    * routes are not wired yet (W04 report §6), so the assembly decides what a
    * decision currently does — never a silent auto-approval.
@@ -117,6 +127,27 @@ export interface CraftWorkbenchProps {
 
 type SideTab = 'preview' | 'files' | 'details';
 type NarrowTab = 'conversation' | SideTab;
+
+// C05 restore wording lives here (not presentation.ts) so the entry ships
+// with its own feature strings; locale follows the workbench prop.
+const RESTORE_STRINGS = {
+  zh: {
+    action: '从此版本继续编辑',
+    busy: '恢复中…',
+    reasonNoSnapshot: '此版本没有完整恢复快照（仅下载可用）',
+    reasonRunActive: '执行完成后再从此版本继续编辑',
+    reasonUnselected: '选择一个版本后可继续编辑',
+    failed: '恢复失败',
+  },
+  en: {
+    action: 'Continue editing from this version',
+    busy: 'Restoring…',
+    reasonNoSnapshot: 'This version has no complete recovery snapshot (download only)',
+    reasonRunActive: 'Wait for the run to finish before continuing from a version',
+    reasonUnselected: 'Select a version to continue from',
+    failed: 'Restore failed',
+  },
+} as const;
 
 /** Stable-callback hook so effects never loop on parent re-renders. */
 function useEventCallback<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
@@ -295,6 +326,34 @@ export function CraftWorkbench(props: CraftWorkbenchProps) {
       await download(versionId, path);
     } finally {
       setDownloadingPath(null);
+    }
+  };
+
+  // --- C05 restore (continue editing from a version) ------------------------------
+  const restoreStrings = props.locale === 'zh' ? RESTORE_STRINGS.zh : RESTORE_STRINGS.en;
+  const [restoring, setRestoring] = useState(false);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+  const restoreVersion = useEventCallback(props.onRestoreVersion ?? (async () => undefined));
+  const restoreEntryVisible = props.onRestoreVersion !== undefined && props.canWrite;
+  const restorableIds = props.restorableVersionIds ?? [];
+  const selectedRestorable = selectedVersionId !== null && restorableIds.includes(selectedVersionId);
+  const restoreBlockedReason = selectedVersionId === null
+    ? restoreStrings.reasonUnselected
+    : runActive || mainStatus === 'waiting_user'
+      ? restoreStrings.reasonRunActive
+      : selectedRestorable
+        ? null
+        : restoreStrings.reasonNoSnapshot;
+  const handleRestore = async (): Promise<void> => {
+    if (selectedVersionId === null || restoring || restoreBlockedReason !== null) return;
+    setRestoring(true);
+    setRestoreError(null);
+    try {
+      await restoreVersion(selectedVersionId);
+    } catch (error) {
+      setRestoreError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRestoring(false);
     }
   };
 
@@ -556,6 +615,10 @@ export function CraftWorkbench(props: CraftWorkbenchProps) {
         </div>
       </div>
       {props.syncError !== null ? <p className="wk-craft-error" role="alert">{strings.craftStreamReconnecting} ({props.syncError})</p> : null}
+      {restoreEntryVisible && restoreBlockedReason !== null && selectedVersionId !== null && !runActive && mainStatus !== 'waiting_user' ? (
+        <p className="wk-craft-hint" data-testid="craft-restore-reason">{restoreBlockedReason}</p>
+      ) : null}
+      {restoreError !== null ? <p className="wk-craft-error" role="alert">{restoreStrings.failed}: {restoreError}</p> : null}
       <div className="wk-craft-bench">
         <div className="wk-craft-topbar">
           <span className="wk-craft-title">{props.title === '' ? props.sessionId : props.title}</span>
@@ -590,6 +653,19 @@ export function CraftWorkbench(props: CraftWorkbenchProps) {
           >
             {downloadingPath !== null ? strings.craftDownloading : strings.craftDownload + (entryFile !== null ? ' · ' + downloadFileName(entryFile.path) + ' · ' + formatBytes(entryFile.bytes) : '')}
           </Button>
+          {restoreEntryVisible ? (
+            <Button
+              type="button"
+              data-testid="craft-restore"
+              disabled={restoring || restoreBlockedReason !== null}
+              title={restoreBlockedReason ?? restoreStrings.action}
+              onClick={() => {
+                void handleRestore();
+              }}
+            >
+              {restoring ? restoreStrings.busy : restoreStrings.action}
+            </Button>
+          ) : null}
           <Button type="button" onClick={() => (narrow ? setNarrowTab('files') : setSideTab('files'))}>{strings.craftHistory}</Button>
         </div>
         {narrow ? (
