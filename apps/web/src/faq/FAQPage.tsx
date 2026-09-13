@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DragEvent, FocusEvent, FormEvent, ReactNode } from 'react';
 import type { FAQEntry, FAQEntryFieldsUpdate, FAQEntryPayload, FAQImportProgress, KnowledgeBase, KnowledgeTag, WeKnoraClient } from '@weknora/api-client';
 import { Button, Status } from '@weknora/ui';
-import { formatMessage } from '@weknora/i18n';
+import { formatMessage, type Locale } from '@weknora/i18n';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 import { computeKBPermissions, type KBSurfaceKB, type KBSurfaceMe } from '../knowledge/permissions.ts';
 import { normalizeFAQPayload, parseFAQImportText } from './import-export.ts';
@@ -18,21 +18,8 @@ import './faq.css';
 
 type Translate = ReturnType<typeof createTranslator>;
 
-// faqManager.import.* progress copy exists in every Vue locale
-// (frontend/src/i18n/locales/zh-CN.ts faqManager.import) but is not yet
-// backfilled into the shared @weknora/i18n catalog. zh-only byte-exact
-// fallback until the catalog regenerates — see
-// docs/migrations/react/evidence/vue-react-parity/2026-09-13-faq-leftovers.md.
-const zhFallbackMessages: Record<string, string> = {
-  'faqManager.import.importing': '导入中...',
-  'faqManager.import.importDone': '导入完成',
-  'faqManager.import.importFailed': '导入失败',
-  'faqManager.import.waiting': '等待中...',
-};
-function catalogMessage(key: string): string {
-  const translated = formatMessage('zh-CN', key);
-  return translated === key ? zhFallbackMessages[key] ?? key : translated;
-}
+// faqManager.import.* lives in the shared @weknora/i18n catalog
+// (generated/faqImport.ts) — formatMessage resolves it per active locale.
 
 /** Vue FAQEntryManager.loadEntries: hasMore = entries.length < total. */
 export function faqHasMore(loaded: number, total: number): boolean {
@@ -61,7 +48,7 @@ export function importFormatFromName(name: string): 'json' | 'csv' | 'excel' {
 export interface FAQImportTaskView { status: string; text: string; progress: number; processed: number; total: number }
 
 /** Vue importProgressText (FAQEntryManager.vue:1321): error ‖ server message ‖ status copy. */
-export function importProgressText(task: { status: string; message?: string; error?: string }): string {
+export function importProgressText(task: { status: string; message?: string; error?: string }, locale: Locale = 'zh-CN'): string {
   if (task.error) return task.error;
   if (task.message && task.message.trim()) return task.message.trim();
   const status = task.status === 'processing' ? 'running' : task.status === 'completed' ? 'success' : task.status;
@@ -69,7 +56,7 @@ export function importProgressText(task: { status: string; message?: string; err
     : status === 'success' ? 'faqManager.import.importDone'
     : task.status === 'failed' ? 'faqManager.import.importFailed'
     : 'faqManager.import.waiting';
-  return catalogMessage(key);
+  return formatMessage(locale, key);
 }
 
 /** Normalise a raw progress payload into the strip view model. */
