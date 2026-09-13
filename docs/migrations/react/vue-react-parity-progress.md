@@ -1170,3 +1170,10 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 在途（5）：R009 anatomy（收尾中）、R013 深水区、N006 batch/tag、R017 RBAC+壳层、FAQ 收尾。
 - 并发协调者协同：账本/矩阵双轨更新已互认（其 R038/N003 条目与我的派发条目并存）；继续精确路径 add，避免 git add -A。
 
+
+## 2026-09-14 Round N+6 协调条目 — 深链接扫描 16/16 + R009 错误态契约 live 验证
+
+- 深链接/刷新/前进后退 sweep（402fe1c6）：8 路由×双端×{直达、原地刷新、后退、前进} 全部稳定，无漂移无意外重定向；证据 deeplink-reload-20260914/。登记 a11y 层级小项：React 平台路由 DOM 序首标题为壳层会话区 h2（视觉无碍）。
+- R009 错误态契约 live 验证：强制 500 下 raw JSON 零外露、.kb-list-empty 空态呈现（截图入其证据目录）——与 Vue "列表失败回退空态" 语义一致。
+- 五切片仍在途（R009 收尾 + 四个第五批切片）；kb-list-anatomy.test.tsx 在全量并行下文件级超时问题待其收口时处理。
+
