@@ -1059,6 +1059,16 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - **Review gate:** a row can move to `accepted` only when all applicable platform evidence and unresolved backend decisions are closed or explicitly out-of-scope by user decision.
 - **Commit boundary:** one acceptance-docs commit per row group.
 
+## 2026-09-13 Round N+5（Round 4）— N003 footer 补全 + R002 toast 修复 + 门禁
+
+- N003 收尾（081a9c15，协调者直接补全）：commandPalette.hotkey.select/enter/cmdNumber/cmdEnter 4 键×5 语 byte-exact 入 generated/commandPalette.ts（Vue :142-150 footer 5 提示：↑↓/↵/⌘1-9/⌘↵/Esc）；GlobalCommandPalette 渲染 footer + command-palette.css 按值移植（:794-824，tdesign light token）；jsdom 字节断言 5/5；live Ctrl+K 打开面板 footer 文案逐字一致，截图入库 n003-palette-footer/。
+- 登录 toast parity 修复集成（0f6f4d12）：R002 错误态呈现分歧（Vue 顶部 MessagePlugin vs React 内嵌横幅）TDD 修复 + live 复拍一致；R002 行补 qualification（026051c9）。
+- R031 openSession 集成（89918e5a）：清单行点击导航 /platform/chat/:id，embed 安全。
+- 工作树中两处未提交 Vue 锚定精修待 R009 报告一并裁决：command-palette.css kbd 色值 token 化（ResultItem.vue:169-189）、SettingsPage members 包裹标题去重（TenantMembers.vue:8-65 自带完整页头）。
+- 全门禁：shared 393/393、web 623 中 615 绿（7 红全部是 R009 anatomy 切片在途 TDD 红测试——.kb-list-rail/.kb-list-grid/.kb-list-warning 等未实现断言，属预期中间态）、mobile 118/118、build ✓。
+- 在途（1）：R009 kb-list 整页 anatomy。
+
+
 ## 2026-09-13 Round N+4（终）— 四切片集成 + 登录 toast parity + 时间脆弱测试修复
 
 - R016 模型 chip 集成（28ad0de4）：新建对话 chip 显示真实模型名+上下文规格（对齐 Input-field.vue:2784-2804）；model-chip.ts 9 单测 + chat-page 20/20；协调者批准并落地 page.tsx modelContext/modelContextIsDefault 透传；顺带恢复被并发编辑误删的 loadingMessages state。
