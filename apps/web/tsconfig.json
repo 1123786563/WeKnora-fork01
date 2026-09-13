@@ -76,6 +76,9 @@
       ],
       "@weknora/domain/settings/local-preferences": [
         "../../packages/domain/src/settings/local-preferences.ts"
+      ],
+      "@weknora/domain/auth/onboarding": [
+        "../../packages/domain/src/auth/onboarding.ts"
       ]
     }
   },

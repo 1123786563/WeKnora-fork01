@@ -693,6 +693,15 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   module-resolution test still fails. Independent scoped re-review is pending,
   and no visual/browser acceptance is claimed.
 
+- **R038 follow-up build gate:** added the explicit
+  `@weknora/domain/auth/onboarding` aliases to both Web TypeScript and Vite
+  resolution. `pnpm typecheck:web`, `pnpm test:web` (289/289), and
+  `pnpm build:web` now pass. `node scripts/check-react-boundaries.mjs` still
+  fails on the pre-existing legacy-frontend reachability list and one shared
+  host-global finding; this is recorded as an unresolved repository gate, not
+  as page acceptance. Browser/Vue screenshot comparison and native evidence
+  remain absent, so R038 stays `review`.
+
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
 - **Rows:** any rows proposed for `accepted`; never all rows by default.
 - **Files owned:** `docs/migrations/react/vue-react-parity-matrix.md`, `docs/migrations/react/vue-react-parity-progress.md`, `docs/migrations/react/evidence/vue-react-parity/README.md`, `docs/migrations/react/evidence/vue-react-parity/screenshot-matrix.md`, and the row-specific `docs/migrations/react/evidence/vue-react-parity/<date>-<row-group>.md` evidence file only.
