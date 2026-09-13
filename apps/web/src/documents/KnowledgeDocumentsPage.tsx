@@ -1062,6 +1062,8 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
   const { t, graphExtract } = props;
   const llmAvailable = !!props.llmModelId;
   const emit = (next: UploadNodeExtractState) => props.onChange(next);
+  const [tagFabring, setTagFabring] = useState(false);
+  const [textFabring, setTextFabring] = useState(false);
 
   function patch(partial: Partial<UploadNodeExtractState>) {
     emit({ ...graphExtract, ...partial });
@@ -1109,8 +1111,9 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
     props.onNotify?.(t("graphSettings.exampleCleared"), "neutral");
   }
 
-  async function runAction(action: UploadGraphExtractAction, body: Record<string, unknown>, applyResult: (result: UploadGraphExtractResult) => UploadNodeExtractState, successMessage: string, failedMessage: string) {
+  async function runAction(action: UploadGraphExtractAction, body: Record<string, unknown>, applyResult: (result: UploadGraphExtractResult) => UploadNodeExtractState, successMessage: string, failedMessage: string, setBusy?: (busy: boolean) => void) {
     if (!props.runExtractAction) return;
+    setBusy?.(true);
     try {
       const result = await props.runExtractAction(action, body);
       if (result) {
@@ -1121,6 +1124,8 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
       }
     } catch {
       props.onNotify?.(failedMessage, "error");
+    } finally {
+      setBusy?.(false);
     }
   }
 
@@ -1180,7 +1185,7 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
                     <button
                       type="button"
                       className="wk-graph-gen-btn"
-                      disabled={!llmAvailable}
+                      disabled={!llmAvailable || tagFabring}
                       onClick={() => {
                         void runAction(
                           "fabri-tag",
@@ -1188,6 +1193,7 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
                           (result) => ({ ...graphExtract, tags: result.tags ?? [] }),
                           t("graphSettings.tagsGenerated"),
                           t("graphSettings.tagsGenerateFailed"),
+                          setTagFabring,
                         );
                       }}
                     >
@@ -1237,7 +1243,7 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
                     <button
                       type="button"
                       className="wk-graph-gen-btn"
-                      disabled={!llmAvailable}
+                      disabled={!llmAvailable || textFabring}
                       onClick={() => {
                         void runAction(
                           "fabri-text",
@@ -1245,6 +1251,7 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
                           (result) => ({ ...graphExtract, text: result.text ?? "" }),
                           t("graphSettings.textGenerated"),
                           t("graphSettings.textGenerateFailed"),
+                          setTextFabring,
                         );
                       }}
                     >

@@ -1666,3 +1666,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Chrome 已重新加载 `?section=system-audit-log` 直链，在当前 owner 账号的真实权限拒绝状态中实际显示“审计日志 / 查看平台级管理操作和结果”，不再泄漏 `SystemAuditLog`；这只证明权限拒绝态，不能替代 system-admin 数据态。
 - 验证：SettingsPage + surface 定向测试 35/35；完整 Web、Web TypeScript 与 `git diff --check` 待本轮结束前执行。
 - 证据层：本轮为 Vue 设置导航/权限语义对照与 React DOM/单元验证；system-admin 真实权限矩阵、同条件截图/computed-style、Wails 与移动端证据仍待补齐，N017 继续保持 review。
+
+## 2026-09-14 Round N+38 — N007 图谱生成操作 loading 与防重复提交
+
+- 对照 Vue `GraphSettings.vue` 的 `tagFabring`、`textFabring` 与 `extracting` 三条独立请求状态，React 图谱设置的随机标签/随机文本按钮现在在各自请求期间禁用，并在成功、失败和异常路径统一清理 busy 状态；实体关系提取仍保持独立 loading，未改变 admin 权限门槛或初始化 API。
+- 验证：GraphSettings/N007 定向用例包含在 `upload-confirm-dialog.test.tsx`；完整 Web 测试 813/813；Web TypeScript 检查通过；证据 `evidence/vue-react-parity/2026-09-14-n007-graph-action-loading.md`。
+- 证据层：本轮为 Vue 源码对照、React 静态 DOM/单元回归和类型检查；真实 system-admin LLM 成功/失败请求、同条件截图/computed-style、Wails 与移动端证据仍待补齐，N007 继续保持 implementing/review。
