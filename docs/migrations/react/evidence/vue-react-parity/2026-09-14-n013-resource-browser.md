@@ -16,3 +16,7 @@ The Vue data-source editor loads selectable resources lazily, shows a root list,
 - Web TypeScript check: passed with `--incremental false`.
 - Evidence class: static/unit and typecheck only.
 - Not claimed: resource checkbox selection persistence, live connector resources, browser comparison, Wails, iOS, or Android runtime evidence.
+
+## Selection payload
+
+Resource rows now include checkboxes backed by `resourceIds`; `buildDataSourceInput` serializes those ids under `config.resource_ids`, and edit hydration restores them from the saved config. The current implementation does not yet reproduce Vue's minimal-cover and indeterminate descendant rules.

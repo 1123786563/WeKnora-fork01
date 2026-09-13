@@ -136,6 +136,11 @@
 - React now exposes Browse resources on each saved connector and lazily loads root/child resources through `client.dataSources.resources`, with breadcrumb back navigation and loading/error/empty states.
 - Data-source form tests: 2/2 passed. Web typecheck: passed. Resource selection/check-state parity and runtime evidence remain open.
 
+## 2026-09-14 Round N+15 — N013 resource selection payload
+
+- React resource rows now expose checkboxes and persist selected `resource_ids` through `DataSourceFormValues` and the connector config payload for create/update flows.
+- Data-source form tests: 2/2 passed. Web typecheck and diff checks: passed. Vue minimal-cover/indeterminate subtree semantics and runtime evidence remain open.
+
 ## 2026-09-14 Round N+13 — N013 sync-log pagination
 
 - React now uses the existing log API `limit/offset` contract to page through synchronization history, resetting to the first page when a source is opened and disabling Previous/Next at the appropriate boundaries.

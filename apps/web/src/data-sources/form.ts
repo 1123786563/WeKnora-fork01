@@ -9,6 +9,7 @@ export interface DataSourceFormValues {
   deletions: boolean;
   credentialsText: string;
   settingsText: string;
+  resourceIds: string[];
 }
 
 export function parseCredentialLines(text: string): Record<string, string> {
@@ -39,13 +40,14 @@ export function buildDataSourceInput(values: DataSourceFormValues): Partial<Data
     sync_mode: values.mode,
     conflict_strategy: values.conflict,
     sync_deletions: values.deletions,
-    config: { credentials: parseCredentialLines(values.credentialsText), settings: parseCredentialLines(values.settingsText) },
+    config: { credentials: parseCredentialLines(values.credentialsText), settings: parseCredentialLines(values.settingsText), resource_ids: values.resourceIds },
   };
 }
 
 export function dataSourceFormFrom(source: DataSource): DataSourceFormValues {
   const config = (source.config && typeof source.config === 'object' && !Array.isArray(source.config)) ? source.config as Record<string, unknown> : {};
   const settings = config.settings && typeof config.settings === 'object' && !Array.isArray(config.settings) ? config.settings as Record<string, unknown> : {};
+  const resourceIds = Array.isArray(config.resource_ids) ? config.resource_ids.filter((value): value is string => typeof value === 'string') : [];
   return {
     name: source.name,
     type: source.type,
@@ -55,5 +57,6 @@ export function dataSourceFormFrom(source: DataSource): DataSourceFormValues {
     deletions: source.sync_deletions !== false,
     credentialsText: '',
     settingsText: Object.entries(settings).filter(([, value]) => typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean').map(([key, value]) => `${key} = ${String(value)}`).join('\n'),
+    resourceIds,
   };
 }
