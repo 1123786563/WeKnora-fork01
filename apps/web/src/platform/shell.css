@@ -120,8 +120,10 @@
 
 .plat-shell__item--active,
 .plat-shell__item--active:hover {
-  background: rgba(46, 109, 230, 0.1);
-  color: #2e6de6;
+  /* Vue menu.vue .menu_item_active: bg --td-bg-color-secondarycontainer
+     (#f3f3f3 light) + brand-colored icon/title (--td-brand-color #07c05f). */
+  background: #f3f3f3;
+  color: #07c05f;
   font-weight: 500;
 }
 
@@ -293,6 +295,20 @@
   margin: 8px 0 4px;
   padding-top: 8px;
   border-top: 1px solid #e7ebf0;
+}
+
+/* Visible 我的对话 (menu.myChats) label at the top of the session area — Vue
+   shows it as the session-source trigger text at the list's top-right
+   (menu.vue:109-112 + SessionSourceFilter inline trigger, light secondary
+   color). The React shell has no source dropdown yet, so it renders as a
+   plain section title in the same secondary tone. */
+.plat-shell__sessions-title {
+  margin: 0;
+  padding: 0 14px 4px;
+  color: #8b97a8;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
 .plat-shell__sessions .wk-chat-session-group ul {

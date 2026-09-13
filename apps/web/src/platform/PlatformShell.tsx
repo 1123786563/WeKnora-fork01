@@ -48,6 +48,13 @@ interface NavItem {
   guide?: string;
 }
 
+// Vue menu.vue:300-304 — platform-aware modifier label for shortcut hints
+// (⌘ on Apple platforms, Ctrl+ elsewhere). Groundwork for the logo-row ⌘K
+// search entry (menu.vue:10-21) and the palette-scoped ⌘1-9 chips.
+export function platformModKeyLabel(platform: string): '⌘' | 'Ctrl+' {
+  return /Mac|iPod|iPhone|iPad/.test(platform) ? '⌘' : 'Ctrl+';
+}
+
 const KB_ACTIVE = (pathname: string): boolean =>
   pathname === '/platform/knowledge-bases' ||
   /^\/platform\/knowledge-bases\/[^/]+/.test(pathname) ||
@@ -353,9 +360,12 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
           )}
 
           {/* Vue menu.vue .submenu: the grouped session list lives in the
-              sidebar on every protected page; collapsed sidebars hide it. */}
+              sidebar on every protected page; collapsed sidebars hide it.
+              The visible 我的对话 title mirrors Vue's session-area label
+              (menu.myChats → SessionSourceFilter trigger, menu.vue:109-112/332). */}
           {!collapsed && (
             <nav className="plat-shell__sessions" aria-label={labels.myChats}>
+              <h2 className="plat-shell__sessions-title">{labels.myChats}</h2>
               <SessionSidebarList
                 groups={sessionListGroups}
                 selectedSessionId={activeChatId}
