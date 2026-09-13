@@ -25,6 +25,8 @@ Each executable slice must verify the listed states for its rows before moving a
 
 ## Canonical row inventory
 
+Current slice overrides (2026-09-14): N007 now includes Vue `v-show`-equivalent active-section rendering; R013/N028 now includes the Vue-shaped API Playground drawer and SSE state machine. Both remain `implementing` until browser same-condition, real-backend, and platform evidence is complete. See `evidence/vue-react-parity/2026-09-14-n007-upload-section-visibility.md`, `2026-09-14-r013-api-playground-browser.md`, and `2026-09-14-r013-api-playground.md`.
+
 | Row ID | Route / surface | Vue source files | React / platform files | Preconditions | State profile | Status | Evidence / unresolved gap |
 |---|---|---|---|---|---|---|---|
 | R001 | `/` redirect | `frontend/src/router/index.ts` | `apps/web/src/routes.tsx`<br>`apps/web/src/main.tsx`<br>`apps/web/src/App.tsx`<br>`apps/web/src/platform/PlatformShell.tsx`<br>`apps/desktop/src/main.tsx` | public, no tenant; redirects to `/platform/knowledge-bases` | `REDIRECT` | review | route tests cover redirect; verify query-free browser redirect in final gate |
