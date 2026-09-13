@@ -145,7 +145,7 @@ test('filters viewer organizations and sends the selected permission in the crea
 
   const organizationSelect = container.querySelectorAll<HTMLSelectElement>('select')[0];
   assert.ok(organizationSelect);
-  assert.deepEqual([...organizationSelect.options].map((option) => option.textContent), ['Select a shared space to share with', 'Editors · 0 · 0 · 0']);
+  assert.deepEqual([...organizationSelect.options].map((option) => option.textContent), ['Select a shared space to share with', 'Editors']);
   assert.equal([...organizationSelect.options].some((option) => option.textContent === 'Viewers'), false);
 
   await select(container, 'Select Shared Space', 'org-editor');
@@ -163,6 +163,7 @@ test('renders Vue-shaped organization options and shared-list actions', async ()
   const container = await mount(client);
 
   await select(container, 'Select Shared Space', 'org-editor');
+  await act(async () => container.querySelector<HTMLButtonElement>('.wk-share-org-picker-trigger')?.click());
   const option = container.querySelector('.wk-share-org-option');
   assert.ok(option, 'organization options should expose the Vue option anatomy');
   assert.match(option.textContent ?? '', /Editors/);
@@ -176,6 +177,25 @@ test('renders Vue-shaped organization options and shared-list actions', async ()
   await act(async () => button(container, 'Shared to (1)')?.click());
   assert.ok(container.querySelector('.wk-share-item-avatar'));
   assert.equal(container.querySelectorAll('.wk-share-item-actions button').length, 2, 'shared rows should expose settings and remove actions');
+});
+
+test('organization picker exposes a keyboard-safe custom Vue-style option list', async () => {
+  const enriched = [{ id: 'org-editor', name: 'Editors', is_owner: true, my_role: 'admin', member_count: 7, share_count: 3, agent_share_count: 2 }] as unknown as Organization[];
+  const client = clientFor(async () => ({ items: [], total: 0 }));
+  client.identity.organizations.list = async () => ({ items: enriched, total: 1 });
+  const container = await mount(client);
+  const trigger = container.querySelector<HTMLButtonElement>('.wk-share-org-picker-trigger');
+  assert.ok(trigger);
+  await act(async () => trigger?.click());
+  assert.ok(container.querySelector('[role="listbox"]'));
+  assert.match(container.textContent ?? '', /Editors/);
+  assert.match(container.textContent ?? '', /7/);
+  await act(async () => container.querySelector<HTMLButtonElement>('[role="option"]')?.click());
+  assert.equal(trigger?.textContent?.includes('Editors'), true);
+  assert.equal(container.querySelector('[role="listbox"]'), null);
+  await act(async () => trigger?.click());
+  await act(async () => document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape' })));
+  assert.equal(container.querySelector('[role="listbox"]'), null);
 });
 
 test('shows the create failure and does not fire the change callback', async () => {

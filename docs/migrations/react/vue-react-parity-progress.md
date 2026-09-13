@@ -1,5 +1,11 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-14 Round N+19 — N005 custom organization picker slice
+
+- 共享空间选择从原生 select 补为 Vue 风格可访问自定义列表：组织头像、角色、成员/知识库/智能体计数、选中态、外部点击关闭和 Escape；保留隐藏原生控件的 required/API 语义。
+- N005 专测 12/12、Web 全量 681/681；`typecheck:web` 被并行 Excel 测试的 xlsx/Blob 类型错误阻断，未归因于本切片。
+- N005 仍为 `implementing`：认证浏览器/Vue 对照截图、真实后端及 Wails/iOS/Android 证据未闭环。
+
 ## 2026-09-14 Round N+18 — R046 MCP tool detail popup slice
 
 - MCP 工具详情按 Vue 从内联块改为浮层 dialog，保留描述/参数/schema 标签页、参数空态/required 标记及策略开关，新增 Escape 关闭。
