@@ -67,6 +67,36 @@ func RegisterCraftPreviewRouteHandler(h *CraftPreviewHandler) { registeredCraftP
 // RegisteredCraftPreviewRouteHandler returns the registered preview handler.
 func RegisteredCraftPreviewRouteHandler() *CraftPreviewHandler { return registeredCraftPreviewHandler }
 
+// CraftSnapshotAPI is the handler's view of the craft snapshot service
+// (C05). The concrete *service.CraftSnapshotService satisfies it.
+type CraftSnapshotAPI interface {
+	RestoreIdempotent(context.Context, craft.Scope, service.CraftRestoreRequest) (service.CraftRestoreOutcome, error)
+	ListSnapshots(context.Context, craft.Scope) ([]craft.StoredSnapshot, error)
+}
+
+var registeredCraftSnapshotHandler CraftSnapshotAPI
+
+// RegisterCraftSnapshotHandler installs the C05 snapshot service for
+// routing; the restore routes mount with the craft session table.
+func RegisterCraftSnapshotHandler(h CraftSnapshotAPI) { registeredCraftSnapshotHandler = h }
+
+// RegisteredCraftSnapshotHandler returns the registered snapshot API (nil
+// when the C05 assembly is not wired — then no restore route mounts).
+func RegisteredCraftSnapshotHandler() CraftSnapshotAPI { return registeredCraftSnapshotHandler }
+
+// CraftSnapshotHandler serves C05's recovery snapshot HTTP surface. The
+// routes inherit the enclosing sessions group's guards; the owner write
+// ACL is enforced inside the service like every craft write entry.
+type CraftSnapshotHandler struct {
+	svc CraftSnapshotAPI
+}
+
+// NewCraftSnapshotHandler constructs the handler. svc may be nil: every
+// endpoint then answers 503 without touching anything.
+func NewCraftSnapshotHandler(svc CraftSnapshotAPI) *CraftSnapshotHandler {
+	return &CraftSnapshotHandler{svc: svc}
+}
+
 // craftRouteGroup is the route-mounting subset satisfied by both a raw gin
 // group and the router's API-key-policy wrapper, so the craft routes can be
 // mounted through whichever wrapper declares their auth policy.
@@ -96,6 +126,13 @@ func RegisterCraftSessionRoutes(craftSessions, sessions craftRouteGroup, craftHa
 		sessions.GET("/:id/craft/versions/:version_id/files/*file_path", craftHandler.DownloadCraftVersionFile)
 		sessions.POST("/:session_id/craft/inputs", craftHandler.PostCraftInput)
 		sessions.POST("/:session_id/craft/runs", craftHandler.PostCraftRun)
+	}
+	if snapshotHandler := RegisteredCraftSnapshotHandler(); snapshotHandler != nil {
+		// C05: the recovery snapshot surface — the workbench's "continue
+		// from this version" entrance and its idempotent restore.
+		holder := NewCraftSnapshotHandler(snapshotHandler)
+		sessions.GET("/:id/craft/snapshots", holder.ListCraftSnapshots)
+		sessions.POST("/:session_id/craft/restore", holder.RestoreCraftSnapshot)
 	}
 	if previewHandler != nil {
 		// W02's authenticated ticket issuance endpoint, mounted at its exact
@@ -480,4 +517,87 @@ func (h *CraftSessionHandler) DownloadCraftVersionFile(c *gin.Context) {
 	c.Header("Cache-Control", "private, no-store")
 	c.Status(http.StatusOK)
 	_, _ = io.Copy(c.Writer, reader)
+}
+
+// -----------------------------------------------------------------------------
+// C05: recovery snapshot endpoints
+// -----------------------------------------------------------------------------
+
+type craftRestoreRequestDTO struct {
+	RequestID  string `json:"request_id"`
+	SnapshotID string `json:"snapshot_id"`
+	Revision   int64  `json:"revision"`
+}
+
+// craftSnapshotDTO projects one stored snapshot: the identity the workbench
+// keys its "continue from this version" affordance on, plus the facts that
+// decide whether the affordance may open (quiescent, runtime digest).
+func craftSnapshotDTO(s craft.StoredSnapshot) gin.H {
+	return gin.H{
+		"snapshot_id": s.ID, "version_id": s.VersionID,
+		"workspace_id": s.WorkspaceID,
+		"files_digest": s.FilesDigest, "session_digest": s.SessionDigest,
+		"runtime_digest": s.RuntimeDigest, "quiescent": s.Quiescent,
+		"records": s.Manifest.Records, "created_at": s.CreatedAt,
+	}
+}
+
+// ListCraftSnapshots serves GET /api/v1/sessions/:session_id/craft/snapshots:
+// the workspace's stored recovery snapshots, newest first.
+func (h *CraftSnapshotHandler) ListCraftSnapshots(c *gin.Context) {
+	if h == nil || h.svc == nil {
+		c.Error(apperrors.NewServiceUnavailableError("craft snapshots are unavailable"))
+		return
+	}
+	scope, ok := craftScope(c)
+	if !ok || scope.SessionID == "" {
+		craftUnauthorized(c)
+		return
+	}
+	snapshots, err := h.svc.ListSnapshots(c.Request.Context(), scope)
+	if err != nil {
+		craftHTTPError(c, err)
+		return
+	}
+	data := make([]gin.H, 0, len(snapshots))
+	for _, s := range snapshots {
+		data = append(data, craftSnapshotDTO(s))
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": data, "next_cursor": nil})
+}
+
+// RestoreCraftSnapshot serves POST /api/v1/sessions/:session_id/craft/restore.
+// request_id is the idempotency key, revision the workspace revision the
+// client prepared the restore at; the service refuses active runs, revision
+// races, untrusted runtimes, corrupt objects and non-owner scopes.
+func (h *CraftSnapshotHandler) RestoreCraftSnapshot(c *gin.Context) {
+	if h == nil || h.svc == nil {
+		c.Error(apperrors.NewServiceUnavailableError("craft snapshots are unavailable"))
+		return
+	}
+	scope, ok := craftScope(c)
+	if !ok || scope.SessionID == "" {
+		craftUnauthorized(c)
+		return
+	}
+	var body craftRestoreRequestDTO
+	if !decodeCraftBody(c, &body) {
+		return
+	}
+	outcome, err := h.svc.RestoreIdempotent(c.Request.Context(), scope, service.CraftRestoreRequest{
+		RequestID: body.RequestID, SnapshotID: body.SnapshotID, Revision: body.Revision,
+	})
+	if err != nil {
+		craftHTTPError(c, err)
+		return
+	}
+	data := gin.H{
+		"workspace":   craftWorkspaceDTO(outcome.Workspace),
+		"snapshot_id": outcome.Snapshot.ID,
+		"version_id":  outcome.Snapshot.VersionID,
+		"replayed":    outcome.Replayed,
+		"generation":  outcome.Workspace.Generation,
+		"revision":    outcome.Workspace.Revision,
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
 }

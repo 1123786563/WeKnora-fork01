@@ -540,3 +540,261 @@ func TestCraftHTTPRoutesAbsentWithoutRegistration(t *testing.T) {
 	engine.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/craft/sessions", nil))
 	require.Equal(t, http.StatusNotFound, w.Code)
 }
+
+// -----------------------------------------------------------------------------
+// C05: the /restore and /snapshots HTTP surface — idempotency, revision,
+// owner authorization and the active-lock competition.
+// -----------------------------------------------------------------------------
+
+// httpSnapshotFiles is the controlled storage the snapshot service uploads
+// its session export objects into.
+type httpSnapshotFiles struct {
+	interfaces.FileService
+	blobs map[string][]byte
+}
+
+func (f *httpSnapshotFiles) SaveBytes(_ context.Context, data []byte, _ uint64, name string, _ bool) (string, error) {
+	ref := "resource://http-snapshot/" + name
+	f.blobs[ref] = data
+	return ref, nil
+}
+
+func (f *httpSnapshotFiles) GetFile(_ context.Context, ref string) (io.ReadCloser, error) {
+	data, ok := f.blobs[ref]
+	if !ok {
+		return nil, errors.New("object missing")
+	}
+	return io.NopCloser(strings.NewReader(string(data))), nil
+}
+
+// httpSnapshotSource fakes the isolated execution state at exactly the
+// snapshot source seam: one live chain, staged generations, restore count.
+type httpSnapshotSource struct {
+	chain        []craft.SessionRecord
+	restoreCount int
+	busy         bool
+}
+
+func (s *httpSnapshotSource) Quiescent(context.Context, craft.Workspace) (bool, string, error) {
+	if s.busy {
+		return false, "session busy", nil
+	}
+	return true, "", nil
+}
+
+func (s *httpSnapshotSource) ExportSessionData(_ context.Context, ws craft.Workspace) (craft.SessionExport, error) {
+	copied := make([]craft.SessionRecord, len(s.chain))
+	copy(copied, s.chain)
+	return craft.SessionExport{
+		OpenCodeSessionID: ws.OpenCodeSessionID,
+		SchemaVersion:     "http-fake/messages-v1",
+		Records:           copied,
+	}, nil
+}
+
+func (s *httpSnapshotSource) RestoreGeneration(_ context.Context, ws craft.Workspace, files []craft.File, export craft.SessionExport) (craft.Workspace, error) {
+	if err := craft.SessionChainPrefix(export.Records, s.chain); err != nil {
+		return craft.Workspace{}, fmt.Errorf("%w: %v", craft.ErrConflict, err)
+	}
+	s.restoreCount++
+	return craft.Workspace{
+		Scope: ws.Scope, ID: ws.ID, SandboxID: ws.SandboxID,
+		Generation:        fmt.Sprintf("g-http-%d", s.restoreCount),
+		OpenCodeSessionID: ws.OpenCodeSessionID, RuntimeDigest: ws.RuntimeDigest,
+	}, nil
+}
+
+func (s *httpSnapshotSource) ReleaseGeneration(context.Context, craft.Workspace) error { return nil }
+
+func (s *httpSnapshotSource) IsolatedDataRestore() bool { return true }
+
+// snapshotHTTPEnv extends the craft HTTP env with the mounted C05 surface.
+type snapshotHTTPEnv struct {
+	*craftHTTPEnv
+	source  *httpSnapshotSource
+	snapSvc *service.CraftSnapshotService
+	store   craft.Store
+	files   *httpSnapshotFiles
+}
+
+const httpSnapshotRuntimeDigest = "sha256:http-snapshot-runtime"
+
+func newSnapshotHTTPEnv(t *testing.T) *snapshotHTTPEnv {
+	t.Helper()
+	base := newCraftHTTPEnv(t, service.CraftFeatureGate{Enabled: true, Kinds: []string{"web"}})
+	env := &snapshotHTTPEnv{
+		craftHTTPEnv: base,
+		source: &httpSnapshotSource{chain: []craft.SessionRecord{
+			{ID: "msg_u1", Role: "user", Parts: []string{"build it"}},
+			{ID: "msg_a1", ParentID: "msg_u1", Role: "assistant", Finish: "stop", Parts: []string{"v1 done"}},
+		}},
+		store: repository.NewCraftStore(base.db),
+		files: &httpSnapshotFiles{blobs: map[string][]byte{}},
+	}
+	snapSvc, err := service.NewCraftSnapshotService(service.CraftSnapshotConfig{
+		DB: base.db, Sessions: &craftHTTPSessions{db: base.db},
+		Store: env.store, Versions: repository.NewCraftVersionStore(base.db),
+		Snapshots: repository.NewCraftSnapshotStore(base.db), Files: env.files,
+		Source: env.source, ActiveRuns: service.CraftActiveRunsQuery(base.db),
+		RuntimeDigest: httpSnapshotRuntimeDigest,
+	})
+	require.NoError(t, err)
+	env.snapSvc = snapSvc
+	RegisterCraftSnapshotHandler(snapSvc)
+	t.Cleanup(func() { RegisterCraftSnapshotHandler(nil) })
+	// Build a fresh engine with the same identity middleware so the
+	// snapshot routes mount exactly once, alongside the craft table.
+	engine := gin.New()
+	engine.Use(middleware.ErrorHandler())
+	engine.Use(func(c *gin.Context) {
+		identity := c.GetHeader("X-Test-Identity")
+		tenant := uint64(1)
+		user, role := "u1", ""
+		switch identity {
+		case "viewer":
+			user = "u2"
+		case "admin":
+			user, role = "u2", "admin"
+		case "foreigntenant":
+			tenant, user = 2, "u1"
+		}
+		c.Set(types.TenantIDContextKey.String(), tenant)
+		ctx := context.WithValue(c.Request.Context(), types.TenantIDContextKey, tenant)
+		ctx = context.WithValue(ctx, types.UserIDContextKey, user)
+		if role == "admin" {
+			ctx = context.WithValue(ctx, types.TenantRoleContextKey, types.TenantRoleAdmin)
+		}
+		c.Request = c.Request.WithContext(ctx)
+		c.Next()
+	})
+	base.engine = engine
+	craftSessions := engine.Group("/api/v1/craft/sessions")
+	sessions := engine.Group("/api/v1/sessions")
+	RegisterCraftSessionRoutes(craftSessions, sessions, base.handler, nil)
+	return env
+}
+
+// snapshotReadySession drives create → version → capture and returns the
+// session id, the snapshot id and the workspace revision to restore at.
+func (env *snapshotHTTPEnv) snapshotReadySession(t *testing.T, key string) (sessionID, snapshotID string, revision int64) {
+	t.Helper()
+	created := env.createSession(t, key, "快照站点", "web")
+	sessionID = created["session_id"].(string)
+	scope := craft.Scope{TenantID: 1, UserID: "u1", SessionID: sessionID}
+	ctx := context.WithValue(context.Background(), types.TenantIDContextKey, uint64(1))
+	ctx = context.WithValue(ctx, types.UserIDContextKey, "u1")
+
+	// Bind the workspace to a live OpenCode session on the pinned runtime
+	// (the delegation path does this at first dispatch; capture needs it).
+	store := repository.NewCraftStore(env.db)
+	ws, err := store.GetWorkspace(ctx, scope)
+	require.NoError(t, err)
+	ws.OpenCodeSessionID = "oc-http-1"
+	ws.RuntimeDigest = httpSnapshotRuntimeDigest
+	ws.Generation = "0"
+	ws, err = store.PutWorkspace(ctx, ws, ws.Revision)
+	require.NoError(t, err)
+
+	// Publish one version and capture it.
+	content := "<h1>http v1</h1>"
+	ref := "resource://http-version/v1"
+	env.files.blobs[ref] = []byte(content)
+	sum := sha256.Sum256([]byte(content))
+	files := []craft.File{{Path: "index.html", Ref: ref,
+		SHA256: hex.EncodeToString(sum[:]), MIME: "text/html", Bytes: int64(len(content))}}
+	digest, err := craft.ManifestDigest(files)
+	require.NoError(t, err)
+	version, err := repository.NewCraftVersionStore(env.db).Publish(ctx, scope, craft.Version{
+		ID: craft.VersionID(ws.ID, "run-http-1", digest), WorkspaceID: ws.ID,
+		RunID: "run-http-1", Kind: craft.KindWeb, Files: files,
+		Checks: []craft.Check{{Name: craft.CheckEntry, Status: craft.CheckPassed}},
+	})
+	require.NoError(t, err)
+	snap, err := env.snapSvc.Capture(ctx, scope, version.ID)
+	require.NoError(t, err)
+	return sessionID, craft.SnapshotID(snap), ws.Revision
+}
+
+// TestCraftHTTPRestoreCompetitions pins the /restore acceptance set over the
+// real HTTP surface: idempotent request_id (replay never re-executes), the
+// same key with different parameters conflicts, a revision race refuses,
+// the owner ACL holds (viewer invisible, admin read-only), and an active run
+// lock refuses the swap.
+func TestCraftHTTPRestoreCompetitions(t *testing.T) {
+	env := newSnapshotHTTPEnv(t)
+	sessionID, snapshotID, revision := env.snapshotReadySession(t, "key-snap-1")
+	restorePath := "/api/v1/sessions/" + sessionID + "/craft/restore"
+
+	body := func(requestID string, rev int64) string {
+		return fmt.Sprintf("{\"request_id\":%q,\"snapshot_id\":%q,\"revision\":%d}", requestID, snapshotID, rev)
+	}
+
+	// The snapshots listing carries the capture for the workbench.
+	w := env.do(t, http.MethodGet, "/api/v1/sessions/"+sessionID+"/craft/snapshots", "", "")
+	require.Equal(t, http.StatusOK, w.Code, "snapshots body: %s", w.Body.String())
+	require.Contains(t, w.Body.String(), snapshotID)
+
+	// Owner restores: 200, new generation, not a replay.
+	w = env.do(t, http.MethodPost, restorePath, "", body("restore-1", revision))
+	require.Equal(t, http.StatusOK, w.Code, "restore body: %s", w.Body.String())
+	require.Contains(t, w.Body.String(), `"replayed":false`)
+	require.Contains(t, w.Body.String(), "g-http-1")
+	require.Equal(t, 1, env.source.restoreCount)
+
+	// The identical retry replays without re-executing.
+	w = env.do(t, http.MethodPost, restorePath, "", body("restore-1", revision))
+	require.Equal(t, http.StatusOK, w.Code, "replay body: %s", w.Body.String())
+	require.Contains(t, w.Body.String(), `"replayed":true`)
+	require.Equal(t, 1, env.source.restoreCount, "replay never re-executes")
+
+	// The same key with a different revision conflicts.
+	w = env.do(t, http.MethodPost, restorePath, "", body("restore-1", revision+7))
+	require.Equal(t, http.StatusConflict, w.Code, "key conflict body: %s", w.Body.String())
+
+	// A fresh key against the moved revision is a revision race.
+	w = env.do(t, http.MethodPost, restorePath, "", body("restore-stale", revision))
+	require.Equal(t, http.StatusConflict, w.Code, "stale body: %s", w.Body.String())
+	require.Contains(t, w.Body.String(), "revision moved")
+
+	// Viewer: the session is invisible (404). Admin: reads fine, restore is
+	// a 403 — the admin fallback never becomes a write path.
+	w = env.do(t, http.MethodGet, "/api/v1/sessions/"+sessionID+"/craft/snapshots", "viewer", "")
+	require.Equal(t, http.StatusNotFound, w.Code, "viewer snapshots body: %s", w.Body.String())
+	w = env.do(t, http.MethodPost, restorePath, "viewer", body("restore-viewer", revision))
+	require.Equal(t, http.StatusNotFound, w.Code)
+	w = env.do(t, http.MethodPost, restorePath, "admin", body("restore-admin", revision))
+	require.Equal(t, http.StatusForbidden, w.Code, "admin body: %s", w.Body.String())
+
+	// Foreign tenant sees nothing at all.
+	w = env.do(t, http.MethodPost, restorePath, "foreigntenant", body("restore-foreign", revision))
+	require.Equal(t, http.StatusNotFound, w.Code)
+
+	// An active run holds the lock: restore refuses with 409 and the run id
+	// the client can attach to.
+	w = env.do(t, http.MethodPost, "/api/v1/sessions/"+sessionID+"/craft/runs", "",
+		fmt.Sprintf("{\"request_id\":\"run-live\",\"prompt\":\"再改一版\"}"))
+	require.Equal(t, http.StatusAccepted, w.Code)
+	var runBody struct {
+		Data map[string]any `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &runBody))
+	liveRunID := runBody.Data["run_id"].(string)
+
+	// Refresh the revision the way a reloaded workbench would.
+	ws, err := env.store.GetWorkspace(context.WithValue(context.Background(),
+		types.TenantIDContextKey, uint64(1)), craft.Scope{TenantID: 1, UserID: "u1", SessionID: sessionID})
+	require.NoError(t, err)
+	require.Equal(t, 1, env.source.restoreCount, "only the first restore executed so far")
+	_ = liveRunID
+	w = env.do(t, http.MethodPost, restorePath, "", body("restore-locked", ws.Revision))
+	require.Equal(t, http.StatusConflict, w.Code, "locked body: %s", w.Body.String())
+	require.Contains(t, w.Body.String(), "active run")
+	require.Equal(t, 1, env.source.restoreCount, "the locked restore never materialized")
+
+	// Malformed ids and bodies never reach the service.
+	w = env.do(t, http.MethodPost, restorePath, "",
+		fmt.Sprintf("{\"request_id\":\"bad\",\"snapshot_id\":\"not-a-snapshot\",\"revision\":%d}", ws.Revision))
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	w = env.do(t, http.MethodPost, restorePath, "", "{\"request_id\":\"x\"}")
+	require.Equal(t, http.StatusBadRequest, w.Code)
+}

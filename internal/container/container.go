@@ -339,6 +339,10 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewCraftPreviewCheckStore))
 	must(container.Provide(newCraftPreviewService))
 	must(container.Provide(newCraftSessionService))
+	// C05: the recovery snapshot service rides the same env-driven local
+	// runtime as the executor; without the craft dial it stays nil and the
+	// snapshot/restore routes never mount (fail-closed, like the executor).
+	must(container.Provide(newCraftSnapshotService))
 	// The craft handler registration is deferred until every provider the
 	// session service needs (SessionService, TemporaryDocumentService, ...)
 	// is registered: dig.Invoke resolves eagerly, and W03's original position
@@ -2025,7 +2029,10 @@ func newCraftPreviewService(
 // registerCraftHTTPHandlers installs the craft handlers for route mounting.
 // The session service itself is the registered API surface; routes_chat.go
 // wraps it in the HTTP handler at mounting time.
-func registerCraftHTTPHandlers(svc *service.CraftSessionService, previews *service.CraftPreviewService) {
+func registerCraftHTTPHandlers(svc *service.CraftSessionService, previews *service.CraftPreviewService, snapshots *service.CraftSnapshotService) {
 	session.RegisterCraftSessionHandler(svc)
 	session.RegisterCraftPreviewRouteHandler(session.NewCraftPreviewHandler(previews))
+	if snapshots != nil {
+		session.RegisterCraftSnapshotHandler(snapshots)
+	}
 }

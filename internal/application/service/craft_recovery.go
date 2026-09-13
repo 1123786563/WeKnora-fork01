@@ -26,6 +26,11 @@ const (
 	craftRecoveryDefaultInterval = 500 * time.Millisecond
 	// craftRecoveryDefaultTimeout bounds one snapshot observation call.
 	craftRecoveryDefaultTimeout = 15 * time.Second
+	// craftRecoveryObserveFallbackBudget bounds the observe loop only when
+	// the delegation carries no deadline AND the caller's context has none
+	// (C04 review nit-2; production chains always carry an absolute
+	// deadline, so this is a defensive backstop, never the common path).
+	craftRecoveryObserveFallbackBudget = 15 * time.Minute
 )
 
 // CraftRecoveryScopeResolver rebuilds the execution authority of a run from
@@ -227,6 +232,21 @@ func (r *CraftRecovery) Reconcile(
 	}
 
 	deadline := task.Deadline
+	// C04 review nit-2 (landed with the C05 assembly): a delegation without
+	// a persisted deadline observed under a context that also carries no
+	// deadline could poll a verified-running remote forever. That extreme
+	// combination gets a synthetic observation budget so it parks durably
+	// instead; production delegation chains always carry an absolute
+	// deadline, and the worker hook passes a budgeted context on top.
+	syntheticDeadline := false
+	if deadline.IsZero() {
+		if ctxDeadline, ok := ctx.Deadline(); ok {
+			deadline = ctxDeadline
+		} else {
+			deadline = time.Now().Add(craftRecoveryObserveFallbackBudget)
+			syntheticDeadline = true
+		}
+	}
 	for {
 		obs, obsErr := r.observeOnce(ctx, task)
 		if obsErr != nil {
@@ -254,11 +274,23 @@ func (r *CraftRecovery) Reconcile(
 			// observing under the delegation's absolute deadline. The
 			// deadline is never reset by a restart.
 			if !deadline.IsZero() && !time.Now().Before(deadline) {
+				if syntheticDeadline {
+					return r.parkUnknown(ctx, fence, task, fmt.Sprintf(
+						"delegation carried no deadline and the context none either; the %s observation budget exhausted while the sub-execution is still running",
+						craftRecoveryObserveFallbackBudget))
+				}
 				return r.parkUnknown(ctx, fence, task, fmt.Sprintf(
 					"delegation deadline %s reached while the sub-execution is still running; the outcome cannot be determined",
 					deadline.Format(time.RFC3339)))
 			}
 			if werr := craftRecoverySleep(ctx, r.cfg.interval()); werr != nil {
+				// C04 review nit-3 (comment, landed with the C05 assembly): the
+				// context ended (worker shutdown or lease drop) between two
+				// observations. Nothing was learned that could justify a
+				// durable park — no fact was observed this round — so the error
+				// returns bare, the run stays non-terminal, and the expiring
+				// lease hands it to the next takeover. Never park here and
+				// never treat cancellation as an outcome.
 				return craft.Result{}, werr
 			}
 		default: // craft.RecoveryRouteWait

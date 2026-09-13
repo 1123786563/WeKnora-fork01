@@ -11,7 +11,9 @@ import (
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/config"
+	"github.com/Tencent/WeKnora/internal/craft"
 	"github.com/Tencent/WeKnora/internal/sandbox"
+	"gorm.io/gorm"
 )
 
 // newAgentRuntime assembles the durable tRPC runtime. The graph executor is
@@ -24,6 +26,9 @@ func newAgentRuntime(
 	resources *service.GormAgentRunResourceRepository,
 	pinner *service.SessionSandboxPinner,
 	resolver sandbox.TenantSandboxResolver,
+	db *gorm.DB,
+	craftStore craft.Store,
+	craftExecutor craft.Executor,
 ) (*AgentRuntime, error) {
 	executor := func(ctx context.Context, fence agentruntime.Fence) error {
 		run := service.RegisteredGraphExecutor()
@@ -37,7 +42,32 @@ func newAgentRuntime(
 		return r, err
 	}
 	r.Runs.SetCancelHook(func(_ context.Context, key agentruntime.RunKey) error { return r.Worker.Cancel(key) })
-	r.SetRecoveryHook(newSandboxRecoveryHook(store, resources, r.Runs, pinner, resolver))
+	sandboxHook := newSandboxRecoveryHook(store, resources, r.Runs, pinner, resolver)
+	// C05 assembly (C04 review §4): the craft recovery program joins the
+	// worker recovery path after the sandbox half — an unfinished craft
+	// delegation of the claimed run is reconciled (reuse / collect /
+	// observe / durable wait) before the graph executes. Without the craft
+	// dial the executor fails closed and Reconcile parks sandbox-class, so
+	// the chain is safe in every configuration.
+	if db != nil && craftStore != nil && craftExecutor != nil {
+		recovery, rerr := service.NewCraftRecovery(
+			craftStore, craftExecutor, r.Runs,
+			service.CraftRunScopeQuery(db),
+			service.CraftRecoveryConfig{RuntimeDigest: craftRuntimeDigestFromEnv()},
+		)
+		if rerr != nil {
+			return nil, rerr
+		}
+		craftHook := newCraftRecoveryHook(db, recovery)
+		r.SetRecoveryHook(func(ctx context.Context, fence agentruntime.Fence) error {
+			if err := sandboxHook(ctx, fence); err != nil {
+				return err
+			}
+			return craftHook(ctx, fence)
+		})
+	} else {
+		r.SetRecoveryHook(sandboxHook)
+	}
 	return r, nil
 }
 
