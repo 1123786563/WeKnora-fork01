@@ -3,7 +3,7 @@ import { ActivityIndicator, Alert, FlatList, Pressable, SafeAreaView, ScrollView
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { DataSource, DataSourceConnectorType, DataSourceResource } from '@weknora/api-client';
 import { useMobileRuntime } from '../../runtime.tsx';
-import { canManageDataSources, dataSourceStatusLabel, safeDataSourceType } from './data-sources.ts';
+import { canManageDataSources, dataSourceStatusLabel, resourceCheckState, safeDataSourceType, toggleDataSourceResourceSelection } from './data-sources.ts';
 import { buildNativeDataSourceInput, nativeDataSourceDraftFrom, type NativeDataSourceDraft } from './data-source-form.ts';
 
 const EMPTY_DRAFT: NativeDataSourceDraft = { name: '', type: '', schedule: '0 0 */6 * * *', mode: 'incremental', conflict: 'overwrite', deletions: true, credentialsText: '', settingsText: '' };
@@ -68,7 +68,8 @@ export function DataSourcesScreen() {
     finally { setResourcesLoading(false); }
   }
   function openEdit(source: DataSource) { setEditing(source); setResources([]); setSelectedResourceIds(sourceResourceIds(source)); setExpandedResourceIds([]); setDraft(nativeDataSourceDraftFrom(source)); setError(''); void loadResources(source); }
-  function toggleResource(id: string) { setSelectedResourceIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]); }
+  function toggleResource(id: string) { setSelectedResourceIds((current) => toggleDataSourceResourceSelection(resources, current, id)); }
+  function resourceState(id: string) { return resourceCheckState(resources, selectedResourceIds, id); }
   async function toggleResourceExpand(resource: DataSourceResource) {
     if (!editing || !resource.has_children) return;
     if (expandedResourceIds.includes(resource.external_id)) { setExpandedResourceIds((current) => current.filter((id) => id !== resource.external_id)); return; }
@@ -88,6 +89,8 @@ export function DataSourcesScreen() {
     const walk = (items: DataSourceResource[], depth: number) => items.forEach((item) => { result.push({ resource: item, depth }); if (item.has_children && expandedResourceIds.includes(item.external_id)) walk(resources.filter((child) => child.parent_id === item.external_id), depth + 1); });
     walk(resources.filter((item) => !item.parent_id), 0); return result;
   }, [expandedResourceIds, resources]);
+  function expandAllResources() { setExpandedResourceIds(resources.filter((resource) => resource.has_children).map((resource) => resource.external_id)); }
+  function collapseAllResources() { setExpandedResourceIds([]); }
   async function save() {
     if (!canManage) { setError('Data-source changes require an owner or admin workspace role'); return; }
     setSaving(true); setError('');

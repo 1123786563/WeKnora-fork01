@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { canManageDataSources, dataSourceStatusLabel, safeDataSourceType } from './data-sources.ts';
+import type { DataSourceResource } from '@weknora/api-client';
+import { canManageDataSources, dataSourceStatusLabel, resourceCheckState, safeDataSourceType, toggleDataSourceResourceSelection } from './data-sources.ts';
 
 test('mobile data source inventory exposes safe status and type labels', () => {
   assert.equal(dataSourceStatusLabel({ status: 'active' }), 'active');
@@ -15,4 +16,17 @@ test('mobile data-source mutations fail closed for non-admin workspace roles', (
   assert.equal(canManageDataSources('contributor'), false);
   assert.equal(canManageDataSources('viewer'), false);
   assert.equal(canManageDataSources(undefined), false);
+});
+
+const resourceTree: DataSourceResource[] = [
+  { external_id: 'root', name: 'Root', type: 'folder', has_children: true },
+  { external_id: 'sibling', name: 'Sibling', type: 'page', parent_id: 'root' },
+  { external_id: 'child', name: 'Child', type: 'page', parent_id: 'root' },
+];
+
+test('resource selection keeps a minimal cover and supports descendant uncheck', () => {
+  assert.deepEqual(toggleDataSourceResourceSelection(resourceTree, [], 'root'), ['root']);
+  assert.equal(resourceCheckState(resourceTree, ['root'], 'child'), 'checked');
+  assert.deepEqual(toggleDataSourceResourceSelection(resourceTree, ['root'], 'child'), ['sibling']);
+  assert.equal(resourceCheckState(resourceTree, ['sibling'], 'child'), 'unchecked');
 });

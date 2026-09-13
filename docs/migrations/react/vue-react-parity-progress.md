@@ -821,8 +821,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - **Mobile data-source hierarchical resource expansion:** resource rows now
   expose expand/collapse controls and request children lazily through the
   existing `resources(id, parentId)` API, while keeping selection rows
-  independently actionable. Focused tests pass 5/5; the full mobile suite
-  remains 92/92 and typecheck passes. Parent/descendant cover-set semantics,
+  independently actionable. Focused tests pass 8/8; the full mobile suite
+  passes 93/93 and typecheck passes. Parent/descendant cover-set semantics,
   Drive root-token setup, new-source temporary browsing, and native/backend
   evidence remain open.
 
