@@ -930,6 +930,22 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   diff check pass.
   Main data-source/editor copy and runtime evidence remain open.
 
+
+## 2026-09-13 Round N（并行五切片 + MCP live 取证 + 共享层补齐）
+
+- 环境：docker dev 基础设施复用；make dev-app :8080（本轮以 SSRF_WHITELIST_EXTRA=mcp.parity-invalid.example 重启以创建失败态取证服务）；Vue :5180 / React :5181 双端同库同账号（parity-test@local.dev，tenant 10000）。
+- 并行切片全部落地（各自 focused 测试绿，主代理独立复核后集成）：
+  1. R031 Sandbox：wizard/模板目录/深度检查/精确校验/本地化（24/24）；主代理补 SettingsPage→dockerBackendEnabled 能力接线。
+  2. R033 Skill：目录卡片/两步向导/安装与管理抽屉/文件浏览器/轮询（23/23）；主代理补通 web zip 上传链路（api-client register 接受 Blob→objectURL 桥 + browser transport sendMultipartFile，后端字段 file）。
+  3. R027 Model：签名 rerank/WeKnoraCloud 门控/维度覆盖/thinking-control/校验/载荷/列表/连接测试/Ollama/调试面板（36/36）。
+  4. N007 Upload：FolderPickerMenu 目的地选择/文件面板/分节导航/完整 reparse 配置/五语文案（45/45）。
+  5. N031 Mobile：dataSource i18n 149 键×5 语、上传遮罩端口、持久化 pins/recents、页面本地化（75/75 + i18n 5/5，typecheck 干净）。
+- 共享层：packages/i18n settings 包新增 584 键×5 locale（model./modelSettings./settings.sandbox./settings.skills./settings.weknoraCloud./uploadConfirm./knowledgeStages. 前缀全量补齐 + common.remove 等，字节级来自 Vue locales；脚本 scripts/parity/merge-settings-keys.mjs 可重复执行）；i18n 33/33。
+- MCP live 取证与缺陷修复（R024/R043-R046/N016）：同后端双端浏览器证据（列表/新增/编辑/两步流/失败态截图+DOM 文本，evidence/2026-09-13-mcp-live-browser-evidence.md）；发现并修复 React 连接步保存必 400（payload 携带空 usage_instructions；Vue buildPayload 从不发送该字段）——buildMcpConnectionPayload 纯函数 + 回归测试 + 浏览器复验 PUT 200。同时移除 Vue 没有的“描述”字段；登记 stdio 选项、测试连接可达性、0/16000 计数器等待决项。
+- 基线：web 399/399、shared 344/344、mobile 75/75、i18n 33/33、typecheck:shared/web/mobile 全绿、build:web 成功。
+- 后端事实登记：PUT /api/v1/mcp-services 对 usage_instructions 强制 1..16000（空串 400；省略字段保持原值）；SSRF 校验默认拒绝不可解析域名（白名单可解）。
+- 下一步：R045 测试连接可达性裁决、MCP stdio 选项裁决、skill 安装时间线 SSE（api-client 缺口）、upload 图谱节、model combobox、各 implementing 行的浏览器/Wails/原生证据推进，以及 74 个 review 行的验收证据批量收集。
+
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
 - **Rows:** any rows proposed for `accepted`; never all rows by default.
 - **Files owned:** `docs/migrations/react/vue-react-parity-matrix.md`, `docs/migrations/react/vue-react-parity-progress.md`, `docs/migrations/react/evidence/vue-react-parity/README.md`, `docs/migrations/react/evidence/vue-react-parity/screenshot-matrix.md`, and the row-specific `docs/migrations/react/evidence/vue-react-parity/<date>-<row-group>.md` evidence file only.
