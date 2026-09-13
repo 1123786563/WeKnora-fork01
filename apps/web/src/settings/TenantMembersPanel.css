@@ -554,6 +554,9 @@
 }
 
 .wk-tenant-members .wk-pager__size {
+  /* Vue t-pagination size select is content-sized (~90px); the legacy
+     .wk-settings-section select width:100% must not stretch it. */
+  width: auto;
   background: var(--wk-surface, #fff);
   border: 1px solid var(--wk-border, #dce3ed);
   border-radius: 6px;
