@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
 import type { createWeKnoraClient } from '@weknora/api-client';
 import { GlobalCommandPalette } from './GlobalCommandPalette.tsx';
+import { NewUserGuide } from '@weknora/views';
 import {
   clearRecentQueries,
   consumeCmdkParam,
@@ -12,6 +13,10 @@ import {
 } from './command-palette.ts';
 import { readReactPlatformState } from './legacy-session.ts';
 import './shell.css';
+// Welcome-tour styles live with the component in @weknora/views; the package
+// itself must stay css-import-free for the shared typecheck, so the shell
+// (which already imports shell.css) pulls it in by relative path.
+import '../../../../packages/views/src/guides/guides.css';
 
 type Client = ReturnType<typeof createWeKnoraClient>;
 
@@ -36,6 +41,8 @@ interface NavItem {
   label: string;
   icon: ReactNode;
   match: (pathname: string) => boolean;
+  /** Anchor for the welcome-tour spotlight (Vue menu.vue data-guide attrs). */
+  guide?: string;
 }
 
 const KB_ACTIVE = (pathname: string): boolean =>
@@ -61,9 +68,9 @@ const ICONS = {
 
 function buildNavItems(t: (key: string) => string, labels: Record<string, string>): NavItem[] {
   return [
-    { key: 'newChat', href: '/platform/creatChat', label: labels.newChat, icon: <Icon path={ICONS.chat} />, match: (p: string) => p === '/platform/creatChat' || p.startsWith('/platform/chat/') },
-    { key: 'knowledgeBases', href: '/platform/knowledge-bases', label: t('common.knowledgeBases'), icon: <Icon path={ICONS.book} />, match: KB_ACTIVE },
-    { key: 'agents', href: '/platform/agents', label: labels.agents, icon: <Icon path={ICONS.bot} />, match: (p: string) => p === '/platform/agents' || p.startsWith('/platform/agents/') || p === '/platform/configuration' },
+    { key: 'newChat', href: '/platform/creatChat', label: labels.newChat, icon: <Icon path={ICONS.chat} />, match: (p: string) => p === '/platform/creatChat' || p.startsWith('/platform/chat/') , guide: 'nav-creatChat' },
+    { key: 'knowledgeBases', href: '/platform/knowledge-bases', label: t('common.knowledgeBases'), icon: <Icon path={ICONS.book} />, match: KB_ACTIVE, guide: 'nav-knowledge-bases' },
+    { key: 'agents', href: '/platform/agents', label: labels.agents, icon: <Icon path={ICONS.bot} />, match: (p: string) => p === '/platform/agents' || p.startsWith('/platform/agents/') || p === '/platform/configuration', guide: 'nav-agents' },
     { key: 'organizations', href: '/platform/organizations', label: labels.organizations, icon: <Icon path={ICONS.users} />, match: (p: string) => p.startsWith('/platform/organizations') },
   ];
 }
@@ -83,6 +90,11 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
   const [pathname, setPathname] = useState(() => window.location.pathname);
   const [collapsed, setCollapsed] = useState(() => window.localStorage.getItem(COLLAPSE_STORAGE_KEY) === 'true');
   const [menuOpen, setMenuOpen] = useState(false);
+  // Welcome tour (Vue mounts NewUserGuide in platform/index.vue). The models
+  // step opens the settings section in place; the shell remembers that it
+  // navigated so leaving the step can return to the previous page, mirroring
+  // Vue's uiStore.openSettings/closeSettings pair.
+  const guideOpenedSettingsRef = useRef(false);
   const [user, setUser] = useState<{ id: string; name: string; email: string; avatar: string }>({ id: '', name: '', email: '', avatar: '' });
 
   // Global command palette (⌘K / Ctrl+K) — R011/N003. See GlobalCommandPalette.tsx.
@@ -173,6 +185,20 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
 
   const navItems = useMemo(() => buildNavItems(t, labels), [t, labels]);
 
+  // Welcome-tour shell callbacks (Vue: uiStore.expandSidebar / openSettings('models')).
+  const guideActions = useMemo(() => ({
+    expandSidebar: () => setCollapsed(false),
+    openModelsSettings: () => {
+      window.history.pushState({}, '', '/platform/settings?section=models');
+      guideOpenedSettingsRef.current = true;
+    },
+    closeGuideSettings: () => {
+      if (!guideOpenedSettingsRef.current) return;
+      guideOpenedSettingsRef.current = false;
+      window.history.back();
+    },
+  }), []);
+
   // KB-list quick filters: the React KB list page reads ?scope=all|mine from
   // the URL. 收藏/最近 from the Vue rail have no backing in the React page
   // this round, so only the two supported scopes are rendered.
@@ -223,7 +249,7 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
               const active = item.match(pathname);
               return (
                 <a key={item.key} href={item.href} className={`plat-shell__item${active ? ' plat-shell__item--active' : ''}`}
-                  aria-current={active ? 'page' : undefined} title={collapsed ? item.label : undefined}>
+                  aria-current={active ? 'page' : undefined} title={collapsed ? item.label : undefined} data-guide={item.guide}>
                   <span className="plat-shell__item-icon">{item.icon}</span>
                   {!collapsed && <span className="plat-shell__item-label">{item.label}</span>}
                 </a>
@@ -242,6 +268,7 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
         <div className="plat-shell__bottom">
           <div className={`plat-shell__user${menuOpen ? ' plat-shell__user--open' : ''}`}>
             <button type="button" className="plat-shell__user-button" aria-haspopup="menu" aria-expanded={menuOpen}
+              data-guide="user-menu"
               onClick={() => setMenuOpen((open) => !open)}>
               <span className="plat-shell__avatar" aria-hidden="true">
                 {user.avatar ? <img src={user.avatar} alt="" /> : <span className="plat-shell__avatar-initial">{initial}</span>}
@@ -281,6 +308,8 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
         onSearch={recordPaletteSearch}
         onClearRecent={clearPaletteRecent}
       />
+      {/* 带遮罩层的新手引导：首次进入自动开启 (Vue platform/index.vue:18). */}
+      <NewUserGuide locale={locale} actions={guideActions} />
     </div>
   );
 }
