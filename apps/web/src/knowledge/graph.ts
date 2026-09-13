@@ -60,6 +60,16 @@ export function mergeGraphData(base: WikiGraphData, incoming: WikiGraphData): Wi
   };
 }
 
+export function graphFrontierNodes(graph: WikiGraphData | null, center: string): WikiGraphNode[] {
+  if (!graph || graph.meta.mode !== 'ego') return [];
+  const degree = new Map<string, number>();
+  for (const edge of graph.edges) {
+    degree.set(edge.source, (degree.get(edge.source) ?? 0) + 1);
+    degree.set(edge.target, (degree.get(edge.target) ?? 0) + 1);
+  }
+  return graph.nodes.filter((node) => node.slug !== center && node.page_type !== 'index' && node.page_type !== 'log' && node.link_count > (degree.get(node.slug) ?? 0));
+}
+
 export function layoutGraphNodes(nodes: readonly WikiGraphNode[], width: number, height: number): GraphNodePosition[] {
   const safeWidth = Math.max(width, 64);
   const safeHeight = Math.max(height, 64);

@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { filterGraphNodes, graphQueryParams, layoutGraphNodes, mergeGraphData, WIKI_GRAPH_TYPES } from './graph.ts';
+import { filterGraphNodes, graphFrontierNodes, graphQueryParams, layoutGraphNodes, mergeGraphData, WIKI_GRAPH_TYPES } from './graph.ts';
 
 const graph = {
   nodes: [
     { slug: 'docs/start', title: 'Start', page_type: 'summary', link_count: 3 },
-    { slug: 'docs/next', title: 'Next', page_type: 'entity', link_count: 1 },
+      { slug: 'docs/next', title: 'Next', page_type: 'entity', link_count: 2 },
   ],
   edges: [{ source: 'docs/start', target: 'docs/next' }],
   meta: { mode: 'overview', total: 2, returned: 2, truncated: false },
@@ -59,4 +59,17 @@ test('merges bloom results without duplicating nodes or edges and preserves fami
   assert.equal(merged.nodes[0]?.familiar, true);
   assert.equal(merged.edges.length, 2);
   assert.equal(merged.meta.returned, 3);
+});
+
+test('finds expandable ego nodes while excluding the center and super-nodes', () => {
+  const frontier = graphFrontierNodes({
+    ...graph,
+    meta: { ...graph.meta, mode: 'ego', center: 'docs/start' },
+    nodes: [
+      ...graph.nodes,
+      { slug: 'docs/index', title: 'Index', page_type: 'index', link_count: 20 },
+      { slug: 'docs/log', title: 'Log', page_type: 'log', link_count: 20 },
+    ],
+  }, 'docs/start');
+  assert.deepEqual(frontier.map((node) => node.slug), ['docs/next']);
 });

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { WikiGraphData, WeKnoraClient } from '@weknora/api-client';
 import { Button, Card, Status } from '@weknora/ui';
-import { filterGraphNodes, graphQueryParams, layoutGraphNodes, mergeGraphData, WIKI_GRAPH_TYPES } from './graph.ts';
+import { filterGraphNodes, graphFrontierNodes, graphQueryParams, layoutGraphNodes, mergeGraphData, WIKI_GRAPH_TYPES } from './graph.ts';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 
 export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: WeKnoraClient; knowledgeBaseId: string; slug?: string }) {
@@ -65,6 +65,19 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
     }
   }
 
+  async function growFrontier() {
+    const candidates = graphFrontierNodes(graph, center);
+    if (!graph || candidates.length === 0) return;
+    setStatus({ kind: 'loading' });
+    try {
+      const incoming = await Promise.all(candidates.map((node) => client.wiki.graph(knowledgeBaseId, graphQueryParams('ego', node.slug, depth, selectedTypes))));
+      setGraph(incoming.reduce((current, next) => mergeGraphData(current, next), graph));
+      setStatus({ kind: 'success' });
+    } catch (error) {
+      setStatus({ kind: 'error', message: error instanceof Error ? error.message : t('knowledgeBase.graph.loadFailed') });
+    }
+  }
+
   useEffect(() => { void load(mode, mode === 'ego' ? center : undefined); }, [client, knowledgeBaseId, selectedTypes, depth]);
   useEffect(() => {
     const keyword = query.trim();
@@ -110,6 +123,7 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
     };
     return labels[graphType] ?? graphType;
   };
+  const frontier = useMemo(() => graphFrontierNodes(graph, center), [graph, center]);
 
   return (
     <main className="wk-page">
@@ -121,6 +135,7 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
         </div>
         <div className="wk-list-actions">
           {mode === 'ego' ? <Button type="button" onClick={() => void load('overview')}>{t('wikiBrowser.backToOverview')}</Button> : null}
+          {frontier.length > 0 ? <Button type="button" onClick={() => void growFrontier()} disabled={status.kind === 'loading'} title={t('wikiBrowser.growFrontierTitle', { count: frontier.length })}>{t('wikiBrowser.growFrontier', { count: frontier.length })}</Button> : null}
           <Button type="button" onClick={() => void load(mode, center || undefined)} disabled={status.kind === 'loading'}>{t('common.refresh')}</Button>
         </div>
       </header>

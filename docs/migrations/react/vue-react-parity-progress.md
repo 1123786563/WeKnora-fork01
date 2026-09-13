@@ -1520,3 +1520,10 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - `mergeGraphData` 增加纯逻辑契约测试，覆盖重复节点/边、熟悉标记传播、总数更新；键盘 Enter/Space 节点激活也保持仅打开详情并阻止 Space 默认滚动。
 - 验证：图谱纯逻辑测试 6/6；`pnpm test:web` 800/800；Web TypeScript 检查通过；`git diff --check` 通过。
 - 证据层：本轮为静态源码/单元测试/全 Web 测试证据；未宣称真实 API、同视口浏览器截图、Vue computed-style、Wails 或移动端通过。仍需 frontier 批量扩展、拖拽/缩放/平移、图例浮层定位/动效、Markdown reader 和跨平台验证。
+
+## 2026-09-14 Round N+17 — N012 ego frontier 批量扩展
+
+- React 图谱补齐 Vue `growFrontier` 的基本行为：在 ego 图中依据当前可见度数与节点 `link_count` 计算可扩展节点，排除中心及 Index/Log 超级节点；点击“扩张边缘 (N)”并行获取各候选 ego 子图，使用去重合并器叠加结果，加载期间禁用操作并保留错误重试状态。
+- 新增 `graphFrontierNodes` 测试，覆盖中心/超级节点排除与隐藏邻居识别；此前节点单击/抽屉 bloom 语义继续保留。
+- 验证：图谱纯逻辑测试 7/7；`pnpm test:web` 801/801；Web TypeScript 检查通过；`git diff --check` 通过。
+- 证据层：本轮仅有静态源码、单元测试与全 Web 测试证据，未标记真实后端、同视口浏览器、computed-style、Wails 或移动端验收。剩余 N012：真实画布拖拽/缩放/平移与布局保持、Vue 图例浮层定位/动效、frontier/bloom 实际后端状态提示、Markdown reader 和跨平台证据。
