@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { WikiGraphData, WeKnoraClient } from '@weknora/api-client';
 import { Button, Card, Status } from '@weknora/ui';
-import { filterGraphNodes, graphQueryParams, layoutGraphNodes } from './graph.ts';
+import { filterGraphNodes, graphQueryParams, layoutGraphNodes, WIKI_GRAPH_TYPES } from './graph.ts';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 
 export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: WeKnoraClient; knowledgeBaseId: string; slug?: string }) {
@@ -13,7 +13,7 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
   const [center, setCenter] = useState(slug ?? '');
   const [depth, setDepth] = useState(1);
   const [query, setQuery] = useState('');
-  const [type, setType] = useState('all');
+  const [selectedTypes, setSelectedTypes] = useState<string[]>(() => [...WIKI_GRAPH_TYPES]);
   const [searchResults, setSearchResults] = useState<Array<{ title: string; slug: string }>>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [drawerNode, setDrawerNode] = useState<{ slug: string; title: string; page_type: string; link_count: number } | null>(null);
@@ -24,7 +24,7 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
     setStatus({ kind: 'loading' });
     try {
       const result = await client.wiki.graph(knowledgeBaseId, {
-        ...graphQueryParams(nextMode, nextCenter ?? '', depth, type),
+        ...graphQueryParams(nextMode, nextCenter ?? '', depth, selectedTypes),
       });
       setGraph(result);
       setMode(nextMode);
@@ -49,7 +49,7 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
     }
   }
 
-  useEffect(() => { void load(mode, mode === 'ego' ? center : undefined); }, [client, knowledgeBaseId, type, depth]);
+  useEffect(() => { void load(mode, mode === 'ego' ? center : undefined); }, [client, knowledgeBaseId, selectedTypes, depth]);
   useEffect(() => {
     const keyword = query.trim();
     if (keyword.length < 2) { setSearchResults([]); setSearchLoading(false); return; }
@@ -77,10 +77,23 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [drawerNode]);
 
-  const visible = useMemo(() => graph ? filterGraphNodes(graph, { query }) : null, [graph, query]);
+  const visible = useMemo(() => graph ? filterGraphNodes(graph, { query, types: selectedTypes }) : null, [graph, query, selectedTypes]);
   const positions = useMemo(() => visible ? layoutGraphNodes(visible.nodes, 760, 420) : [], [visible]);
   const positionBySlug = useMemo(() => new Map(positions.map((position) => [position.slug, position])), [positions]);
-  const types = useMemo(() => [...new Set(graph?.nodes.map((node) => node.page_type) ?? [])].sort(), [graph]);
+  const toggleGraphType = (graphType: string) => {
+    setSelectedTypes((current) => current.includes(graphType) ? current.filter((item) => item !== graphType) : [...current, graphType]);
+  };
+  const graphTypeLabel = (graphType: string) => {
+    const labels: Record<string, string> = {
+      summary: t('wikiBrowser.filterSummary'),
+      entity: t('wikiBrowser.filterEntity'),
+      concept: t('wikiBrowser.filterConcept'),
+      synthesis: t('wikiBrowser.filterSynthesis'),
+      comparison: t('wikiBrowser.filterComparison'),
+      index: t('wikiBrowser.indexTitle'),
+    };
+    return labels[graphType] ?? graphType;
+  };
 
   return (
     <main className="wk-page">
@@ -98,8 +111,20 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
       <Card>
         <div className="wk-toolbar" role="search">
           <label>{t('wikiBrowser.page.search')} <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('wikiBrowser.searchPlaceholder')} aria-autocomplete="list" aria-controls="wk-graph-search-results" />{searchLoading ? <Status>{t('wikiBrowser.loading')}</Status> : null}{searchResults.length > 0 ? <ul id="wk-graph-search-results" className="wk-graph-search-results" aria-label={t('wikiBrowser.page.search')}>{searchResults.map((result) => <li key={result.slug}><button type="button" onClick={() => { setQuery(result.slug); void openNode({ slug: result.slug, title: result.title, page_type: 'page', link_count: 0 }); void load('ego', result.slug); }}>{result.title}<span>{result.slug}</span></button></li>)}</ul> : null}</label>
-          <label>{t('knowledgeBase.graph.type')} <select value={type} onChange={(event) => setType(event.target.value)}><option value="all">{t('knowledgeBase.graph.allTypes')}</option>{types.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
           <label>{t('knowledgeBase.graph.depth')} <select value={String(depth)} onChange={(event) => setDepth(Number(event.target.value))}><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></label>
+          <div className="wk-graph-type-filters" role="group" aria-label={t('knowledgeBase.graph.type')}>
+            {WIKI_GRAPH_TYPES.map((graphType) => <button key={graphType} type="button" className={selectedTypes.includes(graphType) ? 'is-selected' : ''} aria-pressed={selectedTypes.includes(graphType)} onClick={() => toggleGraphType(graphType)}><span className={`wk-graph-legend-dot is-${graphType}`} aria-hidden="true" />{graphTypeLabel(graphType)}</button>)}
+          </div>
+          <details className="wk-graph-help">
+            <summary>{t('wikiBrowser.helpButtonTitle')}</summary>
+            <dl>
+              <div><dt>{t('wikiBrowser.helpClickAction')}</dt><dd>{t('wikiBrowser.helpClickDesc')}</dd></div>
+              <div><dt>{t('wikiBrowser.helpDblClickAction')}</dt><dd>{t('wikiBrowser.helpDblClickDesc')}</dd></div>
+              <div><dt>{t('wikiBrowser.helpShiftClickAction')}</dt><dd>{t('wikiBrowser.helpShiftClickDesc')}</dd></div>
+              <div><dt>{t('wikiBrowser.helpDragAction')}</dt><dd>{t('wikiBrowser.helpDragDesc')}</dd></div>
+              <div><dt>{t('wikiBrowser.helpZoomAction')}</dt><dd>{t('wikiBrowser.helpZoomDesc')}</dd></div>
+            </dl>
+          </details>
         </div>
         {status.kind === 'loading' ? <Status>{t('wikiBrowser.graphEmpty')}</Status> : null}
         {status.kind === 'error' ? <><Status tone="error">{status.message}</Status><Button type="button" onClick={() => void load(mode, center || undefined)}>{t('wikiBrowser.retryLoadResources')}</Button></> : null}
@@ -108,9 +133,10 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
           {visible.nodes.length === 0 ? <Status>{t('wikiBrowser.graphNoData')}</Status> : <>
             <svg className="wk-knowledge-graph" viewBox="0 0 760 420" role="img" aria-label={t('knowledgeBase.graph.ariaLinks')}>
               {visible.edges.map((edge) => { const source = positionBySlug.get(edge.source); const target = positionBySlug.get(edge.target); return source && target ? <line key={`${edge.source}-${edge.target}`} x1={source.x} y1={source.y} x2={target.x} y2={target.y} className="wk-knowledge-graph-edge" /> : null; })}
-              {visible.nodes.map((node, index) => { const position = positions[index]!; return <g key={node.slug} className="wk-knowledge-graph-node" role="button" tabIndex={0} aria-label={`${node.title} · ${node.slug}`} onClick={() => { void openNode(node); void load('ego', node.slug); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { void openNode(node); void load('ego', node.slug); } }}><circle cx={position.x} cy={position.y} r={Math.min(24, 10 + Math.log2(node.link_count + 1) * 4)} /><text x={position.x} y={position.y + 40} textAnchor="middle">{node.title.length > 24 ? `${node.title.slice(0, 23)}…` : node.title}</text></g>; })}
+              {visible.nodes.map((node, index) => { const position = positions[index]!; return <g key={node.slug} className={`wk-knowledge-graph-node is-${node.page_type}${node.familiar ? ' is-familiar' : ''}`} role="button" tabIndex={0} aria-label={`${node.title} · ${node.slug}`} onClick={() => { void openNode(node); void load('ego', node.slug); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { void openNode(node); void load('ego', node.slug); } }}><circle cx={position.x} cy={position.y} r={Math.min(24, 10 + Math.log2(node.link_count + 1) * 4)} /><text x={position.x} y={position.y + 40} textAnchor="middle">{node.title.length > 24 ? `${node.title.slice(0, 23)}…` : node.title}</text></g>; })}
             </svg>
             <ul className="wk-list" aria-label={t('wikiBrowser.tabGraph')}>{visible.nodes.map((node) => <li key={node.slug}><div className="wk-list-item-copy"><strong>{node.title}</strong><span>{node.slug} · {node.page_type} · {node.link_count} {t('knowledgeBase.graph.links')}{node.familiar ? ` · ${t('wikiBrowser.legendFamiliar')}` : ''}</span></div><Button type="button" onClick={() => { void openNode(node); void load('ego', node.slug); }}>{t('wikiBrowser.expandNeighbors')}</Button></li>)}</ul>
+            {visible.nodes.some((node) => node.familiar) ? <p className="wk-graph-familiar-legend"><span className="wk-graph-familiar-ring" aria-hidden="true" />{t('wikiBrowser.legendFamiliar')}</p> : null}
           </>}
         </> : null}
       </Card>

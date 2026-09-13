@@ -11,17 +11,20 @@ export interface GraphNodePosition {
   y: number;
 }
 
+export const WIKI_GRAPH_TYPES = ['summary', 'entity', 'concept', 'synthesis', 'comparison', 'index'] as const;
+
 export function graphQueryParams(
   mode: 'overview' | 'ego',
   center: string,
   depth: number,
-  type: string,
+  type: string | readonly string[],
 ): WikiGraphQueryParams {
+  const types = typeof type === 'string' ? (type === 'all' ? [] : [type]) : type.filter(Boolean);
   return {
     mode,
     ...(mode === 'ego' && center ? { center, depth } : {}),
     limit: 500,
-    ...(type === 'all' ? {} : { types: [type] }),
+    ...(types.length === 0 || types.length === WIKI_GRAPH_TYPES.length && WIKI_GRAPH_TYPES.every((item) => types.includes(item)) ? {} : { types: [...types] }),
   };
 }
 

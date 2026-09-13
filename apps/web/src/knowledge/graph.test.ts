@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { filterGraphNodes, graphQueryParams, layoutGraphNodes } from './graph.ts';
+import { filterGraphNodes, graphQueryParams, layoutGraphNodes, WIKI_GRAPH_TYPES } from './graph.ts';
 
 const graph = {
   nodes: [
@@ -28,5 +28,17 @@ test('lays out every graph node at a bounded non-overlapping display position', 
 test('builds a type-filter query without losing the active ego center', () => {
   assert.deepEqual(graphQueryParams('ego', 'docs/next', 2, 'entity'), {
     mode: 'ego', center: 'docs/next', depth: 2, limit: 500, types: ['entity'],
+  });
+});
+
+test('omits the type query when every Vue graph legend type is active', () => {
+  assert.deepEqual(graphQueryParams('overview', '', 1, WIKI_GRAPH_TYPES), {
+    mode: 'overview', limit: 500,
+  });
+});
+
+test('preserves a multi-type graph legend selection in the API query', () => {
+  assert.deepEqual(graphQueryParams('overview', '', 1, ['summary', 'entity']), {
+    mode: 'overview', limit: 500, types: ['summary', 'entity'],
   });
 });

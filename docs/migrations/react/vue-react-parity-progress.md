@@ -1506,3 +1506,10 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - React `KnowledgeGraphPage` 对照 Vue `WikiBrowser.vue` 收口一组可复核差异：图谱说明、搜索、加载、空数据、重试、返回概览、刷新、节点统计、熟悉资料标记、邻居展开、类型/深度筛选、SVG 可访问名称及抽屉内容均接入共享翻译；补齐图谱抽屉 `aria-modal` 与 Escape 关闭语义，并将未知图谱加载失败兜底纳入 locale supplement。
 - 验证：图谱纯逻辑测试 3/3；`pnpm test:web` 797/797；`pnpm --filter @weknora/web exec tsc -p tsconfig.json --noEmit --incremental false --pretty false` 通过；`git diff --check` 通过。
 - 证据层：本轮为静态源码/单元测试/全 Web 测试证据；尚未构成 Vue 与 React 同视口浏览器截图、真实后端图谱、Wails 桌面或移动端验收。N012 仍保留 Vue 图例/帮助浮层、熟悉资料视觉环、frontier/bloom 邻居语义、拖拽/缩放/平移、抽屉 computed-style 与真实后端验证等差异。
+
+## 2026-09-14 Round N+15 — N012 图谱多类型图例与帮助面板
+
+- React 图谱页新增 Vue 同语义的多类型图例开关（summary/entity/concept/synthesis/comparison/index），通过现有 `types: string[]` API 查询并在客户端同步过滤；节点颜色与 Vue 图例色值对应，熟悉资料节点增加橙色环。
+- 新增图谱操作帮助面板（单击、双击、Shift 单击、拖拽、滚轮），类型筛选组使用可访问的 `aria-pressed`，图谱 SVG 保留类型和熟悉资料视觉状态；共享图谱查询 helper 支持全选时省略 types、部分选择时保留多类型数组。
+- 验证：图谱纯逻辑测试 5/5；`pnpm test:web` 799/799；Web TypeScript 检查通过；`git diff --check` 通过。
+- 证据层：本轮仍为静态源码/单元测试/全 Web 测试证据，未标记 Vue 与 React 同视口浏览器、真实后端、Wails 或移动端验收。剩余 N012 差异包括实际画布拖拽/缩放/平移、frontier/bloom 邻居合并与状态提示、Vue 浮层定位/动效、抽屉 reader Markdown 行为及跨平台证据。

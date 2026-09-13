@@ -690,7 +690,14 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-knowledge-graph { display: block; width: 100%; min-height: 24rem; margin: 1rem 0; border: 1px solid #dce3ed; border-radius: 8px; background: #fbfcfe; }
 .wk-knowledge-graph-edge { stroke: #b5c1d3; stroke-width: 1.5; }
 .wk-knowledge-graph-node { cursor: pointer; outline: none; }
-.wk-knowledge-graph-node circle { fill: #2e6de6; stroke: #1849a9; stroke-width: 2; }
+.wk-knowledge-graph-node circle { fill: #98a2b3; stroke: #667085; stroke-width: 2; }
+.wk-knowledge-graph-node.is-summary circle { fill: #0052d9; stroke: #003b9a; }
+.wk-knowledge-graph-node.is-entity circle { fill: #2ba471; stroke: #147d54; }
+.wk-knowledge-graph-node.is-concept circle { fill: #e37318; stroke: #b4570d; }
+.wk-knowledge-graph-node.is-synthesis circle { fill: #0594fa; stroke: #0575c5; }
+.wk-knowledge-graph-node.is-comparison circle { fill: #d54941; stroke: #a52f29; }
+.wk-knowledge-graph-node.is-index circle { fill: #7a5af8; stroke: #5b3ec4; }
+.wk-knowledge-graph-node.is-familiar circle { stroke: #f79009; stroke-width: 4; }
 .wk-knowledge-graph-node:hover circle, .wk-knowledge-graph-node:focus circle { fill: #6941c6; }
 .wk-knowledge-graph-node text { fill: #27364d; font-size: 12px; pointer-events: none; }
 .wk-graph-drawer { background: #fff; border: 1px solid #d8e0eb; border-radius: 8px; box-shadow: 0 12px 32px rgba(31, 52, 84, .14); margin-top: 1rem; padding: 1rem; }
@@ -699,6 +706,19 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-toolbar label { position: relative; }
 .wk-graph-search-results { background: #fff; border: 1px solid #d8e0eb; border-radius: 6px; box-shadow: 0 8px 20px rgba(31, 52, 84, .12); list-style: none; margin: .35rem 0 0; max-height: 14rem; overflow: auto; padding: .25rem; position: absolute; width: min(24rem, 100%); z-index: 3; }
 .wk-graph-search-results li button { align-items: flex-start; background: transparent; border: 0; border-radius: 4px; color: #27364d; cursor: pointer; display: flex; flex-direction: column; gap: .15rem; padding: .5rem .6rem; text-align: left; width: 100%; }
+.wk-graph-type-filters { align-items: center; display: flex; flex-wrap: wrap; gap: .35rem; }
+.wk-graph-type-filters button { align-items: center; background: #fff; border: 1px solid #d8e0eb; border-radius: 999px; color: #52627a; cursor: pointer; display: inline-flex; gap: .35rem; padding: .35rem .6rem; }
+.wk-graph-type-filters button:hover, .wk-graph-type-filters button:focus-visible { border-color: #2e6de6; color: #1849a9; }
+.wk-graph-type-filters button.is-selected { background: #eef4ff; border-color: #2e6de6; color: #1849a9; }
+.wk-graph-legend-dot { background: #98a2b3; border-radius: 50%; display: inline-block; height: .55rem; width: .55rem; }
+.wk-graph-legend-dot.is-summary { background: #0052d9; } .wk-graph-legend-dot.is-entity { background: #2ba471; } .wk-graph-legend-dot.is-concept { background: #e37318; } .wk-graph-legend-dot.is-synthesis { background: #0594fa; } .wk-graph-legend-dot.is-comparison { background: #d54941; } .wk-graph-legend-dot.is-index { background: #7a5af8; }
+.wk-graph-help { color: #52627a; font-size: .875rem; margin-top: .5rem; }
+.wk-graph-help summary { cursor: pointer; display: inline-block; }
+.wk-graph-help dl { background: #fff; border: 1px solid #d8e0eb; border-radius: 6px; box-shadow: 0 8px 20px rgba(31, 52, 84, .12); margin: .5rem 0 0; max-width: 34rem; padding: .65rem .8rem; }
+.wk-graph-help dl div { display: grid; gap: .75rem; grid-template-columns: 9rem 1fr; padding: .2rem 0; }
+.wk-graph-help dt { font-weight: 600; } .wk-graph-help dd { margin: 0; }
+.wk-graph-familiar-legend { align-items: center; color: #52627a; display: flex; gap: .4rem; margin: .5rem 0 0; }
+.wk-graph-familiar-ring { border: 2px solid #f79009; border-radius: 50%; display: inline-block; height: .75rem; width: .75rem; }
 .wk-graph-search-results li button:hover, .wk-graph-search-results li button:focus-visible { background: #eef5ff; outline: none; }
 .wk-graph-search-results li button span { color: #718096; font-size: .75rem; }
 .wk-data-source-log-stats { color: #718096; font-size: .75rem; }
