@@ -1252,3 +1252,11 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - FAQ A2 轮询接线双轨收敛：本方实现（poll effect + collapse + strip pass-through，jsdom faq-import-poll 钉死 processing→completed→collapse 全链）与并发协调者的 4651ea79（同名契约）汇合，最终以 4651ea79 入库（含 api-client index 的 FAQImportProgress 导出）；faq 套件 20/20。
 - 门禁快照（603de8c6→ 后）：shared 419/419、web 672/672、mobile 118/118、build ✓ 3.42s、typecheck 0。
 - 剩余队列不变：A3 faqManager.import.* 目录回填、A4 Excel 解析依赖决策、FAQ B1-B7、R013 embed 抽屉 + API playground SSE、R009 图标轨拖拽展开/org 轨、acceptance 证据批扫（Wails/iOS/Android）、mobile devDeps lockfile、六语待用户答复。
+
+## 2026-09-14 Round N+7 协调条目 — A4 裁决落地派发 + rail 展开切片
+
+- A4 裁决：采用 Vue 同源 vendored xlsx（frontend/packages/xlsx-0.20.2.tgz，本地工件无外部 registry 获取）——React 侧拷贝至 apps/web/vendor/ 并以 file: 协议声明，parseExcelFile 按 Vue :1999-2030 列语义逐字移植。派发 A4 Excel 导入切片（独占 apps/web/package.json deps/vendor/faq import-export）。
+- R009 图标轨拖拽展开切片派发（Vue ListSpaceSidebar collapsed-strip ↔ expanded-panel 双态语义；独占 App.tsx rail 部分 + knowledge-list.css）。
+- live 栈确认仍在运行（backend :8080 / Vue :5180 / React :5181）。
+- 并发协调者 R043（MCP server docs popup）WIP 在树，本方避开其文件。
+
