@@ -324,3 +324,20 @@ test('the wizard walks all steps with localized copy and no raw key leaks', asyn
   assert.ok(!text.includes('integrations.wizard.'), 'no raw wizard footer keys');
   assert.ok(!text.includes('undefined'), 'no undefined leaked into the DOM');
 });
+
+test('embed drawer closes through the Vue cancel surfaces', async () => {
+  const container = await mountEmbedPage();
+  await act(async () => { (Array.from(container.querySelectorAll<HTMLButtonElement>('.wk-channel-card--add'))[0]).click(); });
+  assert.ok(container.querySelector('.wk-integration-drawer'), 'drawer mounted');
+
+  await act(async () => {
+    const close = container.querySelector<HTMLButtonElement>('.wk-integration-drawer-close');
+    assert.ok(close);
+    close!.click();
+  });
+  assert.equal(container.querySelector('.wk-integration-drawer'), null, 'header close unmounts drawer');
+
+  await act(async () => { (Array.from(container.querySelectorAll<HTMLButtonElement>('.wk-channel-card--add'))[0]).click(); });
+  await act(async () => { window.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+  assert.equal(container.querySelector('.wk-integration-drawer'), null, 'Escape unmounts drawer');
+});
