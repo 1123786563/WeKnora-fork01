@@ -42,7 +42,8 @@
 | W05 | **done** | .worktrees/craft-w05 / codex/craft-w05 | 8412e9a0 | 首轮 FAIL（turns 归档死代码）→修复 37d4433c→定向复审 PASS → 合入 befb5e48；发现并修复 .gitignore 未锚定 web/ 吞 apps/web 新文件问题（协调器锚定+产物 ignore，d9054bd0） |
 | W06 | **done** | .worktrees/craft-w06 / codex/craft-w06 | d9054bd0 | HEAD 9e6481bf 审查 PASS_WITH_NITS（11/11，审查者独立复跑 6/6+DB 哈希核对）→ 合入 f931f02b。**B 阶段全部完成**（15/27）。留档：R02↔R04 messageID 上游立项、Scan 叙事修正、harness 进程组清理、decide 路由/preview 回写归 C 阶段决策 |
 | C01 | **done** | .worktrees/craft-c01 / codex/craft-c01 | f931f02b | HEAD 072201a7 审查 PASS_WITH_NITS（14/14，真实 ACL 入口核验）→ 合入 3e05038b；Build 端点+挂载协调器裁定归 C06 生产装配（与 C05 协调文件） |
-| C03 | implementing | .worktrees/craft-c03 / codex/craft-c03 | 3e05038b | 已派发（replayAction+退避+原子快照+浏览器三时点刷新） |
+| C03 | review | .worktrees/craft-c03 / codex/craft-c03 | 3e05038b | HEAD 2e721e2f：replayAction+退避+原子快照+attempt 替换语义；浏览器 2/2+W06 回归 6/6；harness 进程组修复；审查者进行中 |
+| C02 | implementing | .worktrees/craft-c02 / codex/craft-c02 | 256fbb78 | 已派发（决定投递+outbox+kill 故障矩阵+双标签浏览器；挂载接线留集成） |
 | C04 | **done** | .worktrees/craft-c04 / codex/craft-c04 | f931f02b | HEAD 7d0aebc4 审查 PASS_WITH_NITS（19/19+矩阵复验）→ 合入 256fbb78；容器装配裁定归 C05（含 nit-2/3） |
 | C05 | implementing | .worktrees/craft-c05 / codex/craft-c05 | 256fbb78 | 已派发（快照 Capture/Restore+迁移 000126/000046+C04 装配落实）；C02 排队等席位 |
 | C02 | ready（排队） | — | — | 等实现席位（C03 完成后即派） |
