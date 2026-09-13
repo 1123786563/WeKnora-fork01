@@ -1059,6 +1059,13 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - **Review gate:** a row can move to `accepted` only when all applicable platform evidence and unresolved backend decisions are closed or explicitly out-of-scope by user decision.
 - **Commit boundary:** one acceptance-docs commit per row group.
 
+## 2026-09-13 Round N+4 — 第四批派发 + 六语缺口正式登记
+
+- **六语缺口登记（目标 §二.7）**：目标要求六种语言；仓库语言注册表 packages/i18n/src/index.ts supportedLocales 仅五种（zh-CN/en-US/ja-JP/ko-KR/ru-RU），Vue frontend/src/i18n 同为五语。第六种语言的名称与基准文件不存在，按目标要求记录缺口并询问用户；在用户答复前，所有语言覆盖结论一律以"五种仓库语言"表述，不写成六语完成，也不猜测第六语。
+- 第四批并行派发（4，文件归属互斥）：R016 模型 chip（composer.tsx + ChatRoutePage.tsx + chat.css chip 块）、N003 面板作用域 ⌘1-9（GlobalCommandPalette*）、settings chrome 铺开 + rail hover（settings CSS 家族）、R031 openSession 导航（SettingsPage.tsx + SandboxSettingsPanel.tsx）。
+- live 栈仍在运行：backend :8080、Vue :5180、React :5181。
+
+
 ## 2026-09-13 Round N+3（终）— 双切片集成收尾 + 全门禁绿
 
 - shell-sessions-header 集成（25ad0fed，切片实施 + 协调者严格 parity 裁决调整）：保留 可见的 我的对话 标题（真 parity）；否决其 ⌘1 徽章 + 全局键绑定（Vue 中该指纹属命令面板作用域——多余行为按目标剔除），测试 (b)/(d) 改为钉死"无徽章/无全局导航"；顺带修复侧栏选中态颜色分歧（React 蓝 → Vue .menu_item_active #f3f3f3+#07c05f）。platform 101/101。
