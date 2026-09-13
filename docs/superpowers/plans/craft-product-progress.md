@@ -44,7 +44,7 @@
 | C01 | **done** | .worktrees/craft-c01 / codex/craft-c01 | f931f02b | HEAD 072201a7 审查 PASS_WITH_NITS（14/14，真实 ACL 入口核验）→ 合入 3e05038b；Build 端点+挂载协调器裁定归 C06 生产装配（与 C05 协调文件） |
 | C03 | **done** | .worktrees/craft-c03 / codex/craft-c03 | 3e05038b | HEAD 2e721e2f 审查 PASS_WITH_NITS（19/19+W04 三 nit 闭合）→ 合入 0302b8dd；128/128 复验；W05 待办：statusLabel 补 idle 措辞 |
 | C02 | **done** | .worktrees/craft-c02 / codex/craft-c02 | 256fbb78 | 审查 PASS_WITH_NITS（18/18+SIGKILL 矩阵）→ 合入 2b9f7b30+冲突解 88065cfe（package.json 与 C03 脚本并集）；迁移 000127/000047；交互面板一行挂载留 C06 |
-| D02 | review | .worktrees/craft-d02 / codex/craft-d02 | ae664bcb | HEAD 0f7d022a：LibreOffice 实际重算证据（fixture 入库）、浏览器 4/4+W06 回归 6/6、门禁 fail-closed；EntryPath 接线留集成（D01 同点）；审查者进行中 |
+| D02 | **done** | .worktrees/craft-d02 / codex/craft-d02 | ae664bcb | HEAD 0f7d022a 审查 PASS_WITH_NITS（10/10，LO 重算 fixture 独立复核）→ 合入 de94676e（views exports 并集冲突解）；5 条开闸前接线清单留 D01/集成 |
 | C06 | implementing | .worktrees/craft-c06 / codex/craft-c06 | 88065cfe | 已派发（SkillPin+受控追加检索+三项协调器指派收尾） |
 | C04 | **done** | .worktrees/craft-c04 / codex/craft-c04 | f931f02b | HEAD 7d0aebc4 审查 PASS_WITH_NITS（19/19+矩阵复验）→ 合入 256fbb78；容器装配裁定归 C05（含 nit-2/3） |
 | C05 | **done** | .worktrees/craft-c05 / codex/craft-c05 | 256fbb78 | HEAD faf500e9 审查 PASS_WITH_NITS（21/21，安全闭环无伪造路径）→ 合入 ae664bcb；迁移 000126/000046；C04 装配落实；C06 接线提示与 6 卫生 nit 留档 |
