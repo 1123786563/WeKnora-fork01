@@ -5,7 +5,7 @@ import { Button, Status } from '@weknora/ui';
 import { formatMessage, type Locale } from '@weknora/i18n';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 import { computeKBPermissions, type KBSurfaceKB, type KBSurfaceMe } from '../knowledge/permissions.ts';
-import { normalizeFAQPayload, parseFAQImportText } from './import-export.ts';
+import { normalizeFAQPayload, parseExcelFile, parseFAQImportText } from './import-export.ts';
 import './faq.css';
 
 // FAQ knowledge-base page, rebuilt against the Vue baseline
@@ -783,12 +783,18 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
     catch (error) { setMessage({ tone: 'error', text: error instanceof Error ? error.message : 'Unable to delete FAQ entries' }); }
   }
   // Vue processFile (FAQEntryManager.vue:1900): parse immediately, surface the
-  // row count as an in-dialog preview; Excel needs the Vue-side parser (handoff).
+  // row count as an in-dialog preview; Excel goes through parseExcelFile
+  // (FAQEntryManager.vue:1999) on the vendored xlsx-0.20.2 build.
   function handleImportFile(file: File) {
     setImportFile(file);
     setImportPreview([]);
     const format = importFormatFromName(file.name);
-    if (format === 'excel') { setMessage({ tone: 'warning', text: t('knowledgeEditor.faqImport.unsupportedFormat') }); return; }
+    if (format === 'excel') {
+      void parseExcelFile(file)
+        .then((rows) => setImportPreview(rows))
+        .catch(() => { setMessage({ tone: 'error', text: t('knowledgeEditor.faqImport.parseFailed') }); setImportPreview([]); });
+      return;
+    }
     void file.text().then((text) => {
       try { setImportPreview(parseFAQImportText(text, format)); }
       catch { setMessage({ tone: 'error', text: t('knowledgeEditor.faqImport.parseFailed') }); setImportPreview([]); }
@@ -798,10 +804,9 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
     if (!importFile) return;
     setImportBusy(true); setMessage(null);
     try {
-      const text = await importFile.text();
       const format = importFormatFromName(importFile.name);
-      if (format === 'excel') throw new Error(t('knowledgeEditor.faqImport.unsupportedFormat'));
-      const imported = parseFAQImportText(text, format);
+      // Vue parseExcelFile (FAQEntryManager.vue:1999) — binary parse for .xlsx/.xls.
+      const imported = format === 'excel' ? await parseExcelFile(importFile) : parseFAQImportText(await importFile.text(), format);
       const result = await faq.upsert(knowledgeBaseId, { entries: imported, mode: importMode });
       setImportOpen(false); setImportFile(null); setImportPreview([]);
       // Vue FAQEntryManager.vue:2091-2165 — the strip replaces the message

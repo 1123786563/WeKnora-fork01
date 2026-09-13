@@ -1,4 +1,5 @@
 import type { FAQEntry, FAQEntryPayload } from '@weknora/api-client';
+import * as XLSX from 'xlsx';
 
 export type FAQImportFormat = 'json' | 'csv';
 
@@ -61,6 +62,86 @@ export function parseFAQImportText(text: string, format: FAQImportFormat): FAQEn
       similar_questions: readList(fields[column('similar_questions', 1)] ?? ''),
       negative_questions: readList(fields[column('negative_questions', 2)] ?? ''),
       answers: readList(fields[column('answers', 3)] ?? ''),
+    });
+  });
+}
+
+// Vue FAQEntryManager.vue:2035-2051 — '##' is the only list delimiter so answers
+// containing commas/semicolons survive; a value without '##' stays one item.
+function splitByDelimiter(value?: string): string[] {
+  if (!value) return [];
+  const trimmedValue = value.trim();
+  if (!trimmedValue) return [];
+  if (trimmedValue.includes('##')) {
+    return trimmedValue.split('##').map((item) => item.trim()).filter(Boolean);
+  }
+  return [trimmedValue];
+}
+
+// Vue FAQEntryManager.vue:2053-2064 — TRUE/1/是/YES → true, FALSE/0/否/NO → false,
+// empty → undefined, anything else → the caller's default (Excel passes false).
+function parseBooleanField(value: string | undefined, defaultValue: boolean): boolean | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim().toUpperCase();
+  if (normalized === 'TRUE' || normalized === '1' || normalized === '是' || normalized === 'YES') return true;
+  if (normalized === 'FALSE' || normalized === '0' || normalized === '否' || normalized === 'NO') return false;
+  return defaultValue;
+}
+
+// Vue FAQEntryManager.vue:2066-2074 normalizePayload — deliberately lenient
+// (no "question required" throw): invalid rows are reported per-row by the
+// backend import task, mirroring the Vue flow. Undefined tag_id/is_enabled are
+// omitted so the request body matches the JSON import path's wire format.
+function normalizeExcelPayload(payload: {
+  standard_question: string;
+  answers: string[];
+  similar_questions: string[];
+  negative_questions: string[];
+  tag_id?: number;
+  is_enabled?: boolean;
+}): FAQEntryPayload {
+  return {
+    standard_question: payload.standard_question || '',
+    answers: payload.answers?.filter(Boolean) || [],
+    similar_questions: payload.similar_questions?.filter(Boolean) || [],
+    negative_questions: payload.negative_questions?.filter(Boolean) || [],
+    ...(payload.tag_id ? { tag_id: payload.tag_id } : {}),
+    ...(payload.is_enabled !== undefined ? { is_enabled: payload.is_enabled } : {}),
+  };
+}
+
+// Vue FAQEntryManager.vue:1999-2033 parseExcelFile — first worksheet only,
+// sheet_to_json with defval '' + raw:false, headers normalized by stripping
+// parenthetical notes and lowercasing non-Chinese names, then the same column
+// fallbacks as the Vue CSV path (问题/standard_question/question, 机器人回答/answers,
+// 相似问题/similar_questions, 反例问题/negative_questions, 是否停用 inverted into
+// is_enabled, numeric tag_id). The Vue 标签/分类/tag_name column has no
+// FAQEntryPayload field on the React client, so it is not emitted.
+export async function parseExcelFile(file: File): Promise<FAQEntryPayload[]> {
+  const data = await file.arrayBuffer();
+  const workbook = XLSX.read(data, { type: 'array' });
+  const sheetName = workbook.SheetNames[0];
+  const worksheet = workbook.Sheets[sheetName];
+  // raw:false keeps formatted strings (same rationale as the Vue comment).
+  const json = XLSX.utils.sheet_to_json<Record<string, string>>(worksheet, { defval: '', raw: false });
+  return json.map((row) => {
+    const normalizedRow: Record<string, string> = {};
+    Object.keys(row).forEach((key) => {
+      const normalizedKey = key.trim()
+        .replace(/\([^)]*\)/g, '') // 移除括号及内容
+        .trim();
+      // 对于中文字段名，不转换为小写；对于英文字段名，转换为小写
+      const finalKey = /[\u4e00-\u9fa5]/.test(normalizedKey) ? normalizedKey : normalizedKey.toLowerCase();
+      normalizedRow[finalKey] = String(row[key] || '').trim();
+    });
+    const isDisabled = parseBooleanField(normalizedRow['是否停用'], false);
+    return normalizeExcelPayload({
+      standard_question: normalizedRow['问题'] || normalizedRow['standard_question'] || normalizedRow['question'] || '',
+      answers: splitByDelimiter(normalizedRow['机器人回答'] || normalizedRow['answers']),
+      similar_questions: splitByDelimiter(normalizedRow['相似问题'] || normalizedRow['similar_questions']),
+      negative_questions: splitByDelimiter(normalizedRow['反例问题'] || normalizedRow['negative_questions']),
+      tag_id: normalizedRow['tag_id'] ? Number(normalizedRow['tag_id']) : undefined,
+      is_enabled: isDisabled !== undefined ? !isDisabled : undefined, // 是否停用取反：FALSE 启用 / TRUE 停用
     });
   });
 }
