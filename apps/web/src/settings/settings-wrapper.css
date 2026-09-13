@@ -37,6 +37,8 @@
 .wk-api-key-list th, .wk-api-key-list td { border-bottom: 1px solid rgba(120,135,155,.18); padding: 12px 8px; text-align: left; }
 .wk-api-key-list thead th { color: #5c6b83; font-weight: 500; }
 .wk-system-audit { display: grid; gap: 16px; }
+.wk-audit-refresh, .wk-audit-load-more { background: transparent; border: 1px solid rgba(120,135,155,.35); border-radius: 4px; cursor: pointer; padding: 5px 12px; }
+.wk-audit-load-more { display: block; margin: 14px auto 0; }
 .wk-audit-table-wrap { overflow-x: auto; }
 .wk-audit-table { border-collapse: collapse; font-size: 12px; min-width: 680px; width: 100%; }
 .wk-audit-table th, .wk-audit-table td { border-bottom: 1px solid rgba(120,135,155,.18); padding: 12px 8px; text-align: left; }

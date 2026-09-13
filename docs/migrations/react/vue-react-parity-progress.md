@@ -1645,3 +1645,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 详情抽屉保留服务端返回记录的完整字段，未引入本地编辑或虚构操作能力；当前 `administration.auditLog.list` 读取契约不变。
 - 验证：SettingsPage 定向测试 14/14；完整 `pnpm test:web` 二次复跑 811/811；Web TypeScript 检查通过；`git diff --check` 通过。
 - 证据层：本轮为 Vue 源码对照、React DOM/键盘交互、单元和全 Web 回归；真实 system-admin 审计游标分页、同条件截图/computed-style、Wails 与移动端证据仍待补齐，N017 继续保持 review。
+
+## 2026-09-14 Round N+35 — N017 审计日志刷新与游标加载
+
+- React `system-audit-log` 增加 Vue 同语义的刷新和 `after_id` 游标加载更多：加载期间禁用重复请求，成功后追加记录并依据 `nextCursor` 控制入口，失败显示错误和重试；详情抽屉与键盘行激活保持不变。
+- 验证：SettingsPage 定向测试 14/14；完整 `pnpm test:web` 811/811；Web TypeScript 检查通过；`git diff --check` 通过。
+- 证据层：本轮为 Vue 源码对照、React DOM/单元和全 Web 回归；真实 system-admin 游标后端、同条件截图/computed-style、Wails 与移动端证据仍待补齐，N017 继续保持 review。
