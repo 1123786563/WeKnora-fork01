@@ -1392,3 +1392,10 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 上一批三切片（FAQ B5+B6 / embed 预览模态 / R009 org 轨）agent 全部 unavailable 终止且树无残留交付——已按原任务重派发（范围收窄：B5 只做 tooltip、embed 只做预览模态、org 轨只做分组+过滤），并要求先写证据再完善、完成即报。
 - 经验：大范围 prompt + 多任务点会拉长在途时间增加失联风险；后续切片一律单点任务。
 - 门禁快照：shared 436/436、mobile 146/146、embed 7/7、desktop 2/2 全绿。
+
+## 2026-09-14 Round N+11 协调条目 — embed 预览模态 + R009 org 轨集成
+
+- embed 预览模态集成（b59f1458）：EmbedChannelPreviewDrawer faithful port（locale 透传/r=nonce 每开必增/iframe 延迟挂载/previewUnavailable zh 告警/零 window.open）+ 壳层回退臂；embedWizardRender flush 修复授权；integrations 48/48。
+- R009 org 轨集成（3adf4bef）：rail org 分组条目（countByOrg>0、collapsed divider+截断+tooltip、expanded 共享给我标题+计数）+ ?scope=<orgId> per-space 过滤 + 空态/深链/stale 守卫；anatomy 16/16。
+- 全门禁：shared 436/436、web 793/793、mobile 146/146、typecheck:web 0、build:web ✓ 3.97s。
+
