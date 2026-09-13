@@ -110,6 +110,11 @@
 - Vue-authoritative review confirms selected Wiki pages default to a read-only reader; editing is entered explicitly, while New page opens the editor. React now follows that state transition and returns to the reader after save/reload/revert.
 - Added a scoped reader surface with title, summary, content, Edit and History actions; the editor remains available for create/edit flows and is hidden while reading.
 - Full Web suite: 793/793 passed. Web typecheck: passed. This is static/unit evidence; browser, real-backend, Wails, and native evidence remain open.
+
+## 2026-09-14 Round N+9 — N012 Wiki graph node detail slice
+
+- Vue graph behavior opens a node detail drawer before/alongside ego-neighbor expansion. React now loads the selected Wiki page through the existing API contract and exposes scoped loading, error, close, summary/version/content, and expand-neighbors states.
+- Focused graph and knowledge-permission tests: 8/8 passed. Web typecheck: passed. This is static/unit and typecheck evidence only; browser, real-backend, Wails, and native evidence remain open.
 - Status remains `review`; no new browser computed-style, real-backend, Wails, iOS or Android evidence claimed. Index/tree/list modes, folder actions, graph and reader states remain open.
 
 ## 2026-09-12 Round 1 基线
@@ -1409,4 +1414,3 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - FAQ tooltip 精修切片（9b969a6c）叫停：其任务（title 升级定位气泡）已被 FAQ B5/B6 切片交付完全覆盖（FaqTagTooltip 组件 + faqTooltipPosition 定位逻辑已在 HEAD，faq 78/78）——避免双实现。
 - Wails 取证切片（1662287b）仍在途。
-

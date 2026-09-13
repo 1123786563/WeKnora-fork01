@@ -685,6 +685,9 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-knowledge-graph-node circle { fill: #2e6de6; stroke: #1849a9; stroke-width: 2; }
 .wk-knowledge-graph-node:hover circle, .wk-knowledge-graph-node:focus circle { fill: #6941c6; }
 .wk-knowledge-graph-node text { fill: #27364d; font-size: 12px; pointer-events: none; }
+.wk-graph-drawer { background: #fff; border: 1px solid #d8e0eb; border-radius: 8px; box-shadow: 0 12px 32px rgba(31, 52, 84, .14); margin-top: 1rem; padding: 1rem; }
+.wk-graph-drawer .wk-header { align-items: flex-start; margin-bottom: .75rem; }
+.wk-graph-drawer-content { background: #f8fafc; border: 1px solid #d8e0eb; border-radius: 6px; box-sizing: border-box; font: inherit; line-height: 1.6; max-height: 24rem; overflow: auto; padding: .85rem; white-space: pre-wrap; }
 @media (max-width: 720px) { .wk-knowledge-graph { min-height: 18rem; } }
 
 /* ---- Knowledge-base list page (card grid) ---- */

@@ -14,6 +14,9 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
   const [depth, setDepth] = useState(1);
   const [query, setQuery] = useState('');
   const [type, setType] = useState('all');
+  const [drawerNode, setDrawerNode] = useState<{ slug: string; title: string; page_type: string; link_count: number } | null>(null);
+  const [drawerPage, setDrawerPage] = useState<{ title: string; summary: string; content: string; version: number } | null>(null);
+  const [drawerStatus, setDrawerStatus] = useState<'idle' | 'loading' | 'error'>('idle');
 
   async function load(nextMode: 'overview' | 'ego', nextCenter?: string) {
     setStatus({ kind: 'loading' });
@@ -27,6 +30,20 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
       setStatus({ kind: 'success' });
     } catch (error) {
       setStatus({ kind: 'error', message: error instanceof Error ? error.message : 'Unable to load the knowledge graph' });
+    }
+  }
+
+  async function openNode(node: typeof drawerNode) {
+    if (!node) return;
+    setDrawerNode(node);
+    setDrawerPage(null);
+    setDrawerStatus('loading');
+    try {
+      const page = await client.wiki.get(knowledgeBaseId, node.slug);
+      setDrawerPage(page);
+      setDrawerStatus('idle');
+    } catch {
+      setDrawerStatus('error');
     }
   }
 
@@ -63,12 +80,13 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
           {visible.nodes.length === 0 ? <Status>No graph nodes match the current filter.</Status> : <>
             <svg className="wk-knowledge-graph" viewBox="0 0 760 420" role="img" aria-label="Knowledge graph links">
               {visible.edges.map((edge) => { const source = positionBySlug.get(edge.source); const target = positionBySlug.get(edge.target); return source && target ? <line key={`${edge.source}-${edge.target}`} x1={source.x} y1={source.y} x2={target.x} y2={target.y} className="wk-knowledge-graph-edge" /> : null; })}
-              {visible.nodes.map((node, index) => { const position = positions[index]!; return <g key={node.slug} className="wk-knowledge-graph-node" role="button" tabIndex={0} aria-label={`${node.title} · ${node.slug}`} onClick={() => void load('ego', node.slug)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') void load('ego', node.slug); }}><circle cx={position.x} cy={position.y} r={Math.min(24, 10 + Math.log2(node.link_count + 1) * 4)} /><text x={position.x} y={position.y + 40} textAnchor="middle">{node.title.length > 24 ? `${node.title.slice(0, 23)}…` : node.title}</text></g>; })}
+              {visible.nodes.map((node, index) => { const position = positions[index]!; return <g key={node.slug} className="wk-knowledge-graph-node" role="button" tabIndex={0} aria-label={`${node.title} · ${node.slug}`} onClick={() => { void openNode(node); void load('ego', node.slug); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { void openNode(node); void load('ego', node.slug); } }}><circle cx={position.x} cy={position.y} r={Math.min(24, 10 + Math.log2(node.link_count + 1) * 4)} /><text x={position.x} y={position.y + 40} textAnchor="middle">{node.title.length > 24 ? `${node.title.slice(0, 23)}…` : node.title}</text></g>; })}
             </svg>
-            <ul className="wk-list" aria-label="Knowledge graph nodes">{visible.nodes.map((node) => <li key={node.slug}><div className="wk-list-item-copy"><strong>{node.title}</strong><span>{node.slug} · {node.page_type} · {node.link_count} links{node.familiar ? ' · familiar' : ''}</span></div><Button type="button" onClick={() => void load('ego', node.slug)}>Expand neighbors</Button></li>)}</ul>
+            <ul className="wk-list" aria-label="Knowledge graph nodes">{visible.nodes.map((node) => <li key={node.slug}><div className="wk-list-item-copy"><strong>{node.title}</strong><span>{node.slug} · {node.page_type} · {node.link_count} links{node.familiar ? ' · familiar' : ''}</span></div><Button type="button" onClick={() => { void openNode(node); void load('ego', node.slug); }}>Expand neighbors</Button></li>)}</ul>
           </>}
         </> : null}
       </Card>
+      {drawerNode ? <aside className="wk-graph-drawer" aria-label={drawerNode.title} role="dialog"><div className="wk-header"><div><h2>{drawerNode.title}</h2><p className="wk-muted">{drawerNode.page_type} · {drawerNode.link_count} links</p></div><Button type="button" onClick={() => { setDrawerNode(null); setDrawerPage(null); }}>Close</Button></div>{drawerStatus === 'loading' ? <Status>Loading page…</Status> : null}{drawerStatus === 'error' ? <Status tone="error">Unable to load this Wiki page.</Status> : null}{drawerPage ? <><p className="wk-muted">{drawerPage.summary || '—'} · v{drawerPage.version}</p><pre className="wk-graph-drawer-content">{drawerPage.content}</pre><Button type="button" onClick={() => void load('ego', drawerNode.slug)}>Expand neighbors</Button></> : null}</aside> : null}
     </main>
   );
 }
