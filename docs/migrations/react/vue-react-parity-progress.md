@@ -1430,3 +1430,10 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 9b969a6c 切片发来完成报告：其代码已由 7ff6cabb 集成（fa-tag-chip 定位气泡补齐最后一个原生 title 残留），证据已由 2735d7e5 提交——该切片完全收口。
 - Wails 取证切片（1662287b）继续在途（cmd/desktop/wails.json 存在，构建流程耗时长）。
 - 全门禁：web 794/794、shared 436/436、faq 79/79、typecheck 0。
+
+## 2026-09-14 Round N+13 协调条目 — Wails 桌面构建解锁（N033 blocked-env 部分解除）
+
+- 发现 wails CLI 已存在于系统（/Users/wuyongjun/go/bin/wails v2.12.0，仅未入 PATH）——此前"缺失"的阻塞条件不成立。
+- 修复 desktop-renderer 构建断裂（0f1c6d45）：apps/desktop/vite.config.ts 缺 '@weknora/domain/settings/theme' 别名（theme.ts 引入该子路径，落到 query-key.ts 兜底别名导致 ENOTDIR）。
+- desktop-renderer 构建通过（3.75s）；完整 wails build（sqlite_fts5/CGO）后台进行中。
+
