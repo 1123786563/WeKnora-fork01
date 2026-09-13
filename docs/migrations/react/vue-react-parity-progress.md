@@ -1058,3 +1058,11 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - **Evidence required:** screenshot matrix and state checklist showing normal/loading/empty/error/no-permission/disabled/editing/submitting/success/failure for each row.
 - **Review gate:** a row can move to `accepted` only when all applicable platform evidence and unresolved backend decisions are closed or explicitly out-of-scope by user decision.
 - **Commit boundary:** one acceptance-docs commit per row group.
+## 2026-09-13 Round N+2 — chat 5 语切片集成核验 + 会话行删除标签对齐
+
+- 在途工作核实：并行 agent 将 chat 5 语文案切片与上下文引导系统提交为 c25089a8（chat-copy.ts 5 语表 + packages/i18n/src/generated/chat.ts 生成层 + ContextualGuide/Host/contextual-guides.ts 全套 + tests + Vue 基准截图）。主代理独立复核：shared 382/382、web 574/574、desktop 2/2、embed 7/7、typecheck shared/web 0、build:web ✓ 3.27s；contextual guides 16/16 + web jsdom 10/10 + i18n/chat-copy 12/12。
+- 集成修复（5c7e0c6b）：(1) 生成层 chat.ts zh-CN chatHeader.deleteSession 字节漂移（删除会话→删除对话，zh-CN.ts:6937 权威）；(2) TDD 对齐 Vue menu.vue 会话行菜单删除项 = upload.deleteRecord（删除记录，5 语字节级）——chat-copy 新增 deleteRecord 键、session-sidebar 行菜单改用、shell 测试先行改断言红→绿；(3) Node 26 navigator.language=en-US 使共享 5 语解析偏离 zh 基准，chat-page/artifact-preview/shell-list 等测试显式 pin zh-CN locale/copy；views index 导出 chat-copy 助手；web views-stub 补 openContextualGuide no-op。
+- 已知问题（移交移动端切片）：apps/mobile onboarding-component.test.ts 在 `node --import tsx --test` 下 MODULE_NOT_FOUND 失败（pass 0/fail 1），`npx tsx --test` 下 4/4 通过；已在 HEAD（不含本轮修改）复现，判定为在途/运行器兼容问题，非本轮引入。恢复命令：`cd apps/mobile && node --import tsx --test src/features/auth/onboarding-component.test.ts`。
+- 矩阵更新：R007 上下文引导 LANDED；剩余：user-menu 重新打开入口、引导 i18n 键回填 packages/i18n、各引导 live 复验。
+- 下一步：R007 收尾切片、R031 会话标题 api-client、N005 浏览器/原生证据、74 个 review 行验收证据、移动端 onboarding 测试运行器修复。
+
