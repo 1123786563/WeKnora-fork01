@@ -246,10 +246,16 @@ function McpMetadataSection({
     onBusyChange(true);
     setError(null);
     setPolicyError(null);
+    const metadataRequest = refresh
+      ? () => client.configuration.mcp.metadata.refresh(serviceId)
+      : async () => {
+          // Vue McpMetadataPanel.vue treats a missing cache as an initial sync
+          // condition, not as the final "not synced" state.
+          const saved = await client.configuration.mcp.metadata.get(serviceId);
+          return saved ?? client.configuration.mcp.metadata.refresh(serviceId);
+        };
     const [metadataResult, approvalsResult] = await Promise.allSettled([
-      refresh
-        ? client.configuration.mcp.metadata.refresh(serviceId)
-        : client.configuration.mcp.metadata.get(serviceId),
+      metadataRequest(),
       client.configuration.mcp.toolApprovals.list(serviceId),
     ]);
     if (generation !== loadGeneration.current) return;

@@ -141,7 +141,7 @@ type StubMetadata = {
   stale: boolean;
 };
 
-function mcpStubClient(overrides: { metadataGet?: () => Promise<StubMetadata> } = {}) {
+function mcpStubClient(overrides: { metadataGet?: () => Promise<StubMetadata | null>; metadataRefresh?: () => Promise<StubMetadata> } = {}) {
   const metadata: StubMetadata = { tools: [{ name: 'search', description: 'Search docs' }], serverName: 'Srv', serverVersion: '1.0', syncedAt: '2026-09-13T00:00:00Z', stale: false };
   return {
     configuration: {
@@ -153,7 +153,7 @@ function mcpStubClient(overrides: { metadataGet?: () => Promise<StubMetadata> } 
         credentials: { put: async () => ({}) },
         metadata: {
           get: overrides.metadataGet ?? (async () => metadata),
-          refresh: async () => metadata,
+          refresh: overrides.metadataRefresh ?? (async () => metadata),
         },
         toolApprovals: { list: async () => [], update: async () => ({}) },
         usageInstructions: { generate: async () => 'generated usage instructions' },
@@ -166,6 +166,30 @@ function mcpStubClient(overrides: { metadataGet?: () => Promise<StubMetadata> } 
     },
   } as never;
 }
+
+test('MCP metadata automatically refreshes when Vue cache lookup returns empty', async () => {
+  let refreshCalls = 0;
+  const root = await mountEditor(React.createElement(McpSettingsPanel, {
+    client: mcpStubClient({
+      metadataGet: async () => null,
+      metadataRefresh: async () => { refreshCalls += 1; return { tools: [{ name: 'search' }], serverName: 'Srv', serverVersion: '1.0', syncedAt: '2026-09-14T00:00:00Z', stale: false }; },
+    }),
+    initialServices: [{ id: 'svc-1', name: 'Docs', url: 'https://example.com/mcp', enabled: true, transport_type: 'sse', is_builtin: false }],
+    role: 'admin',
+  }));
+  try {
+    await act(async () => { findButton('编辑')?.click(); });
+    const nameInput = document.querySelector('input[placeholder="请输入服务名称"]') as HTMLInputElement | null;
+    const urlInput = document.querySelector('input[placeholder="https://example.com/mcp"]') as HTMLInputElement | null;
+    await act(async () => { setInputValue(nameInput!, 'Docs'); setInputValue(urlInput!, 'https://example.com/mcp'); });
+    await act(async () => { submitForm(document.querySelector('.wks-mcp-drawer form') as HTMLFormElement); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    assert.equal(refreshCalls, 1, 'empty cache triggers one Vue-compatible refresh');
+    assert.match(document.querySelector('.wk-mcp-metadata')?.textContent ?? '', /1 个工具/);
+  } finally {
+    await unmountEditor(root);
+  }
+});
 
 function findButton(label: string): HTMLButtonElement | undefined {
   return Array.from(document.querySelectorAll('button')).find((button) => (button.textContent ?? '').includes(label)) as HTMLButtonElement | undefined;

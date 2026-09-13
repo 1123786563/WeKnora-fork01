@@ -1548,3 +1548,10 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 新增设置页回归用例，验证分区切换不保留旧导航按钮焦点；既有设置 wrapper、角色、加载和子分区测试继续覆盖。
 - 验证：SettingsPage focused tests 9/9；完整 Web 回归将在本轮提交前执行；TypeScript 检查通过；`git diff --check` 通过。
 - 证据层：Escape 行为有源码与 jsdom 焦点证据，仍缺真实浏览器键盘/焦点恢复、同视口 computed-style、Wails 与移动端平台证据；N014 继续保持 review。
+
+## 2026-09-14 Round N+21 — N016 MCP 元数据初次同步行为
+
+- React `McpMetadataSection` 对齐 Vue `McpMetadataPanel.vue`：缓存 GET 返回空值时自动执行一次 metadata refresh，并继续以同步后的工具目录、策略和保存门禁作为后续状态；已有手动刷新路径不变。
+- 新增回归用例覆盖空缓存 → 自动刷新 → 工具目录可见的状态转换，避免 React 错误停留在“未同步”空态。
+- 验证：MCP 定向测试 13/13；完整 `pnpm test:web` 804/804；Web TypeScript 检查通过；`git diff --check` 通过。
+- 证据层：本轮为 Vue 源码对照、React 单元测试与全 Web 回归证据；仍缺 MCP 同视口 Vue/React 浏览器截图、computed-style、真实服务元数据、Wails 与移动端平台证据，N016 继续保持 implementing/review。
