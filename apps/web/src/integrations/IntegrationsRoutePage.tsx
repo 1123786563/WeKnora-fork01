@@ -69,10 +69,15 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, embedded = 
 
   useEffect(() => {
     setError('');
-    if (tab === 'embed') { void loadEmbed(); void loadAgents(); }
-    if (tab === 'im') { void loadIm(); void loadAgents(); void loadKnowledgeBases(); }
-    if (tab === 'api') void loadApiKeys();
-    setLoading(false);
+    let current = true;
+    setLoading(tab === 'embed' || tab === 'im' || tab === 'api');
+    void (async () => {
+      if (tab === 'embed') await Promise.all([loadEmbed(), loadAgents()]);
+      if (tab === 'im') await Promise.all([loadIm(), loadAgents(), loadKnowledgeBases()]);
+      if (tab === 'api') await loadApiKeys();
+      if (current) setLoading(false);
+    })();
+    return () => { current = false; };
   }, [client, tab, activeTenantId]);
 
   useEffect(() => { if (tab === 'api' && activeTenantId !== null) void client.administration.tenantApiKeys.principalConfig(activeTenantId).then(setPrincipal).catch(() => setPrincipal(null)); else setPrincipal(null); }, [activeTenantId, client, tab]);

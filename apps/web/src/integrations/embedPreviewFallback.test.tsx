@@ -38,11 +38,17 @@ async function flushFrame() {
 
 interface StubChannel { id: string; name?: string; default_locale?: string; [key: string]: unknown }
 
-function stubClient(input: { channels: StubChannel[]; sessionTokens: string[]; previewCalls: string[] }) {
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => { resolve = next; });
+  return { promise, resolve };
+}
+
+function stubClient(input: { channels: StubChannel[]; sessionTokens: string[]; previewCalls: string[]; channelList?: () => Promise<StubChannel[]> }) {
   return {
     embed: {
       channels: {
-        listAll: async () => input.channels as never[],
+        listAll: input.channelList ?? (async () => input.channels as never[]),
         get: async (id: string) => input.channels.find((channel) => channel.id === id) as never,
         previewSession: async (id: string) => {
           input.previewCalls.push(id);
@@ -54,6 +60,15 @@ function stubClient(input: { channels: StubChannel[]; sessionTokens: string[]; p
     configuration: { agents: { list: async () => [{ id: 'agent-1', name: '知识助手', config: {} }] } },
   } as unknown as Parameters<typeof IntegrationsRoutePage>[0]['client'];
 }
+
+test('integration channel panels keep the Vue loading state until the list request settles', async () => {
+  const channelsGate = deferred<StubChannel[]>();
+  const client = stubClient({ channels: [{ id: 'ch-1', name: '客服渠道' }], sessionTokens: [], previewCalls: [], channelList: () => channelsGate.promise });
+  const container = await mountRoutePage(client, []);
+  assert.match(container.textContent ?? '', /正在加载/);
+  await act(async () => { channelsGate.resolve([]); await channelsGate.promise; });
+  assert.doesNotMatch(container.textContent ?? '', /正在加载/);
+});
 
 async function mountRoutePage(client: Parameters<typeof IntegrationsRoutePage>[0]['client'], openedNewTabs: string[][]) {
   const container = document.createElement('div');

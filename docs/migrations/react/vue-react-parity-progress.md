@@ -1555,3 +1555,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 新增回归用例覆盖空缓存 → 自动刷新 → 工具目录可见的状态转换，避免 React 错误停留在“未同步”空态。
 - 验证：MCP 定向测试 13/13；完整 `pnpm test:web` 804/804；Web TypeScript 检查通过；`git diff --check` 通过。
 - 证据层：本轮为 Vue 源码对照、React 单元测试与全 Web 回归证据；仍缺 MCP 同视口 Vue/React 浏览器截图、computed-style、真实服务元数据、Wails 与移动端平台证据，N016 继续保持 implementing/review。
+
+## 2026-09-14 Round N+22 — N028 集成页加载状态生命周期
+
+- React `IntegrationsRoutePage` 不再在启动 IM、网页嵌入或 API 请求后立即清除 loading；改为等待当前标签所需请求完成后再清除，并在标签切换时忽略旧请求的结束回调，恢复 Vue 面板在慢请求期间的加载态。
+- 新增集成路由回归用例，覆盖列表请求未完成期间保留 Vue loading 文案、请求结束后再进入列表/空态。
+- 验证：集成预览/加载定向测试 3/3；完整 `pnpm test:web` 805/805；Web TypeScript 检查通过；`git diff --check` 通过。该轮为源码/单元回归证据，未据此宣称真实网络延迟下的双端截图验收。
