@@ -153,7 +153,10 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wks-mcp-drawer .wk-settings-panel-heading { position: sticky; top: 0; z-index: 1; background: #fff; padding-top: .25rem; }
 .wks-mcp-drawer .wk-settings-editor { max-width: none; }
 .wks-mcp-drawer .wk-settings-editor fieldset { border: 1px solid #edf0f5; border-radius: 8px; display: grid; gap: .7rem; padding: .8rem; }
-.wks-mcp-drawer .wk-settings-editor select { box-sizing: border-box; width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #172033; font: inherit; padding: .55rem .65rem; }
+/* Layout only — select chrome (border/radius/height/chevron) comes from the
+   drawer-wide promoted rule in settings-wrapper.css (.wks-modal ancestor is
+   shared with this drawer). */
+.wks-mcp-drawer .wk-settings-editor select { box-sizing: border-box; width: 100%; }
 @media (max-width: 720px) { .wks-mcp-drawer { height: calc(100vh - 24px); max-height: calc(100vh - 24px); padding: 1rem; } }
 .wk-mcp-details { border-top: 1px solid #edf0f5; margin-top: 1rem; padding-top: 1rem; }
 .wk-mcp-details .wk-settings-panel-heading { margin-bottom: .7rem; }
@@ -613,8 +616,10 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 /* Left navigation column */
 .wks-sidebar {
   width: 208px;
-  background-color: #f7f9fc;
-  border-right: 1px solid #e7ebf2;
+  /* Settings.vue .settings-sidebar: --td-bg-color-settings-modal #f9f9f9,
+     border --td-component-stroke #e7e7e7 (theme.css light tokens). */
+  background-color: #f9f9f9;
+  border-right: 1px solid #e7e7e7;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -623,14 +628,14 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 
 .wks-sidebar-header {
   padding: 16px 14px 12px;
-  border-bottom: 1px solid #e7ebf2;
+  border-bottom: 1px solid #e7e7e7;
   flex-shrink: 0;
 }
 
 .wks-sidebar-title {
   font-size: 16px;
   font-weight: 600;
-  color: #172033;
+  color: rgba(0, 0, 0, 0.9);
   margin: 0;
 }
 
@@ -643,7 +648,7 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 
 .wks-nav-group-title {
   padding: 9px 14px 4px;
-  color: #8a94a6;
+  color: rgba(0, 0, 0, 0.4);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -659,7 +664,7 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
   border-radius: 6px;
   cursor: pointer;
   background: transparent;
-  color: #27364d;
+  color: rgba(0, 0, 0, 0.9);
   font: inherit;
   font-size: 14px;
   text-align: left;
@@ -667,11 +672,14 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
   user-select: none;
 }
 
-.wks-nav-item:hover { background-color: #eef1f6; color: #172033; }
+/* Settings.vue .nav-item:hover / &.active: hover = --td-bg-color-container-hover
+   (gray-1 #f3f3f3) + --td-text-color-primary rgba(0,0,0,.9); active =
+   --td-bg-color-secondarycontainer (#f3f3f3) + --td-brand-color #07c05f. */
+.wks-nav-item:hover { background-color: #f3f3f3; color: rgba(0, 0, 0, 0.9); }
 
 .wks-nav-item.is-active {
-  background-color: #eff4ff;
-  color: #2e6de6;
+  background-color: #f3f3f3;
+  color: #07c05f;
   font-weight: 500;
 }
 

@@ -1,0 +1,145 @@
+{
+  "vue": {
+    "general": {
+      "tInput": {
+        "height": "32px",
+        "borderRadius": "3px",
+        "border": "1px solid rgb(220, 220, 220)"
+      },
+      "navIdle": {
+        "background": "rgb(243, 243, 243)",
+        "color": "rgb(7, 192, 95)"
+      },
+      "navActive": {
+        "background": "rgb(243, 243, 243)",
+        "color": "rgb(7, 192, 95)",
+        "fontWeight": "500"
+      },
+      "sidebar": {
+        "background": "rgb(249, 249, 249)",
+        "borderRight": "rgb(231, 231, 231)"
+      },
+      "navHover": "hover-failed"
+    },
+    "sandbox": {
+      "tInput": {
+        "height": "32px",
+        "borderRadius": "3px",
+        "border": "1px solid rgb(220, 220, 220)"
+      },
+      "navIdle": {
+        "background": "rgba(0, 0, 0, 0)",
+        "color": "rgba(0, 0, 0, 0.9)"
+      },
+      "navActive": {
+        "background": "rgb(243, 243, 243)",
+        "color": "rgb(7, 192, 95)",
+        "fontWeight": "500"
+      },
+      "sidebar": {
+        "background": "rgb(249, 249, 249)",
+        "borderRight": "rgb(231, 231, 231)"
+      },
+      "navHover": "hover-failed"
+    },
+    "members": {
+      "tInput": {
+        "height": "32px",
+        "borderRadius": "3px",
+        "border": "1px solid rgb(220, 220, 220)"
+      },
+      "navIdle": {
+        "background": "rgba(0, 0, 0, 0)",
+        "color": "rgba(0, 0, 0, 0.9)"
+      },
+      "navActive": {
+        "background": "rgb(243, 243, 243)",
+        "color": "rgb(7, 192, 95)",
+        "fontWeight": "500"
+      },
+      "sidebar": {
+        "background": "rgb(249, 249, 249)",
+        "borderRight": "rgb(231, 231, 231)"
+      },
+      "navHover": "hover-failed"
+    }
+  },
+  "react": {
+    "general": {
+      "select": {
+        "appearance": "none",
+        "border": "1px solid rgb(220, 220, 220)",
+        "borderRadius": "3px",
+        "height": "32px",
+        "backgroundImage": "svg-chevron",
+        "padding": "0px 26px 0px 8px",
+        "width": "280px"
+      },
+      "navIdle": {
+        "background": "rgb(243, 243, 243)",
+        "color": "rgb(7, 192, 95)"
+      },
+      "navActive": {
+        "background": "rgb(243, 243, 243)",
+        "color": "rgb(7, 192, 95)",
+        "fontWeight": "500"
+      },
+      "sidebar": {
+        "background": "rgb(249, 249, 249)",
+        "borderRight": "rgb(231, 231, 231)"
+      },
+      "navHover": {
+        "background": "rgb(243, 243, 243)",
+        "color": "rgba(0, 0, 0, 0.9)"
+      }
+    },
+    "sandbox": {
+      "select": null,
+      "navIdle": {
+        "background": "rgba(0, 0, 0, 0)",
+        "color": "rgba(0, 0, 0, 0.9)"
+      },
+      "navActive": {
+        "background": "rgb(243, 243, 243)",
+        "color": "rgb(7, 192, 95)",
+        "fontWeight": "500"
+      },
+      "sidebar": {
+        "background": "rgb(249, 249, 249)",
+        "borderRight": "rgb(231, 231, 231)"
+      },
+      "navHover": {
+        "background": "rgb(243, 243, 243)",
+        "color": "rgba(0, 0, 0, 0.9)"
+      }
+    },
+    "members": {
+      "select": {
+        "appearance": "none",
+        "border": "1px solid rgb(220, 220, 220)",
+        "borderRadius": "3px",
+        "height": "32px",
+        "backgroundImage": "svg-chevron",
+        "padding": "0px 26px 0px 8px",
+        "width": "738.812px"
+      },
+      "navIdle": {
+        "background": "rgba(0, 0, 0, 0)",
+        "color": "rgba(0, 0, 0, 0.9)"
+      },
+      "navActive": {
+        "background": "rgb(243, 243, 243)",
+        "color": "rgb(7, 192, 95)",
+        "fontWeight": "500"
+      },
+      "sidebar": {
+        "background": "rgb(249, 249, 249)",
+        "borderRight": "rgb(231, 231, 231)"
+      },
+      "navHover": {
+        "background": "rgb(243, 243, 243)",
+        "color": "rgba(0, 0, 0, 0.9)"
+      }
+    }
+  }
+}
