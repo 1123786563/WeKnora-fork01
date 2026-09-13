@@ -1059,6 +1059,13 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - **Review gate:** a row can move to `accepted` only when all applicable platform evidence and unresolved backend decisions are closed or explicitly out-of-scope by user decision.
 - **Commit boundary:** one acceptance-docs commit per row group.
 
+## 2026-09-13 Round N+3（续）— 移动端运行器修复集成 + 指纹取证
+
+- 移动端测试运行器修复集成（55fdb0d6，子代理实施 + 主代理独立复核 118/118 + typecheck 0）：根因为裸 import esbuild 未声明 + npx tsx 的 NODE_PATH 意外泄漏；改走 createRequire(apps/web) 主机解析 + tsconfig paths（顺带修复既有 typecheck:mobile 红）。遗留（协调者所有）：knowledge/*.test.tsx 同款裸 import（现 glob 不执行 .tsx）、esbuild/jsdom 声明为 mobile devDeps 需根 lockfile 集成。
+- round3 批扫文本指纹比对（vue-only/react-only 前 5 项）发现外壳会话区差异：Vue 有可见 我的对话 标题 + 新建对话⌘1 提示；React 仅 aria-label。派发 shell-sessions-header 切片（menu.vue 侧栏解剖对齐）。会话行菜单 置顶/修改标题/清空消息/删除记录 在 react-only 中出现属 DOM 常驻 vs Vue 按需渲染的指纹噪声，非缺陷（删除记录 已是 Vue 权威文案）。
+- 派发（3，与 R031 并行）：shell-sessions-header（session-sidebar.tsx + PlatformShell.tsx）、settings-visual-polish（GeneralPreferencesPanel + styles.css .wks-* 块：标题节奏 10px/分段控件选中态/select 外观）、contextualguide-i18n-backfill（packages/i18n generated + views guides 表）。
+
+
 ## 2026-09-13 Round N+3 — 主题默认对齐 + live 批扫 round3 + R007 收尾集成
 
 - live 环境重建：backend :8080（make dev-app）、Vue :5180、React :5181（需 VITE_API_BASE_URL=http://localhost:8080，无 dev proxy，app 直连后端；无此环境变量时同源 /api 全 404——已登记为启动事实）。parity-test@local.dev 经 API 与浏览器双侧验证有效（tenant 10000）。
