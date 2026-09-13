@@ -94,6 +94,6 @@ fixture manifest 捕获：一次性容器（`weknora-oc-t17-pg-1/-2/-3` 依次�
 
 > 门禁工具 `scripts/open-connector/release_gate.py`（29 用例，含计划逐字 `test_mock_write_never_qualifies`）；七类证据现状、真实 provider_read 只读验证记录与缺项清单见 [open-connector-release.md](./open-connector-release.md) §5–§6。
 
-- **验收结论：不可发布（不写"生产可用"）**。门禁现状对 provider_write、billing 两类 FAIL（blocked-env：本会话无真实 Provider 写授权、无商业计量环境授权）；provider_read 已在候选镜像上完成真实只读验证（GitHub `get_current_user` 200，清理零残留），但证据 fixture 未入库且 WeKnora 全链真实读/OAuth connected 态仍 blocked-env。
+- **验收结论：不可发布（不写"生产可用"）**。门禁现状对 provider_write、billing 两类 FAIL（blocked-env：本会话无真实 Provider 写授权、无商业计量环境授权）；provider_read 已在候选镜像上完成真实只读验证（GitHub `get_current_user` 200，清理零残留），但证据 fixture 已按 R21 落库（`scripts/open-connector/fixtures/provider_read_runtime.json`），WeKnora 全链真实读/OAuth connected 态仍 blocked-env。
 - 六项 CARRY 终局裁决记录于 SDD ledger task-T18-report.md：T01 OAuth 子项永久 blocked-env；T11-QF-1 failed 封闭集复核**通过**（400/403 状态级封闭与契约 §3.3 一致，代码 `oc_dispatcher.go` classify）；T13-F-3 不设 auth URL 端点（T15 文案终局）；stale sweeper 不实现（T17 计数 2）；Retry-After 透传保持未实现（固定 30s 冷却）；T17-F2 列表可见性列规格积压。
 - 门禁语义钉死：mock/doc 证据永不合格；`passed=true` 不被单独信任（CLI 复核 artifact 存在 + sha256 一致 + 同 commit/镜像/测试命名空间）；`open_unknown_count` 必须显式为 0。

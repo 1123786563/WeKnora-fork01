@@ -57,3 +57,17 @@ python3 scripts/open-connector/contract_gate.py scripts/open-connector/fixtures/
 | in_progress.json | live parallel race + upstream deterministic test |
 | expired_key.json | upstream controllable-clock unit test (24h) |
 | audit_failure.json | upstream injected-failure unit test (runs.add throws) |
+
+## T18 real-provider read-only fixture
+
+`provider_read_runtime.json` (added 2026-09-13, coordinator ruling R21) records the
+T18 READ-ONLY probe against **real GitHub** on the T16 release-candidate image
+digest `sha256:4de6df4d…` (not the T01 host-node instance): restricted oct_
+token with non-empty grants executed `github.get_current_user` (HTTP 200), plus
+pre-execution negative controls (400 `action_not_allowed`, 403
+`connection_not_allowed`) and the zero-residue cleanup record. Unlike the T01
+cases above, a REAL provider credential (host gh CLI keyring) was used —
+strictly read-only per the session's authorization boundary; the credential is
+redacted everywhere and was never echoed. Raw probe response files were
+destroyed with the throwaway container (their sha256 fingerprints are recorded
+inside the fixture and in `docs/integrations/open-connector-release.md` §6).
