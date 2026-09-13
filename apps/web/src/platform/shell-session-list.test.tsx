@@ -67,7 +67,10 @@ const SESSIONS = [
   { id: 'session-1', title: '今天的会话', is_pinned: false, updated_at: iso(0) },
   { id: 'session-2', title: '昨天的会话', is_pinned: false, updated_at: iso(DAY) },
   { id: 'session-3', title: '更早的会话', is_pinned: false, updated_at: iso(40 * DAY) },
-  { id: 'session-4', title: '', is_pinned: false, updated_at: iso(DAY + 60 * 60 * 1000) },
+  // Anchor the untitled session to yesterday 12:00 local: a raw '25h ago'
+  // crosses the 昨天/近7天 calendar bucket when the suite runs just after
+  // midnight, which is time-of-day flakiness, not a product change.
+  { id: 'session-4', title: '', is_pinned: false, updated_at: (() => { const d = new Date(NOW); d.setDate(d.getDate() - 1); d.setHours(12, 0, 0, 0); return d.toISOString(); })() },
 ];
 
 function fakeClient(overrides: Record<string, unknown> = {}): Record<string, unknown> {
