@@ -20,7 +20,7 @@ async function mount(role: string) {
     workspaces: [{ id: 1, role }],
     client: { dataSources: {
       list: async () => [{ id: 'source-1', name: 'Docs', type: 'feishu_drive', status: 'active', sync_mode: 'incremental', config: { resource_ids: ['root-token'] } }],
-      types: async () => [{ type: 'feishu_drive', name: 'Feishu Drive', description: 'Drive', priority: 1, auth_type: 'oauth', capabilities: ['resources'] }],
+      types: async () => [{ type: 'feishu_drive', name: 'Feishu Drive', description: 'Drive', priority: 1, auth_type: 'oauth', capabilities: ['resources'] }, { type: 'gitlab', name: 'GitLab', description: 'GitLab', priority: 2, auth_type: 'token', capabilities: ['resources'] }],
       validateCredentials: async () => ({ success: true }),
       create: async () => ({ id: 'temporary-source', knowledge_base_id: 'kb-1', name: 'New source', type: 'feishu_drive', status: 'paused', config: {} }), update: async () => ({}), putCredentials: async () => ({}),
       sync: async () => ({ success: true }), pause: async () => ({ success: true }), resume: async () => ({ success: true }),
@@ -139,5 +139,18 @@ test('canceling a Drive resource draft removes the temporary source', async () =
     page.runtime.client.dataSources.remove = async (id: string) => { removed.push(id); };
     await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Cancel')?.click());
     assert.deepEqual(removed, ['temporary-source']);
+  } finally { await page.close(); }
+});
+
+test('GitLab editor exposes project-specific fields and requires a project id', async () => {
+  const page = await mount('admin');
+  try {
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Add')?.click());
+    const gitlab = [...page.host.querySelectorAll('button')].find((item) => item.textContent?.includes('GitLab'));
+    assert.ok(gitlab);
+    await act(async () => gitlab?.click());
+    assert.ok(page.host.querySelector('input[placeholder="Project ID"]'));
+    assert.ok(page.host.querySelector('input[placeholder="Ref (optional)"]'));
+    assert.ok([...page.host.querySelectorAll('button')].some((item) => item.textContent === 'Add project'));
   } finally { await page.close(); }
 });

@@ -842,6 +842,14 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   passes. Cleanup on app termination, connector-specific forms, localization,
   backend error classification, and native-device evidence remain open.
 
+- **Mobile GitLab connector form:** the native data-source editor now exposes
+  GitLab project ID/ref/paths fields, supports adding/removing project rows,
+  validates that at least one project ID is present, and serializes the
+  connector's server-backed `settings.projects` shape on save. Focused screen
+  and policy tests pass 13/13; full mobile tests pass 94/94 and typecheck
+  passes. Exact localized copy, credential-field parity, live backend
+  validation, and native-device evidence remain open.
+
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
 - **Rows:** any rows proposed for `accepted`; never all rows by default.
 - **Files owned:** `docs/migrations/react/vue-react-parity-matrix.md`, `docs/migrations/react/vue-react-parity-progress.md`, `docs/migrations/react/evidence/vue-react-parity/README.md`, `docs/migrations/react/evidence/vue-react-parity/screenshot-matrix.md`, and the row-specific `docs/migrations/react/evidence/vue-react-parity/<date>-<row-group>.md` evidence file only.
