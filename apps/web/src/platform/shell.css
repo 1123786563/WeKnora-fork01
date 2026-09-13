@@ -282,3 +282,285 @@
  * full-height area while keeping their own layout intact. */
 .plat-shell__outlet > * { min-height: 0; }
 .plat-shell__outlet .wk-page { height: 100%; overflow-y: auto; max-width: none; }
+/*
+ * Session-list styles (relocated from chat.css): the grouped list lives in
+ * the platform shell sidebar now (Vue menu.vue .submenu), rendered via
+ * SessionSidebarList. The same classes still style the fallback in-page
+ * .wk-chat-sidebar used outside the shell.
+ */
+
+.plat-shell__sessions {
+  margin: 8px 0 4px;
+  padding-top: 8px;
+  border-top: 1px solid #e7ebf0;
+}
+
+.plat-shell__sessions .wk-chat-session-group ul {
+  padding: 0 6px;
+}
+
+/* Vue menu.noSessions empty row (menu.vue .submenu_empty). */
+.wk-chat-sidebar-empty {
+  color: rgba(0, 0, 0, 0.4);
+  font-size: 12px;
+  margin: 10px 4px;
+}
+
+/* ---- Left session sidebar (Vue platform-sidebar conversation area) ---- */
+.wk-chat-sidebar {
+  background: #f9f9f9;
+  border-right: 1px solid #e7e7e7;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 12px 12px 16px;
+}
+
+.wk-chat-sidebar-heading {
+  display: block;
+  margin: 0 0 8px;
+}
+
+.wk-chat-new-chat {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: #07c05f;
+  cursor: pointer;
+  display: flex;
+  font-size: 14px;
+  font-weight: 500;
+  gap: 8px;
+  padding: 8px 10px;
+  transition: background-color 0.15s ease;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.wk-chat-new-chat:hover {
+  background: #e9f8ec;
+}
+
+.wk-chat-sidebar-filter {
+  color: rgba(0, 0, 0, 0.4);
+  display: grid;
+  font-size: 12px;
+  gap: 4px;
+  margin: 8px 0;
+}
+
+.wk-chat-sidebar select,
+.wk-chat-sidebar input {
+  background: #fff;
+  border: 1px solid #dcdcdc;
+  border-radius: 6px;
+  box-sizing: border-box;
+  color: rgba(0, 0, 0, 0.9);
+  font-size: 13px;
+  padding: 5px 8px;
+  width: 100%;
+}
+
+.wk-chat-sidebar input::placeholder {
+  color: rgba(0, 0, 0, 0.26);
+}
+
+.wk-chat-sidebar > p[role='status'] {
+  color: rgba(0, 0, 0, 0.4);
+  font-size: 12px;
+  margin: 8px 0;
+}
+
+.wk-chat-session-group ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Vue time group header: small gray text, no uppercase */
+.wk-chat-session-group h3 {
+  color: rgba(0, 0, 0, 0.26);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  line-height: 20px;
+  margin: 12px 4px 4px;
+  text-transform: none;
+}
+
+.wk-chat-session-item {
+  align-items: center;
+  border-radius: 8px;
+  display: flex;
+  position: relative;
+}
+
+.wk-chat-session-title {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: rgba(0, 0, 0, 0.9);
+  cursor: pointer;
+  display: flex;
+  flex: 1;
+  font-size: 14px;
+  gap: 6px;
+  line-height: 22px;
+  min-width: 0;
+  overflow: hidden;
+  padding: 7px 10px;
+  text-align: left;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.wk-chat-session-title-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-chat-session-pin {
+  color: rgba(0, 0, 0, 0.4);
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
+.wk-chat-session-item:hover .wk-chat-session-title {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+/* Active row: Vue menu highlight — green tint */
+.wk-chat-session-item.is-active .wk-chat-session-title,
+.wk-chat-session-title[aria-current='page'] {
+  background: #e9f8ec;
+  color: #07c05f;
+  font-weight: 500;
+}
+
+.wk-chat-session-source {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.wk-chat-session-source.is-im,
+.wk-chat-session-source.is-embed,
+.wk-chat-session-source.is-api {
+  color: rgba(0, 0, 0, 0.4);
+  background: #eee;
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+/* Hover ⋯ menu (Vue session row more button) */
+.wk-chat-session-menu {
+  flex-shrink: 0;
+  position: relative;
+}
+
+.wk-chat-session-menu > summary {
+  align-items: center;
+  border-radius: 5px;
+  color: rgba(0, 0, 0, 0.26);
+  cursor: pointer;
+  display: inline-flex;
+  height: 24px;
+  justify-content: center;
+  list-style: none;
+  opacity: 0;
+  transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+  width: 24px;
+}
+
+.wk-chat-session-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.wk-chat-session-item:hover .wk-chat-session-menu > summary,
+.wk-chat-session-menu > summary:focus-visible,
+.wk-chat-session-menu[open] > summary {
+  opacity: 1;
+}
+
+.wk-chat-session-menu > summary:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: rgba(0, 0, 0, 0.9);
+}
+
+.wk-chat-session-menu-list {
+  background: #fff;
+  border: 0.5px solid #e7e7e7;
+  border-radius: 8px;
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.03), 0 2px 6px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 120px;
+  padding: 4px;
+  position: absolute;
+  right: 0;
+  top: 26px;
+  z-index: 30;
+}
+
+.wk-chat-session-menu-list button {
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  color: rgba(0, 0, 0, 0.9);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 20px;
+  min-height: 30px;
+  padding: 0 10px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.wk-chat-session-menu-list button:hover {
+  background: #f3f3f3;
+}
+
+.wk-chat-session-menu-list button.is-danger {
+  color: #e34d59;
+}
+
+.wk-chat-session-menu-list button.is-danger:hover {
+  background: #fdecee;
+}
+
+.wk-chat-session-pagination {
+  align-items: center;
+  color: rgba(0, 0, 0, 0.4);
+  display: flex;
+  font-size: 12px;
+  gap: 0.4rem;
+  justify-content: center;
+  margin-top: auto;
+  padding-top: 0.75rem;
+}
+
+.wk-chat-session-pagination button {
+  background: transparent;
+  border: 1px solid #dcdcdc;
+  border-radius: 6px;
+  color: rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 8px;
+}
+
+.wk-chat-session-pagination button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}

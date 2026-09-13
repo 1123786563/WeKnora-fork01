@@ -7,8 +7,8 @@ export { ArtifactPreview, artifactPreviewModel } from './chat/artifact-preview.t
 export type { ArtifactPreviewKind, ArtifactPreviewModel, ArtifactPreviewPayload, ArtifactPreviewProps } from './chat/artifact-preview.tsx';
 export { hydrateMermaidBlocks, hydrateMermaidBlocksWithBrowserDefaults, MERMAID_RENDER_CONFIG } from './chat/mermaid.ts';
 export type { MermaidEngine } from './chat/mermaid.ts';
-export { SessionSidebar } from './chat/session-sidebar.tsx';
-export type { SessionGroupView, SessionSidebarProps, SessionSourceOption } from './chat/session-sidebar.tsx';
+export { SessionSidebar, SessionSidebarList, SessionSidebarShellContext } from './chat/session-sidebar.tsx';
+export type { SessionGroupView, SessionSidebarListProps, SessionSidebarProps, SessionSourceOption } from './chat/session-sidebar.tsx';
 export { ChatPage } from './chat/page.tsx';
 export type { ChatAgentOption, ChatOAuthApprovalPrompt, ChatPageProps, ChatStreamPresentation, ChatTerminalView, ChatToolApprovalPrompt, ChatToolCallView } from './chat/page.tsx';
 export { ReferenceList, referenceSections } from './chat/reference-list.tsx';

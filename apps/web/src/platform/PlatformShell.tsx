@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
-import type { createWeKnoraClient } from '@weknora/api-client';
+import type { ChatSession, createWeKnoraClient } from '@weknora/api-client';
+import { sessionGroups } from '@weknora/domain/chat/session-state';
 import { GlobalCommandPalette } from './GlobalCommandPalette.tsx';
+import { SessionSidebarList, SessionSidebarShellContext, type SessionGroupView } from '@weknora/views';
+import { chatSessionIdFromPath, SHELL_SESSION_ROUTE_EVENT } from '../chat/session-route.ts';
 import { NewUserGuide } from '@weknora/views';
 import {
   clearRecentQueries,
@@ -77,6 +80,12 @@ function buildNavItems(t: (key: string) => string, labels: Record<string, string
 
 const COLLAPSE_STORAGE_KEY = 'weknora_sidebar_collapsed';
 
+// Vue chatHeader.clearConfirmBody / deleteConfirmBody (zh-CN). The chat.*
+// domain does not exist in @weknora/i18n yet, so the confirm copy is inlined
+// here; reported as missing keys in the slice evidence.
+const CLEAR_SESSION_CONFIRM = '确认清空当前对话的全部消息？对话本身会保留，此操作无法恢复。';
+const DELETE_SESSION_CONFIRM = '确认删除当前对话？删除后将无法恢复。';
+
 export function PlatformShell({ client, onLogout, children }: PlatformShellProps): ReactNode {
   const locale = useMemo(resolveLocale, []);
   const t = useCallback((key: string) => formatMessage(locale, key), [locale]);
@@ -85,6 +94,11 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
     agents: formatMessage(locale, 'menu.agents'),
     organizations: formatMessage(locale, 'menu.organizations'),
     personalSettings: formatMessage(locale, 'general.personalSettings'),
+    // Session-list copy (Vue menu.vue uses the same menu.* keys).
+    myChats: formatMessage(locale, 'menu.myChats'),
+    noSessions: formatMessage(locale, 'menu.noSessions'),
+    renameSession: formatMessage(locale, 'menu.renameSession'),
+    newSession: formatMessage(locale, 'menu.newSession'),
   };
 
   const [pathname, setPathname] = useState(() => window.location.pathname);
@@ -141,6 +155,78 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
     setRecentQueries(loadRecentQueries(window.localStorage, recentQueriesKey));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recentQueriesKey]);
+
+  // Session list (Vue menu.vue .submenu): the platform sidebar lists the
+  // tenant's web conversations on every protected page. Same API surface the
+  // chat page uses (client.sessions.list); first page only — the Vue list
+  // pages deeper buckets in on scroll, which the shell does not do yet.
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
+  useEffect(() => {
+    let active = true;
+    setSessionsLoading(true);
+    void client.sessions.list({ page: 1, pageSize: 30, source: 'web' }).then(
+      (result) => {
+        if (!active) return;
+        setSessions(result.data);
+        setSessionsLoading(false);
+      },
+      () => { if (active) setSessionsLoading(false); },
+    );
+    return () => { active = false; };
+  }, [client]);
+
+  // Vue menu.vue groups the list by date unconditionally (groupSessionsByDate
+  // → 已置顶/今天/昨天/近7天/近30天/更早), with the route as the selection.
+  const sessionListGroups: readonly SessionGroupView[] = useMemo(
+    () => sessionGroups(sessions, new Date(), 'date'),
+    [sessions],
+  );
+  const activeChatId = chatSessionIdFromPath(pathname);
+
+  const openShellSession = useCallback((sessionId: string) => {
+    const current = window.location.pathname;
+    if (current === '/platform/creatChat' || chatSessionIdFromPath(current)) {
+      // ChatRoutePage owns stream teardown: it performs the in-place switch
+      // and pushes the new /platform/chat/:id route, which the shell's
+      // history patch mirrors into the active-row highlight.
+      window.dispatchEvent(new CustomEvent(SHELL_SESSION_ROUTE_EVENT, { detail: { sessionId } }));
+    } else {
+      window.location.assign(`/platform/chat/${encodeURIComponent(sessionId)}`);
+    }
+  }, []);
+
+  async function renameShellSession(sessionId: string): Promise<void> {
+    const current = sessions.find((session) => session.id === sessionId);
+    const title = window.prompt(labels.renameSession, current?.title ?? '')?.trim();
+    if (!title || title === current?.title) return;
+    try {
+      const updated = await client.sessions.update(sessionId, { title, description: current?.description });
+      setSessions((items) => items.map((session) => session.id === sessionId ? updated : session));
+    } catch { /* keep the prior title on failure */ }
+  }
+
+  async function toggleShellSessionPin(sessionId: string, pinned: boolean): Promise<void> {
+    try {
+      await (pinned ? client.sessions.pin(sessionId) : client.sessions.unpin(sessionId));
+      setSessions((items) => items.map((session) => session.id === sessionId ? { ...session, is_pinned: pinned } : session));
+    } catch { /* keep the prior pin state on failure */ }
+  }
+
+  async function clearShellSessionMessages(sessionId: string): Promise<void> {
+    if (!window.confirm(CLEAR_SESSION_CONFIRM)) return;
+    try { await client.sessions.clear(sessionId); } catch { /* messages reload on the next visit */ }
+  }
+
+  async function deleteShellSession(sessionId: string): Promise<void> {
+    if (!window.confirm(DELETE_SESSION_CONFIRM)) return;
+    try { await client.sessions.remove(sessionId); } catch { return; }
+    setSessions((items) => items.filter((session) => session.id !== sessionId));
+    // Vue menu.vue: deleting the open session routes back to creatChat.
+    if (chatSessionIdFromPath(window.location.pathname) === sessionId) {
+      window.location.assign('/platform/creatChat');
+    }
+  }
 
   // `/platform/knowledge-search?q=...` redirects to `?cmdk=...` (routes.tsx).
   // Consume it once on mount, open the palette, and strip the param so
@@ -263,6 +349,25 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
               <a href="/platform/knowledge-bases?scope=mine" className={`plat-shell__kb-filter${currentScope === 'mine' ? ' plat-shell__kb-filter--active' : ''}`}>{t('knowledgeList.sections.mine')}</a>
             </div>
           )}
+
+          {/* Vue menu.vue .submenu: the grouped session list lives in the
+              sidebar on every protected page; collapsed sidebars hide it. */}
+          {!collapsed && (
+            <nav className="plat-shell__sessions" aria-label={labels.myChats}>
+              <SessionSidebarList
+                groups={sessionListGroups}
+                selectedSessionId={activeChatId}
+                loading={sessionsLoading}
+                emptyLabel={labels.noSessions}
+                untitledLabel={labels.newSession}
+                onSelect={openShellSession}
+                onRename={renameShellSession}
+                onTogglePin={toggleShellSessionPin}
+                onClear={clearShellSessionMessages}
+                onDelete={deleteShellSession}
+              />
+            </nav>
+          )}
         </div>
 
         <div className="plat-shell__bottom">
@@ -297,7 +402,11 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
           </div>
         </div>
       </aside>
-      <div className="plat-shell__outlet">{children}</div>
+      {/* The shell owns the session list (Vue chat/index.vue has no sidebar
+          of its own): chat pages under the shell suppress their in-page one. */}
+      <div className="plat-shell__outlet">
+        <SessionSidebarShellContext.Provider value={true}>{children}</SessionSidebarShellContext.Provider>
+      </div>
       <GlobalCommandPalette
         open={paletteOpen}
         initialQuery={paletteQuery}

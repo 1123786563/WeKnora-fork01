@@ -7,7 +7,7 @@ import { appendMessages, hasOlderMessages, sessionGroups, sessionPageCount } fro
 import { readStoredGroupMode, storeGroupMode } from '@weknora/domain/chat/session-grouping';
 import { ChatPage, type ChatSubmission } from '@weknora/views';
 import type { ScopeController } from '@weknora/domain/scope';
-import { chatSessionIdFromPath } from './session-route.ts';
+import { chatSessionIdFromPath, SHELL_SESSION_ROUTE_EVENT } from './session-route.ts';
 import { buildWebChatStreamOptions, initialAgentSelection } from './agent-selection.ts';
 import { loadStarterQuestions } from './starter-questions.ts';
 import { createWebTerminalController, webSocketTarget, type WebTerminalController, type WebTerminalSnapshot } from './terminal.ts';
@@ -79,6 +79,19 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   useEffect(() => {
     selectedSessionIdRef.current = selectedSessionId;
   }, [selectedSessionId]);
+
+  // The platform shell's session list navigates by route: on global chat
+  // routes it hands the switch to this page — selectSession pushes the new
+  // /platform/chat/:id route, which the shell mirrors into its active-row
+  // highlight (Vue keeps one sidebar in menu.vue; chat/index.vue has none).
+  useEffect(() => {
+    const onShellSessionRoute = (event: Event) => {
+      const sessionId = (event as CustomEvent<{ sessionId?: string }>).detail?.sessionId;
+      if (typeof sessionId === 'string' && sessionId) selectSession(sessionId);
+    };
+    window.addEventListener(SHELL_SESSION_ROUTE_EVENT, onShellSessionRoute);
+    return () => window.removeEventListener(SHELL_SESSION_ROUTE_EVENT, onShellSessionRoute);
+  }, []);
 
   useEffect(() => () => {
     chatRunIdRef.current += 1;
