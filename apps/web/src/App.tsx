@@ -41,7 +41,22 @@ interface Viewer {
   isContributor: boolean;
 }
 
-type KbListSpace = 'all' | 'mine' | 'favorites' | 'recents';
+// Vue ?scope= semantics (KnowledgeBaseList.vue:821-830, 897-906): the state
+// lives in the URL so links are shareable. The four reserved pseudo-scopes
+// keep their Vue names; any other value is a per-org space id (?scope=<orgId>).
+type KbListSpace = 'all' | 'mine' | 'favorites' | 'recents' | (string & {});
+
+const KB_RESERVED_SCOPES: ReadonlySet<string> = new Set(['all', 'mine', 'favorites', 'recents']);
+
+function isOrgScope(space: KbListSpace): boolean {
+  return !KB_RESERVED_SCOPES.has(space);
+}
+
+// Vue truncateLabel (ListSpaceSidebar.vue:244-247): keeps the collapsed-strip
+// label visually balanced (~44px); callers show the full name via title.
+function truncateRailLabel(text: string, max = 4): string {
+  return text.length > max ? text.slice(0, max) + '…' : text;
+}
 
 const SKELETON_CARD_COUNT = 6;
 
@@ -52,7 +67,14 @@ function resolveLocale(): Locale {
 
 function readScopeFromUrl(): KbListSpace {
   const value = new URLSearchParams(window.location.search).get('scope');
-  return value === 'mine' || value === 'favorites' || value === 'recents' ? value : 'all';
+  // Stale URL guard (KnowledgeBaseList.vue:1246-1251): an older "协作"
+  // view used scope=shared; that view is gone — land on all (the URL is
+  // cleaned by the mount effect below).
+  // Vue spaceSelectionOrgId gates on !!s (KnowledgeBaseList.vue:897-906):
+  // an empty ?scope= is not an org id, it falls back to the all view.
+  if (value === null || value === '' || value === 'all' || value === 'shared') return 'all';
+  if (value === 'mine' || value === 'favorites' || value === 'recents') return value;
+  return value; // per-org space id (?scope=<orgId>)
 }
 
 function writeScopeToUrl(space: KbListSpace): void {
@@ -148,8 +170,10 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
 
   // URL deep-link scope (?scope=) wins; otherwise the default follows the
   // viewer role once known (Vue KnowledgeBaseList.vue:816-830: contributor
-  // lands on the workspace scope, viewers on "all").
-  const urlHasScope = new URLSearchParams(window.location.search).has('scope');
+  // lands on the workspace scope, viewers on "all"). Snapshotted once on
+  // first render: the stale-scope cleanup below rewrites the URL, and a
+  // recomputed check would let the role default override the deep link.
+  const urlHasScope = useRef(new URLSearchParams(window.location.search).has('scope'));
   const userPickedScope = useRef(false);
 
   const scope = scopeController.current();
@@ -181,9 +205,17 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
 
   // Vue defaultScope (KnowledgeBaseList.vue:826): contributor -> 'mine'.
   useEffect(() => {
-    if (urlHasScope || userPickedScope.current || !viewer.isContributor) return;
+    if (urlHasScope.current || userPickedScope.current || !viewer.isContributor) return;
     setSpaceState((current) => (current === 'all' ? 'mine' : current));
-  }, [urlHasScope, viewer.isContributor]);
+  }, [viewer.isContributor]);
+
+  // Stale-URL cleanup for the legacy scope=shared aggregate view
+  // (KnowledgeBaseList.vue:1246-1251): the state reset happens in
+  // readScopeFromUrl; the URL sync mirrors Vue's useListUrlState watcher.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('scope') === 'shared') writeScopeToUrl('all');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -207,6 +239,30 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
     return mergeAllScopeKnowledgeBases(pageState.owned, pageState.shared, viewer.userId || undefined);
   }, [pageState, viewer.userId]);
 
+  // Vue sharedCountByOrg (KnowledgeBaseList.vue:966-985) groups share rows by
+  // organization_id for the rail counts. The React share rows carry
+  // organization_id + org_name and merged shared cards keep share_id, so the
+  // rail entries and the ?scope=<orgId> filter join locally — no new API.
+  const orgShareData = useMemo(() => {
+    const countByOrg = new Map<string, { id: string; name: string; count: number }>();
+    const orgIdByShareId = new Map<string, string>();
+    if (pageState.status === 'success') {
+      for (const entry of pageState.shared) {
+        const row = entry as Record<string, unknown>;
+        const orgId = typeof row.organization_id === 'string' ? row.organization_id : '';
+        if (!orgId) continue;
+        if (typeof row.share_id === 'string') orgIdByShareId.set(row.share_id, orgId);
+        const name = typeof row.org_name === 'string' && row.org_name ? row.org_name : orgId;
+        const bucket = countByOrg.get(orgId);
+        if (bucket) bucket.count += 1;
+        else countByOrg.set(orgId, { id: orgId, name, count: 1 });
+      }
+    }
+    // Vue organizationsWithCount (ListSpaceSidebar.vue:271-274): only orgs
+    // with a positive count render in the rail.
+    return { orgs: [...countByOrg.values()].filter((org) => org.count > 0), orgIdByShareId };
+  }, [pageState]);
+
   const scopedCards = useMemo<MergedKnowledgeBase[]>(() => {
     if (space === 'mine') {
       if (pageState.status !== 'success') return [];
@@ -214,8 +270,13 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
     }
     if (space === 'favorites') return mergedCards.filter((c) => favorites.has(c.id));
     if (space === 'recents') return mergedCards.filter((c) => recents.has(c.id));
+    if (isOrgScope(space)) {
+      // Vue per-space view (KnowledgeBaseList.vue:908-913): the org's shared
+      // KBs, joined back through share_id -> organization_id.
+      return mergedCards.filter((card) => card.isMine === false && orgShareData.orgIdByShareId.get(card.share_id) === space);
+    }
     return mergedCards;
-  }, [favorites, mergedCards, pageState, recents, space]);
+  }, [favorites, mergedCards, orgShareData, pageState, recents, space]);
 
   // ?q= keeps working as a deep link even though the page renders no search
   // box (Vue has none on this surface; search lives in the command palette).
@@ -228,9 +289,9 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
   // Vue KnowledgeBaseList.vue:97-185 — collapsible section headers render
   // inline in the grid for every scope (pinned / mine / tenant / shared).
   const sections = useMemo(() => {
-    if (pageState.status !== 'success') return [];
+    if (pageState.status !== 'success' || isOrgScope(space)) return [];
     return groupKnowledgeBaseSections(scopedCards, viewer.userId || undefined);
-  }, [pageState, scopedCards, viewer.userId]);
+  }, [pageState, scopedCards, space, viewer.userId]);
 
   const rows = useMemo<KbListRow[]>(() => {
     if (sections.length === 0) return filtered.items.map((card) => ({ kind: 'card' as const, card }));
@@ -321,11 +382,15 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
     };
   }, [railDragging]);
 
-  const railItems: { key: KbListSpace; label: string; icon: KbIconName; count: number }[] = [
+  const railItems: { key: KbListSpace; label: string; icon: KbIconName; count: number; org?: { id: string; name: string } }[] = [
     { key: 'all', label: t('listSpaceSidebar.all'), icon: 'layers', count: mergedCards.length },
     { key: 'favorites', label: t('listSpaceSidebar.favorites'), icon: 'star', count: favorites.size },
     { key: 'recents', label: t('listSpaceSidebar.recents'), icon: 'history', count: recents.size },
     { key: 'mine', label: t('listSpaceSidebar.workspace'), icon: 'workspace', count: pageState.status === 'success' ? pageState.owned.length : 0 },
+    // Vue shared-spaces group (ListSpaceSidebar.vue:111-125): per-org
+    // entries below the workspace bucket, positive counts only, click ->
+    // ?scope=<orgId> per-space view (KnowledgeBaseList.vue:897-913).
+    ...orgShareData.orgs.map((org) => ({ key: org.id, label: org.name, icon: 'workspace' as KbIconName, count: org.count, org: { id: org.id, name: org.name } })),
   ];
 
   useEffect(() => {
@@ -604,6 +669,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
               {railItems.map((item, index) => (
                 <Fragment key={item.key}>
                   {index === 3 ? <div className="kb-list-rail-divider" aria-hidden="true" /> : null}
+                  {index === 4 && item.org ? <div className="kb-list-rail-section-title">{t('listSpaceSidebar.spaces')}</div> : null}
                   <button
                     type="button"
                     className={space === item.key ? 'kb-list-rail-panel-item kb-list-rail-panel-item-active' : 'kb-list-rail-panel-item'}
@@ -612,7 +678,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
                   >
                     <span className="kb-list-rail-panel-left">
                       <KbIcon name={item.icon} size={16} />
-                      <span className="kb-list-rail-panel-label">{item.label}</span>
+                      <span className="kb-list-rail-panel-label" title={item.org ? item.org.name : undefined}>{item.label}</span>
                     </span>
                     {railCountVisible(item.key, item.count) ? <span className="kb-list-rail-panel-count">{item.count}</span> : null}
                   </button>
@@ -621,18 +687,21 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
             </nav>
           ) : (
             <div className="kb-list-rail-strip">
-              {railItems.map((item) => (
-                <button
-                  key={item.key}
-                  type="button"
-                  className={space === item.key ? 'kb-list-rail-item kb-list-rail-item-active' : 'kb-list-rail-item'}
-                  title={`${item.label} (${item.count})`}
-                  aria-pressed={space === item.key}
-                  onClick={() => setSpace(item.key)}
-                >
-                  <KbIcon name={item.icon} size={16} />
-                  <span className="kb-list-rail-label">{item.label}</span>
-                </button>
+              {railItems.map((item, index) => (
+                <Fragment key={item.key}>
+                  {index === 4 && item.org ? <div className="kb-list-rail-divider kb-list-rail-strip-divider" aria-hidden="true" /> : null}
+                  <button
+                    key={item.key}
+                    type="button"
+                    className={space === item.key ? 'kb-list-rail-item kb-list-rail-item-active' : 'kb-list-rail-item'}
+                    title={`${item.label} (${item.count})`}
+                    aria-pressed={space === item.key}
+                    onClick={() => setSpace(item.key)}
+                  >
+                    <KbIcon name={item.icon} size={16} />
+                    <span className="kb-list-rail-label">{item.org ? truncateRailLabel(item.org.name) : item.label}</span>
+                  </button>
+                </Fragment>
               ))}
             </div>
           )}
@@ -694,12 +763,21 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
                 {Array.from({ length: SKELETON_CARD_COUNT }, (_, index) => <div className="kb-list-skeleton" key={index} />)}
               </div>
             ) : null}
-            {emptyVisible && space !== 'favorites' && space !== 'recents' ? (
+            {emptyVisible && (space === 'all' || space === 'mine') ? (
               <div className="kb-list-empty">
                 <div className="kb-list-empty-img" aria-hidden="true" dangerouslySetInnerHTML={{ __html: KB_EMPTY_SVG }} />
                 <span className="kb-list-empty-title">{t('knowledgeList.empty.title')}</span>
                 <span className="kb-list-empty-desc">{t('knowledgeList.empty.description')}</span>
                 {viewer.isContributor ? <Button type="button" className="kb-list-empty-btn" data-guide="kb-list-create" onClick={openCreate}>{t('knowledgeList.create')}</Button> : null}
+              </div>
+            ) : null}
+            {/* Vue per-space empty state (KnowledgeBaseList.vue:674-678):
+                shared title/description + illustration, never the create CTA */}
+            {emptyVisible && isOrgScope(space) ? (
+              <div className="kb-list-empty">
+                <div className="kb-list-empty-img" aria-hidden="true" dangerouslySetInnerHTML={{ __html: KB_EMPTY_SVG }} />
+                <span className="kb-list-empty-title">{t('knowledgeList.empty.sharedTitle')}</span>
+                <span className="kb-list-empty-desc">{t('knowledgeList.empty.sharedDescription')}</span>
               </div>
             ) : null}
             {/* Vue favorites/recents empty states carry a scope hint, never the

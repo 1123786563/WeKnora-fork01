@@ -300,6 +300,29 @@
   flex-shrink: 0;
 }
 
+/* Shared-spaces group in the collapsed strip (Vue .icon-strip-divider,
+   :41): the divider is width-constrained there, unlike the panel. */
+.kb-list-rail-strip .kb-list-rail-strip-divider {
+  width: 40px;
+}
+
+/* Section title above the org entries in the expanded panel (Vue
+   .sidebar-section / .section-title, :113-116 + :538-549) */
+.kb-list-rail-section-title {
+  padding: 8px 8px 2px;
+  margin-top: 2px;
+  border-top: 1px solid #e3e7ee;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: #646e74;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+
 /* ---------- uninitialized warning banner (KnowledgeBaseList.vue:30-34, 2096-2113) ---------- */
 
 .kb-list-warning {
