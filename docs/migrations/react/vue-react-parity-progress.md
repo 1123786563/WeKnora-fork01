@@ -1314,3 +1314,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 矩阵更新（6adc2a45）：R009 行补 rail drag-to-expand（07911648）；N006 行已由并发侧更新 tag pagination（82eb7bb8）。
 - 门禁：shared 中 embedWizard.test.ts 1 红为 embed 切片在途 TDD（embed config drawer 切片运行中）；mobile 146/146、embed 7/7、desktop 2/2 全绿。
 - 在途（2）：embed config drawer、FAQ B1 编辑抽屉 + B3 条目卡。
+
+## 2026-09-14 Round N+8 收口 — RBAC 入口可见性切片转为待办（TDD 起点已备）
+
+- organizations 入口角色可见性（Vue menu.ts:72-81：<admin 隐藏 + lite 隐藏）TDD 起点已写（platform-shell-org-subfilter.test.tsx 追加 viewer 隐藏/admin 可见/superuser 可见三用例），实现未落地且用例挂起（act 循环），为不阻塞门禁已还原测试文件至 HEAD、用例文本留档于本条目附件性质的工作记录。platform 119/119 保持绿。
+- 后续切片交接：实现点为 PlatformShell me handler 内提取 membership role（R017 同款 self-resolution 语义）+ navItems 过滤；用例可直接取自本条目所述工作记录（/tmp 快照与 git 历史均含完整三用例）。
+
