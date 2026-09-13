@@ -740,7 +740,12 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Wails S13 运行验证入库（4869c476）：打包+codesign+CDP 登录页冒烟；打包链路修复 esbuild 依赖声明（7db7e4d8）与 desktop vite 别名（bbc892ba）。
 - 第二波派发（2）：AgentEditorModal 核心移植（分区轨/校验/载荷，分阶段交付）；Wails CDP 运行时交互取证（登录→KB→智能体→共享空间→设置→聊天 全链路截图+断言，仅取证不改代码）。
 
-## 2026-09-13 Round N+1（续12）— 登记待办性质修正
+## 2026-09-13 Round N+1（续13）— AgentEditorModal 集成与证据补录
+
+- AgentEditorModal 核心移植集成确认：其源文件随 bfefe805 入库（代理自行提交，含 agent-editor-fallback.ts 570 行 5 语回退表、agent-editor.ts 分区/校验/载荷纯逻辑、AgentEditorModal.tsx 分区轨模态、agent-editor.css、双测试文件）。主代理独立复核：agents 35/35 + configuration 22/22；live 对等 cards 4=4、rail 4=4、品牌绿一致；R012 review-round-1 三问题（内置卡不渲染/主色/轨道标签）已修。证据文档由主代理代笔补录（3ca8ba42）：2026-09-13-agent-editor-modal.md。开放：DB 收藏（/user/favorites 接线）、agentEditor.* 键回填 packages/i18n、引导组件。
+- Wails CDP 交互取证入库（77b6d6f5）：9/9 页面 PASS（登录→KB列表→文档→智能体→共享空间→设置模型→creatChat→会话切换→行操作菜单），pageerror=0、API≥400=0；fixtures 经应用自身 API 预置。登记缺口：用户菜单原始键名渲染（已修 e4e74e58）、KB 卡标题点击语义反转、modelsReady 门控 latent、昨天分组需 sqlite 直写（沙箱限制）。
+
+## 2026-09-13 Round N+1（续4）— 第六、七切片集成
 
 - 登记：chat 渲染层 chat-copy.ts 当前仅 zh-CN 单语（其余 4 语用户会看到中文）——列为 chat 5 语切片待办（从 Vue locale 提取 chat/input/messages/createChat 域全量键入 packages/i18n + 消费端切 formatMessage）。
 
