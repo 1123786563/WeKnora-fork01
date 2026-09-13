@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DragEvent, FocusEvent, FormEvent, ReactNode } from 'react';
 import type { FAQEntry, FAQEntryFieldsUpdate, FAQEntryPayload, KnowledgeBase, KnowledgeTag, WeKnoraClient } from '@weknora/api-client';
 import { Button, Status } from '@weknora/ui';
+import { formatMessage } from '@weknora/i18n';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 import { computeKBPermissions, type KBSurfaceKB, type KBSurfaceMe } from '../knowledge/permissions.ts';
-import { pagerState } from '../pagination.ts';
 import { normalizeFAQPayload, parseFAQImportText } from './import-export.ts';
 import './faq.css';
 
@@ -17,6 +17,70 @@ import './faq.css';
 //   knowledgeBase.*) — no literals in this file.
 
 type Translate = ReturnType<typeof createTranslator>;
+
+// faqManager.import.* progress copy exists in every Vue locale
+// (frontend/src/i18n/locales/zh-CN.ts faqManager.import) but is not yet
+// backfilled into the shared @weknora/i18n catalog. zh-only byte-exact
+// fallback until the catalog regenerates — see
+// docs/migrations/react/evidence/vue-react-parity/2026-09-13-faq-leftovers.md.
+const zhFallbackMessages: Record<string, string> = {
+  'faqManager.import.importing': '导入中...',
+  'faqManager.import.importDone': '导入完成',
+  'faqManager.import.importFailed': '导入失败',
+  'faqManager.import.waiting': '等待中...',
+};
+function catalogMessage(key: string): string {
+  const translated = formatMessage('zh-CN', key);
+  return translated === key ? zhFallbackMessages[key] ?? key : translated;
+}
+
+/** Vue FAQEntryManager.loadEntries: hasMore = entries.length < total. */
+export function faqHasMore(loaded: number, total: number): boolean {
+  return Number.isFinite(total) && total > 0 && loaded < Math.floor(total);
+}
+
+/** Optimistic per-entry status flip — pure, so a failed update can roll back. */
+export function setEntryStatus<T extends { id: number; is_enabled: boolean }>(entries: readonly T[], id: number, value: boolean): T[] {
+  let changed = false;
+  const next = entries.map((entry) => {
+    if (entry.id !== id) return entry;
+    changed = true;
+    return { ...entry, is_enabled: value } as T;
+  });
+  return changed ? next : (entries as T[]);
+}
+
+/** Vue processFile format split (FAQEntryManager.vue:1905): JSON / Excel / CSV. */
+export function importFormatFromName(name: string): 'json' | 'csv' | 'excel' {
+  const lower = name.toLowerCase();
+  if (lower.endsWith('.json')) return 'json';
+  if (lower.endsWith('.xlsx') || lower.endsWith('.xls')) return 'excel';
+  return 'csv';
+}
+
+export interface FAQImportTaskView { status: string; text: string; progress: number; processed: number; total: number }
+
+/** Vue importProgressText (FAQEntryManager.vue:1321): error ‖ server message ‖ status copy. */
+export function importProgressText(task: { status: string; message?: string; error?: string }): string {
+  if (task.error) return task.error;
+  if (task.message && task.message.trim()) return task.message.trim();
+  const key = task.status === 'running' ? 'faqManager.import.importing'
+    : task.status === 'success' ? 'faqManager.import.importDone'
+    : task.status === 'failed' ? 'faqManager.import.importFailed'
+    : 'faqManager.import.waiting';
+  return catalogMessage(key);
+}
+
+/** Normalise a raw progress payload into the strip view model. */
+export function faqImportTaskView(task: { status: string; progress?: number; processed?: number; total?: number; message?: string; error?: string }): FAQImportTaskView {
+  return {
+    status: task.status,
+    text: importProgressText(task),
+    progress: Math.min(100, Math.max(0, Math.round(task.progress ?? 0))),
+    processed: task.processed ?? 0,
+    total: task.total ?? 0,
+  };
+}
 
 export interface KBListItem { id: string; name: string; type?: string }
 export interface FAQKBMeta { type?: string; description?: string; createdAt?: string }
@@ -129,7 +193,8 @@ export function FAQBreadcrumb({ t: tr, knowledgeBaseId = '', kbName, kbList = []
 
 type FormState = { question: string; similar: string; negative: string; answers: string; tagId: string; enabled: boolean; recommended: boolean };
 const emptyForm: FormState = { question: '', similar: '', negative: '', answers: '', tagId: '', enabled: true, recommended: false };
-const PAGE_SIZE = 50;
+// Vue FAQEntryManager.vue:1058 — the scroll list appends 20 rows per page.
+const PAGE_SIZE = 20;
 
 export interface FAQPageViewProps {
   t?: Translate;
@@ -141,8 +206,10 @@ export interface FAQPageViewProps {
   activeTagIds?: string[];
   entries?: FAQEntry[];
   total?: number;
-  page?: number;
-  pageSize?: number;
+  /** Vue hasMore tri-state: null until the first page loads. */
+  hasMore?: boolean | null;
+  /** Vue loadingMore — spinner in .faq-load-more while the next page appends. */
+  loadingMore?: boolean;
   loading?: boolean;
   canContribute?: boolean;
   selected?: Set<number>;
@@ -151,6 +218,12 @@ export interface FAQPageViewProps {
   importMode?: 'append' | 'replace';
   importFileName?: string | null;
   importBusy?: boolean;
+  /** Vue importState.preview — parsed rows shown inside the import dialog. */
+  importPreview?: FAQEntryPayload[];
+  /** Vue importState.taskStatus — header .faq-import-strip progress affordance. */
+  importTask?: FAQImportTaskView | null;
+  /** Vue entryStatusLoading — per-entry ids whose status update is in flight. */
+  statusUpdatingIds?: readonly number[];
   editorOpen?: boolean;
   editorTitle?: string;
   editorMode?: 'create' | 'edit';
@@ -175,13 +248,15 @@ export interface FAQPageViewProps {
   onToggleSelectAll?: (checked: boolean) => void;
   onEditEntry?: (entry: FAQEntry) => void;
   onDeleteEntry?: (entry: FAQEntry) => void;
+  /** Vue handleEntryStatusChange — per-card enable/disable toggle. */
+  onToggleEntryStatus?: (entry: FAQEntry, value: boolean) => void;
   onBatchEnable?: () => void;
   onBatchDisable?: () => void;
   onBatchRecommend?: () => void;
   onBatchTagChange?: (value: string) => void;
   onBatchSetTag?: () => void;
   onBatchDelete?: () => void;
-  onPageChange?: (page: number) => void;
+  onLoadMore?: () => void;
   onOpenEditor?: () => void;
   onCloseEditor?: () => void;
   onFormChange?: (patch: Partial<FormState>) => void;
@@ -199,8 +274,8 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
     activeTagIds = [],
     entries = [],
     total = 0,
-    page = 1,
-    pageSize = PAGE_SIZE,
+    hasMore = null,
+    loadingMore = false,
     loading = false,
     canContribute = true,
     selected = new Set<number>(),
@@ -209,6 +284,9 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
     importMode = 'append',
     importFileName = null,
     importBusy = false,
+    importPreview = [],
+    importTask = null,
+    statusUpdatingIds = [],
     editorOpen = false,
     editorTitle = '',
     editorMode = 'create',
@@ -239,7 +317,8 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
     onBatchTagChange = () => {},
     onBatchSetTag = () => {},
     onBatchDelete = () => {},
-    onPageChange = () => {},
+    onLoadMore = () => {},
+    onToggleEntryStatus = () => {},
     onCloseEditor = () => {},
     onFormChange = () => {},
     onEditorSubmit = () => {},
@@ -248,7 +327,35 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
   const [tagPanelOpen, setTagPanelOpen] = useState(false);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
-  const pager = pagerState(total, page, pageSize);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  // Vue handleScroll (FAQEntryManager.vue:1624): within 200px of the bottom,
+  // ask the container for the next page of entries. The inner container only
+  // scrolls once the shell bounds its height, so mirror the handler onto the
+  // window as well — whichever scrolls first triggers the append.
+  const handleListScroll = (metrics: { top: number; viewport: number; height: number }) => {
+    if (!hasMore || loadingMore) return;
+    if (metrics.top + metrics.viewport < metrics.height - 200) return;
+    onLoadMore();
+  };
+  const handleContainerScroll = () => {
+    const el = scrollRef.current;
+    if (el) handleListScroll({ top: el.scrollTop, viewport: el.clientHeight, height: el.scrollHeight });
+  };
+  const handleWindowScroll = () => {
+    const doc = document.documentElement;
+    handleListScroll({ top: doc.scrollTop, viewport: window.innerHeight, height: doc.scrollHeight });
+  };
+  useEffect(() => {
+    if (!hasMore || loadingMore) return;
+    window.addEventListener('scroll', handleWindowScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleWindowScroll);
+  });
+  // Vue fills a short page that cannot scroll yet (FAQEntryManager.vue:1640-1651).
+  useEffect(() => {
+    if (!hasMore || loadingMore) return;
+    const el = scrollRef.current;
+    if (el && el.scrollHeight <= el.clientHeight + 50) onLoadMore();
+  });
   const tagNameBySeq = new Map<number, string>();
   for (const tag of tags) {
     if (typeof tag.seq_id === 'number') tagNameBySeq.set(tag.seq_id, tag.name);
@@ -265,6 +372,14 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
         <div className="faq-header-title">
           <FAQBreadcrumb t={t} knowledgeBaseId={knowledgeBaseId} kbName={kbName} kbList={kbList} kbMeta={kbMeta} onNavigate={onNavigate} />
           <p className="faq-subtitle">{t('knowledgeEditor.faq.subtitle')}</p>
+          {importTask ? (
+            <div className={'faq-import-strip faq-import-strip--' + importTask.status} role="status">
+              <span className={'faq-import-strip__icon' + (importTask.status === 'running' ? ' is-spinning' : '')} aria-hidden="true" />
+              <span className="faq-import-strip__text">{importTask.text}</span>
+              <span className="faq-import-strip__bar"><span className="faq-import-strip__bar-fill" style={{ width: importTask.progress + '%' }} /></span>
+              <span className="faq-import-strip__count">{importTask.processed}/{importTask.total}</span>
+            </div>
+          ) : null}
         </div>
       </header>
 
@@ -336,7 +451,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
 
           {message ? <Status tone={message.tone}>{message.text}</Status> : null}
 
-          <div className="faq-scroll-container">
+          <div className="faq-scroll-container" ref={scrollRef} onScroll={handleContainerScroll}>
             {loading && entries.length === 0 ? (
               <div className="faq-skeleton-grid" aria-hidden="true">
                 {Array.from({ length: 6 }, (_, index) => <div key={index} className="faq-card-skeleton" />)}
@@ -345,7 +460,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
               <ul className="wk-list wk-faq-list">
                 <li className="wk-faq-list-head">
                   {canContribute ? <label className="wk-faq-select-all"><input type="checkbox" checked={selected.size === entries.length && entries.length > 0} onChange={(event) => onToggleSelectAll(event.target.checked)} /> {t('common.all')}</label> : <span />}
-                  <span className="wk-faq-range">{pager.start}-{pager.end} / {pager.total}</span>
+                  <span className="wk-faq-range">{entries.length} / {total}</span>
                 </li>
                 {entries.map((entry) => (
                   <li key={entry.id} className="wk-faq-item">
@@ -355,7 +470,24 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                       <span>{entry.answers.join(' · ')}</span>
                       <small>{entry.similar_questions.length + ' ' + t('knowledgeEditor.faq.similarQuestions')} · {entry.negative_questions.length + ' ' + t('knowledgeEditor.faq.negativeQuestions')} · {entry.is_enabled ? t('knowledgeEditor.faq.statusEnabled') : t('knowledgeEditor.faq.statusDisabled')}{entry.is_recommended ? ' · ' + t('knowledgeEditor.faq.recommended') : ''}{typeof entry.tag_id === 'number' && tagNameBySeq.has(entry.tag_id) ? ' · ' + tagNameBySeq.get(entry.tag_id) : ''}</small>
                     </div>
-                    {canContribute ? <div className="wk-list-item-actions"><Button type="button" onClick={() => onEditEntry(entry)}>{t('common.edit')}</Button><Button type="button" onClick={() => onDeleteEntry(entry)}>{t('common.delete')}</Button></div> : null}
+                    {canContribute ? (
+                      <div className="wk-list-item-actions">
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={entry.is_enabled}
+                          aria-label={entry.is_enabled ? t('knowledgeEditor.faq.statusEnabled') : t('knowledgeEditor.faq.statusDisabled')}
+                          title={entry.is_enabled ? t('knowledgeEditor.faq.statusEnabled') : t('knowledgeEditor.faq.statusDisabled')}
+                          className={'faq-status-switch' + (entry.is_enabled ? ' is-on' : '')}
+                          disabled={statusUpdatingIds.includes(entry.id)}
+                          onClick={() => onToggleEntryStatus(entry, !entry.is_enabled)}
+                        >
+                          <span className="faq-status-switch__thumb" />
+                        </button>
+                        <Button type="button" onClick={() => onEditEntry(entry)}>{t('common.edit')}</Button>
+                        <Button type="button" onClick={() => onDeleteEntry(entry)}>{t('common.delete')}</Button>
+                      </div>
+                    ) : null}
                   </li>
                 ))}
               </ul>
@@ -368,6 +500,8 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                 </div>
               </div>
             )}
+            {loadingMore ? <div className="faq-load-more">{t('common.loading')}</div> : null}
+            {hasMore === false && entries.length > 0 ? <div className="faq-no-more">{t('common.noMoreData')}</div> : null}
           </div>
 
           {canContribute && selected.size > 0 ? (
@@ -385,13 +519,6 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
             </div>
           ) : null}
 
-          {pager.total > pageSize ? (
-            <nav className="wk-pagination" aria-label={t('knowledgeEditor.faq.title')}>
-              <Button type="button" disabled={!pager.hasPrevious} onClick={() => onPageChange(page - 1)}>{t('knowledgeBase.documents.previous')}</Button>
-              <span>{t('knowledgeBase.faq.page', { page: pager.page, total: pager.total })}</span>
-              <Button type="button" disabled={!pager.hasNext} onClick={() => onPageChange(page + 1)}>{t('knowledgeBase.documents.next')}</Button>
-            </nav>
-          ) : null}
         </div>
       </div>
 
@@ -426,6 +553,23 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                 </div>
                 <p className="import-form-tip">{t('knowledgeEditor.faqImport.fileTip')}</p>
               </div>
+              {importPreview.length > 0 ? (
+                <div className="import-preview">
+                  <div className="preview-header">
+                    <span className="preview-icon" aria-hidden="true"><FileAddIcon size={16} /></span>
+                    <span className="preview-title">{t('knowledgeEditor.faqImport.previewCount', { count: importPreview.length })}</span>
+                  </div>
+                  <div className="preview-list">
+                    {importPreview.slice(0, 5).map((item, index) => (
+                      <div key={index} className="preview-item">
+                        <span className="preview-index">{index + 1}</span>
+                        <span className="preview-question">{item.standard_question}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {importPreview.length > 5 ? <p className="preview-more">{t('knowledgeEditor.faqImport.previewMore', { count: importPreview.length - 5 })}</p> : null}
+                </div>
+              ) : null}
             </div>
             <div className="faq-import-footer">
               <Button type="button" onClick={onCloseImport}>{t('common.cancel')}</Button>
@@ -514,7 +658,8 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
   const [tags, setTags] = useState<KnowledgeTag[]>([]);
   const [entries, setEntries] = useState<FAQEntry[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [editing, setEditing] = useState<FAQEntry | null | undefined>(undefined);
   const [form, setForm] = useState<FormState>(emptyForm);
@@ -528,6 +673,8 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
   const [importOpen, setImportOpen] = useState(false);
   const [importMode, setImportMode] = useState<'append' | 'replace'>('append');
   const [importFile, setImportFile] = useState<File | null>(null);
+  const [importPreview, setImportPreview] = useState<FAQEntryPayload[]>([]);
+  const [statusUpdatingIds, setStatusUpdatingIds] = useState<readonly number[]>([]);
   const [batchTag, setBatchTag] = useState('');
   const [canContribute, setCanContribute] = useState(true);
   const [message, setMessage] = useState<{ tone: 'error' | 'success' | 'warning'; text: string } | null>(null);
@@ -553,53 +700,104 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
     return () => { active = false; };
   }, [client, knowledgeBaseId]);
 
-  async function load() {
-    setLoading(true);
-    try {
-      const result = await faq.list(knowledgeBaseId, { page, page_size: PAGE_SIZE, keyword: keyword || undefined, tag_ids: activeTagIds.length ? activeTagIds.join(',') : undefined });
-      setEntries(result.data);
-      setTotal(result.total ?? result.data.length);
+  // Scroll-append guard shared with the sync loadMore callback.
+  const loadingMoreRef = useRef(false);
+  // Vue loadEntries(append): page 1 resets the list; appends accumulate and
+  // hasMore follows entries.length < total (FAQEntryManager.vue:1554-1614).
+  async function load(append = false) {
+    if (append) setLoadingMore(true);
+    else {
+      loadingMoreRef.current = true;
+      setLoading(true);
+      setEntries([]);
       setSelected(new Set());
+    }
+    try {
+      const nextPage = append ? Math.floor(entries.length / PAGE_SIZE) + 1 : 1;
+      const result = await faq.list(knowledgeBaseId, { page: nextPage, page_size: PAGE_SIZE, keyword: keyword || undefined, tag_ids: activeTagIds.length ? activeTagIds.join(',') : undefined });
+      const loaded = append ? entries.length + result.data.length : result.data.length;
+      setEntries((current) => (append ? [...current, ...result.data] : result.data));
+      setTotal(result.total ?? 0);
+      setHasMore(faqHasMore(loaded, result.total ?? 0));
+      if (!append) setSelected(new Set());
     } catch (error) { setMessage({ tone: 'error', text: error instanceof Error ? error.message : 'Unable to load FAQ entries' }); }
-    finally { setLoading(false); }
+    finally {
+      loadingMoreRef.current = false;
+      setLoading(false);
+      setLoadingMore(false);
+    }
   }
-  useEffect(() => { void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [client, knowledgeBaseId, keyword, page, activeTagIds]);
+  const loadMore = useCallback(() => {
+    if (loadingMoreRef.current || loading || !hasMore) return;
+    void load(true);
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [client, knowledgeBaseId, keyword, activeTagIds, entries.length, loading, hasMore]);
+  useEffect(() => { void load(false); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [client, knowledgeBaseId, keyword, activeTagIds]);
 
+  // Vue handleEntryStatusChange (FAQEntryManager.vue:1487): optimistic flip via
+  // the entries/fields batch, per-direction success copy, rollback on failure.
+  async function toggleEntryStatus(entry: FAQEntry, value: boolean) {
+    if (!knowledgeBaseId || statusUpdatingIds.includes(entry.id) || entry.is_enabled === value) return;
+    const previous = entry.is_enabled;
+    setStatusUpdatingIds((current) => [...current, entry.id]);
+    setEntries((current) => setEntryStatus(current, entry.id, value));
+    try {
+      await faq.updateFields(knowledgeBaseId, { by_id: { [entry.id]: { is_enabled: value } } });
+      setMessage({ tone: 'success', text: t(value ? 'knowledgeEditor.faq.statusEnableSuccess' : 'knowledgeEditor.faq.statusDisableSuccess') });
+    } catch (error) {
+      setEntries((current) => setEntryStatus(current, entry.id, previous));
+      setMessage({ tone: 'error', text: error instanceof Error && error.message ? error.message : t('knowledgeEditor.faq.statusUpdateFailed') });
+    } finally {
+      setStatusUpdatingIds((current) => current.filter((id) => id !== entry.id));
+    }
+  }
   function openEditor(entry: FAQEntry | null = null) { setEditing(entry); setForm(formFrom(entry)); setMessage(null); }
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setSaving(true); setMessage(null);
-    try { const payload = payloadFrom(form); if (editing) await faq.update(knowledgeBaseId, editing.id, payload); else await faq.create(knowledgeBaseId, payload); setMessage({ tone: 'success', text: editing ? 'FAQ entry updated.' : 'FAQ entry created.' }); setEditing(undefined); await load(); }
+    try { const payload = payloadFrom(form); if (editing) await faq.update(knowledgeBaseId, editing.id, payload); else await faq.create(knowledgeBaseId, payload); setMessage({ tone: 'success', text: editing ? 'FAQ entry updated.' : 'FAQ entry created.' }); setEditing(undefined); await load(false); }
     catch (error) { setMessage({ tone: 'error', text: error instanceof Error ? error.message : 'Unable to save FAQ entry' }); }
     finally { setSaving(false); }
   }
   async function updateSelection(input: FAQEntryFieldsUpdate) {
     if (!selected.size) return;
-    try { await faq.updateFields(knowledgeBaseId, { by_id: Object.fromEntries([...selected].map((id) => [id, input])) }); await load(); setMessage({ tone: 'success', text: 'Selected FAQ entries updated.' }); }
+    try { await faq.updateFields(knowledgeBaseId, { by_id: Object.fromEntries([...selected].map((id) => [id, input])) }); await load(false); setMessage({ tone: 'success', text: 'Selected FAQ entries updated.' }); }
     catch (error) { setMessage({ tone: 'error', text: error instanceof Error ? error.message : 'Unable to update selected entries' }); }
   }
   async function updateSelectedTag() {
     if (!selected.size) return;
     const tagId = batchTag.trim() ? Number(batchTag) : null;
     if (tagId !== null && (!Number.isSafeInteger(tagId) || tagId < 0)) { setMessage({ tone: 'error', text: 'Tag ID must be a non-negative integer.' }); return; }
-    try { await faq.updateTags(knowledgeBaseId, { updates: Object.fromEntries([...selected].map((id) => [id, tagId])) }); await load(); setBatchTag(''); setMessage({ tone: 'success', text: 'Selected FAQ tags updated.' }); }
+    try { await faq.updateTags(knowledgeBaseId, { updates: Object.fromEntries([...selected].map((id) => [id, tagId])) }); await load(false); setBatchTag(''); setMessage({ tone: 'success', text: 'Selected FAQ tags updated.' }); }
     catch (error) { setMessage({ tone: 'error', text: error instanceof Error ? error.message : 'Unable to update selected tags' }); }
   }
   async function removeMany(ids: number[]) {
-    try { await faq.removeMany(knowledgeBaseId, ids); await load(); setMessage({ tone: 'success', text: 'Selected FAQ entries deleted.' }); }
+    try { await faq.removeMany(knowledgeBaseId, ids); await load(false); setMessage({ tone: 'success', text: 'Selected FAQ entries deleted.' }); }
     catch (error) { setMessage({ tone: 'error', text: error instanceof Error ? error.message : 'Unable to delete FAQ entries' }); }
+  }
+  // Vue processFile (FAQEntryManager.vue:1900): parse immediately, surface the
+  // row count as an in-dialog preview; Excel needs the Vue-side parser (handoff).
+  function handleImportFile(file: File) {
+    setImportFile(file);
+    setImportPreview([]);
+    const format = importFormatFromName(file.name);
+    if (format === 'excel') { setMessage({ tone: 'warning', text: t('knowledgeEditor.faqImport.unsupportedFormat') }); return; }
+    void file.text().then((text) => {
+      try { setImportPreview(parseFAQImportText(text, format)); }
+      catch { setMessage({ tone: 'error', text: t('knowledgeEditor.faqImport.parseFailed') }); setImportPreview([]); }
+    });
   }
   async function confirmImport() {
     if (!importFile) return;
     setImportBusy(true); setMessage(null);
     try {
       const text = await importFile.text();
-      const format = importFile.name.toLowerCase().endsWith('.json') ? 'json' : 'csv';
+      const format = importFormatFromName(importFile.name);
+      if (format === 'excel') throw new Error(t('knowledgeEditor.faqImport.unsupportedFormat'));
       const imported = parseFAQImportText(text, format);
       const result = await faq.upsert(knowledgeBaseId, { entries: imported, mode: importMode });
-      setImportOpen(false); setImportFile(null);
+      setImportOpen(false); setImportFile(null); setImportPreview([]);
       setMessage({ tone: 'success', text: 'Import ' + importMode + ' queued (' + result.task_id + ').' });
-      setPage(1);
-      await load();
+      await load(false);
     } catch (error) { setMessage({ tone: 'error', text: error instanceof Error ? error.message : 'Unable to import FAQ entries' }); }
     finally { setImportBusy(false); }
   }
@@ -621,8 +819,8 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
       activeTagIds={activeTagIds}
       entries={entries}
       total={total}
-      page={page}
-      pageSize={PAGE_SIZE}
+      hasMore={hasMore}
+      loadingMore={loadingMore}
       loading={loading}
       canContribute={canContribute}
       selected={selected}
@@ -631,6 +829,7 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
       importMode={importMode}
       importFileName={importFile?.name ?? null}
       importBusy={importBusy}
+      importPreview={importPreview}
       editorOpen={editing !== undefined}
       editorTitle={editing ? t('knowledgeEditor.faq.editorEdit') : t('knowledgeEditor.faq.editorCreate')}
       editorMode={editing ? 'edit' : 'create'}
@@ -641,27 +840,29 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
       batchTag={batchTag}
       onNavigate={navigate}
       onKeywordDraftChange={setKeywordDraft}
-      onSearchSubmit={() => { setKeyword(keywordDraft.trim()); setPage(1); }}
-      onSearchClear={() => { setKeywordDraft(''); setKeyword(''); setPage(1); }}
-      onToggleTag={(tagId) => { setActiveTagIds((current) => current.includes(tagId) ? current.filter((id) => id !== tagId) : [...current, tagId]); setPage(1); }}
+      onSearchSubmit={() => setKeyword(keywordDraft.trim())}
+      onSearchClear={() => { setKeywordDraft(''); setKeyword(''); }}
+      onToggleTag={(tagId) => setActiveTagIds((current) => current.includes(tagId) ? current.filter((id) => id !== tagId) : [...current, tagId])}
       onOpenCreate={() => openEditor()}
-      onOpenImport={() => { setImportFile(null); setImportOpen(true); }}
+      onOpenImport={() => { setImportFile(null); setImportPreview([]); setImportOpen(true); }}
       onCloseImport={() => setImportOpen(false)}
       onImportModeChange={setImportMode}
-      onImportFile={setImportFile}
+      onImportFile={handleImportFile}
       onImportConfirm={() => void confirmImport()}
       onExport={(format) => void exportEntries(format)}
       onToggleSelect={(id, checked) => setSelected((current) => { const next = new Set(current); if (checked) next.add(id); else next.delete(id); return next; })}
       onToggleSelectAll={(checked) => setSelected(checked ? new Set(entries.map((entry) => entry.id)) : new Set())}
       onEditEntry={openEditor}
       onDeleteEntry={(entry) => void removeMany([entry.id])}
+      onToggleEntryStatus={(entry, value) => void toggleEntryStatus(entry, value)}
+      statusUpdatingIds={statusUpdatingIds}
       onBatchEnable={() => void updateSelection({ is_enabled: true })}
       onBatchDisable={() => void updateSelection({ is_enabled: false })}
       onBatchRecommend={() => void updateSelection({ is_recommended: true })}
       onBatchTagChange={setBatchTag}
       onBatchSetTag={() => void updateSelectedTag()}
       onBatchDelete={() => void removeMany([...selected])}
-      onPageChange={setPage}
+      onLoadMore={loadMore}
       onCloseEditor={() => setEditing(undefined)}
       onFormChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
       onEditorSubmit={(event) => void save(event)}

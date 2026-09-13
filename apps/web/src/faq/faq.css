@@ -453,7 +453,15 @@
 
 /* --- List / empty state (Vue .faq-scroll-container / .faq-empty-state) -------------- */
 
-.faq-scroll-container { position: relative; flex: 1; min-height: 0; }
+/* Vue .faq-scroll-container is the inner scroll surface (overflow-y: auto). */
+.faq-scroll-container {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+}
 
 .faq-skeleton-grid {
   display: grid;
@@ -719,6 +727,192 @@
   padding-top: 8px;
   border-top: 1px solid var(--faq-stroke, #edf0f5);
 }
+
+/* --- Leftover parity: infinite scroll (Vue .faq-load-more / .faq-no-more) ---------- */
+
+.faq-load-more,
+.faq-no-more {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 24px 16px;
+  color: var(--faq-text-secondary, #66758b);
+  font-size: 13px;
+}
+
+.faq-no-more { color: var(--faq-text-placeholder, #98a2b8); font-style: italic; }
+
+/* --- Leftover parity: header import-progress strip (Vue .faq-import-strip) --------- */
+
+.faq-import-strip {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  gap: 8px;
+  margin-top: 2px;
+  padding: 4px 8px 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--faq-text-secondary, #66758b);
+  background: var(--faq-bg-secondary, #f2f4f8);
+  border: 1px solid var(--faq-stroke, #edf0f5);
+}
+
+.faq-import-strip__icon {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--faq-text-placeholder, #98a2b8);
+}
+
+.faq-import-strip__icon.is-spinning { animation: faq-import-spin 1s linear infinite; }
+
+.faq-import-strip__text {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 520px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.faq-import-strip__bar {
+  flex-shrink: 0;
+  width: 72px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+}
+
+.faq-import-strip__bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--faq-accent, #00a870);
+  transition: width 0.3s ease;
+}
+
+.faq-import-strip__count {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--faq-text-placeholder, #98a2b8);
+}
+
+.faq-import-strip--running .faq-import-strip__icon { background: var(--faq-accent, #00a870); }
+.faq-import-strip--success .faq-import-strip__icon,
+.faq-import-strip--success .faq-import-strip__bar-fill { background: #0f8a5f; }
+.faq-import-strip--failed {
+  border-color: rgba(227, 77, 89, 0.3);
+  background: rgba(227, 77, 89, 0.06);
+}
+.faq-import-strip--failed .faq-import-strip__icon,
+.faq-import-strip--failed .faq-import-strip__bar-fill { background: #e34d59; }
+.faq-import-strip--failed .faq-import-strip__text { color: #e34d59; }
+
+@keyframes faq-import-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* --- Leftover parity: import dialog preview (Vue .import-preview) ------------------ */
+
+.import-preview {
+  margin-top: 16px;
+  padding: 16px;
+  background: var(--faq-bg-secondary, #f7f9fc);
+  border: 1px solid var(--faq-stroke, #edf0f5);
+  border-radius: 8px;
+}
+
+.preview-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--faq-stroke, #edf0f5);
+}
+
+.preview-icon { color: var(--faq-accent, #00a870); flex-shrink: 0; display: inline-flex; }
+
+.preview-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--faq-text-primary, #172033);
+}
+
+.preview-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+
+.preview-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--faq-bg-container, #fff);
+  border: 1px solid var(--faq-stroke, #edf0f5);
+  border-radius: 6px;
+  transition: border-color 0.2s ease;
+}
+
+.preview-item:hover { border-color: var(--faq-accent, #00a870); }
+
+.preview-index {
+  flex-shrink: 0;
+  min-width: 20px;
+  text-align: center;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--faq-text-secondary, #66758b);
+  background: var(--faq-bg-secondary, #f2f4f8);
+  border-radius: 4px;
+}
+
+.preview-question {
+  min-width: 0;
+  font-size: 13px;
+  color: var(--faq-text-primary, #172033);
+  word-break: break-word;
+}
+
+.preview-more { margin: 4px 0 0; font-size: 12px; color: var(--faq-text-placeholder, #98a2b8); }
+
+/* --- Leftover parity: per-entry enable switch (Vue card footer t-switch) ----------- */
+
+.faq-status-switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 34px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 10px;
+  background: #c9d0dd;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.faq-status-switch.is-on { background: var(--faq-accent, #00a870); }
+
+.faq-status-switch:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.faq-status-switch__thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.2);
+  transition: transform 0.2s ease;
+}
+
+.faq-status-switch.is-on .faq-status-switch__thumb { transform: translateX(14px); }
 
 /* --- Responsive (Vue @media 767px) -------------------------------------------------- */
 
