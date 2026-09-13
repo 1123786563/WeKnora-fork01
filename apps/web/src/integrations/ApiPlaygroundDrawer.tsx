@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
 
 import { consumeApiPlaygroundSSE } from './apiPlaygroundSSE.ts';
 import {
@@ -57,7 +57,24 @@ interface RunState {
 const idleRun: RunState = { running: false, sessionStatus: '', chatStatus: '', sessionResponse: '', streamOutput: '', finalAnswer: '', signedToken: '', error: '', successMs: null };
 
 const overlayStyle: CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(15,23,42,.4)', zIndex: 59 };
-const panelStyle: CSSProperties = { position: 'fixed', top: 0, right: 0, bottom: 0, width: 'min(640px, 94vw)', background: 'var(--wk-bg, #fff)', boxShadow: '-12px 0 32px rgba(0,0,0,.18)', display: 'flex', flexDirection: 'column', zIndex: 60 };
+const API_PLAYGROUND_DRAWER_SPEC = { storageKey: 'setting-drawer:width:api-playground', defaultWidth: 640, minWidth: 560, maxWidth: 960 } as const;
+
+export function clampApiPlaygroundWidth(width: number, viewportWidth = typeof window === 'undefined' ? API_PLAYGROUND_DRAWER_SPEC.maxWidth : window.innerWidth): number {
+  const cap = Math.min(API_PLAYGROUND_DRAWER_SPEC.maxWidth, viewportWidth);
+  const floor = Math.min(API_PLAYGROUND_DRAWER_SPEC.minWidth, cap);
+  return Math.max(floor, Math.min(cap, Math.round(width)));
+}
+
+function readApiPlaygroundWidth(): number {
+  try {
+    const raw = typeof window === 'undefined' ? null : window.localStorage.getItem(API_PLAYGROUND_DRAWER_SPEC.storageKey);
+    const parsed = raw ? Number(raw) : Number.NaN;
+    return Number.isFinite(parsed) ? clampApiPlaygroundWidth(parsed) : API_PLAYGROUND_DRAWER_SPEC.defaultWidth;
+  } catch {
+    return API_PLAYGROUND_DRAWER_SPEC.defaultWidth;
+  }
+}
+
 const bodyStyle: CSSProperties = { flex: '1 1 auto', overflowY: 'auto', padding: '0 20px 12px' };
 const footerStyle: CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 20px', borderTop: '1px solid var(--wk-border, #e5e7eb)' };
 const preStyle: CSSProperties = { background: 'var(--wk-bg-muted, #f6f8fa)', padding: 10, overflowX: 'auto', fontSize: 12 };
@@ -67,7 +84,11 @@ const fieldStyle: CSSProperties = { display: 'block', margin: '10px 0', width: '
 export function ApiPlaygroundDrawer({ open, onClose, apiKey, mode, agents, agentsError, apiBaseUrl, mintToken, fetchFn, t }: ApiPlaygroundDrawerProps) {
   const [form, setForm] = useState({ agentId: '', query: 'hello', externalUserId: 'user_123' });
   const [run, setRun] = useState<RunState>(idleRun);
+  const [drawerWidth, setDrawerWidth] = useState<number>(API_PLAYGROUND_DRAWER_SPEC.defaultWidth);
+  const [drawerResizing, setDrawerResizing] = useState(false);
+  const drawerWidthRef = useRef(drawerWidth);
   const controllerRef = useRef<AbortController | null>(null);
+  drawerWidthRef.current = drawerWidth;
 
   // Vue openPlaygroundDrawer -> ensurePlaygroundAgent (also reruns when the
   // agent list lands after the drawer opened).
@@ -82,6 +103,32 @@ export function ApiPlaygroundDrawer({ open, onClose, apiKey, mode, agents, agent
     });
   }, [open, agents]);
   useEffect(() => () => controllerRef.current?.abort(), []);
+  useEffect(() => {
+    if (!open) return;
+    setDrawerWidth(readApiPlaygroundWidth());
+    const onResize = () => setDrawerWidth((current) => clampApiPlaygroundWidth(current));
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [open]);
+  const onResizeStart = (event: ReactMouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = drawerWidthRef.current;
+    setDrawerResizing(true);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    const onMove = (move: MouseEvent) => setDrawerWidth(clampApiPlaygroundWidth(startWidth + startX - move.clientX));
+    const onEnd = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onEnd);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      setDrawerResizing(false);
+      try { window.localStorage.setItem(API_PLAYGROUND_DRAWER_SPEC.storageKey, String(clampApiPlaygroundWidth(drawerWidthRef.current))); } catch { /* storage is optional */ }
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onEnd);
+  };
   const close = () => {
     // Vue SettingDrawer blurs before destroy-on-close. This avoids leaving a
     // soon-to-be-removed textarea/select as the active element in the host.
@@ -184,7 +231,8 @@ export function ApiPlaygroundDrawer({ open, onClose, apiKey, mode, agents, agent
 
   const drawer = (
     <div className="wk-api-playground-overlay" role="presentation" style={overlayStyle} onClick={close}>
-      <aside className="wk-api-playground-drawer" role="dialog" aria-modal="true" aria-label={t('integrations.api.playgroundTitle')} style={panelStyle} onClick={(event) => event.stopPropagation()}>
+      <div className={`wk-api-playground-resize-handle${drawerResizing ? ' is-active' : ''}`} role="separator" aria-orientation="vertical" aria-label="调整抽屉宽度" onMouseDown={onResizeStart} style={{ position: 'fixed', top: 0, bottom: 0, right: drawerWidth, width: 8, cursor: 'col-resize', zIndex: 61 }}><span aria-hidden style={{ display: 'block', height: '100%', width: 1, margin: '0 auto', background: drawerResizing ? 'var(--wk-accent, #4a7dff)' : 'transparent' }} /></div>
+      <aside className="wk-api-playground-drawer" role="dialog" aria-modal="true" aria-label={t('integrations.api.playgroundTitle')} style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: `${drawerWidth}px`, background: 'var(--wk-bg, #fff)', boxShadow: '-12px 0 32px rgba(0,0,0,.18)', display: 'flex', flexDirection: 'column', zIndex: 60 }} onClick={(event) => event.stopPropagation()}>
         <header className="wk-api-playground-header" style={rowStyle}>
           <div>
             <h2 style={{ margin: 0, fontSize: 16 }}>{t('integrations.api.playgroundTitle')}</h2>

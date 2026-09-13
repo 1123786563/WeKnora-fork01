@@ -17,13 +17,14 @@ Object.assign(globalThis, {
   document: dom.window.document,
   HTMLElement: dom.window.HTMLElement,
   Event: dom.window.Event,
+  MouseEvent: dom.window.MouseEvent,
   IS_REACT_ACT_ENVIRONMENT: true,
 });
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
 
 const { createRoot } = await import('react-dom/client');
 const { formatMessage } = await import('../../../../packages/i18n/src/index.ts');
-const { ApiPlaygroundDrawer } = await import('./ApiPlaygroundDrawer.tsx');
+const { ApiPlaygroundDrawer, clampApiPlaygroundWidth } = await import('./ApiPlaygroundDrawer.tsx');
 type ApiPlaygroundAgentOption = import('./ApiPlaygroundDrawer.tsx').ApiPlaygroundAgentOption;
 
 const t = (key: string, values?: Record<string, string | number>) => formatMessage('zh-CN', key, values);
@@ -250,4 +251,20 @@ test('agent select defaults to the builtin smart-reasoning agent and lists the b
   const options = Array.from(select!.options).map((option) => option.textContent);
   assert.ok(options.includes('深度推理 · 内置'), 'Vue agentOptionLabel builtin suffix');
   assert.ok(options.includes('助手'));
+});
+
+test('drawer width follows Vue clamp rules and persists a dragged width', async () => {
+  assert.equal(clampApiPlaygroundWidth(400, 1400), 560);
+  assert.equal(clampApiPlaygroundWidth(1200, 1400), 960);
+  assert.equal(clampApiPlaygroundWidth(900, 700), 700);
+  window.localStorage.clear();
+  const { container } = mountDrawer();
+  const handle = container.querySelector<HTMLElement>('[role="separator"]');
+  assert.ok(handle, 'resizable drawer exposes the Vue separator handle');
+  assert.equal(handle!.style.right, '640px');
+  await act(async () => { handle!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 1000 })); });
+  await act(async () => { document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 700 })); });
+  await act(async () => { document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: 700 })); });
+  assert.equal(handle!.style.right, '940px');
+  assert.equal(window.localStorage.getItem('setting-drawer:width:api-playground'), '940');
 });

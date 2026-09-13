@@ -1684,3 +1684,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - React API Playground 的关闭路径现在在 Abort 和 `onClose` 前清理当前 `HTMLElement` 焦点，对齐 Vue `SettingDrawer` 的 `before-close` blur 语义，避免 Portal 销毁后焦点留在已移除控件上。
 - 回归覆盖关闭按钮可聚焦、关闭后不保留焦点；API Playground 定向测试 9/9，Web TypeScript 检查通过。
 - 证据层：本轮为 Vue `SettingDrawer.vue` 源码对照与 React DOM/单元验证；真实浏览器焦点恢复、Vue 同条件截图/computed-style、真实后端成功/失败/权限矩阵、Wails 与移动端证据仍待补齐，R013/N028 继续保持 review。
+
+## 2026-09-14 Round N+41 — R013 API Playground 抽屉宽度拖拽与持久化
+
+- React API Playground 现在对齐 Vue `SettingDrawer` 的 640px 默认宽度、560–960px 与 viewport clamp、左侧可见拖拽分隔线、拖拽期间 body 光标/选区锁定、窗口缩放收敛以及 `setting-drawer:width:api-playground` localStorage 持久化。
+- 新增纯函数边界和真实 DOM mousedown/mousemove/mouseup 回归；API Playground 定向测试 10/10，Web TypeScript 检查通过。证据 `evidence/vue-react-parity/2026-09-14-r013-api-playground-resize.md`。
+- 证据层：本轮为 Vue 源码对照与 React DOM/单元验证；浏览器 computed-style、Vue 同条件截图、真实后端成功/失败/权限矩阵、Wails 与移动端证据仍待补齐，R013/N028 继续保持 review。
