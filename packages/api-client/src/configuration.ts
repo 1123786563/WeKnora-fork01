@@ -358,6 +358,23 @@ function isNativeFileSource(value: Blob | NativeFileSource): value is NativeFile
   return typeof Blob === 'undefined' || !(value instanceof Blob);
 }
 
+/**
+ * Bridge a browser Blob (DOM File) into the platform-neutral NativeFileSource
+ * shape the multipart transports consume. The web transport fetches the
+ * object URL and revokes it after reading; native runtimes pass uri through.
+ */
+function toNativeFileSource(value: Blob | NativeFileSource): NativeFileSource {
+  if (isNativeFileSource(value)) return value;
+  const uri = URL.createObjectURL(value);
+  const file = value as File;
+  return {
+    uri,
+    name: file.name || 'file',
+    type: value.type || 'application/octet-stream',
+    size: value.size,
+  };
+}
+
 function parseModelDebug(value: unknown): ModelDebugResult {
   const data = record(successfulData(value, '/models/debug'), '/models/debug.data');
   if (typeof data.ok !== 'boolean') throw new Error('/models/debug.data.ok must be a boolean');
@@ -734,13 +751,13 @@ export function createConfigurationApi(request: (input: ClientRequest) => Promis
         async list(signal?: AbortSignal): Promise<SkillCatalog[]> {
           return parseCatalogList(await request({ method: 'GET', path: '/api/v1/skills/catalog', ...(signal === undefined ? {} : { signal }) }), '/skills/catalog');
         },
-        async register(input: { source: string } | { file: NativeFileSource }, signal?: AbortSignal): Promise<SkillCatalog> {
+        async register(input: { source: string } | { file: NativeFileSource | Blob }, signal?: AbortSignal): Promise<SkillCatalog> {
           if ('source' in input) {
             const source = input.source.trim();
             if (!source) throw new Error('skill catalog source must not be empty');
             return parseCatalog(successfulData(await request({ method: 'POST', path: '/api/v1/skills/catalog', body: { source }, ...(signal === undefined ? {} : { signal }) }), '/skills/catalog'), '/skills/catalog.data', false);
           }
-          return parseCatalog(successfulData(await request({ method: 'POST', path: '/api/v1/skills/catalog', nativeFile: input.file, ...(signal === undefined ? {} : { signal }) }), '/skills/catalog'), '/skills/catalog.data', false);
+          return parseCatalog(successfulData(await request({ method: 'POST', path: '/api/v1/skills/catalog', nativeFile: toNativeFileSource(input.file), ...(signal === undefined ? {} : { signal }) }), '/skills/catalog'), '/skills/catalog.data', false);
         },
         async install(catalogId: string, sandboxConfigIds: string[], signal?: AbortSignal): Promise<SkillCatalogInstallResult> {
           if (!Array.isArray(sandboxConfigIds) || sandboxConfigIds.some((value) => typeof value !== 'string' || value.trim() === '')) throw new Error('sandboxConfigIds must be a string array');

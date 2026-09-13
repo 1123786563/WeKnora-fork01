@@ -1,6 +1,6 @@
 import { createJsonTransport, type FetchLike } from '@weknora/api-client';
 import type { Credential } from '@weknora/api-client';
-import type { HttpRequest, HttpResult, HttpStreamResult } from '@weknora/api-client';
+import type { HttpRequest, HttpResult, HttpStreamResult, NativeMultipartFileRequest } from '@weknora/api-client';
 
 export interface BrowserTransportOptions {
   fetcher?: FetchLike;
@@ -104,6 +104,27 @@ export function createBrowserTransport(options: BrowserTransportOptions = {}) {
     return result;
   }
 
+  async function sendMultipartFileWithRefresh(request: NativeMultipartFileRequest): Promise<HttpResult> {
+    // Read the upload bytes from the native source URI. On web the URI is a
+    // blob: object URL produced by the api-client Blob bridge (or an http(s)
+    // URL); the JSON transport forwards FormData bodies untouched so the
+    // browser sets the multipart boundary itself.
+    const fileResponse = await fetch(request.file.uri, { signal: request.signal });
+    if (!fileResponse.ok) throw new Error('unable to read upload source: ' + fileResponse.status);
+    const blob = await fileResponse.blob();
+    if (request.file.uri.startsWith('blob:')) URL.revokeObjectURL(request.file.uri);
+    const form = new FormData();
+    for (const [name, value] of Object.entries(request.fields ?? {})) form.append(name, value);
+    form.append('file', blob, request.file.name || 'file');
+    return sendWithRefresh({
+      method: request.method,
+      url: request.url,
+      headers: request.headers,
+      body: form,
+      signal: request.signal,
+    });
+  }
+
   async function sendStreamWithRefresh(request: HttpRequest): Promise<HttpStreamResult> {
     const credential = currentCredential();
     let result = await base.sendStream!(decorate(request, credential));
@@ -128,6 +149,9 @@ export function createBrowserTransport(options: BrowserTransportOptions = {}) {
     async sendStream(request: Parameters<typeof base.send>[0]) {
       if (!base.sendStream) throw new Error('Streaming transport is unavailable');
       return sendStreamWithRefresh(request);
+    },
+    async sendMultipartFile(request: NativeMultipartFileRequest) {
+      return sendMultipartFileWithRefresh(request);
     },
   };
 }
