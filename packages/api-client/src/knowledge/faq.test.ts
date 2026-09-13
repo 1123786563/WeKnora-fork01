@@ -64,3 +64,22 @@ test('uses the server search and export endpoints without changing their payload
     { method: 'GET', path: '/api/v1/knowledge-bases/kb-1/faq/entries/export?format=json', body: undefined },
   ]);
 });
+
+test('importProgress fetches the backend task progress envelope', async () => {
+  let path = '';
+  const api = createKnowledgeFaqApi(async (request) => {
+    path = request.path;
+    return { success: true, data: { task_id: 'task-9', kb_id: 'kb-1', knowledge_id: 'k-1', status: 'processing', progress: 40, total: 5, processed: 2 } };
+  });
+  const progress = await api.importProgress('task-9');
+  assert.equal(path, '/api/v1/faq/import/progress/task-9');
+  assert.equal(progress.status, 'processing');
+  assert.equal(progress.processed, 2);
+  assert.equal(progress.total, 5);
+});
+
+test('importProgress rejects an empty task id', async () => {
+  const api = createKnowledgeFaqApi(async () => ({ success: true, data: {} }));
+  await assert.rejects(() => api.importProgress(''), /Invalid FAQ task id/);
+});
+
