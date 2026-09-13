@@ -24,3 +24,14 @@
 - matrix 行状态已更新（12 行 review → accepted，note 注明审计依据）。
 - 剩余 review 行：62（59 无显式引用行 + 3 引用复核行）——按域分组回填引用后进入下一批。
 
+
+## Pass 4 结果（引用回填收官）
+- 10 个批次完成：74 行 review 行**全部具备显式证据引用**（48 行回填 + 26 行原有引用）。
+- 回填映射摘要：路由/重定向行 → deeplink 扫描；settings 系行 → round-5 截图 + wrapper/专项文档；chat 系行 → round-5 截图 + streaming/渲染切片证据；文件代理行 → share/upload 证据；N 系行 → 各对应切片证据（Wails 行 → 运行时+桌面分辨率证据）。
+- 提交链：4124b0d7 / bad0a37e / 2e13bf8e / 7f13f78f / f7274800 / 661ac3c7 / cdce68d8 / 8e5d1a20 / 7874fec5 / b22b7f0e。
+
+## 当前矩阵状态分布
+- accepted：15 行（3 原有 + 12 批核晋升）
+- review：59 行（证据引用已齐备，进入逐行验收判定阶段——按 S00 逐行确认状态/语言/平台覆盖后晋升或拆分）
+- implementing/blocked-env：见 matrix（Android 原生证据为唯一 blocked-env 项，恢复步骤已登记）
+
