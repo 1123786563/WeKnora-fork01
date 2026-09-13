@@ -131,6 +131,11 @@
 - Vue sync logs expose lifecycle and item result counts. React now renders finished-at plus total/created/updated/deleted/skipped/failed counts in the existing log surface, without changing API behavior.
 - Data-source form tests: 2/2 passed. Web typecheck: passed. Evidence remains static/unit and typecheck only; resource browser, browser, real-backend, Wails, and native evidence remain open.
 
+## 2026-09-14 Round N+14 — N013 resource browser
+
+- React now exposes Browse resources on each saved connector and lazily loads root/child resources through `client.dataSources.resources`, with breadcrumb back navigation and loading/error/empty states.
+- Data-source form tests: 2/2 passed. Web typecheck: passed. Resource selection/check-state parity and runtime evidence remain open.
+
 ## 2026-09-14 Round N+13 — N013 sync-log pagination
 
 - React now uses the existing log API `limit/offset` contract to page through synchronization history, resetting to the first page when a source is opened and disabling Previous/Next at the appropriate boundaries.
@@ -1451,4 +1456,3 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - 前置核实：CocoaPods 1.17.0 可用、apps/mobile/ios 工程已生成（Podfile/Podfile.lock 就绪）、iPhone 17 Pro 模拟器可用——此前"iOS 原生证据不可行"判断不成立，仅 Android 维持 blocked-env（SDK/emulator 缺失）。
 - iOS 构建已后台启动：xcrun simctl boot iPhone 17 Pro + npx expo run:ios（CocoaPods 安装阶段开始）。
-
