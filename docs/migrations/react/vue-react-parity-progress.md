@@ -125,6 +125,11 @@
 
 - Vue exposes connection validation independently from synchronization. React now calls the existing `dataSources.validate` endpoint from each saved source, disables concurrent actions, and reports validation success/failure without refreshing or claiming sync completion.
 - Data-source form tests: 2/2 passed. Web typecheck: passed. Evidence is static/unit and typecheck only; resource browser, detailed logs, browser, real-backend, Wails, and native evidence remain open.
+
+## 2026-09-14 Round N+12 — N013 sync-log result details
+
+- Vue sync logs expose lifecycle and item result counts. React now renders finished-at plus total/created/updated/deleted/skipped/failed counts in the existing log surface, without changing API behavior.
+- Data-source form tests: 2/2 passed. Web typecheck: passed. Evidence remains static/unit and typecheck only; resource browser, browser, real-backend, Wails, and native evidence remain open.
 - Status remains `review`; no new browser computed-style, real-backend, Wails, iOS or Android evidence claimed. Index/tree/list modes, folder actions, graph and reader states remain open.
 
 ## 2026-09-12 Round 1 基线
@@ -1436,4 +1441,3 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 发现 wails CLI 已存在于系统（/Users/wuyongjun/go/bin/wails v2.12.0，仅未入 PATH）——此前"缺失"的阻塞条件不成立。
 - 修复 desktop-renderer 构建断裂（0f1c6d45）：apps/desktop/vite.config.ts 缺 '@weknora/domain/settings/theme' 别名（theme.ts 引入该子路径，落到 query-key.ts 兜底别名导致 ENOTDIR）。
 - desktop-renderer 构建通过（3.75s）；完整 wails build（sqlite_fts5/CGO）后台进行中。
-
