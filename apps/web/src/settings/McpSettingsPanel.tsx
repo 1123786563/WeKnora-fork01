@@ -22,6 +22,7 @@ type McpService = McpConfiguration & {
     [key: string]: unknown;
   };
   stdio_config?: Record<string, unknown>;
+  catalog?: { tool_count?: number; stale?: boolean };
 };
 type Props = {
   client: WeKnoraClient;
@@ -740,9 +741,9 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
       setBusyId(null);
     }
   }
-  function openEditor(service?: McpService) {
+  function openEditor(service?: McpService, initialStep: 0 | 1 = 0) {
     setDraft(draftFrom(service));
-    setStep(0);
+    setStep(initialStep);
     setToolsSynced(false);
     setMetadataBusy(false);
     setGeneratingUsage(false);
@@ -769,71 +770,43 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
             {t("mcpSettings.description")}
           </p>
         </div>
-        {canEdit ? (
-          <Button type="button" onClick={() => openEditor()}>
-            {t("mcpSettings.addService")}
-          </Button>
-        ) : null}
       </div>
       {error ? <Status tone="error">{error}</Status> : null}
       {notice ? <Status tone="success">{notice}</Status> : null}
-      {services.length === 0 ? (
+      {services.length === 0 && !canEdit ? (
         <Status>{t("mcpSettings.empty")}</Status>
       ) : (
         <div className="wk-mcp-grid">
           {services.map((service) => (
-            <Card key={service.id} className="wk-mcp-card">
-              <div className="wk-mcp-card-header">
-                <div>
-                  <h4 title={service.name}>{service.name}</h4>
+            <article key={service.id} className="wk-mcp-card">
+              <div className="wk-mcp-card-main">
+                <div className="wk-mcp-card-body">
+                  <div className="wk-mcp-card-header">
+                    <span className="wk-mcp-card-badge" aria-hidden="true">⚒</span>
+                    <h4 title={service.name}>{service.name}</h4>
                   {service.is_builtin ? (
                     <span className="wk-mcp-badge">{t("mcpSettings.builtin")}</span>
                   ) : null}
-                </div>
-                {canEdit ? (
-                  <div className="wk-list-actions">
-                    <Button
-                      type="button"
-                      onClick={() => openEditor(service)}
-                    >
-                      {t("common.edit")}
-                    </Button>
-                    {service.is_builtin ? null : (
-                      <Button
-                        type="button"
-                        onClick={() => void remove(service)}
-                      >
-                        {t("common.delete")}
-                      </Button>
-                    )}
+                    {canEdit ? (
+                      <div className="wk-mcp-card-actions">
+                        <button type="button" className="wk-mcp-icon-button" title={t("common.edit")} aria-label={`${service.name} · ${t("common.edit")}`} onClick={() => openEditor(service)}>✎<span className="wk-sr-only">{t("common.edit")}</span></button>
+                        {service.is_builtin ? null : <button type="button" className="wk-mcp-icon-button wk-mcp-icon-button-danger" title={t("common.delete")} aria-label={`${service.name} · ${t("common.delete")}`} onClick={() => void remove(service)}>×<span className="wk-sr-only">{t("common.delete")}</span></button>}
+                      </div>
+                    ) : null}
                   </div>
-                ) : null}
+                  {serviceDescription(service) ? <p className="wk-mcp-description" title={serviceDescription(service)}>{serviceDescription(service).replace(/\s+/g, " ")}</p> : canEdit && !service.is_builtin ? <button type="button" className="wk-mcp-add-usage" onClick={() => openEditor(service, 1)}>＋ {t("mcpSettings.addUsageInstructions")}</button> : <span className="wk-mcp-empty-usage">{t("mcpSettings.noUsageInstructions")}</span>}
+                  <div className="wk-mcp-card-footer">
+                    <button type="button" className={`wk-mcp-tools-link ${service.catalog?.stale ? "is-stale" : !service.catalog ? "is-missing" : ""}`} title={t("mcpMetadata.toolsAndUsage")} onClick={() => canEdit && openEditor(service, 1)} disabled={!canEdit}>
+                      {service.catalog?.stale ? "⚠ " : ""}{service.catalog ? t("mcpSettings.toolCount", { count: service.catalog.tool_count ?? 0 }) : t("mcpSettings.toolsNotSynced")} {service.catalog?.stale ? ` · ${t("mcpSettings.toolsStale")}` : ""} {canEdit ? "›" : ""}
+                    </button>
+                    <span>{service.transport_type === "http-streamable" ? "HTTP Streamable" : service.transport_type === "stdio" ? "Stdio" : "SSE"}</span>
+                    {canEdit && !service.is_builtin ? <button type="button" className={`wk-mcp-status ${service.enabled === false ? "" : "is-enabled"}`} role="switch" aria-checked={service.enabled !== false} disabled={busyId === service.id} onClick={() => void toggle(service)}><span className="wk-mcp-status-dot" aria-hidden="true" />{service.enabled === false ? t("mcpSettings.disabled") : t("mcpSettings.enabled")}</button> : <span className={`wk-mcp-status ${service.enabled === false ? "" : "is-enabled"}`}><span className="wk-mcp-status-dot" aria-hidden="true" />{service.enabled === false ? t("mcpSettings.disabled") : t("mcpSettings.enabled")}</span>}
+                  </div>
+                </div>
               </div>
-              <p className="wk-muted wk-mcp-description">
-                {serviceDescription(service) || t("mcpSettings.noUsageInstructions")}
-              </p>
-              <div className="wk-mcp-card-footer">
-                <span>
-                  {service.transport_type === "http-streamable"
-                    ? "HTTP Streamable"
-                    : service.transport_type === "stdio"
-                      ? "Stdio"
-                      : "SSE"}
-                </span>
-                {canEdit && !service.is_builtin ? (
-                  <Button
-                    type="button"
-                    disabled={busyId === service.id}
-                    onClick={() => void toggle(service)}
-                  >
-                    {service.enabled === false ? t("mcpSettings.disabled") : t("mcpSettings.enabled")}
-                  </Button>
-                ) : (
-                  <span>{service.enabled === false ? t("mcpSettings.disabled") : t("mcpSettings.enabled")}</span>
-                )}
-              </div>
-            </Card>
+            </article>
           ))}
+          {canEdit ? <button type="button" className="wk-mcp-card wk-mcp-card-add" onClick={() => openEditor()}><span className="wk-mcp-card-add-icon" aria-hidden="true">＋</span><span>{t("mcpSettings.addService")}</span></button> : null}
         </div>
       )}
       {draft ? (

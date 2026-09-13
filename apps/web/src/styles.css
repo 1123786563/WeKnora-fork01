@@ -154,14 +154,37 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-model-debug-result.is-ok { border-color: #86efac; }
 .wk-model-debug-result.is-error { border-color: #fca5a5; }
 .wk-model-debug-result pre { background: #f7f9fc; max-height: 18rem; overflow: auto; padding: .7rem; white-space: pre-wrap; }
-.wk-mcp-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem; }
-.wk-mcp-card { min-width: 0; }
+.wk-mcp-grid { align-items: stretch; display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); }
+.wk-mcp-card { background: #fff; border: 1px solid #dce3ed; border-radius: 10px; min-width: 0; overflow: hidden; }
+.wk-mcp-card-main { display: flex; min-width: 0; padding: 12px; }
+.wk-mcp-card-body { display: flex; flex: 1; flex-direction: column; gap: 8px; min-width: 0; }
 .wk-mcp-card-header, .wk-mcp-card-footer { align-items: center; display: flex; gap: .7rem; justify-content: space-between; }
-.wk-mcp-card h4 { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wk-mcp-card-header { min-height: 28px; }
+.wk-mcp-card-header h4 { flex: 1; margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wk-mcp-card-badge { align-items: center; background: #f3f5f8; border-radius: 7px; color: #66758b; display: inline-flex; flex-shrink: 0; font-size: 14px; height: 26px; justify-content: center; width: 26px; }
+.wk-mcp-card-actions { align-items: center; display: flex; flex-shrink: 0; gap: 2px; }
+.wk-mcp-icon-button { background: none; border: 0; border-radius: 6px; color: #66758b; cursor: pointer; font-size: 16px; height: 24px; padding: 0; width: 24px; }
+.wk-mcp-icon-button:hover, .wk-mcp-icon-button:focus-visible { background: #f3f5f8; color: #245a9b; outline: none; }
+.wk-mcp-icon-button-danger:hover, .wk-mcp-icon-button-danger:focus-visible { color: #b42318; }
 .wk-mcp-badge { color: #2e6de6; font-size: .75rem; }
 .wk-mcp-description { min-height: 2.6rem; overflow-wrap: anywhere; }
 .wk-mcp-card-footer { border-top: 1px solid #edf0f5; padding-top: .65rem; }
 .wk-mcp-card-footer > span { color: #66758b; font-size: .82rem; }
+.wk-mcp-tools-link, .wk-mcp-status { background: transparent; border: 0; color: #66758b; cursor: pointer; font: inherit; font-size: .82rem; padding: 0; }
+.wk-mcp-tools-link:hover, .wk-mcp-tools-link:focus-visible { color: #245a9b; outline: none; }
+.wk-mcp-tools-link.is-stale { color: #b54708; }
+.wk-mcp-tools-link.is-missing { color: #66758b; }
+.wk-mcp-status { align-items: center; display: inline-flex; gap: 5px; white-space: nowrap; }
+.wk-mcp-status-dot { background: #98a2b8; border-radius: 50%; display: inline-block; height: 7px; width: 7px; }
+.wk-mcp-status.is-enabled { color: #137333; }
+.wk-mcp-status.is-enabled .wk-mcp-status-dot { background: #07c05f; }
+.wk-mcp-add-usage { align-items: center; align-self: flex-start; background: transparent; border: 0; color: #245a9b; cursor: pointer; font: inherit; font-size: .82rem; padding: 0; }
+.wk-mcp-add-usage:hover, .wk-mcp-add-usage:focus-visible { text-decoration: underline; }
+.wk-mcp-empty-usage { color: #66758b; font-size: .82rem; }
+.wk-mcp-card-add { align-items: center; background: transparent; border-style: dashed; color: #66758b; cursor: pointer; display: flex; flex-direction: column; font: inherit; gap: 6px; justify-content: center; min-height: 88px; padding: 12px; text-align: center; transition: border-color .18s ease, background .18s ease; }
+.wk-mcp-card-add:hover, .wk-mcp-card-add:focus-visible { background: rgba(7, 192, 95, .06); border-color: #07c05f; color: #07c05f; outline: none; }
+.wk-mcp-card-add-icon { align-items: center; background: #f3f5f8; border-radius: 8px; display: flex; font-size: 18px; height: 32px; justify-content: center; width: 32px; }
+.wk-sr-only { clip: rect(0 0 0 0); clip-path: inset(50%); height: 1px; overflow: hidden; position: absolute; white-space: nowrap; width: 1px; }
 .wk-mcp-editor { background: #fff; border: 1px solid #cbd5e1; border-radius: 8px; box-shadow: 0 10px 30px rgba(23, 32, 51, .12); padding: 1rem; }
 .wks-mcp-drawer { width: min(720px, 100%); height: min(780px, calc(100vh - 40px)); max-height: calc(100vh - 40px); overflow-y: auto; padding: 1.25rem 1.5rem 2rem; }
 .wk-mcp-overlay { z-index: 1200; }
