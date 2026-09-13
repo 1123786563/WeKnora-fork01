@@ -81,7 +81,6 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
   const [reloadToken, setReloadToken] = useState(0);
   const [pageState, setPageState] = useState<KnowledgeBaseListPageState>({ status: 'loading' });
   const [viewer, setViewer] = useState<Viewer>({ userId: '', isAdmin: false, isContributor: false });
-  const [modelsReady, setModelsReady] = useState<boolean | null>(null);
   const [space, setSpaceState] = useState<'all' | 'mine' | 'favorites' | 'recents'>(readScopeFromUrl);
   const [query, setQuery] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '');
   const [creator, setCreator] = useState<KnowledgeBaseCreatorFilter>('all');
@@ -139,10 +138,6 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
         isContributor: role === 'owner' || role === 'admin' || role === 'contributor' || me.user.is_system_admin === true,
       });
     }).catch(() => { /* gating falls back to creator-id matching only */ });
-    void client.configuration.models.list().then((models) => {
-      if (!active) return;
-      setModelsReady(models.some((model) => model.type === 'llm'));
-    }).catch(() => { if (active) setModelsReady(false); });
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, scopeController]);
@@ -382,15 +377,12 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
     }
   }
 
-  // Audit #4: the settings button must apply the same models gate as the
-  // card click (Vue KnowledgeBaseList.vue:1665-1674) instead of bypassing it.
+  // Vue handleSettingsById → goSettings unconditionally
+  // (KnowledgeBaseList.vue:1394-1396): the settings action opens this KB's
+  // settings without a tenant-model gate (Audit #4 superseded by source).
   function openKbSettings(kb: Record<string, unknown>) {
     const id = String(kb.id);
-    if (isKnowledgeBaseInitialized(kb as never)) {
-      window.location.assign(`/knowledgeBase/${encodeURIComponent(id)}/settings`);
-      return;
-    }
-    window.location.assign(modelsReady === false ? '/platform/settings' : `/knowledgeBase/${encodeURIComponent(id)}/settings`);
+    window.location.assign(`/knowledgeBase/${encodeURIComponent(id)}/settings`);
   }
 
   function openCard(kb: Record<string, unknown>) {
@@ -406,9 +398,9 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
       window.location.assign(`/knowledgeBase/${encodeURIComponent(id)}`);
       return;
     }
-    // Uninitialized: configure models first — tenant model settings when the
-    // tenant has no LLM configured, otherwise this KB's settings page.
-    window.location.assign(modelsReady === false ? '/platform/settings' : `/knowledgeBase/${encodeURIComponent(id)}/settings`);
+    // Vue handleCardClick else-branch: uninitialized card click opens this
+    // KB's settings (goSettings) without a tenant-model detour.
+    window.location.assign(`/knowledgeBase/${encodeURIComponent(id)}/settings`);
   }
 
   const isLoading = pageState.status === 'loading';
@@ -518,7 +510,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
                 return (
                   <article key={card.id} data-kb-id={card.id} className={`${initialized ? 'wk-kb-card' : 'wk-kb-card wk-kb-card-warning'}${highlightId === card.id ? ' wk-kb-flash' : ''}`}>
                     <div className="wk-kb-card-head">
-                      <button type="button" className="wk-kb-card-title" onClick={() => openKbSettings(kb)}>{String(card.name ?? '')}</button>
+                      <button type="button" className="wk-kb-card-title" onClick={() => openCard(kb)}>{String(card.name ?? '')}</button>
                       <button
                         type="button"
                         className={favorites.has(card.id) ? 'wk-kb-star wk-kb-star-active' : 'wk-kb-star'} data-highlight={highlightId === card.id || undefined}
@@ -544,7 +536,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
                       {manageable ? (
                         <>
                           <Button type="button" onClick={() => openEdit(kb)}>{t('common.edit')}</Button>
-                          <Button type="button" onClick={() => openCard(kb)}>{t('common.settings')}</Button>
+                          <Button type="button" onClick={() => openKbSettings(kb)}>{t('common.settings')}</Button>
                           <Button type="button" onClick={() => setSharingKb({ id: card.id, name: String(card.name ?? '') })}>{t('common.share')}</Button>
                           <Button type="button" className="wk-kb-danger" onClick={() => setDeletingKb({ id: card.id, name: String(card.name ?? '') })}>{t('common.delete')}</Button>
                         </>
