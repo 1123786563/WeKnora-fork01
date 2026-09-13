@@ -53,3 +53,16 @@ test('admin sees data-source mutation controls', async () => {
   try { assert.equal(page.host.textContent?.includes('Add'), true); assert.equal(page.host.textContent?.includes('Edit'), true); assert.equal(page.host.textContent?.includes('Sync'), true); assert.equal(page.host.textContent?.includes('Delete'), true); }
   finally { await page.close(); }
 });
+
+test('admin can test a connector before saving and sees the server result', async () => {
+  const page = await mount('admin');
+  try {
+    const edit = [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Edit');
+    assert.ok(edit);
+    await act(async () => edit?.click());
+    const testButton = [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Test connection');
+    assert.ok(testButton, 'editor should expose a pre-save connection test');
+    await act(async () => testButton?.click());
+    assert.match(page.host.textContent ?? '', /Connection successful/);
+  } finally { await page.close(); }
+});

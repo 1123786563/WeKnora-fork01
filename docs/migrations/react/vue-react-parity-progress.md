@@ -796,6 +796,15 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   typecheck passes. Browser/Vue screenshot, real-backend, Wails, iOS, and
   Android evidence remain absent; N005 stays `review`.
 
+- **Mobile data-source pre-save connection test:** the native data-source editor
+  now exposes a guarded, non-persisting connector test for existing and new
+  drafts. It reuses the typed `validateCredentials` transport, reports server
+  failures in the page error state, disables conflicting save/test/cancel
+  actions while pending, and clears stale success state when draft fields
+  change. Focused wiring tests pass 3/3; the full mobile suite passes 92/92
+  and mobile typecheck passes. Connector-specific fields/resources,
+  localization, real backend, and iOS/Android evidence remain open.
+
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
 - **Rows:** any rows proposed for `accepted`; never all rows by default.
 - **Files owned:** `docs/migrations/react/vue-react-parity-matrix.md`, `docs/migrations/react/vue-react-parity-progress.md`, `docs/migrations/react/evidence/vue-react-parity/README.md`, `docs/migrations/react/evidence/vue-react-parity/screenshot-matrix.md`, and the row-specific `docs/migrations/react/evidence/vue-react-parity/<date>-<row-group>.md` evidence file only.
