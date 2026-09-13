@@ -18,3 +18,25 @@
 - WebKit 窗口内深层交互（注册/登录/建库）需 macOS 辅助功能授权的 UI 自动化，本轮未执行——登录页渲染 + 进程存活为本轮取证范围
 - 应用为 Lite 版（内嵌 sqlite 后端），与浏览器证据 (:5180/:5181 连 8080 后端) 的数据面不同源
 - iOS/Android 原生证据仍 blocked-env（Android SDK/emulator 缺失；iOS 模拟器存在但 React Native 原生构建未在本轮范围）
+
+## 追加：内嵌后端完整运行（.env 依赖发现）
+
+首次 wails build（不走打包脚本）缺少两样 Resources 内容，逐层修复验证：
+1. config/ 与 migrations/sqlite/ 需拷入 Resources（打包脚本 package-mac-app.sh:84-98 的步骤）
+2. **.env** 必须由 .env.lite.example 拷贝为 Resources/.env（含 DB_DRIVER=sqlite、DB_PATH、WEKNORA_SANDBOX_MODE=disabled）——否则 container initDatabase panic "unsupported database driver: "
+
+修复后验证（wails-app3.log）：
+- app 进程存活 1，panics: 0
+- 内嵌后端完整启动："Server is running at 127.0.0.1:49342 (proxy -> http://127.0.0.1:49342)"
+- HTTP 服务应答（未认证请求 401 为预期行为）
+
+**启动配方（复现步骤）**：
+```bash
+RES="cmd/desktop/build/bin/WeKnora Lite.app/Contents/Resources"
+mkdir -p "$RES/config" "$RES/migrations/sqlite"
+cp -r config/* "$RES/config/"
+cp -r migrations/sqlite/* "$RES/migrations/sqlite/"
+cp .env.lite.example "$RES/.env"
+open "cmd/desktop/build/bin/WeKnora Lite.app"
+```
+
