@@ -773,6 +773,13 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   typecheck passes. Full connector/resource/form parity and native/backend
   evidence remain open.
 
+- **Mobile data-source screen wiring:** added a native-host DOM harness for
+  `DataSourcesScreen`, proving viewer controls are read-only while admin
+  controls remain available against a mocked typed client. Focused tests pass
+  2/2; the full mobile suite passes 92/92 and typecheck passes. Connector
+  specific form parity, real 403/backend behavior, and iOS/Android evidence
+  remain open.
+
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
 - **Rows:** any rows proposed for `accepted`; never all rows by default.
 - **Files owned:** `docs/migrations/react/vue-react-parity-matrix.md`, `docs/migrations/react/vue-react-parity-progress.md`, `docs/migrations/react/evidence/vue-react-parity/README.md`, `docs/migrations/react/evidence/vue-react-parity/screenshot-matrix.md`, and the row-specific `docs/migrations/react/evidence/vue-react-parity/<date>-<row-group>.md` evidence file only.
