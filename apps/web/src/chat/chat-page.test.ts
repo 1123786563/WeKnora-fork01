@@ -193,6 +193,26 @@ test('new-conversation view renders the agent picker and the agent suggested que
   assert.match(html, /aria-label="发送"/);
 });
 
+test('creatChat empty state centers the welcome cluster like Vue dialogue-wrap (no message scroll)', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatPage, {
+    sessions: [],
+    selectedSessionId: null,
+    messages: [],
+    draft: '',
+    onSelectSession: () => undefined,
+    onCreateSession: () => undefined,
+    onDraftChange: () => undefined,
+    send: async () => undefined,
+    locale: 'zh-CN',
+  }));
+  // Vue creatChat.vue .dialogue-wrap centers the welcome+composer cluster;
+  // the empty view must not render the (flex:1) message scroll that would
+  // push the composer to the bottom.
+  assert.match(html, /wk-chat-conversation--empty/);
+  assert.doesNotMatch(html, /wk-chat-message-scroll/);
+  assert.match(html, /wk-chat-composer/);
+});
+
 test('new-conversation view keeps the welcome heading but no question cards without suggestions', () => {
   const html = renderToStaticMarkup(React.createElement(ChatPage, {
     sessions: [],

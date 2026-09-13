@@ -351,9 +351,11 @@ export function ChatPage(props: ChatPageProps) {
             </button> : null}
           </div>
         </header> : null}
-      <div className="wk-chat-conversation">
+      <div className={props.selectedSessionId ? 'wk-chat-conversation' : 'wk-chat-conversation wk-chat-conversation--empty'}>
         {/* Vue creatChat.vue: the welcome heading is always part of the empty
-            state; suggested-question cards load per selected agent. */}
+            state; suggested-question cards load per selected agent. The empty
+            view centers the welcome+composer cluster (.dialogue-wrap) and must
+            not render the flex:1 message scroll that pins the composer down. */}
         {!props.selectedSessionId ? (
           <section className={props.starterQuestionsLoading ? 'wk-chat-starters wk-chat-starters--loading' : 'wk-chat-starters'} aria-label="Suggested questions" aria-busy={props.starterQuestionsLoading || undefined}>
             <h1 className="wk-chat-welcome">{copy.createChatTitle}</h1>
@@ -382,7 +384,10 @@ export function ChatPage(props: ChatPageProps) {
         <ReferenceList references={references} activeId={activeCitationId} onActivate={activateCitation} />
         {props.error ? <p role="alert">{props.error}</p> : null}
         {props.loadingMessages ? <p role="status">{copy.loadingMessages}</p> : null}
-        <MessageList
+        {/* Vue creatChat.vue renders no message list in the empty new-chat
+            view; without this guard the flex:1 scroll pushes the centered
+            composer cluster apart. */}
+        {!props.selectedSessionId && (props.messages?.length ?? 0) === 0 ? null : <MessageList
           copy={copy}
           messages={props.messages}
           pending={pending}
@@ -399,7 +404,7 @@ export function ChatPage(props: ChatPageProps) {
           onCitationClick={activateCitation}
           onArtifactDownload={props.onArtifactDownload}
           onArtifactPreview={props.onArtifactPreview}
-        />
+        />}
         {/* A follow-up queue only makes sense while a turn is actually running;
             when idle the main composer handles the message (a steer would 409). */}
         {props.selectedSessionId && props.onSteer && streaming ? <SteerComposer copy={copy} onSteer={props.onSteer} /> : null}

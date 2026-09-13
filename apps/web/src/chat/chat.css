@@ -196,6 +196,17 @@ main.wk-chat-page.wk-chat-page:has(.wk-chat-sidebar) {
   padding: 0 16px 12px;
 }
 
+/* Vue creatChat.vue .dialogue-wrap: the empty new-chat view centers the
+   welcome+composer cluster in both axes instead of pinning the composer
+   to the bottom. */
+.wk-chat-conversation--empty {
+  justify-content: center;
+}
+
+.wk-chat-conversation--empty .wk-chat-starters {
+  padding: 0 0 24px;
+}
+
 /* ---- Centered message column (Vue .msg_list max-width 960px) ---- */
 .wk-chat-message-scroll {
   flex: 1;
