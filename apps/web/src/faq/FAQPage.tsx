@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { DragEvent, FocusEvent, FormEvent, ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import type { FAQEntry, FAQEntryFieldsUpdate, FAQEntryPayload, FAQImportProgress, KnowledgeBase, KnowledgeTag, WeKnoraClient } from '@weknora/api-client';
 import { Button, Dialog, Status } from '@weknora/ui';
 import { formatMessage, type Locale } from '@weknora/i18n';
@@ -140,6 +141,198 @@ export function toggleSearchResultId(ids: ReadonlySet<number>, id: number): Set<
   if (next.has(id)) next.delete(id);
   else next.add(id);
   return next;
+}
+
+// --- B5: FAQTagTooltip (Vue frontend/src/components/FAQTagTooltip.vue) --------------
+
+export type FaqTooltipPlacement = 'top' | 'bottom' | 'left' | 'right';
+export interface FaqTooltipRect { top: number; left: number; width: number; height: number; bottom: number; right: number }
+
+/** Vue updatePosition (FAQTagTooltip.vue:63-101): 8px gap, 8px viewport clamp,
+ *  and the top→bottom flip when the space above is under the padding. Returns
+ *  the resolved placement so the arrow class matches the rendered side. */
+export function faqTooltipPosition(
+  placement: FaqTooltipPlacement,
+  rect: FaqTooltipRect,
+  tip: FaqTooltipRect,
+  viewport: { width: number; height: number },
+): { top: number; left: number; placement: FaqTooltipPlacement } {
+  let top = 0;
+  let left = 0;
+  switch (placement) {
+    case 'top': top = rect.top - tip.height - 8; left = rect.left + (rect.width / 2) - (tip.width / 2); break;
+    case 'bottom': top = rect.bottom + 8; left = rect.left + (rect.width / 2) - (tip.width / 2); break;
+    case 'left': top = rect.top + (rect.height / 2) - (tip.height / 2); left = rect.left - tip.width - 8; break;
+    case 'right': top = rect.top + (rect.height / 2) - (tip.height / 2); left = rect.right + 8; break;
+  }
+  const padding = 8;
+  if (left < padding) left = padding;
+  if (left + tip.width > viewport.width - padding) left = viewport.width - tip.width - padding;
+  let resolved = placement;
+  if (top < padding) {
+    // 上方空间不足 → 改为下方显示 (Vue :91-98).
+    if (placement === 'top') { top = rect.bottom + 8; resolved = 'bottom'; }
+    else top = padding;
+  }
+  if (top + tip.height > viewport.height - padding) top = viewport.height - tip.height - padding;
+  return { top, left, placement: resolved };
+}
+
+export interface FaqTagTooltipProps {
+  content: string;
+  type?: 'answer' | 'similar' | 'negative';
+  placement?: FaqTooltipPlacement;
+  children?: ReactNode;
+}
+
+/** Vue FAQTagTooltip.vue — wrapper + body-teleported fixed bubble. Trigger is
+ *  hover (Vue :109-118) plus click for pointer/touch per the parity task;
+ *  position follows updatePosition with the same scroll/resize listeners. */
+export function FaqTagTooltip({ content, type = 'answer', placement = 'top', children }: FaqTagTooltipProps) {
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState<{ top: number; left: number; placement: FaqTooltipPlacement } | null>(null);
+  const wrapperRef = useRef<HTMLSpanElement | null>(null);
+  const bubbleRef = useRef<HTMLDivElement | null>(null);
+  const measure = useCallback(() => {
+    const wrapper = wrapperRef.current;
+    const bubble = bubbleRef.current;
+    if (!wrapper || !bubble) return;
+    const box = wrapper.getBoundingClientRect();
+    const tipBox = bubble.getBoundingClientRect();
+    setPosition(faqTooltipPosition(
+      placement,
+      { top: box.top, left: box.left, width: box.width, height: box.height, bottom: box.bottom, right: box.right },
+      { top: tipBox.top, left: tipBox.left, width: tipBox.width, height: tipBox.height, bottom: tipBox.bottom, right: tipBox.right },
+      { width: window.innerWidth, height: window.innerHeight },
+    ));
+  }, [placement]);
+  useLayoutEffect(() => {
+    if (!open) return;
+    measure();
+    // Vue re-positions while mounted (:120-128).
+    window.addEventListener('scroll', measure, true);
+    window.addEventListener('resize', measure);
+    return () => {
+      window.removeEventListener('scroll', measure, true);
+      window.removeEventListener('resize', measure);
+    };
+  }, [open, measure]);
+  const resolvedPlacement = position?.placement ?? placement;
+  return (
+    <span
+      ref={wrapperRef}
+      className="faq-tag-wrapper"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+      onClick={(event) => { event.stopPropagation(); setOpen((current) => !current); }}
+    >
+      {children}
+      {open ? createPortal(
+        <div
+          ref={bubbleRef}
+          className={`faq-tag-tooltip tooltip-${type} placement-${resolvedPlacement}`}
+          style={{ top: (position?.top ?? 0) + 'px', left: (position?.left ?? 0) + 'px' }}
+          role="tooltip"
+        >
+          <span className="tooltip-content">{content}</span>
+        </div>,
+        document.body,
+      ) : null}
+    </span>
+  );
+}
+
+// --- B6: persisted import result (Vue FAQEntryManager.vue last-result) --------------
+
+export interface FAQImportResultView {
+  total_entries: number;
+  success_count: number;
+  failed_count: number;
+  skipped_count: number;
+  partial_failed_count: number;
+  merged_count: number;
+  added_count: number;
+  message: string;
+  import_mode: string;
+  imported_at?: string;
+  task_id: string;
+  failed_entries_url?: string;
+  display_status: 'open' | 'close';
+}
+
+/** Vue getLastCompletedTaskKey (:2276-2278). */
+export function faqLastCompletedTaskKey(kbId: string): string {
+  return `faq_import_last_completed_${kbId}`;
+}
+
+/** Vue saveLastCompletedTaskId (:2280-2287) — best-effort localStorage write. */
+export function saveLastCompletedTaskId(kbId: string, taskId: string): void {
+  if (!kbId) return;
+  try { window.localStorage.setItem(faqLastCompletedTaskKey(kbId), taskId); } catch { /* Vue logs; storage stays best-effort */ }
+}
+
+/** Vue getLastCompletedTaskId (:2289-2296). */
+export function getLastCompletedTaskId(kbId: string): string | null {
+  if (!kbId) return null;
+  try { return window.localStorage.getItem(faqLastCompletedTaskKey(kbId)); } catch { return null; }
+}
+
+/** Vue loadImportResult mapping (:2308-2341): only completed, non-closed
+ *  results surface; missing counts default to 0 and mode to append. */
+export function faqImportResultFromProgress(data: unknown): FAQImportResultView | null {
+  if (typeof data !== 'object' || data === null) return null;
+  const row = data as Record<string, unknown>;
+  if (row.status !== 'completed') return null;
+  if (row.display_status === 'close') return null;
+  const num = (value: unknown): number => (typeof value === 'number' && Number.isFinite(value) ? value : 0);
+  const str = (value: unknown): string => (typeof value === 'string' ? value : '');
+  return {
+    total_entries: num(row.total),
+    success_count: num(row.success_count),
+    failed_count: num(row.failed_count),
+    skipped_count: num(row.skipped_count),
+    partial_failed_count: num(row.partial_failed_count),
+    merged_count: num(row.merged_count),
+    added_count: num(row.added_count),
+    message: str(row.message),
+    import_mode: str(row.import_mode) || 'append',
+    imported_at: str(row.imported_at) || undefined,
+    task_id: str(row.task_id),
+    failed_entries_url: str(row.failed_entries_url) || undefined,
+    display_status: 'open',
+  };
+}
+
+/** Vue importResultSummary (:1277-1303): backend message wins, otherwise the
+ *  count parts joined with ' · ' (merged branch implies the added sub-part). */
+export function faqImportResultSummary(result: FAQImportResultView, t: Translate): string {
+  if (result.message.trim()) return result.message.trim();
+  const parts: string[] = [];
+  parts.push(`${t('FAQ.import.totalData')} ${result.total_entries}`);
+  if (result.merged_count > 0) {
+    if (result.added_count > 0) parts.push(`${t('FAQ.import.added')} ${result.added_count}`);
+    parts.push(`${t('FAQ.import.merged')} ${result.merged_count}`);
+  } else if (result.success_count > 0) {
+    parts.push(`${t('FAQ.import.success')} ${result.success_count}`);
+  }
+  if (result.partial_failed_count > 0) parts.push(`${t('FAQ.import.partialFailed')} ${result.partial_failed_count}`);
+  if (result.failed_count > 0) parts.push(`${t('FAQ.import.failed')} ${result.failed_count}`);
+  if (result.skipped_count > 0) parts.push(`${t('FAQ.import.skipped')} ${result.skipped_count}`);
+  return parts.join(' · ');
+}
+
+/** Vue showImportResultBadge (:1266-1270): open result and no import task. */
+export function faqImportResultVisible(result: FAQImportResultView | null | undefined, hasActiveTask: boolean): boolean {
+  return !!result && result.display_status === 'open' && !hasActiveTask;
+}
+
+/** Vue formatImportTime (:2369-2377) as local YYYY-MM-DD HH:mm. */
+export function formatImportTime(timeStr?: string): string {
+  if (!timeStr) return '';
+  const date = new Date(timeStr);
+  if (Number.isNaN(date.getTime())) return timeStr;
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 // Layered fallback for keys the Vue locales carry but the shared catalog does not
@@ -335,6 +528,12 @@ export interface FAQPageViewProps {
   importPreview?: FAQEntryPayload[];
   /** Vue importState.taskStatus — header .faq-import-strip progress affordance. */
   importTask?: FAQImportTaskView | null;
+  /** B6: Vue importResult — persisted last-import result (FAQEntryManager.vue:1263). */
+  importResult?: FAQImportResultView | null;
+  /** B6: Vue closeImportResult — PUT display-status 'close' then hide. */
+  onCloseImportResult?: () => void;
+  /** B6: Vue downloadFailedEntries — open the failed-entries CSV. */
+  onDownloadFailedEntries?: () => void;
   /** Vue entryStatusLoading — per-entry ids whose status update is in flight. */
   statusUpdatingIds?: readonly number[];
   editorOpen?: boolean;
@@ -410,6 +609,9 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
     importBusy = false,
     importPreview = [],
     importTask = null,
+    importResult = null,
+    onCloseImportResult = () => {},
+    onDownloadFailedEntries = () => {},
     statusUpdatingIds = [],
     editorOpen = false,
     editorTitle = '',
@@ -543,6 +745,21 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
               <span className="faq-import-strip__count">{importTask.processed}/{importTask.total}</span>
             </div>
           ) : null}
+          {faqImportResultVisible(importResult, Boolean(importTask)) ? (
+            // B6: Vue 导入结果持久化条 (:52-79) — summary + mode tag + failed
+            // entries link + time + close; persists until closed or replaced.
+            <div className="faq-import-strip faq-import-strip--result" role="status">
+              <span className="faq-import-strip__text">{faqImportResultSummary(importResult!, t)}</span>
+              <span className={'faq-import-mode-tag ' + (importResult!.import_mode === 'append' ? 'is-append' : 'is-replace')}>
+                {importResult!.import_mode === 'append' ? t('FAQ.import.appendMode') : t('FAQ.import.replaceMode')}
+              </span>
+              {importResult!.failed_entries_url && importResult!.failed_count > 0 ? (
+                <button type="button" className="faq-import-strip__link" onClick={onDownloadFailedEntries}>{t('FAQ.import.downloadReasons')}</button>
+              ) : null}
+              <span className="faq-import-strip__time">{formatImportTime(importResult!.imported_at)}</span>
+              <button type="button" className="faq-import-strip__close" aria-label={t('common.close')} title={t('common.close')} onClick={onCloseImportResult}><CloseIcon size={12} /></button>
+            </div>
+          ) : null}
         </div>
       </header>
 
@@ -639,7 +856,15 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                         <span className="section-count">({values.length})</span>
                         <Icon size={13} className="collapse-icon"><path d={collapsed ? Chevrons.right : Chevrons.down} /></Icon>
                       </button>
-                      <div className="faq-tags" hidden={collapsed}>{values.map((value, index) => <span key={index} className={tagClass} title={value}>{value}</span>)}</div>
+                      {/* B5: Vue wraps each chip in FAQTagTooltip (:303-354) — the
+                          bubble carries the full text instead of a native title. */}
+                      <div className="faq-tags" hidden={collapsed}>
+                        {values.map((value, index) => (
+                          <FaqTagTooltip key={index} content={value} placement="top" type={name === 'negative' ? 'negative' : name === 'answers' ? 'answer' : 'similar'}>
+                            <span className={tagClass}>{value}</span>
+                          </FaqTagTooltip>
+                        ))}
+                      </div>
                     </section>;
                   };
                   return (
@@ -1047,7 +1272,8 @@ export function FAQSearchResults({ t: tr, results = [], expandedIds = new Set<nu
                       <div className="result-section">
                         <div className="section-label">{t('knowledgeEditor.faq.answers')}</div>
                         <div className="result-tags">
-                          {result.answers.map((answer, answerIndex) => <span key={answerIndex} className="question-tag is-answer" title={answer}>{answer}</span>)}
+                          {/* B5: Vue search rows use t-tooltip (:829-833). */}
+                          {result.answers.map((answer, answerIndex) => <FaqTagTooltip key={answerIndex} content={answer} type="answer" placement="top"><span className="question-tag is-answer">{answer}</span></FaqTagTooltip>)}
                         </div>
                       </div>
                     ) : null}
@@ -1055,7 +1281,7 @@ export function FAQSearchResults({ t: tr, results = [], expandedIds = new Set<nu
                       <div className="result-section">
                         <div className="section-label">{t('knowledgeEditor.faq.similarQuestions')}</div>
                         <div className="result-tags">
-                          {result.similar_questions.map((question, questionIndex) => <span key={questionIndex} className="question-tag" title={question}>{question}</span>)}
+                          {result.similar_questions.map((question, questionIndex) => <FaqTagTooltip key={questionIndex} content={question} type="similar" placement="top"><span className="question-tag">{question}</span></FaqTagTooltip>)}
                         </div>
                       </div>
                     ) : null}
@@ -1204,16 +1430,40 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
   // page polls importProgress until completed/failed; success refreshes the
   // list and collapses the strip after 3s; 404 stops the polling.
   const [importTask, setImportTask] = useState<FAQImportProgress | null>(null);
+  // B6: Vue importResult (FAQEntryManager.vue:1263) — the last completed import
+  // result, restored from localStorage on mount and refreshed after each import.
+  const [lastResult, setLastResult] = useState<FAQImportResultView | null>(null);
+  const loadLastResult = useCallback(async (kbId: string) => {
+    const taskId = getLastCompletedTaskId(kbId);
+    if (!taskId) { setLastResult(null); return; }
+    try {
+      // GET /api/v1/faq/import/progress/{task_id} (Vue loadImportResult :2299-2342);
+      // raw request keeps the server display_status the typed client drops.
+      const body = await client.request({ method: 'GET', path: `/api/v1/faq/import/progress/${encodeURIComponent(taskId)}` }) as { success?: unknown; data?: unknown } | null;
+      const data = body && body.success === true ? body.data : null;
+      setLastResult(faqImportResultFromProgress(data));
+    } catch {
+      setLastResult(null);
+    }
+  }, [client]);
+  // Vue onMounted → restoreImportTask + loadImportResult (:2825-2829).
+  useEffect(() => { void loadLastResult(knowledgeBaseId); }, [loadLastResult, knowledgeBaseId]);
   useEffect(() => {
     if (!importTask || (importTask.status !== 'processing' && importTask.status !== 'pending')) return;
     const timer = setInterval(() => {
       faq.importProgress(importTask.task_id).then((next) => {
         setImportTask((current) => (current ? { ...current, ...next } : next));
-        if (next.status === 'completed') void load(false);
+        if (next.status === 'completed') {
+          void load(false);
+          // B6: Vue :2131-2134/:2144 — persist the completed task id and load
+          // the fresh result so the strip survives reloads until closed.
+          saveLastCompletedTaskId(knowledgeBaseId, next.task_id || importTask.task_id);
+          void loadLastResult(knowledgeBaseId);
+        }
       }).catch(() => { setImportTask(null); });
     }, 1500);
     return () => clearInterval(timer);
-  }, [importTask, faq]);
+  }, [importTask, faq, knowledgeBaseId, loadLastResult]);
   useEffect(() => {
     if (importTask?.status !== 'completed') return;
     const timer = setTimeout(() => setImportTask(null), 3000);
@@ -1222,6 +1472,19 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
   const [canContribute, setCanContribute] = useState(true);
   const [message, setMessage] = useState<{ tone: 'error' | 'success' | 'warning'; text: string } | null>(null);
   const navigate = useCallback((path: string) => { window.location.assign(path); }, []);
+  // B6: Vue closeImportResult (:2345-2356) — persist 'close' server-side, then
+  // hide locally; on failure the strip stays (Vue only logs).
+  const closeImportResult = useCallback(async () => {
+    try {
+      await client.request({ method: 'PUT', path: `/api/v1/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}/faq/import/last-result/display`, body: { display_status: 'close' } });
+      setLastResult((current) => (current ? { ...current, display_status: 'close' } : current));
+    } catch (error) { console.error('Failed to close import result:', error); }
+  }, [client, knowledgeBaseId]);
+  // B6: Vue downloadFailedEntries (:2359-2366).
+  const downloadFailedEntries = useCallback(() => {
+    if (!lastResult?.failed_entries_url) { setMessage({ tone: 'warning', text: t('FAQ.import.noFailedRecords') }); return; }
+    window.open(lastResult.failed_entries_url, '_blank');
+  }, [lastResult, t]);
 
   // Page receives knowledgeBaseId only — fetch the KB record, the KB list (crumb
   // switcher), tags (filter) and the caller to gate viewer accounts.
@@ -1422,6 +1685,9 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
       importBusy={importBusy}
       importPreview={importPreview}
       importTask={importTask ? faqImportTaskView(importTask) : null}
+      importResult={lastResult}
+      onCloseImportResult={() => void closeImportResult()}
+      onDownloadFailedEntries={downloadFailedEntries}
       editorOpen={editing !== undefined}
       editorTitle={editing ? t('knowledgeEditor.faq.editorEdit') : t('knowledgeEditor.faq.editorCreate')}
       editorMode={editing ? 'edit' : 'create'}
