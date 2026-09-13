@@ -1320,3 +1320,10 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - organizations 入口角色可见性（Vue menu.ts:72-81：<admin 隐藏 + lite 隐藏）TDD 起点已写（platform-shell-org-subfilter.test.tsx 追加 viewer 隐藏/admin 可见/superuser 可见三用例），实现未落地且用例挂起（act 循环），为不阻塞门禁已还原测试文件至 HEAD、用例文本留档于本条目附件性质的工作记录。platform 119/119 保持绿。
 - 后续切片交接：实现点为 PlatformShell me handler 内提取 membership role（R017 同款 self-resolution 语义）+ navItems 过滤；用例可直接取自本条目所述工作记录（/tmp 快照与 git 历史均含完整三用例）。
 
+
+## 2026-09-14 Round N+9 协调条目 — FAQ B1/B3 集成 + embed 在途
+
+- FAQ B1 编辑抽屉 + B3 条目卡集成（614c6777）：faq 41/41、typecheck faq 域 0。
+- 在途（1）：R013 embed config drawer（embedWizard.ts/test 等 6 文件，其 TDD 红 4 项属中间态——step gates/create payload/deploy drawer/wizard walk）。全量 web 门禁等其转绿后复跑。
+- shared 436/436（+17 integrations 向导测试）、mobile 146/146 不变。
+
