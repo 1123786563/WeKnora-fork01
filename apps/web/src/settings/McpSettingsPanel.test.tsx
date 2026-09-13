@@ -131,9 +131,12 @@ function deferred<T>() {
 }
 
 type StubMetadata = {
+  serviceId?: string;
   tools: Array<{ name: string; description?: string }>;
   serverName: string;
   serverVersion: string;
+  instructions?: string;
+  serverDescription?: string;
   syncedAt: string;
   stale: boolean;
 };
@@ -264,11 +267,15 @@ test('step 2 gates save on tool sync and shows the Vue usage counter, hint and g
     assert.ok(generateButton?.disabled, 'AI generate is gated until tools are synced');
     assert.ok(dialog?.querySelector('.wk-mcp-metadata'), 'step 2 mounts the metadata panel');
     await act(async () => {
-      metadataGate.resolve({ tools: [{ name: 'search', description: 'Search docs' }], serverName: 'Srv', serverVersion: '1.0', syncedAt: '2026-09-13T00:00:00Z', stale: false });
+      metadataGate.resolve({ serviceId: 'svc-1', tools: [{ name: 'search', description: 'Search docs' }], serverName: 'Srv', serverVersion: '1.0', instructions: 'Use the documentation tools.', serverDescription: 'Documentation server', syncedAt: '2026-09-13T00:00:00Z', stale: false });
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
     assert.ok(!findButton('保存')?.disabled, 'save unlocks once the tool catalog syncs');
     assert.ok(!findButton('AI 生成')?.disabled, 'AI generate unlocks once the tool catalog syncs');
+    const docsTrigger = document.querySelector('.wk-mcp-server-docs-trigger') as HTMLButtonElement | null;
+    assert.ok(docsTrigger, 'server documentation trigger mirrors the Vue metadata popup');
+    await act(async () => { docsTrigger?.click(); });
+    assert.match(document.body.textContent ?? '', /Use the documentation tools\./);
   } finally {
     await unmountEditor(root);
   }

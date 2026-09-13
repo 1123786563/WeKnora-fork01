@@ -235,6 +235,7 @@ function McpMetadataSection({
   const [policyError, setPolicyError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [docsOpen, setDocsOpen] = useState(false);
   const loadGeneration = useRef(0);
   async function load(refresh = false) {
     const generation = ++loadGeneration.current;
@@ -278,6 +279,7 @@ function McpMetadataSection({
     onSyncedChange(Boolean(metadata && !metadata.stale));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [metadata]);
+  useEffect(() => { setDocsOpen(false); }, [metadata?.serviceId]);
   async function updateTool(
     toolName: string,
     field: "enabled" | "requireApproval",
@@ -344,14 +346,15 @@ function McpMetadataSection({
       {error ? <Status tone="error">{error}</Status> : null}
       {metadata ? (
         <>
-          <p className={metadata.stale ? "wk-mcp-stale" : "wk-muted"}>
+          <div className={`wk-mcp-snapshot-meta ${metadata.stale ? "wk-mcp-stale" : "wk-muted"}`}>
             {t("mcpMetadata.toolCount", { count: metadata.tools.length })}
             {metadata.serverName
               ? " · " + metadata.serverName + " " + (metadata.serverVersion ?? "")
               : ""}
             {syncedAt ? " · " + t("mcpMetadata.syncedAt") + syncedAt : ""}
             {metadata.stale ? " · " + t("mcpMetadata.stale") : ""}
-          </p>
+            {metadata.instructions || metadata.serverDescription ? <><button type="button" className="wk-mcp-server-docs-trigger" aria-expanded={docsOpen} onClick={() => setDocsOpen((open) => !open)}>{t("mcpMetadata.serverDocumentation")}⌄</button>{docsOpen ? <div className="wk-mcp-server-docs-popup" role="dialog"><strong>{t("mcpMetadata.serverDocumentation")}</strong>{metadata.serverDescription ? <span>{metadata.serverDescription}</span> : null}{metadata.instructions ? <pre>{metadata.instructions}</pre> : null}</div> : null}</> : <button type="button" className="wk-mcp-server-docs-help" aria-label={t("mcpMetadata.noServerDocumentation")}>ⓘ</button>}
+          </div>
           <p className="wk-muted">{t("mcpMetadata.policyHint")}</p>
           <McpToolsDirectory
             tools={metadata.tools}

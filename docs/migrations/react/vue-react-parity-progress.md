@@ -1,5 +1,11 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-14 Round N+16 — R043 MCP server documentation popup slice
+
+- MCP 元数据摘要按 Vue 补齐服务端说明触发器/弹层与无说明帮助提示，保持 stale、同步和工具策略门控；修正弹层内 HTML 结构。
+- MCP 专测 11/11、`typecheck:web` 通过；证据 `evidence/vue-react-parity/2026-09-14-r043-server-docs-popup.md`。
+- R043 仍为 `implementing`：认证浏览器 computed-style、可达 MCP 服务同步态、真实后端和 Wails 证据未闭环。
+
 ## 2026-09-14 Round N+15 — R031 Sandbox inventory drawer slice
 
 - Sandbox inventory 按 Vue SettingDrawer 收口：固定右侧 400px 抽屉与遮罩，保留标题解析完成后再显示、会话行导航及 embed inert 语义。

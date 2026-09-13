@@ -157,6 +157,11 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-share-item { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .75rem; border: 1px solid #edf0f5; border-radius: 8px; background: #f7f9fc; transition: background .2s, border-color .2s; }
 .wk-share-item:hover { border-color: #d8e0ec; background: #f1f4f9; }
 .wk-share-item-actions { flex: 0 0 auto; }
+.wk-mcp-server-docs-trigger, .wk-mcp-server-docs-help { margin-left: .5rem; border: 0; border-radius: 4px; background: transparent; color: #2e6de6; cursor: pointer; font: inherit; padding: .1rem .25rem; }
+.wk-mcp-snapshot-meta { position: relative; }
+.wk-mcp-server-docs-trigger:hover, .wk-mcp-server-docs-help:hover { background: #eef4ff; }
+.wk-mcp-server-docs-popup { position: absolute; z-index: 20; display: grid; gap: .5rem; width: min(360px, calc(100vw - 2rem)); margin: .4rem 0 0; padding: .75rem; border: 1px solid #dce3ed; border-radius: 7px; background: #fff; box-shadow: 0 12px 30px rgb(23 32 51 / 18%); color: #172033; white-space: normal; }
+.wk-mcp-server-docs-popup pre { max-height: 180px; margin: 0; overflow: auto; white-space: pre-wrap; font: inherit; }
 @media (max-width: 640px) { .wk-share-item { align-items: flex-start; flex-direction: column; } .wk-share-item-actions { align-self: flex-end; } }
 .wk-mcp-settings { display: grid; gap: 1rem; }
 .wk-model-settings { display: grid; gap: 1rem; }
