@@ -711,6 +711,13 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   made no target changes; its result is discarded. This remains an
   implementing/blocked-by-code gap and is not accepted.
 
+- **N005 share dialog slice:** the React knowledge-base share dialog now has
+  the Vue two-state form/shared-list interaction, back navigation, loading and
+  empty states, permission labels, and synchronous duplicate-mutation
+  protection. Focused DOM tests pass 2/2; `pnpm test:web` passes 290/290 and
+  `pnpm typecheck:web` passes. No browser/Vue screenshot or native evidence
+  was collected, so N005 remains `review`.
+
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
 - **Rows:** any rows proposed for `accepted`; never all rows by default.
 - **Files owned:** `docs/migrations/react/vue-react-parity-matrix.md`, `docs/migrations/react/vue-react-parity-progress.md`, `docs/migrations/react/evidence/vue-react-parity/README.md`, `docs/migrations/react/evidence/vue-react-parity/screenshot-matrix.md`, and the row-specific `docs/migrations/react/evidence/vue-react-parity/<date>-<row-group>.md` evidence file only.
