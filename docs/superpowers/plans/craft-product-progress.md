@@ -61,6 +61,7 @@
 - **发布证据**：`docs/testing/craft/release-evidence.json` + 门禁脚本 `scripts/check-craft-release.py`（篡改反向验证全拒）；十场景故障演练证据 `docs/testing/craft/o05/`；付费发布 blocked（Billing=false，G4 商业库缺口如实入 limitations）。
 - **外部缺口留档**（不阻塞非收费交付）：G4 商业表迁移缺口（owner 列+4 表 AutoMigrate-only）；O02 网关未接线（用量账本空、端点诚实返 0）；/metrics 未暴露；驻留事件无生产记录者。
 - **回退**：craft.enabled 默认 false；发布手册 `docs/operations/craft-release.md`（四阶段开闸、三红线回退、DB 升级顺序、停止准入命令）。部署实施是后续明确动作，本次交付可审阅发布包。
+- **全分支终审**：PASS_WITH_FOLLOWUPS（8/8 清单过：双方言迁移 17 表对齐、capabilities 与代码事实一致、builtin 回归、前端构建、真实全栈 6/6、资源保留四态保护、回退三层 fail-closed、跨任务一致性 27 项+26 依赖 SHA 全为祖先）。跟进项：F1 发布切割时重生成 evidence head；F2 四项外部缺口跟踪；F3 /tmp 清理。报告：final-branch-review.md。
 | C04 | **done** | .worktrees/craft-c04 / codex/craft-c04 | f931f02b | HEAD 7d0aebc4 审查 PASS_WITH_NITS（19/19+矩阵复验）→ 合入 256fbb78；容器装配裁定归 C05（含 nit-2/3） |
 | C05 | **done** | .worktrees/craft-c05 / codex/craft-c05 | 256fbb78 | HEAD faf500e9 审查 PASS_WITH_NITS（21/21，安全闭环无伪造路径）→ 合入 ae664bcb；迁移 000126/000046；C04 装配落实；C06 接线提示与 6 卫生 nit 留档 |
 | D02 | implementing | .worktrees/craft-d02 / codex/craft-d02 | ae664bcb | 已派发（openpyxl+LibreOffice 重算+XLSX 导出+浏览器）；C06/D01/D03/O03/O04/O05 等待依赖或席位 |
