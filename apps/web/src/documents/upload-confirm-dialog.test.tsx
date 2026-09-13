@@ -26,6 +26,7 @@ const {
   UploadSectionNav,
   UploadSourceDropdown,
   stageNoticeClass,
+  clampGraphTextareaHeight,
 } = await import('./KnowledgeDocumentsPage.tsx');
 const {
   uploadConfirmT,
@@ -541,6 +542,12 @@ test('graph feedback keeps Vue success, warning, and error message semantics', (
   assert.equal(stageNoticeClass('success'), 'wk-documents-toast success');
   assert.equal(stageNoticeClass('warning'), 'wk-documents-toast warning');
   assert.equal(stageNoticeClass('error'), 'wk-documents-toast error');
+});
+
+test('graph textareas use the Vue autosize row bounds', () => {
+  assert.equal(clampGraphTextareaHeight(20, 20, 8, 3, 8), 68);
+  assert.equal(clampGraphTextareaHeight(400, 20, 8, 3, 8), 168);
+  assert.equal(clampGraphTextareaHeight(400, 20, 8, 6, 12), 248);
 });
 
 // --- Upload progress mask (Vue upload-mask.vue parity + percent) -------------------

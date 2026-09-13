@@ -1051,6 +1051,13 @@ export interface UploadGraphSettingsProps {
   t: UploadDialogT;
 }
 
+/** Vue t-textarea autosize: clamp measured content to the configured row range. */
+export function clampGraphTextareaHeight(scrollHeight: number, lineHeight: number, verticalPadding: number, minRows: number, maxRows: number) {
+  const minHeight = lineHeight * minRows + verticalPadding;
+  const maxHeight = lineHeight * maxRows + verticalPadding;
+  return Math.min(maxHeight, Math.max(minHeight, scrollHeight));
+}
+
 /**
  * Vue GraphSettings.vue ported for the upload-confirm dialog: enable switch
  * (turning it off clears the sample data but keeps custom instructions),
@@ -1064,6 +1071,25 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
   const emit = (next: UploadNodeExtractState) => props.onChange(next);
   const [tagFabring, setTagFabring] = useState(false);
   const [textFabring, setTextFabring] = useState(false);
+  const instructionsRef = useRef<HTMLTextAreaElement | null>(null);
+  const sampleTextRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    const fields = [
+      { node: instructionsRef.current, value: graphExtract.customInstructions, minRows: 3, maxRows: 8 },
+      { node: sampleTextRef.current, value: graphExtract.text, minRows: 6, maxRows: 12 },
+    ];
+    fields.forEach(({ node, minRows, maxRows }) => {
+      if (!node) return;
+      node.style.height = "auto";
+      const computed = window.getComputedStyle(node);
+      const lineHeight = Number.parseFloat(computed.lineHeight) || 22;
+      const verticalPadding = (Number.parseFloat(computed.paddingTop) || 0) + (Number.parseFloat(computed.paddingBottom) || 0);
+      const measured = node.scrollHeight || lineHeight * minRows + verticalPadding;
+      node.style.height = `${clampGraphTextareaHeight(measured, lineHeight, verticalPadding, minRows, maxRows)}px`;
+      node.style.overflowY = measured > lineHeight * maxRows + verticalPadding ? "auto" : "hidden";
+    });
+  }, [graphExtract.customInstructions, graphExtract.text]);
 
   function patch(partial: Partial<UploadNodeExtractState>) {
     emit({ ...graphExtract, ...partial });
@@ -1165,6 +1191,7 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
               </div>
               <div className="setting-control is-full">
                 <textarea
+                  ref={instructionsRef}
                   id="wk-graph-instructions"
                   rows={3}
                   maxLength={4000}
@@ -1259,6 +1286,7 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
                     </button>
                   ) : null}
                   <textarea
+                    ref={sampleTextRef}
                     id="wk-graph-text"
                     rows={6}
                     maxLength={5000}

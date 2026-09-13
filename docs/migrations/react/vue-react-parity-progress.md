@@ -1721,3 +1721,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - React 图谱设置的成功/示例加载/示例清除反馈现在使用独立 `success` toast tone；文件新增继续使用 neutral，重复 URL 使用 warning，失败使用 error，对齐 Vue `MessagePlugin.success`/`warning`/`error` 语义。
 - 新增 `stageNoticeClass` 纯函数回归，N007 定向测试 22/22 通过；真实图谱 endpoint 仍因当前部署关闭图谱数据库而保持 `blocked-env`。
 - 证据 `evidence/vue-react-parity/2026-09-14-n007-extraction-toast.md` 已更新；浏览器 computed-style、Vue 同条件截图、真实后端、Wails 与移动端证据仍待补齐，N007 继续保持 implementing。
+
+## 2026-09-14 Round N+47 — N007 图谱文本框 autosize
+
+- React 图谱自定义指令和示例文本框现在按 Vue `t-textarea` 的 autosize 范围调整高度：分别为 3–8 行和 6–12 行，使用实际 computed line-height/vertical padding 测量，超过上限时内部滚动。
+- 先增加边界失败测试，再实现 `clampGraphTextareaHeight` 与字段 effect；N007 定向测试 23/23、`git diff --check` 通过。
+- 证据 `evidence/vue-react-parity/2026-09-14-n007-extraction-toast.md` 已更新；图谱真实 endpoint、浏览器 computed-style/截图、Vue 同条件截图、Wails 与移动端证据仍待补齐，N007 继续保持 implementing。
