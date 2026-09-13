@@ -31,6 +31,7 @@ test('parseExcelFile maps the Vue Chinese columns with ## delimiters from the fi
       similar_questions: ['它是什么？', 'What is WeKnora?'],
       negative_questions: ['这不是WeKnora', '无关问题'],
       tag_id: 3,
+      tag_name: '重要',
       is_enabled: true,
     },
   ]);
@@ -43,7 +44,7 @@ test('parseExcelFile falls back to lowercased English headers and omits disabled
   ]);
   const parsed = await parseExcelFile(file);
   assert.deepEqual(parsed, [
-    { standard_question: 'How?', answers: ['A1', 'A2'], similar_questions: ['S1'], negative_questions: [] },
+    { standard_question: 'How?', answers: ['A1', 'A2'], similar_questions: ['S1'], negative_questions: [], tag_name: '' },
   ]);
   assert.equal('is_enabled' in parsed[0], false);
 });
@@ -58,4 +59,6 @@ test('parseExcelFile mirrors Vue parseBooleanField on 是否停用 (TRUE/是 dis
   ]);
   const parsed = await parseExcelFile(file);
   assert.deepEqual(parsed.map((entry) => entry.is_enabled), [undefined, false, false, true]);
+  // Vue normalizePayload always emits tag_name ('' when the column is absent).
+  assert.ok(parsed.every((entry) => 'tag_name' in entry));
 });

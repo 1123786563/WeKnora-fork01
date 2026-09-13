@@ -13,7 +13,7 @@ export interface FAQEntry {
 export interface FAQEntryListResponse { data: FAQEntry[]; total: number; page: number; page_size: number; }
 export interface FAQEntryFieldsUpdate { is_enabled?: boolean; is_recommended?: boolean; tag_id?: number | null; }
 export interface FAQEntryFieldsBatchRequest { by_id?: Record<number, FAQEntryFieldsUpdate>; by_tag?: Record<number, FAQEntryFieldsUpdate>; exclude_ids?: number[]; }
-export interface FAQEntryPayload { standard_question: string; similar_questions?: string[]; negative_questions?: string[]; answers: string[]; tag_id?: number | null; is_enabled?: boolean; is_recommended?: boolean; }
+export interface FAQEntryPayload { standard_question: string; similar_questions?: string[]; negative_questions?: string[]; answers: string[]; tag_id?: number | null; tag_name?: string; is_enabled?: boolean; is_recommended?: boolean; }
 export interface FAQSearchInput { query_text: string; vector_threshold?: number; match_count?: number; }
 /** Backend types.FAQImportProgress (internal/types/faq.go:425) — subset the
  *  React import strip consumes; extra backend fields pass through. */

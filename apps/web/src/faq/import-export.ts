@@ -98,13 +98,17 @@ function normalizeExcelPayload(payload: {
   similar_questions: string[];
   negative_questions: string[];
   tag_id?: number;
+  tag_name?: string;
   is_enabled?: boolean;
 }): FAQEntryPayload {
+  // Vue normalizePayload (:2072): tag_name is always present ('' when the
+  // column is absent), matching the backend import contract (faq.go:336).
   return {
     standard_question: payload.standard_question || '',
     answers: payload.answers?.filter(Boolean) || [],
     similar_questions: payload.similar_questions?.filter(Boolean) || [],
     negative_questions: payload.negative_questions?.filter(Boolean) || [],
+    tag_name: payload.tag_name || '',
     ...(payload.tag_id ? { tag_id: payload.tag_id } : {}),
     ...(payload.is_enabled !== undefined ? { is_enabled: payload.is_enabled } : {}),
   };
@@ -141,6 +145,7 @@ export async function parseExcelFile(file: File): Promise<FAQEntryPayload[]> {
       similar_questions: splitByDelimiter(normalizedRow['相似问题'] || normalizedRow['similar_questions']),
       negative_questions: splitByDelimiter(normalizedRow['反例问题'] || normalizedRow['negative_questions']),
       tag_id: normalizedRow['tag_id'] ? Number(normalizedRow['tag_id']) : undefined,
+      tag_name: normalizedRow['标签'] || normalizedRow['分类'] || normalizedRow['tag_name'] || '',
       is_enabled: isDisabled !== undefined ? !isDisabled : undefined, // 是否停用取反：FALSE 启用 / TRUE 停用
     });
   });
