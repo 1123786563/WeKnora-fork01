@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DragEvent, FocusEvent, FormEvent, ReactNode } from 'react';
-import type { FAQEntry, FAQEntryFieldsUpdate, FAQEntryPayload, KnowledgeBase, KnowledgeTag, WeKnoraClient } from '@weknora/api-client';
+import type { FAQEntry, FAQEntryFieldsUpdate, FAQEntryPayload, FAQImportProgress, KnowledgeBase, KnowledgeTag, WeKnoraClient } from '@weknora/api-client';
 import { Button, Status } from '@weknora/ui';
 import { formatMessage } from '@weknora/i18n';
 import { createTranslator, useAppLocale } from '../i18n.ts';
@@ -64,8 +64,9 @@ export interface FAQImportTaskView { status: string; text: string; progress: num
 export function importProgressText(task: { status: string; message?: string; error?: string }): string {
   if (task.error) return task.error;
   if (task.message && task.message.trim()) return task.message.trim();
-  const key = task.status === 'running' ? 'faqManager.import.importing'
-    : task.status === 'success' ? 'faqManager.import.importDone'
+  const status = task.status === 'processing' ? 'running' : task.status === 'completed' ? 'success' : task.status;
+  const key = status === 'running' ? 'faqManager.import.importing'
+    : status === 'success' ? 'faqManager.import.importDone'
     : task.status === 'failed' ? 'faqManager.import.importFailed'
     : 'faqManager.import.waiting';
   return catalogMessage(key);
@@ -73,8 +74,9 @@ export function importProgressText(task: { status: string; message?: string; err
 
 /** Normalise a raw progress payload into the strip view model. */
 export function faqImportTaskView(task: { status: string; progress?: number; processed?: number; total?: number; message?: string; error?: string }): FAQImportTaskView {
+  const status = task.status === 'processing' ? 'running' : task.status === 'completed' ? 'success' : task.status;
   return {
-    status: task.status,
+    status,
     text: importProgressText(task),
     progress: Math.min(100, Math.max(0, Math.round(task.progress ?? 0))),
     processed: task.processed ?? 0,
@@ -653,6 +655,7 @@ function metaFromKB(kb: KnowledgeBase | null): FAQKBMeta | undefined {
 export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; knowledgeBaseId: string }) {
   const locale = useAppLocale();
   const t = createTranslator(locale);
+  const faq = client.knowledge.faq;
   const [kb, setKb] = useState<KnowledgeBase | null>(null);
   const [kbList, setKbList] = useState<KBListItem[]>([]);
   const [tags, setTags] = useState<KnowledgeTag[]>([]);
@@ -676,9 +679,27 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
   const [importPreview, setImportPreview] = useState<FAQEntryPayload[]>([]);
   const [statusUpdatingIds, setStatusUpdatingIds] = useState<readonly number[]>([]);
   const [batchTag, setBatchTag] = useState('');
+  // Vue FAQEntryManager.vue:2091-2165 — after upsert returns a task_id the
+  // page polls importProgress until completed/failed; success refreshes the
+  // list and collapses the strip after 3s; 404 stops the polling.
+  const [importTask, setImportTask] = useState<FAQImportProgress | null>(null);
+  useEffect(() => {
+    if (!importTask || (importTask.status !== 'processing' && importTask.status !== 'pending')) return;
+    const timer = setInterval(() => {
+      faq.importProgress(importTask.task_id).then((next) => {
+        setImportTask((current) => (current ? { ...current, ...next } : next));
+        if (next.status === 'completed') void load(false);
+      }).catch(() => { setImportTask(null); });
+    }, 1500);
+    return () => clearInterval(timer);
+  }, [importTask, faq]);
+  useEffect(() => {
+    if (importTask?.status !== 'completed') return;
+    const timer = setTimeout(() => setImportTask(null), 3000);
+    return () => clearTimeout(timer);
+  }, [importTask?.status]);
   const [canContribute, setCanContribute] = useState(true);
   const [message, setMessage] = useState<{ tone: 'error' | 'success' | 'warning'; text: string } | null>(null);
-  const faq = client.knowledge.faq;
   const navigate = useCallback((path: string) => { window.location.assign(path); }, []);
 
   // Page receives knowledgeBaseId only — fetch the KB record, the KB list (crumb
@@ -796,7 +817,9 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
       const imported = parseFAQImportText(text, format);
       const result = await faq.upsert(knowledgeBaseId, { entries: imported, mode: importMode });
       setImportOpen(false); setImportFile(null); setImportPreview([]);
-      setMessage({ tone: 'success', text: 'Import ' + importMode + ' queued (' + result.task_id + ').' });
+      // Vue FAQEntryManager.vue:2091-2165 — the strip replaces the message
+      // and polls the backend task until completion.
+      setImportTask({ task_id: result.task_id, kb_id: knowledgeBaseId, status: 'processing', progress: 0, processed: 0, total: imported.length });
       await load(false);
     } catch (error) { setMessage({ tone: 'error', text: error instanceof Error ? error.message : 'Unable to import FAQ entries' }); }
     finally { setImportBusy(false); }
@@ -830,6 +853,7 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
       importFileName={importFile?.name ?? null}
       importBusy={importBusy}
       importPreview={importPreview}
+      importTask={importTask ? faqImportTaskView(importTask) : null}
       editorOpen={editing !== undefined}
       editorTitle={editing ? t('knowledgeEditor.faq.editorEdit') : t('knowledgeEditor.faq.editorCreate')}
       editorMode={editing ? 'edit' : 'create'}

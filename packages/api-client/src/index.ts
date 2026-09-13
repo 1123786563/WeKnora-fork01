@@ -14,7 +14,7 @@ export type { KnowledgeDocumentListParams, KnowledgeDocumentUploadInput, Knowled
 export { createKnowledgeSettingsApi } from './knowledge/settings.ts';
 export type { ChunkingPreviewInput, ChunkingPreviewResult, KnowledgeBaseActivityEntry, KnowledgeBaseActivityResult, KnowledgeBaseConfigInput, KnowledgeBaseUpdateInput, ParserEngineInfo, ParserEnginesResult, StorageBackendView, VectorStoreView } from './knowledge/settings.ts';
 export { createKnowledgeFaqApi } from './knowledge/faq.ts';
-export type { FAQEntry, FAQEntryListResponse, FAQEntryFieldsUpdate, FAQEntryFieldsBatchRequest, FAQEntryPayload, FAQSearchInput } from './knowledge/faq.ts';
+export type { FAQEntry, FAQEntryListResponse, FAQEntryFieldsUpdate, FAQEntryFieldsBatchRequest, FAQEntryPayload, FAQSearchInput, FAQImportProgress } from './knowledge/faq.ts';
 export type { KnowledgeDocument, KnowledgeProcessingStatus, KnowledgeDocumentListResponse, KnowledgeFolderNode, KnowledgeFolderTree, KnowledgeSearchResponse, KnowledgeTag } from '@weknora/contracts';
 export { createWikiPagesApi } from './wiki/pages.ts';
 export type { WikiPage, WikiPageListResponse, WikiPageRevision, WikiRevisionListResponse, WikiPageUpdateInput, WikiGraphData, WikiGraphEdge, WikiGraphMeta, WikiGraphNode, WikiGraphQueryParams } from './wiki/pages.ts';
