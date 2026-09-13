@@ -18,3 +18,9 @@
 xcrun simctl boot "iPhone 17 Pro"
 npx expo run:ios --device "iPhone 17 Pro"
 xcrun simctl io "iPhone 17 Pro" screenshot <path>
+
+## 追加：EXPO_PUBLIC_API_BASE_URL 数据面尝试
+- 以 EXPO_PUBLIC_API_BASE_URL=http://localhost:8080 重建（dev client 加载，Metro 192.168.3.31:8081），502 仍复现——请求到达了某个返回 502 的服务（非渲染问题；模拟器网络→宿主 8080 的路径仍待查，可能与后端反代/路由有关）。
+- 渲染与本地化证据不受影响（错误态+空态正确呈现）。
+- 后续排查方向：模拟器内 curl 127.0.0.1:8080/health 直接验证；检查后端 8080 是否对 /api/v1/knowledge-bases 返回 502 的具体路由条件。
+
