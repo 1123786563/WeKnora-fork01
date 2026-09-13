@@ -31,11 +31,18 @@ function resolve(suffix) {
 // missing from the shared bundle gets migrated (settings/model/sandbox/skills surfaces).
 const PREFIXES = ['model.', 'modelSettings.', 'settings.sandbox.', 'settings.skills.', 'settings.weknoraCloud.', 'uploadConfirm.', 'knowledgeStages.'];
 const EXTRA = ['common.remove', 'common.copied', 'common.on', 'common.confirmDelete', 'common.yes', 'common.no'];
+// MCP settings dialog/metadata copy (R024/R043-R046/N016): every key the Vue
+// drawer and its tool directory reference, so the React port stays byte-exact.
+const MCP = [
+  'mcpMetadata.description', 'mcpMetadata.parameters', 'mcpMetadata.fullSchema', 'mcpMetadata.fetch', 'mcpMetadata.refresh',
+  'mcpServiceDialog.oauthAuthorization', 'mcpServiceDialog.oauthAuthorized', 'mcpServiceDialog.oauthUnauthorized',
+];
 const prefixKeys = Object.keys(vueMaps['zh-CN']).filter((p) => PREFIXES.some((pre) => p.startsWith(pre)));
 
 const SEMANTIC = [
   ...prefixKeys,
   ...EXTRA,
+  ...MCP,
   // uploadConfirm (top-level object)
   ...['title','titleManual','titleReparse','parseConfig','configNav','navParserDefault','navParserCustomized','moreOptions','summaryParentChildShort','summaryParserForceScanned','summaryQuestionCountValue','navChunkingSummary','statusOn','statusOff','notSet','summaryNoTags','summaryTagsCount','confirm','cancel','tabTags','tagsDescription','tagsPlaceholder','tagsEmpty','tagsLoadFailed','noItems','urlItemLabel','urlAdded','urlDuplicate','statusNeedsSetup','multimodalSetupHint','asrSetupHint','vlmModelRequired','asrModelRequired','vlmModelSelectRequired','asrModelSelectRequired','continueAdd','destinationLabel','destinationChange','filesAdded','filesAllDuplicate','confirmManual','confirmReparse','reparseSource','reparseHint','manualCharCount'].map((k) => 'uploadConfirm.' + k),
   'uploadConfirm.pdfForceScanned.label', 'uploadConfirm.pdfForceScanned.description',
