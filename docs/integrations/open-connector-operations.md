@@ -100,7 +100,8 @@ Operator 在 `${OC_SECRETS_DIR:-./docker/secrets}` 下置备三个文件；**文
 1. **停授权与 claim**：停止新的授权开始（control worker 停止 = outbox 不再消费，新授权入队不执行）；`OCShutdownGate` 关闭后新 claim 429 拒绝（`docker stop` API 触发 30s in-flight 排空，残余交恢复循环）。
 2. **排空或冻结在途**：等待 `state='dispatched'` 归零或超时转 unknown；快照备份（§6.1）。
 3. **回归**：`python3 -m unittest discover -s scripts/open-connector -p 'test_deployment.py' -v`、`go test ./internal/config/... ./internal/container/... ./internal/connectorcontrol/...`、`check_deployment` 对新 compose 渲染件跑通。
-4. **灰度**：替换 open-connector 镜像 digest（新 digest 附同源构建证明）→ 单实例起 → 1 个空间验证 prepare/approve/execute/撤销 → 放量。
+4. **发布门禁（T18）**：在新 digest + 候选 commit 上重放七类证据并产出 release report，`python3 scripts/open-connector/release_gate.py <report.json>` 必须 exit 0（见 [open-connector-release.md](./open-connector-release.md) §4–§5；失败按缺项补证，不得跳过）。
+5. **灰度**：替换 open-connector 镜像 digest（新 digest 附同源构建证明）→ 单实例起 → 1 个空间验证 prepare/approve/execute/撤销 → 按 §6.5 阈值放量。
 
 ### 6.4 回滚（rollback）
 1. **先关 feature flag**：`open_connector.enabled=false`（或 `WEKNORA_OC_ENABLED=false`）——派发面立即 fail-closed（503），数据面不动。
@@ -149,3 +150,5 @@ WEKNORA_DB_HOST=… WEKNORA_DB_USER=… WEKNORA_DB_PASSWORD=… \
 - 首期 Provider Proxy 关闭；文件/临时 URL 动作不发布；现有 Sync 保留。
 - 指标Prometheus 化与告警接线随 T17 负载验证落地（阈值先按 §6.5）。
 - 独立实例（非共享）部署复用本 compose 模式 + `open_connector.runtime` 新内部 ID。
+- 发布门禁与灰度/回退序见 [open-connector-release.md](./open-connector-release.md)（T18）：七类证据齐全 + 同 commit/镜像/命名空间校验通过才可放量。
+- 一期已知限制（T18 终局记录）：过期授权 attempt 无 sweeper（T17 期末计数 2）；dispatcher 对 Provider 429 记固定 30s 冷却，不解析 Retry-After 头（opportunistic-unimplemented）；连接列表可见性（T17-F2）列规格积压。
