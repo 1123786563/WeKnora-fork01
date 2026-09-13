@@ -20,6 +20,8 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, embedded = 
   const [error, setError] = useState('');
   const [principal, setPrincipal] = useState<APIPrincipalConfig | null>(null);
   const [agents, setAgents] = useState<IntegrationAgentOption[]>([]);
+  const [agentsLoading, setAgentsLoading] = useState(false);
+  const [agentsError, setAgentsError] = useState('');
   const [knowledgeBases, setKnowledgeBases] = useState<IntegrationKnowledgeBaseOption[]>([]);
   const [apiPlaygroundOpen, setApiPlaygroundOpen] = useState(false);
   // Vue EmbedChannelPreview: the preview opens in-page, never a new tab. The
@@ -59,8 +61,11 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, embedded = 
   // The embed wizard reuses the agent list for its bound-agent select and the
   // capability warnings (AgentEmbedChannelPanel.vue agentWebSearchEnabledEffective).
   async function loadAgents() {
+    setAgentsLoading(true);
+    setAgentsError('');
     try { setAgents((await client.configuration.agents.list()).map((agent) => ({ id: agent.id, name: agent.name, config: agent.config }))); }
-    catch { setAgents([]); }
+    catch (cause) { setAgents([]); setAgentsError(cause instanceof Error ? cause.message : 'Unable to load agents.'); }
+    finally { setAgentsLoading(false); }
   }
   async function loadKnowledgeBases() {
     try { setKnowledgeBases((await client.knowledgeBases.list()).map((kb) => ({ id: kb.id, name: kb.name }))); }
@@ -74,7 +79,7 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, embedded = 
     void (async () => {
       if (tab === 'embed') await Promise.all([loadEmbed(), loadAgents()]);
       if (tab === 'im') await Promise.all([loadIm(), loadAgents(), loadKnowledgeBases()]);
-      if (tab === 'api') await loadApiKeys();
+      if (tab === 'api') await Promise.all([loadApiKeys(), loadAgents()]);
       if (current) setLoading(false);
     })();
     return () => { current = false; };
@@ -155,6 +160,6 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, embedded = 
     {embedPreviewNotice ? <p className="wk-status wk-status-error" role="alert">{embedPreviewNotice}</p> : null}
     <EmbedPreviewModal open={embedPreview !== null} channelId={embedPreview?.channelId ?? ''} token={embedPreview?.token ?? ''} title={embedPreview?.title} apiBaseUrl={window.location.origin} locale={embedPreview?.locale} refreshKey={embedPreview?.refreshKey} onClose={() => setEmbedPreview(null)} />
     <IntegrationsPage embedded={embedded} initialTab={tab} activeTab={tab} onTabChange={setTab} embedChannels={embedChannels} imChannels={imChannels} apiKeys={apiKeys} apiKeysLoading={apiKeysLoading} apiBaseUrl={window.location.origin} loading={loading} error={error} onReload={reload} onOpenEmbed={(channel) => void openEmbed(channel)} onOpenApiPlayground={() => setApiPlaygroundOpen(true)} actions={actions} agents={agents} knowledgeBases={knowledgeBases} />
-    <ApiPlaygroundDrawer open={apiPlaygroundOpen} onClose={() => setApiPlaygroundOpen(false)} apiKey={apiKeys.find((key) => key.api_key)?.api_key ?? ''} mode={principal?.mode ?? 'tenant'} agents={agents.map((agent) => ({ id: agent.id, name: agent.name }))} apiBaseUrl={window.location.origin} mintToken={actions.onCreatePrincipalTestToken} t={(key, values) => formatMessage('zh-CN', key, values)} />
+    <ApiPlaygroundDrawer open={apiPlaygroundOpen} onClose={() => setApiPlaygroundOpen(false)} apiKey={apiKeys.find((key) => key.api_key)?.api_key ?? ''} mode={principal?.mode ?? 'tenant'} agents={agents.map((agent) => ({ id: agent.id, name: agent.name }))} agentsLoading={agentsLoading} agentsError={agentsError || undefined} apiBaseUrl={window.location.origin} mintToken={actions.onCreatePrincipalTestToken} t={(key, values) => formatMessage('zh-CN', key, values)} />
   </>;
 }

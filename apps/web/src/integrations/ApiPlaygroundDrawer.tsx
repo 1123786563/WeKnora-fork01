@@ -34,6 +34,8 @@ export interface ApiPlaygroundDrawerProps {
   apiKey: string;
   mode: 'tenant' | 'direct_header' | 'signed_token';
   agents: readonly ApiPlaygroundAgentOption[];
+  /** Vue t-select loading state while listAgents is resolving. */
+  agentsLoading?: boolean;
   agentsError?: string;
   apiBaseUrl: string;
   /** Vue createAPIPrincipalTestToken (signed_token mode only). */
@@ -81,7 +83,7 @@ const preStyle: CSSProperties = { background: 'var(--wk-bg-muted, #f6f8fa)', pad
 const rowStyle: CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 };
 const fieldStyle: CSSProperties = { display: 'block', margin: '10px 0', width: '100%' };
 
-export function ApiPlaygroundDrawer({ open, onClose, apiKey, mode, agents, agentsError, apiBaseUrl, mintToken, fetchFn, t }: ApiPlaygroundDrawerProps) {
+export function ApiPlaygroundDrawer({ open, onClose, apiKey, mode, agents, agentsError, agentsLoading = false, apiBaseUrl, mintToken, fetchFn, t }: ApiPlaygroundDrawerProps) {
   const [form, setForm] = useState({ agentId: '', query: 'hello', externalUserId: 'user_123' });
   const [run, setRun] = useState<RunState>(idleRun);
   const [drawerWidth, setDrawerWidth] = useState<number>(API_PLAYGROUND_DRAWER_SPEC.defaultWidth);
@@ -260,8 +262,8 @@ export function ApiPlaygroundDrawer({ open, onClose, apiKey, mode, agents, agent
             <h4>{t('integrations.api.playgroundSectionRequest')}</h4>
             <label className="wk-api-playground-field" style={{ display: 'block', margin: '10px 0' }}>
               {t('integrations.api.playgroundAgent')}
-              <select className="wk-api-playground-agent" value={form.agentId} onChange={(event) => setForm((prev) => ({ ...prev, agentId: event.target.value }))} style={fieldStyle}>
-                <option value="" disabled>{t('integrations.api.playgroundAgentPlaceholder')}</option>
+              <select className="wk-api-playground-agent" value={form.agentId} aria-busy={agentsLoading || undefined} onChange={(event) => setForm((prev) => ({ ...prev, agentId: event.target.value }))} style={fieldStyle}>
+                <option value="" disabled>{agentsLoading ? t('common.loading') : t('integrations.api.playgroundAgentPlaceholder')}</option>
                 {agents.map((agent) => (
                   <option key={agent.id} value={agent.id}>{agentOptionLabel(agent.name, agent.is_builtin === true, t('integrations.api.playgroundBuiltin'))}</option>
                 ))}

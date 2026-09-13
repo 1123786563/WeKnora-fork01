@@ -145,6 +145,13 @@ test('run gating mirrors Vue: disabled with a reason and tenant mode locks the e
   assert.match(container.querySelector('.wk-api-playground-hint')?.textContent ?? '', /仅空间模式不会发送外部用户身份/);
 });
 
+test('agent selector exposes the Vue loading state while agents are resolving', () => {
+  const { container } = mountDrawer({ agents: [], agentsLoading: true });
+  const select = container.querySelector<HTMLSelectElement>('.wk-api-playground-agent');
+  assert.equal(select?.getAttribute('aria-busy'), 'true');
+  assert.equal(select?.options[0]?.textContent, '加载中...');
+});
+
 test('signed_token preview masks both secrets behind the Vue placeholders', () => {
   const { container } = mountDrawer({ mode: 'signed_token' });
   const preview = container.querySelector('.wk-api-playground-preview pre')?.textContent ?? '';

@@ -1696,3 +1696,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - React 问题输入改为 Vue `t-textarea` 的 autosize 语义：最小 2 行、最大 4 行，依据实际 scrollHeight 和 computed line-height/padding 调整，超出上限时内部滚动。
 - 新增最小行数 DOM 回归；API Playground 定向测试 10/10，Web TypeScript 检查通过。证据 `evidence/vue-react-parity/2026-09-14-r013-api-playground-textarea.md`。
 - 证据层：本轮为 Vue 源码对照、React DOM/单元和类型检查；jsdom 无布局引擎，精确 computed-style/截图仍需浏览器，真实后端权限矩阵、Wails 与移动端证据仍待补齐，R013/N028 继续保持 review。
+
+## 2026-09-14 Round N+43 — R013 API Playground 智能体加载状态
+
+- Vue 页面初始化会并行加载 API Key 与 `listAgents({ creator: 'all' })`；React API tab 现在同步加载 agents，并把加载失败信息传入 Playground。Agent 选择器在列表解析期间暴露 `aria-busy` 和本地化 loading 文案，保持选中项重选逻辑不变。
+- 验证：API Playground 定向测试 11/11；Web TypeScript 检查通过。证据 `evidence/vue-react-parity/2026-09-14-r013-api-playground-agents-loading.md`。
+- 证据层：本轮为 Vue 源码对照、React DOM/单元和类型检查；真实后端 agents 成功/失败请求、筛选交互、computed-style/截图、Wails 与移动端证据仍待补齐，R013/N028 继续保持 review。
