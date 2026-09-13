@@ -56,6 +56,17 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [state, setState] = useState<'idle' | 'loading' | 'error' | 'success'>(initialError ? 'error' : 'idle');
   const [message, setMessage] = useState(initialError ?? '');
+  // Vue Login.vue presents auth outcomes with top-center MessagePlugin toasts
+  // (login failure Login.vue:695-697, register success Login.vue:727/742);
+  // failures must not render as an inline banner inside the form card.
+  const [toast, setToast] = useState<{ tone: 'error' | 'success'; text: string } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showToast = (tone: 'error' | 'success', text: string) => {
+    setToast({ tone, text });
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 3000);
+  };
+  useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
   const [registrationMode, setRegistrationMode] = useState('self_serve');
   const [registrationLoaded, setRegistrationLoaded] = useState(false);
   const [complexPasswordEnabled, setComplexPasswordEnabled] = useState(false);
@@ -72,6 +83,13 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
   useEffect(() => {
     slideTimer.current = setInterval(() => setSlideIndex((index) => (index + 1) % SLIDES.length), 4000);
     return () => { if (slideTimer.current) clearInterval(slideTimer.current); };
+  }, []);
+
+  // Parked auth errors (OIDC bridge etc.) toast once on mount, like the
+  // MessagePlugin.error calls in Vue Login.vue:636-647.
+  useEffect(() => {
+    if (initialError) showToast('error', initialError);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -155,6 +173,8 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
         setUsername(''); setPassword(''); setConfirmPassword('');
         setState('success');
         setMessage(t('auth.registerSuccess'));
+        // Vue Login.vue:727/742 — register success is a top toast.
+        showToast('success', t('auth.registerSuccess'));
       } else {
         const session = await client.auth.login({ email, password });
         if (inviteToken) {
@@ -168,7 +188,11 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
       }
     } catch (error) {
       setState('error');
-      setMessage(error instanceof Error ? error.message : mode === 'register' ? t('auth.registerFailed') : t('auth.loginErrorRetry'));
+      // Vue Login.vue:695-697 — toast the backend message; the localized
+      // fallback is auth.loginError (register: auth.registerFailed).
+      const text = error instanceof Error ? error.message : mode === 'register' ? t('auth.registerFailed') : t('auth.loginError');
+      setMessage(text);
+      showToast('error', text);
     }
   }
 
@@ -220,6 +244,7 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
   ];
 
   return <div className="auth-layout">
+      {toast ? <div className={`auth-toast ${toast.tone}`} role="alert">{toast.text}</div> : null}
     <div className="animated-bg" aria-hidden="true">
       {nodeIcons.map((icon, index) => (
         <div key={index} className={`knowledge-node node-${index + 1}`}>
@@ -326,8 +351,6 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
               <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="current-password" disabled={loading} placeholder={t('auth.passwordPlaceholder')} />
               {fieldError('password')}
             </label>
-            {state === 'error' && message ? <div className="invite-banner invite-banner--error form-alert">{message}</div> : null}
-            {state === 'success' ? <div className="invite-banner form-alert">{message}</div> : null}
             <button type="submit" className="submit-button" disabled={loading}>{loading ? t('auth.loggingIn') : t('auth.login')}</button>
             {registrationEnabled ? <div className="register-cta">
               <div className="register-cta__divider"><span>{t('auth.firstTime')}</span></div>
@@ -369,8 +392,6 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
               <input value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} type="password" autoComplete="new-password" disabled={loading} placeholder={t('auth.confirmPasswordPlaceholder')} />
               {fieldError('confirmPassword')}
             </label>
-            {state === 'error' && message ? <div className="invite-banner invite-banner--error form-alert">{message}</div> : null}
-            {state === 'success' ? <div className="invite-banner form-alert">{message}</div> : null}
             <button type="submit" className="submit-button" disabled={loading}>{loading ? t('auth.registering') : t('auth.register')}</button>
             {!inviteToken ? <div className="form-footer">
               <span>{t('auth.haveAccount')}</span>
