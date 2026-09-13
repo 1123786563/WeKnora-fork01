@@ -42,6 +42,7 @@ function makeClient(options: {
   models?: unknown[];
   runtime?: TenantRecord;
   runtimeTasks?: TenantRecord[];
+  systemSettings?: TenantRecord[];
 } = {}) {
   const tenantGet = options.tenant instanceof Promise
     ? () => options.tenant as Promise<never>
@@ -67,6 +68,11 @@ function makeClient(options: {
       runtime: {
         queues: async () => options.runtime ?? { available: true, upstream_concurrency: 4, parse_concurrency: 2, wiki_concurrency: 1, pools: [], queues: [], model_limiter_available: false, models: [], timestamp: 0 },
         tasks: { list: async () => ({ available: true, tasks: options.runtimeTasks ?? [], pageSize: 20, hasMore: false }) },
+      },
+      settings: {
+        list: async () => options.systemSettings ?? [],
+        update: async (_key: string, value: unknown) => ({ key: _key, value }),
+        reset: async () => undefined,
       },
     },
   } as unknown as WeKnoraClient;
@@ -177,6 +183,23 @@ test('runtime queues section renders Vue overview, empty table and limiter state
   await act(async () => {});
   assert.ok(container.querySelector('[role="dialog"]'), 'clicking a task count opens the Vue task drawer');
   assert.ok(container.textContent?.includes('document:process'), 'the task drawer renders the loaded task');
+});
+
+test('system-global section renders grouped editable settings instead of a generic placeholder', async () => {
+  const container = await mountPage(makeClient({ systemSettings: [
+    { id: 1, key: 'auth.registration_mode', value: 'open', value_type: 'string', enum: ['open', 'invite_only'], description: '注册方式', is_secret: false, requires_restart: false },
+    { id: 2, key: 'sandbox.docker_enabled', value: true, value_type: 'bool', description: 'Docker 沙箱', is_secret: false, requires_restart: true },
+  ] }), '?section=system-global', 'system-admin');
+  const text = container.textContent ?? '';
+  assert.ok(text.includes('系统全局设置'), 'the Vue system settings heading renders');
+  assert.ok(text.includes('访问控制'), 'the access tab renders');
+  assert.ok(text.includes('auth · registration mode'), 'the setting row renders');
+  assert.ok(container.querySelector('select'), 'enum settings use a select control');
+  const securityTab = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]')).find((button) => button.textContent === '安全');
+  assert.ok(securityTab, 'the security tab renders');
+  await act(async () => securityTab?.click());
+  assert.ok(container.querySelector('input[type="checkbox"]'), 'boolean settings use a switch-like checkbox');
+  assert.equal(text.includes('尚未移植'), false, 'the generic placeholder is gone');
 });
 
 // B4d: section=subsection deep link reaches the model panel type tabs.

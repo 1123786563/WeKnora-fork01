@@ -1617,3 +1617,10 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 回归用例验证非零计数按钮、任务请求和详情抽屉实际渲染；没有为零的计数制造可点击入口。
 - 验证：SettingsPage 定向测试 11/11；完整 `pnpm test:web` 808/808；Web TypeScript 检查通过；`git diff --check` 通过。
 - 证据层：本轮为 Vue 任务抽屉源码对照、React DOM/单元与全 Web 回归；任务分页、取消/重试/清理操作、真实 system-admin 后端、同条件截图/computed-style、Wails 与移动端证据仍待补齐，N017 继续保持 review。
+
+## 2026-09-14 Round N+31 — N017 系统全局设置分组与编辑控件
+
+- React `system-global` 入口移除通用占位，新增 Vue `SystemSettings.vue` 对应的访问控制、空间、运行时、安全和未知项分组；按后端 `SystemSetting.value_type` 渲染布尔、枚举、整数、文本/列表控件，并保留需重启/敏感标记。
+- 编辑行为对齐 Vue 的自动保存方向：布尔/枚举变更提交，数字/文本失焦提交；每行提供恢复默认入口，保存状态通过 role=status 暴露；未改变系统 settings API 契约。
+- 验证：SettingsPage 定向测试 12/12；完整 `pnpm test:web` 809/809；Web TypeScript 检查通过；`git diff --check` 通过。
+- 证据层：本轮为 Vue 源码对照、React DOM/单元与全 Web 回归；高风险配置确认弹层、系统管理员增删/密码重置、批量配额操作、真实 system-admin 后端、同条件截图/computed-style、Wails 与移动端证据仍待补齐，N017 继续保持 review。
