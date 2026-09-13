@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import * as React from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Locale } from '../../../i18n/src/index.ts';
 import { INTEGRATION_SECTIONS, integrationSection, type IntegrationKey } from './registry.ts';
 import { buildEmbedUpdatePayload } from './form.ts';
@@ -6,6 +7,35 @@ import { apiKeyAccessMode, apiKeyValueDisplay, isFreshKeyVisible, type ApiKeyRow
 import { buildCLIConnectCommand } from './cli.ts';
 import { integrationsLocale, integrationsT } from './messages.ts';
 import { imPlatformLabel, imPlatformOrder, integrationSectionCopy } from './view.ts';
+import {
+  IM_WIZARD_STEPS,
+  applyImPlatformChange,
+  applyWeChatConfirmedCredentials,
+  buildImCreatePayload,
+  buildImUpdatePayload,
+  createImWizardForm,
+  imCallbackUrl,
+  imConsoleLink,
+  imCredentialFields,
+  imPlatformSupportsThread,
+  imWizardFormFromChannel,
+  isWeChatBound,
+  validateImWizardSave,
+  validateImWizardStep,
+  wechatQrImageUrl,
+  type ImCredentialField,
+  type ImWizardForm,
+} from './imWizard.ts';
+
+export interface IntegrationAgentOption { id: string; name: string }
+export interface IntegrationKnowledgeBaseOption { id: string; name: string }
+
+/** Vue WeChat QR ports (IMChannelPanel.vue lines 850-919) backed by
+ *  client.embed.im.wechat in the route page. */
+export interface IntegrationWeChatQrPorts {
+  create: () => Promise<{ qrcodeUrl: string; qrcode: string }>;
+  poll: (qrcode: string) => Promise<{ status: string; bot_token?: string; ilink_bot_id?: string; ilink_user_id?: string }>;
+}
 
 // Integrations surface ported to the Vue settings-drawer anatomy
 // (frontend/src/views/integrations/IntegrationSettingsSection.vue):
@@ -34,13 +64,14 @@ export interface IntegrationActions {
   onUpdateEmbed?: (id: string, input: Record<string, unknown>) => Promise<void>;
   onDeleteEmbed?: (id: string) => Promise<void>;
   onRotateEmbed?: (id: string) => Promise<void>;
-  onCreateIm?: (input: { agentId: string; platform: string; name: string; credentials: Record<string, unknown> }) => Promise<void>;
+  onCreateIm?: (input: { agentId: string; payload: Record<string, unknown> }) => Promise<void>;
   onUpdateIm?: (id: string, input: Record<string, unknown>) => Promise<void>;
   onToggleIm?: (id: string) => Promise<void>;
   onDeleteIm?: (id: string) => Promise<void>;
   principal?: APIPrincipalConfig | null;
   onSavePrincipal?: (input: { mode: APIPrincipalConfig['mode']; requireDirectHeader: boolean; hmacSecret?: string }) => Promise<void>;
   onCreatePrincipalTestToken?: (externalUserId: string) => Promise<IntegrationPrincipalToken>;  onCreateApiKey?: (name: string) => Promise<ApiKeyRow>;  onRevokeApiKey?: (keyId: ApiKeyRow['id']) => Promise<void>;
+  wechatQr?: IntegrationWeChatQrPorts;
 }
 
 export interface IntegrationsPageProps {
@@ -60,6 +91,10 @@ export interface IntegrationsPageProps {
   actions?: IntegrationActions;
   /** UI locale; defaults to the platform shell locale (localStorage 'locale'). */
   locale?: Locale;
+  /** Vue lists agents for the bound-agent select (IMChannelPanel.vue agentOptions). */
+  agents?: readonly IntegrationAgentOption[];
+  /** Vue step-3 file-KB options (IMChannelPanel.vue knowledgeBases). */
+  knowledgeBases?: readonly IntegrationKnowledgeBaseOption[];
 }
 
 function initialLocale(): Locale {
@@ -71,7 +106,7 @@ function initialLocale(): Locale {
   }
 }
 
-export function IntegrationsPage({ embedded = false, embedChannels, imChannels, apiBaseUrl, apiKeys = [], apiKeysLoading = false, activeTab, onTabChange, initialTab = 'embed', loading = false, error, onReload, onOpenEmbed, actions = {}, locale: localeProp }: IntegrationsPageProps) {
+export function IntegrationsPage({ embedded = false, embedChannels, imChannels, apiBaseUrl, apiKeys = [], apiKeysLoading = false, activeTab, onTabChange, initialTab = 'embed', loading = false, error, onReload, onOpenEmbed, actions = {}, locale: localeProp, agents = [], knowledgeBases = [] }: IntegrationsPageProps) {
   const [locale, setLocale] = useState<Locale>(localeProp ?? initialLocale());
   useEffect(() => { if (localeProp) setLocale(localeProp); }, [localeProp]);
   const t = (key: string, values?: Record<string, string | number>) => integrationsT(locale, key, values);
@@ -83,11 +118,19 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
   const [embedName, setEmbedName] = useState('');
   const [embedOrigins, setEmbedOrigins] = useState('https://example.com');
   const [showEmbedCreate, setShowEmbedCreate] = useState(false);
-  const [imAgentId, setImAgentId] = useState('');
-  const [imPlatform, setImPlatform] = useState('feishu');
-  const [imName, setImName] = useState('');
-  const [imCredentials, setImCredentials] = useState('{}');
-  const [showImCreate, setShowImCreate] = useState(false);
+  // IM channel wizard state (Vue SettingDrawer): step, form, edit target and
+  // the WeChat QR binding machine (idle -> wait -> scaned -> confirmed/expired).
+  const [imWizardOpen, setImWizardOpen] = useState(false);
+  const [imStep, setImStep] = useState(0);
+  const [imForm, setImForm] = useState<ImWizardForm>(createImWizardForm());
+  const [imNameTouched, setImNameTouched] = useState(false);
+  const [imEditing, setImEditing] = useState<IntegrationResource | null>(null);
+  const [imEditingEnabled, setImEditingEnabled] = useState(true);
+  const [imWarning, setImWarning] = useState('');
+  const [wechatQr, setWechatQr] = useState<{ imgSrc: string; code: string; status: string } | null>(null);
+  const [wechatQrLoading, setWechatQrLoading] = useState(false);
+  const [wechatQrError, setWechatQrError] = useState('');
+  const wechatPollActive = useRef(false);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [editedNames, setEditedNames] = useState<Record<string, string>>({});
@@ -110,7 +153,103 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
   useEffect(() => { if (!actions.principal) return; setPrincipalMode(actions.principal.mode); setRequireDirectHeader(actions.principal.require_direct_header); }, [actions.principal]);
   const run = async (operation: () => Promise<void>) => { setBusy(true); setLocalError(''); try { await operation(); } catch (cause) { setLocalError(cause instanceof Error ? cause.message : 'Integration operation failed.'); } finally { setBusy(false); } };
   const createEmbed = () => run(async () => { if (!actions.onCreateEmbed) return; await actions.onCreateEmbed({ agent_id: embedAgentId.trim(), name: embedName.trim(), allowed_origins: embedOrigins.split(/[\n,]/).map((value) => value.trim()).filter(Boolean), enabled: true }); setEmbedName(''); setShowEmbedCreate(false); onReload?.(); });
-  const createIm = () => run(async () => { if (!actions.onCreateIm) return; let credentials: Record<string, unknown>; try { const parsed: unknown = JSON.parse(imCredentials); if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Credentials must be a JSON object.'); credentials = parsed as Record<string, unknown>; } catch (cause) { throw cause instanceof Error ? cause : new Error('Credentials must be valid JSON.'); } await actions.onCreateIm({ agentId: imAgentId.trim(), platform: imPlatform, name: imName.trim(), credentials }); setImName(''); setShowImCreate(false); onReload?.(); });
+  const stopWeChatPolling = () => { wechatPollActive.current = false; };
+  useEffect(() => () => stopWeChatPolling(), []);
+  const resetWeChatBinding = () => { stopWeChatPolling(); setWechatQr(null); setWechatQrLoading(false); setWechatQrError(''); };
+  const closeImWizard = () => { resetWeChatBinding(); setImWizardOpen(false); setImEditing(null); setImWarning(''); };
+  const openImCreate = () => {
+    resetWeChatBinding();
+    setImEditing(null);
+    setImEditingEnabled(true);
+    setImStep(0);
+    setImNameTouched(false);
+    setImWarning('');
+    setImForm({ ...createImWizardForm(), targetAgentId: imForm.targetAgentId });
+    setImWizardOpen(true);
+  };
+  // Vue openDrawer/editChannel: prefill from the channel and keep its name.
+  const openImEdit = (channel: IntegrationResource) => {
+    resetWeChatBinding();
+    setImEditing(channel);
+    setImEditingEnabled(channel.enabled !== false);
+    setImStep(0);
+    setImNameTouched(true);
+    setImWarning('');
+    setImForm(imWizardFormFromChannel(channel));
+    setImWizardOpen(true);
+  };
+  const imPlatformPicked = (platform: string) => {
+    resetWeChatBinding();
+    setImForm((current) => applyImPlatformChange(current, platform as ImWizardForm['platform'], {
+      channelNameTouched: imNameTouched,
+      defaultNameFor: (key) => imPlatformLabel(key, locale),
+    }));
+  };
+  const imNext = () => {
+    const warning = validateImWizardStep(imForm, imStep);
+    if (warning) { setImWarning(t(warning)); return; }
+    setImWarning('');
+    setImStep((step) => Math.min(step + 1, IM_WIZARD_STEPS.length - 1));
+  };
+  const imBack = () => { setImWarning(''); setImStep((step) => Math.max(step - 1, 0)); };
+  // Vue pollOnce (lines 881-911): re-poll 500ms after each long-poll reply;
+  // confirmed fills credentials, expired stops and shows the QR overlay.
+  const pollWeChatStatus = async (code: string) => {
+    const ports = actions.wechatQr;
+    if (!ports) return;
+    wechatPollActive.current = true;
+    while (wechatPollActive.current) {
+      let status = '';
+      try {
+        const result = await ports.poll(code);
+        if (!wechatPollActive.current) return;
+        status = result.status;
+        if (status === 'confirmed') {
+          setImForm((current) => ({ ...current, credentials: applyWeChatConfirmedCredentials(result) }));
+          wechatPollActive.current = false;
+          setWechatQr(null);
+          return;
+        }
+        if (status === 'expired') { wechatPollActive.current = false; }
+      } catch { /* transient network error: keep polling like Vue */ }
+      setWechatQr((current) => (current && status ? { ...current, status } : current));
+      if (!wechatPollActive.current) return;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  };
+  const startWeChatBinding = async () => {
+    const ports = actions.wechatQr;
+    stopWeChatPolling();
+    setWechatQr(null);
+    setWechatQrError('');
+    if (!ports) { setWechatQrError('WeChat QR binding needs the wechatQr actions port (see IntegrationsRoutePage).'); return; }
+    setWechatQrLoading(true);
+    try {
+      const created = await ports.create();
+      setWechatQr({ imgSrc: wechatQrImageUrl(created.qrcodeUrl), code: created.qrcode, status: 'wait' });
+      void pollWeChatStatus(created.qrcode);
+    } catch (cause) {
+      setWechatQrError(cause instanceof Error ? cause.message : 'Failed to generate QR code');
+    } finally {
+      setWechatQrLoading(false);
+    }
+  };
+  const saveImWizard = () => run(async () => {
+    if (imEditing) {
+      if (!actions.onUpdateIm) return;
+      const warning = validateImWizardSave(imForm);
+      if (warning) { setImWarning(t(warning)); return; }
+      await actions.onUpdateIm(imEditing.id, buildImUpdatePayload(imForm, imEditingEnabled, imPlatformLabel(imForm.platform, locale)));
+    } else {
+      if (!actions.onCreateIm) return;
+      if (!imForm.targetAgentId) { setImWarning(t('integrations.selectAgentHint')); return; }
+      const warning = validateImWizardSave(imForm);
+      if (warning) { setImWarning(t(warning)); return; }
+      await actions.onCreateIm({ agentId: imForm.targetAgentId, payload: buildImCreatePayload(imForm, imPlatformLabel(imForm.platform, locale)) });
+    }
+    closeImWizard();
+    onReload?.();
+  });
   const createApiKey = () => run(async () => { if (!actions.onCreateApiKey) return; const created = await actions.onCreateApiKey(newApiKeyName.trim()); setFreshApiKeyId(created.id); setNewApiKeyName(""); setShowApiKeyForm(false); });
   const revokeApiKey = (key: ApiKeyRow) => { if (!actions.onRevokeApiKey) return; if (!window.confirm(t('integrations.api.deleteApiKeyConfirm'))) return; void run(async () => { await actions.onRevokeApiKey?.(key.id); onReload?.(); }); };
   const savePrincipal = () => run(async () => { await actions.onSavePrincipal?.({ mode: principalMode, requireDirectHeader, ...(hmacSecret.trim() ? { hmacSecret: hmacSecret.trim() } : {}) }); setHmacSecret(''); });
@@ -118,8 +257,8 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
   const runPlayground = () => run(async () => { const path = playgroundPath.trim().replace('{session_id}', encodeURIComponent(sessionId.trim())); if (!apiKey.trim()) throw new Error('Enter an API key for this request.'); let body: unknown; try { body = JSON.parse(playgroundBody); } catch { throw new Error('Request body must be valid JSON.'); } const headers: Record<string, string> = { 'Content-Type': 'application/json', Accept: 'text/event-stream', 'X-API-Key': apiKey.trim() }; if (principalToken) headers[principalToken.headerName] = principalToken.token; const response = await fetch(apiBaseUrl.replace(/\/$/, '') + path, { method: 'POST', headers, body: JSON.stringify(body) }); const text = await response.text(); if (!response.ok) throw new Error('HTTP ' + response.status + ': ' + text.slice(0, 500)); setPlaygroundOutput(text); });
   const startRename = (item: IntegrationResource) => { setRenaming(item.id); setRenameValue(editedNames[item.id] ?? item.name ?? ''); };
   const saveRename = (item: IntegrationResource) => run(async () => {
+    // IM renames are handled by the wizard (Vue opens the same drawer for edit).
     if (tab === 'embed' && actions.onUpdateEmbed) { await actions.onUpdateEmbed(item.id, buildEmbedUpdatePayload(item, renameValue)); }
-    else if (tab === 'im' && actions.onUpdateIm) { await actions.onUpdateIm(item.id, { name: renameValue }); }
     setEditedNames((current) => ({ ...current, [item.id]: renameValue }));
     setRenaming(null);
     onReload?.();
@@ -152,8 +291,8 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
           copy={copy}
           locale={locale}
           items={tab === 'im' ? imChannels : embedChannels}
-          showCreate={tab === 'im' ? showImCreate : showEmbedCreate}
-          onToggleCreate={() => (tab === 'im' ? setShowImCreate(!showImCreate) : setShowEmbedCreate(!showEmbedCreate))}
+          showCreate={tab === 'im' ? imWizardOpen : showEmbedCreate}
+          onToggleCreate={() => (tab === 'im' ? (imWizardOpen ? closeImWizard() : openImCreate()) : setShowEmbedCreate(!showEmbedCreate))}
           busy={busy}
           t={t}
           renamingId={renaming}
@@ -162,27 +301,38 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
           onStartRename={startRename}
           onSaveRename={saveRename}
           onCancelRename={() => setRenaming(null)}
-          // Vue makes the whole channel card clickable; on the embed tab the
-          // click keeps opening the preview session (previously the Open button).
-          onOpenCard={tab === 'embed' ? onOpenEmbed : undefined}
+          // Vue makes the whole channel card clickable: embed opens the preview
+          // session, IM opens the same wizard drawer used by create (editChannel).
+          onOpenCard={tab === 'embed' ? onOpenEmbed : openImEdit}
           onToggle={tab === 'im' && actions.onToggleIm ? (id) => run(async () => { await actions.onToggleIm?.(id); onReload?.(); }) : undefined}
           onRotate={tab === 'embed' && actions.onRotateEmbed ? (id) => run(async () => { await actions.onRotateEmbed?.(id); }) : undefined}
           onDelete={actions.onDeleteEmbed || actions.onDeleteIm ? deleteChannel : undefined}
-          imCreateSlot={tab === 'im' ? <ImCreateForm
+          imCreateSlot={tab === 'im' ? <ImWizardPanel
             locale={locale}
             t={t}
-            agentId={imAgentId}
-            onAgentId={setImAgentId}
-            platform={imPlatform}
-            onPlatform={setImPlatform}
-            name={imName}
-            onName={setImName}
-            credentials={imCredentials}
-            onCredentials={setImCredentials}
+            apiBaseUrl={apiBaseUrl}
+            agents={agents}
+            knowledgeBases={knowledgeBases}
+            form={imForm}
+            onForm={setImForm}
+            onPlatformPicked={imPlatformPicked}
+            step={imStep}
+            nameTouched={imNameTouched}
+            onNameTouched={setImNameTouched}
+            editing={imEditing}
+            editingEnabled={imEditingEnabled}
+            onEditingEnabled={setImEditingEnabled}
+            warning={imWarning}
+            wechatQr={wechatQr}
+            wechatQrLoading={wechatQrLoading}
+            wechatQrError={wechatQrError}
+            onStartWeChatBinding={() => void startWeChatBinding()}
             busy={busy}
-            canSubmit={Boolean(actions.onCreateIm)}
-            onSubmit={createIm}
-            onCancel={() => setShowImCreate(false)}
+            canSubmit={Boolean(actions.onCreateIm || actions.onUpdateIm)}
+            onNext={imNext}
+            onBack={imBack}
+            onSave={saveImWizard}
+            onCancel={closeImWizard}
           /> : null}
           embedCreateSlot={tab === 'embed' ? <EmbedCreateForm
             t={t}
@@ -206,6 +356,26 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
 }
 
 type Translator = (key: string, values?: Record<string, string | number>) => string;
+
+function ImWizardPanelLegacy({ locale, t, apiBaseUrl, agents = [], knowledgeBases = [], form, onForm, onPlatformPicked, step, nameTouched, onNameTouched, editing, editingEnabled, onEditingEnabled, warning, wechatQr, wechatQrLoading, wechatQrError, onStartWeChatBinding, busy, canSubmit, onNext, onBack, onSave, onCancel }: {
+  locale: Locale; t: Translator; apiBaseUrl: string; agents: readonly IntegrationAgentOption[]; knowledgeBases: readonly IntegrationKnowledgeBaseOption[];
+  form: ImWizardForm; onForm: (next: ImWizardForm) => void; onPlatformPicked: (platform: string) => void; step: number;
+  nameTouched: boolean; onNameTouched: (touched: boolean) => void; editing: IntegrationResource | null; editingEnabled: boolean; onEditingEnabled: (enabled: boolean) => void;
+  warning: string; wechatQr: { imgSrc: string; code: string; status: string } | null; wechatQrLoading: boolean; wechatQrError: string;
+  onStartWeChatBinding: () => void; busy: boolean; canSubmit: boolean; onNext: () => void; onBack: () => void; onSave: () => void; onCancel: () => void;
+}) {
+  const update = <K extends keyof ImWizardForm>(key: K, value: ImWizardForm[K]) => onForm({ ...form, [key]: value });
+  const fields = imCredentialFields(form.platform, form.mode);
+  const consoleLink = imConsoleLink(form.platform);
+  return <div className="wk-im-wizard" role="dialog" aria-label={t(editing ? 'agentEditor.im.editTitle' : 'agentEditor.im.createTitle')}>
+    <div className="wk-im-wizard-steps">{IM_WIZARD_STEPS.map((item, index) => <span key={item.key} className={index === step ? 'is-active' : index < step ? 'is-complete' : ''}>{t(item.titleKey)}</span>)}</div>
+    {step === 0 ? <div className="wk-im-wizard-fields"><label>{t('agentEditor.im.agentLabel')}<select value={form.targetAgentId} onChange={(event) => update('targetAgentId', event.target.value)} disabled={Boolean(editing)}><option value="">{t('agentEditor.im.selectAgent')}</option>{agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</select></label><label>{t('agentEditor.im.nameLabel')}<input value={form.name} onChange={(event) => { onNameTouched(true); update('name', event.target.value); }} placeholder={t('agentEditor.im.namePlaceholder')} /></label><label>{t('agentEditor.im.platformLabel')}<select value={form.platform} onChange={(event) => onPlatformPicked(event.target.value)}>{imPlatformOrder().map((platform) => <option key={platform} value={platform}>{imPlatformLabel(platform, locale)}</option>)}</select></label>{nameTouched && !form.name.trim() ? <small className="wk-status-error">{t('agentEditor.im.nameRequired')}</small> : null}</div> : null}
+    {step === 1 ? <div className="wk-im-wizard-fields"><label>{t('agentEditor.im.connectionMode')}<select value={form.mode} onChange={(event) => update('mode', event.target.value as ImWizardForm['mode'])}><option value="websocket">WebSocket</option><option value="webhook">Webhook</option><option value="longpoll">Long Poll</option></select></label><label>{t('agentEditor.im.outputMode')}<select value={form.outputMode} onChange={(event) => update('outputMode', event.target.value as ImWizardForm['outputMode'])}><option value="stream">Stream</option><option value="full">Full</option></select></label>{imPlatformSupportsThread(form.platform) ? <label>{t('agentEditor.im.sessionMode')}<select value={form.sessionMode} onChange={(event) => update('sessionMode', event.target.value as ImWizardForm['sessionMode'])}><option value="user">User</option><option value="thread">Thread</option></select></label> : null}</div> : null}
+    {step === 2 ? <div className="wk-im-wizard-fields"><label>{t('agentEditor.im.knowledgeBaseLabel')}<select value={form.knowledgeBaseId} onChange={(event) => update('knowledgeBaseId', event.target.value)}><option value="">{t('agentEditor.im.noKnowledgeBase')}</option>{knowledgeBases.map((kb) => <option key={kb.id} value={kb.id}>{kb.name}</option>)}</select></label></div> : null}
+    {step === 3 ? <div className="wk-im-wizard-fields">{editing ? <label className="wk-switch-row"><input type="checkbox" checked={editingEnabled} onChange={(event) => onEditingEnabled(event.target.checked)} />{t('agentEditor.im.enabled')}</label> : null}{form.platform === 'wechat' ? <div className="wk-im-wechat-bind">{wechatQr ? <img src={wechatQr.imgSrc} alt={t('agentEditor.im.wechatQrAlt')} /> : null}<button className="wk-button" type="button" disabled={wechatQrLoading || busy} onClick={onStartWeChatBinding}>{wechatQrLoading ? t('common.loading') : t('agentEditor.im.wechatScanBind')}</button>{wechatQrError ? <p className="wk-status-error">{wechatQrError}</p> : null}</div> : fields.map((field) => <label key={field.key}>{field.label ?? t(field.labelKey ?? field.key)}<input type={field.type === 'password' ? 'password' : field.type === 'number' ? 'number' : 'text'} value={String(form.credentials[field.key] ?? '')} min={field.min} max={field.max} placeholder={field.placeholder ?? (field.placeholderKey ? t(field.placeholderKey) : undefined)} onChange={(event) => onForm({ ...form, credentials: { ...form.credentials, [field.key]: field.type === 'number' ? Number(event.target.value) : event.target.value } })} />{field.hintKey ? <small className="wk-muted">{t(field.hintKey)}</small> : null}</label>)}{consoleLink ? <a href={consoleLink.url} target="_blank" rel="noreferrer noopener">{t(consoleLink.labelKey)}</a> : null}</div> : null}
+    {warning ? <p className="wk-status-error" role="alert">{warning}</p> : null}<small className="wk-muted">{apiBaseUrl}</small><div className="wk-list-actions"><button className="wk-button" type="button" onClick={onCancel}>{t('common.cancel')}</button>{step > 0 ? <button className="wk-button" type="button" disabled={busy} onClick={onBack}>{t('common.previous')}</button> : null}{step < IM_WIZARD_STEPS.length - 1 ? <button className="wk-button wk-button--primary" type="button" disabled={busy} onClick={onNext}>{t('common.next')}</button> : <button className="wk-button wk-button--primary" type="button" disabled={busy || !canSubmit} onClick={onSave}>{t('common.save')}</button>}</div>
+  </div>;
+}
 
 interface ChannelListCopy {
   heading: string;
@@ -271,7 +441,8 @@ function ChannelListPanel({ variant, copy, locale, items, showCreate, onToggleCr
               <input type="checkbox" role="switch" aria-label={t('agentEditor.im.enabled')} checked={item.enabled !== false} onChange={() => onToggle(item.id)} />
               <span className="wk-switch-knob" aria-hidden="true" />
             </label> : null}
-            <button className="wk-button wk-button--text" type="button" onClick={() => onStartRename(item)}>{t('common.edit')}</button>
+            {/* Vue IM cards edit through the wizard drawer; embed keeps inline rename. */}
+            {variant === 'embed' ? <button className="wk-button wk-button--text" type="button" onClick={() => onStartRename(item)}>{t('common.edit')}</button> : null}
             {onDelete ? <button className="wk-button wk-button--text wk-button--danger" type="button" onClick={() => onDelete(item.id)}>{t('common.delete')}</button> : null}
           </div>
         </article>;
@@ -293,31 +464,186 @@ function editedNameOf(item: IntegrationResource): string {
   return '';
 }
 
-function ImCreateForm({ locale, t, agentId, onAgentId, platform, onPlatform, name, onName, credentials, onCredentials, busy, canSubmit, onSubmit, onCancel }: {
+// The IM wizard drawer (Vue IMChannelPanel.vue SettingDrawer, lines 72-579):
+// 4 steps — basic / connection / file knowledge base / credentials — with the
+// Vue step strip (active + done marks), footer Back / Next / Save buttons and
+// the per-platform credential tables from imWizard.ts.
+function ImWizardPanel({ locale, t, apiBaseUrl, agents = [], knowledgeBases = [], form, onForm, onPlatformPicked, step, nameTouched, onNameTouched, editing, editingEnabled, onEditingEnabled, warning, wechatQr, wechatQrLoading, wechatQrError, onStartWeChatBinding, busy, canSubmit, onNext, onBack, onSave, onCancel }: {
   locale: Locale;
   t: Translator;
-  agentId: string;
-  onAgentId: (value: string) => void;
-  platform: string;
-  onPlatform: (value: string) => void;
-  name: string;
-  onName: (value: string) => void;
-  credentials: string;
-  onCredentials: (value: string) => void;
+  apiBaseUrl: string;
+  agents?: readonly IntegrationAgentOption[];
+  knowledgeBases?: readonly IntegrationKnowledgeBaseOption[];
+  form: ImWizardForm;
+  onForm: (form: ImWizardForm) => void;
+  onPlatformPicked: (platform: string) => void;
+  step: number;
+  nameTouched: boolean;
+  onNameTouched: (touched: boolean) => void;
+  editing: IntegrationResource | null;
+  editingEnabled: boolean;
+  onEditingEnabled: (enabled: boolean) => void;
+  warning: string;
+  wechatQr: { imgSrc: string; code: string; status: string } | null;
+  wechatQrLoading: boolean;
+  wechatQrError: string;
+  onStartWeChatBinding: () => void;
   busy: boolean;
   canSubmit: boolean;
-  onSubmit: () => void;
+  onNext: () => void;
+  onBack: () => void;
+  onSave: () => void;
   onCancel: () => void;
 }) {
-  return <form className="wk-integration-form wk-channel-create" onSubmit={(event) => { event.preventDefault(); onSubmit(); }}>
-    <h3>{t('agentEditor.im.addChannel')}</h3>
-    <label>{t('integrations.boundAgent')}<input required value={agentId} onChange={(event) => onAgentId(event.target.value)} placeholder="agent id" /></label>
-    <label>{t('agentEditor.im.platform')}<select value={platform} onChange={(event) => onPlatform(event.target.value)}>{imPlatformOrder().map((key) => <option key={key} value={key}>{imPlatformLabel(key, locale)}</option>)}</select></label>
-    <label>{t('agentEditor.im.channelName')}<input value={name} onChange={(event) => onName(event.target.value)} placeholder={t('agentEditor.im.channelNamePlaceholder')} /></label>
-    <p className="wk-muted">{t('agentEditor.im.channelNameDefaultHint')}</p>
-    <label>{t('agentEditor.im.sectionCredentials')}<textarea rows={3} value={credentials} onChange={(event) => onCredentials(event.target.value)} /></label>
+  const isEditing = editing !== null;
+  const consoleLink = imConsoleLink(form.platform);
+  const patch = (values: Partial<ImWizardForm>) => onForm({ ...form, ...values });
+  const chip = (active: boolean) => (active ? 'wk-option-chip wk-option-chip--active' : 'wk-option-chip');
+  const submit = (event: React.FormEvent) => { event.preventDefault(); if (step < IM_WIZARD_STEPS.length - 1) onNext(); else onSave(); };
+  const renderCredentialField = (item: ImCredentialField) => {
+    if (item.type === 'switch') {
+      return <label className="wk-check-row" key={item.key}>
+        <input type="checkbox" checked={form.credentials[item.key] === true} onChange={(event) => patch({ credentials: { ...form.credentials, [item.key]: event.target.checked } })} />
+        {item.labelKey ? t(item.labelKey) : item.label}
+        {item.hintKey ? <span className="wk-muted">{t(item.hintKey)}</span> : null}
+      </label>;
+    }
+    const value = form.credentials[item.key];
+    const placeholder = item.placeholderKey ? t(item.placeholderKey) : item.placeholder;
+    const hint = item.hintKey
+      ? <span className="wk-muted">{t(item.hintKey)}{item.hintLink ? <a className="wk-int-doc-link" href={item.hintLink.url} target="_blank" rel="noreferrer noopener"> {t(item.hintLink.labelKey)}</a> : null}</span>
+      : null;
+    return <label key={item.key}>
+      {item.labelKey ? t(item.labelKey) : item.label}{item.required ? <span aria-hidden="true"> *</span> : null}
+      <input
+        type={item.type === 'number' ? 'number' : item.type === 'password' ? 'password' : 'text'}
+        value={typeof value === 'string' || typeof value === 'number' ? String(value) : ''}
+        min={item.min}
+        max={item.max}
+        placeholder={placeholder}
+        autoComplete="off"
+        onChange={(event) => patch({ credentials: { ...form.credentials, [item.key]: item.type === 'number' ? (event.target.value === '' ? '' : Number(event.target.value)) : event.target.value } })}
+      />
+      {hint}
+    </label>;
+  };
+  const bound = form.platform === 'wechat' && isWeChatBound(form.credentials);
+  return <form className="wk-integration-form wk-channel-create" onSubmit={submit}>
+    {/* Vue drawerTitle (lines 685-690). */}
+    <h3>{isEditing ? (form.name.trim() || t('agentEditor.im.unnamed')) : t('agentEditor.im.addChannel')}</h3>
+    <div className="wk-im-steps" role="list">
+      {IM_WIZARD_STEPS.map((item, index) => (
+        <span role="listitem" key={item.key} className={step === index ? 'wk-im-step is-active' : step > index ? 'wk-im-step is-done' : 'wk-im-step'}>
+          <span className="wk-im-step-num" aria-hidden="true" style={step > index ? { background: '#eff4ff' } : step === index ? { background: '#2e6de6', color: '#fff', borderColor: '#2e6de6' } : undefined}>{step > index ? '✓' : index + 1}</span>
+          <span className="wk-im-step-title">{t(item.titleKey)}</span>
+        </span>
+      ))}
+    </div>
+    {warning ? <p className="wk-status wk-status-error" role="alert">{warning}</p> : null}
+
+    {step === 0 ? <fieldset className="wk-im-step-body">
+      <legend className="wk-im-legend">{t('agentEditor.im.sectionChannel')}</legend>
+      <label>{t('integrations.boundAgent')}
+        {agents.length > 0
+          ? <select required value={form.targetAgentId} onChange={(event) => patch({ targetAgentId: event.target.value })}>
+              <option value="" disabled>{t('integrations.selectAgentPlaceholder')}</option>
+              {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+            </select>
+          : <input required value={form.targetAgentId} onChange={(event) => patch({ targetAgentId: event.target.value })} placeholder={t('integrations.selectAgentPlaceholder')} />}
+      </label>
+      <label>{t('agentEditor.im.platform')}
+        {/* Vue disables the platform select while editing (line 114). */}
+        <select value={form.platform} disabled={isEditing} onChange={(event) => onPlatformPicked(event.target.value)}>
+          {imPlatformOrder().map((key) => <option key={key} value={key}>{imPlatformLabel(key, locale)}</option>)}
+        </select>
+      </label>
+      <label>{t('agentEditor.im.channelName')}
+        <input value={form.name} onFocus={() => onNameTouched(true)} onChange={(event) => { onNameTouched(true); patch({ name: event.target.value }); }} placeholder={t('agentEditor.im.channelNamePlaceholder')} />
+      </label>
+      {!isEditing ? <p className="wk-muted">{t('agentEditor.im.channelNameDefaultHint')}</p> : null}
+      {isEditing ? <label className="wk-check-row">
+        <input type="checkbox" checked={editingEnabled} onChange={(event) => onEditingEnabled(event.target.checked)} />
+        {t('agentEditor.im.enabled')}
+      </label> : null}
+    </fieldset> : null}
+
+    {step === 1 ? <div className="wk-im-step-body">
+      {/* Vue hides the access section for wechat (fixed longpoll/full, line 149). */}
+      {form.platform !== 'wechat' ? <fieldset className="wk-im-step-body">
+        <legend className="wk-im-legend">{t('agentEditor.im.sectionAccess')}</legend>
+        <label>{t('agentEditor.im.mode')}
+          <span className="wk-option-chips" role="radiogroup" aria-label={t('agentEditor.im.mode')}>
+            <button type="button" role="radio" aria-checked={form.mode === 'websocket'} className={chip(form.mode === 'websocket')} disabled={form.platform === 'mattermost'} onClick={() => patch({ mode: 'websocket' })}>WebSocket</button>
+            <button type="button" role="radio" aria-checked={form.mode === 'webhook'} className={chip(form.mode === 'webhook')} onClick={() => patch({ mode: 'webhook' })}>Webhook</button>
+          </span>
+        </label>
+        <p className="wk-muted">{form.platform === 'mattermost' ? t('agentEditor.im.mattermostModeHint') : form.platform === 'yunzhijia' ? t('agentEditor.im.yunzhijiaModeHint') : t('agentEditor.im.modeHint')}</p>
+        <label>{t('agentEditor.im.outputMode')}
+          <span className="wk-option-chips" role="radiogroup" aria-label={t('agentEditor.im.outputMode')}>
+            <button type="button" role="radio" aria-checked={form.outputMode === 'stream'} className={chip(form.outputMode === 'stream')} onClick={() => patch({ outputMode: 'stream' })}>{t('agentEditor.im.outputStream')}</button>
+            <button type="button" role="radio" aria-checked={form.outputMode === 'full'} className={chip(form.outputMode === 'full')} onClick={() => patch({ outputMode: 'full' })}>{t('agentEditor.im.outputFull')}</button>
+          </span>
+        </label>
+      </fieldset> : null}
+      <fieldset className="wk-im-step-body">
+        <legend className="wk-im-legend">{t('agentEditor.im.sectionSession')}</legend>
+        <label>{t('agentEditor.im.sessionMode')}
+          <span className="wk-option-chips" role="radiogroup" aria-label={t('agentEditor.im.sessionMode')}>
+            <button type="button" role="radio" aria-checked={form.sessionMode === 'user'} className={chip(form.sessionMode === 'user')} onClick={() => patch({ sessionMode: 'user' })}>{t('agentEditor.im.sessionModeUser')}</button>
+            <button type="button" role="radio" aria-checked={form.sessionMode === 'thread'} className={chip(form.sessionMode === 'thread')} disabled={!imPlatformSupportsThread(form.platform)} onClick={() => patch({ sessionMode: 'thread' })}>{t('agentEditor.im.sessionModeThread')}</button>
+          </span>
+        </label>
+        <p className="wk-muted">{t('agentEditor.im.sessionModeHint')}</p>
+      </fieldset>
+      {isEditing && form.mode === 'webhook' ? <fieldset className="wk-im-step-body">
+        <legend className="wk-im-legend">{t('agentEditor.im.sectionCallback')}</legend>
+        <label>{t('agentEditor.im.callbackUrl')}
+          <span className="wk-code-toolbar">
+            <input className="wk-mono-input" readOnly value={imCallbackUrl(editing.id, apiBaseUrl)} />
+            <button className="wk-button wk-button--text" type="button" title={t('integrations.api.copy')} onClick={() => { void navigator.clipboard.writeText(imCallbackUrl(editing.id, apiBaseUrl)).catch(() => undefined); }}>⧉</button>
+          </span>
+        </label>
+      </fieldset> : null}
+    </div> : null}
+
+    {step === 2 ? <fieldset className="wk-im-step-body">
+      <legend className="wk-im-legend">{t('agentEditor.im.sectionKnowledge')}</legend>
+      <label>{t('agentEditor.im.fileKnowledgeBase')}
+        <select value={form.knowledgeBaseId} onChange={(event) => patch({ knowledgeBaseId: event.target.value })}>
+          <option value="">{t('agentEditor.im.fileKnowledgeBasePlaceholder')}</option>
+          {knowledgeBases.map((kb) => <option key={kb.id} value={kb.id}>{kb.name}</option>)}
+        </select>
+      </label>
+      <p className="wk-muted">{t('agentEditor.im.fileKnowledgeBaseHint')}</p>
+    </fieldset> : null}
+
+    {step === 3 ? <fieldset className="wk-im-step-body">
+      <legend className="wk-im-legend">{t('agentEditor.im.sectionCredentials')}</legend>
+      {form.platform === 'wechat' ? <div>
+        <p className="wk-muted">{t('agentEditor.im.wechatHint')}</p>
+        {bound ? <p className="wk-status wk-status-ok" role="status">
+          {t('agentEditor.im.wechatBindSuccess')}
+          <button className="wk-button wk-button--text" type="button" onClick={onStartWeChatBinding}>{t('agentEditor.im.wechatRebind')}</button>
+        </p> : wechatQr ? <div>
+          <img src={wechatQr.imgSrc} alt="WeChat QR Code" width={200} height={200} style={{ background: '#fff' }} />
+          {wechatQr.status === 'expired' ? <button className="wk-button" type="button" onClick={onStartWeChatBinding}>↻ {t('agentEditor.im.wechatQRExpired')}</button> : null}
+          <p className="wk-muted">{wechatQr.status === 'scaned' ? t('agentEditor.im.wechatBinding') : t('agentEditor.im.wechatScanning')}</p>
+        </div> : <div>
+          <button className="wk-button" type="button" disabled={wechatQrLoading} onClick={onStartWeChatBinding}>{t('agentEditor.im.wechatScanBind')}</button>
+        </div>}
+        {wechatQrError ? <p className="wk-status wk-status-error" role="alert">{wechatQrError}</p> : null}
+      </div> : <div>
+        {consoleLink ? <p className="wk-muted">
+          <a className="wk-int-doc-link" href={consoleLink.url} target="_blank" rel="noreferrer noopener">{t(consoleLink.labelKey)}</a>
+          {' · '}{t('agentEditor.im.consoleTip')}
+        </p> : null}
+        {imCredentialFields(form.platform, form.mode).map(renderCredentialField)}
+      </div>}
+    </fieldset> : null}
+
     <div className="wk-form-actions">
-      <button className="wk-button" type="submit" disabled={busy || !canSubmit}>{t('common.save')}</button>
+      {step > 0 ? <button className="wk-button" type="button" onClick={onBack}>{t('integrations.wizard.back')}</button> : null}
+      <button className="wk-button" type="submit" disabled={busy || !canSubmit}>{step < IM_WIZARD_STEPS.length - 1 ? t('integrations.wizard.next') : t('common.save')}</button>
       <button className="wk-button wk-button--text" type="button" onClick={onCancel}>{t('common.cancel')}</button>
     </div>
   </form>;

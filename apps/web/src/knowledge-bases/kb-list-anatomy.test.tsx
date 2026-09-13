@@ -165,6 +165,14 @@ test('(d) list-fetch failure falls back to the Vue empty state and never leaks t
   assert.ok(cta, 'create CTA present in the empty state');
   assert.equal(document.body.textContent?.includes('mock failure'), false, 'raw backend JSON must not leak into the UI');
   assert.equal(container.querySelector('.wk-pagination'), null, 'Vue renders the full list without pagination');
+
+  // Vue favorites/recents empty states carry a scope hint and never the
+  // create CTA (KnowledgeBaseList.vue:645-659); ?scope deep link covered here,
+  // the rail-click path by the live screenshot evidence.
+  const favContainer = await mountPage(makeClient(), '?scope=favorites');
+  assert.match(favContainer.querySelector('.kb-list-empty-title')?.textContent ?? '', /暂无收藏/);
+  assert.equal(favContainer.querySelector('.kb-list-empty [data-guide="kb-list-create"]'), null, 'favorites empty must not offer the create CTA');
+  assert.equal(favContainer.querySelector('.kb-list-empty-img'), null, 'favorites empty uses an icon, not the illustration');
 });
 
 test('(a) the more menu exposes exactly the Vue card actions', async () => {
@@ -183,18 +191,6 @@ test('(a) the more menu exposes exactly the Vue card actions', async () => {
   }
   assert.equal(text.includes('编辑'), false, 'Vue does not expose a separate edit menu item');
   assert.equal(text.includes('分享'), false, 'Vue share dialog is not a card-menu action');
-});
-
-test('favorites/recents empty states carry a scope hint without the create CTA', async () => {
-  const container = await mountPage(makeClient());
-  const favItem = Array.from(container.querySelectorAll('.kb-list-rail-item'))[1];
-  await act(async () => {
-    favItem.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-  });
-  await act(async () => {});
-  assert.match(container.querySelector('.kb-list-empty-title')?.textContent ?? '', /暂无收藏/);
-  assert.equal(container.querySelector('[data-guide="kb-list-create"]'), null, 'favorites empty must not offer the create CTA');
-  assert.equal(container.querySelector('.kb-list-empty-img'), null, 'favorites empty uses an icon, not the illustration');
 });
 
 test('favorites star still persists to localStorage (existing behavior kept)', async () => {

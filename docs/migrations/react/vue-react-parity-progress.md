@@ -1,5 +1,12 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-14 Round N+8 — N006/R013 深水切片收口
+
+- N006 文档标签：Vue 多选筛选、标签 chips、单文档/批量标签对话框、全选/取消选择、成功反馈和筛选变化清空选择已接入；聚焦 19/19。
+- R013 IM：Vue 四步向导、平台凭证字段、模式/会话校验、创建/更新 payload 及微信二维码绑定已接入；聚焦 24/24。
+- 当前 Web 回归 665/665，`typecheck:web` 通过，`build:web` 通过。R009 并行收尾的测试/截图变更也已通过全量回归。
+- 仍按证据层级标记为 `review`：以上切片尚缺对应的完整浏览器 computed-style、真实后端业务链路及 Wails/iOS/Android 验证；未把测试/构建等同于逐页验收。
+
 ## 2026-09-14 Round N+7 — N011 Wiki sidebar slice
 
 - Vue authoritative review identified the Wiki left browser anatomy as a separate inset-search/sidebar surface, with 98px list rows, two-line summaries, compact metadata, selected/hover background and centered empty copy.

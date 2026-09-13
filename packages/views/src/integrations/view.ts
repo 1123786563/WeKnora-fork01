@@ -1,4 +1,5 @@
 import type { Locale } from '../../../i18n/src/index.ts';
+import { IM_WIZARD_COPY_KEYS } from './imWizardMessages.ts';
 import { IM_DOC_URL, integrationsT, isUnresolvedMessage } from './messages.ts';
 import type { IntegrationKey } from './registry.ts';
 
@@ -145,6 +146,7 @@ export function unresolvedCopyKeys(tabs: readonly ('im' | 'embed')[], locale: Lo
     'embedPublish.channelsTitle', 'embedPublish.create', 'embedPublish.empty',
     'embedPublish.disabled', 'embedPublish.deleteConfirm',
     ...imPlatformOrder().map((platform) => 'agentEditor.im.' + platform),
+    ...IM_WIZARD_COPY_KEYS,
   ];
   return keys.filter((key) => isUnresolvedMessage(locale, key));
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
-import type { ApiKeyRow } from '@weknora/views';
+import type { ApiKeyRow, IntegrationAgentOption, IntegrationKnowledgeBaseOption, IntegrationWeChatQrPorts } from '@weknora/views';
 import { integrationKeyFromQuery, IntegrationsPage, type APIPrincipalConfig, type IntegrationKey, type IntegrationResource } from '@weknora/views';
 import { parseIntegrationTenantId } from './tenant.ts';
 
@@ -16,6 +16,8 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, embedded = 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [principal, setPrincipal] = useState<APIPrincipalConfig | null>(null);
+  const [agents, setAgents] = useState<IntegrationAgentOption[]>([]);
+  const [knowledgeBases, setKnowledgeBases] = useState<IntegrationKnowledgeBaseOption[]>([]);
   const activeTenantId = parseIntegrationTenantId(tenantId);
 
   async function loadEmbed() {
@@ -34,10 +36,19 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, embedded = 
     finally { setApiKeysLoading(false); }
   }
 
+  // IM wizard options: bound-agent select (Vue listAgents) and the step-3
+  // file knowledge-base select (Vue chatResources.ensureKnowledgeBases).
+  async function loadImWizardOptions() {
+    try { setAgents((await client.configuration.agents.list()).map((agent) => ({ id: agent.id, name: agent.name }))); }
+    catch { setAgents([]); }
+    try { setKnowledgeBases((await client.knowledgeBases.list()).map((kb) => ({ id: kb.id, name: kb.name }))); }
+    catch { setKnowledgeBases([]); }
+  }
+
   useEffect(() => {
     setError('');
     if (tab === 'embed') void loadEmbed();
-    if (tab === 'im') void loadIm();
+    if (tab === 'im') { void loadIm(); void loadImWizardOptions(); }
     if (tab === 'api') void loadApiKeys();
     setLoading(false);
   }, [client, tab, activeTenantId]);
@@ -60,7 +71,7 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, embedded = 
     onUpdateEmbed: async (id: string, input: Record<string, unknown>) => { await client.embed.channels.update(id, input); },
     onDeleteEmbed: async (id: string) => { await client.embed.channels.remove(id); },
     onRotateEmbed: async (id: string) => { await client.embed.channels.rotateToken(id); },
-    onCreateIm: async (input: { agentId: string; platform: string; name: string; credentials: Record<string, unknown> }) => { await client.embed.im.create(input.agentId, { platform: input.platform, name: input.name, credentials: input.credentials }); },
+    onCreateIm: async (input: { agentId: string; payload: Record<string, unknown> }) => { await client.embed.im.create(input.agentId, input.payload); },
     onUpdateIm: async (id: string, input: Record<string, unknown>) => { await client.embed.im.update(id, input); },
     onToggleIm: async (id: string) => { await client.embed.im.toggle(id); },
     onDeleteIm: async (id: string) => { await client.embed.im.remove(id); },
@@ -74,6 +85,23 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, embedded = 
       if (activeTenantId === null) throw new Error('No active workspace selected.');
       await client.administration.tenantApiKeys.revoke(activeTenantId, Number(keyId));
     },
+    // Vue getWeChatQRCode / pollWeChatQRCodeStatus (frontend/src/api/agent/index.ts).
+    wechatQr: {
+      create: async () => {
+        const data = await client.embed.im.wechat.qrCode();
+        return { qrcodeUrl: String(data.qrcode_url ?? ''), qrcode: String(data.qrcode ?? '') };
+      },
+      poll: async (qrcode: string) => {
+        const data = await client.embed.im.wechat.status(qrcode);
+        const credentials = (data.credentials ?? {}) as { bot_token?: unknown; ilink_bot_id?: unknown; ilink_user_id?: unknown };
+        return {
+          status: String(data.status ?? ''),
+          bot_token: typeof credentials.bot_token === 'string' ? credentials.bot_token : undefined,
+          ilink_bot_id: typeof credentials.ilink_bot_id === 'string' ? credentials.ilink_bot_id : undefined,
+          ilink_user_id: typeof credentials.ilink_user_id === 'string' ? credentials.ilink_user_id : undefined,
+        };
+      },
+    } satisfies IntegrationWeChatQrPorts,
   };
 
   const reload = () => {
@@ -82,5 +110,5 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, embedded = 
     if (tab === 'api') void loadApiKeys();
   };
 
-  return <IntegrationsPage embedded={embedded} initialTab={tab} activeTab={tab} onTabChange={setTab} embedChannels={embedChannels} imChannels={imChannels} apiKeys={apiKeys} apiKeysLoading={apiKeysLoading} apiBaseUrl={window.location.origin} loading={loading} error={error} onReload={reload} onOpenEmbed={(channel) => void openEmbed(channel)} actions={actions} />;
+  return <IntegrationsPage embedded={embedded} initialTab={tab} activeTab={tab} onTabChange={setTab} embedChannels={embedChannels} imChannels={imChannels} apiKeys={apiKeys} apiKeysLoading={apiKeysLoading} apiBaseUrl={window.location.origin} loading={loading} error={error} onReload={reload} onOpenEmbed={(channel) => void openEmbed(channel)} actions={actions} agents={agents} knowledgeBases={knowledgeBases} />;
 }

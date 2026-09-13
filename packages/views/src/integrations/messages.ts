@@ -4,6 +4,7 @@
 // stays the single source of truth for migrated keys.
 
 import { formatMessage, isLocale, type Locale, type MessageValues } from '../../../i18n/src/index.ts';
+import { IM_WIZARD_FALLBACK_STRINGS } from './imWizardMessages.ts';
 
 // Layered translator for the integrations surface, following the pattern of
 // apps/web/src/settings/model-settings.ts: keys already migrated into
@@ -239,7 +240,11 @@ export function integrationsT(locale: Locale, key: string, values?: MessageValue
   const shared = formatMessage(locale, key);
   if (shared !== key) return values === undefined ? shared : formatMessage(locale, key, values);
   const table = FALLBACK_STRINGS[locale] ?? FALLBACK_STRINGS['zh-CN'];
-  const template = table[key];
+  // IM wizard copy (imWizardMessages.ts) is a second verbatim fallback layer:
+  // generated from the same Vue locale sources, kept separate so this table
+  // stays reviewable.
+  const wizardTable = IM_WIZARD_FALLBACK_STRINGS[locale] ?? IM_WIZARD_FALLBACK_STRINGS['zh-CN'];
+  const template = table[key] ?? wizardTable[key];
   if (template === undefined) return key;
   if (values === undefined) return template;
   return template.replace(/\{(\w+)\}/g, (match, name: string) => (

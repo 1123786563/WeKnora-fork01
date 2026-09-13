@@ -33,6 +33,20 @@ export { INTEGRATION_SECTIONS, integrationKeyFromQuery, integrationSection } fro
 export type { IntegrationKey, IntegrationOperation, IntegrationSection } from './integrations/registry.ts';
 export { IntegrationsPage } from './integrations/page.tsx';
 export type { APIPrincipalConfig, IntegrationActions, IntegrationPrincipalToken, IntegrationResource, IntegrationsPageProps } from './integrations/page.tsx';
+export type { IntegrationAgentOption, IntegrationKnowledgeBaseOption, IntegrationWeChatQrPorts } from './integrations/page.tsx';
+export {
+  IM_WIZARD_STEPS,
+  applyImPlatformChange,
+  buildImCreatePayload,
+  buildImUpdatePayload,
+  createImWizardForm,
+  imCredentialFields,
+  imPlatformSupportsThread,
+  imWizardFormFromChannel,
+  validateImWizardSave,
+  validateImWizardStep,
+} from './integrations/imWizard.ts';
+export type { ImWizardForm } from './integrations/imWizard.ts';
 export { apiKeyAccessMode, apiKeyValueDisplay, isFreshKeyVisible } from './integrations/apiKeys.ts';
 export type { ApiKeyRow } from './integrations/apiKeys.ts';
 export { buildEmbedUpdatePayload } from './integrations/form.ts';
