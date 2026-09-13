@@ -1,0 +1,67 @@
+{
+  "schema": "weknora-craft-skill-manifest/v1",
+  "skill": "craft-document",
+  "kind": "document",
+  "task": "D01 报告文档与 DOCX 导出",
+  "description": "staged knowledge material -> report.md (editable source) + report.docx (same-run export) + manifest.json",
+  "outputs": [
+    "report.md",
+    "report.docx",
+    "manifest.json"
+  ],
+  "pipeline": [
+    "read staged material; build the citation set from the material manifest's kc_ ids only",
+    "author report.md: title/abstract/3+ sections/long table/trailing sources with kc_ citations",
+    "render report.docx from exactly that source with python-docx 1.1.2 (CJK fonts via w:eastAsia, Table Grid tables)",
+    "export check re-opens the stored docx and verifies headings/numbers/citations/table/font/rels/UTF-8 against the markdown",
+    "manifest.json records headings, citation_ids and the four gate checks"
+  ],
+  "toolchain": {
+    "image": "weknora-craft-runtime:d01-document",
+    "image_digest": "sha256:3b36e371cd8a83c08ca2e557f66855cc0d27b9a04dab5be29eca611b07fdd0a9",
+    "lock": "docker/craft/document-requirements.lock",
+    "python": "3.11.2 (Debian bookworm)",
+    "python_docx": "1.1.2 (MIT license; sha256-pinned wheel installed --no-deps)",
+    "lxml": "4.9.2-1+b1 (Debian bookworm; python-docx XML engine)",
+    "typing_extensions": "4.12.2 (PSF license; D03 pin reused)",
+    "fonts_cjk": "fonts-noto-cjk 1:20220127+repack1-1 (SIL Open Font License 1.1; from the D02 set)"
+  },
+  "limits": {
+    "headings": 200,
+    "citations": 200,
+    "source_bytes": 20971520
+  },
+  "forbidden": [
+    "invented citations (kc_ + 24 hex enforced server-side by ValidateDocumentManifest)",
+    "shipping a docx without the same-run markdown source",
+    "claiming PDF export",
+    "raw HTML in the document view",
+    "macros/VBA/docm or embedded active content"
+  ],
+  "gate_checks": [
+    "generate",
+    "modify",
+    "preview",
+    "export"
+  ],
+  "example": {
+    "input": "two staged knowledge materials (公司介绍资料 + 客户案例资料) with kc_ citation ids",
+    "round1": "客户介绍 with 3 sections (公司概况/产品能力/实施效果), an 8-row customer table and 2 clickable kc_ citations; numbers 12 客户 / 96% 满意度 / 6 周 交付",
+    "round2": "add a FAQ section keeping 12/96%/6 周 verbatim; old version docx keeps its original SHA",
+    "fixture": "internal/craft/testdata/d01_python_docx_report.docx (sha256 5ce4234e0d72398cd6e41c7b09d375d8742d3e8ef6b5a9bedb24d3d421844a35) + d01_report.md (sha256 f771ff400498eee03d75845b6737594522eaba29f3ca4cae6e1f84442966ff4f), produced by this exact image run"
+  },
+  "verification": [
+    "go test ./internal/craft -run TestDocumentNeeds -count=1",
+    "go test ./internal/craft -count=1",
+    "docker build -t weknora-craft-runtime:d01-document -f docker/craft/Dockerfile docker/craft",
+    "one-shot acceptance container reproducing the export proof (see task-D01-report.md)",
+    "browser acceptance: apps/web/e2e/craft-document.spec.ts over the W06 harness"
+  ],
+  "not_promised": [
+    "PDF export",
+    "online Word editing",
+    "macros/VBA/docm",
+    "embedded active content",
+    "auto-invented citations"
+  ]
+}

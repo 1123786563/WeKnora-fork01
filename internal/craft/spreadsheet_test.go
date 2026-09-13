@@ -624,3 +624,31 @@ func dateOnly(year int, month int) time.Time {
 }
 
 func strPtr(s string) *string { return &s }
+
+// TestSpreadsheetFormulaWhitespaceBypassRejected pins the D02-review NIT-1
+// fix: a forbidden function name separated from its argument list by ANY
+// whitespace (TAB, newline, spaces) is rejected — the old contains-check
+// only looked at fn+"(" and fn+" ".
+func TestSpreadsheetFormulaWhitespaceBypassRejected(t *testing.T) {
+	for _, formula := range []string{
+		"=RTD\t(\"OMNI\",\"X\",\"Y\")",
+		"=CALL (\"Shell\",\"A\")",
+		"=1+HYPERLINK\t(\"http://x\")",
+		"=DDE\n(\"svc\")",
+		"=SEND.KEYS (1,\"a\")",
+	} {
+		if SpreadsheetFormulaAllowed(formula) {
+			t.Fatalf("whitespace-separated forbidden formula accepted: %q", formula)
+		}
+	}
+	// Word boundaries keep innocent names working.
+	for _, formula := range []string{
+		"=SUM(A1:A2)",
+		"=AVERAGEIF(A:A,\">1\",B:B)",
+		"=RTDX(A1)+CALLSUM(B1)", // contains the tokens as SUBstrings, not words
+	} {
+		if !SpreadsheetFormulaAllowed(formula) {
+			t.Fatalf("innocent formula rejected: %q", formula)
+		}
+	}
+}

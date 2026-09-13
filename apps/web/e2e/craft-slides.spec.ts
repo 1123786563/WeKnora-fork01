@@ -20,6 +20,7 @@ import { readFileSync } from 'node:fs';
 
 const API_URL = process.env.CRAFT_API_URL ?? '';
 const DB_PATH = process.env.CRAFT_DB_PATH ?? '';
+const KINDS = (process.env.CRAFT_KINDS ?? 'web').split(',').map((kind) => kind.trim());
 
 test.describe.configure({ mode: 'serial' });
 test.setTimeout(300_000);
@@ -342,6 +343,9 @@ test('02 modify ONLY page 3: other slides byte-equal, count stable, old version 
 
 test('03 page-3 citations resolve to the deck source registry and sources slide', async ({ page }) => {
   await page.goto('/craft/' + encodeURIComponent(sessionId));
+  // The version select fills asynchronously after the workbench mounts;
+  // wait for the current version before reading manifest facts.
+  await expect.poll(() => page.getByTestId('craft-version').inputValue(), { timeout: 30_000 }).not.toBe('');
   const versionId = await page.getByTestId('craft-version').inputValue();
   const manifest = await fetchManifest(owner(), sessionId, versionId);
   const registry = manifest.sources.map((source) => source.id);
@@ -363,29 +367,38 @@ test('03 page-3 citations resolve to the deck source registry and sources slide'
   }
 });
 
-test('04 slides kind stays fail-closed until the gate opens it', async () => {
-  // This deployment's gate (WEKNORA_CRAFT_KINDS=web) has NOT opened the
-  // slides kind: creating one must be refused. The kind is enabled only
-  // after the render/pages/sources evidence chain (this spec + the image
-  // acceptance) is green, by adding it to the deployment gate.
+test('04 slides kind gate: fail-closed until the deployment opens it', async () => {
+  // The deployment gate (WEKNORA_CRAFT_KINDS, CRAFT_KINDS in the stack
+  // harness) owns this decision. With the kind CLOSED (the default web-
+  // only gate) creating one must be refused; once the evidence chain (this
+  // spec + the image acceptance + the D01 wiring: EntryPath,
+  // PreviewableKind, the server-side manifest admission) is green the kind
+  // opens and creation is admitted — both branches are asserted honestly.
   const res = await apiFetch(owner(), '/craft/sessions', {
     method: 'POST',
     body: JSON.stringify({ request_id: 'd03-gate-' + Date.now(), title: 'D03 gate probe', kind: 'slides' }),
   });
-  expect(res.status).toBe(503);
-  const body = await res.json() as { success?: boolean; data?: { session_id?: string } };
-  expect(body.success ?? true).not.toBe(true);
-  expect(body.data?.session_id ?? '').toBe('');
-
-  // And no slides session row was admitted (counted from the DB).
   expect(DB_PATH).not.toBe('');
+  if (!KINDS.includes('slides')) {
+    expect(res.status).toBe(503);
+    const body = await res.json() as { success?: boolean; data?: { session_id?: string } };
+    expect(body.success ?? true).not.toBe(true);
+    expect(body.data?.session_id ?? '').toBe('');
+    const count = execFileSync('sqlite3', ['-cmd', '.timeout 10000', DB_PATH,
+      "SELECT COUNT(*) FROM craft_sessions WHERE kind = 'slides'"], { encoding: 'utf8' }).trim();
+    expect(count).toBe('0');
+    // The accepted rounds above ran as kind=web sessions (the only open kind)
+    // while producing slides deliverables — sanity check from the DB.
+    const web = execFileSync('sqlite3', ['-cmd', '.timeout 10000', DB_PATH,
+      "SELECT COUNT(*) FROM craft_sessions WHERE kind = 'web'"], { encoding: 'utf8' }).trim();
+    expect(Number(web)).toBeGreaterThanOrEqual(1);
+    return;
+  }
+  // OPEN: the wired kind is admitted end-to-end.
+  expect([200, 201]).toContain(res.status);
+  const created = await res.json() as { data?: { session_id?: string } };
+  expect(created.data?.session_id ?? '').not.toBe('');
   const count = execFileSync('sqlite3', ['-cmd', '.timeout 10000', DB_PATH,
     "SELECT COUNT(*) FROM craft_sessions WHERE kind = 'slides'"], { encoding: 'utf8' }).trim();
-  expect(count).toBe('0');
-
-  // The accepted rounds above ran as kind=web sessions (the only open kind)
-  // while producing slides deliverables — sanity check from the DB.
-  const web = execFileSync('sqlite3', ['-cmd', '.timeout 10000', DB_PATH,
-    "SELECT COUNT(*) FROM craft_sessions WHERE kind = 'web'"], { encoding: 'utf8' }).trim();
-  expect(Number(web)).toBeGreaterThanOrEqual(1);
+  expect(Number(count)).toBeGreaterThanOrEqual(1);
 });

@@ -152,6 +152,35 @@ RUN apt-get update \
  && soffice --version \
  && pdftocairo -v 2>&1 | sed -n 1p
 
+# ---------- D01: document toolchain (python-docx report export) ------------
+# The craft-document skill authors the Markdown source and renders the DOCX
+# from it with python-docx in the SAME round: an export whose OOXML was
+# never opened and checked against the Markdown never ships (the export
+# check reads back paragraphs/tables/fonts). Debian bookworm does not
+# package python3-docx, so the wheel is pinned BY SHA256 and installed
+# --no-deps over Debian's own lxml (python3-lxml, arrived with the D02
+# openpyxl set) and the D03-pinned typing_extensions — python-docx 1.1.2's
+# own runtime deps. fonts-noto-cjk (SIL OFL 1.1, D02 set) covers the CJK
+# runs the document carries. The resolved versions are recorded in
+# docker/craft/document-requirements.lock; the build fails loudly if the
+# docx import or a real round-trip (build a document, reopen it) do not run.
+ARG PYTHON_DOCX_VERSION=1.1.2
+ARG PYTHON_DOCX_SHA256=08c20d6058916fb19853fcf080f7f42b6270d89eac9fa5f8c15f691c0017fabe
+ARG PYTHON_DOCX_URL=https://files.pythonhosted.org/packages/3e/3d/330d9efbdb816d3f60bf2ad92f05e1708e4a1b9abe80461ac3444c83f749/python_docx-1.1.2-py3-none-any.whl
+# The wheel is saved under its canonical basename: pip refuses a renamed
+# wheel file ("not a valid wheel filename"), so the D03 basename pattern is
+# kept here too.
+RUN set -eux; \
+    curl -fsSL --http1.1 --retry 5 --retry-all-errors --retry-delay 3 \
+      -o /tmp/python_docx.whl "${PYTHON_DOCX_URL}"; \
+    echo "${PYTHON_DOCX_SHA256}  /tmp/python_docx.whl" | sha256sum -c -; \
+    w="$(basename "${PYTHON_DOCX_URL}")"; \
+    mv /tmp/python_docx.whl "/tmp/${w}"; \
+    python3 -m pip install --break-system-packages --no-deps --no-cache-dir "/tmp/${w}"; \
+    rm -f "/tmp/${w}"; \
+    python3 -c 'import docx, lxml.etree, typing_extensions, sys; from docx import Document; d = Document(); d.add_heading("探活", 0); d.add_paragraph(" Craft round-trip"); d.save("/tmp/probe.docx"); r = Document("/tmp/probe.docx"); assert r.paragraphs[0].text == "探活"; print("python-docx", docx.__version__, "round-trip ok on", sys.version.split()[0])'; \
+    rm -f /tmp/probe.docx
+
 COPY --from=opencode-fetch /usr/local/bin/opencode /usr/local/bin/opencode
 COPY runtime-config.json /etc/craft/runtime-config.json
 # COPY keeps the source file mode; force the world-readable mode so the

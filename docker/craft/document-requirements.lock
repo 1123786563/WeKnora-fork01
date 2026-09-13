@@ -1,0 +1,44 @@
+{
+  "kind": "document",
+  "task": "D01 报告文档与 DOCX 导出",
+  "image": {
+    "name": "weknora-craft-runtime",
+    "tag": "d01-document",
+    "digest": "sha256:3b36e371cd8a83c08ca2e557f66855cc0d27b9a04dab5be29eca611b07fdd0a9",
+    "base": "debian:bookworm-slim",
+    "size": "1.28GB (d03-slides was 1.28GB; the D01 delta is only the python-docx wheel, ~200KB installed)",
+    "opencode": "1.18.4 (unchanged R01/R03 pin, sha256-verified at build)"
+  },
+  "packages": {
+    "python3": "3.11.2-1+b1 (Debian bookworm; apt repository signatures pin the deb)",
+    "python3_lxml": "4.9.2-1+b1 (Debian bookworm; python-docx's XML engine, arrived with the D02 openpyxl set)",
+    "python_docx": "1.1.2 (MIT license; sha256-pinned wheel installed --no-deps over Debian lxml)",
+    "typing_extensions": "4.12.2 (PSF license; python-docx runtime dep, D03 pin reused)",
+    "fonts_cjk": "1:20220127+repack1-1 fonts-noto-cjk (SIL Open Font License 1.1; D02 set, covers CJK runs and tables)"
+  },
+  "install": "curl the pinned wheel -> sha256sum -c -> python3 -m pip install --break-system-packages --no-deps (docker/craft/Dockerfile, D01 block). The build fails loudly if the docx import or a real build+reopen round-trip does not run.",
+  "export": {
+    "command": "python-docx Document(): add_heading/add_paragraph/add_table(style='Table Grid') with Normal/Title/Heading 1 fonts set to Noto Sans CJK SC (w:eastAsia included), save report.docx",
+    "proof": "the saved report.docx is RE-OPENED with python-docx before any check passes: every markdown heading found in docx paragraph order, numbers 12/96/6 present, both kc_ citations present in body AND the sources section, table shape equal (8 rows x 4 cols), styles.xml declares the CJK font, and every word/_rels target resolves to a real zip part (no dangling images/rels)",
+    "markdown_source": "report.md is authored first and the DOCX is rendered from exactly that source in the SAME round; the modify check pins that the docx numbers stay verbatim 12/96%/6 周 so a later round edits the markdown and regenerates without drift",
+    "wall_time": "<1s for a 5-heading/8-row-table document on this image"
+  },
+  "limits": {
+    "headings": 200,
+    "citations": 200,
+    "source_bytes": 20971520
+  },
+  "forbidden": [
+    "invented citations: every citation id must match the C01 shape kc_ + 24 lowercase hex (ValidateDocumentManifest rejects anything else)",
+    "shipping a DOCX without the same-round Markdown source (ValidateDocument requires both resource refs)",
+    "claiming PDF export (not promised by this task)",
+    "raw HTML in the document view (safe Markdown renderer only)",
+    "macro/embedded-active-content DOCX (python-docx writes plain OOXML; no VBA project part is created)"
+  ],
+  "verified": "2026-09-13, one-shot container craft-d01-verify-docx (removed after docker cp); full script excerpt in task-D01-report.md",
+  "fixtures": {
+    "docx": "internal/craft/testdata/d01_python_docx_report.docx (sha256 5ce4234e0d72398cd6e41c7b09d375d8742d3e8ef6b5a9bedb24d3d421844a35, produced by this exact image run)",
+    "markdown": "internal/craft/testdata/d01_report.md (sha256 f771ff400498eee03d75845b6737594522eaba29f3ca4cae6e1f84442966ff4f)",
+    "citations": "kc_8833411d564eabdf5b60e012 (公司介绍资料), kc_9d6cf870db056f0bb909a0d6 (客户案例资料)"
+  }
+}

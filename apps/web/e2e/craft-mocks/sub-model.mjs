@@ -760,6 +760,177 @@ with open('output/index.html', 'w', encoding='utf-8') as fh:
     fh.write(page)
 print('slides round files written:', variant, 'pages', len(PAGES))`;
 
+// The D01 document fixture generator (python3 stdlib only, deterministic
+// bytes: fixed zip timestamps). Writes output/report.md (the editable
+// source) and output/report.docx (the same-run export: Title/Heading1
+// styled OOXML with the CJK font declared in styles.xml, an 8-row
+// customer table and the two kc_ citations) plus output/manifest.json with
+// the four document gate checks (the 'broken' variant stores a corrupt
+// export and an honest export=failed manifest for the failure
+// acceptance). NO index.html: the document kind's preview surface is the
+// workbench component, not a static page. The citation ids come from argv
+// - the dispatch extracted any kc_ ids the staged knowledge manifest
+// actually carried, else the deterministic fixture-shaped fallback (the
+// python-docx rendering itself is proven inside the craft image, see the
+// D01 report).
+const DOCUMENT_GENERATOR = String.raw`import datetime, json, sys, zipfile
+
+variant = sys.argv[1]
+cit1, cit2 = sys.argv[2], sys.argv[3]
+CJK = 'Noto Sans CJK SC'
+ROWS = [
+    ['客户', '行业', '部署周期', '满意度'],
+    ['华东制造集团', '制造业', '6 周', '96%'],
+    ['南方电网某供电局', '能源', '6 周', '96%'],
+    ['西部物流股份', '物流', '5 周', '95%'],
+    ['京津联合银行', '金融', '7 周', '97%'],
+    ['半岛文旅集团', '文旅', '6 周', '96%'],
+    ['中原医院联盟', '医疗', '8 周', '94%'],
+    ['远东零售连锁', '零售', '6 周', '96%'],
+]
+FAQ = [
+    ('数据如何保留？', '客户数据全部留在客户自有环境，平台不做二次留存。'),
+    ('能否扩容？', '支持按知识库扩容，已有 12 家客户平滑扩容经验。'),
+]
+
+def esc(text):
+    return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
+
+headings = ['公司概况', '产品能力', '实施效果']
+if variant == 'faq':
+    headings.append('常见问题')
+
+md = ['# 智绘云图客户介绍', '',
+      '摘要：面向企业知识中台建设的客户介绍，覆盖公司概况、产品能力与实施效果，全部数字来自两份知识资料（' + cit1 + '、' + cit2 + '）。', '']
+md += ['## 公司概况', '', '智绘云图已服务 12 家企业客户，平均满意度 96%（' + cit1 + '）。', '']
+md += ['## 产品能力', '', '知识入库、混合检索与受控生成一体化，标准交付周期 6 周（' + cit2 + '）。', '']
+md += ['## 实施效果', '', '代表性客户实施周期与满意度如下：', '',
+       '| ' + ' | '.join(ROWS[0]) + ' |', '| ' + ' | '.join(['---'] * 4) + ' |']
+for r in ROWS[1:]:
+    md.append('| ' + ' | '.join(r) + ' |')
+md.append('')
+if variant == 'faq':
+    md += ['## 常见问题', '']
+    for q, a in FAQ:
+        md += ['- ' + q + ' ' + a]
+    md.append('')
+md += ['## 来源', '', '- ' + cit1 + ' 公司介绍资料', '- ' + cit2 + ' 客户案例资料', '']
+with open('output/report.md', 'w', encoding='utf-8') as fh:
+    fh.write('\n'.join(md))
+
+if variant == 'broken':
+    # The failure-acceptance round: the stored export is NOT a real OOXML
+    # package, and the manifest says so honestly (export=failed). The
+    # server-side gate refuses the whole round - no version may publish.
+    with open('output/report.docx', 'wb') as fh:
+        fh.write('corrupt docx bytes for the failure acceptance (not a zip)'.encode('utf-8'))
+    manifest = {
+        'kind': 'document', 'markdown': 'report.md', 'docx': 'report.docx',
+        'markdown_ref': 'resource://report.md', 'docx_ref': 'resource://report.docx',
+        'headings': ['智绘云图客户介绍'] + headings + ['来源'], 'citation_ids': [cit1, cit2],
+        'checks': [
+            {'name': 'generate', 'status': 'passed', 'detail': 'report.md authored'},
+            {'name': 'modify', 'status': 'passed', 'detail': 'numbers kept verbatim'},
+            {'name': 'preview', 'status': 'passed', 'detail': 'markdown loadable'},
+            {'name': 'export', 'status': 'failed', 'detail': 'stored report.docx is not a ZIP package (corrupt export)'},
+        ],
+    }
+    with open('output/manifest.json', 'w', encoding='utf-8') as fh:
+        json.dump(manifest, fh, ensure_ascii=False, indent=1)
+    print('document round files written: broken (export failed on purpose)')
+    sys.exit(0)
+
+def para(text, style=None):
+    ppr = '<w:pPr><w:pStyle w:val="%s"/></w:pPr>' % style if style else ''
+    return '<w:p>' + ppr + '<w:r><w:t xml:space="preserve">' + esc(text) + '</w:t></w:r></w:p>'
+
+body = [para('智绘云图客户介绍', 'Title'),
+        para('摘要：面向企业知识中台建设的客户介绍，覆盖公司概况、产品能力与实施效果，全部数字来自两份知识资料（' + cit1 + '、' + cit2 + '）。')]
+body.append(para('公司概况', 'Heading1'))
+body.append(para('智绘云图已服务 12 家企业客户，平均满意度 96%（' + cit1 + '）。'))
+body.append(para('产品能力', 'Heading1'))
+body.append(para('知识入库、混合检索与受控生成一体化，标准交付周期 6 周（' + cit2 + '）。'))
+body.append(para('实施效果', 'Heading1'))
+body.append(para('代表性客户实施周期与满意度如下：'))
+tbl = ['<w:tbl><w:tblPr><w:tblStyle w:val="TableGrid"/><w:tblW w:w="0" w:type="auto"/><w:tblBorders>' + ''.join('<w:%s w:val="single" w:sz="4" w:space="0" w:color="auto"/>' % e for e in ('top','left','bottom','right','insideH','insideV')) + '</w:tblBorders></w:tblPr>']
+for row in ROWS:
+    tbl.append('<w:tr>' + ''.join('<w:tc><w:tcPr/>' + para(cell) + '</w:tc>' for cell in row) + '</w:tr>')
+tbl.append('</w:tbl>')
+body.append(''.join(tbl))
+if variant == 'faq':
+    body.append(para('常见问题', 'Heading1'))
+    for q, a in FAQ:
+        body.append(para('问：' + q + ' 答：' + a))
+body.append(para('来源', 'Heading1'))
+body.append(para('本介绍引用的知识资料：' + cit1 + '（公司介绍资料）、' + cit2 + '（客户案例资料）。'))
+document = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>'
+            + ''.join(body) + '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr></w:body></w:document>')
+
+def style(style_id, name, size, bold):
+    return ('<w:style w:type="paragraph" w:styleId="%s"><w:name w:val="%s"/><w:qFormat/>'
+            '<w:pPr><w:spacing w:before="120" w:after="120"/></w:pPr>'
+            '<w:rPr><w:rFonts w:ascii="%s" w:hAnsi="%s" w:eastAsia="%s"/>%s<w:sz w:val="%d"/></w:rPr></w:style>'
+            ) % (style_id, name, CJK, CJK, CJK, '<w:b/>' if bold else '', size)
+styles = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+          '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+          + style('Normal', 'Normal', 21, False)
+          + style('Title', 'Title', 44, True)
+          + style('Heading1', 'heading 1', 28, True)
+          + style('TableGrid', 'Table Grid', 21, False)
+          + '</w:styles>')
+content_types = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                 '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+                 '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+                 '<Default Extension="xml" ContentType="application/xml"/>'
+                 '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+                 '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>'
+                 '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>'
+                 '<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>'
+                 '</Types>')
+rels = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>'
+        '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>'
+        '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>'
+        '</Relationships>')
+doc_rels = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
+            '</Relationships>')
+core = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/">'
+        '<dc:title>智绘云图客户介绍</dc:title><dc:creator>craft-document fixture</dc:creator></cp:coreProperties>')
+app = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+       '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>craft-document-fixture</Application></Properties>')
+
+parts = {'[Content_Types].xml': content_types, '_rels/.rels': rels,
+         'word/document.xml': document, 'word/styles.xml': styles,
+         'word/_rels/document.xml.rels': doc_rels,
+         'docProps/core.xml': core, 'docProps/app.xml': app}
+with zipfile.ZipFile('output/report.docx', 'w') as zf:
+    for name in sorted(parts):
+        info = zipfile.ZipInfo(name, date_time=(2026, 9, 13, 0, 0, 0))
+        info.compress_type = zipfile.ZIP_DEFLATED
+        info.external_attr = 0o600 << 16
+        zf.writestr(info, parts[name].encode('utf-8'))
+
+manifest_headings = ['智绘云图客户介绍'] + headings + ['来源']
+manifest = {
+    'kind': 'document', 'markdown': 'report.md', 'docx': 'report.docx',
+    'markdown_ref': 'resource://report.md', 'docx_ref': 'resource://report.docx',
+    'headings': manifest_headings, 'citation_ids': [cit1, cit2],
+    'checks': [
+        {'name': 'generate', 'status': 'passed', 'detail': 'report.md authored from the two staged materials: title/abstract/sections/8-row table/sources'},
+        {'name': 'modify', 'status': 'passed', 'detail': 'markdown is the continuation source; docx keeps 12/96%/6 周 verbatim'},
+        {'name': 'preview', 'status': 'passed', 'detail': 'markdown + manifest loadable by the document view (safe renderer)'},
+        {'name': 'export', 'status': 'passed', 'detail': 'stored report.docx verified against the markdown (OOXML read-back proven in the craft image)'},
+    ],
+}
+with open('output/manifest.json', 'w', encoding='utf-8') as fh:
+    json.dump(manifest, fh, ensure_ascii=False, indent=1)
+print('document round files written:', variant, 'citations', cit1, cit2)`;
+
 // One bash tool call runs the embedded generator for the requested variant;
 // the runtime repoints the serve-relative output/ pointer at the active
 // delegation workspace, so plain output/ paths are session-scoped.
@@ -770,6 +941,14 @@ function spreadsheetGeneratorCommand(variant) {
 function slidesGeneratorCommand(variant) {
   return 'python3 - ' + variant + ' <<' + String.fromCharCode(39) + 'D03GEN' + String.fromCharCode(39) + String.fromCharCode(10)
     + SLIDES_GENERATOR + String.fromCharCode(10) + 'D03GEN';
+}
+// The document generator takes the two citation ids as argv: the dispatch
+// extracts any kc_ ids the staged knowledge manifest actually carried from
+// the delegation prompt and falls back to the deterministic fixture-shaped
+// ids otherwise (the python-docx rendering chain is proven inside the image).
+function documentGeneratorCommand(variant, cit1, cit2) {
+  return 'python3 - ' + variant + ' ' + cit1 + ' ' + cit2 + ' <<' + String.fromCharCode(39) + 'D01GEN' + String.fromCharCode(39) + String.fromCharCode(10)
+    + DOCUMENT_GENERATOR + String.fromCharCode(10) + 'D01GEN';
 }
 function plan(lastUser) {
   const malicious = lastUser.includes('安全探测') || lastUser.includes('恶意');
@@ -813,6 +992,31 @@ function plan(lastUser) {
       final: variant === 'edit3'
         ? '已只修改第 3 页结论并重新渲染，其余页保持不变。'
         : '已生成 5 页客户方案演示稿（PPTX + PDF + 逐页预览与来源页）。',
+    };
+  }
+  // D01 document acceptance: a 客户介绍/DOCX goal switches the fixture to
+  // the document round - ONE bash tool call running the embedded stdlib-only
+  // python generator (the host has no python-docx: the generator writes the
+  // DOCX OOXML directly in the same storage shape as the image-verified
+  // python-docx chain). Citations reuse kc_ ids from the staged knowledge
+  // manifest when the prompt carries them; numbers 12/96%/6 周 stay
+  // verbatim across the FAQ round; the 损坏 goal is the failure
+  // acceptance (corrupt export, honest export=failed manifest).
+  const document = lastUser.includes('客户介绍') || lastUser.toLowerCase().includes('docx') || lastUser.toLowerCase().includes('word') || lastUser.includes('损坏');
+  if (document) {
+    const ids = [...lastUser.matchAll(/kc_[0-9a-f]{24}/g)].map((m) => m[0]);
+    const cit1 = ids[0] ?? 'kc_8833411d564eabdf5b60e012';
+    const cit2 = ids[1] ?? 'kc_9d6cf870db056f0bb909a0d6';
+    const variant = lastUser.includes('损坏') ? 'broken' : (lastUser.includes('FAQ') || lastUser.includes('常见问题')) ? 'faq' : 'intro';
+    return {
+      kind: 'document-' + variant,
+      writes,
+      bash: documentGeneratorCommand(variant, cit1, cit2),
+      final: variant === 'broken'
+        ? '本轮导出失败：存储的 DOCX 不是有效包，manifest 如实记录 export=failed，本轮不得发布版本。'
+        : variant === 'faq'
+        ? '已在客户介绍中新增常见问题 FAQ 章节，原有数字保持不变（12 家客户 / 96% / 6 周），DOCX 已同步导出。'
+        : '已用两份知识资料生成客户介绍（3 个章节 + 8 行客户表格 + 2 个可点引用），DOCX 已导出。',
     };
   }
   const page = quarterly ? quarterlyPage() : monthlyPage();

@@ -92,12 +92,20 @@ func IsVersionID(id string) bool {
 }
 
 // PreviewableKind reports whether the controlled preview can serve files of a
-// version kind. The first closed loop serves immutable static web artifacts
-// only: HTML/CSS/JS plus the relative resources bundled into the version. A
-// kind whose deliverable needs a backing application is not previewable — the
-// preview never proxies a model-supplied host, port or URL.
+// version kind. Every kind admitted so far ships immutable static files
+// (HTML/CSS/JS for web; report.md/report.docx for document; preview.json and
+// the recalculated workbook for spreadsheet; preview.json, the rendered PDF
+// and the page images for slides), so all four are previewable: the preview
+// serves those pinned bytes only. A kind whose deliverable needs a backing
+// application is not previewable — the preview never proxies a model-supplied
+// host, port or URL.
 func PreviewableKind(kind string) bool {
-	return kind == KindWeb
+	switch kind {
+	case KindWeb, KindDocument, KindSpreadsheet, KindSlides:
+		return true
+	default:
+		return false
+	}
 }
 
 // ValidatePreviewRequestPath canonicalizes one file path requested under a

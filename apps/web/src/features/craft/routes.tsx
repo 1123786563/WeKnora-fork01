@@ -333,6 +333,30 @@ export function CraftRoutes(props: CraftRoutesProps) {
     [craftApi, sessionId, scopeController],
   );
 
+  // D01 wiring: the kind preview surfaces read immutable version members
+  // through the SAME authorized wildcard files route the download uses —
+  // report.md/manifest.json for documents, preview.json for spreadsheet and
+  // slides, and slides page images as object URLs the <img> may load.
+  const fetchVersionFile = useCallback(
+    async (versionId: string, path: string): Promise<string> => {
+      if (sessionId === null) throw new Error('no active craft session');
+      const response = await authedFetch(craftDownloadPath(sessionId, versionId, path));
+      if (!response.ok) throw new Error('version file fetch failed: HTTP ' + response.status);
+      return await response.text();
+    },
+    [sessionId, authedFetch],
+  );
+
+  const resolveVersionFileUrl = useCallback(
+    async (versionId: string, path: string): Promise<string> => {
+      if (sessionId === null) throw new Error('no active craft session');
+      const response = await authedFetch(craftDownloadPath(sessionId, versionId, path));
+      if (!response.ok) throw new Error('version asset fetch failed: HTTP ' + response.status);
+      return URL.createObjectURL(await response.blob());
+    },
+    [sessionId, authedFetch],
+  );
+
   const downloadFile = useCallback(
     async (versionId: string, path: string): Promise<void> => {
       if (sessionId === null) return;
@@ -508,6 +532,8 @@ export function CraftRoutes(props: CraftRoutesProps) {
           onRefreshVersions={() => void loadVersions()}
           onIssuePreview={issuePreview}
           onDownload={downloadFile}
+          onFetchVersionFile={fetchVersionFile}
+          onResolveVersionFileUrl={resolveVersionFileUrl}
           onInteractionAction={handleInteractionAction}
           onOpenSource={openKnowledgeSource}
           onMintTerminalUrl={mintTerminalUrl}
