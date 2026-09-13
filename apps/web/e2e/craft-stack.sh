@@ -158,6 +158,7 @@ if [ "$ACTION" = "run" ]; then
     CRAFT_DB_PATH="$RUN/weknora.db" \
     CRAFT_MODEL_MODE="$MODE" \
     CRAFT_PROBE_APP_ORIGIN="$WEB_ORIGIN" \
+    CRAFT_KINDS="${CRAFT_KINDS:-web}" \
     CRAFT_E2E_OUTPUT="$ART" \
     pnpm exec playwright test -c playwright.craft.config.ts "${SPEC_ARGS[@]}" "$@") 2>&1 | tee "$RUN/logs/playwright.log"
   status=${PIPESTATUS[0]}
@@ -250,7 +251,7 @@ note_pid "$(detach "$RUN/logs/server.log" "$RUN" env \
   SSRF_WHITELIST="127.0.0.1,localhost" \
   JWT_SECRET="$JWT_SECRET" \
   WEKNORA_CRAFT_ENABLED=true \
-  WEKNORA_CRAFT_KINDS=web \
+  WEKNORA_CRAFT_KINDS="${CRAFT_KINDS:-web}" \
   WEKNORA_CRAFT_APP_ORIGIN="$WEB_ORIGIN" \
   WEKNORA_CRAFT_PREVIEW_ORIGIN="$PREVIEW_ORIGIN" \
   CRAFT_OPENCODE_BASE_URL="http://127.0.0.1:$OC_PORT" \
@@ -370,6 +371,7 @@ export CRAFT_API_URL="$API_ORIGIN/api/v1"
 export CRAFT_DB_PATH="$RUN/weknora.db"
 export CRAFT_MODEL_MODE="$MODE"
 export CRAFT_PROBE_APP_ORIGIN="$WEB_ORIGIN"
+export CRAFT_KINDS="${CRAFT_KINDS:-web}"
 export CRAFT_E2E_OUTPUT="$ART"
 ENVOUT
 echo "[stack] up complete: run=$RUN"

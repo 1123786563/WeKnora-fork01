@@ -199,7 +199,12 @@ func (e *localCraftRuntime) Execute(ctx context.Context, task craft.Task) (craft
 	if result.Status != "succeeded" {
 		return result, nil
 	}
-	version, verr := e.artifacts.Collect(ctx, task)
+	// D01 wiring: the version carries the SESSION's kind (craft_sessions),
+	// so the entry check judges the kind's own deliverable and the manifest
+	// admission gate fires for document/spreadsheet/slides rounds. An
+	// unreadable kind falls back to web — the fail-closed default the W01
+	// collector shipped with.
+	version, verr := e.artifacts.CollectForKind(ctx, task, e.sessionKind(ctx, task))
 	if verr != nil {
 		// A finished execution whose output cannot be collected is a failed
 		// craft round: settle the durable result as failed so neither the
@@ -228,6 +233,20 @@ func (e *localCraftRuntime) Execute(ctx context.Context, task craft.Task) (craft
 	logger.Infof(ctx, "[CraftRuntime] delegation %s published version %s (%d files)",
 		task.ID, version.ID, len(version.Files))
 	return published, nil
+}
+
+// sessionKind loads the craft session's artwork kind for one delegation.
+func (e *localCraftRuntime) sessionKind(ctx context.Context, task craft.Task) string {
+	if e.db == nil {
+		return craft.KindWeb
+	}
+	var kind string
+	if err := e.db.WithContext(ctx).Raw(
+		"SELECT kind FROM craft_sessions WHERE tenant_id = ? AND session_id = ?",
+		task.Fence.TenantID, task.Scope.SessionID).Scan(&kind).Error; err != nil || kind == "" {
+		return craft.KindWeb
+	}
+	return kind
 }
 
 // Observe settles a dispatching-unknown delegation. The workspace is ensured

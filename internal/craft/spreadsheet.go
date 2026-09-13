@@ -13,6 +13,7 @@ package craft
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -135,6 +136,20 @@ var spreadsheetForbiddenFormulaFuncs = []string{
 	"EXEC", "CALL", "REGISTER", "SEND.KEYS", "DDE",
 }
 
+// spreadsheetForbiddenFormulaRe is the word-boundary form of the forbidden
+// function set (D02 review NIT-1): a name match must be a WHOLE word
+// followed by optional whitespace and an argument list, so "=RTD\t("
+// or "=CALL (" can no longer slip past a naive fn+"(" / fn+" " contains
+// check, and innocent names that merely CONTAIN a forbidden token (SPREAD,
+// HYPERLINKS2-style typos aside) are not collateral damage.
+var spreadsheetForbiddenFormulaRe = func() *regexp.Regexp {
+	quoted := make([]string, 0, len(spreadsheetForbiddenFormulaFuncs))
+	for _, fn := range spreadsheetForbiddenFormulaFuncs {
+		quoted = append(quoted, regexp.QuoteMeta(fn))
+	}
+	return regexp.MustCompile("\\b(?:" + strings.Join(quoted, "|") + ")\\s*\\(")
+}()
+
 // SpreadsheetFormulaAllowed reports whether a formula may be written into
 // the workbook: it must be formula-shaped (leading "=") and contain none
 // of the forbidden external/DDE/network/macro constructs. This is the
@@ -152,10 +167,8 @@ func SpreadsheetFormulaAllowed(formula string) bool {
 			return false
 		}
 	}
-	for _, fn := range spreadsheetForbiddenFormulaFuncs {
-		if strings.Contains(upper, fn+"(") || strings.Contains(upper, fn+" ") {
-			return false
-		}
+	if spreadsheetForbiddenFormulaRe.MatchString(upper) {
+		return false
 	}
 	return true
 }

@@ -50,6 +50,9 @@ import {
 import { CraftPreview } from './preview.tsx';
 import { CraftFiles } from './files.tsx';
 import { CraftSources } from './sources.tsx';
+import { CraftDocument, CRAFT_DOCUMENT_MD_PATH } from './document.tsx';
+import { CraftSpreadsheet, type CraftSpreadsheetPreviewView } from './spreadsheet.tsx';
+import { CraftSlides, type CraftSlidesPreviewView } from './slides.tsx';
 import './craft.css';
 // The message log store (createCraftMessageLog) lives in presentation.ts so
 // its reset/dedupe semantics stay node-testable without importing CSS; it is
@@ -129,6 +132,20 @@ export interface CraftWorkbenchProps {
    * resolved notice (or permission error) it returns.
    */
   onOpenSource?(citationId: string, ref: string): Promise<string | null>;
+  /**
+   * Fetches one immutable member's TEXT through the assembly's authorized
+   * version-files route (D01 wiring): the document view reads report.md and
+   * manifest.json, the spreadsheet/slides views read preview.json. Optional
+   * for backwards compatibility — when absent the workbench keeps the
+   * isolated-origin iframe surface for every kind.
+   */
+  onFetchVersionFile?(versionId: string, path: string): Promise<string>;
+  /**
+   * Resolves one immutable member into an object URL the preview surface may
+   * load (slides page images). The assembly owns auth + blob plumbing and
+   * the URL's lifetime; the views never assemble raw file paths.
+   */
+  onResolveVersionFileUrl?(versionId: string, path: string): Promise<string>;
   /** Reuses the existing authorized sandbox terminal entry (ticket-minted WS URL). */
   onMintTerminalUrl(): Promise<string>;
   onBack(): void;
@@ -242,20 +259,28 @@ export function CraftWorkbench(props: CraftWorkbenchProps) {
     refreshVersions();
   }, [controllerState, refreshVersions]);
 
-  // --- preview ticket ---------------------------------------------------------
+  // --- preview ticket (web-kind iframe surface only) --------------------------
+  // D01 wiring: document/spreadsheet/slides versions render through their
+  // workbench components (server-converted preview data + the immutable
+  // files route), so the isolated-origin ticket is issued for the WEB
+  // surface only — the skill's static index.html stays the web kind's
+  // preview, never the other kinds'.
   const [ticket, setTicket] = useState<CraftPreviewTicketView | null>(null);
   const [ticketIssuing, setTicketIssuing] = useState(false);
   const [ticketError, setTicketError] = useState<string | null>(null);
   const [ticketNonce, setTicketNonce] = useState(0);
   const issuePreview = useEventCallback(props.onIssuePreview);
   const hasArtifact = selectedVersion !== null && selectedVersion.files.length > 0;
+  const fetchVersionFile = props.onFetchVersionFile === undefined ? null : useEventCallback(props.onFetchVersionFile);
+  const resolveVersionFileUrl = props.onResolveVersionFileUrl === undefined ? null : useEventCallback(props.onResolveVersionFileUrl);
+  const previewIsFrame = fetchVersionFile === null || selectedVersion === null || selectedVersion.kind === 'web';
   useEffect(() => {
     // Switching versions (or retrying) destroys the previous ticket and frame;
     // a retry re-issues the PREVIEW ticket only — it never re-runs execution.
     let cancelled = false;
     setTicket(null);
     setTicketError(null);
-    if (selectedVersionId === null || !hasArtifact) {
+    if (selectedVersionId === null || !hasArtifact || !previewIsFrame) {
       setTicketIssuing(false);
       return () => { cancelled = true; };
     }
@@ -272,7 +297,7 @@ export function CraftWorkbench(props: CraftWorkbenchProps) {
         setTicketIssuing(false);
       });
     return () => { cancelled = true; };
-  }, [selectedVersionId, hasArtifact, ticketNonce, issuePreview]);
+  }, [selectedVersionId, hasArtifact, ticketNonce, issuePreview, previewIsFrame]);
 
   // --- composer ----------------------------------------------------------------
   const [draft, setDraft] = useState(props.initialPrompt ?? '');
@@ -331,6 +356,20 @@ export function CraftWorkbench(props: CraftWorkbenchProps) {
         setSourceNotice(error instanceof Error ? error.message : String(error));
       })
       .finally(() => { setOpenCitation(null); });
+  };
+
+  // D01: a document citation click resolves the id against the run's
+  // knowledge package and reuses the SAME authorized opener — never a
+  // cached or pre-signed URL, and an id the package does not carry answers
+  // the honest not-visible notice.
+  const openDocumentCitation = (citationId: string): void => {
+    const hit = knowledgePackage.sources.find((source) => source.citationId === citationId);
+    if (hit === undefined) {
+      setOpenCitation(citationId);
+      setSourceNotice(props.locale === 'zh' ? '引用来源不可见（无权限或已删除）' : 'Cited source is not visible (no permission or deleted)');
+      return;
+    }
+    openSource(citationId, hit.ref);
   };
 
   // --- interaction answers -------------------------------------------------------
@@ -536,14 +575,31 @@ export function CraftWorkbench(props: CraftWorkbenchProps) {
   );
 
   const sidePanel = sideTab === 'preview' ? (
-    <CraftPreview
+    <CraftKindPreview
       locale={props.locale}
-      versionId={selectedVersionId}
-      hasArtifact={hasArtifact}
-      ticket={ticket}
-      ticketIssuing={ticketIssuing}
-      ticketError={ticketError}
-      onIssueTicket={() => setTicketNonce((nonce) => nonce + 1)}
+      selectedVersion={selectedVersion}
+      selectedVersionId={selectedVersionId}
+      fetchVersionFile={fetchVersionFile}
+      resolveVersionFileUrl={resolveVersionFileUrl}
+      onDownload={(versionId, path) => void handleDownload(versionId, path)}
+      downloading={downloadingPath !== null}
+      onOpenCitation={openDocumentCitation}
+      onRequestSlidesChange={(page, versionId) => {
+        setDraft(props.locale === 'zh'
+          ? '请只修改演示稿第 ' + page + ' 页，其余页面保持不变（当前版本 ' + versionId + '）。'
+          : 'Modify only page ' + page + ' of the deck and keep every other page unchanged (current version ' + versionId + ').');
+      }}
+      webSurface={(
+        <CraftPreview
+          locale={props.locale}
+          versionId={selectedVersionId}
+          hasArtifact={hasArtifact}
+          ticket={ticket}
+          ticketIssuing={ticketIssuing}
+          ticketError={ticketError}
+          onIssueTicket={() => setTicketNonce((nonce) => nonce + 1)}
+        />
+      )}
     />
   ) : sideTab === 'files' ? (
     <CraftFiles
@@ -871,4 +927,163 @@ function TerminalView(props: { url: string }) {
       </div>
     </div>
   );
+}
+// ---------------------------------------------------------------------------
+// Kind preview surface (D01 wiring): the preview tab renders the kind's OWN
+// component from server-verified data — the document view reads the
+// editable Markdown source, the spreadsheet/slides views read the skill's
+// preview.json — while the isolated-origin iframe stays the WEB kind's
+// surface (the skill's static index.html). One preview surface per kind,
+// decided by the selected version's kind, never by the session's.
+// ---------------------------------------------------------------------------
+
+/** One immutable version member's text, fetched through the assembly's
+ * authorized files route. Reset on version/path change; reload is
+ * preview-only and never re-runs generation. */
+function useVersionMemberText(
+  versionId: string | null,
+  path: string,
+  fetcher: ((versionId: string, path: string) => Promise<string>) | null,
+): { text: string | null; error: string | null; reload(): void } {
+  const [text, setText] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [nonce, setNonce] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    setText(null);
+    setError(null);
+    if (versionId === null || fetcher === null) {
+      return () => { cancelled = true; };
+    }
+    void fetcher(versionId, path)
+      .then((value) => { if (!cancelled) setText(value); })
+      .catch((err: unknown) => { if (!cancelled) setError(err instanceof Error ? err.message : String(err)); });
+    return () => { cancelled = true; };
+  }, [versionId, path, nonce, fetcher]);
+  return { text, error, reload: () => setNonce((n) => n + 1) };
+}
+
+const SLIDES_IMAGE_PLACEHOLDER =
+  'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="4" height="3"/>');
+
+function CraftKindPreview(props: {
+  locale: CraftLocale;
+  selectedVersion: CraftVersionView | null;
+  selectedVersionId: string | null;
+  fetchVersionFile: ((versionId: string, path: string) => Promise<string>) | null;
+  resolveVersionFileUrl: ((versionId: string, path: string) => Promise<string>) | null;
+  onDownload(versionId: string, path: string): void;
+  downloading: boolean;
+  onOpenCitation(citationId: string): void;
+  onRequestSlidesChange(page: number, versionId: string): void;
+  webSurface: React.JSX.Element;
+}) {
+  const kind = props.selectedVersion?.kind ?? 'web';
+  const member = useVersionMemberText(
+    props.selectedVersionId,
+    kind === 'document' ? CRAFT_DOCUMENT_MD_PATH : 'preview.json',
+    props.fetchVersionFile,
+  );
+  const manifestMember = useVersionMemberText(props.selectedVersionId, 'manifest.json', kind === 'document' ? props.fetchVersionFile : null);
+  const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
+
+  // Parse the shared preview member per kind (pure; invalid JSON becomes a
+  // preview error the component renders as failed, never as success).
+  const previewJsonError = member.text !== null && member.error === null
+    ? (() => { try { JSON.parse(member.text ?? ''); return null; } catch { return 'preview.json is not valid JSON'; } })()
+    : null;
+  const spreadsheetPreview = useMemo<CraftSpreadsheetPreviewView | null>(() => {
+    if (kind !== 'spreadsheet' || member.text === null) return null;
+    try {
+      const parsed = JSON.parse(member.text) as CraftSpreadsheetPreviewView;
+      return parsed.kind === 'spreadsheet' ? parsed : null;
+    } catch { return null; }
+  }, [kind, member.text]);
+  const slidesPreview = useMemo<CraftSlidesPreviewView | null>(() => {
+    if (kind !== 'slides' || member.text === null) return null;
+    try {
+      const parsed = JSON.parse(member.text) as CraftSlidesPreviewView;
+      return parsed.kind === 'slides' ? parsed : null;
+    } catch { return null; }
+  }, [kind, member.text]);
+
+  // Slides page images resolve through the assembly's authorized route into
+  // object URLs; until one arrives the thumbnail renders a placeholder.
+  useEffect(() => {
+    let cancelled = false;
+    setImageUrls({});
+    const pages = slidesPreview?.pages ?? [];
+    if (props.resolveVersionFileUrl === null || props.selectedVersionId === null || pages.length === 0) {
+      return () => { cancelled = true; };
+    }
+    for (const page of pages) {
+      void props.resolveVersionFileUrl(props.selectedVersionId, page.image)
+        .then((url) => { if (!cancelled) setImageUrls((prev) => ({ ...prev, [page.image]: url })); })
+        .catch(() => { /* the placeholder stays; the alt text carries the title */ });
+    }
+    return () => { cancelled = true; };
+  }, [slidesPreview, props.selectedVersionId, props.resolveVersionFileUrl]);
+
+  if (props.fetchVersionFile === null) {
+    // Assembly without the authorized member fetch: the web iframe remains
+    // the only preview surface (the pre-D01 behavior).
+    return props.webSurface;
+  }
+  if (kind === 'document') {
+    let manifestCitations: string[] = [];
+    if (manifestMember.text !== null) {
+      try {
+        const parsed = JSON.parse(manifestMember.text) as { citation_ids?: unknown };
+        if (Array.isArray(parsed.citation_ids)) {
+          manifestCitations = parsed.citation_ids.filter((id): id is string => typeof id === 'string');
+        }
+      } catch { /* the markdown scan still collects the citations */ }
+    }
+    return (
+      <CraftDocument
+        locale={props.locale}
+        versionId={props.selectedVersionId}
+        markdown={member.text}
+        markdownLoading={member.error === null && member.text === null}
+        markdownError={member.error}
+        manifestCitations={manifestCitations}
+        onFetchDocument={() => member.reload()}
+        onDownload={props.onDownload}
+        downloading={props.downloading}
+        onOpenCitation={props.onOpenCitation}
+      />
+    );
+  }
+  const previewError = member.error ?? previewJsonError;
+  if (kind === 'spreadsheet') {
+    return (
+      <CraftSpreadsheet
+        locale={props.locale}
+        versionId={props.selectedVersionId}
+        preview={spreadsheetPreview}
+        previewLoading={member.error === null && member.text === null}
+        previewError={previewError}
+        onFetchPreview={() => member.reload()}
+        onDownload={props.onDownload}
+        downloading={props.downloading}
+      />
+    );
+  }
+  if (kind === 'slides') {
+    return (
+      <CraftSlides
+        locale={props.locale}
+        versionId={props.selectedVersionId}
+        preview={slidesPreview}
+        previewLoading={member.error === null && member.text === null}
+        previewError={previewError}
+        onFetchPreview={() => member.reload()}
+        onResolvePageImage={(_versionId, path) => imageUrls[path] ?? SLIDES_IMAGE_PLACEHOLDER}
+        onDownload={props.onDownload}
+        downloading={props.downloading}
+        onRequestChange={props.onRequestSlidesChange}
+      />
+    );
+  }
+  return props.webSurface;
 }

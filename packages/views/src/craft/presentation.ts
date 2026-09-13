@@ -685,8 +685,23 @@ export function historyRows(
   }));
 }
 
+/** Each kind's deliverable entry (mirrors craft.EntryPath): the top-bar
+ * download always offers the kind's own deliverable — the DOCX export for
+ * documents, never the markdown source; the recalculated workbook; the deck. */
+const KIND_ENTRY_PATHS: Record<string, string> = {
+  web: 'index.html',
+  document: 'report.docx',
+  spreadsheet: 'report.xlsx',
+  slides: 'report.pptx',
+};
+
 export function entryFileOf(version: CraftVersionView | null): CraftFileVersionView | null {
   if (version === null || version.files.length === 0) return null;
+  const entry = KIND_ENTRY_PATHS[version.kind];
+  if (entry !== undefined) {
+    const deliverable = version.files.find((file) => file.path === entry);
+    if (deliverable !== undefined) return deliverable;
+  }
   const html = version.files.find((file) => file.path === 'index.html') ?? version.files.find((file) => file.path.endsWith('.html'));
   return html ?? version.files[0];
 }

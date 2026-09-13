@@ -71,16 +71,27 @@ const (
 )
 
 // KindWeb is the first supported artwork kind; its deliverable entry is the
-// generated index.html. Later kinds declare their entries when their
-// generators land.
+// generated index.html. The D01-D03 kinds declare their entries alongside
+// their generators: the entry is always the kind's DELIVERABLE (the file a
+// user downloads), never an intermediate — the document's deliverable is
+// the DOCX export (report.md is the editable source riding in the same
+// version), the spreadsheet's is the recalculated workbook and the deck's
+// is the PPTX.
 const KindWeb = "web"
 
 // EntryPath returns the version-relative file the kind's deliverable must
-// contain for the entry check to pass.
+// contain for the entry check to pass. The path doubles as the controlled
+// preview's ticket entry (W02 Issue).
 func EntryPath(kind string) (string, bool) {
 	switch kind {
 	case KindWeb:
 		return "index.html", true
+	case KindDocument:
+		return DocumentDOCXPath, true
+	case KindSpreadsheet:
+		return SpreadsheetXLSXPath, true
+	case KindSlides:
+		return SlidesPPTXPath, true
 	default:
 		return "", false
 	}

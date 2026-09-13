@@ -32,6 +32,7 @@
       "@weknora/views/craft/preview": ["../../packages/views/src/craft/preview.tsx"],
       "@weknora/views/craft/files": ["../../packages/views/src/craft/files.tsx"],
       "@weknora/views/craft/spreadsheet": ["../../packages/views/src/craft/spreadsheet.tsx"],
+      "@weknora/views/craft/document": ["../../packages/views/src/craft/document.tsx"],
       "@weknora/views/craft/slides": ["../../packages/views/src/craft/slides.tsx"],
       "@weknora/views/craft/presentation": ["../../packages/views/src/craft/presentation.ts"],
       "@weknora/ui": ["../../packages/ui/src/index.tsx"]

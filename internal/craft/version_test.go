@@ -226,7 +226,9 @@ func TestBuildChecksNotRunByDefault(t *testing.T) {
 	}
 
 	// Kinds without a defined entry cannot have their entry judged yet.
-	checks = BuildChecks("document", files, ArtifactEvidence{})
+	// (D01 wiring note: "document" gained its entry in report.docx, so the
+	// undefined-kind probe uses a kind outside the closed set.)
+	checks = BuildChecks("diagram", files, ArtifactEvidence{})
 	if checks[1].Status != CheckNotRun {
 		t.Fatalf("undefined kind entry must be not_run, got %q", checks[1].Status)
 	}
