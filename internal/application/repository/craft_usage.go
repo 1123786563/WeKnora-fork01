@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/craft"
+	"github.com/Tencent/WeKnora/internal/metrics"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -156,7 +157,8 @@ func (s *CraftUsageStore) record(ctx context.Context, f craft.UsageFact, correct
 		}
 	}
 	now := time.Now().UTC()
-	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	var recordedStatus string
+	txErr := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var rows []craftUsageFactRow
 		if err := tx.Where("tenant_id = ? AND call_id = ? AND attempt_id = ?",
 			f.TenantID, f.CallID, f.AttemptID).
@@ -203,8 +205,21 @@ func (s *CraftUsageStore) record(ctx context.Context, f craft.UsageFact, correct
 		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error; err != nil {
 			return err
 		}
-		return enqueueCraftUsageEvent(tx, row, stored)
+		if err := enqueueCraftUsageEvent(tx, row, stored); err != nil {
+			return err
+		}
+		recordedStatus = f.Status
+		return nil
 	})
+	if txErr != nil {
+		return txErr
+	}
+	// O04: an unobserved attempt keeps its own visible line — the metric is
+	// the fleet-level view of the same fact, never a zero-token fabrication.
+	if recordedStatus == craft.UsageStatusUnknown {
+		metrics.CraftUsageUnknown()
+	}
+	return nil
 }
 
 // usageContentEqual compares the observation content of two facts of the
@@ -267,6 +282,33 @@ func (s *CraftUsageStore) Facts(ctx context.Context, tenant uint64, runID string
 	if err != nil {
 		return nil, err
 	}
+	return craftCurrentFacts(rows)
+}
+
+// FactsBySession returns the CURRENT revision of every attempt recorded
+// across one tenant's session — all of the session's runs joined through the
+// durable run table — oldest observation first. Cross-tenant rows are
+// invisible. This is the O04 usage view's read: which space/run produced
+// which physical call stays traceable from the fact itself.
+func (s *CraftUsageStore) FactsBySession(ctx context.Context, tenant uint64, sessionID string) ([]craft.UsageFact, error) {
+	if sessionID == "" {
+		return nil, fmt.Errorf("craft usage: session scope requires a session id")
+	}
+	var rows []craftUsageFactRow
+	err := s.db.WithContext(ctx).
+		Joins("JOIN agent_runs ar ON ar.run_id = craft_usage_facts.run_id AND ar.tenant_id = craft_usage_facts.tenant_id").
+		Where("craft_usage_facts.tenant_id = ? AND ar.session_id = ?", tenant, sessionID).
+		Order("craft_usage_facts.observed_at ASC, craft_usage_facts.id ASC").Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return craftCurrentFacts(rows)
+}
+
+// craftCurrentFacts folds revision rows into the CURRENT fact of every
+// physical attempt (highest revision per call+attempt), preserving the
+// oldest-first observation order of the input rows.
+func craftCurrentFacts(rows []craftUsageFactRow) ([]craft.UsageFact, error) {
 	attemptID := func(row craftUsageFactRow) string { return row.CallID + "\x00" + row.AttemptID }
 	latest := make(map[string]craftUsageFactRow)
 	for _, row := range rows {

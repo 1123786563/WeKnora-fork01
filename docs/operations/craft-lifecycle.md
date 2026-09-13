@@ -52,7 +52,7 @@ Craft 作品依赖三类物理资源：会话绑定的沙箱（Sandbox）、不�
 | `CRAFT_LIFECYCLE_SWEEP_BATCH` | 100 | 每批数量（容器装配） |
 | `CRAFT_LIFECYCLE_SWEEP_DISABLED` | false | 关闭周期清理（tombstone 与守卫仍可用） |
 
-周期清理由 `container.StartCraftLifecycleSweep` 注册到 ResourceCleaner，单批串行不重叠，关停时优雅停止。
+周期清理由容器装配调用 `StartCraftLifecycleSweep`（`internal/container/craft_lifecycle.go` 的 `wireCraftLifecycleIntegration`，已接线、默认开启；`CRAFT_LIFECYCLE_SWEEP_DISABLED=true` 关闭），单批串行不重叠，关停时经 ResourceCleaner 优雅停止。
 
 ## 计量与配额
 

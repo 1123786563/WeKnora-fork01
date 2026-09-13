@@ -49,6 +49,38 @@ type Handler struct {
 	// conversation turn would use.
 	terminalService *service.SandboxTerminalService
 	agentRunService *service.AgentRunService
+	// craftTombstoner starts the craft resource teardown of a session being
+	// deleted (O03 integration wiring). Nil (craft not assembled) keeps the
+	// unchanged deletion flow.
+	craftTombstoner CraftSessionTombstoner
+}
+
+// CraftSessionTombstoner starts the resource teardown of a deleted craft
+// session: the tombstone mark blocks new delegation dispatches and snapshot
+// restores mid-teardown before anything destructive happens.
+type CraftSessionTombstoner interface {
+	TombstoneSession(ctx context.Context, tenantID uint64, sessionID, reason string) (*service.CraftTombstoneResult, error)
+}
+
+// SetCraftTombstoner installs the craft lifecycle tombstone entry (O03
+// integration wiring; see internal/container).
+func (h *Handler) SetCraftTombstoner(t CraftSessionTombstoner) { h.craftTombstoner = t }
+
+// tombstoneCraftSession runs the craft tombstone best-effort at the session
+// deletion entrance. The periodic sweep's discovery pass re-derives the
+// tombstone for sessions deleted without it, so a tombstone failure never
+// blocks the user-facing delete — it is logged and left to the sweep.
+func (h *Handler) tombstoneCraftSession(ctx context.Context, sessionID string) {
+	if h.craftTombstoner == nil {
+		return
+	}
+	tenant, ok := types.TenantIDFromContext(ctx)
+	if !ok || tenant == 0 {
+		return
+	}
+	if _, err := h.craftTombstoner.TombstoneSession(ctx, tenant, sessionID, "session deletion"); err != nil {
+		logger.Warnf(ctx, "[CraftLifecycle] tombstone of session %s failed (sweep will re-derive): %v", sessionID, err)
+	}
 }
 
 // NewHandler creates a new instance of Handler with all necessary dependencies
@@ -407,6 +439,9 @@ func (h *Handler) DeleteSession(c *gin.Context) {
 		c.Error(errors.NewNotFoundError("session not found"))
 		return
 	}
+	// O03 wiring: the craft tombstone precedes the destructive deletes — the
+	// deleting mark blocks new dispatches and restores mid-teardown.
+	h.tombstoneCraftSession(ctx, id)
 	if err := h.fenceSessionRuns(ctx, id); err != nil {
 		c.Error(errors.NewInternalServerError(err.Error()))
 		return
@@ -517,6 +552,7 @@ func (h *Handler) BatchDeleteSessions(c *gin.Context) {
 		}
 		for _, sess := range sessions {
 			if sess != nil {
+				h.tombstoneCraftSession(ctx, sess.ID)
 				if err := h.fenceSessionRuns(ctx, sess.ID); err != nil {
 					c.Error(errors.NewInternalServerError(err.Error()))
 					return
@@ -559,6 +595,7 @@ func (h *Handler) BatchDeleteSessions(c *gin.Context) {
 			c.Error(errors.NewNotFoundError("session not found"))
 			return
 		}
+		h.tombstoneCraftSession(ctx, id)
 		if err := h.fenceSessionRuns(ctx, id); err != nil {
 			c.Error(errors.NewInternalServerError(err.Error()))
 			return

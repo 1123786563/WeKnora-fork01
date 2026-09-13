@@ -39,6 +39,7 @@ import (
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/craft"
 	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/metrics"
 	"github.com/Tencent/WeKnora/internal/sandbox"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -587,7 +588,22 @@ func (s *CraftLifecycle) Sweep(ctx context.Context, limit int) error {
 			failures = append(failures, fmt.Errorf("sweep %s of session %s: %w", row.ResourceKind, row.SessionID, err))
 		}
 	}
+	s.refreshPendingDecisionGauge(ctx)
 	return errors.Join(failures...)
+}
+
+// refreshPendingDecisionGauge refreshes the craft_pending_decisions gauge
+// from the durable interaction table. The gauge is fleet-wide (no tenant
+// label — identities never enter metric labels); a counting error only logs,
+// it never fails the sweep pass that hosts the refresh.
+func (s *CraftLifecycle) refreshPendingDecisionGauge(ctx context.Context) {
+	var pending int64
+	if err := s.db.WithContext(ctx).Table("craft_interactions").
+		Where("status = ?", "pending").Count(&pending).Error; err != nil {
+		logger.Warnf(ctx, "[CraftLifecycle] pending-decision gauge refresh failed: %v", err)
+		return
+	}
+	metrics.SetCraftPendingDecisions(pending)
 }
 
 func lifecycleKeyOf(row craftLifecycleStateRow) lifecycleStateKey {
@@ -925,10 +941,17 @@ func (s *CraftLifecycle) sweepObject(ctx context.Context, row craftLifecycleStat
 		return s.markState(ctx, stateKey, craft.LifecycleStateKept, now,
 			"no object deleter wired; object recorded but not reclaimed")
 	}
+	// 'deleting' is a legal source state (O03 review liveness fix): a crash
+	// between this CAS and DeleteObject/markState(deleted) must not strand the
+	// row in deleting forever. DeleteObject is idempotent — the sandbox CAS
+	// already relies on that for its own crash re-drive — so re-driving a
+	// stranded deleting row is the fail-safe direction: the object is either
+	// reclaimed or keeps an honest retry record, never a stale ledger row.
 	swapped := s.stateScoped(ctx, stateKey).
 		Where("state IN ?", []string{
 			craft.LifecycleStateCandidate, craft.LifecycleStateFailed,
 			craft.LifecycleStateKept, craft.LifecycleStateRisk,
+			craft.LifecycleStateDeleting,
 		}).
 		Updates(map[string]any{"state": craft.LifecycleStateDeleting, "updated_at": now})
 	if swapped.Error != nil {
@@ -1017,19 +1040,40 @@ func (s *CraftLifecycle) RecordStorageBytes(
 // sandbox, and storage byte-days integrate the storage observations (a
 // trailing observation is accounted up to now).
 func (s *CraftLifecycle) LifecycleUsage(ctx context.Context, tenantID uint64, since time.Time) (CraftLifecycleUsage, error) {
-	usage := CraftLifecycleUsage{}
 	if tenantID == 0 {
-		return usage, fmt.Errorf("%w: usage accounting requires a tenant", craft.ErrInvalidInput)
+		return CraftLifecycleUsage{}, fmt.Errorf("%w: usage accounting requires a tenant", craft.ErrInvalidInput)
 	}
+	return s.usageOf(ctx, tenantID, "", since)
+}
+
+// SessionLifecycleUsage accounts ONE session's sandbox residency and storage
+// over the window — the O04 execution-detail view's "沙箱驻留" line. The
+// semantics are exactly LifecycleUsage's, scoped to the session's own events.
+func (s *CraftLifecycle) SessionLifecycleUsage(ctx context.Context, tenantID uint64, sessionID string, since time.Time) (CraftLifecycleUsage, error) {
+	if s == nil {
+		return CraftLifecycleUsage{}, fmt.Errorf("%w: lifecycle service is not assembled", craft.ErrInvalidInput)
+	}
+	if tenantID == 0 || strings.TrimSpace(sessionID) == "" {
+		return CraftLifecycleUsage{}, fmt.Errorf("%w: session usage accounting requires tenant and session", craft.ErrInvalidInput)
+	}
+	return s.usageOf(ctx, tenantID, sessionID, since)
+}
+
+// usageOf loads one tenant's (or one session's) lifecycle events and folds
+// them into residency and storage accounting.
+func (s *CraftLifecycle) usageOf(ctx context.Context, tenantID uint64, sessionID string, since time.Time) (CraftLifecycleUsage, error) {
 	var events []craftLifecycleEventRow
 	// The tenant filter is SQL-side (indexed); the since-window is applied in
 	// Go below — SQL-side time comparison on the stored column is not
 	// portable across the dialects this store runs on.
-	err := s.db.WithContext(ctx).
-		Where("tenant_id = ?", tenantID).
-		Order("sandbox_id, occurred_at, kind").Find(&events).Error
+	query := s.db.WithContext(ctx).
+		Where("tenant_id = ?", tenantID)
+	if sessionID != "" {
+		query = query.Where("session_id = ?", sessionID)
+	}
+	err := query.Order("sandbox_id, occurred_at, kind").Find(&events).Error
 	if err != nil {
-		return usage, err
+		return CraftLifecycleUsage{}, err
 	}
 	filtered := make([]craftLifecycleEventRow, 0, len(events))
 	for _, e := range events {
@@ -1037,8 +1081,14 @@ func (s *CraftLifecycle) LifecycleUsage(ctx context.Context, tenantID uint64, si
 			filtered = append(filtered, e)
 		}
 	}
-	events = filtered
-	now := s.now()
+	return craftLifecycleUsageOfEvents(filtered, s.now()), nil
+}
+
+// craftLifecycleUsageOfEvents folds the windowed events: dwell is the sum of
+// completed start→stop pairs per sandbox, storage byte-days integrate the
+// storage observations (a trailing observation is accounted up to now).
+func craftLifecycleUsageOfEvents(events []craftLifecycleEventRow, now time.Time) CraftLifecycleUsage {
+	usage := CraftLifecycleUsage{}
 
 	// Residency: pair start→stop per sandbox.
 	open := false
@@ -1093,7 +1143,7 @@ func (s *CraftLifecycle) LifecycleUsage(ctx context.Context, tenantID uint64, si
 			usage.StorageBytesDay += craft.BytesDay(e.Bytes, span)
 		}
 	}
-	return usage, nil
+	return usage
 }
 
 // -----------------------------------------------------------------------------
