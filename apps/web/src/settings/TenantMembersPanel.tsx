@@ -73,9 +73,12 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
   }
 
   return <section className="wk-tenant-members" data-testid="tenant-members-settings">
-    <div className="wk-settings-panel-heading"><div><h3>Workspace members</h3><p className="wk-muted">Invite colleagues and manage tenant roles. Server permissions remain authoritative.</p></div></div>
+    <div className="members-list-header">
+      <div className="members-list-titlewrap"><h3>Workspace members</h3><span className="members-list-count-badge">{total}</span></div>
+      <form className="members-list-actions" onSubmit={search}><input aria-label="Search members" placeholder="Search by name or email" value={query} onChange={(event) => setQuery(event.target.value)} /><Button type="submit" disabled={loading}>Search</Button></form>
+    </div>
+    <p className="wk-muted">Invite colleagues and manage tenant roles. Server permissions remain authoritative.</p>
     {error ? <Status tone="error">{error}</Status> : null}{notice ? <Status tone="success">{notice}</Status> : null}
-    <form className="wk-list-actions" onSubmit={search}><input aria-label="Search members" placeholder="Search by name or email" value={query} onChange={(event) => setQuery(event.target.value)} /><Button type="submit" disabled={loading}>Search</Button></form>
     {canManage ? <div className="wk-settings-panel-heading"><h4>Pending invitations ({invitations.length})</h4><Button type="button" onClick={() => void loadInvitations()}>Refresh invitations</Button></div> : null}
     {canManage && invitations.length > 0 ? <Card><ul className="wk-list">{invitations.map((invitation) => <li key={invitation.id}><div className="wk-list-item-copy"><strong>{invitation.invitee_name ?? invitation.invitee_email ?? invitation.invitee_user_id}</strong><span>{invitation.role} · expires {invitation.expires_at}</span></div><Button type="button" disabled={busy} onClick={() => void revoke(invitation)}>Revoke</Button></li>)}</ul></Card> : null}
     {canManage ? <form className="wk-settings-editor" onSubmit={(event) => void invite(event)}><h4>Invite member</h4><label>Email<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="invitee@example.com" /></label><label>Role<select value={inviteRole} onChange={(event) => setInviteRole(event.target.value as TenantRole)}>{roles.filter((item) => item !== 'owner').map((item) => <option key={item} value={item}>{item}</option>)}</select></label><Button type="submit" loading={busy}>Send invitation</Button></form> : null}
