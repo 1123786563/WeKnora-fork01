@@ -96,6 +96,10 @@ export function dataSourceStatusLabel(source: Pick<DataSource, 'status'>): strin
   return typeof source.status === 'string' && source.status.trim() ? source.status : 'unknown';
 }
 
+export function hasRunningSync(source: Pick<DataSource, 'latest_sync_log'>): boolean {
+  return source.latest_sync_log?.status === 'running';
+}
+
 export function safeDataSourceType(source: Pick<DataSource, 'type'>): string {
   return typeof source.type === 'string' && source.type.trim() ? source.type : 'unknown';
 }

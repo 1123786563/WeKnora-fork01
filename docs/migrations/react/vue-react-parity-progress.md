@@ -910,6 +910,12 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   diff check pass, and independent review passes. N031 remains `implementing`
   for lifecycle, localization, remaining resource behavior and native evidence.
 
+- **N031 mobile sync-status slice:** the API model now carries the server's
+  `latest_sync_log` status and counters; the mobile inventory renders the latest
+  result and performs a cleanup-safe 3-second silent refresh while a sync is
+  running. Mobile full 99/99, helper 8/8, DOM harness 17/17, shared typecheck,
+  focused shared tests 339/339 and diff check pass. N031 remains `implementing`.
+
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
 - **Rows:** any rows proposed for `accepted`; never all rows by default.
 - **Files owned:** `docs/migrations/react/vue-react-parity-matrix.md`, `docs/migrations/react/vue-react-parity-progress.md`, `docs/migrations/react/evidence/vue-react-parity/README.md`, `docs/migrations/react/evidence/vue-react-parity/screenshot-matrix.md`, and the row-specific `docs/migrations/react/evidence/vue-react-parity/<date>-<row-group>.md` evidence file only.

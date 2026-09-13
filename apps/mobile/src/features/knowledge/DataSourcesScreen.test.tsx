@@ -20,7 +20,7 @@ async function mount(role: string) {
     workspaces: [{ id: 1, role }],
     client: { dataSources: {
       list: async () => [
-        { id: 'source-1', name: 'Docs', type: 'feishu_drive', status: 'active', sync_mode: 'incremental', config: { resource_ids: ['root-token'] } },
+        { id: 'source-1', name: 'Docs', type: 'feishu_drive', status: 'active', sync_mode: 'incremental', config: { resource_ids: ['root-token'] }, latest_sync_log: { id: 'log-1', status: 'running', items_created: 2, items_failed: 0 } },
         { id: 'legacy-source', name: 'Legacy connector', type: 'legacy_connector', status: 'paused', sync_mode: 'full', config: {} },
       ],
       types: async () => [{ type: 'feishu_drive', name: 'Feishu Drive', description: 'Drive', priority: 1, auth_type: 'oauth', capabilities: ['resources'] }, { type: 'gitlab', name: 'GitLab', description: 'GitLab', priority: 2, auth_type: 'token', capabilities: ['resources'] }, { type: 'notion', name: 'Notion', description: 'Notion', priority: 3, auth_type: 'token', capabilities: ['resources'] }, { type: 'rss', name: 'RSS', description: 'RSS', priority: 4, auth_type: 'none', capabilities: [] }],
@@ -61,6 +61,13 @@ test('admin sees data-source mutation controls', async () => {
   const page = await mount('admin');
   try { assert.equal(page.host.textContent?.includes('Add'), true); assert.equal(page.host.textContent?.includes('Edit'), true); assert.equal(page.host.textContent?.includes('Sync'), true); assert.equal(page.host.textContent?.includes('Delete'), true); }
   finally { await page.close(); }
+});
+
+test('inventory renders the server latest sync result and running state', async () => {
+  const page = await mount('admin');
+  try {
+    assert.match(page.host.textContent ?? '', /Latest sync: running · \+2/);
+  } finally { await page.close(); }
 });
 
 test('admin can test a connector before saving and sees the server result', async () => {

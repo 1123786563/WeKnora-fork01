@@ -15,6 +15,7 @@ export interface DataSource {
   last_sync_at?: string | null;
   last_sync_result?: unknown;
   error_message?: string;
+  latest_sync_log?: DataSourceSyncLog;
   [key: string]: unknown;
 }
 
@@ -32,6 +33,15 @@ export interface DataSourceResource {
 export interface DataSourceSyncLog {
   id: string;
   status: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  items_total?: number;
+  items_created?: number;
+  items_updated?: number;
+  items_deleted?: number;
+  items_skipped?: number;
+  items_failed?: number;
+  error_message?: string;
   [key: string]: unknown;
 }
 
