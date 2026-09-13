@@ -851,14 +851,6 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   validation, and native-device evidence remain open.
 
 - **Mobile RSS connector form:** the native editor now exposes feed URLs and
-  optional custom request headers, requires feed URLs before save or test,
-  keeps stored secrets redacted on edit, and serializes the existing RSS
-  `settings.feed_urls`/`credentials.auth_headers` contract. Focused screen and
-  policy tests pass 14/14; full mobile tests pass 94/94 and typecheck passes.
-  Exact localized copy, other connector fields, live backend validation, and
-  native-device evidence remain open.
-
-- **Mobile RSS connector form:** the native editor now exposes feed URLs and
   optional `Name: Value` request headers, requires feed URLs before save or
   connection test, hydrates editable feed settings without exposing stored
   secrets, and serializes the existing RSS backend credential/settings shape.
