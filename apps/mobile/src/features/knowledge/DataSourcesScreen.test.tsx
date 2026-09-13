@@ -20,8 +20,8 @@ async function mount(role: string) {
     workspaces: [{ id: 1, role }],
     client: { dataSources: {
       list: async () => [{ id: 'source-1', name: 'Docs', type: 'feishu_drive', status: 'active', sync_mode: 'incremental', config: { resource_ids: ['root-token'] } }],
-      types: async () => [{ type: 'feishu_drive', name: 'Feishu Drive', description: 'Drive', priority: 1, auth_type: 'oauth', capabilities: ['resources'] }, { type: 'gitlab', name: 'GitLab', description: 'GitLab', priority: 2, auth_type: 'token', capabilities: ['resources'] }, { type: 'rss', name: 'RSS', description: 'RSS', priority: 3, auth_type: 'none', capabilities: [] }],
-      validateCredentials: async () => ({ success: true }),
+      types: async () => [{ type: 'feishu_drive', name: 'Feishu Drive', description: 'Drive', priority: 1, auth_type: 'oauth', capabilities: ['resources'] }, { type: 'gitlab', name: 'GitLab', description: 'GitLab', priority: 2, auth_type: 'token', capabilities: ['resources'] }, { type: 'notion', name: 'Notion', description: 'Notion', priority: 3, auth_type: 'token', capabilities: ['resources'] }, { type: 'rss', name: 'RSS', description: 'RSS', priority: 4, auth_type: 'none', capabilities: [] }],
+      validateCredentials: async () => ({ success: true }), validate: async () => ({ success: true }),
       create: async () => ({ id: 'temporary-source', knowledge_base_id: 'kb-1', name: 'New source', type: 'feishu_drive', status: 'paused', config: {} }), update: async () => ({}), putCredentials: async () => ({}),
       sync: async () => ({ success: true }), pause: async () => ({ success: true }), resume: async () => ({ success: true }),
       remove: async () => undefined, logs: async () => [], resources: async (_id: string, parentId?: string) => parentId ? [{ external_id: 'page-2', parent_id: parentId, name: 'Child page', type: 'page' }] : [{ external_id: 'page-1', name: 'Project docs', type: 'folder', has_children: true }],
@@ -164,5 +164,90 @@ test('RSS editor exposes feed URLs and custom request headers', async () => {
     await act(async () => rss?.click());
     assert.ok(page.host.querySelector('textarea[placeholder="https://example.com/feed.xml"]') || page.host.querySelector('input[placeholder="https://example.com/feed.xml"]'));
     assert.ok(page.host.querySelector('textarea[placeholder="Authorization: Bearer …"]') || page.host.querySelector('input[placeholder="Authorization: Bearer …"]'));
+  } finally { await page.close(); }
+});
+
+test('Notion editor exposes its integration token instead of generic credentials', async () => {
+  const page = await mount('admin');
+  try {
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Add')?.click());
+    const notion = [...page.host.querySelectorAll('button')].find((item) => item.textContent?.includes('Notion'));
+    assert.ok(notion);
+    await act(async () => notion?.click());
+    assert.ok(page.host.querySelector('input[placeholder="ntn_xxxx"]'));
+    assert.equal(page.host.querySelector('input[placeholder="Credentials: token = secret"]'), null);
+  } finally { await page.close(); }
+});
+
+test('editing credentials uses the dedicated endpoint and keeps them out of the main update', async () => {
+  const page = await mount('admin');
+  try {
+    const putCalls: unknown[] = [];
+    const updateCalls: unknown[] = [];
+    const events: string[] = [];
+    page.runtime.client.dataSources.putCredentials = async (...args: unknown[]) => { events.push('credentials'); putCalls.push(args); return {}; };
+    page.runtime.client.dataSources.update = async (...args: unknown[]) => { events.push('update'); updateCalls.push(args); return {}; };
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Edit')?.click());
+    const appId = page.host.querySelector('input[placeholder="cli_xxxx"]') as HTMLInputElement | null;
+    const appSecret = page.host.querySelector('input[placeholder="App secret"]') as HTMLInputElement | null;
+    assert.ok(appId); assert.ok(appSecret);
+    await act(async () => { appId!.value = 'cli_test'; appId!.dispatchEvent(new page.host.ownerDocument.defaultView!.Event('input', { bubbles: true })); appSecret!.value = 'secret'; appSecret!.dispatchEvent(new page.host.ownerDocument.defaultView!.Event('input', { bubbles: true })); });
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Save')?.click());
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+    assert.equal(putCalls.length, 1);
+    assert.deepEqual(putCalls[0], ['source-1', { app_id: 'cli_test', app_secret: 'secret' }]);
+    assert.deepEqual(events, ['credentials', 'update']);
+    assert.equal(updateCalls.length, 1);
+    assert.equal((updateCalls[0] as unknown[])[1] && ((updateCalls[0] as unknown[])[1] as { config?: { credentials?: unknown } }).config?.credentials, undefined);
+  } finally { await page.close(); }
+});
+
+test('editing without new credentials validates the persisted source by id', async () => {
+  const page = await mount('admin');
+  try {
+    let validateId = '';
+    let rawValidationCalled = false;
+    page.runtime.client.dataSources.validate = async (id: string) => { validateId = id; return { success: true }; };
+    page.runtime.client.dataSources.validateCredentials = async () => { rawValidationCalled = true; return { success: true }; };
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Edit')?.click());
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Test connection')?.click());
+    assert.equal(validateId, 'source-1');
+    assert.equal(rawValidationCalled, false);
+  } finally { await page.close(); }
+});
+
+test('RSS connection test sends feed URLs to the raw credential validator', async () => {
+  const page = await mount('admin');
+  try {
+    let payload: Record<string, unknown> | undefined;
+    page.runtime.client.dataSources.validateCredentials = async (_type: string, credentials: Record<string, unknown>) => { payload = credentials; return { success: true }; };
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Add')?.click());
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent?.includes('RSS'))?.click());
+    const name = page.host.querySelector('input[placeholder="Name"]') as HTMLInputElement | null;
+    assert.ok(name);
+    await act(async () => { Object.getOwnPropertyDescriptor(page.host.ownerDocument.defaultView!.HTMLInputElement.prototype, 'value')!.set!.call(name, 'RSS source'); name!.dispatchEvent(new page.host.ownerDocument.defaultView!.Event('input', { bubbles: true })); });
+    const feed = page.host.querySelector('input[placeholder="https://example.com/feed.xml"]') as HTMLInputElement | null;
+    assert.ok(feed);
+    await act(async () => { Object.getOwnPropertyDescriptor(page.host.ownerDocument.defaultView!.HTMLInputElement.prototype, 'value')!.set!.call(feed, 'https://example.test/feed.xml'); feed!.dispatchEvent(new page.host.ownerDocument.defaultView!.Event('input', { bubbles: true })); });
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Test connection')?.click());
+    assert.equal(payload?.feed_urls, 'https://example.test/feed.xml');
+  } finally { await page.close(); }
+});
+
+test('editing feed URLs updates settings without writing an empty credential map', async () => {
+  const page = await mount('admin');
+  try {
+    let updateCalls = 0;
+    page.runtime.client.dataSources.putCredentials = async () => { throw new Error('empty credentials must not be written'); };
+    page.runtime.client.dataSources.validateCredentials = async () => ({ success: true });
+    page.runtime.client.dataSources.update = async () => { updateCalls += 1; return {}; };
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Edit')?.click());
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent?.includes('RSS'))?.click());
+    const feed = page.host.querySelector('input[placeholder="https://example.com/feed.xml"]') as HTMLInputElement | null;
+    assert.ok(feed);
+    await act(async () => { Object.getOwnPropertyDescriptor(page.host.ownerDocument.defaultView!.HTMLInputElement.prototype, 'value')!.set!.call(feed, 'https://example.test/changed.xml'); feed!.dispatchEvent(new page.host.ownerDocument.defaultView!.Event('input', { bubbles: true })); });
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Save')?.click());
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+    assert.equal(updateCalls, 1);
   } finally { await page.close(); }
 });

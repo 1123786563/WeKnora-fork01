@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { DataSourceResource } from '@weknora/api-client';
-import { canManageDataSources, dataSourceStatusLabel, extractDriveFolderToken, resourceCheckState, safeDataSourceType, toggleDataSourceResourceSelection } from './data-sources.ts';
+import { canManageDataSources, dataSourceCredentialFields, dataSourceStatusLabel, extractDriveFolderToken, resourceCheckState, safeDataSourceType, toggleDataSourceResourceSelection, validateDataSourceCredentials } from './data-sources.ts';
 
 test('mobile data source inventory exposes safe status and type labels', () => {
   assert.equal(dataSourceStatusLabel({ status: 'active' }), 'active');
@@ -36,4 +36,11 @@ test('drive folder input accepts a bare token and Feishu/Lark folder URLs', () =
   assert.equal(extractDriveFolderToken('https://example.feishu.cn/drive/folder/fldcn123?x=1'), 'fldcn123');
   assert.equal(extractDriveFolderToken('https://example.larksuite.com/drive/folder/fldus456'), 'fldus456');
   assert.equal(extractDriveFolderToken(''), '');
+});
+
+test('connector credential fields mirror Vue requirements', () => {
+  assert.deepEqual(dataSourceCredentialFields('notion').map((field) => field.key), ['api_key']);
+  assert.deepEqual(validateDataSourceCredentials('feishu', { app_id: 'cli_x' }), ['App secret is required']);
+  assert.deepEqual(validateDataSourceCredentials('gitlab', { base_url: 'https://gitlab.test' }), ['Access token is required']);
+  assert.deepEqual(validateDataSourceCredentials('rss', {}), []);
 });

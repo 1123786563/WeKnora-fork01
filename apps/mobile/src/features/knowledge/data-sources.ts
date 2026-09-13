@@ -20,6 +20,25 @@ export function extractDriveFolderToken(input: string): string {
   } catch { return raw; }
 }
 
+export type DataSourceCredentialField = { key: string; label: string; placeholder: string; secret?: boolean; optional?: boolean };
+
+const credentialFields: Record<string, DataSourceCredentialField[]> = {
+  feishu: [{ key: 'app_id', label: 'App ID', placeholder: 'cli_xxxx' }, { key: 'app_secret', label: 'App secret', placeholder: '', secret: true }, { key: 'base_url', label: 'Base URL', placeholder: 'https://open.feishu.cn', optional: true }],
+  lark: [{ key: 'app_id', label: 'App ID', placeholder: 'cli_xxxx' }, { key: 'app_secret', label: 'App secret', placeholder: '', secret: true }, { key: 'base_url', label: 'Base URL', placeholder: 'https://open.larksuite.com', optional: true }],
+  feishu_drive: [{ key: 'app_id', label: 'App ID', placeholder: 'cli_xxxx' }, { key: 'app_secret', label: 'App secret', placeholder: '', secret: true }, { key: 'base_url', label: 'Base URL', placeholder: 'https://open.feishu.cn', optional: true }],
+  lark_drive: [{ key: 'app_id', label: 'App ID', placeholder: 'cli_xxxx' }, { key: 'app_secret', label: 'App secret', placeholder: '', secret: true }, { key: 'base_url', label: 'Base URL', placeholder: 'https://open.larksuite.com', optional: true }],
+  notion: [{ key: 'api_key', label: 'Integration token', placeholder: 'ntn_xxxx', secret: true }],
+  yuque: [{ key: 'api_token', label: 'API token', placeholder: '', secret: true }, { key: 'base_url', label: 'Base URL', placeholder: 'https://www.yuque.com', optional: true }],
+  ima: [{ key: 'client_id', label: 'Client ID', placeholder: '', secret: true }, { key: 'api_key', label: 'API key', placeholder: '', secret: true }, { key: 'base_url', label: 'Base URL', placeholder: 'https://ima.qq.com', optional: true }],
+  gitlab: [{ key: 'base_url', label: 'Base URL', placeholder: 'https://gitlab.example.com' }, { key: 'access_token', label: 'Access token', placeholder: '', secret: true }],
+};
+
+export function dataSourceCredentialFields(type: string): DataSourceCredentialField[] { return credentialFields[type] ?? []; }
+
+export function validateDataSourceCredentials(type: string, values: Record<string, string>): string[] {
+  return dataSourceCredentialFields(type).filter((field) => !field.optional && !values[field.key]?.trim()).map((field) => `${field.label} is required`);
+}
+
 export type ResourceCheckState = 'checked' | 'indeterminate' | 'unchecked';
 
 function descendants(resources: DataSourceResource[], id: string): string[] {

@@ -858,6 +858,19 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   and typecheck passes. Exact localized copy, other connector fields, live
   backend validation, and native-device evidence remain open.
 
+- **Mobile connector credential fields:** the native editor now maps the
+  existing backend connector contracts to dedicated write-only fields for
+  Feishu/Lark and Drive, Notion, Yuque, Tencent IMA, and GitLab. Required
+  fields are validated for new sources; existing sources validate by ID when
+  no new secret is entered, while explicit changes use the non-persisting
+  credential validation endpoint and then the dedicated credentials endpoint.
+  RSS test validation includes `feed_urls` without persisting it as a secret.
+  Connector changes clear unsaved secret values, while unknown connectors
+  retain the legacy key/value fallback. Focused screen/policy tests pass
+  20/20; the full mobile suite passes 95/95; mobile typecheck and diff check
+  pass. Exact localized copy, Vue/React screenshots, real backend, Wails,
+  iOS, and Android evidence remain open; N031 stays `implementing`.
+
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
 - **Rows:** any rows proposed for `accepted`; never all rows by default.
 - **Files owned:** `docs/migrations/react/vue-react-parity-matrix.md`, `docs/migrations/react/vue-react-parity-progress.md`, `docs/migrations/react/evidence/vue-react-parity/README.md`, `docs/migrations/react/evidence/vue-react-parity/screenshot-matrix.md`, and the row-specific `docs/migrations/react/evidence/vue-react-parity/<date>-<row-group>.md` evidence file only.
