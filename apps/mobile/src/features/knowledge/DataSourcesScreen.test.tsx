@@ -19,7 +19,10 @@ async function mount(role: string) {
     tenantId: '1',
     workspaces: [{ id: 1, role }],
     client: { dataSources: {
-      list: async () => [{ id: 'source-1', name: 'Docs', type: 'feishu_drive', status: 'active', sync_mode: 'incremental', config: { resource_ids: ['root-token'] } }],
+      list: async () => [
+        { id: 'source-1', name: 'Docs', type: 'feishu_drive', status: 'active', sync_mode: 'incremental', config: { resource_ids: ['root-token'] } },
+        { id: 'legacy-source', name: 'Legacy connector', type: 'legacy_connector', status: 'paused', sync_mode: 'full', config: {} },
+      ],
       types: async () => [{ type: 'feishu_drive', name: 'Feishu Drive', description: 'Drive', priority: 1, auth_type: 'oauth', capabilities: ['resources'] }, { type: 'gitlab', name: 'GitLab', description: 'GitLab', priority: 2, auth_type: 'token', capabilities: ['resources'] }, { type: 'notion', name: 'Notion', description: 'Notion', priority: 3, auth_type: 'token', capabilities: ['resources'] }, { type: 'rss', name: 'RSS', description: 'RSS', priority: 4, auth_type: 'none', capabilities: [] }],
       validateCredentials: async () => ({ success: true }), validate: async () => ({ success: true }),
       create: async () => ({ id: 'temporary-source', knowledge_base_id: 'kb-1', name: 'New source', type: 'feishu_drive', status: 'paused', config: {} }), update: async () => ({}), putCredentials: async () => ({}),
@@ -45,6 +48,12 @@ async function mount(role: string) {
 test('viewer sees read-only data-source inventory without mutation controls', async () => {
   const page = await mount('viewer');
   try { assert.equal(page.host.textContent?.includes('Add'), false); assert.equal(page.host.textContent?.includes('Edit'), false); assert.equal(page.host.textContent?.includes('Sync'), false); assert.equal(page.host.textContent?.includes('Delete'), false); assert.equal(page.host.textContent?.includes('Logs'), true); }
+  finally { await page.close(); }
+});
+
+test('existing unknown connector sources remain visible in the inventory', async () => {
+  const page = await mount('viewer');
+  try { assert.match(page.host.textContent ?? '', /Legacy connector/); assert.match(page.host.textContent ?? '', /legacy_connector/); }
   finally { await page.close(); }
 });
 

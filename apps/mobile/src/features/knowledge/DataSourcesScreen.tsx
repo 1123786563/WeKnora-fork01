@@ -3,7 +3,7 @@ import { ActivityIndicator, Alert, FlatList, Pressable, SafeAreaView, ScrollView
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { DataSource, DataSourceConnectorType, DataSourceResource } from '@weknora/api-client';
 import { useMobileRuntime } from '../../runtime.tsx';
-import { canManageDataSources, dataSourceCredentialFields, dataSourceStatusLabel, extractDriveFolderToken, resourceCheckState, safeDataSourceType, toggleDataSourceResourceSelection, validateDataSourceCredentials } from './data-sources.ts';
+import { canManageDataSources, dataSourceCredentialFields, dataSourceStatusLabel, extractDriveFolderToken, filterSupportedDataSourceTypes, resourceCheckState, safeDataSourceType, toggleDataSourceResourceSelection, validateDataSourceCredentials } from './data-sources.ts';
 import { buildNativeDataSourceInput, nativeDataSourceDraftFrom, type NativeDataSourceDraft } from './data-source-form.ts';
 
 const EMPTY_DRAFT: NativeDataSourceDraft = { name: '', type: '', schedule: '0 0 */6 * * *', mode: 'incremental', conflict: 'overwrite', deletions: true, credentialsText: '', settingsText: '' };
@@ -56,7 +56,7 @@ export function DataSourcesScreen() {
       runtime.client.dataSources.types(),
     ]);
     if (sourceResult.status === 'fulfilled') setSources(sourceResult.value); else setError(sourceResult.reason instanceof Error ? sourceResult.reason.message : 'Unable to load data sources');
-    if (typeResult.status === 'fulfilled') setTypes(typeResult.value);
+    if (typeResult.status === 'fulfilled') setTypes(filterSupportedDataSourceTypes(typeResult.value));
     setLoading(false);
   }, [knowledgeBaseId, runtime.client]);
 

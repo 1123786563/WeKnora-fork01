@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { DataSourceResource } from '@weknora/api-client';
-import { canManageDataSources, dataSourceCredentialFields, dataSourceStatusLabel, extractDriveFolderToken, resourceCheckState, safeDataSourceType, toggleDataSourceResourceSelection, validateDataSourceCredentials } from './data-sources.ts';
+import { canManageDataSources, dataSourceCredentialFields, dataSourceStatusLabel, extractDriveFolderToken, filterSupportedDataSourceTypes, resourceCheckState, safeDataSourceType, toggleDataSourceResourceSelection, validateDataSourceCredentials } from './data-sources.ts';
 
 test('mobile data source inventory exposes safe status and type labels', () => {
   assert.equal(dataSourceStatusLabel({ status: 'active' }), 'active');
@@ -43,4 +43,10 @@ test('connector credential fields mirror Vue requirements', () => {
   assert.deepEqual(validateDataSourceCredentials('feishu', { app_id: 'cli_x' }), ['App secret is required']);
   assert.deepEqual(validateDataSourceCredentials('gitlab', { base_url: 'https://gitlab.test' }), ['Access token is required']);
   assert.deepEqual(validateDataSourceCredentials('rss', {}), []);
+});
+
+test('connector picker exposes only the Vue-supported connector definitions', () => {
+  const types = ['feishu', 'lark', 'feishu_drive', 'lark_drive', 'notion', 'yuque', 'ima', 'rss', 'gitlab']
+    .map((type) => ({ type }));
+  assert.deepEqual(filterSupportedDataSourceTypes([...types, { type: 'unsupported' }]).map((item) => item.type), types.map((item) => item.type));
 });

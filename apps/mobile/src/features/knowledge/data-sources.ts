@@ -2,6 +2,13 @@ import type { DataSource, DataSourceResource } from '@weknora/api-client';
 
 export type DataSourceWorkspaceRole = 'owner' | 'admin' | 'contributor' | 'viewer' | string | undefined;
 
+/** Connector types explicitly supported by the Vue editor definition. */
+export const supportedDataSourceTypes = new Set(['feishu', 'lark', 'feishu_drive', 'lark_drive', 'notion', 'yuque', 'ima', 'rss', 'gitlab']);
+
+export function filterSupportedDataSourceTypes<T extends { type: string }>(types: readonly T[]): T[] {
+  return types.filter((type) => supportedDataSourceTypes.has(type.type));
+}
+
 /** Data-source mutations are restricted to the same workspace roles as the API. */
 export function canManageDataSources(role: DataSourceWorkspaceRole): boolean {
   return role === 'owner' || role === 'admin';

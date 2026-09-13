@@ -892,6 +892,16 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   upload/graph parity and iOS/Android runtime evidence keep the row
   `implementing`.
 
+- **N031 mobile data-source connector-boundary slice:** the picker now filters
+  server connector metadata to the nine connector definitions explicitly
+  available in the Vue editor (`feishu`, `lark`, both Drive variants, `notion`,
+  `yuque`, `ima`, `rss`, and `gitlab`). Existing unknown/legacy source rows are
+  still displayed read-only rather than being silently removed. Regression
+  coverage proves all nine supported types survive and the unknown row remains
+  visible: mobile tests 97/97, DataSources DOM harness 16/16, typecheck and
+  diff check pass; independent review passes. N031 remains `implementing` for
+  the remaining data-source lifecycle, detail/graph parity and native evidence.
+
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
 - **Rows:** any rows proposed for `accepted`; never all rows by default.
 - **Files owned:** `docs/migrations/react/vue-react-parity-matrix.md`, `docs/migrations/react/vue-react-parity-progress.md`, `docs/migrations/react/evidence/vue-react-parity/README.md`, `docs/migrations/react/evidence/vue-react-parity/screenshot-matrix.md`, and the row-specific `docs/migrations/react/evidence/vue-react-parity/<date>-<row-group>.md` evidence file only.
