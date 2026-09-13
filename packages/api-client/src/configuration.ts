@@ -653,6 +653,12 @@ export function createConfigurationApi(request: (input: ClientRequest) => Promis
           method: 'GET', path, ...(options.signal === undefined ? {} : { signal: options.signal }),
         }), '/api/v1/agents');
       },
+      /** POST /api/v1/agents/:id/copy (routes_agent.go, Contributor+). */
+      async copy(agentId: string, signal?: AbortSignal): Promise<AgentConfiguration> {
+        return parseAgent(await request({
+          method: 'POST', path: `/api/v1/agents/${id(agentId, 'agentId')}/copy`, ...(signal === undefined ? {} : { signal }),
+        }), '/api/v1/agents');
+      },
       async suggestedQuestions(agentId: string, options: AgentSuggestedQuestionsOptions = {}): Promise<string[]> {
         if (agentId.trim() === '') throw new Error('agentId must not be empty');
         const query = new URLSearchParams();

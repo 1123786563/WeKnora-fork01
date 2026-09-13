@@ -24,6 +24,7 @@ import { FAQPage } from './faq/FAQPage.tsx';
 import { DataSourcesPage } from './data-sources/DataSourcesPage.tsx';
 import { KnowledgeSettingsPage } from './knowledge-settings/KnowledgeSettingsPage.tsx';
 import { ConfigurationPage } from './configuration/ConfigurationPage.tsx';
+import { AgentsPage } from './agents/AgentsPage.tsx';
 import { AdministrationPage } from './administration/AdministrationPage.tsx';
 import { OrganizationsPage } from './organizations/OrganizationsPage.tsx';
 import { SettingsPage } from './settings/SettingsPage.tsx';
@@ -169,7 +170,11 @@ function renderProtected() {
     renderShell(<FAQPage client={client} knowledgeBaseId={route.knowledgeBaseId} />);
   } else if (route.kind === 'knowledge-settings') {
     renderShell(<KnowledgeSettingsPage client={client} knowledgeBaseId={route.knowledgeBaseId} />);
-  } else if (route.path === '/platform/configuration' || route.path === '/platform/agents') {
+  } else if (route.path === '/platform/agents') {
+    // Real agents list (parity with Vue AgentList.vue); the consolidated
+    // configuration surface stays reachable at /platform/configuration.
+    renderShell(<AgentsPage client={client} tenantId={scopeRuntime.current().scope.tenantId} />);
+  } else if (route.path === '/platform/configuration') {
     renderShell(<ConfigurationPage client={client} />);
   } else if (route.path === '/platform/administration') {
     renderShell(<AdministrationPage client={client} tenantId={Number(scopeRuntime.current().scope.tenantId)} />);

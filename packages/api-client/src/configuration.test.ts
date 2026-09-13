@@ -87,6 +87,18 @@ test('preserves agent disabled state and skill availability from list envelopes'
   ]);
 });
 
+test('agents.copy posts to the dedicated copy subresource and returns the new agent', async () => {
+  const requests: unknown[] = [];
+  const api = createConfigurationApi(async (request) => {
+    requests.push(request);
+    return { success: true, data: { id: 'agent-2', name: 'Agent (copy)', is_builtin: false } };
+  });
+  const copied = await api.agents.copy('agent/1');
+  assert.equal(copied.id, 'agent-2');
+  assert.deepEqual(requests, [{ method: 'POST', path: '/api/v1/agents/agent%2F1/copy' }]);
+  await assert.rejects(() => api.agents.copy(''), /must not be empty/);
+});
+
 test('maps MCP OAuth authorization URL and status through the shared client', async () => {
   const requests: unknown[] = [];
   const api = createConfigurationApi(async (request) => {
