@@ -1727,3 +1727,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - React 图谱自定义指令和示例文本框现在按 Vue `t-textarea` 的 autosize 范围调整高度：分别为 3–8 行和 6–12 行，使用实际 computed line-height/vertical padding 测量，超过上限时内部滚动。
 - 先增加边界失败测试，再实现 `clampGraphTextareaHeight` 与字段 effect；N007 定向测试 23/23、`git diff --check` 通过。
 - 证据 `evidence/vue-react-parity/2026-09-14-n007-extraction-toast.md` 已更新；图谱真实 endpoint、浏览器 computed-style/截图、Vue 同条件截图、Wails 与移动端证据仍待补齐，N007 继续保持 implementing。
+
+## 2026-09-14 Round N+48 — N007 图谱关系标签多选控件
+
+- React 移除图谱关系类型的原生多选 `<select>`，新增项目级多值字段：标签 chip、单项移除、清空、Enter/逗号创建、Backspace 删除及可访问 listbox/combobox 语义，对齐 Vue `t-select multiple creatable filterable clearable`。
+- 定向 upload-confirm 测试 24/24、Web TypeScript、`git diff --check` 通过；真实图谱 endpoint、浏览器 computed-style/截图、Vue 同条件截图、Wails 与移动端证据仍待补齐，N007 继续保持 implementing。

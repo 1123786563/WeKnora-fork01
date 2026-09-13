@@ -185,6 +185,58 @@
   flex-direction: column;
 }
 
+.wk-graph-tags-field {
+  display: flex;
+  flex: 1;
+  min-width: 240px;
+  min-height: 32px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 1px solid var(--wk-border, #d0d5dd);
+  border-radius: 6px;
+  background: var(--wk-bg, #fff);
+}
+
+.wk-graph-tags-field:focus-within {
+  border-color: var(--wk-accent, #4a7dff);
+  box-shadow: 0 0 0 2px rgb(74 125 255 / 14%);
+}
+
+.wk-graph-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--wk-bg-muted, #f2f4f7);
+  color: var(--wk-text, #344054);
+  font-size: 0.8125rem;
+}
+
+.wk-graph-tag button,
+.wk-graph-tags-clear {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--wk-muted, #667085);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.wk-graph-tags-field > input {
+  flex: 1;
+  min-width: 120px;
+  width: auto;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+}
+
 .wk-graph-add-tag {
   width: 100%;
 }

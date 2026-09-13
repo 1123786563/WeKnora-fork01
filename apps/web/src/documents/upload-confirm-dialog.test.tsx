@@ -27,6 +27,7 @@ const {
   UploadSourceDropdown,
   stageNoticeClass,
   clampGraphTextareaHeight,
+  GraphTagsField,
 } = await import('./KnowledgeDocumentsPage.tsx');
 const {
   uploadConfirmT,
@@ -548,6 +549,19 @@ test('graph textareas use the Vue autosize row bounds', () => {
   assert.equal(clampGraphTextareaHeight(20, 20, 8, 3, 8), 68);
   assert.equal(clampGraphTextareaHeight(400, 20, 8, 3, 8), 168);
   assert.equal(clampGraphTextareaHeight(400, 20, 8, 6, 12), 248);
+});
+
+test('graph tags use a Vue-like creatable multi-value field instead of native multi-select', () => {
+  const markup = renderToStaticMarkup(React.createElement(GraphTagsField, {
+    tags: ['Author', 'Alias'],
+    onChange: noop,
+    placeholder: '请输入关系类型',
+    ariaLabel: '关系类型',
+  }));
+  assert.doesNotMatch(markup, /<select/);
+  assert.match(markup, /role="listbox"/);
+  assert.match(markup, /Author/);
+  assert.match(markup, /Alias/);
 });
 
 // --- Upload progress mask (Vue upload-mask.vue parity + percent) -------------------

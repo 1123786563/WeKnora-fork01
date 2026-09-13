@@ -12,9 +12,11 @@ Date: 2026-09-14
 
 The graph custom-instructions and sample-text fields also now use measured autosize bounds matching Vue `t-textarea`: 3–8 rows and 6–12 rows respectively, using the rendered line-height and vertical padding and enabling internal scrolling above the maximum.
 
+The relation-type control now uses an accessible project field with multi-value chips, per-chip removal, clear-all, Enter/comma creation, and Backspace removal. This replaces the previous native multi-select and preserves the Vue `multiple + creatable + filterable + clearable` interaction shape.
+
 ## Verification
 
-- Focused upload-confirm and pipeline suites: 23/23 passed for the current graph/upload-confirm suite; prior upload-confirm and pipeline suites: 50/50 passed.
+- Focused upload-confirm and pipeline suites: 24/24 passed for the current graph/upload-confirm suite; prior upload-confirm and pipeline suites: 50/50 passed.
 - Full Web suite: `pnpm run test:web` — 681/681 passed.
 - Web typecheck: `pnpm run typecheck:web` — passed.
 - `git diff --check` — passed.

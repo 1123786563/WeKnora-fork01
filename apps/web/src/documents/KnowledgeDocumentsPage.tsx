@@ -1058,6 +1058,45 @@ export function clampGraphTextareaHeight(scrollHeight: number, lineHeight: numbe
   return Math.min(maxHeight, Math.max(minHeight, scrollHeight));
 }
 
+export function GraphTagsField({ tags, onChange, placeholder, ariaLabel }: {
+  tags: readonly string[];
+  onChange: (tags: string[]) => void;
+  placeholder: string;
+  ariaLabel: string;
+}) {
+  const [draft, setDraft] = useState("");
+  const remove = (tag: string) => onChange(tags.filter((item) => item !== tag));
+  const addDraft = () => {
+    const tag = draft.trim();
+    if (!tag || tags.includes(tag)) { setDraft(""); return; }
+    onChange([...tags, tag]);
+    setDraft("");
+  };
+  return (
+    <div className="wk-graph-tags-field" role="listbox" aria-label={ariaLabel} aria-multiselectable="true">
+      {tags.map((tag) => (
+        <span key={tag} className="wk-graph-tag" role="option" aria-selected="true">
+          <span>{tag}</span>
+          <button type="button" aria-label={`移除 ${tag}`} onClick={() => remove(tag)}>×</button>
+        </span>
+      ))}
+      <input
+        type="text"
+        role="combobox"
+        aria-autocomplete="list"
+        value={draft}
+        placeholder={tags.length === 0 ? placeholder : ""}
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === ",") { event.preventDefault(); addDraft(); }
+          else if (event.key === "Backspace" && !draft && tags.length > 0) remove(tags[tags.length - 1]);
+        }}
+      />
+      {tags.length > 0 ? <button type="button" className="wk-graph-tags-clear" aria-label="清除关系类型" onClick={() => onChange([])}>×</button> : null}
+    </div>
+  );
+}
+
 /**
  * Vue GraphSettings.vue ported for the upload-confirm dialog: enable switch
  * (turning it off clears the sample data but keeps custom instructions),
@@ -1227,18 +1266,12 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
                       {t("graphSettings.generateRandomTags")}
                     </button>
                   ) : null}
-                  <select
-                    id="wk-graph-tags"
-                    multiple
-                    size={Math.min(Math.max(graphExtract.tags.length, 2), 6)}
-                    value={graphExtract.tags}
-                    onChange={(event) => patch({ tags: Array.from(event.target.selectedOptions).map((option) => option.value) })}
-                    style={{ flex: 1, minWidth: "240px" }}
-                  >
-                    {graphExtract.tags.map((tag) => (
-                      <option key={tag} value={tag}>{tag}</option>
-                    ))}
-                  </select>
+                  <GraphTagsField
+                    tags={graphExtract.tags}
+                    onChange={(tags) => patch({ tags })}
+                    placeholder={t("graphSettings.tagsPlaceholder")}
+                    ariaLabel={t("graphSettings.tagsLabel")}
+                  />
                 </div>
                 <div className="wk-graph-add-tag">
                   <input
