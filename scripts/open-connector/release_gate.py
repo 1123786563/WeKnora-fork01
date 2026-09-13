@@ -90,6 +90,11 @@ def verify_report(report, base_path):
         if entry.get("kind") != "runtime" or entry.get("passed") is not True or not artifact:
             # Already flagged by release_errors; nothing on disk to verify.
             continue
+        if not isinstance(artifact, str):
+            # QR-F1 type guard: a truthy non-string artifact (list/dict/…)
+            # would crash path joining below; it is malformed evidence.
+            errors.append("%s: artifact reference is not a string" % name)
+            continue
         for key in CONTEXT_KEYS:
             if entry.get(key) != report.get(key):
                 errors.append("%s: %s does not match report context" % (name, key))
@@ -113,6 +118,25 @@ def _blocked_env_markers(report):
     return markers
 
 
+def _cli_precheck_errors(report):
+    """CLI-boundary shape precheck (QR-F1/QR-F3).
+
+    release_errors stays plan-verbatim, so known malformed shapes are caught
+    HERE before it runs: a non-dict report/entry would crash it with an
+    AttributeError, and bool open_unknown_count compares equal to 0 in Python
+    (False == 0), which must never qualify as "zero unresolved executions".
+    """
+    errors = []
+    for name in REQUIRED:
+        if name in report and not isinstance(report[name], dict):
+            errors.append("%s: evidence entry is not a JSON object" % name)
+    unknown = report.get("open_unknown_count")
+    if isinstance(unknown, bool) or not isinstance(unknown, int):
+        errors.append("open_unknown_count must be an integer, got %s"
+                      % type(unknown).__name__)
+    return errors
+
+
 def main(argv):
     if len(argv) != 2:
         print("usage: release_gate.py <release-report.json>", file=sys.stderr)
@@ -120,15 +144,31 @@ def main(argv):
     try:
         with open(argv[1], "r", encoding="utf-8") as handle:
             report = json.load(handle)
+    except RecursionError as exc:
+        print("invalid release report file: nesting too deep: %s" % exc, file=sys.stderr)
+        return 2
     except (OSError, ValueError) as exc:
         print("invalid release report file: %s" % exc, file=sys.stderr)
         return 2
+    if not isinstance(report, dict):
+        print("GATE FAIL: release report is not a JSON object")
+        return 2
+    precheck = _cli_precheck_errors(report)
+    if precheck:
+        for error in precheck:
+            print("GATE FAIL: %s" % error)
+        return 2
     base_path = os.path.dirname(os.path.abspath(argv[1]))
-    errors = release_errors(report) + verify_report(report, base_path)
+    try:
+        errors = release_errors(report) + verify_report(report, base_path)
+        markers = _blocked_env_markers(report)
+    except Exception as exc:  # CLI boundary: fail closed, never a traceback
+        print("GATE FAIL: release report is not analyzable: %s" % exc)
+        return 2
     if errors:
         for error in errors:
             print("GATE FAIL: %s" % error)
-        for marker in _blocked_env_markers(report):
+        for marker in markers:
             print(marker)
         return 2
     print("GATE OK: seven evidence classes verified on one commit/image/namespace")

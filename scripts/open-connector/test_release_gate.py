@@ -284,5 +284,101 @@ class GateCliTest(GateWorkspace):
         self.assertIn("usage", proc.stderr)
 
 
+class GateCrashSafetyTest(GateWorkspace):
+    """QR-F1 hardening: malformed reports must fail CLOSED (clean exit 2 with a
+    message), never escape as a traceback (exit 1). Five crash families."""
+
+    def run_gate_on_file(self, path):
+        return subprocess.run([sys.executable, GATE, path],
+                              capture_output=True, text=True)
+
+    def write_raw_report(self, text):
+        path = os.path.join(self.base, "report.json")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        return path
+
+    def test_top_level_non_dict_fails_clean(self):
+        path = self.write_raw_report("[1, 2, 3]")
+        proc = self.run_gate_on_file(path)
+        self.assertEqual(proc.returncode, 2)
+        self.assertNotIn("Traceback", proc.stderr)
+        self.assertIn("GATE FAIL: release report is not a JSON object", proc.stdout)
+
+    def test_entry_non_dict_fails_clean(self):
+        report = full_report(self.base)
+        report["billing"] = ["not", "an", "object"]
+        path = os.path.join(self.base, "report.json")
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(report, handle)
+        proc = self.run_gate_on_file(path)
+        self.assertEqual(proc.returncode, 2)
+        self.assertNotIn("Traceback", proc.stderr)
+        self.assertIn("GATE FAIL: billing: evidence entry is not a JSON object", proc.stdout)
+
+    def test_artifact_non_string_fails_clean(self):
+        report = full_report(self.base)
+        report["contract"]["artifact"] = ["artifacts", "contract.json"]
+        path = os.path.join(self.base, "report.json")
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(report, handle)
+        proc = self.run_gate_on_file(path)
+        self.assertEqual(proc.returncode, 2)
+        self.assertNotIn("Traceback", proc.stderr)
+        self.assertIn("GATE FAIL: contract: artifact reference is not a string", proc.stdout)
+
+    def test_artifact_non_string_flagged_by_verify_report(self):
+        self.report["contract"]["artifact"] = {"path": "artifacts/contract.json"}
+        errors = verify_report(self.report, self.base)
+        self.assertIn("contract: artifact reference is not a string", errors)
+
+    def test_deeply_nested_report_fails_clean(self):
+        path = self.write_raw_report("[" * 50000 + "]" * 50000)
+        proc = self.run_gate_on_file(path)
+        self.assertEqual(proc.returncode, 2)
+        self.assertNotIn("Traceback", proc.stderr)
+        self.assertTrue(proc.stderr or proc.stdout)
+
+    def test_unreadable_report_file_fails_clean(self):
+        path = os.path.join(self.base, "locked.json")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("{}")
+        os.chmod(path, 0o000)
+        try:
+            proc = self.run_gate_on_file(path)
+        finally:
+            os.chmod(path, 0o644)
+        self.assertEqual(proc.returncode, 2)
+        self.assertNotIn("Traceback", proc.stderr)
+        self.assertTrue(proc.stderr)
+
+
+class GateUnknownCountTypeTest(GateWorkspace):
+    """QR-F3: bools/strings masquerading as open_unknown_count=0 are rejected
+    at the CLI boundary (release_errors stays plan-verbatim)."""
+
+    def run_cli_report(self, report):
+        path = os.path.join(self.base, "report.json")
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(report, handle)
+        return subprocess.run([sys.executable, GATE, path],
+                              capture_output=True, text=True)
+
+    def test_false_unknown_count_rejected(self):
+        report = full_report(self.base)
+        report["open_unknown_count"] = False
+        proc = self.run_cli_report(report)
+        self.assertEqual(proc.returncode, 2)
+        self.assertNotIn("Traceback", proc.stderr)
+        self.assertIn("GATE FAIL: open_unknown_count must be an integer, got bool", proc.stdout)
+
+    def test_string_unknown_count_rejected(self):
+        report = full_report(self.base)
+        report["open_unknown_count"] = "0"
+        proc = self.run_cli_report(report)
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("GATE FAIL: open_unknown_count must be an integer, got str", proc.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()
