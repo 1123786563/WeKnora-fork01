@@ -66,6 +66,7 @@ import {
 } from "./actions.ts";
 import {
   commonTagIds,
+  computeTagVisibleLimit,
   documentTags,
   joinTagIds,
   tagFilterLabel,
@@ -111,6 +112,29 @@ export type UploadDialogT = (key: string, values?: Record<string, string | numbe
 
 function displayName(document: KnowledgeDocument): string {
   return document.file_name || document.title || document.id;
+}
+
+function DocumentTagChips({ tags }: { tags: ReturnType<typeof documentTags> }) {
+  const ref = useRef<HTMLSpanElement | null>(null);
+  const [visibleLimit, setVisibleLimit] = useState(99);
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const update = () => setVisibleLimit(computeTagVisibleLimit(element.clientWidth, tags.length));
+    update();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [tags.length]);
+  const visible = tags.slice(0, visibleLimit);
+  const overflow = Math.max(0, tags.length - visibleLimit);
+  return (
+    <span ref={ref} className="wk-row-tag-chips" title={overflow ? tags.map((tag) => tag.name || "").join(", ") : undefined}>
+      {visible.map((tag) => <span key={tag.id} className="row-tag">{tag.name}</span>)}
+      {overflow ? <span className="row-tag-overflow">+{overflow}</span> : null}
+    </span>
+  );
 }
 
 function documentStatus(
@@ -2954,13 +2978,7 @@ export function KnowledgeDocumentsPage({
                           {document.file_type ? ` · ${document.file_type}` : ""}
                           {document.source ? ` · ${document.source}` : ""}
                         </span>
-                        {documentTags(document).length > 0 ? (
-                          <span className="wk-row-tag-chips">
-                            {documentTags(document).map((tag) => (
-                              <span key={tag.id} className="row-tag">{tag.name}</span>
-                            ))}
-                          </span>
-                        ) : null}
+                        {documentTags(document).length > 0 ? <DocumentTagChips tags={documentTags(document)} /> : null}
                       </div>
                       <Status tone={status.tone}>{status.label}</Status>
                       {canContribute ? (

@@ -1036,8 +1036,11 @@
 
 .wk-row-tag-chips {
   display: inline-flex;
-  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: nowrap;
   gap: 4px;
+  overflow: hidden;
 }
 
 .row-tag {
@@ -1045,5 +1048,24 @@
   border-radius: 3px;
   color: var(--wk-muted, #667085);
   font-size: 11px;
+  padding: 0 5px;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-tag-overflow {
+  align-items: center;
+  border: 1px solid var(--wk-border, #e4e7ec);
+  border-radius: 999px;
+  color: var(--wk-muted, #667085);
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 10px;
+  height: 18px;
+  justify-content: center;
+  line-height: 1;
+  min-width: 18px;
   padding: 0 5px;
 }

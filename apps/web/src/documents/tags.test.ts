@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  computeTagVisibleLimit,
   TAG_PANEL_PAGE_SIZE,
   commonTagIds,
   documentTags,
@@ -11,6 +12,12 @@ import {
   tagFilterTitle,
   tagUpdatesFor,
 } from './tags.ts';
+
+test('tag chip limit reserves Vue overflow pill space and is width responsive', () => {
+  assert.equal(computeTagVisibleLimit(300, 5), 3);
+  assert.equal(computeTagVisibleLimit(100, 5), 1);
+  assert.equal(computeTagVisibleLimit(500, 3), 99);
+});
 import type { KnowledgeTag } from '@weknora/api-client';
 
 const tag = (id: string, name: string, knowledgeCount?: number): KnowledgeTag => ({

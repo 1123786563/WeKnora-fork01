@@ -3,6 +3,17 @@
 // (BatchTagDialog.vue / TagEditDialog.vue). No React, no i18n.
 import type { KnowledgeDocument, KnowledgeTag } from '@weknora/api-client';
 
+const TAG_EST_WIDTH = 82;
+const TAG_OVERFLOW_MIN = 32;
+
+/** Vue useTagChipsOverflow.computeLimit parity. */
+export function computeTagVisibleLimit(width: number, total: number): number {
+  if (total <= 0) return 99;
+  const maxFit = Math.floor((width - TAG_OVERFLOW_MIN) / TAG_EST_WIDTH);
+  const limit = Math.max(1, Math.min(maxFit, total));
+  return limit >= total ? 99 : limit;
+}
+
 /** Vue KnowledgeCard.tags (DocumentCardView.vue L35): {id,name,color?}[]. */
 export interface DocumentTagRef {
   id: string;
