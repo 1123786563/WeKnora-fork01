@@ -1414,3 +1414,10 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - FAQ tooltip 精修切片（9b969a6c）叫停：其任务（title 升级定位气泡）已被 FAQ B5/B6 切片交付完全覆盖（FaqTagTooltip 组件 + faqTooltipPosition 定位逻辑已在 HEAD，faq 78/78）——避免双实现。
 - Wails 取证切片（1662287b）仍在途。
+
+## 2026-09-14 Round N+12 协调条目 — tooltip 精修切片正式交付确认
+
+- 9b969a6c 切片发来完成报告：其代码已由 7ff6cabb 集成（fa-tag-chip 定位气泡补齐最后一个原生 title 残留），证据已由 2735d7e5 提交——该切片完全收口。
+- Wails 取证切片（1662287b）继续在途（cmd/desktop/wails.json 存在，构建流程耗时长）。
+- 全门禁：web 794/794、shared 436/436、faq 79/79、typecheck 0。
+
