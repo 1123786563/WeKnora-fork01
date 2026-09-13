@@ -171,7 +171,7 @@ test('filters viewer organizations and sends the selected permission in the crea
 });
 
 test('renders Vue-shaped organization options and shared-list actions', async () => {
-  const enriched = [{ id: 'org-editor', name: 'Editors', is_owner: true, my_role: 'admin', member_count: 7, share_count: 3, agent_share_count: 2 }] as unknown as Organization[];
+  const enriched = [{ id: 'org-editor', name: 'Editors', is_owner: true, my_role: 'admin', member_count: 7, share_count: 3, agent_share_count: 2 }, { id: 'org-viewer', name: 'Viewers', my_role: 'editor' }] as unknown as Organization[];
   const client = clientFor(async () => ({ items: [{ id: 'share-1', organization_id: 'org-other', organization_name: 'Editors', permission: 'editor' }], total: 1 }));
   client.identity.organizations.list = async () => ({ items: enriched, total: 1 });
   const container = await mount(client);
@@ -194,7 +194,7 @@ test('renders Vue-shaped organization options and shared-list actions', async ()
 });
 
 test('organization picker exposes a keyboard-safe custom Vue-style option list', async () => {
-  const enriched = [{ id: 'org-editor', name: 'Editors', is_owner: true, my_role: 'admin', member_count: 7, share_count: 3, agent_share_count: 2 }] as unknown as Organization[];
+  const enriched = [{ id: 'org-editor', name: 'Editors', is_owner: true, my_role: 'admin', member_count: 7, share_count: 3, agent_share_count: 2 }, { id: 'org-viewer', name: 'Viewers', my_role: 'editor' }] as unknown as Organization[];
   const client = clientFor(async () => ({ items: [], total: 0 }));
   client.identity.organizations.list = async () => ({ items: enriched, total: 1 });
   const container = await mount(client);
@@ -204,6 +204,10 @@ test('organization picker exposes a keyboard-safe custom Vue-style option list',
   assert.ok(container.querySelector('[role="listbox"]'));
   assert.match(container.textContent ?? '', /Editors/);
   assert.match(container.textContent ?? '', /7/);
+  await act(async () => trigger?.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })));
+  await act(async () => trigger?.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })));
+  assert.equal(trigger?.textContent?.includes('Viewers'), true);
+  await act(async () => trigger?.click());
   await act(async () => container.querySelector<HTMLButtonElement>('[role="option"]')?.click());
   assert.equal(trigger?.textContent?.includes('Editors'), true);
   assert.equal(container.querySelector('[role="listbox"]'), null);

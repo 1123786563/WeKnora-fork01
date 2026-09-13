@@ -8,6 +8,7 @@
 
 - 组织权限过滤、已共享组织排除、共享/取消共享 API payload、确认和提交防重行为保留并通过回归。
 - 新增 Vue 风格自定义组织选择器（头像、角色、成员/知识库/智能体计数、选中态、外部点击关闭和 Escape），并将权限从原生 `<select>` 改为 Vue `t-radio-group` 对应的可访问 radio-button group；组织信息预览、权限提示/footer、共享行头像/权限色签和组织设置导航入口保持不变；专测 13/13。
+- 组织选择器补齐 Vue 选择器的 ArrowUp/ArrowDown active option 与 Enter 选择语义，仍支持 Escape/外部点击关闭；专测保持 13/13。
 - Web 全量回归、浏览器与真实后端证据仍需补齐；本切片定向测试 13/13，`typecheck:web` 通过。
 
 ## 未覆盖

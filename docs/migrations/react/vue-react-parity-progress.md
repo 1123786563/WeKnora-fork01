@@ -1769,3 +1769,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 对照 Vue `ShareKnowledgeBaseDialog.vue` 的 `t-radio-group`，React 共享弹窗权限从原生 `<select>` 改为项目级 radio-button group；选中态、权限值和共享 payload 保持不变，组织选择器与隐藏 required 组织字段不变。
 - N005 定向测试 13/13、`typecheck:web` 与 `git diff --check` 通过；证据 `evidence/vue-react-parity/2026-09-14-n005-share-dialog.md` 已更新。
 - N005 继续保持 `implementing`：组织选择器/权限组的认证浏览器与 Vue 同条件截图、真实后端共享链路、Wails/iOS/Android 证据仍未闭环。
+
+## 2026-09-14 Round N+56 — N005 组织选择器键盘导航
+
+- 对照 Vue `t-select` 的键盘行为，React 组织选择器补齐 ArrowUp/ArrowDown active option、Enter 选择及索引同步；原有组织过滤、共享排除、Escape/外部点击关闭和提交 payload 不变。
+- N005 定向测试 13/13、Web 全量 825/825、`typecheck:web` 与 `git diff --check` 通过；证据 `evidence/vue-react-parity/2026-09-14-n005-share-dialog.md` 已更新。
+- N005 继续保持 `implementing`：认证浏览器与 Vue 同条件截图、真实后端共享链路、Wails/iOS/Android 证据仍未闭环。
