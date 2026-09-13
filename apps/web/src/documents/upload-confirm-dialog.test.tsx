@@ -28,6 +28,7 @@ const {
   stageNoticeClass,
   clampGraphTextareaHeight,
   GraphTagsField,
+  GraphSwitch,
 } = await import('./KnowledgeDocumentsPage.tsx');
 const {
   uploadConfirmT,
@@ -562,6 +563,15 @@ test('graph tags use a Vue-like creatable multi-value field instead of native mu
   assert.match(markup, /role="listbox"/);
   assert.match(markup, /Author/);
   assert.match(markup, /Alias/);
+});
+
+test('graph enabled control uses an accessible switch surface', () => {
+  const markup = renderToStaticMarkup(React.createElement(GraphSwitch, {
+    id: 'graph-enabled-test', checked: true, onChange: noop, labelId: 'graph-enabled-label',
+  }));
+  assert.match(markup, /role="switch"/);
+  assert.match(markup, /aria-checked="true"/);
+  assert.doesNotMatch(markup, /type="checkbox"/);
 });
 
 // --- Upload progress mask (Vue upload-mask.vue parity + percent) -------------------

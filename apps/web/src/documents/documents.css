@@ -254,6 +254,46 @@
   color: var(--wk-muted, #667085);
 }
 
+.wk-graph-switch {
+  position: relative;
+  display: inline-flex;
+  width: 40px;
+  height: 24px;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--wk-bg-muted, #d0d5dd);
+  cursor: pointer;
+  transition: background-color 0.2s cubic-bezier(0.38, 0, 0.24, 1);
+}
+
+.wk-graph-switch:focus-visible {
+  outline: 2px solid var(--wk-accent, #4a7dff);
+  outline-offset: 2px;
+}
+
+.wk-graph-switch.is-checked {
+  background: var(--wk-accent, #07c05f);
+}
+
+.wk-graph-switch-handle {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(16 24 40 / 20%);
+  transition: transform 0.2s cubic-bezier(0.38, 0, 0.24, 1);
+}
+
+.wk-graph-switch.is-checked .wk-graph-switch-handle {
+  transform: translateX(16px);
+}
+
 /* Vue .node-list / .node-item: one card per extracted entity. */
 .wk-graph-node-list {
   display: flex;

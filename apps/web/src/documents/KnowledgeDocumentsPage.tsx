@@ -1097,6 +1097,27 @@ export function GraphTagsField({ tags, onChange, placeholder, ariaLabel }: {
   );
 }
 
+export function GraphSwitch({ id, checked, onChange, labelId }: {
+  id: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  labelId: string;
+}) {
+  return (
+    <button
+      id={id}
+      type="button"
+      className={`wk-graph-switch${checked ? " is-checked" : ""}`}
+      role="switch"
+      aria-checked={checked}
+      aria-labelledby={labelId}
+      onClick={() => onChange(!checked)}
+    >
+      <span className="wk-graph-switch-handle" aria-hidden="true" />
+    </button>
+  );
+}
+
 /**
  * Vue GraphSettings.vue ported for the upload-confirm dialog: enable switch
  * (turning it off clears the sample data but keeps custom instructions),
@@ -1208,15 +1229,15 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
       <div className="settings-group">
         <div className="wk-graph-setting-row">
           <div className="setting-info">
-            <label htmlFor="wk-graph-enabled">{t("graphSettings.enableLabel")}</label>
+            <label id="wk-graph-enabled-label">{t("graphSettings.enableLabel")}</label>
             <p className="wk-muted">{t("graphSettings.enableDescription")}</p>
           </div>
           <div className="setting-control">
-            <input
+            <GraphSwitch
               id="wk-graph-enabled"
-              type="checkbox"
               checked={graphExtract.enabled}
-              onChange={(event) => handleEnabledChange(event.target.checked)}
+              onChange={handleEnabledChange}
+              labelId="wk-graph-enabled-label"
             />
           </div>
         </div>

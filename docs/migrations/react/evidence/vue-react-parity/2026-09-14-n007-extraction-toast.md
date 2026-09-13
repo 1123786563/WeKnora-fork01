@@ -14,9 +14,11 @@ The graph custom-instructions and sample-text fields also now use measured autos
 
 The relation-type control now uses an accessible project field with multi-value chips, per-chip removal, clear-all, Enter/comma creation, and Backspace removal. This replaces the previous native multi-select and preserves the Vue `multiple + creatable + filterable + clearable` interaction shape.
 
+The graph enable control now uses a project switch with Vue/TDesign-style checked track, sliding handle, focus-visible outline, and `role="switch"`/`aria-checked` semantics instead of the browser-default checkbox.
+
 ## Verification
 
-- Focused upload-confirm and pipeline suites: 24/24 passed for the current graph/upload-confirm suite; prior upload-confirm and pipeline suites: 50/50 passed.
+- Focused upload-confirm and pipeline suites: 25/25 passed for the current graph/upload-confirm suite; prior upload-confirm and pipeline suites: 50/50 passed.
 - Full Web suite: `pnpm run test:web` — 681/681 passed.
 - Web typecheck: `pnpm run typecheck:web` — passed.
 - `git diff --check` — passed.

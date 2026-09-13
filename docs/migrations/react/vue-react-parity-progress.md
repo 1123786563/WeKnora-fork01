@@ -1732,3 +1732,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - React 移除图谱关系类型的原生多选 `<select>`，新增项目级多值字段：标签 chip、单项移除、清空、Enter/逗号创建、Backspace 删除及可访问 listbox/combobox 语义，对齐 Vue `t-select multiple creatable filterable clearable`。
 - 定向 upload-confirm 测试 24/24、Web TypeScript、`git diff --check` 通过；真实图谱 endpoint、浏览器 computed-style/截图、Vue 同条件截图、Wails 与移动端证据仍待补齐，N007 继续保持 implementing。
+
+## 2026-09-14 Round N+49 — N007 图谱启用开关
+
+- React 图谱启用控件从原生 checkbox 替换为项目封装 switch，补齐 Vue/TDesign 的 checked track、滑块过渡、focus-visible 状态与 `role=switch`/`aria-checked` 键盘语义；启用/关闭时原有清理数据行为不变。
+- 定向 upload-confirm 测试 25/25、Web TypeScript、`git diff --check` 通过；证据 `evidence/vue-react-parity/2026-09-14-n007-extraction-toast.md` 已更新。真实图谱 endpoint、浏览器 computed-style/截图、Vue 同条件截图、Wails 与移动端仍待补齐，N007 继续保持 implementing。
