@@ -1446,3 +1446,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 发现 wails CLI 已存在于系统（/Users/wuyongjun/go/bin/wails v2.12.0，仅未入 PATH）——此前"缺失"的阻塞条件不成立。
 - 修复 desktop-renderer 构建断裂（0f1c6d45）：apps/desktop/vite.config.ts 缺 '@weknora/domain/settings/theme' 别名（theme.ts 引入该子路径，落到 query-key.ts 兜底别名导致 ENOTDIR）。
 - desktop-renderer 构建通过（3.75s）；完整 wails build（sqlite_fts5/CGO）后台进行中。
+
+## 2026-09-14 Round N+13 协调条目 — iOS 模拟器构建启动
+
+- 前置核实：CocoaPods 1.17.0 可用、apps/mobile/ios 工程已生成（Podfile/Podfile.lock 就绪）、iPhone 17 Pro 模拟器可用——此前"iOS 原生证据不可行"判断不成立，仅 Android 维持 blocked-env（SDK/emulator 缺失）。
+- iOS 构建已后台启动：xcrun simctl boot iPhone 17 Pro + npx expo run:ios（CocoaPods 安装阶段开始）。
+
