@@ -43,7 +43,7 @@ export function WikiPage({ client, knowledgeBaseId, initialSlug }: { client: WeK
       if (requestedPage) choose(requestedPage);
       setState({ status: 'success' });
     }
-    catch (error) { setState({ status: 'error', message: error instanceof Error ? error.message : 'Unable to load Wiki pages' }); }
+    catch (error) { setState({ status: 'error', message: error instanceof Error ? error.message : t('wikiBrowser.revisionLoadFailed') }); }
   }
   useEffect(() => { void loadPages(); }, [client, knowledgeBaseId, keyword, initialSlug, page]);
   useEffect(() => { setPage(1); }, [keyword]);
@@ -55,7 +55,7 @@ export function WikiPage({ client, knowledgeBaseId, initialSlug }: { client: WeK
     event.preventDefault();
     if (!selected) {
       try { const page = await client.wiki.create(knowledgeBaseId, { title, slug, summary, content, version: 1 }); choose(page); setSaveState({ status: 'saved', page }); await loadPages(); }
-      catch (error) { setSaveState({ status: 'error', message: error instanceof Error ? error.message : 'Unable to create Wiki page' }); }
+      catch (error) { setSaveState({ status: 'error', message: error instanceof Error ? error.message : t('wikiBrowser.newPageFailed') }); }
       return;
     }
     const result = await saveWikiPage(client.wiki, knowledgeBaseId, selected.slug, { title, content, summary, version });
@@ -66,27 +66,27 @@ export function WikiPage({ client, knowledgeBaseId, initialSlug }: { client: WeK
   async function reloadSelected() {
     if (!selected) return;
     try { choose(await client.wiki.get(knowledgeBaseId, selected.slug)); }
-    catch (error) { setSaveState({ status: 'error', message: error instanceof Error ? error.message : 'Unable to reload Wiki page' }); }
+    catch (error) { setSaveState({ status: 'error', message: error instanceof Error ? error.message : t('wikiBrowser.editSaveFailed') }); }
   }
 
   async function openHistory() {
     if (!selected) return;
     setHistoryOpen(true); setHistoryLoading(true); setHistoryError(null); setRevision(null);
     try { setRevisions((await client.wiki.revisions(knowledgeBaseId, selected.slug, { limit: 50, offset: 0 })).revisions); }
-    catch (error) { setHistoryError(error instanceof Error ? error.message : 'Unable to load Wiki history'); }
+    catch (error) { setHistoryError(error instanceof Error ? error.message : t('wikiBrowser.revisionLoadFailed')); }
     finally { setHistoryLoading(false); }
   }
   async function chooseRevision(item: WikiPageRevision) {
     setRevision(item); setHistoryLoading(true); setHistoryError(null);
     try { setRevision(await client.wiki.getRevision(knowledgeBaseId, item.slug, item.version)); }
-    catch (error) { setHistoryError(error instanceof Error ? error.message : 'Unable to load Wiki revision'); }
+    catch (error) { setHistoryError(error instanceof Error ? error.message : t('wikiBrowser.revisionLoadFailed')); }
     finally { setHistoryLoading(false); }
   }
   async function revertRevision() {
     if (!selected || !revision || !window.confirm(`Revert ${selected.title} to version ${revision.version}?`)) return;
     setReverting(true); setHistoryError(null);
     try { const page = await client.wiki.revert(knowledgeBaseId, selected.slug, revision.version); choose(page); setHistoryOpen(false); setSaveState({ status: 'saved', page }); await loadPages(); }
-    catch (error) { setHistoryError(error instanceof Error ? error.message : 'Unable to revert Wiki revision'); }
+    catch (error) { setHistoryError(error instanceof Error ? error.message : t('wikiBrowser.revisionLoadFailed')); }
     finally { setReverting(false); }
   }
   const pager = pagerState(pageTotal, page, WIKI_PAGE_SIZE);
