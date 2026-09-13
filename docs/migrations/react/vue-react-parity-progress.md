@@ -902,6 +902,14 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   diff check pass; independent review passes. N031 remains `implementing` for
   the remaining data-source lifecycle, detail/graph parity and native evidence.
 
+- **N031 mobile resource-tree selection slice:** resource rows now render the
+  existing three-state selection semantics from the shared helper: checked
+  (`✓`), indeterminate (`−`), and unchecked. Partial selections are highlighted
+  without changing the minimal-cover payload or resource API. The helper suite
+  passes 7/7 and the DataSources DOM harness passes 16/16; mobile typecheck and
+  diff check pass, and independent review passes. N031 remains `implementing`
+  for lifecycle, localization, remaining resource behavior and native evidence.
+
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
 - **Rows:** any rows proposed for `accepted`; never all rows by default.
 - **Files owned:** `docs/migrations/react/vue-react-parity-matrix.md`, `docs/migrations/react/vue-react-parity-progress.md`, `docs/migrations/react/evidence/vue-react-parity/README.md`, `docs/migrations/react/evidence/vue-react-parity/screenshot-matrix.md`, and the row-specific `docs/migrations/react/evidence/vue-react-parity/<date>-<row-group>.md` evidence file only.

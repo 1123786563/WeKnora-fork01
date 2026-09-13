@@ -48,6 +48,10 @@ export function validateDataSourceCredentials(type: string, values: Record<strin
 
 export type ResourceCheckState = 'checked' | 'indeterminate' | 'unchecked';
 
+export function resourceSelectionMarker(state: ResourceCheckState): string {
+  return state === 'checked' ? '✓ ' : state === 'indeterminate' ? '− ' : '';
+}
+
 function descendants(resources: DataSourceResource[], id: string): string[] {
   const children = resources.filter((resource) => resource.parent_id === id);
   return children.flatMap((child) => [child.external_id, ...descendants(resources, child.external_id)]);
