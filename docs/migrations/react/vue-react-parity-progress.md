@@ -1651,3 +1651,10 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - React `system-audit-log` 增加 Vue 同语义的刷新和 `after_id` 游标加载更多：加载期间禁用重复请求，成功后追加记录并依据 `nextCursor` 控制入口，失败显示错误和重试；详情抽屉与键盘行激活保持不变。
 - 验证：SettingsPage 定向测试 14/14；完整 `pnpm test:web` 811/811；Web TypeScript 检查通过；`git diff --check` 通过。
 - 证据层：本轮为 Vue 源码对照、React DOM/单元和全 Web 回归；真实 system-admin 游标后端、同条件截图/computed-style、Wails 与移动端证据仍待补齐，N017 继续保持 review。
+
+## 2026-09-14 Round N+36 — N017 审计日志语义表格与详情抽屉
+
+- React 审计表按 Vue 结构拆分日期/时间，显示操作者角色、目标键与变更摘要，并为动作/结果保留语义标签；详情从页面流改为 body Portal 的 640px 右侧抽屉，分为摘要、请求和 JSON 详情区。
+- 详情抽屉支持 Vue 同语义的 Escape 关闭；新增日期、结果色调、目标摘要纯函数回归，刷新/游标加载和键盘行激活保持不变。
+- 验证：SettingsPage 定向测试 15/15；Web TypeScript 检查通过；完整 Web 回归与 diff-check 待本轮结束前执行。
+- 证据层：本轮为 Vue `SystemAuditLog.vue` 源码对照和 React DOM/单元验证；真实 system-admin 后端、同条件截图/computed-style、Wails 与移动端证据仍待补齐，N017 继续保持 review。

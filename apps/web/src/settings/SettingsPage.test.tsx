@@ -23,6 +23,7 @@ Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.
 
 const { createRoot } = await import('react-dom/client');
 const { SettingsPage } = await import('./SettingsPage.tsx');
+const { auditDateParts, auditOutcomeTone, auditTargetSummary } = await import('./SystemAuditLogPanel.tsx');
 
 let mountedRoot: Root | undefined;
 afterEach(async () => {
@@ -242,8 +243,21 @@ test('system audit section renders Vue rows and opens a keyboard-accessible deta
   assert.ok(row, 'the audit row renders');
   await act(async () => row?.focus());
   await act(async () => row?.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
-  assert.ok(container.querySelector('[role="dialog"]'), 'Enter opens the audit detail drawer');
+  const detail = document.querySelector('.wk-audit-detail');
+  assert.ok(detail, 'Enter opens the audit detail drawer');
+  assert.equal(container.contains(detail), false, 'the detail drawer is portalled like Vue SettingDrawer');
   assert.ok(container.textContent?.includes('system.setting_changed'), 'the audit detail renders the full record');
+  await act(async () => document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+  assert.equal(document.querySelector('.wk-audit-detail'), null, 'Escape closes the audit detail drawer');
+});
+
+test('system audit helpers mirror Vue date, outcome and target summaries', () => {
+  assert.deepEqual(auditDateParts('2026-09-14T08:09:10.000Z', 'zh-CN'), { date: '2026/09/14', time: '16:09:10' });
+  assert.equal(auditOutcomeTone('denied'), 'danger');
+  assert.equal(auditOutcomeTone('success'), 'success');
+  assert.equal(auditOutcomeTone('accepted'), 'default');
+  assert.deepEqual(auditTargetSummary({ action: 'system.setting_changed', target_type: 'setting', details: { key: 'auth.registration_mode', before: 'open', after: 'invite' } }), { key: 'auth.registration_mode', diff: 'open → invite' });
+  assert.deepEqual(auditTargetSummary({ action: 'system.queue_task_retried', target_id: 'task-1', details: { queue: 'default', task_id: 'task-1' } }), { key: 'default:task-1', diff: '' });
 });
 
 // B4d: section=subsection deep link reaches the model panel type tabs.
