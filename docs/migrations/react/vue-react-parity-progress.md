@@ -1,5 +1,12 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-14 Round N+7 — N011 Wiki sidebar slice
+
+- Vue authoritative review identified the Wiki left browser anatomy as a separate inset-search/sidebar surface, with 98px list rows, two-line summaries, compact metadata, selected/hover background and centered empty copy.
+- React `WikiPage` now uses scoped `wk-wiki-sidebar`/`wk-wiki-page-item` structure and Vue-derived tokens while retaining existing editor/save-conflict/history/diff behavior.
+- Focused Wiki/editor tests: 4/4. Current full Web run: 657/664; the seven failures are from concurrent document/tag work (`tagId` runtime error and tag-copy assertions), not N011.
+- Status remains `review`; no new browser computed-style, real-backend, Wails, iOS or Android evidence claimed. Index/tree/list modes, folder actions, graph and reader states remain open.
+
 ## 2026-09-12 Round 1 基线
 
 - 工作区：`.worktrees/react-multiclient`，分支 `codex/react-multiclient`，HEAD `b2d0cf6`。
@@ -1176,4 +1183,3 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 深链接/刷新/前进后退 sweep（402fe1c6）：8 路由×双端×{直达、原地刷新、后退、前进} 全部稳定，无漂移无意外重定向；证据 deeplink-reload-20260914/。登记 a11y 层级小项：React 平台路由 DOM 序首标题为壳层会话区 h2（视觉无碍）。
 - R009 错误态契约 live 验证：强制 500 下 raw JSON 零外露、.kb-list-empty 空态呈现（截图入其证据目录）——与 Vue "列表失败回退空态" 语义一致。
 - 五切片仍在途（R009 收尾 + 四个第五批切片）；kb-list-anatomy.test.tsx 在全量并行下文件级超时问题待其收口时处理。
-
