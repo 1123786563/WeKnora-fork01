@@ -83,6 +83,12 @@ function button(container: HTMLElement, label: string) {
 }
 
 async function select(container: HTMLElement, label: string, value: string) {
+  if (label === 'Permission') {
+    const option = [...container.querySelectorAll<HTMLButtonElement>('[role="radio"]')].find((item) => item.textContent === (value === 'editor' ? 'Editable' : 'Read-only'));
+    assert.ok(option, `${label} option should exist`);
+    await act(async () => option.click());
+    return;
+  }
   const element = [...container.querySelectorAll<HTMLSelectElement>('select')].find((item) => item.parentElement?.textContent?.includes(label));
   assert.ok(element, `${label} select should exist`);
   await act(async () => {
@@ -133,6 +139,14 @@ test('uses the existing shared-space translations for the share form', async () 
   assert.match(container.textContent ?? '', /共享到共享空间/);
   assert.match(container.textContent ?? '', /选择共享空间/);
   assert.match(container.textContent ?? '', /权限/);
+});
+
+test('permission uses the Vue radio-button group instead of a native select', async () => {
+  const container = await mount(clientFor(async () => ({ items: [], total: 0 })));
+  const group = container.querySelector('[role="radiogroup"]');
+  assert.ok(group);
+  assert.equal(group.querySelectorAll('[role="radio"]').length, 2);
+  assert.equal(group.querySelector('[aria-checked="true"]')?.textContent, 'Read-only');
 });
 
 test('filters viewer organizations and sends the selected permission in the create payload', async () => {

@@ -1763,3 +1763,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 对照 Vue `ModelEditorDialog.vue` 的 `provider-select-popup` 与 `thinking-control-select-popup`，React 模型编辑器移除这两个字段的原生 `<select>`，新增项目级双行选项 combobox：主标签/说明、选中态、禁用态、ArrowUp/ArrowDown、Enter、Escape 和外部点击关闭均保留，Provider 与 Thinking 的原有回调和值顺序不变。
 - `ModelSettingsPanel` 定向测试 23/23、Web 全量 824/824、`typecheck:web` 与 `git diff --check` 通过；证据 `evidence/vue-react-parity/2026-09-14-r027-model-drawer-browser.md` 已更新。
 - R027 继续保持 `implementing`：真实连接/保存流程、设置子项全状态浏览器对照、computed-style/同条件截图、Wails/native 证据仍未闭环；本轮不将测试或可访问性树单独视为最终视觉验收。
+
+## 2026-09-14 Round N+55 — N005 共享权限单选组
+
+- 对照 Vue `ShareKnowledgeBaseDialog.vue` 的 `t-radio-group`，React 共享弹窗权限从原生 `<select>` 改为项目级 radio-button group；选中态、权限值和共享 payload 保持不变，组织选择器与隐藏 required 组织字段不变。
+- N005 定向测试 13/13、`typecheck:web` 与 `git diff --check` 通过；证据 `evidence/vue-react-parity/2026-09-14-n005-share-dialog.md` 已更新。
+- N005 继续保持 `implementing`：组织选择器/权限组的认证浏览器与 Vue 同条件截图、真实后端共享链路、Wails/iOS/Android 证据仍未闭环。
