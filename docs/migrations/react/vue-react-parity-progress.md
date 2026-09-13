@@ -1059,6 +1059,15 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - **Review gate:** a row can move to `accepted` only when all applicable platform evidence and unresolved backend decisions are closed or explicitly out-of-scope by user decision.
 - **Commit boundary:** one acceptance-docs commit per row group.
 
+## 2026-09-13 Round N+3（终）— 双切片集成收尾 + 全门禁绿
+
+- shell-sessions-header 集成（25ad0fed，切片实施 + 协调者严格 parity 裁决调整）：保留 可见的 我的对话 标题（真 parity）；否决其 ⌘1 徽章 + 全局键绑定（Vue 中该指纹属命令面板作用域——多余行为按目标剔除），测试 (b)/(d) 改为钉死"无徽章/无全局导航"；顺带修复侧栏选中态颜色分歧（React 蓝 → Vue .menu_item_active #f3f3f3+#07c05f）。platform 101/101。
+- settings-visual-polish 集成（7a58f68b）：标题节奏（中和旧 margin 泄漏 + 三处值对齐）、分段控件选中态实心品牌绿、select 外观 tdesign 化（仅 .general-settings 作用域）；live 闭环抽屉内像素差 7.07%（残差=字体栅格化）；新增交互语义测试 2/2。
+- 全门禁（集成树）：shared 392/392、web 586/586、mobile 118/118、desktop 2/2、embed 7/7、typecheck shared/web/mobile 0、build:web ✓ 3.77s。
+- 遗留登记：logo 行搜索入口（⌘K tip）、面板作用域 ⌘1-9（N003 既定 deferred）、select 外观向其余面板铺开、抽屉 rail hover 色阶、creatChat 居中簇 ~40px 残差、R016 模型 chip、openSession 行导航 prop。
+- 本会话累计：协调者直接修复 4 项 + 集成 6 个子代理切片；账本/矩阵每步同步。
+
+
 ## 2026-09-13 Round N+3（续2）— creatChat 居中修复 + contextualGuide 回填 + R031 集成 + 证据守护
 
 - creatChat 空态布局真实分歧修复（42a67935，协调者直接实施）：5 语扫描目检发现 React 把欢迎语钉顶、composer 钉底，Vue 是 .dialogue-wrap 双轴居中簇——像素排序曾对其打 3.96% 低分（稀疏内容下百分比失真），文本指纹+并排目检才暴露。TDD 红（无 --empty 类+渲染滚动容器）→绿 16/16；live 复拍与 Vue 构图一致（簇中心尚差 ~40px，列 polish）。
