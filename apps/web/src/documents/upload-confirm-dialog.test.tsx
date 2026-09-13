@@ -25,6 +25,7 @@ const {
   UploadGraphSettings,
   UploadSectionNav,
   UploadSourceDropdown,
+  stageNoticeClass,
 } = await import('./KnowledgeDocumentsPage.tsx');
 const {
   uploadConfirmT,
@@ -534,6 +535,12 @@ test('graph section copy resolves five locales from the ported Vue table', () =>
   assert.equal(uploadConfirmMessage('zh-CN', 'upload.uploadDocument'), '上传文档');
   assert.equal(uploadConfirmMessage('en-US', 'upload.uploadFolder'), 'Upload Folder');
   assert.equal(uploadConfirmMessage('zh-CN', 'common.confirm'), '确认');
+});
+
+test('graph feedback keeps Vue success, warning, and error message semantics', () => {
+  assert.equal(stageNoticeClass('success'), 'wk-documents-toast success');
+  assert.equal(stageNoticeClass('warning'), 'wk-documents-toast warning');
+  assert.equal(stageNoticeClass('error'), 'wk-documents-toast error');
 });
 
 // --- Upload progress mask (Vue upload-mask.vue parity + percent) -------------------

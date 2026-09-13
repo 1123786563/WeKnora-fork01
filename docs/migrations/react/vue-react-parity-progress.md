@@ -1715,3 +1715,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 同一次操作的两张 Chrome 截图仍只显示设置页、没有显示抽屉，和可访问性树产生运行时合成结果矛盾；因此截图对比不通过且不能据此宣称视觉验收完成。
 - 当前 owner 无 API Key，运行 Session/SSE 被正确禁用；未在无明确授权下创建凭据。证据 `evidence/vue-react-parity/2026-09-14-r013-api-playground-browser-runtime.md`。
 - 证据层：浏览器 DOM/Computed geometry 部分通过；截图合成、真实后端成功/失败/权限矩阵、Vue 同条件截图、Wails 与移动端仍待补齐，R013/N028 继续保持 review。
+
+## 2026-09-14 Round N+46 — N007 图谱提示成功语义
+
+- React 图谱设置的成功/示例加载/示例清除反馈现在使用独立 `success` toast tone；文件新增继续使用 neutral，重复 URL 使用 warning，失败使用 error，对齐 Vue `MessagePlugin.success`/`warning`/`error` 语义。
+- 新增 `stageNoticeClass` 纯函数回归，N007 定向测试 22/22 通过；真实图谱 endpoint 仍因当前部署关闭图谱数据库而保持 `blocked-env`。
+- 证据 `evidence/vue-react-parity/2026-09-14-n007-extraction-toast.md` 已更新；浏览器 computed-style、Vue 同条件截图、真实后端、Wails 与移动端证据仍待补齐，N007 继续保持 implementing。

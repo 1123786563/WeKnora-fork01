@@ -1046,7 +1046,7 @@ export interface UploadGraphSettingsProps {
   /** Extraction endpoint caller; undefined keeps the admin-gated buttons inert. */
   runExtractAction?: (action: UploadGraphExtractAction, body: Record<string, unknown>) => Promise<UploadGraphExtractResult | null>;
   /** Success/error feedback line (Vue MessagePlugin toasts). */
-  onNotify?: (message: string, tone: "neutral" | "warning" | "error") => void;
+  onNotify?: (message: string, tone: "neutral" | "success" | "warning" | "error") => void;
   onChange: (config: UploadNodeExtractState) => void;
   t: UploadDialogT;
 }
@@ -1103,12 +1103,12 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
       nodes: GRAPH_EXTRACT_DEFAULT_EXAMPLE.nodes.map((node) => ({ ...node, attributes: [...node.attributes] })),
       relations: GRAPH_EXTRACT_DEFAULT_EXAMPLE.relations.map((relation) => ({ ...relation })),
     });
-    props.onNotify?.(t("graphSettings.exampleLoaded"), "neutral");
+    props.onNotify?.(t("graphSettings.exampleLoaded"), "success");
   }
 
   function clearExample() {
     emit({ ...graphExtract, text: "", tags: [], nodes: [], relations: [] });
-    props.onNotify?.(t("graphSettings.exampleCleared"), "neutral");
+    props.onNotify?.(t("graphSettings.exampleCleared"), "success");
   }
 
   async function runAction(action: UploadGraphExtractAction, body: Record<string, unknown>, applyResult: (result: UploadGraphExtractResult) => UploadNodeExtractState, successMessage: string, failedMessage: string, setBusy?: (busy: boolean) => void) {
@@ -1118,7 +1118,7 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
       const result = await props.runExtractAction(action, body);
       if (result) {
         emit(applyResult(result));
-        props.onNotify?.(successMessage, "neutral");
+        props.onNotify?.(successMessage, "success");
       } else {
         props.onNotify?.(failedMessage, "error");
       }
@@ -1501,6 +1501,10 @@ export function UploadProgressMask({ percent }: { percent: number }) {
 
 // --- Page ---------------------------------------------------------------------
 
+export function stageNoticeClass(tone: "neutral" | "success" | "warning" | "error") {
+  return `wk-documents-toast ${tone}`;
+}
+
 export function KnowledgeDocumentsPage({
   client,
   knowledgeBaseId,
@@ -1586,9 +1590,9 @@ export function KnowledgeDocumentsPage({
   // Dialog config state (Vue uiState): one object seeded from the KB.
   const [confirmState, setConfirmState] = useState<UploadConfirmUIState>(() => uploadConfirmStateFromKb(null));
   const [chunkingMoreOpen, setChunkingMoreOpen] = useState(false);
-  const [stageNotice, setStageNotice] = useState<{ tone: "neutral" | "warning" | "error"; text: string } | null>(null);
+  const [stageNotice, setStageNotice] = useState<{ tone: "neutral" | "success" | "warning" | "error"; text: string } | null>(null);
   const stageNoticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const showStageNotice = (text: string, tone: "neutral" | "warning" | "error") => {
+  const showStageNotice = (text: string, tone: "neutral" | "success" | "warning" | "error") => {
     setStageNotice({ tone, text });
     if (stageNoticeTimer.current) clearTimeout(stageNoticeTimer.current);
     stageNoticeTimer.current = setTimeout(() => setStageNotice(null), 3000);
@@ -2536,7 +2540,7 @@ export function KnowledgeDocumentsPage({
 
   return (
     <main className="wk-page wk-documents-page">
-      {stageNotice ? <div className={`wk-documents-toast ${stageNotice.tone}`} role="alert" aria-live="polite">{stageNotice.text}</div> : null}
+      {stageNotice ? <div className={stageNoticeClass(stageNotice.tone)} role="alert" aria-live="polite">{stageNotice.text}</div> : null}
       <header className="wk-header wk-document-header">
         <div className="document-header-title">
           <DocumentsBreadcrumb

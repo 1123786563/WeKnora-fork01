@@ -8,11 +8,11 @@ Date: 2026-09-14
 
 ## React implementation
 
-`apps/web/src/documents/KnowledgeDocumentsPage.tsx` now routes graph extraction feedback, file-add feedback, and URL duplicate/add feedback through a page-level transient toast. The toast is top-centered, announced with `role="alert"`/`aria-live="polite"`, auto-dismisses after 3 seconds, and cleans up its timer on unmount. Upload pipeline failures remain inline because Vue keeps those per-file/per-confirmation errors visible for correction.
+`apps/web/src/documents/KnowledgeDocumentsPage.tsx` now routes graph extraction feedback, file-add feedback, and URL duplicate/add feedback through a page-level transient toast. The toast is top-centered, announced with `role="alert"`/`aria-live="polite"`, auto-dismisses after 3 seconds, and cleans up its timer on unmount. Graph success/example actions now use a distinct success tone, while file-added remains neutral and duplicate remains warning; this follows Vue `MessagePlugin.success`/`warning`/`error` semantics. Upload pipeline failures remain inline because Vue keeps those per-file/per-confirmation errors visible for correction.
 
 ## Verification
 
-- Focused upload-confirm and pipeline suites: 50/50 passed.
+- Focused upload-confirm and pipeline suites: 22/22 passed for the current graph/upload-confirm suite; prior upload-confirm and pipeline suites: 50/50 passed.
 - Full Web suite: `pnpm run test:web` — 681/681 passed.
 - Web typecheck: `pnpm run typecheck:web` — passed.
 - `git diff --check` — passed.
