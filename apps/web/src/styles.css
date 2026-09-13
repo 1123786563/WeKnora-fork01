@@ -38,6 +38,21 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-preview-placeholder { border: 1px dashed #b8c5d6; border-radius: 8px; color: #506078; padding: 3rem 1rem; text-align: center; }
 .wk-wiki-page { max-width: 1180px; }
 .wk-wiki-layout { display: grid; grid-template-columns: minmax(220px, 320px) 1fr; gap: 1.25rem; }
+.wk-wiki-sidebar { min-width: 0; border-right: 1px solid #e7e7e7; display: flex; flex-direction: column; }
+.wk-wiki-sidebar-header { padding: 0 10px 8px 0; }
+.wk-wiki-search { align-items: center; background: #f3f3f3; border: 1px solid #e7e7e7; border-radius: 6px; color: rgba(0,0,0,.4); display: flex; gap: .45rem; padding: .45rem .6rem; }
+.wk-wiki-search input { background: transparent; border: 0; color: #202020; font: inherit; min-width: 0; outline: 0; width: 100%; }
+.wk-wiki-page-list { display: flex; flex-direction: column; gap: 2px; max-height: 620px; overflow-y: auto; padding: 0 10px 12px 0; }
+.wk-wiki-page-item { background: transparent; border: 0; border-radius: 6px; cursor: pointer; display: grid; gap: 2px; min-height: 98px; padding: 8px 10px; text-align: left; transition: background .15s ease; }
+.wk-wiki-page-item:hover, .wk-wiki-page-item.is-active { background: #f3f3f3; }
+.wk-wiki-page-item.is-active .wk-wiki-page-item-title { color: #07c05f; }
+.wk-wiki-page-item-title { color: #202020; font-size: 14px; line-height: 20px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wk-wiki-page-item-summary { color: rgba(0,0,0,.6); display: -webkit-box; font-size: 12px; line-height: 1.5; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.wk-wiki-page-item-meta { color: rgba(0,0,0,.4); font-size: 11px; }
+.wk-wiki-empty { align-items: center; color: rgba(0,0,0,.6); display: flex; flex-direction: column; gap: .5rem; padding: 60px 20px; text-align: center; }
+.wk-wiki-empty strong { color: #202020; }
+.wk-wiki-empty-icon { color: #07c05f; font-size: 36px; line-height: 1; }
+.wk-sr-only { height: 1px; margin: -1px; overflow: hidden; position: absolute; width: 1px; clip: rect(0 0 0 0); }
 .wk-wiki-editor { display: grid; gap: .7rem; }
 .wk-wiki-editor label { display: grid; gap: .25rem; }
 .wk-wiki-editor input, .wk-wiki-editor textarea { border: 1px solid #b8c5d6; border-radius: 6px; box-sizing: border-box; font: inherit; padding: .55rem; width: 100%; }
