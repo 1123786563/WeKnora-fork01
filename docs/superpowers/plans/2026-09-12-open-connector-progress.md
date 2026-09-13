@@ -24,7 +24,7 @@
 | T14 Agent 共用 Action 生命周期 | passed | commit c0ba615b + 0c787328（集成分支 fast-forward）；真实会话装配路径证明（CreateAgentEngine→Execute 模型边界观测 + 三重不可见门控）；绑定表 000124/000044 唯一性/租户隔离/down-reup 双证（实现者+规格审查者各自 PG 容器）；E2E 单 POST 纪律五阶段零重复外写；F-5 零扩大；R16 sync_test 外置化（仅 package 行）；R17 run_waiting 映射四断言；spec PASS（OBS-1 引擎事件路径注记 → T15 验收核查）+ 质量 PASS（QF-1 注释失实 → T16 文档批）；OBS-1：生产流程若走事件路径需另立裁决 |
 | T15 Vue 目录、连接和审批界面 | passed | commit 9b0c11c4 + ee389bd9（集成分支 fast-forward）；四视图 + actionControls 计划逐字（node:test 2/2）；npm test 821/0、type-check/build/check-i18n 11/11（五语言键集独立 diff 全等）；浏览器 26/26 + R18 复验 5/5（auth_version=3 真实值一次撤销、冻结 risk 显示）；T14-OBS-1 路径核查通过（结构化直返）；R18 两 DTO 字段窄扩展（真实落点文件，实质合规）；spec PASS + 质量 PASS（QF-1..QF-3 MINOR UI 打磨项、QF-4..QF-7 INFO，均不阻塞） |
 | T16 私网部署、观测、备份与升级 | passed | commit f2c81e37 + 370a4ee8 + 146293f2（集成分支 fast-forward）；R9 本地重建 digest sha256:4de6df4d 钉定（buildx 佐证致 T01 digest 字节级不可复现，均文档化）；ADMIN_TOKEN 三层强制；EncryptedFileSecretSink（AES-256-GCM、目录权限启动校验、legacy 明文 fail-closed、无密钥拒启）；私网零发布 + 回调单开 + network_mode 旁路封堵（加固轮）；观测/备份/恢复/升级/回滚 playbook；断网/SIGTERM/外网拒绝演练全记录；26+15 python 测试与全量回归绿；spec PASS（F-01 闭 + 加固复审 PASS）+ 质量 PASS（QF-01/02/03 闭合并独立复验；1 非阻塞畸形边角 → T17/T18） |
-| T17 多空间与故障注入集成验收 | pending | OC_TEST_DATABASE_URL 专用 PostgreSQL |
+| T17 多空间与故障注入集成验收 | passed | commit 7647ab63 + de4a5108（R20 修复）+ 85b7c035（终稿润色）；14 场景矩阵全绿（-race 零竞争、-count=2 零 flake）；环境门禁 Fatal-not-Skip 三入口证实；38 条证据经双审查者交叉复算；T17-F1 关键生产缺陷（GatedOCClaims 掩蔽 settle face → record 永不终态）发现并经 R20 修复闭合（双面 RED 独立复现 + 编译期断言）；CARRY：T14-QI-1 关闭（PG 20 并发恰一对）、T16 validator 边角关闭（28/28）；stale-attempt 卫生观察 → T18；T17-F2 列表可见性 → 规格积压 |
 | T18 真实 Provider、商业链路和灰度门禁 | pending | 关闭 T01 oauth blocked-env 子项；需真实账号/目标/内容授权 |
 
 ## T01 证据
