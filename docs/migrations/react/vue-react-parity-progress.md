@@ -1,5 +1,11 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-14 Round N+13 — N010 FAQ import progress slice
+
+- FAQ 导入进度按 Vue `FAQEntryManager.vue` 语义完成：后端 `processing/completed` 映射为 UI `running/success`，1.5 秒轮询，显示 processed/total，成功态 3 秒后收起；修复 `FAQImportProgress` 未从 api-client 公共入口导出及 effect 初始化顺序错误。
+- FAQ 专项 20/20、Web 全量 672/672、`typecheck:web` 通过；证据 `evidence/vue-react-parity/2026-09-14-n010-faq-import-progress.md`。
+- N010 仍为 `review`：真实后端文件上传/任务队列、浏览器 computed-style、移动端和 Wails/native 证据尚未闭环。
+
 ## 2026-09-14 Round N+12 — R027 model editor drawer slice
 
 - Vue `ModelEditorDialog.vue` 使用 SettingDrawer；React 原先将 `.wk-model-editor` 作为主内容流内联卡片。本轮以失败测试锁定该差异，改为固定右侧 560px 抽屉 + 遮罩，保留表单、ESC/取消、点击遮罩关闭和移动端全宽行为。
@@ -1222,3 +1228,10 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 协调者直接修复累积：登录 toast parity、members apiDomain 泄漏、分页器宽度/按钮 TDesign 化（部分与并发协调者协同完成）、fixture 时间脆弱修复。
 - 最终全门禁：shared 419/419、web 670/670、mobile 118/118、embed 7/7、desktop 2/2、typecheck×3 0、build:web ✓ 3.42s。
 - 遗留队列（下轮）：FAQ A2 轮询接线（api-client 已就绪）、A3 faqManager.import.* 目录回填、A4 Excel 解析依赖决策、B1-B7 精确交接、R013 embed 抽屉 + API playground SSE、R009 图标轨拖拽展开/org 轨条目、acceptance 证据批扫（Wails/iOS/Android）、mobile devDeps lockfile 收口、六语待用户答复。
+
+## 2026-09-14 Round N+7 协调条目 — A2 双轨收敛 + 门禁全绿快照
+
+- FAQ A2 轮询接线双轨收敛：本方实现（poll effect + collapse + strip pass-through，jsdom faq-import-poll 钉死 processing→completed→collapse 全链）与并发协调者的 4651ea79（同名契约）汇合，最终以 4651ea79 入库（含 api-client index 的 FAQImportProgress 导出）；faq 套件 20/20。
+- 门禁快照（603de8c6→ 后）：shared 419/419、web 672/672、mobile 118/118、build ✓ 3.42s、typecheck 0。
+- 剩余队列不变：A3 faqManager.import.* 目录回填、A4 Excel 解析依赖决策、FAQ B1-B7、R013 embed 抽屉 + API playground SSE、R009 图标轨拖拽展开/org 轨、acceptance 证据批扫（Wails/iOS/Android）、mobile devDeps lockfile、六语待用户答复。
+
