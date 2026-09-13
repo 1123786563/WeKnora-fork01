@@ -441,10 +441,10 @@ export function WikiPage({
                 </div>
                 <div className="wk-list-actions">
                   <Button type="button" onClick={() => setEditing(true)}>
-                    Edit
+                    {t("wikiBrowser.editBtn")}
                   </Button>
                   <Button type="button" onClick={() => void openHistory()}>
-                    History
+                    {t("wikiBrowser.historyBtn")}
                   </Button>
                 </div>
               </div>
@@ -457,7 +457,7 @@ export function WikiPage({
             onSubmit={save}
           >
             <label>
-              Title{" "}
+              {t("wikiBrowser.newPageTitleLabel")}{" "}
               <input
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
@@ -465,7 +465,7 @@ export function WikiPage({
               />
             </label>
             <label>
-              Slug{" "}
+              {t("wikiBrowser.newPageSlugLabel")}{" "}
               <input
                 value={slug}
                 onChange={(event) => setSlug(event.target.value)}
@@ -474,14 +474,14 @@ export function WikiPage({
               />
             </label>
             <label>
-              Summary{" "}
+              {t("wikiBrowser.editSummaryPlaceholder")}{" "}
               <input
                 value={summary}
                 onChange={(event) => setSummary(event.target.value)}
               />
             </label>
             <label>
-              Content{" "}
+              {t("wikiBrowser.newPageContentLabel")}{" "}
               <textarea
                 value={content}
                 onChange={(event) => setContent(event.target.value)}
@@ -490,17 +490,17 @@ export function WikiPage({
               />
             </label>
             <div className="wk-list-actions">
-              <span>{selected ? `Version ${version}` : "New page"}</span>
+              <span>{selected ? t("wikiBrowser.version", { ver: version }) : t("wikiBrowser.page.new")}</span>
               <Button type="submit">
-                {selected ? "Save version" : "Create page"}
+                {selected ? t("wikiBrowser.editSave") : t("wikiBrowser.page.new")}
               </Button>
               {selected ? (
                 <>
                   <Button type="button" onClick={() => void reloadSelected()}>
-                    Reload latest
+                    {t("wikiBrowser.editConflictReload")}
                   </Button>
                   <Button type="button" onClick={() => void openHistory()}>
-                    History
+                    {t("wikiBrowser.historyBtn")}
                   </Button>
                 </>
               ) : null}
@@ -512,9 +512,7 @@ export function WikiPage({
               <Status tone="error">{saveState.message}</Status>
             ) : null}
             {saveState?.status === "saved" ? (
-              <Status tone="success">
-                Saved as version {saveState.page.version}.
-              </Status>
+                <Status tone="success">{t("wikiBrowser.editSaveSuccess")}</Status>
             ) : null}
           </form>
         </div>
@@ -550,22 +548,19 @@ export function WikiPage({
         <Card className="wk-wiki-history">
           <div className="wk-header">
             <div>
-              <h2>Revision history</h2>
-              <p className="wk-muted">
-                Current page is version {selected.version}; historical snapshots
-                are immutable.
-              </p>
+              <h2>{t("wikiBrowser.historyTitle", { title: selected.title })}</h2>
+              <p className="wk-muted">{t("wikiBrowser.revisionCurrentHint")}</p>
             </div>
             <Button type="button" onClick={() => setHistoryOpen(false)}>
-              Close
+              {t("common.close")}
             </Button>
           </div>
           {historyError ? <Status tone="error">{historyError}</Status> : null}
           {historyLoading && !revision ? (
-            <Status>Loading revisions…</Status>
+            <Status>{t("wikiBrowser.loading")}</Status>
           ) : null}
           {!historyLoading && revisions.length === 0 ? (
-            <Status>No historical revisions.</Status>
+            <Status>{t("wikiBrowser.revisionEmpty")}</Status>
           ) : null}
           <div className="wk-wiki-history-layout">
             <nav aria-label="Wiki revisions">
@@ -577,7 +572,7 @@ export function WikiPage({
                       type="button"
                       onClick={() => void chooseRevision(item)}
                     >
-                      Version {item.version}
+                      {t("wikiBrowser.version", { ver: item.version })}
                     </button>
                     <span>{item.edit_source ?? "user"}</span>
                   </li>
@@ -596,11 +591,11 @@ export function WikiPage({
                       onClick={() => void revertRevision()}
                       loading={reverting}
                     >
-                      Revert to v{revision.version}
+                      {t("wikiBrowser.revertBtn")}
                     </Button>
                   </div>
                   {revisionDiff.length === 0 ? (
-                    <Status>No changes.</Status>
+                    <Status>{t("wikiBrowser.revisionDiffEmpty")}</Status>
                   ) : (
                     <div className="wk-diff">
                       {revisionDiff.map((section) => (
@@ -628,7 +623,7 @@ export function WikiPage({
                   )}
                 </>
               ) : (
-                <Status>Select a revision to inspect its diff.</Status>
+                <Status>{t("wikiBrowser.revisionSelectHint")}</Status>
               )}
             </div>
           </div>
