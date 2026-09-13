@@ -1,0 +1,56 @@
+{
+  "kind": "slides",
+  "task": "D03 演示稿与分页预览",
+  "image": {
+    "name": "weknora-craft-runtime",
+    "tag": "d03-slides",
+    "digest": "sha256:5f4528685cab235bce60d70d488e28a4c566d0411886f27546f8920405e5fc81",
+    "base": "debian:bookworm-slim",
+    "size": "1.28GB (d02-spreadsheet was 1.13GB; the delta is Impress + poppler + the pinned wheels below)",
+    "opencode": "1.18.4 (unchanged R01/R03 pin, sha256-verified at build)",
+    "arch_built": "linux/arm64 (build host); the Dockerfile itself is arch-neutral (TARGETARCH only drives the opencode binary probe)"
+  },
+  "packages": {
+    "python3": "3.11.2-1+b1 (Debian bookworm)",
+    "python3-pip": "23.0.1+dfsg-1 (only used at build time to install the pinned wheels below)",
+    "python3-lxml": "4.9.2-1+b1 (Debian bookworm; already present via the D02 openpyxl set)",
+    "python3-pil": "9.4.0-1.1+deb12u1 (Debian bookworm; Pillow for python-pptx image handling)",
+    "libreoffice-impress-nogui": "4:7.4.7-1+deb12u14 (Debian bookworm; GUI-free Impress for headless PDF render; D02's libreoffice-calc-nogui and fonts-noto-cjk stay in place)",
+    "poppler-utils": "22.12.0-2+deb12u3 (pdftocairo page export, pdftotext per-page text verification, pdfinfo page count)"
+  },
+  "wheels": {
+    "why": "Debian bookworm does not package python3-pptx (or XlsxWriter); the wheels are pinned by exact version AND sha256 in docker/craft/Dockerfile, verified with sha256sum -c at build, installed --no-deps over Debian lxml/Pillow, and probed (import + chart-data import) before the build can succeed.",
+    "python-pptx": "1.0.2 sha256:160838e0b8565a8b1f67947675886e9fea18aa5e795db7ae531606d68e785cba (MIT license)",
+    "XlsxWriter": "3.2.0 sha256:ecfd5405b3e0e228219bcaf24c2ca0915e012ca9464a14048021d21a995d490e (BSD; python-pptx chart-data dependency)",
+    "typing_extensions": "4.12.2 sha256:04e5ca0351e0f3f85c6853954072df659d0d13fac324d0072316b67d7794700d (PSF; python-pptx runtime dependency)"
+  },
+  "rendering": {
+    "command": "soffice --headless --norestore -env:UserInstallation=file://<isolated profile> --convert-to pdf --outdir <out> <in>",
+    "filter": "impress_pdf_Export (LibreOffice 7.4.7.2)",
+    "page_export": "pdftocairo -svg -f N -l N report.pdf pages/page-N.svg — poppler's SVG output is SINGLE-PAGE, so a per-page loop is mandatory (a plain 'pdftocairo -svg deck.pdf prefix' silently writes only page 1)",
+    "text_verification": "pdftotext -f N -l N report.pdf - must contain page N's key strings (CJK extraction verified against fonts-noto-cjk)",
+    "page_count_proof": "pdfinfo Pages: must equal the deck slide count; mismatch = render failed",
+    "wall_time_5_page_deck": "PDF render ~2-3s, 5 page SVG exports ~0.2s each (first run pays profile bootstrap)"
+  },
+  "limits": {
+    "max_pages": 30,
+    "min_font_pt": 12,
+    "conversion_budget": "timeout -k 5 180 soffice ...; a conversion killed by the budget exits >=124 (verified: timeout -k 1 0.2 -> rc 137 via SIGKILL escalation) and MUST be recorded as check render=failed with no output shipped (verified: no report.pdf produced)"
+  },
+  "overflow_semantics": {
+    "rule": "an outline over 30 pages renders only the first 30; the page numbers beyond the cap are recorded in overflow_pages (e.g. a 31-page outline records [31]) with pages=failed and the manifest stays not-ready (SlidesReady returns false while overflow_pages is non-empty) so the main agent must split or trim",
+    "verified": "31-page python-pptx deck rendered; overflow_pages=[31] recorded; ready=false"
+  },
+  "fixtures": {
+    "d03_python_pptx_deck.pptx": "sha256 b470c462bc333f4716cad2d39aab45c801d09f3c4c1ff4a86c15e6ee6e4e1751 — the exact python-pptx 1.0.2 deck (5 slides, native column chart on page 3, speaker-note citations kc_sales/kc_market)",
+    "d03_libreoffice_render.pdf": "sha256 2180e19d3c3cf5bb69c5321a6950f93f40c8704f51a23eac58d2f3551b8caff7 — the exact impress_pdf_Export output (Pages: 5, per-page CJK text verified by pdftotext)",
+    "d03_pdftocairo_page1.svg": "sha256 efd86661e65ebf54926b4ae8438ecef9e798678dfe85f7ed0a305e341734066d — the exact pdftocairo page-1 export (87007 bytes of real glyph geometry)"
+  },
+  "forbidden": [
+    "macros / pptm / VBA (python-pptx writes plain .pptx only)",
+    "shipping a PPTX without the rendered PDF and every page image (SlidesReady requires every PageRef)",
+    "silently trimming an over-cap outline (overflow_pages must be recorded)",
+    "faking the visual check (stays not_run for human acceptance)"
+  ],
+  "verified": "2026-09-13, one-shot container craft-d03-verify-slides (non-root craft user; removed after docker cp); full log excerpt in .superpowers/sdd/2026-09-10-craft-product-implementation/task-D03-report.md"
+}
