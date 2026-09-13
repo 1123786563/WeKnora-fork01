@@ -1354,3 +1354,10 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - agents 页 500 泄漏修复（00312221）：对齐 Vue fetchList 无错误 UI 的行为——移除原始 payload 渲染，保留 console 诊断；AgentsPage 16/16。
 - R012 状态覆盖证据入库（1492333f）：normal/loading/error/empty 双端 8 张 + 发现记录（JSON 泄漏、空态 CTA 颜色分歧——Vue 紫 vs React 绿，登记为视觉切片项）。
 - 在途（2）：FAQ B4 检索测试抽屉、API playground 核实/实现。
+
+## 2026-09-14 Round N+10 协调条目 — playground 切片增量提交模式确认
+
+- 厘清：d6cf7e8b（peer 提交）内容为 FAQ... 不，为 API playground drawer 的增量快照（972 行：drawer/model/SSE/测试/证据/progress），来源是本方派发的 playground 切片在途 WIP 被并发提交；切片继续在其上精修（当前未提交 diff：Drawer.tsx +340/-85、model.ts +7）。
+- 处置：无需动作——增量提交模式在此并发环境可行（每笔提交均为可编译/可测试状态），切片报告后本方做最终复核集成。
+- 门禁快照：web 674+（playground WIP 中）、shared 436/436、mobile 146/146 全绿。
+
