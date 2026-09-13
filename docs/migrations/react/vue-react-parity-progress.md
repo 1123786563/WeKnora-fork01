@@ -1,5 +1,11 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-14 Round N+14 — N005 KB share dialog slice
+
+- Vue 共享弹窗与 React 对照后，补齐组织信息预览（角色、成员/知识库/智能体计数）、权限提示、分离式取消/确认 footer、共享行头像/权限色签及组织设置导航入口；保留权限过滤、确认、防重与 API 契约。
+- N005 专测 11/11、Web 全量 673/673、`typecheck:web` 通过；证据 `evidence/vue-react-parity/2026-09-14-n005-share-dialog.md`。
+- N005 仍为 `implementing`：原生 select 下拉弹层、认证浏览器/真实后端、Vue 对照截图及 Wails/iOS/Android 证据未闭环。
+
 ## 2026-09-14 Round N+13 — N010 FAQ import progress slice
 
 - FAQ 导入进度按 Vue `FAQEntryManager.vue` 语义完成：后端 `processing/completed` 映射为 UI `running/success`，1.5 秒轮询，显示 processed/total，成功态 3 秒后收起；修复 `FAQImportProgress` 未从 api-client 公共入口导出及 effect 初始化顺序错误。
@@ -1234,4 +1240,3 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - FAQ A2 轮询接线双轨收敛：本方实现（poll effect + collapse + strip pass-through，jsdom faq-import-poll 钉死 processing→completed→collapse 全链）与并发协调者的 4651ea79（同名契约）汇合，最终以 4651ea79 入库（含 api-client index 的 FAQImportProgress 导出）；faq 套件 20/20。
 - 门禁快照（603de8c6→ 后）：shared 419/419、web 672/672、mobile 118/118、build ✓ 3.42s、typecheck 0。
 - 剩余队列不变：A3 faqManager.import.* 目录回填、A4 Excel 解析依赖决策、FAQ B1-B7、R013 embed 抽屉 + API playground SSE、R009 图标轨拖拽展开/org 轨、acceptance 证据批扫（Wails/iOS/Android）、mobile devDeps lockfile、六语待用户答复。
-

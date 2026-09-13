@@ -145,15 +145,37 @@ test('filters viewer organizations and sends the selected permission in the crea
 
   const organizationSelect = container.querySelectorAll<HTMLSelectElement>('select')[0];
   assert.ok(organizationSelect);
-  assert.deepEqual([...organizationSelect.options].map((option) => option.textContent), ['Select a shared space to share with', 'Editors']);
+  assert.deepEqual([...organizationSelect.options].map((option) => option.textContent), ['Select a shared space to share with', 'Editors · 0 · 0 · 0']);
   assert.equal([...organizationSelect.options].some((option) => option.textContent === 'Viewers'), false);
 
   await select(container, 'Select Shared Space', 'org-editor');
   await select(container, 'Permission', 'editor');
-  await act(async () => button(container, 'Share to Shared Space')?.click());
+  await act(async () => button(container, 'Confirm')?.click());
 
   assert.deepEqual(payloads, [{ organization_id: 'org-editor', permission: 'editor' }]);
   assert.equal(changed, 1);
+});
+
+test('renders Vue-shaped organization options and shared-list actions', async () => {
+  const enriched = [{ id: 'org-editor', name: 'Editors', is_owner: true, my_role: 'admin', member_count: 7, share_count: 3, agent_share_count: 2 }] as unknown as Organization[];
+  const client = clientFor(async () => ({ items: [{ id: 'share-1', organization_id: 'org-other', organization_name: 'Editors', permission: 'editor' }], total: 1 }));
+  client.identity.organizations.list = async () => ({ items: enriched, total: 1 });
+  const container = await mount(client);
+
+  await select(container, 'Select Shared Space', 'org-editor');
+  const option = container.querySelector('.wk-share-org-option');
+  assert.ok(option, 'organization options should expose the Vue option anatomy');
+  assert.match(option.textContent ?? '', /Editors/);
+  assert.match(option.textContent ?? '', /7/);
+  assert.match(option.textContent ?? '', /3/);
+  assert.match(option.textContent ?? '', /2/);
+  assert.ok(container.querySelector('.wk-share-form-actions'), 'form should have a separated action footer');
+  assert.ok(button(container, 'Cancel'));
+  assert.ok(button(container, 'Confirm'));
+
+  await act(async () => button(container, 'Shared to (1)')?.click());
+  assert.ok(container.querySelector('.wk-share-item-avatar'));
+  assert.equal(container.querySelectorAll('.wk-share-item-actions button').length, 2, 'shared rows should expose settings and remove actions');
 });
 
 test('shows the create failure and does not fire the change callback', async () => {
@@ -164,12 +186,12 @@ test('shows the create failure and does not fire the change callback', async () 
   const container = await mount(client, () => { changed += 1; });
 
   await select(container, 'Select Shared Space', 'org-editor');
-  await act(async () => button(container, 'Share to Shared Space')?.click());
+  await act(async () => button(container, 'Confirm')?.click());
 
   assert.match(container.textContent ?? '', /share request failed/);
   assert.doesNotMatch(container.textContent ?? '', /Knowledge base shared/);
   assert.equal(changed, 0);
-  assert.equal(button(container, 'Share to Shared Space')?.disabled, false);
+  assert.equal(button(container, 'Confirm')?.disabled, false);
 });
 
 test('confirms unshare and prevents duplicate removal while the mutation is busy', async () => {
@@ -259,7 +281,7 @@ test('does not report a successful share when the post-mutation reload fails', a
   }, { create: async () => ({ id: 'share-1' }) });
   const container = await mount(client, () => { changed += 1; });
   await select(container, 'Select Shared Space', 'org-editor');
-  await act(async () => button(container, 'Share to Shared Space')?.click());
+  await act(async () => button(container, 'Confirm')?.click());
   assert.match(container.textContent ?? '', /reload failed/);
   assert.doesNotMatch(container.textContent ?? '', /Knowledge base shared/);
   assert.equal(changed, 0);
