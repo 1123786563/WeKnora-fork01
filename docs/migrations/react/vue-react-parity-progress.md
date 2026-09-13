@@ -780,6 +780,13 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   specific form parity, real 403/backend behavior, and iOS/Android evidence
   remain open.
 
+- **Mobile data-source connector selection:** the native editor now renders
+  server-returned connector types as selectable cards with name/description,
+  falling back to a text field only when the server returns no types. This
+  keeps the submitted type within the existing connector contract. Mobile
+  test 92/92 and typecheck pass; connector-specific credentials/resources,
+  backend 403, and device evidence remain open.
+
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
 - **Rows:** any rows proposed for `accepted`; never all rows by default.
 - **Files owned:** `docs/migrations/react/vue-react-parity-matrix.md`, `docs/migrations/react/vue-react-parity-progress.md`, `docs/migrations/react/evidence/vue-react-parity/README.md`, `docs/migrations/react/evidence/vue-react-parity/screenshot-matrix.md`, and the row-specific `docs/migrations/react/evidence/vue-react-parity/<date>-<row-group>.md` evidence file only.
