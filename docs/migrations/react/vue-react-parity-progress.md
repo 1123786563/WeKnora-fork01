@@ -1058,6 +1058,16 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - **Evidence required:** screenshot matrix and state checklist showing normal/loading/empty/error/no-permission/disabled/editing/submitting/success/failure for each row.
 - **Review gate:** a row can move to `accepted` only when all applicable platform evidence and unresolved backend decisions are closed or explicitly out-of-scope by user decision.
 - **Commit boundary:** one acceptance-docs commit per row group.
+
+## 2026-09-13 Round N+3 — 主题默认对齐 + live 批扫 round3 + R007 收尾集成
+
+- live 环境重建：backend :8080（make dev-app）、Vue :5180、React :5181（需 VITE_API_BASE_URL=http://localhost:8080，无 dev proxy，app 直连后端；无此环境变量时同源 /api 全 404——已登记为启动事实）。parity-test@local.dev 经 API 与浏览器双侧验证有效（tenant 10000）。
+- 批扫 round3：accept-batch.cjs 增加双端 guide-done 键种子（weknora:new-user-guide-done:v1 + 7 个 contextual 键，两端同键方案），消除首访引导浮层污染；20 路由 ×双端 40/40 截图入 screenshots/accept-20260913-round3/。
+- 像素排序结论：kb/agents/org/chat/faq/creatChat/integrations(除 settings) 3.4–6.6%；settings 系 + integrations ~38–42%。热图归因：settings 差异主体来自背板模糊放大底页内容噪声（两端 overlay CSS 逐值一致 rgba(0,0,0,.5)+blur(4px)，React styles.css:560 = Vue Settings.vue:652-659），非可行动缺陷；可行动差异登记为 settings 视觉切片待办：(a) 抽屉内标题纵向节奏 ~10px；(b) 字体大小分段控件选中态（Vue 实心绿底白字 vs React 浅绿底绿字）；(c) 原生 select vs TDesign select 外观（已知项）。
+- 主题默认修复（8493557e）：live 对比发现 settings-general 主题模式 Vue=浅色 vs React=跟随系统；TDD 修复 packages/domain local-preferences 缺省/非法值回退 light（Vue useTheme.ts:14-15 权威）+ GeneralPreferencesPanel catch 回退；domain 4/4、settings 面板 149/149；修复后 live 双端均显示 浅色。
+- R007 收尾集成（80db6754，子代理实施 + 主代理独立复核）：用户菜单重新打开引导入口（Vue UserMenu.vue:45-50，文案权威为 新手引导 而非简报猜测的 重新查看引导——子代理纠正简报错误）；newUserGuide i18n 块 20 键×5 语字节级钉死（发现并修复 ru-RU steps.agents.desc 漂移）；views guideMessage 共享包优先分层。独立复核：shared 387/387、platform 目录 97/97、i18n+layering 8/8、typecheck 0。
+- 在途（2）：移动端测试运行器修复（node --import tsx --test 下 onboarding-component MODULE_NOT_FOUND）、R031 会话标题 api-client 方法。
+
 ## 2026-09-13 Round N+2 — chat 5 语切片集成核验 + 会话行删除标签对齐
 
 - 在途工作核实：并行 agent 将 chat 5 语文案切片与上下文引导系统提交为 c25089a8（chat-copy.ts 5 语表 + packages/i18n/src/generated/chat.ts 生成层 + ContextualGuide/Host/contextual-guides.ts 全套 + tests + Vue 基准截图）。主代理独立复核：shared 382/382、web 574/574、desktop 2/2、embed 7/7、typecheck shared/web 0、build:web ✓ 3.27s；contextual guides 16/16 + web jsdom 10/10 + i18n/chat-copy 12/12。
