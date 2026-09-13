@@ -13,12 +13,14 @@
 // escapes ({'@'} in chat.steps.kb.desc / kbDetail.steps.done.desc) resolve to
 // the bare character exactly like the vue-i18n message compiler does.
 //
-// R007 note (2026-09-13): unlike the newUserGuide.* block, the shared
-// contextualGuide.* keys are NOT registered in packages/i18n yet, so there is
-// no shared-first layering here — this table stays authoritative. Backfilling
-// a generated/contextualGuide.ts and layering renderContextualGuideMessage on
-// formatMessage (same shape as guides/steps.ts guideMessage) remains open
-// follow-up work; the newUserGuide closeout does not block on it.
+// Backfill note (2026-09-13): the shared contextualGuide.* block now lives in
+// packages/i18n/src/generated/contextualGuide.ts and is byte-pinned against
+// these locale sources by packages/i18n/test/contextualGuide.test.ts, which
+// also byte-pins THIS table to the shared bundle (R007 precedent: two copies,
+// Vue authoritative, drift is fixed on both sides). Shared-first layering of
+// renderContextualGuideMessage on formatMessage (same shape as guides/steps.ts
+// guideMessage) remains open follow-up work; this table stays the rendering
+// source until then.
 import type { NewUserGuideLocale } from './steps.ts';
 
 /** Same five locales the Vue client ships (guides/steps.ts union). */

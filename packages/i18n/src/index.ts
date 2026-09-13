@@ -898,6 +898,8 @@ import { kbListExtrasMessages } from './generated/kbListExtras.ts';
 export { kbListExtrasMessages };
 import { chatMessages } from './generated/chat.ts';
 export { chatMessages };
+import { contextualGuideMessages } from './generated/contextualGuide.ts';
+export { contextualGuideMessages };
 
 export function formatMessage(locale: Locale, key: string, values: MessageValues = {}): string {
   const template = messages[locale][key] ?? messages['en-US'][key] ?? key;
@@ -908,5 +910,5 @@ export function isLocale(value: string): value is Locale {
   return (supportedLocales as readonly string[]).includes(value);
 }
 export const messages: Record<Locale, Record<string, string>> = Object.fromEntries(
-  (Object.keys(baseMessages) as Locale[]).map((locale) => [locale, { ...baseMessages[locale], ...knowledgeListMessages[locale], ...authMessages[locale], ...onboardingMessages[locale], ...settingsMessages[locale], ...mcpMessages[locale], ...menuMessages[locale], ...organizationMessages[locale], ...agentMessages[locale], ...integrationsMessages[locale], ...embedMessages[locale], ...knowledgeSurfacesMessages[locale], ...knowledgeSurfacesSupplementalMessages[locale], ...commandPaletteMessages[locale], ...dataSourceMessages[locale], ...newUserGuideMessages[locale], ...uploadConfirmMessages[locale], ...fontMessages[locale], ...memberMessages[locale], ...agentIntegrationsMessages[locale], ...shellSessionListMessages[locale], ...kbListExtrasMessages[locale], ...chatMessages[locale] }]),
+  (Object.keys(baseMessages) as Locale[]).map((locale) => [locale, { ...baseMessages[locale], ...knowledgeListMessages[locale], ...authMessages[locale], ...onboardingMessages[locale], ...settingsMessages[locale], ...mcpMessages[locale], ...menuMessages[locale], ...organizationMessages[locale], ...agentMessages[locale], ...integrationsMessages[locale], ...embedMessages[locale], ...knowledgeSurfacesMessages[locale], ...knowledgeSurfacesSupplementalMessages[locale], ...commandPaletteMessages[locale], ...dataSourceMessages[locale], ...newUserGuideMessages[locale], ...uploadConfirmMessages[locale], ...fontMessages[locale], ...memberMessages[locale], ...agentIntegrationsMessages[locale], ...shellSessionListMessages[locale], ...kbListExtrasMessages[locale], ...chatMessages[locale], ...contextualGuideMessages[locale] }]),
 ) as Record<Locale, Record<string, string>>;
