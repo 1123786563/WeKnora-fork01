@@ -1,5 +1,11 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-14 Round N+18 — R046 MCP tool detail popup slice
+
+- MCP 工具详情按 Vue 从内联块改为浮层 dialog，保留描述/参数/schema 标签页、参数空态/required 标记及策略开关，新增 Escape 关闭。
+- Web 全量 674/674、`typecheck:web` 通过；证据 `evidence/vue-react-parity/2026-09-14-r046-tool-detail-popup.md`。
+- R046 仍为 `implementing`：真实同步工具目录、认证浏览器 computed-style 与 Wails 证据未闭环。
+
 ## 2026-09-14 Round N+17 — R044 MCP credential card slice
 
 - MCP 编辑态 API Key 按 Vue CredentialResource 分离为凭证卡片，显示已配置状态，支持替换和独立删除；新建态仍使用普通密码输入。
@@ -1271,4 +1277,3 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 门禁快照（含 peer 的 MCP popup 新测试 7692d777 与其在途 WIP）：shared 420/420、web 674/674、mobile 146/146、embed 7/7、desktop 2/2 全绿。
 - 在途（2）：A4 Excel 导入（vendored xlsx 方案）、R009 图标轨拖拽展开——两者测试域尚未见落盘，监理中。
 - kb-list-anatomy 全量套件超时问题在最新快照中未复现（674/674），继续观察。
-
