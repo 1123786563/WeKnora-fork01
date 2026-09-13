@@ -1285,3 +1285,10 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 门禁快照（含 peer 的 MCP popup 新测试 7692d777 与其在途 WIP）：shared 420/420、web 674/674、mobile 146/146、embed 7/7、desktop 2/2 全绿。
 - 在途（2）：A4 Excel 导入（vendored xlsx 方案）、R009 图标轨拖拽展开——两者测试域尚未见落盘，监理中。
 - kb-list-anatomy 全量套件超时问题在最新快照中未复现（674/674），继续观察。
+
+## 2026-09-14 Round N+8 协调条目 — 主题应用功能修复集成 + 暗色取证
+
+- 主题应用功能修复集成（dd537b63）：live 暗色扫描发现 React 全局主题不生效（weknora:theme-changed 零监听、启动不应用 theme-mode；Vue useTheme.initTheme 全局应用）——domain theme.ts 纯模块（effectiveTheme/applyThemeToDocument，matchMedia 注入）2 测 + apps/web/src/theme.ts initTheme 启动/事件/OS 三通道 + main.tsx 启动调用 + vite/tsconfig 别名；shared 420/420、web 681/681、typecheck 0、build ✓。
+- 登记未移植：Vue 的 Wails 原生窗体 chrome 同步（桌面壳专属，React web 不适用）。
+- 暗色双端截图 8 张入库 dark-theme-20260914/（供主题 parity 后续目检）。
+
