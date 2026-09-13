@@ -7,6 +7,12 @@
 - R013/N028 仍为 `implementing`：同账号浏览器对照、真实后端/权限、Wails/native 证据未完成。
 - React 认证浏览器已实际验证 API 集成页与 Playground 抽屉的入口、三段结构、默认值、密钥遮蔽和无 API Key 门禁；证据 `evidence/vue-react-parity/2026-09-14-r013-api-playground-browser.md`。当前空间无 API Key/智能体，真实 Session/SSE 记为 `blocked-env`。
 
+## 2026-09-14 Round N+21 — N007 上传配置区段 v-show 对齐
+
+- 上传确认对话框按 Vue `activeSection` 实现 v-show 等价行为：tags、parser、chunking、multimodal、asr、question、graph 区段保持挂载，仅隐藏非当前区段，避免 React 原先一次展示全部配置区段。
+- 专项 21/21、正式 Web 758/758、`typecheck:web` 通过；证据 `evidence/vue-react-parity/2026-09-14-n007-upload-section-visibility.md`。
+- N007 仍为 `implementing`：真实上传/解析后端、浏览器 computed-style、Wails/native 证据未闭环。
+
 ## 2026-09-14 Round N+19 — N005 custom organization picker slice
 
 - 共享空间选择从原生 select 补为 Vue 风格可访问自定义列表：组织头像、角色、成员/知识库/智能体计数、选中态、外部点击关闭和 Escape；保留隐藏原生控件的 required/API 语义。
