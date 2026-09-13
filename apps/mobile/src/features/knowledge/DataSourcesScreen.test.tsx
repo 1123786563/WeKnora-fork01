@@ -15,14 +15,14 @@ const { createRoot } = require('react-dom/client') as { createRoot: (host: Eleme
 
 async function mount(role: string) {
   const dom = new JSDOM('<div id="root"></div>', { url: 'https://weknora.test' });
-  const runtime = {
+  const runtime: any = {
     tenantId: '1',
     workspaces: [{ id: 1, role }],
     client: { dataSources: {
       list: async () => [{ id: 'source-1', name: 'Docs', type: 'feishu_drive', status: 'active', sync_mode: 'incremental', config: { resource_ids: ['root-token'] } }],
       types: async () => [{ type: 'feishu_drive', name: 'Feishu Drive', description: 'Drive', priority: 1, auth_type: 'oauth', capabilities: ['resources'] }],
       validateCredentials: async () => ({ success: true }),
-      create: async () => ({}), update: async () => ({}), putCredentials: async () => ({}),
+      create: async () => ({ id: 'temporary-source', knowledge_base_id: 'kb-1', name: 'New source', type: 'feishu_drive', status: 'paused', config: {} }), update: async () => ({}), putCredentials: async () => ({}),
       sync: async () => ({ success: true }), pause: async () => ({ success: true }), resume: async () => ({ success: true }),
       remove: async () => undefined, logs: async () => [], resources: async (_id: string, parentId?: string) => parentId ? [{ external_id: 'page-2', parent_id: parentId, name: 'Child page', type: 'page' }] : [{ external_id: 'page-1', name: 'Project docs', type: 'folder', has_children: true }],
     } },
@@ -30,7 +30,7 @@ async function mount(role: string) {
   Object.assign(globalThis, { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true, __dataSourcesRuntime: runtime });
   const result = await build({ entryPoints: [resolve(root, 'apps/mobile/src/features/knowledge/DataSourcesScreen.tsx')], bundle: true, write: false, platform: 'node', format: 'cjs', jsx: 'automatic', external: ['react', 'react/jsx-runtime'], plugins: [{ name: 'native-host-fixtures', setup(b) {
     b.onResolve({ filter: /react-native|expo-router|runtime\.tsx$/ }, (args) => ({ path: args.path, namespace: 'mock' }));
-    b.onLoad({ filter: /.*/, namespace: 'mock' }, ({ path }) => ({ loader: 'jsx', contents: path === 'expo-router' ? `import React from 'react'; export const useLocalSearchParams=()=>({id:'kb-1'}); export const useRouter=()=>({back:()=>{}});` : path.endsWith('runtime.tsx') ? `export const useMobileRuntime=()=>globalThis.__dataSourcesRuntime;` : `import React from 'react'; export const View=({children})=><div>{children}</div>; export const SafeAreaView=View, ScrollView=View; export const Text=({children})=><span>{children}</span>; export const ActivityIndicator=({accessibilityLabel})=><span aria-label={accessibilityLabel}>loading</span>; export const Pressable=({children,onPress,disabled})=><button disabled={disabled} onClick={onPress}>{children}</button>; export const FlatList=({data,renderItem,ListEmptyComponent})=> data?.length ? <div>{data.map((item,index)=><div key={index}>{renderItem({item,index})}</div>)}</div> : <div>{ListEmptyComponent}</div>; export const Switch=()=> <input type="checkbox"/>; export const TextInput=({value,onChangeText,placeholder})=><input value={value} placeholder={placeholder} onChange={e=>onChangeText(e.target.value)}/>; export const Alert={alert:()=>{}};` }));
+    b.onLoad({ filter: /.*/, namespace: 'mock' }, ({ path }) => ({ loader: 'jsx', contents: path === 'expo-router' ? `import React from 'react'; export const useLocalSearchParams=()=>({id:'kb-1'}); export const useRouter=()=>({back:()=>{}});` : path.endsWith('runtime.tsx') ? `export const useMobileRuntime=()=>globalThis.__dataSourcesRuntime;` : `import React from 'react'; export const View=({children})=><div>{children}</div>; export const SafeAreaView=View, ScrollView=View; export const Text=({children})=><span>{children}</span>; export const ActivityIndicator=({accessibilityLabel})=><span aria-label={accessibilityLabel}>loading</span>; export const Pressable=({children,onPress,disabled})=><button disabled={disabled} onClick={onPress}>{children}</button>; export const FlatList=({data,renderItem,ListEmptyComponent})=> data?.length ? <div>{data.map((item,index)=><div key={index}>{renderItem({item,index})}</div>)}</div> : <div>{ListEmptyComponent}</div>; export const Switch=()=> <input type="checkbox"/>; export const TextInput=({value,onChangeText,placeholder})=><input value={value} placeholder={placeholder} onChange={e=>onChangeText(e.target.value)} onInput={e=>onChangeText(e.target.value)}/>; export const Alert={alert:()=>{}};` }));
   }}] });
   const module = { exports: {} as Record<string, unknown> };
   new Function('require', 'module', 'exports', result.outputFiles[0].text)(require, module, module.exports);
@@ -39,7 +39,7 @@ async function mount(role: string) {
   const renderer = createRoot(host);
   await act(async () => renderer.render(React.createElement(Component)));
   await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
-  return { host, close: async () => { await act(async () => renderer.unmount()); dom.window.close(); } };
+  return { host, runtime, close: async () => { await act(async () => renderer.unmount()); dom.window.close(); } };
 }
 
 test('viewer sees read-only data-source inventory without mutation controls', async () => {
@@ -106,5 +106,38 @@ test('drive editor exposes the root token and loads resources through the existi
     await act(async () => load?.click());
     await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
     assert.match(page.host.textContent ?? '', /Project docs/);
+  } finally { await page.close(); }
+});
+
+test('new Drive source creates a paused temporary row before loading resources', async () => {
+  const page = await mount('admin');
+  try {
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Add')?.click());
+    const nameInput = page.host.querySelector('input[placeholder="Name"]') as HTMLInputElement | null;
+    assert.ok(nameInput);
+    await act(async () => { nameInput!.value = 'New source'; nameInput!.dispatchEvent(new page.host.ownerDocument.defaultView!.Event('input', { bubbles: true })); });
+    const rootInput = page.host.querySelector('input[placeholder="Drive folder token or folder URL"]') as HTMLInputElement | null;
+    assert.ok(rootInput);
+    await act(async () => { rootInput!.value = 'https://example.feishu.cn/drive/folder/new-root'; rootInput!.dispatchEvent(new page.host.ownerDocument.defaultView!.Event('input', { bubbles: true })); });
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Load Drive resources')?.click());
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+    assert.match(page.host.textContent ?? '', /Project docs/);
+  } finally { await page.close(); }
+});
+
+test('canceling a Drive resource draft removes the temporary source', async () => {
+  const page = await mount('admin');
+  try {
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Add')?.click());
+    const nameInput = page.host.querySelector('input[placeholder="Name"]') as HTMLInputElement;
+    await act(async () => { nameInput.value = 'Draft source'; nameInput.dispatchEvent(new page.host.ownerDocument.defaultView!.Event('input', { bubbles: true })); });
+    const rootInput = page.host.querySelector('input[placeholder="Drive folder token or folder URL"]') as HTMLInputElement;
+    await act(async () => { rootInput.value = 'draft-root'; rootInput.dispatchEvent(new page.host.ownerDocument.defaultView!.Event('input', { bubbles: true })); });
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Load Drive resources')?.click());
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+    const removed: string[] = [];
+    page.runtime.client.dataSources.remove = async (id: string) => { removed.push(id); };
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Cancel')?.click());
+    assert.deepEqual(removed, ['temporary-source']);
   } finally { await page.close(); }
 });

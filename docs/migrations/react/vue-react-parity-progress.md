@@ -834,6 +834,14 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   source temporary setup, connector-specific credentials, localized copy,
   backend error classification, and native-device evidence remain open.
 
+- **Mobile new-Drive temporary browsing:** loading a Drive root from a new
+  draft now creates a paused temporary source, browses resources through the
+  existing API, and removes that temporary source when the draft is canceled;
+  successful save promotes it through the normal update path. Focused screen
+  and policy tests pass 12/12; full mobile tests pass 94/94 and typecheck
+  passes. Cleanup on app termination, connector-specific forms, localization,
+  backend error classification, and native-device evidence remain open.
+
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
 - **Rows:** any rows proposed for `accepted`; never all rows by default.
 - **Files owned:** `docs/migrations/react/vue-react-parity-matrix.md`, `docs/migrations/react/vue-react-parity-progress.md`, `docs/migrations/react/evidence/vue-react-parity/README.md`, `docs/migrations/react/evidence/vue-react-parity/screenshot-matrix.md`, and the row-specific `docs/migrations/react/evidence/vue-react-parity/<date>-<row-group>.md` evidence file only.
