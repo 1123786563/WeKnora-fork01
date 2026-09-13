@@ -16,3 +16,5 @@ The Vue data-source flow distinguishes credential/connection validation from a s
 - Web TypeScript check: passed with `--incremental false`.
 - Evidence class: static/unit and typecheck only.
 - Not claimed: browser interaction, real connector validation, resource browsing, full log drawer parity, Wails, iOS, or Android runtime evidence.
+
+The visible connection-test label and success feedback, plus the surrounding page headings/actions, now resolve through the shared data-source translation table rather than English-only literals.

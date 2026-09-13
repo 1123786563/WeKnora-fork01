@@ -131,6 +131,11 @@
 - Vue sync logs expose lifecycle and item result counts. React now renders finished-at plus total/created/updated/deleted/skipped/failed counts in the existing log surface, without changing API behavior.
 - Data-source form tests: 2/2 passed. Web typecheck: passed. Evidence remains static/unit and typecheck only; resource browser, browser, real-backend, Wails, and native evidence remain open.
 
+## 2026-09-14 Round N+19 — N013 data-source surface i18n
+
+- Migrated the data-source page's visible headings, actions, status labels, resource/log controls, and editor titles to the shared `dataSource.*`/common translation layer already ported from Vue.
+- Resource/API focused tests: 9/9 passed. Web typecheck: passed. Field-level connector errors, browser, real-backend, Wails, and native evidence remain open.
+
 ## 2026-09-14 Round N+14 — N013 resource browser
 
 - React now exposes Browse resources on each saved connector and lazily loads root/child resources through `client.dataSources.resources`, with breadcrumb back navigation and loading/error/empty states.
