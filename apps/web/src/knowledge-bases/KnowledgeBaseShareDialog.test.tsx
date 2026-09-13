@@ -67,13 +67,13 @@ afterEach(async () => {
   window.confirm = () => true;
 });
 
-async function mount(client: WeKnoraClient, onChanged: () => void = () => undefined, locale = 'en-US') {
+async function mount(client: WeKnoraClient, onChanged: () => void = () => undefined, locale = 'en-US', knowledgeBaseId = 'kb-1') {
   window.localStorage.setItem('locale', locale);
   const container = document.createElement('div');
   document.body.append(container);
   mountedRoot = createRoot(container);
   await act(async () => {
-    mountedRoot?.render(<KnowledgeBaseShareDialog client={client} knowledgeBaseId="kb-1" knowledgeBaseName="Docs" open onClose={() => undefined} onChanged={onChanged} />);
+    mountedRoot?.render(<KnowledgeBaseShareDialog client={client} knowledgeBaseId={knowledgeBaseId} knowledgeBaseName="Docs" open onClose={() => undefined} onChanged={onChanged} />);
   });
   return container;
 }
@@ -95,11 +95,11 @@ test('opens on the share form and toggles to the shared-list view and back', asy
   const request = deferred<{ items: Share[]; total: number }>();
   const container = await mount(clientFor(() => request.promise));
 
-  assert.match(container.textContent ?? '', /Loading shares/);
+  assert.match(container.textContent ?? '', /Loading…/);
   await act(async () => request.resolve({ items: [{ id: 'share-1', organization_id: 'org-editor', organization_name: 'Editors', permission: 'editor' }], total: 1 }));
 
   assert.ok(container.querySelector('form'), 'the dialog should start on the share form');
-  const showList = button(container, 'Shared to organizations (1)');
+  const showList = button(container, 'Shared to (1)');
   assert.ok(showList, 'existing shares should expose a shared-list entry point');
 
   await act(async () => showList?.click());
@@ -124,7 +124,7 @@ test('renders only loading content until the initial share data has settled', as
   } finally {
     await act(async () => request.resolve({ items: [], total: 0 }));
   }
-  assert.doesNotMatch(container.textContent ?? '', /Loading/);
+  assert.doesNotMatch(container.textContent ?? '', /Loading…/);
 });
 
 test('uses the existing shared-space translations for the share form', async () => {
@@ -150,7 +150,7 @@ test('filters viewer organizations and sends the selected permission in the crea
 
   await select(container, 'Select Shared Space', 'org-editor');
   await select(container, 'Permission', 'editor');
-  await act(async () => button(container, 'Confirm share')?.click());
+  await act(async () => button(container, 'Share to Shared Space')?.click());
 
   assert.deepEqual(payloads, [{ organization_id: 'org-editor', permission: 'editor' }]);
   assert.equal(changed, 1);
@@ -164,12 +164,12 @@ test('shows the create failure and does not fire the change callback', async () 
   const container = await mount(client, () => { changed += 1; });
 
   await select(container, 'Select Shared Space', 'org-editor');
-  await act(async () => button(container, 'Confirm share')?.click());
+  await act(async () => button(container, 'Share to Shared Space')?.click());
 
   assert.match(container.textContent ?? '', /share request failed/);
   assert.doesNotMatch(container.textContent ?? '', /Knowledge base shared/);
   assert.equal(changed, 0);
-  assert.equal(button(container, 'Confirm share')?.disabled, false);
+  assert.equal(button(container, 'Share to Shared Space')?.disabled, false);
 });
 
 test('confirms unshare and prevents duplicate removal while the mutation is busy', async () => {
@@ -180,11 +180,11 @@ test('confirms unshare and prevents duplicate removal while the mutation is busy
     { remove: async (_kbId, shareId) => { calls.push(shareId); await removal.promise; } },
   );
   const container = await mount(client);
-  await act(async () => button(container, 'Shared to organizations (1)')?.click());
+  await act(async () => button(container, 'Shared to (1)')?.click());
 
   let confirmCalls = 0;
   window.confirm = () => { confirmCalls += 1; return true; };
-  const remove = button(container, 'Remove');
+  const remove = button(container, 'Remove share');
   assert.ok(remove);
   await act(async () => {
     remove?.click();
@@ -203,7 +203,7 @@ test('uses the localized unshare confirmation copy and skips removal when declin
     remove: async () => { calls += 1; },
   });
   const container = await mount(client);
-  await act(async () => button(container, 'Shared to organizations (1)')?.click());
+  await act(async () => button(container, 'Shared to (1)')?.click());
 
   let prompt = '';
   window.confirm = (message = '') => { prompt = message; return false; };
@@ -220,7 +220,7 @@ test('shows an unshare failure without firing the change callback', async () => 
     remove: async () => { throw new Error('remove request failed'); },
   });
   const container = await mount(client, () => { changed += 1; });
-  await act(async () => button(container, 'Shared to organizations (1)')?.click());
+  await act(async () => button(container, 'Shared to (1)')?.click());
   window.confirm = () => true;
 
   await act(async () => button(container, 'Remove share')?.click());
@@ -229,4 +229,38 @@ test('shows an unshare failure without firing the change callback', async () => 
   assert.doesNotMatch(container.textContent ?? '', /Share cancelled/);
   assert.equal(changed, 0);
   assert.equal(button(container, 'Remove share')?.disabled, false);
+});
+
+test('ignores a stale load when the knowledge base changes while requests are pending', async () => {
+  const first = deferred<{ items: Share[]; total: number }>();
+  const second = deferred<{ items: Share[]; total: number }>();
+  let calls = 0;
+  const client = clientFor(async () => { calls += 1; return calls === 1 ? first.promise : second.promise; });
+  const container = await mount(client);
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+  await act(async () => {
+    mountedRoot?.render(<KnowledgeBaseShareDialog client={client} knowledgeBaseId="kb-2" knowledgeBaseName="Docs" open onClose={() => undefined} />);
+  });
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+  await act(async () => second.resolve({ items: [{ id: 'share-2', organization_id: 'org-editor', organization_name: 'Current KB', permission: 'viewer' }], total: 1 }));
+  await act(async () => first.resolve({ items: [{ id: 'share-1', organization_id: 'org-editor', organization_name: 'Stale KB', permission: 'viewer' }], total: 1 }));
+  await act(async () => button(container, 'Shared to (1)')?.click());
+  assert.match(container.textContent ?? '', /Current KB/);
+  assert.doesNotMatch(container.textContent ?? '', /Stale KB/);
+});
+
+test('does not report a successful share when the post-mutation reload fails', async () => {
+  let listCalls = 0;
+  let changed = 0;
+  const client = clientFor(async () => {
+    listCalls += 1;
+    if (listCalls === 1) return { items: [], total: 0 };
+    throw new Error('reload failed');
+  }, { create: async () => ({ id: 'share-1' }) });
+  const container = await mount(client, () => { changed += 1; });
+  await select(container, 'Select Shared Space', 'org-editor');
+  await act(async () => button(container, 'Share to Shared Space')?.click());
+  assert.match(container.textContent ?? '', /reload failed/);
+  assert.doesNotMatch(container.textContent ?? '', /Knowledge base shared/);
+  assert.equal(changed, 0);
 });

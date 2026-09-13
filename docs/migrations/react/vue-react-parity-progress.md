@@ -787,6 +787,15 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   test 92/92 and typecheck pass; connector-specific credentials/resources,
   backend 403, and device evidence remain open.
 
+- **N005 share dialog race/localization repair:** the Web share dialog now uses
+  the existing organization-share translations across title, form, list,
+  permissions, feedback, and unshare confirmation. Loads are protected by a
+  request generation so stale knowledge-base responses cannot overwrite the
+  current dialog. Mutation callbacks and success notices now occur only after
+  the post-mutation reload succeeds. Focused tests pass 10/10 and Web
+  typecheck passes. Browser/Vue screenshot, real-backend, Wails, iOS, and
+  Android evidence remain absent; N005 stays `review`.
+
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
 - **Rows:** any rows proposed for `accepted`; never all rows by default.
 - **Files owned:** `docs/migrations/react/vue-react-parity-matrix.md`, `docs/migrations/react/vue-react-parity-progress.md`, `docs/migrations/react/evidence/vue-react-parity/README.md`, `docs/migrations/react/evidence/vue-react-parity/screenshot-matrix.md`, and the row-specific `docs/migrations/react/evidence/vue-react-parity/<date>-<row-group>.md` evidence file only.
