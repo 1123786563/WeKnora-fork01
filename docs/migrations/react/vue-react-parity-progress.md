@@ -1334,3 +1334,11 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 20 路由×双端全量重扫（accept-20260914-round5/，40 张）：非 settings 路由 3.35-5.89%；settings 系 37.9-41.3%——差异主体仍是背板模糊放大的底页内容噪声（overlay CSS 双端逐值一致），抽屉内部经前轮 chrome/视觉切片后对齐良好。
 - 该快照为 embed drawer 切片在途时的中间态（integrations 路由含其新向导 WIP）；其收口后建议再做一次 integrations 单路由复拍。
 
+
+## 2026-09-14 Round N+10 协调条目 — embed 配置向导集成 + 全门禁绿
+
+- R013/N029 embed 配置向导集成（f58831e2，切片实施 + 协调者独立复核）：5 步创建 + 第 6 步部署（AgentEmbedChannelPanel.vue 全量移植），origins 校验/双限流/三能力开关/外观四 select/密钥显隐轮换/iframe-widget-secure-Node-Go 六 snippet；embedPublish 125 键×5 语 byte-exact 回退层；views 57/57、web 11/11、typecheck 0。
+- 遗留登记（详见证据 §6）：EmbedChannelPreview 模态对应物、prod 通配符标志接线位置、admin 字段级门控、内联改名死代码清理、API playground SSE（未动）。
+- 全门禁：shared 436/436、web 702/702、mobile 146/146、typecheck:web 0、build:web ✓。
+- R018 admin 四路由双端截图入库（state-coverage-20260914/）。
+
