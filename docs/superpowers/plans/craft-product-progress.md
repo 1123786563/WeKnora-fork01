@@ -45,9 +45,11 @@
 | C03 | **done** | .worktrees/craft-c03 / codex/craft-c03 | 3e05038b | HEAD 2e721e2f 审查 PASS_WITH_NITS（19/19+W04 三 nit 闭合）→ 合入 0302b8dd；128/128 复验；W05 待办：statusLabel 补 idle 措辞 |
 | C02 | **done** | .worktrees/craft-c02 / codex/craft-c02 | 256fbb78 | 审查 PASS_WITH_NITS（18/18+SIGKILL 矩阵）→ 合入 2b9f7b30+冲突解 88065cfe（package.json 与 C03 脚本并集）；迁移 000127/000047；交互面板一行挂载留 C06 |
 | D02 | **done** | .worktrees/craft-d02 / codex/craft-d02 | ae664bcb | HEAD 0f7d022a 审查 PASS_WITH_NITS（10/10，LO 重算 fixture 独立复核）→ 合入 de94676e（views exports 并集冲突解）；5 条开闸前接线清单留 D01/集成 |
-| C06 | fixing | .worktrees/craft-c06 / codex/craft-c06 | 88065cfe | 审查 FAIL（集成提交两阻断：interaction registrar 装错 emit 路径致生产注册死亡；spec 双挂载失败）；主体 15 项全 PASS 保留；已退回修复 |
+| C06 | **done** | .worktrees/craft-c06 / codex/craft-c06 | 88065cfe | FAIL→修复 25f97360→复审 PASS（真实链路证据消除两阻断）→ 合入 da181e0b；可启动基线恢复；knowledge_scope 持久化/knowledge.built/CraftKnowledgeTool 消费方留后续 |
 | O03 | implementing | .worktrees/craft-o03 / codex/craft-o03 | de94676e | 已派发（休眠/删除分策+Sweep CAS+worker 竞争测试） |
-| D03 | review | .worktrees/craft-d03 / codex/craft-d03 | de94676e | HEAD ec03cf24：真实 python-pptx+LO/PDF/SVG 渲染链 fixture 入库、浏览器 4/4+W06 6/6+D02 4/4（协调者批准的 C06+D03 组合，基线预存 DI 环）；独立发现基线 DI 环；审查者进行中 |
+| D03 | **done** | .worktrees/craft-d03 / codex/craft-d03 | de94676e | HEAD ec03cf24 审查 PASS_WITH_NITS（14/14，钉扎镜像独立复现）→ 合入 92f23a10 |
+| O03 | review | .worktrees/craft-o03 / codex/craft-o03 | de94676e | HEAD 8cd5dbe9：四保护位+Sweep CAS+worker 竞争 -race+迁移 000128/000048；GuardDispatch/Restore 接线留集成；审查者进行中 |
+| D01 | implementing | .worktrees/craft-d01 / codex/craft-d01 | 92f23a10 | 已派发（python-docx+OOXML 校验+浏览器+协调器指派五项类型接线收尾）；O04/O05 等待 |
 | C04 | **done** | .worktrees/craft-c04 / codex/craft-c04 | f931f02b | HEAD 7d0aebc4 审查 PASS_WITH_NITS（19/19+矩阵复验）→ 合入 256fbb78；容器装配裁定归 C05（含 nit-2/3） |
 | C05 | **done** | .worktrees/craft-c05 / codex/craft-c05 | 256fbb78 | HEAD faf500e9 审查 PASS_WITH_NITS（21/21，安全闭环无伪造路径）→ 合入 ae664bcb；迁移 000126/000046；C04 装配落实；C06 接线提示与 6 卫生 nit 留档 |
 | D02 | implementing | .worktrees/craft-d02 / codex/craft-d02 | ae664bcb | 已派发（openpyxl+LibreOffice 重算+XLSX 导出+浏览器）；C06/D01/D03/O03/O04/O05 等待依赖或席位 |
