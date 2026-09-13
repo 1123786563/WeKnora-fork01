@@ -1042,7 +1042,11 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
       )}
       {draft ? (
         <div
-          className="wk-model-editor"
+          className="wk-model-editor-overlay"
+          onMouseDown={(event) => { if (event.target === event.currentTarget) closeEditor(); }}
+        >
+        <div
+          className="wk-model-editor wk-model-editor-drawer"
           role="dialog"
           aria-modal="true"
           aria-label={draft.id ? t("model.editor.editTitle") : t("model.editor.addTitle")}
@@ -1507,6 +1511,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
               </Button>
             </div>
           </form>
+        </div>
         </div>
       ) : null}
       {debugOpen ? (

@@ -573,6 +573,14 @@ test('panel header keeps only the Vue title, subtitle and debug trigger', async 
   }
 });
 
+test('model editor uses a Vue-style inner drawer overlay instead of an inline card', async () => {
+  const { client } = makeClient();
+  const container = await mount(client, 'admin');
+  await openAddEditor(container);
+  assert.ok(container.querySelector('.wk-model-editor-overlay'), 'Vue SettingDrawer overlay is mounted');
+  assert.ok(container.querySelector('.wk-model-editor-drawer'), 'Vue editor drawer surface is mounted');
+});
+
 // B2: Vue model-card markup — type badge, title, vendor·context subtitle,
 // hover/affix actions with an ellipsis menu (ModelSettings.vue lines 53-127).
 test('model cards use the Vue card markup with a per-card action menu', async () => {
@@ -740,4 +748,3 @@ test('an initial sub-section preselects the matching type tab', () => {
   const activeLabel = tabs.slice(activeAt, activeAt + 60);
   assert.ok(activeLabel.includes('Embedding(1)'), 'the embedding tab is the active one');
 });
-

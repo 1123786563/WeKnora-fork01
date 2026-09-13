@@ -1,5 +1,11 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-14 Round N+12 — R027 model editor drawer slice
+
+- Vue `ModelEditorDialog.vue` 使用 SettingDrawer；React 原先将 `.wk-model-editor` 作为主内容流内联卡片。本轮以失败测试锁定该差异，改为固定右侧 560px 抽屉 + 遮罩，保留表单、ESC/取消、点击遮罩关闭和移动端全宽行为。
+- R027 专项 `ModelSettingsPanel.test.tsx` 22/22；浏览器 `:5181/platform/settings?section=models` 实际确认模型设置标签、卡片、新增入口及抽屉分组，证据 `evidence/vue-react-parity/2026-09-14-r027-model-drawer-browser.md`。
+- R027 继续保持 `implementing`：设置子项切换、真实连接/保存流程、Wails/native 和完整 computed-style 对照仍未闭环。
+
 ## 2026-09-14 Round N+11 — R024/N016 MCP card anatomy slice
 
 - 按 Vue `McpSettings.vue` 卡片结构收口 React：服务网格使用 320px 最小列与 10px 间距，卡片内工具徽标、图标化编辑/删除操作、使用说明空态、工具同步入口、传输类型和启用状态均对齐；管理员新增服务改为网格内虚线卡片，viewer 空态保持无新增入口。
@@ -1216,4 +1222,3 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 协调者直接修复累积：登录 toast parity、members apiDomain 泄漏、分页器宽度/按钮 TDesign 化（部分与并发协调者协同完成）、fixture 时间脆弱修复。
 - 最终全门禁：shared 419/419、web 670/670、mobile 118/118、embed 7/7、desktop 2/2、typecheck×3 0、build:web ✓ 3.42s。
 - 遗留队列（下轮）：FAQ A2 轮询接线（api-client 已就绪）、A3 faqManager.import.* 目录回填、A4 Excel 解析依赖决策、B1-B7 精确交接、R013 embed 抽屉 + API playground SSE、R009 图标轨拖拽展开/org 轨条目、acceptance 证据批扫（Wails/iOS/Android）、mobile devDeps lockfile 收口、六语待用户答复。
-
