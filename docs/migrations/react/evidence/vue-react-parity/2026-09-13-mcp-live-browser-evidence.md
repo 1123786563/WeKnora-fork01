@@ -49,3 +49,19 @@
 
 - R024/R043/R044/R045/R046/N016 的“浏览器+真实后端”证据缺口大幅收窄：列表/新增/编辑/两步流/失败态均有同后端双端截图与 DOM 文本。
 - 行状态维持 implementing：待处理 enabled 翻转缺陷、stdio 选项偏差裁决、第2步计数器/帮助文案对齐、测试连接偏差裁决、Wails 证据。
+
+（2026-09-13 round 2 更新：stdio/测试连接/第2步计数器三项均已向 Vue 基准收敛落地并在浏览器复验，见下。）
+
+## Round 2 复验（2026-09-13，抽屉结构对齐后）
+
+- 环境：同后端 :8080（Parity Evidence MCP 仍指向不可解析域名，用于未同步/失败态）；React :5181 vite dev（本轮代码，提交 6b408a23 + CSS 修复）；1440x900 zh-CN。
+- 脚本：.parity-tools/mcp-round2-verify.cjs；截图 mcp-react-round2-edit-step1.png / mcp-react-round2-step2.png。
+- DOM 断言（React 编辑抽屉，Parity Evidence MCP）全部通过：
+  - 区块顺序 legend：基本信息 → 连接配置（含 自定义请求头（可选））→ 认证配置 → 高级配置；
+  - 传输类型选项仅 SSE / HTTP Streamable（stdio 已按 Vue 基准移除，加载时强制转 sse）；
+  - 页脚顺序 取消 → 保存并下一步；抽屉内无 测试连接 按钮；
+  - 启用服务开关 + 「关闭后该服务不会被调用」hint 位于基本信息内（水平布局）；
+  - 第 2 步依序渲染：服务用途 + usageHint、使用说明 textarea、0/16000 计数、AI 生成（未同步时禁用）、generateHint、Tools 清单 + 重新拉取；
+  - 未同步态下 保存 与 AI 生成 均禁用（对齐 Vue confirm-disabled 门控）。
+- 结论：R024/R043/R044/R046/N016 的浏览器级结构复验通过。剩余：Wails 运行证据、shadcn/ui 视觉扫描、可同步 MCP 服务下的已同步态取证。
+

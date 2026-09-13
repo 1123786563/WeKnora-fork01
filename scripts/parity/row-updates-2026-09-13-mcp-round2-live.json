@@ -1,0 +1,18 @@
+{
+  "R024": {
+    "status": "implementing",
+    "gap": "Service list/empty state, admin CRUD, enable/disable, credentials, metadata/tools/usage/OAuth, JSON import/custom headers/OAuth scopes/timeout-retry editor and searchable paginated tools directory are wired and tested. 2026-09-13: live browser+real-backend evidence (evidence/vue-react-parity/2026-09-13-mcp-live-browser-evidence.md + screenshots/mcp-*) and connection-step save fixed to Vue buildPayload parity (backend 400 on empty usage verified live). Round 2: stdio decision RESOLVED toward Vue (editor offers only SSE/HTTP-Streamable, stdio coerces to sse on load per McpServiceDialog.vue:855, list label `Stdio`); test-connection decision RESOLVED (surface unmounted, Vue orphan parity — R045 review). Live browser re-verification of round 2 passed on :5181/:8080 (structure/order/options/footer/gating + screenshots mcp-react-round2-*.png). Remaining: shadcn/ui visual sweep vs Vue drawer, Wails/native evidence, synced-state evidence behind a reachable MCP server."
+  },
+  "R043": {
+    "status": "implementing",
+    "gap": "Metadata load/refresh, stale display, generation guard and stale write protection are wired; live refresh-failure inline error evidenced on both apps. Round 2: panel mounts ONLY in drawer step 2 like Vue McpMetadataPanel, uses Vue refresh/fetch labels, renders snapshot meta (tool count, server name/version, formatted syncedAt, stale) and reports synced/busy up to the drawer for Vue confirm-disabled gating; live browser re-check passed (renders in step 2 with Vue copy and gating, mcp-react-round2-step2.png). Remaining: server documentation popup parity, synced-state evidence behind a reachable MCP server, Wails."
+  },
+  "R044": {
+    "status": "implementing",
+    "gap": "Two-step save lifecycle preserves the Vue connection-to-tools/usage transition. Round 2: step 0 matches the Vue structure (code import, 基本信息 with 启用服务+hint, 连接配置 SSE/HTTP-Streamable only + URL + custom-headers desc, 认证配置 with 授权状态 block incl. save-then-authorize/revoke and inline create secret via buildPayload(true), 高级配置), footer order cancel-before-confirm with 上一步 left-aligned, clickable steps rail; step 2 usage textarea editable with 0/16000 counter, AI 生成 fills the field only, generateHint copy, save gated on toolsSynced with syncRequired/instructionsRequired warnings — covered by jsdom interaction tests AND live browser re-verification (mcp-react-round2-*.png). Remaining: edit-mode CredentialResource-style credential card (React keeps password input + credentials subresource), exact drawer visuals, Wails evidence."
+  },
+  "N016": {
+    "status": "implementing",
+    "gap": "Round 2: all three pending decisions resolved toward the Vue baseline — stdio editor option removed (coerce-on-load per McpServiceDialog.vue:855), test-connection surface unmounted (Vue orphan parity, R045 review), step-2 usage counter/AI 生成/generateHint added with toolsSynced gating. Dialog structure, footer order, OAuth block placement and metadata-panel mounting match the Vue drawer; jsdom interaction coverage in McpSettingsPanel.test.tsx, web 404/404, typecheck:web clean, shared 344/344, build:web green; live browser re-verification passed on shared backend (evidence 2026-09-13-mcp-live-browser-evidence.md round-2 section). Remaining: Wails evidence, shadcn/ui visual sweep, synced-state evidence behind a reachable MCP server."
+  }
+}
