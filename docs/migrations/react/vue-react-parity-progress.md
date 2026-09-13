@@ -718,6 +718,15 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   `pnpm typecheck:web` passes. No browser/Vue screenshot or native evidence
   was collected, so N005 remains `review`.
 
+- **Mobile onboarding gate repair:** added the native
+  `apps/mobile/src/features/auth/OnboardingScreen.tsx` implementation for
+  policy loading/retry, invite-only and create-workspace actions, invitation
+  empty state, and logout. The existing native-host onboarding tests now pass
+  as part of mobile test 89/89; `pnpm --filter @weknora/mobile typecheck`
+  passes after preserving the valid `/onboarding` runtime route through the
+  generated-route typing boundary. Simulator/device screenshots and real
+  backend onboarding flows are still required; this row remains review.
+
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
 - **Rows:** any rows proposed for `accepted`; never all rows by default.
 - **Files owned:** `docs/migrations/react/vue-react-parity-matrix.md`, `docs/migrations/react/vue-react-parity-progress.md`, `docs/migrations/react/evidence/vue-react-parity/README.md`, `docs/migrations/react/evidence/vue-react-parity/screenshot-matrix.md`, and the row-specific `docs/migrations/react/evidence/vue-react-parity/<date>-<row-group>.md` evidence file only.
