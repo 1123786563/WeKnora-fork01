@@ -543,13 +543,15 @@ function ImWizardPanel({ locale, t, apiBaseUrl, agents = [], knowledgeBases = []
 
     {step === 0 ? <fieldset className="wk-im-step-body">
       <legend className="wk-im-legend">{t('agentEditor.im.sectionChannel')}</legend>
+      {/* Vue gates the bound agent via validateWizardStep (warning toast), not
+          native required validation — keep the same semantics here. */}
       <label>{t('integrations.boundAgent')}
         {agents.length > 0
-          ? <select required value={form.targetAgentId} onChange={(event) => patch({ targetAgentId: event.target.value })}>
+          ? <select value={form.targetAgentId} onChange={(event) => patch({ targetAgentId: event.target.value })}>
               <option value="" disabled>{t('integrations.selectAgentPlaceholder')}</option>
               {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
             </select>
-          : <input required value={form.targetAgentId} onChange={(event) => patch({ targetAgentId: event.target.value })} placeholder={t('integrations.selectAgentPlaceholder')} />}
+          : <input value={form.targetAgentId} onChange={(event) => patch({ targetAgentId: event.target.value })} placeholder={t('integrations.selectAgentPlaceholder')} />}
       </label>
       <label>{t('agentEditor.im.platform')}
         {/* Vue disables the platform select while editing (line 114). */}
