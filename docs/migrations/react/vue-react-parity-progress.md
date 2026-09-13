@@ -853,6 +853,7 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 设置当前浏览器审计（2026-09-14）：已认证 React `settings?section=skills` 实际渲染技能设置、左侧分组导航、空态与双操作；源码复核确认 R027 section 切换/URL 同步已实现，R031 调试头/raw dump/折叠开关仅为过期历史台账描述，当前源码无对应 DOM。证据 `evidence/vue-react-parity/2026-09-14-settings-current-browser-audit.md`。Vue 同账号 computed-style 对照与 Wails/native 仍开放。
 - N031 移动 FAQ/Wiki 参考面（2026-09-14）：移除 React Native 页面中 Vue 不存在的权限/KB 诊断副文案，FAQ/Wiki 空态改用共享 i18n，空答案/摘要不再伪造 placeholder；mobile 146/146、typecheck 通过。证据 `evidence/vue-react-parity/2026-09-14-n031-mobile-faq-reference-copy.md`。仍开放 iOS/Android 真机启动与 Vue 同条件对照。
 - N006 标签服务端分页（2026-09-14）：文档标签筛选改为 Vue 等价的 50 条分页、300ms 关键词防抖、服务端总数、加载更多与跨页已选项保留；新增 `tagsPage` 并保持 `tags()` 兼容。API/client + tag UI focused tests 通过，shared typecheck 通过；证据 `evidence/vue-react-parity/2026-09-14-n006-tag-pagination.md`。仍开放同条件浏览器截图与真实后端回归。
+- N010 FAQ 卡片/编辑抽屉（2026-09-14）：FAQ 卡片改为 Vue 的可选中卡片、三段折叠内容、more 菜单、标签/状态 footer；编辑抽屉补齐 520px 结构、字段描述、列表增删、10/5 上限、必填顺序和 inline 错误位；FAQ focused 35/35。证据 `evidence/vue-react-parity/2026-09-14-n010-faq-card-editor.md`。仍开放检索测试抽屉、tag tooltip、真实后端与浏览器/平台证据。
 - N007 upload graph 节集成（30f6008d）：UploadGraphSettings 全量 GraphSettings.vue 移植、systemInfo.graph_database_engine + KB indexing_strategy.graph_enabled 门控与导航回退、保存载荷 graph_enabled+extract_config（enabled 钳制）、URL 列表顺序上传、UploadSourceDropdown 文件/文件夹/URL 菜单 + URL 子对话校验、documents.css +290。独立复核：focused 45/45、documents 57/57。开放：extraction 端点 live e2e 需图库启用（当前部署关闭，门控已端到端验证）、错误提示 inline vs Vue toast、单节显示模型差异（导航顺序/门控一致）。
 - 主代理直接修复：SandboxSettingsPanel 开关对齐 Vue（5f272a1f）——折叠 details 换 单向 switch + 警告 popconfirm（Vue:36-55 语义），ⓘ 提示气泡样式，样式独立 sandbox-settings.css；24/24。
 - i18n 债登记：upload-pipeline.ts 本地字节级拷贝表（graphSettings.*/uploadConfirm.* 块）待迁 packages/i18n 共享包（N007 报告，不阻塞）。
@@ -1313,4 +1314,3 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 矩阵更新（6adc2a45）：R009 行补 rail drag-to-expand（07911648）；N006 行已由并发侧更新 tag pagination（82eb7bb8）。
 - 门禁：shared 中 embedWizard.test.ts 1 红为 embed 切片在途 TDD（embed config drawer 切片运行中）；mobile 146/146、embed 7/7、desktop 2/2 全绿。
 - 在途（2）：embed config drawer、FAQ B1 编辑抽屉 + B3 条目卡。
-
