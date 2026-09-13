@@ -88,6 +88,7 @@ export function ApiPlaygroundDrawer({ open, onClose, apiKey, mode, agents, agent
   const [drawerResizing, setDrawerResizing] = useState(false);
   const drawerWidthRef = useRef(drawerWidth);
   const controllerRef = useRef<AbortController | null>(null);
+  const queryRef = useRef<HTMLTextAreaElement | null>(null);
   drawerWidthRef.current = drawerWidth;
 
   // Vue openPlaygroundDrawer -> ensurePlaygroundAgent (also reruns when the
@@ -110,6 +111,19 @@ export function ApiPlaygroundDrawer({ open, onClose, apiKey, mode, agents, agent
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, [open]);
+  useEffect(() => {
+    const textarea = queryRef.current;
+    if (!textarea || !open) return;
+    textarea.style.height = 'auto';
+    const computed = window.getComputedStyle(textarea);
+    const lineHeight = Number.parseFloat(computed.lineHeight) || 22;
+    const padding = (Number.parseFloat(computed.paddingTop) || 0) + (Number.parseFloat(computed.paddingBottom) || 0);
+    const minHeight = lineHeight * 2 + padding;
+    const maxHeight = lineHeight * 4 + padding;
+    const measured = textarea.scrollHeight || minHeight;
+    textarea.style.height = `${Math.min(maxHeight, Math.max(minHeight, measured))}px`;
+    textarea.style.overflowY = measured > maxHeight ? 'auto' : 'hidden';
+  }, [form.query, open]);
   const onResizeStart = (event: ReactMouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     const startX = event.clientX;
@@ -261,7 +275,7 @@ export function ApiPlaygroundDrawer({ open, onClose, apiKey, mode, agents, agent
             <p className="wk-api-playground-hint wk-muted">{t(externalUserHintKey(mode), { headerName: DEFAULT_DIRECT_HEADER_NAME })}</p>
             <label className="wk-api-playground-field" style={{ display: 'block', margin: '10px 0' }}>
               {t('integrations.api.playgroundQuestion')}
-              <textarea className="wk-api-playground-query" rows={3} value={form.query} placeholder={t('integrations.api.playgroundQuestionPlaceholder')} onChange={(event) => setForm((prev) => ({ ...prev, query: event.target.value }))} style={fieldStyle} />
+              <textarea ref={queryRef} className="wk-api-playground-query" rows={2} value={form.query} placeholder={t('integrations.api.playgroundQuestionPlaceholder')} onChange={(event) => setForm((prev) => ({ ...prev, query: event.target.value }))} style={fieldStyle} />
             </label>
           </section>
 

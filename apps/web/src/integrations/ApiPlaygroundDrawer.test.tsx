@@ -115,6 +115,7 @@ test('drawer renders the three Vue sections with Vue defaults in zh-CN', () => {
   assert.deepEqual(titles, ['请求配置', '请求预览', '运行结果']);
   const query = container.querySelector<HTMLTextAreaElement>('.wk-api-playground-query');
   assert.equal(query!.value, 'hello', 'Vue default query');
+  assert.equal(query!.rows, 2, 'Vue textarea autosize starts at minRows=2');
   const externalUser = container.querySelector<HTMLInputElement>('.wk-api-playground-external-user');
   assert.equal(externalUser!.value, 'user_123', 'Vue default external user');
   assert.equal(container.querySelector('.wk-api-playground-empty')?.textContent, '运行后将在这里显示 Session 响应、SSE 原始输出和提取出的回答。');

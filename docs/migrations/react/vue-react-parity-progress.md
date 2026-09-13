@@ -1690,3 +1690,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - React API Playground 现在对齐 Vue `SettingDrawer` 的 640px 默认宽度、560–960px 与 viewport clamp、左侧可见拖拽分隔线、拖拽期间 body 光标/选区锁定、窗口缩放收敛以及 `setting-drawer:width:api-playground` localStorage 持久化。
 - 新增纯函数边界和真实 DOM mousedown/mousemove/mouseup 回归；API Playground 定向测试 10/10，Web TypeScript 检查通过。证据 `evidence/vue-react-parity/2026-09-14-r013-api-playground-resize.md`。
 - 证据层：本轮为 Vue 源码对照与 React DOM/单元验证；浏览器 computed-style、Vue 同条件截图、真实后端成功/失败/权限矩阵、Wails 与移动端证据仍待补齐，R013/N028 继续保持 review。
+
+## 2026-09-14 Round N+42 — R013 API Playground 问题输入自动高度
+
+- React 问题输入改为 Vue `t-textarea` 的 autosize 语义：最小 2 行、最大 4 行，依据实际 scrollHeight 和 computed line-height/padding 调整，超出上限时内部滚动。
+- 新增最小行数 DOM 回归；API Playground 定向测试 10/10，Web TypeScript 检查通过。证据 `evidence/vue-react-parity/2026-09-14-r013-api-playground-textarea.md`。
+- 证据层：本轮为 Vue 源码对照、React DOM/单元和类型检查；jsdom 无布局引擎，精确 computed-style/截图仍需浏览器，真实后端权限矩阵、Wails 与移动端证据仍待补齐，R013/N028 继续保持 review。
