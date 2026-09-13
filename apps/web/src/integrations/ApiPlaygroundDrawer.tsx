@@ -82,7 +82,15 @@ export function ApiPlaygroundDrawer({ open, onClose, apiKey, mode, agents, agent
     });
   }, [open, agents]);
   useEffect(() => () => controllerRef.current?.abort(), []);
-  const close = () => { controllerRef.current?.abort(); onClose(); };
+  const close = () => {
+    // Vue SettingDrawer blurs before destroy-on-close. This avoids leaving a
+    // soon-to-be-removed textarea/select as the active element in the host.
+    if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    controllerRef.current?.abort();
+    onClose();
+  };
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') close(); };

@@ -1678,3 +1678,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - React API Playground 抽屉改为 body-attached Portal，补齐 Vue `SettingDrawer` 的 teleport 边界，避免被 integrations 页面 stacking context 裁剪；原有遮罩点击、关闭按钮、Escape、运行中 Abort 和结果状态机保持不变。
 - 测试 harness 改为从 `document.body` 断言，并新增 Portal 父节点回归；API Playground 定向测试 9/9、Web TypeScript 检查通过。
 - 证据层：本轮为 Vue 源码对照与 React DOM/单元验证；Vue 同条件截图、真实后端成功/失败/权限矩阵、computed-style、Wails 与移动端证据仍待补齐，R013/N028 继续保持 review。
+
+## 2026-09-14 Round N+40 — R013 API Playground 关闭前焦点清理
+
+- React API Playground 的关闭路径现在在 Abort 和 `onClose` 前清理当前 `HTMLElement` 焦点，对齐 Vue `SettingDrawer` 的 `before-close` blur 语义，避免 Portal 销毁后焦点留在已移除控件上。
+- 回归覆盖关闭按钮可聚焦、关闭后不保留焦点；API Playground 定向测试 9/9，Web TypeScript 检查通过。
+- 证据层：本轮为 Vue `SettingDrawer.vue` 源码对照与 React DOM/单元验证；真实浏览器焦点恢复、Vue 同条件截图/computed-style、真实后端成功/失败/权限矩阵、Wails 与移动端证据仍待补齐，R013/N028 继续保持 review。

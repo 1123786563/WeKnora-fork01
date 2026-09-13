@@ -126,8 +126,11 @@ test('close button aborts and hands control back to the host', () => {
   const { container } = mountDrawer({ onClose: () => { closed = true; } });
   const close = container.querySelector<HTMLButtonElement>('.wk-api-playground-close');
   assert.ok(close, 'close affordance rendered');
+  close!.focus();
+  assert.equal(document.activeElement, close, 'close affordance can receive focus');
   void act(() => { close!.click(); });
   assert.equal(closed, true, 'close button closes the drawer');
+  assert.notEqual(document.activeElement, close, 'Vue SettingDrawer blurs the active control before destroy-on-close');
 });
 
 test('run gating mirrors Vue: disabled with a reason and tenant mode locks the external user', () => {
