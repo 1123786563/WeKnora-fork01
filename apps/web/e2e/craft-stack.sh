@@ -69,14 +69,17 @@ cleanup() {
   while read -r pid name; do
     [ -n "${pid:-}" ] || continue
     if kill -0 "$pid" 2>/dev/null; then
-      echo "[stack] stopping $name (pid $pid)"
-      kill "$pid" 2>/dev/null || true
+      echo "[stack] stopping $name (pid $pid, process group)"
+      # Every detached component is a session/process-group leader
+      # (start_new_session=True), so -PGID reaps its whole subtree — a
+      # plain pid kill left the vite wrapper's node children alive.
+      kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
     fi
   done < "$PIDS"
   sleep 1
   while read -r pid name; do
     [ -n "${pid:-}" ] || continue
-    kill -9 "$pid" 2>/dev/null || true
+    kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
   done < "$PIDS"
 }
 trap cleanup EXIT
@@ -94,14 +97,17 @@ stack_down() {
   while read -r pid name; do
     [ -n "${pid:-}" ] || continue
     if kill -0 "$pid" 2>/dev/null; then
-      echo "[stack] stopping $name (pid $pid)"
-      kill "$pid" 2>/dev/null || true
+      echo "[stack] stopping $name (pid $pid, process group)"
+      # Every detached component is a session/process-group leader
+      # (start_new_session=True), so -PGID reaps its whole subtree — a
+      # plain pid kill left the vite wrapper's node children alive.
+      kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
     fi
   done < "$PIDS"
   sleep 1
   while read -r pid name; do
     [ -n "${pid:-}" ] || continue
-    kill -9 "$pid" 2>/dev/null || true
+    kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
   done < "$PIDS"
 }
 
@@ -131,6 +137,10 @@ if [ "$ACTION" = "run" ]; then
   # reach playwright verbatim (e.g. `run mock --grep 01`).
   if [ $# -ge 2 ]; then shift 2; fi
   SPEC_ARGS=("e2e/craft-report.spec.ts")
+  # An optional spec path (first non-flag arg) selects which craft spec runs
+  # (default: the W06 report acceptance); anything after it, or after --,
+  # reaches playwright verbatim.
+  if [ "$#" -gt 0 ] && [ "${1#-}" = "$1" ]; then SPEC_ARGS=("$1"); shift; fi
   set +e
   (cd "$ROOT/apps/web" && env \
     CRAFT_WEB_URL="$WEB_ORIGIN" \

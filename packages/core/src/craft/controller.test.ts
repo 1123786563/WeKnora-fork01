@@ -157,7 +157,10 @@ test('network failures reconnect the subscription; submit happens exactly once w
       return pending();
     },
   ]);
-  const controller = createCraftWorkbenchController({ api: fake.api, scope: createScopeController(), events: sse.transport });
+  // C03 moved reconnects onto the backoff schedule; this W04 test pins the
+  // immediate-cycle behaviour, so it injects the zero-delay schedule.
+  const zeroBackoff = { delayMs: (): number => 0, sleep: async (): Promise<void> => {} };
+  const controller = createCraftWorkbenchController({ api: fake.api, scope: createScopeController(), events: sse.transport, backoff: zeroBackoff });
   await controller.load('s1');
   assert.equal(sse.calls.length, 0);
   await controller.submit('画一个落地页');

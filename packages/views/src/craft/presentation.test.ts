@@ -226,6 +226,28 @@ test('message log dedupes reconnect replays and keeps only numbered craft frames
   assert.equal(log.getSnapshot().events.length, 1);
 });
 
+test('a replaced main-model attempt drops its abandoned partial text (C03)', () => {
+  const log = createCraftMessageLog();
+  log.resetForRun('run-1');
+  const craftFrame = (seq: number, kind: string, data: Record<string, unknown>) => ({
+    event: String(seq),
+    data: JSON.stringify({ seq, attempt_id: null, type: 'craft', payload: { workspace_id: 'ws-1', delegation_id: 'd', tool_call_id: null, kind, data } }),
+  });
+  const attemptReplaced = (seq: number, previous: string) => ({
+    event: String(seq),
+    data: JSON.stringify({ seq, attempt_id: previous, type: 'attempt_replaced', payload: { previous_attempt_id: previous } }),
+  });
+  log.ingest(craftFrame(1, 'delegation.text', { text: '第一次尝试的前半' }));
+  log.ingest(craftFrame(2, 'delegation.text', { text: '段未完成文本' }));
+  log.ingest(attemptReplaced(3, 'a1'));
+  log.ingest(craftFrame(4, 'delegation.text', { text: '第二次尝试的完整文本' }));
+  const projection = projectAssistant(log.getSnapshot().events, 'running');
+  // The tRPC projection REPLACES the abandoned partial: the new attempt's
+  // text must never be appended after the old one.
+  assert.equal(projection.text, '第二次尝试的完整文本');
+  assert.equal(projection.complete, false); // still running, never "finished" by text
+});
+
 test('i18n dictionaries expose the same keys in zh and en', () => {
   const zh = craftStrings('zh');
   const en = craftStrings('en');
