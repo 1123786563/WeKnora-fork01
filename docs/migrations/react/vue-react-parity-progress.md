@@ -850,6 +850,14 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   passes. Exact localized copy, credential-field parity, live backend
   validation, and native-device evidence remain open.
 
+- **Mobile RSS connector form:** the native editor now exposes feed URLs and
+  optional `Name: Value` request headers, requires feed URLs before save or
+  connection test, hydrates editable feed settings without exposing stored
+  secrets, and serializes the existing RSS backend credential/settings shape.
+  Focused screen and policy tests pass 14/14; full mobile tests pass 94/94
+  and typecheck passes. Exact localized copy, other connector fields, live
+  backend validation, and native-device evidence remain open.
+
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
 - **Rows:** any rows proposed for `accepted`; never all rows by default.
 - **Files owned:** `docs/migrations/react/vue-react-parity-matrix.md`, `docs/migrations/react/vue-react-parity-progress.md`, `docs/migrations/react/evidence/vue-react-parity/README.md`, `docs/migrations/react/evidence/vue-react-parity/screenshot-matrix.md`, and the row-specific `docs/migrations/react/evidence/vue-react-parity/<date>-<row-group>.md` evidence file only.
