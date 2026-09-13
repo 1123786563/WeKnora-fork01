@@ -2,6 +2,19 @@
 
 由主代理维护。每份证据对应一次逐页闭环的实测记录；截图在同目录 screenshots/。
 
+- 2026-09-13-accept-batch-audit — 20 路由×双端验收批扫差异目录（2026-09-13，Round N+1）
+- 2026-09-13-r033-skill-timeline — skill 安装时间线 SSE 移植（2026-09-13，f97a5126）
+- 2026-09-13-n007-graph-section — 上传确认 graph 节移植（2026-09-13，30f6008d）
+- 2026-09-13-new-user-guide — NewUserGuide 欢迎引导移植（2026-09-13，773e723b）
+- 2026-09-13-chat-visual-form — chat 渲染层形态重建（2026-09-13，97b78d51）
+- 2026-09-13-upload-progress — 字节级上传进度 transport（2026-09-13，499ec9a8）
+- 2026-09-13-r017-org-page — organizations 页重建（2026-09-13，c2dc9f84）
+- 2026-09-13-r012-agents-page — agents 列表页实现（2026-09-13，c45aea9d）
+- 2026-09-13-r013-integrations-page — integrations 六 tab 重建（2026-09-13，23ce0997）
+- 2026-09-13-faq-page — FAQ 页重建（2026-09-13，552f466c）
+- 2026-09-13-r038-members-rebuild — members 面板重建（2026-09-13，780667f0）
+- 2026-09-13-r027-settings-wrapper — settings 包装层+models 面板（2026-09-13，afb9b498）
+- 2026-09-13-shell-session-list — 会话列表并入 shell（2026-09-13，261352fe）
 - 2026-09-12-baseline-and-inventory — Task 1 canonical executable inventory baseline（2026-09-12）
 - 2026-09-12-auth-functional-fixes — /login /register /join 鉴权功能修复（2026-09-12，Round 2）
 - 2026-09-12-auth-i18n-shared — auth 文案迁入共享 i18n 包（2026-09-12，Round 7）
