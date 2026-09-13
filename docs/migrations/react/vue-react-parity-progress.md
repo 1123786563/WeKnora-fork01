@@ -120,6 +120,11 @@
 
 - Vue graph search uses debounced server-backed Wiki search with selectable results. React now queries `client.wiki.list` after the same minimum-input interaction, renders a scoped suggestion list, and opens the selected page/ego graph while retaining local node filtering.
 - Focused graph tests: 3/3 passed. Web typecheck: passed. Evidence remains static/unit and typecheck only; browser, real-backend, Wails, and native evidence remain open.
+
+## 2026-09-14 Round N+11 — N013 data-source connection test
+
+- Vue exposes connection validation independently from synchronization. React now calls the existing `dataSources.validate` endpoint from each saved source, disables concurrent actions, and reports validation success/failure without refreshing or claiming sync completion.
+- Data-source form tests: 2/2 passed. Web typecheck: passed. Evidence is static/unit and typecheck only; resource browser, detailed logs, browser, real-backend, Wails, and native evidence remain open.
 - Status remains `review`; no new browser computed-style, real-backend, Wails, iOS or Android evidence claimed. Index/tree/list modes, folder actions, graph and reader states remain open.
 
 ## 2026-09-12 Round 1 基线
