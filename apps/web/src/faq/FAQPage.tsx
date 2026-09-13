@@ -71,6 +71,48 @@ export function faqImportTaskView(task: { status: string; progress?: number; pro
   };
 }
 
+/** Vue FAQEntryManager list limits (similar questions and answers). */
+export const FAQ_SIMILAR_CAP = 10;
+export const FAQ_NEGATIVE_CAP = 10;
+export const FAQ_ANSWER_CAP = 5;
+
+/** Vue add handlers: trim, reject duplicates/empty values, and enforce cap. */
+export function pushListItem(list: readonly string[], draft: string, cap: number): { list: string[]; added: boolean } {
+  const value = draft.trim();
+  if (!value || list.includes(value) || list.length >= cap) return { list: [...list], added: false };
+  return { list: [...list, value], added: true };
+}
+
+/** Vue remove handlers: immutable indexed removal. */
+export function removeListItem(list: readonly string[], index: number): string[] {
+  if (index < 0 || index >= list.length) return [...list];
+  return list.filter((_, itemIndex) => itemIndex !== index);
+}
+
+/** Vue editorRules order: standard question before answers. */
+export function editorFormError(form: { question?: string; answers?: readonly string[] }): 'question' | 'answers' | null {
+  if (!form.question?.trim()) return 'question';
+  if (!form.answers?.some((answer) => answer.trim())) return 'answers';
+  return null;
+}
+
+export function faqSaveResultKey(editing: boolean): 'knowledgeEditor.messages.createSuccess' | 'knowledgeEditor.messages.updateSuccess' {
+  return editing ? 'knowledgeEditor.messages.updateSuccess' : 'knowledgeEditor.messages.createSuccess';
+}
+
+type FAQSectionCollapseState = Record<string, boolean>;
+function sectionCollapseKey(entryId: number, section: string): string { return `${entryId}:${section}`; }
+
+/** Vue FAQ cards default each details section to collapsed and toggle locally. */
+export function isSectionCollapsed(state: FAQSectionCollapseState, entryId: number, section: string): boolean {
+  return state[sectionCollapseKey(entryId, section)] ?? true;
+}
+
+export function toggleSection(state: FAQSectionCollapseState, entryId: number, section: string): FAQSectionCollapseState {
+  const key = sectionCollapseKey(entryId, section);
+  return { ...state, [key]: !isSectionCollapsed(state, entryId, section) };
+}
+
 export interface KBListItem { id: string; name: string; type?: string }
 export interface FAQKBMeta { type?: string; description?: string; createdAt?: string }
 
@@ -121,6 +163,10 @@ function FileAddIcon(props: { size?: number; className?: string }) { return <Ico
 function CloseIcon(props: { size?: number; className?: string }) { return <Icon {...props}><path d="M18 6L6 18M6 6l12 12" /></Icon>; }
 function TagIcon(props: { size?: number; className?: string }) { return <Icon {...props}><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z" /><path d="M7 7h.01" /></Icon>; }
 function UploadIcon(props: { size?: number; className?: string }) { return <Icon {...props}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><path d="M17 8l-5-5-5 5" /><path d="M12 3v12" /></Icon>; }
+// Vue card-more-btn uses @/assets/img/more.png (horizontal ⋯) — inline feather-style dots.
+function MoreIcon(props: { size?: number; className?: string }) {
+  return <Icon {...props}><circle cx="5" cy="12" r="1.7" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1.7" fill="currentColor" stroke="none" /></Icon>;
+}
 
 // --- Breadcrumb (Vue faq-breadcrumb + kb-title-actions) ---------------------------
 
@@ -180,8 +226,21 @@ export function FAQBreadcrumb({ t: tr, knowledgeBaseId = '', kbName, kbList = []
 
 // --- Page view (Vue faq-header / faq-filter-bar / faq-scroll-container) ------------
 
-type FormState = { question: string; similar: string; negative: string; answers: string; tagId: string; enabled: boolean; recommended: boolean };
-const emptyForm: FormState = { question: '', similar: '', negative: '', answers: '', tagId: '', enabled: true, recommended: false };
+// Vue editor form (FAQEntryManager.vue:443-563): list fields with drafts,
+// not one textarea per list — add/remove semantics live in pushListItem/removeListItem.
+type FormState = {
+  question: string;
+  similarQuestions: string[];
+  negativeQuestions: string[];
+  answers: string[];
+  tagId: string;
+  enabled: boolean;
+  recommended: boolean;
+  similarDraft: string;
+  negativeDraft: string;
+  answerDraft: string;
+};
+const emptyForm: FormState = { question: '', similarQuestions: [], negativeQuestions: [], answers: [], tagId: '', enabled: true, recommended: false, similarDraft: '', negativeDraft: '', answerDraft: '' };
 // Vue FAQEntryManager.vue:1058 — the scroll list appends 20 rows per page.
 const PAGE_SIZE = 20;
 
@@ -318,6 +377,9 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
   const [tagPanelOpen, setTagPanelOpen] = useState(false);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [collapsedSections, setCollapsedSections] = useState<FAQSectionCollapseState>({});
+  // Vue entry.showMore — one open card more-menu at a time (FAQEntryManager.vue:265-283).
+  const [moreMenuId, setMoreMenuId] = useState<number | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   // Vue handleScroll (FAQEntryManager.vue:1624): within 200px of the bottom,
   // ask the container for the next page of entries. The inner container only
@@ -356,6 +418,24 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
     : activeTagIds.length === 1
       ? (tags.find((tag) => tag.id === activeTagIds[0])?.name ?? t('knowledgeBase.allTags'))
       : t('knowledgeBase.tagFilterMulti', { count: activeTagIds.length });
+  // Vue addSimilar/addNegative/addAnswer (FAQEntryManager.vue:1714-1753) — the
+  // view composes list mutations on top of the shared form patch channel.
+  const addSimilar = () => {
+    const next = pushListItem(form.similarQuestions, form.similarDraft, FAQ_SIMILAR_CAP);
+    onFormChange(next.added ? { similarQuestions: next.list, similarDraft: '' } : {});
+  };
+  const addNegative = () => {
+    const next = pushListItem(form.negativeQuestions, form.negativeDraft, FAQ_NEGATIVE_CAP);
+    onFormChange(next.added ? { negativeQuestions: next.list, negativeDraft: '' } : {});
+  };
+  const addAnswer = () => {
+    const next = pushListItem(form.answers, form.answerDraft, FAQ_ANSWER_CAP);
+    onFormChange(next.added ? { answers: next.list, answerDraft: '' } : {});
+  };
+  const sectionButton = (entryId: number, section: string) => ({
+    'aria-expanded': !isSectionCollapsed(collapsedSections, entryId, section),
+    onClick: () => setCollapsedSections((current) => toggleSection(current, entryId, section)),
+  });
 
   return (
     <main className="wk-page wk-faq-page">
@@ -449,40 +529,82 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                 {Array.from({ length: 6 }, (_, index) => <div key={index} className="faq-card-skeleton" />)}
               </div>
             ) : entries.length > 0 ? (
-              <ul className="wk-list wk-faq-list">
-                <li className="wk-faq-list-head">
-                  {canContribute ? <label className="wk-faq-select-all"><input type="checkbox" checked={selected.size === entries.length && entries.length > 0} onChange={(event) => onToggleSelectAll(event.target.checked)} /> {t('common.all')}</label> : <span />}
-                  <span className="wk-faq-range">{entries.length} / {total}</span>
-                </li>
-                {entries.map((entry) => (
-                  <li key={entry.id} className="wk-faq-item">
-                    {canContribute ? <label><input type="checkbox" checked={selected.has(entry.id)} onChange={(event) => onToggleSelect(entry.id, event.target.checked)} /></label> : null}
-                    <div className="wk-list-item-copy">
-                      <strong>{entry.standard_question}</strong>
-                      <span>{entry.answers.join(' · ')}</span>
-                      <small>{entry.similar_questions.length + ' ' + t('knowledgeEditor.faq.similarQuestions')} · {entry.negative_questions.length + ' ' + t('knowledgeEditor.faq.negativeQuestions')} · {entry.is_enabled ? t('knowledgeEditor.faq.statusEnabled') : t('knowledgeEditor.faq.statusDisabled')}{entry.is_recommended ? ' · ' + t('knowledgeEditor.faq.recommended') : ''}{typeof entry.tag_id === 'number' && tagNameBySeq.has(entry.tag_id) ? ' · ' + tagNameBySeq.get(entry.tag_id) : ''}</small>
-                    </div>
-                    {canContribute ? (
-                      <div className="wk-list-item-actions">
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={entry.is_enabled}
-                          aria-label={entry.is_enabled ? t('knowledgeEditor.faq.statusEnabled') : t('knowledgeEditor.faq.statusDisabled')}
-                          title={entry.is_enabled ? t('knowledgeEditor.faq.statusEnabled') : t('knowledgeEditor.faq.statusDisabled')}
-                          className={'faq-status-switch' + (entry.is_enabled ? ' is-on' : '')}
-                          disabled={statusUpdatingIds.includes(entry.id)}
-                          onClick={() => onToggleEntryStatus(entry, !entry.is_enabled)}
-                        >
-                          <span className="faq-status-switch__thumb" />
-                        </button>
-                        <Button type="button" onClick={() => onEditEntry(entry)}>{t('common.edit')}</Button>
-                        <Button type="button" onClick={() => onDeleteEntry(entry)}>{t('common.delete')}</Button>
+              <div className="faq-card-list">
+                {/* Vue faq-card-list (FAQEntryManager.vue:254-410): header question +
+                    more menu, three collapsible sections, footer tag chip + switch. */}
+                {entries.map((entry) => {
+                  const isSelected = selected.has(entry.id);
+                  const tagName = typeof entry.tag_id === 'number' ? tagNameBySeq.get(entry.tag_id) : undefined;
+                  // Vue faq-section (:291-357): similar/negative render only when
+                  // non-empty, answers always; bodies start collapsed and toggle.
+                  const section = (name: 'similar' | 'negative' | 'answers', labelKey: string, values: string[], always = false) => {
+                    if (!always && values.length === 0) return null;
+                    const collapsed = isSectionCollapsed(collapsedSections, entry.id, name);
+                    const tagClass = name === 'negative' ? 'question-tag is-negative' : name === 'answers' ? 'question-tag is-answer' : 'question-tag';
+                    return <section className={'faq-section ' + name} key={name}>
+                      <button type="button" className="faq-section-label clickable" {...sectionButton(entry.id, name)}>
+                        <span>{t(labelKey)}</span>
+                        <span className="section-count">({values.length})</span>
+                        <Icon size={13} className="collapse-icon"><path d={collapsed ? Chevrons.right : Chevrons.down} /></Icon>
+                      </button>
+                      <div className="faq-tags" hidden={collapsed}>{values.map((value, index) => <span key={index} className={tagClass} title={value}>{value}</span>)}</div>
+                    </section>;
+                  };
+                  return (
+                    <article
+                      key={entry.id}
+                      className={'faq-card' + (canContribute ? ' is-selectable' : '') + (isSelected ? ' selected' : '')}
+                      onClick={canContribute ? () => onToggleSelect(entry.id, !isSelected) : undefined}
+                    >
+                      <div className="faq-card-header">
+                        <div className="faq-header-top">
+                          {canContribute ? (
+                            <label className="faq-card-check" onClick={(event) => event.stopPropagation()}>
+                              <input type="checkbox" checked={isSelected} aria-label={entry.standard_question} onChange={(event) => onToggleSelect(entry.id, event.target.checked)} />
+                            </label>
+                          ) : null}
+                          <strong className="faq-question" title={entry.standard_question}>{entry.standard_question}</strong>
+                          {canContribute ? (
+                            <span className="faq-more-host" onBlur={(event) => closeOnBlur(event, () => setMoreMenuId(null))} onClick={(event) => event.stopPropagation()}>
+                              <button
+                                type="button"
+                                className="card-more-btn"
+                                aria-label={t('knowledgeBase.columnActions')}
+                                title={t('knowledgeBase.columnActions')}
+                                aria-haspopup="menu"
+                                aria-expanded={moreMenuId === entry.id}
+                                onClick={() => setMoreMenuId((current) => (current === entry.id ? null : entry.id))}
+                              >
+                                <MoreIcon size={16} />
+                              </button>
+                              {/* Vue popup-menu (:271-282): edit then delete */}
+                              <span className="faq-menu card-more-popup" role="menu" hidden={moreMenuId !== entry.id}>
+                                <button type="button" role="menuitem" className="faq-menu-item" onClick={() => { setMoreMenuId(null); onEditEntry(entry); }}>{t('common.edit')}</button>
+                                <button type="button" role="menuitem" className="faq-menu-item is-danger" onClick={() => { setMoreMenuId(null); onDeleteEntry(entry); }}>{t('common.delete')}</button>
+                              </span>
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
+                      <div className="faq-card-body">
+                        {section('similar', 'knowledgeEditor.faq.similarQuestions', entry.similar_questions)}
+                        {section('negative', 'knowledgeEditor.faq.negativeQuestions', entry.negative_questions)}
+                        {section('answers', 'knowledgeEditor.faq.answers', entry.answers, true)}
+                      </div>
+                      <div className="faq-card-footer">
+                        <div className="faq-card-tag">
+                          <span className="faq-tag-chip"><span className="tag-text">{tagName ?? t('knowledgeBase.untagged')}</span></span>
+                        </div>
+                        {canContribute ? (
+                          <div className="faq-card-status" onClick={(event) => event.stopPropagation()}>
+                            <button type="button" role="switch" aria-checked={entry.is_enabled} aria-label={entry.is_enabled ? t('knowledgeEditor.faq.statusEnabled') : t('knowledgeEditor.faq.statusDisabled')} title={entry.is_enabled ? t('knowledgeEditor.faq.statusEnabled') : t('knowledgeEditor.faq.statusDisabled')} className={'faq-status-switch' + (entry.is_enabled ? ' is-on' : '')} disabled={statusUpdatingIds.includes(entry.id)} onClick={() => onToggleEntryStatus(entry, !entry.is_enabled)}><span className="faq-status-switch__thumb" /></button>
+                          </div>
+                        ) : null}
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
             ) : (
               <div className="faq-empty-state">
                 <div className="empty-content">
@@ -571,6 +693,9 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
         </section>
       ) : null}
 
+      {/* B1: Vue editor drawer (FAQEntryManager.vue:440-577) — 520px right
+          drawer, one settings-row per field with the shared desc keys, list
+          editors with add/remove, and a pinned cancel/save footer. */}
       {editorOpen ? (
         <section className="faq-editor-overlay" aria-label={editorTitle}>
           <aside className="faq-editor-drawer">
@@ -579,32 +704,122 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
               <button type="button" className="faq-modal-close" aria-label={t('common.close')} onClick={onCloseEditor}><CloseIcon size={16} /></button>
             </div>
             <form className="faq-editor-form" onSubmit={onEditorSubmit}>
-              <label className="faq-editor-field">
-                <span className="faq-editor-label">{t('knowledgeEditor.faq.standardQuestion')} *</span>
-                <input required value={form.question} onChange={(event) => onFormChange({ question: event.target.value })} />
-              </label>
-              <label className="faq-editor-field">
-                <span className="faq-editor-label">{t('knowledgeEditor.faq.similarQuestions')}</span>
-                <textarea rows={3} value={form.similar} placeholder={t('knowledgeEditor.faq.similarPlaceholder')} onChange={(event) => onFormChange({ similar: event.target.value })} />
-              </label>
-              <label className="faq-editor-field">
-                <span className="faq-editor-label">{t('knowledgeEditor.faq.negativeQuestions')}</span>
-                <textarea rows={3} value={form.negative} placeholder={t('knowledgeEditor.faq.negativePlaceholder')} onChange={(event) => onFormChange({ negative: event.target.value })} />
-              </label>
-              <label className="faq-editor-field">
-                <span className="faq-editor-label">{t('knowledgeEditor.faq.answers')} *</span>
-                <textarea required rows={4} value={form.answers} placeholder={t('knowledgeEditor.faq.answerPlaceholder')} onChange={(event) => onFormChange({ answers: event.target.value })} />
-              </label>
-              <label className="faq-editor-field">
-                <span className="faq-editor-label">{t('knowledgeBase.tagLabel')}</span>
-                <select value={form.tagId} onChange={(event) => onFormChange({ tagId: event.target.value })}>
-                  <option value="">{t('knowledgeEditor.faq.tagPlaceholder')}</option>
-                  {[...tagNameBySeq.entries()].map(([seqId, name]) => <option key={seqId} value={String(seqId)}>{name}</option>)}
-                </select>
-              </label>
-              <div className="faq-editor-checks">
-                <label><input type="checkbox" checked={form.enabled} onChange={(event) => onFormChange({ enabled: event.target.checked })} /> {t('knowledgeEditor.faq.statusEnabled')}</label>
-                <label><input type="checkbox" checked={form.recommended} onChange={(event) => onFormChange({ recommended: event.target.checked })} /> {t('knowledgeEditor.faq.recommended')}</label>
+              <div className="faq-editor-form-body">
+                {message?.tone === 'error' ? <div className="faq-editor-error" role="alert"><Status tone="error">{message.text}</Status></div> : null}
+                <div className="settings-group">
+                  <div className="setting-row">
+                    <div className="setting-info">
+                      <label className="required-label" htmlFor="faq-editor-question">{t('knowledgeEditor.faq.standardQuestion')} <span className="required-mark">*</span></label>
+                      <p className="desc">{t('knowledgeEditor.faq.standardQuestionDesc')}</p>
+                    </div>
+                    <div className="setting-control">
+                      <input id="faq-editor-question" className="full-width-input" {...({ maxlength: 200 } as React.InputHTMLAttributes<HTMLInputElement>)} value={form.question} onChange={(event) => onFormChange({ question: event.target.value })} />
+                    </div>
+                  </div>
+                  <div className="setting-row setting-row-optional setting-row-similar">
+                    <div className="setting-info">
+                      <label className="optional-label" htmlFor="faq-editor-similar">{t('knowledgeEditor.faq.similarQuestions')}</label>
+                      <p className="desc optional-desc">{t('knowledgeEditor.faq.similarQuestionsDesc')}</p>
+                    </div>
+                    <div className="setting-control">
+                      <div className="full-width-input-wrapper">
+                        <input
+                          id="faq-editor-similar"
+                          className="full-width-input"
+                          placeholder={t('knowledgeEditor.faq.similarPlaceholder')}
+                          value={form.similarDraft}
+                          onChange={(event) => onFormChange({ similarDraft: event.target.value })}
+                          onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addSimilar(); } }}
+                        />
+                        <button type="button" className="add-item-btn" aria-label={t('knowledgeEditor.faq.similarQuestions')} disabled={!form.similarDraft.trim() || form.similarQuestions.length >= FAQ_SIMILAR_CAP} onClick={addSimilar}><AddIcon size={14} /></button>
+                      </div>
+                      {form.similarQuestions.length > 0 ? (
+                        <div className="item-list">
+                          {form.similarQuestions.map((question, index) => (
+                            <div key={index} className="item-row">
+                              <div className="item-content">{question}</div>
+                              <button type="button" className="remove-item-btn" aria-label={t('common.delete')} onClick={() => onFormChange({ similarQuestions: removeListItem(form.similarQuestions, index) })}><CloseIcon size={12} /></button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="setting-row setting-row-optional setting-row-negative">
+                    <div className="setting-info">
+                      <label className="optional-label" htmlFor="faq-editor-negative">{t('knowledgeEditor.faq.negativeQuestions')}</label>
+                      <p className="desc optional-desc">{t('knowledgeEditor.faq.negativeQuestionsDesc')}</p>
+                    </div>
+                    <div className="setting-control">
+                      <div className="full-width-input-wrapper">
+                        <input
+                          id="faq-editor-negative"
+                          className="full-width-input"
+                          placeholder={t('knowledgeEditor.faq.negativePlaceholder')}
+                          value={form.negativeDraft}
+                          onChange={(event) => onFormChange({ negativeDraft: event.target.value })}
+                          onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addNegative(); } }}
+                        />
+                        <button type="button" className="add-item-btn" aria-label={t('knowledgeEditor.faq.negativeQuestions')} disabled={!form.negativeDraft.trim() || form.negativeQuestions.length >= FAQ_NEGATIVE_CAP} onClick={addNegative}><AddIcon size={14} /></button>
+                      </div>
+                      {form.negativeQuestions.length > 0 ? (
+                        <div className="item-list">
+                          {form.negativeQuestions.map((question, index) => (
+                            <div key={index} className="item-row negative">
+                              <div className="item-content">{question}</div>
+                              <button type="button" className="remove-item-btn" aria-label={t('common.delete')} onClick={() => onFormChange({ negativeQuestions: removeListItem(form.negativeQuestions, index) })}><CloseIcon size={12} /></button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="setting-row setting-row-primary setting-row-answer">
+                    <div className="setting-info">
+                      <label className="required-label" htmlFor="faq-editor-answer">{t('knowledgeEditor.faq.answers')} <span className="required-mark">*</span></label>
+                      <p className="desc">{t('knowledgeEditor.faq.answersDesc')}</p>
+                    </div>
+                    <div className="setting-control">
+                      <div className="textarea-container">
+                        <div className="full-width-input-wrapper textarea-wrapper">
+                          <textarea
+                            id="faq-editor-answer"
+                            className="full-width-textarea"
+                            rows={3}
+                            placeholder={t('knowledgeEditor.faq.answerPlaceholder')}
+                            value={form.answerDraft}
+                            onChange={(event) => onFormChange({ answerDraft: event.target.value })}
+                            onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); addAnswer(); } }}
+                          />
+                          <button type="button" className="add-item-btn" aria-label={t('knowledgeEditor.faq.answers')} disabled={!form.answerDraft.trim() || form.answers.length >= FAQ_ANSWER_CAP} onClick={addAnswer}><AddIcon size={14} /></button>
+                        </div>
+                        <div className="item-count">{form.answers.length + (form.answerDraft.trim() ? 1 : 0)}/{FAQ_ANSWER_CAP}</div>
+                      </div>
+                      {form.answers.length > 0 ? (
+                        <div className="item-list">
+                          {form.answers.map((answer, index) => (
+                            <div key={index} className="item-row answer-row">
+                              <div className="item-content">{answer}</div>
+                              <button type="button" className="remove-item-btn" aria-label={t('common.delete')} onClick={() => onFormChange({ answers: removeListItem(form.answers, index) })}><CloseIcon size={12} /></button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="setting-row">
+                    <div className="setting-info">
+                      <label htmlFor="faq-editor-tag">{t('knowledgeBase.tagLabel')}</label>
+                      <p className="desc">{t('knowledgeEditor.faq.tagDesc')}</p>
+                    </div>
+                    <div className="setting-control">
+                      <select id="faq-editor-tag" className="full-width-input" value={form.tagId} onChange={(event) => onFormChange({ tagId: event.target.value })}>
+                        <option value="">{t('knowledgeEditor.faq.tagPlaceholder')}</option>
+                        {[...tagNameBySeq.entries()].map(([seqId, name]) => <option key={seqId} value={String(seqId)}>{name}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                </div>
               </div>
               <div className="faq-editor-footer">
                 <Button type="button" onClick={onCloseEditor}>{t('common.cancel')}</Button>
@@ -679,11 +894,24 @@ function FAQTagManageDialog({ client, knowledgeBaseId, tags, open, onClose, onCh
   </Dialog>;
 }
 
+// Vue openEditor (FAQEntryManager.vue:1684-1702) — copies the entry's lists and
+// clears the input drafts; create starts from the empty form.
 function formFrom(entry: FAQEntry | null): FormState {
-  return entry ? { question: entry.standard_question, similar: entry.similar_questions.join('\n'), negative: entry.negative_questions.join('\n'), answers: entry.answers.join('\n'), tagId: typeof entry.tag_id === 'number' ? String(entry.tag_id) : '', enabled: entry.is_enabled, recommended: entry.is_recommended } : emptyForm;
+  return entry ? {
+    question: entry.standard_question,
+    similarQuestions: [...(entry.similar_questions || [])],
+    negativeQuestions: [...(entry.negative_questions || [])],
+    answers: [...(entry.answers || [])],
+    tagId: typeof entry.tag_id === 'number' ? String(entry.tag_id) : '',
+    enabled: entry.is_enabled,
+    recommended: entry.is_recommended,
+    similarDraft: '',
+    negativeDraft: '',
+    answerDraft: '',
+  } : { ...emptyForm, similarQuestions: [], negativeQuestions: [], answers: [] };
 }
 function payloadFrom(form: FormState): FAQEntryPayload {
-  return normalizeFAQPayload({ standard_question: form.question, similar_questions: form.similar.split('\n'), negative_questions: form.negative.split('\n'), answers: form.answers.split('\n'), tag_id: form.tagId.trim() ? Number(form.tagId) : null, is_enabled: form.enabled, is_recommended: form.recommended });
+  return normalizeFAQPayload({ standard_question: form.question, similar_questions: form.similarQuestions, negative_questions: form.negativeQuestions, answers: form.answers, tag_id: form.tagId.trim() ? Number(form.tagId) : null, is_enabled: form.enabled, is_recommended: form.recommended });
 }
 function downloadText(text: string, format: 'csv' | 'json') {
   const link = document.createElement('a');
@@ -824,8 +1052,22 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
   }
   function openEditor(entry: FAQEntry | null = null) { setEditing(entry); setForm(formFrom(entry)); setMessage(null); }
   async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setSaving(true); setMessage(null);
-    try { const payload = payloadFrom(form); if (editing) await faq.update(knowledgeBaseId, editing.id, payload); else await faq.create(knowledgeBaseId, payload); setMessage({ tone: 'success', text: editing ? 'FAQ entry updated.' : 'FAQ entry created.' }); setEditing(undefined); await load(false); }
+    event.preventDefault();
+    // Vue editorRules (FAQEntryManager.vue:1542-1552) validate before any request;
+    // success copy reuses the shared message keys (:1771,1774).
+    const invalid = editorFormError(form);
+    if (invalid) {
+      setMessage({ tone: 'error', text: t(invalid === 'question' ? 'knowledgeEditor.messages.nameRequired' : 'knowledgeEditor.faq.answerRequired') });
+      return;
+    }
+    setSaving(true); setMessage(null);
+    try {
+      const payload = payloadFrom(form);
+      if (editing) await faq.update(knowledgeBaseId, editing.id, payload); else await faq.create(knowledgeBaseId, payload);
+      setMessage({ tone: 'success', text: t(faqSaveResultKey(Boolean(editing))) });
+      setEditing(undefined);
+      await load(false);
+    }
     catch (error) { setMessage({ tone: 'error', text: error instanceof Error ? error.message : 'Unable to save FAQ entry' }); }
     finally { setSaving(false); }
   }
