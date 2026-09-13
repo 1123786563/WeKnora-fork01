@@ -98,3 +98,235 @@ test('MCP draft validation mirrors Vue submit rules before mutation', () => {
   assert.equal(validateMcpDraft({ ...base, transportType: 'stdio' }, 0), 'stdioUnsupported');
   assert.equal(validateMcpDraft(base, 0), null);
 });
+
+test('MCP create payload carries the add-mode secret inline exactly like Vue buildPayload(true)', () => {
+  const base = { name: 'Docs', description: '', usageInstructions: '', url: 'https://example.com/mcp', transportType: 'sse', enabled: true, authType: 'api_key', apiKeyHeader: '', apiKey: ' secret ', oauthScopes: '', headers: [], timeout: 30, retryCount: 3, retryDelay: 1, codeImport: '', codeImportError: '', authConfig: {} } as Parameters<typeof buildMcpConnectionPayload>[0];
+  const create = buildMcpConnectionPayload(base, true);
+  assert.equal((create.auth_config as Record<string, unknown>).api_key, 'secret');
+  // Edit mode routes secrets through the /credentials subresource, never the body.
+  const edit = buildMcpConnectionPayload(base, false);
+  assert.ok(!('api_key' in (edit.auth_config as Record<string, unknown>)));
+});
+
+// ---- jsdom interaction coverage: Vue McpServiceDialog drawer parity ----
+const { JSDOM } = nodeModule.createRequire(import.meta.url)('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Window & typeof globalThis } };
+const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test' });
+Object.assign(globalThis, {
+  window: dom.window,
+  document: dom.window.document,
+  HTMLElement: dom.window.HTMLElement,
+  Event: dom.window.Event,
+  MouseEvent: dom.window.MouseEvent,
+  IS_REACT_ACT_ENVIRONMENT: true,
+});
+Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
+
+const { createRoot } = await import('react-dom/client');
+const { act } = await import('react');
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => { resolve = next; });
+  return { promise, resolve };
+}
+
+type StubMetadata = {
+  tools: Array<{ name: string; description?: string }>;
+  serverName: string;
+  serverVersion: string;
+  syncedAt: string;
+  stale: boolean;
+};
+
+function mcpStubClient(overrides: { metadataGet?: () => Promise<StubMetadata> } = {}) {
+  const metadata: StubMetadata = { tools: [{ name: 'search', description: 'Search docs' }], serverName: 'Srv', serverVersion: '1.0', syncedAt: '2026-09-13T00:00:00Z', stale: false };
+  return {
+    configuration: {
+      mcp: {
+        list: async () => [],
+        create: async () => ({ id: 'svc-1', name: 'Docs', transport_type: 'sse', enabled: true }),
+        update: async () => ({ id: 'svc-1', name: 'Docs', transport_type: 'sse', enabled: true }),
+        remove: async () => ({}),
+        credentials: { put: async () => ({}) },
+        metadata: {
+          get: overrides.metadataGet ?? (async () => metadata),
+          refresh: async () => metadata,
+        },
+        toolApprovals: { list: async () => [], update: async () => ({}) },
+        usageInstructions: { generate: async () => 'generated usage instructions' },
+        oauth: {
+          status: async () => ({ authorized: false, state: 'reauth_required', refreshAvailable: false }),
+          authorizeUrl: async () => ({ authorizationUrl: 'https://auth.test', authorizationAttempt: 1 }),
+          revoke: async () => ({}),
+        },
+      },
+    },
+  } as never;
+}
+
+function findButton(label: string): HTMLButtonElement | undefined {
+  return Array.from(document.querySelectorAll('button')).find((button) => (button.textContent ?? '').includes(label)) as HTMLButtonElement | undefined;
+}
+
+function setInputValue(input: HTMLInputElement | HTMLTextAreaElement, value: string) {
+  const proto = input instanceof dom.window.HTMLTextAreaElement ? dom.window.HTMLTextAreaElement.prototype : dom.window.HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+  setter?.call(input, value);
+  input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+}
+
+function submitForm(form: HTMLFormElement) {
+  form.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
+}
+
+async function mountEditor(element: React.ReactElement) {
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => { root.render(element); });
+  return root;
+}
+
+async function unmountEditor(root: ReturnType<typeof createRoot>) {
+  await act(async () => root.unmount());
+  document.body.replaceChildren();
+}
+
+test('MCP editor step 0 matches the Vue drawer structure and offers no stdio transport', async () => {
+  const root = await mountEditor(React.createElement(McpSettingsPanel, { client: mcpStubClient(), initialServices: [], role: 'admin' }));
+  try {
+    await act(async () => { findButton('添加服务')?.click(); });
+    const dialog = document.querySelector('.wks-mcp-drawer');
+    assert.ok(dialog, 'drawer renders');
+    const text = dialog?.textContent ?? '';
+    // Scope to fieldset legends: the steps nav also says 连接配置.
+    const legends = Array.from(dialog?.querySelectorAll('legend') ?? []).map((el) => el.textContent ?? '');
+    const sections = ['基本信息', '连接配置', '认证配置', '高级配置'].map((title) => legends.indexOf(title));
+    assert.ok(sections.every((index) => index >= 0), 'all Vue sections render');
+    assert.ok(sections[0] < sections[1] && sections[1] < sections[2] && sections[2] < sections[3], 'Vue section order preserved');
+    assert.match(text, /关闭后该服务不会被调用/);
+    const transportSelect = dialog?.querySelector('select') as HTMLSelectElement | null;
+    assert.ok(transportSelect, 'transport select renders');
+    assert.deepEqual(Array.from(transportSelect?.options ?? []).map((option) => option.value), ['sse', 'http-streamable']);
+    const footerButtons = Array.from(dialog?.querySelectorAll('.wk-mcp-footer button') ?? []).map((button) => button.textContent ?? '');
+    assert.ok(footerButtons.some((label) => label.includes('取消')) && footerButtons.some((label) => label.includes('保存并下一步')), 'footer cancel + confirm render');
+    assert.ok(footerButtons.findIndex((label) => label.includes('取消')) < footerButtons.findIndex((label) => label.includes('保存并下一步')), 'Vue footer order: cancel before confirm');
+    assert.ok(!findButton('测试连接'), 'Vue baseline has no reachable test-connection UI');
+    assert.ok(!dialog?.querySelector('.wk-mcp-metadata'), 'step 0 does not mount the tools panel');
+  } finally {
+    await unmountEditor(root);
+  }
+});
+
+test('editing a stdio service coerces to SSE exactly like Vue McpServiceDialog.vue:855', async () => {
+  const root = await mountEditor(React.createElement(McpSettingsPanel, {
+    client: mcpStubClient(),
+    initialServices: [{ id: 'stdio-1', name: 'Local', enabled: true, transport_type: 'stdio', is_builtin: false }],
+    role: 'admin',
+  }));
+  try {
+    await act(async () => { findButton('编辑')?.click(); });
+    const dialog = document.querySelector('.wks-mcp-drawer');
+    const transportSelect = dialog?.querySelector('select') as HTMLSelectElement | null;
+    assert.equal(transportSelect?.value, 'sse');
+    assert.equal(dialog?.textContent?.includes('Stdio') ?? false, false);
+  } finally {
+    await unmountEditor(root);
+  }
+});
+
+test('step 2 gates save on tool sync and shows the Vue usage counter, hint and generate button', async () => {
+  const metadataGate = deferred<StubMetadata>();
+  const root = await mountEditor(React.createElement(McpSettingsPanel, {
+    client: mcpStubClient({ metadataGet: () => metadataGate.promise }),
+    initialServices: [],
+    role: 'admin',
+  }));
+  try {
+    await act(async () => { findButton('添加服务')?.click(); });
+    const nameInput = document.querySelector('input[placeholder="请输入服务名称"]') as HTMLInputElement | null;
+    const urlInput = document.querySelector('input[placeholder="https://example.com/mcp"]') as HTMLInputElement | null;
+    assert.ok(nameInput && urlInput, 'Vue placeholders render');
+    await act(async () => { setInputValue(nameInput, 'Docs'); });
+    await act(async () => { setInputValue(urlInput, 'https://example.com/mcp'); });
+    const form = document.querySelector('.wks-mcp-drawer form') as HTMLFormElement | null;
+    assert.ok(form, 'drawer form renders');
+    await act(async () => { submitForm(form); });
+    const dialog = document.querySelector('.wks-mcp-drawer');
+    const text = dialog?.textContent ?? '';
+    assert.match(text, /服务用途/);
+    assert.match(text, /模型先读取服务用途/);
+    assert.match(text, /0\/16000/);
+    assert.match(text, /根据已同步且启用的 Tools 生成精简说明/);
+    const saveButton = findButton('保存');
+    assert.ok(saveButton?.disabled, 'save is gated until tools are synced (Vue confirm-disabled)');
+    const generateButton = findButton('AI 生成');
+    assert.ok(generateButton?.disabled, 'AI generate is gated until tools are synced');
+    assert.ok(dialog?.querySelector('.wk-mcp-metadata'), 'step 2 mounts the metadata panel');
+    await act(async () => {
+      metadataGate.resolve({ tools: [{ name: 'search', description: 'Search docs' }], serverName: 'Srv', serverVersion: '1.0', syncedAt: '2026-09-13T00:00:00Z', stale: false });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    assert.ok(!findButton('保存')?.disabled, 'save unlocks once the tool catalog syncs');
+    assert.ok(!findButton('AI 生成')?.disabled, 'AI generate unlocks once the tool catalog syncs');
+  } finally {
+    await unmountEditor(root);
+  }
+});
+
+test('step 2 save persists usage_instructions and rejects empty instructions like Vue handleSubmit', async () => {
+  const updates: Array<Record<string, unknown>> = [];
+  const saved = { id: 'svc-1', name: 'Docs', transport_type: 'sse', enabled: true };
+  const stub = {
+    configuration: {
+      mcp: {
+        list: async () => [saved],
+        create: async () => saved,
+        update: async (_id: string, patch: Record<string, unknown>) => { updates.push(patch); return saved; },
+        remove: async () => ({}),
+        credentials: { put: async () => ({}) },
+        metadata: {
+          get: async () => ({ tools: [], serverName: 'S', serverVersion: '1', syncedAt: '2026-09-13T00:00:00Z', stale: false }),
+          refresh: async () => ({ tools: [], serverName: 'S', serverVersion: '1', syncedAt: '2026-09-13T00:00:00Z', stale: false }),
+        },
+        toolApprovals: { list: async () => [], update: async () => ({}) },
+        usageInstructions: { generate: async () => 'generated' },
+        oauth: {
+          status: async () => ({ authorized: false, state: 'reauth_required', refreshAvailable: false }),
+          authorizeUrl: async () => ({ authorizationUrl: 'u', authorizationAttempt: 1 }),
+          revoke: async () => ({}),
+        },
+      },
+    },
+  } as never;
+  const root = await mountEditor(React.createElement(McpSettingsPanel, {
+    client: stub,
+    initialServices: [{ id: 'svc-1', name: 'Docs', transport_type: 'sse', enabled: true, is_builtin: false }],
+    role: 'admin',
+  }));
+  try {
+    await act(async () => { findButton('编辑')?.click(); });
+    const nameInput = document.querySelector('input[placeholder="请输入服务名称"]') as HTMLInputElement | null;
+    const urlInput = document.querySelector('input[placeholder="https://example.com/mcp"]') as HTMLInputElement | null;
+    assert.ok(nameInput && urlInput, 'edit draft placeholders render');
+    await act(async () => { setInputValue(nameInput, 'Docs'); });
+    await act(async () => { setInputValue(urlInput, 'https://example.com/mcp'); });
+    const form = document.querySelector('.wks-mcp-drawer form') as HTMLFormElement | null;
+    assert.ok(form);
+    await act(async () => { submitForm(form); });
+    // Metadata resolves immediately; flush it so toolsSynced is settled.
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    // Step 2 with empty usage: submit must be blocked with the Vue warning copy.
+    await act(async () => { submitForm(form); });
+    assert.match(document.body.textContent ?? '', /使用说明不能为空/);
+    const usageTextarea = document.querySelector('.wks-mcp-drawer textarea') as HTMLTextAreaElement | null;
+    assert.ok(usageTextarea, 'usage textarea renders in step 2');
+    await act(async () => { setInputValue(usageTextarea, 'Use for docs'); });
+    assert.match(document.body.textContent ?? '', /12\/16000/);
+    await act(async () => { submitForm(form); });
+    const usageUpdate = updates.find((patch) => typeof patch.usage_instructions === 'string');
+    assert.equal(usageUpdate?.usage_instructions, 'Use for docs');
+  } finally {
+    await unmountEditor(root);
+  }
+});

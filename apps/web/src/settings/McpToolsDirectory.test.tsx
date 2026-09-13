@@ -24,16 +24,19 @@ test('MCP tools directory preserves Vue detail tabs, policy controls, and pagina
     serviceId: 'svc-1', busy: false, policyError: null, onRetryPolicies: () => undefined, onPolicyChange: () => undefined,
     approvals: [], tools: Array.from({ length: 21 }, (_, index) => ({ name: `tool-${index}`, description: index === 0 ? 'Search docs' : undefined, inputSchema: index === 0 ? { properties: { query: { type: 'string' } }, required: ['query'] } : undefined })),
   }));
-  assert.match(html, /Search tools/);
+  // Vue McpToolsList.vue copy (zh-CN): searchTools/启用工具/上一步-style pager.
+  assert.match(html, /搜索工具名称或描述/);
   assert.match(html, /tool-0/);
-  assert.match(html, /Enabled/);
-  assert.match(html, /Previous/);
-  assert.match(html, /Next/);
+  assert.match(html, /启用工具/);
+  assert.match(html, /调用需审批/);
+  assert.match(html, /详情/);
+  assert.match(html, /上一步/);
+  assert.match(html, /下一页/);
   assert.match(html, /1 \/ 2/);
 });
 
 test('MCP tools directory fails closed and offers policy retry', () => {
   const html = renderToStaticMarkup(React.createElement(McpToolsDirectory, { serviceId: 'svc-1', busy: false, policyError: 'policy unavailable', onRetryPolicies: () => undefined, onPolicyChange: () => undefined, approvals: [], tools: [] }));
   assert.match(html, /policy unavailable/);
-  assert.match(html, /Retry/);
+  assert.match(html, /重试/);
 });

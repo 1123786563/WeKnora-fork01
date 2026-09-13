@@ -946,7 +946,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 后端事实登记：PUT /api/v1/mcp-services 对 usage_instructions 强制 1..16000（空串 400；省略字段保持原值）；SSRF 校验默认拒绝不可解析域名（白名单可解）。
 - 下一步：R045 测试连接可达性裁决、MCP stdio 选项裁决、skill 安装时间线 SSE（api-client 缺口）、upload 图谱节、model combobox、各 implementing 行的浏览器/Wails/原生证据推进，以及 74 个 review 行的验收证据批量收集。
 
-- **并行提示（2026-09-13 17:45）**：另一代理正在 McpSettingsPanel.tsx 上进行 stdio→SSE 收敛与 McpMetadataPanel 结构对齐的未提交 WIP（正是本矩阵登记的待决项方向）；其进行中状态会使 McpSettingsPanel.test.tsx 暂时失败。本行以上提交（…781c81d8）均为全绿基线；集成其 WIP 前先等其稳定并复跑 focused 测试。
+- **并行提示（2026-09-13 17:45）**：另一代理正在 McpSettingsPanel.tsx 上进行 stdio→SSE 收敛与 McpMetadataPanel 结构对齐的未提交 WIP（正是本矩阵登记的待决项方向）；其进行中状态会使 McpSettingsPanel.test.tsx 暂时失败。本行以上提交（…781c81d8）均为全
+
+- **MCP 抽屉结构对齐落地（2026-09-13 round 2，McpSettingsPanel/McpToolsDirectory）**：三项待决全部向 Vue 基准收敛并落地——(1) stdio：编辑器仅保留 SSE/HTTP-Streamable，stdio 服务加载时按 McpServiceDialog.vue:855 强制转 sse，列表标签改 `Stdio`；(2) 测试连接：Vue 基准中 McpTestResultBody.vue/testMCPService 为孤儿代码（无导入/无全局注册），React 抽屉不再挂载测试入口，保留孤儿组件+单测（R045 → review）；(3) 第 2 步：usage textarea 可编辑 + 0/16000 计数 + AI 生成（仅填充字段，保存才落库）+ generateHint 文案，保存以 toolsSynced 门控并复用 syncRequired/instructionsRequired 警示。同轮完成：步骤 0 结构对齐（基本信息含启用开关+hint、连接配置、认证配置含授权状态块与"先保存后授权"、高级配置）、页脚取消→确认顺序+上一步居左、可点击步骤条、元数据面板仅第 2 步挂载、创建密钥内联（buildPayload(true) 对齐）。工具目录按共享五语 Vue 文案本地化（merge-settings-keys.mjs 移交 mcpMetadata.description/parameters/fullSchema/fetch/refresh）。证据：jsdom 交互测试 4 例（结构/stdio 强转/同步门控/step2 保存），web 404/404、typecheck:web、shared 344/344 全绿。遗留：本轮改动的浏览器/真后端复跑、shadcn/ui 视觉扫、Wails 证据；编辑态 CredentialResource 卡片差异保持登记。绿基线；集成其 WIP 前先等其稳定并复跑 focused 测试。
 
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
 - **Rows:** any rows proposed for `accepted`; never all rows by default.

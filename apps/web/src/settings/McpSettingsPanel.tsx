@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import * as React from "react";
 import type { McpConfiguration, WeKnoraClient } from "@weknora/api-client";
 import { Button, Card, Status } from "@weknora/ui";
-import { McpTestResultBody } from "./McpTestResultBody.tsx";
 import { McpToolsDirectory } from "./McpToolsDirectory.tsx";
 import { createTranslator, useAppLocale } from "../i18n.ts";
 
@@ -99,12 +98,10 @@ function draftFrom(service?: McpService): Draft {
     description: service?.description ?? "",
     usageInstructions: service?.usage_instructions ?? "",
     url: service?.url ?? "",
+    // Vue McpServiceDialog.vue:855 — a stdio service is coerced to SSE when
+    // loaded into the remote editor; the drawer never offers a stdio option.
     transportType:
-      service?.transport_type === "http-streamable"
-        ? "http-streamable"
-        : service?.transport_type === "stdio"
-          ? "stdio"
-          : "sse",
+      service?.transport_type === "http-streamable" ? "http-streamable" : "sse",
     enabled: service?.enabled !== false,
     authType,
     apiKeyHeader:
@@ -204,134 +201,82 @@ export function importMcpConfig(raw: string, current: Draft): Draft {
   };
 }
 
-function McpServiceDetails({
+type MetadataSnapshot = Awaited<
+  ReturnType<WeKnoraClient["configuration"]["mcp"]["metadata"]["get"]>
+>;
+type ToolApprovalRow = Awaited<
+  ReturnType<WeKnoraClient["configuration"]["mcp"]["toolApprovals"]["list"]>
+>[number];
+
+/**
+ * Step-2 tools/metadata panel — port of Vue McpMetadataPanel.vue. The Vue
+ * baseline mounts it only inside the drawer step 2; step 0 never loads tools.
+ * The Vue test-connection surface (testMCPService + McpTestResultBody) is
+ * orphan code with no reachable UI in the baseline, so the React port must
+ * not expose a test-connection button either.
+ */
+function McpMetadataSection({
   client,
   serviceId,
-  oauthEnabled,
-  usageInstructions = "",
+  disabled,
+  onSyncedChange,
+  onBusyChange,
 }: {
   client: WeKnoraClient;
   serviceId: string;
-  oauthEnabled: boolean;
-  usageInstructions?: string;
+  disabled: boolean;
+  onSyncedChange: (synced: boolean) => void;
+  onBusyChange: (busy: boolean) => void;
 }) {
   const t = createTranslator(useAppLocale());
-  const [metadata, setMetadata] =
-    useState<
-      Awaited<
-        ReturnType<WeKnoraClient["configuration"]["mcp"]["metadata"]["get"]>
-      >
-    >(null);
-  const [approvals, setApprovals] = useState<
-    Awaited<
-      ReturnType<WeKnoraClient["configuration"]["mcp"]["toolApprovals"]["list"]>
-    >
-  >([]);
+  const [metadata, setMetadata] = useState<MetadataSnapshot | null>(null);
+  const [approvals, setApprovals] = useState<ToolApprovalRow[]>([]);
   const [policyError, setPolicyError] = useState<string | null>(null);
-  const [testResult, setTestResult] = useState<Awaited<
-    ReturnType<WeKnoraClient["configuration"]["mcp"]["test"]>
-  > | null>(null);
-  const [oauth, setOAuth] = useState<Awaited<
-    ReturnType<WeKnoraClient["configuration"]["mcp"]["oauth"]["status"]>
-  > | null>(null);
-  const [usage, setUsage] = useState(usageInstructions);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const loadGeneration = useRef(0);
-  async function load() {
+  async function load(refresh = false) {
     const generation = ++loadGeneration.current;
     setBusy(true);
+    onBusyChange(true);
     setError(null);
     setPolicyError(null);
     const [metadataResult, approvalsResult] = await Promise.allSettled([
-      client.configuration.mcp.metadata.get(serviceId),
+      refresh
+        ? client.configuration.mcp.metadata.refresh(serviceId)
+        : client.configuration.mcp.metadata.get(serviceId),
       client.configuration.mcp.toolApprovals.list(serviceId),
     ]);
     if (generation !== loadGeneration.current) return;
-    if (metadataResult.status === "fulfilled")
-      setMetadata(metadataResult.value);
+    if (metadataResult.status === "fulfilled") setMetadata(metadataResult.value);
     if (approvalsResult.status === "fulfilled")
       setApprovals(approvalsResult.value);
     else {
       setApprovals([]);
-      setPolicyError(
-        approvalsResult.reason instanceof Error
-          ? approvalsResult.reason.message
-          : t("mcpMetadata.policyLoadFailed"),
-      );
+      setPolicyError(t("mcpMetadata.policyLoadFailed"));
     }
-    const failure =
-      metadataResult.status === "rejected" ? metadataResult.reason : null;
-    if (failure)
+    if (metadataResult.status === "rejected")
       setError(
-          failure instanceof Error ? failure.message : t("mcpMetadata.failed"),
+        metadataResult.reason instanceof Error
+          ? metadataResult.reason.message
+          : t("mcpMetadata.failed"),
       );
-    if (oauthEnabled) {
-      try {
-        setOAuth(await client.configuration.mcp.oauth.status(serviceId));
-      } catch (cause) {
-        if (generation === loadGeneration.current)
-          setError(
-          cause instanceof Error ? cause.message : t("mcpMetadata.failed"),
-          );
-      }
-    }
-    if (generation === loadGeneration.current) setBusy(false);
+    setBusy(false);
+    onBusyChange(false);
   }
   useEffect(() => {
     void load();
     return () => {
       loadGeneration.current += 1;
+      onSyncedChange(false);
+      onBusyChange(false);
     };
-  }, [client, serviceId, oauthEnabled]);
-  async function refresh() {
-    setBusy(true);
-    setError(null);
-    try {
-      setMetadata(await client.configuration.mcp.metadata.refresh(serviceId));
-    } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : t("mcpMetadata.failed"),
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function testConnection() {
-    setBusy(true);
-    setError(null);
-    try {
-      setTestResult(await client.configuration.mcp.test(serviceId));
-    } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : t("mcp.testResult.connectionFailed"),
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function generateUsage() {
-    if (!metadata || metadata.stale || busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const generated =
-        await client.configuration.mcp.usageInstructions.generate(
-          serviceId,
-          "zh-CN",
-        );
-      await client.configuration.mcp.update(serviceId, {
-        usage_instructions: generated,
-      });
-      setUsage(generated);
-    } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : t("mcpMetadata.generateFailed"),
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client, serviceId]);
+  useEffect(() => {
+    onSyncedChange(Boolean(metadata && !metadata.stale));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metadata]);
   async function updateTool(
     toolName: string,
     field: "enabled" | "requireApproval",
@@ -339,6 +284,7 @@ function McpServiceDetails({
   ) {
     if (busy || metadata?.stale || policyError) return;
     setBusy(true);
+    onBusyChange(true);
     setError(null);
     try {
       await client.configuration.mcp.toolApprovals.update(serviceId, toolName, {
@@ -353,7 +299,7 @@ function McpServiceDetails({
         return [
           ...current,
           {
-            id: `${serviceId}:${toolName}`,
+            id: serviceId + ":" + toolName,
             serviceId,
             toolName,
             enabled: field === "enabled" ? value : true,
@@ -367,113 +313,45 @@ function McpServiceDetails({
       );
     } finally {
       setBusy(false);
+      onBusyChange(false);
     }
   }
-  async function authorize() {
-    if (typeof window === "undefined" || busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const result = await client.configuration.mcp.oauth.authorizeUrl(
-        serviceId,
-        {
-          redirectURI: `${window.location.origin}/api/v1/mcp-oauth/callback`,
-          frontendRedirect: window.location.href,
-        },
-      );
-      const popup = window.open(
-        result.authorizationUrl,
-        "weknora_mcp_oauth",
-        "width=600,height=720",
-      );
-      if (!popup) throw new Error(t("mcpMetadata.failed"));
-      for (let attempt = 0; attempt < 60; attempt += 1) {
-        await new Promise((resolve) => window.setTimeout(resolve, 500));
-        const next = await client.configuration.mcp.oauth.status(
-          serviceId,
-          result.authorizationAttempt,
-        );
-        if (next.authorized) {
-          setOAuth(next);
-          break;
-        }
-        if (popup.closed) break;
-      }
-    } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : t("mcpServiceDialog.oauthAuthorizeHint"),
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function revoke() {
-    if (busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await client.configuration.mcp.oauth.revoke(serviceId);
-      setOAuth({
-        authorized: false,
-        state: "reauth_required",
-        refreshAvailable: false,
-      });
-    } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : t("mcpMetadata.failed"),
-      );
-    } finally {
-      setBusy(false);
-    }
+  let syncedAt = "";
+  if (metadata?.syncedAt) {
+    const date = new Date(metadata.syncedAt as unknown as string);
+    syncedAt = Number.isNaN(date.getTime())
+      ? String(metadata.syncedAt)
+      : date.toLocaleString();
   }
   return (
-    <section className="wk-mcp-details">
+    <section className="wk-mcp-metadata" aria-label={t("mcpMetadata.tools")}>
       <div className="wk-settings-panel-heading">
         <div>
-          <h4>{t("mcpMetadata.toolsAndUsage")}</h4>
-          <p className="wk-muted">
-            {t("mcpMetadata.cacheHint")}
-          </p>
+          <h4>{t("mcpMetadata.tools")}</h4>
+          <p className="wk-muted">{t("mcpMetadata.cacheHint")}</p>
         </div>
         <div className="wk-list-actions">
-          <Button type="button" disabled={busy} onClick={() => void refresh()}>
-            {t("common.refresh")}
-          </Button>
           <Button
             type="button"
-            disabled={busy}
-            onClick={() => void testConnection()}
+            disabled={busy || disabled}
+            onClick={() => void load(true)}
           >
-            {t("mcpServiceDialog.testConnection")}
+            {metadata ? t("mcpMetadata.refresh") : t("mcpMetadata.fetch")}
           </Button>
         </div>
       </div>
       {error ? <Status tone="error">{error}</Status> : null}
-      {oauthEnabled ? (
-        <div className="wk-mcp-oauth">
-          <strong>{t("mcpServiceDialog.authTypeOAuth")}</strong>
-          <span>{oauth?.state ?? "checking"}</span>
-          <Button
-            type="button"
-            disabled={busy}
-            onClick={() => void authorize()}
-          >
-            {oauth?.authorized ? t("mcpServiceDialog.oauthReauthorize") : t("mcpServiceDialog.oauthAuthorize")}
-          </Button>
-          {oauth?.authorized || oauth?.state === "refreshable" ? (
-            <Button type="button" disabled={busy} onClick={() => void revoke()}>
-            {t("mcpServiceDialog.oauthRevoke")}
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
       {metadata ? (
         <>
           <p className={metadata.stale ? "wk-mcp-stale" : "wk-muted"}>
-            {t("mcpMetadata.toolCount", { count: metadata.tools.length })} · {metadata.serverName}{" "}
-            {metadata.serverVersion} ·{" "}
-            {metadata.stale ? t("mcpMetadata.stale") : `${t("mcpMetadata.syncedAt")}${metadata.syncedAt}`}
+            {t("mcpMetadata.toolCount", { count: metadata.tools.length })}
+            {metadata.serverName
+              ? " · " + metadata.serverName + " " + (metadata.serverVersion ?? "")
+              : ""}
+            {syncedAt ? " · " + t("mcpMetadata.syncedAt") + syncedAt : ""}
+            {metadata.stale ? " · " + t("mcpMetadata.stale") : ""}
           </p>
+          <p className="wk-muted">{t("mcpMetadata.policyHint")}</p>
           <McpToolsDirectory
             tools={metadata.tools}
             serviceId={serviceId}
@@ -485,30 +363,107 @@ function McpServiceDetails({
               void updateTool(name, field, value)
             }
           />
-          <div className="wk-mcp-usage">
-            <Button
-              type="button"
-              disabled={busy || metadata.stale || !metadata}
-              onClick={() => void generateUsage()}
-            >
-              {t("mcpMetadata.generateUsage")}
-            </Button>
-            {usage ? (
-              <pre>{usage}</pre>
-            ) : metadata.instructions ? (
-              <pre>{metadata.instructions}</pre>
-            ) : (
-              <p className="wk-muted">{t("mcpMetadata.instructionsPlaceholder")}</p>
-            )}
-          </div>
         </>
       ) : (
         <Status>
           {busy ? t("mcpMetadata.fetching") : t("mcpMetadata.notSynced")}
         </Status>
       )}
-      <McpTestResultBody result={testResult} approvals={approvals} busy={busy || Boolean(metadata?.stale) || Boolean(policyError)} onPolicyChange={(name, field, value) => void updateTool(name, field, value)} />
     </section>
+  );
+}
+
+type OauthStatus = Awaited<
+  ReturnType<WeKnoraClient["configuration"]["mcp"]["oauth"]["status"]>
+>;
+
+/**
+ * OAuth authorization block — port of the Vue auth-config section
+ * (McpServiceDialog.vue:201-241). Lives in step 0 next to the scopes field,
+ * not in the tools step. Authorize always persists the connection first,
+ * exactly like Vue handleAuthorize().
+ */
+function McpOAuthControl({
+  client,
+  serviceId,
+  busy,
+  onRequestAuthorize,
+}: {
+  client: WeKnoraClient;
+  serviceId: string;
+  busy: boolean;
+  onRequestAuthorize: () => Promise<void>;
+}) {
+  const t = createTranslator(useAppLocale());
+  const [oauth, setOauth] = useState<OauthStatus | null>(null);
+  const [authorizing, setAuthorizing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const generation = useRef(0);
+  useEffect(() => {
+    const current = ++generation.current;
+    client.configuration.mcp
+      .oauth.status(serviceId)
+      .then((status) => {
+        if (current === generation.current) setOauth(status);
+      })
+      .catch(() => {
+        /* Vue logs and keeps the reauth_required default */
+      });
+    return () => {
+      generation.current += 1;
+    };
+  }, [client, serviceId]);
+  async function revoke() {
+    if (busy || authorizing) return;
+    setAuthorizing(true);
+    setError(null);
+    try {
+      await client.configuration.mcp.oauth.revoke(serviceId);
+      setOauth({ authorized: false, state: "reauth_required", refreshAvailable: false });
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : t("mcpSettings.toasts.updateFailed"),
+      );
+    } finally {
+      setAuthorizing(false);
+    }
+  }
+  return (
+    <div className="wk-mcp-oauth">
+      <span className="wk-form-label">{t("mcpServiceDialog.oauthAuthorization")}</span>
+      <span
+        className={
+          oauth?.authorized
+            ? "wk-mcp-badge wk-mcp-badge-ok"
+            : oauth?.state === "refreshable"
+              ? "wk-mcp-badge wk-mcp-badge-info"
+              : "wk-mcp-badge wk-mcp-badge-warn"
+        }
+      >
+        {oauth?.authorized
+          ? t("mcpServiceDialog.oauthAuthorized")
+          : oauth?.state === "refreshable"
+            ? t("mcpServiceDialog.oauthRefreshable")
+            : t("mcpServiceDialog.oauthUnauthorized")}
+      </span>
+      <Button
+        type="button"
+        disabled={busy || authorizing}
+        loading={authorizing}
+        onClick={() => void onRequestAuthorize()}
+      >
+        {oauth?.state === "reauth_required"
+          ? t("mcpServiceDialog.oauthAuthorize")
+          : t("mcpServiceDialog.oauthReauthorize")}
+      </Button>
+      {oauth && oauth.state !== "reauth_required" ? (
+        <Button type="button" disabled={busy || authorizing} onClick={() => void revoke()}>
+          {t("mcpServiceDialog.oauthRevoke")}
+        </Button>
+      ) : null}
+      {error ? <Status tone="error">{error}</Status> : null}
+      <p className="wk-muted">{t("mcpServiceDialog.oauthAuthorizeHint")}</p>
+    </div>
   );
 }
 
@@ -520,13 +475,29 @@ function McpServiceDetails({
  * characters"), so including them breaks edit/create for services without
  * saved instructions. Usage instructions persist only through the step-2
  * save (update { usage_instructions }).
+ *
+ * The second argument mirrors Vue buildPayload(asCreate): on create the
+ * add-mode secret rides along inline (auth_config.api_key); on edit,
+ * secrets go through the /credentials subresource instead. api_key_header
+ * is sent for the api_key strategy exactly like Vue (trimmed, may be "").
  */
-export function buildMcpConnectionPayload(draft: Draft): Record<string, unknown> {
+export function buildMcpConnectionPayload(
+  draft: Draft,
+  asCreate = false,
+): Record<string, unknown> {
   const headers = Object.fromEntries(
     draft.headers
       .map(({ key, value }) => [key.trim(), value.trim()])
       .filter(([key, value]) => key && value),
   );
+  const auth: Record<string, unknown> = { auth_type: draft.authType };
+  if (draft.authType === "api_key")
+    auth.api_key_header = draft.apiKeyHeader.trim();
+  if (draft.authType === "oauth")
+    auth.scopes = draft.oauthScopes.split(/[\s,]+/).filter(Boolean);
+  if (asCreate && draft.authType !== "oauth") {
+    if (draft.apiKey.trim()) auth.api_key = draft.apiKey.trim();
+  }
   return {
     name: draft.name.trim(),
     enabled: draft.enabled,
@@ -538,20 +509,13 @@ export function buildMcpConnectionPayload(draft: Draft): Record<string, unknown>
     },
     url: draft.url.trim() || undefined,
     headers,
-    auth_config: {
-      auth_type: draft.authType,
-      ...(draft.apiKeyHeader.trim()
-        ? { api_key_header: draft.apiKeyHeader.trim() }
-        : {}),
-      ...(draft.authType === "oauth"
-        ? { scopes: draft.oauthScopes.split(/[\s,]+/).filter(Boolean) }
-        : {}),
-    },
+    auth_config: auth,
   };
 }
 
 export function McpSettingsPanel({ client, role, initialServices }: Props) {
   const t = createTranslator(useAppLocale());
+  const locale = useAppLocale();
   const canEdit = role === "admin" || role === "owner";
   const [services, setServices] = useState<McpService[]>(() =>
     (initialServices ?? []).map(asService),
@@ -563,6 +527,10 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
   const [step, setStep] = useState<0 | 1>(0);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [generatingUsage, setGeneratingUsage] = useState(false);
+  const [toolsSynced, setToolsSynced] = useState(false);
+  const [metadataBusy, setMetadataBusy] = useState(false);
+  const formRef = useRef<HTMLFormElement | null>(null);
   async function load() {
     setLoading(true);
     setError(null);
@@ -578,14 +546,15 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
   }
   useEffect(() => {
     if (initialServices === undefined) void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, initialServices]);
   function setField<K extends keyof Draft>(key: K, value: Draft[K]) {
     setDraft((current) => (current ? { ...current, [key]: value } : current));
   }
-  async function save(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!draft || saving) return;
-    const validation = validateMcpDraft(draft, step);
+  /** Vue saveConnection(): validate, PUT/POST, keep the drawer open. */
+  async function saveConnection(): Promise<{ id: string } | null> {
+    if (!draft || saving) return null;
+    const validation = validateMcpDraft(draft, 0);
     if (validation) {
       const messageKey: Record<McpDraftValidationError, string> = {
         nameRequired: "mcpServiceDialog.rules.nameRequired",
@@ -595,27 +564,18 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
         usageRequired: "mcpMetadata.instructionsRequired",
       };
       setError(t(messageKey[validation]));
-      return;
+      return null;
     }
     setSaving(true);
     setError(null);
     setNotice(null);
     try {
-      if (step === 1) {
-        const instructions = draft.usageInstructions.trim();
-        if (!draft.id) throw new Error(t("mcpMetadata.connection"));
-        if (!instructions) throw new Error(t("mcpMetadata.instructionsRequired"));
-        await client.configuration.mcp.update(draft.id, { usage_instructions: instructions });
-        setDraft(null);
-        setNotice(t("mcpServiceDialog.toasts.updated"));
-        await load();
-        return;
-      }
-      const payload = buildMcpConnectionPayload(draft);
+      const asCreate = !draft.id;
+      const payload = buildMcpConnectionPayload(draft, asCreate);
       const saved = draft.id
         ? await client.configuration.mcp.update(draft.id, payload)
         : await client.configuration.mcp.create(payload);
-      if (draft.apiKey.trim()) {
+      if (!asCreate && draft.apiKey.trim()) {
         try {
           await client.configuration.mcp.credentials.put(saved.id, {
             apiKey: draft.apiKey.trim(),
@@ -625,9 +585,50 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
           throw cause;
         }
       }
-      setDraft((current) => current ? { ...current, id: saved.id } : current);
-      setStep(1);
-      setNotice(t("mcpMetadata.syncRequired"));
+      setDraft((current) => (current ? { ...current, id: saved.id } : current));
+      await load();
+      return saved;
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : t("mcpServiceDialog.toasts.updateFailed"),
+      );
+      return null;
+    } finally {
+      setSaving(false);
+    }
+  }
+  async function save(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!draft || saving) return;
+    if (step === 0) {
+      // Vue handleNext(): persist the connection, then reveal the tools step.
+      const saved = await saveConnection();
+      if (saved) {
+        setToolsSynced(false);
+        setStep(1);
+      }
+      return;
+    }
+    if (!draft.id || metadataBusy || generatingUsage) return;
+    const instructions = draft.usageInstructions.trim();
+    if (!instructions) {
+      setError(t("mcpMetadata.instructionsRequired"));
+      return;
+    }
+    if (!toolsSynced) {
+      setError(t("mcpMetadata.syncRequired"));
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await client.configuration.mcp.update(draft.id, {
+        usage_instructions: instructions,
+      });
+      setDraft(null);
+      setStep(0);
+      setNotice(t("mcpServiceDialog.toasts.updated"));
       await load();
     } catch (cause) {
       setError(
@@ -636,6 +637,62 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
     } finally {
       setSaving(false);
     }
+  }
+  /** Vue handleGenerateUsage(): fill the textarea only; save persists it. */
+  async function generateUsage() {
+    if (!draft?.id || generatingUsage || metadataBusy || !toolsSynced) return;
+    setGeneratingUsage(true);
+    setError(null);
+    try {
+      const generated = await client.configuration.mcp.usageInstructions.generate(
+        draft.id,
+        locale,
+      );
+      setField("usageInstructions", generated);
+      setNotice(t("mcpMetadata.generated"));
+    } catch {
+      setError(t("mcpMetadata.generateFailed"));
+    } finally {
+      setGeneratingUsage(false);
+    }
+  }
+  /** Vue startAuthorize(): popup + poll against the saved service id. */
+  async function startAuthorize(savedId: string) {
+    if (typeof window === "undefined") return;
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await client.configuration.mcp.oauth.authorizeUrl(savedId, {
+        redirectURI: window.location.origin + "/api/v1/mcp-oauth/callback",
+        frontendRedirect: window.location.href,
+      });
+      const popup = window.open(
+        result.authorizationUrl,
+        "weknora_mcp_oauth",
+        "width=600,height=720",
+      );
+      if (!popup) throw new Error(t("mcpServiceDialog.toasts.updateFailed"));
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1500));
+        const next = await client.configuration.mcp.oauth.status(
+          savedId,
+          result.authorizationAttempt,
+        );
+        if (next.authorized) break;
+        if (popup.closed) break;
+      }
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : t("mcpServiceDialog.toasts.updateFailed"),
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+  /** Vue handleAuthorize(): ALWAYS save the connection first, then authorize. */
+  async function authorizeOAuth() {
+    const saved = await saveConnection();
+    if (saved) await startAuthorize(saved.id);
   }
   async function toggle(service: McpService) {
     if (!canEdit || service.is_builtin || busyId) return;
@@ -663,7 +720,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
     if (!canEdit || service.is_builtin || busyId) return;
     if (
       typeof window !== "undefined" &&
-      !window.confirm(`Delete MCP service “${service.name}”?`)
+      !window.confirm("Delete MCP service " + JSON.stringify(service.name) + "?")
     )
       return;
     setBusyId(service.id);
@@ -683,6 +740,20 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
       setBusyId(null);
     }
   }
+  function openEditor(service?: McpService) {
+    setDraft(draftFrom(service));
+    setStep(0);
+    setToolsSynced(false);
+    setMetadataBusy(false);
+    setGeneratingUsage(false);
+    setError(null);
+    setNotice(null);
+  }
+  function closeEditor() {
+    setDraft(null);
+    setStep(0);
+  }
+  const dialogBusy = saving || generatingUsage || metadataBusy;
   if (loading)
     return (
       <Card data-testid="mcp-settings">
@@ -699,7 +770,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
           </p>
         </div>
         {canEdit ? (
-          <Button type="button" onClick={() => { setDraft(draftFrom()); setStep(0); }}>
+          <Button type="button" onClick={() => openEditor()}>
             {t("mcpSettings.addService")}
           </Button>
         ) : null}
@@ -723,7 +794,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                   <div className="wk-list-actions">
                     <Button
                       type="button"
-                      onClick={() => { setDraft(draftFrom(service)); setStep(0); }}
+                      onClick={() => openEditor(service)}
                     >
                       {t("common.edit")}
                     </Button>
@@ -744,9 +815,9 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
               <div className="wk-mcp-card-footer">
                 <span>
                   {service.transport_type === "http-streamable"
-                      ? "HTTP Streamable"
+                    ? "HTTP Streamable"
                     : service.transport_type === "stdio"
-                      ? "stdio (unsupported editor)"
+                      ? "Stdio"
                       : "SSE"}
                 </span>
                 {canEdit && !service.is_builtin ? (
@@ -779,294 +850,403 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
             <div className="wk-settings-panel-heading">
               <div>
                 <h3>{draft.id ? t("mcpServiceDialog.editTitle") : t("mcpServiceDialog.addTitle")}</h3>
-                <p className="wk-muted">
-                  {t("mcpMetadata.connection")} · {t("mcpMetadata.cacheHint")}
+                <p className="wk-muted wk-mcp-subtitle">
+                  {draft.transportType === "http-streamable" ? "HTTP Streamable" : "SSE"}
+                  <span
+                    className={
+                      draft.enabled
+                        ? "wk-mcp-badge wk-mcp-badge-ok"
+                        : "wk-mcp-badge wk-mcp-badge-muted"
+                    }
+                  >
+                    {draft.enabled ? t("mcpSettings.enabled") : t("mcpSettings.disabled")}
+                  </span>
                 </p>
               </div>
               <Button
                 type="button"
                 disabled={saving}
-                onClick={() => { setDraft(null); setStep(0); }}
+                onClick={closeEditor}
               >
                 {t("common.close")}
               </Button>
             </div>
-            <div className="wk-mcp-steps" aria-label={t("mcpMetadata.setupProgress")}><span className={step === 0 ? "is-active" : "is-done"}>1. {t("mcpMetadata.connection")}</span><span aria-hidden="true"> → </span><span className={step === 1 ? "is-active" : ""}>2. {t("mcpMetadata.toolsAndUsage")}</span></div>
+            <nav className="wk-mcp-steps" aria-label={t("mcpMetadata.setupProgress")}>
+              <button
+                type="button"
+                className={step === 0 ? "is-active" : step > 0 ? "is-done" : ""}
+                aria-current={step === 0 ? "step" : undefined}
+                disabled={dialogBusy}
+                onClick={() => setStep(0)}
+              >
+                1. {t("mcpMetadata.connection")}
+              </button>
+              <span aria-hidden="true"> → </span>
+              <button
+                type="button"
+                className={step === 1 ? "is-active" : ""}
+                aria-current={step === 1 ? "step" : undefined}
+                disabled={dialogBusy}
+                onClick={() => {
+                  if (step === 0) formRef.current?.requestSubmit();
+                }}
+              >
+                2. {t("mcpMetadata.toolsAndUsage")}
+              </button>
+            </nav>
             <form
+              ref={formRef}
               className="wk-settings-editor"
               onSubmit={(event) => void save(event)}
             >
-            <details className="wk-mcp-code-import">
-              <summary>{t("mcpServiceDialog.codeImport.toggle")}</summary>
-              <p className="wk-muted">
-                {t("mcpServiceDialog.codeImport.hint")}
-              </p>
-              <textarea
-                rows={5}
-                value={draft.codeImport}
-                placeholder={
-                  '{\n  "mcpServers": { "my-server": { "url": "https://example.com/sse" } }\n}'
-                }
-                onChange={(event) => setField("codeImport", event.target.value)}
-              />
-              <Button
-                type="button"
-                onClick={() =>
-                  setDraft((current) =>
-                    current
-                      ? importMcpConfig(current.codeImport, current)
-                      : current,
-                  )
-                }
-              >
-                {t("mcpServiceDialog.codeImport.parse")}
-              </Button>
-              {draft.codeImportError ? (
-                <Status tone="error">{draft.codeImportError}</Status>
-              ) : null}
-            </details>
-            <label>
-              {t("mcpServiceDialog.name")}
-              <input
-                required
-                maxLength={128}
-                value={draft.name}
-                onChange={(event) => setField("name", event.target.value)}
-              />
-            </label>
-            <label>
-              {t("mcpServiceDialog.transportType")}
-              <select
-                value={draft.transportType}
-                onChange={(event) =>
-                  setField(
-                    "transportType",
-                    event.target.value as Draft["transportType"],
-                  )
-                }
-              >
-                <option value="sse">SSE</option>
-                <option value="http-streamable">HTTP Streamable</option>
-                <option value="stdio">stdio</option>
-              </select>
-            </label>
-            <label>
-              {t("mcpServiceDialog.serviceUrl")}
-              <input
-                type="url"
-                required={draft.transportType !== "stdio"}
-                value={draft.url}
-                onChange={(event) => setField("url", event.target.value)}
-              />
-            </label>
-            {draft.transportType === "stdio" ? (
-              <Status tone="warning">
-                {t("mcpServiceDialog.codeImport.errors.stdioUnsupported")}
-              </Status>
-            ) : null}
-            <fieldset>
-              <legend>{t("mcpServiceDialog.customHeaders.label")}</legend>
-              {draft.headers.map((header, index) => (
-                <div className="wk-mcp-header-row" key={index}>
-                  <input
-                    placeholder={t("mcpServiceDialog.customHeaders.keyPlaceholder")}
-                    value={header.key}
-                    onChange={(event) =>
-                      setField(
-                        "headers",
-                        draft.headers.map((item, itemIndex) =>
-                          itemIndex === index
-                            ? { ...item, key: event.target.value }
-                            : item,
-                        ),
-                      )
-                    }
-                  />
-                  <input
-                    placeholder={t("mcpServiceDialog.customHeaders.valuePlaceholder")}
-                    value={header.value}
-                    onChange={(event) =>
-                      setField(
-                        "headers",
-                        draft.headers.map((item, itemIndex) =>
-                          itemIndex === index
-                            ? { ...item, value: event.target.value }
-                            : item,
-                        ),
-                      )
-                    }
-                  />
+              {step === 0 ? (
+                <>
+                  <details className="wk-mcp-code-import">
+                    <summary>{t("mcpServiceDialog.codeImport.toggle")}</summary>
+                    <p className="wk-muted">
+                      {t("mcpServiceDialog.codeImport.hint")}
+                    </p>
+                    <textarea
+                      rows={5}
+                      value={draft.codeImport}
+                      placeholder={'{\n  "mcpServers": { "my-server": { "url": "https://example.com/sse" } }\n}'}
+                      onChange={(event) => setField("codeImport", event.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      onClick={() =>
+                        setDraft((current) =>
+                          current
+                            ? importMcpConfig(current.codeImport, current)
+                            : current,
+                        )
+                      }
+                    >
+                      {t("mcpServiceDialog.codeImport.parse")}
+                    </Button>
+                    {draft.codeImportError ? (
+                      <Status tone="error">{draft.codeImportError}</Status>
+                    ) : null}
+                  </details>
+                  <fieldset className="wk-mcp-group">
+                    <legend>{t("mcpServiceDialog.basicSection")}</legend>
+                    <label>
+                      {t("mcpServiceDialog.name")}
+                      <input
+                        required
+                        maxLength={128}
+                        value={draft.name}
+                        placeholder={t("mcpServiceDialog.namePlaceholder")}
+                        onChange={(event) => setField("name", event.target.value)}
+                      />
+                    </label>
+                    <div className="wk-mcp-toggle-row">
+                      <label className="wk-checkbox">
+                        <input
+                          type="checkbox"
+                          checked={draft.enabled}
+                          onChange={(event) => setField("enabled", event.target.checked)}
+                        />{" "}
+                        {t("mcpServiceDialog.enableService")}
+                      </label>
+                      <span className="wk-muted">
+                        {t("mcpServiceDialog.enableServiceDesc")}
+                      </span>
+                    </div>
+                  </fieldset>
+                  <fieldset className="wk-mcp-group">
+                    <legend>{t("mcpServiceDialog.connectionSection")}</legend>
+                    <label>
+                      {t("mcpServiceDialog.transportType")}
+                      <select
+                        value={draft.transportType === "http-streamable" ? "http-streamable" : "sse"}
+                        onChange={(event) =>
+                          setField(
+                            "transportType",
+                            event.target.value as Draft["transportType"],
+                          )
+                        }
+                      >
+                        <option value="sse">SSE</option>
+                        <option value="http-streamable">HTTP Streamable</option>
+                      </select>
+                    </label>
+                    <label>
+                      {t("mcpServiceDialog.serviceUrl")}
+                      <input
+                        type="url"
+                        required
+                        value={draft.url}
+                        placeholder={t("mcpServiceDialog.serviceUrlPlaceholder")}
+                        onChange={(event) => setField("url", event.target.value)}
+                      />
+                    </label>
+                    <fieldset>
+                      <legend>{t("mcpServiceDialog.customHeaders.label")}</legend>
+                      <p className="wk-muted">{t("mcpServiceDialog.customHeaders.desc")}</p>
+                      {draft.headers.map((header, index) => (
+                        <div className="wk-mcp-header-row" key={index}>
+                          <input
+                            placeholder={t("mcpServiceDialog.customHeaders.keyPlaceholder")}
+                            value={header.key}
+                            onChange={(event) =>
+                              setField(
+                                "headers",
+                                draft.headers.map((item, itemIndex) =>
+                                  itemIndex === index
+                                    ? { ...item, key: event.target.value }
+                                    : item,
+                                ),
+                              )
+                            }
+                          />
+                          <input
+                            placeholder={t("mcpServiceDialog.customHeaders.valuePlaceholder")}
+                            value={header.value}
+                            onChange={(event) =>
+                              setField(
+                                "headers",
+                                draft.headers.map((item, itemIndex) =>
+                                  itemIndex === index
+                                    ? { ...item, value: event.target.value }
+                                    : item,
+                                ),
+                              )
+                            }
+                          />
+                          <Button
+                            type="button"
+                            onClick={() =>
+                              setField(
+                                "headers",
+                                draft.headers.filter(
+                                  (_, itemIndex) => itemIndex !== index,
+                                ),
+                              )
+                            }
+                          >
+                            {t("common.delete")}
+                          </Button>
+                        </div>
+                      ))}
+                      <Button
+                        type="button"
+                        onClick={() =>
+                          setField("headers", [
+                            ...draft.headers,
+                            { key: "", value: "" },
+                          ])
+                        }
+                      >
+                        {t("mcpServiceDialog.customHeaders.add")}
+                      </Button>
+                    </fieldset>
+                  </fieldset>
+                  <fieldset className="wk-mcp-group">
+                    <legend>{t("mcpServiceDialog.authConfig")}</legend>
+                    <label>
+                      {t("mcpServiceDialog.authType")}
+                      <select
+                        value={draft.authType}
+                        onChange={(event) =>
+                          setField("authType", event.target.value as Draft["authType"])
+                        }
+                      >
+                        <option value="">{t("mcpServiceDialog.authTypeNone")}</option>
+                        <option value="api_key">{t("mcpServiceDialog.authTypeApiKey")}</option>
+                        <option value="oauth">{t("mcpServiceDialog.authTypeOAuth")}</option>
+                      </select>
+                    </label>
+                    {draft.authType === "oauth" ? (
+                      <>
+                        <label>
+                          {t("mcpServiceDialog.oauthScopes")}
+                          <input
+                            value={draft.oauthScopes}
+                            placeholder={t("mcpServiceDialog.optional")}
+                            onChange={(event) =>
+                              setField("oauthScopes", event.target.value)
+                            }
+                          />
+                        </label>
+                        {draft.id ? (
+                          <McpOAuthControl
+                            client={client}
+                            serviceId={draft.id}
+                            busy={dialogBusy}
+                            onRequestAuthorize={authorizeOAuth}
+                          />
+                        ) : null}
+                      </>
+                    ) : null}
+                    {draft.authType === "api_key" ? (
+                      <>
+                        <label>
+                          {t("mcpServiceDialog.apiKeyHeader")}
+                          <input
+                            value={draft.apiKeyHeader}
+                            placeholder="X-API-Key"
+                            onChange={(event) =>
+                              setField("apiKeyHeader", event.target.value)
+                            }
+                          />
+                        </label>
+                        <p className="wk-muted">{t("mcpServiceDialog.apiKeyHeaderDesc")}</p>
+                        <label>
+                          {t("mcpServiceDialog.credentialValue")}
+                          <input
+                            type="password"
+                            autoComplete="new-password"
+                            value={draft.apiKey}
+                            placeholder={t("mcpServiceDialog.optional")}
+                            onChange={(event) => setField("apiKey", event.target.value)}
+                          />
+                        </label>
+                      </>
+                    ) : null}
+                  </fieldset>
+                  <fieldset className="wk-mcp-group">
+                    <legend>{t("mcpServiceDialog.advancedConfig")}</legend>
+                    <label>
+                      {t("mcpServiceDialog.timeoutSec")}
+                      <input
+                        type="number"
+                        min={1}
+                        max={300}
+                        value={draft.timeout}
+                        onChange={(event) =>
+                          setField(
+                            "timeout",
+                            Math.min(
+                              300,
+                              Math.max(1, Number(event.target.value) || 30),
+                            ),
+                          )
+                        }
+                      />
+                    </label>
+                    <label>
+                      {t("mcpServiceDialog.retryCount")}
+                      <input
+                        type="number"
+                        min={0}
+                        max={10}
+                        value={draft.retryCount}
+                        onChange={(event) =>
+                          setField(
+                            "retryCount",
+                            Math.min(
+                              10,
+                              Math.max(0, Number(event.target.value) || 0),
+                            ),
+                          )
+                        }
+                      />
+                    </label>
+                    <label>
+                      {t("mcpServiceDialog.retryDelaySec")}
+                      <input
+                        type="number"
+                        min={0}
+                        max={60}
+                        value={draft.retryDelay}
+                        onChange={(event) =>
+                          setField(
+                            "retryDelay",
+                            Math.min(
+                              60,
+                              Math.max(0, Number(event.target.value) || 0),
+                            ),
+                          )
+                        }
+                      />
+                    </label>
+                  </fieldset>
+                </>
+              ) : (
+                <>
+                  <fieldset className="wk-mcp-group">
+                    <div className="wk-settings-panel-heading">
+                      <div>
+                        <h4>{t("mcpMetadata.usage")}</h4>
+                        <p className="wk-muted">{t("mcpMetadata.usageHint")}</p>
+                      </div>
+                    </div>
+                    <div className="wk-mcp-usage-heading">
+                      <label className="wk-form-label">
+                        {t("mcpMetadata.usageInstructions")}
+                      </label>
+                      <Button
+                        type="button"
+                        disabled={
+                          !toolsSynced || metadataBusy || saving || generatingUsage
+                        }
+                        loading={generatingUsage}
+                        onClick={() => void generateUsage()}
+                      >
+                        {t("mcpMetadata.generateUsage")}
+                      </Button>
+                    </div>
+                    <textarea
+                      required
+                      rows={5}
+                      maxLength={16000}
+                      value={draft.usageInstructions}
+                      placeholder={t("mcpMetadata.instructionsPlaceholder")}
+                      onChange={(event) =>
+                        setField("usageInstructions", event.target.value)
+                      }
+                    />
+                    <span className="wk-muted wk-mcp-usage-counter">
+                      {draft.usageInstructions.length}/16000
+                    </span>
+                    <p className="wk-muted">{t("mcpMetadata.generateHint")}</p>
+                  </fieldset>
+                  {draft.id ? (
+                    <McpMetadataSection
+                      client={client}
+                      serviceId={draft.id}
+                      disabled={saving || generatingUsage}
+                      onSyncedChange={setToolsSynced}
+                      onBusyChange={setMetadataBusy}
+                    />
+                  ) : null}
+                </>
+              )}
+              <div className="wk-mcp-footer">
+                <div className="wk-mcp-footer-left">
+                  {step === 1 ? (
+                    <Button
+                      type="button"
+                      disabled={dialogBusy}
+                      onClick={() => setStep(0)}
+                    >
+                      {t("mcpMetadata.previous")}
+                    </Button>
+                  ) : null}
+                </div>
+                <div className="wk-mcp-footer-right">
                   <Button
                     type="button"
-                    onClick={() =>
-                      setField(
-                        "headers",
-                        draft.headers.filter(
-                          (_, itemIndex) => itemIndex !== index,
-                        ),
-                      )
+                    disabled={saving}
+                    onClick={closeEditor}
+                  >
+                    {t("common.cancel")}
+                  </Button>
+                  <Button
+                    type="submit"
+                    loading={saving}
+                    disabled={
+                      metadataBusy ||
+                      generatingUsage ||
+                      (step === 1 && !toolsSynced)
                     }
                   >
-                    {t("common.delete")}
+                    {step === 0 ? t("mcpMetadata.saveNext") : t("common.save")}
                   </Button>
                 </div>
-              ))}
-              <Button
-                type="button"
-                onClick={() =>
-                  setField("headers", [
-                    ...draft.headers,
-                    { key: "", value: "" },
-                  ])
-                }
-              >
-                {t("mcpServiceDialog.customHeaders.add")}
-              </Button>
-            </fieldset>
-            <label>
-              {t("mcpServiceDialog.authType")}
-              <select
-                value={draft.authType}
-                onChange={(event) =>
-                  setField("authType", event.target.value as Draft["authType"])
-                }
-              >
-                <option value="">{t("mcpServiceDialog.authTypeNone")}</option>
-                <option value="api_key">{t("mcpServiceDialog.authTypeApiKey")}</option>
-                <option value="oauth">{t("mcpServiceDialog.authTypeOAuth")}</option>
-              </select>
-            </label>
-            {draft.authType === "oauth" ? (
-              <label>
-                {t("mcpServiceDialog.oauthScopes")}
-                <input
-                  value={draft.oauthScopes}
-                  placeholder={t("mcpServiceDialog.optional")}
-                  onChange={(event) =>
-                    setField("oauthScopes", event.target.value)
-                  }
-                />
-              </label>
-            ) : null}
-            {draft.authType === "api_key" ? (
-              <>
-                <label>
-                  {t("mcpServiceDialog.apiKeyHeader")}
-                  <input
-                    value={draft.apiKeyHeader}
-                    placeholder="X-API-Key"
-                    onChange={(event) =>
-                      setField("apiKeyHeader", event.target.value)
-                    }
-                  />
-                </label>
-                <label>
-                  {t("mcpServiceDialog.credentialValue")}
-                  <input
-                    type="password"
-                    autoComplete="new-password"
-                    value={draft.apiKey}
-                    placeholder={
-                      draft.id
-                        ? t("mcpServiceDialog.optional")
-                        : t("mcpServiceDialog.optional")
-                    }
-                    onChange={(event) => setField("apiKey", event.target.value)}
-                  />
-                </label>
-              </>
-            ) : null}
-            <fieldset>
-              <legend>{t("mcpServiceDialog.advancedConfig")}</legend>
-              <label>
-                {t("mcpServiceDialog.timeoutSec")}
-                <input
-                  type="number"
-                  min={1}
-                  max={300}
-                  value={draft.timeout}
-                  onChange={(event) =>
-                    setField(
-                      "timeout",
-                      Math.min(
-                        300,
-                        Math.max(1, Number(event.target.value) || 30),
-                      ),
-                    )
-                  }
-                />
-              </label>
-              <label>
-                {t("mcpServiceDialog.retryCount")}
-                <input
-                  type="number"
-                  min={0}
-                  max={10}
-                  value={draft.retryCount}
-                  onChange={(event) =>
-                    setField(
-                      "retryCount",
-                      Math.min(
-                        10,
-                        Math.max(0, Number(event.target.value) || 0),
-                      ),
-                    )
-                  }
-                />
-              </label>
-              <label>
-                {t("mcpServiceDialog.retryDelaySec")}
-                <input
-                  type="number"
-                  min={0}
-                  max={60}
-                  value={draft.retryDelay}
-                  onChange={(event) =>
-                    setField(
-                      "retryDelay",
-                      Math.min(
-                        60,
-                        Math.max(0, Number(event.target.value) || 0),
-                      ),
-                    )
-                  }
-                />
-              </label>
-            </fieldset>
-            <label className="wk-checkbox">
-              <input
-                type="checkbox"
-                checked={draft.enabled}
-                onChange={(event) => setField("enabled", event.target.checked)}
-              />{" "}
-              {t("mcpServiceDialog.enableService")}
-            </label>
-            {step === 1 ? <label>
-              {t("mcpMetadata.usageInstructions")}
-              <textarea required rows={5} value={draft.usageInstructions} placeholder={t("mcpMetadata.instructionsPlaceholder")} onChange={(event) => setField("usageInstructions", event.target.value)} />
-            </label> : null}
-            <div className="wk-list-actions">
-              {step === 1 ? <Button type="button" disabled={saving} onClick={() => setStep(0)}>{t("mcpMetadata.previous")}</Button> : null}
-              <Button type="submit" loading={saving}>
-                {step === 0 ? t("mcpMetadata.saveNext") : t("common.save")}
-              </Button>
-              <Button
-                type="button"
-                disabled={saving}
-                onClick={() => { setDraft(null); setStep(0); }}
-              >
-                {t("common.cancel")}
-              </Button>
-            </div>
+              </div>
             </form>
-            {draft.id ? (
-              <McpServiceDetails
-                client={client}
-                serviceId={draft.id}
-                oauthEnabled={draft.authType === "oauth"}
-                usageInstructions={draft.usageInstructions}
-              />
-            ) : null}
           </div>
         </div>
       ) : null}
