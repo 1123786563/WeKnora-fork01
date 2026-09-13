@@ -6,6 +6,6 @@ export default function AppLayout() {
   const runtime = useMobileRuntime();
   if (runtime.hydrating) return <ActivityIndicator />;
   if (runtime.credential.kind !== 'bearer') return <Redirect href="/(auth)/login" />;
-  if (!runtime.tenantId) return <Redirect href={'/onboarding' as Parameters<typeof Redirect>[0]['href']} />;
+  if (!runtime.tenantId) return <Redirect href="../onboarding" />;
   return <Stack screenOptions={{ headerShown: true }} />;
 }

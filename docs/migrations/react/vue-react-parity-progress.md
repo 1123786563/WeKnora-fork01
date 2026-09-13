@@ -741,6 +741,13 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   durable `/onboarding` declaration instead of the current narrow cast, and
   simulator/device plus real-backend evidence remains outstanding.
 
+- **Mobile onboarding review repair:** accepted/declined invitation actions
+  now use the existing typed invitation APIs, successful acceptance refreshes
+  workspace state, and logout navigates to the auth route. Expo redirects now
+  use type-safe relative route strings rather than forced casts. Mobile test
+  and typecheck both pass (90/90); native simulator/device and real-backend
+  evidence remain open, so onboarding is still `review`.
+
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
 - **Rows:** any rows proposed for `accepted`; never all rows by default.
 - **Files owned:** `docs/migrations/react/vue-react-parity-matrix.md`, `docs/migrations/react/vue-react-parity-progress.md`, `docs/migrations/react/evidence/vue-react-parity/README.md`, `docs/migrations/react/evidence/vue-react-parity/screenshot-matrix.md`, and the row-specific `docs/migrations/react/evidence/vue-react-parity/<date>-<row-group>.md` evidence file only.
