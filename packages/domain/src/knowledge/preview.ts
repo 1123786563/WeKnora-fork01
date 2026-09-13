@@ -1,7 +1,7 @@
 import type { KnowledgeDocument } from '@weknora/contracts';
 import { normalizeKnowledgeProcessingStatus, processingStatusLabel } from './processing.ts';
 
-export type KnowledgePreviewKind = 'pdf' | 'image' | 'markdown' | 'spreadsheet' | 'docx' | 'pptx' | 'text' | 'unsupported';
+export type KnowledgePreviewKind = 'pdf' | 'image' | 'markdown' | 'spreadsheet' | 'docx' | 'pptx' | 'audio' | 'video' | 'text' | 'unsupported';
 
 export function previewKindForFile(fileName: string): KnowledgePreviewKind {
   const extension = fileName.trim().toLowerCase().split('.').pop() ?? '';
@@ -11,6 +11,8 @@ export function previewKindForFile(fileName: string): KnowledgePreviewKind {
   if (['csv', 'tsv', 'xls', 'xlsx'].includes(extension)) return 'spreadsheet';
   if (extension === 'docx') return 'docx';
   if (extension === 'pptx') return 'pptx';
+  if (['mp3', 'wav', 'ogg', 'oga', 'm4a', 'aac', 'flac'].includes(extension)) return 'audio';
+  if (['mp4', 'webm', 'ogv', 'mov', 'm4v'].includes(extension)) return 'video';
   if (['txt', 'json', 'xml', 'html', 'htm', 'yaml', 'yml', 'log'].includes(extension)) return 'text';
   return 'unsupported';
 }

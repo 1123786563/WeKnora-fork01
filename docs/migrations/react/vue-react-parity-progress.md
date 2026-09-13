@@ -13,6 +13,12 @@
 - 专项 21/21、正式 Web 758/758、`typecheck:web` 通过；证据 `evidence/vue-react-parity/2026-09-14-n007-upload-section-visibility.md`。
 - N007 仍为 `implementing`：真实上传/解析后端、浏览器 computed-style、Wails/native 证据未闭环。
 
+## 2026-09-14 Round N+23 — N008 音视频文档预览
+
+- 预览类型解析新增 Vue 等价的常见音频/视频扩展；React 复用已认证 blob 生命周期，渲染原生 `audio controls` 与 `video controls playsInline`，不改变 DOCX/PPTX/Excel/Mermaid 的 renderer 依赖边界。
+- Domain 预览测试 2/2、Web 预览测试 4/4；证据 `evidence/vue-react-parity/2026-09-14-n008-media-preview.md`。
+- N008 仍为 `review`：DOCX/PPTX/Excel/Mermaid、live expiry、浏览器/真实后端及平台证据未闭环。
+
 ## 2026-09-14 Round N+22 — N006 文档批量 Shift 选择
 
 - 文档列表补齐 Vue `toggleSelectRow` 的当前页 Shift 区间增删、最后选择锚点及筛选/全选重置语义；普通点击仍只切换当前行。

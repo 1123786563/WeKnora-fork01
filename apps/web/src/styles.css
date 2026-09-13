@@ -50,6 +50,8 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-document-metadata dt { color: #66758b; font-size: .78rem; }
 .wk-document-metadata dd { margin: .2rem 0 0; overflow-wrap: anywhere; }
 .wk-preview-placeholder { border: 1px dashed #b8c5d6; border-radius: 8px; color: #506078; padding: 3rem 1rem; text-align: center; }
+.wk-preview-audio { display: block; max-width: 480px; width: 100%; }
+.wk-preview-video { display: block; max-height: calc(100vh - 240px); max-width: 100%; }
 .wk-wiki-page { max-width: 1180px; }
 .wk-wiki-layout { display: grid; grid-template-columns: minmax(220px, 320px) 1fr; gap: 1.25rem; }
 .wk-wiki-sidebar { min-width: 0; border-right: 1px solid #e7e7e7; display: flex; flex-direction: column; }

@@ -10,11 +10,11 @@ export interface KnowledgeDocumentPreviewModel {
   fileName: string;
 }
 
-export type InlinePreviewKind = 'text' | 'markdown' | 'image' | 'pdf';
+export type InlinePreviewKind = 'text' | 'markdown' | 'image' | 'pdf' | 'audio' | 'video';
 export type PreviewBody = string | Blob | ArrayBuffer;
 
 export function isInlinePreviewKind(kind: KnowledgePreviewKind): kind is InlinePreviewKind {
-  return kind === 'text' || kind === 'markdown' || kind === 'image' || kind === 'pdf';
+  return kind === 'text' || kind === 'markdown' || kind === 'image' || kind === 'pdf' || kind === 'audio' || kind === 'video';
 }
 
 export async function readPreviewText(body: PreviewBody): Promise<string> {
@@ -48,6 +48,12 @@ export function DocumentPreviewContent({
   }
   if (kind === 'image') {
     return createElement('img', { className: 'wk-preview-image', src: url, alt: fileName || 'Document preview' });
+  }
+  if (kind === 'audio') {
+    return createElement('audio', { className: 'wk-preview-audio', src: url, controls: true, 'aria-label': fileName || 'Audio preview' });
+  }
+  if (kind === 'video') {
+    return createElement('video', { className: 'wk-preview-video', src: url, controls: true, playsInline: true, 'aria-label': fileName || 'Video preview' });
   }
   return createElement('iframe', {
     className: 'wk-preview-pdf',

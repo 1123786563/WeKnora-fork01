@@ -10,6 +10,8 @@ test('maps the supported document inventory to explicit preview kinds', () => {
   assert.equal(previewKindForFile('table.csv'), 'spreadsheet');
   assert.equal(previewKindForFile('brief.docx'), 'docx');
   assert.equal(previewKindForFile('slides.pptx'), 'pptx');
+  assert.equal(previewKindForFile('voice.m4a'), 'audio');
+  assert.equal(previewKindForFile('demo.webm'), 'video');
   assert.equal(previewKindForFile('archive.bin'), 'unsupported');
 });
 

@@ -24,6 +24,8 @@ test('only marks safe text, markdown, image, and PDF kinds as inline previewable
   assert.equal(isInlinePreviewKind('markdown'), true);
   assert.equal(isInlinePreviewKind('image'), true);
   assert.equal(isInlinePreviewKind('pdf'), true);
+  assert.equal(isInlinePreviewKind('audio'), true);
+  assert.equal(isInlinePreviewKind('video'), true);
   assert.equal(isInlinePreviewKind('docx'), false);
   assert.equal(buildDocumentPreview({ id: 'doc-1', file_name: 'brief.docx', parse_status: 'completed' }, '/preview').downloadOnly, true);
 });
