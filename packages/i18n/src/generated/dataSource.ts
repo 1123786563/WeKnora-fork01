@@ -9,6 +9,7 @@ import type { Locale } from '../index.ts';
 export const dataSourceMessages: Record<Locale, Record<string, string>> = {
 
   'zh-CN': {
+    'dataSource.connectorTypeLabel': '连接器类型', 'dataSource.connectorSettingsLabel': '连接器设置',
     'dataSource.syncHistory': '同步历史', 'dataSource.refreshLogs': '刷新日志', 'dataSource.close': '关闭', 'dataSource.noLogs': '暂无同步记录', 'dataSource.loadMore': '加载更多', 'dataSource.loadingMore': '加载中…',
     'dataSource.summary.total': '总次数', 'dataSource.summary.success': '成功', 'dataSource.summary.failed': '失败', 'dataSource.summary.items': '同步条目',
     'dataSource.status.running': '同步中', 'dataSource.status.success': '成功', 'dataSource.status.partial': '部分成功', 'dataSource.status.failed': '失败', 'dataSource.status.canceled': '已取消',
@@ -87,6 +88,7 @@ export const dataSourceMessages: Record<Locale, Record<string, string>> = {
     'dataSource.testing': '测试中...',
   },
   'en-US': {
+    'dataSource.connectorTypeLabel': 'Connector type', 'dataSource.connectorSettingsLabel': 'Connector settings',
     'dataSource.syncHistory': 'Sync History', 'dataSource.refreshLogs': 'Refresh logs', 'dataSource.close': 'Close', 'dataSource.noLogs': 'No sync records yet', 'dataSource.loadMore': 'Load more', 'dataSource.loadingMore': 'Loading more…',
     'dataSource.summary.total': 'Runs', 'dataSource.summary.success': 'Success', 'dataSource.summary.failed': 'Failed', 'dataSource.summary.items': 'Items',
     'dataSource.status.running': 'Syncing', 'dataSource.status.success': 'Success', 'dataSource.status.partial': 'Partial', 'dataSource.status.failed': 'Failed', 'dataSource.status.canceled': 'Canceled',
@@ -165,6 +167,7 @@ export const dataSourceMessages: Record<Locale, Record<string, string>> = {
     'dataSource.testing': 'Testing...',
   },
   'ja-JP': {
+    'dataSource.connectorTypeLabel': 'コネクタタイプ', 'dataSource.connectorSettingsLabel': 'コネクタ設定',
     'dataSource.syncHistory': '同期履歴', 'dataSource.refreshLogs': 'ログを更新', 'dataSource.close': '閉じる', 'dataSource.noLogs': '同期記録はまだありません', 'dataSource.loadMore': 'さらに読み込む', 'dataSource.loadingMore': '読み込み中…',
     'dataSource.summary.total': '実行回数', 'dataSource.summary.success': '成功', 'dataSource.summary.failed': '失敗', 'dataSource.summary.items': '項目',
     'dataSource.status.running': '同期中', 'dataSource.status.success': '成功', 'dataSource.status.partial': '一部成功', 'dataSource.status.failed': '失敗', 'dataSource.status.canceled': 'キャンセル済み',
@@ -243,6 +246,7 @@ export const dataSourceMessages: Record<Locale, Record<string, string>> = {
     'dataSource.testing': 'テスト中...',
   },
   'ko-KR': {
+    'dataSource.connectorTypeLabel': '커넥터 유형', 'dataSource.connectorSettingsLabel': '커넥터 설정',
     'dataSource.syncHistory': '동기화 기록', 'dataSource.refreshLogs': '로그 새로고침', 'dataSource.close': '닫기', 'dataSource.noLogs': '동기화 기록이 없습니다', 'dataSource.loadMore': '더 불러오기', 'dataSource.loadingMore': '로드 중…',
     'dataSource.summary.total': '실행', 'dataSource.summary.success': '성공', 'dataSource.summary.failed': '실패', 'dataSource.summary.items': '항목',
     'dataSource.status.running': '동기화 중', 'dataSource.status.success': '성공', 'dataSource.status.partial': '부분 성공', 'dataSource.status.failed': '실패', 'dataSource.status.canceled': '취소됨',
@@ -321,6 +325,7 @@ export const dataSourceMessages: Record<Locale, Record<string, string>> = {
     'dataSource.testing': '테스트 중...',
   },
   'ru-RU': {
+    'dataSource.connectorTypeLabel': 'Тип коннектора', 'dataSource.connectorSettingsLabel': 'Настройки коннектора',
     'dataSource.syncHistory': 'История синхронизации', 'dataSource.refreshLogs': 'Обновить журнал', 'dataSource.close': 'Закрыть', 'dataSource.noLogs': 'Нет записей синхронизации', 'dataSource.loadMore': 'Загрузить ещё', 'dataSource.loadingMore': 'Загрузка…',
     'dataSource.summary.total': 'Запуски', 'dataSource.summary.success': 'Успешно', 'dataSource.summary.failed': 'Ошибки', 'dataSource.summary.items': 'Элементы',
     'dataSource.status.running': 'Синхронизация', 'dataSource.status.success': 'Успешно', 'dataSource.status.partial': 'Частично', 'dataSource.status.failed': 'Ошибка', 'dataSource.status.canceled': 'Отменено',

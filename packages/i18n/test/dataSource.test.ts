@@ -11,6 +11,8 @@ const EDITOR_KEYS = [
   'dataSource.createTitle',
   'dataSource.editTitle',
   'dataSource.nameLabel',
+  'dataSource.connectorTypeLabel',
+  'dataSource.connectorSettingsLabel',
   'dataSource.namePlaceholder',
   'dataSource.credentialsLabel',
   'dataSource.testConnection',
@@ -69,7 +71,7 @@ function dataSourceKeys(locale: string): string[] {
 
 test('data-source log messages exist in every supported locale', () => {
   const keys = dataSourceKeys('en-US').sort();
-  assert.equal(keys.length, 149);
+  assert.equal(keys.length, 151);
   for (const locale of supportedLocales) {
     assert.deepEqual(dataSourceKeys(locale).sort(), keys, `${locale} data-source messages diverge`);
     assert.notEqual(formatMessage(locale, 'dataSource.syncHistory'), 'dataSource.syncHistory');
@@ -91,6 +93,8 @@ test('data-source editor copy is byte-exact against the Vue zh-CN baseline', () 
   assert.equal(formatMessage('zh-CN', 'dataSource.title'), '数据源管理');
   assert.equal(formatMessage('zh-CN', 'dataSource.description'), '配置外部数据源，自动同步内容到知识库');
   assert.equal(formatMessage('zh-CN', 'dataSource.namePlaceholder'), '输入数据源名称');
+  assert.equal(formatMessage('zh-CN', 'dataSource.connectorTypeLabel'), '连接器类型');
+  assert.equal(formatMessage('zh-CN', 'dataSource.connectorSettingsLabel'), '连接器设置');
   assert.equal(formatMessage('zh-CN', 'dataSource.testConnection'), '测试连接');
   assert.equal(formatMessage('zh-CN', 'dataSource.isRequired'), '为必填项');
   assert.equal(formatMessage('zh-CN', 'dataSource.field.feedUrlsHint'), '每行一个 RSS / Atom 订阅源地址，支持同时填写多个');
