@@ -25,7 +25,7 @@
 | T15 Vue 目录、连接和审批界面 | passed | commit 9b0c11c4 + ee389bd9（集成分支 fast-forward）；四视图 + actionControls 计划逐字（node:test 2/2）；npm test 821/0、type-check/build/check-i18n 11/11（五语言键集独立 diff 全等）；浏览器 26/26 + R18 复验 5/5（auth_version=3 真实值一次撤销、冻结 risk 显示）；T14-OBS-1 路径核查通过（结构化直返）；R18 两 DTO 字段窄扩展（真实落点文件，实质合规）；spec PASS + 质量 PASS（QF-1..QF-3 MINOR UI 打磨项、QF-4..QF-7 INFO，均不阻塞） |
 | T16 私网部署、观测、备份与升级 | passed | commit f2c81e37 + 370a4ee8 + 146293f2（集成分支 fast-forward）；R9 本地重建 digest sha256:4de6df4d 钉定（buildx 佐证致 T01 digest 字节级不可复现，均文档化）；ADMIN_TOKEN 三层强制；EncryptedFileSecretSink（AES-256-GCM、目录权限启动校验、legacy 明文 fail-closed、无密钥拒启）；私网零发布 + 回调单开 + network_mode 旁路封堵（加固轮）；观测/备份/恢复/升级/回滚 playbook；断网/SIGTERM/外网拒绝演练全记录；26+15 python 测试与全量回归绿；spec PASS（F-01 闭 + 加固复审 PASS）+ 质量 PASS（QF-01/02/03 闭合并独立复验；1 非阻塞畸形边角 → T17/T18） |
 | T17 多空间与故障注入集成验收 | passed | commit 7647ab63 + de4a5108（R20 修复）+ 85b7c035（终稿润色）；14 场景矩阵全绿（-race 零竞争、-count=2 零 flake）；环境门禁 Fatal-not-Skip 三入口证实；38 条证据经双审查者交叉复算；T17-F1 关键生产缺陷（GatedOCClaims 掩蔽 settle face → record 永不终态）发现并经 R20 修复闭合（双面 RED 独立复现 + 编译期断言）；CARRY：T14-QI-1 关闭（PG 20 并发恰一对）、T16 validator 边角关闭（28/28）；stale-attempt 卫生观察 → T18；T17-F2 列表可见性 → 规格积压 |
-| T18 真实 Provider、商业链路和灰度门禁 | pending | 关闭 T01 oauth blocked-env 子项；需真实账号/目标/内容授权 |
+| T18 真实 Provider、商业链路和灰度门禁 | passed | commit c27895f8 + b1d6b8f8（R21 fixture）+ 3b5960c0（终稿加固）；release_gate 七类证据门禁（计划逐字 + CLI 复核工件/digest/上下文，拒绝 mock 写证据与 passed-true-only）；真实 provider_read 在候选镜像 4de6df4d 上验证（200 + 负向 400/403 + 零残留清理，R21 工件落库）；provider_write/billing 永久 blocked-env（无本会话授权，如实列缺项）；门禁实跑 exit 2 = 机器可读『不可发布』；六项 CARRY 终局裁决记录（含 T01 OAuth 子项永久 blocked-env）；CLI 五族畸形输入干净 exit 2；80/80 python 全绿；spec PASS + 质量 PASS（含终稿增量复核） |
 
 ## T01 证据
 
