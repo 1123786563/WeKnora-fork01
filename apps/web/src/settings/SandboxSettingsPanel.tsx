@@ -1550,6 +1550,11 @@ type Props = {
   initialData?: { items: SandboxConfigRecord[]; workspaceScriptsDisabled: boolean };
   /** Vue gates Docker behind the settings.sandbox.docker capability (SandboxSettings.vue:237-247). */
   dockerBackendEnabled?: boolean;
+  /** SandboxSettings.vue openSession (341-344): an inventory row click opens
+   *  /platform/chat/:id. Optional so embeds without a host navigation keep the
+   *  rows inert. Vue closes the drawer first; the host's full-page assign makes
+   *  that step a no-op here. */
+  onOpenSession?: (sessionId: string) => void;
 };
 
 /** SandboxSettings.vue endpointHost (348-356). */
@@ -1595,7 +1600,7 @@ function buildCardWarnings(record: SandboxConfigRecord, dockerBackendEnabled: bo
   return warnings;
 }
 
-export function SandboxSettingsPanel({ client, role, initialData, dockerBackendEnabled = true }: Props) {
+export function SandboxSettingsPanel({ client, role, initialData, dockerBackendEnabled = true, onOpenSession }: Props) {
   const canEdit = roleAtLeast(role, 'admin');
   const locale = useAppLocale();
   const t = useMemo(() => sandboxT(locale), [locale]);
@@ -1856,10 +1861,26 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
           {inventory.data.sessionIds.length > 0 ? (
             <ul className="wk-list">
               {/* Vue inventory row (171-178): the raw id stays on the title
-                  tooltip; the label shows the resolved session title. */}
-              {inventory.data.sessionIds.map((id) => (
-                <li key={id}><strong title={id}>{sessionTitleText(sessionTitles, id, t('settings.sandbox.inventoryUntitledSession'))}</strong> <span className="wk-muted">{t('settings.sandbox.inventorySessionKind')}</span></li>
-              ))}
+                  tooltip; the label shows the resolved session title. Rows are
+                  buttons that open the session (openSession, 341-344) only when
+                  the host provides onOpenSession; embeds stay inert without it. */}
+              {inventory.data.sessionIds.map((id) => {
+                const label = (
+                  <>
+                    <strong title={id}>{sessionTitleText(sessionTitles, id, t('settings.sandbox.inventoryUntitledSession'))}</strong> <span className="wk-muted">{t('settings.sandbox.inventorySessionKind')}</span>
+                  </>
+                );
+                return (
+                  <li key={id}>
+                    {onOpenSession ? (
+                      <button type="button" className="wk-sandbox-inventory-row" onClick={() => onOpenSession(id)}>
+                        {label}
+                        <span aria-hidden="true">›</span>
+                      </button>
+                    ) : label}
+                  </li>
+                );
+              })}
             </ul>
           ) : <Status>{t('settings.sandbox.inventoryEmpty')}</Status>}
           {inventory.data.agentNames.length > 0 ? <p>{t('settings.sandbox.inventoryAgentsTitle')}: {inventory.data.agentNames.join('、')}</p> : null}

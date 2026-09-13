@@ -142,7 +142,7 @@ afterEach(async () => {
   confirmCalls = [];
 });
 
-async function mount(client: WeKnoraClient, props: { role?: 'viewer' | 'admin' | 'owner'; initialData?: { items: unknown[]; workspaceScriptsDisabled: boolean } } = {}) {
+async function mount(client: WeKnoraClient, props: { role?: 'viewer' | 'admin' | 'owner'; initialData?: { items: unknown[]; workspaceScriptsDisabled: boolean }; onOpenSession?: (sessionId: string) => void } = {}) {
   const container = document.createElement('div');
   document.body.append(container);
   mountedRoot = createRoot(container);
@@ -151,6 +151,7 @@ async function mount(client: WeKnoraClient, props: { role?: 'viewer' | 'admin' |
       client={client}
       role={props.role ?? 'admin'}
       {...(props.initialData === undefined ? {} : { initialData: props.initialData as never })}
+      {...(props.onOpenSession ? { onOpenSession: props.onOpenSession } : {})}
     />);
   });
   return container;
@@ -884,4 +885,39 @@ test('inventory stays hidden while session titles resolve, then renders them (Sa
   const text = container.textContent ?? '';
   assert.match(text, /巡检机器人/);
   assert.match(text, new RegExp(t('settings.sandbox.inventorySessionKind')));
+});
+
+// ---- openSession navigation (SandboxSettings.vue:171, 341-344) ---------------
+
+test('inventory session rows open the chat session through onOpenSession (SandboxSettings.vue:171, 341-344)', async () => {
+  const { client } = makeClient(() => ({}), [cubeRecord]);
+  (client.sandboxConfigurations as { inventory: unknown }).inventory = async () => ({
+    sandboxCount: 2, sessionIds: ['session-a', 'session-b'], agentNames: [],
+  });
+  const opened: string[] = [];
+  const container = await mount(client, {
+    initialData: { items: [cubeRecord], workspaceScriptsDisabled: false },
+    onOpenSession: (sessionId) => { opened.push(sessionId); },
+  });
+  await openInventory(container);
+  const rowButtons = Array.from(container.querySelectorAll<HTMLElement>('.wk-sandbox-inventory li button'));
+  if (rowButtons[0]) await act(async () => rowButtons[0].click());
+
+  // Assertions run only after the flow has fully settled.
+  assert.deepEqual(opened, ['session-a'], 'clicking a row reports its session id exactly once');
+  assert.equal(rowButtons.length, 2, 'every session row is a click target');
+});
+
+test('inventory rows render inert without onOpenSession so embeds stay click-safe (SandboxSettings.vue:171)', async () => {
+  const { client } = makeClient(() => ({}), [cubeRecord]);
+  (client.sandboxConfigurations as { inventory: unknown }).inventory = async () => ({
+    sandboxCount: 1, sessionIds: ['session-a'], agentNames: [],
+  });
+  const container = await mount(client, { initialData: { items: [cubeRecord], workspaceScriptsDisabled: false } });
+  await openInventory(container);
+
+  const text = container.textContent ?? '';
+  assert.equal(container.querySelectorAll('.wk-sandbox-inventory li button').length, 0, 'no row renders a click affordance');
+  assert.ok(container.querySelector('.wk-sandbox-inventory li strong[title="session-a"]'), 'the static row keeps the raw-id tooltip');
+  assert.match(text, new RegExp(t('settings.sandbox.inventoryUntitledSession')));
 });

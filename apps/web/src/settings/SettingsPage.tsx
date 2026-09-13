@@ -167,7 +167,14 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
     ? <ModelSettingsPanel client={client} role={role} initialModels={Array.isArray(payload) ? payload as never : []} initialSubSection={initialSubSection ?? undefined} />
     : null;
   const sandboxPanel = selectedKey === 'sandbox'
-    ? <SandboxSettingsPanel client={client} role={role} dockerBackendEnabled={isCapabilitySupported(capabilities, 'settings.sandbox.docker', { liteMode })} />
+    ? <SandboxSettingsPanel
+        client={client}
+        role={role}
+        dockerBackendEnabled={isCapabilitySupported(capabilities, 'settings.sandbox.docker', { liteMode })}
+        // SandboxSettings.vue openSession (341-344): row click opens the chat
+        // session; full-page assign mirrors PlatformShell.openShellSession (204).
+        onOpenSession={(sessionId) => { window.location.assign(`/platform/chat/${encodeURIComponent(sessionId)}`); }}
+      />
     : null;
   const skillPanel = selectedKey === 'skills'
     ? <SkillSettingsPanel client={client} role={role} initialSkills={Array.isArray(payload) ? payload as never : (((payload as { items?: unknown } | null)?.items ?? []) as never)} />

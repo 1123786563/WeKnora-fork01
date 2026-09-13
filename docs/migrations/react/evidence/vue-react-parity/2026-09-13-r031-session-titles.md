@@ -109,10 +109,66 @@ Handoff for the owning agent (exact pieces):
 
 ## Remaining (R031)
 
-- `openSession` navigation (Vue 341-344: row click → `/platform/chat/:id`, closes drawer) is not ported — the React inventory row is static and the panel has no router prop. Needs a small `onOpenSession` prop decision at the integration layer.
+- `openSession` navigation (Vue 341-344: row click → `/platform/chat/:id`, closes drawer) — **resolved by the follow-up slice below** (section "openSession navigation").
 - Inventory chrome: Vue uses a `SettingDrawer`; React renders an inline Card — registered as a separate surface decision, not addressed here.
 
 ## Process notes for future agents
 
 - Node v26.7.0 `node:test` can hang (~50s, then "Promise resolution is still pending but the event loop has already resolved") when an `AssertionError` is thrown at particular await boundaries inside an async test (observed right after `await act(...)` in this file). Writing the test to collect booleans and assert once after the flow fully settles avoids it; `assert.match` after a completed settle phase also works.
 - A concurrent `git add -A` sweep (commit `891673ea`, "docs: 删除vue-react-parity迁移的所有旧截图文件") picked up this agent's in-progress files mid-session: the api-client change (+9/+23) and two temporary probe files are inside that commit. The probe files (`apps/web/src/settings/panel-probe*.test.tsx`) are deleted in the working tree and must not ship; the pending deletion needs to be included in the next integration commit. My panel changes (+44/+23) are uncommitted working-tree changes.
+
+## openSession navigation (R031 slice follow-up, same worktree/branch)
+
+Status: **done** — closes the last R031 remaining item (line 112 above).
+
+### Vue authority
+
+`frontend/src/views/settings/SandboxSettings.vue`:
+
+| Lines | Fact |
+|---|---|
+| 171 | row is a real `<button type="button" class="inventory-row" @click="openSession(id)">` — one per session row; no permission gate at the list |
+| 341-344 | `openSession(id)`: `showInventory.value = false`, then  `` router.push(`/platform/chat/${encodeURIComponent(id)}`) `` — in-app SPA navigation on the current page (never `window.open`); no precondition in the component, an inaccessible session is a chat-page concern |
+| 176 | affordance: `t-icon name="chevron-right"` at the row end |
+
+React translation (deliberate deltas):
+
+- The host layer owns navigation: `SandboxSettingsPanel` gains optional `onOpenSession?: (sessionId: string) => void`; `SettingsPage` passes  `` window.location.assign(`/platform/chat/${encodeURIComponent(sessionId)}`) `` — the same cross-page convention as `PlatformShell.openShellSession` (`apps/web/src/platform/PlatformShell.tsx:204`) and the settings close button (`apps/web/src/settings/SettingsPage.tsx:195`).
+- Vue closes the drawer before pushing (the app survives the SPA push); React skips that step because the full-page assign unloads the settings page anyway, and the panel must stay embed-safe when no handler is given.
+- The chevron affordance ships as a plain `aria-hidden` `›` span: the panel CSS file is outside this slice writable scope.
+
+### TDD — before / after (panel)
+
+RED (`cd apps/web && npx tsx --test src/settings/SandboxSettingsPanel.test.tsx`):
+
+```
+✖ inventory session rows open the chat session through onOpenSession (SandboxSettings.vue:171, 341-344)
+  AssertionError: clicking a row reports its session id exactly once — actual [] vs expected ['session-a']
+(tests 28, pass 27, fail 1)
+```
+
+The inert-row test passed before implementation by construction (rows were already static); it pins the embed-safety requirement so a later always-button refactor cannot slip through.
+
+GREEN: `tests 28, pass 28, fail 0` (~0.8s). The 26-test baseline stayed green unchanged — without `onOpenSession` the rows keep the previous DOM shape, so existing selectors still match.
+
+Panel changes (`apps/web/src/settings/SandboxSettingsPanel.tsx`):
+
+- `Props.onOpenSession?: (sessionId: string) => void`.
+- Inventory rows (Vue 171-178 markup preserved): with the handler each row is `<button type="button" class="wk-sandbox-inventory-row" onClick={() => onOpenSession(id)}>` with an `aria-hidden` chevron; without it the row stays the previous static `<strong>` + meta markup.
+
+Wiring (`apps/web/src/settings/SettingsPage.tsx`): the sandbox panel receives  `` onOpenSession={(sessionId) => { window.location.assign(`/platform/chat/${encodeURIComponent(sessionId)}`); }} ``.
+
+New tests in `SandboxSettingsPanel.test.tsx`:
+1. `inventory session rows open the chat session through onOpenSession (SandboxSettings.vue:171, 341-344)` — first-row click calls `onOpenSession` with the session id exactly once; both rows render as click targets.
+2. `inventory rows render inert without onOpenSession so embeds stay click-safe (SandboxSettings.vue:171)` — no row button, raw-id tooltip intact, untitled fallback still renders.
+
+### Verification (all green)
+
+| Command | Result |
+|---|---|
+| `cd apps/web && npx tsx --test src/settings/SandboxSettingsPanel.test.tsx` | `tests 28, pass 28, fail 0` |
+| `pnpm run typecheck:web` (repo root) | exit 0, no errors — the shell-sessions-header errors noted above no longer reproduce |
+
+### Remaining (R031)
+
+- Nothing left on openSession. The inventory-chrome surface decision (`SettingDrawer` vs inline Card) stays registered as before.
