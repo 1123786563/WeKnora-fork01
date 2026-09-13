@@ -7,6 +7,7 @@
     ".": "./src/query-key.ts",
     "./scope": "./src/scope.ts",
     "./craft/state": "./src/craft/state.ts",
+    "./craft/reconnect": "./src/craft/reconnect.ts",
     "./wiki/diff": "./src/wiki/diff.ts",
     "./mobile": "./src/mobile/auth-return.ts"
   },

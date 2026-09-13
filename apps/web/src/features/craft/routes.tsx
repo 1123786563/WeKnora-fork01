@@ -128,6 +128,10 @@ export function CraftRoutes(props: CraftRoutesProps) {
   const messageLog = useMemo(() => createCraftMessageLog(), []);
   const transport = useMemo(() => createTeeTransport(messageLog, createCraftSseTransport(authedFetch)), [messageLog, authedFetch]);
   const [syncError, setSyncError] = useState<string | null>(null);
+  // C03: transient reconnect states (stream ended, gap, cursor expiry,
+  // offline) show the syncing banner and CLEAR it once sync recovers;
+  // syncError stays reserved for permanent failures.
+  const [syncNotice, setSyncNotice] = useState<string | null>(null);
   const controller = useMemo(
     () =>
       createCraftWorkbenchController({
@@ -135,6 +139,7 @@ export function CraftRoutes(props: CraftRoutesProps) {
         scope: scopeController,
         events: transport,
         onError: (error: CraftSyncError) => setSyncError(`${error.code}`),
+        onSync: (phase, error) => setSyncNotice(phase === 'syncing' ? (error?.code ?? 'RECONNECTING') : null),
       }),
     [craftApi, scopeController, transport],
   );
@@ -253,6 +258,7 @@ export function CraftRoutes(props: CraftRoutesProps) {
     setWorkbenchInfo(null);
     setVersions({ status: 'loading', items: [] });
     setSyncError(null);
+    setSyncNotice(null);
     const signal = scopeController.current().signal;
     void (async () => {
       try {
@@ -475,7 +481,7 @@ export function CraftRoutes(props: CraftRoutesProps) {
           onInteractionAction={handleInteractionAction}
           onMintTerminalUrl={mintTerminalUrl}
           onBack={() => navigate('/craft')}
-          syncError={syncError}
+          syncError={syncNotice ?? syncError}
         />
       )}
     </div>

@@ -391,6 +391,14 @@ export function projectAssistant(events: CraftLoggedEvent[], mainStatus: string)
         childStatus = 'running';
         break;
       }
+      case 'attempt_replaced': {
+        // C03: the tRPC runtime replaced the main model's unfinished attempt
+        // (graph.go emits attempt_replaced with previous_attempt_id); the
+        // abandoned partial text is dropped — the new attempt's text NEVER
+        // appends after the old one.
+        text = '';
+        break;
+      }
       case 'delegation.finished': {
         // Child outcome only — never the main message outcome.
         childStatus = optionalText(event.data, ['status']) || 'finished';
@@ -514,10 +522,23 @@ export function createCraftMessageLog(): CraftMessageLog {
     },
     ingest(frame: CraftEventFrame): void {
       // The controller owns keepalive/error/run frames; the log keeps only
-      // numbered run events (the persisted craft payloads).
+      // numbered run events (the persisted craft payloads) plus the tRPC
+      // attempt_replaced marker, which the projection needs to drop the
+      // abandoned partial text of a replaced main-model attempt (C03).
       if (frame.event !== undefined && !/^[0-9]+$/.test(frame.event)) return;
       try {
         const wire = parseCraftRunEvent(JSON.parse(frame.data));
+        if (wire.type === 'attempt_replaced') {
+          if (snapshot.events.some((event) => event.seq === wire.seq)) return; // reconnect replay dedupe
+          const marker = typeof wire.payload === 'object' && wire.payload !== null && !Array.isArray(wire.payload)
+            ? (wire.payload as Record<string, unknown>)
+            : {};
+          publish({
+            runId: snapshot.runId,
+            events: [...snapshot.events, { seq: wire.seq, kind: 'attempt_replaced', data: marker }].sort((a, b) => a.seq - b.seq),
+          });
+          return;
+        }
         const payload = parseCraftEventPayload(wire.payload);
         if (payload === null) return; // foreign run events are not craft messages
         if (snapshot.events.some((event) => event.seq === wire.seq)) return; // reconnect replay dedupe
