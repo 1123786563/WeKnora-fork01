@@ -4,6 +4,8 @@ import {
   COMMANDS,
   filterCommands,
   nextSelectedIndex,
+  paletteShortcutDigit,
+  shortcutDigitFor,
   type CommandDescriptor,
 } from './command-palette.ts';
 import './command-palette.css';
@@ -81,6 +83,27 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
     } else if (event.key === 'ArrowUp') {
       event.preventDefault();
       setSelectedIndex((current) => nextSelectedIndex(current, -1, flatCount));
+    } else if (paletteShortcutDigit(event) !== undefined) {
+      // ⌘1-9 — jump straight to the Nth visible item (Vue GlobalCommandPalette.vue:
+      // 508-520). This handler lives on the dialog div, so digits only work while
+      // the palette is open — deliberately no window binding (Round N+3 ruling:
+      // the rejected app-wide ⌘1 must stay dead). Out-of-range digits are a
+      // no-op WITHOUT preventDefault, mirroring Vue's `if (item)` guard, and
+      // digits take precedence over ⌘Enter (a digit key can never be Enter).
+      const digit = paletteShortcutDigit(event);
+      if (digit === undefined) return;
+      const index = digit - 1;
+      if (index < recentCount) {
+        const value = recentQueries[index];
+        if (value === undefined) return;
+        event.preventDefault();
+        pickRecent(value);
+        return;
+      }
+      const command = items[index - recentCount];
+      if (!command) return;
+      event.preventDefault();
+      runCommand(command);
     } else if (event.key === 'Escape') {
       event.preventDefault();
       onClose();
@@ -129,32 +152,44 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
                   {t('commandPalette.clearRecent')}
                 </button>
               </div>
-              {recentQueries.map((value, index) => (
-                <button
-                  key={`recent-${value}`}
-                  type="button"
-                  className={`cmdk__item${selectedIndex === index ? ' cmdk__item--selected' : ''}`}
-                  onMouseEnter={() => setSelectedIndex(index)}
-                  onClick={() => pickRecent(value)}
-                >
-                  {value}
-                </button>
-              ))}
+              {recentQueries.map((value, index) => {
+                const digit = shortcutDigitFor(index);
+                return (
+                  <button
+                    key={`recent-${value}`}
+                    type="button"
+                    data-cmdk-index={index}
+                    className={`cmdk__item${selectedIndex === index ? ' cmdk__item--selected' : ''}`}
+                    onMouseEnter={() => setSelectedIndex(index)}
+                    onClick={() => pickRecent(value)}
+                  >
+                    <span className="cmdk__item-label">{value}</span>
+                    {digit !== undefined && (
+                      <span className="cmdk__item-shortcut"><kbd>⌘</kbd><kbd>{digit}</kbd></span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           )}
           <div className="cmdk__group">
             <div className="cmdk__group-header"><span>{groupLabel}</span></div>
             {items.map((command, index) => {
               const flatIndex = recentCount + index;
+              const digit = shortcutDigitFor(flatIndex);
               return (
                 <button
                   key={command.id}
                   type="button"
+                  data-cmdk-index={flatIndex}
                   className={`cmdk__item${selectedIndex === flatIndex ? ' cmdk__item--selected' : ''}`}
                   onMouseEnter={() => setSelectedIndex(flatIndex)}
                   onClick={() => runCommand(command)}
                 >
-                  {t(command.labelKey)}
+                  <span className="cmdk__item-label">{t(command.labelKey)}</span>
+                  {digit !== undefined && (
+                    <span className="cmdk__item-shortcut"><kbd>⌘</kbd><kbd>{digit}</kbd></span>
+                  )}
                 </button>
               );
             })}

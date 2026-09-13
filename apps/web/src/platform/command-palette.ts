@@ -146,6 +146,24 @@ export function shortcutDigitFor(flatIndex: number): number | undefined {
   return flatIndex >= 0 && flatIndex <= 8 ? flatIndex + 1 : undefined;
 }
 
+/**
+ * Dialog-scoped ⌘1-9 guard. Mirrors GlobalCommandPalette.vue onKeyDown()
+ * lines 508-515 exactly: (metaKey || ctrlKey) plus e.key string-ranged
+ * '1'..'9' → the 1-based item number to jump to; anything else (plain digit
+ * typing, ⌘K, ⌘↵, Shift/Alt chords that change e.key like '!' on US layouts)
+ * → undefined. Digits take precedence over ⌘Enter because a digit key can
+ * never be Enter. Callers run flatItems[digit - 1] and, like Vue's
+ * `if (item)`, must treat an out-of-range digit as a no-op that does NOT
+ * preventDefault. This guard is only wired into the palette dialog's own
+ * onKeyDown — never into decideGlobalShortcutAction: ⌘1-9 must stay inert
+ * while the palette is closed (Round N+3 coordinator ruling).
+ */
+export function paletteShortcutDigit(event: GlobalShortcutEvent): number | undefined {
+  if (!(event.metaKey || event.ctrlKey)) return undefined;
+  if (event.key < '1' || event.key > '9') return undefined;
+  return Number.parseInt(event.key, 10);
+}
+
 // ─── Global ⌘K / Ctrl+K shortcut ───
 
 export type GlobalShortcutAction = 'toggle' | 'open' | 'none';

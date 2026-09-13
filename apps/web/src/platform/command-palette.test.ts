@@ -8,6 +8,7 @@ import {
   filterCommands,
   loadRecentQueries,
   nextSelectedIndex,
+  paletteShortcutDigit,
   pushRecentQuery,
   RECENT_QUERIES_LIMIT,
   recentQueriesStorageKey,
@@ -134,6 +135,39 @@ test('decideGlobalShortcutAction opens on bare "/" only when closed and not edit
 
 test('decideGlobalShortcutAction ignores unrelated keys', () => {
   assert.equal(decideGlobalShortcutAction({ metaKey: false, ctrlKey: false, key: 'a' }, { open: false, isEditingTarget: false }), 'none');
+});
+
+// ─── Palette-scoped ⌘1-9 (N003 deferred item, Vue GlobalCommandPalette.vue:508-520) ───
+
+test('paletteShortcutDigit mirrors the Vue dialog guard: Cmd/Ctrl + bare digit 1-9', () => {
+  assert.equal(paletteShortcutDigit({ metaKey: true, ctrlKey: false, key: '1' }), 1);
+  assert.equal(paletteShortcutDigit({ metaKey: true, ctrlKey: false, key: '9' }), 9);
+  assert.equal(paletteShortcutDigit({ metaKey: false, ctrlKey: true, key: '5' }), 5);
+  // Vue checks (metaKey||ctrlKey) then string-ranges e.key; digits take
+  // precedence over ⌘Enter because a digit key can never be Enter.
+  assert.equal(paletteShortcutDigit({ metaKey: true, ctrlKey: true, key: '3' }), 3);
+});
+
+test('paletteShortcutDigit rejects non-digit or unmodified keys like Vue', () => {
+  // Plain typing in the input must never jump rows.
+  assert.equal(paletteShortcutDigit({ metaKey: false, ctrlKey: false, key: '1' }), undefined);
+  // Shift+digit produces punctuation on US layouts (e.key = '!'), so Vue's
+  // e.key range check naturally excludes it; Alt chords behave likewise.
+  assert.equal(paletteShortcutDigit({ metaKey: true, ctrlKey: false, key: '!' }), undefined);
+  // Non-digit keys with ⌘ held (⌘K toggle, ⌘↵, arrows…).
+  assert.equal(paletteShortcutDigit({ metaKey: true, ctrlKey: false, key: 'k' }), undefined);
+  assert.equal(paletteShortcutDigit({ metaKey: true, ctrlKey: false, key: 'Enter' }), undefined);
+  // 0 is outside Vue's '1'..'9' range.
+  assert.equal(paletteShortcutDigit({ metaKey: true, ctrlKey: false, key: '0' }), undefined);
+});
+
+test('decideGlobalShortcutAction stays digit-free: ⌘1-9 never act app-wide', () => {
+  // Regression pin (Round N+3 ruling): the rejected slice bound ⌘1 globally.
+  // The window-level handler must keep returning 'none' for digits — they
+  // are handled only inside the open palette dialog.
+  assert.equal(decideGlobalShortcutAction({ metaKey: true, ctrlKey: false, key: '1' }, { open: false, isEditingTarget: false }), 'none');
+  assert.equal(decideGlobalShortcutAction({ metaKey: true, ctrlKey: false, key: '1' }, { open: true, isEditingTarget: false }), 'none');
+  assert.equal(decideGlobalShortcutAction({ metaKey: false, ctrlKey: true, key: '9' }, { open: true, isEditingTarget: true }), 'none');
 });
 
 test('consumeCmdkParam extracts the query and strips it from the search string', () => {
