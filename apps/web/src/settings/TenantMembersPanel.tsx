@@ -1,12 +1,15 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import type { TenantInvitation, TenantMember, TenantRole, WeKnoraClient, AuditLog } from '@weknora/api-client';
 import { Button, Card, Status } from '@weknora/ui';
+import { createTranslator, useAppLocale } from '../i18n.ts';
+import './TenantMembersPanel.css';
 
 type Role = 'viewer' | 'admin' | 'owner' | 'system-admin';
 type Props = { client: WeKnoraClient; tenantId: number; role: Role; initialMembers?: { items: TenantMember[]; total: number } };
 const roles: TenantRole[] = ['owner', 'admin', 'contributor', 'viewer'];
 
 export function TenantMembersPanel({ client, tenantId, role, initialMembers }: Props) {
+  const t = createTranslator(useAppLocale());
   const canManage = role === 'owner' || role === 'admin';
   const [members, setMembers] = useState(initialMembers?.items ?? []);
   const [total, setTotal] = useState(initialMembers?.total ?? 0);
@@ -58,6 +61,7 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
     finally { setBusy(false); }
   }
   function search(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setPage(1); void load(1, query); }
+  function clearSearch() { setQuery(''); setPage(1); void load(1, ''); }
   async function revoke(invitation: TenantInvitation) { if (!canManage || busy || !window.confirm(`Revoke invitation for ${invitation.invitee_email ?? invitation.invitee_user_id}?`)) return; setBusy(true); try { await client.identity.tenants.invitations.revoke(tenantId, invitation.id); setNotice('Invitation revoked.'); await loadInvitations(); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to revoke invitation'); } finally { setBusy(false); } }
   async function createShareLink() {
     if (!canManage || busy) return;
@@ -74,8 +78,12 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
 
   return <section className="wk-tenant-members" data-testid="tenant-members-settings">
     <div className="members-list-header">
-      <div className="members-list-titlewrap"><h3>Workspace members</h3><span className="members-list-count-badge">{total}</span></div>
-      <form className="members-list-actions" onSubmit={search}><input aria-label="Search members" placeholder="Search by name or email" value={query} onChange={(event) => setQuery(event.target.value)} /><Button type="submit" disabled={loading}>Search</Button></form>
+      <div className="members-list-titlewrap"><span className="members-list-title">{t('tenantMember.listTitle')}</span><span className="members-list-count-badge">{total}</span></div>
+      <form className="members-list-actions" role="search" onSubmit={search}>
+        <div className="members-list-search"><input type="search" aria-label={t('tenantMember.searchPlaceholder')} placeholder={t('tenantMember.searchPlaceholder')} value={query} onChange={(event) => setQuery(event.target.value)} /></div>
+        {query ? <Button type="button" aria-label="Clear search" onClick={clearSearch}>Clear</Button> : null}
+        <Button type="submit" disabled={loading}>Search</Button>
+      </form>
     </div>
     <p className="wk-muted">Invite colleagues and manage tenant roles. Server permissions remain authoritative.</p>
     {error ? <Status tone="error">{error}</Status> : null}{notice ? <Status tone="success">{notice}</Status> : null}
