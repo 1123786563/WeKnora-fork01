@@ -18,7 +18,7 @@ else nodeModule.register('data:text/javascript,' + encodeURIComponent([
 ].join('\n')), import.meta.url);
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
-const { FAQBreadcrumb, FAQPageView, faqKBListPath, faqKBSettingsPath, faqHasMore, setEntryStatus, importFormatFromName, importProgressText, faqImportTaskView } = await import('./FAQPage.tsx');
+const { FAQBreadcrumb, FAQPageView, faqKBListPath, faqKBSettingsPath, faqHasMore, setEntryStatus, importFormatFromName, importProgressText, faqImportTaskView, pushListItem, removeListItem, editorFormError, faqSaveResultKey, isSectionCollapsed, toggleSection, FAQ_ANSWER_CAP, FAQ_SIMILAR_CAP } = await import('./FAQPage.tsx');
 const { createTranslator } = await import('../i18n.ts');
 
 const t = createTranslator('zh-CN');
@@ -275,6 +275,169 @@ test('entry switch disables during per-entry updates and for viewers', () => {
   assert.ok(busy.includes('disabled'), 'switch disabled while its update is in flight');
   const viewer = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ entries: rows as never, canContribute: false })));
   assert.ok(!viewer.includes('faq-status-switch'), 'viewers get no switch (Vue :disabled="!canEdit")');
+});
+
+// --- B1: editor drawer (Vue t-drawer 520px, FAQEntryManager.vue:440-577) ----------
+
+const drawerForm: any = {
+  question: '标准问',
+  similarQuestions: ['相似问一'],
+  negativeQuestions: [] as string[],
+  answers: ['答案一'],
+  tagId: '3',
+  enabled: true,
+  recommended: false,
+  similarDraft: '',
+  negativeDraft: '',
+  answerDraft: '',
+};
+
+test('editor drawer mirrors the Vue form: labels, per-field desc copy, required marks', () => {
+  const html = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ editorOpen: true, editorTitle: '新增 FAQ 条目', editorMode: 'create', form: drawerForm })));
+  assert.ok(html.includes('faq-editor-drawer'), 'drawer shell present');
+  assert.ok(html.includes(t('knowledgeEditor.faq.standardQuestionDesc')), 'standard question desc key');
+  assert.ok(html.includes(t('knowledgeEditor.faq.similarQuestionsDesc')), 'similar questions desc key');
+  assert.ok(html.includes(t('knowledgeEditor.faq.negativeQuestionsDesc')), 'negative questions desc key');
+  assert.ok(html.includes(t('knowledgeEditor.faq.answersDesc')), 'answers desc key');
+  assert.ok(html.includes(t('knowledgeEditor.faq.tagDesc')), 'tag desc key');
+  assert.ok(html.includes('maxlength=\"200\"'), 'standard question capped at 200 (Vue t-input :maxlength)');
+  assert.equal((html.match(/required-mark/g) || []).length, 2, '标准问 + 答案 carry the required mark');
+  assert.ok(!html.includes('faq-editor-checks'), 'Vue editor has no enable/recommended checkboxes');
+  assert.ok(html.includes(t('knowledgeEditor.faq.tagPlaceholder')), 'tag select keeps the Vue placeholder');
+});
+
+test('editor drawer builds Vue list fields: add buttons, item rows, n/5 counter', () => {
+  // 2 committed answers => counter reads 2/5 (Vue item-count counts committed only)
+  const capped = { ...drawerForm, similarQuestions: Array.from({ length: 10 }, (_, i) => '相似' + i), answers: ['答1', '答2'], similarDraft: '还想要一条', answerDraft: '新的答案' };
+  const cappedHtml = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ editorOpen: true, form: capped })));
+  assert.ok(cappedHtml.includes('add-item-btn'), 'per-list add button rendered');
+  assert.ok(cappedHtml.includes('item-row'), 'list items render as removable rows');
+  assert.ok(cappedHtml.includes('2/5'), 'answer counter renders as n/5 (Vue item-count)');
+  assert.ok(/<button[^>]*add-item-btn[^>]*disabled/.test(cappedHtml), 'similar add disabled at cap 10');
+  const open = { ...drawerForm, similarDraft: '相似草稿', negativeDraft: '反例草稿', answerDraft: '答案草稿' };
+  const openHtml = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ editorOpen: true, form: open })));
+  assert.ok(!/<button[^>]*add-item-btn[^>]*disabled/.test(openHtml), 'add buttons enable when below cap with a draft');
+  assert.ok(openHtml.includes(t('knowledgeEditor.faq.similarPlaceholder')), 'similar placeholder from shared catalog');
+  assert.ok(openHtml.includes(t('knowledgeEditor.faq.negativePlaceholder')), 'negative placeholder from shared catalog');
+  assert.ok(openHtml.includes(t('knowledgeEditor.faq.answerPlaceholder')), 'answer placeholder from shared catalog');
+});
+
+test('drawer footer submit follows the Vue create/save label split', () => {
+  const createHtml = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ editorOpen: true, editorTitle: '新增 FAQ 条目', editorMode: 'create', form: drawerForm })));
+  assert.ok(createHtml.includes('新增 FAQ 条目'), 'create submit labelled editorCreate');
+  const editHtml = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ editorOpen: true, editorTitle: '编辑 FAQ 条目', editorMode: 'edit', form: drawerForm })));
+  assert.ok(editHtml.includes('保存'), 'edit submit labelled common.save');
+});
+
+test('editorFormError mirrors the Vue editorRules order', () => {
+  assert.equal(editorFormError({ question: '  ', answers: ['a'] }), 'question', 'standard_question required first');
+  assert.equal(editorFormError({ question: 'q', answers: [] }), 'answers', 'answers required second');
+  assert.equal(editorFormError({ question: 'q', answers: ['a'] }), null);
+});
+
+test('faqSaveResultKey resolves the shared Vue success keys', () => {
+  assert.equal(faqSaveResultKey(false), 'knowledgeEditor.messages.createSuccess');
+  assert.equal(faqSaveResultKey(true), 'knowledgeEditor.messages.updateSuccess');
+});
+
+test('drawer surfaces validation errors inline', () => {
+  const html = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ editorOpen: true, form: drawerForm, message: { tone: 'error', text: '请输入知识库名称' } })));
+  assert.ok(html.includes('faq-editor-error'), 'error slot rendered inside the drawer');
+  assert.ok(html.includes('请输入知识库名称'), 'Vue validation copy visible');
+});
+
+test('pushListItem trims, dedupes and caps like the Vue add handlers', () => {
+  assert.deepEqual(pushListItem([], '  hello  ', 10), { list: ['hello'], added: true }, 'trims before push');
+  assert.deepEqual(pushListItem(['hello'], 'hello', 10), { list: ['hello'], added: false }, 'duplicate rejected');
+  assert.deepEqual(pushListItem(['a', 'b'], '  ', 2), { list: ['a', 'b'], added: false }, 'empty draft rejected');
+  assert.deepEqual(pushListItem(['a', 'b'], 'c', 2), { list: ['a', 'b'], added: false }, 'cap 2 blocks third item');
+  assert.equal(FAQ_SIMILAR_CAP, 10, 'Vue similar cap');
+  assert.equal(FAQ_ANSWER_CAP, 5, 'Vue answer cap');
+});
+
+test('removeListItem splices immutably like the Vue remove handlers', () => {
+  const source = ['a', 'b', 'c'];
+  const next = removeListItem(source, 1);
+  assert.deepEqual(next, ['a', 'c']);
+  assert.deepEqual(source, ['a', 'b', 'c'], 'source untouched');
+});
+
+// --- B3: entry cards (Vue faq-card three-section collapse, FAQEntryManager.vue:253-410) ---
+
+const cardRows = [
+  { id: 1, standard_question: '如何部署？', similar_questions: ['docker?', 'k8s?'], negative_questions: ['什么是反例'], answers: ['使用 Docker。'], is_enabled: true, is_recommended: false, tag_id: 3 },
+] as never;
+
+function renderCards(overrides: Partial<FAQViewProps> = {}): string {
+  return renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ entries: cardRows, total: 1, ...overrides })));
+}
+
+test('entries render as Vue faq-cards with a question header and more menu', () => {
+  const html = renderCards();
+  assert.ok(html.includes('faq-card-list'), 'Vue card list container');
+  assert.ok(html.includes('is-selectable'), 'cards are click-selectable (Vue handleCardSelect)');
+  assert.ok(html.includes('faq-question'), 'question header block');
+  assert.ok(html.includes('title=\"如何部署？\"'), 'question carries the native tooltip');
+  assert.ok(!html.includes('wk-faq-item'), 'old list rows removed');
+  assert.ok(html.includes('card-more-btn'), 'more trigger rendered');
+  assert.ok(html.includes('aria-label=\"操作\"'), 'more trigger labelled from the shared catalog');
+  assert.ok(html.includes('编辑'), 'more menu carries the edit item');
+  assert.ok(html.includes('删除'), 'more menu carries the delete item');
+});
+
+test('cards expose checkbox multi-select wired to the selection set', () => {
+  const html = renderCards({ selected: new Set([1]) });
+  assert.ok(html.includes('faq-card-check'), 'per-card checkbox present');
+  assert.ok(html.includes('checked'), 'selected card checkbox checked');
+  assert.ok(/faq-card[^\"']* selected/.test(html), 'card carries the Vue selected class');
+});
+
+test('viewers get neither selection affordances nor the more menu', () => {
+  const viewer = renderCards({ canContribute: false });
+  assert.ok(!viewer.includes('faq-card-check'), 'no checkbox for viewers');
+  assert.ok(!viewer.includes('card-more-btn'), 'no more menu for viewers');
+  assert.ok(!viewer.includes('is-selectable'), 'cards not selectable for viewers');
+});
+
+test('cards render the three collapsible sections collapsed by default', () => {
+  const html = renderCards();
+  assert.ok(html.includes('faq-section similar'), 'similar section');
+  assert.ok(html.includes('faq-section negative'), 'negative section');
+  assert.ok(html.includes('faq-section answers'), 'answers section');
+  assert.ok(html.includes('相似问') && html.includes('反例') && html.includes('答案'), 'section labels from the shared catalog');
+  assert.ok(html.includes('>(2)</span>'), 'similar count rendered as (n)');
+  assert.ok(/faq-section-label[^>]*aria-expanded=\"false\"/.test(html), 'sections collapsed by default (FAQEntryManager.vue:1592-1594)');
+  assert.ok(/class=\"faq-tags\" hidden/.test(html), 'collapsed section bodies hidden but kept in the DOM');
+});
+
+test('empty sections disappear while answers always render', () => {
+  const sparse = [{ id: 2, standard_question: 'q', similar_questions: [], negative_questions: [], answers: [], is_enabled: true, is_recommended: false }] as never;
+  const html = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ entries: sparse, total: 1 })));
+  assert.ok(!html.includes('faq-section similar'), 'similar section hidden when empty (Vue v-if)');
+  assert.ok(!html.includes('faq-section negative'), 'negative section hidden when empty');
+  assert.ok(html.includes('faq-section answers'), 'answers section always present');
+});
+
+test('card footer keeps the tag chip and status switch', () => {
+  const html = renderCards();
+  assert.ok(html.includes('faq-card-footer'), 'footer present');
+  assert.ok(html.includes('faq-tag-chip'), 'tag chip present');
+  assert.ok(html.includes('重要'), 'tag name resolved via seq_id');
+  assert.ok(html.includes('faq-status-switch'), 'status switch kept in the footer');
+  const untagged = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({
+    entries: [{ id: 3, standard_question: 'q2', similar_questions: [], negative_questions: [], answers: ['a'], is_enabled: true, is_recommended: false }] as never,
+    total: 1,
+  })));
+  assert.ok(untagged.includes('无标签'), 'missing tag falls back to knowledgeBase.untagged');
+});
+
+test('section collapse helpers default to collapsed and flip immutably', () => {
+  assert.equal(isSectionCollapsed({}, 1, 'answers'), true, 'Vue defaults every section collapsed');
+  const expanded = toggleSection({}, 1, 'answers');
+  assert.equal(isSectionCollapsed(expanded, 1, 'answers'), false, 'toggle flips the section');
+  assert.equal(isSectionCollapsed({}, 1, 'answers'), true, 'source state untouched');
+  assert.equal(isSectionCollapsed(toggleSection(expanded, 1, 'answers'), 1, 'answers'), true, 'second toggle restores');
+  assert.equal(isSectionCollapsed(toggleSection({}, 2, 'similar'), 3, 'similar'), true, 'state is per entry id');
 });
 
 test('setEntryStatus updates immutably so a failed update can roll back', () => {
