@@ -355,8 +355,11 @@ export function CraftRoutes(props: CraftRoutesProps) {
         const statusBody = (await statusResponse.json()) as { data?: { status?: unknown } };
         const status = statusBody?.data?.status;
         if (status === 'ready') {
-          await craftApi.addInput(sessionId, { resource_ref: attachmentId, expected_sha256: digest }, scopeController.current().signal);
-          return attachmentId;
+          // The association answer carries the canonical input ref (resource://…)
+          // the run submission must reference — the raw attachment id is only
+          // the upload's address, not the workspace input ref (W06 finding).
+          const input = await craftApi.addInput(sessionId, { resource_ref: attachmentId, expected_sha256: digest }, scopeController.current().signal);
+          return input.ref;
         }
         if (status === 'failed') throw new Error(`attachment processing failed: ${attachment.name}`);
         await delay(1000);
