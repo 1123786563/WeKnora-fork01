@@ -882,6 +882,8 @@ import { dataSourceMessages } from './generated/dataSource.ts';
 export { dataSourceMessages };
 import { newUserGuideMessages } from './generated/newUserGuide.ts';
 export { newUserGuideMessages };
+import { uploadConfirmMessages } from './generated/uploadConfirm.ts';
+export { uploadConfirmMessages };
 import { mcpMessages } from './mcp.ts';
 export { mcpMessages };
 
@@ -894,5 +896,5 @@ export function isLocale(value: string): value is Locale {
   return (supportedLocales as readonly string[]).includes(value);
 }
 export const messages: Record<Locale, Record<string, string>> = Object.fromEntries(
-  (Object.keys(baseMessages) as Locale[]).map((locale) => [locale, { ...baseMessages[locale], ...knowledgeListMessages[locale], ...authMessages[locale], ...onboardingMessages[locale], ...settingsMessages[locale], ...mcpMessages[locale], ...menuMessages[locale], ...organizationMessages[locale], ...agentMessages[locale], ...integrationsMessages[locale], ...embedMessages[locale], ...knowledgeSurfacesMessages[locale], ...knowledgeSurfacesSupplementalMessages[locale], ...commandPaletteMessages[locale], ...dataSourceMessages[locale], ...newUserGuideMessages[locale] }]),
+  (Object.keys(baseMessages) as Locale[]).map((locale) => [locale, { ...baseMessages[locale], ...knowledgeListMessages[locale], ...authMessages[locale], ...onboardingMessages[locale], ...settingsMessages[locale], ...mcpMessages[locale], ...menuMessages[locale], ...organizationMessages[locale], ...agentMessages[locale], ...integrationsMessages[locale], ...embedMessages[locale], ...knowledgeSurfacesMessages[locale], ...knowledgeSurfacesSupplementalMessages[locale], ...commandPaletteMessages[locale], ...dataSourceMessages[locale], ...newUserGuideMessages[locale], ...uploadConfirmMessages[locale] }]),
 ) as Record<Locale, Record<string, string>>;
