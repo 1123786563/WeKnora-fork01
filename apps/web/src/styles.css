@@ -162,6 +162,12 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-mcp-server-docs-trigger:hover, .wk-mcp-server-docs-help:hover { background: #eef4ff; }
 .wk-mcp-server-docs-popup { position: absolute; z-index: 20; display: grid; gap: .5rem; width: min(360px, calc(100vw - 2rem)); margin: .4rem 0 0; padding: .75rem; border: 1px solid #dce3ed; border-radius: 7px; background: #fff; box-shadow: 0 12px 30px rgb(23 32 51 / 18%); color: #172033; white-space: normal; }
 .wk-mcp-server-docs-popup pre { max-height: 180px; margin: 0; overflow: auto; white-space: pre-wrap; font: inherit; }
+.wk-mcp-credential-card { display: grid; gap: .65rem; padding: .75rem; border: 1px solid #dce3ed; border-radius: 7px; background: #f7f9fc; }
+.wk-mcp-credential-card > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+.wk-mcp-credential-card label { display: grid; gap: .35rem; }
+.wk-mcp-credential-card input { box-sizing: border-box; width: 100%; }
+.wk-mcp-credential-status { color: #66758b; font-size: .8rem; }
+.wk-mcp-credential-status.is-configured { color: #16845b; font-weight: 600; }
 @media (max-width: 640px) { .wk-share-item { align-items: flex-start; flex-direction: column; } .wk-share-item-actions { align-self: flex-end; } }
 .wk-mcp-settings { display: grid; gap: 1rem; }
 .wk-model-settings { display: grid; gap: 1rem; }

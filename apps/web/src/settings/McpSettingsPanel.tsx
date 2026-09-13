@@ -22,6 +22,7 @@ type McpService = McpConfiguration & {
     [key: string]: unknown;
   };
   stdio_config?: Record<string, unknown>;
+  credentials?: { api_key?: { configured?: boolean }; token?: { configured?: boolean } };
   catalog?: { tool_count?: number; stale?: boolean };
 };
 type Props = {
@@ -48,6 +49,7 @@ type Draft = {
   codeImport: string;
   codeImportError: string;
   authConfig: Record<string, unknown>;
+  credentialConfigured?: boolean;
 };
 
 export type McpDraftValidationError =
@@ -110,6 +112,7 @@ function draftFrom(service?: McpService): Draft {
         ? authConfig.api_key_header
         : "",
     apiKey: "",
+    credentialConfigured: service?.credentials?.api_key?.configured === true || service?.credentials?.token?.configured === true,
     oauthScopes: Array.isArray(authConfig.scopes)
       ? authConfig.scopes.join(" ")
       : "",
@@ -601,6 +604,17 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
       setSaving(false);
     }
   }
+  async function clearMcpCredential() {
+    if (!draft?.id || saving) return;
+    setSaving(true); setError(null);
+    try {
+      await client.configuration.mcp.credentials.remove(draft.id, "api_key");
+      setDraft((current) => current ? { ...current, apiKey: "", credentialConfigured: false } : current);
+      setNotice(t("common.success"));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : t("mcpServiceDialog.toasts.updateFailed"));
+    } finally { setSaving(false); }
+  }
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!draft || saving) return;
@@ -1068,16 +1082,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                           />
                         </label>
                         <p className="wk-muted">{t("mcpServiceDialog.apiKeyHeaderDesc")}</p>
-                        <label>
-                          {t("mcpServiceDialog.credentialValue")}
-                          <input
-                            type="password"
-                            autoComplete="new-password"
-                            value={draft.apiKey}
-                            placeholder={t("mcpServiceDialog.optional")}
-                            onChange={(event) => setField("apiKey", event.target.value)}
-                          />
-                        </label>
+                        {draft.id ? <div className="wk-mcp-credential-card"><div><strong>{t("mcpServiceDialog.credentialValue")}</strong><span className={draft.credentialConfigured ? "wk-mcp-credential-status is-configured" : "wk-mcp-credential-status"}>{draft.credentialConfigured ? "✓ " + t("common.success") : t("mcpServiceDialog.optional")}</span></div><label>{draft.credentialConfigured ? t("common.replaceValue") : t("mcpServiceDialog.credentialValue")}<input type="password" autoComplete="new-password" value={draft.apiKey} placeholder={t("mcpServiceDialog.optional")} onChange={(event) => setField("apiKey", event.target.value)} /></label>{draft.credentialConfigured ? <Button type="button" disabled={saving} onClick={() => void clearMcpCredential()}>{t("common.delete")}</Button> : null}</div> : <label>{t("mcpServiceDialog.credentialValue")}<input type="password" autoComplete="new-password" value={draft.apiKey} placeholder={t("mcpServiceDialog.optional")} onChange={(event) => setField("apiKey", event.target.value)} /></label>}
                       </>
                     ) : null}
                   </fieldset>

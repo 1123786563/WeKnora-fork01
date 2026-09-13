@@ -238,6 +238,24 @@ test('editing a stdio service coerces to SSE exactly like Vue McpServiceDialog.v
   }
 });
 
+test('edit mode renders the Vue credential resource card for configured API keys', async () => {
+  const root = await mountEditor(React.createElement(McpSettingsPanel, {
+    client: mcpStubClient(),
+    initialServices: [{ id: 'mcp-credential', name: 'Private Docs', url: 'https://example.com/mcp', enabled: true, transport_type: 'sse', is_builtin: false, auth_config: { auth_type: 'api_key' }, credentials: { api_key: { configured: true } } }],
+    role: 'admin',
+  }));
+  try {
+    await act(async () => { findButton('编辑')?.click(); });
+    const card = document.querySelector('.wk-mcp-credential-card');
+    assert.ok(card, 'configured edit credentials use a dedicated card');
+    assert.match(card?.textContent ?? '', /成功/);
+    assert.ok(card?.querySelector('input[type="password"]'));
+    assert.ok(Array.from(card?.querySelectorAll('button') ?? []).some((button) => (button.textContent ?? '').includes('删除')));
+  } finally {
+    await unmountEditor(root);
+  }
+});
+
 test('step 2 gates save on tool sync and shows the Vue usage counter, hint and generate button', async () => {
   const metadataGate = deferred<StubMetadata>();
   const root = await mountEditor(React.createElement(McpSettingsPanel, {

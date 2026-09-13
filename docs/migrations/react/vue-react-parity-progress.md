@@ -1,5 +1,11 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-14 Round N+17 — R044 MCP credential card slice
+
+- MCP 编辑态 API Key 按 Vue CredentialResource 分离为凭证卡片，显示已配置状态，支持替换和独立删除；新建态仍使用普通密码输入。
+- MCP 专测 12/12、`typecheck:web` 通过；证据 `evidence/vue-react-parity/2026-09-14-r044-credential-card.md`。
+- R044 仍为 `implementing`：认证浏览器 computed-style、完整凭证卡片交互和 Wails 证据未闭环。
+
 ## 2026-09-14 Round N+16 — R043 MCP server documentation popup slice
 
 - MCP 元数据摘要按 Vue 补齐服务端说明触发器/弹层与无说明帮助提示，保持 stale、同步和工具策略门控；修正弹层内 HTML 结构。
@@ -1259,4 +1265,3 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - R009 图标轨拖拽展开切片派发（Vue ListSpaceSidebar collapsed-strip ↔ expanded-panel 双态语义；独占 App.tsx rail 部分 + knowledge-list.css）。
 - live 栈确认仍在运行（backend :8080 / Vue :5180 / React :5181）。
 - 并发协调者 R043（MCP server docs popup）WIP 在树，本方避开其文件。
-
