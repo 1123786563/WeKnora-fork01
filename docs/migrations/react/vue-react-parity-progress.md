@@ -1341,3 +1341,11 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 遗留登记（详见证据 §6）：EmbedChannelPreview 模态对应物、prod 通配符标志接线位置、admin 字段级门控、内联改名死代码清理、API playground SSE（未动）。
 - 全门禁：shared 436/436、web 702/702、mobile 146/146、typecheck:web 0、build:web ✓。
 - R018 admin 四路由双端截图入库（state-coverage-20260914/）。
+
+## 2026-09-14 Round N+10 协调条目 — RBAC 集成 + agents 静默错误修复
+
+- RBAC 入口可见性集成（269c0619）：organizations 导航项按角色门控（viewer/contributor 隐藏；owner/admin/超管可见；未知角色 fail-open），platform 122/122。lite 模式隐藏与 capability 门控移交（壳层无 isLiteMode/requiredCapability 信号，需先裁决落点）。
+- agents 页 500 泄漏修复（00312221）：对齐 Vue fetchList 无错误 UI 的行为——移除原始 payload 渲染，保留 console 诊断；AgentsPage 16/16。
+- R012 状态覆盖证据入库（1492333f）：normal/loading/error/empty 双端 8 张 + 发现记录（JSON 泄漏、空态 CTA 颜色分歧——Vue 紫 vs React 绿，登记为视觉切片项）。
+- 在途（2）：FAQ B4 检索测试抽屉、API playground 核实/实现。
+
