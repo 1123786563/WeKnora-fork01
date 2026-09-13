@@ -1059,6 +1059,18 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - **Review gate:** a row can move to `accepted` only when all applicable platform evidence and unresolved backend decisions are closed or explicitly out-of-scope by user decision.
 - **Commit boundary:** one acceptance-docs commit per row group.
 
+## 2026-09-13 Round N+4（终）— 四切片集成 + 登录 toast parity + 时间脆弱测试修复
+
+- R016 模型 chip 集成（28ad0de4）：新建对话 chip 显示真实模型名+上下文规格（对齐 Input-field.vue:2784-2804）；model-chip.ts 9 单测 + chat-page 20/20；协调者批准并落地 page.tsx modelContext/modelContextIsDefault 透传；顺带恢复被并发编辑误删的 loadingMessages state。
+- N003 面板作用域 ⌘1-9 集成（43fdd880）：⌘数字仅面板打开时生效（Vue GlobalCommandPalette.vue:508-520 同构），⌘N 徽章进 recent/命令行，全局 ⌘1 行为由测试钉死为不存在；platform 115/115。遗留：footer 提示条需 commandPalette.hotkey.* 4 键×5 语（待裁决）。
+- settings chrome 铺开集成（97667809）：select tdesign 化提升为抽屉通用规则（11 面板覆盖清单见证据）、rail hover/active/底色 token 对齐（蓝色残留清除）；live 计算样式双端一致。
+- R031 openSession 集成（89918e5a）：清单行点击 → /platform/chat/:id（Vue :171/341-344 语义，embed 安全 inert 契约）。
+- 协调者直接修复：members 页头 apiDomain 泄漏（9ca79d34，Vue 无描述行 → 空）；members 分页器尺寸选择器全宽（b5aaec4d，Vue ~90px 内容宽）；登录/注册结果 toast 化（0f6f4d12，Vue MessagePlugin parity，live 复拍）；shell 会话 fixture 时间脆弱修复（710d6a51，25h-ago 跨桶 → 日历昨日 12:00 锚定）。
+- 全门禁（集成树）：shared 392/392、web 616/616、mobile 118/118、desktop 2/2、embed 7/7、typecheck×3 0、build ✓。
+- 六语缺口已正式登记（24f773bd），待用户答复第六语名称与基准；在答复前一切语言覆盖表述为五语。
+- 在途（1）：R009 kb-list 整页 anatomy（四分歧：卡片栅格/筛选 anatomy/警告横幅/错误态语义，大切片）。
+
+
 ## 2026-09-13 Round N+4（续）— 状态覆盖取证发现 R009 整页分歧 + 第五切片派发
 
 - 状态覆盖 sweep（state-coverage-20260913，10 对截图）：登录失败呈现分歧（Vue 顶部 toast vs React 内嵌横幅）已修（0f6f4d12，jsdom 钉死 + live 复拍）；R002 行补 qualification。
