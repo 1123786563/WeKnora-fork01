@@ -169,7 +169,7 @@ function renderProtected() {
   } else if (route.kind === 'knowledge-document') {
     renderShell(<KnowledgeDocumentDetailPage client={client} documentId={route.documentId} onBack={() => window.location.assign(`/knowledgeBase/${encodeURIComponent(route.knowledgeBaseId)}`)} />);
   } else if (route.kind === 'knowledge-wiki') {
-    renderShell(<WikiPage client={client} knowledgeBaseId={route.knowledgeBaseId} />);
+    renderShell(<WikiPage client={client} knowledgeBaseId={route.knowledgeBaseId} canContribute={scopeRuntime.role() !== 'viewer'} />);
   } else if (route.kind === 'knowledge-faq') {
     renderShell(<FAQPage client={client} knowledgeBaseId={route.knowledgeBaseId} />);
   } else if (route.kind === 'knowledge-settings') {
@@ -190,7 +190,7 @@ function renderProtected() {
     renderShell(<AdministrationPage client={client} tenantId={Number(scopeRuntime.current().scope.tenantId)} systemAdmin />);
   } else if (route.kind === 'knowledge-base' && route.knowledgeBaseId) {
     const knowledgeBaseId = route.knowledgeBaseId;
-    if (route.tab === 'wiki') renderShell(<WikiPage client={client} knowledgeBaseId={knowledgeBaseId} initialSlug={route.slug} />);
+    if (route.tab === 'wiki') renderShell(<WikiPage client={client} knowledgeBaseId={knowledgeBaseId} initialSlug={route.slug} canContribute={scopeRuntime.role() !== 'viewer'} />);
     else if (route.tab === 'graph') renderShell(<KnowledgeGraphPage client={client} knowledgeBaseId={knowledgeBaseId} slug={route.slug} />);
     else renderShell(<KnowledgeDocumentsPage client={client} knowledgeBaseId={knowledgeBaseId} onOpenDocument={(document) => window.location.assign(`/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}/documents/${encodeURIComponent(document.id)}`)} />);
   } else if (route.kind === 'chat' || route.path === '/platform/creatChat' || route.path.startsWith('/platform/chat/')) {

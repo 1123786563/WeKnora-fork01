@@ -22,3 +22,11 @@ test('Wiki shell follows Vue browser anatomy: sidebar search and reader editor a
   assert.match(html, /class="wk-wiki-editor"/);
   assert.doesNotMatch(html, /class="wk-toolbar"/);
 });
+
+test('viewer mode hides Wiki folder mutation controls', () => {
+  const client = { wiki: { list: async () => ({ pages: [], total: 0 }) } } as never;
+  const html = renderToStaticMarkup(React.createElement(WikiPage, { client, knowledgeBaseId: 'kb-1', canContribute: false }));
+  assert.doesNotMatch(html, /目录操作/);
+  assert.doesNotMatch(html, /重命名目录/);
+  assert.doesNotMatch(html, /删除目录/);
+});

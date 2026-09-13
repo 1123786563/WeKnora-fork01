@@ -18,10 +18,12 @@ export function WikiPage({
   client,
   knowledgeBaseId,
   initialSlug,
+  canContribute = true,
 }: {
   client: WeKnoraClient;
   knowledgeBaseId: string;
   initialSlug?: string;
+  canContribute?: boolean;
 }) {
   const locale = useAppLocale();
   const t = createTranslator(locale);
@@ -119,6 +121,29 @@ export function WikiPage({
     setFolderId(parent?.id ?? "");
     setFolderPath(parent?.path ?? "");
     setPage(1);
+  }
+
+  async function createFolder() {
+    const name = window.prompt(t("wikiBrowser.folderNamePlaceholder"))?.trim();
+    if (!name) return;
+    await client.wiki.createFolder(knowledgeBaseId, folderId, name);
+    const result = await client.wiki.folders(knowledgeBaseId, folderId);
+    setFolders(result.folders);
+  }
+
+  async function renameFolder(folder: WikiFolderNode) {
+    const name = window.prompt(t("wikiBrowser.folderNamePlaceholder"), folder.name)?.trim();
+    if (!name || name === folder.name) return;
+    await client.wiki.updateFolder(knowledgeBaseId, folder.id, { name });
+    const result = await client.wiki.folders(knowledgeBaseId, folderId);
+    setFolders(result.folders);
+  }
+
+  async function deleteFolder(folder: WikiFolderNode) {
+    if (!window.confirm(t("wikiBrowser.deleteFolderConfirm", { name: folder.name }))) return;
+    await client.wiki.removeFolder(knowledgeBaseId, folder.id);
+    const result = await client.wiki.folders(knowledgeBaseId, folderId);
+    setFolders(result.folders);
   }
 
   function choose(page: WikiPageModel) {
@@ -298,9 +323,10 @@ export function WikiPage({
         <Button type="button" onClick={() => { setViewMode("tree"); setIndexView(null); }}>{t("wikiBrowser.viewModeToggle")} · {viewMode === "tree" ? "Tree" : "List"}</Button>
         <Button type="button" onClick={() => { setViewMode("list"); setIndexView(null); }}>{t("wikiBrowser.page.title")}</Button>
         <Button type="button" onClick={() => void openIndex()}>{t("wikiBrowser.indexTitle")}</Button>
+        {canContribute ? <Button type="button" onClick={() => void createFolder()}>{t("wikiBrowser.folderActions")}</Button> : null}
         {folderTrail.length > 0 ? <Button type="button" onClick={backFolder}>{t("wikiBrowser.backToOverview")}</Button> : null}
       </div>
-      {viewMode === "tree" && folders.length > 0 ? <ul className="wk-list wk-wiki-folder-list">{folders.map((folder) => <li key={folder.id}><Button type="button" onClick={() => openFolder(folder)}>{folder.name} ({folder.page_count})</Button></li>)}</ul> : null}
+      {viewMode === "tree" && folders.length > 0 ? <ul className="wk-list wk-wiki-folder-list">{folders.map((folder) => <li key={folder.id}><Button type="button" onClick={() => openFolder(folder)}>{folder.name} ({folder.page_count})</Button>{canContribute ? <span className="wk-list-actions"><Button type="button" onClick={() => void renameFolder(folder)}>{t("wikiBrowser.renameFolder")}</Button><Button type="button" onClick={() => void deleteFolder(folder)}>{t("wikiBrowser.deleteFolder")}</Button></span> : null}</li>)}</ul> : null}
     </>
   );
 
