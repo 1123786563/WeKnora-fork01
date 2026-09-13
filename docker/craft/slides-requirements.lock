@@ -35,14 +35,14 @@
   "limits": {
     "max_pages": 30,
     "min_font_pt": 12,
-    "conversion_budget": "timeout -k 5 180 soffice ...; a conversion killed by the budget exits >=124 (verified: timeout -k 1 0.2 -> rc 137 via SIGKILL escalation) and MUST be recorded as check render=failed with no output shipped (verified: no report.pdf produced)"
+    "conversion_budget": "timeout -k 5 180 soffice ...; a conversion killed by the budget exits >=124 (verified: timeout -k 1 0.2 -> rc 124 when TERM lands first, rc 137 when the SIGKILL escalation fires — both are budget kills, D03 review N2 wording) and MUST be recorded as check render=failed with no output shipped (verified: no report.pdf produced)"
   },
   "overflow_semantics": {
     "rule": "an outline over 30 pages renders only the first 30; the page numbers beyond the cap are recorded in overflow_pages (e.g. a 31-page outline records [31]) with pages=failed and the manifest stays not-ready (SlidesReady returns false while overflow_pages is non-empty) so the main agent must split or trim",
     "verified": "31-page python-pptx deck rendered; overflow_pages=[31] recorded; ready=false"
   },
   "fixtures": {
-    "d03_python_pptx_deck.pptx": "sha256 b470c462bc333f4716cad2d39aab45c801d09f3c4c1ff4a86c15e6ee6e4e1751 — the exact python-pptx 1.0.2 deck (5 slides, native column chart on page 3, speaker-note citations kc_sales/kc_market)",
+    "d03_python_pptx_deck.pptx": "sha256 b470c462bc333f4716cad2d39aab45c801d09f3c4c1ff4a86c15e6ee6e4e1751 — the exact python-pptx 1.0.2 deck (5 slides, native column chart on page 3; speaker-note citations verified per file: notesSlide1 kc_customer+kc_sales, notesSlide2 kc_sales+kc_market, notesSlide3 kc_plan — D03 review N1 correction: earlier wording wrongly attributed kc_sales/kc_market to notesSlide3)",
     "d03_libreoffice_render.pdf": "sha256 2180e19d3c3cf5bb69c5321a6950f93f40c8704f51a23eac58d2f3551b8caff7 — the exact impress_pdf_Export output (Pages: 5, per-page CJK text verified by pdftotext)",
     "d03_pdftocairo_page1.svg": "sha256 efd86661e65ebf54926b4ae8438ecef9e798678dfe85f7ed0a305e341734066d — the exact pdftocairo page-1 export (87007 bytes of real glyph geometry)"
   },

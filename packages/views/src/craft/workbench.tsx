@@ -271,8 +271,13 @@ export function CraftWorkbench(props: CraftWorkbenchProps) {
   const [ticketNonce, setTicketNonce] = useState(0);
   const issuePreview = useEventCallback(props.onIssuePreview);
   const hasArtifact = selectedVersion !== null && selectedVersion.files.length > 0;
-  const fetchVersionFile = props.onFetchVersionFile === undefined ? null : useEventCallback(props.onFetchVersionFile);
-  const resolveVersionFileUrl = props.onResolveVersionFileUrl === undefined ? null : useEventCallback(props.onResolveVersionFileUrl);
+  // Hooks are called UNCONDITIONALLY (D01 review N1): the stable callbacks
+  // are always created; absence of the prop is expressed as null at the
+  // consumption boundary, which keeps the child prop types ((...) => ...) | null.
+  const fetchVersionFileCallback = useEventCallback(props.onFetchVersionFile ?? (async () => ''));
+  const resolveVersionFileUrlCallback = useEventCallback(props.onResolveVersionFileUrl ?? (async () => ''));
+  const fetchVersionFile = props.onFetchVersionFile === undefined ? null : fetchVersionFileCallback;
+  const resolveVersionFileUrl = props.onResolveVersionFileUrl === undefined ? null : resolveVersionFileUrlCallback;
   const previewIsFrame = fetchVersionFile === null || selectedVersion === null || selectedVersion.kind === 'web';
   useEffect(() => {
     // Switching versions (or retrying) destroys the previous ticket and frame;

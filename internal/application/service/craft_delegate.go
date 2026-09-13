@@ -221,15 +221,22 @@ func classifyCraftObservation(obs craft.Observation) (status, summary string, se
 }
 
 // settle persists one definitive outcome under the caller's live fence.
+// Ordering (O04 review nit-2): the metric counts only AFTER the outcome is
+// durable. If the process dies (or SaveResult fails) between classification
+// and persistence, nothing was counted; the retry goes observe→settle again
+// and counts once, when its own persist lands — a crash-retry can no longer
+// double-count the same logical delegation. The executor path above has the
+// same ordering for free: the executor persists its terminal result before
+// returning it.
 func (s *CraftDelegateService) settle(ctx context.Context, task craft.Task, status, summary string) (craft.Result, error) {
-	metrics.CraftDelegationSettled(status)
-	logger.Infof(ctx,
-		"[CraftDelegation] settled status=%s tenant=%d session=%s run=%s tool_call=%s delegation=%s prompt=%s",
-		status, task.Fence.TenantID, task.Scope.SessionID, task.Fence.RunID, task.ToolCallID, task.ID, task.RequestHash)
 	result := craft.Result{TaskID: task.ID, Status: status, Summary: boundCraftSummary(summary)}
 	if err := s.store.SaveResult(ctx, task.Fence, result); err != nil {
 		return craft.Result{}, err
 	}
+	metrics.CraftDelegationSettled(status)
+	logger.Infof(ctx,
+		"[CraftDelegation] settled status=%s tenant=%d session=%s run=%s tool_call=%s delegation=%s prompt=%s",
+		status, task.Fence.TenantID, task.Scope.SessionID, task.Fence.RunID, task.ToolCallID, task.ID, task.RequestHash)
 	return result, nil
 }
 

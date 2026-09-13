@@ -1,0 +1,53 @@
+# Craft E2E default fail-closed matrix (default CRAFT_KINDS=web; stack tag o05fc, ports 42441-42448; mock mode)
+
+RUN SPEC e2e/craft-report.spec.ts
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 e2e/craft-report.spec.ts:102:1 › 01 create, upload, generate, preview, modify, old-version download (6.6s)
+  ✓  2 e2e/craft-report.spec.ts:182:1 › 02 reopen keeps the workbench and the published versions (348ms)
+  ✓  3 e2e/craft-report.spec.ts:190:1 › 03 malicious preview fixture cannot reach the parent or the network (4.7s)
+  ✓  4 e2e/craft-report.spec.ts:215:1 › 04 cross-tenant download 404 and viewer write 403 (257ms)
+  ✓  5 e2e/craft-report.spec.ts:267:1 › 05 switching sessions never appends the old stream (4.9s)
+  ✓  6 e2e/craft-report.spec.ts:294:1 › 06 reloading a generating page keeps exactly one run admission (4.9s)
+
+  6 passed (22.2s)
+[stack] playwright exit=0 artifacts=/tmp/craft-o05fc-mock.sIJbfD/artifacts run=/tmp/craft-o05fc-mock.sIJbfD
+SPEC_EXIT=0
+
+RUN SPEC e2e/craft-document.spec.ts
+
+Running 4 tests using 1 worker
+
+  -  1 e2e/craft-document.spec.ts:143:1 › 01 two knowledge materials -> 客户介绍: 3 sections, 2 clickable citations, DOCX export
+  -  2 e2e/craft-document.spec.ts:226:1 › 02 FAQ round keeps the numbers and the old DOCX bytes
+  -  3 e2e/craft-document.spec.ts:260:1 › 03 corrupt export + honest export=failed manifest publishes nothing
+  -  4 e2e/craft-document.spec.ts:283:1 › 04 document kind gate: open here, and the closed set still refuses unknown kinds
+
+  4 skipped
+[stack] playwright exit=0 artifacts=/tmp/craft-o05fc-mock.sIJbfD/artifacts run=/tmp/craft-o05fc-mock.sIJbfD
+SPEC_EXIT=0
+
+RUN SPEC e2e/craft-spreadsheet.spec.ts
+
+(node:209) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 e2e/craft-spreadsheet.spec.ts:134:1 › 01 create, upload, spreadsheet generate, sheet switch, XLSX download (4.0s)
+  ✓  2 e2e/craft-spreadsheet.spec.ts:192:1 › 02 quarterly round keeps 300 and the old XLSX bytes (4.9s)
+  ✓  3 e2e/craft-spreadsheet.spec.ts:222:1 › 03 adding a 50 row recalculates the total to 350 (4.8s)
+  ✓  4 e2e/craft-spreadsheet.spec.ts:243:1 › 04 spreadsheet kind gate: fail-closed until the deployment opens it (19ms)
+
+  4 passed (14.0s)
+[stack] playwright exit=0 artifacts=/tmp/craft-o05fc-mock.sIJbfD/artifacts run=/tmp/craft-o05fc-mock.sIJbfD
+SPEC_EXIT=0
+
+RUN SPEC e2e/craft-slides.spec.ts
+
+(node:317) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 e2e/craft-slides.spec.ts:168:1 › 01 create, upload, 5-page deck, per-page screenshots + navigation + modify channel (5.2s)
+  ✓  2 e2e/craft-slides.spec.ts:287:1 › 02 modify ONLY page 3: other slides byte-equal, count stable, old version SHAs intact (4.1s)
+  ✓  3 e2e/craft-slides.spec.ts:344:1 › 03 page-3 citations resolve to the deck source registry and sources slide (450ms)
+  ✓  4 e2e/craft-slides.spec.ts:370:1 › 04 slides kind gate: fail-closed until the deployment opens it (20ms)
+
+  4 passed (10.0s)
+[stack] playwright exit=0 artifacts=/tmp/craft-o05fc-mock.sIJbfD/artifacts run=/tmp/craft-o05fc-mock.sIJbfD
+SPEC_EXIT=0

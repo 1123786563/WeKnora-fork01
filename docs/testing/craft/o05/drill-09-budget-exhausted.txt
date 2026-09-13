@@ -1,0 +1,12 @@
+$ go test ./internal/application/service -run "TestCraftBudgetLastQuotaConcurrentAuthorizationAdmitsExactlyOne|TestCraftBudgetUnfundedTenantAdmitsButBlocksCalls|TestCraftBudgetExpiredGrantRefusesCalls|TestCraftBudgetRevokedGrantBlocksNewCallsAndKeepsAdmittedHolds" -count=1 -v
+=== RUN   TestCraftBudgetLastQuotaConcurrentAuthorizationAdmitsExactlyOne
+--- PASS: TestCraftBudgetLastQuotaConcurrentAuthorizationAdmitsExactlyOne (0.06s)
+=== RUN   TestCraftBudgetRevokedGrantBlocksNewCallsAndKeepsAdmittedHolds
+--- PASS: TestCraftBudgetRevokedGrantBlocksNewCallsAndKeepsAdmittedHolds (0.06s)
+=== RUN   TestCraftBudgetExpiredGrantRefusesCalls
+--- PASS: TestCraftBudgetExpiredGrantRefusesCalls (0.06s)
+=== RUN   TestCraftBudgetUnfundedTenantAdmitsButBlocksCalls
+--- PASS: TestCraftBudgetUnfundedTenantAdmitsButBlocksCalls (0.06s)
+PASS
+ok  	github.com/Tencent/WeKnora/internal/application/service	1.694s
+EXIT=0
