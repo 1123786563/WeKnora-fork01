@@ -32,7 +32,7 @@ export function KnowledgeReferenceScreen({ kind }: { kind: KnowledgeReferenceKin
         setRows(response.data.map((entry) => ({ id: selectFaqReferenceEditKey(entry), label: selectFaqReferenceLabel(entry), detail: entry.answers[0] || '' })));
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : `Unable to load ${kind}`);
+      setError(cause instanceof Error ? cause.message : label("knowledgeBase.loadingFailed"));
     } finally {
       setLoading(false);
     }
