@@ -18,10 +18,9 @@ else nodeModule.register('data:text/javascript,' + encodeURIComponent([
 ].join('\n')), import.meta.url);
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
-const { FAQBreadcrumb, FAQPageView, faqKBListPath, faqKBSettingsPath, faqHasMore, setEntryStatus, importFormatFromName, importProgressText, faqImportTaskView, pushListItem, removeListItem, editorFormError, faqSaveResultKey, isSectionCollapsed, toggleSection, FAQ_ANSWER_CAP, FAQ_SIMILAR_CAP } = await import('./FAQPage.tsx');
-const { createTranslator } = await import('../i18n.ts');
+const { FAQBreadcrumb, FAQPageView, FAQSearchResults, createFaqTranslator, faqKBListPath, faqKBSettingsPath, faqHasMore, setEntryStatus, importFormatFromName, importProgressText, faqImportTaskView, pushListItem, removeListItem, editorFormError, faqSaveResultKey, isSectionCollapsed, toggleSection, FAQ_ANSWER_CAP, FAQ_SIMILAR_CAP, faqSearchDefaultForm, faqSearchBlocked, faqSearchRequestFrom, faqSearchResultsFromResponse, toggleSearchResultId } = await import('./FAQPage.tsx');
 
-const t = createTranslator('zh-CN');
+const t = createFaqTranslator('zh-CN');
 const kbId = '8b26f48e-7196-405f-9803-ccf93be3cd37';
 const noop = () => {};
 
@@ -450,4 +449,118 @@ test('setEntryStatus updates immutably so a failed update can roll back', () => 
   assert.equal((rows[1] as { is_enabled: boolean }).is_enabled, true, 'source array untouched');
   assert.equal(next[0], rows[0], 'untouched rows keep identity');
   assert.equal(setEntryStatus(rows, 99, false), rows, 'unknown id returns the input array');
+});
+
+// --- B4: search test drawer (Vue t-drawer 420px, FAQEntryManager.vue:734-853) -----
+
+const searchHits = [
+  { id: 2, standard_question: '如何扩容？', similar_questions: ['怎么扩容'], negative_questions: [], answers: ['加节点。'], is_enabled: true, is_recommended: false, score: 0.9123, matched_question: '如何扩容集群' },
+  { id: 1, standard_question: '如何部署？', similar_questions: [], negative_questions: [], answers: [], is_enabled: true, is_recommended: false, score: 0.5 },
+] as never;
+
+function renderSearchResults(overrides: { results?: unknown; expandedIds?: ReadonlySet<number> } = {}): string {
+  const results = 'results' in overrides ? overrides.results : searchHits;
+  const expandedIds = overrides.expandedIds ?? new Set<number>();
+  const Props = FAQSearchResults as unknown as React.ComponentType<{ t: typeof t; results: unknown; expandedIds: ReadonlySet<number>; onToggle: (id: number) => void }>;
+  return renderToStaticMarkup(React.createElement(Props, { t, results, expandedIds, onToggle: noop }));
+}
+
+test('search drawer is closed by default and opens only on request', () => {
+  const closed = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps()));
+  assert.ok(!closed.includes('faq-search-drawer'), 'no drawer markup before it is requested');
+  const open = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ searchOpen: true })));
+  assert.ok(open.includes('faq-search-drawer'), 'drawer shell present');
+  assert.ok(open.includes('FAQ 检索测试'), 'Vue searchTestTitle header');
+});
+
+test('search drawer mirrors the Vue form: labels, descs, defaults and slider bounds', () => {
+  const html = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ searchOpen: true })));
+  assert.ok(html.includes('查询内容'), 'query label');
+  assert.ok(html.includes('请输入要检索的问题'), 'query placeholder doubles as the Vue desc');
+  assert.ok(html.includes('相似度阈值'), 'threshold label');
+  assert.ok(html.includes('范围 0-1，默认 0.7'), 'threshold desc');
+  assert.ok(html.includes('0.70'), 'threshold value renders toFixed(2)');
+  assert.ok(html.includes('结果数量'), 'match count label');
+  assert.ok(html.includes('范围 1-50，默认 10'), 'match count desc');
+  assert.ok(/>10</.test(html), 'match count value renders as integer');
+  assert.ok(/type="range"[^>]*min="0"[^>]*max="1"[^>]*step="0\.1"/.test(html), 'threshold slider bounds 0-1 step 0.1');
+  assert.ok(/type="range"[^>]*min="1"[^>]*max="50"[^>]*step="1"/.test(html), 'count slider bounds 1-50 step 1');
+  assert.ok(html.includes('开始检索'), 'submit button uses searchButton copy');
+});
+
+test('searching pins the submit button to 检索中... and disables it', () => {
+  const html = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ searchOpen: true, searching: true })));
+  assert.ok(html.includes('检索中...'), 'searching label');
+  assert.ok(!html.includes('开始检索'), 'idle label replaced while searching');
+  assert.ok(/aria-busy="true"/.test(html), 'button exposes busy state');
+});
+
+test('result cards rank 1-based with 3-decimal scores and the matched question', () => {
+  const html = renderSearchResults();
+  assert.ok(html.includes('检索结果 (2)'), 'results header carries the count');
+  assert.ok(html.includes('1.'), 'first card indexed from 1');
+  assert.ok(html.includes('0.912') && html.includes('0.500'), 'scores render toFixed(3)');
+  assert.ok(html.includes('命中问题'), 'matched label rendered');
+  assert.ok(html.includes('如何扩容集群'), 'matched question text shown when it differs');
+  const same = [{ id: 5, standard_question: '同问', similar_questions: [], negative_questions: [], answers: [], is_enabled: true, is_recommended: false, score: 1, matched_question: '同问' }];
+  const sameHtml = renderSearchResults({ results: same });
+  assert.ok(!sameHtml.includes('命中问题'), 'matched line hidden when identical to the standard question (Vue v-if)');
+});
+
+test('hit bodies default collapsed; expansion reveals answers and similar questions', () => {
+  const collapsed = renderSearchResults();
+  assert.ok(!collapsed.includes('加节点。'), 'answers hidden while collapsed (Vue expanded=false)');
+  assert.ok(!collapsed.includes('怎么扩容'), 'similar hidden while collapsed');
+  assert.ok(/aria-expanded="false"/.test(collapsed), 'expander state exposed');
+  const expanded = renderSearchResults({ expandedIds: new Set([2]) });
+  assert.ok(expanded.includes('答案') && expanded.includes('加节点。'), 'answers section reveals');
+  assert.ok(expanded.includes('相似问') && expanded.includes('怎么扩容'), 'similar section reveals');
+  assert.ok(/aria-expanded="true"/.test(expanded), 'expander flips');
+});
+
+test('toggleSearchResultId flips one hit immutably', () => {
+  const ids = toggleSearchResultId(new Set([1]), 2);
+  assert.deepEqual([...ids].sort(), [1, 2], 'adds the new id');
+  assert.deepEqual([...toggleSearchResultId(ids, 1)], [2], 'second toggle removes');
+});
+
+test('empty search state renders noResults once a search ran, nothing before', () => {
+  const empty = renderSearchResults({ results: [] });
+  assert.ok(empty.includes('未找到匹配的 FAQ 条目'), 'Vue noResults copy');
+  const fresh = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ searchOpen: true })));
+  assert.ok(!fresh.includes('search-results'), 'no results block before the first search (Vue hasSearched gate)');
+  const searched = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ searchOpen: true, hasSearched: true, searchResults: [] as never })));
+  assert.ok(searched.includes('未找到匹配的 FAQ 条目'), 'results block appears once hasSearched');
+});
+
+test('search errors surface inside the drawer like the editor drawer', () => {
+  const html = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ searchOpen: true, message: { tone: 'error', text: '检索失败' } })));
+  assert.ok(html.includes('faq-editor-error'), 'error slot rendered inside the drawer');
+  assert.ok(html.includes('检索失败'), 'error text visible');
+});
+
+test('faqSearchDefaultForm matches the Vue defaults (query blank, 0.7, 10)', () => {
+  assert.deepEqual(faqSearchDefaultForm(), { query: '', vectorThreshold: 0.7, matchCount: 10 });
+});
+
+test('faqSearchBlocked guards the blank query like Vue', () => {
+  assert.equal(faqSearchBlocked({ query: '   ', vectorThreshold: 0.7, matchCount: 10 }), true, 'blank query blocks');
+  assert.equal(faqSearchBlocked({ query: '部署', vectorThreshold: 0.7, matchCount: 10 }), false, 'real query passes');
+});
+
+test('faqSearchRequestFrom trims the query and forwards thresholds', () => {
+  assert.deepEqual(faqSearchRequestFrom({ query: '  如何部署  ', vectorThreshold: 0.7, matchCount: 10 }),
+    { query_text: '如何部署', vector_threshold: 0.7, match_count: 10 });
+});
+
+test('faqSearchResultsFromResponse unwraps the envelope, defaults score, sorts desc', () => {
+  const raw = { success: true, data: [
+    { id: 1, standard_question: '低分', answers: [], similar_questions: [], negative_questions: [], is_enabled: true, is_recommended: false, score: 0.4 },
+    { id: 2, standard_question: '高分', answers: [], similar_questions: [], negative_questions: [], is_enabled: true, is_recommended: false, score: 0.9 },
+    { id: 3, standard_question: '无分', answers: [], similar_questions: [], negative_questions: [], is_enabled: true, is_recommended: false },
+  ] };
+  const hits = faqSearchResultsFromResponse(raw) as Array<{ id: number; score: number }>;
+  assert.deepEqual(hits.map((hit) => hit.id), [2, 1, 3], 'sorted by score desc (Vue :2673)');
+  assert.equal(hits[2].score, 0, 'missing score defaults to 0 (Vue score||0)');
+  assert.deepEqual(faqSearchResultsFromResponse({ success: true }), [], 'missing data array yields no hits');
 });

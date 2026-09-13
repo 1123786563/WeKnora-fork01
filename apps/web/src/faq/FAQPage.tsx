@@ -100,6 +100,70 @@ export function faqSaveResultKey(editing: boolean): 'knowledgeEditor.messages.cr
   return editing ? 'knowledgeEditor.messages.updateSuccess' : 'knowledgeEditor.messages.createSuccess';
 }
 
+// --- B4: search test drawer (Vue FAQEntryManager.vue:734-853, 1329-1338, 2650-2695) -
+
+export interface FAQSearchFormState { query: string; vectorThreshold: number; matchCount: number }
+export type FAQSearchHit = FAQEntry & { score?: number; matched_question?: string; match_type?: string };
+
+/** Vue t-slider bounds (FAQEntryManager.vue:760, 775). */
+export const FAQ_SEARCH_VECTOR_THRESHOLD = { min: 0, max: 1, step: 0.1 } as const;
+export const FAQ_SEARCH_MATCH_COUNT = { min: 1, max: 50, step: 1 } as const;
+
+/** Vue searchForm reactive defaults (FAQEntryManager.vue:1334-1338). */
+export function faqSearchDefaultForm(): FAQSearchFormState {
+  return { query: '', vectorThreshold: 0.7, matchCount: 10 };
+}
+
+/** Vue handleSearch guard: a blank (untrimmed) query warns and skips the request (:2651-2654). */
+export function faqSearchBlocked(form: FAQSearchFormState): boolean {
+  return !form.query.trim();
+}
+
+/** Vue handleSearch request mapping (FAQEntryManager.vue:2659-2663). */
+export function faqSearchRequestFrom(form: FAQSearchFormState): { query_text: string; vector_threshold: number; match_count: number } {
+  return { query_text: form.query.trim(), vector_threshold: form.vectorThreshold, match_count: form.matchCount };
+}
+
+/** Vue res.data spread + score sort desc (FAQEntryManager.vue:2664-2673). */
+export function faqSearchResultsFromResponse(raw: unknown): FAQSearchHit[] {
+  const data = (raw as { data?: unknown } | null | undefined)?.data;
+  if (!Array.isArray(data)) return [];
+  return (data as FAQSearchHit[])
+    .filter((hit) => typeof hit === 'object' && hit !== null && typeof hit.id === 'number')
+    .map((hit) => ({ ...hit, score: typeof hit.score === 'number' ? hit.score : 0 }))
+    .sort((a, b) => (b.score || 0) - (a.score || 0));
+}
+
+/** Immutable flip for one expanded hit (Vue result.expanded toggle, :2693-2695). */
+export function toggleSearchResultId(ids: ReadonlySet<number>, id: number): Set<number> {
+  const next = new Set(ids);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  return next;
+}
+
+// Layered fallback for keys the Vue locales carry but the shared catalog does not
+// (common.operationFailed drives the Vue search-error toast, :2675; common.close
+// labels the drawer close button) — formatMessage wins once a key lands upstream,
+// mirroring packages/views/src/integrations/messages.ts.
+const FAQ_FALLBACK_MESSAGES: Partial<Record<Locale, Record<string, string>>> = {
+  'zh-CN': { 'common.operationFailed': '操作失败', 'common.close': '关闭' },
+  'en-US': { 'common.operationFailed': 'Operation failed', 'common.close': 'Close' },
+  'ja-JP': { 'common.operationFailed': '操作に失敗しました', 'common.close': '閉じる' },
+  'ko-KR': { 'common.operationFailed': '작업 실패', 'common.close': '닫기' },
+  'ru-RU': { 'common.operationFailed': 'Операция не выполнена', 'common.close': 'Закрыть' },
+};
+
+/** Translator with the byte-exact Vue fallbacks layered under the shared catalog. */
+export function createFaqTranslator(locale: Locale): Translate {
+  const base = createTranslator(locale);
+  return (key: string, values?: Record<string, string | number>): string => {
+    const raw = base(key, values);
+    if (raw !== key) return raw;
+    return FAQ_FALLBACK_MESSAGES[locale]?.[key] ?? raw;
+  };
+}
+
 type FAQSectionCollapseState = Record<string, boolean>;
 function sectionCollapseKey(entryId: number, section: string): string { return `${entryId}:${section}`; }
 
@@ -144,6 +208,7 @@ function Icon({ size = 16, className, children }: { size?: number; className?: s
 const Chevrons = {
   right: 'M9 18l6-6-6-6',
   down: 'M6 9l6 6 6-6',
+  up: 'M18 15l-6-6-6 6',
 };
 function SearchIcon(props: { size?: number; className?: string }) {
   return <Icon {...props}><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></Icon>;
@@ -310,6 +375,16 @@ export interface FAQPageViewProps {
   onCloseEditor?: () => void;
   onFormChange?: (patch: Partial<FormState>) => void;
   onEditorSubmit?: (event: FormEvent<HTMLFormElement>) => void;
+  /** B4: Vue search test drawer (FAQEntryManager.vue:734-853). */
+  searchOpen?: boolean;
+  searchForm?: FAQSearchFormState;
+  searching?: boolean;
+  hasSearched?: boolean;
+  searchResults?: FAQSearchHit[];
+  onOpenSearchTest?: () => void;
+  onCloseSearchTest?: () => void;
+  onSearchFormChange?: (patch: Partial<FAQSearchFormState>) => void;
+  onSearchTestSubmit?: () => void;
 }
 
 export function FAQPageView(props: FAQPageViewProps = {}) {
@@ -372,6 +447,15 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
     onCloseEditor = () => {},
     onFormChange = () => {},
     onEditorSubmit = () => {},
+    searchOpen = false,
+    searchForm = faqSearchDefaultForm(),
+    searching = false,
+    hasSearched = false,
+    searchResults = [],
+    onOpenSearchTest = () => {},
+    onCloseSearchTest = () => {},
+    onSearchFormChange = () => {},
+    onSearchTestSubmit = () => {},
   } = props;
   const t = tr ?? createTranslator('zh-CN');
   const [tagPanelOpen, setTagPanelOpen] = useState(false);
@@ -380,6 +464,14 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
   const [collapsedSections, setCollapsedSections] = useState<FAQSectionCollapseState>({});
   // Vue entry.showMore — one open card more-menu at a time (FAQEntryManager.vue:265-283).
   const [moreMenuId, setMoreMenuId] = useState<number | null>(null);
+  // B4: Vue stores expanded on each hit with default false (:2669) — a per-id set.
+  const [expandedResults, setExpandedResults] = useState<ReadonlySet<number>>(new Set());
+  // A new search replaces the hit list, so stale expansions drop first (Vue :2664-2673).
+  const runSearchTest = () => {
+    setExpandedResults(new Set());
+    onSearchTestSubmit();
+  };
+  const toggleSearchResult = (id: number) => setExpandedResults((current) => toggleSearchResultId(current, id));
   const scrollRef = useRef<HTMLDivElement | null>(null);
   // Vue handleScroll (FAQEntryManager.vue:1624): within 200px of the bottom,
   // ask the container for the next page of entries. The inner container only
@@ -515,7 +607,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                   <button type="button" role="menuitem" className="faq-menu-item" onClick={() => { setExportMenuOpen(false); onExport('json'); }}>{t('knowledgeEditor.faqExport.exportJSON')}</button>
                 </span>
               </span>
-              <button type="button" className="content-bar-icon-btn" aria-label={t('knowledgeEditor.faq.searchTest')} title={t('knowledgeEditor.faq.searchTest')} onClick={onSearchSubmit}>
+              <button type="button" className="content-bar-icon-btn" aria-label={t('knowledgeEditor.faq.searchTest')} title={t('knowledgeEditor.faq.searchTest')} onClick={onOpenSearchTest}>
                 <SearchIcon size={16} />
               </button>
             </div>
@@ -829,7 +921,152 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
           </aside>
         </section>
       ) : null}
+
+      {/* B4: Vue search test drawer (FAQEntryManager.vue:734-853) — 420px right
+          drawer, query input + two sliders with the shared desc keys, a primary
+          search button, and a ranked result list with 3-decimal score tags. */}
+      {searchOpen ? (
+        <section className="faq-editor-overlay" aria-label={t('knowledgeEditor.faq.searchTestTitle')}>
+          <aside className="faq-editor-drawer faq-search-drawer">
+            <div className="faq-editor-header">
+              <h2>{t('knowledgeEditor.faq.searchTestTitle')}</h2>
+              <button type="button" className="faq-modal-close" aria-label={t('common.close')} onClick={onCloseSearchTest}><CloseIcon size={16} /></button>
+            </div>
+            <div className="faq-editor-form-body">
+              {message?.tone === 'error' ? <div className="faq-editor-error" role="alert"><Status tone="error">{message.text}</Status></div> : null}
+              <div className="settings-group">
+                <div className="setting-row search-first-row">
+                  <div className="setting-info">
+                    <label htmlFor="faq-search-query">{t('knowledgeEditor.faq.queryLabel')}</label>
+                    <p className="desc">{t('knowledgeEditor.faq.queryPlaceholder')}</p>
+                  </div>
+                  <div className="setting-control">
+                    <input
+                      id="faq-search-query"
+                      className="full-width-input"
+                      placeholder={t('knowledgeEditor.faq.queryPlaceholder')}
+                      value={searchForm.query}
+                      onChange={(event) => onSearchFormChange({ query: event.target.value })}
+                      onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); runSearchTest(); } }}
+                    />
+                  </div>
+                </div>
+                <div className="setting-row">
+                  <div className="setting-info">
+                    <label htmlFor="faq-search-threshold">{t('knowledgeEditor.faq.similarityThresholdLabel')}</label>
+                    <p className="desc">{t('knowledgeEditor.faq.vectorThresholdDesc')}</p>
+                  </div>
+                  <div className="setting-control">
+                    <div className="slider-wrapper">
+                      <input
+                        id="faq-search-threshold"
+                        type="range" min={FAQ_SEARCH_VECTOR_THRESHOLD.min} max={FAQ_SEARCH_VECTOR_THRESHOLD.max} step={FAQ_SEARCH_VECTOR_THRESHOLD.step}
+                        value={searchForm.vectorThreshold}
+                        onChange={(event) => onSearchFormChange({ vectorThreshold: Number(event.target.value) })}
+                      />
+                      <div className="slider-value">{searchForm.vectorThreshold.toFixed(2)}</div>
+                    </div>
+                  </div>
+                </div>
+                <div className="setting-row">
+                  <div className="setting-info">
+                    <label htmlFor="faq-search-match-count">{t('knowledgeEditor.faq.matchCountLabel')}</label>
+                    <p className="desc">{t('knowledgeEditor.faq.matchCountDesc')}</p>
+                  </div>
+                  <div className="setting-control">
+                    <div className="slider-wrapper">
+                      <input
+                        id="faq-search-match-count"
+                        type="range" min={FAQ_SEARCH_MATCH_COUNT.min} max={FAQ_SEARCH_MATCH_COUNT.max} step={FAQ_SEARCH_MATCH_COUNT.step}
+                        value={searchForm.matchCount}
+                        onChange={(event) => onSearchFormChange({ matchCount: Number(event.target.value) })}
+                      />
+                      <div className="slider-value">{searchForm.matchCount}</div>
+                    </div>
+                  </div>
+                </div>
+                <div className="setting-row">
+                  <div className="setting-control">
+                    <Button type="button" className="search-button" loading={searching} onClick={runSearchTest}>
+                      {searching ? t('knowledgeEditor.faq.searching') : t('knowledgeEditor.faq.searchButton')}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+              {searchResults.length > 0 || hasSearched ? (
+                <FAQSearchResults t={t} results={searchResults} expandedIds={expandedResults} onToggle={toggleSearchResult} />
+              ) : null}
+            </div>
+          </aside>
+        </section>
+      ) : null}
     </main>
+  );
+}
+
+// --- B4 results list (Vue search-results block, FAQEntryManager.vue:792-851) -------
+
+export interface FAQSearchResultsProps {
+  t?: Translate;
+  results?: readonly FAQSearchHit[];
+  expandedIds?: ReadonlySet<number>;
+  onToggle?: (id: number) => void;
+}
+
+export function FAQSearchResults({ t: tr, results = [], expandedIds = new Set<number>(), onToggle = () => {} }: FAQSearchResultsProps = {}) {
+  const t = tr ?? createTranslator('zh-CN');
+  return (
+    <div className="search-results">
+      <div className="results-header">
+        <span>{t('knowledgeEditor.faq.searchResults')} ({results.length})</span>
+      </div>
+      {results.length === 0 ? (
+        <div className="no-results">{t('knowledgeEditor.faq.noResults')}</div>
+      ) : (
+        <div className="results-list">
+          {results.map((result, index) => {
+            const expanded = expandedIds.has(result.id);
+            return (
+              <div key={result.id} className={'result-card' + (expanded ? ' expanded' : '')}>
+                <button type="button" className="result-header" aria-expanded={expanded} onClick={() => onToggle(result.id)}>
+                  <span className="result-main">
+                    <span className="result-question"><span className="result-index">{index + 1}.</span> {result.standard_question}</span>
+                    {result.matched_question && result.matched_question !== result.standard_question ? (
+                      <span className="matched-question">
+                        <span className="matched-label">{t('knowledgeEditor.faq.matchedQuestion')}:</span>
+                        <span className="matched-text">{result.matched_question}</span>
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="score-tag">{(result.score || 0).toFixed(3)}</span>
+                  <Icon size={14} className="expand-icon"><path d={expanded ? Chevrons.up : Chevrons.down} /></Icon>
+                </button>
+                {expanded ? (
+                  <div className="result-body">
+                    {result.answers?.length ? (
+                      <div className="result-section">
+                        <div className="section-label">{t('knowledgeEditor.faq.answers')}</div>
+                        <div className="result-tags">
+                          {result.answers.map((answer, answerIndex) => <span key={answerIndex} className="question-tag is-answer" title={answer}>{answer}</span>)}
+                        </div>
+                      </div>
+                    ) : null}
+                    {result.similar_questions?.length ? (
+                      <div className="result-section">
+                        <div className="section-label">{t('knowledgeEditor.faq.similarQuestions')}</div>
+                        <div className="result-tags">
+                          {result.similar_questions.map((question, questionIndex) => <span key={questionIndex} className="question-tag" title={question}>{question}</span>)}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -931,7 +1168,7 @@ function metaFromKB(kb: KnowledgeBase | null): FAQKBMeta | undefined {
 
 export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; knowledgeBaseId: string }) {
   const locale = useAppLocale();
-  const t = createTranslator(locale);
+  const t = createFaqTranslator(locale);
   const faq = client.knowledge.faq;
   const [kb, setKb] = useState<KnowledgeBase | null>(null);
   const [kbList, setKbList] = useState<KBListItem[]>([]);
@@ -957,6 +1194,12 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
   const [statusUpdatingIds, setStatusUpdatingIds] = useState<readonly number[]>([]);
   const [batchTag, setBatchTag] = useState('');
   const [tagManageOpen, setTagManageOpen] = useState(false);
+  // B4: Vue search test state (FAQEntryManager.vue:1329-1338).
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchForm, setSearchForm] = useState<FAQSearchFormState>(faqSearchDefaultForm());
+  const [searching, setSearching] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
+  const [searchResults, setSearchResults] = useState<FAQSearchHit[]>([]);
   // Vue FAQEntryManager.vue:2091-2165 — after upsert returns a task_id the
   // page polls importProgress until completed/failed; success refreshes the
   // list and collapses the strip after 3s; 404 stops the polling.
@@ -1127,6 +1370,26 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
     catch (error) { setMessage({ tone: 'error', text: error instanceof Error ? error.message : 'Unable to export FAQ entries' }); }
     finally { setExportLoading(false); }
   }
+  // Vue handleSearch (FAQEntryManager.vue:2650-2680): blank query warns without a
+  // request; a failure surfaces error?.message || common.operationFailed and clears
+  // the previous hits.
+  async function runSearchTest() {
+    if (faqSearchBlocked(searchForm)) {
+      setMessage({ tone: 'warning', text: t('knowledgeEditor.faq.queryPlaceholder') });
+      return;
+    }
+    setSearching(true);
+    setHasSearched(true);
+    try {
+      const raw = await faq.search(knowledgeBaseId, faqSearchRequestFrom(searchForm));
+      setSearchResults(faqSearchResultsFromResponse(raw));
+    } catch (error) {
+      setMessage({ tone: 'error', text: error instanceof Error && error.message ? error.message : t('common.operationFailed') });
+      setSearchResults([]);
+    } finally {
+      setSearching(false);
+    }
+  }
 
   async function reloadAfterTagChange() {
     const nextTags = await client.knowledge.documents.tags(knowledgeBaseId, { page_size: 200 });
@@ -1196,6 +1459,15 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
       onCloseEditor={() => setEditing(undefined)}
       onFormChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
       onEditorSubmit={(event) => void save(event)}
+      searchOpen={searchOpen}
+      searchForm={searchForm}
+      searching={searching}
+      hasSearched={hasSearched}
+      searchResults={searchResults}
+      onOpenSearchTest={() => setSearchOpen(true)}
+      onCloseSearchTest={() => setSearchOpen(false)}
+      onSearchFormChange={(patch) => setSearchForm((current) => ({ ...current, ...patch }))}
+      onSearchTestSubmit={() => void runSearchTest()}
       />
       <FAQTagManageDialog client={client} knowledgeBaseId={knowledgeBaseId} tags={tags} open={tagManageOpen} onClose={() => setTagManageOpen(false)} onChanged={reloadAfterTagChange} t={t} />
     </>
