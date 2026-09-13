@@ -910,7 +910,12 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                       </div>
                       <div className="faq-card-footer">
                         <div className="faq-card-tag">
-                          <span className="faq-tag-chip" title={tagName ?? t('knowledgeBase.untagged')}><span className="tag-text">{tagName ?? t('knowledgeBase.untagged')}</span></span>
+                          {/* B5 refine: the native title (d3a39b7b) is replaced by the
+                              FAQTagTooltip bubble — hover opens the fixed, viewport-clamped
+                              bubble with the full tag name; tag-text truncation stays. */}
+                          <FaqTagTooltip content={tagName ?? t('knowledgeBase.untagged')} placement="top">
+                            <span className="faq-tag-chip"><span className="tag-text">{tagName ?? t('knowledgeBase.untagged')}</span></span>
+                          </FaqTagTooltip>
                         </div>
                         {canContribute ? (
                           <div className="faq-card-status" onClick={(event) => event.stopPropagation()}>

@@ -113,10 +113,33 @@ test('entry-card chips render inside the tooltip wrapper without the native titl
     React.createElement<FAQViewProps>(FAQPageView, { entries: cardRows, total: 1 }),
   );
   const wrappers = html.match(/faq-tag-wrapper/g) || [];
-  assert.equal(wrappers.length, 3, 'similar + negative + answer chips each get a wrapper');
+  assert.equal(wrappers.length, 4, 'similar + negative + answer + footer tag chips each get a wrapper');
   assert.ok(!html.includes('title="docker?"'), 'native title removed in favour of the bubble (Vue has none)');
   assert.ok(!html.includes('title="什么是反例"'), 'native title removed on negative chips');
   assert.ok(!html.includes('title="使用 Docker。"'), 'native title removed on answer chips');
+  assert.ok(!html.includes('title="无标签"'), 'footer tag chip loses the native title (B5 refine, d3a39b7b form retired)');
+  assert.ok(/<span class="faq-tag-wrapper"><span class="faq-tag-chip"/.test(html), 'footer chip sits inside the tooltip wrapper');
+});
+
+test('footer tag chip opens the hover bubble with the full tag name, untagged fallback otherwise', async () => {
+  await mount(React.createElement<FAQViewProps>(FAQPageView, {
+    tags: [{ id: 'tag-1', seq_id: 5, name: '生产环境标签' }],
+    entries: [
+      { id: 1, standard_question: '如何部署？', similar_questions: [], negative_questions: [], answers: ['使用 Docker。'], tag_id: 5, is_enabled: true, is_recommended: false },
+      { id: 2, standard_question: '如何回滚？', similar_questions: [], negative_questions: [], answers: ['回滚脚本。'], tag_id: null, is_enabled: true, is_recommended: false },
+    ] as never,
+    total: 2,
+  }));
+  const wrappers = document.querySelectorAll('.faq-card-tag .faq-tag-wrapper');
+  assert.equal(wrappers.length, 2, 'both footer chips live in tooltip wrappers');
+  const [tagged, untagged] = wrappers;
+  assert.ok(!(tagged.querySelector('.faq-tag-chip') as Element).hasAttribute('title'), 'no native title on the chip');
+  await act(async () => { tagged.dispatchEvent(new window.MouseEvent('mouseover', { bubbles: true })); });
+  assert.equal(document.querySelector('.faq-tag-tooltip .tooltip-content')?.textContent, '生产环境标签', 'bubble carries the full tag name');
+  await act(async () => { tagged.dispatchEvent(new window.MouseEvent('mouseout', { bubbles: true })); });
+  assert.equal(document.querySelector('.faq-tag-tooltip'), null, 'bubble closes on leave');
+  await act(async () => { untagged.dispatchEvent(new window.MouseEvent('mouseover', { bubbles: true })); });
+  assert.equal(document.querySelector('.faq-tag-tooltip .tooltip-content')?.textContent, '无标签', 'untagged fallback content (zh-CN)');
 });
 
 test('search-result chips keep the hover bubble like the Vue t-tooltip rows', () => {

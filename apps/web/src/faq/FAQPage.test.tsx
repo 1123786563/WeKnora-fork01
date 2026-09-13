@@ -430,18 +430,20 @@ test('card footer keeps the tag chip and status switch', () => {
   assert.ok(untagged.includes('无标签'), 'missing tag falls back to knowledgeBase.untagged');
 });
 
-test('tag chip carries the FAQTagTooltip hover content as native tooltip semantics', () => {
-  // Vue wraps truncated tags in FAQTagTooltip (FAQEntryManager.vue:362-376 footer
-  // chip + frontend/src/components/FAQTagTooltip.vue): hovering reveals the full
-  // text. React aligns that content to the native title attribute, which is also
-  // the accessible (aria) description of the chip.
+test('tag chip carries the full tag name in the FAQTagTooltip bubble, not a native title', () => {
+  // B5 refine: the d3a39b7b native title is replaced by the FAQTagTooltip bubble
+  // (FAQEntryManager.vue:362-376 footer chip + frontend/src/components/FAQTagTooltip.vue):
+  // hover reveals the full text in a fixed, viewport-clamped bubble; the chip
+  // itself carries no title attribute.
   const html = renderCards();
-  assert.match(html, /class="faq-tag-chip" title="重要"/, 'resolved tag name is the tooltip content');
+  assert.match(html, /<span class="faq-tag-wrapper"><span class="faq-tag-chip"><span class="tag-text">重要<\/span><\/span><\/span>/, 'resolved tag name renders inside the tooltip wrapper');
+  assert.ok(!/class="faq-tag-chip" title=/.test(html), 'native title removed in favour of the bubble');
   const untagged = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({
     entries: [{ id: 3, standard_question: 'q2', similar_questions: [], negative_questions: [], answers: ['a'], is_enabled: true, is_recommended: false }] as never,
     total: 1,
   })));
-  assert.match(untagged, /class="faq-tag-chip" title="无标签"/, 'untagged fallback carries the tooltip too');
+  assert.match(untagged, /<span class="tag-text">无标签<\/span>/, 'untagged fallback feeds the bubble content');
+  assert.ok(!untagged.includes('title="无标签"'), 'untagged chip has no native title');
 });
 
 test('section collapse helpers default to collapsed and flip immutably', () => {
