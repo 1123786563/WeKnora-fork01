@@ -29,6 +29,7 @@ const {
   clampGraphTextareaHeight,
   GraphTagsField,
   GraphSwitch,
+  GraphRelationSelect,
 } = await import('./KnowledgeDocumentsPage.tsx');
 const {
   uploadConfirmT,
@@ -585,6 +586,16 @@ test('graph sample text exposes the Vue word-limit counter', () => {
   }));
   assert.match(markup, /wk-graph-text-limit/);
   assert.match(markup, />3\/5000</);
+});
+
+test('graph relation selectors expose filterable Vue-like comboboxes', () => {
+  const markup = renderToStaticMarkup(React.createElement(GraphRelationSelect, {
+    value: 'Author', options: ['Author', 'Alias'], placeholder: '选择关系类型', ariaLabel: '选择关系类型',
+    creatable: true, onChange: noop,
+  }));
+  assert.doesNotMatch(markup, /<select/);
+  assert.match(markup, /role="combobox"/);
+  assert.match(markup, /Author/);
 });
 
 // --- Upload progress mask (Vue upload-mask.vue parity + percent) -------------------

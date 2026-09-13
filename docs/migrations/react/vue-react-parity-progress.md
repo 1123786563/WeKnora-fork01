@@ -1742,3 +1742,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - React 示例文本补齐 Vue `show-word-limit` 的实时 `current/5000` 计数，并保留 5000 字上限与 autosize 行为；计数通过 `aria-live` 暴露。
 - 定向 upload-confirm 测试 26/26、Web TypeScript、`git diff --check` 通过；证据 `evidence/vue-react-parity/2026-09-14-n007-extraction-toast.md` 已更新。真实图谱 endpoint、浏览器 computed-style/截图、Vue 同条件截图、Wails 与移动端仍待补齐，N007 继续保持 implementing。
+
+## 2026-09-14 Round N+51 — N007 图谱关系行选择器
+
+- React 图谱关系表的两个实体端点与关系类型从原生 `<select>` 替换为项目级 combobox；支持 Vue 对应的筛选、键盘选择、外部点击/Escape 关闭，关系类型保留 creatable 行为，原有关系 payload 与删除逻辑不变。
+- 定向 upload-confirm 测试 27/27、Web TypeScript、`git diff --check` 通过；真实图谱 endpoint、浏览器 computed-style/截图、Vue 同条件截图、Wails 与移动端证据仍待补齐，N007 继续保持 implementing。

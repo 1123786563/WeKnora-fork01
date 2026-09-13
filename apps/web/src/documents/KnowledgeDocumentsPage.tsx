@@ -1097,6 +1097,57 @@ export function GraphTagsField({ tags, onChange, placeholder, ariaLabel }: {
   );
 }
 
+export function GraphRelationSelect({ value, options, placeholder, ariaLabel, creatable = false, onChange }: {
+  value: string;
+  options: readonly string[];
+  placeholder: string;
+  ariaLabel: string;
+  creatable?: boolean;
+  onChange: (value: string) => void;
+}) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [open, setOpen] = useState(false);
+  const [filter, setFilter] = useState("");
+  const normalized = filter.trim().toLocaleLowerCase();
+  const filtered = normalized ? options.filter((option) => option.toLocaleLowerCase().includes(normalized)) : [...options];
+  const canCreate = creatable && Boolean(filter.trim()) && !options.some((option) => option.toLocaleLowerCase() === normalized);
+  useEffect(() => {
+    if (!open) return;
+    const closeOnOutside = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", closeOnOutside);
+    return () => document.removeEventListener("mousedown", closeOnOutside);
+  }, [open]);
+  const choose = (next: string) => { onChange(next); setFilter(""); setOpen(false); };
+  return (
+    <div ref={rootRef} className="wk-graph-relation-select">
+      <input
+        type="text"
+        role="combobox"
+        aria-label={ariaLabel}
+        aria-autocomplete="list"
+        aria-expanded={open}
+        value={open ? filter : value}
+        placeholder={open ? placeholder : (value || placeholder)}
+        onFocus={() => { setOpen(true); setFilter(""); }}
+        onChange={(event) => { setFilter(event.target.value); setOpen(true); }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && (filtered[0] || canCreate)) { event.preventDefault(); choose(canCreate ? filter.trim() : filtered[0]); }
+          if (event.key === "Escape") { setOpen(false); event.currentTarget.blur(); }
+        }}
+      />
+      {open ? (
+        <div role="listbox" className="wk-graph-relation-options">
+          {filtered.map((option) => <button type="button" role="option" aria-selected={option === value} key={option} onMouseDown={(event) => { event.preventDefault(); choose(option); }}>{option}</button>)}
+          {canCreate ? <button type="button" role="option" onMouseDown={(event) => { event.preventDefault(); choose(filter.trim()); }}>创建“{filter.trim()}”</button> : null}
+          {filtered.length === 0 && !canCreate ? <span className="wk-muted">{placeholder}</span> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function GraphSwitch({ id, checked, onChange, labelId }: {
   id: string;
   checked: boolean;
@@ -1453,38 +1504,11 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
                   <div className="wk-graph-relation-list">
                     {graphExtract.relations.map((relation, index) => (
                       <div key={index} className="wk-graph-relation-item">
-                        <select
-                          aria-label={t("graphSettings.selectEntity")}
-                          value={relation.node1}
-                          onChange={(event) => updateRelation(index, { ...relation, node1: event.target.value })}
-                        >
-                          <option value="">{t("graphSettings.selectEntity")}</option>
-                          {graphExtract.nodes.map((node) => (
-                            <option key={node.name} value={node.name}>{node.name}</option>
-                          ))}
-                        </select>
+                        <GraphRelationSelect value={relation.node1} options={graphExtract.nodes.map((node) => node.name)} placeholder={t("graphSettings.selectEntity")} ariaLabel={t("graphSettings.selectEntity")} onChange={(value) => updateRelation(index, { ...relation, node1: value })} />
                         <span aria-hidden>→</span>
-                        <select
-                          aria-label={t("graphSettings.selectRelationType")}
-                          value={relation.type}
-                          onChange={(event) => updateRelation(index, { ...relation, type: event.target.value })}
-                        >
-                          <option value="">{t("graphSettings.selectRelationType")}</option>
-                          {graphExtract.tags.map((tag) => (
-                            <option key={tag} value={tag}>{tag}</option>
-                          ))}
-                        </select>
+                        <GraphRelationSelect value={relation.type} options={graphExtract.tags} placeholder={t("graphSettings.selectRelationType")} ariaLabel={t("graphSettings.selectRelationType")} creatable onChange={(value) => updateRelation(index, { ...relation, type: value })} />
                         <span aria-hidden>→</span>
-                        <select
-                          aria-label={t("graphSettings.selectEntity")}
-                          value={relation.node2}
-                          onChange={(event) => updateRelation(index, { ...relation, node2: event.target.value })}
-                        >
-                          <option value="">{t("graphSettings.selectEntity")}</option>
-                          {graphExtract.nodes.map((node) => (
-                            <option key={node.name} value={node.name}>{node.name}</option>
-                          ))}
-                        </select>
+                        <GraphRelationSelect value={relation.node2} options={graphExtract.nodes.map((node) => node.name)} placeholder={t("graphSettings.selectEntity")} ariaLabel={t("graphSettings.selectEntity")} onChange={(value) => updateRelation(index, { ...relation, node2: value })} />
                         <button
                           type="button"
                           aria-label={t("common.remove")}

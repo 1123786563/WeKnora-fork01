@@ -18,9 +18,11 @@ The graph enable control now uses a project switch with Vue/TDesign-style checke
 
 The sample-text field now exposes a live `current/5000` word-limit counter, matching Vue `show-word-limit` while retaining the Vue 5000-character cap and autosize behavior.
 
+Relation rows now use project comboboxes for both entity endpoints and relation type. Entity options are filterable and keyboard-selectable; relation types additionally support creating a value, matching the Vue `t-select` configuration without retaining browser-native select styling.
+
 ## Verification
 
-- Focused upload-confirm and pipeline suites: 26/26 passed for the current graph/upload-confirm suite; prior upload-confirm and pipeline suites: 50/50 passed.
+- Focused upload-confirm and pipeline suites: 27/27 passed for the current graph/upload-confirm suite; prior upload-confirm and pipeline suites: 50/50 passed.
 - Full Web suite: `pnpm run test:web` — 681/681 passed.
 - Web typecheck: `pnpm run typecheck:web` — passed.
 - `git diff --check` — passed.
