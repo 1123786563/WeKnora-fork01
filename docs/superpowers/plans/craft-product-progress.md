@@ -40,7 +40,9 @@
 | W03 | **done** | .worktrees/craft-w03 / codex/craft-w03 | 1c02390b | HEAD a6b30a09 审查 PASS_WITH_NITS → 合入 a8bfb241；API 表逐条过（幂等/Submit/gate/限流/身份注入拒绝）；fail-closed 边界确认；G2 复验通过（apps/web 构建+包导出） |
 | W04 | **done** | .worktrees/craft-w04 / codex/craft-w04 | a8bfb241 | HEAD dcccb683 审查 PASS_WITH_NITS（14/14，与后端真实 SSE 协议交叉验证）→ 合入 8412e9a0；@weknora/core 由 W04 自建；C03 承接退避与快照合并 |
 | W05 | **done** | .worktrees/craft-w05 / codex/craft-w05 | 8412e9a0 | 首轮 FAIL（turns 归档死代码）→修复 37d4433c→定向复审 PASS → 合入 befb5e48；发现并修复 .gitignore 未锚定 web/ 吞 apps/web 新文件问题（协调器锚定+产物 ignore，d9054bd0） |
-| W06 | review | .worktrees/craft-w06 / codex/craft-w06 | d9054bd0 | HEAD 9e6481bf：B 阶段八项全过（mock 6/6 + 真实免费模型两轮）；安全/幂等断言全过（reload 后 agent_runs 恰 1 行）；真实 executor 装配落地（env 驱动、默认关闭）；4 项跨任务集成修复报备；审查者进行中 |
+| W06 | **done** | .worktrees/craft-w06 / codex/craft-w06 | d9054bd0 | HEAD 9e6481bf 审查 PASS_WITH_NITS（11/11，审查者独立复跑 6/6+DB 哈希核对）→ 合入 f931f02b。**B 阶段全部完成**（15/27）。留档：R02↔R04 messageID 上游立项、Scan 叙事修正、harness 进程组清理、decide 路由/preview 回写归 C 阶段决策 |
+| C01 | implementing | .worktrees/craft-c01 / codex/craft-c01 | f931f02b | 已派发（知识 ACL 检索+材料包+引用溯源+sources 视图） |
+| C04 | implementing | .worktrees/craft-c04 / codex/craft-c04 | f931f02b | 已派发（RecoveryRoute+进程故障矩阵）；C02/C03/C05/C06/D/O3-O05 等待依赖 |
 
 ## 调度纪要
 
