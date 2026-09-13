@@ -126,6 +126,16 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') window.location.assign('/platform/knowledge-bases');
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+  useEffect(() => {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+  }, [selectedKey]);
 
   // Read once on mount; the tab then follows the drawer until the user
   // changes it (Vue consumes settingsInitialSubSection the same way).

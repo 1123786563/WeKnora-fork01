@@ -131,6 +131,15 @@ test('loading state uses localized shared copy without leaking the API domain', 
   assert.equal(text.includes('configuration'), false, 'no API domain leak');
 });
 
+test('settings navigation clears focus after switching sections like the Vue drawer', async () => {
+  const container = await mountPage(makeClient(), '?section=general');
+  const navigationButton = Array.from(container.querySelectorAll<HTMLButtonElement>('.wks-nav-item'))
+    .find((button) => button.getAttribute('aria-current') !== 'page');
+  assert.ok(navigationButton, 'a second settings section is available');
+  await act(async () => navigationButton?.click());
+  assert.notEqual(document.activeElement, navigationButton, 'section navigation should not retain focus on the old drawer control');
+});
+
 // B4d: section=subsection deep link reaches the model panel type tabs.
 test('a subsection query param preselects the model type tab', async () => {
   const container = await mountPage(makeClient({ models: [

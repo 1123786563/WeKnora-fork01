@@ -1541,3 +1541,10 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 实际 Chrome 运行验证已记录于 `evidence/vue-react-parity/2026-09-14-n012-graph-runtime-state.md`：加载态、错误态和本地化重试按钮均真实出现；当前后端知识库列表为空、`kb-1` 返回 `knowledge base not found`，因此节点画布、真实邻居和同条件截图暂不能验收。
 - 验证：`pnpm test:web` 802/802；Web TypeScript 检查通过；`git diff --check` 通过；浏览器错误态 DOM 复核通过。
 - 证据层：已有 React 浏览器 loading/error 条件证据，但无有效图谱数据的 Vue/React 同视口视觉、computed-style、真实 graph API、Wails 或移动端证据；N012 继续保持未完成，剩余 Markdown reader、浮层定位/动效和有效数据运行验证。
+
+## 2026-09-14 Round N+20 — N014 设置抽屉 Escape 与焦点语义
+
+- React `SettingsPage` 对齐 Vue `Settings.vue` 的抽屉键盘生命周期：Escape 关闭并回到知识库列表；切换设置分区后主动清除当前焦点，避免旧导航项继续保持焦点样式/键盘归属。
+- 新增设置页回归用例，验证分区切换不保留旧导航按钮焦点；既有设置 wrapper、角色、加载和子分区测试继续覆盖。
+- 验证：SettingsPage focused tests 9/9；完整 Web 回归将在本轮提交前执行；TypeScript 检查通过；`git diff --check` 通过。
+- 证据层：Escape 行为有源码与 jsdom 焦点证据，仍缺真实浏览器键盘/焦点恢复、同视口 computed-style、Wails 与移动端平台证据；N014 继续保持 review。
