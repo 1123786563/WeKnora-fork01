@@ -1602,4 +1602,4 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - React `SettingsPage` 的关闭按钮与 Escape 现在共用关闭路径，先清除当前活动元素焦点再导航，补齐 Vue `Settings.vue:handleClose` 的卸载前 blur 语义；设置分区切换的既有清焦行为保持不变。
 - 新增真实 DOM 回归用例，聚焦关闭按钮后点击关闭并确认旧控件不再保持焦点；Vue 源码、React jsdom 交互与全量 Web 回归均已复核。
 - 验证：SettingsPage 定向测试 10/10；完整 `pnpm test:web` 807/807；Web TypeScript 检查通过；`git diff --check` 通过。
-- 证据层：本轮为 Vue 源码对照、React DOM 交互、单元测试与全 Web 回归；仍缺真实浏览器键盘/焦点、同视口 computed-style、Wails 与移动端证据，N014 继续保持 review。
+- 证据层：本轮为 Vue 源码对照、React DOM 交互、Chrome 关闭按钮/Escape 运行验证、单元测试与全 Web 回归；仍缺同视口 computed-style、Vue 同条件截图、Wails 与移动端证据，N014 继续保持 review。
