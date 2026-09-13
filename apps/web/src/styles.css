@@ -720,6 +720,10 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-graph-help dt { font-weight: 600; } .wk-graph-help dd { margin: 0; }
 .wk-graph-familiar-legend { align-items: center; color: #52627a; display: flex; gap: .4rem; margin: .5rem 0 0; }
 .wk-graph-familiar-ring { border: 2px solid #f79009; border-radius: 50%; display: inline-block; height: .75rem; width: .75rem; }
+.wk-graph-status-card { background: #fff; border: 1px solid #d8e0eb; border-radius: 8px; box-shadow: 0 8px 20px rgba(31, 52, 84, .1); margin: .75rem 0; max-width: 28rem; padding: .75rem .9rem; }
+.wk-graph-status-card-header { align-items: center; color: #52627a; display: flex; gap: .4rem; font-size: .8rem; }
+.wk-graph-status-card-primary { color: #1d2939; font-size: 1rem; font-weight: 600; margin-top: .25rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wk-graph-status-card-secondary { color: #667085; font-size: .8rem; margin-top: .25rem; }
 .wk-graph-search-results li button:hover, .wk-graph-search-results li button:focus-visible { background: #eef5ff; outline: none; }
 .wk-graph-search-results li button span { color: #718096; font-size: .75rem; }
 .wk-data-source-log-stats { color: #718096; font-size: .75rem; }

@@ -1534,3 +1534,10 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 新增 `GraphViewport`/`zoomGraphViewport` 纯逻辑测试，验证锚点缩放和边界；布局变化继续通过 `displayPositions` 与现有图数据连接映射保持一致。
 - 验证：图谱纯逻辑测试 8/8；`pnpm test:web` 802/802；Web TypeScript 检查通过；`git diff --check` 通过。
 - 证据层：本轮仍为静态源码、单元测试与全 Web 测试，尚未完成实际浏览器 Pointer/Wheel 事件、Vue 同视口截图/computed-style、真实后端、Wails 或移动端验证；剩余图谱 Markdown reader、Vue 浮层动效/定位和运行时证据。
+
+## 2026-09-14 Round N+19 — N012 图谱 status-card 与 runtime error 条件
+
+- React 图谱控制层现在仅在成功状态显示搜索、深度、类型图例和帮助；加载/错误状态与 Vue `graphReady` 条件一致。成功图谱增加独立 status card，区分全库概览/当前焦点、节点统计、截断提示和相关节点数，并复用 Vue `wikiBrowser.*` 文案。
+- 实际 Chrome 运行验证已记录于 `evidence/vue-react-parity/2026-09-14-n012-graph-runtime-state.md`：加载态、错误态和本地化重试按钮均真实出现；当前后端知识库列表为空、`kb-1` 返回 `knowledge base not found`，因此节点画布、真实邻居和同条件截图暂不能验收。
+- 验证：`pnpm test:web` 802/802；Web TypeScript 检查通过；`git diff --check` 通过；浏览器错误态 DOM 复核通过。
+- 证据层：已有 React 浏览器 loading/error 条件证据，但无有效图谱数据的 Vue/React 同视口视觉、computed-style、真实 graph API、Wails 或移动端证据；N012 继续保持未完成，剩余 Markdown reader、浮层定位/动效和有效数据运行验证。

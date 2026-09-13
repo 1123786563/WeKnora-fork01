@@ -129,6 +129,16 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
     return labels[graphType] ?? graphType;
   };
   const frontier = useMemo(() => graphFrontierNodes(graph, center), [graph, center]);
+  const graphStatusCard = useMemo(() => {
+    if (!graph || status.kind !== 'success') return null;
+    const isEgo = graph.meta.mode === 'ego';
+    const centerTitle = graph.meta.center ? graph.nodes.find((node) => node.slug === graph.meta.center)?.title ?? graph.meta.center : '';
+    return {
+      title: t(isEgo ? 'wikiBrowser.cardEgoTitle' : 'wikiBrowser.cardOverviewTitle'),
+      primary: isEgo ? centerTitle : t('wikiBrowser.cardOverviewPrimary', { returned: graph.nodes.length, total: graph.meta.total }),
+      secondary: graph.meta.truncated ? t('wikiBrowser.cardOverviewHintTruncated') : isEgo ? t('wikiBrowser.cardRelatedNodes', { count: graph.nodes.length }) : t('wikiBrowser.cardOverviewHintFull'),
+    };
+  }, [graph, status.kind, t]);
 
   function svgPoint(event: { clientX: number; clientY: number; currentTarget: SVGElement }) {
     const svg = event.currentTarget instanceof SVGSVGElement ? event.currentTarget : event.currentTarget.ownerSVGElement;
@@ -187,7 +197,7 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
       </header>
       <Card>
         <div className="wk-toolbar" role="search">
-          <label>{t('wikiBrowser.page.search')} <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('wikiBrowser.searchPlaceholder')} aria-autocomplete="list" aria-controls="wk-graph-search-results" />{searchLoading ? <Status>{t('wikiBrowser.loading')}</Status> : null}{searchResults.length > 0 ? <ul id="wk-graph-search-results" className="wk-graph-search-results" aria-label={t('wikiBrowser.page.search')}>{searchResults.map((result) => <li key={result.slug}><button type="button" onClick={() => { setQuery(result.slug); void openNode({ slug: result.slug, title: result.title, page_type: 'page', link_count: 0 }); void load('ego', result.slug); }}>{result.title}<span>{result.slug}</span></button></li>)}</ul> : null}</label>
+          {status.kind === 'success' ? <><label>{t('wikiBrowser.page.search')} <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('wikiBrowser.searchPlaceholder')} aria-autocomplete="list" aria-controls="wk-graph-search-results" />{searchLoading ? <Status>{t('wikiBrowser.loading')}</Status> : null}{searchResults.length > 0 ? <ul id="wk-graph-search-results" className="wk-graph-search-results" aria-label={t('wikiBrowser.page.search')}>{searchResults.map((result) => <li key={result.slug}><button type="button" onClick={() => { setQuery(result.slug); void openNode({ slug: result.slug, title: result.title, page_type: 'page', link_count: 0 }); void load('ego', result.slug); }}>{result.title}<span>{result.slug}</span></button></li>)}</ul> : null}</label>
           <label>{t('knowledgeBase.graph.depth')} <select value={String(depth)} onChange={(event) => setDepth(Number(event.target.value))}><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></label>
           <div className="wk-graph-type-filters" role="group" aria-label={t('knowledgeBase.graph.type')}>
             {WIKI_GRAPH_TYPES.map((graphType) => <button key={graphType} type="button" className={selectedTypes.includes(graphType) ? 'is-selected' : ''} aria-pressed={selectedTypes.includes(graphType)} onClick={() => toggleGraphType(graphType)}><span className={`wk-graph-legend-dot is-${graphType}`} aria-hidden="true" />{graphTypeLabel(graphType)}</button>)}
@@ -201,12 +211,12 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
               <div><dt>{t('wikiBrowser.helpDragAction')}</dt><dd>{t('wikiBrowser.helpDragDesc')}</dd></div>
               <div><dt>{t('wikiBrowser.helpZoomAction')}</dt><dd>{t('wikiBrowser.helpZoomDesc')}</dd></div>
             </dl>
-          </details>
+          </details></> : null}
         </div>
         {status.kind === 'loading' ? <Status>{t('wikiBrowser.graphEmpty')}</Status> : null}
-        {status.kind === 'error' ? <><Status tone="error">{status.message}</Status><Button type="button" onClick={() => void load(mode, center || undefined)}>{t('wikiBrowser.retryLoadResources')}</Button></> : null}
+        {status.kind === 'error' ? <><Status tone="error">{status.message}</Status><Button type="button" onClick={() => void load(mode, center || undefined)}>{t('common.retry')}</Button></> : null}
         {status.kind === 'success' && visible ? <>
-          <p className="wk-muted">{t('wikiBrowser.cardOverviewPrimary', { returned: visible.nodes.length, total: graph?.meta.total ?? visible.nodes.length })}</p>
+          {graphStatusCard ? <div className="wk-graph-status-card"><div className="wk-graph-status-card-header"><span aria-hidden="true">◌</span><strong>{graphStatusCard.title}</strong></div><div className="wk-graph-status-card-primary">{graphStatusCard.primary}</div><div className="wk-graph-status-card-secondary">{graphStatusCard.secondary}</div></div> : null}
           {visible.nodes.length === 0 ? <Status>{t('wikiBrowser.graphNoData')}</Status> : <>
             <svg className="wk-knowledge-graph" viewBox="0 0 760 420" role="img" aria-label={t('knowledgeBase.graph.ariaLinks')} onPointerDown={beginPan} onPointerMove={moveGraphGesture} onPointerUp={endGraphGesture} onPointerCancel={endGraphGesture} onWheel={(event: ReactWheelEvent<SVGSVGElement>) => { event.preventDefault(); const point = svgPoint(event); setViewport((value) => zoomGraphViewport(value, event.deltaY < 0 ? 1.15 : 0.87, point)); }}>
               <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.scale})`}>
