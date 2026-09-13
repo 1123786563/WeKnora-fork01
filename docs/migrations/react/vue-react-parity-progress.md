@@ -1059,6 +1059,14 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - **Review gate:** a row can move to `accepted` only when all applicable platform evidence and unresolved backend decisions are closed or explicitly out-of-scope by user decision.
 - **Commit boundary:** one acceptance-docs commit per row group.
 
+## 2026-09-13 Round N+4（续）— 状态覆盖取证发现 R009 整页分歧 + 第五切片派发
+
+- 状态覆盖 sweep（state-coverage-20260913，10 对截图）：登录失败呈现分歧（Vue 顶部 toast vs React 内嵌横幅）已修（0f6f4d12，jsdom 钉死 + live 复拍）；R002 行补 qualification。
+- R009 整页 anatomy 分歧确认（非回归——round3 同日同服务器截图即如此，R009 行既有的 re-shoot 预警成立）：卡片栅格（Vue 3 列紧凑卡+hover 操作 vs React 全宽堆叠+常显按钮）、筛选 anatomy（Vue 竖直图标轨+我创建的下拉 vs React chips+select+输入框）、警告横幅样式、错误态语义（Vue 回退空态插画+CTA vs React 外露原始 JSON+重试）。已派发 R009 kb-list anatomy 专切片（独占 App.tsx + knowledge-bases/**）。
+- R031 openSession 导航集成（89918e5a）：Vue :171/341-344 语义，onOpenSession prop + embed 安全 inert 契约，28/28。
+- 在途（4）：R016 模型 chip、N003 面板作用域 ⌘1-9、settings chrome 铺开、R009 anatomy。
+
+
 ## 2026-09-13 Round N+4 — 第四批派发 + 六语缺口正式登记
 
 - **六语缺口登记（目标 §二.7）**：目标要求六种语言；仓库语言注册表 packages/i18n/src/index.ts supportedLocales 仅五种（zh-CN/en-US/ja-JP/ko-KR/ru-RU），Vue frontend/src/i18n 同为五语。第六种语言的名称与基准文件不存在，按目标要求记录缺口并询问用户；在用户答复前，所有语言覆盖结论一律以"五种仓库语言"表述，不写成六语完成，也不猜测第六语。
