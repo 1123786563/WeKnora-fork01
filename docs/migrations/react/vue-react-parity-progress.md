@@ -1292,3 +1292,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 主题应用功能修复集成（dd537b63）：live 暗色扫描发现 React 全局主题不生效（weknora:theme-changed 零监听、启动不应用 theme-mode；Vue useTheme.initTheme 全局应用）——domain theme.ts 纯模块（effectiveTheme/applyThemeToDocument，matchMedia 注入）2 测 + apps/web/src/theme.ts initTheme 启动/事件/OS 三通道 + main.tsx 启动调用 + vite/tsconfig 别名；shared 420/420、web 681/681、typecheck 0、build ✓。
 - 登记未移植：Vue 的 Wails 原生窗体 chrome 同步（桌面壳专属，React web 不适用）。
 - 暗色双端截图 8 张入库 dark-theme-20260914/（供主题 parity 后续目检）。
+
+## 2026-09-14 Round N+8（终）— FAQ A4 tag_name 补全
+
+- tag_name 裁决落地（92a7f982）：api-client FAQEntryPayload 增可选 tag_name（后端 faq.go:336 支持）；parseExcelFile 读取 标签/分类/tag_name 列（Vue :2029）且 normalizeExcelPayload 恒发 tag_name（Vue :2072 语义，空列发 ''）；TDD 红→绿（3/3），faq 全套 26/26、typecheck:web 0。
+- A4 全链闭环：vendored xlsx（a4d223bc）+ tag_name（92a7f982）——Excel 导入从 unsupportedFormat 占位升级为 Vue 级全功能。
+
