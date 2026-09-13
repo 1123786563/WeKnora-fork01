@@ -501,3 +501,80 @@ test('the files browser renders SKILL.md as markdown with the frontmatter table'
     document.body.replaceChildren();
   }
 });
+
+// --- Zip upload progress (SkillSettings.vue:208 + SandboxSkillsPanel.vue:64-72) ------
+
+const { formatMessage: fmt } = await import('@weknora/i18n');
+const {
+  SkillUploadProgress,
+  registerSkillCatalogWithProgress,
+  uploadPercentFromProgress,
+} = await import('./SkillSettingsPanel.tsx');
+const { uploadProgressListener } = await import('../platform/http.ts');
+
+test('upload percent math mirrors the Vue XHR byte calculation', () => {
+  // Vue api layer: Math.round((loaded * 100) / total) (frontend/src/api/system/index.ts:1117),
+  // clamped like KnowledgeBaseList.vue clampProgress (1601).
+  assert.equal(uploadPercentFromProgress({ loaded: 0, total: 1000 }), 0);
+  assert.equal(uploadPercentFromProgress({ loaded: 475, total: 1000 }), 48);
+  assert.equal(uploadPercentFromProgress({ loaded: 1500, total: 1000 }), 100);
+  assert.equal(uploadPercentFromProgress({ loaded: 12, total: 0 }), 0);
+});
+
+test('the shared skillUploading key formats the percent text', () => {
+  assert.equal(fmt('en-US', 'settings.sandbox.skillUploading', { percent: 42 }), 'Uploading 42%');
+  assert.equal(fmt('zh-CN', 'settings.sandbox.skillUploading', { percent: 7 }).includes('7'), true);
+});
+
+test('SkillUploadProgress renders the percent text plus a progressbar', () => {
+  const t = (key: string, values?: Record<string, string | number>) =>
+    values ? 'Uploading ' + String(values.percent) + '%' : key;
+  const html = renderToStaticMarkup(React.createElement(SkillUploadProgress, { percent: 42, t }));
+  assert.match(html, /Uploading 42%/);
+  assert.match(html, /role="status"/);
+  assert.match(html, /role="progressbar"/);
+  assert.match(html, /aria-valuenow="42"/);
+  assert.match(html, /width:42%/);
+});
+
+test('skill catalog register streams upload percent through the transport channel', async () => {
+  const realCreate = URL.createObjectURL;
+  const realRevoke = URL.revokeObjectURL;
+  const revoked: string[] = [];
+  let counter = 0;
+  (URL as unknown as { createObjectURL: (value: Blob) => string }).createObjectURL = () => 'blob:skill-' + (counter += 1);
+  (URL as unknown as { revokeObjectURL: (uri: string) => void }).revokeObjectURL = (uri: string) => { revoked.push(uri); };
+  try {
+    const captured: Array<Record<string, unknown>> = [];
+    const client = {
+      configuration: {
+        skills: {
+          catalog: {
+            register: async (input: { file: Record<string, unknown> }) => {
+              captured.push(input.file);
+              return { id: 'cat-9', name: 'PDF' };
+            },
+          },
+        },
+      },
+    };
+    const percents: number[] = [];
+    const file = new File(['zip-bytes'], 'skill.zip', { type: 'application/zip' });
+    const pending = registerSkillCatalogWithProgress(client as never, file, (percent) => percents.push(percent));
+    // The helper registers the observer synchronously before its first await,
+    // so the uri and the listener are observable without yielding.
+    const uri = String(captured[0]!.uri);
+    const observer = uploadProgressListener(uri);
+    assert.ok(observer, 'the register call registers its progress observer');
+    observer({ loaded: 250, total: 1000 });
+    observer({ loaded: 1000, total: 1000 });
+    const result = (await pending) as { id: string };
+    assert.deepEqual(percents, [25, 100]);
+    assert.deepEqual(captured[0], { uri, name: 'skill.zip', type: 'application/zip', size: 9 });
+    assert.equal(result.id, 'cat-9');
+    assert.equal(uploadProgressListener(uri), undefined, 'the observer is released after completion');
+  } finally {
+    URL.createObjectURL = realCreate;
+    URL.revokeObjectURL = realRevoke;
+  }
+});

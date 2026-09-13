@@ -4,6 +4,7 @@ import { initialSkillTimelineState, installProgressPercent, reduceSkillTimelineF
 import { Button, Card, Dialog, Status } from '@weknora/ui';
 import { renderChatMarkdown } from '@weknora/views';
 import { createTranslator, useAppLocale } from '../i18n.ts';
+import { observeUploadProgress } from '../platform/http.ts';
 import './skill-settings.css';
 import {
   MAX_ENV_VALUE_BYTES, adminSkillEnvClearPayload, backendLabelKey, buildSkillFileTree, canClearAdminSkillEnv,
@@ -613,6 +614,55 @@ function SandboxPickList({ item, configs, mode, sessionIds, targetIds, onToggle,
   </div>;
 }
 
+/** Byte-level XHR progress -> percent, exactly the Vue api math (frontend/src/api/system/index.ts:1117)
+ *  plus the KnowledgeBaseList.vue:1601 clamp. */
+export function uploadPercentFromProgress(progress: { loaded: number; total: number }): number {
+  if (!progress.total || progress.total <= 0) return 0;
+  return Math.min(100, Math.max(0, Math.round((progress.loaded * 100) / progress.total)));
+}
+
+/** Upload slice of the add-skill drawer: percent text + small bar
+ *  (SkillSettings.vue:208 t-progress + SandboxSkillsPanel.vue:64-72 skillUploading text). */
+export function SkillUploadProgress({ percent, t }: {
+  percent: number;
+  t: (key: string, values?: Record<string, string | number>) => string;
+}) {
+  return (
+    <div className="skill-upload-progress" role="status">
+      <span className="upload-file-name">{t('settings.sandbox.skillUploading', { percent })}</span>
+      <div
+        className="skill-upload-progress__bar"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percent}
+      >
+        <div className="skill-upload-progress__fill" style={{ width: `${percent}%` }} />
+      </div>
+    </div>
+  );
+}
+
+/** Registers the catalog zip with byte-level upload progress. The panel mints
+ *  the blob: source itself so the web transport can key its progress observer
+ *  (the api-client bridge passes a NativeFileSource through untouched). */
+export async function registerSkillCatalogWithProgress(
+  client: WeKnoraClient,
+  file: File,
+  onPercent: (percent: number) => void,
+  signal?: AbortSignal,
+): Promise<SkillCatalog> {
+  const uri = URL.createObjectURL(file);
+  const stopObserving = observeUploadProgress(uri, (progress) => onPercent(uploadPercentFromProgress(progress)));
+  try {
+    return await client.configuration.skills.catalog.register({
+      file: { uri, name: file.name || 'file', type: file.type || 'application/zip', size: file.size },
+      ...(signal === undefined ? {} : { signal }),
+    });
+  } finally {
+    stopObserving();
+  }
+}
 /** Two-step add drawer: register (source or zip) then pick sandboxes (SkillSettings.vue:132-265, 981-1060). */
 function AddSkillWizard({ client, open, catalog, configs, installer, t, onClose, onCatalogChanged, onToast, onManage }: {
   client: WeKnoraClient;
@@ -631,6 +681,7 @@ function AddSkillWizard({ client, open, catalog, configs, installer, t, onClose,
   const [source, setSource] = useState('');
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadPercent, setUploadPercent] = useState(0);
   const [addingFromSource, setAddingFromSource] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [targetIds, setTargetIds] = useState<string[]>([]);
@@ -641,7 +692,7 @@ function AddSkillWizard({ client, open, catalog, configs, installer, t, onClose,
   useEffect(() => {
     if (!open) return;
     setStep(0); setRegisteredId(''); setSource(''); setPendingFile(null);
-    setTargetIds([]); setSessionIds([]); setError(null); setUploading(false); setAddingFromSource(false);
+    setTargetIds([]); setSessionIds([]); setError(null); setUploading(false); setUploadPercent(0); setAddingFromSource(false);
   }, [open]);
 
   const addBusy = uploading || addingFromSource;
@@ -696,7 +747,8 @@ function AddSkillWizard({ client, open, catalog, configs, installer, t, onClose,
       let result: SkillCatalog;
       if (pendingFile) {
         setUploading(true);
-        result = await client.configuration.skills.catalog.register({ file: pendingFile });
+        setUploadPercent(0);
+        result = await registerSkillCatalogWithProgress(client, pendingFile, setUploadPercent);
       } else {
         setAddingFromSource(true);
         result = await client.configuration.skills.catalog.register({ source: trimmed });
@@ -714,6 +766,7 @@ function AddSkillWizard({ client, open, catalog, configs, installer, t, onClose,
       setError(skillRegisterErrorMessage(cause, t, Boolean(pendingFile)));
     } finally {
       setUploading(false);
+      setUploadPercent(0);
       setAddingFromSource(false);
     }
   }
@@ -786,7 +839,7 @@ function AddSkillWizard({ client, open, catalog, configs, installer, t, onClose,
         <p className="wk-muted">{t('settings.sandbox.skillUploadSectionHint', { size: maxSkillBundleMB() })}</p>
         <input ref={fileInputRef} type="file" accept=".zip,application/zip" className="file-input-hidden" disabled={addBusy || Boolean(registeredId)} onChange={(event) => acceptFile(event.currentTarget.files?.[0] ?? null)} />
         <div className={`file-upload-area${pendingFile ? ' has-file' : ''}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); acceptFile(event.dataTransfer.files?.[0] ?? null); }}>
-          {pendingFile ? <span className="upload-file-name">{t('settings.skills.addFileSelected', { name: pendingFile.name })}</span> : <>
+          {uploading ? <SkillUploadProgress percent={uploadPercent} t={t} /> : pendingFile ? <span className="upload-file-name">{t('settings.skills.addFileSelected', { name: pendingFile.name })}</span> : <>
             <span className="upload-primary-text">{t('settings.sandbox.skillUploadClick')}</span>
             <span className="upload-secondary-text">{t('settings.sandbox.skillUploadDrag')}</span>
           </>}

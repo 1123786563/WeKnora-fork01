@@ -16,6 +16,35 @@ export interface UploadEntryState {
   entry: UploadEntry;
   status: UploadEntryStatus;
   message?: string;
+  /** Byte-backed upload percent (0-100) while uploading; 100 once done. */
+  progress?: number;
+}
+
+/**
+ * Percent from byte-level upload progress — the exact Vue api math
+ * (frontend/src/api/system/index.ts:1117 Math.round(loaded*100/total)) plus the
+ * KnowledgeBaseList.vue:1601 clampProgress guard for unknown totals.
+ */
+export function uploadProgressPercent(progress: { loaded: number; total: number }): number {
+  if (!progress.total || progress.total <= 0) return 0;
+  return Math.min(100, Math.max(0, Math.round((progress.loaded * 100) / progress.total)));
+}
+
+/** Clamp any reported percent into 0-100 (KnowledgeBaseList.vue:1601). */
+export function clampUploadPercent(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(100, Math.max(0, Math.round(value)));
+}
+
+/**
+ * Batch percent for the upload mask — mirrors the Vue upload panel aggregate
+ * (KnowledgeBaseList.vue:1586-1595): the mean of the per-task progress values,
+ * rounded and clamped.
+ */
+export function batchUploadProgress(states: readonly UploadEntryState[]): number {
+  if (states.length === 0) return 0;
+  const sum = states.reduce((total, state) => total + (state.status === 'done' ? 100 : state.progress ?? 0), 0);
+  return clampUploadPercent(sum / states.length);
 }
 
 /** Collect a FileList/drop into stable entries before the confirm dialog. */
@@ -1406,8 +1435,17 @@ export interface RunUploadPipelineInput {
   entries: readonly UploadEntry[];
   tagIds?: string[];
   signal?: AbortSignal;
-  /** One call per file; resolves with the created document. */
-  upload(entry: UploadEntry, tagIds: string[] | undefined, signal: AbortSignal | undefined): Promise<unknown>;
+  /**
+   * One call per file; resolves with the created document. onProgress receives
+   * a clamped 0-100 percent derived from the transport's byte-level upload
+   * events (Vue uploadKnowledgeFile onProgress parity).
+   */
+  upload(
+    entry: UploadEntry,
+    tagIds: string[] | undefined,
+    signal: AbortSignal | undefined,
+    onProgress?: (percent: number) => void,
+  ): Promise<unknown>;
   onStateChange?(states: readonly UploadEntryState[]): void;
 }
 
@@ -1424,10 +1462,17 @@ export async function runUploadPipeline(input: RunUploadPipelineInput): Promise<
     if (input.signal?.aborted) break;
     const state = states[index];
     state.status = 'uploading';
+    state.progress = 0;
     emit();
     try {
-      await input.upload(state.entry, input.tagIds, input.signal);
+      await input.upload(state.entry, input.tagIds, input.signal, (percent) => {
+        const next = clampUploadPercent(percent);
+        if (next === state.progress) return;
+        state.progress = next;
+        emit();
+      });
       state.status = 'done';
+      state.progress = 100;
     } catch (cause) {
       state.status = 'error';
       state.message = cause instanceof Error ? cause.message : 'Upload failed';

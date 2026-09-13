@@ -513,3 +513,22 @@ test('graph section copy resolves five locales from the ported Vue table', () =>
   assert.equal(uploadConfirmMessage('en-US', 'upload.uploadFolder'), 'Upload Folder');
   assert.equal(uploadConfirmMessage('zh-CN', 'common.confirm'), '确认');
 });
+
+// --- Upload progress mask (Vue upload-mask.vue parity + percent) -------------------
+
+const { UploadProgressMask } = await import('./KnowledgeDocumentsPage.tsx');
+
+test('upload progress mask renders the percent text and bar like the Vue mask', () => {
+  const html = renderToStaticMarkup(React.createElement(UploadProgressMask, { percent: 42 }));
+  assert.match(html, /Uploading 42%/);
+  assert.match(html, /role="status"/);
+  assert.match(html, /role="progressbar"/);
+  assert.match(html, /aria-valuenow="42"/);
+  assert.match(html, /width:42%/);
+});
+
+test('upload progress mask clamps out-of-range percents', () => {
+  const html = renderToStaticMarkup(React.createElement(UploadProgressMask, { percent: 140 }));
+  assert.match(html, /Uploading 100%/);
+  assert.match(html, /aria-valuenow="100"/);
+});

@@ -14,6 +14,12 @@ export interface NativeFileSource {
   size?: number;
 }
 
+/** Byte-level upload progress, mirroring the browser XHR upload progress event. */
+export interface UploadProgressEvent {
+  loaded: number;
+  total: number;
+}
+
 export interface NativeMultipartFileRequest {
   method: string;
   url: string;
@@ -21,6 +27,11 @@ export interface NativeMultipartFileRequest {
   file: NativeFileSource;
   fields: Record<string, string>;
   signal?: AbortSignal;
+  /**
+   * Optional sink for byte-granular upload progress. When provided, browser
+   * transports use their XHR upload path; without it they keep the fetch path.
+   */
+  onProgress?: (progress: UploadProgressEvent) => void;
 }
 
 export interface HttpResult {

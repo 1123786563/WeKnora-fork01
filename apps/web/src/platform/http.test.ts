@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { FetchLike } from '@weknora/api-client';
-import { createBrowserTransport } from './http.ts';
+import { createBrowserTransport, observeUploadProgress, uploadProgressListener } from './http.ts';
 
 test('injects scoped auth headers without changing the shared transport', async () => {
   let seen: { url: string; headers: Record<string, string> } | undefined;
@@ -236,4 +236,164 @@ test('does not refresh Embed stream responses', async () => {
   const result = await transport.sendStream!({ method: 'GET', url: 'https://api.test/embed/chat', headers: {} });
   assert.equal(result.status, 401);
   assert.equal(refreshCalls, 0);
+});
+
+// --- Multipart upload progress (browser XHR path) ---------------------------------
+
+type XhrProgressEvent = { loaded: number; total: number; lengthComputable: boolean };
+
+class StubXHR {
+  static instances: StubXHR[] = [];
+  status = 0;
+  responseText = '';
+  method = '';
+  url = '';
+  body: FormData | string | null | undefined;
+  headers: Record<string, string> = {};
+  upload = { onprogress: null as ((event: XhrProgressEvent) => void) | null };
+  onload: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  onabort: (() => void) | null = null;
+
+  constructor() {
+    StubXHR.instances.push(this);
+  }
+
+  open(method: string, url: string): void {
+    this.method = method;
+    this.url = url;
+  }
+
+  setRequestHeader(name: string, value: string): void {
+    this.headers[name] = value;
+  }
+
+  send(body?: FormData | string | null): void {
+    this.body = body;
+  }
+
+  abort(): void {
+    this.onabort?.();
+  }
+
+  getAllResponseHeaders(): string {
+    return 'content-type: application/json\r\nx-request-id: upload-req-1\r\n';
+  }
+
+  respond(status: number, body: unknown): void {
+    this.status = status;
+    this.responseText = JSON.stringify(body);
+    this.onload?.();
+  }
+}
+
+function withXhrStub(run: () => Promise<void>): Promise<void> {
+  const globalScope = globalThis as unknown as { XMLHttpRequest?: unknown };
+  globalScope.XMLHttpRequest = StubXHR;
+  StubXHR.instances = [];
+  return run().finally(() => {
+    delete globalScope.XMLHttpRequest;
+  });
+}
+
+test('routes observed uploads through XHR with scoped auth and byte progress', async () => {
+  const transport = createBrowserTransport({
+    credential: { kind: 'bearer', accessToken: 'upload-access' },
+    tenantId: 'tenant-upload',
+    locale: 'zh-CN',
+    requestId: () => 'upload-request-id',
+    fetcher: (async (url) => {
+      assert.equal(String(url), 'blob:doc-1', 'only the blob source is fetched');
+      return {
+        status: 200,
+        headers: new Headers(),
+        json: async () => ({}),
+        text: async () => '',
+        blob: async () => new Blob(['pdf-bytes'], { type: 'application/pdf' }),
+      };
+    }) satisfies FetchLike,
+  });
+
+  await withXhrStub(async () => {
+    const progress: number[] = [];
+    const stop = observeUploadProgress('blob:doc-1', (event) => {
+      progress.push(event.total ? Math.round((event.loaded * 100) / event.total) : 0);
+    });
+    const pending = transport.sendMultipartFile!({
+      method: 'POST',
+      url: 'https://api.test/api/v1/knowledge-bases/kb-1/knowledge/file',
+      headers: { accept: 'application/json' },
+      file: { uri: 'blob:doc-1', name: 'spec.pdf', type: 'application/pdf', size: 9 },
+      fields: { tag_ids: 'tag-1' },
+    });
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    const xhr = StubXHR.instances.at(-1)!;
+    xhr.upload.onprogress?.({ loaded: 3, total: 12, lengthComputable: true });
+    xhr.respond(200, { success: true, data: { id: 'doc-1' } });
+    const result = await pending;
+    stop();
+
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.body, { success: true, data: { id: 'doc-1' } });
+    assert.deepEqual(progress, [25], 'byte-level XHR progress reaches the observer');
+    assert.equal(xhr.method, 'POST');
+    assert.equal(xhr.url, 'https://api.test/api/v1/knowledge-bases/kb-1/knowledge/file');
+    assert.equal(xhr.headers.authorization, 'Bearer upload-access');
+    assert.equal(xhr.headers['x-tenant-id'], 'tenant-upload');
+    assert.equal(xhr.headers['accept-language'], 'zh-CN');
+    assert.equal(xhr.headers['x-request-id'], 'upload-request-id');
+    assert.ok(xhr.body instanceof FormData);
+    assert.equal((xhr.body as FormData).get('tag_ids'), 'tag-1');
+    assert.ok((xhr.body as FormData).get('file') instanceof Blob);
+    // The observer is consumed by the upload it described.
+    assert.equal(uploadProgressListener('blob:doc-1'), undefined);
+  });
+});
+
+test('keeps the fetch multipart path when no progress observer is registered', async () => {
+  const uploads: Array<{ body: unknown; headers: Record<string, string> }> = [];
+  const transport = createBrowserTransport({
+    credential: { kind: 'bearer', accessToken: 'fetch-upload-access' },
+    fetcher: (async (url, init) => {
+      if (String(url) === 'blob:doc-2') {
+        return {
+          status: 200,
+          headers: new Headers(),
+          json: async () => ({}),
+          text: async () => '',
+          blob: async () => new Blob(['zip'], { type: 'application/zip' }),
+        };
+      }
+      uploads.push({ body: init?.body, headers: init?.headers ?? {} });
+      return {
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        json: async () => ({ success: true, data: { id: 'doc-2' } }),
+        text: async () => '',
+      };
+    }) satisfies FetchLike,
+  });
+
+  await withXhrStub(async () => {
+    const result = await transport.sendMultipartFile!({
+      method: 'POST',
+      url: 'https://api.test/api/v1/skills/catalog',
+      headers: { accept: 'application/json' },
+      file: { uri: 'blob:doc-2', name: 'skill.zip', type: 'application/zip', size: 3 },
+      fields: {},
+    });
+
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.body, { success: true, data: { id: 'doc-2' } });
+    assert.equal(uploads.length, 1);
+    assert.ok(uploads[0]!.body instanceof FormData);
+    assert.equal(uploads[0]!.headers.authorization, 'Bearer fetch-upload-access');
+    assert.equal(StubXHR.instances.length, 0, 'unobserved uploads stay on fetch');
+  });
+});
+
+test('stop() releases a progress observer before the upload runs', async () => {
+  const stop = observeUploadProgress('blob:doc-3', () => {});
+  stop();
+  assert.equal(uploadProgressListener('blob:doc-3'), undefined);
 });

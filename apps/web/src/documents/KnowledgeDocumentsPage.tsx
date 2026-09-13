@@ -7,13 +7,16 @@ import {
 import { flattenKnowledgeFolders as flattenFolders } from "@weknora/domain/knowledge/folders";
 import { Button, Card, Dialog, Status } from "@weknora/ui";
 import { createTranslator, useAppLocale } from "../i18n.ts";
+import { observeUploadProgress } from "../platform/http.ts";
 import {
   applyUploadOverrides,
   asrSectionIssue,
   batchHasAudio,
   batchHasImages,
   batchUploadExtensions,
+  batchUploadProgress,
   buildUploadConfirmOverrides,
+  clampUploadPercent,
   commitFolderName,
   defaultUploadConfirmSection,
   destinationBreadcrumb,
@@ -35,6 +38,7 @@ import {
   uploadConfirmT,
   uploadEntryDisplayTitle,
   uploadEntryRelativeDir,
+  uploadProgressPercent,
   uploadSectionStatus,
   type FolderOption,
   type Locale,
@@ -1407,6 +1411,33 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
   );
 }
 
+/**
+ * Upload mask shown over the dropzone while a batch uploads: percent text plus
+ * a thin bar. Vue parity: the global upload mask (upload-mask.vue, shown via
+ * platform/index.vue ismask) carries the upload title, and the per-KB upload
+ * panel (KnowledgeBaseList.vue:67-68) renders the percent as a fill-width bar;
+ * the port puts that percent directly on the mask.
+ */
+export function UploadProgressMask({ percent }: { percent: number }) {
+  const clamped = clampUploadPercent(percent);
+  return (
+    <div className="wk-upload-mask" role="status" aria-live="polite">
+      <div className="wk-upload-mask__card">
+        <span className="wk-upload-mask__label">{`Uploading ${clamped}%`}</span>
+        <div
+          className="wk-upload-mask__bar"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={clamped}
+        >
+          <div className="wk-upload-mask__fill" style={{ width: `${clamped}%` }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // --- Page ---------------------------------------------------------------------
 
 export function KnowledgeDocumentsPage({
@@ -1942,25 +1973,38 @@ export function KnowledgeDocumentsPage({
         entries: pendingEntries,
         tagIds: pendingTagIds,
         signal: controller.signal,
-        upload: async (entry, tagIds, signal) => {
-          const created = await client.knowledgeBases.documents.upload(
-            knowledgeBaseId,
-            {
-              file: entry.file,
-              fileName: entry.name,
-              tag_ids: tagIds,
-              process_config: processConfig,
-            },
-            signal,
-          );
-          if (uploadTargetFolder && created.id) {
-            await client.knowledgeBases.documents.moveToFolder(
+        upload: async (entry, tagIds, signal, onProgress) => {
+          // Vue parity: uploadKnowledgeFile(..., onProgress) streams upload
+          // percent (frontend/src/api/knowledge-base/index.ts:207-231). The page
+          // mints the blob: source itself so the transport can key its byte
+          // progress observer, then hands the native source to the client.
+          const file = entry.file;
+          const uri = URL.createObjectURL(file);
+          const stopObserving = observeUploadProgress(uri, (progress) => {
+            onProgress?.(uploadProgressPercent(progress));
+          });
+          try {
+            const created = await client.knowledgeBases.documents.upload(
               knowledgeBaseId,
-              [created.id],
-              uploadTargetFolder,
+              {
+                file: { uri, name: entry.name || file.name || "file", type: file.type || "application/octet-stream", size: file.size },
+                fileName: entry.name,
+                tag_ids: tagIds,
+                process_config: processConfig,
+              },
+              signal,
             );
+            if (uploadTargetFolder && created.id) {
+              await client.knowledgeBases.documents.moveToFolder(
+                knowledgeBaseId,
+                [created.id],
+                uploadTargetFolder,
+              );
+            }
+            return created;
+          } finally {
+            stopObserving();
           }
-          return created;
         },
         onStateChange: (states) => {
           setUploadStates(states);
@@ -1968,7 +2012,7 @@ export function KnowledgeDocumentsPage({
             uploadId: `${uploadBatchId}-${index}`,
             kbId: knowledgeBaseId,
             fileName: state.entry.name,
-            progress: state.status === "done" || state.status === "error" ? 100 : state.status === "uploading" ? 50 : 0,
+            progress: state.status === "done" || state.status === "error" ? 100 : state.status === "uploading" ? state.progress ?? 0 : 0,
           }));
           states.forEach((state, index) => {
             if (state.status !== "done" && state.status !== "error") return;
@@ -2443,6 +2487,9 @@ export function KnowledgeDocumentsPage({
             <p className="wk-dropzone-hint" role="status">
               Drop files to stage them for upload
             </p>
+          ) : null}
+          {uploading && canContribute ? (
+            <UploadProgressMask percent={batchUploadProgress(uploadStates)} />
           ) : null}
           <aside className="wk-folder-panel">
             <strong>{t("knowledgeBase.documents.folders")}</strong>

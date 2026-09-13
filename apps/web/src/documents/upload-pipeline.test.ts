@@ -37,6 +37,8 @@ import {
   uploadSectionStatus,
   uploadSummary,
   uploadUrlExtension,
+  uploadProgressPercent,
+  batchUploadProgress,
   type UploadConfirmUIState,
   type UploadEntry,
 } from './upload-pipeline.ts';
@@ -508,4 +510,49 @@ test('graph default example matches the Vue GraphSettings fixture', () => {
   assert.equal(GRAPH_EXTRACT_DEFAULT_EXAMPLE.nodes.length, 4);
   assert.equal(GRAPH_EXTRACT_DEFAULT_EXAMPLE.relations.length, 3);
   assert.match(GRAPH_EXTRACT_DEFAULT_EXAMPLE.text, /Romeo and Juliet/);
+});
+
+// --- Byte-backed upload progress (Vue uploadKnowledgeFile + KnowledgeBaseList panel) --
+
+test('uploadProgressPercent mirrors the Vue byte math and clamps', () => {
+  // frontend/src/api/system/index.ts:1117 — Math.round((loaded * 100) / total).
+  assert.equal(uploadProgressPercent({ loaded: 0, total: 1000 }), 0);
+  assert.equal(uploadProgressPercent({ loaded: 333, total: 1000 }), 33);
+  assert.equal(uploadProgressPercent({ loaded: 1500, total: 1000 }), 100);
+  // KnowledgeBaseList.vue:1601 clampProgress guards unknown totals.
+  assert.equal(uploadProgressPercent({ loaded: 12, total: 0 }), 0);
+});
+
+test('pipeline forwards byte-backed progress into per-file state', async () => {
+  const snapshots: Array<Array<{ name: string; status: string; progress: number }>> = [];
+  const final = await runUploadPipeline({
+    entries: toUploadEntries([entry('a.pdf'), entry('b.pdf')]),
+    upload: async (_item, _tagIds, _signal, onProgress) => {
+      onProgress?.(25);
+      onProgress?.(50);
+      onProgress?.(140); // clamped to 100 like Vue clampProgress
+    },
+    onStateChange: (states) => snapshots.push(states.map((state) => ({
+      name: state.entry.name,
+      status: state.status,
+      progress: state.progress ?? 0,
+    }))),
+  });
+  const whileUploading = snapshots.find((snapshot) => snapshot[0]!.status === 'uploading' && snapshot[0]!.progress === 50);
+  assert.ok(whileUploading, 'per-file percent is emitted while uploading');
+  assert.deepEqual(final.map((state) => ({ status: state.status, progress: state.progress })), [
+    { status: 'done', progress: 100 },
+    { status: 'done', progress: 100 },
+  ]);
+});
+
+test('batchUploadProgress averages per-file progress like the Vue upload panel', () => {
+  // KnowledgeBaseList.vue:1586-1595 — mean of per-task progress, rounded, clamped.
+  const states = [
+    { entry: entryWithSize('a.pdf', 1), status: 'done' as const, progress: 100 },
+    { entry: entryWithSize('b.pdf', 1), status: 'uploading' as const, progress: 40 },
+    { entry: entryWithSize('c.pdf', 1), status: 'pending' as const, progress: 0 },
+  ];
+  assert.equal(batchUploadProgress(states), Math.round((100 + 40 + 0) / 3));
+  assert.equal(batchUploadProgress([]), 0);
 });

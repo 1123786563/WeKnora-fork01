@@ -335,3 +335,54 @@
   width: 100%;
   box-sizing: border-box;
 }
+
+/* --- Upload progress mask (upload-mask.vue parity with percent, bar ported from
+    KnowledgeBaseList.vue:67-68 .progress-bar / .progress-bar-inner) ---------- */
+
+.wk-documents-layout.wk-dropzone {
+  position: relative;
+}
+
+.wk-upload-mask {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 8px;
+  z-index: 5;
+}
+
+.wk-upload-mask__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 1.5rem;
+  border: 1px solid var(--wk-border, #e4e7ec);
+  border-radius: 8px;
+  background: var(--wk-surface, #fff);
+  box-shadow: 0 4px 12px rgba(16, 24, 40, 0.08);
+}
+
+.wk-upload-mask__label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--wk-accent, #4a7dff);
+}
+
+.wk-upload-mask__bar {
+  width: 16rem;
+  max-width: 70vw;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--wk-border, #e4e7ec);
+  overflow: hidden;
+}
+
+.wk-upload-mask__fill {
+  height: 100%;
+  background: var(--wk-accent, #4a7dff);
+  transition: width 0.2s ease;
+}
