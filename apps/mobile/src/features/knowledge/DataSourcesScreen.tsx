@@ -3,7 +3,7 @@ import { ActivityIndicator, Alert, FlatList, Pressable, SafeAreaView, ScrollView
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { DataSource, DataSourceConnectorType } from '@weknora/api-client';
 import { useMobileRuntime } from '../../runtime.tsx';
-import { dataSourceStatusLabel, safeDataSourceType } from './data-sources.ts';
+import { canManageDataSources, dataSourceStatusLabel, safeDataSourceType } from './data-sources.ts';
 import { buildNativeDataSourceInput, nativeDataSourceDraftFrom, type NativeDataSourceDraft } from './data-source-form.ts';
 
 const EMPTY_DRAFT: NativeDataSourceDraft = { name: '', type: '', schedule: '0 0 */6 * * *', mode: 'incremental', conflict: 'overwrite', deletions: true, credentialsText: '', settingsText: '' };
@@ -21,7 +21,7 @@ export function DataSourcesScreen() {
   const runtime = useMobileRuntime();
   const router = useRouter();
   const workspaceRole = useMemo(() => runtime.workspaces.find((workspace) => String(workspace.id) === runtime.tenantId)?.role, [runtime.tenantId, runtime.workspaces]);
-  const canManage = workspaceRole === 'owner' || workspaceRole === 'admin';
+  const canManage = canManageDataSources(workspaceRole);
   const [sources, setSources] = useState<DataSource[]>([]);
   const [types, setTypes] = useState<DataSourceConnectorType[]>([]);
   const [loading, setLoading] = useState(true);

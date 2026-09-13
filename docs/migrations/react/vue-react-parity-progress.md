@@ -767,6 +767,12 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   full native-host tests pass (91/91). Connector-specific forms, resource
   selection, device evidence, and real backend 403 verification remain open.
 
+- **Mobile data-source rule extraction:** the owner/admin mutation rule is now
+  centralized in `canManageDataSources` and covered by role-matrix tests,
+  while the screen consumes that helper. Focused tests pass 2/2 and mobile
+  typecheck passes. Full connector/resource/form parity and native/backend
+  evidence remain open.
+
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
 - **Rows:** any rows proposed for `accepted`; never all rows by default.
 - **Files owned:** `docs/migrations/react/vue-react-parity-matrix.md`, `docs/migrations/react/vue-react-parity-progress.md`, `docs/migrations/react/evidence/vue-react-parity/README.md`, `docs/migrations/react/evidence/vue-react-parity/screenshot-matrix.md`, and the row-specific `docs/migrations/react/evidence/vue-react-parity/<date>-<row-group>.md` evidence file only.
