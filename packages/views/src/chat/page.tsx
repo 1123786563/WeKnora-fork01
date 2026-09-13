@@ -119,6 +119,10 @@ export interface ChatPageProps {
   onCloseTerminal?(): void;
   /** Display-only chat model chip label in the composer control bar. */
   modelLabel?: string;
+  /** Context spec rendered as the Vue .model-selector-ctx suffix span. */
+  modelContext?: string;
+  /** True when the context spec is the 200K default (dims the suffix). */
+  modelContextIsDefault?: boolean;
 }
 
 export function messageReferenceValues(messages: readonly ChatMessage[]): unknown[] {
@@ -418,6 +422,8 @@ export function ChatPage(props: ChatPageProps) {
           selectedAgentId={props.selectedAgentId}
           onAgentChange={props.onAgentChange}
           modelLabel={props.modelLabel}
+          modelContext={props.modelContext}
+          modelContextIsDefault={props.modelContextIsDefault}
           streaming={streaming}
           onStop={props.onStopStream}
         />

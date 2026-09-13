@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { AgentConfiguration, ChatMessage, ChatSession, MessageSuggestionSet, WeKnoraClient } from '@weknora/api-client';
+import type { AgentConfiguration, ChatMessage, ChatSession, MessageSuggestionSet, ModelConfiguration, WeKnoraClient } from '@weknora/api-client';
 import type { ChatStreamEvent } from '@weknora/contracts';
 import { chatDraftKey } from '@weknora/domain/chat/draft';
 import { initialChatStreamState, reduceChatStream, type ChatApproval } from '@weknora/domain/chat/reducer';
@@ -10,6 +10,8 @@ import { openContextualGuide } from '@weknora/views';
 import type { ScopeController } from '@weknora/domain/scope';
 import { chatSessionIdFromPath, SHELL_SESSION_ROUTE_EVENT } from './session-route.ts';
 import { buildWebChatStreamOptions, initialAgentSelection } from './agent-selection.ts';
+import { listChatModels, MODEL_CHIP_NOT_CONFIGURED, resolveChatModelChip } from './model-chip.ts';
+import { readStoredLocale } from '../i18n.ts';
 import { loadStarterQuestions } from './starter-questions.ts';
 import { createWebTerminalController, webSocketTarget, type WebTerminalController, type WebTerminalSnapshot } from './terminal.ts';
 import { saveArtifactDownload } from './artifact-download.ts';
@@ -45,6 +47,9 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   const [streamState, setStreamState] = useState(initialChatStreamState);
   const [agents, setAgents] = useState<AgentConfiguration[]>([]);
   const [disabledAgentIds, setDisabledAgentIds] = useState<string[]>([]);
+  // Chat models for the composer chip (Vue chatResources chatModels); the
+  // KnowledgeQA filter lives in model-chip.ts like the Vue store.
+  const [chatModels, setChatModels] = useState<ModelConfiguration[]>([]);
   // Empty-state suggested questions (creatChat view) come from the selected
   // agent's suggested-questions surface; absent without an agent selection.
   const [starterQuestions, setStarterQuestions] = useState<string[]>([]);
@@ -63,9 +68,26 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   const resumeStartedRef = useRef<Map<string, string>>(new Map());
   const [draft, setDraft] = useState('');
   const [loadingSessions, setLoadingSessions] = useState(true);
-  const [loadingMessages, setLoadingMessages] = useState(false);
+  // Vue Input-field.vue agent-model watch: the selected agent's config.model_id
+  // binds the conversation model. (User last-pick persistence belongs to a
+  // future model-picker slice; the React chat has no model selector yet.)
+  const agentModelId = useMemo(() => {
+    const agent = agents.find((item) => item.id === selectedAgentId);
+    const modelId = (agent?.config as Record<string, unknown> | undefined)?.model_id;
+    return typeof modelId === 'string' ? modelId : undefined;
+  }, [agents, selectedAgentId]);
+  const modelChip = useMemo(() => resolveChatModelChip({
+    models: chatModels,
+    agentModelId,
+    notConfiguredLabel: MODEL_CHIP_NOT_CONFIGURED[readStoredLocale()] ?? MODEL_CHIP_NOT_CONFIGURED['zh-CN'],
+  }), [agentModelId, chatModels]);
+  const modelChipLabel = modelChip.label;
+  const modelChipContext = modelChip.context;
+  const modelChipIsDefault = modelChip.isDefaultContext;
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  // History refresh in-flight flag (Vue sessions.messages loader).
+  const [loadingMessages, setLoadingMessages] = useState(false);
   const [suggestions, setSuggestions] = useState<MessageSuggestionSet | undefined>();
   const suggestionForMessage = useRef<string | null>(null);
   const impressionForSuggestion = useRef<string | null>(null);
@@ -136,6 +158,21 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
         setSelectedAgentId((current) => initialAgentSelection(`?agentId=${encodeURIComponent(current)}`, result.items, result.disabledOwnAgentIds));
       },
       (cause: unknown) => { if (active) setError(cause instanceof Error ? cause.message : 'Unable to load agents'); },
+    );
+    return () => { active = false; };
+  }, [client, scope.signal, scope.scope, scopeController]);
+
+  // Vue Input-field.vue loadChatModels: fetch the model list once so the
+  // composer chip can show the real model name + context spec; a failure is
+  // non-fatal and degrades to the localized 未配置 fallback (Vue logs and
+  // keeps the empty list).
+  useEffect(() => {
+    let active = true;
+    void client.configuration.models.list(scope.signal).then(
+      (result) => {
+        if (active && scopeController.isCurrent(scope.scope)) setChatModels(listChatModels(result));
+      },
+      () => { if (active) setChatModels([]); },
     );
     return () => { active = false; };
   }, [client, scope.signal, scope.scope, scopeController]);
@@ -650,6 +687,9 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     agents={agents.map((agent) => ({ id: agent.id, name: agent.name, disabled: disabledAgentIds.includes(agent.id) }))}
     selectedAgentId={selectedAgentId}
     onAgentChange={selectAgent}
+    modelLabel={modelChipLabel}
+    modelContext={modelChipContext}
+    modelContextIsDefault={modelChipIsDefault}
     starterQuestions={starterQuestions}
     starterQuestionsLoading={starterQuestionsLoading}
     onStarterQuestionClick={(question) => updateDraft(question)}

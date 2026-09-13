@@ -23,6 +23,10 @@ export interface ChatComposerProps {
   onAgentChange?(agentId: string): void;
   /** Display-only chat model chip label (Vue model-selector-trigger). */
   modelLabel?: string;
+  /** Compact context suffix next to the label (Vue model-selector-ctx, e.g. 200K). */
+  modelContext?: string;
+  /** True when the model has no explicit context window (Vue model-selector-ctx is-default). */
+  modelContextIsDefault?: boolean;
   /** Vue control-right swaps send for stop while a reply is streaming. */
   streaming?: boolean;
   onStop?(): void;
@@ -36,7 +40,7 @@ export interface ChatComposerProps {
  * left chips are the agent selector + attachment/@ buttons, right side holds
  * the model chip and the circular green send (or stop) button.
  */
-export function ChatComposer({ draft, disabled = false, onDraftChange, onSubmit, agents, selectedAgentId, onAgentChange, modelLabel, streaming = false, onStop, copy }: ChatComposerProps) {
+export function ChatComposer({ draft, disabled = false, onDraftChange, onSubmit, agents, selectedAgentId, onAgentChange, modelLabel, modelContext, modelContextIsDefault, streaming = false, onStop, copy }: ChatComposerProps) {
   const t = copy ?? resolveChatCopy(resolveChatLocale());
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -83,8 +87,9 @@ export function ChatComposer({ draft, disabled = false, onDraftChange, onSubmit,
           </button>
         </div>
         <div className="wk-chat-control-right">
-          <span className="wk-chat-model-chip" role="note" aria-label={t.modelChip} title={t.modelChip}>
+          <span className="wk-chat-model-chip" role="note" aria-label={modelLabel ?? t.modelChip} title={modelLabel ?? t.modelChip}>
             <span className="wk-chat-model-name">{modelLabel ?? t.modelChip}</span>
+            {modelContext ? <span className={modelContextIsDefault ? 'wk-chat-model-ctx is-default' : 'wk-chat-model-ctx'}>{modelContext}</span> : null}
             <svg className="wk-chat-chip-arrow" width="10" height="10" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8L9.5 4.5H2.5Z" /></svg>
           </span>
           {showStop && onStop ? <button type="button" className="wk-chat-stop wk-chat-send" aria-label={t.stopGeneration} title={t.stopGeneration} onClick={onStop}>

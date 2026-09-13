@@ -3,7 +3,7 @@ import test from 'node:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 import React from 'react';
 
-import { ChatPage } from '@weknora/views';
+import { ChatComposer, ChatPage, resolveChatCopy } from '@weknora/views';
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
@@ -353,4 +353,57 @@ test('session sidebar renders time-group headers, full titles, and the hover ⋯
   assert.match(html, /aria-current="page"/);
   assert.match(html, /修改标题/);
   assert.match(html, /aria-label="更多对话操作"/);
+});
+
+// --- R016 model chip (Vue Input-field.vue model-display parity) ---
+
+const composerBase = {
+  draft: '',
+  onDraftChange: () => undefined,
+  onSubmit: () => undefined,
+};
+
+test('composer chip renders the real model name and the context spec span like Vue', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatComposer, {
+    ...composerBase,
+    copy: resolveChatCopy('zh-CN'),
+    modelLabel: 'mock-stream-model',
+    modelContext: '200K',
+  }));
+  // Vue model-selector-trigger: name span + compact ctx suffix (200K/1M).
+  assert.match(html, /wk-chat-model-name">mock-stream-model</);
+  assert.match(html, /wk-chat-model-ctx">200K</);
+  // The chip's accessible label carries the resolved model, not the placeholder.
+  assert.match(html, /aria-label="mock-stream-model"/);
+});
+
+test('composer chip marks a defaulted context window like the Vue is-default class', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatComposer, {
+    ...composerBase,
+    copy: resolveChatCopy('zh-CN'),
+    modelLabel: 'mock-stream-model',
+    modelContext: '200K',
+    modelContextIsDefault: true,
+  }));
+  assert.match(html, /wk-chat-model-ctx is-default">200K</);
+});
+
+test('composer chip without a resolved model keeps the localized placeholder fallback', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatComposer, {
+    ...composerBase,
+    copy: resolveChatCopy('zh-CN'),
+  }));
+  // Views-level fallback for consumers that pass no modelLabel; the app entry
+  // (ChatRoutePage) always resolves a label, mirroring Vue input.notConfigured.
+  assert.match(html, /对话模型/);
+});
+
+test('chat page flows the resolved model chip label into the composer chip', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatPage, {
+    ...baseProps,
+    modelLabel: 'mock-stream-model 200K',
+  }));
+  assert.match(html, /wk-chat-model-chip/);
+  assert.match(html, /mock-stream-model 200K/);
+  assert.match(html, /aria-label="mock-stream-model 200K"/);
 });

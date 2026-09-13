@@ -523,6 +523,19 @@ main.wk-chat-page.wk-chat-page:has(.wk-chat-sidebar) {
   position: static;
 }
 
+/* Vue .model-selector-ctx: compact context-window suffix (200K / 1M). */
+.wk-chat-model-chip .wk-chat-model-ctx {
+  color: rgba(0, 0, 0, 0.45);
+  flex-shrink: 0;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+
+.wk-chat-model-chip .wk-chat-model-ctx.is-default {
+  opacity: 0.85;
+}
+
 /* Vue .send-btn: circular green button */
 .wk-chat-send {
   align-items: center;
