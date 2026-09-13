@@ -50,6 +50,8 @@ function fixtureRows() {
 
 const baseViewProps = {
   t,
+  editorT: t,
+  client: {} as never,
   viewer: admin,
   loading: false,
   space: 'all',
@@ -61,8 +63,7 @@ const baseViewProps = {
   openMenuId: null as string | null,
   error: null as string | null,
   drawer: null as null,
-  savingBasics: false,
-  saveError: null as string | null,
+  editor: null as null,
   deleteTarget: null as AgentCardModel | null,
   deleting: false,
   collapsedSections: new Set<string>(),
@@ -76,7 +77,8 @@ const baseViewProps = {
   onCreate: noop,
   onCloseDrawer: noop,
   onUseInChat: noop,
-  onSaveBasics: noop,
+  onCloseEditor: noop,
+  onEditorSaved: noop,
   onDeleteConfirm: noop,
   onDeleteCancel: noop,
   onToggleSection: noop,
@@ -257,16 +259,15 @@ test('shared detail drawer shows share scope summary and the use-in-chat action'
   assert.match(html, /在对话中使用/);
 });
 
-test('basics drawer offers editable name and description with save and cancel', () => {
+// basics editing moved into AgentEditorModal (agent-editor.test.tsx covers it);
+// the drawer below is the shared-agent detail view only.
+test('shared detail drawer no longer offers editable basics (replaced by AgentEditorModal)', () => {
   const own = fixtureRows().find((row) => row.id === 'a-own')!;
   const html = renderToStaticMarkup(React.createElement(AgentDetailDrawer, {
-    kind: 'basics', drawerMode: 'edit', agent: own, t, onClose: noop, onUseInChat: noop, onSave: noop, saving: false,
+    kind: 'shared', agent: own, t, onClose: noop, onUseInChat: noop,
   }));
-  assert.match(html, /智能体详情/);
-  assert.match(html, /value="我的助手"/);
-  assert.match(html, /帮我写周报/);
-  assert.match(html, /保存/);
-  assert.match(html, /取消/);
+  assert.match(html, /在对话中使用/);
+  assert.doesNotMatch(html, /name="name"/);
 });
 
 test('delete dialog names the agent and offers confirm/cancel', () => {

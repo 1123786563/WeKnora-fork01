@@ -3,6 +3,8 @@ import type { AgentConfiguration, WeKnoraClient } from '@weknora/api-client';
 import { Status } from '@weknora/ui';
 import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
 import './agents.css';
+import { AgentEditorModal } from './AgentEditorModal.tsx';
+import { makeEditorT } from './agent-editor.ts';
 import {
   agentSectionLabelKey,
   avatarGradient,
@@ -324,16 +326,12 @@ function scopeText(scope: ReturnType<typeof kbScope>, t: Translate, allKey: stri
   return t(noneKey);
 }
 
-export function AgentDetailDrawer({ kind, drawerMode = 'edit', agent, t, onClose, onUseInChat, onSave, saving = false, saveError = null }: {
-  kind: 'shared' | 'basics';
-  drawerMode?: 'create' | 'edit';
+export function AgentDetailDrawer({ kind, agent, t, onClose, onUseInChat }: {
+  kind: 'shared';
   agent: AgentCardModel;
   t: Translate;
   onClose: () => void;
   onUseInChat: (agent: AgentCardModel) => void;
-  onSave?: (agent: AgentCardModel | null, basics: { name: string; description: string }) => void;
-  saving?: boolean;
-  saveError?: string | null;
 }) {
   const config = agent.config;
   return (
@@ -343,50 +341,19 @@ export function AgentDetailDrawer({ kind, drawerMode = 'edit', agent, t, onClose
           <h3 className="wk-agent-drawer-title">{t('agent.detail.title')}</h3>
           <button type="button" className="wk-agent-drawer-close" aria-label={t('common.cancel')} onClick={onClose}><Icon name="close" size={16} /></button>
         </div>
-        {kind === 'basics' ? (
-          <form
-            className="wk-agent-drawer-body"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const form = new FormData(event.currentTarget);
-              onSave?.(drawerMode === 'create' ? null : agent, { name: String(form.get('name') ?? '').trim(), description: String(form.get('description') ?? '').trim() });
-            }}
-          >
-            <div className="wk-agent-drawer-row">
-              <label className="wk-agent-drawer-label" htmlFor="wk-agent-basics-name">{t('agent.title')}</label>
-              <input id="wk-agent-basics-name" name="name" className="wk-agent-drawer-input" defaultValue={agent.name} required maxLength={50} />
-            </div>
-            <div className="wk-agent-drawer-row">
-              <label className="wk-agent-drawer-label" htmlFor="wk-agent-basics-description">{t('agent.noDescription')}</label>
-              <textarea id="wk-agent-basics-description" name="description" className="wk-agent-drawer-textarea" defaultValue={agent.description ?? ''} maxLength={500} rows={4} />
-            </div>
-            <div className="wk-agent-drawer-row">
-              <span className="wk-agent-drawer-label">{t('agent.selector.title')}</span>
-              <span className="wk-agent-drawer-value">{t(config?.agent_mode === 'smart-reasoning' ? 'agent.mode.agent' : 'agent.mode.normal')}</span>
-            </div>
-            {saveError ? <Status tone="error">{saveError}</Status> : null}
-            <div className="wk-agent-drawer-footer">
-              <button type="button" className="wk-agent-btn" onClick={onClose}>{t('common.cancel')}</button>
-              <button type="submit" className="wk-agent-btn wk-agent-btn-primary" disabled={saving}>{saving ? t('common.loading') : t('common.save')}</button>
-            </div>
-          </form>
-        ) : (
-          <>
-            <div className="wk-agent-drawer-body">
-              <div className="wk-agent-drawer-row"><span className="wk-agent-drawer-label">{t('agent.title')}</span><span className="wk-agent-drawer-value">{agent.name}</span></div>
-              <div className="wk-agent-drawer-row"><span className="wk-agent-drawer-label">{t('agent.noDescription')}</span><span className="wk-agent-drawer-value">{agent.description || t('agent.noDescription')}</span></div>
-              <div className="wk-agent-drawer-row"><span className="wk-agent-drawer-label">{t('agent.shareScope.title')}</span><span className="wk-agent-drawer-value wk-agent-drawer-scope">
-                <span>{t('agent.shareScope.knowledgeBase')}: {scopeText(kbScope(config), t, 'agent.shareScope.kbAll', 'agent.shareScope.kbSelected', 'agent.shareScope.kbNone')}</span>
-                <span>{t('agent.shareScope.chatModel')}: {config?.model_id ? t('agent.shareScope.modelConfigured') : t('agent.shareScope.modelNotSet')}</span>
-                <span>{t('agent.shareScope.webSearch')}: {config?.web_search_enabled ? t('agent.shareScope.enabled') : t('agent.shareScope.disabled')}</span>
-                <span>{t('agent.shareScope.mcp')}: {scopeText(mcpScope(config), t, 'agent.shareScope.mcpAll', 'agent.shareScope.mcpSelected', 'agent.shareScope.mcpNone')}</span>
-              </span></div>
-            </div>
-            <div className="wk-agent-drawer-footer">
-              <button type="button" className="wk-agent-btn wk-agent-btn-primary wk-agent-btn-block" onClick={() => onUseInChat(agent)}>{t('agent.detail.useInChat')}</button>
-            </div>
-          </>
-        )}
+        <div className="wk-agent-drawer-body">
+          <div className="wk-agent-drawer-row"><span className="wk-agent-drawer-label">{t('agent.title')}</span><span className="wk-agent-drawer-value">{agent.name}</span></div>
+          <div className="wk-agent-drawer-row"><span className="wk-agent-drawer-label">{t('agent.noDescription')}</span><span className="wk-agent-drawer-value">{agent.description || t('agent.noDescription')}</span></div>
+          <div className="wk-agent-drawer-row"><span className="wk-agent-drawer-label">{t('agent.shareScope.title')}</span><span className="wk-agent-drawer-value wk-agent-drawer-scope">
+            <span>{t('agent.shareScope.knowledgeBase')}: {scopeText(kbScope(config), t, 'agent.shareScope.kbAll', 'agent.shareScope.kbSelected', 'agent.shareScope.kbNone')}</span>
+            <span>{t('agent.shareScope.chatModel')}: {config?.model_id ? t('agent.shareScope.modelConfigured') : t('agent.shareScope.modelNotSet')}</span>
+            <span>{t('agent.shareScope.webSearch')}: {config?.web_search_enabled ? t('agent.shareScope.enabled') : t('agent.shareScope.disabled')}</span>
+            <span>{t('agent.shareScope.mcp')}: {scopeText(mcpScope(config), t, 'agent.shareScope.mcpAll', 'agent.shareScope.mcpSelected', 'agent.shareScope.mcpNone')}</span>
+          </span></div>
+        </div>
+        <div className="wk-agent-drawer-footer">
+          <button type="button" className="wk-agent-btn wk-agent-btn-primary wk-agent-btn-block" onClick={() => onUseInChat(agent)}>{t('agent.detail.useInChat')}</button>
+        </div>
       </aside>
     </div>
   );
@@ -419,6 +386,8 @@ export function AgentDeleteDialog({ agent, t, busy, onConfirm, onCancel }: {
 
 export interface AgentsPageViewProps {
   t: Translate;
+  editorT: Translate;
+  client: WeKnoraClient;
   viewer: AgentViewer;
   loading: boolean;
   space: string;
@@ -430,9 +399,8 @@ export interface AgentsPageViewProps {
   openMenuId: string | null;
   error: string | null;
   notice: string | null;
-  drawer: { kind: 'shared' | 'basics'; drawerMode?: 'create' | 'edit'; agent: AgentCardModel } | null;
-  savingBasics: boolean;
-  saveError: string | null;
+  drawer: { kind: 'shared'; agent: AgentCardModel } | null;
+  editor: { mode: 'create' | 'edit'; agent: AgentCardModel | null } | null;
   deleteTarget: AgentCardModel | null;
   deleting: boolean;
   collapsedSections: ReadonlySet<string>;
@@ -445,7 +413,8 @@ export interface AgentsPageViewProps {
   onCreate: () => void;
   onCloseDrawer: () => void;
   onUseInChat: (agent: AgentCardModel) => void;
-  onSaveBasics: (agent: AgentCardModel | null, basics: { name: string; description: string }) => void;
+  onCloseEditor: () => void;
+  onEditorSaved: (agent: Record<string, unknown>, mode: 'create' | 'edit') => void;
   onDeleteConfirm: () => void;
   onDeleteCancel: () => void;
   onToggleSection: (key: string) => void;
@@ -503,7 +472,7 @@ function AgentSection({ section, t, viewer, collapsed, onToggle, cardProps }: {
 }
 
 export function AgentsPageView(props: AgentsPageViewProps) {
-  const { t, viewer, loading, space, rail, sections, flatCards, isSectioned, favorites, openMenuId, error, notice, drawer, savingBasics, saveError, deleteTarget, deleting, collapsedSections, canCreate } = props;
+  const { t, editorT, viewer, loading, space, rail, sections, flatCards, isSectioned, favorites, openMenuId, error, notice, drawer, editor, deleteTarget, deleting, collapsedSections, canCreate } = props;
   const cardProps = (agent: AgentCardModel) => ({
     agent, t, viewer,
     favorited: favorites.has(agent.id),
@@ -546,7 +515,8 @@ export function AgentsPageView(props: AgentsPageViewProps) {
         ) : null}
         {!loading && !hasCards ? <EmptyState t={t} space={space} canCreate={canCreate} onCreate={props.onCreate} /> : null}
       </div>
-      {drawer ? <AgentDetailDrawer kind={drawer.kind} drawerMode={drawer.drawerMode} agent={drawer.agent} t={t} onClose={props.onCloseDrawer} onUseInChat={props.onUseInChat} onSave={props.onSaveBasics} saving={savingBasics} saveError={saveError} /> : null}
+      {drawer ? <AgentDetailDrawer kind={drawer.kind} agent={drawer.agent} t={t} onClose={props.onCloseDrawer} onUseInChat={props.onUseInChat} /> : null}
+      {editor ? <AgentEditorModal open mode={editor.mode} agent={editor.agent} client={props.client} t={editorT} onClose={props.onCloseEditor} onSaved={props.onEditorSaved} /> : null}
       <AgentDeleteDialog agent={deleteTarget} t={t} busy={deleting} onConfirm={props.onDeleteConfirm} onCancel={props.onDeleteCancel} />
     </main>
   );
@@ -590,10 +560,6 @@ function railLabel(t: Translate, key: string, kind: 'recents' | 'workspace', loc
   return resolved === key ? RAIL_LABEL_FALLBACK[kind][locale] ?? resolved : resolved;
 }
 
-function emptyAgentDraft(): AgentCardModel {
-  return { id: '', name: '', is_builtin: false, isMine: true, config: {} };
-}
-
 function membershipRoleOf(memberships: unknown, tenantId: string | null): string {
   if (!Array.isArray(memberships)) return 'viewer';
   for (const item of memberships) {
@@ -611,6 +577,9 @@ interface AgentsPageProps { client: WeKnoraClient; tenantId?: string | number | 
 export function AgentsPage({ client, tenantId }: AgentsPageProps) {
   const locale = useMemo(resolveLocale, []);
   const t = useCallback<Translate>((key, values) => formatMessage(locale, key, values), [locale]);
+  // agentEditor.* copy is not in packages/i18n yet; the editor falls back to
+  // ported literals for those keys while agent.* resolves normally.
+  const editorT = useMemo(() => makeEditorT(locale), [locale]);
   const [viewer, setViewer] = useState<AgentViewer>({ userId: '', isAdmin: false, isContributor: false });
   const [data, setData] = useState<AgentsPageData | null>(null);
   const [spaceItems, setSpaceItems] = useState<Array<Record<string, unknown>>>([]);
@@ -623,8 +592,7 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<ReadonlySet<string>>(new Set());
   const [drawer, setDrawer] = useState<AgentsPageViewProps['drawer']>(null);
-  const [savingBasics, setSavingBasics] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [editor, setEditor] = useState<AgentsPageViewProps['editor']>(null);
   const [deleteTarget, setDeleteTarget] = useState<AgentCardModel | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -697,16 +665,15 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
       writeAgentRecents(window.localStorage, viewer.userId, tenantKey, next);
       return next;
     });
-    setSaveError(null);
-    // AgentList.vue handleCardClick: shared → detail drawer, own → editor
-    // (the React slice opens the editable-basics drawer; full AgentEditorModal
-    // is a recorded gap).
-    setDrawer(agent.isMine ? { kind: 'basics', drawerMode: 'edit', agent } : { kind: 'shared', agent });
+    // AgentList.vue handleCardClick: shared → detail drawer, own → editor.
+    // The full AgentEditorModal now owns own-agent editing (Vue parity).
+    if (agent.isMine) { setEditor({ mode: 'edit', agent }); return; }
+    setDrawer({ kind: 'shared', agent });
   }, [tenantKey, viewer.userId]);
 
   const onMenuAction = useCallback((action: AgentCardAction, agent: AgentCardModel) => {
     setOpenMenuId(null);
-    if (action === 'edit') { setSaveError(null); setDrawer({ kind: 'basics', drawerMode: 'edit', agent }); return; }
+    if (action === 'edit') { setEditor({ mode: 'edit', agent }); return; }
     if (action === 'delete') { setDeleteTarget(agent); return; }
     if (action === 'copy') {
       void client.configuration.agents.copy(agent.id).then(() => { setNotice(t('agent.messages.copied')); reload(); }).catch(() => setNotice(t('agent.messages.copyFailed')));
@@ -717,19 +684,13 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
     }
   }, [client, reload, t]);
 
-  const onCreate = useCallback(() => { setSaveError(null); setDrawer({ kind: 'basics', drawerMode: 'create', agent: emptyAgentDraft() }); }, []);
+  const onCreate = useCallback(() => { setEditor({ mode: 'create', agent: null }); }, []);
 
-  const onSaveBasics = useCallback((target: AgentCardModel | null, basics: { name: string; description: string }) => {
-    if (!basics.name) return;
-    setSavingBasics(true);
-    setSaveError(null);
-    const payload = { name: basics.name, ...(basics.description ? { description: basics.description } : {}) };
-    const request = target
-      ? client.configuration.agents.update(target.id, payload)
-      : client.configuration.agents.create({ ...payload, config: {} });
-    void request.then(() => { setSavingBasics(false); setDrawer(null); setNotice(t(target ? 'agent.messages.updated' : 'agent.messages.created')); reload(); })
-      .catch((saveFailure: unknown) => { setSavingBasics(false); setSaveError(saveFailure instanceof Error ? saveFailure.message : t('agent.messages.saveFailed')); });
-  }, [client, reload, t]);
+  const onEditorSaved = useCallback((_agent: Record<string, unknown>, mode: 'create' | 'edit') => {
+    // create stays open inside the modal (post-create session); refresh the list either way
+    setNotice(t(mode === 'create' ? 'agent.messages.created' : 'agent.messages.updated'));
+    reload();
+  }, [reload, t]);
 
   const onDeleteConfirm = useCallback(() => {
     if (!deleteTarget || deleting) return;
@@ -778,6 +739,8 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
   return (
     <AgentsPageView
       t={t}
+      editorT={editorT}
+      client={client}
       viewer={viewer}
       loading={!data && !loadError}
       space={effectiveSpace}
@@ -790,8 +753,7 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
       error={loadError}
       notice={notice}
       drawer={drawer}
-      savingBasics={savingBasics}
-      saveError={saveError}
+      editor={editor}
       deleteTarget={deleteTarget}
       deleting={deleting}
       collapsedSections={collapsedSections}
@@ -804,7 +766,8 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
       onCreate={onCreate}
       onCloseDrawer={() => setDrawer(null)}
       onUseInChat={onUseInChat}
-      onSaveBasics={onSaveBasics}
+      onCloseEditor={() => setEditor(null)}
+      onEditorSaved={onEditorSaved}
       onDeleteConfirm={onDeleteConfirm}
       onDeleteCancel={() => setDeleteTarget(null)}
       onToggleSection={(key) => setCollapsedSections((current) => {

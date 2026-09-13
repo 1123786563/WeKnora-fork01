@@ -449,7 +449,7 @@ export const TOOL_GROUPS: Array<{ key: ToolDefinition['group']; labelKey: string
 export function evaluateToolRequirement(tool: ToolDefinition, scope: ToolCapabilityScope, hasAnyKb: boolean): { ok: boolean; missKind: RequirementMissKind } {
   if (!tool.anyOf?.length && !tool.allOf?.length) return { ok: true, missKind: 'none' };
   if (!hasAnyKb) return { ok: false, missKind: 'needsKb' };
-  const has = (capability: string): boolean => (scope as Record<string, boolean>)[capability] === true;
+  const has = (capability: string): boolean => (scope as unknown as Record<string, boolean>)[capability] === true;
   if (tool.allOf?.length && !tool.allOf.every(has)) {
     return { ok: false, missKind: tool.allOf.includes('wiki') ? 'needsWiki' : 'needsRag' };
   }
