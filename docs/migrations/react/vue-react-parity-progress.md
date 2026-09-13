@@ -735,6 +735,11 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - documents 页 chrome 重建集成（f648d33b）：面包屑 知识库›kbName›文档（caret/信息弹卡/齿轮）+ 副标题 + ⚠ 无解析引擎警告行（由 parserEngines+parser_engine_rules 派生未支持扩展名，前往配置→）+ 全宽搜索 搜索文档名称... + 视图切换 + 全部标签/类型/状态/来源 + 日期范围筛选（列表参数与后端 knowledge.go:913-928 均已支持）+ 插画空态 知识为空，拖放上传（含大小限制文案）；RAW UUID eyebrow 移除；N007 上传下拉与字节进度遮罩保留。documents 套件 79/79（自 62 增）；live 截图 documents-page-slice/ 与 Vue 逐项一致（主代理独立目检 react-documents.png）。
 - 在途：该代理将补写证据文档 2026-09-13-documents-page-shape.md。
 
+## 2026-09-13 Round N+1（续12）— 第二波派发
+
+- Wails S13 运行验证入库（4869c476）：打包+codesign+CDP 登录页冒烟；打包链路修复 esbuild 依赖声明（7db7e4d8）与 desktop vite 别名（bbc892ba）。
+- 第二波派发（2）：AgentEditorModal 核心移植（分区轨/校验/载荷，分阶段交付）；Wails CDP 运行时交互取证（登录→KB→智能体→共享空间→设置→聊天 全链路截图+断言，仅取证不改代码）。
+
 ## 2026-09-13 Round N+1（续4）— 第六、七切片集成
 
 - upload progress transport 集成（499ec9a8）：api-client NativeMultipartFileRequest.onProgress + 浏览器 XHR sendMultipartFile（字节级、abort→AbortError、fetch 回退）+ platform/http observeUploadProgress 桥；SkillSettingsPanel skillUploading 百分比+进度条；documents UploadProgressMask 遮罩 + 批次均值百分比（KnowledgeBaseList.vue:1586-1595 语义）。独立复核：transport 5/5、http 14/14、panel 31/31、pipeline 30/30、dialog 20/20、api-client 43/43、documents 62/62。该共享层缺口关闭后 N031 移动端可直接消费 transport onProgress。开放：UploadFilesPanel 行内百分比、浏览器 E2E。
