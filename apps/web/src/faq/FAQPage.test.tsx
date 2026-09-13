@@ -137,6 +137,11 @@ test('create and export icon buttons carry their Vue dropdown actions', () => {
   assert.ok(html.includes('导出 JSON'), 'export dropdown item');
 });
 
+test('contributor tag filter exposes the Vue tag-management entry point', () => {
+  const html = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ onOpenTagManage: noop })));
+  assert.ok(html.includes('管理标签'), 'tag management link');
+});
+
 test('import dialog carries the Vue mode radio group instead of the header select', () => {
   const html = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ importOpen: true })));
   assert.ok(html.includes('批量导入 FAQ'), 'import dialog title');

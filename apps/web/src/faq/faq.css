@@ -426,6 +426,26 @@
   padding: 2px 4px 6px;
 }
 
+.tag-filter-panel__manage {
+  align-self: flex-start;
+  padding: 2px 6px;
+  border: 0;
+  background: transparent;
+  color: var(--faq-accent, #00a870);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.tag-filter-panel__manage:hover { text-decoration: underline; }
+
+.faq-tag-manage-toolbar, .faq-tag-manage-edit, .faq-tag-manage-row { display: flex; align-items: center; gap: 8px; }
+.faq-tag-manage-toolbar { margin: 12px 0; }
+.faq-tag-manage-toolbar input, .faq-tag-manage-edit input, .faq-tag-manage-row input { min-width: 0; flex: 1; }
+.faq-tag-manage-list { display: grid; gap: 8px; margin: 12px 0 0; padding: 0; list-style: none; }
+.faq-tag-manage-row { justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--faq-stroke, #edf0f5); }
+.faq-tag-manage-row > span { display: grid; min-width: 0; gap: 2px; flex: 1; }
+.faq-tag-manage-row small { color: var(--faq-text-placeholder, #98a2b8); font-size: 12px; }
+
 .tag-filter-chip {
   display: inline-flex;
   align-items: center;

@@ -145,3 +145,19 @@ test('supports URL/manual sources and guarded document mutations', async () => {
   assert.deepEqual(requests[2]?.body, { kb_id: 'kb-1', knowledge_ids: ['doc-2'], folder_path: 'docs/spec' });
   assert.deepEqual(requests[4]?.body, { updates: { 'doc-2': ['tag-1'] } });
 });
+
+test('keeps knowledge-base tag CRUD on the Vue endpoint contract', async () => {
+  const requests: Array<{ method: string; path: string; body?: unknown }> = [];
+  const api = createKnowledgeDocumentsApi(async (request) => {
+    requests.push({ method: request.method, path: request.path, body: request.body });
+    return { success: true, data: [] };
+  });
+  await api.createTag('kb/a', { name: '重要' });
+  await api.updateTag('kb/a', 'tag/1', { name: '重点' });
+  await api.deleteTag('kb/a', 3, true);
+  assert.deepEqual(requests, [
+    { method: 'POST', path: '/api/v1/knowledge-bases/kb%2Fa/tags', body: { name: '重要' } },
+    { method: 'PUT', path: '/api/v1/knowledge-bases/kb%2Fa/tags/tag%2F1', body: { name: '重点' } },
+    { method: 'DELETE', path: '/api/v1/knowledge-bases/kb%2Fa/tags/3?force=true', body: undefined },
+  ]);
+});

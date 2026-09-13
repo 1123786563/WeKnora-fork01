@@ -185,6 +185,15 @@ export function createKnowledgeDocumentsApi(
       const path = `/api/v1/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}/tags${suffix ? `?${suffix}` : ''}`;
       return parseKnowledgeTagListResponse(await request({ method: 'GET', path })).data;
     },
+    async createTag(knowledgeBaseId: string, input: { name: string; color?: string; sort_order?: number }): Promise<void> {
+      await request({ method: 'POST', path: `/api/v1/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}/tags`, body: input });
+    },
+    async updateTag(knowledgeBaseId: string, tagId: string, input: { name?: string; color?: string; sort_order?: number }): Promise<void> {
+      await request({ method: 'PUT', path: `/api/v1/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}/tags/${encodeURIComponent(tagId)}`, body: input });
+    },
+    async deleteTag(knowledgeBaseId: string, tagSeqId: number, force = false): Promise<void> {
+      await request({ method: 'DELETE', path: `/api/v1/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}/tags/${encodeURIComponent(String(tagSeqId))}${force ? '?force=true' : ''}` });
+    },
     async get(id: string, options: { agent_id?: string; agent_source_tenant_id?: string } = {}): Promise<KnowledgeDocument> {
       const query = new URLSearchParams();
       for (const [key, value] of Object.entries(options)) if (value !== undefined) query.set(key, value);

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DragEvent, FocusEvent, FormEvent, ReactNode } from 'react';
 import type { FAQEntry, FAQEntryFieldsUpdate, FAQEntryPayload, FAQImportProgress, KnowledgeBase, KnowledgeTag, WeKnoraClient } from '@weknora/api-client';
-import { Button, Status } from '@weknora/ui';
+import { Button, Dialog, Status } from '@weknora/ui';
 import { formatMessage, type Locale } from '@weknora/i18n';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 import { computeKBPermissions, type KBSurfaceKB, type KBSurfaceMe } from '../knowledge/permissions.ts';
@@ -226,6 +226,7 @@ export interface FAQPageViewProps {
   onSearchSubmit?: () => void;
   onSearchClear?: () => void;
   onToggleTag?: (tagId: string) => void;
+  onOpenTagManage?: () => void;
   onOpenCreate?: () => void;
   onOpenImport?: () => void;
   onCloseImport?: () => void;
@@ -289,6 +290,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
     onSearchSubmit = () => {},
     onSearchClear = () => {},
     onToggleTag = () => {},
+    onOpenTagManage = () => {},
     onOpenCreate = () => {},
     onOpenImport = () => {},
     onCloseImport = () => {},
@@ -408,6 +410,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                     ))}
                     {tags.length === 0 ? <span className="tag-empty-state">{t('knowledgeBase.tagEmptyResult')}</span> : null}
                   </span>
+                  {canContribute ? <button type="button" className="tag-filter-panel__manage" onClick={onOpenTagManage}>{t('knowledgeBase.tagManageLink')}</button> : null}
                 </span>
               </span>
             </div>
@@ -617,6 +620,65 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
 
 // --- Container: data wiring (unchanged API usage, new presentation) ----------------
 
+function FAQTagManageDialog({ client, knowledgeBaseId, tags, open, onClose, onChanged, t }: {
+  client: WeKnoraClient;
+  knowledgeBaseId: string;
+  tags: readonly KnowledgeTag[];
+  open: boolean;
+  onClose: () => void;
+  onChanged: () => Promise<void>;
+  t: Translate;
+}) {
+  const [query, setQuery] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const visible = tags.filter((tag) => !query.trim() || tag.name.toLowerCase().includes(query.trim().toLowerCase()));
+
+  useEffect(() => {
+    if (!open) return;
+    setQuery(''); setCreating(false); setDraft(''); setEditingId(null); setEditingName(''); setError('');
+  }, [open]);
+
+  async function createTag() {
+    const name = draft.trim();
+    if (!name || busy) return;
+    setBusy(true); setError('');
+    try { await client.knowledge.documents.createTag(knowledgeBaseId, { name }); setCreating(false); setDraft(''); await onChanged(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : t('common.operationFailed')); }
+    finally { setBusy(false); }
+  }
+  async function updateTag() {
+    if (!editingId || !editingName.trim() || busy) return;
+    setBusy(true); setError('');
+    try { await client.knowledge.documents.updateTag(knowledgeBaseId, editingId, { name: editingName.trim() }); setEditingId(null); await onChanged(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : t('common.operationFailed')); }
+    finally { setBusy(false); }
+  }
+  async function removeTag(tag: KnowledgeTag) {
+    const seqId = tag.seq_id;
+    if (!Number.isSafeInteger(seqId) || busy || !window.confirm(t('knowledgeBase.tagDeleteDesc', { name: tag.name }))) return;
+    setBusy(true); setError('');
+    try { await client.knowledge.documents.deleteTag(knowledgeBaseId, seqId!); await onChanged(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : t('common.operationFailed')); }
+    finally { setBusy(false); }
+  }
+
+  return <Dialog open={open} title={t('knowledgeBase.tagManageTitle')} onClose={onClose}>
+    <p className="wk-muted">{t('knowledgeBase.tagManageDescription')}</p>
+    {error ? <Status tone="error">{error}</Status> : null}
+    <div className="faq-tag-manage-toolbar"><input value={query} placeholder={t('knowledgeBase.tagSearchPlaceholder')} onChange={(event) => setQuery(event.target.value)} /><Button type="button" disabled={busy} onClick={() => { setCreating(true); setEditingId(null); }}>{t('knowledgeBase.tagCreateAction')}</Button></div>
+    {creating ? <div className="faq-tag-manage-edit"><input autoFocus maxLength={40} value={draft} placeholder={t('knowledgeBase.tagNamePlaceholder')} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void createTag(); if (event.key === 'Escape') setCreating(false); }} /><Button type="button" loading={busy} onClick={() => void createTag()}>{t('common.create')}</Button><Button type="button" disabled={busy} onClick={() => setCreating(false)}>{t('common.cancel')}</Button></div> : null}
+    <ul className="faq-tag-manage-list">
+      {visible.map((tag) => editingId === tag.id ? <li key={tag.id} className="faq-tag-manage-row"><input autoFocus maxLength={40} value={editingName} onChange={(event) => setEditingName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void updateTag(); if (event.key === 'Escape') setEditingId(null); }} /><Button type="button" loading={busy} onClick={() => void updateTag()}>{t('common.save')}</Button><Button type="button" disabled={busy} onClick={() => setEditingId(null)}>{t('common.cancel')}</Button></li> : <li key={tag.id} className="faq-tag-manage-row"><span><strong>{tag.name}</strong><small>{t('knowledgeBase.tagManageFaqCount', { count: tag.chunk_count || 0 })}</small></span><Button type="button" disabled={busy} onClick={() => { setEditingId(tag.id); setEditingName(tag.name); setCreating(false); }}>{t('knowledgeBase.tagEditAction')}</Button><Button type="button" disabled={busy || !Number.isSafeInteger(tag.seq_id)} onClick={() => void removeTag(tag)}>{t('knowledgeBase.tagDeleteAction')}</Button></li>)}
+      {visible.length === 0 ? <li><Status>{t('knowledgeBase.tagEmptyResult')}</Status></li> : null}
+    </ul>
+  </Dialog>;
+}
+
 function formFrom(entry: FAQEntry | null): FormState {
   return entry ? { question: entry.standard_question, similar: entry.similar_questions.join('\n'), negative: entry.negative_questions.join('\n'), answers: entry.answers.join('\n'), tagId: typeof entry.tag_id === 'number' ? String(entry.tag_id) : '', enabled: entry.is_enabled, recommended: entry.is_recommended } : emptyForm;
 }
@@ -666,6 +728,7 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
   const [importPreview, setImportPreview] = useState<FAQEntryPayload[]>([]);
   const [statusUpdatingIds, setStatusUpdatingIds] = useState<readonly number[]>([]);
   const [batchTag, setBatchTag] = useState('');
+  const [tagManageOpen, setTagManageOpen] = useState(false);
   // Vue FAQEntryManager.vue:2091-2165 — after upsert returns a task_id the
   // page polls importProgress until completed/failed; success refreshes the
   // list and collapses the strip after 3s; 404 stops the polling.
@@ -823,8 +886,16 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
     finally { setExportLoading(false); }
   }
 
+  async function reloadAfterTagChange() {
+    const nextTags = await client.knowledge.documents.tags(knowledgeBaseId, { page_size: 200 });
+    setTags(nextTags);
+    setActiveTagIds((current) => current.filter((id) => nextTags.some((tag) => tag.id === id)));
+    await load(false);
+  }
+
   return (
-    <FAQPageView
+    <>
+      <FAQPageView
       t={t}
       knowledgeBaseId={knowledgeBaseId}
       kbName={kb?.name ?? null}
@@ -859,6 +930,7 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
       onSearchSubmit={() => setKeyword(keywordDraft.trim())}
       onSearchClear={() => { setKeywordDraft(''); setKeyword(''); }}
       onToggleTag={(tagId) => setActiveTagIds((current) => current.includes(tagId) ? current.filter((id) => id !== tagId) : [...current, tagId])}
+      onOpenTagManage={() => setTagManageOpen(true)}
       onOpenCreate={() => openEditor()}
       onOpenImport={() => { setImportFile(null); setImportPreview([]); setImportOpen(true); }}
       onCloseImport={() => setImportOpen(false)}
@@ -882,6 +954,8 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
       onCloseEditor={() => setEditing(undefined)}
       onFormChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
       onEditorSubmit={(event) => void save(event)}
-    />
+      />
+      <FAQTagManageDialog client={client} knowledgeBaseId={knowledgeBaseId} tags={tags} open={tagManageOpen} onClose={() => setTagManageOpen(false)} onChanged={reloadAfterTagChange} t={t} />
+    </>
   );
 }
