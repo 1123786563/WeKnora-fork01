@@ -1300,3 +1300,10 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - tag_name 裁决落地（92a7f982）：api-client FAQEntryPayload 增可选 tag_name（后端 faq.go:336 支持）；parseExcelFile 读取 标签/分类/tag_name 列（Vue :2029）且 normalizeExcelPayload 恒发 tag_name（Vue :2072 语义，空列发 ''）；TDD 红→绿（3/3），faq 全套 26/26、typecheck:web 0。
 - A4 全链闭环：vendored xlsx（a4d223bc）+ tag_name（92a7f982）——Excel 导入从 unsupportedFormat 占位升级为 Vue 级全功能。
+
+## 2026-09-14 Round N+8 协调条目 — 第六语正式询问 + 两切片派发
+
+- 第六语询问已通过 GUI ask_user_question 正式提出（四选项：维持五语/zh-TW/fr-FR/稍后答复），10 分钟窗口未获答复。按目标 §二.7 指引继续五语工作；答复到达后按所选基准补齐。
+- 派发（2）：R013/N029 embed 配置向导（交接 §6 三段拆分）、FAQ B1 编辑抽屉 + B3 条目卡（apps/web/src/faq，B2 标签管理已由并发侧 ed93dd21 落地）。
+- 并发协调者 WIP：R043 MCP popup 相关文件（McpSettingsPanel*/styles.css/matrix/progress），本方继续避开。
+
