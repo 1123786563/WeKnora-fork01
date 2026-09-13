@@ -1594,4 +1594,5 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 ## 2026-09-14 Round N+27 — R046 MCP 过期目录只读状态
 
 - React 过期元数据目录现在与 Vue 一致：stale 状态传入 undefined service id，隐藏工具启用/审批开关，仅保留目录详情和旧数据提示；非 stale 状态仍保留即时策略保存。
-- 新增静态回归覆盖 stale 目录不渲染策略控件；R046 MCP 定向测试 16/16、完整 `pnpm test:web` 806/806、Web TypeScript 检查和 `git diff --check` 均通过。
+- 新增静态回归覆盖 stale 目录不渲染策略控件，并在 MCP 设置交互用例中验证详情 Portal 位于 `document.body`、不陷在抽屉流内且可由外部点击关闭；R046 MCP 定向测试 16/16、完整 `pnpm test:web` 806/806、Web TypeScript 检查和 `git diff --check` 均通过。
+- 交互回归发现并修复了外部点击监听对全局 DOM `Node` 构造器的隐式依赖，兼容 jsdom/嵌入环境。

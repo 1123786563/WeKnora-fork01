@@ -56,7 +56,7 @@ export function McpToolsDirectory({ tools, serviceId, approvals, busy, policyErr
     if (!openTool) return;
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpenTool(null); };
     const onPointerDown = (event: PointerEvent) => {
-      if (event.target instanceof Node && !detailRef.current?.contains(event.target)) setOpenTool(null);
+      if (event.target && !detailRef.current?.contains(event.target as Node)) setOpenTool(null);
     };
     document.addEventListener('keydown', onKeyDown);
     document.addEventListener('pointerdown', onPointerDown);

@@ -318,6 +318,14 @@ test('step 2 gates save on tool sync and shows the Vue usage counter, hint and g
     assert.ok(docsTrigger, 'server documentation trigger mirrors the Vue metadata popup');
     await act(async () => { docsTrigger?.click(); });
     assert.match(document.body.textContent ?? '', /Use the documentation tools\./);
+    const toolDetails = document.querySelector('.wk-mcp-directory-heading button') as HTMLButtonElement | null;
+    assert.ok(toolDetails, 'tool details trigger renders');
+    await act(async () => { toolDetails?.click(); });
+    const toolPopup = document.body.querySelector('.wk-mcp-tool-detail-popup');
+    assert.ok(toolPopup, 'tool details are attached to document.body like Vue t-popup');
+    assert.equal(dialog?.querySelector('.wk-mcp-tool-detail-popup'), null, 'tool details are not trapped in the drawer flow');
+    await act(async () => { document.body.dispatchEvent(new dom.window.Event('pointerdown', { bubbles: true })); });
+    assert.equal(document.body.querySelector('.wk-mcp-tool-detail-popup'), null, 'outside click closes the tool popup');
   } finally {
     await unmountEditor(root);
   }
