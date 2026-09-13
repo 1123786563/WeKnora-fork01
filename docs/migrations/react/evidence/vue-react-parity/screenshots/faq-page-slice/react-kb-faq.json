@@ -1,0 +1,7 @@
+{
+  "url": "http://127.0.0.1:5181/knowledgeBase/8b26f48e-7196-405f-9803-ccf93be3cd37/faq",
+  "eyebrowCount": 0,
+  "breadcrumb": "知识库 parity-faq-kb 问答",
+  "subtitle": "结构化问答管理，支持标准问、相似问和反例，精准匹配用户查询，提升问答准确率",
+  "emptyState": "暂无 FAQ 条目 点击上方\"新增 FAQ 条目\"按钮开始创建"
+}
