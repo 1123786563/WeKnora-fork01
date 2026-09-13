@@ -1044,16 +1044,18 @@ func FileAdminSecretSource(path string) AdminSecret {
 }
 
 // FileSecretSink is the phase-one SecretSink: material lands in a dedicated
-// 0700 directory under a filename derived from sha256(ref) — the reference
-// itself (which contains tenant ids) never becomes a path, so a hostile ref
-// cannot traverse. Later tasks swap this for the platform secret store; the
+// directory under a filename derived from sha256(ref) — the reference itself
+// (which contains tenant ids) never becomes a path, so a hostile ref cannot
+// traverse. PRODUCTION USES EncryptedFileSecretSink (T16): static
+// encryption at rest plus enforced 0700 directory permissions; this
+// plaintext sink remains for dev/test read compatibility because the
+// control worker binary refuses to start without an encryption key. The
 // database only ever stores the reference.
 type FileSecretSink struct{ dir string }
 
 // NewFileSecretSink creates the secrets directory with 0700 (an existing
-// directory is left as-is: tightening beyond the process umask here was a
-// T05-Q-01 comment overpromise - real at-rest encryption and permissions
-// hardening land with the T16 secret-store swap).
+// directory is left as-is: this sink does not enforce permissions — the
+// enforced, encrypted production constructor is NewEncryptedFileSecretSink).
 func NewFileSecretSink(dir string) (*FileSecretSink, error) {
 	if dir == "" {
 		return nil, errors.New("connectorcontrol: secret dir required")

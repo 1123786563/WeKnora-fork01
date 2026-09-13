@@ -33,8 +33,10 @@ type OCActionFacade interface {
 
 // appConnectorSchema is the frozen model-facing argument schema: ONLY
 // connection_id, action_id and input. No identity field, no approve or
-// execute control — additionalProperties is false so the registry rejects
-// anything else before execution.
+// execute control. The schema governs the model prompt only — undeclared
+// fields a model still sends are dropped by the three-field argument
+// envelope, not rejected by the registry; identity comes exclusively from
+// the engine-injected context, never from arguments.
 var appConnectorSchema = json.RawMessage(`{
 	"type": "object",
 	"properties": {

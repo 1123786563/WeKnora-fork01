@@ -16,6 +16,10 @@
 //	                                    (default: DefaultInternalAllowlist)
 //	CONNECTOR_CONTROL_ADMIN_SECRET_FILE  default /run/secrets/connector-admin-token
 //	CONNECTOR_CONTROL_SECRET_DIR         default ./data/connector-secrets
+//	CONNECTOR_CONTROL_SECRET_KEY_FILE    REQUIRED — the secret sink is
+//	                                    encrypted at rest (T16): a mounted
+//	                                    0400 key file (64 hex / base64 / 32
+//	                                    raw bytes); startup refuses without it
 //	CONNECTOR_CONTROL_OWNER_ID           default connector-control
 //	CONNECTOR_CONTROL_POLL_INTERVAL      default 500ms
 package main
@@ -52,6 +56,7 @@ type controlConfig struct {
 	allowlist    []string
 	secretFile   string
 	secretDir    string
+	secretKey    string
 	ownerID      string
 	pollInterval time.Duration
 	adminTimeout time.Duration
@@ -77,6 +82,7 @@ func loadConfig() (controlConfig, error) {
 		allowlist:    connectorcontrol.ParseAllowlist(os.Getenv("CONNECTOR_CONTROL_RUNTIME_ALLOWLIST")),
 		secretFile:   env("CONNECTOR_CONTROL_ADMIN_SECRET_FILE", "/run/secrets/connector-admin-token"),
 		secretDir:    env("CONNECTOR_CONTROL_SECRET_DIR", "./data/connector-secrets"),
+		secretKey:    os.Getenv("CONNECTOR_CONTROL_SECRET_KEY_FILE"),
 		ownerID:      env("CONNECTOR_CONTROL_OWNER_ID", "connector-control"),
 		adminTimeout: connectorcontrol.AdminDefaultTimeout,
 	}
@@ -85,6 +91,9 @@ func loadConfig() (controlConfig, error) {
 		return cfg, errors.New("invalid CONNECTOR_CONTROL_POLL_INTERVAL")
 	}
 	cfg.pollInterval = poll
+	if cfg.secretKey == "" {
+		return cfg, errors.New("CONNECTOR_CONTROL_SECRET_KEY_FILE is required: the secret sink is encrypted at rest (T16); refusing to run a plaintext sink")
+	}
 	switch cfg.driver {
 	case "postgres", "sqlite":
 	default:
@@ -144,7 +153,8 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("admin client: %w", err)
 	}
-	sink, err := connectorcontrol.NewFileSecretSink(cfg.secretDir)
+	sink, err := connectorcontrol.NewEncryptedFileSecretSink(
+		cfg.secretDir, connectorcontrol.FileSecretKeySource(cfg.secretKey))
 	if err != nil {
 		return fmt.Errorf("secret sink: %w", err)
 	}

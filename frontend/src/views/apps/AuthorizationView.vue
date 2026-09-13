@@ -74,6 +74,10 @@ import { useAuthStore } from '@/stores/auth'
 import { getAuthorizationAttempt, type OCAuthorizationAttemptView } from '@/api/appConnectors'
 
 const POLL_INTERVAL_MS = 3000
+const POLL_MAX_INTERVAL_MS = 30000
+// Consecutive poll failures double the next delay (reset on success), so a
+// degraded backend backs off instead of being hammered every 3s (T15 QF-3).
+let pollFailures = 0
 
 const { t } = useI18n()
 const route = useRoute()
@@ -125,6 +129,7 @@ const cancelAll = () => {
     inFlight.abort()
     inFlight = null
   }
+  pollFailures = 0
 }
 
 const isAbortError = (e: unknown): boolean => {
@@ -146,11 +151,15 @@ const pollOnce = async () => {
     if (run !== epoch) return // late response from a previous space: drop
     attempt.value = view
     polled.value = true
+    pollFailures = 0
     scheduleNext()
   } catch (e) {
     if (run !== epoch || isAbortError(e)) return
     loadError.value = true
     polled.value = true
+    // A transient error no longer kills polling permanently: back off and
+    // keep trying while the attempt is still in a polling state (T15 QF-3).
+    scheduleNext()
   } finally {
     if (run === epoch) {
       loading.value = false
@@ -162,10 +171,17 @@ const pollOnce = async () => {
 const scheduleNext = () => {
   if (timer) clearTimeout(timer)
   if (!polling.value) return // terminal: stop polling, keep the last state
+  // expires_at stop: the backend GET does not lazily expire rows, so an
+  // attempt stuck pending past its TTL must not poll for the page's whole
+  // lifetime (T15 QF-3). The last state stays rendered.
+  const expires = attempt.value?.expires_at
+  const expiresMs = expires ? Date.parse(expires) : NaN
+  if (!Number.isNaN(expiresMs) && expiresMs <= Date.now()) return
+  const delay = Math.min(POLL_INTERVAL_MS * 2 ** pollFailures, POLL_MAX_INTERVAL_MS)
   timer = setTimeout(() => {
     timer = null
     pollOnce()
-  }, POLL_INTERVAL_MS)
+  }, delay)
 }
 
 watch(

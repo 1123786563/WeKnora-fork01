@@ -33,6 +33,7 @@ import (
 	repoappconn "github.com/Tencent/WeKnora/internal/application/repository/appconnector"
 	appconnectorsvc "github.com/Tencent/WeKnora/internal/application/service/appconnector"
 	domain "github.com/Tencent/WeKnora/internal/commercial"
+	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/connectorcontrol"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -43,9 +44,15 @@ import (
 //	WEKNORA_OC_ENABLED           "true"/"1" arms the dispatch path; anything
 //	                             else keeps the explicit refusing dispatcher.
 //	WEKNORA_OC_RUNTIME_ADDR      the runtime's INTERNAL address (must sit in
-//	                             the executor/admin allowlist).
+//	                             the executor/admin allowlist). When unset,
+//	                             the yaml open_connector.runtime id resolves
+//	                             through config.OpenConnectorRuntimeAddr.
 //	WEKNORA_OC_TOKEN_DIR         the secret sink directory shared (read
 //	                             side) with the control worker.
+//	WEKNORA_OC_SECRET_KEY_FILE   when set, the read side uses the encrypted
+//	                             sink (matches the control worker's mandated
+//	                             CONNECTOR_CONTROL_SECRET_KEY_FILE); empty
+//	                             keeps the legacy read-compat sink for dev.
 //	WEKNORA_OC_SLOT_OWNER        lease owner id of THIS replica (default:
 //	                             hostname).
 //	WEKNORA_OC_RECOVERY_INTERVAL recovery loop period (default 15s).
@@ -53,6 +60,7 @@ const (
 	OCEnabledEnv          = "WEKNORA_OC_ENABLED"
 	OCRuntimeAddrEnv      = "WEKNORA_OC_RUNTIME_ADDR"
 	OCTokenDirEnv         = "WEKNORA_OC_TOKEN_DIR"
+	OCSecretKeyFileEnv    = "WEKNORA_OC_SECRET_KEY_FILE"
 	OCSlotOwnerEnv        = "WEKNORA_OC_SLOT_OWNER"
 	OCRecoveryIntervalEnv = "WEKNORA_OC_RECOVERY_INTERVAL"
 )
@@ -73,6 +81,7 @@ type OCConfig struct {
 	Enabled          bool
 	RuntimeAddr      string
 	TokenDir         string
+	SecretKeyFile    string
 	SlotOwner        string
 	RecoveryInterval time.Duration
 	DrainTimeout     time.Duration
@@ -85,6 +94,7 @@ func OCConfigFromEnv() OCConfig {
 		Enabled:          strings.EqualFold(strings.TrimSpace(os.Getenv(OCEnabledEnv)), "true") || strings.TrimSpace(os.Getenv(OCEnabledEnv)) == "1",
 		RuntimeAddr:      strings.TrimSpace(os.Getenv(OCRuntimeAddrEnv)),
 		TokenDir:         strings.TrimSpace(os.Getenv(OCTokenDirEnv)),
+		SecretKeyFile:    strings.TrimSpace(os.Getenv(OCSecretKeyFileEnv)),
 		SlotOwner:        strings.TrimSpace(os.Getenv(OCSlotOwnerEnv)),
 		RecoveryInterval: ocDefaultRecoveryInterval,
 		DrainTimeout:     ocDrainTimeout,
@@ -102,6 +112,27 @@ func OCConfigFromEnv() OCConfig {
 		}
 	}
 	return cfg
+}
+
+// ApplyOpenConnectorYAML layers the yaml open_connector section (T16) under
+// the env contract: env values (the T13 WEKNORA_OC_* wiring) win when they
+// are set; otherwise Enabled comes from the yaml opt-in and RuntimeAddr is
+// resolved STRICTLY through the internal id map (config.OpenConnectorRuntimeAddr)
+// — a config file can never aim the dispatcher at an arbitrary host. A nil
+// config or section leaves env-only behavior unchanged.
+func ApplyOpenConnectorYAML(out OCConfig, cfg *config.Config) OCConfig {
+	if cfg == nil || cfg.OpenConnector == nil {
+		return out
+	}
+	if strings.TrimSpace(os.Getenv(OCEnabledEnv)) == "" {
+		out.Enabled = cfg.OpenConnector.IsEnabled()
+	}
+	if out.RuntimeAddr == "" {
+		if addr, ok := config.OpenConnectorRuntimeAddr(cfg.OpenConnector.Runtime); ok {
+			out.RuntimeAddr = addr
+		}
+	}
+	return out
 }
 
 // ---------------------------------------------------------------------------
@@ -483,7 +514,14 @@ func PrepareOpenConnector(cfg OCConfig, ocStore *repoappconn.OCStore, httpClient
 		return nil, fmt.Errorf("open-connector enabled but configuration incomplete: %s and %s are required (refusing to fall back to a default connection)",
 			OCRuntimeAddrEnv, OCTokenDirEnv)
 	}
-	sink, err := connectorcontrol.NewFileSecretSink(cfg.TokenDir)
+	// Secret sink (T16 hardening): with a provisioned key file the read side
+	// uses the ENCRYPTED sink the control worker writes through (it refuses
+	// to start without a key, so production never writes plaintext). Without
+	// a key the legacy read-compat sink stays — dev/test deployments whose
+	// control worker runs against the same plaintext store — and a later key
+	// rollout simply re-mints tokens; reads of sealed records under a missing
+	// key fail closed at use time.
+	sink, err := newOCSecretReader(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("open-connector secret sink: %w", err)
 	}
@@ -564,17 +602,19 @@ func ocHTTPClient() *http.Client { return &http.Client{Timeout: 30 * time.Second
 // ---------------------------------------------------------------------------
 
 // newOCArmedActionService is the dig constructor: it delegates to the
-// PRODUCTION path (NewOCArmedActionService) with the env config — the
-// dispatcher reaches the service through the frozen constructor and the
-// T10-F-3/F-1 guards run at startup (see PrepareOpenConnector for the
+// PRODUCTION path (NewOCArmedActionService) with the merged config — env
+// contract (T13) layered over the yaml open_connector section (T16) — so
+// the dispatcher reaches the service through the frozen constructor and
+// the T10-F-3/F-1 guards run at startup (see PrepareOpenConnector for the
 // disabled/enabled semantics and the budgetUpper note).
 func newOCArmedActionService(
 	store appconnectorsvc.ActionStoreSource,
 	guard appconnectorsvc.A02Guard,
 	gate domain.ExecutionGate,
 	oc *repoappconn.OCStore,
+	cfg *config.Config,
 ) (*appconnectorsvc.ActionService, *OCWiring, error) {
-	return NewOCArmedActionService(store, guard, gate, oc, OCConfigFromEnv(), ocHTTPClient())
+	return NewOCArmedActionService(store, guard, gate, oc, ApplyOpenConnectorYAML(OCConfigFromEnv(), cfg), ocHTTPClient())
 }
 
 // newOCProductServices builds the T13 LOCAL product services the handlers
@@ -634,6 +674,19 @@ func startOCRecoveryRunner(
 		return nil
 	})
 	return nil
+}
+
+// newOCSecretReader builds the READ side of the control worker's secret
+// sink for the API process: the encrypted sink when a key file is
+// provisioned (production; matches the control worker's mandated key), the
+// legacy plaintext sink otherwise (dev/test read compatibility — see the
+// PrepareOpenConnector comment for why production can never end up on it).
+func newOCSecretReader(cfg OCConfig) (OCSecretReader, error) {
+	if cfg.SecretKeyFile != "" {
+		return connectorcontrol.NewEncryptedFileSecretSink(
+			cfg.TokenDir, connectorcontrol.FileSecretKeySource(cfg.SecretKeyFile))
+	}
+	return connectorcontrol.NewFileSecretSink(cfg.TokenDir)
 }
 
 // sha256Sum is a tiny local helper (crypto/sha256) mirroring the sink's

@@ -59,7 +59,7 @@
            retry control is never offered — retry is always false in phase
            one, so there is NO resend button under any state. -->
       <div class="action-view__controls">
-        <t-button v-if="controls.approve" @click="approve">{{ t('apps.actions.approve') }}</t-button>
+        <t-button v-if="controls.approve" :loading="approving" @click="approve">{{ t('apps.actions.approve') }}</t-button>
         <t-button v-if="controls.execute" :loading="submitting" @click="execute">{{ t('apps.actions.execute') }}</t-button>
         <p v-if="action.state === 'unknown'">{{ t('apps.actions.unknown') }}</p>
       </div>
@@ -216,12 +216,15 @@ onUnmounted(cancelInFlight)
 // out any drift) — success is never assumed from a 200 alone.
 const approve = async () => {
   if (!action.value || !controls.value.approve) return
+  const run = epoch
   approving.value = true
   try {
     const answered = await approveAction(action.value.id, action.value.digest, expectedVersion.value)
+    if (run !== epoch) return // late response from a previous space: drop
     if (answered) applyDetail(answered)
     await reload()
   } catch (e) {
+    if (run !== epoch) return
     MessagePlugin.error(errorMessage(e) || t('apps.actions.approveFailed'))
     await reload()
   } finally {
@@ -234,12 +237,15 @@ const approve = async () => {
 // resend (phase one offers no retry at all).
 const execute = async () => {
   if (!action.value || !controls.value.execute) return
+  const run = epoch
   submitting.value = true
   try {
     const answered = await executeAction(action.value.id)
+    if (run !== epoch) return // late response from a previous space: drop
     if (answered) applyDetail(answered)
     await reload()
   } catch (e) {
+    if (run !== epoch) return
     MessagePlugin.error(errorMessage(e) || t('apps.actions.executeFailed'))
     await reload()
   } finally {
