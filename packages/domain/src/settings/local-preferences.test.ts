@@ -9,7 +9,9 @@ function mem() {
 
 test('defaults when storage is empty', () => {
   const p = readLocalPreferences(mem());
-  assert.equal(p.theme, 'system');
+  // Vue useTheme.ts:14-15 — missing stored theme resolves to 'light' (浅色),
+  // the authoritative default; 'system' is only an explicit user choice.
+  assert.equal(p.theme, 'light');
   assert.equal(p.fontSize, 'normal');
 });
 
@@ -27,7 +29,8 @@ test('invalid values fall back to defaults', () => {
   s.setItem('weknora-theme', 'bogus');
   s.setItem('weknora-font-size', 'huge');
   const p = readLocalPreferences(s);
-  assert.equal(p.theme, 'system');
+  // Vue useTheme.ts:14-15 — invalid stored theme also resolves to 'light'.
+  assert.equal(p.theme, 'light');
   assert.equal(p.fontSize, 'normal');
 });
 

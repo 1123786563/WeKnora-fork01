@@ -16,11 +16,13 @@ export interface LocalPreferences {
 type Storage = { getItem(k: string): string | null; setItem(k: string, v: string): void };
 
 export function readLocalPreferences(storage: Storage): LocalPreferences {
-  const theme = (storage.getItem(THEME_KEY) ?? 'system') as ThemeMode;
+  // Vue useTheme.ts:14-15 — a missing or invalid stored theme resolves to
+  // 'light'; 'system' is only an explicit user choice.
+  const theme = (storage.getItem(THEME_KEY) ?? 'light') as ThemeMode;
   const locale = storage.getItem(LOCALE_KEY) ?? 'zh-CN';
   const fontSize = (storage.getItem(FONT_SIZE_KEY) ?? 'normal') as FontSize;
   return {
-    theme: ['light', 'dark', 'system'].includes(theme) ? theme : 'system',
+    theme: ['light', 'dark', 'system'].includes(theme) ? theme : 'light',
     locale,
     fontSize: ['small', 'normal', 'large'].includes(fontSize) ? fontSize : 'normal',
   };

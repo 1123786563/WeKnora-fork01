@@ -78,7 +78,8 @@ function applyFontCssVariables(sans: string, mono: string, size: FontSize): void
 export function GeneralPreferencesPanel() {
   const [locale, setLocale] = useState<Locale>(readStoredLocale);
   const [theme, setTheme] = useState<ThemeMode>(() => {
-    try { return readLocalPreferences(window.localStorage).theme; } catch { return 'system'; }
+    // Vue useTheme.ts default: 'light' when storage is unavailable.
+    try { return readLocalPreferences(window.localStorage).theme; } catch { return 'light'; }
   });
   const [fontSize, setFontSize] = useState<FontSize>(() => {
     try { return readLocalPreferences(window.localStorage).fontSize; } catch { return 'normal'; }
