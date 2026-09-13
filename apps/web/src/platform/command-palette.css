@@ -115,7 +115,8 @@
   gap: 2px;
   flex-shrink: 0;
   font-size: 10px;
-  color: #8a94a3;
+  /* ResultItem.vue:169-181 — container text --td-text-color-placeholder. */
+  color: rgba(0, 0, 0, 0.4);
   opacity: 0.55;
   transition: opacity 0.1s;
 }
@@ -127,10 +128,13 @@
   font-family: inherit;
   line-height: 14px;
   text-align: center;
-  background: #f2f5f9;
-  border: 1px solid #eef1f5;
+  /* ResultItem.vue:181-189 — kbd bg --td-bg-color-secondarycontainer
+     (gray-1 #f3f3f3), border --td-component-stroke (gray-3 #e7e7e7),
+     text --td-text-color-secondary (font-gray-2). */
+  background: #f3f3f3;
+  border: 1px solid #e7e7e7;
   border-radius: 3px;
-  color: #5f6b7a;
+  color: rgba(0, 0, 0, 0.6);
 }
 
 .cmdk__item--selected .cmdk__item-shortcut,
