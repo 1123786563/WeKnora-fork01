@@ -574,6 +574,19 @@ test('graph enabled control uses an accessible switch surface', () => {
   assert.doesNotMatch(markup, /type="checkbox"/);
 });
 
+test('graph sample text exposes the Vue word-limit counter', () => {
+  const markup = renderToStaticMarkup(React.createElement(UploadGraphSettings, {
+    graphExtract: { ...enabledGraphExtract, text: 'abc' },
+    graphDatabaseOn: true,
+    llmModelId: 'llm-1',
+    canRunExtract: false,
+    onChange: noop,
+    t: ct,
+  }));
+  assert.match(markup, /wk-graph-text-limit/);
+  assert.match(markup, />3\/5000</);
+});
+
 // --- Upload progress mask (Vue upload-mask.vue parity + percent) -------------------
 
 const { UploadProgressMask } = await import('./KnowledgeDocumentsPage.tsx');

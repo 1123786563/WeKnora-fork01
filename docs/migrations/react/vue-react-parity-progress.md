@@ -1737,3 +1737,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - React 图谱启用控件从原生 checkbox 替换为项目封装 switch，补齐 Vue/TDesign 的 checked track、滑块过渡、focus-visible 状态与 `role=switch`/`aria-checked` 键盘语义；启用/关闭时原有清理数据行为不变。
 - 定向 upload-confirm 测试 25/25、Web TypeScript、`git diff --check` 通过；证据 `evidence/vue-react-parity/2026-09-14-n007-extraction-toast.md` 已更新。真实图谱 endpoint、浏览器 computed-style/截图、Vue 同条件截图、Wails 与移动端仍待补齐，N007 继续保持 implementing。
+
+## 2026-09-14 Round N+50 — N007 图谱示例文本字数提示
+
+- React 示例文本补齐 Vue `show-word-limit` 的实时 `current/5000` 计数，并保留 5000 字上限与 autosize 行为；计数通过 `aria-live` 暴露。
+- 定向 upload-confirm 测试 26/26、Web TypeScript、`git diff --check` 通过；证据 `evidence/vue-react-parity/2026-09-14-n007-extraction-toast.md` 已更新。真实图谱 endpoint、浏览器 computed-style/截图、Vue 同条件截图、Wails 与移动端仍待补齐，N007 继续保持 implementing。

@@ -16,9 +16,11 @@ The relation-type control now uses an accessible project field with multi-value 
 
 The graph enable control now uses a project switch with Vue/TDesign-style checked track, sliding handle, focus-visible outline, and `role="switch"`/`aria-checked` semantics instead of the browser-default checkbox.
 
+The sample-text field now exposes a live `current/5000` word-limit counter, matching Vue `show-word-limit` while retaining the Vue 5000-character cap and autosize behavior.
+
 ## Verification
 
-- Focused upload-confirm and pipeline suites: 25/25 passed for the current graph/upload-confirm suite; prior upload-confirm and pipeline suites: 50/50 passed.
+- Focused upload-confirm and pipeline suites: 26/26 passed for the current graph/upload-confirm suite; prior upload-confirm and pipeline suites: 50/50 passed.
 - Full Web suite: `pnpm run test:web` — 681/681 passed.
 - Web typecheck: `pnpm run typecheck:web` — passed.
 - `git diff --check` — passed.

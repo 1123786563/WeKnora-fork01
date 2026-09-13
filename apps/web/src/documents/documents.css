@@ -185,6 +185,14 @@
   flex-direction: column;
 }
 
+.wk-graph-text-limit {
+  align-self: flex-end;
+  margin-top: -0.25rem;
+  color: var(--wk-muted, #667085);
+  font-size: 0.75rem;
+  line-height: 1.25;
+}
+
 .wk-graph-tags-field {
   display: flex;
   flex: 1;
