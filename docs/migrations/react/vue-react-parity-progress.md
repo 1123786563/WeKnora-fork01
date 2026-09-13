@@ -1757,3 +1757,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - React 图谱关系 combobox 增加 Vue `t-select` 对应的 ArrowUp/ArrowDown active option 导航、Enter 选择与筛选后索引重置；选项边界通过纯函数夹紧，Escape/外部点击语义保持不变。
 - 定向 upload-confirm 测试 28/28、Web TypeScript、`git diff --check` 通过；真实图谱 endpoint、浏览器 computed-style/截图、Vue 同条件截图、Wails 与移动端证据仍待补齐，N007 继续保持 implementing。
+
+## 2026-09-14 Round N+54 — R027 模型 Provider/Thinking 选择器
+
+- 对照 Vue `ModelEditorDialog.vue` 的 `provider-select-popup` 与 `thinking-control-select-popup`，React 模型编辑器移除这两个字段的原生 `<select>`，新增项目级双行选项 combobox：主标签/说明、选中态、禁用态、ArrowUp/ArrowDown、Enter、Escape 和外部点击关闭均保留，Provider 与 Thinking 的原有回调和值顺序不变。
+- `ModelSettingsPanel` 定向测试 23/23、Web 全量 824/824、`typecheck:web` 与 `git diff --check` 通过；证据 `evidence/vue-react-parity/2026-09-14-r027-model-drawer-browser.md` 已更新。
+- R027 继续保持 `implementing`：真实连接/保存流程、设置子项全状态浏览器对照、computed-style/同条件截图、Wails/native 证据仍未闭环；本轮不将测试或可访问性树单独视为最终视觉验收。

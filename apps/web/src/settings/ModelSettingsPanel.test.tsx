@@ -102,6 +102,11 @@ async function mount(client: WeKnoraClient, role: 'viewer' | 'admin' | 'owner' |
 function inputByPlaceholder(root: HTMLElement, placeholder: string) {
   return root.querySelector<HTMLInputElement>(`input[placeholder="${placeholder}"]`);
 }
+function modelOptionTrigger(root: HTMLElement, index = 0) {
+  const trigger = root.querySelectorAll<HTMLButtonElement>('.wk-model-option-select__trigger')[index];
+  assert.ok(trigger, `model option trigger ${index} renders`);
+  return trigger;
+}
 async function setInput(input: HTMLInputElement, value: string) {
   await act(async () => {
     const setValue = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set;
@@ -110,11 +115,18 @@ async function setInput(input: HTMLInputElement, value: string) {
     input.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
   });
 }
-async function setSelect(select: HTMLSelectElement, value: string) {
+async function setSelect(select: HTMLSelectElement | HTMLButtonElement, value: string) {
   await act(async () => {
-    const setValue = Object.getOwnPropertyDescriptor(dom.window.HTMLSelectElement.prototype, 'value')?.set;
-    setValue?.call(select, value);
-    select.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    if (select instanceof dom.window.HTMLButtonElement) {
+      await click(select);
+      const option = select.parentElement?.querySelector<HTMLButtonElement>(`[role="option"][data-value="${value}"]`);
+      assert.ok(option, `model option ${value} renders`);
+      await click(option);
+    } else {
+      const setValue = Object.getOwnPropertyDescriptor(dom.window.HTMLSelectElement.prototype, 'value')?.set;
+      setValue?.call(select, value);
+      select.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    }
   });
 }
 async function pressKey(target: EventTarget, key: string) {
@@ -220,9 +232,9 @@ test('add editor renders Vue sections, provider fallback and thinking defaults',
   assert.match(text, /高级选项/);
 
   // Fallback provider catalogue localized per model.editor.providers.* (ModelEditorDialog.vue lines 505-646).
-  const providerSelect = container.querySelector<HTMLSelectElement>('.wk-model-editor select');
-  assert.ok(providerSelect);
-  const optionLabels = Array.from(providerSelect.options).map((option) => option.textContent ?? '');
+  const providerSelect = modelOptionTrigger(container);
+  await click(providerSelect);
+  const optionLabels = Array.from(container.querySelectorAll('[role="option"]')).map((option) => option.textContent ?? '');
   assert.ok(optionLabels.some((label) => label.includes('OpenAI')));
   assert.ok(optionLabels.some((label) => label.includes('阿里云 DashScope')));
   assert.ok(optionLabels.some((label) => label.includes('自定义 (OpenAI兼容接口)')));
@@ -233,8 +245,7 @@ test('add editor renders Vue sections, provider fallback and thinking defaults',
   assert.ok(inputByPlaceholder(container, '例如：客服问答模型'));
 
   // Thinking control defaults to the generic provider default (resetForm line 1143).
-  const thinkingSelect = Array.from(container.querySelectorAll('select')).find((select) =>
-    Array.from(select.options).some((option) => option.textContent === 'chat_template_kwargs'));
+  const thinkingSelect = modelOptionTrigger(container, 1);
   assert.ok(thinkingSelect, 'chat + remote renders the thinking control select');
   assert.equal(thinkingSelect.value, 'chat_template_kwargs');
   assert.match(text, /自定义 OpenAI 兼容、NVIDIA NIM、vLLM \/ 本地 Qwen 部署/);
@@ -249,21 +260,40 @@ test('add editor renders Vue sections, provider fallback and thinking defaults',
   assert.match(text, /添加请求头/);
 });
 
+test('model provider and thinking selectors keep Vue two-line options and keyboard behavior', async () => {
+  const { client } = makeClient();
+  const container = await mount(client, 'admin');
+  await openAddEditor(container);
+
+  const provider = modelOptionTrigger(container);
+  await click(provider);
+  assert.equal(container.querySelectorAll('select').length, 0, 'editor does not fall back to native select chrome');
+  assert.ok((container.querySelector('[role="option"]')?.textContent ?? '').includes('OpenAI'));
+  assert.ok(Array.from(container.querySelectorAll('[role="option"]')).some((option) => (option.textContent ?? '').includes('兼容')));
+  await pressKey(provider, 'ArrowDown');
+  await pressKey(provider, 'Enter');
+  assert.equal(provider.value, 'openai');
+  assert.equal(container.querySelector('[role="listbox"]'), null, 'selection closes the popup');
+
+  const thinking = modelOptionTrigger(container, 1);
+  await click(thinking);
+  assert.ok(Array.from(container.querySelectorAll('[role="option"]')).some((option) => (option.textContent ?? '').includes('思考')));
+  await pressKey(thinking, 'Escape');
+  assert.equal(container.querySelector('[role="listbox"]'), null, 'escape closes the popup');
+});
+
 test('switching provider autofills the default URL and re-syncs thinking control', async () => {
   const { client } = makeClient();
   const container = await mount(client, 'admin');
   await openAddEditor(container);
 
-  const providerSelect = container.querySelector<HTMLSelectElement>('.wk-model-editor select');
-  assert.ok(providerSelect);
+  const providerSelect = modelOptionTrigger(container);
   await setSelect(providerSelect, 'openai');
   const baseUrl = container.querySelector<HTMLInputElement>('input[type="url"]');
   assert.ok(baseUrl);
   assert.equal(baseUrl.value, 'https://api.openai.com/v1');
 
-  const thinkingSelect = Array.from(container.querySelectorAll('select')).find((select) =>
-    Array.from(select.options).some((option) => option.textContent === 'chat_template_kwargs'));
-  assert.ok(thinkingSelect);
+  const thinkingSelect = modelOptionTrigger(container, 1);
   assert.equal(thinkingSelect.value, 'none', 'openai defaults to 不写入思考参数 (defaultThinkingControl)');
 
   await setSelect(providerSelect, 'aliyun');
@@ -312,8 +342,7 @@ test('rerank locks the source to remote and swaps in signed-rerank credential fi
   assert.ok(localRadio);
   assert.equal((localRadio as HTMLButtonElement).disabled, true);
 
-  const providerSelect = container.querySelector<HTMLSelectElement>('.wk-model-editor select');
-  assert.ok(providerSelect);
+  const providerSelect = modelOptionTrigger(container);
   await setSelect(providerSelect, 'lkeap');
 
   // Signed rerank prefill + credential labels (ModelEditorDialog.vue lines 1168-1173, 757-781).
@@ -336,8 +365,7 @@ test('weknoracloud provider gates editing on credential state', async () => {
   const unconfigured = makeClient({ providers: () => [wkcProvider], wkcStatus: { needs_reinit: false, has_models: false } });
   const container = await mount(unconfigured.client, 'admin');
   await openAddEditor(container);
-  const providerSelect = container.querySelector<HTMLSelectElement>('.wk-model-editor select');
-  assert.ok(providerSelect);
+  const providerSelect = modelOptionTrigger(container);
   await setSelect(providerSelect, 'weknoracloud');
 
   const text = container.textContent ?? '';
@@ -357,8 +385,7 @@ test('weknoracloud configured state unlocks the editor', async () => {
   const configured = makeClient({ providers: () => [wkcProvider], wkcStatus: { needs_reinit: false, has_models: true } });
   const container = await mount(configured.client, 'admin');
   await openAddEditor(container);
-  const providerSelect = container.querySelector<HTMLSelectElement>('.wk-model-editor select');
-  assert.ok(providerSelect);
+  const providerSelect = modelOptionTrigger(container);
   await setSelect(providerSelect, 'weknoracloud');
   await act(async () => {});
 
@@ -386,8 +413,7 @@ test('creating a model posts the Vue payload and shows the localized toast', asy
   const container = await mount(client, 'admin');
   await openAddEditor(container);
 
-  const providerSelect = container.querySelector<HTMLSelectElement>('.wk-model-editor select');
-  assert.ok(providerSelect);
+  const providerSelect = modelOptionTrigger(container);
   await setSelect(providerSelect, 'openai');
   const name = inputByPlaceholder(container, '例如：gpt-4, claude-3-opus');
   assert.ok(name);
@@ -423,8 +449,7 @@ test('submit gating renders the exact Vue validation copy next to the actions', 
   const embeddingRadio = Array.from(container.querySelectorAll('[role="radio"]')).find((button) => button.textContent === 'Embedding');
   assert.ok(embeddingRadio);
   await click(embeddingRadio);
-  const providerSelect = container.querySelector<HTMLSelectElement>('.wk-model-editor select');
-  assert.ok(providerSelect);
+  const providerSelect = modelOptionTrigger(container);
   await setSelect(providerSelect, 'openai');
   const name = inputByPlaceholder(container, '例如：gpt-4, claude-3-opus');
   assert.ok(name);
@@ -445,8 +470,7 @@ test('duplicate submit is blocked while a save is in flight', async () => {
   };
   const container = await mount(client, 'admin');
   await openAddEditor(container);
-  const providerSelect = container.querySelector<HTMLSelectElement>('.wk-model-editor select');
-  assert.ok(providerSelect);
+  const providerSelect = modelOptionTrigger(container);
   await setSelect(providerSelect, 'openai');
   const name = inputByPlaceholder(container, '例如：gpt-4, claude-3-opus');
   assert.ok(name);
@@ -670,8 +694,7 @@ test('name and base URL validate on blur with per-field Vue copy', async () => {
   const { client } = makeClient();
   const container = await mount(client, 'admin');
   await openAddEditor(container);
-  const providerSelect = container.querySelector<HTMLSelectElement>('.wk-model-editor select');
-  assert.ok(providerSelect);
+  const providerSelect = modelOptionTrigger(container);
   await setSelect(providerSelect, 'openai');
 
   const name = inputByPlaceholder(container, '例如：gpt-4, claude-3-opus')!;

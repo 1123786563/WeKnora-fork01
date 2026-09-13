@@ -9,7 +9,8 @@
 - 模型设置页实际显示 Vue 形态的模型类型标签、内置模型卡片和网格新增模型入口。
 - 点击“添加模型”后，编辑器实际显示为右侧 560px 抽屉，带遮罩、关闭按钮、模型类型/来源/接入配置分组；不再以内联卡片占据主内容流。
 - 抽屉首屏实际可见 API/Ollama 来源分段、服务商选择、模型名称、显示名称和 Base URL 字段；当前 Ollama 因服务状态不可用而禁用，符合 Vue 的状态门控。
-- 交互渲染测试 `ModelSettingsPanel.test.tsx` 22/22；本次截图通过 CUA 采集，未将截图单独作为最终验收。
+- 交互渲染测试 `ModelSettingsPanel.test.tsx` 23/23；本次截图通过 CUA 采集，未将截图单独作为最终验收。
+- Provider 与 Thinking Control 选择器已改为项目级 Vue 风格双行选项控件：保留描述、选中态、禁用态、ArrowUp/ArrowDown、Enter、Escape 和外部点击关闭；表单内不再使用原生 `<select>`。
 
 ## 边界
 
