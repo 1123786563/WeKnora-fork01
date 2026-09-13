@@ -1580,3 +1580,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - React 工具目录按 Vue `McpToolsList.vue` 的局部样式补齐：工具名字号/行高、两行描述截断、工具行 14px 内边距、标题间距、目录边界、详情页签及策略控件间距/焦点状态；不改变工具过滤、分页或策略 API 行为。
 - 本轮为 Vue 样式源码对照与局部 CSS 修复；MCP 定向测试 15/15、完整 `pnpm test:web` 805/805、Web TypeScript 检查和 `git diff --check` 均通过；仍未宣称 Portal/computed-style 或真实 MCP 服务验收。
+
+## 2026-09-14 Round N+25 — R046 MCP 工具详情关闭语义
+
+- React 工具详情补齐 Vue `t-popup trigger="click"` 的外部点击关闭和翻页关闭行为，同时保留 Escape 关闭；详情内容、策略更新和分页 API 不变。
+- 本轮为 Vue 交互源码对照与 React 生命周期修复；R046 MCP 定向测试 15/15、完整 `pnpm test:web` 805/805、Web TypeScript 检查和 `git diff --check` 均通过；仍未宣称真实 Portal 定位/computed-style 或真实 MCP 服务验收。
