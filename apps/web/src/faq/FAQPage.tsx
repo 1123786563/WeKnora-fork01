@@ -685,7 +685,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                       </div>
                       <div className="faq-card-footer">
                         <div className="faq-card-tag">
-                          <span className="faq-tag-chip"><span className="tag-text">{tagName ?? t('knowledgeBase.untagged')}</span></span>
+                          <span className="faq-tag-chip" title={tagName ?? t('knowledgeBase.untagged')}><span className="tag-text">{tagName ?? t('knowledgeBase.untagged')}</span></span>
                         </div>
                         {canContribute ? (
                           <div className="faq-card-status" onClick={(event) => event.stopPropagation()}>

@@ -430,6 +430,20 @@ test('card footer keeps the tag chip and status switch', () => {
   assert.ok(untagged.includes('无标签'), 'missing tag falls back to knowledgeBase.untagged');
 });
 
+test('tag chip carries the FAQTagTooltip hover content as native tooltip semantics', () => {
+  // Vue wraps truncated tags in FAQTagTooltip (FAQEntryManager.vue:362-376 footer
+  // chip + frontend/src/components/FAQTagTooltip.vue): hovering reveals the full
+  // text. React aligns that content to the native title attribute, which is also
+  // the accessible (aria) description of the chip.
+  const html = renderCards();
+  assert.match(html, /class="faq-tag-chip" title="重要"/, 'resolved tag name is the tooltip content');
+  const untagged = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({
+    entries: [{ id: 3, standard_question: 'q2', similar_questions: [], negative_questions: [], answers: ['a'], is_enabled: true, is_recommended: false }] as never,
+    total: 1,
+  })));
+  assert.match(untagged, /class="faq-tag-chip" title="无标签"/, 'untagged fallback carries the tooltip too');
+});
+
 test('section collapse helpers default to collapsed and flip immutably', () => {
   assert.equal(isSectionCollapsed({}, 1, 'answers'), true, 'Vue defaults every section collapsed');
   const expanded = toggleSection({}, 1, 'answers');
