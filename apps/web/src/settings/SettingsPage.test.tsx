@@ -43,6 +43,7 @@ function makeClient(options: {
   runtime?: TenantRecord;
   runtimeTasks?: TenantRecord[];
   systemSettings?: TenantRecord[];
+  apiKeys?: TenantRecord[];
 } = {}) {
   const tenantGet = options.tenant instanceof Promise
     ? () => options.tenant as Promise<never>
@@ -73,6 +74,11 @@ function makeClient(options: {
         list: async () => options.systemSettings ?? [],
         update: async (_key: string, value: unknown) => ({ key: _key, value }),
         reset: async () => undefined,
+      },
+      apiKeys: {
+        list: async () => options.apiKeys ?? [],
+        create: async (input: Record<string, unknown>) => ({ id: 1, name: input.name, api_key: 'wk-test', token: 'wk-secret', capabilities: input.capabilities, full_access: false, knowledge_base_ids: null, created_at: '2026-01-01T00:00:00Z' }),
+        revoke: async () => undefined,
       },
     },
   } as unknown as WeKnoraClient;
@@ -208,6 +214,23 @@ test('system-global section renders grouped editable settings instead of a gener
   await act(async () => securityTab?.click());
   assert.ok(container.querySelector('input[type="checkbox"]'), 'boolean settings use a switch-like checkbox');
   assert.equal(text.includes('尚未移植'), false, 'the generic placeholder is gone');
+});
+
+test('platform API keys section renders the Vue table and one-time token surface', async () => {
+  const container = await mountPage(makeClient({ apiKeys: [{ id: 7, name: 'ops', api_key: 'wk-****', capabilities: ['system_runtime_read'], full_access: false, knowledge_base_ids: null, created_at: '2026-01-01T00:00:00Z' }] }), '?section=platform-api-keys', 'system-admin');
+  assert.ok(container.textContent?.includes('平台 API Key'), 'the platform key heading renders');
+  assert.ok(container.textContent?.includes('ops'), 'the existing key row renders');
+  const name = container.querySelector<HTMLInputElement>('[aria-label="密钥名称"]');
+  assert.ok(name);
+  await act(async () => { Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set?.call(name, 'new-key'); name.dispatchEvent(new dom.window.Event('input', { bubbles: true })); });
+  const capability = container.querySelector<HTMLInputElement>('.wk-api-key-capabilities input');
+  assert.ok(capability);
+  await act(async () => capability?.click());
+  const createButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find((button) => button.textContent === '创建');
+  assert.ok(createButton);
+  await act(async () => createButton?.click());
+  await act(async () => {});
+  assert.ok(container.querySelector('[role="alert"]'), 'creation renders the one-time token surface');
 });
 
 // B4d: section=subsection deep link reaches the model panel type tabs.

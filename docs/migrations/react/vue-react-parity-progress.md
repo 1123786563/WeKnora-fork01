@@ -1631,3 +1631,10 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 新增 DOM 交互回归覆盖高风险枚举的确认与取消路径；普通枚举、布尔、整数和文本/列表保存路径保持不变。
 - 验证：SettingsPage 定向测试 12/12；完整 `pnpm test:web` 809/809；Web TypeScript 检查通过；`git diff --check` 通过。
 - 证据层：本轮为 Vue 源码对照、React DOM/单元与全 Web 回归；真实高风险 system-admin 提交/失败回滚、管理员增删/密码重置、批量配额、同条件截图/computed-style、Wails 与移动端证据仍待补齐，N017 继续保持 review。
+
+## 2026-09-14 Round N+33 — N017 平台 API 密钥页面
+
+- React `platform-api-keys` 入口移除通用占位，新增 Vue `PlatformAPIKeys.vue` 对应的密钥列表、权限选择、创建状态、一次性 token 展示和撤销入口；创建/撤销沿用 `administration.apiKeys` API。
+- 列表保留密钥指纹、权限摘要、最近使用、创建时间和空态；创建要求名称与至少一个 system capability，失败通过状态提示保留当前列表。
+- 验证：SettingsPage 定向测试 13/13；完整 `pnpm test:web` 810/810；Web TypeScript 检查通过；`git diff --check` 通过。
+- 证据层：本轮为 Vue 源码对照、React DOM/单元与全 Web 回归；真实 system-admin 创建/撤销、token 复制、确认交互、同条件截图/computed-style、Wails 与移动端证据仍待补齐，N017 继续保持 review。

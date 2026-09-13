@@ -26,6 +26,7 @@ import { TenantInfoSection, UserProfileSection } from './TenantUserProfileSectio
 import { SystemInfoPanel } from './SystemInfoPanel.tsx';
 import { RuntimeQueuesPanel } from './RuntimeQueuesPanel.tsx';
 import { SystemGlobalSettingsPanel } from './SystemGlobalSettingsPanel.tsx';
+import { PlatformApiKeysPanel } from './PlatformApiKeysPanel.tsx';
 import './settings-wrapper.css';
 
 function errorText(error: unknown, fallback: string): string { return error instanceof Error ? error.message : fallback; }
@@ -181,6 +182,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
   const systemPanel = selectedKey === 'system' ? <SystemInfoPanel payload={payload} locale={locale} /> : null;
   const runtimeQueuesPanel = selectedKey === 'runtime-queues' ? <RuntimeQueuesPanel client={client} payload={payload as never} loading={loading} error={error} /> : null;
   const systemGlobalPanel = selectedKey === 'system-global' ? <SystemGlobalSettingsPanel client={client} initialSettings={Array.isArray(payload) ? payload as never : []} /> : null;
+  const platformApiKeysPanel = selectedKey === 'platform-api-keys' ? <PlatformApiKeysPanel client={client} initialKeys={Array.isArray(payload) ? payload as never : []} /> : null;
   const envVarPanel = selectedKey === 'envvars' ? <EnvVarSettingsPanel client={client} initialPayload={payload} onMutated={() => void load()} /> : null;
   const mcpPanel = selectedKey === 'mcp'
     ? <McpSettingsPanel client={client} role={role} initialServices={Array.isArray(payload) ? payload as never : []} />
@@ -204,7 +206,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
   const membersPanel = selectedKey === 'members'
     ? <TenantMembersPanel client={client} tenantId={tenantId} role={role} initialMembers={payload as never} />
     : null;
-  const portedPanel = selectedKey === 'mcp' ? mcpPanel : selectedKey === 'models' ? modelPanel : selectedKey === 'sandbox' ? sandboxPanel : selectedKey === 'skills' ? skillPanel : selectedKey === 'members' ? membersPanel : selectedKey === 'runtime-queues' ? runtimeQueuesPanel : selectedKey === 'system-global' ? systemGlobalPanel : PARTIALLY_PORTED_SECTIONS.has(selectedKey)
+  const portedPanel = selectedKey === 'mcp' ? mcpPanel : selectedKey === 'models' ? modelPanel : selectedKey === 'sandbox' ? sandboxPanel : selectedKey === 'skills' ? skillPanel : selectedKey === 'members' ? membersPanel : selectedKey === 'runtime-queues' ? runtimeQueuesPanel : selectedKey === 'system-global' ? systemGlobalPanel : selectedKey === 'platform-api-keys' ? platformApiKeysPanel : PARTIALLY_PORTED_SECTIONS.has(selectedKey)
     ? (selectedKey === 'sandbox'
         ? <PortedSectionsPanel section={selectedKey} />
         : <LiveSectionsPanel client={client} section={selectedKey} payload={payload} />)
