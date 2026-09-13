@@ -5,6 +5,7 @@
 - API Playground 已从旧手填 Session/Path/Body 表单切换为 Vue 三段式右侧抽屉，接入身份模式门禁、内置智能体默认选择、Session 创建、Agent Chat SSE 增量回答、停止、终端错误、异常 EOF 和签名 Token。
 - 证据：`evidence/vue-react-parity/2026-09-14-r013-api-playground.md`；模型 12/12、SSE 12/12、抽屉交互 9/9、正式 Web 757/757、`typecheck:web` 通过。
 - R013/N028 仍为 `implementing`：同账号浏览器对照、真实后端/权限、Wails/native 证据未完成。
+- React 认证浏览器已实际验证 API 集成页与 Playground 抽屉的入口、三段结构、默认值、密钥遮蔽和无 API Key 门禁；证据 `evidence/vue-react-parity/2026-09-14-r013-api-playground-browser.md`。当前空间无 API Key/智能体，真实 Session/SSE 记为 `blocked-env`。
 
 ## 2026-09-14 Round N+19 — N005 custom organization picker slice
 
@@ -1360,4 +1361,3 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 厘清：d6cf7e8b（peer 提交）内容为 FAQ... 不，为 API playground drawer 的增量快照（972 行：drawer/model/SSE/测试/证据/progress），来源是本方派发的 playground 切片在途 WIP 被并发提交；切片继续在其上精修（当前未提交 diff：Drawer.tsx +340/-85、model.ts +7）。
 - 处置：无需动作——增量提交模式在此并发环境可行（每笔提交均为可编译/可测试状态），切片报告后本方做最终复核集成。
 - 门禁快照：web 674+（playground WIP 中）、shared 436/436、mobile 146/146 全绿。
-
