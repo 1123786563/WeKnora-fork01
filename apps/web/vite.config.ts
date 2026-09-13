@@ -1,9 +1,36 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath, URL } from 'node:url';
+import { execSync } from 'node:child_process';
+import pkg from './package.json' with { type: 'json' };
+
+// UI 版本 for the system info panel (frontend/vite.config.ts:14-30 parity).
+const FRONTEND_VERSION = pkg.version ?? 'unknown';
+
+function resolveFrontendCommit(): string {
+  const fromEnv = process.env.VITE_FRONTEND_COMMIT || process.env.GITHUB_SHA;
+  if (fromEnv) {
+    try {
+      return execSync(`git rev-parse --short=8 ${fromEnv}`).toString().trim();
+    } catch {
+      return fromEnv.slice(0, 8);
+    }
+  }
+  try {
+    return execSync('git rev-parse --short=8 HEAD').toString().trim();
+  } catch {
+    return 'unknown';
+  }
+}
+
+const FRONTEND_COMMIT = resolveFrontendCommit();
 
 export default defineConfig({
   plugins: [react()],
+  define: {
+    __FRONTEND_VERSION__: JSON.stringify(FRONTEND_VERSION),
+    __FRONTEND_COMMIT__: JSON.stringify(FRONTEND_COMMIT),
+  },
   resolve: {
     alias: {
       '@weknora/api-client': fileURLToPath(new URL('../../packages/api-client/src/index.ts', import.meta.url)),

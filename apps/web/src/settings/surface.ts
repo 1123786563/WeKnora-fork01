@@ -1,4 +1,10 @@
 import { SETTINGS_SECTIONS, type SettingsSection, type SettingsOperation, type SettingsRole, type SettingsScope } from '@weknora/views';
+
+// Injected by vite define (apps/web/vite.config.ts) — frontend/vite.config.ts:71-74 parity.
+declare const __FRONTEND_VERSION__: string | undefined;
+declare const __FRONTEND_COMMIT__: string | undefined;
+const uiVersion = typeof __FRONTEND_VERSION__ === "string" && __FRONTEND_VERSION__ ? __FRONTEND_VERSION__ : "unknown";
+const uiCommit = typeof __FRONTEND_COMMIT__ === "string" && __FRONTEND_COMMIT__ ? __FRONTEND_COMMIT__ : "unknown";
 import { validatePassword } from '@weknora/domain/auth/password-policy';
 import { formatMessage, type Locale } from '@weknora/i18n';
 
@@ -301,9 +307,9 @@ export function systemInfoRows(value: unknown, options: { now?: number; locale?:
     commit: commit || undefined,
   });
 
-  // UI 版本 — the Vue build injects __FRONTEND_VERSION__; the React bundle has
-// no such constant yet, so the row keeps the Vue unknown fallback.
-  row("system.frontendVersionLabel", "system.frontendVersionDescription", "unknown");
+  // UI 版本 — the React build injects __FRONTEND_VERSION__/__FRONTEND_COMMIT__
+  // via vite define (frontend/vite.config.ts:71-74 parity).
+  row("system.frontendVersionLabel", "system.frontendVersionDescription", uiVersion, uiVersion === 'unknown' ? undefined : { commit: uiCommit });
 
   if (text(info.build_time)) row("system.buildTimeLabel", "system.buildTimeDescription", text(info.build_time));
   if (text(info.go_version)) row("system.goVersionLabel", "system.goVersionDescription", text(info.go_version));
