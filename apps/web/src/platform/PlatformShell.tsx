@@ -300,6 +300,17 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
   const kbListContext = pathname === '/platform/knowledge-bases' || pathname === '/platform';
   const currentScope = new URLSearchParams(window.location.search).get('scope') === 'mine' ? 'mine' : 'all';
 
+  // R017 organizations sub-filter: the Vue org rail (ListSpaceSidebar
+  // mode="organization", OrganizationList.vue:3-4) carries 全部/我创建的/
+  // 我加入的; the shell surfaces the same entries under the organizations nav
+  // item on /platform/organizations and drives them through the shared
+  // ?scope= convention (all|created|joined) that the page reads back.
+  const orgListContext = pathname === '/platform/organizations';
+  const currentOrgScope = (() => {
+    const value = new URLSearchParams(window.location.search).get('scope');
+    return value === 'created' || value === 'joined' ? value : 'all';
+  })();
+
   const toggleCollapsed = () => {
     setCollapsed((current) => {
       window.localStorage.setItem(COLLAPSE_STORAGE_KEY, String(!current));
@@ -356,6 +367,20 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
             <div className="plat-shell__kb-filters" role="navigation" aria-label={t('common.knowledgeBases')}>
               <a href="/platform/knowledge-bases" className={`plat-shell__kb-filter${currentScope === 'all' ? ' plat-shell__kb-filter--active' : ''}`}>{t('common.all')}</a>
               <a href="/platform/knowledge-bases?scope=mine" className={`plat-shell__kb-filter${currentScope === 'mine' ? ' plat-shell__kb-filter--active' : ''}`}>{t('knowledgeList.sections.mine')}</a>
+            </div>
+          )}
+
+          {/* R017: shared-space scope entries (Vue menu.vue has no organizations
+              submenu — only the pending-requests badge on the nav entry — so
+              the KB quick-filter block is the established shell form; counts
+              stay on the page rail like Vue's ListSpaceSidebar). Class reuse
+              is intentional: same visual language, no shell.css growth; the
+              aria-label (menu.organizations) disambiguates the blocks. */}
+          {orgListContext && !collapsed && (
+            <div className="plat-shell__kb-filters" role="navigation" aria-label={labels.organizations}>
+              <a href="/platform/organizations" className={`plat-shell__kb-filter${currentOrgScope === 'all' ? ' plat-shell__kb-filter--active' : ''}`}>{t('common.all')}</a>
+              <a href="/platform/organizations?scope=created" className={`plat-shell__kb-filter${currentOrgScope === 'created' ? ' plat-shell__kb-filter--active' : ''}`}>{t('organization.createdByMe')}</a>
+              <a href="/platform/organizations?scope=joined" className={`plat-shell__kb-filter${currentOrgScope === 'joined' ? ' plat-shell__kb-filter--active' : ''}`}>{t('organization.joinedByMe')}</a>
             </div>
           )}
 

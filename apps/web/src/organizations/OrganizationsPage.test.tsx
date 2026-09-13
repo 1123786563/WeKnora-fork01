@@ -56,7 +56,12 @@ const joinedOrg: Organization = {
 
 interface Calls { create: unknown[]; preview: string[]; join: unknown[]; submitJoinRequest: unknown[]; updateRole: unknown[][]; review: unknown[][]; leave: string[]; remove: string[]; update: unknown[][]; membersList: string[]; joinRequestsList: string[]; kbSharesList: string[]; inviteCode: string[] }
 
-function clientWith(organizations: Organization[]): { client: WeKnoraClient; calls: Calls } {
+// R017: auth/me drives the page's self-resolved canManageOrg when no explicit
+// role prop is passed. The default mirrors an admin home-tenant membership so
+// legacy gating-free expectations stay valid; RBAC tests override it.
+export interface MeOverride { role: string; canAccessAllTenants?: boolean }
+
+function clientWith(organizations: Organization[], me_?: MeOverride): { client: WeKnoraClient; calls: Calls } {
   const calls: Calls = { create: [], preview: [], join: [], submitJoinRequest: [], updateRole: [], review: [], leave: [], remove: [], update: [], membersList: [], joinRequestsList: [], kbSharesList: [], inviteCode: [] };
   const organizationsApi = {
     list: async () => ({ items: organizations, total: organizations.length }),
@@ -86,7 +91,15 @@ function clientWith(organizations: Organization[]): { client: WeKnoraClient; cal
       remove: async () => {},
     },
   };
-  return { client: { identity: { organizations: organizationsApi } } as unknown as WeKnoraClient, calls };
+  const me = me_ ?? { role: 'admin' };
+  const auth = {
+    me: async () => ({
+      user: { id: 'u1', can_access_all_tenants: me.canAccessAllTenants === true },
+      tenant: { id: 1 },
+      memberships: [{ tenant_id: 1, role: me.role }],
+    }),
+  };
+  return { client: { auth, identity: { organizations: organizationsApi } } as unknown as WeKnoraClient, calls };
 }
 
 let mountedRoot: Root | undefined;
@@ -95,14 +108,15 @@ afterEach(async () => {
   if (mountedRoot) await act(async () => mountedRoot?.unmount());
   mountedRoot = undefined;
   document.body.replaceChildren();
+  window.history.replaceState({}, '', '/platform/organizations');
 });
 
-async function mountPage(client: WeKnoraClient, inviteCode?: string): Promise<HTMLElement> {
+async function mountPage(client: WeKnoraClient, inviteCode?: string, role?: 'owner' | 'admin' | 'contributor' | 'viewer'): Promise<HTMLElement> {
   const container = document.createElement('div');
   document.body.append(container);
   mountedRoot = createRoot(container);
   await act(async () => {
-    mountedRoot?.render(<OrganizationsPage client={client} inviteCode={inviteCode} />);
+    mountedRoot?.render(<OrganizationsPage client={client} inviteCode={inviteCode} role={role} />);
   });
   return container;
 }
@@ -296,4 +310,132 @@ test('more menu offers leave for joined spaces and hides delete for non-owners',
   assert.ok(menu);
   assert.match(menu.textContent ?? '', /退出共享空间/);
   assert.doesNotMatch(menu.textContent ?? '', /删除/);
+});
+
+// ─── R017 RBAC: tenant-role gating on write operations ───────────────────
+// Vue OrganizationList.vue:499-504 — canManageOrg = hasRole('admin') ||
+// canAccessAllTenants; owner/admin keep the write affordances, contributor/
+// viewer get them disabled with the rbac tip. Delete is additionally
+// restricted to owned spaces (v-if="org.is_owner && canManageOrg").
+
+const NEED_TENANT_ADMIN_TIP = '此操作需要当前空间的 admin 或更高角色，请联系空间 Owner 调整权限。';
+
+async function openCardMenu(root: HTMLElement, name: string): Promise<HTMLElement> {
+  const cards = root.querySelectorAll('.org-card');
+  const card = [...cards].find((entry) => entry.textContent?.includes(name));
+  assert.ok(card, 'expected card ' + name);
+  const more = (card as HTMLElement).querySelector('.more-wrap');
+  assert.ok(more);
+  await click(more as HTMLElement);
+  const menu = (card as HTMLElement).querySelector('.popup-menu');
+  assert.ok(menu, 'expected popup menu for ' + name);
+  return menu as HTMLElement;
+}
+
+test('viewer/contributor roles disable create and join with the rbac tip and hide delete', async () => {
+  for (const role of ['viewer', 'contributor'] as const) {
+    const { client } = clientWith([ownerOrg, joinedOrg]);
+    const root = await mountPage(client, undefined, role);
+
+    const joinButton = buttonWithLabel(root, '加入共享空间');
+    const createButton = buttonWithLabel(root, '创建共享空间');
+    assert.equal(joinButton.disabled, true, role + ' join header button must be disabled');
+    assert.equal(createButton.disabled, true, role + ' create header button must be disabled');
+    assert.equal(joinButton.getAttribute('title'), NEED_TENANT_ADMIN_TIP, 'join tooltip mirrors Vue noPermissionTip');
+    assert.equal(createButton.getAttribute('title'), NEED_TENANT_ADMIN_TIP, 'create tooltip mirrors Vue noPermissionTip');
+
+    // Owned card: delete item is v-if="org.is_owner && canManageOrg" → hidden.
+    const ownerMenu = await openCardMenu(root, 'parity-org');
+    assert.doesNotMatch(ownerMenu.textContent ?? '', /删除/);
+    assert.match(ownerMenu.textContent ?? '', /共享空间设置/);
+
+    // Joined card: leave stays available for any role (v-if="!org.is_owner").
+    const joinedMenu = await openCardMenu(root, 'joined-org');
+    assert.match(joinedMenu.textContent ?? '', /退出共享空间/);
+  }
+});
+
+test('admin/owner roles keep create and join enabled and offer delete on owned spaces', async () => {
+  for (const role of ['admin', 'owner'] as const) {
+    const { client } = clientWith([ownerOrg]);
+    const root = await mountPage(client, undefined, role);
+    assert.equal(buttonWithLabel(root, '加入共享空间').disabled, false, role + ' join must stay enabled');
+    assert.equal(buttonWithLabel(root, '创建共享空间').disabled, false, role + ' create must stay enabled');
+    const menu = await openCardMenu(root, 'parity-org');
+    assert.match(menu.textContent ?? '', /删除/);
+  }
+});
+
+test('empty-state join/create actions are disabled for a viewer', async () => {
+  const { client } = clientWith([]);
+  const root = await mountPage(client, undefined, 'viewer');
+  const actions = root.querySelectorAll('.empty-state-actions button');
+  assert.equal(actions.length, 2);
+  assert.equal((actions[0] as HTMLButtonElement).disabled, true);
+  assert.equal((actions[1] as HTMLButtonElement).disabled, true);
+});
+
+test('without a role prop the page resolves canManageOrg from auth/me memberships', async () => {
+  // admin membership (default fixture): buttons stay enabled…
+  const admin = clientWith([ownerOrg]);
+  const adminRoot = await mountPage(admin.client);
+  assert.equal(buttonWithLabel(adminRoot, '创建共享空间').disabled, false);
+
+  // …viewer membership disables them, mirroring Vue hasRole('admin') === false.
+  const viewer = clientWith([ownerOrg], { role: 'viewer' });
+  const viewerRoot = await mountPage(viewer.client);
+  assert.equal(buttonWithLabel(viewerRoot, '创建共享空间').disabled, true);
+
+  // …cross-tenant superuser (can_access_all_tenants) passes like Vue canAccessAllTenants.
+  const superuser = clientWith([ownerOrg], { role: 'viewer', canAccessAllTenants: true });
+  const superuserRoot = await mountPage(superuser.client);
+  assert.equal(buttonWithLabel(superuserRoot, '创建共享空间').disabled, false);
+});
+
+// ─── R017 shell sub-filter: ?scope= deep link + URL sync ──────────────────
+// Same ?scope= convention as the KB list (App.tsx read/writeScopeToUrl):
+// values all|created|joined, 'all' removes the param.
+
+test('?scope=created deep-link selects the 我创建的 rail and lists only owned spaces', async () => {
+  window.history.replaceState({}, '', '/platform/organizations?scope=created');
+  const { client } = clientWith([ownerOrg, joinedOrg]);
+  const root = await mountPage(client);
+  const cards = root.querySelectorAll('.org-card');
+  assert.equal(cards.length, 1, 'only owned spaces render under ?scope=created');
+  assert.match(cards[0]?.textContent ?? '', /parity-org/);
+  const activeRail = root.querySelector('.org-rail-item.is-active');
+  assert.ok(activeRail, 'expected an active rail entry');
+  assert.match(activeRail?.textContent ?? '', /我创建的/);
+});
+
+test('?scope=joined deep-link selects the 我加入的 rail and lists only joined spaces', async () => {
+  window.history.replaceState({}, '', '/platform/organizations?scope=joined');
+  const { client } = clientWith([ownerOrg, joinedOrg]);
+  const root = await mountPage(client);
+  const cards = root.querySelectorAll('.org-card');
+  assert.equal(cards.length, 1);
+  assert.match(cards[0]?.textContent ?? '', /joined-org/);
+  const activeRail = root.querySelector('.org-rail-item.is-active');
+  assert.match(activeRail?.textContent ?? '', /我加入的/);
+});
+
+test('rail clicks sync ?scope= (created/joined set it, all removes it)', async () => {
+  const { client } = clientWith([ownerOrg, joinedOrg]);
+  const root = await mountPage(client);
+  const railButtons = [...root.querySelectorAll('.org-rail-item')] as HTMLButtonElement[];
+  assert.equal(railButtons.length, 3, 'rail mirrors Vue ListSpaceSidebar: all/created/joined');
+  const railFor = (label: string) => railButtons.find((button) => button.textContent?.includes(label));
+  assert.ok(railFor('全部') && railFor('我创建的') && railFor('我加入的'), 'rail labels match Vue entries');
+
+  await click(railFor('我加入的')!);
+  assert.equal(window.location.search, '?scope=joined', 'joined writes ?scope=joined');
+  await click(railFor('我创建的')!);
+  assert.equal(window.location.search, '?scope=created', 'created writes ?scope=created');
+  await click(railFor('全部')!);
+  assert.equal(window.location.search, '', 'all removes the ?scope param (KB convention)');
+
+  // Vue ListSpaceSidebar tooltipText: collapsed-strip tooltips carry counts.
+  assert.equal(railFor('全部')!.getAttribute('title'), '全部 (2)');
+  assert.equal(railFor('我创建的')!.getAttribute('title'), '我创建的 (1)');
+  assert.equal(railFor('我加入的')!.getAttribute('title'), '我加入的 (1)');
 });

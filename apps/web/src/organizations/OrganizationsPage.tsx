@@ -4,6 +4,7 @@
 // anatomy, empty state and the create / join flows mirror the Vue page while
 // all server wiring keeps using @weknora/api-client identity.organizations.
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { readReactPlatformState } from '../platform/legacy-session.ts';
 import type { Organization, OrganizationJoinRequest, OrganizationMember, WeKnoraClient } from '@weknora/api-client';
 import { formatMessage, isLocale, supportedLocales } from '@weknora/i18n';
 import { clampApplicationNote, inviteJoinMode, requestedRoleOf } from './join.ts';
@@ -29,6 +30,24 @@ function boolOf(value: unknown): boolean { return value === true; }
 
 type SpaceSelection = 'all' | 'created' | 'joined';
 type OrgSectionKey = 'created' | 'joined';
+/** Tenant membership role, mirroring scopeRuntime.role() / Vue authStore. */
+export type OrganizationSpaceRole = 'owner' | 'admin' | 'contributor' | 'viewer';
+
+// R017 (?scope=): deep link + URL sync use the KB-list convention (App.tsx
+// readScopeFromUrl/writeScopeToUrl). Values all|created|joined match the Vue
+// spaceSelection union; 'all' removes the param so the canonical URL stays
+// /platform/organizations.
+function readScopeFromUrl(): SpaceSelection {
+  const value = new URLSearchParams(window.location.search).get('scope');
+  return value === 'created' || value === 'joined' ? value : 'all';
+}
+
+function writeScopeToUrl(selection: SpaceSelection): void {
+  const url = new URL(window.location.href);
+  if (selection === 'all') url.searchParams.delete('scope');
+  else url.searchParams.set('scope', selection);
+  window.history.replaceState({}, document.title, url.pathname + url.search + url.hash);
+}
 
 // shouldShowOrgRelationTag ported from frontend/src/utils/card-list-badge.ts:
 // suppress the corner role tag when a section header already communicates it.
@@ -175,11 +194,11 @@ function skeletonCard(key: string) {
 
 type ToastState = { tone: 'success' | 'error'; text: string } | null;
 
-export function OrganizationsPage({ client, inviteCode }: { client: WeKnoraClient; inviteCode?: string }) {
+export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnoraClient; inviteCode?: string; role?: OrganizationSpaceRole }) {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<ToastState>(null);
-  const [selection, setSelection] = useState<SpaceSelection>('all');
+  const [selection, setSelectionState] = useState<SpaceSelection>(readScopeFromUrl);
   const [collapsedSections, setCollapsedSections] = useState<Set<OrgSectionKey>>(new Set());
   const [moreMenuOrgId, setMoreMenuOrgId] = useState<string | null>(null);
 
@@ -225,6 +244,52 @@ export function OrganizationsPage({ client, inviteCode }: { client: WeKnoraClien
     const timer = setTimeout(() => setToast(null), 3000);
     return () => clearTimeout(timer);
   }, [toast]);
+
+  // R017 RBAC (Vue OrganizationList.vue:499-504): every write affordance on
+  // this page (创建/加入/删除) requires the current TENANT role ≥ admin —
+  // canManageOrg = hasRole('admin') || canAccessAllTenants. An explicit role
+  // prop (scopeRuntime.role() wiring, same pattern as SettingsPage) wins;
+  // otherwise the page resolves it from auth/me: the active-tenant membership
+  // role (selected tenant, falling back to the home tenant like Vue's
+  // currentTenantRole) plus the can_access_all_tenants superuser flag. UI
+  // rendering only — the server route guard remains the real boundary.
+  const [resolvedCanManage, setResolvedCanManage] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (role) {
+      setResolvedCanManage(role === 'admin' || role === 'owner');
+      return;
+    }
+    let active = true;
+    void client.auth?.me?.().then((me) => {
+      if (!active) return;
+      const record = me.user as Record<string, unknown>;
+      const selected = readReactPlatformState(window.localStorage)?.tenantId ?? null;
+      const homeTenant = me.tenant && me.tenant.id !== null && me.tenant.id !== undefined ? String(me.tenant.id) : '';
+      const tenantId = selected ?? homeTenant;
+      let currentRole = '';
+      for (const item of me.memberships ?? []) {
+        if (!item || typeof item !== 'object') continue;
+        const row = item as Record<string, unknown>;
+        const id = row.tenant_id ?? row.tenantId;
+        if (tenantId && String(id) === tenantId && typeof row.role === 'string') { currentRole = row.role; break; }
+      }
+      setResolvedCanManage(currentRole === 'admin' || currentRole === 'owner' || record.can_access_all_tenants === true);
+    }).catch(() => {
+      // Identity unavailable (embedded/test mounts): keep the legacy
+      // permissive UI; the server still rejects unauthorized writes.
+      if (active) setResolvedCanManage(true);
+    });
+    return () => { active = false; };
+  }, [client, role]);
+  const canManageOrg = resolvedCanManage ?? true;
+  const writeGuardTitle = t(locale, 'organization.rbac.needTenantAdminTip');
+
+  // Vue ListSpaceSidebar v-model="spaceSelection": rail clicks mirror the
+  // selection into ?scope= so shell sub-filter and deep links stay in sync.
+  const setSelection = (next: SpaceSelection) => {
+    setSelectionState(next);
+    writeScopeToUrl(next);
+  };
 
   function clearInviteFromUrl() {
     const url = new URL(window.location.href);
@@ -542,11 +607,13 @@ export function OrganizationsPage({ client, inviteCode }: { client: WeKnoraClien
                     <div className="popup-menu-item delete" onClick={(event) => { event.stopPropagation(); setMoreMenuOrgId(null); setConfirmState({ kind: 'leave', org }); }}>
                       <IconLogout /><span>{t(locale, 'organization.leave')}</span>
                     </div>
-                  ) : (
+                  ) : canManageOrg ? (
+                    // Vue: v-if="org.is_owner && canManageOrg" — deleting an
+                    // owned space also requires the tenant admin+ role.
                     <div className="popup-menu-item delete" onClick={(event) => { event.stopPropagation(); setMoreMenuOrgId(null); setConfirmState({ kind: 'delete', org }); }}>
                       <IconDelete /><span>{t(locale, 'common.delete')}</span>
                     </div>
-                  )}
+                  ) : null}
                 </div>
               </div>
             ) : null}
@@ -591,15 +658,17 @@ export function OrganizationsPage({ client, inviteCode }: { client: WeKnoraClien
     <main className="wk-page wk-org-page">
       <div className="org-list-container">
         <aside className="org-space-rail" aria-label={t(locale, 'organization.title')}>
-          <button type="button" className={'org-rail-item' + (selection === 'all' ? ' is-active' : '')} onClick={() => setSelection('all')}>
+          {/* Vue ListSpaceSidebar collapsed-strip tooltips carry the live
+              counts (tooltipText(name, count) → "name (count)"). */}
+          <button type="button" className={'org-rail-item' + (selection === 'all' ? ' is-active' : '')} title={t(locale, 'common.all') + ' (' + organizations.length + ')'} onClick={() => setSelection('all')}>
             <span className="org-rail-icon"><IconLayers /></span>
             <span>{t(locale, 'common.all')}</span>
           </button>
-          <button type="button" className={'org-rail-item' + (selection === 'created' ? ' is-active' : '')} onClick={() => setSelection('created')}>
+          <button type="button" className={'org-rail-item' + (selection === 'created' ? ' is-active' : '')} title={t(locale, 'organization.createdByMe') + ' (' + createdCount + ')'} onClick={() => setSelection('created')}>
             <span className="org-rail-icon"><IconUsergroupAdd /></span>
             <span>{t(locale, 'organization.createdByMe')}</span>
           </button>
-          <button type="button" className={'org-rail-item' + (selection === 'joined' ? ' is-active' : '')} onClick={() => setSelection('joined')}>
+          <button type="button" className={'org-rail-item' + (selection === 'joined' ? ' is-active' : '')} title={t(locale, 'organization.joinedByMe') + ' (' + joinedCount + ')'} onClick={() => setSelection('joined')}>
             <span className="org-rail-icon"><IconUsergroup /></span>
             <span>{t(locale, 'organization.joinedByMe')}</span>
           </button>
@@ -610,10 +679,12 @@ export function OrganizationsPage({ client, inviteCode }: { client: WeKnoraClien
               <div className="org-title-row">
                 <h2 className="org-title">{t(locale, 'organization.title')}</h2>
                 <div className="org-header-actions">
-                  <button type="button" className="org-header-action-btn" aria-label={t(locale, 'organization.joinOrg')} title={t(locale, 'organization.joinOrg')} onClick={openJoinModal}>
+                  {/* Vue header-actions: disabled={!canManageOrg} with the
+                      joinOrg/createOrg tooltip swapped for the rbac tip. */}
+                  <button type="button" className="org-header-action-btn" aria-label={t(locale, 'organization.joinOrg')} title={canManageOrg ? t(locale, 'organization.joinOrg') : writeGuardTitle} disabled={!canManageOrg} onClick={openJoinModal}>
                     <IconEnter />
                   </button>
-                  <button type="button" className="org-header-action-btn" aria-label={t(locale, 'organization.createOrg')} title={t(locale, 'organization.createOrg')} onClick={openCreateModal}>
+                  <button type="button" className="org-header-action-btn" aria-label={t(locale, 'organization.createOrg')} title={canManageOrg ? t(locale, 'organization.createOrg') : writeGuardTitle} disabled={!canManageOrg} onClick={openCreateModal}>
                     <IconOrgCreate />
                   </button>
                 </div>
@@ -630,10 +701,10 @@ export function OrganizationsPage({ client, inviteCode }: { client: WeKnoraClien
                 <span className="empty-txt">{emptyTitle}</span>
                 <span className="empty-desc">{emptyDesc}</span>
                 <div className="empty-state-actions">
-                  <button type="button" className="org-btn outline" onClick={openJoinModal}>
+                  <button type="button" className="org-btn outline" title={canManageOrg ? undefined : writeGuardTitle} disabled={!canManageOrg} onClick={openJoinModal}>
                     <IconEnter />{t(locale, 'organization.joinOrg')}
                   </button>
-                  <button type="button" className="org-btn primary" onClick={openCreateModal}>
+                  <button type="button" className="org-btn primary" title={canManageOrg ? undefined : writeGuardTitle} disabled={!canManageOrg} onClick={openCreateModal}>
                     <IconOrgCreate />{t(locale, 'organization.createOrg')}
                   </button>
                 </div>
