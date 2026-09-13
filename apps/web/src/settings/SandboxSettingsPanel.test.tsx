@@ -860,26 +860,27 @@ test('inventory resolves session ids into titles with Vue fallbacks for failed l
 });
 
 test('inventory stays hidden while session titles resolve, then renders them (SandboxSettings.vue:515-527)', async () => {
-  const pending = deferred<{ id: string; title: string; is_pinned: boolean }>();
   const { client } = makeClient(() => ({}), [cubeRecord]);
   (client.sandboxConfigurations as { inventory: unknown }).inventory = async () => ({
     sandboxCount: 1, sessionIds: ['session-a'], agentNames: [],
   });
-  (client.sessions as { get: (id: string) => Promise<unknown> }).get = async () => ({ id: 'session-a', title: '巡检机器人', is_pinned: false }); // TEMP EXPERIMENT
+  let releaseTitle!: (session: { id: string; title: string; is_pinned: boolean }) => void;
+  const titleGate = new Promise<{ id: string; title: string; is_pinned: boolean }>((resolve) => { releaseTitle = resolve; });
+  (client.sessions as { get: (id: string) => Promise<unknown> }).get = () => titleGate;
   const container = await mount(client, { initialData: { items: [cubeRecord], workspaceScriptsDisabled: false } });
-  console.log('probe-a mounted');
   await openInventory(container);
-  console.log('probe-b clicked');
 
   // Vue keeps the drawer inside t-loading until the titles land (515-527),
   // so the list must not render raw ids first.
-  try {
-    const card = container.querySelector('.wk-sandbox-inventory');
-    console.log('probe-c card-in-dom =', Boolean(card), 'len =', (container.innerHTML ?? '').length);
-  } catch (probeError) { console.log('probe-c threw', (probeError as Error).message); }
+  const listBeforeTitles = container.querySelector('.wk-sandbox-inventory');
+  releaseTitle({ id: 'session-a', title: '巡检机器人', is_pinned: false });
+  await act(async () => { await titleGate; });
+  const textAfterTitles = container.textContent ?? '';
 
-  await act(async () => pending.resolve({ id: 'session-a', title: '巡检机器人', is_pinned: false }));
-  console.log('probe-d resolved');
+  // Assertions run only after the flow has fully settled.
+  assert.equal(listBeforeTitles === null, true, 'the inventory list must not render raw ids before titles resolve');
+  assert.equal(textAfterTitles.includes('巡检机器人'), true, 'the loaded title renders once titles resolve');
+  assert.equal(textAfterTitles.includes(t('settings.sandbox.inventorySessionKind')), true, 'the row keeps the session-kind label');
   const text = container.textContent ?? '';
   assert.match(text, /巡检机器人/);
   assert.match(text, new RegExp(t('settings.sandbox.inventorySessionKind')));

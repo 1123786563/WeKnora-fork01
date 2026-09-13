@@ -1565,6 +1565,19 @@ function targetSummary(record: SandboxConfigRecord): string {
   return endpointHost(record);
 }
 
+/** SandboxSettings.vue loadSessionTitles (323-330): blank ids are dropped and
+ *  the rest deduped before one GET per session. */
+export function uniqueSessionIds(ids: readonly string[]): string[] {
+  return [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
+}
+
+/** SandboxSettings.vue sessionTitle (317-321): a loaded title wins; anything
+ *  else reads as the localized "untitled session" label. */
+export function sessionTitleText(titles: Record<string, string> | undefined, id: string, untitledLabel: string): string {
+  const title = titles?.[id];
+  return title ? title : untitledLabel;
+}
+
 interface CardWarning { key: string; textKey: string }
 
 /** SandboxSettings.vue buildCardWarnings (426-459). */
@@ -1597,6 +1610,8 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
   /** SandboxSettings.vue:43-55 — only switching execution OFF pops the warning confirm. */
   const [confirmingDisable, setConfirmingDisable] = useState(false);
   const [inventory, setInventory] = useState<{ record: SandboxConfigRecord; data: SandboxInventory; notice: 'blocked' | 'unverifiable' } | null>(null);
+  /** SandboxSettings.vue sessionTitles (315): id -> trimmed title. */
+  const [sessionTitles, setSessionTitles] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -1629,10 +1644,28 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
     setEditing({ record, presetType: '' });
   }
 
+  /** SandboxSettings.vue loadSessionTitles (323-339): one GET per unique id in
+   *  parallel; a failed lookup resolves to '' and renders as "untitled". */
+  const loadSessionTitles = useCallback(async (ids: readonly string[]) => {
+    const unique = uniqueSessionIds(ids);
+    if (!unique.length) { setSessionTitles({}); return; }
+    const next: Record<string, string> = {};
+    await Promise.all(unique.map(async (id) => {
+      try {
+        next[id] = (await client.sessions.get(id)).title.trim();
+      } catch { next[id] = ''; }
+    }));
+    setSessionTitles(next);
+  }, [client]);
+
+  /** Vue openInventory (511-528): the titles load before the spinner clears,
+   *  so the list never flashes raw ids. */
   async function inspect(record: SandboxConfigRecord): Promise<void> {
-    setBusy(true); setError(null); setInventory(null);
+    setBusy(true); setError(null); setInventory(null); setSessionTitles({});
     try {
-      setInventory({ record, data: await client.sandboxConfigurations.inventory(record.id), notice: 'blocked' });
+      const data = await client.sandboxConfigurations.inventory(record.id);
+      await loadSessionTitles(data.sessionIds);
+      setInventory({ record, data, notice: 'blocked' });
     } catch (cause) {
       setError(cause instanceof Error && cause.message ? cause.message : t('settings.sandbox.inventoryFailed'));
     } finally { setBusy(false); }
@@ -1655,6 +1688,9 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
           data: refusal.inventory,
           notice: refusal.code === 'sandbox_inventory_unverifiable' ? 'unverifiable' : 'blocked',
         });
+        // Vue showRefusal (555-566) renders the drawer immediately and fills
+        // the titles in as their lookups land.
+        void loadSessionTitles(refusal.inventory.sessionIds);
       } else {
         setError(failure.message || t('settings.sandbox.deleteFailed'));
       }
@@ -1819,8 +1855,10 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
           <h4>{t('settings.sandbox.inventorySessions')}</h4>
           {inventory.data.sessionIds.length > 0 ? (
             <ul className="wk-list">
+              {/* Vue inventory row (171-178): the raw id stays on the title
+                  tooltip; the label shows the resolved session title. */}
               {inventory.data.sessionIds.map((id) => (
-                <li key={id}><strong>{id}</strong> <span className="wk-muted">{t('settings.sandbox.inventorySessionKind')}</span></li>
+                <li key={id}><strong title={id}>{sessionTitleText(sessionTitles, id, t('settings.sandbox.inventoryUntitledSession'))}</strong> <span className="wk-muted">{t('settings.sandbox.inventorySessionKind')}</span></li>
               ))}
             </ul>
           ) : <Status>{t('settings.sandbox.inventoryEmpty')}</Status>}
