@@ -36,9 +36,12 @@ if [ "$MODE" != "mock" ] && [ "$MODE" != "real" ]; then
   echo "usage: $0 [up|run|down|all] [mock|real]" >&2; exit 2
 fi
 
-LATEST="/tmp/craft-w06-$MODE.latest"
+# The stack tag namespaces the run-dir pointer so parallel task worktrees
+# never cross-teardown each other (ports above must differ too).
+STACK_TAG="${CRAFT_STACK_TAG:-w06}"
+LATEST="/tmp/craft-$STACK_TAG-$MODE.latest"
 if [ "$ACTION" = "up" ] || [ "$ACTION" = "all" ]; then
-  RUN="$(mktemp -d "/tmp/craft-w06-$MODE.XXXXXX")"
+  RUN="$(mktemp -d "/tmp/craft-$STACK_TAG-$MODE.XXXXXX")"
 else
   [ -f "$LATEST" ] || { echo "no stack running for mode $MODE" >&2; exit 2; }
   RUN="$(cat "$LATEST")"
@@ -46,8 +49,12 @@ fi
 ART="$RUN/artifacts"; mkdir -p "$ART" "$RUN/bin" "$RUN/certs" "$RUN/logs"
 PIDS="$RUN/pids.txt"; [ -f "$PIDS" ] || : > "$PIDS"
 
-PORT_MAIN=41871; PORT_SUB=41872; PORT_OC=41873; PORT_OC_REAL=41883
-PORT_API=41875; PORT_VITE=41876; PORT_PREVIEW=41877; PORT_PLAIN=41878
+# Fixed high ports by default; every one is env-overridable so parallel
+# task worktrees can stagger their stacks (C03-era single-consumer rule).
+PORT_MAIN="${CRAFT_PORT_MAIN:-41871}"; PORT_SUB="${CRAFT_PORT_SUB:-41872}"
+PORT_OC="${CRAFT_PORT_OC:-41873}"; PORT_OC_REAL="${CRAFT_PORT_OC_REAL:-41883}"
+PORT_API="${CRAFT_PORT_API:-41875}"; PORT_VITE="${CRAFT_PORT_VITE:-41876}"
+PORT_PREVIEW="${CRAFT_PORT_PREVIEW:-41877}"; PORT_PLAIN="${CRAFT_PORT_PLAIN:-41878}"
 WEB_ORIGIN="http://127.0.0.1:$PORT_VITE"
 API_ORIGIN="http://127.0.0.1:$PORT_API"
 PREVIEW_ORIGIN="https://127.0.0.1:$PORT_PREVIEW"

@@ -8,6 +8,7 @@
     "./craft/workbench": "./src/craft/workbench.tsx",
     "./craft/preview": "./src/craft/preview.tsx",
     "./craft/files": "./src/craft/files.tsx",
+    "./craft/spreadsheet": "./src/craft/spreadsheet.tsx",
     "./craft/presentation": "./src/craft/presentation.ts"
   },
   "dependencies": {
