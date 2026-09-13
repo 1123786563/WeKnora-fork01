@@ -31,6 +31,7 @@ const {
   GraphSwitch,
   GraphRelationSelect,
   moveGraphRelationOption,
+  UploadSingleSelect,
 } = await import('./KnowledgeDocumentsPage.tsx');
 const {
   uploadConfirmT,
@@ -304,6 +305,15 @@ test('chunking more options stay collapsed until the toggle opens them', () => {
   assert.match(open, /分隔符/);
   assert.match(open, /每块 Token 上限/);
   assert.match(open, /父子分块/);
+});
+
+test('chunking strategy uses a Vue-shaped single select instead of native select', () => {
+  const html = renderToStaticMarkup(React.createElement(UploadConfirmSections, {
+    state: defaultUploadConfirmUIState(), update: noop, hasPdf: false, multimodalIssue: false, asrIssue: false,
+    parserEngines: [], vllmModels: [], asrModels: [], moreOpen: false, onToggleMore: noop, t: uploadConfirmT('zh-CN'),
+  }));
+  assert.match(html, /wk-upload-chunk-strategy-select/);
+  assert.match(html, /role="combobox"/);
 });
 
 test('question generation section exposes the count and instructions controls', () => {

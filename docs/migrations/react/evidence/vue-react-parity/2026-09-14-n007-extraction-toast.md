@@ -20,11 +20,13 @@ The sample-text field now exposes a live `current/5000` word-limit counter, matc
 
 Relation rows now use project comboboxes for both entity endpoints and relation type. Entity options are filterable and keyboard-selectable; relation types additionally support creating a value, matching the Vue `t-select` configuration without retaining browser-native select styling.
 
+The chunking strategy field now uses a Vue-shaped fixed-width single-select with selected/active states, ArrowUp/ArrowDown, Enter, Escape, and outside-click dismissal instead of a native `<select>`; its strategy values and update callback are unchanged.
+
 The relation-type combobox also exposes a clear action, while entity endpoint comboboxes remain non-clearable, matching the Vue per-field `clearable` configuration.
 
 ## Verification
 
-- Focused upload-confirm and pipeline suites: 27/27 passed for the current graph/upload-confirm suite; prior upload-confirm and pipeline suites: 50/50 passed.
+- Focused upload-confirm and pipeline suites: 29/29 passed for the current graph/upload-confirm suite; prior upload-confirm and pipeline suites: 50/50 passed.
 - Full Web suite: `pnpm run test:web` — 681/681 passed.
 - Web typecheck: `pnpm run typecheck:web` — passed.
 - `git diff --check` — passed.

@@ -658,6 +658,35 @@ const CHUNKING_STRATEGY_OPTIONS = [
   { value: "legacy", labelKey: "knowledgeEditor.chunking.strategies.legacy.label" },
 ] as const;
 
+export function UploadSingleSelect({ value, options, onChange, ariaLabel, className = "" }: {
+  value: string;
+  options: readonly { value: string; label: string }[];
+  onChange: (value: string) => void;
+  ariaLabel: string;
+  className?: string;
+}) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [open, setOpen] = useState(false);
+  const selectedIndex = Math.max(0, options.findIndex((option) => option.value === value));
+  const [activeIndex, setActiveIndex] = useState(selectedIndex);
+  useEffect(() => setActiveIndex(selectedIndex), [selectedIndex]);
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: MouseEvent) => { if (!rootRef.current?.contains(event.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+  const choose = (index: number) => { const option = options[index]; if (!option) return; onChange(option.value); setOpen(false); setActiveIndex(index); };
+  return <div className={`wk-upload-single-select ${className}`.trim()} ref={rootRef}>
+    <button type="button" className="wk-upload-single-select__trigger" role="combobox" aria-label={ariaLabel} aria-expanded={open} onClick={() => setOpen((current) => !current)} onKeyDown={(event) => {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setOpen(true); setActiveIndex((current) => Math.max(0, Math.min(options.length - 1, current + (event.key === "ArrowDown" ? 1 : -1)))); }
+      else if (event.key === "Enter" && open) { event.preventDefault(); choose(activeIndex); }
+      else if (event.key === "Escape") setOpen(false);
+    }}><span>{options[selectedIndex]?.label ?? value}</span><span aria-hidden="true">⌄</span></button>
+    {open ? <div className="wk-upload-single-select__popup" role="listbox">{options.map((option, index) => <button type="button" role="option" aria-selected={option.value === value} className={index === activeIndex ? "is-active" : undefined} key={option.value} onMouseEnter={() => setActiveIndex(index)} onClick={() => choose(index)}>{option.label}</button>)}</div> : null}
+  </div>;
+}
+
 const CHUNKING_SEPARATOR_OPTIONS = [
   { value: "\n\n", labelKey: "knowledgeEditor.chunking.separators.doubleNewline" },
   { value: "\n", labelKey: "knowledgeEditor.chunking.separators.singleNewline" },
@@ -750,11 +779,13 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
         <legend>{t("knowledgeEditor.chunking.title")}</legend>
         <label>
           {t("knowledgeEditor.chunking.strategyLabel")}{" "}
-          <select value={state.chunkStrategy} onChange={(event) => update({ chunkStrategy: event.target.value })}>
-            {CHUNKING_STRATEGY_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>{t(option.labelKey)}</option>
-            ))}
-          </select>
+          <UploadSingleSelect
+            className="wk-upload-chunk-strategy-select"
+            ariaLabel={t("knowledgeEditor.chunking.strategyLabel")}
+            value={state.chunkStrategy}
+            options={CHUNKING_STRATEGY_OPTIONS.map((option) => ({ value: option.value, label: t(option.labelKey) }))}
+            onChange={(value) => update({ chunkStrategy: value })}
+          />
         </label>
         <label>
           {t("knowledgeEditor.chunking.sizeLabel")}{" "}

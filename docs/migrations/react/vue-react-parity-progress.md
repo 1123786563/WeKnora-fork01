@@ -1775,3 +1775,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 对照 Vue `t-select` 的键盘行为，React 组织选择器补齐 ArrowUp/ArrowDown active option、Enter 选择及索引同步；原有组织过滤、共享排除、Escape/外部点击关闭和提交 payload 不变。
 - N005 定向测试 13/13、Web 全量 825/825、`typecheck:web` 与 `git diff --check` 通过；证据 `evidence/vue-react-parity/2026-09-14-n005-share-dialog.md` 已更新。
 - N005 继续保持 `implementing`：认证浏览器与 Vue 同条件截图、真实后端共享链路、Wails/iOS/Android 证据仍未闭环。
+
+## 2026-09-14 Round N+57 — N007 分块策略选择器
+
+- 对照 Vue `UploadConfirmDialog.vue` 中固定宽度 280px、不可清空的 `t-select`，React 分块策略字段从原生 `<select>` 改为项目级 single-select；保留策略顺序和值更新契约，补齐 active/selected、ArrowUp/ArrowDown、Enter、Escape 和外部点击关闭。
+- upload-confirm 定向测试 29/29、Web 全量仍为 825/825，`typecheck:web` 与 `git diff --check` 通过；证据 `evidence/vue-react-parity/2026-09-14-n007-extraction-toast.md` 已更新。
+- N007 继续保持 `implementing`：其他解析/高级多选控件、浏览器 computed-style/同条件截图、真实后端图谱链路及 Wails/native 证据仍未闭环。
