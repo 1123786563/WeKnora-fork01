@@ -1,22 +1,39 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as React from "react";
 import type {
   ModelConfiguration,
-  ModelProvider,
   WeKnoraClient,
 } from "@weknora/api-client";
 import { Button, Card, Status } from "@weknora/ui";
 import { ModelDebugPanel } from "./ModelDebugPanel.tsx";
 import { ModelUsageNotice } from "../configuration/ModelUsageNotice.tsx";
 import { modelInUseDetails, type ModelUsageDetails } from "../configuration/model-usage.ts";
+import { useAppLocale } from "../i18n.ts";
 import {
-  modelCredentialInput,
+  baseUrlPlaceholderKey,
+  createModelTranslator,
+  customHeadersMap,
+  DEFAULT_MODEL_CONTEXT_WINDOW,
+  defaultThinkingControl,
+  effectiveContextWindow,
+  fallbackProviderOptions,
+  formatContextWindow,
+  formatModelSize,
+  isDefaultContextWindow,
   modelDraftFromRecord,
+  modelNamePlaceholderKey,
   modelPayload,
   modelType,
+  modelValidationErrorKey,
   newModelDraft,
+  providerDefaultUrl,
+  providerText,
+  signedRerankProvider,
+  storedThinkingControl,
   validateModelDraft,
+  type CustomHeaderItem,
   type ModelDraft,
+  type ModelProviderOption,
   type ModelType,
 } from "./model-settings.ts";
 
@@ -26,13 +43,14 @@ type Props = {
   initialModels: readonly ModelConfiguration[];
 };
 const TYPES: ModelType[] = ["chat", "embedding", "rerank", "vllm", "asr"];
-const TYPE_LABELS: Record<ModelType, string> = {
-  chat: "Chat",
-  embedding: "Embedding",
-  rerank: "Rerank",
-  vllm: "VLLM",
-  asr: "ASR",
-};
+const BUILTIN_MODELS_DOC = "https://github.com/Tencent/WeKnora/blob/main/docs/BUILTIN_MODELS.md";
+const THINKING_CONTROL_OPTIONS: Array<{ value: string; key: string }> = [
+  { value: "none", key: "none" },
+  { value: "chat_template_kwargs", key: "chatTemplateKwargs" },
+  { value: "enable_thinking", key: "enableThinking" },
+  { value: "thinking_type", key: "thinkingType" },
+];
+type WkcCredentialState = "loading" | "unconfigured" | "configured" | "expired";
 
 function params(model: ModelConfiguration): Record<string, unknown> {
   return model.parameters &&
@@ -45,27 +63,56 @@ function label(model: ModelConfiguration): string {
   const value = (model as Record<string, unknown>).display_name;
   return typeof value === "string" && value.trim() ? value : model.name;
 }
+function isBuiltin(model: ModelConfiguration): boolean {
+  return (model as Record<string, unknown>).is_builtin === true;
+}
+function payloadString(value: unknown, keys: string[]): string | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  for (const key of keys) {
+    const candidate = (value as Record<string, unknown>)[key];
+    if (typeof candidate === "string" && candidate.trim()) return candidate;
+  }
+  return null;
+}
+function payloadNumber(value: unknown, key: string): number | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const candidate = (value as Record<string, unknown>)[key];
+  return typeof candidate === "number" && Number.isFinite(candidate) ? candidate : undefined;
+}
+function toNumberInput(value: string): number | "" {
+  if (value === "") return "";
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : "";
+}
 
 export function ModelSettingsPanel({ client, role, initialModels }: Props) {
+  const locale = useAppLocale();
+  const t = useMemo(() => createModelTranslator(locale), [locale]);
   const [models, setModels] =
     useState<readonly ModelConfiguration[]>(initialModels);
   const [filter, setFilter] = useState<"all" | ModelType>("all");
   const [draft, setDraft] = useState<ModelDraft | null>(null);
-  const [providers, setProviders] = useState<ModelProvider[]>([]);
+  const [providerOptions, setProviderOptions] = useState<ModelProviderOption[]>([]);
   const [loadingProviders, setLoadingProviders] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [draftError, setDraftError] = useState<string | null>(null);
   const [debugOpen, setDebugOpen] = useState(false);
   const [usageConflict, setUsageConflict] = useState<{ modelName: string; details: ModelUsageDetails } | null>(null);
-  const [ollamaAvailable, setOllamaAvailable] = useState<boolean | null>(null);
+  const [ollamaStatus, setOllamaStatus] = useState<boolean | null>(null);
   const [ollamaModels, setOllamaModels] = useState<Awaited<ReturnType<WeKnoraClient["settings"]["ollama"]["models"]>>>([]);
   const [ollamaBusy, setOllamaBusy] = useState(false);
-  const [ollamaTask, setOllamaTask] = useState<string | null>(null);
-  const [ollamaProgress, setOllamaProgress] = useState<string | null>(null);
-  const [connectionResult, setConnectionResult] = useState<Awaited<
-    ReturnType<WeKnoraClient["configuration"]["models"]["connection"]["remote"]>
-  > | null>(null);
+  const [downloadTask, setDownloadTask] = useState<string | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [remoteMessage, setRemoteMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [dimensionMessage, setDimensionMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [wkcState, setWkcState] = useState<WkcCredentialState>("loading");
+  const [thinkingManual, setThinkingManual] = useState(false);
+  const [credentialValues, setCredentialValues] = useState<{ apiKey: string; appSecret: string }>({ apiKey: "", appSecret: "" });
+  const [credentialBusy, setCredentialBusy] = useState(false);
+  const downloadTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const canCreate = role === "admin" || role === "owner";
   const visible = useMemo(
     () =>
@@ -78,221 +125,488 @@ export function ModelSettingsPanel({ client, role, initialModels }: Props) {
   useEffect(() => {
     setModels(initialModels);
   }, [initialModels]);
+
+  function stopDownloadPolling() {
+    if (downloadTimerRef.current) {
+      clearInterval(downloadTimerRef.current);
+      downloadTimerRef.current = null;
+    }
+  }
+  useEffect(() => stopDownloadPolling, []);
+
+  /* Provider catalogue — API list first, i18n labels win over API text,
+     hardcoded fallback filtered by model type (ModelEditorDialog.vue
+     loadProviders + providerOptions computed). */
+  async function fetchProviderOptions(type: ModelType): Promise<ModelProviderOption[]> {
+    try {
+      const items = await client.configuration.models.providers.list(type);
+      if (items.length > 0) {
+        return items.map((item) => ({
+          value: item.value,
+          label: providerText(t, item.value, "label", item.label),
+          description: providerText(t, item.value, "description", item.description),
+          defaultUrls: item.defaultUrls,
+          modelTypes: item.modelTypes,
+        }));
+      }
+    } catch {
+      // fall through to the hardcoded catalogue
+    }
+    return fallbackProviderOptions(t, type);
+  }
   useEffect(() => {
     if (!draft) return;
+    let active = true;
     setLoadingProviders(true);
-    void client.configuration.models.providers
-      .list(draft.type)
-      .then((items) =>
-        setProviders(
-          items.length > 0
-            ? items
-            : [
-                {
-                  value: "generic",
-                  label: "Generic",
-                  description: "",
-                  defaultUrls: {},
-                  modelTypes: [],
-                },
-              ],
-        ),
-      )
-      .catch(() => {
-        setProviders([
-          {
-            value: "generic",
-            label: "Generic",
-            description: "",
-            defaultUrls: {},
-            modelTypes: [],
-          },
-        ]);
-        setError("Unable to load model providers; using Generic.");
-      })
-      .finally(() => setLoadingProviders(false));
-  }, [client, draft?.type]);
+    void fetchProviderOptions(draft.type)
+      .then((options) => { if (active) setProviderOptions(options); })
+      .finally(() => { if (active) setLoadingProviders(false); });
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client, draft?.type, t]);
+
+  /* Ollama service status — checked whenever the editor opens; the Local
+     option stays disabled while Ollama is down (ModelEditorDialog.vue
+     checkOllamaServiceStatus + source-options disabled binding). */
+  const editorKey = draft ? (draft.id ?? "new") : null;
   useEffect(() => {
-    if (!draft || draft.source !== "local") {
-      setOllamaAvailable(null);
+    if (!draft) {
+      setOllamaStatus(null);
       setOllamaModels([]);
-      setOllamaTask(null);
-      setOllamaProgress(null);
       return;
     }
     let active = true;
     setOllamaBusy(true);
-    void Promise.all([client.settings.ollama.status(), client.settings.ollama.models()])
-      .then(([status, items]) => {
-        if (!active) return;
-        setOllamaAvailable(status.available);
-        setOllamaModels(items);
-      })
-      .catch(() => { if (active) setOllamaAvailable(false); })
+    void client.settings.ollama.status()
+      .then((status) => { if (active) setOllamaStatus(status.available === true); })
+      .catch(() => { if (active) setOllamaStatus(false); })
       .finally(() => { if (active) setOllamaBusy(false); });
+    return () => { active = false; };
+    // editorKey changes on every editor session (add or edit) so the status is
+    // re-checked on each open like ModelEditorDialog.vue's visible watcher.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client, editorKey]);
+
+  useEffect(() => {
+    if (!draft || draft.source !== "local") return;
+    let active = true;
+    void client.settings.ollama.models()
+      .then((items) => { if (active) setOllamaModels(items); })
+      .catch(() => { if (active) setOllamaModels([]); });
     return () => { active = false; };
   }, [client, draft?.source]);
 
-  function updateDraft<K extends keyof ModelDraft>(
-    key: K,
-    value: ModelDraft[K],
-  ) {
+  /* WeKnoraCloud credential gate — configured / unconfigured / expired
+     (ModelEditorDialog.vue checkWkcCredentialStatus). */
+  useEffect(() => {
+    if (!draft || draft.provider !== "weknoracloud") {
+      setWkcState("loading");
+      return;
+    }
+    let active = true;
+    setWkcState("loading");
+    void client.settings.weknoraCloud.status()
+      .then((status) => {
+        if (!active) return;
+        const row = status as Record<string, unknown>;
+        if (row.needs_reinit === true) setWkcState("expired");
+        else if (row.has_models === true) setWkcState("configured");
+        else setWkcState("unconfigured");
+      })
+      .catch(() => { if (active) setWkcState("unconfigured"); });
+    return () => { active = false; };
+  }, [client, draft?.provider]);
+
+  function updateDraft<K extends keyof ModelDraft>(key: K, value: ModelDraft[K]) {
     setDraft((current) => (current ? { ...current, [key]: value } : current));
   }
-  async function testConnection() {
-    if (!draft || busy || draft.source !== "remote") return;
-    setBusy(true);
+
+  function resetEditorFeedback() {
     setError(null);
+    setNotice(null);
+    setDraftError(null);
+    setRemoteMessage(null);
+    setDimensionMessage(null);
     setUsageConflict(null);
-    setConnectionResult(null);
-    const input = {
-      source: draft.source,
-      modelName: draft.name,
-      baseUrl: draft.baseUrl,
-      provider: draft.provider,
-      dimension:
-        typeof draft.dimension === "number" ? draft.dimension : undefined,
-      customHeaders: draft.customHeaders,
-      apiKey: draft.apiKey.trim() || undefined,
-      appSecret: draft.appSecret.trim() || undefined,
-      modelId: draft.id || undefined,
-    };
-    try {
-      const result =
-        draft.type === "embedding"
-          ? await client.configuration.models.connection.embedding(input)
-          : draft.type === "rerank"
-            ? await client.configuration.models.connection.rerank(input)
-            : draft.type === "asr"
-              ? await client.configuration.models.connection.asr(input)
-              : await client.configuration.models.connection.remote(input);
-      setConnectionResult(result);
-      if (!result.available) setError(result.message);
-    } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "Unable to test model connection",
-      );
-    } finally {
-      setBusy(false);
+  }
+  function openAdd() {
+    stopDownloadPolling();
+    setDownloadTask(null);
+    setDownloadProgress(null);
+    setCredentialValues({ apiKey: "", appSecret: "" });
+    setThinkingManual(false);
+    resetEditorFeedback();
+    setDraft(newModelDraft());
+  }
+  function openEdit(model: ModelConfiguration) {
+    stopDownloadPolling();
+    setDownloadTask(null);
+    setDownloadProgress(null);
+    setCredentialValues({ apiKey: "", appSecret: "" });
+    setThinkingManual(Boolean(storedThinkingControl(model)));
+    resetEditorFeedback();
+    setDraft(modelDraftFromRecord(model));
+  }
+  function closeEditor() {
+    stopDownloadPolling();
+    setDownloadTask(null);
+    setDownloadProgress(null);
+    setDraft(null);
+    setDraftError(null);
+    setRemoteMessage(null);
+    setDimensionMessage(null);
+    setThinkingManual(false);
+  }
+
+  /* Type switch — ModelEditorDialog.vue selectModelType: rerank is forced to
+     remote, embedding-only fields are cleared for other types, the connection
+     result resets, unsupported providers fall back to generic. */
+  async function selectModelType(type: ModelType) {
+    if (!draft || draft.id || draft.type === type) return;
+    const options = await fetchProviderOptions(type);
+    setProviderOptions(options);
+    setDraft((current) => {
+      if (!current || current.id || current.type === type) return current;
+      const next: ModelDraft = { ...current, type };
+      if (type === "rerank") next.source = "remote";
+      if (type !== "embedding") {
+        next.dimension = "";
+        next.supportsDimensionOverride = false;
+      }
+      if (type !== "chat") next.supportsVision = false;
+      if (!options.some((option) => option.value === next.provider)) {
+        next.provider = "generic";
+        next.baseUrl = "";
+      }
+      return next;
+    });
+    setRemoteMessage(null);
+    setDimensionMessage(null);
+    setThinkingManual(false);
+    if (type === "chat") {
+      setDraft((current) => (
+        current && !current.id && current.source === "remote"
+          ? { ...current, thinkingControl: defaultThinkingControl(current.provider, current.name) }
+          : current
+      ));
     }
   }
+
+  /* Source switch — resets every check result (ModelEditorDialog.vue source
+     watcher) and keeps the thinking default in sync for chat models. */
+  function selectSource(source: "remote" | "local") {
+    if (!draft || draft.source === source) return;
+    if (source === "local" && (draft.type === "rerank" || ollamaStatus === false)) return;
+    setRemoteMessage(null);
+    setDimensionMessage(null);
+    stopDownloadPolling();
+    setDownloadTask(null);
+    setDownloadProgress(null);
+    if (!draft.id && source === "remote" && draft.type === "chat") {
+      setThinkingManual(false);
+    }
+    setDraft((current) => {
+      if (!current) return current;
+      const next = { ...current, source };
+      if (!current.id && source === "remote" && current.type === "chat") {
+        next.thinkingControl = defaultThinkingControl(current.provider, current.name);
+      }
+      return next;
+    });
+  }
+
+  /* Provider switch — autofills the documented default URL, prefills the
+     recommended signed-rerank model names, resets the connection result and
+     re-syncs the thinking default (ModelEditorDialog.vue handleProviderChange). */
+  function onProviderChange(value: string) {
+    if (!draft || draft.provider === value) return;
+    const option = providerOptions.find((item) => item.value === value);
+    setRemoteMessage(null);
+    if (draft.type === "chat" && draft.source === "remote") {
+      setThinkingManual(false);
+    }
+    setDraft((current) => {
+      if (!current) return current;
+      const next = { ...current, provider: value };
+      if (option) {
+        const defaultUrl = providerDefaultUrl(option.defaultUrls, current.type);
+        if (defaultUrl) next.baseUrl = defaultUrl;
+        if (!current.name.trim()) {
+          if (value === "lkeap" && current.type === "rerank") next.name = "lke-reranker-base";
+          if (value === "volcengine" && current.type === "rerank") next.name = "doubao-seed-rerank";
+        }
+      }
+      if (current.type === "chat" && current.source === "remote") {
+        next.thinkingControl = defaultThinkingControl(value, current.name);
+      }
+      return next;
+    });
+  }
+
+  /* Model name change — clears the dimension hint and keeps the thinking
+     default following the model name until the user picks manually
+     (ModelEditorDialog.vue modelName watchers). */
+  function onNameChange(value: string) {
+    if (!draft) return;
+    setDimensionMessage(null);
+    const prevDefault = defaultThinkingControl(draft.provider, draft.name);
+    setDraft((current) => {
+      if (!current) return current;
+      const next = { ...current, name: value };
+      if (!current.id && current.type === "chat" && current.source === "remote") {
+        if (!thinkingManual || current.thinkingControl === prevDefault) {
+          next.thinkingControl = defaultThinkingControl(current.provider, value);
+        }
+      }
+      return next;
+    });
+  }
+
+  function addCustomHeader() {
+    updateDraft("customHeaders", [...draft?.customHeaders ?? [], { key: "", value: "" }]);
+  }
+  function updateCustomHeader(index: number, field: keyof CustomHeaderItem, value: string) {
+    setDraft((current) => {
+      if (!current) return current;
+      const customHeaders = current.customHeaders.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, [field]: value } : item,
+      );
+      return { ...current, customHeaders };
+    });
+  }
+  function removeCustomHeader(index: number) {
+    setDraft((current) => {
+      if (!current) return current;
+      return { ...current, customHeaders: current.customHeaders.filter((_, itemIndex) => itemIndex !== index) };
+    });
+  }
+
+  async function refreshOllamaModels() {
+    setOllamaBusy(true);
+    try {
+      setOllamaModels(await client.settings.ollama.models());
+      setNotice(t("model.editor.listRefreshed"));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : t("model.editor.loadModelListFailed"));
+    } finally {
+      setOllamaBusy(false);
+    }
+  }
+
+  async function downloadOllamaModel() {
+    const name = draft?.name.trim();
+    if (!draft || draft.source !== "local" || !name || ollamaBusy || checking) return;
+    setOllamaBusy(true);
+    setError(null);
+    try {
+      const result = await client.settings.ollama.download(name);
+      const task = payloadString(result, ["task_id", "taskId", "id"]);
+      setDownloadTask(task);
+      setDownloadProgress(0);
+      setNotice(t("model.editor.downloadStarted", { name }));
+      if (task) startDownloadPolling(task, name);
+    } catch (cause) {
+      setError(cause instanceof Error && cause.message ? cause.message : t("model.editor.downloadStartFailed"));
+    } finally {
+      setOllamaBusy(false);
+    }
+  }
+
+  /* 1s progress polling until the backend reports completed/failed —
+     mirrors ModelEditorDialog.vue startDownload, including auto-selecting the
+     finished model and refreshing the local inventory. */
+  function startDownloadPolling(taskId: string, modelName: string) {
+    stopDownloadPolling();
+    downloadTimerRef.current = setInterval(() => {
+      void (async () => {
+        try {
+          const progress = await client.settings.ollama.progress(taskId);
+          const percent = payloadNumber(progress, "progress");
+          if (typeof percent === "number") setDownloadProgress(percent);
+          const status = payloadString(progress, ["status"]);
+          if (status === "completed") {
+            stopDownloadPolling();
+            setDownloadProgress(null);
+            setDownloadTask(null);
+            setNotice(t("model.editor.downloadCompleted", { name: modelName }));
+            try {
+              setOllamaModels(await client.settings.ollama.models());
+            } catch { /* inventory refresh is best-effort */ }
+            updateDraft("name", modelName);
+          } else if (status === "failed") {
+            stopDownloadPolling();
+            setDownloadProgress(null);
+            setDownloadTask(null);
+            setError(payloadString(progress, ["message"]) ?? t("model.editor.downloadFailed", { name: modelName }));
+          }
+        } catch {
+          // keep polling; transient progress errors are non-fatal
+        }
+      })();
+    }, 1000);
+  }
+
+  /* Local embedding dimension probe — runs the same embedding connection
+     test the backend uses (ModelEditorDialog.vue checkOllamaDimension). */
+  async function checkOllamaDimension() {
+    if (!draft || draft.source !== "local" || draft.type !== "embedding" || !draft.name.trim() || checking) return;
+    setChecking(true);
+    setDimensionMessage(null);
+    try {
+      const result = await client.configuration.models.connection.embedding({
+        source: "local",
+        modelName: draft.name,
+        dimension: typeof draft.dimension === "number" ? draft.dimension : undefined,
+        supportsDimensionOverride: draft.supportsDimensionOverride,
+      });
+      if (result.available && typeof result.dimension === "number" && result.dimension > 0) {
+        updateDraft("dimension", result.dimension);
+        setDimensionMessage({ ok: true, text: t("model.editor.dimensionDetected", { value: result.dimension }) });
+      } else {
+        setDimensionMessage({ ok: false, text: t("model.editor.dimensionFailed") });
+      }
+    } catch {
+      setDimensionMessage({ ok: false, text: t("model.editor.dimensionFailed") });
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  /* Remote connection test — per-type endpoints and payloads exactly like
+     ModelEditorDialog.vue checkRemoteAPI, including the edit-mode modelId
+     passthrough and customHeaders only when at least one pair is set. */
+  async function testConnection() {
+    if (!draft || checking) return;
+    if (!draft.name || (!draft.baseUrl && draft.provider !== "weknoracloud")) {
+      setDraftError(t("model.editor.fillModelAndUrl"));
+      return;
+    }
+    setChecking(true);
+    setRemoteMessage(null);
+    setDraftError(null);
+    const headers = customHeadersMap(draft.customHeaders);
+    const headerPayload = Object.keys(headers).length > 0 ? { customHeaders: headers } : {};
+    const idPayload = draft.id ? { modelId: draft.id } : {};
+    const apiKey = draft.apiKey || "";
+    try {
+      let result: { available: boolean; message: string; dimension?: number };
+      if (draft.type === "embedding") {
+        result = await client.configuration.models.connection.embedding({
+          source: "remote",
+          modelName: draft.name,
+          baseUrl: draft.baseUrl || "",
+          apiKey,
+          dimension: typeof draft.dimension === "number" ? draft.dimension : undefined,
+          supportsDimensionOverride: draft.supportsDimensionOverride,
+          provider: draft.provider,
+          ...idPayload,
+          ...headerPayload,
+        });
+        if (result.available && typeof result.dimension === "number" && result.dimension > 0) {
+          updateDraft("dimension", result.dimension);
+          setDimensionMessage({ ok: true, text: t("model.editor.remoteDimensionDetected", { value: result.dimension }) });
+        }
+      } else if (draft.type === "rerank") {
+        const signed = signedRerankProvider("rerank", draft.provider);
+        const signedExtra = signed
+          ? {
+              ...(signed === "lkeap" ? { extraConfig: { region: (draft.lkeapRegion || "ap-guangzhou").trim() } } : {}),
+              ...(draft.appSecret.trim() ? { appSecret: draft.appSecret.trim() } : {}),
+            }
+          : {};
+        result = await client.configuration.models.connection.rerank({
+          modelName: draft.name,
+          baseUrl: draft.baseUrl || "",
+          apiKey,
+          provider: draft.provider,
+          ...idPayload,
+          ...headerPayload,
+          ...signedExtra,
+        });
+      } else if (draft.type === "asr") {
+        result = await client.configuration.models.connection.asr({
+          modelName: draft.name,
+          baseUrl: draft.baseUrl || "",
+          apiKey,
+          provider: draft.provider,
+          ...idPayload,
+          ...headerPayload,
+        });
+      } else {
+        result = await client.configuration.models.connection.remote({
+          modelName: draft.name,
+          baseUrl: draft.baseUrl || "",
+          apiKey,
+          provider: draft.provider,
+          ...idPayload,
+          ...headerPayload,
+        });
+      }
+      if (result.available) {
+        setRemoteMessage({ ok: true, text: t("model.editor.connectionSuccess") });
+      } else {
+        setRemoteMessage({ ok: false, text: result.message || t("model.editor.connectionFailed") });
+      }
+    } catch (cause) {
+      setRemoteMessage({
+        ok: false,
+        text: cause instanceof Error && cause.message ? cause.message : t("model.editor.connectionConfigError"),
+      });
+    } finally {
+      setChecking(false);
+    }
+  }
+
   async function reload() {
     try {
       setModels(await client.configuration.models.list());
     } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : "Unable to load models",
-      );
+      setError(cause instanceof Error ? cause.message : t("modelSettings.toasts.saveFailed"));
     }
   }
-  function payloadString(value: unknown, keys: string[]): string | null {
-    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-    for (const key of keys) {
-      const candidate = (value as Record<string, unknown>)[key];
-      if (typeof candidate === "string" && candidate.trim()) return candidate;
-    }
-    return null;
-  }
-  async function downloadOllamaModel() {
-    if (!draft || draft.source !== "local" || !draft.name.trim() || ollamaBusy) return;
-    setOllamaBusy(true);
-    setError(null);
-    try {
-      const result = await client.settings.ollama.download(draft.name.trim());
-      const task = payloadString(result, ["task_id", "taskId", "id"]);
-      setOllamaTask(task);
-      setOllamaProgress(payloadString(result, ["progress", "status"]));
-      setNotice("Ollama model download started.");
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to download Ollama model");
-    } finally { setOllamaBusy(false); }
-  }
-  async function refreshOllamaProgress() {
-    if (!ollamaTask || ollamaBusy) return;
-    setOllamaBusy(true);
-    try {
-      const result = await client.settings.ollama.progress(ollamaTask);
-      setOllamaProgress(payloadString(result, ["progress", "status"]) ?? "reported");
-      setOllamaModels(await client.settings.ollama.models());
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to refresh Ollama progress");
-    } finally { setOllamaBusy(false); }
-  }
-  async function checkOllamaDimension() {
-    if (!draft || draft.source !== "local" || draft.type !== "embedding" || !draft.name.trim() || ollamaBusy) return;
-    setOllamaBusy(true);
-    try {
-      const result = await client.settings.ollama.checkModels([draft.name.trim()]);
-      const dimension = result.dimension ?? result.embedding_dimension;
-      if (typeof dimension === "number" && Number.isInteger(dimension)) {
-        updateDraft("dimension", dimension);
-        setNotice(`Ollama embedding dimension detected: ${dimension}.`);
-      } else setError("Ollama did not report an embedding dimension.");
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to check Ollama model dimension");
-    } finally { setOllamaBusy(false); }
-  }
+
+  /* Save — duplicate-submit protected, validation errors rendered inline in
+     the editor with the exact Vue toast copy (ModelSettings.vue
+     handleModelSave + ModelEditorDialog.vue handleConfirm). */
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!draft || busy) return;
     const invalid = validateModelDraft(draft);
     if (invalid.length > 0) {
-      setError(invalid.join(", "));
+      setDraftError(invalid.map((code) => t(modelValidationErrorKey(code))).join(" "));
       return;
     }
     setBusy(true);
-    setError(null);
+    setDraftError(null);
     setNotice(null);
-    let savedId = draft.id;
     try {
-      const saved = draft.id
-        ? await client.configuration.models.update(
-            draft.id,
-            modelPayload(draft),
-          )
-        : await client.configuration.models.create(modelPayload(draft));
-      savedId = saved.id;
-      const credentials = modelCredentialInput(draft);
-      if (Object.keys(credentials).length > 0) {
-        try {
-          await client.configuration.models.credentials.put(
-            saved.id,
-            credentials,
-          );
-        } catch (cause) {
-          setDraft({ ...draft, id: saved.id });
-          throw cause;
-        }
+      const payload = modelPayload(draft);
+      if (draft.id) {
+        await client.configuration.models.update(draft.id, payload);
+        setNotice(t("modelSettings.toasts.updated"));
+      } else {
+        await client.configuration.models.create(payload);
+        setNotice(t("modelSettings.toasts.added"));
       }
-      setDraft(null);
-      setNotice(draft.id ? "Model updated." : "Model added.");
+      closeEditor();
       await reload();
     } catch (cause) {
-      if (savedId)
-        setDraft((current) =>
-          current ? { ...current, id: savedId } : current,
-        );
-      setError(cause instanceof Error ? cause.message : "Unable to save model");
+      setDraftError(cause instanceof Error && cause.message ? cause.message : t("modelSettings.toasts.saveFailed"));
     } finally {
       setBusy(false);
     }
   }
+
   async function remove(model: ModelConfiguration) {
-    if (
-      !canCreate ||
-      (model as Record<string, unknown>).is_builtin === true ||
-      busy
-    )
-      return;
-    if (!window.confirm(`Delete model “${label(model)}”?`)) return;
+    if (!canCreate || isBuiltin(model) || busy) return;
+    if (!window.confirm(t("modelSettings.confirmDelete", { name: label(model) }))) return;
     setBusy(true);
     setError(null);
+    setNotice(null);
     setUsageConflict(null);
     try {
       await client.configuration.models.remove(model.id);
-      setNotice("Model deleted.");
+      setNotice(t("modelSettings.toasts.deleted"));
       await reload();
     } catch (cause) {
       const details = modelInUseDetails(cause);
@@ -300,58 +614,187 @@ export function ModelSettingsPanel({ client, role, initialModels }: Props) {
         setUsageConflict({ modelName: label(model), details });
         return;
       }
-      setError(
-        cause instanceof Error ? cause.message : "Unable to delete model",
-      );
+      setError(cause instanceof Error && cause.message ? cause.message : t("modelSettings.toasts.deleteFailed"));
     } finally {
       setBusy(false);
     }
   }
 
+  /* Duplicate — ModelSettings.vue copyModel: copy-suffix name, credentials
+     never copied (listModels strips secrets), deep-copied parameters. */
+  function generateCopyName(originalName: string): string {
+    const suffix = t("modelSettings.copySuffix");
+    const existingNames = new Set(models.map((item) => item.name));
+    let candidate = `${originalName}${suffix}`;
+    let counter = 2;
+    while (existingNames.has(candidate)) {
+      candidate = `${originalName}${suffix} ${counter}`;
+      counter += 1;
+    }
+    return candidate;
+  }
+  async function copyModel(model: ModelConfiguration) {
+    if (!canCreate || isBuiltin(model) || busy) return;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await client.configuration.models.create({
+        name: generateCopyName(model.name),
+        display_name: label(model) === model.name ? "" : label(model),
+        type: model.type,
+        source: typeof model.source === "string" ? model.source : "remote",
+        description: typeof (model as Record<string, unknown>).description === "string"
+          ? (model as Record<string, unknown>).description as string
+          : "",
+        parameters: JSON.parse(JSON.stringify(params(model))) as Record<string, unknown>,
+      });
+      setNotice(t("modelSettings.toasts.copied"));
+      await reload();
+    } catch (cause) {
+      setError(cause instanceof Error && cause.message ? cause.message : t("modelSettings.toasts.copyFailed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /* Credential subresource writes — edit mode owns credentials through
+     /models/:id/credentials (ModelEditorDialog.vue CredentialResource). */
+  async function saveCredentialField(field: "apiKey" | "appSecret") {
+    if (!draft?.id || credentialBusy) return;
+    const value = field === "apiKey" ? credentialValues.apiKey : credentialValues.appSecret;
+    if (!value.trim()) return;
+    setCredentialBusy(true);
+    setDraftError(null);
+    try {
+      await client.configuration.models.credentials.put(draft.id, field === "apiKey" ? { apiKey: value.trim() } : { appSecret: value.trim() });
+      setCredentialValues((current) => ({ ...current, [field]: "" }));
+      updateDraft("credentials", {
+        ...(draft.credentials ?? {}),
+        [field === "apiKey" ? "api_key" : "app_secret"]: { configured: true },
+      });
+      setNotice(t("settings.weknoraCloud.credentialConfigured"));
+    } catch (cause) {
+      setDraftError(cause instanceof Error && cause.message ? cause.message : t("modelSettings.toasts.saveFailed"));
+    } finally {
+      setCredentialBusy(false);
+    }
+  }
+  async function removeCredentialField(field: "api_key" | "app_secret") {
+    if (!draft?.id || credentialBusy) return;
+    if (!window.confirm(t("common.delete"))) return;
+    setCredentialBusy(true);
+    setDraftError(null);
+    try {
+      await client.configuration.models.credentials.remove(draft.id, field);
+      updateDraft("credentials", { ...(draft.credentials ?? {}), [field]: { configured: false } });
+      setNotice(t("common.success"));
+    } catch (cause) {
+      setDraftError(cause instanceof Error && cause.message ? cause.message : t("modelSettings.toasts.saveFailed"));
+    } finally {
+      setCredentialBusy(false);
+    }
+  }
+
+  function typeLabelOf(type: ModelType): string {
+    return t(`modelSettings.typeShort.${type}`);
+  }
+  function vendorLabel(model: ModelConfiguration): string {
+    if (model.source === "local") return "Ollama";
+    const provider = typeof params(model).provider === "string" ? params(model).provider as string : "";
+    if (provider === "generic") return t("modelSettings.source.custom");
+    if (provider) {
+      const viaT = t(`model.editor.providers.${provider}.label`);
+      if (viaT !== `model.editor.providers.${provider}.label`) return viaT;
+      return provider;
+    }
+    return modelType(model) === "vllm" || modelType(model) === "asr"
+      ? t("modelSettings.source.openaiCompatible")
+      : t("modelSettings.source.remote");
+  }
+
+  const editorProviderOptions = useMemo(() => {
+    if (!draft) return providerOptions;
+    if (providerOptions.some((option) => option.value === draft.provider)) return providerOptions;
+    return [
+      ...providerOptions,
+      {
+        value: draft.provider,
+        label: providerText(t, draft.provider, "label", draft.provider),
+        description: providerText(t, draft.provider, "description", ""),
+        defaultUrls: {},
+        modelTypes: [draft.type],
+      },
+    ];
+  }, [providerOptions, draft, t]);
+
+  const emptyHint = filter === "all"
+    ? t("modelSettings.chat.empty")
+    : t(`modelSettings.${filter}.empty`);
+  const signed = draft ? signedRerankProvider(draft.type, draft.provider) : null;
+  const apiKeyLabel = signed
+    ? t(signed === "volcengine" ? "model.editor.volcengine.accessKeyLabel" : "model.editor.lkeap.secretIdLabel")
+    : t("model.editor.apiKeyOptional");
+  const apiKeyPlaceholder = signed
+    ? t(signed === "volcengine" ? "model.editor.volcengine.accessKeyPlaceholder" : "model.editor.lkeap.secretIdPlaceholder")
+    : t("model.editor.apiKeyPlaceholder");
+  const secretKeyLabel = signed === "volcengine"
+    ? t("model.editor.volcengine.secretKeyLabel")
+    : t("model.editor.lkeap.secretKeyLabel");
+  const secretKeyPlaceholder = signed === "volcengine"
+    ? t("model.editor.volcengine.secretKeyPlaceholder")
+    : t("model.editor.lkeap.secretKeyPlaceholder");
+  const credentialHint = signed
+    ? t(signed === "volcengine" ? "model.editor.volcengine.rerankCredentialHint" : "model.editor.lkeap.rerankCredentialHint")
+    : null;
+  const selectedThinkingHint = useMemo(() => {
+    if (!draft || draft.type !== "chat" || draft.source !== "remote") return null;
+    const option = THINKING_CONTROL_OPTIONS.find((item) => item.value === draft.thinkingControl);
+    return option ? t(`model.editor.thinkingControl.${option.key}.hint`) : null;
+  }, [draft, t]);
+
   return (
     <section className="wk-model-settings" data-testid="model-settings">
       <div className="wk-settings-panel-heading">
         <div>
-          <h3>Models</h3>
-          <p className="wk-muted">
-            Configure tenant model providers. Credentials are write-only and
-            never returned in model records.
-          </p>
+          <h3>{t("modelSettings.title")}</h3>
+          <p className="wk-muted">{t("modelSettings.description")}</p>
         </div>
         <div className="wk-list-actions">
-          <Button
-            type="button"
-            disabled={models.length === 0}
-            onClick={() => setDebugOpen(true)}
-          >
-            Debug model
-          </Button>
+          {canCreate ? (
+            <Button type="button" disabled={models.length === 0} onClick={() => setDebugOpen(true)}>
+              {t("modelSettings.actions.debugModel")}
+            </Button>
+          ) : null}
           <Button type="button" disabled={busy} onClick={() => void reload()}>
-            Refresh
+            {t("common.refresh")}
           </Button>
           {canCreate ? (
-            <Button
-              type="button"
-              onClick={() => {
-                setConnectionResult(null);
-                setDraft(newModelDraft());
-              }}
-            >
-              Add model
+            <Button type="button" onClick={openAdd}>
+              {t("modelSettings.actions.addModel")}
             </Button>
           ) : null}
         </div>
       </div>
+      <div className="wk-builtin-hint" role="note">
+        <p><strong>{t("modelSettings.builtinModels.title")}</strong></p>
+        <p className="wk-muted">
+          {t(role === "system-admin" ? "modelSettings.builtinModels.descriptionAdmin" : "modelSettings.builtinModels.description")}
+        </p>
+        <a href={BUILTIN_MODELS_DOC} target="_blank" rel="noopener noreferrer">
+          {t("modelSettings.builtinModels.viewGuide")}
+        </a>
+      </div>
       {error ? <Status tone="error">{error}</Status> : null}
       {notice ? <Status tone="success">{notice}</Status> : null}
       {usageConflict ? <ModelUsageNotice modelName={usageConflict.modelName} details={usageConflict.details} onClose={() => setUsageConflict(null)} /> : null}
-      <nav className="wk-model-tabs" aria-label="Model type">
+      <nav className="wk-model-tabs" aria-label={t("model.editor.typeLabel")}>
         <button
           type="button"
           className={filter === "all" ? "is-active" : ""}
           onClick={() => setFilter("all")}
         >
-          All ({models.length})
+          {t("common.all")}({models.length})
         </button>
         {TYPES.map((type) => (
           <button
@@ -360,20 +803,22 @@ export function ModelSettingsPanel({ client, role, initialModels }: Props) {
             className={filter === type ? "is-active" : ""}
             onClick={() => setFilter(type)}
           >
-            {TYPE_LABELS[type]} (
-            {models.filter((item) => modelType(item) === type).length})
+            {typeLabelOf(type)}({models.filter((item) => modelType(item) === type).length})
           </button>
         ))}
       </nav>
-      {visible.length === 0 ? (
-        <Status>No models configured.</Status>
+      {!canCreate && visible.length === 0 ? (
+        <Status>{emptyHint}</Status>
       ) : (
         <div className="wk-model-grid">
           {visible.map((model) => {
             const type = modelType(model);
             const modelParams = params(model);
-            const builtin =
-              (model as Record<string, unknown>).is_builtin === true;
+            const builtin = isBuiltin(model);
+            const canEdit = builtin ? role === "system-admin" : canCreate;
+            const dimension = modelParams.dimension;
+            const contextWindow = typeof modelParams.context_window === "number" ? modelParams.context_window : undefined;
+            const supportsVision = modelParams.supports_vision === true;
             return (
               <Card
                 key={model.id}
@@ -381,45 +826,57 @@ export function ModelSettingsPanel({ client, role, initialModels }: Props) {
               >
                 <div className="wk-model-card-header">
                   <div>
-                    <span className="wk-model-type">{TYPE_LABELS[type]}</span>
+                    <span className="wk-model-type">{typeLabelOf(type)}</span>
                     <h4>{label(model)}</h4>
                   </div>
                   {builtin ? (
-                    <span title="Built-in model">Built-in</span>
+                    <span title={t("modelSettings.builtinTag")} aria-label={t("modelSettings.builtinTag")}>
+                      {role === "system-admin" ? "✎" : "🔒"}
+                    </span>
                   ) : null}
                 </div>
                 <p className="wk-muted">
-                  {typeof model.source === "string" ? model.source : "remote"} ·{" "}
-                  {typeof modelParams.provider === "string"
-                    ? modelParams.provider
-                    : "generic"}
-                  {typeof modelParams.dimension === "number"
-                    ? ` · dimension ${modelParams.dimension}`
-                    : ""}
-                  {typeof modelParams.context_window === "number"
-                    ? ` · ${modelParams.context_window} context`
-                    : ""}
+                  <span>{vendorLabel(model)}</span>
+                  {type === "embedding" && typeof dimension === "number" ? (
+                    <>
+                      <span> · </span>
+                      <span>{t("model.editor.dimensionLabel")} {dimension}</span>
+                    </>
+                  ) : null}
+                  {(type === "chat" || type === "vllm") && modelHasContext(model) ? (
+                    <>
+                      <span> · </span>
+                      <span
+                        title={isDefaultContextWindow(contextWindow)
+                          ? t("model.editor.contextWindowDefaultHint", { value: formatContextWindow(contextWindow) })
+                          : t("model.editor.contextWindowTokens", { count: effectiveContextWindow(contextWindow) })}
+                      >
+                        {formatContextWindow(contextWindow)}
+                      </span>
+                    </>
+                  ) : null}
+                  {type === "chat" && supportsVision ? (
+                    <>
+                      <span> · </span>
+                      <span title={t("model.editor.supportsVisionLabel")} aria-label={t("model.editor.supportsVisionLabel")}>👁</span>
+                    </>
+                  ) : null}
                 </p>
                 <div className="wk-list-actions">
-                  {canCreate || (role === "system-admin" && builtin) ? (
-                    <Button
-                      type="button"
-                      onClick={() => {
-                        setConnectionResult(null);
-                        setDraft(modelDraftFromRecord(model));
-                      }}
-                    >
-                      Edit
+                  {canEdit ? (
+                    <Button type="button" onClick={() => openEdit(model)}>
+                      {t("common.edit")}
                     </Button>
                   ) : null}
                   {canCreate && !builtin ? (
-                    <Button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void remove(model)}
-                    >
-                      Delete
-                    </Button>
+                    <>
+                      <Button type="button" disabled={busy} onClick={() => void copyModel(model)}>
+                        {t("common.copy")}
+                      </Button>
+                      <Button type="button" disabled={busy} onClick={() => void remove(model)}>
+                        {t("common.delete")}
+                      </Button>
+                    </>
                   ) : null}
                 </div>
               </Card>
@@ -432,314 +889,434 @@ export function ModelSettingsPanel({ client, role, initialModels }: Props) {
           className="wk-model-editor"
           role="dialog"
           aria-modal="true"
-          aria-label={draft.id ? "Edit model" : "Add model"}
+          aria-label={draft.id ? t("model.editor.editTitle") : t("model.editor.addTitle")}
         >
           <div className="wk-settings-panel-heading">
             <div>
-              <h3>{draft.id ? "Edit model" : "Add model"}</h3>
+              <h3>{draft.id ? t("model.editor.editTitle") : t("model.editor.addTitle")}</h3>
               <p className="wk-muted">
-                Choose a model type, source, provider, and connection details.
+                {t(`model.editor.description.${draft.type}`) || t("model.editor.description.default")}
               </p>
             </div>
-            <Button
-              type="button"
-              disabled={busy}
-              onClick={() => setDraft(null)}
-            >
-              Close
+            <Button type="button" disabled={busy} onClick={closeEditor}>
+              {t("common.close")}
             </Button>
           </div>
-          <form
-            className="wk-settings-editor"
-            onSubmit={(event) => void save(event)}
-          >
+          <form className="wk-settings-editor" onSubmit={(event) => void save(event)}>
             {!draft.id ? (
-              <label>
-                Model type
-                <select
-                  value={draft.type}
-                  onChange={(event) =>
-                    updateDraft("type", event.target.value as ModelType)
-                  }
-                >
+              <div className="form-item">
+                <h4>{t("model.editor.sectionType")}</h4>
+                <div className="wk-model-type-options" role="radiogroup" aria-label={t("model.editor.typeLabel")}>
                   {TYPES.map((type) => (
-                    <option key={type} value={type}>
-                      {TYPE_LABELS[type]}
-                    </option>
+                    <button
+                      key={type}
+                      type="button"
+                      role="radio"
+                      aria-checked={draft.type === type}
+                      className={draft.type === type ? "is-active" : ""}
+                      onClick={() => void selectModelType(type)}
+                    >
+                      {typeLabelOf(type)}
+                    </button>
                   ))}
-                </select>
-              </label>
-            ) : null}
-            <label>
-              Model name
-              <input
-                required
-                maxLength={100}
-                value={draft.name}
-                onChange={(event) => updateDraft("name", event.target.value)}
-              />
-            </label>
-            <label>
-              Display name
-              <input
-                maxLength={100}
-                value={draft.displayName}
-                onChange={(event) =>
-                  updateDraft("displayName", event.target.value)
-                }
-              />
-            </label>
-            <label>
-              Source
-              <select
-                value={draft.source}
-                onChange={(event) =>
-                  updateDraft(
-                    "source",
-                    event.target.value as ModelDraft["source"],
-                  )
-                }
-              >
-                <option value="remote">Remote</option>
-                <option value="local">Local</option>
-              </select>
-            </label>
-            {draft.source === "local" ? (
-              <>
-                <Status tone={ollamaAvailable ? "success" : "warning"}>
-                  {ollamaBusy ? "Checking Ollama…" : ollamaAvailable ? "Ollama is available." : "Ollama is unavailable."}
-                </Status>
-                <label>
-                  Ollama model
-                  <input list="wk-ollama-models" required value={draft.name} onChange={(event) => updateDraft("name", event.target.value)} />
-                  <datalist id="wk-ollama-models">{ollamaModels.map((item) => <option key={item.name} value={item.name} />)}</datalist>
-                </label>
-                <div className="wk-list-actions">
-                  <Button type="button" disabled={ollamaBusy || !ollamaAvailable || !draft.name.trim()} onClick={() => void downloadOllamaModel()}>Download model</Button>
-                  {ollamaTask ? <Button type="button" disabled={ollamaBusy} onClick={() => void refreshOllamaProgress()}>Refresh progress</Button> : null}
-                  {draft.type === "embedding" ? <Button type="button" disabled={ollamaBusy || !ollamaAvailable || !draft.name.trim()} onClick={() => void checkOllamaDimension()}>Check dimension</Button> : null}
                 </div>
-                {ollamaTask || ollamaProgress ? <Status>Task {ollamaTask ?? "accepted"} · {ollamaProgress ?? "started"}</Status> : null}
-              </>
+              </div>
             ) : null}
+
+            <div className="form-item">
+              <h4>{t("model.editor.sectionSource")}</h4>
+              <div className="wk-source-options" role="radiogroup" aria-label={t("model.editor.sourceLabel")}>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={draft.source === "remote"}
+                  className={draft.source === "remote" ? "is-active" : ""}
+                  onClick={() => selectSource("remote")}
+                >
+                  {t("model.editor.sourceRemote")}
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={draft.source === "local"}
+                  className={draft.source === "local" ? "is-active" : ""}
+                  disabled={ollamaStatus === false || draft.type === "rerank"}
+                  onClick={() => selectSource("local")}
+                >
+                  {t("model.editor.sourceLocal")}
+                </button>
+              </div>
+              {draft.type === "rerank" ? (
+                <p className="wk-muted">{t("model.editor.ollamaNotSupportRerank")}</p>
+              ) : draft.source === "local" && ollamaStatus === false ? (
+                <p className="wk-muted">
+                  {t("model.editor.ollamaUnavailable")}{" "}
+                  <Button type="button" onClick={() => window.location.assign("/platform/settings?section=ollama")}>
+                    {t("model.editor.goToOllamaSettings")}
+                  </Button>
+                </p>
+              ) : null}
+              {draft.source === "local" ? (
+                <div className="form-item">
+                  <label>
+                    {t("model.modelName")}
+                    <input
+                      list="wk-ollama-models"
+                      placeholder={t("model.searchPlaceholder")}
+                      value={draft.name}
+                      onChange={(event) => onNameChange(event.target.value)}
+                    />
+                    <datalist id="wk-ollama-models">
+                      {ollamaModels.map((item) => {
+                        const size = (item as Record<string, unknown>).size;
+                        return <option key={item.name} value={item.name} label={formatModelSize(size)} />;
+                      })}
+                    </datalist>
+                  </label>
+                  <div className="wk-list-actions">
+                    <Button type="button" disabled={ollamaBusy} onClick={() => void refreshOllamaModels()}>
+                      {t("model.editor.refreshList")}
+                    </Button>
+                    <Button
+                      type="button"
+                      disabled={ollamaBusy || checking || ollamaStatus !== true || !draft.name.trim()}
+                      onClick={() => void downloadOllamaModel()}
+                    >
+                      {t("model.editor.downloadLabel", { keyword: draft.name })}
+                    </Button>
+                  </div>
+                  {ollamaBusy ? <Status>{t("common.loading")}</Status> : null}
+                  {downloadTask || downloadProgress !== null ? (
+                    <Status>{`${draft.name} · ${downloadProgress !== null ? `${downloadProgress.toFixed(1)}%` : "0%"}`}</Status>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+
             {draft.source === "remote" ? (
-              <>
+              <div className="form-item">
+                <h4>{t("model.editor.sectionProvider")}</h4>
                 <label>
-                  Provider
+                  {t("model.editor.providerLabel")}
                   <select
                     value={draft.provider}
                     disabled={loadingProviders}
-                    onChange={(event) =>
-                      updateDraft("provider", event.target.value)
-                    }
+                    onChange={(event) => onProviderChange(event.target.value)}
                   >
-                    <option value="generic">Generic</option>
-                    {providers.map((provider) => (
-                      <option key={provider.value} value={provider.value}>
-                        {provider.label}
+                    {editorProviderOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.description ? `${option.label} — ${option.description}` : option.label}
                       </option>
                     ))}
                   </select>
                 </label>
+                {draft.provider === "weknoracloud" ? (
+                  wkcState === "loading" ? (
+                    <Status>{t("settings.weknoraCloud.checkingStatus")}</Status>
+                  ) : wkcState === "configured" ? (
+                    <Status tone="success">{t("settings.weknoraCloud.modelHintConfigured")}</Status>
+                  ) : (
+                    <Status tone="warning">
+                      {t(wkcState === "expired" ? "settings.weknoraCloud.credentialExpired" : "settings.weknoraCloud.credentialUnconfigured")}{" "}
+                      <Button type="button" onClick={() => window.location.assign("/platform/settings?section=weknoracloud")}>
+                        {t("settings.weknoraCloud.goToSettings")}
+                      </Button>
+                    </Status>
+                  )
+                ) : null}
+                <label>
+                  {t("model.modelName")}
+                  <input
+                    required
+                    maxLength={100}
+                    placeholder={t(modelNamePlaceholderKey(draft.type, draft.source))}
+                    disabled={draft.provider === "weknoracloud" && wkcState !== "configured"}
+                    value={draft.name}
+                    onChange={(event) => onNameChange(event.target.value)}
+                  />
+                </label>
+                <label>
+                  {t("model.editor.displayNameLabel")}
+                  <input
+                    maxLength={100}
+                    placeholder={t("model.editor.displayNamePlaceholder")}
+                    value={draft.displayName}
+                    onChange={(event) => updateDraft("displayName", event.target.value)}
+                  />
+                  <span className="wk-muted">{t("model.editor.displayNameDesc")}</span>
+                </label>
                 {draft.provider !== "weknoracloud" ? (
+                  <>
+                    <label>
+                      {t("model.editor.baseUrlLabel")}
+                      <input
+                        type="url"
+                        required
+                        placeholder={t(baseUrlPlaceholderKey(draft.type))}
+                        value={draft.baseUrl}
+                        onChange={(event) => updateDraft("baseUrl", event.target.value)}
+                      />
+                    </label>
+                    {draft.id ? (
+                      <div className="form-item">
+                        <label>
+                          {apiKeyLabel}
+                          <input
+                            type="password"
+                            autoComplete="new-password"
+                            placeholder={apiKeyPlaceholder}
+                            value={credentialValues.apiKey}
+                            onChange={(event) => setCredentialValues((current) => ({ ...current, apiKey: event.target.value }))}
+                          />
+                        </label>
+                        <div className="wk-list-actions">
+                          {draft.credentials?.api_key?.configured ? <span title="configured">✓</span> : null}
+                          <Button
+                            type="button"
+                            disabled={credentialBusy || !credentialValues.apiKey.trim()}
+                            onClick={() => void saveCredentialField("apiKey")}
+                          >
+                            {t("common.save")}
+                          </Button>
+                          {draft.credentials?.api_key?.configured ? (
+                            <Button type="button" disabled={credentialBusy} onClick={() => void removeCredentialField("api_key")}>
+                              {t("common.delete")}
+                            </Button>
+                          ) : null}
+                        </div>
+                        {signed ? (
+                          <>
+                            <label>
+                              {secretKeyLabel}
+                              <input
+                                type="password"
+                                autoComplete="new-password"
+                                placeholder={secretKeyPlaceholder}
+                                value={credentialValues.appSecret}
+                                onChange={(event) => setCredentialValues((current) => ({ ...current, appSecret: event.target.value }))}
+                              />
+                            </label>
+                            <div className="wk-list-actions">
+                              {draft.credentials?.app_secret?.configured ? <span title="configured">✓</span> : null}
+                              <Button
+                                type="button"
+                                disabled={credentialBusy || !credentialValues.appSecret.trim()}
+                                onClick={() => void saveCredentialField("appSecret")}
+                              >
+                                {t("common.save")}
+                              </Button>
+                              {draft.credentials?.app_secret?.configured ? (
+                                <Button type="button" disabled={credentialBusy} onClick={() => void removeCredentialField("app_secret")}>
+                                  {t("common.delete")}
+                                </Button>
+                              ) : null}
+                            </div>
+                            <p className="wk-muted">{credentialHint}</p>
+                          </>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <>
+                        <label>
+                          {apiKeyLabel}
+                          <input
+                            type="password"
+                            autoComplete="new-password"
+                            spellCheck={false}
+                            placeholder={apiKeyPlaceholder}
+                            value={draft.apiKey}
+                            onChange={(event) => updateDraft("apiKey", event.target.value)}
+                          />
+                        </label>
+                        {signed ? (
+                          <>
+                            <label>
+                              {secretKeyLabel}
+                              <input
+                                type="password"
+                                autoComplete="new-password"
+                                spellCheck={false}
+                                placeholder={secretKeyPlaceholder}
+                                value={draft.appSecret}
+                                onChange={(event) => updateDraft("appSecret", event.target.value)}
+                              />
+                            </label>
+                            <p className="wk-muted">{credentialHint}</p>
+                          </>
+                        ) : null}
+                      </>
+                    )}
+                    {signed === "lkeap" ? (
+                      <label>
+                        {t("model.editor.lkeap.regionLabel")}
+                        <input
+                          placeholder={t("model.editor.lkeap.regionPlaceholder")}
+                          value={draft.lkeapRegion}
+                          onChange={(event) => updateDraft("lkeapRegion", event.target.value)}
+                        />
+                        <span className="wk-muted">{t("model.editor.lkeap.regionDesc")}</span>
+                      </label>
+                    ) : null}
+                    <fieldset>
+                      <legend>{t("model.editor.customHeadersLabel")}</legend>
+                      <p className="wk-muted">{t("model.editor.customHeadersDesc")}</p>
+                      {draft.customHeaders.map((item, index) => (
+                        <div className="wk-model-header-row" key={index}>
+                          <input
+                            value={item.key}
+                            placeholder={t("model.editor.customHeadersKeyPlaceholder")}
+                            aria-label={t("model.editor.customHeadersKeyPlaceholder")}
+                            onChange={(event) => updateCustomHeader(index, "key", event.target.value)}
+                          />
+                          <input
+                            value={item.value}
+                            placeholder={t("model.editor.customHeadersValuePlaceholder")}
+                            aria-label={t("model.editor.customHeadersValuePlaceholder")}
+                            onChange={(event) => updateCustomHeader(index, "value", event.target.value)}
+                          />
+                          <Button
+                            type="button"
+                            aria-label={t("common.delete")}
+                            onClick={() => removeCustomHeader(index)}
+                          >
+                            ✕
+                          </Button>
+                        </div>
+                      ))}
+                      <Button type="button" onClick={addCustomHeader}>
+                        {t("model.editor.customHeadersAdd")}
+                      </Button>
+                    </fieldset>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+
+            {["embedding", "chat", "vllm"].includes(draft.type) ? (
+              <div className="form-item">
+                <h4>{t("model.editor.sectionAdvanced")}</h4>
+                {draft.type === "embedding" ? (
+                  <>
+                    <label>
+                      {t("model.editor.dimensionLabel")}
+                      <input
+                        type="number"
+                        min={128}
+                        max={4096}
+                        placeholder={t("model.editor.dimensionPlaceholder")}
+                        disabled={!draft.supportsDimensionOverride || (draft.source === "local" && checking)}
+                        value={draft.dimension}
+                        onChange={(event) => updateDraft("dimension", toNumberInput(event.target.value))}
+                      />
+                    </label>
+                    {draft.source === "local" && draft.name ? (
+                      <Button type="button" disabled={checking || !draft.name.trim()} onClick={() => void checkOllamaDimension()}>
+                        {t("model.editor.checkDimension")}
+                      </Button>
+                    ) : null}
+                    {dimensionMessage ? (
+                      <Status tone={dimensionMessage.ok ? "success" : "error"}>{dimensionMessage.text}</Status>
+                    ) : null}
+                    <label className="wk-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={draft.supportsDimensionOverride}
+                        onChange={(event) => updateDraft("supportsDimensionOverride", event.target.checked)}
+                      />{" "}
+                      {t("model.editor.dimensionOverrideLabel")}
+                    </label>
+                    <p className="wk-muted">{t("model.editor.dimensionOverrideDesc")}</p>
+                  </>
+                ) : null}
+                {draft.type === "chat" || draft.type === "vllm" ? (
                   <label>
-                    Base URL
+                    {t("model.editor.contextWindowLabel")}
                     <input
-                      type="url"
-                      required
-                      value={draft.baseUrl}
-                      onChange={(event) =>
-                        updateDraft("baseUrl", event.target.value)
-                      }
+                      type="number"
+                      min={1024}
+                      max={10000000}
+                      placeholder={t("model.editor.contextWindowPlaceholder", { value: DEFAULT_MODEL_CONTEXT_WINDOW })}
+                      value={draft.contextWindow}
+                      onChange={(event) => updateDraft("contextWindow", toNumberInput(event.target.value))}
                     />
+                    <span className="wk-muted">{t("model.editor.contextWindowDesc")}</span>
                   </label>
                 ) : null}
-              </>
-            ) : null}
-            {draft.type === "embedding" ? (
-              <label>
-                Dimension
-                <input
-                  type="number"
-                  min={128}
-                  max={4096}
-                  value={draft.dimension}
-                  onChange={(event) =>
-                    updateDraft(
-                      "dimension",
-                      event.target.value === ""
-                        ? ""
-                        : Number(event.target.value),
-                    )
-                  }
-                />
-              </label>
-            ) : null}
-            {draft.type === "chat" || draft.type === "vllm" ? (
-              <label>
-                Context window
-                <input
-                  type="number"
-                  min={1024}
-                  value={draft.contextWindow}
-                  onChange={(event) =>
-                    updateDraft(
-                      "contextWindow",
-                      event.target.value === ""
-                        ? ""
-                        : Number(event.target.value),
-                    )
-                  }
-                />
-              </label>
-            ) : null}
-            {draft.type === "chat" ? (
-              <label>
-                <input
-                  type="checkbox"
-                  checked={draft.supportsVision}
-                  onChange={(event) =>
-                    updateDraft("supportsVision", event.target.checked)
-                  }
-                />{" "}
-                Supports vision
-              </label>
-            ) : null}
-            <label>
-              Max concurrency
-              <input
-                type="number"
-                min={1}
-                value={draft.maxConcurrency}
-                onChange={(event) =>
-                  updateDraft(
-                    "maxConcurrency",
-                    event.target.value === "" ? "" : Number(event.target.value),
-                  )
-                }
-              />
-            </label>
-            {draft.type === "chat" && draft.source === "remote" ? (
-              <label>
-                Thinking control
-                <select
-                  value={draft.thinkingControl}
-                  onChange={(event) =>
-                    updateDraft("thinkingControl", event.target.value)
-                  }
-                >
-                  <option value="">Default</option>
-                  <option value="none">None</option>
-                  <option value="enable_thinking">Enable thinking</option>
-                  <option value="thinking_type">Thinking type</option>
-                  <option value="chat_template_kwargs">
-                    Chat template kwargs
-                  </option>
-                </select>
-              </label>
-            ) : null}
-            <fieldset>
-              <legend>Custom headers</legend>
-              {Object.entries(draft.customHeaders).map(([key, value]) => (
-                <div className="wk-model-header-row" key={key}>
+                {draft.type === "chat" ? (
+                  <>
+                    <label className="wk-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={draft.supportsVision}
+                        onChange={(event) => updateDraft("supportsVision", event.target.checked)}
+                      />{" "}
+                      {t("model.editor.supportsVisionLabel")}
+                    </label>
+                    <p className="wk-muted">{t("model.editor.supportsVisionDesc")}</p>
+                  </>
+                ) : null}
+                {draft.type === "chat" && draft.source === "remote" ? (
+                  <label>
+                    {t("model.editor.thinkingControlLabel")}
+                    <select
+                      value={draft.thinkingControl}
+                      onChange={(event) => {
+                        setThinkingManual(true);
+                        updateDraft("thinkingControl", event.target.value);
+                      }}
+                    >
+                      {THINKING_CONTROL_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {t(`model.editor.thinkingControl.${option.key}.label`)}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="wk-muted">{selectedThinkingHint ?? t("model.editor.thinkingControlDesc")}</span>
+                  </label>
+                ) : null}
+                <label>
+                  {t("model.editor.maxConcurrencyLabel")}
                   <input
-                    value={key}
-                    aria-label="Header name"
-                    onChange={(event) => {
-                      const next = { ...draft.customHeaders };
-                      delete next[key];
-                      if (event.target.value.trim())
-                        next[event.target.value] = value;
-                      updateDraft("customHeaders", next);
-                    }}
+                    type="number"
+                    min={0}
+                    max={4096}
+                    placeholder={t("model.editor.maxConcurrencyPlaceholder")}
+                    value={draft.maxConcurrency}
+                    onChange={(event) => updateDraft("maxConcurrency", toNumberInput(event.target.value))}
                   />
-                  <input
-                    value={value}
-                    aria-label="Header value"
-                    onChange={(event) =>
-                      updateDraft("customHeaders", {
-                        ...draft.customHeaders,
-                        [key]: event.target.value,
-                      })
-                    }
-                  />
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      const next = { ...draft.customHeaders };
-                      delete next[key];
-                      updateDraft("customHeaders", next);
-                    }}
-                  >
-                    Remove
-                  </Button>
-                </div>
-              ))}
-              <Button
-                type="button"
-                onClick={() =>
-                  updateDraft("customHeaders", {
-                    ...draft.customHeaders,
-                    [`X-Custom-${Object.keys(draft.customHeaders).length + 1}`]:
-                      "",
-                  })
-                }
-              >
-                Add header
-              </Button>
-            </fieldset>
-            <label>
-              API key
-              <input
-                type="password"
-                autoComplete="new-password"
-                value={draft.apiKey}
-                placeholder={
-                  draft.id ? "Leave blank to keep configured key" : ""
-                }
-                onChange={(event) => updateDraft("apiKey", event.target.value)}
-              />
-            </label>
-            {draft.provider === "weknoracloud" ? (
-              <label>
-                App secret
-                <input
-                  type="password"
-                  autoComplete="new-password"
-                  value={draft.appSecret}
-                  onChange={(event) =>
-                    updateDraft("appSecret", event.target.value)
-                  }
-                />
-              </label>
+                  <span className="wk-muted">{t("model.editor.maxConcurrencyDesc")}</span>
+                </label>
+              </div>
             ) : null}
+
+            {draftError ? <Status tone="error">{draftError}</Status> : null}
             <div className="wk-list-actions">
               {draft.source === "remote" ? (
                 <Button
                   type="button"
-                  disabled={busy || !draft.name.trim() || !draft.baseUrl.trim()}
+                  loading={checking}
+                  disabled={
+                    !draft.name ||
+                    (!draft.baseUrl && draft.provider !== "weknoracloud") ||
+                    (draft.provider === "weknoracloud" && wkcState !== "configured")
+                  }
                   onClick={() => void testConnection()}
                 >
-                  Test connection
+                  {t("model.editor.testConnection")}
                 </Button>
               ) : null}
-              {connectionResult ? (
-                <Status tone={connectionResult.available ? "success" : "error"}>
-                  {connectionResult.message}
-                  {connectionResult.dimension
-                    ? ` (dimension ${connectionResult.dimension})`
-                    : ""}
-                </Status>
+              {remoteMessage ? (
+                <Status tone={remoteMessage.ok ? "success" : "error"}>{remoteMessage.text}</Status>
               ) : null}
-              <Button type="submit" loading={busy}>
-                {draft.id ? "Save changes" : "Create model"}
-              </Button>
               <Button
-                type="button"
-                disabled={busy}
-                onClick={() => setDraft(null)}
+                type="submit"
+                loading={busy}
+                disabled={draft.provider === "weknoracloud" && wkcState !== "configured"}
               >
-                Cancel
+                {t("common.save")}
+              </Button>
+              <Button type="button" disabled={busy} onClick={closeEditor}>
+                {t("common.cancel")}
               </Button>
             </div>
           </form>
@@ -754,4 +1331,9 @@ export function ModelSettingsPanel({ client, role, initialModels }: Props) {
       ) : null}
     </section>
   );
+}
+
+function modelHasContext(model: ModelConfiguration): boolean {
+  const type = modelType(model);
+  return type === "chat" || type === "vllm";
 }

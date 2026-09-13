@@ -18,7 +18,7 @@ else nodeModule.register(`data:text/javascript,${encodeURIComponent(`
 `)}`, import.meta.url);
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
-const { McpSettingsPanel, importMcpConfig, validateMcpDraft } = await import('./McpSettingsPanel.tsx');
+const { McpSettingsPanel, importMcpConfig, validateMcpDraft, buildMcpConnectionPayload } = await import('./McpSettingsPanel.tsx');
 const { formatMessage } = await import('@weknora/i18n');
 
 const client = {} as never;
@@ -68,6 +68,26 @@ test('MCP JSON import maps transport, auth, and custom headers without saving', 
   assert.equal(draft.authType, 'api_key');
   assert.equal(draft.apiKeyHeader, 'Authorization');
   assert.deepEqual(draft.headers, [{ key: 'X-Trace', value: 'yes' }]);
+});
+
+test('MCP connection payload mirrors Vue buildPayload and omits usage/description (backend rejects empty usage on PUT)', () => {
+  // Vue McpServiceDialog.vue:898-938 never sends description/usage_instructions in the
+  // connection save; the backend PUT rejects usage_instructions outside 1..16000 chars
+  // (live 400 verified 2026-09-13), which broke React edit/create for services without
+  // saved instructions.
+  const base = { name: ' Docs ', description: 'd', usageInstructions: '', url: 'https://example.com/mcp', transportType: 'sse', enabled: true, authType: 'api_key', apiKeyHeader: ' X-Auth ', apiKey: '', oauthScopes: '', headers: [{ key: 'A', value: '1' }, { key: ' ', value: 'x' }, { key: 'B', value: '' }], timeout: 30, retryCount: 3, retryDelay: 1, codeImport: '', codeImportError: '', authConfig: {} } as Parameters<typeof buildMcpConnectionPayload>[0];
+  const payload = buildMcpConnectionPayload(base);
+  assert.equal(payload.name, 'Docs');
+  assert.equal(payload.enabled, true);
+  assert.equal(payload.transport_type, 'sse');
+  assert.equal(payload.url, 'https://example.com/mcp');
+  assert.deepEqual(payload.headers, { A: '1' });
+  assert.deepEqual(payload.advanced_config, { timeout: 30, retry_count: 3, retry_delay: 1 });
+  assert.deepEqual(payload.auth_config, { auth_type: 'api_key', api_key_header: 'X-Auth' });
+  assert.ok(!('usage_instructions' in payload), 'must not send usage_instructions in connection save');
+  assert.ok(!('description' in payload), 'must not send description in connection save');
+  // stdio/empty url is sent as undefined exactly like Vue (url || undefined)
+  assert.equal(buildMcpConnectionPayload({ ...base, url: '' } as never).url, undefined);
 });
 
 test('MCP draft validation mirrors Vue submit rules before mutation', () => {

@@ -512,6 +512,44 @@ function McpServiceDetails({
   );
 }
 
+/**
+ * Connection-step save payload, ported from Vue McpServiceDialog.buildPayload
+ * (frontend/src/views/settings/components/McpServiceDialog.vue:898-938).
+ * Vue never sends description or usage_instructions here: the backend PUT
+ * rejects empty usage_instructions ("must contain between 1 and 16000
+ * characters"), so including them breaks edit/create for services without
+ * saved instructions. Usage instructions persist only through the step-2
+ * save (update { usage_instructions }).
+ */
+export function buildMcpConnectionPayload(draft: Draft): Record<string, unknown> {
+  const headers = Object.fromEntries(
+    draft.headers
+      .map(({ key, value }) => [key.trim(), value.trim()])
+      .filter(([key, value]) => key && value),
+  );
+  return {
+    name: draft.name.trim(),
+    enabled: draft.enabled,
+    transport_type: draft.transportType,
+    advanced_config: {
+      timeout: draft.timeout,
+      retry_count: draft.retryCount,
+      retry_delay: draft.retryDelay,
+    },
+    url: draft.url.trim() || undefined,
+    headers,
+    auth_config: {
+      auth_type: draft.authType,
+      ...(draft.apiKeyHeader.trim()
+        ? { api_key_header: draft.apiKeyHeader.trim() }
+        : {}),
+      ...(draft.authType === "oauth"
+        ? { scopes: draft.oauthScopes.split(/[\s,]+/).filter(Boolean) }
+        : {}),
+    },
+  };
+}
+
 export function McpSettingsPanel({ client, role, initialServices }: Props) {
   const t = createTranslator(useAppLocale());
   const canEdit = role === "admin" || role === "owner";
@@ -573,35 +611,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
         await load();
         return;
       }
-      const headers = Object.fromEntries(
-        draft.headers
-          .map(({ key, value }) => [key.trim(), value.trim()])
-          .filter(([key, value]) => key && value),
-      );
-      const payload: Record<string, unknown> = {
-        name: draft.name.trim(),
-        description: draft.description.trim(),
-        usage_instructions: draft.usageInstructions.trim(),
-        url: draft.url.trim(),
-        transport_type: draft.transportType,
-        enabled: draft.enabled,
-        headers,
-        advanced_config: {
-          timeout: draft.timeout,
-          retry_count: draft.retryCount,
-          retry_delay: draft.retryDelay,
-        },
-        auth_config: {
-          ...draft.authConfig,
-          auth_type: draft.authType,
-          ...(draft.apiKeyHeader.trim()
-            ? { api_key_header: draft.apiKeyHeader.trim() }
-            : {}),
-          ...(draft.authType === "oauth"
-            ? { scopes: draft.oauthScopes.split(/[\s,]+/).filter(Boolean) }
-            : {}),
-        },
-      };
+      const payload = buildMcpConnectionPayload(draft);
       const saved = draft.id
         ? await client.configuration.mcp.update(draft.id, payload)
         : await client.configuration.mcp.create(payload);
@@ -822,16 +832,6 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                 maxLength={128}
                 value={draft.name}
                 onChange={(event) => setField("name", event.target.value)}
-              />
-            </label>
-            <label>
-              {t("common.description")}
-              <textarea
-                rows={3}
-                value={draft.description}
-                onChange={(event) =>
-                  setField("description", event.target.value)
-                }
               />
             </label>
             <label>

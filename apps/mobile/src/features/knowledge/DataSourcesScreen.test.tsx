@@ -47,7 +47,7 @@ async function mount(role: string, locale = 'en-US') {
 
 test('viewer sees read-only data-source inventory without mutation controls', async () => {
   const page = await mount('viewer');
-  try { assert.equal(page.host.textContent?.includes('Add'), false); assert.equal(page.host.textContent?.includes('Edit'), false); assert.equal(page.host.textContent?.includes('Sync'), false); assert.equal(page.host.textContent?.includes('Delete'), false); assert.equal(page.host.textContent?.includes('Logs'), true); }
+  try { const buttons = () => Array.from(page.host.querySelectorAll('button')).map((item) => item.textContent); assert.equal(buttons().includes('Add Data Source'), false); assert.equal(buttons().includes('Edit'), false); assert.equal(buttons().includes('Sync Now'), false); assert.equal(buttons().includes('Delete'), false); assert.equal(buttons().includes('Logs'), true); }
   finally { await page.close(); }
 });
 
@@ -66,7 +66,7 @@ test('admin sees data-source mutation controls', async () => {
 test('inventory renders the server latest sync result and running state', async () => {
   const page = await mount('admin');
   try {
-    assert.match(page.host.textContent ?? '', /Latest sync: running · \+2/);
+    assert.match(page.host.textContent ?? '', /Syncing · \+2/);
   } finally { await page.close(); }
 });
 
@@ -107,11 +107,25 @@ test('sync log drawer uses the active locale for empty state and controls', asyn
   const page = await mount('admin', 'zh-CN');
   try {
     page.runtime.client.dataSources.logs = async () => [];
-    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Logs')?.click());
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === '日志')?.click());
     await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
     assert.match(page.host.textContent ?? '', /同步历史/);
     assert.match(page.host.textContent ?? '', /暂无同步记录/);
     assert.match(page.host.textContent ?? '', /关闭/);
+  } finally { await page.close(); }
+});
+
+test('editor chrome and connector copy follow the active locale', async () => {
+  const page = await mount('admin', 'zh-CN');
+  try {
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === '添加数据源')?.click());
+    assert.match(page.host.textContent ?? '', /数据源管理/);
+    assert.match(page.host.textContent ?? '', /基本信息/);
+    assert.ok(page.host.querySelector('input[placeholder="输入数据源名称"]'));
+    assert.match(page.host.textContent ?? '', /飞书云盘/);
+    assert.match(page.host.textContent ?? '', /同步飞书云盘文件夹中的文档、表格、文件/);
+    assert.equal([...page.host.querySelectorAll('button')].some((item) => item.textContent === '测试连接'), true);
+    assert.equal([...page.host.querySelectorAll('button')].some((item) => item.textContent === '取消'), true);
   } finally { await page.close(); }
 });
 
@@ -121,7 +135,7 @@ test('admin can test a connector before saving and sees the server result', asyn
     const edit = [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Edit');
     assert.ok(edit);
     await act(async () => edit?.click());
-    const testButton = [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Test connection');
+    const testButton = [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Test Connection');
     assert.ok(testButton, 'editor should expose a pre-save connection test');
     await act(async () => testButton?.click());
     assert.match(page.host.textContent ?? '', /Connection successful/);
@@ -160,9 +174,9 @@ test('drive editor exposes the root token and loads resources through the existi
   const page = await mount('admin');
   try {
     await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Edit')?.click());
-    const rootInput = page.host.querySelector('input[placeholder="Drive folder token or folder URL"]');
+    const rootInput = page.host.querySelector('input[placeholder="Enter a folder_token or a Feishu Drive folder URL"]');
     assert.ok(rootInput);
-    const load = [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Load Drive resources');
+    const load = [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Load');
     assert.ok(load);
     await act(async () => load?.click());
     await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
@@ -173,14 +187,14 @@ test('drive editor exposes the root token and loads resources through the existi
 test('new Drive source creates a paused temporary row before loading resources', async () => {
   const page = await mount('admin');
   try {
-    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Add')?.click());
-    const nameInput = page.host.querySelector('input[placeholder="Name"]') as HTMLInputElement | null;
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Add Data Source')?.click());
+    const nameInput = page.host.querySelector('input[placeholder="Enter data source name"]') as HTMLInputElement | null;
     assert.ok(nameInput);
     await act(async () => { nameInput!.value = 'New source'; nameInput!.dispatchEvent(new page.host.ownerDocument.defaultView!.Event('input', { bubbles: true })); });
-    const rootInput = page.host.querySelector('input[placeholder="Drive folder token or folder URL"]') as HTMLInputElement | null;
+    const rootInput = page.host.querySelector('input[placeholder="Enter a folder_token or a Feishu Drive folder URL"]') as HTMLInputElement | null;
     assert.ok(rootInput);
     await act(async () => { rootInput!.value = 'https://example.feishu.cn/drive/folder/new-root'; rootInput!.dispatchEvent(new page.host.ownerDocument.defaultView!.Event('input', { bubbles: true })); });
-    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Load Drive resources')?.click());
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Load')?.click());
     await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
     assert.match(page.host.textContent ?? '', /Project docs/);
   } finally { await page.close(); }
@@ -189,12 +203,12 @@ test('new Drive source creates a paused temporary row before loading resources',
 test('canceling a Drive resource draft removes the temporary source', async () => {
   const page = await mount('admin');
   try {
-    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Add')?.click());
-    const nameInput = page.host.querySelector('input[placeholder="Name"]') as HTMLInputElement;
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Add Data Source')?.click());
+    const nameInput = page.host.querySelector('input[placeholder="Enter data source name"]') as HTMLInputElement;
     await act(async () => { nameInput.value = 'Draft source'; nameInput.dispatchEvent(new page.host.ownerDocument.defaultView!.Event('input', { bubbles: true })); });
-    const rootInput = page.host.querySelector('input[placeholder="Drive folder token or folder URL"]') as HTMLInputElement;
+    const rootInput = page.host.querySelector('input[placeholder="Enter a folder_token or a Feishu Drive folder URL"]') as HTMLInputElement;
     await act(async () => { rootInput.value = 'draft-root'; rootInput.dispatchEvent(new page.host.ownerDocument.defaultView!.Event('input', { bubbles: true })); });
-    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Load Drive resources')?.click());
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Load')?.click());
     await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
     const removed: string[] = [];
     page.runtime.client.dataSources.remove = async (id: string) => { removed.push(id); };
@@ -206,12 +220,12 @@ test('canceling a Drive resource draft removes the temporary source', async () =
 test('GitLab editor exposes project-specific fields and requires a project id', async () => {
   const page = await mount('admin');
   try {
-    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Add')?.click());
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Add Data Source')?.click());
     const gitlab = [...page.host.querySelectorAll('button')].find((item) => item.textContent?.includes('GitLab'));
     assert.ok(gitlab);
     await act(async () => gitlab?.click());
-    assert.ok(page.host.querySelector('input[placeholder="Project ID"]'));
-    assert.ok(page.host.querySelector('input[placeholder="Ref (optional)"]'));
+    assert.ok(page.host.querySelector('input[placeholder="For example: 12345 or group/project"]'));
+    assert.ok(page.host.querySelector('input[placeholder="Leave empty to use the default branch"]'));
     assert.ok([...page.host.querySelectorAll('button')].some((item) => item.textContent === 'Add project'));
   } finally { await page.close(); }
 });
@@ -219,7 +233,7 @@ test('GitLab editor exposes project-specific fields and requires a project id', 
 test('RSS editor exposes feed URLs and custom request headers', async () => {
   const page = await mount('admin');
   try {
-    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Add')?.click());
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Add Data Source')?.click());
     const rss = [...page.host.querySelectorAll('button')].find((item) => item.textContent?.includes('RSS'));
     assert.ok(rss);
     await act(async () => rss?.click());
@@ -231,7 +245,7 @@ test('RSS editor exposes feed URLs and custom request headers', async () => {
 test('Notion editor exposes its integration token instead of generic credentials', async () => {
   const page = await mount('admin');
   try {
-    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Add')?.click());
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Add Data Source')?.click());
     const notion = [...page.host.querySelectorAll('button')].find((item) => item.textContent?.includes('Notion'));
     assert.ok(notion);
     await act(async () => notion?.click());
@@ -250,7 +264,7 @@ test('editing credentials uses the dedicated endpoint and keeps them out of the 
     page.runtime.client.dataSources.update = async (...args: unknown[]) => { events.push('update'); updateCalls.push(args); return {}; };
     await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Edit')?.click());
     const appId = page.host.querySelector('input[placeholder="cli_xxxx"]') as HTMLInputElement | null;
-    const appSecret = page.host.querySelector('input[placeholder="App secret"]') as HTMLInputElement | null;
+    const appSecret = page.host.querySelector('input[placeholder="App Secret"]') as HTMLInputElement | null;
     assert.ok(appId); assert.ok(appSecret);
     await act(async () => { appId!.value = 'cli_test'; appId!.dispatchEvent(new page.host.ownerDocument.defaultView!.Event('input', { bubbles: true })); appSecret!.value = 'secret'; appSecret!.dispatchEvent(new page.host.ownerDocument.defaultView!.Event('input', { bubbles: true })); });
     await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Save')?.click());
@@ -271,7 +285,7 @@ test('editing without new credentials validates the persisted source by id', asy
     page.runtime.client.dataSources.validate = async (id: string) => { validateId = id; return { success: true }; };
     page.runtime.client.dataSources.validateCredentials = async () => { rawValidationCalled = true; return { success: true }; };
     await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Edit')?.click());
-    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Test connection')?.click());
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Test Connection')?.click());
     assert.equal(validateId, 'source-1');
     assert.equal(rawValidationCalled, false);
   } finally { await page.close(); }
@@ -282,15 +296,15 @@ test('RSS connection test sends feed URLs to the raw credential validator', asyn
   try {
     let payload: Record<string, unknown> | undefined;
     page.runtime.client.dataSources.validateCredentials = async (_type: string, credentials: Record<string, unknown>) => { payload = credentials; return { success: true }; };
-    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Add')?.click());
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Add Data Source')?.click());
     await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent?.includes('RSS'))?.click());
-    const name = page.host.querySelector('input[placeholder="Name"]') as HTMLInputElement | null;
+    const name = page.host.querySelector('input[placeholder="Enter data source name"]') as HTMLInputElement | null;
     assert.ok(name);
     await act(async () => { Object.getOwnPropertyDescriptor(page.host.ownerDocument.defaultView!.HTMLInputElement.prototype, 'value')!.set!.call(name, 'RSS source'); name!.dispatchEvent(new page.host.ownerDocument.defaultView!.Event('input', { bubbles: true })); });
     const feed = page.host.querySelector('input[placeholder="https://example.com/feed.xml"]') as HTMLInputElement | null;
     assert.ok(feed);
     await act(async () => { Object.getOwnPropertyDescriptor(page.host.ownerDocument.defaultView!.HTMLInputElement.prototype, 'value')!.set!.call(feed, 'https://example.test/feed.xml'); feed!.dispatchEvent(new page.host.ownerDocument.defaultView!.Event('input', { bubbles: true })); });
-    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Test connection')?.click());
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Test Connection')?.click());
     assert.equal(payload?.feed_urls, 'https://example.test/feed.xml');
   } finally { await page.close(); }
 });

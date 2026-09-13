@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, Switch, Text, T
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { FAQEntry, WikiPage } from '@weknora/api-client';
 import { useMobileRuntime } from '../../runtime.tsx';
+import { knowledgeListLabel } from './list.ts';
 import { classifyMobileEditorError, createFaqDraft, createWikiDraft, validateFaqDraft, validateWikiDraft, type FaqEditorDraft, type WikiEditorDraft } from './editor.ts';
 
 type EditorKind = 'faq' | 'wiki';
@@ -23,6 +24,7 @@ export function KnowledgeEditorScreen() {
   const slug = firstParam(params.slug);
   const runtime = useMobileRuntime();
   const router = useRouter();
+  const label = (key: string) => knowledgeListLabel(runtime.locale, key);
   const role = runtime.workspaces.find((workspace) => String(workspace.id) === runtime.tenantId)?.role;
   const writable = canEdit(role);
   const [wiki, setWiki] = useState<WikiEditorDraft>({ title: '', summary: '', content: '', version: 1 });
@@ -82,20 +84,20 @@ export function KnowledgeEditorScreen() {
 
   return <SafeAreaView style={{ flex: 1, padding: 16 }}>
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-      <Pressable accessibilityRole="button" onPress={() => router.back()}><Text style={{ color: '#2864dc' }}>Back</Text></Pressable>
+      <Pressable accessibilityRole="button" onPress={() => router.back()}><Text style={{ color: '#2864dc' }}>{label("knowledgeBase.detail.back")}</Text></Pressable>
       <Text accessibilityRole="header" style={{ flex: 1, fontSize: 21, fontWeight: '700' }}>{title}</Text>
-      {writable ? <Pressable accessibilityRole="button" disabled={saving || loading} onPress={() => void save()}><Text style={{ color: '#2864dc', opacity: saving ? 0.5 : 1 }}>{saving ? 'Saving…' : 'Save'}</Text></Pressable> : null}
+      {writable ? <Pressable accessibilityRole="button" disabled={saving || loading} onPress={() => void save()}><Text style={{ color: '#2864dc', opacity: saving ? 0.5 : 1 }}>{saving ? label("common.loading") : label("common.save")}</Text></Pressable> : null}
     </View>
     {!writable ? <Text style={{ color: '#667085', marginBottom: 8 }}>Editing requires an owner or admin workspace role. The server remains authoritative.</Text> : null}
     {loading ? <ActivityIndicator accessibilityLabel={`Loading ${kind}`} /> : <ScrollView keyboardShouldPersistTaps="handled">
-      {error ? <View style={{ backgroundColor: '#fff4ed', padding: 10, borderRadius: 8, marginBottom: 10 }}><Text accessibilityRole="alert" style={{ color: '#b42318' }}>{error}</Text>{conflict ? <Pressable onPress={() => void load()}><Text style={{ color: '#2864dc', marginTop: 8 }}>Reload server version</Text></Pressable> : null}</View> : null}
-      {saved ? <Text accessibilityLiveRegion="polite" style={{ color: '#067647', marginBottom: 8 }}>Saved successfully</Text> : null}
+      {error ? <View style={{ backgroundColor: '#fff4ed', padding: 10, borderRadius: 8, marginBottom: 10 }}><Text accessibilityRole="alert" style={{ color: '#b42318' }}>{error}</Text>{conflict ? <Pressable onPress={() => void load()}><Text style={{ color: '#2864dc', marginTop: 8 }}>{label("wikiBrowser.editConflictReload")}</Text></Pressable> : null}</View> : null}
+      {saved ? <Text accessibilityLiveRegion="polite" style={{ color: '#067647', marginBottom: 8 }}>{kind === 'wiki' ? label("wikiBrowser.editSaveSuccess") : 'Saved successfully'}</Text> : null}
       {kind === 'wiki' ? <>
-        <Text style={{ fontWeight: '600', marginBottom: 4 }}>Title</Text>
+        <Text style={{ fontWeight: '600', marginBottom: 4 }}>{label("wikiBrowser.editTitlePlaceholder")}</Text>
         <TextInput accessibilityLabel="Wiki title" value={wiki.title} onChangeText={(titleValue) => setWiki((current) => ({ ...current, title: titleValue }))} editable={writable} style={{ borderColor: '#d0d5dd', borderWidth: 1, borderRadius: 8, padding: 10, marginBottom: 10 }} />
-        <Text style={{ fontWeight: '600', marginBottom: 4 }}>Summary</Text>
+        <Text style={{ fontWeight: '600', marginBottom: 4 }}>{label("wikiBrowser.editSummaryPlaceholder")}</Text>
         <TextInput accessibilityLabel="Wiki summary" value={wiki.summary} onChangeText={(summary) => setWiki((current) => ({ ...current, summary }))} editable={writable} style={{ borderColor: '#d0d5dd', borderWidth: 1, borderRadius: 8, padding: 10, marginBottom: 10 }} />
-        <Text style={{ fontWeight: '600', marginBottom: 4 }}>Content</Text>
+        <Text style={{ fontWeight: '600', marginBottom: 4 }}>{label("wikiBrowser.editContentPlaceholder")}</Text>
         <TextInput accessibilityLabel="Wiki content" value={wiki.content} onChangeText={(content) => setWiki((current) => ({ ...current, content }))} editable={writable} multiline textAlignVertical="top" style={{ borderColor: '#d0d5dd', borderWidth: 1, borderRadius: 8, padding: 10, minHeight: 220 }} />
         <Text style={{ color: '#667085', fontSize: 12, marginTop: 8 }}>Version {wiki.version} · server-side conflict protection</Text>
       </> : <>

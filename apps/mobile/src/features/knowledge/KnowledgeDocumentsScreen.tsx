@@ -4,6 +4,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { KnowledgeDocument, KnowledgeFolderNode, KnowledgeTag } from '@weknora/contracts';
 import { useMobileRuntime } from '../../runtime.tsx';
 import { pickNativeFile } from '../../platform/files.ts';
+import { dispatchUploadEvent } from './upload-progress.ts';
+import { knowledgeListLabel } from './list.ts';
 import { selectKnowledgeDocumentLabel } from './parity.ts';
 import { referenceRoute } from './reference.ts';
 
@@ -12,6 +14,7 @@ function flattenFolders(nodes: KnowledgeFolderNode[]): KnowledgeFolderNode[] {
 }
 
 export function KnowledgeDocumentsScreen() {
+  const label = (key: string) => knowledgeListLabel(runtime.locale, key);
   const { id: rawId } = useLocalSearchParams<{ id: string }>();
   const kbId = Array.isArray(rawId) ? rawId[0] : rawId;
   const runtime = useMobileRuntime();
@@ -79,37 +82,50 @@ export function KnowledgeDocumentsScreen() {
     if (!file) return;
     const controller = new AbortController();
     uploadController.current = controller;
+    const uploadId = `upload-${Date.now()}-${file.name}`;
     setUploading(true); setError('');
-    try { await runtime.client.knowledge.documents.upload(kbId, { file }, controller.signal); await loadPage(1, true); }
-    catch (cause) { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Unable to upload file'); }
+    // Mirrors the Vue uploader: a start event per file, a terminal complete
+    // event (failure preserved as an error task), and a single `uploaded`
+    // event once at least one file succeeded so list views refresh.
+    dispatchUploadEvent({ type: 'start', uploadId, kbId, fileName: file.name });
+    try {
+      await runtime.client.knowledge.documents.upload(kbId, { file }, controller.signal);
+      dispatchUploadEvent({ type: 'complete', uploadId, kbId, status: 'success', progress: 100 });
+      dispatchUploadEvent({ type: 'uploaded', kbId });
+      await loadPage(1, true);
+    }
+    catch (cause) {
+      dispatchUploadEvent({ type: 'complete', uploadId, kbId, status: 'error', error: cause instanceof Error ? cause.message : 'Unable to upload file' });
+      if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Unable to upload file');
+    }
     finally { uploadController.current = null; setUploading(false); }
   }
 
   return <SafeAreaView style={{ flex: 1, padding: 16 }}>
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-      <Pressable accessibilityRole="button" onPress={() => router.back()}><Text style={{ color: '#2864dc' }}>Back</Text></Pressable>
-      <Text accessibilityRole="header" style={{ flex: 1, fontSize: 21, fontWeight: '700' }}>Files</Text>
-      <Pressable accessibilityRole="button" disabled={!kbId} onPress={() => kbId && router.push(referenceRoute('wiki', kbId))}><Text style={{ color: '#2864dc' }}>Wiki</Text></Pressable>
-      <Pressable accessibilityRole="button" disabled={!kbId} onPress={() => kbId && router.push(referenceRoute('faq', kbId))}><Text style={{ color: '#2864dc' }}>FAQ</Text></Pressable>
-      <Pressable accessibilityRole="button" disabled={!kbId} onPress={() => kbId && router.push(`/knowledge/${encodeURIComponent(kbId)}/graph`)}><Text style={{ color: '#2864dc' }}>Graph</Text></Pressable>
-      <Pressable accessibilityRole="button" disabled={!kbId} onPress={() => kbId && router.push(`/knowledge/${encodeURIComponent(kbId)}/data-sources`)}><Text style={{ color: '#2864dc' }}>Sources</Text></Pressable>
-      <Pressable accessibilityRole="button" onPress={() => uploading ? uploadController.current?.abort() : void upload()}><Text style={{ color: '#2864dc' }}>{uploading ? 'Cancel' : 'Upload'}</Text></Pressable>
+      <Pressable accessibilityRole="button" onPress={() => router.back()}><Text style={{ color: '#2864dc' }}>{label("knowledgeBase.detail.back")}</Text></Pressable>
+      <Text accessibilityRole="header" style={{ flex: 1, fontSize: 21, fontWeight: '700' }}>{label("knowledgeBase.documents.title")}</Text>
+      <Pressable accessibilityRole="button" disabled={!kbId} onPress={() => kbId && router.push(referenceRoute('wiki', kbId))}><Text style={{ color: '#2864dc' }}>{label("knowledgeBase.documents.tabWiki")}</Text></Pressable>
+      <Pressable accessibilityRole="button" disabled={!kbId} onPress={() => kbId && router.push(referenceRoute('faq', kbId))}><Text style={{ color: '#2864dc' }}>{label("knowledgeBase.faq.title")}</Text></Pressable>
+      <Pressable accessibilityRole="button" disabled={!kbId} onPress={() => kbId && router.push(`/knowledge/${encodeURIComponent(kbId)}/graph`)}><Text style={{ color: '#2864dc' }}>{label("knowledgeBase.documents.tabGraph")}</Text></Pressable>
+      <Pressable accessibilityRole="button" disabled={!kbId} onPress={() => kbId && router.push(`/knowledge/${encodeURIComponent(kbId)}/data-sources`)}><Text style={{ color: '#2864dc' }}>{label("dataSource.title")}</Text></Pressable>
+      <Pressable accessibilityRole="button" onPress={() => uploading ? uploadController.current?.abort() : void upload()}><Text style={{ color: '#2864dc' }}>{uploading ? label("common.cancel") : label("knowledgeBase.documents.uploadFile")}</Text></Pressable>
     </View>
-    <TextInput accessibilityLabel="Search files" value={keyword} onChangeText={setKeyword} onSubmitEditing={() => void loadPage(1, true)} placeholder="Search files" returnKeyType="search" style={{ borderColor: '#d0d5dd', borderWidth: 1, borderRadius: 8, padding: 10, marginBottom: 8 }} />
-    <FlatList horizontal showsHorizontalScrollIndicator={false} data={[{ path: undefined, name: 'All folders' }, ...folderOptions]} keyExtractor={(item) => item.path || 'all'} renderItem={({ item }) => <Pressable onPress={() => setFolderPath(item.path)} style={{ paddingHorizontal: 10, paddingVertical: 7, borderRadius: 14, backgroundColor: folderPath === item.path ? '#dbeafe' : '#f2f4f7', marginRight: 6 }}><Text>{item.name}</Text></Pressable>} style={{ maxHeight: 42, marginBottom: 6 }} />
+    <TextInput accessibilityLabel={label("knowledgeBase.documents.searchPlaceholder")} value={keyword} onChangeText={setKeyword} onSubmitEditing={() => void loadPage(1, true)} placeholder={label("knowledgeBase.documents.searchPlaceholder")} returnKeyType="search" style={{ borderColor: '#d0d5dd', borderWidth: 1, borderRadius: 8, padding: 10, marginBottom: 8 }} />
+    <FlatList horizontal showsHorizontalScrollIndicator={false} data={[{ path: undefined, name: label("knowledgeBase.documents.root") }, ...folderOptions]} keyExtractor={(item) => item.path || 'all'} renderItem={({ item }) => <Pressable onPress={() => setFolderPath(item.path)} style={{ paddingHorizontal: 10, paddingVertical: 7, borderRadius: 14, backgroundColor: folderPath === item.path ? '#dbeafe' : '#f2f4f7', marginRight: 6 }}><Text>{item.name}</Text></Pressable>} style={{ maxHeight: 42, marginBottom: 6 }} />
     <FlatList horizontal showsHorizontalScrollIndicator={false} data={tags} keyExtractor={(item) => item.id} renderItem={({ item }) => { const selected = tagIds.includes(item.id); return <Pressable onPress={() => setTagIds((current) => selected ? current.filter((id) => id !== item.id) : [...current, item.id])} style={{ paddingHorizontal: 10, paddingVertical: 7, borderRadius: 14, backgroundColor: selected ? '#dcfce7' : '#f2f4f7', marginRight: 6 }}><Text>{item.name}</Text></Pressable>; }} style={{ maxHeight: 42, marginBottom: 8 }} />
-    <Text style={{ color: '#667085', marginBottom: 6 }}>{total} files</Text>
+    <Text style={{ color: '#667085', marginBottom: 6 }}>{label("common.itemCount")}</Text>
     {error ? <Text accessibilityRole="alert" style={{ color: '#b42318', marginBottom: 8 }}>{error}</Text> : null}
-    {loading ? <ActivityIndicator accessibilityLabel="Loading files" /> : <FlatList
+    {loading ? <ActivityIndicator accessibilityLabel={label("common.loading")} /> : <FlatList
       data={documents}
       keyExtractor={(item) => item.id}
       onEndReachedThreshold={0.4}
       onEndReached={() => { if (!loadingMore && hasMore) void loadPage(page + 1, false); }}
-      ListEmptyComponent={<Text style={{ color: '#667085' }}>No files match these filters.</Text>}
+      ListEmptyComponent={<Text style={{ color: '#667085' }}>{label("knowledgeBase.documents.noDocuments")}</Text>}
       ListFooterComponent={loadingMore ? <ActivityIndicator /> : null}
       renderItem={({ item }) => <Pressable accessibilityRole="button" onPress={() => router.push(`/knowledge/document/${item.id}`)} style={{ borderBottomColor: '#eaecf0', borderBottomWidth: 1, paddingVertical: 12 }}>
         <Text style={{ fontWeight: '600' }}>{selectKnowledgeDocumentLabel(item)}</Text>
-        <Text style={{ color: '#667085', fontSize: 12 }}>{item.parse_status || 'unknown'}{item.folder_path ? ` · ${item.folder_path}` : ''}</Text>
+        <Text style={{ color: '#667085', fontSize: 12 }}>{item.parse_status || label("knowledgeBase.documents.statusUnknown")}{item.folder_path ? ` · ${item.folder_path}` : ''}</Text>
       </Pressable>}
     />}
   </SafeAreaView>;

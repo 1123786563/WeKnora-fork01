@@ -27,23 +27,30 @@ export function extractDriveFolderToken(input: string): string {
   } catch { return raw; }
 }
 
-export type DataSourceCredentialField = { key: string; label: string; placeholder: string; secret?: boolean; optional?: boolean };
+/** Mirrors the Vue editor connector definitions (DataSourceEditorDialog.vue
+ * lines 489-633): same keys, same technical placeholders, plus the i18n
+ * labelKey/hintKey the Vue dialog resolves through t(). `label` stays as the
+ * untranslated fallback for callers without a locale. */
+export type DataSourceCredentialField = { key: string; labelKey: string; label: string; placeholder: string; secret?: boolean; optional?: boolean; hintKey?: string };
 
 const credentialFields: Record<string, DataSourceCredentialField[]> = {
-  feishu: [{ key: 'app_id', label: 'App ID', placeholder: 'cli_xxxx' }, { key: 'app_secret', label: 'App secret', placeholder: '', secret: true }, { key: 'base_url', label: 'Base URL', placeholder: 'https://open.feishu.cn', optional: true }],
-  lark: [{ key: 'app_id', label: 'App ID', placeholder: 'cli_xxxx' }, { key: 'app_secret', label: 'App secret', placeholder: '', secret: true }, { key: 'base_url', label: 'Base URL', placeholder: 'https://open.larksuite.com', optional: true }],
-  feishu_drive: [{ key: 'app_id', label: 'App ID', placeholder: 'cli_xxxx' }, { key: 'app_secret', label: 'App secret', placeholder: '', secret: true }, { key: 'base_url', label: 'Base URL', placeholder: 'https://open.feishu.cn', optional: true }],
-  lark_drive: [{ key: 'app_id', label: 'App ID', placeholder: 'cli_xxxx' }, { key: 'app_secret', label: 'App secret', placeholder: '', secret: true }, { key: 'base_url', label: 'Base URL', placeholder: 'https://open.larksuite.com', optional: true }],
-  notion: [{ key: 'api_key', label: 'Integration token', placeholder: 'ntn_xxxx', secret: true }],
-  yuque: [{ key: 'api_token', label: 'API token', placeholder: '', secret: true }, { key: 'base_url', label: 'Base URL', placeholder: 'https://www.yuque.com', optional: true }],
-  ima: [{ key: 'client_id', label: 'Client ID', placeholder: '', secret: true }, { key: 'api_key', label: 'API key', placeholder: '', secret: true }, { key: 'base_url', label: 'Base URL', placeholder: 'https://ima.qq.com', optional: true }],
-  gitlab: [{ key: 'base_url', label: 'Base URL', placeholder: 'https://gitlab.example.com' }, { key: 'access_token', label: 'Access token', placeholder: '', secret: true }],
+  feishu: [{ key: 'app_id', labelKey: 'dataSource.field.appId', label: 'App ID', placeholder: 'cli_xxxx' }, { key: 'app_secret', labelKey: 'dataSource.field.appSecret', label: 'App Secret', placeholder: '', secret: true }, { key: 'base_url', labelKey: 'dataSource.field.baseUrl', label: 'Base URL (optional)', placeholder: 'https://open.feishu.cn', optional: true, hintKey: 'dataSource.field.baseUrlHint' }],
+  lark: [{ key: 'app_id', labelKey: 'dataSource.field.appId', label: 'App ID', placeholder: 'cli_xxxx' }, { key: 'app_secret', labelKey: 'dataSource.field.appSecret', label: 'App Secret', placeholder: '', secret: true }, { key: 'base_url', labelKey: 'dataSource.field.baseUrl', label: 'Base URL (optional)', placeholder: 'https://open.larksuite.com', optional: true, hintKey: 'dataSource.field.baseUrlHint' }],
+  feishu_drive: [{ key: 'app_id', labelKey: 'dataSource.field.appId', label: 'App ID', placeholder: 'cli_xxxx' }, { key: 'app_secret', labelKey: 'dataSource.field.appSecret', label: 'App Secret', placeholder: '', secret: true }, { key: 'base_url', labelKey: 'dataSource.field.baseUrl', label: 'Base URL (optional)', placeholder: 'https://open.feishu.cn', optional: true, hintKey: 'dataSource.field.baseUrlHint' }],
+  lark_drive: [{ key: 'app_id', labelKey: 'dataSource.field.appId', label: 'App ID', placeholder: 'cli_xxxx' }, { key: 'app_secret', labelKey: 'dataSource.field.appSecret', label: 'App Secret', placeholder: '', secret: true }, { key: 'base_url', labelKey: 'dataSource.field.baseUrl', label: 'Base URL (optional)', placeholder: 'https://open.larksuite.com', optional: true, hintKey: 'dataSource.field.baseUrlHint' }],
+  notion: [{ key: 'api_key', labelKey: 'dataSource.field.integrationToken', label: 'Integration Token', placeholder: 'ntn_xxxx', secret: true }],
+  yuque: [{ key: 'api_token', labelKey: 'dataSource.field.apiToken', label: 'API Token', placeholder: '', secret: true }, { key: 'base_url', labelKey: 'dataSource.field.baseUrl', label: 'Base URL (optional)', placeholder: 'https://www.yuque.com', optional: true, hintKey: 'dataSource.field.baseUrlHint' }],
+  ima: [{ key: 'client_id', labelKey: 'dataSource.field.imaClientId', label: 'IMA ClientID', placeholder: '', secret: true }, { key: 'api_key', labelKey: 'dataSource.field.imaApiKey', label: 'IMA APIKey', placeholder: '', secret: true }, { key: 'base_url', labelKey: 'dataSource.field.baseUrl', label: 'Base URL (optional)', placeholder: 'https://ima.qq.com', optional: true, hintKey: 'dataSource.field.baseUrlHint' }],
+  gitlab: [{ key: 'base_url', labelKey: 'dataSource.gitlab.baseUrl', label: 'GitLab URL', placeholder: 'https://gitlab.example.com' }, { key: 'access_token', labelKey: 'dataSource.gitlab.accessToken', label: 'Personal access token', placeholder: '', secret: true }],
 };
 
 export function dataSourceCredentialFields(type: string): DataSourceCredentialField[] { return credentialFields[type] ?? []; }
 
-export function validateDataSourceCredentials(type: string, values: Record<string, string>): string[] {
-  return dataSourceCredentialFields(type).filter((field) => !field.optional && !values[field.key]?.trim()).map((field) => `${field.label} is required`);
+/** Required-but-empty credential fields; callers compose the localized
+ * `${t(field.labelKey)} ${t('dataSource.isRequired')}` warning like the Vue
+ * editor (DataSourceEditorDialog.vue:784). */
+export function validateDataSourceCredentials(type: string, values: Record<string, string>): DataSourceCredentialField[] {
+  return dataSourceCredentialFields(type).filter((field) => !field.optional && !values[field.key]?.trim());
 }
 
 export type ResourceCheckState = 'checked' | 'indeterminate' | 'unchecked';
@@ -102,4 +109,24 @@ export function hasRunningSync(source: Pick<DataSource, 'latest_sync_log'>): boo
 
 export function safeDataSourceType(source: Pick<DataSource, 'type'>): string {
   return typeof source.type === 'string' && source.type.trim() ? source.type : 'unknown';
+}
+
+/** formatMessage echoes a missing key back; fall back to the raw value so
+ * unknown connector types/statuses never render as a dotted key. */
+export function localizedOr(resolved: string, key: string, fallback: string): string {
+  return resolved === key ? fallback : resolved;
+}
+
+/** i18n keys for the connector card labels (Vue connectorLabel / statusLabel /
+ * syncModeLabel in DataSourceSettings.vue lines 126-137). */
+export function dataSourceConnectorLabelKey(type: string): string {
+  return `dataSource.connector.${safeDataSourceType({ type })}`;
+}
+
+export function dataSourceStatusLabelKey(status: string): string {
+  return `dataSource.status.${dataSourceStatusLabel({ status })}`;
+}
+
+export function dataSourceSyncModeLabelKey(mode: string): string {
+  return `dataSource.syncMode.${mode === 'full' ? 'full' : 'incremental'}`;
 }

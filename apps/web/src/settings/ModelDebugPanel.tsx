@@ -1,13 +1,37 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import * as React from "react";
 import type { ModelConfiguration, WeKnoraClient } from "@weknora/api-client";
 import { Button, Status } from "@weknora/ui";
-import { modelType } from "./model-settings.ts";
+import { useAppLocale } from "../i18n.ts";
+import {
+  createModelTranslator,
+  formatContextWindow,
+  modelHasContextWindow,
+  modelSupportsThinking,
+  modelType,
+  type ModelType,
+} from "./model-settings.ts";
 
 type Props = {
   client: WeKnoraClient;
   models: readonly ModelConfiguration[];
   onClose: () => void;
+};
+
+const TYPE_ORDER: ModelType[] = ["chat", "embedding", "rerank", "vllm", "asr"];
+const OBSERVATION_LABEL_KEYS: Record<string, string> = {
+  dimension: "modelSettings.debug.metrics.dimension",
+  result_count: "modelSettings.debug.metrics.resultCount",
+  answer_characters: "modelSettings.debug.metrics.answerChars",
+  reasoning_characters: "modelSettings.debug.metrics.reasoningChars",
+  reasoning_returned: "modelSettings.debug.metrics.reasoningReturned",
+  text_characters: "modelSettings.debug.metrics.textChars",
+  segment_count: "modelSettings.debug.metrics.segmentCount",
+};
+type DebugRun = {
+  id: number;
+  label: string;
+  result: Awaited<ReturnType<WeKnoraClient["configuration"]["models"]["debug"]>>;
 };
 
 function modelLabel(model: ModelConfiguration): string {
@@ -16,16 +40,37 @@ function modelLabel(model: ModelConfiguration): string {
     ? displayName
     : model.name;
 }
+function vendorLabel(t: (key: string) => string, model: ModelConfiguration): string {
+  if (model.source === "local") return "Ollama";
+  const parameters = (model.parameters ?? {}) as Record<string, unknown>;
+  const provider = typeof parameters.provider === "string" ? parameters.provider : "";
+  if (provider === "generic") return t("modelSettings.source.custom");
+  if (provider) {
+    const key = `model.editor.providers.${provider}.label`;
+    const viaT = t(key);
+    return viaT !== key ? viaT : provider;
+  }
+  return modelType(model) === "vllm" || modelType(model) === "asr"
+    ? t("modelSettings.source.openaiCompatible")
+    : t("modelSettings.source.remote");
+}
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 export function ModelDebugPanel({ client, models, onClose }: Props) {
-  const [selectedId, setSelectedId] = useState(
-    () =>
-      models.find((item) =>
-        ["chat", "embedding", "rerank", "vllm", "asr"].includes(
-          modelType(item),
-        ),
-      )?.id ?? "",
-  );
+  const locale = useAppLocale();
+  const t = useMemo(() => createModelTranslator(locale), [locale]);
+  const [selectedType, setSelectedType] = useState<ModelType>(() => {
+    const available = TYPE_ORDER.filter((type) => models.some((item) => modelType(item) === type));
+    return available[0] ?? "chat";
+  });
+  const [selectedId, setSelectedId] = useState(() => {
+    const available = models.filter((item) => modelType(item) === selectedType);
+    return available[0]?.id ?? "";
+  });
   const [input, setInput] = useState("");
   const [documents, setDocuments] = useState("");
   const [systemPrompt, setSystemPrompt] = useState("");
@@ -36,19 +81,25 @@ export function ModelDebugPanel({ client, models, onClose }: Props) {
   const [file, setFile] = useState<File | undefined>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<Awaited<
-    ReturnType<WeKnoraClient["configuration"]["models"]["debug"]>
-  > | null>(null);
-  const selected = models.find((item) => item.id === selectedId);
-  const selectedType = selected ? modelType(selected) : "chat";
-  const isRerank = selectedType === "rerank";
-  const needsFile = selectedType === "vllm" || selectedType === "asr";
-  const canRun =
-    Boolean(
-      selected &&
-        (needsFile ? file : input.trim()) &&
-        (!isRerank || documents.trim()),
-    ) && !busy;
+  const [result, setResult] = useState<DebugRun["result"] | null>(null);
+  const [history, setHistory] = useState<DebugRun[]>([]);
+  const runSequence = useRef(0);
+  const availableTypes = useMemo(
+    () => TYPE_ORDER.filter((type) => models.some((item) => modelType(item) === type)),
+    [models],
+  );
+  const filteredModels = useMemo(
+    () => models.filter((item) => modelType(item) === selectedType),
+    [models, selectedType],
+  );
+  const selected = filteredModels.find((item) => item.id === selectedId) ?? filteredModels[0];
+  const selectedTypeResolved = selected ? modelType(selected) : selectedType;
+  const isChat = selectedTypeResolved === "chat";
+  const isRerank = selectedTypeResolved === "rerank";
+  const isEmbedding = selectedTypeResolved === "embedding";
+  const isVllm = selectedTypeResolved === "vllm";
+  const needsFile = selectedTypeResolved === "vllm" || selectedTypeResolved === "asr";
+  const supportsThinking = selected ? modelSupportsThinking(selected as unknown as Parameters<typeof modelSupportsThinking>[0]) : false;
   const parsedDocuments = useMemo(
     () =>
       documents
@@ -57,113 +108,204 @@ export function ModelDebugPanel({ client, models, onClose }: Props) {
         .filter(Boolean),
     [documents],
   );
+  /* Run gating — ModelDebugDrawer.vue canRun: VLLM/ASR need a file, ASR needs
+     nothing else, rerank needs a query plus documents, everything else a query. */
+  const canRun =
+    Boolean(selected) &&
+    (needsFile ? Boolean(file) : true) &&
+    (selectedTypeResolved === "asr" ? true : Boolean(input.trim())) &&
+    (!isRerank || parsedDocuments.length > 0) &&
+    !busy;
+
+  function resetResult() {
+    setResult(null);
+    setHistory([]);
+  }
+  function selectType(type: ModelType) {
+    if (selectedType === type) return;
+    setSelectedType(type);
+    const first = models.find((item) => modelType(item) === type);
+    setSelectedId(first?.id ?? "");
+    setInput("");
+    setDocuments("");
+    setFile(undefined);
+    resetResult();
+  }
+  function selectModel(id: string) {
+    setSelectedId(id);
+    resetResult();
+  }
 
   async function run() {
     if (!selected || !canRun) return;
     setBusy(true);
     setError(null);
-    setResult(null);
     try {
-      setResult(
-        await client.configuration.models.debug(selected.id, {
-          input: input || undefined,
-          documents: isRerank ? parsedDocuments : undefined,
-          file,
-          options:
-            selectedType === "chat"
-              ? {
-                  systemPrompt: systemPrompt || undefined,
-                  temperature,
-                  topP,
-                  maxTokens,
-                  thinking,
-                }
-              : undefined,
-        }),
-      );
+      const thinkingValue = supportsThinking ? thinking : false;
+      const nextResult = await client.configuration.models.debug(selected.id, {
+        input: input.trim() || undefined,
+        documents: isRerank ? parsedDocuments : undefined,
+        file,
+        options:
+          isChat
+            ? {
+                systemPrompt: systemPrompt.trim() || undefined,
+                temperature,
+                topP,
+                maxTokens,
+                thinking: thinkingValue,
+              }
+            : undefined,
+      });
+      runSequence.current += 1;
+      const label = supportsThinking
+        ? t(thinkingValue ? "modelSettings.debug.thinkOn" : "modelSettings.debug.thinkOff")
+        : t("modelSettings.debug.runLabel", { n: runSequence.current });
+      setResult(nextResult);
+      setHistory((current) => [{ id: runSequence.current, label, result: nextResult }, ...current].slice(0, 6));
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : "Unable to debug model",
+        cause instanceof Error && cause.message ? cause.message : t("modelSettings.debug.requestFailed"),
       );
     } finally {
       setBusy(false);
     }
   }
 
+  async function copyResult() {
+    if (!result) return;
+    try {
+      await navigator.clipboard?.writeText(JSON.stringify(result, null, 2));
+      setError(null);
+    } catch {
+      setError(t("common.error"));
+    }
+  }
+
+  const inputLabel = isEmbedding
+    ? t("modelSettings.debug.embeddingInput")
+    : isVllm
+      ? t("modelSettings.debug.vlmPrompt")
+      : t("modelSettings.debug.query");
+  const inputPlaceholder = isEmbedding
+    ? t("modelSettings.debug.embeddingPlaceholder")
+    : isVllm
+      ? t("modelSettings.debug.vlmPromptPlaceholder")
+      : t("modelSettings.debug.queryPlaceholder");
+  const metrics = result
+    ? Object.keys(OBSERVATION_LABEL_KEYS)
+        .filter((key) => result.observations[key] !== undefined && result.observations[key] !== null)
+        .map((key) => ({
+          key,
+          label: t(OBSERVATION_LABEL_KEYS[key]!),
+          value: typeof result.observations[key] === "boolean"
+            ? t(result.observations[key] === true ? "common.yes" : "common.no")
+            : String(result.observations[key]),
+        }))
+    : [];
+
   return (
     <div
       className="wk-model-debug"
       role="dialog"
       aria-modal="true"
-      aria-label="Debug model"
+      aria-label={t("modelSettings.debug.title")}
     >
       <div className="wk-settings-panel-heading">
         <div>
-          <h3>Debug model</h3>
-          <p className="wk-muted">
-            Run a request through the selected configured model and inspect the
-            response.
-          </p>
+          <h3>{t("modelSettings.debug.title")}</h3>
+          <p className="wk-muted">{t("modelSettings.debug.description")}</p>
         </div>
         <Button type="button" onClick={onClose}>
-          Close
+          {t("common.close")}
         </Button>
       </div>
       <div className="wk-settings-editor">
-        <label>
-          Model
-          <select
-            value={selectedId}
-            onChange={(event) => {
-              setSelectedId(event.target.value);
-              setResult(null);
-            }}
-          >
-            {models.map((model) => (
-              <option key={model.id} value={model.id}>
-                {modelLabel(model)} · {modelType(model)}
-              </option>
-            ))}
-          </select>
-        </label>
-        {!needsFile ? (
+        <div className="form-item">
+          <h4>{t("modelSettings.debug.groupModel")}</h4>
+          {availableTypes.length > 1 ? (
+            <div className="wk-model-type-options" role="radiogroup" aria-label={t("modelSettings.debug.modelType")}>
+              {availableTypes.map((type) => (
+                <button
+                  key={type}
+                  type="button"
+                  role="radio"
+                  aria-checked={selectedTypeResolved === type}
+                  className={selectedTypeResolved === type ? "is-active" : ""}
+                  onClick={() => selectType(type)}
+                >
+                  {t(`modelSettings.typeShort.${type}`)}
+                </button>
+              ))}
+            </div>
+          ) : null}
           <label>
-            {isRerank ? "Query" : "Input"}
-            <textarea
-              rows={4}
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              placeholder={
-                isRerank ? "Query to rank" : "Prompt or text to send"
-              }
-            />
+            {t("modelSettings.debug.model")}
+            <select
+              value={selected?.id ?? ""}
+              disabled={filteredModels.length === 0}
+              onChange={(event) => selectModel(event.target.value)}
+            >
+              {filteredModels.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {modelLabel(model)}
+                  {vendorLabel(t, model) ? ` · ${vendorLabel(t, model)}` : ""}
+                  {modelHasContextWindow(typeof model.type === "string" ? model.type : "")
+                    ? ` · ${formatContextWindow(((model.parameters ?? {}) as Record<string, unknown>).context_window as number | undefined)}`
+                    : ""}
+                </option>
+              ))}
+            </select>
           </label>
+          {filteredModels.length === 0 ? (
+            <p className="wk-muted">{t("modelSettings.debug.noModelsForType")}</p>
+          ) : null}
+        </div>
+        {selected ? (
+          <div className="form-item">
+            <h4>{t("modelSettings.debug.groupInput")}</h4>
+            {selectedTypeResolved !== "asr" ? (
+              <label>
+                {inputLabel}
+                <textarea
+                  rows={4}
+                  value={input}
+                  onChange={(event) => setInput(event.target.value)}
+                  placeholder={inputPlaceholder}
+                />
+              </label>
+            ) : null}
+            {isRerank ? (
+              <label>
+                {t("modelSettings.debug.documents")}
+                <textarea
+                  rows={4}
+                  value={documents}
+                  onChange={(event) => setDocuments(event.target.value)}
+                  placeholder={t("modelSettings.debug.documentsPlaceholder")}
+                />
+                <span className="wk-muted">{t("modelSettings.debug.documentsHint")}</span>
+              </label>
+            ) : null}
+            {needsFile ? (
+              <label>
+                {t(isVllm ? "modelSettings.debug.imageFile" : "modelSettings.debug.audioFile")}
+                <input
+                  type="file"
+                  accept={isVllm ? "image/*" : "audio/*"}
+                  onChange={(event) => {
+                    setFile(event.target.files?.[0]);
+                    resetResult();
+                  }}
+                />
+                {file ? <span className="wk-muted">{file.name} · {formatBytes(file.size)}</span> : null}
+              </label>
+            ) : null}
+          </div>
         ) : null}
-        {isRerank ? (
-          <label>
-            Documents
-            <textarea
-              rows={4}
-              value={documents}
-              onChange={(event) => setDocuments(event.target.value)}
-              placeholder="One document per line"
-            />
-          </label>
-        ) : null}
-        {needsFile ? (
-          <label>
-            File
-            <input
-              type="file"
-              accept={selectedType === "vllm" ? "image/*" : "audio/*"}
-              onChange={(event) => setFile(event.target.files?.[0])}
-            />
-            {file ? <span className="wk-muted">{file.name}</span> : null}
-          </label>
-        ) : null}
-        {selectedType === "chat" ? (
+        {selected && isChat ? (
           <fieldset>
-            <legend>Chat parameters</legend>
+            <legend>{t("modelSettings.debug.parameters")}</legend>
             <label>
               Temperature
               <input
@@ -187,42 +329,62 @@ export function ModelDebugPanel({ client, models, onClose }: Props) {
               />
             </label>
             <label>
-              Max tokens
+              Max Tokens
               <input
                 type="number"
                 min={1}
                 max={8192}
+                step={128}
                 value={maxTokens}
                 onChange={(event) => setMaxTokens(Number(event.target.value))}
               />
             </label>
             <label>
-              System prompt
+              {t("modelSettings.debug.systemPrompt")}
               <textarea
                 rows={2}
                 value={systemPrompt}
                 onChange={(event) => setSystemPrompt(event.target.value)}
+                placeholder={t("modelSettings.debug.systemPromptPlaceholder")}
               />
             </label>
-            <label className="wk-checkbox">
-              <input
-                type="checkbox"
-                checked={thinking}
-                onChange={(event) => setThinking(event.target.checked)}
-              />{" "}
-              Enable thinking
-            </label>
+            {supportsThinking ? (
+              <label className="wk-checkbox">
+                <input
+                  type="checkbox"
+                  checked={thinking}
+                  onChange={(event) => setThinking(event.target.checked)}
+                />{" "}
+                {t("modelSettings.debug.thinking")}
+                <span className="wk-muted"> {t("modelSettings.debug.thinkingDesc")}</span>
+              </label>
+            ) : null}
           </fieldset>
         ) : null}
         {error ? <Status tone="error">{error}</Status> : null}
-        <Button
-          type="button"
-          disabled={!canRun}
-          loading={busy}
-          onClick={() => void run()}
-        >
-          Run debug
-        </Button>
+        <div className="wk-list-actions">
+          <Button type="button" disabled={!canRun} loading={busy} onClick={() => void run()}>
+            {t("modelSettings.debug.run")}
+          </Button>
+          {result ? (
+            <Button type="button" onClick={() => void copyResult()}>
+              {t("modelSettings.debug.copyResult")}
+            </Button>
+          ) : null}
+        </div>
+        {history.length > 1 ? (
+          <div className="wk-list-actions" role="list" aria-label={t("modelSettings.debug.history")}>
+            {history.map((run) => (
+              <Button
+                key={run.id}
+                type="button"
+                onClick={() => setResult(run.result)}
+              >
+                {run.label} · {run.result.elapsedMs} ms
+              </Button>
+            ))}
+          </div>
+        ) : null}
         {result ? (
           <section
             className={
@@ -231,20 +393,21 @@ export function ModelDebugPanel({ client, models, onClose }: Props) {
                 : "wk-model-debug-result is-error"
             }
           >
-            <strong>{result.ok ? "Succeeded" : "Failed"}</strong>
+            <strong>{t(result.ok ? "modelSettings.debug.success" : "modelSettings.debug.failed")}</strong>
             <span>{result.elapsedMs} ms</span>
+            {metrics.length > 0 ? (
+              <p className="wk-muted">
+                {metrics.map((metric) => `${metric.label}: ${metric.value}`).join(" · ")}
+              </p>
+            ) : null}
             {result.error ? <Status tone="error">{result.error}</Status> : null}
             <details open>
-              <summary>Response</summary>
+              <summary>{t("modelSettings.debug.rawResponse")}</summary>
               <pre>{JSON.stringify(result.rawResponse, null, 2)}</pre>
             </details>
             <details>
-              <summary>Request preview</summary>
+              <summary>{t("modelSettings.debug.requestPreview")}</summary>
               <pre>{JSON.stringify(result.request, null, 2)}</pre>
-            </details>
-            <details>
-              <summary>Observations</summary>
-              <pre>{JSON.stringify(result.observations, null, 2)}</pre>
             </details>
           </section>
         ) : null}

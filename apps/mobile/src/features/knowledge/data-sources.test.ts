@@ -52,8 +52,9 @@ test('drive folder input accepts a bare token and Feishu/Lark folder URLs', () =
 
 test('connector credential fields mirror Vue requirements', () => {
   assert.deepEqual(dataSourceCredentialFields('notion').map((field) => field.key), ['api_key']);
-  assert.deepEqual(validateDataSourceCredentials('feishu', { app_id: 'cli_x' }), ['App secret is required']);
-  assert.deepEqual(validateDataSourceCredentials('gitlab', { base_url: 'https://gitlab.test' }), ['Access token is required']);
+  assert.deepEqual(dataSourceCredentialFields('feishu').map((field) => field.labelKey), ['dataSource.field.appId', 'dataSource.field.appSecret', 'dataSource.field.baseUrl']);
+  assert.deepEqual(validateDataSourceCredentials('feishu', { app_id: 'cli_x' }).map((field) => field.key), ['app_secret']);
+  assert.deepEqual(validateDataSourceCredentials('gitlab', { base_url: 'https://gitlab.test' }).map((field) => field.labelKey), ['dataSource.gitlab.accessToken']);
   assert.deepEqual(validateDataSourceCredentials('rss', {}), []);
 });
 
