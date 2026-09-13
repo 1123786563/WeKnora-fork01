@@ -1,5 +1,11 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-14 Round N+10 — R013 IM wizard render verification
+
+- 修复并验证 IM 向导实际 React 渲染接缝：新增/编辑抽屉、四步导航、无智能体校验、企业微信凭证字段、微信二维码绑定门控与 payload 提交；交互渲染测试 5/5。
+- 补齐 `integrations.selectAgentHint` 五语回退文案，避免逻辑键存在但界面显示 key 名称。
+- Web 全量 670/670，`typecheck:web` 与 `build:web` 通过。状态仍为 `review`，未将 mock/jsdom 证据当作浏览器/真实后端/平台验收。
+
 ## 2026-09-14 Round N+9 — R023 GeneralSettings 复核
 
 - Vue `GeneralSettings.vue` 与 React `GeneralPreferencesPanel` 对照复核：语言、主题、界面字体、代码字体、预览、字号分段及 settings drawer 挂载路径均已有实现。
