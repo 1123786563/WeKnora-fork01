@@ -130,6 +130,11 @@
 
 - Vue sync logs expose lifecycle and item result counts. React now renders finished-at plus total/created/updated/deleted/skipped/failed counts in the existing log surface, without changing API behavior.
 - Data-source form tests: 2/2 passed. Web typecheck: passed. Evidence remains static/unit and typecheck only; resource browser, browser, real-backend, Wails, and native evidence remain open.
+
+## 2026-09-14 Round N+13 — N013 sync-log pagination
+
+- React now uses the existing log API `limit/offset` contract to page through synchronization history, resetting to the first page when a source is opened and disabling Previous/Next at the appropriate boundaries.
+- Data-source form tests: 2/2 passed. Web typecheck: passed. Evidence remains static/unit and typecheck only; resource browser, browser, real-backend, Wails, and native evidence remain open.
 - Status remains `review`; no new browser computed-style, real-backend, Wails, iOS or Android evidence claimed. Index/tree/list modes, folder actions, graph and reader states remain open.
 
 ## 2026-09-12 Round 1 基线
