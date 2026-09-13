@@ -148,6 +148,15 @@ export function WikiPage({
     setPage(1);
   }
 
+  function switchViewMode(next: "tree" | "list") {
+    setViewMode(next);
+    setIndexView(null);
+    setFolderId("");
+    setFolderPath("");
+    setFolderTrail([]);
+    setPage(1);
+  }
+
   async function createFolder() {
     const name = window.prompt(t("wikiBrowser.folderNamePlaceholder"))?.trim();
     if (!name || folderBusy) return;
@@ -350,8 +359,8 @@ export function WikiPage({
   ) : (
     <>
       <div className="wk-wiki-directory-toolbar" role="toolbar" aria-label={t("wikiBrowser.viewModeToggle")}>
-        <Button type="button" onClick={() => { setViewMode("tree"); setIndexView(null); }}>{t("wikiBrowser.viewModeToggle")} · {viewMode === "tree" ? "Tree" : "List"}</Button>
-        <Button type="button" onClick={() => { setViewMode("list"); setIndexView(null); }}>{t("wikiBrowser.page.title")}</Button>
+        <Button type="button" onClick={() => switchViewMode("tree")} aria-pressed={viewMode === "tree"}>{t("wikiBrowser.viewTree")}</Button>
+        <Button type="button" onClick={() => switchViewMode("list")} aria-pressed={viewMode === "list"}>{t("wikiBrowser.viewList")}</Button>
         <Button type="button" onClick={() => void openIndex()}>{t("wikiBrowser.indexTitle")}</Button>
         {canContribute ? <Button type="button" disabled={folderBusy} onClick={() => void createFolder()}>{t("wikiBrowser.folderActions")}</Button> : null}
         {folderTrail.length > 0 ? <Button type="button" onClick={backFolder}>{t("wikiBrowser.backToOverview")}</Button> : null}

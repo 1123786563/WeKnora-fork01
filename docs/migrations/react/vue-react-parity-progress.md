@@ -3,6 +3,7 @@
 ## 2026-09-14 Round N+25 — N011 Wiki directory contract and modes
 
 - Index 首屏现在保存后端 `next_cursor`，按分组追加后续条目并隔离加载错误；加载按钮在请求中禁用。API 10/10、Wiki UI 5/5、正式 Web 797/797、`typecheck:web` 与 `typecheck:shared` 通过。
+- Tree/List 切换现在清除旧目录上下文：List 回到全局平铺分页，Tree 回到根目录树；视图按钮使用 Vue 已有的五语言 `viewTree/viewList` 文案。完整 Web 回归仍为 797/797。
 - 随后补齐 Vue 已有的目录写操作 API client：创建/更新/删除文件夹与移动页面，严格校验返回的文件夹记录并覆盖层级 ID 编码；合同测试扩展至 10/10、`typecheck:shared` 通过。React UI 暂不显示这些写按钮，原因是当前 `WikiPage` 没有 Vue 对应的 KB 角色/权限上下文，需先接通权限边界后再开放。
 - 已接通当前 tenant role：`main.tsx` 将非 viewer 角色传入 Wiki，React 目录操作控件对 viewer 隐藏；Wiki viewer 渲染专项 5/5、`typecheck:web`、`typecheck:shared` 通过，提交 `2d084c85`。
 - 目录创建/重命名/删除增加 `folderBusy` 提交防重与失败保留当前目录语义，完整 Web 回归更新为 797/797；API 10/10、Wiki UI 5/5 仍通过。
