@@ -20,6 +20,8 @@ The sample-text field now exposes a live `current/5000` word-limit counter, matc
 
 Relation rows now use project comboboxes for both entity endpoints and relation type. Entity options are filterable and keyboard-selectable; relation types additionally support creating a value, matching the Vue `t-select` configuration without retaining browser-native select styling.
 
+The relation-type combobox also exposes a clear action, while entity endpoint comboboxes remain non-clearable, matching the Vue per-field `clearable` configuration.
+
 ## Verification
 
 - Focused upload-confirm and pipeline suites: 27/27 passed for the current graph/upload-confirm suite; prior upload-confirm and pipeline suites: 50/50 passed.

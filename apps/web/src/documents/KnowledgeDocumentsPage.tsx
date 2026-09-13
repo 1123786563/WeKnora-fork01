@@ -1097,12 +1097,13 @@ export function GraphTagsField({ tags, onChange, placeholder, ariaLabel }: {
   );
 }
 
-export function GraphRelationSelect({ value, options, placeholder, ariaLabel, creatable = false, onChange }: {
+export function GraphRelationSelect({ value, options, placeholder, ariaLabel, creatable = false, clearable = false, onChange }: {
   value: string;
   options: readonly string[];
   placeholder: string;
   ariaLabel: string;
   creatable?: boolean;
+  clearable?: boolean;
   onChange: (value: string) => void;
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -1137,6 +1138,7 @@ export function GraphRelationSelect({ value, options, placeholder, ariaLabel, cr
           if (event.key === "Escape") { setOpen(false); event.currentTarget.blur(); }
         }}
       />
+      {clearable && value ? <button type="button" className="wk-graph-relation-clear" aria-label={`清除${ariaLabel}`} onMouseDown={(event) => { event.preventDefault(); choose(""); }}>×</button> : null}
       {open ? (
         <div role="listbox" className="wk-graph-relation-options">
           {filtered.map((option) => <button type="button" role="option" aria-selected={option === value} key={option} onMouseDown={(event) => { event.preventDefault(); choose(option); }}>{option}</button>)}
@@ -1506,7 +1508,7 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
                       <div key={index} className="wk-graph-relation-item">
                         <GraphRelationSelect value={relation.node1} options={graphExtract.nodes.map((node) => node.name)} placeholder={t("graphSettings.selectEntity")} ariaLabel={t("graphSettings.selectEntity")} onChange={(value) => updateRelation(index, { ...relation, node1: value })} />
                         <span aria-hidden>→</span>
-                        <GraphRelationSelect value={relation.type} options={graphExtract.tags} placeholder={t("graphSettings.selectRelationType")} ariaLabel={t("graphSettings.selectRelationType")} creatable onChange={(value) => updateRelation(index, { ...relation, type: value })} />
+                        <GraphRelationSelect value={relation.type} options={graphExtract.tags} placeholder={t("graphSettings.selectRelationType")} ariaLabel={t("graphSettings.selectRelationType")} creatable clearable onChange={(value) => updateRelation(index, { ...relation, type: value })} />
                         <span aria-hidden>→</span>
                         <GraphRelationSelect value={relation.node2} options={graphExtract.nodes.map((node) => node.name)} placeholder={t("graphSettings.selectEntity")} ariaLabel={t("graphSettings.selectEntity")} onChange={(value) => updateRelation(index, { ...relation, node2: value })} />
                         <button

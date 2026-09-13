@@ -1747,3 +1747,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - React 图谱关系表的两个实体端点与关系类型从原生 `<select>` 替换为项目级 combobox；支持 Vue 对应的筛选、键盘选择、外部点击/Escape 关闭，关系类型保留 creatable 行为，原有关系 payload 与删除逻辑不变。
 - 定向 upload-confirm 测试 27/27、Web TypeScript、`git diff --check` 通过；真实图谱 endpoint、浏览器 computed-style/截图、Vue 同条件截图、Wails 与移动端证据仍待补齐，N007 继续保持 implementing。
+
+## 2026-09-14 Round N+52 — N007 图谱关系类型清空
+
+- React 关系类型 combobox 补齐 Vue `clearable` 行为，仅类型字段提供清空入口；实体端点保持不可清空，关系数据更新契约不变。
+- 定向 upload-confirm 测试 27/27、Web TypeScript、`git diff --check` 通过；真实图谱 endpoint、浏览器 computed-style/截图、Vue 同条件截图、Wails 与移动端证据仍待补齐，N007 继续保持 implementing。

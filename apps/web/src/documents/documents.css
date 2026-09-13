@@ -378,6 +378,18 @@
   box-sizing: border-box;
 }
 
+.wk-graph-relation-clear {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  padding: 0 3px;
+  border: 0;
+  background: transparent;
+  color: var(--wk-muted, #667085);
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
 .wk-graph-relation-options {
   position: absolute;
   z-index: 5;

@@ -591,11 +591,12 @@ test('graph sample text exposes the Vue word-limit counter', () => {
 test('graph relation selectors expose filterable Vue-like comboboxes', () => {
   const markup = renderToStaticMarkup(React.createElement(GraphRelationSelect, {
     value: 'Author', options: ['Author', 'Alias'], placeholder: '选择关系类型', ariaLabel: '选择关系类型',
-    creatable: true, onChange: noop,
+    creatable: true, clearable: true, onChange: noop,
   }));
   assert.doesNotMatch(markup, /<select/);
   assert.match(markup, /role="combobox"/);
   assert.match(markup, /Author/);
+  assert.match(markup, /清除选择关系类型/);
 });
 
 // --- Upload progress mask (Vue upload-mask.vue parity + percent) -------------------
