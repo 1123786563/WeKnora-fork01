@@ -70,18 +70,20 @@ test('loads folders, tags, detail, search, and creates an authenticated download
   const api = createKnowledgeDocumentsApi(async (request) => {
     requests.push(request.path);
     if (request.path.includes('/folders')) return { success: true, data: { root_document_count: 1, total_document_count: 2, folders: [{ path: 'docs', name: 'docs', document_count: 1, total_count: 1 }] } };
-    if (request.path.includes('/tags')) return { success: true, data: [{ id: 'tag-1', seq_id: 3, name: 'important' }] };
+    if (request.path.includes('/tags')) return { success: true, data: { data: [{ id: 'tag-1', seq_id: 3, name: 'important' }], total: 51, page: 1, page_size: 50 } };
     if (request.path.includes('/search')) return { success: true, data: [{ id: 'doc-1', title: 'Guide' }], has_more: false, total: 1 };
     return { success: true, data: { id: 'doc-1', title: 'Guide' } };
   });
   assert.equal((await api.folders('kb/a')).folders[0]?.path, 'docs');
   assert.equal((await api.tags('kb/a', { keyword: 'imp' }))[0]?.name, 'important');
+  assert.equal((await api.tagsPage('kb/a', { page: 1, page_size: 50, keyword: 'imp' })).total, 51);
   assert.equal((await api.get('doc/a', { agent_id: 'agent-1' })).title, 'Guide');
   assert.equal((await api.search({ keyword: 'guide', file_types: ['pdf', 'md'], limit: 10 })).total, 1);
   assert.equal(api.downloadPath('doc/a'), '/api/v1/knowledge/doc%2Fa/download');
   assert.deepEqual(requests, [
     '/api/v1/knowledge-bases/kb%2Fa/knowledge/folders',
     '/api/v1/knowledge-bases/kb%2Fa/tags?keyword=imp',
+    '/api/v1/knowledge-bases/kb%2Fa/tags?page=1&page_size=50&keyword=imp',
     '/api/v1/knowledge/doc%2Fa?agent_id=agent-1',
     '/api/v1/knowledge/search?keyword=guide&limit=10&file_types=pdf%2Cmd',
   ]);

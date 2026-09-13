@@ -8,6 +8,7 @@ import {
   type KnowledgeDocumentListResponse,
   type KnowledgeFolderTree,
   type KnowledgeSearchResponse,
+  type KnowledgeTagListResponse,
   type KnowledgeTag,
 } from '@weknora/contracts';
 import type { ClientBinaryResponse, ClientRequest } from '../client.ts';
@@ -179,11 +180,14 @@ export function createKnowledgeDocumentsApi(
       }));
     },
     async tags(knowledgeBaseId: string, params: KnowledgeTagListParams = {}): Promise<KnowledgeTag[]> {
+      return (await this.tagsPage(knowledgeBaseId, params)).data;
+    },
+    async tagsPage(knowledgeBaseId: string, params: KnowledgeTagListParams = {}): Promise<KnowledgeTagListResponse> {
       const query = new URLSearchParams();
       for (const [key, value] of Object.entries(params)) if (value !== undefined) query.set(key, String(value));
       const suffix = query.toString();
       const path = `/api/v1/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}/tags${suffix ? `?${suffix}` : ''}`;
-      return parseKnowledgeTagListResponse(await request({ method: 'GET', path })).data;
+      return parseKnowledgeTagListResponse(await request({ method: 'GET', path }));
     },
     async createTag(knowledgeBaseId: string, input: { name: string; color?: string; sort_order?: number }): Promise<void> {
       await request({ method: 'POST', path: `/api/v1/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}/tags`, body: input });

@@ -1491,6 +1491,12 @@ export function KnowledgeDocumentsPage({
   const [tags, setTags] = useState<
     Awaited<ReturnType<typeof client.knowledgeBases.documents.tags>>
   >([]);
+  const [tagSearchQuery, setTagSearchQuery] = useState('');
+  const [tagSearchDebounced, setTagSearchDebounced] = useState('');
+  const [tagPage, setTagPage] = useState(1);
+  const [tagTotal, setTagTotal] = useState(0);
+  const [tagHasMore, setTagHasMore] = useState(false);
+  const [tagLoadingMore, setTagLoadingMore] = useState(false);
   const [kbMeta, setKbMeta] = useState<KBSurfaceKB | null>(null);
   const [kbList, setKbList] = useState<KBChromeListItem[]>([]);
   const [canContribute, setCanContribute] = useState(true);
@@ -1746,26 +1752,41 @@ export function KnowledgeDocumentsPage({
   }, [query]);
 
   useEffect(() => {
+    const timer = setTimeout(() => {
+      setTagPage(1);
+      setTagSearchDebounced(tagSearchQuery.trim());
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [tagSearchQuery]);
+
+  useEffect(() => {
     let active = true;
     setFolderState({ status: "loading" });
-    void Promise.all([
-      client.knowledgeBases.documents.folders(knowledgeBaseId),
-      client.knowledgeBases.documents.tags(knowledgeBaseId),
-    ])
-      .then(([tree, nextTags]) => {
-        if (active) {
-          setFolderState({ status: "success", tree });
-          setTags(nextTags);
-        }
-      })
-      .catch((error: unknown) => {
-        if (active)
-          setFolderState({ status: "error", message: errorMessage(error) });
-      });
-    return () => {
-      active = false;
-    };
+    void client.knowledgeBases.documents.folders(knowledgeBaseId)
+      .then((tree) => { if (active) setFolderState({ status: "success", tree }); })
+      .catch((error: unknown) => { if (active) setFolderState({ status: "error", message: errorMessage(error) }); });
+    return () => { active = false; };
   }, [client, knowledgeBaseId, reloadToken]);
+
+  useEffect(() => {
+    let active = true;
+    if (tagPage > 1) setTagLoadingMore(true);
+    void client.knowledgeBases.documents.tagsPage(knowledgeBaseId, {
+      page: tagPage,
+      page_size: 50,
+      keyword: tagSearchDebounced || undefined,
+    }).then((result) => {
+      if (!active) return;
+      setTags((current) => tagPage === 1 ? result.data : [...current, ...result.data]);
+      setTagTotal(result.total ?? result.data.length);
+      setTagHasMore((tagPage === 1 ? result.data.length : tags.length + result.data.length) < (result.total ?? result.data.length));
+    }).catch((error: unknown) => {
+      if (active) setTagTotal(0);
+    }).finally(() => { if (active) setTagLoadingMore(false); });
+    return () => { active = false; };
+  // `tags.length` is intentionally excluded: this effect owns the page append.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client, knowledgeBaseId, reloadToken, tagPage, tagSearchDebounced]);
 
   useEffect(() => {
     setPage(1);
@@ -2630,6 +2651,12 @@ export function KnowledgeDocumentsPage({
                       onToggle={toggleTagFilter}
                       onClear={clearTagFilter}
                       onClose={() => setTagFilterOpen(false)}
+                      searchQuery={tagSearchQuery}
+                      onSearch={setTagSearchQuery}
+                      hasMore={tagHasMore}
+                      loadingMore={tagLoadingMore}
+                      onLoadMore={() => setTagPage((pageNumber) => pageNumber + 1)}
+                      total={tagTotal}
                     />
                   ) : null}
                 </div>

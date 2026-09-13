@@ -5,7 +5,7 @@
 import { useState, type ReactNode } from 'react';
 import { Dialog } from '@weknora/ui';
 import type { KnowledgeTag } from '@weknora/api-client';
-import { filterTagOptions, paginateTagOptions, TAG_PANEL_PAGE_SIZE } from './tags.ts';
+import { filterTagOptions } from './tags.ts';
 import type { TagSurfaceT } from './tags-locale.ts';
 
 interface TagPickerDialogProps {
@@ -227,6 +227,12 @@ interface TagFilterPanelProps {
   onToggle: (tagId: string) => void;
   onClear: () => void;
   onClose: () => void;
+  searchQuery?: string;
+  onSearch?: (value: string) => void;
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
+  total?: number;
 }
 
 /** The Vue tag-filter popup body (KnowledgeBase.vue L2468-2523). */
@@ -237,28 +243,25 @@ export function TagFilterPanel({
   onToggle,
   onClear,
   onClose,
+  searchQuery = '',
+  onSearch = () => undefined,
+  hasMore = false,
+  loadingMore = false,
+  onLoadMore = () => undefined,
+  total,
 }: TagFilterPanelProps): ReactNode {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [visibleCount, setVisibleCount] = useState(TAG_PANEL_PAGE_SIZE);
-
-  const query = searchQuery.trim().toLowerCase();
-  const matched = query
-    ? tags.filter((tag) => (tag.name || '').toLowerCase().includes(query))
-    : [...tags];
   // Vue sidebarTags: selections missing from the current page stay visible.
   const missing = selectedIds
-    .filter((id) => !matched.some((tag) => tag.id === id))
+    .filter((id) => !tags.some((tag) => tag.id === id))
     .map((id) => tags.find((tag) => tag.id === id))
     .filter((tag): tag is KnowledgeTag => Boolean(tag));
-  const ordered = [...missing, ...matched];
-  const visible = paginateTagOptions(ordered, visibleCount);
-  const hasMore = ordered.length > visible.length;
+  const visible = [...missing, ...tags];
 
   return (
     <div className="tag-filter-panel" role="group" aria-label={t('knowledgeBase.tagFilterTitle')}>
       <div className="tag-filter-panel__header">
         <span className="tag-filter-panel__title">{t('knowledgeBase.tagFilterTitle')}</span>
-        <span className="tag-filter-panel__count">({tags.length})</span>
+        <span className="tag-filter-panel__count">({total ?? tags.length})</span>
         <button type="button" className="wk-tag-link wk-tag-panel-close" aria-label={t('common.cancel')} onClick={onClose}>
           ×
         </button>
@@ -269,7 +272,7 @@ export function TagFilterPanel({
           value={searchQuery}
           placeholder={t('knowledgeBase.tagSearchPlaceholder')}
           aria-label={t('knowledgeBase.tagSearchPlaceholder')}
-          onChange={(event) => setSearchQuery(event.target.value)}
+          onChange={(event) => onSearch(event.target.value)}
         />
       </div>
       <div className="tag-filter-panel__body">
@@ -295,9 +298,10 @@ export function TagFilterPanel({
           <button
             type="button"
             className="wk-tag-link wk-tag-load-more"
-            onClick={() => setVisibleCount((value) => value + TAG_PANEL_PAGE_SIZE)}
+            disabled={loadingMore}
+            onClick={onLoadMore}
           >
-            {t('tenant.loadMore')}
+            {loadingMore ? t('common.loading') : t('tenant.loadMore')}
           </button>
         ) : null}
       </div>
