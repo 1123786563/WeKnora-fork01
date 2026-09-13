@@ -1064,12 +1064,28 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - N003 收尾（081a9c15，协调者直接补全）：commandPalette.hotkey.select/enter/cmdNumber/cmdEnter 4 键×5 语 byte-exact 入 generated/commandPalette.ts（Vue :142-150 footer 5 提示：↑↓/↵/⌘1-9/⌘↵/Esc）；GlobalCommandPalette 渲染 footer + command-palette.css 按值移植（:794-824，tdesign light token）；jsdom 字节断言 5/5；live Ctrl+K 打开面板 footer 文案逐字一致，截图入库 n003-palette-footer/。
 - 登录 toast parity 修复集成（0f6f4d12）：R002 错误态呈现分歧（Vue 顶部 MessagePlugin vs React 内嵌横幅）TDD 修复 + live 复拍一致；R002 行补 qualification（026051c9）。
 - R031 openSession 集成（89918e5a）：清单行点击导航 /platform/chat/:id，embed 安全。
-- 工作树中两处未提交 Vue 锚定精修待 R009 报告一并裁决：command-palette.css kbd 色值 token 化（ResultItem.vue:169-189）、SettingsPage members 包裹标题去重（TenantMembers.vue:8-65 自带完整页头）。
+- ~~工作树中两处未提交 Vue 锚定精修待 R009 报告一并裁决~~ 已落地，见下节追加：command-palette.css kbd 色值 token 化（b81d6ac6）、SettingsPage members 包裹标题去重（6282000a），另加分页按钮 TDesign 化（e4284ff5）。
 - 全门禁：shared 393/393、web 623 中 615 绿（7 红全部是 R009 anatomy 切片在途 TDD 红测试——.kb-list-rail/.kb-list-grid/.kb-list-warning 等未实现断言，属预期中间态）、mobile 118/118、build ✓。
 - 在途（1）：R009 kb-list 整页 anatomy。
 
+## 2026-09-14 Round N+5 追加 — 协调者三处 token/结构收敛落地 + live 计算样式取证
+
+- 上节 1067 行所述两处未提交精修已由协调者落地并提交，另补一处分页按钮收敛（三提交均为 TDD 外的 live 取证驱动，逐处计算样式双端一致）：
+  - members 包裹标题去重（6282000a）：members 现与 general/models 同列 panel-owned-header，wrapper 不再渲染；live :5181（guide 键种子）全区仅 1 个 h2、无 identity.tenants 文本、RBAC 链接 ×1；截图 react-settings-members-single-heading.png（单标题 + 绿色当前页）。
+  - command-palette.css 徽章 kbd 色值 token 化（b81d6ac6）：四处改为 Vue light 主题值（placeholder rgba(0,0,0,.4)/secondarycontainer #f3f3f3/component-stroke #e7e7e7/secondary rgba(0,0,0,.6)）；live 计算样式与 Vue 逐值一致。
+  - R038 分页按钮 TDesign 化（e4284ff5）：React 蓝 #2e6de6 描边方块 → Vue t-pagination 默认（无边框、3px 圆角、24px、当前页品牌绿 #07c05f 白字、hover 品牌绿文字、禁用箭头 rgba(0,0,0,.26)）；数值取自 :5180 live 探针（.parity-tools/vue-pager-probe.cjs，gitignored 工具），修复后 :5181 逐值一致。
+- 验证：TenantMembersPanel+surface 28/28、platform 面板 34/34；全门禁（footer 081a9c15 落地前集成树）：shared 392/392、web 616/616、mobile 118/118、desktop 2/2、embed 7/7、typecheck shared/web 0、build:web ✓3.42s。
+
 
 ## 2026-09-13 Round N+4（终）— 四切片集成 + 登录 toast parity + 时间脆弱测试修复
+
+## 2026-09-14 Round N+5 协调条目 — 第五批四切片派发 + 平台门禁确认（主协调 Agent）
+
+- 第五批并行派发（4，文件归属互斥）：R013 integrations 深水区（IM 向导/embed 抽屉；独占 packages/views/src/integrations + apps/web/src/integrations）、N006 documents 批量/标签（独占 apps/web/src/documents）、R017 RBAC + 壳层子筛选（独占 organizations + PlatformShell 相关块）、FAQ 收尾（独占 apps/web/src/faq）。
+- R009 anatomy 预审：App.tsx +310/-192、knowledge-list.css 637 行、icons/empty-svg 独立文件、7 项 TDD 红测试（rail/栅格/警告横幅/空态 SVG/错误不外露 JSON/更多菜单/收藏持久化）——实现结构良好，转绿后集成。
+- 非 Web 门禁确认：mobile 118/118、embed 7/7、desktop 2/2、shared 393/393、typecheck mobile/embed/desktop 0。
+- 六语缺口维持登记（24f773bd），待用户答复。
+
 
 - R016 模型 chip 集成（28ad0de4）：新建对话 chip 显示真实模型名+上下文规格（对齐 Input-field.vue:2784-2804）；model-chip.ts 9 单测 + chat-page 20/20；协调者批准并落地 page.tsx modelContext/modelContextIsDefault 透传；顺带恢复被并发编辑误删的 loadingMessages state。
 - N003 面板作用域 ⌘1-9 集成（43fdd880）：⌘数字仅面板打开时生效（Vue GlobalCommandPalette.vue:508-520 同构），⌘N 徽章进 recent/命令行，全局 ⌘1 行为由测试钉死为不存在；platform 115/115。遗留：footer 提示条需 commandPalette.hotkey.* 4 键×5 语（待裁决）。
