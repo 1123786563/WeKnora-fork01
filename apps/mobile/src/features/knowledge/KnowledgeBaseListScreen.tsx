@@ -19,13 +19,13 @@ import {
 import { useMobileRuntime } from "../../runtime.tsx";
 import { knowledgeHeaderLayout } from "./header-layout.ts";
 import { signOutAndRedirect } from "./sign-out.ts";
-import { canCreateKnowledgeBase, knowledgeBaseCountLabel } from "./list.ts";
+import { canCreateKnowledgeBase, knowledgeBaseCountLabel, knowledgeListLabel } from "./list.ts";
 
-const scopes: Array<{ key: KnowledgeBaseScope; label: string }> = [
-  { key: "all", label: "All" },
-  { key: "mine", label: "Mine" },
-  { key: "favorites", label: "Favorites" },
-  { key: "recents", label: "Recent" },
+const scopes: Array<{ key: KnowledgeBaseScope; labelKey: string }> = [
+  { key: "all", labelKey: "common.all" },
+  { key: "mine", labelKey: "knowledgeList.sections.mine" },
+  { key: "favorites", labelKey: "knowledgeList.scope.favorites" },
+  { key: "recents", labelKey: "knowledgeList.scope.recents" },
 ];
 
 export function KnowledgeBaseListScreen() {
@@ -70,7 +70,7 @@ export function KnowledgeBaseListScreen() {
       setError(
         cause instanceof Error
           ? cause.message
-          : "Unable to load knowledge bases",
+          : knowledgeListLabel(runtime.locale, "knowledgeList.loadFailed"),
       );
     } finally {
       setLoading(false);
@@ -109,7 +109,7 @@ export function KnowledgeBaseListScreen() {
   async function createKnowledgeBase() {
     const trimmed = name.trim();
     if (!trimmed) {
-      setError("Knowledge base name is required");
+      setError(knowledgeListLabel(runtime.locale, "knowledgeEditor.messages.nameRequired"));
       return;
     }
     setCreating(true);
@@ -128,7 +128,7 @@ export function KnowledgeBaseListScreen() {
       setError(
         cause instanceof Error
           ? cause.message
-          : "Unable to create knowledge base",
+          : knowledgeListLabel(runtime.locale, "knowledgeEditor.messages.createFailed"),
       );
     } finally {
       setCreating(false);
@@ -147,14 +147,14 @@ export function KnowledgeBaseListScreen() {
           }}
         >
           <Text accessibilityRole="header" style={knowledgeHeaderLayout.title}>
-            Knowledge bases
+            {knowledgeListLabel(runtime.locale, "knowledgeBase.title")}
           </Text>
           {writable ? (
             <Pressable
               accessibilityRole="button"
               onPress={() => setCreateVisible(true)}
             >
-              <Text style={knowledgeHeaderLayout.actionText}>+ Create</Text>
+              <Text style={knowledgeHeaderLayout.actionText}>+ {knowledgeListLabel(runtime.locale, "knowledgeList.create")}</Text>
             </Pressable>
           ) : null}
         </View>
@@ -163,19 +163,19 @@ export function KnowledgeBaseListScreen() {
             accessibilityRole="button"
             onPress={() => router.push(knowledgeHeaderLayout.chatRoute)}
           >
-            <Text style={knowledgeHeaderLayout.actionText}>Chat</Text>
+            <Text style={knowledgeHeaderLayout.actionText}>{knowledgeListLabel(runtime.locale, "menu.newChat")}</Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
             onPress={() => router.push("/workspace")}
           >
-            <Text style={knowledgeHeaderLayout.actionText}>Workspace</Text>
+            <Text style={knowledgeHeaderLayout.actionText}>{knowledgeListLabel(runtime.locale, "menu.organizations")}</Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
             onPress={() => router.push("/management")}
           >
-            <Text style={knowledgeHeaderLayout.actionText}>Manage</Text>
+            <Text style={knowledgeHeaderLayout.actionText}>{knowledgeListLabel(runtime.locale, "menu.settings")}</Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
@@ -185,7 +185,7 @@ export function KnowledgeBaseListScreen() {
               )
             }
           >
-            <Text style={knowledgeHeaderLayout.actionText}>Sign out</Text>
+            <Text style={knowledgeHeaderLayout.actionText}>{knowledgeListLabel(runtime.locale, "menu.logout")}</Text>
           </Pressable>
         </View>
       </View>
@@ -211,7 +211,7 @@ export function KnowledgeBaseListScreen() {
               paddingVertical: 7,
             }}
           >
-            <Text>{entry.label}</Text>
+            <Text>{knowledgeListLabel(runtime.locale, entry.labelKey)}</Text>
           </Pressable>
         ))}
       </View>
@@ -224,13 +224,15 @@ export function KnowledgeBaseListScreen() {
         </Text>
       ) : null}
       {loading ? (
-        <ActivityIndicator accessibilityLabel="Loading knowledge bases" />
+        <ActivityIndicator accessibilityLabel={knowledgeListLabel(runtime.locale, "common.loading")} />
       ) : visibleItems.length === 0 ? (
         <View style={{ alignItems: "center", paddingVertical: 36 }}>
           <Text style={{ color: "#667085", fontSize: 16 }}>
             {scope === "all" || scope === "mine"
-              ? "No knowledge bases available."
-              : `No ${scope} knowledge bases.`}
+              ? knowledgeListLabel(runtime.locale, "knowledgeList.empty.title")
+              : scope === "favorites"
+                ? knowledgeListLabel(runtime.locale, "knowledgeList.empty.favoritesTitle")
+                : knowledgeListLabel(runtime.locale, "knowledgeList.empty.recentsTitle")}
           </Text>
           {writable && (scope === "all" || scope === "mine") ? (
             <Pressable
@@ -244,7 +246,7 @@ export function KnowledgeBaseListScreen() {
               }}
             >
               <Text style={{ color: "#fff", fontWeight: "600" }}>
-                Create knowledge base
+                {knowledgeListLabel(runtime.locale, "knowledgeList.create")}
               </Text>
             </Pressable>
           ) : null}
@@ -268,7 +270,7 @@ export function KnowledgeBaseListScreen() {
                   marginBottom: 4,
                 }}
               >
-                {item.__section.split(".").pop()}
+                {knowledgeListLabel(runtime.locale, item.__section)}
               </Text>
             ) : (
               <View
@@ -293,17 +295,17 @@ export function KnowledgeBaseListScreen() {
                   >
                     {typeof item.description === "string" && item.description
                       ? item.description
-                      : "No description"}
+                      : knowledgeListLabel(runtime.locale, "knowledgeBase.noDescription")}
                   </Text>
                   <Text
                     style={{ color: "#98a2b3", fontSize: 11, marginTop: 4 }}
                   >
-                    {knowledgeBaseCountLabel(item)}
+                  {knowledgeBaseCountLabel(item, runtime.locale)}
                   </Text>
                 </Pressable>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={`${favoriteIds.has(item.id) ? "Unfavorite" : "Favorite"} ${item.name}`}
+                  accessibilityLabel={`${knowledgeListLabel(runtime.locale, favoriteIds.has(item.id) ? "knowledgeList.accessibility.unfavorite" : "knowledgeList.accessibility.favorite")} ${item.name}`}
                   onPress={() => toggleFavorite(item)}
                   style={{ padding: 10 }}
                 >
@@ -344,13 +346,13 @@ export function KnowledgeBaseListScreen() {
             }}
           >
             <Text style={{ fontSize: 20, fontWeight: "700" }}>
-              Create knowledge base
+              {knowledgeListLabel(runtime.locale, "knowledgeList.create")}
             </Text>
             <TextInput
-              accessibilityLabel="Knowledge base name"
+              accessibilityLabel={knowledgeListLabel(runtime.locale, "knowledgeBase.name")}
               value={name}
               onChangeText={setName}
-              placeholder="Name"
+              placeholder={knowledgeListLabel(runtime.locale, "knowledgeBase.name")}
               autoFocus
               style={{
                 borderColor: "#d0d5dd",
@@ -360,10 +362,10 @@ export function KnowledgeBaseListScreen() {
               }}
             />
             <TextInput
-              accessibilityLabel="Knowledge base description"
+              accessibilityLabel={knowledgeListLabel(runtime.locale, "knowledgeBase.description")}
               value={description}
               onChangeText={setDescription}
-              placeholder="Description (optional)"
+              placeholder={knowledgeListLabel(runtime.locale, "knowledgeBase.description")}
               multiline
               style={{
                 borderColor: "#d0d5dd",
@@ -381,7 +383,7 @@ export function KnowledgeBaseListScreen() {
               }}
             >
               <Pressable onPress={() => setCreateVisible(false)}>
-                <Text style={{ color: "#667085", padding: 10 }}>Cancel</Text>
+                <Text style={{ color: "#667085", padding: 10 }}>{knowledgeListLabel(runtime.locale, "common.cancel")}</Text>
               </Pressable>
               <Pressable
                 disabled={creating}
@@ -394,7 +396,7 @@ export function KnowledgeBaseListScreen() {
                 }}
               >
                 <Text style={{ color: "#fff", fontWeight: "600" }}>
-                  {creating ? "Creating…" : "Create"}
+                  {creating ? knowledgeListLabel(runtime.locale, "common.loading") : knowledgeListLabel(runtime.locale, "knowledgeList.create")}
                 </Text>
               </Pressable>
             </View>

@@ -881,6 +881,17 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   review passes. Browser/Vue screenshot, real-backend, Wails, iOS, and Android
   evidence remain absent; N005 remains `implementing`.
 
+- **N031 mobile KB list localization slice:** the native knowledge-base list now
+  restores and persists a validated shared locale, injects it into the existing
+  transport `Accept-Language` header, and uses shared translations for scope
+  labels, navigation, empty/loading/error states, creation form copy, counts,
+  and accessibility labels. New favorites/recents/load-failure/accessibility
+  keys are present in all five repository-supported locales. Mobile tests pass
+  96/96, the i18n knowledge-list suite passes 4/4, typecheck and diff check
+  pass, and independent review passes. Remaining N031 detail/data-source/
+  upload/graph parity and iOS/Android runtime evidence keep the row
+  `implementing`.
+
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
 - **Rows:** any rows proposed for `accepted`; never all rows by default.
 - **Files owned:** `docs/migrations/react/vue-react-parity-matrix.md`, `docs/migrations/react/vue-react-parity-progress.md`, `docs/migrations/react/evidence/vue-react-parity/README.md`, `docs/migrations/react/evidence/vue-react-parity/screenshot-matrix.md`, and the row-specific `docs/migrations/react/evidence/vue-react-parity/<date>-<row-group>.md` evidence file only.

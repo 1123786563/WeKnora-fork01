@@ -11,6 +11,7 @@ import { createMobileTransport } from './platform/transport.ts';
 import { createNetworkRecovery } from './platform/network.ts';
 import { createLatestAsyncWriter, createSessionEpoch, createSingleFlight, createWorkspaceSelectionAdapter, parseMobileWorkspaces, shouldHydrateWorkspaceMemberships, shouldRefreshMobileSession, toWorkspaceId, type MobileWorkspace } from './platform/workspace.ts';
 import { createMobileOIDCPKCE, matchesMobileOIDCState, MOBILE_OIDC_REDIRECT, parseMobileOIDCCallback } from './platform/oidc.ts';
+import { isLocale, type Locale } from '@weknora/i18n';
 
 const OIDC_STATE_KEY = 'weknora.mobile.oidc-state';
 const OIDC_VERIFIER_KEY = 'weknora.mobile.oidc-verifier';
@@ -21,6 +22,8 @@ interface MobileRuntimeValue {
   credential: Credential;
   hydrating: boolean;
   oidcError: string;
+  locale: Locale;
+  setLocale(value: Locale): Promise<void>;
   tenantId: string | null;
   workspaces: MobileWorkspace[];
   canCreateTenant: boolean;
@@ -50,6 +53,11 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
   const [workspaces, setWorkspaces] = useState<MobileWorkspace[]>([]);
   const [canCreateTenant, setCanCreateTenant] = useState(false);
   const [oidcError, setOidcError] = useState('');
+  const [locale, setCurrentLocale] = useState<Locale>('zh-CN');
+  const setLocale = useCallback(async (value: Locale) => {
+    setCurrentLocale(value);
+    await SecureStore.setItemAsync('locale', value);
+  }, []);
   const sessionTransitions = useRef(0);
   const appActiveRef = useRef(AppState.currentState === 'active');
   const updateCredential = useCallback((next: Credential) => {
@@ -97,8 +105,8 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
     refresh: refreshSession,
     tenantId: () => tenantIdRef.current,
     isTransitioning: () => sessionTransitions.current > 0,
-    locale: () => undefined,
-  }), [refreshSession]);
+    locale: () => locale,
+  }), [locale, refreshSession]);
   const client = useMemo(() => createWeKnoraClient({ baseURL, transport }), [baseURL, transport]);
 
   const adoptSession = useCallback(async (session: AuthSession) => {
@@ -125,11 +133,12 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let active = true;
     const startedAt = sessionEpoch.current();
-    void Promise.all([adapter.read(), serverAdapter.read(), workspaceAdapter.read()]).then(([nextCredential, savedBaseURL, savedTenantId]) => {
+    void Promise.all([adapter.read(), serverAdapter.read(), workspaceAdapter.read(), SecureStore.getItemAsync('locale')]).then(([nextCredential, savedBaseURL, savedTenantId, savedLocale]) => {
       if (!active || !sessionEpoch.isCurrent(startedAt) || sessionTransitions.current > 0) return;
       updateCredential(nextCredential);
       if (savedBaseURL) setBaseURL(savedBaseURL);
       if (savedTenantId !== null) updateTenantId(String(savedTenantId));
+      if (savedLocale && isLocale(savedLocale)) setCurrentLocale(savedLocale);
     }).finally(() => { if (active) setHydrating(false); });
     return () => { active = false; };
   }, [adapter, serverAdapter, sessionEpoch, updateCredential, updateTenantId, workspaceAdapter]);
@@ -289,7 +298,7 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  return <RuntimeContext.Provider value={{ client, baseURL, credential, hydrating, oidcError, tenantId, workspaces, canCreateTenant, setServerAddress, refreshWorkspaces, switchWorkspace, register, registerByInvite, startOIDC, login, logout }}>{children}</RuntimeContext.Provider>;
+  return <RuntimeContext.Provider value={{ client, baseURL, credential, hydrating, oidcError, locale, setLocale, tenantId, workspaces, canCreateTenant, setServerAddress, refreshWorkspaces, switchWorkspace, register, registerByInvite, startOIDC, login, logout }}>{children}</RuntimeContext.Provider>;
 }
 
 export function useMobileRuntime(): MobileRuntimeValue {
