@@ -1566,3 +1566,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - React `McpToolsDirectory` 的工具启用/审批控制由原生 checkbox 外观改为项目既有 `wk-switch` 组合，文字、间距、焦点环和禁用状态对齐 Vue `t-switch size="small"`；策略字段、即时保存和失败处理不变。
 - 本轮为 Vue 样式源码对照与 CSS/JSX 静态修复；定向 MCP 测试 15/15、完整 `pnpm test:web` 805/805、Web TypeScript 检查和 `git diff --check` 均通过；未宣称 Portal/computed-style 或真实 MCP 服务验收。
+
+## 2026-09-14 Round N+24 — R046 MCP 工具行排版
+
+- React 工具目录按 Vue `McpToolsList.vue` 的局部样式补齐：工具名字号/行高、两行描述截断、工具行 14px 内边距、标题间距、目录边界、详情页签及策略控件间距/焦点状态；不改变工具过滤、分页或策略 API 行为。
+- 本轮为 Vue 样式源码对照与局部 CSS 修复；MCP 定向测试 15/15、完整 `pnpm test:web` 805/805、Web TypeScript 检查和 `git diff --check` 均通过；仍未宣称 Portal/computed-style 或真实 MCP 服务验收。
