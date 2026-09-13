@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react';
 import type { WikiGraphData, WeKnoraClient } from '@weknora/api-client';
 import { Button, Card, Status } from '@weknora/ui';
-import { filterGraphNodes, graphFrontierNodes, graphQueryParams, layoutGraphNodes, mergeGraphData, WIKI_GRAPH_TYPES } from './graph.ts';
+import { filterGraphNodes, graphFrontierNodes, graphQueryParams, layoutGraphNodes, mergeGraphData, type GraphViewport, WIKI_GRAPH_TYPES, zoomGraphViewport } from './graph.ts';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 
 export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: WeKnoraClient; knowledgeBaseId: string; slug?: string }) {
@@ -19,6 +19,10 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
   const [drawerNode, setDrawerNode] = useState<{ slug: string; title: string; page_type: string; link_count: number } | null>(null);
   const [drawerPage, setDrawerPage] = useState<{ title: string; summary: string; content: string; version: number } | null>(null);
   const [drawerStatus, setDrawerStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [viewport, setViewport] = useState<GraphViewport>({ x: 0, y: 0, scale: 1 });
+  const [dragPositions, setDragPositions] = useState<Record<string, { x: number; y: number }>>({});
+  const gesture = useRef<{ kind: 'pan' | 'node'; pointerId: number; startX: number; startY: number; originX: number; originY: number; slug?: string } | null>(null);
+  const dragged = useRef(false);
 
   async function load(nextMode: 'overview' | 'ego', nextCenter?: string) {
     setStatus({ kind: 'loading' });
@@ -108,7 +112,8 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
 
   const visible = useMemo(() => graph ? filterGraphNodes(graph, { query, types: selectedTypes }) : null, [graph, query, selectedTypes]);
   const positions = useMemo(() => visible ? layoutGraphNodes(visible.nodes, 760, 420) : [], [visible]);
-  const positionBySlug = useMemo(() => new Map(positions.map((position) => [position.slug, position])), [positions]);
+  const displayPositions = useMemo(() => positions.map((position) => ({ ...position, ...dragPositions[position.slug] })), [positions, dragPositions]);
+  const positionBySlug = useMemo(() => new Map(displayPositions.map((position) => [position.slug, position])), [displayPositions]);
   const toggleGraphType = (graphType: string) => {
     setSelectedTypes((current) => current.includes(graphType) ? current.filter((item) => item !== graphType) : [...current, graphType]);
   };
@@ -125,6 +130,46 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
   };
   const frontier = useMemo(() => graphFrontierNodes(graph, center), [graph, center]);
 
+  function svgPoint(event: { clientX: number; clientY: number; currentTarget: SVGElement }) {
+    const svg = event.currentTarget instanceof SVGSVGElement ? event.currentTarget : event.currentTarget.ownerSVGElement;
+    if (!svg) return { x: 0, y: 0 };
+    const rect = svg.getBoundingClientRect();
+    return { x: ((event.clientX - rect.left) / rect.width) * 760, y: ((event.clientY - rect.top) / rect.height) * 420 };
+  }
+
+  function beginPan(event: ReactPointerEvent<SVGSVGElement>) {
+    if (event.target !== event.currentTarget) return;
+    const point = svgPoint(event);
+    gesture.current = { kind: 'pan', pointerId: event.pointerId, startX: point.x, startY: point.y, originX: viewport.x, originY: viewport.y };
+    dragged.current = false;
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function beginNodeDrag(event: ReactPointerEvent<SVGGElement>, slug: string) {
+    const point = svgPoint(event);
+    const position = positionBySlug.get(slug);
+    if (!position) return;
+    gesture.current = { kind: 'node', pointerId: event.pointerId, startX: point.x, startY: point.y, originX: position.x, originY: position.y, slug };
+    dragged.current = false;
+    event.stopPropagation();
+    (event.currentTarget.ownerSVGElement ?? event.currentTarget).setPointerCapture(event.pointerId);
+  }
+
+  function moveGraphGesture(event: ReactPointerEvent<SVGSVGElement>) {
+    const current = gesture.current;
+    if (!current || current.pointerId !== event.pointerId) return;
+    const point = svgPoint(event);
+    const dx = point.x - current.startX;
+    const dy = point.y - current.startY;
+    if (Math.abs(dx) + Math.abs(dy) > 3) dragged.current = true;
+    if (current.kind === 'pan') setViewport((value) => ({ ...value, x: current.originX + dx, y: current.originY + dy }));
+    else if (current.slug) setDragPositions((value) => ({ ...value, [current.slug!]: { x: current.originX + dx / viewport.scale, y: current.originY + dy / viewport.scale } }));
+  }
+
+  function endGraphGesture(event: ReactPointerEvent<SVGSVGElement>) {
+    if (gesture.current?.pointerId === event.pointerId) gesture.current = null;
+  }
+
   return (
     <main className="wk-page">
       <header className="wk-header">
@@ -136,6 +181,7 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
         <div className="wk-list-actions">
           {mode === 'ego' ? <Button type="button" onClick={() => void load('overview')}>{t('wikiBrowser.backToOverview')}</Button> : null}
           {frontier.length > 0 ? <Button type="button" onClick={() => void growFrontier()} disabled={status.kind === 'loading'} title={t('wikiBrowser.growFrontierTitle', { count: frontier.length })}>{t('wikiBrowser.growFrontier', { count: frontier.length })}</Button> : null}
+          <Button type="button" onClick={() => setViewport({ x: 0, y: 0, scale: 1 })}>{t('wikiBrowser.fitView')}</Button>
           <Button type="button" onClick={() => void load(mode, center || undefined)} disabled={status.kind === 'loading'}>{t('common.refresh')}</Button>
         </div>
       </header>
@@ -162,9 +208,11 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
         {status.kind === 'success' && visible ? <>
           <p className="wk-muted">{t('wikiBrowser.cardOverviewPrimary', { returned: visible.nodes.length, total: graph?.meta.total ?? visible.nodes.length })}</p>
           {visible.nodes.length === 0 ? <Status>{t('wikiBrowser.graphNoData')}</Status> : <>
-            <svg className="wk-knowledge-graph" viewBox="0 0 760 420" role="img" aria-label={t('knowledgeBase.graph.ariaLinks')}>
-              {visible.edges.map((edge) => { const source = positionBySlug.get(edge.source); const target = positionBySlug.get(edge.target); return source && target ? <line key={`${edge.source}-${edge.target}`} x1={source.x} y1={source.y} x2={target.x} y2={target.y} className="wk-knowledge-graph-edge" /> : null; })}
-              {visible.nodes.map((node, index) => { const position = positions[index]!; return <g key={node.slug} className={`wk-knowledge-graph-node is-${node.page_type}${node.familiar ? ' is-familiar' : ''}`} role="button" tabIndex={0} aria-label={`${node.title} · ${node.slug}`} onClick={() => { void openNode(node); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void openNode(node); } }}><circle cx={position.x} cy={position.y} r={Math.min(24, 10 + Math.log2(node.link_count + 1) * 4)} /><text x={position.x} y={position.y + 40} textAnchor="middle">{node.title.length > 24 ? `${node.title.slice(0, 23)}…` : node.title}</text></g>; })}
+            <svg className="wk-knowledge-graph" viewBox="0 0 760 420" role="img" aria-label={t('knowledgeBase.graph.ariaLinks')} onPointerDown={beginPan} onPointerMove={moveGraphGesture} onPointerUp={endGraphGesture} onPointerCancel={endGraphGesture} onWheel={(event: ReactWheelEvent<SVGSVGElement>) => { event.preventDefault(); const point = svgPoint(event); setViewport((value) => zoomGraphViewport(value, event.deltaY < 0 ? 1.15 : 0.87, point)); }}>
+              <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.scale})`}>
+                {visible.edges.map((edge) => { const source = positionBySlug.get(edge.source); const target = positionBySlug.get(edge.target); return source && target ? <line key={`${edge.source}-${edge.target}`} x1={source.x} y1={source.y} x2={target.x} y2={target.y} className="wk-knowledge-graph-edge" /> : null; })}
+                {visible.nodes.map((node, index) => { const position = displayPositions[index]!; return <g key={node.slug} className={`wk-knowledge-graph-node is-${node.page_type}${node.familiar ? ' is-familiar' : ''}`} role="button" tabIndex={0} aria-label={`${node.title} · ${node.slug}`} onPointerDown={(event) => beginNodeDrag(event, node.slug)} onClick={() => { if (!dragged.current) void openNode(node); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void openNode(node); } }}><circle cx={position.x} cy={position.y} r={Math.min(24, 10 + Math.log2(node.link_count + 1) * 4)} /><text x={position.x} y={position.y + 40} textAnchor="middle">{node.title.length > 24 ? `${node.title.slice(0, 23)}…` : node.title}</text></g>; })}
+              </g>
             </svg>
             <ul className="wk-list" aria-label={t('wikiBrowser.tabGraph')}>{visible.nodes.map((node) => <li key={node.slug}><div className="wk-list-item-copy"><strong>{node.title}</strong><span>{node.slug} · {node.page_type} · {node.link_count} {t('knowledgeBase.graph.links')}{node.familiar ? ` · ${t('wikiBrowser.legendFamiliar')}` : ''}</span></div><Button type="button" onClick={() => { void openNode(node); void load('ego', node.slug); }}>{t('wikiBrowser.expandNeighbors')}</Button></li>)}</ul>
             {visible.nodes.some((node) => node.familiar) ? <p className="wk-graph-familiar-legend"><span className="wk-graph-familiar-ring" aria-hidden="true" />{t('wikiBrowser.legendFamiliar')}</p> : null}

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { filterGraphNodes, graphFrontierNodes, graphQueryParams, layoutGraphNodes, mergeGraphData, WIKI_GRAPH_TYPES } from './graph.ts';
+import { filterGraphNodes, graphFrontierNodes, graphQueryParams, layoutGraphNodes, mergeGraphData, WIKI_GRAPH_TYPES, zoomGraphViewport } from './graph.ts';
 
 const graph = {
   nodes: [
@@ -72,4 +72,11 @@ test('finds expandable ego nodes while excluding the center and super-nodes', ()
     ],
   }, 'docs/start');
   assert.deepEqual(frontier.map((node) => node.slug), ['docs/next']);
+});
+
+test('zooms around the pointer anchor and clamps the Vue viewport scale', () => {
+  const zoomed = zoomGraphViewport({ x: 0, y: 0, scale: 1 }, 2, { x: 100, y: 80 });
+  assert.deepEqual(zoomed, { x: -100, y: -80, scale: 2 });
+  assert.equal(zoomGraphViewport(zoomed, 10, { x: 0, y: 0 }).scale, 2.5);
+  assert.equal(zoomGraphViewport(zoomed, 0.01, { x: 0, y: 0 }).scale, 0.6);
 });

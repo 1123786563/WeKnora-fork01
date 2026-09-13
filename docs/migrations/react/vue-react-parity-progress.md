@@ -1527,3 +1527,10 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 新增 `graphFrontierNodes` 测试，覆盖中心/超级节点排除与隐藏邻居识别；此前节点单击/抽屉 bloom 语义继续保留。
 - 验证：图谱纯逻辑测试 7/7；`pnpm test:web` 801/801；Web TypeScript 检查通过；`git diff --check` 通过。
 - 证据层：本轮仅有静态源码、单元测试与全 Web 测试证据，未标记真实后端、同视口浏览器、computed-style、Wails 或移动端验收。剩余 N012：真实画布拖拽/缩放/平移与布局保持、Vue 图例浮层定位/动效、frontier/bloom 实际后端状态提示、Markdown reader 和跨平台证据。
+
+## 2026-09-14 Round N+18 — N012 图谱画布视口交互
+
+- React 图谱画布增加受控 SVG 视口：拖拽空白区域平移、拖拽节点调整位置、滚轮以指针为锚缩放（0.6–2.5 边界）、`touch-action: none` 与抓取光标、适应视图按钮；节点拖动超过阈值不会误触发详情打开，Enter/Space 仍打开详情。
+- 新增 `GraphViewport`/`zoomGraphViewport` 纯逻辑测试，验证锚点缩放和边界；布局变化继续通过 `displayPositions` 与现有图数据连接映射保持一致。
+- 验证：图谱纯逻辑测试 8/8；`pnpm test:web` 802/802；Web TypeScript 检查通过；`git diff --check` 通过。
+- 证据层：本轮仍为静态源码、单元测试与全 Web 测试，尚未完成实际浏览器 Pointer/Wheel 事件、Vue 同视口截图/computed-style、真实后端、Wails 或移动端验证；剩余图谱 Markdown reader、Vue 浮层动效/定位和运行时证据。

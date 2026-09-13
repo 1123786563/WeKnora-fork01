@@ -70,6 +70,18 @@ export function graphFrontierNodes(graph: WikiGraphData | null, center: string):
   return graph.nodes.filter((node) => node.slug !== center && node.page_type !== 'index' && node.page_type !== 'log' && node.link_count > (degree.get(node.slug) ?? 0));
 }
 
+export interface GraphViewport {
+  x: number;
+  y: number;
+  scale: number;
+}
+
+export function zoomGraphViewport(viewport: GraphViewport, factor: number, anchor: { x: number; y: number }): GraphViewport {
+  const scale = Math.min(2.5, Math.max(0.6, viewport.scale * factor));
+  const ratio = scale / viewport.scale;
+  return { scale, x: anchor.x - (anchor.x - viewport.x) * ratio, y: anchor.y - (anchor.y - viewport.y) * ratio };
+}
+
 export function layoutGraphNodes(nodes: readonly WikiGraphNode[], width: number, height: number): GraphNodePosition[] {
   const safeWidth = Math.max(width, 64);
   const safeHeight = Math.max(height, 64);
