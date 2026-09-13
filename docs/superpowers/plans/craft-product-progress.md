@@ -41,7 +41,8 @@
 | W04 | **done** | .worktrees/craft-w04 / codex/craft-w04 | a8bfb241 | HEAD dcccb683 审查 PASS_WITH_NITS（14/14，与后端真实 SSE 协议交叉验证）→ 合入 8412e9a0；@weknora/core 由 W04 自建；C03 承接退避与快照合并 |
 | W05 | **done** | .worktrees/craft-w05 / codex/craft-w05 | 8412e9a0 | 首轮 FAIL（turns 归档死代码）→修复 37d4433c→定向复审 PASS → 合入 befb5e48；发现并修复 .gitignore 未锚定 web/ 吞 apps/web 新文件问题（协调器锚定+产物 ignore，d9054bd0） |
 | W06 | **done** | .worktrees/craft-w06 / codex/craft-w06 | d9054bd0 | HEAD 9e6481bf 审查 PASS_WITH_NITS（11/11，审查者独立复跑 6/6+DB 哈希核对）→ 合入 f931f02b。**B 阶段全部完成**（15/27）。留档：R02↔R04 messageID 上游立项、Scan 叙事修正、harness 进程组清理、decide 路由/preview 回写归 C 阶段决策 |
-| C01 | implementing | .worktrees/craft-c01 / codex/craft-c01 | f931f02b | 已派发（知识 ACL 检索+材料包+引用溯源+sources 视图） |
+| C01 | **done** | .worktrees/craft-c01 / codex/craft-c01 | f931f02b | HEAD 072201a7 审查 PASS_WITH_NITS（14/14，真实 ACL 入口核验）→ 合入 3e05038b；Build 端点+挂载协调器裁定归 C06 生产装配（与 C05 协调文件） |
+| C03 | implementing | .worktrees/craft-c03 / codex/craft-c03 | 3e05038b | 已派发（replayAction+退避+原子快照+浏览器三时点刷新） |
 | C04 | implementing | .worktrees/craft-c04 / codex/craft-c04 | f931f02b | 已派发（RecoveryRoute+进程故障矩阵）；C02/C03/C05/C06/D/O3-O05 等待依赖 |
 
 ## 调度纪要
