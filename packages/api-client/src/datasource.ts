@@ -118,6 +118,12 @@ export function createDataSourcesApi(request: (input: ClientRequest) => Promise<
         return resource as DataSourceResource;
       });
     },
+    async resourceAncestors(id: string, resourceIds: string[]): Promise<string[]> {
+      const value = await request({ method: 'POST', path: path(id, '/resource-ancestors'), body: { resource_ids: resourceIds } });
+      const result = row(value, 'data source resource ancestors');
+      if (!Array.isArray(result.ancestors) || result.ancestors.some((item) => typeof item !== 'string')) throw new Error('Invalid data source resource ancestors');
+      return result.ancestors as string[];
+    },
     async sync(id: string): Promise<unknown> { return request({ method: 'POST', path: path(id, '/sync'), body: {} }); },
     async pause(id: string): Promise<unknown> { return request({ method: 'POST', path: path(id, '/pause'), body: {} }); },
     async resume(id: string): Promise<unknown> { return request({ method: 'POST', path: path(id, '/resume'), body: {} }); },

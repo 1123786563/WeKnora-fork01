@@ -32,6 +32,16 @@ test('encodes resource ids and keeps sync controls as explicit writes', async ()
   ]);
 });
 
+test('loads resource ancestors through the explicit restoration route', async () => {
+  const api = createDataSourcesApi(async (request) => {
+    assert.equal(request.method, 'POST');
+    assert.equal(request.path, '/api/v1/datasource/ds%2Fa/resource-ancestors');
+    assert.deepEqual(request.body, { resource_ids: ['page/1'] });
+    return { ancestors: ['root', 'folder/1'] };
+  });
+  assert.deepEqual(await api.resourceAncestors('ds/a', ['page/1']), ['root', 'folder/1']);
+});
+
 test('rejects malformed data source responses', async () => {
   const api = createDataSourcesApi(async () => [{ ...source, id: '' }]);
   await assert.rejects(api.list('kb-1'), /Invalid data source field: id/);

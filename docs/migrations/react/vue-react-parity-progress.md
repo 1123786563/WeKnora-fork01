@@ -146,6 +146,11 @@
 - Added tested resource-selection helpers matching the Vue cover-set model: parent selection covers loaded descendants, child selection exposes an indeterminate parent, and unchecking a child under a selected parent preserves sibling coverage.
 - Data-source form/selection tests: 4/4 passed. Web typecheck: passed. Lazy ancestor reveal, localized copy, and runtime evidence remain open.
 
+## 2026-09-14 Round N+18 — N013 saved resource ancestor reveal
+
+- Added the API-client `resourceAncestors` contract and use it when opening a saved data source resource browser, preloading each ancestor's direct children so deep saved selections remain visible in the retained tree.
+- API/data-source tests: 9/9 passed. Web typecheck: passed. Browser, real-backend, Wails, and native evidence remain open.
+
 ## 2026-09-14 Round N+17 — N013 retained resource tree
 
 - React now retains all loaded resource nodes while navigating child levels, filters the visible list by the current parent, and provides an Expand all action that recursively loads known expandable branches. This preserves parent checked/indeterminate state across navigation.
