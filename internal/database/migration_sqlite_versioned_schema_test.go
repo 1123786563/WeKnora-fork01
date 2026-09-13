@@ -36,7 +36,7 @@ var versionedSQLiteColumns = map[string][]string{
 
 // 000014-000016 add the durable agent run tables (runs, tool calls and
 // attempts, decisions, inputs, events, checkpoints).
-const expectedSQLiteMigrationVersion = 16
+const expectedSQLiteMigrationVersion = 48
 
 func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 	repoRoot := sqliteRepoRoot(t)
