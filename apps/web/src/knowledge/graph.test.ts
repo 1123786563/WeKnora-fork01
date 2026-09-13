@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { filterGraphNodes, graphQueryParams, layoutGraphNodes, WIKI_GRAPH_TYPES } from './graph.ts';
+import { filterGraphNodes, graphQueryParams, layoutGraphNodes, mergeGraphData, WIKI_GRAPH_TYPES } from './graph.ts';
 
 const graph = {
   nodes: [
@@ -41,4 +41,22 @@ test('preserves a multi-type graph legend selection in the API query', () => {
   assert.deepEqual(graphQueryParams('overview', '', 1, ['summary', 'entity']), {
     mode: 'overview', limit: 500, types: ['summary', 'entity'],
   });
+});
+
+test('merges bloom results without duplicating nodes or edges and preserves familiar state', () => {
+  const merged = mergeGraphData(graph, {
+    nodes: [
+      { slug: 'docs/start', title: 'Start', page_type: 'summary', link_count: 3, familiar: true },
+      { slug: 'docs/third', title: 'Third', page_type: 'concept', link_count: 1 },
+    ],
+    edges: [
+      { source: 'docs/start', target: 'docs/next' },
+      { source: 'docs/next', target: 'docs/third' },
+    ],
+    meta: { mode: 'ego', total: 3, returned: 2, truncated: false },
+  });
+  assert.deepEqual(merged.nodes.map((node) => node.slug), ['docs/start', 'docs/next', 'docs/third']);
+  assert.equal(merged.nodes[0]?.familiar, true);
+  assert.equal(merged.edges.length, 2);
+  assert.equal(merged.meta.returned, 3);
 });

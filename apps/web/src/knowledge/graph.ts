@@ -40,6 +40,26 @@ export function filterGraphNodes(graph: WikiGraphData, filter: GraphFilter = {})
   return { ...graph, nodes, edges: graph.edges.filter((edge) => slugs.has(edge.source) && slugs.has(edge.target)) };
 }
 
+export function mergeGraphData(base: WikiGraphData, incoming: WikiGraphData): WikiGraphData {
+  const nodes = new Map(base.nodes.map((node) => [node.slug, node]));
+  for (const node of incoming.nodes) {
+    const existing = nodes.get(node.slug);
+    nodes.set(node.slug, existing ? { ...existing, ...node, familiar: Boolean(existing.familiar || node.familiar) } : node);
+  }
+  const edges = new Map(base.edges.map((edge) => [`${edge.source}\u2192${edge.target}`, edge]));
+  for (const edge of incoming.edges) edges.set(`${edge.source}\u2192${edge.target}`, edge);
+  return {
+    nodes: [...nodes.values()],
+    edges: [...edges.values()],
+    meta: {
+      ...base.meta,
+      returned: nodes.size,
+      total: Math.max(base.meta.total, incoming.meta.total),
+      truncated: Boolean(base.meta.truncated || incoming.meta.truncated),
+    },
+  };
+}
+
 export function layoutGraphNodes(nodes: readonly WikiGraphNode[], width: number, height: number): GraphNodePosition[] {
   const safeWidth = Math.max(width, 64);
   const safeHeight = Math.max(height, 64);

@@ -1513,3 +1513,10 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 新增图谱操作帮助面板（单击、双击、Shift 单击、拖拽、滚轮），类型筛选组使用可访问的 `aria-pressed`，图谱 SVG 保留类型和熟悉资料视觉状态；共享图谱查询 helper 支持全选时省略 types、部分选择时保留多类型数组。
 - 验证：图谱纯逻辑测试 5/5；`pnpm test:web` 799/799；Web TypeScript 检查通过；`git diff --check` 通过。
 - 证据层：本轮仍为静态源码/单元测试/全 Web 测试证据，未标记 Vue 与 React 同视口浏览器、真实后端、Wails 或移动端验收。剩余 N012 差异包括实际画布拖拽/缩放/平移、frontier/bloom 邻居合并与状态提示、Vue 浮层定位/动效、抽屉 reader Markdown 行为及跨平台证据。
+
+## 2026-09-14 Round N+16 — N012 节点点击与邻居叠加行为
+
+- React 图谱节点单击改为仅打开详情抽屉，显式“展开邻居”才切换 ego 中心；详情新增“叠加邻居”，在 ego 模式下调用现有图谱 API 并合并去重节点/边，保留熟悉资料标记，概览模式下自动转入对应 ego 视图。
+- `mergeGraphData` 增加纯逻辑契约测试，覆盖重复节点/边、熟悉标记传播、总数更新；键盘 Enter/Space 节点激活也保持仅打开详情并阻止 Space 默认滚动。
+- 验证：图谱纯逻辑测试 6/6；`pnpm test:web` 800/800；Web TypeScript 检查通过；`git diff --check` 通过。
+- 证据层：本轮为静态源码/单元测试/全 Web 测试证据；未宣称真实 API、同视口浏览器截图、Vue computed-style、Wails 或移动端通过。仍需 frontier 批量扩展、拖拽/缩放/平移、图例浮层定位/动效、Markdown reader 和跨平台验证。

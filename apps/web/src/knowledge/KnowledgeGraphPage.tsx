@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { WikiGraphData, WeKnoraClient } from '@weknora/api-client';
 import { Button, Card, Status } from '@weknora/ui';
-import { filterGraphNodes, graphQueryParams, layoutGraphNodes, WIKI_GRAPH_TYPES } from './graph.ts';
+import { filterGraphNodes, graphQueryParams, layoutGraphNodes, mergeGraphData, WIKI_GRAPH_TYPES } from './graph.ts';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 
 export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: WeKnoraClient; knowledgeBaseId: string; slug?: string }) {
@@ -46,6 +46,22 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
       setDrawerStatus('idle');
     } catch {
       setDrawerStatus('error');
+    }
+  }
+
+  async function bloomNeighbors(anchorSlug: string) {
+    if (!anchorSlug || !graph) return;
+    if (mode !== 'ego') {
+      await load('ego', anchorSlug);
+      return;
+    }
+    setStatus({ kind: 'loading' });
+    try {
+      const incoming = await client.wiki.graph(knowledgeBaseId, graphQueryParams('ego', anchorSlug, depth, selectedTypes));
+      setGraph(mergeGraphData(graph, incoming));
+      setStatus({ kind: 'success' });
+    } catch (error) {
+      setStatus({ kind: 'error', message: error instanceof Error ? error.message : t('knowledgeBase.graph.loadFailed') });
     }
   }
 
@@ -133,14 +149,14 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
           {visible.nodes.length === 0 ? <Status>{t('wikiBrowser.graphNoData')}</Status> : <>
             <svg className="wk-knowledge-graph" viewBox="0 0 760 420" role="img" aria-label={t('knowledgeBase.graph.ariaLinks')}>
               {visible.edges.map((edge) => { const source = positionBySlug.get(edge.source); const target = positionBySlug.get(edge.target); return source && target ? <line key={`${edge.source}-${edge.target}`} x1={source.x} y1={source.y} x2={target.x} y2={target.y} className="wk-knowledge-graph-edge" /> : null; })}
-              {visible.nodes.map((node, index) => { const position = positions[index]!; return <g key={node.slug} className={`wk-knowledge-graph-node is-${node.page_type}${node.familiar ? ' is-familiar' : ''}`} role="button" tabIndex={0} aria-label={`${node.title} · ${node.slug}`} onClick={() => { void openNode(node); void load('ego', node.slug); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { void openNode(node); void load('ego', node.slug); } }}><circle cx={position.x} cy={position.y} r={Math.min(24, 10 + Math.log2(node.link_count + 1) * 4)} /><text x={position.x} y={position.y + 40} textAnchor="middle">{node.title.length > 24 ? `${node.title.slice(0, 23)}…` : node.title}</text></g>; })}
+              {visible.nodes.map((node, index) => { const position = positions[index]!; return <g key={node.slug} className={`wk-knowledge-graph-node is-${node.page_type}${node.familiar ? ' is-familiar' : ''}`} role="button" tabIndex={0} aria-label={`${node.title} · ${node.slug}`} onClick={() => { void openNode(node); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void openNode(node); } }}><circle cx={position.x} cy={position.y} r={Math.min(24, 10 + Math.log2(node.link_count + 1) * 4)} /><text x={position.x} y={position.y + 40} textAnchor="middle">{node.title.length > 24 ? `${node.title.slice(0, 23)}…` : node.title}</text></g>; })}
             </svg>
             <ul className="wk-list" aria-label={t('wikiBrowser.tabGraph')}>{visible.nodes.map((node) => <li key={node.slug}><div className="wk-list-item-copy"><strong>{node.title}</strong><span>{node.slug} · {node.page_type} · {node.link_count} {t('knowledgeBase.graph.links')}{node.familiar ? ` · ${t('wikiBrowser.legendFamiliar')}` : ''}</span></div><Button type="button" onClick={() => { void openNode(node); void load('ego', node.slug); }}>{t('wikiBrowser.expandNeighbors')}</Button></li>)}</ul>
             {visible.nodes.some((node) => node.familiar) ? <p className="wk-graph-familiar-legend"><span className="wk-graph-familiar-ring" aria-hidden="true" />{t('wikiBrowser.legendFamiliar')}</p> : null}
           </>}
         </> : null}
       </Card>
-      {drawerNode ? <aside className="wk-graph-drawer" aria-label={drawerNode.title} role="dialog" aria-modal="true"><div className="wk-header"><div><h2>{drawerNode.title}</h2><p className="wk-muted">{drawerNode.page_type} · {drawerNode.link_count} {t('knowledgeBase.graph.links')}</p></div><Button type="button" onClick={() => { setDrawerNode(null); setDrawerPage(null); }}>{t('common.close')}</Button></div>{drawerStatus === 'loading' ? <Status>{t('wikiBrowser.loading')}</Status> : null}{drawerStatus === 'error' ? <Status tone="error">{t('wikiBrowser.revisionLoadFailed')}</Status> : null}{drawerPage ? <><p className="wk-muted">{drawerPage.summary || '—'} · {t('wikiBrowser.version', { ver: drawerPage.version })}</p><pre className="wk-graph-drawer-content">{drawerPage.content}</pre><Button type="button" onClick={() => void load('ego', drawerNode.slug)}>{t('wikiBrowser.expandNeighbors')}</Button></> : null}</aside> : null}
+      {drawerNode ? <aside className="wk-graph-drawer" aria-label={drawerNode.title} role="dialog" aria-modal="true"><div className="wk-header"><div><h2>{drawerNode.title}</h2><p className="wk-muted">{drawerNode.page_type} · {drawerNode.link_count} {t('knowledgeBase.graph.links')}</p></div><Button type="button" onClick={() => { setDrawerNode(null); setDrawerPage(null); }}>{t('common.close')}</Button></div>{drawerStatus === 'loading' ? <Status>{t('wikiBrowser.loading')}</Status> : null}{drawerStatus === 'error' ? <Status tone="error">{t('wikiBrowser.revisionLoadFailed')}</Status> : null}{drawerPage ? <><p className="wk-muted">{drawerPage.summary || '—'} · {t('wikiBrowser.version', { ver: drawerPage.version })}</p><pre className="wk-graph-drawer-content">{drawerPage.content}</pre><div className="wk-list-actions"><Button type="button" onClick={() => void bloomNeighbors(drawerNode.slug)}>{t('wikiBrowser.bloomNeighbors')}</Button><Button type="button" onClick={() => void load('ego', drawerNode.slug)}>{t('wikiBrowser.expandNeighbors')}</Button></div></> : null}</aside> : null}
     </main>
   );
 }
