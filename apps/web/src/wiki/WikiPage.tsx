@@ -38,6 +38,8 @@ export function WikiPage({
   const [folders, setFolders] = useState<WikiFolderNode[]>([]);
   const [indexView, setIndexView] = useState<WikiIndexResponse | null>(null);
   const [indexLoading, setIndexLoading] = useState(false);
+  const [indexError, setIndexError] = useState<string | null>(null);
+  const [indexNextCursor, setIndexNextCursor] = useState<string | null>(null);
   const [folderBusy, setFolderBusy] = useState(false);
   const [selected, setSelected] = useState<WikiPageModel | null>(null);
   const [title, setTitle] = useState("");
@@ -107,8 +109,25 @@ export function WikiPage({
   async function openIndex() {
     if (typeof client.wiki.index !== "function") return;
     setIndexLoading(true);
-    try { setIndexView(await client.wiki.index(knowledgeBaseId, { limit: WIKI_PAGE_SIZE })); }
-    catch { setIndexView({ intro: "", version: 0, groups: [] }); }
+    setIndexError(null);
+    try {
+      const result = await client.wiki.index(knowledgeBaseId, { limit: WIKI_PAGE_SIZE });
+      setIndexView(result);
+      setIndexNextCursor(result.groups.map((group) => group.next_cursor).find(Boolean) ?? null);
+    }
+    catch (error) { setIndexError(error instanceof Error ? error.message : t("wikiBrowser.revisionLoadFailed")); setIndexView({ intro: "", version: 0, groups: [] }); setIndexNextCursor(null); }
+    finally { setIndexLoading(false); }
+  }
+
+  async function loadMoreIndex() {
+    if (!indexNextCursor || indexLoading || typeof client.wiki.index !== "function") return;
+    setIndexLoading(true);
+    setIndexError(null);
+    try {
+      const result = await client.wiki.index(knowledgeBaseId, { limit: WIKI_PAGE_SIZE, cursor: indexNextCursor });
+      setIndexView((current) => current ? { ...current, groups: current.groups.map((group) => { const incoming = result.groups.find((item) => item.type === group.type); return incoming ? { ...group, total: incoming.total, items: [...group.items, ...incoming.items], next_cursor: incoming.next_cursor } : group; }) } : result);
+      setIndexNextCursor(result.groups.map((group) => group.next_cursor).find(Boolean) ?? null);
+    } catch (error) { setIndexError(error instanceof Error ? error.message : t("wikiBrowser.revisionLoadFailed")); }
     finally { setIndexLoading(false); }
   }
 
@@ -324,7 +343,9 @@ export function WikiPage({
   );
   const directory = indexView ? (
     <section className="wk-wiki-index" aria-label={t("wikiBrowser.indexTitle")}>
-      {indexLoading ? <Status>{t("common.loading")}</Status> : indexView.groups.length === 0 ? <Status>{t("wikiBrowser.indexEmpty")}</Status> : indexView.groups.map((group) => <section key={group.type}><h3>{group.type}</h3><ul className="wk-list">{group.items.map((item) => <li key={item.slug}><button className="wk-document-link" type="button" onClick={() => void client.wiki.get(knowledgeBaseId, item.slug).then(choose)}>{item.title}</button><small>{item.summary}</small></li>)}</ul></section>)}
+      {indexError ? <Status tone="error">{indexError}</Status> : null}
+      {!indexError && indexLoading && !indexView.groups.length ? <Status>{t("wikiBrowser.loading")}</Status> : !indexError && indexView.groups.length === 0 ? <Status>{t("wikiBrowser.indexEmpty")}</Status> : !indexError ? indexView.groups.map((group) => <section key={group.type}><h3>{group.type}</h3><ul className="wk-list">{group.items.map((item) => <li key={item.slug}><button className="wk-document-link" type="button" onClick={() => void client.wiki.get(knowledgeBaseId, item.slug).then(choose)}>{item.title}</button><small>{item.summary}</small></li>)}</ul></section>) : null}
+      {indexNextCursor ? <Button type="button" disabled={indexLoading} onClick={() => void loadMoreIndex()}>{indexLoading ? t("wikiBrowser.loading") : t("wikiBrowser.loadMoreShort")}</Button> : null}
     </section>
   ) : (
     <>
