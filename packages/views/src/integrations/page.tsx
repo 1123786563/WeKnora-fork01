@@ -86,6 +86,8 @@ export interface IntegrationActions {
   onUpdateEmbed?: (id: string, input: Record<string, unknown>) => Promise<void>;
   onDeleteEmbed?: (id: string) => Promise<void>;
   onRotateEmbed?: (id: string) => Promise<void>;
+  /** Vue EmbedChannelPreview obtains a short-lived preview session token. */
+  onPreviewSession?: (id: string) => Promise<string>;
   /** Vue openDrawer's getEmbedChannel refresh (publish_token / has_webhook_secret). */
   onEmbedDetail?: (id: string) => Promise<IntegrationResource | null>;
   onCreateIm?: (input: { agentId: string; payload: Record<string, unknown> }) => Promise<void>;
@@ -154,6 +156,7 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
   const [embedServerTab, setEmbedServerTab] = useState<'node' | 'go'>('node');
   const [revealedKeys, setRevealedKeys] = useState<Record<string, boolean>>({});
   const [embedPreviewLoading, setEmbedPreviewLoading] = useState(false);
+  const [embedPreview, setEmbedPreview] = useState<{ channel: IntegrationResource; token: string; mode: 'iframe' | 'widget' } | null>(null);
   // IM channel wizard state (Vue SettingDrawer): step, form, edit target and
   // the WeChat QR binding machine (idle -> wait -> scaned -> confirmed/expired).
   const [imWizardOpen, setImWizardOpen] = useState(false);
@@ -325,10 +328,17 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
     });
   };
   const previewEmbedChannel = (channel: IntegrationResource) => {
-    if (!onOpenEmbed) return;
     setEmbedPreviewLoading(true);
     void Promise.resolve()
-      .then(() => onOpenEmbed(channel))
+      .then(async () => {
+        const storedToken = typeof channel.publish_token === 'string' ? channel.publish_token : '';
+        const token = storedToken || (actions.onPreviewSession ? await actions.onPreviewSession(channel.id) : '');
+        if (!token) {
+          onOpenEmbed?.(channel);
+          return;
+        }
+        setEmbedPreview({ channel, token, mode: embedSnippetTab === 'widget' ? 'widget' : 'iframe' });
+      })
       .catch(() => setEmbedWarning(t('embedPublish.previewUnavailable')))
       .finally(() => setEmbedPreviewLoading(false));
   };
@@ -444,6 +454,7 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
   });
   const deleteChannel = (id: string) => { if (!window.confirm(copy.deleteConfirm)) return; run(async () => { if (tab === 'embed') await actions.onDeleteEmbed?.(id); else await actions.onDeleteIm?.(id); onReload?.(); }); };
   return (
+    <>
     <main className="wk-integrations-page">
       {!embedded ? <><header className="wk-integrations-header">
         <div><h1>{t('integrations.title')}</h1><p className="wk-muted">{t('integrations.agentEditor.desc')}</p></div>
@@ -553,10 +564,41 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
         {!loading && !error && section.external ? <ExternalLandingPanel tab={tab} locale={locale} externalUrl={section.externalUrl} apiBaseUrl={apiBaseUrl} t={t} /> : null}
       </section>
     </main>
+    {embedPreview ? <EmbedChannelPreviewPanel preview={embedPreview} t={t} onClose={() => setEmbedPreview(null)} /> : null}
+    </>
   );
 }
 
 type Translator = (key: string, values?: Record<string, string | number>) => string;
+
+function EmbedChannelPreviewPanel({ preview, t, onClose }: { preview: { channel: IntegrationResource; token: string; mode: 'iframe' | 'widget' }; t: Translator; onClose: () => void }) {
+  const [ready, setReady] = useState(false);
+  const [widgetOpen, setWidgetOpen] = useState(true);
+  const channelId = encodeURIComponent(preview.channel.id);
+  const src = '/embed/' + channelId + '#token=' + encodeURIComponent(preview.token);
+  useEffect(() => { setReady(false); setWidgetOpen(true); }, [preview.channel.id, preview.token, preview.mode]);
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [onClose]);
+  return <div className="wk-embed-preview-overlay" role="presentation" onClick={onClose}>
+    <aside className="wk-embed-preview-drawer" role="dialog" aria-modal="true" aria-label={preview.channel.name || t('embedPublish.preview')} onClick={(event) => event.stopPropagation()}>
+      <header className="wk-embed-preview-header"><h2>{preview.channel.name || t('embedPublish.preview')}</h2><button type="button" className="wk-integration-drawer-close" aria-label="关闭" title="关闭" onClick={onClose}>×</button></header>
+      <div className="wk-embed-preview-body">
+        <p className="wk-embed-preview-hint">{t(preview.mode === 'iframe' ? 'embedPublish.previewIframeHint' : 'embedPublish.previewWidgetHint')}</p>
+        {preview.mode === 'iframe' ? <div className="wk-embed-preview-device">
+          <div className="wk-embed-preview-chrome"><span>●</span><span>●</span><span>●</span><code>/embed/{channelId}</code></div>
+          <div className="wk-embed-preview-screen">{!ready ? <span className="wk-muted">{t('embedPublish.previewLoading')}</span> : null}<iframe title={preview.channel.name || t('embedPublish.preview')} src={src} onLoad={() => setReady(true)} className={ready ? '' : 'is-loading'} allow="clipboard-write" /></div>
+        </div> : <div className="wk-embed-preview-widget">
+          <div className="wk-embed-preview-mock-page"><strong>{t('embedPublish.previewMockPage')}</strong><span /><span className="short" /></div>
+          {widgetOpen ? <div className="wk-embed-preview-widget-panel"><iframe title={preview.channel.name || t('embedPublish.preview')} src={src} onLoad={() => setReady(true)} allow="clipboard-write" /></div> : null}
+          <button type="button" className="wk-embed-preview-launcher" style={{ background: typeof preview.channel.primary_color === 'string' ? preview.channel.primary_color : '#07c05f' }} onClick={() => setWidgetOpen((open) => !open)} aria-label={widgetOpen ? '关闭' : t('embedPublish.preview')}>{widgetOpen ? '×' : '◔'}</button>
+        </div>}
+      </div>
+    </aside>
+  </div>;
+}
 
 function ImWizardPanelLegacy({ locale, t, apiBaseUrl, agents = [], knowledgeBases = [], form, onForm, onPlatformPicked, step, nameTouched, onNameTouched, editing, editingEnabled, onEditingEnabled, warning, wechatQr, wechatQrLoading, wechatQrError, onStartWeChatBinding, busy, canSubmit, onNext, onBack, onSave, onCancel }: {
   locale: Locale; t: Translator; apiBaseUrl: string; agents: readonly IntegrationAgentOption[]; knowledgeBases: readonly IntegrationKnowledgeBaseOption[];

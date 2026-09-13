@@ -75,6 +75,7 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, embedded = 
     onUpdateEmbed: async (id: string, input: Record<string, unknown>) => { await client.embed.channels.update(id, input); },
     onDeleteEmbed: async (id: string) => { await client.embed.channels.remove(id); },
     onRotateEmbed: async (id: string) => { await client.embed.channels.rotateToken(id); },
+    onPreviewSession: async (id: string) => (await client.embed.channels.previewSession(id)).sessionToken,
     onEmbedDetail: async (id: string) => client.embed.channels.get(id),
     onCreateIm: async (input: { agentId: string; payload: Record<string, unknown> }) => { await client.embed.im.create(input.agentId, input.payload); },
     onUpdateIm: async (id: string, input: Record<string, unknown>) => { await client.embed.im.update(id, input); },

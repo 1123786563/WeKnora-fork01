@@ -237,7 +237,9 @@ test('clicking an embed card opens the deploy drawer: key reveal, rotate, snippe
   await act(async () => { iframeTab!.click(); });
   const previewButton = Array.from(container.querySelectorAll<HTMLButtonElement>('.wk-embed-code-panel button')).find((button) => button.textContent === '预览');
   await act(async () => { previewButton!.click(); });
-  assert.deepEqual(previews, ['ch-1'], 'preview hands the channel to the route page port');
+  assert.equal(previews.length, 0, 'preview stays in the current Vue-shaped drawer');
+  assert.ok(container.querySelector('.wk-embed-preview-drawer'), 'preview drawer rendered');
+  assert.ok(container.querySelector('.wk-embed-preview-drawer iframe'), 'preview iframe mounted');
 
   const rotate = Array.from(container.querySelectorAll<HTMLButtonElement>('button[title]')).find((button) => button.title === '重置渠道密钥');
   await act(async () => { rotate!.click(); });
