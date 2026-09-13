@@ -725,6 +725,16 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 本会话累计 16 个提交（f97a5126…261352fe 等，见 git log）；矩阵 9 行更新（R012/R013/R016/R017/R023/R031/R033/N010/N018）。
 - 下一步（未来轮次）：剩余 review 行的逐行验收证据补全（Wails 运行时交互、iOS/Android 原生、多状态矩阵）、AgentEditorModal/上下文引导/IM 向导等深水区切片、i18n 键回填（font.*/tenantInvitation.*/chat.* 等本地回退键）。
 
+## 2026-09-13 Round N+1（续10）— i18n 回填集成
+
+- i18n 键回填集成（dcb62825）：102 键×5 语（font.sans/mono 16、members/邀请/审计/分页 32、agentEditor.im/embed/embedPublish 39、shell 会话列表 14、common.noMoreData 1）全部逐字节对齐 Vue locales；可复用提取器 + 独立逐字节校验脚本入库（510/510 BYTE-EXACT OK）；i18n 套件 42/42、typecheck:shared 0。各切片本地回退表自此被共享键遮蔽（formatMessage 优先）。
+- 在途（1）：kb-documents 页形态（页级 TDD 实施中）。
+
+## 2026-09-13 Round N+1（续11）— kb-documents 页形态集成
+
+- documents 页 chrome 重建集成（f648d33b）：面包屑 知识库›kbName›文档（caret/信息弹卡/齿轮）+ 副标题 + ⚠ 无解析引擎警告行（由 parserEngines+parser_engine_rules 派生未支持扩展名，前往配置→）+ 全宽搜索 搜索文档名称... + 视图切换 + 全部标签/类型/状态/来源 + 日期范围筛选（列表参数与后端 knowledge.go:913-928 均已支持）+ 插画空态 知识为空，拖放上传（含大小限制文案）；RAW UUID eyebrow 移除；N007 上传下拉与字节进度遮罩保留。documents 套件 79/79（自 62 增）；live 截图 documents-page-slice/ 与 Vue 逐项一致（主代理独立目检 react-documents.png）。
+- 在途：该代理将补写证据文档 2026-09-13-documents-page-shape.md。
+
 ## 2026-09-13 Round N+1（续4）— 第六、七切片集成
 
 - upload progress transport 集成（499ec9a8）：api-client NativeMultipartFileRequest.onProgress + 浏览器 XHR sendMultipartFile（字节级、abort→AbortError、fetch 回退）+ platform/http observeUploadProgress 桥；SkillSettingsPanel skillUploading 百分比+进度条；documents UploadProgressMask 遮罩 + 批次均值百分比（KnowledgeBaseList.vue:1586-1595 语义）。独立复核：transport 5/5、http 14/14、panel 31/31、pipeline 30/30、dialog 20/20、api-client 43/43、documents 62/62。该共享层缺口关闭后 N031 移动端可直接消费 transport onProgress。开放：UploadFilesPanel 行内百分比、浏览器 E2E。
