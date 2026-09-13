@@ -111,6 +111,18 @@ test('page header shows agent title, subtitle and the sparkles create button', (
   assert.match(html, /<h2[^>]*>智能体<\/h2>/);
   assert.match(html, /配置和管理您的智能体，自定义对话行为和能力/);
   assert.match(html, /创建智能体/);
+
+test('list-load failure renders no raw error payload (Vue parity: silent empty state)', () => {
+  const html = renderToStaticMarkup(React.createElement(AgentsPageView, {
+    ...baseViewProps,
+    error: '{"message":"mock failure"}',
+    flatCards: [],
+    sections: [],
+    isSectioned: false,
+  }));
+  assert.doesNotMatch(html, /mock failure/);
+  assert.doesNotMatch(html, /wk-status.*error|Status tone=.error/, 'no error status surface');
+});
   assert.match(html, /data-guide="agent-list-create"/);
   const viewerOnly = renderToStaticMarkup(React.createElement(AgentsPageView, { ...baseViewProps, viewer: { userId: 'u', isAdmin: false, isContributor: false }, canCreate: false }));
   assert.doesNotMatch(viewerOnly, /创建智能体/);

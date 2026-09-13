@@ -506,7 +506,6 @@ export function AgentsPageView(props: AgentsPageViewProps) {
             <button type="button" className="wk-agent-create-btn" data-guide="agent-list-create" onClick={props.onCreate}><SparklesIcon size={18} /><span>{t('agent.createAgent')}</span></button>
           ) : null}
         </header>
-        {error ? <Status tone="error">{error}</Status> : null}
         {notice ? <Status tone="success">{notice}</Status> : null}
         {loading ? <div className="wk-agent-grid" aria-busy="true">{Array.from({ length: 6 }, (_, index) => <div className="wk-agent-skeleton" key={index} />)}</div> : null}
         {!loading && hasCards ? (
