@@ -168,14 +168,14 @@
         "provider_side_effects": 1,
         "approval_remaining_after": 0,
         "terminal_usage_facts": 1,
-        "gate_begins": 15,
         "gate_note": "losers' shared-reservation begins surface as orphan holds (fail-safe over-hold, T10-Q-1 zero-usage release only for exhausted/conflict rejections) — known design, no double charge",
         "carry_T14_QI_1_tool_binding_race_on_pg": {
           "requests": 20,
           "ok": 20,
           "unique_action_ids": 1,
           "binding_rows": 1
-        }
+        },
+        "gate_begins_note": "the gate Begin counter is suite-cumulative, so the journal records the SCENARIO-RELATIVE gate_begins_during_race (informational, varies run-to-run); the assertions are relative: exactly 1 winner, 1 provider side effect, approval decremented exactly once, exactly 1 terminal usage fact"
       }
     },
     {
@@ -284,8 +284,7 @@
         "go_appconnector_domain_incl_oauth_mcp_sync": "exit 0",
         "python_open_connector_gates": "43 tests OK, exit 0",
         "web_appconnector_t15": "7/7 pass, exit 0",
-        "web_full_suite": "1 pre-existing failure (platform/legacy-session) ALSO failing at pristine base b8800c75 on node v26.7.0 — environment drift, not T17",
-        "finding1_residue": "none after the fix (end-state open_records=null)"
+        "web_full_suite": "1 pre-existing failure (platform/legacy-session) ALSO failing at pristine base b8800c75 on node v26.7.0 — environment drift, not T17"
       }
     },
     {
@@ -294,13 +293,12 @@
       "passed": true,
       "observations": {
         "intentional_unknowns_resolved": "provider-query resolver settled scenario 8 (write confirmed → succeeded) and scenario 10 (write never landed → failed)",
-        "finding1_residue": [
-          "ocact_da57f447-b229-433d-ab92-1eb27c4b03a2(record=dispatched,action=succeeded)"
-        ],
+        "finding1_residue": null,
         "unexplained_open": 0,
         "unsettled_settlements": 0,
         "cleanup_blocked": false,
-        "note": "the finding-1 residue is the production-wiring defect's durable signature (captured in the journal and the red parity probe), so fixture cleanup proceeded; the disposable container was still preserved until report completion"
+        "note": "the finding-1 residue is the production-wiring defect's durable signature (captured in the journal and the red parity probe), so fixture cleanup proceeded; the disposable container was still preserved until report completion",
+        "finding1_residue_note": "post-fix measured null (every record settles through the production wiring after the R20 fix); pre-fix history: one record ocact_da57f447(record=dispatched, action=succeeded) captured in the original acceptance run before the fix"
       }
     }
   ],
@@ -333,5 +331,13 @@
     "change": "GatedOCClaims forwards the T12 settle face (FinishOCDispatch + MarkOCDispatchSettled) with a compile-time conformance assertion; settlement is deliberately not gated (ruling 8: drain+settle during shutdown)",
     "red": "TestOCIntegrationWiringSettleParity exit 1 pre-fix (record=dispatched, action=succeeded)",
     "green": "exit 0 post-fix (record=succeeded, delivery-mark fence raised); full suite exit 0; -race 0 data races; 8 regression groups + python + web appconnector all exit 0"
+  },
+  "evidence": {
+    "source": "OC17-EVIDENCE JSON lines from go test -tags=integration -v",
+    "post_fix_count": 38,
+    "polish_round": {
+      "commit_message": "test(connectors): refresh acceptance evidence artifacts",
+      "checks": "full suite exit 0 (14/14), -race 0 data races, 11 Go packages ok, python 43 OK, web appconnector 7/7"
+    }
   }
 }

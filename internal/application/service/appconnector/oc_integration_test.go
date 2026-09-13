@@ -31,10 +31,10 @@
 //     default slot limits). Used for the authorization surface (scenarios
 //     1-4), the credentials scan (12) and the wiring-parity probe.
 //   - stack.t12 — the same pieces with the RAW repository claim store wired
-//     as the settle face (what T12 designed and what the container intends);
-//     needed because GatedOCClaims currently masks the settle face — see
-//     TestOCIntegrationWiringSettleParity (T17 finding 1) for the defect
-//     this works around WITHOUT touching production code.
+//     as the settle face (what T12 designed). This wiring predates the R20
+//     fix (GatedOCClaims used to mask the settle face — T17 finding 1); the
+//     wrapper now forwards it transparently, both wirings settle
+//     identically, and TestOCIntegrationWiringSettleParity pins that parity.
 //
 // Every scenario appends structured evidence to an acceptance journal printed
 // as OC17-EVIDENCE JSON lines (consumed by scripts/open-connector/
@@ -160,11 +160,10 @@ type oc17Provider struct {
 	holdOnce sync.Once
 	holdCh   chan struct{}
 	arrived  chan struct{}
-	adminVal string // control-plane-only secret; must NEVER reach a dispatch
 }
 
 func newOC17Provider() *oc17Provider {
-	p := &oc17Provider{mode: "ok", byKey: map[string]oc17Op{}, holdCh: make(chan struct{}), arrived: make(chan struct{}, 64), adminVal: "oc17-admin-secret-do-not-dispatch"}
+	p := &oc17Provider{mode: "ok", byKey: map[string]oc17Op{}, holdCh: make(chan struct{}), arrived: make(chan struct{}, 64)}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/actions/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -495,9 +494,7 @@ type oc17Stack struct {
 	preparer    *appconnectorsvc.OCPreparer
 	connSvc     *appconnectorsvc.OCConnectionService
 	prod        *appconnectorsvc.ActionService // container.NewOCArmedActionService wiring
-	prodWire    *container.OCWiring
-	t12         *appconnectorsvc.ActionService // raw-claims wiring (intended settle face)
-	t12Slots    *appconnectorsvc.OCSlotLimiter
+	t12         *appconnectorsvc.ActionService // raw-claims wiring (settle-face parity cross-check)
 	gate        *oc17Gate
 	provider    *oc17Provider
 	tokenDir    string
@@ -547,7 +544,7 @@ func oc17BuildStack(t *testing.T) *oc17Stack {
 
 	// PRODUCTION composition (F-1 ordering, token source, gated claims,
 	// default slot limits) — the exact constructor the container registers.
-	prod, prodWire, err := container.NewOCArmedActionService(
+	prod, _, err := container.NewOCArmedActionService(
 		actionStore, guard, gate, ocStore,
 		container.OCConfig{
 			Enabled:     true,
@@ -562,9 +559,11 @@ func oc17BuildStack(t *testing.T) *oc17Stack {
 	}
 
 	// T12-parity wiring: identical pieces with the RAW claim store wired as
-	// the settle face (the container's GatedOCClaims currently masks it —
-	// see TestOCIntegrationWiringSettleParity). Built in the same order as
-	// PrepareOpenConnector: token source → executor → dispatcher → limiter.
+	// the settle face (kept from the T17-F1 era as a standing cross-check —
+	// the R20 fix made GatedOCClaims forward the settle face, so both
+	// wirings settle identically; see TestOCIntegrationWiringSettleParity).
+	// Built in the same order as PrepareOpenConnector: token source →
+	// executor → dispatcher → limiter.
 	tokens, err := container.NewFileBackedOCTokenSource(oc17Sink(t, tokenDir), ocStore)
 	if err != nil {
 		t.Fatal(err)
@@ -590,7 +589,7 @@ func oc17BuildStack(t *testing.T) *oc17Stack {
 	return &oc17Stack{
 		db: db, schema: schema, ocStore: ocStore, installs: installs,
 		actionStore: actionStore, catalog: catalog, preparer: preparer, connSvc: connSvc,
-		prod: prod, prodWire: prodWire, t12: t12, t12Slots: slots,
+		prod: prod, t12: t12,
 		gate: gate, provider: provider, tokenDir: tokenDir, journal: j,
 	}
 }
@@ -1075,7 +1074,15 @@ func TestOCIntegration(t *testing.T) {
 		s.provider.setMode("hold")
 		done := make(chan error, 1)
 		go func() { done <- oc17Exec(s, ctx, id2) }()
-		<-s.provider.arrived // the outbound call is at the provider
+		// QR-2: bounded wait — if the dispatch failed before reaching the
+		// provider, release the hold (so the provider server can close
+		// cleanly) and fail instead of hanging on the arrival channel.
+		select {
+		case <-s.provider.arrived: // the outbound call is at the provider
+		case <-time.After(30 * time.Second):
+			s.provider.releaseHold()
+			t.Fatal("in-flight dispatch never reached the provider")
+		}
 		if err := s.ocStore.RevokeOCConnection(ctx, oc17OwnerA, "conn-a1", curVer2); err != nil {
 			t.Errorf("revoke during in-flight: %v", err)
 		}
@@ -1191,6 +1198,7 @@ func TestOCIntegration(t *testing.T) {
 		before := s.provider.total()
 		id := oc17PrepareApprove(t, s, oc17OwnerA, "conn-a1", "concurrent-once")
 		dbBefore := oc17ActionDBState(t, s, id)
+		beginsBefore, _, _, _ := s.gate.stats() // scenario-relative baseline (the gate counter is suite-cumulative)
 
 		const n = 20
 		start := make(chan struct{})
@@ -1224,7 +1232,7 @@ func TestOCIntegration(t *testing.T) {
 			"requests", n, "winners", wins, "losers", losses,
 			"provider_ops", s.provider.total()-before,
 			"db_before", dbBefore, "db_after", dbAfter,
-			"gate_begins", begins, "terminal_facts_for_action", okFacts)
+			"gate_begins_during_race", begins-beginsBefore, "terminal_facts_for_action", okFacts)
 		if wins != 1 || losses != n-1 {
 			t.Fatalf("winners=%d losers=%d, want exactly 1/%d", wins, losses, n-1)
 		}
@@ -1260,10 +1268,8 @@ func TestOCIntegration(t *testing.T) {
 				}
 			}()
 		}
-		// reuse the start channel pattern
-		start2 := make(chan struct{})
-		_ = start2
-		close(start2)
+		// The tool-binding racers gate on the ALREADY-CLOSED start channel
+		// (a receive from a closed channel returns immediately).
 		wg.Wait()
 		close(terr)
 		close(tids)
@@ -1886,8 +1892,7 @@ func TestOCIntegrationWiringSettleParity(t *testing.T) {
 	if dsn == "" {
 		t.Fatal("blocked-env: OC_TEST_DATABASE_URL required")
 	}
-	db, schema := oc17OpenDB(t)
-	_ = schema
+	db, _ := oc17OpenDB(t)
 	s := &oc17Stack{db: db, ocStore: repoappconn.NewOCStore(db), installs: repoappconn.NewInstallationStore(db), actionStore: repoappconn.NewActionStore(db), gate: newOC17Gate(), provider: newOC17Provider(), tokenDir: t.TempDir(), journal: &oc17Journal{}}
 	s.catalog = appconnectorsvc.NewOCCatalog(s.ocStore, s.ocStore, s.installs, s.installs)
 	t.Cleanup(func() { s.provider.close() })

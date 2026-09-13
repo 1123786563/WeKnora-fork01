@@ -1,7 +1,7 @@
 # Open-connector 多空间与故障注入验收（T17）
 
 > 任务：T17（验收链 T16✓）。基线 `b8800c75`（集成分支 HEAD）。
-> 机器可读结果：`scripts/open-connector/acceptance-cases.json`；证据源：`go test -tags=integration -v` 输出的 `OC17-EVIDENCE` JSON 行（37 条）。
+> 机器可读结果：`scripts/open-connector/acceptance-cases.json`；证据源：`go test -tags=integration -v` 输出的 `OC17-EVIDENCE` JSON 行（38 条，post-fix 实测）。
 > 状态：矩阵 14/14 通过（回归含 -race，0 数据竞争）；T17-F1 生产缺陷**已按协调者 R20 授权在本任务内修复**（GatedOCClaims 转发 settle face；复现探针 + 直接类型断言双绿；end-state 残留清零），1 个规格观察（T17-F2）仍上报。
 
 ## 1. 环境与门禁（裁决 1、R8）
@@ -14,7 +14,7 @@
 
 ## 2. 拓扑（裁决 2）
 
-两空间（tenant 91701/91702），各 Owner+Member，`member-a1` 跨两空间；共享私有 runtime `rt-oc17-shared`；同一 Provider `github` 两账号（`ext-account-a/alias-account-a`、`ext-account-b/alias-account-b`，绑定身份按 T03 契约终身不可变）。HTTP fake Provider 只保存**操作计数**与信封（T01 冻结信封逐字），并按上游幂等契约对同 key 到达做重放（不产生第二次副作用）；grants/OAuth 关联/审批摘要/claim/幂等键/恢复全部走真实 service/repository/recovery/container 代码路径。两套装配：`stack.prod`（`container.NewOCArmedActionService` 生产组合）与 `stack.t12`（同一批件 + 原始 claim store 作为 settle face，即 T12/T13 设计意图，用于规避 T17-F1 的容器缺陷而不改生产代码）。
+两空间（tenant 91701/91702），各 Owner+Member，`member-a1` 跨两空间；共享私有 runtime `rt-oc17-shared`；同一 Provider `github` 两账号（`ext-account-a/alias-account-a`、`ext-account-b/alias-account-b`，绑定身份按 T03 契约终身不可变）。HTTP fake Provider 只保存**操作计数**与信封（T01 冻结信封逐字），并按上游幂等契约对同 key 到达做重放（不产生第二次副作用）；grants/OAuth 关联/审批摘要/claim/幂等键/恢复全部走真实 service/repository/recovery/container 代码路径。两套装配：`stack.prod`（`container.NewOCArmedActionService` 生产组合）与 `stack.t12`（同一批件 + 原始 claim store 直连 settle face = T12/T13 设计意图）。该双装配始于 T17-F1 时期的规避需要；R20 修复后 GatedOCClaims 已透明转发 settle face，两套装配行为一致，保留双装配作为持续性对照（探针钉住该一致性）。
 
 ## 3. 14 场景矩阵结果
 
@@ -35,7 +35,7 @@
 | 13 | 多副本 | PASS | 两副本装配（tuned：tenant2/conn1/provider8/global3）并发 6 单（3+3 双空间）：Provider 恰 6 写、峰值并发 ≤ 全局上限（实测 1，受 DB lease 约束）、两空间全部调度成功（3/3+3/3） |
 | 14 | 回归 | PASS | 见 §6（Go 8 组 + Python 43 + web appconnector 7/7，-race 0 竞争；web 全量有 1 例基线即失败的 node 环境漂移，非 T17） |
 
-收尾扫描（final_settlement_scan）：挂起 unknown 经 Provider 查询 resolver 全部收敛（场景 8 → succeeded，场景 10 → failed）；未解释开放记录 **0**、未交付结算 **0** → 清理不阻塞。唯一残留是 T17-F1 的确定性指纹（record=dispatched, action=succeeded），已入 journal 与红色复现探针。
+收尾扫描（final_settlement_scan）：挂起 unknown 经 Provider 查询 resolver 全部收敛（场景 8 → succeeded，场景 10 → failed）；未解释开放记录 **0**、未交付结算 **0** → 清理不阻塞。修复前曾有 T17-F1 残留（record=dispatched/action=succeeded 一例，入原始 journal）；R20 修复后生产装配同样把 record 落终态，end-state `finding1_residue=null`、`open_records=null`（post-fix journal 实测）。
 
 ## 4. RED / GREEN 记录
 
@@ -45,7 +45,7 @@
   - RED-B（replay_deadline）：`ReplayAllowed` 恒 true → exit 1，"replay allowed AT the cutoff"。
   - RED-C（unknown_outcome）：`settleOutcome` 把 unknown 伪造成 failed → exit 1，"want ErrDispatchUnknown"。
 - **GREEN**：`OC_TEST_DATABASE_URL=<一次性PG> go test -tags=integration ./internal/application/service/appconnector -run 'TestOCIntegration$' -count=1` → **exit 0**（门禁 + 13 场景 + 收尾）。`-race` 同矩阵通过、0 数据竞争。
-- 全量入口（含探针）exit 1 **仅因 T17-F1 复现探针按设计保持红色**。
+- 全量入口（含探针）修复后 **exit 0**（探针绿：record 经生产装配落终态 + settle face 类型断言命中 + 交付 fence 抬升）。修复前该入口 exit 1（仅探针红），即 T17-F1 的原始 RED 证据。
 
 ## 5. 凭据与"无重发"静态证据（场景 8/12 佐证）
 
@@ -66,7 +66,7 @@
 | commercial（域+仓储） | `go test ./internal/commercial/... ./internal/application/repository/commercial/...` | 0 |
 | appconnector 域（OAuth/MCP/Sync 原生） | `go test ./internal/appconnector/...` | 0 |
 | Python 门禁（contract+deployment） | `python3 -m unittest discover -s scripts/open-connector -p 'test_*.py'` | 0（43 OK） |
-| 集成矩阵 + race | `go test -race -tags=integration ...` | 矩阵 PASS、0 数据竞争（探针红=T17-F1） |
+| 集成矩阵 + race | `go test -race -tags=integration ...` | 全套件 PASS、0 数据竞争（探针亦绿，post-fix） |
 | web T15 面向 | `node --import tsx --test src/appconnector/*.test.ts` | 0（7/7） |
 | web 全量 | `npm test` | 1（`platform/legacy-session` 在**纯净基线 b8800c75 同样失败**，node v26.7.0 环境漂移，非 T17、非 appconnector 面） |
 
@@ -88,4 +88,4 @@
 
 ## 9. 清理纪律（裁决 6）
 
-fixture manifest 捕获：一次性容器 `weknora-oc-t17-pg-1`、每次运行 schema（测试自删）、`t.TempDir()` token 目录。期末无未解释 unknown/未决结算 → 清理不阻塞；T17-F1 残留作为已上报缺陷的确定性指纹保留在 journal 与红色探针中（证据不依赖容器存活）。容器在报告落盘后停止并删除（记录见任务报告）。
+fixture manifest 捕获：一次性容器（`weknora-oc-t17-pg-1/-2/-3` 依次用于原始验收、R20 修复复验、终稿润色复验）、每次运行 schema（测试自删）、`t.TempDir()` token 目录。历次期末均无未解释 unknown/未决结算 → 清理不阻塞；R20 修复后 end-state 无任何残留（record 全部落终态）。各容器在其轮次报告落盘后停止并删除（记录见任务报告）。
