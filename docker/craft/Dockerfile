@@ -111,6 +111,47 @@ RUN apt-get update \
  && python3 -c 'import openpyxl,sys;print("openpyxl",openpyxl.__version__,"on",sys.version.split()[0])' \
  && soffice --version
 
+# ---------- D03: slides toolchain (python-pptx + LibreOffice Impress + poppler) ----
+# The craft-slides skill writes decks with python-pptx, renders them to PDF
+# with LibreOffice Impress headless and exports every page to an image with
+# poppler's pdftocairo: a slide that was never rendered keeps the kind
+# closed (SlidesReady requires every PageRef). Debian bookworm does not
+# package python3-pptx, so the wheel is pinned BY SHA256 and installed
+# --no-deps over Debian's own lxml/Pillow (python3-lxml arrives with the
+# D02 openpyxl set; python3-pil is added here). The resolved versions are
+# recorded in docker/craft/slides-requirements.lock; the build fails loudly
+# if pptx, soffice (Impress) or pdftocairo do not run. python-pptx's own
+# runtime deps that Debian also does not package (XlsxWriter for chart data,
+# typing_extensions) are pinned the same way; lxml/Pillow come from Debian.
+ARG PYTHON_PPTX_VERSION=1.0.2
+ARG PYTHON_PPTX_SHA256=160838e0b8565a8b1f67947675886e9fea18aa5e795db7ae531606d68e785cba
+# Full PyPI wheel URLs (path prefixes are version-specific, so they move with the pin).
+ARG PYTHON_PPTX_URL=https://files.pythonhosted.org/packages/d9/4f/00be2196329ebbff56ce564aa94efb0fbc828d00de250b1980de1a34ab49/python_pptx-1.0.2-py3-none-any.whl
+ARG XLSXWRITER_VERSION=3.2.0
+ARG XLSXWRITER_SHA256=ecfd5405b3e0e228219bcaf24c2ca0915e012ca9464a14048021d21a995d490e
+ARG XLSXWRITER_URL=https://files.pythonhosted.org/packages/a7/ea/53d1fe468e63e092cf16e2c18d16f50c29851242f9dd12d6a66e0d7f0d02/XlsxWriter-3.2.0-py3-none-any.whl
+ARG TYPING_EXTENSIONS_VERSION=4.12.2
+ARG TYPING_EXTENSIONS_SHA256=04e5ca0351e0f3f85c6853954072df659d0d13fac324d0072316b67d7794700d
+ARG TYPING_EXTENSIONS_URL=https://files.pythonhosted.org/packages/26/9f/ad63fc0248c5379346306f8668cda6e2e2e9c95e01216d2b8ffd9ff037d0/typing_extensions-4.12.2-py3-none-any.whl
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      curl \
+      python3-pip \
+      python3-pil \
+      libreoffice-impress-nogui \
+      poppler-utils \
+ && rm -rf /var/lib/apt/lists/* \
+ && for w in "${PYTHON_PPTX_URL} ${PYTHON_PPTX_SHA256}" "${XLSXWRITER_URL} ${XLSXWRITER_SHA256}" "${TYPING_EXTENSIONS_URL} ${TYPING_EXTENSIONS_SHA256}"; do \
+      set -- ${w}; \
+      curl -fsSL --http1.1 --retry 5 --retry-all-errors --retry-delay 3 -o "/tmp/$(basename "$1")" "$1"; \
+      echo "$2  /tmp/$(basename "$1")" | sha256sum -c -; \
+      python3 -m pip install --break-system-packages --no-deps --no-cache-dir "/tmp/$(basename "$1")"; \
+      rm -f "/tmp/$(basename "$1")"; \
+    done \
+ && python3 -c 'import pptx, xlsxwriter, lxml.etree, PIL, sys; from pptx.chart.data import CategoryChartData; print("python-pptx", pptx.__version__, "+ XlsxWriter", xlsxwriter.__version__, "on", sys.version.split()[0])' \
+ && soffice --version \
+ && pdftocairo -v 2>&1 | sed -n 1p
+
 COPY --from=opencode-fetch /usr/local/bin/opencode /usr/local/bin/opencode
 COPY runtime-config.json /etc/craft/runtime-config.json
 # COPY keeps the source file mode; force the world-readable mode so the

@@ -368,12 +368,408 @@ with open('output/index.html', 'w', encoding='utf-8') as fh:
     fh.write(page)
 print('spreadsheet round files written:', variant, 'total', TOTAL)`;
 
+// The D03 slides fixture generator (python3 stdlib only, deterministic
+// bytes: fixed zip timestamps). Writes output/report.pptx (slides + notes
+// + embedded chart picture), output/report.pdf (fixture-render placeholder
+// PDF, same 5-page shape), output/pages/page-N.svg (real per-page visual
+// content: Chinese titles/bullets, a bar chart on page 3), preview.json,
+// manifest.json and the static deck viewer output/index.html. Variants:
+// proposal (round 1) and edit3 (round 2 changes ONLY page 3's conclusion
+// line — every other stored part is byte-identical across rounds, which is
+// exactly what the single-page-modification acceptance asserts). The host
+// has no python-pptx/LibreOffice: this generator writes the same storage
+// shape as the image-verified chain (python-pptx 1.0.2 deck + impress
+// impress_pdf_Export PDF + pdftocairo page SVGs, see the D03 report), the
+// way the D02 generator simulated recalculated cache values.
+const SLIDES_GENERATOR = String.raw`import html, json, struct, sys, zipfile
+
+variant = sys.argv[1]
+CONCLUSION = {
+    'proposal': '结论：分三期交付，第一期完成知识接入与权限打通',
+    'edit3': '结论：首期直接上线智能问答，一次性交付见效',
+}
+BARS = [('第一季度', 120), ('第二季度', 150), ('第三季度', 180), ('第四季度', 210)]
+SOURCES = [
+    ('kc_customer', '客户背景资料'),
+    ('kc_sales', '销售数据摘要'),
+    ('kc_market', '市场分析摘录'),
+    ('kc_plan', '实施计划素材'),
+]
+PAGES = [
+    {'index': 1, 'title': '智绘云图客户方案：面向制造业的智能知识中台首期建设建议', 'notes': '', 'sources': [], 'min_font_pt': 28, 'images': 0},
+    {'index': 2, 'title': '客户背景', 'notes': '来源：kc_customer', 'sources': ['kc_customer'], 'min_font_pt': 18, 'images': 0},
+    {'index': 3, 'title': '核心方案', 'notes': '来源：kc_sales kc_market', 'sources': ['kc_sales', 'kc_market'], 'min_font_pt': 18, 'images': 1},
+    {'index': 4, 'title': '实施计划', 'notes': '来源：kc_plan', 'sources': ['kc_plan'], 'min_font_pt': 18, 'images': 0},
+    {'index': 5, 'title': '来源', 'notes': '来源页', 'sources': [s[0] for s in SOURCES], 'min_font_pt': 14, 'images': 0},
+]
+BODY = {
+    2: ['客户为华东地区大型制造集团，下辖 12 家工厂', '现有知识分散在 30+ 个系统，检索平均耗时 15 分钟', '2026 年上半年销售数据：东区 100、西区 200，合计 300'],
+    3: ['建设统一知识中台，接入 12 家工厂的文档与数据', '智能问答将检索耗时从 15 分钟压缩到 30 秒', CONCLUSION[variant]],
+    4: ['第一期（1-2 月）：知识接入与权限打通', '第二期（3-4 月）：智能问答上线', '第三期（5-6 月）：决策驾驶舱'],
+    5: [sid + ' ' + title for sid, title in SOURCES],
+}
+A = 'http://schemas.openxmlformats.org/drawingml/2006/main'
+R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+P = 'http://schemas.openxmlformats.org/presentationml/2006/main'
+
+def esc(text):
+    return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
+
+def svg_page(page):
+    idx = page['index']
+    out = ['<?xml version="1.0" encoding="UTF-8"?>',
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" font-family="Noto Sans CJK SC,PingFang SC,Microsoft YaHei,sans-serif">',
+        '<rect width="1280" height="720" fill="#ffffff"/>',
+        '<rect width="1280" height="12" fill="#1a5fb4"/>']
+    title = page['title']
+    if idx == 1:
+        cut = 11
+        out.append('<text x="64" y="150" font-size="42" font-weight="700" fill="#1a1a2e">' + esc(title[:cut]) + '</text>')
+        out.append('<text x="64" y="212" font-size="42" font-weight="700" fill="#1a1a2e">' + esc(title[cut:]) + '</text>')
+        out.append('<text x="64" y="330" font-size="24" fill="#444444">汇报人：Craft 团队</text>')
+        out.append('<text x="64" y="374" font-size="24" fill="#444444">2026 年 9 月</text>')
+        out.append('<text x="64" y="418" font-size="24" fill="#444444">本方案基于客户提供的背景与销售数据分析得出</text>')
+    else:
+        out.append('<text x="64" y="96" font-size="36" font-weight="700" fill="#1a1a2e">' + esc(title) + '</text>')
+        y = 190
+        size = 26 if idx != 5 else 22
+        for item in BODY[idx]:
+            out.append('<text x="80" y="' + str(y) + '" font-size="' + str(size) + '" fill="#333333">' + esc(item) + '</text>')
+            y += 56
+    if idx == 3:
+        base_y, max_h, x0 = 600, 250, 700
+        out.append('<text x="700" y="296" font-size="22" fill="#333333">季度收入（万元）</text>')
+        for i, (label, value) in enumerate(BARS):
+            h = int(max_h * value / 210.0)
+            x = x0 + i * 120
+            out.append('<rect x="' + str(x) + '" y="' + str(base_y - h) + '" width="72" height="' + str(h) + '" fill="#3584e4"/>')
+            out.append('<text x="' + str(x + 36) + '" y="' + str(base_y + 28) + '" font-size="18" fill="#555555" text-anchor="middle">' + esc(label) + '</text>')
+            out.append('<text x="' + str(x + 36) + '" y="' + str(base_y - h - 10) + '" font-size="18" fill="#555555" text-anchor="middle">' + str(value) + '</text>')
+        out.append('<line x1="' + str(x0 - 10) + '" y1="' + str(base_y) + '" x2="1180" y2="' + str(base_y) + '" stroke="#999999"/>')
+    out.append('<text x="64" y="692" font-size="16" fill="#888888">' + str(idx) + ' / ' + str(len(PAGES)) + '</text>')
+    out.append('</svg>')
+    return ('\n'.join(out) + '\n').encode('utf-8')
+
+def slide_xml(page):
+    idx = page['index']
+    title_sz = 3200 if idx == 1 else 2800
+    body_sz = 1400 if idx == 5 else 1800
+    shapes = ['<p:sp><p:nvSpPr><p:cNvPr id="2" name="标题 ' + str(idx) + '"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>'
+        '<p:spPr><a:xfrm><a:off x="457200" y="365738"/><a:ext cx="11277600" cy="1257300"/></a:xfrm>'
+        '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>'
+        '<p:txBody><a:bodyPr wrap="square"/><a:lstStyle/><a:p><a:r><a:rPr lang="zh-CN" sz="' + str(title_sz) + '" b="1"/>'
+        '<a:t>' + esc(page['title']) + '</a:t></a:r></a:p></p:txBody></p:sp>']
+    if idx in BODY:
+        runs = ''.join('<a:r><a:rPr lang="zh-CN" sz="' + str(body_sz) + '"/><a:t>' + esc(item) + '</a:t></a:r>' for item in BODY[idx])
+        shapes.append('<p:sp><p:nvSpPr><p:cNvPr id="3" name="正文 ' + str(idx) + '"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>'
+            '<p:spPr><a:xfrm><a:off x="548640" y="1828800"/><a:ext cx="11033760" cy="4114800"/></a:xfrm>'
+            '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>'
+            '<p:txBody><a:bodyPr wrap="square"/><a:lstStyle/><a:p>' + runs + '</a:p></p:txBody></p:sp>')
+    if idx == 3:
+        shapes.append('<p:pic><p:nvPicPr><p:cNvPr id="4" name="季度收入图表"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>'
+            '<p:blipFill><a:blip r:embed="rIdChart"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>'
+            '<p:spPr><a:xfrm><a:off x="6400800" y="2286000"/><a:ext cx="4800600" cy="2971800"/></a:xfrm>'
+            '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>')
+    return ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+        '<p:sld xmlns:a="' + A + '" xmlns:r="' + R + '" xmlns:p="' + P + '"><p:cSld><p:spTree>'
+        '<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>'
+        + ''.join(shapes) + '</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>').encode('utf-8')
+
+THEME = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+    '<a:theme xmlns:a="' + A + '" name="Craft"><a:themeElements>'
+    '<a:clrScheme name="Craft"><a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1>'
+    '<a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="44546A"/></a:dk2>'
+    '<a:lt2><a:srgbClr val="E7E6E6"/></a:lt2><a:accent1><a:srgbClr val="4472C4"/></a:accent1>'
+    '<a:accent2><a:srgbClr val="ED7D31"/></a:accent2><a:accent3><a:srgbClr val="A5A5A5"/></a:accent3>'
+    '<a:accent4><a:srgbClr val="FFC000"/></a:accent4><a:accent5><a:srgbClr val="5B9BD5"/></a:accent5>'
+    '<a:accent6><a:srgbClr val="70AD47"/></a:accent6><a:hlink><a:srgbClr val="0563C1"/></a:hlink>'
+    '<a:folHlink><a:srgbClr val="954F72"/></a:folHlink></a:clrScheme>'
+    '<a:fontScheme name="Craft"><a:majorFont><a:latin typeface="Calibri Light"/><a:ea typeface=""/><a:cs typeface=""/></a:majorFont>'
+    '<a:minorFont><a:latin typeface="Calibri"/><a:ea typeface=""/><a:cs typeface=""/></a:minorFont></a:fontScheme>'
+    '<a:fmtScheme name="Craft"><a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill>'
+    '<a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:fillStyleLst>'
+    '<a:lnStyleLst><a:ln><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln><a:ln><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln>'
+    '<a:ln><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln></a:lnStyleLst>'
+    '<a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle>'
+    '<a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst>'
+    '<a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill>'
+    '<a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme></a:themeElements></a:theme>').encode('utf-8')
+
+MASTER = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+    '<p:sldMaster xmlns:a="' + A + '" xmlns:r="' + R + '" xmlns:p="' + P + '"><p:cSld><p:spTree>'
+    '<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/></p:spTree></p:cSld>'
+    '<p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" '
+    'accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/>'
+    '<p:sldLayoutIdLst><p:sldLayoutId id="2147483649" r:id="rId1"/></p:sldLayoutIdLst></p:sldMaster>').encode('utf-8')
+
+LAYOUT = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+    '<p:sldLayout xmlns:a="' + A + '" xmlns:r="' + R + '" xmlns:p="' + P + '" type="blank"><p:cSld name="Blank"><p:spTree>'
+    '<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/></p:spTree></p:cSld>'
+    '<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sldLayout>').encode('utf-8')
+
+NOTES_MASTER = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+    '<p:notesMaster xmlns:a="' + A + '" xmlns:r="' + R + '" xmlns:p="' + P + '"><p:cSld><p:spTree>'
+    '<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/></p:spTree></p:cSld>'
+    '<p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" '
+    'accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/></p:notesMaster>').encode('utf-8')
+
+NOTES3 = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+    '<p:notes xmlns:a="' + A + '" xmlns:r="' + R + '" xmlns:p="' + P + '"><p:cSld><p:spTree>'
+    '<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>'
+    '<p:sp><p:nvSpPr><p:cNvPr id="2" name="备注"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>'
+    '<p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="5486400" cy="4114800"/></a:xfrm>'
+    '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>'
+    '<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="zh-CN" sz="1200"/>'
+    '<a:t>' + esc('来源：kc_sales kc_market。' + CONCLUSION[variant]) + '</a:t></a:r></a:p></p:txBody></p:sp>'
+    '</p:spTree></p:cSld></p:notes>').encode('utf-8')
+
+def png_bytes():
+    def chunk(tag, data):
+        return struct.pack('>I', len(data)) + tag + data + struct.pack('>I', zlib_crc32(tag + data))
+    ihdr = struct.pack('>IIBBBBB', 8, 8, 8, 2, 0, 0, 0)
+    raw = b''.join(b'\x00' + bytes([40 + i * 8, 90, 160]) for i in range(8))
+    return b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', ihdr) + chunk(b'IDAT', zlib_compress(raw)) + chunk(b'IEND', b'')
+
+import zlib as _zlib
+zlib_crc32 = lambda d: _zlib.crc32(d) & 0xffffffff
+zlib_compress = lambda d: _zlib.compress(d, 9)
+
+def pdf_bytes(pages):
+    objs = [b'<< /Type /Catalog /Pages 2 0 R >>']
+    kids = ' '.join(str(3 + i) + ' 0 R' for i in range(pages))
+    objs.append(('<< /Type /Pages /Kids [' + kids + '] /Count ' + str(pages) + ' >>').encode('utf-8'))
+    for _ in range(pages):
+        objs.append(b'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 960 540] /Resources << >> >>')
+    out = bytearray(b'%PDF-1.4\n')
+    offsets = []
+    for n, body in enumerate(objs, start=1):
+        offsets.append(len(out))
+        out += (str(n) + ' 0 obj\n').encode('utf-8') + body + b'\nendobj\n'
+    xref_at = len(out)
+    out += ('xref\n0 ' + str(len(objs) + 1) + '\n').encode('utf-8')
+    out += b'0000000000 65535 f \n'
+    for off in offsets:
+        out += (('%010d 00000 n \n' % off)).encode('utf-8')
+    out += ('trailer\n<< /Size ' + str(len(objs) + 1) + ' /Root 1 0 R >>\nstartxref\n' + str(xref_at) + '\n%%EOF\n').encode('utf-8')
+    return bytes(out)
+
+CT = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+    '<Default Extension="xml" ContentType="application/xml"/>'
+    '<Default Extension="png" ContentType="image/png"/>'
+    '<Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>'
+    + ''.join('<Override PartName="/ppt/slides/slide' + str(i) + '.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>' for i in range(1, 6))
+    + '<Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>'
+    + '<Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>'
+    + '<Override PartName="/ppt/notesMasters/notesMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.notesMaster+xml"/>'
+    + '<Override PartName="/ppt/notesSlides/notesSlide3.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml"/>'
+    + '<Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/></Types>').encode('utf-8')
+
+RELS = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    '<Relationship Id="rId1" Type="' + R + '/officeDocument" Target="ppt/presentation.xml"/></Relationships>').encode('utf-8')
+
+PRES = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+    '<p:presentation xmlns:a="' + A + '" xmlns:r="' + R + '" xmlns:p="' + P + '">'
+    '<p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId6"/></p:sldMasterIdLst>'
+    '<p:notesMasterIdLst><p:notesMasterId r:id="rId7"/></p:notesMasterIdLst>'
+    '<p:sldIdLst>' + ''.join('<p:sldId id="' + str(255 + i) + '" r:id="rId' + str(i) + '"/>' for i in range(1, 6)) + '</p:sldIdLst>'
+    '<p:sldSz cx="12192000" cy="6858000"/><p:notesSz cx="6858000" cy="9144000"/></p:presentation>').encode('utf-8')
+
+PRES_RELS = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    + ''.join('<Relationship Id="rId' + str(i) + '" Type="' + P + '/slide" Target="slides/slide' + str(i) + '.xml"/>' for i in range(1, 6))
+    + '<Relationship Id="rId6" Type="' + P + '/slideMaster" Target="slideMasters/slideMaster1.xml"/>'
+    + '<Relationship Id="rId7" Type="' + P + '/notesMaster" Target="notesMasters/notesMaster1.xml"/></Relationships>').encode('utf-8')
+
+MASTER_RELS = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    '<Relationship Id="rId1" Type="' + P + '/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>'
+    '<Relationship Id="rId2" Type="' + R + '/theme" Target="../theme/theme1.xml"/></Relationships>').encode('utf-8')
+
+LAYOUT_RELS = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    '<Relationship Id="rId1" Type="' + P + '/slideMaster" Target="../slideMasters/slideMaster1.xml"/></Relationships>').encode('utf-8')
+
+NOTES_MASTER_RELS = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    '<Relationship Id="rId1" Type="' + R + '/theme" Target="../theme/theme1.xml"/></Relationships>').encode('utf-8')
+
+SLIDE3_RELS = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    '<Relationship Id="rIdChart" Type="' + R + '/image" Target="../media/chart-1.png"/>'
+    '<Relationship Id="rIdSlide" Type="' + P + '/slide" Target="../slides/slide3.xml"/></Relationships>').encode('utf-8')
+
+NOTES3_RELS = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    '<Relationship Id="rId1" Type="' + P + '/notesMaster" Target="../notesMasters/notesMaster1.xml"/></Relationships>').encode('utf-8')
+
+parts = {
+    '[Content_Types].xml': CT,
+    '_rels/.rels': RELS,
+    'ppt/presentation.xml': PRES,
+    'ppt/_rels/presentation.xml.rels': PRES_RELS,
+    'ppt/slideMasters/slideMaster1.xml': MASTER,
+    'ppt/slideMasters/_rels/slideMaster1.xml.rels': MASTER_RELS,
+    'ppt/slideLayouts/slideLayout1.xml': LAYOUT,
+    'ppt/slideLayouts/_rels/slideLayout1.xml.rels': LAYOUT_RELS,
+    'ppt/theme/theme1.xml': THEME,
+    'ppt/notesMasters/notesMaster1.xml': NOTES_MASTER,
+    'ppt/notesMasters/_rels/notesMaster1.xml.rels': NOTES_MASTER_RELS,
+    'ppt/slides/_rels/slide3.xml.rels': SLIDE3_RELS,
+    'ppt/notesSlides/notesSlide3.xml': NOTES3,
+    'ppt/notesSlides/_rels/notesSlide3.xml.rels': NOTES3_RELS,
+    'ppt/media/chart-1.png': png_bytes(),
+}
+for page in PAGES:
+    parts['ppt/slides/slide' + str(page['index']) + '.xml'] = slide_xml(page)
+
+order = ['[Content_Types].xml', '_rels/.rels', 'ppt/presentation.xml', 'ppt/_rels/presentation.xml.rels',
+    'ppt/slideMasters/slideMaster1.xml', 'ppt/slideMasters/_rels/slideMaster1.xml.rels',
+    'ppt/slideLayouts/slideLayout1.xml', 'ppt/slideLayouts/_rels/slideLayout1.xml.rels',
+    'ppt/theme/theme1.xml', 'ppt/notesMasters/notesMaster1.xml', 'ppt/notesMasters/_rels/notesMaster1.xml.rels',
+    'ppt/slides/slide1.xml', 'ppt/slides/slide2.xml', 'ppt/slides/slide3.xml', 'ppt/slides/slide4.xml', 'ppt/slides/slide5.xml',
+    'ppt/slides/_rels/slide3.xml.rels', 'ppt/notesSlides/notesSlide3.xml', 'ppt/notesSlides/_rels/notesSlide3.xml.rels',
+    'ppt/media/chart-1.png']
+
+with zipfile.ZipFile('output/report.pptx', 'w') as zf:
+    for name in order:
+        info = zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0))
+        info.compress_type = zipfile.ZIP_DEFLATED
+        info.external_attr = 0o600 << 16
+        zf.writestr(info, parts[name])
+
+with open('output/report.pdf', 'wb') as fh:
+    fh.write(pdf_bytes(len(PAGES)))
+
+import os
+os.makedirs('output/pages', exist_ok=True)
+for page in PAGES:
+    with open('output/pages/page-' + str(page['index']) + '.svg', 'wb') as fh:
+        fh.write(svg_page(page))
+
+preview = {
+    'kind': 'slides',
+    'slide_count': len(PAGES),
+    'pages': [{'index': p['index'], 'title': p['title'], 'image': 'pages/page-' + str(p['index']) + '.svg',
+        'notes': p['notes'], 'sources': p['sources']} for p in PAGES],
+    'overflow_pages': [],
+}
+with open('output/preview.json', 'w', encoding='utf-8') as fh:
+    json.dump(preview, fh, ensure_ascii=False, indent=1)
+
+manifest = {
+    'kind': 'slides',
+    'pptx': 'report.pptx',
+    'pdf': 'report.pdf',
+    'preview': 'preview.json',
+    'pptx_ref': 'resource://report.pptx',
+    'page_refs': ['resource://pages/page-' + str(p['index']) + '.svg' for p in PAGES],
+    'slide_count': len(PAGES),
+    'overflow_pages': [],
+    'pages': [{'index': p['index'], 'title': p['title'], 'notes': p['notes'], 'sources': p['sources'],
+        'min_font_pt': p['min_font_pt'], 'images': p['images']} for p in PAGES],
+    'sources': [{'id': sid, 'title': title} for sid, title in SOURCES],
+    'checks': [
+        {'name': 'render', 'status': 'passed', 'detail': 'fixture render: impress render + pdftocairo export are proven in the image acceptance'},
+        {'name': 'pages', 'status': 'passed', 'detail': '5/5 页边界/字号/图表齐备'},
+        {'name': 'sources', 'status': 'passed', 'detail': '每页引用均可解析到来源页与讲者备注的 kc_ id'},
+        {'name': 'visual', 'status': 'not_run', 'detail': '排版美观/视觉层次需要人工验收'},
+    ],
+}
+with open('output/manifest.json', 'w', encoding='utf-8') as fh:
+    json.dump(manifest, fh, ensure_ascii=False, indent=1)
+
+deck_title = PAGES[0]['title']
+pages_js = json.dumps(preview['pages'], ensure_ascii=False)
+page = '''<!DOCTYPE html>
+<html lang="zh">
+<head><meta charset="utf-8"><title>__TITLE__</title><style>
+body{font-family:'Noto Sans CJK SC','PingFang SC',sans-serif;margin:0;background:#f4f5f7}
+header{display:flex;align-items:center;gap:12px;padding:8px 16px;background:#fff;border-bottom:1px solid #ddd;flex-wrap:wrap}
+header h1{font-size:16px;margin:0;flex:1 1 320px}
+.stage{display:flex;flex-direction:column;align-items:center;padding:12px}
+.stage img.slide{max-width:100%;height:auto;border:1px solid #ccc;background:#fff}
+.slide-title{font-size:14px;color:#333;margin-top:6px}
+.thumbs{display:flex;gap:8px;padding:8px 16px;overflow-x:auto}
+.slide-thumb{display:flex;flex-direction:column;align-items:center;border:2px solid transparent;background:#fff;padding:2px;cursor:pointer}
+.slide-thumb[aria-selected=true]{border-color:#1a5fb4}
+.slide-thumb img{width:120px;height:67px;object-fit:contain;border:1px solid #eee}
+.nav{display:flex;align-items:center;gap:12px;padding:8px 16px}
+a.download{margin-left:8px}
+</style></head>
+<body>
+<header><h1>__TITLE_HTML__</h1>
+<span class="page-number" id="slide-page-number" data-testid="slide-page-number">第 1/5 页</span>
+<a class="download" data-testid="slide-download-pptx" href="report.pptx" download>下载 PPTX</a>
+<a class="download" data-testid="slide-download-pdf" href="report.pdf" download>下载 PDF</a>
+<button type="button" id="slide-modify" data-testid="slide-modify" data-page="1">修改此页</button>
+</header>
+<div class="stage"><img class="slide" id="slide-image" data-testid="slide-image" alt=""><p class="slide-title" id="slide-title" data-testid="slide-title"></p></div>
+<div class="thumbs" id="slide-thumbs" data-testid="slide-thumbs"></div>
+<div class="nav">
+<button type="button" id="slide-prev" data-testid="slide-prev">上一页</button>
+<button type="button" id="slide-next" data-testid="slide-next">下一页</button>
+<span class="hint">← → 键翻页</span>
+</div>
+<script>
+var PAGES = __PAGES__;
+(function () {
+  var now = 0;
+  var img = document.getElementById('slide-image');
+  var title = document.getElementById('slide-title');
+  var number = document.getElementById('slide-page-number');
+  var modify = document.getElementById('slide-modify');
+  var thumbs = document.getElementById('slide-thumbs');
+  PAGES.forEach(function (p, i) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'slide-thumb';
+    b.setAttribute('data-testid', 'slide-thumb');
+    b.setAttribute('data-page', String(p.index));
+    var im = document.createElement('img'); im.src = p.image; im.alt = p.index + '. ' + p.title;
+    var s = document.createElement('span'); s.textContent = String(p.index);
+    b.appendChild(im); b.appendChild(s);
+    b.addEventListener('click', function () { show(i); });
+    thumbs.appendChild(b);
+  });
+  function show(i) {
+    now = Math.min(Math.max(i, 0), PAGES.length - 1);
+    var p = PAGES[now];
+    img.src = p.image; img.alt = p.title;
+    title.textContent = p.title + (p.sources.length ? ' · 来源: ' + p.sources.join(' ') : '');
+    number.textContent = '第 ' + (now + 1) + '/' + PAGES.length + ' 页';
+    modify.setAttribute('data-page', String(p.index));
+    Array.prototype.forEach.call(thumbs.children, function (el, j) { el.setAttribute('aria-selected', String(j === now)); });
+    document.getElementById('slide-prev').disabled = now === 0;
+    document.getElementById('slide-next').disabled = now === PAGES.length - 1;
+  }
+  document.getElementById('slide-prev').addEventListener('click', function () { show(now - 1); });
+  document.getElementById('slide-next').addEventListener('click', function () { show(now + 1); });
+  modify.addEventListener('click', function () {
+    window.parent.postMessage({ type: 'craft:slides:modify', page: Number(modify.getAttribute('data-page')) }, '*');
+  });
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'ArrowLeft') show(now - 1);
+    if (event.key === 'ArrowRight') show(now + 1);
+  });
+  show(0);
+})();
+</script></body></html>'''.replace('__TITLE__', html.escape(deck_title)).replace('__TITLE_HTML__', html.escape(deck_title)).replace('__PAGES__', pages_js)
+with open('output/index.html', 'w', encoding='utf-8') as fh:
+    fh.write(page)
+print('slides round files written:', variant, 'pages', len(PAGES))`;
+
 // One bash tool call runs the embedded generator for the requested variant;
 // the runtime repoints the serve-relative output/ pointer at the active
 // delegation workspace, so plain output/ paths are session-scoped.
 function spreadsheetGeneratorCommand(variant) {
   return 'python3 - ' + variant + ' <<' + String.fromCharCode(39) + 'D02GEN' + String.fromCharCode(39) + String.fromCharCode(10)
     + SPREADSHEET_GENERATOR + String.fromCharCode(10) + 'D02GEN';
+}
+function slidesGeneratorCommand(variant) {
+  return 'python3 - ' + variant + ' <<' + String.fromCharCode(39) + 'D03GEN' + String.fromCharCode(39) + String.fromCharCode(10)
+    + SLIDES_GENERATOR + String.fromCharCode(10) + 'D03GEN';
 }
 function plan(lastUser) {
   const malicious = lastUser.includes('安全探测') || lastUser.includes('恶意');
@@ -400,6 +796,23 @@ function plan(lastUser) {
       final: variant === 'extra'
         ? '已更新 XLSX 数据表格（新增一行 50，重算总额 350）。'
         : '已生成 XLSX 数据表格（重算总额 ' + total + '，含 汇总 工作表）。',
+    };
+  }
+  // D03 slides acceptance: a presentation/PPT goal switches the fixture to
+  // the slides round — ONE bash tool call running the embedded stdlib-only
+  // python generator (the host has no python-pptx/LibreOffice: the generator
+  // writes the deck OOXML, a fixture-render PDF and per-page SVG previews
+  // directly, same storage shape as the image-verified chain).
+  const slides = lastUser.includes('演示') || lastUser.toLowerCase().includes('ppt') || lastUser.includes('幻灯');
+  if (slides) {
+    const variant = (lastUser.includes('第3页') || lastUser.includes('第三页') || lastUser.includes('结论')) ? 'edit3' : 'proposal';
+    return {
+      kind: 'slides-' + variant,
+      writes,
+      bash: slidesGeneratorCommand(variant),
+      final: variant === 'edit3'
+        ? '已只修改第 3 页结论并重新渲染，其余页保持不变。'
+        : '已生成 5 页客户方案演示稿（PPTX + PDF + 逐页预览与来源页）。',
     };
   }
   const page = quarterly ? quarterlyPage() : monthlyPage();

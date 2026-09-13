@@ -10,7 +10,8 @@
     "./craft/files": "./src/craft/files.tsx",
     "./craft/presentation": "./src/craft/presentation.ts",
     "./craft/interaction": "./src/craft/interaction.tsx",
-    "./craft/spreadsheet": "./src/craft/spreadsheet.tsx"
+    "./craft/spreadsheet": "./src/craft/spreadsheet.tsx",
+    "./craft/slides": "./src/craft/slides.tsx"
   },
   "dependencies": {
     "@weknora/contracts": "workspace:*",
