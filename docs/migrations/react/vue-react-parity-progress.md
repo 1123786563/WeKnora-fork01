@@ -1,5 +1,11 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-14 Round N+24 — N011/N013 failure-copy closure
+
+- Wiki 页面加载、创建、重载、历史/版本读取和回滚的无异常对象 fallback 改用共享 `wikiBrowser.*` 文案；数据源编辑器字段、同步模式/冲突选项、删除/同步/连接测试/资源加载失败反馈改用共享 `dataSource.*` 文案，并为五种语言补齐连接器类型/设置键。
+- Wiki 专项 4/4、数据源表单/资源选择专项 4/4、正式 Web 796/796、Web typecheck、i18n test 通过；实现提交 `064363d1`、`8bd84a40`。
+- 本轮仅覆盖可验证的文案/错误 fallback 差异；不宣称完成 Vue Wiki index/tree/list、浏览器 computed-style、真实后端和 Wails/native 证据。
+
 ## 2026-09-14 Round N+20 — R013/N028 API Playground 抽屉与 SSE 行为
 
 - API Playground 已从旧手填 Session/Path/Body 表单切换为 Vue 三段式右侧抽屉，接入身份模式门禁、内置智能体默认选择、Session 创建、Agent Chat SSE 增量回答、停止、终端错误、异常 EOF 和签名 Token。
