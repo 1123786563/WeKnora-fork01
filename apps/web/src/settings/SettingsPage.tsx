@@ -164,7 +164,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
     ? <ModelSettingsPanel client={client} role={role} initialModels={Array.isArray(payload) ? payload as never : []} />
     : null;
   const sandboxPanel = selectedKey === 'sandbox'
-    ? <SandboxSettingsPanel client={client} role={role} />
+    ? <SandboxSettingsPanel client={client} role={role} dockerBackendEnabled={isCapabilitySupported(capabilities, 'settings.sandbox.docker', { liteMode })} />
     : null;
   const skillPanel = selectedKey === 'skills'
     ? <SkillSettingsPanel client={client} role={role} initialSkills={Array.isArray(payload) ? payload as never : (((payload as { items?: unknown } | null)?.items ?? []) as never)} />
