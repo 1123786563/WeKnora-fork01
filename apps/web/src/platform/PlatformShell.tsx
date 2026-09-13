@@ -119,6 +119,13 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
   // Vue's uiStore.openSettings/closeSettings pair.
   const guideOpenedSettingsRef = useRef(false);
   const [user, setUser] = useState<{ id: string; name: string; email: string; avatar: string }>({ id: '', name: '', email: '', avatar: '' });
+  // Vue menu.ts:72-81 — the organizations nav entry is gated on
+  // hasRole('admin') (owner/admin pass; viewer/contributor manage nothing in
+  // the shared space). Initial true = fail-open while identity resolves:
+  // the shell mounts before auth/me lands, and the server route guard
+  // remains the real boundary (same posture as OrganizationsPage's
+  // canManageOrg).
+  const [canSeeOrganizations, setCanSeeOrganizations] = useState(true);
 
   // Global command palette (⌘K / Ctrl+K) — R011/N003. See GlobalCommandPalette.tsx.
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -154,6 +161,26 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
         email: typeof record.email === 'string' ? record.email : '',
         avatar: typeof record.avatar === 'string' ? record.avatar : '',
       });
+      // R017 RBAC self-resolution (OrganizationsPage parity, Vue
+      // currentTenantRole): the active-tenant membership role — selected
+      // tenant first, falling back to the home tenant — decides entry
+      // visibility, with the can_access_all_tenants superuser flag passing
+      // the admin gate. UI rendering only; the server route guard is the
+      // real boundary. An unknown role ('' — membership data absent, e.g.
+      // embedded/test mounts) fails open and keeps the entry visible.
+      const selectedTenantId = readReactPlatformState(window.localStorage)?.tenantId ?? null;
+      const homeTenantId = me.tenant && me.tenant.id !== null && me.tenant.id !== undefined ? String(me.tenant.id) : '';
+      const tenantId = selectedTenantId ?? homeTenantId;
+      let currentRole = '';
+      for (const item of me.memberships ?? []) {
+        if (!item || typeof item !== 'object') continue;
+        const row = item as Record<string, unknown>;
+        const id = row.tenant_id ?? row.tenantId;
+        if (tenantId && String(id) === tenantId && typeof row.role === 'string') { currentRole = row.role; break; }
+      }
+      setCanSeeOrganizations(
+        currentRole === '' || currentRole === 'admin' || currentRole === 'owner' || record.can_access_all_tenants === true,
+      );
     }).catch(() => { /* menu falls back to placeholders; the page still works */ });
     return () => { active = false; };
   }, [client]);
@@ -279,6 +306,12 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
   }, [recentQueriesKey]);
 
   const navItems = useMemo(() => buildNavItems(t, labels), [t, labels]);
+  // Vue menu.ts:76-78 — drop the organizations entry below admin. Filtering
+  // after the build keeps the item table (labels/icons/guides) authoritative.
+  const visibleNavItems = useMemo(
+    () => navItems.filter((item) => item.key !== 'organizations' || canSeeOrganizations),
+    [navItems, canSeeOrganizations],
+  );
 
   // Welcome-tour shell callbacks (Vue: uiStore.expandSidebar / openSettings('models')).
   const guideActions = useMemo(() => ({
@@ -351,7 +384,7 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
 
         <div className="plat-shell__top">
           <nav className="plat-shell__nav" aria-label="Platform">
-            {navItems.map((item) => {
+            {visibleNavItems.map((item) => {
               const active = item.match(pathname);
               return (
                 <a key={item.key} href={item.href} className={`plat-shell__item${active ? ' plat-shell__item--active' : ''}`}

@@ -130,3 +130,73 @@ test('collapsed sidebar hides the org sub-filter like the other shell blocks', a
   const root = await mountShell('/platform/organizations');
   assert.equal(orgFilters(root), null, 'collapsed sidebar hides the org sub-filter');
 });
+
+// — RBAC entry visibility (Vue menu.ts:72-81) ——————————————————————————————
+// Vue hides the organizations entry below admin (viewer/contributor see no
+// shared-space management entry); the can_access_all_tenants superuser flag
+// passes the gate. Me payloads follow AuthMe (user/tenant/memberships);
+// membership rows carry { tenant_id, role }. Assertions are collect-then-
+// assert (Round N+8): query the DOM once after settle, assert on plain
+// values — no awaits between mount and assert to avoid act-loop hangs.
+
+function fakeClientWithMe(me: Record<string, unknown>): Record<string, unknown> {
+  return {
+    auth: { me: async () => me },
+    sessions: {
+      list: async () => ({ data: [], total: 0, page: 1, page_size: 30 }),
+    },
+  };
+}
+
+async function mountShellWithMe(atPath: string, me: Record<string, unknown>): Promise<HTMLElement> {
+  window.history.replaceState({}, '', atPath);
+  const container = document.createElement('div');
+  document.body.append(container);
+  mountedRoot = createRoot(container);
+  await act(async () => {
+    mountedRoot?.render(React.createElement(
+      PlatformShell,
+      { client: fakeClientWithMe(me) as never, onLogout: () => undefined, children: React.createElement('div', null, 'page') },
+    ));
+  });
+  await settle(20);
+  return container;
+}
+
+const navHrefs = (root: HTMLElement): string[] =>
+  [...root.querySelectorAll('.plat-shell__nav a')]
+    .map((a) => (a instanceof dom.window.HTMLAnchorElement ? a.getAttribute('href') : null))
+    .filter((href): href is string => typeof href === 'string');
+
+const ORG_HREF = '/platform/organizations';
+
+test('viewer membership hides the organizations nav entry (Vue menu.ts:76-78)', async () => {
+  const root = await mountShellWithMe('/platform/knowledge-bases', {
+    user: { id: 'u1', username: 'viewer', email: 'viewer@local.dev', avatar: '' },
+    tenant: { id: 7, name: 'Home' },
+    memberships: [{ tenant_id: 7, role: 'viewer' }],
+  });
+  const hrefs = navHrefs(root);
+  assert.ok(!hrefs.includes(ORG_HREF), 'viewer must not see the organizations entry');
+  assert.ok(hrefs.includes('/platform/knowledge-bases'), 'other nav entries stay visible');
+});
+
+test('admin membership keeps the organizations nav entry visible', async () => {
+  const root = await mountShellWithMe('/platform/knowledge-bases', {
+    user: { id: 'u1', username: 'admin', email: 'admin@local.dev', avatar: '' },
+    tenant: { id: 7, name: 'Home' },
+    memberships: [{ tenant_id: 7, role: 'admin' }],
+  });
+  const hrefs = navHrefs(root);
+  assert.ok(hrefs.includes(ORG_HREF), 'admin must see the organizations entry');
+});
+
+test('viewer membership with can_access_all_tenants keeps organizations visible (superuser)', async () => {
+  const root = await mountShellWithMe('/platform/knowledge-bases', {
+    user: { id: 'u1', username: 'super', email: 'super@local.dev', avatar: '', can_access_all_tenants: true },
+    tenant: { id: 7, name: 'Home' },
+    memberships: [{ tenant_id: 7, role: 'viewer' }],
+  });
+  const hrefs = navHrefs(root);
+  assert.ok(hrefs.includes(ORG_HREF), 'superuser flag must pass the admin gate');
+});
