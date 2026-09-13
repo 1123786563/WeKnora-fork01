@@ -1702,3 +1702,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Vue 页面初始化会并行加载 API Key 与 `listAgents({ creator: 'all' })`；React API tab 现在同步加载 agents，并把加载失败信息传入 Playground。Agent 选择器在列表解析期间暴露 `aria-busy` 和本地化 loading 文案，保持选中项重选逻辑不变。
 - 验证：API Playground 定向测试 11/11；Web TypeScript 检查通过。证据 `evidence/vue-react-parity/2026-09-14-r013-api-playground-agents-loading.md`。
 - 证据层：本轮为 Vue 源码对照、React DOM/单元和类型检查；真实后端 agents 成功/失败请求、筛选交互、computed-style/截图、Wails 与移动端证据仍待补齐，R013/N028 继续保持 review。
+
+## 2026-09-14 Round N+44 — R013 API Playground 可筛选 Agent 选择器
+
+- React API Playground 用局部可访问 combobox/listbox 替换原生 `<select>`，对齐 Vue `t-select filterable`：按名称/ID过滤、ArrowUp/ArrowDown 导航、Enter 选择、Escape/外部点击关闭、选中项与内置后缀显示；加载和错误状态保持可读。
+- 验证：API Playground 定向测试 12/12；Web TypeScript 检查通过。证据 `evidence/vue-react-parity/2026-09-14-r013-api-playground-agent-select.md`。
+- 证据层：本轮为 Vue 源码对照、React DOM/单元和类型检查；真实后端 agents 列表、浏览器 computed-style/截图、Wails 与移动端证据仍待补齐，R013/N028 继续保持 review。

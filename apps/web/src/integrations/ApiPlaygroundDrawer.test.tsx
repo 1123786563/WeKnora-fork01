@@ -18,6 +18,7 @@ Object.assign(globalThis, {
   HTMLElement: dom.window.HTMLElement,
   Event: dom.window.Event,
   MouseEvent: dom.window.MouseEvent,
+  KeyboardEvent: dom.window.KeyboardEvent,
   IS_REACT_ACT_ENVIRONMENT: true,
 });
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
@@ -147,9 +148,9 @@ test('run gating mirrors Vue: disabled with a reason and tenant mode locks the e
 
 test('agent selector exposes the Vue loading state while agents are resolving', () => {
   const { container } = mountDrawer({ agents: [], agentsLoading: true });
-  const select = container.querySelector<HTMLSelectElement>('.wk-api-playground-agent');
+  const select = container.querySelector<HTMLInputElement>('[role="combobox"]');
   assert.equal(select?.getAttribute('aria-busy'), 'true');
-  assert.equal(select?.options[0]?.textContent, '加载中...');
+  assert.equal(select?.placeholder, '加载中...');
 });
 
 test('signed_token preview masks both secrets behind the Vue placeholders', () => {
@@ -250,15 +251,36 @@ test('signed_token run mints the test token and shows the generated token step',
   assert.equal(tokenStep!.querySelector('pre')!.textContent, 'jwt-abc');
 });
 
-test('agent select defaults to the builtin smart-reasoning agent and lists the builtin suffix', () => {
+test('agent select defaults to the builtin smart-reasoning agent and lists the builtin suffix', async () => {
   const { container } = mountDrawer({
     agents: [{ id: 'builtin-smart-reasoning', name: '深度推理', is_builtin: true }, { id: 'a1', name: '助手' }] as readonly ApiPlaygroundAgentOption[],
   });
-  const select = container.querySelector<HTMLSelectElement>('.wk-api-playground-agent');
-  assert.equal(select!.value, 'builtin-smart-reasoning', 'Vue ensurePlaygroundAgent prefers the builtin');
-  const options = Array.from(select!.options).map((option) => option.textContent);
+  const select = container.querySelector<HTMLInputElement>('[role="combobox"]');
+  assert.equal(select!.value, '深度推理 · 内置', 'Vue ensurePlaygroundAgent prefers the builtin');
+  await act(async () => { select!.focus(); });
+  const options = Array.from(container.querySelectorAll('[role="option"]')).map((option) => option.textContent);
   assert.ok(options.includes('深度推理 · 内置'), 'Vue agentOptionLabel builtin suffix');
   assert.ok(options.includes('助手'));
+});
+
+test('agent selector filters options, selects with Enter, and closes on Escape', async () => {
+  const { container } = mountDrawer({
+    agents: [{ id: 'a1', name: 'Alpha' }, { id: 'a2', name: 'Beta' }] as readonly ApiPlaygroundAgentOption[],
+  });
+  const input = container.querySelector<HTMLInputElement>('[role="combobox"]')!;
+  await act(async () => {
+    input.focus();
+    Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set?.call(input, 'bet');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  assert.deepEqual(Array.from(container.querySelectorAll('[role="option"]')).map((option) => option.textContent), ['Beta']);
+  await act(async () => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); });
+  assert.equal(input.value, 'Beta');
+  await act(async () => {
+    input.focus();
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  });
+  assert.equal(input.getAttribute('aria-expanded'), 'false');
 });
 
 test('drawer width follows Vue clamp rules and persists a dragged width', async () => {

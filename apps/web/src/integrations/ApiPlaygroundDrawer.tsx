@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
 
@@ -42,6 +42,64 @@ export interface ApiPlaygroundDrawerProps {
   mintToken?: (externalUserId: string) => Promise<{ token: string; headerName: string }>;
   fetchFn?: typeof fetch;
   t: (key: string, values?: Record<string, string | number>) => string;
+}
+
+function ApiPlaygroundAgentSelect({ agents, value, loading, placeholder, loadingLabel, builtinLabel, onChange }: {
+  agents: readonly ApiPlaygroundAgentOption[];
+  value: string;
+  loading: boolean;
+  placeholder: string;
+  loadingLabel: string;
+  builtinLabel: string;
+  onChange: (value: string) => void;
+}) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [open, setOpen] = useState(false);
+  const [filter, setFilter] = useState('');
+  const [activeIndex, setActiveIndex] = useState(0);
+  const selected = agents.find((agent) => agent.id === value);
+  const options = useMemo(() => {
+    const needle = filter.trim().toLocaleLowerCase();
+    return needle ? agents.filter((agent) => `${agent.name} ${agent.id}`.toLocaleLowerCase().includes(needle)) : [...agents];
+  }, [agents, filter]);
+  useEffect(() => {
+    if (!open) return;
+    const onOutside = (event: MouseEvent) => { if (!rootRef.current?.contains(event.target as Node)) setOpen(false); };
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') { setOpen(false); inputRef.current?.blur(); } };
+    document.addEventListener('mousedown', onOutside);
+    window.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onOutside); window.removeEventListener('keydown', onKey); };
+  }, [open]);
+  function choose(agent: ApiPlaygroundAgentOption) {
+    onChange(agent.id);
+    setFilter('');
+    setOpen(false);
+  }
+  return <div ref={rootRef} className="wk-api-playground-agent-select" style={{ position: 'relative' }}>
+    <input
+      ref={inputRef}
+      className="wk-api-playground-agent"
+      role="combobox"
+      aria-autocomplete="list"
+      aria-controls="wk-api-playground-agent-options"
+      aria-expanded={open}
+      aria-busy={loading || undefined}
+      value={open ? filter : (selected ? agentOptionLabel(selected.name, selected.is_builtin === true, builtinLabel) : '')}
+      placeholder={loading ? loadingLabel : placeholder}
+      onFocus={() => { setOpen(true); setFilter(''); setActiveIndex(0); }}
+      onChange={(event) => { setFilter(event.target.value); setOpen(true); setActiveIndex(0); }}
+      onKeyDown={(event) => {
+        if (event.key === 'ArrowDown') { event.preventDefault(); setOpen(true); setActiveIndex((index) => Math.min(index + 1, Math.max(options.length - 1, 0))); }
+        else if (event.key === 'ArrowUp') { event.preventDefault(); setActiveIndex((index) => Math.max(index - 1, 0)); }
+        else if (event.key === 'Enter' && open && options[activeIndex]) { event.preventDefault(); choose(options[activeIndex]); }
+      }}
+      style={fieldStyle}
+    />
+    {open ? <div id="wk-api-playground-agent-options" role="listbox" className="wk-api-playground-agent-options" style={{ position: 'absolute', zIndex: 2, left: 0, right: 0, maxHeight: 240, overflowY: 'auto', background: 'var(--wk-bg, #fff)', border: '1px solid var(--wk-border, #e5e7eb)', borderRadius: 6, boxShadow: '0 8px 20px rgba(15,23,42,.14)' }}>
+      {loading ? <div role="status" className="wk-muted" style={{ padding: '8px 10px' }}>{loadingLabel}</div> : options.length === 0 ? <div className="wk-muted" style={{ padding: '8px 10px' }}>{placeholder}</div> : options.map((agent, index) => <div key={agent.id} role="option" aria-selected={agent.id === value} className={index === activeIndex ? 'is-active' : undefined} onMouseDown={(event) => { event.preventDefault(); choose(agent); }} style={{ padding: '8px 10px', cursor: 'pointer', background: index === activeIndex ? 'var(--wk-bg-muted, #f6f8fa)' : undefined }}>{agentOptionLabel(agent.name, agent.is_builtin === true, builtinLabel)}</div>)}
+    </div> : null}
+  </div>;
 }
 
 interface RunState {
@@ -262,12 +320,7 @@ export function ApiPlaygroundDrawer({ open, onClose, apiKey, mode, agents, agent
             <h4>{t('integrations.api.playgroundSectionRequest')}</h4>
             <label className="wk-api-playground-field" style={{ display: 'block', margin: '10px 0' }}>
               {t('integrations.api.playgroundAgent')}
-              <select className="wk-api-playground-agent" value={form.agentId} aria-busy={agentsLoading || undefined} onChange={(event) => setForm((prev) => ({ ...prev, agentId: event.target.value }))} style={fieldStyle}>
-                <option value="" disabled>{agentsLoading ? t('common.loading') : t('integrations.api.playgroundAgentPlaceholder')}</option>
-                {agents.map((agent) => (
-                  <option key={agent.id} value={agent.id}>{agentOptionLabel(agent.name, agent.is_builtin === true, t('integrations.api.playgroundBuiltin'))}</option>
-                ))}
-              </select>
+              <ApiPlaygroundAgentSelect agents={agents} value={form.agentId} loading={agentsLoading} placeholder={t('integrations.api.playgroundAgentPlaceholder')} loadingLabel={t('common.loading')} builtinLabel={t('integrations.api.playgroundBuiltin')} onChange={(agentId) => setForm((prev) => ({ ...prev, agentId }))} />
             </label>
             {agentsError ? <p className="wk-api-playground-field-error" role="alert">{agentsError}</p> : null}
             <label className="wk-api-playground-field" style={{ display: 'block', margin: '10px 0' }}>
