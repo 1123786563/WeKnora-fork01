@@ -70,7 +70,12 @@ func craftCounter(m map[string]*atomic.Int64, vocabulary map[string]bool, value 
 }
 
 // CraftDelegationSettled counts one settled craft delegation by its terminal
-// status (succeeded/failed). Recorded at the delegation service's settle seam.
+// status (succeeded/failed/canceled). Callers count only after the outcome is
+// durably persisted (see CraftDelegateService.settle), so a crash between
+// classification and persist does not double-count on retry. Two concurrent
+// settles of the same delegation remain possible to observe as two settle
+// EVENTS (the store's identical-result replay is idempotent); the counter is
+// a settle-event counter, not an exactly-once per-delegation census.
 func CraftDelegationSettled(status string) {
 	craftCounter(craft.delegations, craftDelegationStatuses, status).Add(1)
 }
@@ -107,11 +112,17 @@ func ObserveCraftWorkspaceRestore(d time.Duration) {
 	for len(craft.restoreCounts) <= idx && idx < len(craftRestoreBuckets) {
 		craft.restoreCounts = append(craft.restoreCounts, atomic.Int64{})
 	}
+	// Copy the slice header UNDER the lock (O04 review nit-1): another
+	// observer's locked append may reallocate the shared header, so reading
+	// craft.restoreCounts[idx] outside the lock raced. The local header is
+	// stable, and appends never mutate existing elements — the atomic bucket
+	// it points at is safe to increment without the lock.
+	counts := craft.restoreCounts
 	craft.mu.Unlock()
 	if idx >= len(craftRestoreBuckets) {
 		craft.restoreInf.Add(1)
 	} else {
-		craft.restoreCounts[idx].Add(1)
+		counts[idx].Add(1)
 	}
 	craft.restoreSum.Add(ms)
 	craft.restoreCount.Add(1)
