@@ -179,7 +179,7 @@ function renderProtected() {
   } else if (route.path === '/platform/administration') {
     renderShell(<AdministrationPage client={client} tenantId={Number(scopeRuntime.current().scope.tenantId)} />);
   } else if (route.path === '/platform/organizations') {
-    renderShell(<OrganizationsPage client={client} inviteCode={organizationInviteCode(pathname)} />);
+    renderShell(<OrganizationsPage client={client} inviteCode={organizationInviteCode(pathname)} role={scopeRuntime.role()} />);
   } else if (route.path === '/platform/settings') {
     renderShell(<SettingsPage capabilities={scopeRuntime.capabilities()} liteMode={liteMode} client={client} tenantId={Number(scopeRuntime.current().scope.tenantId)} role={scopeRuntime.role() === 'owner' ? 'owner' : scopeRuntime.role() === 'admin' ? 'admin' : 'viewer'} />);
   } else if (route.path === '/platform/system') {
