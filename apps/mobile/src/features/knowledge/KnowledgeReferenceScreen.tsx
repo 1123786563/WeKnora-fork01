@@ -26,10 +26,10 @@ export function KnowledgeReferenceScreen({ kind }: { kind: KnowledgeReferenceKin
     try {
       if (kind === 'wiki') {
         const response = await runtime.client.wiki.list(kbId, { page: 1, page_size: 100 });
-        setRows(response.pages.map((page) => ({ id: selectWikiReferenceEditKey(page), label: selectWikiReferenceLabel(page), detail: page.summary || 'Read-only Wiki page' })));
+        setRows(response.pages.map((page) => ({ id: selectWikiReferenceEditKey(page), label: selectWikiReferenceLabel(page), detail: page.summary || '' })));
       } else {
         const response = await runtime.client.knowledge.faq.list(kbId, { page: 1, page_size: 100 });
-        setRows(response.data.map((entry) => ({ id: selectFaqReferenceEditKey(entry), label: selectFaqReferenceLabel(entry), detail: entry.answers[0] || 'Read-only FAQ entry' })));
+        setRows(response.data.map((entry) => ({ id: selectFaqReferenceEditKey(entry), label: selectFaqReferenceLabel(entry), detail: entry.answers[0] || '' })));
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : `Unable to load ${kind}`);
@@ -47,13 +47,12 @@ export function KnowledgeReferenceScreen({ kind }: { kind: KnowledgeReferenceKin
       {writable ? <Pressable accessibilityRole="button" onPress={() => kbId && router.push(editorRoute(kind, kbId))}><Text style={{ color: '#2864dc' }}>{kind === 'wiki' ? label("wikiBrowser.newPageBtn") : label("knowledgeBase.faq.new")}</Text></Pressable> : null}
       <Pressable accessibilityRole="button" onPress={() => void load()}><Text style={{ color: '#2864dc' }}>{label("knowledgeBase.documents.reload")}</Text></Pressable>
     </View>
-    <Text style={{ color: '#667085', marginBottom: 8 }}>{writable ? 'Owner/admin editing · server permissions remain authoritative' : 'Read-only on mobile for this workspace role'} · knowledge base {kbId || 'unknown'}</Text>
     {error ? <Text accessibilityRole="alert" style={{ color: '#b42318', marginBottom: 8 }}>{error}</Text> : null}
     {loading ? <ActivityIndicator accessibilityLabel={`Loading ${kind}`} /> : <FlatList
       data={rows}
       keyExtractor={(item) => item.id}
-      ListEmptyComponent={<Text style={{ color: '#667085' }}>{kind === 'wiki' ? label("wikiBrowser.emptyTitle") : `No ${kind} entries available.`}</Text>}
-      renderItem={({ item }) => <View style={{ borderBottomColor: '#eaecf0', borderBottomWidth: 1, paddingVertical: 12 }}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><Text style={{ flex: 1, fontWeight: '600' }}>{item.label}</Text>{writable ? <Pressable accessibilityRole="button" onPress={() => router.push(editorRoute(kind, kbId || '', item.id))}><Text style={{ color: '#2864dc' }}>{label("wikiBrowser.editBtn")}</Text></Pressable> : null}</View><Text style={{ color: '#667085', fontSize: 12, marginTop: 4 }}>{item.detail}</Text></View>}
+      ListEmptyComponent={<Text style={{ color: '#667085' }}>{kind === 'wiki' ? label("wikiBrowser.emptyTitle") : label("knowledgeEditor.faq.emptyTitle")}</Text>}
+      renderItem={({ item }) => <View style={{ borderBottomColor: '#eaecf0', borderBottomWidth: 1, paddingVertical: 12 }}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><Text style={{ flex: 1, fontWeight: '600' }}>{item.label}</Text>{writable ? <Pressable accessibilityRole="button" onPress={() => router.push(editorRoute(kind, kbId || '', item.id))}><Text style={{ color: '#2864dc' }}>{label("wikiBrowser.editBtn")}</Text></Pressable> : null}</View>{item.detail ? <Text style={{ color: '#667085', fontSize: 12, marginTop: 4 }}>{item.detail}</Text> : null}</View>}
     />}
   </SafeAreaView>;
 }
