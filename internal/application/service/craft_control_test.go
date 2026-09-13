@@ -467,7 +467,10 @@ func TestControlDecideMapsQuestionRejectAndPermissionReplies(t *testing.T) {
 		Scope: controlScope(), InteractionID: prec.ID, DecisionID: "dec-x",
 		Action: craft.DecisionReject, ArgsHash: prec.ArgsHash, ExpectedRevision: prec.Revision,
 	})
-	require.ErrorIs(t, err, craft.ErrConflict, "an already-decided interaction must not be re-decided")
+	// C02 refines the terminal vocabulary: an already-decided interaction is
+	// gone (410) for NEW decision ids — it can never be re-decided; only the
+	// same decision id replays the original result.
+	require.ErrorIs(t, err, craft.ErrGone, "an already-decided interaction must not be re-decided")
 }
 
 func TestControlDecideKeepsUndeliveredDecisionHonest(t *testing.T) {

@@ -324,6 +324,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// craft_runtime.go); without it the R05 fail-closed executor stays and
 	// the default-off semantics are unchanged.
 	must(container.Provide(newCraftRuntimeExecutor))
+	// C02 interaction chain: production interaction store + control service +
+	// reliable decision delivery (fail-closed without the opencode runtime).
+	must(container.Provide(newCraftInteractionAssembly))
 	must(container.Provide(service.NewCraftDelegation))
 
 	// Craft product HTTP surface (W03): the version store (W01), the preview
@@ -449,6 +452,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// Craft handler registration now that its full dependency set exists
 	// (W03's eager Invoke position is moved here — see the craft block above).
 	must(container.Invoke(registerCraftHTTPHandlers))
+	// C02: interaction decide surface + outbox redelivery sweep.
+	must(container.Invoke(registerCraftInteractionHTTPHandlers))
+	must(container.Invoke(startCraftDecisionDelivery))
 
 	// TenantSkillService is provided next to SessionService (handlers need
 	// it), but Invoke constructs the whole chain. SessionService needs

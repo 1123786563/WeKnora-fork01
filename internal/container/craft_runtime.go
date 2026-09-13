@@ -91,6 +91,7 @@ func newCraftRuntimeExecutor(
 	files interfaces.FileService,
 	versions craft.VersionStore,
 	previews *service.CraftPreviewService,
+	interactions *CraftInteractionAssembly,
 ) (craft.Executor, error) {
 	baseURL := strings.TrimSpace(os.Getenv(craftOpenCodeBaseURLEnv))
 	if baseURL == "" {
@@ -123,12 +124,19 @@ func newCraftRuntimeExecutor(
 	source := &localCraftArtifactSource{workDir: workDir, outputDir: outputDir}
 	artifacts := service.NewCraftArtifactService(source, files, versions, evidence,
 		service.CraftArtifactConfig{Kind: craft.KindWeb, OutputDir: outputDir})
+	// C02: an interaction.pending event first lands durably (interaction row
+	// + waiting_user park) before it is projected to the run stream, so the
+	// pending decision is decidable through the HTTP surface.
+	emit := craftRunEventEmitter(runs)
+	if interactions != nil {
+		emit = craftInteractionRegistrar(client, store, interactions.Store, interactions.Runs, emit)
+	}
 	runtime := &localCraftRuntime{
 		db:            db,
 		client:        client,
 		store:         store,
 		files:         files,
-		inner:         opencode.NewExecutor(client, store, craftRunEventEmitter(runs)),
+		inner:         opencode.NewExecutor(client, store, emit),
 		artifacts:     artifacts,
 		emit:          craftRunEventEmitter(runs),
 		outputDir:     outputDir,

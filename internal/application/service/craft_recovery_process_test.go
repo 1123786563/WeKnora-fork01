@@ -59,6 +59,10 @@ func TestMain(m *testing.M) {
 		craftRecoveryProviderMain()
 		return
 	}
+	if os.Getenv("CRAFT_DECISION_PROVIDER_CASE") != "" {
+		craftDecisionProviderMain()
+		return
+	}
 	os.Exit(m.Run())
 }
 
