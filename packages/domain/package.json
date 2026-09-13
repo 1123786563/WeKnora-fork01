@@ -24,6 +24,7 @@
     "./chat/copy-answer": "./src/chat/copy-answer.ts",
     "./chat/session-grouping": "./src/chat/session-grouping.ts",
     "./sandbox/terminal": "./src/sandbox/terminal.ts",
+    "./sandbox/skill-install": "./src/sandbox/skill-install.ts",
     "./settings/local-preferences": "./src/settings/local-preferences.ts",
     "./settings/local-preferences.test": "./src/settings/local-preferences.test.ts",
     "./auth/onboarding": "./src/auth/onboarding.ts"

@@ -8,6 +8,7 @@ import { createDataSourcesApi } from './datasource.ts';
 import { createAuthApi } from './auth/endpoints.ts';
 import { createChatSessionsApi } from './chat/sessions.ts';
 import { createSandboxTerminalApi } from './sandbox/terminal.ts';
+import { createSandboxSkillInstallApi } from './sandbox/skill-install.ts';
 import { createSandboxConfigurationsApi } from './sandbox-configurations.ts';
 import { createConfigurationApi } from './configuration.ts';
 import { buildChatStreamRequest, consumeChatStream, consumeStreamResult, createServerSentEventParser, parseChatEvent } from './chat/stream.ts';
@@ -239,6 +240,23 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
   const auth = createAuthApi(request);
   const sessions = createChatSessionsApi(request);
   const sandbox = createSandboxTerminalApi(request);
+  // Skill install streams ride the same transport chain (sendStream when the
+  // platform provides one, buffered request otherwise) so auth/tenant headers
+  // and refresh behave exactly like every other call.
+  const sandboxSkills = createSandboxSkillInstallApi({
+    request,
+    ...(options.transport.sendStream
+      ? {
+        sendStream: (input: ClientRequest) => options.transport.sendStream!({
+          method: input.method,
+          url: joinURL(options.baseURL, input.path),
+          headers: { accept: 'text/event-stream', ...input.headers },
+          body: input.body,
+          ...(input.signal === undefined ? {} : { signal: input.signal }),
+        }),
+      }
+      : {}),
+  });
   const sandboxConfigurations = createSandboxConfigurationsApi(request);
   const configuration = createConfigurationApi(request);
   const chatApprovals = createChatApprovalsApi(request);
@@ -353,7 +371,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
     settings,
     embed,
     sessions,
-    sandbox,
+    sandbox: { issueTicket: sandbox.issueTicket, skills: sandboxSkills },
     sandboxConfigurations,
     configuration,
     chat: {

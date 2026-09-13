@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { AgentConfiguration, InstalledSkill, ModelConfiguration, SandboxConfigRecord, SkillCatalog, SkillCatalogInstallation, SkillConfiguration, SkillFileContent, WeKnoraClient } from '@weknora/api-client';
+import type { AgentConfiguration, InstalledSkill, ModelConfiguration, SandboxConfigRecord, SkillCatalog, SkillCatalogInstallation, SkillConfiguration, SkillFileContent, SkillInstallGuidanceState, WeKnoraClient } from '@weknora/api-client';
+import { initialSkillTimelineState, installProgressPercent, reduceSkillTimelineFrame, type SkillInstallProgressEvent, type SkillTimelineState } from '@weknora/domain/sandbox/skill-install';
 import { Button, Card, Dialog, Status } from '@weknora/ui';
+import { renderChatMarkdown } from '@weknora/views';
 import { createTranslator, useAppLocale } from '../i18n.ts';
+import './skill-settings.css';
 import {
   MAX_ENV_VALUE_BYTES, adminSkillEnvClearPayload, backendLabelKey, buildSkillFileTree, canClearAdminSkillEnv,
   canDeleteCatalog, classifySkillRegisterError, clearSubmittedSkillEnvDrafts, collectSkillDirPaths, compactSkillText,
@@ -98,6 +101,100 @@ function useSkillT(): (key: string, values?: Record<string, string | number>) =>
 
 function errorText(cause: unknown, fallback: string): string {
   return cause instanceof Error && cause.message ? cause.message : fallback;
+}
+
+/** Vue utils/steerId.ts — getRandomValues also works on HTTP deployments. */
+function makeSteerClientId(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  bytes[6] = (bytes[6]! & 15) | 64;
+  bytes[8] = (bytes[8]! & 63) | 128;
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+interface DrawerWidthSpec {
+  storageKey: string;
+  defaultWidth: number;
+  minWidth: number;
+  maxWidth: number;
+}
+
+/** Vue drawer specs (SkillSettings.vue:132-134, 267-269, 316-318), storage keys byte-exact. */
+const SKILL_DRAWER_SPECS = {
+  add: { storageKey: 'setting-drawer:width:skill-catalog-add', defaultWidth: 680, minWidth: 560, maxWidth: 920 },
+  install: { storageKey: 'setting-drawer:width:skill-catalog-install', defaultWidth: 560, minWidth: 480, maxWidth: 760 },
+  manage: { storageKey: 'setting-drawer:width:skill-catalog-manage', defaultWidth: 680, minWidth: 560, maxWidth: 920 },
+} satisfies Record<string, DrawerWidthSpec>;
+
+/** Vue SettingDrawer.vue:162-166 clampWidth. */
+function clampDrawerWidth(width: number, spec: DrawerWidthSpec): number {
+  const viewport = typeof window === 'undefined' ? spec.maxWidth : window.innerWidth;
+  const cap = Math.min(spec.maxWidth, viewport);
+  const floor = Math.min(spec.minWidth, cap);
+  return Math.max(floor, Math.min(cap, Math.round(width)));
+}
+
+function readStoredDrawerWidth(spec: DrawerWidthSpec): number {
+  if (typeof window === 'undefined') return spec.defaultWidth;
+  try {
+    const raw = window.localStorage.getItem(spec.storageKey);
+    const parsed = raw ? Number(raw) : Number.NaN;
+    return Number.isFinite(parsed) ? clampDrawerWidth(parsed, spec) : spec.defaultWidth;
+  } catch {
+    return spec.defaultWidth;
+  }
+}
+
+/**
+ * Vue SettingDrawer drag-resize + persisted width (SettingDrawer.vue:150-248,
+ * 499-540) adapted to the centered wk-dialog: the handle sits on the dialog's
+ * left edge, drags clamp to [minWidth, min(maxWidth, viewport)] and persist to
+ * the same per-title localStorage keys Vue uses.
+ */
+function DrawerShell({ open, spec, children }: { open: boolean; spec: DrawerWidthSpec; children: React.ReactNode }) {
+  const [width, setWidth] = useState(spec.defaultWidth);
+  const [resizing, setResizing] = useState(false);
+  const widthRef = useRef(width);
+  widthRef.current = width;
+
+  useEffect(() => {
+    if (!open) return;
+    setWidth(readStoredDrawerWidth(spec));
+    const onWindowResize = () => setWidth((current) => clampDrawerWidth(current, spec));
+    window.addEventListener('resize', onWindowResize);
+    return () => window.removeEventListener('resize', onWindowResize);
+  }, [open, spec]);
+
+  function onHandleDown(event: React.MouseEvent) {
+    event.preventDefault();
+    const start = { x: event.clientX, width: widthRef.current };
+    setResizing(true);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    const onMove = (move: MouseEvent) => setWidth(clampDrawerWidth(start.width + (start.x - move.clientX), spec));
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      setResizing(false);
+      try {
+        window.localStorage.setItem(spec.storageKey, String(clampDrawerWidth(widthRef.current, spec)));
+      } catch {
+        // localStorage can throw in private mode / quota errors.
+      }
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }
+
+  return <div className="skill-drawer-host" style={{ '--skill-drawer-width': `${width}px` } as React.CSSProperties} data-resizing={resizing || undefined}>
+    {children}
+    {open ? <div className={`skill-drawer-resize-handle${resizing ? ' skill-drawer-resize-handle--active' : ''}`} role="presentation" onMouseDown={onHandleDown}>
+      <div className="skill-drawer-resize-line" />
+    </div> : null}
+  </div>;
 }
 
 const INSTALLER_AGENT_ID = 'builtin-skill-installer';
@@ -651,7 +748,8 @@ function AddSkillWizard({ client, open, catalog, configs, installer, t, onClose,
     }
   }
 
-  return <Dialog open={open} title={t('settings.skills.addSkill')} onClose={() => onClose(registeredId || undefined)}>
+  return <DrawerShell open={open} spec={SKILL_DRAWER_SPECS.add}>
+  <Dialog open={open} title={t('settings.skills.addSkill')} onClose={() => onClose(registeredId || undefined)}>
     <nav className="skill-add-steps" aria-label={t('settings.skills.addProgress')}>
       {steps.map((title, index) => {
         const clickable = canJump(index);
@@ -714,7 +812,8 @@ function AddSkillWizard({ client, open, catalog, configs, installer, t, onClose,
       {step > 0 ? <Button type="button" onClick={() => setStep((current) => Math.max(0, current - 1))}>{t('settings.sandbox.back')}</Button> : null}
       <Button type="button" loading={primaryLoading} disabled={primaryDisabled} onClick={() => void handlePrimary()}>{primaryText}</Button>
     </div>
-  </Dialog>;
+  </Dialog>
+  </DrawerShell>;
 }
 
 /** Install-onto-sandboxes drawer opened from a catalog chip (SkillSettings.vue:267-314, 1074-1104). */
@@ -779,7 +878,8 @@ function InstallSkillDialog({ client, open, item, configs, preselectConfigId, in
     }
   }
 
-  return <Dialog open={open} title={t('settings.skills.installToSandbox')} onClose={onClose}>
+  return <DrawerShell open={open} spec={SKILL_DRAWER_SPECS.install}>
+  <Dialog open={open} title={t('settings.skills.installToSandbox')} onClose={onClose}>
     <p className="wk-muted">{description}</p>
     {error ? <Status tone="error">{error}</Status> : null}
     <SandboxPickList item={item} configs={configs} mode="remaining" sessionIds={sessionIds} targetIds={targetIds}
@@ -796,11 +896,243 @@ function InstallSkillDialog({ client, open, item, configs, preselectConfigId, in
       <Button type="button" onClick={onClose}>{t('common.cancel')}</Button>
       <Button type="button" loading={installing} disabled={confirmDisabled} onClick={() => void confirm()}>{confirmText}</Button>
     </div>
-  </Dialog>;
+  </Dialog>
+  </DrawerShell>;
 }
 
 function isSkillBusy(skill: InstalledSkill): boolean {
   return skill.status === 'installing' || skill.status === 'removing';
+}
+
+/** The row is 'installing' before its locators exist; afterwards they gate the run view (SandboxSkillsPanel.vue:846-849). */
+function hasTranscript(skill: InstalledSkill): boolean {
+  if (skill.status === 'installing') return true;
+  return Boolean(skill.installSessionId && skill.installMessageId);
+}
+
+const REMOVE_STAGE_KEYS: Record<string, string> = {
+  accepted: 'settings.sandbox.skillRemoveStage.accepted',
+  sandbox_ready: 'settings.sandbox.skillRemoveStage.sandbox_ready',
+  removed: 'settings.sandbox.skillRemoveStage.removed',
+  done: 'settings.sandbox.skillRemoveStage.done',
+  failed: 'settings.sandbox.skillRemoveStage.failed',
+};
+
+/** Vue progressStageText (SandboxSkillsPanel.vue:1026-1042). */
+function removeStageText(progress: SkillInstallProgressEvent | undefined, skill: InstalledSkill, t: TimelineT): string {
+  const key = progress?.stage ? REMOVE_STAGE_KEYS[progress.stage] : undefined;
+  if (key) return t(key);
+  if (skill.status === 'removing') return t('settings.sandbox.skillRemoveWaiting');
+  return progress?.log ?? '';
+}
+
+type TimelineT = (key: string, values?: Record<string, string | number>) => string;
+
+/**
+ * Compact install run console ported from SkillInstallTimeline.vue: a live
+ * transcript SSE tail (transcript endpoint, chat-shaped frames), the durable
+ * history fallback for finished runs, and the guidance composer that either
+ * steers the live run or reinstalls with guidance.
+ */
+function SkillInstallTimeline({ client, configId, skillId, sessionId, messageId, live, canRetry, onRestarted, t }: {
+  client: WeKnoraClient;
+  configId: string;
+  skillId: string;
+  /** The durable rows behind the run, used when the event log has aged out. */
+  sessionId: string;
+  messageId: string;
+  /** True while the skill is still installing; locators land after the sandbox is up. */
+  live: boolean;
+  canRetry: boolean;
+  onRestarted: () => void;
+  t: TimelineT;
+}) {
+  const [timeline, setTimeline] = useState<SkillTimelineState>(initialSkillTimelineState);
+  const [loading, setLoading] = useState(false);
+  const [guidance, setGuidance] = useState<SkillInstallGuidanceState>({ accepting: false, messages: [] });
+  const [guidanceText, setGuidanceText] = useState('');
+  const [guidanceError, setGuidanceError] = useState('');
+  const [sendingGuidance, setSendingGuidance] = useState(false);
+  // openRun: stop()/a newer open() bump this so an in-flight live loop cannot
+  // keep following after the props changed (SkillInstallTimeline.vue:152-156).
+  const runRef = useRef(0);
+  const guidanceEpochRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
+  const propsRef = useRef({ client, configId, skillId, sessionId, messageId, live });
+  propsRef.current = { client, configId, skillId, sessionId, messageId, live };
+  // Keeps the same id after an uncertain response so Retry cannot enqueue twice (SkillInstallTimeline.vue:82-83).
+  const pendingSendRef = useRef<{ messageId: string; content: string; id: string } | undefined>(undefined);
+
+  const wait = useCallback((ms: number) => new Promise<void>((resolve) => { window.setTimeout(resolve, ms); }), []);
+
+  /** Durable message rows replayed through the same reducer; resolves with how many frames landed. */
+  const loadPersisted = useCallback(async (run: number): Promise<number> => {
+    const current = propsRef.current;
+    try {
+      const rows = await current.client.sessions.messages(current.sessionId, { limit: 100 });
+      if (run !== runRef.current) return 0;
+      let next = initialSkillTimelineState();
+      for (const row of rows as unknown[]) next = reduceSkillTimelineFrame(next, row);
+      setTimeline(next);
+      return next.frames;
+    } catch {
+      return 0;
+    }
+  }, []);
+
+  /** One transcript SSE attempt; resolves to whether the endpoint served content (404 → throw). */
+  const follow = useCallback(async (run: number): Promise<boolean> => {
+    const current = propsRef.current;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    try {
+      return await current.client.sandbox.skills.followTranscript(current.configId, current.skillId, (frame) => {
+        if (run !== runRef.current) return;
+        setTimeline((state) => reduceSkillTimelineFrame(state, frame));
+      }, controller.signal);
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null;
+    }
+  }, []);
+
+  // The run view (SkillInstallTimeline.vue open(), lines 268-319).
+  useEffect(() => {
+    const run = ++runRef.current;
+    setTimeline(initialSkillTimelineState());
+    setLoading(false);
+    if (!configId || !skillId) return;
+    const stale = () => run !== runRef.current;
+    const followOnce = async () => { try { return await follow(run); } catch { return false; } };
+    void (async () => {
+      try {
+        if (!live) {
+          // A finished install replays durable rows without animating; a one-shot
+          // transcript replay covers maintenance sessions with no durable rows.
+          setLoading(true);
+          if (sessionId) {
+            const frames = await loadPersisted(run);
+            if (!stale() && frames === 0 && messageId) await followOnce();
+          }
+          return;
+        }
+        // Locators land after the installer sandbox is up; the parent's poll
+        // refreshes the row, and the key change remounts this timeline.
+        if (!sessionId || !messageId) return;
+        setLoading(true);
+        for (;;) {
+          if (stale() || !propsRef.current.live) return;
+          const served = await followOnce();
+          if (stale() || !propsRef.current.live || served) return;
+          if (propsRef.current.sessionId && propsRef.current.messageId) {
+            const frames = await loadPersisted(run);
+            if (stale() || frames > 0) return;
+          }
+          if (stale() || !propsRef.current.live) return;
+          await wait(1000);
+        }
+      } finally {
+        if (!stale()) setLoading(false);
+      }
+    })();
+    return () => {
+      runRef.current += 1;
+      abortRef.current?.abort();
+      abortRef.current = null;
+    };
+  }, [configId, skillId, sessionId, messageId, live, follow, loadPersisted, wait]);
+
+  // Guidance state polls every 1.5s while the run is live (SkillInstallTimeline.vue:85-96, 134-144).
+  useEffect(() => {
+    const epoch = ++guidanceEpochRef.current;
+    setGuidance({ accepting: false, messages: [] });
+    if (!configId || !skillId) return;
+    let timer: number | undefined;
+    const refresh = async () => {
+      try {
+        const state = await client.sandbox.skills.guidance(configId, skillId);
+        if (epoch !== guidanceEpochRef.current) return;
+        setGuidance(state);
+      } catch {
+        if (epoch === guidanceEpochRef.current) setGuidance((current) => ({ ...current, accepting: false }));
+      }
+      if (epoch === guidanceEpochRef.current && propsRef.current.live) {
+        timer = window.setTimeout(() => void refresh(), 1500);
+      }
+    };
+    void refresh();
+    return () => {
+      guidanceEpochRef.current += 1;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [client, configId, skillId, live]);
+
+  async function sendGuidance() {
+    const content = guidanceText.trim();
+    if (!content || sendingGuidance || (live ? !guidance.accepting : !canRetry)) return;
+    setSendingGuidance(true);
+    setGuidanceError('');
+    try {
+      if (live) {
+        if (!pendingSendRef.current || pendingSendRef.current.messageId !== messageId || pendingSendRef.current.content !== content) {
+          pendingSendRef.current = { messageId, content, id: makeSteerClientId() };
+        }
+        const steerId = pendingSendRef.current.id;
+        await client.sandbox.skills.steer(configId, skillId, { expectedMessageId: messageId, steerId, content });
+        // A failed refresh after a successful POST must not turn Retry into a duplicate send.
+        setGuidance((current) => current.messages.some((item) => item.id === steerId)
+          ? current
+          : { ...current, messages: [...current.messages, { id: steerId, content, status: 'pending' }] });
+        pendingSendRef.current = undefined;
+      } else {
+        await client.configuration.skills.installed.reinstall(configId, skillId, content);
+        onRestarted();
+      }
+      setGuidanceText('');
+    } catch (cause) {
+      setGuidanceError(errorText(cause, t('settings.sandbox.skillGuidance.failed')));
+    } finally {
+      setSendingGuidance(false);
+    }
+  }
+
+  return <section className="skill-timeline skill-timeline--compact" aria-busy={loading}>
+    <div className="skill-timeline__content">
+      {loading && timeline.frames === 0 ? <Status>{t('common.loading')}</Status>
+        : timeline.frames === 0 ? <p className="skill-timeline__empty">{live ? t('settings.sandbox.skillTranscriptWaiting') : t('settings.sandbox.skillTranscriptEmpty')}</p>
+        : <>
+          {timeline.prompt ? <pre className="skill-timeline__prompt">{timeline.prompt}</pre> : null}
+          {timeline.thinking ? <div className="skill-timeline__thinking">{timeline.thinking}</div> : null}
+          {timeline.toolCalls.map((call) => (
+            <div key={call.id} className={`skill-timeline__step is-${call.status}`}>
+              <span className="skill-timeline__step-dot" aria-hidden="true" />
+              <span className="skill-timeline__step-name">{call.name ?? call.id}</span>
+              {typeof call.result === 'string' && call.result ? <span className="skill-timeline__step-result">{call.result}</span> : null}
+            </div>
+          ))}
+          {timeline.answer ? <div className="skill-timeline__answer markdown-content" dangerouslySetInnerHTML={{ __html: renderChatMarkdown(timeline.answer) }} /> : null}
+          {timeline.error ? <p className="skill-timeline__error" role="alert">{timeline.error}</p> : null}
+        </>}
+      {guidance.messages.map((item) => (
+        <div key={item.id} className="skill-timeline__guidance-message">
+          <span>{t(`settings.sandbox.skillGuidance.${item.status}`)}</span>
+          <p>{item.content}</p>
+        </div>
+      ))}
+    </div>
+    {live || canRetry ? <div className="skill-timeline__guidance">
+      <textarea value={guidanceText} maxLength={10000} rows={2} disabled={sendingGuidance}
+        placeholder={t('settings.sandbox.skillGuidance.placeholder')}
+        onChange={(event) => setGuidanceText(event.target.value)} />
+      {guidanceError ? <p role="alert" className="skill-timeline__guidance-error">{guidanceError}</p> : null}
+      <div className="skill-timeline__guidance-actions">
+        <span>{live && !guidance.accepting ? t('settings.sandbox.skillGuidance.unavailable') : ''}</span>
+        <Button type="button" loading={sendingGuidance} disabled={!guidanceText.trim() || (live && !guidance.accepting)}
+          onClick={() => void sendGuidance()}>
+          {t(live ? 'settings.sandbox.skillGuidance.send' : 'settings.sandbox.skillGuidance.retry')}
+        </Button>
+      </div>
+    </div> : null}
+  </section>;
 }
 
 /** Focused install management drawer (SandboxSkillsPanel.vue focus mode, 92-262 + 1374-1458). */
@@ -825,6 +1157,10 @@ function ManageSkillDialog({ client, open, target, t, onClose, onChanged, onToas
   const [envDrafts, setEnvDrafts] = useState<Record<string, string>>({});
   const [envSaving, setEnvSaving] = useState(false);
   const [pendingClearEnv, setPendingClearEnv] = useState('');
+  // Live install/removal progress from the install-events SSE (SandboxSkillsPanel.vue progressById).
+  const [progress, setProgress] = useState<SkillInstallProgressEvent | undefined>(undefined);
+  // Every open re-reads the run from the top (SandboxSkillsPanel.vue:874-879 transcriptEpoch).
+  const [transcriptEpoch, setTranscriptEpoch] = useState(0);
 
   const configId = target?.record.id ?? '';
   const skillId = target?.skillId ?? '';
@@ -854,6 +1190,8 @@ function ManageSkillDialog({ client, open, target, t, onClose, onChanged, onToas
     setPendingClearEnv('');
     setEnvDrafts({});
     setError(null);
+    setProgress(undefined);
+    setTranscriptEpoch((current) => current + 1);
     void load();
   }, [open, load]);
 
@@ -863,6 +1201,36 @@ function ManageSkillDialog({ client, open, target, t, onClose, onChanged, onToas
     const timer = window.setInterval(() => void load(true), SKILL_POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
   }, [open, busy, load]);
+
+  // Keep load/onChanged out of the follow effect so a background refresh does
+  // not tear the SSE connection down (Vue keeps one follow per busy skill).
+  const loadRef = useRef(load);
+  loadRef.current = load;
+  const onChangedRef = useRef(onChanged);
+  onChangedRef.current = onChanged;
+
+  // followBusySkills/followProgress (SandboxSkillsPanel.vue:1089-1174): one
+  // install-events stream per busy skill; the backend always terminates it, so
+  // the terminal frame drives the refresh exactly like Vue's done branch.
+  useEffect(() => {
+    if (!open || !busy || !configId || !skillId) return undefined;
+    let active = true;
+    const controller = new AbortController();
+    void client.sandbox.skills.followInstallEvents(configId, skillId, (frame) => {
+      if (!active) return;
+      setProgress(frame.event);
+      if (frame.terminal) {
+        void loadRef.current(true);
+        onChangedRef.current();
+      }
+    }, controller.signal).catch(() => {
+      // Stream closed early; the 2.5s status poll keeps the row fresh.
+    });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [client, open, busy, configId, skillId]);
 
   // Vue watches the list until a removing row disappears, then shows the done note (SandboxSkillsPanel.vue:823-834).
   useEffect(() => {
@@ -893,6 +1261,7 @@ function ManageSkillDialog({ client, open, target, t, onClose, onChanged, onToas
   async function retry() {
     if (!skill) return;
     setRetrying(true);
+    setProgress(undefined);
     try {
       await client.configuration.skills.installed.reinstall(configId, skillId);
       onToast('success', t('settings.sandbox.skillRetryAccepted'));
@@ -907,6 +1276,7 @@ function ManageSkillDialog({ client, open, target, t, onClose, onChanged, onToas
   async function stop() {
     if (!skill) return;
     setStopping(true);
+    setProgress(undefined);
     try {
       setSkill(await client.configuration.skills.installed.stop(configId, skillId));
       onToast('success', t('settings.sandbox.skillStopAccepted'));
@@ -923,6 +1293,7 @@ function ManageSkillDialog({ client, open, target, t, onClose, onChanged, onToas
     if (!skill || busy) return;
     setPendingUninstall(false);
     setUninstalling(true);
+    setProgress(undefined);
     try {
       await client.configuration.skills.installed.remove(configId, skillId);
       onToast('success', t('settings.sandbox.skillDeleteAccepted'));
@@ -965,16 +1336,20 @@ function ManageSkillDialog({ client, open, target, t, onClose, onChanged, onToas
   }
 
   const errorLines = installErrorLines(skill?.error);
-  return <Dialog open={open} title={target?.catalogName ?? ''} onClose={onClose}>
+  return <DrawerShell open={open} spec={SKILL_DRAWER_SPECS.manage}>
+  <Dialog open={open} title={target?.catalogName ?? ''} onClose={onClose}>
     <p className="wk-muted">{target ? t('settings.skills.manageDrawerDesc', { name: target.record.name }) : ''}</p>
     {loading ? <Status>{t('common.loading')}</Status> : null}
     {error ? <Status tone="error">{error}</Status> : null}
     {skill ? uninstallDone ? <div className="skill-manage__done">
       <span aria-hidden="true">✓</span>
       <p>{t('settings.sandbox.skillRemoveDone', { name: skill.name })}</p>
-    </div> : busy && skill.status === 'removing' ? <section className="skill-manage__section">
-      <h4>{t('settings.sandbox.skillRemoveInProgress')}</h4>
-      <p className="wk-muted">{t('settings.sandbox.skillRemoveWaiting')}</p>
+    </div> : busy && skill.status === 'removing' ? <section className="skill-manage__section skill-manage__section--remove">
+      <div className="skill-manage__section-head">
+        <h4>{t('settings.sandbox.skillRemoveInProgress')}</h4>
+        <ProgressRing percent={installProgressPercent(progress, skill.status)} />
+      </div>
+      <p className="skill-manage__remove-stage">{removeStageText(progress, skill, t)}</p>
     </section> : <>
       <div className="skill-manage__row">
         <div className="skill-manage__info">
@@ -1026,8 +1401,41 @@ function ManageSkillDialog({ client, open, target, t, onClose, onChanged, onToas
           <Button type="button" loading={envSaving} disabled={Object.keys(envPayload()).length === 0 || busy} onClick={() => void saveEnvs()}>{t('settings.sandbox.skillEnv.save')}</Button>
         </div>
       </section> : null}
+      {hasTranscript(skill) ? <section className="skill-manage__section skill-manage__section--transcript">
+        <div className="skill-manage__section-head">
+          <h4>{t('settings.sandbox.skillTranscriptTitle')}</h4>
+          {skill.status === 'installing' ? <ProgressRing percent={installProgressPercent(progress, skill.status)} /> : null}
+        </div>
+        <SkillInstallTimeline
+          key={`${skill.id}-${skill.installSessionId ?? ''}-${transcriptEpoch}`}
+          client={client}
+          configId={configId}
+          skillId={skillId}
+          sessionId={skill.installSessionId ?? ''}
+          messageId={skill.installMessageId ?? ''}
+          live={skill.status === 'installing'}
+          canRetry={skill.status === 'ready' || skill.status === 'failed'}
+          onRestarted={() => { setProgress(undefined); void load(true); onChangedRef.current(); }}
+          t={t}
+        />
+      </section> : null}
     </> : !loading && !error ? <Status>{t('common.loading')}</Status> : null}
-  </Dialog>;
+  </Dialog>
+  </DrawerShell>;
+}
+
+/** Vue focus-drawer progress ring (SandboxSkillsPanel.vue:239-248 t-progress circle + percent). */
+function ProgressRing({ percent }: { percent: number }) {
+  const circumference = 2 * Math.PI * 7;
+  const clamped = Math.max(0, Math.min(100, percent));
+  return <div className="skill-manage__progress">
+    <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true">
+      <circle className="skill-manage__progress-track" cx="9" cy="9" r="7" fill="none" strokeWidth="2" />
+      <circle className="skill-manage__progress-bar" cx="9" cy="9" r="7" fill="none" strokeWidth="2" strokeLinecap="round"
+        strokeDasharray={`${(clamped / 100) * circumference} ${circumference}`} transform="rotate(-90 9 9)" />
+    </svg>
+    <span>{clamped}%</span>
+  </div>;
 }
 
 /** Catalog file browser drawer (SkillFilesDrawer.vue + SkillFilesPanel.vue). */
@@ -1140,7 +1548,8 @@ function CatalogFilesDialog({ client, open, target, t, onClose }: {
                   {frontmatter && frontmatter.fields.length > 0 ? <dl className="skill-files-panel__meta">
                     {frontmatter.fields.map((field) => <div key={field.key} className="skill-files-panel__meta-row"><dt>{field.key}</dt><dd className={field.code ? 'is-code' : undefined}>{field.value}</dd></div>)}
                   </dl> : null}
-                  <pre className="skill-files-panel__code">{frontmatter?.body ?? file.content}</pre>
+                  {/* Vue renders the markdown body as HTML (SkillFilesPanel.vue:87-91, 476-478); the shared renderer escapes raw HTML and allow-lists links. */}
+                  <div className="skill-files-panel__markdown markdown-content" dangerouslySetInnerHTML={{ __html: renderChatMarkdown(frontmatter?.body ?? file.content) }} />
                 </>
                 : file?.encoding === 'utf-8' && file.content != null ? <pre className="skill-files-panel__code"><code>{file.content}</code></pre>
                 : <p className="wk-muted">{t('settings.sandbox.skillFilesBinary')}</p>}

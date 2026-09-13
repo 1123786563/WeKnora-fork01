@@ -276,3 +276,228 @@ test('frontmatter parsing unquotes values and pretty-prints JSON', () => {
   assert.equal(parsed.body.trim(), 'body text');
   assert.deepEqual(splitMarkdownFrontmatter('# just markdown').fields, []);
 });
+
+// ---- jsdom interaction coverage: Vue SkillInstallTimeline + progress SSE parity ----
+const { JSDOM } = nodeModule.createRequire(import.meta.url)('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Window & typeof globalThis } };
+const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test' });
+Object.assign(globalThis, {
+  window: dom.window,
+  document: dom.window.document,
+  HTMLElement: dom.window.HTMLElement,
+  Event: dom.window.Event,
+  MouseEvent: dom.window.MouseEvent,
+  IS_REACT_ACT_ENVIRONMENT: true,
+});
+Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
+if (typeof (globalThis as { crypto?: unknown }).crypto === 'undefined') {
+  (globalThis as { crypto?: unknown }).crypto = dom.window.crypto;
+}
+
+const { createRoot } = await import('react-dom/client');
+const { act } = await import('react');
+
+function settle(ms = 60) {
+  return act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)); });
+}
+
+function findButton(label: string): HTMLButtonElement | undefined {
+  return Array.from(document.querySelectorAll('button')).find((button) => (button.textContent ?? '').includes(label)) as HTMLButtonElement | undefined;
+}
+
+type SkillStubOverrides = {
+  installed?: Record<string, unknown>;
+  progressFrames?: Array<{ percent: number; stage: string; done: boolean; status?: string; log?: string }>;
+  transcriptFrames?: unknown[];
+  messages?: unknown[];
+  guidance?: { accepting: boolean; messages: Array<{ id: string; content: string; status: string }> };
+  steerFail?: boolean;
+};
+
+function skillStubClient(overrides: SkillStubOverrides = {}) {
+  const calls = { steer: [] as unknown[], reinstall: [] as unknown[], progressRuns: 0, transcriptRuns: 0 };
+  const installed = overrides.installed ?? { id: 'sk-1', name: 'PDF', enabled: true, status: 'installing', installSessionId: 'sess-1', installMessageId: 'msg-1' };
+  const client = {
+    sandboxConfigurations: { list: async () => ({ items: [sandboxConfig('cfg-1', 'Docker dev')] }) },
+    configuration: {
+      agents: { get: async () => ({ id: 'builtin-skill-installer', name: 'Installer', description: '', avatar: '', config: {} }) },
+      models: { list: async () => [] },
+      skills: {
+        catalog: {
+          list: async () => [catalogItem('cat-1', 'PDF', [installation('cfg-1', 'installing', true, { skillId: 'sk-1', sandboxConfigName: 'Docker dev' })])],
+          files: async () => [{ path: 'SKILL.md', size: 24 }],
+          file: async () => ({ path: 'SKILL.md', size: 24, encoding: 'utf-8', content: '---\nname: pdf\n---\n\n# Hello\n\n**bold** body' }),
+        },
+        installed: {
+          get: async () => installed,
+          reinstall: async (...args: unknown[]) => { calls.reinstall.push(args); return { skillId: 'sk-1' }; },
+        },
+      },
+    },
+    sessions: { messages: async () => overrides.messages ?? [] },
+    sandbox: {
+      skills: {
+        followInstallEvents: async (_configId: string, _skillId: string, onEvent: (frame: { event: unknown; terminal: boolean }) => void) => {
+          calls.progressRuns += 1;
+          for (const frame of overrides.progressFrames ?? []) {
+            onEvent({ event: frame, terminal: frame.done === true });
+          }
+        },
+        followTranscript: async (_configId: string, _skillId: string, onFrame: (frame: unknown) => void) => {
+          calls.transcriptRuns += 1;
+          for (const frame of overrides.transcriptFrames ?? [
+            { response_type: 'install_prompt', content: 'Install pdf-skill' },
+            { response_type: 'thinking', content: 'planning' },
+            { response_type: 'answer', content: 'All set' },
+            { response_type: 'complete' },
+          ]) onFrame(frame);
+          return true;
+        },
+        guidance: async () => overrides.guidance ?? { accepting: true, messages: [{ id: 'g1', content: 'use apt', status: 'pending' }] },
+        steer: async (...args: unknown[]) => {
+          calls.steer.push(args);
+          if (overrides.steerFail) throw new Error('steer rejected');
+          return { success: true };
+        },
+      },
+    },
+  } as never;
+  return { client, calls };
+}
+
+async function openManageDrawer(client: unknown) {
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(React.createElement(SkillSettingsPanel, {
+      client: client as never,
+      role: 'admin',
+      initialCatalog: [catalogItem('cat-1', 'PDF', [installation('cfg-1', 'installing', true, { skillId: 'sk-1', sandboxConfigName: 'Docker dev' })])],
+      initialSandboxConfigs: [sandboxConfig('cfg-1', 'Docker dev')],
+    }));
+  });
+  return { container, root };
+}
+
+test('the manage drawer mounts the install timeline and live progress from the SSE sources', async () => {
+  const { client, calls } = skillStubClient({
+    progressFrames: [{ percent: 42, stage: 'building', done: false }],
+  });
+  const { root } = await openManageDrawer(client);
+  try {
+    await act(async () => { findButton('已安装到 Docker dev')?.click(); });
+    await settle();
+    const section = document.querySelector('.skill-manage__section--transcript');
+    assert.ok(section, 'transcript section renders');
+    assert.match(section?.textContent ?? '', /安装过程/);
+    const progress = document.querySelector('.skill-manage__progress');
+    assert.ok(progress, 'progress ring renders while installing');
+    assert.match(progress?.textContent ?? '', /42%/);
+    assert.equal(calls.progressRuns, 1, 'one install-events follow');
+    const timeline = document.querySelector('.skill-timeline');
+    assert.ok(timeline, 'timeline renders');
+    assert.match(timeline?.querySelector('.skill-timeline__prompt')?.textContent ?? '', /Install pdf-skill/);
+    assert.match(timeline?.textContent ?? '', /All set/);
+    assert.match(timeline?.textContent ?? '', /use apt/);
+    assert.match(timeline?.textContent ?? '', /待处理/);
+    const composer = timeline?.querySelector('.skill-timeline__guidance textarea');
+    assert.ok(composer, 'guidance composer renders while live');
+    const send = Array.from(document.querySelectorAll('button')).find((button) => (button.textContent ?? '').includes('发送说明'));
+    assert.ok(send, 'send guidance button renders');
+    assert.equal((send as HTMLButtonElement).disabled, true, 'send disabled until text is entered');
+  } finally {
+    await act(async () => root.unmount());
+    document.body.replaceChildren();
+  }
+});
+
+test('guidance text is steered into the live run with the Vue payload and appended as pending', async () => {
+  const { client, calls } = skillStubClient({ progressFrames: [] });
+  const { root } = await openManageDrawer(client);
+  try {
+    await act(async () => { findButton('已安装到 Docker dev')?.click(); });
+    await settle();
+    const textarea = document.querySelector('.skill-timeline__guidance textarea') as HTMLTextAreaElement;
+    assert.ok(textarea, 'composer textarea renders');
+    const setter = Object.getOwnPropertyDescriptor(dom.window.HTMLTextAreaElement.prototype, 'value')?.set;
+    await act(async () => {
+      setter?.call(textarea, 'pin apt version');
+      textarea.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    });
+    const send = Array.from(document.querySelectorAll('button')).find((button) => (button.textContent ?? '').includes('发送说明')) as HTMLButtonElement;
+    await act(async () => { send.click(); });
+    await settle();
+    assert.equal(calls.steer.length, 1);
+    const [configId, skillId, payload] = calls.steer[0] as [string, string, Record<string, string>];
+    assert.equal(configId, 'cfg-1');
+    assert.equal(skillId, 'sk-1');
+    // The stub replaces the api-client method, so the camelCase input is what
+    // the panel hands over; wire-level snake_case is asserted in skill-install.test.ts.
+    assert.equal(payload.expectedMessageId, 'msg-1');
+    assert.match(payload.steerId, /^[0-9a-f-]{36}$/);
+    assert.equal(payload.content, 'pin apt version');
+    const timeline = document.querySelector('.skill-timeline');
+    assert.match(timeline?.textContent ?? '', /pin apt version/, 'appended pending guidance is rendered');
+    assert.equal(textarea.value, '', 'composer clears after send');
+  } finally {
+    await act(async () => root.unmount());
+    document.body.replaceChildren();
+  }
+});
+
+test('a failed run replays the durable history and reinstalls with guidance on retry', async () => {
+  const { client, calls } = skillStubClient({
+    installed: { id: 'sk-1', name: 'PDF', enabled: true, status: 'failed', installSessionId: 'sess-1', installMessageId: 'msg-1' },
+    messages: [
+      { response_type: 'install_prompt', content: 'Install pdf-skill' },
+      { response_type: 'answer', content: 'earlier run output' },
+    ],
+  });
+  const { root } = await openManageDrawer(client);
+  try {
+    await act(async () => { findButton('已安装到 Docker dev')?.click(); });
+    await settle();
+    assert.equal(calls.transcriptRuns, 0, 'a finished run reads durable history first');
+    const timeline = document.querySelector('.skill-timeline');
+    assert.ok(timeline, 'timeline renders');
+    assert.match(timeline?.querySelector('.skill-timeline__prompt')?.textContent ?? '', /Install pdf-skill/);
+    assert.match(timeline?.textContent ?? '', /earlier run output/);
+    const retry = Array.from(document.querySelectorAll('button')).find((button) => (button.textContent ?? '').includes('携带说明重新安装')) as HTMLButtonElement;
+    assert.ok(retry, 'retry composer button renders when the run can be retried');
+    const textarea = document.querySelector('.skill-timeline__guidance textarea') as HTMLTextAreaElement;
+    const setter = Object.getOwnPropertyDescriptor(dom.window.HTMLTextAreaElement.prototype, 'value')?.set;
+    await act(async () => {
+      setter?.call(textarea, 'install libxml first');
+      textarea.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    });
+    await act(async () => { retry.click(); });
+    await settle();
+    assert.deepEqual(calls.reinstall, [['cfg-1', 'sk-1', 'install libxml first']]);
+  } finally {
+    await act(async () => root.unmount());
+    document.body.replaceChildren();
+  }
+});
+
+test('the files browser renders SKILL.md as markdown with the frontmatter table', async () => {
+  const { client } = skillStubClient({ progressFrames: [] });
+  const { root } = await openManageDrawer(client);
+  try {
+    await act(async () => {
+      const files = document.querySelector('button[aria-label="查看文件"]') as HTMLButtonElement | null;
+      files?.click();
+    });
+    await settle();
+    const markdown = document.querySelector('.skill-files-panel__markdown');
+    assert.ok(markdown, 'markdown preview renders');
+    assert.match(markdown?.innerHTML ?? '', /<h1[^>]*>Hello<\/h1>/);
+    assert.match(markdown?.innerHTML ?? '', /<strong>bold<\/strong>/);
+    const meta = document.querySelector('.skill-files-panel__meta');
+    assert.ok(meta, 'frontmatter table renders');
+    assert.match(meta?.textContent ?? '', /name/);
+    assert.match(meta?.textContent ?? '', /pdf/);
+  } finally {
+    await act(async () => root.unmount());
+    document.body.replaceChildren();
+  }
+});

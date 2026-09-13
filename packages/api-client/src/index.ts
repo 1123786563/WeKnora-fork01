@@ -37,6 +37,8 @@ export { createEmbedClient } from './embed/client.ts';
 export type { EmbedClient, EmbedClientOptions } from './embed/client.ts';
 export { createSandboxTerminalApi, parseSandboxTerminalTicket } from './sandbox/terminal.ts';
 export type { SandboxTerminalApi, SandboxTerminalTicket } from './sandbox/terminal.ts';
+export { createSandboxSkillInstallApi, parseSkillInstallEvent, parseSkillInstallGuidanceState, skillInstallEventsPath, skillTranscriptPath, skillGuidancePath } from './sandbox/skill-install.ts';
+export type { SandboxSkillInstallApi, SandboxSkillInstallDeps, SkillInstallEvent, SkillInstallGuidanceMessage, SkillInstallGuidanceState, ParsedSkillSseFrame, SkillSteerInput } from './sandbox/skill-install.ts';
 export { createSandboxConfigurationsApi, parseSandboxConfigurationConflict } from './sandbox-configurations.ts';
 export type {
   CubeSandboxConfig,
