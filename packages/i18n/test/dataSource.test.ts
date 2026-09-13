@@ -4,7 +4,7 @@ import { formatMessage, messages, supportedLocales } from '../src/index.ts';
 
 test('data-source log messages exist in every supported locale', () => {
   const keys = Object.keys(messages['en-US']).filter((key) => key.startsWith('dataSource.')).sort();
-  assert.equal(keys.length, 19);
+  assert.equal(keys.length, 20);
   for (const locale of supportedLocales) {
     assert.deepEqual(Object.keys(messages[locale]).filter((key) => key.startsWith('dataSource.')).sort(), keys, `${locale} data-source messages diverge`);
     assert.notEqual(formatMessage(locale, 'dataSource.syncHistory'), 'dataSource.syncHistory');

@@ -13,10 +13,10 @@ const React = require('react') as typeof import('react');
 const { act } = require('react') as typeof import('react');
 const { createRoot } = require('react-dom/client') as { createRoot: (host: Element) => { render(node: unknown): void; unmount(): void } };
 
-async function mount(role: string) {
+async function mount(role: string, locale = 'en-US') {
   const dom = new JSDOM('<div id="root"></div>', { url: 'https://weknora.test' });
   const runtime: any = {
-    tenantId: '1',
+    tenantId: '1', locale,
     workspaces: [{ id: 1, role }],
     client: { dataSources: {
       list: async () => [
@@ -100,6 +100,18 @@ test('sync log drawer paginates with a guarded server offset', async () => {
     await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
     assert.deepEqual(calls[1], ['source-1', 50, 50]);
     assert.equal(Array.from(page.host.querySelectorAll('button')).some((item) => item.textContent === 'Load more'), false);
+  } finally { await page.close(); }
+});
+
+test('sync log drawer uses the active locale for empty state and controls', async () => {
+  const page = await mount('admin', 'zh-CN');
+  try {
+    page.runtime.client.dataSources.logs = async () => [];
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Logs')?.click());
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+    assert.match(page.host.textContent ?? '', /同步历史/);
+    assert.match(page.host.textContent ?? '', /暂无同步记录/);
+    assert.match(page.host.textContent ?? '', /关闭/);
   } finally { await page.close(); }
 });
 

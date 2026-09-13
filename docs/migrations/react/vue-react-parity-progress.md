@@ -924,9 +924,10 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   still open.
 
 - **N031 mobile sync-log i18n slice:** shared i18n now supplies the Vue sync
-  history, summary, status, and detail labels in all five repository locales;
-  the native log panel consumes the active mobile locale. i18n suite 1/1,
-  DataSources DOM 19/19, mobile full 99/99, both typechecks and diff check pass.
+  history, summary, status, detail, empty-state, close, and refresh labels in all
+  five repository locales; the native log panel consumes the active mobile locale.
+  i18n suite 1/1, DataSources DOM 20/20, mobile full 99/99, both typechecks and
+  diff check pass.
   Main data-source/editor copy and runtime evidence remain open.
 
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
