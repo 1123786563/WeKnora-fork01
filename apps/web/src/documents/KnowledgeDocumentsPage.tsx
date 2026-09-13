@@ -15,15 +15,21 @@ import {
   batchUploadExtensions,
   buildUploadConfirmOverrides,
   commitFolderName,
+  defaultUploadConfirmSection,
   destinationBreadcrumb,
   folderPickerRows,
   formatBytes,
+  GRAPH_EXTRACT_DEFAULT_EXAMPLE,
+  graphDatabaseEnabled,
+  graphSectionAvailable,
+  hasGraphAdminRole,
   mergeFolderOptions,
   mergeUploadEntries,
   multimodalSectionIssue,
   normalizeUploadUrl,
   removeUploadEntry,
   runUploadPipeline,
+  sectionAfterGraphAvailabilityChange,
   toUploadEntries,
   uploadConfirmStateFromKb,
   uploadConfirmT,
@@ -32,10 +38,14 @@ import {
   uploadSectionStatus,
   type FolderOption,
   type Locale,
+  type UploadConfirmSectionKey,
   type UploadConfirmUIState,
   type UploadEntry,
   type UploadEntryState,
   type UploadEntryStatus,
+  type UploadGraphNodeState,
+  type UploadGraphRelationState,
+  type UploadNodeExtractState,
 } from "./upload-pipeline.ts";
 import "./documents.css";
 import {
@@ -63,7 +73,7 @@ interface KnowledgeDocumentsPageProps {
 
 type UploadSource = "file" | "url" | "manual";
 type UploadDialogMode = "file" | "manual" | "reparse";
-type UploadConfirmSectionKey = "tags" | "parser" | "chunking" | "multimodal" | "asr" | "question";
+/** Vue UploadConfirmResult per-URL append: one shared normalize helper. */
 
 /** t built the way the settings panels do: shared i18n first, dialog table fallback. */
 export type UploadDialogT = (key: string, values?: Record<string, string | number>) => string;
@@ -386,6 +396,24 @@ export interface UploadSectionNavItem {
   statusTitle: string;
   tone?: "warning" | "error" | "muted";
   issue: boolean;
+  /** Vue t-icon name (only some entries carry one, e.g. graph: chart-bubble). */
+  icon?: "chart-bubble";
+  /** Vue activeSection === item.key. */
+  active?: boolean;
+}
+
+/** Minimal inline stand-in for the Vue t-icon "chart-bubble" glyph. */
+function NavIcon({ name }: { name: "chart-bubble" }) {
+  if (name === "chart-bubble") {
+    return (
+      <svg className="wk-upload-nav-icon" width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden style={{ flex: "0 0 auto" }}>
+        <circle cx="5" cy="5" r="3" />
+        <circle cx="11.5" cy="10.5" r="2.5" />
+        <circle cx="4.5" cy="12" r="1.8" />
+      </svg>
+    );
+  }
+  return null;
 }
 
 export interface UploadSectionNavProps {
@@ -408,7 +436,12 @@ export function UploadSectionNav(props: UploadSectionNavProps) {
         <button
           key={item.key}
           type="button"
-          className={item.issue ? "wk-upload-nav-item has-issue" : "wk-upload-nav-item"}
+          className={[
+            "wk-upload-nav-item",
+            item.active ? "is-active" : "",
+            item.issue ? "has-issue" : "",
+          ].filter(Boolean).join(" ")}
+          aria-current={item.active ? "true" : undefined}
           data-section-target={item.key}
           style={{
             display: "inline-flex",
@@ -423,6 +456,7 @@ export function UploadSectionNav(props: UploadSectionNavProps) {
           }}
           onClick={() => props.onSelect(item.key)}
         >
+          {item.icon ? <NavIcon name={item.icon} /> : null}
           <span>{item.label}</span>
           <span
             className={`wk-upload-nav-status tone-${item.tone ?? "default"}`}
@@ -435,6 +469,107 @@ export function UploadSectionNav(props: UploadSectionNavProps) {
         </button>
       ))}
     </nav>
+  );
+}
+
+// --- Add-source dropdown (Vue KbUploadSourceDropdown parity) -------------------
+
+export type UploadSourceDropdownAction = "file" | "folder" | "url";
+
+export interface UploadSourceDropdownProps {
+  /** Vue tooltip prop — the uploadConfirm.continueAdd copy in this dialog. */
+  tooltip: string;
+  items: { key: UploadSourceDropdownAction; label: string }[];
+  open: boolean;
+  onToggle: () => void;
+  /** Bubbled for the URL entry (which opens the import sub-dialog). */
+  onSelect: (key: UploadSourceDropdownAction) => void;
+  /** Picked files from the hidden multiple / webkitdirectory inputs. */
+  onFiles: (files: File[]) => void;
+}
+
+/**
+ * The dialog's "continue add" affordance (Vue KbUploadSourceDropdown.vue):
+ * one trigger opening a file/folder/URL menu; the menu entries drive hidden
+ * multiple and webkitdirectory file inputs, URL opens the import sub-dialog.
+ */
+export function UploadSourceDropdown(props: UploadSourceDropdownProps) {
+  const wrapRef = useRef<HTMLSpanElement | null>(null);
+  function openNativeInput(kind: "file" | "folder") {
+    const input = wrapRef.current?.querySelector<HTMLInputElement>(`input[data-upload-source-input="${kind}"]`);
+    input?.click();
+  }
+  function handleAction(key: UploadSourceDropdownAction) {
+    props.onSelect(key);
+    if (key === "file" || key === "folder") openNativeInput(key);
+  }
+  return (
+    <span ref={wrapRef} className="wk-upload-source" style={{ position: "relative", display: "inline-flex" }}>
+      <input
+        type="file"
+        multiple
+        className="wk-upload-source__hidden-input"
+        data-upload-source-input="file"
+        style={{ display: "none" }}
+        aria-hidden
+        tabIndex={-1}
+        onChange={(event) => {
+          const files = Array.from(event.target.files ?? []);
+          event.target.value = "";
+          if (files.length > 0) props.onFiles(files);
+        }}
+      />
+      <input
+        type="file"
+        multiple
+        {...({ webkitdirectory: "" } as Record<string, unknown>)}
+        className="wk-upload-source__hidden-input"
+        data-upload-source-input="folder"
+        style={{ display: "none" }}
+        aria-hidden
+        tabIndex={-1}
+        onChange={(event) => {
+          const files = Array.from(event.target.files ?? []);
+          event.target.value = "";
+          if (files.length > 0) props.onFiles(files);
+        }}
+      />
+      <button
+        type="button"
+        className="wk-upload-source__trigger"
+        aria-label={props.tooltip}
+        title={props.tooltip}
+        aria-haspopup="menu"
+        aria-expanded={props.open}
+        onClick={props.onToggle}
+        style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "28px", height: "28px", border: "1px solid var(--wk-border, #e4e7ec)", borderRadius: "6px", background: "transparent", cursor: "pointer", fontSize: "14px" }}
+      >
+        <span aria-hidden>＋</span>
+      </button>
+      {props.open ? (
+        <span
+          className="wk-upload-source__menu"
+          role="menu"
+          aria-label={props.tooltip}
+          style={{ position: "absolute", top: "32px", left: 0, zIndex: 40, minWidth: "160px", padding: "4px", border: "1px solid var(--wk-border, #e4e7ec)", borderRadius: "8px", background: "var(--wk-surface, #fff)", boxShadow: "0 8px 24px rgba(0,0,0,0.12)", display: "flex", flexDirection: "column" }}
+        >
+          {props.items.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              role="menuitem"
+              className="wk-upload-source__item"
+              data-upload-source={item.key}
+              onClick={() => handleAction(item.key)}
+              style={{ display: "flex", alignItems: "center", gap: "6px", padding: "6px 8px", border: "none", borderRadius: "6px", background: "transparent", cursor: "pointer", textAlign: "left", fontSize: "0.9rem" }}
+            >
+              <span aria-hidden>{item.key === "file" ? "📄" : item.key === "folder" ? "📁" : "🔗"}</span>
+              {item.label}
+            </button>
+          ))}
+        </span>
+      ) : null}
+    </span>
   );
 }
 
@@ -451,6 +586,10 @@ export interface UploadConfirmSectionsProps {
   asrModels: ModelConfiguration[];
   moreOpen: boolean;
   onToggleMore: () => void;
+  /** Vue isGraphSectionAvailable: gate the graph section (v-if parity). */
+  graphAvailable?: boolean;
+  /** The UploadGraphSettings element rendered inside the gated graph fieldset. */
+  graphSettings?: React.ReactNode;
   /** Shared-i18n-first translator (covers knowledgeEditor.* / settings.*). */
   t: UploadDialogT;
 }
@@ -817,7 +956,454 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
           </label>
         ) : null}
       </fieldset>
+      {props.graphAvailable && props.graphSettings ? (
+        <fieldset className="wk-upload-confirm-graph" id="wk-upload-section-graph" data-section="graph">
+          {props.graphSettings}
+        </fieldset>
+      ) : null}
     </>
+  );
+}
+
+// --- Graph settings (Vue GraphSettings.vue upload-dialog parity, N007) --------
+
+/** One admin extraction call (POST /initialization/extract/*, routes_infra.go:123-125). */
+export type UploadGraphExtractAction = "fabri-tag" | "fabri-text" | "text-relation";
+
+export interface UploadGraphExtractResult {
+  tags?: string[];
+  text?: string;
+  nodes?: UploadGraphNodeState[];
+  relations?: UploadGraphRelationState[];
+}
+
+export interface UploadGraphSettingsProps {
+  graphExtract: UploadNodeExtractState;
+  /** Vue isGraphDatabaseEnabled for the embedded disabled alert. */
+  graphDatabaseOn: boolean;
+  /** Vue modelId prop — the KB summary model gates the LLM-backed actions. */
+  llmModelId: string;
+  /** Vue canRunGraphExtract: tenant role at least admin. */
+  canRunExtract: boolean;
+  /** Extraction endpoint caller; undefined keeps the admin-gated buttons inert. */
+  runExtractAction?: (action: UploadGraphExtractAction, body: Record<string, unknown>) => Promise<UploadGraphExtractResult | null>;
+  /** Success/error feedback line (Vue MessagePlugin toasts). */
+  onNotify?: (message: string, tone: "neutral" | "warning" | "error") => void;
+  onChange: (config: UploadNodeExtractState) => void;
+  t: UploadDialogT;
+}
+
+/**
+ * Vue GraphSettings.vue ported for the upload-confirm dialog: enable switch
+ * (turning it off clears the sample data but keeps custom instructions),
+ * custom instructions, creatable relation-type tags, sample text, entity rows
+ * with attributes, relation rows, add-entity/relation rows, the extraction
+ * actions (admin-only LLM calls) and the default/clear example fixtures.
+ */
+export function UploadGraphSettings(props: UploadGraphSettingsProps) {
+  const { t, graphExtract } = props;
+  const llmAvailable = !!props.llmModelId;
+  const emit = (next: UploadNodeExtractState) => props.onChange(next);
+
+  function patch(partial: Partial<UploadNodeExtractState>) {
+    emit({ ...graphExtract, ...partial });
+  }
+
+  // Vue handleEnabledChange: off clears text/tags/nodes/relations, keeps customInstructions.
+  function handleEnabledChange(enabled: boolean) {
+    if (!enabled) {
+      emit({ ...graphExtract, enabled: false, text: "", tags: [], nodes: [], relations: [] });
+      return;
+    }
+    emit({ ...graphExtract, enabled: true });
+  }
+
+  function updateNode(nodeIndex: number, next: UploadGraphNodeState) {
+    patch({ nodes: graphExtract.nodes.map((node, index) => (index === nodeIndex ? next : node)) });
+  }
+
+  function removeNode(nodeIndex: number) {
+    patch({ nodes: graphExtract.nodes.filter((_, index) => index !== nodeIndex) });
+  }
+
+  function updateRelation(relationIndex: number, next: UploadGraphRelationState) {
+    patch({ relations: graphExtract.relations.map((relation, index) => (index === relationIndex ? next : relation)) });
+  }
+
+  function removeRelation(relationIndex: number) {
+    patch({ relations: graphExtract.relations.filter((_, index) => index !== relationIndex) });
+  }
+
+  // Vue defaultExtractExample / clearExtractExample.
+  function loadDefaultExample() {
+    emit({
+      ...graphExtract,
+      text: GRAPH_EXTRACT_DEFAULT_EXAMPLE.text,
+      tags: [...GRAPH_EXTRACT_DEFAULT_EXAMPLE.tags],
+      nodes: GRAPH_EXTRACT_DEFAULT_EXAMPLE.nodes.map((node) => ({ ...node, attributes: [...node.attributes] })),
+      relations: GRAPH_EXTRACT_DEFAULT_EXAMPLE.relations.map((relation) => ({ ...relation })),
+    });
+    props.onNotify?.(t("graphSettings.exampleLoaded"), "neutral");
+  }
+
+  function clearExample() {
+    emit({ ...graphExtract, text: "", tags: [], nodes: [], relations: [] });
+    props.onNotify?.(t("graphSettings.exampleCleared"), "neutral");
+  }
+
+  async function runAction(action: UploadGraphExtractAction, body: Record<string, unknown>, applyResult: (result: UploadGraphExtractResult) => UploadNodeExtractState, successMessage: string, failedMessage: string) {
+    if (!props.runExtractAction) return;
+    try {
+      const result = await props.runExtractAction(action, body);
+      if (result) {
+        emit(applyResult(result));
+        props.onNotify?.(successMessage, "neutral");
+      } else {
+        props.onNotify?.(failedMessage, "error");
+      }
+    } catch {
+      props.onNotify?.(failedMessage, "error");
+    }
+  }
+
+  const [extracting, setExtracting] = useState(false);
+
+  return (
+    <div className="wk-graph-settings">
+      <div className="section-header">
+        <h2>{t("graphSettings.title")}</h2>
+        <p className="section-desc">{t("graphSettings.description")}</p>
+      </div>
+      {!props.graphDatabaseOn ? (
+        <p className="wk-graph-alert" role="alert">{t("graphSettings.disabledWarning")}</p>
+      ) : null}
+      <div className="settings-group">
+        <div className="wk-graph-setting-row">
+          <div className="setting-info">
+            <label htmlFor="wk-graph-enabled">{t("graphSettings.enableLabel")}</label>
+            <p className="wk-muted">{t("graphSettings.enableDescription")}</p>
+          </div>
+          <div className="setting-control">
+            <input
+              id="wk-graph-enabled"
+              type="checkbox"
+              checked={graphExtract.enabled}
+              onChange={(event) => handleEnabledChange(event.target.checked)}
+            />
+          </div>
+        </div>
+
+        {graphExtract.enabled ? (
+          <>
+            <div className="wk-graph-setting-row is-vertical">
+              <div className="setting-info">
+                <label htmlFor="wk-graph-instructions">{t("graphSettings.customInstructionsLabel")}</label>
+                <p className="wk-muted">{t("graphSettings.customInstructionsDescription")}</p>
+              </div>
+              <div className="setting-control is-full">
+                <textarea
+                  id="wk-graph-instructions"
+                  rows={3}
+                  maxLength={4000}
+                  placeholder={t("graphSettings.customInstructionsPlaceholder")}
+                  value={graphExtract.customInstructions}
+                  onChange={(event) => patch({ customInstructions: event.target.value })}
+                />
+              </div>
+            </div>
+            <div className="wk-graph-setting-row is-vertical">
+              <div className="setting-info">
+                <label htmlFor="wk-graph-tags">{t("graphSettings.tagsLabel")}</label>
+                <p className="wk-muted">{t("graphSettings.tagsDescription")}</p>
+              </div>
+              <div className="setting-control is-full">
+                <div className="wk-graph-tags-group">
+                  {props.canRunExtract ? (
+                    <button
+                      type="button"
+                      className="wk-graph-gen-btn"
+                      disabled={!llmAvailable}
+                      onClick={() => {
+                        void runAction(
+                          "fabri-tag",
+                          {},
+                          (result) => ({ ...graphExtract, tags: result.tags ?? [] }),
+                          t("graphSettings.tagsGenerated"),
+                          t("graphSettings.tagsGenerateFailed"),
+                        );
+                      }}
+                    >
+                      {t("graphSettings.generateRandomTags")}
+                    </button>
+                  ) : null}
+                  <select
+                    id="wk-graph-tags"
+                    multiple
+                    size={Math.min(Math.max(graphExtract.tags.length, 2), 6)}
+                    value={graphExtract.tags}
+                    onChange={(event) => patch({ tags: Array.from(event.target.selectedOptions).map((option) => option.value) })}
+                    style={{ flex: 1, minWidth: "240px" }}
+                  >
+                    {graphExtract.tags.map((tag) => (
+                      <option key={tag} value={tag}>{tag}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="wk-graph-add-tag">
+                  <input
+                    type="text"
+                    placeholder={t("graphSettings.tagsPlaceholder")}
+                    aria-label={t("graphSettings.tagsPlaceholder")}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter") return;
+                      event.preventDefault();
+                      const value = event.currentTarget.value.trim();
+                      if (value && !graphExtract.tags.includes(value)) patch({ tags: [...graphExtract.tags, value] });
+                      event.currentTarget.value = "";
+                    }}
+                  />
+                </div>
+                {!llmAvailable ? (
+                  <p className="wk-graph-tip">{t("graphSettings.completeModelConfig")}</p>
+                ) : null}
+              </div>
+            </div>
+            <div className="wk-graph-setting-row is-vertical">
+              <div className="setting-info">
+                <label htmlFor="wk-graph-text">{t("graphSettings.sampleTextLabel")}</label>
+                <p className="wk-muted">{t("graphSettings.sampleTextDescription")}</p>
+              </div>
+              <div className="setting-control is-full">
+                <div className="wk-graph-text-group">
+                  {props.canRunExtract ? (
+                    <button
+                      type="button"
+                      className="wk-graph-gen-btn"
+                      disabled={!llmAvailable}
+                      onClick={() => {
+                        void runAction(
+                          "fabri-text",
+                          { tags: graphExtract.tags, model_id: props.llmModelId },
+                          (result) => ({ ...graphExtract, text: result.text ?? "" }),
+                          t("graphSettings.textGenerated"),
+                          t("graphSettings.textGenerateFailed"),
+                        );
+                      }}
+                    >
+                      {t("graphSettings.generateRandomText")}
+                    </button>
+                  ) : null}
+                  <textarea
+                    id="wk-graph-text"
+                    rows={6}
+                    maxLength={5000}
+                    placeholder={t("graphSettings.sampleTextPlaceholder")}
+                    value={graphExtract.text}
+                    onChange={(event) => patch({ text: event.target.value })}
+                    style={{ width: "100%" }}
+                  />
+                </div>
+                {!llmAvailable ? (
+                  <p className="wk-graph-tip">{t("graphSettings.completeModelConfig")}</p>
+                ) : null}
+              </div>
+            </div>
+            {graphExtract.nodes.length > 0 ? (
+              <div className="wk-graph-setting-row is-vertical">
+                <div className="setting-info">
+                  <label>{t("graphSettings.entityListLabel")}</label>
+                  <p className="wk-muted">{t("graphSettings.entityListDescription")}</p>
+                </div>
+                <div className="setting-control is-full">
+                  <div className="wk-graph-node-list">
+                    {graphExtract.nodes.map((node, nodeIndex) => (
+                      <div key={nodeIndex} className="wk-graph-node-item" data-graph-node={node.name || undefined}>
+                        <div className="wk-graph-node-header">
+                          <span aria-hidden>👤</span>
+                          <input
+                            type="text"
+                            className="wk-graph-node-name"
+                            placeholder={t("graphSettings.nodeNamePlaceholder")}
+                            aria-label={t("graphSettings.nodeNamePlaceholder")}
+                            value={node.name}
+                            onChange={(event) => updateNode(nodeIndex, { ...node, name: event.target.value })}
+                          />
+                          <button
+                            type="button"
+                            aria-label={t("common.remove")}
+                            onClick={() => removeNode(nodeIndex)}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                        <div className="wk-graph-node-attributes">
+                          {node.attributes.map((attribute, attrIndex) => (
+                            <div key={attrIndex} className="wk-graph-attribute-item">
+                              <input
+                                type="text"
+                                placeholder={t("graphSettings.attributePlaceholder")}
+                                aria-label={t("graphSettings.attributePlaceholder")}
+                                value={attribute}
+                                onChange={(event) =>
+                                  updateNode(nodeIndex, {
+                                    ...node,
+                                    attributes: node.attributes.map((value, index) => (index === attrIndex ? event.target.value : value)),
+                                  })
+                                }
+                              />
+                              <button
+                                type="button"
+                                aria-label={t("common.remove")}
+                                onClick={() =>
+                                  updateNode(nodeIndex, {
+                                    ...node,
+                                    attributes: node.attributes.filter((_, index) => index !== attrIndex),
+                                  })
+                                }
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          ))}
+                          <button
+                            type="button"
+                            className="wk-graph-add-attr"
+                            onClick={() => updateNode(nodeIndex, { ...node, attributes: [...node.attributes, ""] })}
+                          >
+                            {t("graphSettings.addAttribute")}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="wk-graph-setting-row">
+              <div className="setting-info">
+                <label>{t("graphSettings.manageEntitiesLabel")}</label>
+                <p className="wk-muted">{t("graphSettings.manageEntitiesDescription")}</p>
+              </div>
+              <div className="setting-control">
+                <button
+                  type="button"
+                  className="wk-graph-add-btn"
+                  onClick={() => patch({ nodes: [...graphExtract.nodes, { name: "", attributes: [] }] })}
+                >
+                  {t("graphSettings.addEntity")}
+                </button>
+              </div>
+            </div>
+            {graphExtract.relations.length > 0 ? (
+              <div className="wk-graph-setting-row is-vertical">
+                <div className="setting-info">
+                  <label>{t("graphSettings.relationListLabel")}</label>
+                  <p className="wk-muted">{t("graphSettings.relationListDescription")}</p>
+                </div>
+                <div className="setting-control is-full">
+                  <div className="wk-graph-relation-list">
+                    {graphExtract.relations.map((relation, index) => (
+                      <div key={index} className="wk-graph-relation-item">
+                        <select
+                          aria-label={t("graphSettings.selectEntity")}
+                          value={relation.node1}
+                          onChange={(event) => updateRelation(index, { ...relation, node1: event.target.value })}
+                        >
+                          <option value="">{t("graphSettings.selectEntity")}</option>
+                          {graphExtract.nodes.map((node) => (
+                            <option key={node.name} value={node.name}>{node.name}</option>
+                          ))}
+                        </select>
+                        <span aria-hidden>→</span>
+                        <select
+                          aria-label={t("graphSettings.selectRelationType")}
+                          value={relation.type}
+                          onChange={(event) => updateRelation(index, { ...relation, type: event.target.value })}
+                        >
+                          <option value="">{t("graphSettings.selectRelationType")}</option>
+                          {graphExtract.tags.map((tag) => (
+                            <option key={tag} value={tag}>{tag}</option>
+                          ))}
+                        </select>
+                        <span aria-hidden>→</span>
+                        <select
+                          aria-label={t("graphSettings.selectEntity")}
+                          value={relation.node2}
+                          onChange={(event) => updateRelation(index, { ...relation, node2: event.target.value })}
+                        >
+                          <option value="">{t("graphSettings.selectEntity")}</option>
+                          {graphExtract.nodes.map((node) => (
+                            <option key={node.name} value={node.name}>{node.name}</option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          aria-label={t("common.remove")}
+                          onClick={() => removeRelation(index)}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+            <div className="wk-graph-setting-row">
+              <div className="setting-info">
+                <label>{t("graphSettings.manageRelationsLabel")}</label>
+                <p className="wk-muted">{t("graphSettings.manageRelationsDescription")}</p>
+              </div>
+              <div className="setting-control">
+                <button
+                  type="button"
+                  className="wk-graph-add-btn"
+                  onClick={() => patch({ relations: [...graphExtract.relations, { node1: "", node2: "", type: "" }] })}
+                >
+                  {t("graphSettings.addRelation")}
+                </button>
+              </div>
+            </div>
+            <div className="wk-graph-setting-row">
+              <div className="setting-info">
+                <label>{t("graphSettings.extractActionsLabel")}</label>
+                <p className="wk-muted">{t("graphSettings.extractActionsDescription")}</p>
+              </div>
+              <div className="setting-control">
+                <div className="wk-graph-actions">
+                  {props.canRunExtract ? (
+                    <button
+                      type="button"
+                      className="wk-graph-add-btn"
+                      disabled={!llmAvailable || !graphExtract.text || extracting}
+                      onClick={() => {
+                        setExtracting(true);
+                        void runAction(
+                          "text-relation",
+                          { text: graphExtract.text, tags: graphExtract.tags, model_id: props.llmModelId },
+                          (result) => ({
+                            ...graphExtract,
+                            nodes: result.nodes ?? [],
+                            relations: result.relations ?? [],
+                          }),
+                          t("graphSettings.extractSuccess"),
+                          t("graphSettings.extractFailed"),
+                        ).finally(() => setExtracting(false));
+                      }}
+                    >
+                      {extracting ? t("graphSettings.extracting") : t("graphSettings.startExtraction")}
+                    </button>
+                  ) : null}
+                  <button type="button" onClick={loadDefaultExample}>{t("graphSettings.defaultExample")}</button>
+                  <button type="button" onClick={clearExample}>{t("graphSettings.clearExample")}</button>
+                </div>
+              </div>
+            </div>
+          </>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
@@ -860,7 +1446,8 @@ export function KnowledgeDocumentsPage({
   // Multi-file upload parity: staged files wait behind a confirm dialog
   // (Vue UploadConfirmDialog) before any upload call is issued.
   const [pendingEntries, setPendingEntries] = useState<UploadEntry[]>([]);
-  const [pendingUrl, setPendingUrl] = useState("");
+  // Vue localUrls: the dialog stages a LIST of URL rows, not a single slot.
+  const [pendingUrls, setPendingUrls] = useState<string[]>([]);
   const [pendingManual, setPendingManual] = useState<{ title: string; content: string } | null>(null);
   const [uploadTargetFolder, setUploadTargetFolder] = useState("");
   // Destination picker state (Vue destination-row + FolderPickerMenu).
@@ -873,10 +1460,19 @@ export function KnowledgeDocumentsPage({
   // Dialog config state (Vue uiState): one object seeded from the KB.
   const [confirmState, setConfirmState] = useState<UploadConfirmUIState>(() => uploadConfirmStateFromKb(null));
   const [chunkingMoreOpen, setChunkingMoreOpen] = useState(false);
-  const [stageNotice, setStageNotice] = useState<{ tone: "neutral" | "warning"; text: string } | null>(null);
-  const [moreUrl, setMoreUrl] = useState("");
+  const [stageNotice, setStageNotice] = useState<{ tone: "neutral" | "warning" | "error"; text: string } | null>(null);
   const [parserEngines, setParserEngines] = useState<ParserEngineInfo[]>([]);
   const [tenantModels, setTenantModels] = useState<ModelConfiguration[]>([]);
+  // Vue editorResources.systemInfo (GET /api/v1/system/info): gates the graph section.
+  const [systemInfo, setSystemInfo] = useState<Record<string, unknown> | null>(null);
+  // Vue authStore.me — the admin gate for the graph extraction actions.
+  const [me, setMe] = useState<KBSurfaceMe | null>(null);
+  // Vue activeSection + the unavailable-fallback watch (L1309-1313).
+  const [activeSection, setActiveSection] = useState<UploadConfirmSectionKey>("tags");
+  // Vue KbUploadSourceDropdown: menu + URL sub-dialog state.
+  const [sourceMenuOpen, setSourceMenuOpen] = useState(false);
+  const [sourceUrlDialogOpen, setSourceUrlDialogOpen] = useState(false);
+  const [sourceUrlValue, setSourceUrlValue] = useState("");
   const [uploadStates, setUploadStates] = useState<readonly UploadEntryState[]>(
     [],
   );
@@ -897,12 +1493,56 @@ export function KnowledgeDocumentsPage({
   const pageSize = 20;
 
   function seedConfirmFromKb() {
-    setConfirmState(uploadConfirmStateFromKb(kbMeta));
+    // Vue visible-watch: re-seed from the KB, then pick the default section
+    // from the freshly-seeded state (getDefaultSection) and close more-options.
+    const seeded = uploadConfirmStateFromKb(kbMeta);
+    setConfirmState(seeded);
     setChunkingMoreOpen(false);
+    setActiveSection(defaultUploadConfirmSection({
+      mode: dialogMode,
+      multimodalIssue: multimodalSectionIssue({
+        state: seeded,
+        hasImages: batchHasImages(batchUploadExtensions({ entries: pendingEntries, urls: pendingUrls }), pendingManual?.content),
+      }),
+      asrIssue: asrSectionIssue({
+        state: seeded,
+        hasAudio: batchHasAudio(batchUploadExtensions({ entries: pendingEntries, urls: pendingUrls })),
+      }),
+    }));
   }
 
   function updateConfirm(patch: Partial<UploadConfirmUIState>) {
     setConfirmState((current) => ({ ...current, ...patch }));
+  }
+
+  // Vue handleNodeExtractUpdate (L1375-1378): the graph config change also
+  // mirrors its enabled flag into uiState.graphEnabled.
+  function updateNodeExtract(config: UploadNodeExtractState) {
+    setConfirmState((current) => ({ ...current, nodeExtract: config, graphEnabled: config.enabled }));
+  }
+
+  // The three admin extraction calls behind GraphSettings' generate/extract
+  // buttons (Vue api/initialization.ts fabriTag/fabriText/extractTextRelations;
+  // backend routes internal/router/routes_infra.go:123-125). api-client has no
+  // bindings for them, so they go through the client's public request method.
+  async function runGraphExtractAction(action: UploadGraphExtractAction, body: Record<string, unknown>): Promise<UploadGraphExtractResult | null> {
+    const data = await client.request({
+      method: "POST",
+      path: `/api/v1/initialization/extract/${action}`,
+      body,
+    }) as { code?: unknown; data?: unknown };
+    if (!data || typeof data !== "object" || data.code !== 0) return null;
+    const payload = data.data;
+    if (!payload || typeof payload !== "object") return null;
+    const row = payload as Record<string, unknown>;
+    const result: UploadGraphExtractResult = {};
+    if (Array.isArray(row.tags)) result.tags = row.tags.filter((tag): tag is string => typeof tag === "string");
+    if (typeof row.text === "string") result.text = row.text;
+    if (Array.isArray(row.nodes)) result.nodes = row.nodes.filter((node): node is UploadGraphNodeState =>
+      !!node && typeof node === "object" && typeof (node as { name?: unknown }).name === "string");
+    if (Array.isArray(row.relations)) result.relations = row.relations.filter((relation): relation is UploadGraphRelationState =>
+      !!relation && typeof relation === "object" && typeof (relation as { node1?: unknown }).node1 === "string");
+    return result;
   }
 
   // Audit #6: KB-type routing — an FAQ KB must land on the FAQ route.
@@ -917,6 +1557,7 @@ export function KnowledgeDocumentsPage({
       .then(([kb, me]) => {
         if (!active) return;
         setKbMeta(kb as KBSurfaceKB);
+        setMe(me as KBSurfaceMe | null);
         setConfirmState(uploadConfirmStateFromKb(kb as KBSurfaceKB));
         setCanContribute(
           computeKBPermissions(kb as KBSurfaceKB, me as KBSurfaceMe | null)
@@ -942,6 +1583,13 @@ export function KnowledgeDocumentsPage({
   useEffect(() => {
     let active = true;
     void client.configuration.models.list().then((models) => { if (active) setTenantModels(models); }).catch(() => { if (active) setTenantModels([]); });
+    return () => { active = false; };
+  }, [client]);
+
+  // Vue loadSystemInfo: on failure the graph section falls back to hidden.
+  useEffect(() => {
+    let active = true;
+    void client.settings.system.info().then((info) => { if (active) setSystemInfo(info); }).catch(() => { if (active) setSystemInfo(null); });
     return () => { active = false; };
   }, [client]);
 
@@ -1015,16 +1663,22 @@ export function KnowledgeDocumentsPage({
   // Vue batchFileExts: files + URL paths + manual markdown media + reparse type.
   const batchExts = useMemo(() => batchUploadExtensions({
     entries: pendingEntries,
-    urls: pendingUrl ? [pendingUrl] : [],
+    urls: pendingUrls,
     manualContent: dialogMode === "manual" ? pendingManual?.content : undefined,
     reparseFileType: dialogMode === "reparse" ? pendingReparse?.document.file_type : undefined,
-  }), [pendingEntries, pendingUrl, pendingManual, pendingReparse, dialogMode]);
+  }), [pendingEntries, pendingUrls, pendingManual, pendingReparse, dialogMode]);
   const hasPdf = batchExts.includes("pdf");
   const hasImages = batchHasImages(batchExts, dialogMode === "manual" ? pendingManual?.content : undefined);
   const hasAudio = batchHasAudio(batchExts);
   const multimodalIssue = multimodalSectionIssue({ state: confirmState, hasImages });
   const asrIssue = asrSectionIssue({ state: confirmState, hasAudio });
-  const batchItemCount = pendingEntries.length + (pendingUrl ? 1 : 0);
+  const batchItemCount = pendingEntries.length + pendingUrls.length;
+  // Graph section gating (Vue isGraphDatabaseEnabled / isGraphSectionAvailable)
+  // plus the summary model and admin role its actions require.
+  const graphDatabaseOn = graphDatabaseEnabled(systemInfo);
+  const graphAvailable = graphSectionAvailable({ systemInfo, graphEnabled: confirmState.graphEnabled });
+  const graphAdmin = hasGraphAdminRole(me);
+  const llmModelId = typeof kbMeta?.summary_model_id === "string" ? kbMeta.summary_model_id : "";
   // Destination picker options: server folders plus folders created in-dialog.
   const pickerFolderOptions = useMemo(
     () => mergeFolderOptions(
@@ -1079,21 +1733,22 @@ export function KnowledgeDocumentsPage({
     else if (merged.duplicateCount > 0) setStageNotice({ tone: "warning", text: ct("uploadConfirm.filesAllDuplicate") });
   }
 
-  function appendMoreUrl() {
-    const normalized = normalizeUploadUrl(moreUrl);
+  // Vue appendUrl: append to the staged URL list, dedupe with a warning.
+  function appendStagedUrl(rawUrl: string, input: string): boolean {
+    const normalized = normalizeUploadUrl(rawUrl);
     if (!normalized) {
-      setUploadError(t("knowledgeBase.documents.url"));
-      return;
+      if (input === "dialog") setUploadError(ct("knowledgeBase.invalidURL"));
+      else setUploadError(t("knowledgeBase.documents.url"));
+      return false;
     }
-    if (normalized === pendingUrl) {
+    if (pendingUrls.includes(normalized)) {
       setStageNotice({ tone: "warning", text: ct("uploadConfirm.urlDuplicate") });
-      setMoreUrl("");
-      return;
+      return false;
     }
-    setPendingUrl(normalized);
+    setPendingUrls((current) => [...current, normalized]);
     setUploadError(null);
     setStageNotice({ tone: "neutral", text: ct("uploadConfirm.urlAdded") });
-    setMoreUrl("");
+    return true;
   }
 
   function resetDestinationPicker() {
@@ -1108,14 +1763,15 @@ export function KnowledgeDocumentsPage({
     uploadPipelineController.current?.abort();
     uploadPipelineController.current = null;
     setPendingEntries([]);
-    setPendingUrl("");
+    setPendingUrls([]);
     setPendingManual(null);
     setUploadTargetFolder("");
     setPendingTagIds([]);
     setUploadStates([]);
     setUploading(false);
     setStageNotice(null);
-    setMoreUrl("");
+    setSourceMenuOpen(false);
+    setSourceUrlDialogOpen(false);
     resetDestinationPicker();
     setChunkingMoreOpen(false);
   }
@@ -1167,8 +1823,8 @@ export function KnowledgeDocumentsPage({
     );
   }
 
-  function removeStagedUrl() {
-    setPendingUrl("");
+  function removeStagedUrl(index: number) {
+    setPendingUrls((current) => current.filter((_, urlIndex) => urlIndex !== index));
   }
 
   // Sequential uploads (one call per file) with per-file status; a per-file
@@ -1178,7 +1834,7 @@ export function KnowledgeDocumentsPage({
       await confirmReparse();
       return;
     }
-    if (!pendingManual && pendingEntries.length === 0 && !pendingUrl) {
+    if (!pendingManual && pendingEntries.length === 0 && pendingUrls.length === 0) {
       setUploadError(ct("uploadConfirm.noItems"));
       return;
     }
@@ -1230,28 +1886,39 @@ export function KnowledgeDocumentsPage({
       } finally { setUploading(false); }
       return;
     }
-    if (pendingUrl) {
-      try {
-        const created = await client.knowledgeBases.documents.createFromUrl(
-          knowledgeBaseId,
-          {
-            url: pendingUrl,
-            tag_ids: pendingTagIds,
-            process_config: processConfig,
-          },
-        );
-        if (uploadTargetFolder && created.id) {
-          await client.knowledgeBases.documents.moveToFolder(
+    if (pendingUrls.length > 0) {
+      // Vue emits every staged URL with the batch; each becomes its own
+      // document. A failure keeps the dialog open with the failed URL plus
+      // the not-yet-attempted ones still staged.
+      const remaining: string[] = [];
+      let failed = false;
+      for (const stagedUrl of pendingUrls) {
+        try {
+          const created = await client.knowledgeBases.documents.createFromUrl(
             knowledgeBaseId,
-            [created.id],
-            uploadTargetFolder,
+            {
+              url: stagedUrl,
+              tag_ids: pendingTagIds,
+              process_config: processConfig,
+            },
           );
+          if (uploadTargetFolder && created.id) {
+            await client.knowledgeBases.documents.moveToFolder(
+              knowledgeBaseId,
+              [created.id],
+              uploadTargetFolder,
+            );
+          }
+          setReloadToken((value) => value + 1);
+          emitKnowledgeUploadEvent("knowledgeFileUploaded", { kbId: knowledgeBaseId });
+        } catch (error) {
+          remaining.push(stagedUrl);
+          if (!failed) setUploadError(errorMessage(error));
+          failed = true;
         }
-        setPendingUrl("");
-        setReloadToken((value) => value + 1);
-        emitKnowledgeUploadEvent("knowledgeFileUploaded", { kbId: knowledgeBaseId });
-      } catch (error) {
-        setUploadError(errorMessage(error));
+      }
+      setPendingUrls(remaining);
+      if (failed) {
         setUploading(false);
         return;
       }
@@ -1320,11 +1987,10 @@ export function KnowledgeDocumentsPage({
       if (finalStates.some((state) => state.status === "done")) emitKnowledgeUploadEvent("knowledgeFileUploaded", { kbId: knowledgeBaseId });
       if (finalStates.some((state) => state.status === "error")) return;
       setPendingEntries([]);
-      setPendingUrl("");
+      setPendingUrls([]);
       setPendingTagIds([]);
       setUploadStates([]);
       setStageNotice(null);
-      setMoreUrl("");
       resetDestinationPicker();
       setChunkingMoreOpen(false);
     } catch (error) {
@@ -1351,12 +2017,12 @@ export function KnowledgeDocumentsPage({
         setUploadError(t("knowledgeBase.documents.url"));
         return;
       }
-      if (normalizedUrl === pendingUrl) {
+      if (pendingUrls.includes(normalizedUrl)) {
         setStageNotice({ tone: "warning", text: ct("uploadConfirm.urlDuplicate") });
         return;
       }
-      setPendingUrl(normalizedUrl);
-      if (!pendingUrl && pendingEntries.length === 0) setUploadTargetFolder(folderPath ?? "");
+      setPendingUrls((current) => [...current, normalizedUrl]);
+      if (pendingUrls.length === 0 && pendingEntries.length === 0) setUploadTargetFolder(folderPath ?? "");
       setPendingTagIds([]);
       setUploadError(null);
       setUrl("");
@@ -1538,8 +2204,22 @@ export function KnowledgeDocumentsPage({
   }
 
   function goToSection(key: UploadConfirmSectionKey) {
+    setActiveSection(key);
     document.getElementById(`wk-upload-section-${key}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
+
+  // Vue watch(isGraphSectionAvailable) (L1309-1313): when the graph section
+  // stops being available while it is the active one, fall back to the
+  // default section for the current mode and issues.
+  useEffect(() => {
+    setActiveSection((current) =>
+      sectionAfterGraphAvailabilityChange(
+        current,
+        graphAvailable,
+        defaultUploadConfirmSection({ mode: dialogMode, multimodalIssue, asrIssue }),
+      ),
+    );
+  }, [graphAvailable, dialogMode, multimodalIssue, asrIssue]);
 
   const sectionNavItems: UploadSectionNavItem[] = useMemo(() => {
     const statusInput = {
@@ -1570,8 +2250,13 @@ export function KnowledgeDocumentsPage({
     items.push(toItem("multimodal", t("knowledgeEditor.sidebar.multimodal"), multimodalIssue));
     items.push(toItem("asr", t("knowledgeEditor.sidebar.asr"), asrIssue));
     items.push(toItem("question", t("knowledgeEditor.advanced.questionGeneration.label")));
+    // Vue pushes graph last, only when isGraphSectionAvailable (L940-942).
+    if (graphAvailable) {
+      const graphItem = toItem("graph", t("knowledgeEditor.sidebar.graph"));
+      items.push({ ...graphItem, icon: "chart-bubble" });
+    }
     return items;
-  }, [confirmState, pendingTagIds.length, hasPdf, hasImages, hasAudio, tenantModels, dialogMode, ct, t, multimodalIssue, asrIssue]);
+  }, [confirmState, pendingTagIds.length, hasPdf, hasImages, hasAudio, tenantModels, dialogMode, ct, t, multimodalIssue, asrIssue, graphAvailable]);
 
   const dialogTitle = dialogMode === "manual"
     ? ct("uploadConfirm.titleManual")
@@ -1583,7 +2268,7 @@ export function KnowledgeDocumentsPage({
     : dialogMode === "reparse"
       ? ct("uploadConfirm.confirmReparse")
       : ct("uploadConfirm.confirm");
-  const uploadDialogOpen = canContribute && (pendingEntries.length > 0 || !!pendingUrl || !!pendingManual || !!pendingReparse);
+  const uploadDialogOpen = canContribute && (pendingEntries.length > 0 || pendingUrls.length > 0 || !!pendingManual || !!pendingReparse);
   const rootRowLabel = t("knowledgeBase.folderTree.rootRow");
   const filesPanelLabels: UploadFilesPanelLabels = {
     urlItemLabel: ct("uploadConfirm.urlItemLabel"),
@@ -2045,12 +2730,30 @@ export function KnowledgeDocumentsPage({
                 {batchItemCount}
               </span>
               <span className="wk-muted">{ct("uploadConfirm.parseConfig")}</span>
+              <UploadSourceDropdown
+                tooltip={ct("uploadConfirm.continueAdd")}
+                items={[
+                  { key: "file", label: ct("upload.uploadDocument") },
+                  { key: "folder", label: ct("upload.uploadFolder") },
+                  { key: "url", label: t("knowledgeBase.importURL") },
+                ]}
+                open={sourceMenuOpen}
+                onToggle={() => setSourceMenuOpen((open) => !open)}
+                onFiles={(files) => stageFiles(files)}
+                onSelect={(key) => {
+                  setSourceMenuOpen(false);
+                  if (key === "url") {
+                    setSourceUrlValue("");
+                    setSourceUrlDialogOpen(true);
+                  }
+                }}
+              />
             </p>
           ) : null}
           <UploadFilesPanel
             mode={dialogMode}
             entries={pendingEntries}
-            urls={pendingUrl ? [pendingUrl] : []}
+            urls={pendingUrls}
             uploadStates={uploadStates}
             manualTitle={pendingManual?.title}
             manualCharCount={pendingManual?.content.length}
@@ -2060,33 +2763,52 @@ export function KnowledgeDocumentsPage({
             onRemoveUrl={removeStagedUrl}
             onRemoveEntry={removeStagedUpload}
           />
-          {dialogMode === "file" && !uploading ? (
-            <div className="wk-list-actions" style={{ marginBottom: "0.75rem" }}>
-              <label>
-                {ct("uploadConfirm.continueAdd")}{" "}
-                <input
-                  type="file"
-                  multiple
-                  onChange={(event) => {
-                    stageFiles(event.target.files ?? []);
-                    event.target.value = "";
-                  }}
-                />
-              </label>
-              <label>
-                {t("knowledgeBase.documents.url")}{" "}
-                <input
-                  value={moreUrl}
-                  onChange={(event) => setMoreUrl(event.target.value)}
-                  placeholder="https://…"
-                />
-              </label>
-              <Button type="button" onClick={appendMoreUrl}>
-                {t("knowledgeBase.documents.importUrl")}
-              </Button>
-            </div>
+          {stageNotice ? <Status tone={stageNotice.tone === "error" ? "error" : stageNotice.tone === "warning" ? "warning" : "neutral"}>{stageNotice.text}</Status> : null}
+          {sourceUrlDialogOpen ? (
+            <Dialog
+              open
+              title={t("knowledgeBase.importURLTitle")}
+              onClose={() => setSourceUrlDialogOpen(false)}
+            >
+              <div className="wk-upload-url-dialog">
+                <label>
+                  {t("knowledgeBase.urlLabel")}{" "}
+                  <input
+                    autoFocus
+                    value={sourceUrlValue}
+                    placeholder={t("knowledgeBase.urlPlaceholder")}
+                    onChange={(event) => setSourceUrlValue(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        if (appendStagedUrl(sourceUrlValue, "dialog")) {
+                          setSourceUrlDialogOpen(false);
+                          setSourceUrlValue("");
+                        }
+                      }
+                    }}
+                  />
+                </label>
+                <p className="wk-muted" style={{ margin: "0.25rem 0 0", fontSize: "0.85rem" }}>{t("knowledgeBase.urlTip")}</p>
+                <div className="wk-list-actions">
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      if (appendStagedUrl(sourceUrlValue, "dialog")) {
+                        setSourceUrlDialogOpen(false);
+                        setSourceUrlValue("");
+                      }
+                    }}
+                  >
+                    {ct("common.confirm")}
+                  </Button>
+                  <Button type="button" onClick={() => setSourceUrlDialogOpen(false)}>
+                    {ct("uploadConfirm.cancel")}
+                  </Button>
+                </div>
+              </div>
+            </Dialog>
           ) : null}
-          {stageNotice ? <Status tone={stageNotice.tone === "warning" ? "warning" : "neutral"}>{stageNotice.text}</Status> : null}
           {dialogMode === "file" ? (
             <fieldset className="wk-upload-confirm-destination" style={{ position: "relative", marginBottom: "0.75rem" }}>
               <legend>{ct("uploadConfirm.destinationLabel")}</legend>
@@ -2174,7 +2896,11 @@ export function KnowledgeDocumentsPage({
               ) : null}
             </fieldset>
           ) : null}
-          <UploadSectionNav items={sectionNavItems} navLabel={ct("uploadConfirm.configNav")} onSelect={goToSection} />
+          <UploadSectionNav
+            items={sectionNavItems.map((item) => ({ ...item, active: activeSection === item.key }))}
+            navLabel={ct("uploadConfirm.configNav")}
+            onSelect={goToSection}
+          />
           <UploadConfirmSections
             state={confirmState}
             update={updateConfirm}
@@ -2186,6 +2912,19 @@ export function KnowledgeDocumentsPage({
             asrModels={asrModels}
             moreOpen={chunkingMoreOpen}
             onToggleMore={() => setChunkingMoreOpen((open) => !open)}
+            graphAvailable={graphAvailable}
+            graphSettings={
+              <UploadGraphSettings
+                graphExtract={confirmState.nodeExtract}
+                graphDatabaseOn={graphDatabaseOn}
+                llmModelId={llmModelId}
+                canRunExtract={graphAdmin}
+                runExtractAction={runGraphExtractAction}
+                onNotify={(message, tone) => setStageNotice({ tone, text: message })}
+                onChange={updateNodeExtract}
+                t={ct}
+              />
+            }
             t={ct}
           />
           {uploadError ? <Status tone="error">{uploadError}</Status> : null}

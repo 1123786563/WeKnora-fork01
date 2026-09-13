@@ -365,6 +365,29 @@ export function parserNavStatus(input: {
 
 // --- Vue UploadUIState model (UploadConfirmDialog L600-615, 1057-1247) -------
 
+/** Vue GraphSettings node row (extract_config.nodes). */
+export interface UploadGraphNodeState {
+  name: string;
+  attributes: string[];
+}
+
+/** Vue GraphSettings relation row (extract_config.relations). */
+export interface UploadGraphRelationState {
+  node1: string;
+  node2: string;
+  type: string;
+}
+
+/** Vue UploadUIState.nodeExtractConfig (extract_config). */
+export interface UploadNodeExtractState {
+  enabled: boolean;
+  text: string;
+  tags: string[];
+  nodes: UploadGraphNodeState[];
+  relations: UploadGraphRelationState[];
+  customInstructions: string;
+}
+
 export interface UploadConfirmUIState {
   chunkSize: number;
   chunkOverlap: number;
@@ -386,6 +409,10 @@ export interface UploadConfirmUIState {
   questionEnabled: boolean;
   questionCount: number;
   questionInstructions: string;
+  /** Vue uiState.nodeExtractConfig (kb extract_config). */
+  nodeExtract: UploadNodeExtractState;
+  /** Vue uiState.graphEnabled (kb indexing_strategy.graph_enabled). */
+  graphEnabled: boolean;
   pdfForceScanned: boolean;
 }
 
@@ -412,6 +439,15 @@ export function defaultUploadConfirmUIState(): UploadConfirmUIState {
     questionEnabled: true,
     questionCount: 3,
     questionInstructions: '',
+    nodeExtract: {
+      enabled: false,
+      text: '',
+      tags: [],
+      nodes: [],
+      relations: [],
+      customInstructions: '',
+    },
+    graphEnabled: false,
     pdfForceScanned: false,
   };
 }
@@ -450,6 +486,33 @@ function parseEngineRules(value: unknown): ParserEngineRuleState[] {
       engine: row.engine,
       ...(typeof row.xlsx_first_row_as_header === 'boolean' ? { xlsx_first_row_as_header: row.xlsx_first_row_as_header } : {}),
     }];
+  });
+}
+
+/** Vue initFromKbInfo node mapping: keep the name, default missing attributes. */
+function parseGraphNodes(value: unknown): UploadGraphNodeState[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((node): UploadGraphNodeState[] => {
+    if (!node || typeof node !== 'object') return [];
+    const row = node as Record<string, unknown>;
+    if (typeof row.name !== 'string') return [];
+    return [{
+      name: row.name,
+      attributes: Array.isArray(row.attributes) && row.attributes.every((item) => typeof item === 'string')
+        ? row.attributes as string[]
+        : [],
+    }];
+  });
+}
+
+/** Vue relation passthrough: node1/node2/type strings only. */
+function parseGraphRelations(value: unknown): UploadGraphRelationState[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((relation): UploadGraphRelationState[] => {
+    if (!relation || typeof relation !== 'object') return [];
+    const row = relation as Record<string, unknown>;
+    if (typeof row.node1 !== 'string' || typeof row.node2 !== 'string' || typeof row.type !== 'string') return [];
+    return [{ node1: row.node1, node2: row.node2, type: row.type }];
   });
 }
 
@@ -492,6 +555,19 @@ export function uploadConfirmStateFromKb(kb: KbLike): UploadConfirmUIState {
     state.questionCount = num(question.question_count, 3);
     state.questionInstructions = str(question.custom_instructions);
   }
+  // Vue L1124-1135: graphEnabled from indexing_strategy.graph_enabled ?? false;
+  // extract.enabled requires the kb graph flag too.
+  const indexing = kbRecord(kb, 'indexing_strategy');
+  state.graphEnabled = indexing?.graph_enabled === true;
+  const extract = kbRecord(kb, 'extract_config');
+  state.nodeExtract = {
+    enabled: extract?.enabled === true && state.graphEnabled,
+    text: str(extract?.text),
+    tags: strList(extract?.tags, []),
+    nodes: parseGraphNodes(extract?.nodes),
+    relations: parseGraphRelations(extract?.relations),
+    customInstructions: str(extract?.custom_instructions),
+  };
   // Vue always resets pdfForceScanned per dialog open; scanned mode is a
   // per-batch override, never a knowledge base default.
   state.pdfForceScanned = false;
@@ -549,6 +625,22 @@ export function applyUploadOverrides(base: UploadConfirmUIState, overrides: Uplo
     if (typeof qg.question_count === 'number') state.questionCount = qg.question_count;
     if (typeof qg.custom_instructions === 'string') state.questionInstructions = qg.custom_instructions;
   }
+  // Vue L1231-1241: extract_config fields, then graph_enabled, then the clamp
+  // nodeExtract.enabled = enabled && graphEnabled. Copy-on-write so the base
+  // state's nested graph config is never mutated.
+  const nodeExtract: UploadNodeExtractState = { ...state.nodeExtract };
+  const ec = overrides.extract_config;
+  if (ec) {
+    if (typeof ec.enabled === 'boolean') nodeExtract.enabled = ec.enabled;
+    if (typeof ec.text === 'string') nodeExtract.text = ec.text;
+    if (Array.isArray(ec.tags) && ec.tags.every((item) => typeof item === 'string')) nodeExtract.tags = ec.tags as string[];
+    if (Array.isArray(ec.nodes)) nodeExtract.nodes = parseGraphNodes(ec.nodes);
+    if (Array.isArray(ec.relations)) nodeExtract.relations = parseGraphRelations(ec.relations);
+    if (typeof ec.custom_instructions === 'string') nodeExtract.customInstructions = ec.custom_instructions;
+  }
+  if (typeof overrides.graph_enabled === 'boolean') state.graphEnabled = overrides.graph_enabled;
+  nodeExtract.enabled = nodeExtract.enabled && state.graphEnabled;
+  state.nodeExtract = nodeExtract;
   state.pdfForceScanned = overrides.parser_engine_overrides?.pdf_force_scanned === 'true';
   return state;
 }
@@ -584,6 +676,17 @@ export function buildUploadConfirmOverrides(state: UploadConfirmUIState): Upload
       enabled: state.questionEnabled,
       question_count: state.questionCount,
       custom_instructions: state.questionInstructions,
+    },
+    // Vue L1175-1183: graph_enabled = extract.enabled && graphEnabled; the
+    // extract config itself passes through untouched.
+    graph_enabled: state.nodeExtract.enabled && state.graphEnabled,
+    extract_config: {
+      enabled: state.nodeExtract.enabled,
+      text: state.nodeExtract.text,
+      tags: state.nodeExtract.tags,
+      nodes: state.nodeExtract.nodes,
+      relations: state.nodeExtract.relations,
+      custom_instructions: state.nodeExtract.customInstructions,
     },
   };
   if (state.pdfForceScanned) {
@@ -628,11 +731,13 @@ export function asrSectionIssue(input: Pick<SectionNavStatusInput, 'state' | 'ha
   return modelMissing;
 }
 
+/** Vue ConfigSectionKey (UploadConfirmDialog L579). */
+export type UploadConfirmSectionKey = 'tags' | 'parser' | 'chunking' | 'multimodal' | 'asr' | 'question' | 'graph';
+
 /**
- * Per-section nav status text (Vue getSectionNavStatus). Returns null for
- * sections the React dialog does not render (graph).
+ * Per-section nav status text (Vue getSectionNavStatus, L946-1022).
  */
-export function uploadSectionStatus(section: 'tags' | 'parser' | 'chunking' | 'multimodal' | 'asr' | 'question', input: SectionNavStatusInput): UploadSectionStatus | null {
+export function uploadSectionStatus(section: UploadConfirmSectionKey, input: SectionNavStatusInput): UploadSectionStatus | null {
   switch (section) {
     case 'tags':
       return input.selectedTagCount === 0
@@ -666,10 +771,91 @@ export function uploadSectionStatus(section: 'tags' | 'parser' | 'chunking' | 'm
       return input.state.questionEnabled
         ? { key: 'uploadConfirm.summaryQuestionCountValue', values: { count: input.state.questionCount } }
         : { key: 'uploadConfirm.statusOff', tone: 'muted' };
+    case 'graph': {
+      // Vue L1009-1018: off until both flags hold, then the tag count (or plain on).
+      if (!input.state.graphEnabled || !input.state.nodeExtract.enabled) {
+        return { key: 'uploadConfirm.statusOff', tone: 'muted' };
+      }
+      const tagCount = input.state.nodeExtract.tags.length;
+      if (tagCount > 0) {
+        return { key: 'uploadConfirm.summaryGraphTagsValue', values: { count: tagCount } };
+      }
+      return { key: 'uploadConfirm.statusOn' };
+    }
     default:
       return null;
   }
 }
+
+// --- Graph section availability (Vue isGraphSectionAvailable L861-868) --------
+
+/** Loose SystemInfo shape; only graph_database_engine matters here. */
+export type UploadSystemInfo = Record<string, unknown> | null | undefined;
+
+/** Vue isGraphDatabaseEnabled: an engine string that is set and not "Not Enabled". */
+export function graphDatabaseEnabled(systemInfo: UploadSystemInfo): boolean {
+  const engine = systemInfo?.graph_database_engine;
+  return !!engine && engine !== 'Not Enabled';
+}
+
+/** Vue isGraphSectionAvailable: engine enabled AND the kb graph flag. */
+export function graphSectionAvailable(input: { systemInfo: UploadSystemInfo; graphEnabled: boolean }): boolean {
+  return graphDatabaseEnabled(input.systemInfo) && input.graphEnabled;
+}
+
+/** Vue getDefaultSection (L1043-1048). */
+export function defaultUploadConfirmSection(input: { mode: 'file' | 'manual' | 'reparse'; multimodalIssue: boolean; asrIssue: boolean }): UploadConfirmSectionKey {
+  if (input.mode === 'reparse') return 'parser';
+  if (input.multimodalIssue) return 'multimodal';
+  if (input.asrIssue) return 'asr';
+  return 'tags';
+}
+
+/** Vue watch(isGraphSectionAvailable) (L1309-1313): leaving graph falls back. */
+export function sectionAfterGraphAvailabilityChange(current: UploadConfirmSectionKey, graphAvailable: boolean, fallback: UploadConfirmSectionKey): UploadConfirmSectionKey {
+  if (!graphAvailable && current === 'graph') return fallback;
+  return current;
+}
+
+/**
+ * Vue GraphSettings canRunGraphExtract: tenant role at least admin (admin=30,
+ * owner=40; cross-tenant superuser grants temporary admin). UI gating only —
+ * the server routes (internal/router/routes_infra.go:123-125) re-check authz.
+ */
+export function hasGraphAdminRole(me: unknown): boolean {
+  const record = me as { user?: { role?: unknown; is_superuser?: unknown }; memberships?: { role?: unknown }[]; can_access_all_tenants?: unknown } | null | undefined;
+  if (!record) return false;
+  const role = typeof record.user?.role === 'string' ? record.user.role : '';
+  if (role === 'admin' || role === 'owner' || role === 'system_admin') return true;
+  if (record.user?.is_superuser === true || record.can_access_all_tenants === true) return true;
+  return Array.isArray(record.memberships)
+    && record.memberships.some((membership) => membership?.role === 'admin' || membership?.role === 'owner' || membership?.role === 'system_admin');
+}
+
+/**
+ * Vue GraphSettings defaultExtractExample (L549-565): the Shakespeare sample
+ * loaded by the "default example" button, byte-exact.
+ */
+export const GRAPH_EXTRACT_DEFAULT_EXAMPLE: Readonly<{
+  text: string;
+  tags: string[];
+  nodes: UploadGraphNodeState[];
+  relations: UploadGraphRelationState[];
+}> = {
+  text: '"Romeo and Juliet" is a tragedy written by William Shakespeare early in his career, and is one of the most frequently performed plays in world literature. The play follows two young lovers from feuding families in Verona, Italy — the Montagues and the Capulets. Written around 1594-1596, it was first published in quarto in 1597. The full title is "The Most Excellent and Lamentable Tragedy of Romeo and Juliet." The story has been adapted countless times for stage, film, and other media.',
+  tags: ['Author', 'Alias'],
+  nodes: [
+    { name: 'Romeo and Juliet', attributes: ['One of the most frequently performed plays', 'Written around 1594-1596', 'A tragedy'] },
+    { name: 'The Most Excellent and Lamentable Tragedy of Romeo and Juliet', attributes: ['Full title of Romeo and Juliet'] },
+    { name: 'William Shakespeare', attributes: ['English playwright', 'Author of Romeo and Juliet'] },
+    { name: 'Verona', attributes: ['City in Italy', 'Setting of the play'] },
+  ],
+  relations: [
+    { node1: 'Romeo and Juliet', node2: 'The Most Excellent and Lamentable Tragedy of Romeo and Juliet', type: 'Alias' },
+    { node1: 'Romeo and Juliet', node2: 'William Shakespeare', type: 'Author' },
+    { node1: 'Romeo and Juliet', node2: 'Verona', type: 'Setting' },
+  ],
+};
 
 // --- Dialog copy (Vue locale uploadConfirm block; five locales) --------------
 //
@@ -727,6 +913,59 @@ const uploadConfirmCopy: Record<Locale, Record<string, string>> = {
     'uploadConfirm.manualCharCount': '{count} 个字符',
     'uploadConfirm.pdfForceScanned.label': '按扫描件解析 PDF',
     'uploadConfirm.pdfForceScanned.description': '适用于网页打印、扫描件、图片型 PDF。开启后会逐页 OCR，解析更完整但耗时和模型调用更多。',
+    'uploadConfirm.summaryGraphTagsValue': '{count} 个',
+    // Vue graphSettings block (frontend/src/i18n/locales/zh-CN.ts), byte-exact.
+    'graphSettings.title': '知识图谱配置',
+    'graphSettings.description': '配置实体-关系提取功能，自动从文本中抽取实体和关系构建知识图谱（注意：这与 Wiki 知识库中的「页面链接图谱」是两回事——前者是基于 LLM 的实体-关系图，后者是 Wiki 页面之间的引用关系图）',
+    'graphSettings.enableLabel': '启用实体关系提取',
+    'graphSettings.enableDescription': '开启后将自动从文本中提取实体和关系',
+    'graphSettings.tagsLabel': '关系类型',
+    'graphSettings.tagsDescription': '定义要提取的关系类型标签，多个标签用逗号分隔',
+    'graphSettings.tagsPlaceholder': '输入关系类型，如：工作于、同事、朋友等',
+    'graphSettings.generateRandomTags': '生成随机标签',
+    'graphSettings.sampleTextLabel': '示例文本',
+    'graphSettings.sampleTextDescription': '用于测试实体关系提取的示例文本',
+    'graphSettings.sampleTextPlaceholder': '输入一段包含实体和关系的文本...',
+    'graphSettings.customInstructionsLabel': '额外提取要求',
+    'graphSettings.customInstructionsDescription': '补充领域范围、实体筛选和属性提取要求；系统仍负责结构化输出协议',
+    'graphSettings.customInstructionsPlaceholder': '例如：重点提取合同主体、金额、履约期限和违约责任…',
+    'graphSettings.generateRandomText': '生成随机文本',
+    'graphSettings.entityListLabel': '实体列表',
+    'graphSettings.entityListDescription': '从文本中提取的实体及其属性',
+    'graphSettings.nodeNamePlaceholder': '输入实体名称',
+    'graphSettings.attributePlaceholder': '输入属性值',
+    'graphSettings.addAttribute': '添加属性',
+    'graphSettings.manageEntitiesLabel': '管理实体',
+    'graphSettings.manageEntitiesDescription': '添加或删除实体节点',
+    'graphSettings.addEntity': '添加实体',
+    'graphSettings.relationListLabel': '关系列表',
+    'graphSettings.relationListDescription': '定义实体之间的关系连接',
+    'graphSettings.selectEntity': '选择实体',
+    'graphSettings.selectRelationType': '选择关系类型',
+    'graphSettings.manageRelationsLabel': '管理关系',
+    'graphSettings.manageRelationsDescription': '添加或删除实体间的关系',
+    'graphSettings.addRelation': '添加关系',
+    'graphSettings.extractActionsLabel': '提取操作',
+    'graphSettings.extractActionsDescription': '执行实体关系提取或管理示例数据',
+    'graphSettings.startExtraction': '开始提取',
+    'graphSettings.extracting': '提取中...',
+    'graphSettings.defaultExample': '默认示例',
+    'graphSettings.clearExample': '清除示例',
+    'graphSettings.completeModelConfig': '请先完成模型配置',
+    'graphSettings.tagsGenerated': '标签生成成功',
+    'graphSettings.tagsGenerateFailed': '标签生成失败',
+    'graphSettings.textGenerated': '文本生成成功',
+    'graphSettings.textGenerateFailed': '文本生成失败',
+    'graphSettings.pleaseInputText': '请先输入示例文本',
+    'graphSettings.extractSuccess': '实体关系提取成功',
+    'graphSettings.extractFailed': '实体关系提取失败',
+    'graphSettings.exampleLoaded': '示例已加载',
+    'graphSettings.exampleCleared': '示例已清除',
+    'graphSettings.disabledWarning': '知识图谱数据库未启用，实体关系提取功能将无法使用',
+    'graphSettings.howToEnable': '如何启用知识图谱？',
+    'upload.uploadDocument': '上传文档',
+    'upload.uploadFolder': '上传文件夹',
+    'common.confirm': '确认',
     'common.remove': '移除',
   },
   'en-US': {
@@ -777,6 +1016,59 @@ const uploadConfirmCopy: Record<Locale, Record<string, string>> = {
     'uploadConfirm.manualCharCount': '{count} characters',
     'uploadConfirm.pdfForceScanned.label': 'Force scanned PDF parsing',
     'uploadConfirm.pdfForceScanned.description': 'Useful for web-print, scanned, or image-heavy PDFs. Every page will be rendered as an image and processed via OCR/VLM. May increase processing time and model costs.',
+    'uploadConfirm.summaryGraphTagsValue': '{count}',
+    // Vue graphSettings block (frontend/src/i18n/locales/en-US.ts), byte-exact.
+    'graphSettings.title': 'Knowledge Graph Configuration',
+    'graphSettings.description': 'Configure entity-relationship extraction to automatically build a knowledge graph from text (note: this is different from the "page-link graph" inside the Wiki — that one shows references between Wiki pages, while this one is an LLM-extracted entity-relationship graph)',
+    'graphSettings.enableLabel': 'Enable Entity-Relationship Extraction',
+    'graphSettings.enableDescription': 'Automatically extract entities and relationships from text when enabled',
+    'graphSettings.tagsLabel': 'Relationship Types',
+    'graphSettings.tagsDescription': 'Define relationship type tags to extract, separated by commas',
+    'graphSettings.tagsPlaceholder': 'Enter relationship types, e.g., works_at, colleague, friend',
+    'graphSettings.generateRandomTags': 'Generate Random Tags',
+    'graphSettings.sampleTextLabel': 'Sample Text',
+    'graphSettings.sampleTextDescription': 'Sample text for testing entity-relationship extraction',
+    'graphSettings.sampleTextPlaceholder': 'Enter text containing entities and relationships...',
+    'graphSettings.customInstructionsLabel': 'Additional Extraction Instructions',
+    'graphSettings.customInstructionsDescription': 'Add domain scope, entity filtering, or attribute guidance while the system retains the structured output contract',
+    'graphSettings.customInstructionsPlaceholder': 'For example: focus on contract parties, amounts, performance dates, and liabilities…',
+    'graphSettings.generateRandomText': 'Generate Random Text',
+    'graphSettings.entityListLabel': 'Entity List',
+    'graphSettings.entityListDescription': 'Entities and their attributes extracted from text',
+    'graphSettings.nodeNamePlaceholder': 'Enter entity name',
+    'graphSettings.attributePlaceholder': 'Enter attribute value',
+    'graphSettings.addAttribute': 'Add Attribute',
+    'graphSettings.manageEntitiesLabel': 'Manage Entities',
+    'graphSettings.manageEntitiesDescription': 'Add or remove entity nodes',
+    'graphSettings.addEntity': 'Add Entity',
+    'graphSettings.relationListLabel': 'Relationship List',
+    'graphSettings.relationListDescription': 'Define relationship connections between entities',
+    'graphSettings.selectEntity': 'Select Entity',
+    'graphSettings.selectRelationType': 'Select Relationship Type',
+    'graphSettings.manageRelationsLabel': 'Manage Relationships',
+    'graphSettings.manageRelationsDescription': 'Add or remove relationships between entities',
+    'graphSettings.addRelation': 'Add Relationship',
+    'graphSettings.extractActionsLabel': 'Extraction Actions',
+    'graphSettings.extractActionsDescription': 'Perform entity-relationship extraction or manage sample data',
+    'graphSettings.startExtraction': 'Start Extraction',
+    'graphSettings.extracting': 'Extracting...',
+    'graphSettings.defaultExample': 'Default Example',
+    'graphSettings.clearExample': 'Clear Example',
+    'graphSettings.completeModelConfig': 'Please complete model configuration first',
+    'graphSettings.tagsGenerated': 'Tags generated successfully',
+    'graphSettings.tagsGenerateFailed': 'Failed to generate tags',
+    'graphSettings.textGenerated': 'Text generated successfully',
+    'graphSettings.textGenerateFailed': 'Failed to generate text',
+    'graphSettings.pleaseInputText': 'Please enter sample text first',
+    'graphSettings.extractSuccess': 'Entity-relationship extraction successful',
+    'graphSettings.extractFailed': 'Entity-relationship extraction failed',
+    'graphSettings.exampleLoaded': 'Example loaded',
+    'graphSettings.exampleCleared': 'Example cleared',
+    'graphSettings.disabledWarning': 'Knowledge graph database is not enabled, entity-relationship extraction will not be available',
+    'graphSettings.howToEnable': 'How to enable knowledge graph?',
+    'upload.uploadDocument': 'Upload Document',
+    'upload.uploadFolder': 'Upload Folder',
+    'common.confirm': 'Confirm',
     'common.remove': 'Remove',
   },
   'ja-JP': {
@@ -827,6 +1119,59 @@ const uploadConfirmCopy: Record<Locale, Record<string, string>> = {
     'uploadConfirm.manualCharCount': '{count}文字',
     'uploadConfirm.pdfForceScanned.label': 'スキャンPDFとして強制解析',
     'uploadConfirm.pdfForceScanned.description': 'Web印刷、スキャン、画像が多いPDFに有効です。全ページを画像としてレンダリングし、OCR／VLMで処理します。処理時間とモデル費用が増える場合があります。',
+    'uploadConfirm.summaryGraphTagsValue': '{count}',
+    // Vue graphSettings block (frontend/src/i18n/locales/ja-JP.ts), byte-exact.
+    'graphSettings.title': 'ナレッジグラフの設定',
+    'graphSettings.description': 'エンティティとリレーションの抽出を設定し、テキストからナレッジグラフを自動的に構築します（注: Wiki内の「ページリンクグラフ」とは別のものです。あちらはWikiページ間の参照関係を示し、こちらはLLMが抽出したエンティティとリレーションのグラフです）',
+    'graphSettings.enableLabel': 'エンティティとリレーションの抽出を有効化',
+    'graphSettings.enableDescription': '有効にすると、テキストからエンティティとリレーションを自動的に抽出します',
+    'graphSettings.tagsLabel': 'リレーションの種類',
+    'graphSettings.tagsDescription': '抽出するリレーションの種類のタグをカンマ区切りで定義します',
+    'graphSettings.tagsPlaceholder': 'リレーションの種類を入力（例: works_at, colleague, friend）',
+    'graphSettings.generateRandomTags': 'タグをランダム生成',
+    'graphSettings.sampleTextLabel': 'サンプルテキスト',
+    'graphSettings.sampleTextDescription': 'エンティティとリレーションの抽出をテストするためのサンプルテキスト',
+    'graphSettings.sampleTextPlaceholder': 'エンティティとリレーションを含むテキストを入力...',
+    'graphSettings.customInstructionsLabel': '抽出の追加指示',
+    'graphSettings.customInstructionsDescription': '構造化出力の形式は維持したまま、対象分野の範囲、エンティティの絞り込み、属性の指針などを追加できます',
+    'graphSettings.customInstructionsPlaceholder': '例: 契約当事者、金額、履行期日、責任に注目する…',
+    'graphSettings.generateRandomText': 'テキストをランダム生成',
+    'graphSettings.entityListLabel': 'エンティティ一覧',
+    'graphSettings.entityListDescription': 'テキストから抽出されたエンティティとその属性',
+    'graphSettings.nodeNamePlaceholder': 'エンティティ名を入力',
+    'graphSettings.attributePlaceholder': '属性値を入力',
+    'graphSettings.addAttribute': '属性を追加',
+    'graphSettings.manageEntitiesLabel': 'エンティティの管理',
+    'graphSettings.manageEntitiesDescription': 'エンティティノードを追加・削除します',
+    'graphSettings.addEntity': 'エンティティを追加',
+    'graphSettings.relationListLabel': 'リレーション一覧',
+    'graphSettings.relationListDescription': 'エンティティ間のリレーションを定義します',
+    'graphSettings.selectEntity': 'エンティティを選択',
+    'graphSettings.selectRelationType': 'リレーションの種類を選択',
+    'graphSettings.manageRelationsLabel': 'リレーションの管理',
+    'graphSettings.manageRelationsDescription': 'エンティティ間のリレーションを追加・削除します',
+    'graphSettings.addRelation': 'リレーションを追加',
+    'graphSettings.extractActionsLabel': '抽出の操作',
+    'graphSettings.extractActionsDescription': 'エンティティとリレーションの抽出を実行したり、サンプルデータを管理したりします',
+    'graphSettings.startExtraction': '抽出を開始',
+    'graphSettings.extracting': '抽出中...',
+    'graphSettings.defaultExample': 'デフォルトの例',
+    'graphSettings.clearExample': '例をクリア',
+    'graphSettings.completeModelConfig': '先にモデルの設定を完了してください',
+    'graphSettings.tagsGenerated': 'タグを生成しました',
+    'graphSettings.tagsGenerateFailed': 'タグの生成に失敗しました',
+    'graphSettings.textGenerated': 'テキストを生成しました',
+    'graphSettings.textGenerateFailed': 'テキストの生成に失敗しました',
+    'graphSettings.pleaseInputText': '先にサンプルテキストを入力してください',
+    'graphSettings.extractSuccess': 'エンティティとリレーションを抽出しました',
+    'graphSettings.extractFailed': 'エンティティとリレーションの抽出に失敗しました',
+    'graphSettings.exampleLoaded': '例を読み込みました',
+    'graphSettings.exampleCleared': '例をクリアしました',
+    'graphSettings.disabledWarning': 'ナレッジグラフのデータベースが有効になっていないため、エンティティとリレーションの抽出は利用できません',
+    'graphSettings.howToEnable': 'ナレッジグラフを有効にするには？',
+    'upload.uploadDocument': 'ドキュメントをアップロード',
+    'upload.uploadFolder': 'フォルダをアップロード',
+    'common.confirm': '確認',
     'common.remove': '削除',
   },
   'ko-KR': {
@@ -877,6 +1222,59 @@ const uploadConfirmCopy: Record<Locale, Record<string, string>> = {
     'uploadConfirm.manualCharCount': '{count}자',
     'uploadConfirm.pdfForceScanned.label': '스캔 PDF로 파싱',
     'uploadConfirm.pdfForceScanned.description': '웹 인쇄, 스캔본, 이미지 위주 PDF에 적합합니다. 모든 페이지를 이미지로 렌더링한 뒤 OCR/VLM으로 처리합니다. 처리 시간과 모델 호출 비용이 늘어날 수 있습니다.',
+    'uploadConfirm.summaryGraphTagsValue': '{count}개',
+    // Vue graphSettings block (frontend/src/i18n/locales/ko-KR.ts), byte-exact.
+    'graphSettings.title': '지식 그래프 설정',
+    'graphSettings.description': '엔티티-관계 추출 기능을 구성하여 텍스트에서 자동으로 엔티티와 관계를 추출하여 지식 그래프를 구축합니다 (참고: Wiki의 \'페이지 링크 그래프\'와는 다릅니다. 후자는 Wiki 페이지 간의 참조 관계를 보여주며, 이쪽은 LLM이 추출한 엔티티-관계 그래프입니다)',
+    'graphSettings.enableLabel': '엔티티 관계 추출 활성화',
+    'graphSettings.enableDescription': '활성화하면 텍스트에서 자동으로 엔티티와 관계를 추출합니다',
+    'graphSettings.tagsLabel': '관계 유형',
+    'graphSettings.tagsDescription': '추출할 관계 유형 태그 정의, 여러 태그는 쉼표로 구분',
+    'graphSettings.tagsPlaceholder': '관계 유형 입력, 예: 근무처, 동료, 친구 등',
+    'graphSettings.generateRandomTags': '랜덤 태그 생성',
+    'graphSettings.sampleTextLabel': '샘플 텍스트',
+    'graphSettings.sampleTextDescription': '엔티티 관계 추출 테스트용 샘플 텍스트',
+    'graphSettings.sampleTextPlaceholder': '엔티티와 관계가 포함된 텍스트 입력...',
+    'graphSettings.customInstructionsLabel': '추가 추출 지침',
+    'graphSettings.customInstructionsDescription': '구조화된 출력 규칙은 유지하면서 도메인 범위와 엔티티 속성 지침을 추가합니다',
+    'graphSettings.customInstructionsPlaceholder': '예: 계약 당사자, 금액, 이행 기한 및 책임을 중점적으로 추출…',
+    'graphSettings.generateRandomText': '랜덤 텍스트 생성',
+    'graphSettings.entityListLabel': '엔티티 목록',
+    'graphSettings.entityListDescription': '텍스트에서 추출한 엔티티 및 속성',
+    'graphSettings.nodeNamePlaceholder': '엔티티 이름 입력',
+    'graphSettings.attributePlaceholder': '속성값 입력',
+    'graphSettings.addAttribute': '속성 추가',
+    'graphSettings.manageEntitiesLabel': '엔티티 관리',
+    'graphSettings.manageEntitiesDescription': '엔티티 노드 추가 또는 삭제',
+    'graphSettings.addEntity': '엔티티 추가',
+    'graphSettings.relationListLabel': '관계 목록',
+    'graphSettings.relationListDescription': '엔티티 간의 관계 연결 정의',
+    'graphSettings.selectEntity': '엔티티 선택',
+    'graphSettings.selectRelationType': '관계 유형 선택',
+    'graphSettings.manageRelationsLabel': '관계의 관리',
+    'graphSettings.manageRelationsDescription': '엔티티 간 관계 추가 또는 삭제',
+    'graphSettings.addRelation': '관계 추가',
+    'graphSettings.extractActionsLabel': '추출 작업',
+    'graphSettings.extractActionsDescription': '엔티티 관계 추출 실행 또는 샘플 데이터 관리',
+    'graphSettings.startExtraction': '추출 시작',
+    'graphSettings.extracting': '추출 중...',
+    'graphSettings.defaultExample': '기본 예시',
+    'graphSettings.clearExample': '예시 지우기',
+    'graphSettings.completeModelConfig': '먼저 모델 설정을 완료하세요',
+    'graphSettings.tagsGenerated': '태그 생성 성공',
+    'graphSettings.tagsGenerateFailed': '태그 생성 실패',
+    'graphSettings.textGenerated': '텍스트 생성 성공',
+    'graphSettings.textGenerateFailed': '텍스트 생성 실패',
+    'graphSettings.pleaseInputText': '먼저 샘플 텍스트를 입력하세요',
+    'graphSettings.extractSuccess': '엔티티 관계 추출 성공',
+    'graphSettings.extractFailed': '엔티티 관계 추출 실패',
+    'graphSettings.exampleLoaded': '예시가 로드되었습니다',
+    'graphSettings.exampleCleared': '예시가 지워졌습니다',
+    'graphSettings.disabledWarning': '지식 그래프 데이터베이스가 활성화되지 않아 엔티티 관계 추출 기능을 사용할 수 없습니다',
+    'graphSettings.howToEnable': '지식 그래프를 활성화하는 방법?',
+    'upload.uploadDocument': '문서 업로드',
+    'upload.uploadFolder': '폴더 업로드',
+    'common.confirm': '확인',
     'common.remove': '제거',
   },
   'ru-RU': {
@@ -927,6 +1325,59 @@ const uploadConfirmCopy: Record<Locale, Record<string, string>> = {
     'uploadConfirm.manualCharCount': '{count} символов',
     'uploadConfirm.pdfForceScanned.label': 'Разбор PDF как сканированного документа',
     'uploadConfirm.pdfForceScanned.description': 'Подходит для PDF с веб-печати, сканов и документов с большим числом изображений. Каждая страница будет отрендерена в изображение и обработана через OCR/VLM. Может увеличить время обработки и расходы на модели.',
+    'uploadConfirm.summaryGraphTagsValue': '{count}',
+    // Vue graphSettings block (frontend/src/i18n/locales/ru-RU.ts), byte-exact.
+    'graphSettings.title': 'Настройки графа знаний',
+    'graphSettings.description': 'Настройте извлечение сущностей и отношений для автоматического построения графа знаний из текста (примечание: это не то же самое, что «граф ссылок страниц» внутри Wiki — там показаны связи между Wiki-страницами, а здесь строится граф сущностей и отношений на основе LLM)',
+    'graphSettings.enableLabel': 'Включить извлечение сущностей и отношений',
+    'graphSettings.enableDescription': 'Автоматически извлекать сущности и отношения из текста при включении',
+    'graphSettings.tagsLabel': 'Типы отношений',
+    'graphSettings.tagsDescription': 'Определите теги типов отношений для извлечения, разделённые запятыми',
+    'graphSettings.tagsPlaceholder': 'Введите типы отношений, например: работает_в, коллега, друг',
+    'graphSettings.generateRandomTags': 'Сгенерировать случайные теги',
+    'graphSettings.sampleTextLabel': 'Образец текста',
+    'graphSettings.sampleTextDescription': 'Образец текста для тестирования извлечения сущностей и отношений',
+    'graphSettings.sampleTextPlaceholder': 'Введите текст, содержащий сущности и отношения...',
+    'graphSettings.customInstructionsLabel': 'Дополнительные инструкции извлечения',
+    'graphSettings.customInstructionsDescription': 'Добавьте предметную область и правила атрибутов, сохраняя системный формат вывода',
+    'graphSettings.customInstructionsPlaceholder': 'Например: уделять внимание сторонам договора, суммам, срокам и ответственности…',
+    'graphSettings.generateRandomText': 'Сгенерировать случайный текст',
+    'graphSettings.entityListLabel': 'Список сущностей',
+    'graphSettings.entityListDescription': 'Сущности и их атрибуты, извлечённые из текста',
+    'graphSettings.nodeNamePlaceholder': 'Введите имя сущности',
+    'graphSettings.attributePlaceholder': 'Введите значение атрибута',
+    'graphSettings.addAttribute': 'Добавить атрибут',
+    'graphSettings.manageEntitiesLabel': 'Управление сущностями',
+    'graphSettings.manageEntitiesDescription': 'Добавить или удалить узлы сущностей',
+    'graphSettings.addEntity': 'Добавить сущность',
+    'graphSettings.relationListLabel': 'Список отношений',
+    'graphSettings.relationListDescription': 'Определите связи отношений между сущностями',
+    'graphSettings.selectEntity': 'Выберите сущность',
+    'graphSettings.selectRelationType': 'Выберите тип отношения',
+    'graphSettings.manageRelationsLabel': 'Управление отношениями',
+    'graphSettings.manageRelationsDescription': 'Добавить или удалить отношения между сущностями',
+    'graphSettings.addRelation': 'Добавить отношение',
+    'graphSettings.extractActionsLabel': 'Действия извлечения',
+    'graphSettings.extractActionsDescription': 'Выполнить извлечение сущностей и отношений или управлять образцами данных',
+    'graphSettings.startExtraction': 'Начать извлечение',
+    'graphSettings.extracting': 'Извлечение...',
+    'graphSettings.defaultExample': 'Пример по умолчанию',
+    'graphSettings.clearExample': 'Очистить пример',
+    'graphSettings.completeModelConfig': 'Пожалуйста, сначала завершите настройку модели',
+    'graphSettings.tagsGenerated': 'Теги успешно сгенерированы',
+    'graphSettings.tagsGenerateFailed': 'Не удалось сгенерировать теги',
+    'graphSettings.textGenerated': 'Текст успешно сгенерирован',
+    'graphSettings.textGenerateFailed': 'Не удалось сгенерировать текст',
+    'graphSettings.pleaseInputText': 'Пожалуйста, сначала введите образец текста',
+    'graphSettings.extractSuccess': 'Извлечение сущностей и отношений выполнено успешно',
+    'graphSettings.extractFailed': 'Не удалось извлечь сущности и отношения',
+    'graphSettings.exampleLoaded': 'Пример загружен',
+    'graphSettings.exampleCleared': 'Пример очищен',
+    'graphSettings.disabledWarning': 'База данных графа знаний не включена, извлечение сущностей и отношений будет недоступно',
+    'graphSettings.howToEnable': 'Как включить граф знаний?',
+    'upload.uploadDocument': 'Загрузить документ',
+    'upload.uploadFolder': 'Загрузить папку',
+    'common.confirm': 'Подтвердить',
     'common.remove': 'Удалить',
   },
 };

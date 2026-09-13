@@ -45,3 +45,293 @@
   min-width: 12rem;
   min-height: 4rem;
 }
+
+/* --- N007: graph section (Vue GraphSettings.vue scoped styles port) --------- */
+
+.wk-upload-confirm-graph {
+  border: 1px solid var(--wk-border, #e4e7ec);
+  border-radius: 8px;
+  margin: 0 0 0.75rem;
+  padding: 0.75rem;
+}
+
+.wk-graph-settings {
+  width: 100%;
+}
+
+.wk-graph-settings .section-header {
+  margin-bottom: 1rem;
+}
+
+.wk-graph-settings .section-header h2 {
+  margin: 0 0 4px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--wk-text, #101828);
+}
+
+.wk-graph-settings .section-desc {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--wk-muted, #667085);
+}
+
+.wk-graph-alert {
+  margin: 0 0 0.75rem;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: rgba(183, 121, 8, 0.08);
+  color: var(--wk-warning, #b54708);
+  font-size: 0.85rem;
+}
+
+/* Vue .setting-row: label block left, control right; vertical rows stack. */
+.wk-graph-setting-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--wk-border, #e4e7ec);
+}
+
+.wk-graph-setting-row:last-child {
+  border-bottom: none;
+}
+
+.wk-graph-setting-row.is-vertical {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.wk-graph-setting-row .setting-info {
+  flex: 0 0 40%;
+  max-width: 40%;
+  padding-right: 0.75rem;
+}
+
+.wk-graph-setting-row.is-vertical .setting-info {
+  flex: none;
+  max-width: none;
+  padding-right: 0;
+}
+
+.wk-graph-setting-row .setting-info label {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--wk-text, #101828);
+}
+
+.wk-graph-setting-row .setting-info .wk-muted {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.wk-graph-setting-row .setting-control {
+  flex: 0 0 55%;
+  max-width: 55%;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.wk-graph-setting-row.is-vertical .setting-control,
+.wk-graph-setting-row .setting-control.is-full {
+  width: 100%;
+  max-width: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.wk-graph-setting-row textarea,
+.wk-graph-setting-row input[type="text"] {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Vue .tags-control-group / .text-control-group. */
+.wk-graph-tags-group,
+.wk-graph-text-group {
+  display: flex;
+  gap: 0.75rem;
+  width: 100%;
+  align-items: flex-start;
+}
+
+.wk-graph-text-group {
+  flex-direction: column;
+}
+
+.wk-graph-add-tag {
+  width: 100%;
+}
+
+.wk-graph-add-tag input {
+  width: 100%;
+}
+
+.wk-graph-tip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--wk-muted, #667085);
+}
+
+/* Vue .node-list / .node-item: one card per extracted entity. */
+.wk-graph-node-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  width: 100%;
+}
+
+.wk-graph-node-item {
+  padding: 0.75rem;
+  border: 1px solid var(--wk-border, #e4e7ec);
+  border-radius: 8px;
+  background: var(--wk-surface, #fff);
+}
+
+.wk-graph-node-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.wk-graph-node-header .wk-graph-node-name {
+  flex: 1;
+}
+
+.wk-graph-node-attributes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding-left: 1.75rem;
+}
+
+.wk-graph-attribute-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.wk-graph-attribute-item input {
+  flex: 1;
+}
+
+.wk-graph-add-attr {
+  align-self: flex-start;
+}
+
+/* Vue .relation-list / .relation-item: node to type to node rows. */
+.wk-graph-relation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  width: 100%;
+}
+
+.wk-graph-relation-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem;
+  border: 1px solid var(--wk-border, #e4e7ec);
+  border-radius: 8px;
+  background: var(--wk-surface, #fff);
+}
+
+.wk-graph-relation-item select {
+  flex: 1;
+  min-width: 150px;
+}
+
+.wk-graph-relation-item span[aria-hidden] {
+  flex: 0 0 auto;
+  color: var(--wk-muted, #667085);
+}
+
+.wk-graph-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.wk-graph-add-btn,
+.wk-graph-gen-btn {
+  border: 1px solid var(--wk-accent, #4a7dff);
+  border-radius: 6px;
+  background: var(--wk-accent, #4a7dff);
+  color: #fff;
+  padding: 4px 12px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.wk-graph-add-btn:disabled,
+.wk-graph-gen-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.wk-graph-actions button:not(.wk-graph-add-btn):not(.wk-graph-gen-btn) {
+  border: 1px solid var(--wk-border, #e4e7ec);
+  border-radius: 6px;
+  background: transparent;
+  padding: 4px 12px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+/* --- N007: URL list rows (Vue files-list .file-item parity) ----------------- */
+
+.wk-upload-confirm-files li {
+  align-items: center;
+  margin-bottom: 2px;
+  border-bottom: none;
+  border-radius: 6px;
+  padding: 6px 6px 6px 8px;
+}
+
+.wk-upload-confirm-files li:hover {
+  background: rgba(16, 24, 40, 0.04);
+}
+
+/* --- N007: add-source dropdown (Vue KbUploadSourceDropdown parity) ---------- */
+
+.wk-upload-source__menu {
+  min-width: 10rem;
+}
+
+.wk-upload-source__item:hover {
+  background: rgba(16, 24, 40, 0.05);
+}
+
+.wk-upload-nav-icon {
+  color: var(--wk-accent, #4a7dff);
+}
+
+.wk-upload-nav-item.is-active {
+  border-color: var(--wk-accent, #4a7dff);
+  background: rgba(74, 125, 255, 0.08);
+}
+
+/* --- N007: URL import sub-dialog (Vue t-dialog inside the dropdown) --------- */
+
+.wk-upload-url-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.wk-upload-url-dialog input {
+  width: 100%;
+  box-sizing: border-box;
+}

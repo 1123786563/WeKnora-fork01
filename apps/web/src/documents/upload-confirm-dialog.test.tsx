@@ -22,9 +22,20 @@ const {
   UploadConfirmSections,
   UploadDestinationPicker,
   UploadFilesPanel,
+  UploadGraphSettings,
   UploadSectionNav,
+  UploadSourceDropdown,
 } = await import('./KnowledgeDocumentsPage.tsx');
-const { uploadConfirmT, defaultUploadConfirmUIState, toUploadEntries } = await import('./upload-pipeline.ts');
+const {
+  uploadConfirmT,
+  uploadConfirmMessage,
+  defaultUploadConfirmUIState,
+  defaultUploadConfirmSection,
+  graphSectionAvailable,
+  sectionAfterGraphAvailabilityChange,
+  toUploadEntries,
+  uploadSectionStatus,
+} = await import('./upload-pipeline.ts');
 
 const ct = uploadConfirmT('zh-CN');
 const noop = () => {};
@@ -292,4 +303,213 @@ test('config sections localize through the dialog copy table in other locales', 
     t: uploadConfirmT('en-US'),
   }));
   assert.match(chunkingOpen, /Parent-Child/);
+});
+
+// --- Graph section (Vue GraphSettings parity, N007) -------------------------------
+
+const enabledGraphExtract = {
+  enabled: true,
+  text: 'Romeo loves Juliet.',
+  tags: ['Author', 'Alias'],
+  nodes: [
+    { name: 'Romeo and Juliet', attributes: ['A tragedy', 'Set in Verona'] },
+    { name: 'William Shakespeare', attributes: ['English playwright'] },
+  ],
+  relations: [{ node1: 'Romeo and Juliet', node2: 'William Shakespeare', type: 'Author' }],
+  customInstructions: '重点提取人物',
+};
+
+function graphHtml(overrides?: {
+  graphExtract?: Partial<typeof enabledGraphExtract>;
+  graphDatabaseOn?: boolean;
+  llmModelId?: string;
+  canRunExtract?: boolean;
+  locale?: 'zh-CN' | 'en-US';
+}) {
+  return renderToStaticMarkup(React.createElement(UploadGraphSettings, {
+    graphExtract: { ...enabledGraphExtract, ...overrides?.graphExtract },
+    graphDatabaseOn: overrides?.graphDatabaseOn ?? true,
+    llmModelId: overrides?.llmModelId ?? 'llm-1',
+    canRunExtract: overrides?.canRunExtract ?? true,
+    onChange: noop,
+    t: uploadConfirmT(overrides?.locale ?? 'zh-CN'),
+  }));
+}
+
+test('graph section renders the Vue GraphSettings form when enabled', () => {
+  const html = graphHtml();
+  assert.match(html, /知识图谱配置/);
+  assert.match(html, /配置实体-关系提取功能/);
+  assert.match(html, /启用实体关系提取/);
+  assert.match(html, /额外提取要求/);
+  assert.match(html, /重点提取人物/);
+  assert.match(html, /关系类型/);
+  assert.match(html, /示例文本/);
+  assert.match(html, /Romeo loves Juliet[.]/);
+  assert.match(html, /实体列表/);
+  assert.match(html, /value="Romeo and Juliet"/);
+  assert.match(html, /value="A tragedy"/);
+  assert.match(html, /添加属性/);
+  assert.match(html, /管理实体/);
+  assert.match(html, /添加实体/);
+  assert.match(html, /关系列表/);
+  assert.match(html, /添加关系/);
+  assert.match(html, /提取操作/);
+  assert.match(html, /开始提取/);
+  assert.match(html, /默认示例/);
+  assert.match(html, /清除示例/);
+});
+
+test('graph section hides config rows until enabled and warns when the graph database is off', () => {
+  const disabled = graphHtml({ graphExtract: { enabled: false, text: '', tags: [], nodes: [], relations: [], customInstructions: '保留指令' } });
+  assert.match(disabled, /启用实体关系提取/);
+  // Turning extraction off clears the example data but keeps custom instructions (Vue handleEnabledChange).
+  assert.doesNotMatch(disabled, /示例文本/);
+  assert.doesNotMatch(disabled, /关系类型/);
+  assert.doesNotMatch(disabled, /添加实体/);
+  const dbOff = graphHtml({ graphDatabaseOn: false });
+  assert.match(dbOff, /知识图谱数据库未启用，实体关系提取功能将无法使用/);
+  const en = graphHtml({ locale: 'en-US' });
+  assert.match(en, /Enable Entity-Relationship Extraction/);
+  assert.match(en, /Relationship Types/);
+});
+
+test('graph section extraction actions gate on admin role and the summary LLM model', () => {
+  const admin = graphHtml();
+  assert.match(admin, /生成随机标签/);
+  assert.match(admin, /生成随机文本/);
+  const nonAdmin = graphHtml({ canRunExtract: false });
+  assert.doesNotMatch(nonAdmin, /生成随机标签/);
+  assert.doesNotMatch(nonAdmin, /开始提取/);
+  const noLlm = graphHtml({ llmModelId: '' });
+  assert.match(noLlm, /disabled/);
+});
+
+test('config panel gates the graph slot on section availability like Vue v-if', () => {
+  const slot = React.createElement('p', { key: 'g' }, 'GRAPH-SLOT');
+  const base = {
+    state: defaultUploadConfirmUIState(),
+    update: noop,
+    hasPdf: false,
+    multimodalIssue: false,
+    asrIssue: false,
+    parserEngines: [],
+    vllmModels: [],
+    asrModels: [],
+    moreOpen: false,
+    onToggleMore: noop,
+    t: ct,
+    graphSettings: slot,
+  };
+  const available = renderToStaticMarkup(React.createElement(UploadConfirmSections, { ...base, graphAvailable: true }));
+  assert.match(available, /data-section="graph"/);
+  assert.match(available, /wk-upload-section-graph/);
+  assert.match(available, /GRAPH-SLOT/);
+  const unavailable = renderToStaticMarkup(React.createElement(UploadConfirmSections, { ...base, graphAvailable: false }));
+  assert.doesNotMatch(unavailable, /GRAPH-SLOT/);
+});
+
+// --- URL list (Vue localUrls parity) -----------------------------------------------
+
+test('files panel renders multiple staged URL rows each with removal', () => {
+  const html = renderToStaticMarkup(React.createElement(UploadFilesPanel, {
+    mode: 'file',
+    entries: [],
+    urls: ['https://example.com/a.html', 'https://example.com/b.pdf'],
+    uploadStates: [],
+    uploading: false,
+    labels: {
+      urlItemLabel: 'URL', remove: '移除', noItems: '',
+      manualCharCount: (count: number) => count + ' 个字符',
+      reparseSource: '', reparseHint: '', statusLabel: () => '',
+    },
+    onRemoveUrl: noop,
+    onRemoveEntry: noop,
+  }));
+  assert.match(html, /example[.]com[/]a[.]html/);
+  assert.match(html, /example[.]com[/]b[.]pdf/);
+  assert.equal((html.match(/aria-label="移除"/g) ?? []).length, 2);
+});
+
+// --- Add-source dropdown (Vue KbUploadSourceDropdown parity) ------------------------
+
+test('add-source control is a dropdown menu with file, folder and URL entries', () => {
+  const dropdownProps = {
+    tooltip: '继续添加',
+    items: [
+      { key: 'file' as const, label: '上传文档' },
+      { key: 'folder' as const, label: '上传文件夹' },
+      { key: 'url' as const, label: '导入网页' },
+    ],
+    onToggle: noop,
+    onSelect: noop,
+    onFiles: noop,
+  };
+  const html = renderToStaticMarkup(React.createElement(UploadSourceDropdown, { ...dropdownProps, open: true }));
+  assert.match(html, /aria-label="继续添加"/);
+  assert.match(html, /上传文档/);
+  assert.match(html, /上传文件夹/);
+  assert.match(html, /导入网页/);
+  assert.match(html, /type="file"/);
+  assert.match(html, /webkitdirectory/);
+  const closed = renderToStaticMarkup(React.createElement(UploadSourceDropdown, { ...dropdownProps, open: false }));
+  assert.doesNotMatch(closed, /上传文件夹/);
+});
+
+// --- Nav graph item + section availability fallback ---------------------------------
+
+test('section nav renders the graph entry and availability falls back like Vue watch', () => {
+  const html = renderToStaticMarkup(React.createElement(UploadSectionNav, {
+    items: [
+      { key: 'tags', label: '文档标签', status: '未设置', statusTitle: '未设置', tone: 'muted', issue: false },
+      { key: 'graph', label: '知识图谱', status: '2 个', statusTitle: '2 个', issue: false },
+    ],
+    navLabel: '解析配置导航',
+    onSelect: noop,
+  }));
+  assert.match(html, /知识图谱/);
+  assert.match(html, /2 个/);
+
+  // Vue getDefaultSection: reparse -> parser, issue -> that section, else tags.
+  assert.equal(defaultUploadConfirmSection({ mode: 'reparse', multimodalIssue: false, asrIssue: false }), 'parser');
+  assert.equal(defaultUploadConfirmSection({ mode: 'file', multimodalIssue: true, asrIssue: false }), 'multimodal');
+  assert.equal(defaultUploadConfirmSection({ mode: 'file', multimodalIssue: false, asrIssue: true }), 'asr');
+  assert.equal(defaultUploadConfirmSection({ mode: 'manual', multimodalIssue: false, asrIssue: false }), 'tags');
+
+  // Vue watch(isGraphSectionAvailable): leaving graph resets to the default section.
+  assert.equal(sectionAfterGraphAvailabilityChange('graph', false, 'tags'), 'tags');
+  assert.equal(sectionAfterGraphAvailabilityChange('graph', true, 'tags'), 'graph');
+  assert.equal(sectionAfterGraphAvailabilityChange('chunking', false, 'tags'), 'chunking');
+
+  // Vue isGraphSectionAvailable: engine set (and not "Not Enabled") AND kb graph flag.
+  assert.equal(graphSectionAvailable({ systemInfo: { graph_database_engine: 'neo4j' }, graphEnabled: true }), true);
+  assert.equal(graphSectionAvailable({ systemInfo: { graph_database_engine: 'Not Enabled' }, graphEnabled: true }), false);
+  assert.equal(graphSectionAvailable({ systemInfo: {}, graphEnabled: true }), false);
+  assert.equal(graphSectionAvailable({ systemInfo: { graph_database_engine: 'neo4j' }, graphEnabled: false }), false);
+
+  // Vue getSectionNavStatus('graph').
+  const state = { ...defaultUploadConfirmUIState(), graphEnabled: true };
+  const navInput = { selectedTagCount: 0, hasPdf: false, hasImages: false, hasAudio: false };
+  assert.equal(uploadSectionStatus('graph', { state: { ...state, nodeExtract: { ...state.nodeExtract, enabled: false } }, ...navInput })?.key, 'uploadConfirm.statusOff');
+  const withTags = uploadSectionStatus('graph', { state: { ...state, nodeExtract: { ...state.nodeExtract, enabled: true, tags: ['Author', 'Alias'] } }, ...navInput });
+  assert.equal(withTags?.key, 'uploadConfirm.summaryGraphTagsValue');
+  assert.equal(withTags?.values?.count, 2);
+  assert.equal(uploadSectionStatus('graph', { state: { ...state, nodeExtract: { ...state.nodeExtract, enabled: true } }, ...navInput })?.key, 'uploadConfirm.statusOn');
+});
+
+// --- Graph copy table ----------------------------------------------------------------
+
+test('graph section copy resolves five locales from the ported Vue table', () => {
+  assert.equal(uploadConfirmMessage('zh-CN', 'graphSettings.title'), '知识图谱配置');
+  assert.equal(uploadConfirmMessage('en-US', 'graphSettings.title'), 'Knowledge Graph Configuration');
+  assert.equal(uploadConfirmMessage('ja-JP', 'graphSettings.enableLabel'), 'エンティティとリレーションの抽出を有効化');
+  assert.equal(uploadConfirmMessage('ko-KR', 'graphSettings.addEntity'), '엔티티 추가');
+  assert.equal(uploadConfirmMessage('ru-RU', 'graphSettings.addRelation'), 'Добавить отношение');
+  assert.equal(uploadConfirmMessage('zh-CN', 'uploadConfirm.summaryGraphTagsValue', { count: 3 }), '3 个');
+  assert.equal(uploadConfirmMessage('en-US', 'uploadConfirm.summaryGraphTagsValue', { count: 3 }), '3');
+  assert.equal(uploadConfirmMessage('ko-KR', 'uploadConfirm.summaryGraphTagsValue', { count: 3 }), '3개');
+  // Add-source dropdown labels missing from shared i18n are ported byte-exact.
+  assert.equal(uploadConfirmMessage('zh-CN', 'upload.uploadDocument'), '上传文档');
+  assert.equal(uploadConfirmMessage('en-US', 'upload.uploadFolder'), 'Upload Folder');
+  assert.equal(uploadConfirmMessage('zh-CN', 'common.confirm'), '确认');
 });

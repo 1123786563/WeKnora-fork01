@@ -14,6 +14,7 @@ import {
   folderOptionFromPath,
   folderPickerRows,
   formatBytes,
+  GRAPH_EXTRACT_DEFAULT_EXAMPLE,
   hasParserCustomization,
   inferMediaExtsFromMarkdown,
   joinFolderPath,
@@ -394,4 +395,117 @@ test('uploadConfirmT prefers shared i18n keys before the local dialog table', ()
   // Dialog-only key falls back to the ported Vue copy.
   assert.equal(t('uploadConfirm.destinationLabel'), '上传位置');
   assert.equal(t('uploadConfirm.reparseHint'), '将沿用上次解析的配置，可在此调整');
+});
+
+// --- N007: graph section state, payload and gating (Vue UploadConfirmDialog) -------
+
+test('graph state seeds from kb extract_config and indexing_strategy like Vue initFromKbInfo', () => {
+  const state = uploadConfirmStateFromKb({
+    indexing_strategy: { graph_enabled: true },
+    extract_config: {
+      enabled: true,
+      text: 'sample',
+      tags: ['Author'],
+      nodes: [{ name: 'Verona', attributes: ['City in Italy'] }, { name: 'NoAttrs' }],
+      relations: [{ node1: 'A', node2: 'B', type: 'Alias' }],
+      custom_instructions: 'ctx',
+    },
+  });
+  assert.equal(state.graphEnabled, true);
+  assert.equal(state.nodeExtract.enabled, true);
+  assert.equal(state.nodeExtract.text, 'sample');
+  assert.deepEqual(state.nodeExtract.tags, ['Author']);
+  assert.deepEqual(state.nodeExtract.nodes, [
+    { name: 'Verona', attributes: ['City in Italy'] },
+    { name: 'NoAttrs', attributes: [] },
+  ]);
+  assert.deepEqual(state.nodeExtract.relations, [{ node1: 'A', node2: 'B', type: 'Alias' }]);
+  assert.equal(state.nodeExtract.customInstructions, 'ctx');
+
+  // Vue: nodeExtractConfig.enabled = extract.enabled && indexing.graph_enabled.
+  const graphOff = uploadConfirmStateFromKb({
+    indexing_strategy: { graph_enabled: false },
+    extract_config: { enabled: true, text: '', tags: [], nodes: [], relations: [] },
+  });
+  assert.equal(graphOff.graphEnabled, false);
+  assert.equal(graphOff.nodeExtract.enabled, false);
+
+  // Defaults and missing kb mirror Vue createDefaultUIState.
+  const base = defaultUploadConfirmUIState();
+  assert.equal(base.graphEnabled, false);
+  assert.deepEqual(base.nodeExtract, { enabled: false, text: '', tags: [], nodes: [], relations: [], customInstructions: '' });
+  assert.equal(uploadConfirmStateFromKb(null).graphEnabled, false);
+});
+
+test('graph override payload matches Vue buildProcessOverrides', () => {
+  const state: UploadConfirmUIState = {
+    ...defaultUploadConfirmUIState(),
+    graphEnabled: true,
+    nodeExtract: {
+      enabled: true,
+      text: 'sample text',
+      tags: ['Author', 'Alias'],
+      nodes: [{ name: 'Verona', attributes: ['City in Italy'] }],
+      relations: [{ node1: 'Verona', node2: 'Romeo', type: 'Setting' }],
+      customInstructions: 'focus',
+    },
+  };
+  const overrides = buildUploadConfirmOverrides(state);
+  // Vue: graph_enabled = nodeExtract.enabled && graphEnabled.
+  assert.equal(overrides.graph_enabled, true);
+  assert.deepEqual(overrides.extract_config, {
+    enabled: true,
+    text: 'sample text',
+    tags: ['Author', 'Alias'],
+    nodes: [{ name: 'Verona', attributes: ['City in Italy'] }],
+    relations: [{ node1: 'Verona', node2: 'Romeo', type: 'Setting' }],
+    custom_instructions: 'focus',
+  });
+
+  // Extraction toggle off wins even with the kb flag set.
+  const disabled = buildUploadConfirmOverrides({ ...state, nodeExtract: { ...state.nodeExtract, enabled: false } });
+  assert.equal(disabled.graph_enabled, false);
+  assert.equal(disabled.extract_config?.enabled, false);
+
+  // Default state keeps both keys present but off (Vue always emits them).
+  const base = buildUploadConfirmOverrides(defaultUploadConfirmUIState());
+  assert.equal(base.graph_enabled, false);
+  assert.deepEqual(base.extract_config, { enabled: false, text: '', tags: [], nodes: [], relations: [], custom_instructions: '' });
+});
+
+test('reparse overrides apply extract_config and clamp enabled by graph_enabled', () => {
+  const base = uploadConfirmStateFromKb({
+    indexing_strategy: { graph_enabled: true },
+    extract_config: { enabled: true, text: 'kb text', tags: ['T'], nodes: [], relations: [] },
+  });
+  const seeded = applyUploadOverrides(base, {
+    extract_config: {
+      enabled: true,
+      text: 'stored text',
+      tags: ['Author'],
+      nodes: [{ name: 'Romeo', attributes: [] }],
+      relations: [{ node1: 'Romeo', node2: 'Juliet', type: 'Loves' }],
+      custom_instructions: 're',
+    },
+    graph_enabled: true,
+  });
+  assert.equal(seeded.graphEnabled, true);
+  assert.equal(seeded.nodeExtract.enabled, true);
+  assert.equal(seeded.nodeExtract.text, 'stored text');
+
+  // Vue applyOverridesToState L1240-1241: graph_enabled=false clamps extract enabled.
+  const clamped = applyUploadOverrides(base, { extract_config: { enabled: true }, graph_enabled: false });
+  assert.equal(clamped.graphEnabled, false);
+  assert.equal(clamped.nodeExtract.enabled, false);
+
+  // graph_enabled alone can re-arm the flag without extract data.
+  const rearmed = applyUploadOverrides(base, { graph_enabled: true });
+  assert.equal(rearmed.graphEnabled, true);
+});
+
+test('graph default example matches the Vue GraphSettings fixture', () => {
+  assert.equal(GRAPH_EXTRACT_DEFAULT_EXAMPLE.tags.join(','), 'Author,Alias');
+  assert.equal(GRAPH_EXTRACT_DEFAULT_EXAMPLE.nodes.length, 4);
+  assert.equal(GRAPH_EXTRACT_DEFAULT_EXAMPLE.relations.length, 3);
+  assert.match(GRAPH_EXTRACT_DEFAULT_EXAMPLE.text, /Romeo and Juliet/);
 });
