@@ -47,9 +47,22 @@ export {
   validateImWizardStep,
 } from './integrations/imWizard.ts';
 export type { ImWizardForm } from './integrations/imWizard.ts';
+export {
+  EMBED_WIZARD_STEPS,
+  WEKNORA_BRAND_COLOR,
+  buildEmbedCreatePayload,
+  buildEmbedUpdatePayload,
+  createEmbedWizardForm,
+  embedWizardFormFromChannel,
+  embedWizardSteps,
+  mapEmbedOriginsApiError,
+  parseEmbedAllowedOrigins,
+  validateEmbedAllowedOrigins,
+  validateEmbedWizardStep,
+} from './integrations/embedWizard.ts';
+export type { EmbedWizardForm, EmbedWizardWarning } from './integrations/embedWizard.ts';
 export { apiKeyAccessMode, apiKeyValueDisplay, isFreshKeyVisible } from './integrations/apiKeys.ts';
 export type { ApiKeyRow } from './integrations/apiKeys.ts';
-export { buildEmbedUpdatePayload } from './integrations/form.ts';
 export type { EmbedResourceLike } from './integrations/form.ts';
 export { integrationTabForSection, normalizeIntegrationSettingsSection, integrationSettingsQuery, selectSettingsQuery } from './integrations/settings-route.ts';
 export { NewUserGuide, computeCardStyle, computeBackdropPieces, computeHighlightHole, GUIDE_CARD_WIDTH } from './guides/NewUserGuide.tsx';

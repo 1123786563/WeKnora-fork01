@@ -38,17 +38,21 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, embedded = 
 
   // IM wizard options: bound-agent select (Vue listAgents) and the step-3
   // file knowledge-base select (Vue chatResources.ensureKnowledgeBases).
-  async function loadImWizardOptions() {
-    try { setAgents((await client.configuration.agents.list()).map((agent) => ({ id: agent.id, name: agent.name }))); }
+  // The embed wizard reuses the agent list for its bound-agent select and the
+  // capability warnings (AgentEmbedChannelPanel.vue agentWebSearchEnabledEffective).
+  async function loadAgents() {
+    try { setAgents((await client.configuration.agents.list()).map((agent) => ({ id: agent.id, name: agent.name, config: agent.config }))); }
     catch { setAgents([]); }
+  }
+  async function loadKnowledgeBases() {
     try { setKnowledgeBases((await client.knowledgeBases.list()).map((kb) => ({ id: kb.id, name: kb.name }))); }
     catch { setKnowledgeBases([]); }
   }
 
   useEffect(() => {
     setError('');
-    if (tab === 'embed') void loadEmbed();
-    if (tab === 'im') { void loadIm(); void loadImWizardOptions(); }
+    if (tab === 'embed') { void loadEmbed(); void loadAgents(); }
+    if (tab === 'im') { void loadIm(); void loadAgents(); void loadKnowledgeBases(); }
     if (tab === 'api') void loadApiKeys();
     setLoading(false);
   }, [client, tab, activeTenantId]);
@@ -67,10 +71,11 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, embedded = 
 
   const actions = {
     principal,
-    onCreateEmbed: async (input: Record<string, unknown>) => { await client.embed.channels.create(String(input.agent_id || ''), input); },
+    onCreateEmbed: async (input: { agentId: string; payload: Record<string, unknown> }) => client.embed.channels.create(input.agentId, input.payload),
     onUpdateEmbed: async (id: string, input: Record<string, unknown>) => { await client.embed.channels.update(id, input); },
     onDeleteEmbed: async (id: string) => { await client.embed.channels.remove(id); },
     onRotateEmbed: async (id: string) => { await client.embed.channels.rotateToken(id); },
+    onEmbedDetail: async (id: string) => client.embed.channels.get(id),
     onCreateIm: async (input: { agentId: string; payload: Record<string, unknown> }) => { await client.embed.im.create(input.agentId, input.payload); },
     onUpdateIm: async (id: string, input: Record<string, unknown>) => { await client.embed.im.update(id, input); },
     onToggleIm: async (id: string) => { await client.embed.im.toggle(id); },

@@ -4,6 +4,7 @@
 // stays the single source of truth for migrated keys.
 
 import { formatMessage, isLocale, type Locale, type MessageValues } from '../../../i18n/src/index.ts';
+import { EMBED_WIZARD_FALLBACK_STRINGS } from './embedWizardMessages.ts';
 import { IM_WIZARD_FALLBACK_STRINGS } from './imWizardMessages.ts';
 
 // Layered translator for the integrations surface, following the pattern of
@@ -247,9 +248,11 @@ export function integrationsT(locale: Locale, key: string, values?: MessageValue
   const table = FALLBACK_STRINGS[locale] ?? FALLBACK_STRINGS['zh-CN'];
   // IM wizard copy (imWizardMessages.ts) is a second verbatim fallback layer:
   // generated from the same Vue locale sources, kept separate so this table
-  // stays reviewable.
+  // stays reviewable. The embed wizard (embedWizardMessages.ts) is the third
+  // layer, generated from the Vue embedPublish subtree the same way.
   const wizardTable = IM_WIZARD_FALLBACK_STRINGS[locale] ?? IM_WIZARD_FALLBACK_STRINGS['zh-CN'];
-  const template = table[key] ?? wizardTable[key];
+  const embedTable = EMBED_WIZARD_FALLBACK_STRINGS[locale] ?? EMBED_WIZARD_FALLBACK_STRINGS['zh-CN'];
+  const template = table[key] ?? wizardTable[key] ?? embedTable[key];
   if (template === undefined) return key;
   if (values === undefined) return template;
   return template.replace(/\{(\w+)\}/g, (match, name: string) => (

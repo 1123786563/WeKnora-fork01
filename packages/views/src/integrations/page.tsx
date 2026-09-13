@@ -26,8 +26,29 @@ import {
   type ImCredentialField,
   type ImWizardForm,
 } from './imWizard.ts';
+import {
+  buildEmbedWizardPayload,
+  createEmbedWizardForm,
+  embedChannelKeyDisplay,
+  embedOriginsWarning,
+  embedIframeSnippet,
+  embedOriginsTextFromChannel,
+  embedSecureServerGoExample,
+  embedSecureServerNodeExample,
+  embedSecureWidgetSnippet,
+  embedSnippetScenarioKey,
+  embedWidgetSnippet,
+  embedWizardFormFromChannel,
+  embedWizardSteps,
+  parseEmbedAllowedOrigins,
+  validateEmbedAllowedOrigins,
+  validateEmbedWizardStep,
+  type EmbedWizardForm,
+  type EmbedWizardStep,
+} from './embedWizard.ts';
 
-export interface IntegrationAgentOption { id: string; name: string }
+/** Vue CustomAgent config flags drive the capability warnings of step 3. */
+export interface IntegrationAgentOption { id: string; name: string; config?: Record<string, unknown> }
 export interface IntegrationKnowledgeBaseOption { id: string; name: string }
 
 /** Vue WeChat QR ports (IMChannelPanel.vue lines 850-919) backed by
@@ -60,10 +81,13 @@ export interface IntegrationResource {
 
 export interface IntegrationPrincipalToken { token: string; headerName: string; expiresInSeconds: number; externalUserId: string }
 export interface IntegrationActions {
-  onCreateEmbed?: (input: Record<string, unknown>) => Promise<void>;
+  /** Vue createEmbedChannel; resolves with the created channel (publish_token included). */
+  onCreateEmbed?: (input: { agentId: string; payload: Record<string, unknown> }) => Promise<IntegrationResource | void>;
   onUpdateEmbed?: (id: string, input: Record<string, unknown>) => Promise<void>;
   onDeleteEmbed?: (id: string) => Promise<void>;
   onRotateEmbed?: (id: string) => Promise<void>;
+  /** Vue openDrawer's getEmbedChannel refresh (publish_token / has_webhook_secret). */
+  onEmbedDetail?: (id: string) => Promise<IntegrationResource | null>;
   onCreateIm?: (input: { agentId: string; payload: Record<string, unknown> }) => Promise<void>;
   onUpdateIm?: (id: string, input: Record<string, unknown>) => Promise<void>;
   onToggleIm?: (id: string) => Promise<void>;
@@ -114,10 +138,22 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
   useEffect(() => { if (activeTab) setTabState(activeTab); }, [activeTab]);
   const setTab = (key: IntegrationKey) => { setTabState(key); onTabChange?.(key); };
   const [localError, setLocalError] = useState('');
-  const [embedAgentId, setEmbedAgentId] = useState('');
-  const [embedName, setEmbedName] = useState('');
-  const [embedOrigins, setEmbedOrigins] = useState('https://example.com');
-  const [showEmbedCreate, setShowEmbedCreate] = useState(false);
+  // Embed channel wizard state (Vue SettingDrawer AgentEmbedChannelPanel.vue):
+  // 5 create steps + the edit-only deploy step, origins textarea and key reveal.
+  const [embedWizardOpen, setEmbedWizardOpen] = useState(false);
+  const [embedStep, setEmbedStep] = useState(0);
+  const [embedForm, setEmbedForm] = useState<EmbedWizardForm>(createEmbedWizardForm());
+  const [embedOriginsText, setEmbedOriginsText] = useState('');
+  const [embedNameTouched, setEmbedNameTouched] = useState(false);
+  const [embedEditing, setEmbedEditing] = useState<IntegrationResource | null>(null);
+  const [embedDetail, setEmbedDetail] = useState<IntegrationResource | null>(null);
+  const [embedEditingEnabled, setEmbedEditingEnabled] = useState(true);
+  const [embedWarning, setEmbedWarning] = useState('');
+  const [embedStatus, setEmbedStatus] = useState('');
+  const [embedSnippetTab, setEmbedSnippetTab] = useState<'iframe' | 'widget' | 'secure'>('iframe');
+  const [embedServerTab, setEmbedServerTab] = useState<'node' | 'go'>('node');
+  const [revealedKeys, setRevealedKeys] = useState<Record<string, boolean>>({});
+  const [embedPreviewLoading, setEmbedPreviewLoading] = useState(false);
   // IM channel wizard state (Vue SettingDrawer): step, form, edit target and
   // the WeChat QR binding machine (idle -> wait -> scaned -> confirmed/expired).
   const [imWizardOpen, setImWizardOpen] = useState(false);
@@ -152,7 +188,140 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
   const copy = integrationSectionCopy(tab, locale);
   useEffect(() => { if (!actions.principal) return; setPrincipalMode(actions.principal.mode); setRequireDirectHeader(actions.principal.require_direct_header); }, [actions.principal]);
   const run = async (operation: () => Promise<void>) => { setBusy(true); setLocalError(''); try { await operation(); } catch (cause) { setLocalError(cause instanceof Error ? cause.message : 'Integration operation failed.'); } finally { setBusy(false); } };
-  const createEmbed = () => run(async () => { if (!actions.onCreateEmbed) return; await actions.onCreateEmbed({ agent_id: embedAgentId.trim(), name: embedName.trim(), allowed_origins: embedOrigins.split(/[\n,]/).map((value) => value.trim()).filter(Boolean), enabled: true }); setEmbedName(''); setShowEmbedCreate(false); onReload?.(); });
+  // --- Embed wizard handlers (Vue AgentEmbedChannelPanel.vue script) ---
+  const embedSteps = embedWizardSteps(embedEditing !== null);
+  // Vue defaultEmbedChannelName (lines 578-584): "{agent} · 网页嵌入" fallback.
+  const embedDefaultChannelName = (agentId: string): string => {
+    const agent = agents.find((item) => item.id === agentId);
+    if (agent?.name?.trim()) return t('embedPublish.defaultChannelNameWithAgent', { agent: agent.name.trim() });
+    return t('embedPublish.defaultChannelName');
+  };
+  const embedResolvedName = (form: EmbedWizardForm): string => form.name.trim() || embedDefaultChannelName(form.agentId);
+  const embedDrawerTitle = embedEditing
+    ? (embedForm.name.trim() || embedDefaultChannelName(String(embedForm.agentId || embedEditing.agent_id || '')))
+    : t('embedPublish.createTitle');
+  const closeEmbedWizard = () => { setEmbedWizardOpen(false); setEmbedWarning(''); setEmbedStatus(''); };
+  // Vue openCreate (lines 839-852).
+  const openEmbedCreate = () => {
+    setEmbedEditing(null);
+    setEmbedDetail(null);
+    setEmbedEditingEnabled(true);
+    setEmbedStep(0);
+    setEmbedNameTouched(false);
+    setEmbedWarning('');
+    setEmbedStatus('');
+    setEmbedSnippetTab('iframe');
+    setEmbedServerTab('node');
+    setEmbedForm(createEmbedWizardForm());
+    setEmbedOriginsText('');
+    setEmbedWizardOpen(true);
+  };
+  // Vue openDrawer (lines 854-867): prefill, land on deploy, refresh detail.
+  const openEmbedEdit = (channel: IntegrationResource) => {
+    setEmbedEditing(channel);
+    setEmbedDetail(channel);
+    setEmbedEditingEnabled(channel.enabled !== false);
+    setEmbedNameTouched(true);
+    setEmbedWarning('');
+    setEmbedStatus('');
+    setEmbedSnippetTab('iframe');
+    setEmbedServerTab('node');
+    setEmbedForm(embedWizardFormFromChannel(channel as Record<string, unknown>));
+    setEmbedOriginsText(embedOriginsTextFromChannel(channel as { allowed_origins?: unknown }));
+    setEmbedStep(embedWizardSteps(true).length - 1);
+    setEmbedWizardOpen(true);
+    if (actions.onEmbedDetail) {
+      void actions.onEmbedDetail(channel.id)
+        .then((detail) => { if (detail) setEmbedDetail(detail); })
+        .catch(() => setEmbedWarning(t('embedPublish.channelKeyLoadFailed')));
+    }
+  };
+  // Vue watch [createAgentId, agents] -> applyDefaultChannelNameIfNeeded (L595-599, L720-722).
+  const embedAgentPicked = (agentId: string) => {
+    setEmbedForm((current) => {
+      const next = { ...current, agentId };
+      if (!embedEditing && !embedNameTouched) next.name = embedDefaultChannelName(agentId);
+      return next;
+    });
+  };
+  const embedNext = () => {
+    const warning = validateEmbedWizardStep(embedForm, embedOriginsText, embedStep);
+    if (warning) { setEmbedWarning(t(warning.key, warning.values)); return; }
+    setEmbedWarning('');
+    setEmbedStep((step) => Math.min(step + 1, embedSteps.length - 1));
+  };
+  const embedBack = () => { setEmbedWarning(''); setEmbedStep((step) => Math.max(step - 1, 0)); };
+  // Vue goToWizardStep (lines 640-643): the step strip is freely clickable.
+  const embedGoTo = (step: number) => {
+    if (step < 0 || step >= embedSteps.length) return;
+    setEmbedWarning('');
+    setEmbedStep(step);
+  };
+  // Vue saveForm (lines 896-982).
+  const saveEmbedWizard = () => run(async () => {
+    if (!embedForm.agentId) { setEmbedWarning(t('integrations.selectAgentHint')); return; }
+    const originsValidation = validateEmbedAllowedOrigins(parseEmbedAllowedOrigins(embedOriginsText));
+    if (!originsValidation.ok) {
+      const warning = embedOriginsWarning(originsValidation.error);
+      setEmbedWarning(t(warning.key, warning.values));
+      return;
+    }
+    setEmbedWarning('');
+    const payload = buildEmbedWizardPayload(embedForm, {
+      origins: originsValidation.origins,
+      defaultName: embedResolvedName(embedForm),
+      enabled: embedEditing ? embedEditingEnabled : true,
+    });
+    if (embedEditing) {
+      if (!actions.onUpdateEmbed) return;
+      await actions.onUpdateEmbed(embedEditing.id, payload);
+      setEmbedStatus(t('embedPublish.updated'));
+      const detail = actions.onEmbedDetail ? await actions.onEmbedDetail(embedEditing.id).catch(() => null) : null;
+      const merged = detail ?? { ...embedEditing, ...payload };
+      setEmbedDetail(merged);
+      setEmbedForm(embedWizardFormFromChannel(merged as Record<string, unknown>));
+      setEmbedOriginsText(embedOriginsTextFromChannel(merged as { allowed_origins?: unknown }));
+    } else {
+      if (!actions.onCreateEmbed) return;
+      const created = await actions.onCreateEmbed({ agentId: embedForm.agentId, payload });
+      setEmbedStatus(t(created?.publish_token ? 'embedPublish.createdWithToken' : 'embedPublish.created'));
+      if (created) {
+        setEmbedEditing(created);
+        setEmbedDetail(created);
+        setEmbedForm(embedWizardFormFromChannel(created as Record<string, unknown>));
+        setEmbedOriginsText(embedOriginsTextFromChannel(created as { allowed_origins?: unknown }));
+        if (created.publish_token) setRevealedKeys((current) => ({ ...current, [created.id]: true }));
+        // Vue line 966: a successful create jumps to the deploy step.
+        setEmbedStep(embedWizardSteps(true).length - 1);
+      }
+    }
+    onReload?.();
+  });
+  // Vue performRotate (lines 1046-1063) through the route page port.
+  const rotateEmbedKey = (channelId: string) => {
+    if (!actions.onRotateEmbed) return;
+    if (!window.confirm(t('embedPublish.resetKeyConfirmBody'))) return;
+    void run(async () => {
+      await actions.onRotateEmbed?.(channelId);
+      const detail = actions.onEmbedDetail ? await actions.onEmbedDetail(channelId).catch(() => null) : null;
+      if (detail) {
+        setEmbedDetail(detail);
+        setRevealedKeys((current) => ({ ...current, [channelId]: true }));
+        setEmbedStatus(t('embedPublish.resetKeySuccess'));
+      } else {
+        setEmbedStatus(t('embedPublish.resetKeyFailed'));
+      }
+      onReload?.();
+    });
+  };
+  const previewEmbedChannel = (channel: IntegrationResource) => {
+    if (!onOpenEmbed) return;
+    setEmbedPreviewLoading(true);
+    void Promise.resolve()
+      .then(() => onOpenEmbed(channel))
+      .catch(() => setEmbedWarning(t('embedPublish.previewUnavailable')))
+      .finally(() => setEmbedPreviewLoading(false));
+  };
   const stopWeChatPolling = () => { wechatPollActive.current = false; };
   useEffect(() => () => stopWeChatPolling(), []);
   const resetWeChatBinding = () => { stopWeChatPolling(); setWechatQr(null); setWechatQrLoading(false); setWechatQrError(''); };
@@ -291,8 +460,8 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
           copy={copy}
           locale={locale}
           items={tab === 'im' ? imChannels : embedChannels}
-          showCreate={tab === 'im' ? imWizardOpen : showEmbedCreate}
-          onToggleCreate={() => (tab === 'im' ? (imWizardOpen ? closeImWizard() : openImCreate()) : setShowEmbedCreate(!showEmbedCreate))}
+          showCreate={tab === 'im' ? imWizardOpen : embedWizardOpen}
+          onToggleCreate={() => (tab === 'im' ? (imWizardOpen ? closeImWizard() : openImCreate()) : (embedWizardOpen ? closeEmbedWizard() : openEmbedCreate()))}
           busy={busy}
           t={t}
           renamingId={renaming}
@@ -301,11 +470,10 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
           onStartRename={startRename}
           onSaveRename={saveRename}
           onCancelRename={() => setRenaming(null)}
-          // Vue makes the whole channel card clickable: embed opens the preview
-          // session, IM opens the same wizard drawer used by create (editChannel).
-          onOpenCard={tab === 'embed' ? onOpenEmbed : openImEdit}
+          // Vue makes the whole channel card clickable: both tabs open the same
+          // wizard drawer used by create (AgentEmbedChannelPanel openDrawer L854).
+          onOpenCard={tab === 'embed' ? openEmbedEdit : openImEdit}
           onToggle={tab === 'im' && actions.onToggleIm ? (id) => run(async () => { await actions.onToggleIm?.(id); onReload?.(); }) : undefined}
-          onRotate={tab === 'embed' && actions.onRotateEmbed ? (id) => run(async () => { await actions.onRotateEmbed?.(id); }) : undefined}
           onDelete={actions.onDeleteEmbed || actions.onDeleteIm ? deleteChannel : undefined}
           imCreateSlot={tab === 'im' ? <ImWizardPanel
             locale={locale}
@@ -334,18 +502,41 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
             onSave={saveImWizard}
             onCancel={closeImWizard}
           /> : null}
-          embedCreateSlot={tab === 'embed' ? <EmbedCreateForm
+          embedCreateSlot={tab === 'embed' ? <EmbedWizardPanel
             t={t}
-            agentId={embedAgentId}
-            onAgentId={setEmbedAgentId}
-            name={embedName}
-            onName={setEmbedName}
-            origins={embedOrigins}
-            onOrigins={setEmbedOrigins}
+            apiBaseUrl={apiBaseUrl}
+            agents={agents}
+            title={embedDrawerTitle}
+            form={embedForm}
+            onForm={setEmbedForm}
+            onAgentPicked={embedAgentPicked}
+            step={embedStep}
+            steps={embedSteps}
+            originsText={embedOriginsText}
+            onOriginsText={setEmbedOriginsText}
+            onNameTouched={setEmbedNameTouched}
+            editing={embedEditing}
+            detail={embedDetail}
+            editingEnabled={embedEditingEnabled}
+            onEditingEnabled={setEmbedEditingEnabled}
+            warning={embedWarning}
+            status={embedStatus}
+            snippetTab={embedSnippetTab}
+            onSnippetTab={setEmbedSnippetTab}
+            serverTab={embedServerTab}
+            onServerTab={setEmbedServerTab}
+            revealed={embedEditing ? revealedKeys[embedEditing.id] === true : false}
+            onReveal={() => { if (embedEditing) setRevealedKeys((current) => ({ ...current, [embedEditing.id]: !(current[embedEditing.id] === true) })); }}
+            onRotate={rotateEmbedKey}
+            previewLoading={embedPreviewLoading}
+            onPreview={previewEmbedChannel}
             busy={busy}
-            canSubmit={Boolean(actions.onCreateEmbed)}
-            onSubmit={createEmbed}
-            onCancel={() => setShowEmbedCreate(false)}
+            canSubmit={Boolean(actions.onCreateEmbed || actions.onUpdateEmbed)}
+            onNext={embedNext}
+            onBack={embedBack}
+            onGoTo={embedGoTo}
+            onSave={saveEmbedWizard}
+            onCancel={closeEmbedWizard}
           /> : null}
         /> : null}
         {!loading && !error && tab === 'api' ? <ApiIntegrationPanel apiBaseUrl={apiBaseUrl} actions={actions} principalMode={principalMode} setPrincipalMode={setPrincipalMode} requireDirectHeader={requireDirectHeader} setRequireDirectHeader={setRequireDirectHeader} hmacSecret={hmacSecret} setHmacSecret={setHmacSecret} externalUserId={externalUserId} setExternalUserId={setExternalUserId} principalToken={principalToken} onSavePrincipal={savePrincipal} onCreatePrincipalToken={createPrincipalToken} apiKey={apiKey} setApiKey={setApiKey} sessionId={sessionId} setSessionId={setSessionId} playgroundPath={playgroundPath} setPlaygroundPath={setPlaygroundPath} playgroundBody={playgroundBody} setPlaygroundBody={setPlaygroundBody} playgroundOutput={playgroundOutput} onRunPlayground={runPlayground} busy={busy} apiKeys={apiKeys} apiKeysLoading={apiKeysLoading} freshApiKeyId={freshApiKeyId} newApiKeyName={newApiKeyName} setNewApiKeyName={setNewApiKeyName} showApiKeyForm={showApiKeyForm} setShowApiKeyForm={setShowApiKeyForm} onCreateApiKey={createApiKey} onRevokeApiKey={revokeApiKey} onCopyApiKey={(key) => { void navigator.clipboard.writeText(key.api_key).catch(() => undefined); }} t={t} /> : null}
@@ -392,7 +583,7 @@ interface ChannelListCopy {
   createForm: 'im' | 'embed' | 'none';
 }
 
-function ChannelListPanel({ variant, copy, locale, items, showCreate, onToggleCreate, busy, t, renamingId, renameValue, onRenameValue, onStartRename, onSaveRename, onCancelRename, onOpenCard, onToggle, onRotate, onDelete, imCreateSlot, embedCreateSlot }: {
+function ChannelListPanel({ variant, copy, locale, items, showCreate, onToggleCreate, busy, t, renamingId, renameValue, onRenameValue, onStartRename, onSaveRename, onCancelRename, onOpenCard, onToggle, onDelete, imCreateSlot, embedCreateSlot }: {
   variant: 'im' | 'embed';
   copy: ChannelListCopy;
   locale: Locale;
@@ -409,7 +600,6 @@ function ChannelListPanel({ variant, copy, locale, items, showCreate, onToggleCr
   onCancelRename: () => void;
   onOpenCard?: (item: IntegrationResource) => void;
   onToggle?: (id: string) => void;
-  onRotate?: (id: string) => void;
   onDelete?: (id: string) => void;
   imCreateSlot?: React.ReactNode;
   embedCreateSlot?: React.ReactNode;
@@ -436,13 +626,12 @@ function ChannelListPanel({ variant, copy, locale, items, showCreate, onToggleCr
             {agentLine ? <span className="wk-channel-card__agent-name">{agentLine}</span> : null}
           </div>
           <div className="wk-channel-card__actions" onClick={(event) => event.stopPropagation()}>
-            {onRotate ? <button className="wk-button wk-button--text" type="button" onClick={() => onRotate(item.id)}>{t('embedPublish.resetKeyTitle')}</button> : null}
             {onToggle ? <label className="wk-switch" title={item.enabled === false ? t('agentEditor.im.enabled') : copy.disabledLabel} onClick={(event) => event.stopPropagation()}>
               <input type="checkbox" role="switch" aria-label={t('agentEditor.im.enabled')} checked={item.enabled !== false} onChange={() => onToggle(item.id)} />
               <span className="wk-switch-knob" aria-hidden="true" />
             </label> : null}
-            {/* Vue IM cards edit through the wizard drawer; embed keeps inline rename. */}
-            {variant === 'embed' ? <button className="wk-button wk-button--text" type="button" onClick={() => onStartRename(item)}>{t('common.edit')}</button> : null}
+            {/* Vue edits both channel kinds through the wizard drawer opened by
+                the card click, so the card keeps only the switch and delete. */}
             {onDelete ? <button className="wk-button wk-button--text wk-button--danger" type="button" onClick={() => onDelete(item.id)}>{t('common.delete')}</button> : null}
           </div>
         </article>;
@@ -651,27 +840,258 @@ function ImWizardPanel({ locale, t, apiBaseUrl, agents = [], knowledgeBases = []
   </form>;
 }
 
-function EmbedCreateForm({ t, agentId, onAgentId, name, onName, origins, onOrigins, busy, canSubmit, onSubmit, onCancel }: {
+// The embed wizard drawer (Vue AgentEmbedChannelPanel.vue SettingDrawer,
+// lines 70-386): 渠道 → 安全限流 → 对话能力 → 外观展示 → 事件回调, plus the
+// edit-only 部署 step with snippet tabs, server examples and the channel key
+// controls. Copy follows the embedPublish.* verbatim fallback layer.
+function EmbedWizardPanel({ t, apiBaseUrl, agents = [], title, form, onForm, onAgentPicked, step, steps, originsText, onOriginsText, onNameTouched, editing, detail, editingEnabled, onEditingEnabled, warning, status, snippetTab, onSnippetTab, serverTab, onServerTab, revealed, onReveal, onRotate, previewLoading, onPreview, busy, canSubmit, onNext, onBack, onGoTo, onSave, onCancel }: {
   t: Translator;
-  agentId: string;
-  onAgentId: (value: string) => void;
-  name: string;
-  onName: (value: string) => void;
-  origins: string;
-  onOrigins: (value: string) => void;
+  apiBaseUrl: string;
+  agents?: readonly IntegrationAgentOption[];
+  title: string;
+  form: EmbedWizardForm;
+  onForm: (form: EmbedWizardForm) => void;
+  onAgentPicked: (agentId: string) => void;
+  step: number;
+  steps: readonly EmbedWizardStep[];
+  originsText: string;
+  onOriginsText: (value: string) => void;
+  onNameTouched: (touched: boolean) => void;
+  editing: IntegrationResource | null;
+  detail: IntegrationResource | null;
+  editingEnabled: boolean;
+  onEditingEnabled: (enabled: boolean) => void;
+  warning: string;
+  status: string;
+  snippetTab: 'iframe' | 'widget' | 'secure';
+  onSnippetTab: (tab: 'iframe' | 'widget' | 'secure') => void;
+  serverTab: 'node' | 'go';
+  onServerTab: (tab: 'node' | 'go') => void;
+  revealed: boolean;
+  onReveal: () => void;
+  onRotate: (channelId: string) => void;
+  previewLoading: boolean;
+  onPreview: (channel: IntegrationResource) => void;
   busy: boolean;
   canSubmit: boolean;
-  onSubmit: () => void;
+  onNext: () => void;
+  onBack: () => void;
+  onGoTo: (step: number) => void;
+  onSave: () => void;
   onCancel: () => void;
 }) {
-  return <form className="wk-integration-form wk-channel-create" onSubmit={(event) => { event.preventDefault(); onSubmit(); }}>
-    <h3>{t('embedPublish.create')}</h3>
-    <label>{t('integrations.boundAgent')}<input required value={agentId} onChange={(event) => onAgentId(event.target.value)} placeholder="agent id" /></label>
-    <label>{t('embedPublish.name')}<input value={name} onChange={(event) => onName(event.target.value)} placeholder={t('embedPublish.namePlaceholder')} /></label>
-    <p className="wk-muted">{t('embedPublish.nameDefaultHint')}</p>
-    <label>{t('embedPublish.allowedOrigins')}<input required value={origins} onChange={(event) => onOrigins(event.target.value)} placeholder={t('embedPublish.originsPlaceholder')} /></label>
+  const isEditing = editing !== null;
+  const submit = (event: React.FormEvent) => { event.preventDefault(); if (step < steps.length - 1) onNext(); else onSave(); };
+  const patch = (values: Partial<EmbedWizardForm>) => onForm({ ...form, ...values });
+  const chip = (active: boolean) => (active ? 'wk-option-chip wk-option-chip--active' : 'wk-option-chip');
+  const channel = detail ?? editing;
+  const channelId = channel && typeof channel.id === 'string' ? channel.id : '';
+  const token = channel && typeof channel.publish_token === 'string' ? channel.publish_token : '';
+  const hasWebhookSecret = channel?.has_webhook_secret === true;
+  // Vue drawerSnippet reads the saved channel (drawerChannel), not the draft form.
+  const snippetPosition = ((typeof channel?.widget_position === 'string' && channel.widget_position) || form.widgetPosition) || 'bottom-right';
+  const snippetColor = (typeof channel?.primary_color === 'string' && channel.primary_color) || form.primaryColor;
+  const snippetTitle = (typeof channel?.page_title === 'string' && channel.page_title)
+    || (typeof channel?.name === 'string' && channel.name)
+    || form.pageTitle.trim() || form.name.trim() || '';
+  const snippetBase = { primaryColor: snippetColor || undefined, title: snippetTitle || undefined, position: snippetPosition };
+  const tokenlessSnippet = '<!-- ' + t('embedPublish.tokenHint') + ' -->';
+  const snippet = snippetTab === 'secure'
+    ? embedSecureWidgetSnippet(channelId, apiBaseUrl, snippetBase)
+    : snippetTab === 'widget'
+      ? (token ? embedWidgetSnippet(channelId, token, apiBaseUrl, snippetBase) : tokenlessSnippet)
+      : (token ? embedIframeSnippet(channelId, token, apiBaseUrl) : tokenlessSnippet);
+  const serverExample = serverTab === 'go'
+    ? embedSecureServerGoExample(channelId, apiBaseUrl)
+    : embedSecureServerNodeExample(channelId, apiBaseUrl);
+  // Vue agentWebSearchEnabledEffective / agentImageUploadEnabledEffective (lines 484-490).
+  const drawerAgent = agents.find((agent) => agent.id === form.agentId);
+  const agentWebSearchEnabled = drawerAgent?.config?.web_search_enabled === true;
+  const agentImageUploadEnabled = drawerAgent?.config?.image_upload_enabled === true;
+  const secretPlaceholder = hasWebhookSecret ? t('embedPublish.webhookSecretKeep') : t('embedPublish.webhookSecretPlaceholder');
+  return <form className="wk-integration-form wk-channel-create wk-embed-wizard" onSubmit={submit}>
+    {/* Vue drawerTitle (lines 567-576). */}
+    <h3>{title}</h3>
+    <div className="wk-im-steps" role="list">
+      {steps.map((item, index) => (
+        <button role="listitem" key={item.key} type="button" className={step === index ? 'wk-embed-step is-active' : step > index ? 'wk-embed-step is-done' : 'wk-embed-step'} onClick={() => onGoTo(index)}>
+          <span className="wk-im-step-num" aria-hidden="true" style={step > index ? { background: '#eff4ff' } : step === index ? { background: '#2e6de6', color: '#fff', borderColor: '#2e6de6' } : undefined}>{step > index ? '✓' : index + 1}</span>
+          <span className="wk-im-step-title">{t(item.titleKey)}</span>
+        </button>
+      ))}
+    </div>
+    {warning ? <p className="wk-status wk-status-error" role="alert">{warning}</p> : null}
+    {status ? <p className="wk-status wk-status-ok" role="status">{status}</p> : null}
+
+    {step === 0 ? <fieldset className="wk-im-step-body">
+      <legend className="wk-im-legend">{t('embedPublish.sectionChannel')}</legend>
+      {/* Vue gates the bound agent via validateWizardStep (warning), not native required. */}
+      <label>{t('integrations.boundAgent')}
+        {agents.length > 0
+          ? <select value={form.agentId} onChange={(event) => onAgentPicked(event.target.value)}>
+              <option value="">{t('integrations.selectAgentPlaceholder')}</option>
+              {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+            </select>
+          : <input value={form.agentId} onChange={(event) => onAgentPicked(event.target.value)} placeholder={t('integrations.selectAgentPlaceholder')} />}
+      </label>
+      {isEditing ? <label className="wk-check-row">
+        <input type="checkbox" checked={editingEnabled} onChange={(event) => onEditingEnabled(event.target.checked)} />
+        {t('embedPublish.enabled')}
+      </label> : null}
+      <label>{t('embedPublish.name')}
+        <input value={form.name} onFocus={() => onNameTouched(true)} onChange={(event) => { onNameTouched(true); patch({ name: event.target.value }); }} placeholder={t('embedPublish.namePlaceholder')} />
+      </label>
+      <p className="wk-muted">{isEditing ? t('embedPublish.nameDesc') : t('embedPublish.nameDefaultHint')}</p>
+    </fieldset> : null}
+
+    {step === 1 ? <fieldset className="wk-im-step-body">
+      <legend className="wk-im-legend">{t('embedPublish.sectionSecurity')}</legend>
+      <label>{t('embedPublish.allowedOrigins')}
+        <textarea rows={2} value={originsText} onChange={(event) => onOriginsText(event.target.value)} placeholder={t('embedPublish.originsPlaceholder')} />
+      </label>
+      <p className="wk-muted">{t('embedPublish.originsHint')}</p>
+      <label>{t('embedPublish.rateLimitLabel')}
+        <input type="number" min={1} max={600} value={form.rateLimitPerMinute} onChange={(event) => { const next = Number(event.target.value); if (Number.isFinite(next)) patch({ rateLimitPerMinute: next }); }} />
+      </label>
+      <p className="wk-muted">{t('embedPublish.rateLimitDesc')}</p>
+      <label>{t('embedPublish.rateLimitDayLabel')}
+        <input type="number" min={1} max={1000000} value={form.rateLimitPerDay} onChange={(event) => { const next = Number(event.target.value); if (Number.isFinite(next)) patch({ rateLimitPerDay: next }); }} />
+      </label>
+      <p className="wk-muted">{t('embedPublish.rateLimitDayDesc')}</p>
+    </fieldset> : null}
+
+    {step === 2 ? <fieldset className="wk-im-step-body">
+      <legend className="wk-im-legend">{t('embedPublish.sectionCapabilities')}</legend>
+      <label>{t('embedPublish.welcomeMessage')}
+        <textarea rows={2} value={form.welcomeMessage} onChange={(event) => patch({ welcomeMessage: event.target.value })} placeholder={t('embedPublish.welcomePlaceholder')} />
+      </label>
+      <p className="wk-muted">{t('embedPublish.welcomeMessageDesc')}</p>
+      <label className="wk-check-row">
+        <input type="checkbox" checked={form.showSuggestedQuestions} onChange={(event) => patch({ showSuggestedQuestions: event.target.checked })} />
+        <span>{t('embedPublish.showSuggestedQuestions')}<br />{t('embedPublish.showSuggestedQuestionsDesc')}</span>
+      </label>
+      <label className="wk-check-row">
+        <input type="checkbox" checked={form.allowWebSearch} onChange={(event) => patch({ allowWebSearch: event.target.checked })} />
+        <span>{t('embedPublish.allowWebSearch')}<br />{t('embedPublish.allowWebSearchDesc')}</span>
+      </label>
+      {form.allowWebSearch && !agentWebSearchEnabled ? <p className="wk-muted wk-muted--warn">{t('embedPublish.agentWebSearchDisabledHint')}</p> : null}
+      <label className="wk-check-row">
+        <input type="checkbox" checked={form.allowFileUpload} onChange={(event) => patch({ allowFileUpload: event.target.checked })} />
+        <span>{t('embedPublish.allowFileUpload')}<br />{t('embedPublish.allowFileUploadDesc')}</span>
+      </label>
+      {form.allowFileUpload && !agentImageUploadEnabled ? <p className="wk-muted wk-muted--warn">{t('embedPublish.agentImageUploadDisabledHint')}</p> : null}
+    </fieldset> : null}
+
+    {step === 3 ? <fieldset className="wk-im-step-body">
+      <legend className="wk-im-legend">{t('embedPublish.sectionAppearance')}</legend>
+      <label>{t('embedPublish.pageTitle')}
+        <input value={form.pageTitle} onChange={(event) => patch({ pageTitle: event.target.value })} placeholder={t('embedPublish.pageTitlePlaceholder')} />
+      </label>
+      <p className="wk-muted">{t('embedPublish.pageTitleDesc')}</p>
+      <label>{t('embedPublish.headerTitleMode')}
+        <select value={form.headerTitleMode} onChange={(event) => patch({ headerTitleMode: event.target.value as EmbedWizardForm['headerTitleMode'] })}>
+          <option value="channel">{t('embedPublish.headerTitleModeChannel')}</option>
+          <option value="session">{t('embedPublish.headerTitleModeSession')}</option>
+        </select>
+      </label>
+      <p className="wk-muted">{t('embedPublish.headerTitleModeDesc')}</p>
+      <label>{t('embedPublish.widgetPosition')}
+        <select value={form.widgetPosition} onChange={(event) => patch({ widgetPosition: event.target.value as EmbedWizardForm['widgetPosition'] })}>
+          <option value="bottom-right">{t('embedPublish.positionBottomRight')}</option>
+          <option value="bottom-left">{t('embedPublish.positionBottomLeft')}</option>
+          <option value="top-right">{t('embedPublish.positionTopRight')}</option>
+          <option value="top-left">{t('embedPublish.positionTopLeft')}</option>
+        </select>
+      </label>
+      <label>{t('embedPublish.defaultLocale')}
+        <select value={form.defaultLocale} onChange={(event) => patch({ defaultLocale: event.target.value as EmbedWizardForm['defaultLocale'] })}>
+          <option value="">{t('embedPublish.defaultLocaleBrowser')}</option>
+          <option value="zh-CN">简体中文</option>
+          <option value="en-US">English</option>
+          <option value="ko-KR">한국어</option>
+          <option value="ja-JP">日本語</option>
+          <option value="ru-RU">Русский</option>
+        </select>
+      </label>
+      <p className="wk-muted">{t('embedPublish.defaultLocaleDesc')}</p>
+      <label>{t('embedPublish.primaryColor')}
+        <input type="color" value={form.primaryColor} onChange={(event) => patch({ primaryColor: event.target.value })} />
+      </label>
+      <label>{t('embedPublish.widgetPreview')}
+        <span className={'wk-embed-widget-preview pos-' + form.widgetPosition}>
+          <span className="wk-embed-preview-launcher" style={{ background: form.primaryColor }} aria-hidden="true" />
+        </span>
+      </label>
+    </fieldset> : null}
+
+    {step === 4 ? <fieldset className="wk-im-step-body">
+      <legend className="wk-im-legend">{t('embedPublish.sectionWebhook')}</legend>
+      <label>{t('embedPublish.webhookUrl')}
+        <input autoComplete="off" value={form.webhookUrl} onChange={(event) => patch({ webhookUrl: event.target.value })} placeholder={t('embedPublish.webhookUrlPlaceholder')} />
+      </label>
+      <p className="wk-muted">{t('embedPublish.webhookUrlDesc')}</p>
+      <label>{t('embedPublish.webhookSecret')}
+        <input type="password" autoComplete="new-password" value={form.webhookSecret} onChange={(event) => patch({ webhookSecret: event.target.value })} placeholder={secretPlaceholder} />
+      </label>
+      <p className="wk-muted">{t('embedPublish.webhookSecretDesc')}</p>
+    </fieldset> : null}
+    {/* Vue renders the deploy-after-save hint inside step 5 for create mode. */}
+    {step === 4 && !isEditing ? <div className="wk-embed-deploy-hint" role="note">ℹ️<p>{t('embedPublish.deployAfterSaveHint')}</p></div> : null}
+
+    {/* Step 6 exists only while editing (Vue template v-else-if="editingId"). */}
+    {step >= 5 && channel ? <fieldset className="wk-im-step-body">
+      <legend className="wk-im-legend">{t('embedPublish.sectionDeploy')}</legend>
+      <p className="wk-muted">{t('embedPublish.deployIntro')}</p>
+      <h5>{t('embedPublish.deployStepEmbed')}</h5>
+      <p className="wk-muted">{t('embedPublish.deployStepEmbedDesc')}</p>
+      <div className="wk-embed-snippet-tabs wk-option-chips" role="tablist" aria-label={t('embedPublish.deployStepEmbed')}>
+        {([['iframe', 'embedPublish.tabIframe'], ['widget', 'embedPublish.tabWidget'], ['secure', 'embedPublish.tabSecure']] as const).map(([value, key]) => (
+          <button key={value} type="button" role="tab" aria-selected={snippetTab === value} className={chip(snippetTab === value)} onClick={() => onSnippetTab(value)}>{t(key)}</button>
+        ))}
+      </div>
+      <p className="wk-muted">{t(embedSnippetScenarioKey(snippetTab))}</p>
+      {snippetTab === 'widget' ? <p className="wk-muted">{t('embedPublish.widgetTokenNote')}</p> : null}
+      {snippetTab === 'secure' ? <p className="wk-muted">{t('embedPublish.secureTokenNote')}</p> : null}
+      {snippetTab !== 'secure' ? <div className="wk-embed-deploy-hint" role="note">⚠️<p>{t('embedPublish.publishTokenWarning')}</p></div> : null}
+      <div className="wk-embed-code-panel">
+        <div className="wk-code-toolbar">
+          <span>{snippetTab === 'iframe' ? t('embedPublish.embedCode') : t('embedPublish.widgetCode')}</span>
+          <span>
+            {snippetTab !== 'secure' ? <button className="wk-button wk-button--text" type="button" disabled={previewLoading || busy} onClick={() => onPreview(channel)}>{previewLoading ? t('common.loading') : t('embedPublish.preview')}</button> : null}
+            <button className="wk-button wk-button--text" type="button" onClick={() => { void navigator.clipboard.writeText(snippet).catch(() => undefined); }}>{t('embedPublish.copyCode')}</button>
+          </span>
+        </div>
+        <pre>{snippet}</pre>
+      </div>
+      {snippetTab === 'secure' ? <div>
+        <p className="wk-muted">{t('embedPublish.secureServerLabel')}</p>
+        <div className="wk-embed-server-tabs wk-option-chips" role="tablist" aria-label={t('embedPublish.secureServerLabel')}>
+          {([['node', 'embedPublish.tabServerNode'], ['go', 'embedPublish.tabServerGo']] as const).map(([value, key]) => (
+            <button key={value} type="button" role="tab" aria-selected={serverTab === value} className={chip(serverTab === value)} onClick={() => onServerTab(value)}>{t(key)}</button>
+          ))}
+        </div>
+        <div className="wk-embed-server-panel">
+          <div className="wk-code-toolbar">
+            <span>{serverTab === 'go' ? t('embedPublish.tabServerGo') : t('embedPublish.tabServerNode')}</span>
+            <button className="wk-button wk-button--text" type="button" onClick={() => { void navigator.clipboard.writeText(serverExample).catch(() => undefined); }}>{t('embedPublish.copyCode')}</button>
+          </div>
+          <pre>{serverExample}</pre>
+        </div>
+      </div> : null}
+      <h5>{t('embedPublish.channelKey')}</h5>
+      <p className="wk-muted">{t('embedPublish.channelKeyDesc')}</p>
+      <div className="wk-channel-key-control">
+        <input className="wk-mono-input wk-embed-key-input" readOnly type="text" value={embedChannelKeyDisplay(token, revealed)} placeholder={token ? '' : t('embedPublish.channelKeyUnavailable')} aria-label={t('embedPublish.channelKey')} />
+        {token ? <button className="wk-button wk-button--text" type="button" title={revealed ? t('embedPublish.hideKey') : t('embedPublish.revealKey')} onClick={onReveal}>{revealed ? '🙈' : '👁'}</button> : null}
+        {token ? <button className="wk-button wk-button--text" type="button" title={t('embedPublish.copyChannelKeyTitle')} onClick={() => { void navigator.clipboard.writeText(token).catch(() => undefined); }}>⧉</button> : null}
+        {canSubmit ? <button className="wk-button wk-button--text wk-button--danger" type="button" title={t('embedPublish.resetKeyTitle')} disabled={busy} onClick={() => onRotate(channelId)}>{busy ? t('common.loading') : '↻'}</button> : null}
+      </div>
+      {!token ? <p className="wk-muted">{t('embedPublish.channelKeyHint')}</p> : null}
+    </fieldset> : null}
+
     <div className="wk-form-actions">
-      <button className="wk-button" type="submit" disabled={busy || !canSubmit}>{t('common.save')}</button>
+      {step > 0 ? <button className="wk-button" type="button" onClick={onBack}>{t('integrations.wizard.back')}</button> : null}
+      <button className="wk-button" type="submit" disabled={busy || !canSubmit}>{step < steps.length - 1 ? t('integrations.wizard.next') : t('common.save')}</button>
       <button className="wk-button wk-button--text" type="button" onClick={onCancel}>{t('common.cancel')}</button>
     </div>
   </form>;
