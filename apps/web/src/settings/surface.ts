@@ -40,7 +40,14 @@ export function settingsSectionHeading(locale: Locale, key: string): { title: st
   const keys = SECTION_HEADING_KEYS[key];
   return {
     title: keys ? formatMessage(locale, keys.title) : meta?.title ?? key,
-    description: keys?.description ? formatMessage(locale, keys.description) : meta?.description ?? '',
+    // Keyed sections own their description: when Vue's section header has no
+    // description line (e.g. TenantMembers.vue), render none instead of
+    // leaking the registry apiDomain.
+    description: keys
+      ? keys.description
+        ? formatMessage(locale, keys.description)
+        : ''
+      : meta?.description ?? '',
   };
 }
 

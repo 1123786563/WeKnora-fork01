@@ -15,6 +15,9 @@ test('localizes the Vue section h2 + description pair for the wrapper heading', 
   const envvars = settingsSectionHeading('zh-CN', 'envvars');
   assert.equal(envvars.title, '沙箱密钥');
   assert.equal(envvars.description, '给技能和沙箱用的个人密钥，不是 WeKnora 的系统或部署配置。');
+  // Vue TenantMembers.vue renders h2 only — no description line. The old
+  // fallback leaked the registry apiDomain ("identity.tenants.members").
+  assert.deepEqual(settingsSectionHeading('zh-CN', 'members'), { title: '成员管理', description: '' });
   // Sections without a localized pair keep their inventory meta.
   assert.equal(settingsSectionHeading('zh-CN', 'storage').title, 'Storage');
   // English locale resolves through the same shared keys.
