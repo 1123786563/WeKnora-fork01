@@ -1663,5 +1663,6 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - Vue 的系统管理入口在非 system-admin 直链/权限拒绝状态不应泄漏 React registry 的 `SystemAuditLog` 等英文 viewId。React settings registry 为四个新增 system-admin 分区补齐 Vue 对应的中文标题与描述，保持 role-denied 状态可读且不改变权限判断。
 - 新增 surface 回归覆盖 system-global、runtime-queues、platform-api-keys、system-audit-log 四个标题；N017 审计详情抽屉与此前行为回归保持。
+- Chrome 已重新加载 `?section=system-audit-log` 直链，在当前 owner 账号的真实权限拒绝状态中实际显示“审计日志 / 查看平台级管理操作和结果”，不再泄漏 `SystemAuditLog`；这只证明权限拒绝态，不能替代 system-admin 数据态。
 - 验证：SettingsPage + surface 定向测试 35/35；完整 Web、Web TypeScript 与 `git diff --check` 待本轮结束前执行。
 - 证据层：本轮为 Vue 设置导航/权限语义对照与 React DOM/单元验证；system-admin 真实权限矩阵、同条件截图/computed-style、Wails 与移动端证据仍待补齐，N017 继续保持 review。
