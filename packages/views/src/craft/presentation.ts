@@ -269,23 +269,28 @@ export function craftStrings(locale: CraftLocale): CraftStrings {
 // Main-run status wording (brief Step 3 — verbatim)
 // ---------------------------------------------------------------------------
 
-export function statusLabel(main: string, child: string): string {
+export function statusLabel(main: string, child: string, hasCurrentVersion = false): string {
   if (main === 'stopping') return '正在停止';
   if (main === 'waiting_user') return '需要你的处理';
   if (main === 'running' && child === 'finished') return '主 Agent 正在检查结果';
+  // W05/C03 review: after a terminal run the refreshed snapshot releases the
+  // active run and the client honestly projects idle — with a published
+  // current_version that state is "completed, viewable", not "unclear".
+  if (main === 'idle' && hasCurrentVersion) return '已完成，可查看版本';
   return ({ queued: '等待执行', running: '正在生成', succeeded: '已完成', failed: '执行失败', canceled: '已停止' } as Record<string, string>)[main] ?? '状态待核对';
 }
 
 /** English wording with identical branching (i18n companion of statusLabel). */
-export function statusLabelEn(main: string, child: string): string {
+export function statusLabelEn(main: string, child: string, hasCurrentVersion = false): string {
   if (main === 'stopping') return 'Stopping';
   if (main === 'waiting_user') return 'Needs your input';
   if (main === 'running' && child === 'finished') return 'Main agent is verifying the result';
+  if (main === 'idle' && hasCurrentVersion) return 'Completed — view the version';
   return ({ queued: 'Queued', running: 'Generating', succeeded: 'Completed', failed: 'Failed', canceled: 'Stopped' } as Record<string, string>)[main] ?? 'Status unknown';
 }
 
-export function statusLabelLocalized(locale: CraftLocale, main: string, child: string): string {
-  return locale === 'zh' ? statusLabel(main, child) : statusLabelEn(main, child);
+export function statusLabelLocalized(locale: CraftLocale, main: string, child: string, hasCurrentVersion = false): string {
+  return locale === 'zh' ? statusLabel(main, child, hasCurrentVersion) : statusLabelEn(main, child, hasCurrentVersion);
 }
 
 // ---------------------------------------------------------------------------
@@ -479,6 +484,60 @@ export function archiveLiveTurn(
   if (live.runId === null || !hasContent) return { turns, archived: null };
   const record: CraftTurnRecord = { prompt: live.prompt, assistant: live.projection };
   return { turns: [...turns, record], archived: record };
+}
+
+// ---------------------------------------------------------------------------
+// Knowledge sources projection (C01 sources panel data plane)
+// ---------------------------------------------------------------------------
+
+/** One projected knowledge source row (shape of the C01 material manifest row). */
+export interface CraftKnowledgeSourceFact {
+  citationId: string;
+  ref: string;
+  title: string;
+  digest: string;
+  excerptBytes: number;
+  tenantId: number;
+}
+
+export interface CraftKnowledgeSourcesProjection {
+  sources: CraftKnowledgeSourceFact[];
+  truncated: boolean;
+}
+
+/**
+ * Projects the run's knowledge material package from the SAME backend craft
+ * event frames every other workbench detail consumes: the latest
+ * knowledge.built event wins (a rebuilt package replaces the earlier one).
+ * Absent events answer the empty package — the panel's honest empty state.
+ */
+export function projectKnowledgeSources(events: CraftLoggedEvent[]): CraftKnowledgeSourcesProjection {
+  let latest: Record<string, unknown> | null = null;
+  for (const event of events) {
+    if (event.kind !== 'knowledge.built') continue;
+    if (event.data !== null && typeof event.data === 'object' && !Array.isArray(event.data)) {
+      latest = event.data as Record<string, unknown>;
+    }
+  }
+  if (latest === null) return { sources: [], truncated: false };
+  const rawSources = Array.isArray(latest['sources']) ? latest['sources'] : [];
+  const sources: CraftKnowledgeSourceFact[] = [];
+  for (const raw of rawSources) {
+    if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) continue;
+    const row = raw as Record<string, unknown>;
+    const citationId = typeof row['citation_id'] === 'string' ? row['citation_id'] : '';
+    const ref = typeof row['ref'] === 'string' ? row['ref'] : '';
+    if (citationId === '' || ref === '') continue;
+    sources.push({
+      citationId,
+      ref,
+      title: typeof row['title'] === 'string' ? row['title'] : '',
+      digest: typeof row['digest'] === 'string' ? row['digest'] : '',
+      excerptBytes: typeof row['excerpt_bytes'] === 'number' ? row['excerpt_bytes'] : 0,
+      tenantId: typeof row['tenant_id'] === 'number' ? row['tenant_id'] : 0,
+    });
+  }
+  return { sources, truncated: latest['truncated'] === true };
 }
 
 export interface CraftMessageSnapshot {

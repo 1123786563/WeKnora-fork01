@@ -28,6 +28,7 @@ import { authorizationHeader, type LegacyPlatformSession } from '../../platform/
 import { CraftHome, type CraftAttachmentDraft, type CraftHomeCreateInput } from '@weknora/views/craft/home';
 import { CraftWorkbench, type CraftInteractionActionInput } from '@weknora/views/craft/workbench';
 import { createCraftMessageLog, downloadFileName, type CraftLocale } from '@weknora/views/craft/presentation';
+import { createSessionCraftInteractionClient, CraftInteractionPanel } from '@weknora/views/craft/interaction';
 
 type CraftRoute = { name: 'home' } | { name: 'workbench'; sessionId: string };
 
@@ -144,6 +145,34 @@ export function CraftRoutes(props: CraftRoutesProps) {
     [craftApi, scopeController, transport],
   );
   useEffect(() => () => controller.dispose(), [controller]);
+
+  // C02: the interaction decide surface rides the authed fetch (list +
+  // decide through the existing session permission chain), bound per
+  // workbench session; the panel mounts below the workbench.
+  const interactions = useMemo(
+    () => createSessionCraftInteractionClient(authedFetch, route.name === 'workbench' ? route.sessionId : '', apiBaseUrl),
+    [authedFetch, route, apiBaseUrl],
+  );
+
+  // C01 sources panel: resolve one durable craftkb:// ref through the
+  // EXISTING knowledge permission chain on every click (never cached, never
+  // pre-signed): the documents list of the owning library answers 403/404
+  // through the same ACL the build went through, and the resolved row
+  // becomes the panel notice. A revoked share fails HERE, at click time.
+  const openKnowledgeSource = useCallback(
+    async (citationId: string, ref: string): Promise<string | null> => {
+      const match = /^craftkb:\/\/kb\/([^/]+)\/knowledge\/([^/]+)\//.exec(ref);
+      if (match === null) return '无法解析来源引用 ' + ref;
+      const kbId = match[1] ?? '';
+      const knowledgeId = match[2] ?? '';
+      const page = await client.knowledgeBases.documents.list(kbId, {});
+      const row = page.data.find((item) => item.id === knowledgeId);
+      if (row === undefined) return '引用 ' + citationId + ' 的来源已不可见（无权限或已删除）';
+      return '已解析来源：' + (row.title ?? row.file_name ?? knowledgeId) + '（在所属知识库查看全文）';
+    },
+    [client],
+  );
+
 
   // Identity for the owner write gate (the terminal entry is owner-scoped).
   const [meId, setMeId] = useState<string | null>(null);
@@ -452,6 +481,7 @@ export function CraftRoutes(props: CraftRoutesProps) {
           <p className="wk-craft-muted" role="status">{syncError === null ? 'Loading…' : syncError}</p>
         </main>
       ) : (
+        <div>
         <CraftWorkbench
           locale={locale}
           sessionId={route.sessionId}
@@ -479,10 +509,19 @@ export function CraftRoutes(props: CraftRoutesProps) {
           onIssuePreview={issuePreview}
           onDownload={downloadFile}
           onInteractionAction={handleInteractionAction}
+          onOpenSource={openKnowledgeSource}
           onMintTerminalUrl={mintTerminalUrl}
           onBack={() => navigate('/craft')}
           syncError={syncNotice ?? syncError}
         />
+        <CraftInteractionPanel
+          locale={locale}
+          sessionId={route.sessionId}
+          client={interactions}
+          canDecide={canWrite}
+          pollMs={5000}
+        />
+        </div>
       )}
     </div>
   );

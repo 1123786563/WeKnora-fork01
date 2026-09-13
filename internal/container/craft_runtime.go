@@ -91,7 +91,6 @@ func newCraftRuntimeExecutor(
 	files interfaces.FileService,
 	versions craft.VersionStore,
 	previews *service.CraftPreviewService,
-	interactions *CraftInteractionAssembly,
 ) (craft.Executor, error) {
 	baseURL := strings.TrimSpace(os.Getenv(craftOpenCodeBaseURLEnv))
 	if baseURL == "" {
@@ -126,11 +125,11 @@ func newCraftRuntimeExecutor(
 		service.CraftArtifactConfig{Kind: craft.KindWeb, OutputDir: outputDir})
 	// C02: an interaction.pending event first lands durably (interaction row
 	// + waiting_user park) before it is projected to the run stream, so the
-	// pending decision is decidable through the HTTP surface.
+	// pending decision is decidable through the HTTP surface. The registrar
+	// itself is installed AFTER construction (wireCraftInteractionRegistrar):
+	// the interaction assembly needs the AgentRuntime, which needs this
+	// executor — wiring it here closed a provider cycle that panicked boot.
 	emit := craftRunEventEmitter(runs)
-	if interactions != nil {
-		emit = craftInteractionRegistrar(client, store, interactions.Store, interactions.Runs, emit)
-	}
 	runtime := &localCraftRuntime{
 		db:            db,
 		client:        client,
@@ -570,6 +569,17 @@ func craftRuntimeDigestFromEnv() string {
 // still publish, they are just not restorable).
 func (e *localCraftRuntime) setSnapshotCapture(capture func(context.Context, craft.Task, string)) {
 	e.snapshotCapture = capture
+}
+
+// setInteractionEmitter installs the C02 interaction.pending registrar
+// around the current emitter. It exists to break the construction-time
+// provider cycle (executor → interaction assembly → agent runtime →
+// executor): the assembly is built after the runtime, and the container
+// wires the registrar in once both sides exist, before any traffic.
+func (e *localCraftRuntime) setInteractionEmitter(emit func(context.Context, craft.Task, string, json.RawMessage) error) {
+	if e != nil && emit != nil {
+		e.emit = emit
+	}
 }
 
 // localCraftSnapshotSource is the local single-serve implementation of the

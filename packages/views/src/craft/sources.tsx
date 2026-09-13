@@ -115,7 +115,6 @@ export function CraftSources(props: CraftSourcesProps) {
                 <td>{formatBytes(source.excerptBytes)}</td>
                 <td>
                   {source.tenantId}
-                  {source.tenantId > 0 ? null : null}
                 </td>
                 <td>
                   <Button
