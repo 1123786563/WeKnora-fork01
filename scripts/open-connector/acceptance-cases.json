@@ -1,0 +1,299 @@
+{
+  "task": "T17",
+  "kind": "acceptance",
+  "base": "b8800c75",
+  "environment": {
+    "postgresql": "16.15 (docker weknora-oc-t17-pg-1, postgres:16-alpine, host port 55417, R8 disposable pattern)",
+    "migrations_applied": [
+      "000117_app_installations", "000118_mcp_oauth_binding_states", "000119_app_actions",
+      "000120_app_datasource_bindings", "000121_open_connector_bindings", "000122_open_connector_actions",
+      "000123_open_connector_dispatch", "000124_open_connector_tool_bindings"
+    ],
+    "migrations_host_side_exit_codes": [0, 0, 0, 0, 0, 0, 0, 0],
+    "isolated_schema_per_run": "oc17_<unix-nano> (created from the same versioned .up.sql files by the test harness; dropped on cleanup)",
+    "runtime": "rt-oc17-shared (shared private runtime fixture)",
+    "fixture_topology": "two spaces (tenant 91701/91702), Owner+Member each, one cross-space member (member-a1 in both), same provider github under two accounts (ext-account-a/alias-account-a, ext-account-b/alias-account-b)",
+    "toolchain": "go1.26.3 darwin/arm64; docker 29.4.0; python3 3.9.6; node v26.7.0"
+  },
+  "commands": {
+    "gate_red_no_env": {
+      "cmd": "env -u OC_TEST_DATABASE_URL go test -tags=integration ./internal/application/service/appconnector -run TestOCIntegration -count=1",
+      "exit": 1,
+      "note": "all entry points FAIL with 'blocked-env: OC_TEST_DATABASE_URL required' — never Skip-pass"
+    },
+    "green": {
+      "cmd": "OC_TEST_DATABASE_URL=<disposable-pg> go test -tags=integration ./internal/application/service/appconnector -run 'TestOCIntegration' -count=1 -v",
+      "exit": 1,
+      "note": "TestOCIntegrationEnvironment PASS, TestOCIntegration PASS (13 scenario subtests + final settlement); TestOCIntegrationWiringSettleParity FAIL is the reported finding 1 reproduction (intended red)"
+    },
+    "green_matrix_only": {
+      "cmd": "OC_TEST_DATABASE_URL=<disposable-pg> go test -tags=integration ./internal/application/service/appconnector -run 'TestOCIntegration$' -count=1",
+      "exit": 0
+    },
+    "race": {
+      "cmd": "OC_TEST_DATABASE_URL=<disposable-pg> go test -race -tags=integration ./internal/application/service/appconnector -run 'TestOCIntegration' -count=1",
+      "exit": 1,
+      "data_races": 0,
+      "note": "matrix PASS under -race; only the finding-1 probe fails (intended)"
+    }
+  },
+  "business_red_proofs": [
+    {
+      "id": "RED-A2",
+      "sabotage": "temporary uncommitted removal of the tenant gate in ocAuthorizer.Check AND CanUseConnection (restored immediately; git diff clean after)",
+      "cmd": "go test -tags=integration ./internal/application/service/appconnector -run 'TestOCIntegration$/cross_space'",
+      "exit": 1,
+      "assertion_fired": "guard.Check for B on A connection: want tenant-scope denial"
+    },
+    {
+      "id": "RED-A1-defense-in-depth",
+      "sabotage": "tenant gate removed from ocAuthorizer.Check ONLY",
+      "result": "cross_space still PASSED (denial held via CanUseConnection's own tenant scope) — recorded as defense-in-depth evidence, not a RED"
+    },
+    {
+      "id": "RED-B",
+      "sabotage": "ReplayAllowed returns true for any keyed record (restored immediately)",
+      "cmd": "go test -tags=integration ./internal/application/service/appconnector -run 'TestOCIntegration$/replay_deadline'",
+      "exit": 1,
+      "assertion_fired": "replay allowed AT the cutoff"
+    },
+    {
+      "id": "RED-C",
+      "sabotage": "settleOutcome fabricates unknown as failed (restored immediately)",
+      "cmd": "go test -tags=integration ./internal/application/service/appconnector -run 'TestOCIntegration$/unknown_outcome'",
+      "exit": 1,
+      "assertion_fired": "write-then-break: want ErrDispatchUnknown"
+    }
+  ],
+  "cases": [
+    {
+      "id": "00-environment-gate",
+      "name": "TestOCIntegrationEnvironment (plan sketch verbatim)",
+      "passed": true,
+      "evidence": "Fatal on missing OC_TEST_DATABASE_URL (gate_red_no_env exit 1); PASS with DSN via PingContext"
+    },
+    {
+      "id": "01-cross-space",
+      "name": "B uses A connection/action/attempt ID",
+      "passed": true,
+      "observations": {
+        "prepare_B_on_A_connection": "oc_definition_unreachable: no open-connector binding for connection conn-a1 in tenant 91702",
+        "begin_B_on_A_connection": "connection_forbidden",
+        "attempt_completion_by_B": false,
+        "claim_B_on_A_action": "action_not_found (tenant-scoped predicate)",
+        "a02_B_on_A_connection": "connection_version_stale",
+        "provider_request_delta": 0
+      }
+    },
+    {
+      "id": "02-personal-connection",
+      "name": "same-space non-owner use of the owner's personal connection",
+      "passed": true,
+      "observations": {
+        "member_prepare": "reachable (tenant-scoped catalog)",
+        "member_execute": "a02 recheck: connection_forbidden; action stays authorized (untouched)",
+        "provider_request_delta": 0,
+        "list_visibility": "FINDING T17-F2: backend list returns metadata projections for ALL tenant connections (id/kind/state/owner_id/auth_version, no credential_ref); hiding others' personal connections is currently frontend-side"
+      }
+    },
+    {
+      "id": "03-space-connection-grant",
+      "name": "space connection without explicit grant (member AND billing admin)",
+      "passed": true,
+      "observations": {
+        "member_execute_denied": "a02 recheck: connection_forbidden",
+        "admin_billing_execute_denied": "a02 recheck: connection_forbidden",
+        "control_member_with_explicit_grant": true,
+        "owner_under_production_nil_grants": "connection_forbidden (container wires no grant source yet: fail-closed for everyone)",
+        "provider_request_delta": 0
+      }
+    },
+    {
+      "id": "04-account-switch",
+      "name": "same provider, switched alias/externalID",
+      "passed": true,
+      "observations": {
+        "old_approval_execute": "a02 recheck: connection_version_stale (old binding revoked at v2)",
+        "old_binding_after_switch": "revoked, alias/external immutable per SaveBinding contract",
+        "provider_request_delta_during_old_approval": 0,
+        "empty_alias_refused": "openconnector: connection alias required (no default-alias fallback)",
+        "new_account_execute_alias_seen": "alias-account-a2"
+      }
+    },
+    {
+      "id": "05-revoke-race",
+      "name": "revoke before claim / claim before revoke",
+      "passed": true,
+      "observations": {
+        "revoke_before_claim": "a02 recheck: connection_version_stale; approval_remaining stays 1 (unconsumed); provider delta 0",
+        "claim_before_revoke": "in-flight completed: action succeeded, exactly 1 provider write despite the concurrent revoke (audit-only for claimed ops)"
+      }
+    },
+    {
+      "id": "06-approval-tamper",
+      "name": "modified risk/schema/args/version",
+      "passed": true,
+      "observations": {
+        "modified_args_old_digest": "action_digest_mismatch",
+        "db_tamper_args_snapshot": "digest recompute mismatch — detectable, re-Prepare required",
+        "db_tamper_risk": "digest recompute mismatch — detectable",
+        "db_tamper_app_version": "digest recompute mismatch — detectable",
+        "schema_republish_conflict": "frozen catalog refuses changed schema bytes for the same (app, version, action)",
+        "v1_digest_approve": "action_reprepare_required",
+        "v1_digest_execute": "action_reprepare_required"
+      }
+    },
+    {
+      "id": "07-concurrent-duplicate",
+      "name": "20 concurrent requests on one action (+ T14-QI-1 carry)",
+      "passed": true,
+      "observations": {
+        "requests": 20,
+        "winners": 1,
+        "losers": 19,
+        "provider_side_effects": 1,
+        "approval_remaining_after": 0,
+        "terminal_usage_facts": 1,
+        "gate_begins": 15,
+        "gate_note": "losers' shared-reservation begins surface as orphan holds (fail-safe over-hold, T10-Q-1 zero-usage release only for exhausted/conflict rejections) — known design, no double charge",
+        "carry_T14_QI_1_tool_binding_race_on_pg": {"requests": 20, "ok": 20, "unique_action_ids": 1, "binding_rows": 1}
+      }
+    },
+    {
+      "id": "08-unknown-outcome",
+      "name": "provider writes then breaks the response",
+      "passed": true,
+      "observations": {
+        "execute_error": "dispatch_unknown",
+        "provider_writes": 1,
+        "action_state": "unknown",
+        "record_state": "unknown",
+        "after_recovery_run_once": "provider ops still 1 (no resend)",
+        "manual_execute": "execute from unknown: action_state_conflict (unknown never re-enters dispatch)",
+        "transport_retry_absorbed": "Go's transport re-sent the cut request once under the SAME idempotency key; the upstream key contract replayed the recorded outcome (1 side effect total) — evidence final_settlement_scan.key_replays_absorbed=1",
+        "no_resend_surface": "routes file has no replay/resend endpoint (grep evidence in acceptance doc); T15 UI has no resend button"
+      }
+    },
+    {
+      "id": "09-local-failure-settlement",
+      "name": "settlement delivery failure after provider success",
+      "passed": true,
+      "observations": {
+        "execute_error_surfaces": true,
+        "original_outcome_preserved": "action+record already terminal (succeeded) before the delivery error",
+        "provider_ops_total": 1,
+        "finish_failures": 1,
+        "ok_facts_after_recovery": 1,
+        "fact_stability": "single delivered fact, Revision=1, CallID=actionID (idempotent replay basis)"
+      }
+    },
+    {
+      "id": "10-crash-restart",
+      "name": "claim then kill worker, restart via fresh recovery loop",
+      "passed": true,
+      "observations": {
+        "convergence": "record dispatched→unknown AND action dispatched→unknown after the stale sweep (heartbeat backdated past 90s)",
+        "key_preserved": "wk-oc-d9c0cdee-b13c-47ca-a981-721c19b9e5a4 before == after",
+        "runtime_preserved": "rt-oc17-shared before == after",
+        "provider_ops_during_recovery": 0,
+        "reclaim_refused": true,
+        "carry_T08_F2_stale_attempt_observation": "expired authorization attempts persist in non-terminal states (pending/authorizing/verifying); no attempt sweeper exists in phase one (T08 Q-2/Q-3 → T18). non_terminal_attempts_observed=2 at end state"
+      }
+    },
+    {
+      "id": "11-replay-deadline",
+      "name": "isolated clock advance to the cutoff",
+      "passed": true,
+      "observations": {
+        "allowed_at_first_sent": true,
+        "allowed_just_inside": true,
+        "allowed_at_cutoff": false,
+        "allowed_clock_backwards": false,
+        "allowed_corrupt_gt24h_window": false,
+        "provider_ops_after_advance": 0,
+        "record_after": "terminal succeeded undisturbed; key and runtime preserved",
+        "mechanism": "no automatic replay path exists anywhere in phase one; ReplayAllowed grants nothing"
+      }
+    },
+    {
+      "id": "12-credentials-scan",
+      "name": "agent/tool/API/logs contain no admin token, secret ref or raw credentials",
+      "passed": true,
+      "observations": {
+        "dispatch_authorization": "scoped restricted token for exactly (tenant, connection, current auth version)",
+        "stale_generation_token_refused": true,
+        "cross_tenant_token_refused": true,
+        "admin_material_never_dispatched": true,
+        "connection_rows": "credential_ref only; no material in rows",
+        "action_rows_blob_scan": "no token/secret material persisted",
+        "transient_apikey_cipher": "sealed output carries no plaintext",
+        "code_surface_greps": "documented in the acceptance doc (tool facade, routes, DTOs)"
+      }
+    },
+    {
+      "id": "13-multi-replica",
+      "name": "two API workers concurrently over one store",
+      "passed": true,
+      "observations": {
+        "limits": {"PerTenant": 2, "PerConnection": 1, "PerProvider": 8, "Global": 3},
+        "jobs": 6,
+        "provider_ops": 6,
+        "peak_inflight_at_provider": 1,
+        "peak_bound": "peak <= Global (DB-lease enforced across both replica wirings)",
+        "succeeded_by_space": {"91701": 3, "91702": 3}
+      }
+    },
+    {
+      "id": "14-regression",
+      "name": "native OAuth/MCP/Sync/commercial + targeted integration",
+      "passed": true,
+      "observations": {
+        "go_service_appconnector": "exit 0",
+        "go_repository_appconnector": "exit 0",
+        "go_connectorcontrol": "exit 0",
+        "go_container": "exit 0",
+        "go_handler": "exit 0",
+        "go_commercial_domain_and_repo": "exit 0",
+        "go_appconnector_domain_incl_oauth_mcp_sync": "exit 0",
+        "python_open_connector_gates": "43 tests OK, exit 0",
+        "web_appconnector_t15": "7/7 pass, exit 0",
+        "web_full_suite": "1 pre-existing failure (platform/legacy-session) ALSO failing at pristine base b8800c75 on node v26.7.0 — environment drift, not T17"
+      }
+    },
+    {
+      "id": "15-final-settlement",
+      "name": "end-of-suite settlement + cleanup discipline",
+      "passed": true,
+      "observations": {
+        "intentional_unknowns_resolved": "provider-query resolver settled scenario 8 (write confirmed → succeeded) and scenario 10 (write never landed → failed)",
+        "finding1_residue": ["ocact_da57f447-b229-433d-ab92-1eb27c4b03a2(record=dispatched,action=succeeded)"],
+        "unexplained_open": 0,
+        "unsettled_settlements": 0,
+        "cleanup_blocked": false,
+        "note": "the finding-1 residue is the production-wiring defect's durable signature (captured in the journal and the red parity probe), so fixture cleanup proceeded; the disposable container was still preserved until report completion"
+      }
+    }
+  ],
+  "findings": [
+    {
+      "id": "T17-F1",
+      "severity": "production-defect (reported, not fixed)",
+      "title": "container.GatedOCClaims masks the T12 settle face: the production wiring never settles durable dispatch records",
+      "reproduction": "TestOCIntegrationWiringSettleParity — container.NewOCArmedActionService → Approve → Execute succeeds, action row=succeeded while connector_dispatch_records row stays dispatched",
+      "impact": "Execute silently takes the pre-T12 finish order; records of successful dispatches go stale after 90s and the sweep parks them unknown (permanent T16 'unknown oldest' alert noise, settlement outbox never drains through the record); ResolveUnknown/alignment passes see terminal actions with non-terminal records",
+      "fix_hint": "GatedOCClaims must forward FinishOCDispatch/MarkOCDispatchSettled (embed the settle face or pass the raw *OCStore through) — one-line-ish container change; suite turns green with no other edits"
+    },
+    {
+      "id": "T17-F2",
+      "severity": "observation (spec-gap, reported)",
+      "title": "connection list endpoint returns metadata projections of ALL tenant connections to every member",
+      "evidence": "handler ListConnections (internal/handler/app_connector_connection.go) filters by tenant only; no credential material is exposed (no credential_ref), but hiding others' personal connections is currently a frontend concern",
+      "suggestion": "server-side owner filter for personal connections or an explicit visibility field in a later task"
+    }
+  ],
+  "carries": {
+    "T14-QI-1": "CLOSED at acceptance level: 20 concurrent PrepareForTool on real PostgreSQL → exactly 1 action row + 1 binding row (case 07)",
+    "T08-F-2/T12-stale-attempts": "OBSERVED: expired attempts persist in non-terminal states; no sweeper in phase one (case 10, end-state count 2) → remains with T18",
+    "T16-validator-edge": "CLOSED via the pre-authorized one-liner: networks entries validated on declared shape before filtering + 2 test cases (28/28 green, RED/GREEN proven)"
+  }
+}

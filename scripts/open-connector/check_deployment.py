@@ -216,6 +216,15 @@ def _validate_networks(networks, services, errors):
     if declared is not None and not isinstance(declared, (list, dict)):
         errors.append("open-connector: networks must be a list of network names or a mapping")
         return
+    # T17 edge closure (T16 residual): validate the DECLARED entry shapes
+    # BEFORE filtering — _service_network_names silently drops malformed
+    # entries (non-strings, mappings without "name"), which would let a
+    # broken attachment pass validation unnoticed.
+    if isinstance(declared, list):
+        for entry in declared:
+            if not ((isinstance(entry, str) and entry) or (isinstance(entry, dict) and entry.get("name"))):
+                errors.append("open-connector: networks entries must be network names or mappings")
+                return
     attached = _service_network_names(svc)
     if attached is None:
         # No explicit networks: compose attaches the default bridge, which is

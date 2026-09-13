@@ -265,6 +265,30 @@ class DeploymentTest(unittest.TestCase):
         errors = validate_compose(cfg)
         self.assertTrue(any("networks" in e and "open-connector" in e for e in errors))
 
+    def test_malformed_networks_list_entries_rejected_before_filtering(self):
+        # T17 edge closure (T16 residual): list entries that are neither a
+        # network name nor a {name: ...} mapping used to be silently dropped
+        # by _service_network_names BEFORE the per-entry check — a broken
+        # attachment passed validation. They must be rejected on the DECLARED
+        # shape.
+        for bad in (42, None, {"aliases": ["x"]}, {"name": ""}, ""):
+            cfg = good_config()
+            cfg["services"]["open-connector"]["networks"] = ["oc-egress-net", bad]
+            errors = validate_compose(cfg)
+            self.assertTrue(
+                any("networks entries" in e and "open-connector" in e for e in errors),
+                bad,
+            )
+
+    def test_valid_networks_mapping_entry_still_accepted(self):
+        cfg = good_config()
+        cfg["services"]["open-connector"]["networks"] = [
+            "oc-egress-net",
+            {"name": "oc-extra-net"},
+        ]
+        cfg["networks"]["oc-extra-net"] = {"internal": False}
+        self.assertEqual(validate_compose(cfg), [])
+
 
 class ShippedComposeTest(unittest.TestCase):
     """The shipped compose file must pass its own validator (docker required)."""
