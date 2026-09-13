@@ -30,6 +30,7 @@ const {
   GraphTagsField,
   GraphSwitch,
   GraphRelationSelect,
+  moveGraphRelationOption,
 } = await import('./KnowledgeDocumentsPage.tsx');
 const {
   uploadConfirmT,
@@ -597,6 +598,14 @@ test('graph relation selectors expose filterable Vue-like comboboxes', () => {
   assert.match(markup, /role="combobox"/);
   assert.match(markup, /Author/);
   assert.match(markup, /清除选择关系类型/);
+});
+
+test('graph relation selector arrow navigation clamps to available options', () => {
+  assert.equal(moveGraphRelationOption(0, 'down', 2), 1);
+  assert.equal(moveGraphRelationOption(1, 'down', 2), 1);
+  assert.equal(moveGraphRelationOption(0, 'up', 2), 0);
+  assert.equal(moveGraphRelationOption(1, 'up', 2), 0);
+  assert.equal(moveGraphRelationOption(0, 'down', 0), 0);
 });
 
 // --- Upload progress mask (Vue upload-mask.vue parity + percent) -------------------

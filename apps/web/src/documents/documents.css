@@ -416,7 +416,8 @@
 }
 
 .wk-graph-relation-options button:hover,
-.wk-graph-relation-options button[aria-selected="true"] {
+.wk-graph-relation-options button[aria-selected="true"],
+.wk-graph-relation-options button.is-active {
   background: var(--wk-bg-muted, #f2f4f7);
 }
 

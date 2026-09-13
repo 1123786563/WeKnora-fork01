@@ -1058,6 +1058,13 @@ export function clampGraphTextareaHeight(scrollHeight: number, lineHeight: numbe
   return Math.min(maxHeight, Math.max(minHeight, scrollHeight));
 }
 
+export function moveGraphRelationOption(index: number, direction: "up" | "down", optionCount: number) {
+  if (optionCount <= 0) return 0;
+  return direction === "down"
+    ? Math.min(index + 1, optionCount - 1)
+    : Math.max(index - 1, 0);
+}
+
 export function GraphTagsField({ tags, onChange, placeholder, ariaLabel }: {
   tags: readonly string[];
   onChange: (tags: string[]) => void;
@@ -1109,9 +1116,11 @@ export function GraphRelationSelect({ value, options, placeholder, ariaLabel, cr
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
+  const [activeIndex, setActiveIndex] = useState(0);
   const normalized = filter.trim().toLocaleLowerCase();
   const filtered = normalized ? options.filter((option) => option.toLocaleLowerCase().includes(normalized)) : [...options];
   const canCreate = creatable && Boolean(filter.trim()) && !options.some((option) => option.toLocaleLowerCase() === normalized);
+  const optionCount = filtered.length + (canCreate ? 1 : 0);
   useEffect(() => {
     if (!open) return;
     const closeOnOutside = (event: MouseEvent) => {
@@ -1120,7 +1129,7 @@ export function GraphRelationSelect({ value, options, placeholder, ariaLabel, cr
     document.addEventListener("mousedown", closeOnOutside);
     return () => document.removeEventListener("mousedown", closeOnOutside);
   }, [open]);
-  const choose = (next: string) => { onChange(next); setFilter(""); setOpen(false); };
+  const choose = (next: string) => { onChange(next); setFilter(""); setActiveIndex(0); setOpen(false); };
   return (
     <div ref={rootRef} className="wk-graph-relation-select">
       <input
@@ -1131,18 +1140,20 @@ export function GraphRelationSelect({ value, options, placeholder, ariaLabel, cr
         aria-expanded={open}
         value={open ? filter : value}
         placeholder={open ? placeholder : (value || placeholder)}
-        onFocus={() => { setOpen(true); setFilter(""); }}
-        onChange={(event) => { setFilter(event.target.value); setOpen(true); }}
+        onFocus={() => { setOpen(true); setFilter(""); setActiveIndex(0); }}
+        onChange={(event) => { setFilter(event.target.value); setActiveIndex(0); setOpen(true); }}
         onKeyDown={(event) => {
-          if (event.key === "Enter" && (filtered[0] || canCreate)) { event.preventDefault(); choose(canCreate ? filter.trim() : filtered[0]); }
+          if (event.key === "ArrowDown") { event.preventDefault(); setOpen(true); setActiveIndex((index) => moveGraphRelationOption(index, "down", optionCount)); }
+          if (event.key === "ArrowUp") { event.preventDefault(); setActiveIndex((index) => moveGraphRelationOption(index, "up", optionCount)); }
+          if (event.key === "Enter" && optionCount > 0) { event.preventDefault(); choose(activeIndex < filtered.length ? filtered[activeIndex] : filter.trim()); }
           if (event.key === "Escape") { setOpen(false); event.currentTarget.blur(); }
         }}
       />
       {clearable && value ? <button type="button" className="wk-graph-relation-clear" aria-label={`清除${ariaLabel}`} onMouseDown={(event) => { event.preventDefault(); choose(""); }}>×</button> : null}
       {open ? (
         <div role="listbox" className="wk-graph-relation-options">
-          {filtered.map((option) => <button type="button" role="option" aria-selected={option === value} key={option} onMouseDown={(event) => { event.preventDefault(); choose(option); }}>{option}</button>)}
-          {canCreate ? <button type="button" role="option" onMouseDown={(event) => { event.preventDefault(); choose(filter.trim()); }}>创建“{filter.trim()}”</button> : null}
+          {filtered.map((option, index) => <button type="button" role="option" aria-selected={option === value} className={index === activeIndex ? "is-active" : undefined} key={option} onMouseDown={(event) => { event.preventDefault(); choose(option); }}>{option}</button>)}
+          {canCreate ? <button type="button" role="option" className={activeIndex === filtered.length ? "is-active" : undefined} onMouseDown={(event) => { event.preventDefault(); choose(filter.trim()); }}>创建“{filter.trim()}”</button> : null}
           {filtered.length === 0 && !canCreate ? <span className="wk-muted">{placeholder}</span> : null}
         </div>
       ) : null}

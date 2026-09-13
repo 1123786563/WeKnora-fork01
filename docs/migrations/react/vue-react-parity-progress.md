@@ -1752,3 +1752,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - React 关系类型 combobox 补齐 Vue `clearable` 行为，仅类型字段提供清空入口；实体端点保持不可清空，关系数据更新契约不变。
 - 定向 upload-confirm 测试 27/27、Web TypeScript、`git diff --check` 通过；真实图谱 endpoint、浏览器 computed-style/截图、Vue 同条件截图、Wails 与移动端证据仍待补齐，N007 继续保持 implementing。
+
+## 2026-09-14 Round N+53 — N007 图谱关系选择器键盘导航
+
+- React 图谱关系 combobox 增加 Vue `t-select` 对应的 ArrowUp/ArrowDown active option 导航、Enter 选择与筛选后索引重置；选项边界通过纯函数夹紧，Escape/外部点击语义保持不变。
+- 定向 upload-confirm 测试 28/28、Web TypeScript、`git diff --check` 通过；真实图谱 endpoint、浏览器 computed-style/截图、Vue 同条件截图、Wails 与移动端证据仍待补齐，N007 继续保持 implementing。
