@@ -62,7 +62,6 @@ export function EnvVarSettingsPanel({ client, initialPayload, onMutated }: { cli
   }
 
   return <Card data-testid="envvar-panel">
-    <h3>Personal environment variables</h3>
     {error ? <Status tone="error">{error}</Status> : null}
     {notice ? <Status tone="success">{notice}</Status> : null}
     <form className="wk-settings-editor" onSubmit={setVariable}>

@@ -1,0 +1,136 @@
+/* Settings wrapper slice (R027 items A/B/C/D) — Vue parity styles ported from
+ * frontend/src/views/settings/{GeneralSettings,TenantInfo,UserProfile,ModelSettings,SystemInfo,EnvVarSettings}.vue
+ * and frontend/src/components/ModelEditorDialog.vue. Scoped under the settings
+ * drawer so the rest of the shell is untouched. */
+
+.wk-settings-section .section-header { margin-bottom: 20px; }
+.wk-settings-section .section-header h2 { font-size: 20px; font-weight: 600; margin: 0 0 8px; }
+.wk-settings-section .section-description { font-size: 14px; line-height: 1.6; margin: 0; opacity: 0.75; }
+
+/* setting-row list shared by TenantInfo.vue / UserProfile.vue /
+   SystemInfo.vue / GeneralSettings.vue */
+.wk-settings-section .settings-group { display: flex; flex-direction: column; }
+.wk-settings-section .setting-row { align-items: flex-start; border-bottom: 1px solid rgba(120, 135, 155, 0.18); display: flex; gap: 24px; justify-content: space-between; padding: 16px 0; }
+.wk-settings-section .setting-row:last-child { border-bottom: 0; }
+.wk-settings-section .setting-info { flex: 1; max-width: 65%; padding-right: 16px; }
+.wk-settings-section .setting-info label { color: inherit; display: block; font-size: 15px; font-weight: 500; margin-bottom: 4px; }
+.wk-settings-section .setting-info .desc { font-size: 13px; line-height: 1.5; margin: 0; opacity: 0.7; }
+.wk-settings-section .setting-control { align-items: center; display: flex; flex-shrink: 0; justify-content: flex-end; min-width: 220px; }
+.wk-settings-section .setting-control--stacked { align-items: flex-end; flex-direction: column; gap: 8px; }
+.wk-settings-section .info-value { font-size: 14px; overflow-wrap: anywhere; }
+.wk-settings-section .info-value.password-mask { letter-spacing: 2px; }
+.wk-settings-section .commit-info { font-family: ui-monospace, monospace; font-size: 12px; opacity: 0.7; }
+.wk-settings-section .edit-btn { background: transparent; border: 0; cursor: pointer; font-size: 14px; opacity: 0.6; padding: 2px 6px; }
+.wk-settings-section .edit-btn:hover { opacity: 1; }
+.wk-settings-section .inline-edit { align-items: center; display: flex; gap: 8px; }
+.wk-settings-section .inline-edit input { max-width: 280px; width: 280px; }
+.wk-settings-section .inline-edit-description { align-items: flex-end; flex-direction: column; }
+.wk-settings-section .inline-edit-description textarea { width: 320px; max-width: 320px; }
+.wk-settings-section .inline-edit-actions { display: flex; gap: 8px; }
+
+.wk-tag { border-radius: 999px; font-size: 12px; padding: 1px 10px; }
+.wk-tag--success { background: rgba(7, 192, 95, 0.12); color: #0a8f4c; }
+.wk-tag--warning { background: rgba(236, 149, 27, 0.14); color: #b26a08; }
+.wk-tag--danger { background: rgba(220, 38, 38, 0.12); color: #c23434; }
+.wk-tag--default { background: rgba(100, 116, 139, 0.14); color: #52607a; }
+
+/* GeneralSettings.vue font previews (lines 351-375) */
+.general-settings .setting-control select { max-width: 280px; width: 280px; }
+.font-preview { background: rgba(127, 142, 166, 0.08); border: 1px solid rgba(120, 135, 155, 0.25); border-radius: 6px; box-sizing: border-box; font-size: 14px; line-height: 1.4; max-width: 280px; padding: 8px 12px; width: 280px; }
+.font-preview--mono { font-family: var(--wk-font-mono, ui-monospace, monospace); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* GeneralSettings.vue font size radio buttons (t-radio-group) */
+.wk-segmented { border: 1px solid rgba(120, 135, 155, 0.35); border-radius: 6px; display: inline-flex; overflow: hidden; }
+.wk-segmented button { background: transparent; border: 0; cursor: pointer; font: inherit; padding: 6px 18px; }
+.wk-segmented button + button { border-left: 1px solid rgba(120, 135, 155, 0.35); }
+.wk-segmented button.is-active { background: rgba(7, 192, 95, 0.14); color: #0a8f4c; font-weight: 600; }
+
+/* per-field validation messages (ModelEditorDialog.vue t-form-item errors) */
+.wk-field-error { color: #c23434; font-size: 12px; line-height: 1.4; }
+.wk-password-editor { border-top: 1px dashed rgba(120, 135, 155, 0.3); display: grid; gap: 12px; margin-top: 4px; padding-top: 16px; }
+
+/* ModelSettings.vue section header (lines 3-21): h2 + subtitle + green
+   ▶ 模型测试 text trigger */
+.wk-model-settings .wk-settings-panel-heading h2 { font-size: 20px; font-weight: 600; margin: 0 0 8px; }
+.wk-model-test-trigger { align-items: center; background: transparent; border: 0; color: #0a8f4c; cursor: pointer; display: inline-flex; font: inherit; font-size: 14px; font-weight: 600; gap: 6px; padding: 4px 0; }
+.wk-model-test-trigger:hover, .wk-model-test-trigger:focus-visible { color: #067a3f; }
+
+/* ModelSettings.vue model type tabs (t-tabs, lines 924-952) */
+.wk-model-tabs button { font-size: 13px; }
+.wk-model-tabs button.is-active { border-bottom-color: #0a8f4c; color: #0a8f4c; }
+
+/* ModelSettings.vue model cards (lines 954-1207) */
+.wk-model-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+.model-card { align-items: flex-start; background: #fff; border: 1px solid rgba(120, 135, 155, 0.3); border-radius: 10px; box-sizing: border-box; display: flex; gap: 12px; min-width: 0; padding: 14px 16px; position: relative; transition: border-color 0.18s ease, box-shadow 0.18s ease; }
+.model-card--clickable { cursor: pointer; }
+.model-card--clickable:hover, .model-card--clickable:focus-visible { border-color: rgba(7, 192, 95, 0.65); box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08); outline: none; }
+.model-card--builtin { background: rgba(127, 142, 166, 0.06); }
+.model-card--builtin:hover { border-color: rgba(120, 135, 155, 0.3); box-shadow: none; }
+.model-card__badge { align-items: center; border-radius: 9px; display: flex; flex-shrink: 0; font-size: 16px; height: 36px; justify-content: center; margin-top: 1px; width: 36px; }
+.model-card--chat .model-card__badge { background: rgba(0, 82, 217, 0.1); color: #0052d9; }
+.model-card--embedding .model-card__badge { background: rgba(98, 53, 187, 0.1); color: #6235bb; }
+.model-card--rerank .model-card__badge { background: rgba(184, 92, 0, 0.12); color: #b85c00; }
+.model-card--vllm .model-card__badge { background: rgba(201, 62, 62, 0.1); color: #c93e3e; }
+.model-card--asr .model-card__badge { background: rgba(17, 128, 83, 0.1); color: #118053; }
+.model-card__body { display: flex; flex: 1; flex-direction: column; gap: 2px; justify-content: center; min-width: 0; }
+.model-card__header { align-items: center; display: flex; gap: 6px; min-width: 0; }
+.model-card__title { flex: 1; font-size: 14px; font-weight: 600; line-height: 1.4; margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-card__lock { color: #8a97ab; flex-shrink: 0; font-size: 13px; opacity: 0.6; }
+.model-card:hover .model-card__lock { opacity: 1; }
+.model-card__subtitle { color: #5c6b83; font-size: 12px; line-height: 1.5; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-card__sep { color: #97a3b6; }
+.model-card__ctx { font-variant-numeric: tabular-nums; }
+/* hover / focus reveals the affix actions (ModelSettings.vue lines 1185-1207) */
+.model-card__actions { align-items: center; display: flex; flex-shrink: 0; gap: 2px; position: relative; }
+.model-card__action-btn { background: transparent; border: 0; cursor: pointer; font-size: 14px; opacity: 0; padding: 2px 6px; transition: opacity 0.15s ease; }
+.model-card:hover .model-card__action-btn, .model-card:focus-within .model-card__action-btn, .model-card__actions:focus-within .model-card__action-btn { opacity: 1; }
+.model-card__more { color: #7a879c; }
+.model-card__delete { color: #c23434; }
+.model-card__menu { background: #fff; border: 1px solid rgba(120, 135, 155, 0.3); border-radius: 8px; box-shadow: 0 8px 24px rgba(23, 32, 51, 0.16); display: flex; flex-direction: column; min-width: 96px; position: absolute; right: 0; top: 26px; z-index: 5; }
+.model-card__menu button { background: transparent; border: 0; cursor: pointer; font: inherit; font-size: 13px; padding: 8px 12px; text-align: left; }
+.model-card__menu button:hover { background: rgba(127, 142, 166, 0.1); }
+.model-card__menu button:disabled { color: #9aa6b8; cursor: default; }
+/* dashed add tile (ModelSettings.vue lines 128-139, 983-1026) */
+.model-card--add, .wk-model-card--add { align-items: center; background: transparent; border: 1px dashed rgba(120, 135, 155, 0.45); border-radius: 10px; color: #7a879c; cursor: pointer; display: flex; flex-direction: column; font: inherit; gap: 8px; justify-content: center; min-height: 68px; padding: 14px 16px; }
+.model-card--add:hover, .wk-model-card--add:hover, .wk-model-card--add:focus-visible { background: rgba(7, 192, 95, 0.06); border-color: #0a8f4c; color: #0a8f4c; }
+.model-card--add__icon { align-items: center; background: rgba(7, 192, 95, 0.1); border-radius: 8px; display: flex; font-size: 18px; height: 32px; justify-content: center; width: 32px; }
+.model-card--add__label { font-size: 13px; font-weight: 500; }
+
+/* ModelEditorDialog.vue Ollama combobox (lines 109-133) */
+.wk-ollama-combobox-wrap { display: grid; gap: 4px; position: relative; width: 100%; }
+.wk-ollama-listbox { background: #fff; border: 1px solid rgba(120, 135, 155, 0.35); border-radius: 8px; box-shadow: 0 8px 24px rgba(23, 32, 51, 0.14); display: grid; max-height: 220px; overflow: auto; position: relative; z-index: 6; }
+.wk-ollama-option { align-items: center; background: transparent; border: 0; cursor: pointer; display: flex; font: inherit; gap: 8px; padding: 8px 12px; text-align: left; width: 100%; }
+.wk-ollama-option.is-highlighted, .wk-ollama-option:hover { background: rgba(7, 192, 95, 0.1); }
+.wk-ollama-option__check { color: #0a8f4c; font-size: 12px; }
+.wk-ollama-option__name { flex: 1; font-size: 13px; }
+.wk-ollama-option__size { color: #7a879c; font-size: 12px; }
+.wk-ollama-option--download .wk-ollama-option__name { color: #0a8f4c; }
+
+@media (max-width: 720px) {
+  .wk-settings-section .setting-row { flex-direction: column; gap: 8px; }
+  .wk-settings-section .setting-control { justify-content: flex-start; min-width: 0; }
+  .wk-settings-section .setting-control select { max-width: 100%; width: 100%; }
+  .font-preview { max-width: 100%; width: 100%; }
+}
+
+/* Item E3/F3: switch-style controls + aligned config rows */
+.wk-switch { cursor: pointer; display: inline-flex; position: relative; }
+.wk-switch input { cursor: pointer; opacity: 0; position: absolute; }
+.wk-switch__track { background: rgba(120, 135, 155, 0.35); border-radius: 999px; display: inline-block; height: 22px; position: relative; transition: background 0.15s ease; width: 42px; }
+.wk-switch__track::after { background: #fff; border-radius: 50%; content: ''; height: 18px; left: 2px; position: absolute; top: 2px; transition: transform 0.15s ease; width: 18px; }
+.wk-switch input:checked + .wk-switch__track { background: #0a8f4c; }
+.wk-switch input:checked + .wk-switch__track::after { transform: translateX(20px); }
+.wk-switch input:disabled + .wk-switch__track { opacity: 0.5; }
+.wk-settings-section .setting-control--model select { max-width: 280px; width: 280px; }
+.desc.warning-text { color: #b26a08; }
+
+/* Item F4: chathistory stats section (ChathistorySettings.vue lines 35-55) */
+.stats-section { margin-top: 20px; }
+.stats-title { font-size: 15px; font-weight: 600; margin: 0 0 12px; }
+.stats-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+.stat-card { background: #fff; border: 1px solid rgba(120, 135, 155, 0.3); border-radius: 10px; padding: 16px; text-align: center; }
+.stat-value { font-size: 22px; font-variant-numeric: tabular-nums; font-weight: 600; }
+.stat-label { color: #5c6b83; font-size: 12px; margin-top: 4px; }
+.stats-empty { background: rgba(127, 142, 166, 0.06); border: 1px dashed rgba(120, 135, 155, 0.35); border-radius: 10px; padding: 28px 16px; text-align: center; }
+.stats-empty-title { font-weight: 600; margin: 0 0 6px; }
+.stats-empty-desc { color: #5c6b83; font-size: 13px; margin: 0; }

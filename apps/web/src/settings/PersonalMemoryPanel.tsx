@@ -53,7 +53,7 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
     finally { setBusy(false); }
   }
 
-  return <Card><h3>{t('memorySettings.title')}</h3><p className="wk-muted">This toggle is persisted by the server for the current user. It does not silently enable workspace memory.</p>{error ? <Status tone="error">{error}</Status> : null}{notice ? <Status tone="success">{notice}</Status> : null}<label><input type="checkbox" checked={enabled} disabled={busy} onChange={(event) => void updateEnabled(event.target.checked)} /> {t('memorySettings.enableLabel')}</label><dl className="wk-settings-values"><div><dt>enabled</dt><dd>{String(enabled)}</dd></div></dl></Card>;
+  return <Card><h3>{t('memorySettings.title')}</h3><p className="wk-muted">{t("memorySettings.description")}</p>{error ? <Status tone="error">{error}</Status> : null}{notice ? <Status tone="success">{notice}</Status> : null}<label><input type="checkbox" checked={enabled} disabled={busy} onChange={(event) => void updateEnabled(event.target.checked)} /> {t('memorySettings.enableLabel')}</label><dl className="wk-settings-values"><div><dt>enabled</dt><dd>{String(enabled)}</dd></div></dl></Card>;
 }
 
 export function PersonalMemoryPanel({ client, initialItems }: { client: WeKnoraClient; initialItems: unknown }) {

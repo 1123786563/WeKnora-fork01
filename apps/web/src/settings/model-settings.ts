@@ -468,6 +468,40 @@ export function validateModelDraft(draft: ModelDraft): ModelDraftValidationError
   return errors;
 }
 
+/**
+ * Per-field blur validation with the exact ModelEditorDialog.vue rules and
+ * copy (lines 907-946): name required/empty/max-100 and base URL
+ * required/empty/URL-format, each with its own message key so the error
+ * renders under the field that owns it.
+ */
+export type ModelFieldKey = 'name' | 'baseUrl';
+export function modelFieldErrorKey(field: ModelFieldKey, draft: ModelDraft): string | null {
+  if (field === 'name') {
+    const value = typeof draft.name === 'string' ? draft.name : '';
+    if (value.length === 0) return 'model.editor.validation.modelNameRequired';
+    if (!value.trim()) return 'model.editor.validation.modelNameEmpty';
+    if (value.trim().length > 100) return 'model.editor.validation.modelNameMax';
+    return null;
+  }
+  const value = typeof draft.baseUrl === 'string' ? draft.baseUrl : '';
+  if (value.length === 0) return 'model.editor.validation.baseUrlRequired';
+  if (!value.trim()) return 'model.editor.validation.baseUrlEmpty';
+  try { new URL(value.trim()); } catch {
+    return 'model.editor.validation.baseUrlInvalid';
+  }
+  return null;
+}
+
+/**
+ * ModelSettings.vue watches uiStore.settingsInitialSubSection (lines 329-337)
+ * and lands on the matching type tab; unknown values keep the Vue default of
+ * showing every model.
+ */
+const MODEL_TAB_TYPES: ReadonlyArray<ModelType> = ["chat", "embedding", "rerank", "vllm", "asr"];
+export function subsectionToFilter(value: string | null | undefined): ModelType | null {
+  if (!value) return null;
+  return (MODEL_TAB_TYPES as ReadonlyArray<string>).includes(value) ? value as ModelType : null;
+}
 export function modelValidationErrorKey(error: ModelDraftValidationError): string {
   return `modelSettings.toasts.${error}` as const;
 }

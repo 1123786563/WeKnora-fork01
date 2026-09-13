@@ -1,5 +1,42 @@
 import { SETTINGS_SECTIONS, type SettingsSection, type SettingsOperation, type SettingsRole, type SettingsScope } from '@weknora/views';
 import { validatePassword } from '@weknora/domain/auth/password-policy';
+import { formatMessage, type Locale } from '@weknora/i18n';
+
+// Vue section headers: every Vue settings component renders an
+// "h2 + section-description" pair inside its section-header block
+// (GeneralSettings.vue lines 3-6, EnvVarSettings.vue lines 3-15,
+// ModelSettings.vue lines 3-8, TenantInfo.vue lines 3-6, UserProfile.vue
+// lines 3-6, SystemInfo.vue lines 3-6). Keys live in packages/i18n.
+const SECTION_HEADING_KEYS: Record<string, { title: string; description?: string }> = {
+  general: { title: 'general.title', description: 'general.description' },
+  userprofile: { title: 'userProfile.title', description: 'userProfile.description' },
+  tenant: { title: 'tenant.title', description: 'tenant.sectionDescription' },
+  members: { title: 'tenantMember.title' },
+  mymemory: { title: 'memorySettings.title', description: 'memorySettings.description' },
+  envvars: { title: 'envVarSettings.title', description: 'envVarSettings.description' },
+  chathistory: { title: 'chatHistorySettings.title', description: 'chatHistorySettings.description' },
+  memory: { title: 'memoryWorkspaceSettings.title', description: 'memoryWorkspaceSettings.description' },
+  retrieval: { title: 'retrievalSettings.title', description: 'retrievalSettings.description' },
+  models: { title: 'modelSettings.title', description: 'modelSettings.description' },
+  ollama: { title: 'ollamaSettings.title', description: 'ollamaSettings.description' },
+  weknoracloud: { title: 'settings.weknoraCloud.title', description: 'settings.weknoraCloud.description' },
+  vectorstore: { title: 'vectorStoreSettings.title', description: 'vectorStoreSettings.description' },
+  parser: { title: 'settings.parser.title', description: 'settings.parser.description' },
+  websearch: { title: 'settings.webSearchConfig' },
+  sandbox: { title: 'settings.sandbox.title', description: 'settings.sandbox.description' },
+  skills: { title: 'settings.skills.title', description: 'settings.skills.description' },
+  mcp: { title: 'settings.mcpService' },
+  system: { title: 'system.title', description: 'system.sectionDescription' },
+};
+
+export function settingsSectionHeading(locale: Locale, key: string): { title: string; description: string } {
+  const meta = settingsSectionMeta(key);
+  const keys = SECTION_HEADING_KEYS[key];
+  return {
+    title: keys ? formatMessage(locale, keys.title) : meta?.title ?? key,
+    description: keys?.description ? formatMessage(locale, keys.description) : meta?.description ?? '',
+  };
+}
 
 export interface SettingsSectionMeta extends SettingsSection {
   readonly title: string;
@@ -211,4 +248,90 @@ export function tenantModelIds(models: unknown): string[] {
 export function chatHistoryEmbeddingLocked(stats: unknown): boolean {
   if (stats === null || typeof stats !== 'object' || Array.isArray(stats)) return false;
   return (stats as Record<string, unknown>).has_indexed_messages === true;
+}
+
+// ---------------------------------------------------------------------------
+// System info display rows (item D).
+// Ported from frontend/src/views/settings/SystemInfo.vue: the section renders
+// a read-only "label + help text + formatted value" list (template lines
+// 21-197) with a humanized uptime (formatUptime, lines 233-248) and the
+// edition/migration tags. Values fall back to system.unknown like Vue.
+export interface SystemInfoRow {
+  readonly labelKey: string;
+  readonly descriptionKey: string;
+  readonly value: string;
+  readonly tag?: string;
+  readonly tagTone?: 'default' | 'warning' | 'danger';
+  readonly commit?: string;
+}
+
+function text(value: unknown): string { return typeof value === "string" ? value.trim() : ""; }
+
+// Vue SystemInfo.vue formatUptime (lines 233-248): days/hours/minutes are
+// pushed when any larger unit is present; seconds close the string unless a
+// day-level unit already anchors it.
+export function formatUptimeText(totalSeconds: number, locale: Locale = "zh-CN"): string {
+  const sec = Math.max(0, Math.floor(totalSeconds));
+  const days = Math.floor(sec / 86400);
+  const hours = Math.floor((sec % 86400) / 3600);
+  const minutes = Math.floor((sec % 3600) / 60);
+  const seconds = sec % 60;
+  const parts: string[] = [];
+  if (days > 0) parts.push(formatMessage(locale, "system.uptimeDays", { n: days }));
+  if (hours > 0 || days > 0) parts.push(formatMessage(locale, "system.uptimeHours", { n: hours }));
+  if (minutes > 0 || hours > 0 || days > 0) parts.push(formatMessage(locale, "system.uptimeMinutes", { n: minutes }));
+  if (parts.length === 0) return formatMessage(locale, "system.uptimeSeconds", { n: seconds });
+  if (seconds > 0 && days === 0) parts.push(formatMessage(locale, "system.uptimeSeconds", { n: seconds }));
+  return parts.join(" ");
+}
+
+export function systemInfoRows(value: unknown, options: { now?: number; locale?: Locale } = {}): SystemInfoRow[] {
+  const locale = options.locale ?? "zh-CN";
+  const info = value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const unknown = formatMessage(locale, "system.unknown");
+  const rows: SystemInfoRow[] = [];
+  const row = (labelKey: string, descriptionKey: string, value: string, extra: Partial<SystemInfoRow> = {}): void => {
+    rows.push({ labelKey, descriptionKey, value, ...extra });
+  };
+
+  // 应用版本 + edition tag + commit hash (SystemInfo.vue lines 21-45).
+  const commit = text(info.commit_id);
+  row("system.versionLabel", "system.versionDescription", text(info.version) || unknown, {
+    tag: text(info.edition) === 'lite' ? 'Lite' : text(info.edition) ? 'Standard' : undefined,
+    commit: commit || undefined,
+  });
+
+  // UI 版本 — the Vue build injects __FRONTEND_VERSION__; the React bundle has
+// no such constant yet, so the row keeps the Vue unknown fallback.
+  row("system.frontendVersionLabel", "system.frontendVersionDescription", "unknown");
+
+  if (text(info.build_time)) row("system.buildTimeLabel", "system.buildTimeDescription", text(info.build_time));
+  if (text(info.go_version)) row("system.goVersionLabel", "system.goVersionDescription", text(info.go_version));
+
+  // 服务启动时间 + 运行时长 (lines 91-118): uptime prefers now - started_at,
+// falling back to the reported uptime_seconds.
+  const startedAt = text(info.started_at);
+  let uptimeSeconds: number | null = null;
+  if (startedAt) {
+    const boot = new Date(startedAt).getTime();
+    if (!Number.isNaN(boot)) uptimeSeconds = Math.max(0, Math.floor(((options.now ?? Date.now()) - boot) / 1000));
+    row("system.startedAtLabel", "system.startedAtDescription", new Date(startedAt).toLocaleString(locale));
+  }
+  if (uptimeSeconds === null && info.uptime_seconds !== undefined && info.uptime_seconds !== null) {
+    const reported = Number(info.uptime_seconds);
+    if (Number.isFinite(reported)) uptimeSeconds = reported;
+  }
+  if (uptimeSeconds !== null) row("system.uptimeLabel", "system.uptimeDescription", formatUptimeText(uptimeSeconds, locale));
+
+  if (text(info.db_version) || text(info.db_migration_error)) {
+    row("system.dbVersionLabel", "system.dbVersionDescription", text(info.db_version) || unknown, {
+      tag: text(info.db_migration_error) ? formatMessage(locale, 'system.dbMigrationFailedTag') : undefined,
+      tagTone: text(info.db_migration_error) ? 'danger' : undefined,
+    });
+  }
+
+  row("system.keywordIndexEngineLabel", "system.keywordIndexEngineDescription", text(info.keyword_index_engine) || unknown);
+  row("system.vectorStoreEngineLabel", "system.vectorStoreEngineDescription", text(info.vector_store_engine) || unknown);
+  row("system.graphDatabaseEngineLabel", "system.graphDatabaseEngineDescription", text(info.graph_database_engine) || unknown);
+  return rows;
 }

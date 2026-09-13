@@ -19,6 +19,7 @@ import {
   fallbackProviderOptions,
   formatContextWindow,
   formatModelSize,
+  modelFieldErrorKey,
   isDefaultContextWindow,
   modelDraftFromRecord,
   modelNamePlaceholderKey,
@@ -30,6 +31,7 @@ import {
   providerText,
   signedRerankProvider,
   storedThinkingControl,
+  subsectionToFilter,
   validateModelDraft,
   type CustomHeaderItem,
   type ModelDraft,
@@ -41,6 +43,8 @@ type Props = {
   client: WeKnoraClient;
   role: "viewer" | "admin" | "owner" | "system-admin";
   initialModels: readonly ModelConfiguration[];
+  /** settingsInitialSubSection deep link (ModelSettings.vue lines 329-337). */
+  initialSubSection?: string;
 };
 const TYPES: ModelType[] = ["chat", "embedding", "rerank", "vllm", "asr"];
 const BUILTIN_MODELS_DOC = "https://github.com/Tencent/WeKnora/blob/main/docs/BUILTIN_MODELS.md";
@@ -85,12 +89,18 @@ function toNumberInput(value: string): number | "" {
   return Number.isFinite(parsed) ? parsed : "";
 }
 
-export function ModelSettingsPanel({ client, role, initialModels }: Props) {
+export function ModelSettingsPanel({ client, role, initialModels, initialSubSection }: Props) {
   const locale = useAppLocale();
   const t = useMemo(() => createModelTranslator(locale), [locale]);
   const [models, setModels] =
     useState<readonly ModelConfiguration[]>(initialModels);
-  const [filter, setFilter] = useState<"all" | ModelType>("all");
+  // Deep link: a subsection query value preselects the type tab
+  // (ModelSettings.vue watches uiStore.settingsInitialSubSection).
+  const [filter, setFilter] = useState<"all" | ModelType>(() => subsectionToFilter(initialSubSection) ?? "all");
+  useEffect(() => {
+    const next = subsectionToFilter(initialSubSection);
+    if (next) setFilter(next);
+  }, [initialSubSection]);
   const [draft, setDraft] = useState<ModelDraft | null>(null);
   const [providerOptions, setProviderOptions] = useState<ModelProviderOption[]>([]);
   const [loadingProviders, setLoadingProviders] = useState(false);
@@ -99,6 +109,14 @@ export function ModelSettingsPanel({ client, role, initialModels }: Props) {
   const [notice, setNotice] = useState<string | null>(null);
   const [draftError, setDraftError] = useState<string | null>(null);
   const [debugOpen, setDebugOpen] = useState(false);
+  // Per-field blur validation (ModelEditorDialog.vue rules, lines 907-946).
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [baseUrlError, setBaseUrlError] = useState<string | null>(null);
+  // Ollama combobox dropdown state (ModelEditorDialog.vue filterable select).
+  const [ollamaOpen, setOllamaOpen] = useState(false);
+  const [ollamaHighlight, setOllamaHighlight] = useState(0);
+  // Which card action menu is open (ModelSettings.vue ellipsis dropdown).
+  const [menuFor, setMenuFor] = useState<string | null>(null);
   const [usageConflict, setUsageConflict] = useState<{ modelName: string; details: ModelUsageDetails } | null>(null);
   const [ollamaStatus, setOllamaStatus] = useState<boolean | null>(null);
   const [ollamaModels, setOllamaModels] = useState<Awaited<ReturnType<WeKnoraClient["settings"]["ollama"]["models"]>>>([]);
@@ -236,7 +254,16 @@ export function ModelSettingsPanel({ client, role, initialModels }: Props) {
     setCredentialValues({ apiKey: "", appSecret: "" });
     setThinkingManual(false);
     resetEditorFeedback();
-    setDraft(newModelDraft());
+    const previous = preservedDraftRef.current;
+    if (previous && !previous.id) {
+      setDraft(previous);
+    } else {
+      setDraft(newModelDraft());
+    }
+    preservedDraftRef.current = null;
+    setNameError(null);
+    setBaseUrlError(null);
+    setOllamaOpen(false);
   }
   function openEdit(model: ModelConfiguration) {
     stopDownloadPolling();
@@ -245,8 +272,20 @@ export function ModelSettingsPanel({ client, role, initialModels }: Props) {
     setCredentialValues({ apiKey: "", appSecret: "" });
     setThinkingManual(Boolean(storedThinkingControl(model)));
     resetEditorFeedback();
+    preservedDraftRef.current = null;
+    setNameError(null);
+    setBaseUrlError(null);
+    setOllamaOpen(false);
     setDraft(modelDraftFromRecord(model));
   }
+  /* Editor session state: Vue keeps the live form inside ModelEditorDialog
+     and only preserves it when an ADD session was dismissed through
+     ESC/overlay (visible watcher lines 1063-1104). Cancel and successful
+     save reset it (handleCancel lines 1715-1719, handleConfirm line 1571). */
+  const preservedDraftRef = useRef<ModelDraft | null>(null);
+  const draftRef = useRef<ModelDraft | null>(null);
+  draftRef.current = draft;
+
   function closeEditor() {
     stopDownloadPolling();
     setDownloadTask(null);
@@ -256,7 +295,28 @@ export function ModelSettingsPanel({ client, role, initialModels }: Props) {
     setRemoteMessage(null);
     setDimensionMessage(null);
     setThinkingManual(false);
+    setNameError(null);
+    setBaseUrlError(null);
+    setOllamaOpen(false);
+    preservedDraftRef.current = null;
   }
+
+  /* ESC closes the editor while keeping the add draft for the next add open.
+     ESC inside the Ollama combobox only closes the dropdown, so the handler
+     ignores key events coming from the combobox wrapper. */
+  useEffect(() => {
+    if (!draft) return;
+    function onEditorKeydown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      const target = event.target;
+      if (target instanceof HTMLElement && target.closest(".wk-ollama-combobox-wrap")) return;
+      const current = draftRef.current;
+      closeEditor();
+      if (current && !current.id) preservedDraftRef.current = current;
+    }
+    document.addEventListener("keydown", onEditorKeydown);
+    return () => document.removeEventListener("keydown", onEditorKeydown);
+  }, [draft !== null]);
 
   /* Type switch — ModelEditorDialog.vue selectModelType: rerank is forced to
      remote, embedding-only fields are cleared for other types, the connection
@@ -696,6 +756,80 @@ export function ModelSettingsPanel({ client, role, initialModels }: Props) {
     }
   }
 
+  /* Per-field blur validation: each field renders its own message with the
+     exact ModelEditorDialog.vue rules copy; the message clears as soon as
+     the field is fixed. */
+  function blurName() {
+    if (!draft) return;
+    const key = modelFieldErrorKey("name", draft);
+    setNameError(key ? t(key) : null);
+  }
+  function changeName(value: string) {
+    onNameChange(value);
+    if (nameError && draft) {
+      const key = modelFieldErrorKey("name", { ...draft, name: value });
+      setNameError(key ? t(key) : null);
+    }
+  }
+  function blurBaseUrl() {
+    if (!draft) return;
+    const key = modelFieldErrorKey("baseUrl", draft);
+    setBaseUrlError(key ? t(key) : null);
+  }
+  function changeBaseUrl(value: string) {
+    updateDraft("baseUrl", value);
+    if (baseUrlError && draft) {
+      const key = modelFieldErrorKey("baseUrl", { ...draft, baseUrl: value });
+      setBaseUrlError(key ? t(key) : null);
+    }
+  }
+
+  /* Ollama combobox: inventory filtered by the typed keyword, keyboard
+     navigation and the Vue download option for unknown keywords
+     (ModelEditorDialog.vue lines 109-133). */
+  const ollamaKeyword = draft ? draft.name.trim() : "";
+  const ollamaSuggestions = useMemo(
+    () => ollamaModels.filter((item) => item.name.includes(ollamaKeyword)),
+    [ollamaModels, ollamaKeyword],
+  );
+  const ollamaDownloadOffered = ollamaKeyword.length > 0 && !ollamaModels.some((item) => item.name === ollamaKeyword);
+  function selectOllamaModel(name: string) {
+    if (!draft) return;
+    onNameChange(name);
+    setNameError(null);
+    setOllamaOpen(false);
+  }
+  function onComboboxKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    const maxIndex = ollamaSuggestions.length + (ollamaDownloadOffered ? 1 : 0);
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setOllamaOpen(true);
+      setOllamaHighlight((current) => Math.min(maxIndex - 1, current + 1));
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setOllamaHighlight((current) => Math.max(0, current - 1));
+    } else if (event.key === "Enter") {
+      if (!ollamaOpen) return;
+      event.preventDefault();
+      if (ollamaDownloadOffered && ollamaHighlight === ollamaSuggestions.length) {
+        setOllamaOpen(false);
+        void downloadOllamaModel();
+        return;
+      }
+      const picked = ollamaSuggestions[ollamaHighlight];
+      if (picked) selectOllamaModel(picked.name);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      setOllamaOpen(false);
+    }
+  }
+
+  // Type badge glyphs per ModelSettings.vue typeIcon (lines 395-404).
+  function badgeIcon(type: ModelType): string {
+    const map: Record<ModelType, string> = { chat: "💬", embedding: "📊", rerank: "⇅", vllm: "🖼", asr: "🔊" };
+    return map[type];
+  }
   function typeLabelOf(type: ModelType): string {
     return t(`modelSettings.typeShort.${type}`);
   }
@@ -757,24 +891,17 @@ export function ModelSettingsPanel({ client, role, initialModels }: Props) {
     <section className="wk-model-settings" data-testid="model-settings">
       <div className="wk-settings-panel-heading">
         <div>
-          <h3>{t("modelSettings.title")}</h3>
+          <h2>{t("modelSettings.title")}</h2>
           <p className="wk-muted">{t("modelSettings.description")}</p>
         </div>
-        <div className="wk-list-actions">
-          {canCreate ? (
-            <Button type="button" disabled={models.length === 0} onClick={() => setDebugOpen(true)}>
-              {t("modelSettings.actions.debugModel")}
-            </Button>
-          ) : null}
-          <Button type="button" disabled={busy} onClick={() => void reload()}>
-            {t("common.refresh")}
-          </Button>
-          {canCreate ? (
-            <Button type="button" onClick={openAdd}>
-              {t("modelSettings.actions.addModel")}
-            </Button>
-          ) : null}
-        </div>
+        {canCreate ? (
+          <button type="button" className="wk-model-test-trigger" onClick={() => setDebugOpen(true)}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+            {t("modelSettings.actions.debugModel")}
+          </button>
+        ) : null}
       </div>
       <div className="wk-builtin-hint" role="note">
         <p><strong>{t("modelSettings.builtinModels.title")}</strong></p>
@@ -819,69 +946,98 @@ export function ModelSettingsPanel({ client, role, initialModels }: Props) {
             const dimension = modelParams.dimension;
             const contextWindow = typeof modelParams.context_window === "number" ? modelParams.context_window : undefined;
             const supportsVision = modelParams.supports_vision === true;
+            const menuOpen = menuFor === model.id;
             return (
-              <Card
+              <div
                 key={model.id}
-                className={`wk-model-card wk-model-card--${type}`}
+                className={"wk-vmodel-card model-card model-card--" + type + (builtin ? " model-card--builtin" : "") + (canEdit ? " model-card--clickable" : "")}
+                onClick={canEdit ? () => openEdit(model) : undefined}
               >
-                <div className="wk-model-card-header">
-                  <div>
-                    <span className="wk-model-type">{typeLabelOf(type)}</span>
-                    <h4>{label(model)}</h4>
-                  </div>
-                  {builtin ? (
-                    <span title={t("modelSettings.builtinTag")} aria-label={t("modelSettings.builtinTag")}>
-                      {role === "system-admin" ? "✎" : "🔒"}
-                    </span>
-                  ) : null}
-                </div>
-                <p className="wk-muted">
-                  <span>{vendorLabel(model)}</span>
-                  {type === "embedding" && typeof dimension === "number" ? (
-                    <>
-                      <span> · </span>
-                      <span>{t("model.editor.dimensionLabel")} {dimension}</span>
-                    </>
-                  ) : null}
-                  {(type === "chat" || type === "vllm") && modelHasContext(model) ? (
-                    <>
-                      <span> · </span>
-                      <span
-                        title={isDefaultContextWindow(contextWindow)
-                          ? t("model.editor.contextWindowDefaultHint", { value: formatContextWindow(contextWindow) })
-                          : t("model.editor.contextWindowTokens", { count: effectiveContextWindow(contextWindow) })}
-                      >
-                        {formatContextWindow(contextWindow)}
+                <div className="model-card__badge" aria-label={typeLabelOf(type)}>{badgeIcon(type)}</div>
+                <div className="model-card__body">
+                  <div className="model-card__header">
+                    <h3 className="model-card__title">{label(model)}</h3>
+                    {builtin ? (
+                      <span className="model-card__lock" title={t("modelSettings.builtinTag")} aria-label={t("modelSettings.builtinTag")}>
+                        {role === "system-admin" ? "✎" : "🔒"}
                       </span>
-                    </>
-                  ) : null}
-                  {type === "chat" && supportsVision ? (
-                    <>
-                      <span> · </span>
-                      <span title={t("model.editor.supportsVisionLabel")} aria-label={t("model.editor.supportsVisionLabel")}>👁</span>
-                    </>
-                  ) : null}
-                </p>
-                <div className="wk-list-actions">
-                  {canEdit ? (
-                    <Button type="button" onClick={() => openEdit(model)}>
-                      {t("common.edit")}
-                    </Button>
-                  ) : null}
-                  {canCreate && !builtin ? (
-                    <>
-                      <Button type="button" disabled={busy} onClick={() => void copyModel(model)}>
-                        {t("common.copy")}
-                      </Button>
-                      <Button type="button" disabled={busy} onClick={() => void remove(model)}>
-                        {t("common.delete")}
-                      </Button>
-                    </>
-                  ) : null}
+                    ) : null}
+                    {canEdit ? (
+                      <div className="model-card__actions" onClick={(event) => event.stopPropagation()}>
+                        <button
+                          type="button"
+                          className="model-card__action-btn model-card__more"
+                          aria-haspopup="menu"
+                          aria-expanded={menuOpen}
+                          onClick={() => setMenuFor(menuOpen ? null : model.id)}
+                        >
+                          ⋯
+                        </button>
+                        {menuOpen ? (
+                          <div className="model-card__menu" role="menu">
+                            <button type="button" role="menuitem" onClick={() => { setMenuFor(null); openEdit(model); }}>
+                              {t("common.edit")}
+                            </button>
+                            {!builtin ? (
+                              <button type="button" role="menuitem" disabled={busy} onClick={() => { setMenuFor(null); void copyModel(model); }}>
+                                {t("common.copy")}
+                              </button>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        {!builtin ? (
+                          <button
+                            type="button"
+                            className="model-card__action-btn model-card__delete"
+                            title={t("common.delete")}
+                            aria-label={t("common.delete")}
+                            disabled={busy}
+                            onClick={() => void remove(model)}
+                          >
+                            🗑
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                  <p className="model-card__subtitle">
+                    <span>{vendorLabel(model)}</span>
+                    {type === "embedding" && typeof dimension === "number" ? (
+                      <>
+                        <span className="model-card__sep"> · </span>
+                        <span>{t("model.editor.dimensionLabel")} {dimension}</span>
+                      </>
+                    ) : null}
+                    {(type === "chat" || type === "vllm") && modelHasContext(model) ? (
+                      <>
+                        <span className="model-card__sep"> · </span>
+                        <span
+                          className="model-card__ctx"
+                          title={isDefaultContextWindow(contextWindow)
+                            ? t("model.editor.contextWindowDefaultHint", { value: formatContextWindow(contextWindow) })
+                            : t("model.editor.contextWindowTokens", { count: effectiveContextWindow(contextWindow) })}
+                        >
+                          {formatContextWindow(contextWindow)}
+                        </span>
+                      </>
+                    ) : null}
+                    {type === "chat" && supportsVision ? (
+                      <>
+                        <span className="model-card__sep"> · </span>
+                        <span className="model-card__vision" title={t("model.editor.supportsVisionLabel")} aria-label={t("model.editor.supportsVisionLabel")}>👁</span>
+                      </>
+                    ) : null}
+                  </p>
                 </div>
-              </Card>
+              </div>
             );
           })}
+          {canCreate ? (
+            <button type="button" className="model-card model-card--add wk-model-card--add" onClick={openAdd}>
+              <span className="model-card--add__icon" aria-hidden="true">＋</span>
+              <span className="model-card--add__label">{t("modelSettings.actions.addModel")}</span>
+            </button>
+          ) : null}
         </div>
       )}
       {draft ? (
@@ -960,29 +1116,56 @@ export function ModelSettingsPanel({ client, role, initialModels }: Props) {
                 <div className="form-item">
                   <label>
                     {t("model.modelName")}
-                    <input
-                      list="wk-ollama-models"
-                      placeholder={t("model.searchPlaceholder")}
-                      value={draft.name}
-                      onChange={(event) => onNameChange(event.target.value)}
-                    />
-                    <datalist id="wk-ollama-models">
-                      {ollamaModels.map((item) => {
-                        const size = (item as Record<string, unknown>).size;
-                        return <option key={item.name} value={item.name} label={formatModelSize(size)} />;
-                      })}
-                    </datalist>
                   </label>
+                  <div className="wk-ollama-combobox-wrap">
+                      <input
+                        className="wk-ollama-combobox"
+                        role="combobox"
+                        aria-expanded={ollamaOpen}
+                        aria-controls="wk-ollama-listbox"
+                        autoComplete="off"
+                        placeholder={t("model.searchPlaceholder")}
+                        value={draft.name}
+                        onChange={(event) => { changeName(event.target.value); setOllamaOpen(true); setOllamaHighlight(0); }}
+                        onFocus={() => setOllamaOpen(true)}
+                        onBlur={() => { setOllamaOpen(false); blurName(); }}
+                        onKeyDown={onComboboxKeyDown}
+                      />
+                      {ollamaOpen ? (
+                        <div className="wk-ollama-listbox" id="wk-ollama-listbox" role="listbox">
+                          {ollamaSuggestions.map((item, index) => (
+                            <button
+                              type="button"
+                              key={item.name}
+                              role="option"
+                              aria-selected={index === ollamaHighlight}
+                              className={"wk-ollama-option" + (index === ollamaHighlight ? " is-highlighted" : "")}
+                              onMouseDown={(event) => { event.preventDefault(); selectOllamaModel(item.name); }}
+                            >
+                              <span className="wk-ollama-option__check" aria-hidden="true">✓</span>
+                              <span className="wk-ollama-option__name">{item.name}</span>
+                              <span className="wk-ollama-option__size">{formatModelSize((item as Record<string, unknown>).size)}</span>
+                            </button>
+                          ))}
+                          {ollamaDownloadOffered ? (
+                            <button
+                              type="button"
+                              role="option"
+                              aria-selected={ollamaHighlight === ollamaSuggestions.length}
+                              className={"wk-ollama-option wk-ollama-option--download" + (ollamaHighlight === ollamaSuggestions.length ? " is-highlighted" : "")}
+                              onMouseDown={(event) => { event.preventDefault(); setOllamaOpen(false); void downloadOllamaModel(); }}
+                            >
+                              <span className="wk-ollama-option__icon" aria-hidden="true">⬇</span>
+                              <span className="wk-ollama-option__name">{t("model.editor.downloadLabel", { keyword: ollamaKeyword })}</span>
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                    {nameError ? <span className="wk-field-error">{nameError}</span> : null}
                   <div className="wk-list-actions">
                     <Button type="button" disabled={ollamaBusy} onClick={() => void refreshOllamaModels()}>
                       {t("model.editor.refreshList")}
-                    </Button>
-                    <Button
-                      type="button"
-                      disabled={ollamaBusy || checking || ollamaStatus !== true || !draft.name.trim()}
-                      onClick={() => void downloadOllamaModel()}
-                    >
-                      {t("model.editor.downloadLabel", { keyword: draft.name })}
                     </Button>
                   </div>
                   {ollamaBusy ? <Status>{t("common.loading")}</Status> : null}
@@ -1032,8 +1215,10 @@ export function ModelSettingsPanel({ client, role, initialModels }: Props) {
                     placeholder={t(modelNamePlaceholderKey(draft.type, draft.source))}
                     disabled={draft.provider === "weknoracloud" && wkcState !== "configured"}
                     value={draft.name}
-                    onChange={(event) => onNameChange(event.target.value)}
+                    onChange={(event) => changeName(event.target.value)}
+                    onBlur={blurName}
                   />
+                  {nameError ? <span className="wk-field-error">{nameError}</span> : null}
                 </label>
                 <label>
                   {t("model.editor.displayNameLabel")}
@@ -1054,8 +1239,10 @@ export function ModelSettingsPanel({ client, role, initialModels }: Props) {
                         required
                         placeholder={t(baseUrlPlaceholderKey(draft.type))}
                         value={draft.baseUrl}
-                        onChange={(event) => updateDraft("baseUrl", event.target.value)}
+                        onChange={(event) => changeBaseUrl(event.target.value)}
+                        onBlur={blurBaseUrl}
                       />
+                      {baseUrlError ? <span className="wk-field-error">{baseUrlError}</span> : null}
                     </label>
                     {draft.id ? (
                       <div className="form-item">

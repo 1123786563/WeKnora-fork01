@@ -14,6 +14,7 @@ import {
   formatContextWindow,
   isDefaultContextWindow,
   modelDraftFromRecord,
+  modelFieldErrorKey,
   modelNamePlaceholderKey,
   modelPayload,
   modelSupportsThinking,
@@ -25,9 +26,36 @@ import {
   resolveThinkingControl,
   signedRerankProvider,
   storedThinkingControl,
+  subsectionToFilter,
   validateModelDraft,
   type ModelDraft,
 } from './model-settings.ts';
+
+// ModelEditorDialog.vue rules (lines 907-946): per-field messages with the
+// exact Vue i18n copy, triggered on blur.
+test('field-level validators reuse the Vue ModelEditorDialog rules and copy', () => {
+  assert.equal(modelFieldErrorKey('name', { ...baseDraft, name: '' }), 'model.editor.validation.modelNameRequired');
+  assert.equal(modelFieldErrorKey('name', { ...baseDraft, name: '   ' }), 'model.editor.validation.modelNameEmpty');
+  assert.equal(modelFieldErrorKey('name', { ...baseDraft, name: 'x'.repeat(101) }), 'model.editor.validation.modelNameMax');
+  assert.equal(modelFieldErrorKey('name', baseDraft), null);
+  assert.equal(modelFieldErrorKey('name', { ...baseDraft, name: 'ok'.padEnd(100, 'x') }), null);
+  assert.equal(modelFieldErrorKey('baseUrl', { ...baseDraft, baseUrl: '' }), 'model.editor.validation.baseUrlRequired');
+  assert.equal(modelFieldErrorKey('baseUrl', { ...baseDraft, baseUrl: '   ' }), 'model.editor.validation.baseUrlEmpty');
+  assert.equal(modelFieldErrorKey('baseUrl', { ...baseDraft, baseUrl: 'not-a-url' }), 'model.editor.validation.baseUrlInvalid');
+  assert.equal(modelFieldErrorKey('baseUrl', baseDraft), null);
+});
+
+// ModelSettings.vue watches uiStore.settingsInitialSubSection (lines 329-337)
+// and maps it onto the type tab filter.
+test('subsection deep links map onto model type tabs and ignore unknown values', () => {
+  assert.equal(subsectionToFilter('chat'), 'chat');
+  assert.equal(subsectionToFilter('embedding'), 'embedding');
+  assert.equal(subsectionToFilter('rerank'), 'rerank');
+  assert.equal(subsectionToFilter('vllm'), 'vllm');
+  assert.equal(subsectionToFilter('asr'), 'asr');
+  assert.equal(subsectionToFilter('models'), null);
+  assert.equal(subsectionToFilter(undefined), null);
+});
 
 const baseDraft: ModelDraft = {
   name: 'text-embedding-3-small', displayName: '', type: 'embedding', source: 'remote', provider: 'openai',

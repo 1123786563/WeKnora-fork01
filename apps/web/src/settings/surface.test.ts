@@ -1,8 +1,25 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { chatHistoryEmbeddingLocked, cloudCredentialPatch, envVarRemove, envVarSet, memoryEnabledPatch, memoryItemPatch, memoryWorkspacePatch, ollamaModelInput, profilePasswordPatch, settingsConfigPatch, settingsResourceInput, settingsResourceRows, settingsSectionMeta, settingsValueEntries, tenantEditState, tenantModelIds, tenantPatch } from './surface.ts';
+import { chatHistoryEmbeddingLocked, cloudCredentialPatch, envVarRemove, envVarSet, formatUptimeText, memoryEnabledPatch, memoryItemPatch, memoryWorkspacePatch, ollamaModelInput, profilePasswordPatch, settingsConfigPatch, settingsResourceInput, settingsResourceRows, settingsSectionHeading, settingsSectionMeta, settingsValueEntries, systemInfoRows, tenantEditState, tenantModelIds, tenantPatch } from './surface.ts';
 import { SETTINGS_SECTIONS, roleAtLeast, settingsSection, settingsSectionsForRole } from '@weknora/views';
+
+// Vue section headers: GeneralSettings.vue lines 3-6, EnvVarSettings.vue lines
+// 3-15, ModelSettings.vue lines 3-8, TenantInfo.vue lines 3-6, UserProfile.vue
+// lines 3-6 — every section renders an h2 + section-description pair.
+test('localizes the Vue section h2 + description pair for the wrapper heading', () => {
+  assert.deepEqual(settingsSectionHeading('zh-CN', 'general'), { title: '常规设置', description: '配置语言、外观等基础选项' });
+  assert.deepEqual(settingsSectionHeading('zh-CN', 'models'), { title: '模型配置', description: '管理不同类型的 AI 模型，支持 Ollama 本地模型和远程 API' });
+  assert.deepEqual(settingsSectionHeading('zh-CN', 'tenant'), { title: '空间信息', description: '查看空间的详细配置信息' });
+  assert.deepEqual(settingsSectionHeading('zh-CN', 'userprofile'), { title: '用户信息', description: '查看您的账户基础信息（用户 ID、用户名、邮箱、注册时间），并可修改登录密码' });
+  const envvars = settingsSectionHeading('zh-CN', 'envvars');
+  assert.equal(envvars.title, '沙箱密钥');
+  assert.equal(envvars.description, '给技能和沙箱用的个人密钥，不是 WeKnora 的系统或部署配置。');
+  // Sections without a localized pair keep their inventory meta.
+  assert.equal(settingsSectionHeading('zh-CN', 'storage').title, 'Storage');
+  // English locale resolves through the same shared keys.
+  assert.equal(settingsSectionHeading('en-US', 'envvars').title, 'Sandbox secrets');
+});
 
 test('gives every registered settings section a concrete inventory description', () => {
   assert.equal(settingsSectionMeta('general')?.title, 'General and preferences');
