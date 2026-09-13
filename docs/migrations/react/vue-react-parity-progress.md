@@ -1379,3 +1379,10 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - playground 三件套集成（3187da12，切片实施 + 协调者落地其 §5 接线片段 + 独立复核）：SSE 复用 api-client createServerSentEventParser + Vue 终态 union；drawer 分步（请求配置→遮蔽预览→结果三步）；settle 修正（非 abort running→failed，Vue L1723）；并发碰撞按裁决以本切片版本收敛。
 - 全门禁：web 758/758（含 playground 31 新测试）、shared 436/436、typecheck 0、build ✓ 3.59s。
 - R013/N028 (3)「API playground 分步抽屉（SSE）」闭环；R013 剩余：embed 抽屉交接项（preview 模态、prod 通配符接线、admin 字段级门控）。
+
+## 2026-09-14 Round N+9 协调条目 — 三切片失联与重派发
+
+- 上一批三切片（FAQ B5+B6 / embed 预览模态 / R009 org 轨）agent 全部 unavailable 终止且树无残留交付——已按原任务重派发（范围收窄：B5 只做 tooltip、embed 只做预览模态、org 轨只做分组+过滤），并要求先写证据再完善、完成即报。
+- 经验：大范围 prompt + 多任务点会拉长在途时间增加失联风险；后续切片一律单点任务。
+- 门禁快照：shared 436/436、mobile 146/146、embed 7/7、desktop 2/2 全绿。
+
