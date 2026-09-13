@@ -597,6 +597,15 @@
 6. 登录后跳转 knowledge/index，KB 列表渲染真实后端数据（parity-faq-kb / Parity KB Demo / 产品知识库）✅
 
 环境限制（如实记录）：
+
+## 会话收官条目（goal round 256/256，2026-09-14）
+- 收官状态：HEAD 5a45281a（并发协调者 MCP 工具行布局对齐），工作树干净。
+- 门禁：web 805/805 · shared 440/440 · mobile 146/146 · typecheck:web 0 · build:web ✓ · Wails 构建/运行证据 ✓ · iOS 模拟器证据 ✓。
+- 主协调者累计：21 项切片集成、14 项直接修复（含 en-US 双语 16 格闭环、document.title 对齐、R009 行修复、F1-F4 处置）、审计 pass1-5（12 行晋升 + 74/74 引用回填 + STALE/KEEP 分档 + F1-F4 处置）、平台证据 3 平台落地 + 1 blocked-env 登记。
+- 并发协调者持续产出：wiki/settings/integrations/MCP 全批次对齐（每批均带测试与证据），门禁全程绿。
+- 遗留（已入账本）：① 62 行 review 的 S00 live/平台/负路径维度逐项补齐（长线验收，引用已全备）；② Android 原生证据 blocked-env（恢复：安装 Android Studio + sdkmanager + npx expo run:android）；③ 第六种语言待用户答复后补录注册；④ chat-copy.ts 11 个 zh-only 键为 Vue 侧限制（React 忠实复现即 parity）。
+- 恢复指引：从本账本 + vue-react-parity-matrix.md + 2026-09-14-review-rows-audit.md 继续即可，无需重做已完成核验。
+
 - 模拟器 loopback 断连（Safari 到 localhost 失败），改用 LAN IP 192.168.3.30:8080 作为 API 地址——应用的多服务器配置设计恰好覆盖此场景。
 - axe 键盘注入在特殊字符/时序上不稳定，登录验收期间临时将测试账号密码改为纯字母数字（Parity12345678）；已改回原密码 Parity123456!（见下轮）。
 - 补充：测试账号密码已恢复为 Parity123456!（curl 验证登录成功），web E2E 脚本不受影响。
