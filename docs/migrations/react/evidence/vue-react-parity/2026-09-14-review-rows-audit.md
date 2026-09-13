@@ -1,6 +1,12 @@
 # 2026-09-14 Review rows acceptance audit（批核首遍：证据存在性映射）
 
 ## 方法
+
+## Pass 5 补充：en-US 双语维度部分闭环（2026-09-14）
+- en-US/zh-CN 双语 × 4 核心路由（kb-list/agents/settings-general/creatChat）× 双端 = 16 格全核验通过（锚点断言 16/16、零 JS 错误、en-US 无中文 UI 残留、zh-CN 无英文标题残留）；1 处 a11y 层残留登记（React creatChat）。
+- S00 语言维度（zh/en-US）对上述 4 路由**已闭环**；其余路由的语言维度复核进入下批。
+- 证据：2026-09-14-enus-locale-sweep.md + screenshots/enus-sweep-20260914/（16 张，fc441830）。
+
 对 matrix 全部 74 个 status=review 行做机械核验：提取行内 evidence 引用（*.md），逐个检查 evidence/vue-react-parity/ 下是否存在且非空（>100B）。产物明细 /tmp/audit-pass1.json（协调者留存）。
 
 ## 首遍结果
