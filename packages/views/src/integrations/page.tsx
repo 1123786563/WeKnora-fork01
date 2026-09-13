@@ -201,6 +201,16 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
     ? (embedForm.name.trim() || embedDefaultChannelName(String(embedForm.agentId || embedEditing.agent_id || '')))
     : t('embedPublish.createTitle');
   const closeEmbedWizard = () => { setEmbedWizardOpen(false); setEmbedWarning(''); setEmbedStatus(''); };
+  useEffect(() => {
+    if (!imWizardOpen && !embedWizardOpen) return undefined;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      if (embedWizardOpen) closeEmbedWizard();
+      else setImWizardOpen(false);
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [embedWizardOpen, imWizardOpen]);
   // Vue openCreate (lines 839-852).
   const openEmbedCreate = () => {
     setEmbedEditing(null);
@@ -645,7 +655,12 @@ function ChannelListPanel({ variant, copy, locale, items, showCreate, onToggleCr
         </div>
       </button>
     </div>
-    {showCreate ? imCreateSlot ?? embedCreateSlot : null}
+    {showCreate ? <div className="wk-integration-drawer-overlay" role="presentation" onClick={onToggleCreate}>
+      <aside className="wk-integration-drawer" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+        <button className="wk-integration-drawer-close" type="button" aria-label="关闭" title="关闭" onClick={onToggleCreate}>×</button>
+        {imCreateSlot ?? embedCreateSlot}
+      </aside>
+    </div> : null}
   </div>;
 }
 
