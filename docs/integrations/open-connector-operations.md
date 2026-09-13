@@ -33,7 +33,7 @@
   - 命令：`docker build -f docker/Dockerfile -t oc-t16-open-connector:33dd4ad .`（在该 clone 内执行；`docker/open-connector.Dockerfile` 是该 Dockerfile 的逐字节副本）。
   - 产物：`docker image inspect --format '{{.Id}}'` → `sha256:4de6df4d649e3f99bff31aeba854439b3f6e104434e4087aba0a4b9c2b4c9330`（compose 引用形如 `oc-t16-open-connector:33dd4ad@sha256:4de6df4d…`，`pull_policy: never`）。
   - T01 对同一源曾构建并记录 `sha256:fcd8d2b871360efcfc43ec051f3359b9de69c04be5d93eebd382633a2418d130`；buildx attestations 使逐位复现不可能，两个 digest 均为同一 pinned 源的本地构建，本文件钉 T16 重 build（证据即上述命令与输出）。复验方式：同一 clone 重建并比对 `docker build` 输出的 manifest list digest（允许不同，但不允许引用任何 ghcr 可变 tag）。
-- `connector-control` 镜像在 compose 内 `dockerfile_inline` 从**本仓库 checkout**（二进制的 pinned 源）构建：`golang@sha256:ce864e…` 构建态 + `alpine@sha256:1435830…` 运行态，`CGO_ENABLED=0 go build ./cmd/connector-control`。需不可变部署时，build 后 `docker image inspect` 取 digest 并自行锁定引用。
+- `connector-control` 镜像在 compose 内 `dockerfile_inline` 从**本仓库 checkout**（二进制的 pinned 源）构建：`golang@sha256:9fdc884aacc3bec89b20ffc69f4bb369c78210e3e4f600387b5128b12c199f81`（1.26-bookworm）构建态 + `debian@sha256:d5d3f9c23164ea16f31852f95bd5959aad1c5e854332fe00f7b3a20fcc9f635c`（12.12-slim）运行态。**cgo 必需**：pg_query（经 internal/types 引入）构建 libpg_query 需要 gcc，bookworm 自带；早先的 alpine 方案因构建网络不可达 alpine CDN 且缺 cgo 工具链而弃用。gojieba 词典随镜像发布（`JIEBA_DICT_DIR=/usr/local/share/jieba-dict`）。需不可变部署时，build 后 `docker image inspect` 取 digest 并自行锁定引用。
 - `connector-db`：`postgres@sha256:7c688148e5e156d0e86df7ba8ae5a05a2386aaec1e2ad8e6d11bdf10504b1fb7`（16.9-alpine）。
 - `oc-volume-init`：`alpine@sha256:1435830…`，一次性把 `oc-data`（uid 10001）/`oc-secrets`（uid 10002, 0700）卷属主修正后退出——两个应用容器都以非 root 运行。
 
