@@ -740,6 +740,10 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Wails S13 运行验证入库（4869c476）：打包+codesign+CDP 登录页冒烟；打包链路修复 esbuild 依赖声明（7db7e4d8）与 desktop vite 别名（bbc892ba）。
 - 第二波派发（2）：AgentEditorModal 核心移植（分区轨/校验/载荷，分阶段交付）；Wails CDP 运行时交互取证（登录→KB→智能体→共享空间→设置→聊天 全链路截图+断言，仅取证不改代码）。
 
+## 2026-09-13 Round N+1（续12）— 登记待办性质修正
+
+- 登记：chat 渲染层 chat-copy.ts 当前仅 zh-CN 单语（其余 4 语用户会看到中文）——列为 chat 5 语切片待办（从 Vue locale 提取 chat/input/messages/createChat 域全量键入 packages/i18n + 消费端切 formatMessage）。
+
 ## 2026-09-13 Round N+1（续4）— 第六、七切片集成
 
 - upload progress transport 集成（499ec9a8）：api-client NativeMultipartFileRequest.onProgress + 浏览器 XHR sendMultipartFile（字节级、abort→AbortError、fetch 回退）+ platform/http observeUploadProgress 桥；SkillSettingsPanel skillUploading 百分比+进度条；documents UploadProgressMask 遮罩 + 批次均值百分比（KnowledgeBaseList.vue:1586-1595 语义）。独立复核：transport 5/5、http 14/14、panel 31/31、pipeline 30/30、dialog 20/20、api-client 43/43、documents 62/62。该共享层缺口关闭后 N031 移动端可直接消费 transport onProgress。开放：UploadFilesPanel 行内百分比、浏览器 E2E。
