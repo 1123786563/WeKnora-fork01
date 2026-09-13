@@ -1,0 +1,54 @@
+{
+  "case": "proxy_denied",
+  "description": "A stored token grant with allowedProxies=[] denies every provider proxy: POST /v1/proxy/arxiv returns 403 proxy_not_allowed before any egress.",
+  "evidence_kind": "runtime",
+  "method": "live-http",
+  "environment": {
+    "upstream_sha": "33dd4ad6ee22f9ce5158a1516a11d8b8566b5c8a",
+    "upstream_clone": ".oc-upstream-33dd4ad (isolated, detached at pinned SHA)",
+    "server": "node src/server/index.ts @ 127.0.0.1:31701 (oc-t01 throwaway instance)",
+    "database": "sqlite at OOMOL_CONNECT_DATA_DIR=/tmp/oc-t01-data-a (throwaway, deleted after probes)",
+    "admin_auth": "OOMOL_CONNECT_ADMIN_TOKEN set (locally minted, redacted)",
+    "runtime_auth": "stored oct_ runtime tokens minted via POST /api/runtime-tokens",
+    "egress": "OOMOL_CONNECT_EGRESS_TRUSTED_HOSTS=export.arxiv.org,api.crossref.org",
+    "custom_oauth": "OOMOL_CONNECT_ALLOWED_CUSTOM_OAUTH=github + OOMOL_CONNECT_ENCRYPTION_KEY (locally minted, redacted)",
+    "node": "host Node v26.7.0 running pinned sources via native TS execution; image probes use node:24-alpine build",
+    "image_digest": "sha256:fcd8d2b871360efcfc43ec051f3359b9de69c04be5d93eebd382633a2418d130"
+  },
+  "setup": [
+    "token oc-t01-probe-open has allowedProxies=[] (empty list == deny-all for proxies — the asymmetric field)"
+  ],
+  "steps": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/proxy/arxiv",
+        "authorization": "Bearer oct_<redacted> (stored runtime token oc-t01-probe-open)",
+        "body": {
+          "endpoint": "/query",
+          "method": "GET"
+        }
+      },
+      "http_status": 403,
+      "response": {
+        "success": false,
+        "message": "arxiv proxy is not granted to this runtime token.",
+        "data": null,
+        "errorCode": "proxy_not_allowed",
+        "meta": {
+          "service": "arxiv"
+        }
+      }
+    }
+  ],
+  "assertions": [
+    "HTTP 403, errorCode proxy_not_allowed, message 'arxiv proxy is not granted to this runtime token.'",
+    "denial is from the token grant layer (checks:[{source:'token',outcome:'allow_miss'}] semantics in action-policy)",
+    "no provider request was made"
+  ],
+  "result": "pass",
+  "source_refs": [
+    "src/core/action-policy.ts:160-171 (token proxy rules: empty find → proxy_not_allowed)",
+    "src/server/proxy/proxy-runner.ts:75-76"
+  ]
+}

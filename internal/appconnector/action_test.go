@@ -1,6 +1,9 @@
 package appconnector
 
 import (
+	"encoding/json"
+	"io"
+	"strings"
 	"testing"
 	"time"
 )
@@ -149,4 +152,109 @@ func TestPreAuthorizationScopeMatching(t *testing.T) {
 	if !PreAuthorizationCovers(wild, send, now) {
 		t.Fatal("wildcard pre-authorization refused its own risk scope")
 	}
+}
+
+// TestDigestBindsRiskAndLogicalAction is the plan's verbatim pin (T09): the
+// approval digest binds BOTH the logical action identity (Action ID) and the
+// reviewed risk category — an approval granted for one action never carries
+// to another, and a risk change never reuses the old approval.
+func TestDigestBindsRiskAndLogicalAction(t *testing.T) {
+	a := Action{ID: "a1", TenantID: 1, ActorID: "u", ConnectionID: "c", Version: "v1",
+		AuthVersion: 1, Target: "page", Risk: RiskWrite, Args: json.RawMessage(`{"x":1}`), DigestVersion: 2}
+	d1, err := ActionDigest(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.ID = "a2"
+	d2, _ := ActionDigest(a)
+	if d1 == d2 {
+		t.Fatal("approval shared across actions")
+	}
+	a.ID = "a1"
+	a.Risk = RiskDelete
+	d3, _ := ActionDigest(a)
+	if d1 == d3 {
+		t.Fatal("risk omitted")
+	}
+}
+
+// TestDigestBindsEveryOpenConnectorBindingField pins that the approval
+// material carries the FULL execution binding: any change to the reviewed
+// schema (schema digest), the alias, the runtime, the external connection or
+// the binding generation breaks continuation of an old approval, and an OC
+// action never shares a digest with a native one.
+func TestDigestBindsEveryOpenConnectorBindingField(t *testing.T) {
+	base := Action{
+		ID: "oc-1", TenantID: 7, ActorID: "u1", ConnectionID: "conn-1", Version: "1.0.0",
+		Target: "github.createIssue", Risk: RiskWrite, AuthVersion: 3,
+		Args: json.RawMessage(`{"title":"t"}`),
+		OC: &OCExecutionBinding{
+			RuntimeID: "rt-1", Provider: "github", ExternalID: "ext-1", Alias: "alias-1",
+			ActionID: "github.createIssue", SchemaDigest: "d1", BindingVersion: 4,
+		},
+	}
+	want, err := ActionDigest(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mutations := map[string]func(*Action){
+		"schema_digest":   func(a *Action) { a.OC.SchemaDigest = "d2" },
+		"alias":           func(a *Action) { a.OC.Alias = "alias-2" },
+		"runtime":         func(a *Action) { a.OC.RuntimeID = "rt-2" },
+		"external_id":     func(a *Action) { a.OC.ExternalID = "ext-2" },
+		"binding_version": func(a *Action) { a.OC.BindingVersion = 5 },
+		"binding_removed": func(a *Action) { a.OC = nil },
+	}
+	for name, mutate := range mutations {
+		mutated := base
+		mutate(&mutated)
+		got, err := ActionDigest(mutated)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if got == want {
+			t.Fatalf("%s change did not change digest", name)
+		}
+	}
+}
+
+// TestNormalizeArgsRejectsTrailingSecondJSON pins that args are EXACTLY one
+// JSON value: a second concatenated document is rejected (the second Decode
+// must return io.EOF), while trailing whitespace stays legal, and number
+// literals survive byte-identically (no float re-encoding).
+func TestNormalizeArgsRejectsTrailingSecondJSON(t *testing.T) {
+	bad := []string{
+		`{"a":1} {"b":2}`,
+		`{"a":1}{"b":2}`,
+		`{"a":1} 42`,
+		`[1,2] [3]`,
+		`{"a":1} garbage`,
+	}
+	for _, raw := range bad {
+		_, err := NormalizeArgs(json.RawMessage(raw))
+		if err == nil {
+			t.Fatalf("trailing data accepted: %s", raw)
+		}
+		if !strings.Contains(err.Error(), ErrInvalidArgs.Error()) {
+			t.Fatalf("trailing data error not ErrInvalidArgs: %v", err)
+		}
+	}
+	// Trailing whitespace after the single value is legal.
+	norm, err := NormalizeArgs(json.RawMessage("  {\"a\":1}  \n\t "))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(norm) != `{"a":1}` {
+		t.Fatalf("whitespace-only trail changed value: %s", norm)
+	}
+	// Number precision: a large literal survives normalization byte-exactly.
+	big := `{"n":123456789012345678901234567890,"x":1.2500}`
+	norm, err = NormalizeArgs(json.RawMessage(big))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(norm), "123456789012345678901234567890") {
+		t.Fatalf("number literal lost precision: %s", norm)
+	}
+	_ = io.EOF // pin the sentinel the implementation must compare against
 }

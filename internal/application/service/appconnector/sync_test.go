@@ -1,4 +1,9 @@
-package appconnector
+// Package appconnector_test: this suite must stay an EXTERNAL test package.
+// It constructs service.DataSourceService, and since T14 the production
+// package internal/application/service imports this package to mount the
+// open-connector agent tool — an internal test importing the parent would
+// close an import cycle the toolchain rejects. Test semantics are unchanged.
+package appconnector_test
 
 import (
 	"context"

@@ -1,0 +1,164 @@
+{
+  "case": "provider_read_runtime",
+  "description": "T18 real-provider READ-ONLY verification on the release-candidate image: a restricted runtime token (non-empty grants) executes github.get_current_user against the real GitHub API through the pinned runtime; ungranted action and ungranted alias are denied pre-execution. No provider write, no message to any contact, no fabricated evidence (coordinator ruling 2).",
+  "evidence_kind": "runtime",
+  "method": "live-http",
+  "captured": "2026-09-13",
+  "environment": {
+    "upstream_sha": "33dd4ad6ee22f9ce5158a1516a11d8b8566b5c8a",
+    "image": "oc-t16-open-connector:33dd4ad@sha256:4de6df4d649e3f99bff31aeba854439b3f6e104434e4087aba0a4b9c2b4c9330 (the T16-pinned release-candidate digest; docker run, digest-pinned reference)",
+    "container": "oc-t18-probe (throwaway; 127.0.0.1:31818 loopback publish only; migrate-then-serve; removed after probes)",
+    "database": "sqlite at OOMOL_CONNECT_DATA_DIR=/tmp/oc-t18-probe/data (throwaway, removed after probes)",
+    "admin_auth": "OOMOL_CONNECT_ADMIN_TOKEN set (locally minted, redacted)",
+    "runtime_auth": "stored oct_ runtime token minted via POST /api/runtime-tokens",
+    "egress": "OOMOL_CONNECT_EGRESS_TRUSTED_HOSTS=api.github.com — host fake-IP VPN resolves api.github.com to 198.18.0.18 (198.18.0.0/15 benchmark range); the upstream SSRF guard rejects private/reserved resolutions by design and its own error message prescribes this remedy (T01 precedent). Direct curl through the VPN returned 200, proving real GitHub reachability.",
+    "provider_account": "real GitHub account of the host gh CLI keyring (account id 1123786563), used READ-ONLY for get_current_user under coordinator ruling 2; credential never echoed, stored only in the throwaway container filesystem (deleted)"
+  },
+  "setup": [
+    {
+      "method": "PUT",
+      "path": "/api/connections/github",
+      "authorization": "Bearer <locally minted admin token, redacted> (admin scope)",
+      "body": {
+        "authType": "api_key",
+        "values": {
+          "apiKey": "gho_<redacted: real keyring credential, never printed>"
+        },
+        "connectionName": "t18-read-probe"
+      },
+      "http_status": 200,
+      "response_summary": {
+        "id": "184c4379-fb34-4d2b-a279-c3f1fb5484a6",
+        "service": "github",
+        "connectionName": "t18-read-probe",
+        "authType": "api_key",
+        "configured": true,
+        "profile.accountId": "1123786563",
+        "note": "github declares a credential validator: connect-time verification called the real api.github.com and succeeded (first real-provider read of the session)"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/runtime-tokens",
+      "authorization": "Bearer <locally minted admin token, redacted> (admin scope)",
+      "body": {
+        "name": "t18-release-probe",
+        "allowedActions": [
+          "github.get_current_user"
+        ],
+        "allowedConnections": [
+          "184c4379-fb34-4d2b-a279-c3f1fb5484a6"
+        ],
+        "allowedProxies": []
+      },
+      "http_status": 200,
+      "response_summary": {
+        "record.id": "6e540308-9083-4b25-aeca-8b7d2f8d42be",
+        "token": "oct_<redacted:xxxxxxxx>",
+        "note": "non-empty action and connection grants, empty allowedProxies (= deny all proxies) — WeKnora NewGrant discipline; never an empty allowlist"
+      }
+    }
+  ],
+  "steps": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/actions/github.get_current_user",
+        "authorization": "Bearer oct_<redacted:xxxxxxxx> (stored runtime token t18-release-probe)",
+        "headers": {
+          "x-oo-connector-alias": "t18-read-probe",
+          "Idempotency-Key": "t18-probe-getcuser-1"
+        },
+        "body": {
+          "input": {}
+        }
+      },
+      "http_status": 200,
+      "response": {
+        "success": true,
+        "message": "OK",
+        "data": {
+          "login": "1123786563",
+          "type": "User",
+          "site_admin": false
+        },
+        "meta": {
+          "executionId": "79c4571e-23c6-4c6f-8378-6021ea04af2b",
+          "actionId": "github.get_current_user",
+          "auditPersisted": true
+        }
+      },
+      "redaction_note": "data projected to non-sensitive identity fields only (login/type/site_admin); other profile fields observed but not recorded; raw response file sha256 48a91fe2fc10c4689ebfe110b42b7bd161e1918cc59f4d6f280e9efbe4fdbc5f (file destroyed with the throwaway dir per cleanup discipline)"
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/actions/github.list_my_repositories",
+        "authorization": "Bearer oct_<redacted:xxxxxxxx> (stored runtime token t18-release-probe)",
+        "headers": {
+          "x-oo-connector-alias": "t18-read-probe",
+          "Idempotency-Key": "t18-probe-neg1"
+        },
+        "body": {
+          "input": {
+            "visibility": "public",
+            "sort": "created",
+            "direction": "desc",
+            "perPage": 1,
+            "page": 1
+          }
+        }
+      },
+      "http_status": 400,
+      "response": {
+        "success": false,
+        "message": "github.list_my_repositories is not included in the local action allowlist.",
+        "errorCode": "action_not_allowed"
+      },
+      "redaction_note": "negative control: action outside the token allowlist is rejected pre-execution with 0 provider calls; raw response file sha256 6322b90a1da86ca58df40ee422800040b74b3d7194e51502c45b64a0905674a6"
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/actions/github.get_current_user",
+        "authorization": "Bearer oct_<redacted:xxxxxxxx> (stored runtime token t18-release-probe)",
+        "headers": {
+          "Idempotency-Key": "t18-probe-neg2"
+        },
+        "body": {
+          "input": {}
+        }
+      },
+      "http_status": 403,
+      "response": {
+        "success": false,
+        "message": "The selected connection is not granted to this runtime token.",
+        "errorCode": "connection_not_allowed"
+      },
+      "redaction_note": "negative control: no alias given resolves to 'default', which is not in the token's connection grant — denied before credential use, 0 provider calls (matches T01 fixtures/cross_connection.json semantics); raw response file sha256 3cd34f67543a8565da9ddd990818cdf6f11ccc7c4c88f87818e516719ee5d751"
+    }
+  ],
+  "cleanup": [
+    "DELETE /api/runtime-tokens/6e540308-9083-4b25-aeca-8b7d2f8d42be -> 200 {\"id\":\"6e540308-9083-4b25-aeca-8b7d2f8d42be\",\"revoked\":true\"}",
+    "re-using the revoked oct_ token on /v1/actions/github.get_current_user -> 403 (revocation enforced at the runtime layer)",
+    "DELETE /api/connections/github (x-oo-connector-alias: t18-read-probe) -> 200",
+    "GET /api/connections -> github rows = 0; GET /api/runtime-tokens -> 0 records (zero residue)",
+    "container oc-t18-probe removed; /tmp/oc-t18-probe (including gh.token / oct.token / admin.token files) removed"
+  ],
+  "assertions": [
+    "restricted token + granted alias: HTTP 200, success=true, data.login is the authenticated account, meta.executionId present, meta.auditPersisted=true",
+    "the release-candidate image digest 4de6df4d… executed the real provider read (same image the release gate pins)",
+    "action outside allowedActions: 400 action_not_allowed, pre-execution, 0 provider calls",
+    "alias outside allowedConnections: 403 connection_not_allowed, pre-credential, 0 provider calls",
+    "no provider write occurred anywhere in the session; no message was sent to any contact; the real credential was never echoed"
+  ],
+  "result": "pass",
+  "scope_limits": "exercises the OC runtime -> real GitHub read path with a restricted token; does NOT traverse the WeKnora ActionService chain (Prepare -> approve -> Execute -> budget settle) against a real provider (blocked-env: no authorized test space), and does not cover the OAuth connected-state flow (blocked-env: no authorized OAuth app/account)",
+  "source_refs": [
+    "src/providers/github/definition.ts (api_key auth: personal access token, Bearer header)",
+    "src/providers/github/actions.ts:615 (get_current_user, read-only, empty input)",
+    "src/core/action-policy.ts (allowlist evaluation; empty allowedProxies = deny all proxies)",
+    "src/server/api/connection-routes.ts (api-key connect path with credential validation)",
+    "scripts/open-connector/release_gate.py (the gate this evidence class feeds); docs/integrations/open-connector-release.md §6"
+  ]
+}

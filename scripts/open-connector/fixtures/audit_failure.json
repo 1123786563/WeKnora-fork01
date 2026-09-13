@@ -1,0 +1,39 @@
+{
+  "case": "audit_failure",
+  "description": "meta.auditPersisted=false path: when run-audit persistence (runs.add) throws, the action result is still returned unchanged — success stays success, meta.auditPersisted=false. Proven with upstream's unit test injecting a failing runs store (the only reachable trigger; there is no env/config switch).",
+  "evidence_kind": "runtime-upstream-test",
+  "method": "runtime-upstream-test",
+  "environment": {
+    "upstream_sha": "33dd4ad6ee22f9ce5158a1516a11d8b8566b5c8a",
+    "upstream_clone": ".oc-upstream-33dd4ad (isolated, detached at pinned SHA)",
+    "server": "node src/server/index.ts @ 127.0.0.1:31701 (oc-t01 throwaway instance)",
+    "database": "sqlite at OOMOL_CONNECT_DATA_DIR=/tmp/oc-t01-data-a (throwaway, deleted after probes)",
+    "admin_auth": "OOMOL_CONNECT_ADMIN_TOKEN set (locally minted, redacted)",
+    "runtime_auth": "stored oct_ runtime tokens minted via POST /api/runtime-tokens",
+    "egress": "OOMOL_CONNECT_EGRESS_TRUSTED_HOSTS=export.arxiv.org,api.crossref.org",
+    "custom_oauth": "OOMOL_CONNECT_ALLOWED_CUSTOM_OAUTH=github + OOMOL_CONNECT_ENCRYPTION_KEY (locally minted, redacted)",
+    "node": "host Node v26.7.0 running pinned sources via native TS execution; image probes use node:24-alpine build",
+    "image_digest": "sha256:fcd8d2b871360efcfc43ec051f3359b9de69c04be5d93eebd382633a2418d130"
+  },
+  "setup": [
+    "cd .oc-upstream-33dd4ad (detached at pinned SHA) && npx vitest run src/server/actions/action-runner.test.ts -t 'audit storage fails' --reporter=verbose"
+  ],
+  "steps": [
+    {
+      "command": "npx vitest run src/server/actions/action-runner.test.ts -t 'audit storage fails' --reporter=verbose",
+      "exit_code": 0,
+      "test": "src/server/actions/action-runner.test.ts > ActionRunner > does not replace a successful action result when audit storage fails",
+      "output_excerpt": " ✓ src/server/actions/action-runner.test.ts > ActionRunner > does not replace a successful action result when audit storage fails 5ms\n      Tests  1 passed | 10 skipped (11)\n"
+    }
+  ],
+  "assertions": [
+    "condition located in source: auditPersisted=false only when this.options.runs.add(runLog) throws (src/server/actions/action-runner.ts:174-181)",
+    "no configuration flag exists; runtime trigger would require breaking the runs store — unit test is the sanctioned evidence path (coordinator ruling 6)",
+    "every live-HTTP fixture in this set shows the healthy path meta.auditPersisted=true"
+  ],
+  "result": "pass",
+  "source_refs": [
+    "src/server/actions/action-runner.ts:165-192",
+    "src/server/actions/action-runner.test.ts:82"
+  ]
+}

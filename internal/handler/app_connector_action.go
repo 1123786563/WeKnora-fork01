@@ -19,6 +19,17 @@ type AppActionHandler struct {
 	// actions is the A03 approval pipeline; nil until the container wires
 	// it, in which case every action WRITE endpoint fails closed.
 	actions *appconnectorsvc.ActionService
+	// ocPreparer is the TRUSTED open-connector prepare path (T13); nil
+	// until the container wires it, and POST /apps/oc/actions/prepare then
+	// fails closed with 503 instead of minting an action from
+	// client-supplied trusted fields.
+	ocPreparer *appconnectorsvc.OCPreparer
+	// ocConnections is the correlate-able authorization lifecycle (T13);
+	// nil until the container wires it, and the authorization-attempt
+	// endpoints then fail closed with 503. Defined on this handler only
+	// because struct fields must live in the type's defining file; the
+	// ROUTES keep the connection-management write gate.
+	ocConnections *appconnectorsvc.OCConnectionService
 }
 
 func NewAppActionHandler(db *gorm.DB) *AppActionHandler {
@@ -75,6 +86,11 @@ type appActionView struct {
 	Target         string `json:"target"`
 	Content        string `json:"content"`
 	ConnectionName string `json:"connection_name"`
+	// Risk is the FROZEN risk category from the persisted snapshot
+	// (R18 / T15-C-2): the approval template displays account/target/risk/
+	// args, and the risk recorded at prepare time is the exact value an
+	// approval binds to — never re-derived, never client-supplied.
+	Risk string `json:"risk"`
 }
 
 type appActionDetailView struct {
@@ -108,6 +124,7 @@ func (h *AppActionHandler) actionDetailFor(c *gin.Context, tenantID uint64, row 
 		Action: appActionView{
 			ID: row.ID, State: row.State, Digest: row.ArgsDigest,
 			Target: row.Target, Content: row.ArgsSnapshot, ConnectionName: name,
+			Risk: row.Risk,
 		},
 		ExpectedVersion: row.Fence,
 	}
@@ -224,6 +241,13 @@ func (h *AppActionHandler) ApproveAction(c *gin.Context) {
 			appFail(c, http.StatusConflict, "ACTION_STATE_CONFLICT", "invalid lifecycle transition")
 			return
 		}
+		// T09-MINOR-1 (carry): a legacy-generation digest is a version
+		// conflict with its OWN code — never a generic 500.
+		if errors.Is(err, appconnectorsvc.ErrActionRePrepareRequired) {
+			appFail(c, http.StatusConflict, "ACTION_REPREPARE_REQUIRED",
+				"this approval predates the current digest generation; prepare the action again")
+			return
+		}
 		appFail(c, http.StatusInternalServerError, "ACTION_APPROVE_FAILED", "failed to record approval")
 		return
 	}
@@ -259,11 +283,7 @@ func (h *AppActionHandler) ExecuteAction(c *gin.Context) {
 	}
 	err := h.actions.Execute(c.Request.Context(), row.ID)
 	if err != nil && !errors.Is(err, appconnectorsvc.ErrDispatchUnknown) {
-		if errors.Is(err, appconnectorsvc.ErrActionState) {
-			appFail(c, http.StatusConflict, "ACTION_STATE_CONFLICT", "action is not authorized for dispatch")
-			return
-		}
-		appFail(c, http.StatusInternalServerError, "ACTION_EXECUTE_FAILED", "dispatch failed")
+		appFailActionExecute(c, err)
 		return
 	}
 	after, ok := h.appActionByID(c, tenantID, row.ID)
@@ -271,6 +291,58 @@ func (h *AppActionHandler) ExecuteAction(c *gin.Context) {
 		return
 	}
 	appOK(c, http.StatusOK, h.actionDetailFor(c, tenantID, after))
+}
+
+// appFailActionExecute maps one Execute refusal onto the fixed code table
+// (plan T13 error row + carries):
+//   - missing/cross-space 404 — handled earlier by the tenant-scoped lookup;
+//   - permission 403 — A02 denials (T04-QF-1 carry): forbidden/connection
+//     use and membership loss surface as EXPLICIT codes, never the generic
+//     500 ACTION_EXECUTE_FAILED they used to collapse into;
+//   - version/state 409 — strict-version staleness, revocation, lifecycle
+//     transitions and the legacy-digest re-prepare refusal (T09-MINOR-1);
+//   - queue-limit 429 — dispatch slots busy or a provider cooldown in
+//     effect (nothing was consumed);
+//   - unconfigured 503 — no outbound dispatcher wired (ruling 2: the
+//     nil-dispatcher refusal is an explicit "not configured", and NOTHING
+//     is consumed: no budget Begin, no approval, no HTTP call).
+//
+// Messages are static on purpose: no upstream error text, provider detail
+// or credential-adjacent string ever crosses the wire.
+func appFailActionExecute(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, appconnectorsvc.ErrNoDispatcher):
+		appFail(c, http.StatusServiceUnavailable, "OC_DISPATCH_NOT_CONFIGURED",
+			"no outbound dispatcher is configured in this deployment; refusing to fabricate a dispatch")
+	case errors.Is(err, appconnectorsvc.ErrOCSlotsBusy),
+		errors.Is(err, appconnectorsvc.ErrOCProviderThrottled),
+		errors.Is(err, appconnectorrepo.ErrOCLeaseBusy):
+		appFail(c, http.StatusTooManyRequests, "OC_DISPATCH_BUSY",
+			"dispatch concurrency is at its limit or the provider is cooling down; retry later")
+	case errors.Is(err, appconnectorsvc.ErrSubjectNotMember):
+		appFail(c, http.StatusForbidden, "SUBJECT_NOT_MEMBER",
+			"the persisted subject is no longer an active member of this workspace")
+	case errors.Is(err, appconnectorsvc.ErrConnectionForbidden),
+		errors.Is(err, appconnectorsvc.ErrMissingSubject):
+		appFail(c, http.StatusForbidden, "CONNECTION_FORBIDDEN",
+			"the persisted subject may no longer use this connection")
+	case errors.Is(err, appconnectorsvc.ErrConnectionVersionStale):
+		appFail(c, http.StatusConflict, "CONNECTION_VERSION_STALE",
+			"the connection's authorization generation moved; prepare again")
+	case errors.Is(err, appconnectorsvc.ErrConnectionRevoked):
+		appFail(c, http.StatusConflict, "CONNECTION_REVOKED",
+			"the connection has been revoked")
+	case errors.Is(err, appconnectorsvc.ErrInstallationNotActive):
+		appFail(c, http.StatusConflict, "INSTALLATION_NOT_ACTIVE",
+			"the installation behind the connection is no longer active")
+	case errors.Is(err, appconnectorsvc.ErrActionRePrepareRequired):
+		appFail(c, http.StatusConflict, "ACTION_REPREPARE_REQUIRED",
+			"this approval predates the current digest generation; prepare the action again")
+	case errors.Is(err, appconnectorsvc.ErrActionState):
+		appFail(c, http.StatusConflict, "ACTION_STATE_CONFLICT", "action is not authorized for dispatch")
+	default:
+		appFail(c, http.StatusInternalServerError, "ACTION_EXECUTE_FAILED", "dispatch failed")
+	}
 }
 
 // GetAction GET /apps/actions/:id — the SERVER snapshot of the exact

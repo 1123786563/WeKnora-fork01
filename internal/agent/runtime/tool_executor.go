@@ -43,6 +43,15 @@ var (
 	// before it can run; the durable run has been parked at waiting_user with
 	// an mcp_approve_ pending id.
 	ErrMCPApprovalWait = errors.New("mcp tool approval required")
+	// ErrOCActionApprovalWait means an open-connector app action the model
+	// prepared is awaiting resolution on the app actions surface — a HUMAN
+	// approval while it is awaiting_approval, or the read-only provider
+	// query while its outcome is unknown. The model can never approve and
+	// the tool never dispatches, so the call parks at the EXISTING durable
+	// waiting_user. It is deliberately its own sentinel: an open-connector
+	// wait must never masquerade as MCP OAuth or MCP tool approval, which
+	// drive reconnect/approve flows that do not exist for app actions.
+	ErrOCActionApprovalWait = errors.New("oc action approval required")
 )
 
 // OAuthWaitError carries the durable park identity of a pre-execution OAuth
@@ -74,6 +83,25 @@ func (e *ApprovalWaitError) Error() string {
 }
 
 func (e *ApprovalWaitError) Unwrap() error { return ErrMCPApprovalWait }
+
+// OCActionWaitError carries the durable identity of the open-connector app
+// action a tool call is parked on. State distinguishes the two wait reasons:
+// awaiting_approval (a human must approve and run the action on the actions
+// surface) and unknown (the provider outcome resolves only through the
+// read-only provider query). Resuming the SAME logical tool call re-prepares
+// idempotently and reads the action's current state — no indefinite
+// idempotency is claimed on the action's dispatch itself.
+type OCActionWaitError struct {
+	ActionID   string
+	ToolCallID string
+	State      string
+}
+
+func (e *OCActionWaitError) Error() string {
+	return ErrOCActionApprovalWait.Error() + ": action " + e.ActionID + " is " + e.State
+}
+
+func (e *OCActionWaitError) Unwrap() error { return ErrOCActionApprovalWait }
 
 // ToolPlan is the immutable, durable identity of one logical model tool call.
 // RecoveryPolicy is empty for the safe default (wait_user). Capability values
@@ -411,6 +439,21 @@ func (e *ToolExecutor) Execute(
 		// external side effect. A definitive rejection may be checkpointed
 		// without manufacturing a dispatch attempt.
 		if executeErr != nil {
+			// An open-connector wait (T14) is a pre-execution park, not a
+			// rejection: the tool only prepared an action and queried its
+			// state — no external write happened. Park the run at the
+			// EXISTING durable waiting_user (same mechanism the wait_user
+			// recovery action uses) so a resume replays the same logical
+			// call, re-prepares idempotently and reads the action's new
+			// state. The park is best-effort: a park failure still surfaces
+			// the wait error itself.
+			if errors.Is(executeErr, ErrOCActionApprovalWait) && e.waitForDecision != nil {
+				persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+				defer cancel()
+				if waitErr := e.waitForDecision(persistCtx, fence, plan.CallID); waitErr != nil {
+					return StoredToolResult{}, errors.Join(executeErr, waitErr)
+				}
+			}
 			return StoredToolResult{}, executeErr
 		}
 		if err := ctx.Err(); err != nil {

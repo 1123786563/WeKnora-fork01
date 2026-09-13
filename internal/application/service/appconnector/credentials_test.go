@@ -221,8 +221,12 @@ func TestOAuthCredentialResolveOutputRedacted(t *testing.T) {
 		t.Fatalf("view mentions credential fields: %s", viewJSON)
 	}
 
-	// No sentinel error text carries the secret, even marshaled.
-	for _, e := range []error{ErrConnectionRevoked, ErrConnectionVersionStale, ErrConnectionOwnerNotMember} {
+	// No sentinel error text carries the secret, even marshaled — including
+	// the authorization sentinels raised by the subject guard chain.
+	for _, e := range []error{
+		ErrConnectionRevoked, ErrConnectionVersionStale, ErrConnectionOwnerNotMember,
+		ErrMissingSubject, ErrSubjectNotMember, ErrInstallationNotActive, ErrConnectionForbidden,
+	} {
 		if strings.Contains(e.Error(), secret) {
 			t.Fatalf("error %q leaked credential", e.Error())
 		}

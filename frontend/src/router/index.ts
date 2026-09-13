@@ -180,6 +180,35 @@ const router = createRouter({
           component: () => import("../views/organization/OrganizationList.vue"),
           meta: { requiresInit: true, requiresAuth: true, requiredCapability: 'organizations' }
         },
+        // T15: tenant app-connector surfaces — the reviewed action catalog,
+        // the workspace connections (personal/space + authorization attempts
+        // polling) and the frozen external-action approval view. Tenant
+        // scope always comes from the authenticated context (X-Tenant-ID),
+        // enforced server-side on every /api/v1/apps route.
+        {
+          path: "apps",
+          name: "appCatalog",
+          component: () => import("../views/apps/AppsView.vue"),
+          meta: { requiresInit: true, requiresAuth: true }
+        },
+        {
+          path: "apps/connections",
+          name: "appConnections",
+          component: () => import("../views/apps/ConnectionsView.vue"),
+          meta: { requiresInit: true, requiresAuth: true }
+        },
+        {
+          path: "apps/authorization/:id",
+          name: "appAuthorization",
+          component: () => import("../views/apps/AuthorizationView.vue"),
+          meta: { requiresInit: true, requiresAuth: true }
+        },
+        {
+          path: "apps/actions/:id",
+          name: "appActionApproval",
+          component: () => import("../views/apps/ActionView.vue"),
+          meta: { requiresInit: true, requiresAuth: true }
+        },
         // Compatibility redirects for /platform/system/* URLs. System
         // administration surfaces live as dedicated sections inside the
         // standard Settings modal; keep stable URLs for bookmarks and

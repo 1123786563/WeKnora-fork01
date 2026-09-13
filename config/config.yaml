@@ -112,6 +112,16 @@ tenant:
   # Enable cross-tenant access (can be enabled for intranet environments)
   enable_cross_tenant_access: false
 
+# Open-connector dispatch path (T16). DEFAULT OFF: enabled=false keeps the
+# explicit refusing dispatcher — app-connector actions fail closed with 503
+# instead of falling back to any connection. Enabling requires the runtime
+# id below (an internal identifier resolved in code, never a raw URL) plus
+# the deployment env contract (WEKNORA_OC_RUNTIME_ADDR / WEKNORA_OC_TOKEN_DIR
+# / WEKNORA_OC_SECRET_KEY_FILE); see docs/integrations/open-connector-operations.md.
+open_connector:
+  enabled: false
+  runtime: "shared"
+
 # Agent configuration
 agent:
   # Durable tRPC run recovery is opt-in and remains disabled unless both flags

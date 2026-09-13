@@ -1,0 +1,90 @@
+{
+  "case": "in_progress",
+  "description": "Concurrent duplicate: two simultaneous POSTs with the same Idempotency-Key — exactly one dispatches; the other receives 409 idempotency_request_in_progress.",
+  "evidence_kind": "runtime",
+  "method": "live-http",
+  "environment": {
+    "upstream_sha": "33dd4ad6ee22f9ce5158a1516a11d8b8566b5c8a",
+    "upstream_clone": ".oc-upstream-33dd4ad (isolated, detached at pinned SHA)",
+    "server": "node src/server/index.ts @ 127.0.0.1:31701 (oc-t01 throwaway instance)",
+    "database": "sqlite at OOMOL_CONNECT_DATA_DIR=/tmp/oc-t01-data-a (throwaway, deleted after probes)",
+    "admin_auth": "OOMOL_CONNECT_ADMIN_TOKEN set (locally minted, redacted)",
+    "runtime_auth": "stored oct_ runtime tokens minted via POST /api/runtime-tokens",
+    "egress": "OOMOL_CONNECT_EGRESS_TRUSTED_HOSTS=export.arxiv.org,api.crossref.org",
+    "custom_oauth": "OOMOL_CONNECT_ALLOWED_CUSTOM_OAUTH=github + OOMOL_CONNECT_ENCRYPTION_KEY (locally minted, redacted)",
+    "node": "host Node v26.7.0 running pinned sources via native TS execution; image probes use node:24-alpine build",
+    "image_digest": "sha256:fcd8d2b871360efcfc43ec051f3359b9de69c04be5d93eebd382633a2418d130"
+  },
+  "setup": [
+    "two curl processes fired in parallel against 127.0.0.1:31701 with the same key and identical input"
+  ],
+  "steps": [
+    {
+      "step": "concurrent request A (won the claim)",
+      "request": {
+        "method": "POST",
+        "path": "/v1/actions/arxiv.get_paper",
+        "authorization": "Bearer oct_<redacted> (stored runtime token oc-t01-probe-open)",
+        "headers": {
+          "Idempotency-Key": "oc-t01-par-<random>"
+        },
+        "body": {
+          "input": {
+            "id": "2301.00003"
+          }
+        }
+      },
+      "http_status": 500,
+      "response": {
+        "success": false,
+        "message": "failed to reach arxiv: request URL must not resolve to private or reserved IP addresses (if this host is reached through a corporate VPN or split DNS, add it to OOMOL_CONNECT_EGRESS_TRUSTED_HOSTS)",
+        "data": {
+          "status": 502
+        },
+        "errorCode": "provider_error",
+        "meta": {
+          "executionId": "49cfd57c-44c9-4a52-a62b-663ea17a0318",
+          "actionId": "arxiv.get_paper",
+          "auditPersisted": true
+        }
+      },
+      "note": "won the claim: dispatched and executed (this cold-race execution itself ended provider_error with its own executionId); response below is the executed run"
+    },
+    {
+      "step": "concurrent request B (lost the claim)",
+      "request": {
+        "method": "POST",
+        "path": "/v1/actions/arxiv.get_paper",
+        "authorization": "Bearer oct_<redacted> (stored runtime token oc-t01-probe-open)",
+        "headers": {
+          "Idempotency-Key": "oc-t01-par-<random> (same key)"
+        },
+        "body": {
+          "input": {
+            "id": "2301.00003"
+          }
+        }
+      },
+      "http_status": 409,
+      "response": {
+        "success": false,
+        "message": "A request with this Idempotency-Key is still in progress.",
+        "data": null,
+        "errorCode": "idempotency_request_in_progress",
+        "meta": {
+          "actionId": "arxiv.get_paper"
+        }
+      },
+      "note": "lost the claim: 409 idempotency_request_in_progress, no executionId, action not dispatched"
+    }
+  ],
+  "assertions": [
+    "live capture: exactly one 409 idempotency_request_in_progress among the two parallel requests",
+    "deterministic corroboration: upstream test 'does not dispatch concurrent requests with the same idempotency key twice' (connect-server.test.ts:2919) passes at the pinned SHA"
+  ],
+  "result": "pass",
+  "source_refs": [
+    "src/server/connect-server.ts:623-630",
+    "src/server/connect-server.test.ts:2919"
+  ]
+}

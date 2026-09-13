@@ -87,6 +87,12 @@ func (s *agentService) prepareAgentCapabilities(
 		return nil, fmt.Errorf("failed to register tools: %w", err)
 	}
 	s.registerMCPTools(ctx, toolRegistry, config)
+	// The open-connector app tool is mounted on the authenticated session
+	// assembly path itself (gated by installation visibility), not through
+	// the AllowedTools allowlist: like MCP tools, it is a capability the
+	// workspace's installed apps expose, and per-action authorization stays
+	// with the facade and the actions surface.
+	s.registerOpenConnectorTool(ctx, toolRegistry)
 
 	// Register the shell first: file discovery needs a separate tool only
 	// when no shell is available. File access remains a sandbox capability.

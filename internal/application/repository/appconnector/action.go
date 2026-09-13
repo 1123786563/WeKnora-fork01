@@ -44,8 +44,14 @@ type ActionRow struct {
 	ProviderResult string `gorm:"column:provider_result;not null;default:''"`
 	ReservationID  string `gorm:"column:reservation_id;not null;default:''"`
 	Fence          int64  `gorm:"column:fence;not null;default:0"`
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	// OCBindingJSON is the marshaled appconnector.OCExecutionBinding for
+	// open-connector actions ('' for native ones); DigestVersion records the
+	// digest generation of ArgsDigest (migration 000122/000042 default 1 for
+	// pre-existing rows; every new write carries 2).
+	OCBindingJSON string `gorm:"column:oc_binding_json;not null;default:''"`
+	DigestVersion int64  `gorm:"column:digest_version;not null;default:1"`
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 func (ActionRow) TableName() string { return "app_actions" }
@@ -87,15 +93,31 @@ type ActionStore struct{ db *gorm.DB }
 func NewActionStore(db *gorm.DB) *ActionStore { return &ActionStore{db: db} }
 
 // CreateAction persists a new action in the given initial state with its
-// normalized snapshot and digest.
+// normalized snapshot, digest, open-connector execution binding JSON and
+// digest generation — all in the row's single INSERT (one transaction).
+// Every NEW row carries the current digest generation; the migration's
+// legacy default 1 applies only to rows that already existed before it.
 func (s *ActionStore) CreateAction(ctx context.Context, a appconnector.Action, snapshot, digest, state string) error {
 	if a.ID == "" || a.TenantID == 0 || snapshot == "" || digest == "" || state == "" {
 		return ErrActionState
+	}
+	ocJSON := ""
+	if a.OC != nil {
+		b, err := json.Marshal(a.OC)
+		if err != nil {
+			return err
+		}
+		ocJSON = string(b)
+	}
+	digestVersion := int64(a.DigestVersion)
+	if digestVersion == 0 {
+		digestVersion = appconnector.CurrentDigestVersion
 	}
 	row := ActionRow{
 		ID: a.ID, TenantID: a.TenantID, ActorID: a.ActorID, ConnectionID: a.ConnectionID,
 		AppVersion: a.Version, Target: a.Target, Risk: a.Risk, AuthVersion: a.AuthVersion,
 		ArgsSnapshot: snapshot, ArgsDigest: digest, State: state,
+		OCBindingJSON: ocJSON, DigestVersion: digestVersion,
 	}
 	return s.db.WithContext(ctx).Create(&row).Error
 }
@@ -163,12 +185,19 @@ func (s *ActionStore) ClaimDispatch(ctx context.Context, id, providerKey, reserv
 			}
 			return err
 		}
-		now := time.Now()
-		if ap.Remaining <= 0 || !now.Before(ap.Expiry) {
+		// T10 tightening: the guard lives in the SQL predicate itself —
+		// action AND digest AND remaining>0 AND unexpired, exactly one row
+		// (the plan's claim core). The in-memory re-check above only maps
+		// a missing approval row to its sentinel. The in-memory expiry
+		// guard stays as a second belt: sqlite stores timestamps as text,
+		// and a bound UTC param can render in a different suffix format
+		// than a locally-written value, skewing a pure text comparison.
+		if ap.Remaining <= 0 || !time.Now().Before(ap.Expiry) {
 			return ErrApprovalExhausted
 		}
+		now := time.Now().UTC()
 		res := tx.Model(&ApprovalRow{}).
-			Where("args_digest = ? AND remaining = ?", ap.ArgsDigest, ap.Remaining).
+			Where("action_id = ? AND args_digest = ? AND remaining > 0 AND expiry > ?", row.ID, row.ArgsDigest, now).
 			Update("remaining", gorm.Expr("remaining - 1"))
 		if res.Error != nil {
 			return res.Error

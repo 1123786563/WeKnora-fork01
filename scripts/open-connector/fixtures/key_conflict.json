@@ -1,0 +1,57 @@
+{
+  "case": "key_conflict",
+  "description": "Reusing an Idempotency-Key with a DIFFERENT request (different input) returns 409 idempotency_key_conflict; the original response is not modified.",
+  "evidence_kind": "runtime",
+  "method": "live-http",
+  "environment": {
+    "upstream_sha": "33dd4ad6ee22f9ce5158a1516a11d8b8566b5c8a",
+    "upstream_clone": ".oc-upstream-33dd4ad (isolated, detached at pinned SHA)",
+    "server": "node src/server/index.ts @ 127.0.0.1:31701 (oc-t01 throwaway instance)",
+    "database": "sqlite at OOMOL_CONNECT_DATA_DIR=/tmp/oc-t01-data-a (throwaway, deleted after probes)",
+    "admin_auth": "OOMOL_CONNECT_ADMIN_TOKEN set (locally minted, redacted)",
+    "runtime_auth": "stored oct_ runtime tokens minted via POST /api/runtime-tokens",
+    "egress": "OOMOL_CONNECT_EGRESS_TRUSTED_HOSTS=export.arxiv.org,api.crossref.org",
+    "custom_oauth": "OOMOL_CONNECT_ALLOWED_CUSTOM_OAUTH=github + OOMOL_CONNECT_ENCRYPTION_KEY (locally minted, redacted)",
+    "node": "host Node v26.7.0 running pinned sources via native TS execution; image probes use node:24-alpine build",
+    "image_digest": "sha256:fcd8d2b871360efcfc43ec051f3359b9de69c04be5d93eebd382633a2418d130"
+  },
+  "setup": [
+    "first call: arxiv.get_paper input {id:2301.00001} with key oc-t01-replay2-* (the key_replay fixture call)"
+  ],
+  "steps": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/actions/arxiv.get_paper",
+        "authorization": "Bearer oct_<redacted> (stored runtime token oc-t01-probe-open)",
+        "headers": {
+          "Idempotency-Key": "oc-t01-replay2-<random> (same key as key_replay)"
+        },
+        "body": {
+          "input": {
+            "id": "2301.00002"
+          }
+        }
+      },
+      "http_status": 409,
+      "response": {
+        "success": false,
+        "message": "Idempotency-Key has already been used with a different request.",
+        "data": null,
+        "errorCode": "idempotency_key_conflict",
+        "meta": {
+          "actionId": "arxiv.get_paper"
+        }
+      }
+    }
+  ],
+  "assertions": [
+    "HTTP 409, errorCode idempotency_key_conflict, message 'Idempotency-Key has already been used with a different request.'",
+    "corroborated upstream: 'rejects idempotency keys reused for another input, connection, or action' and 'returns an idempotency conflict when different stored tokens reuse one key' (connect-server.test.ts:2858, 2049)"
+  ],
+  "result": "pass",
+  "source_refs": [
+    "src/server/connect-server.ts:615-622",
+    "src/server/connect-server.test.ts:2049,2858"
+  ]
+}

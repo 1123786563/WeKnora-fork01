@@ -28,9 +28,14 @@ func (s *BudgetStore) trySettleReservationHold(ctx context.Context, tenantID uin
 			}
 			return err
 		}
-		first := res.State == domain.ReservationStateHeld
+		// A DISPATCHED reservation (the gate's Begin persisted the outbound
+		// intent before the call) is the NORMAL first settlement, not a
+		// conflict: external spend may already exist, so Finish is the only
+		// sanctioned exit and settles exactly like a held one — consumed part
+		// held -> unreflected, unused part released.
+		first := res.State == domain.ReservationStateHeld || res.State == domain.ReservationStateDispatched
 		switch res.State {
-		case domain.ReservationStateHeld, domain.ReservationStateSettled:
+		case domain.ReservationStateHeld, domain.ReservationStateDispatched, domain.ReservationStateSettled:
 		default:
 			return ErrReservationKeyConflict
 		}
@@ -154,10 +159,15 @@ func (s *BudgetStore) trySettleReservationHold(ctx context.Context, tenantID uin
 				}
 				consume -= take
 			}
+			// The state CAS accepts the two first-settlement origins (held and
+			// dispatched); a concurrent settlement that flipped the row to
+			// settled first makes this match zero rows and the CAS retry
+			// re-reads it as a correction.
 			r := tx.Exec(`UPDATE commercial_reservations
 				SET state = ?, version = version + 1
-				WHERE tenant_id = ? AND key = ? AND state = ?`,
-				domain.ReservationStateSettled, tenantID, reservationKey, domain.ReservationStateHeld)
+				WHERE tenant_id = ? AND key = ? AND state IN ?`,
+				domain.ReservationStateSettled, tenantID, reservationKey,
+				[]string{domain.ReservationStateHeld, domain.ReservationStateDispatched})
 			if r.Error != nil {
 				return r.Error
 			}

@@ -1,0 +1,85 @@
+{
+  "case": "no_auth",
+  "description": "no_auth providers (arxiv) are served through virtual connections (id service:alias, e.g. arxiv:default) and are EXEMPT from runtime-token connection grants: a token restricted to an unrelated connection id still executes arxiv actions.",
+  "evidence_kind": "runtime",
+  "method": "live-http",
+  "environment": {
+    "upstream_sha": "33dd4ad6ee22f9ce5158a1516a11d8b8566b5c8a",
+    "upstream_clone": ".oc-upstream-33dd4ad (isolated, detached at pinned SHA)",
+    "server": "node src/server/index.ts @ 127.0.0.1:31701 (oc-t01 throwaway instance)",
+    "database": "sqlite at OOMOL_CONNECT_DATA_DIR=/tmp/oc-t01-data-a (throwaway, deleted after probes)",
+    "admin_auth": "OOMOL_CONNECT_ADMIN_TOKEN set (locally minted, redacted)",
+    "runtime_auth": "stored oct_ runtime tokens minted via POST /api/runtime-tokens",
+    "egress": "OOMOL_CONNECT_EGRESS_TRUSTED_HOSTS=export.arxiv.org,api.crossref.org",
+    "custom_oauth": "OOMOL_CONNECT_ALLOWED_CUSTOM_OAUTH=github + OOMOL_CONNECT_ENCRYPTION_KEY (locally minted, redacted)",
+    "node": "host Node v26.7.0 running pinned sources via native TS execution; image probes use node:24-alpine build",
+    "image_digest": "sha256:fcd8d2b871360efcfc43ec051f3359b9de69c04be5d93eebd382633a2418d130"
+  },
+  "setup": [
+    "token oc-t01-probe-alpha-only has allowedConnections=[dune:alpha id] only (see cross_connection setup)"
+  ],
+  "steps": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/actions/arxiv.get_paper",
+        "authorization": "Bearer oct_<redacted> (stored runtime token oc-t01-probe-alpha-only)",
+        "body": {
+          "input": {
+            "id": "2301.00001"
+          }
+        }
+      },
+      "http_status": 200,
+      "response": {
+        "success": true,
+        "message": "OK",
+        "data": {
+          "found": true,
+          "paper": {
+            "id": "2301.00001v1",
+            "baseId": "2301.00001",
+            "version": 1,
+            "title": "NFTrig",
+            "summary": "NFTrig is a web-based application created for use as an educational tool to teach trigonometry and block chain technology. Creation of the application includes front and back end development as well as integration with other outside sources including MetaMask and OpenSea. The primary development languages include HTML, CSS (Bootstrap 5), and JavaScript as well as Solidity for smart contract creation. The application itself is hosted on Moralis utilizing their Web3 API. This technical report describes how the application was created, what the application requires, and smart contract design with security considerations in mind. The NFTrig application has underwent significant testing and validation prior to and after deployment. Future suggestions and recommendations for further development, maintenance, and use in other fields for education are also described.",
+            "publishedAt": "2022-12-21T18:07:06Z",
+            "updatedAt": "2022-12-21T18:07:06Z",
+            "authors": [
+              "Jordan Thompson",
+              "Ryan Benac",
+              "Kidus Olana",
+              "Talha Hassan",
+              "Andrew Sward",
+              "Tauheed Khan Mohd"
+            ],
+            "categories": [
+              "cs.HC"
+            ],
+            "primaryCategory": "cs.HC",
+            "abstractUrl": "https://arxiv.org/abs/2301.00001v1",
+            "pdfUrl": "https://arxiv.org/pdf/2301.00001v1",
+            "doi": null,
+            "journalRef": null,
+            "comment": null
+          }
+        },
+        "meta": {
+          "executionId": "0553d344-427f-4d96-802f-f39c7413ba18",
+          "actionId": "arxiv.get_paper",
+          "auditPersisted": true
+        }
+      }
+    }
+  ],
+  "assertions": [
+    "HTTP 200 success despite arxiv not being in the token grant",
+    "GET /api/connections shows arxiv:default as virtual:true (see api_connections inventory note in contract doc)",
+    "virtual no_auth connections never consult token connection grants"
+  ],
+  "result": "pass",
+  "source_refs": [
+    "src/connection-service.ts:198-203, 531-542 (virtual connection synthesis)",
+    "src/server/actions/action-runner.ts:87 (grant skipped for no-auth)",
+    "src/server/actions/action-runner.test.ts:292 (does not apply connection grants to no-auth actions)"
+  ]
+}

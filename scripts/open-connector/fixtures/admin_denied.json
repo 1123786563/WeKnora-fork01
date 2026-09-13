@@ -1,0 +1,73 @@
+{
+  "case": "admin_denied",
+  "description": "A stored runtime token (runtime scope) cannot use the admin surface: GET /api/runtime-tokens with the oct_ bearer returns 401 unauthorized. Same for no bearer. Admin scope requires OOMOL_CONNECT_ADMIN_TOKEN bearer (or console session cookie).",
+  "evidence_kind": "runtime",
+  "method": "live-http",
+  "environment": {
+    "upstream_sha": "33dd4ad6ee22f9ce5158a1516a11d8b8566b5c8a",
+    "upstream_clone": ".oc-upstream-33dd4ad (isolated, detached at pinned SHA)",
+    "server": "node src/server/index.ts @ 127.0.0.1:31701 (oc-t01 throwaway instance)",
+    "database": "sqlite at OOMOL_CONNECT_DATA_DIR=/tmp/oc-t01-data-a (throwaway, deleted after probes)",
+    "admin_auth": "OOMOL_CONNECT_ADMIN_TOKEN set (locally minted, redacted)",
+    "runtime_auth": "stored oct_ runtime tokens minted via POST /api/runtime-tokens",
+    "egress": "OOMOL_CONNECT_EGRESS_TRUSTED_HOSTS=export.arxiv.org,api.crossref.org",
+    "custom_oauth": "OOMOL_CONNECT_ALLOWED_CUSTOM_OAUTH=github + OOMOL_CONNECT_ENCRYPTION_KEY (locally minted, redacted)",
+    "node": "host Node v26.7.0 running pinned sources via native TS execution; image probes use node:24-alpine build",
+    "image_digest": "sha256:fcd8d2b871360efcfc43ec051f3359b9de69c04be5d93eebd382633a2418d130"
+  },
+  "setup": [],
+  "steps": [
+    {
+      "step": "runtime token on admin endpoint",
+      "request": {
+        "method": "GET",
+        "path": "/api/runtime-tokens",
+        "authorization": "Bearer oct_<redacted> (stored runtime token oc-t01-probe-open)"
+      },
+      "http_status": 401,
+      "response": {
+        "error": {
+          "code": "unauthorized",
+          "message": "A valid local bearer token is required."
+        }
+      }
+    },
+    {
+      "step": "invalid bearer on admin endpoint",
+      "request": {
+        "method": "GET",
+        "path": "/api/runtime-tokens",
+        "authorization": "Bearer not-a-token"
+      },
+      "http_status": 401,
+      "response": {
+        "error": {
+          "code": "unauthorized",
+          "message": "A valid local bearer token is required."
+        }
+      }
+    },
+    {
+      "step": "CONTROL - open hazard: second throwaway instance (127.0.0.1:31702) started with NO auth env configured",
+      "request": {
+        "method": "GET",
+        "path": "/api/runtime-tokens",
+        "authorization": "(none)"
+      },
+      "http_status": 200,
+      "response": []
+    }
+  ],
+  "assertions": [
+    "401 error envelope for /api/* is {error:{code:'unauthorized', message:...}} (admin API error shape differs from the /v1 runtime envelope)",
+    "with no auth configured at all the runtime is FULLY OPEN (admin 200 without any token) — deployment hazard recorded for T16",
+    "admin elevation for action runs exists only for POST /v1/actions/* (canUseAdminAuth) and only when an admin token is configured"
+  ],
+  "result": "pass",
+  "source_refs": [
+    "src/server/api/auth.ts:40-74 (middleware, 401/403 paths)",
+    "src/server/api/auth.ts:122-132 (public paths)",
+    "src/server/api/auth.ts:260-263 (scope split)",
+    "src/server/api/auth.ts:265-267 (admin elevation for POST /v1/actions/*)"
+  ]
+}

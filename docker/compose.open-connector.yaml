@@ -1,0 +1,255 @@
+# Private open-connector runtime stack (T16).
+#
+# Topology: NOTHING is published to the host. The runtime, its database and
+# the control worker live on private networks; the WeKnora API process joins
+# oc-net externally (see docs/integrations/open-connector-operations.md).
+#
+# Image provenance (coordinator ruling R9): ghcr.io/oomol-lab/open-connector
+# has NO digest for the pinned upstream commit 33dd4ad (tag list has no
+# 33dd4ad / v1.5.0; "tip" is mutable and unproven). The runtime image below
+# is pinned to the digest of a LOCAL BUILD from the pinned upstream source
+# (.oc-upstream-33dd4ad, HEAD == 33dd4ad6ee22f9ce5158a1516a11d8b8566b5c8a):
+#
+#   docker build -f docker/Dockerfile -t oc-t16-open-connector:33dd4ad \
+#     /Users/wuyongjun/trea/WeKnora-fork01/.oc-upstream-33dd4ad
+#   docker image inspect --format '{{.Id}}' oc-t16-open-connector:33dd4ad
+#   -> sha256:4de6df4d649e3f99bff31aeba854439b3f6e104434e4087aba0a4b9c2b4c9330
+#
+# docker/open-connector.Dockerfile is a byte-identical copy of the pinned
+# source's own docker/Dockerfile (no guessed start command: the image
+# ENTRYPOINT /usr/local/bin/open-connector + CMD serve are upstream's own).
+# T01's earlier local build of the same source recorded digest
+# sha256:fcd8d2b871360efcfc43ec051f3359b9de69c04be5d93eebd382633a2418d130;
+# buildx attestations make byte-identical reproduction impossible, so this
+# file pins the T16 rebuild of the same pinned source (proof above). NEVER
+# replace this reference with ghcr ...:tip / :latest.
+#
+# ADMIN_TOKEN is MANDATORY (T01 evidence: a zero-auth runtime is fully
+# open). connector-admin-token is mounted on the runtime and on the control
+# worker ONLY - an API container must never mount it.
+#
+# Secrets are provisioned under ${OC_SECRETS_DIR:-./docker/secrets} by the
+# operator (see the operations doc). compose fails to even render config
+# while the files are absent: fail closed by construction.
+#
+# Validate any edit:
+#   docker compose -f docker/compose.open-connector.yaml config --format json \
+#     > /tmp/oc-compose.json   # isolated temp file; never print it
+#   python3 scripts/open-connector/check_deployment.py /tmp/oc-compose.json
+
+name: open-connector
+
+services:
+  # One-shot volume initializer: the app services run as non-root users, so
+  # the shared volumes must be owned by those uids before first use.
+  oc-volume-init:
+    image: alpine@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce
+    user: "0:0"
+    command:
+      - sh
+      - -c
+      - |
+        set -eu
+        chown -R 10001:10001 /oc-data
+        chown -R 10002:10002 /oc-secrets
+        chmod 0700 /oc-secrets
+    volumes:
+      - oc-data:/oc-data
+      - oc-secrets:/oc-secrets
+    networks:
+      - oc-net
+    restart: "no"
+
+  # The open-connector runtime itself. Private: no ports published. It sits
+  # on oc-net (controlled egress for OAuth provider flows - NOT internal) and
+  # oc-db-net (its database). The entrypoint wrapper loads the mounted admin
+  # token and DB password from the secret files into the environment the
+  # upstream image expects, then runs the image's own migrate + serve.
+  open-connector:
+    image: oc-t16-open-connector:33dd4ad@sha256:4de6df4d649e3f99bff31aeba854439b3f6e104434e4087aba0a4b9c2b4c9330
+    pull_policy: never
+    user: "10001:10001"
+    read_only: true
+    tmpfs:
+      - /tmp
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        export OOMOL_CONNECT_ADMIN_TOKEN="$(cat /run/secrets/connector-admin-token)"
+        export OOMOL_CONNECT_DATABASE_URL="postgres://oc:$(cat /run/secrets/connector-db-password)@connector-db:5432/connectordb"
+        open-connector migrate
+        exec open-connector serve
+    environment:
+      OOMOL_CONNECT_DATA_DIR: /app/data
+      # Provider proxy disabled (spec: first release keeps proxy closed).
+      OOMOL_CONNECT_ALLOWED_PROXIES: ""
+    secrets:
+      - source: connector-admin-token
+        target: connector-admin-token
+        mode: 0444
+      - source: connector-db-password
+        target: connector-db-password
+        mode: 0444
+    volumes:
+      - oc-data:/app/data
+    networks:
+      - oc-net
+      - oc-db-net
+    healthcheck:
+      # The pinned image's own HEALTHCHECK command (no guesswork).
+      test: ["CMD", "node", "scripts/healthcheck.ts"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      oc-volume-init:
+        condition: service_completed_successfully
+      connector-db:
+        condition: service_healthy
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+  # The runtime's own database. Internal network only; password via secret
+  # file (POSTGRES_PASSWORD_FILE). Runs as root entrypoint -> postgres user
+  # (official image behavior); read_only does not apply (documented exemption
+  # in the operations doc - its data volume is the only writable surface).
+  connector-db:
+    image: postgres@sha256:7c688148e5e156d0e86df7ba8ae5a05a2386aaec1e2ad8e6d11bdf10504b1fb7
+    environment:
+      POSTGRES_USER: oc
+      POSTGRES_DB: connectordb
+      POSTGRES_PASSWORD_FILE: /run/secrets/connector-db-password
+    secrets:
+      - source: connector-db-password
+        target: connector-db-password
+        mode: 0444
+    volumes:
+      - oc-db-data:/var/lib/postgresql/data
+    networks:
+      - oc-db-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U oc -d connectordb"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    restart: unless-stopped
+
+  # The control worker: the ONLY other process holding the runtime ADMIN
+  # credential. Built from this WeKnora checkout (pinned source of truth for
+  # the binary); the writer side of the secret sink, so it also holds the
+  # sink encryption key. Its database is the WEKNORA database (the outbox
+  # lives there), reached via the WEKNORA_DB_* variables - not connector-db.
+  connector-control:
+    image: weknora-connector-control:t16
+    build:
+      context: ..
+      dockerfile_inline: |
+        FROM golang@sha256:9fdc884aacc3bec89b20ffc69f4bb369c78210e3e4f600387b5128b12c199f81 AS build
+        WORKDIR /src
+        COPY go.mod go.sum ./
+        COPY third_party/anydoc-go/go.mod third_party/anydoc-go/go.mod
+        RUN --mount=type=cache,target=/go/pkg/mod go mod download
+        COPY internal internal
+        COPY cmd/connector-control cmd/connector-control
+        # bookworm (not alpine): the module's pg_query dependency (reached
+        # through internal/types) builds libpg_query via cgo and needs the
+        # gcc the golang bookworm image ships; the alpine CDN is also
+        # unreachable from some build networks.
+        RUN --mount=type=cache,target=/go/pkg/mod \
+            go build -trimpath -o /out/connector-control ./cmd/connector-control
+        # gojieba (via internal/types) loads dictionaries at package init;
+        # without JIEBA_DICT_DIR it probes the module-cache path, which does
+        # not exist in the runtime image. Ship the five dict files and point
+        # the env at them (compose sets JIEBA_DICT_DIR).
+        RUN --mount=type=cache,target=/go/pkg/mod \
+            mkdir -p /out/jieba-dict && \
+            cp /go/pkg/mod/github.com/yanyiwu/gojieba@*/deps/cppjieba/dict/*.utf8 /out/jieba-dict/
+
+        FROM debian@sha256:d5d3f9c23164ea16f31852f95bd5959aad1c5e854332fe00f7b3a20fcc9f635c
+        COPY --from=build /out/connector-control /usr/local/bin/connector-control
+        COPY --from=build /out/jieba-dict/ /usr/local/share/jieba-dict/
+        ENTRYPOINT ["/usr/local/bin/connector-control"]
+    user: "10002:10002"
+    read_only: true
+    tmpfs:
+      - /tmp
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        # Compose file secrets may arrive root-owned/0444; the worker's
+        # perm-enforced sources require 0400 owned by the reader. Copy into
+        # the private tmpfs with exactly those permissions.
+        mkdir -p /tmp/copy
+        install -m 0400 /run/secrets/connector-admin-token /tmp/copy/connector-admin-token
+        install -m 0400 /run/secrets/connector-secret-key /tmp/copy/connector-secret-key
+        exec /usr/local/bin/connector-control
+    environment:
+      DB_DRIVER: postgres
+      DB_HOST: ${WEKNORA_DB_HOST:?set WEKNORA_DB_HOST - the WeKnora database host the outbox lives in}
+      DB_PORT: ${WEKNORA_DB_PORT:-5432}
+      DB_USER: ${WEKNORA_DB_USER:?set WEKNORA_DB_USER}
+      DB_PASSWORD: ${WEKNORA_DB_PASSWORD:?set WEKNORA_DB_PASSWORD - env reference only, never a value here}
+      DB_NAME: ${WEKNORA_DB_NAME:-weknora}
+      CONNECTOR_CONTROL_RUNTIME_BASE_URL: http://open-connector:3000
+      CONNECTOR_CONTROL_RUNTIME_ALLOWLIST: http://open-connector:3000
+      CONNECTOR_CONTROL_ADMIN_SECRET_FILE: /tmp/copy/connector-admin-token
+      CONNECTOR_CONTROL_SECRET_DIR: /var/lib/connector-secrets
+      CONNECTOR_CONTROL_SECRET_KEY_FILE: /tmp/copy/connector-secret-key
+      CONNECTOR_CONTROL_OWNER_ID: connector-control-1
+      CONNECTOR_CONTROL_POLL_INTERVAL: 500ms
+      # gojieba dictionaries shipped by the inline build (internal/types
+      # package init requires them).
+      JIEBA_DICT_DIR: /usr/local/share/jieba-dict
+    secrets:
+      - source: connector-admin-token
+        target: connector-admin-token
+        mode: 0444
+      - source: connector-secret-key
+        target: connector-secret-key
+        mode: 0444
+    volumes:
+      - oc-secrets:/var/lib/connector-secrets
+    networks:
+      - oc-net
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      open-connector:
+        condition: service_healthy
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+networks:
+  # Private service network. No published ports anywhere; NOT internal:
+  # the runtime needs controlled egress for OAuth provider flows (a bare
+  # internal: true here would break OAuth) and the upstream runtime already
+  # applies its SSRF-guarded fetch to provider egress.
+  oc-net:
+    driver: bridge
+  # Database network: internal, no egress path at all.
+  oc-db-net:
+    driver: bridge
+    internal: true
+
+volumes:
+  oc-data:
+  oc-db-data:
+  oc-secrets:
+
+secrets:
+  connector-admin-token:
+    file: ${OC_SECRETS_DIR:-./docker/secrets}/connector-admin-token
+  connector-db-password:
+    file: ${OC_SECRETS_DIR:-./docker/secrets}/connector-db-password
+  connector-secret-key:
+    file: ${OC_SECRETS_DIR:-./docker/secrets}/connector-secret-key

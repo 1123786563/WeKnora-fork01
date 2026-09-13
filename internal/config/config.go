@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -33,6 +34,14 @@ type Config struct {
 	PromptTemplates *PromptTemplatesConfig `yaml:"prompt_templates" json:"prompt_templates"`
 	IM              *IMConfig              `yaml:"im"               json:"im"`
 	Agent           *AgentConfig           `yaml:"agent"            json:"agent"`
+	// OpenConnector is the T16 deployment config of the open-connector
+	// dispatch path. DEFAULT OFF: a nil section or unset enabled keeps the
+	// explicit refusing dispatcher (the API fails closed with 503, never a
+	// fallback connection). The runtime address is NEVER a free-form URL
+	// here — the yaml carries an INTERNAL RUNTIME ID resolved through the
+	// fixed OpenConnectorRuntimeAddr map, so a config file cannot aim the
+	// dispatcher at an arbitrary host.
+	OpenConnector *OpenConnectorConfig `yaml:"open_connector" json:"open_connector"`
 	// FrontendBaseURL is the externally-visible origin of the SPA, used
 	// to compose absolute share-link URLs. Empty falls back to a host-
 	// relative URL ("/register?token=…") which the SPA then resolves
@@ -67,6 +76,59 @@ func (c *Config) AreCommercialNewDispatchEnabled() bool {
 // run. Nil keeps the safe-on default (true).
 func (c *Config) AreConnectorNewActionsEnabled() bool {
 	return c == nil || c.ConnectorNewActions == nil || *c.ConnectorNewActions
+}
+
+// OpenConnectorConfig is the yaml-visible deployment config of the
+// open-connector dispatch path (T16).
+type OpenConnectorConfig struct {
+	// Enabled arms the dispatch path. Pointer so "unset" means the SAFE-OFF
+	// default (false) — the opposite polarity of the O01 rollout switches on
+	// purpose: enabling an external credential path must be an explicit act.
+	// Env override: WEKNORA_OPEN_CONNECTOR_ENABLED.
+	Enabled *bool `yaml:"enabled" json:"enabled"`
+	// Runtime is an INTERNAL runtime id ("shared"), resolved to the
+	// runtime's internal address by OpenConnectorRuntimeAddr. Raw URLs are
+	// rejected in ValidateConfig. Env override: WEKNORA_OPEN_CONNECTOR_RUNTIME.
+	Runtime string `yaml:"runtime" json:"runtime"`
+}
+
+// IsEnabled resolves the opt-in flag: nil section or nil pointer stays
+// disabled (the fail-closed default).
+func (c *OpenConnectorConfig) IsEnabled() bool {
+	return c != nil && c.Enabled != nil && *c.Enabled
+}
+
+// OpenConnectorRuntimeShared is the internal id of the standard
+// shared-isolation runtime deployed by docker/compose.open-connector.yaml
+// (service "open-connector" on the private network, port 3000 — the
+// upstream image's own PORT).
+const OpenConnectorRuntimeShared = "shared"
+
+// openConnectorRuntimeAddrs is the fixed map of internal runtime ids to
+// internal addresses. Deployment topology changes belong here (a code
+// change), not in config files — the T05 admin client allowlist and this
+// map are the two anchors that keep the runtime address space internal.
+var openConnectorRuntimeAddrs = map[string]string{
+	OpenConnectorRuntimeShared: "http://open-connector:3000",
+}
+
+// OpenConnectorRuntimeAddr resolves an internal runtime id to the runtime's
+// internal address. ok=false for unknown ids (including raw URLs, which are
+// not ids).
+func OpenConnectorRuntimeAddr(id string) (addr string, ok bool) {
+	addr, ok = openConnectorRuntimeAddrs[strings.TrimSpace(id)]
+	return addr, ok
+}
+
+// OpenConnectorRuntimeIDs lists the known internal runtime ids (ops surface
+// and error messages).
+func OpenConnectorRuntimeIDs() []string {
+	ids := make([]string, 0, len(openConnectorRuntimeAddrs))
+	for id := range openConnectorRuntimeAddrs {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
 }
 
 // AgentConfig represents the global agent settings.
@@ -638,6 +700,7 @@ func LoadConfig() (*Config, error) {
 	applyAuthAndTenantDefaults(&cfg)
 	applyAuditDefaults(&cfg)
 	applyCommercialRolloutDefaults(&cfg)
+	applyOpenConnectorDefaults(&cfg)
 
 	if err := ValidateConfig(&cfg); err != nil {
 		return nil, err
@@ -693,6 +756,16 @@ func ValidateConfig(cfg *Config) error {
 		if tenantMode != "" && tenantMode != AuthDefaultTenantModeCreatePersonal && tenantMode != AuthDefaultTenantModeTenantless {
 			errs = append(errs, fmt.Sprintf("auth.default_tenant_mode must be %q or %q, got %q",
 				AuthDefaultTenantModeCreatePersonal, AuthDefaultTenantModeTenantless, tenantMode))
+		}
+	}
+
+	if cfg.OpenConnector.IsEnabled() {
+		runtime := strings.TrimSpace(cfg.OpenConnector.Runtime)
+		if runtime == "" {
+			errs = append(errs, "open_connector.runtime is required when open_connector.enabled is true (an internal runtime id, e.g. \"shared\")")
+		} else if _, ok := OpenConnectorRuntimeAddr(runtime); !ok {
+			errs = append(errs, fmt.Sprintf("open_connector.runtime %q is not a known internal runtime id (known: %s); raw addresses are not accepted here",
+				runtime, strings.Join(OpenConnectorRuntimeIDs(), ", ")))
 		}
 	}
 
@@ -1036,6 +1109,32 @@ func applyRolloutSwitchEnv(field **bool, env string) {
 		*field = &parsed
 	} else {
 		fmt.Printf("[config] %s=%q is not a boolean, ignoring\n", env, value)
+	}
+}
+
+// applyOpenConnectorDefaults applies the env-var overrides of the
+// open-connector section. Safe-OFF polarity: an unset or unparseable env var
+// never ENABLES the dispatch path, and an explicitly enabled config.yaml is
+// the only path to enabled=true through config. The T13-era
+// WEKNORA_OC_ENABLED contract (read by internal/container) remains the
+// wiring-level switch; these overrides feed the same merged config.
+//
+// Env overrides (when set):
+//   - WEKNORA_OPEN_CONNECTOR_ENABLED ("true"/"1" enables; anything else
+//     leaves the yaml value untouched — never a silent disable)
+//   - WEKNORA_OPEN_CONNECTOR_RUNTIME (internal runtime id)
+func applyOpenConnectorDefaults(cfg *Config) {
+	if cfg.OpenConnector == nil {
+		cfg.OpenConnector = &OpenConnectorConfig{}
+	}
+	if value := strings.TrimSpace(os.Getenv("WEKNORA_OPEN_CONNECTOR_ENABLED")); value != "" {
+		if value == "true" || value == "1" {
+			on := true
+			cfg.OpenConnector.Enabled = &on
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("WEKNORA_OPEN_CONNECTOR_RUNTIME")); value != "" {
+		cfg.OpenConnector.Runtime = value
 	}
 }
 

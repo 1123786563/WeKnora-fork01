@@ -493,14 +493,42 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// /apps/actions prepare/approve/execute/get stop failing closed with 501.
 	must(container.Provide(repoappconn.NewActionStore, dig.As(new(appconnectorsvc.ActionStoreSource))))
 	must(container.Provide(repository.NewMCPOAuthBindingStore, dig.As(new(appconnectorsvc.ConnectionCredentialSource))))
-	must(container.Provide(appconnectorsvc.NewCredentialResolver, dig.As(new(appconnectorsvc.A02Guard))))
-	must(container.Provide(func(store appconnectorsvc.ActionStoreSource, guard appconnectorsvc.A02Guard,
-		gate domain.ExecutionGate) *appconnectorsvc.ActionService {
-		return appconnectorsvc.NewActionService(store, guard, gate, nil, nil)
+	// R11 carry (T07): the interim permission-only NewSubjectGuard(src) is
+	// replaced by the FULL subject guard - the real OC store as the binding
+	// source and the installation catalog as the state source, so OC binding
+	// validation and install-active checks go live. No space-grant store
+	// exists yet, so space connections keep failing closed (the authorizer's
+	// nil-grant semantics), which only tightens the interim behavior.
+	must(container.Provide(repoappconn.NewOCStore))
+	must(container.Provide(repoappconn.NewInstallationStore))
+	must(container.Provide(func(src appconnectorsvc.ConnectionCredentialSource,
+		installs *repoappconn.InstallationStore, oc *repoappconn.OCStore) appconnectorsvc.A02Guard {
+		return appconnectorsvc.NewOCSubjectGuard(src, appconnectorsvc.NewInstallationStateSource(installs), nil, oc)
 	}))
+	// T13 open-connector product wiring (open_connector.go). The
+	// ActionService is built THROUGH PrepareOpenConnector/NewOCArmedActionService
+	// (the F-1 production constructor composes wiring and service) so the T10-F-3
+	// mandate is enforced at construction: a real dispatcher never exists
+	// without the durable claim store and the slot limiter, and
+	// dispatcher-without-claims is a STARTUP FAILURE. Disabled by default:
+	// the nil dispatcher IS the explicit refusing dispatcher (Execute fails
+	// closed before consuming anything; the edge maps 503). Enabled-but-
+	// incomplete env config also fails startup — no default-connection
+	// fallback. The API process never sees the runtime ADMIN secret: it
+	// only reads back the version-scoped RESTRICTED tokens the control
+	// worker minted (shared secret sink).
+	must(container.Provide(newOCArmedActionService))
+	must(container.Provide(newOCProductServices))
 	must(container.Invoke(func(h *handler.AppActionHandler, s *appconnectorsvc.ActionService) {
 		h.SetActionService(s)
 	}))
+	must(container.Invoke(func(h *handler.AppActionHandler, p *appconnectorsvc.OCPreparer) {
+		h.SetOCPreparer(p)
+	}))
+	must(container.Invoke(func(h *handler.AppActionHandler, s *appconnectorsvc.OCConnectionService) {
+		h.SetOCConnectionService(s)
+	}))
+	must(container.Invoke(startOCRecoveryRunner))
 	// A02 app OAuth registrations for the first-batch providers. Client
 	// registrations come from env (WEKNORA_APP_OAUTH_<APP>_CLIENT_ID / _SECRET);
 	// an app left unregistered fails closed at CreateConnection with an

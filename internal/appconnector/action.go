@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 )
 
@@ -40,17 +41,32 @@ const (
 // approval digest before anything is dispatched. AuthVersion is the
 // connection's permission version at preparation time; a version bump
 // between approval and execute invalidates the dispatch.
+// OC carries the open-connector execution binding for OC actions. It is
+// filled ONLY server-side (PrepareOC, from the tenant's live binding and the
+// reviewed definition) — a client can never supply runtime/alias/external
+// identity through this field, and the native Prepare path rejects an Action
+// that arrives with it set. DigestVersion records which digest generation
+// the row's stored digest was computed under (1 = legacy text layout,
+// CurrentDigestVersion = structured JSON material); old v1 rows in
+// preparable states must be re-Prepared instead of silently continuing.
 type Action struct {
-	ID           string
-	TenantID     uint64
-	ActorID      string
-	ConnectionID string
-	Version      string
-	Target       string
-	Risk         string
-	Args         json.RawMessage
-	AuthVersion  int64
+	ID            string
+	TenantID      uint64
+	ActorID       string
+	ConnectionID  string
+	Version       string
+	Target        string
+	Risk          string
+	Args          json.RawMessage
+	AuthVersion   int64
+	OC            *OCExecutionBinding
+	DigestVersion int
 }
+
+// CurrentDigestVersion is the digest generation this code writes: the
+// structured JSON approval material of ActionDigest. Rows written before it
+// carry 1 (set by migration 000122/000042) and must re-Prepare.
+const CurrentDigestVersion = 2
 
 // NeedsExplicitApproval reports whether a call of the given risk needs an
 // explicit per-action human approval even when the actor holds a bounded
@@ -88,6 +104,14 @@ func NormalizeArgs(raw json.RawMessage) (json.RawMessage, error) {
 	if err := dec.Decode(&v); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidArgs, err)
 	}
+	// Exactly ONE JSON value: the second Decode must report io.EOF. A
+	// concatenated second document (or trailing garbage) is rejected — a
+	// payload like {"a":1}{"b":2} must never normalize to its first half
+	// and silently drop the rest. json.Decoder with UseNumber keeps number
+	// literals byte-exact (no float64 re-encoding), so precision survives.
+	if err := dec.Decode(&v); !errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("%w: trailing data after the first JSON value", ErrInvalidArgs)
+	}
 	out, err := json.Marshal(v)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidArgs, err)
@@ -95,22 +119,40 @@ func NormalizeArgs(raw json.RawMessage) (json.RawMessage, error) {
 	return out, nil
 }
 
-// ActionDigest hashes every input an approval is bound to: the tenant and
-// actor identity, the connection, the connection's auth version, the app
-// version, the target, and the NORMALIZED argument bytes. Changing any one
-// of them changes the digest, so an approval for one exact call can never
-// authorize another identity, another permission version, another target,
-// or other arguments.
+// ActionDigest hashes every input an approval is bound to, as ONE
+// structured JSON document (never newline-bearing text concatenation, which
+// ambiguous fields could collide with): the digest layout version, the
+// logical action identity (ID), the tenant and actor identity, the
+// connection and its auth version, the reviewed risk, the target, the app
+// version, the FULL open-connector execution binding when present, and the
+// NORMALIZED argument bytes. Changing any one of them changes the digest,
+// so an approval for one exact call can never authorize another identity,
+// another action, another risk, another permission version, another target,
+// another binding generation, or other arguments. Material layout is
+// generation 2 for every digest this code computes; generation-1 rows are
+// legacy and must re-Prepare (see CurrentDigestVersion).
 func ActionDigest(a Action) (string, error) {
 	norm, err := NormalizeArgs(a.Args)
 	if err != nil {
 		return "", err
 	}
-	h := sha256.New()
-	fmt.Fprintf(h, "tenant=%d\nactor=%s\nconnection=%s\nauth_version=%d\napp_version=%s\ntarget=%s\n",
-		a.TenantID, a.ActorID, a.ConnectionID, a.AuthVersion, a.Version, a.Target)
-	h.Write(norm)
-	return hex.EncodeToString(h.Sum(nil)), nil
+	material := struct {
+		Version                  int
+		ID                       string
+		Tenant                   uint64
+		Actor, Connection        string
+		AuthVersion              int64
+		AppVersion, Target, Risk string
+		OC                       *OCExecutionBinding
+		Args                     json.RawMessage
+	}{CurrentDigestVersion, a.ID, a.TenantID, a.ActorID, a.ConnectionID, a.AuthVersion,
+		a.Version, a.Target, a.Risk, a.OC, norm}
+	b, err := json.Marshal(material)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:]), nil
 }
 
 // PreAuthorization is a persisted scope pre-authorization: it pre-approves

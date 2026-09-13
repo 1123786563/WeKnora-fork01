@@ -57,6 +57,12 @@ type appConnectionView struct {
 	Kind    string  `json:"kind"`
 	State   string  `json:"state"`
 	OwnerID *string `json:"owner_id"`
+	// AuthVersion is the live authorization generation, straight from the
+	// persisted row (R18 / T15-C-1): the revoke endpoint CAS-checks
+	// expected_version against it, so the tenant UI needs the real value —
+	// never a default or a client guess. It is metadata about the fence,
+	// not credential material.
+	AuthVersion int64 `json:"auth_version"`
 }
 
 func appConnectionViewFor(row appconnectorrepo.ConnectionRow) appConnectionView {
@@ -64,7 +70,7 @@ func appConnectionViewFor(row appconnectorrepo.ConnectionRow) appConnectionView 
 	if row.OwnerID != "" {
 		owner = &row.OwnerID
 	}
-	return appConnectionView{ID: row.ID, Kind: row.Kind, State: row.State, OwnerID: owner}
+	return appConnectionView{ID: row.ID, Kind: row.Kind, State: row.State, OwnerID: owner, AuthVersion: row.AuthVersion}
 }
 
 // ListConnections GET /apps/connections - projections only, no credentials.
