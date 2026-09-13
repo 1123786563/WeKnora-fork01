@@ -41,6 +41,7 @@ function makeClient(options: {
   chathistory?: { config: TenantRecord; stats?: TenantRecord | null };
   models?: unknown[];
   runtime?: TenantRecord;
+  runtimeTasks?: TenantRecord[];
 } = {}) {
   const tenantGet = options.tenant instanceof Promise
     ? () => options.tenant as Promise<never>
@@ -63,7 +64,10 @@ function makeClient(options: {
       models: { list: async () => options.models ?? [] },
     },
     administration: {
-      runtime: { queues: async () => options.runtime ?? { available: true, upstream_concurrency: 4, parse_concurrency: 2, wiki_concurrency: 1, pools: [], queues: [], model_limiter_available: false, models: [], timestamp: 0 } },
+      runtime: {
+        queues: async () => options.runtime ?? { available: true, upstream_concurrency: 4, parse_concurrency: 2, wiki_concurrency: 1, pools: [], queues: [], model_limiter_available: false, models: [], timestamp: 0 },
+        tasks: { list: async () => ({ available: true, tasks: options.runtimeTasks ?? [], pageSize: 20, hasMore: false }) },
+      },
     },
   } as unknown as WeKnoraClient;
 }
@@ -155,7 +159,7 @@ test('settings close blurs the focused control before leaving like the Vue drawe
 });
 
 test('runtime queues section renders Vue overview, empty table and limiter states', async () => {
-  const container = await mountPage(makeClient({ runtime: {
+  const container = await mountPage(makeClient({ runtimeTasks: [{ id: 'task-1', queue: 'document', type: 'document:process', state: 'active', last_error: '' }], runtime: {
     available: true, upstream_concurrency: 4, parse_concurrency: 2, wiki_concurrency: 1,
     pools: [{ name: 'upstream', active: 2, instances: 1, cluster_capacity: 4, concurrency: 4, queue_count: 1 }],
     queues: [{ name: 'document', active: 2, pending: 3, retry: 1, archived: 0, completed: 9, scheduled: 0, latency_ms: 120, paused: false }],
@@ -167,6 +171,12 @@ test('runtime queues section renders Vue overview, empty table and limiter state
   assert.ok(text.includes('document'), 'the queue row renders');
   assert.ok(text.includes('gpt-test'), 'the model limiter row renders');
   assert.equal(text.includes('尚未移植'), false, 'the generic placeholder is gone');
+  const activeButton = container.querySelector<HTMLButtonElement>('.wk-rq-count-button');
+  assert.ok(activeButton, 'non-empty task counts are interactive');
+  await act(async () => activeButton?.click());
+  await act(async () => {});
+  assert.ok(container.querySelector('[role="dialog"]'), 'clicking a task count opens the Vue task drawer');
+  assert.ok(container.textContent?.includes('document:process'), 'the task drawer renders the loaded task');
 });
 
 // B4d: section=subsection deep link reaches the model panel type tabs.

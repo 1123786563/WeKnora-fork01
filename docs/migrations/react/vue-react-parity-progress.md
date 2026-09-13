@@ -1610,3 +1610,10 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 因共享 i18n 尚未收录完整 `system.globalSettings.runtime.*` 树，面板增加局部可追踪中文回退，避免原始 key 泄漏；未改变其他设置页翻译层。
 - 验证：RuntimeQueues/SettingsPage 定向测试 11/11；完整 `pnpm test:web` 808/808；Web TypeScript 检查通过；`git diff --check` 通过。
 - 证据层：本轮为 Vue `RuntimeQueues.vue` 源码对照、React DOM/单元和全 Web 回归；运行队列真实 system-admin 后端、任务详情抽屉/操作、同条件截图/computed-style、Wails 与移动端证据仍待补齐，N017 继续保持 review。
+
+## 2026-09-14 Round N+30 — N017 运行时任务详情入口
+
+- React 队列详情表的非零 active/pending/retry/archived/completed 计数现在与 Vue 一样可点击；调用 `administration.runtime.tasks.list` 后打开右侧任务详情抽屉，覆盖加载、不可用/错误、空态和任务基本信息展示，保留分页/操作能力的后续边界。
+- 回归用例验证非零计数按钮、任务请求和详情抽屉实际渲染；没有为零的计数制造可点击入口。
+- 验证：SettingsPage 定向测试 11/11；完整 `pnpm test:web` 808/808；Web TypeScript 检查通过；`git diff --check` 通过。
+- 证据层：本轮为 Vue 任务抽屉源码对照、React DOM/单元与全 Web 回归；任务分页、取消/重试/清理操作、真实 system-admin 后端、同条件截图/computed-style、Wails 与移动端证据仍待补齐，N017 继续保持 review。

@@ -178,7 +178,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
   const ollamaPanel = selectedKey === 'ollama' ? <OllamaSettingsPanel client={client} initialValue={payload} /> : null;
   const cloudPanel = selectedKey === 'weknoracloud' ? <CloudSettingsPanel client={client} initialValue={payload} /> : null;
   const systemPanel = selectedKey === 'system' ? <SystemInfoPanel payload={payload} locale={locale} /> : null;
-  const runtimeQueuesPanel = selectedKey === 'runtime-queues' ? <RuntimeQueuesPanel payload={payload as never} loading={loading} error={error} /> : null;
+  const runtimeQueuesPanel = selectedKey === 'runtime-queues' ? <RuntimeQueuesPanel client={client} payload={payload as never} loading={loading} error={error} /> : null;
   const envVarPanel = selectedKey === 'envvars' ? <EnvVarSettingsPanel client={client} initialPayload={payload} onMutated={() => void load()} /> : null;
   const mcpPanel = selectedKey === 'mcp'
     ? <McpSettingsPanel client={client} role={role} initialServices={Array.isArray(payload) ? payload as never : []} />

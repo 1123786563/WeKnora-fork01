@@ -28,6 +28,11 @@
 .wk-rq-table th, .wk-rq-table td { border-bottom: 1px solid rgba(120, 135, 155, 0.18); padding: 12px 10px; text-align: left; white-space: nowrap; }
 .wk-rq-table thead th { color: #5c6b83; font-size: 12px; font-weight: 500; }
 .wk-rq-table tbody th { font-weight: 600; }
+.wk-rq-count-button { background: transparent; border: 0; color: #0a8f4c; cursor: pointer; font: inherit; padding: 2px 6px; text-decoration: underline; }
+.wk-rq-count-button:hover, .wk-rq-count-button:focus-visible { color: #067a3f; }
+.wk-rq-task-drawer { background: #fff; border-left: 1px solid rgba(120,135,155,.25); box-shadow: -8px 0 24px rgba(23,32,51,.14); max-width: 720px; overflow: auto; padding: 24px; position: fixed; right: 0; top: 0; bottom: 0; width: min(720px, 100vw); z-index: 3200; }
+.wk-rq-task-drawer__head { align-items: flex-start; display: flex; justify-content: space-between; margin-bottom: 20px; }
+.wk-rq-task-drawer__head button { background: transparent; border: 0; cursor: pointer; font-size: 24px; line-height: 1; }
 .wk-rq-model { grid-template-columns: 1fr auto; }
 .wk-rq-model progress { grid-column: 1 / -1; height: 6px; width: 100%; }
 .wk-rq-model small { grid-column: 1 / -1; }

@@ -1,6 +1,7 @@
-import type { RuntimeQueues } from '@weknora/api-client';
+import type { RuntimeQueues, WeKnoraClient } from '@weknora/api-client';
 import { Card, Status } from '@weknora/ui';
 import { settingsT, useSettingsLocale } from './PortedSectionsPanel.tsx';
+import { useState } from 'react';
 
 type Row = Record<string, unknown>;
 const runtimeFallbacks: Record<string, string> = {
@@ -52,19 +53,34 @@ function queueStatus(row: Row, t: ReturnType<typeof settingsT>): string {
   return t('system.globalSettings.runtime.status.idle');
 }
 
-export function RuntimeQueuesPanel({ payload, loading = false, error = null }: { payload: RuntimeQueues | null; loading?: boolean; error?: string | null }) {
+export function RuntimeQueuesPanel({ client, payload, loading = false, error = null }: { client: WeKnoraClient; payload: RuntimeQueues | null; loading?: boolean; error?: string | null }) {
   const locale = useSettingsLocale();
   const baseT = settingsT(locale);
   const t: ReturnType<typeof settingsT> = (key, values) => {
     const value = baseT(key, values);
     return value === key && key.startsWith('system.globalSettings.runtime.') ? fallbackRuntimeText(key, values) : value;
   };
+  const [taskDrawer, setTaskDrawer] = useState<{ queue: string; state: string; tasks: Row[]; loading: boolean; error: string | null } | null>(null);
   if (loading && !payload) return <section className="wk-runtime-queues" aria-live="polite"><div className="wk-rq-skeleton" /><div className="wk-rq-skeleton" /><div className="wk-rq-skeleton" /></section>;
   if (error) return <section className="wk-runtime-queues" role="alert"><Card><Status tone="error">{t('system.globalSettings.runtime.errors.generic')}</Status><p className="wk-muted">{error}</p></Card></section>;
   if (!payload || (!payload.available && !payload.model_limiter_available)) return <section className="wk-runtime-queues"><Card><Status>{t('system.globalSettings.runtime.unavailableTitle')}</Status><p className="wk-muted">{t('system.globalSettings.runtime.unavailable')}</p></Card></section>;
   const queues = payload.queues as Row[];
   const pools = payload.pools as Row[];
   const models = payload.models as Row[];
+  async function openTasks(row: Row, state: string) {
+    const queue = stringOf(row, 'name');
+    if (!queue || numberOf(row, state) <= 0) return;
+    setTaskDrawer({ queue, state, tasks: [], loading: true, error: null });
+    try {
+      const result = await client.administration.runtime.tasks.list(queue, state, { pageSize: 20 });
+      setTaskDrawer({ queue, state, tasks: result.tasks as Row[], loading: false, error: result.available ? null : '运行时队列不可用。' });
+    } catch (reason) {
+      setTaskDrawer({ queue, state, tasks: [], loading: false, error: reason instanceof Error ? reason.message : '任务加载失败。' });
+    }
+  }
+  const taskButton = (row: Row, state: string) => numberOf(row, state) > 0
+    ? <button type="button" className="wk-rq-count-button" onClick={() => void openTasks(row, state)}>{numberOf(row, state)}</button>
+    : <span>0</span>;
   const active = queues.reduce((sum, row) => sum + numberOf(row, 'active'), 0);
   const pending = queues.reduce((sum, row) => sum + numberOf(row, 'pending'), 0);
   const retry = queues.reduce((sum, row) => sum + numberOf(row, 'retry'), 0);
@@ -75,8 +91,9 @@ export function RuntimeQueuesPanel({ payload, loading = false, error = null }: {
     {payload.available ? <>
       <Card className="wk-rq-overview"><h3>{runtimeText(t, 'system.globalSettings.runtime.summary.title', '队列概览')}</h3><div className="wk-rq-metrics"><strong>{active}<span>{runtimeText(t, 'system.globalSettings.runtime.summary.active', '活跃任务')}</span></strong><strong>{pending}<span>{runtimeText(t, 'system.globalSettings.runtime.summary.pending', '等待任务')}</span></strong><strong className={retry > 0 ? 'is-warning' : ''}>{retry}<span>{runtimeText(t, 'system.globalSettings.runtime.summary.retry', '重试')}</span></strong><strong className={archived > 0 ? 'is-danger' : ''}>{archived}<span>{runtimeText(t, 'system.globalSettings.runtime.summary.archived', '失败归档')}</span></strong></div></Card>
       <Card><h3>{t('system.globalSettings.runtime.poolsTitle')}</h3><p className="wk-muted">{t('system.globalSettings.runtime.poolsDescription')}</p><div className="wk-rq-pools">{pools.map((row, index) => <div className="wk-rq-pool" key={stringOf(row, 'name') || String(index)}><strong>{stringOf(row, 'name') || '—'}</strong><b>{numberOf(row, 'instances') > 0 ? `${numberOf(row, 'active')}/${numberOf(row, 'cluster_capacity')}` : numberOf(row, 'concurrency')}</b><span>{t('system.globalSettings.runtime.queueCount', { value: numberOf(row, 'queue_count') })}</span></div>)}</div></Card>
-      <Card><h3>{t('system.globalSettings.runtime.detailsTitle')}</h3><p className="wk-muted">{t('system.globalSettings.runtime.detailsDescription')}</p>{queues.length === 0 ? <Status>{t('system.globalSettings.runtime.empty')}</Status> : <div className="wk-rq-table-wrap"><table className="wk-rq-table"><thead><tr>{['queue','active','pending','retry','archived','completed','latency','status'].map((key) => <th key={key}>{t(`system.globalSettings.runtime.columns.${key}`)}</th>)}</tr></thead><tbody>{queues.map((row, index) => <tr key={stringOf(row, 'name') || String(index)}><th>{stringOf(row, 'name') || '—'}</th><td>{numberOf(row, 'active')}</td><td>{numberOf(row, 'pending')}</td><td>{numberOf(row, 'retry')}</td><td>{numberOf(row, 'archived')}</td><td>{numberOf(row, 'completed')}</td><td>{numberOf(row, 'latency_ms') || '—'}</td><td>{queueStatus(row, t)}</td></tr>)}</tbody></table></div>}</Card>
+      <Card><h3>{t('system.globalSettings.runtime.detailsTitle')}</h3><p className="wk-muted">{t('system.globalSettings.runtime.detailsDescription')}</p>{queues.length === 0 ? <Status>{t('system.globalSettings.runtime.empty')}</Status> : <div className="wk-rq-table-wrap"><table className="wk-rq-table"><thead><tr>{['queue','active','pending','retry','archived','completed','latency','status'].map((key) => <th key={key}>{runtimeText(t, `system.globalSettings.runtime.columns.${key}`, key)}</th>)}</tr></thead><tbody>{queues.map((row, index) => <tr key={stringOf(row, 'name') || String(index)}><th>{stringOf(row, 'name') || '—'}</th><td>{taskButton(row, 'active')}</td><td>{taskButton(row, 'pending')}</td><td>{taskButton(row, 'retry')}</td><td>{taskButton(row, 'archived')}</td><td>{taskButton(row, 'completed')}</td><td>{numberOf(row, 'latency_ms') || '—'}</td><td>{queueStatus(row, t)}</td></tr>)}</tbody></table></div>}</Card>
     </> : null}
     <Card><h3>{t('system.globalSettings.runtime.models.title')}</h3><p className="wk-muted">{t('system.globalSettings.runtime.models.description')}</p>{!payload.model_limiter_available ? <Status>{t('system.globalSettings.runtime.models.disabled')}</Status> : models.length === 0 ? <Status>{t('system.globalSettings.runtime.models.empty')}</Status> : <div className="wk-rq-models">{models.map((row, index) => { const current = numberOf(row, 'active'); const limit = numberOf(row, 'limit'); return <div className="wk-rq-model" key={stringOf(row, 'model_id') || String(index)}><div><strong>{stringOf(row, 'name') || stringOf(row, 'model_id') || '—'}</strong><span>{current} / {limit}</span></div><progress max={100} value={percent(current, limit)} /><small>{numberOf(row, 'waiting')} {t('system.globalSettings.runtime.models.columns.waiting')}</small></div>; })}</div>}</Card>
+    {taskDrawer ? <div className="wk-rq-task-drawer" role="dialog" aria-modal="true" aria-label={`${taskDrawer.queue} ${taskDrawer.state}`}><div className="wk-rq-task-drawer__head"><div><h3>{taskDrawer.queue}</h3><p className="wk-muted">{taskDrawer.state} · 任务详情</p></div><button type="button" aria-label="关闭" onClick={() => setTaskDrawer(null)}>×</button></div>{taskDrawer.loading ? <Status>加载中...</Status> : taskDrawer.error ? <Status tone="error">{taskDrawer.error}</Status> : taskDrawer.tasks.length === 0 ? <Status>暂无任务</Status> : <ul className="wk-list">{taskDrawer.tasks.map((task, index) => <li key={stringOf(task, 'id') || String(index)}><div className="wk-list-item-copy"><strong>{stringOf(task, 'type') || '—'}</strong><span>{stringOf(task, 'state') || taskDrawer.state}</span>{stringOf(task, 'last_error') ? <small>{stringOf(task, 'last_error')}</small> : null}</div></li>)}</ul>}</div> : null}
   </section>;
 }
