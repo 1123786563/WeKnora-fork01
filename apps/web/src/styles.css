@@ -303,7 +303,11 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-mcp-tool-tabs button { border: 1px solid #cbd5e1; border-radius: 5px; background: #fff; cursor: pointer; padding: .2rem .45rem; }
 .wk-mcp-tool-tabs button[aria-selected="true"] { background: #e8f1ff; border-color: #8db4e8; }
 .wk-mcp-tool-detail pre { max-height: 16rem; overflow: auto; white-space: pre-wrap; }
-.wk-mcp-directory-controls { display: flex; flex-wrap: wrap; gap: 1rem; color: #506078; font-size: .8rem; }
+.wk-mcp-directory-controls { display: flex; flex-wrap: wrap; gap: 24px; color: #506078; font-size: 12px; }
+.wk-mcp-tool-control { align-items: center; cursor: pointer; display: inline-flex; gap: 8px; line-height: 20px; }
+.wk-mcp-tool-control .wk-switch { flex: 0 0 auto; }
+.wk-mcp-tool-control .wk-switch input:focus-visible + .wk-switch-knob { outline: 2px solid #07c05f; outline-offset: 2px; }
+.wk-mcp-tool-control .wk-switch input:disabled + .wk-switch-knob { cursor: not-allowed; }
 .wk-mcp-directory-pagination { align-items: center; display: flex; gap: .6rem; justify-content: flex-end; }
 @media (max-width: 720px) { .wk-mcp-tools li { align-items: flex-start; grid-template-columns: 1fr 1fr; } .wk-mcp-tools li > div { grid-column: 1 / -1; } }
 @media (max-width: 720px) { .wk-mcp-grid { grid-template-columns: 1fr; } }

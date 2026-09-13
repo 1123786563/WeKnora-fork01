@@ -1561,3 +1561,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - React `IntegrationsRoutePage` 不再在启动 IM、网页嵌入或 API 请求后立即清除 loading；改为等待当前标签所需请求完成后再清除，并在标签切换时忽略旧请求的结束回调，恢复 Vue 面板在慢请求期间的加载态。
 - 新增集成路由回归用例，覆盖列表请求未完成期间保留 Vue loading 文案、请求结束后再进入列表/空态。
 - 验证：集成预览/加载定向测试 3/3；完整 `pnpm test:web` 805/805；Web TypeScript 检查通过；`git diff --check` 通过。该轮为源码/单元回归证据，未据此宣称真实网络延迟下的双端截图验收。
+
+## 2026-09-14 Round N+23 — R046 MCP 工具策略开关外观
+
+- React `McpToolsDirectory` 的工具启用/审批控制由原生 checkbox 外观改为项目既有 `wk-switch` 组合，文字、间距、焦点环和禁用状态对齐 Vue `t-switch size="small"`；策略字段、即时保存和失败处理不变。
+- 本轮为 Vue 样式源码对照与 CSS/JSX 静态修复；定向 MCP 测试 15/15、完整 `pnpm test:web` 805/805、Web TypeScript 检查和 `git diff --check` 均通过；未宣称 Portal/computed-style 或真实 MCP 服务验收。
