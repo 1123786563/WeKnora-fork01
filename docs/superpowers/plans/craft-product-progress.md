@@ -49,7 +49,7 @@
 | O03 | implementing | .worktrees/craft-o03 / codex/craft-o03 | de94676e | 已派发（休眠/删除分策+Sweep CAS+worker 竞争测试） |
 | D03 | **done** | .worktrees/craft-d03 / codex/craft-d03 | de94676e | HEAD ec03cf24 审查 PASS_WITH_NITS（14/14，钉扎镜像独立复现）→ 合入 92f23a10 |
 | O03 | **done** | .worktrees/craft-o03 / codex/craft-o03 | de94676e | HEAD 8cd5dbe9 审查 PASS_WITH_NITS（13/13）→ 合入 4501f819+schema 常量 48（a543e439）；5 项接线清单+stranded-deleting 修复留 O04/集成 |
-| D01 | implementing | .worktrees/craft-d01 / codex/craft-d01 | 92f23a10 | 实现中（python-docx+OOXML 校验+浏览器+五项类型接线收尾） |
+| D01 | review | .worktrees/craft-d01 / codex/craft-d01 | 92f23a10 | HEAD e0fc78e0：python-docx 镜像链+OOXML 校验+浏览器 4/4；五项类型接线全落地（EntryPath/Previewable/manifest 服务端门禁/NIT-1 词边界/预览归一/kind-aware specs）；审查排队中 |
 | O04 | implementing | .worktrees/craft-o04 / codex/craft-o04 | a543e439 | 已派发（用量视图+指标+排障手册+O03 五项接线收尾含 stranded-deleting 修复）；仅余 O05 等待 |
 | C04 | **done** | .worktrees/craft-c04 / codex/craft-c04 | f931f02b | HEAD 7d0aebc4 审查 PASS_WITH_NITS（19/19+矩阵复验）→ 合入 256fbb78；容器装配裁定归 C05（含 nit-2/3） |
 | C05 | **done** | .worktrees/craft-c05 / codex/craft-c05 | 256fbb78 | HEAD faf500e9 审查 PASS_WITH_NITS（21/21，安全闭环无伪造路径）→ 合入 ae664bcb；迁移 000126/000046；C04 装配落实；C06 接线提示与 6 卫生 nit 留档 |
