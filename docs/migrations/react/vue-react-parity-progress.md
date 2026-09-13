@@ -674,6 +674,75 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 ### Slice S15 — final acceptance and visual/state evidence gate
 
+
+## 2026-09-13 Round N+1（全页 live 验收批扫 → 9 并行实施代理）
+
+
+- 门禁基线复核：shared 344/344、web 404/404、typecheck:web/shared 0 错误、树干净（d4bb59c8）。
+- 用 .parity-tools/accept-batch.cjs 对 20 路由 × 双端做截图 + DOM 文本批扫（screenshots/accept-20260913/）。逐对目检确认整页级差异（此前各轮只在功能维度验证，页面形态仍是英文调试壳）：
+  1. R012 /platform/agents 渲染 ConfigurationPage，AgentList 从未实现；
+  2. R017 organizations 英文调试壳 vs Vue 共享空间卡片栅格；
+  3. R013 IM tab 英文表单 vs Vue IM 集成面板；
+  4. FAQ 页 raw UUID eyebrow/英文空态/无面包屑；
+  5. chat 共享视图（views/chat）仍英文调试形态（Conversations 侧栏/内联沙箱终端块/User-Assistant 卡片/Message composer）；
+  6. R027 models 面板调试头 + RAW JSON dump vs Vue 模型配置卡片栅格；
+  7. SettingsPage 包装层缺陷：general 从未挂载 GeneralPreferencesPanel、wk-settings-values raw dump 全 section 渲染、tenant/userprofile 表单英文、头部刷新按钮、Loading from {apiDomain} 泄漏；
+  8. R031 sandbox 面板调试头/dump/折叠开关残留；
+  9. NewUserGuide 7 步产品引导 React 全缺（Vue 首访浮层）。
+- 证据：evidence/vue-react-parity/2026-09-13-accept-batch-audit.md（差异目录 A/B/C/D + 根因定位）。矩阵 7 行更新（R012/R013/R016/R017/R023/N010 → implementing，R031 增记残留）。
+- 并行派发 9 个实施代理（各自文件所有权 + 边界 + TDD + 证据要求）：N007 upload graph 节、R033 skill 安装时间线 SSE（api-client/domain 缺口，后端 routes_infra.go:70-77 依据）、R012 AgentList 页、NewUserGuide 引导、R017 organizations 页、R013 integrations 三 tab、FAQ 页、chat 形态重建、settings R027+包装层合并切片（首个 settings 代理无改动失败，已重新派发全量清单）。
+- 主代理集成队列（代理落地后）：SandboxSettingsPanel 调试残留清除、全量门禁、逐页复拍对比、矩阵/账本收尾。
+
+
+## 2026-09-13 Round N+1（续3）— 第五切片集成
+
+- chat 形态重建集成（97b78d51）：views/chat 渲染层按 Vue 解剖重建（标题药丸+⋯菜单、时间分组侧栏、右对齐用户气泡、纯文本助手+图标行、直接向模型提问 composer、沙箱终端按需抽屉），chat-copy.ts zh-CN 字节级文案层；逻辑面（stream reducer/resume/cancel/retry/approvals/tool results/artifacts/references/分组持久化/starter/agent 选择）零改动且全绿。主代理独立复核：views chat 48/48、web chat 48/48、typecheck:shared 干净。开放（evidence 2026-09-13-chat-visual-form.md）：会话列表仍在页内（Vue 在平台侧栏——shell 集成项）、收藏/模型 chip 仅展示、附件/@占位、AgentStreamDisplay 时间线、chat.* i18n 键在 chat-copy.ts 本地（views 依赖方向惯例）。
+
+## 2026-09-13 Round N+1（续5）— 第八切片集成
+
+- R012 AgentList 页集成（c45aea9d）：/platform/agents 从 ConfigurationPage 别名切回真实智能体列表页（header/图标轨 全部收藏最近本空间/内置分组卡片/能力 chips/操作行/详情抽屉可编辑基本信息/收藏+最近（用户+租户域，Vue 字节兼容格式）/空态；品牌绿 #07c05f 主色；api-client agents.copy 对齐 routes_agent.go:46）。主代理独立复核：agents 35/35、configuration 22/22；live 对等 cards 4=4、rail 4=4、色值一致。开放：完整 AgentEditorModal（6753 行）、/user/favorites api-client 方法（当前 localStorage）、引导组件归属其他切片。注意：R012 代理在 live 验证中发现并修复真实接线缺陷（raw space vs effectiveSpace 分叉导致内置卡不渲染）——live 复验的价值实证。
+
+## 2026-09-13 Round N+1（续6）— 第九、十切片集成
+
+- R013 integrations 页重建集成（23ce0997）：六 tab（IM/嵌入/API/CLI/Chrome/Claw）按 Vue 抽屉解剖重建（IM 集成标题+查看接入文档+IM 渠道计数+平台徽章卡片+添加渠道虚线卡等）；分层翻译器 messages.ts（共享 formatMessage 优先 + 未迁移键 5 语逐字回退，键名对齐上游自动生效）；cli.ts buildCLIConnectCommand 逐字移植；styles.css channel-panel/landing 移植 + .wk-button 基类。独立复核 18/18；live 双端截图。开放：IM 4 步向导+分平台凭证字段+微信二维码（上线紧凑表单）、embed 配置抽屉、API playground 分步抽屉、角色门控、agentEditor.im/embedPublish 键本地回退。
+- FAQ 页重建集成（552f466c）：面包屑（知识库›kbName›问答 + 信息弹卡 + 齿轮）、全宽圆角搜索、全部标签筛选面板、图标按钮组、居中中文空态、导入弹窗、编辑抽屉、批量条、分页；UUID eyebrow/英文空态消除。独立复核 10/10（含 UUID 不外露 + 中文文案逐字节断言）；live 截图含 5 张交互态。开放：分页器 vs 无限滚动、编辑抽屉形态、标签管理链接、信息卡简化（myRole/chunkCount/hitCount 键缺失）、导入预览/进度条、卡片级开关、检索测试抽屉、tooltip。
+- 在途（3）：settings 包装层（语法错误已自愈，65/65）、shell 会话列表、R038 members（1 个 TS2739 属其 TDD 中途）。
+
+## 2026-09-13 Round N+1（续7）— 第十一、十二项集成
+
+- R038 members 面板重建集成（780667f0）：Vue TenantMembers.vue 全解剖（成员管理+ⓘ 权限弹卡+审计日志+了解 RBAC 链接、待接受的邀请表+空间成员表+TDesign 式分页脚注、邀请弹窗+分享链接弹窗+懒加载审计区；删除/角色接线保留）。独立复核 9/9（含 zh-CN 无英文泄漏扫描）；项目 tsc 0 错误。开放：审计抽屉形态（可调宽/展开行/无限滚动）、tenantInvitation.*/tenantMember.permissions/pager 键回填（本地 zh+en 逐字回退先行）、原生 select 角色图标、搜索防抖。
+- 主代理 i18n 迁移（8df9868e）：uploadConfirm + graphSettings 96 键×5 语从 apps/web 本地表迁入 packages/i18n（upload-pipeline.ts 头注释既定后续）；uploadConfirmT/uploadConfirmMessage 委托共享 formatMessage；键集一致性测试。i18n 套件 35/35、documents 62/62、typecheck:shared 0。
+- 在途（2）：settings 包装层（ConfigSettingsPanel 编辑中）、shell 会话列表。
+
+## 2026-09-13 Round N+1（续8）— 第十三切片集成
+
+- shell 会话列表并入集成（261352fe）：PlatformShell 在全部受保护页面渲染日期分组会话列表（已置顶/今天/昨天/近7天/近30天/更早；route 即选中态；置顶/重命名/清空/删除接线 + Vue 等价确认；chat 路由经 SHELL_SESSION_ROUTE_EVENT 原地切换，页内重复侧栏经 SessionSidebarShellContext 移除；样式迁移 chat.css→platform/shell.css）。独立复核：web platform+chat 132/132、views chat 48/48；live pin 往返、路由驱动 active 验证通过（截图 shell-sessions-slice/ 7 张含 Vue 基线）。开放：仅首页 30 条 web 来源（Vue 滚动分页+来源桶）、rename=prompt、批量管理/运行中 spinner、chatHeader.confirm/menu.deleteSession/time.* 键。
+
+## 2026-09-13 Round N+1（续9）— 第二轮全页复拍验收
+
+- 11 个切片全部集成后重跑全量门禁：shared 370/370、web 515/515、mobile 118/118、desktop 2/2、typecheck web/shared 0、build:web ✓ 3.46s。
+- 第二轮 20 路由×双端批扫（screenshots/accept-20260913-round2/）目检确认：agents 页（内置 4 卡+图标轨+品牌绿）、organizations（共享空间卡栅格+图标轨）、chat 会话页（shell 侧栏日期分组会话列表已并入、无重复页内侧栏、气泡/composer/终端抽屉）、FAQ 页（面包屑+中文空态）全部与 Vue 解剖一致；NewUserGuide 欢迎引导双端同现。
+- 本会话累计 16 个提交（f97a5126…261352fe 等，见 git log）；矩阵 9 行更新（R012/R013/R016/R017/R023/R031/R033/N010/N018）。
+- 下一步（未来轮次）：剩余 review 行的逐行验收证据补全（Wails 运行时交互、iOS/Android 原生、多状态矩阵）、AgentEditorModal/上下文引导/IM 向导等深水区切片、i18n 键回填（font.*/tenantInvitation.*/chat.* 等本地回退键）。
+
+## 2026-09-13 Round N+1（续4）— 第六、七切片集成
+
+- upload progress transport 集成（499ec9a8）：api-client NativeMultipartFileRequest.onProgress + 浏览器 XHR sendMultipartFile（字节级、abort→AbortError、fetch 回退）+ platform/http observeUploadProgress 桥；SkillSettingsPanel skillUploading 百分比+进度条；documents UploadProgressMask 遮罩 + 批次均值百分比（KnowledgeBaseList.vue:1586-1595 语义）。独立复核：transport 5/5、http 14/14、panel 31/31、pipeline 30/30、dialog 20/20、api-client 43/43、documents 62/62。该共享层缺口关闭后 N031 移动端可直接消费 transport onProgress。开放：UploadFilesPanel 行内百分比、浏览器 E2E。
+- R017 organizations 页重建集成（c2dc9f84）：英文调试壳 → Vue 共享空间 页解剖（header+加入/创建图标按钮、sticky section chips+计数、owners-first 卡片栅格+渐变头像/星点装饰/徽标行/所有者标签、创建/编辑设置弹窗、加入弹窗（邀请码预览/审批门控请求/搜索+joinById/已是成员态）、各过滤空态+移植插画、确认弹窗、toast；~1200 行 CSS 移植）。独立复核 19/19；live 截图 org-page-slice/。开放：PlatformShell 侧栏子筛选合并、RBAC 角色门控 role prop、设置弹窗为 3464 行 Vue 弹窗的功能性简化。
+- 在途（6）：R012（目检三问题修复+最终截图）、Integrations/FAQ（最终取证）、settings 包装层（65/65 绿，语法错误已自愈）、shell 会话列表、R038 members。
+
+## 2026-09-13 Round N+1（续2）— 第四切片集成
+
+- NewUserGuide 欢迎引导集成（773e723b）：packages/views/src/guides（存储语义 weknora:new-user-guide-done:v1、7 步目录+5 语字节级文案、聚光几何 Vue 常量、组件 700ms 双检自动打开/键盘/定位重试/可选步自动跳过）+ PlatformShell 挂载与 data-guide 锚点 + shell 动作。独立复核：guides 14/14、jsdom 组件 6/6、platform 目录 75/75；live 复验（清 key→重载→步骤1/2→跳过持久化）通过并截图。开放：contextual guides 未移植、user-menu 重新打开入口、i18n 债 newUserGuide.* 26 键×5 语。
+
+## 2026-09-13 Round N+1（续）— 首批三切片集成
+
+- R033 skill 安装时间线 SSE 集成（f97a5126）：api-client sandbox skills API（install-events/transcript SSE 复用 chat stream parser + 现有 transport 链，guidance GET/steer POST snake_case ≤10000，后端 routes_infra.go:70-77 + internal/handler/sandbox_skill.go 协议核实）；domain 纯进度帧/时间线归并模块；SkillSettingsPanel 时间线 + guidance 轮询 + steer 去重 + 重装重试 + 进度环 + 抽屉拖拽宽度持久化 + markdown 文件预览。主代理独立复核：domain 7/7、api-client 7/7、panel 27/27、client 16/16。开放：upload progress% 需 transport 层 XHR onProgress（共享层缺口，同时解锁 N031）、pick-row 百分比扇出、浏览器/原生证据。
+- N007 upload graph 节集成（30f6008d）：UploadGraphSettings 全量 GraphSettings.vue 移植、systemInfo.graph_database_engine + KB indexing_strategy.graph_enabled 门控与导航回退、保存载荷 graph_enabled+extract_config（enabled 钳制）、URL 列表顺序上传、UploadSourceDropdown 文件/文件夹/URL 菜单 + URL 子对话校验、documents.css +290。独立复核：focused 45/45、documents 57/57。开放：extraction 端点 live e2e 需图库启用（当前部署关闭，门控已端到端验证）、错误提示 inline vs Vue toast、单节显示模型差异（导航顺序/门控一致）。
+- 主代理直接修复：SandboxSettingsPanel 开关对齐 Vue（5f272a1f）——折叠 details 换 单向 switch + 警告 popconfirm（Vue:36-55 语义），ⓘ 提示气泡样式，样式独立 sandbox-settings.css；24/24。
+- i18n 债登记：upload-pipeline.ts 本地字节级拷贝表（graphSettings.*/uploadConfirm.* 块）待迁 packages/i18n 共享包（N007 报告，不阻塞）。
+- 其余代理（R012/Guide/R017/integrations/FAQ/chat/settings 包装层）继续并行中。
+
 ### Checkpoint 2026-09-13 — R038 member list header repair
 
 - `f0340a3f` adds a Vue-aligned, always-mounted member-list header to
