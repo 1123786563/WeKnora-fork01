@@ -727,6 +727,13 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   generated-route typing boundary. Simulator/device screenshots and real
   backend onboarding flows are still required; this row remains review.
 
+- **Mobile onboarding review follow-up:** invitation rows now expose
+  accept/decline actions, remove accepted/declined entries after server
+  confirmation, and logout navigates to the auth route. Mobile test is now
+  90/90 and typecheck passes. The generated Expo route manifest still needs a
+  durable `/onboarding` declaration instead of the current narrow cast, and
+  simulator/device plus real-backend evidence remains outstanding.
+
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
 - **Rows:** any rows proposed for `accepted`; never all rows by default.
 - **Files owned:** `docs/migrations/react/vue-react-parity-matrix.md`, `docs/migrations/react/vue-react-parity-progress.md`, `docs/migrations/react/evidence/vue-react-parity/README.md`, `docs/migrations/react/evidence/vue-react-parity/screenshot-matrix.md`, and the row-specific `docs/migrations/react/evidence/vue-react-parity/<date>-<row-group>.md` evidence file only.
