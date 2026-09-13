@@ -409,6 +409,9 @@
   background: #fff;
 }
 .sandbox-pick__main { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+.sandbox-pick__progress { display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex-shrink: 0; color: #66758b; font-size: 12px; }
+.sandbox-pick__progress .skill-manage__progress { width: 18px; height: 18px; margin: 0; }
+.sandbox-pick__progress .wk-button { padding: 3px 6px; font-size: 12px; }
 .sandbox-pick__text { display: flex; flex-direction: column; min-width: 0; }
 .sandbox-pick__name { font-size: 13px; font-weight: 500; color: #172033; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sandbox-pick__meta { font-size: 12px; color: #66758b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

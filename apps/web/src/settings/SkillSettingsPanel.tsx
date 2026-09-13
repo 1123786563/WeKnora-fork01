@@ -576,7 +576,8 @@ function InstallerModelSelect({ installer, t }: { installer: InstallerModel; t: 
   </label>;
 }
 
-function SandboxPickList({ item, configs, mode, sessionIds, targetIds, onToggle, onManage, t, backendLabel, metaLine }: {
+function SandboxPickList({ client, item, configs, mode, sessionIds, targetIds, onToggle, onManage, t, backendLabel, metaLine }: {
+  client: WeKnoraClient;
   item: SkillCatalog | null;
   configs: readonly SandboxConfigRecord[];
   mode: 'remaining' | 'all';
@@ -588,7 +589,31 @@ function SandboxPickList({ item, configs, mode, sessionIds, targetIds, onToggle,
   backendLabel: (type: string) => string;
   metaLine: (record: SandboxConfigRecord) => string;
 }) {
-  const rows = sandboxPickRows(item, configs, mode, sessionIds);
+  const rows = useMemo(() => sandboxPickRows(item, configs, mode, sessionIds), [configs, item, mode, sessionIds]);
+  const [progressByConfig, setProgressByConfig] = useState<Record<string, SkillInstallProgressEvent | undefined>>({});
+
+  // Vue's progressById fan-out follows every busy pick row, not only the
+  // currently focused manage drawer (SandboxSkillsPanel.vue:1089-1174).
+  useEffect(() => {
+    const busyRows = rows.filter((row) => row.busy && row.install?.skillId);
+    if (busyRows.length === 0) {
+      setProgressByConfig((current) => Object.keys(current).length === 0 ? current : {});
+      return undefined;
+    }
+    let active = true;
+    const controllers = busyRows.map((row) => {
+      const controller = new AbortController();
+      void client.sandbox.skills.followInstallEvents(row.config.id, row.install!.skillId, (event) => {
+        if (!active) return;
+        setProgressByConfig((current) => ({ ...current, [row.config.id]: event.event }));
+      }, controller.signal).catch(() => { /* status fallback remains visible */ });
+      return controller;
+    });
+    return () => {
+      active = false;
+      controllers.forEach((controller) => controller.abort());
+    };
+  }, [client, rows]);
   if (rows.length === 0) return <p className="wk-muted">{t('settings.skills.noSandboxToInstall')}</p>;
   return <div className="sandbox-pick-list">
     {rows.map((row) => row.selectable ? (
@@ -608,7 +633,11 @@ function SandboxPickList({ item, configs, mode, sessionIds, targetIds, onToggle,
             <span className="sandbox-pick__meta">{row.install && isInstallBusy(row.install) ? installStatusKeys(row.install.status, row.install.enabled).map((key) => t(key)).join(' ') : row.ready ? t('settings.sandbox.skillStatusReady') : metaLine(row.config)}</span>
           </span>
         </span>
-        {row.busy && row.install ? <Button type="button" onClick={() => onManage(row.config, row.install!)}>{t('settings.skills.viewInstallProgress')}</Button> : null}
+        {row.busy && row.install ? <div className="sandbox-pick__progress">
+          <ProgressRing percent={installProgressPercent(progressByConfig[row.config.id], row.install.status)} />
+          {progressByConfig[row.config.id] ? <span>{installProgressPercent(progressByConfig[row.config.id], row.install.status)}%</span> : null}
+          <Button type="button" onClick={() => onManage(row.config, row.install!)}>{t('settings.skills.viewInstallProgress')}</Button>
+        </div> : null}
       </div>
     ))}
   </div>;
@@ -850,7 +879,7 @@ function AddSkillWizard({ client, open, catalog, configs, installer, t, onClose,
       {configs.length > 0 ? <section className="wk-settings-editor">
         <h4>{t('settings.skills.pickSandboxes')}</h4>
         <p className="wk-muted">{t('settings.skills.pickSandboxesHint')}</p>
-        <SandboxPickList item={pickItem} configs={configs} mode="all" sessionIds={sessionIds} targetIds={targetIds} onToggle={setPick} t={t}
+        <SandboxPickList client={client} item={pickItem} configs={configs} mode="all" sessionIds={sessionIds} targetIds={targetIds} onToggle={setPick} t={t}
           backendLabel={(type) => t(backendLabelKey(type))}
           metaLine={(record) => { const label = t(backendLabelKey(record.sandbox_type)); const target = sandboxTargetLine(record); return target ? `${label} · ${target}` : label; }}
           onManage={(record, installation) => { if (installation.skillId) onManage(record, installation.skillId, parsedCard?.name ?? ''); }} />
@@ -935,7 +964,7 @@ function InstallSkillDialog({ client, open, item, configs, preselectConfigId, in
   <Dialog open={open} title={t('settings.skills.installToSandbox')} onClose={onClose}>
     <p className="wk-muted">{description}</p>
     {error ? <Status tone="error">{error}</Status> : null}
-    <SandboxPickList item={item} configs={configs} mode="remaining" sessionIds={sessionIds} targetIds={targetIds}
+    <SandboxPickList client={client} item={item} configs={configs} mode="remaining" sessionIds={sessionIds} targetIds={targetIds}
       onToggle={(configId, checked) => setTargetIds((current) => (checked ? [...new Set([...current, configId])] : current.filter((id) => id !== configId)))} t={t}
       backendLabel={(type) => t(backendLabelKey(type))}
       metaLine={(record) => { const label = t(backendLabelKey(record.sandbox_type)); const target = sandboxTargetLine(record); return target ? `${label} · ${target}` : label; }}
