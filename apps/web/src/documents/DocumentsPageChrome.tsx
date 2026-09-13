@@ -203,7 +203,7 @@ export const DOCUMENT_FILE_TYPE_OPTIONS: DocumentFilterOption[] = [
   { value: 'txt', label: 'TXT' },
   { value: 'md', label: 'MD' },
   { value: 'url', label: 'URL' },
-  { value: 'manual', labelKey: 'knowledgeBase.typeManual' },
+  { value: 'manual', labelKey: 'upload.onlineEdit' },
   { value: 'mp3', label: 'MP3' },
   { value: 'wav', label: 'WAV' },
   { value: 'm4a', label: 'M4A' },

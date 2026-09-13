@@ -2595,7 +2595,7 @@ export function KnowledgeDocumentsPage({
                         { key: "file", label: ct("upload.uploadDocument") },
                         { key: "folder", label: ct("upload.uploadFolder") },
                         { key: "url", label: t("knowledgeBase.importURL") },
-                        { key: "manual", label: t("knowledgeBase.typeManual") },
+                        { key: "manual", label: t("upload.onlineEdit") },
                       ]}
                       open={pageSourceMenuOpen}
                       onToggle={() => setPageSourceMenuOpen((open) => !open)}
