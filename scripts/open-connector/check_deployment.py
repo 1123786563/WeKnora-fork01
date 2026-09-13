@@ -189,17 +189,42 @@ def _validate_hardening(services, errors):
             errors.append("%s: a healthcheck declaration is required" % name)
 
 
-def _validate_networks(config, services, errors):
+# network_mode values compatible with the private zero-publish posture.
+# "host" publishes everything on the host stack; "container:<id>" shares
+# another container's stack; "none" removes networking - none of these can
+# coexist with the mandated private-bridge topology (hardening QF-02).
+_ALLOWED_NETWORK_MODES = frozenset((None, "", "default", "bridge"))
+
+
+def _validate_network_mode(name, service, errors):
+    mode = service.get("network_mode")
+    if mode in _ALLOWED_NETWORK_MODES:
+        return
+    errors.append(
+        "%s: network_mode %r would silently bypass the private zero-publish "
+        "posture (host/container/none break the bridge isolation); remove it "
+        "and attach the private networks instead" % (name, mode)
+    )
+
+
+def _validate_networks(networks, services, errors):
     """No published ports (sketch core) + controlled egress (ruling 4)."""
-    networks = config.get("networks") or {}
     svc = services.get("open-connector")
     if not svc:
+        return
+    declared = svc.get("networks")
+    if declared is not None and not isinstance(declared, (list, dict)):
+        errors.append("open-connector: networks must be a list of network names or a mapping")
         return
     attached = _service_network_names(svc)
     if attached is None:
         # No explicit networks: compose attaches the default bridge, which is
         # not internal - controlled egress works.
         return
+    for entry in attached:
+        if not isinstance(entry, str) or not entry:
+            errors.append("open-connector: networks entries must be network names or mappings")
+            return
     internal_only = bool(attached) and all(
         (networks.get(n) or {}).get("internal") for n in attached
     )
@@ -216,9 +241,27 @@ def validate_compose(config):
 
     The plan-sketch core is preserved verbatim (missing service / published
     private port); the extensions only add errors, never mute core ones.
+    Malformed shapes (non-mapping documents, scalar service entries) are
+    reported as friendly errors instead of raising (hardening QF-03).
     """
     errors = []
+    if not isinstance(config, dict):
+        return ["config: top-level compose document must be a mapping"]
     services = config.get("services", {})
+    if not isinstance(services, dict):
+        errors.append("services: must be a mapping of service name to service definition")
+        services = {}
+    for name, svc in services.items():
+        if not isinstance(svc, dict):
+            errors.append("%s: service definition must be a mapping" % name)
+    services = {n: s for n, s in services.items() if isinstance(s, dict)}
+    networks = config.get("networks")
+    if networks is None:
+        networks = {}
+    if not isinstance(networks, dict):
+        errors.append("networks: must be a mapping of network name to definition")
+        networks = {}
+
     for name in ("open-connector", "connector-db", "connector-control"):
         svc = services.get(name)
         if not svc:
@@ -227,12 +270,12 @@ def validate_compose(config):
             errors.append("published private service: " + name)
 
     for name, svc in services.items():
-        if isinstance(svc, dict):
-            _validate_image(name, svc, errors)
+        _validate_image(name, svc, errors)
+        _validate_network_mode(name, svc, errors)
     _validate_admin_secret_scoping(services, errors)
     _validate_encryption_key(services, errors)
     _validate_hardening(services, errors)
-    _validate_networks(config, services, errors)
+    _validate_networks(networks, services, errors)
     return errors
 
 

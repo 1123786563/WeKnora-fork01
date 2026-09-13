@@ -222,6 +222,49 @@ class DeploymentTest(unittest.TestCase):
         del cfg["services"]["open-connector"]["networks"]
         self.assertEqual(validate_compose(cfg), [])
 
+    # ---- hardening round (quality QF-02/QF-03) ----------------------------
+
+    def test_network_mode_host_rejected_for_core_services(self):
+        for name in ("open-connector", "connector-db", "connector-control"):
+            cfg = good_config()
+            cfg["services"][name]["network_mode"] = "host"
+            errors = validate_compose(cfg)
+            self.assertTrue(any(name in e and "network_mode" in e for e in errors), name)
+
+    def test_network_mode_container_rejected(self):
+        cfg = good_config()
+        cfg["services"]["connector-control"]["network_mode"] = "container:other"
+        errors = validate_compose(cfg)
+        self.assertTrue(any("connector-control" in e and "network_mode" in e for e in errors))
+
+    def test_network_mode_default_bridge_allowed(self):
+        cfg = good_config()
+        cfg["services"]["open-connector"]["network_mode"] = "bridge"
+        self.assertEqual(validate_compose(cfg), [])
+
+    def test_malformed_top_level_rejected_not_crash(self):
+        for bad in ([], "x", 42, None):
+            errors = validate_compose(bad)
+            self.assertTrue(any("mapping" in e for e in errors), bad)
+
+    def test_malformed_services_section_rejected_not_crash(self):
+        errors = validate_compose({"services": ["open-connector"]})
+        self.assertTrue(any("services" in e and "mapping" in e for e in errors))
+        self.assertTrue(any("missing service: " + n in errors for n in ("open-connector", "connector-db", "connector-control")))
+
+    def test_malformed_service_entry_rejected_not_crash(self):
+        for name, bad in (("open-connector", "scalar"), ("connector-control", 7), ("weknora-api", ["x"])):
+            cfg = good_config()
+            cfg["services"][name] = bad
+            errors = validate_compose(cfg)
+            self.assertTrue(any(name in e and "mapping" in e for e in errors), (name, bad))
+
+    def test_malformed_networks_entry_rejected_not_crash(self):
+        cfg = good_config()
+        cfg["services"]["open-connector"]["networks"] = "oc-net"
+        errors = validate_compose(cfg)
+        self.assertTrue(any("networks" in e and "open-connector" in e for e in errors))
+
 
 class ShippedComposeTest(unittest.TestCase):
     """The shipped compose file must pass its own validator (docker required)."""

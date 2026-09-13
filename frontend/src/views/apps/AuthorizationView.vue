@@ -68,15 +68,17 @@
 // Space-epoch discipline: switching spaces (or leaving the page) cancels the
 // in-flight poll and the polling timer; late responses are dropped by epoch.
 import { computed, onUnmounted, ref, watch } from 'vue'
+import { pollBackoffDelayMs } from './pollBackoff'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { getAuthorizationAttempt, type OCAuthorizationAttemptView } from '@/api/appConnectors'
 
-const POLL_INTERVAL_MS = 3000
-const POLL_MAX_INTERVAL_MS = 30000
 // Consecutive poll failures double the next delay (reset on success), so a
-// degraded backend backs off instead of being hammered every 3s (T15 QF-3).
+// degraded backend backs off instead of being hammered every 3s (T15 QF-3;
+// the counter increment and curve live since the T16 hardening round —
+// QF-01 found the delay curve was dead code without the increment; the
+// constants and curve are owned by pollBackoff.ts).
 let pollFailures = 0
 
 const { t } = useI18n()
@@ -155,6 +157,7 @@ const pollOnce = async () => {
     scheduleNext()
   } catch (e) {
     if (run !== epoch || isAbortError(e)) return
+    pollFailures += 1
     loadError.value = true
     polled.value = true
     // A transient error no longer kills polling permanently: back off and
@@ -177,11 +180,10 @@ const scheduleNext = () => {
   const expires = attempt.value?.expires_at
   const expiresMs = expires ? Date.parse(expires) : NaN
   if (!Number.isNaN(expiresMs) && expiresMs <= Date.now()) return
-  const delay = Math.min(POLL_INTERVAL_MS * 2 ** pollFailures, POLL_MAX_INTERVAL_MS)
   timer = setTimeout(() => {
     timer = null
     pollOnce()
-  }, delay)
+  }, pollBackoffDelayMs(pollFailures))
 }
 
 watch(
