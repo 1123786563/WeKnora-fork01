@@ -21,6 +21,7 @@ import {
   type KnowledgeBaseSaveInput,
 } from './knowledge-bases/list.ts';
 import { KnowledgeBaseShareDialog } from './knowledge-bases/KnowledgeBaseShareDialog.tsx';
+import { findUploadTargetPage, patchUploadTask, summarizeUploadTasks, upsertUploadTask, type UploadTaskState } from './knowledge-bases/upload-progress.ts';
 
 interface KnowledgeBasesPageProps {
   client: WeKnoraClient;
@@ -96,6 +97,9 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
   });
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [uploadTasks, setUploadTasks] = useState<UploadTaskState[]>([]);
+  const uploadCleanupTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const uploadRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Create / edit dialog state. Prefills the full config when editing.
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -179,6 +183,104 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
   }, [space, pageState, cards, viewer.userId]);
 
   useEffect(() => { setPage(1); }, [creator, query, space]);
+
+  useEffect(() => {
+    type UploadEventDetail = { uploadId?: string; kbId?: string | number; fileName?: string; progress?: number; status?: UploadTaskState['status']; error?: string };
+    const addOrPatch = (event: Event, fallbackStatus: UploadTaskState['status']) => {
+      const detail = (event as CustomEvent<UploadEventDetail>).detail;
+      if (!detail?.uploadId || detail.kbId === undefined) return;
+      const task: UploadTaskState = {
+        uploadId: detail.uploadId,
+        kbId: String(detail.kbId),
+        fileName: detail.fileName,
+        progress: typeof detail.progress === 'number' ? detail.progress : 0,
+        status: detail.status ?? fallbackStatus,
+        error: detail.error,
+      };
+      setUploadTasks((current) => upsertUploadTask(current, task));
+    };
+    const onStart = (event: Event) => addOrPatch(event, 'uploading');
+    const onProgress = (event: Event) => {
+      const detail = (event as CustomEvent<UploadEventDetail>).detail;
+      if (!detail?.uploadId || typeof detail.progress !== 'number') return;
+      const uploadId = detail.uploadId;
+      const progress = detail.progress;
+      if (detail.kbId === undefined) return;
+      setUploadTasks((current) => current.some((task) => task.uploadId === uploadId)
+        ? patchUploadTask(current, uploadId, { progress })
+        : upsertUploadTask(current, { uploadId, kbId: String(detail.kbId), progress, status: 'uploading' }));
+    };
+    const onComplete = (event: Event) => {
+      const detail = (event as CustomEvent<UploadEventDetail>).detail;
+      if (!detail?.uploadId || detail.kbId === undefined) return;
+      setUploadTasks((current) => upsertUploadTask(current, {
+        uploadId: detail.uploadId!, kbId: String(detail.kbId), fileName: detail.fileName,
+        progress: typeof detail.progress === 'number' ? detail.progress : 100,
+        status: detail.status ?? 'success', error: detail.error,
+      }));
+      const existing = uploadCleanupTimers.current.get(detail.uploadId);
+      if (existing) clearTimeout(existing);
+      const timer = setTimeout(() => {
+        setUploadTasks((current) => current.filter((task) => task.uploadId !== detail.uploadId));
+        uploadCleanupTimers.current.delete(detail.uploadId!);
+      }, 10000);
+      uploadCleanupTimers.current.set(detail.uploadId, timer);
+    };
+    const onFinished = (event: Event) => {
+      const detail = (event as CustomEvent<{ kbId?: string | number }>).detail;
+      if (detail?.kbId === undefined) return;
+      if (uploadRefreshTimer.current) clearTimeout(uploadRefreshTimer.current);
+      uploadRefreshTimer.current = setTimeout(() => {
+        setReloadToken((value) => value + 1);
+        uploadRefreshTimer.current = null;
+      }, 800);
+    };
+    window.addEventListener('knowledgeFileUploadStart', onStart);
+    window.addEventListener('knowledgeFileUploadProgress', onProgress);
+    window.addEventListener('knowledgeFileUploadComplete', onComplete);
+    window.addEventListener('knowledgeFileUploaded', onFinished);
+    return () => {
+      window.removeEventListener('knowledgeFileUploadStart', onStart);
+      window.removeEventListener('knowledgeFileUploadProgress', onProgress);
+      window.removeEventListener('knowledgeFileUploadComplete', onComplete);
+      window.removeEventListener('knowledgeFileUploaded', onFinished);
+      uploadCleanupTimers.current.forEach((timer) => clearTimeout(timer));
+      uploadCleanupTimers.current.clear();
+      if (uploadRefreshTimer.current) clearTimeout(uploadRefreshTimer.current);
+      uploadRefreshTimer.current = null;
+    };
+  }, []);
+
+  const uploadSummaries = useMemo(() => summarizeUploadTasks(uploadTasks, (kbId) => {
+    const match = cards.find((card) => String(card.id) === kbId);
+    return match ? String(match.name ?? '') : t('knowledgeList.uploadProgress.unknownKb', { id: kbId });
+  }), [cards, t, uploadTasks]);
+
+  useEffect(() => {
+    if (!highlightId || pageState.status !== 'success') return;
+    const highlightCards = filterKnowledgeBases(scopedCards, {
+      query,
+      creator: space === 'mine' ? creator : 'all',
+      currentUserId: viewer.userId || undefined,
+      page: 1,
+      pageSize: Math.max(scopedCards.length, 1),
+    }).items;
+    const targetPage = findUploadTargetPage(highlightCards, highlightId);
+    if (targetPage !== null && targetPage !== page) {
+      setPage(targetPage);
+      return;
+    }
+    const escaped = typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(highlightId) : highlightId.replace(/[^a-zA-Z0-9_-]/g, '\\$&');
+    const element = document.querySelector<HTMLElement>(`[data-kb-id="${escaped}"]`);
+    if (element) element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const url = new URL(window.location.href);
+    url.searchParams.delete('highlightKbId');
+    window.history.replaceState({}, '', url);
+    const timer = setTimeout(() => {
+      setHighlightId(null);
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [creator, highlightId, page, pageState.status, query, scopedCards, space, viewer.userId]);
 
   const hasUninitialized = useMemo(
     () => cards.some((kb) => !isKnowledgeBaseInitialized(kb as never)),
@@ -323,6 +425,18 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
       {error ? <Status tone="error">{error}</Status> : null}
       {notice ? <Status tone="success">{notice}</Status> : null}
       {hasUninitialized ? <Status tone="warning">{t('knowledgeList.uninitializedBanner')}</Status> : null}
+      {uploadSummaries.length ? <div className="wk-upload-progress-panel" aria-live="polite">
+        {uploadSummaries.map((summary) => <div className="wk-upload-progress-item" key={summary.kbId}>
+          <div className="wk-upload-progress-icon" aria-hidden="true">{summary.completed === summary.total ? '✓' : '↑'}</div>
+          <div className="wk-upload-progress-content">
+            <div className="wk-upload-progress-title">{summary.completed === summary.total ? t('knowledgeList.uploadProgress.completedTitle', { name: summary.kbName }) : t('knowledgeList.uploadProgress.uploadingTitle', { name: summary.kbName })}</div>
+            <div className="wk-upload-progress-subtitle">{summary.completed === summary.total ? t('knowledgeList.uploadProgress.completedDetail', { total: summary.total }) : t('knowledgeList.uploadProgress.detail', { completed: summary.completed, total: summary.total })}</div>
+            <div className="wk-upload-progress-subtitle">{summary.completed === summary.total ? t('knowledgeList.uploadProgress.refreshing') : t('knowledgeList.uploadProgress.keepPageOpen')}</div>
+            {summary.hasError ? <div className="wk-upload-progress-subtitle wk-upload-progress-error">{t('knowledgeList.uploadProgress.errorTip')}</div> : null}
+            <div className="wk-upload-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={summary.progress}><div className="wk-upload-progress-fill" style={{ width: `${summary.progress}%` }} /></div>
+          </div>
+        </div>)}
+      </div> : null}
       <Card>
         <div className="wk-toolbar" role="search">
           <input
@@ -402,7 +516,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
                 const sharedEditable = card.isMine === false && isSharedKbEditable(card.permission);
                 const count = typeof card.knowledge_count === 'number' ? card.knowledge_count : 0;
                 return (
-                  <article key={card.id} className={initialized ? 'wk-kb-card' : 'wk-kb-card wk-kb-card-warning'}>
+                  <article key={card.id} data-kb-id={card.id} className={`${initialized ? 'wk-kb-card' : 'wk-kb-card wk-kb-card-warning'}${highlightId === card.id ? ' wk-kb-flash' : ''}`}>
                     <div className="wk-kb-card-head">
                       <button type="button" className="wk-kb-card-title" onClick={() => openKbSettings(kb)}>{String(card.name ?? '')}</button>
                       <button

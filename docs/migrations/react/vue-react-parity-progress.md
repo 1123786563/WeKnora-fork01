@@ -871,6 +871,16 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   pass. Exact localized copy, Vue/React screenshots, real backend, Wails,
   iOS, and Android evidence remain open; N031 stays `implementing`.
 
+- **N005 Web upload progress/highlight slice:** aligned the knowledge-base list
+  with Vue-compatible upload lifecycle events. Tasks are aggregated by KB,
+  successful and failed tasks remain visible for 10 seconds, refresh is
+  debounced and cleaned up on unmount, and all-failed batches do not trigger a
+  refresh. `highlightKbId` now clears from the URL after successful loading and
+  jumps to the target page across all list scopes. Focused tests pass 4/4, Web
+  regression passes 301/301, Web build and diff check pass, and independent
+  review passes. Browser/Vue screenshot, real-backend, Wails, iOS, and Android
+  evidence remain absent; N005 remains `implementing`.
+
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
 - **Rows:** any rows proposed for `accepted`; never all rows by default.
 - **Files owned:** `docs/migrations/react/vue-react-parity-matrix.md`, `docs/migrations/react/vue-react-parity-progress.md`, `docs/migrations/react/evidence/vue-react-parity/README.md`, `docs/migrations/react/evidence/vue-react-parity/screenshot-matrix.md`, and the row-specific `docs/migrations/react/evidence/vue-react-parity/<date>-<row-group>.md` evidence file only.

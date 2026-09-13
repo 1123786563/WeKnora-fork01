@@ -1,0 +1,34 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { clampUploadProgress, findUploadTargetPage, patchUploadTask, summarizeUploadTasks, upsertUploadTask, type UploadTaskState } from './upload-progress.ts';
+
+const task = (uploadId: string, kbId: string, progress: number, status: UploadTaskState['status'] = 'uploading'): UploadTaskState => ({ uploadId, kbId, progress, status });
+
+test('upload progress clamps and replaces duplicate task events', () => {
+  assert.equal(clampUploadProgress(123.4), 100);
+  const next = upsertUploadTask(upsertUploadTask([], task('u1', 'kb1', -4)), task('u1', 'kb1', 55.2));
+  assert.deepEqual(next, [task('u1', 'kb1', 55)]);
+});
+
+test('highlight target page is calculated for every filtered knowledge-base scope', () => {
+  const items = Array.from({ length: 25 }, (_, index) => ({ id: `kb-${index + 1}` }));
+  assert.equal(findUploadTargetPage(items, 'kb-13'), 2);
+  assert.equal(findUploadTargetPage(items, 'missing'), null);
+});
+
+test('upload progress patches only the matching task', () => {
+  const next = patchUploadTask([task('u1', 'kb1', 10), task('u2', 'kb1', 20)], 'u2', { status: 'success', progress: 100 });
+  assert.deepEqual(next, [task('u1', 'kb1', 10), task('u2', 'kb1', 100, 'success')]);
+});
+
+test('upload summaries aggregate progress by knowledge base and preserve errors', () => {
+  const summaries = summarizeUploadTasks([
+    { ...task('u1', 'kb1', 100, 'success'), fileName: 'a.pdf' },
+    { ...task('u2', 'kb1', 40, 'error'), fileName: 'b.pdf', error: 'failed' },
+    task('u3', 'kb2', 20),
+  ], (id) => id === 'kb1' ? 'Alpha' : 'Beta');
+  assert.deepEqual(summaries, [
+    { kbId: 'kb1', kbName: 'Alpha', total: 2, completed: 2, progress: 70, hasError: true },
+    { kbId: 'kb2', kbName: 'Beta', total: 1, completed: 0, progress: 20, hasError: false },
+  ]);
+});

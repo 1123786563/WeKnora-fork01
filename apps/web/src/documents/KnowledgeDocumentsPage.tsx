@@ -85,6 +85,10 @@ function errorMessage(error: unknown): string {
     : "The document operation failed.";
 }
 
+function emitKnowledgeUploadEvent(name: string, detail: Record<string, unknown>): void {
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(name, { detail }));
+}
+
 export function KnowledgeDocumentsPage({
   client,
   knowledgeBaseId,
@@ -391,6 +395,7 @@ export function KnowledgeDocumentsPage({
         setPendingManual(null);
         setPendingTagIds([]);
         setReloadToken((value) => value + 1);
+        emitKnowledgeUploadEvent("knowledgeFileUploaded", { kbId: knowledgeBaseId });
       } catch (error) {
         setUploadError(errorMessage(error));
       } finally { setUploading(false); }
@@ -415,6 +420,7 @@ export function KnowledgeDocumentsPage({
         }
         setPendingUrl("");
         setReloadToken((value) => value + 1);
+        emitKnowledgeUploadEvent("knowledgeFileUploaded", { kbId: knowledgeBaseId });
       } catch (error) {
         setUploadError(errorMessage(error));
         setUploading(false);
@@ -428,6 +434,13 @@ export function KnowledgeDocumentsPage({
     }
     const controller = new AbortController();
     uploadPipelineController.current = controller;
+    const uploadBatchId = `${knowledgeBaseId}-${Date.now()}`;
+    pendingEntries.forEach((entry, index) => emitKnowledgeUploadEvent("knowledgeFileUploadStart", {
+      uploadId: `${uploadBatchId}-${index}`,
+      kbId: knowledgeBaseId,
+      fileName: entry.name,
+      progress: 0,
+    }));
     try {
       const finalStates = await runUploadPipeline({
         entries: pendingEntries,
@@ -453,9 +466,29 @@ export function KnowledgeDocumentsPage({
           }
           return created;
         },
-        onStateChange: setUploadStates,
+        onStateChange: (states) => {
+          setUploadStates(states);
+          states.forEach((state, index) => emitKnowledgeUploadEvent("knowledgeFileUploadProgress", {
+            uploadId: `${uploadBatchId}-${index}`,
+            kbId: knowledgeBaseId,
+            fileName: state.entry.name,
+            progress: state.status === "done" || state.status === "error" ? 100 : state.status === "uploading" ? 50 : 0,
+          }));
+          states.forEach((state, index) => {
+            if (state.status !== "done" && state.status !== "error") return;
+            emitKnowledgeUploadEvent("knowledgeFileUploadComplete", {
+              uploadId: `${uploadBatchId}-${index}`,
+              kbId: knowledgeBaseId,
+              fileName: state.entry.name,
+              progress: 100,
+              status: state.status === "done" ? "success" : "error",
+              error: state.message,
+            });
+          });
+        },
       });
       setReloadToken((value) => value + 1);
+      if (finalStates.some((state) => state.status === "done")) emitKnowledgeUploadEvent("knowledgeFileUploaded", { kbId: knowledgeBaseId });
       if (finalStates.some((state) => state.status === "error")) return;
       setPendingEntries([]);
       setPendingUrl("");
