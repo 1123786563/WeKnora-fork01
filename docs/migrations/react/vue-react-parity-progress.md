@@ -850,6 +850,7 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - R033 pick-row 百分比扇出（2026-09-14）：新增 AddSkillWizard 与 InstallSkillDialog 忙碌目标的逐行 install-events 订阅、AbortController 清理、Vue-compatible 0/5/100 fallback 与 18px 圆环/百分比布局；聚焦 SkillSettingsPanel 31/31、Web 681/681；证据 `evidence/vue-react-parity/2026-09-14-r033-pick-row-progress.md`。开放：浏览器同条件截图、Wails/native 证据；typecheck 仍被并行 `main.tsx`/`theme.ts` dirty changes 阻塞。
 - N007 图谱抽取反馈（2026-09-14）：GraphSettings 的标签/文本/关系抽取成功与失败、文件/URL 添加与重复提示统一改为页面级顶部 transient toast，保留上传失败的可修复 inline 状态；focused upload-confirm/pipeline 50/50、Web 681/681、typecheck:web 通过；证据 `evidence/vue-react-parity/2026-09-14-n007-extraction-toast.md`。开放：图谱启用后真实抽取端点与浏览器/Vue 同条件截图；当前部署图数据库关闭，标记 `blocked-env`。
 - N010 标签管理（2026-09-14）：FAQ 标签筛选面板新增 Vue `KbTagManageDrawer` 等价入口，支持搜索、创建、重命名、删除确认、FAQ 数量、错误/加载态及删除后的活动筛选清理；api-client 补齐三条标签 CRUD 端点。FAQ/API focused 28/28、Web 682/682、typecheck:web 通过；证据 `evidence/vue-react-parity/2026-09-14-n010-tag-manage.md`。开放：真实后端浏览器与 Wails/native 证据。
+- 设置当前浏览器审计（2026-09-14）：已认证 React `settings?section=skills` 实际渲染技能设置、左侧分组导航、空态与双操作；源码复核确认 R027 section 切换/URL 同步已实现，R031 调试头/raw dump/折叠开关仅为过期历史台账描述，当前源码无对应 DOM。证据 `evidence/vue-react-parity/2026-09-14-settings-current-browser-audit.md`。Vue 同账号 computed-style 对照与 Wails/native 仍开放。
 - N007 upload graph 节集成（30f6008d）：UploadGraphSettings 全量 GraphSettings.vue 移植、systemInfo.graph_database_engine + KB indexing_strategy.graph_enabled 门控与导航回退、保存载荷 graph_enabled+extract_config（enabled 钳制）、URL 列表顺序上传、UploadSourceDropdown 文件/文件夹/URL 菜单 + URL 子对话校验、documents.css +290。独立复核：focused 45/45、documents 57/57。开放：extraction 端点 live e2e 需图库启用（当前部署关闭，门控已端到端验证）、错误提示 inline vs Vue toast、单节显示模型差异（导航顺序/门控一致）。
 - 主代理直接修复：SandboxSettingsPanel 开关对齐 Vue（5f272a1f）——折叠 details 换 单向 switch + 警告 popconfirm（Vue:36-55 语义），ⓘ 提示气泡样式，样式独立 sandbox-settings.css；24/24。
 - i18n 债登记：upload-pipeline.ts 本地字节级拷贝表（graphSettings.*/uploadConfirm.* 块）待迁 packages/i18n 共享包（N007 报告，不阻塞）。
@@ -1297,4 +1298,3 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - tag_name 裁决落地（92a7f982）：api-client FAQEntryPayload 增可选 tag_name（后端 faq.go:336 支持）；parseExcelFile 读取 标签/分类/tag_name 列（Vue :2029）且 normalizeExcelPayload 恒发 tag_name（Vue :2072 语义，空列发 ''）；TDD 红→绿（3/3），faq 全套 26/26、typecheck:web 0。
 - A4 全链闭环：vendored xlsx（a4d223bc）+ tag_name（92a7f982）——Excel 导入从 unsupportedFormat 占位升级为 Vue 级全功能。
-
