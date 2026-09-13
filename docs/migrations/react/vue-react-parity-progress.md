@@ -1059,6 +1059,16 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - **Review gate:** a row can move to `accepted` only when all applicable platform evidence and unresolved backend decisions are closed or explicitly out-of-scope by user decision.
 - **Commit boundary:** one acceptance-docs commit per row group.
 
+## 2026-09-13 Round N+3（续2）— creatChat 居中修复 + contextualGuide 回填 + R031 集成 + 证据守护
+
+- creatChat 空态布局真实分歧修复（42a67935，协调者直接实施）：5 语扫描目检发现 React 把欢迎语钉顶、composer 钉底，Vue 是 .dialogue-wrap 双轴居中簇——像素排序曾对其打 3.96% 低分（稀疏内容下百分比失真），文本指纹+并排目检才暴露。TDD 红（无 --empty 类+渲染滚动容器）→绿 16/16；live 复拍与 Vue 构图一致（簇中心尚差 ~40px，列 polish）。
+- contextualGuide i18n 回填集成（d33cc559，子代理实施+独立复核）：89 键×5 语入 packages/i18n generated + 三层字节级钉死测试（shared↔Vue、merged、local↔shared），审计 0 漂移；shared 392/392。遗留：renderContextualGuideMessage 共享优先分层（文件头+证据已记）。
+- R031 会话标题集成（04296bee，子代理实施+独立复核）：api-client sessions.get + 面板并行标题加载/未命名回退/无 raw id 闪烁；shared 392/392、面板 26/26、sessions 7/7。pick-row percent fan-out 移交 R033（精确交接在证据文档）；R031 新增开放项：openSession 行导航需集成层 prop、inventory 内联 Card vs SettingDrawer 另案。
+- 证据守护：并行 agent 的 891673ea（标题为删旧截图）误删了 round-3 双端批扫证据且卷入了 R031 在途文件——已恢复 40 文件（13899d48）并在 R031 集成提交中清理其临时探针文件。登记约定：证据删除类提交必须逐路径核对被引用证据。
+- 5 语扫描入库（539c4c4a）：.parity-tools/locale-sweep.cjs + 30 张双端截图 + 证据文档；语言覆盖证据从"仅 zh"推进到 5 语×3 路由×双端。
+- 在途（2）：shell-sessions-header（PlatformShell/shell.css，tsc 尚有 2 错误收敛中）、settings-visual-polish（GeneralPreferencesPanel/styles.css .wks-*）。
+
+
 ## 2026-09-13 Round N+3（续）— 移动端运行器修复集成 + 指纹取证
 
 - 移动端测试运行器修复集成（55fdb0d6，子代理实施 + 主代理独立复核 118/118 + typecheck 0）：根因为裸 import esbuild 未声明 + npx tsx 的 NODE_PATH 意外泄漏；改走 createRequire(apps/web) 主机解析 + tsconfig paths（顺带修复既有 typecheck:mobile 红）。遗留（协调者所有）：knowledge/*.test.tsx 同款裸 import（现 glob 不执行 .tsx）、esbuild/jsdom 声明为 mobile devDeps 需根 lockfile 集成。
