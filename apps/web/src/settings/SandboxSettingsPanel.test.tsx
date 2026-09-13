@@ -242,15 +242,17 @@ test('script policy disable requires confirmation while enable applies directly 
     role="admin"
     initialData={{ items: [], workspaceScriptsDisabled: false } as never}
   />);
-  assert.match(enabledHtml, /data-confirm="disable-scripts"/);
-  assert.match(enabledHtml, new RegExp(t('settings.sandbox.disableScriptsConfirm')));
+  // Enabled renders the one-way switch on; the warning popconfirm only exists
+  // after the user clicks the switch (Vue t-popconfirm on t-switch).
+  assert.match(enabledHtml, /role="switch" aria-checked="true"/);
+  assert.doesNotMatch(enabledHtml, /data-confirm="disable-scripts"/);
   const disabledHtml = renderToStaticMarkup(<SandboxSettingsPanel
     client={{} as never}
     role="admin"
     initialData={{ items: [], workspaceScriptsDisabled: true } as never}
   />);
+  assert.match(disabledHtml, /role="switch" aria-checked="false"/);
   assert.doesNotMatch(disabledHtml, /data-confirm="disable-scripts"/);
-  assert.match(disabledHtml, new RegExp(t('settings.sandbox.enableScripts')));
 });
 
 // ---- wizard structure (drawer.vue:34-57, 953-1006) --------------------------

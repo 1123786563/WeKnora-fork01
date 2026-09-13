@@ -1,0 +1,99 @@
+/* SandboxSettings panel styles ported from frontend/src/views/settings/SandboxSettings.vue
+   (switch row + page hint). Scoped to the sandbox panel to avoid leaking. */
+
+/* Page hint (SandboxSettings.vue:8-19): Vue shows an inline info icon with a
+   hover/click popover — never a native disclosure triangle. */
+.wk-sandbox-settings .wk-sandbox-hint {
+  display: inline-block;
+  position: relative;
+  margin-left: 6px;
+}
+.wk-sandbox-settings .wk-sandbox-hint > summary {
+  list-style: none;
+  cursor: pointer;
+  color: var(--wks-text-secondary, #6b7280);
+  line-height: 1;
+  user-select: none;
+}
+.wk-sandbox-settings .wk-sandbox-hint > summary::-webkit-details-marker { display: none; }
+.wk-sandbox-settings .wk-sandbox-hint[open] > div {
+  position: absolute;
+  z-index: 30;
+  top: 20px;
+  left: -8px;
+  width: 320px;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid var(--wks-border, #e5e7eb);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
+.wk-sandbox-settings .wk-sandbox-hint[open] > div p { margin: 4px 0; font-size: 12px; }
+
+/* Script policy switch row (SandboxSettings.vue:36-55): TDesign t-switch with
+   warning popconfirm on disable. One-way binding: the switch cannot flip until
+   the confirm is accepted. */
+.wk-sandbox-policy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--wks-border, #f0f0f0);
+}
+.wk-sandbox-policy strong { font-size: 14px; color: var(--wks-text-primary, #1f2937); }
+.wks-switch {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  border-radius: 11px;
+  border: none;
+  padding: 0;
+  background: var(--wks-border-strong, #d9d9d9);
+  cursor: pointer;
+  transition: background 0.2s ease;
+  flex: none;
+}
+.wks-switch.is-on { background: var(--wks-primary, #00a870); }
+.wks-switch:disabled { cursor: not-allowed; opacity: 0.6; }
+.wks-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s ease;
+}
+.wks-switch.is-on .wks-switch-thumb { transform: translateX(18px); }
+
+.wks-popconfirm {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--wks-warning-border, #ffe1c7);
+  background: var(--wks-warning-bg, #fff7ec);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--wks-text-primary, #1f2937);
+}
+.wks-popconfirm p { margin: 0; }
+.wks-popconfirm-actions { display: flex; gap: 8px; }
+.wks-popconfirm-cancel {
+  border: 1px solid var(--wks-border, #e5e7eb);
+  background: #fff;
+  border-radius: 6px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+.wks-popconfirm-danger {
+  border: none;
+  background: var(--wks-danger, #e34d59);
+  color: #fff;
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+}

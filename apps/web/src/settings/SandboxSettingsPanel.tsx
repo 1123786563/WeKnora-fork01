@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import './sandbox-settings.css';
 import {
   parseSandboxConfigurationConflict,
   type CubeSandboxConfig,
@@ -1593,6 +1594,8 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
   const [editing, setEditing] = useState<{ record: SandboxConfigRecord | null; presetType: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [deleteAgents, setDeleteAgents] = useState<Record<string, string[]>>({});
+  /** SandboxSettings.vue:43-55 — only switching execution OFF pops the warning confirm. */
+  const [confirmingDisable, setConfirmingDisable] = useState(false);
   const [inventory, setInventory] = useState<{ record: SandboxConfigRecord; data: SandboxInventory; notice: 'blocked' | 'unverifiable' } | null>(null);
 
   const load = useCallback(async () => {
@@ -1730,18 +1733,26 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
             <p className="wk-muted">{t('settings.sandbox.scriptPolicyDesc')}</p>
           </div>
           {data?.workspaceScriptsDisabled ? (
-            <Button type="button" disabled={busy} onClick={() => void setScriptsDisabled(false)}>{t('settings.sandbox.enableScripts')}</Button>
-          ) : (
-            <div data-confirm="disable-scripts">
-              <details>
-                <summary>{t('settings.sandbox.disableScripts')}</summary>
-                <div>
-                  <p>{t('settings.sandbox.disableScriptsConfirm')}</p>
-                  <Button type="button" disabled={busy} onClick={() => void setScriptsDisabled(true)}>{t('settings.sandbox.disableScripts')}</Button>
-                  <Button type="button" disabled={busy}>{t('common.cancel')}</Button>
-                </div>
-              </details>
+            <button type="button" role="switch" aria-checked="false" className="wks-switch" disabled={busy}
+              aria-label={t('settings.sandbox.scriptPolicyLabel')}
+              onClick={() => void setScriptsDisabled(false)}>
+              <span className="wks-switch-thumb" aria-hidden="true" />
+            </button>
+          ) : confirmingDisable ? (
+            <div className="wks-popconfirm" role="alertdialog" aria-label={t('settings.sandbox.disableScriptsConfirm')} data-confirm="disable-scripts">
+              <p>{t('settings.sandbox.disableScriptsConfirm')}</p>
+              <div className="wks-popconfirm-actions">
+                <button type="button" className="wks-popconfirm-cancel" disabled={busy} onClick={() => setConfirmingDisable(false)}>{t('common.cancel')}</button>
+                <button type="button" className="wks-popconfirm-danger" disabled={busy}
+                  onClick={() => { setConfirmingDisable(false); void setScriptsDisabled(true); }}>{t('settings.sandbox.disableScripts')}</button>
+              </div>
             </div>
+          ) : (
+            <button type="button" role="switch" aria-checked="true" className="wks-switch is-on" disabled={busy}
+              aria-label={t('settings.sandbox.scriptPolicyLabel')}
+              onClick={() => setConfirmingDisable(true)}>
+              <span className="wks-switch-thumb" aria-hidden="true" />
+            </button>
           )}
         </div>
       ) : null}
