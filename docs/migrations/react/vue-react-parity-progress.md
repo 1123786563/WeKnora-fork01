@@ -1,5 +1,11 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-14 Round N+11 — R024/N016 MCP card anatomy slice
+
+- 按 Vue `McpSettings.vue` 卡片结构收口 React：服务网格使用 320px 最小列与 10px 间距，卡片内工具徽标、图标化编辑/删除操作、使用说明空态、工具同步入口、传输类型和启用状态均对齐；管理员新增服务改为网格内虚线卡片，viewer 空态保持无新增入口。
+- 共享样式仅作用于 MCP 类名，保留键盘焦点、aria-label、switch 状态和响应式单列断点；`McpSettingsPanel` 专项 11/11、Web 全量 670/670、Shared 419/419、Desktop 2/2、Embed 7/7，`typecheck:web` 通过。
+- 该 slice 仍为 `review`：尚未新增本轮浏览器 computed-style、真实 MCP 服务同步、Wails 原生运行证据；不把组件测试或共享包回归当作最终逐页验收。
+
 ## 2026-09-14 Round N+10 — R013 IM wizard render verification
 
 - 修复并验证 IM 向导实际 React 渲染接缝：新增/编辑抽屉、四步导航、无智能体校验、企业微信凭证字段、微信二维码绑定门控与 payload 提交；交互渲染测试 5/5。
