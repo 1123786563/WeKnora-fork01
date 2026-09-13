@@ -565,17 +565,21 @@
   padding: 0.15rem 0.25rem;
 }
 
+/* Vue t-pagination default (live :5180 computed styles, .parity-tools/
+   vue-pager-probe.cjs): borderless numbers, radius 3px, 24px box; current =
+   brand #07c05f fill + white text; hover = brand text on transparent. */
 .wk-tenant-members .wk-pager__page,
 .wk-tenant-members .wk-pager__prev,
 .wk-tenant-members .wk-pager__next {
   align-items: center;
-  background: var(--wk-surface, #fff);
-  border: 1px solid var(--wk-border, #dce3ed);
-  border-radius: 6px;
-  color: var(--wk-text, #172033);
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: rgba(0, 0, 0, 0.9);
   cursor: pointer;
   display: inline-flex;
   font: inherit;
+  font-weight: 400;
   height: 1.5rem;
   justify-content: center;
   min-width: 1.5rem;
@@ -583,16 +587,20 @@
 }
 
 .wk-tenant-members .wk-pager__page[aria-current="page"] {
-  background: #2e6de6;
-  border-color: #2e6de6;
+  background: #07c05f;
   color: #fff;
 }
 
 .wk-tenant-members .wk-pager__page:hover:not([aria-current="page"]),
 .wk-tenant-members .wk-pager__prev:hover:not(:disabled),
 .wk-tenant-members .wk-pager__next:hover:not(:disabled) {
-  border-color: #2e6de6;
-  color: #2e6de6;
+  color: #07c05f;
+}
+
+.wk-tenant-members .wk-pager__prev:disabled,
+.wk-tenant-members .wk-pager__next:disabled {
+  color: rgba(0, 0, 0, 0.26);
+  cursor: default;
 }
 
 .wk-tenant-members .wk-pager__prev:disabled,
