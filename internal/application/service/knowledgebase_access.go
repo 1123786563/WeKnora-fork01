@@ -18,6 +18,12 @@ func kbReadPermissions(ctx context.Context, shares access.KBShareLookup) *access
 	return access.NewKBPermissions(ctx, shares)
 }
 
+// ResolveKBReadTenant is the exported resolver used by the semantic
+// query facade (Q04): owner tenant + read permission before issuance.
+func ResolveKBReadTenant(ctx context.Context, kb *types.KnowledgeBase, shares access.KBShareLookup) (uint64, error) {
+	return resolveKBReadTenant(ctx, kb, shares)
+}
+
 func resolveKBReadTenant(ctx context.Context, kb *types.KnowledgeBase, shares access.KBShareLookup) (uint64, error) {
 	if kb != nil {
 		allowed, err := kbReadPermissions(ctx, shares).Check(kb.ID, kb.TenantID, types.OrgRoleViewer)

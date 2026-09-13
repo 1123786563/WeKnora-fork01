@@ -38,7 +38,7 @@
 
 **接口：** SemanticScopeService.Issue(ctx,subjectID string,scope types.SemanticScopeKey,purpose string)(types.SemanticAccessScope,error)、Resolve(ctx,scopeRef string)(ScopeSnapshot,error)、ValidateDelivery(ctx,scope types.SemanticAccessScope)error；ScopeSnapshot包含allowed_document_ids、各文档max_source_revision、allow_retained_previous、deny_revision集合及expires_at；已发布旧版本仅在allow_retained_previous为true且未被屏障拒绝时可读，不能把可见文档无限扩展为任意历史版本；令牌与scope metadata一致。
 
-- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 func TestSemanticScopeRejectsEpochChange(t *testing.T) {
@@ -51,13 +51,13 @@ func TestSemanticScopeRejectsEpochChange(t *testing.T) {
 }
 ```
 
-- [ ] **2. 确认 RED**。执行 `go test ./internal/application/service -run TestSemanticScope -count=1`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [x] **2. 确认 RED**。执行 `go test ./internal/application/service -run TestSemanticScope -count=1`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 盘点成员撤销、角色/分享变更、文档移动、KB迁移/删除、临时文档访问等所有能影响可见性的写入口，清单列真实文件/函数/事务；每条接入同事务epoch或fail-closed访问版本**
+- [x] **3. 盘点成员撤销、角色/分享变更、文档移动、KB迁移/删除、临时文档访问等所有能影响可见性的写入口，清单列真实文件/函数/事务；每条接入同事务epoch或fail-closed访问版本**
 
-- [ ] **4. 基于现有访问服务生成不可变ScopeSnapshot，使用resource owner tenant而非请求者tenant；内部解析API只接受语义服务身份，校验audience/purpose/过期/哈希**
+- [x] **4. 基于现有访问服务生成不可变ScopeSnapshot，使用resource owner tenant而非请求者tenant；内部解析API只接受语义服务身份，校验audience/purpose/过期/哈希**
 
-- [ ] **5. 提供交付前ValidateDelivery，对当前epoch和删除屏障复查；变化返回可识别错误，使Q04整份结果作废，不允许仅删引用**
+- [x] **5. 提供交付前ValidateDelivery，对当前epoch和删除屏障复查；变化返回可识别错误，使Q04整份结果作废，不允许仅删引用**
 
 关键实现约束：
 
@@ -71,9 +71,9 @@ if currentEpoch != issued.PermissionEpoch || currentScopeHash != issued.ScopeHas
 // epoch读取必须来自业务权威；权限服务失败时直接返回错误。
 ```
 
-- [ ] **6. 确认 GREEN 与验收**。重跑 `go test ./internal/application/service -run TestSemanticScope -count=1`，预期退出码 0；另完成：覆盖跨空间共享资源owner、被撤销成员、过期/伪造scope、epoch读取失败；ACL写清单无漏接路径，否则后续查询不得上线。
+- [x] **6. 确认 GREEN 与验收**。重跑 `go test ./internal/application/service -run TestSemanticScope -count=1`，预期退出码 0；另完成：覆盖跨空间共享资源owner、被撤销成员、过期/伪造scope、epoch读取失败；ACL写清单无漏接路径，否则后续查询不得上线。
 
-- [ ] **7. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 A01 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): a01 可信AccessScope与权限变更屏障`。
+- [x] **7. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 A01 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): a01 可信AccessScope与权限变更屏障`。
 
 ## A02：授权事实子图与缓存隔离
 
@@ -89,7 +89,7 @@ if currentEpoch != issued.PermissionEpoch || currentScopeHash != issued.ScopeHas
 
 **接口：** authorize_assertion(assertion_id,scope_snapshot,manifest)->bool；build_authorized_subgraph(scope_snapshot,manifest,seeds:list[str],limits:QueryLimits)->AuthorizedGraph；AuthorizedGraph包含nodes/assertions/evidence/truncated/generation。cache_key(request,manifest)->str必须包含scope hash和epoch。
 
-- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 def test_hidden_alias_cannot_seed_visible_entity(access_graph):
@@ -100,15 +100,15 @@ def test_hidden_premise_invalidates_derived_edge(access_graph):
     assert not access_graph.visible("derived-a-c", allowed_documents={"d1"})
 ```
 
-- [ ] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_access_graph.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [x] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_access_graph.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 在向量候选和实体别名阶段先过滤来源；数据查询强制owner tenant/KB/generation/deny，后过滤补查不能作为唯一防线**
+- [x] **3. 在向量候选和实体别名阶段先过滤来源；数据查询强制owner tenant/KB/generation/deny，后过滤补查不能作为唯一防线**
 
-- [ ] **4. 逐边扩展只接纳有可见支持的事实；规则推导必须所有前提可见，模型派生产物需全部依赖可见；多个独立支持路径可用可见路径重建**
+- [x] **4. 逐边扩展只接纳有可见支持的事实；规则推导必须所有前提可见，模型派生产物需全部依赖可见；多个独立支持路径可用可见路径重建**
 
-- [ ] **5. 达到节点/边/hop限制停止且标记truncated；禁止全库节点度数、隐藏等价边或摘要影响可见排序；首版按授权子图重算必要图指标**
+- [x] **5. 达到节点/边/hop限制停止且标记truncated；禁止全库节点度数、隐藏等价边或摘要影响可见排序；首版按授权子图重算必要图指标**
 
-- [ ] **6. 缓存key使用scope、epoch、generation、query、limits、模型/规则/配置digest；每次命中仍验证scope与deny，缓存不保存跨范围共享摘要**
+- [x] **6. 缓存key使用scope、epoch、generation、query、limits、模型/规则/配置digest；每次命中仍验证scope与deny，缓存不保存跨范围共享摘要**
 
 关键实现约束：
 
@@ -122,9 +122,9 @@ cache_identity = (owner_tenant, kb_id, generation, scope_hash,
 # can_read递归检查来源/前提并防环；授权图计算不得读取未授权图统计。
 ```
 
-- [ ] **7. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_access_graph.py -q`，预期退出码 0；另完成：真实存储fixture验证D4隐藏词不出现在种子/路径/排序/摘要/缓存；同名跨tenant不关联；大scope使用scope_ref而非突破RPC体积。
+- [x] **7. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_access_graph.py -q`，预期退出码 0；另完成：真实存储fixture验证D4隐藏词不出现在种子/路径/排序/摘要/缓存；同名跨tenant不关联；大scope使用scope_ref而非突破RPC体积。
 
-- [ ] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 A02 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): a02 授权事实子图与缓存隔离`。
+- [x] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 A02 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): a02 授权事实子图与缓存隔离`。
 
 ## A03：模型代理、原始用量与预算
 
@@ -146,7 +146,7 @@ cache_identity = (owner_tenant, kb_id, generation, scope_hash,
 
 **接口：** ModelGateway.invoke(invocation_id:str,operation_id:str,model_profile_ref:str,messages:list,budget_ref:str)->ModelResult；ModelResult含text、input_tokens、output_tokens、provider_request_id、status。ledger.claim仅获执行权的首次调用返回new，其余返回completed/in_flight/unknown，避免把本次claim误当重复请求。Go SemanticBudgetPort.Reserve/Finalize/Reconcile围绕invocation ID；复用已实现预算系统，否则建立本任务预算仓库和原始用量表，不伪称已接商业结算。
 
-- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 def test_retry_same_invocation_does_not_double_finalize(model_gateway):
@@ -157,15 +157,15 @@ def test_retry_same_invocation_does_not_double_finalize(model_gateway):
 # model_gateway fixture：真实Go内部HTTP+受控provider，计数来自持久调用表。
 ```
 
-- [ ] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_model_gateway.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [x] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_model_gateway.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 定义operation/query关联短期模型能力凭据，校验tenant、用途、model_profile、budget；禁止任意URL/长期key透传；验证Semantica各调用入口都经过该adapter**
+- [x] **3. 定义operation/query关联短期模型能力凭据，校验tenant、用途、model_profile、budget；禁止任意URL/长期key透传；验证Semantica各调用入口都经过该adapter**
 
-- [ ] **4. 把预算预占、调用记录、实际用量和未知结果分开；未发送前失败可释放，provider可能执行但响应丢失进入unknown并对账，不能盲重发同一invocation**
+- [x] **4. 把预算预占、调用记录、实际用量和未知结果分开；未发送前失败可释放，provider可能执行但响应丢失进入unknown并对账，不能盲重发同一invocation**
 
-- [ ] **5. 重试的新真实provider调用分配新的invocation ID，关联原任务；父任务只引用子调用，不再次记录聚合消费。平台模型与BYOK均记录原始用量但不自行创造收费规则**
+- [x] **5. 重试的新真实provider调用分配新的invocation ID，关联原任务；父任务只引用子调用，不再次记录聚合消费。平台模型与BYOK均记录原始用量但不自行创造收费规则**
 
-- [ ] **6. 传播deadline/cancel并限制输出token；生产凭据不落日志；PG97/SQLite18实施前重核迁移号，权限/额度不足返回明确错误**
+- [x] **6. 传播deadline/cancel并限制输出token；生产凭据不落日志；PG97/SQLite18实施前重核迁移号，权限/额度不足返回明确错误**
 
 关键实现约束：
 
@@ -179,6 +179,6 @@ reservation = budget.reserve(budget_ref, invocation_id, upper_bound)
 # provider调用后ledger.save_actual并按同一invocation finalize；未知结果保留预占待对账。
 ```
 
-- [ ] **7. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_model_gateway.py -q`，预期退出码 0；另完成：Go TestSemanticModel覆盖额度竞争、BYOK原始用量、unknown对账；真实模型至少一次证明上游无旁路直连；无凭据保持真实调用项未通过。
+- [x] **7. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_model_gateway.py -q`，预期退出码 0；另完成：Go TestSemanticModel覆盖额度竞争、BYOK原始用量、unknown对账；真实模型至少一次证明上游无旁路直连；无凭据保持真实调用项未通过。
 
-- [ ] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 A03 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): a03 模型代理、原始用量与预算`。
+- [x] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 A03 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): a03 模型代理、原始用量与预算`。

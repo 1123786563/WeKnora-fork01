@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./semantic": "./src/semantic.ts"
   },
   "dependencies": {
     "@weknora/contracts": "workspace:*"

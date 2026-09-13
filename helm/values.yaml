@@ -1,6 +1,28 @@
 # Copyright 2025 Tencent
 # SPDX-License-Identifier: MIT
 #
+# Semantic service (O01): DISABLED by default - enabling is an explicit
+# operator action (never a build side effect); internal RPC is only
+# reachable in-cluster from the Go business system.
+semantic:
+  enabled: false
+  replicas: 1
+  image: weknora/semantic:0.6.8
+  secretName: weknora-semantic-secrets
+  # Either mount a TLS secret (recommended) or explicitly opt into
+  # plaintext for isolated internal deployments - the service refuses to
+  # boot otherwise (config validation is fail-closed).
+  tls:
+    secretName: ""
+  allowPlaintext: false
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+#
 # WeKnora Helm Chart Values
 #
 # Best Practices References:

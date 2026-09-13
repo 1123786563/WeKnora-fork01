@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-11T16:06:16Z",
+  "dataset": "semantic/experiments/fixtures/questions.jsonl (30 cases, 6 categories x 5, synthetic Chinese corpus)",
+  "evidence": {
+    "semantica": "docs/superpowers/plans/semantica/semantica-results.jsonl (run 2026-09-11T16:06:16Z, 30 rows + summary)",
+    "native": "docs/superpowers/plans/semantica/native-results.jsonl (blocked: 30 error rows + summary)"
+  },
+  "approved": false,
+  "approval": {
+    "required": "explicit user acceptance decision",
+    "status": "pending",
+    "reason": "native comparison is unmeasured (blocked on isolated test deployment + model credentials) and all thresholds below are proposed from semantica-mode measurements on a controlled 14-node corpus only"
+  },
+  "hard_gates": {
+    "permission_leak_count": {
+      "proposed_max": 0,
+      "measured": 0,
+      "basis": "semantica run 2026-09-11, 30 cases; leak gate checks hit content objects, node names, related ids, cited quotes and evidence ids, case-insensitive"
+    },
+    "note": "permission leak is an absolute hard gate; no average may compensate (V03 spec)"
+  },
+  "proposed": {
+    "semantica_mode": {
+      "correct_rate_min": {
+        "value": 0.7,
+        "measured": 0.767,
+        "basis": "floor = measured minus observed variance margin on 30 controlled cases"
+      },
+      "evidence_recall_mean_nonempty_min": {
+        "value": 0.88,
+        "measured": 0.925,
+        "basis": "measured mean recall over the 20 cases with non-empty expected evidence (empty-expected recall is definitional 1.0 and excluded)"
+      },
+      "evidence_precision_mean_min": {
+        "value": 0.55,
+        "measured": 0.628,
+        "basis": "keyword retrieval over-cites incident facts; production adapter (Q01) must improve before tightening"
+      },
+      "multihop_correct_rate_min": {
+        "value": 0.4,
+        "measured": 0.4,
+        "basis": "upstream related-expansion follows outgoing edges only; direction-aware expansion is Q01 scope and must raise this"
+      },
+      "unanswerable_correct_rate_min": {
+        "value": 0.2,
+        "measured": 0.2,
+        "basis": "keyword retrieval cannot judge absence; explicit insufficiency determination is Q03 scope and must raise this"
+      },
+      "latency_hot_p95_max_ms": {
+        "value": 10,
+        "measured": 0.02,
+        "basis": "controlled 14-node in-memory corpus; 10ms is headroom on this corpus only, NOT a production-scale claim"
+      },
+      "tokens_per_query_max": {
+        "value": 0,
+        "measured": 0,
+        "basis": "retrieval-only evaluation, no model invoked; model-mode token thresholds pending credentials"
+      }
+    },
+    "native_mode": {
+      "status": "unmeasured",
+      "blocked_reason": "requires an isolated TEST deployment of the existing WeKnora graph services (SEMANTICA_EXPERIMENT_NATIVE_URL) plus extraction-backed graph data and model credentials; production URLs are forbidden",
+      "thresholds": null
+    },
+    "comparison_gates": {
+      "status": "unmeasured",
+      "note": "spec section 9: semantica must meet or beat native on the same corpus before any backend switch; numbers deferred until native runs"
+    }
+  }
+}

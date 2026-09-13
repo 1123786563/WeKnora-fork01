@@ -40,7 +40,7 @@
 
 **接口：** 实现总计划4.1全部 DTO 与7个RPC；Go SemanticClient 接口 Apply(ctx,types.SemanticApplyRequest)(types.SemanticOperation,error)、Delete(ctx,types.SemanticDocumentRevision)(types.SemanticOperation,error)、Get/Cancel(ctx,types.SemanticScopeKey,string)(types.SemanticOperation,error)、Search(ctx,types.SemanticSearchRequest)(types.SemanticSearchResponse,error)、Reason(ctx,types.SemanticReasonRequest)(types.SemanticReasonResponse,error)、Capabilities(ctx)(types.SemanticCapabilities,error)。ctx均为context.Context。
 
-- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 def test_optional_evidence_span_is_not_zero():
@@ -51,13 +51,13 @@ def test_optional_evidence_span_is_not_zero():
 # Go golden 测试必须额外 round-trip uint64 最大值，tenant/revision 不经 float64。
 ```
 
-- [ ] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_contract.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [x] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_contract.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 逐字段定义枚举、optional、oneof与RPC envelope；tenant和revision使用uint64，JSON公共边界把64位整数编码为十进制字符串**
+- [x] **3. 逐字段定义枚举、optional、oneof与RPC envelope；tenant和revision使用uint64，JSON公共边界把64位整数编码为十进制字符串**
 
-- [ ] **4. 用同一 proto 生成 Go/Python；固定生成器版本并写脚本，旧tag删除后reserved；Golden覆盖空span、中文、unknown enum、最大uint64和错误detail**
+- [x] **4. 用同一 proto 生成 Go/Python；固定生成器版本并写脚本，旧tag删除后reserved；Golden覆盖空span、中文、unknown enum、最大uint64和错误detail**
 
-- [ ] **5. 新增Go接口及显式映射，不把protobuf对象穿透业务层；记录schema版本兼容规则与capability协商失败行为**
+- [x] **5. 新增Go接口及显式映射，不把protobuf对象穿透业务层；记录schema版本兼容规则与capability协商失败行为**
 
 关键实现约束：
 
@@ -82,9 +82,9 @@ message DocumentRevision {
 }
 ```
 
-- [ ] **6. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_contract.py -q`，预期退出码 0；另完成：执行 go test ./internal/infrastructure/semantic -run TestContract -count=1；二次生成 git diff 无变化；不要求未知枚举映射成默认成功。
+- [x] **6. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_contract.py -q`，预期退出码 0；另完成：执行 go test ./internal/infrastructure/semantic -run TestContract -count=1；二次生成 git diff 无变化；不要求未知枚举映射成默认成功。
 
-- [ ] **7. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 C01 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): c01 版本化协议和跨语言领域类型`。
+- [x] **7. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 C01 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): c01 版本化协议和跨语言领域类型`。
 
 ## C02：认证服务骨架和Go客户端
 
@@ -106,7 +106,7 @@ message DocumentRevision {
 
 **接口：** 新增 NewClient(config SemanticClientConfig)(interfaces.SemanticClient,error)、Close()error；Python create_server(config)->grpc.Server。rpc_client fixture启动随机本地端口和测试证书，缺认证不提供业务RPC；未实现方法返回UNIMPLEMENTED而不是假成功。
 
-- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 def test_missing_service_identity_is_denied(rpc_client):
@@ -115,13 +115,13 @@ def test_missing_service_identity_is_denied(rpc_client):
     assert exc.value.code() == grpc.StatusCode.UNAUTHENTICATED
 ```
 
-- [ ] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_rpc_auth.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [x] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_rpc_auth.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 建立server启动/关闭、健康探针与认证拦截器；生产缺TLS或内部认证配置时启动失败；测试证书仅测试使用**
+- [x] **3. 建立server启动/关闭、健康探针与认证拦截器；生产缺TLS或内部认证配置时启动失败；测试证书仅测试使用**
 
-- [ ] **4. Go客户端传递trace、deadline、取消，映射标准错误；仅Get/Capabilities等读操作可透明重试，Apply由业务按幂等键重试**
+- [x] **4. Go客户端传递trace、deadline、取消，映射标准错误；仅Get/Capabilities等读操作可透明重试，Apply由业务按幂等键重试**
 
-- [ ] **5. 注册可选服务配置；enabled=false时原系统可启动，禁止因client连接对象存在就判定服务ready**
+- [x] **5. 注册可选服务配置；enabled=false时原系统可启动，禁止因client连接对象存在就判定服务ready**
 
 关键实现约束：
 
@@ -133,9 +133,9 @@ if context.time_remaining() is not None and context.time_remaining() <= 0:
 # verified_service_identity 在 auth.py 验证 mTLS 身份或批准的内部token及受众。
 ```
 
-- [ ] **6. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_rpc_auth.py -q`，预期退出码 0；另完成：Go TestSemanticClient 覆盖连接失败、deadline、取消与UNIMPLEMENTED；健康readiness真实反映依赖，不公开宿主机业务端口。
+- [x] **6. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_rpc_auth.py -q`，预期退出码 0；另完成：Go TestSemanticClient 覆盖连接失败、deadline、取消与UNIMPLEMENTED；健康readiness真实反映依赖，不公开宿主机业务端口。
 
-- [ ] **7. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 C02 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): c02 认证服务骨架和Go客户端`。
+- [x] **7. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 C02 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): c02 认证服务骨架和Go客户端`。
 
 ## C03：事实与证据校验模型
 
@@ -150,7 +150,7 @@ if context.time_remaining() is not None and context.time_remaining() <= 0:
 
 **接口：** 定义 validate_evidence(chunk:ChunkSnapshot,evidence:Evidence)->None；new_entity_id()->str 返回UUID；validate_assertion(assertion:Assertion,evidence_by_id:dict,premises_by_id:dict)->None。实体名称/别名以有来源assertion表达，object_id/value恰有一个。
 
-- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 def test_span_uses_unicode_codepoints():
@@ -163,13 +163,13 @@ def test_invalid_span_is_not_silently_repaired():
         validate_span("甲乙", 2, 1, "")
 ```
 
-- [ ] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_evidence.py semantic/tests/test_facts.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [x] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_evidence.py semantic/tests/test_facts.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [ ] **3. 实现extract_quote(text,start,end)->str和validate_span；边界为Unicode codepoint半开区间，两端同时存在或同时为空；无位置quote须是原文子串**
+- [x] **3. 实现extract_quote(text,start,end)->str和validate_span；边界为Unicode codepoint半开区间，两端同时存在或同时为空；无位置quote须是原文子串**
 
-- [ ] **4. 将原始实体UUID、等价断言、来源事实、规则/模型推导分开；记录配置版本，校验跨scope引用与悬空premise/evidence**
+- [x] **4. 将原始实体UUID、等价断言、来源事实、规则/模型推导分开；记录配置版本，校验跨scope引用与悬空premise/evidence**
 
-- [ ] **5. 拒绝错误哈希、冲突object/value、循环推导DAG；同subject/predicate不同值保留冲突，不按最后写入覆盖**
+- [x] **5. 拒绝错误哈希、冲突object/value、循环推导DAG；同subject/predicate不同值保留冲突，不按最后写入覆盖**
 
 关键实现约束：
 
@@ -184,6 +184,6 @@ def validate_span(text, start, end, quote):
         raise ValueError("quote mismatch")
 ```
 
-- [ ] **6. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_evidence.py semantic/tests/test_facts.py -q`，预期退出码 0；另完成：中文/emoji、空span、篡改quote、跨租户引用、证据缺失和冲突并存均有断言；为后续删除保留完整支持关系。
+- [x] **6. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_evidence.py semantic/tests/test_facts.py -q`，预期退出码 0；另完成：中文/emoji、空span、篡改quote、跨租户引用、证据缺失和冲突并存均有断言；为后续删除保留完整支持关系。
 
-- [ ] **7. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 C03 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): c03 事实与证据校验模型`。
+- [x] **7. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 C03 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): c03 事实与证据校验模型`。

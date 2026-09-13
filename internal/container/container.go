@@ -83,6 +83,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/im/yunzhijia"
 	"github.com/Tencent/WeKnora/internal/infrastructure/docparser"
 	ommeter "github.com/Tencent/WeKnora/internal/infrastructure/openmeter"
+	semanticinfra "github.com/Tencent/WeKnora/internal/infrastructure/semantic"
 	infra_web_search "github.com/Tencent/WeKnora/internal/infrastructure/web_search"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/mcp"
@@ -141,6 +142,21 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// External service clients
 	logger.Debugf(ctx, "[Container] Registering external service clients...")
 	must(container.Provide(initDocReaderClient))
+	// Semantic client + its cleanup: the Invoke must come AFTER the Provide
+	// because dig resolves Invokes eagerly from registered providers.
+	must(container.Provide(initSemanticClient))
+	must(container.Invoke(registerSemanticClientCleanup))
+	must(container.Provide(repository.NewSemanticControlRepository))
+	// The control repository implements SemanticEpochBumper (transfer-flow
+	// epoch bumps wired into the knowledge service).
+	must(container.Provide(func(repo *repository.SemanticControlRepository) service.SemanticEpochBumper {
+		return repo
+	}))
+	must(container.Provide(initSemanticScopeService))
+	must(container.Provide(initSemanticQueryService))
+	must(container.Provide(initSemanticInternalHandler))
+	must(container.Provide(initSemanticModelService))
+	must(container.Provide(initSemanticModelInternalHandler))
 	must(container.Provide(docparser.NewImageResolver))
 	must(container.Provide(initOllamaService))
 	must(container.Provide(initNeo4jClient))
@@ -251,6 +267,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewChunkExtractService, dig.Name("chunkExtractor")))
 	must(container.Provide(service.NewDataTableSummaryService, dig.Name("dataTableSummary")))
 	must(container.Provide(service.NewImageMultimodalService, dig.Name("imageMultimodal")))
+	// I05: attempt-isolated semantic task coordinator over the business DB.
+	must(container.Provide(service.NewSemanticTaskCoordinator))
 	must(container.Provide(service.NewKnowledgePostProcessService, dig.Name("knowledgePostProcess")))
 	must(container.Provide(service.NewKnowledgeAutoTagService, dig.Name("knowledgeAutoTag")))
 
@@ -1726,6 +1744,118 @@ func initDocReaderClient(cfg *config.Config) (interfaces.DocumentReader, error) 
 	default:
 		return docparser.NewGRPCDocumentReader(addr)
 	}
+}
+
+// initSemanticClient initializes the optional semantic knowledge service
+// client. Disabled (default) returns nil so the rest of the system starts
+// unchanged. The client dials lazily: a constructed client never implies
+// the service is reachable or ready.
+func initSemanticClient(cfg *config.Config) (interfaces.SemanticClient, error) {
+	if cfg.Semantic == nil || !cfg.Semantic.Enabled {
+		logger.Infof(context.Background(), "[Semantic] disabled, starting disconnected")
+		return nil, nil
+	}
+	var rootCA []byte
+	if cfg.Semantic.RootCAPath != "" {
+		ca, err := os.ReadFile(cfg.Semantic.RootCAPath)
+		if err != nil {
+			return nil, fmt.Errorf("semantic root CA: %w", err)
+		}
+		rootCA = ca
+	}
+	return semanticinfra.NewClient(semanticinfra.SemanticClientConfig{
+		Address:       cfg.Semantic.Address,
+		InternalToken: cfg.Semantic.InternalToken,
+		TLSServerName: cfg.Semantic.TLSServerName,
+		RootCAPEM:     rootCA,
+		CallTimeout:   cfg.Semantic.CallTimeout,
+	})
+}
+
+// initSemanticScopeService builds the access-scope issuer. Requires the
+// control repository and a configured issuing key; without the key it
+// returns nil (scope issuance disabled - fail closed).
+func initSemanticScopeService(cfg *config.Config, repo *repository.SemanticControlRepository) *service.SemanticScopeService {
+	if cfg.Semantic == nil || len(cfg.Semantic.ScopeIssuingKey) < 32 {
+		return nil
+	}
+	ttl := cfg.Semantic.ScopeTTL
+	if ttl <= 0 {
+		ttl = 5 * time.Minute
+	}
+	return service.NewSemanticScopeService(repo, service.SemanticScopeConfig{
+		Audience:   "weknora-semantic",
+		TTL:        ttl,
+		IssuingKey: []byte(cfg.Semantic.ScopeIssuingKey),
+	})
+}
+
+// initSemanticInternalHandler exposes the internal scope-resolution route
+// only when BOTH the resolve token and the scope service are configured.
+func initSemanticInternalHandler(cfg *config.Config, scopeService *service.SemanticScopeService) *handler.SemanticInternalHandler {
+	if cfg.Semantic == nil {
+		return nil
+	}
+	return handler.NewSemanticInternalHandler(cfg.Semantic.ResolveToken, scopeService)
+}
+
+// registerSemanticClientCleanup closes the semantic client on shutdown
+// (no-op when the service is disabled).
+// initSemanticModelService builds the controlled model gateway. Without a
+// configured provider adapter it returns nil: no model calls are possible
+// (fail closed; real model verification stays explicitly unpassed without
+// credentials).
+func initSemanticModelService(cfg *config.Config, db *gorm.DB) *service.SemanticModelService {
+	if cfg.Semantic == nil || !cfg.Semantic.Enabled || cfg.Semantic.ModelProvider == "" {
+		return nil
+	}
+	provider := semanticinfra.NewModelProviderAdapter(cfg.Semantic)
+	if provider == nil {
+		return nil
+	}
+	return service.NewSemanticModelService(db, provider)
+}
+
+// initSemanticModelInternalHandler exposes the internal model endpoint only
+// when BOTH the resolve token and the gateway are configured.
+func initSemanticModelInternalHandler(cfg *config.Config, modelService *service.SemanticModelService) *handler.SemanticModelInternalHandler {
+	if cfg.Semantic == nil {
+		return nil
+	}
+	return handler.NewSemanticModelInternalHandler(cfg.Semantic.ResolveToken, modelService)
+}
+
+// initSemanticQueryService builds the unified query facade (Q04). It
+// stays nil unless the semantic pipeline is enabled - chat and agent
+// tools then route through it instead of backend bypass paths.
+func initSemanticQueryService(cfg *config.Config, scopes *service.SemanticScopeService,
+	client interfaces.SemanticClient, kbService interfaces.KnowledgeBaseService,
+	shareSvc interfaces.KBShareService) *service.SemanticQueryService {
+	if cfg.Semantic == nil || !cfg.Semantic.Enabled || client == nil || scopes == nil {
+		return nil
+	}
+	resolver := func(ctx context.Context, tenantID uint64, kbID string) (uint64, error) {
+		kb, err := kbService.GetKnowledgeBaseByIDOnly(ctx, kbID)
+		if err != nil || kb == nil {
+			return 0, fmt.Errorf("semantic query: knowledge base %s not resolvable", kbID)
+		}
+		return service.ResolveKBReadTenant(ctx, kb, shareSvc)
+	}
+	return service.NewSemanticQueryService(scopes,
+		service.NewSemanticClientSearcher(client),
+		service.NewNoopVectorSearcher(),
+		service.FusionConfig{RRFK: 60},
+		service.WithKBTenantResolver(resolver),
+		service.WithSemanticReasoner(service.NewSemanticClientReasoner(client)))
+}
+
+func registerSemanticClientCleanup(client interfaces.SemanticClient, cleaner interfaces.ResourceCleaner) {
+	if client == nil {
+		return
+	}
+	cleaner.RegisterWithName("SemanticClient", func() error {
+		return client.Close()
+	})
 }
 
 // initOllamaService initializes the Ollama service client

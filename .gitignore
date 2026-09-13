@@ -42,6 +42,8 @@ skills-lock.json
 /web/
 apps/web/dist/
 apps/web/tsconfig.tsbuildinfo
+# Hatch build artifact of the semantic service (editable-install mirror).
+/semantic_service/
 
 **/__pycache__
 /scripts/scale_dev_jobs.sh
