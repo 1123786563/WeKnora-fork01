@@ -29,9 +29,6 @@ type KnowledgePostProcessService struct {
 	pendingRepo   interfaces.TaskPendingOpsRepository
 	redisClient   *redis.Client
 	spanTracker   SpanTracker
-	// semanticTasks maps document attempts to semantic operations (I05);
-	// nil keeps the historical behavior (no semantic indexing).
-	semanticTasks *SemanticTaskCoordinator
 }
 
 func NewKnowledgePostProcessService(
@@ -43,7 +40,6 @@ func NewKnowledgePostProcessService(
 	pendingRepo interfaces.TaskPendingOpsRepository,
 	redisClient *redis.Client,
 	spanTracker SpanTracker,
-	semanticTasks *SemanticTaskCoordinator,
 ) interfaces.TaskHandler {
 	return &KnowledgePostProcessService{
 		knowledgeRepo: knowledgeRepo,
@@ -54,7 +50,6 @@ func NewKnowledgePostProcessService(
 		pendingRepo:   pendingRepo,
 		redisClient:   redisClient,
 		spanTracker:   spanTracker,
-		semanticTasks: semanticTasks,
 	}
 }
 
@@ -502,24 +497,8 @@ func (s *KnowledgePostProcessService) Handle(ctx context.Context, task *asynq.Ta
 		}
 	}
 
-	// I05: submit the semantic operation for this (document, attempt) in
-	// the same flow that records the post-process stage - Go only submits
-	// and coordinates; the semantic pipeline stays in the service. A
-	// failure here must NOT fail post-process (the operation row is
-	// retried by reconcile); it is logged into the stage output instead.
-	semanticSubmitted := false
-	if s.semanticTasks != nil {
-		if err := s.semanticTasks.Submit(ctx, payload.TenantID, payload.KnowledgeBaseID, payload.KnowledgeID,
-			uint64(attempt), semanticOperationID(payload.KnowledgeID, uint64(attempt))); err != nil {
-			logger.Warnf(ctx, "[KnowledgePostProcess] semantic submit failed for %s attempt %d: %v",
-				payload.KnowledgeID, attempt, err)
-		} else {
-			semanticSubmitted = true
-		}
-	}
 	postOutput := types.JSONMap{
 		"chunks_total":            len(textChunks),
-		"semantic_submitted":      semanticSubmitted,
 		"enqueued_summary":        enqueuedSummary,
 		"enqueued_question":       enqueuedQuestionCount > 0,
 		"enqueued_question_count": enqueuedQuestionCount,

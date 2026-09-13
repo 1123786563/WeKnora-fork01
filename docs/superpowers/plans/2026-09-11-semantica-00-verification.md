@@ -31,7 +31,7 @@
 
 **接口：** 产出 evidence.schema_version=1、python_version、semantica_version、source_revision、lock_hash、capabilities[name].status/signature/evidence_path；下游只读取该文件，不从文档猜测当前 API。
 
-- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 def test_required_import_contract():
@@ -44,13 +44,13 @@ def test_required_import_contract():
         ContextRetriever, Reasoner, GraphReasoner, GraphStore))
 ```
 
-- [x] **2. 确认 RED**。执行 `uv run --project semantic/experiments python -m pytest semantic/experiments/test_import_contract.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [ ] **2. 确认 RED**。执行 `uv run --project semantic/experiments python -m pytest semantic/experiments/test_import_contract.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [x] **3. 读取选定 release 的 pyproject、源码和安装元数据；以官方示例中的 0.6.8 为候选，核验可获取性与 Python 兼容要求。候选不可用时记录原因，再选择可验证的明确 release，禁止用 latest 漂移**
+- [ ] **3. 读取选定 release 的 pyproject、源码和安装元数据；以官方示例中的 0.6.8 为候选，核验可获取性与 Python 兼容要求。候选不可用时记录原因，再选择可验证的明确 release，禁止用 latest 漂移**
 
-- [x] **4. 为实验环境固定 Python patch 版本与必要 extras；逐项记录调用签名、包锁和上游源码提交。只安装实际需要的 graph/extract/reason 模块依赖**
+- [ ] **4. 为实验环境固定 Python patch 版本与必要 extras；逐项记录调用签名、包锁和上游源码提交。只安装实际需要的 graph/extract/reason 模块依赖**
 
-- [x] **5. 实现 verify_version.py，记录成功/失败/不可用原因，日志清除凭据；生成摘要包含命令及退出码，禁止只写布尔 passed**
+- [ ] **5. 实现 verify_version.py，记录成功/失败/不可用原因，日志清除凭据；生成摘要包含命令及退出码，禁止只写布尔 passed**
 
 关键实现约束：
 
@@ -64,9 +64,9 @@ record = {"semantica_version": version("semantica"),
 # 对每个验证过的 callable 保存 str(signature(callable))，并写入真实测试结果。
 ```
 
-- [x] **6. 确认 GREEN 与验收**。重跑 `uv run --project semantic/experiments python -m pytest semantic/experiments/test_import_contract.py -q`，预期退出码 0；另完成：在干净隔离环境重放一次 lock 安装；确认不依赖 docreader 虚拟环境；失败则停止涉及该能力的下游。
+- [ ] **6. 确认 GREEN 与验收**。重跑 `uv run --project semantic/experiments python -m pytest semantic/experiments/test_import_contract.py -q`，预期退出码 0；另完成：在干净隔离环境重放一次 lock 安装；确认不依赖 docreader 虚拟环境；失败则停止涉及该能力的下游。
 
-- [x] **7. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 V01 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): v01 冻结版本与最小安装契约`。
+- [ ] **7. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 V01 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): v01 冻结版本与最小安装契约`。
 
 ## V02：验证持久图桥接和两类推理
 
@@ -82,7 +82,7 @@ record = {"semantica_version": version("semantica"),
 
 **接口：** 新增 probe_roundtrip(fixture_path)->dict、probe_rule(facts,rules)->dict、probe_model(graph,query)->dict；返回 evidence_ids、result、engine_version、actual_backend。它们仅是实验脚本函数，不供生产导入。
 
-- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 def test_persistent_bridge_keeps_source_ids():
@@ -95,13 +95,13 @@ def test_rule_requires_both_premises():
     assert "controls(a,c)" not in result["conclusions"]
 ```
 
-- [x] **2. 确认 RED**。执行 `uv run --project semantic/experiments python -m pytest semantic/experiments/test_graph_bridge.py semantic/experiments/test_reasoning_bridge.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [ ] **2. 确认 RED**。执行 `uv run --project semantic/experiments python -m pytest semantic/experiments/test_graph_bridge.py semantic/experiments/test_reasoning_bridge.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [x] **3. 在隔离 Neo4j 写入 fixture，关闭客户端并重启实验服务后读取；显式转换为保持来源 ID 的内存子图，再执行检索，证明不是仅查询同一内存对象**
+- [ ] **3. 在隔离 Neo4j 写入 fixture，关闭客户端并重启实验服务后读取；显式转换为保持来源 ID 的内存子图，再执行检索，证明不是仅查询同一内存对象**
 
-- [x] **4. 按已核实 API 构造注册规则实验和模型自然语言推断实验，加入缺前提/冲突/中文 quote；只允许批准的模型入口，实际调用用量独立记录**
+- [ ] **4. 按已核实 API 构造注册规则实验和模型自然语言推断实验，加入缺前提/冲突/中文 quote；只允许批准的模型入口，实际调用用量独立记录**
 
-- [x] **5. 记录无法实现的持久图算法、代理配置或来源映射；能力标记 unavailable 时返回原因，不能改用全库图或直接模型凭据规避**
+- [ ] **5. 记录无法实现的持久图算法、代理配置或来源映射；能力标记 unavailable 时返回原因，不能改用全库图或直接模型凭据规避**
 
 关键实现约束：
 
@@ -113,9 +113,9 @@ subgraph = build_probe_graph(allowed_rows)
 assert all("evidence_ids" in row for row in allowed_rows)
 ```
 
-- [x] **6. 确认 GREEN 与验收**。重跑 `uv run --project semantic/experiments python -m pytest semantic/experiments/test_graph_bridge.py semantic/experiments/test_reasoning_bridge.py -q`，预期退出码 0；另完成：保留规则实际输出和模型原始用量摘要；无真实模型调用证据时模型能力保持 unverified；确认重启后仍能追踪来源。
+- [ ] **6. 确认 GREEN 与验收**。重跑 `uv run --project semantic/experiments python -m pytest semantic/experiments/test_graph_bridge.py semantic/experiments/test_reasoning_bridge.py -q`，预期退出码 0；另完成：保留规则实际输出和模型原始用量摘要；无真实模型调用证据时模型能力保持 unverified；确认重启后仍能追踪来源。
 
-- [x] **7. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 V02 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): v02 验证持久图桥接和两类推理`。
+- [ ] **7. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 V02 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): v02 验证持久图桥接和两类推理`。
 
 ## V03：中文质量与上线阈值评估基线
 
@@ -131,7 +131,7 @@ assert all("evidence_ids" in row for row in allowed_rows)
 
 **接口：** 定义 score_case(expected_evidence:set[str],actual_evidence:set[str])->dict；评估产物记录 correct、source_precision、source_recall、unanswerable_correct、latency_ms、tokens、query_mode；policy.approved 初值 false，只有明确验收决策可变 true。
 
-- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 def test_evidence_score_penalizes_unsupported_source():
@@ -140,13 +140,13 @@ def test_evidence_score_penalizes_unsupported_source():
     assert score["recall"] == 1.0
 ```
 
-- [x] **2. 确认 RED**。执行 `uv run --project semantic/experiments python -m pytest semantic/experiments/test_evaluate.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [ ] **2. 确认 RED**。执行 `uv run --project semantic/experiments python -m pytest semantic/experiments/test_evaluate.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [x] **3. 建立事实直答、多跳、冲突、无答案、中文定位与权限反例各至少5题；合成数据可公开，真实企业内容须获得授权且不进入仓库**
+- [ ] **3. 建立事实直答、多跳、冲突、无答案、中文定位与权限反例各至少5题；合成数据可公开，真实企业内容须获得授权且不进入仓库**
 
-- [x] **4. 同一文档版本/模型配置分别运行 native 与候选模式；区分冷启动和热查询，记录索引耗时、p50/p95与实际用量**
+- [ ] **4. 同一文档版本/模型配置分别运行 native 与候选模式；区分冷启动和热查询，记录索引耗时、p50/p95与实际用量**
 
-- [x] **5. 根据实测提出明确质量/延迟/单次用量阈值，写入 policy 的 proposed 部分和理由；用户未确认时上线门禁保持关闭，其他独立实现可以继续**
+- [ ] **5. 根据实测提出明确质量/延迟/单次用量阈值，写入 policy 的 proposed 部分和理由；用户未确认时上线门禁保持关闭，其他独立实现可以继续**
 
 关键实现约束：
 
@@ -158,9 +158,9 @@ def score_case(expected_evidence, actual_evidence):
 # 权限泄漏独立 hard gate，不能通过平均分抵消。
 ```
 
-- [x] **6. 确认 GREEN 与验收**。重跑 `uv run --project semantic/experiments python -m pytest semantic/experiments/test_evaluate.py -q`，预期退出码 0；另完成：评分器通过、至少30题完整结果和失败例均留档；policy 中不存在无实测支撑的 approved=true。
+- [ ] **6. 确认 GREEN 与验收**。重跑 `uv run --project semantic/experiments python -m pytest semantic/experiments/test_evaluate.py -q`，预期退出码 0；另完成：评分器通过、至少30题完整结果和失败例均留档；policy 中不存在无实测支撑的 approved=true。
 
-- [x] **7. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 V03 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): v03 中文质量与上线阈值评估基线`。
+- [ ] **7. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 V03 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): v03 中文质量与上线阈值评估基线`。
 
 ## 实验命令与输出合同
 

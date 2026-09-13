@@ -34,11 +34,12 @@ var versionedSQLiteColumns = map[string][]string{
 	"mcp_tool_approvals": {"enabled"},                        // 000091
 }
 
+// 000014-000016 add the durable agent run tables (runs, tool calls and
+// attempts, decisions, inputs, events, checkpoints).
 // The durable agent-run tables were introduced by 000014-000016; the
 // versioned SQLite migration stream continues through 000040 (open-connector
-// 000041-000044), the Craft tables through 000052, and the semantic tables
-// through 000056.
-const expectedSQLiteMigrationVersion = 56
+// 000041-000044) and the Craft tables through 000052.
+const expectedSQLiteMigrationVersion = 52
 
 func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 	repoRoot := sqliteRepoRoot(t)

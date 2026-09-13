@@ -73,35 +73,14 @@ func (r *kbShareRepository) GetByKBAndOrg(ctx context.Context, kbID string, orgI
 
 // Update updates a share record
 func (r *kbShareRepository) Update(ctx context.Context, share *types.KnowledgeBaseShare) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		result := tx.Model(&types.KnowledgeBaseShare{}).
-			Where("id = ?", share.ID).
-			Updates(share)
-		if result.Error != nil {
-			return result.Error
-		}
-		if result.RowsAffected == 0 {
-			return nil // no-op update must not kill live scopes
-		}
-		// A01: share permission changes re-scope org visibility of the
-		// source KB - bump its epoch in the same transaction.
-		return BumpKBSemanticEpochsTx(tx, share.SourceTenantID, share.KnowledgeBaseID)
-	})
+	return r.db.WithContext(ctx).Model(&types.KnowledgeBaseShare{}).
+		Where("id = ?", share.ID).
+		Updates(share).Error
 }
 
 // Delete soft deletes a share record
 func (r *kbShareRepository) Delete(ctx context.Context, id string) error {
-	var share types.KnowledgeBaseShare
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("id = ?", id).First(&share).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("id = ?", id).Delete(&types.KnowledgeBaseShare{}).Error; err != nil {
-			return err
-		}
-		// A01: removing a share revokes org visibility of the source KB.
-		return BumpKBSemanticEpochsTx(tx, share.SourceTenantID, share.KnowledgeBaseID)
-	})
+	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&types.KnowledgeBaseShare{}).Error
 }
 
 // DeleteByKnowledgeBaseID soft deletes all share records for a knowledge base (e.g. when the KB is deleted)
@@ -111,15 +90,7 @@ func (r *kbShareRepository) DeleteByKnowledgeBaseID(ctx context.Context, kbID st
 
 // DeleteByOrganizationID soft deletes all share records for an organization (e.g. when the org is deleted)
 func (r *kbShareRepository) DeleteByOrganizationID(ctx context.Context, orgID string) error {
-	// A01 (org deletion path): stripping every share of an organization is
-	// an org-wide revocation - bump the epochs of the affected KBs in the
-	// SAME transaction, BEFORE the rows the bump reads are deleted.
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := BumpOrgSharedKBSemanticEpochsTx(tx, orgID); err != nil {
-			return err
-		}
-		return tx.Where("organization_id = ?", orgID).Delete(&types.KnowledgeBaseShare{}).Error
-	})
+	return r.db.WithContext(ctx).Where("organization_id = ?", orgID).Delete(&types.KnowledgeBaseShare{}).Error
 }
 
 // ListByKnowledgeBase lists all share records for a knowledge base

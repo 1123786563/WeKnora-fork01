@@ -145,42 +145,28 @@ func (r *tenantMemberRepository) ListPagedByTenant(
 
 // UpdateRole changes the role of an existing active membership.
 func (r *tenantMemberRepository) UpdateRole(ctx context.Context, userID string, tenantID uint64, role types.TenantRole) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		res := tx.
-			Model(&types.TenantMember{}).
-			Where("user_id = ? AND tenant_id = ?", userID, tenantID).
-			Updates(map[string]any{
-				"role":       role,
-				"updated_at": time.Now(),
-			})
-		if res.Error != nil {
-			return res.Error
-		}
-		if res.RowsAffected == 0 {
-			return gorm.ErrRecordNotFound
-		}
-		// A01: role changes can widen or narrow every KB in the tenant -
-		// bump all KB epochs in the SAME transaction so live scopes die.
-		return BumpTenantSemanticEpochsTx(tx, tenantID)
-	})
+	res := r.db.WithContext(ctx).
+		Model(&types.TenantMember{}).
+		Where("user_id = ? AND tenant_id = ?", userID, tenantID).
+		Updates(map[string]any{
+			"role":       role,
+			"updated_at": time.Now(),
+		})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 // SoftDelete marks the membership row as deleted. GORM's soft-delete
-// support populates DeletedAt automatically. A01: removal revokes every KB
-// of the tenant - epochs bump in the same transaction.
+// support populates DeletedAt automatically.
 func (r *tenantMemberRepository) SoftDelete(ctx context.Context, userID string, tenantID uint64) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		res := tx.
-			Where("user_id = ? AND tenant_id = ?", userID, tenantID).
-			Delete(&types.TenantMember{})
-		if res.Error != nil {
-			return res.Error
-		}
-		if res.RowsAffected == 0 {
-			return nil // nothing deleted: no epoch churn
-		}
-		return BumpTenantSemanticEpochsTx(tx, tenantID)
-	})
+	return r.db.WithContext(ctx).
+		Where("user_id = ? AND tenant_id = ?", userID, tenantID).
+		Delete(&types.TenantMember{}).Error
 }
 
 // CountActiveOwners reports the number of active owner rows in the tenant.
@@ -245,8 +231,7 @@ func (r *tenantMemberRepository) DemoteOwnerAtomically(
 		if res.RowsAffected == 0 {
 			return gorm.ErrRecordNotFound
 		}
-		// A01: demotion changes visibility across the tenant's KBs.
-		return BumpTenantSemanticEpochsTx(tx, tenantID)
+		return nil
 	})
 }
 
@@ -279,8 +264,7 @@ func (r *tenantMemberRepository) RemoveOwnerAtomically(
 		if res.RowsAffected == 0 {
 			return gorm.ErrRecordNotFound
 		}
-		// A01: owner removal revokes the tenant's KBs.
-		return BumpTenantSemanticEpochsTx(tx, tenantID)
+		return nil
 	})
 }
 

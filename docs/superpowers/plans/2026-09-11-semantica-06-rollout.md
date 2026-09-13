@@ -35,7 +35,7 @@
 
 **接口：** config包含SEMANTIC_ENABLED、内部地址/认证引用、数据库/对象前缀、模型入口、限制、租约、GC保留与重放窗口；readiness必须依赖迁移完成、存储可用、删除屏障同步；metrics仅低基数标签，tenant/KB放受控日志trace不作指标标签。
 
-- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 def test_restoring_service_is_not_ready(health_state):
@@ -45,9 +45,9 @@ def test_restoring_service_is_not_ready(health_state):
     assert health_state.ready() is False
 ```
 
-- [x] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_readiness.py semantic/tests/test_telemetry.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [ ] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_readiness.py semantic/tests/test_telemetry.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [x] **3. 固定基础镜像digest和V01锁，镜像分API/worker入口；生产profile默认关闭，内部RPC不publish公网或宿主业务端口，secret只引用不写入镜像**
+- [ ] **3. 固定基础镜像digest和V01锁，镜像分API/worker入口；生产profile默认关闭，内部RPC不publish公网或宿主业务端口，secret只引用不写入镜像**
 
 - [ ] **4. 提供隔离PG/Neo4j/向量/对象存储测试环境，固定测试端口或容器网络名；健康探针区分存活和可用，恢复期间拒绝query**
 
@@ -67,7 +67,7 @@ def ready(self):
 
 - [ ] **7. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_readiness.py semantic/tests/test_telemetry.py -q`，预期退出码 0；另完成：docker compose -f docker/compose.semantic.test.yml config校验；`helm template semantic ./helm`渲染；真实启动关闭profile与启用profile各验证一次；日志扫描无测试凭据/正文。
 
-- [x] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 O01 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): o01 独立部署、探针与可观测性`。
+- [ ] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 O01 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): o01 独立部署、探针与可观测性`。
 
 ## O02：故障注入、清理与恢复演练
 
@@ -84,7 +84,7 @@ def ready(self):
 
 **接口：** 新增RecoveryHarness于semantic/tests/integration/conftest.py：start/stop_worker、pause_phase、resume_phase、restart_api、restore_snapshot、query、revoke、wait_operation；只用于隔离测试，故障点不可通过生产用户API触发。
 
-- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 def test_restore_replays_denials_before_ready(recovery):
@@ -97,15 +97,15 @@ def test_restore_replays_denials_before_ready(recovery):
     assert "d1" not in recovery.query("甲公司").document_ids
 ```
 
-- [x] **2. 确认 RED**。执行 `bash scripts/semantic/run_recovery_tests.sh`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [ ] **2. 确认 RED**。执行 `bash scripts/semantic/run_recovery_tests.sh`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [x] **3. 实现隔离RecoveryHarness并注册pytest integration标记；依赖不可用时退出非零，不skip。通过容器进程控制和测试专用存储屏障在准确阶段暂停**
+- [ ] **3. 实现隔离RecoveryHarness并注册pytest integration标记；依赖不可用时退出非零，不skip。通过容器进程控制和测试专用存储屏障在准确阶段暂停**
 
 - [ ] **4. 执行规格12个场景，重点覆盖图写/向量未写、旧token、cancel/publish、删除迟到、缓存撤权、后台重试、回滚及恢复；每例记录前后active manifest和deny状态**
 
 - [ ] **5. 恢复快照先维护模式，连接Go权威重放当前deny/epoch，验证删除内容不可见后开放readiness；GC和backup保留状态分开记录**
 
-- [x] **6. 将演练中的确切命令整理手册，包含失败退出与安全重试、对象/向量孤儿清理、禁用语义能力和native追赶条件**
+- [ ] **6. 将演练中的确切命令整理手册，包含失败退出与安全重试、对象/向量孤儿清理、禁用语义能力和native追赶条件**
 
 关键实现约束：
 
@@ -120,7 +120,7 @@ set_query_ready(True)
 
 - [ ] **7. 确认 GREEN 与验收**。重跑 `bash scripts/semantic/run_recovery_tests.sh`，预期退出码 0；另完成：12场景各有真实输出、退出码、容器版本和失败注入点；未复现的场景保持未验收；总结果不得仅依赖mock测试。
 
-- [x] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 O02 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): o02 故障注入、清理与恢复演练`。
+- [ ] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 O02 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): o02 故障注入、清理与恢复演练`。
 
 ## O03：质量回归、CI门禁与最终交付
 
@@ -137,7 +137,7 @@ set_query_ready(True)
 
 **接口：** check_acceptance(policy:dict,evidence:dict)->list[str]返回所有阻断原因；release可用条件为policy.approved、无权限泄漏、证据完整、指标满足阈值、所启用能力verified。CI无模型凭据只能运行受控provider合同，真实模型验收独立受保护任务执行。
 
-- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 def test_unapproved_policy_blocks_release():
@@ -149,9 +149,9 @@ def test_any_permission_leak_blocks_release():
     assert "permission_leak" in errors
 ```
 
-- [x] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest scripts/semantic/test_check_acceptance.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [ ] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest scripts/semantic/test_check_acceptance.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [x] **3. 建立CI阶段：proto生成一致性→Go/Python/TS聚焦单测→真实PG/SQLite控制合同与Neo4j集成→浏览器流程；首次无关失败记录基线，不能删断言使绿**
+- [ ] **3. 建立CI阶段：proto生成一致性→Go/Python/TS聚焦单测→真实PG/SQLite控制合同与Neo4j集成→浏览器流程；首次无关失败记录基线，不能删断言使绿**
 
 - [ ] **4. 使用正式adapter重放V03语料，对照冻结基线；报告冷/热延迟、索引耗时、引用准确性、无答案判断、真实模型用量和成本估算依据**
 
@@ -177,6 +177,6 @@ def check_acceptance(policy, evidence):
 # 同文件继续逐项比较policy中的明确阈值，并校验commit/version/hash一致。
 ```
 
-- [x] **7. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest scripts/semantic/test_check_acceptance.py -q`，预期退出码 0；另完成：门禁对缺证据、假approved、泄漏、质量/延迟/用量超限全部失败；最终报告分别写静态/单测、集成、浏览器、真实模型四层状态。
+- [ ] **7. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest scripts/semantic/test_check_acceptance.py -q`，预期退出码 0；另完成：门禁对缺证据、假approved、泄漏、质量/延迟/用量超限全部失败；最终报告分别写静态/单测、集成、浏览器、真实模型四层状态。
 
-- [x] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 O03 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): o03 质量回归、CI门禁与最终交付`。
+- [ ] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 O03 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): o03 质量回归、CI门禁与最终交付`。

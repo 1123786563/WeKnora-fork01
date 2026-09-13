@@ -32,7 +32,7 @@
 
 **接口：** OperationStore.accept(req:ApplyRequest)->Operation、claim(worker_id:str,lease_seconds:int)->Operation|None、transition(operation_id:str,lease_token:int,expected:str,next_state:str)->bool、cancel(scope:ScopeKey,operation_id:str)->Operation；以ScopeKey+idempotency_key唯一，payload_hash冲突报错。
 
-- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 def test_repeated_apply_returns_same_operation(operation_store, apply_request):
@@ -46,13 +46,13 @@ def test_stale_lease_cannot_publish(operation_store, claimed_operation):
                                           "staged", "publishing")
 ```
 
-- [x] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_operations.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [ ] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_operations.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [x] **3. 建立service专属schema与迁移器；operation表保存请求hash、阶段、租约到期、递增lease_token、错误码、重试时间；唯一键冲突查回原操作并校验payload**
+- [ ] **3. 建立service专属schema与迁移器；operation表保存请求hash、阶段、租约到期、递增lease_token、错误码、重试时间；唯一键冲突查回原操作并校验payload**
 
-- [x] **4. 使用事务和FOR UPDATE SKIP LOCKED领取，续租必须匹配token；每次接管增加token，过期worker不能写stage、结果或终态**
+- [ ] **4. 使用事务和FOR UPDATE SKIP LOCKED领取，续租必须匹配token；每次接管增加token，过期worker不能写stage、结果或终态**
 
-- [x] **5. 实现状态允许表、超时恢复与取消CAS；Cancel succeeded返回FAILED_PRECONDITION；终态不可逆，取消后关闭内部数据库/模型调用上下文**
+- [ ] **5. 实现状态允许表、超时恢复与取消CAS；Cancel succeeded返回FAILED_PRECONDITION；终态不可逆，取消后关闭内部数据库/模型调用上下文**
 
 关键实现约束：
 
@@ -65,9 +65,9 @@ WHERE operation_id = :operation_id AND state = :expected
 -- worker领取在同一事务内递增token并写lease_until。
 ```
 
-- [x] **6. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_operations.py -q`，预期退出码 0；另完成：真实PG双连接并发claim只有一个获租约；杀worker后新worker接管；Cancel/publish竞争只能一个终态成立；进程重启后幂等仍成立。
+- [ ] **6. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_operations.py -q`，预期退出码 0；另完成：真实PG双连接并发claim只有一个获租约；杀worker后新worker接管；Cancel/publish竞争只能一个终态成立；进程重启后幂等仍成立。
 
-- [x] **7. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 I01 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): i01 持久操作、幂等与worker租约`。
+- [ ] **7. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 I01 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): i01 持久操作、幂等与worker租约`。
 
 ## I02：业务revision、outbox与授权版本
 
@@ -86,7 +86,7 @@ WHERE operation_id = :operation_id AND state = :expected
 
 **接口：** 定义 SemanticMutation{TenantID uint64, KBID,DocumentID string, ExpectedRevision uint64, Deleted bool, Payload []byte}；WithSemanticMutation(ctx,mutation,func(tx *gorm.DB)error)(revision uint64,err error)。业务资源修改、revision、outbox、删除屏障必须同事务，禁止另开隐含事务。
 
-- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 func TestSemanticMutationRollback(t *testing.T) {
@@ -101,15 +101,15 @@ func TestSemanticMutationRollback(t *testing.T) {
 }
 ```
 
-- [x] **2. 确认 RED**。执行 `go test ./internal/application/repository -run TestSemanticMutation -count=1`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [ ] **2. 确认 RED**。执行 `go test ./internal/application/repository -run TestSemanticMutation -count=1`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [x] **3. 实施前检查最新迁移号；当前建议PG96/SQLite17，如被占用则分配下一空号并同步本计划/台账，不重写已执行迁移**
+- [ ] **3. 实施前检查最新迁移号；当前建议PG96/SQLite17，如被占用则分配下一空号并同步本计划/台账，不重写已执行迁移**
 
-- [x] **4. 建立semantic_document_revisions、semantic_outbox、semantic_access_epochs、semantic_denials、semantic_backend_states与semantic_completion_receipts；唯一键包含tenant/KB/document或event身份，PG/SQLite分别实现等价CAS**
+- [ ] **4. 建立semantic_document_revisions、semantic_outbox、semantic_access_epochs、semantic_denials、semantic_backend_states与semantic_completion_receipts；唯一键包含tenant/KB/document或event身份，PG/SQLite分别实现等价CAS**
 
-- [x] **5. 实现transaction回调，按expected_revision CAS递增；删除同时创建deny并提高KB epoch。权限变更提供同事务BumpSemanticEpoch(tx,scope)入口给A01接线**
+- [ ] **5. 实现transaction回调，按expected_revision CAS递增；删除同时创建deny并提高KB epoch。权限变更提供同事务BumpSemanticEpoch(tx,scope)入口给A01接线**
 
-- [x] **6. 增加outbox领取/确认/失败退避；事件含完整revision/config与payload hash。收件方幂等，outbox只在对方持久接收后确认**
+- [ ] **6. 增加outbox领取/确认/失败退避；事件含完整revision/config与payload hash。收件方幂等，outbox只在对方持久接收后确认**
 
 关键实现约束：
 
@@ -123,9 +123,9 @@ WHERE tenant_id=:tenant AND kb_id=:kb AND document_id=:doc
 COMMIT;
 ```
 
-- [x] **7. 确认 GREEN 与验收**。重跑 `go test ./internal/application/repository -run TestSemanticMutation -count=1`，预期退出码 0；另完成：执行 go test ./internal/database -run TestSemanticMigration -count=1；PG真实迁移测试必须另连隔离库，验证up/down/up、唯一键和事务失败无孤立事件；SQLite不开服务时仍可使用native。
+- [ ] **7. 确认 GREEN 与验收**。重跑 `go test ./internal/application/repository -run TestSemanticMutation -count=1`，预期退出码 0；另完成：执行 go test ./internal/database -run TestSemanticMigration -count=1；PG真实迁移测试必须另连隔离库，验证up/down/up、唯一键和事务失败无孤立事件；SQLite不开服务时仍可使用native。
 
-- [x] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 I02 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): i02 业务revision、outbox与授权版本`。
+- [ ] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 I02 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): i02 业务revision、outbox与授权版本`。
 
 ## I03：有来源的构图与generation原子发布
 
@@ -143,7 +143,7 @@ COMMIT;
 
 **接口：** IndexBuilder.stage(op:Operation,request:ApplyRequest)->IndexManifest；Publisher.publish(scope:ScopeKey,base_generation:str|None,manifest:IndexManifest,lease_token:int)->bool；IndexStore.pin(scope)->ReadLease，release(lease_id)->None。IndexManifest含generation、base_generation、documents映射、配置digest、artifact hash列表、complete标志；ReadLease含lease_id/generation/expires_at。
 
-- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 def test_incomplete_generation_never_becomes_active(index_store, complete_manifest):
@@ -154,15 +154,15 @@ def test_incomplete_generation_never_becomes_active(index_store, complete_manife
     assert index_store.active(incomplete.scope) == before
 ```
 
-- [x] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_generation_publish.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [ ] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_generation_publish.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [x] **3. 接收小批chunk或限定前缀manifest，检查size/hash/revision；用已验证抽取适配与A03模型入口构建来源断言，等价边可撤销，跨tenant/KB候选直接拒绝**
+- [ ] **3. 接收小批chunk或限定前缀manifest，检查size/hash/revision；用已验证抽取适配与A03模型入口构建来源断言，等价边可撤销，跨tenant/KB候选直接拒绝**
 
-- [x] **4. 实现完整KB清单；未变文档引用既有不可变产物，变更文档产物写staging且携带generation或不可变artifact ID。跨文档合并不修改旧generation数据**
+- [ ] **4. 实现完整KB清单；未变文档引用既有不可变产物，变更文档产物写staging且携带generation或不可变artifact ID。跨文档合并不修改旧generation数据**
 
-- [x] **5. 图、证据、向量全部持久校验后进入publishing；在PG同一事务校验operation租约/取消、最新revision与墓碑、base_generation，再更新active指针与operation终态**
+- [ ] **5. 图、证据、向量全部持久校验后进入publishing；在PG同一事务校验operation租约/取消、最新revision与墓碑、base_generation，再更新active指针与operation终态**
 
-- [x] **6. 实现pin/release和有界租约续期；query按manifest闭包读取产物，GC跳过仍被active或有效read lease引用的产物**
+- [ ] **6. 实现pin/release和有界租约续期；query按manifest闭包读取产物，GC跳过仍被active或有效read lease引用的产物**
 
 关键实现约束：
 
@@ -178,9 +178,9 @@ with control_db.transaction() as tx:
 # tx方法在publisher.py实现；图/向量写入必须在此事务之前完成。
 ```
 
-- [x] **7. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_generation_publish.py -q`，预期退出码 0；另完成：真实库模拟图成功/向量失败、两个base相同发布、租约过期、重启、read lease延迟GC；查询始终只见完整旧版或完整新版；记录实际后端。
+- [ ] **7. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_generation_publish.py -q`，预期退出码 0；另完成：真实库模拟图成功/向量失败、两个base相同发布、租约过期、重启、read lease延迟GC；查询始终只见完整旧版或完整新版；记录实际后端。
 
-- [x] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 I03 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): i03 有来源的构图与generation原子发布`。
+- [ ] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 I03 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): i03 有来源的构图与generation原子发布`。
 
 ## I04：删除屏障、支持撤销和清理receipt
 
@@ -195,7 +195,7 @@ with control_db.transaction() as tx:
 
 **接口：** DeletionService.apply(document:DocumentRevision)->Operation、cleanup(operation_id:str)->DeletionReceipt；DeletionReceipt含operation_id/tombstone_revision/graph/vector/object/cache/backup状态及完成时间。backup为retention_pending或expired，不伪装立即擦除备份。
 
-- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 def test_last_support_removes_derived_fact(index_store, two_source_fact):
@@ -206,13 +206,13 @@ def test_last_support_removes_derived_fact(index_store, two_source_fact):
     assert index_store.visible_assertion("derived-fact") is False
 ```
 
-- [x] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_delete_races.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [ ] **2. 确认 RED**。执行 `uv run --project semantic python -m pytest semantic/tests/test_delete_races.py -q`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [x] **3. Delete接收单调tombstone并持久化，所有查询generation叠加最新deny；旧Apply与旧worker再次检查revision时被拒绝**
+- [ ] **3. Delete接收单调tombstone并持久化，所有查询generation叠加最新deny；旧Apply与旧worker再次检查revision时被拒绝**
 
-- [x] **4. 撤销原文来源、别名、等价和推导支持，沿premise反向依赖递归失效；保留还有有效来源的事实，禁止删除整个同名实体**
+- [ ] **4. 撤销原文来源、别名、等价和推导支持，沿premise反向依赖递归失效；保留还有有效来源的事实，禁止删除整个同名实体**
 
-- [x] **5. 按图/向量/对象/缓存推进receipt；单存储失败保持pending独立重试。GC保留期与消息重放窗口强制配置，墓碑不得早于窗口清除**
+- [ ] **5. 按图/向量/对象/缓存推进receipt；单存储失败保持pending独立重试。GC保留期与消息重放窗口强制配置，墓碑不得早于窗口清除**
 
 - [ ] **6. 恢复模式默认不ready，先从Go重放当前deny/epoch再开放查询；备份保留期与逻辑不可见性分开报告**
 
@@ -227,9 +227,9 @@ if not visible_supports:
 # invalidate/recompute_supports 在deletion.py实现，使用幂等工作队列防循环。
 ```
 
-- [x] **7. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_delete_races.py -q`，预期退出码 0；另完成：测试删除时服务离线、旧generation查询、旧Apply迟到、多来源删除、清理半失败及备份恢复；deny优先于历史索引，即便物理清理未完成也不可检索。
+- [ ] **7. 确认 GREEN 与验收**。重跑 `uv run --project semantic python -m pytest semantic/tests/test_delete_races.py -q`，预期退出码 0；另完成：测试删除时服务离线、旧generation查询、旧Apply迟到、多来源删除、清理半失败及备份恢复；deny优先于历史索引，即便物理清理未完成也不可检索。
 
-- [x] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 I04 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): i04 删除屏障、支持撤销和清理receipt`。
+- [ ] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 I04 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): i04 删除屏障、支持撤销和清理receipt`。
 
 ## I05：文档任务、attempt与终态协调
 
@@ -247,7 +247,7 @@ if not visible_supports:
 
 **接口：** 定义 SemanticTaskCoordinator.Submit(ctx,scope,documentID,attempt uint64)error、Reconcile(ctx,operationID string)error、Cancel(ctx,operationID string)error；receipt唯一键(scope,documentID,attempt,operationID)。semantic_status独立于parse_status，native分支继续原任务。
 
-- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 func TestSemanticCompletionCannotDrainNewAttempt(t *testing.T) {
@@ -261,13 +261,13 @@ func TestSemanticCompletionCannotDrainNewAttempt(t *testing.T) {
 }
 ```
 
-- [x] **2. 确认 RED**。执行 `go test ./internal/application/service -run TestSemanticCompletion -count=1`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [ ] **2. 确认 RED**。执行 `go test ./internal/application/service -run TestSemanticCompletion -count=1`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
 - [ ] **3. 使用I02事务API接入创建/更新/重解析/删除，复查实际调用链，禁止先更新业务再单独发消息；标准chunk落库后产生manifest**
 
-- [x] **4. 将业务任务与operation建立持久映射；Go只提交并协调状态，重试复用idempotency key；Python内部phase不创建重复Go子任务**
+- [ ] **4. 将业务任务与operation建立持久映射；Go只提交并协调状态，重试复用idempotency key；Python内部phase不创建重复Go子任务**
 
-- [x] **5. 在同事务写completion receipt并对匹配attempt的pending计数完成一次；取消/被替代operation不得扣新计数，operation成功后重复通知无副作用**
+- [ ] **5. 在同事务写completion receipt并对匹配attempt的pending计数完成一次；取消/被替代operation不得扣新计数，operation成功后重复通知无副作用**
 
 - [ ] **6. 区分解析完成、语义失败、stale和deleting；新增只重建语义的重试入口，保留原parse和普通索引结果**
 
@@ -284,4 +284,4 @@ ON CONFLICT DO NOTHING;
 
 - [ ] **7. 确认 GREEN 与验收**。重跑 `go test ./internal/application/service -run TestSemanticCompletion -count=1`，预期退出码 0；另完成：运行现有knowledge_post_process相关回归；验证丢响应、重复终态、取消、重解析和删除；真实RPC至少完成一次文档→generation闭环。
 
-- [x] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 I05 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): i05 文档任务、attempt与终态协调`。
+- [ ] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 I05 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): i05 文档任务、attempt与终态协调`。

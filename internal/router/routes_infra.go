@@ -8,11 +8,6 @@ import (
 	"github.com/Tencent/WeKnora/internal/handler"
 )
 
-// Semantic internal routes (scope resolution for the semantic service)
-// live in internal/handler/semantic_internal.go: they use service-identity
-// authentication, NOT user RBAC, and only mount when a resolve token is
-// configured (fail closed).
-//
 // Models are tenant-wide infrastructure (LLM credentials, embeddings,
 // rerankers); Viewer+ for reads, Admin+ for any mutation. Credential
 // subresource writes are also Admin+ since secrets are tenant-scoped.

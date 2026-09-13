@@ -245,21 +245,6 @@ func RegisterKnowledgeBaseRoutes(r *gin.RouterGroup, handler *handler.KnowledgeB
 	}
 }
 
-// RegisterSemanticUserRoutes mounts the user-facing semantic API (W01).
-//
-// Reads require KB read access; the semantic handler itself fails closed
-// (503) when the semantic pipeline is not enabled - never fake results.
-// All scope decisions are server-side: path KB + session identity.
-func RegisterSemanticUserRoutes(r *gin.RouterGroup, semanticHandler *handler.SemanticHandler, g *rbacGuards) {
-	if semanticHandler == nil {
-		return
-	}
-	kb := r.Group("/knowledge-bases/:id/semantic")
-	kb.GET("/status", g.KBAccessRead("id"), semanticHandler.Status)
-	kb.POST("/search", g.KBAccessRead("id"), semanticHandler.Search)
-	kb.POST("/reason", g.KBAccessRead("id"), semanticHandler.Reason)
-}
-
 // RegisterKnowledgeBaseActivityRoutes exposes the read-only per-KB activity
 // feed. It intentionally stays JWT-only: audit history is a sensitive owner
 // surface and no existing workspace API-key capability grants audit access.

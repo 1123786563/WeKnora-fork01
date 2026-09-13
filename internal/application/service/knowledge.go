@@ -70,11 +70,6 @@ type knowledgeService struct {
 	imageResolver   *docparser.ImageResolver
 	taskPendingRepo interfaces.TaskPendingOpsRepository
 
-	// semanticEpochs bumps KB authorization epochs when transfers change
-	// document visibility (A01 wiring). Nil-safe: absent wiring skips the
-	// bump (fail-closed scopes still gate every query at delivery).
-	semanticEpochs SemanticEpochBumper
-
 	// In-memory fallbacks for Lite mode (no Redis)
 	memFAQProgress      sync.Map // taskID -> *types.FAQImportProgress
 	memFAQRunningImport sync.Map // kbID -> *runningFAQImportInfo
@@ -124,7 +119,6 @@ func NewKnowledgeService(
 	taskPendingRepo interfaces.TaskPendingOpsRepository,
 	spanTracker SpanTracker,
 	audit interfaces.AuditLogService,
-	semanticEpochs SemanticEpochBumper,
 ) (interfaces.KnowledgeService, error) {
 	return &knowledgeService{
 		config:          config,
@@ -154,7 +148,6 @@ func NewKnowledgeService(
 		taskPendingRepo: taskPendingRepo,
 		spanTracker:     spanTracker,
 		audit:           audit,
-		semanticEpochs:  semanticEpochs,
 	}, nil
 }
 

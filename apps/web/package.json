@@ -6,8 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "test": "node --import tsx --test src/**/*.test.ts",
-    "test:semantic-e2e": "playwright test --config playwright.semantic.config.ts"
+    "test": "node --import tsx --test src/**/*.test.ts"
   },
   "dependencies": {
     "@weknora/api-client": "file:../../packages/api-client",
@@ -25,7 +24,6 @@
     "@types/react-dom": "^19.2.0",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.4",
-    "@playwright/test": "1.63.0",
     "typescript": "^6.0.3",
     "vite": "^7.1.7"
   }

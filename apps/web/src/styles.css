@@ -8,14 +8,3 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-list { list-style: none; margin: 0; padding: 0; }
 .wk-list li { align-items: baseline; border-bottom: 1px solid #edf0f5; display: flex; justify-content: space-between; gap: 1rem; padding: 0.9rem 0; }
 .wk-list li span { color: #66758b; font-family: ui-monospace, monospace; font-size: 0.8rem; }
-
-/* ===== Semantic panel (W02) ===== */
-.semantic-panel,
-.evidence-panel { border: 1px solid #edf0f5; border-radius: 8px; padding: 12px 16px; margin: 8px 0; }
-.semantic-status-label[role='status'] { font-weight: 600; }
-.semantic-text-hint { font-size: 0.85em; color: #66758b; }
-.semantic-retry { margin-top: 8px; }
-.evidence-truncated { font-size: 0.85em; color: #66758b; margin-left: 6px; }
-.evidence-generation { font-family: ui-monospace, monospace; font-size: 0.85em; color: #66758b; }
-.evidence-item { margin: 6px 0; }
-.evidence-quote { margin: 4px 0 0 12px; padding-left: 10px; border-left: 3px solid #edf0f5; color: #66758b; }

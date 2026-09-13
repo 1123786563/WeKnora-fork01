@@ -35,7 +35,7 @@
 
 **接口：** 建议路由 GET /api/v1/knowledge-bases/:id/semantic/status、POST .../semantic/search、POST .../semantic/reason；POST /api/v1/knowledge/:id/semantic/retry。客户端getSemanticStatus、searchSemantic、reasonSemantic、retrySemanticIndex；ID/revision为十进制字符串，后端禁止body覆盖path scope。
 
-- [x] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
+- [ ] **1. 编写失败测试**：在所列测试文件加入以下核心断言；夹具按总计划与当前任务定义建立。
 
 ```
 test("semantic revision preserves uint64 precision", () => {
@@ -47,13 +47,13 @@ test("semantic revision preserves uint64 precision", () => {
 });
 ```
 
-- [x] **2. 确认 RED**。执行 `pnpm exec tsx --test packages/contracts/test/semantic.test.ts packages/api-client/src/semantic.test.ts`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [ ] **2. 确认 RED**。执行 `pnpm exec tsx --test packages/contracts/test/semantic.test.ts packages/api-client/src/semantic.test.ts`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [x] **3. 使用现有session/API key权限路由，不另建前端直连Python；读状态需资源可读，重试/配置变更需资源管理权限**
+- [ ] **3. 使用现有session/API key权限路由，不另建前端直连Python；读状态需资源可读，重试/配置变更需资源管理权限**
 
-- [x] **4. 定义带实际mode、status、generation、证据、推理类型和限制的DTO；未知枚举视为兼容未知状态，不能默认ready；内部错误不泄露服务地址/凭据**
+- [ ] **4. 定义带实际mode、status、generation、证据、推理类型和限制的DTO；未知枚举视为兼容未知状态，不能默认ready；内部错误不泄露服务地址/凭据**
 
-- [x] **5. 客户端支持AbortSignal，retry通过服务端幂等提交；所有scope由服务端根据path与身份决定；补充API文档及路由合同测试**
+- [ ] **5. 客户端支持AbortSignal，retry通过服务端幂等提交；所有scope由服务端根据path与身份决定；补充API文档及路由合同测试**
 
 关键实现约束：
 
@@ -108,15 +108,15 @@ test("deleting document cannot retry semantic indexing", () => {
 });
 ```
 
-- [x] **2. 确认 RED**。执行 `pnpm exec tsx --test packages/domain/src/semantic.test.ts apps/web/src/semantic/view-model.test.ts`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
+- [ ] **2. 确认 RED**。执行 `pnpm exec tsx --test packages/domain/src/semantic.test.ts apps/web/src/semantic/view-model.test.ts`。预期目标断言失败；修复测试环境问题后再次确认，不把依赖缺失算业务 RED。
 
-- [x] **3. 新增索引状态与单独重试交互，区分解析完成/语义失败/旧索引；权限决定操作显示且服务器再次校验，避免前端状态充当授权**
+- [ ] **3. 新增索引状态与单独重试交互，区分解析完成/语义失败/旧索引；权限决定操作显示且服务器再次校验，避免前端状态充当授权**
 
-- [x] **4. 展示普通检索、GraphRAG、规则推导、模型推断的实际类型；证据点开准确document/revision/chunk，历史原文不可取时明确说明，不跳成当前版本**
+- [ ] **4. 展示普通检索、GraphRAG、规则推导、模型推断的实际类型；证据点开准确document/revision/chunk，历史原文不可取时明确说明，不跳成当前版本**
 
-- [x] **5. 取消请求时Abort并丢弃迟到响应；query_id/generation绑定当前视图，权限错误清空结果。不得在模型推断旁显示“已证明”**
+- [ ] **5. 取消请求时Abort并丢弃迟到响应；query_id/generation绑定当前视图，权限错误清空结果。不得在模型推断旁显示“已证明”**
 
-- [x] **6. 将新domain文件和API入口纳入typecheck脚本；复用现有样式，不引入新的组件框架。浏览器测试从已有会话fixture登录并走真实Go接口**
+- [ ] **6. 将新domain文件和API入口纳入typecheck脚本；复用现有样式，不引入新的组件框架。浏览器测试从已有会话fixture登录并走真实Go接口**
 
 关键实现约束：
 
@@ -128,7 +128,7 @@ if (response.query_id !== activeQueryId || signal.aborted) return;
 
 - [ ] **7. 确认 GREEN 与验收**。重跑 `pnpm exec tsx --test packages/domain/src/semantic.test.ts apps/web/src/semantic/view-model.test.ts`，预期退出码 0；另完成：pnpm typecheck:shared、pnpm typecheck:web通过；执行 `pnpm --filter @weknora/web exec playwright test --config playwright.semantic.config.ts`，覆盖上传→索引→问答→引用→重试→取消→撤权；保存截图与无障碍键盘操作证据。
 
-- [x] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 W02 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): w02 React索引状态与推理证据流程`。
+- [ ] **8. 留证与提交**。更新 `docs/superpowers/plans/semantica/progress.md` 的 W02 行，附准确命令、退出码、环境和产物位置；只暂存上述任务文件中的本任务变更，提交 `feat(semantic): w02 React索引状态与推理证据流程`。
 
 ## W03：后端影子构建、切换与回滚
 

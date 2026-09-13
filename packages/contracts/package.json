@@ -4,7 +4,6 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./semantic": "./src/semantic.ts"
+    ".": "./src/index.ts"
   }
 }
