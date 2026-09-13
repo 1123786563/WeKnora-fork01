@@ -26,6 +26,7 @@ export default defineConfig({
       '@weknora/domain/knowledge/processing': fileURLToPath(new URL('../../packages/domain/src/knowledge/processing.ts', import.meta.url)),
       '@weknora/domain/knowledge/preview': fileURLToPath(new URL('../../packages/domain/src/knowledge/preview.ts', import.meta.url)),
       '@weknora/domain/sandbox/terminal': fileURLToPath(new URL('../../packages/domain/src/sandbox/terminal.ts', import.meta.url)),
+      '@weknora/domain/sandbox/skill-install': fileURLToPath(new URL('../../packages/domain/src/sandbox/skill-install.ts', import.meta.url)),
       '@weknora/domain/wiki/diff': fileURLToPath(new URL('../../packages/domain/src/wiki/diff.ts', import.meta.url)),
       '@weknora/domain': fileURLToPath(new URL('../../packages/domain/src/query-key.ts', import.meta.url)),
       '@weknora/ui': fileURLToPath(new URL('../../packages/ui/src/index.tsx', import.meta.url)),
