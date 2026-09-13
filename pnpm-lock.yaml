@@ -542,12 +542,18 @@ importers:
       '@weknora/contracts':
         specifier: file:../../packages/contracts
         version: link:../../packages/contracts
+      '@weknora/core':
+        specifier: file:../../packages/core
+        version: file:packages/core
       '@weknora/domain':
         specifier: file:../../packages/domain
         version: file:packages/domain
       '@weknora/ui':
         specifier: file:../../packages/ui
         version: link:../../packages/ui
+      '@weknora/views':
+        specifier: file:../../packages/views
+        version: file:packages/views(react@19.3.0)
       react:
         specifier: ^19.2.0
         version: 19.3.0
@@ -555,6 +561,9 @@ importers:
         specifier: ^19.2.0
         version: 19.3.0(react@19.3.0)
     devDependencies:
+      '@playwright/test':
+        specifier: 1.63.0
+        version: 1.63.0
       '@types/node':
         specifier: ^22.14.0
         version: 22.14.0
@@ -581,6 +590,18 @@ importers:
         version: link:../contracts
 
   packages/contracts: {}
+
+  packages/core:
+    dependencies:
+      '@weknora/api-client':
+        specifier: workspace:*
+        version: link:../api-client
+      '@weknora/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@weknora/domain':
+        specifier: workspace:*
+        version: link:../domain
 
   packages/domain:
     dependencies:
@@ -621,6 +642,28 @@ importers:
       react:
         specifier: '>=19'
         version: 19.3.0
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.0
+        version: 19.3.0
+
+  packages/views:
+    dependencies:
+      '@weknora/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@weknora/core':
+        specifier: workspace:*
+        version: link:../core
+      '@weknora/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@weknora/ui':
+        specifier: workspace:*
+        version: link:../ui
+      react:
+        specifier: '>=19'
+        version: 19.2.0
     devDependencies:
       '@types/react':
         specifier: ^19.2.0
@@ -2128,6 +2171,11 @@ packages:
     resolution: {integrity: sha512-oeQJs1aa8Ghke8JIK9yuq/+KjMiaYeDZ38jx7MhkXncXlUKjqQ3wEm2X3qCKyjo+ZZofZj+WsEEiqkTtRuE2xQ==}
     engines: {node: ^20.9.0 || >=22.0.0, npm: '>=10.8.2'}
 
+  '@playwright/test@1.63.0':
+    resolution: {integrity: sha512-oxMK4vllB9RK5NQ2l1pq1IfOf2AvnEuj/vYGDj0H2nMtmtZpKtCwt/l00GEO6xjGfpBNAvjovvYdCm50dRQkpQ==}
+    engines: {node: '>=20'}
+    hasBin: true
+
   '@posthog/core@1.24.1':
     resolution: {integrity: sha512-e8AciAnc6MRFws89ux8lJKFAaI03yEon0ASDoUO7yS91FVqbUGXYekObUUR3LHplcg+pmyiJBI0jolY0SFbGRA==}
 
@@ -3195,8 +3243,16 @@ packages:
   '@weknora/api-client@file:packages/api-client':
     resolution: {directory: packages/api-client, type: directory}
 
+  '@weknora/core@file:packages/core':
+    resolution: {directory: packages/core, type: directory}
+
   '@weknora/domain@file:packages/domain':
     resolution: {directory: packages/domain, type: directory}
+
+  '@weknora/views@file:packages/views':
+    resolution: {directory: packages/views, type: directory}
+    peerDependencies:
+      react: '>=19'
 
   '@xmldom/xmldom@0.8.15':
     resolution: {integrity: sha512-/5NV/vDALVFDXgLmfsy9TRCBlKwO2LNBFzpzvb9iIj+jR+eSc6DLYYvVOdivT/jm7MtU6TebYuRmzEOI7w40UA==}
@@ -6169,6 +6225,16 @@ packages:
         optional: true
       typescript:
         optional: true
+
+  playwright-core@1.63.0:
+    resolution: {integrity: sha512-rYCsBF/M5HjUch52bbtVONEFjv6Xu8sm8h72dNlR5bzIE1fvC/bxgspzkjSfU+MweEMmPM8KJebG6nnyxo5mCg==}
+    engines: {node: '>=20'}
+    hasBin: true
+
+  playwright@1.63.0:
+    resolution: {integrity: sha512-+7ziBLidS4NaNCdt57SUDT+wYmmd5fmiQejUic/kb+YsYSCPyOOE9sebzMjNmQrsnNpDJqd4WHvV/8lfKfUDUg==}
+    engines: {node: '>=20'}
+    hasBin: true
 
   plist@3.1.1:
     resolution: {integrity: sha512-ZIfcLJC+7E7FBFnDxm9MPmt7D+DidyQ26lewieO75AdhA2ayMtsJSES0iWzqJQbcVRSrTufQoy0DR94xHue0oA==}
@@ -9748,6 +9814,10 @@ snapshots:
 
   '@phun-ky/typeof@2.0.3': {}
 
+  '@playwright/test@1.63.0':
+    dependencies:
+      playwright: 1.63.0
+
   '@posthog/core@1.24.1':
     dependencies:
       cross-spawn: 7.0.6
@@ -10857,9 +10927,23 @@ snapshots:
     dependencies:
       '@weknora/contracts': link:packages/contracts
 
+  '@weknora/core@file:packages/core':
+    dependencies:
+      '@weknora/api-client': link:packages/api-client
+      '@weknora/contracts': link:packages/contracts
+      '@weknora/domain': link:packages/domain
+
   '@weknora/domain@file:packages/domain':
     dependencies:
       '@weknora/contracts': link:packages/contracts
+
+  '@weknora/views@file:packages/views(react@19.3.0)':
+    dependencies:
+      '@weknora/contracts': link:packages/contracts
+      '@weknora/core': link:packages/core
+      '@weknora/domain': link:packages/domain
+      '@weknora/ui': link:packages/ui
+      react: 19.3.0
 
   '@xmldom/xmldom@0.8.15': {}
 
@@ -14160,6 +14244,12 @@ snapshots:
       typescript: 5.9.3
     transitivePeerDependencies:
       - vite
+
+  playwright-core@1.63.0: {}
+
+  playwright@1.63.0:
+    dependencies:
+      playwright-core: 1.63.0
 
   plist@3.1.1:
     dependencies:

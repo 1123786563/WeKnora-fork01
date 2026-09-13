@@ -242,8 +242,17 @@ func (c *ModelParameters) Scan(value interface{}) error {
 	if value == nil {
 		return nil
 	}
-	b, ok := value.([]byte)
-	if !ok {
+	// SQLite drivers hand TEXT columns back as string while the PostgreSQL
+	// driver hands them back as []byte; accept both so a model's parameters
+	// load identically on either backend (W06 browser acceptance finding —
+	// the string form silently skipped the whole unmarshal before).
+	var b []byte
+	switch v := value.(type) {
+	case []byte:
+		b = v
+	case string:
+		b = []byte(v)
+	default:
 		return nil
 	}
 	if err := json.Unmarshal(b, c); err != nil {

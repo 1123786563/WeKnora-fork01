@@ -57,6 +57,7 @@ import (
 	domain "github.com/Tencent/WeKnora/internal/commercial"
 	"github.com/Tencent/WeKnora/internal/common"
 	"github.com/Tencent/WeKnora/internal/config"
+	"github.com/Tencent/WeKnora/internal/craft"
 	"github.com/Tencent/WeKnora/internal/database"
 	"github.com/Tencent/WeKnora/internal/datasource"
 	"github.com/Tencent/WeKnora/internal/datasource/connector/feishu/core"
@@ -304,6 +305,64 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	}))
 	// Expose Gate as MCPApproval interface so AgentService and others can depend on the abstraction.
 	must(container.Provide(func(g *approval.Gate) approval.MCPApproval { return g }))
+
+	// Craft delegation assembly (R05): the durable Craft store, the real
+	// active-run check and the delegation service handed to the agent
+	// service. CraftActiveRunsQuery is the production CraftRunActivity the
+	// Craft workspace resolver assembles against (R03 nit-1) — the real
+	// agent_runs query, never an always-false stub. The sandboxed OpenCode
+	// dial and the pinned runtime digest are owned by the Craft runtime
+	// deployment task; until it lands the executor fails closed with
+	// craft.ErrUnsupported, so no builtin session and no live sub-execution
+	// is affected — craft_delegate only opens for tRPC sessions that already
+	// have a bound Craft workspace.
+	must(container.Provide(repository.NewCraftStore))
+	must(container.Provide(service.CraftActiveRunsQuery))
+	// W06 (coordinator-authorized): the executor assembly is env-driven —
+	// CRAFT_OPENCODE_BASE_URL assembles the real R01 Client -> R04 Executor
+	// -> CraftDelegateService chain on the local pinned serve (see
+	// craft_runtime.go); without it the R05 fail-closed executor stays and
+	// the default-off semantics are unchanged.
+	must(container.Provide(newCraftRuntimeExecutor))
+	// C02 interaction chain: production interaction store + control service +
+	// reliable decision delivery (fail-closed without the opencode runtime).
+	must(container.Provide(newCraftInteractionAssembly))
+	must(container.Provide(service.NewCraftDelegation))
+
+	// Craft product HTTP surface (W03): the version store (W01), the preview
+	// check store + preview service (W02; the preview stays disabled until
+	// its isolated https origin is configured) and the craft session service
+	// behind the workbench HTTP entrance. The handlers register themselves
+	// for route mounting — routes_chat.go mounts the authenticated surface,
+	// router.go mounts the pre-auth preview origin. The R03 workspace
+	// resolver still has no honest production dial and remains
+	// uninstantiated: the executor above fails closed, which is the recorded
+	// assembly boundary (craft runtime deployment task).
+	must(container.Provide(repository.NewCraftVersionStore))
+	must(container.Provide(repository.NewCraftPreviewCheckStore))
+	must(container.Provide(newCraftPreviewService))
+	must(container.Provide(newCraftSessionService))
+	// C05: the recovery snapshot service rides the same env-driven local
+	// runtime as the executor; without the craft dial it stays nil and the
+	// snapshot/restore routes never mount (fail-closed, like the executor).
+	must(container.Provide(newCraftSnapshotService))
+	// C01 production assembly (coordinator-assigned C06 integration item):
+	// the knowledge material build mounted with its REAL ACL ports. Without
+	// the craft runtime dial the provider answers nil — fail-closed, the
+	// same boundary the executor and snapshot service keep.
+	must(container.Provide(newCraftKnowledgeService))
+	// O03/O04 integration wiring (coordinator-assigned): the craft lifecycle
+	// service (guards, tombstone, sweep), the O01 usage ledger read side and
+	// the O04 usage view. See craft_lifecycle.go for the assembly details.
+	must(container.Provide(newCraftLifecycleService))
+	must(container.Provide(newCraftUsageService))
+	must(container.Provide(newCraftUsageViewService))
+	// The craft handler registration is deferred until every provider the
+	// session service needs (SessionService, TemporaryDocumentService, ...)
+	// is registered: dig.Invoke resolves eagerly, and W03's original position
+	// above panicked at boot because those providers appear later in the
+	// registration order (first observed booting the real server in W06).
+
 	must(container.Provide(service.NewAgentService))
 
 	// Session service (depends on agent service)
@@ -401,6 +460,22 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Invoke(chatpipeline.NewPluginWikiBoost))
 	must(container.Invoke(chatpipeline.NewPluginMemoryAffinity))
 	logger.Debugf(ctx, "[Container] Chat pipeline plugins registered")
+	// Craft handler registration now that its full dependency set exists
+	// (W03's eager Invoke position is moved here — see the craft block above).
+	must(container.Invoke(registerCraftHTTPHandlers))
+	// C02: interaction decide surface + outbox redelivery sweep, plus the
+	// post-construction registrar wiring that breaks the provider cycle
+	// (see wireCraftInteractionRegistrar).
+	must(container.Invoke(wireCraftInteractionRegistrar))
+	must(container.Invoke(registerCraftInteractionHTTPHandlers))
+	must(container.Invoke(startCraftDecisionDelivery))
+	// C01 production assembly validation (nil without the runtime dial).
+	must(container.Invoke(validateCraftKnowledgeAssembly))
+	// O04: the usage view handler rides the craft session route table.
+	must(container.Invoke(registerCraftUsageHTTPHandlers))
+	// O03 hard wiring: delegation/restore guards + the periodic reclamation
+	// sweep (default ON; CRAFT_LIFECYCLE_SWEEP_DISABLED=true turns it off).
+	must(container.Invoke(wireCraftLifecycleIntegration))
 
 	// TenantSkillService is provided next to SessionService (handlers need
 	// it), but Invoke constructs the whole chain. SessionService needs
@@ -574,6 +649,10 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// local:// images that live under a tenant's configured storage PathPrefix
 	// (which is not encoded in the local:// URL).
 	must(container.Invoke(registerChatLocalImageResolver))
+
+	// O03 wiring: the craft tombstone at the session-deletion entrance (the
+	// Handler is fully constructible here — the router below resolves it).
+	must(container.Invoke(wireCraftSessionTombstone))
 
 	// Router configuration
 	logger.Debugf(ctx, "[Container] Registering router and starting task server...")
@@ -1940,4 +2019,156 @@ func startCommercialFulfillment(svc *commercialsvc.FulfillmentService, cleaner i
 		svc.Stop()
 		return nil
 	})
+}
+
+// craftFeatureGateFromEnv reads the craft feature gate following the
+// WEKNORA_* env-switch convention (like the commercial rollout switches):
+// craft is disabled unless WEKNORA_CRAFT_ENABLED is true, and even when
+// enabled only the kinds listed in WEKNORA_CRAFT_KINDS are open. A valid
+// kind is not an open kind.
+func craftFeatureGateFromEnv() service.CraftFeatureGate {
+	gate := service.CraftFeatureGate{Enabled: false}
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("WEKNORA_CRAFT_ENABLED"))) {
+	case "true", "1", "yes":
+		gate.Enabled = true
+	}
+	kinds := make([]string, 0, 4)
+	for _, raw := range strings.Split(os.Getenv("WEKNORA_CRAFT_KINDS"), ",") {
+		kind := strings.TrimSpace(raw)
+		if craft.KnownKind(kind) {
+			kinds = append(kinds, kind)
+		}
+	}
+	if len(kinds) == 0 {
+		kinds = []string{craft.KindWeb}
+	}
+	gate.Kinds = kinds
+	return gate
+}
+
+// newCraftSessionService assembles W03's craft session service from the
+// already-registered craft stores and the existing session, upload, file and
+// model services. New runs are admitted through the live agent run service.
+func newCraftSessionService(
+	db *gorm.DB,
+	sessions interfaces.SessionService,
+	store craft.Store,
+	versions craft.VersionStore,
+	documents interfaces.TemporaryDocumentService,
+	files interfaces.FileService,
+	models interfaces.ModelService,
+	runtime *AgentRuntime,
+) (*service.CraftSessionService, error) {
+	runs := runtime.Runs
+	if runs == nil {
+		runs = service.RegisteredAgentRunService()
+	}
+	return service.NewCraftSessionService(service.CraftSessionConfig{
+		DB: db, Sessions: sessions, Store: store, Versions: versions,
+		Runs: runs, ActiveRuns: service.CraftActiveRunsQuery(db),
+		TemporaryDocs: documents, Files: files, Models: models,
+		Gate: craftFeatureGateFromEnv(),
+	})
+}
+
+// newCraftPreviewService assembles W02's preview service. Without a
+// configured isolated https preview origin the feature stays disabled:
+// issuance answers unavailable and the isolated origin 404s.
+func newCraftPreviewService(
+	versions craft.VersionStore,
+	files interfaces.FileService,
+	checks craft.PreviewCheckStore,
+) *service.CraftPreviewService {
+	return service.NewCraftPreviewService(versions, files, checks, service.CraftPreviewConfig{
+		AppOrigin:     strings.TrimSpace(os.Getenv("WEKNORA_CRAFT_APP_ORIGIN")),
+		PreviewOrigin: strings.TrimSpace(os.Getenv("WEKNORA_CRAFT_PREVIEW_ORIGIN")),
+	})
+}
+
+// newCraftKnowledgeService assembles C01's knowledge material build onto
+// the EXISTING ACL entrances — BindCraftKnowledgeAccess over the real
+// knowledgeService.GetKnowledgeBatchWithSharedAccess and
+// BindCraftKnowledgeSearch over the real knowledgeBaseService.HybridSearch —
+// plus the R02 craft store. The workspace writer targets the local craft
+// runtime's serve working directory: knowledge/ stages beside inputs/ and
+// output/ in that tree, exactly where the pinned OpenCode serve session
+// resolves the workspace-relative paths the material manifest names. Without
+// the real runtime dial (CRAFT_OPENCODE_BASE_URL unset) the provider answers
+// a nil service — fail-closed, like the executor and snapshot service.
+func newCraftKnowledgeService(
+	store craft.Store,
+	knowledge interfaces.KnowledgeService,
+	knowledgeBases interfaces.KnowledgeBaseService,
+	executor craft.Executor,
+) (*service.CraftKnowledgeService, error) {
+	runtime, ok := executor.(*localCraftRuntime)
+	if !ok {
+		return nil, nil
+	}
+	workDir := runtime.workDir
+	writer := func(ctx context.Context, workspace craft.Workspace, path string, content []byte) error {
+		// Workspace-relative staging paths only: the build hands its own
+		// canonical knowledge/... constants through this seam, and anything
+		// that is not exactly one canonical relative path is refused rather
+		// than resolved against the serve working directory.
+		if path == "" || path != pathCleanForward(path) ||
+			strings.HasPrefix(path, "/") || strings.Contains(path, "..") {
+			return fmt.Errorf("craft: refusing non-canonical knowledge staging path %q", path)
+		}
+		target := filepath.Join(workDir, filepath.FromSlash(path))
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+		return os.WriteFile(target, content, 0o644)
+	}
+	return service.NewCraftKnowledgeService(service.CraftKnowledgeConfig{
+		Store:  store,
+		Access: service.BindCraftKnowledgeAccess(knowledge),
+		Search: service.BindCraftKnowledgeSearch(knowledgeBases),
+		Writer: writer,
+	})
+}
+
+// validateCraftKnowledgeAssembly constructs the craft knowledge build at
+// boot so a missing port fails fast instead of surfacing at first use. A
+// nil service is the recorded fail-closed state (no runtime dial), not an
+// error.
+func validateCraftKnowledgeAssembly(knowledge *service.CraftKnowledgeService) {
+	if knowledge == nil {
+		logger.Infof(context.Background(), "[CraftKnowledge] build not assembled: the craft runtime dial is not configured")
+		return
+	}
+	logger.Infof(context.Background(), "[CraftKnowledge] build assembled with the production ACL entrances")
+}
+
+// wireCraftInteractionRegistrar installs the C02 interaction.pending
+// registrar onto the local craft runtime once both sides exist. This is
+// the deliberate break of the provider cycle executor → interaction
+// assembly → agent runtime → executor that panicked boot at Provide time
+// on the merged integration HEAD (verified pre-existing before this
+// change): the executor no longer takes the assembly as a constructor
+// parameter, and this invoke lands the same wiring after construction,
+// before any delegation can execute.
+func wireCraftInteractionRegistrar(executor craft.Executor, assembly *CraftInteractionAssembly) {
+	runtime, ok := executor.(*localCraftRuntime)
+	if !ok || assembly == nil {
+		return
+	}
+	// BASE wrapped the executor's emission path with the registrar at
+	// construction using the executor's OWN opencode client; the
+	// post-construction install reuses that same client (assembly.Client
+	// may legitimately be nil when its own dial failed).
+	runtime.setInteractionEmitter(craftInteractionRegistrar(
+		runtime.client, runtime.store, assembly.Store, assembly.Runs, runtime.emit))
+}
+
+// registerCraftHTTPHandlers installs the craft handlers for route mounting.
+// The session service itself is the registered API surface; routes_chat.go
+// wraps it in the HTTP handler at mounting time.
+func registerCraftHTTPHandlers(svc *service.CraftSessionService, previews *service.CraftPreviewService, snapshots *service.CraftSnapshotService) {
+	session.RegisterCraftSessionHandler(svc)
+	session.RegisterCraftPreviewRouteHandler(session.NewCraftPreviewHandler(previews))
+	if snapshots != nil {
+		session.RegisterCraftSnapshotHandler(snapshots)
+	}
 }

@@ -1,0 +1,67 @@
+{
+  "schema": "weknora-craft-skill-manifest/v1",
+  "skill": "craft-spreadsheet",
+  "kind": "spreadsheet",
+  "task": "D02 数据表格与 XLSX 导出",
+  "description": "CSV material -> recalculated report.xlsx + preview.json + manifest.json",
+  "outputs": [
+    "report.xlsx",
+    "preview.json",
+    "manifest.json"
+  ],
+  "pipeline": [
+    "openpyxl 3.0.9 creates the workbook (guarded CSV cells as literal strings, template formulas only)",
+    "LibreOffice headless (libreoffice-calc-nogui 7.4.7) recalculates with OOXMLRecalcMode=0 profile; timeout budget -> recalc=failed",
+    "openpyxl parses the recalculated file (data_only=True): cached values + formula errors feed the sheet summaries",
+    "preview.json + manifest.json regenerated from the recalculated cache"
+  ],
+  "toolchain": {
+    "image": "weknora-craft-runtime:d02-spreadsheet",
+    "image_digest": "sha256:774842236493adbb22d3df91f63dddf18fb0a64ef5f548f68f609138037873e9",
+    "lock": "docker/craft/spreadsheet-requirements.lock",
+    "python": "3.11.2 (Debian bookworm)",
+    "openpyxl": "3.0.9-1 (MIT license)",
+    "libreoffice": "4:7.4.7-1+deb12u14 libreoffice-calc-nogui (MPL-2.0 license)",
+    "fonts_cjk": "fonts-noto-cjk 1:20220127+repack1-1 (SIL Open Font License 1.1)"
+  },
+  "limits": {
+    "sheets": 5,
+    "rows_per_sheet": 100000,
+    "columns": 100,
+    "source_bytes": 20971520,
+    "preview_rows_per_page": 1000,
+    "conversion_timeout_seconds": 60
+  },
+  "forbidden": [
+    "macros/xlsm/VBA",
+    "external workbook references",
+    "DDE",
+    "network formulas (WEBSERVICE/FILTERXML/RTD)",
+    "external links (HYPERLINK)",
+    "executing CSV cell text (=,+,-,@,TAB,CR prefix)"
+  ],
+  "gate_checks": [
+    "recalc",
+    "preview",
+    "parse"
+  ],
+  "example": {
+    "input": "e2e/fixtures/craft-sales.csv (2026-01 东区 100, 2026-02 西区 200)",
+    "round1": "SUM 公式重算缓存 300",
+    "round2": "季度汇总重算仍为 300",
+    "round3": "追加一行 50 后重算 350",
+    "fixture": "internal/craft/testdata/d02_libreoffice_recalc.xlsx (sha256 8f03ee40b8401432c08a9d0f649872bea035048e6e220584759bda052169b18b)"
+  },
+  "verification": [
+    "go test ./internal/craft -run TestSheetRequires -count=1",
+    "go test ./internal/craft -count=1",
+    "docker build -t weknora-craft-runtime:d02-spreadsheet -f docker/craft/Dockerfile docker/craft",
+    "one-shot acceptance container reproducing the recalc proof (see task-D02-report.md)"
+  ],
+  "not_promised": [
+    "online Excel editing",
+    "macro support",
+    "external data links",
+    "network formulas"
+  ]
+}

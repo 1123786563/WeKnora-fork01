@@ -1,0 +1,29 @@
+{
+  "name": "@weknora/views",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./craft/home": "./src/craft/home.tsx",
+    "./craft/workbench": "./src/craft/workbench.tsx",
+    "./craft/preview": "./src/craft/preview.tsx",
+    "./craft/files": "./src/craft/files.tsx",
+    "./craft/presentation": "./src/craft/presentation.ts",
+    "./craft/interaction": "./src/craft/interaction.tsx",
+    "./craft/spreadsheet": "./src/craft/spreadsheet.tsx",
+    "./craft/slides": "./src/craft/slides.tsx",
+    "./craft/document": "./src/craft/document.tsx"
+  },
+  "dependencies": {
+    "@weknora/contracts": "workspace:*",
+    "@weknora/core": "workspace:*",
+    "@weknora/domain": "workspace:*",
+    "@weknora/ui": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": ">=19"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0"
+  }
+}

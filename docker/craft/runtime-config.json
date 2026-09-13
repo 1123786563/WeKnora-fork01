@@ -1,0 +1,60 @@
+{
+  "$schema": "craft-runtime-config-v1",
+  "version": 1,
+  "description": "Versioned runtime configuration and skill digests for the reproducible Craft sandbox image (docker/craft/Dockerfile). The image bakes this file at /etc/craft/runtime-config.json; the service-side executor verifies it before accepting a sandbox for delegation.",
+  "opencode": {
+    "version": "1.18.4",
+    "source_commit": "49c69c5ed3ccf706b61b3febb43c8aaff7f8325e",
+    "release": "https://github.com/anomalyco/opencode/releases/tag/v1.18.4",
+    "lock": "docker/craft/opencode.lock.json (R01, read-only authority)",
+    "binary_sha256": {
+      "darwin-arm64-local-probe": "9449af91f517eacc2b0742fa93ae0da64fa6e5db7b714e30c62edea2a8de3f98",
+      "linux-amd64": "6ce6570e7db9a40e7bd3304ebdfff607920bde8cafd2eb5587bd7a26f89ba0b5",
+      "linux-arm64": "3557e87db8c7db70e8ebd42157df1246554120896b115c462b760ff248cf751e"
+    },
+    "digest_provenance": "linux-amd64/linux-arm64 were hashed from the official v1.18.4 release tarballs (opencode-linux-x64.tar.gz, opencode-linux-arm64.tar.gz) on 2026-09-14 and pinned here plus in the Dockerfile build args; darwin-arm64 is the R01 local probe carried in opencode.lock.json.",
+    "health_check": "opencode --version must print exactly 1.18.4 AND the installed binary's sha256 must equal the pinned per-arch digest before a sandbox is accepted; GET /doc info.version=1.0.0 is a static OpenAPI constant and must never be used as the version signal."
+  },
+  "skills": [],
+  "skill_entry_shape": [
+    "name",
+    "version",
+    "sha256",
+    "path"
+  ],
+  "skill_digest_rule": "Every skill mounted into the runtime must appear here with the SHA-256 of its installed bundle; the executor refuses skills whose digest is not listed. Entries are appended by the skill packaging chain; this file is versioned with the image.",
+  "limits": {
+    "shell_output_max_bytes": 65536,
+    "shell_timeout_seconds": 120,
+    "shell_max_concurrent": 1,
+    "scope": "internal-trial quotas only; no paid execution is enabled by this configuration before gate G4 passes."
+  },
+  "permissions": {
+    "policy": "default-deny-with-ask",
+    "default": "ask",
+    "tools": {
+      "read": "allow",
+      "glob": "allow",
+      "grep": "allow",
+      "list": "allow",
+      "bash": "ask",
+      "edit": "ask",
+      "write": "ask",
+      "patch": "ask",
+      "webfetch": "deny"
+    },
+    "rule": "No tool ever receives a broad always-allow. Anything not explicitly listed resolves to ask (R06 owns the ask interaction flow); webfetch stays denied until the sandbox egress policy explicitly lists an allowed destination set. Read-only discovery of the staged material is the only allow tier."
+  },
+  "workspace": {
+    "root": "/workspace",
+    "inputs": "/workspace/inputs",
+    "output": "/workspace/output",
+    "inputs_contract": "Root-owned 0555 and mounted read-only at run time; staged only by the platform's authorized workspace writer (inputs/<sha256>/<name>), never written by the OpenCode process.",
+    "output_contract": "Owned by the craft runtime user (UID/GID 10001) and writable; artifact versions are published from here by the service, not by the model directly."
+  },
+  "credentials": {
+    "rule": "No account keys, platform long-lived tokens or user credentials are baked into, or mounted under, this image or the workspace. Model access flows exclusively through the server-provided gateway or an authorized BYOK entry managed by the platform; the OpenCode process never holds tenant or platform credentials.",
+    "docker_socket": "never mounted",
+    "host_home": "never mounted"
+  }
+}

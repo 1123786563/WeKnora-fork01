@@ -1,0 +1,75 @@
+{
+  "schema": "weknora-craft-skill-manifest/v1",
+  "skill": "craft-slides",
+  "kind": "slides",
+  "task": "D03 演示稿与分页预览",
+  "description": "outline -> python-pptx deck -> LibreOffice PDF -> pdftocairo pages + preview.json + manifest.json",
+  "outputs": [
+    "report.pptx",
+    "report.pdf",
+    "pages/page-N.svg (one per slide)",
+    "preview.json",
+    "index.html",
+    "manifest.json"
+  ],
+  "pipeline": [
+    "page outline first (max 30; overflow recorded, never silently trimmed) with per-page kc_ citations",
+    "python-pptx 1.0.2 writes the deck (native charts, speaker-note citations, trailing sources slide, fonts >= 12pt)",
+    "LibreOffice impress headless (libreoffice-impress-nogui 7.4.7) renders report.pdf under a timeout budget; budget kill -> render=failed",
+    "pdfinfo page count must equal slide count; pdftotext per page must carry the key strings; pdftocairo -f N -l N exports every page to pages/page-N.svg",
+    "python-pptx readback checks boundaries (shapes inside the slide box), font floor and declared images -> pages check",
+    "preview.json + static index.html viewer (thumbnails/prev-next/page number/downloads/ArrowLeft-ArrowRight/modify postMessage) + manifest.json"
+  ],
+  "toolchain": {
+    "image": "weknora-craft-runtime:d03-slides",
+    "lock": "docker/craft/slides-requirements.lock",
+    "python": "3.11.2 (Debian bookworm)",
+    "python_pptx": "1.0.2 (MIT license; sha256-pinned wheel over Debian lxml/Pillow)",
+    "xlsxwriter": "3.2.0 (BSD license; python-pptx chart-data dependency, sha256-pinned wheel)",
+    "typing_extensions": "4.12.2 (PSF license; sha256-pinned wheel)",
+    "lxml": "4.9.2-1+b1 (Debian bookworm)",
+    "pillow": "9.4.0-1.1+deb12u1 (Debian bookworm, python3-pil)",
+    "libreoffice": "4:7.4.7-1+deb12u14 libreoffice-impress-nogui (MPL-2.0 license)",
+    "poppler": "22.12.0-2+deb12u3 poppler-utils (pdftocairo/pdftotext/pdfinfo; GPL-2+/MIT)",
+    "fonts_cjk": "fonts-noto-cjk 1:20220127+repack1-1 (SIL Open Font License 1.1; from the D02 set)"
+  },
+  "limits": {
+    "max_pages": 30,
+    "min_font_pt": 12,
+    "conversion_timeout_seconds": 180
+  },
+  "forbidden": [
+    "macros/pptm/VBA",
+    "animations/transitions/multimedia",
+    "shipping a PPTX without the rendered PDF + every page image",
+    "silently dropping pages beyond the 30-page cap (record overflow_pages instead)",
+    "claiming visual aesthetics as passed (visual stays not_run for human acceptance)"
+  ],
+  "gate_checks": [
+    "render",
+    "pages",
+    "sources"
+  ],
+  "modify_channel": {
+    "contract": "the static viewer's 修改此页 button posts {type: 'craft:slides:modify', page: N} to window.parent; the assembly attaches the current version id and forwards the explicit page number to the main agent"
+  },
+  "example": {
+    "deck": "5 页客户方案（长中文标题/中文正文/原生柱状图/来源页）",
+    "render": "impress_pdf_Export -> 5 页 PDF；pdftotext 逐页命中中文关键词；pdftocairo 逐页导出 57-105KB SVG",
+    "modify": "只改第 3 页结论 -> 其余 slide XML 字节不变，页数一致，旧版本 PPTX/PDF 原 SHA",
+    "overflow": "31 页大纲 -> overflow_pages [31]，pages=failed，反馈主 Agent 拆分",
+    "fixtures": "internal/craft/testdata/d03_python_pptx_deck.pptx + d03_libreoffice_render.pdf + d03_pdftocairo_page1.svg (produced by this exact image run)"
+  },
+  "verification": [
+    "go test ./internal/craft -run TestSlidesNeed -count=1",
+    "go test ./internal/craft -count=1",
+    "docker build -t weknora-craft-runtime:d03-slides -f docker/craft/Dockerfile docker/craft",
+    "one-shot acceptance container reproducing the render/overflow/budget proofs (see task-D03-report.md)"
+  ],
+  "not_promised": [
+    "online slide editing",
+    "animations/transitions",
+    "macros",
+    "automatic aesthetic judgment (human acceptance)"
+  ]
+}

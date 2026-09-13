@@ -11,12 +11,15 @@
   "dependencies": {
     "@weknora/api-client": "file:../../packages/api-client",
     "@weknora/contracts": "file:../../packages/contracts",
+    "@weknora/core": "file:../../packages/core",
     "@weknora/domain": "file:../../packages/domain",
     "@weknora/ui": "file:../../packages/ui",
+    "@weknora/views": "file:../../packages/views",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@types/node": "^22.14.0",
