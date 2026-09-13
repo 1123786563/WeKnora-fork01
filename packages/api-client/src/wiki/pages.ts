@@ -18,6 +18,47 @@ export interface WikiPageListResponse {
   total_pages: number;
 }
 
+export interface WikiFolderNode {
+  id: string;
+  parent_id: string;
+  name: string;
+  path: string;
+  depth: number;
+  sort_order: number;
+  page_count: number;
+  has_children: boolean;
+  [key: string]: unknown;
+}
+
+export interface WikiFolderListResponse {
+  parent_id: string;
+  folders: WikiFolderNode[];
+}
+
+export interface WikiIndexEntry {
+  slug: string;
+  title: string;
+  summary: string;
+  parent_slug?: string;
+  category_path?: string[];
+  wiki_path?: string;
+  depth?: number;
+  sort_order?: number;
+}
+
+export interface WikiIndexGroup {
+  type: string;
+  total: number;
+  items: WikiIndexEntry[];
+  next_cursor?: string;
+}
+
+export interface WikiIndexResponse {
+  intro: string;
+  version: number;
+  groups: WikiIndexGroup[];
+}
+
 export interface WikiPageRevision {
   id: string;
   slug: string;
@@ -112,6 +153,44 @@ function list(value: unknown): WikiPageListResponse {
   return { pages: row.pages.map(page), total: row.total as number, page: row.page as number, page_size: row.page_size as number, total_pages: row.total_pages as number };
 }
 
+function folders(value: unknown): WikiFolderListResponse {
+  const row = object(value, 'Invalid Wiki folder list response');
+  if (typeof row.parent_id !== 'string' || !Array.isArray(row.folders)) throw new Error('Invalid Wiki folder list');
+  return {
+    parent_id: row.parent_id,
+    folders: row.folders.map((item) => {
+      const folder = object(item, 'Invalid Wiki folder');
+      for (const key of ['id', 'parent_id', 'name', 'path']) if (typeof folder[key] !== 'string') throw new Error(`Invalid Wiki folder field: ${key}`);
+      for (const key of ['depth', 'sort_order', 'page_count']) if (typeof folder[key] !== 'number' || !Number.isSafeInteger(folder[key]) || folder[key] < 0) throw new Error(`Invalid Wiki folder field: ${key}`);
+      if (typeof folder.has_children !== 'boolean') throw new Error('Invalid Wiki folder field: has_children');
+      return folder as WikiFolderNode;
+    }),
+  };
+}
+
+function index(value: unknown): WikiIndexResponse {
+  const row = object(value, 'Invalid Wiki index response');
+  if (typeof row.intro !== 'string' || typeof row.version !== 'number' || !Number.isSafeInteger(row.version) || row.version < 0 || !Array.isArray(row.groups)) throw new Error('Invalid Wiki index');
+  return {
+    intro: row.intro,
+    version: row.version,
+    groups: row.groups.map((item) => {
+      const group = object(item, 'Invalid Wiki index group');
+      if (typeof group.type !== 'string' || typeof group.total !== 'number' || !Number.isSafeInteger(group.total) || group.total < 0 || !Array.isArray(group.items)) throw new Error('Invalid Wiki index group');
+      return {
+        type: group.type,
+        total: group.total,
+        next_cursor: group.next_cursor === undefined ? undefined : String(group.next_cursor),
+        items: group.items.map((entry) => {
+          const row = object(entry, 'Invalid Wiki index entry');
+          for (const key of ['slug', 'title', 'summary']) if (typeof row[key] !== 'string') throw new Error(`Invalid Wiki index entry field: ${key}`);
+          return row as unknown as WikiIndexEntry;
+        }),
+      };
+    }),
+  };
+}
+
 function revisionList(value: unknown): WikiRevisionListResponse {
   const row = object(value, 'Invalid Wiki revision list response');
   if (!Array.isArray(row.revisions)) throw new Error('Invalid Wiki revision list');
@@ -159,6 +238,21 @@ export function createWikiPagesApi(request: (input: ClientRequest) => Promise<un
       for (const [key, value] of Object.entries(params)) if (value !== undefined && value !== '') query.set(key, String(value));
       const suffix = query.toString();
       return list(await request({ method: 'GET', path: `${base(kbId)}/pages${suffix ? `?${suffix}` : ''}` }));
+    },
+    async folders(kbId: string, parentId = '', pageTypes: string[] = []): Promise<WikiFolderListResponse> {
+      const query = new URLSearchParams();
+      if (parentId) query.set('parent_id', parentId);
+      if (pageTypes.length > 0) query.set('page_types', pageTypes.join(','));
+      const suffix = query.toString();
+      return folders(await request({ method: 'GET', path: `${base(kbId)}/folders${suffix ? `?${suffix}` : ''}` }));
+    },
+    async index(kbId: string, params: { types?: string[]; limit?: number; cursor?: string } = {}): Promise<WikiIndexResponse> {
+      const query = new URLSearchParams();
+      if (params.types && params.types.length > 0) query.set('types', params.types.join(','));
+      if (params.limit !== undefined) query.set('limit', String(params.limit));
+      if (params.cursor) query.set('cursor', params.cursor);
+      const suffix = query.toString();
+      return index(await request({ method: 'GET', path: `${base(kbId)}/index${suffix ? `?${suffix}` : ''}` }));
     },
     async get(kbId: string, slug: string): Promise<WikiPage> {
       return page(await request({ method: 'GET', path: `${base(kbId)}/pages/${pathSlug(slug)}` }));

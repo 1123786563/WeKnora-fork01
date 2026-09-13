@@ -15,6 +15,28 @@ test('lists Wiki pages with encoded KB and query parameters', async () => {
   assert.equal(path, '/api/v1/knowledgebase/kb%2Fa/wiki/pages?page=1&page_size=20');
 });
 
+test('lists direct Wiki folders with parent and page-type filters', async () => {
+  let path = '';
+  const api = createWikiPagesApi(async (request) => {
+    path = request.path;
+    return { parent_id: 'folder-1', folders: [{ id: 'folder-2', parent_id: 'folder-1', name: 'Guides', path: 'Guides', depth: 1, sort_order: 0, page_count: 3, has_children: true }] };
+  });
+  const result = await api.folders('kb/a', 'folder-1', ['summary', 'entity']);
+  assert.equal(result.folders[0]?.page_count, 3);
+  assert.equal(path, '/api/v1/knowledgebase/kb%2Fa/wiki/folders?parent_id=folder-1&page_types=summary%2Centity');
+});
+
+test('loads the structured Wiki index and preserves group cursors', async () => {
+  let path = '';
+  const api = createWikiPagesApi(async (request) => {
+    path = request.path;
+    return { intro: '# Index', version: 4, groups: [{ type: 'summary', total: 1, items: [{ slug: 'start', title: 'Start', summary: 'Intro' }], next_cursor: 'next-1' }] };
+  });
+  const result = await api.index('kb/a', { types: ['summary'], limit: 10, cursor: 'prev-1' });
+  assert.equal(result.groups[0]?.next_cursor, 'next-1');
+  assert.equal(path, '/api/v1/knowledgebase/kb%2Fa/wiki/index?types=summary&limit=10&cursor=prev-1');
+});
+
 test('updates hierarchical slugs segment-by-segment and preserves optimistic version', async () => {
   let captured: { path: string; body: unknown } | undefined;
   const api = createWikiPagesApi(async (request) => {
