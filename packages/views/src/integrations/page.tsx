@@ -38,6 +38,7 @@ import {
   embedSecureWidgetSnippet,
   embedSnippetScenarioKey,
   embedWidgetSnippet,
+  embedChannelUrl,
   embedWizardFormFromChannel,
   embedWizardSteps,
   parseEmbedAllowedOrigins,
@@ -565,18 +566,23 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
         {!loading && !error && section.external ? <ExternalLandingPanel tab={tab} locale={locale} externalUrl={section.externalUrl} apiBaseUrl={apiBaseUrl} t={t} /> : null}
       </section>
     </main>
-    {embedPreview ? <EmbedChannelPreviewPanel preview={embedPreview} t={t} onClose={() => setEmbedPreview(null)} /> : null}
+    {embedPreview ? <EmbedChannelPreviewPanel preview={embedPreview} locale={locale} t={t} onClose={() => setEmbedPreview(null)} /> : null}
     </>
   );
 }
 
 type Translator = (key: string, values?: Record<string, string | number>) => string;
 
-function EmbedChannelPreviewPanel({ preview, t, onClose }: { preview: { channel: IntegrationResource; token: string; mode: 'iframe' | 'widget' }; t: Translator; onClose: () => void }) {
+function EmbedChannelPreviewPanel({ preview, locale, t, onClose }: { preview: { channel: IntegrationResource; token: string; mode: 'iframe' | 'widget' }; locale?: string; t: Translator; onClose: () => void }) {
   const [ready, setReady] = useState(false);
   const [widgetOpen, setWidgetOpen] = useState(true);
   const channelId = encodeURIComponent(preview.channel.id);
-  const src = '/embed/' + channelId + '#token=' + encodeURIComponent(preview.token);
+  // Vue bumps r=N per open so re-previews reload instead of serving the
+  // cached iframe; the nonce doubles as the deferred-mount gate (Vue waits
+  // for the drawer layout before mounting so embed autosize never reads 0).
+  const [refreshKey] = useState(() => Date.now());
+  const [layoutReady] = useState(true);
+  const src = embedChannelUrl(preview.channel.id, preview.token, { locale, refreshKey });
   useEffect(() => { setReady(false); setWidgetOpen(true); }, [preview.channel.id, preview.token, preview.mode]);
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
@@ -590,10 +596,10 @@ function EmbedChannelPreviewPanel({ preview, t, onClose }: { preview: { channel:
         <p className="wk-embed-preview-hint">{t(preview.mode === 'iframe' ? 'embedPublish.previewIframeHint' : 'embedPublish.previewWidgetHint')}</p>
         {preview.mode === 'iframe' ? <div className="wk-embed-preview-device">
           <div className="wk-embed-preview-chrome"><span>●</span><span>●</span><span>●</span><code>/embed/{channelId}</code></div>
-          <div className="wk-embed-preview-screen">{!ready ? <span className="wk-muted">{t('embedPublish.previewLoading')}</span> : null}<iframe title={preview.channel.name || t('embedPublish.preview')} src={src} onLoad={() => setReady(true)} className={ready ? '' : 'is-loading'} allow="clipboard-write" /></div>
+          <div className="wk-embed-preview-screen">{!ready ? <span className="wk-muted">{t('embedPublish.previewLoading')}</span> : null}{layoutReady ? <iframe title={preview.channel.name || t('embedPublish.preview')} src={src} onLoad={() => setReady(true)} className={ready ? '' : 'is-loading'} allow="clipboard-write" /> : null}</div>
         </div> : <div className="wk-embed-preview-widget">
           <div className="wk-embed-preview-mock-page"><strong>{t('embedPublish.previewMockPage')}</strong><span /><span className="short" /></div>
-          {widgetOpen ? <div className="wk-embed-preview-widget-panel"><iframe title={preview.channel.name || t('embedPublish.preview')} src={src} onLoad={() => setReady(true)} allow="clipboard-write" /></div> : null}
+          {widgetOpen && layoutReady ? <div className="wk-embed-preview-widget-panel"><iframe title={preview.channel.name || t('embedPublish.preview')} src={src} onLoad={() => setReady(true)} allow="clipboard-write" /></div> : null}
           <button type="button" className="wk-embed-preview-launcher" style={{ background: typeof preview.channel.primary_color === 'string' ? preview.channel.primary_color : '#07c05f' }} onClick={() => setWidgetOpen((open) => !open)} aria-label={widgetOpen ? '关闭' : t('embedPublish.preview')}>{widgetOpen ? '×' : '◔'}</button>
         </div>}
       </div>
