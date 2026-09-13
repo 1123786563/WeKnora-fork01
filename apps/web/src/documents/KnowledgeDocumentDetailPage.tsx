@@ -68,6 +68,7 @@ function DocumentDetail({ document, client, previewPath, downloadPath }: { docum
   const model = buildDocumentPreview(document, previewPath);
   const [previewState, setPreviewState] = useState<PreviewState>({ status: 'idle' });
   const [downloadState, setDownloadState] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [previewAttempt, setPreviewAttempt] = useState(0);
 
   useEffect(() => {
     if (!model.ready || !isInlinePreviewKind(model.kind)) {
@@ -95,7 +96,7 @@ function DocumentDetail({ document, client, previewPath, downloadPath }: { docum
       controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [client, document.id, model.kind, model.ready]);
+  }, [client, document.id, model.kind, model.ready, previewAttempt]);
 
   async function download() {
     setDownloadState('loading');
@@ -109,15 +110,14 @@ function DocumentDetail({ document, client, previewPath, downloadPath }: { docum
       anchor.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 0);
       setDownloadState('idle');
-    } catch (error: unknown) {
+    } catch {
       setDownloadState('error');
-      setPreviewState({ status: 'error', message: detailError(error) });
     }
   }
 
   const inlineKind: InlinePreviewKind | undefined = isInlinePreviewKind(model.kind) ? model.kind : undefined;
   return <Card><dl className="wk-document-metadata"><div><dt>Status</dt><dd>{String(document.parse_status || 'unknown')}</dd></div><div><dt>Source</dt><dd>{String(document.source || 'file')}</dd></div><div><dt>Folder</dt><dd>{String(document.folder_path || 'Root')}</dd></div><div><dt>Type</dt><dd>{String(document.file_type || model.kind)}</dd></div></dl>
-    {!model.ready ? <Status tone="warning">Preview is unavailable until processing reaches completed. Current status is authoritative.</Status> : model.downloadOnly ? <Status>Inline preview is unavailable for this file type. Download the original file instead.</Status> : previewState.status === 'loading' ? <Status>Loading preview…</Status> : previewState.status === 'error' ? <Status tone="error">{previewState.message}</Status> : previewState.status === 'text' && inlineKind ? <DocumentPreviewContent kind={inlineKind} text={previewState.text} fileName={model.fileName} /> : previewState.status === 'blob' && inlineKind ? <DocumentPreviewContent kind={inlineKind} url={previewState.url} fileName={model.fileName} /> : null}
-    <p><Button type="button" loading={downloadState === 'loading'} onClick={() => void download()}>Download {model.fileName}</Button>{downloadState === 'error' ? <Status tone="error">Download failed.</Status> : null}</p>
+    {!model.ready ? <Status tone="warning">Preview is unavailable until processing reaches completed. Current status is authoritative.</Status> : model.downloadOnly ? <Status>Inline preview is unavailable for this file type. Download the original file instead.</Status> : previewState.status === 'loading' ? <Status>Loading preview…</Status> : previewState.status === 'error' ? <><Status tone="error">{previewState.message}</Status><Button type="button" onClick={() => setPreviewAttempt((attempt) => attempt + 1)}>Retry preview</Button></> : previewState.status === 'text' && inlineKind ? <DocumentPreviewContent kind={inlineKind} text={previewState.text} fileName={model.fileName} /> : previewState.status === 'blob' && inlineKind ? <DocumentPreviewContent kind={inlineKind} url={previewState.url} fileName={model.fileName} /> : null}
+    <p><Button type="button" loading={downloadState === 'loading'} onClick={() => { setDownloadState('idle'); void download(); }}>Download {model.fileName}</Button>{downloadState === 'error' ? <Status tone="error">Download failed.</Status> : null}</p>
   </Card>;
 }
