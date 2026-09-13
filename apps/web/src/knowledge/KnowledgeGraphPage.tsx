@@ -14,6 +14,8 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
   const [depth, setDepth] = useState(1);
   const [query, setQuery] = useState('');
   const [type, setType] = useState('all');
+  const [searchResults, setSearchResults] = useState<Array<{ title: string; slug: string }>>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
   const [drawerNode, setDrawerNode] = useState<{ slug: string; title: string; page_type: string; link_count: number } | null>(null);
   const [drawerPage, setDrawerPage] = useState<{ title: string; summary: string; content: string; version: number } | null>(null);
   const [drawerStatus, setDrawerStatus] = useState<'idle' | 'loading' | 'error'>('idle');
@@ -48,6 +50,20 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
   }
 
   useEffect(() => { void load(mode, mode === 'ego' ? center : undefined); }, [client, knowledgeBaseId, type, depth]);
+  useEffect(() => {
+    const keyword = query.trim();
+    if (keyword.length < 2) { setSearchResults([]); setSearchLoading(false); return; }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setSearchLoading(true);
+      void client.wiki.list(knowledgeBaseId, { page: 1, page_size: 20, keyword }).then((result) => {
+        if (!cancelled) setSearchResults(result.pages.map((page) => ({ title: page.title, slug: page.slug })));
+      }).catch(() => {
+        if (!cancelled) setSearchResults([]);
+      }).finally(() => { if (!cancelled) setSearchLoading(false); });
+    }, 250);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [client, knowledgeBaseId, query]);
 
   const visible = useMemo(() => graph ? filterGraphNodes(graph, { query }) : null, [graph, query]);
   const positions = useMemo(() => visible ? layoutGraphNodes(visible.nodes, 760, 420) : [], [visible]);
@@ -69,7 +85,7 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
       </header>
       <Card>
         <div className="wk-toolbar" role="search">
-          <label>Find node <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Title or slug" /></label>
+          <label>Find node <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Title or slug" aria-autocomplete="list" aria-controls="wk-graph-search-results" />{searchLoading ? <Status>Searching…</Status> : null}{searchResults.length > 0 ? <ul id="wk-graph-search-results" className="wk-graph-search-results" aria-label="Wiki search results">{searchResults.map((result) => <li key={result.slug}><button type="button" onClick={() => { setQuery(result.slug); void openNode({ slug: result.slug, title: result.title, page_type: 'page', link_count: 0 }); void load('ego', result.slug); }}>{result.title}<span>{result.slug}</span></button></li>)}</ul> : null}</label>
           <label>Type <select value={type} onChange={(event) => setType(event.target.value)}><option value="all">All types</option>{types.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
           <label>Depth <select value={String(depth)} onChange={(event) => setDepth(Number(event.target.value))}><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></label>
         </div>

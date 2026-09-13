@@ -115,6 +115,11 @@
 
 - Vue graph behavior opens a node detail drawer before/alongside ego-neighbor expansion. React now loads the selected Wiki page through the existing API contract and exposes scoped loading, error, close, summary/version/content, and expand-neighbors states.
 - Focused graph and knowledge-permission tests: 8/8 passed. Web typecheck: passed. This is static/unit and typecheck evidence only; browser, real-backend, Wails, and native evidence remain open.
+
+## 2026-09-14 Round N+10 — N012 graph remote search
+
+- Vue graph search uses debounced server-backed Wiki search with selectable results. React now queries `client.wiki.list` after the same minimum-input interaction, renders a scoped suggestion list, and opens the selected page/ego graph while retaining local node filtering.
+- Focused graph tests: 3/3 passed. Web typecheck: passed. Evidence remains static/unit and typecheck only; browser, real-backend, Wails, and native evidence remain open.
 - Status remains `review`; no new browser computed-style, real-backend, Wails, iOS or Android evidence claimed. Index/tree/list modes, folder actions, graph and reader states remain open.
 
 ## 2026-09-12 Round 1 基线
@@ -1420,4 +1425,3 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 9b969a6c 切片发来完成报告：其代码已由 7ff6cabb 集成（fa-tag-chip 定位气泡补齐最后一个原生 title 残留），证据已由 2735d7e5 提交——该切片完全收口。
 - Wails 取证切片（1662287b）继续在途（cmd/desktop/wails.json 存在，构建流程耗时长）。
 - 全门禁：web 794/794、shared 436/436、faq 79/79、typecheck 0。
-
