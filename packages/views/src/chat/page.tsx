@@ -8,7 +8,7 @@ import { ReferenceList } from './reference-list.tsx';
 import { ToolResultView } from './tool-result.tsx';
 import { ToolApprovalCard } from './tool-approval.tsx';
 import type { ArtifactPreviewPayload } from './artifact-preview.tsx';
-import { CHAT_COPY, chatCopy } from './chat-copy.ts';
+import { resolveChatCopy, resolveChatLocale, type ChatCopyTable } from './chat-copy.ts';
 
 export interface ChatAgentOption {
   id: string;
@@ -60,6 +60,8 @@ export interface ChatPageProps {
   selectedSessionId: string | null;
   messages: readonly ChatMessage[];
   draft: string;
+  /** UI locale (chat-copy.ts tables); defaults to the app locale convention. */
+  locale?: string;
   loadingSessions?: boolean;
   loadingMessages?: boolean;
   error?: string;
@@ -131,12 +133,12 @@ export function messageReferenceValues(messages: readonly ChatMessage[]): unknow
   return references;
 }
 
-function LiveResponse({ stream, onStopStream }: { stream: ChatStreamPresentation; onStopStream?: () => void }) {
+function LiveResponse({ copy, stream, onStopStream }: { copy: ChatCopyTable; stream: ChatStreamPresentation; onStopStream?: () => void }) {
   if (stream.phase !== 'streaming' && !stream.thinking && stream.toolCalls.length === 0) return null;
   return <section aria-label="Live response" className="wk-chat-live-response">
-    <p role="status">{CHAT_COPY.streamStatus}: {stream.phase}</p>
-    {stream.phase === 'streaming' && stream.artifactsPending ? <p role="status" className="wk-chat-artifacts-pending">{CHAT_COPY.artifactsPending}</p> : null}
-    {stream.phase === 'streaming' && stream.thinking ? <details open><summary>{CHAT_COPY.thinkingAlt}</summary><p>{stream.thinking}</p></details> : null}
+    <p role="status">{copy.streamStatus}: {stream.phase}</p>
+    {stream.phase === 'streaming' && stream.artifactsPending ? <p role="status" className="wk-chat-artifacts-pending">{copy.artifactsPending}</p> : null}
+    {stream.phase === 'streaming' && stream.thinking ? <details open><summary>{copy.thinkingAlt}</summary><p>{stream.thinking}</p></details> : null}
     {stream.toolCalls.length > 0 ? <div><h2>Tool calls</h2><ul className="wk-list">{stream.toolCalls.map((tool) => <li key={tool.id}><strong>{tool.name ?? tool.id}</strong><small>{tool.status}</small>{tool.result === undefined ? null : <ToolResultView toolCall={tool} />}</li>)}</ul></div> : null}
   </section>;
 }
@@ -172,7 +174,7 @@ function ChatActionCards(props: Pick<ChatPageProps, 'toolApprovals' | 'oauthAppr
   </section>;
 }
 
-function SteerComposer({ onSteer }: { onSteer: (content: string) => Promise<void> }) {
+function SteerComposer({ copy, onSteer }: { copy: ChatCopyTable; onSteer: (content: string) => Promise<void> }) {
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -186,14 +188,15 @@ function SteerComposer({ onSteer }: { onSteer: (content: string) => Promise<void
   }
 
   return <form className="wk-chat-steer" onSubmit={(event) => void submit(event)}>
-    <label htmlFor="wk-chat-steer-draft">{CHAT_COPY.steerCurrent}</label>
+    <label htmlFor="wk-chat-steer-draft">{copy.steerCurrent}</label>
     <textarea id="wk-chat-steer-draft" rows={2} value={draft} onChange={(event) => setDraft(event.target.value)} disabled={busy} />
     {error ? <p role="alert">{error}</p> : null}
-    <button type="submit" disabled={busy || !draft.trim()}>{CHAT_COPY.steerQueued}</button>
+    <button type="submit" disabled={busy || !draft.trim()}>{copy.steerQueued}</button>
   </form>;
 }
 
-function TerminalPanel(props: Pick<ChatPageProps, 'terminal' | 'onOpenTerminal' | 'onTerminalInput' | 'onTerminalResize' | 'onCloseTerminal'>) {
+function TerminalPanel(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'terminal' | 'onOpenTerminal' | 'onTerminalInput' | 'onTerminalResize' | 'onCloseTerminal'>) {
+  const copy = props.copy;
   const panelRef = useRef<HTMLElement>(null);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -218,31 +221,45 @@ function TerminalPanel(props: Pick<ChatPageProps, 'terminal' | 'onOpenTerminal' 
   return <section ref={panelRef} aria-label="Sandbox terminal" className="wk-chat-terminal">
     <div className="wk-settings-panel-heading"><span role="status">{props.terminal?.status ?? 'idle'}</span></div>
     {props.terminal?.output ? <pre>{props.terminal.output}</pre> : null}
-    {!props.terminal?.output && props.onOpenTerminal ? <p className="wk-chat-terminal-hint">{CHAT_COPY.startTerminal}</p> : null}
-    {props.onOpenTerminal && !props.terminal?.output ? <button type="button" className="wk-chat-terminal-open" onClick={() => void props.onOpenTerminal!()}>{CHAT_COPY.startTerminal}</button> : null}
-    {props.terminal && props.onTerminalInput ? <form onSubmit={(event) => void sendInput(event)}><label htmlFor="wk-chat-terminal-input">{CHAT_COPY.terminalInput}</label><input id="wk-chat-terminal-input" value={input} onChange={(event) => setInput(event.target.value)} disabled={busy} /><button type="submit" disabled={busy || !input.trim()}>{CHAT_COPY.sendInput}</button></form> : null}
-    {props.terminal && props.onCloseTerminal ? <button type="button" className="wk-chat-terminal-close" onClick={props.onCloseTerminal}>{CHAT_COPY.closeTerminal}</button> : null}
+    {!props.terminal?.output && props.onOpenTerminal ? <p className="wk-chat-terminal-hint">{copy.startTerminal}</p> : null}
+    {props.onOpenTerminal && !props.terminal?.output ? <button type="button" className="wk-chat-terminal-open" onClick={() => void props.onOpenTerminal!()}>{copy.startTerminal}</button> : null}
+    {props.terminal && props.onTerminalInput ? <form onSubmit={(event) => void sendInput(event)}><label htmlFor="wk-chat-terminal-input">{copy.terminalInput}</label><input id="wk-chat-terminal-input" value={input} onChange={(event) => setInput(event.target.value)} disabled={busy} /><button type="submit" disabled={busy || !input.trim()}>{copy.sendInput}</button></form> : null}
+    {props.terminal && props.onCloseTerminal ? <button type="button" className="wk-chat-terminal-close" onClick={props.onCloseTerminal}>{copy.closeTerminal}</button> : null}
   </section>;
 }
 
-function ChatHeaderMenu(props: Pick<ChatPageProps, 'selectedSessionId' | 'onRenameSession' | 'onToggleSessionPin' | 'onDeleteSession' | 'onClearSession' | 'sessions'>) {
+function ChatHeaderMenu(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'selectedSessionId' | 'onRenameSession' | 'onToggleSessionPin' | 'onDeleteSession' | 'onClearSession' | 'sessions'>) {
+  const copy = props.copy;
   const session = props.sessions.find((item) => item.id === props.selectedSessionId) ?? null;
   if (!session) return null;
   const pinned = session.is_pinned === true;
   return <details className="wk-chat-header-menu">
-    <summary aria-label={CHAT_COPY.moreActions} title={CHAT_COPY.moreActions}>
+    <summary aria-label={copy.moreActions} title={copy.moreActions}>
       <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="8" cy="3" r="1.4" /><circle cx="8" cy="8" r="1.4" /><circle cx="8" cy="13" r="1.4" /></svg>
     </summary>
     <div className="wk-chat-header-menu-list" role="menu">
-      {props.onToggleSessionPin ? <button type="button" role="menuitem" onClick={() => void props.onToggleSessionPin!(session.id, !pinned)}>{pinned ? CHAT_COPY.unpin : CHAT_COPY.pin}</button> : null}
-      {props.onRenameSession ? <button type="button" role="menuitem" onClick={() => void props.onRenameSession!(session.id)}>{CHAT_COPY.renameSession}</button> : null}
-      {props.onClearSession ? <button type="button" role="menuitem" onClick={() => void props.onClearSession!()}>{CHAT_COPY.clearMessages}</button> : null}
-      {props.onDeleteSession ? <button type="button" role="menuitem" className="is-danger" onClick={() => void props.onDeleteSession!(session.id)}>{CHAT_COPY.deleteSession}</button> : null}
+      {props.onToggleSessionPin ? <button type="button" role="menuitem" onClick={() => void props.onToggleSessionPin!(session.id, !pinned)}>{pinned ? copy.unpin : copy.pin}</button> : null}
+      {props.onRenameSession ? <button type="button" role="menuitem" onClick={() => void props.onRenameSession!(session.id)}>{copy.renameSession}</button> : null}
+      {props.onClearSession ? <button type="button" role="menuitem" onClick={() => void props.onClearSession!()}>{copy.clearMessages}</button> : null}
+      {props.onDeleteSession ? <button type="button" role="menuitem" className="is-danger" onClick={() => void props.onDeleteSession!(session.id)}>{copy.deleteSession}</button> : null}
     </div>
   </details>;
 }
 
 export function ChatPage(props: ChatPageProps) {
+  // Chat copy resolves per locale: explicit prop wins, otherwise the app
+  // convention (localStorage 'locale' set by the language switch, then
+  // navigator.language). The switch dispatches 'weknora:locale-changed'
+  // (GeneralPreferencesPanel); re-resolve so the page flips in place.
+  const [locale, setLocale] = useState(() => props.locale ?? resolveChatLocale());
+  useEffect(() => { if (props.locale) setLocale(props.locale); }, [props.locale]);
+  useEffect(() => {
+    if (props.locale || typeof window === 'undefined') return;
+    const onLocaleChanged = () => setLocale(resolveChatLocale());
+    window.addEventListener('weknora:locale-changed', onLocaleChanged);
+    return () => window.removeEventListener('weknora:locale-changed', onLocaleChanged);
+  }, [props.locale]);
+  const copy = useMemo(() => resolveChatCopy(locale), [locale]);
   const [pending, setPending] = useState<PendingChatMessage | undefined>();
   const [sending, setSending] = useState(false);
   const sendingRef = useRef(false);
@@ -282,13 +299,14 @@ export function ChatPage(props: ChatPageProps) {
 
   const headerTitle = (() => {
     const selected = props.sessions.find((session) => session.id === props.selectedSessionId);
-    return selected?.title || (props.selectedSessionId ? CHAT_COPY.newSession : chatCopy('newChat'));
+    return selected?.title || (props.selectedSessionId ? copy.newSession : copy.newChat);
   })();
   const sandboxAvailable = Boolean(props.terminal || props.onOpenTerminal);
   const streaming = props.stream?.phase === 'streaming';
 
   return <main className="wk-chat-page">
     <SessionSidebar
+      copy={copy}
       sessions={props.sessions}
       selectedSessionId={props.selectedSessionId}
       loading={props.loadingSessions}
@@ -314,6 +332,7 @@ export function ChatPage(props: ChatPageProps) {
         <div className="wk-chat-header-titles">
           <h1 title={headerTitle}>{headerTitle}</h1>
           <ChatHeaderMenu
+            copy={copy}
             selectedSessionId={props.selectedSessionId}
             sessions={props.sessions}
             onRenameSession={props.onRenameSession}
@@ -323,7 +342,7 @@ export function ChatPage(props: ChatPageProps) {
           />
         </div>
         <div className="wk-chat-header-actions">
-            {sandboxAvailable ? <button type="button" className="wk-chat-sandbox-toggle" aria-label={CHAT_COPY.openSandboxPanel} title={CHAT_COPY.openSandboxPanel} aria-expanded={terminalOpen} onClick={() => setTerminalOpen((open) => !open)}>
+            {sandboxAvailable ? <button type="button" className="wk-chat-sandbox-toggle" aria-label={copy.openSandboxPanel} title={copy.openSandboxPanel} aria-expanded={terminalOpen} onClick={() => setTerminalOpen((open) => !open)}>
               <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
                 <rect x="1.5" y="1.5" width="17" height="17" rx="3" stroke="currentColor" strokeWidth="1.2" />
                 <line x1="12.5" y1="1.5" x2="12.5" y2="18.5" stroke="currentColor" strokeWidth="1.2" />
@@ -337,7 +356,7 @@ export function ChatPage(props: ChatPageProps) {
             state; suggested-question cards load per selected agent. */}
         {!props.selectedSessionId ? (
           <section className={props.starterQuestionsLoading ? 'wk-chat-starters wk-chat-starters--loading' : 'wk-chat-starters'} aria-label="Suggested questions" aria-busy={props.starterQuestionsLoading || undefined}>
-            <h1 className="wk-chat-welcome">{CHAT_COPY.createChatTitle}</h1>
+            <h1 className="wk-chat-welcome">{copy.createChatTitle}</h1>
             {props.starterQuestionsLoading ? (
               <ul className="wk-chat-starters-grid">
                 {[0, 1, 2].map((index) => <li key={index}><span className="wk-chat-starter-skeleton" aria-hidden="true" /></li>)}
@@ -345,7 +364,7 @@ export function ChatPage(props: ChatPageProps) {
             ) : (props.starterQuestions?.length ?? 0) > 0 ? (
               <>
                 <p className="wk-chat-starters-caption">
-                  <span>{CHAT_COPY.suggestedQuestions}</span>
+                  <span>{copy.suggestedQuestions}</span>
                 </p>
                 <ul className="wk-chat-starters-grid">
                   {props.starterQuestions!.map((question, index) => (
@@ -359,11 +378,12 @@ export function ChatPage(props: ChatPageProps) {
           </section>
         ) : null}
         <ChatActionCards {...props} />
-        {props.stream ? <LiveResponse stream={props.stream} /> : null}
+        {props.stream ? <LiveResponse copy={copy} stream={props.stream} /> : null}
         <ReferenceList references={references} activeId={activeCitationId} onActivate={activateCitation} />
         {props.error ? <p role="alert">{props.error}</p> : null}
-        {props.loadingMessages ? <p role="status">{CHAT_COPY.loadingMessages}</p> : null}
+        {props.loadingMessages ? <p role="status">{copy.loadingMessages}</p> : null}
         <MessageList
+          copy={copy}
           messages={props.messages}
           pending={pending}
           onRetry={pending?.status === 'failed' ? () => void send({ content: pending.content, status: 'pending' }) : undefined}
@@ -382,8 +402,9 @@ export function ChatPage(props: ChatPageProps) {
         />
         {/* A follow-up queue only makes sense while a turn is actually running;
             when idle the main composer handles the message (a steer would 409). */}
-        {props.selectedSessionId && props.onSteer && streaming ? <SteerComposer onSteer={props.onSteer} /> : null}
+        {props.selectedSessionId && props.onSteer && streaming ? <SteerComposer copy={copy} onSteer={props.onSteer} /> : null}
         <ChatComposer
+          copy={copy}
           draft={props.draft}
           disabled={sending || pending !== undefined || streaming}
           onDraftChange={props.onDraftChange}
@@ -396,14 +417,14 @@ export function ChatPage(props: ChatPageProps) {
           onStop={props.onStopStream}
         />
       </div>
-      {sandboxAvailable && terminalOpen ? <aside className="wk-chat-sandbox-drawer" role="complementary" aria-label={CHAT_COPY.sandboxPanelTitle}>
+      {sandboxAvailable && terminalOpen ? <aside className="wk-chat-sandbox-drawer" role="complementary" aria-label={copy.sandboxPanelTitle}>
         <div className="wk-chat-sandbox-drawer-head">
-          <span>{CHAT_COPY.sandboxPanelTitle}</span>
-          <button type="button" className="wk-chat-sandbox-drawer-close" aria-label={CHAT_COPY.close} onClick={() => setTerminalOpen(false)}>
+          <span>{copy.sandboxPanelTitle}</span>
+          <button type="button" className="wk-chat-sandbox-drawer-close" aria-label={copy.close} onClick={() => setTerminalOpen(false)}>
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" /></svg>
           </button>
         </div>
-        <TerminalPanel terminal={props.terminal} onOpenTerminal={props.onOpenTerminal} onTerminalInput={props.onTerminalInput} onTerminalResize={props.onTerminalResize} onCloseTerminal={props.onCloseTerminal} />
+        <TerminalPanel copy={copy} terminal={props.terminal} onOpenTerminal={props.onOpenTerminal} onTerminalInput={props.onTerminalInput} onTerminalResize={props.onTerminalResize} onCloseTerminal={props.onCloseTerminal} />
       </aside> : null}
     </section>
   </main>;

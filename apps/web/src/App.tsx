@@ -14,6 +14,11 @@ import {
 import { formatMessage, isLocale, type Locale, type MessageValues } from '@weknora/i18n';
 import { Button, Card, Dialog, Status } from '@weknora/ui';
 import {
+  isContextualGuideDone,
+  markContextualGuideDone,
+  openContextualGuide,
+} from '@weknora/views';
+import {
   createDeleteGuard,
   loadKnowledgeBaseListPage,
   saveKnowledgeBase,
@@ -282,6 +287,19 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
     [cards],
   );
 
+  // Vue KnowledgeBaseList.vue:1195-1197 — the kbList tour's trigger condition
+  // (contributor-visible empty list, editor closed). The shell-level guide
+  // host applies the dismissal + welcome-tour gates.
+  const kbListGuideWhen = pageState.status === 'success'
+    && viewer.isContributor
+    && !dialogOpen
+    && (space === 'all' || space === 'mine')
+    && cards.length === 0;
+  useEffect(() => {
+    if (!kbListGuideWhen) return;
+    openContextualGuide('kbList');
+  }, [kbListGuideWhen]);
+
   const toggleFavorite = (kbId: string) => {
     setFavorites((current) => {
       const next = new Set(current);
@@ -299,6 +317,12 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
     setType('document');
     setEmbeddingModelId('');
     setSummaryModelId('');
+    // Vue KnowledgeBaseList.vue:1696 — opening the create wizard retires the
+    // empty-list kbList tour; KnowledgeBaseEditorModal.vue:464 arms the
+    // kbCreate tour for document KBs (the React dialog always exposes the
+    // embedding field, so needsEmbedding follows the document type default).
+    markContextualGuideDone(window.localStorage, 'kbList');
+    openContextualGuide('kbCreate', { isFaq: false, needsEmbedding: true });
     setDialogOpen(true);
   }
 
@@ -326,10 +350,20 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
       ...(summaryModelId ? { summary_model_id: summaryModelId } : {}),
     };
     try {
-      await saveKnowledgeBase(client, editingId, input);
+      const record = await saveKnowledgeBase(client, editingId, input) as { id?: unknown };
+      // Vue KnowledgeBaseEditorModal.vue:1386 — a successful editor run retires
+      // the kbCreate tour.
+      markContextualGuideDone(window.localStorage, 'kbCreate');
       setDialogOpen(false);
       setEditingId(null);
       setReloadToken((value) => value + 1);
+      // Vue KnowledgeBaseList.vue handleKBEditorSuccess: when the kbDetail
+      // upload tour has not run yet, land on the new KB's detail page where
+      // the guide arms (queue the intent for the next document).
+      if (editingId === null && record?.id !== undefined && !isContextualGuideDone(window.localStorage, 'kbDetail')) {
+        openContextualGuide('kbDetail');
+        window.location.assign(`/knowledgeBase/${encodeURIComponent(String(record.id))}`);
+      }
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : t('knowledgeList.messages.deleteFailed'));
     } finally {
@@ -395,6 +429,13 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
       setRecents(new Set(next));
     } catch { /* storage unavailable */ }
     if (isKnowledgeBaseInitialized(kb as never)) {
+      // Vue KnowledgeBase.vue:339-345 — the kbDetail tour arms on detail entry
+      // for an editable, non-FAQ, empty knowledge base. The React detail page
+      // is a separate document, so queue the intent for its shell host.
+      const count = typeof kb.knowledge_count === 'number' ? kb.knowledge_count : 0;
+      if (kb.type !== 'faq' && count === 0 && canManageKBCard(kb, { userId: viewer.userId, isAdmin: viewer.isAdmin })) {
+        openContextualGuide('kbDetail');
+      }
       window.location.assign(`/knowledgeBase/${encodeURIComponent(id)}`);
       return;
     }
@@ -412,7 +453,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
           <h1>{t('common.knowledgeBases')}</h1>
           <p className="wk-muted">{t('knowledgeList.subtitle')}</p>
         </div>
-        {viewer.isContributor ? <Button type="button" onClick={openCreate}>+ {t('knowledgeList.create')}</Button> : null}
+        {viewer.isContributor ? <Button type="button" data-guide="kb-list-create" onClick={openCreate}>+ {t('knowledgeList.create')}</Button> : null}
       </header>
       {error ? <Status tone="error">{error}</Status> : null}
       {notice ? <Status tone="success">{notice}</Status> : null}
@@ -466,7 +507,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
           <div className="wk-kb-empty">
             <h2>{t('knowledgeList.empty.title')}</h2>
             <p>{space === 'mine' ? t('knowledgeList.empty.description') : t('knowledgeList.empty.sharedDescription')}</p>
-            {viewer.isContributor ? <Button type="button" onClick={openCreate}>+ {t('knowledgeList.create')}</Button> : null}
+            {viewer.isContributor ? <Button type="button" className="empty-state-btn" data-guide="kb-list-create" onClick={openCreate}>+ {t('knowledgeList.create')}</Button> : null}
           </div>
         ) : null}
         {pageState.status === 'success' && filtered.total > 0 ? (
@@ -559,18 +600,18 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
 
       <Dialog open={dialogOpen} title={editingId ? t('common.edit') + ' · ' + t('common.knowledgeBases') : t('knowledgeList.create')} onClose={() => setDialogOpen(false)}>
         <form className="wk-form" onSubmit={save}>
-          <label>{t('common.name')} <input value={name} onChange={(event) => setName(event.target.value)} required /></label>
+          <label>{t('common.name')} <input data-guide="kb-create-name" value={name} onChange={(event) => setName(event.target.value)} required /></label>
           <label>{'Type'}
-            <select value={type} onChange={(event) => setType(event.target.value as 'document' | 'faq')}>
+            <select data-guide="kb-create-type" value={type} onChange={(event) => setType(event.target.value as 'document' | 'faq')}>
               <option value="document">{t('common.typeDocument')}</option>
               <option value="faq">{t('common.typeFaq')}</option>
             </select>
           </label>
           <label>{t('common.description')} <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={3} /></label>
-          <label>{t('common.embeddingModel')} <input value={embeddingModelId} onChange={(event) => setEmbeddingModelId(event.target.value)} placeholder="embedding_model_id" /></label>
-          <label>{t('common.summaryModel')} <input value={summaryModelId} onChange={(event) => setSummaryModelId(event.target.value)} placeholder="summary_model_id" /></label>
+          <label>{t('common.embeddingModel')} <input data-guide="kb-create-embedding" value={embeddingModelId} onChange={(event) => setEmbeddingModelId(event.target.value)} placeholder="embedding_model_id" /></label>
+          <label>{t('common.summaryModel')} <input data-guide="kb-create-llm" value={summaryModelId} onChange={(event) => setSummaryModelId(event.target.value)} placeholder="summary_model_id" /></label>
           <div className="wk-kb-dialog-actions">
-            <Button type="submit" loading={saving}>{editingId ? t('common.saveChanges') : t('knowledgeList.create')}</Button>
+            <Button type="submit" data-guide="kb-create-submit" loading={saving}>{editingId ? t('common.saveChanges') : t('knowledgeList.create')}</Button>
             <Button type="button" onClick={() => setDialogOpen(false)}>{t('common.cancel')}</Button>
           </div>
         </form>

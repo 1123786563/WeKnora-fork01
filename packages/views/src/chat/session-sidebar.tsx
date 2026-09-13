@@ -1,7 +1,7 @@
 import { createContext, useContext } from 'react';
 import type { ChatSession } from '@weknora/contracts';
 import { sessionSourceBadge } from '@weknora/domain/chat/session-grouping';
-import { chatCopy, sessionGroupLabel } from './chat-copy.ts';
+import { formatChatCopy, resolveChatCopy, resolveChatLocale, sessionGroupLabel, type ChatCopyTable } from './chat-copy.ts';
 
 export interface SessionGroupView {
   key: string;
@@ -15,6 +15,8 @@ export interface SessionSourceOption {
 }
 
 export interface SessionSidebarProps {
+  /** Resolved copy (chat-copy.ts); defaults to the app locale convention. */
+  copy?: ChatCopyTable;
   sessions: readonly ChatSession[];
   selectedSessionId: string | null;
   loading?: boolean;
@@ -50,6 +52,8 @@ export interface SessionSidebarProps {
 export const SessionSidebarShellContext = createContext(false);
 
 export interface SessionSidebarListProps {
+  /** Resolved copy (chat-copy.ts); defaults to the app locale convention. */
+  copy?: ChatCopyTable;
   /** Flat fallback list; ignored when groups are provided. */
   sessions?: readonly ChatSession[];
   groups?: readonly SessionGroupView[];
@@ -72,33 +76,34 @@ export interface SessionSidebarListProps {
  * shell sidebar: time group headers (已置顶/今天/昨天/近7天/近30天/更早), full
  * titles, green active row, hover ⋯ menu (置顶/重命名会话/清空消息/删除会话).
  */
-export function SessionSidebarList({ sessions, groups, selectedSessionId, loading = false, emptyLabel, untitledLabel, onSelect, onRename, onTogglePin, onClear, onDelete }: SessionSidebarListProps) {
+export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, loading = false, emptyLabel, untitledLabel, onSelect, onRename, onTogglePin, onClear, onDelete }: SessionSidebarListProps) {
+  const t = copy ?? resolveChatCopy(resolveChatLocale());
   const visibleGroups = groups ?? [{ key: 'all', items: sessions ?? [] }];
   const hasMenu = Boolean(onRename || onTogglePin || onClear || onDelete);
   const totalItems = visibleGroups.reduce((count, group) => count + group.items.length, 0);
   return <>
-    {loading ? <p role="status">{chatCopy('loadingSessions')}</p> : null}
+    {loading ? <p role="status">{t.loadingSessions}</p> : null}
     {!loading && totalItems === 0 && emptyLabel ? <p className="wk-chat-sidebar-empty" role="status">{emptyLabel}</p> : null}
     {visibleGroups.map((group) => <section key={group.key} className="wk-chat-session-group">
-      {group.label ? <h3>{sessionGroupLabel(group.label)}</h3> : null}
+      {group.label ? <h3>{sessionGroupLabel(t, group.label)}</h3> : null}
       <ul>{group.items.map((session) => {
         const badge = sessionSourceBadge(session);
         const active = session.id === selectedSessionId;
         return <li key={session.id} className={active ? 'wk-chat-session-item is-active' : 'wk-chat-session-item'}>
           <button type="button" className="wk-chat-session-title" aria-current={active ? 'page' : undefined} onClick={() => onSelect(session.id)}>
             {session.is_pinned ? <span className="wk-chat-session-pin" aria-hidden="true">★</span> : null}
-            <span className="wk-chat-session-title-text">{session.title || untitledLabel || chatCopy('untitledChat')}</span>
+            <span className="wk-chat-session-title-text">{session.title || untitledLabel || t.untitledChat}</span>
             {badge.kind ? <span className={`wk-chat-session-source ${badge.kind}`} title="Session source">{badge.label}</span> : null}
           </button>
           {hasMenu ? <details className="wk-chat-session-menu">
-            <summary aria-label={chatCopy('moreActions')} title={chatCopy('moreActions')}>
+            <summary aria-label={t.moreActions} title={t.moreActions}>
               <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="8" cy="3" r="1.4" /><circle cx="8" cy="8" r="1.4" /><circle cx="8" cy="13" r="1.4" /></svg>
             </summary>
             <div className="wk-chat-session-menu-list" role="menu">
-              {onTogglePin ? <button type="button" role="menuitem" onClick={() => void onTogglePin(session.id, !session.is_pinned)}>{session.is_pinned ? chatCopy('unpin') : chatCopy('pin')}</button> : null}
-              {onRename ? <button type="button" role="menuitem" onClick={() => void onRename(session.id)}>{chatCopy('renameSession')}</button> : null}
-              {onClear ? <button type="button" role="menuitem" onClick={() => void onClear(session.id)}>{chatCopy('clearMessages')}</button> : null}
-              {onDelete ? <button type="button" role="menuitem" className="is-danger" onClick={() => void onDelete(session.id)}>{chatCopy('deleteSession')}</button> : null}
+              {onTogglePin ? <button type="button" role="menuitem" onClick={() => void onTogglePin(session.id, !session.is_pinned)}>{session.is_pinned ? t.unpin : t.pin}</button> : null}
+              {onRename ? <button type="button" role="menuitem" onClick={() => void onRename(session.id)}>{t.renameSession}</button> : null}
+              {onClear ? <button type="button" role="menuitem" onClick={() => void onClear(session.id)}>{t.clearMessages}</button> : null}
+              {onDelete ? <button type="button" role="menuitem" className="is-danger" onClick={() => void onDelete(session.id)}>{t.deleteSession}</button> : null}
             </div>
           </details> : null}
         </li>;
@@ -107,22 +112,24 @@ export function SessionSidebarList({ sessions, groups, selectedSessionId, loadin
   </>;
 }
 
-export function SessionSidebar({ sessions, selectedSessionId, loading = false, onSelect, onCreate, onRename, onTogglePin, onDelete, groups, source, sourceOptions, onSourceChange, groupMode, onGroupModeChange, keyword, onKeywordChange, page = 1, pageCount = 1, onPageChange }: SessionSidebarProps) {
+export function SessionSidebar({ copy, sessions, selectedSessionId, loading = false, onSelect, onCreate, onRename, onTogglePin, onDelete, groups, source, sourceOptions, onSourceChange, groupMode, onGroupModeChange, keyword, onKeywordChange, page = 1, pageCount = 1, onPageChange }: SessionSidebarProps) {
+  const t = copy ?? resolveChatCopy(resolveChatLocale());
   const shellProvidesSessionList = useContext(SessionSidebarShellContext);
   // The platform shell already renders the grouped list next to the nav
   // (Vue menu.vue); an in-page duplicate would show two lists on chat routes.
   if (shellProvidesSessionList) return null;
-  return <aside className="wk-chat-sidebar" aria-label={chatCopy('sidebarTitle')}>
+  return <aside className="wk-chat-sidebar" aria-label={t.sidebarTitle}>
     <div className="wk-chat-sidebar-heading">
       <button type="button" className="wk-chat-new-chat" onClick={onCreate}>
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10" /></svg>
-        <span>{chatCopy('newChat')}</span>
+        <span>{t.newChat}</span>
       </button>
     </div>
-    {sourceOptions && onSourceChange ? <label className="wk-chat-sidebar-filter">{chatCopy('sourceLabel')}<select value={source ?? ''} onChange={(event) => onSourceChange(event.target.value)}>{sourceOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label> : null}
-    {onKeywordChange ? <label className="wk-chat-sidebar-filter">{chatCopy('searchSessions')}<input value={keyword ?? ''} onChange={(event) => onKeywordChange(event.target.value)} placeholder={chatCopy('searchSessions')} /></label> : null}
-    {onGroupModeChange ? <label className="wk-chat-sidebar-filter">{chatCopy('groupLabel')}<select value={groupMode ?? 'none'} onChange={(event) => onGroupModeChange(event.target.value === 'date' ? 'date' : 'none')}><option value="none">{chatCopy('groupAll')}</option><option value="date">{chatCopy('groupByDate')}</option></select></label> : null}
+    {sourceOptions && onSourceChange ? <label className="wk-chat-sidebar-filter">{t.sourceLabel}<select value={source ?? ''} onChange={(event) => onSourceChange(event.target.value)}>{sourceOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label> : null}
+    {onKeywordChange ? <label className="wk-chat-sidebar-filter">{t.searchSessions}<input value={keyword ?? ''} onChange={(event) => onKeywordChange(event.target.value)} placeholder={t.searchSessions} /></label> : null}
+    {onGroupModeChange ? <label className="wk-chat-sidebar-filter">{t.groupLabel}<select value={groupMode ?? 'none'} onChange={(event) => onGroupModeChange(event.target.value === 'date' ? 'date' : 'none')}><option value="none">{t.groupAll}</option><option value="date">{t.groupByDate}</option></select></label> : null}
     <SessionSidebarList
+      copy={t}
       sessions={sessions}
       groups={groups}
       selectedSessionId={selectedSessionId}
@@ -132,6 +139,6 @@ export function SessionSidebar({ sessions, selectedSessionId, loading = false, o
       onTogglePin={onTogglePin}
       onDelete={onDelete}
     />
-    {onPageChange && pageCount > 1 ? <nav className="wk-chat-session-pagination" aria-label="Conversation pages"><button type="button" disabled={page <= 1 || loading} onClick={() => onPageChange(Math.max(1, page - 1))}>{chatCopy('previous')}</button><span>{chatCopy('pageOf', { page, total: pageCount })}</span><button type="button" disabled={page >= pageCount || loading} onClick={() => onPageChange(Math.min(pageCount, page + 1))}>{chatCopy('next')}</button></nav> : null}
+    {onPageChange && pageCount > 1 ? <nav className="wk-chat-session-pagination" aria-label="Conversation pages"><button type="button" disabled={page <= 1 || loading} onClick={() => onPageChange(Math.max(1, page - 1))}>{t.previous}</button><span>{formatChatCopy(t, 'pageOf', { page, total: pageCount })}</span><button type="button" disabled={page >= pageCount || loading} onClick={() => onPageChange(Math.min(pageCount, page + 1))}>{t.next}</button></nav> : null}
   </aside>;
 }

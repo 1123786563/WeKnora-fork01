@@ -6,6 +6,7 @@ import { initialChatStreamState, reduceChatStream, type ChatApproval } from '@we
 import { appendMessages, hasOlderMessages, sessionGroups, sessionPageCount } from '@weknora/domain/chat/session-state';
 import { readStoredGroupMode, storeGroupMode } from '@weknora/domain/chat/session-grouping';
 import { ChatPage, type ChatSubmission } from '@weknora/views';
+import { openContextualGuide } from '@weknora/views';
 import type { ScopeController } from '@weknora/domain/scope';
 import { chatSessionIdFromPath, SHELL_SESSION_ROUTE_EVENT } from './session-route.ts';
 import { buildWebChatStreamOptions, initialAgentSelection } from './agent-selection.ts';
@@ -79,6 +80,15 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   useEffect(() => {
     selectedSessionIdRef.current = selectedSessionId;
   }, [selectedSessionId]);
+
+  // Vue creatChat.vue:81-83 + line 50 — the chat contextual tour arms on chat
+  // entry (globalCreatChat / kbCreatChat routes); the React chat page IS that
+  // entry, so arm once on mount. The shell-level host applies the dismissal +
+  // welcome-tour gates.
+  useEffect(() => {
+    openContextualGuide('chat');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // The platform shell's session list navigates by route: on global chat
   // routes it hands the switch to this page — selectSession pushes the new

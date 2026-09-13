@@ -2,6 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { AgentConfiguration, WeKnoraClient } from '@weknora/api-client';
 import { Status } from '@weknora/ui';
 import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
+import {
+  contextualGuideMessage,
+  markContextualGuideDone,
+  openContextualGuide,
+} from '@weknora/views';
 import './agents.css';
 import { AgentEditorModal } from './AgentEditorModal.tsx';
 import { makeEditorT } from './agent-editor.ts';
@@ -581,6 +586,10 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
   // ported literals for those keys while agent.* resolves normally.
   const editorT = useMemo(() => makeEditorT(locale), [locale]);
   const [viewer, setViewer] = useState<AgentViewer>({ userId: '', isAdmin: false, isContributor: false });
+  // Vue useTenantModelReadiness (frontend/src/composables/useTenantModelReadiness.ts):
+  // the agent list tours and the create gate read tenant model readiness —
+  // a configured chat (KnowledgeQA / type llm) model.
+  const [modelsReady, setModelsReady] = useState<boolean | null>(null);
   const [data, setData] = useState<AgentsPageData | null>(null);
   const [spaceItems, setSpaceItems] = useState<Array<Record<string, unknown>>>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -626,6 +635,14 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
     });
     return () => { active = false; };
   }, [client, reloadToken, t]);
+
+  useEffect(() => {
+    let active = true;
+    void client.configuration.models.list().then((models) => {
+      if (active) setModelsReady(models.some((model) => model.type === 'llm'));
+    }).catch(() => { if (active) setModelsReady(false); });
+    return () => { active = false; };
+  }, [client]);
 
   // Default scope follows the Vue role rule: contributor → mine, else all
   // (AgentList.vue defaultScope). Resolved once here so rows, sections, and
@@ -684,9 +701,26 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
     }
   }, [client, reload, t]);
 
-  const onCreate = useCallback(() => { setEditor({ mode: 'create', agent: null }); }, []);
+  const onCreate = useCallback(() => {
+    // Vue AgentList.vue:1597-1602 — without a chat model the create click
+    // warns and opens the models settings section instead; the tenantModels
+    // (agent) tour re-arms there via the queued intent.
+    if (modelsReady === false) {
+      setNotice(contextualGuideMessage(locale, 'contextualGuide.tenantModels.needChatModelFirst'));
+      openContextualGuide('tenantModels', { variant: 'agent' });
+      window.location.assign('/platform/settings?section=models');
+      return;
+    }
+    // Vue AgentList.vue:1603 + AgentCreateContextualGuide :when="create" —
+    // opening the editor retires the agentList tour and arms agentCreate.
+    markContextualGuideDone(window.localStorage, 'agentList');
+    openContextualGuide('agentCreate', { isAgentMode: false });
+    setEditor({ mode: 'create', agent: null });
+  }, [locale, modelsReady]);
 
   const onEditorSaved = useCallback((_agent: Record<string, unknown>, mode: 'create' | 'edit') => {
+    // Vue AgentEditorModal.vue:4825 — a successful create retires agentCreate.
+    if (mode === 'create') markContextualGuideDone(window.localStorage, 'agentCreate');
     // create stays open inside the modal (post-create session); refresh the list either way
     setNotice(t(mode === 'create' ? 'agent.messages.created' : 'agent.messages.updated'));
     reload();
@@ -735,6 +769,26 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
       })),
     ];
   }, [data, effectiveSpace, favorites.size, locale, recents.length, t]);
+
+  // Vue AgentList.vue:1088-1102 — the empty contributor list (all/mine scope,
+  // editor closed) selects between the tenantModels tour (agent variant, when
+  // no chat model is configured) and the agentList tour (when it is). The
+  // shell-level guide host applies the dismissal + welcome-tour gates.
+  const agentListGuideBase = data !== null
+    && viewer.isContributor
+    && editor === null
+    && (effectiveSpace === 'all' || effectiveSpace === 'mine')
+    && rows.length === 0;
+  const tenantModelsGuideWhen = agentListGuideBase && modelsReady === false;
+  const agentListGuideWhen = agentListGuideBase && modelsReady === true;
+  useEffect(() => {
+    if (!tenantModelsGuideWhen) return;
+    openContextualGuide('tenantModels', { variant: 'agent' });
+  }, [tenantModelsGuideWhen]);
+  useEffect(() => {
+    if (!agentListGuideWhen) return;
+    openContextualGuide('agentList');
+  }, [agentListGuideWhen]);
 
   return (
     <AgentsPageView

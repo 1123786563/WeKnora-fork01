@@ -1,135 +1,573 @@
 /*
- * zh-CN chat copy for the React chat rendering layer.
+ * Chat copy for the React rendering layer, keyed by the active UI locale.
  *
- * Ported byte-exact from the authoritative Vue locale
- * (frontend/src/i18n/locales/zh-CN.ts). packages/i18n has no chat.* domain yet
- * (agent.copy / agent.addToKnowledgeBase exist, chat.* do not), and packages/i18n
- * is outside this slice's write scope, so the strings live here behind the keys
- * they must move to. TODO(migration): replace with formatMessage(locale, key)
- * once the chat domain is generated in @weknora/i18n.
+ * Values are ported byte-exact from the authoritative Vue locales
+ * (frontend/src/i18n/locales/{zh-CN,en-US,ja-JP,ko-KR,ru-RU}.ts) for every key
+ * that exists there — the Vue source path is annotated on each zh-CN entry.
+ * Keys the Vue locale files do not define (React-side affordances with no Vue
+ * counterpart) keep their zh-CN string in all locales and are annotated
+ * zh-only; they are recorded as a gap in
+ * docs/migrations/react/evidence/vue-react-parity/2026-09-13-chat-i18n.md.
+ *
+ * The chat-domain subset of these values is also generated into
+ * @weknora/i18n (packages/i18n/src/generated/chat.ts). packages/views cannot
+ * depend on @weknora/i18n (see integrations/messages.ts), so this local table
+ * mirrors it byte-exact. Components resolve a table with resolveChatCopy()
+ * (or take the resolved table via the copy prop); CHAT_COPY remains the
+ * zh-CN default so existing consumers keep working.
  */
 
-export const CHAT_COPY = {
-  /** chat.suggestedQuestions */
-  suggestedQuestions: '你可以这样问我',
-  /** chat.refreshSuggestedQuestions */
-  refreshSuggestedQuestions: '换一批',
-  /** chat.followUpQuestions */
-  followUpQuestions: '继续问',
-  /** chat.followUpQuestionsLoading */
-  followUpQuestionsLoading: '加载推荐问题',
-  /** chat.thinkingAlt */
-  thinkingAlt: '正在思考',
-  /** chat.fallbackHint */
-  fallbackHint: '未从知识库中检索到相关内容，以上为模型直接回答',
-  /** createChat.title */
-  createChatTitle: 'Hi，我是 WeKnora，让你的知识触手可及',
-  /** menu.newSession (chat header fallback + new-chat rows) */
-  newSession: '新会话',
-  /** sidebar list */
-  sidebarTitle: '会话列表',
-  newChat: '新对话',
-  searchSessions: '搜索会话',
-  sourceLabel: '来源',
+export const CHAT_COPY_LOCALES = ['zh-CN', 'en-US', 'ja-JP', 'ko-KR', 'ru-RU'] as const;
+
+export type ChatCopyLocale = (typeof CHAT_COPY_LOCALES)[number];
+
+/** The zh-CN table doubles as the key inventory for the other locales. */
+const CHAT_COPY_ZH = {
+/** chat.suggestedQuestions */
+suggestedQuestions: '你可以这样问我',
+/** chat.refreshSuggestedQuestions */
+refreshSuggestedQuestions: '换一批',
+/** chat.followUpQuestions */
+followUpQuestions: '继续问',
+/** chat.followUpQuestionsLoading */
+followUpQuestionsLoading: '加载推荐问题',
+/** chat.thinkingAlt */
+thinkingAlt: '正在思考',
+/** chat.fallbackHint */
+fallbackHint: '未从知识库中检索到相关内容，以上为模型直接回答',
+/** createChat.title */
+createChatTitle: 'Hi，我是 WeKnora，让你的知识触手可及',
+/** menu.newSession */
+newSession: '新会话',
+/** menu.myChats */
+sidebarTitle: '我的对话',
+/** menu.newChat */
+newChat: '新对话',
+/** menu.search */
+searchSessions: '搜索',
+/** knowledgeBase.columnSource */
+sourceLabel: '来源',
+/** zh-only (no Vue locale source; see 2026-09-13-chat-i18n.md) */
+groupLabel: '分组',
+/** common.all */
+groupAll: '全部',
+/** zh-only (no Vue locale source; see 2026-09-13-chat-i18n.md) */
+groupByDate: '按日期',
+/** common.loading */
+loadingSessions: '加载中...',
+/** common.loading */
+loadingMessages: '加载中...',
+/** common.loading */
+loadingHistory: '加载中...',
+/** common.loadMore */
+loadOlder: '加载更多',
+/** menu.newSession */
+untitledChat: '新会话',
+/** input.send */
+send: '发送',
+/** input.stopGeneration */
+stopGeneration: '停止生成',
+/** input.placeholder */
+composerPlaceholder: '直接向模型提问',
+/** input.normalMode */
+quickAnswer: '快速问答',
+/** agent.selectAgent */
+selectAgent: '选择智能体',
+/** zh-only (no Vue locale source; see 2026-09-13-chat-i18n.md) */
+uploadAttachment: '上传附件',
+/** input.knowledgeBase */
+mentionKnowledge: '知识库',
+/** input.agentMissingSummaryModel */
+modelChip: '对话模型',
+/** time.today */
+today: '今天',
+/** time.yesterday */
+yesterday: '昨天',
+/** chat.conversationTime.today */
+conversationTimeToday: '今天 {time}',
+/** chat.conversationTime.yesterday */
+conversationTimeYesterday: '昨天 {time}',
+/** chat.conversationTime.thisYear */
+conversationTimeThisYear: '{month}月{day}日 {time}',
+/** chat.conversationTime.otherYear */
+conversationTimeOtherYear: '{year}年{month}月{day}日 {time}',
+/** chatHeader.moreActions */
+moreActions: '更多对话操作',
+/** menu.pin */
+pin: '置顶',
+/** menu.unpin */
+unpin: '取消置顶',
+/** menu.renameSession */
+renameSession: '修改标题',
+/** menu.clearMessages */
+clearMessages: '清空消息',
+/** chatHeader.deleteSession */
+deleteSession: '删除对话',
+/** agent.copy */
+copy: '复制',
+/** common.copied */
+copied: '已复制',
+/** agent.addToKnowledgeBase */
+addToKnowledgeBase: '添加到知识库',
+/** chat.requestInfoTitle */
+requestInfo: '请求信息',
+/** chat.sandbox.tabArtifacts */
+artifacts: '产物',
+/** zh-only (no Vue locale source; see 2026-09-13-chat-i18n.md) */
+artifactsPending: '产物生成中…',
+/** agent.artifactDrawer.preview */
+preview: '预览',
+/** common.download */
+download: '下载',
+/** settings.storage.available */
+available: '可用',
+/** tenantInvitation.status.expired */
+expired: '已过期',
+/** zh-only (no Vue locale source; see 2026-09-13-chat-i18n.md) */
+sending: '发送中…',
+/** zh-only (no Vue locale source; see 2026-09-13-chat-i18n.md) */
+sendFailed: '发送失败',
+/** common.retry */
+retry: '重试',
+/** input.steerCurrent */
+steerCurrent: '补充当前任务',
+/** input.steerAfter */
+steerQueued: '完成后发送',
+/** chat.sandbox.panelTitle */
+sandboxPanelTitle: '沙箱可视化',
+/** chatHeader.toggleSandboxPanel */
+openSandboxPanel: '沙箱终端',
+/** common.close */
+close: '关闭',
+/** chat.sandbox.start */
+startTerminal: '启动终端',
+/** zh-only (no Vue locale source; see 2026-09-13-chat-i18n.md) */
+terminalInput: '终端输入',
+/** zh-only (no Vue locale source; see 2026-09-13-chat-i18n.md) */
+sendInput: '发送输入',
+/** zh-only (no Vue locale source; see 2026-09-13-chat-i18n.md) */
+closeTerminal: '断开终端',
+/** zh-only (no Vue locale source; see 2026-09-13-chat-i18n.md) */
+thinkingAndTools: '思考与工具',
+/** knowledgeBase.columnStatus */
+streamStatus: '状态',
+/** agentStream.mcp.status.unavailable */
+disabledAgentSuffix: '不可用',
+/** chat.refreshSuggestedQuestions */
+suggestedRefresh: '换一批',
+/** common.collapse */
+dismiss: '收起',
+/** time.pinned */
+groupPinned: '已置顶',
+/** time.today */
+groupToday: '今天',
+/** time.yesterday */
+groupYesterday: '昨天',
+/** time.last7Days */
+groupLast7Days: '近7天',
+/** time.last30Days */
+groupLast30Days: '近30天',
+/** time.earlier */
+groupOlder: '更早',
+/** @weknora/i18n common.* bundle (no Vue key) */
+previous: '上一页',
+/** @weknora/i18n common.* bundle (no Vue key) */
+next: '下一步',
+/** @weknora/i18n common.* bundle (no Vue key) */
+pageOf: '第 {page} 页 / 共 {total} 页',
+};
+
+export type ChatCopyKey = keyof typeof CHAT_COPY_ZH;
+
+export type ChatCopyTable = Record<ChatCopyKey, string>;
+
+/** All five locale tables; key sets are identical by construction. */
+const CHAT_COPY_TABLES: Record<ChatCopyLocale, ChatCopyTable> = {
+  'zh-CN': CHAT_COPY_ZH,
+  'en-US': {
+  suggestedQuestions: 'You can ask me',
+  refreshSuggestedQuestions: 'More',
+  followUpQuestions: 'Keep asking',
+  followUpQuestionsLoading: 'Loading suggested questions',
+  thinkingAlt: 'Thinking in progress',
+  fallbackHint: 'No relevant content found in knowledge base. Above is a direct response from the model.',
+  createChatTitle: 'Hi, I am WeKnora — your knowledge, within reach',
+  newSession: 'New Chat',
+  sidebarTitle: 'My chats',
+  newChat: 'New Chat',
+  searchSessions: 'Search',
+  sourceLabel: 'Source',
   groupLabel: '分组',
-  groupAll: '全部',
+  groupAll: 'All',
   groupByDate: '按日期',
-  loadingSessions: '会话加载中…',
-  loadingMessages: '消息加载中…',
-  loadingHistory: '历史消息加载中…',
-  loadOlder: '加载更多历史',
-  untitledChat: '未命名会话',
-  send: '发送',
-  stopGeneration: '停止生成',
-  composerPlaceholder: '直接向模型提问',
-  /** input.normalMode — built-in quick answer agent display name */
-  quickAnswer: '快速问答',
+  loadingSessions: 'Loading...',
+  loadingMessages: 'Loading...',
+  loadingHistory: 'Loading...',
+  loadOlder: 'Load more',
+  untitledChat: 'New Chat',
+  send: 'Send',
+  stopGeneration: 'Stop Generation',
+  composerPlaceholder: 'Ask questions directly to the model',
+  quickAnswer: 'Quick Answer',
+  selectAgent: 'Select Agent',
   uploadAttachment: '上传附件',
-  mentionKnowledge: '知识库',
-  modelChip: '对话模型',
-  /** chat.conversationTime.* */
-  today: '今天',
-  yesterday: '昨天',
-  /** header actions (chatHeader.*) */
-  moreActions: '更多操作',
-  pin: '置顶',
-  unpin: '取消置顶',
-  renameSession: '重命名会话',
-  clearMessages: '清空消息',
-  deleteSession: '删除会话',
-  /** answer toolbar (agent.* exists in @weknora/i18n; duplicated here until the chat domain lands) */
-  copy: '复制',
-  copied: '已复制',
-  addToKnowledgeBase: '收藏进知识库',
-  requestInfo: '请求信息',
-  /** artifacts */
-  artifacts: '产物',
+  mentionKnowledge: 'Knowledge Base',
+  modelChip: 'Chat model',
+  today: 'Today',
+  yesterday: 'Yesterday',
+  conversationTimeToday: 'Today {time}',
+  conversationTimeYesterday: 'Yesterday {time}',
+  conversationTimeThisYear: '{month}/{day} {time}',
+  conversationTimeOtherYear: '{month}/{day}/{year} {time}',
+  moreActions: 'More conversation actions',
+  pin: 'Pin',
+  unpin: 'Unpin',
+  renameSession: 'Rename',
+  clearMessages: 'Clear Messages',
+  deleteSession: 'Delete Conversation',
+  copy: 'Copy',
+  copied: 'Copied',
+  addToKnowledgeBase: 'Add to Knowledge Base',
+  requestInfo: 'Request info',
+  artifacts: 'Files',
   artifactsPending: '产物生成中…',
-  preview: '预览',
-  download: '下载',
-  available: '可用',
-  expired: '已过期',
-  /** pending user bubble */
+  preview: 'Preview',
+  download: 'Download',
+  available: 'Available',
+  expired: 'Expired',
   sending: '发送中…',
   sendFailed: '发送失败',
-  retry: '重试',
-  /** steer composer (input.*) */
-  steerCurrent: '补充当前任务',
-  steerQueued: '完成后发送',
-  /** sandbox panel (chat.sandbox.*) */
-  sandboxPanelTitle: '沙箱可视化',
-  openSandboxPanel: '打开沙箱面板',
-  close: '关闭',
-  startTerminal: '启动终端',
+  retry: 'Retry',
+  steerCurrent: 'Supplement current task',
+  steerQueued: 'Send after completion',
+  sandboxPanelTitle: 'Sandbox',
+  openSandboxPanel: 'Sandbox terminal',
+  close: 'Close',
+  startTerminal: 'Start terminal',
   terminalInput: '终端输入',
   sendInput: '发送输入',
   closeTerminal: '断开终端',
-  /** thinking & tool extras (AgentStreamDisplay analog) */
   thinkingAndTools: '思考与工具',
-  /** stream strip */
-  streamStatus: '状态',
-  /** agent picker */
-  disabledAgentSuffix: '不可用',
-  /** suggestions */
-  suggestedRefresh: '换一批',
-  dismiss: '收起',
-  /** session list time group labels (time.*) */
-  groupPinned: '已置顶',
-  groupToday: '今天',
-  groupYesterday: '昨天',
-  groupLast7Days: '近7天',
-  groupLast30Days: '近30天',
-  groupOlder: '更早',
-  /** pagination (common.*) */
-  previous: '上一页',
-  next: '下一页',
-  pageOf: '第 {page} 页 / 共 {total} 页',
-} as const;
+  streamStatus: 'Status',
+  disabledAgentSuffix: 'Unavailable',
+  suggestedRefresh: 'More',
+  dismiss: 'Collapse',
+  groupPinned: 'Pinned',
+  groupToday: 'Today',
+  groupYesterday: 'Yesterday',
+  groupLast7Days: 'Last 7 Days',
+  groupLast30Days: 'Last 30 Days',
+  groupOlder: 'Earlier',
+  previous: 'Previous',
+  next: 'Next',
+  pageOf: 'Page {page} of {total}',
+  },
+  'ja-JP': {
+  suggestedQuestions: 'こんな質問ができます',
+  refreshSuggestedQuestions: '別の候補',
+  followUpQuestions: '続けて質問',
+  followUpQuestionsLoading: '質問候補を読み込み中',
+  thinkingAlt: '思考中',
+  fallbackHint: 'ナレッジベースから関連する内容が見つかりませんでした。上記はモデルの直接回答です。',
+  createChatTitle: 'こんにちは、WeKnoraです。あなたのナレッジを、すぐそばに',
+  newSession: '新しいチャット',
+  sidebarTitle: 'マイチャット',
+  newChat: '新しいチャット',
+  searchSessions: '検索',
+  sourceLabel: '取得元',
+  groupLabel: '分组',
+  groupAll: 'すべて',
+  groupByDate: '按日期',
+  loadingSessions: '読み込み中...',
+  loadingMessages: '読み込み中...',
+  loadingHistory: '読み込み中...',
+  loadOlder: 'さらに読み込む',
+  untitledChat: '新しいチャット',
+  send: '送信',
+  stopGeneration: '生成を停止',
+  composerPlaceholder: 'モデルに直接質問できます',
+  quickAnswer: 'クイック回答',
+  selectAgent: 'エージェントを選択',
+  uploadAttachment: '上传附件',
+  mentionKnowledge: 'ナレッジベース',
+  modelChip: 'チャットモデル',
+  today: '今日',
+  yesterday: '昨日',
+  conversationTimeToday: '今日{time}',
+  conversationTimeYesterday: '昨日{time}',
+  conversationTimeThisYear: '{month}/{day} {time}',
+  conversationTimeOtherYear: '{year}/{month}/{day} {time}',
+  moreActions: 'その他の会話操作',
+  pin: 'ピン留め',
+  unpin: 'ピン留めを解除',
+  renameSession: 'タイトルを変更',
+  clearMessages: 'メッセージをクリア',
+  deleteSession: '会話を削除',
+  copy: 'コピー',
+  copied: 'コピーしました',
+  addToKnowledgeBase: 'ナレッジベースに追加',
+  requestInfo: 'リクエスト情報',
+  artifacts: 'ファイル',
+  artifactsPending: '产物生成中…',
+  preview: 'プレビュー',
+  download: 'ダウンロード',
+  available: '利用可能',
+  expired: '期限切れ',
+  sending: '发送中…',
+  sendFailed: '发送失败',
+  retry: '再試行',
+  steerCurrent: '現在のタスクに追加',
+  steerQueued: '完了後に送信',
+  sandboxPanelTitle: 'サンドボックス',
+  openSandboxPanel: 'サンドボックスターミナル',
+  close: '閉じる',
+  startTerminal: 'ターミナルを起動',
+  terminalInput: '终端输入',
+  sendInput: '发送输入',
+  closeTerminal: '断开终端',
+  thinkingAndTools: '思考与工具',
+  streamStatus: 'ステータス',
+  disabledAgentSuffix: '利用不可',
+  suggestedRefresh: '別の候補',
+  dismiss: '折りたたむ',
+  groupPinned: 'ピン留め',
+  groupToday: '今日',
+  groupYesterday: '昨日',
+  groupLast7Days: '過去7日間',
+  groupLast30Days: '過去30日間',
+  groupOlder: 'それ以前',
+  previous: '前へ',
+  next: '次へ',
+  pageOf: '{total} ページ中 {page} ページ目',
+  },
+  'ko-KR': {
+  suggestedQuestions: '이렇게 물어보세요',
+  refreshSuggestedQuestions: '다른 질문',
+  followUpQuestions: '이어서 질문',
+  followUpQuestionsLoading: '추천 질문 로딩 중',
+  thinkingAlt: '생각 중',
+  fallbackHint: '지식 베이스에서 관련 내용을 찾지 못했습니다. 위는 모델의 직접 응답입니다.',
+  createChatTitle: '안녕하세요, WeKnora입니다 — 당신의 지식을 손끝에',
+  newSession: '새 세션',
+  sidebarTitle: '내 대화',
+  newChat: '새 대화',
+  searchSessions: '검색',
+  sourceLabel: '소스',
+  groupLabel: '分组',
+  groupAll: '전체',
+  groupByDate: '按日期',
+  loadingSessions: '로딩 중...',
+  loadingMessages: '로딩 중...',
+  loadingHistory: '로딩 중...',
+  loadOlder: '더 보기',
+  untitledChat: '새 세션',
+  send: '전송',
+  stopGeneration: '생성 중지',
+  composerPlaceholder: '모델에 직접 질문',
+  quickAnswer: '일반 모드',
+  selectAgent: '에이전트 선택',
+  uploadAttachment: '上传附件',
+  mentionKnowledge: '지식베이스',
+  modelChip: '대화 모델',
+  today: '오늘',
+  yesterday: '어제',
+  conversationTimeToday: '오늘 {time}',
+  conversationTimeYesterday: '어제 {time}',
+  conversationTimeThisYear: '{month}월 {day}일 {time}',
+  conversationTimeOtherYear: '{year}년 {month}월 {day}일 {time}',
+  moreActions: '대화 추가 작업',
+  pin: '고정',
+  unpin: '고정 해제',
+  renameSession: '제목 수정',
+  clearMessages: '메시지 지우기',
+  deleteSession: '대화 삭제',
+  copy: '복사',
+  copied: '복사됨',
+  addToKnowledgeBase: '지식베이스에 추가',
+  requestInfo: 'Request info',
+  artifacts: '파일',
+  artifactsPending: '产物生成中…',
+  preview: '미리보기',
+  download: '다운로드',
+  available: '사용 가능',
+  expired: '만료됨',
+  sending: '发送中…',
+  sendFailed: '发送失败',
+  retry: '재시도',
+  steerCurrent: '현재 작업에 추가',
+  steerQueued: '완료 후 보내기',
+  sandboxPanelTitle: '샌드박스',
+  openSandboxPanel: '샌드박스 터미널',
+  close: '닫기',
+  startTerminal: '터미널 시작',
+  terminalInput: '终端输入',
+  sendInput: '发送输入',
+  closeTerminal: '断开终端',
+  thinkingAndTools: '思考与工具',
+  streamStatus: '상태',
+  disabledAgentSuffix: '사용 불가',
+  suggestedRefresh: '다른 질문',
+  dismiss: '접기',
+  groupPinned: '고정됨',
+  groupToday: '오늘',
+  groupYesterday: '어제',
+  groupLast7Days: '최근 7일',
+  groupLast30Days: '최근 30일',
+  groupOlder: '이전',
+  previous: '이전',
+  next: '다음',
+  pageOf: '{total} 페이지 중 {page} 페이지',
+  },
+  'ru-RU': {
+  suggestedQuestions: 'Вы можете спросить меня',
+  refreshSuggestedQuestions: 'Ещё',
+  followUpQuestions: 'Спрашивайте дальше',
+  followUpQuestionsLoading: 'Загрузка рекомендуемых вопросов',
+  thinkingAlt: 'Обдумывание...',
+  fallbackHint: 'В базе знаний не найдено релевантного содержимого. Выше представлен прямой ответ модели.',
+  createChatTitle: 'Привет, я WeKnora — ваши знания всегда под рукой',
+  newSession: 'Новый диалог',
+  sidebarTitle: 'Мои чаты',
+  newChat: 'Новый диалог',
+  searchSessions: 'Поиск',
+  sourceLabel: 'Источник',
+  groupLabel: '分组',
+  groupAll: 'Все',
+  groupByDate: '按日期',
+  loadingSessions: 'Загрузка...',
+  loadingMessages: 'Загрузка...',
+  loadingHistory: 'Загрузка...',
+  loadOlder: 'Загрузить ещё',
+  untitledChat: 'Новый диалог',
+  send: 'Отправить',
+  stopGeneration: 'Остановить генерацию',
+  composerPlaceholder: 'Задайте вопрос напрямую модели',
+  quickAnswer: 'Быстрый ответ',
+  selectAgent: 'Select Agent',
+  uploadAttachment: '上传附件',
+  mentionKnowledge: 'База знаний',
+  modelChip: 'Модель беседы',
+  today: 'Сегодня',
+  yesterday: 'Вчера',
+  conversationTimeToday: 'Сегодня {time}',
+  conversationTimeYesterday: 'Вчера {time}',
+  conversationTimeThisYear: '{day}.{month} {time}',
+  conversationTimeOtherYear: '{day}.{month}.{year} {time}',
+  moreActions: 'Другие действия с диалогом',
+  pin: 'Закрепить',
+  unpin: 'Открепить',
+  renameSession: 'Переименовать',
+  clearMessages: 'Очистить сообщения',
+  deleteSession: 'Удалить диалог',
+  copy: 'Копировать',
+  copied: 'Скопировано',
+  addToKnowledgeBase: 'Добавить в базу знаний',
+  requestInfo: 'Request info',
+  artifacts: 'Файлы',
+  artifactsPending: '产物生成中…',
+  preview: 'Предпросмотр',
+  download: 'Скачать',
+  available: 'Доступно',
+  expired: 'Expired',
+  sending: '发送中…',
+  sendFailed: '发送失败',
+  retry: 'Повторить',
+  steerCurrent: 'Дополнить текущую задачу',
+  steerQueued: 'Отправить после завершения',
+  sandboxPanelTitle: 'Песочница',
+  openSandboxPanel: 'Терминал песочницы',
+  close: 'Закрыть',
+  startTerminal: 'Запустить терминал',
+  terminalInput: '终端输入',
+  sendInput: '发送输入',
+  closeTerminal: '断开终端',
+  thinkingAndTools: '思考与工具',
+  streamStatus: 'Статус',
+  disabledAgentSuffix: 'Недоступно',
+  suggestedRefresh: 'Ещё',
+  dismiss: 'Свернуть',
+  groupPinned: 'Закреплено',
+  groupToday: 'Сегодня',
+  groupYesterday: 'Вчера',
+  groupLast7Days: 'Последние 7 дней',
+  groupLast30Days: 'Последние 30 дней',
+  groupOlder: 'Ранее',
+  previous: 'Назад',
+  next: 'Далее',
+  pageOf: 'Страница {page} из {total}',
+  },
+};
 
-export type ChatCopyKey = keyof typeof CHAT_COPY;
+/** zh-CN table kept as the default for consumers that have no locale yet. */
+export const CHAT_COPY: ChatCopyTable = CHAT_COPY_ZH;
 
-/** formatMessage-style {name} interpolation for the couple of templated labels. */
+export function isChatCopyLocale(value: string | null | undefined): value is ChatCopyLocale {
+  return value != null && (CHAT_COPY_LOCALES as readonly string[]).includes(value);
+}
+
+/** Resolved chat copy for a locale; unknown locales fall back to zh-CN. */
+export function resolveChatCopy(locale?: string | null): ChatCopyTable {
+  return isChatCopyLocale(locale) ? CHAT_COPY_TABLES[locale] : CHAT_COPY_ZH;
+}
+
+/**
+ * App locale convention: the language switch stores localStorage['locale']
+ * (GeneralPreferencesPanel), otherwise navigator.language resolves like
+ * App.tsx resolveLocale(); zh-CN remains the final fallback so Node runtimes
+ * and storage-less embeds keep today's rendering.
+ */
+export function resolveChatLocale(): ChatCopyLocale {
+  try {
+    const stored = typeof window !== 'undefined' ? window.localStorage?.getItem('locale') : null;
+    if (isChatCopyLocale(stored)) return stored;
+  } catch {
+    // Storage can be unavailable (sandboxed iframes); fall through.
+  }
+  const language = typeof navigator !== 'undefined' ? navigator.language : '';
+  if (isChatCopyLocale(language)) return language;
+  const base = language.split('-')[0] ?? '';
+  const baseMatch = CHAT_COPY_LOCALES.find((locale) => locale.split('-')[0] === base);
+  return baseMatch ?? 'zh-CN';
+}
+
+/** formatMessage-style {name} interpolation against a resolved table. */
+export function formatChatCopy(table: ChatCopyTable, key: ChatCopyKey, values: Record<string, string | number> = {}): string {
+  return table[key].replace(/\{(\w+)\}/g, (_match, name: string) => String(values[name] ?? `{${name}}`));
+}
+
+/** zh-CN-bound interpolation kept for the legacy module-level consumers. */
 export function chatCopy(key: ChatCopyKey, values: Record<string, string | number> = {}): string {
-  return CHAT_COPY[key].replace(/\{(\w+)\}/g, (_match, name: string) => String(values[name] ?? `{${name}}`));
+  return formatChatCopy(CHAT_COPY, key, values);
 }
 
 /** Sidebar session group label for the keys produced by sessionGroups(). */
-export function sessionGroupLabel(key: string): string {
+export function sessionGroupLabel(copy: ChatCopyTable, key: string): string {
   switch (key) {
-    case 'pinned': return CHAT_COPY.groupPinned;
-    case 'today': return CHAT_COPY.groupToday;
-    case 'yesterday': return CHAT_COPY.groupYesterday;
-    case 'last7Days': return CHAT_COPY.groupLast7Days;
-    case 'last30Days': return CHAT_COPY.groupLast30Days;
-    case 'older': return CHAT_COPY.groupOlder;
+    case 'pinned': return copy.groupPinned;
+    case 'today': return copy.groupToday;
+    case 'yesterday': return copy.groupYesterday;
+    case 'last7Days': return copy.groupLast7Days;
+    case 'last30Days': return copy.groupLast30Days;
+    case 'older': return copy.groupOlder;
     default: return key;
   }
 }
 
-/** Conversation date separator labels (chat.conversationTime.*) for formatConversationTimestampLabel. */
-export const CONVERSATION_TIME_LABELS = {
-  today: CHAT_COPY.today,
-  yesterday: CHAT_COPY.yesterday,
-  thisYear: (model: { month: number; day: number }) => `${model.month}月${model.day}日`,
-  otherYear: (model: { year: number; month: number; day: number }) => `${model.year}年${model.month}月${model.day}日`,
-};
+/**
+ * Conversation date separator labels (chat.conversationTime.*) for
+ * formatConversationTimestampLabel: the {time} placeholder is handled by the
+ * caller, so the thisYear/otherYear formatters strip it from the template.
+ */
+export function conversationTimeLabels(copy: ChatCopyTable) {
+  const dayLabel = (template: ChatCopyKey, model: { year: number; month: number; day: number }): string =>
+    formatChatCopy(copy, template, { ...model, time: '' }).trim();
+  return {
+    today: copy.today,
+    yesterday: copy.yesterday,
+    thisYear: (model: { year: number; month: number; day: number }): string => dayLabel('conversationTimeThisYear', model),
+    otherYear: (model: { year: number; month: number; day: number }): string => dayLabel('conversationTimeOtherYear', model),
+  };
+}
+
+/** zh-CN conversation labels kept for the legacy module-level consumers. */
+export const CONVERSATION_TIME_LABELS = conversationTimeLabels(CHAT_COPY);

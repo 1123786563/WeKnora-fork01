@@ -61,9 +61,10 @@ test('chat page exposes the selected agent and server-disabled state at the chat
   assert.match(html, /search_docs/);
   assert.match(html, /&lt;not markup&gt;/);
   assert.match(html, /redacted/);
-  // Session menu items (Vue ChatHeader menu).
-  assert.match(html, /重命名会话/);
-  assert.match(html, /删除会话/);
+  // Session menu items (Vue ChatHeader menu; zh aligns with menu.renameSession
+  // 修改标题 / chatHeader.deleteSession 删除对话).
+  assert.match(html, /修改标题/);
+  assert.match(html, /删除对话/);
   // Sandbox drawer opened via terminalOpen: connected terminal surface.
   assert.match(html, /Sandbox terminal/);
   assert.match(html, /ls/);
@@ -82,8 +83,8 @@ test('sandbox terminal stays hidden until the header toggle opens the drawer', (
   // Vue SandboxSidePanel: no terminal surface until toggled.
   assert.doesNotMatch(html, /wk-chat-sandbox-drawer/);
   assert.doesNotMatch(html, /启动终端/);
-  // Header mirror toggle (Vue sandbox-header-toggle).
-  assert.match(html, /aria-label="打开沙箱面板"/);
+  // Header mirror toggle (Vue sandbox-header-toggle; chatHeader.toggleSandboxPanel).
+  assert.match(html, /aria-label="沙箱终端"/);
   assert.match(html, /aria-expanded="false"/);
 });
 
@@ -288,10 +289,10 @@ test('message list renders the Vue anatomy: date separators, user pill, plain as
   assert.match(html, /wk-chat-message-row--user/);
   assert.doesNotMatch(html, /wk-chat-message-role/);
   assert.doesNotMatch(html, /wk-chat-avatar/);
-  // Assistant: icon row with 复制/收藏 (Vue answer-toolbar); no full-width Copy bar.
+  // Assistant: icon row with 复制/收藏 (Vue answer-toolbar; agent.addToKnowledgeBase).
   assert.match(html, /wk-chat-answer-toolbar/);
   assert.match(html, /aria-label="复制"/);
-  assert.match(html, /aria-label="收藏进知识库"/);
+  assert.match(html, /aria-label="添加到知识库"/);
   assert.match(html, /The answer is 42/);
   // Scroll-to-bottom only appears after the user scrolls up (client-only).
   assert.doesNotMatch(html, /wk-chat-scroll-bottom/);
@@ -323,6 +324,6 @@ test('session sidebar renders time-group headers, full titles, and the hover ⋯
   assert.match(html, /修复后首发截图/);
   assert.match(html, /creatChat首发修复验证/);
   assert.match(html, /aria-current="page"/);
-  assert.match(html, /重命名会话/);
-  assert.match(html, /aria-label="更多操作"/);
+  assert.match(html, /修改标题/);
+  assert.match(html, /aria-label="更多对话操作"/);
 });

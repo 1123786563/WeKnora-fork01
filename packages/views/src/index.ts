@@ -34,3 +34,42 @@ export { GLOBAL_USER_GUIDE_KEY, OPEN_NEW_USER_GUIDE_EVENT, isNewUserGuideDone, m
 export type { KeyValueStorage } from './guides/new-user-guide.ts';
 export { guideMessage, NEW_USER_GUIDE_MESSAGES, NEW_USER_GUIDE_STEPS } from './guides/steps.ts';
 export type { GuidePlacement, NewUserGuideAction, NewUserGuideLocale, NewUserGuideStep } from './guides/steps.ts';
+export { ContextualGuide, ContextualGuideHost } from './guides/ContextualGuide.tsx';
+export type { ContextualGuideActions, ContextualGuideHostProps, ContextualGuideProps } from './guides/ContextualGuide.tsx';
+export {
+  AGENT_EDITOR_FOCUS_SECTION_EVENT,
+  CONTEXTUAL_GUIDE_PENDING_KEY,
+  CONTEXTUAL_GUIDE_STEPS,
+  CONTEXTUAL_GUIDE_TOUR_IDS,
+  CONTEXTUAL_GUIDE_TOUR_STORAGE_KEYS,
+  CONTEXTUAL_GUIDE_OPEN_DELAY_MS,
+  CONTEXTUAL_GUIDE_ALSO_COMPLETE_TOURS,
+  KB_EDITOR_FOCUS_SECTION_EVENT,
+  OPEN_CONTEXTUAL_GUIDE_EVENT,
+  agentCreateGuideSteps,
+  contextualGuideMessage,
+  contextualGuideStepPrefix,
+  consumePendingContextualGuide,
+  focusAgentEditorSection,
+  focusKbEditorSection,
+  isContextualGuideDone,
+  isGlobalUserGuideDone,
+  kbCreateGuideSteps,
+  markContextualGuideDone,
+  openContextualGuide,
+  resolveContextualGuideSteps,
+  shouldOpenContextualGuide,
+} from './guides/contextual-guides.ts';
+export type {
+  ContextualGuideMessageKey,
+  ContextualGuideLocale,
+} from './guides/contextual-guide-messages.ts';
+export { CONTEXTUAL_GUIDE_MESSAGES } from './guides/contextual-guide-messages.ts';
+export type {
+  ContextualGuideOpenDetail,
+  ContextualGuidePlacement,
+  ContextualGuideStep,
+  ContextualGuideStepAction,
+  ContextualGuideTourId,
+  ContextualGuideTriggerOptions,
+} from './guides/contextual-guides.ts';

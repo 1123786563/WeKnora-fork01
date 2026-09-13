@@ -5,7 +5,7 @@ import { sessionGroups } from '@weknora/domain/chat/session-state';
 import { GlobalCommandPalette } from './GlobalCommandPalette.tsx';
 import { SessionSidebarList, SessionSidebarShellContext, type SessionGroupView } from '@weknora/views';
 import { chatSessionIdFromPath, SHELL_SESSION_ROUTE_EVENT } from '../chat/session-route.ts';
-import { NewUserGuide } from '@weknora/views';
+import { ContextualGuideHost, NewUserGuide } from '@weknora/views';
 import {
   clearRecentQueries,
   consumeCmdkParam,
@@ -419,6 +419,11 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
       />
       {/* 带遮罩层的新手引导：首次进入自动开启 (Vue platform/index.vue:18). */}
       <NewUserGuide locale={locale} actions={guideActions} />
+      {/* Contextual guides (Vue mounts ContextualGuide/KbCreateContextualGuide/
+          AgentCreateContextualGuide/TenantModelsGuide per page): one host in
+          the shell is fed by openContextualGuide(tour) trigger calls from the
+          pages, so page wiring stays a one-liner. */}
+      <ContextualGuideHost locale={locale} actions={guideActions} />
     </div>
   );
 }

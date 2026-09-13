@@ -158,6 +158,17 @@
   color: var(--td-text-color-secondary, rgba(0, 0, 0, 0.6));
 }
 
+/* SpotlightGuide.vue interact steps (lines 544-550): guides whose step is
+   completed by clicking the highlighted area show this hint instead of the
+   next/done buttons. */
+.wk-guide__interact-hint {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--td-brand-color, #07c05f);
+  font-weight: 500;
+}
+
 .wk-guide__actions {
   display: flex;
   align-items: center;

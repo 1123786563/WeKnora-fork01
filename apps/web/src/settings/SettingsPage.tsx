@@ -1,5 +1,6 @@
 import { isCapabilitySupported, type CapabilityMap } from '@weknora/domain';
 import { integrationTabForSection, integrationSettingsQuery, selectSettingsQuery, INTEGRATION_SECTIONS } from '@weknora/views';
+import { openContextualGuide } from '@weknora/views';
 import { IntegrationsRoutePage } from '../integrations/IntegrationsRoutePage.tsx';
 import { useCallback, useEffect, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
@@ -103,6 +104,16 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
   }
 
   useEffect(() => { void load(); }, [client, selectedKey, role]);
+  // Tenant-models contextual tour on the models settings entry (documentKb
+  // variant): when the drawer opens on 模型配置 and the tenant has no models
+  // configured yet, arm the tour. The Vue baseline only auto-arms it from
+  // AgentList (agent variant); this settings-entry trigger gives the
+  // documentKb variant its React entry point and fires once (dismissal
+  // persists, the shell host applies the welcome-tour gate).
+  useEffect(() => {
+    if (selectedKey !== 'models' || integrationTab) return;
+    if (Array.isArray(payload) && payload.length === 0) openContextualGuide('tenantModels');
+  }, [integrationTab, payload, selectedKey]);
   useEffect(() => {
     if (!integrationTab) return;
     const next = integrationSupported(selectedKey) ? selectedKey : 'general';
