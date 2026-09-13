@@ -13,6 +13,12 @@
 - 专项 21/21、正式 Web 758/758、`typecheck:web` 通过；证据 `evidence/vue-react-parity/2026-09-14-n007-upload-section-visibility.md`。
 - N007 仍为 `implementing`：真实上传/解析后端、浏览器 computed-style、Wails/native 证据未闭环。
 
+## 2026-09-14 Round N+22 — N006 文档批量 Shift 选择
+
+- 文档列表补齐 Vue `toggleSelectRow` 的当前页 Shift 区间增删、最后选择锚点及筛选/全选重置语义；普通点击仍只切换当前行。
+- 专项选择测试 3/3，上传确认回归 24/24，正式 Web 761/761，`typecheck:web` 通过；证据 `evidence/vue-react-parity/2026-09-14-n006-shift-selection.md`。
+- N006 仍为 `review`：真实浏览器 Shift/框选、后端批量链路、视觉与 Wails/native 证据未闭环。
+
 ## 2026-09-14 Round N+19 — N005 custom organization picker slice
 
 - 共享空间选择从原生 select 补为 Vue 风格可访问自定义列表：组织头像、角色、成员/知识库/智能体计数、选中态、外部点击关闭和 Escape；保留隐藏原生控件的 required/API 语义。
@@ -1373,4 +1379,3 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - playground 三件套集成（3187da12，切片实施 + 协调者落地其 §5 接线片段 + 独立复核）：SSE 复用 api-client createServerSentEventParser + Vue 终态 union；drawer 分步（请求配置→遮蔽预览→结果三步）；settle 修正（非 abort running→failed，Vue L1723）；并发碰撞按裁决以本切片版本收敛。
 - 全门禁：web 758/758（含 playground 31 新测试）、shared 436/436、typecheck 0、build ✓ 3.59s。
 - R013/N028 (3)「API playground 分步抽屉（SSE）」闭环；R013 剩余：embed 抽屉交接项（preview 模态、prod 通配符接线、admin 字段级门控）。
-

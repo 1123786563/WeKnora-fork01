@@ -85,6 +85,7 @@ import {
   documentsKBSettingsPath,
   isFilteringDocuments,
 } from "./page-chrome.ts";
+import { toggleDocumentSelection } from "./selection.ts";
 import {
   DocumentEmptyState,
   DocumentsBreadcrumb,
@@ -1528,6 +1529,7 @@ export function KnowledgeDocumentsPage({
   const [folderPath, setFolderPath] = useState<string | undefined>(undefined);
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const lastSelectedIndex = useRef(-1);
   const [moving, setMoving] = useState(false);
   const [moveTarget, setMoveTarget] = useState("");
   // Vue page-level KbUploadSourceDropdown (doc-filter-actions) + its menu state.
@@ -1800,6 +1802,7 @@ export function KnowledgeDocumentsPage({
   // documents the user can no longer see.
   useEffect(() => {
     setSelected(new Set());
+    lastSelectedIndex.current = -1;
   }, [debouncedQuery, selectedTagIds, fileType, parseStatus, source, updatedFrom, updatedTo, knowledgeBaseId]);
 
   const folders = useMemo(
@@ -1898,6 +1901,7 @@ export function KnowledgeDocumentsPage({
 
   function toggleAllOnPage() {
     setSelected(allOnPageSelected ? new Set() : new Set(items.map((item) => item.id)));
+    lastSelectedIndex.current = -1;
   }
   const pageTotal = state.status === "success" ? state.page.total : 0;
   const tabs = useMemo(
@@ -1915,12 +1919,12 @@ export function KnowledgeDocumentsPage({
     return true;
   }, [dialogMode, batchItemCount, pendingManual, multimodalIssue, asrIssue]);
 
-  function toggleSelected(id: string) {
+  function toggleSelected(id: string, shiftKey = false) {
+    const checked = !selected.has(id);
     setSelected((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
+      const result = toggleDocumentSelection({ ids: items.map((item) => item.id), selected: current, id, checked, shiftKey, lastIndex: lastSelectedIndex.current });
+      lastSelectedIndex.current = result.lastIndex;
+      return result.selected;
     });
   }
 
@@ -2914,7 +2918,7 @@ export function KnowledgeDocumentsPage({
                           name: displayName(document),
                         })}
                         checked={selected.has(document.id)}
-                        onChange={() => toggleSelected(document.id)}
+                        onChange={(event) => toggleSelected(document.id, (event.nativeEvent as MouseEvent).shiftKey)}
                       />
                       <div className="wk-list-item-copy">
                         <button
