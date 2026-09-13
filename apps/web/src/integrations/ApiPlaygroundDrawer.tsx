@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { CSSProperties } from 'react';
 
 import { consumeApiPlaygroundSSE } from './apiPlaygroundSSE.ts';
@@ -22,8 +23,8 @@ import {
 
 // Vue baseline: frontend/src/views/integrations/ApiIntegrationSettings.vue
 // L339-460 (playground SettingDrawer) and L1637-1735 (runPlayground state
-// machine). Drawer shell is an inline overlay panel pending the global Drawer
-// primitive (same convention as the embed preview panel).
+// machine). Vue SettingDrawer teleports the overlay to document.body so it is
+// not clipped or restyled by the integrations page stacking context.
 
 export interface ApiPlaygroundAgentOption { id: string; name: string; is_builtin?: boolean }
 
@@ -173,7 +174,7 @@ export function ApiPlaygroundDrawer({ open, onClose, apiKey, mode, agents, agent
     <span className="wk-api-playground-status" data-status={status || 'none'}>{status || '-'}</span>
   );
 
-  return (
+  const drawer = (
     <div className="wk-api-playground-overlay" role="presentation" style={overlayStyle} onClick={close}>
       <aside className="wk-api-playground-drawer" role="dialog" aria-modal="true" aria-label={t('integrations.api.playgroundTitle')} style={panelStyle} onClick={(event) => event.stopPropagation()}>
         <header className="wk-api-playground-header" style={rowStyle}>
@@ -273,4 +274,5 @@ export function ApiPlaygroundDrawer({ open, onClose, apiKey, mode, agents, agent
       </aside>
     </div>
   );
+  return typeof document === 'undefined' ? drawer : createPortal(drawer, document.body);
 }

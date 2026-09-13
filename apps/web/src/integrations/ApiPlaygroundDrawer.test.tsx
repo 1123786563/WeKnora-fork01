@@ -83,7 +83,9 @@ function mountDrawer(overrides: Record<string, unknown> = {}, onFetch?: (url: st
   document.body.append(container);
   mountedRoot = createRoot(container);
   void act(() => { mountedRoot?.render(React.createElement(ApiPlaygroundDrawer, props as never)); });
-  return { container, calls };
+  // Vue SettingDrawer teleports to body; query the host body so the suite
+  // remains valid when the React drawer uses the same portal boundary.
+  return { container: document.body, calls };
 }
 
 async function waitFor(predicate: () => boolean, message = 'waitFor timeout') {
@@ -106,6 +108,7 @@ test('drawer renders the three Vue sections with Vue defaults in zh-CN', () => {
   const { container } = mountDrawer();
   const drawer = container.querySelector('.wk-api-playground-drawer');
   assert.ok(drawer, 'drawer aside rendered');
+  assert.equal(drawer!.parentElement?.parentElement, document.body, 'Vue SettingDrawer teleport boundary is document.body');
   assert.equal(drawer!.getAttribute('aria-label'), 'API Playground');
   const titles = Array.from(container.querySelectorAll('.wk-api-playground-section h4')).map((node) => node.textContent);
   assert.deepEqual(titles, ['请求配置', '请求预览', '运行结果']);
