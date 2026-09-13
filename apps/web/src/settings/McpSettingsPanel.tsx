@@ -367,7 +367,7 @@ function McpMetadataSection({
           <p className="wk-muted">{t("mcpMetadata.policyHint")}</p>
           <McpToolsDirectory
             tools={metadata.tools}
-            serviceId={serviceId}
+            serviceId={metadata.stale ? undefined : serviceId}
             approvals={approvals}
             busy={busy || metadata.stale}
             policyError={policyError}

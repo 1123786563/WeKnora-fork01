@@ -7,7 +7,7 @@ import { createTranslator, useAppLocale } from '../i18n.ts';
 
 type PolicyField = 'enabled' | 'requireApproval';
 type McpToolApproval = Awaited<ReturnType<WeKnoraClient['configuration']['mcp']['toolApprovals']['list']>>[number];
-type Props = { tools: McpTool[]; serviceId: string; approvals: McpToolApproval[]; busy: boolean; policyError: string | null; onRetryPolicies: () => void; onPolicyChange: (name: string, field: PolicyField, value: boolean) => void };
+type Props = { tools: McpTool[]; serviceId?: string; approvals: McpToolApproval[]; busy: boolean; policyError: string | null; onRetryPolicies: () => void; onPolicyChange: (name: string, field: PolicyField, value: boolean) => void };
 
 function parametersOf(schema: unknown): Array<{ name: string; type?: string; required: boolean; description?: string }> {
   if (!schema || typeof schema !== 'object') return [];
@@ -76,10 +76,10 @@ export function McpToolsDirectory({ tools, serviceId, approvals, busy, policyErr
         const detail = <div ref={detailRef} className="wk-mcp-tool-detail-popup" role="dialog" aria-label={`${tool.name} ${t('mcpMetadata.details')}`} style={popupPosition ? { top: popupPosition.top, left: popupPosition.left } : undefined}><div className="wk-mcp-tool-detail"><div role="tablist" className="wk-mcp-tool-tabs">{(['description', 'parameters', 'schema'] as const).map((item) => <button key={item} type="button" role="tab" aria-selected={tab === item} onClick={() => setTab(item)}>{item === 'description' ? t('mcpMetadata.description') : item === 'parameters' ? t('mcpMetadata.parameters') : t('mcpMetadata.fullSchema')}</button>)}</div>{tab === 'description' ? <p>{tool.description || t('mcpMetadata.noDescription')}</p> : tab === 'parameters' ? <>{parametersOf(tool.inputSchema).length ? <ul>{parametersOf(tool.inputSchema).map((parameter) => <li key={parameter.name}><code>{parameter.name}</code> {parameter.type ?? 'unknown'} {parameter.required ? t('mcpMetadata.required') : ''}{parameter.description ? ` — ${parameter.description}` : ''}</li>)}</ul> : <p>{t('mcpMetadata.noParameters')}</p>}</> : tool.inputSchema ? <pre>{JSON.stringify(tool.inputSchema, null, 2)}</pre> : <p>{t('mcpMetadata.noParameters')}</p>}</div></div>;
         return typeof document === 'undefined' || !document.body ? detail : createPortal(detail, document.body);
       })() : null}
-      <div className="wk-mcp-directory-controls">
+      {serviceId ? <div className="wk-mcp-directory-controls">
         <label className="wk-mcp-tool-control"><span>{t('mcpMetadata.enabled')}</span><span className="wk-switch"><input type="checkbox" aria-label={`${tool.name} ${t('mcpMetadata.enabled')}`} disabled={busy} checked={current.enabled} onChange={(event) => onPolicyChange(tool.name, 'enabled', event.target.checked)} /><span className="wk-switch-knob" aria-hidden="true" /></span></label>
         <label className="wk-mcp-tool-control"><span>{t('mcpMetadata.approval')}</span><span className="wk-switch"><input type="checkbox" aria-label={`${tool.name} ${t('mcpMetadata.approval')}`} disabled={busy} checked={current.requireApproval} onChange={(event) => onPolicyChange(tool.name, 'requireApproval', event.target.checked)} /><span className="wk-switch-knob" aria-hidden="true" /></span></label>
-      </div>
+      </div> : null}
     </li>; })}</ul> : <Status>{t('mcpMetadata.noTools')}</Status>}
     {filtered.length > pageSize ? <nav className="wk-mcp-directory-pagination" aria-label={t('mcpMetadata.tools')}><Button type="button" disabled={page === 1} onClick={() => setPage((value) => value - 1)}>{t('mcpMetadata.previous')}</Button><span>{page} / {pageCount}</span><Button type="button" disabled={page === pageCount} onClick={() => setPage((value) => value + 1)}>{t('mcpMetadata.next')}</Button></nav> : null}
   </div>;

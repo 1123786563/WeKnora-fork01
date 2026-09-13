@@ -40,3 +40,10 @@ test('MCP tools directory fails closed and offers policy retry', () => {
   assert.match(html, /policy unavailable/);
   assert.match(html, /重试/);
 });
+
+test('MCP stale metadata keeps the Vue read-only directory without policy switches', () => {
+  const html = renderToStaticMarkup(React.createElement(McpToolsDirectory, { serviceId: undefined, busy: true, policyError: null, onRetryPolicies: () => undefined, onPolicyChange: () => undefined, approvals: [], tools: [{ name: 'search' }] }));
+  assert.match(html, /search/);
+  assert.doesNotMatch(html, /启用工具/);
+  assert.doesNotMatch(html, /调用需审批/);
+});

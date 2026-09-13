@@ -1590,3 +1590,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - React 工具详情从列表流内嵌块改为 body-attached Portal，按触发按钮 bottom-right 定位，随窗口 resize/滚动重新定位；保留无 DOM 环境的静态渲染回退。
 - 本轮继续保留 Vue 的外部点击、Escape 和翻页关闭语义；R046 MCP 定向测试 15/15、完整 `pnpm test:web` 805/805、Web TypeScript 检查和 `git diff --check` 均通过，尚未宣称真实浏览器 computed-style 验收。
+
+## 2026-09-14 Round N+27 — R046 MCP 过期目录只读状态
+
+- React 过期元数据目录现在与 Vue 一致：stale 状态传入 undefined service id，隐藏工具启用/审批开关，仅保留目录详情和旧数据提示；非 stale 状态仍保留即时策略保存。
+- 新增静态回归覆盖 stale 目录不渲染策略控件；R046 MCP 定向测试 16/16、完整 `pnpm test:web` 806/806、Web TypeScript 检查和 `git diff --check` 均通过。
