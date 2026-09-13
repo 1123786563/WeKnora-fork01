@@ -946,6 +946,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 后端事实登记：PUT /api/v1/mcp-services 对 usage_instructions 强制 1..16000（空串 400；省略字段保持原值）；SSRF 校验默认拒绝不可解析域名（白名单可解）。
 - 下一步：R045 测试连接可达性裁决、MCP stdio 选项裁决、skill 安装时间线 SSE（api-client 缺口）、upload 图谱节、model combobox、各 implementing 行的浏览器/Wails/原生证据推进，以及 74 个 review 行的验收证据批量收集。
 
+- **并行提示（2026-09-13 17:45）**：另一代理正在 McpSettingsPanel.tsx 上进行 stdio→SSE 收敛与 McpMetadataPanel 结构对齐的未提交 WIP（正是本矩阵登记的待决项方向）；其进行中状态会使 McpSettingsPanel.test.tsx 暂时失败。本行以上提交（…781c81d8）均为全绿基线；集成其 WIP 前先等其稳定并复跑 focused 测试。
+
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
 - **Rows:** any rows proposed for `accepted`; never all rows by default.
 - **Files owned:** `docs/migrations/react/vue-react-parity-matrix.md`, `docs/migrations/react/vue-react-parity-progress.md`, `docs/migrations/react/evidence/vue-react-parity/README.md`, `docs/migrations/react/evidence/vue-react-parity/screenshot-matrix.md`, and the row-specific `docs/migrations/react/evidence/vue-react-parity/<date>-<row-group>.md` evidence file only.
