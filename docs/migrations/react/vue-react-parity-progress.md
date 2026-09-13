@@ -1708,3 +1708,10 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - React API Playground 用局部可访问 combobox/listbox 替换原生 `<select>`，对齐 Vue `t-select filterable`：按名称/ID过滤、ArrowUp/ArrowDown 导航、Enter 选择、Escape/外部点击关闭、选中项与内置后缀显示；加载和错误状态保持可读。
 - 验证：API Playground 定向测试 12/12；Web TypeScript 检查通过。证据 `evidence/vue-react-parity/2026-09-14-r013-api-playground-agent-select.md`。
 - 证据层：本轮为 Vue 源码对照、React DOM/单元和类型检查；真实后端 agents 列表、浏览器 computed-style/截图、Wails 与移动端证据仍待补齐，R013/N028 继续保持 review。
+
+## 2026-09-14 Round N+45 — R013 API Playground 浏览器运行时复核
+
+- Chrome 在 owner、zh-CN、1355×720 条件下点击“打开 Playground”后，DOM/可访问性树确认了 body Portal 抽屉、`调整抽屉宽度` separator、640px × 720px 几何、白色背景和左侧阴影；combobox 也实际存在。
+- 同一次操作的两张 Chrome 截图仍只显示设置页、没有显示抽屉，和可访问性树产生运行时合成结果矛盾；因此截图对比不通过且不能据此宣称视觉验收完成。
+- 当前 owner 无 API Key，运行 Session/SSE 被正确禁用；未在无明确授权下创建凭据。证据 `evidence/vue-react-parity/2026-09-14-r013-api-playground-browser-runtime.md`。
+- 证据层：浏览器 DOM/Computed geometry 部分通过；截图合成、真实后端成功/失败/权限矩阵、Vue 同条件截图、Wails 与移动端仍待补齐，R013/N028 继续保持 review。
