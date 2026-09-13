@@ -608,6 +608,21 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
   .wk-integration-drawer { animation: none; }
 }
 .wk-embed-preview-overlay { position: fixed; inset: 0; z-index: 1300; display: flex; justify-content: flex-end; background: rgba(0, 0, 0, .5); }
+.wk-api-playground-drawer { position: fixed; z-index: 1301; top: 0; right: 0; width: min(640px, 100vw); height: 100vh; overflow: auto; background: var(--wk-surface, #fff); box-shadow: -12px 0 32px rgba(15, 23, 42, .2); }
+.wk-api-playground-body { padding: 20px 24px 32px; display: grid; gap: 18px; }
+.wk-api-playground-section { border: 1px solid var(--wk-border, #e5e7eb); border-radius: 10px; padding: 16px; display: grid; gap: 12px; }
+.wk-api-playground-section h4 { margin: 0; font-size: 14px; }
+.wk-api-playground-section label { display: grid; gap: 6px; font-size: 13px; }
+.wk-api-playground-section textarea, .wk-api-playground-section select, .wk-api-playground-section input { width: 100%; box-sizing: border-box; }
+.wk-api-playground-preview pre, .wk-api-playground-step pre { margin: 0; padding: 12px; max-height: 260px; overflow: auto; white-space: pre-wrap; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--wk-subtle-surface, #f8fafc); border-radius: 6px; }
+.wk-api-playground-step { display: grid; gap: 8px; }
+.wk-api-playground-step-header { display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+.wk-api-playground-status { color: var(--wk-muted-foreground, #64748b); }
+.wk-api-playground-status[data-status="success"] { color: #16803c; }
+.wk-api-playground-status[data-status="failed"] { color: #b42318; }
+.wk-api-playground-status[data-status="stopped"] { color: #a15c00; }
+.wk-api-playground-empty, .wk-api-playground-disabled-reason, .wk-api-playground-alert { margin: 0; }
+@media (max-width: 640px) { .wk-api-playground-drawer { width: 100vw; } .wk-api-playground-body { padding: 16px; } }
 .wk-embed-preview-drawer { box-sizing: border-box; width: min(720px, 100vw); height: 100%; overflow: auto; background: #fff; box-shadow: -8px 0 24px rgba(15, 23, 42, .14); }
 .wk-embed-preview-header { position: relative; display: flex; align-items: center; justify-content: space-between; min-height: 56px; padding: 0 24px; border-bottom: 1px solid #eef1f5; }
 .wk-embed-preview-header h2 { margin: 0; padding-right: 40px; font-size: 17px; color: #172033; }

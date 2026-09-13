@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
+import { formatMessage } from '@weknora/i18n';
 import type { WeKnoraClient } from '@weknora/api-client';
 import type { ApiKeyRow, IntegrationAgentOption, IntegrationKnowledgeBaseOption, IntegrationWeChatQrPorts } from '@weknora/views';
 import { integrationKeyFromQuery, IntegrationsPage, type APIPrincipalConfig, type IntegrationKey, type IntegrationResource } from '@weknora/views';
 import { parseIntegrationTenantId } from './tenant.ts';
+import { ApiPlaygroundDrawer } from './ApiPlaygroundDrawer.tsx';
 
 // Each integrations tab fetches only the data it renders, so a missing or
 // empty collection on one tab can never break the others.
@@ -18,6 +20,7 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, embedded = 
   const [principal, setPrincipal] = useState<APIPrincipalConfig | null>(null);
   const [agents, setAgents] = useState<IntegrationAgentOption[]>([]);
   const [knowledgeBases, setKnowledgeBases] = useState<IntegrationKnowledgeBaseOption[]>([]);
+  const [apiPlaygroundOpen, setApiPlaygroundOpen] = useState(false);
   const activeTenantId = parseIntegrationTenantId(tenantId);
 
   async function loadEmbed() {
@@ -116,5 +119,8 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, embedded = 
     if (tab === 'api') void loadApiKeys();
   };
 
-  return <IntegrationsPage embedded={embedded} initialTab={tab} activeTab={tab} onTabChange={setTab} embedChannels={embedChannels} imChannels={imChannels} apiKeys={apiKeys} apiKeysLoading={apiKeysLoading} apiBaseUrl={window.location.origin} loading={loading} error={error} onReload={reload} onOpenEmbed={(channel) => void openEmbed(channel)} actions={actions} agents={agents} knowledgeBases={knowledgeBases} />;
+  return <>
+    <IntegrationsPage embedded={embedded} initialTab={tab} activeTab={tab} onTabChange={setTab} embedChannels={embedChannels} imChannels={imChannels} apiKeys={apiKeys} apiKeysLoading={apiKeysLoading} apiBaseUrl={window.location.origin} loading={loading} error={error} onReload={reload} onOpenEmbed={(channel) => void openEmbed(channel)} onOpenApiPlayground={() => setApiPlaygroundOpen(true)} actions={actions} agents={agents} knowledgeBases={knowledgeBases} />
+    <ApiPlaygroundDrawer open={apiPlaygroundOpen} onClose={() => setApiPlaygroundOpen(false)} apiKey={apiKeys.find((key) => key.api_key)?.api_key ?? ''} mode={principal?.mode ?? 'tenant'} agents={agents.map((agent) => ({ id: agent.id, name: agent.name }))} apiBaseUrl={window.location.origin} mintToken={actions.onCreatePrincipalTestToken} t={(key, values) => formatMessage('zh-CN', key, values)} />
+  </>;
 }

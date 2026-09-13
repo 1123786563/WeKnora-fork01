@@ -114,6 +114,7 @@ export interface IntegrationsPageProps {
   error?: string;
   onReload?: () => void;
   onOpenEmbed?: (channel: IntegrationResource) => void;
+  onOpenApiPlayground?: () => void;
   actions?: IntegrationActions;
   /** UI locale; defaults to the platform shell locale (localStorage 'locale'). */
   locale?: Locale;
@@ -132,7 +133,7 @@ function initialLocale(): Locale {
   }
 }
 
-export function IntegrationsPage({ embedded = false, embedChannels, imChannels, apiBaseUrl, apiKeys = [], apiKeysLoading = false, activeTab, onTabChange, initialTab = 'embed', loading = false, error, onReload, onOpenEmbed, actions = {}, locale: localeProp, agents = [], knowledgeBases = [] }: IntegrationsPageProps) {
+export function IntegrationsPage({ embedded = false, embedChannels, imChannels, apiBaseUrl, apiKeys = [], apiKeysLoading = false, activeTab, onTabChange, initialTab = 'embed', loading = false, error, onReload, onOpenEmbed, onOpenApiPlayground, actions = {}, locale: localeProp, agents = [], knowledgeBases = [] }: IntegrationsPageProps) {
   const [locale, setLocale] = useState<Locale>(localeProp ?? initialLocale());
   useEffect(() => { if (localeProp) setLocale(localeProp); }, [localeProp]);
   const t = (key: string, values?: Record<string, string | number>) => integrationsT(locale, key, values);
@@ -560,7 +561,7 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
             onCancel={closeEmbedWizard}
           /> : null}
         /> : null}
-        {!loading && !error && tab === 'api' ? <ApiIntegrationPanel apiBaseUrl={apiBaseUrl} actions={actions} principalMode={principalMode} setPrincipalMode={setPrincipalMode} requireDirectHeader={requireDirectHeader} setRequireDirectHeader={setRequireDirectHeader} hmacSecret={hmacSecret} setHmacSecret={setHmacSecret} externalUserId={externalUserId} setExternalUserId={setExternalUserId} principalToken={principalToken} onSavePrincipal={savePrincipal} onCreatePrincipalToken={createPrincipalToken} apiKey={apiKey} setApiKey={setApiKey} sessionId={sessionId} setSessionId={setSessionId} playgroundPath={playgroundPath} setPlaygroundPath={setPlaygroundPath} playgroundBody={playgroundBody} setPlaygroundBody={setPlaygroundBody} playgroundOutput={playgroundOutput} onRunPlayground={runPlayground} busy={busy} apiKeys={apiKeys} apiKeysLoading={apiKeysLoading} freshApiKeyId={freshApiKeyId} newApiKeyName={newApiKeyName} setNewApiKeyName={setNewApiKeyName} showApiKeyForm={showApiKeyForm} setShowApiKeyForm={setShowApiKeyForm} onCreateApiKey={createApiKey} onRevokeApiKey={revokeApiKey} onCopyApiKey={(key) => { void navigator.clipboard.writeText(key.api_key).catch(() => undefined); }} t={t} /> : null}
+        {!loading && !error && tab === 'api' ? <ApiIntegrationPanel apiBaseUrl={apiBaseUrl} actions={actions} principalMode={principalMode} setPrincipalMode={setPrincipalMode} requireDirectHeader={requireDirectHeader} setRequireDirectHeader={setRequireDirectHeader} hmacSecret={hmacSecret} setHmacSecret={setHmacSecret} externalUserId={externalUserId} setExternalUserId={setExternalUserId} principalToken={principalToken} onSavePrincipal={savePrincipal} onCreatePrincipalToken={createPrincipalToken} apiKey={apiKey} setApiKey={setApiKey} sessionId={sessionId} setSessionId={setSessionId} playgroundPath={playgroundPath} setPlaygroundPath={setPlaygroundPath} playgroundBody={playgroundBody} setPlaygroundBody={setPlaygroundBody} playgroundOutput={playgroundOutput} onRunPlayground={runPlayground} busy={busy} apiKeys={apiKeys} apiKeysLoading={apiKeysLoading} freshApiKeyId={freshApiKeyId} newApiKeyName={newApiKeyName} setNewApiKeyName={setNewApiKeyName} showApiKeyForm={showApiKeyForm} setShowApiKeyForm={setShowApiKeyForm} onCreateApiKey={createApiKey} onRevokeApiKey={revokeApiKey} onCopyApiKey={(key) => { void navigator.clipboard.writeText(key.api_key).catch(() => undefined); }} onOpenApiPlayground={onOpenApiPlayground} t={t} /> : null}
         {!loading && !error && section.external ? <ExternalLandingPanel tab={tab} locale={locale} externalUrl={section.externalUrl} apiBaseUrl={apiBaseUrl} t={t} /> : null}
       </section>
     </main>
@@ -1155,7 +1156,7 @@ function EmbedWizardPanel({ t, apiBaseUrl, agents = [], title, form, onForm, onA
 }
 
 
-function ApiIntegrationPanel({ apiBaseUrl, actions, principalMode, setPrincipalMode, requireDirectHeader, setRequireDirectHeader, hmacSecret, setHmacSecret, externalUserId, setExternalUserId, principalToken, onSavePrincipal, onCreatePrincipalToken, apiKey, setApiKey, sessionId, setSessionId, playgroundPath, setPlaygroundPath, playgroundBody, setPlaygroundBody, playgroundOutput, onRunPlayground, busy, apiKeys, apiKeysLoading, freshApiKeyId, newApiKeyName, setNewApiKeyName, showApiKeyForm, setShowApiKeyForm, onCreateApiKey, onRevokeApiKey, onCopyApiKey, t }: {
+function ApiIntegrationPanel({ apiBaseUrl, actions, principalMode, setPrincipalMode, requireDirectHeader, setRequireDirectHeader, hmacSecret, setHmacSecret, externalUserId, setExternalUserId, principalToken, onSavePrincipal, onCreatePrincipalToken, apiKey, setApiKey, sessionId, setSessionId, playgroundPath, setPlaygroundPath, playgroundBody, setPlaygroundBody, playgroundOutput, onRunPlayground, busy, apiKeys, apiKeysLoading, freshApiKeyId, newApiKeyName, setNewApiKeyName, showApiKeyForm, setShowApiKeyForm, onCreateApiKey, onRevokeApiKey, onCopyApiKey, onOpenApiPlayground, t }: {
   apiBaseUrl: string;
   actions: IntegrationActions;
   principalMode: APIPrincipalConfig['mode'];
@@ -1190,6 +1191,7 @@ function ApiIntegrationPanel({ apiBaseUrl, actions, principalMode, setPrincipalM
   onCreateApiKey?: () => void;
   onRevokeApiKey?: (key: ApiKeyRow) => void;
   onCopyApiKey?: (key: ApiKeyRow) => void;
+  onOpenApiPlayground?: () => void;
   t: Translator;
 }) {
   const principal = actions.principal;
@@ -1298,16 +1300,7 @@ function ApiIntegrationPanel({ apiBaseUrl, actions, principalMode, setPrincipalM
           <p>{t('integrations.api.playgroundDesc')}</p>
         </div>
       </div>
-      <form className="wk-integration-form" onSubmit={(event) => { event.preventDefault(); onRunPlayground(); }}>
-        <label>Session ID<input value={sessionId} onChange={(event) => setSessionId(event.target.value)} /></label>
-        <label>Path<input value={playgroundPath} onChange={(event) => setPlaygroundPath(event.target.value)} /></label>
-        <label>X-API-Key<input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} /></label>
-        <label>Body<textarea rows={4} value={playgroundBody} onChange={(event) => setPlaygroundBody(event.target.value)} /></label>
-        <div className="wk-form-actions">
-          <button className="wk-button" type="submit" disabled={busy}>{t('integrations.api.playgroundRun')}</button>
-        </div>
-      </form>
-      {playgroundOutput ? <pre className="wk-api-output">{playgroundOutput}</pre> : null}
+      {onOpenApiPlayground ? <button className="wk-button wk-button--primary" type="button" onClick={onOpenApiPlayground}>{t('integrations.api.playgroundOpen')}</button> : null}
     </section>
   </div>;
 }

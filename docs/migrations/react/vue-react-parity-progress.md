@@ -1,5 +1,11 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-14 Round N+20 — R013/N028 API Playground 抽屉与 SSE 行为
+
+- API Playground 已从旧手填 Session/Path/Body 表单切换为 Vue 三段式右侧抽屉，接入身份模式门禁、内置智能体默认选择、Session 创建、Agent Chat SSE 增量回答、停止、终端错误、异常 EOF 和签名 Token。
+- 证据：`evidence/vue-react-parity/2026-09-14-r013-api-playground.md`；模型 12/12、SSE 12/12、抽屉交互 9/9、正式 Web 757/757、`typecheck:web` 通过。
+- R013/N028 仍为 `implementing`：同账号浏览器对照、真实后端/权限、Wails/native 证据未完成。
+
 ## 2026-09-14 Round N+19 — N005 custom organization picker slice
 
 - 共享空间选择从原生 select 补为 Vue 风格可访问自定义列表：组织头像、角色、成员/知识库/智能体计数、选中态、外部点击关闭和 Escape；保留隐藏原生控件的 required/API 语义。
@@ -1348,4 +1354,3 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - agents 页 500 泄漏修复（00312221）：对齐 Vue fetchList 无错误 UI 的行为——移除原始 payload 渲染，保留 console 诊断；AgentsPage 16/16。
 - R012 状态覆盖证据入库（1492333f）：normal/loading/error/empty 双端 8 张 + 发现记录（JSON 泄漏、空态 CTA 颜色分歧——Vue 紫 vs React 绿，登记为视觉切片项）。
 - 在途（2）：FAQ B4 检索测试抽屉、API playground 核实/实现。
-
