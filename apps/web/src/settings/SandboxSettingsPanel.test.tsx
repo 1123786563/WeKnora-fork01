@@ -849,6 +849,8 @@ test('inventory resolves session ids into titles with Vue fallbacks for failed l
   await openInventory(container);
 
   const text = container.textContent ?? '';
+  assert.ok(container.querySelector('.wk-sandbox-inventory-overlay'), 'inventory should mount in a Vue-style drawer overlay');
+  assert.ok(container.querySelector('.wk-sandbox-inventory-drawer'), 'inventory should use a right-side drawer surface');
   // Loaded titles render trimmed (SandboxSettings.vue:333).
   assert.match(text, /季度盘点助手/);
   // A failed lookup reads as "untitled" instead of breaking the list (334-336, 317-321).

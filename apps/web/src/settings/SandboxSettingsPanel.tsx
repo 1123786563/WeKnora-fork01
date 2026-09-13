@@ -1845,7 +1845,8 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
       )}
 
       {inventory ? (
-        <Card className="wk-sandbox-inventory" role="dialog" aria-label={t('settings.sandbox.inventoryTitle')}>
+        <div className="wk-sandbox-inventory-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setInventory(null); }}>
+        <section className="wk-sandbox-inventory wk-sandbox-inventory-drawer" role="dialog" aria-modal="true" aria-label={t('settings.sandbox.inventoryTitle')}>
           <div className="wk-settings-panel-heading">
             <div>
               <h3>{t('settings.sandbox.inventoryTitle')}: {inventory.record.name}</h3>
@@ -1887,7 +1888,8 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
           {inventory.notice === 'unverifiable' ? (
             <Button type="button" disabled={busy} onClick={() => void forceRemove()}>{t('settings.sandbox.forceDelete')}</Button>
           ) : null}
-        </Card>
+        </section>
+        </div>
       ) : null}
 
       {editing ? (

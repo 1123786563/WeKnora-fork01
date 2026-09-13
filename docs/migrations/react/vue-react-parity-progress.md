@@ -1,5 +1,11 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-14 Round N+15 — R031 Sandbox inventory drawer slice
+
+- Sandbox inventory 按 Vue SettingDrawer 收口：固定右侧 400px 抽屉与遮罩，保留标题解析完成后再显示、会话行导航及 embed inert 语义。
+- Sandbox 专测 28/28 通过；证据 `evidence/vue-react-parity/2026-09-14-r031-inventory-drawer.md`。
+- R031 仍为 `implementing`：认证浏览器 computed-style、真实后端和 Wails/native 证据未闭环，另有既存审计项待处理。
+
 ## 2026-09-14 Round N+14 — N005 KB share dialog slice
 
 - Vue 共享弹窗与 React 对照后，补齐组织信息预览（角色、成员/知识库/智能体计数）、权限提示、分离式取消/确认 footer、共享行头像/权限色签及组织设置导航入口；保留权限过滤、确认、防重与 API 契约。
