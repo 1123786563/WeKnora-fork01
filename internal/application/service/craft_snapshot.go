@@ -24,6 +24,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/craft"
 	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/metrics"
 	"github.com/Tencent/WeKnora/internal/sandbox"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -141,8 +142,19 @@ type CraftSnapshotConfig struct {
 	// to trust (W06 env semantics); snapshots from another runtime stay
 	// unrestorable.
 	RuntimeDigest string
+	// RestoreGuard refuses a restore onto a session whose resources are being
+	// cleaned up (the O03 lifecycle tombstone). Optional: nil keeps the
+	// unguarded behavior for assemblies without the lifecycle service.
+	RestoreGuard CraftRestoreGuard
 	// Now is injectable for tests.
 	Now func() time.Time
+}
+
+// CraftRestoreGuard refuses a snapshot restore onto a session under
+// teardown: the restore would materialize a sandbox generation the sweeper
+// is about to reclaim.
+type CraftRestoreGuard interface {
+	GuardRestore(ctx context.Context, tenantID uint64, sessionID string) error
 }
 
 // CraftSnapshotService captures and restores complete craft recovery
@@ -157,6 +169,7 @@ type CraftSnapshotService struct {
 	source        CraftSnapshotSource
 	lock          CraftWorkspaceLock
 	activeRuns    CraftRunActivity
+	restoreGuard  CraftRestoreGuard
 	runtimeDigest string
 	now           func() time.Time
 }
@@ -181,13 +194,18 @@ func NewCraftSnapshotService(cfg CraftSnapshotConfig) (*CraftSnapshotService, er
 	return &CraftSnapshotService{
 		db: cfg.DB, sessions: cfg.Sessions, store: cfg.Store, versions: cfg.Versions,
 		snapshots: cfg.Snapshots, files: cfg.Files, source: cfg.Source, lock: lock,
-		activeRuns: cfg.ActiveRuns, runtimeDigest: strings.TrimSpace(cfg.RuntimeDigest), now: now,
+		activeRuns: cfg.ActiveRuns, restoreGuard: cfg.RestoreGuard,
+		runtimeDigest: strings.TrimSpace(cfg.RuntimeDigest), now: now,
 	}, nil
 }
 
 // RuntimeDigest reports the deployment runtime digest this service compares
 // snapshots against.
 func (s *CraftSnapshotService) RuntimeDigest() string { return s.runtimeDigest }
+
+// SetRestoreGuard installs the lifecycle restore guard (O03 integration
+// wiring; see internal/container).
+func (s *CraftSnapshotService) SetRestoreGuard(g CraftRestoreGuard) { s.restoreGuard = g }
 
 // unfinishedCraftDelegations counts the workspace's delegations that have no
 // persisted terminal result: a pending or outcome-unknown sub-execution
@@ -439,11 +457,21 @@ func (s *CraftSnapshotService) verifySnapshotObjects(
 // one compare-and-swap wins — a process death at any earlier point leaves
 // the old binding untouched (never a half restore).
 func (s *CraftSnapshotService) Restore(ctx context.Context, scope craft.Scope, snapshotID string, revision int64) (craft.Workspace, error) {
+	started := time.Now()
+	defer func() { metrics.ObserveCraftWorkspaceRestore(time.Since(started)) }()
 	if s == nil {
 		return craft.Workspace{}, fmt.Errorf("%w: snapshot service is not assembled", craft.ErrInvalidInput)
 	}
 	if scope.TenantID == 0 || scope.UserID == "" || scope.SessionID == "" {
 		return craft.Workspace{}, fmt.Errorf("%w: incomplete restore scope", craft.ErrInvalidInput)
+	}
+	// O03 wiring: a session under teardown refuses restores — the durable
+	// deleting mark blocks materializing a generation the sweeper is about
+	// to reclaim, even before the lifecycle lock is taken.
+	if s.restoreGuard != nil {
+		if gerr := s.restoreGuard.GuardRestore(ctx, scope.TenantID, scope.SessionID); gerr != nil {
+			return craft.Workspace{}, gerr
+		}
 	}
 	snapshotID = strings.TrimSpace(snapshotID)
 	if !strings.HasPrefix(snapshotID, craft.SnapshotIDPrefix) {

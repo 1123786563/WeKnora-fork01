@@ -14,6 +14,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/agent/tools"
 	"github.com/Tencent/WeKnora/internal/craft"
 	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/metrics"
 	"github.com/Tencent/WeKnora/internal/types"
 	"gorm.io/gorm"
 )
@@ -45,7 +46,21 @@ func NewCraftDelegation(store craft.Store, executor craft.Executor) (*CraftDeleg
 type CraftDelegateService struct {
 	store    craft.Store
 	executor craft.Executor
+	guard    CraftDispatchGuard
 }
+
+// CraftDispatchGuard refuses a NEW delegation dispatch while the session's
+// resources are being cleaned up (the O03 lifecycle tombstone mark). nil
+// keeps the unwired behavior (no refusal) for assemblies without the
+// lifecycle service — reuse of a stored result and pure observation are
+// never guarded because they dispatch nothing.
+type CraftDispatchGuard interface {
+	GuardDispatch(ctx context.Context, tenantID uint64, sessionID string) error
+}
+
+// SetDispatchGuard installs the lifecycle dispatch guard (O03 integration
+// wiring; see internal/container).
+func (s *CraftDelegateService) SetDispatchGuard(g CraftDispatchGuard) { s.guard = g }
 
 // NewCraftDelegateService assembles the delegation service.
 func NewCraftDelegateService(store craft.Store, executor craft.Executor) *CraftDelegateService {
@@ -117,6 +132,21 @@ func (s *CraftDelegateService) Delegate(ctx context.Context, task craft.Task) (c
 		return craft.Result{}, err
 	}
 
+	// O03 wiring: a session under teardown refuses NEW dispatches. The
+	// durable deleting mark is the authority — the lifecycle lock alone is
+	// not (a dispatch could start right after a sweep pass releases it).
+	if s.guard != nil {
+		if gerr := s.guard.GuardDispatch(ctx, task.Scope.TenantID, task.Scope.SessionID); gerr != nil {
+			return craft.Result{}, gerr
+		}
+	}
+	// O04 logging contract: one line chains tenant/session/run/tool_call/
+	// delegation/prompt identities so an incident is followable end to end.
+	// The prompt itself, token counts and model payloads never enter logs.
+	logger.Infof(ctx,
+		"[CraftDelegation] dispatch tenant=%d session=%s run=%s tool_call=%s delegation=%s prompt=%s",
+		task.Fence.TenantID, task.Scope.SessionID, task.Fence.RunID, task.ToolCallID, task.ID, task.RequestHash)
+
 	// 3. Fresh delegation: planned goes through PrepareTask before dispatch.
 	prepared, err := s.store.PrepareTask(ctx, task)
 	if err != nil {
@@ -127,7 +157,17 @@ func (s *CraftDelegateService) Delegate(ctx context.Context, task craft.Task) (c
 			"delegation deadline %s exceeded before dispatch; sub-execution never started",
 			prepared.Deadline.Format(time.RFC3339)))
 	}
-	return s.executor.Execute(ctx, prepared)
+	result, xerr := s.executor.Execute(ctx, prepared)
+	// A terminal result straight from the executor counts too: the success
+	// path never passes through settle(), and craft_delegations_total must
+	// see every settled outcome, not only the observation/deadline ones.
+	if xerr == nil {
+		switch result.Status {
+		case "succeeded", "failed", "canceled":
+			metrics.CraftDelegationSettled(result.Status)
+		}
+	}
+	return result, xerr
 }
 
 // observe settles a dispatching-unknown delegation from runtime observation
@@ -182,6 +222,10 @@ func classifyCraftObservation(obs craft.Observation) (status, summary string, se
 
 // settle persists one definitive outcome under the caller's live fence.
 func (s *CraftDelegateService) settle(ctx context.Context, task craft.Task, status, summary string) (craft.Result, error) {
+	metrics.CraftDelegationSettled(status)
+	logger.Infof(ctx,
+		"[CraftDelegation] settled status=%s tenant=%d session=%s run=%s tool_call=%s delegation=%s prompt=%s",
+		status, task.Fence.TenantID, task.Scope.SessionID, task.Fence.RunID, task.ToolCallID, task.ID, task.RequestHash)
 	result := craft.Result{TaskID: task.ID, Status: status, Summary: boundCraftSummary(summary)}
 	if err := s.store.SaveResult(ctx, task.Fence, result); err != nil {
 		return craft.Result{}, err

@@ -351,6 +351,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// the craft runtime dial the provider answers nil — fail-closed, the
 	// same boundary the executor and snapshot service keep.
 	must(container.Provide(newCraftKnowledgeService))
+	// O03/O04 integration wiring (coordinator-assigned): the craft lifecycle
+	// service (guards, tombstone, sweep), the O01 usage ledger read side and
+	// the O04 usage view. See craft_lifecycle.go for the assembly details.
+	must(container.Provide(newCraftLifecycleService))
+	must(container.Provide(newCraftUsageService))
+	must(container.Provide(newCraftUsageViewService))
 	// The craft handler registration is deferred until every provider the
 	// session service needs (SessionService, TemporaryDocumentService, ...)
 	// is registered: dig.Invoke resolves eagerly, and W03's original position
@@ -465,6 +471,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Invoke(startCraftDecisionDelivery))
 	// C01 production assembly validation (nil without the runtime dial).
 	must(container.Invoke(validateCraftKnowledgeAssembly))
+	// O04: the usage view handler rides the craft session route table.
+	must(container.Invoke(registerCraftUsageHTTPHandlers))
+	// O03 hard wiring: delegation/restore guards + the periodic reclamation
+	// sweep (default ON; CRAFT_LIFECYCLE_SWEEP_DISABLED=true turns it off).
+	must(container.Invoke(wireCraftLifecycleIntegration))
 
 	// TenantSkillService is provided next to SessionService (handlers need
 	// it), but Invoke constructs the whole chain. SessionService needs
@@ -610,6 +621,10 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// local:// images that live under a tenant's configured storage PathPrefix
 	// (which is not encoded in the local:// URL).
 	must(container.Invoke(registerChatLocalImageResolver))
+
+	// O03 wiring: the craft tombstone at the session-deletion entrance (the
+	// Handler is fully constructible here — the router below resolves it).
+	must(container.Invoke(wireCraftSessionTombstone))
 
 	// Router configuration
 	logger.Debugf(ctx, "[Container] Registering router and starting task server...")
