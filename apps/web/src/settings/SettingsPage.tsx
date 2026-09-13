@@ -231,7 +231,12 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
             <section className="wks-content" aria-live="polite">
               <div className="wks-content-wrapper">
                 {integrationTab ? (deniedPanel ?? <IntegrationsRoutePage key={`${tenantId}:${integrationTab}`} client={client} tenantId={String(tenantId)} activeTab={integrationTab} embedded />) : <div className="wk-settings-section wks-section">
-                  {selectedKey !== 'general' && selectedKey !== 'models' ? (
+                  {/* Panels owning their full Vue section header render it themselves:
+                      general/models here, and members — TenantMembers.vue:8-65 renders
+                      the h2 + permissions popover + audit entry + section-description
+                      with the RBAC doc link, so a wrapper heading would duplicate it
+                      (previously it also leaked the registry apiDomain as the text). */}
+                  {selectedKey !== 'general' && selectedKey !== 'models' && selectedKey !== 'members' ? (
                     <div className="wk-settings-panel-heading">
                       <div>
                         <h2>{settingsSectionHeading(locale, selectedKey).title}</h2>
