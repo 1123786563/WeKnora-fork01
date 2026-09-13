@@ -24,6 +24,7 @@ import { TenantMembersPanel } from './TenantMembersPanel.tsx';
 import { GeneralPreferencesPanel } from './GeneralPreferencesPanel.tsx';
 import { TenantInfoSection, UserProfileSection } from './TenantUserProfileSections.tsx';
 import { SystemInfoPanel } from './SystemInfoPanel.tsx';
+import { RuntimeQueuesPanel } from './RuntimeQueuesPanel.tsx';
 import './settings-wrapper.css';
 
 function errorText(error: unknown, fallback: string): string { return error instanceof Error ? error.message : fallback; }
@@ -177,6 +178,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
   const ollamaPanel = selectedKey === 'ollama' ? <OllamaSettingsPanel client={client} initialValue={payload} /> : null;
   const cloudPanel = selectedKey === 'weknoracloud' ? <CloudSettingsPanel client={client} initialValue={payload} /> : null;
   const systemPanel = selectedKey === 'system' ? <SystemInfoPanel payload={payload} locale={locale} /> : null;
+  const runtimeQueuesPanel = selectedKey === 'runtime-queues' ? <RuntimeQueuesPanel payload={payload as never} loading={loading} error={error} /> : null;
   const envVarPanel = selectedKey === 'envvars' ? <EnvVarSettingsPanel client={client} initialPayload={payload} onMutated={() => void load()} /> : null;
   const mcpPanel = selectedKey === 'mcp'
     ? <McpSettingsPanel client={client} role={role} initialServices={Array.isArray(payload) ? payload as never : []} />
@@ -200,7 +202,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
   const membersPanel = selectedKey === 'members'
     ? <TenantMembersPanel client={client} tenantId={tenantId} role={role} initialMembers={payload as never} />
     : null;
-  const portedPanel = selectedKey === 'mcp' ? mcpPanel : selectedKey === 'models' ? modelPanel : selectedKey === 'sandbox' ? sandboxPanel : selectedKey === 'skills' ? skillPanel : selectedKey === 'members' ? membersPanel : PARTIALLY_PORTED_SECTIONS.has(selectedKey)
+  const portedPanel = selectedKey === 'mcp' ? mcpPanel : selectedKey === 'models' ? modelPanel : selectedKey === 'sandbox' ? sandboxPanel : selectedKey === 'skills' ? skillPanel : selectedKey === 'members' ? membersPanel : selectedKey === 'runtime-queues' ? runtimeQueuesPanel : PARTIALLY_PORTED_SECTIONS.has(selectedKey)
     ? (selectedKey === 'sandbox'
         ? <PortedSectionsPanel section={selectedKey} />
         : <LiveSectionsPanel client={client} section={selectedKey} payload={payload} />)

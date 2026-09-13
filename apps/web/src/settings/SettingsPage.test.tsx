@@ -40,6 +40,7 @@ function makeClient(options: {
   system?: TenantRecord;
   chathistory?: { config: TenantRecord; stats?: TenantRecord | null };
   models?: unknown[];
+  runtime?: TenantRecord;
 } = {}) {
   const tenantGet = options.tenant instanceof Promise
     ? () => options.tenant as Promise<never>
@@ -61,16 +62,19 @@ function makeClient(options: {
     configuration: {
       models: { list: async () => options.models ?? [] },
     },
+    administration: {
+      runtime: { queues: async () => options.runtime ?? { available: true, upstream_concurrency: 4, parse_concurrency: 2, wiki_concurrency: 1, pools: [], queues: [], model_limiter_available: false, models: [], timestamp: 0 } },
+    },
   } as unknown as WeKnoraClient;
 }
 
-async function mountPage(client: WeKnoraClient, search = '') {
+async function mountPage(client: WeKnoraClient, search = '', role: 'owner' | 'system-admin' = 'owner') {
   if (search) dom.window.history.replaceState(null, '', '/platform/settings' + search);
   const container = document.createElement('div');
   document.body.append(container);
   mountedRoot = createRoot(container);
   await act(async () => {
-    mountedRoot?.render(<SettingsPage client={client} tenantId={10000} role="owner" />);
+    mountedRoot?.render(<SettingsPage client={client} tenantId={10000} role={role} />);
   });
   await act(async () => {});
   return container;
@@ -148,6 +152,21 @@ test('settings close blurs the focused control before leaving like the Vue drawe
   assert.equal(document.activeElement, closeButton);
   await act(async () => closeButton.click());
   assert.notEqual(document.activeElement, closeButton, 'closing should blur the old drawer control');
+});
+
+test('runtime queues section renders Vue overview, empty table and limiter states', async () => {
+  const container = await mountPage(makeClient({ runtime: {
+    available: true, upstream_concurrency: 4, parse_concurrency: 2, wiki_concurrency: 1,
+    pools: [{ name: 'upstream', active: 2, instances: 1, cluster_capacity: 4, concurrency: 4, queue_count: 1 }],
+    queues: [{ name: 'document', active: 2, pending: 3, retry: 1, archived: 0, completed: 9, scheduled: 0, latency_ms: 120, paused: false }],
+    model_limiter_available: true, models: [{ model_id: 'm1', name: 'gpt-test', active: 1, waiting: 2, limit: 4 }], timestamp: 0,
+  } }), '?section=runtime-queues', 'system-admin');
+  const text = container.textContent ?? '';
+  assert.ok(text.includes('运行时队列'), 'the Vue runtime heading renders');
+  assert.ok(text.includes('活跃任务'), 'the summary metric renders');
+  assert.ok(text.includes('document'), 'the queue row renders');
+  assert.ok(text.includes('gpt-test'), 'the model limiter row renders');
+  assert.equal(text.includes('尚未移植'), false, 'the generic placeholder is gone');
 });
 
 // B4d: section=subsection deep link reaches the model panel type tabs.

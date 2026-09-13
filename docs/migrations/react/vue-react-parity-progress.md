@@ -1603,3 +1603,10 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 新增真实 DOM 回归用例，聚焦关闭按钮后点击关闭并确认旧控件不再保持焦点；Vue 源码、React jsdom 交互与全量 Web 回归均已复核。
 - 验证：SettingsPage 定向测试 10/10；完整 `pnpm test:web` 807/807；Web TypeScript 检查通过；`git diff --check` 通过。
 - 证据层：本轮为 Vue 源码对照、React DOM 交互、Chrome 关闭按钮/Escape 运行验证、单元测试与全 Web 回归；仍缺同视口 computed-style、Vue 同条件截图、Wails 与移动端证据，N014 继续保持 review。
+
+## 2026-09-14 Round N+29 — N017 运行时队列设置读取面板
+
+- React `runtime-queues` system-admin 设置入口移除通用占位面板，新增 Vue 结构化读取面板：加载骨架、错误/不可用态、队列概览指标、工作池卡片、队列详情表、空态和模型限流状态；保留当前 `administration.runtime.queues` API 契约。
+- 因共享 i18n 尚未收录完整 `system.globalSettings.runtime.*` 树，面板增加局部可追踪中文回退，避免原始 key 泄漏；未改变其他设置页翻译层。
+- 验证：RuntimeQueues/SettingsPage 定向测试 11/11；完整 `pnpm test:web` 808/808；Web TypeScript 检查通过；`git diff --check` 通过。
+- 证据层：本轮为 Vue `RuntimeQueues.vue` 源码对照、React DOM/单元和全 Web 回归；运行队列真实 system-admin 后端、任务详情抽屉/操作、同条件截图/computed-style、Wails 与移动端证据仍待补齐，N017 继续保持 review。
