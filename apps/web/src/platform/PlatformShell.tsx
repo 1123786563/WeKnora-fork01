@@ -5,7 +5,7 @@ import { sessionGroups } from '@weknora/domain/chat/session-state';
 import { GlobalCommandPalette } from './GlobalCommandPalette.tsx';
 import { SessionSidebarList, SessionSidebarShellContext, type SessionGroupView } from '@weknora/views';
 import { chatSessionIdFromPath, SHELL_SESSION_ROUTE_EVENT } from '../chat/session-route.ts';
-import { ContextualGuideHost, NewUserGuide } from '@weknora/views';
+import { ContextualGuideHost, NewUserGuide, openNewUserGuide } from '@weknora/views';
 import {
   clearRecentQueries,
   consumeCmdkParam,
@@ -94,6 +94,8 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
     agents: formatMessage(locale, 'menu.agents'),
     organizations: formatMessage(locale, 'menu.organizations'),
     personalSettings: formatMessage(locale, 'general.personalSettings'),
+    // Vue UserMenu.vue:45 uses $t('newUserGuide.reopen') for the reopen entry.
+    reopenGuide: formatMessage(locale, 'newUserGuide.reopen'),
     // Session-list copy (Vue menu.vue uses the same menu.* keys).
     myChats: formatMessage(locale, 'menu.myChats'),
     noSessions: formatMessage(locale, 'menu.noSessions'),
@@ -387,6 +389,23 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
             </button>
             {menuOpen && (
               <div className="plat-shell__dropdown" role="menu">
+                {/* Vue UserMenu.vue:45-50,501-504 — a help-circle entry labelled
+                    $t('newUserGuide.reopen') re-opens the welcome tour by
+                    dispatching weknora:open-new-user-guide; the NewUserGuide
+                    host opens on that event even when the done-key is '1',
+                    so the tour replays without touching the stored key. */}
+                <button type="button" role="menuitem" className="plat-shell__dropdown-item"
+                  data-testid="plat-shell-guide-reopen"
+                  aria-label={labels.reopenGuide}
+                  onClick={() => { setMenuOpen(false); openNewUserGuide(); }}>
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+                    strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M9.4 9.4a2.6 2.6 0 1 1 3.7 2.4c-.8.4-1.1.9-1.1 1.7" />
+                    <line x1="12" y1="16.6" x2="12" y2="16.7" />
+                  </svg>
+                  {labels.reopenGuide}
+                </button>
                 <a role="menuitem" className="plat-shell__dropdown-item"
                   href="/platform/settings?section=userprofile"
                   onClick={() => setMenuOpen(false)}>

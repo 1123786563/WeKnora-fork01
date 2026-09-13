@@ -4,11 +4,15 @@
 //   frontend/src/i18n/locales/{zh-CN,en-US,ja-JP,ko-KR,ru-RU}.ts (newUserGuide block)
 //
 // The Vue guide resolves copy through vue-i18n keys (newUserGuide.steps.<key>.
-// title|desc). Those keys do not exist in packages/i18n yet, so the exact
-// locale strings are replicated here under the SAME key names; swapping to
-// formatMessage later is a drop-in once packages/i18n grows the block.
-// (packages/views does not depend on @weknora/i18n — see integrations/messages.ts
-// for the established precedent — so the locale union mirrors it structurally.)
+// title|desc). The shared bundle now carries the block
+// (packages/i18n/src/generated/newUserGuide.ts) and guideMessage resolves it
+// FIRST via formatMessage; the exact locale strings are also replicated below
+// under the SAME key names as the fallback (packages/views does not depend on
+// the @weknora/i18n package name — see integrations/messages.ts for the
+// established relative-import precedent — so the locale union mirrors it
+// structurally).
+import { formatMessage } from '../../../i18n/src/index.ts';
+
 export type NewUserGuideLocale = 'zh-CN' | 'en-US' | 'ja-JP' | 'ko-KR' | 'ru-RU';
 
 export type GuidePlacement = 'right' | 'left' | 'bottom' | 'top';
@@ -183,7 +187,7 @@ export const NEW_USER_GUIDE_MESSAGES: Record<NewUserGuideLocale, Record<NewUserG
     'newUserGuide.steps.chat.title': 'Начните чат с ИИ',
     'newUserGuide.steps.chat.desc': 'Задавайте вопросы на основе вашей базы знаний и получайте точные ответы со ссылками на источники. Нажмите здесь, чтобы начать новый чат.',
     'newUserGuide.steps.agents.title': 'Создавайте собственных агентов',
-    'newUserGuide.steps.agents.desc': 'Объединяйте базы знаний, промпты и инструменты в переиспользуемых агентах, закрепляя свою экспертизу.',
+    'newUserGuide.steps.agents.desc': 'Объединяйте базы знаний, промпты и инструменты в переиспользуемых агентов, закрепляя свою экспертизу.',
     'newUserGuide.steps.settings.title': 'Аккаунт и настройки',
     'newUserGuide.steps.settings.desc': 'Откройте это меню, чтобы управлять аккаунтом, участниками и системными настройками. Обучение можно снова открыть кнопкой помощи рядом с именем вверху меню.',
     'newUserGuide.steps.models.title': 'Настройте модели',
@@ -200,12 +204,18 @@ export function formatGuidePattern(pattern: string, values: Record<string, strin
   );
 }
 
-/** Catalog lookup + interpolation, mirroring vue-i18n t(key, named) usage. */
+/** Catalog lookup + interpolation, mirroring vue-i18n t(key, named) usage.
+ *  Layered like integrations/messages.ts integrationsT: keys already ported
+ *  into the shared bundle (packages/i18n generated/newUserGuide.ts) resolve
+ *  there first (formatMessage wins); the local byte-exact table above remains
+ *  the fallback for consumers whose shared bundle predates the block. */
 export function guideMessage(
   locale: NewUserGuideLocale,
   key: keyof (typeof NEW_USER_GUIDE_MESSAGES)['zh-CN'],
   values?: Record<string, string | number>,
 ): string {
+  const shared = formatMessage(locale, key);
+  if (shared !== key) return values === undefined ? shared : formatMessage(locale, key, values);
   const pattern = NEW_USER_GUIDE_MESSAGES[locale][key];
   return values ? formatGuidePattern(pattern, values) : pattern;
 }

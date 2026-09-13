@@ -1,7 +1,10 @@
-// Ported verbatim from frontend/src/i18n/locales/*.ts -> newUserGuide block
-// (source of truth: packages/views/src/guides/steps.ts, which the views package
-// keeps as a local byte-exact table per the integrations/messages.ts precedent --
-// packages/views does not depend on @weknora/i18n).
+// Ported BYTE-EXACT from frontend/src/i18n/locales/{zh-CN,en-US,ja-JP,ko-KR,
+// ru-RU}.ts -> newUserGuide block (stepOf/skip/prev/next/done/reopen +
+// steps.{welcome,knowledge,agents,chat,settings,models,done}.{title,desc} =
+// 20 keys x 5 locales). Pinned by packages/i18n/test/newUserGuide.test.ts.
+// packages/views/src/guides/steps.ts keeps the same values as a local fallback
+// table (views does not depend on the @weknora/i18n package name) and resolves
+// this shared bundle first — see its guideMessage layering.
 export const newUserGuideMessages: Record<string, Record<string, string>> = {
   'zh-CN': {
     'newUserGuide.stepOf': '{current} / {total}',
@@ -105,7 +108,7 @@ export const newUserGuideMessages: Record<string, Record<string, string>> = {
     'newUserGuide.steps.chat.title': 'Начните чат с ИИ',
     'newUserGuide.steps.chat.desc': 'Задавайте вопросы на основе вашей базы знаний и получайте точные ответы со ссылками на источники. Нажмите здесь, чтобы начать новый чат.',
     'newUserGuide.steps.agents.title': 'Создавайте собственных агентов',
-    'newUserGuide.steps.agents.desc': 'Объединяйте базы знаний, промпты и инструменты в переиспользуемых агентах, закрепляя свою экспертизу.',
+    'newUserGuide.steps.agents.desc': 'Объединяйте базы знаний, промпты и инструменты в переиспользуемых агентов, закрепляя свою экспертизу.',
     'newUserGuide.steps.settings.title': 'Аккаунт и настройки',
     'newUserGuide.steps.settings.desc': 'Откройте это меню, чтобы управлять аккаунтом, участниками и системными настройками. Обучение можно снова открыть кнопкой помощи рядом с именем вверху меню.',
     'newUserGuide.steps.models.title': 'Настройте модели',
