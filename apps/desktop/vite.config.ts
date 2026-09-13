@@ -28,6 +28,7 @@ export default defineConfig({
       '@weknora/domain/sandbox/skill-install': fileURLToPath(new URL('../../packages/domain/src/sandbox/skill-install.ts', import.meta.url)),
       '@weknora/domain/auth/onboarding': fileURLToPath(new URL('../../packages/domain/src/auth/onboarding.ts', import.meta.url)),
       '@weknora/domain/settings/local-preferences': fileURLToPath(new URL('../../packages/domain/src/settings/local-preferences.ts', import.meta.url)),
+      '@weknora/domain/settings/theme': fileURLToPath(new URL('../../packages/domain/src/settings/theme.ts', import.meta.url)),
       '@weknora/domain': fileURLToPath(new URL('../../packages/domain/src/query-key.ts', import.meta.url)),
       '@weknora/ui': fileURLToPath(new URL('../../packages/ui/src/index.tsx', import.meta.url)),
       '@weknora/views': fileURLToPath(new URL('../../packages/views/src/index.ts', import.meta.url)),
