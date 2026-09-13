@@ -24,7 +24,7 @@ async function mount(role: string) {
       validateCredentials: async () => ({ success: true }),
       create: async () => ({}), update: async () => ({}), putCredentials: async () => ({}),
       sync: async () => ({ success: true }), pause: async () => ({ success: true }), resume: async () => ({ success: true }),
-      remove: async () => undefined, logs: async () => [], resources: async () => [{ external_id: 'page-1', name: 'Project docs', type: 'page' }],
+      remove: async () => undefined, logs: async () => [], resources: async (_id: string, parentId?: string) => parentId ? [{ external_id: 'page-2', parent_id: parentId, name: 'Child page', type: 'page' }] : [{ external_id: 'page-1', name: 'Project docs', type: 'folder', has_children: true }],
     } },
   };
   Object.assign(globalThis, { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true, __dataSourcesRuntime: runtime });
@@ -79,5 +79,18 @@ test('editing a data source loads and selects server resources for the next save
     assert.ok(resource);
     await act(async () => resource?.click());
     assert.match(page.host.textContent ?? '', /✓ Project docs/);
+  } finally { await page.close(); }
+});
+
+test('expanding a resource requests and renders its child resources', async () => {
+  const page = await mount('admin');
+  try {
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Edit')?.click());
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+    const expand = [...page.host.querySelectorAll('button')].find((item) => item.textContent === '›');
+    assert.ok(expand);
+    await act(async () => expand?.click());
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+    assert.match(page.host.textContent ?? '', /Child page/);
   } finally { await page.close(); }
 });

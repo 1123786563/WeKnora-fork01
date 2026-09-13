@@ -818,6 +818,14 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   hierarchical loading, Drive root-token flow, new-source temporary resource
   setup, localization, real backend, and native-device evidence remain open.
 
+- **Mobile data-source hierarchical resource expansion:** resource rows now
+  expose expand/collapse controls and request children lazily through the
+  existing `resources(id, parentId)` API, while keeping selection rows
+  independently actionable. Focused tests pass 5/5; the full mobile suite
+  remains 92/92 and typecheck passes. Parent/descendant cover-set semantics,
+  Drive root-token setup, new-source temporary browsing, and native/backend
+  evidence remain open.
+
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
 - **Rows:** any rows proposed for `accepted`; never all rows by default.
 - **Files owned:** `docs/migrations/react/vue-react-parity-matrix.md`, `docs/migrations/react/vue-react-parity-progress.md`, `docs/migrations/react/evidence/vue-react-parity/README.md`, `docs/migrations/react/evidence/vue-react-parity/screenshot-matrix.md`, and the row-specific `docs/migrations/react/evidence/vue-react-parity/<date>-<row-group>.md` evidence file only.
