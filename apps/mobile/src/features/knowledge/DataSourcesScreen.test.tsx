@@ -27,7 +27,7 @@ async function mount(role: string) {
       validateCredentials: async () => ({ success: true }), validate: async () => ({ success: true }),
       create: async () => ({ id: 'temporary-source', knowledge_base_id: 'kb-1', name: 'New source', type: 'feishu_drive', status: 'paused', config: {} }), update: async () => ({}), putCredentials: async () => ({}),
       sync: async () => ({ success: true }), pause: async () => ({ success: true }), resume: async () => ({ success: true }),
-      remove: async () => undefined, logs: async () => [], resources: async (_id: string, parentId?: string) => parentId ? [{ external_id: 'page-2', parent_id: parentId, name: 'Child page', type: 'page' }] : [{ external_id: 'page-1', name: 'Project docs', type: 'folder', has_children: true }],
+      remove: async () => undefined, logs: async (_id: string, _limit = 20, _offset = 0) => [{ id: 'log-1', status: 'success', started_at: '2026-09-13T08:00:00Z', finished_at: '2026-09-13T08:00:02Z', items_created: 3, items_updated: 1, items_deleted: 0, items_skipped: 0, items_failed: 0 }], resources: async (_id: string, parentId?: string) => parentId ? [{ external_id: 'page-2', parent_id: parentId, name: 'Child page', type: 'page' }] : [{ external_id: 'page-1', name: 'Project docs', type: 'folder', has_children: true }],
     } },
   };
   Object.assign(globalThis, { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true, __dataSourcesRuntime: runtime });
@@ -67,6 +67,39 @@ test('inventory renders the server latest sync result and running state', async 
   const page = await mount('admin');
   try {
     assert.match(page.host.textContent ?? '', /Latest sync: running · \+2/);
+  } finally { await page.close(); }
+});
+
+test('sync log drawer renders summary and expandable counters', async () => {
+  const page = await mount('admin');
+  try {
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Logs')?.click());
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+    assert.match(page.host.textContent ?? '', /Total 1 · Success 1 · Failed 0 · Items 4/);
+    const row = [...page.host.querySelectorAll('button')].find((item) => item.textContent?.includes('success'));
+    assert.ok(row);
+    await act(async () => row?.click());
+    assert.match(page.host.textContent ?? '', /Created 3 · Updated 1 · Deleted 0 · Skipped 0 · Failed 0/);
+  } finally { await page.close(); }
+});
+
+test('sync log drawer paginates with a guarded server offset', async () => {
+  const page = await mount('admin');
+  try {
+    const calls: unknown[][] = [];
+    page.runtime.client.dataSources.logs = async (...args: unknown[]) => {
+      calls.push(args);
+      return Array.from({ length: calls.length === 1 ? 50 : 1 }, (_, index) => ({ id: `log-${calls.length}-${index}`, status: 'success' }));
+    };
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Logs')?.click());
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+    assert.deepEqual(calls[0], ['source-1', 50, 0]);
+    const more = [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Load more');
+    assert.ok(more);
+    await act(async () => more?.click());
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+    assert.deepEqual(calls[1], ['source-1', 50, 50]);
+    assert.equal(Array.from(page.host.querySelectorAll('button')).some((item) => item.textContent === 'Load more'), false);
   } finally { await page.close(); }
 });
 

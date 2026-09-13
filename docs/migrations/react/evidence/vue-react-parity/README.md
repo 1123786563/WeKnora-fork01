@@ -32,6 +32,7 @@
 - 2026-09-13-n005-upload-progress — N005 Web 上传进度/高亮切片代码与测试证据（2026-09-13）；浏览器、Vue 截图、真实后端及原生证据仍缺失
 - 2026-09-13-n031-mobile-resource-selection — N031 移动数据源资源树三态选择证据（2026-09-13）
 - 2026-09-13-n031-mobile-sync-status — N031 移动数据源同步状态与轮询证据（2026-09-13）
+- 2026-09-13-n031-mobile-sync-logs — N031 移动数据源同步日志分页与展开证据（2026-09-13）
 - 2026-09-12-visual-harness — Vue/React 截图对比环境（2026-09-12 建立）
 - 2026-09-12-wails-macos-react-rerun2 — Wails macOS 打包验证（React bundle，2026-09-12）
 - screenshot-matrix — 全页 live 截图矩阵（2026-09-12，Vue:5180 / React:5181 同后端 :8080，1440x900 zh-CN，账号 parity-test@local.dev）

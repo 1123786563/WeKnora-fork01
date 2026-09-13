@@ -916,6 +916,13 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   running. Mobile full 99/99, helper 8/8, DOM harness 17/17, shared typecheck,
   focused shared tests 339/339 and diff check pass. N031 remains `implementing`.
 
+- **N031 mobile sync-log slice:** the native log panel now requests 50-row pages
+  with guarded offsets, appends additional pages, shows summary counters, and
+  expands a row to expose item counters. DataSources DOM harness 19/19,
+  typecheck and diff check pass. N031 remains `implementing` because date/status
+  localization, full Vue log presentation, visual/runtime and native evidence are
+  still open.
+
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
 - **Rows:** any rows proposed for `accepted`; never all rows by default.
 - **Files owned:** `docs/migrations/react/vue-react-parity-matrix.md`, `docs/migrations/react/vue-react-parity-progress.md`, `docs/migrations/react/evidence/vue-react-parity/README.md`, `docs/migrations/react/evidence/vue-react-parity/screenshot-matrix.md`, and the row-specific `docs/migrations/react/evidence/vue-react-parity/<date>-<row-group>.md` evidence file only.
