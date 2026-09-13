@@ -5,11 +5,25 @@
   "environment": {
     "postgresql": "16.15 (docker weknora-oc-t17-pg-1, postgres:16-alpine, host port 55417, R8 disposable pattern)",
     "migrations_applied": [
-      "000117_app_installations", "000118_mcp_oauth_binding_states", "000119_app_actions",
-      "000120_app_datasource_bindings", "000121_open_connector_bindings", "000122_open_connector_actions",
-      "000123_open_connector_dispatch", "000124_open_connector_tool_bindings"
+      "000117_app_installations",
+      "000118_mcp_oauth_binding_states",
+      "000119_app_actions",
+      "000120_app_datasource_bindings",
+      "000121_open_connector_bindings",
+      "000122_open_connector_actions",
+      "000123_open_connector_dispatch",
+      "000124_open_connector_tool_bindings"
     ],
-    "migrations_host_side_exit_codes": [0, 0, 0, 0, 0, 0, 0, 0],
+    "migrations_host_side_exit_codes": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
     "isolated_schema_per_run": "oc17_<unix-nano> (created from the same versioned .up.sql files by the test harness; dropped on cleanup)",
     "runtime": "rt-oc17-shared (shared private runtime fixture)",
     "fixture_topology": "two spaces (tenant 91701/91702), Owner+Member each, one cross-space member (member-a1 in both), same provider github under two accounts (ext-account-a/alias-account-a, ext-account-b/alias-account-b)",
@@ -23,8 +37,8 @@
     },
     "green": {
       "cmd": "OC_TEST_DATABASE_URL=<disposable-pg> go test -tags=integration ./internal/application/service/appconnector -run 'TestOCIntegration' -count=1 -v",
-      "exit": 1,
-      "note": "TestOCIntegrationEnvironment PASS, TestOCIntegration PASS (13 scenario subtests + final settlement); TestOCIntegrationWiringSettleParity FAIL is the reported finding 1 reproduction (intended red)"
+      "exit": 0,
+      "note": "TestOCIntegrationEnvironment PASS, TestOCIntegration PASS (14 subtests incl. final settlement), TestOCIntegrationWiringSettleParity PASS after the R20-authorized T17-F1 fix (record settles through the production wiring)"
     },
     "green_matrix_only": {
       "cmd": "OC_TEST_DATABASE_URL=<disposable-pg> go test -tags=integration ./internal/application/service/appconnector -run 'TestOCIntegration$' -count=1",
@@ -32,9 +46,9 @@
     },
     "race": {
       "cmd": "OC_TEST_DATABASE_URL=<disposable-pg> go test -race -tags=integration ./internal/application/service/appconnector -run 'TestOCIntegration' -count=1",
-      "exit": 1,
+      "exit": 0,
       "data_races": 0,
-      "note": "matrix PASS under -race; only the finding-1 probe fails (intended)"
+      "note": "full suite PASS under -race, 0 data races (probe green post-fix)"
     }
   },
   "business_red_proofs": [
@@ -156,7 +170,12 @@
         "terminal_usage_facts": 1,
         "gate_begins": 15,
         "gate_note": "losers' shared-reservation begins surface as orphan holds (fail-safe over-hold, T10-Q-1 zero-usage release only for exhausted/conflict rejections) — known design, no double charge",
-        "carry_T14_QI_1_tool_binding_race_on_pg": {"requests": 20, "ok": 20, "unique_action_ids": 1, "binding_rows": 1}
+        "carry_T14_QI_1_tool_binding_race_on_pg": {
+          "requests": 20,
+          "ok": 20,
+          "unique_action_ids": 1,
+          "binding_rows": 1
+        }
       }
     },
     {
@@ -235,12 +254,20 @@
       "name": "two API workers concurrently over one store",
       "passed": true,
       "observations": {
-        "limits": {"PerTenant": 2, "PerConnection": 1, "PerProvider": 8, "Global": 3},
+        "limits": {
+          "PerTenant": 2,
+          "PerConnection": 1,
+          "PerProvider": 8,
+          "Global": 3
+        },
         "jobs": 6,
         "provider_ops": 6,
         "peak_inflight_at_provider": 1,
         "peak_bound": "peak <= Global (DB-lease enforced across both replica wirings)",
-        "succeeded_by_space": {"91701": 3, "91702": 3}
+        "succeeded_by_space": {
+          "91701": 3,
+          "91702": 3
+        }
       }
     },
     {
@@ -257,7 +284,8 @@
         "go_appconnector_domain_incl_oauth_mcp_sync": "exit 0",
         "python_open_connector_gates": "43 tests OK, exit 0",
         "web_appconnector_t15": "7/7 pass, exit 0",
-        "web_full_suite": "1 pre-existing failure (platform/legacy-session) ALSO failing at pristine base b8800c75 on node v26.7.0 — environment drift, not T17"
+        "web_full_suite": "1 pre-existing failure (platform/legacy-session) ALSO failing at pristine base b8800c75 on node v26.7.0 — environment drift, not T17",
+        "finding1_residue": "none after the fix (end-state open_records=null)"
       }
     },
     {
@@ -266,7 +294,9 @@
       "passed": true,
       "observations": {
         "intentional_unknowns_resolved": "provider-query resolver settled scenario 8 (write confirmed → succeeded) and scenario 10 (write never landed → failed)",
-        "finding1_residue": ["ocact_da57f447-b229-433d-ab92-1eb27c4b03a2(record=dispatched,action=succeeded)"],
+        "finding1_residue": [
+          "ocact_da57f447-b229-433d-ab92-1eb27c4b03a2(record=dispatched,action=succeeded)"
+        ],
         "unexplained_open": 0,
         "unsettled_settlements": 0,
         "cleanup_blocked": false,
@@ -279,9 +309,10 @@
       "id": "T17-F1",
       "severity": "production-defect (reported, not fixed)",
       "title": "container.GatedOCClaims masks the T12 settle face: the production wiring never settles durable dispatch records",
-      "reproduction": "TestOCIntegrationWiringSettleParity — container.NewOCArmedActionService → Approve → Execute succeeds, action row=succeeded while connector_dispatch_records row stays dispatched",
+      "reproduction": "was red before the fix (fresh RED captured pre-fix, exit 1); the probe now asserts BOTH the settled record and the raised delivery-mark fence",
       "impact": "Execute silently takes the pre-T12 finish order; records of successful dispatches go stale after 90s and the sweep parks them unknown (permanent T16 'unknown oldest' alert noise, settlement outbox never drains through the record); ResolveUnknown/alignment passes see terminal actions with non-terminal records",
-      "fix_hint": "GatedOCClaims must forward FinishOCDispatch/MarkOCDispatchSettled (embed the settle face or pass the raw *OCStore through) — one-line-ish container change; suite turns green with no other edits"
+      "fix_hint": "GatedOCClaims must forward FinishOCDispatch/MarkOCDispatchSettled (embed the settle face or pass the raw *OCStore through) — one-line-ish container change; suite turns green with no other edits",
+      "status": "CLOSED by R20-authorized fix (GatedOCClaims forwards FinishOCDispatch/MarkOCDispatchSettled; probe + direct settle-face assertion green; end-state finding1_residue=null)"
     },
     {
       "id": "T17-F2",
@@ -295,5 +326,12 @@
     "T14-QI-1": "CLOSED at acceptance level: 20 concurrent PrepareForTool on real PostgreSQL → exactly 1 action row + 1 binding row (case 07)",
     "T08-F-2/T12-stale-attempts": "OBSERVED: expired attempts persist in non-terminal states; no sweeper in phase one (case 10, end-state count 2) → remains with T18",
     "T16-validator-edge": "CLOSED via the pre-authorized one-liner: networks entries validated on declared shape before filtering + 2 test cases (28/28 green, RED/GREEN proven)"
+  },
+  "r20_fix": {
+    "authorized_by": "coordinator R20",
+    "file": "internal/container/open_connector.go",
+    "change": "GatedOCClaims forwards the T12 settle face (FinishOCDispatch + MarkOCDispatchSettled) with a compile-time conformance assertion; settlement is deliberately not gated (ruling 8: drain+settle during shutdown)",
+    "red": "TestOCIntegrationWiringSettleParity exit 1 pre-fix (record=dispatched, action=succeeded)",
+    "green": "exit 0 post-fix (record=succeeded, delivery-mark fence raised); full suite exit 0; -race 0 data races; 8 regression groups + python + web appconnector all exit 0"
   }
 }

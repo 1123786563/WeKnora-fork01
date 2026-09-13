@@ -254,6 +254,37 @@ func (g *GatedOCClaims) ClaimOCDispatch(ctx context.Context, subject appconn.OCS
 	return g.OCDispatchClaimSource.ClaimOCDispatch(ctx, subject, actionID, reservationID)
 }
 
+// T17-F1 fix (R20): the wrapper must stay TRANSPARENT for the T12 settle
+// face. ActionService detects the settle face by type assertion on its wired
+// claim source (ocDispatchSettleOf), so a GatedOCClaims that only forwards
+// the claim methods silently hides the face — Execute then falls back to the
+// pre-T12 finish order and the durable dispatch record never reaches a
+// terminal state (spurious unknowns + a settlement outbox that never drains
+// through the record). Forward both methods; settlement is deliberately NOT
+// gated: draining and settling in-flight dispatches during shutdown is
+// exactly what ruling 8 asks the recovery path to do.
+func (g *GatedOCClaims) FinishOCDispatch(ctx context.Context, tenant uint64, actionID string, fence int64, from, to, executionID string) error {
+	settle, ok := g.OCDispatchClaimSource.(appconnectorsvc.OCDispatchSettleSource)
+	if !ok {
+		return errors.New("open-connector wiring: gated claims wrap a claim store without the settle face")
+	}
+	return settle.FinishOCDispatch(ctx, tenant, actionID, fence, from, to, executionID)
+}
+
+// MarkOCDispatchSettled forwards the delivery mark of the T12 settle face.
+func (g *GatedOCClaims) MarkOCDispatchSettled(ctx context.Context, tenant uint64, actionID string, fence int64, now time.Time) error {
+	settle, ok := g.OCDispatchClaimSource.(appconnectorsvc.OCDispatchSettleSource)
+	if !ok {
+		return errors.New("open-connector wiring: gated claims wrap a claim store without the settle face")
+	}
+	return settle.MarkOCDispatchSettled(ctx, tenant, actionID, fence, now)
+}
+
+// Compile-time proof that the wrapper satisfies the settle face the
+// forwarding above delegates to (PrepareOpenConnector always wires the
+// repository *OCStore, which carries it).
+var _ appconnectorsvc.OCDispatchSettleSource = (*GatedOCClaims)(nil)
+
 // TrackingOCDispatcher counts in-flight outbound dispatches so shutdown
 // can drain them (Wait). It changes nothing about the calls themselves.
 type TrackingOCDispatcher struct {

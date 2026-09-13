@@ -1894,11 +1894,19 @@ func TestOCIntegrationWiringSettleParity(t *testing.T) {
 	oc17SeedFixture(t, s)
 	src := repository.NewMCPOAuthBindingStore(db)
 	guard := appconnectorsvc.NewOCSubjectGuard(src, appconnectorsvc.NewInstallationStateSource(s.installs), nil, s.ocStore)
-	prod, _, err := container.NewOCArmedActionService(s.actionStore, guard, s.gate, s.ocStore,
+	prod, prodWire, err := container.NewOCArmedActionService(s.actionStore, guard, s.gate, s.ocStore,
 		container.OCConfig{Enabled: true, RuntimeAddr: s.provider.URL(), TokenDir: s.tokenDir, SlotOwner: "oc17-parity"},
 		&http.Client{Timeout: 30 * time.Second})
 	if err != nil {
 		t.Fatal(err)
+	}
+	// Direct wiring-level assertion (R20): the claims the production
+	// composition wires MUST satisfy the T12 settle face — ActionService
+	// detects it by type assertion (ocDispatchSettleOf), so this is the
+	// exact check that failed before the GatedOCClaims forwarding fix.
+	settleFace, ok := prodWire.Claims().(appconnectorsvc.OCDispatchSettleSource)
+	if !ok || settleFace == nil {
+		t.Fatal("production wiring claims do not carry the T12 settle face (GatedOCClaims must forward FinishOCDispatch/MarkOCDispatchSettled)")
 	}
 	ctx := context.Background()
 	catalog := appconnectorsvc.NewOCCatalog(s.ocStore, s.ocStore, s.installs, s.installs)
@@ -1919,12 +1927,23 @@ func TestOCIntegrationWiringSettleParity(t *testing.T) {
 	if rerr != nil {
 		t.Fatalf("dispatch record missing: %v", rerr)
 	}
-	t.Logf("OC17-EVIDENCE parity probe: action_state=%s record_state=%s", arow.State, rec.State)
+	t.Logf("OC17-EVIDENCE parity probe: action_state=%s record_state=%s settle_face_forwarded=true", arow.State, rec.State)
 	// T12 contract: the durable record IS the linearization point and the
 	// settlement outbox — a successful dispatch must settle the RECORD too,
 	// or the 90s stale sweep parks every successful dispatch unknown (T16
-	// alert noise) and the settlement outbox never drains.
+	// alert noise) and the settlement outbox never drains. (Before the R20
+	// fix this probe was the red T17-F1 reproduction: record stayed
+	// "dispatched" while the action was "succeeded".)
 	if arow.State == appconn.ActionSucceeded && rec.State != appconn.ActionSucceeded {
-		t.Fatalf("T17 finding 1 reproduced: action %s is succeeded but its durable dispatch record is %q — container.GatedOCClaims (internal/container/open_connector.go) embeds only the claim interface, so ActionService's settle-face type assertion (action.go ocDispatchSettleOf) fails and Execute silently falls back to the pre-T12 finish order. Fix: GatedOCClaims must also forward FinishOCDispatch/MarkOCDispatchSettled (pass the raw store through, or add the delegating methods).", id, rec.State)
+		t.Fatalf("T17-F1 regression: action %s is succeeded but its durable dispatch record is %q — the GatedOCClaims settle-face forwarding (internal/container/open_connector.go) is broken again", id, rec.State)
+	}
+	// The settled record must also carry the delivery mark (fence raised
+	// past the action row's) so the settlement outbox does not re-deliver.
+	marked, err := s.ocStore.GetOCDispatch(ctx, oc17TenantA, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if marked.Fence <= arow.Fence {
+		t.Fatalf("settlement delivery not marked: record fence %d <= action fence %d", marked.Fence, arow.Fence)
 	}
 }

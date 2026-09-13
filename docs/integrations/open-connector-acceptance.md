@@ -2,7 +2,7 @@
 
 > 任务：T17（验收链 T16✓）。基线 `b8800c75`（集成分支 HEAD）。
 > 机器可读结果：`scripts/open-connector/acceptance-cases.json`；证据源：`go test -tags=integration -v` 输出的 `OC17-EVIDENCE` JSON 行（37 条）。
-> 状态：矩阵 14/14 通过（回归含 -race，0 数据竞争）；**1 个生产缺陷按"只报不修"纪律上报（T17-F1，带可执行复现）**，1 个规格观察（T17-F2）。
+> 状态：矩阵 14/14 通过（回归含 -race，0 数据竞争）；T17-F1 生产缺陷**已按协调者 R20 授权在本任务内修复**（GatedOCClaims 转发 settle face；复现探针 + 直接类型断言双绿；end-state 残留清零），1 个规格观察（T17-F2）仍上报。
 
 ## 1. 环境与门禁（裁决 1、R8）
 
@@ -72,9 +72,9 @@
 
 ## 7. 发现（只报不修）
 
-### T17-F1（生产缺陷，建议尽快修复）
+### T17-F1（生产缺陷 → 已按 R20 授权修复，探针双绿）
 
-`container.GatedOCClaims` 只内嵌 claim 接口（ClaimOCDispatch/GetOCDispatch），而 `ActionService` 的 settle face 通过**类型断言**探测（`ocDispatchSettleOf`）。生产组合 `NewOCArmedActionService` 把包装器交给 `UseOCDispatchClaims` → 断言失败 → Execute 静默回退到 pre-T12 完成序：**durable record 永不落终态**。后果：每次成功派发的 record 90s 后被 stale sweep 判为 unknown（T16 "unknown 最老>5min" 告警常响）、结算 outbox 永不经 record 排水、对齐/解析通道看到终态 action 配非终态 record。复现：`TestOCIntegrationWiringSettleParity`（生产路径 Execute 成功后 action=succeeded 而 record=dispatched）。修复提示：GatedOCClaims 转发 `FinishOCDispatch/MarkOCDispatchSettled`（或直接透传原始 `*OCStore`），一行级改动，改后本套件零改动转绿。
+`container.GatedOCClaims` 只内嵌 claim 接口（ClaimOCDispatch/GetOCDispatch），而 `ActionService` 的 settle face 通过**类型断言**探测（`ocDispatchSettleOf`）。生产组合 `NewOCArmedActionService` 把包装器交给 `UseOCDispatchClaims` → 断言失败 → Execute 静默回退到 pre-T12 完成序：**durable record 永不落终态**。后果：每次成功派发的 record 90s 后被 stale sweep 判为 unknown（T16 "unknown 最老>5min" 告警常响）、结算 outbox 永不经 record 排水、对齐/解析通道看到终态 action 配非终态 record。复现（修复前 RED，exit 1）：`TestOCIntegrationWiringSettleParity`（生产路径 Execute 成功后 action=succeeded 而 record=dispatched）。**修复（R20 授权，追加 commit）**：`GatedOCClaims` 转发 `FinishOCDispatch/MarkOCDispatchSettled`（含编译期 `var _ OCDispatchSettleSource = (*GatedOCClaims)(nil)` 一致性断言；结算不走 shutdown 门——裁决 8 要求停机排空+结算）。修复后：探针转绿且新增两处直接断言（生产组合的 claims 类型断言命中 settle face；结算后 record fence 抬升超过 action fence = 交付已标记）；全套件 exit 0、-race 0 数据竞争、8 组回归全绿、end-state `finding1_residue=null`。
 
 ### T17-F2（规格观察）
 
