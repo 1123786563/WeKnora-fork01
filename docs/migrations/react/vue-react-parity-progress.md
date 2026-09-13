@@ -760,6 +760,13 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   mobile typecheck passes. This is still review pending simulator/device and
   real-backend evidence.
 
+- **Mobile data-source permission guard:** `DataSourcesScreen` now derives
+  write capability from the active workspace role, hides Add/Edit/Sync/
+  Pause/Resume/Delete for viewers, and fails closed before any write action;
+  Logs and refresh remain available for read-only users. Mobile typecheck and
+  full native-host tests pass (91/91). Connector-specific forms, resource
+  selection, device evidence, and real backend 403 verification remain open.
+
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
 - **Rows:** any rows proposed for `accepted`; never all rows by default.
 - **Files owned:** `docs/migrations/react/vue-react-parity-matrix.md`, `docs/migrations/react/vue-react-parity-progress.md`, `docs/migrations/react/evidence/vue-react-parity/README.md`, `docs/migrations/react/evidence/vue-react-parity/screenshot-matrix.md`, and the row-specific `docs/migrations/react/evidence/vue-react-parity/<date>-<row-group>.md` evidence file only.
