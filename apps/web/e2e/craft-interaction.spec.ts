@@ -68,35 +68,14 @@ async function seedPendingInteraction(sessionId: string): Promise<void> {
   ].join(' '));
 }
 
-// Mounts the REAL CraftInteractionPanel through the vite dev server module
-// graph and returns once the pending card is visible.
-async function mountPanel(page: Page, sessionId: string): Promise<void> {
-  await page.evaluate(async ([sid, apiBase]) => {
-    const token = localStorage.getItem('weknora_token') ?? '';
-    const tenant = localStorage.getItem('weknora_selected_tenant_id') ?? '';
-    const authed = (input: string, init?: RequestInit) => fetch(input, {
-      ...init,
-      headers: { ...(init?.headers ?? {}), authorization: 'Bearer ' + token, 'x-tenant-id': tenant },
-    });
-    const reactMod = await import('/@id/react');
-    const React = reactMod.createElement ? reactMod : reactMod.default;
-    const clientMod = await import('/@id/react-dom/client');
-    const createRoot = clientMod.createRoot ?? clientMod.default?.createRoot;
-    if (typeof createRoot !== 'function' || typeof React.createElement !== 'function') {
-      throw new Error('react mount unavailable: react=' + typeof React.createElement + ' root=' + typeof createRoot);
-    }
-    const interaction = await import('/@id/@weknora/views/craft/interaction');
-    document.getElementById('c02-interaction-mount')?.remove();
-    const host = document.createElement('div');
-    host.id = 'c02-interaction-mount';
-    document.body.append(host);
-    const api = interaction.createSessionCraftInteractionClient(authed as typeof fetch, sid, apiBase);
-    createRoot(host).render(React.createElement(interaction.CraftInteractionPanel, {
-      locale: 'zh', sessionId: sid, client: api, canDecide: true, pollMs: 0,
-    }));
-  }, [sessionId, API_URL.replace(/\/api\/v1$/, '')] as const);
+// C06 review blocker 2: the workbench route now mounts the PRODUCTION
+// CraftInteractionPanel (apps/web routes.tsx), so this spec must target that
+// panel instead of importing the component into a self-built mount — the
+// self-mount made every panel locator resolve to two elements. This helper
+// only waits for the production panel to surface the seeded pending card.
+async function awaitProductionPanel(page: Page): Promise<void> {
   await expect(page.getByTestId('craft-interaction-panel')).toBeVisible({ timeout: 20_000 });
-  await expect(page.locator('[data-interaction-id="' + INTERACTION_ID + '"]')).toBeVisible();
+  await expect(page.locator('[data-interaction-id="' + INTERACTION_ID + '"]')).toBeVisible({ timeout: 20_000 });
 }
 
 test.describe.configure({ mode: 'serial' });
@@ -123,8 +102,8 @@ test('two tabs approve simultaneously — exactly one decision wins, reload show
   const url = process.env.CRAFT_WEB_URL + '/craft/' + encodeURIComponent(sessionId);
   await tabA.goto(url);
   await tabB.goto(url);
-  await mountPanel(tabA, sessionId);
-  await mountPanel(tabB, sessionId);
+  await awaitProductionPanel(tabA);
+  await awaitProductionPanel(tabB);
 
   // Both tabs see the same pending question with its options.
   for (const tab of [tabA, tabB]) {
@@ -151,8 +130,8 @@ test('two tabs approve simultaneously — exactly one decision wins, reload show
   await tabB.waitForTimeout(1500);
   await tabA.reload();
   await tabB.reload();
-  await mountPanel(tabA, sessionId);
-  await mountPanel(tabB, sessionId);
+  await awaitProductionPanel(tabA);
+  await awaitProductionPanel(tabB);
   for (const tab of [tabA, tabB]) {
     await expect(tab.locator('[data-interaction-id="' + INTERACTION_ID + '"][data-resolved="true"]')).toBeVisible({ timeout: 20_000 });
     await expect(tab.getByTestId('craft-recorded-answers')).toContainText('q_color');
@@ -184,7 +163,7 @@ test('delivery the runtime cannot confirm surfaces the honest unknown notice', a
   const context = await browser.newContext({ storageState: process.env.CRAFT_AUTH_STATE });
   const page = await context.newPage();
   await page.goto(process.env.CRAFT_WEB_URL + '/craft/' + encodeURIComponent(sessionId));
-  await mountPanel(page, sessionId);
+  await awaitProductionPanel(page);
 
   await page.getByLabel('蓝色').check();
   await page.getByRole('button', { name: '提交回答' }).click();

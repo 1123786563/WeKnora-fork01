@@ -91,7 +91,6 @@ func newCraftRuntimeExecutor(
 	files interfaces.FileService,
 	versions craft.VersionStore,
 	previews *service.CraftPreviewService,
-	interactions *CraftInteractionAssembly,
 ) (craft.Executor, error) {
 	baseURL := strings.TrimSpace(os.Getenv(craftOpenCodeBaseURLEnv))
 	if baseURL == "" {
@@ -126,24 +125,33 @@ func newCraftRuntimeExecutor(
 		service.CraftArtifactConfig{Kind: craft.KindWeb, OutputDir: outputDir})
 	// C02: an interaction.pending event first lands durably (interaction row
 	// + waiting_user park) before it is projected to the run stream, so the
-	// pending decision is decidable through the HTTP surface.
+	// pending decision is decidable through the HTTP surface. The registrar
+	// is installed AFTER construction (wireCraftInteractionRegistrar breaks
+	// the executor → interaction assembly → agent runtime provider cycle),
+	// so the inner executor's emission path must read the runtime's CURRENT
+	// emitter: the closure below indirections every sub-execution event
+	// through runtime.emit instead of capturing the plain emitter at
+	// construction. Once the registrar is wired, interaction.pending flows
+	// through craftInteractionRegistrar — the same production emission point
+	// BASE wrapped at construction — and every other kind passes straight
+	// through to the durable run event stream.
 	emit := craftRunEventEmitter(runs)
-	if interactions != nil {
-		emit = craftInteractionRegistrar(client, store, interactions.Store, interactions.Runs, emit)
-	}
 	runtime := &localCraftRuntime{
 		db:            db,
 		client:        client,
 		store:         store,
 		files:         files,
-		inner:         opencode.NewExecutor(client, store, emit),
 		artifacts:     artifacts,
-		emit:          craftRunEventEmitter(runs),
+		emit:          emit,
 		outputDir:     outputDir,
 		runtimeDigest: runtimeDigest,
 		sessionsRoot:  filepath.Join(workDir, "ws"),
 		workDir:       workDir,
 	}
+	runtime.inner = opencode.NewExecutor(client, store,
+		func(ctx context.Context, task craft.Task, kind string, data json.RawMessage) error {
+			return runtime.emit(ctx, task, kind, data)
+		})
 	logger.Infof(context.Background(),
 		"[CraftRuntime] local real runtime assembled: serve=%s work_dir=%s output=%s", baseURL, workDir, outputDir)
 	return runtime, nil
@@ -570,6 +578,20 @@ func craftRuntimeDigestFromEnv() string {
 // still publish, they are just not restorable).
 func (e *localCraftRuntime) setSnapshotCapture(capture func(context.Context, craft.Task, string)) {
 	e.snapshotCapture = capture
+}
+
+// setInteractionEmitter installs the C02 interaction.pending registrar
+// around the current emitter. It exists to break the construction-time
+// provider cycle (executor → interaction assembly → agent runtime →
+// executor): the assembly is built after the runtime, and the container
+// wires the registrar in once both sides exist, before any traffic. Because
+// the inner executor reads e.emit INDIRECTLY (see newCraftRuntimeExecutor),
+// replacing the field here is visible to the sub-execution's event path —
+// the production emission point for interaction.pending.
+func (e *localCraftRuntime) setInteractionEmitter(emit func(context.Context, craft.Task, string, json.RawMessage) error) {
+	if e != nil && emit != nil {
+		e.emit = emit
+	}
 }
 
 // localCraftSnapshotSource is the local single-serve implementation of the

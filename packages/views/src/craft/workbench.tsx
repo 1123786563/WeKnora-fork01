@@ -38,6 +38,7 @@ import {
   formatBytes,
   isMainRunTerminal,
   projectAssistant,
+  projectKnowledgeSources,
   statusLabelLocalized,
   type CraftAssistantProjection,
   type CraftInteractionAction,
@@ -48,6 +49,7 @@ import {
 } from './presentation.ts';
 import { CraftPreview } from './preview.tsx';
 import { CraftFiles } from './files.tsx';
+import { CraftSources } from './sources.tsx';
 import './craft.css';
 // The message log store (createCraftMessageLog) lives in presentation.ts so
 // its reset/dedupe semantics stay node-testable without importing CSS; it is
@@ -119,6 +121,14 @@ export interface CraftWorkbenchProps {
    * decision currently does — never a silent auto-approval.
    */
   onInteractionAction(input: CraftInteractionActionInput): void;
+  /**
+   * Opens one knowledge source by its durable ref (C01 sources panel): the
+   * ASSEMBLY re-resolves the ref through the existing resource permission
+   * chain on every click — it must never cache or pre-sign a URL into the
+   * component. Optional until the assembly wires it; the panel renders the
+   * resolved notice (or permission error) it returns.
+   */
+  onOpenSource?(citationId: string, ref: string): Promise<string | null>;
   /** Reuses the existing authorized sandbox terminal entry (ticket-minted WS URL). */
   onMintTerminalUrl(): Promise<string>;
   onBack(): void;
@@ -304,6 +314,25 @@ export function CraftWorkbench(props: CraftWorkbenchProps) {
     }
   };
 
+  // --- knowledge sources (C01 panel; data plane is the message log) -------------
+  const knowledgePackage = useMemo(() => projectKnowledgeSources(snapshot.events), [snapshot]);
+  const [openingCitation, setOpenCitation] = useState<string | null>(null);
+  const [sourceNotice, setSourceNotice] = useState<string | null>(null);
+  const onOpenSourceProp = useEventCallback((citationId: string, ref: string): Promise<string | null> => {
+    if (props.onOpenSource === undefined) return Promise.resolve(null);
+    return props.onOpenSource(citationId, ref);
+  });
+  const openSource = (citationId: string, ref: string): void => {
+    setOpenCitation(citationId);
+    setSourceNotice(null);
+    void onOpenSourceProp(citationId, ref)
+      .then((notice) => { setSourceNotice(notice); })
+      .catch((error: unknown) => {
+        setSourceNotice(error instanceof Error ? error.message : String(error));
+      })
+      .finally(() => { setOpenCitation(null); });
+  };
+
   // --- interaction answers -------------------------------------------------------
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const onInteractionAction = useEventCallback(props.onInteractionAction);
@@ -410,7 +439,7 @@ export function CraftWorkbench(props: CraftWorkbenchProps) {
     setPinnedVersion(true);
   };
 
-  const statusLabel = statusLabelLocalized(props.locale, mainStatus, liveProjection.childStatus);
+  const statusLabel = statusLabelLocalized(props.locale, mainStatus, liveProjection.childStatus, props.snapshotVersionId !== null);
   const liveTurnEmpty = livePrompt === null && liveProjection.text === '' && liveProjection.tools.length === 0 && liveProjection.interactions.length === 0 && props.versions.length === 0 && turns.length === 0;
 
   const conversation = (
@@ -542,6 +571,14 @@ export function CraftWorkbench(props: CraftWorkbenchProps) {
           ))}
         </ul>
       )}
+      <CraftSources
+        locale={props.locale}
+        sources={knowledgePackage.sources}
+        truncated={knowledgePackage.truncated}
+        openingCitation={openingCitation}
+        onOpenSource={openSource}
+      />
+      {sourceNotice !== null ? <p className="wk-craft-hint" data-testid="craft-source-notice" role="status">{sourceNotice}</p> : null}
       <h3>{strings.craftDetailsTools}</h3>
       {projection.tools.length === 0 ? (
         <p className="wk-craft-muted">{strings.craftDetailsEmpty}</p>

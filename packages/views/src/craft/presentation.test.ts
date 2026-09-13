@@ -4,6 +4,7 @@ import {
   statusLabel,
   statusLabelEn,
   classifyPreview,
+  projectKnowledgeSources,
   interactionCardFrom,
   projectAssistant,
   historyRows,
@@ -32,12 +33,47 @@ test('statusLabel maps every workbench status verbatim', () => {
   assert.equal(statusLabel('idle', 'idle'), '状态待核对');
 });
 
+// C03 review item (landed in C06): a refreshed terminal run projects idle
+// while the workspace holds a current version — that state reads completed,
+// not unclear; without a version the honest fallback stays.
+test('idle after refresh reads completed only with a current version', () => {
+  assert.equal(statusLabel('idle', 'idle', true), '已完成，可查看版本');
+  assert.equal(statusLabel('idle', 'idle', false), '状态待核对');
+  assert.equal(statusLabelEn('idle', 'idle', true), 'Completed — view the version');
+  assert.equal(statusLabel('succeeded', 'idle', false), '已完成');
+  assert.equal(statusLabel('running', 'idle', true), '正在生成');
+});
+
 test('english labels keep the same branching', () => {
   assert.equal(statusLabelEn('running', 'finished'), 'Main agent is verifying the result');
   assert.equal(statusLabelEn('stopping', 'running'), 'Stopping');
   assert.equal(statusLabelEn('waiting_user', 'running'), 'Needs your input');
   assert.equal(statusLabelEn('succeeded', 'finished'), 'Completed');
   assert.equal(statusLabelEn('mystery', 'idle'), 'Status unknown');
+});
+
+
+// The knowledge sources projection feeds the C01 sources panel from the same
+// message-log frames: latest knowledge.built wins, malformed rows drop, and
+// absent events answer the honest empty package.
+test('projectKnowledgeSources projects the latest knowledge.built package', () => {
+  const empty = projectKnowledgeSources([]);
+  assert.deepEqual(empty, { sources: [], truncated: false });
+  assert.deepEqual(projectKnowledgeSources([{ seq: 1, kind: 'delegation.started', data: {} }]).sources, []);
+
+  const events = [
+    { seq: 1, kind: 'knowledge.built', data: { sources: [{ citation_id: 'kc_a', ref: 'craftkb://kb/1/knowledge/k1/chunk/c1', title: 'Doc', digest: 'd', excerpt_bytes: 5, tenant_id: 2 }], truncated: false } },
+    { seq: 2, kind: 'knowledge.built', data: { sources: [
+      { citation_id: 'kc_b', ref: 'craftkb://kb/1/knowledge/k2/chunk/c2', title: 'B', digest: 'db', excerpt_bytes: 6, tenant_id: 1 },
+      { citation_id: '', ref: 'craftkb://kb/1/knowledge/kX/chunk/cX', title: 'dropped', digest: 'dx', excerpt_bytes: 1, tenant_id: 1 },
+      'garbage',
+    ], truncated: true } },
+  ];
+  const projected = projectKnowledgeSources(events);
+  assert.equal(projected.sources.length, 1);
+  assert.equal(projected.sources[0]?.citationId, 'kc_b');
+  assert.equal(projected.sources[0]?.tenantId, 1);
+  assert.equal(projected.truncated, true);
 });
 
 // A delegation terminal event never completes the main message: only the Run
