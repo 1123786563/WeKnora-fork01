@@ -43,7 +43,8 @@
 | W06 | **done** | .worktrees/craft-w06 / codex/craft-w06 | d9054bd0 | HEAD 9e6481bf 审查 PASS_WITH_NITS（11/11，审查者独立复跑 6/6+DB 哈希核对）→ 合入 f931f02b。**B 阶段全部完成**（15/27）。留档：R02↔R04 messageID 上游立项、Scan 叙事修正、harness 进程组清理、decide 路由/preview 回写归 C 阶段决策 |
 | C01 | **done** | .worktrees/craft-c01 / codex/craft-c01 | f931f02b | HEAD 072201a7 审查 PASS_WITH_NITS（14/14，真实 ACL 入口核验）→ 合入 3e05038b；Build 端点+挂载协调器裁定归 C06 生产装配（与 C05 协调文件） |
 | C03 | implementing | .worktrees/craft-c03 / codex/craft-c03 | 3e05038b | 已派发（replayAction+退避+原子快照+浏览器三时点刷新） |
-| C04 | review | .worktrees/craft-c04 / codex/craft-c04 | f931f02b | HEAD 7d0aebc4：RecoveryRoute 32 组合穷举+四 barrier 真实 SIGKILL 矩阵全过（POST 计数恒 1）；零 Execute 调用路径；容器装配缺口待归属；审查者进行中 |
+| C04 | **done** | .worktrees/craft-c04 / codex/craft-c04 | f931f02b | HEAD 7d0aebc4 审查 PASS_WITH_NITS（19/19+矩阵复验）→ 合入 256fbb78；容器装配裁定归 C05（含 nit-2/3） |
+| C05 | implementing | .worktrees/craft-c05 / codex/craft-c05 | 256fbb78 | 已派发（快照 Capture/Restore+迁移 000126/000046+C04 装配落实）；C02 排队等席位 |
 | C02 | ready（排队） | — | — | 等实现席位（C03 完成后即派） |
 
 ## 调度纪要
