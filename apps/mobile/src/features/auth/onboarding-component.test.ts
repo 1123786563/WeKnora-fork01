@@ -1,12 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { build } from 'esbuild';
 import { JSDOM } from 'jsdom';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '../../../../..');
 const require = createRequire(resolve(root, 'apps/web/package.json'));
+// esbuild is resolved through the web package's declared dependencies (pnpm
+// strict layout: it is not a dependency of @weknora/mobile, so a bare import
+// only resolves via the tsx CLI's NODE_PATH side effect and fails under
+// node --import tsx). Same host package as the react requires below.
+const { build } = require('esbuild') as typeof import('esbuild');
 const { act } = require('react');
 const { createRoot } = require('react-dom/client');
 async function mount(entry: string, runtime: any) {
