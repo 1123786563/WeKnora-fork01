@@ -194,7 +194,15 @@ test('system-global section renders grouped editable settings instead of a gener
   assert.ok(text.includes('系统全局设置'), 'the Vue system settings heading renders');
   assert.ok(text.includes('访问控制'), 'the access tab renders');
   assert.ok(text.includes('auth · registration mode'), 'the setting row renders');
-  assert.ok(container.querySelector('select'), 'enum settings use a select control');
+  const registrationSelect = container.querySelector<HTMLSelectElement>('select');
+  assert.ok(registrationSelect, 'enum settings use a select control');
+  registrationSelect.value = 'invite_only';
+  await act(async () => registrationSelect.dispatchEvent(new dom.window.Event('change', { bubbles: true })));
+  assert.ok(container.querySelector('[role="alertdialog"]'), 'high-risk enum changes require Vue-style confirmation');
+  const cancelConfirm = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button')).find((button) => button.textContent === '取消');
+  assert.ok(cancelConfirm);
+  await act(async () => cancelConfirm?.click());
+  assert.equal(container.querySelector('[role="alertdialog"]'), null, 'cancelling rolls back the pending high-risk edit');
   const securityTab = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]')).find((button) => button.textContent === '安全');
   assert.ok(securityTab, 'the security tab renders');
   await act(async () => securityTab?.click());

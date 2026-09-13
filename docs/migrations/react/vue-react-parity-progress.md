@@ -1624,3 +1624,10 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 编辑行为对齐 Vue 的自动保存方向：布尔/枚举变更提交，数字/文本失焦提交；每行提供恢复默认入口，保存状态通过 role=status 暴露；未改变系统 settings API 契约。
 - 验证：SettingsPage 定向测试 12/12；完整 `pnpm test:web` 809/809；Web TypeScript 检查通过；`git diff --check` 通过。
 - 证据层：本轮为 Vue 源码对照、React DOM/单元与全 Web 回归；高风险配置确认弹层、系统管理员增删/密码重置、批量配额操作、真实 system-admin 后端、同条件截图/computed-style、Wails 与移动端证据仍待补齐，N017 继续保持 review。
+
+## 2026-09-14 Round N+32 — N017 高风险配置确认语义
+
+- React `system-global` 对 `auth.registration_mode` 与 `sandbox.docker_enabled` 的变更增加 Vue 同语义的确认层；确认前不调用 update，取消只关闭待提交状态并保留服务端值，确认后才进入保存态。
+- 新增 DOM 交互回归覆盖高风险枚举的确认与取消路径；普通枚举、布尔、整数和文本/列表保存路径保持不变。
+- 验证：SettingsPage 定向测试 12/12；完整 `pnpm test:web` 809/809；Web TypeScript 检查通过；`git diff --check` 通过。
+- 证据层：本轮为 Vue 源码对照、React DOM/单元与全 Web 回归；真实高风险 system-admin 提交/失败回滚、管理员增删/密码重置、批量配额、同条件截图/computed-style、Wails 与移动端证据仍待补齐，N017 继续保持 review。
