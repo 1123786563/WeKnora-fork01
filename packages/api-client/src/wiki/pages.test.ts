@@ -37,6 +37,26 @@ test('loads the structured Wiki index and preserves group cursors', async () => 
   assert.equal(path, '/api/v1/knowledgebase/kb%2Fa/wiki/index?types=summary&limit=10&cursor=prev-1');
 });
 
+test('writes Wiki folder mutations and page moves with encoded identifiers', async () => {
+  const requests: Array<{ method: string; path: string; body: unknown }> = [];
+  const api = createWikiPagesApi(async (request) => {
+    requests.push({ method: request.method, path: request.path, body: request.body });
+    return request.method === 'POST' || request.method === 'PUT' && request.path.includes('/folders/')
+      ? { id: 'f-1', parent_id: '', name: 'Guides', path: 'Guides', depth: 0, sort_order: 0 }
+      : undefined;
+  });
+  await api.createFolder('kb-1', '', 'Guides');
+  await api.updateFolder('kb-1', 'folder/a', { name: 'Docs' });
+  await api.removeFolder('kb-1', 'folder/a');
+  await api.movePage('kb-1', 'docs/start', 'folder/a');
+  assert.deepEqual(requests, [
+    { method: 'POST', path: '/api/v1/knowledgebase/kb-1/wiki/folders', body: { parent_id: '', name: 'Guides' } },
+    { method: 'PUT', path: '/api/v1/knowledgebase/kb-1/wiki/folders/folder%2Fa', body: { name: 'Docs' } },
+    { method: 'DELETE', path: '/api/v1/knowledgebase/kb-1/wiki/folders/folder%2Fa', body: undefined },
+    { method: 'PUT', path: '/api/v1/knowledgebase/kb-1/wiki/move-page', body: { slug: 'docs/start', folder_id: 'folder/a' } },
+  ]);
+});
+
 test('updates hierarchical slugs segment-by-segment and preserves optimistic version', async () => {
   let captured: { path: string; body: unknown } | undefined;
   const api = createWikiPagesApi(async (request) => {

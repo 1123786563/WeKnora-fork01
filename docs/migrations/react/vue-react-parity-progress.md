@@ -1,5 +1,13 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-14 Round N+25 — N011 Wiki directory contract and modes
+
+- 随后补齐 Vue 已有的目录写操作 API client：创建/更新/删除文件夹与移动页面，严格校验返回的文件夹记录并覆盖层级 ID 编码；合同测试扩展至 10/10、`typecheck:shared` 通过。React UI 暂不显示这些写按钮，原因是当前 `WikiPage` 没有 Vue 对应的 KB 角色/权限上下文，需先接通权限边界后再开放。
+- 对照 Vue `WikiBrowser.vue` 与 `frontend/src/api/wiki/index.ts` 确认后端已提供 `/wiki/folders`、`/wiki/index` 合同；API client 新增严格的文件夹树/结构化索引类型、解析器、筛选参数和 9/9 合同测试，提交 `1a8c0f6a`。
+- React Wiki 新增 tree/list 切换、根/子目录加载、返回上级、结构化 Index 入口与索引条目打开页面；目录切换会重新请求 `category_path` 页面，Index 视图不再混入普通列表，补充 Vue 风格局部令牌样式，提交 `77ea4dce`。
+- 聚焦 Wiki 4/4、正式 Web 796/796、`typecheck:web`、`typecheck:shared`、`git diff --check` 通过。
+- N011 仍未完成：Vue 文件夹创建/重命名/删除/移动、独立 list 虚拟滚动、Index cursor 增量加载、图谱/问题状态、浏览器 computed-style、真实后端和 Wails/native 证据仍需逐项闭环。
+
 ## 2026-09-14 Round N+24 — N011/N013 failure-copy closure
 
 - Wiki 页面加载、创建、重载、历史/版本读取和回滚的无异常对象 fallback 改用共享 `wikiBrowser.*` 文案；数据源编辑器字段、同步模式/冲突选项、删除/同步/连接测试/资源加载失败反馈改用共享 `dataSource.*` 文案，并为五种语言补齐连接器类型/设置键。

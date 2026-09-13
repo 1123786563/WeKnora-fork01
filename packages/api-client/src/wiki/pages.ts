@@ -30,6 +30,16 @@ export interface WikiFolderNode {
   [key: string]: unknown;
 }
 
+export interface WikiFolder {
+  id: string;
+  parent_id: string;
+  name: string;
+  path: string;
+  depth: number;
+  sort_order: number;
+  [key: string]: unknown;
+}
+
 export interface WikiFolderListResponse {
   parent_id: string;
   folders: WikiFolderNode[];
@@ -168,6 +178,13 @@ function folders(value: unknown): WikiFolderListResponse {
   };
 }
 
+function folder(value: unknown): WikiFolder {
+  const row = object(value, 'Invalid Wiki folder response');
+  for (const key of ['id', 'parent_id', 'name', 'path']) if (typeof row[key] !== 'string') throw new Error(`Invalid Wiki folder field: ${key}`);
+  for (const key of ['depth', 'sort_order']) if (typeof row[key] !== 'number' || !Number.isSafeInteger(row[key]) || row[key] < 0) throw new Error(`Invalid Wiki folder field: ${key}`);
+  return row as unknown as WikiFolder;
+}
+
 function index(value: unknown): WikiIndexResponse {
   const row = object(value, 'Invalid Wiki index response');
   if (typeof row.intro !== 'string' || typeof row.version !== 'number' || !Number.isSafeInteger(row.version) || row.version < 0 || !Array.isArray(row.groups)) throw new Error('Invalid Wiki index');
@@ -253,6 +270,18 @@ export function createWikiPagesApi(request: (input: ClientRequest) => Promise<un
       if (params.cursor) query.set('cursor', params.cursor);
       const suffix = query.toString();
       return index(await request({ method: 'GET', path: `${base(kbId)}/index${suffix ? `?${suffix}` : ''}` }));
+    },
+    async createFolder(kbId: string, parentId: string, name: string): Promise<WikiFolder> {
+      return folder(await request({ method: 'POST', path: `${base(kbId)}/folders`, body: { parent_id: parentId, name } }));
+    },
+    async updateFolder(kbId: string, folderId: string, input: { name?: string; parent_id?: string; move_parent?: boolean }): Promise<WikiFolder> {
+      return folder(await request({ method: 'PUT', path: `${base(kbId)}/folders/${encodeURIComponent(folderId)}`, body: input }));
+    },
+    async removeFolder(kbId: string, folderId: string): Promise<void> {
+      await request({ method: 'DELETE', path: `${base(kbId)}/folders/${encodeURIComponent(folderId)}` });
+    },
+    async movePage(kbId: string, slug: string, folderId: string): Promise<void> {
+      await request({ method: 'PUT', path: `${base(kbId)}/move-page`, body: { slug, folder_id: folderId } });
     },
     async get(kbId: string, slug: string): Promise<WikiPage> {
       return page(await request({ method: 'GET', path: `${base(kbId)}/pages/${pathSlug(slug)}` }));
