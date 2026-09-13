@@ -140,6 +140,16 @@ test('settings navigation clears focus after switching sections like the Vue dra
   assert.notEqual(document.activeElement, navigationButton, 'section navigation should not retain focus on the old drawer control');
 });
 
+test('settings close blurs the focused control before leaving like the Vue drawer', async () => {
+  const container = await mountPage(makeClient(), '?section=general');
+  const closeButton = container.querySelector<HTMLButtonElement>('[data-testid="settings-close"]');
+  assert.ok(closeButton, 'the settings close button renders');
+  closeButton.focus();
+  assert.equal(document.activeElement, closeButton);
+  await act(async () => closeButton.click());
+  assert.notEqual(document.activeElement, closeButton, 'closing should blur the old drawer control');
+});
+
 // B4d: section=subsection deep link reaches the model panel type tabs.
 test('a subsection query param preselects the model type tab', async () => {
   const container = await mountPage(makeClient({ models: [

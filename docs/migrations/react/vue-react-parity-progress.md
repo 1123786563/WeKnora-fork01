@@ -1596,3 +1596,10 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - React 过期元数据目录现在与 Vue 一致：stale 状态传入 undefined service id，隐藏工具启用/审批开关，仅保留目录详情和旧数据提示；非 stale 状态仍保留即时策略保存。
 - 新增静态回归覆盖 stale 目录不渲染策略控件，并在 MCP 设置交互用例中验证详情 Portal 位于 `document.body`、不陷在抽屉流内且可由外部点击关闭；R046 MCP 定向测试 16/16、完整 `pnpm test:web` 806/806、Web TypeScript 检查和 `git diff --check` 均通过。
 - 交互回归发现并修复了外部点击监听对全局 DOM `Node` 构造器的隐式依赖，兼容 jsdom/嵌入环境。
+
+## 2026-09-14 Round N+28 — N014 设置抽屉关闭前焦点清理
+
+- React `SettingsPage` 的关闭按钮与 Escape 现在共用关闭路径，先清除当前活动元素焦点再导航，补齐 Vue `Settings.vue:handleClose` 的卸载前 blur 语义；设置分区切换的既有清焦行为保持不变。
+- 新增真实 DOM 回归用例，聚焦关闭按钮后点击关闭并确认旧控件不再保持焦点；Vue 源码、React jsdom 交互与全量 Web 回归均已复核。
+- 验证：SettingsPage 定向测试 10/10；完整 `pnpm test:web` 807/807；Web TypeScript 检查通过；`git diff --check` 通过。
+- 证据层：本轮为 Vue 源码对照、React DOM 交互、单元测试与全 Web 回归；仍缺真实浏览器键盘/焦点、同视口 computed-style、Wails 与移动端证据，N014 继续保持 review。

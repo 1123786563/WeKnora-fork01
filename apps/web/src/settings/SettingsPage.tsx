@@ -128,7 +128,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
   }, []);
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') window.location.assign('/platform/knowledge-bases');
+      if (event.key === 'Escape') closeSettings();
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -136,6 +136,14 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
   useEffect(() => {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
   }, [selectedKey]);
+
+  // Settings.vue blurs the active control before closing the drawer. Keep the
+  // same lifecycle for both the close button and Escape so focused controls do
+  // not survive the route transition as detached elements.
+  function closeSettings() {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    window.location.assign('/platform/knowledge-bases');
+  }
 
   // Read once on mount; the tab then follows the drawer until the user
   // changes it (Vue consumes settingsInitialSubSection the same way).
@@ -209,7 +217,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
             className="wks-close"
             aria-label={t('general.close')}
             data-testid="settings-close"
-            onClick={() => { window.location.assign('/platform/knowledge-bases'); }}
+            onClick={closeSettings}
           >
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
               <path d="M15 5L5 15M5 5L15 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
