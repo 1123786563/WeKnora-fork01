@@ -718,6 +718,13 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   `pnpm typecheck:web` passes. No browser/Vue screenshot or native evidence
   was collected, so N005 remains `review`.
 
+- **N005 review fix:** loading/empty mutual exclusion, viewer-only
+  organization filtering, create payload/failure side effects, and unshare
+  confirmation rejection/failure coverage were added. Focused DOM tests pass
+  7/7; Web regression passes 295/295 and Web typecheck passes. No browser,
+  Vue screenshot, real-backend, Wails, iOS, or Android evidence exists, so
+  N005 remains `review`.
+
 - **Mobile onboarding gate repair:** added the native
   `apps/mobile/src/features/auth/OnboardingScreen.tsx` implementation for
   policy loading/retry, invite-only and create-workspace actions, invitation

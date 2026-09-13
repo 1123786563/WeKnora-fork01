@@ -67,19 +67,28 @@ afterEach(async () => {
   window.confirm = () => true;
 });
 
-async function mount(client: WeKnoraClient) {
-  window.localStorage.setItem('locale', 'en-US');
+async function mount(client: WeKnoraClient, onChanged: () => void = () => undefined, locale = 'en-US') {
+  window.localStorage.setItem('locale', locale);
   const container = document.createElement('div');
   document.body.append(container);
   mountedRoot = createRoot(container);
   await act(async () => {
-    mountedRoot?.render(<KnowledgeBaseShareDialog client={client} knowledgeBaseId="kb-1" knowledgeBaseName="Docs" open onClose={() => undefined} />);
+    mountedRoot?.render(<KnowledgeBaseShareDialog client={client} knowledgeBaseId="kb-1" knowledgeBaseName="Docs" open onClose={() => undefined} onChanged={onChanged} />);
   });
   return container;
 }
 
 function button(container: HTMLElement, label: string) {
   return [...container.querySelectorAll<HTMLButtonElement>('button')].find((item) => item.textContent?.includes(label));
+}
+
+async function select(container: HTMLElement, label: string, value: string) {
+  const element = [...container.querySelectorAll<HTMLSelectElement>('select')].find((item) => item.parentElement?.textContent?.includes(label));
+  assert.ok(element, `${label} select should exist`);
+  await act(async () => {
+    element.value = value;
+    element.dispatchEvent(new Event('change', { bubbles: true }));
+  });
 }
 
 test('opens on the share form and toggles to the shared-list view and back', async () => {
@@ -102,6 +111,65 @@ test('opens on the share form and toggles to the shared-list view and back', asy
   assert.ok(back);
   await act(async () => back?.click());
   assert.ok(container.querySelector('form'), 'back should return to the share form');
+});
+
+test('renders only loading content until the initial share data has settled', async () => {
+  const request = deferred<{ items: Share[]; total: number }>();
+  const container = await mount(clientFor(() => request.promise));
+
+  try {
+    assert.match(container.textContent ?? '', /Loading/);
+    assert.equal(container.querySelector('form'), null, 'the share form should not render while data is loading');
+    assert.doesNotMatch(container.textContent ?? '', /No shared knowledge bases yet|No shares\./);
+  } finally {
+    await act(async () => request.resolve({ items: [], total: 0 }));
+  }
+  assert.doesNotMatch(container.textContent ?? '', /Loading/);
+});
+
+test('uses the existing shared-space translations for the share form', async () => {
+  const container = await mount(clientFor(async () => ({ items: [], total: 0 })), () => undefined, 'zh-CN');
+
+  assert.match(container.textContent ?? '', /共享到共享空间/);
+  assert.match(container.textContent ?? '', /选择共享空间/);
+  assert.match(container.textContent ?? '', /权限/);
+});
+
+test('filters viewer organizations and sends the selected permission in the create payload', async () => {
+  const payloads: unknown[] = [];
+  const client = clientFor(async () => ({ items: [], total: 0 }), {
+    create: async (_kbId, payload) => { payloads.push(payload); return { id: 'share-1' }; },
+  });
+  let changed = 0;
+  const container = await mount(client, () => { changed += 1; });
+
+  const organizationSelect = container.querySelectorAll<HTMLSelectElement>('select')[0];
+  assert.ok(organizationSelect);
+  assert.deepEqual([...organizationSelect.options].map((option) => option.textContent), ['Select a shared space to share with', 'Editors']);
+  assert.equal([...organizationSelect.options].some((option) => option.textContent === 'Viewers'), false);
+
+  await select(container, 'Select Shared Space', 'org-editor');
+  await select(container, 'Permission', 'editor');
+  await act(async () => button(container, 'Confirm share')?.click());
+
+  assert.deepEqual(payloads, [{ organization_id: 'org-editor', permission: 'editor' }]);
+  assert.equal(changed, 1);
+});
+
+test('shows the create failure and does not fire the change callback', async () => {
+  let changed = 0;
+  const client = clientFor(async () => ({ items: [], total: 0 }), {
+    create: async () => { throw new Error('share request failed'); },
+  });
+  const container = await mount(client, () => { changed += 1; });
+
+  await select(container, 'Select Shared Space', 'org-editor');
+  await act(async () => button(container, 'Confirm share')?.click());
+
+  assert.match(container.textContent ?? '', /share request failed/);
+  assert.doesNotMatch(container.textContent ?? '', /Knowledge base shared/);
+  assert.equal(changed, 0);
+  assert.equal(button(container, 'Confirm share')?.disabled, false);
 });
 
 test('confirms unshare and prevents duplicate removal while the mutation is busy', async () => {
@@ -127,4 +195,38 @@ test('confirms unshare and prevents duplicate removal while the mutation is busy
   assert.equal(remove?.disabled, true);
 
   await act(async () => removal.resolve());
+});
+
+test('uses the localized unshare confirmation copy and skips removal when declined', async () => {
+  let calls = 0;
+  const client = clientFor(async () => ({ items: [{ id: 'share-1', organization_id: 'org-editor', organization_name: 'Editors', permission: 'viewer' }], total: 1 }), {
+    remove: async () => { calls += 1; },
+  });
+  const container = await mount(client);
+  await act(async () => button(container, 'Shared to organizations (1)')?.click());
+
+  let prompt = '';
+  window.confirm = (message = '') => { prompt = message; return false; };
+  await act(async () => button(container, 'Remove share')?.click());
+
+  assert.equal(prompt, 'Remove "Editors" from this shared space? Members will no longer have access to this knowledge base.');
+  assert.equal(calls, 0);
+  assert.equal(button(container, 'Remove share')?.disabled, false);
+});
+
+test('shows an unshare failure without firing the change callback', async () => {
+  let changed = 0;
+  const client = clientFor(async () => ({ items: [{ id: 'share-1', organization_id: 'org-editor', organization_name: 'Editors', permission: 'viewer' }], total: 1 }), {
+    remove: async () => { throw new Error('remove request failed'); },
+  });
+  const container = await mount(client, () => { changed += 1; });
+  await act(async () => button(container, 'Shared to organizations (1)')?.click());
+  window.confirm = () => true;
+
+  await act(async () => button(container, 'Remove share')?.click());
+
+  assert.match(container.textContent ?? '', /remove request failed/);
+  assert.doesNotMatch(container.textContent ?? '', /Share cancelled/);
+  assert.equal(changed, 0);
+  assert.equal(button(container, 'Remove share')?.disabled, false);
 });
