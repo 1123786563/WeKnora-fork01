@@ -52,7 +52,7 @@
 | D01 | review | .worktrees/craft-d01 / codex/craft-d01 | 92f23a10 | HEAD e0fc78e0：python-docx 镜像链+OOXML 校验+浏览器 4/4；五项类型接线全落地（EntryPath/Previewable/manifest 服务端门禁/NIT-1 词边界/预览归一/kind-aware specs）；审查排队中 |
 | O04 | **done** | .worktrees/craft-o04 / codex/craft-o04 | a543e439 | 主体 23019793+O03 接线 0697597e 审查 PASS_WITH_NITS（11/11+接线 5/5）→ 合入 5c9f17aa；O05 提示：O02 网关未接线（账本空）/驻留无记录者//metrics 未暴露 |
 | D01 | **done** | .worktrees/craft-d01 / codex/craft-d01 | 92f23a10 | HEAD e0fc78e0 审查 PASS_WITH_NITS（9/9+五接线验证，fixture 三重核验）→ 合入 6fbc0706。**26/27 完成** |
-| O05 | implementing | .worktrees/craft-o05 / codex/craft-o05 | 6fbc0706 | 已派发（最终任务：CanRelease+evidence JSON+check 脚本+十场景演练+回归矩阵+发布手册+四项顺手修复） |
+| O05 | review | .worktrees/craft-o05 / codex/craft-o05 | 6fbc0706 | HEAD 025687bc：CanRelease+门禁脚本（七篡改反向验证）+十场景演练全真跑（含真 SIGKILL 快照恢复）+全量回归矩阵+发布手册+四顺手修复；付费 blocked 如实入 limitations；审查者进行中（27/27 实现完毕，待审后集成+全分支终审） |
 | C04 | **done** | .worktrees/craft-c04 / codex/craft-c04 | f931f02b | HEAD 7d0aebc4 审查 PASS_WITH_NITS（19/19+矩阵复验）→ 合入 256fbb78；容器装配裁定归 C05（含 nit-2/3） |
 | C05 | **done** | .worktrees/craft-c05 / codex/craft-c05 | 256fbb78 | HEAD faf500e9 审查 PASS_WITH_NITS（21/21，安全闭环无伪造路径）→ 合入 ae664bcb；迁移 000126/000046；C04 装配落实；C06 接线提示与 6 卫生 nit 留档 |
 | D02 | implementing | .worktrees/craft-d02 / codex/craft-d02 | ae664bcb | 已派发（openpyxl+LibreOffice 重算+XLSX 导出+浏览器）；C06/D01/D03/O03/O04/O05 等待依赖或席位 |
