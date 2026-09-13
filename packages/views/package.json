@@ -8,7 +8,8 @@
     "./craft/workbench": "./src/craft/workbench.tsx",
     "./craft/preview": "./src/craft/preview.tsx",
     "./craft/files": "./src/craft/files.tsx",
-    "./craft/presentation": "./src/craft/presentation.ts"
+    "./craft/presentation": "./src/craft/presentation.ts",
+    "./craft/interaction": "./src/craft/interaction.tsx"
   },
   "dependencies": {
     "@weknora/contracts": "workspace:*",

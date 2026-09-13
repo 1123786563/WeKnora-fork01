@@ -123,6 +123,13 @@ func RegisterSessionRoutes(
 		craftHandler = session.NewCraftSessionHandler(api)
 	}
 	session.RegisterCraftSessionRoutes(craftSessions, sessions, craftHandler, session.RegisteredCraftPreviewRouteHandler())
+
+	// C02 interaction decide surface: mounted only when the interaction
+	// assembly is wired (fail-closed, no 503 shims); it inherits the sessions
+	// group auth chain.
+	if interactionAPI := session.RegisteredCraftInteractionHandler(); interactionAPI != nil {
+		session.RegisterCraftInteractionRoutes(sessions, session.NewCraftInteractionHandler(interactionAPI))
+	}
 }
 
 // RegisterChatRoutes 注册路由。Chat endpoints are tenant-member usage

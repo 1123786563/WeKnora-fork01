@@ -11,6 +11,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/agent/opencode"
 	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
 	"github.com/Tencent/WeKnora/internal/craft"
+	"github.com/Tencent/WeKnora/internal/logger"
 )
 
 // craftControlBudget bounds every durable control operation on a
@@ -64,10 +65,19 @@ type CraftInteractionRecord struct {
 	PendingID         string
 	OpenCodeSessionID string
 	OpenCodeRequestID string
-	Status            string // pending | decided
+	Status            string // pending | decided | canceled
 	Delivery          string // pending | delivered | unknown
 	DecisionID        string
 	DecidedAction     string
+	// Pending is the structured question/permission payload the user decides
+	// on (C02): multi-question options, multi-choice flags, itemized
+	// permission facts. It is zero when the registration carried no payload.
+	Pending craft.PendingDecision
+	// RecordedAnswers re-displays the original answers after a restart.
+	RecordedAnswers []craft.Answer
+	// DecidedBy is the operator identity that took the decision (audit;
+	// never a secret).
+	DecidedBy string
 }
 
 // CraftDecisionRequest is one user decision on a pending interaction.
@@ -79,7 +89,13 @@ type CraftDecisionRequest struct {
 	ArgsHash         string
 	ExpectedRevision int64
 	Answer           string
-	Reason           string
+	// Answers carries the C02 multi-question answer set (choices per question
+	// plus optional custom text); validated against the pending payload.
+	Answers []craft.Answer
+	// Operator is the authenticated user taking the decision; recorded with
+	// the durable decision for audit (identity only, never secrets).
+	Operator string
+	Reason   string
 }
 
 // CraftDecisionOutcome reports what actually happened: the decision is
@@ -213,6 +229,26 @@ func (s *CraftControlService) RegisterInteraction(
 	return stored, nil
 }
 
+// craftInteractionLister is the optional listing surface a C02 interaction
+// store offers; the production store implements it.
+type craftInteractionLister interface {
+	ListInteractions(context.Context, craft.Scope, string) ([]CraftInteractionRecord, error)
+}
+
+// ListInteractions exposes the session's pending decisions (and their
+// recorded answers once decided) for the interaction surface. Without a C02
+// listing store it fails closed with ErrUnsupported.
+func (s *CraftControlService) ListInteractions(ctx context.Context, scope craft.Scope, sessionID string) ([]CraftInteractionRecord, error) {
+	if s == nil || s.interactions == nil {
+		return nil, fmt.Errorf("%w: no durable interaction support", craft.ErrUnsupported)
+	}
+	lister, ok := s.interactions.(craftInteractionLister)
+	if !ok {
+		return nil, fmt.Errorf("%w: the interaction store cannot list", craft.ErrUnsupported)
+	}
+	return lister.ListInteractions(ctx, scope, sessionID)
+}
+
 // Decide applies one user decision. The decision is written durably first;
 // only then is it forwarded to the OpenCode runtime. A changed args hash or
 // a stale revision answers ErrConflict (409), another user's interaction
@@ -235,20 +271,37 @@ func (s *CraftControlService) Decide(ctx context.Context, req CraftDecisionReque
 		return CraftDecisionOutcome{}, fmt.Errorf(
 			"%w: action %q is not a user decision for a %s", craft.ErrInvalidInput, req.Action, record.Kind)
 	}
-	if record.Kind == craft.InteractionQuestion && req.Action == craft.DecisionAnswer && req.Answer == "" {
-		return CraftDecisionOutcome{}, fmt.Errorf("%w: answering a question requires the answer text", craft.ErrInvalidInput)
+	if record.Kind == craft.InteractionQuestion && req.Action == craft.DecisionAnswer {
+		if len(req.Answers) == 0 && req.Answer == "" {
+			return CraftDecisionOutcome{}, fmt.Errorf("%w: answering a question requires the answers", craft.ErrInvalidInput)
+		}
+		// The C02 multi-question rules run server-side against the exact
+		// pending payload: known question ids, legal choices, single-choice
+		// at most one, text bounded by 8 KiB.
+		if len(req.Answers) > 0 {
+			if err := craft.ValidateAnswers(record.Pending, req.Answers); err != nil {
+				return CraftDecisionOutcome{}, err
+			}
+		}
 	}
-	if record.Kind == craft.InteractionPermission && req.Answer != "" {
-		return CraftDecisionOutcome{}, fmt.Errorf("%w: a permission decision carries no answer text", craft.ErrInvalidInput)
+	if record.Kind == craft.InteractionPermission && (req.Answer != "" || len(req.Answers) > 0) {
+		return CraftDecisionOutcome{}, fmt.Errorf("%w: a permission decision carries no answers", craft.ErrInvalidInput)
 	}
-	if record.Kind == craft.InteractionQuestion && req.Action == craft.DecisionReject && req.Answer != "" {
-		return CraftDecisionOutcome{}, fmt.Errorf("%w: rejecting a question carries no answer text", craft.ErrInvalidInput)
+	if record.Kind == craft.InteractionQuestion && req.Action == craft.DecisionReject && (req.Answer != "" || len(req.Answers) > 0) {
+		return CraftDecisionOutcome{}, fmt.Errorf("%w: rejecting a question carries no answers", craft.ErrInvalidInput)
 	}
 	if req.ArgsHash == "" || req.ArgsHash != record.ArgsHash {
 		return CraftDecisionOutcome{}, fmt.Errorf(
 			"%w: interaction %s arguments changed since the user decided", craft.ErrConflict, req.InteractionID)
 	}
-	if req.ExpectedRevision != record.Revision {
+	// A terminal interaction no longer accepts NEW decisions (410); an
+	// idempotent replay of the same decision id falls through to the store,
+	// which returns the original result.
+	if record.Status != "pending" && record.DecisionID != req.DecisionID {
+		return CraftDecisionOutcome{}, fmt.Errorf(
+			"%w: interaction %s is %s", craft.ErrGone, req.InteractionID, record.Status)
+	}
+	if record.Status == "pending" && req.ExpectedRevision != record.Revision {
 		return CraftDecisionOutcome{}, fmt.Errorf(
 			"%w: interaction %s revision %d is not current %d",
 			craft.ErrConflict, req.InteractionID, req.ExpectedRevision, record.Revision)
@@ -269,7 +322,7 @@ func (s *CraftControlService) Decide(ctx context.Context, req CraftDecisionReque
 	} else {
 		switch {
 		case record.Kind == craft.InteractionQuestion && req.Action == craft.DecisionAnswer:
-			forwardErr = s.reply.ReplyQuestion(forwardCtx, record.OpenCodeRequestID, [][]string{{req.Answer}})
+			forwardErr = s.reply.ReplyQuestion(forwardCtx, record.OpenCodeRequestID, decideAnswerRows(req))
 		case record.Kind == craft.InteractionQuestion:
 			forwardErr = s.reply.RejectQuestion(forwardCtx, record.OpenCodeRequestID)
 		case req.Action == craft.DecisionApprove:
@@ -284,6 +337,7 @@ func (s *CraftControlService) Decide(ctx context.Context, req CraftDecisionReque
 		if err := s.interactions.MarkInteractionDelivery(ctx, req.Scope, req.InteractionID, "delivered"); err != nil {
 			outcome.DeliveryNote = fmt.Sprintf("delivered; delivery marker not persisted: %v", err)
 		}
+		s.syncOutboxDelivery(ctx, record, req, "delivered", "")
 		return outcome, nil
 	}
 	outcome.Record.Delivery = "unknown"
@@ -291,8 +345,39 @@ func (s *CraftControlService) Decide(ctx context.Context, req CraftDecisionReque
 	if err := s.interactions.MarkInteractionDelivery(ctx, req.Scope, req.InteractionID, "unknown"); err != nil {
 		note = fmt.Sprintf("%s; delivery marker not persisted: %v", note, err)
 	}
+	s.syncOutboxDelivery(ctx, record, req, "unknown", note)
 	outcome.DeliveryNote = note
 	return outcome, nil
+}
+
+// decideAnswerRows maps the C02 answer set onto the locked question reply
+// shape; the legacy single Answer field stays a one-row fallback.
+func decideAnswerRows(req CraftDecisionRequest) [][]string {
+	if len(req.Answers) > 0 {
+		return answerRows(req.Answers)
+	}
+	return [][]string{{req.Answer}}
+}
+
+// syncOutboxDelivery keeps the durable outbox in step with the inline forward
+// result: a confirmed forward acks the outbox item; an unconfirmable one is
+// marked delivery_unknown so the user-facing state is honest. Stores without
+// the C02 outbox (the R06 fake) keep their previous behavior.
+func (s *CraftControlService) syncOutboxDelivery(ctx context.Context, record CraftInteractionRecord, req CraftDecisionRequest, state, note string) {
+	outbox, ok := s.interactions.(CraftDecisionOutboxRo)
+	if !ok || record.RunID == "" {
+		return
+	}
+	key := agentruntime.RunKey{TenantID: record.Scope.TenantID, RunID: record.RunID}
+	var err error
+	if state == "delivered" {
+		err = outbox.AckDecision(ctx, key, req.InteractionID, req.DecisionID, note)
+	} else {
+		err = outbox.MarkDecisionUnknown(ctx, key, req.InteractionID, req.DecisionID, note)
+	}
+	if err != nil {
+		logger.Warnf(ctx, "[CraftControl] outbox %s persistence failed for %s: %v", state, req.DecisionID, err)
+	}
 }
 
 // stopPhaseForResult maps a stored terminal result onto the stop phase.

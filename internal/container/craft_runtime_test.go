@@ -19,7 +19,7 @@ import (
 
 func TestNewCraftRuntimeExecutorFailsClosedWithoutEnv(t *testing.T) {
 	t.Setenv("CRAFT_OPENCODE_BASE_URL", "")
-	executor, err := newCraftRuntimeExecutor(nil, nil, nil, nil, nil, nil)
+	executor, err := newCraftRuntimeExecutor(nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("unset base url must keep the fail-closed executor, got %v", err)
 	}
@@ -33,7 +33,7 @@ func TestNewCraftRuntimeExecutorRequiresWorkDir(t *testing.T) {
 	defer server.Close()
 	t.Setenv("CRAFT_OPENCODE_BASE_URL", server.URL)
 	t.Setenv("CRAFT_OPENCODE_WORK_DIR", "")
-	if _, err := newCraftRuntimeExecutor(nil, nil, nil, nil, nil, nil); err == nil {
+	if _, err := newCraftRuntimeExecutor(nil, nil, nil, nil, nil, nil, nil); err == nil {
 		t.Fatal("a base url without a work dir must refuse to assemble")
 	}
 }
