@@ -1265,3 +1265,10 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - R009 图标轨拖拽展开切片派发（Vue ListSpaceSidebar collapsed-strip ↔ expanded-panel 双态语义；独占 App.tsx rail 部分 + knowledge-list.css）。
 - live 栈确认仍在运行（backend :8080 / Vue :5180 / React :5181）。
 - 并发协调者 R043（MCP server docs popup）WIP 在树，本方避开其文件。
+
+## 2026-09-14 Round N+7 协调条目 — 门禁快照与在途监理
+
+- 门禁快照（含 peer 的 MCP popup 新测试 7692d777 与其在途 WIP）：shared 420/420、web 674/674、mobile 146/146、embed 7/7、desktop 2/2 全绿。
+- 在途（2）：A4 Excel 导入（vendored xlsx 方案）、R009 图标轨拖拽展开——两者测试域尚未见落盘，监理中。
+- kb-list-anatomy 全量套件超时问题在最新快照中未复现（674/674），继续观察。
+
