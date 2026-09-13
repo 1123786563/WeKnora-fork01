@@ -19,4 +19,4 @@ The Vue data-source editor loads selectable resources lazily, shows a root list,
 
 ## Selection payload
 
-Resource rows now include checkboxes backed by `resourceIds`; `buildDataSourceInput` serializes those ids under `config.resource_ids`, and edit hydration restores them from the saved config. The current implementation does not yet reproduce Vue's minimal-cover and indeterminate descendant rules.
+Resource rows now include checkboxes backed by `resourceIds`; `buildDataSourceInput` serializes those ids under `config.resource_ids`, and edit hydration restores them from the saved config. `resource-selection.ts` derives checked/indeterminate states and applies the Vue parent-cover toggle rules for loaded trees. Lazy ancestor reveal for selections outside the currently loaded tree remains open.

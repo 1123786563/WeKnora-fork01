@@ -141,6 +141,11 @@
 - React resource rows now expose checkboxes and persist selected `resource_ids` through `DataSourceFormValues` and the connector config payload for create/update flows.
 - Data-source form tests: 2/2 passed. Web typecheck and diff checks: passed. Vue minimal-cover/indeterminate subtree semantics and runtime evidence remain open.
 
+## 2026-09-14 Round N+16 — N013 resource tree selection semantics
+
+- Added tested resource-selection helpers matching the Vue cover-set model: parent selection covers loaded descendants, child selection exposes an indeterminate parent, and unchecking a child under a selected parent preserves sibling coverage.
+- Data-source form/selection tests: 4/4 passed. Web typecheck: passed. Lazy ancestor reveal, localized copy, and runtime evidence remain open.
+
 ## 2026-09-14 Round N+13 — N013 sync-log pagination
 
 - React now uses the existing log API `limit/offset` contract to page through synchronization history, resetting to the first page when a source is opened and disabling Previous/Next at the appropriate boundaries.
