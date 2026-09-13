@@ -17,3 +17,10 @@ the extra mobile-only role/knowledge-base diagnostic line was removed.
 This is static/native-source and mobile unit evidence only. No iOS or Android
 device launch was performed in this environment, and no authenticated Vue
 same-account comparison is claimed.
+
+## Follow-up graph surface
+
+The native Wiki graph surface now uses shared Vue-derived labels for the graph
+title, search, filters, loading, retry, empty-filter, refresh, and neighbor
+expansion controls. Unknown server page types remain visible using their
+server value rather than being dropped.
