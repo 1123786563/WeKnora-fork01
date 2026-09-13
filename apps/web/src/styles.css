@@ -59,6 +59,14 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-wiki-search { align-items: center; background: #f3f3f3; border: 1px solid #e7e7e7; border-radius: 6px; color: rgba(0,0,0,.4); display: flex; gap: .45rem; padding: .45rem .6rem; }
 .wk-wiki-search input { background: transparent; border: 0; color: #202020; font: inherit; min-width: 0; outline: 0; width: 100%; }
 .wk-wiki-page-list { display: flex; flex-direction: column; gap: 2px; max-height: 620px; overflow-y: auto; padding: 0 10px 12px 0; }
+.wk-wiki-directory-toolbar { align-items: center; display: flex; flex-wrap: wrap; gap: .35rem; padding: 0 0 8px; }
+.wk-wiki-folder-list { border-bottom: 1px solid #e7e7e7; margin: 0 0 8px; padding: 0 0 8px; }
+.wk-wiki-folder-list li { list-style: none; }
+.wk-wiki-index { display: grid; gap: .75rem; padding: 0 0 8px; }
+.wk-wiki-index section { display: grid; gap: .35rem; }
+.wk-wiki-index h3 { color: #202020; font-size: 13px; margin: 0; }
+.wk-wiki-index .wk-list { gap: 4px; }
+.wk-wiki-index .wk-list li { align-items: baseline; display: flex; gap: .5rem; justify-content: space-between; }
 .wk-wiki-page-item { background: transparent; border: 0; border-radius: 6px; cursor: pointer; display: grid; gap: 2px; min-height: 98px; padding: 8px 10px; text-align: left; transition: background .15s ease; }
 .wk-wiki-page-item:hover, .wk-wiki-page-item.is-active { background: #f3f3f3; }
 .wk-wiki-page-item.is-active .wk-wiki-page-item-title { color: #07c05f; }
