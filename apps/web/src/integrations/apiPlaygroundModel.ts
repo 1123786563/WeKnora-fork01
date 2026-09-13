@@ -1,4 +1,7 @@
 export const DEFAULT_DIRECT_HEADER_NAME = 'X-External-User-ID';
+
+/** Vue PlaygroundStatus (ApiIntegrationSettings.vue L902). */
+export type PlaygroundStepStatus = '' | 'running' | 'success' | 'failed' | 'stopped';
 export const DEFAULT_TOKEN_HEADER_NAME = 'X-External-User-Token';
 
 type PrincipalMode = 'tenant' | 'direct_header' | 'signed_token';
@@ -47,6 +50,8 @@ function responseError(value: unknown): string {
 }
 
 export function compactText(text: string, max = 12000): string { return text.length <= max ? text : text.slice(0, max) + '\n...'; }
+/** Vue formatJSON (ApiIntegrationSettings.vue L1606-1612). */
+export function formatJSON(value: unknown): string { try { return compactText(JSON.stringify(value, null, 2)); } catch { return String(value); } }
 export function formatResponseBody(text: string): string {
   if (!text) return '';
   try { return compactText(JSON.stringify(JSON.parse(text), null, 2)); } catch { return compactText(text); }
@@ -62,4 +67,4 @@ export function externalUserHintKey(mode: PrincipalMode): string { return mode =
 // Vue catch block (ApiIntegrationSettings.vue L1716-1726): on stop both running
 // steps land on 'stopped'; on a real failure a still-running step lands on
 // 'failed' — never 'success' (L1723 marks the session failed, not done).
-export function settlePlaygroundStatuses(input: { sessionStatus: string; chatStatus: string }, stopped: boolean) { return { sessionStatus: input.sessionStatus === 'running' ? (stopped ? 'stopped' : 'failed') : input.sessionStatus, chatStatus: input.chatStatus === 'running' ? (stopped ? 'stopped' : 'failed') : input.chatStatus }; }
+export function settlePlaygroundStatuses(input: { sessionStatus: string; chatStatus: string }, stopped: boolean): { sessionStatus: PlaygroundStepStatus; chatStatus: PlaygroundStepStatus } { return { sessionStatus: input.sessionStatus === 'running' ? (stopped ? 'stopped' : 'failed') : input.sessionStatus as PlaygroundStepStatus, chatStatus: input.chatStatus === 'running' ? (stopped ? 'stopped' : 'failed') : input.chatStatus as PlaygroundStepStatus }; }

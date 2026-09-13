@@ -192,7 +192,9 @@ test('stop during the SSE stream marks the steps stopped with the Vue message', 
   assert.ok(stop, 'stop button visible while running');
   void act(() => { stop!.click(); });
   await waitFor(() => (container.querySelector('.wk-api-playground-alert')?.textContent ?? '') === '测试已停止', 'stop never settled');
-  assert.equal(container.querySelector('[data-step="session"] .wk-api-playground-status')!.getAttribute('data-status'), 'stopped');
+  // Vue L1719-1720 only flips steps that are still 'running': the session step
+  // already settled as success before the chat stream started.
+  assert.equal(container.querySelector('[data-step="session"] .wk-api-playground-status')!.getAttribute('data-status'), 'success');
   assert.equal(container.querySelector('[data-step="chat"] .wk-api-playground-status')!.getAttribute('data-status'), 'stopped');
   await waitFor(() => !runButton(container)!.disabled, 'run re-enabled after stop');
 });
