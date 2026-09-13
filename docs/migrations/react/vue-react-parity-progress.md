@@ -1500,3 +1500,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - 前置核实：CocoaPods 1.17.0 可用、apps/mobile/ios 工程已生成（Podfile/Podfile.lock 就绪）、iPhone 17 Pro 模拟器可用——此前"iOS 原生证据不可行"判断不成立，仅 Android 维持 blocked-env（SDK/emulator 缺失）。
 - iOS 构建已后台启动：xcrun simctl boot iPhone 17 Pro + npx expo run:ios（CocoaPods 安装阶段开始）。
+
+## 2026-09-14 Round N+14 — N012 图谱状态与交互文案收口
+
+- React `KnowledgeGraphPage` 对照 Vue `WikiBrowser.vue` 收口一组可复核差异：图谱说明、搜索、加载、空数据、重试、返回概览、刷新、节点统计、熟悉资料标记、邻居展开、类型/深度筛选、SVG 可访问名称及抽屉内容均接入共享翻译；补齐图谱抽屉 `aria-modal` 与 Escape 关闭语义，并将未知图谱加载失败兜底纳入 locale supplement。
+- 验证：图谱纯逻辑测试 3/3；`pnpm test:web` 797/797；`pnpm --filter @weknora/web exec tsc -p tsconfig.json --noEmit --incremental false --pretty false` 通过；`git diff --check` 通过。
+- 证据层：本轮为静态源码/单元测试/全 Web 测试证据；尚未构成 Vue 与 React 同视口浏览器截图、真实后端图谱、Wails 桌面或移动端验收。N012 仍保留 Vue 图例/帮助浮层、熟悉资料视觉环、frontier/bloom 邻居语义、拖拽/缩放/平移、抽屉 computed-style 与真实后端验证等差异。

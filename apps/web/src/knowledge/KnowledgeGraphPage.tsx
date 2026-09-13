@@ -31,7 +31,7 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
       setCenter(nextCenter ?? '');
       setStatus({ kind: 'success' });
     } catch (error) {
-      setStatus({ kind: 'error', message: error instanceof Error ? error.message : 'Unable to load the knowledge graph' });
+      setStatus({ kind: 'error', message: error instanceof Error ? error.message : t('knowledgeBase.graph.loadFailed') });
     }
   }
 
@@ -65,6 +65,18 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, [client, knowledgeBaseId, query]);
 
+  useEffect(() => {
+    if (!drawerNode) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setDrawerNode(null);
+        setDrawerPage(null);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [drawerNode]);
+
   const visible = useMemo(() => graph ? filterGraphNodes(graph, { query }) : null, [graph, query]);
   const positions = useMemo(() => visible ? layoutGraphNodes(visible.nodes, 760, 420) : [], [visible]);
   const positionBySlug = useMemo(() => new Map(positions.map((position) => [position.slug, position])), [positions]);
@@ -76,33 +88,33 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
         <div>
           <p className="wk-eyebrow">Knowledge base · {knowledgeBaseId}</p>
           <h1>{t('knowledgeBase.graph.title')}</h1>
-          <p className="wk-muted">Server-backed Wiki links with bounded overview and neighbor expansion.</p>
+          <p className="wk-muted">{t('wikiBrowser.tabGraphTip')}</p>
         </div>
         <div className="wk-list-actions">
-          {mode === 'ego' ? <Button type="button" onClick={() => void load('overview')}>Back to overview</Button> : null}
-          <Button type="button" onClick={() => void load(mode, center || undefined)} disabled={status.kind === 'loading'}>Reload</Button>
+          {mode === 'ego' ? <Button type="button" onClick={() => void load('overview')}>{t('wikiBrowser.backToOverview')}</Button> : null}
+          <Button type="button" onClick={() => void load(mode, center || undefined)} disabled={status.kind === 'loading'}>{t('common.refresh')}</Button>
         </div>
       </header>
       <Card>
         <div className="wk-toolbar" role="search">
-          <label>Find node <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Title or slug" aria-autocomplete="list" aria-controls="wk-graph-search-results" />{searchLoading ? <Status>Searching…</Status> : null}{searchResults.length > 0 ? <ul id="wk-graph-search-results" className="wk-graph-search-results" aria-label="Wiki search results">{searchResults.map((result) => <li key={result.slug}><button type="button" onClick={() => { setQuery(result.slug); void openNode({ slug: result.slug, title: result.title, page_type: 'page', link_count: 0 }); void load('ego', result.slug); }}>{result.title}<span>{result.slug}</span></button></li>)}</ul> : null}</label>
-          <label>Type <select value={type} onChange={(event) => setType(event.target.value)}><option value="all">All types</option>{types.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
-          <label>Depth <select value={String(depth)} onChange={(event) => setDepth(Number(event.target.value))}><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></label>
+          <label>{t('wikiBrowser.page.search')} <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('wikiBrowser.searchPlaceholder')} aria-autocomplete="list" aria-controls="wk-graph-search-results" />{searchLoading ? <Status>{t('wikiBrowser.loading')}</Status> : null}{searchResults.length > 0 ? <ul id="wk-graph-search-results" className="wk-graph-search-results" aria-label={t('wikiBrowser.page.search')}>{searchResults.map((result) => <li key={result.slug}><button type="button" onClick={() => { setQuery(result.slug); void openNode({ slug: result.slug, title: result.title, page_type: 'page', link_count: 0 }); void load('ego', result.slug); }}>{result.title}<span>{result.slug}</span></button></li>)}</ul> : null}</label>
+          <label>{t('knowledgeBase.graph.type')} <select value={type} onChange={(event) => setType(event.target.value)}><option value="all">{t('knowledgeBase.graph.allTypes')}</option>{types.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
+          <label>{t('knowledgeBase.graph.depth')} <select value={String(depth)} onChange={(event) => setDepth(Number(event.target.value))}><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></label>
         </div>
-        {status.kind === 'loading' ? <Status>Loading knowledge graph…</Status> : null}
-        {status.kind === 'error' ? <><Status tone="error">{status.message}</Status><Button type="button" onClick={() => void load(mode, center || undefined)}>Try again</Button></> : null}
+        {status.kind === 'loading' ? <Status>{t('wikiBrowser.graphEmpty')}</Status> : null}
+        {status.kind === 'error' ? <><Status tone="error">{status.message}</Status><Button type="button" onClick={() => void load(mode, center || undefined)}>{t('wikiBrowser.retryLoadResources')}</Button></> : null}
         {status.kind === 'success' && visible ? <>
-          <p className="wk-muted">Showing {visible.nodes.length} of {graph?.meta.total ?? visible.nodes.length} nodes{graph?.meta.truncated ? ' · overview is bounded; expand a node for neighbors' : ''}.</p>
-          {visible.nodes.length === 0 ? <Status>No graph nodes match the current filter.</Status> : <>
-            <svg className="wk-knowledge-graph" viewBox="0 0 760 420" role="img" aria-label="Knowledge graph links">
+          <p className="wk-muted">{t('wikiBrowser.cardOverviewPrimary', { returned: visible.nodes.length, total: graph?.meta.total ?? visible.nodes.length })}</p>
+          {visible.nodes.length === 0 ? <Status>{t('wikiBrowser.graphNoData')}</Status> : <>
+            <svg className="wk-knowledge-graph" viewBox="0 0 760 420" role="img" aria-label={t('knowledgeBase.graph.ariaLinks')}>
               {visible.edges.map((edge) => { const source = positionBySlug.get(edge.source); const target = positionBySlug.get(edge.target); return source && target ? <line key={`${edge.source}-${edge.target}`} x1={source.x} y1={source.y} x2={target.x} y2={target.y} className="wk-knowledge-graph-edge" /> : null; })}
               {visible.nodes.map((node, index) => { const position = positions[index]!; return <g key={node.slug} className="wk-knowledge-graph-node" role="button" tabIndex={0} aria-label={`${node.title} · ${node.slug}`} onClick={() => { void openNode(node); void load('ego', node.slug); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { void openNode(node); void load('ego', node.slug); } }}><circle cx={position.x} cy={position.y} r={Math.min(24, 10 + Math.log2(node.link_count + 1) * 4)} /><text x={position.x} y={position.y + 40} textAnchor="middle">{node.title.length > 24 ? `${node.title.slice(0, 23)}…` : node.title}</text></g>; })}
             </svg>
-            <ul className="wk-list" aria-label="Knowledge graph nodes">{visible.nodes.map((node) => <li key={node.slug}><div className="wk-list-item-copy"><strong>{node.title}</strong><span>{node.slug} · {node.page_type} · {node.link_count} links{node.familiar ? ' · familiar' : ''}</span></div><Button type="button" onClick={() => { void openNode(node); void load('ego', node.slug); }}>Expand neighbors</Button></li>)}</ul>
+            <ul className="wk-list" aria-label={t('wikiBrowser.tabGraph')}>{visible.nodes.map((node) => <li key={node.slug}><div className="wk-list-item-copy"><strong>{node.title}</strong><span>{node.slug} · {node.page_type} · {node.link_count} {t('knowledgeBase.graph.links')}{node.familiar ? ` · ${t('wikiBrowser.legendFamiliar')}` : ''}</span></div><Button type="button" onClick={() => { void openNode(node); void load('ego', node.slug); }}>{t('wikiBrowser.expandNeighbors')}</Button></li>)}</ul>
           </>}
         </> : null}
       </Card>
-      {drawerNode ? <aside className="wk-graph-drawer" aria-label={drawerNode.title} role="dialog"><div className="wk-header"><div><h2>{drawerNode.title}</h2><p className="wk-muted">{drawerNode.page_type} · {drawerNode.link_count} links</p></div><Button type="button" onClick={() => { setDrawerNode(null); setDrawerPage(null); }}>Close</Button></div>{drawerStatus === 'loading' ? <Status>Loading page…</Status> : null}{drawerStatus === 'error' ? <Status tone="error">Unable to load this Wiki page.</Status> : null}{drawerPage ? <><p className="wk-muted">{drawerPage.summary || '—'} · v{drawerPage.version}</p><pre className="wk-graph-drawer-content">{drawerPage.content}</pre><Button type="button" onClick={() => void load('ego', drawerNode.slug)}>Expand neighbors</Button></> : null}</aside> : null}
+      {drawerNode ? <aside className="wk-graph-drawer" aria-label={drawerNode.title} role="dialog" aria-modal="true"><div className="wk-header"><div><h2>{drawerNode.title}</h2><p className="wk-muted">{drawerNode.page_type} · {drawerNode.link_count} {t('knowledgeBase.graph.links')}</p></div><Button type="button" onClick={() => { setDrawerNode(null); setDrawerPage(null); }}>{t('common.close')}</Button></div>{drawerStatus === 'loading' ? <Status>{t('wikiBrowser.loading')}</Status> : null}{drawerStatus === 'error' ? <Status tone="error">{t('wikiBrowser.revisionLoadFailed')}</Status> : null}{drawerPage ? <><p className="wk-muted">{drawerPage.summary || '—'} · {t('wikiBrowser.version', { ver: drawerPage.version })}</p><pre className="wk-graph-drawer-content">{drawerPage.content}</pre><Button type="button" onClick={() => void load('ego', drawerNode.slug)}>{t('wikiBrowser.expandNeighbors')}</Button></> : null}</aside> : null}
     </main>
   );
 }

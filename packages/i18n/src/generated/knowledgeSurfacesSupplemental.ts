@@ -91,6 +91,12 @@ const enUS: Record<string, string> = {
   'wikiBrowser.page.next': 'Next',
   'knowledgeBase.graph.title': 'Knowledge graph',
   'knowledgeBase.graph.subtitle': 'Entity and relation graph for this knowledge base.',
+  'knowledgeBase.graph.type': 'Type',
+  'knowledgeBase.graph.depth': 'Depth',
+  'knowledgeBase.graph.allTypes': 'All types',
+  'knowledgeBase.graph.links': 'links',
+  'knowledgeBase.graph.ariaLinks': 'Knowledge graph links',
+  'knowledgeBase.graph.loadFailed': 'Unable to load the knowledge graph',
   'knowledgeBase.settings.title': 'Knowledge base settings',
 };
 
@@ -181,6 +187,12 @@ const zhCN: Record<string, string> = {
   'wikiBrowser.page.next': '下一页',
   'knowledgeBase.graph.title': '知识图谱',
   'knowledgeBase.graph.subtitle': '当前知识库的实体与关系图谱。',
+  'knowledgeBase.graph.type': '类型',
+  'knowledgeBase.graph.depth': '深度',
+  'knowledgeBase.graph.allTypes': '全部类型',
+  'knowledgeBase.graph.links': '链接',
+  'knowledgeBase.graph.ariaLinks': '知识图谱连接',
+  'knowledgeBase.graph.loadFailed': '无法加载知识图谱',
   'knowledgeBase.settings.title': '知识库设置',
 };
 
