@@ -1,0 +1,129 @@
+{
+  "base": "http://127.0.0.1:60908",
+  "results": [
+    {
+      "step": "01-login-page",
+      "url": "http://127.0.0.1:60908/login?next=%2F",
+      "ok": true,
+      "markers": {
+        "emailField": true,
+        "loginButton": true,
+        "createAccount": true,
+        "multimodal": true,
+        "hybridRetrieval": true
+      },
+      "extra": null
+    },
+    {
+      "step": "02-login-submit",
+      "url": "http://127.0.0.1:60908/login?next=%2F",
+      "ok": false,
+      "markers": {
+        "error": true
+      },
+      "extra": {
+        "error": "page.waitForURL: Timeout 30000ms exceeded.\n=========================== logs ===========================\nwaiting for navigation to \"**/platform/knowledge-bases\" until \"load\"\n============================================================",
+        "body": "官方网站 | GitHub | 🇨🇳 | 中文 |  | 大模型驱动的企业级知识框架 |  | RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 |  | RAG 增强生成 | ReAct 智能体 | Wiki 知识库 | 混合检索 | 登录 |  | RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 |  | 登录以继续使用；首次使用请在下方创建账户。 |  | *邮箱 | *密码 | Invalid email or password | 登录 | 首次使用 WeKnora？ | 创建账户 | ✓ | 多模态文档解析 | ✓ | 混合检索 + 知识图谱 | ✓ | ReAct 智能体问答"
+      }
+    },
+    {
+      "step": "02-kb-list",
+      "url": "http://127.0.0.1:60908/login?next=%2F",
+      "ok": false,
+      "markers": {
+        "shellRendered": false,
+        "h1KnowledgeBases": true,
+        "navNewChat": false,
+        "navAgents": true,
+        "navOrganizations": false,
+        "sessionGroupsTodayYesterday": false,
+        "parityKBDemoCard": false,
+        "scopeFilters": false,
+        "userEmail": false
+      },
+      "extra": {
+        "sessionGroupHeaders": [],
+        "kbCards": []
+      }
+    },
+    {
+      "step": "03-kb-documents",
+      "url": "http://127.0.0.1:60908/login?next=%2F",
+      "ok": false,
+      "markers": {
+        "error": true
+      },
+      "extra": {
+        "error": "locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator('article.wk-kb-card').filter({ hasText: 'Parity KB Demo' }).locator('.wk-kb-card-title').first()\n",
+        "body": "官方网站 | GitHub | 🇨🇳 | 中文 |  | 大模型驱动的企业级知识框架 |  | RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 |  | RAG 增强生成 | ReAct 智能体 | Wiki 知识库 | 混合检索 | 登录 |  | RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 |  | 登录以继续使用；首次使用请在下方创建账户。 |  | *邮箱 | *密码 | Invalid email or password | 登录 | 首次使用 WeKnora？ | 创建账户 | ✓ | 多模态文档解析 | ✓ | 混合检索 + 知识图谱 | ✓ | ReAct 智能体问答"
+      }
+    },
+    {
+      "step": "04-agents",
+      "url": "http://127.0.0.1:60908/login?next=%2F",
+      "ok": false,
+      "markers": {
+        "error": true
+      },
+      "extra": {
+        "error": "locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator('a.plat-shell__item[data-guide=\"nav-agents\"]')\n",
+        "body": "官方网站 | GitHub | 🇨🇳 | 中文 |  | 大模型驱动的企业级知识框架 |  | RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 |  | RAG 增强生成 | ReAct 智能体 | Wiki 知识库 | 混合检索 | 登录 |  | RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 |  | 登录以继续使用；首次使用请在下方创建账户。 |  | *邮箱 | *密码 | Invalid email or password | 登录 | 首次使用 WeKnora？ | 创建账户 | ✓ | 多模态文档解析 | ✓ | 混合检索 + 知识图谱 | ✓ | ReAct 智能体问答"
+      }
+    },
+    {
+      "step": "05-organizations",
+      "url": "http://127.0.0.1:60908/login?next=%2F",
+      "ok": false,
+      "markers": {
+        "error": true
+      },
+      "extra": {
+        "error": "locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator('a.plat-shell__item:has-text(\"共享空间\")').first()\n",
+        "body": "官方网站 | GitHub | 🇨🇳 | 中文 |  | 大模型驱动的企业级知识框架 |  | RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 |  | RAG 增强生成 | ReAct 智能体 | Wiki 知识库 | 混合检索 | 登录 |  | RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 |  | 登录以继续使用；首次使用请在下方创建账户。 |  | *邮箱 | *密码 | Invalid email or password | 登录 | 首次使用 WeKnora？ | 创建账户 | ✓ | 多模态文档解析 | ✓ | 混合检索 + 知识图谱 | ✓ | ReAct 智能体问答"
+      }
+    },
+    {
+      "step": "06-settings-models",
+      "url": "http://127.0.0.1:60908/login?next=%2F",
+      "ok": false,
+      "markers": {
+        "error": true
+      },
+      "extra": {
+        "error": "locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator('.plat-shell__user-button')\n",
+        "body": "官方网站 | GitHub | 🇨🇳 | 中文 |  | 大模型驱动的企业级知识框架 |  | RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 |  | RAG 增强生成 | ReAct 智能体 | Wiki 知识库 | 混合检索 | 登录 |  | RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 |  | 登录以继续使用；首次使用请在下方创建账户。 |  | *邮箱 | *密码 | Invalid email or password | 登录 | 首次使用 WeKnora？ | 创建账户 | ✓ | 多模态文档解析 | ✓ | 混合检索 + 知识图谱 | ✓ | ReAct 智能体问答"
+      }
+    },
+    {
+      "step": "07-chat-new",
+      "url": "http://127.0.0.1:60908/login?next=%2F",
+      "ok": false,
+      "markers": {
+        "error": true
+      },
+      "extra": {
+        "error": "locator.click: Timeout 30000ms exceeded.\nCall log:\n  - waiting for locator('a.plat-shell__item[data-guide=\"nav-creatChat\"]')\n",
+        "body": "官方网站 | GitHub | 🇨🇳 | 中文 |  | 大模型驱动的企业级知识框架 |  | RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 |  | RAG 增强生成 | ReAct 智能体 | Wiki 知识库 | 混合检索 | 登录 |  | RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 |  | 登录以继续使用；首次使用请在下方创建账户。 |  | *邮箱 | *密码 | Invalid email or password | 登录 | 首次使用 WeKnora？ | 创建账户 | ✓ | 多模态文档解析 | ✓ | 混合检索 + 知识图谱 | ✓ | ReAct 智能体问答"
+      }
+    },
+    {
+      "step": "08-chat-session",
+      "url": "http://127.0.0.1:60908/login?next=%2F",
+      "ok": false,
+      "markers": {
+        "error": true
+      },
+      "extra": {
+        "error": "locator.waitFor: Timeout 15000ms exceeded.\nCall log:\n  - waiting for locator('.plat-shell__sessions .wk-chat-session-title').first() to be visible\n",
+        "body": "官方网站 | GitHub | 🇨🇳 | 中文 |  | 大模型驱动的企业级知识框架 |  | RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 |  | RAG 增强生成 | ReAct 智能体 | Wiki 知识库 | 混合检索 | 登录 |  | RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 |  | 登录以继续使用；首次使用请在下方创建账户。 |  | *邮箱 | *密码 | Invalid email or password | 登录 | 首次使用 WeKnora？ | 创建账户 | ✓ | 多模态文档解析 | ✓ | 混合检索 + 知识图谱 | ✓ | ReAct 智能体问答"
+      }
+    }
+  ],
+  "pageErrors": [],
+  "badResponses": [
+    {
+      "url": "http://127.0.0.1:60908/api/v1/auth/login",
+      "status": 401
+    }
+  ]
+}
