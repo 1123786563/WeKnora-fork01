@@ -793,7 +793,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                           />
                           <button type="button" className="add-item-btn" aria-label={t('knowledgeEditor.faq.answers')} disabled={!form.answerDraft.trim() || form.answers.length >= FAQ_ANSWER_CAP} onClick={addAnswer}><AddIcon size={14} /></button>
                         </div>
-                        <div className="item-count">{form.answers.length + (form.answerDraft.trim() ? 1 : 0)}/{FAQ_ANSWER_CAP}</div>
+                        <div className="item-count">{form.answers.length}/{FAQ_ANSWER_CAP}</div>
                       </div>
                       {form.answers.length > 0 ? (
                         <div className="item-list">
