@@ -44,6 +44,7 @@ function makeClient(options: {
   runtimeTasks?: TenantRecord[];
   systemSettings?: TenantRecord[];
   apiKeys?: TenantRecord[];
+  audit?: TenantRecord[];
 } = {}) {
   const tenantGet = options.tenant instanceof Promise
     ? () => options.tenant as Promise<never>
@@ -80,6 +81,7 @@ function makeClient(options: {
         create: async (input: Record<string, unknown>) => ({ id: 1, name: input.name, api_key: 'wk-test', token: 'wk-secret', capabilities: input.capabilities, full_access: false, knowledge_base_ids: null, created_at: '2026-01-01T00:00:00Z' }),
         revoke: async () => undefined,
       },
+      auditLog: { list: async () => ({ items: options.audit ?? [], nextCursor: 0 }) },
     },
   } as unknown as WeKnoraClient;
 }
@@ -231,6 +233,17 @@ test('platform API keys section renders the Vue table and one-time token surface
   await act(async () => createButton?.click());
   await act(async () => {});
   assert.ok(container.querySelector('[role="alert"]'), 'creation renders the one-time token surface');
+});
+
+test('system audit section renders Vue rows and opens a keyboard-accessible detail drawer', async () => {
+  const container = await mountPage(makeClient({ audit: [{ id: 9, created_at: '2026-09-14T10:00:00Z', actor_user_id: 'u-1', actor_role: 'system_admin', action: 'system.setting_changed', target_id: 'auth.registration_mode', outcome: 'success', request_path: '/api/v1/system/admin/settings/auth.registration_mode' }] }), '?section=system-audit-log', 'system-admin');
+  assert.ok(container.textContent?.includes('审计日志'), 'the Vue audit heading renders');
+  const row = container.querySelector<HTMLTableRowElement>('.wk-audit-table tbody tr');
+  assert.ok(row, 'the audit row renders');
+  await act(async () => row?.focus());
+  await act(async () => row?.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
+  assert.ok(container.querySelector('[role="dialog"]'), 'Enter opens the audit detail drawer');
+  assert.ok(container.textContent?.includes('system.setting_changed'), 'the audit detail renders the full record');
 });
 
 // B4d: section=subsection deep link reaches the model panel type tabs.

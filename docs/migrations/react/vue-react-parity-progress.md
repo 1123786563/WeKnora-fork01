@@ -1638,3 +1638,10 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 列表保留密钥指纹、权限摘要、最近使用、创建时间和空态；创建要求名称与至少一个 system capability，失败通过状态提示保留当前列表。
 - 验证：SettingsPage 定向测试 13/13；完整 `pnpm test:web` 810/810；Web TypeScript 检查通过；`git diff --check` 通过。
 - 证据层：本轮为 Vue 源码对照、React DOM/单元与全 Web 回归；真实 system-admin 创建/撤销、token 复制、确认交互、同条件截图/computed-style、Wails 与移动端证据仍待补齐，N017 继续保持 review。
+
+## 2026-09-14 Round N+34 — N017 系统审计日志页面
+
+- React `system-audit-log` 入口移除通用占位，新增 Vue `SystemAuditLog.vue` 对应的只读审计表格、系统操作者/操作/目标/结果字段、空态和详情抽屉；表格行支持鼠标点击及 Enter/Space 键盘打开详情。
+- 详情抽屉保留服务端返回记录的完整字段，未引入本地编辑或虚构操作能力；当前 `administration.auditLog.list` 读取契约不变。
+- 验证：SettingsPage 定向测试 14/14；完整 `pnpm test:web` 二次复跑 811/811；Web TypeScript 检查通过；`git diff --check` 通过。
+- 证据层：本轮为 Vue 源码对照、React DOM/键盘交互、单元和全 Web 回归；真实 system-admin 审计游标分页、同条件截图/computed-style、Wails 与移动端证据仍待补齐，N017 继续保持 review。
