@@ -748,6 +748,12 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   and typecheck both pass (90/90); native simulator/device and real-backend
   evidence remain open, so onboarding is still `review`.
 
+- **Mobile test dependency repair:** replaced the temporary ambient jsdom
+  declaration with a direct `@types/jsdom` dev dependency in the mobile
+  package and lockfile. Mobile test remains 90/90 and typecheck passes; this
+  removes the package-boundary masking identified by review. Device and real
+  backend evidence remain outstanding.
+
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
 - **Rows:** any rows proposed for `accepted`; never all rows by default.
 - **Files owned:** `docs/migrations/react/vue-react-parity-matrix.md`, `docs/migrations/react/vue-react-parity-progress.md`, `docs/migrations/react/evidence/vue-react-parity/README.md`, `docs/migrations/react/evidence/vue-react-parity/screenshot-matrix.md`, and the row-specific `docs/migrations/react/evidence/vue-react-parity/<date>-<row-group>.md` evidence file only.
