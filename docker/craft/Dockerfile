@@ -92,6 +92,25 @@ RUN install -d -o root -g root -m 0755 /workspace \
  && chown -R craft:craft /home/craft \
  && chmod 0755 /home/craft
 
+# ---------- D02: spreadsheet toolchain (openpyxl + LibreOffice headless) ----
+# The craft-spreadsheet skill creates and parses workbooks with openpyxl and
+# recalculates them with LibreOffice headless: a written formula without a
+# recalculated cached value never ships (SheetReady requires Recalculated).
+# libreoffice-calc-nogui is the GUI-free Calc; fonts-noto-cjk (SIL OFL 1.1)
+# covers CJK cell text. The resolved package versions of this set are
+# recorded in docker/craft/spreadsheet-requirements.lock; apt's repository
+# signature verification pins the debs at install time, and the build fails
+# loudly if openpyxl or soffice do not run.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      python3 \
+      python3-openpyxl \
+      libreoffice-calc-nogui \
+      fonts-noto-cjk \
+ && rm -rf /var/lib/apt/lists/* \
+ && python3 -c 'import openpyxl,sys;print("openpyxl",openpyxl.__version__,"on",sys.version.split()[0])' \
+ && soffice --version
+
 COPY --from=opencode-fetch /usr/local/bin/opencode /usr/local/bin/opencode
 COPY runtime-config.json /etc/craft/runtime-config.json
 # COPY keeps the source file mode; force the world-readable mode so the
