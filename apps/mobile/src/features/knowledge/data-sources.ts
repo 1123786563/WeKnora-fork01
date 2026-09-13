@@ -1,12 +1,23 @@
-import type { DataSource } from '@weknora/api-client';
-
-import type { DataSourceResource } from '@weknora/api-client';
+import type { DataSource, DataSourceResource } from '@weknora/api-client';
 
 export type DataSourceWorkspaceRole = 'owner' | 'admin' | 'contributor' | 'viewer' | string | undefined;
 
 /** Data-source mutations are restricted to the same workspace roles as the API. */
 export function canManageDataSources(role: DataSourceWorkspaceRole): boolean {
   return role === 'owner' || role === 'admin';
+}
+
+/** Accepts a bare Drive folder token or a Feishu/Lark Drive folder URL. */
+export function extractDriveFolderToken(input: string): string {
+  const raw = input.trim();
+  if (!raw) return '';
+  if (!raw.includes('://') && !raw.includes('/')) return raw;
+  const match = raw.match(/\/drive\/folder\/([^/?#]+)/);
+  if (match?.[1]) return match[1];
+  try {
+    const pathname = new URL(raw).pathname.split('/').filter(Boolean);
+    return pathname.at(-1) ?? raw;
+  } catch { return raw; }
 }
 
 export type ResourceCheckState = 'checked' | 'indeterminate' | 'unchecked';

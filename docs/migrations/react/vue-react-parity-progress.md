@@ -822,9 +822,17 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   expose expand/collapse controls and request children lazily through the
   existing `resources(id, parentId)` API, while keeping selection rows
   independently actionable. Focused tests pass 8/8; the full mobile suite
-  passes 93/93 and typecheck passes. Parent/descendant cover-set semantics,
+  passes 94/94 and typecheck passes. Parent/descendant cover-set semantics,
   Drive root-token setup, new-source temporary browsing, and native/backend
   evidence remain open.
+
+- **Mobile Drive resource root:** the native editor now recognizes bare
+  Feishu/Lark folder tokens and `/drive/folder/<token>` URLs, normalizes the
+  value, persists it as the selected root resource for an existing source, and
+  loads the root resources through the existing API. Focused screen/policy
+  tests pass 10/10; full mobile tests pass 94/94 and typecheck passes. New
+  source temporary setup, connector-specific credentials, localized copy,
+  backend error classification, and native-device evidence remain open.
 
 - **Depends on:** S00 and all row-owning slices for rows being accepted.
 - **Rows:** any rows proposed for `accepted`; never all rows by default.

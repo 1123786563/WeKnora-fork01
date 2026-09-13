@@ -19,8 +19,8 @@ async function mount(role: string) {
     tenantId: '1',
     workspaces: [{ id: 1, role }],
     client: { dataSources: {
-      list: async () => [{ id: 'source-1', name: 'Docs', type: 'notion', status: 'active', sync_mode: 'incremental', config: {} }],
-      types: async () => [],
+      list: async () => [{ id: 'source-1', name: 'Docs', type: 'feishu_drive', status: 'active', sync_mode: 'incremental', config: { resource_ids: ['root-token'] } }],
+      types: async () => [{ type: 'feishu_drive', name: 'Feishu Drive', description: 'Drive', priority: 1, auth_type: 'oauth', capabilities: ['resources'] }],
       validateCredentials: async () => ({ success: true }),
       create: async () => ({}), update: async () => ({}), putCredentials: async () => ({}),
       sync: async () => ({ success: true }), pause: async () => ({ success: true }), resume: async () => ({ success: true }),
@@ -92,5 +92,19 @@ test('expanding a resource requests and renders its child resources', async () =
     await act(async () => expand?.click());
     await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
     assert.match(page.host.textContent ?? '', /Child page/);
+  } finally { await page.close(); }
+});
+
+test('drive editor exposes the root token and loads resources through the existing source', async () => {
+  const page = await mount('admin');
+  try {
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Edit')?.click());
+    const rootInput = page.host.querySelector('input[placeholder="Drive folder token or folder URL"]');
+    assert.ok(rootInput);
+    const load = [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Load Drive resources');
+    assert.ok(load);
+    await act(async () => load?.click());
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+    assert.match(page.host.textContent ?? '', /Project docs/);
   } finally { await page.close(); }
 });

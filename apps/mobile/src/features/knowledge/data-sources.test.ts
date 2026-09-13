@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { DataSourceResource } from '@weknora/api-client';
-import { canManageDataSources, dataSourceStatusLabel, resourceCheckState, safeDataSourceType, toggleDataSourceResourceSelection } from './data-sources.ts';
+import { canManageDataSources, dataSourceStatusLabel, extractDriveFolderToken, resourceCheckState, safeDataSourceType, toggleDataSourceResourceSelection } from './data-sources.ts';
 
 test('mobile data source inventory exposes safe status and type labels', () => {
   assert.equal(dataSourceStatusLabel({ status: 'active' }), 'active');
@@ -29,4 +29,11 @@ test('resource selection keeps a minimal cover and supports descendant uncheck',
   assert.equal(resourceCheckState(resourceTree, ['root'], 'child'), 'checked');
   assert.deepEqual(toggleDataSourceResourceSelection(resourceTree, ['root'], 'child'), ['sibling']);
   assert.equal(resourceCheckState(resourceTree, ['sibling'], 'child'), 'unchecked');
+});
+
+test('drive folder input accepts a bare token and Feishu/Lark folder URLs', () => {
+  assert.equal(extractDriveFolderToken('  fldcn123  '), 'fldcn123');
+  assert.equal(extractDriveFolderToken('https://example.feishu.cn/drive/folder/fldcn123?x=1'), 'fldcn123');
+  assert.equal(extractDriveFolderToken('https://example.larksuite.com/drive/folder/fldus456'), 'fldus456');
+  assert.equal(extractDriveFolderToken(''), '');
 });
