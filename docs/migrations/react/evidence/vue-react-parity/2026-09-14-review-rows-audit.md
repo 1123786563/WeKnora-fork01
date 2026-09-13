@@ -99,3 +99,9 @@ STALE ≠ 证据错误，仅表示源在证据之后演进；**下一批提升�
 - N013 复验登记：apps/web/src/data-sources 在途改动落定后复验其行。
 - shared 计数口径确认：436→437→440 随并发测试递增，均为各时点正确值。
 
+
+## F1-F4 处置记录（en-US 切片移交项，2026-09-14）
+- **F1/F2（chat-copy.ts 11 个 zh-only 键）**：核验 Vue 源——这些键在 Vue en-US locale 中同样缺失（grep en-US.ts 无 uploadAttachment/groupByDate/artifactsPending）→ **Vue 自身 zh-only 限制，React 忠实复现即为正确 parity**；修复需先改 Vue（超出 React 迁移范围）。登记为已知 Vue 侧限制，非 React 缺口。
+- **F3（悬空引用）**：chat-copy.ts 注释引用的 2026-09-13-chat-i18n.md 不存在——cosmetic，登记待补建。
+- **F4（document.title 不一致）**：已修复 870f67e9——apps/web/index.html title 从 "WeKnora React migration" 改为 "WeKnora"（对齐 Vue index.html:4）。
+
