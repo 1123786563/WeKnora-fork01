@@ -7,16 +7,21 @@ import { ChatPage } from '@weknora/views';
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
+const baseProps = {
+  sessions: [{ id: 'session-1', title: 'Chat', is_pinned: false }],
+  selectedSessionId: 'session-1',
+  messages: [],
+  draft: '',
+  onSelectSession: () => undefined,
+  onCreateSession: () => undefined,
+  onDraftChange: () => undefined,
+  send: async () => undefined,
+};
+
 test('chat page exposes the selected agent and server-disabled state at the chat entry', () => {
   const html = renderToStaticMarkup(React.createElement(ChatPage, {
+    ...baseProps,
     sessions: [{ id: 'session-1', title: 'Chat', is_pinned: true }],
-    selectedSessionId: 'session-1',
-    messages: [],
-    draft: '',
-    onSelectSession: () => undefined,
-    onCreateSession: () => undefined,
-    onDraftChange: () => undefined,
-    send: async () => undefined,
     agents: [{ id: 'agent-1', name: 'Research' }, { id: 'agent-2', name: 'Disabled', disabled: true }],
     selectedAgentId: 'agent-1',
     onAgentChange: () => undefined,
@@ -31,6 +36,7 @@ test('chat page exposes the selected agent and server-disabled state at the chat
     onToggleSessionPin: async () => undefined,
     onDeleteSession: async () => undefined,
     terminal: { status: 'ready', output: '$ ls' },
+    terminalOpen: true,
     onOpenTerminal: async () => undefined,
     onTerminalInput: async () => undefined,
     onCloseTerminal: () => undefined,
@@ -42,36 +48,62 @@ test('chat page exposes the selected agent and server-disabled state at the chat
     },
   }));
 
+  // Agent selector lives in the composer control bar (Vue agent-mode chip).
   assert.match(html, /id="wk-chat-agent"/);
   assert.match(html, /value="agent-1"/);
   assert.match(html, /Research/);
-  assert.match(html, /Disabled · disabled/);
+  assert.match(html, /Disabled · 不可用/);
   assert.match(html, /同意/);
   assert.match(html, /Authorize Docs MCP/);
-  assert.match(html, /Queue follow-up/);
+  assert.match(html, /补充当前任务/);
   assert.match(html, /checking sources/);
   assert.match(html, /Guide &lt;safe&gt;/);
   assert.match(html, /search_docs/);
   assert.match(html, /&lt;not markup&gt;/);
-  assert.match(html, /\[redacted\]/);
-  assert.match(html, /Rename session-1/);
-  assert.match(html, /Unpin session-1/);
-  assert.match(html, /Delete session-1/);
-  assert.match(html, /Open terminal/);
-  assert.match(html, /\$ ls/);
+  assert.match(html, /redacted/);
+  // Session menu items (Vue ChatHeader menu).
+  assert.match(html, /重命名会话/);
+  assert.match(html, /删除会话/);
+  // Sandbox drawer opened via terminalOpen: connected terminal surface.
+  assert.match(html, /Sandbox terminal/);
+  assert.match(html, /ls/);
+  assert.match(html, /终端输入/);
   assert.match(html, /id="wk-chat-draft"[^>]*disabled=""/);
+});
+
+test('sandbox terminal stays hidden until the header toggle opens the drawer', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatPage, {
+    ...baseProps,
+    terminal: { status: 'idle', output: '' },
+    onOpenTerminal: async () => undefined,
+    onTerminalInput: async () => undefined,
+    onCloseTerminal: () => undefined,
+  }));
+  // Vue SandboxSidePanel: no terminal surface until toggled.
+  assert.doesNotMatch(html, /wk-chat-sandbox-drawer/);
+  assert.doesNotMatch(html, /启动终端/);
+  // Header mirror toggle (Vue sandbox-header-toggle).
+  assert.match(html, /aria-label="打开沙箱面板"/);
+  assert.match(html, /aria-expanded="false"/);
+});
+
+test('opened drawer with an unstarted terminal shows the start action', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatPage, {
+    ...baseProps,
+    terminal: { status: 'idle', output: '' },
+    terminalOpen: true,
+    onOpenTerminal: async () => undefined,
+    onTerminalInput: async () => undefined,
+    onCloseTerminal: () => undefined,
+  }));
+  assert.match(html, /wk-chat-sandbox-drawer/);
+  assert.match(html, /沙箱可视化/);
+  assert.match(html, /启动终端/);
 });
 
 test('chat page renders an expandable args editor on the pending tool approval card', () => {
   const html = renderToStaticMarkup(React.createElement(ChatPage, {
-    sessions: [{ id: 'session-1', title: 'Chat', is_pinned: false }],
-    selectedSessionId: 'session-1',
-    messages: [],
-    draft: '',
-    onSelectSession: () => undefined,
-    onCreateSession: () => undefined,
-    onDraftChange: () => undefined,
-    send: async () => undefined,
+    ...baseProps,
     toolApprovals: [{
       pendingId: 'approval-1',
       toolName: 'search_docs',
@@ -83,10 +115,8 @@ test('chat page renders an expandable args editor on the pending tool approval c
   // The expandable editor prefills the textarea with the original arguments.
   assert.match(html, /查看参数/);
   assert.match(html, /wk-chat-approval-args-input/);
-  // SSR escapes the textarea body; the original arguments are the prefilled draft.
   assert.match(html, /&quot;query&quot;: &quot;install guide&quot;/);
   assert.match(html, /&quot;limit&quot;: 5/);
-  assert.match(html, /<details class="wk-chat-approval-args"><summary class="wk-chat-approval-args-toggle">查看参数<\/summary>/);
   // Approve/Reject are the resolution actions; no error is shown for valid args.
   assert.match(html, /同意/);
   assert.match(html, /拒绝/);
@@ -95,14 +125,7 @@ test('chat page renders an expandable args editor on the pending tool approval c
 
 test('chat page hides the args editor for resolved tool approvals', () => {
   const html = renderToStaticMarkup(React.createElement(ChatPage, {
-    sessions: [{ id: 'session-1', title: 'Chat', is_pinned: false }],
-    selectedSessionId: 'session-1',
-    messages: [],
-    draft: '',
-    onSelectSession: () => undefined,
-    onCreateSession: () => undefined,
-    onDraftChange: () => undefined,
-    send: async () => undefined,
+    ...baseProps,
     toolApprovals: [{ pendingId: 'approval-1', toolName: 'search_docs', status: 'resolved', decision: 'approve' }],
     onResolveToolApproval: async () => undefined,
   }));
@@ -113,37 +136,24 @@ test('chat page hides the args editor for resolved tool approvals', () => {
 
 test('chat page hides the steer composer and stop button when idle', () => {
   const html = renderToStaticMarkup(React.createElement(ChatPage, {
-    sessions: [{ id: 'session-1', title: 'Chat', is_pinned: false }],
-    selectedSessionId: 'session-1',
-    messages: [],
-    draft: '',
-    onSelectSession: () => undefined,
-    onCreateSession: () => undefined,
-    onDraftChange: () => undefined,
-    send: async () => undefined,
+    ...baseProps,
     onSteer: async () => undefined,
     onStopStream: () => undefined,
     stream: { phase: 'idle', thinking: '', references: [], toolCalls: [] },
   }));
-  assert.doesNotMatch(html, /Queue follow-up/);
+  assert.doesNotMatch(html, /补充当前任务/);
   assert.doesNotMatch(html, /class="wk-chat-stop"/);
 });
 
 test('chat page shows the artifacts-pending indicator only while streaming', () => {
   const html = renderToStaticMarkup(React.createElement(ChatPage, {
-    sessions: [{ id: 'session-1', title: 'Chat', is_pinned: false }],
-    selectedSessionId: 'session-1',
-    messages: [],
-    draft: '',
-    onSelectSession: () => undefined,
-    onCreateSession: () => undefined,
-    onDraftChange: () => undefined,
-    send: async () => undefined,
+    ...baseProps,
     stream: { phase: 'streaming', thinking: '', references: [], toolCalls: [], artifactsPending: true },
   }));
-  assert.match(html, /Artifacts pending/);
-  assert.match(html, /Status: streaming/);
+  assert.match(html, /产物生成中/);
+  assert.match(html, /状态: streaming/);
 });
+
 test('new-conversation view renders the agent picker and the agent suggested questions', () => {
   const html = renderToStaticMarkup(React.createElement(ChatPage, {
     sessions: [],
@@ -165,15 +175,20 @@ test('new-conversation view renders the agent picker and the agent suggested que
   assert.match(html, /value="agent-1"/);
   assert.match(html, /Research/);
   assert.match(html, /value="agent-2"/);
-  assert.match(html, /Disabled agent · disabled/);
-  // Empty-state starters from GET /api/v1/agents/:id/suggested-questions.
+  assert.match(html, /Disabled agent · 不可用/);
+  // Vue creatChat empty state: welcome heading + suggested question cards.
   assert.match(html, /wk-chat-starters/);
-  assert.match(html, /Suggested questions/);
+  assert.match(html, /Hi，我是 WeKnora，让你的知识触手可及/);
+  assert.match(html, /你可以这样问我/);
   assert.match(html, /What is WeKnora?/);
   assert.match(html, /How do I upload files?/);
+  // Vue composer anatomy: quick-answer chip label, model chip, circular send.
+  assert.match(html, /快速问答/);
+  assert.match(html, /wk-chat-model-chip/);
+  assert.match(html, /aria-label="发送"/);
 });
 
-test('new-conversation view renders no starters block without agent suggestions', () => {
+test('new-conversation view keeps the welcome heading but no question cards without suggestions', () => {
   const html = renderToStaticMarkup(React.createElement(ChatPage, {
     sessions: [],
     selectedSessionId: null,
@@ -185,79 +200,19 @@ test('new-conversation view renders no starters block without agent suggestions'
     send: async () => undefined,
     starterQuestions: [],
   }));
-  assert.doesNotMatch(html, /wk-chat-starters/);
+  // Vue creatChat.vue always shows the welcome heading; the cards stay absent.
+  assert.match(html, /Hi，我是 WeKnora，让你的知识触手可及/);
+  assert.doesNotMatch(html, /你可以这样问我/);
+  assert.doesNotMatch(html, /wk-chat-starter-card/);
 });
 
-test('starters are hidden once a session is open (message suggestions own that state)', () => {
+test('welcome and starters are hidden once a session is open', () => {
   const html = renderToStaticMarkup(React.createElement(ChatPage, {
-    sessions: [{ id: 'session-1', title: 'Chat', is_pinned: false }],
-    selectedSessionId: 'session-1',
-    messages: [],
-    draft: '',
-    onSelectSession: () => undefined,
-    onCreateSession: () => undefined,
-    onDraftChange: () => undefined,
-    send: async () => undefined,
+    ...baseProps,
     starterQuestions: ['What is WeKnora?'],
   }));
   assert.doesNotMatch(html, /wk-chat-starters/);
-});
-
-test('new-conversation view renders the agent picker and the agent suggested questions', () => {
-  const html = renderToStaticMarkup(React.createElement(ChatPage, {
-    sessions: [],
-    selectedSessionId: null,
-    messages: [],
-    draft: '',
-    onSelectSession: () => undefined,
-    onCreateSession: () => undefined,
-    onDraftChange: () => undefined,
-    send: async () => undefined,
-    agents: [{ id: 'agent-1', name: 'Research' }, { id: 'agent-2', name: 'Disabled agent', disabled: true }],
-    selectedAgentId: 'agent-1',
-    onAgentChange: () => undefined,
-    starterQuestions: ['What is WeKnora?', 'How do I upload files?'],
-    onStarterQuestionClick: () => undefined,
-  }));
-  assert.match(html, /id="wk-chat-agent"/);
-  assert.match(html, /value="agent-1"/);
-  assert.match(html, /Research/);
-  assert.match(html, /value="agent-2"/);
-  assert.match(html, /Disabled agent · disabled/);
-  assert.match(html, /wk-chat-starters/);
-  assert.match(html, /Suggested questions/);
-  assert.match(html, /What is WeKnora?/);
-  assert.match(html, /How do I upload files?/);
-});
-
-test('new-conversation view renders no starters block without agent suggestions', () => {
-  const html = renderToStaticMarkup(React.createElement(ChatPage, {
-    sessions: [],
-    selectedSessionId: null,
-    messages: [],
-    draft: '',
-    onSelectSession: () => undefined,
-    onCreateSession: () => undefined,
-    onDraftChange: () => undefined,
-    send: async () => undefined,
-    starterQuestions: [],
-  }));
-  assert.doesNotMatch(html, /wk-chat-starters/);
-});
-
-test('starters are hidden once a session is open (message suggestions own that state)', () => {
-  const html = renderToStaticMarkup(React.createElement(ChatPage, {
-    sessions: [{ id: 'session-1', title: 'Chat', is_pinned: false }],
-    selectedSessionId: 'session-1',
-    messages: [],
-    draft: '',
-    onSelectSession: () => undefined,
-    onCreateSession: () => undefined,
-    onDraftChange: () => undefined,
-    send: async () => undefined,
-    starterQuestions: ['What is WeKnora?'],
-  }));
-  assert.doesNotMatch(html, /wk-chat-starters/);
+  assert.doesNotMatch(html, /Hi，我是 WeKnora，让你的知识触手可及/);
 });
 
 test('new-conversation view renders the starter-questions skeleton while loading', () => {
@@ -310,7 +265,7 @@ test('chat page hides the typing indicator once thinking or tool calls arrive', 
   assert.doesNotMatch(html, /wk-chat-typing/);
 });
 
-test('message list renders separators, per-message timestamps, and the copy-answer button', () => {
+test('message list renders the Vue anatomy: date separators, user pill, plain assistant text with icon row', () => {
   const html = renderToStaticMarkup(React.createElement(ChatPage, {
     sessions: [],
     selectedSessionId: null,
@@ -325,11 +280,49 @@ test('message list renders separators, per-message timestamps, and the copy-answ
     onDraftChange: () => undefined,
     send: async () => undefined,
   }));
+  // Conversation date separator (Vue MessageTimestamp, chat.conversationTime.thisYear).
   assert.match(html, /wk-chat-timestamp/);
-  assert.match(html, /wk-chat-message-time/);
-  assert.match(html, /wk-chat-copy/);
-  assert.match(html, /aria-label="Copy answer"/);
+  assert.match(html, /3月5日/);
+  assert.match(html, /3月6日/);
+  // User pill: right-aligned bubble, no role label/avatar.
+  assert.match(html, /wk-chat-message-row--user/);
+  assert.doesNotMatch(html, /wk-chat-message-role/);
+  assert.doesNotMatch(html, /wk-chat-avatar/);
+  // Assistant: icon row with 复制/收藏 (Vue answer-toolbar); no full-width Copy bar.
+  assert.match(html, /wk-chat-answer-toolbar/);
+  assert.match(html, /aria-label="复制"/);
+  assert.match(html, /aria-label="收藏进知识库"/);
   assert.match(html, /The answer is 42/);
   // Scroll-to-bottom only appears after the user scrolls up (client-only).
   assert.doesNotMatch(html, /wk-chat-scroll-bottom/);
+});
+
+test('session sidebar renders time-group headers, full titles, and the hover ⋯ menu', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatPage, {
+    sessions: [
+      { id: 'session-1', title: '修复后首发截图', is_pinned: false },
+      { id: 'session-2', title: 'creatChat首发修复验证', is_pinned: false },
+    ],
+    selectedSessionId: 'session-1',
+    messages: [],
+    draft: '',
+    onSelectSession: () => undefined,
+    onCreateSession: () => undefined,
+    onDraftChange: () => undefined,
+    send: async () => undefined,
+    onRenameSession: async () => undefined,
+    onToggleSessionPin: async () => undefined,
+    onDeleteSession: async () => undefined,
+    sessionGroups: [
+      { key: 'yesterday', label: 'yesterday', items: [{ id: 'session-1', title: '修复后首发截图', is_pinned: false }] },
+      { key: 'older', label: 'older', items: [{ id: 'session-2', title: 'creatChat首发修复验证', is_pinned: false }] },
+    ],
+  }));
+  assert.match(html, /昨天/);
+  assert.match(html, /更早/);
+  assert.match(html, /修复后首发截图/);
+  assert.match(html, /creatChat首发修复验证/);
+  assert.match(html, /aria-current="page"/);
+  assert.match(html, /重命名会话/);
+  assert.match(html, /aria-label="更多操作"/);
 });

@@ -12,6 +12,6 @@ test('message artifact rows expose preview and protected download actions', () =
     onArtifactPreview: async () => ({ body: '# guide', contentType: 'text/markdown' }),
     onArtifactDownload: async () => undefined,
   }));
-  assert.match(html, />Preview<\/button>/);
-  assert.match(html, />Download<\/button>/);
+  assert.match(html, />预览<\/button>/);
+  assert.match(html, />下载<\/button>/);
 });

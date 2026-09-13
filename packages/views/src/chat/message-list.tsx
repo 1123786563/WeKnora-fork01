@@ -5,13 +5,14 @@ import { isArtifactExpired, normalizeArtifactList, type ChatArtifact } from '@we
 import { assistantMessageExtras } from '@weknora/domain/chat/message-extras';
 import {
   formatConversationTimestampLabel,
-  formatMessageTimestamp,
   shouldShowConversationTimestamp,
+  type ConversationTimestampModel,
 } from '@weknora/domain/chat/message-timestamps';
 import { copyAnswerText } from '@weknora/domain/chat/copy-answer';
 import { renderChatMarkdown } from './markdown.ts';
 import { hydrateMermaidBlocksWithBrowserDefaults } from './mermaid.ts';
 import { ArtifactPreview, artifactPreviewModel, type ArtifactPreviewPayload } from './artifact-preview.tsx';
+import { CHAT_COPY, CONVERSATION_TIME_LABELS, chatCopy } from './chat-copy.ts';
 
 export interface PendingChatMessage {
   content: string;
@@ -38,14 +39,9 @@ export interface MessageListProps {
   typingIndicator?: boolean;
 }
 
-// TODO(migration): replace with @weknora/i18n chat labels once chat migrates
-// off local label maps.
-const TIMESTAMP_LABELS = {
-  today: 'Today',
-  yesterday: 'Yesterday',
-  thisYear: (model: { month: number; day: number }) => `${model.month}/${model.day}`,
-  otherYear: (model: { year: number; month: number; day: number }) => `${model.year}/${model.month}/${model.day}`,
-};
+// TODO(migration): swap for formatMessage(locale, 'chat.conversationTime.*')
+// once the chat i18n domain exists; strings are the Vue zh-CN locale verbatim.
+export const TIMESTAMP_LABELS = CONVERSATION_TIME_LABELS;
 
 export function messageArtifactItems(message: Record<string, unknown>): ChatArtifact[] {
   return normalizeArtifactList(Array.isArray(message.artifacts) ? message.artifacts : undefined);
@@ -88,14 +84,43 @@ function CopyAnswerButton({ message }: { message: ChatMessage }) {
       // Clipboard permission denied: the button simply stays in place.
     }
   }
-  return <button type="button" className={copied ? 'wk-chat-copy is-copied' : 'wk-chat-copy'} onClick={() => void copy()} aria-label={copied ? 'Copied' : 'Copy answer'}>
-    {copied ? 'Copied' : 'Copy'}
+  return <button type="button" className={copied ? 'wk-chat-copy is-copied' : 'wk-chat-copy'} onClick={() => void copy()} aria-label={copied ? CHAT_COPY.copied : CHAT_COPY.copy} title={copied ? CHAT_COPY.copied : CHAT_COPY.copy}>
+    <CopyIcon />
+  </button>;
+}
+
+function CopyIcon() {
+  return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
+    <path d="M10.5 5.5v-2a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2" />
+  </svg>;
+}
+
+function BookmarkAnswerButton() {
+  // Vue botmsg.vue adds the answer to the knowledge manual editor; the React
+  // shell has no manual-editor surface yet, so the icon renders disabled.
+  return <button type="button" className="wk-chat-bookmark" aria-label={CHAT_COPY.addToKnowledgeBase} title={CHAT_COPY.addToKnowledgeBase} aria-disabled="true">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 2.5h8a1 1 0 0 1 1 1V14l-5-2.6L3 14V3.5a1 1 0 0 1 1-1Z" />
+      <path d="M8 5.5v4M6 7.5h4" />
+    </svg>
+  </button>;
+}
+
+function FallbackInfoButton({ message }: { message: ChatMessage }) {
+  const fallback = (message as Record<string, unknown>).is_fallback === true;
+  if (!fallback) return null;
+  return <button type="button" className="wk-chat-request-info" aria-label={CHAT_COPY.fallbackHint} title={CHAT_COPY.fallbackHint}>
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" aria-hidden="true">
+      <circle cx="8" cy="8" r="6.2" />
+      <path d="M8 7.2v3.4" />
+      <circle cx="8" cy="5" r="0.7" fill="currentColor" stroke="none" />
+    </svg>
   </button>;
 }
 
 function TypingIndicator() {
-  return <li className="wk-chat-typing" role="status" aria-label="Assistant is typing">
-    <span className="wk-chat-avatar" aria-hidden="true">AI</span>
+  return <li className="wk-chat-typing" role="status" aria-label={CHAT_COPY.thinkingAlt}>
     <span className="wk-chat-typing-dots" aria-hidden="true"><i /><i /><i /></span>
   </li>;
 }
@@ -104,7 +129,7 @@ function AssistantExtras(props: { message: ChatMessage }) {
   const extras = assistantMessageExtras(props.message);
   if (!extras.thinking && extras.toolCalls.length === 0) return null;
   return <details className='wk-chat-message-extras'>
-    <summary>Thinking &amp; tools</summary>
+    <summary>{CHAT_COPY.thinkingAndTools}</summary>
     {extras.thinking ? <pre>{extras.thinking}</pre> : null}
     {extras.toolCalls.length > 0 ? <ul className='wk-list'>{extras.toolCalls.map((call) => <li key={call.id}><strong>{call.name ?? call.id}</strong><small>{call.status}</small></li>)}</ul> : null}
   </details>;
@@ -113,14 +138,21 @@ function AssistantExtras(props: { message: ChatMessage }) {
 function ArtifactList({ message, onDownload, onPreview }: { message: ChatMessage; onDownload?: MessageListProps['onArtifactDownload']; onPreview?: (messageId: string, artifactIndex: number) => void | Promise<void> }) {
   const artifacts = messageArtifactItems(message);
   if (artifacts.length === 0) return null;
-  return <section className="wk-chat-artifacts" aria-label="Artifacts">
-    <h3>Artifacts</h3>
+  return <section className="wk-chat-artifacts" aria-label={CHAT_COPY.artifacts}>
+    <h3>{CHAT_COPY.artifacts}</h3>
     <ul>{artifacts.map((artifact) => {
       const expired = isArtifactExpired(artifact);
       const previewable = artifactPreviewModel(artifact).kind !== 'download-only';
-      return <li key={artifact.index}><span>{artifact.fileName}{artifact.version ? ` · v${artifact.version}` : ''}</span>{expired ? <small role="status">Expired</small> : <>{previewable && onPreview ? <button type="button" onClick={() => void onPreview(message.id, artifact.index)}>Preview</button> : null}{onDownload ? <button type="button" onClick={() => void onDownload(message.id, artifact.index)}>Download</button> : <small>Available</small>}</>}</li>;
+      return <li key={artifact.index}><span>{artifact.fileName}{artifact.version ? ` · v${artifact.version}` : ''}</span>{expired ? <small role="status">{CHAT_COPY.expired}</small> : <>{previewable && onPreview ? <button type="button" onClick={() => void onPreview(message.id, artifact.index)}>{CHAT_COPY.preview}</button> : null}{onDownload ? <button type="button" onClick={() => void onDownload(message.id, artifact.index)}>{CHAT_COPY.download}</button> : <small>{CHAT_COPY.available}</small>}</>}</li>;
     })}</ul>
   </section>;
+}
+
+function conversationTimestampLabel(value: unknown, model: ConversationTimestampModel): string {
+  if (model.kind === 'today') return `${TIMESTAMP_LABELS.today} ${model.time}`;
+  if (model.kind === 'yesterday') return `${TIMESTAMP_LABELS.yesterday} ${model.time}`;
+  if (model.kind === 'thisYear') return TIMESTAMP_LABELS.thisYear(model);
+  return TIMESTAMP_LABELS.otherYear(model);
 }
 
 export function MessageList({ messages, pending, onRetry, loadingOlder = false, hasMore = false, onLoadOlder, suggestions, onSuggestionClick, onRefreshSuggestions, onDismissSuggestions, onCitationClick, onArtifactDownload, onArtifactPreview, sessionId = null, typingIndicator = false }: MessageListProps) {
@@ -206,43 +238,41 @@ export function MessageList({ messages, pending, onRetry, loadingOlder = false, 
 
   return <div ref={containerRef} className="wk-chat-message-scroll" onScroll={onScroll}>
     {showScrollToBottom ? <button type="button" className="wk-chat-scroll-bottom" aria-label="Scroll to bottom" onClick={scrollToBottom}>↓</button> : null}
-    {hasMore ? <button type="button" disabled={loadingOlder} onClick={onLoadOlder}>{loadingOlder ? 'Loading history…' : 'Load older messages'}</button> : null}
+    {hasMore ? <button type="button" className="wk-chat-load-older" disabled={loadingOlder} onClick={onLoadOlder}>{loadingOlder ? CHAT_COPY.loadingHistory : CHAT_COPY.loadOlder}</button> : null}
     <ol className="wk-chat-messages" aria-label="Messages">
     {messages.map((message, index) => {
       const isAssistant = message.role === 'assistant';
       const showSeparator = shouldShowConversationTimestamp(messages, index);
       return <Fragment key={message.id}>
-        {showSeparator ? <li className="wk-chat-timestamp" role="separator" aria-label={formatConversationTimestampLabel(message.created_at, TIMESTAMP_LABELS)}>{formatConversationTimestampLabel(message.created_at, TIMESTAMP_LABELS)}</li> : null}
-        <li data-role={message.role} className={`wk-chat-message-row wk-chat-message-row--${message.role}`}>
-        {isAssistant ? <span className="wk-chat-avatar" aria-hidden="true">AI</span> : null}
+        {showSeparator ? <li className="wk-chat-timestamp" role="separator">{formatConversationTimestampLabel(message.created_at, TIMESTAMP_LABELS)}</li> : null}
+        <li data-role={message.role} className={isAssistant ? 'wk-chat-message-row wk-chat-message-row--assistant' : 'wk-chat-message-row wk-chat-message-row--user'}>
         <div className="wk-chat-message-body">
-          <strong className="wk-chat-message-role">{message.role}</strong>
-          <div className="wk-chat-message-bubble">
-            <div className="wk-chat-message-content" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: renderMessageHtml(message) }} />
-            <span className="wk-chat-message-time">{formatMessageTimestamp(message.created_at)}</span>
-          </div>
-          {isAssistant ? <CopyAnswerButton message={message} /> : null}
+          {isAssistant ? <div className="wk-chat-message-content" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: renderMessageHtml(message) }} /> : <div className="wk-chat-message-bubble">{message.content}</div>}
+          {isAssistant ? <div className="wk-chat-answer-toolbar">
+            <CopyAnswerButton message={message} />
+            <BookmarkAnswerButton />
+            <FallbackInfoButton message={message} />
+          </div> : null}
           {isAssistant ? <AssistantExtras message={message} /> : null}
-          <ArtifactList message={message} onDownload={onArtifactDownload} onPreview={onArtifactPreview ? openArtifactPreview : undefined} />
+          {isAssistant ? <ArtifactList message={message} onDownload={onArtifactDownload} onPreview={onArtifactPreview ? openArtifactPreview : undefined} /> : null}
         </div>
       </li>
       </Fragment>;
     })}
     {pending ? <li data-role="user" data-status={pending.status} className="wk-chat-message-row wk-chat-message-row--user">
       <div className="wk-chat-message-body">
-        <strong className="wk-chat-message-role">user</strong>
         <div className="wk-chat-message-bubble">
           <p>{pending.content}</p>
-          {pending.status === 'pending' ? <p role="status">Sending…</p> : <p role="alert">{pending.error ?? 'Message failed to send'}</p>}
-          {pending.status === 'failed' && onRetry ? <button type="button" onClick={onRetry}>Retry</button> : null}
+          {pending.status === 'pending' ? <p role="status" className="wk-chat-pending-state">{CHAT_COPY.sending}</p> : <p role="alert" className="wk-chat-pending-state">{pending.error ?? CHAT_COPY.sendFailed}</p>}
+          {pending.status === 'failed' && onRetry ? <button type="button" className="wk-chat-retry" onClick={onRetry}>{CHAT_COPY.retry}</button> : null}
         </div>
       </div>
     </li> : null}
     {typingIndicator ? <TypingIndicator /> : null}
     </ol>
     {preview ? <ArtifactPreview artifact={preview.artifact} payload={preview.payload} loading={preview.loading} error={preview.error} onClose={() => { previewRequestId.current += 1; setPreview(null); }} onDownload={onArtifactDownload ? () => void onArtifactDownload(preview.messageId, preview.artifact.index) : undefined} /> : null}
-    {suggestions?.status === 'ready' && suggestions.questions.length > 0 ? <section className="wk-chat-suggestions" aria-label="Suggested questions">
-      <div className="wk-chat-suggestions-heading"><h2>Suggested questions</h2><div><button type="button" onClick={onRefreshSuggestions} disabled={!suggestions.allow_regenerate}>Refresh</button><button type="button" onClick={onDismissSuggestions}>Dismiss</button></div></div>
+    {suggestions?.status === 'ready' && suggestions.questions.length > 0 ? <section className="wk-chat-suggestions" aria-label={CHAT_COPY.followUpQuestions}>
+      <div className="wk-chat-suggestions-heading"><h2>{CHAT_COPY.followUpQuestions}</h2><div><button type="button" onClick={onRefreshSuggestions} disabled={!suggestions.allow_regenerate}>{CHAT_COPY.suggestedRefresh}</button><button type="button" onClick={onDismissSuggestions}>{CHAT_COPY.dismiss}</button></div></div>
       <div className="wk-chat-suggestions-grid">{suggestions.questions.map((question) => <button type="button" key={question.id} onClick={() => onSuggestionClick?.(question.id, question.text)}>{question.text}{question.source === 'faq' ? <small>FAQ</small> : null}</button>)}</div>
     </section> : null}
   </div>;

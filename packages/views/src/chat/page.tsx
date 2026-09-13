@@ -8,6 +8,7 @@ import { ReferenceList } from './reference-list.tsx';
 import { ToolResultView } from './tool-result.tsx';
 import { ToolApprovalCard } from './tool-approval.tsx';
 import type { ArtifactPreviewPayload } from './artifact-preview.tsx';
+import { CHAT_COPY, chatCopy } from './chat-copy.ts';
 
 export interface ChatAgentOption {
   id: string;
@@ -108,10 +109,14 @@ export interface ChatPageProps {
   onArtifactDownload?(messageId: string, artifactIndex: number): Promise<void>;
   onArtifactPreview?(messageId: string, artifactIndex: number): Promise<ArtifactPreviewPayload>;
   terminal?: ChatTerminalView;
+  /** Initial sandbox drawer state (Vue keeps the panel closed until toggled). */
+  terminalOpen?: boolean;
   onOpenTerminal?(): Promise<void>;
   onTerminalInput?(input: string): Promise<void>;
   onTerminalResize?(cols: number, rows: number): void;
   onCloseTerminal?(): void;
+  /** Display-only chat model chip label in the composer control bar. */
+  modelLabel?: string;
 }
 
 export function messageReferenceValues(messages: readonly ChatMessage[]): unknown[] {
@@ -129,10 +134,9 @@ export function messageReferenceValues(messages: readonly ChatMessage[]): unknow
 function LiveResponse({ stream, onStopStream }: { stream: ChatStreamPresentation; onStopStream?: () => void }) {
   if (stream.phase !== 'streaming' && !stream.thinking && stream.toolCalls.length === 0) return null;
   return <section aria-label="Live response" className="wk-chat-live-response">
-    <p role="status">Status: {stream.phase}</p>
-    {stream.phase === 'streaming' && stream.artifactsPending ? <p role="status" className="wk-chat-artifacts-pending">Artifacts pending…</p> : null}
-    {stream.phase === 'streaming' && onStopStream ? <button type="button" className="wk-chat-stop" onClick={onStopStream}>Stop</button> : null}
-    {stream.thinking ? <details open><summary>Thinking</summary><p>{stream.thinking}</p></details> : null}
+    <p role="status">{CHAT_COPY.streamStatus}: {stream.phase}</p>
+    {stream.phase === 'streaming' && stream.artifactsPending ? <p role="status" className="wk-chat-artifacts-pending">{CHAT_COPY.artifactsPending}</p> : null}
+    {stream.phase === 'streaming' && stream.thinking ? <details open><summary>{CHAT_COPY.thinkingAlt}</summary><p>{stream.thinking}</p></details> : null}
     {stream.toolCalls.length > 0 ? <div><h2>Tool calls</h2><ul className="wk-list">{stream.toolCalls.map((tool) => <li key={tool.id}><strong>{tool.name ?? tool.id}</strong><small>{tool.status}</small>{tool.result === undefined ? null : <ToolResultView toolCall={tool} />}</li>)}</ul></div> : null}
   </section>;
 }
@@ -149,8 +153,8 @@ function ChatActionCards(props: Pick<ChatPageProps, 'toolApprovals' | 'oauthAppr
     try { await action(); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Chat action failed'); } finally { setBusy(null); }
   }
 
-  return <section aria-label="Chat actions" className="wk-chat-actions">
-    <h2>Actions</h2>
+  return <section aria-label="对话操作" className="wk-chat-actions">
+    <h2>操作</h2>
     {error ? <p role="alert">{error}</p> : null}
     {toolApprovals.map((approval) => <ToolApprovalCard
       key={`tool-${approval.pendingId}`}
@@ -182,10 +186,10 @@ function SteerComposer({ onSteer }: { onSteer: (content: string) => Promise<void
   }
 
   return <form className="wk-chat-steer" onSubmit={(event) => void submit(event)}>
-    <label htmlFor="wk-chat-steer-draft">Follow-up while running</label>
+    <label htmlFor="wk-chat-steer-draft">{CHAT_COPY.steerCurrent}</label>
     <textarea id="wk-chat-steer-draft" rows={2} value={draft} onChange={(event) => setDraft(event.target.value)} disabled={busy} />
     {error ? <p role="alert">{error}</p> : null}
-    <button type="submit" disabled={busy || !draft.trim()}>Queue follow-up</button>
+    <button type="submit" disabled={busy || !draft.trim()}>{CHAT_COPY.steerQueued}</button>
   </form>;
 }
 
@@ -205,7 +209,6 @@ function TerminalPanel(props: Pick<ChatPageProps, 'terminal' | 'onOpenTerminal' 
     notify();
     return () => observer.disconnect();
   }, [props.onTerminalResize, props.terminal?.status]);
-  if (!props.terminal && !props.onOpenTerminal) return null;
   async function sendInput(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!input.trim() || !props.onTerminalInput) return;
@@ -213,12 +216,30 @@ function TerminalPanel(props: Pick<ChatPageProps, 'terminal' | 'onOpenTerminal' 
     try { await props.onTerminalInput(input); setInput(''); } finally { setBusy(false); }
   }
   return <section ref={panelRef} aria-label="Sandbox terminal" className="wk-chat-terminal">
-    <div className="wk-settings-panel-heading"><h2>Sandbox terminal</h2><span role="status">{props.terminal?.status ?? 'idle'}</span></div>
-    {props.onOpenTerminal ? <button type="button" onClick={() => void props.onOpenTerminal!()}>Open terminal</button> : null}
+    <div className="wk-settings-panel-heading"><span role="status">{props.terminal?.status ?? 'idle'}</span></div>
     {props.terminal?.output ? <pre>{props.terminal.output}</pre> : null}
-    {props.terminal && props.onTerminalInput ? <form onSubmit={(event) => void sendInput(event)}><label htmlFor="wk-chat-terminal-input">Terminal input</label><input id="wk-chat-terminal-input" value={input} onChange={(event) => setInput(event.target.value)} disabled={busy} /><button type="submit" disabled={busy || !input.trim()}>Send input</button></form> : null}
-    {props.terminal && props.onCloseTerminal ? <button type="button" onClick={props.onCloseTerminal}>Close terminal</button> : null}
+    {!props.terminal?.output && props.onOpenTerminal ? <p className="wk-chat-terminal-hint">{CHAT_COPY.startTerminal}</p> : null}
+    {props.onOpenTerminal && !props.terminal?.output ? <button type="button" className="wk-chat-terminal-open" onClick={() => void props.onOpenTerminal!()}>{CHAT_COPY.startTerminal}</button> : null}
+    {props.terminal && props.onTerminalInput ? <form onSubmit={(event) => void sendInput(event)}><label htmlFor="wk-chat-terminal-input">{CHAT_COPY.terminalInput}</label><input id="wk-chat-terminal-input" value={input} onChange={(event) => setInput(event.target.value)} disabled={busy} /><button type="submit" disabled={busy || !input.trim()}>{CHAT_COPY.sendInput}</button></form> : null}
+    {props.terminal && props.onCloseTerminal ? <button type="button" className="wk-chat-terminal-close" onClick={props.onCloseTerminal}>{CHAT_COPY.closeTerminal}</button> : null}
   </section>;
+}
+
+function ChatHeaderMenu(props: Pick<ChatPageProps, 'selectedSessionId' | 'onRenameSession' | 'onToggleSessionPin' | 'onDeleteSession' | 'onClearSession' | 'sessions'>) {
+  const session = props.sessions.find((item) => item.id === props.selectedSessionId) ?? null;
+  if (!session) return null;
+  const pinned = session.is_pinned === true;
+  return <details className="wk-chat-header-menu">
+    <summary aria-label={CHAT_COPY.moreActions} title={CHAT_COPY.moreActions}>
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="8" cy="3" r="1.4" /><circle cx="8" cy="8" r="1.4" /><circle cx="8" cy="13" r="1.4" /></svg>
+    </summary>
+    <div className="wk-chat-header-menu-list" role="menu">
+      {props.onToggleSessionPin ? <button type="button" role="menuitem" onClick={() => void props.onToggleSessionPin!(session.id, !pinned)}>{pinned ? CHAT_COPY.unpin : CHAT_COPY.pin}</button> : null}
+      {props.onRenameSession ? <button type="button" role="menuitem" onClick={() => void props.onRenameSession!(session.id)}>{CHAT_COPY.renameSession}</button> : null}
+      {props.onClearSession ? <button type="button" role="menuitem" onClick={() => void props.onClearSession!()}>{CHAT_COPY.clearMessages}</button> : null}
+      {props.onDeleteSession ? <button type="button" role="menuitem" className="is-danger" onClick={() => void props.onDeleteSession!(session.id)}>{CHAT_COPY.deleteSession}</button> : null}
+    </div>
+  </details>;
 }
 
 export function ChatPage(props: ChatPageProps) {
@@ -226,6 +247,8 @@ export function ChatPage(props: ChatPageProps) {
   const [sending, setSending] = useState(false);
   const sendingRef = useRef(false);
   const [activeCitationId, setActiveCitationId] = useState<string | null>(null);
+  // Vue sandbox panel: closed until the header toggle opens it.
+  const [terminalOpen, setTerminalOpen] = useState(props.terminalOpen ?? false);
   const references = useMemo(() => [...messageReferenceValues(props.messages), ...(props.stream?.references ?? [])], [props.messages, props.stream?.references]);
 
   useEffect(() => { setActiveCitationId(null); }, [props.selectedSessionId]);
@@ -257,6 +280,13 @@ export function ChatPage(props: ChatPageProps) {
     }
   }
 
+  const headerTitle = (() => {
+    const selected = props.sessions.find((session) => session.id === props.selectedSessionId);
+    return selected?.title || (props.selectedSessionId ? CHAT_COPY.newSession : chatCopy('newChat'));
+  })();
+  const sandboxAvailable = Boolean(props.terminal || props.onOpenTerminal);
+  const streaming = props.stream?.phase === 'streaming';
+
   return <main className="wk-chat-page">
     <SessionSidebar
       sessions={props.sessions}
@@ -280,50 +310,59 @@ export function ChatPage(props: ChatPageProps) {
       onPageChange={props.onSessionPageChange}
     />
     <section className="wk-chat-main" aria-label="Chat">
-      <header className="wk-chat-header">
+      {props.selectedSessionId ? <header className="wk-chat-header">
         <div className="wk-chat-header-titles">
-          <h1>{(() => {
-            const selected = props.sessions.find((session) => session.id === props.selectedSessionId);
-            return selected?.title || (props.selectedSessionId ? 'Conversation' : 'New conversation');
-          })()}</h1>
-          {(() => {
-            const selectedAgent = props.agents?.find((agent) => agent.id === props.selectedAgentId);
-            const agentName = props.selectedAgentId ? selectedAgent?.name ?? 'Knowledge chat' : 'Knowledge chat';
-            return agentName ? <span className="wk-chat-header-agent" role="note">{agentName}</span> : null;
-          })()}
+          <h1 title={headerTitle}>{headerTitle}</h1>
+          <ChatHeaderMenu
+            selectedSessionId={props.selectedSessionId}
+            sessions={props.sessions}
+            onRenameSession={props.onRenameSession}
+            onToggleSessionPin={props.onToggleSessionPin}
+            onDeleteSession={props.onDeleteSession}
+            onClearSession={props.onClearSession}
+          />
         </div>
         <div className="wk-chat-header-actions">
-          {props.agents && props.onAgentChange ? <label htmlFor="wk-chat-agent">Agent<select id="wk-chat-agent" value={props.selectedAgentId ?? ''} onChange={(event) => props.onAgentChange?.(event.target.value)}><option value="">Knowledge chat</option>{props.agents.map((agent) => <option key={agent.id} value={agent.id} disabled={agent.disabled}>{agent.name}{agent.disabled ? ' · disabled' : ''}</option>)}</select></label> : null}
-          {props.selectedSessionId && props.onClearSession ? <button type="button" className="wk-chat-header-clear" onClick={() => void props.onClearSession!()}>Clear messages</button> : null}
-        </div>
-      </header>
+            {sandboxAvailable ? <button type="button" className="wk-chat-sandbox-toggle" aria-label={CHAT_COPY.openSandboxPanel} title={CHAT_COPY.openSandboxPanel} aria-expanded={terminalOpen} onClick={() => setTerminalOpen((open) => !open)}>
+              <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <rect x="1.5" y="1.5" width="17" height="17" rx="3" stroke="currentColor" strokeWidth="1.2" />
+                <line x1="12.5" y1="1.5" x2="12.5" y2="18.5" stroke="currentColor" strokeWidth="1.2" />
+                <line x1="16" y1="7.5" x2="16" y2="12.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              </svg>
+            </button> : null}
+          </div>
+        </header> : null}
       <div className="wk-chat-conversation">
-        {!props.selectedSessionId && props.starterQuestionsLoading ? (
-          <section className="wk-chat-starters wk-chat-starters--loading" aria-label="Suggested questions loading" aria-busy="true">
-            <p>Suggested questions</p>
-            <ul>
-              {[0, 1, 2].map((index) => <li key={index}><span className="wk-chat-starter-skeleton" aria-hidden="true" /></li>)}
-            </ul>
-          </section>
-        ) : null}
-        {!props.selectedSessionId && (props.starterQuestions?.length ?? 0) > 0 ? (
-          <section className="wk-chat-starters" aria-label="Suggested questions">
-            <p>Suggested questions</p>
-            <ul>
-              {props.starterQuestions!.map((question, index) => (
-                <li key={index}>
-                  <button type="button" onClick={() => props.onStarterQuestionClick?.(question)}>{question}</button>
-                </li>
-              ))}
-            </ul>
+        {/* Vue creatChat.vue: the welcome heading is always part of the empty
+            state; suggested-question cards load per selected agent. */}
+        {!props.selectedSessionId ? (
+          <section className={props.starterQuestionsLoading ? 'wk-chat-starters wk-chat-starters--loading' : 'wk-chat-starters'} aria-label="Suggested questions" aria-busy={props.starterQuestionsLoading || undefined}>
+            <h1 className="wk-chat-welcome">{CHAT_COPY.createChatTitle}</h1>
+            {props.starterQuestionsLoading ? (
+              <ul className="wk-chat-starters-grid">
+                {[0, 1, 2].map((index) => <li key={index}><span className="wk-chat-starter-skeleton" aria-hidden="true" /></li>)}
+              </ul>
+            ) : (props.starterQuestions?.length ?? 0) > 0 ? (
+              <>
+                <p className="wk-chat-starters-caption">
+                  <span>{CHAT_COPY.suggestedQuestions}</span>
+                </p>
+                <ul className="wk-chat-starters-grid">
+                  {props.starterQuestions!.map((question, index) => (
+                    <li key={index}>
+                      <button type="button" className="wk-chat-starter-card" onClick={() => props.onStarterQuestionClick?.(question)}>{question}</button>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : null}
           </section>
         ) : null}
         <ChatActionCards {...props} />
-        {props.stream ? <LiveResponse stream={props.stream} onStopStream={props.onStopStream} /> : null}
+        {props.stream ? <LiveResponse stream={props.stream} /> : null}
         <ReferenceList references={references} activeId={activeCitationId} onActivate={activateCitation} />
-        <TerminalPanel terminal={props.terminal} onOpenTerminal={props.onOpenTerminal} onTerminalInput={props.onTerminalInput} onTerminalResize={props.onTerminalResize} onCloseTerminal={props.onCloseTerminal} />
         {props.error ? <p role="alert">{props.error}</p> : null}
-        {props.loadingMessages ? <p role="status">Loading messages…</p> : null}
+        {props.loadingMessages ? <p role="status">{CHAT_COPY.loadingMessages}</p> : null}
         <MessageList
           messages={props.messages}
           pending={pending}
@@ -332,7 +371,7 @@ export function ChatPage(props: ChatPageProps) {
           hasMore={props.hasMoreMessages}
           onLoadOlder={props.onLoadOlderMessages}
           sessionId={props.selectedSessionId}
-          typingIndicator={props.stream?.phase === 'streaming' && !props.stream.thinking && props.stream.toolCalls.length === 0 && shouldShowTypingIndicator(props.messages, true)}
+          typingIndicator={streaming && !props.stream!.thinking && props.stream!.toolCalls.length === 0 && shouldShowTypingIndicator(props.messages, true)}
           suggestions={props.suggestions}
           onSuggestionClick={props.onSuggestionClick}
           onRefreshSuggestions={props.onRefreshSuggestions}
@@ -343,9 +382,29 @@ export function ChatPage(props: ChatPageProps) {
         />
         {/* A follow-up queue only makes sense while a turn is actually running;
             when idle the main composer handles the message (a steer would 409). */}
-        {props.selectedSessionId && props.onSteer && props.stream?.phase === 'streaming' ? <SteerComposer onSteer={props.onSteer} /> : null}
-        <ChatComposer draft={props.draft} disabled={sending || pending !== undefined || props.stream?.phase === 'streaming'} onDraftChange={props.onDraftChange} onSubmit={(submission) => void send(submission)} />
+        {props.selectedSessionId && props.onSteer && streaming ? <SteerComposer onSteer={props.onSteer} /> : null}
+        <ChatComposer
+          draft={props.draft}
+          disabled={sending || pending !== undefined || streaming}
+          onDraftChange={props.onDraftChange}
+          onSubmit={(submission) => void send(submission)}
+          agents={props.agents}
+          selectedAgentId={props.selectedAgentId}
+          onAgentChange={props.onAgentChange}
+          modelLabel={props.modelLabel}
+          streaming={streaming}
+          onStop={props.onStopStream}
+        />
       </div>
+      {sandboxAvailable && terminalOpen ? <aside className="wk-chat-sandbox-drawer" role="complementary" aria-label={CHAT_COPY.sandboxPanelTitle}>
+        <div className="wk-chat-sandbox-drawer-head">
+          <span>{CHAT_COPY.sandboxPanelTitle}</span>
+          <button type="button" className="wk-chat-sandbox-drawer-close" aria-label={CHAT_COPY.close} onClick={() => setTerminalOpen(false)}>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" /></svg>
+          </button>
+        </div>
+        <TerminalPanel terminal={props.terminal} onOpenTerminal={props.onOpenTerminal} onTerminalInput={props.onTerminalInput} onTerminalResize={props.onTerminalResize} onCloseTerminal={props.onCloseTerminal} />
+      </aside> : null}
     </section>
   </main>;
 }
