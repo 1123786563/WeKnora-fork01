@@ -1404,3 +1404,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - embed 预览模态集成（b59f1458）：EmbedChannelPreviewDrawer faithful port（locale 透传/r=nonce 每开必增/iframe 延迟挂载/previewUnavailable zh 告警/零 window.open）+ 壳层回退臂；embedWizardRender flush 修复授权；integrations 48/48。
 - R009 org 轨集成（3adf4bef）：rail org 分组条目（countByOrg>0、collapsed divider+截断+tooltip、expanded 共享给我标题+计数）+ ?scope=<orgId> per-space 过滤 + 空态/深链/stale 守卫；anatomy 16/16。
 - 全门禁：shared 436/436、web 793/793、mobile 146/146、typecheck:web 0、build:web ✓ 3.97s。
+
+## 2026-09-14 Round N+12 协调条目 — 冗余切片叫停
+
+- FAQ tooltip 精修切片（9b969a6c）叫停：其任务（title 升级定位气泡）已被 FAQ B5/B6 切片交付完全覆盖（FaqTagTooltip 组件 + faqTooltipPosition 定位逻辑已在 HEAD，faq 78/78）——避免双实现。
+- Wails 取证切片（1662287b）仍在途。
+
