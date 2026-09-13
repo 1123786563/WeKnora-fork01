@@ -196,7 +196,7 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-mcp-server-docs-trigger:hover, .wk-mcp-server-docs-help:hover { background: #eef4ff; }
 .wk-mcp-server-docs-popup { position: absolute; z-index: 20; display: grid; gap: .5rem; width: min(360px, calc(100vw - 2rem)); margin: .4rem 0 0; padding: .75rem; border: 1px solid #dce3ed; border-radius: 7px; background: #fff; box-shadow: 0 12px 30px rgb(23 32 51 / 18%); color: #172033; white-space: normal; }
 .wk-mcp-server-docs-popup pre { max-height: 180px; margin: 0; overflow: auto; white-space: pre-wrap; font: inherit; }
-.wk-mcp-tool-detail-popup { position: relative; z-index: 40; margin: .5rem 0; }
+.wk-mcp-tool-detail-popup { position: fixed; z-index: 3100; width: min(400px, calc(100vw - 24px)); }
 .wk-mcp-tool-detail { padding: .75rem; border: 1px solid #dce3ed; border-radius: 7px; background: #fff; box-shadow: 0 12px 30px rgb(23 32 51 / 16%); }
 .wk-mcp-tool-tabs { display: flex; gap: .25rem; border-bottom: 1px solid #edf0f5; }
 .wk-mcp-tool-tabs button { border: 0; border-bottom: 2px solid transparent; background: transparent; color: #66758b; cursor: pointer; padding: .35rem .5rem; font: inherit; font-size: .8rem; }

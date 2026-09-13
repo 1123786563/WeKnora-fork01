@@ -1585,3 +1585,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - React 工具详情补齐 Vue `t-popup trigger="click"` 的外部点击关闭和翻页关闭行为，同时保留 Escape 关闭；详情内容、策略更新和分页 API 不变。
 - 本轮为 Vue 交互源码对照与 React 生命周期修复；R046 MCP 定向测试 15/15、完整 `pnpm test:web` 805/805、Web TypeScript 检查和 `git diff --check` 均通过；仍未宣称真实 Portal 定位/computed-style 或真实 MCP 服务验收。
+
+## 2026-09-14 Round N+26 — R046 MCP 工具详情 Portal 定位
+
+- React 工具详情从列表流内嵌块改为 body-attached Portal，按触发按钮 bottom-right 定位，随窗口 resize/滚动重新定位；保留无 DOM 环境的静态渲染回退。
+- 本轮继续保留 Vue 的外部点击、Escape 和翻页关闭语义；R046 MCP 定向测试 15/15、完整 `pnpm test:web` 805/805、Web TypeScript 检查和 `git diff --check` 均通过，尚未宣称真实浏览器 computed-style 验收。
