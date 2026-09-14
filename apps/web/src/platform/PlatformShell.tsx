@@ -135,6 +135,7 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
   // remains the real boundary (same posture as OrganizationsPage's
   // canManageOrg).
   const [canSeeOrganizations, setCanSeeOrganizations] = useState(true);
+  const [canSeeAdminSessionSources, setCanSeeAdminSessionSources] = useState(false);
 
   // Global command palette (⌘K / Ctrl+K) — R011/N003. See GlobalCommandPalette.tsx.
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -190,6 +191,7 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
       setCanSeeOrganizations(
         currentRole === '' || currentRole === 'admin' || currentRole === 'owner' || record.can_access_all_tenants === true,
       );
+      setCanSeeAdminSessionSources(currentRole === 'admin' || currentRole === 'owner' || record.can_access_all_tenants === true);
     }).catch(() => { /* menu falls back to placeholders; the page still works */ });
     return () => { active = false; };
   }, [client]);
@@ -209,7 +211,6 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
   const [sessionSource, setSessionSource] = useState('web');
   const [sessionSourceOptions, setSessionSourceOptions] = useState<SessionSourceOption[]>([
     { value: 'web', label: labels.myChats },
-    { value: 'api', label: t('menu.apiChats') },
   ]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const sessionsRef = useRef<ChatSession[]>([]);
@@ -224,7 +225,8 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
     sessionsRequestRef.current = true;
     setSessionsLoading(true);
     try {
-      const result = await client.sessions.list({ page, pageSize: SHELL_SESSION_PAGE_SIZE, source: sessionSource });
+      const apiSource = sessionSource.startsWith('im:') ? sessionSource.slice('im:'.length) : sessionSource;
+      const result = await client.sessions.list({ page, pageSize: SHELL_SESSION_PAGE_SIZE, source: apiSource });
       if (!sessionsMountedRef.current || generation !== sessionsGenerationRef.current) return;
       const incoming = page === 1
         ? result.data
@@ -259,25 +261,31 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
   // Vue menu.vue discovers configured IM/embed channels before building the
   // source filter. The React client exposes the same tenant-scoped endpoints;
   // only verified channel ids are surfaced, so an unavailable endpoint cannot
-  // manufacture a bucket. API is a documented server-side source even when it
-  // is empty for the current tenant.
+  // manufacture a bucket. Admin-only sources stay absent for viewers and
+  // unknown/test mounts until auth.me proves the current tenant role.
   useEffect(() => {
     let active = true;
     const loadSourceOptions = async () => {
       const options: SessionSourceOption[] = [
         { value: 'web', label: labels.myChats },
-        { value: 'api', label: t('menu.apiChats') },
       ];
+      if (!canSeeAdminSessionSources) {
+        if (active) setSessionSourceOptions(options);
+        return;
+      }
       const embedApi = client.embed;
       const [embedResult, imResult] = await Promise.allSettled([
         embedApi?.channels?.listAll ? embedApi.channels.listAll() : Promise.reject(new Error('embed channels unavailable')),
         embedApi?.im?.listAll ? embedApi.im.listAll() : Promise.reject(new Error('im channels unavailable')),
       ]);
       if (!active) return;
+      const candidates: Array<{ option: SessionSourceOption; apiSource: string }> = [
+        { option: { value: 'api', label: t('menu.apiChats') }, apiSource: 'api' },
+      ];
       if (embedResult.status === 'fulfilled') {
         for (const channel of embedResult.value) {
           if (!channel || typeof channel.id !== 'string' || channel.id.trim() === '') continue;
-          options.push({ value: `embed:${channel.id}`, label: typeof channel.name === 'string' && channel.name.trim() ? channel.name : channel.id });
+          candidates.push({ option: { value: `embed:${channel.id}`, label: typeof channel.name === 'string' && channel.name.trim() ? channel.name : channel.id }, apiSource: `embed:${channel.id}` });
         }
       }
       if (imResult.status === 'fulfilled') {
@@ -285,14 +293,22 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
         for (const channel of imResult.value) {
           if (!channel || typeof channel.platform !== 'string' || channel.platform.trim() === '' || seen.has(channel.platform)) continue;
           seen.add(channel.platform);
-          options.push({ value: `im:${channel.platform}`, label: channel.platform });
+          candidates.push({ option: { value: `im:${channel.platform}`, label: channel.platform }, apiSource: channel.platform });
         }
+      }
+      const checked = await Promise.allSettled(candidates.map(async (candidate) => ({
+        candidate,
+        result: await client.sessions.list({ page: 1, pageSize: 1, source: candidate.apiSource }),
+      })));
+      if (!active) return;
+      for (const item of checked) {
+        if (item.status === 'fulfilled' && item.value.result.total > 0) options.push(item.value.candidate.option);
       }
       setSessionSourceOptions(options);
     };
     void loadSourceOptions();
     return () => { active = false; };
-  }, [client, labels.myChats, t]);
+  }, [canSeeAdminSessionSources, client, labels.myChats, t]);
 
   const onSessionsScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
     const element = event.currentTarget;
@@ -559,8 +575,8 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
                 emptyLabel={sessionsLoadError ? undefined : labels.noSessions}
                 untitledLabel={labels.newSession}
                 source={sessionSource}
-                sourceOptions={sessionSourceOptions}
-                onSourceChange={setSessionSource}
+                sourceOptions={sessionSourceOptions.length > 1 ? sessionSourceOptions : undefined}
+                onSourceChange={sessionSourceOptions.length > 1 ? setSessionSource : undefined}
                 onSelect={openShellSession}
                 onRename={renameShellSession}
                 onTogglePin={toggleShellSessionPin}

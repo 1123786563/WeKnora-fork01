@@ -74,9 +74,9 @@ const SESSIONS = [
 ];
 
 function fakeClient(overrides: Record<string, unknown> = {}): Record<string, unknown> {
-  const { embed, ...sessionOverrides } = overrides;
+  const { embed, auth, ...sessionOverrides } = overrides;
   return {
-    auth: { me: async () => ({ user: { id: 'u1', username: 'tester', email: 'tester@local.dev', avatar: '' } }) },
+    auth: auth ?? { me: async () => ({ user: { id: 'u1', username: 'tester', email: 'tester@local.dev', avatar: '' } }) },
     sessions: {
       list: async () => ({ data: SESSIONS, total: SESSIONS.length, page: 1, page_size: 30 }),
       pin: async () => undefined,
@@ -296,7 +296,8 @@ test('(i) shell session source filter exposes Vue-backed web, API, and configure
   const sourceCalls: string[] = [];
   const metadataCalls: string[] = [];
   const client = fakeClient({
-    list: async (params: { source?: string }) => { sourceCalls.push(params.source ?? ''); return { data: [], total: 0, page: 1, page_size: 30 }; },
+    auth: { me: async () => ({ user: { id: 'u1', username: 'admin', email: '', avatar: '' }, tenant: { id: 'tenant-1' }, memberships: [{ tenant_id: 'tenant-1', role: 'admin' }] }) },
+    list: async (params: { source?: string }) => { sourceCalls.push(params.source ?? ''); return { data: [], total: 1, page: 1, page_size: 30 }; },
     embed: {
       channels: { listAll: async () => { metadataCalls.push('embed'); return [{ id: 'embed-1', name: '帮助中心' }]; } },
       im: { listAll: async () => { metadataCalls.push('im'); return [{ id: 'im-1', platform: 'feishu' }]; } },
@@ -313,5 +314,24 @@ test('(i) shell session source filter exposes Vue-backed web, API, and configure
     filter.dispatchEvent(new Event('change', { bubbles: true }));
     await settle(40);
   });
-  assert.deepEqual(sourceCalls, ['web', 'api']);
+  assert.deepEqual(sourceCalls, ['web', 'api', 'embed:embed-1', 'feishu', 'api']);
+});
+
+test('(j) viewers and unknown mounts keep admin session sources hidden', async () => {
+  const client = fakeClient({
+    auth: { me: async () => ({ user: { id: 'u1', username: 'viewer', email: '', avatar: '' }, tenant: { id: 'tenant-1' }, memberships: [{ tenant_id: 'tenant-1', role: 'viewer' }] }) },
+    embed: { channels: { listAll: async () => [{ id: 'embed-1', name: '帮助中心' }] }, im: { listAll: async () => [{ id: 'im-1', platform: 'feishu' }] } },
+  });
+  const container = await mountShell({ client });
+  assert.equal(container.querySelector('nav[aria-label="我的对话"] select[aria-label="会话来源"]'), null);
+});
+
+test('(k) admin source filter stays hidden when API and configured channels have no sessions', async () => {
+  const client = fakeClient({
+    auth: { me: async () => ({ user: { id: 'u1', username: 'admin', email: '', avatar: '' }, tenant: { id: 'tenant-1' }, memberships: [{ tenant_id: 'tenant-1', role: 'admin' }] }) },
+    embed: { channels: { listAll: async () => [{ id: 'embed-1', name: '帮助中心' }] }, im: { listAll: async () => [{ id: 'im-1', platform: 'feishu' }] } },
+    list: async () => ({ data: [], total: 0, page: 1, page_size: 30 }),
+  });
+  const container = await mountShell({ client });
+  assert.equal(container.querySelector('nav[aria-label="我的对话"] select[aria-label="会话来源"]'), null);
 });
