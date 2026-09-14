@@ -2128,3 +2128,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Mobile `IdentityScreen` now localizes title, explanation, loading/error/empty states and supported/unavailable capability statuses across five locales (`5a22da52`), preserving server-provided reasons and avoiding invented capabilities.
 - Focused tests pass 3/3; mobile typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
 - Native management runtime evidence remains open.
+
+## 2026-09-15 Round N+33s — T10 mobile API key localization
+
+- Mobile `ApiKeysScreen` now localizes loading/errors, owner-only guidance, create/revoke flows, token states and accessibility labels across five locales (`cada5697`, `7ce141de`, `f41da865`), including distinct Korean revoke/cancel wording.
+- Focused tests pass 2/2; mobile typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
+- Native management runtime evidence remains open.
