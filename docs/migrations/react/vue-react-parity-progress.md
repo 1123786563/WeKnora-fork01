@@ -1,5 +1,13 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-14 Round N+28 — R026 工作区记忆面板对齐 + 个人记忆真实写路径 e2e
+
+- MemoryWorkspacePanel 按 Vue MemoryWorkspaceSettings.vue 裸排版重建：去 Card、h2 分区头、中性 intro 盒（品牌图标 + 堆叠标题/描述）、wk-mws 设置行令牌、写模式 select → .wk-segmented 单选对（复用既有 radiogroup 惯例）、自定义提示词行改纵向堆叠全宽（Vue instructions-row）。样式集中于新 memory-workspace.css（Vue theme.css light 令牌）。
+- 个人记忆真实写路径 e2e（真实后端，parity owner 账号，全程真实 UI，已复原并 API 复核）：Vue UI 开启空间记忆 → Vue 添加个人记忆条目 → React 同用户存储可见该条目 → React 行内编辑保存 → React popconfirm 删除 → React UI 关闭空间记忆复原；API 复核 enabled:false、测试条目 0、effective:false。R025/R026 的增/改/删/跨端可见性/配置持久化在真实后端双向闭环。
+- matrix canonical 表 R009/R010 之间空行修复（S00 审计发现 #1 残留，表格恢复连续）。
+- 门禁：test:web 856/856、test:shared 444/444、typecheck×2 0 错误、build ✓。截图 screenshots/memory-write-20260914/；证据 2026-09-14-r026-workspace-anatomy-write-e2e.md。
+- 仍开放：auto 模式模型选择器弹层 computed-style 对照、暗色主题、Wails/native 证据。
+
 ## 2026-09-14 Round N+27 — 负路径第四批：T-3/T-4 关闭 + 网络错误文案层
 
 - T-3 已修复：React refresh 失败后按 Vue authRefresh.ts 语义清 scope/session 并导航 /login（新增 apps/web/src/auth/relogin.ts + relogin.test.ts 4/4；main.tsx transport refresh 回调接线）。live 双端污染会话对照（negpath4-auth.cjs，只读）：双端最终 URL 均为 /login。

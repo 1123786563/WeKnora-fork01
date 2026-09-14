@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
-import { Card, NumberInput, Status, Switch } from '@weknora/ui';
+import { NumberInput, Status, Switch } from '@weknora/ui';
 import { ModelOptionSelect } from './ModelOptionSelect.tsx';
 import { memoryWorkspacePatch } from './surface.ts';
 import { readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
+import './memory-workspace.css';
 
 type MemoryRow = Record<string, unknown>;
 
@@ -64,13 +65,51 @@ export function MemoryWorkspacePanel({ client, initialConfig, canEdit = true }: 
   }
 
   const options = (types: string[]) => models.filter((model) => types.includes((model.type ?? '').toLowerCase())).map((model) => ({ value: model.id, label: model.name }));
-  const setting = (label: string, description: string, control: ReactNode, hint?: string) => <div className="setting-row flex items-start justify-between gap-6 border-b border-black/[.08] py-5 last:border-b-0 max-[720px]:flex-col max-[720px]:gap-2"><div className="setting-info min-w-0 flex-1 pr-4"><label className="block text-[13px] font-medium leading-[1.4] text-black/90">{label}</label><p className="desc mt-1 text-xs leading-[1.5] text-[#8a8a8a]">{description}</p>{hint ? <p className="desc hint mt-1 text-xs leading-[1.5] text-[#0a8f4c]">{hint}</p> : null}</div><div className="setting-control flex min-w-[220px] shrink-0 items-center justify-end max-[720px]:min-w-0 max-[720px]:w-full">{control}</div></div>;
+  const setting = (label: string, description: string, control: ReactNode, hint?: string) => <div className="wk-mws-row"><div className="wk-mws-info"><label>{label}</label><p className="wk-mws-desc">{description}</p>{hint ? <p className="wk-mws-desc wk-mws-hint">{hint}</p> : null}</div><div className="wk-mws-control">{control}</div></div>;
   const autoFields = writeMode === 'auto' ? <>
     {setting(t('memoryWorkspaceSettings.extractModelLabel'), t('memoryWorkspaceSettings.extractModelDescription'), <ModelOptionSelect value={extractModelId} options={options(['chat', 'vllm'])} disabled={!canEdit || busy} addModelLabel={t('model.addModelInSettings')} onAddModel={() => window.location.assign('/platform/settings?section=models&subsection=chat')} onChange={(value) => debouncedSave({ extractModelId: value })} />)}
     {setting(t('memoryWorkspaceSettings.extractDelayLabel'), t('memoryWorkspaceSettings.extractDelayDescription'), <NumberInput min={5} max={3600} step={15} value={extractDelaySeconds} disabled={!canEdit || busy} onValueChange={(value) => setExtractDelaySeconds(Number(value))} onBlur={() => debouncedSave()} />)}
     {setting(t('memoryWorkspaceSettings.extractMinIntervalLabel'), t('memoryWorkspaceSettings.extractMinIntervalDescription'), <NumberInput min={0} max={86400} step={60} value={extractMinIntervalSeconds} disabled={!canEdit || busy} onValueChange={(value) => setExtractMinIntervalSeconds(Number(value))} onBlur={() => debouncedSave()} />)}
     {setting(t('memoryWorkspaceSettings.interestThresholdLabel'), t('memoryWorkspaceSettings.interestThresholdDescription'), <NumberInput min={1} max={20} step={1} value={interestThreshold} disabled={!canEdit || busy} onValueChange={(value) => setInterestThreshold(Number(value))} onBlur={() => debouncedSave()} />)}
-    {setting(t('memoryWorkspaceSettings.instructionsLabel'), t('memoryWorkspaceSettings.instructionsDescription'), <textarea className="h-auto min-h-20 w-full resize-y rounded-[3px] border border-[#dcdcdc] p-2 text-[13px] focus:border-[#07c05f] focus:outline-none focus:ring-2 focus:ring-[#07c05f]/20" maxLength={1000} rows={3} value={extractInstructions} disabled={!canEdit || busy} placeholder={t('memoryWorkspaceSettings.instructionsPlaceholder')} onChange={(event) => setExtractInstructions(event.target.value)} onBlur={() => debouncedSave()} />)}
   </> : null;
-  return <Card><div className="wk-settings-panel-heading"><div><h3>{t('memoryWorkspaceSettings.title')}</h3><p className="wk-muted">{t('memoryWorkspaceSettings.description')}</p></div></div><div className="wk-memory-workspace-intro mb-2 flex items-start gap-2.5 rounded-lg bg-[#f3f9f5] px-4 py-3.5 text-[13px] text-black/70"><strong className="shrink-0 font-medium text-black/90">{t('memoryWorkspaceSettings.introTitle')}</strong><span>{t('memoryWorkspaceSettings.introDescription')}</span></div>{error ? <Status tone="error">{error}</Status> : null}{notice ? <Status tone="success">{notice}</Status> : null}<div className="settings-group">{setting(t('memoryWorkspaceSettings.enableLabel'), t('memoryWorkspaceSettings.enableDescription'), <Switch checked={enabled} disabled={!canEdit || busy} onCheckedChange={(checked) => debouncedSave({ enabled: checked })} aria-label={t('memoryWorkspaceSettings.enableLabel')} />)}{enabled ? <>{setting(t('memoryWorkspaceSettings.writeModeLabel'), t('memoryWorkspaceSettings.writeModeDescription'), <ModelOptionSelect value={writeMode} options={[{ value: 'explicit_only', label: t('memoryWorkspaceSettings.writeModeExplicit') }, { value: 'auto', label: t('memoryWorkspaceSettings.writeModeAuto') }]} disabled={!canEdit || busy} onChange={(value) => debouncedSave({ writeMode: value })} />, writeMode === 'auto' ? t('memoryWorkspaceSettings.writeModeAutoHint') : t('memoryWorkspaceSettings.writeModeExplicitHint'))}{autoFields}{setting(t('memoryWorkspaceSettings.vectorRecallLabel'), t('memoryWorkspaceSettings.vectorRecallDescription'), <Switch checked={vectorRecall} disabled={!canEdit || busy} onCheckedChange={(checked) => debouncedSave({ vectorRecall: checked })} aria-label={t('memoryWorkspaceSettings.vectorRecallLabel')} />)}{vectorRecall ? setting(t('memoryWorkspaceSettings.embeddingModelLabel'), t('memoryWorkspaceSettings.embeddingModelDescription'), <ModelOptionSelect value={embeddingModelId} options={options(['embedding'])} disabled={!canEdit || busy} clearable clearLabel={t('common.remove')} addModelLabel={t('model.addModelInSettings')} onAddModel={() => window.location.assign('/platform/settings?section=models&subsection=embedding')} onChange={(value) => debouncedSave({ embeddingModelId: value })} />) : null}{setting(t('memoryWorkspaceSettings.conditioningLabel'), t('memoryWorkspaceSettings.conditioningDescription'), <Switch checked={retrievalConditioning} disabled={!canEdit || busy} onCheckedChange={(checked) => debouncedSave({ retrievalConditioning: checked })} aria-label={t('memoryWorkspaceSettings.conditioningLabel')} />)}{setting(t('memoryWorkspaceSettings.maxItemsLabel'), t('memoryWorkspaceSettings.maxItemsDescription'), <NumberInput min={10} max={2000} step={10} value={maxItems} disabled={!canEdit || busy} onValueChange={(value) => setMaxItems(Number(value))} onBlur={() => debouncedSave()} />)}</> : null}</div></Card>;
+
+  // Vue MemoryWorkspaceSettings.vue: bare section on the drawer background —
+  // h2 header, neutral intro box with brand icon, bordered setting rows, and a
+  // stacked full-width custom-prompt row.
+  return <div className="wk-memory-workspace-settings">
+    <div className="wk-mws-header">
+      <h2>{t('memoryWorkspaceSettings.title')}</h2>
+      <p className="wk-mws-description">{t('memoryWorkspaceSettings.description')}</p>
+    </div>
+    <div className="wk-mws-intro" role="note">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="wk-mws-intro-icon"><circle cx="8" cy="8" r="6.25" /><line x1="8" y1="7.4" x2="8" y2="11.2" /><line x1="8" y1="4.9" x2="8" y2="5.1" /></svg>
+      <div>
+        <p className="wk-mws-intro-title">{t('memoryWorkspaceSettings.introTitle')}</p>
+        <p className="wk-mws-intro-desc">{t('memoryWorkspaceSettings.introDescription')}</p>
+      </div>
+    </div>
+    {error ? <Status tone="error">{error}</Status> : null}
+    {notice ? <Status tone="success">{notice}</Status> : null}
+    <div className="wk-mws-group">
+      {setting(t('memoryWorkspaceSettings.enableLabel'), t('memoryWorkspaceSettings.enableDescription'), <Switch checked={enabled} disabled={!canEdit || busy} onCheckedChange={(checked) => debouncedSave({ enabled: checked })} aria-label={t('memoryWorkspaceSettings.enableLabel')} />)}
+      {enabled ? <>{setting(t('memoryWorkspaceSettings.writeModeLabel'), t('memoryWorkspaceSettings.writeModeDescription'), <div className="wk-segmented" role="radiogroup" aria-label={t('memoryWorkspaceSettings.writeModeLabel')}>
+        <button type="button" role="radio" aria-checked={writeMode === 'explicit_only'} className={writeMode === 'explicit_only' ? 'is-active' : ''} disabled={!canEdit || busy} onClick={() => debouncedSave({ writeMode: 'explicit_only' })}>{t('memoryWorkspaceSettings.writeModeExplicit')}</button>
+        <button type="button" role="radio" aria-checked={writeMode === 'auto'} className={writeMode === 'auto' ? 'is-active' : ''} disabled={!canEdit || busy} onClick={() => debouncedSave({ writeMode: 'auto' })}>{t('memoryWorkspaceSettings.writeModeAuto')}</button>
+      </div>, writeMode === 'auto' ? t('memoryWorkspaceSettings.writeModeAutoHint') : t('memoryWorkspaceSettings.writeModeExplicitHint'))}{autoFields}
+        <div className="wk-mws-row wk-mws-row-stacked">
+          <div className="wk-mws-info">
+            <label>{t('memoryWorkspaceSettings.instructionsLabel')}</label>
+            <p className="wk-mws-desc">{t('memoryWorkspaceSettings.instructionsDescription')}</p>
+          </div>
+          <div className="wk-mws-control wk-mws-control-stretch">
+            <textarea className="wk-mws-textarea" maxLength={1000} rows={3} value={extractInstructions} disabled={!canEdit || busy} placeholder={t('memoryWorkspaceSettings.instructionsPlaceholder')} onChange={(event) => setExtractInstructions(event.target.value)} onBlur={() => debouncedSave()} />
+          </div>
+        </div>
+        {setting(t('memoryWorkspaceSettings.vectorRecallLabel'), t('memoryWorkspaceSettings.vectorRecallDescription'), <Switch checked={vectorRecall} disabled={!canEdit || busy} onCheckedChange={(checked) => debouncedSave({ vectorRecall: checked })} aria-label={t('memoryWorkspaceSettings.vectorRecallLabel')} />)}
+        {vectorRecall ? setting(t('memoryWorkspaceSettings.embeddingModelLabel'), t('memoryWorkspaceSettings.embeddingModelDescription'), <ModelOptionSelect value={embeddingModelId} options={options(['embedding'])} disabled={!canEdit || busy} clearable clearLabel={t('common.remove')} addModelLabel={t('model.addModelInSettings')} onAddModel={() => window.location.assign('/platform/settings?section=models&subsection=embedding')} onChange={(value) => debouncedSave({ embeddingModelId: value })} />) : null}
+        {setting(t('memoryWorkspaceSettings.conditioningLabel'), t('memoryWorkspaceSettings.conditioningDescription'), <Switch checked={retrievalConditioning} disabled={!canEdit || busy} onCheckedChange={(checked) => debouncedSave({ retrievalConditioning: checked })} aria-label={t('memoryWorkspaceSettings.conditioningLabel')} />)}
+        {setting(t('memoryWorkspaceSettings.maxItemsLabel'), t('memoryWorkspaceSettings.maxItemsDescription'), <NumberInput min={10} max={2000} step={10} value={maxItems} disabled={!canEdit || busy} onValueChange={(value) => setMaxItems(Number(value))} onBlur={() => debouncedSave()} />)}
+      </> : null}
+    </div>
+  </div>;
 }
