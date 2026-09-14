@@ -11,7 +11,7 @@ const keys = [
   'mobileChat.noConversations', 'mobileChat.noKnowledgeBases', 'mobileChat.noQueuedInstructions',
   'mobileChat.responseFailedRetry', 'mobileChat.resuming', 'mobileChat.steerQueue', 'mobileChat.toolApprovalRequired',
   'mobileChat.mcpAuthorizationRequired', 'mobileChat.file', 'mobileChat.preview', 'mobileChat.summarize',
-  'mobileChat.relatedFiles', 'mobileChat.attachFile', 'mobileChat.chatMessage', 'mobileChat.title',
+  'mobileChat.relatedFiles', 'mobileChat.summarizePrompt', 'mobileChat.relatedFilesPrompt', 'mobileChat.attachFile', 'mobileChat.chatMessage', 'mobileChat.title',
   'mobileChat.new', 'mobileChat.newConversation', 'mobileChat.approve', 'mobileChat.reject',
   'mobileChat.authorize', 'mobileChat.tool', 'mobileChat.after',
 ] as const;
