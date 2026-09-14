@@ -145,7 +145,7 @@ hook 类（测试/JS 引用）保留类名。
   测试选择器 5 处语义化；钩子类 6 个保留（测试 querySelector 引用）+ 4 个纯钩子未动。
 - 关键生效值编码：z-[1200]!（压 .wks-overlay）、p-[.45rem]!（压 settings-editor input）、
   竞争色按原级联胜者加 !；重复规则合并；720px media → max-[720px]:grid-cols-1。
-- 验收：typecheck 0、mcp 测试 16/16 + 2/2、web 856/856、build ✓；styles.css 1013→835 行。
+- 验收：typecheck 0、mcp 测试 18/18、web 859/859、build ✓；styles.css 1013→835 行。后续保留 Vue 对齐所需语义钩子并修复参数解析，提交 `3828ecba`。
 ### 批次19：TenantMembers 域 ✅（子任务执行，Orchestrator 验收提交）
 - TenantMembersPanel.tsx ~95 条规则内联 utilities（表格/分页/标签三态/确认弹层；
   settings-wrapper 抽屉 select chrome 特异性更高今日实际生效，按生效值 4 条未复制）；
@@ -258,7 +258,7 @@ hook 类（测试/JS 引用）保留类名。
 - LoginPage.tsx 全部样式 → utilities；.language-switch 保留为 closest() DOM 钩子；
   auth.css 缩减为 2 条 @keyframes（nodePulse/lineFlow，复杂动画按约定保留）；
   login-page.test.tsx 2 处选择器改 type=submit / data-testid（toast 增 data-testid）。
-- 验证：typecheck 0、web 856/856、build ✓、login 截图人工复核（渐变/动画/表单/语言菜单正常）；
+- 验证：typecheck 0、web 859/859、build ✓、login/register 截图与 computed-style 复核（渐变/动画/表单/语言菜单正常）；后续修复表单卡片 box-sizing、创建账户绿色描边、注册必填标记、标题字重与返回链接语义，提交 `bf091984`、`71f7f73e`、`d9149c5b`、`7c4628a5`。
   login/register/not-found 的像素差异为轮播 4s 自动播放时序非确定（后续批次对比时将冻结时钟）。
 
 - [x] 基础设施：theme.css 语义令牌（packages/ui/src/theme.css）+ styles.css 入口
