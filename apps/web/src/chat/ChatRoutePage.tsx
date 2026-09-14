@@ -9,7 +9,7 @@ import { ChatPage, type ChatSubmission } from '@weknora/views';
 import { openContextualGuide } from '@weknora/views';
 import type { ScopeController } from '@weknora/domain/scope';
 import { chatSessionIdFromPath, SHELL_SESSION_ROUTE_EVENT } from './session-route.ts';
-import { buildWebChatStreamOptions, initialAgentSelection } from './agent-selection.ts';
+import { buildWebChatStreamOptions, initialAgentSelection, shouldPollAttachmentStatus, validateChatAttachment } from './agent-selection.ts';
 import { listChatModels, MODEL_CHIP_NOT_CONFIGURED, resolveChatModelChip } from './model-chip.ts';
 import { readStoredLocale } from '../i18n.ts';
 import { loadStarterQuestions } from './starter-questions.ts';
@@ -33,10 +33,12 @@ interface ChatRoutePageProps {
 interface ChatAttachmentView {
   id: string;
   name: string;
-  status: 'pending' | 'uploading' | 'success' | 'error';
+  status: 'pending' | 'uploading' | 'uploaded' | 'processing' | 'ready' | 'failed';
   attachmentId?: string;
   error?: string;
 }
+
+type ChatAttachmentRecord = { file: File; attachmentId?: string; sessionId?: string; generation: number };
 
 function draftStorageKey(scope: ReturnType<ScopeController['current']>['scope'], sessionId: string): string {
   return JSON.stringify(chatDraftKey({ ...scope, sessionId }));
@@ -76,7 +78,10 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   const resumeStartedRef = useRef<Map<string, string>>(new Map());
   const [draft, setDraft] = useState('');
   const [attachments, setAttachments] = useState<ChatAttachmentView[]>([]);
-  const attachmentRecordsRef = useRef(new Map<string, { file: File; attachmentId?: string; sessionId?: string }>());
+  const attachmentRecordsRef = useRef(new Map<string, ChatAttachmentRecord>());
+  const attachmentUploadControllersRef = useRef(new Map<string, AbortController>());
+  const attachmentPollTimersRef = useRef(new Map<string, number>());
+  const attachmentGenerationsRef = useRef(new Map<string, number>());
   const attachmentCounterRef = useRef(0);
   const [loadingSessions, setLoadingSessions] = useState(true);
   // Vue Input-field.vue agent-model watch: the selected agent's config.model_id
@@ -140,6 +145,19 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     chatRunIdRef.current += 1;
     streamAbortRef.current?.abort();
     streamAbortRef.current = null;
+    for (const controller of attachmentUploadControllersRef.current.values()) controller.abort();
+    attachmentUploadControllersRef.current.clear();
+    for (const timer of attachmentPollTimersRef.current.values()) window.clearTimeout(timer);
+    attachmentPollTimersRef.current.clear();
+    for (const record of attachmentRecordsRef.current.values()) {
+      if (record.attachmentId && record.sessionId) {
+        void client.chat.attachments.remove(record.sessionId, record.attachmentId, scope.signal).catch((cause) => {
+          console.error('Attachment cleanup failed during chat unmount', cause);
+        });
+      }
+    }
+    attachmentRecordsRef.current.clear();
+    attachmentGenerationsRef.current.clear();
   }, []);
 
   useEffect(() => {
@@ -355,38 +373,98 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     streamAbortRef.current = null;
     selectedSessionIdRef.current = sessionId;
     setSelectedSessionId(sessionId);
-    if (!preserveAttachments) {
-      attachmentRecordsRef.current.clear();
-      setAttachments([]);
-    }
+    if (!preserveAttachments) void clearAttachments(true);
     window.history.pushState({}, '', `/platform/chat/${encodeURIComponent(sessionId)}`);
+  }
+
+  function attachmentIsCurrent(localId: string, generation: number, sessionId: string): boolean {
+    const record = attachmentRecordsRef.current.get(localId);
+    return Boolean(record && record.generation === generation && record.sessionId === sessionId && attachmentGenerationsRef.current.get(localId) === generation);
+  }
+
+  function clearAttachmentPoll(localId: string): void {
+    const timer = attachmentPollTimersRef.current.get(localId);
+    if (timer !== undefined) window.clearTimeout(timer);
+    attachmentPollTimersRef.current.delete(localId);
+  }
+
+  function cancelAttachmentOperation(localId: string): void {
+    attachmentGenerationsRef.current.set(localId, (attachmentGenerationsRef.current.get(localId) ?? 0) + 1);
+    attachmentUploadControllersRef.current.get(localId)?.abort();
+    attachmentUploadControllersRef.current.delete(localId);
+    clearAttachmentPoll(localId);
+  }
+
+  function scheduleAttachmentPoll(localId: string, sessionId: string, attachmentId: string, generation: number): void {
+    clearAttachmentPoll(localId);
+    const timer = window.setTimeout(() => void pollAttachmentStatus(localId, sessionId, attachmentId, generation), 800);
+    attachmentPollTimersRef.current.set(localId, timer);
+  }
+
+  async function pollAttachmentStatus(localId: string, sessionId: string, attachmentId: string, generation: number): Promise<void> {
+    if (!attachmentIsCurrent(localId, generation, sessionId)) return;
+    const controller = new AbortController();
+    attachmentUploadControllersRef.current.set(localId, controller);
+    try {
+      const uploaded = await client.chat.attachments.get(sessionId, attachmentId, controller.signal);
+      if (!attachmentIsCurrent(localId, generation, sessionId)) return;
+      setAttachments((items) => items.map((item) => item.id === localId ? { ...item, status: uploaded.status, error: uploaded.error_message } : item));
+      if (shouldPollAttachmentStatus(uploaded.status)) scheduleAttachmentPoll(localId, sessionId, attachmentId, generation);
+    } catch (cause) {
+      if (controller.signal.aborted || !attachmentIsCurrent(localId, generation, sessionId)) return;
+      const message = cause instanceof Error ? cause.message : 'Attachment status refresh failed.';
+      setAttachments((items) => items.map((item) => item.id === localId ? { ...item, status: 'failed', error: message } : item));
+    } finally {
+      if (attachmentUploadControllersRef.current.get(localId) === controller) attachmentUploadControllersRef.current.delete(localId);
+    }
   }
 
   async function uploadAttachment(localId: string, sessionId: string): Promise<string> {
     const record = attachmentRecordsRef.current.get(localId);
     if (!record) throw new Error('Attachment is no longer available.');
+    const generation = record.generation;
+    record.sessionId = sessionId;
+    const controller = new AbortController();
+    attachmentUploadControllersRef.current.set(localId, controller);
     setAttachments((items) => items.map((item) => item.id === localId ? { ...item, status: 'uploading', error: undefined } : item));
     try {
       const uploaded = await client.chat.attachments.upload(sessionId, {
         file: record.file,
         fileName: record.file.name,
         ...(selectedAgentId ? { agentId: selectedAgentId } : {}),
-      }, scope.signal);
-      if (uploaded.status === 'failed') throw new Error(uploaded.error_message || 'Attachment upload failed.');
+      }, controller.signal);
+      if (!attachmentIsCurrent(localId, generation, sessionId)) {
+        try { await client.chat.attachments.remove(sessionId, uploaded.id, scope.signal); }
+        catch (cause) { setError(cause instanceof Error ? `Attachment cleanup failed: ${cause.message}` : 'Attachment cleanup failed.'); }
+        throw new Error('Attachment upload was cancelled.');
+      }
       record.attachmentId = uploaded.id;
-      record.sessionId = sessionId;
-      setAttachments((items) => items.map((item) => item.id === localId ? { ...item, status: 'success', attachmentId: uploaded.id, error: undefined } : item));
+      if (uploaded.status === 'failed') throw new Error(uploaded.error_message || 'Attachment upload failed.');
+      setAttachments((items) => items.map((item) => item.id === localId ? { ...item, status: uploaded.status, attachmentId: uploaded.id, error: uploaded.error_message } : item));
+      if (shouldPollAttachmentStatus(uploaded.status)) scheduleAttachmentPoll(localId, sessionId, uploaded.id, generation);
       return uploaded.id;
     } catch (cause) {
+      if (controller.signal.aborted) throw cause instanceof Error ? cause : new Error('Attachment upload cancelled.');
       const message = cause instanceof Error ? cause.message : 'Attachment upload failed.';
-      setAttachments((items) => items.map((item) => item.id === localId ? { ...item, status: 'error', error: message } : item));
+      if (attachmentIsCurrent(localId, generation, sessionId)) setAttachments((items) => items.map((item) => item.id === localId ? { ...item, status: 'failed', error: message } : item));
       throw cause instanceof Error ? cause : new Error(message);
+    } finally {
+      if (attachmentUploadControllersRef.current.get(localId) === controller) attachmentUploadControllersRef.current.delete(localId);
     }
   }
 
   async function selectAttachment(file: File): Promise<void> {
+    const validation = validateChatAttachment(file, attachmentRecordsRef.current.size);
+    if (validation) {
+      const message = validation === 'too-many' ? 'Maximum 5 attachments allowed.' : validation === 'too-large' ? `File ${file.name} exceeds 50MB limit.` : `Unsupported file type: ${file.name}`;
+      const localId = `rejected-attachment-${++attachmentCounterRef.current}`;
+      setAttachments((items) => [...items, { id: localId, name: file.name, status: 'failed', error: message }]);
+      return;
+    }
     const localId = `local-attachment-${++attachmentCounterRef.current}`;
-    attachmentRecordsRef.current.set(localId, { file });
+    const generation = 1;
+    attachmentGenerationsRef.current.set(localId, generation);
+    attachmentRecordsRef.current.set(localId, { file, generation });
     setAttachments((items) => [...items, { id: localId, name: file.name, status: 'pending' }]);
     const sessionId = selectedSessionIdRef.current;
     if (sessionId) void uploadAttachment(localId, sessionId).catch(() => undefined);
@@ -394,10 +472,22 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
 
   async function removeAttachment(localId: string): Promise<void> {
     const record = attachmentRecordsRef.current.get(localId);
-    attachmentRecordsRef.current.delete(localId);
-    setAttachments((items) => items.filter((item) => item.id !== localId));
+    cancelAttachmentOperation(localId);
+    if (!record?.attachmentId || !record.sessionId) {
+      attachmentRecordsRef.current.delete(localId);
+      setAttachments((items) => items.filter((item) => item.id !== localId));
+      return;
+    }
     if (record?.attachmentId && record.sessionId) {
-      try { await client.chat.attachments.remove(record.sessionId, record.attachmentId, scope.signal); } catch { /* local removal remains authoritative */ }
+      try {
+        await client.chat.attachments.remove(record.sessionId, record.attachmentId, scope.signal);
+        attachmentRecordsRef.current.delete(localId);
+        setAttachments((items) => items.filter((item) => item.id !== localId));
+      } catch (cause) {
+        const message = cause instanceof Error ? cause.message : 'Attachment removal failed.';
+        attachmentGenerationsRef.current.set(localId, (attachmentGenerationsRef.current.get(localId) ?? 0) + 1);
+        setAttachments((items) => items.map((item) => item.id === localId ? { ...item, status: 'failed', error: `Attachment removal failed: ${message}` } : item));
+      }
     }
   }
 
@@ -405,18 +495,27 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     const pending = attachments.filter((item) => item.status === 'pending');
     const ids: string[] = [];
     for (const item of pending) ids.push(await uploadAttachment(item.id, sessionId));
-    const failed = attachments.find((item) => item.status === 'error');
+    const failed = attachments.find((item) => item.status === 'failed');
     if (failed) throw new Error(failed.error || 'Attachment upload failed.');
     for (const item of attachments) {
       const record = attachmentRecordsRef.current.get(item.id);
-      if (record?.attachmentId && !ids.includes(record.attachmentId)) ids.push(record.attachmentId);
+      if (record?.attachmentId && item.status !== 'failed' && !ids.includes(record.attachmentId)) ids.push(record.attachmentId);
     }
     return ids;
   }
 
-  function clearAttachments(): void {
+  async function clearAttachments(cleanup = false): Promise<void> {
+    const records = [...attachmentRecordsRef.current.entries()];
+    for (const [localId] of records) cancelAttachmentOperation(localId);
     attachmentRecordsRef.current.clear();
+    attachmentGenerationsRef.current.clear();
     setAttachments([]);
+    if (!cleanup) return;
+    for (const [, record] of records) {
+      if (!record.attachmentId || !record.sessionId) continue;
+      try { await client.chat.attachments.remove(record.sessionId, record.attachmentId, scope.signal); }
+      catch (cause) { setError(cause instanceof Error ? `Attachment cleanup failed: ${cause.message}` : 'Attachment cleanup failed.'); }
+    }
   }
 
   function selectAgent(agentId: string) {

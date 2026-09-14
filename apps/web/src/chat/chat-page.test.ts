@@ -427,16 +427,22 @@ test('composer exposes a multi-file picker and truthful attachment states', () =
     copy: resolveChatCopy('zh-CN'),
     attachments: [
       { id: 'local-1', name: 'guide.pdf', status: 'pending' },
-      { id: 'att-2', name: 'ready.txt', status: 'success', attachmentId: 'att-2' },
-      { id: 'local-3', name: 'broken.csv', status: 'error', error: 'Upload failed' },
+      { id: 'att-0', name: 'queued.txt', status: 'uploaded', attachmentId: 'att-0' },
+      { id: 'att-1', name: 'parsing.txt', status: 'processing', attachmentId: 'att-1' },
+      { id: 'att-2', name: 'ready.txt', status: 'ready', attachmentId: 'att-2' },
+      { id: 'local-3', name: 'broken.csv', status: 'failed', error: 'Upload failed' },
     ],
   }));
   assert.match(html, /type="file"/);
   assert.match(html, /multiple=""/);
   assert.match(html, /guide\.pdf/);
+  assert.match(html, /queued\.txt/);
+  assert.match(html, /parsing\.txt/);
   assert.match(html, /ready\.txt/);
   assert.match(html, /broken\.csv/);
   assert.match(html, /data-attachment-status="pending"/);
-  assert.match(html, /data-attachment-status="success"/);
-  assert.match(html, /data-attachment-status="error"/);
+  assert.match(html, /data-attachment-status="uploaded"/);
+  assert.match(html, /data-attachment-status="processing"/);
+  assert.match(html, /data-attachment-status="ready"/);
+  assert.match(html, /data-attachment-status="failed"/);
 });

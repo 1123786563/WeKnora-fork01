@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildWebChatStreamOptions, initialAgentSelection } from './agent-selection.ts';
+import { buildWebChatStreamOptions, initialAgentSelection, shouldPollAttachmentStatus, validateChatAttachment } from './agent-selection.ts';
 
 test('selected agent switches the web chat stream to agent mode with an explicit agent id', () => {
   assert.deepEqual(buildWebChatStreamOptions('session/1', '  Summarize this  ', 'agent/1'), {
@@ -33,6 +33,20 @@ test('includes only uploaded attachment ids in the stream body', () => {
     mode: 'knowledge',
     body: { query: 'Question', channel: 'web', attachment_ids: ['att-1', 'att-2'] },
   });
+});
+
+test('validates Vue attachment limits before creating an upload row', () => {
+  assert.equal(validateChatAttachment({ name: 'guide.pdf', size: 1024 }, 0), undefined);
+  assert.equal(validateChatAttachment({ name: 'guide.exe', size: 1024 }, 0), 'unsupported-type');
+  assert.equal(validateChatAttachment({ name: 'guide.pdf', size: 50 * 1024 * 1024 + 1 }, 0), 'too-large');
+  assert.equal(validateChatAttachment({ name: 'guide.pdf', size: 1024 }, 5), 'too-many');
+});
+
+test('polls server attachment states until ready or failed', () => {
+  assert.equal(shouldPollAttachmentStatus('uploaded'), true);
+  assert.equal(shouldPollAttachmentStatus('processing'), true);
+  assert.equal(shouldPollAttachmentStatus('ready'), false);
+  assert.equal(shouldPollAttachmentStatus('failed'), false);
 });
 
 test('initial agent selection accepts a requested URL agent only when it is enabled', () => {

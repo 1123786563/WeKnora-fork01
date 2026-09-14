@@ -6,7 +6,7 @@ export interface ChatSubmission {
   status: 'pending';
 }
 
-export type ChatAttachmentStatus = 'pending' | 'uploading' | 'success' | 'error';
+export type ChatAttachmentStatus = 'pending' | 'uploading' | 'uploaded' | 'processing' | 'ready' | 'failed';
 
 export interface ChatAttachmentView {
   id: string;
@@ -71,8 +71,9 @@ export function ChatComposer({ draft, disabled = false, onDraftChange, onSubmit,
   function attachmentStatusLabel(attachment: ChatAttachmentView): string {
     if (attachment.status === 'pending') return t.uploadAttachment;
     if (attachment.status === 'uploading') return t.sending;
-    if (attachment.status === 'success') return t.available;
-    return attachment.error || t.sendFailed;
+    if (attachment.status === 'ready') return t.available;
+    if (attachment.status === 'failed') return attachment.error || t.sendFailed;
+    return t.sending;
   }
 
   return <form className="wk-chat-composer relative mx-auto w-full max-w-[960px] shrink-0" onSubmit={submit}>
@@ -81,7 +82,7 @@ export function ChatComposer({ draft, disabled = false, onDraftChange, onSubmit,
       {attachments.length > 0 ? <ul className="wk-chat-attachments m-0 flex flex-wrap gap-[6px] px-[14px] pt-[10px]" aria-label={t.uploadAttachment}>
         {attachments.map((attachment) => <li key={attachment.id} data-attachment-status={attachment.status} className="inline-flex max-w-full items-center gap-[6px] rounded-[6px] border border-[#e7e7e7] bg-[#fafafa] px-[8px] py-[4px] text-[12px] text-[rgba(0,0,0,0.65)]" title={attachment.error || attachment.status}>
           <span className="max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap">{attachment.name}</span>
-          <span aria-label={attachmentStatusLabel(attachment)}>{attachment.status === 'success' ? '✓' : attachment.status === 'error' ? '!' : '…'} {attachmentStatusLabel(attachment)}</span>
+          <span aria-label={attachmentStatusLabel(attachment)}>{attachment.status === 'ready' ? '✓' : attachment.status === 'failed' ? '!' : '…'} {attachmentStatusLabel(attachment)}</span>
           {onRemoveAttachment ? <button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-[rgba(0,0,0,0.4)] hover:text-[rgba(0,0,0,0.9)]" aria-label={`${t.close}: ${attachment.name}`} onClick={() => void onRemoveAttachment(attachment.id)}>×</button> : null}
         </li>)}
       </ul> : null}
