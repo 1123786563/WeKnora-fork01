@@ -198,6 +198,14 @@ hook 类（测试/JS 引用）保留类名。
   测试选择器 3 处语义化；JS 钩子 0（is-loading 动态类改静态条件）。
 - 验收：typecheck 0、integrations 27/27、web 889/889、build ✓。
 - 同提交附带：wk-kb-flash 死家族删除（TSX 零引用）；styles.css 468→455 行。
+### 批次37-38：integrations 残余 + capability/check-row/option-chip 散族 ✅（双子任务并行，Orchestrator 合并验收提交）
+- 批次37（integrations 残余）：page.tsx 全部家族类转共享常量（INT_TAB/INT_DOC_LINK/
+  CODE_TOOLBAR/INTEGRATION_FORM 作用域变体）；styles.css 删 23 条；styles.css 中
+  wk-integrations-*/wk-int-*/wk-code-toolbar 清零。52/52 测试、build ✓、dist 抽查通过。
+- 批次38（capability/check-row/option-chip）：真实消费方在 page.tsx（纠正简报误写
+  ConfigurationPage）；CHIP_BASE/chip() 常量 + check-row 保留为 drawer :not() 钩子；
+  死类 wk-role-badge 样式恢复并去名；styles.css 删 8 条。40/40 configuration 测试、build ✓。
+- 合并验收：typecheck 0、web 890/890、build ✓；styles.css 431 行。
 ### 批次19：TenantMembers 域 ✅（子任务执行，Orchestrator 验收提交）
 - TenantMembersPanel.tsx ~95 条规则内联 utilities（表格/分页/标签三态/确认弹层；
   settings-wrapper 抽屉 select chrome 特异性更高今日实际生效，按生效值 4 条未复制）；

@@ -457,24 +457,28 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
   const deleteChannel = (id: string) => { if (!window.confirm(copy.deleteConfirm)) return; run(async () => { if (tab === 'embed') await actions.onDeleteEmbed?.(id); else await actions.onDeleteIm?.(id); onReload?.(); }); };
   return (
     <>
-    <main className="wk-integrations-page">
-      {!embedded ? <><header className="wk-integrations-header">
-        <div><h1>{t('integrations.title')}</h1><p className="wk-muted">{t('integrations.agentEditor.desc')}</p></div>
+    {/* Former .wk-integrations-page/.wk-integrations-header (apps/web styles.css
+        181-183) as Tailwind utilities; the h1 margin uses the important suffix
+        to outrank the global unlayered h1 rule still in styles.css. */}
+    <main className="mx-auto max-w-[1040px] px-[1rem] py-[2rem]">
+      {!embedded ? <><header className="flex items-start justify-between gap-[1rem] mb-[1.25rem]">
+        <div><h1 className="m-0!">{t('integrations.title')}</h1><p className="wk-muted">{t('integrations.agentEditor.desc')}</p></div>
         {onReload ? <button className="wk-button" type="button" onClick={onReload}>{t('common.retry')}</button> : null}
       </header>
-      <nav className="wk-integrations-tabs" aria-label={t('integrations.title')}>
-        {INTEGRATION_SECTIONS.map((item) => <button type="button" key={item.key} className={item.key === tab ? 'is-active' : ''} onClick={() => setTab(item.key)}>{t('integrations.tabs.' + item.key)}</button>)}
+      <nav className="flex flex-wrap gap-[.5rem] mb-[1rem]" aria-label={t('integrations.title')}>
+        {INTEGRATION_SECTIONS.map((item) => <button type="button" key={item.key} className={item.key === tab ? INT_TAB_ACTIVE_CLASS : INT_TAB_CLASS} onClick={() => setTab(item.key)}>{t('integrations.tabs.' + item.key)}</button>)}
       </nav></> : null}
-      <section className="wk-integrations-panel">
-        <div className="wk-int-section-header">
+      {/* Former .wk-integrations-panel / .wk-int-section-header / -desc / -doc-link / -icon. */}
+      <section className="border border-solid border-line rounded-[10px] bg-surface p-[1.25rem]">
+        <div className="flex items-start justify-between gap-[1rem] border-b border-solid border-[#eef1f5] pb-[1rem] mb-[1rem]">
           <div className="wk-int-section-heading">
-            <h2>{copy.heading}</h2>
-            <p className="wk-int-section-desc">
+            <h2 className="m-0 mb-[6px] text-ink text-[18px] font-semibold leading-[1.35]">{copy.heading}</h2>
+            <p className="m-0 text-muted-strong text-[13px] leading-[1.6]">
               {copy.description}
-              {copy.docLinkLabel && copy.docUrl ? <a className="wk-int-doc-link" href={copy.docUrl} target="_blank" rel="noreferrer noopener">{copy.docLinkLabel}<span className="wk-int-doc-icon" aria-hidden="true">↗</span></a> : null}
+              {copy.docLinkLabel && copy.docUrl ? <a className={INT_DOC_LINK_CLASS} href={copy.docUrl} target="_blank" rel="noreferrer noopener">{copy.docLinkLabel}<span className="text-[12px]" aria-hidden="true">↗</span></a> : null}
             </p>
           </div>
-          {section.minRole === 'owner' ? <span className="wk-role-badge">Owner</span> : null}
+          {section.minRole === 'owner' ? <span className="rounded-pill px-[.55rem] py-[.2rem] text-[.8rem] text-[#6941c6] bg-[#f4f3ff]">Owner</span> : null}
         </div>
         {loading ? <p className="wk-status">{t('integrations.api.loading')}</p> : null}
         {error || localError ? <p className="wk-status wk-status-error" role="alert">{error || localError}</p> : null}
@@ -671,14 +675,53 @@ const CHANNEL_CARD_TITLE_ADD_CLASS = CHANNEL_CARD_TITLE_CLASS + ' text-[13px] fo
 const CHANNEL_CARD_AGENT_CLASS = 'mt-1 block overflow-hidden text-ellipsis whitespace-nowrap text-[12px] leading-[1.4] text-[#98a2b3]';
 const CHANNEL_CARD_ACTIONS_CLASS = 'ml-auto flex shrink-0 items-center gap-0.5';
 
+// Tailwind ports of the former .wk-integrations-tabs button / .wk-int-doc-link /
+// .wk-code-toolbar / .wk-integration-form families in apps/web styles.css.
+// .wk-integration-form keeps its legacy class name: INTEGRATION_DRAWER_CLASS
+// below targets it with [&_.wk-integration-form] variants, and those overrides
+// keep the important suffix so they beat this layered base regardless of
+// source order (the base itself no longer competes with unlayered css).
+const INT_TAB_CLASS =
+  'cursor-pointer rounded-pill border border-solid border-line bg-surface px-[.75rem] py-[.5rem] text-muted-strong';
+const INT_TAB_ACTIVE_CLASS = INT_TAB_CLASS + ' border-primary bg-surface-wash text-primary-deep';
+const INT_DOC_LINK_CLASS = 'inline-flex items-center gap-[3px] ml-[6px] text-primary no-underline hover:underline';
+const CODE_TOOLBAR_CLASS = 'relative';
+const CODE_TOOLBAR_PRE_CLASS = 'm-0 overflow-x-auto rounded-card bg-ink px-[.8rem] py-[.7rem] pr-[2.6rem] text-[#edf2ff] [font:.78rem/1.5_ui-monospace,_monospace]';
+const CODE_TOOLBAR_BUTTON_CLASS = 'absolute top-[.35rem] right-[.35rem] text-[#9fb4d8]!';
+// Tailwind port of the former .wk-option-chip / .wk-option-chip--active family
+// in apps/web styles.css. Static literals; the two states share no utility that
+// sets the same property, so no stylesheet-order dependence. [font-*:inherit]
+// longhands replace the old font:inherit shorthand so text-[13px] cannot lose
+// to shorthand expansion order.
+const CHIP_BASE =
+  'cursor-pointer rounded-pill border border-solid px-[.85rem] py-[.3rem] text-[13px]'
+  + ' [font-family:inherit] [font-style:inherit] [font-weight:inherit] [line-height:inherit]';
+const chip = (active: boolean) => (active
+  ? CHIP_BASE + ' border-primary bg-surface-wash text-primary-deep'
+  : CHIP_BASE + ' border-line bg-surface text-muted-strong');
+const INTEGRATION_FORM_CLASS =
+  // .wk-integration-form box + scoped descendants (h3/label/input/select/
+  // textarea/.wk-muted). The .wk-muted color needs the important suffix to
+  // beat the unlayered .wk-muted rule still in styles.css.
+  'wk-integration-form grid gap-[.7rem] max-w-[680px] m-0 mb-[1.25rem] p-[1rem] border border-solid border-[#eef1f5] rounded-card bg-[#fbfcfe]'
+  + ' [&_h3]:m-0 [&_h3]:text-[15px]'
+  + ' [&_label]:grid [&_label]:gap-[.3rem] [&_label]:font-semibold'
+  + ' [&_input]:box-border [&_input]:w-full [&_input]:border [&_input]:border-solid [&_input]:border-line-control [&_input]:rounded-control [&_input]:bg-surface [&_input]:text-ink [&_input]:[font:inherit] [&_input]:px-[.65rem] [&_input]:py-[.55rem]'
+  + ' [&_select]:box-border [&_select]:w-full [&_select]:border [&_select]:border-solid [&_select]:border-line-control [&_select]:rounded-control [&_select]:bg-surface [&_select]:text-ink [&_select]:[font:inherit] [&_select]:px-[.65rem] [&_select]:py-[.55rem]'
+  + ' [&_textarea]:box-border [&_textarea]:w-full [&_textarea]:border [&_textarea]:border-solid [&_textarea]:border-line-control [&_textarea]:rounded-control [&_textarea]:bg-surface [&_textarea]:text-ink [&_textarea]:[font:inherit] [&_textarea]:px-[.65rem] [&_textarea]:py-[.55rem]'
+  + ' [&_.wk-muted]:m-0 [&_.wk-muted]:font-normal [&_.wk-muted]:text-[12px] [&_.wk-muted]:text-[#98a2b3]!';
 // Tailwind port of the former .wk-integration-drawer family in apps/web
 // styles.css (Vue SettingDrawer parity: 560px overlay + scroll + focus colors).
 // The aside carries the drawer subtree in arbitrary variants (the wizard slots
 // below render .wk-integration-form markup, so the subtree stays
-// self-contained); properties competing with remaining unlayered rules in
-// styles.css (.wk-integration-form base) use the important suffix.
-// .wk-check-row keeps its unlayered font-weight:400 !important via :not() -
-// a layered !important would otherwise outrank it. The two @keyframes stay in
+// self-contained); properties that must beat the INTEGRATION_FORM_CLASS base
+// (or the unlayered .wk-muted rule still in styles.css) use the important
+// suffix.
+// .wk-check-row labels keep the class as a :not() selector hook (the styles.css
+// rule is deleted; the labels now carry flex! items-center gap-[0.45rem]
+// font-normal! themselves): the drawer's [&_label:not(.wk-check-row)]:font-medium!
+// must stay excluded from them, else its higher specificity would outrank their
+// font-normal!. The two @keyframes stay in
 // styles.css and are referenced via animate-[...]; motion-reduce:animate-none
 // carries the old reduced-motion block. Legacy class names stay on the
 // elements as DOM hooks (embedWizardRender.test.tsx queries
@@ -854,11 +897,10 @@ function ImWizardPanel({ locale, t, apiBaseUrl, agents = [], knowledgeBases = []
   const isEditing = editing !== null;
   const consoleLink = imConsoleLink(form.platform);
   const patch = (values: Partial<ImWizardForm>) => onForm({ ...form, ...values });
-  const chip = (active: boolean) => (active ? 'wk-option-chip wk-option-chip--active' : 'wk-option-chip');
   const submit = (event: React.FormEvent) => { event.preventDefault(); if (step < IM_WIZARD_STEPS.length - 1) onNext(); else onSave(); };
   const renderCredentialField = (item: ImCredentialField) => {
     if (item.type === 'switch') {
-      return <label className="wk-check-row" key={item.key}>
+      return <label className="wk-check-row flex! items-center gap-[0.45rem] font-normal!" key={item.key}>
         <input type="checkbox" checked={form.credentials[item.key] === true} onChange={(event) => patch({ credentials: { ...form.credentials, [item.key]: event.target.checked } })} />
         {item.labelKey ? t(item.labelKey) : item.label}
         {item.hintKey ? <span className="wk-muted">{t(item.hintKey)}</span> : null}
@@ -867,7 +909,7 @@ function ImWizardPanel({ locale, t, apiBaseUrl, agents = [], knowledgeBases = []
     const value = form.credentials[item.key];
     const placeholder = item.placeholderKey ? t(item.placeholderKey) : item.placeholder;
     const hint = item.hintKey
-      ? <span className="wk-muted">{t(item.hintKey)}{item.hintLink ? <a className="wk-int-doc-link" href={item.hintLink.url} target="_blank" rel="noreferrer noopener"> {t(item.hintLink.labelKey)}</a> : null}</span>
+      ? <span className="wk-muted">{t(item.hintKey)}{item.hintLink ? <a className={INT_DOC_LINK_CLASS} href={item.hintLink.url} target="_blank" rel="noreferrer noopener"> {t(item.hintLink.labelKey)}</a> : null}</span>
       : null;
     return <label key={item.key}>
       {item.labelKey ? t(item.labelKey) : item.label}{item.required ? <span aria-hidden="true"> *</span> : null}
@@ -884,7 +926,7 @@ function ImWizardPanel({ locale, t, apiBaseUrl, agents = [], knowledgeBases = []
     </label>;
   };
   const bound = form.platform === 'wechat' && isWeChatBound(form.credentials);
-  return <form className="wk-integration-form mt-3!" onSubmit={submit}>
+  return <form className={INTEGRATION_FORM_CLASS + ' mt-3!'} onSubmit={submit}>
     {/* Vue drawerTitle (lines 685-690). */}
     <h3>{isEditing ? (form.name.trim() || t('agentEditor.im.unnamed')) : t('agentEditor.im.addChannel')}</h3>
     <div className="wk-im-steps" role="list">
@@ -919,7 +961,7 @@ function ImWizardPanel({ locale, t, apiBaseUrl, agents = [], knowledgeBases = []
         <input value={form.name} onFocus={() => onNameTouched(true)} onChange={(event) => { onNameTouched(true); patch({ name: event.target.value }); }} placeholder={t('agentEditor.im.channelNamePlaceholder')} />
       </label>
       {!isEditing ? <p className="wk-muted">{t('agentEditor.im.channelNameDefaultHint')}</p> : null}
-      {isEditing ? <label className="wk-check-row">
+      {isEditing ? <label className="wk-check-row flex! items-center gap-[0.45rem] font-normal!">
         <input type="checkbox" checked={editingEnabled} onChange={(event) => onEditingEnabled(event.target.checked)} />
         {t('agentEditor.im.enabled')}
       </label> : null}
@@ -930,14 +972,14 @@ function ImWizardPanel({ locale, t, apiBaseUrl, agents = [], knowledgeBases = []
       {form.platform !== 'wechat' ? <fieldset className="wk-im-step-body">
         <legend className="wk-im-legend">{t('agentEditor.im.sectionAccess')}</legend>
         <label>{t('agentEditor.im.mode')}
-          <span className="wk-option-chips" role="radiogroup" aria-label={t('agentEditor.im.mode')}>
+          <span className="flex flex-wrap gap-[8px] my-[0.5rem]" role="radiogroup" aria-label={t('agentEditor.im.mode')}>
             <button type="button" role="radio" aria-checked={form.mode === 'websocket'} className={chip(form.mode === 'websocket')} disabled={form.platform === 'mattermost'} onClick={() => patch({ mode: 'websocket' })}>WebSocket</button>
             <button type="button" role="radio" aria-checked={form.mode === 'webhook'} className={chip(form.mode === 'webhook')} onClick={() => patch({ mode: 'webhook' })}>Webhook</button>
           </span>
         </label>
         <p className="wk-muted">{form.platform === 'mattermost' ? t('agentEditor.im.mattermostModeHint') : form.platform === 'yunzhijia' ? t('agentEditor.im.yunzhijiaModeHint') : t('agentEditor.im.modeHint')}</p>
         <label>{t('agentEditor.im.outputMode')}
-          <span className="wk-option-chips" role="radiogroup" aria-label={t('agentEditor.im.outputMode')}>
+          <span className="flex flex-wrap gap-[8px] my-[0.5rem]" role="radiogroup" aria-label={t('agentEditor.im.outputMode')}>
             <button type="button" role="radio" aria-checked={form.outputMode === 'stream'} className={chip(form.outputMode === 'stream')} onClick={() => patch({ outputMode: 'stream' })}>{t('agentEditor.im.outputStream')}</button>
             <button type="button" role="radio" aria-checked={form.outputMode === 'full'} className={chip(form.outputMode === 'full')} onClick={() => patch({ outputMode: 'full' })}>{t('agentEditor.im.outputFull')}</button>
           </span>
@@ -946,7 +988,7 @@ function ImWizardPanel({ locale, t, apiBaseUrl, agents = [], knowledgeBases = []
       <fieldset className="wk-im-step-body">
         <legend className="wk-im-legend">{t('agentEditor.im.sectionSession')}</legend>
         <label>{t('agentEditor.im.sessionMode')}
-          <span className="wk-option-chips" role="radiogroup" aria-label={t('agentEditor.im.sessionMode')}>
+          <span className="flex flex-wrap gap-[8px] my-[0.5rem]" role="radiogroup" aria-label={t('agentEditor.im.sessionMode')}>
             <button type="button" role="radio" aria-checked={form.sessionMode === 'user'} className={chip(form.sessionMode === 'user')} onClick={() => patch({ sessionMode: 'user' })}>{t('agentEditor.im.sessionModeUser')}</button>
             <button type="button" role="radio" aria-checked={form.sessionMode === 'thread'} className={chip(form.sessionMode === 'thread')} disabled={!imPlatformSupportsThread(form.platform)} onClick={() => patch({ sessionMode: 'thread' })}>{t('agentEditor.im.sessionModeThread')}</button>
           </span>
@@ -956,9 +998,9 @@ function ImWizardPanel({ locale, t, apiBaseUrl, agents = [], knowledgeBases = []
       {isEditing && form.mode === 'webhook' ? <fieldset className="wk-im-step-body">
         <legend className="wk-im-legend">{t('agentEditor.im.sectionCallback')}</legend>
         <label>{t('agentEditor.im.callbackUrl')}
-          <span className="wk-code-toolbar">
+          <span className={CODE_TOOLBAR_CLASS}>
             <input className="wk-mono-input" readOnly value={imCallbackUrl(editing.id, apiBaseUrl)} />
-            <button className="wk-button wk-button--text" type="button" title={t('integrations.api.copy')} onClick={() => { void navigator.clipboard.writeText(imCallbackUrl(editing.id, apiBaseUrl)).catch(() => undefined); }}>⧉</button>
+            <button className={'wk-button wk-button--text ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" title={t('integrations.api.copy')} onClick={() => { void navigator.clipboard.writeText(imCallbackUrl(editing.id, apiBaseUrl)).catch(() => undefined); }}>⧉</button>
           </span>
         </label>
       </fieldset> : null}
@@ -992,7 +1034,7 @@ function ImWizardPanel({ locale, t, apiBaseUrl, agents = [], knowledgeBases = []
         {wechatQrError ? <p className="wk-status wk-status-error" role="alert">{wechatQrError}</p> : null}
       </div> : <div>
         {consoleLink ? <p className="wk-muted">
-          <a className="wk-int-doc-link" href={consoleLink.url} target="_blank" rel="noreferrer noopener">{t(consoleLink.labelKey)}</a>
+          <a className={INT_DOC_LINK_CLASS} href={consoleLink.url} target="_blank" rel="noreferrer noopener">{t(consoleLink.labelKey)}</a>
           {' · '}{t('agentEditor.im.consoleTip')}
         </p> : null}
         {imCredentialFields(form.platform, form.mode).map(renderCredentialField)}
@@ -1050,7 +1092,6 @@ function EmbedWizardPanel({ t, apiBaseUrl, agents = [], title, form, onForm, onA
   const isEditing = editing !== null;
   const submit = (event: React.FormEvent) => { event.preventDefault(); if (step < steps.length - 1) onNext(); else onSave(); };
   const patch = (values: Partial<EmbedWizardForm>) => onForm({ ...form, ...values });
-  const chip = (active: boolean) => (active ? 'wk-option-chip wk-option-chip--active' : 'wk-option-chip');
   const channel = detail ?? editing;
   const channelId = channel && typeof channel.id === 'string' ? channel.id : '';
   const token = channel && typeof channel.publish_token === 'string' ? channel.publish_token : '';
@@ -1076,7 +1117,7 @@ function EmbedWizardPanel({ t, apiBaseUrl, agents = [], title, form, onForm, onA
   const agentWebSearchEnabled = drawerAgent?.config?.web_search_enabled === true;
   const agentImageUploadEnabled = drawerAgent?.config?.image_upload_enabled === true;
   const secretPlaceholder = hasWebhookSecret ? t('embedPublish.webhookSecretKeep') : t('embedPublish.webhookSecretPlaceholder');
-  return <form className="wk-integration-form wk-embed-wizard mt-3!" onSubmit={submit}>
+  return <form className={INTEGRATION_FORM_CLASS + ' wk-embed-wizard mt-3!'} onSubmit={submit}>
     {/* Vue drawerTitle (lines 567-576). */}
     <h3>{title}</h3>
     <div className="wk-im-steps" role="list">
@@ -1101,7 +1142,7 @@ function EmbedWizardPanel({ t, apiBaseUrl, agents = [], title, form, onForm, onA
             </select>
           : <input value={form.agentId} onChange={(event) => onAgentPicked(event.target.value)} placeholder={t('integrations.selectAgentPlaceholder')} />}
       </label>
-      {isEditing ? <label className="wk-check-row">
+      {isEditing ? <label className="wk-check-row flex! items-center gap-[0.45rem] font-normal!">
         <input type="checkbox" checked={editingEnabled} onChange={(event) => onEditingEnabled(event.target.checked)} />
         {t('embedPublish.enabled')}
       </label> : null}
@@ -1133,16 +1174,16 @@ function EmbedWizardPanel({ t, apiBaseUrl, agents = [], title, form, onForm, onA
         <textarea rows={2} value={form.welcomeMessage} onChange={(event) => patch({ welcomeMessage: event.target.value })} placeholder={t('embedPublish.welcomePlaceholder')} />
       </label>
       <p className="wk-muted">{t('embedPublish.welcomeMessageDesc')}</p>
-      <label className="wk-check-row">
+      <label className="wk-check-row flex! items-center gap-[0.45rem] font-normal!">
         <input type="checkbox" checked={form.showSuggestedQuestions} onChange={(event) => patch({ showSuggestedQuestions: event.target.checked })} />
         <span>{t('embedPublish.showSuggestedQuestions')}<br />{t('embedPublish.showSuggestedQuestionsDesc')}</span>
       </label>
-      <label className="wk-check-row">
+      <label className="wk-check-row flex! items-center gap-[0.45rem] font-normal!">
         <input type="checkbox" checked={form.allowWebSearch} onChange={(event) => patch({ allowWebSearch: event.target.checked })} />
         <span>{t('embedPublish.allowWebSearch')}<br />{t('embedPublish.allowWebSearchDesc')}</span>
       </label>
       {form.allowWebSearch && !agentWebSearchEnabled ? <p className="wk-muted wk-muted--warn">{t('embedPublish.agentWebSearchDisabledHint')}</p> : null}
-      <label className="wk-check-row">
+      <label className="wk-check-row flex! items-center gap-[0.45rem] font-normal!">
         <input type="checkbox" checked={form.allowFileUpload} onChange={(event) => patch({ allowFileUpload: event.target.checked })} />
         <span>{t('embedPublish.allowFileUpload')}<br />{t('embedPublish.allowFileUploadDesc')}</span>
       </label>
@@ -1211,7 +1252,7 @@ function EmbedWizardPanel({ t, apiBaseUrl, agents = [], title, form, onForm, onA
       <p className="wk-muted">{t('embedPublish.deployIntro')}</p>
       <h5>{t('embedPublish.deployStepEmbed')}</h5>
       <p className="wk-muted">{t('embedPublish.deployStepEmbedDesc')}</p>
-      <div className="wk-embed-snippet-tabs wk-option-chips" role="tablist" aria-label={t('embedPublish.deployStepEmbed')}>
+      <div className="wk-embed-snippet-tabs flex flex-wrap gap-[8px] my-[0.5rem]" role="tablist" aria-label={t('embedPublish.deployStepEmbed')}>
         {([['iframe', 'embedPublish.tabIframe'], ['widget', 'embedPublish.tabWidget'], ['secure', 'embedPublish.tabSecure']] as const).map(([value, key]) => (
           <button key={value} type="button" role="tab" aria-selected={snippetTab === value} className={chip(snippetTab === value)} onClick={() => onSnippetTab(value)}>{t(key)}</button>
         ))}
@@ -1221,26 +1262,26 @@ function EmbedWizardPanel({ t, apiBaseUrl, agents = [], title, form, onForm, onA
       {snippetTab === 'secure' ? <p className="wk-muted">{t('embedPublish.secureTokenNote')}</p> : null}
       {snippetTab !== 'secure' ? <div className="wk-embed-deploy-hint" role="note">⚠️<p>{t('embedPublish.publishTokenWarning')}</p></div> : null}
       <div className="wk-embed-code-panel">
-        <div className="wk-code-toolbar">
+        <div className={CODE_TOOLBAR_CLASS}>
           <span>{snippetTab === 'iframe' ? t('embedPublish.embedCode') : t('embedPublish.widgetCode')}</span>
           <span>
-            {snippetTab !== 'secure' ? <button className="wk-button wk-button--text" type="button" disabled={previewLoading || busy} onClick={() => onPreview(channel)}>{previewLoading ? t('common.loading') : t('embedPublish.preview')}</button> : null}
-            <button className="wk-button wk-button--text" type="button" onClick={() => { void navigator.clipboard.writeText(snippet).catch(() => undefined); }}>{t('embedPublish.copyCode')}</button>
+            {snippetTab !== 'secure' ? <button className={'wk-button wk-button--text ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" disabled={previewLoading || busy} onClick={() => onPreview(channel)}>{previewLoading ? t('common.loading') : t('embedPublish.preview')}</button> : null}
+            <button className={'wk-button wk-button--text ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" onClick={() => { void navigator.clipboard.writeText(snippet).catch(() => undefined); }}>{t('embedPublish.copyCode')}</button>
           </span>
         </div>
         <pre>{snippet}</pre>
       </div>
       {snippetTab === 'secure' ? <div>
         <p className="wk-muted">{t('embedPublish.secureServerLabel')}</p>
-        <div className="wk-embed-server-tabs wk-option-chips" role="tablist" aria-label={t('embedPublish.secureServerLabel')}>
+        <div className="wk-embed-server-tabs flex flex-wrap gap-[8px] my-[0.5rem]" role="tablist" aria-label={t('embedPublish.secureServerLabel')}>
           {([['node', 'embedPublish.tabServerNode'], ['go', 'embedPublish.tabServerGo']] as const).map(([value, key]) => (
             <button key={value} type="button" role="tab" aria-selected={serverTab === value} className={chip(serverTab === value)} onClick={() => onServerTab(value)}>{t(key)}</button>
           ))}
         </div>
         <div className="wk-embed-server-panel">
-          <div className="wk-code-toolbar">
+          <div className={CODE_TOOLBAR_CLASS}>
             <span>{serverTab === 'go' ? t('embedPublish.tabServerGo') : t('embedPublish.tabServerNode')}</span>
-            <button className="wk-button wk-button--text" type="button" onClick={() => { void navigator.clipboard.writeText(serverExample).catch(() => undefined); }}>{t('embedPublish.copyCode')}</button>
+            <button className={'wk-button wk-button--text ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" onClick={() => { void navigator.clipboard.writeText(serverExample).catch(() => undefined); }}>{t('embedPublish.copyCode')}</button>
           </div>
           <pre>{serverExample}</pre>
         </div>
@@ -1333,7 +1374,7 @@ function ApiIntegrationPanel({ apiBaseUrl, actions, principalMode, setPrincipalM
         <button className="wk-button" type="button" onClick={() => setShowApiKeyForm?.(!showApiKeyForm)}>{t('integrations.api.createApiKey')}</button>
       </div>
       {freshApiKeyId !== null ? <p className="wk-status wk-status-ok" role="status">{t('integrations.api.apiKeyCreated')} · {t('integrations.api.secretSavedCopyHint')}</p> : null}
-      {showApiKeyForm ? <form className="wk-integration-form" onSubmit={(event) => { event.preventDefault(); onCreateApiKey?.(); }}>
+      {showApiKeyForm ? <form className={INTEGRATION_FORM_CLASS} onSubmit={(event) => { event.preventDefault(); onCreateApiKey?.(); }}>
         <label>{t('integrations.api.apiKeyName')}<input required value={newApiKeyName ?? ''} onChange={(event) => setNewApiKeyName?.(event.target.value)} placeholder={t('integrations.api.apiKeyNamePlaceholder')} /></label>
         <div className="wk-form-actions">
           <button className="wk-button" type="submit" disabled={busy || !newApiKeyName?.trim()}>{t('integrations.api.createApiKey')}</button>
@@ -1376,14 +1417,14 @@ function ApiIntegrationPanel({ apiBaseUrl, actions, principalMode, setPrincipalM
         </div>
       </div>
       <p className="wk-muted">{t('integrations.api.principalScope')}</p>
-      <div className="wk-option-chips" role="radiogroup" aria-label={t('integrations.api.principalMode')}>
+      <div className="flex flex-wrap gap-[8px] my-[0.5rem]" role="radiogroup" aria-label={t('integrations.api.principalMode')}>
         {([['tenant', 'integrations.api.modeTenant'], ['direct_header', 'integrations.api.modeDirect'], ['signed_token', 'integrations.api.modeSigned']] as const).map(([value, key]) => (
-          <button key={value} type="button" role="radio" aria-checked={principalMode === value} className={principalMode === value ? 'wk-option-chip wk-option-chip--active' : 'wk-option-chip'} onClick={() => setPrincipalMode(value)}>{t(key)}</button>
+          <button key={value} type="button" role="radio" aria-checked={principalMode === value} className={chip(principalMode === value)} onClick={() => setPrincipalMode(value)}>{t(key)}</button>
         ))}
       </div>
       {principalMode === 'direct_header' ? <div className="mt-[0.6rem] grid gap-[0.5rem]">
         <p className="wk-muted wk-muted--warn">{t('integrations.api.directWarning')}</p>
-        <label className="wk-check-row"><input className="box-border w-full max-w-[420px] rounded-[6px] border border-line-control px-[0.6rem] py-[0.5rem] [font:inherit]" type="checkbox" checked={requireDirectHeader} onChange={(event) => setRequireDirectHeader(event.target.checked)} />{t('integrations.api.requireDirectHeader')}</label>
+        <label className="wk-check-row flex! items-center gap-[0.45rem] font-normal!"><input className="box-border w-full max-w-[420px] rounded-[6px] border border-line-control px-[0.6rem] py-[0.5rem] [font:inherit]" type="checkbox" checked={requireDirectHeader} onChange={(event) => setRequireDirectHeader(event.target.checked)} />{t('integrations.api.requireDirectHeader')}</label>
         <p className="wk-muted">{t('integrations.api.requireDirectHeaderDesc')}</p>
       </div> : null}
       {principalMode === 'signed_token' ? <div className="mt-[0.6rem] grid gap-[0.5rem]">
@@ -1431,8 +1472,9 @@ function ExternalLandingPanel({ tab, locale, externalUrl, apiBaseUrl, t }: { tab
   const chromeSteps = ['connect', 'install', 'port', 'api'] as const;
   const clawCapabilities = ['browse', 'search', 'manual', 'url', 'upload'] as const;
   const clawSteps = ['verify', 'install', 'env', 'api'] as const;
-  return <div className="wk-int-landing">
-    <div className="wk-int-landing-cta">
+  // Former .wk-int-landing / .wk-int-landing-cta (apps/web styles.css).
+  return <div className="grid gap-[1rem] max-w-[760px]">
+    <div className="flex items-center flex-wrap gap-[.75rem]">
       {externalUrl ? <a className="wk-button" href={externalUrl} target="_blank" rel="noreferrer noopener">{cta.label}</a> : null}
       <span className="wk-muted">{cta.hint}</span>
     </div>
@@ -1444,7 +1486,7 @@ function ExternalLandingPanel({ tab, locale, externalUrl, apiBaseUrl, t }: { tab
           <div className="wk-landing-step-body">
             <div className="text-[14px] font-semibold text-ink">{step.title}</div>
             <p className="m-0 mt-[0.2rem] mb-[0.5rem] text-[13px] leading-[1.6] text-muted-strong">{step.desc}</p>
-            <div className="wk-code-toolbar"><pre>{step.command}</pre><button className="wk-button wk-button--text" type="button" title={t('integrations.cli.copy')} onClick={() => copy(step.command)}>⧉</button></div>
+            <div className={CODE_TOOLBAR_CLASS}><pre className={CODE_TOOLBAR_PRE_CLASS}>{step.command}</pre><button className={'wk-button wk-button--text ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" title={t('integrations.cli.copy')} onClick={() => copy(step.command)}>⧉</button></div>
           </div>
         </li>)}
       </ol>
@@ -1452,19 +1494,19 @@ function ExternalLandingPanel({ tab, locale, externalUrl, apiBaseUrl, t }: { tab
     {tab === 'cli' ? <section className="rounded-[10px] border border-[#eef1f5] p-4">
       <h4 className="m-0 mb-[0.6rem] text-[14px] font-semibold text-ink">{t('integrations.cli.commandsTitle')}</h4>
       <p className="wk-muted m-0 mb-[0.6rem] text-[13px]">{t('integrations.cli.commandsDesc')}</p>
-      <div className="wk-code-toolbar"><pre>{'weknora doc upload ./document.pdf --kb "KB_ID"\nweknora search chunks "query" --kb "KB_ID"\nweknora chat "question" --kb "KB_ID" --format text\nweknora agent list'}</pre><button className="wk-button wk-button--text" type="button" title={t('integrations.cli.copy')} onClick={() => copy('weknora doc upload')}>⧉</button></div>
+      <div className={CODE_TOOLBAR_CLASS}><pre className={CODE_TOOLBAR_PRE_CLASS}>{'weknora doc upload ./document.pdf --kb "KB_ID"\nweknora search chunks "query" --kb "KB_ID"\nweknora chat "question" --kb "KB_ID" --format text\nweknora agent list'}</pre><button className={'wk-button wk-button--text ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" title={t('integrations.cli.copy')} onClick={() => copy('weknora doc upload')}>⧉</button></div>
     </section> : null}
     {tab === 'cli' ? <section className="rounded-[10px] border border-[#eef1f5] p-4">
       <h4 className="m-0 mb-[0.6rem] text-[14px] font-semibold text-ink">{t('integrations.cli.mcpTitle')}</h4>
       <p className="wk-muted m-0 mb-[0.6rem] text-[13px]">{t('integrations.cli.mcpDesc')}</p>
-      <div className="wk-code-toolbar"><pre>{JSON.stringify({ mcpServers: { weknora: { command: 'weknora', args: ['--profile', 'weknora', 'mcp', 'serve'] } } }, null, 2)}</pre><button className="wk-button wk-button--text" type="button" title={t('integrations.cli.copy')} onClick={() => copy('mcp')}>⧉</button></div>
+      <div className={CODE_TOOLBAR_CLASS}><pre className={CODE_TOOLBAR_PRE_CLASS}>{JSON.stringify({ mcpServers: { weknora: { command: 'weknora', args: ['--profile', 'weknora', 'mcp', 'serve'] } } }, null, 2)}</pre><button className={'wk-button wk-button--text ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" title={t('integrations.cli.copy')} onClick={() => copy('mcp')}>⧉</button></div>
     </section> : null}
     {tab === 'chrome' ? <section className="rounded-[10px] border border-[#eef1f5] p-4">
       <h4 className="m-0 mb-[0.6rem] text-[14px] font-semibold text-ink">{t('integrations.chrome.capabilitiesTitle')}</h4>
-      <div className="wk-capability-grid">
-        {chromeCapabilities.map((key) => <div key={key} className="wk-capability-card">
-          <h5>{t('integrations.chrome.capabilities.' + key + '.title')}</h5>
-          <p>{t('integrations.chrome.capabilities.' + key + '.desc')}</p>
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-[10px]">
+        {chromeCapabilities.map((key) => <div key={key} className="rounded-[10px] border border-[#eef1f5] p-[.85rem]">
+          <h5 className="m-0 mb-[.3rem] text-[13px] text-ink">{t('integrations.chrome.capabilities.' + key + '.title')}</h5>
+          <p className="m-0 text-[12px] leading-[1.55] text-muted-strong">{t('integrations.chrome.capabilities.' + key + '.desc')}</p>
         </div>)}
       </div>
     </section> : null}
@@ -1482,10 +1524,10 @@ function ExternalLandingPanel({ tab, locale, externalUrl, apiBaseUrl, t }: { tab
     </section> : null}
     {tab === 'claw' ? <section className="rounded-[10px] border border-[#eef1f5] p-4">
       <h4 className="m-0 mb-[0.6rem] text-[14px] font-semibold text-ink">{t('integrations.claw.capabilitiesTitle')}</h4>
-      <div className="wk-capability-grid">
-        {clawCapabilities.map((key) => <div key={key} className="wk-capability-card">
-          <h5>{t('integrations.claw.capabilities.' + key + '.title')}</h5>
-          <p>{t('integrations.claw.capabilities.' + key + '.desc')}</p>
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-[10px]">
+        {clawCapabilities.map((key) => <div key={key} className="rounded-[10px] border border-[#eef1f5] p-[.85rem]">
+          <h5 className="m-0 mb-[.3rem] text-[13px] text-ink">{t('integrations.claw.capabilities.' + key + '.title')}</h5>
+          <p className="m-0 text-[12px] leading-[1.55] text-muted-strong">{t('integrations.claw.capabilities.' + key + '.desc')}</p>
         </div>)}
       </div>
     </section> : null}

@@ -177,20 +177,8 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 @media (max-width: 720px) { .wk-form-grid, .wk-form-grid--three, .wk-form-grid--two, .wk-toggle-grid { grid-template-columns: 1fr; } .wk-settings-table label { grid-template-columns: 1fr; align-items: stretch; } .wk-settings-tabs { overflow-x: auto; } }
 
 /* Integrations surface — ported from frontend/src/components/css/channel-panel-list.less
-   and frontend/src/views/integrations/integration-landing.less (Vue baselines). */
-.wk-integrations-page { max-width: 1040px; margin: 0 auto; padding: 2rem 1rem; }
-.wk-integrations-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; }
-.wk-integrations-header h1 { margin: 0; }
-.wk-integrations-tabs { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
-.wk-integrations-tabs button { border: 1px solid #dce3ed; border-radius: 999px; background: #fff; color: #506078; cursor: pointer; padding: .5rem .75rem; }
-.wk-integrations-tabs button.is-active { border-color: #2e6de6; color: #1849a9; background: #eff4ff; }
-.wk-integrations-panel { border: 1px solid #dce3ed; border-radius: 10px; background: #fff; padding: 1.25rem; }
-.wk-int-section-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; border-bottom: 1px solid #eef1f5; padding-bottom: 1rem; margin-bottom: 1rem; }
-.wk-int-section-header h2 { margin: 0 0 6px; color: #172033; font-size: 18px; font-weight: 600; line-height: 1.35; }
-.wk-int-section-desc { margin: 0; color: #506078; font-size: 13px; line-height: 1.6; }
-.wk-int-doc-link { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; color: #2e6de6; text-decoration: none; }
-.wk-int-doc-link:hover { text-decoration: underline; }
-.wk-int-doc-icon { font-size: 12px; }
+   (Vue baseline); the .wk-integrations-page/header/tabs/panel and .wk-int-*
+   families moved to Tailwind utilities in packages/views/src/integrations/page.tsx. */
 .wk-button { border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #172033; cursor: pointer; font: inherit; padding: .45rem .85rem; }
 .wk-button:disabled { cursor: not-allowed; opacity: .55; }
 .wk-button--text { border-color: transparent; background: transparent; color: #506078; padding: .3rem .5rem; }
@@ -209,16 +197,11 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-status-error { color: #b42318; }
 .wk-status-ok { color: #137333; }
 .wk-mono-input { box-sizing: border-box; min-width: 0; flex: 1; max-width: 420px; border: 1px solid #dce3ed; border-radius: 6px; background: #f7f9fc; color: #172033; font: .85rem ui-monospace, monospace; padding: .5rem .6rem; }
-.wk-option-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: .5rem 0; }
-.wk-option-chip { border: 1px solid #dce3ed; border-radius: 999px; background: #fff; color: #506078; cursor: pointer; font: inherit; font-size: 13px; padding: .3rem .85rem; }
-.wk-option-chip--active { border-color: #2e6de6; color: #1849a9; background: #eff4ff; }
-.wk-check-row { display: flex !important; align-items: center; gap: .45rem; font-weight: 400 !important; }
+/* The .wk-option-chips/.wk-option-chip(--active) and .wk-check-row families moved
+   to Tailwind utilities on their consumer (packages/views/src/integrations/page.tsx
+   CHIP_BASE/chip and the wizard/API label rows). .wk-check-row stays on the labels
+   as a :not() selector hook for the integration drawer's font-medium! variant. */
 .wk-muted--warn { color: #b45309; }
-.wk-integration-form { display: grid; gap: .7rem; max-width: 680px; margin: 0 0 1.25rem; padding: 1rem; border: 1px solid #eef1f5; border-radius: 8px; background: #fbfcfe; }
-.wk-integration-form h3 { margin: 0; font-size: 15px; }
-.wk-integration-form label { display: grid; gap: .3rem; font-weight: 600; }
-.wk-integration-form input, .wk-integration-form select, .wk-integration-form textarea { box-sizing: border-box; width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #172033; font: inherit; padding: .55rem .65rem; }
-.wk-integration-form .wk-muted { margin: 0; font-weight: 400; font-size: 12px; color: #98a2b3; }
 
 /* S00 N-2: Vue CreateTenantDialog.vue renders a centered t-dialog at 480px;
    narrow the shared wk-dialog panel for the tenant-create modal only. */
@@ -242,15 +225,8 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-secret-output { display: grid; gap: .4rem; }
 .wk-secret-output p { margin: 0; }
 .wk-secret-output textarea { box-sizing: border-box; width: 100%; overflow: auto; border: 1px solid #dce3ed; border-radius: 6px; background: #172033; color: #edf2ff; padding: .7rem; font: .78rem/1.45 ui-monospace, monospace; }
-.wk-int-landing { display: grid; gap: 1rem; max-width: 760px; }
-.wk-int-landing-cta { display: flex; align-items: center; flex-wrap: wrap; gap: .75rem; }
-.wk-code-toolbar { position: relative; }
-.wk-code-toolbar pre { margin: 0; overflow-x: auto; border-radius: 8px; background: #172033; color: #edf2ff; padding: .7rem 2.6rem .7rem .8rem; font: .78rem/1.5 ui-monospace, monospace; }
-.wk-code-toolbar .wk-button { position: absolute; top: .35rem; right: .35rem; color: #9fb4d8; }
-.wk-capability-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
-.wk-capability-card { border: 1px solid #eef1f5; border-radius: 10px; padding: .85rem; }
-.wk-capability-card h5 { margin: 0 0 .3rem; font-size: 13px; color: #172033; }
-.wk-capability-card p { margin: 0; color: #506078; font-size: 12px; line-height: 1.55; }
+/* The .wk-capability-grid/.wk-capability-card family moved to Tailwind utilities
+   on its consumer (packages/views/src/integrations/page.tsx chrome/claw tabs). */
 
 
 .wk-toolbar label { position: relative; }
