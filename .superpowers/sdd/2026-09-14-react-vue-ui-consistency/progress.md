@@ -175,3 +175,9 @@
 - Added locale-aware display labels for all seven system capability values without changing backend payload identifiers.
 - Validation: `pnpm run test:web` 891/891; `pnpm run typecheck:web`; `git diff --check`.
 - Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r025-platform-api-key-capability-labels.md`.
+
+## Round N+34bf — capability display labels
+
+- Separated API key capability display labels from backend identifiers and localized all seven permissions across five locales.
+- Validation: `pnpm run test:web` 891/891; `pnpm run typecheck:web`; `git diff --check`.
+- Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r026-platform-api-key-capability-display.md`.
