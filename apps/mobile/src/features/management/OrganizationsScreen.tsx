@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import type { Organization, OrganizationJoinRequest, OrganizationMember, OrganizationRole, OrganizationShare } from '@weknora/api-client';
@@ -26,14 +26,18 @@ export function OrganizationsScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const loadGeneration = useRef(0);
+  const selectionGeneration = useRef(0);
 
   const writable = useMemo(() => selected ? canManageOrganization(selected) : false, [selected]);
   const canCreate = useMemo(() => canCreateOrganization(runtime.workspaces.find((workspace) => String(workspace.id) === runtime.tenantId)?.role), [runtime.tenantId, runtime.workspaces]);
 
   const load = useCallback(async () => {
+    const generation = ++loadGeneration.current;
     setLoading(true); setError('');
     try {
       const deployment = await runtime.client.administration.capabilities();
+      if (generation !== loadGeneration.current) return;
       const capability = deployment.capabilities.organizations;
       if (capability && !capability.supported) {
         setOrganizations([]); setSelected(null); setMembers([]); setRequests([]); setKnowledgeBaseShares([]); setAgentShares([]);
@@ -41,15 +45,20 @@ export function OrganizationsScreen() {
         return;
       }
       const result = await api.list();
+      if (generation !== loadGeneration.current) return;
       setOrganizations(result.items);
       setSelected((current) => current ? result.items.find((item) => item.id === current.id) || null : null);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : t('common.error')); }
-    finally { setLoading(false); }
+    } catch (cause) {
+      if (generation === loadGeneration.current) setError(cause instanceof Error ? cause.message : t('common.error'));
+    } finally {
+      if (generation === loadGeneration.current) setLoading(false);
+    }
   }, [api, runtime.client, runtime.locale]);
 
   useEffect(() => { void load(); }, [load]);
 
   const select = useCallback(async (organization: Organization) => {
+    const generation = ++selectionGeneration.current;
     setSelected(organization); setError('');
     setMembers([]); setRequests([]); setKnowledgeBaseShares([]); setAgentShares([]);
     const results = await Promise.allSettled([
@@ -58,6 +67,7 @@ export function OrganizationsScreen() {
       api.knowledgeBaseShares.listForOrganization(organization.id),
       api.agentShares.listForOrganization(organization.id),
     ]);
+    if (generation !== selectionGeneration.current) return;
     if (results[0].status === 'fulfilled') setMembers(results[0].value.items); else setError(results[0].reason instanceof Error ? results[0].reason.message : t('common.error'));
     const joinRequestsResult = results[1];
     if (joinRequestsResult.status === 'fulfilled') setRequests(joinRequestsResult.value.items); else { const reason = joinRequestsResult.reason; setError((current) => current || (reason instanceof Error ? reason.message : t('common.error'))); }
