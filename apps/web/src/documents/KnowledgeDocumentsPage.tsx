@@ -764,7 +764,7 @@ export function UploadSwitch({ checked, ariaLabel, onChange }: { checked: boolea
   </button>;
 }
 
-function UploadSettingRow({ label, description, children, className = "" }: { label: string; description?: string; children: ReactNode; className?: string }) {
+function UploadSettingRow({ label, description, children, className = "" }: { label: ReactNode; description?: string; children: ReactNode; className?: string }) {
   return <div className={`wk-upload-setting-row ${className}`.trim()}>
     <div className="wk-upload-setting-info"><label>{label}</label>{description ? <p className="wk-muted">{description}</p> : null}</div>
     <div className="wk-upload-setting-control">{children}</div>
@@ -948,14 +948,12 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
         {props.multimodalIssue ? (
           <p className="wk-muted" role="note">{t("uploadConfirm.multimodalSetupHint")}</p>
         ) : null}
-        <label className="wk-upload-switch-label">
-          {t("knowledgeEditor.advanced.multimodal.label")}
+        <UploadSettingRow label={t("knowledgeEditor.advanced.multimodal.label")} description={t("knowledgeEditor.advanced.multimodal.description")}>
           <UploadSwitch checked={state.multimodalEnabled} ariaLabel={t("knowledgeEditor.advanced.multimodal.label")} onChange={(checked) => update({ multimodalEnabled: checked })} />
-        </label>
+        </UploadSettingRow>
         {state.multimodalEnabled ? (
           <>
-            <label>
-              {t("knowledgeEditor.advanced.multimodal.vllmLabel")} <span aria-hidden>*</span>
+            <UploadSettingRow label={<>{t("knowledgeEditor.advanced.multimodal.vllmLabel")} <span aria-hidden>*</span></>} description={t("knowledgeEditor.advanced.multimodal.vllmDescription")}>
               {props.vllmModels.length > 0 ? (
                 <UploadSingleSelect className="wk-upload-model-select" ariaLabel={t("knowledgeEditor.advanced.multimodal.vllmLabel")} placeholder={t("knowledgeEditor.advanced.multimodal.vllmPlaceholder")} value={state.vllmModelId} options={[{ value: "", label: t("knowledgeEditor.advanced.multimodal.vllmPlaceholder") }, ...props.vllmModels.map((model) => ({ value: model.id, label: model.name }))]} onChange={(value) => update({ vllmModelId: value })} />
               ) : (
@@ -966,13 +964,11 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
                   placeholder={t("knowledgeEditor.advanced.multimodal.vllmPlaceholder")}
                 />
               )}
-            </label>
-            <label>
-              {t("knowledgeEditor.advanced.multimodal.descriptionLanguageLabel")}{" "}
+            </UploadSettingRow>
+            <UploadSettingRow label={t("knowledgeEditor.advanced.multimodal.descriptionLanguageLabel")} description={t("knowledgeEditor.advanced.multimodal.descriptionLanguageDescription")}>
               <UploadSingleSelect className="wk-upload-model-select" ariaLabel={t("knowledgeEditor.advanced.multimodal.descriptionLanguageLabel")} placeholder={t("knowledgeEditor.advanced.multimodal.descriptionLanguageAuto")} clearable value={state.descriptionLanguage} options={MULTIMODAL_LANGUAGE_OPTIONS.map((option) => ({ value: option.value, label: t(option.labelKey) }))} onChange={(value) => update({ descriptionLanguage: value })} />
-            </label>
-            <label>
-              {t("knowledgeEditor.advanced.multimodal.customInstructionsLabel")}{" "}
+            </UploadSettingRow>
+            <UploadSettingRow label={t("knowledgeEditor.advanced.multimodal.customInstructionsLabel")} description={t("knowledgeEditor.advanced.multimodal.customInstructionsDescription")}>
               <textarea
                 rows={3}
                 maxLength={4000}
@@ -980,7 +976,7 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
                 value={state.customInstructions}
                 onChange={(event) => update({ customInstructions: event.target.value })}
               />
-            </label>
+            </UploadSettingRow>
           </>
         ) : null}
       </fieldset>
@@ -990,14 +986,12 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
         {props.asrIssue ? (
           <p className="wk-muted" role="note">{t("uploadConfirm.asrSetupHint")}</p>
         ) : null}
-        <label className="wk-upload-switch-label">
-          {t("knowledgeEditor.asr.label")}
+        <UploadSettingRow label={t("knowledgeEditor.asr.label")} description={t("knowledgeEditor.asr.description")}>
           <UploadSwitch checked={state.asrEnabled} ariaLabel={t("knowledgeEditor.asr.label")} onChange={(checked) => update({ asrEnabled: checked })} />
-        </label>
+        </UploadSettingRow>
         {state.asrEnabled ? (
           <>
-            <label>
-              {t("knowledgeEditor.asr.modelLabel")} <span aria-hidden>*</span>
+            <UploadSettingRow label={<>{t("knowledgeEditor.asr.modelLabel")} <span aria-hidden>*</span></>} description={t("knowledgeEditor.asr.modelDescription")}>
               {props.asrModels.length > 0 ? (
                 <UploadSingleSelect className="wk-upload-model-select" ariaLabel={t("knowledgeEditor.asr.modelLabel")} placeholder={t("knowledgeEditor.asr.modelPlaceholder")} value={state.asrModelId} options={[{ value: "", label: t("knowledgeEditor.asr.modelPlaceholder") }, ...props.asrModels.map((model) => ({ value: model.id, label: model.name }))]} onChange={(value) => update({ asrModelId: value })} />
               ) : (
@@ -1008,16 +1002,15 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
                   placeholder={t("knowledgeEditor.asr.modelPlaceholder")}
                 />
               )}
-            </label>
-            <label>
-              {t("knowledgeEditor.asr.languageLabel")}{" "}
+            </UploadSettingRow>
+            <UploadSettingRow label={t("knowledgeEditor.asr.languageLabel")} description={t("knowledgeEditor.asr.languageDescription")}>
               <UploadClearableInput
                 value={state.asrLanguage}
                 placeholder={t("knowledgeEditor.asr.languagePlaceholder")}
                 ariaLabel={t("knowledgeEditor.asr.languageLabel")}
                 onChange={(value) => update({ asrLanguage: value })}
               />
-            </label>
+            </UploadSettingRow>
           </>
         ) : null}
       </fieldset>

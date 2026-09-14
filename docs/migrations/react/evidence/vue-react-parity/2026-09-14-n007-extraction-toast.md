@@ -42,6 +42,8 @@ Chunking controls now use a shared Vue-shaped `setting-row` layout with an infor
 
 Chunking, multimodal, ASR, and question sections now expose Vue-shaped visible title/description headers while retaining an accessible hidden fieldset legend.
 
+Multimodal and ASR enabled fields, model selectors, language controls, and multimodal custom instructions now use the shared Vue-shaped setting-row information/control columns, including the existing localized descriptions and required/clearable behavior.
+
 ASR language now uses a project clearable input with an explicit clear action, matching Vue `t-input clearable`; the existing language payload remains unchanged.
 
 The relation-type combobox also exposes a clear action, while entity endpoint comboboxes remain non-clearable, matching the Vue per-field `clearable` configuration.
