@@ -123,3 +123,4 @@
 - `tool-result` 状态文案继续收敛：五语言新增搜索/记录/匹配/空输出、工作目录、退出码、标准输出/错误、二进制隐藏和未命名文档标签，并由各 typed renderer 读取活动 `ChatCopyTable`；提交 `2cad677a`。shared 465/465、Web 891/891、Web typecheck 通过；工具标题与命中计数仍保留下一轮 Vue 文案核对项。
 - 工具结果标题已支持活动语言映射，同时保留 `toolResultPresentation()` 无 copy 调用的既有英文兼容行为，修复测试回归；提交 `2cad677a` 后续修正。shared 465/465、Web typecheck 通过。
 - 工具结果标题五语言键正式提交为 `fix(chat): add localized tool result titles`，由 `ToolResultView` 按活动 `ChatCopyTable` 渲染；无 copy 的纯函数调用仍保持旧英文兼容。提交后工作树仅保留原有未跟踪用户文件。
+- 工具结果标题映射提交后的 Web 全量回归保持 891/891，`git diff --check` 通过；当前提交链为 `5a87f8c1`、`fa31a5a6`、`16271df3`。
