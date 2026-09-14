@@ -91,10 +91,10 @@ test('login failure presents the backend message as a top toast, not an inline b
     setNativeValue(email, 'parity-test@local.dev');
     setNativeValue(password, 'WrongPassword!');
   });
-  const submit = [...document.querySelectorAll('button')].find((n) => n.className.includes('submit-button')) as HTMLButtonElement;
+  const submit = [...document.querySelectorAll('button')].find((n) => n.getAttribute('type') === 'submit') as HTMLButtonElement;
   assert.ok(submit, 'expected the submit button');
   await act(async () => { submit.click(); await settle(30); });
-  const toast = document.querySelector('.auth-toast');
+  const toast = document.querySelector('[data-testid="auth-toast"]');
   assert.ok(toast, 'expected a top toast after login failure');
   assert.match(toast.textContent || '', /Invalid email or password/);
   assert.equal(document.querySelector('.form-alert'), null, 'no inline banner in the form card');

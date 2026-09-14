@@ -44,6 +44,13 @@ API 契约、鉴权、权限、表单校验、聊天流式、工具审批、上�
 
 ## 进度账本
 
+### 批次1：auth 域 ✅（Orchestrator 自做，子任务环境无法写文件已回退）
+- LoginPage.tsx 全部样式 → utilities；.language-switch 保留为 closest() DOM 钩子；
+  auth.css 缩减为 2 条 @keyframes（nodePulse/lineFlow，复杂动画按约定保留）；
+  login-page.test.tsx 2 处选择器改 type=submit / data-testid（toast 增 data-testid）。
+- 验证：typecheck 0、web 856/856、build ✓、login 截图人工复核（渐变/动画/表单/语言菜单正常）；
+  login/register/not-found 的像素差异为轮播 4s 自动播放时序非确定（后续批次对比时将冻结时钟）。
+
 - [x] 基础设施：theme.css 语义令牌（packages/ui/src/theme.css）+ styles.css 入口
   （theme/utilities layer + @source 扫描 ui/views）+ ui 包导出 theme.css。
   构建产物已验证：包内 utilities（如 .h-8）开始生成（修复了基线记录的既有缺陷）。
