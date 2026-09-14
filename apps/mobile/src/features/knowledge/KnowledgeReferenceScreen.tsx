@@ -12,7 +12,7 @@ export function KnowledgeReferenceScreen({ kind }: { kind: KnowledgeReferenceKin
   const kbId = Array.isArray(rawId) ? rawId[0] : rawId;
   const runtime = useMobileRuntime();
   const router = useRouter();
-  const label = (key: string) => knowledgeListLabel(runtime.locale, key);
+  const label = (key: string, values: Record<string, string | number> = {}) => knowledgeListLabel(runtime.locale, key, values);
   const role = runtime.workspaces.find((workspace) => String(workspace.id) === runtime.tenantId)?.role.trim().toLowerCase();
   const writable = role === 'owner' || role === 'admin';
   const [rows, setRows] = useState<ReferenceRow[]>([]);
@@ -26,17 +26,17 @@ export function KnowledgeReferenceScreen({ kind }: { kind: KnowledgeReferenceKin
     try {
       if (kind === 'wiki') {
         const response = await runtime.client.wiki.list(kbId, { page: 1, page_size: 100 });
-        setRows(response.pages.map((page) => ({ id: selectWikiReferenceEditKey(page), label: selectWikiReferenceLabel(page), detail: page.summary || '' })));
+        setRows(response.pages.map((page) => ({ id: selectWikiReferenceEditKey(page), label: selectWikiReferenceLabel(page, { untitled: label('dataSource.untitled'), version: (version) => label('knowledgeEditor.wikiBrowser.version', { ver: version }) }), detail: page.summary || '' })));
       } else {
         const response = await runtime.client.knowledge.faq.list(kbId, { page: 1, page_size: 100 });
-        setRows(response.data.map((entry) => ({ id: selectFaqReferenceEditKey(entry), label: selectFaqReferenceLabel(entry), detail: entry.answers[0] || '' })));
+        setRows(response.data.map((entry) => ({ id: selectFaqReferenceEditKey(entry), label: selectFaqReferenceLabel(entry, { untitled: label('dataSource.untitled'), enabled: label('knowledgeEditor.faq.statusEnabled'), disabled: label('knowledgeEditor.faq.statusDisabled'), recommended: label('knowledgeEditor.faq.recommended') }), detail: entry.answers[0] || '' })));
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : label("knowledgeBase.loadingFailed"));
+      setError(cause instanceof Error ? cause.message : label(kind === 'wiki' ? 'knowledgeEditor.mobile.loadWikiFailed' : 'knowledgeEditor.mobile.loadFaqFailed'));
     } finally {
       setLoading(false);
     }
-  }, [kbId, kind, runtime.client]);
+  }, [kbId, kind, runtime.client, runtime.locale]);
 
   useEffect(() => { void load(); }, [load]);
   const title = kind === 'wiki' ? label("wikiBrowser.indexTitle") : label("knowledgeBase.faq.title");
@@ -48,11 +48,11 @@ export function KnowledgeReferenceScreen({ kind }: { kind: KnowledgeReferenceKin
       <Pressable accessibilityRole="button" onPress={() => void load()}><Text style={{ color: '#2864dc' }}>{label("knowledgeBase.documents.reload")}</Text></Pressable>
     </View>
     {error ? <Text accessibilityRole="alert" style={{ color: '#b42318', marginBottom: 8 }}>{error}</Text> : null}
-    {loading ? <ActivityIndicator accessibilityLabel={`Loading ${kind}`} /> : <FlatList
+    {loading ? <ActivityIndicator accessibilityLabel={`${label('common.loading')}: ${title}`} /> : <FlatList
       data={rows}
       keyExtractor={(item) => item.id}
       ListEmptyComponent={<Text style={{ color: '#667085' }}>{kind === 'wiki' ? label("wikiBrowser.emptyTitle") : label("knowledgeEditor.faq.emptyTitle")}</Text>}
-      renderItem={({ item }) => <View style={{ borderBottomColor: '#eaecf0', borderBottomWidth: 1, paddingVertical: 12 }}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><Text style={{ flex: 1, fontWeight: '600' }}>{item.label}</Text>{writable ? <Pressable accessibilityRole="button" onPress={() => router.push(editorRoute(kind, kbId || '', item.id))}><Text style={{ color: '#2864dc' }}>{label("wikiBrowser.editBtn")}</Text></Pressable> : null}</View>{item.detail ? <Text style={{ color: '#667085', fontSize: 12, marginTop: 4 }}>{item.detail}</Text> : null}</View>}
+      renderItem={({ item }) => <View style={{ borderBottomColor: '#eaecf0', borderBottomWidth: 1, paddingVertical: 12 }}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><Text style={{ flex: 1, fontWeight: '600' }}>{item.label}</Text>{writable ? <Pressable accessibilityRole="button" onPress={() => router.push(editorRoute(kind, kbId || '', item.id))}><Text style={{ color: '#2864dc' }}>{label(kind === 'wiki' ? 'wikiBrowser.editBtn' : 'knowledgeBase.faq.edit')}</Text></Pressable> : null}</View>{item.detail ? <Text style={{ color: '#667085', fontSize: 12, marginTop: 4 }}>{item.detail}</Text> : null}</View>}
     />}
   </SafeAreaView>;
 }

@@ -35,3 +35,20 @@ test('mobile knowledge reference routes remain knowledge-base scoped', () => {
   assert.equal(editorRoute('wiki', 'kb-one'), '/knowledge/kb-one/editor?kind=wiki');
   assert.equal(editorRoute('faq', 'kb-one', '42'), '/knowledge/kb-one/editor?kind=faq&slug=42');
 });
+
+test('mobile knowledge reference labels accept localized copy for every visible state', () => {
+  assert.equal(
+    selectWikiReferenceLabel(
+      { title: '', slug: 'fallback/page', version: 4 },
+      { untitled: '无标题', version: (version) => `版本 ${version}` },
+    ),
+    'fallback/page · 版本 4',
+  );
+  assert.equal(
+    selectFaqReferenceLabel(
+      { standard_question: '  ', is_enabled: false, is_recommended: true },
+      { untitled: '无标题', enabled: '已启用', disabled: '已禁用', recommended: '推荐' },
+    ),
+    '无标题 · 已禁用 · 推荐',
+  );
+});

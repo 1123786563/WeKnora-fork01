@@ -2,19 +2,37 @@ import type { Href } from 'expo-router';
 
 export type KnowledgeReferenceKind = 'wiki' | 'faq';
 
-export function selectWikiReferenceLabel(row: { title: string; slug: string; version: number }): string {
-  const title = row.title.trim() || row.slug.trim() || 'Untitled Wiki page';
-  return `${title} · v${row.version}`;
+export interface WikiReferenceCopy {
+  untitled: string;
+  version: (version: number) => string;
+}
+
+export function selectWikiReferenceLabel(
+  row: { title: string; slug: string; version: number },
+  copy: WikiReferenceCopy = { untitled: 'Untitled Wiki page', version: (version) => `v${version}` },
+): string {
+  const title = row.title.trim() || row.slug.trim() || copy.untitled;
+  return `${title} · ${copy.version(row.version)}`;
 }
 
 export function selectWikiReferenceEditKey(row: { id: string; slug: string }): string {
   return row.slug;
 }
 
-export function selectFaqReferenceLabel(row: { standard_question: string; is_enabled: boolean; is_recommended: boolean }): string {
-  const question = row.standard_question.trim() || 'Untitled FAQ';
-  const state = row.is_enabled ? 'enabled' : 'disabled';
-  return `${question} · ${state}${row.is_recommended ? ' · recommended' : ''}`;
+export interface FaqReferenceCopy {
+  untitled: string;
+  enabled: string;
+  disabled: string;
+  recommended: string;
+}
+
+export function selectFaqReferenceLabel(
+  row: { standard_question: string; is_enabled: boolean; is_recommended: boolean },
+  copy: FaqReferenceCopy = { untitled: 'Untitled FAQ', enabled: 'enabled', disabled: 'disabled', recommended: 'recommended' },
+): string {
+  const question = row.standard_question.trim() || copy.untitled;
+  const state = row.is_enabled ? copy.enabled : copy.disabled;
+  return `${question} · ${state}${row.is_recommended ? ` · ${copy.recommended}` : ''}`;
 }
 
 export function selectFaqReferenceEditKey(row: { id: number }): string {
