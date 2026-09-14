@@ -5,7 +5,6 @@ import { NumberInput, Status, Switch } from '@weknora/ui';
 import { ModelOptionSelect } from './ModelOptionSelect.tsx';
 import { memoryWorkspacePatch } from './surface.ts';
 import { readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
-import './memory-workspace.css';
 
 type MemoryRow = Record<string, unknown>;
 
@@ -65,7 +64,7 @@ export function MemoryWorkspacePanel({ client, initialConfig, canEdit = true }: 
   }
 
   const options = (types: string[]) => models.filter((model) => types.includes((model.type ?? '').toLowerCase())).map((model) => ({ value: model.id, label: model.name }));
-  const setting = (label: string, description: string, control: ReactNode, hint?: string) => <div className="wk-mws-row"><div className="wk-mws-info"><label>{label}</label><p className="wk-mws-desc">{description}</p>{hint ? <p className="wk-mws-desc wk-mws-hint">{hint}</p> : null}</div><div className="wk-mws-control">{control}</div></div>;
+  const setting = (label: string, description: string, control: ReactNode, hint?: string) => <div className="flex items-start justify-between border-b border-[#e7e7e7] py-5 last:border-b-0 max-[720px]:flex-col max-[720px]:gap-2"><div className="max-w-[65%] flex-1 pr-6 max-[720px]:max-w-full max-[720px]:pr-0"><label className="mb-1 block text-[15px] font-medium text-[rgba(0,0,0,0.9)]">{label}</label><p className="m-0 text-[13px] leading-[1.5] text-[rgba(0,0,0,0.6)]">{description}</p>{hint ? <p className="m-0 mt-1 text-[13px] leading-[1.5] text-[rgba(0,0,0,0.4)]">{hint}</p> : null}</div><div className="flex shrink-0 items-center justify-end">{control}</div></div>;
   const autoFields = writeMode === 'auto' ? <>
     {setting(t('memoryWorkspaceSettings.extractModelLabel'), t('memoryWorkspaceSettings.extractModelDescription'), <ModelOptionSelect value={extractModelId} options={options(['chat', 'vllm'])} disabled={!canEdit || busy} addModelLabel={t('model.addModelInSettings')} onAddModel={() => window.location.assign('/platform/settings?section=models&subsection=chat')} onChange={(value) => debouncedSave({ extractModelId: value })} />)}
     {setting(t('memoryWorkspaceSettings.extractDelayLabel'), t('memoryWorkspaceSettings.extractDelayDescription'), <NumberInput min={5} max={3600} step={15} value={extractDelaySeconds} disabled={!canEdit || busy} onValueChange={(value) => setExtractDelaySeconds(Number(value))} onBlur={() => debouncedSave()} />)}
@@ -76,33 +75,33 @@ export function MemoryWorkspacePanel({ client, initialConfig, canEdit = true }: 
   // Vue MemoryWorkspaceSettings.vue: bare section on the drawer background —
   // h2 header, neutral intro box with brand icon, bordered setting rows, and a
   // stacked full-width custom-prompt row.
-  return <div className="wk-memory-workspace-settings">
-    <div className="wk-mws-header">
-      <h2>{t('memoryWorkspaceSettings.title')}</h2>
-      <p className="wk-mws-description">{t('memoryWorkspaceSettings.description')}</p>
+  return <div className="w-full text-[rgba(0,0,0,0.9)]">
+    <div className="mb-6">
+      <h2 className="m-0 mb-2 text-[20px] font-semibold text-[rgba(0,0,0,0.9)]">{t('memoryWorkspaceSettings.title')}</h2>
+      <p className="m-0 text-sm leading-[1.5] text-[rgba(0,0,0,0.6)]">{t('memoryWorkspaceSettings.description')}</p>
     </div>
-    <div className="wk-mws-intro" role="note">
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="wk-mws-intro-icon"><circle cx="8" cy="8" r="6.25" /><line x1="8" y1="7.4" x2="8" y2="11.2" /><line x1="8" y1="4.9" x2="8" y2="5.1" /></svg>
+    <div className="mb-2 flex items-start gap-2.5 rounded-lg bg-[#f3f3f3] px-4 py-[14px]" role="note">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="mt-0.5 shrink-0 text-[#07c05f]"><circle cx="8" cy="8" r="6.25" /><line x1="8" y1="7.4" x2="8" y2="11.2" /><line x1="8" y1="4.9" x2="8" y2="5.1" /></svg>
       <div>
-        <p className="wk-mws-intro-title">{t('memoryWorkspaceSettings.introTitle')}</p>
-        <p className="wk-mws-intro-desc">{t('memoryWorkspaceSettings.introDescription')}</p>
+        <p className="m-0 mb-1 text-sm font-medium text-[rgba(0,0,0,0.9)]">{t('memoryWorkspaceSettings.introTitle')}</p>
+        <p className="m-0 text-[13px] leading-[1.6] text-[rgba(0,0,0,0.6)]">{t('memoryWorkspaceSettings.introDescription')}</p>
       </div>
     </div>
     {error ? <Status tone="error">{error}</Status> : null}
     {notice ? <Status tone="success">{notice}</Status> : null}
-    <div className="wk-mws-group">
+    <div className="flex flex-col">
       {setting(t('memoryWorkspaceSettings.enableLabel'), t('memoryWorkspaceSettings.enableDescription'), <Switch checked={enabled} disabled={!canEdit || busy} onCheckedChange={(checked) => debouncedSave({ enabled: checked })} aria-label={t('memoryWorkspaceSettings.enableLabel')} />)}
       {enabled ? <>{setting(t('memoryWorkspaceSettings.writeModeLabel'), t('memoryWorkspaceSettings.writeModeDescription'), <div className="wk-segmented" role="radiogroup" aria-label={t('memoryWorkspaceSettings.writeModeLabel')}>
         <button type="button" role="radio" aria-checked={writeMode === 'explicit_only'} className={writeMode === 'explicit_only' ? 'is-active' : ''} disabled={!canEdit || busy} onClick={() => debouncedSave({ writeMode: 'explicit_only' })}>{t('memoryWorkspaceSettings.writeModeExplicit')}</button>
         <button type="button" role="radio" aria-checked={writeMode === 'auto'} className={writeMode === 'auto' ? 'is-active' : ''} disabled={!canEdit || busy} onClick={() => debouncedSave({ writeMode: 'auto' })}>{t('memoryWorkspaceSettings.writeModeAuto')}</button>
       </div>, writeMode === 'auto' ? t('memoryWorkspaceSettings.writeModeAutoHint') : t('memoryWorkspaceSettings.writeModeExplicitHint'))}{autoFields}
-        <div className="wk-mws-row wk-mws-row-stacked">
-          <div className="wk-mws-info">
-            <label>{t('memoryWorkspaceSettings.instructionsLabel')}</label>
-            <p className="wk-mws-desc">{t('memoryWorkspaceSettings.instructionsDescription')}</p>
+        <div className="flex flex-col items-stretch border-b border-[#e7e7e7] py-5 last:border-b-0">
+          <div className="mb-2.5 max-w-full flex-1 pr-0">
+            <label className="mb-1 block text-[15px] font-medium text-[rgba(0,0,0,0.9)]">{t('memoryWorkspaceSettings.instructionsLabel')}</label>
+            <p className="m-0 text-[13px] leading-[1.5] text-[rgba(0,0,0,0.6)]">{t('memoryWorkspaceSettings.instructionsDescription')}</p>
           </div>
-          <div className="wk-mws-control wk-mws-control-stretch">
-            <textarea className="wk-mws-textarea" maxLength={1000} rows={3} value={extractInstructions} disabled={!canEdit || busy} placeholder={t('memoryWorkspaceSettings.instructionsPlaceholder')} onChange={(event) => setExtractInstructions(event.target.value)} onBlur={() => debouncedSave()} />
+          <div className="flex w-full items-center justify-stretch">
+            <textarea className="w-full min-h-[72px] resize-y rounded-[3px] border border-[#dcdcdc] p-2 text-[13px] leading-[1.6] text-[rgba(0,0,0,0.9)] transition-colors focus:border-[#07c05f] focus:outline-2 focus:outline-[rgba(7,192,95,0.2)] focus:outline-offset-0 disabled:cursor-not-allowed disabled:bg-[#f3f3f3]" maxLength={1000} rows={3} value={extractInstructions} disabled={!canEdit || busy} placeholder={t('memoryWorkspaceSettings.instructionsPlaceholder')} onChange={(event) => setExtractInstructions(event.target.value)} onBlur={() => debouncedSave()} />
           </div>
         </div>
         {setting(t('memoryWorkspaceSettings.vectorRecallLabel'), t('memoryWorkspaceSettings.vectorRecallDescription'), <Switch checked={vectorRecall} disabled={!canEdit || busy} onCheckedChange={(checked) => debouncedSave({ vectorRecall: checked })} aria-label={t('memoryWorkspaceSettings.vectorRecallLabel')} />)}
