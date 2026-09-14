@@ -2438,3 +2438,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - Replaced the viewer-only Skill settings block's direct English title, description fallback, and empty state with shared five-locale settings keys; the read-only behavior is unchanged.
 - Validation: focused SkillSettings tests 31/31, Web 891/891, Web typecheck, and `git diff --check` passed.
+
+## 2026-09-15 Round N+34ay — Environment variable panel localization
+
+- Replaced EnvVar settings direct English labels, empty state, operation fallbacks, and action text with existing five-locale `envVarSettings.*` keys.
+- Validation: Web 891/891, Web typecheck, and `git diff --check` passed.
