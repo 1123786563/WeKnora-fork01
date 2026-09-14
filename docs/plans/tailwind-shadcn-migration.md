@@ -103,6 +103,21 @@ API 契约、鉴权、权限、表单校验、聊天流式、工具审批、上�
   并在文件头登记 9 文件 20 处消费方清单（交后续逐面板收编或永久保留，Orchestrator 决策项）；
   指定测试 70/70 + SettingsPage 15/15；typecheck 0、build ✓。
 - 合并验收：typecheck 0、web 856/856、shared 445/445、build ✓。
+### 剩余 styles.css 域块清单（1013 行，逐族清理排队）
+基于当前结构盘点，剩余家族（估算行数）：
+- 共享层（留最后）：wk-page/header/eyebrow/debug/list/list-item-*/form/form-grid/toolbar/pagination/settings-panel-heading 约 120 行
+- integrations 残余：wk-integrations-*/wk-int-*/wk-channel-*/wk-channels-*/wk-mcp-*/wk-secret-output/wk-upload-progress* 约 220 行
+- chat 联动：wk-chat-message-content 富文本（pre/table/citation/mermaid/math）/wk-chat-messages li p/
+  wk-chat-artifacts/wk-chat-reference*/wk-chat-suggestions* 约 150 行（与 chat 波 9 条守卫联动删）
+- data-sources：wk-data-source-*/wk-data-sources-page 约 60 行
+- admin：wk-admin-*/wk-checkbox/toggle-grid 约 40 行
+- configuration 残余/wk-diff/wk-preview-box/result/settings-editor/settings-layout 等散块 约 180 行
+- organizations/wk-organization-*：OrganizationsPage 已 utilities 化但 styles.css 的
+  wk-organization-layout/select 残留（确认后删）约 20 行
+- share dialog：wk-share-*（KnowledgeBaseShareDialog）约 60 行
+- knowledge settings/faq/editor 残余 约 40 行
+清理纪律同 conventions：逐族 grep 消费方→utilities 追加→删规则→门禁→提交；
+hook 类（测试/JS 引用）保留类名。
 ### 批次19：TenantMembers 域 ✅（子任务执行，Orchestrator 验收提交）
 - TenantMembersPanel.tsx ~95 条规则内联 utilities（表格/分页/标签三态/确认弹层；
   settings-wrapper 抽屉 select chrome 特异性更高今日实际生效，按生效值 4 条未复制）；
