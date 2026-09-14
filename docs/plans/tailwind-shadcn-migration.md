@@ -206,6 +206,15 @@ hook 类（测试/JS 引用）保留类名。
   ConfigurationPage）；CHIP_BASE/chip() 常量 + check-row 保留为 drawer :not() 钩子；
   死类 wk-role-badge 样式恢复并去名；styles.css 删 8 条。40/40 configuration 测试、build ✓。
 - 合并验收：typecheck 0、web 890/890、build ✓；styles.css 431 行。
+### 批次38 补充：chat 协调最终报告要点
+- 零漂移验证：chat-empty/chat-session 像素 diff 0.000%（bbox none），证据
+  artifacts/tailwind-shadcn/chat-{before,after}/*.png + chat-shots.mjs 可复现脚本。
+- chat.css 守卫精确定性：删 4（对手随 legacy 块死亡）；留 5 中 4 条对手=共享层
+  unlayered 规则（L16 h1 clamp/L30 wk-list-actions/L70 panel-heading——「共享层留最后」），
+  1 条=a11y reduced-motion（utilities 无对应物）。共享层收尾时 4 条联动删除。
+- 富文本 36 条迁入 chat.css 的正当性已按 III.7 记录（markdown.ts/mermaid.ts 运行时
+  生成 HTML + artifact-preview/tool-result/references 三组件零 utilities）。
+- 既有偶发白屏（in-place 切换 + continue-stream 竞态）非本迁移引入，before 态同样复现。
 ### 批次19：TenantMembers 域 ✅（子任务执行，Orchestrator 验收提交）
 - TenantMembersPanel.tsx ~95 条规则内联 utilities（表格/分页/标签三态/确认弹层；
   settings-wrapper 抽屉 select chrome 特异性更高今日实际生效，按生效值 4 条未复制）；
