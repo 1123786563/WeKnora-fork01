@@ -642,6 +642,26 @@ interface ChannelListCopy {
   createForm: 'im' | 'embed' | 'none';
 }
 
+// Tailwind port of the former .wk-channel-card family in apps/web/src/styles.css
+// (356-375, 581). Shared card chrome lives in CHANNEL_CARD_CLASS; color,
+// background and hover state are per-variant so no two utilities of the same
+// property compete on one element. max-[720px] carries the old
+// @media (max-width: 720px) card wrap.
+const CHANNEL_CARD_CLASS = 'relative flex items-center gap-3 box-border min-h-14 px-3 py-[10px] rounded-[10px] border border-line text-left [font:inherit] transition-[border-color,box-shadow] duration-[180ms] ease-[ease] max-[720px]:items-start max-[720px]:flex-wrap';
+const CHANNEL_CARD_CLICKABLE_CLASS = CHANNEL_CARD_CLASS + ' w-full cursor-pointer bg-surface text-[color:inherit] hover:border-[#7ea4f2] hover:shadow-[0_4px_14px_rgba(15,23,42,0.06)] hover:outline-none focus-visible:border-[#7ea4f2] focus-visible:shadow-[0_4px_14px_rgba(15,23,42,0.06)] focus-visible:outline-none';
+const CHANNEL_CARD_STATIC_CLASS = CHANNEL_CARD_CLASS + ' bg-surface text-[color:inherit]';
+const CHANNEL_CARD_ADD_CLASS = CHANNEL_CARD_CLASS + ' w-full cursor-pointer border-dashed bg-transparent text-[#98a2b3] hover:border-primary hover:bg-[rgba(46,109,230,0.06)] hover:text-primary hover:shadow-none focus-visible:border-primary focus-visible:bg-[rgba(46,109,230,0.06)] focus-visible:text-primary focus-visible:shadow-none';
+const CHANNEL_BADGE_CLASS = 'flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-lg';
+const CHANNEL_BADGE_STATIC_CLASS = CHANNEL_BADGE_CLASS + ' bg-hover-wash text-[12px] font-semibold text-muted-strong';
+const CHANNEL_BADGE_ADD_CLASS = CHANNEL_BADGE_CLASS + ' bg-[rgba(46,109,230,0.1)] text-[20px] font-normal text-primary';
+const CHANNEL_CARD_BODY_CLASS = 'min-w-0 flex-1';
+const CHANNEL_CARD_HEADER_CLASS = 'flex min-w-0 items-center gap-1.5';
+const CHANNEL_CARD_TITLE_CLASS = 'm-0 min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap leading-[1.4]';
+const CHANNEL_CARD_TITLE_STATIC_CLASS = CHANNEL_CARD_TITLE_CLASS + ' text-[14px] font-semibold text-ink';
+const CHANNEL_CARD_TITLE_ADD_CLASS = CHANNEL_CARD_TITLE_CLASS + ' text-[13px] font-medium text-[color:inherit]';
+const CHANNEL_CARD_AGENT_CLASS = 'mt-1 block overflow-hidden text-ellipsis whitespace-nowrap text-[12px] leading-[1.4] text-[#98a2b3]';
+const CHANNEL_CARD_ACTIONS_CLASS = 'ml-auto flex shrink-0 items-center gap-0.5';
+
 function ChannelListPanel({ variant, copy, locale, items, showCreate, onToggleCreate, busy, t, renamingId, renameValue, onRenameValue, onStartRename, onSaveRename, onCancelRename, onOpenCard, onToggle, onDelete, imCreateSlot, embedCreateSlot }: {
   variant: 'im' | 'embed';
   copy: ChannelListCopy;
@@ -664,27 +684,27 @@ function ChannelListPanel({ variant, copy, locale, items, showCreate, onToggleCr
   embedCreateSlot?: React.ReactNode;
 }) {
   return <div className="wk-channels-section">
-    <div className="wk-channels-header">
-      <span className="wk-channels-title">{copy.channelsTitle}</span>
-      <span className="wk-channels-count">{items.length}</span>
+    <div className="mb-3 flex items-center gap-2">
+      <span className="text-[14px] font-medium text-ink">{copy.channelsTitle}</span>
+      <span className="rounded-[10px] bg-hover-wash px-2 py-0.5 text-[12px] text-[#98a2b3]">{items.length}</span>
     </div>
-    {items.length === 0 && !showCreate ? <div className="wk-channels-empty"><p className="wk-status">{copy.emptyText}</p></div> : null}
-    <div className="wk-channel-grid">
+    {items.length === 0 && !showCreate ? <div className="py-8"><p className="wk-status">{copy.emptyText}</p></div> : null}
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] items-stretch gap-3">
       {items.map((item) => {
         const platform = variant === 'im' && typeof item.platform === 'string' ? item.platform : '';
         const badgeText = platform ? imPlatformLabel(platform, locale).slice(0, 2) : '</>';
         const agentLine = typeof item.agent_name === 'string' && item.agent_name ? item.agent_name : typeof item.agent_id === 'string' && item.agent_id ? 'ID ' + item.agent_id : '';
         const name = editedNameOf(item) || item.name || copy.unnamedLabel;
-        return <article className={onOpenCard ? 'wk-channel-card wk-channel-card--clickable' : 'wk-channel-card'} key={item.id} onClick={onOpenCard ? () => onOpenCard(item) : undefined}>
-          <span className="wk-channel-card__badge" aria-hidden="true">{badgeText}</span>
-          <div className="wk-channel-card__body">
-            <div className="wk-channel-card__header">
-              <h3 className="wk-channel-card__title">{name}</h3>
+        return <article className={onOpenCard ? CHANNEL_CARD_CLICKABLE_CLASS : CHANNEL_CARD_STATIC_CLASS} key={item.id} onClick={onOpenCard ? () => onOpenCard(item) : undefined}>
+          <span className={CHANNEL_BADGE_STATIC_CLASS} aria-hidden="true">{badgeText}</span>
+          <div className={CHANNEL_CARD_BODY_CLASS}>
+            <div className={CHANNEL_CARD_HEADER_CLASS}>
+              <h3 className={CHANNEL_CARD_TITLE_STATIC_CLASS}>{name}</h3>
               {item.enabled === false ? <span className="wk-tag wk-tag--warning">{copy.disabledLabel}</span> : null}
             </div>
-            {agentLine ? <span className="wk-channel-card__agent-name">{agentLine}</span> : null}
+            {agentLine ? <span className={CHANNEL_CARD_AGENT_CLASS}>{agentLine}</span> : null}
           </div>
-          <div className="wk-channel-card__actions" onClick={(event) => event.stopPropagation()}>
+          <div className={CHANNEL_CARD_ACTIONS_CLASS} onClick={(event) => event.stopPropagation()}>
             {onToggle ? <label className="wk-switch" title={item.enabled === false ? t('agentEditor.im.enabled') : copy.disabledLabel} onClick={(event) => event.stopPropagation()}>
               <input type="checkbox" role="switch" aria-label={t('agentEditor.im.enabled')} checked={item.enabled !== false} onChange={() => onToggle(item.id)} />
               <span className="wk-switch-knob" aria-hidden="true" />
@@ -695,11 +715,11 @@ function ChannelListPanel({ variant, copy, locale, items, showCreate, onToggleCr
           </div>
         </article>;
       })}
-      <button type="button" className="wk-channel-card wk-channel-card--add" onClick={onToggleCreate}>
-        <span className="wk-channel-card__badge wk-channel-card__badge--add" aria-hidden="true">+</span>
-        <div className="wk-channel-card__body">
-          <div className="wk-channel-card__header">
-            <span className="wk-channel-card__title">{copy.addTileLabel}</span>
+      <button type="button" className={CHANNEL_CARD_ADD_CLASS} onClick={onToggleCreate}>
+        <span className={CHANNEL_BADGE_ADD_CLASS} aria-hidden="true">+</span>
+        <div className={CHANNEL_CARD_BODY_CLASS}>
+          <div className={CHANNEL_CARD_HEADER_CLASS}>
+            <span className={CHANNEL_CARD_TITLE_ADD_CLASS}>{copy.addTileLabel}</span>
           </div>
         </div>
       </button>
@@ -781,7 +801,7 @@ function ImWizardPanel({ locale, t, apiBaseUrl, agents = [], knowledgeBases = []
     </label>;
   };
   const bound = form.platform === 'wechat' && isWeChatBound(form.credentials);
-  return <form className="wk-integration-form wk-channel-create" onSubmit={submit}>
+  return <form className="wk-integration-form mt-3!" onSubmit={submit}>
     {/* Vue drawerTitle (lines 685-690). */}
     <h3>{isEditing ? (form.name.trim() || t('agentEditor.im.unnamed')) : t('agentEditor.im.addChannel')}</h3>
     <div className="wk-im-steps" role="list">
@@ -973,7 +993,7 @@ function EmbedWizardPanel({ t, apiBaseUrl, agents = [], title, form, onForm, onA
   const agentWebSearchEnabled = drawerAgent?.config?.web_search_enabled === true;
   const agentImageUploadEnabled = drawerAgent?.config?.image_upload_enabled === true;
   const secretPlaceholder = hasWebhookSecret ? t('embedPublish.webhookSecretKeep') : t('embedPublish.webhookSecretPlaceholder');
-  return <form className="wk-integration-form wk-channel-create wk-embed-wizard" onSubmit={submit}>
+  return <form className="wk-integration-form wk-embed-wizard mt-3!" onSubmit={submit}>
     {/* Vue drawerTitle (lines 567-576). */}
     <h3>{title}</h3>
     <div className="wk-im-steps" role="list">

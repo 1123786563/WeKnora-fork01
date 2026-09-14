@@ -134,6 +134,11 @@ hook 类（测试/JS 引用）保留类名。
 - 验收：typecheck 0、web 856/856、shared 446/446（+1 新测试）、build ✓。
 - 运维注：一次全量套件出现 13 个时序抖动失败（vite/后端/多代理并发高负载），
   系统空闲后复跑 856/856 确定为环境噪声，非代码回归。
+### 批次29：channels 频道卡家族 ✅（子任务执行，Orchestrator 验收提交）
+- page.tsx ChannelListPanel 全家族 → 13 个模块级 Tailwind 常量类（变体互斥拆分）；
+  styles.css 删 22 条（20 条 1:1 + 2 条死规则 rename 家族）；styles.css wk-channel* 清零；
+  测试选择器 29 处语义化（imWizard 9/embedWizard 18/embedPreviewFallback 2）；JS 钩子 0。
+- 验收：typecheck 0、integrations 52/52、web 856/856、build ✓。
 ### 批次19：TenantMembers 域 ✅（子任务执行，Orchestrator 验收提交）
 - TenantMembersPanel.tsx ~95 条规则内联 utilities（表格/分页/标签三态/确认弹层；
   settings-wrapper 抽屉 select chrome 特异性更高今日实际生效，按生效值 4 条未复制）；

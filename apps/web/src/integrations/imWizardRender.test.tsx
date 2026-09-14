@@ -38,6 +38,12 @@ function setNativeValue(element: HTMLSelectElement | HTMLInputElement, value: st
   element.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
 }
 
+// Semantic lookup for the dashed add tile (button role + tile label text);
+// replaces the former .wk-channel-card--add class hook.
+function findAddTile(container: HTMLElement, label: string) {
+  return Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find((tile) => tile.textContent?.includes(label));
+}
+
 async function mountPage(input: { imChannels?: IntegrationResource[]; agents?: { id: string; name: string }[]; onCreateIm?: (input: { agentId: string; payload: Record<string, unknown> }) => Promise<void>; onUpdateIm?: (id: string, input: Record<string, unknown>) => Promise<void> }) {
   const container = document.createElement('div');
   document.body.append(container);
@@ -64,7 +70,7 @@ async function mountPage(input: { imChannels?: IntegrationResource[]; agents?: {
 // 添加渠道 tile that opens the 4-step drawer (基本信息 → 连接设置 → 文件存储 → 平台凭证).
 test('IM add tile opens the Vue 4-step wizard in zh-CN', async () => {
   const container = await mountPage({ agents: [{ id: 'agent-1', name: '知识助手' }] });
-  const addTile = Array.from(container.querySelectorAll<HTMLButtonElement>('.wk-channel-card--add')).find((tile) => tile.textContent?.includes('添加渠道'));
+  const addTile = findAddTile(container, '添加渠道');
   assert.ok(addTile, 'add tile rendered');
   await act(async () => { addTile!.click(); });
 
@@ -81,7 +87,7 @@ test('IM add tile opens the Vue 4-step wizard in zh-CN', async () => {
 
 test('step 0 blocks Next without a bound agent like Vue validateWizardStep', async () => {
   const container = await mountPage({ agents: [{ id: 'agent-1', name: '知识助手' }] });
-  await act(async () => { (Array.from(container.querySelectorAll<HTMLButtonElement>('.wk-channel-card--add'))[0]!).click(); });
+  await act(async () => { findAddTile(container, '添加渠道')!.click(); });
   await act(async () => { Array.from(container.querySelectorAll<HTMLButtonElement>('.wk-form-actions .wk-button')).find((button) => button.textContent === '下一步')!.click(); });
   const alert = container.querySelector('[role="alert"]');
   assert.match(alert?.textContent ?? '', /请先选择一个智能体/);
@@ -94,10 +100,10 @@ test('wecom websocket wizard reaches credentials and posts the Vue create payloa
     agents: [{ id: 'agent-1', name: '知识助手' }],
     onCreateIm: async (input) => { payloads.push(input); },
   });
-  await act(async () => { (Array.from(container.querySelectorAll<HTMLButtonElement>('.wk-channel-card--add'))[0]!).click(); });
+  await act(async () => { findAddTile(container, '添加渠道')!.click(); });
 
   // Step order inside the wizard form: bound agent, then platform.
-  const agentSelect = container.querySelector('.wk-channel-create select') as HTMLSelectElement;
+  const agentSelect = container.querySelector('form select') as HTMLSelectElement;
   await act(async () => { setNativeValue(agentSelect, 'agent-1'); });
   await act(async () => { Array.from(container.querySelectorAll<HTMLButtonElement>('.wk-form-actions .wk-button')).find((button) => button.textContent === '下一步')!.click(); });
 
@@ -134,10 +140,10 @@ test('wecom websocket wizard reaches credentials and posts the Vue create payloa
 
 test('wechat platform hides the access section and gates save on the QR binding', async () => {
   const container = await mountPage({ agents: [{ id: 'agent-1', name: '知识助手' }] });
-  await act(async () => { (Array.from(container.querySelectorAll<HTMLButtonElement>('.wk-channel-card--add'))[0]!).click(); });
-  const agentSelect = container.querySelector('.wk-channel-create select') as HTMLSelectElement;
+  await act(async () => { findAddTile(container, '添加渠道')!.click(); });
+  const agentSelect = container.querySelector('form select') as HTMLSelectElement;
   await act(async () => { setNativeValue(agentSelect, 'agent-1'); });
-  const platformSelect = container.querySelectorAll('.wk-channel-create select')[1] as HTMLSelectElement;
+  const platformSelect = container.querySelectorAll('form select')[1] as HTMLSelectElement;
   await act(async () => { setNativeValue(platformSelect, 'wechat'); });
 
   await act(async () => { Array.from(container.querySelectorAll<HTMLButtonElement>('.wk-form-actions .wk-button')).find((button) => button.textContent === '下一步')!.click(); });
@@ -164,9 +170,9 @@ test('clicking an IM channel card reopens the wizard prefilled like Vue openDraw
     credentials: { bot_token: 'xoxb-', signing_secret: 's' },
   };
   const container = await mountPage({ imChannels: [channel], onUpdateIm: async (id, input) => { updates.push({ id, input }); } });
-  await act(async () => { (container.querySelector('.wk-channel-card--clickable') as HTMLElement).click(); });
+  await act(async () => { (container.querySelector('article') as HTMLElement).click(); });
 
-  const drawerTitle = container.querySelector('.wk-channel-create h3');
+  const drawerTitle = container.querySelector('form h3');
   assert.equal(drawerTitle?.textContent, '客服渠道');
   const platformSelect = Array.from(container.querySelectorAll('select')).find((select) => select.disabled) as HTMLSelectElement | undefined;
   assert.equal(platformSelect?.value, 'slack', 'platform select disabled and pinned while editing');

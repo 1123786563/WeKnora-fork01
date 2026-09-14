@@ -83,7 +83,7 @@ async function mountRoutePage(client: Parameters<typeof IntegrationsRoutePage>[0
 }
 
 async function openDeployStepAndPreview(container: HTMLElement) {
-  await act(async () => { (container.querySelector('.wk-channel-card--clickable') as HTMLElement).click(); });
+  await act(async () => { (container.querySelector('article') as HTMLElement).click(); });
   await act(async () => {});
   const previewButton = Array.from(container.querySelectorAll<HTMLButtonElement>('.wk-embed-code-panel button')).find((button) => button.textContent === '预览');
   assert.ok(previewButton, 'deploy step shows the Vue 预览 button');
@@ -111,7 +111,7 @@ test('empty preview session warns in place, keeps the page, never opens a new ta
   assert.deepEqual(previewCalls, ['ch-1', 'ch-1'], 'views mint attempt + route-shell fallback attempt');
   assert.deepEqual(openedNewTabs, [], 'preview never falls back to a new tab (Vue L1007-1010)');
   assert.equal(container.querySelector('.wk-embed-preview-drawer'), null, 'no drawer without a token');
-  assert.ok(container.querySelector('.wk-channel-card--clickable'), 'channel list stays mounted (no page-level error wipe)');
+  assert.ok(container.querySelector('article'), 'channel list stays mounted (no page-level error wipe)');
   const alert = container.querySelector('[role="alert"]');
   assert.ok(alert, 'warning surfaced');
   assert.match(alert!.textContent!, /预览暂时不可用/);

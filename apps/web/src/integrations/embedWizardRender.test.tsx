@@ -46,6 +46,12 @@ function setNativeValue(element: HTMLSelectElement | HTMLInputElement | HTMLText
   element.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
 }
 
+// Semantic lookup for the dashed add tile (button role + tile label text);
+// replaces the former .wk-channel-card--add class hook.
+function findAddTile(container: HTMLElement, label: string) {
+  return Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find((tile) => tile.textContent?.includes(label));
+}
+
 interface EmbedMountInput {
   embedChannels?: IntegrationResource[];
   agents?: { id: string; name: string; config?: Record<string, unknown> }[];
@@ -89,7 +95,7 @@ const saveButton = (container: HTMLElement) => Array.from(container.querySelecto
 // 外观 → 回调, 部署 only while editing).
 test('embed add tile opens the Vue 5-step create wizard in zh-CN', async () => {
   const container = await mountEmbedPage();
-  const addTile = Array.from(container.querySelectorAll<HTMLButtonElement>('.wk-channel-card--add')).find((tile) => tile.textContent?.includes('新建嵌入渠道'));
+  const addTile = findAddTile(container, '新建嵌入渠道');
   assert.ok(addTile, 'add tile rendered');
   await act(async () => { addTile!.click(); });
 
@@ -105,13 +111,13 @@ test('embed add tile opens the Vue 5-step create wizard in zh-CN', async () => {
 
 test('step gates mirror Vue validateWizardStep: agent first, then origins', async () => {
   const container = await mountEmbedPage();
-  await act(async () => { (Array.from(container.querySelectorAll<HTMLButtonElement>('.wk-channel-card--add'))[0]).click(); });
+  await act(async () => { findAddTile(container, '新建嵌入渠道')!.click(); });
 
   await act(async () => { nextButton(container).click(); });
   assert.match(container.querySelector('[role="alert"]')?.textContent ?? '', /请先选择一个智能体/);
   assert.match(container.querySelector('.wk-im-legend')?.textContent ?? '', /渠道信息/, 'stays on step 1');
 
-  const agentSelect = container.querySelector('.wk-channel-create select') as HTMLSelectElement;
+  const agentSelect = container.querySelector('form select') as HTMLSelectElement;
   await act(async () => { setNativeValue(agentSelect, 'agent-1'); });
   await act(async () => { nextButton(container).click(); });
   assert.match(container.querySelector('.wk-im-legend')?.textContent ?? '', /安全与限流/);
@@ -121,7 +127,7 @@ test('step gates mirror Vue validateWizardStep: agent first, then origins', asyn
   assert.match(container.querySelector('[role="alert"]')?.textContent ?? '', /请至少填写一个域名白名单/);
   assert.match(container.querySelector('.wk-im-legend')?.textContent ?? '', /安全与限流/, 'stays on step 2');
 
-  const origins = container.querySelector('.wk-channel-create textarea') as HTMLTextAreaElement;
+  const origins = container.querySelector('form textarea') as HTMLTextAreaElement;
   await act(async () => { setNativeValue(origins, 'https://shop.example.com'); });
   await act(async () => { nextButton(container).click(); });
   assert.match(container.querySelector('.wk-im-legend')?.textContent ?? '', /对话能力/);
@@ -137,16 +143,16 @@ test('embed create posts the Vue payload, lands on the deploy step and reveals t
     allow_file_upload: false, default_locale: '', webhook_url: '',
   };
   const container = await mountEmbedPage({ onCreateEmbed: async (input) => { payloads.push(input); return created; } });
-  await act(async () => { (Array.from(container.querySelectorAll<HTMLButtonElement>('.wk-channel-card--add'))[0]).click(); });
+  await act(async () => { findAddTile(container, '新建嵌入渠道')!.click(); });
 
-  const agentSelect = container.querySelector('.wk-channel-create select') as HTMLSelectElement;
+  const agentSelect = container.querySelector('form select') as HTMLSelectElement;
   await act(async () => { setNativeValue(agentSelect, 'agent-1'); });
   // Vue applyDefaultChannelNameIfNeeded: untouched create name follows the agent.
-  const nameInput = container.querySelector('.wk-channel-create input:not([type="color"])') as HTMLInputElement;
+  const nameInput = container.querySelector('form input:not([type="color"])') as HTMLInputElement;
   assert.equal(nameInput.value, '知识助手 · 网页嵌入');
   await act(async () => { nextButton(container).click(); });
 
-  const origins = container.querySelector('.wk-channel-create textarea') as HTMLTextAreaElement;
+  const origins = container.querySelector('form textarea') as HTMLTextAreaElement;
   await act(async () => { setNativeValue(origins, 'https://shop.example.com'); });
   await act(async () => { nextButton(container).click(); });
   await act(async () => { nextButton(container).click(); });
@@ -208,7 +214,7 @@ test('clicking an embed card opens the deploy drawer: key reveal, rotate, snippe
     onRotateEmbed: async (id) => { rotations.push(id); },
     onOpenEmbed: (target) => { previews.push(String(target.id)); },
   });
-  await act(async () => { (container.querySelector('.wk-channel-card--clickable') as HTMLElement).click(); });
+  await act(async () => { (container.querySelector('article') as HTMLElement).click(); });
 
   // Vue openDrawer lands on the deploy step for editing.
   assert.equal(container.querySelectorAll('.wk-embed-step').length, 6);
@@ -256,7 +262,7 @@ test('clicking an embed card opens the deploy drawer: key reveal, rotate, snippe
   await act(async () => { nextButton(container).click(); });
   await act(async () => { nextButton(container).click(); });
   // Edit mode swaps the deploy-after-save hint for the webhook keep-secret hint.
-  const secretInput = container.querySelector('.wk-channel-create input[type="password"]') as HTMLInputElement;
+  const secretInput = container.querySelector('form input[type="password"]') as HTMLInputElement;
   assert.equal(secretInput.placeholder, '留空表示不修改已保存的密钥');
   await act(async () => { nextButton(container).click(); });
   await act(async () => { saveButton(container).click(); });
@@ -285,15 +291,15 @@ test('clicking an embed card opens the deploy drawer: key reveal, rotate, snippe
 
 test('the wizard walks all steps with localized copy and no raw key leaks', async () => {
   const container = await mountEmbedPage();
-  await act(async () => { (Array.from(container.querySelectorAll<HTMLButtonElement>('.wk-channel-card--add'))[0]).click(); });
+  await act(async () => { findAddTile(container, '新建嵌入渠道')!.click(); });
 
-  const agentSelect = container.querySelector('.wk-channel-create select') as HTMLSelectElement;
+  const agentSelect = container.querySelector('form select') as HTMLSelectElement;
   await act(async () => { setNativeValue(agentSelect, 'agent-1'); });
   let text = container.textContent ?? '';
   assert.ok(!text.includes('embedPublish.'), 'no raw embedPublish keys on step 1');
 
   await act(async () => { nextButton(container).click(); });
-  const origins = container.querySelector('.wk-channel-create textarea') as HTMLTextAreaElement;
+  const origins = container.querySelector('form textarea') as HTMLTextAreaElement;
   await act(async () => { setNativeValue(origins, 'https://shop.example.com'); });
   text = container.textContent ?? '';
   assert.ok(text.includes('域名白名单'));
@@ -306,7 +312,7 @@ test('the wizard walks all steps with localized copy and no raw key leaks', asyn
   assert.ok(text.includes('推荐问题'));
   assert.ok(text.includes('显示联网搜索开关'));
   assert.ok(text.includes('显示文件上传'));
-  const capabilityChecks = container.querySelectorAll('.wk-channel-create input[type="checkbox"]');
+  const capabilityChecks = container.querySelectorAll('form input[type="checkbox"]');
   assert.equal(capabilityChecks.length, 3, 'three capability switches');
 
   await act(async () => { nextButton(container).click(); });
@@ -314,12 +320,12 @@ test('the wizard walks all steps with localized copy and no raw key leaks', asyn
   assert.ok(text.includes('主题色'));
   assert.ok(text.includes('右下角'));
   assert.ok(text.includes('跟随浏览器 / 宿主'));
-  const selects = container.querySelectorAll('.wk-channel-create select');
+  const selects = container.querySelectorAll('form select');
   assert.equal(selects.length, 3, 'header mode / position / default locale selects');
   assert.equal((selects[0] as HTMLSelectElement).options.length, 2, 'header title modes');
   assert.equal((selects[1] as HTMLSelectElement).options.length, 4, 'widget positions');
   assert.equal((selects[2] as HTMLSelectElement).options.length, 6, 'default locales');
-  assert.ok(container.querySelector('.wk-channel-create input[type="color"]'), 'primary color picker');
+  assert.ok(container.querySelector('form input[type="color"]'), 'primary color picker');
 
   await act(async () => { nextButton(container).click(); });
   text = container.textContent ?? '';
@@ -332,7 +338,7 @@ test('the wizard walks all steps with localized copy and no raw key leaks', asyn
 
 test('embed drawer closes through the Vue cancel surfaces', async () => {
   const container = await mountEmbedPage();
-  await act(async () => { (Array.from(container.querySelectorAll<HTMLButtonElement>('.wk-channel-card--add'))[0]).click(); });
+  await act(async () => { findAddTile(container, '新建嵌入渠道')!.click(); });
   assert.ok(container.querySelector('.wk-integration-drawer'), 'drawer mounted');
 
   await act(async () => {
@@ -342,7 +348,7 @@ test('embed drawer closes through the Vue cancel surfaces', async () => {
   });
   assert.equal(container.querySelector('.wk-integration-drawer'), null, 'header close unmounts drawer');
 
-  await act(async () => { (Array.from(container.querySelectorAll<HTMLButtonElement>('.wk-channel-card--add'))[0]).click(); });
+  await act(async () => { findAddTile(container, '新建嵌入渠道')!.click(); });
   await act(async () => { window.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
   assert.equal(container.querySelector('.wk-integration-drawer'), null, 'Escape unmounts drawer');
 });
