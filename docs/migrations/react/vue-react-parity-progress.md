@@ -2098,3 +2098,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Mobile Wiki/FAQ editor labels, permission/conflict/load/save states, and required-field validation now use typed five-language keys across `0552f5bd` and `e42ed731`, preserving owner/admin gating and existing callers.
 - Focused editor tests pass 8/8; mobile typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
 - Native editor runtime evidence remains open.
+
+## 2026-09-15 Round N+33n — N031 mobile document-list error localization
+
+- `KnowledgeDocumentsScreen` now localizes document loading, filter loading, and upload failure fallback states through five-language knowledge keys (`41de0f18`), preserving queue/pagination/cancellation/refresh behavior.
+- Focused tests pass 4/4; mobile typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
+- Native document-list runtime evidence remains open.
