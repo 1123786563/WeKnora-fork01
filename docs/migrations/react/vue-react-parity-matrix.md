@@ -160,3 +160,4 @@ R013 vector/web-search runtime update (2026-09-15): authenticated React AX confi
 R013 retrieval-nav runtime update (2026-09-15): authenticated React AX confirms the retrieval sidebar label renders localized `搜索设置`; admin-only visibility and controls remain intact. Same-session Vue pixel comparison remains open.
 R013 MCP settings runtime update (2026-09-15): authenticated React AX confirms localized MCP service heading, description and add action; no service row was present to exercise the destructive confirmation dialog. Vue same-session comparison remains open.
 N021 grep tool-result update (2026-09-15): React now follows Vue grep chunk grouping, FAQ metadata, title-match aggregation and five-locale copy; browser fixture evidence remains open.
+Shared i18n contract update (2026-09-15): mobile-only `mobileChat.*` keys are validated for five-locale completeness separately from the Vue web-chat baseline; shared suite passes 453/453.
