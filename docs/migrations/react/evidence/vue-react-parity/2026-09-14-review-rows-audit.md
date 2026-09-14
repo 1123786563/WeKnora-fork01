@@ -124,3 +124,12 @@ STALE ≠ 证据错误，仅表示源在证据之后演进；**下一批提升�
 - **S-1[共同] 已记录（Vue 侧限制）**：KB 列表网络失败两端一致呈现「暂无知识库」空态（无错误提示/重试）。React 忠实复现 Vue 基线 = parity 正确；误导性空态作为 Vue 基线 UX 缺陷登记，是否改进属用户决策。
 - **S-2[共同] 已记录（Vue 侧限制）**：register 已存在邮箱服务端英文消息两端都未本地化——React 与 Vue 行为一致 = parity 正确；服务端消息本地化需后端/契约层改动，超出前端 parity 范围，登记待决策。
 
+
+## 负路径第三批 T-1~T-4 处置记录（2026-09-14）
+依据 2026-09-14-negpath3-tenant-isolation.md（403 租户隔离，8 格 100% 断言、零写入证明 8/8/3/2、OrbStack 恢复事件已记录）：
+- **T-1[中] 已记录（语义冲突 → 用户决策，协调者建议以 React 为锚）**：无效租户恢复策略两端相反——Vue 停留受损会话（12+ 请求连发 403、空态伪装正常、无自愈无提示）；React 单次 auth/me 403 即清凭据强制回登录。React 行为符合安全卫生（受损凭据快速失效）；Vue 的静默毒化态与「失效凭据不得继续访问」的安全约束相悖。按 §一 记录冲突，请用户裁定：以 React 自愈语义为锚记 Vue 缺陷，或确认 Vue 行为为预期并要求 React 复刻。
+- **T-2[低] 已修复**：React errorFromResult 对后端 string 型 error body（403 "Access denied: …"）丢失原文，退化为 "Request failed with status 403"。已加 string error 分支（errors.ts），TDD 红→绿（errors.test.ts 3 用例，含嵌套 record 与纯字符串体回归）。web 838/838 · shared 444/444 · typecheck 0 · build ✓（fcf246bf）。
+- **T-3[低] 待修复（React 侧）**：401 refresh 失败后 Vue 清存储+跳转 /login（authRefresh.ts:142-146）；React 仅静默清凭据无跳转无提示（refresh-coordinator.ts:106-107）。需补跳转/提示；登记待办修复切片。
+- **T-4[低] 待修复（React 侧，i18n 归一）**：组织 preview 失败 fallback 文案 Vue previewFailed vs React invalidCode（仅无 message 错误可见）。登记待办，与小修切片合并处理。
+- **一致亮点**：越权对象访问两端状态码完全对齐（nil/构造 UUID KB→404 code 1003 不泄露存在性；真实其它租户 id→403 code 1002）；邀请码死码两端均 modal 内联 Invalid invite code；preview 最小暴露（仅名称/描述）。
+
