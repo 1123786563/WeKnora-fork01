@@ -29,7 +29,11 @@
 /* Vue .section (Settings.vue:892-894) carries no top margin inside
    .content-wrapper; the legacy inline-settings rule
    .wk-settings-section { margin-top: 1rem } (styles.css) must not leak into
-   the drawer or it pushes the panel heading ~16px below the Vue position. */
+   the drawer or it pushes the panel heading ~16px below the Vue position.
+   Post settings-shell migration this reset (and the .wk-settings-section
+   descendant rules below, which hang off the class name kept on the
+   SettingsPage drawer wrapper div) is intentionally retained together with
+   the styles.css .wk-settings-section base — see the retention notes there. */
 .wks-content-wrapper .wk-settings-section { margin-top: 0; }
 /* wk-audit-* rules removed: SystemAuditLogPanel.tsx carries the equivalent
    utilities. Class names stay in the DOM as querySelector hooks for

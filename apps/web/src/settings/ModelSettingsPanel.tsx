@@ -904,10 +904,10 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
 
   return (
     <section className="grid gap-4" data-testid="model-settings">
-      <div className="wk-settings-panel-heading">
+      <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col">
         <div>
           <h2 className="mt-0! mb-2! text-[20px] font-semibold">{t("modelSettings.title")}</h2>
-          <p className="wk-muted">{t("modelSettings.description")}</p>
+          <p className="wk-muted text-muted">{t("modelSettings.description")}</p>
         </div>
         {canCreate ? (
           <button type="button" className="inline-flex cursor-pointer items-center gap-1.5 border-0 bg-transparent px-0 py-1 font-[inherit] text-sm font-semibold text-[#0a8f4c] hover:text-[#067a3f] focus-visible:text-[#067a3f]" onClick={() => setDebugOpen(true)}>
@@ -1069,10 +1069,10 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
           aria-modal="true"
           aria-label={draft.id ? t("model.editor.editTitle") : t("model.editor.addTitle")}
         >
-          <div className="wk-settings-panel-heading sticky -top-[1.25rem] z-[1] bg-white pt-[1.25rem] max-[720px]:-top-[1rem] max-[720px]:pt-4">
+          <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col sticky -top-[1.25rem] z-[1] bg-white pt-[1.25rem] max-[720px]:-top-[1rem] max-[720px]:pt-4">
             <div>
               <h3>{draft.id ? t("model.editor.editTitle") : t("model.editor.addTitle")}</h3>
-              <p className="wk-muted">
+              <p className="wk-muted text-muted">
                 {t(`model.editor.description.${draft.type}`) || t("model.editor.description.default")}
               </p>
             </div>
@@ -1080,7 +1080,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
               {t("common.close")}
             </Button>
           </div>
-          <form className="wk-settings-editor" onSubmit={(event) => void save(event)}>
+          <form className="wk-settings-editor my-4 grid gap-[.8rem] max-w-[620px]" onSubmit={(event) => void save(event)}>
             {!draft.id ? (
               <div className="form-item">
                 <h4>{t("model.editor.sectionType")}</h4>
@@ -1125,9 +1125,9 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                 </button>
               </div>
               {draft.type === "rerank" ? (
-                <p className="wk-muted">{t("model.editor.ollamaNotSupportRerank")}</p>
+                <p className="wk-muted text-muted">{t("model.editor.ollamaNotSupportRerank")}</p>
               ) : draft.source === "local" && ollamaStatus === false ? (
-                <p className="wk-muted">
+                <p className="wk-muted text-muted">
                   {t("model.editor.ollamaUnavailable")}{" "}
                   <Button type="button" onClick={() => window.location.assign("/platform/settings?section=ollama")}>
                     {t("model.editor.goToOllamaSettings")}
@@ -1244,7 +1244,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                     value={draft.displayName}
                     onChange={(event) => updateDraft("displayName", event.target.value)}
                   />
-                  <span className="wk-muted">{t("model.editor.displayNameDesc")}</span>
+                  <span className="wk-muted text-muted">{t("model.editor.displayNameDesc")}</span>
                 </label>
                 {draft.provider !== "weknoracloud" ? (
                   <>
@@ -1314,7 +1314,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                                 </Button>
                               ) : null}
                             </div>
-                            <p className="wk-muted">{credentialHint}</p>
+                            <p className="wk-muted text-muted">{credentialHint}</p>
                           </>
                         ) : null}
                       </div>
@@ -1344,7 +1344,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                                 onChange={(event) => updateDraft("appSecret", event.target.value)}
                               />
                             </label>
-                            <p className="wk-muted">{credentialHint}</p>
+                            <p className="wk-muted text-muted">{credentialHint}</p>
                           </>
                         ) : null}
                       </>
@@ -1357,12 +1357,12 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                           value={draft.lkeapRegion}
                           onChange={(event) => updateDraft("lkeapRegion", event.target.value)}
                         />
-                        <span className="wk-muted">{t("model.editor.lkeap.regionDesc")}</span>
+                        <span className="wk-muted text-muted">{t("model.editor.lkeap.regionDesc")}</span>
                       </label>
                     ) : null}
                     <fieldset>
                       <legend>{t("model.editor.customHeadersLabel")}</legend>
-                      <p className="wk-muted">{t("model.editor.customHeadersDesc")}</p>
+                      <p className="wk-muted text-muted">{t("model.editor.customHeadersDesc")}</p>
                       {draft.customHeaders.map((item, index) => (
                         <div className="wk-model-header-row" key={index}>
                           <input
@@ -1436,7 +1436,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                       value={draft.contextWindow}
                       onValueChange={(value) => updateDraft("contextWindow", value)}
                     />
-                    <span className="wk-muted">{t("model.editor.contextWindowDesc")}</span>
+                    <span className="wk-muted text-muted">{t("model.editor.contextWindowDesc")}</span>
                   </label>
                 ) : null}
                 {draft.type === "chat" ? (
@@ -1459,7 +1459,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                         updateDraft("thinkingControl", value);
                       }}
                     />
-                    <span className="wk-muted">{selectedThinkingHint ?? t("model.editor.thinkingControlDesc")}</span>
+                    <span className="wk-muted text-muted">{selectedThinkingHint ?? t("model.editor.thinkingControlDesc")}</span>
                   </label>
                 ) : null}
                 <label>
@@ -1471,7 +1471,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                     value={draft.maxConcurrency}
                     onValueChange={(value) => updateDraft("maxConcurrency", value)}
                   />
-                  <span className="wk-muted">{t("model.editor.maxConcurrencyDesc")}</span>
+                  <span className="wk-muted text-muted">{t("model.editor.maxConcurrencyDesc")}</span>
                 </label>
               </div>
             ) : null}

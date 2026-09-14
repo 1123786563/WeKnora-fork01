@@ -189,7 +189,7 @@ export function TenantInfoSection({ client, tenantId, role, locale, payload }: {
             <label>{t('tenant.details.statusLabel')}</label>
             <p className="desc">{t('tenant.details.statusDescription')}</p>
           </div>
-          <div className="setting-control"><span className={'wk-tag wk-tag--' + status.tone}>{t(status.key)}</span></div>
+          <div className="setting-control"><span className={'wk-tag wk-tag--' + status.tone + ' inline-flex items-center shrink-0 py-[1px]! px-[8px]! leading-[1.6]' + (status.tone === 'warning' ? ' text-[#b45309]! bg-[#fffaeb]! border border-solid border-[#fedf89]' : '')}>{t(status.key)}</span></div>
         </div>
         <div className="setting-row">
           <div className="setting-info">

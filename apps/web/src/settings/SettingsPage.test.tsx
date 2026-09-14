@@ -104,7 +104,7 @@ async function mountPage(client: WeKnoraClient, search = '', role: 'owner' | 'sy
 test('settings wrapper drops the refresh button and the raw payload dump', async () => {
   const container = await mountPage(makeClient());
   assert.equal(container.querySelector('.wks-reload'), null, 'no refresh button in the panel heading');
-  assert.equal(container.querySelector('dl.wk-settings-values'), null, 'no raw settings value dump');
+  assert.equal(container.querySelector('dl'), null, 'no raw settings value dump');
 });
 
 // A3: the general section mounts the Vue GeneralSettings parity panel.

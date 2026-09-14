@@ -230,6 +230,12 @@ hook 类（测试/JS 引用）保留类名。
   （[font:inherit] 排序竞争，文档页同类问题一并修复）、resource-check 按生效值
   编码（.wk-list li span 一直覆盖原 color/font-size）。
 - 验收：typecheck 0、受影响域 140/140、web 890/890、build ✓；styles.css 347→329 行。
+### 批次41：settings shell 家族 ✅（子任务执行，Orchestrator 验收提交）
+- 17 个面板 TSX 追加按生效值编码的 utilities（panel-heading 13 处/表单/values 链
+  dl-div-dt-dd 四级编码/抽屉内 sticky 变体）；测试选择器 2 处语义化。
+- styles.css 删 18 条 + 3 片段（死规则 7 + 迁移后删 11）；保留 16 条 + 3 片段
+  （knowledge-settings 消费方/抽屉级联/configuration 域/editor×3——最终共享层清理联动）。
+- 验收：typecheck 0、SettingsPage+Model 38/38 + 加跑 48/48、web 890/890、build ✓。
 ### 批次19：TenantMembers 域 ✅（子任务执行，Orchestrator 验收提交）
 - TenantMembersPanel.tsx ~95 条规则内联 utilities（表格/分页/标签三态/确认弹层；
   settings-wrapper 抽屉 select chrome 特异性更高今日实际生效，按生效值 4 条未复制）；

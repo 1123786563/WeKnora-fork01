@@ -64,7 +64,7 @@ export function EnvVarSettingsPanel({ client, initialPayload, onMutated }: { cli
   return <Card data-testid="envvar-panel">
     {error ? <Status tone="error">{error}</Status> : null}
     {notice ? <Status tone="success">{notice}</Status> : null}
-    <form className="wk-settings-editor" onSubmit={setVariable}>
+    <form className="wk-settings-editor my-4 grid gap-[.8rem] max-w-[620px]" onSubmit={setVariable}>
       <label>Scope
         <select value={scope} onChange={(event) => setScope(event.target.value as EnvVarScope)}>
           <option value="skill">Skill (skill_id)</option>
@@ -77,7 +77,7 @@ export function EnvVarSettingsPanel({ client, initialPayload, onMutated }: { cli
       <Button type="submit" loading={busy}>Set variable</Button>
     </form>
     {rows(initialPayload).length === 0
-      ? <p className="wk-settings-read-note">No personal environment variables are stored yet.</p>
+      ? <p className="wk-settings-read-note text-muted-strong text-[.9rem]">No personal environment variables are stored yet.</p>
       : <ul className="wk-list">{rows(initialPayload).map((row) => (
         <li key={row.scope + ':' + row.scopeId + ':' + row.name}>
           <strong>{row.name}</strong> · {row.scope} {row.scopeId} = {row.value}

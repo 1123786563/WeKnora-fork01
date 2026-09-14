@@ -231,7 +231,7 @@ function installChipStatusKeys(item: SkillCatalog, installation: SkillCatalogIns
 export function SkillSettingsPanel({ client, role, initialSkills, initialCatalog, initialSandboxConfigs }: Props) {
   const canEdit = role === 'admin' || role === 'owner';
   if (!canEdit) {
-    return <Card data-testid="skill-settings"><h3>Skills</h3><p className="wk-muted">Installed skills are managed by workspace administrators.</p>{initialSkills && initialSkills.length > 0 ? <ul className="wk-list">{initialSkills.map((skill) => <li key={skill.id}><strong>{skill.name}</strong><span>{skill.description ?? 'No description returned.'}</span></li>)}</ul> : <Status>No skills configured.</Status>}</Card>;
+    return <Card data-testid="skill-settings"><h3>Skills</h3><p className="wk-muted text-muted">Installed skills are managed by workspace administrators.</p>{initialSkills && initialSkills.length > 0 ? <ul className="wk-list">{initialSkills.map((skill) => <li key={skill.id}><strong>{skill.name}</strong><span>{skill.description ?? 'No description returned.'}</span></li>)}</ul> : <Status>No skills configured.</Status>}</Card>;
   }
   return <SkillCatalogSection client={client} initialCatalog={initialCatalog} initialSandboxConfigs={initialSandboxConfigs} />;
 }
@@ -425,7 +425,7 @@ export function SkillCatalogSection({ client, initialCatalog, initialSandboxConf
     {loading ? <Status>{t('common.loading')}</Status> : empty ? (
       <div className="flex flex-col items-center justify-center gap-3 px-4 py-12 text-center">
         <Status>{t('settings.skills.emptyDesc')}</Status>
-        {skillConfigs.length === 0 ? <p className="wk-muted m-0">{t('settings.skills.emptyNoSandboxHint')}</p> : null}
+        {skillConfigs.length === 0 ? <p className="wk-muted text-muted m-0">{t('settings.skills.emptyNoSandboxHint')}</p> : null}
         <div className="wk-list-actions gap-[10px]!">
           <Button type="button" className="bg-[var(--wks-primary,#00a870)]! border-[var(--wks-primary,#00a870)]! text-white! hover:bg-[var(--wks-primary-hover,#009664)]!" onClick={() => { setWizardOpen(true); }}>{t('settings.skills.addSkill')}</Button>
           {skillConfigs.length === 0
@@ -619,7 +619,7 @@ function SandboxPickList({ client, item, configs, mode, sessionIds, targetIds, o
       controllers.forEach((controller) => controller.abort());
     };
   }, [client, rows]);
-  if (rows.length === 0) return <p className="wk-muted">{t('settings.skills.noSandboxToInstall')}</p>;
+  if (rows.length === 0) return <p className="wk-muted text-muted">{t('settings.skills.noSandboxToInstall')}</p>;
   return <div className="grid gap-2">
     {rows.map((row) => row.selectable ? (
       <label key={row.config.id} className="flex items-center gap-2.5 px-3 py-[9px] border border-[#e6ebf3] rounded-card bg-white">
@@ -848,7 +848,7 @@ function AddSkillWizard({ client, open, catalog, configs, installer, t, onClose,
         </button>;
       })}
     </nav>
-    <p className="wk-muted">{stepDescription}</p>
+    <p className="wk-muted text-muted">{stepDescription}</p>
     {error ? <Status tone="error">{error}</Status> : null}
     {step > 0 && parsedCard ? <article className="parsed-skill relative flex flex-col p-0 overflow-hidden rounded-[10px] bg-white transition-[border-color,box-shadow] duration-[180ms] min-w-0 h-full border border-line"><div className="flex items-stretch p-3 min-w-0 flex-1"><div className="flex-1 min-w-0 flex flex-col gap-2">
       <div className="flex items-center gap-2.5 min-w-0 min-h-[28px]">
@@ -861,16 +861,16 @@ function AddSkillWizard({ client, open, catalog, configs, installer, t, onClose,
       {parsedCard.description ? <p className="line-clamp-2 m-0 overflow-hidden text-xs leading-[1.5] text-muted-strong [overflow-wrap:anywhere]" title={parsedCard.description}>{compactSkillText(parsedCard.description)}</p> : null}
     </div></div></article> : null}
     {step === 0 ? <>
-      <section className="wk-settings-editor">
+      <section className="wk-settings-editor my-4 grid gap-[.8rem] max-w-[620px]">
         <h4>{t('settings.sandbox.skillSourceSection')}</h4>
-        <p className="wk-muted">{t('settings.sandbox.skillSourceSectionHint', { size: maxSkillBundleMB() })}</p>
+        <p className="wk-muted text-muted">{t('settings.sandbox.skillSourceSectionHint', { size: maxSkillBundleMB() })}</p>
         <label>{t('settings.sandbox.skillSourcePlaceholder')}
           <input value={source} placeholder={t('settings.sandbox.skillSourcePlaceholder')} disabled={addBusy || Boolean(registeredId)} onChange={(event) => setSource(event.target.value)} />
         </label>
       </section>
-      <section className="wk-settings-editor">
+      <section className="wk-settings-editor my-4 grid gap-[.8rem] max-w-[620px]">
         <h4>{t('settings.sandbox.skillUploadSection')}</h4>
-        <p className="wk-muted">{t('settings.sandbox.skillUploadSectionHint', { size: maxSkillBundleMB() })}</p>
+        <p className="wk-muted text-muted">{t('settings.sandbox.skillUploadSectionHint', { size: maxSkillBundleMB() })}</p>
         <input ref={fileInputRef} type="file" accept=".zip,application/zip" className="absolute w-px h-px overflow-hidden [clip:rect(0_0_0_0)] whitespace-nowrap" disabled={addBusy || Boolean(registeredId)} onChange={(event) => acceptFile(event.currentTarget.files?.[0] ?? null)} />
         <div className={`flex items-center justify-center min-h-24 p-3.5 border rounded-[10px] cursor-pointer text-center ${pendingFile ? 'border-solid border-primary bg-[#f4f8ff]' : 'border-dashed border-line-control bg-[#fafbfd]'}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); acceptFile(event.dataTransfer.files?.[0] ?? null); }}>
           {uploading ? <SkillUploadProgress percent={uploadPercent} t={t} /> : pendingFile ? <span className="text-[13px] text-primary [overflow-wrap:anywhere]">{t('settings.skills.addFileSelected', { name: pendingFile.name })}</span> : <>
@@ -881,17 +881,17 @@ function AddSkillWizard({ client, open, catalog, configs, installer, t, onClose,
         {pendingFile && !registeredId ? <Button type="button" disabled={addBusy} onClick={() => { setPendingFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}>{t('settings.skills.addClearFile')}</Button> : null}
       </section>
     </> : <>
-      {configs.length > 0 ? <section className="wk-settings-editor">
+      {configs.length > 0 ? <section className="wk-settings-editor my-4 grid gap-[.8rem] max-w-[620px]">
         <h4>{t('settings.skills.pickSandboxes')}</h4>
-        <p className="wk-muted">{t('settings.skills.pickSandboxesHint')}</p>
+        <p className="wk-muted text-muted">{t('settings.skills.pickSandboxesHint')}</p>
         <SandboxPickList client={client} item={pickItem} configs={configs} mode="all" sessionIds={sessionIds} targetIds={targetIds} onToggle={setPick} t={t}
           backendLabel={(type) => t(backendLabelKey(type))}
           metaLine={(record) => { const label = t(backendLabelKey(record.sandbox_type)); const target = sandboxTargetLine(record); return target ? `${label} · ${target}` : label; }}
           onManage={(record, installation) => { if (installation.skillId) onManage(record, installation.skillId, parsedCard?.name ?? ''); }} />
-      </section> : <p className="wk-muted">{t('settings.skills.emptyNoSandboxHint')}</p>}
-      {targetIds.length > 0 ? <section className="wk-settings-editor">
+      </section> : <p className="wk-muted text-muted">{t('settings.skills.emptyNoSandboxHint')}</p>}
+      {targetIds.length > 0 ? <section className="wk-settings-editor my-4 grid gap-[.8rem] max-w-[620px]">
         <h4>{t('settings.sandbox.skillInstallerModel')}</h4>
-        <p className="wk-muted">{t('settings.sandbox.skillInstallerModelHint')}</p>
+        <p className="wk-muted text-muted">{t('settings.sandbox.skillInstallerModelHint')}</p>
         <InstallerModelSelect installer={installer} t={t} />
       </section> : null}
     </>}
@@ -967,16 +967,16 @@ function InstallSkillDialog({ client, open, item, configs, preselectConfigId, in
 
   return <DrawerShell open={open} spec={SKILL_DRAWER_SPECS.install}>
   <Dialog open={open} title={t('settings.skills.installToSandbox')} onClose={onClose}>
-    <p className="wk-muted">{description}</p>
+    <p className="wk-muted text-muted">{description}</p>
     {error ? <Status tone="error">{error}</Status> : null}
     <SandboxPickList client={client} item={item} configs={configs} mode="remaining" sessionIds={sessionIds} targetIds={targetIds}
       onToggle={(configId, checked) => setTargetIds((current) => (checked ? [...new Set([...current, configId])] : current.filter((id) => id !== configId)))} t={t}
       backendLabel={(type) => t(backendLabelKey(type))}
       metaLine={(record) => { const label = t(backendLabelKey(record.sandbox_type)); const target = sandboxTargetLine(record); return target ? `${label} · ${target}` : label; }}
       onManage={(record, installation) => { if (installation.skillId && item) onManage(record, installation.skillId, item.name); }} />
-    {targetIds.length > 0 ? <section className="wk-settings-editor">
+    {targetIds.length > 0 ? <section className="wk-settings-editor my-4 grid gap-[.8rem] max-w-[620px]">
       <h4>{t('settings.sandbox.skillInstallerModel')}</h4>
-      <p className="wk-muted">{t('settings.sandbox.skillInstallerModelHint')}</p>
+      <p className="wk-muted text-muted">{t('settings.sandbox.skillInstallerModelHint')}</p>
       <InstallerModelSelect installer={installer} t={t} />
     </section> : null}
     <div className="wk-list-actions">
@@ -1426,7 +1426,7 @@ function ManageSkillDialog({ client, open, target, t, onClose, onChanged, onToas
   const errorLines = installErrorLines(skill?.error);
   return <DrawerShell open={open} spec={SKILL_DRAWER_SPECS.manage}>
   <Dialog open={open} title={target?.catalogName ?? ''} onClose={onClose}>
-    <p className="wk-muted">{target ? t('settings.skills.manageDrawerDesc', { name: target.record.name }) : ''}</p>
+    <p className="wk-muted text-muted">{target ? t('settings.skills.manageDrawerDesc', { name: target.record.name }) : ''}</p>
     {loading ? <Status>{t('common.loading')}</Status> : null}
     {error ? <Status tone="error">{error}</Status> : null}
     {skill ? uninstallDone ? <div className="flex flex-col items-start gap-2.5 pt-2 pb-1 text-[#067647] [&_p]:m-0 [&_p]:text-[13px]">
@@ -1460,7 +1460,7 @@ function ManageSkillDialog({ client, open, target, t, onClose, onChanged, onToas
       {errorLines.length > 0 ? <ul className="mt-1 mb-0 pl-[18px] text-danger text-xs leading-[1.6]">{errorLines.map((line, index) => <li key={index}>{line}</li>)}</ul> : null}
       {(skill.envs ?? []).length > 0 ? <section className="flex flex-col items-stretch gap-[10px] pt-3 border-t border-line-soft [&_h4]:m-0 [&_h4]:text-[13px] [&_h4]:font-semibold [&_h4]:text-ink">
         <h4>{t('settings.sandbox.skillEnv.toggle')}</h4>
-        <p className="wk-muted">{t('settings.sandbox.skillEnv.workspaceHint')}</p>
+        <p className="wk-muted text-muted">{t('settings.sandbox.skillEnv.workspaceHint')}</p>
         <div className="grid gap-2.5">
           {(skill.envs ?? []).map((env) => <div key={env.name} className="grid gap-1.5 py-2 border-b border-[#f1f4f9]">
             <div className="flex items-center flex-wrap gap-1.5">
@@ -1600,12 +1600,12 @@ function CatalogFilesDialog({ client, open, target, t, onClose }: {
   }
 
   return <Dialog open={open} title={target?.name ?? ''} onClose={onClose}>
-    <p className="wk-muted">{t('settings.sandbox.skillFilesTitle')}</p>
+    <p className="wk-muted text-muted">{t('settings.sandbox.skillFilesTitle')}</p>
     <div className="grid grid-cols-[minmax(160px,220px)_minmax(0,1fr)] gap-3 min-h-[260px] max-[720px]:grid-cols-1">
       <aside className="min-w-0 max-h-[420px] overflow-y-auto">
-        {listError ? <p className="wk-muted">{listError}</p>
+        {listError ? <p className="wk-muted text-muted">{listError}</p>
           : listLoading ? <Status>{t('common.loading')}</Status>
-          : rows.length === 0 ? <p className="wk-muted">{t('settings.sandbox.skillFilesEmpty')}</p>
+          : rows.length === 0 ? <p className="wk-muted text-muted">{t('settings.sandbox.skillFilesEmpty')}</p>
           : <ul className="m-0 p-0 list-none grid gap-0.5">
             {rows.map((row) => (
               <li key={row.path}>
@@ -1628,7 +1628,7 @@ function CatalogFilesDialog({ client, open, target, t, onClose }: {
         <div className="min-w-0 flex-1 flex flex-col gap-2">
           {fileLoading ? <Status>{t('common.loading')}</Status>
             : fileError ? <Status tone="error">{fileError}</Status>
-            : !selectedPath ? <p className="wk-muted">{t('settings.sandbox.skillFilesSelectHint')}</p>
+            : !selectedPath ? <p className="wk-muted text-muted">{t('settings.sandbox.skillFilesSelectHint')}</p>
             : <>
               {file?.truncated ? <Status tone="warning">{t('settings.sandbox.skillFilesTruncated')}</Status> : null}
               {imageSrc ? <img className="max-w-full rounded-card border border-line-soft" src={imageSrc} alt={selectedPath} />
@@ -1640,7 +1640,7 @@ function CatalogFilesDialog({ client, open, target, t, onClose }: {
                   <div className="skill-files-panel__markdown markdown-content min-w-0 max-h-[420px] overflow-y-auto px-3.5 py-3 bg-white border border-line-soft rounded-card text-[13px] leading-[1.65] text-ink [overflow-wrap:anywhere] [&_h1]:m-[0.8em_0_0.4em] [&_h1]:leading-[1.3] [&_h1]:text-lg [&_h2]:m-[0.8em_0_0.4em] [&_h2]:leading-[1.3] [&_h2]:text-base [&_h3]:m-[0.8em_0_0.4em] [&_h3]:leading-[1.3] [&_h3]:text-sm [&_p]:my-[0.4em] [&_pre]:overflow-x-auto [&_pre]:px-3 [&_pre]:py-2.5 [&_pre]:bg-[#f7f8fa] [&_pre]:rounded-card [&_pre]:text-xs [&_code]:font-mono [&_code]:text-xs [&_table]:border-collapse [&_th]:border [&_th]:border-line-soft [&_th]:px-2 [&_th]:py-1 [&_td]:border [&_td]:border-line-soft [&_td]:px-2 [&_td]:py-1 [&_img]:max-w-full" dangerouslySetInnerHTML={{ __html: renderChatMarkdown(frontmatter?.body ?? file.content) }} />
                 </>
                 : file?.encoding === 'utf-8' && file.content != null ? <pre className="m-0 px-3 py-2.5 overflow-auto max-h-[380px] bg-[#f7f8fa] border border-line-soft rounded-card text-xs leading-[1.55]"><code>{file.content}</code></pre>
-                : <p className="wk-muted">{t('settings.sandbox.skillFilesBinary')}</p>}
+                : <p className="wk-muted text-muted">{t('settings.sandbox.skillFilesBinary')}</p>}
             </>}
         </div>
       </section>

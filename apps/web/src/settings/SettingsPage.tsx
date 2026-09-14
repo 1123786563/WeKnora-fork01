@@ -217,7 +217,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
         : <LiveSectionsPanel client={client} section={selectedKey} payload={payload} />)
     : null;
   const deniedPanel = roleDenied
-    ? <div data-testid="role-denied-panel"><Status tone="error">{t('settings.roleDenied.title')}</Status><p className="wk-muted">{t('settings.roleDenied.desc')}</p></div>
+    ? <div data-testid="role-denied-panel"><Status tone="error">{t('settings.roleDenied.title')}</Status><p className="wk-muted text-muted">{t('settings.roleDenied.desc')}</p></div>
     : null;
   return (
     <main className="wk-settings-drawer-root">
@@ -266,10 +266,10 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
                       with the RBAC doc link, so a wrapper heading would duplicate it
                       (previously it also leaked the registry apiDomain as the text). */}
                   {selectedKey !== 'general' && selectedKey !== 'models' && selectedKey !== 'members' && selectedKey !== 'memory' && selectedKey !== 'mymemory' ? (
-                    <div className="wk-settings-panel-heading">
+                    <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col">
                       <div>
                         <h2>{settingsSectionHeading(locale, selectedKey).title}</h2>
-                        <p className="wk-muted">{settingsSectionHeading(locale, selectedKey).description}</p>
+                        <p className="wk-muted text-muted">{settingsSectionHeading(locale, selectedKey).description}</p>
                       </div>
                     </div>
                   ) : null}

@@ -14,7 +14,9 @@ body { margin: 0; min-width: 320px; }
 .wk-header { align-items: flex-start; display: flex; justify-content: space-between; gap: 1rem; margin-bottom: 1.5rem; }
 .wk-eyebrow { color: #2e6de6; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.08em; margin: 0; text-transform: uppercase; }
 h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
-.wk-muted, .wk-debug { color: #66758b; }
+/* .wk-muted deleted: every consumer carries the text-muted utility (or an
+   overriding variant) since the family migrated off this file. */
+.wk-debug { color: #66758b; }
 .wk-debug { border-bottom: 1px solid #edf0f5; font-family: ui-monospace, monospace; font-size: 0.75rem; overflow-wrap: anywhere; padding-bottom: 0.8rem; }
 .wk-list { list-style: none; margin: 0; padding: 0; }
 .wk-list li { align-items: baseline; border-bottom: 1px solid #edf0f5; display: flex; justify-content: space-between; gap: 1rem; padding: 0.9rem 0; }
@@ -29,9 +31,16 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-list-item-actions { display: flex; gap: .5rem; flex-shrink: 0; }
 .wk-list-actions { align-items: center; display: flex; gap: .5rem; justify-content: flex-end; margin-bottom: .75rem; }
 .wk-list-actions span { color: #66758b; font-size: .85rem; margin-right: auto; }
+/* Retained .wk-settings-tabs/.wk-settings-tab/.wk-settings-table: still consumed
+   by knowledge-settings/KnowledgeSettingsPage.tsx (outside the settings-shell
+   migration scope) — delete when that page moves to utilities. */
 .wk-settings-tabs { display: flex; gap: .5rem; max-width: 1180px; margin: 0 auto; padding: 1rem 1rem 0; }
 .wk-settings-tab { border: 1px solid #dce3ed; border-radius: 999px; background: #fff; color: #506078; cursor: pointer; padding: .5rem .8rem; }
 .wk-settings-tab.is-active { border-color: #2e6de6; color: #1849a9; background: #eff4ff; }
+/* Retained .wk-settings-section base: the SettingsPage drawer wrapper keeps the
+   class as a cascade-scope hook — these descendant rules (h2/label/input/select)
+   style every panel's forms inside the drawer, exactly like the retained select
+   chrome in settings-wrapper.css. Also still consumed by knowledge-settings. */
 .wk-settings-section { margin-top: 1rem; }
 .wk-settings-section h2 { margin: 0 0 .75rem; }
 .wk-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
@@ -42,21 +51,26 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-settings-section input:read-only, .wk-settings-section select:disabled { background: #f7f9fc; color: #66758b; }
 .wk-settings-table { display: grid; gap: .6rem; max-width: 620px; }
 .wk-settings-table label { grid-template-columns: 8rem minmax(0, 1fr); align-items: center; }
-.wk-settings-save { display: flex; justify-content: flex-end; margin-top: 1rem; }
 .wk-list-actions select { border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #172033; font: inherit; padding: .55rem .65rem; }
 .wk-list-actions select { max-width: 9rem; }
-.wk-settings-page { max-width: 1180px; }
-.wk-settings-layout { display: grid; grid-template-columns: minmax(220px, 280px) minmax(0, 1fr); gap: 1rem; align-items: start; }
-.wk-settings-nav h2 { margin: 0 0 .75rem; }
-.wk-settings-nav li { display: block; }
-.wk-settings-nav li.is-selected { background: #eff4ff; border-radius: 6px; padding: .4rem .55rem; }
-.wk-settings-nav button { display: grid; gap: .2rem; width: 100%; border: 0; background: transparent; color: inherit; cursor: pointer; padding: .25rem 0; text-align: left; }
-.wk-settings-nav button small { color: #66758b; }
+/* .wk-settings-page/.wk-settings-layout/.wk-settings-nav/.wk-settings-save deleted:
+   dead rules (zero source consumers) — the inline settings page was replaced by
+   the .wks-* drawer shell. */
+/* Retained .wk-settings-panel-heading base: configuration-domain headings
+   (ModelUsageNotice/ConfigurationEditor/ConfigurationOperations) and the
+   chat.css .wk-chat-sandbox-drawer guard still cascade off it. Every
+   settings-domain consumer now carries equivalent utilities so this base can go
+   in the final shared-layer cleanup once configuration migrates. */
 .wk-settings-panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; border-bottom: 1px solid #eef1f5; padding-bottom: 1rem; margin-bottom: 1rem; }
 .wk-settings-panel-heading h2 { margin: .25rem 0; }
 .wk-settings-panel-heading p { margin: 0; }
-.wk-settings-operation-list { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .35rem; }
-.wk-settings-read-note { color: #506078; font-size: .9rem; }
+/* .wk-settings-operation-list deleted (dead). .wk-settings-read-note deleted:
+   its two consumers (EnvVarSettingsPanel/PortedSectionsPanel) carry
+   text-muted-strong text-[.9rem] utilities. */
+/* Retained .wk-settings-editor base: configuration editors
+   (ConfigurationEditor/ConfigurationOperations forms) still consume it. The
+   settings-domain editors carry equivalent utilities; McpSettingsPanel's drawer
+   form encodes max-w-none! against this unlayered 620px. */
 .wk-settings-editor { display: grid; gap: .8rem; max-width: 620px; margin: 1rem 0; }
 .wk-settings-editor label { display: grid; gap: .35rem; font-weight: 600; }
 .wk-settings-editor input, .wk-settings-editor textarea { box-sizing: border-box; width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #172033; font: inherit; padding: .55rem .65rem; }
@@ -66,21 +80,21 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 /* .wk-model-tabs family kept: SandboxSettingsPanel.tsx (out of model-wave scope) still
    consumes it; delete once the sandbox panel migrates to utilities. */
 .wks-mcp-drawer { width: min(720px, 100%); height: min(780px, calc(100vh - 40px)); max-height: calc(100vh - 40px); overflow-y: auto; padding: 1.25rem 1.5rem 2rem; }
-.wks-mcp-drawer .wk-settings-panel-heading { position: sticky; top: 0; z-index: 1; background: #fff; padding-top: .25rem; }
-.wks-mcp-drawer .wk-settings-editor { max-width: none; }
-.wks-mcp-drawer .wk-settings-editor fieldset { border: 1px solid #edf0f5; border-radius: 8px; display: grid; gap: .7rem; padding: .8rem; }
-/* Layout only — select chrome (border/radius/height/chevron) comes from the
-   drawer-wide promoted rule in settings-wrapper.css (.wks-modal ancestor is
-   shared with this drawer). */
-.wks-mcp-drawer .wk-settings-editor select { box-sizing: border-box; width: 100%; }
+/* The .wks-mcp-drawer .wk-settings-* overrides (heading sticky chrome, editor
+   max-width/fieldset/select layout) moved to element utilities on
+   McpSettingsPanel's drawer heading/form/fieldsets/selects. Select chrome
+   (border/radius/height/chevron) still comes from the drawer-wide promoted rule
+   in settings-wrapper.css (.wks-modal ancestor is shared with this drawer). */
 @media (max-width: 720px) { .wks-mcp-drawer { height: calc(100vh - 24px); max-height: calc(100vh - 24px); padding: 1rem; } }
 .wk-form-label { color: #172033; font-weight: 600; }
-.wk-visually-hidden { clip: rect(0 0 0 0); clip-path: inset(50%); height: 1px; overflow: hidden; position: absolute; white-space: nowrap; width: 1px; }
-.wk-settings-values { display: grid; gap: .65rem; margin: 1rem 0 0; }
-.wk-settings-values div { display: grid; grid-template-columns: minmax(8rem, 14rem) minmax(0, 1fr); gap: .8rem; border-bottom: 1px solid #edf0f5; padding: .55rem 0; }
-.wk-settings-values dt { color: #506078; font-weight: 650; overflow-wrap: anywhere; }
-.wk-settings-values dd { margin: 0; font-family: ui-monospace, monospace; font-size: .85rem; overflow-wrap: anywhere; white-space: pre-wrap; }
-@media (max-width: 720px) { .wk-settings-layout { grid-template-columns: 1fr; } .wk-settings-panel-heading { flex-direction: column; } .wk-settings-operation-list { justify-content: flex-start; } .wk-settings-values div { grid-template-columns: 1fr; gap: .25rem; } }
+/* .wk-visually-hidden deleted: consumers carry sr-only; class name stays as a
+   hook. */
+/* .wk-settings-values family deleted: its four consumers (CloudSettingsPanel,
+   OllamaSettingsPanel ×2, PortedSectionsPanel) carry exact dl/div/dt/dd
+   utilities incl. max-[720px]: variants. The ≤720px fragments of the dead
+   .wk-settings-layout/.wk-settings-operation-list went with them; the
+   panel-heading fragment stays with its retained base above. */
+@media (max-width: 720px) { .wk-settings-panel-heading { flex-direction: column; } }
 @media (max-width: 720px) { .wk-wiki-layout { grid-template-columns: 1fr; } }
 @media (max-width: 720px) { .wk-wiki-history-layout { grid-template-columns: 1fr; } }
 @media (max-width: 720px) { .wk-form-grid, .wk-form-grid--three, .wk-form-grid--two, .wk-toggle-grid { grid-template-columns: 1fr; } .wk-settings-table label { grid-template-columns: 1fr; align-items: stretch; } .wk-settings-tabs { overflow-x: auto; } }
@@ -88,29 +102,20 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 /* Integrations surface — ported from frontend/src/components/css/channel-panel-list.less
    (Vue baseline); the .wk-integrations-page/header/tabs/panel and .wk-int-*
    families moved to Tailwind utilities in packages/views/src/integrations/page.tsx. */
-.wk-button { border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #172033; cursor: pointer; font: inherit; padding: .45rem .85rem; }
-.wk-button:disabled { cursor: not-allowed; opacity: .55; }
-.wk-button--text { border-color: transparent; background: transparent; color: #506078; padding: .3rem .5rem; }
-.wk-button--text:hover, .wk-button--text:focus-visible { background: #f2f5fa; }
-.wk-button--danger, .wk-button--text.wk-button--danger { color: #b42318; }
-.wk-tag { flex-shrink: 0; display: inline-flex; align-items: center; border-radius: 999px; padding: 1px 8px; font-size: 12px; line-height: 1.6; }
-.wk-tag--warning { color: #b45309; background: #fffaeb; border: 1px solid #fedf89; }
-.wk-form-actions { display: flex; align-items: center; gap: .6rem; }
-.wk-switch { position: relative; display: inline-flex; align-items: center; flex-shrink: 0; cursor: pointer; }
-.wk-switch input { position: absolute; opacity: 0; width: 34px; height: 18px; margin: 0; cursor: pointer; }
-.wk-switch-knob { width: 34px; height: 18px; border-radius: 999px; background: #cbd5e1; transition: background .18s ease; }
-.wk-switch-knob::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 999px; background: #fff; transition: transform .18s ease; }
-.wk-switch input:checked + .wk-switch-knob { background: #2e6de6; }
-.wk-switch input:checked + .wk-switch-knob::after { transform: translateX(16px); }
-.wk-status { margin: .25rem 0; color: #506078; font-size: 13px; }
-.wk-status-error { color: #b42318; }
-.wk-status-ok { color: #137333; }
-.wk-mono-input { box-sizing: border-box; min-width: 0; flex: 1; max-width: 420px; border: 1px solid #dce3ed; border-radius: 6px; background: #f7f9fc; color: #172033; font: .85rem ui-monospace, monospace; padding: .5rem .6rem; }
+/* The .wk-button (base/disabled/--text/--danger), .wk-tag/.wk-tag--warning,
+   .wk-switch/.wk-switch-knob, .wk-status(-error/-ok) and .wk-mono-input families
+   moved to Tailwind utilities on their consumers (packages/views/src/integrations/
+   page.tsx, apps/web/src/integrations/*, apps/web/src/settings/*). Class names
+   stay in the DOM as querySelector/test/variant hooks; .wk-switch checked states
+   are encoded with peer-checked utilities, and the drawer's [&_input]:! variants
+   keep owning the .wk-mono-input padding/border/radius they already outranked. */
 /* The .wk-option-chips/.wk-option-chip(--active) and .wk-check-row families moved
    to Tailwind utilities on their consumer (packages/views/src/integrations/page.tsx
    CHIP_BASE/chip and the wizard/API label rows). .wk-check-row stays on the labels
    as a :not() selector hook for the integration drawer's font-medium! variant. */
-.wk-muted--warn { color: #b45309; }
+/* .wk-muted--warn deleted: the three consumers carry text-[#b45309] (the
+   INTEGRATION_FORM_CLASS [&_.wk-muted]:text-[#98a2b3]! variant still overrides
+   it inside the form, exactly as this unlayered rule was overridden). */
 
 /* S00 N-2: Vue CreateTenantDialog.vue renders a centered t-dialog at 480px;
    narrow the shared wk-dialog panel for the tenant-create modal only. */

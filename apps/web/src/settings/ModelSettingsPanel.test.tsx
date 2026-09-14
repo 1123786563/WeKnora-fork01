@@ -585,7 +585,7 @@ test('panel header keeps only the Vue title, subtitle and debug trigger', async 
     await act(async () => {
       root.render(<ModelSettingsPanel client={{} as never} role="admin" initialModels={[]} />);
     });
-    const heading = container.querySelector('.wk-settings-panel-heading');
+    const heading = container.querySelector('[data-testid="model-settings"] > div');
     assert.ok(heading, 'the panel renders its own heading');
     assert.equal(heading.querySelector('h2')?.textContent, '模型配置');
     assert.ok((heading.querySelector('p')?.textContent ?? '').includes('管理不同类型的 AI 模型，支持 Ollama 本地模型和远程 API'));

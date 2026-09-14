@@ -350,10 +350,10 @@ function McpMetadataSection({
   }
   return (
     <section className="wk-mcp-metadata mt-[1.1rem] border-t border-[#edf0f5] pt-4" aria-label={t("mcpMetadata.tools")}>
-      <div className="wk-settings-panel-heading">
+      <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col sticky top-0 z-[1] bg-white pt-[.25rem]">
         <div>
           <h4>{t("mcpMetadata.tools")}</h4>
-          <p className="wk-muted">{t("mcpMetadata.cacheHint")}</p>
+          <p className="wk-muted text-muted">{t("mcpMetadata.cacheHint")}</p>
         </div>
         <div className="wk-list-actions">
           <Button
@@ -368,7 +368,7 @@ function McpMetadataSection({
       {error ? <Status tone="error">{error}</Status> : null}
       {metadata ? (
         <>
-          <div className={`relative ${metadata.stale ? "text-[#b54708] text-[.85rem]" : "wk-muted"}`}>
+          <div className={`relative ${metadata.stale ? "text-[#b54708] text-[.85rem]" : "wk-muted text-muted"}`}>
             {t("mcpMetadata.toolCount", { count: metadata.tools.length })}
             {metadata.serverName
               ? " · " + metadata.serverName + " " + (metadata.serverVersion ?? "")
@@ -377,7 +377,7 @@ function McpMetadataSection({
             {metadata.stale ? " · " + t("mcpMetadata.stale") : ""}
             {metadata.instructions || metadata.serverDescription ? <><button type="button" className={`wk-mcp-server-docs-trigger ${mcpServerDocsButton}`} aria-expanded={docsOpen} onClick={() => setDocsOpen((open) => !open)}>{t("mcpMetadata.serverDocumentation")}⌄</button>{docsOpen ? <div className="absolute z-20 mt-[.4rem] grid w-[min(360px,calc(100vw_-_2rem))] gap-2 border border-[#dce3ed] rounded-[7px] bg-white p-3 shadow-[0_12px_30px_rgb(23_32_51_/_18%)] whitespace-normal text-[#172033]" role="dialog"><strong>{t("mcpMetadata.serverDocumentation")}</strong>{metadata.serverDescription ? <span>{metadata.serverDescription}</span> : null}{metadata.instructions ? <pre className="m-0 max-h-[180px] overflow-auto whitespace-pre-wrap [font:inherit]">{metadata.instructions}</pre> : null}</div> : null}</> : <button type="button" className={mcpServerDocsButton} aria-label={t("mcpMetadata.noServerDocumentation")}>ⓘ</button>}
           </div>
-          <p className="wk-muted">{t("mcpMetadata.policyHint")}</p>
+          <p className="wk-muted text-muted">{t("mcpMetadata.policyHint")}</p>
           <McpToolsDirectory
             tools={metadata.tools}
             serviceId={metadata.stale ? undefined : serviceId}
@@ -488,7 +488,7 @@ function McpOAuthControl({
         </Button>
       ) : null}
       {error ? <Status tone="error">{error}</Status> : null}
-      <p className="wk-muted">{t("mcpServiceDialog.oauthAuthorizeHint")}</p>
+      <p className="wk-muted text-muted">{t("mcpServiceDialog.oauthAuthorizeHint")}</p>
     </div>
   );
 }
@@ -799,10 +799,10 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
     );
   return (
     <section className="grid gap-4" data-testid="mcp-settings">
-      <div className="wk-settings-panel-heading">
+      <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col sticky top-0 z-[1] bg-white pt-[.25rem]">
         <div>
           <h3>{t("mcpSettings.title")}</h3>
-          <p className="wk-muted">
+          <p className="wk-muted text-muted">
             {t("mcpSettings.description")}
           </p>
         </div>
@@ -856,10 +856,10 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
             aria-modal="true"
             aria-label={draft.id ? t("mcpServiceDialog.editTitle") : t("mcpServiceDialog.addTitle")}
           >
-            <div className="wk-settings-panel-heading">
+            <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col sticky top-0 z-[1] bg-white pt-[.25rem]">
               <div>
                 <h3>{draft.id ? t("mcpServiceDialog.editTitle") : t("mcpServiceDialog.addTitle")}</h3>
-                <p className="wk-muted flex items-center gap-2">
+                <p className="wk-muted text-muted flex items-center gap-2">
                   {draft.transportType === "http-streamable" ? "HTTP Streamable" : "SSE"}
                   <span
                     className={
@@ -905,14 +905,14 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
             </nav>
             <form
               ref={formRef}
-              className="wk-settings-editor"
+              className="wk-settings-editor my-4 grid gap-[.8rem] max-w-none!"
               onSubmit={(event) => void save(event)}
             >
               {step === 0 ? (
                 <>
                   <details className="wk-mcp-code-import">
                     <summary>{t("mcpServiceDialog.codeImport.toggle")}</summary>
-                    <p className="wk-muted">
+                    <p className="wk-muted text-muted">
                       {t("mcpServiceDialog.codeImport.hint")}
                     </p>
                     <textarea
@@ -937,7 +937,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                       <Status tone="error">{draft.codeImportError}</Status>
                     ) : null}
                   </details>
-                  <fieldset className="wk-mcp-group">
+                  <fieldset className="wk-mcp-group rounded-card border border-[#edf0f5] grid gap-[.7rem] p-[.8rem]">
                     <legend>{t("mcpServiceDialog.basicSection")}</legend>
                     <label>
                       {t("mcpServiceDialog.name")}
@@ -958,16 +958,17 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                         />{" "}
                         {t("mcpServiceDialog.enableService")}
                       </label>
-                      <span className="wk-muted">
+                      <span className="wk-muted text-muted">
                         {t("mcpServiceDialog.enableServiceDesc")}
                       </span>
                     </div>
                   </fieldset>
-                  <fieldset className="wk-mcp-group">
+                  <fieldset className="wk-mcp-group rounded-card border border-[#edf0f5] grid gap-[.7rem] p-[.8rem]">
                     <legend>{t("mcpServiceDialog.connectionSection")}</legend>
                     <label>
                       {t("mcpServiceDialog.transportType")}
                       <select
+                        className="w-full box-border"
                         value={draft.transportType === "http-streamable" ? "http-streamable" : "sse"}
                         onChange={(event) =>
                           setField(
@@ -990,9 +991,9 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                         onChange={(event) => setField("url", event.target.value)}
                       />
                     </label>
-                    <fieldset>
+                    <fieldset className="rounded-card border border-[#edf0f5] grid gap-[.7rem] p-[.8rem]">
                       <legend>{t("mcpServiceDialog.customHeaders.label")}</legend>
-                      <p className="wk-muted">{t("mcpServiceDialog.customHeaders.desc")}</p>
+                      <p className="wk-muted text-muted">{t("mcpServiceDialog.customHeaders.desc")}</p>
                       {draft.headers.map((header, index) => (
                         <div className="wk-mcp-header-row" key={index}>
                           <input
@@ -1051,11 +1052,12 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                       </Button>
                     </fieldset>
                   </fieldset>
-                  <fieldset className="wk-mcp-group">
+                  <fieldset className="wk-mcp-group rounded-card border border-[#edf0f5] grid gap-[.7rem] p-[.8rem]">
                     <legend>{t("mcpServiceDialog.authConfig")}</legend>
                     <label>
                       {t("mcpServiceDialog.authType")}
                       <select
+                        className="w-full box-border"
                         value={draft.authType}
                         onChange={(event) =>
                           setField("authType", event.target.value as Draft["authType"])
@@ -1100,12 +1102,12 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                             }
                           />
                         </label>
-                        <p className="wk-muted">{t("mcpServiceDialog.apiKeyHeaderDesc")}</p>
+                        <p className="wk-muted text-muted">{t("mcpServiceDialog.apiKeyHeaderDesc")}</p>
                         {draft.id ? <div className="wk-mcp-credential-card grid gap-[.65rem] rounded-[7px] border border-[#dce3ed] bg-[#f7f9fc] p-3"><div className="flex items-center justify-between gap-3"><strong>{t("mcpServiceDialog.credentialValue")}</strong><span className={`text-[.8rem] text-[#66758b] ${draft.credentialConfigured ? "text-[#16845b]! font-semibold" : ""}`}>{draft.credentialConfigured ? "✓ " + t("common.success") : t("mcpServiceDialog.optional")}</span></div><label>{draft.credentialConfigured ? t("common.replaceValue") : t("mcpServiceDialog.credentialValue")}<input type="password" autoComplete="new-password" value={draft.apiKey} placeholder={t("mcpServiceDialog.optional")} onChange={(event) => setField("apiKey", event.target.value)} /></label>{draft.credentialConfigured ? <Button type="button" disabled={saving} onClick={() => void clearMcpCredential()}>{t("common.delete")}</Button> : null}</div> : <label>{t("mcpServiceDialog.credentialValue")}<input type="password" autoComplete="new-password" value={draft.apiKey} placeholder={t("mcpServiceDialog.optional")} onChange={(event) => setField("apiKey", event.target.value)} /></label>}
                       </>
                     ) : null}
                   </fieldset>
-                  <fieldset className="wk-mcp-group">
+                  <fieldset className="wk-mcp-group rounded-card border border-[#edf0f5] grid gap-[.7rem] p-[.8rem]">
                     <legend>{t("mcpServiceDialog.advancedConfig")}</legend>
                     <label>
                       {t("mcpServiceDialog.timeoutSec")}
@@ -1165,11 +1167,11 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                 </>
               ) : (
                 <>
-                  <fieldset className="wk-mcp-group">
-                    <div className="wk-settings-panel-heading">
+                  <fieldset className="wk-mcp-group rounded-card border border-[#edf0f5] grid gap-[.7rem] p-[.8rem]">
+                    <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col sticky top-0 z-[1] bg-white pt-[.25rem]">
                       <div>
                         <h4>{t("mcpMetadata.usage")}</h4>
-                        <p className="wk-muted">{t("mcpMetadata.usageHint")}</p>
+                        <p className="wk-muted text-muted">{t("mcpMetadata.usageHint")}</p>
                       </div>
                     </div>
                     <div className="flex items-center justify-between gap-[.8rem]">
@@ -1197,10 +1199,10 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                         setField("usageInstructions", event.target.value)
                       }
                     />
-                    <span className="wk-muted block text-right text-[.78rem]">
+                    <span className="wk-muted text-muted block text-right text-[.78rem]">
                       {draft.usageInstructions.length}/16000
                     </span>
-                    <p className="wk-muted">{t("mcpMetadata.generateHint")}</p>
+                    <p className="wk-muted text-muted">{t("mcpMetadata.generateHint")}</p>
                   </fieldset>
                   {draft.id ? (
                     <McpMetadataSection

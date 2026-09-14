@@ -1063,10 +1063,10 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
 
   return (
     <section className="wk-sandbox-editor" role="dialog" aria-modal="true" aria-label={title} data-testid="sandbox-editor">
-      <div className="wk-settings-panel-heading">
+      <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col">
         <div>
           <h3>{title}</h3>
-          <p className="wk-muted">{t(`settings.sandbox.stepDescriptions.${stepKey}`)}</p>
+          <p className="wk-muted text-muted">{t(`settings.sandbox.stepDescriptions.${stepKey}`)}</p>
         </div>
         <Button type="button" onClick={onClose}>{t('common.cancel')}</Button>
       </div>
@@ -1107,7 +1107,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
       ) : null}
       {actionError ? <Status tone="error">{actionError}</Status> : null}
 
-      <form className="wk-settings-editor" onSubmit={(event) => { event.preventDefault(); void handlePrimary(); }}>
+      <form className="wk-settings-editor my-4 grid gap-[.8rem] max-w-[620px]" onSubmit={(event) => { event.preventDefault(); void handlePrimary(); }}>
         {stepKey === 'connection' ? (<>
           <section className="wk-sandbox-editor-section">
             <h4>{t('settings.sandbox.sectionBasic')}</h4>
@@ -1119,7 +1119,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                 ))}
               </select>
             </label>
-            <p className="wk-muted">{t(`settings.sandbox.backendDescriptions.${form.backend}`)}</p>
+            <p className="wk-muted text-muted">{t(`settings.sandbox.backendDescriptions.${form.backend}`)}</p>
             {dockerBackendOff ? <Status tone="warning">{t('settings.sandbox.dockerDisabledAlert')}{t('settings.sandbox.dockerDisabledHint')}</Status> : null}
             <label>
               {t('settings.sandbox.configName')}
@@ -1137,7 +1137,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
               <h4>{t('settings.sandbox.sectionConnection')}</h4>
               {hasSkillSnapshot ? <Status tone="warning">{t('settings.sandbox.connectionLockedBySkills')}</Status>
                 : inFlightSkill ? <Status tone="warning">{t('settings.sandbox.connectionLockedByInFlight')}</Status>
-                  : record ? <p className="wk-muted">{t('settings.sandbox.identityFieldHint')}</p> : null}
+                  : record ? <p className="wk-muted text-muted">{t('settings.sandbox.identityFieldHint')}</p> : null}
               {form.backend === 'cube' ? (<>
                 <label>{requiredLabel('settings.sandbox.apiUrl')}
                   <input value={form.cube.api_url ?? ''} placeholder="http://cube.example.com:33000" disabled={retargetFrozen} onChange={(event) => setCube({ api_url: event.target.value }, 'api_url')} />
@@ -1156,19 +1156,19 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                 <label>{t('settings.sandbox.apiKey')}
                   <input type="password" value={form.cube.api_key ?? ''} placeholder={secretInputPlaceholder('cube')} disabled={retargetFrozen} onChange={(event) => setCube({ api_key: event.target.value })} />
                 </label>
-                <p className="wk-muted">{form.storedCubeKey ? t('settings.sandbox.secretConfigured') : t('settings.sandbox.cubeApiKeyOptional')}</p>
+                <p className="wk-muted text-muted">{form.storedCubeKey ? t('settings.sandbox.secretConfigured') : t('settings.sandbox.cubeApiKeyOptional')}</p>
                 <a href={CLUSTER_GUIDE_URL} target="_blank" rel="noopener noreferrer">{t('settings.sandbox.cubeApiKeyWhere')}</a>
                 <label>{t('settings.sandbox.cubeDnsServers')}
                   <input value={(form.cube.dns_servers ?? []).join(', ')} placeholder={t('settings.sandbox.cubeDnsServersPlaceholder')} disabled={retargetFrozen}
                     onChange={(event) => setCube({ dns_servers: event.target.value.split(/[,\s]+/).map((item) => item.trim()).filter(Boolean) })} />
                 </label>
-                <p className="wk-muted">{t('settings.sandbox.cubeDnsServersHelp')}</p>
+                <p className="wk-muted text-muted">{t('settings.sandbox.cubeDnsServersHelp')}</p>
               </>) : (<>
                 <label>{requiredLabel('settings.sandbox.apiKey')}
                   <input type="password" value={form.e2b.api_key ?? ''} placeholder={secretInputPlaceholder('e2b')} disabled={retargetFrozen} onChange={(event) => setE2B({ api_key: event.target.value }, 'api_key')} />
                   {renderFieldError('api_key')}
                 </label>
-                <p className="wk-muted">{form.storedE2BKey ? t('settings.sandbox.secretConfigured') : t('settings.sandbox.e2bApiKeyHelp')}</p>
+                <p className="wk-muted text-muted">{form.storedE2BKey ? t('settings.sandbox.secretConfigured') : t('settings.sandbox.e2bApiKeyHelp')}</p>
                 <a href={E2B_API_KEYS_URL} target="_blank" rel="noopener noreferrer">{t('settings.sandbox.e2bApiKeyWhere')}</a>
                 <div className="wk-form-grid">
                   <label>{t('settings.sandbox.apiUrl')}
@@ -1178,16 +1178,16 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                     <input value={form.e2b.sandbox_domain ?? ''} placeholder="e2b.app" disabled={retargetFrozen} onChange={(event) => setE2B({ sandbox_domain: event.target.value })} />
                   </label>
                 </div>
-                <p className="wk-muted">{t('settings.sandbox.e2bApiUrlOptional')}</p>
+                <p className="wk-muted text-muted">{t('settings.sandbox.e2bApiUrlOptional')}</p>
                 <label>{t('settings.sandbox.proxyUrl')}
                   <input value={form.e2b.proxy_url ?? ''} placeholder="http://sandbox-gateway.example.com" disabled={retargetFrozen} onChange={(event) => setE2B({ proxy_url: event.target.value })} />
                 </label>
-                <p className="wk-muted">{t('settings.sandbox.e2bProxyUrlOptional')}</p>
+                <p className="wk-muted text-muted">{t('settings.sandbox.e2bProxyUrlOptional')}</p>
               </>)}
               <div className="wk-sandbox-switch-row">
                 <div>
                   <p><strong>{t('settings.sandbox.allowPrivateEndpoints')}</strong></p>
-                  <p className="wk-muted">{t('settings.sandbox.allowPrivateEndpointsHint')}</p>
+                  <p className="wk-muted text-muted">{t('settings.sandbox.allowPrivateEndpointsHint')}</p>
                 </div>
                 <input type="checkbox" checked={form.allowPrivateEndpoints} disabled={retargetFrozen}
                   onChange={(event) => { updateForm({ allowPrivateEndpoints: event.target.checked }); setCheckResult(null); }} aria-label={t('settings.sandbox.allowPrivateEndpoints')} />
@@ -1197,27 +1197,27 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
             <section className="wk-sandbox-editor-section">
               <h4>{t('settings.sandbox.sectionRuntimeEnvironment')}</h4>
               <div className="wk-template-card is-active">
-                <strong>{t('settings.sandbox.weknoraDockerImage')}</strong> <span className="wk-tag">{t('settings.sandbox.recommendedTag')}</span>
-                <p className="wk-muted">{t('settings.sandbox.weknoraDockerImageHint')}</p>
+                <strong>{t('settings.sandbox.weknoraDockerImage')}</strong> <span className="wk-tag inline-flex items-center shrink-0 py-[1px]! px-[8px]! leading-[1.6]">{t('settings.sandbox.recommendedTag')}</span>
+                <p className="wk-muted text-muted">{t('settings.sandbox.weknoraDockerImageHint')}</p>
               </div>
               <label>{requiredLabel('settings.sandbox.dockerImage')}
                 <input value={form.docker.image ?? ''} placeholder={DEFAULT_DOCKER_IMAGE} disabled={retargetFrozen} onChange={(event) => setDocker({ image: event.target.value }, 'image')} />
                 {renderFieldError('image')}
               </label>
-              {retargetFrozen ? <p className="wk-muted">{hasSkillSnapshot ? t('settings.sandbox.templateLockedBySkills') : t('settings.sandbox.templateLockedByInFlight')}</p> : null}
+              {retargetFrozen ? <p className="wk-muted text-muted">{hasSkillSnapshot ? t('settings.sandbox.templateLockedBySkills') : t('settings.sandbox.templateLockedByInFlight')}</p> : null}
               <label>{t('settings.sandbox.dockerHost')}
                 <input value={form.docker.host ?? ''} placeholder="unix:///var/run/docker.sock" disabled={retargetFrozen} onChange={(event) => setDocker({ host: event.target.value }, 'host')} />
               </label>
-              <p className="wk-muted">{t('settings.sandbox.dockerHostHelp')}</p>
+              <p className="wk-muted text-muted">{t('settings.sandbox.dockerHostHelp')}</p>
               <label>{t('settings.sandbox.dockerTlsCertPath')}
                 <input value={form.docker.tls_cert_path ?? ''} placeholder="/etc/weknora/docker-certs" disabled={retargetFrozen} onChange={(event) => setDocker({ tls_cert_path: event.target.value }, 'tls_cert_path')} />
               </label>
-              <p className="wk-muted">{t('settings.sandbox.dockerTlsCertPathHelp')}</p>
+              <p className="wk-muted text-muted">{t('settings.sandbox.dockerTlsCertPathHelp')}</p>
               <Status tone="warning">{t('settings.sandbox.dockerHostRisk')}</Status>
               <div className="wk-sandbox-switch-row">
                 <div>
                   <p><strong>{t('settings.sandbox.allowPrivateEndpoints')}</strong></p>
-                  <p className="wk-muted">{t('settings.sandbox.allowPrivateEndpointsHint')}</p>
+                  <p className="wk-muted text-muted">{t('settings.sandbox.allowPrivateEndpointsHint')}</p>
                 </div>
                 <input type="checkbox" checked={form.allowPrivateEndpoints} disabled={retargetFrozen}
                   onChange={(event) => { updateForm({ allowPrivateEndpoints: event.target.checked }); setCheckResult(null); }} aria-label={t('settings.sandbox.allowPrivateEndpoints')} />
@@ -1239,9 +1239,9 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                 {canCreateStandard ? (
                   <div className="wk-template-row wk-template-row--offer">
                     <div>
-                      <strong>{t('settings.sandbox.weknoraStandardTemplate')}</strong> <span className="wk-tag">{t('settings.sandbox.recommendedTag')}</span>{' '}
+                      <strong>{t('settings.sandbox.weknoraStandardTemplate')}</strong> <span className="wk-tag inline-flex items-center shrink-0 py-[1px]! px-[8px]! leading-[1.6]">{t('settings.sandbox.recommendedTag')}</span>{' '}
                       <Button type="button" loading={templatesLoading} onClick={() => void loadTemplates({ ensureStandard: true })}>{t('settings.sandbox.createStandardTemplate')}</Button>
-                      <p className="wk-muted">{t('settings.sandbox.createStandardTemplateHint')}</p>
+                      <p className="wk-muted text-muted">{t('settings.sandbox.createStandardTemplateHint')}</p>
                     </div>
                   </div>
                 ) : null}
@@ -1259,8 +1259,8 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                       onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onTemplateCardClick(item); }}>
                       <div>
                         <strong title={name || undefined}>{name || t('settings.sandbox.templateUnnamed')}</strong>
-                        {item.standard ? <span className="wk-tag">{t('settings.sandbox.recommendedTag')}</span> : null}{' '}
-                        <span className={`wk-tag wk-tag--${templateStatusKey(item)}`}>{t(`settings.sandbox.templateStatuses.${templateStatusKey(item)}`)}</span>{' '}
+                        {item.standard ? <span className="wk-tag inline-flex items-center shrink-0 py-[1px]! px-[8px]! leading-[1.6]">{t('settings.sandbox.recommendedTag')}</span> : null}{' '}
+                        <span className={`wk-tag wk-tag--${templateStatusKey(item)} inline-flex items-center shrink-0 py-[1px]! px-[8px]! leading-[1.6]`}>{t(`settings.sandbox.templateStatuses.${templateStatusKey(item)}`)}</span>{' '}
                         {item.standard && item.id && !isTemplatePending(item) && !retargetFrozen ? (
                           <Button type="button" loading={templatesLoading} onClick={(event) => { event.stopPropagation(); if (window.confirm(t('settings.sandbox.replaceStandardTemplateConfirm'))) void loadTemplates({ replaceStandard: true }); }}>
                             {t('settings.sandbox.replaceStandardTemplate')}
@@ -1275,7 +1275,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                         ) : null}
                         {isTemplateUntagged(item) ? <p className="wk-field-error text-xs leading-[1.4] text-[#c23434]">{t('settings.sandbox.templateUntaggedHint')}</p>
                           : failureReason ? <p className="wk-field-error text-xs leading-[1.4] text-[#c23434]">{failureReason}</p>
-                            : isTemplatePending(item) && item.standard ? <p className="wk-muted">{t('settings.sandbox.templateBuildingHint')}</p> : null}
+                            : isTemplatePending(item) && item.standard ? <p className="wk-muted text-muted">{t('settings.sandbox.templateBuildingHint')}</p> : null}
                       </div>
                     </div>
                   );
@@ -1324,22 +1324,22 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                 <input type="number" min={0} max={86400} placeholder="900" value={numberValue(form.terminalIdleDisconnectSec)} onChange={(event) => setNumberField('terminalIdleDisconnectSec', event.target.value)} />
               </label>
             </div>
-            <p className="wk-muted">{t('settings.sandbox.httpTimeoutHelp')}</p>
-            <p className="wk-muted">{t('settings.sandbox.sandboxTtlHelp')}</p>
-            <p className="wk-muted">{t('settings.sandbox.defaultTimeoutHelp')}</p>
-            <p className="wk-muted">{t('settings.sandbox.terminalIdleDisconnectHelp')}</p>
+            <p className="wk-muted text-muted">{t('settings.sandbox.httpTimeoutHelp')}</p>
+            <p className="wk-muted text-muted">{t('settings.sandbox.sandboxTtlHelp')}</p>
+            <p className="wk-muted text-muted">{t('settings.sandbox.defaultTimeoutHelp')}</p>
+            <p className="wk-muted text-muted">{t('settings.sandbox.terminalIdleDisconnectHelp')}</p>
           </section>
 
           <section className="wk-sandbox-editor-section">
             <h4>{t('settings.sandbox.sectionNetwork')}</h4>
-            <p className="wk-muted">{t('settings.sandbox.networkHint')}</p>
+            <p className="wk-muted text-muted">{t('settings.sandbox.networkHint')}</p>
             {form.backend !== 'docker' ? (<>
               <fieldset>
                 <legend>{t('settings.sandbox.egressDefault')}</legend>
                 <label><input type="radio" checked={!form.denyEgressByDefault} onChange={() => updateForm({ denyEgressByDefault: false })} /> {t('settings.sandbox.egressAllowAll')}</label>
                 <label><input type="radio" checked={form.denyEgressByDefault} onChange={() => updateForm({ denyEgressByDefault: true })} /> {t('settings.sandbox.egressDenyAll')}</label>
               </fieldset>
-              <p className="wk-muted">{t('settings.sandbox.egressPrecedence')}</p>
+              <p className="wk-muted text-muted">{t('settings.sandbox.egressPrecedence')}</p>
               <div className="wk-sandbox-rows">
                 <div className="wk-sandbox-section-row">
                   <strong>{t('settings.sandbox.allowOut')}</strong>
@@ -1352,7 +1352,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                     <Button type="button" aria-label={t('common.delete')} onClick={() => updateForm((current) => ({ allowOutRows: current.allowOutRows.filter((_, i) => i !== index) }))}>×</Button>
                   </div>
                 ))}
-                <p className="wk-muted">{t('settings.sandbox.allowOutHelp')}</p>
+                <p className="wk-muted text-muted">{t('settings.sandbox.allowOutHelp')}</p>
                 {domainAllowNeedsDenyAll(form.allowOutRows, form.denyOutRows, form.denyEgressByDefault)
                   ? <span data-testid="domain-allow-warning"><Status tone="warning">{t('settings.sandbox.domainAllowNeedsDenyAll')}</Status></span> : null}
               </div>
@@ -1368,7 +1368,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                     <Button type="button" aria-label={t('common.delete')} onClick={() => updateForm((current) => ({ denyOutRows: current.denyOutRows.filter((_, i) => i !== index) }))}>×</Button>
                   </div>
                 ))}
-                <p className="wk-muted">{t('settings.sandbox.denyOutHelp')}</p>
+                <p className="wk-muted text-muted">{t('settings.sandbox.denyOutHelp')}</p>
               </div>
             </>) : (
               <label>{t('settings.sandbox.dockerNetworkMode')}
@@ -1379,7 +1379,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                 </select>
               </label>
             )}
-            {form.backend === 'docker' ? <p className="wk-muted">{t('settings.sandbox.dockerNetworkModeHelp')}</p> : null}
+            {form.backend === 'docker' ? <p className="wk-muted text-muted">{t('settings.sandbox.dockerNetworkModeHelp')}</p> : null}
 
             {form.backend === 'cube' ? (
               <div className="wk-sandbox-rows">
@@ -1387,7 +1387,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                   <strong>{t('settings.sandbox.cubeL7Rules')}</strong>
                   <Button type="button" onClick={() => updateForm((current) => ({ cubeRules: [...current.cubeRules, { key: newCubeRuleKey(), name: '', scheme: 'https', sni: '', host: '', methodsText: '', path: '', deny: false, audit: '', inject: [] }] }))}>{t('settings.sandbox.addRule')}</Button>
                 </div>
-                <p className="wk-muted">{t('settings.sandbox.cubeL7RulesHelp')}</p>
+                <p className="wk-muted text-muted">{t('settings.sandbox.cubeL7RulesHelp')}</p>
                 {form.cubeRules.map((rule, index) => (
                   <details className="wk-net-rule" key={rule.key}>
                     <summary>{rule.name.trim() || t('settings.sandbox.ruleUntitled')}</summary>
@@ -1453,7 +1453,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                   <strong>{t('settings.sandbox.e2bHostRules')}</strong>
                   <Button type="button" onClick={() => updateForm((current) => ({ e2bHostRules: [...current.e2bHostRules, { host: '', headers: [] }] }))}>{t('settings.sandbox.addRule')}</Button>
                 </div>
-                <p className="wk-muted">{t('settings.sandbox.e2bHostRulesHelp')}</p>
+                <p className="wk-muted text-muted">{t('settings.sandbox.e2bHostRulesHelp')}</p>
                 {form.e2bHostRules.map((rule, index) => (
                   <details className="wk-net-rule" key={`e2b-rule-${index}`}>
                     <summary>{rule.host.trim() || t('settings.sandbox.ruleUntitled')}</summary>
@@ -1481,7 +1481,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
               <h4>{t('settings.sandbox.sectionEnvironment')}</h4>
               <Button type="button" onClick={() => updateForm((current) => ({ envRows: [...current.envRows, { key: '', value: '' }] }))}>{t('settings.sandbox.addRow')}</Button>
             </div>
-            <p className="wk-muted">{t('settings.sandbox.envVarsHint')}</p>
+            <p className="wk-muted text-muted">{t('settings.sandbox.envVarsHint')}</p>
             {form.envRows.length ? form.envRows.map((row, index) => (
               <div className="wk-net-row" key={`env-${index}`}>
                 <input value={row.key} placeholder={t('settings.sandbox.envKey')} className="env-key"
@@ -1490,12 +1490,12 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                   onChange={(event) => updateForm((current) => ({ envRows: current.envRows.map((item, i) => i === index ? { ...item, value: event.target.value } : item) }))} />
                 <Button type="button" aria-label={t('common.delete')} onClick={() => updateForm((current) => ({ envRows: current.envRows.filter((_, i) => i !== index) }))}>×</Button>
               </div>
-            )) : <p className="wk-muted">{t('settings.sandbox.noEnvVars')}</p>}
+            )) : <p className="wk-muted text-muted">{t('settings.sandbox.noEnvVars')}</p>}
           </section>
 
           <section className="wk-sandbox-editor-section">
             <h4>{t('settings.sandbox.skillRollout')}</h4>
-            <p className="wk-muted">{t('settings.sandbox.skillRolloutHint')}</p>
+            <p className="wk-muted text-muted">{t('settings.sandbox.skillRolloutHint')}</p>
             <fieldset>
               <label><input type="radio" checked={form.skillRollout === 'next_turn'} onChange={() => updateForm({ skillRollout: 'next_turn' })} /> {t('settings.sandbox.skillRolloutNextTurn')}</label>
               <label><input type="radio" checked={form.skillRollout === 'new_session'} onChange={() => updateForm({ skillRollout: 'new_session' })} /> {t('settings.sandbox.skillRolloutNewSession')}</label>
@@ -1521,7 +1521,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
           <p className={checkResult.ok ? 'is-success' : 'is-error'}>
             {checkResult.ok ? '✓ ' : '✕ '}{checkResult.ok ? t('settings.sandbox.checkPassed') : t('settings.sandbox.checkFailed')}
           </p>
-          <p className="wk-muted">{t(checkScopeKey(checkResult))}</p>
+          <p className="wk-muted text-muted">{t(checkScopeKey(checkResult))}</p>
           <ul>
             {reportedChecks(checkResult).map((item) => (
               <li key={item.name} className={item.ok === true ? 'ok' : item.ok === false ? 'err' : 'skip'}>
@@ -1534,7 +1534,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
             ))}
           </ul>
           {pendingCheckItems(checkResult).length ? (
-            <p className="wk-muted">{t('settings.sandbox.checkPendingHint', { names: pendingCheckItems(checkResult).map((item) => t(`settings.sandbox.checks.${item.name}`, undefined, item.name)).join('、') })}</p>
+            <p className="wk-muted text-muted">{t('settings.sandbox.checkPendingHint', { names: pendingCheckItems(checkResult).map((item) => t(`settings.sandbox.checks.${item.name}`, undefined, item.name)).join('、') })}</p>
           ) : null}
         </div>
       ) : null}
@@ -1746,7 +1746,7 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
 
   return (
     <section className="wk-sandbox-settings" data-testid="sandbox-settings">
-      <div className="wk-settings-panel-heading">
+      <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col">
         <div>
           <h3>{t('settings.sandbox.title')}</h3>
           {/* Page hint popover (SandboxSettings.vue:8-19). */}
@@ -1754,10 +1754,10 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
             <summary aria-label={t('settings.sandbox.pageHintTitle')}>ⓘ</summary>
             <div>
               <p><strong>{t('settings.sandbox.pageHintTitle')}</strong></p>
-              <p className="wk-muted">{t('settings.sandbox.pageHint')}</p>
+              <p className="wk-muted text-muted">{t('settings.sandbox.pageHint')}</p>
             </div>
           </details>
-          <p className="wk-muted">{t('settings.sandbox.description')}</p>
+          <p className="wk-muted text-muted">{t('settings.sandbox.description')}</p>
         </div>
         <div className="wk-list-actions">
           <a href={CLUSTER_GUIDE_URL} target="_blank" rel="noopener noreferrer">{t('settings.sandbox.viewClusterGuide')}</a>
@@ -1771,7 +1771,7 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
         <div className="flex items-center justify-between gap-4 border-b border-[var(--wks-border,#f0f0f0)] py-3">
           <div>
             <strong className="text-[14px] text-[var(--wks-text-primary,#1f2937)]">{t('settings.sandbox.scriptPolicyLabel')}</strong>
-            <p className="wk-muted">{t('settings.sandbox.scriptPolicyDesc')}</p>
+            <p className="wk-muted text-muted">{t('settings.sandbox.scriptPolicyDesc')}</p>
           </div>
           {data?.workspaceScriptsDisabled ? (
             <button type="button" role="switch" aria-checked="false"
@@ -1821,9 +1821,9 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
               <Card key={item.id} className="wk-sandbox-card">
                 <div className="wk-sandbox-card-header">
                   <div>
-                    <span className="wk-muted">{backendLabel(item.sandbox_type)}</span>
+                    <span className="wk-muted text-muted">{backendLabel(item.sandbox_type)}</span>
                     <h4>{item.name}</h4>
-                    {isLegacyRecord(item) ? <span className="wk-tag">{t('settings.sandbox.legacyConfig')}</span> : null}
+                    {isLegacyRecord(item) ? <span className="wk-tag inline-flex items-center shrink-0 py-[1px]! px-[8px]! leading-[1.6]">{t('settings.sandbox.legacyConfig')}</span> : null}
                   </div>
                   {canEdit ? (
                     <div className="wk-list-actions">
@@ -1836,7 +1836,7 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
                     </div>
                   ) : null}
                 </div>
-                <p className="wk-muted">{item.description || ''}</p>
+                <p className="wk-muted text-muted">{item.description || ''}</p>
                 {summary ? <p className="wk-sandbox-target" title={summary}>{summary}</p> : null}
                 {warnings.length ? (
                   <ul className="wk-sandbox-warnings">
@@ -1852,10 +1852,10 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
       {inventory ? (
         <div className="wk-sandbox-inventory-overlay fixed inset-0 z-[1250] bg-[rgb(23_32_51_/_35%)]" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setInventory(null); }}>
         <section className="wk-sandbox-inventory wk-sandbox-inventory-drawer box-border absolute top-0 right-0 bottom-0 left-auto w-[min(400px,100%)] max-h-[100vh] overflow-y-auto border-l border-line bg-surface p-5 shadow-[-18px_0_48px_rgb(23_32_51_/_16%)] animate-[wk-sandbox-inventory-enter_.18s_ease-out] max-[640px]:w-full" role="dialog" aria-modal="true" aria-label={t('settings.sandbox.inventoryTitle')}>
-          <div className="wk-settings-panel-heading">
+          <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col">
             <div>
               <h3>{t('settings.sandbox.inventoryTitle')}: {inventory.record.name}</h3>
-              <p className="wk-muted">
+              <p className="wk-muted text-muted">
                 {inventory.notice === 'blocked'
                   ? t('settings.sandbox.sandboxesStillLive', { count: inventory.data.sandboxCount })
                   : t('settings.sandbox.inventoryUnverifiableHint')}
@@ -1873,7 +1873,7 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
               {inventory.data.sessionIds.map((id) => {
                 const label = (
                   <>
-                    <strong title={id}>{sessionTitleText(sessionTitles, id, t('settings.sandbox.inventoryUntitledSession'))}</strong> <span className="wk-muted">{t('settings.sandbox.inventorySessionKind')}</span>
+                    <strong title={id}>{sessionTitleText(sessionTitles, id, t('settings.sandbox.inventoryUntitledSession'))}</strong> <span className="wk-muted text-muted">{t('settings.sandbox.inventorySessionKind')}</span>
                   </>
                 );
                 return (

@@ -212,16 +212,16 @@ export function ModelDebugPanel({ client, models, onClose }: Props) {
       aria-modal="true"
       aria-label={t("modelSettings.debug.title")}
     >
-      <div className="wk-settings-panel-heading">
+      <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col">
         <div>
           <h3>{t("modelSettings.debug.title")}</h3>
-          <p className="wk-muted">{t("modelSettings.debug.description")}</p>
+          <p className="wk-muted text-muted">{t("modelSettings.debug.description")}</p>
         </div>
         <Button type="button" onClick={onClose}>
           {t("common.close")}
         </Button>
       </div>
-      <div className="wk-settings-editor">
+      <div className="wk-settings-editor my-4 grid gap-[.8rem] max-w-[620px]">
         <div className="form-item">
           <h4>{t("modelSettings.debug.groupModel")}</h4>
           {availableTypes.length > 1 ? (
@@ -253,7 +253,7 @@ export function ModelDebugPanel({ client, models, onClose }: Props) {
             />
           </label>
           {filteredModels.length === 0 ? (
-            <p className="wk-muted">{t("modelSettings.debug.noModelsForType")}</p>
+            <p className="wk-muted text-muted">{t("modelSettings.debug.noModelsForType")}</p>
           ) : null}
         </div>
         {selected ? (
@@ -279,7 +279,7 @@ export function ModelDebugPanel({ client, models, onClose }: Props) {
                   onChange={(event) => setDocuments(event.target.value)}
                   placeholder={t("modelSettings.debug.documentsPlaceholder")}
                 />
-                <span className="wk-muted">{t("modelSettings.debug.documentsHint")}</span>
+                <span className="wk-muted text-muted">{t("modelSettings.debug.documentsHint")}</span>
               </label>
             ) : null}
             {needsFile ? (
@@ -293,7 +293,7 @@ export function ModelDebugPanel({ client, models, onClose }: Props) {
                     resetResult();
                   }}
                 />
-                {file ? <span className="wk-muted">{file.name} · {formatBytes(file.size)}</span> : null}
+                {file ? <span className="wk-muted text-muted">{file.name} · {formatBytes(file.size)}</span> : null}
               </label>
             ) : null}
           </div>
@@ -357,7 +357,7 @@ export function ModelDebugPanel({ client, models, onClose }: Props) {
             <strong>{t(result.ok ? "modelSettings.debug.success" : "modelSettings.debug.failed")}</strong>
             <span>{result.elapsedMs} ms</span>
             {metrics.length > 0 ? (
-              <p className="wk-muted">
+              <p className="wk-muted text-muted">
                 {metrics.map((metric) => `${metric.label}: ${metric.value}`).join(" · ")}
               </p>
             ) : null}

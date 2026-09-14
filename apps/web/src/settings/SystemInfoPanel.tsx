@@ -25,7 +25,7 @@ export function SystemInfoPanel({ payload, locale }: { payload: unknown; locale:
               <span className="info-value">
                 {row.value}
                 {row.commit ? <span className="commit-info"> ({row.commit})</span> : null}
-                {row.tag ? <span className={'wk-tag wk-tag--' + (row.tagTone ?? 'default')}>{row.tag}</span> : null}
+                {row.tag ? <span className={'wk-tag wk-tag--' + (row.tagTone ?? 'default') + ' inline-flex items-center shrink-0 py-[1px]! px-[8px]! leading-[1.6]' + (row.tagTone === 'warning' ? ' text-[#b45309]! bg-[#fffaeb]! border border-solid border-[#fedf89]' : '')}>{row.tag}</span> : null}
               </span>
             </div>
           </div>
