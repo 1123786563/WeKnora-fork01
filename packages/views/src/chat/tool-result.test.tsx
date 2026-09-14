@@ -16,6 +16,7 @@ import {
   ToolResultView,
   webFetchView,
   webSearchResultsView,
+  WebFetchRenderer,
 } from './tool-result.tsx';
 import { resolveChatCopy } from './chat-copy.ts';
 
@@ -380,6 +381,17 @@ test('webFetchView shows url, status and extracted content summary', () => {
   assert.equal(view.rows[1]!.statusKind, 'failed');
   assert.equal(view.rows[1]!.errorCode, 'TIMEOUT');
   assert.equal(view.rows[1]!.errorMessage, 'timed out');
+});
+
+test('WebFetchRenderer localizes the empty-url fallback while preserving URL rendering', () => {
+  const element = WebFetchRenderer({
+    data: { results: [{ status: 'failed' }, { url: 'https://docs.example.com/guide', status: 'success' }] },
+    copy: resolveChatCopy('ja-JP'),
+  });
+  const serialized = JSON.stringify(element);
+  assert.match(serialized, /不明なリンク/);
+  assert.match(serialized, /docs\.example\.com/);
+  assert.doesNotMatch(serialized, /Unknown link/);
 });
 
 /* ---- Thinking / Plan ---- */

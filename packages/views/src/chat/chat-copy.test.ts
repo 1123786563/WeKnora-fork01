@@ -43,6 +43,19 @@ test('resolveChatCopy exposes the Vue grep title-match label in every locale', (
   assert.equal(resolveChatCopy('ru-RU').grepTitleMatch, 'заголовок');
 });
 
+test('resolveChatCopy exposes the Vue unknown-link label in every locale', () => {
+  const expected = {
+    'zh-CN': '未知链接',
+    'en-US': 'Unknown link',
+    'ja-JP': '不明なリンク',
+    'ko-KR': '알 수 없는 링크',
+    'ru-RU': 'Неизвестная ссылка',
+  } as const;
+  for (const [locale, label] of Object.entries(expected)) {
+    assert.equal(resolveChatCopy(locale).unknownLink, label);
+  }
+});
+
 test('batch session controls use translated English SSR copy', () => {
   const copy = resolveChatCopy('en-US');
   assert.equal(copy.batchManage, 'Batch manage');

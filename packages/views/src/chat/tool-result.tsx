@@ -828,8 +828,9 @@ export function DocumentInfoRenderer({ data }: { data: unknown }) {
   );
 }
 
-export function WebFetchRenderer({ data }: { data: unknown }) {
+export function WebFetchRenderer({ data, copy }: { data: unknown; copy?: ChatCopyTable }) {
   const view = webFetchView(data);
+  const labels = copy ?? CHAT_COPY;
   if (!view.rows.length) return <EmptyState label={LABELS.noResults} />;
   return (
     <ul className="wk-tool-web-fetch m-0 flex list-none flex-col gap-[0.4rem] p-0">
@@ -839,7 +840,7 @@ export function WebFetchRenderer({ data }: { data: unknown }) {
             <span className="wk-tool-row-index mr-[0.35rem] text-[0.7rem] font-semibold text-[#8a94a6]">{row.indexLabel}</span>
             {row.url
               ? <a href={row.url} target="_blank" rel="noopener noreferrer" className="text-[#245a9b]">{row.hostname || row.url}</a>
-              : <span>Unknown link</span>}
+              : <span>{labels.unknownLink}</span>}
             {row.status ? <span className={`wk-tool-status-pill is-${row.statusKind} whitespace-nowrap rounded-[10px] border px-[0.45rem] py-0 text-[0.68rem] leading-[1.5] ${row.statusKind === 'ok' ? 'border-[rgba(7,192,95,0.35)] text-[#0a7d33]' : row.statusKind === 'failed' ? 'border-[rgba(192,57,43,0.35)] text-[#c0392b]' : 'border-[#e3e8ef] text-[#52606d]'}`}>{row.status}</span> : null}
             {row.method ? <span className="wk-tool-status-pill whitespace-nowrap rounded-[10px] border border-[#e3e8ef] px-[0.45rem] py-0 text-[0.68rem] leading-[1.5] text-[#52606d]">{row.method}</span> : null}
             {row.contentLengthLabel ? <span className={"wk-tool-row-meta " + TOOL_ROW_META}>{row.contentLengthLabel}</span> : null}
