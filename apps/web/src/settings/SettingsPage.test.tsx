@@ -202,7 +202,7 @@ test('system-global section renders grouped editable settings instead of a gener
   const text = container.textContent ?? '';
   assert.ok(text.includes('系统全局设置'), 'the Vue system settings heading renders');
   assert.ok(text.includes('访问控制'), 'the access tab renders');
-  assert.ok(text.includes('auth · registration mode'), 'the setting row renders');
+  assert.ok(text.includes('注册模式'), 'the localized setting row renders');
   const registrationSelect = container.querySelector<HTMLSelectElement>('select');
   assert.ok(registrationSelect, 'enum settings use a select control');
   registrationSelect.value = 'invite_only';

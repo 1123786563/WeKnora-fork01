@@ -57,6 +57,7 @@ if (oidcCallback?.kind === 'success') {
 const development = (import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV ?? false;
 const loadingLocale: Locale = isLocale(navigator.language) ? navigator.language : 'en-US';
 const loadingLabel = formatMessage(loadingLocale, 'common.loading');
+const embedEntryError = ({ 'zh-CN': 'Embed 必须使用独立入口。', 'en-US': 'Embed must use its isolated entrypoint.', 'ja-JP': 'Embed は専用エントリーポイントを使用してください。', 'ko-KR': 'Embed는 전용 진입점을 사용해야 합니다.', 'ru-RU': 'Embed должен использовать изолированную точку входа.' } as Record<Locale, string>)[loadingLocale];
 const route = resolveRoute(`${window.location.pathname}${window.location.search}`, { development });
 const importedPlatformState = route.kind === 'embed' ? null : importLegacyPlatformState(window.localStorage);
 let session: ReactPlatformState = route.kind === 'embed'
@@ -228,7 +229,7 @@ function renderProtected() {
 
 async function bootstrap() {
   if (route.kind === 'embed') {
-    root.render(<main className="wk-page mx-auto box-border max-w-[960px] px-[1.25rem] py-12"><Status tone="error">Embed must use its isolated entrypoint.</Status></main>);
+    root.render(<main className="wk-page mx-auto box-border max-w-[960px] px-[1.25rem] py-12"><Status tone="error">{embedEntryError}</Status></main>);
     return;
   }
   if (route.kind === 'login') {

@@ -258,3 +258,9 @@
 - Authenticated browser re-check now renders the settings dialog and expected role-denied state for a non-system-admin account.
 - Validation: `pnpm run build:web`; `pnpm run test:web` 891/891; `pnpm run typecheck:web`; `git diff --check`.
 - Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r038-settings-lazy-runtime.md`.
+
+## Round N+34bs — entry error copy and label regression
+
+- Localized the Embed isolated-entrypoint error and aligned the system settings test with the new localized field-label behavior.
+- Validation: `pnpm run build:web`; `pnpm run test:web` 891/891; `pnpm run typecheck:web`; `git diff --check`.
+- Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r039-entry-error-and-label-test.md`.
