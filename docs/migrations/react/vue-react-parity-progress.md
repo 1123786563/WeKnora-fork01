@@ -2365,3 +2365,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - iOS Simulator 原生编译：`xcodebuild -workspace WeKnora.xcworkspace -scheme WeKnora -sdk iphonesimulator ... CODE_SIGNING_ALLOWED=NO build` 成功（`BUILD SUCCEEDED`）。仅证明原生编译，不代表模拟器启动和交互验收。
 - Android `./gradlew assembleDebug --no-daemon` 被环境阻断：未配置 Android SDK（缺少 `ANDROID_HOME` 或 `android/local.properties`）。
 - Expo Web export 被依赖阻断：项目未安装 `react-dom` 与 `react-native-web`，未修改依赖以绕过验收。
+
+## 2026-09-15 Round N+34al — Android native build recovery
+
+- 检查发现本机存在 `/Users/wuyongjun/Library/Android/sdk`；使用显式 `ANDROID_HOME`/`ANDROID_SDK_ROOT` 重跑 `./gradlew assembleDebug --no-daemon`，Android Debug 原生编译成功（`BUILD SUCCESSFUL`，531 tasks）。
+- `adb devices` 当前无已启动设备，因此未宣称 Android 安装/启动/交互验收；Expo Web export 仍因缺少 web 依赖保持 blocked-env。
