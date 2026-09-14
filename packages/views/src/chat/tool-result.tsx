@@ -787,7 +787,7 @@ export function KnowledgeBaseListRenderer({ data, copy }: { data: unknown; copy?
               <span className="wk-tool-row-index mr-[0.35rem] text-[0.7rem] font-semibold text-[#8a94a6] font-mono! text-[0.8rem]! text-muted!">{row.indexLabel}</span>
               {row.name}
             </div>
-            {row.id ? <div className="wk-tool-info-field flex gap-[0.6rem] text-[0.75rem] leading-[1.5]"><span className="wk-tool-info-label min-w-[6rem] shrink-0 text-[#52606d] font-medium font-mono! text-[0.8rem]! text-muted!">ID</span><span className="wk-tool-info-value min-w-0 flex-1 text-[#24292f] break-words font-mono! text-[0.8rem]! text-muted!"><InfoCode>{row.id}</InfoCode></span></div> : null}
+            {row.id ? <div className="wk-tool-info-field flex gap-[0.6rem] text-[0.75rem] leading-[1.5]"><span className="wk-tool-info-label min-w-[6rem] shrink-0 text-[#52606d] font-medium font-mono! text-[0.8rem]! text-muted!">{labels.idLabel}</span><span className="wk-tool-info-value min-w-0 flex-1 text-[#24292f] break-words font-mono! text-[0.8rem]! text-muted!"><InfoCode>{row.id}</InfoCode></span></div> : null}
             {row.description ? <p className={"wk-tool-snippet " + TOOL_SNIPPET}>{row.description}</p> : null}
           </li>
         ))}
@@ -796,7 +796,8 @@ export function KnowledgeBaseListRenderer({ data, copy }: { data: unknown; copy?
   );
 }
 
-export function DocumentInfoRenderer({ data }: { data: unknown }) {
+export function DocumentInfoRenderer({ data, copy }: { data: unknown; copy?: ChatCopyTable }) {
+  const labels = copy ?? CHAT_COPY;
   const view = documentInfoView(data);
   if (!view.rows.length) return <EmptyState label={LABELS.noResults} />;
   return (
@@ -820,7 +821,7 @@ export function DocumentInfoRenderer({ data }: { data: unknown }) {
           {row.fileLabel ? <InfoField label="File">{row.fileLabel}</InfoField> : null}
           {row.metadata.length ? (
             <div className="wk-tool-section mt-[0.4rem]">
-              <div className="wk-tool-section-title mb-[0.2rem] text-[0.72rem] font-semibold text-[#52606d]">Metadata</div>
+              <div className="wk-tool-section-title mb-[0.2rem] text-[0.72rem] font-semibold text-[#52606d]">{labels.metadataLabel}</div>
               <ul className="wk-tool-metadata-list m-0 flex list-none flex-col gap-[0.1rem] p-0 text-[0.7rem] text-[#52606d]">
                 {row.metadata.map((entry) => <li key={entry.key}><span className="wk-tool-metadata-key font-semibold text-[0.8rem]! text-muted! font-mono!">{entry.key}:</span> {entry.value}</li>)}
               </ul>
