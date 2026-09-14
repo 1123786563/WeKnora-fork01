@@ -146,6 +146,13 @@ hook 类（测试/JS 引用）保留类名。
 - 关键生效值编码：z-[1200]!（压 .wks-overlay）、p-[.45rem]!（压 settings-editor input）、
   竞争色按原级联胜者加 !；重复规则合并；720px media → max-[720px]:grid-cols-1。
 - 验收：typecheck 0、mcp 测试 18/18、web 859/859、build ✓；styles.css 1013→835 行。后续保留 Vue 对齐所需语义钩子并修复参数解析，提交 `3828ecba`。
+### 批次32：share dialog 家族 ✅（子任务执行，Orchestrator 验收提交）
+- KnowledgeBaseShareDialog（含 OrganizationPicker/PermissionRadio）34 条规则全迁移；
+  styles.css wk-share-* 清零；无 keyframes；JS 钩子 0（唯一 wk-share 字符串是 aria-controls
+  指向的 DOM id）；测试选择器 6 处语义化。
+- 保真处理：无 preflight 下显式覆盖 UA 默认（[font:inherit]、border 序列）；隐藏原生 select
+  按级联生效宽度 w-full h-px 编码；trigger nth-child(2) flex:1 用 [&>span:nth-child(2)]:flex-1。
+- 验收：typecheck 0、13/13、web 859/859（+3 新增测试）、build ✓。
 ### 批次19：TenantMembers 域 ✅（子任务执行，Orchestrator 验收提交）
 - TenantMembersPanel.tsx ~95 条规则内联 utilities（表格/分页/标签三态/确认弹层；
   settings-wrapper 抽屉 select chrome 特异性更高今日实际生效，按生效值 4 条未复制）；
