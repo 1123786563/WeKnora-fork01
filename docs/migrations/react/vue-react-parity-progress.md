@@ -1902,3 +1902,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - `@weknora/ui` 的 Button、Card、Status 现在保留既有语义类名，同时通过 `cn`、Tailwind utilities 和共享颜色/焦点令牌输出；已迁移的模型设置/调试页面继续使用共享 Input、Switch、NumberInput 和 ModelOptionSelect。
 - `test:shared` 440/440、Web 全量 835/835、`typecheck:shared`、`typecheck:web`、`build:web` 与 `git diff --check` 通过。
 - 该轮只建立可复用基础并覆盖 R027，不能标记全仓库 Tailwind/shadcn 对齐完成；其余页面仍需逐页迁移和 Vue 同条件运行证据。
+
+## 2026-09-14 Round N+78 — R026 工作区记忆字段与布局
+
+- 对照 Vue `MemoryWorkspaceSettings.vue`，React 补齐 auto 模式的提取模型、提取延迟、最小间隔、兴趣阈值、提取说明、Embedding 模型及条件显示；workspace payload 校验覆盖 5–3600、0–86400、1–20 等 Vue 边界。
+- 启用、向量召回、检索调节使用共享 shadcn `Switch`，数值字段使用 `NumberInput`，模型/写入模式使用项目 Tailwind selector；setting-row、intro、移动端堆叠均使用 Tailwind utilities。
+- Web 全量 835/835、`typecheck:web` 与 `git diff --check` 通过；R026 仍需真实保存失败/权限状态、认证浏览器 computed-style 与 Wails/native 证据。

@@ -77,3 +77,5 @@ The React implementation now has a real Tailwind v4 + shadcn-style primitive lay
 `ModelOptionSelect` also now uses Tailwind utilities for the Vue-shaped trigger, popup, option states, selected indicator, and mobile width rule; its behavior remains covered by the model settings tests and the full Web suite (835/835).
 
 The shared `@weknora/ui` Button, Card, and Status primitives now also merge Tailwind utility tokens through `cn` while keeping legacy semantic class names for unaffected pages. Shared and Web regression suites remain green; this is an incremental foundation, not whole-repository completion evidence.
+
+R026 continuation evidence: `MemoryWorkspacePanel` now follows Vue `MemoryWorkspaceSettings.vue` auto-mode field visibility and setting-row anatomy, including model bindings, bounded delay/interval/threshold inputs, instructions maxlength, vector/conditioning switches, and max-items. Payload helper tests cover the extended fields and validation boundaries; Web regression remains 835/835. Runtime save/permission and browser/platform evidence remain open.

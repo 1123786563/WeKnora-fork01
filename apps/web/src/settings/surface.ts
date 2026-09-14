@@ -144,10 +144,13 @@ export function memoryItemPatch(content: string): { content: string } {
 
 export function memoryEnabledPatch(enabled: boolean): { enabled: boolean } { return { enabled }; }
 
-export function memoryWorkspacePatch(enabled: boolean, writeMode: string, maxItems: number, vectorRecall: boolean, retrievalConditioning: boolean): Record<string, unknown> {
+export function memoryWorkspacePatch(enabled: boolean, writeMode: string, maxItems: number, vectorRecall: boolean, retrievalConditioning: boolean, extras: { extractModelId?: string; extractDelaySeconds?: number; extractMinIntervalSeconds?: number; extractInstructions?: string; interestThreshold?: number; embeddingModelId?: string } = {}): Record<string, unknown> {
   if (writeMode !== 'explicit_only' && writeMode !== 'auto') throw new Error('Unsupported memory write mode');
   if (!Number.isInteger(maxItems) || maxItems < 10 || maxItems > 2000) throw new Error('Memory max items must be between 10 and 2000');
-  return { enabled, write_mode: writeMode, max_items: maxItems, vector_recall: vectorRecall, retrieval_conditioning: retrievalConditioning };
+  if (extras.extractDelaySeconds !== undefined && (!Number.isInteger(extras.extractDelaySeconds) || extras.extractDelaySeconds < 5 || extras.extractDelaySeconds > 3600)) throw new Error('Memory extract delay must be between 5 and 3600');
+  if (extras.extractMinIntervalSeconds !== undefined && (!Number.isInteger(extras.extractMinIntervalSeconds) || extras.extractMinIntervalSeconds < 0 || extras.extractMinIntervalSeconds > 86400)) throw new Error('Memory extract interval must be between 0 and 86400');
+  if (extras.interestThreshold !== undefined && (!Number.isInteger(extras.interestThreshold) || extras.interestThreshold < 1 || extras.interestThreshold > 20)) throw new Error('Memory interest threshold must be between 1 and 20');
+  return { enabled, write_mode: writeMode, max_items: maxItems, vector_recall: vectorRecall, retrieval_conditioning: retrievalConditioning, ...(extras.extractModelId !== undefined ? { extract_model_id: extras.extractModelId } : {}), ...(extras.extractDelaySeconds !== undefined ? { extract_delay_seconds: extras.extractDelaySeconds } : {}), ...(extras.extractMinIntervalSeconds !== undefined ? { extract_min_interval_seconds: extras.extractMinIntervalSeconds } : {}), ...(extras.extractInstructions !== undefined ? { extract_instructions: extras.extractInstructions } : {}), ...(extras.interestThreshold !== undefined ? { interest_threshold: extras.interestThreshold } : {}), ...(extras.embeddingModelId !== undefined ? { embedding_model_id: extras.embeddingModelId } : {}) };
 }
 
 export function settingsResourceRows(value: unknown, section: 'storage' | 'vectorstore' | 'websearch'): Array<Record<string, unknown>> {

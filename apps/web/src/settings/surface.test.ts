@@ -76,6 +76,15 @@ test('limits workspace memory writes to supported typed controls', () => {
   });
   assert.throws(() => memoryWorkspacePatch(true, 'unknown', 400, true, true), /write mode/);
   assert.throws(() => memoryWorkspacePatch(true, 'auto', 1, true, true), /max items/);
+  assert.deepEqual(memoryWorkspacePatch(true, 'auto', 400, true, true, {
+    extractModelId: 'chat-1', extractDelaySeconds: 90, extractMinIntervalSeconds: 300,
+    extractInstructions: 'keep concise', interestThreshold: 3, embeddingModelId: 'embed-1',
+  }), {
+    enabled: true, write_mode: 'auto', max_items: 400, vector_recall: true, retrieval_conditioning: true,
+    extract_model_id: 'chat-1', extract_delay_seconds: 90, extract_min_interval_seconds: 300,
+    extract_instructions: 'keep concise', interest_threshold: 3, embedding_model_id: 'embed-1',
+  });
+  assert.throws(() => memoryWorkspacePatch(true, 'auto', 400, true, true, { extractDelaySeconds: 4 }), /extract delay/);
 });
 
 test('limits tenant editing to the server-owned name and description fields', () => {
