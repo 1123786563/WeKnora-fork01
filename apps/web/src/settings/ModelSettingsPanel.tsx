@@ -903,7 +903,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
   })), [t]);
 
   return (
-    <section className="wk-model-settings" data-testid="model-settings">
+    <section className="grid gap-4" data-testid="model-settings">
       <div className="wk-settings-panel-heading">
         <div>
           <h2 className="mt-0! mb-2! text-[20px] font-semibold">{t("modelSettings.title")}</h2>
@@ -930,10 +930,10 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
       {error ? <Status tone="error">{error}</Status> : null}
       {notice ? <Status tone="success">{notice}</Status> : null}
       {usageConflict ? <ModelUsageNotice modelName={usageConflict.modelName} details={usageConflict.details} onClose={() => setUsageConflict(null)} /> : null}
-      <nav className="wk-model-tabs" aria-label={t("model.editor.typeLabel")}>
+      <nav className="wk-model-tabs flex flex-wrap gap-[.35rem] border-b border-b-[#edf0f5]" aria-label={t("model.editor.typeLabel")}>
         <button
           type="button"
-          className={filter === "all" ? "border-b-[#0a8f4c]! text-[13px] text-[#0a8f4c]! is-active" : "text-[13px]"}
+          className={filter === "all" ? "cursor-pointer border-0 border-b-2 border-b-[#0a8f4c]! bg-transparent px-[.75rem] py-[.65rem] text-[13px] text-[#506078] text-[#0a8f4c]! [font-weight:650] is-active" : "cursor-pointer border-0 border-b-2 border-b-transparent bg-transparent px-[.75rem] py-[.65rem] text-[13px] text-[#506078]"}
           onClick={() => setFilter("all")}
         >
           {t("common.all")}({models.length})
@@ -942,7 +942,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
           <button
             type="button"
             key={type}
-            className={filter === type ? "border-b-[#0a8f4c]! text-[13px] text-[#0a8f4c]! is-active" : "text-[13px]"}
+            className={filter === type ? "cursor-pointer border-0 border-b-2 border-b-[#0a8f4c]! bg-transparent px-[.75rem] py-[.65rem] text-[13px] text-[#506078] text-[#0a8f4c]! [font-weight:650] is-active" : "cursor-pointer border-0 border-b-2 border-b-transparent bg-transparent px-[.75rem] py-[.65rem] text-[13px] text-[#506078]"}
             onClick={() => setFilter(type)}
           >
             {typeLabelOf(type)}({models.filter((item) => modelType(item) === type).length})
@@ -1060,16 +1060,16 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
       )}
       {draft ? (
         <div
-          className="wk-model-editor-overlay"
+          className="wk-model-editor-overlay fixed inset-0 z-[1300] flex items-stretch justify-end bg-[rgba(23,32,51,.34)]"
           onMouseDown={(event) => { if (event.target === event.currentTarget) closeEditor(); }}
         >
         <div
-          className="wk-model-editor wk-model-editor-drawer"
+          className="wk-model-editor wk-model-editor-drawer box-border h-full w-[560px] max-w-full overflow-y-auto border-l border-l-[#dce3ed] bg-white pt-[1.25rem] pr-6 pb-8 pl-6 shadow-[-10px_0_30px_rgba(23,32,51,.12)] max-[720px]:w-full max-[720px]:p-4"
           role="dialog"
           aria-modal="true"
           aria-label={draft.id ? t("model.editor.editTitle") : t("model.editor.addTitle")}
         >
-          <div className="wk-settings-panel-heading">
+          <div className="wk-settings-panel-heading sticky -top-[1.25rem] z-[1] bg-white pt-[1.25rem] max-[720px]:-top-[1rem] max-[720px]:pt-4">
             <div>
               <h3>{draft.id ? t("model.editor.editTitle") : t("model.editor.addTitle")}</h3>
               <p className="wk-muted">

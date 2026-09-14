@@ -215,6 +215,13 @@ hook 类（测试/JS 引用）保留类名。
 - 富文本 36 条迁入 chat.css 的正当性已按 III.7 记录（markdown.ts/mermaid.ts 运行时
   生成 HTML + artifact-preview/tool-result/references 三组件零 utilities）。
 - 既有偶发白屏（in-place 切换 + continue-stream 竞态）非本迁移引入，before 态同样复现。
+### 批次39：model settings 残余家族 ✅（子任务执行，Orchestrator 验收提交）
+- ModelSettingsPanel.tsx 6 处 + ModelDebugPanel.tsx 6 处 utilities 迁移
+  （ModelEditorModal 不存在——编辑器内联在 ModelSettingsPanel，已一并处理）；
+  styles.css 删 18 条（styles.css 删除已随 64ce592e 提交入库）。
+- 保留 3 条：wk-model-tabs 三件套——SandboxSettingsPanel:1806 消费（范围外），
+  已留注释待沙盒波删除；钩子类 6 个保留。
+- 验收：typecheck 0、42/42（Model+SettingsPage）、web 890/890、build ✓。
 ### 批次19：TenantMembers 域 ✅（子任务执行，Orchestrator 验收提交）
 - TenantMembersPanel.tsx ~95 条规则内联 utilities（表格/分页/标签三态/确认弹层；
   settings-wrapper 抽屉 select chrome 特异性更高今日实际生效，按生效值 4 条未复制）；

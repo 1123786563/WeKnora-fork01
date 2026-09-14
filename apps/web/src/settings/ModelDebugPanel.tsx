@@ -207,7 +207,7 @@ export function ModelDebugPanel({ client, models, onClose }: Props) {
 
   return (
     <div
-      className="wk-model-debug"
+      className="mt-4 max-w-[720px] rounded-[8px] border border-[#cbd5e1] bg-white p-4 shadow-[0_10px_30px_rgba(23,32,51,.12)]"
       role="dialog"
       aria-modal="true"
       aria-label={t("modelSettings.debug.title")}
@@ -299,7 +299,7 @@ export function ModelDebugPanel({ client, models, onClose }: Props) {
           </div>
         ) : null}
         {selected && isChat ? (
-          <fieldset>
+          <fieldset className="grid gap-[.7rem] rounded-[6px] border border-[#edf0f5] p-[.8rem]">
             <legend>{t("modelSettings.debug.parameters")}</legend>
             <div className="form-item"><label>Temperature</label><NumberInput min={0} max={2} step={0.1} value={temperature} onValueChange={(value) => setTemperature(Number(value))} /></div>
             <div className="form-item"><label>Top P</label><NumberInput min={0.01} max={1} step={0.1} value={topP} onValueChange={(value) => setTopP(Number(value))} /></div>
@@ -350,8 +350,8 @@ export function ModelDebugPanel({ client, models, onClose }: Props) {
           <section
             className={
               result.ok
-                ? "wk-model-debug-result is-ok"
-                : "wk-model-debug-result is-error"
+                ? "mt-4 grid gap-2 rounded-[6px] border border-[#86efac] p-[.8rem]"
+                : "mt-4 grid gap-2 rounded-[6px] border border-[#fca5a5] p-[.8rem]"
             }
           >
             <strong>{t(result.ok ? "modelSettings.debug.success" : "modelSettings.debug.failed")}</strong>
@@ -364,11 +364,11 @@ export function ModelDebugPanel({ client, models, onClose }: Props) {
             {result.error ? <Status tone="error">{result.error}</Status> : null}
             <details open>
               <summary>{t("modelSettings.debug.rawResponse")}</summary>
-              <pre>{JSON.stringify(result.rawResponse, null, 2)}</pre>
+              <pre className="max-h-[18rem] overflow-auto whitespace-pre-wrap bg-[#f7f9fc] p-[.7rem]">{JSON.stringify(result.rawResponse, null, 2)}</pre>
             </details>
             <details>
               <summary>{t("modelSettings.debug.requestPreview")}</summary>
-              <pre>{JSON.stringify(result.request, null, 2)}</pre>
+              <pre className="max-h-[18rem] overflow-auto whitespace-pre-wrap bg-[#f7f9fc] p-[.7rem]">{JSON.stringify(result.request, null, 2)}</pre>
             </details>
           </section>
         ) : null}
