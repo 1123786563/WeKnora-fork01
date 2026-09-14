@@ -2300,3 +2300,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - 删除会话确认与知识库 mention 加载失败兜底改用 Vue 对齐的共享文案，覆盖五种语言；实现提交 `e750a8a7`。
 - ChatRoutePage 相关回归通过；共享测试维持 464/464。浏览器删除确认和真实 mention API 错误路径仍需运行时证据。
+
+## 2026-09-15 Round N+34z — N021 artifact preview copy
+
+- 对话产物预览的类型标签、返回列表、下载和加载状态改用共享五语言文案；`MessageList` 将当前 locale copy 传入 `ArtifactPreview`，默认英文调用保持兼容。
+- 专项产物预览 3/3、shared typecheck 通过；shared 全量 465/465。真实产物下载/预览浏览器与后端证据仍待补齐。
