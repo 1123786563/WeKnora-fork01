@@ -1,4 +1,4 @@
-import { createContext, useContext } from 'react';
+import { createContext, useContext, useRef, useState } from 'react';
 import type { ChatSession } from '@weknora/contracts';
 import { sessionSourceBadge } from '@weknora/domain/chat/session-grouping';
 import { formatChatCopy, resolveChatCopy, resolveChatLocale, sessionGroupLabel, type ChatCopyTable } from './chat-copy.ts';
@@ -67,7 +67,7 @@ export interface SessionSidebarListProps {
   /** Fallback row title (Vue mapSessionRow uses menu.newSession = 新会话). */
   untitledLabel?: string;
   onSelect(sessionId: string): void;
-  onRename?(sessionId: string): Promise<void> | void;
+  onRename?(sessionId: string, title?: string): Promise<void> | void;
   onTogglePin?(sessionId: string, pinned: boolean): Promise<void> | void;
   /** 清空消息 (Vue menu.vue row menu → clearSession); confirm is the caller's. */
   onClear?(sessionId: string): Promise<void> | void;
@@ -81,6 +81,41 @@ export interface SessionSidebarListProps {
  */
 export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, loading = false, emptyLabel, untitledLabel, onSelect, onRename, onTogglePin, onClear, onDelete, source, sourceOptions, onSourceChange }: SessionSidebarListProps) {
   const t = copy ?? resolveChatCopy(resolveChatLocale());
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState('');
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const renameSubmitting = useRef(false);
+  const startRename = (session: ChatSession) => {
+    setEditingSessionId(session.id);
+    setEditingTitle(session.title ?? '');
+    setRenameError(null);
+  };
+  const cancelRename = () => {
+    if (renameSubmitting.current) return;
+    setEditingSessionId(null);
+    setEditingTitle('');
+    setRenameError(null);
+  };
+  const submitRename = async (session: ChatSession) => {
+    if (renameSubmitting.current || editingSessionId !== session.id) return;
+    const title = editingTitle.trim().replace(/\s+/g, ' ').slice(0, 80);
+    if (!title || title === (session.title ?? '')) {
+      if (!title) setRenameError('标题不能为空');
+      else cancelRename();
+      return;
+    }
+    renameSubmitting.current = true;
+    setRenameError(null);
+    try {
+      await onRename?.(session.id, title);
+      setEditingSessionId(null);
+      setEditingTitle('');
+    } catch (error) {
+      setRenameError(error instanceof Error ? error.message : '修改标题失败');
+    } finally {
+      renameSubmitting.current = false;
+    }
+  };
   const visibleGroups = groups ?? [{ key: 'all', items: sessions ?? [] }];
   const hasMenu = Boolean(onRename || onTogglePin || onClear || onDelete);
   const totalItems = visibleGroups.reduce((count, group) => count + group.items.length, 0);
@@ -107,13 +142,24 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
         const badge = sessionSourceBadge(session);
         const active = session.id === selectedSessionId;
         return <li key={session.id} className={'group/item flex items-center rounded-[8px] relative' + (active ? ' is-active' : '')}>
-          <button type="button" aria-current={active ? 'page' : undefined} onClick={() => onSelect(session.id)}
+          {editingSessionId === session.id ? <div className="flex min-w-0 flex-1 flex-col gap-[2px] px-[6px] py-[4px]">
+            <input type="text" aria-label={t.renameSession} value={editingTitle} maxLength={80} autoFocus disabled={renameSubmitting.current}
+              className="w-full min-w-0 box-border rounded-[5px] border border-[#07c05f] bg-white px-[7px] py-[4px] text-[14px] leading-[20px] outline-none"
+              onChange={(event) => setEditingTitle(event.target.value)}
+              onClick={(event) => event.stopPropagation()}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') { event.preventDefault(); cancelRename(); }
+                if (event.key === 'Enter') { event.preventDefault(); void submitRename(session); }
+              }}
+              onBlur={() => { void submitRename(session); }} />
+            {renameError ? <span role="alert" className="text-[11px] leading-[16px] text-[#e34d59]">{renameError}</span> : null}
+          </div> : <button type="button" aria-current={active ? 'page' : undefined} onClick={() => onSelect(session.id)}
             className={'flex flex-1 items-center min-w-0 gap-[6px] px-[10px] py-[7px] border-0 rounded-[8px] cursor-pointer text-left text-[14px] leading-[22px] overflow-hidden transition-[background-color,color] duration-[150ms] ease-[ease] '
             + (active ? 'bg-[#e9f8ec] text-[#07c05f] font-medium' : 'bg-transparent text-[rgba(0,0,0,0.9)] group-hover/item:bg-[rgba(0,0,0,0.04)]')}>
             {session.is_pinned ? <span className="shrink-0 text-[rgba(0,0,0,0.4)] text-[12px]" aria-hidden="true">★</span> : null}
             <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{session.title || untitledLabel || t.untitledChat}</span>
             {badge.kind ? <span className={badge.kind + ' shrink-0 text-[10px] font-semibold tracking-[0.03em] leading-[1.4] uppercase text-[rgba(0,0,0,0.4)] bg-[#eee] rounded-[4px] px-[4px]'} title="Session source">{badge.label}</span> : null}
-          </button>
+          </button>}
           {hasMenu ? <details className="group/menu shrink-0 relative">
             <summary aria-label={t.moreActions} title={t.moreActions}
               className="inline-flex items-center justify-center h-[24px] w-[24px] rounded-[5px] text-[rgba(0,0,0,0.26)] cursor-pointer list-none opacity-0 transition-[opacity,background-color,color] duration-[150ms] ease-[ease] hover:bg-[rgba(0,0,0,0.06)] hover:text-[rgba(0,0,0,0.9)] group-hover/item:opacity-100 focus-visible:opacity-100 group-open/menu:opacity-100 [&::-webkit-details-marker]:hidden">
@@ -122,7 +168,7 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
             <div className="absolute right-0 top-[26px] z-30 flex min-w-[120px] flex-col gap-[1px] rounded-[8px] border-[0.5px] border-[#e7e7e7] bg-white p-[4px] shadow-[0_0_0_0.5px_rgba(0,0,0,0.03),0_2px_6px_rgba(0,0,0,0.08)]" role="menu">
               {/* .wk-chat-session-menu-list button (+ .is-danger) → utilities. */}
               {onTogglePin ? <button type="button" role="menuitem" className="min-h-[30px] px-[10px] py-0 border-0 rounded-[5px] bg-transparent cursor-pointer text-left text-[13px] leading-[20px] whitespace-nowrap text-[rgba(0,0,0,0.9)] hover:bg-[#f3f3f3]" onClick={() => void onTogglePin(session.id, !session.is_pinned)}>{session.is_pinned ? t.unpin : t.pin}</button> : null}
-              {onRename ? <button type="button" role="menuitem" className="min-h-[30px] px-[10px] py-0 border-0 rounded-[5px] bg-transparent cursor-pointer text-left text-[13px] leading-[20px] whitespace-nowrap text-[rgba(0,0,0,0.9)] hover:bg-[#f3f3f3]" onClick={() => void onRename(session.id)}>{t.renameSession}</button> : null}
+              {onRename ? <button type="button" role="menuitem" className="min-h-[30px] px-[10px] py-0 border-0 rounded-[5px] bg-transparent cursor-pointer text-left text-[13px] leading-[20px] whitespace-nowrap text-[rgba(0,0,0,0.9)] hover:bg-[#f3f3f3]" onClick={() => startRename(session)}>{t.renameSession}</button> : null}
               {onClear ? <button type="button" role="menuitem" className="min-h-[30px] px-[10px] py-0 border-0 rounded-[5px] bg-transparent cursor-pointer text-left text-[13px] leading-[20px] whitespace-nowrap text-[rgba(0,0,0,0.9)] hover:bg-[#f3f3f3]" onClick={() => void onClear(session.id)}>{t.clearMessages}</button> : null}
               {onDelete ? <button type="button" role="menuitem" className="is-danger min-h-[30px] px-[10px] py-0 border-0 rounded-[5px] bg-transparent cursor-pointer text-left text-[13px] leading-[20px] whitespace-nowrap text-[#e34d59] hover:bg-[#fdecee]" onClick={() => void onDelete(session.id)}>{t.deleteRecord}</button> : null}
             </div>

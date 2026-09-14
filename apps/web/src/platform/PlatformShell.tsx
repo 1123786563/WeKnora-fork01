@@ -372,14 +372,15 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
     }
   }, []);
 
-  async function renameShellSession(sessionId: string): Promise<void> {
+  async function renameShellSession(sessionId: string, title?: string): Promise<void> {
     const current = sessions.find((session) => session.id === sessionId);
-    const title = window.prompt(labels.renameSession, current?.title ?? '')?.trim();
-    if (!title || title === current?.title) return;
+    if (!current || !title || title === current.title) return;
     try {
       const updated = await client.sessions.update(sessionId, { title, description: current?.description });
       setSessions((items) => items.map((session) => session.id === sessionId ? updated : session));
-    } catch { /* keep the prior title on failure */ }
+    } catch (error) {
+      throw error instanceof Error ? error : new Error('修改标题失败');
+    }
   }
 
   async function toggleShellSessionPin(sessionId: string, pinned: boolean): Promise<void> {

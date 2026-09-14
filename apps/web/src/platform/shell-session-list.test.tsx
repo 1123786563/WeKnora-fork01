@@ -359,3 +359,63 @@ test('(l) replacing an admin client with a viewer client resets an invalid sourc
   assert.deepEqual(viewerCalls, ['web']);
   assert.equal(container.querySelector('nav[aria-label="我的对话"] select[aria-label="会话来源"]'), null);
 });
+
+test('(i) renaming a session uses an inline editor with Vue normalization and commits once on Enter', async () => {
+  const updates: Array<{ id: string; title: string }> = [];
+  const client = fakeClient({ update: async (id: string, input: { title: string }) => {
+    updates.push({ id, title: input.title });
+    return { ...SESSIONS.find((s) => s.id === id), title: input.title };
+  }});
+  const container = await mountShell({ client });
+  const row = [...document.querySelectorAll('nav[aria-label="我的对话"] li')].find((node) => node.textContent?.includes('今天的会话'))!;
+  const details = row.querySelector('details') as HTMLDetailsElement;
+  details.open = true;
+  const rename = [...details.querySelectorAll('[role="menuitem"]')].find((node) => node.textContent === '修改标题') as HTMLButtonElement;
+  await act(async () => { rename.click(); await settle(1); });
+  const input = row.querySelector('input[aria-label="修改标题"]') as HTMLInputElement;
+  assert.ok(input, 'rename opens an inline input');
+  assert.equal(input.maxLength, 80);
+  Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')!.set!.call(input, '  新   标题  ');
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  await act(async () => { input.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await settle(5); });
+  assert.deepEqual(updates, [{ id: 'session-1', title: '新 标题' }]);
+  assert.equal(container.querySelector('input[aria-label="修改标题"]'), null);
+  assert.ok(row.textContent?.includes('新 标题'));
+});
+
+test('(j) Escape cancels inline rename and blur submits only once', async () => {
+  let calls = 0;
+  const client = fakeClient({ update: async (id: string, input: { title: string }) => { calls += 1; return { ...SESSIONS.find((s) => s.id === id), title: input.title }; } });
+  await mountShell({ client });
+  const row = [...document.querySelectorAll('nav[aria-label="我的对话"] li')].find((node) => node.textContent?.includes('今天的会话'))!;
+  const details = row.querySelector('details') as HTMLDetailsElement;
+  details.open = true;
+  const rename = [...details.querySelectorAll('[role="menuitem"]')].find((node) => node.textContent === '修改标题') as HTMLButtonElement;
+  await act(async () => { rename.click(); await settle(1); });
+  const input = row.querySelector('input[aria-label="修改标题"]') as HTMLInputElement;
+  await act(async () => { Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')!.set!.call(input, '取消的标题'); input.dispatchEvent(new Event('input', { bubbles: true })); });
+  await act(async () => { input.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle(1); });
+  assert.equal(row.querySelector('input[aria-label="修改标题"]'), null);
+  assert.equal(calls, 0);
+  const renameAgain = [...details.querySelectorAll('[role="menuitem"]')].find((node) => node.textContent === '修改标题') as HTMLButtonElement;
+  await act(async () => { renameAgain.click(); await settle(1); });
+  const second = row.querySelector('input[aria-label="修改标题"]') as HTMLInputElement;
+  await act(async () => { Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')!.set!.call(second, '失焦标题'); second.dispatchEvent(new Event('input', { bubbles: true })); });
+  await act(async () => { second.focus(); second.blur(); await settle(5); });
+  assert.equal(calls, 1);
+});
+
+test('(k) failed rename keeps the editor open with a recoverable error', async () => {
+  const client = fakeClient({ update: async () => { throw new Error('rename failed'); } });
+  await mountShell({ client });
+  const row = [...document.querySelectorAll('nav[aria-label="我的对话"] li')].find((node) => node.textContent?.includes('今天的会话'))!;
+  const details = row.querySelector('details') as HTMLDetailsElement;
+  details.open = true;
+  const rename = [...details.querySelectorAll('[role="menuitem"]')].find((node) => node.textContent === '修改标题') as HTMLButtonElement;
+  await act(async () => { rename.click(); await settle(1); });
+  const input = row.querySelector('input[aria-label="修改标题"]') as HTMLInputElement;
+  Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')!.set!.call(input, '重试标题'); input.dispatchEvent(new Event('input', { bubbles: true }));
+  await act(async () => { input.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await settle(5); });
+  assert.ok(row.querySelector('input[aria-label="修改标题"]'), 'failed rename remains editable');
+  assert.equal(row.querySelector('[role="alert"]')?.textContent, 'rename failed');
+});
