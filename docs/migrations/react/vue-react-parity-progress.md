@@ -2405,3 +2405,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - API client multipart requests now carry an optional `onProgress` callback through the native transport seam. The mobile knowledge upload queue converts byte counts to Vue-parity progress events, and the document screen wires the callback for each selected file.
 - Validation: upload queue 6/6, shared suite 465/465, mobile typecheck passed; `git diff --check` passed.
 - N031 no longer lists byte-level upload progress, user-scoped recents, or mobile English fallback as open implementation gaps. Graph visuals/capability gating and authenticated iOS/Android knowledge interaction evidence remain open.
+
+## 2026-09-15 Round N+34as — Mobile Wiki graph preview
+
+- Added a dependency-free native graph preview with deterministic node placement, center-node emphasis, localized neighbor expansion, and a bounded 40-node visual surface; the existing detailed list remains available for accessibility and metadata.
+- Validation: mobile suite 189/189, mobile typecheck, `git diff --check` passed.
+- N031 graph visuals now have an implemented native preview; authenticated device graph data and full Vue visual/computed-style evidence remain open.
