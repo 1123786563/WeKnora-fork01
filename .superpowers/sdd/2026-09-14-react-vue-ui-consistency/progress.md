@@ -132,3 +132,4 @@
 - R015 完成 Chat literal audit（`2026-09-15-r015-chat-literal-audit.md`）：确认 tool-result/page 可见文案已覆盖，剩余英文主要是 aria 稳定标识、协议枚举、测试 fixture 和待确认 Clipboard 能力异常；没有发现新的可见英文泄漏。
 - 移动端/桌面/Embed 当前回归复核：`pnpm test:mobile` 187/187、`typecheck:mobile`、`test:desktop` 2/2、`typecheck:desktop`、`test:embed` 7/7、`typecheck:embed` 全部通过；Clipboard 底层异常因 UI 层静默捕获，不构成可见文案泄漏。
 - MessageList 的滚动到底部 aria 标签与产物预览非 Error 回退已接入五语言 copy，提交 `fix(chat): localize message list fallbacks`；Web 891/891、typecheck:web、git diff --check 通过。
+- R016 登录页双端运行态复核已完成：Vue `:5173/login` 与 React `:5181/login` 均 HTTP 200，在同一中文 Chrome 会话中捕获 AX 与视觉截图；品牌区、登录卡片、字段、按钮、注册入口和能力摘要结构一致。公开认证入口的 runtime 阻断解除，受保护路由/角色/Wails/native/写路径仍开放。
