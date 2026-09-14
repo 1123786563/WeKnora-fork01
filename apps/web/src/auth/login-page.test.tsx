@@ -108,3 +108,11 @@ test('login card uses Vue box sizing and green outline for the create-account CT
   assert.match(create?.className ?? '', /border-\(--auth-brand\)/);
   assert.match(create?.className ?? '', /text-\(--auth-brand\)/);
 });
+
+test('register form keeps Vue required markers on every required field', async () => {
+  await mountLogin(fakeClient());
+  const create = [...document.querySelectorAll('button')].find((node) => (node.textContent ?? '').includes('创建账户')) as HTMLButtonElement;
+  await act(async () => { create.click(); });
+  const labels = [...document.querySelectorAll('form[aria-label="Register form"] label > span:first-child')].map((node) => node.textContent?.trim());
+  assert.deepEqual(labels.slice(0, 4), ['*用户名', '*邮箱', '*密码', '*确认密码']);
+});

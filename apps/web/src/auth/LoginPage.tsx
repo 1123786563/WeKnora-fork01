@@ -382,22 +382,22 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
           </div>
           <form className="flex flex-col gap-[18px]" onSubmit={submit} aria-label="Register form">
             <label className="flex flex-col gap-1.5">
-              <span className="text-sm font-medium text-[#1a1a1a]">{t('auth.username')}</span>
+              <span className="text-sm font-medium text-[#1a1a1a]"><span style={{ color: '#d54941', marginRight: 4 }}>*</span>{t('auth.username')}</span>
               <input className="h-[46px] box-border rounded-lg border border-[#dcdcdc] bg-white px-[14px] text-[15px] text-[#1a1a1a] outline-none [font-family:var(--auth-font)] transition-colors focus:border-(--auth-brand) focus:shadow-[0_0_0_3px_rgba(7,192,95,0.1)] disabled:cursor-not-allowed disabled:bg-[#f3f3f3]" value={username} onChange={(event) => setUsername(event.target.value)} disabled={loading} placeholder={t('auth.usernamePlaceholder')} />
               {fieldError('username')}
             </label>
             <label className="flex flex-col gap-1.5">
-              <span className="text-sm font-medium text-[#1a1a1a]">{t('auth.email')}</span>
+              <span className="text-sm font-medium text-[#1a1a1a]"><span style={{ color: '#d54941', marginRight: 4 }}>*</span>{t('auth.email')}</span>
               <input className="h-[46px] box-border rounded-lg border border-[#dcdcdc] bg-white px-[14px] text-[15px] text-[#1a1a1a] outline-none [font-family:var(--auth-font)] transition-colors focus:border-(--auth-brand) focus:shadow-[0_0_0_3px_rgba(7,192,95,0.1)] disabled:cursor-not-allowed disabled:bg-[#f3f3f3]" value={email} onChange={(event) => setEmail(event.target.value)} type="text" autoComplete="email" disabled={loading} placeholder={t('auth.emailPlaceholder')} />
               {fieldError('email')}
             </label>
             <label className="flex flex-col gap-1.5">
-              <span className="text-sm font-medium text-[#1a1a1a]">{t('auth.password')}</span>
+              <span className="text-sm font-medium text-[#1a1a1a]"><span style={{ color: '#d54941', marginRight: 4 }}>*</span>{t('auth.password')}</span>
               <input className="h-[46px] box-border rounded-lg border border-[#dcdcdc] bg-white px-[14px] text-[15px] text-[#1a1a1a] outline-none [font-family:var(--auth-font)] transition-colors focus:border-(--auth-brand) focus:shadow-[0_0_0_3px_rgba(7,192,95,0.1)] disabled:cursor-not-allowed disabled:bg-[#f3f3f3]" value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="new-password" disabled={loading} placeholder={t('auth.passwordPlaceholder')} />
               {fieldError('password')}
             </label>
             <label className="flex flex-col gap-1.5">
-              <span className="text-sm font-medium text-[#1a1a1a]">{t('auth.confirmPassword')}</span>
+              <span className="text-sm font-medium text-[#1a1a1a]"><span style={{ color: '#d54941', marginRight: 4 }}>*</span>{t('auth.confirmPassword')}</span>
               <input className="h-[46px] box-border rounded-lg border border-[#dcdcdc] bg-white px-[14px] text-[15px] text-[#1a1a1a] outline-none [font-family:var(--auth-font)] transition-colors focus:border-(--auth-brand) focus:shadow-[0_0_0_3px_rgba(7,192,95,0.1)] disabled:cursor-not-allowed disabled:bg-[#f3f3f3]" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} type="password" autoComplete="new-password" disabled={loading} placeholder={t('auth.confirmPasswordPlaceholder')} />
               {fieldError('confirmPassword')}
             </label>
