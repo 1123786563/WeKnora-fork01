@@ -34,16 +34,23 @@ export function KnowledgeDocumentsScreen() {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const requestGeneration = useRef(0);
+  const auxiliaryGeneration = useRef(0);
   const uploadController = useRef<AbortController | null>(null);
 
   const loadAuxiliary = useCallback(async () => {
     if (!kbId) return;
-    const [folderTree, tagList] = await Promise.all([
-      runtime.client.knowledge.documents.folders(kbId),
-      runtime.client.knowledge.documents.tags(kbId, { page: 1, page_size: 100 }),
-    ]);
-    setFolders(folderTree.folders);
-    setTags(tagList);
+    const generation = ++auxiliaryGeneration.current;
+    try {
+      const [folderTree, tagList] = await Promise.all([
+        runtime.client.knowledge.documents.folders(kbId),
+        runtime.client.knowledge.documents.tags(kbId, { page: 1, page_size: 100 }),
+      ]);
+      if (generation !== auxiliaryGeneration.current) return;
+      setFolders(folderTree.folders);
+      setTags(tagList);
+    } catch (cause) {
+      if (generation === auxiliaryGeneration.current) setError(cause instanceof Error ? cause.message : label('knowledgeBase.documents.filtersLoadFailed'));
+    }
   }, [kbId, runtime.client]);
 
   const loadPage = useCallback(async (nextPage: number, replace: boolean) => {
@@ -69,7 +76,7 @@ export function KnowledgeDocumentsScreen() {
     }
   }, [folderPath, kbId, keyword, runtime.client, tagIds]);
 
-  useEffect(() => { void loadAuxiliary().catch((cause) => setError(cause instanceof Error ? cause.message : label('knowledgeBase.documents.filtersLoadFailed'))); }, [loadAuxiliary]);
+  useEffect(() => { void loadAuxiliary(); }, [loadAuxiliary]);
   useEffect(() => { void loadPage(1, true); }, [loadPage]);
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => { if (state === 'active') { void loadAuxiliary(); void loadPage(1, true); } });
