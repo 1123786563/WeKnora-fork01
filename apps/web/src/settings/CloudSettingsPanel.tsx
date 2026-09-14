@@ -1,13 +1,24 @@
 import { useEffect, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import { Button, Card, Status } from '@weknora/ui';
+import type { Locale } from '@weknora/i18n';
 import { cloudCredentialPatch } from './surface.ts';
 import { readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
 
 function row(value: unknown): Record<string, unknown> { return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 
+const CLOUD_STATUS_COPY: Record<Locale, { models: string; available: string; unavailable: string; status: string; serverReported: string }> = {
+  'zh-CN': { models: '模型', available: '可用', unavailable: '不可用', status: '状态', serverReported: '服务端已返回' },
+  'en-US': { models: 'Models', available: 'Available', unavailable: 'Unavailable', status: 'Status', serverReported: 'Server reported' },
+  'ja-JP': { models: 'モデル', available: '利用可能', unavailable: '利用不可', status: '状態', serverReported: 'サーバー報告' },
+  'ko-KR': { models: '모델', available: '사용 가능', unavailable: '사용 불가', status: '상태', serverReported: '서버 보고' },
+  'ru-RU': { models: 'Модели', available: 'Доступно', unavailable: 'Недоступно', status: 'Статус', serverReported: 'Сообщено сервером' },
+};
+
 export function CloudSettingsPanel({ client, initialValue }: { client: WeKnoraClient; initialValue: unknown }) {
   const t = settingsT(readInitialLocale());
+  const locale = readInitialLocale();
+  const statusCopy = CLOUD_STATUS_COPY[locale];
   const [status, setStatus] = useState(() => row(initialValue));
   const [appId, setAppId] = useState('');
   const [appSecret, setAppSecret] = useState('');
@@ -32,5 +43,5 @@ export function CloudSettingsPanel({ client, initialValue }: { client: WeKnoraCl
 
   const needsReinit = status.needs_reinit === true;
   const configured = status.has_models === true && !needsReinit;
-  return <div className="wk-settings-cloud"><Card><div className="wk-settings-panel-heading"><div><h3>{t('settings.weknoraCloud.title')}</h3><p className="wk-muted">Credentials are submitted only to the server. They are never read back or stored in the React form.</p></div><Button type="button" disabled={busy} onClick={() => void reload()}>{t('common.refresh')}</Button></div>{error ? <Status tone="error">{error}</Status> : null}{notice ? <Status tone="success">{notice}</Status> : null}<Status tone={configured ? 'success' : needsReinit ? 'warning' : 'neutral'}>{configured ? t('settings.weknoraCloud.configured') : needsReinit ? t('settings.weknoraCloud.credentialExpired') + (typeof status.reason === 'string' ? ': ' + status.reason : '') : t('settings.weknoraCloud.unconfigured')}</Status><dl className="wk-settings-values"><div><dt>models</dt><dd>{status.has_models === true ? 'available' : 'not available'}</dd></div><div><dt>status</dt><dd>{typeof status.status === 'string' ? status.status : 'server reported'}</dd></div></dl></Card><Card><h3>{t('settings.weknoraCloud.usageTitle')}</h3><form className="wk-settings-editor" onSubmit={(event) => void save(event)}><label>{t('settings.weknoraCloud.appIdLabel')}<input required autoComplete="off" value={appId} onChange={(event) => setAppId(event.target.value)} /></label><label>{t('settings.weknoraCloud.appSecretLabel')}<input required type="password" autoComplete="new-password" value={appSecret} onChange={(event) => setAppSecret(event.target.value)} /></label><Button type="submit" loading={busy}>{t('settings.weknoraCloud.saveBtn')}</Button></form></Card></div>;
+  return <div className="wk-settings-cloud"><Card><div className="wk-settings-panel-heading"><div><h3>{t('settings.weknoraCloud.title')}</h3><p className="wk-muted">{t('settings.weknoraCloud.description')}</p></div><Button type="button" disabled={busy} onClick={() => void reload()}>{t('common.refresh')}</Button></div>{error ? <Status tone="error">{error}</Status> : null}{notice ? <Status tone="success">{notice}</Status> : null}<Status tone={configured ? 'success' : needsReinit ? 'warning' : 'neutral'}>{configured ? t('settings.weknoraCloud.configured') : needsReinit ? t('settings.weknoraCloud.credentialExpired') + (typeof status.reason === 'string' ? ': ' + status.reason : '') : t('settings.weknoraCloud.unconfigured')}</Status><dl className="wk-settings-values"><div><dt>{statusCopy.models}</dt><dd>{status.has_models === true ? statusCopy.available : statusCopy.unavailable}</dd></div><div><dt>{statusCopy.status}</dt><dd>{typeof status.status === 'string' ? status.status : statusCopy.serverReported}</dd></div></dl></Card><Card><h3>{t('settings.weknoraCloud.usageTitle')}</h3><form className="wk-settings-editor" onSubmit={(event) => void save(event)}><label>{t('settings.weknoraCloud.appIdLabel')}<input required autoComplete="off" value={appId} onChange={(event) => setAppId(event.target.value)} /></label><label>{t('settings.weknoraCloud.appSecretLabel')}<input required type="password" autoComplete="new-password" value={appSecret} onChange={(event) => setAppSecret(event.target.value)} /></label><p className="wk-muted">{t('settings.weknoraCloud.saveHint')}</p><Button type="submit" loading={busy}>{t('settings.weknoraCloud.saveBtn')}</Button></form></Card></div>;
 }
