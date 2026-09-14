@@ -2164,3 +2164,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - `ModelSettingsPanel` and `ModelDebugPanel` now use utility classes for tabs, filters, dialogs, fieldsets, result panels, responsive sizing and scrolling (`9fbe4044`); the shared `.wk-model-tabs` rule remains only for `SandboxSettingsPanel`.
 - Focused settings coverage passes 27/27; Web full regression passes 890/890, build/typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
 - Browser pixel and protected runtime evidence remain open.
+
+## 2026-09-15 Round N+33y — T07 Web WeKnora Cloud status localization
+
+- `CloudSettingsPanel` now localizes its description, credential save hint and model/status fallback labels across five locales (`c56a411f`), preserving server-returned status values and credential form behavior.
+- Settings coverage remains 15/15; Web typecheck/build and `git diff --check` pass. Independent review found no P1/P2/P3.
+- Protected runtime evidence remains open.
