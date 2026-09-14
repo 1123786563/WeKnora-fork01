@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AgentConfiguration, InstalledSkill, ModelConfiguration, SandboxConfigRecord, SkillCatalog, SkillCatalogInstallation, SkillConfiguration, SkillFileContent, SkillInstallGuidanceState, WeKnoraClient } from '@weknora/api-client';
 import { initialSkillTimelineState, installProgressPercent, reduceSkillTimelineFrame, type SkillInstallProgressEvent, type SkillTimelineState } from '@weknora/domain/sandbox/skill-install';
 import { Button, Card, Dialog, Status } from '@weknora/ui';
-import { renderChatMarkdown } from '@weknora/views';
+import { renderChatMarkdown } from '../../../../packages/views/src/chat/markdown.ts';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 import { observeUploadProgress } from '../platform/http.ts';
 import './skill-settings.css';

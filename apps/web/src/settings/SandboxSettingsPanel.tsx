@@ -14,7 +14,7 @@ import {
 } from '@weknora/api-client';
 import { formatMessage, type Locale } from '@weknora/i18n';
 import { Button, Card, Status } from '@weknora/ui';
-import { roleAtLeast, type SettingsRole } from '@weknora/views';
+import { roleAtLeast, type SettingsRole } from '../../../../packages/views/src/settings/registry.ts';
 import { useAppLocale } from '../i18n.ts';
 
 /*
