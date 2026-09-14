@@ -8,11 +8,12 @@ import jaVue from '../../../frontend/src/i18n/locales/ja-JP.ts';
 import koVue from '../../../frontend/src/i18n/locales/ko-KR.ts';
 import ruVue from '../../../frontend/src/i18n/locales/ru-RU.ts';
 
-// Chat domain (packages/i18n/src/generated/chat.ts) — byte-exact port of the
-// Vue chat copy (frontend/src/i18n/locales/*.ts) that the React chat rendering
-// layer consumes (packages/views/src/chat/chat-copy.ts mirrors it locally).
-// Every locale must carry the same key set so the chat page never falls
-// through to a mixed-language rendering.
+// Chat domain (packages/i18n/src/generated/chat.ts) — the web chat keys are a
+// byte-exact port of the Vue chat copy (frontend/src/i18n/locales/*.ts) that
+// the React chat rendering layer consumes (packages/views/src/chat/chat-copy.ts
+// mirrors it locally). The mobileChat keys are native-client copy owned by the
+// shared bundle; Vue does not expose that surface, so it is validated for
+// locale completeness separately below.
 
 const VUE_BASELINE: Record<Locale, Record<string, unknown>> = {
   'zh-CN': zhVue,
@@ -47,12 +48,28 @@ test('chatMessages carries exactly the generated key set per locale', () => {
   }
 });
 
-test('chatMessages values are byte-exact against the Vue locale baseline', () => {
+test('web chat values are byte-exact against the Vue locale baseline', () => {
   for (const locale of supportedLocales) {
-    for (const [key, value] of Object.entries(chatMessages[locale])) {
+    for (const [key, value] of Object.entries(chatMessages[locale]).filter(([key]) => !key.startsWith('mobileChat.'))) {
       const fromVue = vueGet(VUE_BASELINE[locale], key);
       assert.equal(typeof fromVue, 'string', `Vue baseline lacks ${key} for ${locale}`);
       assert.equal(value, fromVue, `value drift for ${key} (${locale})`);
+    }
+  }
+});
+
+test('mobile chat copy is complete and non-empty in every locale', () => {
+  const mobileKeys = Object.keys(chatMessages['zh-CN']).filter((key) => key.startsWith('mobileChat.')).sort();
+  assert.ok(mobileKeys.length >= 30, `mobileChat key count too small: ${mobileKeys.length}`);
+  for (const locale of supportedLocales) {
+    assert.deepEqual(
+      Object.keys(chatMessages[locale]).filter((key) => key.startsWith('mobileChat.')).sort(),
+      mobileKeys,
+      `mobileChat key drift for ${locale}`,
+    );
+    for (const key of mobileKeys) {
+      assert.equal(typeof chatMessages[locale][key], 'string', `${key} must be a string for ${locale}`);
+      assert.ok(chatMessages[locale][key].trim().length > 0, `${key} must not be empty for ${locale}`);
     }
   }
 });
