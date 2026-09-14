@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   RECENTS_CAP,
   addKbFavorite,
+  createPinsGeneration,
   fetchKbFavoriteIds,
   kbRecentsStorageKey,
   parseKbRecents,
@@ -23,47 +24,48 @@ function memoryStorage(): KeyValueStorage & { dump(): Record<string, string> } {
   };
 }
 
-test('recents persist under the tenant-scoped Vue-style key', async () => {
+test('recents persist under the user-and-tenant Vue-style key', async () => {
   const storage = memoryStorage();
-  await touchKbRecent(storage, '4', 'kb-1');
-  assert.deepEqual(Object.keys(storage.dump()), ['WeKnora_t4_resource_recents']);
-  assert.equal(kbRecentsStorageKey('4'), 'WeKnora_t4_resource_recents');
-  assert.equal(kbRecentsStorageKey(null), 'WeKnora_resource_recents');
+  await touchKbRecent(storage, 'user-1', '4', 'kb-1');
+  assert.deepEqual(Object.keys(storage.dump()), ['WeKnora_user-1_t4_resource_recents']);
+  assert.equal(kbRecentsStorageKey('user-1', '4'), 'WeKnora_user-1_t4_resource_recents');
+  assert.equal(kbRecentsStorageKey(null, null), 'WeKnora_anon_resource_recents');
 });
 
 test('recents survive a storage round-trip across restarts', async () => {
   const storage = memoryStorage();
-  await touchKbRecent(storage, '4', 'kb-1', 100);
-  await touchKbRecent(storage, '4', 'kb-2', 200);
-  const reloaded = await readKbRecents(storage, '4');
+  await touchKbRecent(storage, 'user-1', '4', 'kb-1', 100);
+  await touchKbRecent(storage, 'user-1', '4', 'kb-2', 200);
+  const reloaded = await readKbRecents(storage, 'user-1', '4');
   assert.deepEqual(reloaded.map((entry) => entry.id), ['kb-2', 'kb-1']);
   // A different tenant never sees the same recents.
-  assert.deepEqual(await readKbRecents(storage, '9'), []);
+  assert.deepEqual(await readKbRecents(storage, 'user-1', '9'), []);
+  assert.deepEqual(await readKbRecents(storage, 'user-2', '4'), []);
 });
 
 test('touching a recent moves it to the front and refreshes its timestamp', async () => {
   const storage = memoryStorage();
-  await touchKbRecent(storage, null, 'kb-1', 100);
-  await touchKbRecent(storage, null, 'kb-2', 200);
-  await touchKbRecent(storage, null, 'kb-1', 300);
-  const recents = await readKbRecents(storage, null);
+  await touchKbRecent(storage, 'user-1', null, 'kb-1', 100);
+  await touchKbRecent(storage, 'user-1', null, 'kb-2', 200);
+  await touchKbRecent(storage, 'user-1', null, 'kb-1', 300);
+  const recents = await readKbRecents(storage, 'user-1', null);
   assert.deepEqual(recents.map((entry) => entry.id), ['kb-1', 'kb-2']);
   assert.equal(recents[0].ts, 300);
 });
 
 test('recents are capped at the Vue RECENTS_CAP of 30', async () => {
   const storage = memoryStorage();
-  for (let index = 0; index < RECENTS_CAP + 5; index += 1) await touchKbRecent(storage, null, `kb-${index}`, index);
-  const recents = await readKbRecents(storage, null);
+  for (let index = 0; index < RECENTS_CAP + 5; index += 1) await touchKbRecent(storage, 'user-1', null, `kb-${index}`, index);
+  const recents = await readKbRecents(storage, 'user-1', null);
   assert.equal(recents.length, RECENTS_CAP);
   assert.equal(recents[0].id, `kb-${RECENTS_CAP + 4}`);
 });
 
 test('removeKbRecent only drops the matching kb entry', async () => {
   const storage = memoryStorage();
-  await touchKbRecent(storage, null, 'kb-1', 100);
-  await storage.setItem('WeKnora_resource_recents', JSON.stringify([{ type: 'kb', id: 'kb-1', ts: 100 }, { type: 'agent', id: 'agent-1', ts: 50 }]));
-  const next = await removeKbRecent(storage, null, 'kb-1');
+  await touchKbRecent(storage, 'user-1', null, 'kb-1', 100);
+  await storage.setItem('WeKnora_user-1_resource_recents', JSON.stringify([{ type: 'kb', id: 'kb-1', ts: 100 }, { type: 'agent', id: 'agent-1', ts: 50 }]));
+  const next = await removeKbRecent(storage, 'user-1', null, 'kb-1');
   assert.deepEqual(next.map((entry) => entry.id), ['agent-1']);
 });
 
@@ -85,6 +87,14 @@ test('sortRecentsDesc orders newest first without mutating the input', () => {
   const entries = [{ type: 'kb' as const, id: 'a', ts: 1 }, { type: 'kb' as const, id: 'b', ts: 3 }];
   assert.deepEqual(sortRecentsDesc(entries).map((entry) => entry.id), ['b', 'a']);
   assert.equal(entries[0].id, 'a');
+});
+
+test('pins generation invalidates an older async hydration result', () => {
+  const generations = createPinsGeneration();
+  const first = generations.next();
+  const second = generations.next();
+  assert.equal(generations.isCurrent(first), false);
+  assert.equal(generations.isCurrent(second), true);
 });
 
 test('favorites hydrate from the server favorites endpoint', async () => {

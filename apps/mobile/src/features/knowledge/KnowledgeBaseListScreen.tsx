@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
@@ -22,7 +22,7 @@ import { knowledgeHeaderLayout } from "./header-layout.ts";
 import { signOutAndRedirect } from "./sign-out.ts";
 import { canCreateKnowledgeBase, knowledgeBaseCountLabel, knowledgeListLabel } from "./list.ts";
 import { applyUploadTaskEvent, createUploadTaskCleanups, subscribeToUploadEvents, summarizeUploadTasks, UPLOAD_REFRESH_DELAY_MS, type UploadTaskState } from "./upload-progress.ts";
-import { addKbFavorite, fetchKbFavoriteIds, readKbRecents, removeKbFavorite, touchKbRecent } from "./pins.ts";
+import { addKbFavorite, createPinsGeneration, fetchKbFavoriteIds, readKbRecents, removeKbFavorite, touchKbRecent } from "./pins.ts";
 
 const scopes: Array<{ key: KnowledgeBaseScope; labelKey: string }> = [
   { key: "all", labelKey: "common.all" },
@@ -119,7 +119,7 @@ export function KnowledgeBaseListScreen() {
   // Favorites come from the DB-backed /user/favorites endpoints (they outlive
   // app restarts and sync across devices); recents are restored from the
   // device storage the runtime already uses (expo-secure-store), keyed per
-  // tenant exactly like the Vue localStorage key.
+  // user and tenant exactly like the Vue localStorage key.
   const tenantId = runtime.tenantId;
   // expo-secure-store adapter for the recents store — the async API the
   // runtime already uses for locale/workspace persistence.
@@ -127,17 +127,23 @@ export function KnowledgeBaseListScreen() {
     getItem: (key: string) => SecureStore.getItemAsync(key),
     setItem: (key: string, value: string) => SecureStore.setItemAsync(key, value),
   }), []);
-  const favoritesHydrated = useRef(false);
+  const pinsGeneration = useMemo(() => createPinsGeneration(), []);
+  const userId = runtime.userId;
   useEffect(() => {
-    if (favoritesHydrated.current) return;
-    favoritesHydrated.current = true;
-    void fetchKbFavoriteIds(runtime.client).then((ids) => {
-      setFavoriteIds((current) => new Set([...current, ...ids]));
-    }).catch(() => undefined);
-    void readKbRecents(recentsStorage, tenantId).then((entries) => {
+    const generation = pinsGeneration.next();
+    setFavoriteIds(new Set());
+    setRecentIds(new Set());
+    let active = true;
+    void Promise.all([
+      fetchKbFavoriteIds(runtime.client),
+      readKbRecents(recentsStorage, userId, tenantId),
+    ]).then(([ids, entries]) => {
+      if (!active || !pinsGeneration.isCurrent(generation)) return;
+      setFavoriteIds(ids);
       setRecentIds(new Set(entries.filter((entry) => entry.type === "kb").map((entry) => entry.id)));
     }).catch(() => undefined);
-  }, [recentsStorage, runtime.client, tenantId]);
+    return () => { active = false; };
+  }, [pinsGeneration, recentsStorage, runtime.client, tenantId, userId]);
 
   const visibleItems = useMemo(() => {
     const source = scope === "mine" ? mineItems : items;
@@ -156,7 +162,7 @@ export function KnowledgeBaseListScreen() {
   function openKnowledgeBase(item: KnowledgeBase) {
     setRecentIds((current) => new Set(current).add(item.id));
     // Persist the visit so recents survive an app restart (Vue touchRecent).
-    void touchKbRecent(recentsStorage, runtime.tenantId, item.id).catch(() => undefined);
+    void touchKbRecent(recentsStorage, runtime.userId, runtime.tenantId, item.id).catch(() => undefined);
     router.push(`/knowledge/${item.id}`);
   }
   function toggleFavorite(item: KnowledgeBase) {

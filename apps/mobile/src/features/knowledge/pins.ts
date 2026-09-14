@@ -30,12 +30,14 @@ export const RECENTS_CAP = 30;
 
 const RECENTS_SUFFIX = 'resource_recents';
 
-// Vue keys recents as `WeKnora_{userId}_t{tenantId}_resource_recents`. The
-// mobile runtime does not surface the user id, so the key stays tenant-scoped
-// — the visible namespace in the mobile app — and never bleeds across
-// workspaces.
-export function kbRecentsStorageKey(tenantId: string | null): string {
-  return `WeKnora_${tenantId ? `t${tenantId}_` : ''}${RECENTS_SUFFIX}`;
+// Vue keys recents as `WeKnora_{userId}_t{tenantId}_resource_recents`.
+// Anonymous sessions use the same explicit `anon` segment as Vue's
+// preferenceStorage. Do not fall back to the old tenant-only key: doing so
+// could expose another user's navigation history after logout/login.
+export function kbRecentsStorageKey(userId: string | null, tenantId: string | null): string {
+  const userSegment = userId && userId.trim() ? userId.trim() : 'anon';
+  const tenantSegment = tenantId && tenantId.trim() ? `t${tenantId.trim()}_` : '';
+  return `WeKnora_${userSegment}_${tenantSegment}${RECENTS_SUFFIX}`;
 }
 
 /** Vue readRecents validation: drop anything that is not a well-formed entry. */
@@ -56,25 +58,34 @@ export function sortRecentsDesc(entries: PinEntry[]): PinEntry[] {
   return [...entries].sort((a, b) => b.ts - a.ts);
 }
 
-export async function readKbRecents(storage: KeyValueStorage, tenantId: string | null): Promise<PinEntry[]> {
-  return sortRecentsDesc(parseKbRecents(await storage.getItem(kbRecentsStorageKey(tenantId))));
+/** Monotonic guard for async pin hydration across user/tenant transitions. */
+export function createPinsGeneration() {
+  let current = 0;
+  return {
+    next(): number { current += 1; return current; },
+    isCurrent(generation: number): boolean { return generation === current; },
+  };
+}
+
+export async function readKbRecents(storage: KeyValueStorage, userId: string | null, tenantId: string | null): Promise<PinEntry[]> {
+  return sortRecentsDesc(parseKbRecents(await storage.getItem(kbRecentsStorageKey(userId, tenantId))));
 }
 
 /** Vue touchRecent: move the entry to the front, refresh its timestamp and
  * cap the list at RECENTS_CAP; returns the persisted, sorted list. */
-export async function touchKbRecent(storage: KeyValueStorage, tenantId: string | null, id: string, now: number = Date.now()): Promise<PinEntry[]> {
-  const list = parseKbRecents(await storage.getItem(kbRecentsStorageKey(tenantId)));
+export async function touchKbRecent(storage: KeyValueStorage, userId: string | null, tenantId: string | null, id: string, now: number = Date.now()): Promise<PinEntry[]> {
+  const list = parseKbRecents(await storage.getItem(kbRecentsStorageKey(userId, tenantId)));
   const next = list.filter((entry) => !(entry.type === 'kb' && entry.id === id));
   next.unshift({ type: 'kb', id, ts: now });
   if (next.length > RECENTS_CAP) next.length = RECENTS_CAP;
-  await storage.setItem(kbRecentsStorageKey(tenantId), JSON.stringify(next));
+  await storage.setItem(kbRecentsStorageKey(userId, tenantId), JSON.stringify(next));
   return sortRecentsDesc(next);
 }
 
-export async function removeKbRecent(storage: KeyValueStorage, tenantId: string | null, id: string): Promise<PinEntry[]> {
-  const list = parseKbRecents(await storage.getItem(kbRecentsStorageKey(tenantId)));
+export async function removeKbRecent(storage: KeyValueStorage, userId: string | null, tenantId: string | null, id: string): Promise<PinEntry[]> {
+  const list = parseKbRecents(await storage.getItem(kbRecentsStorageKey(userId, tenantId)));
   const next = list.filter((entry) => !(entry.type === 'kb' && entry.id === id));
-  if (next.length !== list.length) await storage.setItem(kbRecentsStorageKey(tenantId), JSON.stringify(next));
+  if (next.length !== list.length) await storage.setItem(kbRecentsStorageKey(userId, tenantId), JSON.stringify(next));
   return sortRecentsDesc(next);
 }
 

@@ -25,7 +25,7 @@ async function mount(favoriteIds: string[]): Promise<Harness> {
   const pinCalls: string[] = [];
   const storage = new Map<string, string>();
   const runtime: any = {
-    tenantId: '4', locale: 'en-US',
+    userId: 'user-1', tenantId: '4', locale: 'en-US',
     workspaces: [{ id: 4, role: 'admin' }],
     logout: async () => {},
     client: {
@@ -99,13 +99,13 @@ test('tapping the star persists through the favorites endpoint', async () => {
   } finally { await page.close(); }
 });
 
-test('opening a KB persists a recent under the tenant-scoped key', async () => {
+test('opening a KB persists a recent under the user-and-tenant key', async () => {
   const page = await mount([]);
   try {
     const row = [...page.host.querySelectorAll('button')].find((button) => (button.textContent ?? '').includes('Team KB'))!;
     await act(async () => row.click());
     await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
-    const persisted = page.storage.get('WeKnora_t4_resource_recents');
+    const persisted = page.storage.get('WeKnora_user-1_t4_resource_recents');
     assert.ok(persisted);
     assert.deepEqual(JSON.parse(persisted!).map((entry: { type: string; id: string }) => ({ type: entry.type, id: entry.id })), [{ type: 'kb', id: 'kb-1' }]);
   } finally { await page.close(); }
