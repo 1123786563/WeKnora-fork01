@@ -46,3 +46,7 @@
 .wk-dialog-header h2 { margin: 0; font-size: 1.15rem; }
 .wk-dialog-close { border: 0; border-radius: 4px; background: transparent; color: #66758b; cursor: pointer; font-size: 1.25rem; line-height: 1; padding: .2rem .35rem; }
 .wk-dialog-body { margin-top: 1rem; }
+
+/* Sheet 滑入动画（复杂动画按约定保留 CSS，组件内以 animation 名引用） */
+@keyframes sheet-in-right { from { transform: translateX(24px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@keyframes sheet-in-left { from { transform: translateX(-24px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }

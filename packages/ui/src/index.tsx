@@ -6,6 +6,18 @@ export { Button, type ButtonProps } from './button.tsx';
 export { Input } from './input.tsx';
 export { NumberInput } from './number-input.tsx';
 export { Switch } from './switch.tsx';
+export { Textarea } from './textarea.tsx';
+export { Select } from './select.tsx';
+export { Checkbox } from './checkbox.tsx';
+export { Label } from './label.tsx';
+export { Badge } from './badge.tsx';
+export { Alert } from './alert.tsx';
+export { Separator } from './separator.tsx';
+export { Table, TableHead, TableBody, TableRow, TableHeader, TableCell } from './table.tsx';
+export { Tabs, TabsList, TabsTrigger, TabsContent } from './tabs.tsx';
+export { Sheet, type SheetProps } from './sheet.tsx';
+export { Dropdown, DropdownTrigger, DropdownContent, DropdownItem, DropdownSeparator } from './dropdown-menu.tsx';
+export { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from './tooltip.tsx';
 export { cn } from './lib/utils.ts';
 import './styles.css';
 
