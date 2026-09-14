@@ -50,7 +50,7 @@ function renderPanel(role: 'viewer' | 'admin', props: { initialSkills?: never[];
 
 test('skill settings keeps viewer state read-only', () => {
   const html = renderPanel('viewer', { initialSkills: [{ id: 's1', name: 'PDF', description: 'Read PDFs' }] as never });
-  assert.match(html, /Installed skills are managed/);
+  assert.match(html, new RegExp(formatMessage('zh-CN', 'settings.skills.description')));
   assert.match(html, /PDF/);
   assert.doesNotMatch(html, /<button/);
 });

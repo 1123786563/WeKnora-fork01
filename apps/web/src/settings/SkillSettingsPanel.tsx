@@ -230,8 +230,9 @@ function installChipStatusKeys(item: SkillCatalog, installation: SkillCatalogIns
 
 export function SkillSettingsPanel({ client, role, initialSkills, initialCatalog, initialSandboxConfigs }: Props) {
   const canEdit = role === 'admin' || role === 'owner';
+  const t = useSkillT();
   if (!canEdit) {
-    return <Card data-testid="skill-settings"><h3>Skills</h3><p className="wk-muted text-muted">Installed skills are managed by workspace administrators.</p>{initialSkills && initialSkills.length > 0 ? <ul className="wk-list m-0 list-none p-0">{initialSkills.map((skill) => <li key={skill.id} className="flex items-baseline justify-between gap-4 border-b border-line-soft py-[0.9rem]"><strong>{skill.name}</strong><span className="font-mono text-[0.8rem] text-muted">{skill.description ?? 'No description returned.'}</span></li>)}</ul> : <Status>No skills configured.</Status>}</Card>;
+    return <Card data-testid="skill-settings"><h3>{t('settings.skills.title')}</h3><p className="wk-muted text-muted">{t('settings.skills.description')}</p>{initialSkills && initialSkills.length > 0 ? <ul className="wk-list m-0 list-none p-0">{initialSkills.map((skill) => <li key={skill.id} className="flex items-baseline justify-between gap-4 border-b border-line-soft py-[0.9rem]"><strong>{skill.name}</strong><span className="font-mono text-[0.8rem] text-muted">{skill.description ?? t('settings.skills.emptyDesc')}</span></li>)}</ul> : <Status>{t('settings.skills.noInstalls')}</Status>}</Card>;
   }
   return <SkillCatalogSection client={client} initialCatalog={initialCatalog} initialSandboxConfigs={initialSandboxConfigs} />;
 }
