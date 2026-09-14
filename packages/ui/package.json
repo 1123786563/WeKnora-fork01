@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.tsx"
+    ".": "./src/index.tsx",
+    "./theme.css": "./src/theme.css"
   },
   "peerDependencies": {
     "react": ">=19"

@@ -1,4 +1,13 @@
-@import "tailwindcss/utilities.css";
+/* Tailwind v4 composition (mirrors tailwindcss/index.css minus preflight —
+   see docs/plans/tailwind-shadcn-migration.md for the preflight decision). */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+/* 语义令牌与跨包扫描：packages/ui 令牌事实来源 + ui/views 源码类名扫描
+   （修复包内 utilities 从未生成的问题，见迁移计划"基线-既有问题"）。 */
+@import "../../../packages/ui/src/theme.css" layer(theme);
+@source "../../packages/ui/src";
+@source "../../packages/views/src";
 
 body { margin: 0; min-width: 320px; }
 .wk-page { box-sizing: border-box; margin: 0 auto; max-width: 960px; padding: 3rem 1.25rem; }

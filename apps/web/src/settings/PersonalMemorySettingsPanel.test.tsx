@@ -162,7 +162,7 @@ test('tab switch refetches with the next status and pending rows confirm/reject 
   await act(async () => {});
 
   assert.ok(calls.some((call) => call.method === 'POST' && call.path === '/memory/items/memory-1/confirm'), 'confirm endpoint hit');
-  assert.equal(container.querySelector('[role="status"].wk-status-success, .wk-status-success')?.textContent, formatMessage('zh-CN', 'memorySettings.confirmSuccess'));
+  assert.equal(container.querySelector('[role="status"]')?.textContent, formatMessage('zh-CN', 'memorySettings.confirmSuccess'));
 
   const rejectButton = Array.from(container.querySelectorAll('button')).find((button) => button.textContent!.includes(formatMessage('zh-CN', 'memorySettings.rejectGuess')));
   assert.ok(rejectButton);
@@ -225,7 +225,7 @@ test('documents tab builds the Vue knowledgeBase deep link and stop-tracking con
   await act(async () => { confirm!.click(); });
   await act(async () => {});
   assert.ok(calls.some((call) => call.method === 'DELETE' && call.path === '/memory/documents/doc-1'), 'stop-tracking endpoint hit');
-  assert.equal(container.querySelector('.wk-status-success')?.textContent, formatMessage('zh-CN', 'memorySettings.stopTrackingDocumentSuccess'));
+  assert.equal(container.querySelector('[role="status"]')?.textContent, formatMessage('zh-CN', 'memorySettings.stopTrackingDocumentSuccess'));
 });
 
 test('toolbar clear is guarded by total emptiness and answers with the removed count', async () => {
@@ -240,7 +240,7 @@ test('toolbar clear is guarded by total emptiness and answers with the removed c
   assert.ok(confirm, 'danger popconfirm opens with clearConfirm copy');
   await act(async () => { confirm!.click(); });
   await act(async () => {});
-  assert.equal(container.querySelector('.wk-status-success')?.textContent, formatMessage('zh-CN', 'memorySettings.toasts.cleared', { count: 2 }));
+  assert.equal(container.querySelector('[role="status"]')?.textContent, formatMessage('zh-CN', 'memorySettings.toasts.cleared', { count: 2 }));
 });
 
 test('clear is disabled when every store is empty (Vue disabled condition)', async () => {
@@ -317,7 +317,7 @@ test('failed enable change reverts the switch and surfaces saveFailed (Vue handl
 
   const after = container.querySelector('[role="switch"]') as HTMLButtonElement;
   assert.equal(after.getAttribute('aria-checked'), 'true', 'optimistic change reverted on failure');
-  assert.equal(container.querySelector('.wk-status-error')?.textContent, formatMessage('zh-CN', 'memorySettings.toasts.saveFailed', { message: 'network down' }));
+  assert.equal(container.querySelector('[role="alert"]')?.textContent, formatMessage('zh-CN', 'memorySettings.toasts.saveFailed', { message: 'network down' }));
 });
 test('consolidate reports the skip reason instead of a bare success', async () => {
   const base = makeClient({ activeItems: [memoryItem()] });
@@ -332,5 +332,5 @@ test('consolidate reports the skip reason instead of a bare success', async () =
   assert.ok(confirm, 'consolidate popconfirm opens');
   await act(async () => { confirm!.click(); });
   await act(async () => {});
-  assert.equal(container.querySelector('.wk-status')?.textContent, formatMessage('zh-CN', 'memorySettings.consolidateTooFewItems'));
+  assert.equal(container.querySelector('[role="status"]')?.textContent, formatMessage('zh-CN', 'memorySettings.consolidateTooFewItems'));
 });

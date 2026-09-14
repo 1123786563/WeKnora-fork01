@@ -392,7 +392,7 @@ importers:
         version: link:../../packages/i18n
       '@weknora/ui':
         specifier: file:../../packages/ui
-        version: file:packages/ui(react@19.3.0)
+        version: link:../../packages/ui
       '@weknora/views':
         specifier: workspace:*
         version: link:../../packages/views
@@ -2418,11 +2418,6 @@ packages:
 
   '@weknora/domain@file:packages/domain':
     resolution: {directory: packages/domain, type: directory}
-
-  '@weknora/ui@file:packages/ui':
-    resolution: {directory: packages/ui, type: directory}
-    peerDependencies:
-      react: '>=19'
 
   '@xmldom/xmldom@0.8.15':
     resolution: {integrity: sha512-/5NV/vDALVFDXgLmfsy9TRCBlKwO2LNBFzpzvb9iIj+jR+eSc6DLYYvVOdivT/jm7MtU6TebYuRmzEOI7w40UA==}
@@ -6965,10 +6960,6 @@ snapshots:
   '@weknora/domain@file:packages/domain':
     dependencies:
       '@weknora/contracts': link:packages/contracts
-
-  '@weknora/ui@file:packages/ui(react@19.3.0)':
-    dependencies:
-      react: 19.3.0
 
   '@xmldom/xmldom@0.8.15': {}
 
