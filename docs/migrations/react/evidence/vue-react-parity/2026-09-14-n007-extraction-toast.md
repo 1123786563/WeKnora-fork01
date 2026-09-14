@@ -22,11 +22,13 @@ Relation rows now use project comboboxes for both entity endpoints and relation 
 
 The chunking strategy field now uses a Vue-shaped fixed-width single-select with selected/active states, ArrowUp/ArrowDown, Enter, Escape, and outside-click dismissal instead of a native `<select>`; its strategy values and update callback are unchanged.
 
+The advanced chunking separator and language fields now use project multi-selects with Vue `multiple + creatable + filterable` behavior: chips, option filtering, Enter selection/creation, Backspace removal, Escape, and outside-click dismissal.
+
 The relation-type combobox also exposes a clear action, while entity endpoint comboboxes remain non-clearable, matching the Vue per-field `clearable` configuration.
 
 ## Verification
 
-- Focused upload-confirm and pipeline suites: 29/29 passed for the current graph/upload-confirm suite; prior upload-confirm and pipeline suites: 50/50 passed.
+- Focused upload-confirm and pipeline suites: 30/30 passed for the current graph/upload-confirm suite; prior upload-confirm and pipeline suites: 50/50 passed.
 - Full Web suite: `pnpm run test:web` — 681/681 passed.
 - Web typecheck: `pnpm run typecheck:web` — passed.
 - `git diff --check` — passed.

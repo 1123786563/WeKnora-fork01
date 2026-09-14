@@ -73,6 +73,16 @@
 .wk-upload-single-select__popup button { background: transparent; border: 0; border-radius: 6px; cursor: pointer; font: inherit; padding: 8px 10px; text-align: left; }
 .wk-upload-single-select__popup button:hover, .wk-upload-single-select__popup button.is-active, .wk-upload-single-select__popup button[aria-selected="true"] { background: rgb(7 192 95 / 10%); }
 @media (max-width: 720px) { .wk-upload-single-select { width: 100%; } }
+.wk-upload-multi-select { position: relative; width: 280px; }
+.wk-upload-multi-select__field { align-items: center; background: var(--wk-surface, #fff); border: 1px solid var(--wk-border, #e4e7ec); border-radius: 6px; display: flex; flex-wrap: wrap; gap: 4px; min-height: 32px; padding: 4px; }
+.wk-upload-multi-select__field:focus-within { border-color: var(--wk-accent, #07c05f); box-shadow: 0 0 0 2px rgb(7 192 95 / 15%); }
+.wk-upload-multi-select__field input { border: 0; flex: 1; font: inherit; min-width: 80px; outline: none; padding: 3px 4px; }
+.wk-upload-multi-select__chip { align-items: center; background: rgb(7 192 95 / 10%); border-radius: 4px; color: var(--wk-text, #101828); display: inline-flex; font-size: 12px; gap: 4px; max-width: 100%; padding: 3px 6px; }
+.wk-upload-multi-select__chip button { background: transparent; border: 0; color: var(--wk-muted, #667085); cursor: pointer; padding: 0; }
+.wk-upload-multi-select__popup { background: var(--wk-surface, #fff); border: 1px solid var(--wk-border, #e4e7ec); border-radius: 6px; box-shadow: 0 8px 24px rgb(16 24 40 / 14%); display: grid; left: 0; max-height: 240px; overflow: auto; padding: 4px; position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; }
+.wk-upload-multi-select__popup button { background: transparent; border: 0; border-radius: 6px; cursor: pointer; font: inherit; padding: 8px 10px; text-align: left; }
+.wk-upload-multi-select__popup button:hover, .wk-upload-multi-select__popup button.is-active, .wk-upload-multi-select__popup button[aria-selected="true"] { background: rgb(7 192 95 / 10%); }
+@media (max-width: 720px) { .wk-upload-multi-select { width: 100%; } }
 
 /* --- N007: graph section (Vue GraphSettings.vue scoped styles port) --------- */
 

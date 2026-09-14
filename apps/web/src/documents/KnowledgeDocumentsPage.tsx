@@ -687,6 +687,38 @@ export function UploadSingleSelect({ value, options, onChange, ariaLabel, classN
   </div>;
 }
 
+export function UploadMultiSelect({ values, options, onChange, ariaLabel }: {
+  values: readonly string[];
+  options: readonly { value: string; label: string }[];
+  onChange: (values: string[]) => void;
+  ariaLabel: string;
+}) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [activeIndex, setActiveIndex] = useState(0);
+  const filtered = options.filter((option) => option.label.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: MouseEvent) => { if (!rootRef.current?.contains(event.target as Node)) { setOpen(false); setQuery(""); } };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+  const toggle = (value: string) => onChange(values.includes(value) ? values.filter((item) => item !== value) : [...values, value]);
+  return <div className="wk-upload-multi-select" ref={rootRef}>
+    <div className="wk-upload-multi-select__field" onClick={() => setOpen(true)}>
+      {values.map((value) => <span className="wk-upload-multi-select__chip" key={value}>{options.find((option) => option.value === value)?.label ?? value}<button type="button" aria-label={`移除 ${value}`} onClick={(event) => { event.stopPropagation(); toggle(value); }}>×</button></span>)}
+      <input type="text" role="combobox" aria-label={ariaLabel} aria-expanded={open} value={query} placeholder={values.length ? "" : ariaLabel} onFocus={() => setOpen(true)} onChange={(event) => { setQuery(event.target.value); setActiveIndex(0); setOpen(true); }} onKeyDown={(event) => {
+        if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setActiveIndex((current) => Math.max(0, Math.min(filtered.length - 1, current + (event.key === "ArrowDown" ? 1 : -1)))); }
+        else if (event.key === "Enter" && filtered[activeIndex]) { event.preventDefault(); toggle(filtered[activeIndex].value); setQuery(""); }
+        else if (event.key === "Backspace" && !query && values.length) toggle(values[values.length - 1]);
+        else if (event.key === "Escape") { setOpen(false); setQuery(""); }
+      }} />
+    </div>
+    {open ? <div className="wk-upload-multi-select__popup" role="listbox" aria-label={ariaLabel}>{filtered.map((option, index) => <button type="button" role="option" aria-selected={values.includes(option.value)} className={index === activeIndex ? "is-active" : undefined} key={option.value} onMouseEnter={() => setActiveIndex(index)} onClick={() => toggle(option.value)}>{option.label}</button>)}{filtered.length === 0 ? <span className="wk-muted">{ariaLabel}</span> : null}</div> : null}
+  </div>;
+}
+
 const CHUNKING_SEPARATOR_OPTIONS = [
   { value: "\n\n", labelKey: "knowledgeEditor.chunking.separators.doubleNewline" },
   { value: "\n", labelKey: "knowledgeEditor.chunking.separators.singleNewline" },
@@ -822,17 +854,7 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
           <div className="settings-group--more">
             <label>
               {t("knowledgeEditor.chunking.separatorsLabel")}{" "}
-              <select
-                multiple
-                value={state.separators}
-                onChange={(event) =>
-                  update({ separators: Array.from(event.target.selectedOptions).map((option) => option.value) })
-                }
-              >
-                {CHUNKING_SEPARATOR_OPTIONS.map((option) => (
-                  <option key={option.labelKey} value={option.value}>{t(option.labelKey)}</option>
-                ))}
-              </select>
+              <UploadMultiSelect ariaLabel={t("knowledgeEditor.chunking.separatorsLabel")} values={state.separators} options={CHUNKING_SEPARATOR_OPTIONS.map((option) => ({ value: option.value, label: t(option.labelKey) }))} onChange={(values) => update({ separators: values })} />
             </label>
             <label>
               {t("knowledgeEditor.chunking.tokenLimitLabel")}{" "}
@@ -847,17 +869,7 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
             </label>
             <label>
               {t("knowledgeEditor.chunking.languagesLabel")}{" "}
-              <select
-                multiple
-                value={state.languages}
-                onChange={(event) =>
-                  update({ languages: Array.from(event.target.selectedOptions).map((option) => option.value) })
-                }
-              >
-                {CHUNKING_LANGUAGE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>{t(option.labelKey)}</option>
-                ))}
-              </select>
+              <UploadMultiSelect ariaLabel={t("knowledgeEditor.chunking.languagesLabel")} values={state.languages} options={CHUNKING_LANGUAGE_OPTIONS.map((option) => ({ value: option.value, label: t(option.labelKey) }))} onChange={(values) => update({ languages: values })} />
             </label>
             <label className="wk-checkbox">
               <input

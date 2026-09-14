@@ -316,6 +316,12 @@ test('chunking strategy uses a Vue-shaped single select instead of native select
   assert.match(html, /role="combobox"/);
 });
 
+test('chunking advanced fields use Vue-shaped filterable multi-selects', () => {
+  const html = sectionsHtml({ moreOpen: true });
+  assert.equal((html.match(/wk-upload-multi-select"/g) ?? []).length, 2);
+  assert.match(html, /aria-multiselectable|role="combobox"/);
+});
+
 test('question generation section exposes the count and instructions controls', () => {
   const html = sectionsHtml({ state: { questionEnabled: true, questionCount: 4, questionInstructions: '面向新员工' } });
   assert.match(html, /问题生成/);
