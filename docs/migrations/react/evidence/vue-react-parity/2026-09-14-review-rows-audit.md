@@ -114,3 +114,13 @@ STALE ≠ 证据错误，仅表示源在证据之后演进；**下一批提升�
 - **D3[高] / D4[高] / D5[高] Vue 侧缺陷**：Vue 对不存在路由/无效 KB 深链接渲染空白死页，D5 最严重——无效 KB 呈现「知识为空，拖放上传」误导空态（上传入口可用）。React 均有明确 404/错误态+重试。**严格 parity 需将 React 降级为同等破损行为，不建议**；按 §一 作为「Vue 行为与业务契约冲突」记录，提交用户决策：(a) 批准 React 更优行为为记录在案例外；(b) 要求逐像素复刻 Vue 破损行为。
 - 后续建议切片：403 租户隔离 / register / join / onboarding 负路径与网络错误态。
 
+
+## 负路径第二批 N-1~N-4 + S-1/S-2 处置记录（2026-09-14）
+依据 2026-09-14-negpath2-sweep.md（register/join/onboarding/网络错误态，20 格 100% 断言，零数据写入）：
+- **N-1[中] 已记录（Vue 侧缺陷，React 更优）**：登出访问 /join 时 Vue 落 /login 无 query、邀请码永久丢失（登录后加入组织流程中断）；React 落 /login?next=… 可续流程。与首批 D2 同根因（Vue next('/login') 不带目标）。按 §一 作为「Vue 行为与业务契约冲突」记录，提交用户决策（选项同 D2）。
+- **N-2[低] 待修复（React 侧差异）**：onboarding 创建表单形态 Vue 为居中模态弹窗、React 为页内嵌卡片（文案/校验语义一致）。属 §四.2 布局维度差异，登记为待办修复项，待 peer settings 批次收敛后单独切片处理。
+- **N-3[低] 已记录（信息性）**：列表请求失败 Vue 产生 2 条未捕获 Promise rejection、React 0 条。React 无需复刻控制台报错，仅记录。
+- **N-4[低-中] 已修复**：React onboarding 创建对话框（Creating…/Cancel/Loading…/Close/workspace 回退名/错误回退文案）+ JoinPage 整页（标题/表单标签/按钮/加载与错误文案）硬编码英文全部接入 i18n（auth.workspaceOnboarding.* 扩展 + auth.join.* 新命名空间，zh-CN/en-US 双语）；TDD 红→绿（auth-copy-i18n.test.ts，2 用例）；web 837/837 · typecheck 0 · build ✓。
+- **S-1[共同] 已记录（Vue 侧限制）**：KB 列表网络失败两端一致呈现「暂无知识库」空态（无错误提示/重试）。React 忠实复现 Vue 基线 = parity 正确；误导性空态作为 Vue 基线 UX 缺陷登记，是否改进属用户决策。
+- **S-2[共同] 已记录（Vue 侧限制）**：register 已存在邮箱服务端英文消息两端都未本地化——React 与 Vue 行为一致 = parity 正确；服务端消息本地化需后端/契约层改动，超出前端 parity 范围，登记待决策。
+
