@@ -443,6 +443,7 @@ test('composer exposes a multi-file picker and truthful attachment states', () =
   assert.match(html, /data-attachment-status="pending"/);
   assert.match(html, /data-attachment-status="uploaded"/);
   assert.match(html, /data-attachment-status="processing"/);
+  assert.match(html, /解析中/);
   assert.match(html, /data-attachment-status="ready"/);
   assert.match(html, /data-attachment-status="failed"/);
 });

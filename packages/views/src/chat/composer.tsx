@@ -73,7 +73,7 @@ export function ChatComposer({ draft, disabled = false, onDraftChange, onSubmit,
     if (attachment.status === 'uploading') return t.sending;
     if (attachment.status === 'ready') return t.available;
     if (attachment.status === 'failed') return attachment.error || t.sendFailed;
-    return t.sending;
+    return t.attachmentProcessing;
   }
 
   return <form className="wk-chat-composer relative mx-auto w-full max-w-[960px] shrink-0" onSubmit={submit}>

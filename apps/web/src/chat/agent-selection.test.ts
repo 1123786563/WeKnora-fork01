@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildWebChatStreamOptions, initialAgentSelection, shouldPollAttachmentStatus, validateChatAttachment } from './agent-selection.ts';
+import { buildWebChatStreamOptions, initialAgentSelection, resolveChatAttachmentLimits, shouldPollAttachmentStatus, validateChatAttachment } from './agent-selection.ts';
 
 test('selected agent switches the web chat stream to agent mode with an explicit agent id', () => {
   assert.deepEqual(buildWebChatStreamOptions('session/1', '  Summarize this  ', 'agent/1'), {
@@ -40,6 +40,12 @@ test('validates Vue attachment limits before creating an upload row', () => {
   assert.equal(validateChatAttachment({ name: 'guide.exe', size: 1024 }, 0), 'unsupported-type');
   assert.equal(validateChatAttachment({ name: 'guide.pdf', size: 50 * 1024 * 1024 + 1 }, 0), 'too-large');
   assert.equal(validateChatAttachment({ name: 'guide.pdf', size: 1024 }, 5), 'too-many');
+});
+
+test('uses the runtime MAX_FILE_SIZE_MB override instead of a hard-coded cap', () => {
+  const limits = resolveChatAttachmentLimits({ MAX_FILE_SIZE_MB: 1 }, '50');
+  assert.equal(limits.maxSizeBytes, 1024 * 1024);
+  assert.equal(validateChatAttachment({ name: 'guide.pdf', size: 1024 * 1024 + 1 }, 0, limits), 'too-large');
 });
 
 test('polls server attachment states until ready or failed', () => {

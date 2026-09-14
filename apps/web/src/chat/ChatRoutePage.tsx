@@ -9,7 +9,7 @@ import { ChatPage, type ChatSubmission } from '@weknora/views';
 import { openContextualGuide } from '@weknora/views';
 import type { ScopeController } from '@weknora/domain/scope';
 import { chatSessionIdFromPath, SHELL_SESSION_ROUTE_EVENT } from './session-route.ts';
-import { buildWebChatStreamOptions, initialAgentSelection, shouldPollAttachmentStatus, validateChatAttachment } from './agent-selection.ts';
+import { buildWebChatStreamOptions, initialAgentSelection, resolveChatAttachmentLimits, shouldPollAttachmentStatus, validateChatAttachment } from './agent-selection.ts';
 import { listChatModels, MODEL_CHIP_NOT_CONFIGURED, resolveChatModelChip } from './model-chip.ts';
 import { readStoredLocale } from '../i18n.ts';
 import { loadStarterQuestions } from './starter-questions.ts';
@@ -454,9 +454,10 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   }
 
   async function selectAttachment(file: File): Promise<void> {
-    const validation = validateChatAttachment(file, attachmentRecordsRef.current.size);
+    const limits = resolveChatAttachmentLimits();
+    const validation = validateChatAttachment(file, attachmentRecordsRef.current.size, limits);
     if (validation) {
-      const message = validation === 'too-many' ? 'Maximum 5 attachments allowed.' : validation === 'too-large' ? `File ${file.name} exceeds 50MB limit.` : `Unsupported file type: ${file.name}`;
+      const message = validation === 'too-many' ? `Maximum ${limits.maxFiles} attachments allowed.` : validation === 'too-large' ? `File ${file.name} exceeds ${Math.round(limits.maxSizeBytes / (1024 * 1024))}MB limit.` : `Unsupported file type: ${file.name}`;
       const localId = `rejected-attachment-${++attachmentCounterRef.current}`;
       setAttachments((items) => [...items, { id: localId, name: file.name, status: 'failed', error: message }]);
       return;
