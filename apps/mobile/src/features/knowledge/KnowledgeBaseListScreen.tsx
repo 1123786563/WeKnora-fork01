@@ -313,7 +313,7 @@ export function KnowledgeBaseListScreen() {
       ) : null}
       {uploadSummaries.length ? (
         <View
-          accessibilityLabel="upload progress"
+          accessibilityLabel={knowledgeListLabel(runtime.locale, "knowledgeList.uploadProgress.detail", { completed: uploadSummaries[0]?.completed ?? 0, total: uploadSummaries[0]?.total ?? 0 })}
           style={{ borderColor: "#d0d5dd", borderWidth: 1, borderRadius: 8, padding: 12, marginBottom: 12, gap: 10 }}
         >
           {uploadSummaries.map((summary) => {

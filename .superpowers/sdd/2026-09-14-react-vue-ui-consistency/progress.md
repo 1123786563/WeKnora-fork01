@@ -206,3 +206,9 @@
 - Confirmed Mermaid renderer already uses dynamic imports; manual vendor split was rejected after producing circular chunks without reducing the initial app chunk.
 - Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r030-web-build-baseline.md`.
 - Follow-up: route-level code splitting remains an optional performance task requiring a separate measured design.
+
+## Round N+34bk — mobile upload progress accessibility copy
+
+- Replaced the hardcoded English upload-progress accessibility label with the localized upload progress detail message.
+- Validation: `pnpm test:mobile` 189/189; `pnpm run typecheck:mobile`; `git diff --check`.
+- Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r031-mobile-upload-a11y-label.md`.
