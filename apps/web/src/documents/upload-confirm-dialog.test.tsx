@@ -345,6 +345,8 @@ test('multimodal and ASR model/language fields use project selectors', () => {
   }));
   assert.equal((html.match(/wk-upload-model-select/g) ?? []).length, 3);
   assert.match(html, /自动跟随文档语言/);
+  assert.ok((html.match(/wk-upload-setting-row/g) ?? []).length >= 8);
+  assert.match(html, /用于音频中语音转文本的识别模型/);
 });
 
 test('ASR language input exposes Vue clearable behavior', () => {
