@@ -1,5 +1,14 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-14 Round N+29 — STALE 12 行全部重验清除（R007 R008 R032 R045 R047-R050 N001 N002 N014 N015）
+
+- live 只读 sweep（stale-refix.cjs，双端 owner 视角）：外壳导航锚点、成员管理单标题（无 wrapper 重复、无域名泄漏）、设置关闭 ✕ 双端回 KB 列表、MCP 分区渲染——全部一致；截图 stale-refix-20260914/。
+- 单测重验：shell RBAC/route 19/19、preview 4/4。
+- registry 现状核对（N015）：port ed:false 分区均渲染真实面板，占位符行为与行声明一致。
+- R047-R050：parity KB 无文档，expired/no-permission live 证据不可产——单层级重验清除 STALE，行保持 review。
+- matrix 12 行 note 追加 re-verify 结论（状态保持 review；残余开放项为 Wails/native、viewer 变体、expired/no-permission live）。
+- 证据：2026-09-14-stale-refix-12-rows.md。
+
 ## 2026-09-14 Round N+28 — R026 工作区记忆面板对齐 + 个人记忆真实写路径 e2e
 
 - MemoryWorkspacePanel 按 Vue MemoryWorkspaceSettings.vue 裸排版重建：去 Card、h2 分区头、中性 intro 盒（品牌图标 + 堆叠标题/描述）、wk-mws 设置行令牌、写模式 select → .wk-segmented 单选对（复用既有 radiogroup 惯例）、自定义提示词行改纵向堆叠全宽（Vue instructions-row）。样式集中于新 memory-workspace.css（Vue theme.css light 令牌）。
