@@ -47,6 +47,23 @@ API 契约、鉴权、权限、表单校验、聊天流式、工具审批、上�
 运维记录：首批并行子任务因始终未执行文件写入被中断（只读分析循环）；
 前台探针证实绝对路径写入可用。已带侦查结论 + 「边读边写 + 后台门禁」纪律重新派发。
 
+### 续作指引（上下文交接，2026-09-14）
+- 已完成批次：auth、sandbox、memory-workspace、knowledge-list、command-palette（5/域）+ 基础设施/组件体系。
+- 子任务经验：小域（css<200 行）可成功；大域子任务会在长读阶段耗尽自身上下文而失败
+  （skill-settings 568/TenantMembers 751 两个 agent 均失败于读取阶段，无写入）。
+  → 大域改由 Orchestrator 分片自做（staged 引擎，auth/KB 已验证）或拆更小子任务。
+- 剩余域与规模：shell.css 581（PlatformShell.tsx）｜faq 1420（FAQPage）｜
+  organizations 1235（OrganizationsPage）｜documents 1288（KnowledgeDocumentsPage）｜
+  agents 759+367（AgentsPage/AgentEditorModal）｜settings-wrapper 280（多面板）｜
+  TenantMembers 751｜personal-memory 604｜skill 568｜chat 1668（ChatRoutePage）｜
+  guides 243（views，影响 embed，需补 embed 门禁）。
+- 共享收尾（最后做）：styles.css 共享类规则删除（wk-page/wk-header/wk-muted/wk-list/wk-form/
+  wk-toolbar/wk-tag/wk-switch/wk-popconfirm/wk-settings-* 等）需逐类确认最后一个使用方已迁移；
+  packages/ui/src/styles.css 的 wk-* 规则随组件迁移已部分失效，最终清理；依赖审计。
+- 验证资产：tailwind-shadcn-screens.mjs / tailwind-shadcn-diff.mjs / section-shot 脚本；
+  基线+after-{foundation,auth,kblist} 截图；本地栈（:8080 sqlite / vite :5181，账号 uimig@local.dev）。
+- 本地栈注意：先前 dev 栈进程已结束；vite/后端均可用后台 job 方式自启（后端二进制 /tmp/uimig-server，
+  sqlite /tmp/uimig-weknora.db，含 uimig 账号与一条 KB）。
 ### 批次5：command-palette 域 ✅（Orchestrator 执行）
 - GlobalCommandPalette.tsx 23 处 className 全部 utilities 化（overlay/面板/输入行/结果组/
   分组头/条目+选中态/快捷键徽章 kbd 变体/空态/footer）；cmdk 类名保留为测试 DOM 钩子
