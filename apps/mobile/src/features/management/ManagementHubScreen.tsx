@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, SafeAreaView, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { formatMessage } from '@weknora/i18n';
@@ -12,11 +12,19 @@ export function ManagementHubScreen() {
   const [serverCapabilities, setServerCapabilities] = useState<Record<string, { supported: boolean; reason?: string }>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const loadGeneration = useRef(0);
   const t = (key: string, values: Record<string, string | number> = {}) => formatMessage(runtime.locale, key, values);
   const load = useCallback(async () => {
-    try { const result = await runtime.client.administration.capabilities(); setEdition(result.edition); setServerCapabilities(result.capabilities); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : t('mobileManagement.endpointUnavailable')); }
-    finally { setLoading(false); }
+    const generation = ++loadGeneration.current;
+    setLoading(true); setError('');
+    try {
+      const result = await runtime.client.administration.capabilities();
+      if (generation === loadGeneration.current) { setEdition(result.edition); setServerCapabilities(result.capabilities); }
+    } catch (cause) {
+      if (generation === loadGeneration.current) setError(cause instanceof Error ? cause.message : t('mobileManagement.endpointUnavailable'));
+    } finally {
+      if (generation === loadGeneration.current) setLoading(false);
+    }
   }, [runtime.client, runtime.locale]);
   useEffect(() => { void load(); }, [load]);
   const capabilities = MOBILE_CAPABILITIES.map((item) => projectMobileCapability(item, serverCapabilities));
