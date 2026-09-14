@@ -212,3 +212,9 @@
 - Replaced the hardcoded English upload-progress accessibility label with the localized upload progress detail message.
 - Validation: `pnpm test:mobile` 189/189; `pnpm run typecheck:mobile`; `git diff --check`.
 - Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r031-mobile-upload-a11y-label.md`.
+
+## Round N+34bl — mobile graph loading accessibility
+
+- Corrected the graph screen loading indicator accessibility label to use the localized loading message.
+- Validation: `pnpm test:mobile` 189/189; `pnpm run typecheck:mobile`; `git diff --check`.
+- Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r032-mobile-graph-loading-a11y.md`.
