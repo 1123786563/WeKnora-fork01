@@ -38,8 +38,9 @@ const LEGACY_TITLES: Readonly<Record<NormalizedToolResult['renderer'], string>> 
   'mcp-call': 'MCP result', 'plain-text': 'Tool result',
 });
 
-// TODO(migration): local English labels until the strings move to @weknora/i18n
-// (packages/i18n is intentionally untouched by the React migration).
+// Compatibility fallbacks for pure view-model helpers. Renderer-facing labels
+// are supplied by ChatCopyTable; these defaults keep direct helper consumers
+// stable while older callers are migrated incrementally.
 const LABELS = Object.freeze({
   chunkHits: (count: number) => `${count} chunk hits`,
   keywordHits: (count: number) => `${count} keyword hits`,
