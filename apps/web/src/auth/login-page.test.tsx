@@ -124,7 +124,8 @@ test('register heading and return action keep the Vue visual contract', async ()
   const heading = document.querySelector('form[aria-label="Register form"]')?.parentElement?.querySelector('h2');
   assert.match(heading?.className ?? '', /text-2xl/);
   assert.match(heading?.className ?? '', /font-semibold/);
-  const back = [...document.querySelectorAll('button')].find((node) => (node.textContent ?? '').includes('返回登录'));
+  const back = [...document.querySelectorAll('a')].find((node) => (node.textContent ?? '').includes('返回登录'));
+  assert.equal(back?.getAttribute('href'), '#');
   assert.match(back?.className ?? '', /font-medium/);
   assert.match(back?.className ?? '', /hover:underline/);
 });

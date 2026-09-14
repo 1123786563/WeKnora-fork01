@@ -404,7 +404,7 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
             <button type="submit" className="h-[46px] cursor-pointer rounded-lg border-0 bg-(--auth-brand) text-base font-semibold text-white [font-family:var(--auth-font)] hover:bg-[#06ad55] disabled:cursor-not-allowed disabled:opacity-60" disabled={loading}>{loading ? t('auth.registering') : t('auth.register')}</button>
             {!inviteToken ? <div className="mt-[18px] text-center text-sm text-[#666]">
               <span>{t('auth.haveAccount')}</span>
-              <button type="button" className="ml-1 cursor-pointer border-0 bg-transparent p-0 text-sm font-medium text-(--auth-brand) hover:underline" onClick={() => { setMode('login'); setState('idle'); setMessage(''); setFieldErrors({}); }}>{t('auth.backToLogin')}</button>
+              <a href="#" className="ml-1 cursor-pointer text-sm font-medium text-(--auth-brand) no-underline hover:underline" onClick={(event) => { event.preventDefault(); setMode('login'); setState('idle'); setMessage(''); setFieldErrors({}); }}>{t('auth.backToLogin')}</a>
             </div> : null}
           </form>
           <div className="mt-6 flex flex-col gap-2.5">
