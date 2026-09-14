@@ -372,6 +372,7 @@ test('question generation section exposes the count and instructions controls', 
   assert.match(html, /增加生成问题数量/);
   assert.match(html, /aria-valuemin="1"/);
   assert.match(html, /aria-valuemax="10"/);
+  assert.match(html, /wk-upload-section-header/);
 });
 
 test('config sections localize through the dialog copy table in other locales', () => {

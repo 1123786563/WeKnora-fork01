@@ -40,6 +40,8 @@ PDF scanned override, parent-child chunking, multimodal, and ASR enable controls
 
 Chunking controls now use a shared Vue-shaped `setting-row` layout with an information column and a 280px control column. The five chunk numeric controls use the Vue 200px field width, descriptions come from the existing Vue-aligned locale keys, and the row stacks at the mobile breakpoint.
 
+Chunking, multimodal, ASR, and question sections now expose Vue-shaped visible title/description headers while retaining an accessible hidden fieldset legend.
+
 ASR language now uses a project clearable input with an explicit clear action, matching Vue `t-input clearable`; the existing language payload remains unchanged.
 
 The relation-type combobox also exposes a clear action, while entity endpoint comboboxes remain non-clearable, matching the Vue per-field `clearable` configuration.

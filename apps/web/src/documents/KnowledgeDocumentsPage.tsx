@@ -889,7 +889,8 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
         )}
       </fieldset>
       <fieldset className="wk-upload-confirm-chunking" id="wk-upload-section-chunking" data-section="chunking" style={sectionStyle("chunking")}>
-        <legend>{t("knowledgeEditor.chunking.title")}</legend>
+        <legend className="wk-visually-hidden">{t("knowledgeEditor.chunking.title")}</legend>
+        <div className="wk-upload-section-header"><h2>{t("knowledgeEditor.chunking.title")}</h2><p>{t("knowledgeEditor.chunking.description")}</p></div>
         <UploadSettingRow label={t("knowledgeEditor.chunking.strategyLabel")} description={t("knowledgeEditor.chunking.strategyDescription")}>
           <UploadSingleSelect
             className="wk-upload-chunk-strategy-select"
@@ -942,7 +943,8 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
         ) : null}
       </fieldset>
       <fieldset className="wk-upload-confirm-multimodal" id="wk-upload-section-multimodal" data-section="multimodal" style={sectionStyle("multimodal")}>
-        <legend>{t("knowledgeEditor.sidebar.multimodal")}</legend>
+        <legend className="wk-visually-hidden">{t("knowledgeEditor.multimodal.title")}</legend>
+        <div className="wk-upload-section-header"><h2>{t("knowledgeEditor.multimodal.title")}</h2><p>{t("knowledgeEditor.multimodal.description")}</p></div>
         {props.multimodalIssue ? (
           <p className="wk-muted" role="note">{t("uploadConfirm.multimodalSetupHint")}</p>
         ) : null}
@@ -983,7 +985,8 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
         ) : null}
       </fieldset>
       <fieldset className="wk-upload-confirm-asr" id="wk-upload-section-asr" data-section="asr" style={sectionStyle("asr")}>
-        <legend>{t("knowledgeEditor.sidebar.asr")}</legend>
+        <legend className="wk-visually-hidden">{t("knowledgeEditor.asr.title")}</legend>
+        <div className="wk-upload-section-header"><h2>{t("knowledgeEditor.asr.title")}</h2><p>{t("knowledgeEditor.asr.description")}</p></div>
         {props.asrIssue ? (
           <p className="wk-muted" role="note">{t("uploadConfirm.asrSetupHint")}</p>
         ) : null}
@@ -1019,7 +1022,8 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
         ) : null}
       </fieldset>
       <fieldset className="wk-upload-confirm-question" id="wk-upload-section-question" data-section="question" style={sectionStyle("question")}>
-        <legend>{t("knowledgeEditor.advanced.questionGeneration.label")}</legend>
+        <legend className="wk-visually-hidden">{t("knowledgeEditor.advanced.questionGeneration.label")}</legend>
+        <div className="wk-upload-section-header"><h2>{t("knowledgeEditor.advanced.questionGeneration.label")}</h2><p>{t("knowledgeEditor.advanced.questionGeneration.description")}</p></div>
         <div className="wk-upload-question-row">
           <div className="wk-upload-question-info">
             <label id="wk-question-enabled-label">{t("knowledgeEditor.advanced.questionGeneration.label")}</label>

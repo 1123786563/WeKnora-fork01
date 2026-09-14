@@ -90,6 +90,9 @@
 .wk-upload-setting-info p { font-size: 12px; margin: 0; }
 .wk-upload-setting-control { align-items: flex-start; display: flex; flex: 0 0 auto; justify-content: flex-end; width: 280px; }
 .wk-upload-setting-row--separators .wk-upload-setting-control { align-items: stretch; }
+.wk-upload-section-header { margin-bottom: 1rem; }
+.wk-upload-section-header h2 { color: var(--wk-text, #101828); font-size: 1.1rem; font-weight: 600; margin: 0 0 4px; }
+.wk-upload-section-header p { color: var(--wk-muted, #667085); font-size: .85rem; line-height: 1.5; margin: 0; }
 @media (max-width: 720px) { .wk-upload-setting-row { flex-direction: column; } .wk-upload-setting-control { width: 100%; } }
 .wk-upload-switch { background: var(--wk-border, #d0d5dd); border: 0; border-radius: 999px; cursor: pointer; display: inline-flex; height: 20px; padding: 2px; transition: background-color .16s ease; width: 36px; }
 .wk-upload-switch.is-checked { background: var(--wk-accent, #07c05f); }
