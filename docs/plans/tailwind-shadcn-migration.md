@@ -263,6 +263,11 @@ hook 类（测试/JS 引用）保留类名。
 - 漂移说明 3 项已按「元素 utilities 胜出」约定接受并写入 css 注释。
 - 验收：typecheck 0、248/248 相关测试、web 891/891、shared 465/465、build ✓；
   styles.css 315→299 行。
+### 补充门禁验证 ✅（embed + desktop）
+- embed：typecheck 0、test 7/7、build ✓（2200 modules）——packages/views 改动无回归。
+- desktop：typecheck 0、test 2/2、build ✓——desktop-renderer 不受影响。
+- 全门禁矩阵：web 891/891 + shared 465/465 + embed 7/7 + desktop 2/2 + typecheck 0 +
+  build web/embed/desktop 全通过。
 ### 批次19：TenantMembers 域 ✅（子任务执行，Orchestrator 验收提交）
 - TenantMembersPanel.tsx ~95 条规则内联 utilities（表格/分页/标签三态/确认弹层；
   settings-wrapper 抽屉 select chrome 特异性更高今日实际生效，按生效值 4 条未复制）；
