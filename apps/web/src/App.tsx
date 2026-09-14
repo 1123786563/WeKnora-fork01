@@ -923,7 +923,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
           <label>{t('common.description')} <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={3} /></label>
           <label>{t('common.embeddingModel')} <input data-guide="kb-create-embedding" value={embeddingModelId} onChange={(event) => setEmbeddingModelId(event.target.value)} placeholder="embedding_model_id" /></label>
           <label>{t('common.summaryModel')} <input data-guide="kb-create-llm" value={summaryModelId} onChange={(event) => setSummaryModelId(event.target.value)} placeholder="summary_model_id" /></label>
-          <div className="wk-kb-dialog-actions">
+          <div className="mt-3 flex justify-end gap-2">
             <Button type="submit" data-guide="kb-create-submit" loading={saving}>{editingId ? t('common.saveChanges') : t('knowledgeList.create')}</Button>
             <Button type="button" onClick={() => setDialogOpen(false)}>{t('common.cancel')}</Button>
           </div>
@@ -937,8 +937,8 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
         closeLabel={t('common.cancel')}
       >
         <p>{t('knowledgeList.delete.confirmMessage', { name: deletingKb?.name ?? '' })}</p>
-        <div className="wk-kb-dialog-actions">
-          <Button type="button" className="wk-kb-danger" loading={deleting} onClick={() => void confirmDelete()}>{t('knowledgeList.delete.confirmButton')}</Button>
+        <div className="mt-3 flex justify-end gap-2">
+          <Button type="button" className="text-[#dc2626]!" loading={deleting} onClick={() => void confirmDelete()}>{t('knowledgeList.delete.confirmButton')}</Button>
           <Button type="button" onClick={() => setDeletingKb(null)}>{t('common.cancel')}</Button>
         </div>
       </Dialog>

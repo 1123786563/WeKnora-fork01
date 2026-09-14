@@ -89,7 +89,7 @@ export function ConfigurationPage({ client }: { client: WeKnoraClient }) {
     }
   }
 
-  return <main className="wk-page wk-configuration-page">
+  return <main className="wk-page max-w-[1180px]!">
     <header className="wk-header"><div><p className="wk-eyebrow">Platform configuration</p><h1>Agents, models, MCP and skills</h1><p className="wk-muted">Manage supported configuration through typed APIs. Secrets are write-only, and configuration presence never proves provider health.</p></div><Button type="button" onClick={() => void load()} disabled={loading}>Reload</Button></header>
     {editor ? <ConfigurationEditor client={client} section={editor.section} record={editor.record} onSaved={() => { setEditor(null); void load(); }} onCancel={() => setEditor(null)} /> : null}
     {usageConflict ? <ModelUsageNotice modelName={usageConflict.modelName} details={usageConflict.details} onClose={() => setUsageConflict(null)} /> : null}
@@ -97,8 +97,8 @@ export function ConfigurationPage({ client }: { client: WeKnoraClient }) {
     <AgentOperations client={client} agents={records.agents} disabledIds={records.agents.filter((item) => (item as Record<string, unknown>).disabled_by_server === true).map((item) => item.id)} />
     <ModelDebugPanel client={client} models={records.models} />
     <SkillOperations client={client} />
-    <div className="wk-configuration-grid">{configurationSections.map((section) => { const items = records[section.key]; return <Card key={section.key} className="wk-configuration-card">
-      <div className="wk-configuration-card-heading"><div><h2>{section.title}</h2><p className="wk-muted">{section.description}</p></div><div className="wk-list-actions"><span className="wk-role-badge">{section.writeSupport}</span>{section.writeSupport === 'supported' ? <Button type="button" onClick={() => openEditor(section.key)}>Add</Button> : null}</div></div>
+    <div className="grid grid-cols-2 gap-4 max-[720px]:grid-cols-1">{configurationSections.map((section) => { const items = records[section.key]; return <Card key={section.key} className="min-w-0">
+      <div className="mb-3 flex items-start justify-between gap-4"><div><h2 className="m-0 mb-1">{section.title}</h2><p className="wk-muted m-0">{section.description}</p></div><div className="wk-list-actions"><span className="wk-role-badge">{section.writeSupport}</span>{section.writeSupport === 'supported' ? <Button type="button" onClick={() => openEditor(section.key)}>Add</Button> : null}</div></div>
       {section.key === 'skills' && !errors.skills && available === false ? <Status tone="warning">Sandbox-installed skills are unavailable for the current sandbox selection. The skill catalog remains available.</Status> : null}
       {errors[section.key] ? <Status tone="error">{errors[section.key]}</Status> : loading ? <Status>Loading…</Status> : section.key === 'agents' && items.length > 0 ? renderAgentGroups() : items.length === 0 ? <Status>No configured entries.</Status> : <ul className="wk-list">{items.map((item, index) => renderConfigurationRow(section.key, item, index))}</ul>}
     </Card>; })}</div>

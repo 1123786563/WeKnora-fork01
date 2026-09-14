@@ -66,7 +66,7 @@ export function KnowledgeSettingsPage({ client, knowledgeBaseId }: { client: WeK
 
   if (tab === 'sources') return <><nav className="wk-settings-tabs"><button type="button" className="wk-settings-tab" onClick={() => setTab('settings')}>{t('knowledgeBase.settings.title')}</button><button type="button" className="wk-settings-tab is-active">{t('datasource.title')}</button></nav><DataSourcesPage client={client} knowledgeBaseId={knowledgeBaseId} /></>;
 
-  return <main className="wk-page wk-knowledge-settings-page">
+  return <main className="wk-page max-w-[1180px]!">
     <nav className="wk-settings-tabs"><button type="button" className="wk-settings-tab is-active">{t('knowledgeBase.settings.title')}</button><button type="button" className="wk-settings-tab" onClick={() => setTab('sources')}>{t('datasource.title')}</button></nav>
     <header className="wk-header"><div><p className="wk-eyebrow">Knowledge base · {knowledgeBaseId}</p><h1>{t('knowledgeBase.settings.title')}</h1><p className="wk-muted">{t('knowledgeEditor.chunking.description')}</p></div><Button type="button" onClick={() => void load()} disabled={loading}>{t('knowledgeEditor.activity.refresh')}</Button></header>
     {message ? <Status tone={message.tone}>{message.text}</Status> : null}
@@ -78,6 +78,6 @@ export function KnowledgeSettingsPage({ client, knowledgeBaseId }: { client: WeK
       <Card className="wk-settings-section"><h2>{t('kbSettings.storage.title')}</h2><p className="wk-muted">{t('kbSettings.storage.migrateHint')}</p><div className="wk-form-grid wk-form-grid--two"><label>{t('kbSettings.storage.instanceLabel')}<select value={form.storageBackendId} disabled><option value="">{t('kbSettings.parser.default')}</option>{storageBackends.map((backend) => <option key={backend.id} value={backend.id}>{backend.name} · {backend.provider}</option>)}</select></label><label>{t('kbSettings.vectorStore.boundLabel')}<select value={form.vectorStoreId} disabled><option value="">{t('kbSettings.vectorStore.systemDefault')}</option>{vectorStores.map((store) => <option key={store.id} value={store.id}>{store.name} · {store.engine_type}</option>)}</select></label></div></Card>
       <div className="wk-form-actions"><Button type="submit" loading={saving}>{t('common.save')}</Button></div>
     </form>}
-    <Card className="wk-settings-section"><h2>Activity</h2>{activity.length === 0 ? <Status>No knowledge-base activity was returned, or the caller does not have activity access.</Status> : <ul className="wk-list">{activity.map((entry, index) => <li key={String(entry.id ?? index)}><strong>{String(entry.action ?? 'unknown')}</strong><span>{String(entry.outcome ?? 'unknown')}</span><small>{String(entry.created_at ?? '')}</small></li>)}</ul>}</Card>
+    <Card className="wk-settings-section"><h2>{t('knowledgeEditor.activity.title')}</h2>{activity.length === 0 ? <Status>{t('knowledgeEditor.activity.empty')}</Status> : <ul className="wk-list">{activity.map((entry, index) => <li key={String(entry.id ?? index)}><strong>{String(entry.action ?? 'unknown')}</strong><span>{String(entry.outcome ?? 'unknown')}</span><small>{String(entry.created_at ?? '')}</small></li>)}</ul>}</Card>
   </main>;
 }

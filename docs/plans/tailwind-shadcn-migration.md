@@ -94,6 +94,15 @@ API 契约、鉴权、权限、表单校验、聊天流式、工具审批、上�
   （采用「钩子类+追加 utilities」安全模式，避免与并发写冲突时的结构风险）；
   settings-wrapper.css 删除 9 条 stats 规则（115→106 行）。
 - 验收：typecheck 0、web 856/856、build ✓。
+### 批次25-26：最终阶段两切片 ✅（双子任务并行，Orchestrator 合并验收提交）
+- 批次25（knowledge-settings + configuration 域块）：styles.css 删 10 条/19 行；
+  KnowledgeSettingsPage/ConfigurationPage/App 弹窗 utilities 化（unlayered 竞争用 !：
+  max-w-[1180px]!×2、text-[#dc2626]!）；knowledge-settings/configuration 测试 42/42；钩子类 0 残留。
+- 批次26（settings-wrapper 收尾）：删 12 条（GeneralPreferences select×4/font-preview×2+媒体/
+  Config chathistory wk-switch 家族 7/desc.warning-text）；select chrome 抽屉级 4 条按判定保留
+  并在文件头登记 9 文件 20 处消费方清单（交后续逐面板收编或永久保留，Orchestrator 决策项）；
+  指定测试 70/70 + SettingsPage 15/15；typecheck 0、build ✓。
+- 合并验收：typecheck 0、web 856/856、shared 445/445、build ✓。
 ### 批次19：TenantMembers 域 ✅（子任务执行，Orchestrator 验收提交）
 - TenantMembersPanel.tsx ~95 条规则内联 utilities（表格/分页/标签三态/确认弹层；
   settings-wrapper 抽屉 select chrome 特异性更高今日实际生效，按生效值 4 条未复制）；

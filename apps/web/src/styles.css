@@ -45,7 +45,6 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-data-source-logs, .wk-data-source-editor { margin-top: 1rem; }
 .wk-data-source-logs h2, .wk-data-source-editor h2 { margin: 0; }
 .wk-data-source-item .wk-list-actions { flex-wrap: wrap; }
-.wk-knowledge-settings-page { max-width: 1180px; }
 .wk-settings-tabs { display: flex; gap: .5rem; max-width: 1180px; margin: 0 auto; padding: 1rem 1rem 0; }
 .wk-settings-tab { border: 1px solid #dce3ed; border-radius: 999px; background: #fff; color: #506078; cursor: pointer; padding: .5rem .8rem; }
 .wk-settings-tab.is-active { border-color: #2e6de6; color: #1849a9; background: #eff4ff; }
@@ -68,12 +67,6 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-preview-result ol { margin: 0; padding-left: 1.25rem; max-height: 18rem; overflow: auto; }
 .wk-preview-result li { margin: .35rem 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .wk-settings-save { display: flex; justify-content: flex-end; margin-top: 1rem; }
-.wk-configuration-page { max-width: 1180px; }
-.wk-configuration-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
-.wk-configuration-card { min-width: 0; }
-.wk-configuration-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: .75rem; }
-.wk-configuration-card-heading h2 { margin: 0 0 .25rem; }
-.wk-configuration-card-heading p { margin: 0; }
 .wk-administration-page { max-width: 1180px; }
 .wk-admin-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
 .wk-admin-grid h2 { margin: 0 0 .75rem; }
@@ -348,7 +341,6 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-chat-suggestions-grid button { background: #fff; border: 1px solid #dce3ed; border-radius: 6px; cursor: pointer; padding: .65rem; text-align: left; }
 .wk-chat-suggestions-grid small { color: #66758b; display: block; margin-top: .25rem; }
 @media (max-width: 720px) { .wk-chat-page { grid-template-columns: 1fr; } .wk-chat-message-scroll { max-height: 55vh; } }
-@media (max-width: 720px) { .wk-configuration-grid { grid-template-columns: 1fr; } }
 @media (max-width: 720px) { .wk-admin-grid { grid-template-columns: 1fr; } }
 @media (max-width: 720px) { .wk-organization-layout { grid-template-columns: 1fr; } .wk-organization-detail { grid-column: auto; } }
 @media (max-width: 720px) { .wk-settings-layout { grid-template-columns: 1fr; } .wk-settings-panel-heading { flex-direction: column; } .wk-settings-operation-list { justify-content: flex-start; } .wk-settings-values div { grid-template-columns: 1fr; gap: .25rem; } }
@@ -762,10 +754,6 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
   margin-top: auto;
 }
 
-.wk-kb-danger {
-  color: #dc2626;
-}
-
 .wk-kb-skeleton {
   height: 132px;
   border-radius: 10px;
@@ -789,13 +777,6 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 }
 
 .wk-kb-empty h2 { margin: 0; }
-
-.wk-kb-dialog-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-  margin-top: 12px;
-}
 
 /* KB list collapsible section headers (Vue KnowledgeBaseList.vue:97-185) */
 .wk-kb-sections { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }

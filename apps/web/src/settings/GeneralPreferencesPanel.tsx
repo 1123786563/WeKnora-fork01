@@ -137,6 +137,7 @@ export function GeneralPreferencesPanel() {
           </div>
           <div className="setting-control">
             <select
+              className="w-[280px] max-w-[280px] max-[720px]:w-full max-[720px]:max-w-full"
               aria-label={t('language.selectLanguage')}
               value={locale}
               onChange={(event) => handleLanguageChange(event.target.value)}
@@ -156,6 +157,7 @@ export function GeneralPreferencesPanel() {
           </div>
           <div className="setting-control">
             <select
+              className="w-[280px] max-w-[280px] max-[720px]:w-full max-[720px]:max-w-full"
               aria-label={t('theme.selectTheme')}
               value={theme}
               onChange={(event) => handleThemeChange(event.target.value)}
@@ -173,6 +175,7 @@ export function GeneralPreferencesPanel() {
           </div>
           <div className="setting-control setting-control--stacked">
             <select
+              className="w-[280px] max-w-[280px] max-[720px]:w-full max-[720px]:max-w-full"
               aria-label={t('font.selectFont')}
               value={sansFont}
               onChange={(event) => handleSansFontChange(event.target.value)}
@@ -181,7 +184,10 @@ export function GeneralPreferencesPanel() {
                 <option key={key} value={key}>{fontLabel(locale, 'sans', key)}</option>
               ))}
             </select>
-            <div className="font-preview" style={{ fontFamily: currentSansStack }}>
+            {/* Vue GeneralSettings.vue font preview box (lines 351-375): bg
+                --td-bg-color-container #fff, border --td-component-stroke
+                #e7e7e7, radius --td-radius-medium 6px. */}
+            <div className="box-border w-[280px] max-w-[280px] max-[720px]:w-full max-[720px]:max-w-full rounded-[6px] border border-[#e7e7e7] bg-white px-[12px] py-[8px] text-[14px] leading-[1.4]" style={{ fontFamily: currentSansStack }}>
               {t('font.sansPreview')}
             </div>
           </div>
@@ -193,6 +199,7 @@ export function GeneralPreferencesPanel() {
           </div>
           <div className="setting-control setting-control--stacked">
             <select
+              className="w-[280px] max-w-[280px] max-[720px]:w-full max-[720px]:max-w-full"
               aria-label={t('font.selectFont')}
               value={monoFont}
               onChange={(event) => handleMonoFontChange(event.target.value)}
@@ -201,7 +208,7 @@ export function GeneralPreferencesPanel() {
                 <option key={key} value={key}>{fontLabel(locale, 'mono', key)}</option>
               ))}
             </select>
-            <div className="font-preview font-preview--mono" style={{ fontFamily: currentMonoStack }}>
+            <div className="box-border w-[280px] max-w-[280px] max-[720px]:w-full max-[720px]:max-w-full rounded-[6px] border border-[#e7e7e7] bg-white px-[12px] py-[8px] text-[14px] leading-[1.4] font-[family-name:var(--wk-font-mono,ui-monospace,monospace)] overflow-hidden text-ellipsis whitespace-nowrap" style={{ fontFamily: currentMonoStack }}>
               {t('font.monoPreview')}
             </div>
           </div>
