@@ -164,3 +164,4 @@ Shared i18n contract update (2026-09-15): mobile-only `mobileChat.*` keys are va
 N021 web-fetch update (2026-09-15): WebFetchRenderer now uses Vue `chat.unknownLink` copy for missing URLs across five locales; browser fixture evidence remains open.
 N021 web-fetch state update (2026-09-15): summary/error precedence now follows Vue; summary error fields are hidden when a non-empty summary exists, while real fetch errors remain visible. Browser fixture evidence remains open.
 N021 chunk-detail update (2026-09-15): ChunkDetailRenderer now uses Vue `chat.fullContentLabel` across five locales; focused renderer tests cover every locale and browser fixture evidence remains open.
+N021 chunk-detail ID update (2026-09-15): ChunkDetailRenderer now uses Vue `chat.chunkIdLabel` across five locales; focused renderer/copy tests cover the label and browser fixture evidence remains open.

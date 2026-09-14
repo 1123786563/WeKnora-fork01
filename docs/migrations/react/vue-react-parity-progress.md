@@ -2260,3 +2260,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - `ChunkDetailRenderer` now uses Vue `chat.fullContentLabel` across five locales in `b72e0946`; default renderer calls remain compatible.
 - Shared tests pass 458/458 and Web tests pass 890/890; Web typecheck and build pass. Independent review found no P1/P2/P3. Browser fixture evidence remains open.
+
+## 2026-09-15 Round N+34r — N021 ChunkDetail chunk-ID label
+
+- The shared utility batch `085de06e` adds Vue `chat.chunkIdLabel` copy to ChunkDetailRenderer for all five locales while preserving default renderer compatibility.
+- Focused renderer/copy tests pass (34/34 and 11/11); current shared/Web regression remains green at 458/458 and 890/890. Browser fixture evidence remains open.
