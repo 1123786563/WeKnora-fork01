@@ -359,6 +359,25 @@ test('ChunkDetailRenderer localizes the document ID label in every locale', () =
   }
 });
 
+test('ChunkDetailRenderer localizes the content length label and unit in every locale', () => {
+  const expected = {
+    'zh-CN': ['内容长度:', '128 字'],
+    'en-US': ['Content length:', '128 characters'],
+    'ja-JP': ['コンテンツ長:', '128文字'],
+    'ko-KR': ['내용 길이:', '128자'],
+    'ru-RU': ['Длина содержимого:', '128 символов'],
+  } as const;
+  for (const [locale, [label, value]] of Object.entries(expected)) {
+    const element = ChunkDetailRenderer({
+      data: { chunk_id: 'c-9', content_length: 128 },
+      copy: resolveChatCopy(locale),
+    });
+    const serialized = JSON.stringify(element);
+    assert.match(serialized, new RegExp(label.replace(/[.*+?^${}()|[\\]\\]/g, '\\\\$&')));
+    assert.match(serialized, new RegExp(value.replace(/[.*+?^${}()|[\\]\\]/g, '\\\\$&')));
+  }
+});
+
 test('ChunkDetailRenderer localizes the position label in every locale', () => {
   const expected = {
     'zh-CN': '位置:',

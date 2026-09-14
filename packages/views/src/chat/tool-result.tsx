@@ -1,7 +1,7 @@
 import * as React from 'react';
 
 import { normalizeToolResult, type NormalizedToolResult } from '@weknora/domain/chat/tool-results';
-import { CHAT_COPY, type ChatCopyTable } from './chat-copy.ts';
+import { CHAT_COPY, formatChatCopy, type ChatCopyTable } from './chat-copy.ts';
 
 export interface ToolResultViewInput {
   id: string;
@@ -742,7 +742,7 @@ export function ChunkDetailRenderer({ data, copy }: { data: unknown; copy?: Chat
       {view.chunkId ? <InfoField label={labels.chunkIdLabel}><InfoCode>{view.chunkId}</InfoCode></InfoField> : null}
       {view.knowledgeId ? <InfoField label={labels.documentIdLabel}><InfoCode>{view.knowledgeId}</InfoCode></InfoField> : null}
       {view.chunkIndexLabel ? <InfoField label={labels.positionLabel}>{view.chunkIndexLabel}</InfoField> : null}
-      {view.contentLength !== null ? <InfoField label="Content length">{view.contentLength} chars</InfoField> : null}
+      {view.contentLength !== null ? <InfoField label={labels.contentLengthLabelSimple}>{formatChatCopy(labels, 'lengthChars', { value: view.contentLength })}</InfoField> : null}
       {view.content ? (
         <div className="wk-tool-section mt-[0.4rem]">
           <div className="wk-tool-section-title mb-[0.2rem] text-[0.72rem] font-semibold text-[#52606d]">{labels.fullContentLabel}</div>
