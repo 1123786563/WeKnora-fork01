@@ -9,11 +9,12 @@ import { ChatComposer, ChatPage, resolveChatCopy } from '@weknora/views';
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
 test('header rename uses the localized inline editor contract instead of a browser prompt', () => {
-  const source = readFileSync(new URL('./ChatRoutePage.tsx', import.meta.url), 'utf8');
-  assert.doesNotMatch(source, /window\.prompt\(/);
-  assert.match(source, /onBlur=\{\(event\) =>/);
-  assert.match(source, /renameSubmittingRef/);
-  assert.match(source, /role=\"alert\" className=\"text/);
+  const routeSource = readFileSync(new URL('./ChatRoutePage.tsx', import.meta.url), 'utf8');
+  const viewSource = readFileSync(new URL('../../../packages/views/src/chat/page.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(routeSource, /window\.prompt\(/);
+  assert.match(viewSource, /onBlur=\{\(event\) =>/);
+  assert.match(viewSource, /renameSubmittingRef/);
+  assert.match(viewSource, /role=\"alert\" className=\"text/);
   for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'ko-KR', 'ru-RU'] as const) {
     const copy = resolveChatCopy(locale);
     assert.ok(copy.renameTitle && copy.renameTitlePlaceholder && copy.renameConfirm && copy.renameCancel);
