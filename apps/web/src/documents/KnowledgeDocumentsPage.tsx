@@ -757,6 +757,12 @@ export function UploadNumberInput({ value, min, max, step, ariaLabel, onChange, 
   </div>;
 }
 
+export function UploadSwitch({ checked, ariaLabel, onChange }: { checked: boolean; ariaLabel: string; onChange: (checked: boolean) => void }) {
+  return <button type="button" className={`wk-upload-switch${checked ? " is-checked" : ""}`} role="switch" aria-checked={checked} aria-label={ariaLabel} onClick={() => onChange(!checked)}>
+    <span className="wk-upload-switch__handle" aria-hidden="true" />
+  </button>;
+}
+
 const CHUNKING_SEPARATOR_OPTIONS = [
   { value: "\n\n", labelKey: "knowledgeEditor.chunking.separators.doubleNewline" },
   { value: "\n", labelKey: "knowledgeEditor.chunking.separators.singleNewline" },
@@ -839,14 +845,7 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
                 {t("uploadConfirm.pdfForceScanned.description")}
               </p>
             </div>
-            <label className="wk-checkbox">
-              <input
-                id="wk-pdf-force-scanned"
-                type="checkbox"
-                checked={state.pdfForceScanned}
-                onChange={(event) => update({ pdfForceScanned: event.target.checked })}
-              />
-            </label>
+            <UploadSwitch checked={state.pdfForceScanned} ariaLabel={t("uploadConfirm.pdfForceScanned.label")} onChange={(checked) => update({ pdfForceScanned: checked })} />
           </div>
         ) : null}
         {props.parserEngines.length === 0 ? (
@@ -924,13 +923,9 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
               {t("knowledgeEditor.chunking.languagesLabel")}{" "}
               <UploadMultiSelect ariaLabel={t("knowledgeEditor.chunking.languagesLabel")} values={state.languages} options={CHUNKING_LANGUAGE_OPTIONS.map((option) => ({ value: option.value, label: t(option.labelKey) }))} onChange={(values) => update({ languages: values })} />
             </label>
-            <label className="wk-checkbox">
-              <input
-                type="checkbox"
-                checked={state.enableParentChild}
-                onChange={(event) => update({ enableParentChild: event.target.checked })}
-              />{" "}
+            <label className="wk-upload-switch-label">
               {t("knowledgeEditor.chunking.parentChildLabel")}
+              <UploadSwitch checked={state.enableParentChild} ariaLabel={t("knowledgeEditor.chunking.parentChildLabel")} onChange={(checked) => update({ enableParentChild: checked })} />
             </label>
             {state.enableParentChild ? (
               <>
@@ -952,13 +947,9 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
         {props.multimodalIssue ? (
           <p className="wk-muted" role="note">{t("uploadConfirm.multimodalSetupHint")}</p>
         ) : null}
-        <label className="wk-checkbox">
-          <input
-            type="checkbox"
-            checked={state.multimodalEnabled}
-            onChange={(event) => update({ multimodalEnabled: event.target.checked })}
-          />{" "}
+        <label className="wk-upload-switch-label">
           {t("knowledgeEditor.advanced.multimodal.label")}
+          <UploadSwitch checked={state.multimodalEnabled} ariaLabel={t("knowledgeEditor.advanced.multimodal.label")} onChange={(checked) => update({ multimodalEnabled: checked })} />
         </label>
         {state.multimodalEnabled ? (
           <>
@@ -997,13 +988,9 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
         {props.asrIssue ? (
           <p className="wk-muted" role="note">{t("uploadConfirm.asrSetupHint")}</p>
         ) : null}
-        <label className="wk-checkbox">
-          <input
-            type="checkbox"
-            checked={state.asrEnabled}
-            onChange={(event) => update({ asrEnabled: event.target.checked })}
-          />{" "}
+        <label className="wk-upload-switch-label">
           {t("knowledgeEditor.asr.label")}
+          <UploadSwitch checked={state.asrEnabled} ariaLabel={t("knowledgeEditor.asr.label")} onChange={(checked) => update({ asrEnabled: checked })} />
         </label>
         {state.asrEnabled ? (
           <>

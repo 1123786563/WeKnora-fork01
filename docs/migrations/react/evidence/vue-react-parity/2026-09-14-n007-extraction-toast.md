@@ -36,14 +36,16 @@ The question count now uses a project numeric input matching Vue `t-input-number
 
 The same numeric input is now used for all five chunking numeric fields. The chunking fields keep their Vue-aligned 280px layout while preserving their individual ranges and steps: chunk size 100–4000/50, overlap 0–500/20, token limit 0–8192/64, parent chunk 512–8192/64, and child chunk 64–2048/32.
 
+PDF scanned override, parent-child chunking, multimodal, and ASR enable controls now use a project switch matching Vue `t-switch`, including checked track/handle motion, focus-visible styling, and `role=switch`/`aria-checked` semantics.
+
 ASR language now uses a project clearable input with an explicit clear action, matching Vue `t-input clearable`; the existing language payload remains unchanged.
 
 The relation-type combobox also exposes a clear action, while entity endpoint comboboxes remain non-clearable, matching the Vue per-field `clearable` configuration.
 
 ## Verification
 
-- Focused upload-confirm and pipeline suites: 34/34 passed for the current graph/upload-confirm suite; prior upload-confirm and pipeline suites: 50/50 passed.
-- Full Web suite: `pnpm run test:web` — 831/831 passed.
+- Focused upload-confirm and pipeline suites: 35/35 passed for the current graph/upload-confirm suite; prior upload-confirm and pipeline suites: 50/50 passed.
+- Full Web suite: `pnpm run test:web` — 832/832 passed.
 - Web typecheck: `pnpm run typecheck:web` — passed.
 - `git diff --check` — passed.
 - Browser extraction failure against a live graph-enabled backend remains unavailable; the current deployment has graph extraction disabled, so runtime endpoint acceptance is `blocked-env`.

@@ -84,6 +84,12 @@
 .wk-upload-number-input button:hover:not(:disabled), .wk-upload-number-input button:focus-visible { background: rgb(7 192 95 / 10%); color: var(--wk-text, #101828); outline: none; }
 .wk-upload-number-input button:disabled { color: var(--wk-border, #d0d5dd); cursor: not-allowed; }
 .wk-upload-number-input--wide { width: 280px; }
+.wk-upload-switch { background: var(--wk-border, #d0d5dd); border: 0; border-radius: 999px; cursor: pointer; display: inline-flex; height: 20px; padding: 2px; transition: background-color .16s ease; width: 36px; }
+.wk-upload-switch.is-checked { background: var(--wk-accent, #07c05f); }
+.wk-upload-switch:focus-visible { box-shadow: 0 0 0 2px rgb(7 192 95 / 15%); outline: 2px solid var(--wk-accent, #07c05f); outline-offset: 2px; }
+.wk-upload-switch__handle { background: #fff; border-radius: 50%; display: block; height: 16px; transform: translateX(0); transition: transform .16s ease; width: 16px; }
+.wk-upload-switch.is-checked .wk-upload-switch__handle { transform: translateX(16px); }
+.wk-upload-switch-label { align-items: center; display: flex; gap: 10px; justify-content: space-between; }
 .wk-upload-question-instructions textarea { box-sizing: border-box; min-height: 72px; width: 280px; }
 .wk-upload-parser-info strong { font-size: 13px; font-weight: 500; }
 .wk-upload-parser-extensions { display: flex; flex-wrap: wrap; gap: 4px; }

@@ -274,6 +274,12 @@ test('scanned-PDF override renders with its label and hint only for PDF batches'
   assert.doesNotMatch(withoutPdf, /wk-pdf-force-scanned/);
 });
 
+test('upload boolean settings use project switch semantics', () => {
+  const html = sectionsHtml({ hasPdf: true, moreOpen: true, state: { enableParentChild: true, multimodalEnabled: true, asrEnabled: true } });
+  assert.ok((html.match(/role="switch"/g) ?? []).length >= 5);
+  assert.match(html, /wk-upload-switch/);
+});
+
 test('active section keeps Vue v-show sections mounted but hides inactive panels', () => {
   const html = sectionsHtml({});
   assert.match(html, /data-section="parser"/);
