@@ -35,6 +35,14 @@ test('resolveChatCopy returns locale tables and falls back to zh-CN', () => {
   assert.deepEqual(resolveChatCopy('zh-CN'), CHAT_COPY);
 });
 
+test('batch session controls use translated English SSR copy', () => {
+  const copy = resolveChatCopy('en-US');
+  assert.equal(copy.batchManage, 'Batch manage');
+  assert.equal(formatChatCopy(copy, 'batchDelete', { count: 3 }), 'Delete selected (3)');
+  assert.equal(formatChatCopy(copy, 'batchDeleteConfirm', { count: 3 }), 'Delete the selected 3 chats? This cannot be undone.');
+  assert.equal(copy.sourceSelectLabel, 'Chat source');
+});
+
 test('chatCopy stays bound to the zh-CN default table', () => {
   assert.equal(chatCopy('pageOf', { page: 2, total: 5 }), '第 2 页 / 共 5 页');
 });

@@ -381,7 +381,7 @@ test('(m) batch management exposes accessible selection and deletes selected ses
     assert.equal(checkboxes.length, SESSIONS.length);
     await act(async () => { checkboxes[0]?.click(); await settle(1); });
     await act(async () => { checkboxes[2]?.click(); await settle(1); });
-    const deleteButton = container.querySelector('nav[aria-label="我的对话"] button[aria-label="删除所选会话"]') as HTMLButtonElement | null;
+    const deleteButton = container.querySelector('nav[aria-label="我的对话"] button[aria-label^="删除所选"]') as HTMLButtonElement | null;
     assert.ok(deleteButton);
     assert.equal(deleteButton?.disabled, false);
     await act(async () => { deleteButton?.click(); await settle(10); });
@@ -407,11 +407,11 @@ test('(n) failed batch deletion keeps selection and offers retry', async () => {
     await act(async () => { (container.querySelector('nav[aria-label="我的对话"] button[aria-label="批量管理"]') as HTMLButtonElement).click(); await settle(1); });
     const first = container.querySelector('nav[aria-label="我的对话"] input[type="checkbox"]:not([aria-label="全选会话"])') as HTMLInputElement;
     await act(async () => { first.click(); await settle(1); });
-    await act(async () => { (container.querySelector('nav[aria-label="我的对话"] button[aria-label="删除所选会话"]') as HTMLButtonElement).click(); await settle(10); });
+    await act(async () => { (container.querySelector('nav[aria-label="我的对话"] button[aria-label^="删除所选"]') as HTMLButtonElement).click(); await settle(10); });
     const status = container.querySelector('nav[aria-label="我的对话"] [role="alert"]');
     assert.equal(status?.textContent?.includes('批量删除失败'), true);
     assert.equal((first as HTMLInputElement).checked, true);
-    const retry = container.querySelector('nav[aria-label="我的对话"] button[aria-label="重试批量删除"]') as HTMLButtonElement | null;
+    const retry = container.querySelector('nav[aria-label="我的对话"] button[aria-label="重试"]') as HTMLButtonElement | null;
     assert.ok(retry);
     await act(async () => { retry?.click(); await settle(10); });
     assert.equal(rowTitles().includes('置顶的会话'), false);

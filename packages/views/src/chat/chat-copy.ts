@@ -189,6 +189,8 @@ batchDeleteConfirm: '确认删除选中的 {count} 个会话？删除后将无�
 batchDeleteError: '批量删除失败：{message}',
 batchRetry: '重试',
 batchDeleteBusy: '删除中…',
+batchSelectSession: '选择会话 {title}',
+sourceSelectLabel: '会话来源',
 };
 
 export type ChatCopyKey = keyof typeof CHAT_COPY_ZH;
@@ -288,6 +290,8 @@ const CHAT_COPY_TABLES: Record<ChatCopyLocale, ChatCopyTable> = {
   batchDeleteError: 'Batch delete failed: {message}',
   batchRetry: 'Retry',
   batchDeleteBusy: 'Deleting…',
+  batchSelectSession: 'Select chat {title}',
+  sourceSelectLabel: 'Chat source',
   },
   'ja-JP': {
   suggestedQuestions: 'こんな質問ができます',
@@ -379,6 +383,8 @@ const CHAT_COPY_TABLES: Record<ChatCopyLocale, ChatCopyTable> = {
   batchDeleteError: '一括削除に失敗しました：{message}',
   batchRetry: '再試行',
   batchDeleteBusy: '削除中…',
+  batchSelectSession: '会話 {title} を選択',
+  sourceSelectLabel: '会話のソース',
   },
   'ko-KR': {
   suggestedQuestions: '이렇게 물어보세요',
@@ -470,6 +476,8 @@ const CHAT_COPY_TABLES: Record<ChatCopyLocale, ChatCopyTable> = {
   batchDeleteError: '일괄 삭제 실패: {message}',
   batchRetry: '재시도',
   batchDeleteBusy: '삭제 중…',
+  batchSelectSession: '대화 {title} 선택',
+  sourceSelectLabel: '대화 출처',
   },
   'ru-RU': {
   suggestedQuestions: 'Вы можете спросить меня',
@@ -561,6 +569,8 @@ const CHAT_COPY_TABLES: Record<ChatCopyLocale, ChatCopyTable> = {
   batchDeleteError: 'Ошибка массового удаления: {message}',
   batchRetry: 'Повторить',
   batchDeleteBusy: 'Удаление…',
+  batchSelectSession: 'Выбрать чат {title}',
+  sourceSelectLabel: 'Источник чатов',
   },
 };
 
