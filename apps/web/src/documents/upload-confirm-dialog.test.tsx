@@ -341,6 +341,12 @@ test('multimodal and ASR model/language fields use project selectors', () => {
   assert.match(html, /自动跟随文档语言/);
 });
 
+test('ASR language input exposes Vue clearable behavior', () => {
+  const html = sectionsHtml({ state: { asrEnabled: true, asrLanguage: 'zh' } });
+  assert.match(html, /wk-upload-clearable-input/);
+  assert.match(html, /清除音频语言提示/);
+});
+
 test('chunking advanced fields use Vue-shaped filterable multi-selects', () => {
   const html = sectionsHtml({ moreOpen: true });
   assert.equal((html.match(/wk-upload-multi-select"/g) ?? []).length, 2);

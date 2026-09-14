@@ -721,6 +721,13 @@ export function UploadMultiSelect({ values, options, onChange, ariaLabel }: {
   </div>;
 }
 
+export function UploadClearableInput({ value, placeholder, ariaLabel, onChange }: { value: string; placeholder: string; ariaLabel: string; onChange: (value: string) => void }) {
+  return <div className="wk-upload-clearable-input">
+    <input value={value} placeholder={placeholder} aria-label={ariaLabel} onChange={(event) => onChange(event.target.value)} />
+    {value ? <button type="button" aria-label={`清除${ariaLabel}`} onClick={() => onChange("")}>×</button> : null}
+  </div>;
+}
+
 const CHUNKING_SEPARATOR_OPTIONS = [
   { value: "\n\n", labelKey: "knowledgeEditor.chunking.separators.doubleNewline" },
   { value: "\n", labelKey: "knowledgeEditor.chunking.separators.singleNewline" },
@@ -1021,10 +1028,11 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
             </label>
             <label>
               {t("knowledgeEditor.asr.languageLabel")}{" "}
-              <input
+              <UploadClearableInput
                 value={state.asrLanguage}
                 placeholder={t("knowledgeEditor.asr.languagePlaceholder")}
-                onChange={(event) => update({ asrLanguage: event.target.value })}
+                ariaLabel={t("knowledgeEditor.asr.languageLabel")}
+                onChange={(value) => update({ asrLanguage: value })}
               />
             </label>
           </>

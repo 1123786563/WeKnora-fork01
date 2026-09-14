@@ -1811,3 +1811,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 对照 Vue `UploadConfirmDialog.vue`，问题生成区段改为设置行布局：说明列、88px 数量输入（1–10）、项目 switch，以及启用时独立的说明/textarea 行；状态与提交字段保持不变。
 - upload-confirm 定向测试 33/33、Web 全量 830/830、`typecheck:web` 与 `git diff --check` 通过；证据 `evidence/vue-react-parity/2026-09-14-n007-extraction-toast.md` 已更新。
 - N007 继续保持 `implementing`：浏览器 computed-style/同条件截图、真实后端图谱链路及 Wails/native 证据仍未闭环。
+
+## 2026-09-14 Round N+63 — N007 ASR 语言清空
+
+- 对照 Vue `UploadConfirmDialog.vue` 的 ASR `t-input clearable`，React 音频语言字段改为项目级可清空输入，补齐显式清空操作，语言 payload 与表单状态契约不变。
+- upload-confirm 定向测试 34/34、Web 全量 831/831、`typecheck:web` 与 `git diff --check` 通过；证据 `evidence/vue-react-parity/2026-09-14-n007-extraction-toast.md` 已更新。
+- N007 继续保持 `implementing`：浏览器 computed-style/同条件截图、真实后端图谱链路及 Wails/native 证据仍未闭环。
