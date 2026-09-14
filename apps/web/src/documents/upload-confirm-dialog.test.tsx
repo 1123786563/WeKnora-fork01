@@ -350,7 +350,9 @@ test('Excel parser group preserves Vue first-row-header control', () => {
     state: { parserRules: [{ file_types: ['xlsx', 'xls'], engine: 'builtin' }] },
   });
   assert.match(html, /Excel/);
-  assert.match(html, /xlsxFirstRowAsHeader|首行为表头/);
+  // i18n sweep (70e9f061) replaced the hardcoded 首行为表头 copy with the
+  // kbSettings key value 将首行作为列标题; the control itself is unchanged.
+  assert.match(html, /xlsxFirstRowAsHeader|将首行作为列标题/);
 });
 
 test('multimodal and ASR model/language fields use project selectors', () => {
