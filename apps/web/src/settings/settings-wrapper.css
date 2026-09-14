@@ -12,37 +12,13 @@
    .wk-settings-section { margin-top: 1rem } (styles.css) must not leak into
    the drawer or it pushes the panel heading ~16px below the Vue position. */
 .wks-content-wrapper .wk-settings-section { margin-top: 0; }
-.wk-system-audit { display: grid; gap: 16px; }
-.wk-audit-refresh { align-items: center; background: transparent; border: 0; border-radius: 6px; color: #8a96a8; cursor: pointer; display: inline-flex; flex-shrink: 0; font-size: 14px; height: 24px; justify-content: center; padding: 0; width: 24px; }
-.wk-audit-refresh:hover:not(:disabled) { background: rgba(120,135,155,.12); color: #07c05f; }
-.wk-audit-refresh:disabled { cursor: default; opacity: .7; }
-.wk-audit-refresh:disabled { animation: wk-audit-spin .8s linear infinite; }
-@keyframes wk-audit-spin { to { transform: rotate(360deg); } }
-.wk-audit-load-more { background: transparent; border: 1px solid rgba(120,135,155,.35); border-radius: 4px; cursor: pointer; padding: 5px 12px; }
-.wk-audit-load-more { display: block; margin: 14px auto 0; }
-.wk-audit-table-wrap { overflow-x: auto; }
-.wk-audit-table { border-collapse: collapse; font-size: 12px; min-width: 680px; width: 100%; }
-.wk-audit-table th, .wk-audit-table td { border-bottom: 1px solid rgba(120,135,155,.18); padding: 12px 8px; text-align: left; }
-.wk-audit-table tbody tr { cursor: pointer; }
-.wk-audit-table tbody tr:hover, .wk-audit-table tbody tr:focus { background: rgba(7,192,95,.05); outline: none; }
-.wk-audit-tag { background: rgba(120,135,155,.10); border: 1px solid rgba(120,135,155,.20); border-radius: 999px; color: #5c6b83; display: inline-flex; font-size: 12px; line-height: 18px; padding: 0 7px; white-space: nowrap; }
-.wk-audit-tag--success { background: rgba(7,192,95,.10); border-color: rgba(7,192,95,.24); color: #078a45; }
-.wk-audit-tag--danger { background: rgba(220,60,60,.08); border-color: rgba(220,60,60,.20); color: #c03939; }
-.wk-audit-tag--warning { background: rgba(234,167,49,.10); border-color: rgba(234,167,49,.22); color: #9a6a0b; }
-.wk-audit-time, .wk-audit-actor, .wk-audit-target { display: flex; flex-direction: column; gap: 2px; }
-.wk-audit-time span:last-child, .wk-audit-actor small, .wk-audit-target small { color: #8a96a8; font-size: 11px; }
-.wk-audit-target strong { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; font-weight: 500; overflow-wrap: anywhere; }
-.wk-audit-detail { background: #fff; border-left: 1px solid rgba(120,135,155,.25); box-shadow: -8px 0 24px rgba(23,32,51,.14); max-width: 640px; overflow: auto; padding: 24px; position: fixed; right: 0; top: 0; bottom: 0; width: min(640px,100vw); z-index: 3200; }
-.wk-audit-detail-head { align-items: flex-start; display: flex; justify-content: space-between; margin-bottom: 24px; }
-.wk-audit-detail-head h3 { font-size: 18px; font-weight: 600; margin: 0 0 6px; }
-.wk-audit-detail-head p { color: #8a96a8; font-size: 12px; margin: 0; }
-.wk-audit-detail-head button { background: transparent; border: 0; cursor: pointer; font-size: 24px; }
-.wk-audit-detail section { border-top: 1px solid rgba(120,135,155,.16); padding: 18px 0; }
-.wk-audit-detail h4 { color: #8a96a8; font-size: 12px; font-weight: 600; letter-spacing: .04em; margin: 0 0 12px; }
-.wk-audit-detail dl { display: grid; gap: 10px; margin: 0; }
-.wk-audit-detail dl div { border-bottom: 1px solid rgba(120,135,155,.18); padding-bottom: 8px; }
-.wk-audit-detail dt { color: #5c6b83; font-size: 12px; }
-.wk-audit-detail dd { overflow-wrap: anywhere; margin: 4px 0 0; }
+/* wk-audit-* rules removed: SystemAuditLogPanel.tsx carries the equivalent
+   utilities. Class names stay in the DOM as querySelector hooks for
+   SettingsPage.test.tsx (.wk-audit-table tbody tr / .wk-audit-detail);
+   .wk-audit-tag--* variant classes are fully dead (tones live in the
+   AUDIT_TAG_TONES utility map). */
+/* Retained (utilities gap): .wk-audit-detail pre keeps max-height:50vh /
+   overflow:auto so long payloads scroll instead of stretching the drawer. */
 .wk-audit-detail pre { background: #f7f9fb; border: 1px solid rgba(120,135,155,.18); border-radius: 8px; font-size: 12px; line-height: 1.55; margin: 0; max-height: 50vh; overflow: auto; padding: 12px 14px; white-space: pre-wrap; }
 .wk-settings-section .section-header { margin-bottom: 32px; }
 .wk-settings-section .section-header h2 { font-size: 20px; font-weight: 600; margin: 0 0 8px; }
