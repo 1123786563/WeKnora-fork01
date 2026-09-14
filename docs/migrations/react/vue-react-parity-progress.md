@@ -2196,3 +2196,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - Resource settings now localize editor labels, provider placeholders, safe-config copy, security guidance and row fallbacks across five locales (`42d82596`), preserving sensitive config filtering and CRUD/test/default flows.
 - Settings coverage remains 15/15; Web typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
+
+## 2026-09-15 Round N+34e — T07 Web parser credential hint
+
+- Parser settings now localize the API-key safety hint across five locales (`fc5b2377`), preserving endpoint/API-key fields and parser test/save behavior.
+- Settings coverage remains 15/15; Web typecheck and build pass. Independent review found no P1/P2/P3.
