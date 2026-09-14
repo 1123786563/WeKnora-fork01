@@ -2068,3 +2068,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Chat header renaming now matches Vue across `8a6cb414`, `b07d84de`, `89e80098`, `7c25d66e`, `e9b10457`, and `b22d79c5`: inline title editing, full-title selection, blur/Enter submit with duplicate protection, Escape/cancel focus restoration, visible localized errors, and normalized 80-character titles.
 - Focused chat tests pass 26/26; `typecheck:web` and `git diff --check` pass. Independent review found no P1/P2/P3.
 - N018 still requires authenticated browser/real-backend and Wails/native runtime evidence.
+
+## 2026-09-15 Round N+33i — N031 mobile multi-file upload queue
+
+- Mobile knowledge-base upload now supports multi-file native picking and FIFO processing across `a08ef44`, `bfe7aa62`, and `ac69f728`; single-file callers remain compatible, failed files do not block later files, cancellation stops the queue, lifecycle events and refreshes are preserved, and nested structured duplicate errors retain backend codes while mapping to five-language copy.
+- API client tests pass 10/10; mobile upload queue tests pass 5/5; mobile typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
+- N031 remains open for byte-level progress, graph/native runtime evidence, and other mobile acceptance dimensions.
