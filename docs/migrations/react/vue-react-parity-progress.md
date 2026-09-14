@@ -2175,3 +2175,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - Captured authenticated React Chrome AX evidence for `/platform/settings?section=weknoracloud` in `222de744`; localized Chinese status labels and credential actions were reachable.
 - The available Vue tab redirected to `/login`, so this evidence does not prove same-session Vue pixel parity or backend credential success/failure behavior.
+
+## 2026-09-15 Round N+34a — T07 Web Ollama localization
+
+- `OllamaSettingsPanel` now localizes service description, address/model labels, download guidance, progress success feedback and task/model size fallbacks across five locales (`68ed4897`), preserving download, refresh, progress and credential behavior.
+- Settings coverage remains 15/15; Web typecheck/build and `git diff --check` pass. Independent review found no P1/P2/P3.
+- Protected runtime evidence remains open.
