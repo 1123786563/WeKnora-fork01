@@ -24,10 +24,14 @@
 
 截图 screenshots/viewer-variant-20260914/v1..v4-{vue,react}.png。
 
-## 新登记残余差异（不阻塞，记录待修）
+## 本轮修复：viewer 的「本空间 · 仅查看」分组标签
 
-- viewer 视角 KB 列表「本空间」作用域标签：Vue 显示「本空间 · 仅查看」（knowledgeList.sections.tenantReadonly，card-list-badge 体系），React 仅「本空间」。修复路径：React KB 列表作用域页签按角色追加仅查看后缀。
+- **Vue 基线**：KnowledgeBaseList.vue:1083-1086 tenantSectionLabelKey —— hasRole('admin') 为假（contributor/viewer）时分组标题读「本空间 · 仅查看」（knowledgeList.sections.tenantReadonly），图标 browse；admin/owner 读「本空间 · 其他成员」，图标 usergroup。
+- **React 修复前**：domain groupKnowledgeBaseSections 恒用 tenantOthers 标签 → viewer 看到「本空间」（实为其他成员所有权口径）。
+- **修复位置**：domain groupKnowledgeBaseSections 增加第三参 options.tenantReadonly（为真时 tenant 组 labelKey 切换为 tenantReadonly，组 key 保持稳定以不破坏折叠态/图标映射）；App.tsx 传入 { tenantReadonly: !viewer.isAdmin }，viewer 时组图标切 browse（对齐 Vue tenantSectionIconName）。
+- **测试**：packages/domain list.test.ts 新增 1 例（label 切换 + 组 key 稳定）→ 15/15。
+- **Live 复核**：viewer 账号 KB 列表页全文含「本空间 · 仅查看」，与 Vue 逐字一致。
 
 ## 门禁
 
-- registry.test 6/6（含更新后的期望）；test:shared 444/444；test:web 856/856。
+- registry.test 6/6（含更新后的期望）；domain list.test 15/15；test:shared 444/444；test:web 856/856；typecheck:web 0 错误。

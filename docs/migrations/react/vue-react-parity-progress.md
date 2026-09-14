@@ -1,5 +1,11 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-14 Round N+31 补充 — viewer「本空间 · 仅查看」分组标签修复
+
+- domain groupKnowledgeBaseSections 增加 options.tenantReadonly（viewer/contributor 的 tenant 组标题切「本空间 · 仅查看」，组 key 稳定）；App.tsx 按 viewer.isAdmin 传入并对 viewer 切 browse 图标（对齐 Vue tenantSectionLabelKey/tenantSectionIconName）。
+- domain list.test 新增 1 例（15/15）；全量门禁维持绿（shared 444/444、web 856/856、typecheck 0）。
+- live 复核：viewer 账号 KB 列表全文含「本空间 · 仅查看」，与 Vue 逐字一致；证据 2026-09-14-viewer-role-variant.md 已更新。
+
 ## 2026-09-14 Round N+31 — viewer 角色变体 live 双端对照 + 设置角色门禁对齐
 
 - 受控创建 viewer 回归账号（parity-viewer@local.dev，owner 经 members API 加入租户 10000，role=viewer；保留作角色变体回归）。

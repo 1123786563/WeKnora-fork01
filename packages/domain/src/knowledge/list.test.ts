@@ -134,6 +134,18 @@ test('groupKnowledgeBaseSections: pinned first, then mine, tenantOthers, sharedE
   for (const s of sections) assert.ok(s.items.length > 0, 'empty sections are omitted');
 });
 
+// Vue tenantSectionLabelKey (KnowledgeBaseList.vue:1083-1086): contributor/
+// viewer group header reads「本空间 · 仅查看」; admin/owner read「本空间 · 其他成员」.
+test('groupKnowledgeBaseSections: tenantReadonly option swaps the tenant group label', () => {
+  const rows = [kb('t1', { isMine: true, creator_id: 'someone-else' })] as never[];
+  const readonly = groupKnowledgeBaseSections(rows, 'me', { tenantReadonly: true });
+  assert.equal(readonly.find((s: { key: string }) => s.key === 'tenantOthers')?.labelKey, 'knowledgeList.sections.tenantReadonly');
+  const admin = groupKnowledgeBaseSections(rows, 'me');
+  assert.equal(admin.find((s: { key: string }) => s.key === 'tenantOthers')?.labelKey, 'knowledgeList.sections.tenantOthers');
+  // The section key itself stays stable so collapse state and icons keep working.
+  assert.equal(readonly[0]!.key, 'tenantOthers');
+});
+
 test('groupKnowledgeBaseSections keeps empty sections out of the result', () => {
   const sections = groupKnowledgeBaseSections([kb('m1', { isMine: true, creator_id: 'me' }) as never], 'me');
   assert.deepEqual(sections.map((s: { key: string }) => s.key), ['mine']);

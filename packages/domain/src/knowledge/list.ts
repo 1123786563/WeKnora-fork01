@@ -221,6 +221,7 @@ export interface KnowledgeBaseSection<T> {
 export function groupKnowledgeBaseSections<T extends Record<string, unknown> & { id: string }>(
   rows: readonly T[],
   currentUserId: string | undefined,
+  options?: { tenantReadonly?: boolean },
 ): KnowledgeBaseSection<T>[] {
   const buckets: Record<KnowledgeBaseSection<T>['key'], T[]> = {
     pinned: [], mine: [], tenantOthers: [], sharedEditable: [], sharedReadonly: [],
@@ -242,10 +243,15 @@ export function groupKnowledgeBaseSections<T extends Record<string, unknown> & {
     else buckets.tenantOthers.push(row);
   }
   buckets.pinned.sort((a, b) => pinnedTime(b.pinned_at) - pinnedTime(a.pinned_at));
+  // Vue tenantSectionLabelKey (KnowledgeBaseList.vue:1083-1086): contributor/
+  // viewer lack write access to tenantOthers KBs, so their group header reads
+  // "仅查看"; admin/owner get the ownership-toned label instead.
   const labelKeys: Record<string, string> = {
     pinned: 'knowledgeList.sections.pinned',
     mine: 'knowledgeList.sections.mine',
-    tenantOthers: 'knowledgeList.sections.tenantOthers',
+    tenantOthers: options?.tenantReadonly === true
+      ? 'knowledgeList.sections.tenantReadonly'
+      : 'knowledgeList.sections.tenantOthers',
     sharedEditable: 'knowledgeList.sections.sharedEditable',
     sharedReadonly: 'knowledgeList.sections.sharedReadonly',
   };

@@ -290,8 +290,9 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
   // inline in the grid for every scope (pinned / mine / tenant / shared).
   const sections = useMemo(() => {
     if (pageState.status !== 'success' || isOrgScope(space)) return [];
-    return groupKnowledgeBaseSections(scopedCards, viewer.userId || undefined);
-  }, [pageState, scopedCards, space, viewer.userId]);
+    // Vue tenantSectionLabelKey: contributor/viewer read「本空间 · 仅查看」.
+    return groupKnowledgeBaseSections(scopedCards, viewer.userId || undefined, { tenantReadonly: !viewer.isAdmin });
+  }, [pageState, scopedCards, space, viewer.userId, viewer.isAdmin]);
 
   const rows = useMemo<KbListRow[]>(() => {
     if (sections.length === 0) return filtered.items.map((card) => ({ kind: 'card' as const, card }));
@@ -801,7 +802,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
                         aria-expanded={row.expanded}
                         onClick={() => toggleSection(row.key)}
                       >
-                        <KbIcon name={SECTION_ICONS[row.key] ?? 'user'} size={14} />
+                        <KbIcon name={row.key === 'tenantOthers' && !viewer.isAdmin ? 'browse' : SECTION_ICONS[row.key] ?? 'user'} size={14} />
                         <span>{t(row.labelKey)}</span>
                         <span className="kb-list-section-count">{row.count}</span>
                         <span className="kb-list-section-toggle" aria-hidden="true"><KbIcon name={row.expanded ? 'chevron-down' : 'chevron-right'} size={14} /></span>
