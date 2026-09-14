@@ -371,8 +371,8 @@ test('composer chip renders the real model name and the context spec span like V
     modelContext: '200K',
   }));
   // Vue model-selector-trigger: name span + compact ctx suffix (200K/1M).
-  assert.match(html, /wk-chat-model-name">mock-stream-model</);
-  assert.match(html, /wk-chat-model-ctx">200K</);
+  assert.match(html, /wk-chat-model-name[^>]*>mock-stream-model</);
+  assert.match(html, /wk-chat-model-ctx[^>]*>200K</);
   // The chip's accessible label carries the resolved model, not the placeholder.
   assert.match(html, /aria-label="mock-stream-model"/);
 });
@@ -385,7 +385,7 @@ test('composer chip marks a defaulted context window like the Vue is-default cla
     modelContext: '200K',
     modelContextIsDefault: true,
   }));
-  assert.match(html, /wk-chat-model-ctx is-default">200K</);
+  assert.match(html, /wk-chat-model-ctx is-default[^>]*>200K</);
 });
 
 test('composer chip without a resolved model keeps the localized placeholder fallback', () => {

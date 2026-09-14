@@ -13,6 +13,21 @@ import { hydrateMermaidBlocksWithBrowserDefaults } from './mermaid.ts';
 import { ArtifactPreview, artifactPreviewModel, type ArtifactPreviewPayload } from './artifact-preview.tsx';
 import { conversationTimeLabels, resolveChatCopy, resolveChatLocale, type ChatCopyTable } from './chat-copy.ts';
 
+/*
+ * chat.css → utilities (Tailwind migration). The wk-* classes stay as
+ * DOM/test anatomy hooks; conflicts with the legacy unlayered .wk-chat-*
+ * rules in apps/web/src/styles.css keep a small guard block in chat.css
+ * (utilities lose the @layer cascade) until the Orchestrator deletes it.
+ */
+/** .wk-chat-answer-toolbar button (+ :hover:not([aria-disabled]) / [aria-disabled]) */
+const ANSWER_TOOL_BUTTON = "inline-flex h-[30px] w-[30px] shrink-0 cursor-pointer items-center justify-center rounded-[8px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] transition-[background-color,color] duration-[150ms] ease-[ease] hover:not-[aria-disabled='true']:bg-[#f3f3f3] hover:not-[aria-disabled='true']:text-[rgba(0,0,0,0.9)] [aria-disabled='true']:cursor-default [aria-disabled='true']:opacity-55";
+/** .wk-chat-typing-dots i (+ nth-child delays via arbitrary animation-delay) */
+const TYPING_DOT = "h-[12px] w-[12px] rounded-full border-[1.5px] border-[#c5c5c5] border-t-[rgba(0,0,0,0.6)] bg-[#dcdcdc] opacity-85 animate-[wk-chat-typing-bounce_1.2s_infinite_ease-in-out] motion-reduce:animate-none motion-reduce:opacity-60";
+/** .wk-chat-message-row--user .wk-chat-message-bubble (Vue .user_msg pill) */
+const USER_BUBBLE = "ml-auto box-border w-max max-w-[min(76%,820px)] rounded-[8px] bg-[#f3f3f3] px-[12px] py-[8px] text-left text-[16px] leading-[1.6] text-[rgba(0,0,0,0.9)] whitespace-pre-wrap break-words [overflow-wrap:anywhere]";
+/** .wk-list li effective values (the styles.css rule wins the unlayered tie) */
+export const TOOL_LIST_ITEM = "flex items-baseline justify-between gap-[1rem] border-b border-[#edf0f5] py-[0.9rem]";
+
 export interface PendingChatMessage {
   content: string;
   status: 'pending' | 'failed';
@@ -81,7 +96,7 @@ function CopyAnswerButton({ copy: copyTable, message }: { copy: ChatCopyTable; m
       // Clipboard permission denied: the button simply stays in place.
     }
   }
-  return <button type="button" className={copied ? 'wk-chat-copy is-copied' : 'wk-chat-copy'} onClick={() => void copy()} aria-label={copied ? copyTable.copied : copyTable.copy} title={copied ? copyTable.copied : copyTable.copy}>
+  return <button type="button" className={`${ANSWER_TOOL_BUTTON}${copied ? ' wk-chat-copy is-copied text-[#07c05f]' : ' wk-chat-copy'}`} onClick={() => void copy()} aria-label={copied ? copyTable.copied : copyTable.copy} title={copied ? copyTable.copied : copyTable.copy}>
     <CopyIcon />
   </button>;
 }
@@ -96,7 +111,7 @@ function CopyIcon() {
 function BookmarkAnswerButton({ copy: copyTable }: { copy: ChatCopyTable }) {
   // Vue botmsg.vue adds the answer to the knowledge manual editor; the React
   // shell has no manual-editor surface yet, so the icon renders disabled.
-  return <button type="button" className="wk-chat-bookmark" aria-label={copyTable.addToKnowledgeBase} title={copyTable.addToKnowledgeBase} aria-disabled="true">
+  return <button type="button" className={`wk-chat-bookmark ${ANSWER_TOOL_BUTTON}`} aria-label={copyTable.addToKnowledgeBase} title={copyTable.addToKnowledgeBase} aria-disabled="true">
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M4 2.5h8a1 1 0 0 1 1 1V14l-5-2.6L3 14V3.5a1 1 0 0 1 1-1Z" />
       <path d="M8 5.5v4M6 7.5h4" />
@@ -107,7 +122,7 @@ function BookmarkAnswerButton({ copy: copyTable }: { copy: ChatCopyTable }) {
 function FallbackInfoButton({ copy: copyTable, message }: { copy: ChatCopyTable; message: ChatMessage }) {
   const fallback = (message as Record<string, unknown>).is_fallback === true;
   if (!fallback) return null;
-  return <button type="button" className="wk-chat-request-info" aria-label={copyTable.fallbackHint} title={copyTable.fallbackHint}>
+  return <button type="button" className={`wk-chat-request-info ${ANSWER_TOOL_BUTTON}`} aria-label={copyTable.fallbackHint} title={copyTable.fallbackHint}>
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" aria-hidden="true">
       <circle cx="8" cy="8" r="6.2" />
       <path d="M8 7.2v3.4" />
@@ -117,30 +132,30 @@ function FallbackInfoButton({ copy: copyTable, message }: { copy: ChatCopyTable;
 }
 
 function TypingIndicator({ copy: copyTable }: { copy: ChatCopyTable }) {
-  return <li className="wk-chat-typing" role="status" aria-label={copyTable.thinkingAlt}>
-    <span className="wk-chat-typing-dots" aria-hidden="true"><i /><i /><i /></span>
+  return <li className="wk-chat-typing m-0 flex min-h-[28px] list-none items-center border-b border-[#edf0f5] py-[0.8rem]" role="status" aria-label={copyTable.thinkingAlt}>
+    <span className="wk-chat-typing-dots inline-flex gap-[4px]" aria-hidden="true"><i className={TYPING_DOT} /><i className={`${TYPING_DOT} [animation-delay:150ms]`} /><i className={`${TYPING_DOT} [animation-delay:300ms]`} /></span>
   </li>;
 }
 
 function AssistantExtras(props: { copy: ChatCopyTable; message: ChatMessage }) {
   const extras = assistantMessageExtras(props.message);
   if (!extras.thinking && extras.toolCalls.length === 0) return null;
-  return <details className='wk-chat-message-extras'>
-    <summary>{props.copy.thinkingAndTools}</summary>
-    {extras.thinking ? <pre>{extras.thinking}</pre> : null}
-    {extras.toolCalls.length > 0 ? <ul className='wk-list'>{extras.toolCalls.map((call) => <li key={call.id}><strong>{call.name ?? call.id}</strong><small>{call.status}</small></li>)}</ul> : null}
+  return <details className='wk-chat-message-extras mt-[8px] rounded-[8px] border border-[#e7e7e7] text-[13px]'>
+    <summary className='cursor-pointer px-[10px] py-[6px] text-[rgba(0,0,0,0.6)]'>{props.copy.thinkingAndTools}</summary>
+    {extras.thinking ? <pre className='mx-[10px] mb-[8px] mt-0 max-h-[220px] overflow-auto whitespace-pre-wrap break-words rounded-[6px] bg-[#f9f9f9] p-[8px] text-[12px]'>{extras.thinking}</pre> : null}
+    {extras.toolCalls.length > 0 ? <ul className='wk-list m-0 list-none p-0'>{extras.toolCalls.map((call) => <li key={call.id} className={TOOL_LIST_ITEM}><strong>{call.name ?? call.id}</strong><small className='text-[rgba(0,0,0,0.4)]'>{call.status}</small></li>)}</ul> : null}
   </details>;
 }
 
 function ArtifactList({ copy: copyTable, message, onDownload, onPreview }: { copy: ChatCopyTable; message: ChatMessage; onDownload?: MessageListProps['onArtifactDownload']; onPreview?: (messageId: string, artifactIndex: number) => void | Promise<void> }) {
   const artifacts = messageArtifactItems(message);
   if (artifacts.length === 0) return null;
-  return <section className="wk-chat-artifacts" aria-label={copyTable.artifacts}>
-    <h3>{copyTable.artifacts}</h3>
-    <ul>{artifacts.map((artifact) => {
+  return <section className="wk-chat-artifacts mt-[0.7rem] border-t border-[#edf0f5] pt-[0.5rem]" aria-label={copyTable.artifacts}>
+    <h3 className="m-0 mb-[0.35rem] text-[0.85rem] text-[rgba(0,0,0,0.6)]">{copyTable.artifacts}</h3>
+    <ul className="m-0 flex list-none flex-wrap gap-[0.4rem] p-0">{artifacts.map((artifact) => {
       const expired = isArtifactExpired(artifact);
       const previewable = artifactPreviewModel(artifact).kind !== 'download-only';
-      return <li key={artifact.index}><span>{artifact.fileName}{artifact.version ? ` · v${artifact.version}` : ''}</span>{expired ? <small role="status">{copyTable.expired}</small> : <>{previewable && onPreview ? <button type="button" onClick={() => void onPreview(message.id, artifact.index)}>{copyTable.preview}</button> : null}{onDownload ? <button type="button" onClick={() => void onDownload(message.id, artifact.index)}>{copyTable.download}</button> : <small>{copyTable.available}</small>}</>}</li>;
+      return <li key={artifact.index} className="flex items-center gap-[0.4rem] text-[13px] text-[rgba(0,0,0,0.9)]"><span>{artifact.fileName}{artifact.version ? ` · v${artifact.version}` : ''}</span>{expired ? <small role="status" className="text-[#66758b]">{copyTable.expired}</small> : <>{previewable && onPreview ? <button type="button" className="cursor-pointer rounded-[5px] border border-[#b9d1f2] bg-white px-[0.45rem] py-[0.15rem] text-[12px] text-[#245a9b]" onClick={() => void onPreview(message.id, artifact.index)}>{copyTable.preview}</button> : null}{onDownload ? <button type="button" className="cursor-pointer rounded-[5px] border border-[#b9d1f2] bg-white px-[0.45rem] py-[0.15rem] text-[12px] text-[#245a9b]" onClick={() => void onDownload(message.id, artifact.index)}>{copyTable.download}</button> : <small className="text-[#66758b]">{copyTable.available}</small>}</>}</li>;
     })}</ul>
   </section>;
 }
@@ -228,19 +243,19 @@ export function MessageList({ copy, messages, pending, onRetry, loadingOlder = f
     }
   }
 
-  return <div ref={containerRef} className="wk-chat-message-scroll" onScroll={onScroll}>
-    {showScrollToBottom ? <button type="button" className="wk-chat-scroll-bottom" aria-label="Scroll to bottom" onClick={scrollToBottom}>↓</button> : null}
-    {hasMore ? <button type="button" className="wk-chat-load-older" disabled={loadingOlder} onClick={onLoadOlder}>{loadingOlder ? t.loadingHistory : t.loadOlder}</button> : null}
-    <ol className="wk-chat-messages" aria-label="Messages">
+  return <div ref={containerRef} className="wk-chat-message-scroll relative mx-auto min-h-0 w-full max-w-[960px] max-h-[62vh] max-[720px]:max-h-[55vh] flex-1 overflow-auto scroll-smooth p-[0.25rem] [scrollbar-width:auto]" onScroll={onScroll}>
+    {showScrollToBottom ? <button type="button" className="wk-chat-scroll-bottom sticky bottom-[12px] z-[10] mx-auto mt-[-48px] mb-[12px] block h-[36px] w-[36px] cursor-pointer rounded-full border border-[#e7e7e7] bg-white text-[rgba(0,0,0,0.6)] shadow-[0_2px_8px_rgba(0,0,0,0.1)]" aria-label="Scroll to bottom" onClick={scrollToBottom}>↓</button> : null}
+    {hasMore ? <button type="button" className="wk-chat-load-older mx-auto mb-[12px] block cursor-pointer rounded-[8px] border border-[#dcdcdc] bg-transparent px-[14px] py-[4px] text-[12px] text-[rgba(0,0,0,0.6)] disabled:cursor-not-allowed disabled:opacity-60" disabled={loadingOlder} onClick={onLoadOlder}>{loadingOlder ? t.loadingHistory : t.loadOlder}</button> : null}
+    <ol className="wk-chat-messages m-0 flex list-none flex-col gap-[16px] p-0" aria-label="Messages">
     {messages.map((message, index) => {
       const isAssistant = message.role === 'assistant';
       const showSeparator = shouldShowConversationTimestamp(messages, index);
       return <Fragment key={message.id}>
-        {showSeparator ? <li className="wk-chat-timestamp" role="separator">{formatConversationTimestampLabel(message.created_at, timestampLabels)}</li> : null}
-        <li data-role={message.role} className={isAssistant ? 'wk-chat-message-row wk-chat-message-row--assistant' : 'wk-chat-message-row wk-chat-message-row--user'}>
-        <div className="wk-chat-message-body">
-          {isAssistant ? <div className="wk-chat-message-content" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: renderMessageHtml(message) }} /> : <div className="wk-chat-message-bubble">{message.content}</div>}
-          {isAssistant ? <div className="wk-chat-answer-toolbar">
+        {showSeparator ? <li className="wk-chat-timestamp block list-none select-none border-b border-[#edf0f5] px-0 py-[0.8rem] text-center text-[12px] leading-[20px] text-[rgba(0,0,0,0.26)] tabular-nums" role="separator">{formatConversationTimestampLabel(message.created_at, timestampLabels)}</li> : null}
+        <li data-role={message.role} className={isAssistant ? 'wk-chat-message-row wk-chat-message-row--assistant flex w-full flex-col border-b border-[#edf0f5] py-[0.8rem]' : 'wk-chat-message-row wk-chat-message-row--user flex w-full flex-col border-b border-[#edf0f5] py-[0.8rem]'}>
+        <div className={isAssistant ? 'wk-chat-message-body flex min-w-0 max-w-full flex-col' : 'wk-chat-message-body flex min-w-0 max-w-full flex-col items-end'}>
+          {isAssistant ? <div className="wk-chat-message-content m-0 text-[16px] leading-[1.6] text-[rgba(0,0,0,0.9)] break-words [overflow-wrap:anywhere]" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: renderMessageHtml(message) }} /> : <div className={`wk-chat-message-bubble ${USER_BUBBLE}`}>{message.content}</div>}
+          {isAssistant ? <div className="wk-chat-answer-toolbar mt-[6px] ml-[-7px] flex min-h-[30px] items-center justify-start gap-[4px]">
             <CopyAnswerButton copy={t} message={message} />
             <BookmarkAnswerButton copy={t} />
             <FallbackInfoButton copy={t} message={message} />
@@ -251,21 +266,21 @@ export function MessageList({ copy, messages, pending, onRetry, loadingOlder = f
       </li>
       </Fragment>;
     })}
-    {pending ? <li data-role="user" data-status={pending.status} className="wk-chat-message-row wk-chat-message-row--user">
-      <div className="wk-chat-message-body">
-        <div className="wk-chat-message-bubble">
-          <p>{pending.content}</p>
-          {pending.status === 'pending' ? <p role="status" className="wk-chat-pending-state">{t.sending}</p> : <p role="alert" className="wk-chat-pending-state">{pending.error ?? t.sendFailed}</p>}
-          {pending.status === 'failed' && onRetry ? <button type="button" className="wk-chat-retry" onClick={onRetry}>{t.retry}</button> : null}
+    {pending ? <li data-role="user" data-status={pending.status} className="wk-chat-message-row wk-chat-message-row--user flex w-full flex-col border-b border-[#edf0f5] py-[0.8rem]">
+      <div className="wk-chat-message-body flex min-w-0 max-w-full flex-col items-end">
+        <div className={`wk-chat-message-bubble ${USER_BUBBLE}`}>
+          <p className="mt-[0.3rem] mb-0 [overflow-wrap:anywhere]">{pending.content}</p>
+          {pending.status === 'pending' ? <p role="status" className="wk-chat-pending-state mt-[0.3rem] mb-0 [overflow-wrap:anywhere] text-[12px] text-[rgba(0,0,0,0.4)]">{t.sending}</p> : <p role="alert" className="wk-chat-pending-state mt-[0.3rem] mb-0 [overflow-wrap:anywhere] text-[12px] text-[rgba(0,0,0,0.4)]">{pending.error ?? t.sendFailed}</p>}
+          {pending.status === 'failed' && onRetry ? <button type="button" className="wk-chat-retry mt-[4px] self-end cursor-pointer rounded-[6px] border border-[#dcdcdc] bg-transparent px-[10px] py-[2px] text-[12px] text-[rgba(0,0,0,0.6)]" onClick={onRetry}>{t.retry}</button> : null}
         </div>
       </div>
     </li> : null}
     {typingIndicator ? <TypingIndicator copy={t} /> : null}
     </ol>
     {preview ? <ArtifactPreview artifact={preview.artifact} payload={preview.payload} loading={preview.loading} error={preview.error} onClose={() => { previewRequestId.current += 1; setPreview(null); }} onDownload={onArtifactDownload ? () => void onArtifactDownload(preview.messageId, preview.artifact.index) : undefined} /> : null}
-    {suggestions?.status === 'ready' && suggestions.questions.length > 0 ? <section className="wk-chat-suggestions" aria-label={t.followUpQuestions}>
-      <div className="wk-chat-suggestions-heading"><h2>{t.followUpQuestions}</h2><div><button type="button" onClick={onRefreshSuggestions} disabled={!suggestions.allow_regenerate}>{t.suggestedRefresh}</button><button type="button" onClick={onDismissSuggestions}>{t.dismiss}</button></div></div>
-      <div className="wk-chat-suggestions-grid">{suggestions.questions.map((question) => <button type="button" key={question.id} onClick={() => onSuggestionClick?.(question.id, question.text)}>{question.text}{question.source === 'faq' ? <small>FAQ</small> : null}</button>)}</div>
+    {suggestions?.status === 'ready' && suggestions.questions.length > 0 ? <section className="wk-chat-suggestions mx-0 my-[1rem] w-full max-w-[960px] rounded-[8px] border border-[#dce3ed] p-[0.8rem]" aria-label={t.followUpQuestions}>
+      <div className="wk-chat-suggestions-heading flex items-center justify-between gap-[0.6rem]"><h2 className="mt-[0.35rem] mb-[0.35rem] text-[1rem] font-normal text-[rgba(0,0,0,0.4)]">{t.followUpQuestions}</h2><div><button type="button" className="cursor-pointer rounded-[6px] border border-[#dcdcdc] bg-transparent px-[10px] py-[2px] text-[12px] text-[rgba(0,0,0,0.6)]" onClick={onRefreshSuggestions} disabled={!suggestions.allow_regenerate}>{t.suggestedRefresh}</button><button type="button" className="cursor-pointer rounded-[6px] border border-[#dcdcdc] bg-transparent px-[10px] py-[2px] text-[12px] text-[rgba(0,0,0,0.6)]" onClick={onDismissSuggestions}>{t.dismiss}</button></div></div>
+      <div className="wk-chat-suggestions-grid mt-[8px] grid grid-cols-[repeat(auto-fit,minmax(12rem,1fr))] gap-[0.5rem]">{suggestions.questions.map((question) => <button type="button" key={question.id} className="cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap rounded-[6px] border border-[#dce3ed] bg-white p-[0.65rem] text-left text-[13px] leading-[1.5] text-[rgba(0,0,0,0.9)] shadow-[0_1px_2px_rgba(0,0,0,0.04)] hover:border-[rgba(0,0,0,0.1)] hover:shadow-[0_2px_6px_rgba(0,0,0,0.05)]" onClick={() => onSuggestionClick?.(question.id, question.text)}>{question.text}{question.source === 'faq' ? <small className="ml-[6px] mt-[0.25rem] block text-[#66758b]">FAQ</small> : null}</button>)}</div>
     </section> : null}
   </div>;
 }

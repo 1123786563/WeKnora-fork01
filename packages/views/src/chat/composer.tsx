@@ -49,9 +49,9 @@ export function ChatComposer({ draft, disabled = false, onDraftChange, onSubmit,
 
   const showStop = streaming && !draft.trim();
 
-  return <form className="wk-chat-composer" onSubmit={submit}>
-    <label className="wk-chat-visually-hidden" htmlFor="wk-chat-draft">{t.composerPlaceholder}</label>
-    <div className="wk-chat-input-shell">
+  return <form className="wk-chat-composer relative mx-auto w-full max-w-[960px] shrink-0" onSubmit={submit}>
+    <label className="wk-chat-visually-hidden absolute h-[1px] w-[1px] overflow-hidden whitespace-nowrap [clip:rect(0_0_0_0)] [clip-path:inset(50%)]" htmlFor="wk-chat-draft">{t.composerPlaceholder}</label>
+    <div className="wk-chat-input-shell w-full rounded-[12px] border border-[#dcdcdc] bg-white shadow-[0_2px_8px_rgba(0,0,0,0.04),0_8px_16px_-4px_rgba(0,0,0,0.06)] transition-[border-color] duration-[150ms] ease-[ease] focus-within:border-[#07c05f]">
       <textarea
         id="wk-chat-draft"
         value={draft}
@@ -59,42 +59,44 @@ export function ChatComposer({ draft, disabled = false, onDraftChange, onSubmit,
         disabled={disabled}
         rows={2}
         placeholder={t.composerPlaceholder}
+        className="block box-border w-full min-h-[48px] resize-none overflow-auto border-0 bg-transparent px-[14px] pt-[10px] pb-[2px] [font:inherit] text-[14px] leading-[1.6] text-[rgba(0,0,0,0.9)] outline-none placeholder:text-[rgba(0,0,0,0.26)] disabled:cursor-not-allowed disabled:bg-transparent disabled:text-[rgba(0,0,0,0.4)]"
       />
-      <div className="wk-chat-control-bar">
-        <div className="wk-chat-control-left">
-          {agents && onAgentChange ? <span className="wk-chat-agent-chip">
+      <div className="wk-chat-control-bar relative mx-[16px] mb-[12px] mt-0 flex flex-wrap items-center justify-between gap-[8px] pt-[8px]">
+        <div className="wk-chat-control-left flex min-w-0 flex-1 flex-wrap items-center gap-[8px]">
+          {agents && onAgentChange ? <span className="wk-chat-agent-chip relative inline-flex h-[28px] items-center rounded-[6px] border-[0.5px] border-[#e7e7e7] px-[8px] py-0">
             <select
               id="wk-chat-agent"
               aria-label={t.selectAgent}
               value={selectedAgentId ?? ''}
               onChange={(event) => onAgentChange(event.target.value)}
+              className="h-full w-full cursor-pointer appearance-none border-0 bg-transparent py-0 pl-[2px] pr-[14px] text-[13px] font-medium text-[rgba(0,0,0,0.6)] outline-none [&>option]:font-normal [&>option]:text-[rgba(0,0,0,0.9)]"
             >
               <option value="">{t.quickAnswer}</option>
               {agents.map((agent) => <option key={agent.id} value={agent.id} disabled={agent.disabled}>{agent.name}{agent.disabled ? ` · ${t.disabledAgentSuffix}` : ''}</option>)}
             </select>
-            <svg className="wk-chat-chip-arrow" width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8L9.5 4.5H2.5Z" /></svg>
+            <svg className="wk-chat-chip-arrow pointer-events-none absolute right-[8px] shrink-0 text-[rgba(0,0,0,0.26)]" width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8L9.5 4.5H2.5Z" /></svg>
           </span> : null}
-          <button type="button" className="wk-chat-control-icon" aria-label={t.uploadAttachment} disabled={disabled} title={t.uploadAttachment}>
+          <button type="button" className="wk-chat-control-icon flex h-[28px] w-[28px] shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] transition-[background,color] duration-[120ms] enabled:hover:bg-[#eee] enabled:hover:text-[rgba(0,0,0,0.9)] disabled:cursor-not-allowed disabled:opacity-50" aria-label={t.uploadAttachment} disabled={disabled} title={t.uploadAttachment}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
             </svg>
           </button>
-          <button type="button" className="wk-chat-control-icon" aria-label={t.mentionKnowledge} disabled={disabled} title={t.mentionKnowledge}>
+          <button type="button" className="wk-chat-control-icon flex h-[28px] w-[28px] shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] transition-[background,color] duration-[120ms] enabled:hover:bg-[#eee] enabled:hover:text-[rgba(0,0,0,0.9)] disabled:cursor-not-allowed disabled:opacity-50" aria-label={t.mentionKnowledge} disabled={disabled} title={t.mentionKnowledge}>
             <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
               <circle cx="10" cy="10" r="3.5" stroke="currentColor" strokeWidth="1.8" />
               <path d="M13.5 10V11.5C13.5 12.163 13.7634 12.7989 14.2322 13.2678C14.7011 13.7366 15.337 14 16 14C16.663 14 17.2989 13.7366 17.7678 13.2678C18.2366 12.7989 18.5 12.163 18.5 11.5V10C18.5 7.74566 17.6045 5.58365 16.0104 3.98959C14.4163 2.39553 12.2543 1.5 10 1.5C7.74566 1.5 5.58365 2.39553 3.98959 3.98959C2.39553 5.58365 1.5 7.74566 1.5 10C1.5 12.2543 2.39553 14.4163 3.98959 16.0104C5.58365 17.6045 7.74566 18.5 10 18.5H12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
         </div>
-        <div className="wk-chat-control-right">
-          <span className="wk-chat-model-chip" role="note" aria-label={modelLabel ?? t.modelChip} title={modelLabel ?? t.modelChip}>
-            <span className="wk-chat-model-name">{modelLabel ?? t.modelChip}</span>
-            {modelContext ? <span className={modelContextIsDefault ? 'wk-chat-model-ctx is-default' : 'wk-chat-model-ctx'}>{modelContext}</span> : null}
-            <svg className="wk-chat-chip-arrow" width="10" height="10" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8L9.5 4.5H2.5Z" /></svg>
+        <div className="wk-chat-control-right flex items-center gap-[8px]">
+          <span className="wk-chat-model-chip flex h-[22px] min-w-[100px] cursor-default items-center gap-[6px] rounded-[6px] border-[0.5px] border-[#e7e7e7] px-[8px] py-[2px]" role="note" aria-label={modelLabel ?? t.modelChip} title={modelLabel ?? t.modelChip}>
+            <span className="wk-chat-model-name min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[12px] font-medium text-[rgba(0,0,0,0.6)]">{modelLabel ?? t.modelChip}</span>
+            {modelContext ? <span className={modelContextIsDefault ? 'wk-chat-model-ctx is-default shrink-0 text-[11px] font-normal text-[rgba(0,0,0,0.45)] opacity-85' : 'wk-chat-model-ctx shrink-0 text-[11px] font-normal text-[rgba(0,0,0,0.45)]'}>{modelContext}</span> : null}
+            <svg className="wk-chat-chip-arrow static shrink-0 text-[rgba(0,0,0,0.26)]" width="10" height="10" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8L9.5 4.5H2.5Z" /></svg>
           </span>
-          {showStop && onStop ? <button type="button" className="wk-chat-stop wk-chat-send" aria-label={t.stopGeneration} title={t.stopGeneration} onClick={onStop}>
+          {showStop && onStop ? <button type="button" className="wk-chat-stop wk-chat-send flex h-[28px] w-[28px] shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-[#07c05f] p-0 text-[16px] leading-none text-white transition-[background-color,opacity] duration-[150ms] ease-[ease] enabled:hover:bg-[#08dd6e] disabled:cursor-not-allowed disabled:bg-[#8ce0af] focus-visible:outline-[2px] focus-visible:outline-[#07c05f] focus-visible:outline-offset-2" aria-label={t.stopGeneration} title={t.stopGeneration} onClick={onStop}>
             <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true"><rect x="2.5" y="2.5" width="9" height="9" rx="1.5" /></svg>
-          </button> : <button type="submit" className="wk-chat-send" disabled={disabled || !draft.trim()} aria-label={t.send} title={`${t.send} · Enter`}>
+          </button> : <button type="submit" className="wk-chat-send flex h-[28px] w-[28px] shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-[#07c05f] p-0 text-[16px] leading-none text-white transition-[background-color,opacity] duration-[150ms] ease-[ease] enabled:hover:bg-[#08dd6e] disabled:cursor-not-allowed disabled:bg-[#8ce0af] focus-visible:outline-[2px] focus-visible:outline-[#07c05f] focus-visible:outline-offset-2" disabled={disabled || !draft.trim()} aria-label={t.send} title={`${t.send} · Enter`}>
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 13V3" /><path d="M3.5 7.5L8 3l4.5 4.5" /></svg>
           </button>}
         </div>

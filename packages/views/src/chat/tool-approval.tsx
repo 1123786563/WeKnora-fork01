@@ -63,25 +63,29 @@ export function ToolApprovalCard({ approval, busy, onResolve }: ToolApprovalCard
     await onResolve(approval.pendingId, resolution.decision, resolution.modifiedArgs);
   }
 
-  return <div className="wk-chat-action-card wk-chat-approval-card">
-    <strong>Tool approval: {approval.toolName ?? 'unknown tool'}</strong>
-    {pending ? <div className="wk-chat-approval-editor">
-      <details className="wk-chat-approval-args" onToggle={() => setArgsError(null)}>
-        <summary className="wk-chat-approval-args-toggle">查看参数</summary>
+  /* chat.css → utilities: .wk-chat-approval-* card family; the wk-* classes
+     remain DOM/test hooks. The approval-scoped button family overrides the
+     base .wk-list-actions button recipe (which itself lives in utilities). */
+  const approvalButton = 'cursor-pointer rounded-[8px] border border-[#b9d1f2] bg-white px-[0.75rem] py-[0.3rem] text-[0.8rem] text-[#245a9b] transition-[background-color,color] duration-[150ms] ease-[ease] enabled:hover:bg-[#eef5ff] disabled:cursor-not-allowed disabled:opacity-55';
+  return <div className="wk-chat-action-card wk-chat-approval-card mb-[8px] flex flex-col gap-[6px] rounded-[8px] border border-[#e7e7e7] px-[10px] py-[8px]">
+    <strong className="text-[13px]">Tool approval: {approval.toolName ?? 'unknown tool'}</strong>
+    {pending ? <div className="wk-chat-approval-editor mt-[0.4rem] grid gap-[0.4rem]">
+      <details className="wk-chat-approval-args grid gap-[0.3rem]" onToggle={() => setArgsError(null)}>
+        <summary className="wk-chat-approval-args-toggle w-fit cursor-pointer rounded-[8px] border border-[#b9d1f2] bg-white px-[0.6rem] py-[0.25rem] text-[0.78rem] text-[#245a9b] transition-[background-color,color] duration-[150ms] ease-[ease] hover:bg-[#eef5ff]">查看参数</summary>
         <textarea
-          className="wk-chat-approval-args-input"
+          className="wk-chat-approval-args-input w-full resize-y rounded-[8px] border border-[#d8e0ea] bg-[#fbfcfe] px-[0.55rem] py-[0.45rem] [font-family:ui-monospace,SFMono-Regular,Menlo,monospace] text-[0.78rem] leading-[1.45] text-[#24313f] outline-none focus:border-[#245a9b]"
           rows={6}
           spellCheck={false}
           aria-label={`参数 ${approval.toolName ?? approval.pendingId}`}
           value={draft}
           onChange={(event) => { setDraft(event.target.value); setArgsError(null); }}
         />
-        {argsError ? <p role="alert" className="wk-chat-approval-error">{argsError}</p> : null}
+        {argsError ? <p role="alert" className="wk-chat-approval-error m-0 text-[0.75rem] text-[#b42318]">{argsError}</p> : null}
       </details>
-      <div className="wk-list-actions">
-        <button type="button" disabled={busy} onClick={() => void resolve('approve')}>同意</button>
-        <button type="button" disabled={busy} onClick={() => void resolve('reject')}>拒绝</button>
+      <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.4rem]">
+        <button type="button" disabled={busy} className={approvalButton} onClick={() => void resolve('approve')}>同意</button>
+        <button type="button" disabled={busy} className={approvalButton} onClick={() => void resolve('reject')}>拒绝</button>
       </div>
-    </div> : <small>{approval.decision ? `Resolved: ${approval.decision}` : 'Resolved'}</small>}
+    </div> : <small className="text-[rgba(0,0,0,0.4)]">{approval.decision ? `Resolved: ${approval.decision}` : 'Resolved'}</small>}
   </div>;
 }

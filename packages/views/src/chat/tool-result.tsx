@@ -564,20 +564,37 @@ export function planView(data: unknown): PlanViewModel {
 
 /* ---------------- */
 
+/*
+ * chat.css → utilities (Tailwind migration): the typed tool-result
+ * renderers carry their recipes inline; the wk-tool-* classes stay as
+ * DOM/test hooks. State classes (is-error / is-ok / is-failed /
+ * is-stderr / is-in_progress / is-completed) keep their names and map
+ * to conditional utilities below.
+ */
+const MONO = "[font-family:ui-monospace,SFMono-Regular,Menlo,monospace]";
+/** .wk-tool-search/web/grep-results list + li recipe (shared). */
+const TOOL_RESULT_LIST = "m-0 flex max-h-[14rem] list-none flex-col gap-[0.5rem] overflow-y-auto p-0";
+const TOOL_RESULT_ITEM = "flex flex-col gap-[0.15rem] border-l-2 border-l-[#edf0f5] pl-[0.5rem]";
+/** .wk-tool-card (shared info-card recipe). */
+const TOOL_CARD = "flex flex-col gap-[0.3rem] rounded-[6px] border border-[#e3e8ef] px-[0.7rem] py-[0.5rem]";
+const TOOL_ROW_TITLE = "text-[0.8rem] font-semibold text-[#1f2d3d] break-words";
+const TOOL_ROW_META = "text-[#8a94a6] text-[0.7rem]";
+const TOOL_SNIPPET = "m-0 text-[#4a5568] text-[0.75rem] leading-[1.45] break-words";
+
 function EmptyState({ label }: { label: string }) {
-  return <p className="wk-tool-empty">{label}</p>;
+  return <p className="wk-tool-empty m-0 text-[0.78rem] italic text-[#66758b]">{label}</p>;
 }
 
 export function SearchResultsRenderer({ data }: { data: unknown }) {
   const view = searchResultsView(data);
   if (!view.rows.length) return <EmptyState label={LABELS.noResults} />;
   return (
-    <ul className="wk-tool-search-results">
+    <ul className={"wk-tool-search-results " + TOOL_RESULT_LIST}>
       {view.rows.map((row) => (
-        <li key={row.key}>
-          <div className="wk-tool-row-title">{row.title}</div>
-          <div className="wk-tool-row-meta">{row.meta}</div>
-          {row.snippets.map((snippet, i) => <p key={i} className="wk-tool-snippet">{snippet}</p>)}
+        <li key={row.key} className={TOOL_RESULT_ITEM}>
+          <div className={"wk-tool-row-title " + TOOL_ROW_TITLE}>{row.title}</div>
+          <div className={"wk-tool-row-meta " + TOOL_ROW_META}>{row.meta}</div>
+          {row.snippets.map((snippet, i) => <p key={i} className={"wk-tool-snippet " + TOOL_SNIPPET}>{snippet}</p>)}
         </li>
       ))}
     </ul>
@@ -588,17 +605,17 @@ export function WebSearchResultsRenderer({ data }: { data: unknown }) {
   const view = webSearchResultsView(data);
   if (!view.rows.length) return <EmptyState label={LABELS.noResults} />;
   return (
-    <ul className="wk-tool-web-results">
+    <ul className={"wk-tool-web-results " + TOOL_RESULT_LIST}>
       {view.rows.map((row) => (
-        <li key={`${row.index}-${row.url}`}>
-          <div className="wk-tool-row-title">
-            <span className="wk-tool-row-index">#{row.index}</span>
+        <li key={`${row.index}-${row.url}`} className={TOOL_RESULT_ITEM}>
+          <div className={"wk-tool-row-title " + TOOL_ROW_TITLE}>
+            <span className="wk-tool-row-index mr-[0.35rem] text-[0.7rem] font-semibold text-[#8a94a6]">#{row.index}</span>
             {row.url
-              ? <a href={row.url} target="_blank" rel="noopener noreferrer">{row.title}</a>
+              ? <a href={row.url} target="_blank" rel="noopener noreferrer" className="text-[#245a9b]">{row.title}</a>
               : row.title}
           </div>
-          {row.snippet ? <p className="wk-tool-snippet">{row.snippet}</p> : null}
-          {row.meta ? <div className="wk-tool-row-meta">{row.meta}</div> : null}
+          {row.snippet ? <p className={"wk-tool-snippet " + TOOL_SNIPPET}>{row.snippet}</p> : null}
+          {row.meta ? <div className={"wk-tool-row-meta " + TOOL_ROW_META}>{row.meta}</div> : null}
         </li>
       ))}
     </ul>
@@ -609,11 +626,11 @@ export function DatabaseQueryRenderer({ data }: { data: unknown }) {
   const view = databaseQueryView(data);
   if (!view.rows.length) return <EmptyState label={LABELS.noRecords} />;
   return (
-    <div className="wk-tool-table-wrap">
-      <table className="wk-tool-table">
-        <thead><tr>{view.columns.map((c) => <th key={c}>{c}</th>)}</tr></thead>
+    <div className="wk-tool-table-wrap overflow-x-auto rounded-[6px] border border-[#e3e8ef]">
+      <table className="wk-tool-table w-full border-collapse text-[0.75rem]">
+        <thead><tr>{view.columns.map((c) => <th key={c} className="whitespace-nowrap border-b-2 border-b-[#e3e8ef] bg-[#f6f8fa] px-[0.6rem] py-[0.4rem] text-left font-semibold">{c}</th>)}</tr></thead>
         <tbody>
-          {view.rows.map((cells, i) => <tr key={i}>{cells.map((cell, j) => <td key={j}>{cell}</td>)}</tr>)}
+          {view.rows.map((cells, i) => <tr key={i}>{cells.map((cell, j) => <td key={j} className={i === view.rows.length - 1 ? "max-w-[24rem] overflow-hidden px-[0.6rem] py-[0.4rem] align-top text-ellipsis" : "max-w-[24rem] overflow-hidden border-b border-b-[#edf0f5] px-[0.6rem] py-[0.4rem] align-top text-ellipsis"}>{cell}</td>)}</tr>)}
         </tbody>
       </table>
     </div>
@@ -624,12 +641,12 @@ export function GrepResultsRenderer({ data }: { data: unknown }) {
   const view = grepResultsView(data);
   if (!view.rows.length) return <EmptyState label={LABELS.noMatches} />;
   return (
-    <ul className="wk-tool-grep-results">
+    <ul className={"wk-tool-grep-results " + TOOL_RESULT_LIST}>
       {view.rows.map((row) => (
-        <li key={row.key}>
-          <div className="wk-tool-row-title">{row.title}</div>
-          {row.meta ? <div className="wk-tool-row-meta">{row.meta}</div> : null}
-          {row.snippet ? <pre className="wk-tool-snippet-line">{row.snippet}</pre> : null}
+        <li key={row.key} className={TOOL_RESULT_ITEM}>
+          <div className={"wk-tool-row-title " + TOOL_ROW_TITLE}>{row.title}</div>
+          {row.meta ? <div className={"wk-tool-row-meta " + TOOL_ROW_META}>{row.meta}</div> : null}
+          {row.snippet ? <pre className={"wk-tool-snippet-line m-0 rounded-[4px] bg-[#f6f8fa] px-[0.5rem] py-[0.25rem] text-[0.72rem] text-[#24292f] whitespace-pre-wrap break-words " + MONO}>{row.snippet}</pre> : null}
         </li>
       ))}
     </ul>
@@ -639,28 +656,28 @@ export function GrepResultsRenderer({ data }: { data: unknown }) {
 export function ShellExecRenderer({ data, args, output }: { data: unknown; args?: unknown; output?: unknown }) {
   const view = shellExecView(data, args, output);
   return (
-    <div className="wk-tool-shell">
-      {view.command ? <pre className="wk-tool-shell-command"><span aria-hidden="true">$ </span>{view.command}</pre> : null}
+    <div className="wk-tool-shell flex flex-col gap-[0.4rem]">
+      {view.command ? <pre className={"wk-tool-shell-command m-0 rounded-[6px] bg-[#1f2430] px-[0.7rem] py-[0.5rem] text-[0.75rem] text-[#9ecbff] whitespace-pre-wrap break-words " + MONO}><span aria-hidden="true">$ </span>{view.command}</pre> : null}
       {view.workDir || view.exitCode !== null || view.durationLabel || view.killed || view.truncated ? (
-        <div className="wk-tool-shell-meta">
+        <div className="wk-tool-shell-meta flex flex-wrap gap-x-[0.75rem] gap-y-[0.15rem] text-[0.72rem] text-[#8a94a6]">
           {view.workDir ? <span>{LABELS.workDir}: {view.workDir}</span> : null}
-          {view.exitCode !== null ? <span className={view.exitCode !== 0 ? 'is-error' : undefined}>{LABELS.exitCode}: {view.exitCode}</span> : null}
+          {view.exitCode !== null ? <span className={view.exitCode !== 0 ? 'is-error text-[#c0392b] font-semibold' : undefined}>{LABELS.exitCode}: {view.exitCode}</span> : null}
           {view.durationLabel ? <span>{view.durationLabel}</span> : null}
           {view.killed ? <span>{LABELS.killed}</span> : null}
           {view.truncated ? <span>{LABELS.truncated}</span> : null}
         </div>
       ) : null}
-      {view.stdoutBinary || view.stderrBinary ? <p className="wk-tool-empty">{LABELS.binarySuppressed}</p> : null}
+      {view.stdoutBinary || view.stderrBinary ? <EmptyState label={LABELS.binarySuppressed} /> : null}
       {view.stdout ? (
-        <div className="wk-tool-shell-stream">
-          <div className="wk-tool-shell-stream-label">{LABELS.stdout}</div>
-          <pre>{view.stdout}</pre>
+        <div className="wk-tool-shell-stream overflow-hidden rounded-[6px] border border-[#e3e8ef]">
+          <div className="wk-tool-shell-stream-label border-b border-b-[#e3e8ef] bg-[#f6f8fa] px-[0.6rem] py-[0.25rem] text-[0.7rem] font-semibold text-[#52606d]">{LABELS.stdout}</div>
+          <pre className={"m-0 max-h-[16rem] overflow-auto bg-white px-[0.7rem] py-[0.5rem] text-[0.72rem] leading-[1.5] text-[#24292f] whitespace-pre-wrap break-words " + MONO}>{view.stdout}</pre>
         </div>
       ) : null}
       {view.stderr ? (
-        <div className="wk-tool-shell-stream is-stderr">
-          <div className="wk-tool-shell-stream-label">{LABELS.stderr}</div>
-          <pre>{view.stderr}</pre>
+        <div className="wk-tool-shell-stream is-stderr overflow-hidden rounded-[6px] border border-[#e3e8ef]">
+          <div className="wk-tool-shell-stream-label border-b border-b-[#e3e8ef] bg-[#f6f8fa] px-[0.6rem] py-[0.25rem] text-[0.7rem] font-semibold text-[#c0392b]">{LABELS.stderr}</div>
+          <pre className={"m-0 max-h-[16rem] overflow-auto bg-white px-[0.7rem] py-[0.5rem] text-[0.72rem] leading-[1.5] text-[#24292f] whitespace-pre-wrap break-words " + MONO}>{view.stderr}</pre>
         </div>
       ) : null}
       {view.empty ? <EmptyState label={LABELS.emptyOutput} /> : null}
@@ -669,22 +686,26 @@ export function ShellExecRenderer({ data, args, output }: { data: unknown; args?
 }
 
 function InfoField({ label, children }: { label: string; children: React.ReactNode }) {
-  return <div className="wk-tool-info-field"><span className="wk-tool-info-label">{label}</span><span className="wk-tool-info-value">{children}</span></div>;
+  return <div className="wk-tool-info-field flex gap-[0.6rem] text-[0.75rem] leading-[1.5]"><span className="wk-tool-info-label min-w-[6rem] shrink-0 text-[#52606d] font-medium">{label}</span><span className="wk-tool-info-value min-w-0 flex-1 text-[#24292f] break-words">{children}</span></div>;
+}
+/** .wk-tool-info-value code */
+function InfoCode({ children }: { children: React.ReactNode }) {
+  return <code className={"rounded-[3px] bg-[#f1f5f9] px-[0.3rem] py-[0.1rem] text-[0.7rem] " + MONO}>{children}</code>;
 }
 
 export function ChunkDetailRenderer({ data }: { data: unknown }) {
   const view = chunkDetailView(data);
   if (!view.chunkId && !view.knowledgeId && !view.content) return <EmptyState label={LABELS.noRecords} />;
   return (
-    <div className="wk-tool-chunk-detail">
-      {view.chunkId ? <InfoField label="Chunk ID"><code>{view.chunkId}</code></InfoField> : null}
-      {view.knowledgeId ? <InfoField label="Document ID"><code>{view.knowledgeId}</code></InfoField> : null}
+    <div className="wk-tool-chunk-detail flex flex-col gap-[0.3rem]">
+      {view.chunkId ? <InfoField label="Chunk ID"><InfoCode>{view.chunkId}</InfoCode></InfoField> : null}
+      {view.knowledgeId ? <InfoField label="Document ID"><InfoCode>{view.knowledgeId}</InfoCode></InfoField> : null}
       {view.chunkIndexLabel ? <InfoField label="Position">{view.chunkIndexLabel}</InfoField> : null}
       {view.contentLength !== null ? <InfoField label="Content length">{view.contentLength} chars</InfoField> : null}
       {view.content ? (
-        <div className="wk-tool-section">
-          <div className="wk-tool-section-title">Full content</div>
-          <div className="wk-tool-full-content">{view.content}</div>
+        <div className="wk-tool-section mt-[0.4rem]">
+          <div className="wk-tool-section-title mb-[0.2rem] text-[0.72rem] font-semibold text-[#52606d]">Full content</div>
+          <div className="wk-tool-full-content whitespace-pre-wrap break-words text-[0.75rem] leading-[1.55] text-[#24292f]">{view.content}</div>
         </div>
       ) : null}
     </div>
@@ -695,15 +716,15 @@ export function RelatedChunksRenderer({ data }: { data: unknown }) {
   const view = relatedChunksView(data);
   if (!view.rows.length) return <EmptyState label={LABELS.noResults} />;
   return (
-    <ul className="wk-tool-related-chunks">
+    <ul className="wk-tool-related-chunks m-0 flex list-none flex-col gap-[0.4rem] p-0">
       {view.rows.map((row) => (
-        <li key={row.key}>
-          <div className="wk-tool-row-title">
-            <span className="wk-tool-row-index">{row.indexLabel}</span>
-            {row.positionLabel ? <span className="wk-tool-row-meta">{row.positionLabel}</span> : null}
-            {row.score !== null ? <span className="wk-tool-row-meta">score {row.score.toFixed(3)}</span> : null}
+        <li key={row.key} className={TOOL_RESULT_ITEM}>
+          <div className={"wk-tool-row-title " + TOOL_ROW_TITLE}>
+            <span className="wk-tool-row-index mr-[0.35rem] text-[0.7rem] font-semibold text-[#8a94a6]">{row.indexLabel}</span>
+            {row.positionLabel ? <span className={"wk-tool-row-meta " + TOOL_ROW_META}>{row.positionLabel}</span> : null}
+            {row.score !== null ? <span className={"wk-tool-row-meta " + TOOL_ROW_META}>score {row.score.toFixed(3)}</span> : null}
           </div>
-          {row.content ? <p className="wk-tool-snippet">{row.content}</p> : null}
+          {row.content ? <p className={"wk-tool-snippet " + TOOL_SNIPPET}>{row.content}</p> : null}
         </li>
       ))}
     </ul>
@@ -715,16 +736,16 @@ export function KnowledgeBaseListRenderer({ data }: { data: unknown }) {
   if (!view.rows.length) return <EmptyState label={LABELS.noResults} />;
   return (
     <div className="wk-tool-kb-list">
-      <div className="wk-tool-section-title">{view.count} knowledge base{view.count === 1 ? '' : 's'}</div>
-      <ul className="wk-tool-kb-cards">
+      <div className="wk-tool-section-title mb-[0.2rem] text-[0.72rem] font-semibold text-[#52606d]">{view.count} knowledge base{view.count === 1 ? '' : 's'}</div>
+      <ul className="wk-tool-kb-cards m-0 mt-[0.3rem] flex list-none flex-col gap-[0.4rem] p-0">
         {view.rows.map((row) => (
-          <li key={row.key} className="wk-tool-card">
-            <div className="wk-tool-row-title">
-              <span className="wk-tool-row-index">{row.indexLabel}</span>
+          <li key={row.key} className={"wk-tool-card " + TOOL_CARD}>
+            <div className={"wk-tool-row-title " + TOOL_ROW_TITLE}>
+              <span className="wk-tool-row-index mr-[0.35rem] text-[0.7rem] font-semibold text-[#8a94a6]">{row.indexLabel}</span>
               {row.name}
             </div>
-            {row.id ? <div className="wk-tool-info-field"><span className="wk-tool-info-label">ID</span><span className="wk-tool-info-value"><code>{row.id}</code></span></div> : null}
-            {row.description ? <p className="wk-tool-snippet">{row.description}</p> : null}
+            {row.id ? <div className="wk-tool-info-field flex gap-[0.6rem] text-[0.75rem] leading-[1.5]"><span className="wk-tool-info-label min-w-[6rem] shrink-0 text-[#52606d] font-medium">ID</span><span className="wk-tool-info-value min-w-0 flex-1 text-[#24292f] break-words"><InfoCode>{row.id}</InfoCode></span></div> : null}
+            {row.description ? <p className={"wk-tool-snippet " + TOOL_SNIPPET}>{row.description}</p> : null}
           </li>
         ))}
       </ul>
@@ -736,29 +757,29 @@ export function DocumentInfoRenderer({ data }: { data: unknown }) {
   const view = documentInfoView(data);
   if (!view.rows.length) return <EmptyState label={LABELS.noResults} />;
   return (
-    <ul className="wk-tool-doc-list">
+    <ul className="wk-tool-doc-list m-0 flex list-none flex-col gap-[0.4rem] p-0">
       {view.rows.map((row) => (
-        <li key={row.key} className="wk-tool-card">
-          <div className="wk-tool-row-title">
-            <span className="wk-tool-row-index">{row.indexLabel}</span>
+        <li key={row.key} className={"wk-tool-card " + TOOL_CARD}>
+          <div className={"wk-tool-row-title " + TOOL_ROW_TITLE}>
+            <span className="wk-tool-row-index mr-[0.35rem] text-[0.7rem] font-semibold text-[#8a94a6]">{row.indexLabel}</span>
             {row.title}
-            {row.chunkCount !== null ? <span className="wk-tool-row-meta">{row.chunkCount} chunks</span> : null}
+            {row.chunkCount !== null ? <span className={"wk-tool-row-meta " + TOOL_ROW_META}>{row.chunkCount} chunks</span> : null}
           </div>
-          {row.faqId ? <InfoField label="FAQ ID"><code>{row.faqId}</code></InfoField> : null}
-          {row.knowledgeId ? <InfoField label="Document ID"><code>{row.knowledgeId}</code></InfoField> : null}
+          {row.faqId ? <InfoField label="FAQ ID"><InfoCode>{row.faqId}</InfoCode></InfoField> : null}
+          {row.knowledgeId ? <InfoField label="Document ID"><InfoCode>{row.knowledgeId}</InfoCode></InfoField> : null}
           {row.faqAnswers.length ? (
             <InfoField label="Answers">
-              <ul className="wk-tool-faq-answers">{row.faqAnswers.map((answer, i) => <li key={i}>{answer}</li>)}</ul>
+              <ul className="wk-tool-faq-answers m-0 flex list-none flex-col gap-[0.15rem] p-0">{row.faqAnswers.map((answer, i) => <li key={i}>{answer}</li>)}</ul>
             </InfoField>
           ) : null}
           {row.description ? <InfoField label="Description">{row.description}</InfoField> : null}
           {row.sourceLabel ? <InfoField label="Source">{row.sourceLabel}</InfoField> : null}
           {row.fileLabel ? <InfoField label="File">{row.fileLabel}</InfoField> : null}
           {row.metadata.length ? (
-            <div className="wk-tool-section">
-              <div className="wk-tool-section-title">Metadata</div>
-              <ul className="wk-tool-metadata-list">
-                {row.metadata.map((entry) => <li key={entry.key}><span className="wk-tool-metadata-key">{entry.key}:</span> {entry.value}</li>)}
+            <div className="wk-tool-section mt-[0.4rem]">
+              <div className="wk-tool-section-title mb-[0.2rem] text-[0.72rem] font-semibold text-[#52606d]">Metadata</div>
+              <ul className="wk-tool-metadata-list m-0 flex list-none flex-col gap-[0.1rem] p-0 text-[0.7rem] text-[#52606d]">
+                {row.metadata.map((entry) => <li key={entry.key}><span className="wk-tool-metadata-key font-semibold">{entry.key}:</span> {entry.value}</li>)}
               </ul>
             </div>
           ) : null}
@@ -772,33 +793,33 @@ export function WebFetchRenderer({ data }: { data: unknown }) {
   const view = webFetchView(data);
   if (!view.rows.length) return <EmptyState label={LABELS.noResults} />;
   return (
-    <ul className="wk-tool-web-fetch">
+    <ul className="wk-tool-web-fetch m-0 flex list-none flex-col gap-[0.4rem] p-0">
       {view.rows.map((row) => (
-        <li key={row.key} className="wk-tool-card">
-          <div className="wk-tool-row-title">
-            <span className="wk-tool-row-index">{row.indexLabel}</span>
+        <li key={row.key} className={"wk-tool-card " + TOOL_CARD}>
+          <div className={"wk-tool-row-title " + TOOL_ROW_TITLE}>
+            <span className="wk-tool-row-index mr-[0.35rem] text-[0.7rem] font-semibold text-[#8a94a6]">{row.indexLabel}</span>
             {row.url
-              ? <a href={row.url} target="_blank" rel="noopener noreferrer">{row.hostname || row.url}</a>
+              ? <a href={row.url} target="_blank" rel="noopener noreferrer" className="text-[#245a9b]">{row.hostname || row.url}</a>
               : <span>Unknown link</span>}
-            {row.status ? <span className={`wk-tool-status-pill is-${row.statusKind}`}>{row.status}</span> : null}
-            {row.method ? <span className="wk-tool-status-pill">{row.method}</span> : null}
-            {row.contentLengthLabel ? <span className="wk-tool-row-meta">{row.contentLengthLabel}</span> : null}
-            {row.truncated ? <span className="wk-tool-row-meta">truncated</span> : null}
+            {row.status ? <span className={`wk-tool-status-pill is-${row.statusKind} whitespace-nowrap rounded-[10px] border px-[0.45rem] py-0 text-[0.68rem] leading-[1.5] ${row.statusKind === 'ok' ? 'border-[rgba(7,192,95,0.35)] text-[#0a7d33]' : row.statusKind === 'failed' ? 'border-[rgba(192,57,43,0.35)] text-[#c0392b]' : 'border-[#e3e8ef] text-[#52606d]'}`}>{row.status}</span> : null}
+            {row.method ? <span className="wk-tool-status-pill whitespace-nowrap rounded-[10px] border border-[#e3e8ef] px-[0.45rem] py-0 text-[0.68rem] leading-[1.5] text-[#52606d]">{row.method}</span> : null}
+            {row.contentLengthLabel ? <span className={"wk-tool-row-meta " + TOOL_ROW_META}>{row.contentLengthLabel}</span> : null}
+            {row.truncated ? <span className={"wk-tool-row-meta " + TOOL_ROW_META}>truncated</span> : null}
           </div>
-          {row.url ? <InfoField label="URL"><a href={row.url} target="_blank" rel="noopener noreferrer">{row.url}</a></InfoField> : null}
+          {row.url ? <InfoField label="URL"><a href={row.url} target="_blank" rel="noopener noreferrer" className="text-[#245a9b]">{row.url}</a></InfoField> : null}
           {row.errorCode ? <InfoField label="Error code">{row.errorCode}</InfoField> : null}
-          {row.errorMessage ? <p className="wk-tool-snippet is-error">{row.errorMessage}</p> : null}
+          {row.errorMessage ? <p className={"wk-tool-snippet is-error text-[#c0392b]"}>{row.errorMessage}</p> : null}
           {row.summary ? (
-            <div className="wk-tool-section">
-              <div className="wk-tool-section-title">Summary</div>
-              <div className="wk-tool-full-content">{row.summary}</div>
+            <div className="wk-tool-section mt-[0.4rem]">
+              <div className="wk-tool-section-title mb-[0.2rem] text-[0.72rem] font-semibold text-[#52606d]">Summary</div>
+              <div className="wk-tool-full-content whitespace-pre-wrap break-words text-[0.75rem] leading-[1.55] text-[#24292f]">{row.summary}</div>
             </div>
           ) : null}
-          {row.summaryFailed ? <div className="wk-tool-section-title is-error">Summary generation failed</div> : null}
+          {row.summaryFailed ? <div className="wk-tool-section-title is-error mb-[0.2rem] text-[0.72rem] font-semibold text-[#c0392b]">Summary generation failed</div> : null}
           {row.rawContent ? (
-            <div className="wk-tool-section">
-              <div className="wk-tool-section-title">Raw text{row.contentLengthLabel ? ` (${row.contentLengthLabel})` : ''}</div>
-              <pre className="wk-tool-raw-content">{row.rawContent}</pre>
+            <div className="wk-tool-section mt-[0.4rem]">
+              <div className="wk-tool-section-title mb-[0.2rem] text-[0.72rem] font-semibold text-[#52606d]">Raw text{row.contentLengthLabel ? ` (${row.contentLengthLabel})` : ''}</div>
+              <pre className={"wk-tool-raw-content m-0 mt-[0.2rem] max-h-[12rem] overflow-auto rounded-[6px] border border-[#e3e8ef] bg-[#f6f8fa] px-[0.6rem] py-[0.4rem] text-[0.7rem] leading-[1.5] whitespace-pre-wrap break-words " + MONO}>{row.rawContent}</pre>
             </div>
           ) : null}
         </li>
@@ -810,7 +831,7 @@ export function WebFetchRenderer({ data }: { data: unknown }) {
 export function ThinkingRenderer({ data, output }: { data: unknown; output?: unknown }) {
   const thought = thinkingView(data, output);
   if (!thought) return <EmptyState label={LABELS.emptyOutput} />;
-  return <div className="wk-tool-thinking wk-tool-full-content">{thought}</div>;
+  return <div className="wk-tool-thinking wk-tool-full-content whitespace-pre-wrap break-words text-[0.75rem] leading-[1.55] text-[#52606d]">{thought}</div>;
 }
 
 const PLAN_STATUS_ICONS: Readonly<Record<PlanStepRow['status'], string>> = Object.freeze({
@@ -825,12 +846,12 @@ export function PlanRenderer({ data }: { data: unknown }) {
   if (!view.steps.length) return <EmptyState label={LABELS.noRecords} />;
   return (
     <div className="wk-tool-plan">
-      {view.task ? <div className="wk-tool-section-title">{view.task}</div> : null}
-      <ul className="wk-tool-plan-steps">
+      {view.task ? <div className="wk-tool-section-title mb-[0.2rem] text-[0.72rem] font-semibold text-[#52606d]">{view.task}</div> : null}
+      <ul className="wk-tool-plan-steps m-0 mt-[0.3rem] flex list-none flex-col gap-[0.15rem] p-0">
         {view.steps.map((step) => (
-          <li key={step.id} className={`wk-tool-plan-step is-${step.status}`}>
-            <span className="wk-tool-plan-icon" aria-hidden="true">{PLAN_STATUS_ICONS[step.status]}</span>
-            <span className="wk-tool-plan-description">{step.description}</span>
+          <li key={step.id} className={`wk-tool-plan-step is-${step.status} flex items-start gap-[0.4rem] text-[0.75rem] leading-[1.5] text-[#52606d] ${step.status === 'in_progress' ? 'font-medium text-[#24292f]' : ''}`}>
+            <span className={`wk-tool-plan-icon w-[1rem] shrink-0 text-center ${step.status === 'completed' || step.status === 'in_progress' ? 'text-[#2563eb]' : ''}`} aria-hidden="true">{PLAN_STATUS_ICONS[step.status]}</span>
+            <span className={`wk-tool-plan-description ${step.status === 'completed' ? 'text-[#9aa5b1] line-through' : ''}`}>{step.description}</span>
           </li>
         ))}
       </ul>

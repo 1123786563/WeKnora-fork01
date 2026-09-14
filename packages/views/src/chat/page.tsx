@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChatMessage, ChatSession, MessageSuggestionSet } from '@weknora/contracts';
 import { shouldShowTypingIndicator } from '@weknora/domain/chat/session-state';
 import { ChatComposer, type ChatSubmission } from './composer.tsx';
-import { MessageList, type PendingChatMessage } from './message-list.tsx';
+import { MessageList, TOOL_LIST_ITEM, type PendingChatMessage } from './message-list.tsx';
 import { SessionSidebar } from './session-sidebar.tsx';
 import { ReferenceList } from './reference-list.tsx';
 import { ToolResultView } from './tool-result.tsx';
@@ -139,11 +139,11 @@ export function messageReferenceValues(messages: readonly ChatMessage[]): unknow
 
 function LiveResponse({ copy, stream, onStopStream }: { copy: ChatCopyTable; stream: ChatStreamPresentation; onStopStream?: () => void }) {
   if (stream.phase !== 'streaming' && !stream.thinking && stream.toolCalls.length === 0) return null;
-  return <section aria-label="Live response" className="wk-chat-live-response">
-    <p role="status">{copy.streamStatus}: {stream.phase}</p>
-    {stream.phase === 'streaming' && stream.artifactsPending ? <p role="status" className="wk-chat-artifacts-pending">{copy.artifactsPending}</p> : null}
-    {stream.phase === 'streaming' && stream.thinking ? <details open><summary>{copy.thinkingAlt}</summary><p>{stream.thinking}</p></details> : null}
-    {stream.toolCalls.length > 0 ? <div><h2>Tool calls</h2><ul className="wk-list">{stream.toolCalls.map((tool) => <li key={tool.id}><strong>{tool.name ?? tool.id}</strong><small>{tool.status}</small>{tool.result === undefined ? null : <ToolResultView toolCall={tool} />}</li>)}</ul></div> : null}
+  return <section aria-label="Live response" className="wk-chat-live-response mx-auto mb-[12px] w-full max-w-[960px] rounded-[8px] border border-[#e7e7e7] px-[12px] py-[8px] text-[13px]">
+    <p role="status" className="mt-0 mb-[6px] text-[rgba(0,0,0,0.6)]">{copy.streamStatus}: {stream.phase}</p>
+    {stream.phase === 'streaming' && stream.artifactsPending ? <p role="status" className="wk-chat-artifacts-pending mt-0 mb-[6px] text-[rgba(0,0,0,0.6)]">{copy.artifactsPending}</p> : null}
+    {stream.phase === 'streaming' && stream.thinking ? <details open className="my-[6px]"><summary className="cursor-pointer text-[rgba(0,0,0,0.6)]">{copy.thinkingAlt}</summary><p className="mt-0 mb-[6px] text-[rgba(0,0,0,0.6)]">{stream.thinking}</p></details> : null}
+    {stream.toolCalls.length > 0 ? <div><h2 className="mt-[8px] mb-[4px] text-[13px]">Tool calls</h2><ul className="wk-list m-0 list-none p-0">{stream.toolCalls.map((tool) => <li key={tool.id} className={TOOL_LIST_ITEM}><strong>{tool.name ?? tool.id}</strong><small className="text-[rgba(0,0,0,0.4)]">{tool.status}</small>{tool.result === undefined ? null : <ToolResultView toolCall={tool} />}</li>)}</ul></div> : null}
   </section>;
 }
 
@@ -159,8 +159,8 @@ function ChatActionCards(props: Pick<ChatPageProps, 'toolApprovals' | 'oauthAppr
     try { await action(); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Chat action failed'); } finally { setBusy(null); }
   }
 
-  return <section aria-label="对话操作" className="wk-chat-actions">
-    <h2>操作</h2>
+  return <section aria-label="对话操作" className="wk-chat-actions mx-auto mb-[12px] w-full max-w-[960px] rounded-[8px] border border-[#e7e7e7] px-[12px] py-[8px]">
+    <h2 className="m-0 mb-[6px] text-[13px] text-[rgba(0,0,0,0.6)]">操作</h2>
     {error ? <p role="alert">{error}</p> : null}
     {toolApprovals.map((approval) => <ToolApprovalCard
       key={`tool-${approval.pendingId}`}
@@ -170,10 +170,10 @@ function ChatActionCards(props: Pick<ChatPageProps, 'toolApprovals' | 'oauthAppr
         ? (pendingId, decision, modifiedArgs) => run(pendingId, () => props.onResolveToolApproval!(pendingId, decision, modifiedArgs))
         : undefined}
     />)}
-    {oauthApprovals.map((approval) => <div key={`oauth-${approval.pendingId}`} className="wk-chat-action-card">
-      <strong>MCP authorization: {approval.serviceName ?? approval.serviceId ?? 'service'}</strong>
-      {approval.toolName ? <small>Tool: {approval.toolName}</small> : null}
-      {approval.status === 'pending' && approval.serviceId && props.onAuthorizeOAuth && props.onCancelOAuth ? <div className="wk-list-actions"><button type="button" disabled={busy !== null} onClick={() => void run(approval.pendingId, () => props.onAuthorizeOAuth!(approval.pendingId, approval.serviceId!))}>Authorize {approval.serviceName ?? 'service'}</button><button type="button" disabled={busy !== null} onClick={() => void run(approval.pendingId, () => props.onCancelOAuth!(approval.pendingId))}>Cancel</button></div> : <small>{approval.authorized ? 'Authorized' : approval.reason ?? 'Resolved'}</small>}
+    {oauthApprovals.map((approval) => <div key={`oauth-${approval.pendingId}`} className="wk-chat-action-card mb-[8px] flex flex-col gap-[6px] rounded-[8px] border border-[#e7e7e7] px-[10px] py-[8px]">
+      <strong className="text-[13px]">MCP authorization: {approval.serviceName ?? approval.serviceId ?? 'service'}</strong>
+      {approval.toolName ? <small className="text-[rgba(0,0,0,0.4)]">Tool: {approval.toolName}</small> : null}
+      {approval.status === 'pending' && approval.serviceId && props.onAuthorizeOAuth && props.onCancelOAuth ? <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"><button type="button" className="cursor-pointer rounded-[6px] border border-[#dcdcdc] bg-white px-[12px] py-[4px] text-[13px] text-[rgba(0,0,0,0.9)] enabled:hover:bg-[#f3f3f3] disabled:cursor-not-allowed disabled:opacity-55" disabled={busy !== null} onClick={() => void run(approval.pendingId, () => props.onAuthorizeOAuth!(approval.pendingId, approval.serviceId!))}>Authorize {approval.serviceName ?? 'service'}</button><button type="button" className="cursor-pointer rounded-[6px] border border-[#dcdcdc] bg-white px-[12px] py-[4px] text-[13px] text-[rgba(0,0,0,0.9)] enabled:hover:bg-[#f3f3f3] disabled:cursor-not-allowed disabled:opacity-55" disabled={busy !== null} onClick={() => void run(approval.pendingId, () => props.onCancelOAuth!(approval.pendingId))}>Cancel</button></div> : <small className="text-[rgba(0,0,0,0.4)]">{approval.authorized ? 'Authorized' : approval.reason ?? 'Resolved'}</small>}
     </div>)}
   </section>;
 }
@@ -191,11 +191,11 @@ function SteerComposer({ copy, onSteer }: { copy: ChatCopyTable; onSteer: (conte
     try { await onSteer(content); setDraft(''); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Follow-up failed'); } finally { setBusy(false); }
   }
 
-  return <form className="wk-chat-steer" onSubmit={(event) => void submit(event)}>
-    <label htmlFor="wk-chat-steer-draft">{copy.steerCurrent}</label>
-    <textarea id="wk-chat-steer-draft" rows={2} value={draft} onChange={(event) => setDraft(event.target.value)} disabled={busy} />
+  return <form className="wk-chat-steer mx-auto grid w-full max-w-[960px] gap-[6px] rounded-[10px_10px_0_0] border border-b-0 border-[#dcdcdc] px-[12px] py-[8px]" onSubmit={(event) => void submit(event)}>
+    <label htmlFor="wk-chat-steer-draft" className="text-[12px] text-[rgba(0,0,0,0.6)]">{copy.steerCurrent}</label>
+    <textarea id="wk-chat-steer-draft" rows={2} value={draft} onChange={(event) => setDraft(event.target.value)} disabled={busy} className="min-h-[40px] resize-none rounded-[6px] border-0 px-[8px] py-[6px] [font:inherit] text-[13px]" />
     {error ? <p role="alert">{error}</p> : null}
-    <button type="submit" disabled={busy || !draft.trim()}>{copy.steerQueued}</button>
+    <button type="submit" disabled={busy || !draft.trim()} className="cursor-pointer self-end rounded-[6px] border-0 bg-[#07c05f] px-[12px] py-[5px] text-[13px] text-white disabled:cursor-not-allowed disabled:opacity-50">{copy.steerQueued}</button>
   </form>;
 }
 
@@ -222,13 +222,15 @@ function TerminalPanel(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'ter
     setBusy(true);
     try { await props.onTerminalInput(input); setInput(''); } finally { setBusy(false); }
   }
-  return <section ref={panelRef} aria-label="Sandbox terminal" className="wk-chat-terminal">
-    <div className="wk-settings-panel-heading"><span role="status">{props.terminal?.status ?? 'idle'}</span></div>
-    {props.terminal?.output ? <pre>{props.terminal.output}</pre> : null}
-    {!props.terminal?.output && props.onOpenTerminal ? <p className="wk-chat-terminal-hint">{copy.startTerminal}</p> : null}
-    {props.onOpenTerminal && !props.terminal?.output ? <button type="button" className="wk-chat-terminal-open" onClick={() => void props.onOpenTerminal!()}>{copy.startTerminal}</button> : null}
-    {props.terminal && props.onTerminalInput ? <form onSubmit={(event) => void sendInput(event)}><label htmlFor="wk-chat-terminal-input">{copy.terminalInput}</label><input id="wk-chat-terminal-input" value={input} onChange={(event) => setInput(event.target.value)} disabled={busy} /><button type="submit" disabled={busy || !input.trim()}>{copy.sendInput}</button></form> : null}
-    {props.terminal && props.onCloseTerminal ? <button type="button" className="wk-chat-terminal-close" onClick={props.onCloseTerminal}>{copy.closeTerminal}</button> : null}
+  /* .wk-chat-sandbox-drawer .wk-chat-terminal scoped values folded in: the
+     terminal only ever renders inside the drawer (page.tsx below). */
+  return <section ref={panelRef} aria-label="Sandbox terminal" className="wk-chat-terminal m-0 flex min-h-0 w-full max-w-none flex-1 flex-col gap-[8px] overflow-auto rounded-none border-0 p-[12px] text-[12px]">
+    <div className="wk-settings-panel-heading m-0 flex items-center justify-between gap-[8px] border-b border-[#eef1f5] pb-[1rem]"><span role="status">{props.terminal?.status ?? 'idle'}</span></div>
+    {props.terminal?.output ? <pre className="m-0 min-h-[120px] flex-1 overflow-auto whitespace-pre-wrap break-words rounded-[6px] bg-[#1f2430] p-[10px] text-[12px] leading-[1.5] text-[#d5dded]">{props.terminal.output}</pre> : null}
+    {!props.terminal?.output && props.onOpenTerminal ? <p className="wk-chat-terminal-hint m-0 leading-[1.6] text-[rgba(0,0,0,0.4)]">{copy.startTerminal}</p> : null}
+    {props.onOpenTerminal && !props.terminal?.output ? <button type="button" className="wk-chat-terminal-open cursor-pointer self-start rounded-[6px] border-0 bg-[#07c05f] px-[14px] py-[6px] text-[13px] text-white" onClick={() => void props.onOpenTerminal!()}>{copy.startTerminal}</button> : null}
+    {props.terminal && props.onTerminalInput ? <form onSubmit={(event) => void sendInput(event)} className="flex items-center gap-[6px]"><label htmlFor="wk-chat-terminal-input" className="shrink-0 text-[rgba(0,0,0,0.4)]">{copy.terminalInput}</label><input id="wk-chat-terminal-input" value={input} onChange={(event) => setInput(event.target.value)} disabled={busy} className="flex-1 rounded-[6px] border border-[#dcdcdc] px-[8px] py-[5px] text-[13px]" /><button type="submit" disabled={busy || !input.trim()} className="cursor-pointer rounded-[6px] border-0 bg-[#07c05f] px-[10px] py-[5px] text-[13px] text-white disabled:cursor-not-allowed disabled:opacity-50">{copy.sendInput}</button></form> : null}
+    {props.terminal && props.onCloseTerminal ? <button type="button" className="wk-chat-terminal-close cursor-pointer self-start rounded-[6px] border border-[#dcdcdc] bg-white px-[14px] py-[6px] text-[13px] text-[rgba(0,0,0,0.6)]" onClick={props.onCloseTerminal}>{copy.closeTerminal}</button> : null}
   </section>;
 }
 
@@ -237,15 +239,17 @@ function ChatHeaderMenu(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'se
   const session = props.sessions.find((item) => item.id === props.selectedSessionId) ?? null;
   if (!session) return null;
   const pinned = session.is_pinned === true;
-  return <details className="wk-chat-header-menu">
-    <summary aria-label={copy.moreActions} title={copy.moreActions}>
+  /* .wk-chat-header-menu / -list → utilities (Vue ChatHeader ⋯ menu). */
+  const menuItem = 'min-h-[30px] cursor-pointer whitespace-nowrap rounded-[5px] border-0 bg-transparent px-[10px] py-0 text-left text-[13px] leading-[20px] text-[rgba(0,0,0,0.9)] hover:bg-[#f3f3f3]';
+  return <details className="wk-chat-header-menu relative">
+    <summary aria-label={copy.moreActions} title={copy.moreActions} className="inline-flex h-[24px] w-[24px] cursor-pointer list-none items-center justify-center rounded-[5px] border-0 text-[rgba(0,0,0,0.26)] transition-[background-color,color] duration-[150ms] ease-[ease] hover:bg-[#f3f3f3] hover:text-[rgba(0,0,0,0.9)] [&::-webkit-details-marker]:hidden">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="8" cy="3" r="1.4" /><circle cx="8" cy="8" r="1.4" /><circle cx="8" cy="13" r="1.4" /></svg>
     </summary>
-    <div className="wk-chat-header-menu-list" role="menu">
-      {props.onToggleSessionPin ? <button type="button" role="menuitem" onClick={() => void props.onToggleSessionPin!(session.id, !pinned)}>{pinned ? copy.unpin : copy.pin}</button> : null}
-      {props.onRenameSession ? <button type="button" role="menuitem" onClick={() => void props.onRenameSession!(session.id)}>{copy.renameSession}</button> : null}
-      {props.onClearSession ? <button type="button" role="menuitem" onClick={() => void props.onClearSession!()}>{copy.clearMessages}</button> : null}
-      {props.onDeleteSession ? <button type="button" role="menuitem" className="is-danger" onClick={() => void props.onDeleteSession!(session.id)}>{copy.deleteSession}</button> : null}
+    <div className="wk-chat-header-menu-list absolute left-0 top-full z-[30] mt-[2px] flex min-w-[132px] flex-col gap-[1px] rounded-[8px] border-[0.5px] border-[#e7e7e7] bg-white p-[4px] shadow-[0_0_0_0.5px_rgba(0,0,0,0.03),0_2px_6px_rgba(0,0,0,0.08)]" role="menu">
+      {props.onToggleSessionPin ? <button type="button" role="menuitem" className={menuItem} onClick={() => void props.onToggleSessionPin!(session.id, !pinned)}>{pinned ? copy.unpin : copy.pin}</button> : null}
+      {props.onRenameSession ? <button type="button" role="menuitem" className={menuItem} onClick={() => void props.onRenameSession!(session.id)}>{copy.renameSession}</button> : null}
+      {props.onClearSession ? <button type="button" role="menuitem" className={menuItem} onClick={() => void props.onClearSession!()}>{copy.clearMessages}</button> : null}
+      {props.onDeleteSession ? <button type="button" role="menuitem" className={menuItem + ' text-[#e34d59] hover:bg-[#fdecee]'} onClick={() => void props.onDeleteSession!(session.id)}>{copy.deleteSession}</button> : null}
     </div>
   </details>;
 }
@@ -308,7 +312,10 @@ export function ChatPage(props: ChatPageProps) {
   const sandboxAvailable = Boolean(props.terminal || props.onOpenTerminal);
   const streaming = props.stream?.phase === 'streaming';
 
-  return <main className="wk-chat-page">
+  /* main.wk-chat-page utilities carry the chat.css parity values; the
+     retained guard block in chat.css keeps beating the legacy styles.css
+     .wk-chat-page rule until the Orchestrator deletes that block. */
+  return <main className="wk-chat-page grid h-[calc(100vh-64px)] items-stretch gap-0 m-0 max-w-none p-0 grid-cols-[minmax(0,1fr)]">
     <SessionSidebar
       copy={copy}
       sessions={props.sessions}
@@ -332,9 +339,9 @@ export function ChatPage(props: ChatPageProps) {
       onPageChange={props.onSessionPageChange}
     />
     <section className="wk-chat-main" aria-label="Chat">
-      {props.selectedSessionId ? <header className="wk-chat-header">
-        <div className="wk-chat-header-titles">
-          <h1 title={headerTitle}>{headerTitle}</h1>
+      {props.selectedSessionId ? <header className="wk-chat-header pointer-events-none absolute inset-x-[12px] top-0 z-[6] flex shrink-0 items-center justify-between gap-[8px] border-b-0 bg-transparent px-[12px] pt-[10px] pb-0">
+        <div className="wk-chat-header-titles pointer-events-auto inline-flex items-center gap-[2px] max-w-[min(320px,100%)] rounded-[8px] bg-[rgba(255,255,255,0.88)] p-[2px] pl-[8px] backdrop-blur-[8px]">
+          <h1 title={headerTitle} className="m-0 min-w-0 cursor-default overflow-hidden text-ellipsis whitespace-nowrap text-[14px] font-medium leading-[20px] text-[rgba(0,0,0,0.6)]">{headerTitle}</h1>
           <ChatHeaderMenu
             copy={copy}
             selectedSessionId={props.selectedSessionId}
@@ -345,8 +352,8 @@ export function ChatPage(props: ChatPageProps) {
             onClearSession={props.onClearSession}
           />
         </div>
-        <div className="wk-chat-header-actions">
-            {sandboxAvailable ? <button type="button" className="wk-chat-sandbox-toggle" aria-label={copy.openSandboxPanel} title={copy.openSandboxPanel} aria-expanded={terminalOpen} onClick={() => setTerminalOpen((open) => !open)}>
+        <div className="wk-chat-header-actions pointer-events-auto inline-flex items-center gap-[8px] rounded-[8px] bg-[rgba(255,255,255,0.88)] p-[2px] backdrop-blur-[8px]">
+            {sandboxAvailable ? <button type="button" className="wk-chat-sandbox-toggle inline-flex h-[24px] w-[24px] cursor-pointer items-center justify-center rounded-[5px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.26)] transition-[background-color,color] duration-[150ms] ease-[ease] hover:bg-[#f3f3f3] hover:text-[rgba(0,0,0,0.9)]" aria-label={copy.openSandboxPanel} title={copy.openSandboxPanel} aria-expanded={terminalOpen} onClick={() => setTerminalOpen((open) => !open)}>
               <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
                 <rect x="1.5" y="1.5" width="17" height="17" rx="3" stroke="currentColor" strokeWidth="1.2" />
                 <line x1="12.5" y1="1.5" x2="12.5" y2="18.5" stroke="currentColor" strokeWidth="1.2" />
@@ -355,27 +362,29 @@ export function ChatPage(props: ChatPageProps) {
             </button> : null}
           </div>
         </header> : null}
-      <div className={props.selectedSessionId ? 'wk-chat-conversation' : 'wk-chat-conversation wk-chat-conversation--empty'}>
+      <div className={props.selectedSessionId ? 'wk-chat-conversation flex min-h-0 flex-1 flex-col px-[16px] pb-[12px] pt-0' : 'wk-chat-conversation wk-chat-conversation--empty flex min-h-0 flex-1 flex-col justify-center px-[16px] pb-[12px] pt-0'}>
         {/* Vue creatChat.vue: the welcome heading is always part of the empty
             state; suggested-question cards load per selected agent. The empty
             view centers the welcome+composer cluster (.dialogue-wrap) and must
             not render the flex:1 message scroll that pins the composer down. */}
         {!props.selectedSessionId ? (
-          <section className={props.starterQuestionsLoading ? 'wk-chat-starters wk-chat-starters--loading' : 'wk-chat-starters'} aria-label="Suggested questions" aria-busy={props.starterQuestionsLoading || undefined}>
-            <h1 className="wk-chat-welcome">{copy.createChatTitle}</h1>
+          <section className={props.starterQuestionsLoading ? 'wk-chat-starters wk-chat-starters--loading mx-auto w-full max-w-[960px] animate-[wk-content-fade-in_0.3s_ease-out] motion-reduce:animate-none' : 'wk-chat-starters mx-auto w-full max-w-[960px] px-0 pt-0 pb-[24px] animate-[wk-content-fade-in_0.3s_ease-out] motion-reduce:animate-none'} aria-label="Suggested questions" aria-busy={props.starterQuestionsLoading || undefined}>
+            {/* Empty-view starters always sit inside .wk-chat-conversation--empty,
+                whose padding override (0 0 24px) replaces the base 48px padding. */}
+            <h1 className="wk-chat-welcome m-0 text-center text-[28px] font-semibold leading-[1.4] text-[rgba(0,0,0,0.9)]">{copy.createChatTitle}</h1>
             {props.starterQuestionsLoading ? (
-              <ul className="wk-chat-starters-grid">
-                {[0, 1, 2].map((index) => <li key={index}><span className="wk-chat-starter-skeleton" aria-hidden="true" /></li>)}
+              <ul className="wk-chat-starters-grid flex w-full flex-wrap justify-center gap-[10px] list-none m-0 px-[16px] py-0">
+                {[0, 1, 2].map((index) => <li key={index}><span className="wk-chat-starter-skeleton block h-[37px] w-[180px] rounded-[10px] bg-[linear-gradient(90deg,#eceef1_25%,#f6f7f8_50%,#eceef1_75%)] bg-[length:200%_100%] animate-[wk-chat-skeleton_1.4s_infinite_ease] motion-reduce:animate-none" aria-hidden="true" /></li>)}
               </ul>
             ) : (props.starterQuestions?.length ?? 0) > 0 ? (
               <>
-                <p className="wk-chat-starters-caption">
+                <p className="wk-chat-starters-caption m-0 text-center text-[13px] tracking-[0.01em] text-[rgba(0,0,0,0.26)]">
                   <span>{copy.suggestedQuestions}</span>
                 </p>
-                <ul className="wk-chat-starters-grid">
+                <ul className="wk-chat-starters-grid flex w-full flex-wrap justify-center gap-[10px] list-none m-0 px-[16px] py-0">
                   {props.starterQuestions!.map((question, index) => (
                     <li key={index}>
-                      <button type="button" className="wk-chat-starter-card" onClick={() => props.onStarterQuestionClick?.(question)}>{question}</button>
+                      <button type="button" className="wk-chat-starter-card box-border max-w-full cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap rounded-[10px] border border-[#e7e7e7] bg-white px-[14px] py-[8px] text-[13px] leading-[1.5] text-[rgba(0,0,0,0.9)] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[border-color,box-shadow,background] duration-200 ease-[ease] hover:border-[rgba(0,0,0,0.1)] hover:shadow-[0_2px_6px_rgba(0,0,0,0.05)] focus-visible:border-[rgba(0,0,0,0.1)] focus-visible:shadow-[0_2px_6px_rgba(0,0,0,0.05)]" onClick={() => props.onStarterQuestionClick?.(question)}>{question}</button>
                     </li>
                   ))}
                 </ul>
@@ -428,10 +437,10 @@ export function ChatPage(props: ChatPageProps) {
           onStop={props.onStopStream}
         />
       </div>
-      {sandboxAvailable && terminalOpen ? <aside className="wk-chat-sandbox-drawer" role="complementary" aria-label={copy.sandboxPanelTitle}>
-        <div className="wk-chat-sandbox-drawer-head">
+      {sandboxAvailable && terminalOpen ? <aside className="wk-chat-sandbox-drawer absolute bottom-0 right-0 top-0 z-[40] flex w-[min(420px,100%)] max-w-[100vw] flex-col border-l border-[#e7e7e7] bg-white shadow-[-8px_0_24px_rgba(0,0,0,0.06)]" role="complementary" aria-label={copy.sandboxPanelTitle}>
+        <div className="wk-chat-sandbox-drawer-head flex shrink-0 items-center justify-between border-b border-[#e7e7e7] px-[12px] py-[8px] text-[13px] font-medium text-[rgba(0,0,0,0.9)]">
           <span>{copy.sandboxPanelTitle}</span>
-          <button type="button" className="wk-chat-sandbox-drawer-close" aria-label={copy.close} onClick={() => setTerminalOpen(false)}>
+          <button type="button" className="wk-chat-sandbox-drawer-close inline-flex h-[32px] w-[32px] shrink-0 cursor-pointer items-center justify-center rounded-[8px] border-0 bg-[#f3f3f3] text-[rgba(0,0,0,0.6)] hover:bg-[#eee] hover:text-[rgba(0,0,0,0.9)]" aria-label={copy.close} onClick={() => setTerminalOpen(false)}>
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" /></svg>
           </button>
         </div>
