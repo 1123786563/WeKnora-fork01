@@ -75,3 +75,5 @@ Verification: `pnpm exec tsx --test apps/web/src/settings/ModelSettingsPanel.tes
 The React implementation now has a real Tailwind v4 + shadcn-style primitive layer in `packages/ui`: `cn`, `Input`, `Switch`, and `NumberInput`. The model settings and debug surfaces consume these shared primitives; the previous local number/switch chrome was removed. `typecheck:shared`, `typecheck:web`, and `build:web` pass, but this does not establish parity for pages that have not yet migrated to the shared layer.
 
 `ModelOptionSelect` also now uses Tailwind utilities for the Vue-shaped trigger, popup, option states, selected indicator, and mobile width rule; its behavior remains covered by the model settings tests and the full Web suite (835/835).
+
+The shared `@weknora/ui` Button, Card, and Status primitives now also merge Tailwind utility tokens through `cn` while keeping legacy semantic class names for unaffected pages. Shared and Web regression suites remain green; this is an incremental foundation, not whole-repository completion evidence.

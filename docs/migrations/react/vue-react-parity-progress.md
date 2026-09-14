@@ -1896,3 +1896,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - `ModelOptionSelect` 的触发器、弹层、选项、选中指示条和 720px 响应式规则改为 Tailwind utilities；移除对应设置页专用选择器 CSS，保留 Vue 的键盘导航、Escape、外部点击关闭、选中/active 状态和 popup 层级。
 - 模型设置/调试定向测试 27/27、Web 全量 835/835、`typecheck:web`、`build:web` 与 `git diff --check` 通过。
 - R027 仍未达到最终验收：认证浏览器 computed-style、真实后端保存/连接测试和 Wails/native 证据缺失；Tailwind/shadcn 迁移也尚未覆盖全仓库页面。
+
+## 2026-09-14 Round N+77 — 共享 shadcn 基础组件令牌
+
+- `@weknora/ui` 的 Button、Card、Status 现在保留既有语义类名，同时通过 `cn`、Tailwind utilities 和共享颜色/焦点令牌输出；已迁移的模型设置/调试页面继续使用共享 Input、Switch、NumberInput 和 ModelOptionSelect。
+- `test:shared` 440/440、Web 全量 835/835、`typecheck:shared`、`typecheck:web`、`build:web` 与 `git diff --check` 通过。
+- 该轮只建立可复用基础并覆盖 R027，不能标记全仓库 Tailwind/shadcn 对齐完成；其余页面仍需逐页迁移和 Vue 同条件运行证据。
