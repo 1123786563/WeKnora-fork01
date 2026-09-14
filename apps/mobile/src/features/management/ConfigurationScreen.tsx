@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, SafeAreaView, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import type { AgentConfiguration, ConfigurationRecord, McpConfiguration, ModelConfiguration, SkillConfiguration } from '@weknora/api-client';
@@ -21,13 +21,16 @@ export function ConfigurationScreen() {
   const [draft, setDraft] = useState<NativeConfigurationDraft | null>(null);
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState('');
+  const loadGeneration = useRef(0);
 
   const load = useCallback(async () => {
+    const generation = ++loadGeneration.current;
     setError('');
     const [agents, models, mcp, skills] = await Promise.allSettled([
       runtime.client.configuration.agents.list(), runtime.client.configuration.models.list(), runtime.client.configuration.mcp.list(), runtime.client.configuration.skills.list(),
     ]);
     const failures = [agents, models, mcp, skills].filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+    if (generation !== loadGeneration.current) return;
     if (failures.length) setError(`${failures.length} ${t('mobileConfiguration.loadFailed')}`);
     setRows({ agents: agents.status === 'fulfilled' ? agents.value : [], models: models.status === 'fulfilled' ? models.value : [], mcp: mcp.status === 'fulfilled' ? mcp.value : [], skills: skills.status === 'fulfilled' ? skills.value : [] });
     setLoading(false);

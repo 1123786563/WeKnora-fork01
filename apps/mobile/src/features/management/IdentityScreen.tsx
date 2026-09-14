@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, SafeAreaView, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { formatMessage } from '@weknora/i18n';
@@ -11,10 +11,18 @@ export function IdentityScreen() {
   const [capabilities, setCapabilities] = useState<Record<string, { supported: boolean; reason?: string }>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const loadGeneration = useRef(0);
   const load = useCallback(async () => {
-    try { setCapabilities((await runtime.client.administration.capabilities()).capabilities); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : t('mobileIdentity.loadFailed')); }
-    finally { setLoading(false); }
+    const generation = ++loadGeneration.current;
+    setLoading(true); setError('');
+    try {
+      const next = await runtime.client.administration.capabilities();
+      if (generation === loadGeneration.current) setCapabilities(next.capabilities);
+    } catch (cause) {
+      if (generation === loadGeneration.current) setError(cause instanceof Error ? cause.message : t('mobileIdentity.loadFailed'));
+    } finally {
+      if (generation === loadGeneration.current) setLoading(false);
+    }
   }, [runtime.client]);
   useEffect(() => { void load(); }, [load]);
   const rows = Object.entries(capabilities);
