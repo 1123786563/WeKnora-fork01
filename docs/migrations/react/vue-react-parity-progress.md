@@ -2328,3 +2328,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - 对话引用来源面板的标题、网页/文档/工具分组和引用片段 aria 标签改用当前 locale 的共享文案；默认解析保持跟随运行时语言。
 - ReferenceList/chat-copy 专项 13/13、shared typecheck、diff check 通过；真实引用数据与 Vue 同条件浏览器对照仍待补齐。
+
+## 2026-09-15 Round N+34ae — N021 tool approval copy
+
+- 工具审批卡片标题、查看参数、同意、拒绝和已处理状态改用当前 locale 共享文案，并由 ChatPage 透传；旧的审批解析/API 行为保持不变。
+- 审批与共享 copy 专项 17/17、Web 全量 891/891、shared typecheck 通过；真实 MCP 审批流和浏览器多语言对照仍待补齐。
