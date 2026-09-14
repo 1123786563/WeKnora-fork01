@@ -831,16 +831,17 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
                 <div className='absolute right-0 top-[calc(100%_+_6px)] z-30 w-[320px] max-w-[calc(100vw_-_24px)] rounded-[12px] border-[0.5px] border-line-neutral bg-surface px-4 py-[14px] shadow-[0_0_0_0.5px_rgba(0,0,0,0.03),0_2px_4px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.1)]' role='dialog' aria-label={t('memorySettings.addTitle')}>
                   <div className='text-[14px] font-semibold text-[rgba(0,0,0,0.9)]'>{t('memorySettings.addTitle')}</div>
                   <div className='mt-3 flex flex-col gap-3'>
-                    <label className='flex flex-col gap-1.5'>
+                    <label className='flex flex-col gap-1.5 text-[#27364d] font-semibold'>
                       <span className='text-[12px] text-[rgba(0,0,0,0.6)]'>{t('memorySettings.addKindLabel')}</span>
-                      <select value={draftKind} onChange={(event) => setDraftKind(event.target.value as typeof KINDS[number])}>
+                      <select className="w-full [font:inherit]" value={draftKind} onChange={(event) => setDraftKind(event.target.value as typeof KINDS[number])}>
                         {KINDS.map((kind) => <option key={kind} value={kind}>{kindLabel(kind)}</option>)}
                       </select>
                       <span className='text-[12px] leading-[18px] text-[rgba(0,0,0,0.4)]'>{kindHint(draftKind)}</span>
                     </label>
-                    <label className='flex flex-col gap-1.5'>
+                    <label className='flex flex-col gap-1.5 text-[#27364d] font-semibold'>
                       <span className='text-[12px] text-[rgba(0,0,0,0.6)]'>{t('memorySettings.addContentLabel')}</span>
                       <textarea
+                        className="w-full box-border border border-[#cbd5e1] rounded-control bg-white text-ink [font:inherit] px-[.65rem] py-[.55rem]"
                         value={draftContent}
                         rows={3}
                         maxLength={300}

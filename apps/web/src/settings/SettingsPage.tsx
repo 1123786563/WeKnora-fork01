@@ -268,8 +268,8 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
                   {selectedKey !== 'general' && selectedKey !== 'models' && selectedKey !== 'members' && selectedKey !== 'memory' && selectedKey !== 'mymemory' ? (
                     <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col">
                       <div>
-                        <h2>{settingsSectionHeading(locale, selectedKey).title}</h2>
-                        <p className="wk-muted text-muted">{settingsSectionHeading(locale, selectedKey).description}</p>
+                        <h2 className="my-1">{settingsSectionHeading(locale, selectedKey).title}</h2>
+                        <p className="wk-muted text-muted m-0">{settingsSectionHeading(locale, selectedKey).description}</p>
                       </div>
                     </div>
                   ) : null}

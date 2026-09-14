@@ -14,10 +14,10 @@ export function ModelUsageNotice({
   const agentTotal = Math.max(details.agent_total, details.agents.length);
   return (
     <Card className="wk-configuration-usage" role="alert">
-      <div className="wk-settings-panel-heading">
+      <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col">
         <div>
-          <h2>Model is still in use</h2>
-          <p className="wk-muted text-muted">{modelName} cannot be deleted until its active bindings are removed.</p>
+          <h2 className="my-1">Model is still in use</h2>
+          <p className="wk-muted text-muted m-0">{modelName} cannot be deleted until its active bindings are removed.</p>
         </div>
         <Button type="button" onClick={onClose}>Close</Button>
       </div>

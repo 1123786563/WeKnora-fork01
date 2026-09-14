@@ -43,6 +43,7 @@ export function TenantDeleteZone({ client, tenantId, tenantName, onDeleted }: {
       <div className="wk-delete-zone__confirm">
         <p className="wk-delete-zone__hint">{t('tenant.deleteDangerZone.confirmHint', { name: tenantName })}</p>
         <input
+          className="w-full box-border border border-[#cbd5e1] rounded-control bg-white text-ink [font:inherit] px-[.65rem] py-[.55rem]"
           aria-label={t('tenant.deleteDangerZone.confirmTitle')}
           value={confirmText}
           onChange={(event) => setConfirmText(event.target.value)}

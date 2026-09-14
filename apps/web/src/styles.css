@@ -19,44 +19,29 @@ body { margin: 0; min-width: 320px; }
    rules were re-encoded with ! so the effective cascade is preserved). Class names remain on the
    DOM as hooks: tests query them and PlatformShell's outlet override ([&_.wk-page]:max-w-none! /
    h-full / overflow-y-auto) depends on .wk-page existing. */
-/* Retained .wk-settings-tabs/.wk-settings-tab/.wk-settings-table: still consumed
-   by knowledge-settings/KnowledgeSettingsPage.tsx (outside the settings-shell
-   migration scope) — delete when that page moves to utilities. */
-.wk-settings-tabs { display: flex; gap: .5rem; max-width: 1180px; margin: 0 auto; padding: 1rem 1rem 0; }
-.wk-settings-tab { border: 1px solid #dce3ed; border-radius: 999px; background: #fff; color: #506078; cursor: pointer; padding: .5rem .8rem; }
-.wk-settings-tab.is-active { border-color: #2e6de6; color: #1849a9; background: #eff4ff; }
-/* Retained .wk-settings-section base: the SettingsPage drawer wrapper keeps the
-   class as a cascade-scope hook — these descendant rules (h2/label/input/select)
-   style every panel's forms inside the drawer, exactly like the retained select
-   chrome in settings-wrapper.css. Also still consumed by knowledge-settings. */
-.wk-settings-section { margin-top: 1rem; }
-.wk-settings-section h2 { margin: 0 0 .75rem; }
-.wk-settings-section label { display: grid; gap: .35rem; color: #27364d; font-weight: 600; }
-.wk-settings-section input, .wk-settings-section textarea, .wk-settings-section select { width: 100%; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #172033; font: inherit; padding: .55rem .65rem; }
-.wk-settings-section input:read-only, .wk-settings-section select:disabled { background: #f7f9fc; color: #66758b; }
-.wk-settings-table { display: grid; gap: .6rem; max-width: 620px; }
-.wk-settings-table label { grid-template-columns: 8rem minmax(0, 1fr); align-items: center; }
+/* .wk-settings-tabs/-tab(.is-active)/.wk-settings-section family (incl. its
+   h2/label/input/textarea/select descendants and :read-only/:disabled states)/
+   .wk-settings-table(± label) deleted: every consumer now carries the effective
+   values as element or container utilities (KnowledgeSettingsPage cards, the
+   SettingsPage drawer panels, ResourceSettingsPanel). The .wk-settings-section
+   class stays on the SettingsPage drawer wrapper as a cascade-scope hook for
+   settings-wrapper.css's retained rules; drawer select chrome still lives
+   there too. */
 /* .wk-settings-page/.wk-settings-layout/.wk-settings-nav/.wk-settings-save deleted:
    dead rules (zero source consumers) — the inline settings page was replaced by
    the .wks-* drawer shell. */
-/* Retained .wk-settings-panel-heading base: configuration-domain headings
-   (ModelUsageNotice/ConfigurationEditor/ConfigurationOperations) and the
-   chat.css .wk-chat-sandbox-drawer guard still cascade off it. Every
-   settings-domain consumer now carries equivalent utilities so this base can go
-   in the final shared-layer cleanup once configuration migrates. */
-.wk-settings-panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; border-bottom: 1px solid #eef1f5; padding-bottom: 1rem; margin-bottom: 1rem; }
-.wk-settings-panel-heading h2 { margin: .25rem 0; }
-.wk-settings-panel-heading p { margin: 0; }
+/* .wk-settings-panel-heading family deleted: all consumers (settings drawer
+   panels, ResourceSettingsPanel, configuration ModelUsageNotice/
+   ConfigurationEditor/ConfigurationOperations, chat sandbox drawer) carry the
+   base and the h2/p margins as element utilities; the chat.css drawer-scoped
+   guard was deleted with it (its values were already on the element). */
 /* .wk-settings-operation-list deleted (dead). .wk-settings-read-note deleted:
    its two consumers (EnvVarSettingsPanel/PortedSectionsPanel) carry
    text-muted-strong text-[.9rem] utilities. */
-/* Retained .wk-settings-editor base: configuration editors
-   (ConfigurationEditor/ConfigurationOperations forms) still consume it. The
-   settings-domain editors carry equivalent utilities; McpSettingsPanel's drawer
-   form encodes max-w-none! against this unlayered 620px. */
-.wk-settings-editor { display: grid; gap: .8rem; max-width: 620px; margin: 1rem 0; }
-.wk-settings-editor label { display: grid; gap: .35rem; font-weight: 600; }
-.wk-settings-editor input, .wk-settings-editor textarea { box-sizing: border-box; width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #172033; font: inherit; padding: .55rem .65rem; }
+/* .wk-settings-editor family deleted: settings-domain editors carry equivalent
+   utilities; configuration editors (ConfigurationEditor/ConfigurationOperations/
+   ModelDebugPanel) now encode the base and the label/input rules as container
+   variants; McpSettingsPanel's max-w-none! stays correct against them. */
 .wk-model-tabs { display: flex; flex-wrap: wrap; gap: .35rem; border-bottom: 1px solid #edf0f5; }
 .wk-model-tabs button { background: transparent; border: 0; border-bottom: 2px solid transparent; color: #506078; cursor: pointer; padding: .65rem .75rem; }
 .wk-model-tabs button.is-active { border-bottom-color: #2e6de6; color: #172033; font-weight: 650; }
@@ -75,11 +60,10 @@ body { margin: 0; min-width: 320px; }
    OllamaSettingsPanel ×2, PortedSectionsPanel) carry exact dl/div/dt/dd
    utilities incl. max-[720px]: variants. The ≤720px fragments of the dead
    .wk-settings-layout/.wk-settings-operation-list went with them; the
-   panel-heading fragment stays with its retained base above. */
-@media (max-width: 720px) { .wk-settings-panel-heading { flex-direction: column; } }
+   panel-heading fragment went with its family. */
 @media (max-width: 720px) { .wk-wiki-layout { grid-template-columns: 1fr; } }
 @media (max-width: 720px) { .wk-wiki-history-layout { grid-template-columns: 1fr; } }
-@media (max-width: 720px) { .wk-toggle-grid { grid-template-columns: 1fr; } .wk-settings-table label { grid-template-columns: 1fr; align-items: stretch; } .wk-settings-tabs { overflow-x: auto; } }
+@media (max-width: 720px) { .wk-toggle-grid { grid-template-columns: 1fr; } }
 
 /* Integrations surface — ported from frontend/src/components/css/channel-panel-list.less
    (Vue baseline); the .wk-integrations-page/header/tabs/panel and .wk-int-*

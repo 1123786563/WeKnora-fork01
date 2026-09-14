@@ -627,7 +627,7 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
                         </td>
                         <td className={TD}>
                           <div className="role-cell inline-flex items-center">
-                            {canManage && !isSelf ? <select className="disabled:opacity-60" aria-label={'Role for ' + member.username} value={member.role} disabled={busy}
+                            {canManage && !isSelf ? <select className="disabled:opacity-60 w-full [font:inherit]" aria-label={'Role for ' + member.username} value={member.role} disabled={busy}
                               onChange={(event) => void update(member, event.target.value as TenantRole)}>
                               {roles.map((item) => <option key={item} value={item}>{tr('tenantMember.role.' + item)}</option>)}
                             </select>
@@ -699,14 +699,14 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
 
     <Dialog open={inviteOpen} title={tr('tenantMember.add.dialogTitle')} onClose={() => setInviteOpen(false)} closeLabel={tr('common.close')}>
       <form className="flex flex-col gap-3" onSubmit={submitInvite}>
-        <label className="flex! flex-col gap-[0.3rem]!">
+        <label className="flex! flex-col gap-[0.3rem]! text-[#27364d] font-semibold">
           <span className="text-[0.8125rem] font-semibold text-[var(--wk-text,#172033)]">{tr('tenantMember.add.emailLabel')}</span>
           <input required type="email" className="w-full rounded-md border border-[var(--wk-border,#dce3ed)]! bg-[var(--wk-surface,#fff)]! px-[0.55rem]! py-[0.45rem]! text-[var(--wk-text,#172033)]!" value={inviteEmail} placeholder={tr('tenantMember.add.emailPlaceholder').replace("{'@'}", '@')}
             onChange={(event) => setInviteEmail(event.target.value)} />
         </label>
-        <label className="flex! flex-col gap-[0.3rem]!">
+        <label className="flex! flex-col gap-[0.3rem]! text-[#27364d] font-semibold">
           <span className="text-[0.8125rem] font-semibold text-[var(--wk-text,#172033)]">{tr('tenantMember.add.roleLabel')}</span>
-          <select value={inviteRole} onChange={(event) => setInviteRole(event.target.value as TenantRole)}>
+          <select className="w-full [font:inherit]" value={inviteRole} onChange={(event) => setInviteRole(event.target.value as TenantRole)}>
             {roles.map((item) => <option key={item} value={item}>{tr('tenantMember.role.' + item)}</option>)}
           </select>
         </label>
@@ -721,7 +721,7 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
       {shareLink ? <div className="flex flex-col gap-3">
         <p className="m-0 text-[0.8125rem] leading-[1.5] text-[var(--wk-muted,#66758b)]">{tr('tenantInvitation.shareLink.resultBody')}</p>
         <div className="flex items-center gap-2">
-          <input className="min-w-0 flex-[1_1_auto] rounded-md border border-[var(--wk-border,#dce3ed)]! px-[0.55rem]! py-[0.45rem]! text-[0.8125rem]!" readOnly aria-label={tr('tenantInvitation.shareLink.resultTitle')} value={absoluteInviteURL(shareLink.invite_url ?? '')}
+          <input className="min-w-0 flex-[1_1_auto] rounded-md border border-[var(--wk-border,#dce3ed)]! px-[0.55rem]! py-[0.45rem]! text-[0.8125rem]! read-only:text-muted" readOnly aria-label={tr('tenantInvitation.shareLink.resultTitle')} value={absoluteInviteURL(shareLink.invite_url ?? '')}
             onFocus={(event) => event.currentTarget.select()} />
           <Button type="button" onClick={() => void copyText(shareLink.invite_url ?? '')}>
             <Icon name="copy" /> {tr('tenantInvitation.copyLink')}
@@ -732,9 +732,9 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
         </div>
       </div> : <div className="flex flex-col gap-3">
         <p className="m-0 text-[0.8125rem] leading-[1.5] text-[var(--wk-muted,#66758b)]">{tr('tenantInvitation.shareLink.description', { days: INVITATION_TTL_DAYS })}</p>
-        <label className="flex! flex-col gap-[0.3rem]!">
+        <label className="flex! flex-col gap-[0.3rem]! text-[#27364d] font-semibold">
           <span className="text-[0.8125rem] font-semibold text-[var(--wk-text,#172033)]">{tr('tenantMember.add.roleLabel')}</span>
-          <select value={shareLinkRole} onChange={(event) => setShareLinkRole(event.target.value as TenantRole)}>
+          <select className="w-full [font:inherit]" value={shareLinkRole} onChange={(event) => setShareLinkRole(event.target.value as TenantRole)}>
             {roles.map((item) => <option key={item} value={item}>{tr('tenantMember.role.' + item)}</option>)}
           </select>
         </label>

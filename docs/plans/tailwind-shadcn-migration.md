@@ -254,6 +254,15 @@ hook 类（测试/JS 引用）保留类名。
   （仅剩 wks-* 抽屉段/settings 保留段/chat 5 守卫/模型 tabs/注释）。
 - 遗留产品决策项：chat ToolResultView 的补偿 span 原本被 .wk-list li span 压制，
   设计上若要恢复其自身样式可删补偿 utilities（1:1 原则下保持现状）。
+### 批次44：wk-settings-* 保留段联动清除 ✅（子任务执行，Orchestrator 验收提交）
+- 23 文件：styles.css 删 19 条（tabs/section/table/panel-heading/editor 全家 + 3 媒体片段）；
+  chat.css 删 1 守卫（对手已死零漂移）；settings-wrapper.css 删 1 复位规则。
+- KnowledgeSettingsPage Card 级任意变体编码（含 read-only/disabled/parser-table 8rem）；
+  抽屉 DRAWER bundle（Mcp max-w-none! 保持）；configuration 域无色版 bundle；
+  裸 h2/p/panel-heading/零散 label/input/select 十余处逐一补齐。
+- 漂移说明 3 项已按「元素 utilities 胜出」约定接受并写入 css 注释。
+- 验收：typecheck 0、248/248 相关测试、web 891/891、shared 465/465、build ✓；
+  styles.css 315→299 行。
 ### 批次19：TenantMembers 域 ✅（子任务执行，Orchestrator 验收提交）
 - TenantMembersPanel.tsx ~95 条规则内联 utilities（表格/分页/标签三态/确认弹层；
   settings-wrapper 抽屉 select chrome 特异性更高今日实际生效，按生效值 4 条未复制）；

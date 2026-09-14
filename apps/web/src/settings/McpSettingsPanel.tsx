@@ -353,7 +353,7 @@ function McpMetadataSection({
       <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col sticky top-0 z-[1] bg-white pt-[.25rem]">
         <div>
           <h4>{t("mcpMetadata.tools")}</h4>
-          <p className="wk-muted text-muted">{t("mcpMetadata.cacheHint")}</p>
+          <p className="wk-muted text-muted m-0">{t("mcpMetadata.cacheHint")}</p>
         </div>
         <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
           <Button
@@ -802,7 +802,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
       <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col sticky top-0 z-[1] bg-white pt-[.25rem]">
         <div>
           <h3>{t("mcpSettings.title")}</h3>
-          <p className="wk-muted text-muted">
+          <p className="wk-muted text-muted m-0">
             {t("mcpSettings.description")}
           </p>
         </div>
@@ -859,7 +859,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
             <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col sticky top-0 z-[1] bg-white pt-[.25rem]">
               <div>
                 <h3>{draft.id ? t("mcpServiceDialog.editTitle") : t("mcpServiceDialog.addTitle")}</h3>
-                <p className="wk-muted text-muted flex items-center gap-2">
+                <p className="wk-muted text-muted m-0 flex items-center gap-2">
                   {draft.transportType === "http-streamable" ? "HTTP Streamable" : "SSE"}
                   <span
                     className={
@@ -905,7 +905,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
             </nav>
             <form
               ref={formRef}
-              className="wk-settings-editor my-4 grid gap-[.8rem] max-w-none!"
+              className="wk-settings-editor my-4 grid gap-[.8rem] max-w-none! [&_label]:grid [&_label]:gap-[.35rem] [&_label]:text-[#27364d] [&_label]:font-semibold [&_input]:w-full [&_input]:box-border [&_input]:border [&_input]:border-[#cbd5e1] [&_input]:rounded-control [&_input]:bg-white [&_input]:text-ink [&_input]:[font:inherit] [&_input]:px-[.65rem] [&_input]:py-[.55rem] [&_textarea]:w-full [&_textarea]:box-border [&_textarea]:border [&_textarea]:border-[#cbd5e1] [&_textarea]:rounded-control [&_textarea]:bg-white [&_textarea]:text-ink [&_textarea]:[font:inherit] [&_textarea]:px-[.65rem] [&_textarea]:py-[.55rem] [&_select]:w-full [&_select]:[font:inherit]"
               onSubmit={(event) => void save(event)}
             >
               {step === 0 ? (
@@ -1171,7 +1171,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                     <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col sticky top-0 z-[1] bg-white pt-[.25rem]">
                       <div>
                         <h4>{t("mcpMetadata.usage")}</h4>
-                        <p className="wk-muted text-muted">{t("mcpMetadata.usageHint")}</p>
+                        <p className="wk-muted text-muted m-0">{t("mcpMetadata.usageHint")}</p>
                       </div>
                     </div>
                     <div className="flex items-center justify-between gap-[.8rem]">

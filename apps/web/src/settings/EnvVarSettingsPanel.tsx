@@ -64,7 +64,7 @@ export function EnvVarSettingsPanel({ client, initialPayload, onMutated }: { cli
   return <Card data-testid="envvar-panel">
     {error ? <Status tone="error">{error}</Status> : null}
     {notice ? <Status tone="success">{notice}</Status> : null}
-    <form className="wk-settings-editor my-4 grid gap-[.8rem] max-w-[620px]" onSubmit={setVariable}>
+    <form className="wk-settings-editor my-4 grid gap-[.8rem] max-w-[620px] [&_label]:grid [&_label]:gap-[.35rem] [&_label]:text-[#27364d] [&_label]:font-semibold [&_input]:w-full [&_input]:box-border [&_input]:border [&_input]:border-[#cbd5e1] [&_input]:rounded-control [&_input]:bg-white [&_input]:text-ink [&_input]:[font:inherit] [&_input]:px-[.65rem] [&_input]:py-[.55rem] [&_textarea]:w-full [&_textarea]:box-border [&_textarea]:border [&_textarea]:border-[#cbd5e1] [&_textarea]:rounded-control [&_textarea]:bg-white [&_textarea]:text-ink [&_textarea]:[font:inherit] [&_textarea]:px-[.65rem] [&_textarea]:py-[.55rem] [&_select]:w-full [&_select]:[font:inherit]" onSubmit={setVariable}>
       <label>Scope
         <select value={scope} onChange={(event) => setScope(event.target.value as EnvVarScope)}>
           <option value="skill">Skill (skill_id)</option>

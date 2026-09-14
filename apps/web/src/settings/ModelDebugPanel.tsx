@@ -215,13 +215,13 @@ export function ModelDebugPanel({ client, models, onClose }: Props) {
       <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col">
         <div>
           <h3>{t("modelSettings.debug.title")}</h3>
-          <p className="wk-muted text-muted">{t("modelSettings.debug.description")}</p>
+          <p className="wk-muted text-muted m-0">{t("modelSettings.debug.description")}</p>
         </div>
         <Button type="button" onClick={onClose}>
           {t("common.close")}
         </Button>
       </div>
-      <div className="wk-settings-editor my-4 grid gap-[.8rem] max-w-[620px]">
+      <div className="wk-settings-editor my-4 grid gap-[.8rem] max-w-[620px] [&_label]:grid [&_label]:gap-[.35rem] [&_label]:font-semibold [&_input]:w-full [&_input]:box-border [&_input]:border [&_input]:border-[#cbd5e1] [&_input]:rounded-control [&_input]:bg-white [&_input]:text-ink [&_input]:[font:inherit] [&_input]:px-[.65rem] [&_input]:py-[.55rem] [&_textarea]:w-full [&_textarea]:box-border [&_textarea]:border [&_textarea]:border-[#cbd5e1] [&_textarea]:rounded-control [&_textarea]:bg-white [&_textarea]:text-ink [&_textarea]:[font:inherit] [&_textarea]:px-[.65rem] [&_textarea]:py-[.55rem">
         <div className="form-item">
           <h4>{t("modelSettings.debug.groupModel")}</h4>
           {availableTypes.length > 1 ? (

@@ -27,14 +27,11 @@
 @keyframes wk-audit-spin { to { transform: rotate(360deg); } }
 
 /* Vue .section (Settings.vue:892-894) carries no top margin inside
-   .content-wrapper; the legacy inline-settings rule
-   .wk-settings-section { margin-top: 1rem } (styles.css) must not leak into
-   the drawer or it pushes the panel heading ~16px below the Vue position.
-   Post settings-shell migration this reset (and the .wk-settings-section
-   descendant rules below, which hang off the class name kept on the
-   SettingsPage drawer wrapper div) is intentionally retained together with
-   the styles.css .wk-settings-section base — see the retention notes there. */
-.wks-content-wrapper .wk-settings-section { margin-top: 0; }
+   .content-wrapper. The styles.css .wk-settings-section { margin-top: 1rem }
+   base was deleted (its consumers carry utilities; a div has no default top
+   margin), so the reset that neutralized it inside the drawer went too. The
+   .wk-settings-section descendant rules below still hang off the class name
+   kept on the SettingsPage drawer wrapper div. */
 /* wk-audit-* rules removed: SystemAuditLogPanel.tsx carries the equivalent
    utilities. Class names stay in the DOM as querySelector hooks for
    SettingsPage.test.tsx (.wk-audit-table tbody tr / .wk-audit-detail);
@@ -78,10 +75,11 @@
    Source: t-input chrome (tdesign.css .t-input / .t-input:hover /
    .t-input--focused) with the WeKnora light brand: --td-brand-color #07c05f
    (theme.css brand-color-4), --td-brand-color-focus = 20% brand mix.
-   Selector carries .wks-modal + .wks-content-wrapper so it outranks the legacy
-   inline page rule ".wk-settings-section select" (styles.css) and panel-local
-   selectors such as ".wk-tenant-members .wk-field select" regardless of CSS
-   injection order. Native multi-selects keep browser chrome; width stays
+   Selector carries .wks-modal + .wks-content-wrapper so it outranks panel-local
+   selectors such as ".wk-tenant-members .wk-field select" and any layered
+   utilities regardless of CSS injection order. (It also outranked the legacy
+   ".wk-settings-section select" page rule, deleted with its styles.css
+   family.) Native multi-selects keep browser chrome; width stays
    per-context (.setting-control--model narrows to 280px below; the deleted
    .general-settings 280px width now lives on the GeneralPreferencesPanel
    selects as element utilities). */

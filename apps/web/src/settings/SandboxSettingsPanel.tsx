@@ -1066,7 +1066,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
       <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col">
         <div>
           <h3>{title}</h3>
-          <p className="wk-muted text-muted">{t(`settings.sandbox.stepDescriptions.${stepKey}`)}</p>
+          <p className="wk-muted text-muted m-0">{t(`settings.sandbox.stepDescriptions.${stepKey}`)}</p>
         </div>
         <Button type="button" onClick={onClose}>{t('common.cancel')}</Button>
       </div>
@@ -1107,7 +1107,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
       ) : null}
       {actionError ? <Status tone="error">{actionError}</Status> : null}
 
-      <form className="wk-settings-editor my-4 grid gap-[.8rem] max-w-[620px]" onSubmit={(event) => { event.preventDefault(); void handlePrimary(); }}>
+      <form className="wk-settings-editor my-4 grid gap-[.8rem] max-w-[620px] [&_label]:grid [&_label]:gap-[.35rem] [&_label]:text-[#27364d] [&_label]:font-semibold [&_input]:w-full [&_input]:box-border [&_input]:border [&_input]:border-[#cbd5e1] [&_input]:rounded-control [&_input]:bg-white [&_input]:text-ink [&_input]:[font:inherit] [&_input]:px-[.65rem] [&_input]:py-[.55rem] [&_textarea]:w-full [&_textarea]:box-border [&_textarea]:border [&_textarea]:border-[#cbd5e1] [&_textarea]:rounded-control [&_textarea]:bg-white [&_textarea]:text-ink [&_textarea]:[font:inherit] [&_textarea]:px-[.65rem] [&_textarea]:py-[.55rem] [&_select]:w-full [&_select]:[font:inherit]" onSubmit={(event) => { event.preventDefault(); void handlePrimary(); }}>
         {stepKey === 'connection' ? (<>
           <section className="wk-sandbox-editor-section">
             <h4>{t('settings.sandbox.sectionBasic')}</h4>
@@ -1753,11 +1753,11 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
           <details className="wk-sandbox-hint relative ml-[6px] inline-block">
             <summary aria-label={t('settings.sandbox.pageHintTitle')}>ⓘ</summary>
             <div>
-              <p><strong>{t('settings.sandbox.pageHintTitle')}</strong></p>
-              <p className="wk-muted text-muted">{t('settings.sandbox.pageHint')}</p>
+              <p className="m-0"><strong>{t('settings.sandbox.pageHintTitle')}</strong></p>
+              <p className="wk-muted text-muted m-0">{t('settings.sandbox.pageHint')}</p>
             </div>
           </details>
-          <p className="wk-muted text-muted">{t('settings.sandbox.description')}</p>
+          <p className="wk-muted text-muted m-0">{t('settings.sandbox.description')}</p>
         </div>
         <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
           <a href={CLUSTER_GUIDE_URL} target="_blank" rel="noopener noreferrer">{t('settings.sandbox.viewClusterGuide')}</a>
@@ -1855,7 +1855,7 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
           <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col">
             <div>
               <h3>{t('settings.sandbox.inventoryTitle')}: {inventory.record.name}</h3>
-              <p className="wk-muted text-muted">
+              <p className="wk-muted text-muted m-0">
                 {inventory.notice === 'blocked'
                   ? t('settings.sandbox.sandboxesStillLive', { count: inventory.data.sandboxCount })
                   : t('settings.sandbox.inventoryUnverifiableHint')}

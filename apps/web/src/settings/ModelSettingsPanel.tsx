@@ -907,7 +907,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
       <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col">
         <div>
           <h2 className="mt-0! mb-2! text-[20px] font-semibold">{t("modelSettings.title")}</h2>
-          <p className="wk-muted text-muted">{t("modelSettings.description")}</p>
+          <p className="wk-muted text-muted m-0">{t("modelSettings.description")}</p>
         </div>
         {canCreate ? (
           <button type="button" className="inline-flex cursor-pointer items-center gap-1.5 border-0 bg-transparent px-0 py-1 font-[inherit] text-sm font-semibold text-[#0a8f4c] hover:text-[#067a3f] focus-visible:text-[#067a3f]" onClick={() => setDebugOpen(true)}>
@@ -1072,7 +1072,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
           <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col sticky -top-[1.25rem] z-[1] bg-white pt-[1.25rem] max-[720px]:-top-[1rem] max-[720px]:pt-4">
             <div>
               <h3>{draft.id ? t("model.editor.editTitle") : t("model.editor.addTitle")}</h3>
-              <p className="wk-muted text-muted">
+              <p className="wk-muted text-muted m-0">
                 {t(`model.editor.description.${draft.type}`) || t("model.editor.description.default")}
               </p>
             </div>
@@ -1080,7 +1080,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
               {t("common.close")}
             </Button>
           </div>
-          <form className="wk-settings-editor my-4 grid gap-[.8rem] max-w-[620px]" onSubmit={(event) => void save(event)}>
+          <form className="wk-settings-editor my-4 grid gap-[.8rem] max-w-[620px] [&_label]:grid [&_label]:gap-[.35rem] [&_label]:text-[#27364d] [&_label]:font-semibold [&_input]:w-full [&_input]:box-border [&_input]:border [&_input]:border-[#cbd5e1] [&_input]:rounded-control [&_input]:bg-white [&_input]:text-ink [&_input]:[font:inherit] [&_input]:px-[.65rem] [&_input]:py-[.55rem] [&_textarea]:w-full [&_textarea]:box-border [&_textarea]:border [&_textarea]:border-[#cbd5e1] [&_textarea]:rounded-control [&_textarea]:bg-white [&_textarea]:text-ink [&_textarea]:[font:inherit] [&_textarea]:px-[.65rem] [&_textarea]:py-[.55rem] [&_select]:w-full [&_select]:[font:inherit]" onSubmit={(event) => void save(event)}>
             {!draft.id ? (
               <div className="form-item">
                 <h4>{t("model.editor.sectionType")}</h4>

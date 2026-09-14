@@ -14,10 +14,12 @@
  * What intentionally stays here:
  *
  * 1. Specificity guards vs STILL-LIVING unlayered shared rules in styles.css
- *    (global h1 clamp, .wk-list-actions, .wk-settings-panel-heading). Utilities
- *    render inside @layer utilities and lose to ANY unlayered declaration, so
- *    these guards must outlive the chat legacy block until the Orchestrator's
- *    final shared-layer cleanup removes those shared rules.
+ *    (global h1 clamp, .wk-list-actions). Utilities render inside @layer
+ *    utilities and lose to ANY unlayered declaration, so these guards must
+ *    outlive the chat legacy block until the Orchestrator's final shared-layer
+ *    cleanup removes those shared rules. (The .wk-settings-panel-heading guard
+ *    was deleted together with that shared family — its align-items/gap/margin
+ *    values were already encoded as utilities on the sandbox drawer element.)
  * 2. One reduced-motion guard: the message-scroll element's smooth scrolling
  *    is a layered utility; without this unlayered floor, prefers-reduced-motion
  *    users would get animated scrolling again.
@@ -51,13 +53,10 @@
   gap: 0.4rem;
 }
 
-/* Shared .wk-settings-panel-heading { align-items/gap/margin } keeps losing
-   to this drawer-scoped chain. */
-.wk-chat-sandbox-drawer .wk-settings-panel-heading {
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-}
+/* The .wk-chat-sandbox-drawer .wk-settings-panel-heading guard was deleted:
+   its opponent (the unlayered shared panel-heading base in styles.css) is gone
+   and the guard's values (items-center/gap-8px/m-0) sit on the element in
+   packages/views/src/chat/page.tsx. */
 
 /* Layered scroll-smooth would re-enable animated scrolling for
    prefers-reduced-motion users; this unlayered floor keeps it instant. */

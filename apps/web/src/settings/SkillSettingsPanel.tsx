@@ -573,8 +573,8 @@ async function ensureInstallerModel(installer: InstallerModel, targets: readonly
 }
 
 function InstallerModelSelect({ installer, t }: { installer: InstallerModel; t: (key: string) => string }) {
-  return <label>{t('settings.sandbox.skillInstallerModel')}
-    <select value={installer.modelId} disabled={installer.saving} onChange={(event) => installer.onChange(event.target.value)}>
+  return <label className="grid gap-[.35rem] text-[#27364d] font-semibold">{t('settings.sandbox.skillInstallerModel')}
+    <select className="w-full [font:inherit]" value={installer.modelId} disabled={installer.saving} onChange={(event) => installer.onChange(event.target.value)}>
       <option value="">{t('settings.sandbox.skillInstallerModelRequired')}</option>
       {installer.models.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
     </select>
@@ -861,14 +861,14 @@ function AddSkillWizard({ client, open, catalog, configs, installer, t, onClose,
       {parsedCard.description ? <p className="line-clamp-2 m-0 overflow-hidden text-xs leading-[1.5] text-muted-strong [overflow-wrap:anywhere]" title={parsedCard.description}>{compactSkillText(parsedCard.description)}</p> : null}
     </div></div></article> : null}
     {step === 0 ? <>
-      <section className="wk-settings-editor my-4 grid gap-[.8rem] max-w-[620px]">
+      <section className="wk-settings-editor my-4 grid gap-[.8rem] max-w-[620px] [&_label]:grid [&_label]:gap-[.35rem] [&_label]:text-[#27364d] [&_label]:font-semibold [&_input]:w-full [&_input]:box-border [&_input]:border [&_input]:border-[#cbd5e1] [&_input]:rounded-control [&_input]:bg-white [&_input]:text-ink [&_input]:[font:inherit] [&_input]:px-[.65rem] [&_input]:py-[.55rem] [&_textarea]:w-full [&_textarea]:box-border [&_textarea]:border [&_textarea]:border-[#cbd5e1] [&_textarea]:rounded-control [&_textarea]:bg-white [&_textarea]:text-ink [&_textarea]:[font:inherit] [&_textarea]:px-[.65rem] [&_textarea]:py-[.55rem] [&_select]:w-full [&_select]:[font:inherit]">
         <h4>{t('settings.sandbox.skillSourceSection')}</h4>
         <p className="wk-muted text-muted">{t('settings.sandbox.skillSourceSectionHint', { size: maxSkillBundleMB() })}</p>
         <label>{t('settings.sandbox.skillSourcePlaceholder')}
           <input value={source} placeholder={t('settings.sandbox.skillSourcePlaceholder')} disabled={addBusy || Boolean(registeredId)} onChange={(event) => setSource(event.target.value)} />
         </label>
       </section>
-      <section className="wk-settings-editor my-4 grid gap-[.8rem] max-w-[620px]">
+      <section className="wk-settings-editor my-4 grid gap-[.8rem] max-w-[620px] [&_label]:grid [&_label]:gap-[.35rem] [&_label]:text-[#27364d] [&_label]:font-semibold [&_input]:w-full [&_input]:box-border [&_input]:border [&_input]:border-[#cbd5e1] [&_input]:rounded-control [&_input]:bg-white [&_input]:text-ink [&_input]:[font:inherit] [&_input]:px-[.65rem] [&_input]:py-[.55rem] [&_textarea]:w-full [&_textarea]:box-border [&_textarea]:border [&_textarea]:border-[#cbd5e1] [&_textarea]:rounded-control [&_textarea]:bg-white [&_textarea]:text-ink [&_textarea]:[font:inherit] [&_textarea]:px-[.65rem] [&_textarea]:py-[.55rem] [&_select]:w-full [&_select]:[font:inherit]">
         <h4>{t('settings.sandbox.skillUploadSection')}</h4>
         <p className="wk-muted text-muted">{t('settings.sandbox.skillUploadSectionHint', { size: maxSkillBundleMB() })}</p>
         <input ref={fileInputRef} type="file" accept=".zip,application/zip" className="absolute w-px h-px overflow-hidden [clip:rect(0_0_0_0)] whitespace-nowrap" disabled={addBusy || Boolean(registeredId)} onChange={(event) => acceptFile(event.currentTarget.files?.[0] ?? null)} />
@@ -881,7 +881,7 @@ function AddSkillWizard({ client, open, catalog, configs, installer, t, onClose,
         {pendingFile && !registeredId ? <Button type="button" disabled={addBusy} onClick={() => { setPendingFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}>{t('settings.skills.addClearFile')}</Button> : null}
       </section>
     </> : <>
-      {configs.length > 0 ? <section className="wk-settings-editor my-4 grid gap-[.8rem] max-w-[620px]">
+      {configs.length > 0 ? <section className="wk-settings-editor my-4 grid gap-[.8rem] max-w-[620px] [&_label]:grid [&_label]:gap-[.35rem] [&_label]:text-[#27364d] [&_label]:font-semibold [&_input]:w-full [&_input]:box-border [&_input]:border [&_input]:border-[#cbd5e1] [&_input]:rounded-control [&_input]:bg-white [&_input]:text-ink [&_input]:[font:inherit] [&_input]:px-[.65rem] [&_input]:py-[.55rem] [&_textarea]:w-full [&_textarea]:box-border [&_textarea]:border [&_textarea]:border-[#cbd5e1] [&_textarea]:rounded-control [&_textarea]:bg-white [&_textarea]:text-ink [&_textarea]:[font:inherit] [&_textarea]:px-[.65rem] [&_textarea]:py-[.55rem] [&_select]:w-full [&_select]:[font:inherit]">
         <h4>{t('settings.skills.pickSandboxes')}</h4>
         <p className="wk-muted text-muted">{t('settings.skills.pickSandboxesHint')}</p>
         <SandboxPickList client={client} item={pickItem} configs={configs} mode="all" sessionIds={sessionIds} targetIds={targetIds} onToggle={setPick} t={t}
@@ -889,7 +889,7 @@ function AddSkillWizard({ client, open, catalog, configs, installer, t, onClose,
           metaLine={(record) => { const label = t(backendLabelKey(record.sandbox_type)); const target = sandboxTargetLine(record); return target ? `${label} · ${target}` : label; }}
           onManage={(record, installation) => { if (installation.skillId) onManage(record, installation.skillId, parsedCard?.name ?? ''); }} />
       </section> : <p className="wk-muted text-muted">{t('settings.skills.emptyNoSandboxHint')}</p>}
-      {targetIds.length > 0 ? <section className="wk-settings-editor my-4 grid gap-[.8rem] max-w-[620px]">
+      {targetIds.length > 0 ? <section className="wk-settings-editor my-4 grid gap-[.8rem] max-w-[620px] [&_label]:grid [&_label]:gap-[.35rem] [&_label]:text-[#27364d] [&_label]:font-semibold [&_input]:w-full [&_input]:box-border [&_input]:border [&_input]:border-[#cbd5e1] [&_input]:rounded-control [&_input]:bg-white [&_input]:text-ink [&_input]:[font:inherit] [&_input]:px-[.65rem] [&_input]:py-[.55rem] [&_textarea]:w-full [&_textarea]:box-border [&_textarea]:border [&_textarea]:border-[#cbd5e1] [&_textarea]:rounded-control [&_textarea]:bg-white [&_textarea]:text-ink [&_textarea]:[font:inherit] [&_textarea]:px-[.65rem] [&_textarea]:py-[.55rem] [&_select]:w-full [&_select]:[font:inherit]">
         <h4>{t('settings.sandbox.skillInstallerModel')}</h4>
         <p className="wk-muted text-muted">{t('settings.sandbox.skillInstallerModelHint')}</p>
         <InstallerModelSelect installer={installer} t={t} />
@@ -974,7 +974,7 @@ function InstallSkillDialog({ client, open, item, configs, preselectConfigId, in
       backendLabel={(type) => t(backendLabelKey(type))}
       metaLine={(record) => { const label = t(backendLabelKey(record.sandbox_type)); const target = sandboxTargetLine(record); return target ? `${label} · ${target}` : label; }}
       onManage={(record, installation) => { if (installation.skillId && item) onManage(record, installation.skillId, item.name); }} />
-    {targetIds.length > 0 ? <section className="wk-settings-editor my-4 grid gap-[.8rem] max-w-[620px]">
+    {targetIds.length > 0 ? <section className="wk-settings-editor my-4 grid gap-[.8rem] max-w-[620px] [&_label]:grid [&_label]:gap-[.35rem] [&_label]:text-[#27364d] [&_label]:font-semibold [&_input]:w-full [&_input]:box-border [&_input]:border [&_input]:border-[#cbd5e1] [&_input]:rounded-control [&_input]:bg-white [&_input]:text-ink [&_input]:[font:inherit] [&_input]:px-[.65rem] [&_input]:py-[.55rem] [&_textarea]:w-full [&_textarea]:box-border [&_textarea]:border [&_textarea]:border-[#cbd5e1] [&_textarea]:rounded-control [&_textarea]:bg-white [&_textarea]:text-ink [&_textarea]:[font:inherit] [&_textarea]:px-[.65rem] [&_textarea]:py-[.55rem] [&_select]:w-full [&_select]:[font:inherit]">
       <h4>{t('settings.sandbox.skillInstallerModel')}</h4>
       <p className="wk-muted text-muted">{t('settings.sandbox.skillInstallerModelHint')}</p>
       <InstallerModelSelect installer={installer} t={t} />

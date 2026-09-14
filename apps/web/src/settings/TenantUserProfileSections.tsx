@@ -113,6 +113,7 @@ export function TenantInfoSection({ client, tenantId, role, locale, payload }: {
             {editingName ? (
               <div className="inline-edit">
                 <input
+                  className="box-border border border-[#cbd5e1] rounded-control bg-white text-ink [font:inherit] px-[.65rem] py-[.55rem]"
                   autoFocus
                   maxLength={64}
                   aria-label={t('tenant.details.nameLabel')}
@@ -147,6 +148,7 @@ export function TenantInfoSection({ client, tenantId, role, locale, payload }: {
             {editingDescription ? (
               <div className="inline-edit inline-edit-description">
                 <textarea
+                  className="box-border border border-[#cbd5e1] rounded-control bg-white text-ink [font:inherit] px-[.65rem] py-[.55rem]"
                   autoFocus
                   rows={2}
                   maxLength={512}
@@ -373,9 +375,10 @@ export function UserProfileSection({ client, locale, payload }: {
         </div>
       </div>
       <form className="mt-1 grid gap-3 border-t border-dashed border-[rgba(120,135,155,0.3)] pt-4" onSubmit={(event) => void submit(event)}>
-        <label>
+        <label className="grid gap-[.35rem] text-[#27364d] font-semibold">
           {t('userProfile.changePassword.currentLabel')}
           <input
+            className="w-full box-border border border-[#cbd5e1] rounded-control bg-white text-ink [font:inherit] px-[.65rem] py-[.55rem]"
             type="password"
             autoComplete="current-password"
             placeholder={t('userProfile.changePassword.currentPlaceholder')}
@@ -385,9 +388,10 @@ export function UserProfileSection({ client, locale, payload }: {
           />
           {fieldErrors.oldPassword ? <span className="wk-field-error text-xs leading-[1.4] text-[#c23434]">{fieldErrors.oldPassword}</span> : null}
         </label>
-        <label>
+        <label className="grid gap-[.35rem] text-[#27364d] font-semibold">
           {t('userProfile.changePassword.newLabel')}
           <input
+            className="w-full box-border border border-[#cbd5e1] rounded-control bg-white text-ink [font:inherit] px-[.65rem] py-[.55rem]"
             type="password"
             autoComplete="new-password"
             placeholder={t('userProfile.changePassword.newPlaceholder')}
@@ -397,9 +401,10 @@ export function UserProfileSection({ client, locale, payload }: {
           />
           {fieldErrors.newPassword ? <span className="wk-field-error text-xs leading-[1.4] text-[#c23434]">{fieldErrors.newPassword}</span> : null}
         </label>
-        <label>
+        <label className="grid gap-[.35rem] text-[#27364d] font-semibold">
           {t('userProfile.changePassword.confirmLabel')}
           <input
+            className="w-full box-border border border-[#cbd5e1] rounded-control bg-white text-ink [font:inherit] px-[.65rem] py-[.55rem]"
             type="password"
             autoComplete="new-password"
             placeholder={t('userProfile.changePassword.confirmPlaceholder')}
