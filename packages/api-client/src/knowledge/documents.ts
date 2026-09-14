@@ -13,6 +13,7 @@ import {
 } from '@weknora/contracts';
 import type { ClientBinaryResponse, ClientRequest } from '../client.ts';
 import type { NativeFileSource } from '../ports.ts';
+import { ApiError } from '../errors.ts';
 
 /** Minimal trace-node view (structurally compatible with the domain type). */
 export interface KnowledgeSpanNodeView {
@@ -97,6 +98,26 @@ function isNativeFileSource(value: Blob | NativeFileSource): value is NativeFile
   return typeof Blob === 'undefined' || !(value instanceof Blob);
 }
 
+function uploadResponseError(response: unknown): ApiError {
+  const findField = (value: unknown, keys: readonly string[], depth = 0): unknown => {
+    if (depth > 3 || value === null || typeof value !== 'object') return undefined;
+    const record = value as Record<string, unknown>;
+    for (const key of keys) if (record[key] !== undefined) return record[key];
+    for (const key of ['error', 'body', 'response', 'details']) {
+      const nested = findField(record[key], keys, depth + 1);
+      if (nested !== undefined) return nested;
+    }
+    return undefined;
+  };
+  const codeValue = findField(response, ['code', 'error_code']);
+  const code = typeof codeValue === 'string' && codeValue.trim() ? codeValue : typeof codeValue === 'number' ? String(codeValue) : 'UPLOAD_FAILED';
+  const messageValue = findField(response, ['message', 'error_message']);
+  const message = typeof messageValue === 'string' && messageValue.trim() ? messageValue : 'Knowledge document upload failed';
+  const statusValue = findField(response, ['status']);
+  const status = typeof statusValue === 'number' ? statusValue : undefined;
+  return new ApiError({ code, message, status, details: response });
+}
+
 export function createKnowledgeDocumentsApi(
   request: (input: ClientRequest) => Promise<unknown>,
   requestBinary?: (input: ClientRequest) => Promise<ClientBinaryResponse>,
@@ -142,7 +163,7 @@ export function createKnowledgeDocumentsApi(
         signal,
       });
       if (typeof response !== 'object' || response === null || !('success' in response) || (response as { success?: unknown }).success !== true) {
-        throw new Error('Invalid knowledge upload response');
+        throw uploadResponseError(response);
       }
       const data = (response as { data?: unknown }).data;
       if (typeof data !== 'object' || data === null || Array.isArray(data) || typeof (data as { id?: unknown }).id !== 'string') {

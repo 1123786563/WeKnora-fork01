@@ -18,9 +18,23 @@ export interface KnowledgeUploadQueueOptions {
 }
 
 export function knowledgeUploadErrorLabel(locale: Locale, cause: unknown): string {
-  const message = cause instanceof Error ? cause.message : '';
+  const values: string[] = [];
+  const collect = (value: unknown, depth: number): void => {
+    if (depth > 3 || value === null || value === undefined) return;
+    if (value instanceof Error) values.push(value.message);
+    if (typeof value !== 'object') {
+      if (typeof value === 'string') values.push(value);
+      return;
+    }
+    const row = value as Record<string, unknown>;
+    for (const key of ['code', 'error_code', 'status', 'message']) {
+      if (typeof row[key] === 'string' || typeof row[key] === 'number') values.push(String(row[key]));
+    }
+    for (const key of ['body', 'error', 'details', 'response', 'cause']) collect(row[key], depth + 1);
+  };
+  collect(cause, 0);
   // Backends may expose either the stable code or a wrapped request error.
-  if (/\bduplicate(?:_file)?\b|\bfile_exists\b/i.test(message)) {
+  if (values.some((value) => /\bduplicate(?:_file)?\b|\bfile_exists\b/i.test(value))) {
     return knowledgeListLabel(locale, 'knowledgeBase.fileExists');
   }
   return knowledgeListLabel(locale, 'knowledgeBase.uploadFailed');

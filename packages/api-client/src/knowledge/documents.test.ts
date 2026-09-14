@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { ApiError } from '../errors.ts';
 import { createKnowledgeDocumentsApi } from './documents.ts';
 
 test('lists documents with encoded KB id and filters', async () => {
@@ -34,6 +35,34 @@ test('builds multipart upload without inventing a JSON content type', async () =
   assert.equal(form.get('tag_ids'), 'tag-1,tag-2');
   assert.equal(form.get('process_config'), '{"graph_enabled":false}');
   assert.equal((form.get('file') as File).name, 'hello.txt');
+});
+
+test('preserves a structured duplicate code when the upload returns success false', async () => {
+  const api = createKnowledgeDocumentsApi(async () => ({
+    success: false,
+    error: { code: 'duplicate_file', message: 'document already exists' },
+  }));
+  await assert.rejects(
+    api.upload('kb-1', { file: new Blob(['hello']) }),
+    (error: unknown) => error instanceof ApiError
+      && error.code === 'duplicate_file'
+      && error.message === 'document already exists',
+  );
+});
+
+test('preserves duplicate code nested in a structured upload response body', async () => {
+  const api = createKnowledgeDocumentsApi(async () => ({
+    success: false,
+    status: 409,
+    body: { error: { code: 'duplicate_file', message: 'document already exists' } },
+  }));
+  await assert.rejects(
+    api.upload('kb-1', { file: new Blob(['hello']) }),
+    (error: unknown) => error instanceof ApiError
+      && error.code === 'duplicate_file'
+      && error.status === 409
+      && error.message === 'document already exists',
+  );
 });
 
 test('passes cancellation to the upload request', async () => {

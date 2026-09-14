@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { NativeFileSource } from '@weknora/api-client';
+import { ApiError } from '@weknora/api-client';
 import { knowledgeUploadErrorLabel, uploadKnowledgeFiles } from './upload-queue.ts';
 import type { UploadEvent } from './upload-progress.ts';
 
@@ -70,4 +71,9 @@ test('localizes stable duplicate and generic upload errors for every mobile loca
   }
   assert.equal(knowledgeUploadErrorLabel('zh-CN', new Error('duplicate_file')), '文件已存在');
   assert.equal(knowledgeUploadErrorLabel('en-US', new Error('duplicate_file')), 'File already exists');
+});
+
+test('reads duplicate codes from structured ApiError fields and wrapped response bodies', () => {
+  assert.equal(knowledgeUploadErrorLabel('zh-CN', new ApiError({ code: 'duplicate_file', message: 'request rejected' })), '文件已存在');
+  assert.equal(knowledgeUploadErrorLabel('en-US', { status: 'duplicate', body: { error: { code: 'duplicate_file' } } }), 'File already exists');
 });
