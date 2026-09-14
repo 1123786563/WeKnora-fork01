@@ -638,6 +638,8 @@ export interface UploadConfirmSectionsProps {
   multimodalIssue: boolean;
   asrIssue: boolean;
   parserEngines: ParserEngineInfo[];
+  /** Vue KBParserSettings loading state; prevents an empty engine list from masquerading as loaded. */
+  parserLoading?: boolean;
   vllmModels: ModelConfiguration[];
   asrModels: ModelConfiguration[];
   moreOpen: boolean;
@@ -856,7 +858,9 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
             <UploadSwitch checked={state.pdfForceScanned} ariaLabel={t("uploadConfirm.pdfForceScanned.label")} onChange={(checked) => update({ pdfForceScanned: checked })} />
           </div>
         ) : null}
-        {props.parserEngines.length === 0 ? (
+        {props.parserLoading ? (
+          <div className="wk-upload-parser-loading" role="status">{t("settings.parser.loading")}</div>
+        ) : props.parserEngines.length === 0 ? (
           <p className="wk-muted">{t("settings.parser.noEngineDetected")}</p>
         ) : (
           <div className="wk-upload-parser-group">
@@ -1746,6 +1750,7 @@ export function KnowledgeDocumentsPage({
     if (stageNoticeTimer.current) clearTimeout(stageNoticeTimer.current);
   }, []);
   const [parserEngines, setParserEngines] = useState<ParserEngineInfo[]>([]);
+  const [parserEnginesLoading, setParserEnginesLoading] = useState(true);
   const [tenantModels, setTenantModels] = useState<ModelConfiguration[]>([]);
   // Vue editorResources.systemInfo (GET /api/v1/system/info): gates the graph section.
   const [systemInfo, setSystemInfo] = useState<Record<string, unknown> | null>(null);
@@ -1877,7 +1882,7 @@ export function KnowledgeDocumentsPage({
 
   useEffect(() => {
     let active = true;
-    void client.knowledgeBases.settings.parserEngines().then((result) => { if (active) setParserEngines(result.data); }).catch(() => { if (active) setParserEngines([]); });
+    void client.knowledgeBases.settings.parserEngines().then((result) => { if (active) { setParserEngines(result.data); setParserEnginesLoading(false); } }).catch(() => { if (active) { setParserEngines([]); setParserEnginesLoading(false); } });
     return () => { active = false; };
   }, [client]);
 
@@ -3388,6 +3393,7 @@ export function KnowledgeDocumentsPage({
             multimodalIssue={multimodalIssue}
             asrIssue={asrIssue}
             parserEngines={parserEngines}
+            parserLoading={parserEnginesLoading}
             vllmModels={vllmModels}
             asrModels={asrModels}
             moreOpen={chunkingMoreOpen}

@@ -46,6 +46,8 @@ Multimodal and ASR enabled fields, model selectors, language controls, and multi
 
 Parser file-family rows now match the embedded `KBParserSettings.vue` layout: bordered group container, 168px information column, 280px control column, compact 10px/14px row padding, monospace extension chips, and stacked controls below the mobile breakpoint.
 
+Parser engine loading is now explicit: the React request tracks a loading flag and renders `settings.parser.loading`, while a successfully resolved empty engine list continues to render the empty-state message.
+
 Multimodal and ASR enabled fields, model selectors, language controls, and multimodal custom instructions now use the shared Vue-shaped setting-row information/control columns, including the existing localized descriptions and required/clearable behavior.
 
 ASR language now uses a project clearable input with an explicit clear action, matching Vue `t-input clearable`; the existing language payload remains unchanged.
@@ -54,8 +56,8 @@ The relation-type combobox also exposes a clear action, while entity endpoint co
 
 ## Verification
 
-- Focused upload-confirm and pipeline suites: 35/35 passed for the current graph/upload-confirm suite; prior upload-confirm and pipeline suites: 50/50 passed.
-- Full Web suite: `pnpm run test:web` — 832/832 passed.
+- Focused upload-confirm and pipeline suites: 36/36 passed for the current graph/upload-confirm suite; prior upload-confirm and pipeline suites: 50/50 passed.
+- Full Web suite: `pnpm run test:web` — 833/833 passed.
 - Web typecheck: `pnpm run typecheck:web` — passed.
 - `git diff --check` — passed.
 - Browser extraction failure against a live graph-enabled backend remains unavailable; the current deployment has graph extraction disabled, so runtime endpoint acceptance is `blocked-env`.

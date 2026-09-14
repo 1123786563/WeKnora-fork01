@@ -247,7 +247,7 @@ test('section nav shows per-section status text with issue markers', () => {
 
 // --- Config sections (PDF presentation, chunking more options, question) ----------
 
-function sectionsHtml(overrides?: { state?: Partial<ReturnType<typeof defaultUploadConfirmUIState>>; hasPdf?: boolean; moreOpen?: boolean; locale?: 'zh-CN' | 'en-US'; parserEngines?: ParserEngineInfo[] }) {
+function sectionsHtml(overrides?: { state?: Partial<ReturnType<typeof defaultUploadConfirmUIState>>; hasPdf?: boolean; moreOpen?: boolean; locale?: 'zh-CN' | 'en-US'; parserEngines?: ParserEngineInfo[]; parserLoading?: boolean }) {
   const locale = overrides?.locale ?? 'zh-CN';
   return renderToStaticMarkup(React.createElement(UploadConfirmSections, {
     state: { ...defaultUploadConfirmUIState(), ...overrides?.state },
@@ -256,6 +256,7 @@ function sectionsHtml(overrides?: { state?: Partial<ReturnType<typeof defaultUpl
     multimodalIssue: false,
     asrIssue: false,
     parserEngines: overrides?.parserEngines ?? [{ Name: 'mineru', Description: '', FileTypes: ['pdf'], Available: true }],
+    parserLoading: overrides?.parserLoading,
     vllmModels: [],
     asrModels: [],
     moreOpen: overrides?.moreOpen ?? false,
@@ -263,6 +264,13 @@ function sectionsHtml(overrides?: { state?: Partial<ReturnType<typeof defaultUpl
     t: uploadConfirmT(locale),
   }));
 }
+
+test('parser section distinguishes Vue loading from an empty engine result', () => {
+  const html = sectionsHtml({ parserLoading: true, parserEngines: [] });
+  assert.match(html, /role="status"/);
+  assert.match(html, /加载中/);
+  assert.doesNotMatch(html, /没有检测到可用的解析引擎/);
+});
 
 test('scanned-PDF override renders with its label and hint only for PDF batches', () => {
   const withPdf = sectionsHtml({ hasPdf: true });
