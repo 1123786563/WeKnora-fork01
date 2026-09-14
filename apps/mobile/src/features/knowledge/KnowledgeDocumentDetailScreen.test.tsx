@@ -34,7 +34,7 @@ async function mount(locale: 'zh-CN' | 'en-US') {
           ? `import React from 'react'; const Box=({children})=><div>{children}</div>; export const AppState={addEventListener:()=>({remove:()=>{}})}; export const View=Box; export const SafeAreaView=Box; export const ScrollView=Box; export const Text=({children})=><span>{children}</span>; export const ActivityIndicator=({accessibilityLabel})=><span aria-label={accessibilityLabel}>loading</span>; export const Pressable=({children,onPress,disabled})=><button disabled={disabled} onClick={onPress}>{children}</button>;`
         : path.endsWith('platform/files.ts')
             ? `export const downloadKnowledgeFile=async()=>'/tmp/guide.md'; export const readNativeTextFile=async()=>'# Guide'; export const shareNativeFile=async()=>{};`
-            : `import React from 'react'; export const NativeArtifactPreview=({labels,error})=><div>{labels?.back} {labels?.share} {labels?.loading} {error}</div>;` }));
+        : `import React from 'react'; export const NativeArtifactPreview=({labels,error})=><div>{labels?.back} {labels?.share} {labels?.loading} {labels?.downloadOnly} {error}</div>;` }));
     } }],
   });
   const module = { exports: {} as Record<string, unknown> };
@@ -51,12 +51,25 @@ test('document detail copy resolves for zh-CN and en-US', () => {
   for (const locale of ['zh-CN', 'en-US'] as const) {
     const copy = [
       'knowledgeBase.detail.backShort', 'knowledgeBase.detail.title', 'knowledgeBase.detail.loading',
-      'knowledgeBase.detail.preview', 'knowledgeBase.detail.preparing', 'knowledgeBase.detail.downloadShare',
+      'knowledgeBase.detail.preview', 'knowledgeBase.detail.preparing', 'knowledgeBase.detail.downloadShare', 'knowledgeBase.detail.downloadOnly',
       'knowledgeBase.detail.previewUnavailable', 'knowledgeBase.detail.previewFailed', 'knowledgeBase.detail.shareFailed',
     ].map((key) => knowledgeListLabel(locale, key, { status: knowledgeListLabel(locale, 'knowledgeBase.timeline.running') })).join(' ');
     assert.equal(copy.includes('knowledgeBase.detail.'), false, locale);
     assert.equal(copy.includes('Back'), locale === 'en-US', locale);
     assert.equal(copy.includes('返回'), locale === 'zh-CN', locale);
+  }
+});
+
+test('download-only copy is available in all supported locales', () => {
+  const expected = {
+    'zh-CN': '下载后查看',
+    'en-US': 'Download to view',
+    'ja-JP': 'ダウンロードして表示',
+    'ko-KR': '다운로드하여 보기',
+    'ru-RU': 'Скачайте для просмотра',
+  } as const;
+  for (const locale of Object.keys(expected) as (keyof typeof expected)[]) {
+    assert.equal(knowledgeListLabel(locale, 'knowledgeBase.detail.downloadOnly'), expected[locale], locale);
   }
 });
 
