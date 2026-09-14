@@ -108,9 +108,12 @@ async function mountShell(options: { client?: Record<string, unknown>; children?
   return container;
 }
 
-const shellList = () => document.querySelector('nav.plat-shell__sessions');
-const groupHeaders = () => [...document.querySelectorAll('.plat-shell__sessions .wk-chat-session-group h3')].map((node) => node.textContent);
-const rowTitles = () => [...document.querySelectorAll('.plat-shell__sessions .wk-chat-session-title-text')].map((node) => node.textContent);
+// Class names became Tailwind utilities (shell.css is gone); queries use the
+// semantic anchors instead: the sessions nav by its aria-label, group headers
+// as h3, and the title span as the only button span without aria-hidden/title.
+const shellList = () => document.querySelector('nav[aria-label="我的对话"]');
+const groupHeaders = () => [...document.querySelectorAll('nav[aria-label="我的对话"] h3')].map((node) => node.textContent);
+const rowTitles = () => [...document.querySelectorAll('nav[aria-label="我的对话"] li button span:not([aria-hidden]):not([title])')].map((node) => node.textContent);
 
 test('(a) shell sidebar renders the grouped session list on a chat route', async () => {
   await mountShell();
@@ -122,7 +125,7 @@ test('(a) shell sidebar renders the grouped session list on a chat route', async
 
 test('(b) active session follows the route (/platform/chat/:id)', async () => {
   await mountShell();
-  const activeButtons = [...document.querySelectorAll('.plat-shell__sessions .wk-chat-session-item.is-active .wk-chat-session-title')];
+  const activeButtons = [...document.querySelectorAll('nav[aria-label="我的对话"] button[aria-current="page"]')];
   assert.equal(activeButtons.length, 1, 'exactly one active row');
   assert.equal(activeButtons[0]?.getAttribute('aria-current'), 'page');
   assert.equal(activeButtons[0]?.textContent?.includes('昨天的会话'), true, 'session-2 (from the URL) is the active row');
@@ -135,7 +138,7 @@ test('(c) selecting a session on a chat route asks the chat page for an in-place
     events.push((event as CustomEvent<{ sessionId?: string }>).detail?.sessionId ?? '');
   };
   window.addEventListener('weknora:session-route-change', listener);
-  const target = [...document.querySelectorAll('.plat-shell__sessions .wk-chat-session-title')]
+  const target = [...document.querySelectorAll('nav[aria-label="我的对话"] li button')]
     .find((node) => node.textContent === '今天的会话') as HTMLButtonElement;
   assert.ok(target);
   await act(async () => { target.click(); await new Promise((resolve) => setTimeout(resolve, 5)); });
@@ -155,12 +158,12 @@ test('(d) row ⋯ menu wires 置顶/取消置顶/清空消息/删除记录 to th
   window.confirm = () => true;
   try {
     await mountShell({ client });
-    const menus = [...document.querySelectorAll('.plat-shell__sessions details.wk-chat-session-menu')];
+    const menus = [...document.querySelectorAll('nav[aria-label="我的对话"] li details')];
     assert.equal(menus.length, 5, 'each row carries the hover ⋯ menu');
     const menuOf = (title: string) => {
-      const row = [...document.querySelectorAll('.plat-shell__sessions .wk-chat-session-item')]
+      const row = [...document.querySelectorAll('nav[aria-label="我的对话"] li')]
         .find((node) => node.textContent?.includes(title));
-      return row?.querySelector('details.wk-chat-session-menu') as HTMLDetailsElement | null;
+      return row?.querySelector('details') as HTMLDetailsElement | null;
     };
     // Pin the unpinned 今天的会话.
     const menu1 = menuOf('今天的会话');
@@ -214,13 +217,13 @@ test('(e) deleting a non-active session only refreshes the shell list; no in-pag
     });
     await mountShell({ client, children: chatPage });
     // The chat page's own sidebar must be suppressed by the shell context…
-    assert.equal(document.querySelectorAll('aside.wk-chat-sidebar').length, 0, 'chat page must not render its own sidebar under the shell');
+    assert.equal(document.querySelectorAll('aside[aria-label="我的对话"]').length, 0, 'chat page must not render its own sidebar under the shell');
     // …while the shell list renders exactly one session list.
-    assert.equal(document.querySelectorAll('nav.plat-shell__sessions').length, 1);
+    assert.equal(document.querySelectorAll('nav[aria-label="我的对话"]').length, 1);
     // Deleting a non-active session removes it from the shell list without navigation.
-    const menu3 = [...document.querySelectorAll('.plat-shell__sessions .wk-chat-session-item')]
+    const menu3 = [...document.querySelectorAll('nav[aria-label="我的对话"] li')]
       .find((node) => node.textContent?.includes('更早的会话'))
-      ?.querySelector('details.wk-chat-session-menu') as HTMLDetailsElement;
+      ?.querySelector('details') as HTMLDetailsElement;
     assert.ok(menu3);
     menu3.open = true;
     const deleteItem = [...menu3.querySelectorAll('[role="menuitem"]')].find((node) => node.textContent === '删除记录') as HTMLButtonElement;
@@ -239,6 +242,6 @@ test('(f) empty session list renders the zh-CN 暂无对话 empty state', async 
   (client.sessions as Record<string, unknown>).list = async () => ({ data: [], total: 0, page: 1, page_size: 30 });
   await mountShell({ client });
   assert.ok(shellList());
-  const empty = document.querySelector('.plat-shell__sessions .wk-chat-sidebar-empty');
+  const empty = document.querySelector('nav[aria-label="我的对话"] p[role="status"]');
   assert.equal(empty?.textContent, '暂无对话');
 });

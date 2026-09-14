@@ -15,10 +15,10 @@ import {
   recentQueriesStorageKey,
 } from './command-palette.ts';
 import { readReactPlatformState } from './legacy-session.ts';
-import './shell.css';
 // Welcome-tour styles live with the component in @weknora/views; the package
 // itself must stay css-import-free for the shared typecheck, so the shell
-// (which already imports shell.css) pulls it in by relative path.
+// pulls it in by relative path. (shell.css is gone — all rules became
+// utilities in this file / session-sidebar.tsx.)
 import '../../../../packages/views/src/guides/guides.css';
 
 type Client = ReturnType<typeof createWeKnoraClient>;
@@ -59,6 +59,13 @@ const KB_ACTIVE = (pathname: string): boolean =>
   pathname === '/platform/knowledge-bases' ||
   /^\/platform\/knowledge-bases\/[^/]+/.test(pathname) ||
   /^\/knowledgeBase(\/|$)/.test(pathname);
+
+// .plat-shell__kb-filter (+ --active) → utilities. --active survives as a
+// hook class for tests; active color/font swap here (the :hover gray keeps
+// winning over the active blue, matching the deleted css cascade).
+const kbFilterClass = (active: boolean): string =>
+  'plat-shell__kb-filter block mx-[8px] pt-[6px] pr-[8px] pb-[6px] pl-[8px] rounded-[6px] text-[13px] no-underline hover:bg-[#eceff4] hover:text-[#3d4a5c] '
+  + (active ? 'plat-shell__kb-filter--active text-[#2e6de6] font-semibold' : 'text-[#66758b]');
 
 function Icon({ path }: { path: string }): ReactNode {
   return (
@@ -354,15 +361,19 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
   const initial = (user.name || '?').charAt(0).toUpperCase();
 
   return (
-    <div className="plat-shell">
-      <aside className={`plat-shell__aside${collapsed ? ' plat-shell__aside--collapsed' : ''}`}>
-        <div className="plat-shell__logo-row">
-          <a className="plat-shell__logo" href="/platform/knowledge-bases" aria-label="WeKnora">
-            <span className="plat-shell__logo-mark" aria-hidden="true">W</span>
-            {!collapsed && <span className="plat-shell__logo-text">WeKnora</span>}
+    // shell.css → utilities: .plat-shell (flex row, full viewport), .plat-shell__aside
+    // (+ collapsed state swaps width/padding values rather than layering overrides).
+    <div className="flex items-stretch w-full h-screen min-w-[600px] bg-white">
+      <aside className={collapsed
+        ? 'box-border flex flex-col min-w-[60px] w-[60px] pt-[8px] px-[3px] pb-[6px] bg-[#f6f8fa] border-r border-[#e7ebf0] shadow-[1px_0_0_rgba(0,0,0,0.02)] overflow-hidden transition-[width,min-width] duration-[250ms] ease-[ease]'
+        : 'box-border flex flex-col min-w-[260px] w-[260px] pt-[8px] px-[6px] pb-[6px] bg-[#f6f8fa] border-r border-[#e7ebf0] shadow-[1px_0_0_rgba(0,0,0,0.02)] overflow-hidden transition-[width,min-width] duration-[250ms] ease-[ease]'}>
+        <div className="flex items-center justify-between h-[50px] shrink-0 pr-[10px] pl-[14px]">
+          <a className="flex items-center gap-[8px] no-underline text-inherit" href="/platform/knowledge-bases" aria-label="WeKnora">
+            <span className="inline-flex items-center justify-center w-[28px] h-[28px] rounded-[8px] bg-[#2e6de6] text-white text-[15px] font-bold" aria-hidden="true">W</span>
+            {!collapsed && <span className="text-[16px] font-bold text-[#1f2733]">WeKnora</span>}
           </a>
           {!collapsed && (
-            <button type="button" className="plat-shell__toggle" onClick={toggleCollapsed} aria-label="Collapse sidebar" title="Collapse sidebar">
+            <button type="button" className="inline-flex items-center justify-center w-[24px] h-[24px] border-none rounded-[4px] bg-transparent text-[#66758b] cursor-pointer hover:bg-[#eceff4]" onClick={toggleCollapsed} aria-label="Collapse sidebar" title="Collapse sidebar">
               <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true">
                 <rect x="1.5" y="1.5" width="17" height="17" rx="3" />
                 <line x1="7.5" y1="1.5" x2="7.5" y2="18.5" />
@@ -372,8 +383,10 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
             </button>
           )}
         </div>
+        {/* .plat-shell__item + --collapsed descendant override → utilities
+            (collapsed form: centered, 4px side margins, 9px/0 padding). */}
         {collapsed && (
-          <button type="button" className="plat-shell__item plat-shell__toggle-item" onClick={toggleCollapsed} aria-label="Expand sidebar">
+          <button type="button" className="plat-shell__toggle-item flex items-center justify-center gap-[8px] mx-[4px] py-[9px] px-0 rounded-[8px] no-underline text-[#3d4a5c] text-[14px] whitespace-nowrap hover:bg-[#eceff4]" onClick={toggleCollapsed} aria-label="Expand sidebar">
             <svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true">
               <rect x="1.5" y="1.5" width="17" height="17" rx="3" />
               <line x1="7.5" y1="1.5" x2="7.5" y2="18.5" />
@@ -382,24 +395,35 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
           </button>
         )}
 
-        <div className="plat-shell__top">
-          <nav className="plat-shell__nav" aria-label="Platform">
+        {/* .plat-shell__top / __nav → utilities. Item base styles from
+            .plat-shell__item; --active (+ :hover pin) and the collapsed
+            descendant override become state-swapped utilities keyed off
+            active/collapsed (aria-current="page" already marks the active
+            entry for semantics). --inset-x inlined: pl-[14px]. */}
+        <div className="flex-1 min-h-0 overflow-y-auto pt-[6px]">
+          <nav className="flex flex-col gap-[2px]" aria-label="Platform">
             {visibleNavItems.map((item) => {
               const active = item.match(pathname);
               return (
-                <a key={item.key} href={item.href} className={`plat-shell__item${active ? ' plat-shell__item--active' : ''}`}
+                <a key={item.key} href={item.href} className={(collapsed
+                  ? 'justify-center mx-[4px] px-0 '
+                  : 'mx-[8px] px-[8px] ')
+                  + 'flex items-center gap-[8px] py-[9px] rounded-[8px] no-underline text-[14px] whitespace-nowrap '
+                  + (active
+                    ? 'bg-[#f3f3f3] hover:bg-[#f3f3f3] text-[#07c05f] font-medium'
+                    : 'text-[#3d4a5c] hover:bg-[#eceff4]')}
                   aria-current={active ? 'page' : undefined} title={collapsed ? item.label : undefined} data-guide={item.guide}>
-                  <span className="plat-shell__item-icon">{item.icon}</span>
-                  {!collapsed && <span className="plat-shell__item-label">{item.label}</span>}
+                  <span className="inline-flex shrink-0">{item.icon}</span>
+                  {!collapsed && <span className="overflow-hidden text-ellipsis">{item.label}</span>}
                 </a>
               );
             })}
           </nav>
 
           {kbListContext && !collapsed && (
-            <div className="plat-shell__kb-filters" role="navigation" aria-label={t('common.knowledgeBases')}>
-              <a href="/platform/knowledge-bases" className={`plat-shell__kb-filter${currentScope === 'all' ? ' plat-shell__kb-filter--active' : ''}`}>{t('common.all')}</a>
-              <a href="/platform/knowledge-bases?scope=mine" className={`plat-shell__kb-filter${currentScope === 'mine' ? ' plat-shell__kb-filter--active' : ''}`}>{t('knowledgeList.sections.mine')}</a>
+            <div className="flex flex-col gap-[2px] mt-[10px] mb-[4px] pt-[8px] border-t border-[#e7ebf0]" role="navigation" aria-label={t('common.knowledgeBases')}>
+              <a href="/platform/knowledge-bases" className={kbFilterClass(currentScope === 'all')}>{t('common.all')}</a>
+              <a href="/platform/knowledge-bases?scope=mine" className={kbFilterClass(currentScope === 'mine')}>{t('knowledgeList.sections.mine')}</a>
             </div>
           )}
 
@@ -407,13 +431,13 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
               submenu — only the pending-requests badge on the nav entry — so
               the KB quick-filter block is the established shell form; counts
               stay on the page rail like Vue's ListSpaceSidebar). Class reuse
-              is intentional: same visual language, no shell.css growth; the
+              is intentional: same visual language; the
               aria-label (menu.organizations) disambiguates the blocks. */}
           {orgListContext && !collapsed && (
-            <div className="plat-shell__kb-filters" role="navigation" aria-label={labels.organizations}>
-              <a href="/platform/organizations" className={`plat-shell__kb-filter${currentOrgScope === 'all' ? ' plat-shell__kb-filter--active' : ''}`}>{t('common.all')}</a>
-              <a href="/platform/organizations?scope=created" className={`plat-shell__kb-filter${currentOrgScope === 'created' ? ' plat-shell__kb-filter--active' : ''}`}>{t('organization.createdByMe')}</a>
-              <a href="/platform/organizations?scope=joined" className={`plat-shell__kb-filter${currentOrgScope === 'joined' ? ' plat-shell__kb-filter--active' : ''}`}>{t('organization.joinedByMe')}</a>
+            <div className="flex flex-col gap-[2px] mt-[10px] mb-[4px] pt-[8px] border-t border-[#e7ebf0]" role="navigation" aria-label={labels.organizations}>
+              <a href="/platform/organizations" className={kbFilterClass(currentOrgScope === 'all')}>{t('common.all')}</a>
+              <a href="/platform/organizations?scope=created" className={kbFilterClass(currentOrgScope === 'created')}>{t('organization.createdByMe')}</a>
+              <a href="/platform/organizations?scope=joined" className={kbFilterClass(currentOrgScope === 'joined')}>{t('organization.joinedByMe')}</a>
             </div>
           )}
 
@@ -421,9 +445,16 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
               sidebar on every protected page; collapsed sidebars hide it.
               The visible 我的对话 title mirrors Vue's session-area label
               (menu.myChats → SessionSourceFilter trigger, menu.vue:109-112/332). */}
+          {/* .plat-shell__sessions / __sessions-title → utilities. The
+              shell-context group-list indent (padding 0 6px on the session
+              <ul>) rides along as an arbitrary-variant utility so the
+              fallback chat sidebar (outside the shell) keeps its flush list.
+              plat-shell__kb-filter--active is kept as a className hook for
+              the subfilter tests (no styling of its own beyond the swapped
+              color utilities below). */}
           {!collapsed && (
-            <nav className="plat-shell__sessions" aria-label={labels.myChats}>
-              <h2 className="plat-shell__sessions-title">{labels.myChats}</h2>
+            <nav className="mt-[8px] mb-[4px] pt-[8px] border-t border-[#e7ebf0] [&_ul]:px-[6px]" aria-label={labels.myChats}>
+              <h2 className="m-0 px-[14px] pb-[4px] text-[#8b97a8] text-[12px] font-semibold leading-[1.4]">{labels.myChats}</h2>
               <SessionSidebarList
                 groups={sessionListGroups}
                 selectedSessionId={activeChatId}
@@ -440,29 +471,33 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
           )}
         </div>
 
-        <div className="plat-shell__bottom">
-          <div className={`plat-shell__user${menuOpen ? ' plat-shell__user--open' : ''}`}>
-            <button type="button" className="plat-shell__user-button" aria-haspopup="menu" aria-expanded={menuOpen}
+        {/* .plat-shell__bottom / __user(+--open, unused marker dropped) /
+            __user-button / __avatar(+img) / __avatar-initial / __user-info /
+            __user-name / __user-email / __dropdown / __dropdown-item
+            (+ --danger swap) / __dropdown-divider → utilities. */}
+        <div className="shrink-0 px-[2px] py-[4px]">
+          <div className="relative">
+            <button type="button" className="flex items-center gap-[6px] w-full px-[6px] py-[8px] border-none rounded-[8px] bg-transparent cursor-pointer text-left hover:bg-[#eceff4]" aria-haspopup="menu" aria-expanded={menuOpen}
               data-guide="user-menu"
               onClick={() => setMenuOpen((open) => !open)}>
-              <span className="plat-shell__avatar" aria-hidden="true">
-                {user.avatar ? <img src={user.avatar} alt="" /> : <span className="plat-shell__avatar-initial">{initial}</span>}
+              <span className="inline-flex items-center justify-center w-[24px] h-[24px] rounded-full overflow-hidden shrink-0 bg-[linear-gradient(135deg,#2e6de6_0%,#1f56c2_100%)]" aria-hidden="true">
+                {user.avatar ? <img src={user.avatar} alt="" className="w-full h-full object-cover" /> : <span className="text-white text-[12px] font-semibold leading-[1]">{initial}</span>}
               </span>
               {!collapsed && (
-                <span className="plat-shell__user-info">
-                  <span className="plat-shell__user-name">{user.name || '—'}</span>
-                  <span className="plat-shell__user-email">{user.email}</span>
+                <span className="flex flex-col gap-[2px] min-w-0 flex-1">
+                  <span className="text-[14px] font-medium text-[#1f2733] whitespace-nowrap overflow-hidden text-ellipsis">{user.name || '—'}</span>
+                  <span className="text-[12px] text-[#66758b] whitespace-nowrap overflow-hidden text-ellipsis">{user.email}</span>
                 </span>
               )}
             </button>
             {menuOpen && (
-              <div className="plat-shell__dropdown" role="menu">
+              <div className="absolute bottom-[calc(100%_+_6px)] left-[-4px] right-[-5px] bg-white border border-[#e7ebf0] rounded-[8px] shadow-[0_4px_20px_rgba(0,0,0,0.12)] overflow-hidden z-[1000]" role="menu">
                 {/* Vue UserMenu.vue:45-50,501-504 — a help-circle entry labelled
                     $t('newUserGuide.reopen') re-opens the welcome tour by
                     dispatching weknora:open-new-user-guide; the NewUserGuide
                     host opens on that event even when the done-key is '1',
                     so the tour replays without touching the stored key. */}
-                <button type="button" role="menuitem" className="plat-shell__dropdown-item"
+                <button type="button" role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   data-testid="plat-shell-guide-reopen"
                   aria-label={labels.reopenGuide}
                   onClick={() => { setMenuOpen(false); openNewUserGuide(); }}>
@@ -474,13 +509,13 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
                   </svg>
                   {labels.reopenGuide}
                 </button>
-                <a role="menuitem" className="plat-shell__dropdown-item"
+                <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="/platform/settings?section=userprofile"
                   onClick={() => setMenuOpen(false)}>
                   {labels.personalSettings}
                 </a>
-                <div className="plat-shell__dropdown-divider" aria-hidden="true" />
-                <button type="button" role="menuitem" className="plat-shell__dropdown-item plat-shell__dropdown-item--danger"
+                <div className="h-[1px] bg-[#e7ebf0] my-[3px]" aria-hidden="true" />
+                <button type="button" role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#d54941] no-underline hover:bg-[#fbe9e8]"
                   onClick={() => { setMenuOpen(false); void onLogout(); }}>
                   {t('auth.logout')}
                 </button>
@@ -490,8 +525,13 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
         </div>
       </aside>
       {/* The shell owns the session list (Vue chat/index.vue has no sidebar
-          of its own): chat pages under the shell suppress their in-page one. */}
-      <div className="plat-shell__outlet">
+          of its own): chat pages under the shell suppress their in-page one.
+          .plat-shell__outlet → utilities; the descendant page overrides from
+          shell.css land here: children fill the column (min-height 0) and
+          legacy .wk-page pages keep the scrollable full-height full-width
+          treatment (max-w-none! must beat the unlayered styles.css
+          .wk-page max-width, which otherwise wins over layered utilities). */}
+      <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden [&>*]:min-h-0 [&_.wk-page]:h-full [&_.wk-page]:overflow-y-auto [&_.wk-page]:max-w-none!">
         <SessionSidebarShellContext.Provider value={true}>{children}</SessionSidebarShellContext.Provider>
       </div>
       <GlobalCommandPalette

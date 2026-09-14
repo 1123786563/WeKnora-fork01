@@ -87,30 +87,30 @@ const pressKey = (init: { key: string; metaKey?: boolean; ctrlKey?: boolean; shi
 
 test('(a) the shell sessions region shows a visible 我的对话 (menu.myChats) title', async () => {
   await mountShell();
-  const nav = document.querySelector('nav.plat-shell__sessions');
+  const nav = document.querySelector('nav[aria-label="我的对话"]');
   assert.ok(nav, 'expected the shell session list region');
   assert.equal(nav.getAttribute('aria-label'), '我的对话');
-  const title = nav.querySelector('.plat-shell__sessions-title');
+  const title = nav.querySelector('h2');
   assert.ok(title, 'expected a visible sessions title element');
   assert.equal(title.textContent, '我的对话');
 });
 
 test('(b) the 新对话 entry carries no shortcut hint (Vue sidebar nav has none)', async () => {
   await mountShell();
-  const item = [...document.querySelectorAll('.plat-shell__nav .plat-shell__item')]
+  const item = [...document.querySelectorAll('nav[aria-label="Platform"] a')]
     .find((node) => node.textContent?.includes('新对话')) as HTMLAnchorElement | undefined;
   assert.ok(item, 'expected the 新对话 nav entry');
   // Coordinator ruling on strict parity: the 新建对话⌘1 fingerprint belongs to
   // the command palette's first quick action (GlobalCommandPalette ⌘1-9 chips,
   // palette-scoped), not the sidebar nav. The Vue sidebar 新对话 entry shows no
   // kbd hint, so React must not render one either.
-  assert.equal(item.querySelector('kbd.plat-shell__shortcut'), null, 'no shortcut hint on the sidebar nav entry');
+  assert.equal(item.querySelector('kbd'), null, 'no shortcut hint on the sidebar nav entry');
   // Collapsed sidebars hide the session area entirely (Vue parity).
   await act(async () => mountedRoot?.unmount());
   mountedRoot = undefined;
   document.body.replaceChildren();
   await mountShell({ collapsed: true });
-  assert.equal(document.querySelectorAll('nav.plat-shell__sessions').length, 0, 'collapsed rail hides the sessions area');
+  assert.equal(document.querySelectorAll('nav[aria-label="我的对话"]').length, 0, 'collapsed rail hides the sessions area');
 });
 
 test('(c) platformModKeyLabel mirrors Vue menu.vue:303-304 (⌘ on Apple, Ctrl+ elsewhere)', () => {

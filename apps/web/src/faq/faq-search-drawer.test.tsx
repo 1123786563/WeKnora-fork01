@@ -141,7 +141,7 @@ test('blank query warns without posting a search request', async () => {
     outcomes.submitFound = Boolean(submit);
     if (submit) {
       await act(async () => { submit.click(); await settle(10); });
-      outcomes.warningShown = (document.querySelector('.wk-page')?.textContent || '').includes('请输入要检索的问题');
+      outcomes.warningShown = (document.querySelector('main')?.textContent || '').includes('请输入要检索的问题');
       outcomes.noRequest = fake.searchCalls.length === 0;
     }
   }

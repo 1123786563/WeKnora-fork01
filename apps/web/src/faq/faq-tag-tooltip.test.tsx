@@ -118,7 +118,7 @@ test('entry-card chips render inside the tooltip wrapper without the native titl
   assert.ok(!html.includes('title="什么是反例"'), 'native title removed on negative chips');
   assert.ok(!html.includes('title="使用 Docker。"'), 'native title removed on answer chips');
   assert.ok(!html.includes('title="无标签"'), 'footer tag chip loses the native title (B5 refine, d3a39b7b form retired)');
-  assert.ok(/<span class="faq-tag-wrapper"><span class="faq-tag-chip"/.test(html), 'footer chip sits inside the tooltip wrapper');
+  assert.ok(/<span class="faq-tag-wrapper[^"]*"><span class="faq-tag-chip[^"]*"/.test(html), 'footer chip sits inside the tooltip wrapper');
 });
 
 test('footer tag chip opens the hover bubble with the full tag name, untagged fallback otherwise', async () => {

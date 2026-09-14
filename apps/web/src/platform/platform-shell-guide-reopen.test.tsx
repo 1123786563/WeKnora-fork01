@@ -91,8 +91,10 @@ async function mountShell(locale = 'zh-CN') {
 }
 
 const userButton = () => document.querySelector<HTMLButtonElement>('[data-guide="user-menu"]');
-const dropdown = () => document.querySelector('.plat-shell__dropdown');
-const reopenItem = () => document.querySelector<HTMLButtonElement>('.plat-shell__dropdown [data-testid="plat-shell-guide-reopen"]');
+// The dropdown class became utilities; scope the user menu by the user
+// button's wrapper and the reopen entry by its data-testid.
+const dropdown = () => userButton()?.parentElement?.querySelector('[role="menu"]') ?? null;
+const reopenItem = () => document.querySelector<HTMLButtonElement>('[data-testid="plat-shell-guide-reopen"]');
 const guideOverlay = () => document.querySelector('[data-testid="wk-new-user-guide"]');
 const guideTitle = () => guideOverlay()?.querySelector('.wk-guide__title')?.textContent ?? '';
 const guideStepLabel = () => guideOverlay()?.querySelector('.wk-guide__step-label')?.textContent ?? '';
@@ -107,7 +109,7 @@ test('(a) with the tour finished, the user menu offers a reopen entry labelled n
   await mountShell();
   await openUserMenu();
   const item = reopenItem();
-  assert.ok(item, 'reopen entry missing from plat-shell__dropdown');
+  assert.ok(item, 'reopen entry missing from the user menu');
   assert.equal(item.getAttribute('role'), 'menuitem');
   const expected = formatMessage('zh-CN', 'newUserGuide.reopen');
   assert.equal(expected, '新手引导', 'zh-CN Vue copy for newUserGuide.reopen');

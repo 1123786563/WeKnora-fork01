@@ -94,9 +94,9 @@ test('breadcrumb destinations mirror Vue: KB list, KB detail and KB settings', (
 test('kbName crumb is a dropdown switcher and info + gear icons are present', () => {
   const html = renderToStaticMarkup(React.createElement<FAQBreadcrumbProps>(FAQBreadcrumb, breadcrumbProps));
   assert.ok(html.includes('breadcrumb-link dropdown'), 'kbName crumb carries the switcher dropdown');
-  assert.ok(html.includes('breadcrumb-separator'), 'chevron separators present');
-  assert.ok(html.includes('kb-info-button'), 'info icon button present');
-  assert.ok(html.includes('kb-settings-button'), 'settings gear button present');
+  assert.ok(html.includes('faq-breadcrumb-separator'), 'chevron separators present');
+  assert.ok(html.includes('faq-kb-info-button'), 'info icon button present');
+  assert.ok(html.includes('faq-kb-settings-button'), 'settings gear button present');
 });
 
 // --- Page anatomy (Vue faq-header / faq-filter-bar / faq-empty-state parity) ------
@@ -312,10 +312,10 @@ test('editor drawer builds Vue list fields: add buttons, item rows, n/5 counter'
   assert.ok(cappedHtml.includes('add-item-btn'), 'per-list add button rendered');
   assert.ok(cappedHtml.includes('item-row'), 'list items render as removable rows');
   assert.ok(cappedHtml.includes('2/5'), 'answer counter renders as n/5 (Vue item-count)');
-  assert.ok(/<button[^>]*add-item-btn[^>]*disabled/.test(cappedHtml), 'similar add disabled at cap 10');
+  assert.ok(/<button[^>]*add-item-btn[^>]* disabled=""/.test(cappedHtml), 'similar add disabled at cap 10');
   const open = { ...drawerForm, similarDraft: '相似草稿', negativeDraft: '反例草稿', answerDraft: '答案草稿' };
   const openHtml = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({ editorOpen: true, form: open })));
-  assert.ok(!/<button[^>]*add-item-btn[^>]*disabled/.test(openHtml), 'add buttons enable when below cap with a draft');
+  assert.ok(!/<button[^>]*add-item-btn[^>]* disabled=""/.test(openHtml), 'add buttons enable when below cap with a draft');
   assert.ok(openHtml.includes(t('knowledgeEditor.faq.similarPlaceholder')), 'similar placeholder from shared catalog');
   assert.ok(openHtml.includes(t('knowledgeEditor.faq.negativePlaceholder')), 'negative placeholder from shared catalog');
   assert.ok(openHtml.includes(t('knowledgeEditor.faq.answerPlaceholder')), 'answer placeholder from shared catalog');
@@ -406,7 +406,7 @@ test('cards render the three collapsible sections collapsed by default', () => {
   assert.ok(html.includes('相似问') && html.includes('反例') && html.includes('答案'), 'section labels from the shared catalog');
   assert.ok(html.includes('>(2)</span>'), 'similar count rendered as (n)');
   assert.ok(/faq-section-label[^>]*aria-expanded=\"false\"/.test(html), 'sections collapsed by default (FAQEntryManager.vue:1592-1594)');
-  assert.ok(/class=\"faq-tags\" hidden/.test(html), 'collapsed section bodies hidden but kept in the DOM');
+  assert.ok(/class=\"faq-tags[^\"]*\" hidden/.test(html), 'collapsed section bodies hidden but kept in the DOM');
 });
 
 test('empty sections disappear while answers always render', () => {
@@ -436,13 +436,13 @@ test('tag chip carries the full tag name in the FAQTagTooltip bubble, not a nati
   // hover reveals the full text in a fixed, viewport-clamped bubble; the chip
   // itself carries no title attribute.
   const html = renderCards();
-  assert.match(html, /<span class="faq-tag-wrapper"><span class="faq-tag-chip"><span class="tag-text">重要<\/span><\/span><\/span>/, 'resolved tag name renders inside the tooltip wrapper');
-  assert.ok(!/class="faq-tag-chip" title=/.test(html), 'native title removed in favour of the bubble');
+  assert.match(html, /<span class="faq-tag-wrapper[^"]*"><span class="faq-tag-chip[^"]*"><span class="tag-text[^"]*">重要<\/span><\/span><\/span>/, 'resolved tag name renders inside the tooltip wrapper');
+  assert.ok(!/class="faq-tag-chip[^"]*" title=/.test(html), 'native title removed in favour of the bubble');
   const untagged = renderToStaticMarkup(React.createElement<FAQViewProps>(FAQPageView, baseViewProps({
     entries: [{ id: 3, standard_question: 'q2', similar_questions: [], negative_questions: [], answers: ['a'], is_enabled: true, is_recommended: false }] as never,
     total: 1,
   })));
-  assert.match(untagged, /<span class="tag-text">无标签<\/span>/, 'untagged fallback feeds the bubble content');
+  assert.match(untagged, /<span class="tag-text[^"]*">无标签<\/span>/, 'untagged fallback feeds the bubble content');
   assert.ok(!untagged.includes('title="无标签"'), 'untagged chip has no native title');
 });
 

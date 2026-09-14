@@ -80,9 +80,10 @@ async function mountShell(atPath: string): Promise<HTMLElement> {
   return container;
 }
 
-// The organizations block reuses the KB quick-filter classes (same visual
-// language); tests disambiguate through the localized aria-label.
-const orgFilters = (root: HTMLElement) => root.querySelector('.plat-shell__kb-filters[aria-label="共享空间"]');
+// The quick-filter blocks are role="navigation" navs with a localized
+// aria-label (their styling classes became Tailwind utilities); tests
+// disambiguate through that aria-label.
+const orgFilters = (root: HTMLElement) => root.querySelector('[role="navigation"][aria-label="共享空间"]');
 const orgFilterLinks = (root: HTMLElement) => [...(orgFilters(root)?.querySelectorAll('a') ?? [])] as HTMLAnchorElement[];
 
 test('organizations route renders the scope sub-filter with the Vue rail entries', async () => {
@@ -116,13 +117,13 @@ test('sub-filter active state follows the ?scope= deep link', async () => {
 test('other routes keep the shell clean: KB page shows the KB block, not the org block', async () => {
   const kbRoot = await mountShell('/platform/knowledge-bases');
   assert.equal(orgFilters(kbRoot), null, 'org sub-filter must not render outside /platform/organizations');
-  const kbBlock = kbRoot.querySelector('.plat-shell__kb-filters');
+  const kbBlock = kbRoot.querySelector('[role="navigation"]');
   assert.ok(kbBlock, 'KB quick-filter block stays on the KB route');
   assert.equal(kbBlock.querySelectorAll('a').length, 2, 'KB block keeps its all/mine entries');
 
   const chatRoot = await mountShell('/platform/creatChat');
   assert.equal(orgFilters(chatRoot), null);
-  assert.equal(chatRoot.querySelector('.plat-shell__kb-filters'), null);
+  assert.equal(chatRoot.querySelector('[role="navigation"]'), null);
 });
 
 test('collapsed sidebar hides the org sub-filter like the other shell blocks', async () => {
@@ -164,7 +165,7 @@ async function mountShellWithMe(atPath: string, me: Record<string, unknown>): Pr
 }
 
 const navHrefs = (root: HTMLElement): string[] =>
-  [...root.querySelectorAll('.plat-shell__nav a')]
+  [...root.querySelectorAll('nav[aria-label="Platform"] a')]
     .map((a) => (a instanceof dom.window.HTMLAnchorElement ? a.getAttribute('href') : null))
     .filter((href): href is string => typeof href === 'string');
 
