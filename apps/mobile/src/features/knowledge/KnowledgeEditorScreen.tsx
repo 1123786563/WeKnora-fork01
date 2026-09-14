@@ -59,7 +59,7 @@ export function KnowledgeEditorScreen() {
   async function save() {
     if (!kbId || saving) return;
     const validation = kind === 'wiki' ? validateWikiDraft(wiki) : validateFaqDraft(faq);
-    if (validation.length) { setError(validation.join('. ')); return; }
+    if (validation.length) { setError(validation.map((key) => label(key)).join('. ')); return; }
     setSaving(true); setError(''); setSaved(false); setConflict(false);
     try {
       if (kind === 'wiki') {

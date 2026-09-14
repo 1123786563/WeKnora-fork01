@@ -13,6 +13,10 @@ export const knowledgeEditorMobileMessages: Record<Locale, Record<string, string
     'knowledgeEditor.mobile.saveWikiFailed': '保存 Wiki 页面失败',
     'knowledgeEditor.mobile.saveFaqFailed': '保存 FAQ 失败',
     'knowledgeEditor.mobile.versionConflict': '版本 {version} · 由服务器保护并发冲突',
+    'knowledgeEditor.mobile.titleRequired': '请填写标题',
+    'knowledgeEditor.mobile.contentRequired': '请填写正文',
+    'knowledgeEditor.mobile.questionRequired': '请填写问题',
+    'knowledgeEditor.mobile.answerRequired': '请填写答案',
   },
   'en-US': {
     'knowledgeEditor.mobile.editWikiTitle': 'Edit Wiki page',
@@ -23,6 +27,10 @@ export const knowledgeEditorMobileMessages: Record<Locale, Record<string, string
     'knowledgeEditor.mobile.saveWikiFailed': 'Unable to save Wiki page',
     'knowledgeEditor.mobile.saveFaqFailed': 'Unable to save FAQ',
     'knowledgeEditor.mobile.versionConflict': 'Version {version} · server-side conflict protection',
+    'knowledgeEditor.mobile.titleRequired': 'Title is required',
+    'knowledgeEditor.mobile.contentRequired': 'Content is required',
+    'knowledgeEditor.mobile.questionRequired': 'Question is required',
+    'knowledgeEditor.mobile.answerRequired': 'Answer is required',
   },
   'ja-JP': {
     'knowledgeEditor.mobile.editWikiTitle': 'Wikiページを編集',
@@ -33,6 +41,10 @@ export const knowledgeEditorMobileMessages: Record<Locale, Record<string, string
     'knowledgeEditor.mobile.saveWikiFailed': 'Wikiページを保存できません',
     'knowledgeEditor.mobile.saveFaqFailed': 'FAQを保存できません',
     'knowledgeEditor.mobile.versionConflict': 'バージョン {version} · サーバー側で競合を保護',
+    'knowledgeEditor.mobile.titleRequired': 'タイトルを入力してください',
+    'knowledgeEditor.mobile.contentRequired': '本文を入力してください',
+    'knowledgeEditor.mobile.questionRequired': '質問を入力してください',
+    'knowledgeEditor.mobile.answerRequired': '回答を入力してください',
   },
   'ko-KR': {
     'knowledgeEditor.mobile.editWikiTitle': 'Wiki 페이지 편집',
@@ -43,6 +55,10 @@ export const knowledgeEditorMobileMessages: Record<Locale, Record<string, string
     'knowledgeEditor.mobile.saveWikiFailed': 'Wiki 페이지를 저장할 수 없습니다',
     'knowledgeEditor.mobile.saveFaqFailed': 'FAQ를 저장할 수 없습니다',
     'knowledgeEditor.mobile.versionConflict': '버전 {version} · 서버 측 충돌 보호',
+    'knowledgeEditor.mobile.titleRequired': '제목을 입력하세요',
+    'knowledgeEditor.mobile.contentRequired': '본문을 입력하세요',
+    'knowledgeEditor.mobile.questionRequired': '질문을 입력하세요',
+    'knowledgeEditor.mobile.answerRequired': '답변을 입력하세요',
   },
   'ru-RU': {
     'knowledgeEditor.mobile.editWikiTitle': 'Редактировать страницу Wiki',
@@ -53,5 +69,9 @@ export const knowledgeEditorMobileMessages: Record<Locale, Record<string, string
     'knowledgeEditor.mobile.saveWikiFailed': 'Не удалось сохранить страницу Wiki',
     'knowledgeEditor.mobile.saveFaqFailed': 'Не удалось сохранить FAQ',
     'knowledgeEditor.mobile.versionConflict': 'Версия {version} · защита от конфликтов на сервере',
+    'knowledgeEditor.mobile.titleRequired': 'Введите заголовок',
+    'knowledgeEditor.mobile.contentRequired': 'Введите содержимое',
+    'knowledgeEditor.mobile.questionRequired': 'Введите вопрос',
+    'knowledgeEditor.mobile.answerRequired': 'Введите ответ',
   },
 };

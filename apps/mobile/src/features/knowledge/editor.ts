@@ -27,17 +27,23 @@ export function createFaqDraft(entry: Pick<FAQEntry, 'standard_question' | 'answ
   };
 }
 
-export function validateWikiDraft(draft: Pick<WikiEditorDraft, 'title' | 'content'>): string[] {
-  const errors: string[] = [];
-  if (!draft.title.trim()) errors.push('Title is required');
-  if (!draft.content.trim()) errors.push('Content is required');
+export type MobileEditorValidationKey =
+  | 'knowledgeEditor.mobile.titleRequired'
+  | 'knowledgeEditor.mobile.contentRequired'
+  | 'knowledgeEditor.mobile.questionRequired'
+  | 'knowledgeEditor.mobile.answerRequired';
+
+export function validateWikiDraft(draft: Pick<WikiEditorDraft, 'title' | 'content'>): MobileEditorValidationKey[] {
+  const errors: MobileEditorValidationKey[] = [];
+  if (!draft.title.trim()) errors.push('knowledgeEditor.mobile.titleRequired');
+  if (!draft.content.trim()) errors.push('knowledgeEditor.mobile.contentRequired');
   return errors;
 }
 
-export function validateFaqDraft(draft: Pick<FaqEditorDraft, 'standardQuestion' | 'answer'>): string[] {
-  const errors: string[] = [];
-  if (!draft.standardQuestion.trim()) errors.push('Question is required');
-  if (!draft.answer.trim()) errors.push('Answer is required');
+export function validateFaqDraft(draft: Pick<FaqEditorDraft, 'standardQuestion' | 'answer'>): MobileEditorValidationKey[] {
+  const errors: MobileEditorValidationKey[] = [];
+  if (!draft.standardQuestion.trim()) errors.push('knowledgeEditor.mobile.questionRequired');
+  if (!draft.answer.trim()) errors.push('knowledgeEditor.mobile.answerRequired');
   return errors;
 }
 
