@@ -2158,3 +2158,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Mobile administration now localizes member, invitation and audit surfaces across five locales in `57f62a70` and `a3c85066`; owner/admin/contributor/viewer/system-admin roles and allowlisted audit action/outcome/actor enums use typed keys, unknown server values remain visible, and locale changes invalidate error fallbacks.
 - Focused administration coverage passes 6/6; mobile typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
 - Native administration runtime evidence remains open.
+
+## 2026-09-15 Round N+33x — T07 Web model settings utility cleanup
+
+- `ModelSettingsPanel` and `ModelDebugPanel` now use utility classes for tabs, filters, dialogs, fieldsets, result panels, responsive sizing and scrolling (`9fbe4044`); the shared `.wk-model-tabs` rule remains only for `SandboxSettingsPanel`.
+- Focused settings coverage passes 27/27; Web full regression passes 890/890, build/typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
+- Browser pixel and protected runtime evidence remain open.
