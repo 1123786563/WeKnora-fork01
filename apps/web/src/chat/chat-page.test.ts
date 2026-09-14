@@ -84,7 +84,7 @@ test('chat page exposes the selected agent and server-disabled state at the chat
   assert.match(html, /修改标题/);
   assert.match(html, /删除对话/);
   // Sandbox drawer opened via terminalOpen: connected terminal surface.
-  assert.match(html, /Sandbox terminal/);
+  assert.match(html, /沙箱终端/);
   assert.match(html, /ls/);
   assert.match(html, /终端输入/);
   assert.match(html, /id="wk-chat-draft"[^>]*disabled=""/);
