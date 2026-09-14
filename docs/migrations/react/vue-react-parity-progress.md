@@ -1854,6 +1854,12 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - upload-confirm 定向测试 35/35、Web 全量 832/832、`typecheck:web` 与 `git diff --check` 通过；证据 `evidence/vue-react-parity-2026-09-14-n007-extraction-toast.md` 已更新。
 - N007 继续保持 `implementing`：浏览器 computed-style/同条件截图、真实后端图谱链路及 Wails/native 证据仍未闭环。
 
+## 2026-09-14 Round N+70 — N007 Parser embedded 布局
+
+- 对照 Vue `KBParserSettings.vue` 的 embedded 样式，parser 文件族行增加边框容器、168px 信息列、280px 控制列、扩展名等宽标签、10px/14px 内边距和移动端纵向布局；parser engine 选择值、Excel 表头复选框及已有分组契约不变。
+- upload-confirm 定向测试 35/35、Web 全量 832/832、`typecheck:web` 与 `git diff --check` 通过；证据 `evidence/vue-react-parity-2026-09-14-n007-extraction-toast.md` 已更新。
+- N007 继续保持 `implementing`：浏览器 computed-style/同条件截图、真实后端图谱链路及 Wails/native 证据仍未闭环。
+
 ## 2026-09-14 Round N+69 — N007 多模态与 ASR 设置行
 
 - 对照 Vue `UploadConfirmDialog.vue`，多模态/ASR 的启用、模型、语言和自定义说明字段改为共享 `UploadSettingRow` 信息列/控制列；补齐 Vue description 文案，保留模型必填、clearable 语言和条件渲染行为。

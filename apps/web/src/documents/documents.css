@@ -64,9 +64,11 @@
   min-width: 12rem;
   min-height: 4rem;
 }
-.wk-upload-parser-row { align-items: flex-start; border-bottom: 1px solid var(--wk-border, #e4e7ec); display: flex; gap: 16px; justify-content: space-between; padding: 10px 0; }
-.wk-upload-parser-info { display: flex; flex: 1; flex-direction: column; gap: 5px; min-width: 0; }
-.wk-upload-parser-control { align-items: flex-start; display: flex; flex-direction: column; gap: 6px; width: 280px; }
+.wk-upload-parser-group { background: var(--wk-surface-subtle, #f8f9fb); border: 1px solid var(--wk-border, #e4e7ec); border-radius: 8px; overflow: hidden; }
+.wk-upload-parser-row { align-items: center; background: var(--wk-surface, #fff); border-bottom: 1px solid var(--wk-border, #e4e7ec); display: flex; gap: 16px; justify-content: space-between; padding: 10px 14px; }
+.wk-upload-parser-row:last-child { border-bottom: 0; }
+.wk-upload-parser-info { display: block; flex: 0 0 168px; min-width: 0; }
+.wk-upload-parser-control { align-items: stretch; display: flex; flex: 1; flex-direction: column; gap: 10px; min-width: 0; }
 .wk-upload-parser-xlsx-header { align-items: center; color: var(--wk-muted, #667085); display: inline-flex; font-size: 12px; gap: 5px; }
 .wk-upload-question-row, .wk-upload-question-instructions { align-items: flex-start; border-bottom: 1px solid var(--wk-border, #e4e7ec); display: flex; gap: 16px; justify-content: space-between; padding: 10px 0; }
 .wk-upload-question-info { display: grid; flex: 1; gap: 4px; min-width: 0; }
@@ -102,8 +104,8 @@
 .wk-upload-switch-label { align-items: center; display: flex; gap: 10px; justify-content: space-between; }
 .wk-upload-question-instructions textarea { box-sizing: border-box; min-height: 72px; width: 280px; }
 .wk-upload-parser-info strong { font-size: 13px; font-weight: 500; }
-.wk-upload-parser-extensions { display: flex; flex-wrap: wrap; gap: 4px; }
-.wk-upload-parser-extensions span { background: rgb(120 135 155 / 10%); border-radius: 4px; color: var(--wk-muted, #667085); font-size: 11px; padding: 2px 5px; }
+.wk-upload-parser-extensions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 0; }
+.wk-upload-parser-extensions span { background: rgb(120 135 155 / 10%); border-radius: 4px; color: var(--wk-muted, #667085); font-family: var(--app-font-family-mono, ui-monospace, monospace); font-size: 11px; padding: 2px 6px; }
 
 /* Vue UploadConfirmDialog.vue chunking strategy t-select (fixed 280px field). */
 .wk-upload-single-select { position: relative; width: 280px; }
@@ -125,6 +127,7 @@
 .wk-upload-multi-select__popup button:hover, .wk-upload-multi-select__popup button.is-active, .wk-upload-multi-select__popup button[aria-selected="true"] { background: rgb(7 192 95 / 10%); }
 @media (max-width: 720px) { .wk-upload-multi-select { width: 100%; } }
 @media (max-width: 720px) { .wk-upload-question-row, .wk-upload-question-instructions { flex-direction: column; } .wk-upload-question-instructions textarea { width: 100%; } }
+@media (max-width: 720px) { .wk-upload-parser-row { align-items: stretch; flex-direction: column; } .wk-upload-parser-info { flex-basis: auto; } .wk-upload-parser-control { width: 100%; } }
 
 /* --- N007: graph section (Vue GraphSettings.vue scoped styles port) --------- */
 

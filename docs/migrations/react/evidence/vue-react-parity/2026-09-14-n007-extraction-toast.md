@@ -44,6 +44,8 @@ Chunking, multimodal, ASR, and question sections now expose Vue-shaped visible t
 
 Multimodal and ASR enabled fields, model selectors, language controls, and multimodal custom instructions now use the shared Vue-shaped setting-row information/control columns, including the existing localized descriptions and required/clearable behavior.
 
+Parser file-family rows now match the embedded `KBParserSettings.vue` layout: bordered group container, 168px information column, 280px control column, compact 10px/14px row padding, monospace extension chips, and stacked controls below the mobile breakpoint.
+
 Multimodal and ASR enabled fields, model selectors, language controls, and multimodal custom instructions now use the shared Vue-shaped setting-row information/control columns, including the existing localized descriptions and required/clearable behavior.
 
 ASR language now uses a project clearable input with an explicit clear action, matching Vue `t-input clearable`; the existing language payload remains unchanged.

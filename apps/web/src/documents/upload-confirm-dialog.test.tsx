@@ -325,6 +325,7 @@ test('chunking strategy uses a Vue-shaped single select instead of native select
 
 test('parser engine rules use the same project single-select surface', () => {
   const html = sectionsHtml({});
+  assert.match(html, /wk-upload-parser-group/);
   assert.match(html, /wk-upload-parser-select/);
   assert.match(html, /role="combobox"/);
 });

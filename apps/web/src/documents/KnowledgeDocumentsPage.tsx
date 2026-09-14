@@ -859,7 +859,8 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
         {props.parserEngines.length === 0 ? (
           <p className="wk-muted">{t("settings.parser.noEngineDetected")}</p>
         ) : (
-          parserFileGroups.map((group) => (
+          <div className="wk-upload-parser-group">
+          {parserFileGroups.map((group) => (
             <div className="wk-upload-parser-row" key={group.key}>
               <div className="wk-upload-parser-info">
                 <strong>{group.label}</strong>
@@ -885,7 +886,8 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
                 ) : null}
               </div>
             </div>
-          ))
+          ))}
+          </div>
         )}
       </fieldset>
       <fieldset className="wk-upload-confirm-chunking" id="wk-upload-section-chunking" data-section="chunking" style={sectionStyle("chunking")}>
