@@ -2393,3 +2393,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - iOS Simulator 已启动 Metro 后执行 `simctl openurl weknora://expo-development-client/?url=http://127.0.0.1:8081`，系统弹出“在 WeKnora 中打开？”确认框，证明 `weknora` URL scheme 已注册并可被系统识别。
 - 截图：`evidence/vue-react-parity/screenshots/native-20260915/ios-scheme-prompt.png`。
 - 当前自动化环境无法可靠点击系统确认框，因此未宣称 iOS 已进入业务登录页；Android 已有同等级业务首屏证据。
+
+## 2026-09-15 Round N+34aq — Settings resource failure copy
+
+- Cloud status refresh and resource list/default-resource failure fallbacks now have explicit five-locale copy, removing the remaining migration TODO markers in these settings panels.
+- Validation: `pnpm run test:web` 891/891, `pnpm run typecheck:web`, `git diff --check` passed.
+- This round covers static copy behavior only; live backend failure injection and browser interaction evidence for settings mutations remain pending.
