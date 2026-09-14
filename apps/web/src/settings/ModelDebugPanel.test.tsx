@@ -152,7 +152,7 @@ test('model debug run shows the Vue result banner, metrics and history labels', 
 
   // Second run with the thinking toggle on exposes the history labels
   // (ModelDebugDrawer.vue lines 150-168, 420-425).
-  const thinkingToggle = container.querySelector<HTMLInputElement>('input[type="checkbox"]');
+  const thinkingToggle = container.querySelector<HTMLButtonElement>('[role="switch"]');
   assert.ok(thinkingToggle);
   await click(thinkingToggle);
   await click(run);

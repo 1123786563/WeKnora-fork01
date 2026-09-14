@@ -1,11 +1,12 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as React from "react";
 import type {
   ModelConfiguration,
   WeKnoraClient,
 } from "@weknora/api-client";
-import { Button, Card, Status } from "@weknora/ui";
+import { Button, Card, NumberInput, Status, Switch } from "@weknora/ui";
 import { ModelDebugPanel } from "./ModelDebugPanel.tsx";
+import { ModelOptionSelect } from "./ModelOptionSelect.tsx";
 import { ModelUsageNotice } from "../configuration/ModelUsageNotice.tsx";
 import { modelInUseDetails, type ModelUsageDetails } from "../configuration/model-usage.ts";
 import { useAppLocale } from "../i18n.ts";
@@ -55,155 +56,6 @@ const THINKING_CONTROL_OPTIONS: Array<{ value: string; key: string }> = [
   { value: "thinking_type", key: "thinkingType" },
 ];
 type WkcCredentialState = "loading" | "unconfigured" | "configured" | "expired";
-
-type ModelOption = { value: string; label: string; description?: string };
-
-function ModelNumberInput({
-  value,
-  min,
-  max,
-  placeholder,
-  disabled = false,
-  onChange,
-}: {
-  value: number | "";
-  min: number;
-  max: number;
-  placeholder?: string;
-  disabled?: boolean;
-  onChange: (value: number | "") => void;
-}) {
-  return (
-    <input
-      className="wk-model-number-input"
-      type="number"
-      min={min}
-      max={max}
-      placeholder={placeholder}
-      disabled={disabled}
-      value={value}
-      onChange={(event) => onChange(toNumberInput(event.target.value))}
-    />
-  );
-}
-
-function ModelSwitch({
-  checked,
-  label,
-  description,
-  onChange,
-}: {
-  checked: boolean;
-  label: string;
-  description: string;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <label className="wk-model-switch">
-      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
-      <span className="wk-model-switch__track" aria-hidden="true" />
-      <span className="wk-model-switch__label">{label}</span>
-      <span className="wk-model-switch__description">{description}</span>
-    </label>
-  );
-}
-
-export function ModelOptionSelect({
-  value,
-  options,
-  disabled = false,
-  onChange,
-}: {
-  value: string;
-  options: readonly ModelOption[];
-  disabled?: boolean;
-  onChange: (value: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(() => Math.max(0, options.findIndex((option) => option.value === value)));
-  const rootRef = useRef<HTMLDivElement>(null);
-  const listboxId = `wk-model-option-list-${useId()}`;
-  const selected = options.find((option) => option.value === value) ?? options[0];
-
-  useEffect(() => {
-    if (!open) return;
-    const close = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [open]);
-
-  useEffect(() => {
-    const index = options.findIndex((option) => option.value === value);
-    setActiveIndex(index >= 0 ? index : 0);
-  }, [options, value]);
-
-  function choose(index: number) {
-    const option = options[index];
-    if (!option) return;
-    onChange(option.value);
-    setActiveIndex(index);
-    setOpen(false);
-  }
-
-  return (
-    <div className="wk-model-option-select" ref={rootRef}>
-      <button
-        type="button"
-        className="wk-model-option-select__trigger"
-        role="combobox"
-        value={value}
-        data-value={value}
-        aria-expanded={open}
-        aria-controls={listboxId}
-        disabled={disabled}
-        onClick={() => setOpen((current) => !current)}
-        onKeyDown={(event) => {
-          if (disabled) return;
-          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-            event.preventDefault();
-            setOpen(true);
-            setActiveIndex((current) => {
-              const delta = event.key === "ArrowDown" ? 1 : -1;
-              return (current + delta + options.length) % options.length;
-            });
-          } else if (event.key === "Enter" && open) {
-            event.preventDefault();
-            choose(activeIndex);
-          } else if (event.key === "Escape") {
-            setOpen(false);
-          }
-        }}
-      >
-        <span className="wk-model-option-select__value">
-          <span>{selected?.label ?? value}</span>
-          {selected?.description ? <span className="wk-model-option-select__description">{selected.description}</span> : null}
-        </span>
-        <span className="wk-model-option-select__chevron" aria-hidden="true">⌄</span>
-      </button>
-      {open ? (
-        <div id={listboxId} className="wk-model-option-select__popup" role="listbox">
-          {options.map((option, index) => (
-            <button
-              type="button"
-              role="option"
-              aria-selected={option.value === value}
-              data-value={option.value}
-              className={`wk-model-option-select__option${index === activeIndex ? " is-active" : ""}${option.value === value ? " is-selected" : ""}`}
-              key={option.value}
-              onMouseEnter={() => setActiveIndex(index)}
-              onClick={() => choose(index)}
-            >
-              <span className="wk-model-option-select__option-title">{option.label}</span>
-              {option.description ? <span className="wk-model-option-select__option-description">{option.description}</span> : null}
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
 
 function params(model: ModelConfiguration): Record<string, unknown> {
   return model.parameters &&
@@ -1539,13 +1391,13 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                   <>
                     <label>
                       {t("model.editor.dimensionLabel")}
-                      <ModelNumberInput
+                      <NumberInput
                         min={128}
                         max={4096}
                         placeholder={t("model.editor.dimensionPlaceholder")}
                         disabled={!draft.supportsDimensionOverride || (draft.source === "local" && checking)}
                         value={draft.dimension}
-                        onChange={(value) => updateDraft("dimension", value)}
+                        onValueChange={(value) => updateDraft("dimension", value)}
                       />
                     </label>
                     {draft.source === "local" && draft.name ? (
@@ -1556,35 +1408,33 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                     {dimensionMessage ? (
                       <Status tone={dimensionMessage.ok ? "success" : "error"}>{dimensionMessage.text}</Status>
                     ) : null}
-                    <ModelSwitch
-                      checked={draft.supportsDimensionOverride}
-                      label={t("model.editor.dimensionOverrideLabel")}
-                      description={t("model.editor.dimensionOverrideDesc")}
-                      onChange={(checked) => updateDraft("supportsDimensionOverride", checked)}
-                    />
+                    <div className="wk-model-switch">
+                      <Switch checked={draft.supportsDimensionOverride} onCheckedChange={(checked) => updateDraft("supportsDimensionOverride", checked)} aria-label={t("model.editor.dimensionOverrideLabel")} />
+                      <span className="wk-model-switch__label">{t("model.editor.dimensionOverrideLabel")}</span>
+                      <span className="wk-model-switch__description">{t("model.editor.dimensionOverrideDesc")}</span>
+                    </div>
                   </>
                 ) : null}
                 {draft.type === "chat" || draft.type === "vllm" ? (
                   <label>
                     {t("model.editor.contextWindowLabel")}
-                    <ModelNumberInput
+                    <NumberInput
                       min={1024}
                       max={10000000}
                       placeholder={t("model.editor.contextWindowPlaceholder", { value: DEFAULT_MODEL_CONTEXT_WINDOW })}
                       value={draft.contextWindow}
-                      onChange={(value) => updateDraft("contextWindow", value)}
+                      onValueChange={(value) => updateDraft("contextWindow", value)}
                     />
                     <span className="wk-muted">{t("model.editor.contextWindowDesc")}</span>
                   </label>
                 ) : null}
                 {draft.type === "chat" ? (
                   <>
-                    <ModelSwitch
-                      checked={draft.supportsVision}
-                      label={t("model.editor.supportsVisionLabel")}
-                      description={t("model.editor.supportsVisionDesc")}
-                      onChange={(checked) => updateDraft("supportsVision", checked)}
-                    />
+                    <div className="wk-model-switch">
+                      <Switch checked={draft.supportsVision} onCheckedChange={(checked) => updateDraft("supportsVision", checked)} aria-label={t("model.editor.supportsVisionLabel")} />
+                      <span className="wk-model-switch__label">{t("model.editor.supportsVisionLabel")}</span>
+                      <span className="wk-model-switch__description">{t("model.editor.supportsVisionDesc")}</span>
+                    </div>
                   </>
                 ) : null}
                 {draft.type === "chat" && draft.source === "remote" ? (
@@ -1603,12 +1453,12 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                 ) : null}
                 <label>
                   {t("model.editor.maxConcurrencyLabel")}
-                  <ModelNumberInput
+                  <NumberInput
                     min={0}
                     max={4096}
                     placeholder={t("model.editor.maxConcurrencyPlaceholder")}
                     value={draft.maxConcurrency}
-                    onChange={(value) => updateDraft("maxConcurrency", value)}
+                    onValueChange={(value) => updateDraft("maxConcurrency", value)}
                   />
                   <span className="wk-muted">{t("model.editor.maxConcurrencyDesc")}</span>
                 </label>

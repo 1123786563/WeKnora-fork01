@@ -1,6 +1,10 @@
 import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react';
 export { Dialog } from './dialog.tsx';
 export type { DialogProps } from './dialog.tsx';
+export { Input } from './input.tsx';
+export { NumberInput } from './number-input.tsx';
+export { Switch } from './switch.tsx';
+export { cn } from './lib/utils.ts';
 import './styles.css';
 
 export function Button({ children, loading = false, disabled, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { children: ReactNode; loading?: boolean }) {

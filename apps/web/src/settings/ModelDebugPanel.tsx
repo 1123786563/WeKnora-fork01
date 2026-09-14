@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import * as React from "react";
 import type { ModelConfiguration, WeKnoraClient } from "@weknora/api-client";
-import { Button, Status } from "@weknora/ui";
+import { Button, NumberInput, Status, Switch } from "@weknora/ui";
 import { useAppLocale } from "../i18n.ts";
 import {
   createModelTranslator,
@@ -11,6 +11,7 @@ import {
   modelType,
   type ModelType,
 } from "./model-settings.ts";
+import { ModelOptionSelect } from "./ModelOptionSelect.tsx";
 
 type Props = {
   client: WeKnoraClient;
@@ -241,21 +242,15 @@ export function ModelDebugPanel({ client, models, onClose }: Props) {
           ) : null}
           <label>
             {t("modelSettings.debug.model")}
-            <select
+            <ModelOptionSelect
               value={selected?.id ?? ""}
               disabled={filteredModels.length === 0}
-              onChange={(event) => selectModel(event.target.value)}
-            >
-              {filteredModels.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {modelLabel(model)}
-                  {vendorLabel(t, model) ? ` · ${vendorLabel(t, model)}` : ""}
-                  {modelHasContextWindow(typeof model.type === "string" ? model.type : "")
-                    ? ` · ${formatContextWindow(((model.parameters ?? {}) as Record<string, unknown>).context_window as number | undefined)}`
-                    : ""}
-                </option>
-              ))}
-            </select>
+              options={filteredModels.map((model) => ({
+                value: model.id,
+                label: `${modelLabel(model)}${vendorLabel(t, model) ? ` · ${vendorLabel(t, model)}` : ""}${modelHasContextWindow(typeof model.type === "string" ? model.type : "") ? ` · ${formatContextWindow(((model.parameters ?? {}) as Record<string, unknown>).context_window as number | undefined)}` : ""}`,
+              }))}
+              onChange={selectModel}
+            />
           </label>
           {filteredModels.length === 0 ? (
             <p className="wk-muted">{t("modelSettings.debug.noModelsForType")}</p>
@@ -306,39 +301,9 @@ export function ModelDebugPanel({ client, models, onClose }: Props) {
         {selected && isChat ? (
           <fieldset>
             <legend>{t("modelSettings.debug.parameters")}</legend>
-            <label>
-              Temperature
-              <input
-                type="number"
-                min={0}
-                max={2}
-                step={0.1}
-                value={temperature}
-                onChange={(event) => setTemperature(Number(event.target.value))}
-              />
-            </label>
-            <label>
-              Top P
-              <input
-                type="number"
-                min={0.01}
-                max={1}
-                step={0.1}
-                value={topP}
-                onChange={(event) => setTopP(Number(event.target.value))}
-              />
-            </label>
-            <label>
-              Max Tokens
-              <input
-                type="number"
-                min={1}
-                max={8192}
-                step={128}
-                value={maxTokens}
-                onChange={(event) => setMaxTokens(Number(event.target.value))}
-              />
-            </label>
+            <div className="form-item"><label>Temperature</label><NumberInput min={0} max={2} step={0.1} value={temperature} onValueChange={(value) => setTemperature(Number(value))} /></div>
+            <div className="form-item"><label>Top P</label><NumberInput min={0.01} max={1} step={0.1} value={topP} onValueChange={(value) => setTopP(Number(value))} /></div>
+            <div className="form-item"><label>Max Tokens</label><NumberInput min={1} max={8192} step={128} value={maxTokens} onValueChange={(value) => setMaxTokens(Number(value))} /></div>
             <label>
               {t("modelSettings.debug.systemPrompt")}
               <textarea
@@ -349,15 +314,11 @@ export function ModelDebugPanel({ client, models, onClose }: Props) {
               />
             </label>
             {supportsThinking ? (
-              <label className="wk-checkbox">
-                <input
-                  type="checkbox"
-                  checked={thinking}
-                  onChange={(event) => setThinking(event.target.checked)}
-                />{" "}
-                {t("modelSettings.debug.thinking")}
-                <span className="wk-muted"> {t("modelSettings.debug.thinkingDesc")}</span>
-              </label>
+              <div className="wk-model-switch">
+                <Switch checked={thinking} onCheckedChange={setThinking} aria-label={t("modelSettings.debug.thinking")} />
+                <span className="wk-model-switch__label">{t("modelSettings.debug.thinking")}</span>
+                <span className="wk-model-switch__description">{t("modelSettings.debug.thinkingDesc")}</span>
+              </div>
             ) : null}
           </fieldset>
         ) : null}

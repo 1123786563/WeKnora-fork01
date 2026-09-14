@@ -1,3 +1,5 @@
+@import "tailwindcss/utilities.css";
+
 body { margin: 0; min-width: 320px; }
 .wk-page { box-sizing: border-box; margin: 0 auto; max-width: 960px; padding: 3rem 1.25rem; }
 .wk-header { align-items: flex-start; display: flex; justify-content: space-between; gap: 1rem; margin-bottom: 1.5rem; }
