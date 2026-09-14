@@ -3,10 +3,6 @@ import { lazy, Suspense, type ReactNode } from 'react';
 import { createRefreshCoordinator, createWeKnoraClient, type AuthSession, type Credential } from '@weknora/api-client';
 import { Status } from '@weknora/ui';
 import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
-import { PlatformShell } from './platform/PlatformShell.tsx';
-import { LoginPage } from './auth/LoginPage.tsx';
-import { JoinPage } from './auth/JoinPage.tsx';
-import { WorkspaceOnboardingPage } from './auth/WorkspaceOnboardingPage.tsx';
 import { parseOIDCCallbackHash } from './auth/oidc.ts';
 import { reloginAfterRefreshFailure } from './auth/relogin.ts';
 import { computeAuthLanding } from './auth/session-persist.ts';
@@ -35,6 +31,10 @@ const KnowledgeGraphPage = lazy(() => import('./knowledge/KnowledgeGraphPage.tsx
 const KnowledgeBasesPage = lazy(() => import('./App.tsx').then((module) => ({ default: module.KnowledgeBasesPage })));
 const NotFoundPage = lazy(() => import('./NotFoundPage.tsx').then((module) => ({ default: module.NotFoundPage })));
 const DevMarkdownPage = lazy(() => import('./DevMarkdownPage.tsx').then((module) => ({ default: module.DevMarkdownPage })));
+const PlatformShell = lazy(() => import('./platform/PlatformShell.tsx').then((module) => ({ default: module.PlatformShell })));
+const LoginPage = lazy(() => import('./auth/LoginPage.tsx').then((module) => ({ default: module.LoginPage })));
+const JoinPage = lazy(() => import('./auth/JoinPage.tsx').then((module) => ({ default: module.JoinPage })));
+const WorkspaceOnboardingPage = lazy(() => import('./auth/WorkspaceOnboardingPage.tsx').then((module) => ({ default: module.WorkspaceOnboardingPage })));
 import './styles.css';
 
 const oidcCallback = parseOIDCCallbackHash(window.location.hash);
@@ -128,6 +128,10 @@ function nextPathAfterAuth(): string {
   return next && next.startsWith('/') && !next.startsWith('//') ? next : '/platform/knowledge-bases';
 }
 
+function renderAuth(page: ReactNode): void {
+  root.render(<Suspense fallback={<main className="wk-page mx-auto box-border max-w-[960px] px-5 py-12"><Status>{loadingLabel}</Status></main>}>{page}</Suspense>);
+}
+
 function completeAuthentication(next: AuthSession): void {
   const landing = computeAuthLanding(next, nextPathAfterAuth());
   session = { ...session, credential: { kind: 'bearer', accessToken: next.token, refreshToken: next.refreshToken }, tenantId: landing.activeTenantId };
@@ -139,7 +143,7 @@ function completeAuthentication(next: AuthSession): void {
 }
 
 function renderLogin(error = initialLoginError, inviteToken = '') {
-  root.render(<LoginPage client={client} onAuthenticated={completeAuthentication} apiBaseUrl={apiBaseUrl} initialError={error} initialMode={route.kind === 'login' ? route.mode : 'login'} inviteToken={inviteToken} onInviteAccepted={() => window.location.assign('/platform/knowledge-bases')} />);
+  renderAuth(<LoginPage client={client} onAuthenticated={completeAuthentication} apiBaseUrl={apiBaseUrl} initialError={error} initialMode={route.kind === 'login' ? route.mode : 'login'} inviteToken={inviteToken} onInviteAccepted={() => window.location.assign('/platform/knowledge-bases')} />);
 }
 
 async function logout(): Promise<void> {
@@ -170,7 +174,7 @@ function renderProtected() {
   if (decision.kind === 'redirect') {
     if (decision.to === '/onboarding/workspace') {
       if (window.location.pathname !== decision.to) platformAdapters.replace(decision.to);
-      root.render(<WorkspaceOnboardingPage client={client} scopeRuntime={scopeRuntime} onLogout={logout} />);
+      renderAuth(<WorkspaceOnboardingPage client={client} scopeRuntime={scopeRuntime} onLogout={logout} />);
       return;
     }
     if (decision.reason === 'authentication-required') {
@@ -182,7 +186,7 @@ function renderProtected() {
     return;
   }
   if (route.kind === 'onboarding') {
-    root.render(<WorkspaceOnboardingPage client={client} scopeRuntime={scopeRuntime} onLogout={logout} />);
+    renderAuth(<WorkspaceOnboardingPage client={client} scopeRuntime={scopeRuntime} onLogout={logout} />);
     return;
   }
   if (protectedPageForRoute(route) === 'knowledge-bases') {
@@ -251,7 +255,7 @@ async function bootstrap() {
       if (registrationMode === 'invite_only') {
         renderLogin(undefined, inviteToken);
       } else {
-        root.render(<JoinPage client={client} onAuthenticated={completeAuthentication} />);
+        renderAuth(<JoinPage client={client} onAuthenticated={completeAuthentication} />);
       }
       return;
     }
