@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ChatArtifact } from '@weknora/domain/chat/artifacts';
 import { renderChatMarkdown } from './markdown.ts';
+import type { ChatCopyTable } from './chat-copy.ts';
 
 export type ArtifactPreviewKind = 'text' | 'markdown' | 'image' | 'pdf' | 'download-only';
 
@@ -18,15 +19,15 @@ function extension(fileName: string): string {
   return fileName.trim().toLowerCase().split('.').pop() ?? '';
 }
 
-export function artifactPreviewModel(artifact: Pick<ChatArtifact, 'fileName' | 'fileType'>): ArtifactPreviewModel {
+export function artifactPreviewModel(artifact: Pick<ChatArtifact, 'fileName' | 'fileType'>, copy?: ChatCopyTable): ArtifactPreviewModel {
   const type = artifact.fileType?.trim().toLowerCase() ?? '';
   const ext = extension(artifact.fileName);
-  if (type === 'text/html' || type === 'application/xhtml+xml' || ext === 'html' || ext === 'htm') return { kind: 'download-only', label: 'Download to view' };
-  if (type === 'application/pdf' || ext === 'pdf') return { kind: 'pdf', label: 'PDF preview' };
-  if (type.startsWith('image/') && !type.startsWith('image/svg')) return { kind: 'image', label: 'Image preview' };
-  if (ext === 'md' || ext === 'markdown' || type === 'text/markdown') return { kind: 'markdown', label: 'Markdown preview' };
-  if (type.startsWith('text/') || ['csv', 'tsv', 'txt', 'log', 'json', 'xml', 'yaml', 'yml', 'mmd', 'mermaid'].includes(ext)) return { kind: 'text', label: 'Text preview' };
-  return { kind: 'download-only', label: 'Download to view' };
+  if (type === 'text/html' || type === 'application/xhtml+xml' || ext === 'html' || ext === 'htm') return { kind: 'download-only', label: copy?.artifactPreviewDownloadOnly ?? 'Download to view' };
+  if (type === 'application/pdf' || ext === 'pdf') return { kind: 'pdf', label: copy?.artifactPreviewPdf ?? 'PDF preview' };
+  if (type.startsWith('image/') && !type.startsWith('image/svg')) return { kind: 'image', label: copy?.artifactPreviewImage ?? 'Image preview' };
+  if (ext === 'md' || ext === 'markdown' || type === 'text/markdown') return { kind: 'markdown', label: copy?.artifactPreviewMarkdown ?? 'Markdown preview' };
+  if (type.startsWith('text/') || ['csv', 'tsv', 'txt', 'log', 'json', 'xml', 'yaml', 'yml', 'mmd', 'mermaid'].includes(ext)) return { kind: 'text', label: copy?.artifactPreviewText ?? 'Text preview' };
+  return { kind: 'download-only', label: copy?.artifactPreviewDownloadOnly ?? 'Download to view' };
 }
 
 function payloadBlob(payload: ArtifactPreviewPayload): Blob {
@@ -48,10 +49,11 @@ export interface ArtifactPreviewProps {
   error?: string;
   onClose(): void;
   onDownload?(): void;
+  copy?: ChatCopyTable;
 }
 
-export function ArtifactPreview({ artifact, payload, loading = false, error, onClose, onDownload }: ArtifactPreviewProps) {
-  const model = artifactPreviewModel(artifact);
+export function ArtifactPreview({ artifact, payload, loading = false, error, onClose, onDownload, copy }: ArtifactPreviewProps) {
+  const model = artifactPreviewModel(artifact, copy);
   const [url, setUrl] = useState('');
   const [text, setText] = useState('');
 
@@ -77,7 +79,7 @@ export function ArtifactPreview({ artifact, payload, loading = false, error, onC
   }, [model.kind, payload]);
 
   return <section className="wk-chat-artifact-preview" role="dialog" aria-label={`${artifact.fileName} preview`}>
-    <header><h3>{artifact.fileName}</h3><button type="button" onClick={onClose}>Back</button>{onDownload ? <button type="button" onClick={onDownload}>Download</button> : null}</header>
-    {loading ? <p role="status">Loading preview…</p> : error ? <p role="alert">{error}</p> : model.kind === 'download-only' ? <p>{model.label}</p> : payload ? <PreviewBody model={model} fileName={artifact.fileName} payload={payload} url={url} text={text} /> : <p>{model.label}</p>}
+    <header><h3>{artifact.fileName}</h3><button type="button" onClick={onClose}>{copy?.artifactPreviewBack ?? 'Back'}</button>{onDownload ? <button type="button" onClick={onDownload}>{copy?.artifactPreviewDownload ?? 'Download'}</button> : null}</header>
+    {loading ? <p role="status">{copy?.artifactPreviewLoading ?? 'Loading preview…'}</p> : error ? <p role="alert">{error}</p> : model.kind === 'download-only' ? <p>{model.label}</p> : payload ? <PreviewBody model={model} fileName={artifact.fileName} payload={payload} url={url} text={text} /> : <p>{model.label}</p>}
   </section>;
 }
