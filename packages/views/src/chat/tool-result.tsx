@@ -855,7 +855,7 @@ export function WebFetchRenderer({ data, copy }: { data: unknown; copy?: ChatCop
               <div className="wk-tool-full-content whitespace-pre-wrap break-words text-[0.75rem] leading-[1.55] text-[#24292f]">{row.summary}</div>
             </div>
           ) : null}
-          {row.summaryFailed ? <div className="wk-tool-section-title is-error mb-[0.2rem] text-[0.72rem] font-semibold text-[#c0392b]">{labels.webFetchSummaryFailed}</div> : null}
+          {!row.summary && row.summaryFailed ? <div className="wk-tool-section-title is-error mb-[0.2rem] text-[0.72rem] font-semibold text-[#c0392b]">{labels.webFetchSummaryFailed}</div> : null}
           {row.rawContent ? (
             <div className="wk-tool-section mt-[0.4rem]">
               <div className="wk-tool-section-title mb-[0.2rem] text-[0.72rem] font-semibold text-[#52606d]">{labels.rawTextLabel}{row.contentLengthLabel ? ` (${row.contentLengthLabel})` : ''}</div>

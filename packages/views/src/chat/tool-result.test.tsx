@@ -400,7 +400,6 @@ test('WebFetchRenderer localizes summary, partial-content and raw-text labels', 
       results: [{
         url: 'https://docs.example.com/guide',
         status: 'success',
-        summary: '要約内容',
         summary_status: 'failed',
         raw_content: '原始页面内容',
         content_length: 8,
@@ -413,10 +412,22 @@ test('WebFetchRenderer localizes summary, partial-content and raw-text labels', 
   assert.match(serialized, /要約/);
   assert.match(serialized, /要約失敗/);
   assert.match(serialized, /ページの一部/);
-  assert.match(serialized, /元のテキスト/);
+  assert.match(serialized, /元テキスト/);
   assert.doesNotMatch(serialized, /Summary generation failed/);
   assert.doesNotMatch(serialized, /Raw text/);
   assert.doesNotMatch(serialized, /truncated/);
+});
+
+test('WebFetchRenderer prefers a rendered summary over its failed summary status', () => {
+  const element = WebFetchRenderer({
+    data: {
+      results: [{ summary: '可用な要約', summary_status: 'failed' }],
+    },
+    copy: resolveChatCopy('ja-JP'),
+  });
+  const serialized = JSON.stringify(element);
+  assert.match(serialized, /可用な要約/);
+  assert.doesNotMatch(serialized, /要約失敗/);
 });
 
 /* ---- Thinking / Plan ---- */
