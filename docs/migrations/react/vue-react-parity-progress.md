@@ -2295,3 +2295,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - ChunkDetail now uses Vue-aligned five-locale labels for chunk ID, document ID, position, and content length across `085de06e`, `873589a6`, `7561cda4`, and `2d616875`.
 - Shared tests pass 462/462, Web tests pass 890/890, Web typecheck/build pass, and independent reviews found no P1/P2. Browser fixture evidence remains open.
+
+## 2026-09-15 Round N+34y — N021 ChatRoutePage fallback copy
+
+- 删除会话确认与知识库 mention 加载失败兜底改用 Vue 对齐的共享文案，覆盖五种语言；实现提交 `e750a8a7`。
+- ChatRoutePage 相关回归通过；共享测试维持 464/464。浏览器删除确认和真实 mention API 错误路径仍需运行时证据。
