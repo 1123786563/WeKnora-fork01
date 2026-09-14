@@ -36,7 +36,7 @@ async function renderChatRoutePage(input: {
     plugins: [{
       name: 'chat-route-page-test-stubs',
       setup(build) {
-        build.onResolve({ filter: /^@weknora\/views$/ }, () => ({ path: 'views-stub', namespace: 'test-stub' }));
+        build.onResolve({ filter: /^@weknora\/views(?:\/.*)?$/ }, () => ({ path: 'views-stub', namespace: 'test-stub' }));
         build.onLoad({ filter: /^views-stub$/, namespace: 'test-stub' }, () => ({
           loader: 'js',
           contents: `
