@@ -60,6 +60,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   // Chat models for the composer chip (Vue chatResources chatModels); the
   // KnowledgeQA filter lives in model-chip.ts like the Vue store.
   const [chatModels, setChatModels] = useState<ModelConfiguration[]>([]);
+  const [selectedModelId, setSelectedModelId] = useState('');
   // Empty-state suggested questions (creatChat view) come from the selected
   // agent's suggested-questions surface; absent without an agent selection.
   const [starterQuestions, setStarterQuestions] = useState<string[]>([]);
@@ -245,7 +246,11 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     let active = true;
     void client.configuration.models.list(scope.signal).then(
       (result) => {
-        if (active && scopeController.isCurrent(scope.scope)) setChatModels(listChatModels(result));
+        if (active && scopeController.isCurrent(scope.scope)) {
+          const models = listChatModels(result);
+          setChatModels(models);
+          setSelectedModelId((current) => current && models.some((model) => String(model.id) === current) ? current : String(models[0]?.id ?? ''));
+        }
       },
       () => { if (active) setChatModels([]); },
     );
@@ -976,7 +981,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
         ...(item.kbName || item.type === 'kb' ? { kb_name: item.kbName ?? item.name } : {}),
         ...(item.skillName ? { skill_name: item.skillName } : {}),
       }));
-      const streamOptions = { ...buildWebChatStreamOptions(sessionId, submission.content, selectedAgentId, knowledgeBaseId, attachmentIds, streamMentions), signal: runController.signal };
+      const streamOptions = { ...buildWebChatStreamOptions(sessionId, submission.content, selectedAgentId, knowledgeBaseId, attachmentIds, streamMentions, submission.modelId ?? selectedModelId), signal: runController.signal };
       // Track the newest SSE event id so a mid-flight transport failure can
       // resume exactly once with the Last-Event-ID header before the error
       // surfaces (Vue parity: EventSource-style automatic reconnection).
@@ -1042,6 +1047,9 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     modelLabel={modelChipLabel}
     modelContext={modelChipContext}
     modelContextIsDefault={modelChipIsDefault}
+    modelOptions={chatModels.map((model) => ({ id: String(model.id), name: String(model.display_name ?? model.name ?? model.id) }))}
+    selectedModelId={selectedModelId}
+    onModelChange={setSelectedModelId}
     starterQuestions={starterQuestions}
     starterQuestionsLoading={starterQuestionsLoading}
     onStarterQuestionClick={(question) => updateDraft(question)}

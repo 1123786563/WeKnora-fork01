@@ -134,6 +134,9 @@ export interface ChatPageProps {
   modelContext?: string;
   /** True when the context spec is the 200K default (dims the suffix). */
   modelContextIsDefault?: boolean;
+  modelOptions?: readonly { id: string; name: string }[];
+  selectedModelId?: string;
+  onModelChange?(modelId: string): void;
 }
 
 export function messageReferenceValues(messages: readonly ChatMessage[]): unknown[] {
@@ -572,6 +575,9 @@ export function ChatPage(props: ChatPageProps) {
           modelLabel={props.modelLabel}
           modelContext={props.modelContext}
           modelContextIsDefault={props.modelContextIsDefault}
+          modelOptions={props.modelOptions}
+          selectedModelId={props.selectedModelId}
+          onModelChange={props.onModelChange}
           streaming={streaming}
           onStop={props.onStopStream}
         />

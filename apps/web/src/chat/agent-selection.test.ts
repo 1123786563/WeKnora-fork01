@@ -19,6 +19,11 @@ test('no selected agent keeps the web chat stream on knowledge mode', () => {
   });
 });
 
+test('includes the selected model in the web chat stream body', () => {
+  assert.equal(buildWebChatStreamOptions('session-1', 'Question', '', undefined, undefined, undefined, ' model-1 ').body.summary_model_id, 'model-1');
+  assert.equal('summary_model_id' in buildWebChatStreamOptions('session-1', 'Question', '', undefined, undefined, undefined, '   ').body, false);
+});
+
 test('keeps a knowledge-base chat deep-link scoped to its knowledge base', () => {
   assert.deepEqual(buildWebChatStreamOptions('session-1', 'Question', '', 'kb-1'), {
     sessionId: 'session-1',
