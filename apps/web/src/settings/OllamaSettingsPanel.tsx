@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { OllamaModel, OllamaStatus, SettingsPayload, WeKnoraClient } from '@weknora/api-client';
+import type { Locale } from '@weknora/i18n';
 import { Button, Card, Status } from '@weknora/ui';
 import { ollamaModelInput } from './surface.ts';
 import { readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
@@ -9,9 +10,19 @@ function object(value: unknown): Record<string, unknown> { return value !== null
 function payload(value: unknown): OllamaPayload { const row = object(value); return { status: object(row.status) as OllamaStatus, models: Array.isArray(row.models) ? row.models.filter((item): item is OllamaModel => item !== null && typeof item === 'object' && typeof (item as Record<string, unknown>).name === 'string') : [] }; }
 function taskId(value: SettingsPayload): string { const id = value.task_id ?? value.taskId ?? value.id; return typeof id === 'string' || typeof id === 'number' ? String(id) : ''; }
 
+const OLLAMA_EXTRA_COPY: Record<Locale, { progressUpdated: string; task: string; accepted: string; progress: string; reported: string; sizeUnavailable: string; bytes: string }> = {
+  'zh-CN': { progressUpdated: '进度已刷新', task: '任务', accepted: '已接受', progress: '进度', reported: '已返回', sizeUnavailable: '大小未知', bytes: '字节' },
+  'en-US': { progressUpdated: 'Progress refreshed', task: 'Task', accepted: 'Accepted', progress: 'Progress', reported: 'Reported', sizeUnavailable: 'Size unavailable', bytes: 'bytes' },
+  'ja-JP': { progressUpdated: '進捗を更新しました', task: 'タスク', accepted: '受付済み', progress: '進捗', reported: '取得済み', sizeUnavailable: 'サイズ不明', bytes: 'バイト' },
+  'ko-KR': { progressUpdated: '진행률을 새로 고쳤습니다', task: '작업', accepted: '접수됨', progress: '진행률', reported: '보고됨', sizeUnavailable: '크기 없음', bytes: '바이트' },
+  'ru-RU': { progressUpdated: 'Прогресс обновлён', task: 'Задача', accepted: 'Принято', progress: 'Прогресс', reported: 'Получено', sizeUnavailable: 'Размер неизвестен', bytes: 'байт' },
+};
+
 export function OllamaSettingsPanel({ client, initialValue }: { client: WeKnoraClient; initialValue: unknown }) {
   const initial = payload(initialValue);
-  const t = settingsT(readInitialLocale());
+  const locale = readInitialLocale();
+  const t = settingsT(locale);
+  const copy = OLLAMA_EXTRA_COPY[locale];
   const [status, setStatus] = useState<OllamaStatus>(initial.status ?? { available: false });
   const [models, setModels] = useState<OllamaModel[]>(initial.models ?? []);
   const [modelName, setModelName] = useState('');
@@ -40,10 +51,10 @@ export function OllamaSettingsPanel({ client, initialValue }: { client: WeKnoraC
   async function checkProgress() {
     if (!activeTask) return;
     setBusy(true); setError(null); setNotice(null);
-    try { const result = await client.settings.ollama.progress(activeTask); setProgress(result); setNotice(t('ollamaSettings.toasts.progressFailed')); {/* TODO(migration): progress-refreshed success toast has no key */} }
+    try { const result = await client.settings.ollama.progress(activeTask); setProgress(result); setNotice(copy.progressUpdated); }
     catch (reason) { setError(reason instanceof Error ? reason.message : t('ollamaSettings.toasts.progressFailed')); }
     finally { setBusy(false); }
   }
 
-  return <div className="wk-settings-ollama"><Card><div className="wk-settings-panel-heading"><div><h3>{t('ollamaSettings.title')}</h3><p className="wk-muted">The service address is deployment-owned. React reports availability from the server and never infers health from a model list.</p></div><Button type="button" disabled={busy} onClick={() => void refresh()}>{t('ollamaSettings.status.retest')}</Button></div><Status tone={status.available ? 'success' : 'warning'}>{status.available ? t('ollamaSettings.status.available') + (status.version ? ' · ' + status.version : '') : t('ollamaSettings.status.unavailable') + (status.error ? ': ' + status.error : '')}</Status><dl className="wk-settings-values"><div><dt>baseUrl</dt><dd>{status.baseUrl || '—'}</dd></div><div><dt>models</dt><dd>{models.length}</dd></div></dl></Card><Card><h3>{t('ollamaSettings.download.title')}</h3><p className="wk-muted">Downloads are initiated by the authenticated server. A task identifier is retained only for progress lookup.</p><div className="wk-list-actions"><input aria-label={t('ollamaSettings.download.placeholder')} value={modelName} placeholder={t('ollamaSettings.download.placeholder')} onChange={(event) => setModelName(event.target.value)} /><Button type="button" disabled={busy || !status.available} onClick={() => void download()}>{t('ollamaSettings.download.download')}</Button>{activeTask ? <Button type="button" disabled={busy} onClick={() => void checkProgress()}>Refresh progress{/* TODO(migration): no settings.* key */}</Button> : null}</div>{progress ? <dl className="wk-settings-values"><div><dt>task</dt><dd>{activeTask || 'accepted'}</dd></div><div><dt>progress</dt><dd>{String(progress.progress ?? progress.status ?? 'reported')}</dd></div></dl> : null}</Card><Card><div className="wk-settings-panel-heading"><div><h3>{t('ollamaSettings.installed.title')}</h3><p className="wk-muted">Only the server-returned model metadata is displayed.</p></div><Button type="button" disabled={busy} onClick={() => void refresh()}>{t('common.refresh')}</Button></div>{models.length === 0 ? <Status>{t('ollamaSettings.installed.empty')}</Status> : <ul className="wk-list">{models.map((model) => <li key={model.name}><div className="wk-list-item-copy"><strong>{model.name}</strong><span>{model.size ? `${model.size} bytes` : 'size unavailable'}{model.modified_at ? ` · ${model.modified_at}` : ''}</span></div></li>)}</ul>}</Card></div>;
+  return <div className="wk-settings-ollama"><Card><div className="wk-settings-panel-heading"><div><h3>{t('ollamaSettings.title')}</h3><p className="wk-muted">{t('ollamaSettings.description')}</p></div><Button type="button" disabled={busy} onClick={() => void refresh()}>{t('ollamaSettings.status.retest')}</Button></div><Status tone={status.available ? 'success' : 'warning'}>{status.available ? t('ollamaSettings.status.available') + (status.version ? ' · ' + status.version : '') : t('ollamaSettings.status.unavailable') + (status.error ? ': ' + status.error : '')}</Status><dl className="wk-settings-values"><div><dt>{t('ollamaSettings.address.label')}</dt><dd>{status.baseUrl || '—'}</dd></div><div><dt>{t('ollamaSettings.installed.title')}</dt><dd>{models.length}</dd></div></dl></Card><Card><h3>{t('ollamaSettings.download.title')}</h3><p className="wk-muted">{t('ollamaSettings.download.descPrefix')}</p><div className="wk-list-actions"><input aria-label={t('ollamaSettings.download.placeholder')} value={modelName} placeholder={t('ollamaSettings.download.placeholder')} onChange={(event) => setModelName(event.target.value)} /><Button type="button" disabled={busy || !status.available} onClick={() => void download()}>{t('ollamaSettings.download.download')}</Button>{activeTask ? <Button type="button" disabled={busy} onClick={() => void checkProgress()}>{t('common.refresh')}</Button> : null}</div>{progress ? <dl className="wk-settings-values"><div><dt>{copy.task}</dt><dd>{activeTask || copy.accepted}</dd></div><div><dt>{copy.progress}</dt><dd>{String(progress.progress ?? progress.status ?? copy.reported)}</dd></div></dl> : null}</Card><Card><div className="wk-settings-panel-heading"><div><h3>{t('ollamaSettings.installed.title')}</h3><p className="wk-muted">{t('ollamaSettings.installed.desc')}</p></div><Button type="button" disabled={busy} onClick={() => void refresh()}>{t('common.refresh')}</Button></div>{models.length === 0 ? <Status>{t('ollamaSettings.installed.empty')}</Status> : <ul className="wk-list">{models.map((model) => <li key={model.name}><div className="wk-list-item-copy"><strong>{model.name}</strong><span>{model.size ? `${model.size} ${copy.bytes}` : copy.sizeUnavailable}{model.modified_at ? ` · ${model.modified_at}` : ''}</span></div></li>)}</ul>}</Card></div>;
 }
