@@ -2309,3 +2309,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 ## 2026-09-15 Round N+34aa — shared chat copy mobile regression
 
 - 产物预览文案扩展未破坏 React Native 共享包；mobile 测试 187/187、mobile typecheck 通过。
+
+## 2026-09-15 Round N+34ab — React 新对话运行时复核
+
+- 已认证 React `http://localhost:5181/platform/creatChat` 运行时 AX 检查：侧栏、新对话入口、智能体选择、上传附件、知识库按钮、模型状态和发送按钮均可达；中文文案未泄漏新增产物预览英文。
+- `/platform/chat` 不是有效 React 路由并显示页面不存在，已记录为兼容入口差异；未将其误判为聊天页验收。Vue `:5173` 当前未认证，双端同条件对照仍缺证据。
