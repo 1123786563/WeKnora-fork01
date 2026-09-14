@@ -1,5 +1,11 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-14 Round N+34 — 文档页 live 取证 + 新发现知识库设置面板 i18n 泄漏（部分完成）
+
+- live 取证：React 文档页（Parity KB Demo ?tab=documents）真实渲染——面包屑/文件夹树/过滤/批量工具条/解析引擎警告/空态全部在位（d1-documents-react.png）。
+- 新发现登记：①知识库设置面板（/knowledgeBase/:id/settings）zh-CN 下正文英文（General/Parser engines 等），该面未接共享 i18n——登记独立 i18n 对齐切片；②双端文档上传自动化待完善（React filechooser 可用；Vue t-upload 拖放区点击不触发选择器，需换交互目标）——文档真实上传的 live 数据维度顺延。
+- 无代码变更、无共享数据写入；截图 docs-live-20260914/。证据 2026-09-14-documents-live-partial.md。
+
 ## 2026-09-14 Round N+33 — en-US 语言维度全路由扫尾（19 表面双端）
 
 - enus-full-sweep.cjs：登录/注册/KB 列表/智能体/共享空间/creatChat/设置 11 分区/集成 API，共 19 表面 × 双端，en-US locale（1440x900，只读）。
