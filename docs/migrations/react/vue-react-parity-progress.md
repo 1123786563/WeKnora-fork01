@@ -1908,3 +1908,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 对照 Vue `MemoryWorkspaceSettings.vue`，React 补齐 auto 模式的提取模型、提取延迟、最小间隔、兴趣阈值、提取说明、Embedding 模型及条件显示；workspace payload 校验覆盖 5–3600、0–86400、1–20 等 Vue 边界。
 - 启用、向量召回、检索调节使用共享 shadcn `Switch`，数值字段使用 `NumberInput`，模型/写入模式使用项目 Tailwind selector；setting-row、intro、移动端堆叠均使用 Tailwind utilities。
 - Web 全量 835/835、`typecheck:web` 与 `git diff --check` 通过；R026 仍需真实保存失败/权限状态、认证浏览器 computed-style 与 Wails/native 证据。
+
+## 2026-09-14 Round N+79 — R026 权限、防抖与模型选择入口
+
+- `MemoryWorkspacePanel` 现在按 Vue `canEdit = hasRole('admin')` 门控 workspace 写入；viewer 的所有工作区控件只读，SettingsPage 传入 role hierarchy 计算结果。
+- workspace 变更合并后按 Vue 的 500ms debounce 保存，并在卸载时清理定时器；模型选择补齐 embedding 清空项以及 chat/embedding 的“前往全局设置添加模型”入口。
+- 验证：Web 全量 837/837、`typecheck:web`、`build:web`、`git diff --check` 通过。仍未将 R026 标记完成：认证浏览器视觉/交互、真实后端成功/失败/权限状态和 Wails/native 证据未取得。
