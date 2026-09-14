@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { hydrateMermaidBlocksWithBrowserDefaults, renderChatMarkdown } from '@weknora/views';
+import { hydrateMermaidBlocksWithBrowserDefaults } from '@weknora/views/chat/mermaid';
+import { renderChatMarkdown } from '@weknora/views/chat/markdown';
 
 const DEFAULT_MARKDOWN = `# Markdown rendering fixture
 

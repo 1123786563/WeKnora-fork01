@@ -1,11 +1,12 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { isCapabilitySupported, type CapabilityMap } from '@weknora/domain';
-import { integrationTabForSection, integrationSettingsQuery, selectSettingsQuery, INTEGRATION_SECTIONS } from '@weknora/views';
-import { openContextualGuide } from '@weknora/views';
+import { integrationTabForSection, integrationSettingsQuery, selectSettingsQuery } from '@weknora/views/integrations/settings-route';
+import { INTEGRATION_SECTIONS } from '@weknora/views/integrations/registry';
+import { openContextualGuide } from '@weknora/views/guides/contextual-guides';
 const IntegrationsRoutePage = lazy(() => import('../integrations/IntegrationsRoutePage.tsx').then((m) => ({ default: m.IntegrationsRoutePage })));
 import type { WeKnoraClient } from '@weknora/api-client';
-import type { SettingsRole } from '@weknora/views';
-import { roleAtLeast, SETTINGS_SECTIONS, settingsSectionsForRole } from '@weknora/views';
+import type { SettingsRole } from '@weknora/views/settings/registry';
+import { roleAtLeast, SETTINGS_SECTIONS, settingsSectionsForRole } from '@weknora/views/settings/registry';
 import { Button, Status } from '@weknora/ui';
 import { profilePasswordPatch, settingsSectionHeading, settingsSectionMeta, tenantEditState, tenantPatch } from './surface.ts';
 const TenantDeleteZone = lazy(() => import('./TenantDeleteZone.tsx').then((m) => ({ default: m.TenantDeleteZone })));

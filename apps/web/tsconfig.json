@@ -74,6 +74,15 @@
       "@weknora/views": [
         "../../packages/views/src/index.ts"
       ],
+      "@weknora/views/chat/page": ["../../packages/views/src/chat/page.tsx"],
+      "@weknora/views/chat/chat-copy": ["../../packages/views/src/chat/chat-copy.ts"],
+      "@weknora/views/chat/composer": ["../../packages/views/src/chat/composer.tsx"],
+      "@weknora/views/chat/markdown": ["../../packages/views/src/chat/markdown.ts"],
+      "@weknora/views/chat/mermaid": ["../../packages/views/src/chat/mermaid.ts"],
+      "@weknora/views/guides/contextual-guides": ["../../packages/views/src/guides/contextual-guides.ts"],
+      "@weknora/views/integrations/registry": ["../../packages/views/src/integrations/registry.ts"],
+      "@weknora/views/integrations/settings-route": ["../../packages/views/src/integrations/settings-route.ts"],
+      "@weknora/views/settings/registry": ["../../packages/views/src/settings/registry.ts"],
       "@weknora/domain/settings/local-preferences": [
         "../../packages/domain/src/settings/local-preferences.ts"
       ],

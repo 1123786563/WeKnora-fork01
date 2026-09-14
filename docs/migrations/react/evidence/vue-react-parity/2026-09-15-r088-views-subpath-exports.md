@@ -2,7 +2,7 @@
 
 Date: 2026-09-15
 
-Added explicit `@weknora/views` subpath exports and matching Web/Vite aliases for chat, guide, integration, and settings modules. Selected Web runtime consumers now bypass the aggregate barrel. The affected esbuild test stub accepts both root and subpath imports.
+Added explicit `@weknora/views` subpath exports and matching Web/Vite aliases for chat, guide, integration, and settings modules. Selected Web runtime consumers now bypass the aggregate barrel. The affected esbuild test stub accepts both root and subpath imports, preserving the existing mock contract.
 
 - Focused ChatRoutePage send test: passed.
 - Web tests: 895/895 passed.

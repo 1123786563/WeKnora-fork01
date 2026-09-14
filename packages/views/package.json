@@ -4,7 +4,16 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./chat/page": "./src/chat/page.tsx",
+    "./chat/chat-copy": "./src/chat/chat-copy.ts",
+    "./chat/composer": "./src/chat/composer.tsx",
+    "./chat/markdown": "./src/chat/markdown.ts",
+    "./chat/mermaid": "./src/chat/mermaid.ts",
+    "./guides/contextual-guides": "./src/guides/contextual-guides.ts",
+    "./integrations/registry": "./src/integrations/registry.ts",
+    "./integrations/settings-route": "./src/integrations/settings-route.ts",
+    "./settings/registry": "./src/settings/registry.ts"
   },
   "dependencies": {
     "@weknora/contracts": "workspace:*",
