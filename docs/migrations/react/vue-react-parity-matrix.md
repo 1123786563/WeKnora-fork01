@@ -161,3 +161,4 @@ R013 retrieval-nav runtime update (2026-09-15): authenticated React AX confirms 
 R013 MCP settings runtime update (2026-09-15): authenticated React AX confirms localized MCP service heading, description and add action; no service row was present to exercise the destructive confirmation dialog. Vue same-session comparison remains open.
 N021 grep tool-result update (2026-09-15): React now follows Vue grep chunk grouping, FAQ metadata, title-match aggregation and five-locale copy; browser fixture evidence remains open.
 Shared i18n contract update (2026-09-15): mobile-only `mobileChat.*` keys are validated for five-locale completeness separately from the Vue web-chat baseline; shared suite passes 453/453.
+N021 web-fetch update (2026-09-15): WebFetchRenderer now uses Vue `chat.unknownLink` copy for missing URLs across five locales; browser fixture evidence remains open.

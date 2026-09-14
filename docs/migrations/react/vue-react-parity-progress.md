@@ -2245,3 +2245,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - `mobileChat.*` keys are React Native-owned copy and are validated for five-locale completeness separately from the Vue web-chat baseline in `05211164`.
 - Shared tests pass 453/453; the independent review found no P1/P2, with a non-blocking P3 noting that the mobile key list is not generated from usage sites.
+
+## 2026-09-15 Round N+34o — N021 WebFetch unknown-link parity
+
+- `WebFetchRenderer` now uses the Vue `chat.unknownLink` copy for missing URLs across five locales in `d53998a9`.
+- Shared tests pass 454/454, Web tests pass 890/890, and Web typecheck/build pass. Independent review found no P1/P2; one non-blocking P3 notes that only one non-Chinese renderer locale is directly exercised. Browser fixture evidence remains open.
