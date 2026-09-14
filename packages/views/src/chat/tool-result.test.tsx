@@ -193,6 +193,23 @@ test('grepResultsView groups chunk hits and localizes title-match metadata in ev
   }
 });
 
+test('grepResultsView keeps FAQ groups distinct and uses FAQ metadata even when title matches', () => {
+  const data = {
+    display_type: 'grep_results',
+    chunk_results: [
+      { chunk_id: 'c1', faq_id: 'faq-1', knowledge_id: 'k1', faq_question: 'How do I reset it?', chunk_type: 'faq', match_snippet: 'reset', title_match: true },
+      { chunk_id: 'c2', faq_id: 'faq-1', knowledge_id: 'k1', faq_question: 'How do I reset it?', chunk_type: 'faq', match_snippet: 'again', title_match: false },
+      { chunk_id: 'c3', faq_id: 'faq-2', knowledge_id: 'k1', faq_question: 'How do I pay?', chunk_type: 'faq', match_snippet: 'pay', title_match: true },
+    ],
+  };
+  const view = grepResultsView(data, resolveChatCopy('zh-CN'));
+  assert.equal(view.rows.length, 2);
+  assert.deepEqual(view.rows.map((row) => row.key), ['faq-1', 'faq-2']);
+  assert.deepEqual(view.rows.map((row) => row.meta), ['FAQ 条目', 'FAQ 条目']);
+  assert.deepEqual(view.rows.map((row) => row.snippet), ['reset', 'pay']);
+  assert.equal(grepResultsView(data, resolveChatCopy('ja-JP')).rows[0]!.meta, 'FAQ項目');
+});
+
 test('grepResultsView falls back to knowledge_results rows', () => {
   const view = grepResultsView({
     display_type: 'grep_results',

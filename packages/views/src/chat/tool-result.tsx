@@ -236,7 +236,7 @@ export interface GrepResultsViewModel {
   rows: GrepResultRow[];
 }
 
-export type GrepResultsCopy = Pick<ChatCopyTable, 'grepTitleMatch'>;
+export type GrepResultsCopy = Pick<ChatCopyTable, 'grepTitleMatch' | 'grepFaqEntry'>;
 
 function grepKnowledgeMeta(hitCount: number, patternHits: number, titleMatch: boolean, copy: GrepResultsCopy): string {
   const parts: string[] = [];
@@ -260,6 +260,7 @@ export function grepResultsView(data: unknown, copy: GrepResultsCopy = CHAT_COPY
       snippet: string;
       hitCount: number;
       titleMatch: boolean;
+      isFaq: boolean;
     }>();
     const order: string[] = [];
     for (const item of chunkRows) {
@@ -274,6 +275,7 @@ export function grepResultsView(data: unknown, copy: GrepResultsCopy = CHAT_COPY
           snippet: str(item.match_snippet),
           hitCount: 0,
           titleMatch: false,
+          isFaq,
         });
         order.push(key);
       }
@@ -289,7 +291,7 @@ export function grepResultsView(data: unknown, copy: GrepResultsCopy = CHAT_COPY
         return {
           key,
           title: row.title,
-          meta: grepKnowledgeMeta(row.hitCount, row.hitCount, row.titleMatch, copy),
+          meta: row.isFaq ? copy.grepFaqEntry : grepKnowledgeMeta(row.hitCount, row.hitCount, row.titleMatch, copy),
           snippet: row.snippet,
         };
       }),
