@@ -140,3 +140,11 @@
 - Validation: `pnpm run test:web` 891/891; `pnpm run typecheck:web`; `git diff --check`.
 - Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r021-system-global-settings-copy.md`.
 - Remaining: authenticated runtime checks across locales and high-risk save/reset interaction evidence.
+
+## Round N+34ba — cross-package regression after settings copy
+
+- Shared suite: 465/465.
+- Mobile suite: 189/189.
+- Embed suite: 7/7.
+- Desktop renderer suite: 2/2.
+- No additional failures observed; React Web remains 891/891 from the preceding slice.
