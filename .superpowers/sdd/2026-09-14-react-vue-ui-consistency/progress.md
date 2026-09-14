@@ -245,3 +245,9 @@
 - Connected the protected-route Suspense fallback to the shared locale table, removing the hardcoded English loading label.
 - Validation: `pnpm run build:web`; `pnpm run test:web` 891/891; `pnpm run typecheck:web`; `git diff --check`.
 - Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r036-lazy-loading-copy.md`.
+
+## Round N+34bq — cross-package regression after lazy loading
+
+- Re-ran shared, mobile, embed and desktop suites after Web route/settings lazy loading changes: 465/465, 189/189, 7/7 and 2/2.
+- Web remained green at 891/891; all package typechecks and diff check passed.
+- Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r037-cross-package-after-lazy-loading.md`.
