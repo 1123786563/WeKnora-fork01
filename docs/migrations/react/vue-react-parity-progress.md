@@ -2152,3 +2152,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Mobile `ApiKeysScreen` now localizes loading/errors, owner-only guidance, create/revoke flows, token states and accessibility labels across five locales (`cada5697`, `7ce141de`, `f41da865`), including distinct Korean revoke/cancel wording.
 - Focused tests pass 2/2; mobile typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
 - Native management runtime evidence remains open.
+
+## 2026-09-15 Round N+33w — T10 mobile administration localization
+
+- Mobile administration now localizes member, invitation and audit surfaces across five locales in `57f62a70` and `a3c85066`; owner/admin/contributor/viewer/system-admin roles and allowlisted audit action/outcome/actor enums use typed keys, unknown server values remain visible, and locale changes invalidate error fallbacks.
+- Focused administration coverage passes 6/6; mobile typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
+- Native administration runtime evidence remains open.
