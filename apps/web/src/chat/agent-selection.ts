@@ -75,10 +75,11 @@ export function initialAgentSelection(
 export interface ChatMentionItem {
   id: string;
   name: string;
-  type: 'kb';
+  type: 'kb' | 'file' | 'tag' | 'mcp' | 'skill';
   kb_type?: 'document' | 'faq';
   kb_id?: string;
   kb_name?: string;
+  skill_name?: string;
 }
 
 export function buildWebChatStreamOptions(sessionId: string, content: string, agentId: string | undefined, knowledgeBaseId?: string, attachmentIds?: readonly string[], mentionedItems?: readonly ChatMentionItem[]): WebChatStreamOptions {

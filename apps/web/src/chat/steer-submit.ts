@@ -3,8 +3,11 @@ import type { ChatSubmission } from '@weknora/views';
 export interface SteerMentionItem {
   id: string;
   name: string;
-  type: 'kb';
+  type: 'kb' | 'file' | 'tag' | 'mcp' | 'skill';
   kbType?: 'document' | 'faq';
+  kbId?: string;
+  kbName?: string;
+  skillName?: string;
 }
 
 export const STEER_CONFLICT_STATUS = 409;

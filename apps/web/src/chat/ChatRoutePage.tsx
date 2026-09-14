@@ -614,7 +614,15 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     const sessionId = selectedSessionId;
     if (!sessionId) throw new Error('Create or select a conversation first.');
     const streaming = streamState.phase === 'streaming';
-    const steerMentions: SteerMentionItem[] = selectedMentions.map((item) => ({ id: item.id, name: item.name, type: 'kb', kbType: item.kbType }));
+    const steerMentions: SteerMentionItem[] = selectedMentions.map((item) => ({
+      id: item.id,
+      name: item.name,
+      type: item.type,
+      ...(item.kbType ? { kbType: item.kbType } : {}),
+      ...(item.kbId ? { kbId: item.kbId } : {}),
+      ...(item.kbName ? { kbName: item.kbName } : {}),
+      ...(item.skillName ? { skillName: item.skillName } : {}),
+    }));
     const action = buildSteerAction({
       streaming,
       content,
@@ -752,15 +760,53 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     mentionLoadingRef.current = true;
     setMentionLoading(true);
     setMentionError(undefined);
-    void client.knowledgeBases.list({ creator: 'all' }).then(
-      (items) => {
+    const documentSearch = client.knowledge.documents?.search
+      ? client.knowledge.documents.search({ recent: true, offset: 0, limit: 20 })
+      : Promise.resolve({ data: [] } as any);
+    const mcpList = client.configuration?.mcp?.list
+      ? client.configuration.mcp.list()
+      : Promise.resolve([] as any[]);
+    const skillList = client.configuration?.skills?.list
+      ? client.configuration.skills.list()
+      : Promise.resolve([] as any[]);
+    void Promise.allSettled([
+      client.knowledgeBases.list({ creator: 'all' }),
+      documentSearch,
+      mcpList,
+      skillList,
+    ]).then(
+      (results) => {
         if (generation !== mentionGenerationRef.current || !scopeController.isCurrent(scope.scope)) return;
-        setMentionOptions(items.map((item) => ({
+        const kbItems = results[0].status === 'fulfilled' ? results[0].value.map((item) => ({
           id: item.id,
           name: item.name,
           type: 'kb' as const,
           kbType: item.type === 'faq' ? 'faq' as const : 'document' as const,
-        })));
+        })) : [];
+        const fileResult = results[1].status === 'fulfilled' ? results[1].value.data : [];
+        const fileItems = Array.isArray(fileResult) ? fileResult.map((item: any) => ({
+          id: String(item.id),
+          name: String(item.title ?? item.file_name ?? item.id),
+          type: 'file' as const,
+          kbId: item.knowledge_base_id ?? item.kb_id,
+          kbName: item.knowledge_base_name ?? '',
+        })) : [];
+        const mcpItems = results[2].status === 'fulfilled' ? results[2].value.map((item: any) => ({
+          id: item.id,
+          name: item.name,
+          type: 'mcp' as const,
+          description: item.description ?? item.usage_instructions ?? '',
+          toolCount: item.catalog?.tool_count,
+          catalogStale: Boolean(item.catalog?.stale),
+        })) : [];
+        const skillItems = results[3].status === 'fulfilled' ? results[3].value.map((item: any) => ({
+          id: item.name,
+          name: item.name,
+          type: 'skill' as const,
+          skillName: item.name,
+          description: item.description ?? '',
+        })) : [];
+        setMentionOptions([...kbItems, ...fileItems, ...mcpItems, ...skillItems]);
       },
       (cause: unknown) => {
         if (generation !== mentionGenerationRef.current || !scopeController.isCurrent(scope.scope)) return;
@@ -898,10 +944,11 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       const streamMentions: ChatMentionItem[] = mentionedItems.map((item) => ({
         id: item.id,
         name: item.name,
-        type: 'kb',
-        kb_type: item.kbType,
-        kb_id: item.id,
-        kb_name: item.name,
+        type: item.type,
+        ...(item.kbType ? { kb_type: item.kbType } : {}),
+        ...(item.kbId || item.type === 'kb' ? { kb_id: item.kbId ?? item.id } : {}),
+        ...(item.kbName || item.type === 'kb' ? { kb_name: item.kbName ?? item.name } : {}),
+        ...(item.skillName ? { skill_name: item.skillName } : {}),
       }));
       const streamOptions = { ...buildWebChatStreamOptions(sessionId, submission.content, selectedAgentId, knowledgeBaseId, attachmentIds, streamMentions), signal: runController.signal };
       // Track the newest SSE event id so a mid-flight transport failure can

@@ -44,6 +44,16 @@ test('includes selected KB mentions and omits the field when none are selected',
   assert.equal('mentioned_items' in buildWebChatStreamOptions('session-1', 'Question', '').body, false);
 });
 
+test('preserves Vue resource mention types and identifiers in the stream body', () => {
+  const mentions = [
+    { id: 'file-1', name: '设计文档', type: 'file' as const, kb_id: 'kb-1', kb_name: '产品库' },
+    { id: 'tag-1', name: '重要', type: 'tag' as const, kb_id: 'kb-1' },
+    { id: 'mcp-1', name: 'Docs MCP', type: 'mcp' as const },
+    { id: 'skill-1', name: 'summarize', type: 'skill' as const, skill_name: 'summarize' },
+  ];
+  assert.deepEqual(buildWebChatStreamOptions('session-1', 'Question', 'agent-1', undefined, undefined, mentions).body.mentioned_items, mentions);
+});
+
 test('validates Vue attachment limits before creating an upload row', () => {
   assert.equal(validateChatAttachment({ name: 'guide.pdf', size: 1024 }, 0), undefined);
   assert.equal(validateChatAttachment({ name: 'guide.exe', size: 1024 }, 0), 'unsupported-type');

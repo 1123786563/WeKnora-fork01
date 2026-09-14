@@ -19,8 +19,14 @@ export interface ChatAttachmentView {
 export interface ChatMentionView {
   id: string;
   name: string;
-  type: 'kb';
+  type: 'kb' | 'file' | 'tag' | 'mcp' | 'skill';
   kbType?: 'document' | 'faq';
+  kbId?: string;
+  kbName?: string;
+  skillName?: string;
+  description?: string;
+  toolCount?: number;
+  catalogStale?: boolean;
 }
 
 export function createChatSubmission(draft: string): ChatSubmission {
@@ -38,7 +44,7 @@ export interface ChatComposerProps {
   onAttachmentSelect?(file: File): void | Promise<void>;
   onRemoveAttachment?(id: string): void | Promise<void>;
   attachmentAccept?: readonly string[];
-  /** KB-level @ mentions loaded by the application client. */
+  /** Resource-level @ mentions loaded by the application client. */
   mentionOptions?: readonly ChatMentionView[];
   mentionedItems?: readonly ChatMentionView[];
   /** Test/host initial state; interactive toggling remains local. */
