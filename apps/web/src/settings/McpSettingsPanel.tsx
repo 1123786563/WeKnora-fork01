@@ -757,7 +757,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
     if (!canEdit || service.is_builtin || busyId) return;
     if (
       typeof window !== "undefined" &&
-      !window.confirm("Delete MCP service " + JSON.stringify(service.name) + "?")
+      !window.confirm(t("mcpSettings.deleteConfirmBody", { name: service.name }))
     )
       return;
     setBusyId(service.id);
