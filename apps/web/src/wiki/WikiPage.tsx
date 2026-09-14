@@ -375,7 +375,7 @@ export function WikiPage({
   const directory = indexView ? (
     <section className="wk-wiki-index grid gap-3 pb-2" aria-label={t("wikiBrowser.indexTitle")}>
       {indexError ? <Status tone="error">{indexError}</Status> : null}
-      {!indexError && indexLoading && !indexView.groups.length ? <Status>{t("wikiBrowser.loading")}</Status> : !indexError && indexView.groups.length === 0 ? <Status>{t("wikiBrowser.indexEmpty")}</Status> : !indexError ? indexView.groups.map((group) => <section key={group.type}><h3>{group.type}</h3><ul className="wk-list">{group.items.map((item) => <li key={item.slug}><button className="border-0 bg-transparent cursor-pointer p-0 text-left text-primary-deep [font:inherit] [font-weight:650]! hover:underline" type="button" onClick={() => void client.wiki.get(knowledgeBaseId, item.slug).then(choose)}>{item.title}</button><small>{item.summary}</small></li>)}</ul></section>) : null}
+      {!indexError && indexLoading && !indexView.groups.length ? <Status>{t("wikiBrowser.loading")}</Status> : !indexError && indexView.groups.length === 0 ? <Status>{t("wikiBrowser.indexEmpty")}</Status> : !indexError ? indexView.groups.map((group) => <section key={group.type}><h3>{group.type}</h3><ul className="wk-list m-0 list-none p-0">{group.items.map((item) => <li key={item.slug} className="flex items-baseline justify-between gap-4 border-b border-line-soft py-[0.9rem]"><button className="border-0 bg-transparent cursor-pointer p-0 text-left text-primary-deep [font:inherit] [font-weight:650]! hover:underline" type="button" onClick={() => void client.wiki.get(knowledgeBaseId, item.slug).then(choose)}>{item.title}</button><small>{item.summary}</small></li>)}</ul></section>) : null}
       {indexNextCursor ? <Button type="button" disabled={indexLoading} onClick={() => void loadMoreIndex()}>{indexLoading ? t("wikiBrowser.loading") : t("wikiBrowser.loadMoreShort")}</Button> : null}
     </section>
   ) : (
@@ -387,17 +387,17 @@ export function WikiPage({
         {canContribute ? <Button type="button" disabled={folderBusy} onClick={() => void createFolder()}>{t("wikiBrowser.folderActions")}</Button> : null}
         {folderTrail.length > 0 ? <Button type="button" onClick={backFolder}>{t("wikiBrowser.backToOverview")}</Button> : null}
       </div>
-      {viewMode === "tree" && folders.length > 0 ? <ul className="wk-list wk-wiki-folder-list m-0 mb-2 list-none p-0 pb-2">{folders.map((folder) => <li key={folder.id}><Button type="button" onClick={() => openFolder(folder)}>{folder.name} ({folder.page_count})</Button>{canContribute ? <span className="wk-list-actions"><Button type="button" disabled={folderBusy} onClick={() => void renameFolder(folder)}>{t("wikiBrowser.renameFolder")}</Button><Button type="button" disabled={folderBusy} onClick={() => void deleteFolder(folder)}>{t("wikiBrowser.deleteFolder")}</Button></span> : null}</li>)}</ul> : null}
+      {viewMode === "tree" && folders.length > 0 ? <ul className="wk-list wk-wiki-folder-list m-0 mb-2 list-none p-0 pb-2">{folders.map((folder) => <li key={folder.id} className="flex items-baseline justify-between gap-4 border-b border-line-soft py-[0.9rem]"><Button type="button" onClick={() => openFolder(folder)}>{folder.name} ({folder.page_count})</Button>{canContribute ? <span className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"><Button type="button" disabled={folderBusy} onClick={() => void renameFolder(folder)}>{t("wikiBrowser.renameFolder")}</Button><Button type="button" disabled={folderBusy} onClick={() => void deleteFolder(folder)}>{t("wikiBrowser.deleteFolder")}</Button></span> : null}</li>)}</ul> : null}
     </>
   );
 
   return (
-    <main className="wk-page wk-wiki-page">
-      <header className="wk-header">
+    <main className="wk-page wk-wiki-page mx-auto box-border max-w-[960px] px-[1.25rem] py-12">
+      <header className="wk-header mb-6 flex items-start justify-between gap-4">
         <div>
-          <p className="wk-eyebrow">Knowledge base · {knowledgeBaseId}</p>
+          <p className="wk-eyebrow m-0 text-[0.78rem] font-bold uppercase tracking-[0.08em] text-primary">Knowledge base · {knowledgeBaseId}</p>
           <h1>{t("wikiBrowser.page.title")}</h1>
-          <p className="wk-muted">{t("wikiBrowser.page.subtitle")}</p>
+          <p className="wk-muted text-muted">{t("wikiBrowser.page.subtitle")}</p>
         </div>
         {canContribute ? <Button type="button" onClick={newPage}>
           {t("wikiBrowser.page.new")}
@@ -456,12 +456,12 @@ export function WikiPage({
           </aside>
           {selected && !editing ? (
             <article className="wk-wiki-reader min-w-0" aria-label={selected.title}>
-              <div className="wk-header">
+              <div className="wk-header mb-6 flex items-start justify-between gap-4">
                 <div>
                   <h2>{selected.title}</h2>
-                  <p className="wk-muted">{selected.summary || "—"}</p>
+                  <p className="wk-muted text-muted">{selected.summary || "—"}</p>
                 </div>
-                <div className="wk-list-actions">
+                <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
                   {canContribute ? <Button type="button" onClick={() => setEditing(true)}>
                     {t("wikiBrowser.editBtn")}
                   </Button> : null}
@@ -511,8 +511,8 @@ export function WikiPage({
                 required
               />
             </label>
-            <div className="wk-list-actions">
-              <span>{selected ? t("wikiBrowser.version", { ver: version }) : t("wikiBrowser.page.new")}</span>
+            <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
+              <span className="mr-auto text-[0.85rem] text-muted">{selected ? t("wikiBrowser.version", { ver: version }) : t("wikiBrowser.page.new")}</span>
               <Button type="submit">
                 {selected ? t("wikiBrowser.editSave") : t("wikiBrowser.page.new")}
               </Button>
@@ -568,10 +568,10 @@ export function WikiPage({
       </Card>
       {historyOpen && selected ? (
         <Card className="wk-wiki-history mt-4">
-          <div className="wk-header">
+          <div className="wk-header mb-6 flex items-start justify-between gap-4">
             <div>
               <h2>{t("wikiBrowser.historyTitle", { title: selected.title })}</h2>
-              <p className="wk-muted">{t("wikiBrowser.revisionCurrentHint")}</p>
+              <p className="wk-muted text-muted">{t("wikiBrowser.revisionCurrentHint")}</p>
             </div>
             <Button type="button" onClick={() => setHistoryOpen(false)}>
               {t("common.close")}
@@ -586,9 +586,9 @@ export function WikiPage({
           ) : null}
           <div className="wk-wiki-history-layout grid grid-cols-[minmax(180px,260px)_1fr] gap-5">
             <nav aria-label="Wiki revisions">
-              <ul className="wk-list">
+              <ul className="wk-list m-0 list-none p-0">
                 {revisions.map((item) => (
-                  <li key={item.id}>
+                  <li key={item.id} className="flex items-baseline justify-between gap-4 border-b border-line-soft py-[0.9rem]">
                     <button
                       className="border-0 bg-transparent cursor-pointer p-0 text-left text-primary-deep [font:inherit] [font-weight:650]! hover:underline"
                       type="button"
@@ -596,7 +596,7 @@ export function WikiPage({
                     >
                       {t("wikiBrowser.version", { ver: item.version })}
                     </button>
-                    <span>{item.edit_source ?? "user"}</span>
+                    <span className="font-mono text-[0.8rem] text-muted">{item.edit_source ?? "user"}</span>
                   </li>
                 ))}
               </ul>
@@ -604,7 +604,7 @@ export function WikiPage({
             <div>
               {revision ? (
                 <>
-                  <div className="wk-list-actions">
+                  <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
                     <strong>
                       v{revision.version} → v{selected.version}
                     </strong>

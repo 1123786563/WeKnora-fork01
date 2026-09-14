@@ -83,7 +83,7 @@ export function EmbedPreviewModal({ open, channelId, token, title, apiBaseUrl, l
           {/* Former .wk-embed-preview-screen + iframe rules; the old dynamic
               .is-loading class became this static 'invisible' condition. */}
           <div className="absolute inset-[37px_0_0] grid place-items-center">
-            {!ready ? <span className="wk-muted">正在加载预览…</span> : null}
+            {!ready ? <span className="wk-muted text-muted">正在加载预览…</span> : null}
             {layoutReady ? <iframe title={label} src={src} onLoad={() => setReady(true)} className={ready ? '' : 'invisible'} allow="clipboard-write" /> : null}
           </div>
         </div>

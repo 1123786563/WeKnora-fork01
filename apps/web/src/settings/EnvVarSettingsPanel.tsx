@@ -78,8 +78,8 @@ export function EnvVarSettingsPanel({ client, initialPayload, onMutated }: { cli
     </form>
     {rows(initialPayload).length === 0
       ? <p className="wk-settings-read-note text-muted-strong text-[.9rem]">No personal environment variables are stored yet.</p>
-      : <ul className="wk-list">{rows(initialPayload).map((row) => (
-        <li key={row.scope + ':' + row.scopeId + ':' + row.name}>
+      : <ul className="wk-list m-0 list-none p-0">{rows(initialPayload).map((row) => (
+        <li key={row.scope + ':' + row.scopeId + ':' + row.name} className="flex items-baseline justify-between gap-4 border-b border-line-soft py-[0.9rem]">
           <strong>{row.name}</strong> · {row.scope} {row.scopeId} = {row.value}
           <Button type="button" disabled={busy} onClick={() => removeVariable(row)}>Remove</Button>
         </li>

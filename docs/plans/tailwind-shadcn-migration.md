@@ -236,6 +236,15 @@ hook 类（测试/JS 引用）保留类名。
 - styles.css 删 18 条 + 3 片段（死规则 7 + 迁移后删 11）；保留 16 条 + 3 片段
   （knowledge-settings 消费方/抽屉级联/configuration 域/editor×3——最终共享层清理联动）。
 - 验收：typecheck 0、SettingsPage+Model 38/38 + 加跑 48/48、web 890/890、build ✓。
+### 批次42：小共享族（button/tag/status/switch/mono-input/visually-hidden/muted）✅
+- 35 文件：styles.css 删 20 条（button×5/tag×2/switch×6/status×3/mono-input/
+  visually-hidden/muted×2——墓碑注释）；wk-muted ≈218 处 + warn 3 追加 utilities。
+- 关键级联发现：packages/ui/src/styles.css 经 index.tsx:22 进 bundle（ui css 在前、
+  apps 在后=今天 apps 赢平局）——删 apps 规则后 ui 未分层规则反超，竞争属性全部加 !
+  （border/px/py/text/disabled:opacity-55!/enabled:hover:border-primary!/knob 系/）。
+- settings-wrapper .wk-tag 家族 5 条协调保留（7 个 settings tag span 追加编码生效值）。
+- 钩子类全保留（测试选择器 0 改动）；验收：typecheck 0、settings 179/179 +
+  integrations+Agents 43/43、web 890/890、build ✓。
 ### 批次19：TenantMembers 域 ✅（子任务执行，Orchestrator 验收提交）
 - TenantMembersPanel.tsx ~95 条规则内联 utilities（表格/分页/标签三态/确认弹层；
   settings-wrapper 抽屉 select chrome 特异性更高今日实际生效，按生效值 4 条未复制）；

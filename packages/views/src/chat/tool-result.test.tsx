@@ -325,6 +325,23 @@ test('ChunkDetailRenderer localizes the full-content label in every locale', () 
   }
 });
 
+test('ChunkDetailRenderer localizes the chunk ID label in every locale', () => {
+  const expected = {
+    'zh-CN': '片段ID:',
+    'en-US': 'Chunk ID:',
+    'ja-JP': 'チャンクID:',
+    'ko-KR': '청크 ID:',
+    'ru-RU': 'ID фрагмента:',
+  } as const;
+  for (const [locale, label] of Object.entries(expected)) {
+    const element = ChunkDetailRenderer({
+      data: { chunk_id: 'c-9' },
+      copy: resolveChatCopy(locale),
+    });
+    assert.match(JSON.stringify(element), new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  }
+});
+
 /* ---- RelatedChunks ---- */
 
 test('relatedChunksView lists chunk positions and scores', () => {

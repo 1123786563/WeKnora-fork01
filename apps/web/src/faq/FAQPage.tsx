@@ -971,12 +971,12 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
           </div>
 
           {canContribute && selected.size > 0 ? (
-            <div className="wk-list-actions faq-batch-bar border-t border-line-soft pt-3" aria-label="FAQ batch actions">
-              <span>{t('common.itemCount', { count: selected.size })}</span>
+            <div className="wk-list-actions faq-batch-bar border-t border-line-soft pt-3 mb-[0.75rem] flex items-center justify-end gap-[0.5rem]" aria-label="FAQ batch actions">
+              <span className="mr-auto text-[0.85rem] text-muted">{t('common.itemCount', { count: selected.size })}</span>
               <Button type="button" onClick={onBatchEnable}>{t('knowledgeEditor.faq.batchEnable')}</Button>
               <Button type="button" onClick={onBatchDisable}>{t('knowledgeEditor.faq.batchDisable')}</Button>
               <Button type="button" onClick={onBatchRecommend}>{t('knowledgeEditor.faq.recommended')}</Button>
-              <select className="wk-batch-tag" value={batchTag} onChange={(event) => onBatchTagChange(event.target.value)} aria-label={t('knowledgeBase.tagLabel')}>
+              <select className="wk-batch-tag max-w-[9rem] rounded-control border border-line-control bg-surface text-ink px-[0.65rem] py-[0.55rem] [font:inherit]" value={batchTag} onChange={(event) => onBatchTagChange(event.target.value)} aria-label={t('knowledgeBase.tagLabel')}>
                 <option value="">{t('knowledgeBase.untagged')}</option>
                 {[...tagNameBySeq.entries()].map(([seqId, name]) => <option key={seqId} value={String(seqId)}>{name}</option>)}
               </select>
@@ -1383,7 +1383,7 @@ function FAQTagManageDialog({ client, knowledgeBaseId, tags, open, onClose, onCh
   }
 
   return <Dialog open={open} title={t('knowledgeBase.tagManageTitle')} onClose={onClose}>
-    <p className="wk-muted">{t('knowledgeBase.tagManageDescription')}</p>
+    <p className="wk-muted text-muted">{t('knowledgeBase.tagManageDescription')}</p>
     {error ? <Status tone="error">{error}</Status> : null}
     <div className="faq-tag-manage-toolbar my-3 flex items-center gap-2"><input className="min-w-0 flex-1" value={query} placeholder={t('knowledgeBase.tagSearchPlaceholder')} onChange={(event) => setQuery(event.target.value)} /><Button type="button" disabled={busy} onClick={() => { setCreating(true); setEditingId(null); }}>{t('knowledgeBase.tagCreateAction')}</Button></div>
     {creating ? <div className="faq-tag-manage-edit flex items-center gap-2"><input autoFocus maxLength={40} className="min-w-0 flex-1" value={draft} placeholder={t('knowledgeBase.tagNamePlaceholder')} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void createTag(); if (event.key === 'Escape') setCreating(false); }} /><Button type="button" loading={busy} onClick={() => void createTag()}>{t('common.create')}</Button><Button type="button" disabled={busy} onClick={() => setCreating(false)}>{t('common.cancel')}</Button></div> : null}

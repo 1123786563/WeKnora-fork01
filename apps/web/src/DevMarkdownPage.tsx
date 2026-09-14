@@ -42,12 +42,12 @@ export function DevMarkdownPage() {
   }, [markdown]);
 
   return (
-    <main className="wk-page wk-markdown-test-page">
-      <header className="wk-header">
+    <main className="wk-page wk-markdown-test-page mx-auto box-border max-w-[960px] px-[1.25rem] py-12">
+      <header className="wk-header mb-6 flex items-start justify-between gap-4">
         <div>
-          <p className="wk-eyebrow">Development fixture</p>
+          <p className="wk-eyebrow m-0 text-[0.78rem] font-bold uppercase tracking-[0.08em] text-primary">Development fixture</p>
           <h1>Markdown rendering test</h1>
-          <p className="wk-muted">Paste Markdown to inspect the escaped React rendering boundary.</p>
+          <p className="wk-muted text-muted">Paste Markdown to inspect the escaped React rendering boundary.</p>
         </div>
         <button type="button" onClick={() => setMarkdown(DEFAULT_MARKDOWN)}>Reset</button>
       </header>

@@ -69,18 +69,18 @@ export function JoinPage({ client, onAuthenticated }: JoinPageProps) {
     }
   }
 
-  return <main className="wk-page"><Card>
+  return <main className="wk-page mx-auto box-border max-w-[960px] px-[1.25rem] py-12"><Card>
     <h1>{formatMessage(storedLocale(), 'auth.join.title')}</h1>
     {lookupState === 'loading' ? <Status>{formatMessage(storedLocale(), 'auth.join.checkingInvitation')}</Status> : null}
     {lookupState === 'error' ? <Status tone="error">{message}</Status> : null}
     {lookupState === 'ready' && lookup ? <>
       <p>{formatMessage(storedLocale(), 'auth.join.joinPrefix')} <strong>{lookup.tenantName || formatMessage(storedLocale(), 'auth.join.workspaceFallback', { id: lookup.tenantId })}</strong>{formatMessage(storedLocale(), 'auth.join.asRole', { role: lookup.role })}</p>
-      <form className="wk-form" onSubmit={submit}>
-        <label>{formatMessage(storedLocale(), 'auth.join.username')}<input value={username} onChange={(event) => setUsername(event.target.value)} required minLength={2} /></label>
-        <label>{formatMessage(storedLocale(), 'auth.join.email')}<input value={email} onChange={(event) => setEmail(event.target.value)} type="email" required /></label>
-        <label>{formatMessage(storedLocale(), 'auth.join.password')}<input value={password} onChange={(event) => setPassword(event.target.value)} type="password" required minLength={8} maxLength={32} disabled={submitting} />
+      <form className="wk-form mb-4 flex flex-wrap items-end gap-3" onSubmit={submit}>
+        <label className="grid gap-1">{formatMessage(storedLocale(), 'auth.join.username')}<input className="rounded-control border border-line-strong p-[0.55rem]" value={username} onChange={(event) => setUsername(event.target.value)} required minLength={2} /></label>
+        <label className="grid gap-1">{formatMessage(storedLocale(), 'auth.join.email')}<input className="rounded-control border border-line-strong p-[0.55rem]" value={email} onChange={(event) => setEmail(event.target.value)} type="email" required /></label>
+        <label className="grid gap-1">{formatMessage(storedLocale(), 'auth.join.password')}<input className="rounded-control border border-line-strong p-[0.55rem]" value={password} onChange={(event) => setPassword(event.target.value)} type="password" required minLength={8} maxLength={32} disabled={submitting} />
         {(fieldErrors.password ?? []).map((key) => <Status key={key} tone="error">{formatMessage(storedLocale(), key)}</Status>)}</label>
-      <label>{formatMessage(storedLocale(), 'auth.join.confirmPassword')}<input value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} type="password" required disabled={submitting} />
+      <label className="grid gap-1">{formatMessage(storedLocale(), 'auth.join.confirmPassword')}<input className="rounded-control border border-line-strong p-[0.55rem]" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} type="password" required disabled={submitting} />
         {(fieldErrors.confirmPassword ?? []).map((key) => <Status key={key} tone="error">{formatMessage(storedLocale(), key)}</Status>)}</label>
         {message ? <Status tone="error">{message}</Status> : null}
         <Button type="submit" disabled={submitting}>{submitting ? formatMessage(storedLocale(), 'auth.join.creatingAccount') : formatMessage(storedLocale(), 'auth.join.createAccountAndJoin')}</Button>

@@ -225,7 +225,7 @@ function renderProtected() {
 
 async function bootstrap() {
   if (route.kind === 'embed') {
-    root.render(<main className="wk-page"><Status tone="error">Embed must use its isolated entrypoint.</Status></main>);
+    root.render(<main className="wk-page mx-auto box-border max-w-[960px] px-[1.25rem] py-12"><Status tone="error">Embed must use its isolated entrypoint.</Status></main>);
     return;
   }
   if (route.kind === 'login') {

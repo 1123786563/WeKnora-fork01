@@ -323,7 +323,7 @@ export function ModelDebugPanel({ client, models, onClose }: Props) {
           </fieldset>
         ) : null}
         {error ? <Status tone="error">{error}</Status> : null}
-        <div className="wk-list-actions">
+        <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
           <Button type="button" disabled={!canRun} loading={busy} onClick={() => void run()}>
             {t("modelSettings.debug.run")}
           </Button>
@@ -334,7 +334,7 @@ export function ModelDebugPanel({ client, models, onClose }: Props) {
           ) : null}
         </div>
         {history.length > 1 ? (
-          <div className="wk-list-actions" role="list" aria-label={t("modelSettings.debug.history")}>
+          <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]" role="list" aria-label={t("modelSettings.debug.history")}>
             {history.map((run) => (
               <Button
                 key={run.id}

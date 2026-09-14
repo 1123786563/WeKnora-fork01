@@ -231,7 +231,7 @@ function installChipStatusKeys(item: SkillCatalog, installation: SkillCatalogIns
 export function SkillSettingsPanel({ client, role, initialSkills, initialCatalog, initialSandboxConfigs }: Props) {
   const canEdit = role === 'admin' || role === 'owner';
   if (!canEdit) {
-    return <Card data-testid="skill-settings"><h3>Skills</h3><p className="wk-muted text-muted">Installed skills are managed by workspace administrators.</p>{initialSkills && initialSkills.length > 0 ? <ul className="wk-list">{initialSkills.map((skill) => <li key={skill.id}><strong>{skill.name}</strong><span>{skill.description ?? 'No description returned.'}</span></li>)}</ul> : <Status>No skills configured.</Status>}</Card>;
+    return <Card data-testid="skill-settings"><h3>Skills</h3><p className="wk-muted text-muted">Installed skills are managed by workspace administrators.</p>{initialSkills && initialSkills.length > 0 ? <ul className="wk-list m-0 list-none p-0">{initialSkills.map((skill) => <li key={skill.id} className="flex items-baseline justify-between gap-4 border-b border-line-soft py-[0.9rem]"><strong>{skill.name}</strong><span className="font-mono text-[0.8rem] text-muted">{skill.description ?? 'No description returned.'}</span></li>)}</ul> : <Status>No skills configured.</Status>}</Card>;
   }
   return <SkillCatalogSection client={client} initialCatalog={initialCatalog} initialSandboxConfigs={initialSandboxConfigs} />;
 }
@@ -426,7 +426,7 @@ export function SkillCatalogSection({ client, initialCatalog, initialSandboxConf
       <div className="flex flex-col items-center justify-center gap-3 px-4 py-12 text-center">
         <Status>{t('settings.skills.emptyDesc')}</Status>
         {skillConfigs.length === 0 ? <p className="wk-muted text-muted m-0">{t('settings.skills.emptyNoSandboxHint')}</p> : null}
-        <div className="wk-list-actions gap-[10px]!">
+        <div className="wk-list-actions gap-[10px]! mb-[0.75rem] flex items-center justify-end">
           <Button type="button" className="bg-[var(--wks-primary,#00a870)]! border-[var(--wks-primary,#00a870)]! text-white! hover:bg-[var(--wks-primary-hover,#009664)]!" onClick={() => { setWizardOpen(true); }}>{t('settings.skills.addSkill')}</Button>
           {skillConfigs.length === 0
             ? <Button type="button" className="wk-button-outline" onClick={() => { if (typeof window !== 'undefined') window.location.assign('/platform/settings?section=sandbox'); }}>{t('settings.skills.goSandboxSettings')}</Button>
@@ -540,7 +540,7 @@ export function SkillCatalogSection({ client, initialCatalog, initialSandboxConf
     <Dialog open={pendingDelete !== null} title={t('common.confirmDelete')} onClose={() => setPendingDelete(null)}>
       {pendingDelete ? <>
         <p>{t('settings.skills.deleteCatalogConfirm', { name: pendingDelete.name })}</p>
-        <div className="wk-list-actions">
+        <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
           <Button type="button" onClick={() => setPendingDelete(null)}>{t('common.cancel')}</Button>
           <Button type="button" loading={deletingId !== ''} onClick={() => { const item = pendingDelete; setPendingDelete(null); void removeCatalog(item); }}>{t('common.delete')}</Button>
         </div>
@@ -895,7 +895,7 @@ function AddSkillWizard({ client, open, catalog, configs, installer, t, onClose,
         <InstallerModelSelect installer={installer} t={t} />
       </section> : null}
     </>}
-    <div className="wk-list-actions">
+    <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
       {step > 0 ? <Button type="button" onClick={() => setStep((current) => Math.max(0, current - 1))}>{t('settings.sandbox.back')}</Button> : null}
       <Button type="button" loading={primaryLoading} disabled={primaryDisabled} onClick={() => void handlePrimary()}>{primaryText}</Button>
     </div>
@@ -979,7 +979,7 @@ function InstallSkillDialog({ client, open, item, configs, preselectConfigId, in
       <p className="wk-muted text-muted">{t('settings.sandbox.skillInstallerModelHint')}</p>
       <InstallerModelSelect installer={installer} t={t} />
     </section> : null}
-    <div className="wk-list-actions">
+    <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
       <Button type="button" onClick={onClose}>{t('common.cancel')}</Button>
       <Button type="button" loading={installing} disabled={confirmDisabled} onClick={() => void confirm()}>{confirmText}</Button>
     </div>
@@ -1452,8 +1452,8 @@ function ManageSkillDialog({ client, open, target, t, onClose, onChanged, onToas
           {skill.status !== 'installing' ? <Button type="button" loading={uninstalling} disabled={busy} title={t('settings.skills.manageUninstallConfirm', { name: skill.name })} onClick={() => setPendingUninstall(true)}>{t('settings.skills.manageUninstall')}</Button> : null}
         </div>
       </div>
-      {pendingUninstall ? <div className="wk-list-actions">
-        <span>{t('settings.skills.manageUninstallConfirm', { name: skill.name })}</span>
+      {pendingUninstall ? <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
+        <span className="mr-auto text-[0.85rem] text-muted">{t('settings.skills.manageUninstallConfirm', { name: skill.name })}</span>
         <Button type="button" onClick={() => setPendingUninstall(false)}>{t('common.cancel')}</Button>
         <Button type="button" loading={uninstalling} onClick={() => void uninstall()}>{t('common.delete')}</Button>
       </div> : null}
@@ -1485,7 +1485,7 @@ function ManageSkillDialog({ client, open, target, t, onClose, onChanged, onToas
             </div>
           </div>)}
         </div>
-        <div className="wk-list-actions">
+        <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
           <Button type="button" loading={envSaving} disabled={Object.keys(envPayload()).length === 0 || busy} onClick={() => void saveEnvs()}>{t('settings.sandbox.skillEnv.save')}</Button>
         </div>
       </section> : null}

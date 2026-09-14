@@ -1143,7 +1143,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                   <input value={form.cube.api_url ?? ''} placeholder="http://cube.example.com:33000" disabled={retargetFrozen} onChange={(event) => setCube({ api_url: event.target.value }, 'api_url')} />
                   {renderFieldError('api_url')}
                 </label>
-                <div className="wk-form-grid">
+                <div className="wk-form-grid grid grid-cols-2 gap-4 max-[720px]:grid-cols-1">
                   <label>{requiredLabel('settings.sandbox.proxyUrl')}
                     <input value={form.cube.proxy_url ?? ''} placeholder="http://cube.example.com:80" disabled={retargetFrozen} onChange={(event) => setCube({ proxy_url: event.target.value }, 'proxy_url')} />
                     {renderFieldError('proxy_url')}
@@ -1170,7 +1170,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                 </label>
                 <p className="wk-muted text-muted">{form.storedE2BKey ? t('settings.sandbox.secretConfigured') : t('settings.sandbox.e2bApiKeyHelp')}</p>
                 <a href={E2B_API_KEYS_URL} target="_blank" rel="noopener noreferrer">{t('settings.sandbox.e2bApiKeyWhere')}</a>
-                <div className="wk-form-grid">
+                <div className="wk-form-grid grid grid-cols-2 gap-4 max-[720px]:grid-cols-1">
                   <label>{t('settings.sandbox.apiUrl')}
                     <input value={form.e2b.api_url ?? ''} placeholder="https://api.e2b.app" disabled={retargetFrozen} onChange={(event) => setE2B({ api_url: event.target.value })} />
                   </label>
@@ -1293,7 +1293,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
         {stepKey === 'runtime' ? (<>
           <section className="wk-sandbox-editor-section">
             <h4>{t('settings.sandbox.sectionRuntime')}</h4>
-            <div className="wk-form-grid">
+            <div className="wk-form-grid grid grid-cols-2 gap-4 max-[720px]:grid-cols-1">
               {isRemote ? (<>
                 <label>{t('settings.sandbox.httpTimeout')}
                   <input type="number" min={0} placeholder="30" value={numberValue(form.backend === 'cube' ? form.cube.http_timeout_sec : form.e2b.http_timeout_sec)}
@@ -1391,7 +1391,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                 {form.cubeRules.map((rule, index) => (
                   <details className="wk-net-rule" key={rule.key}>
                     <summary>{rule.name.trim() || t('settings.sandbox.ruleUntitled')}</summary>
-                    <div className="wk-form-grid">
+                    <div className="wk-form-grid grid grid-cols-2 gap-4 max-[720px]:grid-cols-1">
                       <label>{t('settings.sandbox.ruleName')}<input value={rule.name} placeholder="allow-payment-api" onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, name: event.target.value } : item) }))} /></label>
                       <label>{t('settings.sandbox.ruleScheme')}
                         <select value={rule.scheme} onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, scheme: event.target.value } : item) }))}>
@@ -1431,7 +1431,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                         <Button type="button" onClick={() => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, inject: [...item.inject, { header: '', secret: '', format: '' }] } : item) }))}>{t('settings.sandbox.addHeader')}</Button>
                       </div>
                     ) : null}
-                    <div className="wk-list-actions">
+                    <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
                       <Button type="button" disabled={index === 0} aria-label={t('settings.sandbox.moveRuleUp')} onClick={() => updateForm((current) => {
                         if (index <= 0) return {};
                         const rows = [...current.cubeRules]; const [row] = rows.splice(index, 1); rows.splice(index - 1, 0, row); return { cubeRules: rows };
@@ -1503,7 +1503,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
           </section>
         </>) : null}
 
-        <div className="wk-list-actions">
+        <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
           {step > 0 ? <Button type="button" onClick={previousStep}>{t('settings.sandbox.back')}</Button> : null}
           {canDeepCheck ? (
             <Button type="button" loading={checking} data-testid="sandbox-deep-check"
@@ -1759,7 +1759,7 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
           </details>
           <p className="wk-muted text-muted">{t('settings.sandbox.description')}</p>
         </div>
-        <div className="wk-list-actions">
+        <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
           <a href={CLUSTER_GUIDE_URL} target="_blank" rel="noopener noreferrer">{t('settings.sandbox.viewClusterGuide')}</a>
           {canEdit ? <Button type="button" onClick={openCreate}>{t('settings.sandbox.addConfig')}</Button> : null}
         </div>
@@ -1826,7 +1826,7 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
                     {isLegacyRecord(item) ? <span className="wk-tag inline-flex items-center shrink-0 py-[1px]! px-[8px]! leading-[1.6]">{t('settings.sandbox.legacyConfig')}</span> : null}
                   </div>
                   {canEdit ? (
-                    <div className="wk-list-actions">
+                    <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
                       {!isLegacyRecord(item) ? <Button type="button" onClick={() => openEdit(item)}>{t('common.edit')}</Button> : null}
                       {/* Vue cardMenu offers inventory for cube/e2b only (SandboxSettings.vue:299-301). */}
                       {item.sandbox_type === 'cube' || item.sandbox_type === 'e2b' ? (
@@ -1865,7 +1865,7 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
           </div>
           <h4>{t('settings.sandbox.inventorySessions')}</h4>
           {inventory.data.sessionIds.length > 0 ? (
-            <ul className="wk-list">
+            <ul className="wk-list m-0 list-none p-0">
               {/* Vue inventory row (171-178): the raw id stays on the title
                   tooltip; the label shows the resolved session title. Rows are
                   buttons that open the session (openSession, 341-344) only when
@@ -1873,15 +1873,15 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
               {inventory.data.sessionIds.map((id) => {
                 const label = (
                   <>
-                    <strong title={id}>{sessionTitleText(sessionTitles, id, t('settings.sandbox.inventoryUntitledSession'))}</strong> <span className="wk-muted text-muted">{t('settings.sandbox.inventorySessionKind')}</span>
+                    <strong title={id}>{sessionTitleText(sessionTitles, id, t('settings.sandbox.inventoryUntitledSession'))}</strong> <span className="wk-muted text-muted font-mono text-[0.8rem]!">{t('settings.sandbox.inventorySessionKind')}</span>
                   </>
                 );
                 return (
-                  <li key={id}>
+                  <li key={id} className="flex items-baseline justify-between gap-4 border-b border-line-soft py-[0.9rem]">
                     {onOpenSession ? (
                       <button type="button" className="wk-sandbox-inventory-row" onClick={() => onOpenSession(id)}>
                         {label}
-                        <span aria-hidden="true">›</span>
+                        <span aria-hidden="true" className="font-mono text-[0.8rem] text-muted">›</span>
                       </button>
                     ) : label}
                   </li>

@@ -1184,7 +1184,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                       ) : null}
                     </div>
                     {nameError ? <span className="wk-field-error text-xs leading-[1.4] text-[#c23434]">{nameError}</span> : null}
-                  <div className="wk-list-actions">
+                  <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
                     <Button type="button" disabled={ollamaBusy} onClick={() => void refreshOllamaModels()}>
                       {t("model.editor.refreshList")}
                     </Button>
@@ -1272,8 +1272,8 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                             onChange={(event) => setCredentialValues((current) => ({ ...current, apiKey: event.target.value }))}
                           />
                         </label>
-                        <div className="wk-list-actions">
-                          {draft.credentials?.api_key?.configured ? <span title="configured">✓</span> : null}
+                        <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
+                          {draft.credentials?.api_key?.configured ? <span title="configured" className="mr-auto text-[0.85rem] text-muted">✓</span> : null}
                           <Button
                             type="button"
                             disabled={credentialBusy || !credentialValues.apiKey.trim()}
@@ -1299,8 +1299,8 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                                 onChange={(event) => setCredentialValues((current) => ({ ...current, appSecret: event.target.value }))}
                               />
                             </label>
-                            <div className="wk-list-actions">
-                              {draft.credentials?.app_secret?.configured ? <span title="configured">✓</span> : null}
+                            <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
+                              {draft.credentials?.app_secret?.configured ? <span title="configured" className="mr-auto text-[0.85rem] text-muted">✓</span> : null}
                               <Button
                                 type="button"
                                 disabled={credentialBusy || !credentialValues.appSecret.trim()}
@@ -1477,7 +1477,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
             ) : null}
 
             {draftError ? <Status tone="error">{draftError}</Status> : null}
-            <div className="wk-list-actions">
+            <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
               {draft.source === "remote" ? (
                 <Button
                   type="button"

@@ -462,8 +462,8 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
         to outrank the global unlayered h1 rule still in styles.css. */}
     <main className="mx-auto max-w-[1040px] px-[1rem] py-[2rem]">
       {!embedded ? <><header className="flex items-start justify-between gap-[1rem] mb-[1.25rem]">
-        <div><h1 className="m-0!">{t('integrations.title')}</h1><p className="wk-muted">{t('integrations.agentEditor.desc')}</p></div>
-        {onReload ? <button className="wk-button" type="button" onClick={onReload}>{t('common.retry')}</button> : null}
+        <div><h1 className="m-0!">{t('integrations.title')}</h1><p className="wk-muted text-muted">{t('integrations.agentEditor.desc')}</p></div>
+        {onReload ? <button className="wk-button cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="button" onClick={onReload}>{t('common.retry')}</button> : null}
       </header>
       <nav className="flex flex-wrap gap-[.5rem] mb-[1rem]" aria-label={t('integrations.title')}>
         {INTEGRATION_SECTIONS.map((item) => <button type="button" key={item.key} className={item.key === tab ? INT_TAB_ACTIVE_CLASS : INT_TAB_CLASS} onClick={() => setTab(item.key)}>{t('integrations.tabs.' + item.key)}</button>)}
@@ -480,8 +480,8 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
           </div>
           {section.minRole === 'owner' ? <span className="rounded-pill px-[.55rem] py-[.2rem] text-[.8rem] text-[#6941c6] bg-[#f4f3ff]">Owner</span> : null}
         </div>
-        {loading ? <p className="wk-status">{t('integrations.api.loading')}</p> : null}
-        {error || localError ? <p className="wk-status wk-status-error" role="alert">{error || localError}</p> : null}
+        {loading ? <p className="wk-status my-[0.25rem]! text-[13px] text-muted-strong">{t('integrations.api.loading')}</p> : null}
+        {error || localError ? <p className="wk-status wk-status-error my-[0.25rem]! text-[13px] text-danger!" role="alert">{error || localError}</p> : null}
         {!loading && !error && (tab === 'im' || tab === 'embed') ? <ChannelListPanel
           variant={tab}
           copy={copy}
@@ -607,7 +607,7 @@ function EmbedChannelPreviewPanel({ preview, locale, t, onClose }: { preview: { 
           <div className="flex items-center gap-[6px] border-b border-solid border-line bg-[#eef1f5] px-[14px] py-[10px] text-[10px] text-[#98a2b3]"><span className="text-[#ff5f57]">●</span><span className="text-[#febc2e]">●</span><span className="text-[#28c840]">●</span><code className="ml-[8px] overflow-hidden text-ellipsis whitespace-nowrap text-[12px] text-[#98a2b3]">/embed/{channelId}</code></div>
           {/* Former .wk-embed-preview-screen + iframe rules; the old dynamic
               .is-loading class became this static 'invisible' condition. */}
-          <div className="absolute inset-[37px_0_0] grid place-items-center">{!ready ? <span className="wk-muted">{t('embedPublish.previewLoading')}</span> : null}{layoutReady ? <iframe title={preview.channel.name || t('embedPublish.preview')} src={src} onLoad={() => setReady(true)} className={ready ? '' : 'invisible'} allow="clipboard-write" /> : null}</div>
+          <div className="absolute inset-[37px_0_0] grid place-items-center">{!ready ? <span className="wk-muted text-muted">{t('embedPublish.previewLoading')}</span> : null}{layoutReady ? <iframe title={preview.channel.name || t('embedPublish.preview')} src={src} onLoad={() => setReady(true)} className={ready ? '' : 'invisible'} allow="clipboard-write" /> : null}</div>
         </div> : <div className={EMBED_PREVIEW_FRAME_CLASS}>
           {/* Former .wk-embed-preview-mock-page + span / span.short. */}
           <div className="px-[32px] py-[28px] text-[#98a2b3]"><strong>{t('embedPublish.previewMockPage')}</strong><span className="block h-[10px] w-[72%] rounded-[5px] bg-[rgba(0,0,0,.06)] mt-[16px]" /><span className="block h-[10px] w-[48%] rounded-[5px] bg-[rgba(0,0,0,.06)] mt-[10px]" /></div>
@@ -632,11 +632,11 @@ function ImWizardPanelLegacy({ locale, t, apiBaseUrl, agents = [], knowledgeBase
   const consoleLink = imConsoleLink(form.platform);
   return <div className="wk-im-wizard" role="dialog" aria-label={t(editing ? 'agentEditor.im.editTitle' : 'agentEditor.im.createTitle')}>
     <div className="wk-im-wizard-steps">{IM_WIZARD_STEPS.map((item, index) => <span key={item.key} className={index === step ? 'is-active' : index < step ? 'is-complete' : ''}>{t(item.titleKey)}</span>)}</div>
-    {step === 0 ? <div className="wk-im-wizard-fields"><label>{t('agentEditor.im.agentLabel')}<select value={form.targetAgentId} onChange={(event) => update('targetAgentId', event.target.value)} disabled={Boolean(editing)}><option value="">{t('agentEditor.im.selectAgent')}</option>{agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</select></label><label>{t('agentEditor.im.nameLabel')}<input value={form.name} onChange={(event) => { onNameTouched(true); update('name', event.target.value); }} placeholder={t('agentEditor.im.namePlaceholder')} /></label><label>{t('agentEditor.im.platformLabel')}<select value={form.platform} onChange={(event) => onPlatformPicked(event.target.value)}>{imPlatformOrder().map((platform) => <option key={platform} value={platform}>{imPlatformLabel(platform, locale)}</option>)}</select></label>{nameTouched && !form.name.trim() ? <small className="wk-status-error">{t('agentEditor.im.nameRequired')}</small> : null}</div> : null}
+    {step === 0 ? <div className="wk-im-wizard-fields"><label>{t('agentEditor.im.agentLabel')}<select value={form.targetAgentId} onChange={(event) => update('targetAgentId', event.target.value)} disabled={Boolean(editing)}><option value="">{t('agentEditor.im.selectAgent')}</option>{agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</select></label><label>{t('agentEditor.im.nameLabel')}<input value={form.name} onChange={(event) => { onNameTouched(true); update('name', event.target.value); }} placeholder={t('agentEditor.im.namePlaceholder')} /></label><label>{t('agentEditor.im.platformLabel')}<select value={form.platform} onChange={(event) => onPlatformPicked(event.target.value)}>{imPlatformOrder().map((platform) => <option key={platform} value={platform}>{imPlatformLabel(platform, locale)}</option>)}</select></label>{nameTouched && !form.name.trim() ? <small className="wk-status-error text-danger">{t('agentEditor.im.nameRequired')}</small> : null}</div> : null}
     {step === 1 ? <div className="wk-im-wizard-fields"><label>{t('agentEditor.im.connectionMode')}<select value={form.mode} onChange={(event) => update('mode', event.target.value as ImWizardForm['mode'])}><option value="websocket">WebSocket</option><option value="webhook">Webhook</option><option value="longpoll">Long Poll</option></select></label><label>{t('agentEditor.im.outputMode')}<select value={form.outputMode} onChange={(event) => update('outputMode', event.target.value as ImWizardForm['outputMode'])}><option value="stream">Stream</option><option value="full">Full</option></select></label>{imPlatformSupportsThread(form.platform) ? <label>{t('agentEditor.im.sessionMode')}<select value={form.sessionMode} onChange={(event) => update('sessionMode', event.target.value as ImWizardForm['sessionMode'])}><option value="user">User</option><option value="thread">Thread</option></select></label> : null}</div> : null}
     {step === 2 ? <div className="wk-im-wizard-fields"><label>{t('agentEditor.im.knowledgeBaseLabel')}<select value={form.knowledgeBaseId} onChange={(event) => update('knowledgeBaseId', event.target.value)}><option value="">{t('agentEditor.im.noKnowledgeBase')}</option>{knowledgeBases.map((kb) => <option key={kb.id} value={kb.id}>{kb.name}</option>)}</select></label></div> : null}
-    {step === 3 ? <div className="wk-im-wizard-fields">{editing ? <label className="wk-switch-row"><input type="checkbox" checked={editingEnabled} onChange={(event) => onEditingEnabled(event.target.checked)} />{t('agentEditor.im.enabled')}</label> : null}{form.platform === 'wechat' ? <div className="wk-im-wechat-bind">{wechatQr ? <img src={wechatQr.imgSrc} alt={t('agentEditor.im.wechatQrAlt')} /> : null}<button className="wk-button" type="button" disabled={wechatQrLoading || busy} onClick={onStartWeChatBinding}>{wechatQrLoading ? t('common.loading') : t('agentEditor.im.wechatScanBind')}</button>{wechatQrError ? <p className="wk-status-error">{wechatQrError}</p> : null}</div> : fields.map((field) => <label key={field.key}>{field.label ?? t(field.labelKey ?? field.key)}<input type={field.type === 'password' ? 'password' : field.type === 'number' ? 'number' : 'text'} value={String(form.credentials[field.key] ?? '')} min={field.min} max={field.max} placeholder={field.placeholder ?? (field.placeholderKey ? t(field.placeholderKey) : undefined)} onChange={(event) => onForm({ ...form, credentials: { ...form.credentials, [field.key]: field.type === 'number' ? Number(event.target.value) : event.target.value } })} />{field.hintKey ? <small className="wk-muted">{t(field.hintKey)}</small> : null}</label>)}{consoleLink ? <a href={consoleLink.url} target="_blank" rel="noreferrer noopener">{t(consoleLink.labelKey)}</a> : null}</div> : null}
-    {warning ? <p className="wk-status-error" role="alert">{warning}</p> : null}<small className="wk-muted">{apiBaseUrl}</small><div className="wk-list-actions"><button className="wk-button" type="button" onClick={onCancel}>{t('common.cancel')}</button>{step > 0 ? <button className="wk-button" type="button" disabled={busy} onClick={onBack}>{t('common.previous')}</button> : null}{step < IM_WIZARD_STEPS.length - 1 ? <button className="wk-button wk-button--primary" type="button" disabled={busy} onClick={onNext}>{t('common.next')}</button> : <button className="wk-button wk-button--primary" type="button" disabled={busy || !canSubmit} onClick={onSave}>{t('common.save')}</button>}</div>
+    {step === 3 ? <div className="wk-im-wizard-fields">{editing ? <label className="wk-switch-row"><input type="checkbox" checked={editingEnabled} onChange={(event) => onEditingEnabled(event.target.checked)} />{t('agentEditor.im.enabled')}</label> : null}{form.platform === 'wechat' ? <div className="wk-im-wechat-bind">{wechatQr ? <img src={wechatQr.imgSrc} alt={t('agentEditor.im.wechatQrAlt')} /> : null}<button className="wk-button cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="button" disabled={wechatQrLoading || busy} onClick={onStartWeChatBinding}>{wechatQrLoading ? t('common.loading') : t('agentEditor.im.wechatScanBind')}</button>{wechatQrError ? <p className="wk-status-error text-danger">{wechatQrError}</p> : null}</div> : fields.map((field) => <label key={field.key}>{field.label ?? t(field.labelKey ?? field.key)}<input type={field.type === 'password' ? 'password' : field.type === 'number' ? 'number' : 'text'} value={String(form.credentials[field.key] ?? '')} min={field.min} max={field.max} placeholder={field.placeholder ?? (field.placeholderKey ? t(field.placeholderKey) : undefined)} onChange={(event) => onForm({ ...form, credentials: { ...form.credentials, [field.key]: field.type === 'number' ? Number(event.target.value) : event.target.value } })} />{field.hintKey ? <small className="wk-muted text-muted">{t(field.hintKey)}</small> : null}</label>)}{consoleLink ? <a href={consoleLink.url} target="_blank" rel="noreferrer noopener">{t(consoleLink.labelKey)}</a> : null}</div> : null}
+    {warning ? <p className="wk-status-error text-danger" role="alert">{warning}</p> : null}<small className="wk-muted text-muted">{apiBaseUrl}</small><div className="wk-list-actions"><button className="wk-button cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="button" onClick={onCancel}>{t('common.cancel')}</button>{step > 0 ? <button className="wk-button cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="button" disabled={busy} onClick={onBack}>{t('common.previous')}</button> : null}{step < IM_WIZARD_STEPS.length - 1 ? <button className="wk-button wk-button--primary cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="button" disabled={busy} onClick={onNext}>{t('common.next')}</button> : <button className="wk-button wk-button--primary cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="button" disabled={busy || !canSubmit} onClick={onSave}>{t('common.save')}</button>}</div>
   </div>;
 }
 
@@ -701,8 +701,8 @@ const chip = (active: boolean) => (active
   : CHIP_BASE + ' border-line bg-surface text-muted-strong');
 const INTEGRATION_FORM_CLASS =
   // .wk-integration-form box + scoped descendants (h3/label/input/select/
-  // textarea/.wk-muted). The .wk-muted color needs the important suffix to
-  // beat the unlayered .wk-muted rule still in styles.css.
+  // textarea/.wk-muted). The color keeps the important suffix so it still
+  // beats the text-muted utility that .wk-muted elements now carry.
   'wk-integration-form grid gap-[.7rem] max-w-[680px] m-0 mb-[1.25rem] p-[1rem] border border-solid border-[#eef1f5] rounded-card bg-[#fbfcfe]'
   + ' [&_h3]:m-0 [&_h3]:text-[15px]'
   + ' [&_label]:grid [&_label]:gap-[.3rem] [&_label]:font-semibold'
@@ -715,8 +715,8 @@ const INTEGRATION_FORM_CLASS =
 // The aside carries the drawer subtree in arbitrary variants (the wizard slots
 // below render .wk-integration-form markup, so the subtree stays
 // self-contained); properties that must beat the INTEGRATION_FORM_CLASS base
-// (or the unlayered .wk-muted rule still in styles.css) use the important
-// suffix.
+// (or the text-muted utility carried by .wk-muted elements) use the
+// important suffix.
 // .wk-check-row labels keep the class as a :not() selector hook (the styles.css
 // rule is deleted; the labels now carry flex! items-center gap-[0.45rem]
 // font-normal! themselves): the drawer's [&_label:not(.wk-check-row)]:font-medium!
@@ -814,7 +814,7 @@ function ChannelListPanel({ variant, copy, locale, items, showCreate, onToggleCr
       <span className="text-[14px] font-medium text-ink">{copy.channelsTitle}</span>
       <span className="rounded-[10px] bg-hover-wash px-2 py-0.5 text-[12px] text-[#98a2b3]">{items.length}</span>
     </div>
-    {items.length === 0 && !showCreate ? <div className="py-8"><p className="wk-status">{copy.emptyText}</p></div> : null}
+    {items.length === 0 && !showCreate ? <div className="py-8"><p className="wk-status my-[0.25rem]! text-[13px] text-muted-strong">{copy.emptyText}</p></div> : null}
     <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] items-stretch gap-3">
       {items.map((item) => {
         const platform = variant === 'im' && typeof item.platform === 'string' ? item.platform : '';
@@ -826,18 +826,18 @@ function ChannelListPanel({ variant, copy, locale, items, showCreate, onToggleCr
           <div className={CHANNEL_CARD_BODY_CLASS}>
             <div className={CHANNEL_CARD_HEADER_CLASS}>
               <h3 className={CHANNEL_CARD_TITLE_STATIC_CLASS}>{name}</h3>
-              {item.enabled === false ? <span className="wk-tag wk-tag--warning">{copy.disabledLabel}</span> : null}
+              {item.enabled === false ? <span className="wk-tag wk-tag--warning inline-flex items-center shrink-0 rounded-full py-[1px]! px-[8px]! text-[12px] leading-[1.6] text-[#b45309]! bg-[#fffaeb]! border border-solid border-[#fedf89]">{copy.disabledLabel}</span> : null}
             </div>
             {agentLine ? <span className={CHANNEL_CARD_AGENT_CLASS}>{agentLine}</span> : null}
           </div>
           <div className={CHANNEL_CARD_ACTIONS_CLASS} onClick={(event) => event.stopPropagation()}>
-            {onToggle ? <label className="wk-switch" title={item.enabled === false ? t('agentEditor.im.enabled') : copy.disabledLabel} onClick={(event) => event.stopPropagation()}>
-              <input type="checkbox" role="switch" aria-label={t('agentEditor.im.enabled')} checked={item.enabled !== false} onChange={() => onToggle(item.id)} />
-              <span className="wk-switch-knob" aria-hidden="true" />
+            {onToggle ? <label className="wk-switch relative inline-flex shrink-0 cursor-pointer items-center" title={item.enabled === false ? t('agentEditor.im.enabled') : copy.disabledLabel} onClick={(event) => event.stopPropagation()}>
+              <input className="peer absolute m-0 h-[18px] w-[34px] cursor-pointer opacity-0" type="checkbox" role="switch" aria-label={t('agentEditor.im.enabled')} checked={item.enabled !== false} onChange={() => onToggle(item.id)} />
+              <span className="wk-switch-knob h-[18px]! w-[34px]! rounded-full bg-[#cbd5e1]! [transition:background_.18s_ease]! after:absolute after:left-[2px] after:top-[2px] after:h-[14px] after:w-[14px] after:rounded-full after:bg-white after:content-[''] peer-checked:bg-primary! peer-checked:after:translate-x-[16px]" aria-hidden="true" />
             </label> : null}
             {/* Vue edits both channel kinds through the wizard drawer opened by
                 the card click, so the card keeps only the switch and delete. */}
-            {onDelete ? <button className="wk-button wk-button--text wk-button--danger" type="button" onClick={() => onDelete(item.id)}>{t('common.delete')}</button> : null}
+            {onDelete ? <button className="wk-button wk-button--text wk-button--danger cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-danger! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary!" type="button" onClick={() => onDelete(item.id)}>{t('common.delete')}</button> : null}
           </div>
         </article>;
       })}
@@ -903,13 +903,13 @@ function ImWizardPanel({ locale, t, apiBaseUrl, agents = [], knowledgeBases = []
       return <label className="wk-check-row flex! items-center gap-[0.45rem] font-normal!" key={item.key}>
         <input type="checkbox" checked={form.credentials[item.key] === true} onChange={(event) => patch({ credentials: { ...form.credentials, [item.key]: event.target.checked } })} />
         {item.labelKey ? t(item.labelKey) : item.label}
-        {item.hintKey ? <span className="wk-muted">{t(item.hintKey)}</span> : null}
+        {item.hintKey ? <span className="wk-muted text-muted">{t(item.hintKey)}</span> : null}
       </label>;
     }
     const value = form.credentials[item.key];
     const placeholder = item.placeholderKey ? t(item.placeholderKey) : item.placeholder;
     const hint = item.hintKey
-      ? <span className="wk-muted">{t(item.hintKey)}{item.hintLink ? <a className={INT_DOC_LINK_CLASS} href={item.hintLink.url} target="_blank" rel="noreferrer noopener"> {t(item.hintLink.labelKey)}</a> : null}</span>
+      ? <span className="wk-muted text-muted">{t(item.hintKey)}{item.hintLink ? <a className={INT_DOC_LINK_CLASS} href={item.hintLink.url} target="_blank" rel="noreferrer noopener"> {t(item.hintLink.labelKey)}</a> : null}</span>
       : null;
     return <label key={item.key}>
       {item.labelKey ? t(item.labelKey) : item.label}{item.required ? <span aria-hidden="true"> *</span> : null}
@@ -937,7 +937,7 @@ function ImWizardPanel({ locale, t, apiBaseUrl, agents = [], knowledgeBases = []
         </span>
       ))}
     </div>
-    {warning ? <p className="wk-status wk-status-error" role="alert">{warning}</p> : null}
+    {warning ? <p className="wk-status wk-status-error my-[0.25rem]! text-[13px] text-danger!" role="alert">{warning}</p> : null}
 
     {step === 0 ? <fieldset className="wk-im-step-body">
       <legend className="wk-im-legend">{t('agentEditor.im.sectionChannel')}</legend>
@@ -960,7 +960,7 @@ function ImWizardPanel({ locale, t, apiBaseUrl, agents = [], knowledgeBases = []
       <label>{t('agentEditor.im.channelName')}
         <input value={form.name} onFocus={() => onNameTouched(true)} onChange={(event) => { onNameTouched(true); patch({ name: event.target.value }); }} placeholder={t('agentEditor.im.channelNamePlaceholder')} />
       </label>
-      {!isEditing ? <p className="wk-muted">{t('agentEditor.im.channelNameDefaultHint')}</p> : null}
+      {!isEditing ? <p className="wk-muted text-muted">{t('agentEditor.im.channelNameDefaultHint')}</p> : null}
       {isEditing ? <label className="wk-check-row flex! items-center gap-[0.45rem] font-normal!">
         <input type="checkbox" checked={editingEnabled} onChange={(event) => onEditingEnabled(event.target.checked)} />
         {t('agentEditor.im.enabled')}
@@ -977,7 +977,7 @@ function ImWizardPanel({ locale, t, apiBaseUrl, agents = [], knowledgeBases = []
             <button type="button" role="radio" aria-checked={form.mode === 'webhook'} className={chip(form.mode === 'webhook')} onClick={() => patch({ mode: 'webhook' })}>Webhook</button>
           </span>
         </label>
-        <p className="wk-muted">{form.platform === 'mattermost' ? t('agentEditor.im.mattermostModeHint') : form.platform === 'yunzhijia' ? t('agentEditor.im.yunzhijiaModeHint') : t('agentEditor.im.modeHint')}</p>
+        <p className="wk-muted text-muted">{form.platform === 'mattermost' ? t('agentEditor.im.mattermostModeHint') : form.platform === 'yunzhijia' ? t('agentEditor.im.yunzhijiaModeHint') : t('agentEditor.im.modeHint')}</p>
         <label>{t('agentEditor.im.outputMode')}
           <span className="flex flex-wrap gap-[8px] my-[0.5rem]" role="radiogroup" aria-label={t('agentEditor.im.outputMode')}>
             <button type="button" role="radio" aria-checked={form.outputMode === 'stream'} className={chip(form.outputMode === 'stream')} onClick={() => patch({ outputMode: 'stream' })}>{t('agentEditor.im.outputStream')}</button>
@@ -993,14 +993,14 @@ function ImWizardPanel({ locale, t, apiBaseUrl, agents = [], knowledgeBases = []
             <button type="button" role="radio" aria-checked={form.sessionMode === 'thread'} className={chip(form.sessionMode === 'thread')} disabled={!imPlatformSupportsThread(form.platform)} onClick={() => patch({ sessionMode: 'thread' })}>{t('agentEditor.im.sessionModeThread')}</button>
           </span>
         </label>
-        <p className="wk-muted">{t('agentEditor.im.sessionModeHint')}</p>
+        <p className="wk-muted text-muted">{t('agentEditor.im.sessionModeHint')}</p>
       </fieldset>
       {isEditing && form.mode === 'webhook' ? <fieldset className="wk-im-step-body">
         <legend className="wk-im-legend">{t('agentEditor.im.sectionCallback')}</legend>
         <label>{t('agentEditor.im.callbackUrl')}
           <span className={CODE_TOOLBAR_CLASS}>
-            <input className="wk-mono-input" readOnly value={imCallbackUrl(editing.id, apiBaseUrl)} />
-            <button className={'wk-button wk-button--text ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" title={t('integrations.api.copy')} onClick={() => { void navigator.clipboard.writeText(imCallbackUrl(editing.id, apiBaseUrl)).catch(() => undefined); }}>⧉</button>
+            <input className="wk-mono-input min-w-0 flex-1 max-w-[420px] bg-canvas! [font:0.85rem_ui-monospace,_monospace]!" readOnly value={imCallbackUrl(editing.id, apiBaseUrl)} />
+            <button className={'wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary! ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" title={t('integrations.api.copy')} onClick={() => { void navigator.clipboard.writeText(imCallbackUrl(editing.id, apiBaseUrl)).catch(() => undefined); }}>⧉</button>
           </span>
         </label>
       </fieldset> : null}
@@ -1014,26 +1014,26 @@ function ImWizardPanel({ locale, t, apiBaseUrl, agents = [], knowledgeBases = []
           {knowledgeBases.map((kb) => <option key={kb.id} value={kb.id}>{kb.name}</option>)}
         </select>
       </label>
-      <p className="wk-muted">{t('agentEditor.im.fileKnowledgeBaseHint')}</p>
+      <p className="wk-muted text-muted">{t('agentEditor.im.fileKnowledgeBaseHint')}</p>
     </fieldset> : null}
 
     {step === 3 ? <fieldset className="wk-im-step-body">
       <legend className="wk-im-legend">{t('agentEditor.im.sectionCredentials')}</legend>
       {form.platform === 'wechat' ? <div>
-        <p className="wk-muted">{t('agentEditor.im.wechatHint')}</p>
-        {bound ? <p className="wk-status wk-status-ok" role="status">
+        <p className="wk-muted text-muted">{t('agentEditor.im.wechatHint')}</p>
+        {bound ? <p className="wk-status wk-status-ok my-[0.25rem]! text-[13px] text-success-text!" role="status">
           {t('agentEditor.im.wechatBindSuccess')}
-          <button className="wk-button wk-button--text" type="button" onClick={onStartWeChatBinding}>{t('agentEditor.im.wechatRebind')}</button>
+          <button className="wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary!" type="button" onClick={onStartWeChatBinding}>{t('agentEditor.im.wechatRebind')}</button>
         </p> : wechatQr ? <div>
           <img src={wechatQr.imgSrc} alt="WeChat QR Code" width={200} height={200} style={{ background: '#fff' }} />
-          {wechatQr.status === 'expired' ? <button className="wk-button" type="button" onClick={onStartWeChatBinding}>↻ {t('agentEditor.im.wechatQRExpired')}</button> : null}
-          <p className="wk-muted">{wechatQr.status === 'scaned' ? t('agentEditor.im.wechatBinding') : t('agentEditor.im.wechatScanning')}</p>
+          {wechatQr.status === 'expired' ? <button className="wk-button cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="button" onClick={onStartWeChatBinding}>↻ {t('agentEditor.im.wechatQRExpired')}</button> : null}
+          <p className="wk-muted text-muted">{wechatQr.status === 'scaned' ? t('agentEditor.im.wechatBinding') : t('agentEditor.im.wechatScanning')}</p>
         </div> : <div>
-          <button className="wk-button" type="button" disabled={wechatQrLoading} onClick={onStartWeChatBinding}>{t('agentEditor.im.wechatScanBind')}</button>
+          <button className="wk-button cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="button" disabled={wechatQrLoading} onClick={onStartWeChatBinding}>{t('agentEditor.im.wechatScanBind')}</button>
         </div>}
-        {wechatQrError ? <p className="wk-status wk-status-error" role="alert">{wechatQrError}</p> : null}
+        {wechatQrError ? <p className="wk-status wk-status-error my-[0.25rem]! text-[13px] text-danger!" role="alert">{wechatQrError}</p> : null}
       </div> : <div>
-        {consoleLink ? <p className="wk-muted">
+        {consoleLink ? <p className="wk-muted text-muted">
           <a className={INT_DOC_LINK_CLASS} href={consoleLink.url} target="_blank" rel="noreferrer noopener">{t(consoleLink.labelKey)}</a>
           {' · '}{t('agentEditor.im.consoleTip')}
         </p> : null}
@@ -1042,9 +1042,9 @@ function ImWizardPanel({ locale, t, apiBaseUrl, agents = [], knowledgeBases = []
     </fieldset> : null}
 
     <div className="wk-form-actions">
-      {step > 0 ? <button className="wk-button" type="button" onClick={onBack}>{t('integrations.wizard.back')}</button> : null}
-      <button className="wk-button" type="submit" disabled={busy || !canSubmit}>{step < IM_WIZARD_STEPS.length - 1 ? t('integrations.wizard.next') : t('common.save')}</button>
-      <button className="wk-button wk-button--text" type="button" onClick={onCancel}>{t('common.cancel')}</button>
+      {step > 0 ? <button className="wk-button cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="button" onClick={onBack}>{t('integrations.wizard.back')}</button> : null}
+      <button className="wk-button cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="submit" disabled={busy || !canSubmit}>{step < IM_WIZARD_STEPS.length - 1 ? t('integrations.wizard.next') : t('common.save')}</button>
+      <button className="wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary!" type="button" onClick={onCancel}>{t('common.cancel')}</button>
     </div>
   </form>;
 }
@@ -1128,8 +1128,8 @@ function EmbedWizardPanel({ t, apiBaseUrl, agents = [], title, form, onForm, onA
         </button>
       ))}
     </div>
-    {warning ? <p className="wk-status wk-status-error" role="alert">{warning}</p> : null}
-    {status ? <p className="wk-status wk-status-ok" role="status">{status}</p> : null}
+    {warning ? <p className="wk-status wk-status-error my-[0.25rem]! text-[13px] text-danger!" role="alert">{warning}</p> : null}
+    {status ? <p className="wk-status wk-status-ok my-[0.25rem]! text-[13px] text-success-text!" role="status">{status}</p> : null}
 
     {step === 0 ? <fieldset className="wk-im-step-body">
       <legend className="wk-im-legend">{t('embedPublish.sectionChannel')}</legend>
@@ -1149,7 +1149,7 @@ function EmbedWizardPanel({ t, apiBaseUrl, agents = [], title, form, onForm, onA
       <label>{t('embedPublish.name')}
         <input value={form.name} onFocus={() => onNameTouched(true)} onChange={(event) => { onNameTouched(true); patch({ name: event.target.value }); }} placeholder={t('embedPublish.namePlaceholder')} />
       </label>
-      <p className="wk-muted">{isEditing ? t('embedPublish.nameDesc') : t('embedPublish.nameDefaultHint')}</p>
+      <p className="wk-muted text-muted">{isEditing ? t('embedPublish.nameDesc') : t('embedPublish.nameDefaultHint')}</p>
     </fieldset> : null}
 
     {step === 1 ? <fieldset className="wk-im-step-body">
@@ -1157,15 +1157,15 @@ function EmbedWizardPanel({ t, apiBaseUrl, agents = [], title, form, onForm, onA
       <label>{t('embedPublish.allowedOrigins')}
         <textarea rows={2} value={originsText} onChange={(event) => onOriginsText(event.target.value)} placeholder={t('embedPublish.originsPlaceholder')} />
       </label>
-      <p className="wk-muted">{t('embedPublish.originsHint')}</p>
+      <p className="wk-muted text-muted">{t('embedPublish.originsHint')}</p>
       <label>{t('embedPublish.rateLimitLabel')}
         <input type="number" min={1} max={600} value={form.rateLimitPerMinute} onChange={(event) => { const next = Number(event.target.value); if (Number.isFinite(next)) patch({ rateLimitPerMinute: next }); }} />
       </label>
-      <p className="wk-muted">{t('embedPublish.rateLimitDesc')}</p>
+      <p className="wk-muted text-muted">{t('embedPublish.rateLimitDesc')}</p>
       <label>{t('embedPublish.rateLimitDayLabel')}
         <input type="number" min={1} max={1000000} value={form.rateLimitPerDay} onChange={(event) => { const next = Number(event.target.value); if (Number.isFinite(next)) patch({ rateLimitPerDay: next }); }} />
       </label>
-      <p className="wk-muted">{t('embedPublish.rateLimitDayDesc')}</p>
+      <p className="wk-muted text-muted">{t('embedPublish.rateLimitDayDesc')}</p>
     </fieldset> : null}
 
     {step === 2 ? <fieldset className="wk-im-step-body">
@@ -1173,7 +1173,7 @@ function EmbedWizardPanel({ t, apiBaseUrl, agents = [], title, form, onForm, onA
       <label>{t('embedPublish.welcomeMessage')}
         <textarea rows={2} value={form.welcomeMessage} onChange={(event) => patch({ welcomeMessage: event.target.value })} placeholder={t('embedPublish.welcomePlaceholder')} />
       </label>
-      <p className="wk-muted">{t('embedPublish.welcomeMessageDesc')}</p>
+      <p className="wk-muted text-muted">{t('embedPublish.welcomeMessageDesc')}</p>
       <label className="wk-check-row flex! items-center gap-[0.45rem] font-normal!">
         <input type="checkbox" checked={form.showSuggestedQuestions} onChange={(event) => patch({ showSuggestedQuestions: event.target.checked })} />
         <span>{t('embedPublish.showSuggestedQuestions')}<br />{t('embedPublish.showSuggestedQuestionsDesc')}</span>
@@ -1182,12 +1182,12 @@ function EmbedWizardPanel({ t, apiBaseUrl, agents = [], title, form, onForm, onA
         <input type="checkbox" checked={form.allowWebSearch} onChange={(event) => patch({ allowWebSearch: event.target.checked })} />
         <span>{t('embedPublish.allowWebSearch')}<br />{t('embedPublish.allowWebSearchDesc')}</span>
       </label>
-      {form.allowWebSearch && !agentWebSearchEnabled ? <p className="wk-muted wk-muted--warn">{t('embedPublish.agentWebSearchDisabledHint')}</p> : null}
+      {form.allowWebSearch && !agentWebSearchEnabled ? <p className="wk-muted wk-muted--warn text-[#b45309]">{t('embedPublish.agentWebSearchDisabledHint')}</p> : null}
       <label className="wk-check-row flex! items-center gap-[0.45rem] font-normal!">
         <input type="checkbox" checked={form.allowFileUpload} onChange={(event) => patch({ allowFileUpload: event.target.checked })} />
         <span>{t('embedPublish.allowFileUpload')}<br />{t('embedPublish.allowFileUploadDesc')}</span>
       </label>
-      {form.allowFileUpload && !agentImageUploadEnabled ? <p className="wk-muted wk-muted--warn">{t('embedPublish.agentImageUploadDisabledHint')}</p> : null}
+      {form.allowFileUpload && !agentImageUploadEnabled ? <p className="wk-muted wk-muted--warn text-[#b45309]">{t('embedPublish.agentImageUploadDisabledHint')}</p> : null}
     </fieldset> : null}
 
     {step === 3 ? <fieldset className="wk-im-step-body">
@@ -1195,14 +1195,14 @@ function EmbedWizardPanel({ t, apiBaseUrl, agents = [], title, form, onForm, onA
       <label>{t('embedPublish.pageTitle')}
         <input value={form.pageTitle} onChange={(event) => patch({ pageTitle: event.target.value })} placeholder={t('embedPublish.pageTitlePlaceholder')} />
       </label>
-      <p className="wk-muted">{t('embedPublish.pageTitleDesc')}</p>
+      <p className="wk-muted text-muted">{t('embedPublish.pageTitleDesc')}</p>
       <label>{t('embedPublish.headerTitleMode')}
         <select value={form.headerTitleMode} onChange={(event) => patch({ headerTitleMode: event.target.value as EmbedWizardForm['headerTitleMode'] })}>
           <option value="channel">{t('embedPublish.headerTitleModeChannel')}</option>
           <option value="session">{t('embedPublish.headerTitleModeSession')}</option>
         </select>
       </label>
-      <p className="wk-muted">{t('embedPublish.headerTitleModeDesc')}</p>
+      <p className="wk-muted text-muted">{t('embedPublish.headerTitleModeDesc')}</p>
       <label>{t('embedPublish.widgetPosition')}
         <select value={form.widgetPosition} onChange={(event) => patch({ widgetPosition: event.target.value as EmbedWizardForm['widgetPosition'] })}>
           <option value="bottom-right">{t('embedPublish.positionBottomRight')}</option>
@@ -1221,7 +1221,7 @@ function EmbedWizardPanel({ t, apiBaseUrl, agents = [], title, form, onForm, onA
           <option value="ru-RU">Русский</option>
         </select>
       </label>
-      <p className="wk-muted">{t('embedPublish.defaultLocaleDesc')}</p>
+      <p className="wk-muted text-muted">{t('embedPublish.defaultLocaleDesc')}</p>
       <label>{t('embedPublish.primaryColor')}
         <input type="color" value={form.primaryColor} onChange={(event) => patch({ primaryColor: event.target.value })} />
       </label>
@@ -1237,11 +1237,11 @@ function EmbedWizardPanel({ t, apiBaseUrl, agents = [], title, form, onForm, onA
       <label>{t('embedPublish.webhookUrl')}
         <input autoComplete="off" value={form.webhookUrl} onChange={(event) => patch({ webhookUrl: event.target.value })} placeholder={t('embedPublish.webhookUrlPlaceholder')} />
       </label>
-      <p className="wk-muted">{t('embedPublish.webhookUrlDesc')}</p>
+      <p className="wk-muted text-muted">{t('embedPublish.webhookUrlDesc')}</p>
       <label>{t('embedPublish.webhookSecret')}
         <input type="password" autoComplete="new-password" value={form.webhookSecret} onChange={(event) => patch({ webhookSecret: event.target.value })} placeholder={secretPlaceholder} />
       </label>
-      <p className="wk-muted">{t('embedPublish.webhookSecretDesc')}</p>
+      <p className="wk-muted text-muted">{t('embedPublish.webhookSecretDesc')}</p>
     </fieldset> : null}
     {/* Vue renders the deploy-after-save hint inside step 5 for create mode. */}
     {step === 4 && !isEditing ? <div className="wk-embed-deploy-hint" role="note">ℹ️<p>{t('embedPublish.deployAfterSaveHint')}</p></div> : null}
@@ -1249,30 +1249,30 @@ function EmbedWizardPanel({ t, apiBaseUrl, agents = [], title, form, onForm, onA
     {/* Step 6 exists only while editing (Vue template v-else-if="editingId"). */}
     {step >= 5 && channel ? <fieldset className="wk-im-step-body">
       <legend className="wk-im-legend">{t('embedPublish.sectionDeploy')}</legend>
-      <p className="wk-muted">{t('embedPublish.deployIntro')}</p>
+      <p className="wk-muted text-muted">{t('embedPublish.deployIntro')}</p>
       <h5>{t('embedPublish.deployStepEmbed')}</h5>
-      <p className="wk-muted">{t('embedPublish.deployStepEmbedDesc')}</p>
+      <p className="wk-muted text-muted">{t('embedPublish.deployStepEmbedDesc')}</p>
       <div className="wk-embed-snippet-tabs flex flex-wrap gap-[8px] my-[0.5rem]" role="tablist" aria-label={t('embedPublish.deployStepEmbed')}>
         {([['iframe', 'embedPublish.tabIframe'], ['widget', 'embedPublish.tabWidget'], ['secure', 'embedPublish.tabSecure']] as const).map(([value, key]) => (
           <button key={value} type="button" role="tab" aria-selected={snippetTab === value} className={chip(snippetTab === value)} onClick={() => onSnippetTab(value)}>{t(key)}</button>
         ))}
       </div>
-      <p className="wk-muted">{t(embedSnippetScenarioKey(snippetTab))}</p>
-      {snippetTab === 'widget' ? <p className="wk-muted">{t('embedPublish.widgetTokenNote')}</p> : null}
-      {snippetTab === 'secure' ? <p className="wk-muted">{t('embedPublish.secureTokenNote')}</p> : null}
+      <p className="wk-muted text-muted">{t(embedSnippetScenarioKey(snippetTab))}</p>
+      {snippetTab === 'widget' ? <p className="wk-muted text-muted">{t('embedPublish.widgetTokenNote')}</p> : null}
+      {snippetTab === 'secure' ? <p className="wk-muted text-muted">{t('embedPublish.secureTokenNote')}</p> : null}
       {snippetTab !== 'secure' ? <div className="wk-embed-deploy-hint" role="note">⚠️<p>{t('embedPublish.publishTokenWarning')}</p></div> : null}
       <div className="wk-embed-code-panel">
         <div className={CODE_TOOLBAR_CLASS}>
           <span>{snippetTab === 'iframe' ? t('embedPublish.embedCode') : t('embedPublish.widgetCode')}</span>
           <span>
-            {snippetTab !== 'secure' ? <button className={'wk-button wk-button--text ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" disabled={previewLoading || busy} onClick={() => onPreview(channel)}>{previewLoading ? t('common.loading') : t('embedPublish.preview')}</button> : null}
-            <button className={'wk-button wk-button--text ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" onClick={() => { void navigator.clipboard.writeText(snippet).catch(() => undefined); }}>{t('embedPublish.copyCode')}</button>
+            {snippetTab !== 'secure' ? <button className={'wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary! ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" disabled={previewLoading || busy} onClick={() => onPreview(channel)}>{previewLoading ? t('common.loading') : t('embedPublish.preview')}</button> : null}
+            <button className={'wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary! ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" onClick={() => { void navigator.clipboard.writeText(snippet).catch(() => undefined); }}>{t('embedPublish.copyCode')}</button>
           </span>
         </div>
         <pre>{snippet}</pre>
       </div>
       {snippetTab === 'secure' ? <div>
-        <p className="wk-muted">{t('embedPublish.secureServerLabel')}</p>
+        <p className="wk-muted text-muted">{t('embedPublish.secureServerLabel')}</p>
         <div className="wk-embed-server-tabs flex flex-wrap gap-[8px] my-[0.5rem]" role="tablist" aria-label={t('embedPublish.secureServerLabel')}>
           {([['node', 'embedPublish.tabServerNode'], ['go', 'embedPublish.tabServerGo']] as const).map(([value, key]) => (
             <button key={value} type="button" role="tab" aria-selected={serverTab === value} className={chip(serverTab === value)} onClick={() => onServerTab(value)}>{t(key)}</button>
@@ -1281,26 +1281,26 @@ function EmbedWizardPanel({ t, apiBaseUrl, agents = [], title, form, onForm, onA
         <div className="wk-embed-server-panel">
           <div className={CODE_TOOLBAR_CLASS}>
             <span>{serverTab === 'go' ? t('embedPublish.tabServerGo') : t('embedPublish.tabServerNode')}</span>
-            <button className={'wk-button wk-button--text ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" onClick={() => { void navigator.clipboard.writeText(serverExample).catch(() => undefined); }}>{t('embedPublish.copyCode')}</button>
+            <button className={'wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary! ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" onClick={() => { void navigator.clipboard.writeText(serverExample).catch(() => undefined); }}>{t('embedPublish.copyCode')}</button>
           </div>
           <pre>{serverExample}</pre>
         </div>
       </div> : null}
       <h5>{t('embedPublish.channelKey')}</h5>
-      <p className="wk-muted">{t('embedPublish.channelKeyDesc')}</p>
+      <p className="wk-muted text-muted">{t('embedPublish.channelKeyDesc')}</p>
       <div className="wk-channel-key-control">
-        <input className="wk-mono-input wk-embed-key-input" readOnly type="text" value={embedChannelKeyDisplay(token, revealed)} placeholder={token ? '' : t('embedPublish.channelKeyUnavailable')} aria-label={t('embedPublish.channelKey')} />
-        {token ? <button className="wk-button wk-button--text" type="button" title={revealed ? t('embedPublish.hideKey') : t('embedPublish.revealKey')} onClick={onReveal}>{revealed ? '🙈' : '👁'}</button> : null}
-        {token ? <button className="wk-button wk-button--text" type="button" title={t('embedPublish.copyChannelKeyTitle')} onClick={() => { void navigator.clipboard.writeText(token).catch(() => undefined); }}>⧉</button> : null}
-        {canSubmit ? <button className="wk-button wk-button--text wk-button--danger" type="button" title={t('embedPublish.resetKeyTitle')} disabled={busy} onClick={() => onRotate(channelId)}>{busy ? t('common.loading') : '↻'}</button> : null}
+        <input className="wk-mono-input min-w-0 flex-1 max-w-[420px] bg-canvas! [font:0.85rem_ui-monospace,_monospace]! wk-embed-key-input" readOnly type="text" value={embedChannelKeyDisplay(token, revealed)} placeholder={token ? '' : t('embedPublish.channelKeyUnavailable')} aria-label={t('embedPublish.channelKey')} />
+        {token ? <button className="wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary!" type="button" title={revealed ? t('embedPublish.hideKey') : t('embedPublish.revealKey')} onClick={onReveal}>{revealed ? '🙈' : '👁'}</button> : null}
+        {token ? <button className="wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary!" type="button" title={t('embedPublish.copyChannelKeyTitle')} onClick={() => { void navigator.clipboard.writeText(token).catch(() => undefined); }}>⧉</button> : null}
+        {canSubmit ? <button className="wk-button wk-button--text wk-button--danger cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-danger! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary!" type="button" title={t('embedPublish.resetKeyTitle')} disabled={busy} onClick={() => onRotate(channelId)}>{busy ? t('common.loading') : '↻'}</button> : null}
       </div>
-      {!token ? <p className="wk-muted">{t('embedPublish.channelKeyHint')}</p> : null}
+      {!token ? <p className="wk-muted text-muted">{t('embedPublish.channelKeyHint')}</p> : null}
     </fieldset> : null}
 
     <div className="wk-form-actions">
-      {step > 0 ? <button className="wk-button" type="button" onClick={onBack}>{t('integrations.wizard.back')}</button> : null}
-      <button className="wk-button" type="submit" disabled={busy || !canSubmit}>{step < steps.length - 1 ? t('integrations.wizard.next') : t('common.save')}</button>
-      <button className="wk-button wk-button--text" type="button" onClick={onCancel}>{t('common.cancel')}</button>
+      {step > 0 ? <button className="wk-button cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="button" onClick={onBack}>{t('integrations.wizard.back')}</button> : null}
+      <button className="wk-button cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="submit" disabled={busy || !canSubmit}>{step < steps.length - 1 ? t('integrations.wizard.next') : t('common.save')}</button>
+      <button className="wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary!" type="button" onClick={onCancel}>{t('common.cancel')}</button>
     </div>
   </form>;
 }
@@ -1353,8 +1353,8 @@ function ApiIntegrationPanel({ apiBaseUrl, actions, principalMode, setPrincipalM
           <p className="m-0 mt-[0.15rem] text-[13px] text-muted-strong">{t('integrations.api.baseUrlDesc')}</p>
         </div>
         <div className="flex min-w-0 flex-nowrap items-center gap-[0.4rem]">
-          <input className="wk-mono-input" readOnly value={apiBaseUrl} aria-label={t('integrations.api.baseUrl')} />
-          <button className="wk-button wk-button--text shrink-0 whitespace-nowrap" type="button" title={t('integrations.api.copy')} onClick={() => { void navigator.clipboard.writeText(apiBaseUrl).catch(() => undefined); }}>{t('integrations.api.copy')}</button>
+          <input className="wk-mono-input box-border min-w-0 flex-1 max-w-[420px] rounded-control border border-solid border-line bg-canvas px-[0.6rem] py-[0.5rem] text-ink [font:0.85rem_ui-monospace,_monospace]" readOnly value={apiBaseUrl} aria-label={t('integrations.api.baseUrl')} />
+          <button className="wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary! shrink-0 whitespace-nowrap" type="button" title={t('integrations.api.copy')} onClick={() => { void navigator.clipboard.writeText(apiBaseUrl).catch(() => undefined); }}>{t('integrations.api.copy')}</button>
         </div>
       </div>
       <div className="flex items-center justify-between gap-4 border-t border-[#f2f5fa] py-[0.35rem] max-[720px]:flex-col max-[720px]:items-start">
@@ -1371,17 +1371,17 @@ function ApiIntegrationPanel({ apiBaseUrl, actions, principalMode, setPrincipalM
           <label className="block font-semibold text-ink">{t('integrations.api.apiKeys')}</label>
           <p className="m-0 mt-[0.15rem] text-[13px] text-muted-strong">{t('integrations.api.apiKeysDesc')}</p>
         </div>
-        <button className="wk-button" type="button" onClick={() => setShowApiKeyForm?.(!showApiKeyForm)}>{t('integrations.api.createApiKey')}</button>
+        <button className="wk-button cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="button" onClick={() => setShowApiKeyForm?.(!showApiKeyForm)}>{t('integrations.api.createApiKey')}</button>
       </div>
-      {freshApiKeyId !== null ? <p className="wk-status wk-status-ok" role="status">{t('integrations.api.apiKeyCreated')} · {t('integrations.api.secretSavedCopyHint')}</p> : null}
+      {freshApiKeyId !== null ? <p className="wk-status wk-status-ok my-[0.25rem]! text-[13px] text-success-text!" role="status">{t('integrations.api.apiKeyCreated')} · {t('integrations.api.secretSavedCopyHint')}</p> : null}
       {showApiKeyForm ? <form className={INTEGRATION_FORM_CLASS} onSubmit={(event) => { event.preventDefault(); onCreateApiKey?.(); }}>
         <label>{t('integrations.api.apiKeyName')}<input required value={newApiKeyName ?? ''} onChange={(event) => setNewApiKeyName?.(event.target.value)} placeholder={t('integrations.api.apiKeyNamePlaceholder')} /></label>
         <div className="wk-form-actions">
-          <button className="wk-button" type="submit" disabled={busy || !newApiKeyName?.trim()}>{t('integrations.api.createApiKey')}</button>
-          <button className="wk-button wk-button--text" type="button" onClick={() => setShowApiKeyForm?.(false)}>{t('common.cancel')}</button>
+          <button className="wk-button cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="submit" disabled={busy || !newApiKeyName?.trim()}>{t('integrations.api.createApiKey')}</button>
+          <button className="wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary!" type="button" onClick={() => setShowApiKeyForm?.(false)}>{t('common.cancel')}</button>
         </div>
       </form> : null}
-      {apiKeysLoading ? <p className="wk-status">{t('integrations.api.loading')}</p> : (apiKeys ?? []).length === 0 ? <p className="wk-status">{t('integrations.api.noApiKeys')}</p> : <div className="overflow-x-auto">
+      {apiKeysLoading ? <p className="wk-status my-[0.25rem]! text-[13px] text-muted-strong">{t('integrations.api.loading')}</p> : (apiKeys ?? []).length === 0 ? <p className="wk-status my-[0.25rem]! text-[13px] text-muted-strong">{t('integrations.api.noApiKeys')}</p> : <div className="overflow-x-auto">
         <table className="w-full border-collapse text-[13px]">
           <thead><tr>
             <th className="whitespace-nowrap border-b border-[#eef1f5] px-[0.6rem] py-[0.45rem] text-left text-[12px] font-medium text-muted">{t('integrations.api.apiKeyName')}</th>
@@ -1399,8 +1399,8 @@ function ApiIntegrationPanel({ apiBaseUrl, actions, principalMode, setPrincipalM
                 <td className="border-b border-[#f2f5fa] px-[0.6rem] py-[0.5rem] [overflow-wrap:anywhere]">{apiKeyAccessMode(key)}</td>
                 <td className="border-b border-[#f2f5fa] px-[0.6rem] py-[0.5rem] [overflow-wrap:anywhere]">{key.created_at ?? ''}</td>
                 <td className="flex items-center gap-[0.4rem] whitespace-nowrap border-b border-[#f2f5fa] px-[0.6rem] py-[0.5rem] [overflow-wrap:anywhere]">
-                  {key.api_key ? <button className="wk-button" type="button" onClick={() => onCopyApiKey?.(key)}>{t('integrations.api.copy')}</button> : null}
-                  <button className="wk-button wk-button--danger" type="button" onClick={() => onRevokeApiKey?.(key)}>{t('integrations.api.deleteApiKey')}</button>
+                  {key.api_key ? <button className="wk-button cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="button" onClick={() => onCopyApiKey?.(key)}>{t('integrations.api.copy')}</button> : null}
+                  <button className="wk-button cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary! wk-button--danger" type="button" onClick={() => onRevokeApiKey?.(key)}>{t('integrations.api.deleteApiKey')}</button>
                 </td>
               </tr>;
             })}
@@ -1416,30 +1416,30 @@ function ApiIntegrationPanel({ apiBaseUrl, actions, principalMode, setPrincipalM
           <p className="m-0 mt-[0.15rem] text-[13px] text-muted-strong">{t('integrations.api.principalModeDesc')}</p>
         </div>
       </div>
-      <p className="wk-muted">{t('integrations.api.principalScope')}</p>
+      <p className="wk-muted text-muted">{t('integrations.api.principalScope')}</p>
       <div className="flex flex-wrap gap-[8px] my-[0.5rem]" role="radiogroup" aria-label={t('integrations.api.principalMode')}>
         {([['tenant', 'integrations.api.modeTenant'], ['direct_header', 'integrations.api.modeDirect'], ['signed_token', 'integrations.api.modeSigned']] as const).map(([value, key]) => (
           <button key={value} type="button" role="radio" aria-checked={principalMode === value} className={chip(principalMode === value)} onClick={() => setPrincipalMode(value)}>{t(key)}</button>
         ))}
       </div>
       {principalMode === 'direct_header' ? <div className="mt-[0.6rem] grid gap-[0.5rem]">
-        <p className="wk-muted wk-muted--warn">{t('integrations.api.directWarning')}</p>
+        <p className="wk-muted wk-muted--warn text-[#b45309]">{t('integrations.api.directWarning')}</p>
         <label className="wk-check-row flex! items-center gap-[0.45rem] font-normal!"><input className="box-border w-full max-w-[420px] rounded-[6px] border border-line-control px-[0.6rem] py-[0.5rem] [font:inherit]" type="checkbox" checked={requireDirectHeader} onChange={(event) => setRequireDirectHeader(event.target.checked)} />{t('integrations.api.requireDirectHeader')}</label>
-        <p className="wk-muted">{t('integrations.api.requireDirectHeaderDesc')}</p>
+        <p className="wk-muted text-muted">{t('integrations.api.requireDirectHeaderDesc')}</p>
       </div> : null}
       {principalMode === 'signed_token' ? <div className="mt-[0.6rem] grid gap-[0.5rem]">
         <label className="grid gap-[0.3rem] font-semibold">{t('integrations.api.hmacSecret')}<input className="box-border w-full max-w-[420px] rounded-[6px] border border-line-control px-[0.6rem] py-[0.5rem] [font:inherit]" type="password" value={hmacSecret} onChange={(event) => setHmacSecret(event.target.value)} placeholder={principal?.has_hmac_secret ? t('integrations.api.secretConfigured') : ''} /></label>
-        <p className="wk-muted">{t('integrations.api.hmacSecretDesc')}</p>
+        <p className="wk-muted text-muted">{t('integrations.api.hmacSecretDesc')}</p>
       </div> : null}
       {principalMode !== 'tenant' ? <div className="wk-form-actions">
-        <button className="wk-button" type="button" disabled={busy} onClick={onSavePrincipal}>{t('common.save')}</button>
+        <button className="wk-button cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="button" disabled={busy} onClick={onSavePrincipal}>{t('common.save')}</button>
       </div> : null}
       <div className="mt-[0.6rem] grid gap-[0.5rem]">
         <label className="grid gap-[0.3rem] font-semibold">{t('integrations.api.playgroundExternalUser')}<input className="box-border w-full max-w-[420px] rounded-[6px] border border-line-control px-[0.6rem] py-[0.5rem] [font:inherit]" value={externalUserId} onChange={(event) => setExternalUserId(event.target.value)} placeholder={t('integrations.api.playgroundExternalUserPlaceholder')} /></label>
         <div className="wk-form-actions">
-          <button className="wk-button" type="button" disabled={busy} onClick={onCreatePrincipalToken}>{t('integrations.api.generateSecret')}</button>
+          <button className="wk-button cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="button" disabled={busy} onClick={onCreatePrincipalToken}>{t('integrations.api.generateSecret')}</button>
         </div>
-        {principalToken ? <p className="wk-status">{t('integrations.api.playgroundGeneratedToken')}: <code>{principalToken.token}</code> ({principalToken.headerName})</p> : null}
+        {principalToken ? <p className="wk-status my-[0.25rem]! text-[13px] text-muted-strong">{t('integrations.api.playgroundGeneratedToken')}: <code>{principalToken.token}</code> ({principalToken.headerName})</p> : null}
       </div>
     </section>
 
@@ -1450,7 +1450,7 @@ function ApiIntegrationPanel({ apiBaseUrl, actions, principalMode, setPrincipalM
           <p className="m-0 mt-[0.15rem] text-[13px] text-muted-strong">{t('integrations.api.playgroundDesc')}</p>
         </div>
       </div>
-      {onOpenApiPlayground ? <button className="wk-button wk-button--primary" type="button" onClick={onOpenApiPlayground}>{t('integrations.api.playgroundOpen')}</button> : null}
+      {onOpenApiPlayground ? <button className="wk-button wk-button--primary cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" type="button" onClick={onOpenApiPlayground}>{t('integrations.api.playgroundOpen')}</button> : null}
     </section>
   </div>;
 }
@@ -1475,8 +1475,8 @@ function ExternalLandingPanel({ tab, locale, externalUrl, apiBaseUrl, t }: { tab
   // Former .wk-int-landing / .wk-int-landing-cta (apps/web styles.css).
   return <div className="grid gap-[1rem] max-w-[760px]">
     <div className="flex items-center flex-wrap gap-[.75rem]">
-      {externalUrl ? <a className="wk-button" href={externalUrl} target="_blank" rel="noreferrer noopener">{cta.label}</a> : null}
-      <span className="wk-muted">{cta.hint}</span>
+      {externalUrl ? <a className="wk-button cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" href={externalUrl} target="_blank" rel="noreferrer noopener">{cta.label}</a> : null}
+      <span className="wk-muted text-muted">{cta.hint}</span>
     </div>
     {tab === 'cli' ? <section className="rounded-[10px] border border-[#eef1f5] p-4">
       <h4 className="m-0 mb-[0.6rem] text-[14px] font-semibold text-ink">{t('integrations.cli.quickstart')}</h4>
@@ -1486,20 +1486,20 @@ function ExternalLandingPanel({ tab, locale, externalUrl, apiBaseUrl, t }: { tab
           <div className="wk-landing-step-body">
             <div className="text-[14px] font-semibold text-ink">{step.title}</div>
             <p className="m-0 mt-[0.2rem] mb-[0.5rem] text-[13px] leading-[1.6] text-muted-strong">{step.desc}</p>
-            <div className={CODE_TOOLBAR_CLASS}><pre className={CODE_TOOLBAR_PRE_CLASS}>{step.command}</pre><button className={'wk-button wk-button--text ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" title={t('integrations.cli.copy')} onClick={() => copy(step.command)}>⧉</button></div>
+            <div className={CODE_TOOLBAR_CLASS}><pre className={CODE_TOOLBAR_PRE_CLASS}>{step.command}</pre><button className={'wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary! ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" title={t('integrations.cli.copy')} onClick={() => copy(step.command)}>⧉</button></div>
           </div>
         </li>)}
       </ol>
     </section> : null}
     {tab === 'cli' ? <section className="rounded-[10px] border border-[#eef1f5] p-4">
       <h4 className="m-0 mb-[0.6rem] text-[14px] font-semibold text-ink">{t('integrations.cli.commandsTitle')}</h4>
-      <p className="wk-muted m-0 mb-[0.6rem] text-[13px]">{t('integrations.cli.commandsDesc')}</p>
-      <div className={CODE_TOOLBAR_CLASS}><pre className={CODE_TOOLBAR_PRE_CLASS}>{'weknora doc upload ./document.pdf --kb "KB_ID"\nweknora search chunks "query" --kb "KB_ID"\nweknora chat "question" --kb "KB_ID" --format text\nweknora agent list'}</pre><button className={'wk-button wk-button--text ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" title={t('integrations.cli.copy')} onClick={() => copy('weknora doc upload')}>⧉</button></div>
+      <p className="wk-muted text-muted m-0 mb-[0.6rem] text-[13px]">{t('integrations.cli.commandsDesc')}</p>
+      <div className={CODE_TOOLBAR_CLASS}><pre className={CODE_TOOLBAR_PRE_CLASS}>{'weknora doc upload ./document.pdf --kb "KB_ID"\nweknora search chunks "query" --kb "KB_ID"\nweknora chat "question" --kb "KB_ID" --format text\nweknora agent list'}</pre><button className={'wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary! ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" title={t('integrations.cli.copy')} onClick={() => copy('weknora doc upload')}>⧉</button></div>
     </section> : null}
     {tab === 'cli' ? <section className="rounded-[10px] border border-[#eef1f5] p-4">
       <h4 className="m-0 mb-[0.6rem] text-[14px] font-semibold text-ink">{t('integrations.cli.mcpTitle')}</h4>
-      <p className="wk-muted m-0 mb-[0.6rem] text-[13px]">{t('integrations.cli.mcpDesc')}</p>
-      <div className={CODE_TOOLBAR_CLASS}><pre className={CODE_TOOLBAR_PRE_CLASS}>{JSON.stringify({ mcpServers: { weknora: { command: 'weknora', args: ['--profile', 'weknora', 'mcp', 'serve'] } } }, null, 2)}</pre><button className={'wk-button wk-button--text ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" title={t('integrations.cli.copy')} onClick={() => copy('mcp')}>⧉</button></div>
+      <p className="wk-muted text-muted m-0 mb-[0.6rem] text-[13px]">{t('integrations.cli.mcpDesc')}</p>
+      <div className={CODE_TOOLBAR_CLASS}><pre className={CODE_TOOLBAR_PRE_CLASS}>{JSON.stringify({ mcpServers: { weknora: { command: 'weknora', args: ['--profile', 'weknora', 'mcp', 'serve'] } } }, null, 2)}</pre><button className={'wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary! ' + CODE_TOOLBAR_BUTTON_CLASS} type="button" title={t('integrations.cli.copy')} onClick={() => copy('mcp')}>⧉</button></div>
     </section> : null}
     {tab === 'chrome' ? <section className="rounded-[10px] border border-[#eef1f5] p-4">
       <h4 className="m-0 mb-[0.6rem] text-[14px] font-semibold text-ink">{t('integrations.chrome.capabilitiesTitle')}</h4>

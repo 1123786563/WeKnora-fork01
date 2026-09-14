@@ -100,9 +100,9 @@ export function WorkspaceOnboardingPage({ client, scopeRuntime, onLogout }: Work
   }
 
   const ready = view.kind === 'ready';
-  return <main className="wk-page"><Card>
+  return <main className="wk-page mx-auto box-border max-w-[960px] px-[1.25rem] py-12"><Card>
     <h1>{ready && view.canCreateTenant ? msg(locale, 'auth.workspaceOnboarding.title') : msg(locale, 'auth.workspaceOnboarding.inviteOnlyTitle')}</h1>
-    <p className="wk-muted">{ready && view.canCreateTenant ? msg(locale, 'auth.workspaceOnboarding.description') : msg(locale, 'auth.workspaceOnboarding.inviteOnlyDescription')}</p>
+    <p className="wk-muted text-muted">{ready && view.canCreateTenant ? msg(locale, 'auth.workspaceOnboarding.description') : msg(locale, 'auth.workspaceOnboarding.inviteOnlyDescription')}</p>
     {view.kind === 'loading-policy' || (ready && false) ? <Status>{msg(locale, 'auth.workspaceOnboarding.loadingPolicy')}</Status> : null}
     {view.kind === 'policy-error' || loadFailed ? <div role="alert"><Status tone="error">{msg(locale, 'auth.workspaceOnboarding.policyLoadFailed')}</Status>
       <Button type="button" onClick={() => void loadPolicy()}>{msg(locale, 'auth.workspaceOnboarding.retry')}</Button></div> : null}
@@ -114,7 +114,7 @@ export function WorkspaceOnboardingPage({ client, scopeRuntime, onLogout }: Work
           {msg(locale, 'auth.workspaceOnboarding.invitations')}{view.pendingInvitationCount > 0 ? ` (${view.pendingInvitationCount})` : ''}
         </Button>
       </div>
-      <p className="wk-muted">{view.canCreateTenant ? msg(locale, 'auth.workspaceOnboarding.help') : msg(locale, 'auth.workspaceOnboarding.inviteOnlyHelp')}</p>
+      <p className="wk-muted text-muted">{view.canCreateTenant ? msg(locale, 'auth.workspaceOnboarding.help') : msg(locale, 'auth.workspaceOnboarding.inviteOnlyHelp')}</p>
     </> : null}
     <Button type="button" onClick={() => void onLogout()}>{msg(locale, 'auth.logout')}</Button>
 
@@ -124,13 +124,13 @@ export function WorkspaceOnboardingPage({ client, scopeRuntime, onLogout }: Work
       onClose={() => { if (!creating) { setCreateVisible(false); setName(''); setDescription(''); setFieldErrors({}); setCreateError(''); } }}
       className="w-[min(480px,100%)]!"
     >
-      <p className="wk-muted">{msg(locale, 'tenant.create.dialogSubtitle')}</p>
-      <form className="wk-form" onSubmit={(event) => { event.preventDefault(); void createTenant(); }}>
-        <label>{msg(locale, 'tenant.create.nameLabel')}
-          <input value={name} onChange={(event) => setName(event.target.value)} maxLength={128} autoFocus disabled={creating} placeholder={msg(locale, 'tenant.create.namePlaceholder')} />
+      <p className="wk-muted text-muted">{msg(locale, 'tenant.create.dialogSubtitle')}</p>
+      <form className="wk-form mb-4 flex flex-wrap items-end gap-3" onSubmit={(event) => { event.preventDefault(); void createTenant(); }}>
+        <label className="grid gap-1">{msg(locale, 'tenant.create.nameLabel')}
+          <input className="rounded-control border border-line-strong p-[0.55rem]" value={name} onChange={(event) => setName(event.target.value)} maxLength={128} autoFocus disabled={creating} placeholder={msg(locale, 'tenant.create.namePlaceholder')} />
           {(fieldErrors.name ?? []).map((key) => <Status key={key} tone="error">{msg(locale, key)}</Status>)}
         </label>
-        <label>{msg(locale, 'tenant.create.descriptionLabel')}
+        <label className="grid gap-1">{msg(locale, 'tenant.create.descriptionLabel')}
           <textarea className="box-border w-full resize-y px-[0.6rem] py-[0.5rem] [font:inherit]" value={description} onChange={(event) => setDescription(event.target.value)} maxLength={512} rows={3} disabled={creating} placeholder={msg(locale, 'tenant.create.descriptionPlaceholder')} />
           {(fieldErrors.description ?? []).map((key) => <Status key={key} tone="error">{msg(locale, key)}</Status>)}
         </label>

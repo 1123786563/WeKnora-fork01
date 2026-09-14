@@ -97,7 +97,7 @@ function ApiPlaygroundAgentSelect({ agents, value, loading, placeholder, loading
       style={fieldStyle}
     />
     {open ? <div id="wk-api-playground-agent-options" role="listbox" className="wk-api-playground-agent-options" style={{ position: 'absolute', zIndex: 2, left: 0, right: 0, maxHeight: 240, overflowY: 'auto', background: 'var(--wk-bg, #fff)', border: '1px solid var(--wk-border, #e5e7eb)', borderRadius: 6, boxShadow: '0 8px 20px rgba(15,23,42,.14)' }}>
-      {loading ? <div role="status" className="wk-muted" style={{ padding: '8px 10px' }}>{loadingLabel}</div> : options.length === 0 ? <div className="wk-muted" style={{ padding: '8px 10px' }}>{placeholder}</div> : options.map((agent, index) => <div key={agent.id} role="option" aria-selected={agent.id === value} className={index === activeIndex ? 'is-active' : undefined} onMouseDown={(event) => { event.preventDefault(); choose(agent); }} style={{ padding: '8px 10px', cursor: 'pointer', background: index === activeIndex ? 'var(--wk-bg-muted, #f6f8fa)' : undefined }}>{agentOptionLabel(agent.name, agent.is_builtin === true, builtinLabel)}</div>)}
+      {loading ? <div role="status" className="wk-muted text-muted" style={{ padding: '8px 10px' }}>{loadingLabel}</div> : options.length === 0 ? <div className="wk-muted text-muted" style={{ padding: '8px 10px' }}>{placeholder}</div> : options.map((agent, index) => <div key={agent.id} role="option" aria-selected={agent.id === value} className={index === activeIndex ? 'is-active' : undefined} onMouseDown={(event) => { event.preventDefault(); choose(agent); }} style={{ padding: '8px 10px', cursor: 'pointer', background: index === activeIndex ? 'var(--wk-bg-muted, #f6f8fa)' : undefined }}>{agentOptionLabel(agent.name, agent.is_builtin === true, builtinLabel)}</div>)}
     </div> : null}
   </div>;
 }
@@ -320,7 +320,7 @@ export function ApiPlaygroundDrawer({ open, onClose, apiKey, mode, agents, agent
         <header className="wk-api-playground-header" style={rowStyle}>
           <div>
             <h2 style={{ margin: 0, fontSize: 16 }}>{t('integrations.api.playgroundTitle')}</h2>
-            <p className="wk-muted" style={{ margin: '4px 0 0' }}>{t('integrations.api.playgroundDrawerDesc')}</p>
+            <p className="wk-muted text-muted" style={{ margin: '4px 0 0' }}>{t('integrations.api.playgroundDrawerDesc')}</p>
           </div>
           <button type="button" className="wk-api-playground-close" aria-label="关闭" title="关闭" onClick={close} style={{ border: 'none', background: 'transparent', fontSize: 18, cursor: 'pointer' }}>×</button>
         </header>
@@ -337,7 +337,7 @@ export function ApiPlaygroundDrawer({ open, onClose, apiKey, mode, agents, agent
               {t('integrations.api.playgroundExternalUser')}
               <input className="wk-api-playground-external-user box-border" type="text" value={form.externalUserId} disabled={mode === 'tenant'} placeholder={t('integrations.api.playgroundExternalUserPlaceholder')} onChange={(event) => setForm((prev) => ({ ...prev, externalUserId: event.target.value }))} style={fieldStyle} />
             </label>
-            <p className="wk-api-playground-hint wk-muted">{t(externalUserHintKey(mode), { headerName: DEFAULT_DIRECT_HEADER_NAME })}</p>
+            <p className="wk-api-playground-hint wk-muted text-muted">{t(externalUserHintKey(mode), { headerName: DEFAULT_DIRECT_HEADER_NAME })}</p>
             <label className="wk-api-playground-field text-[13px]" style={{ display: 'block', margin: '10px 0' }}>
               {t('integrations.api.playgroundQuestion')}
               <textarea ref={queryRef} className="wk-api-playground-query box-border" rows={2} value={form.query} placeholder={t('integrations.api.playgroundQuestionPlaceholder')} onChange={(event) => setForm((prev) => ({ ...prev, query: event.target.value }))} style={fieldStyle} />
@@ -348,8 +348,8 @@ export function ApiPlaygroundDrawer({ open, onClose, apiKey, mode, agents, agent
             <h4 className="m-0 text-[14px]">{t('integrations.api.playgroundSectionPreview')}</h4>
             <div className="wk-api-playground-preview">
               <div className="wk-api-playground-preview-toolbar" style={rowStyle}>
-                <span className="wk-muted">{t('integrations.api.playgroundRequestPreview')}</span>
-                <button type="button" className="wk-button wk-button--text" onClick={() => copy(preview)}>{t('integrations.api.copy')}</button>
+                <span className="wk-muted text-muted">{t('integrations.api.playgroundRequestPreview')}</span>
+                <button type="button" className="wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary!" onClick={() => copy(preview)}>{t('integrations.api.copy')}</button>
               </div>
               <pre className={preClassName} style={preStyle}>{preview}</pre>
             </div>
@@ -358,14 +358,14 @@ export function ApiPlaygroundDrawer({ open, onClose, apiKey, mode, agents, agent
           <section className="grid gap-3 rounded-[10px] border border-[var(--wk-border,#e5e7eb)] p-4">
             <h4 className="m-0 text-[14px]">{t('integrations.api.playgroundSectionResult')}</h4>
             {run.error ? <p className="m-0" role="alert">{run.error}</p> : null}
-            {run.successMs !== null ? <p className="wk-status wk-status-ok" role="status">{t('integrations.api.playgroundSuccess', { ms: run.successMs })}</p> : null}
+            {run.successMs !== null ? <p className="wk-status wk-status-ok my-[0.25rem]! text-[13px] text-success-text!" role="status">{t('integrations.api.playgroundSuccess', { ms: run.successMs })}</p> : null}
             {hasResult ? (
               <div className="wk-api-playground-results">
                 {mode === 'signed_token' && run.signedToken ? (
                   <div className="grid gap-2" data-step="token">
                     <div className="text-[13px]" style={rowStyle}>
                       <span>{t('integrations.api.playgroundGeneratedToken')}</span>
-                      <button type="button" className="wk-button wk-button--text" onClick={() => copy(run.signedToken)}>{t('integrations.api.copy')}</button>
+                      <button type="button" className="wk-button wk-button--text cursor-pointer rounded-control border border-solid border-transparent! bg-transparent px-[0.5rem]! py-[0.3rem]! text-muted-strong! [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! hover:bg-hover-wash focus-visible:bg-hover-wash enabled:hover:border-primary!" onClick={() => copy(run.signedToken)}>{t('integrations.api.copy')}</button>
                     </div>
                     <pre className={preClassName} style={preStyle}>{run.signedToken}</pre>
                   </div>
@@ -394,17 +394,17 @@ export function ApiPlaygroundDrawer({ open, onClose, apiKey, mode, agents, agent
                 ) : null}
               </div>
             ) : (
-              <p className="wk-api-playground-empty wk-muted m-0">{t('integrations.api.playgroundEmptyResult')}</p>
+              <p className="wk-api-playground-empty wk-muted text-muted m-0">{t('integrations.api.playgroundEmptyResult')}</p>
             )}
           </section>
         </div>
 
         <footer className="wk-api-playground-footer" style={footerStyle}>
           <div className="wk-api-playground-footer-left" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {run.running ? <button type="button" className="wk-button" data-action="stop" onClick={stop}>{t('integrations.api.playgroundStop')}</button> : null}
-            {disabledReason ? <span className="wk-api-playground-disabled-reason wk-muted m-0">{t(disabledReason)}</span> : null}
+            {run.running ? <button type="button" className="wk-button cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" data-action="stop" onClick={stop}>{t('integrations.api.playgroundStop')}</button> : null}
+            {disabledReason ? <span className="wk-api-playground-disabled-reason wk-muted text-muted m-0">{t(disabledReason)}</span> : null}
           </div>
-          <button type="button" className="wk-button wk-button--primary" data-action="run" disabled={run.running || Boolean(disabledReason)} onClick={() => void start()}>{t('integrations.api.playgroundRun')}</button>
+          <button type="button" className="wk-button wk-button--primary cursor-pointer rounded-control border border-solid border-line-control! bg-surface px-[0.85rem]! py-[0.45rem]! text-ink [font:inherit] disabled:cursor-not-allowed disabled:opacity-55! enabled:hover:border-primary!" data-action="run" disabled={run.running || Boolean(disabledReason)} onClick={() => void start()}>{t('integrations.api.playgroundRun')}</button>
         </footer>
       </aside>
     </div>

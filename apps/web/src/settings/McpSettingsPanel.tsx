@@ -355,7 +355,7 @@ function McpMetadataSection({
           <h4>{t("mcpMetadata.tools")}</h4>
           <p className="wk-muted text-muted">{t("mcpMetadata.cacheHint")}</p>
         </div>
-        <div className="wk-list-actions">
+        <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
           <Button
             type="button"
             disabled={busy || disabled}
@@ -456,7 +456,7 @@ function McpOAuthControl({
   }
   return (
     <div className="my-[.8rem] flex flex-wrap items-center gap-[.6rem]">
-      <span className="wk-form-label">{t("mcpServiceDialog.oauthAuthorization")}</span>
+      <span className="wk-form-label text-ink font-semibold">{t("mcpServiceDialog.oauthAuthorization")}</span>
       <span
         className={
           oauth?.authorized
@@ -1175,7 +1175,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                       </div>
                     </div>
                     <div className="flex items-center justify-between gap-[.8rem]">
-                      <label className="wk-form-label">
+                      <label className="wk-form-label text-ink font-semibold">
                         {t("mcpMetadata.usageInstructions")}
                       </label>
                       <Button
