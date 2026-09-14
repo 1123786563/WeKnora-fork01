@@ -218,3 +218,10 @@
 - Corrected the graph screen loading indicator accessibility label to use the localized loading message.
 - Validation: `pnpm test:mobile` 189/189; `pnpm run typecheck:mobile`; `git diff --check`.
 - Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r032-mobile-graph-loading-a11y.md`.
+
+## Round N+34bm — desktop renderer build evidence
+
+- Verified `@weknora/desktop-renderer` production build succeeds.
+- Recorded emitted visualization chunks and the remaining bundle-size warning without changing chunk behavior.
+- Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r033-desktop-build.md`.
+- Remaining: Wails host launch and authenticated parity evidence.
