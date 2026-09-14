@@ -17,3 +17,10 @@ typecheck:web 全绿；指定测试全绿；回复改动清单/规则数/选择�
 
 派发节奏：wave-1（auth/knowledge-list/shell/sandbox-canyary）完成后逐个验收并 commit，
 再放 2-3 个并发；chat 与 chat.css 最大，单独一轮。共享 styles.css 规则删除永远由 Orchestrator 收尾。
+
+## 保留 CSS 的判定（settings 域补充）
+
+drawer 作用域的「chrome 类」规则（如 .wks-modal .wks-content-wrapper select:not([multiple])、
+.wk-settings-section .setting-row 等祖先作用域批量样式）服务于 10+ 面板的同族控件：
+这类规则保留在 css 中（迁入 settings-wrapper.css 保留段）并注明原因；只把面板私有布局规则
+转成 utilities。判定标准：一条规则服务的元素超过一个文件，或选择器依赖非组件祖先作用域。
