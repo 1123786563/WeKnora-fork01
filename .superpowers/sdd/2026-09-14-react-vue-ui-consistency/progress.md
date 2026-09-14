@@ -130,3 +130,4 @@
 - ChatPage 余留英文 accessibility/fallback 文案已收敛：Live response、空态 starter 区、主聊天区、沙箱终端以及 action/steer 异常均使用活动 `ChatCopyTable`；空态条件避免 aria 标签干扰欢迎文案判断，提交 `fix(chat): localize accessibility fallbacks`。Web 891/891、typecheck:web、git diff --check 通过。
 - ChatPage 发送异常的非 Error 回退已改用活动语言 `copy.sendFailed`，并将沙箱终端测试断言同步为 zh-CN 文案；Web 回归 891/891、typecheck:web、git diff --check 通过。
 - R015 完成 Chat literal audit（`2026-09-15-r015-chat-literal-audit.md`）：确认 tool-result/page 可见文案已覆盖，剩余英文主要是 aria 稳定标识、协议枚举、测试 fixture 和待确认 Clipboard 能力异常；没有发现新的可见英文泄漏。
+- 移动端/桌面/Embed 当前回归复核：`pnpm test:mobile` 187/187、`typecheck:mobile`、`test:desktop` 2/2、`typecheck:desktop`、`test:embed` 7/7、`typecheck:embed` 全部通过；Clipboard 底层异常因 UI 层静默捕获，不构成可见文案泄漏。
