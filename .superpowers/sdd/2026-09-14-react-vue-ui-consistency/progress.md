@@ -264,3 +264,9 @@
 - Localized the Embed isolated-entrypoint error and aligned the system settings test with the new localized field-label behavior.
 - Validation: `pnpm run build:web`; `pnpm run test:web` 891/891; `pnpm run typecheck:web`; `git diff --check`.
 - Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r039-entry-error-and-label-test.md`.
+
+## Round N+34bt — mobile export toolchain gate
+
+- Attempted Expo Web export; toolchain reports missing `react-dom` and `react-native-web` dependencies.
+- No dependency changes made because this package targets native mobile acceptance; export failure is recorded as `blocked-env`, not as a code regression.
+- Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r040-mobile-export-toolchain.md`.
