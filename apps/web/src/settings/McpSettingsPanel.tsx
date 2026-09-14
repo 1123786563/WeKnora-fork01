@@ -5,6 +5,19 @@ import { Button, Card, Status } from "@weknora/ui";
 import { McpToolsDirectory } from "./McpToolsDirectory.tsx";
 import { createTranslator, useAppLocale } from "../i18n.ts";
 
+/* Tailwind utilities migrated from the deleted .wk-mcp-* rules in styles.css
+   (see docs/plans/tailwind-shadcn-conventions.md). Values encode the effective
+   cascade result, including ! where a retained unlayered rule competes. */
+const mcpServerDocsButton = "ml-2 rounded-[4px] border-0 bg-transparent px-1 py-[0.1rem] text-[#2e6de6] cursor-pointer [font:inherit] hover:bg-[#eef4ff]";
+const mcpIconButton = "h-6 w-6 cursor-pointer rounded-[6px] border-0 bg-transparent p-0 text-[16px] text-[#66758b] hover:bg-[#f3f5f8] hover:text-[#245a9b] hover:outline-none focus-visible:bg-[#f3f5f8] focus-visible:text-[#245a9b] focus-visible:outline-none";
+const mcpStepButton = "cursor-pointer border-0 bg-transparent p-0 px-0 py-[0.2rem] [font:inherit] text-[.82rem] font-[550] text-[#98a2b8] disabled:cursor-default disabled:opacity-60";
+const mcpToolsLink = "cursor-pointer border-0 bg-transparent p-0 [font:inherit] text-[.82rem] text-[#66758b] hover:text-[#245a9b] hover:outline-none focus-visible:text-[#245a9b] focus-visible:outline-none";
+const mcpStatus = "inline-flex items-center gap-[5px] whitespace-nowrap cursor-pointer border-0 bg-transparent p-0 [font:inherit] text-[.82rem] text-[#66758b]";
+const mcpBadgeOk = "rounded-full px-2 py-[0.1rem] text-[.72rem] bg-[#ecfdf3] text-[#137333]";
+const mcpBadgeInfo = "rounded-full px-2 py-[0.1rem] text-[.72rem] bg-[#e8f1ff] text-[#2e6de6]";
+const mcpBadgeWarn = "rounded-full px-2 py-[0.1rem] text-[.72rem] bg-[#fffaeb] text-[#b54708]";
+const mcpBadgeMuted = "rounded-full px-2 py-[0.1rem] text-[.72rem] bg-[#f2f4f8] text-[#66758b]";
+
 type McpService = McpConfiguration & {
   description?: string;
   usage_instructions?: string;
@@ -336,7 +349,7 @@ function McpMetadataSection({
       : date.toLocaleString();
   }
   return (
-    <section className="wk-mcp-metadata" aria-label={t("mcpMetadata.tools")}>
+    <section className="wk-mcp-metadata mt-[1.1rem] border-t border-[#edf0f5] pt-4" aria-label={t("mcpMetadata.tools")}>
       <div className="wk-settings-panel-heading">
         <div>
           <h4>{t("mcpMetadata.tools")}</h4>
@@ -355,14 +368,14 @@ function McpMetadataSection({
       {error ? <Status tone="error">{error}</Status> : null}
       {metadata ? (
         <>
-          <div className={`wk-mcp-snapshot-meta ${metadata.stale ? "wk-mcp-stale" : "wk-muted"}`}>
+          <div className={`relative ${metadata.stale ? "text-[#b54708] text-[.85rem]" : "wk-muted"}`}>
             {t("mcpMetadata.toolCount", { count: metadata.tools.length })}
             {metadata.serverName
               ? " · " + metadata.serverName + " " + (metadata.serverVersion ?? "")
               : ""}
             {syncedAt ? " · " + t("mcpMetadata.syncedAt") + syncedAt : ""}
             {metadata.stale ? " · " + t("mcpMetadata.stale") : ""}
-            {metadata.instructions || metadata.serverDescription ? <><button type="button" className="wk-mcp-server-docs-trigger" aria-expanded={docsOpen} onClick={() => setDocsOpen((open) => !open)}>{t("mcpMetadata.serverDocumentation")}⌄</button>{docsOpen ? <div className="wk-mcp-server-docs-popup" role="dialog"><strong>{t("mcpMetadata.serverDocumentation")}</strong>{metadata.serverDescription ? <span>{metadata.serverDescription}</span> : null}{metadata.instructions ? <pre>{metadata.instructions}</pre> : null}</div> : null}</> : <button type="button" className="wk-mcp-server-docs-help" aria-label={t("mcpMetadata.noServerDocumentation")}>ⓘ</button>}
+            {metadata.instructions || metadata.serverDescription ? <><button type="button" className={`wk-mcp-server-docs-trigger ${mcpServerDocsButton}`} aria-expanded={docsOpen} onClick={() => setDocsOpen((open) => !open)}>{t("mcpMetadata.serverDocumentation")}⌄</button>{docsOpen ? <div className="absolute z-20 mt-[.4rem] grid w-[min(360px,calc(100vw_-_2rem))] gap-2 border border-[#dce3ed] rounded-[7px] bg-white p-3 shadow-[0_12px_30px_rgb(23_32_51_/_18%)] whitespace-normal text-[#172033]" role="dialog"><strong>{t("mcpMetadata.serverDocumentation")}</strong>{metadata.serverDescription ? <span>{metadata.serverDescription}</span> : null}{metadata.instructions ? <pre className="m-0 max-h-[180px] overflow-auto whitespace-pre-wrap [font:inherit]">{metadata.instructions}</pre> : null}</div> : null}</> : <button type="button" className={mcpServerDocsButton} aria-label={t("mcpMetadata.noServerDocumentation")}>ⓘ</button>}
           </div>
           <p className="wk-muted">{t("mcpMetadata.policyHint")}</p>
           <McpToolsDirectory
@@ -442,15 +455,15 @@ function McpOAuthControl({
     }
   }
   return (
-    <div className="wk-mcp-oauth">
+    <div className="my-[.8rem] flex flex-wrap items-center gap-[.6rem]">
       <span className="wk-form-label">{t("mcpServiceDialog.oauthAuthorization")}</span>
       <span
         className={
           oauth?.authorized
-            ? "wk-mcp-badge wk-mcp-badge-ok"
+            ? mcpBadgeOk
             : oauth?.state === "refreshable"
-              ? "wk-mcp-badge wk-mcp-badge-info"
-              : "wk-mcp-badge wk-mcp-badge-warn"
+              ? mcpBadgeInfo
+              : mcpBadgeWarn
         }
       >
         {oauth?.authorized
@@ -785,7 +798,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
       </Card>
     );
   return (
-    <section className="wk-mcp-settings" data-testid="mcp-settings">
+    <section className="grid gap-4" data-testid="mcp-settings">
       <div className="wk-settings-panel-heading">
         <div>
           <h3>{t("mcpSettings.title")}</h3>
@@ -799,42 +812,42 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
       {services.length === 0 && !canEdit ? (
         <Status>{t("mcpSettings.empty")}</Status>
       ) : (
-        <div className="wk-mcp-grid">
+        <div className="grid items-stretch gap-2.5 grid-cols-[repeat(auto-fill,minmax(min(100%,320px),1fr))] max-[720px]:grid-cols-1">
           {services.map((service) => (
-            <article key={service.id} className="wk-mcp-card">
-              <div className="wk-mcp-card-main">
-                <div className="wk-mcp-card-body">
-                  <div className="wk-mcp-card-header">
-                    <span className="wk-mcp-card-badge" aria-hidden="true">⚒</span>
-                    <h4 title={service.name}>{service.name}</h4>
+            <article key={service.id} className="min-w-0 overflow-hidden rounded-[10px] border border-[#dce3ed] bg-white">
+              <div className="flex min-w-0 p-3">
+                <div className="flex min-w-0 flex-1 flex-col gap-2">
+                  <div className="flex min-h-[28px] items-center justify-between gap-[.7rem]">
+                    <span className="inline-flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-[7px] bg-[#f3f5f8] text-[14px] text-[#66758b]" aria-hidden="true">⚒</span>
+                    <h4 title={service.name} className="m-0 min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{service.name}</h4>
                   {service.is_builtin ? (
-                    <span className="wk-mcp-badge">{t("mcpSettings.builtin")}</span>
+                    <span className="text-[.75rem] text-[#2e6de6]">{t("mcpSettings.builtin")}</span>
                   ) : null}
                     {canEdit ? (
-                      <div className="wk-mcp-card-actions">
-                        <button type="button" className="wk-mcp-icon-button" title={t("common.edit")} aria-label={`${service.name} · ${t("common.edit")}`} onClick={() => openEditor(service)}>✎<span className="wk-sr-only">{t("common.edit")}</span></button>
-                        {service.is_builtin ? null : <button type="button" className="wk-mcp-icon-button wk-mcp-icon-button-danger" title={t("common.delete")} aria-label={`${service.name} · ${t("common.delete")}`} onClick={() => void remove(service)}>×<span className="wk-sr-only">{t("common.delete")}</span></button>}
+                      <div className="flex shrink-0 items-center gap-0.5">
+                        <button type="button" className={mcpIconButton} title={t("common.edit")} aria-label={`${service.name} · ${t("common.edit")}`} onClick={() => openEditor(service)}>✎<span className="wk-sr-only">{t("common.edit")}</span></button>
+                        {service.is_builtin ? null : <button type="button" className={`${mcpIconButton} hover:text-[#b42318]! focus-visible:text-[#b42318]!`} title={t("common.delete")} aria-label={`${service.name} · ${t("common.delete")}`} onClick={() => void remove(service)}>×<span className="wk-sr-only">{t("common.delete")}</span></button>}
                       </div>
                     ) : null}
                   </div>
-                  {serviceDescription(service) ? <p className="wk-mcp-description" title={serviceDescription(service)}>{serviceDescription(service).replace(/\s+/g, " ")}</p> : canEdit && !service.is_builtin ? <button type="button" className="wk-mcp-add-usage" onClick={() => openEditor(service, 1)}>＋ {t("mcpSettings.addUsageInstructions")}</button> : <span className="wk-mcp-empty-usage">{t("mcpSettings.noUsageInstructions")}</span>}
-                  <div className="wk-mcp-card-footer">
-                    <button type="button" className={`wk-mcp-tools-link ${service.catalog?.stale ? "is-stale" : !service.catalog ? "is-missing" : ""}`} title={t("mcpMetadata.toolsAndUsage")} onClick={() => canEdit && openEditor(service, 1)} disabled={!canEdit}>
+                  {serviceDescription(service) ? <p className="min-h-[2.6rem] [overflow-wrap:anywhere]" title={serviceDescription(service)}>{serviceDescription(service).replace(/\s+/g, " ")}</p> : canEdit && !service.is_builtin ? <button type="button" className="self-start items-center border-0 bg-transparent p-0 text-[.82rem] text-[#245a9b] cursor-pointer [font:inherit] hover:underline focus-visible:underline" onClick={() => openEditor(service, 1)}>＋ {t("mcpSettings.addUsageInstructions")}</button> : <span className="text-[.82rem] text-[#66758b]">{t("mcpSettings.noUsageInstructions")}</span>}
+                  <div className="flex items-center justify-between gap-[.7rem] border-t border-[#edf0f5] pt-[.65rem]">
+                    <button type="button" className={`${mcpToolsLink} ${service.catalog?.stale ? "text-[#b54708]!" : ""}`} title={t("mcpMetadata.toolsAndUsage")} onClick={() => canEdit && openEditor(service, 1)} disabled={!canEdit}>
                       {service.catalog?.stale ? "⚠ " : ""}{service.catalog ? t("mcpSettings.toolCount", { count: service.catalog.tool_count ?? 0 }) : t("mcpSettings.toolsNotSynced")} {service.catalog?.stale ? ` · ${t("mcpSettings.toolsStale")}` : ""} {canEdit ? "›" : ""}
                     </button>
-                    <span>{service.transport_type === "http-streamable" ? "HTTP Streamable" : service.transport_type === "stdio" ? "Stdio" : "SSE"}</span>
-                    {canEdit && !service.is_builtin ? <button type="button" className={`wk-mcp-status ${service.enabled === false ? "" : "is-enabled"}`} role="switch" aria-checked={service.enabled !== false} disabled={busyId === service.id} onClick={() => void toggle(service)}><span className="wk-mcp-status-dot" aria-hidden="true" />{service.enabled === false ? t("mcpSettings.disabled") : t("mcpSettings.enabled")}</button> : <span className={`wk-mcp-status ${service.enabled === false ? "" : "is-enabled"}`}><span className="wk-mcp-status-dot" aria-hidden="true" />{service.enabled === false ? t("mcpSettings.disabled") : t("mcpSettings.enabled")}</span>}
+                    <span className="text-[.82rem] text-[#66758b]">{service.transport_type === "http-streamable" ? "HTTP Streamable" : service.transport_type === "stdio" ? "Stdio" : "SSE"}</span>
+                    {canEdit && !service.is_builtin ? <button type="button" className={`${mcpStatus} ${service.enabled === false ? "" : "text-[#137333]!"}`} role="switch" aria-checked={service.enabled !== false} disabled={busyId === service.id} onClick={() => void toggle(service)}><span className={`inline-block h-[7px] w-[7px] rounded-full ${service.enabled === false ? "bg-[#98a2b8]" : "bg-[#07c05f]"}`} aria-hidden="true" />{service.enabled === false ? t("mcpSettings.disabled") : t("mcpSettings.enabled")}</button> : <span className={`${mcpStatus} ${service.enabled === false ? "" : "text-[#137333]!"}`}><span className={`inline-block h-[7px] w-[7px] rounded-full ${service.enabled === false ? "bg-[#98a2b8]" : "bg-[#07c05f]"}`} aria-hidden="true" />{service.enabled === false ? t("mcpSettings.disabled") : t("mcpSettings.enabled")}</span>}
                   </div>
                 </div>
               </div>
             </article>
           ))}
-          {canEdit ? <button type="button" className="wk-mcp-card wk-mcp-card-add" onClick={() => openEditor()}><span className="wk-mcp-card-add-icon" aria-hidden="true">＋</span><span>{t("mcpSettings.addService")}</span></button> : null}
+          {canEdit ? <button type="button" className="flex min-h-[88px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-[10px] border border-[#dce3ed] border-dashed bg-transparent p-3 text-center text-[#66758b] [font:inherit] [transition:border-color_.18s_ease,background_.18s_ease] hover:border-[#07c05f] hover:bg-[rgba(7,192,95,.06)] hover:text-[#07c05f] hover:outline-none focus-visible:border-[#07c05f] focus-visible:bg-[rgba(7,192,95,.06)] focus-visible:text-[#07c05f] focus-visible:outline-none" onClick={() => openEditor()}><span className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-[#f3f5f8] text-[18px]" aria-hidden="true">＋</span><span>{t("mcpSettings.addService")}</span></button> : null}
         </div>
       )}
       {draft ? (
         <div
-          className="wks-overlay wk-mcp-overlay"
+          className="wks-overlay z-[1200]!"
           data-testid="mcp-editor-overlay"
         >
           <div
@@ -846,13 +859,13 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
             <div className="wk-settings-panel-heading">
               <div>
                 <h3>{draft.id ? t("mcpServiceDialog.editTitle") : t("mcpServiceDialog.addTitle")}</h3>
-                <p className="wk-muted wk-mcp-subtitle">
+                <p className="wk-muted flex items-center gap-2">
                   {draft.transportType === "http-streamable" ? "HTTP Streamable" : "SSE"}
                   <span
                     className={
                       draft.enabled
-                        ? "wk-mcp-badge wk-mcp-badge-ok"
-                        : "wk-mcp-badge wk-mcp-badge-muted"
+                        ? mcpBadgeOk
+                        : mcpBadgeMuted
                     }
                   >
                     {draft.enabled ? t("mcpSettings.enabled") : t("mcpSettings.disabled")}
@@ -867,10 +880,10 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                 {t("common.close")}
               </Button>
             </div>
-            <nav className="wk-mcp-steps" aria-label={t("mcpMetadata.setupProgress")}>
+            <nav className="mt-[.6rem] mb-[.2rem] flex items-center gap-2" aria-label={t("mcpMetadata.setupProgress")}>
               <button
                 type="button"
-                className={step === 0 ? "is-active" : step > 0 ? "is-done" : ""}
+                className={`${mcpStepButton} ${step === 0 ? "text-[#2e6de6]!" : step > 0 ? "text-[#506078]!" : ""}`}
                 aria-current={step === 0 ? "step" : undefined}
                 disabled={dialogBusy}
                 onClick={() => setStep(0)}
@@ -880,7 +893,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
               <span aria-hidden="true"> → </span>
               <button
                 type="button"
-                className={step === 1 ? "is-active" : ""}
+                className={`${mcpStepButton} ${step === 1 ? "text-[#2e6de6]!" : ""}`}
                 aria-current={step === 1 ? "step" : undefined}
                 disabled={dialogBusy}
                 onClick={() => {
@@ -936,7 +949,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                         onChange={(event) => setField("name", event.target.value)}
                       />
                     </label>
-                    <div className="wk-mcp-toggle-row">
+                    <div className="flex flex-wrap items-center gap-[.6rem]">
                       <label className="wk-checkbox flex-none mt-0 whitespace-nowrap">
                         <input
                           type="checkbox"
@@ -1088,7 +1101,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                           />
                         </label>
                         <p className="wk-muted">{t("mcpServiceDialog.apiKeyHeaderDesc")}</p>
-                        {draft.id ? <div className="wk-mcp-credential-card"><div><strong>{t("mcpServiceDialog.credentialValue")}</strong><span className={draft.credentialConfigured ? "wk-mcp-credential-status is-configured" : "wk-mcp-credential-status"}>{draft.credentialConfigured ? "✓ " + t("common.success") : t("mcpServiceDialog.optional")}</span></div><label>{draft.credentialConfigured ? t("common.replaceValue") : t("mcpServiceDialog.credentialValue")}<input type="password" autoComplete="new-password" value={draft.apiKey} placeholder={t("mcpServiceDialog.optional")} onChange={(event) => setField("apiKey", event.target.value)} /></label>{draft.credentialConfigured ? <Button type="button" disabled={saving} onClick={() => void clearMcpCredential()}>{t("common.delete")}</Button> : null}</div> : <label>{t("mcpServiceDialog.credentialValue")}<input type="password" autoComplete="new-password" value={draft.apiKey} placeholder={t("mcpServiceDialog.optional")} onChange={(event) => setField("apiKey", event.target.value)} /></label>}
+                        {draft.id ? <div className="wk-mcp-credential-card grid gap-[.65rem] rounded-[7px] border border-[#dce3ed] bg-[#f7f9fc] p-3"><div className="flex items-center justify-between gap-3"><strong>{t("mcpServiceDialog.credentialValue")}</strong><span className={`text-[.8rem] text-[#66758b] ${draft.credentialConfigured ? "text-[#16845b]! font-semibold" : ""}`}>{draft.credentialConfigured ? "✓ " + t("common.success") : t("mcpServiceDialog.optional")}</span></div><label>{draft.credentialConfigured ? t("common.replaceValue") : t("mcpServiceDialog.credentialValue")}<input type="password" autoComplete="new-password" value={draft.apiKey} placeholder={t("mcpServiceDialog.optional")} onChange={(event) => setField("apiKey", event.target.value)} /></label>{draft.credentialConfigured ? <Button type="button" disabled={saving} onClick={() => void clearMcpCredential()}>{t("common.delete")}</Button> : null}</div> : <label>{t("mcpServiceDialog.credentialValue")}<input type="password" autoComplete="new-password" value={draft.apiKey} placeholder={t("mcpServiceDialog.optional")} onChange={(event) => setField("apiKey", event.target.value)} /></label>}
                       </>
                     ) : null}
                   </fieldset>
@@ -1159,7 +1172,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                         <p className="wk-muted">{t("mcpMetadata.usageHint")}</p>
                       </div>
                     </div>
-                    <div className="wk-mcp-usage-heading">
+                    <div className="flex items-center justify-between gap-[.8rem]">
                       <label className="wk-form-label">
                         {t("mcpMetadata.usageInstructions")}
                       </label>
@@ -1184,7 +1197,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                         setField("usageInstructions", event.target.value)
                       }
                     />
-                    <span className="wk-muted wk-mcp-usage-counter">
+                    <span className="wk-muted block text-right text-[.78rem]">
                       {draft.usageInstructions.length}/16000
                     </span>
                     <p className="wk-muted">{t("mcpMetadata.generateHint")}</p>
@@ -1200,8 +1213,8 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                   ) : null}
                 </>
               )}
-              <div className="wk-mcp-footer">
-                <div className="wk-mcp-footer-left">
+              <div className="wk-mcp-footer sticky bottom-0 mt-[1.2rem] flex items-center justify-between gap-3 border-t border-[#edf0f5] bg-white px-0 pt-[.6rem] pb-[.2rem]">
+                <div className="flex flex-1">
                   {step === 1 ? (
                     <Button
                       type="button"
@@ -1212,7 +1225,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                     </Button>
                   ) : null}
                 </div>
-                <div className="wk-mcp-footer-right">
+                <div className="flex gap-[.6rem]">
                   <Button
                     type="button"
                     disabled={saving}
