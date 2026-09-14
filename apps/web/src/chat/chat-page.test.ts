@@ -319,6 +319,7 @@ test('message list renders the Vue anatomy: date separators, user pill, plain as
   assert.match(html, /wk-chat-answer-toolbar/);
   assert.match(html, /aria-label="复制"/);
   assert.match(html, /aria-label="添加到知识库"/);
+  assert.match(html, /<button[^>]*class="wk-chat-bookmark[^>]*aria-label="添加到知识库"[^>]*aria-disabled="true"[^>]*disabled=""/);
   assert.match(html, /The answer is 42/);
   // Scroll-to-bottom only appears after the user scrolls up (client-only).
   assert.doesNotMatch(html, /wk-chat-scroll-bottom/);

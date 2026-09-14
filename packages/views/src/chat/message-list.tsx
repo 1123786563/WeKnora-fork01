@@ -111,7 +111,7 @@ function CopyIcon() {
 function BookmarkAnswerButton({ copy: copyTable }: { copy: ChatCopyTable }) {
   // Vue botmsg.vue adds the answer to the knowledge manual editor; the React
   // shell has no manual-editor surface yet, so the icon renders disabled.
-  return <button type="button" className={`wk-chat-bookmark ${ANSWER_TOOL_BUTTON}`} aria-label={copyTable.addToKnowledgeBase} title={copyTable.addToKnowledgeBase} aria-disabled="true">
+  return <button type="button" className={`wk-chat-bookmark ${ANSWER_TOOL_BUTTON}`} aria-label={copyTable.addToKnowledgeBase} title={copyTable.addToKnowledgeBase} aria-disabled="true" disabled>
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M4 2.5h8a1 1 0 0 1 1 1V14l-5-2.6L3 14V3.5a1 1 0 0 1 1-1Z" />
       <path d="M8 5.5v4M6 7.5h4" />
