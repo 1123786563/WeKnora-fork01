@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { KnowledgeDocument, WeKnoraClient } from '@weknora/api-client';
+import type { Locale } from '@weknora/i18n';
 import { Button, Card, Status } from '@weknora/ui';
 import { buildDocumentPreview, DocumentPreviewContent, isInlinePreviewKind, previewBodyAsBlob, readPreviewText, type InlinePreviewKind } from './preview.ts';
 import { createTranslator, useAppLocale } from '../i18n.ts';
@@ -13,15 +14,24 @@ interface KnowledgeDocumentDetailPageProps {
   onBack: () => void;
 }
 
+const DETAIL_COPY: Record<Locale, { load: string; bytes: string; status: string; source: string; folder: string; type: string; root: string; unavailable: string; downloadOnly: string; loading: string; retry: string; download: string; downloadFailed: string }> = {
+  'zh-CN': { load: '文档加载失败', bytes: '文档内容读取失败', status: '状态', source: '来源', folder: '文件夹', type: '类型', root: '根目录', unavailable: '处理完成后才能预览文档。当前状态以服务端为准。', downloadOnly: '此文件类型不支持内嵌预览，请下载原文件。', loading: '正在加载预览…', retry: '重试预览', download: '下载', downloadFailed: '下载失败。' },
+  'en-US': { load: 'Unable to load document', bytes: 'Unable to load document bytes', status: 'Status', source: 'Source', folder: 'Folder', type: 'Type', root: 'Root', unavailable: 'Preview is unavailable until processing reaches completed. Current status is authoritative.', downloadOnly: 'Inline preview is unavailable for this file type. Download the original file instead.', loading: 'Loading preview…', retry: 'Retry preview', download: 'Download', downloadFailed: 'Download failed.' },
+  'ja-JP': { load: 'ドキュメントを読み込めません', bytes: 'ドキュメント内容を読み込めません', status: '状態', source: 'ソース', folder: 'フォルダー', type: '種類', root: 'ルート', unavailable: '処理が完了するまでプレビューできません。現在の状態はサーバーを正とします。', downloadOnly: 'このファイル形式はインラインプレビューに対応していません。元のファイルをダウンロードしてください。', loading: 'プレビューを読み込み中…', retry: 'プレビューを再試行', download: 'ダウンロード', downloadFailed: 'ダウンロードに失敗しました。' },
+  'ko-KR': { load: '문서를 불러오지 못했습니다', bytes: '문서 내용을 불러오지 못했습니다', status: '상태', source: '소스', folder: '폴더', type: '유형', root: '루트', unavailable: '처리가 완료될 때까지 미리보기를 사용할 수 없습니다. 현재 상태는 서버 기준입니다.', downloadOnly: '이 파일 형식은 인라인 미리보기를 지원하지 않습니다. 원본 파일을 다운로드하세요.', loading: '미리보기를 불러오는 중…', retry: '미리보기 다시 시도', download: '다운로드', downloadFailed: '다운로드하지 못했습니다.' },
+  'ru-RU': { load: 'Не удалось загрузить документ', bytes: 'Не удалось загрузить содержимое документа', status: 'Статус', source: 'Источник', folder: 'Папка', type: 'Тип', root: 'Корень', unavailable: 'Предпросмотр станет доступен после завершения обработки. Текущий статус определяется сервером.', downloadOnly: 'Для этого типа файла нет встроенного предпросмотра. Скачайте исходный файл.', loading: 'Загрузка предпросмотра…', retry: 'Повторить предпросмотр', download: 'Скачать', downloadFailed: 'Не удалось скачать файл.' },
+};
+
 export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: KnowledgeDocumentDetailPageProps) {
   const locale = useAppLocale();
   const t = createTranslator(locale);
+  const copy = DETAIL_COPY[locale];
   const [state, setState] = useState<{ status: 'loading' } | { status: 'success'; document: KnowledgeDocument } | { status: 'error'; message: string }>({ status: 'loading' });
   const [timelineSteps, setTimelineSteps] = useState<KnowledgeTimelineStep[]>([]);
   useEffect(() => {
     let active = true;
     setState({ status: 'loading' });
-    void client.knowledgeBases.documents.get(documentId).then((document) => { if (active) setState({ status: 'success', document }); }).catch((error: unknown) => { if (active) setState({ status: 'error', message: error instanceof Error ? error.message : 'Unable to load document' }); });
+    void client.knowledgeBases.documents.get(documentId).then((document) => { if (active) setState({ status: 'success', document }); }).catch((error: unknown) => { if (active) setState({ status: 'error', message: error instanceof Error ? error.message : copy.load }); });
     return () => { active = false; };
   }, [client, documentId]);
 
@@ -46,7 +56,7 @@ export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: Know
   }, [client, documentId, parseStatus]);
 
   return <main className="wk-page wk-document-detail-page max-w-[820px]! mx-auto box-border px-[1.25rem] py-12"><header className="wk-header mb-6 flex items-start justify-between gap-4"><div><p className="wk-eyebrow m-0 text-[0.78rem] font-bold uppercase tracking-[0.08em] text-primary">{t('knowledgeBase.detail.eyebrow')}</p><h1 className="text-[clamp(1.8rem,5vw,2.5rem)] my-[0.35rem]">{state.status === 'success' ? state.document.file_name || state.document.title || documentId : documentId}</h1></div><Button type="button" onClick={onBack}>{t('knowledgeBase.detail.back')}</Button></header>
-    {state.status === 'loading' ? <Status>Loading document…</Status> : null}
+    {state.status === 'loading' ? <Status>{t('common.loading')}</Status> : null}
     {state.status === 'error' ? <Status tone="error">{state.message}</Status> : null}
     {state.status === 'success' && timelineSteps.length > 0 ? <Card><section aria-label={t('knowledgeBase.timeline.title')} className="wk-processing-timeline"><strong>{t('knowledgeBase.timeline.title')}</strong><ol>{timelineSteps.map((step) => <li key={step.stage} data-state={step.state}>{t('knowledgeBase.timeline.stage.' + step.stage)} — {t('knowledgeBase.timeline.' + step.state)}</li>)}</ol></section></Card> : null}
   {state.status === 'success' ? <DocumentDetail client={client} document={state.document} previewPath={client.knowledgeBases.documents.previewPath(documentId)} downloadPath={client.knowledgeBases.documents.downloadPath(documentId)} /> : null}
@@ -60,12 +70,9 @@ type PreviewState =
   | { status: 'blob'; url: string }
   | { status: 'error'; message: string };
 
-function detailError(error: unknown): string {
-  return error instanceof Error ? error.message : 'Unable to load document bytes';
-}
-
 function DocumentDetail({ document, client, previewPath, downloadPath }: { document: KnowledgeDocument; client: WeKnoraClient; previewPath: string; downloadPath: string }) {
   const model = buildDocumentPreview(document, previewPath);
+  const copy = DETAIL_COPY[useAppLocale()];
   const [previewState, setPreviewState] = useState<PreviewState>({ status: 'idle' });
   const [downloadState, setDownloadState] = useState<'idle' | 'loading' | 'error'>('idle');
   const [previewAttempt, setPreviewAttempt] = useState(0);
@@ -89,7 +96,7 @@ function DocumentDetail({ document, client, previewPath, downloadPath }: { docum
       objectUrl = URL.createObjectURL(previewBodyAsBlob(response.body, contentType));
       setPreviewState({ status: 'blob', url: objectUrl });
     }).catch((error: unknown) => {
-      if (active && !(error instanceof Error && error.name === 'AbortError')) setPreviewState({ status: 'error', message: detailError(error) });
+      if (active && !(error instanceof Error && error.name === 'AbortError')) setPreviewState({ status: 'error', message: error instanceof Error ? error.message : copy.bytes });
     });
     return () => {
       active = false;
@@ -116,8 +123,8 @@ function DocumentDetail({ document, client, previewPath, downloadPath }: { docum
   }
 
   const inlineKind: InlinePreviewKind | undefined = isInlinePreviewKind(model.kind) ? model.kind : undefined;
-  return <Card><dl className="wk-document-metadata grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-[0.75rem] mb-[1.25rem] ml-0 mr-0 mt-0 [&_dd]:mb-0 [&_dd]:ml-0 [&_dd]:mr-0 [&_dd]:mt-[0.2rem] [&_dd]:[overflow-wrap:anywhere] [&_div]:bg-canvas [&_div]:p-[0.7rem] [&_div]:rounded-control [&_dt]:text-[0.78rem] [&_dt]:text-muted"><div><dt>Status</dt><dd>{String(document.parse_status || 'unknown')}</dd></div><div><dt>Source</dt><dd>{String(document.source || 'file')}</dd></div><div><dt>Folder</dt><dd>{String(document.folder_path || 'Root')}</dd></div><div><dt>Type</dt><dd>{String(document.file_type || model.kind)}</dd></div></dl>
-    {!model.ready ? <Status tone="warning">Preview is unavailable until processing reaches completed. Current status is authoritative.</Status> : model.downloadOnly ? <Status>Inline preview is unavailable for this file type. Download the original file instead.</Status> : previewState.status === 'loading' ? <Status>Loading preview…</Status> : previewState.status === 'error' ? <><Status tone="error">{previewState.message}</Status><Button type="button" onClick={() => setPreviewAttempt((attempt) => attempt + 1)}>Retry preview</Button></> : previewState.status === 'text' && inlineKind ? <DocumentPreviewContent kind={inlineKind} text={previewState.text} fileName={model.fileName} /> : previewState.status === 'blob' && inlineKind ? <DocumentPreviewContent kind={inlineKind} url={previewState.url} fileName={model.fileName} /> : null}
-    <p><Button type="button" loading={downloadState === 'loading'} onClick={() => { setDownloadState('idle'); void download(); }}>Download {model.fileName}</Button>{downloadState === 'error' ? <Status tone="error">Download failed.</Status> : null}</p>
+  return <Card><dl className="wk-document-metadata grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-[0.75rem] mb-[1.25rem] ml-0 mr-0 mt-0 [&_dd]:mb-0 [&_dd]:ml-0 [&_dd]:mr-0 [&_dd]:mt-[0.2rem] [&_dd]:[overflow-wrap:anywhere] [&_div]:bg-canvas [&_div]:p-[0.7rem] [&_div]:rounded-control [&_dt]:text-[0.78rem] [&_dt]:text-muted"><div><dt>{copy.status}</dt><dd>{String(document.parse_status || 'unknown')}</dd></div><div><dt>{copy.source}</dt><dd>{String(document.source || 'file')}</dd></div><div><dt>{copy.folder}</dt><dd>{String(document.folder_path || copy.root)}</dd></div><div><dt>{copy.type}</dt><dd>{String(document.file_type || model.kind)}</dd></div></dl>
+    {!model.ready ? <Status tone="warning">{copy.unavailable}</Status> : model.downloadOnly ? <Status>{copy.downloadOnly}</Status> : previewState.status === 'loading' ? <Status>{copy.loading}</Status> : previewState.status === 'error' ? <><Status tone="error">{previewState.message}</Status><Button type="button" onClick={() => setPreviewAttempt((attempt) => attempt + 1)}>{copy.retry}</Button></> : previewState.status === 'text' && inlineKind ? <DocumentPreviewContent kind={inlineKind} text={previewState.text} fileName={model.fileName} /> : previewState.status === 'blob' && inlineKind ? <DocumentPreviewContent kind={inlineKind} url={previewState.url} fileName={model.fileName} /> : null}
+    <p><Button type="button" loading={downloadState === 'loading'} onClick={() => { setDownloadState('idle'); void download(); }}>{copy.download} {model.fileName}</Button>{downloadState === 'error' ? <Status tone="error">{copy.downloadFailed}</Status> : null}</p>
   </Card>;
 }
