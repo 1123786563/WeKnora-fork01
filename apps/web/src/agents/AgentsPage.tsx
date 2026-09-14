@@ -105,7 +105,7 @@ function Icon({ name, size = 16 }: { name: string; size?: number }) {
 /** Three-star sparkles decoration, ported from the Vue header create button. */
 function SparklesIcon({ size = 19 }: { size?: number }) {
   return (
-    <svg className="wk-agent-sparkles" width={size} height={size} viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg className="animate-[wk-agent-twinkle_2s_ease-in-out_infinite]" width={size} height={size} viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path d="M10 3L10.8 6.2C10.9 6.7 11.3 7.1 11.8 7.2L15 8L11.8 8.8C11.3 8.9 10.9 9.3 10.8 9.8L10 13L9.2 9.8C9.1 9.3 8.7 8.9 8.2 8.8L5 8L8.2 7.2C8.7 7.1 9.1 6.7 9.2 6.2L10 3Z" fill="currentColor" stroke="currentColor" strokeWidth="0.8" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M15.5 4L15.8 5.2C15.85 5.45 16.05 5.65 16.3 5.7L17.5 6L16.3 6.3C16.05 6.35 15.85 6.55 15.8 6.8L15.5 8L15.2 6.8C15.15 6.55 14.95 6.35 14.7 6.3L13.5 6L14.7 5.7C14.95 5.65 15.15 5.45 15.2 5.2L15.5 4Z" fill="currentColor" stroke="currentColor" strokeWidth="0.6" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M4.5 13L4.8 14.2C4.85 14.45 5.05 14.65 5.3 14.7L6.5 15L5.3 15.3C5.05 15.35 4.85 15.55 4.8 15.8L4.5 17L4.2 15.8C4.15 15.55 3.95 15.35 3.7 15.3L2.5 15L3.7 14.7C3.95 14.65 4.15 14.45 4.2 14.2L4.5 13Z" fill="currentColor" stroke="currentColor" strokeWidth="0.6" strokeLinecap="round" strokeLinejoin="round" />
@@ -118,16 +118,16 @@ function AgentAvatar({ agent }: { agent: AgentCardModel }) {
   if (agent.is_builtin) {
     const smart = agent.config?.agent_mode === 'smart-reasoning';
     return (
-      <span className={`wk-agent-builtin-avatar ${smart ? 'agent' : 'normal'}`}>
+      <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${smart ? 'bg-[linear-gradient(135deg,rgba(124,77,255,0.15)_0%,rgba(124,77,255,0.08)_100%)] text-[#7c4dff]' : 'bg-[linear-gradient(135deg,rgba(7,192,95,0.15)_0%,rgba(7,192,95,0.08)_100%)] text-[#0a8f4c]'}`}>
         <Icon name={smart ? 'control-platform' : 'chat'} size={18} />
       </span>
     );
   }
-  if (agent.avatar) return <span className="wk-agent-builtin-avatar agent-emoji">{agent.avatar}</span>;
+  if (agent.avatar) return <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[rgba(127,127,127,0.12)] text-[18px] leading-none">{agent.avatar}</span>;
   const gradient = avatarGradient(agent.name || '');
   return (
     <span
-      className="wk-agent-avatar"
+      className="flex h-[22px] w-[22px] shrink-0 items-center justify-center overflow-hidden rounded-[5px] text-[11px] font-semibold text-white"
       style={{ background: `linear-gradient(135deg, ${gradient.from} 0%, ${gradient.to} 100%)` }}
     >{avatarLetter(agent.name || '')}</span>
   );
@@ -139,6 +139,16 @@ const FEATURE_BADGE_ICONS: Record<string, string> = {
   knowledge: 'folder',
   mcp: 'extension',
   multiTurn: 'chat-bubble',
+};
+
+// agents.css .wk-agent-feature-badge.badge-* tones as utilities (static map).
+const FEATURE_BADGE_TONES: Record<string, string> = {
+  modeNormal: 'bg-[rgba(7,192,95,0.08)] text-[#0a8f4c]',
+  knowledge: 'bg-[rgba(7,192,95,0.08)] text-[#0a8f4c]',
+  modeAgent: 'bg-[rgba(124,77,255,0.08)] text-[#7c4dff]',
+  webSearch: 'bg-[rgba(255,152,0,0.08)] text-[#e37318]',
+  mcp: 'bg-[rgba(236,72,153,0.08)] text-[#d54941]',
+  multiTurn: 'bg-[rgba(59,130,246,0.08)] text-[#2e6de6]',
 };
 
 function FeatureBadgeSvg({ badge }: { badge: string }) {
@@ -168,24 +178,24 @@ export interface AgentRailItem {
 
 export function AgentRail({ t, items, onSelect }: { t: Translate; items: AgentRailItem[]; onSelect: (key: string) => void }) {
   return (
-    <nav className="wk-agent-rail" aria-label={t('agent.title')}>
+    <nav className="flex w-14 min-h-0 shrink-0 flex-col items-stretch gap-0.5 overflow-y-auto box-border border-r border-[rgba(127,127,127,0.14)] px-1.5 py-2" aria-label={t('agent.title')}>
       {items.map((item) => (
         <button
           key={item.key}
           type="button"
           data-space-key={item.key}
-          className={`wk-agent-rail-item${item.active ? ' wk-agent-rail-item-active' : ''}`}
+          className={`flex cursor-pointer flex-col items-center gap-[3px] rounded-lg border-none bg-transparent px-[2px] py-2 text-inherit transition-[background] duration-150 ease-[ease] hover:bg-[rgba(127,127,127,0.1)]${item.active ? ' bg-[rgba(7,192,95,0.12)] text-[#06b04d]' : ''}`}
           aria-current={item.active ? 'true' : undefined}
           title={`${item.label}${item.count === undefined ? '' : ` (${item.count})`}`}
           onClick={() => onSelect(item.key)}
         >
-          <span className="wk-agent-rail-icon">
+          <span className="inline-flex items-center justify-center">
             {item.icon === 'space'
-              ? <span className="wk-agent-rail-space-avatar">{avatarLetter(item.avatarName ?? item.label)}</span>
+              ? <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-md bg-[linear-gradient(135deg,#667eea_0%,#764ba2_100%)] text-[11px] font-semibold text-white">{avatarLetter(item.avatarName ?? item.label)}</span>
               : <Icon name={item.icon === 'workspace' ? 'workspace' : item.icon} size={16} />}
           </span>
-          <span className="wk-agent-rail-label">{item.label}</span>
-          {item.count !== undefined ? <span className="wk-agent-rail-count">{item.count}</span> : null}
+          <span className="max-w-full truncate text-[10px] leading-[14px]">{item.label}</span>
+          {item.count !== undefined ? <span className="text-[10px] leading-[14px] opacity-70">{item.count}</span> : null}
         </button>
       ))}
     </nav>
@@ -209,10 +219,10 @@ function AgentSectionHeader({ section, t, viewer, collapsed, onToggle }: {
       onClick={() => onToggle(section.key)}
     >
       <Icon name={SECTION_ICON_KEYS[section.key]} size={14} />
-      {subIcon ? <span className="wk-agent-section-subicon"><Icon name={subIcon} size={12} /></span> : null}
+      {subIcon ? <span className="-ml-1 inline-flex opacity-75"><Icon name={subIcon} size={12} /></span> : null}
       <span>{t(agentSectionLabelKey(section.key, viewer))}</span>
       <span className="wk-agent-section-count">{section.count}</span>
-      <span className="wk-agent-section-toggle" aria-hidden="true">{collapsed ? '›' : '⌄'}</span>
+      <span className="ml-1 opacity-70" aria-hidden="true">{collapsed ? '›' : '⌄'}</span>
     </button>
   );
 }
@@ -242,51 +252,54 @@ export function AgentCard({ agent, t, viewer, favorited, menuOpen, onOpen, onTog
   const actions = cardActions(agent, viewer);
   const badge = cornerBadge(agent, viewer.userId);
   const modeTitleKey = agent.config?.agent_mode === 'smart-reasoning' ? 'agent.mode.agent' : 'agent.mode.normal';
+  const modeTone = mode === 'agent'
+    ? 'bg-[linear-gradient(135deg,var(--wk-bg,#fff)_0%,rgba(124,77,255,0.04)_100%)] hover:bg-[linear-gradient(135deg,var(--wk-bg,#fff)_0%,rgba(124,77,255,0.08)_100%)] hover:shadow-[0_4px_12px_rgba(124,77,255,0.12)]'
+    : 'bg-[linear-gradient(135deg,var(--wk-bg,#fff)_0%,rgba(7,192,95,0.04)_100%)] hover:bg-[linear-gradient(135deg,var(--wk-bg,#fff)_0%,rgba(7,192,95,0.08)_100%)] hover:shadow-[0_4px_12px_rgba(7,192,95,0.12)]';
   return (
     <article
-      className={`wk-agent-card agent-mode-${mode}${agent.isMine ? '' : ' wk-agent-card-shared'}`}
+      className={`wk-agent-card agent-mode-${mode}${agent.isMine ? '' : ' wk-agent-card-shared'} group/card relative flex h-[136px] min-h-[136px] cursor-pointer flex-col overflow-hidden box-border rounded-lg border border-[rgba(127,127,127,0.25)] px-3.5 py-3 shadow-[0_1px_3px_rgba(0,0,0,0.04)] transition-all duration-[250ms] ease-[ease] hover:border-[#07c05f] ${modeTone}`}
       data-agent-id={agent.id}
       onClick={() => onOpen(agent)}
     >
-      <div className="wk-agent-card-decoration" aria-hidden="true">
-        <svg className="star-icon" width="24" height="24" viewBox="0 0 20 20" fill="none"><path d="M10 3L10.8 6.2C10.9 6.7 11.3 7.1 11.8 7.2L15 8L11.8 8.8C11.3 8.9 10.9 9.3 10.8 9.8L10 13L9.2 9.8C9.1 9.3 8.7 8.9 8.2 8.8L5 8L8.2 7.2C8.7 7.1 9.1 6.7 9.2 6.2L10 3Z" stroke="currentColor" strokeWidth="0.8" strokeLinecap="round" strokeLinejoin="round" fill="currentColor" fillOpacity="0.15" /></svg>
-        <svg className="star-icon small" width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M10 3L10.8 6.2C10.9 6.7 11.3 7.1 11.8 7.2L15 8L11.8 8.8C11.3 8.9 10.9 9.3 10.8 9.8L10 13L9.2 9.8C9.1 9.3 8.7 8.9 8.2 8.8L5 8L8.2 7.2C8.7 7.1 9.1 6.7 9.2 6.2L10 3Z" stroke="currentColor" strokeWidth="0.8" strokeLinecap="round" strokeLinejoin="round" fill="currentColor" fillOpacity="0.15" /></svg>
+      <div className={`pointer-events-none absolute top-3 right-11 z-0 flex items-start gap-1 transition-[color] duration-[250ms] ease-[ease] ${mode === 'agent' ? 'text-[rgba(124,77,255,0.35)]' : 'text-[rgba(7,192,95,0.35)]'}`} aria-hidden="true">
+        <svg className="opacity-90" width="24" height="24" viewBox="0 0 20 20" fill="none"><path d="M10 3L10.8 6.2C10.9 6.7 11.3 7.1 11.8 7.2L15 8L11.8 8.8C11.3 8.9 10.9 9.3 10.8 9.8L10 13L9.2 9.8C9.1 9.3 8.7 8.9 8.2 8.8L5 8L8.2 7.2C8.7 7.1 9.1 6.7 9.2 6.2L10 3Z" stroke="currentColor" strokeWidth="0.8" strokeLinecap="round" strokeLinejoin="round" fill="currentColor" fillOpacity="0.15" /></svg>
+        <svg className="mt-[10px] opacity-70" width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M10 3L10.8 6.2C10.9 6.7 11.3 7.1 11.8 7.2L15 8L11.8 8.8C11.3 8.9 10.9 9.3 10.8 9.8L10 13L9.2 9.8C9.1 9.3 8.7 8.9 8.2 8.8L5 8L8.2 7.2C8.7 7.1 9.1 6.7 9.2 6.2L10 3Z" stroke="currentColor" strokeWidth="0.8" strokeLinecap="round" strokeLinejoin="round" fill="currentColor" fillOpacity="0.15" /></svg>
       </div>
       <button
         type="button"
-        className={`wk-agent-favorite-star${favorited ? ' is-favorited' : ''}`}
+        className={`absolute top-0 right-0 z-[3] flex h-6 w-6 cursor-pointer items-center justify-center rounded-md border-none bg-transparent text-[#575e6b] transition-[opacity,background,color] duration-150 ease-[ease] hover:bg-[rgba(127,127,127,0.12)] hover:text-[#e37318] ${favorited ? 'opacity-100 text-[#e37318]' : 'opacity-0 group-hover/card:opacity-100'}`}
         aria-pressed={favorited ? 'true' : 'false'}
         aria-label={t('common.favorite')}
         onClick={(event) => { event.stopPropagation(); onToggleFavorite(agent.id); }}
       >
         <Icon name="star" size={14} />
       </button>
-      <div className="wk-agent-card-header">
-        <div className="wk-agent-card-header-left">
+      <div className="relative z-[1] mb-1.5 flex items-center justify-between gap-1">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           <AgentAvatar agent={agent} />
-          <span className="wk-agent-card-title" title={agent.name}>{agent.name}</span>
+          <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[15px] font-semibold leading-[22px] tracking-[0.01em]" title={agent.name}>{agent.name}</span>
         </div>
         {actions.length > 0 ? (
           <div className="wk-agent-card-more-wrap">
             <button
               type="button"
-              className={`wk-agent-more${menuOpen ? ' active-more' : ''}`}
+              className={`flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center gap-0.5 rounded-lg border-none bg-transparent transition-all duration-200 ease-[ease] group-hover/card:opacity-60 hover:bg-[rgba(127,127,127,0.12)] hover:opacity-100 ${menuOpen ? 'bg-[rgba(127,127,127,0.12)] opacity-100' : 'opacity-0'}`}
               aria-label={t('agent.manageAgents')}
               aria-haspopup="menu"
               aria-expanded={menuOpen ? 'true' : 'false'}
               onClick={(event) => { event.stopPropagation(); onToggleMenu(menuOpen ? null : agent.id); }}
             >
-              <span className="wk-agent-more-dot" /><span className="wk-agent-more-dot" /><span className="wk-agent-more-dot" />
+              <span className="h-[3px] w-[3px] rounded-full bg-current" /><span className="h-[3px] w-[3px] rounded-full bg-current" /><span className="h-[3px] w-[3px] rounded-full bg-current" />
             </button>
             {menuOpen ? (
-              <div className="wk-agent-card-menu" role="menu" onClick={(event) => event.stopPropagation()}>
+              <div className="absolute top-[30px] right-0 z-20 flex min-w-32 flex-col rounded-md bg-[var(--wk-bg,#fff)] p-1 shadow-[0_4px_16px_rgba(0,0,0,0.14)]" role="menu" onClick={(event) => event.stopPropagation()}>
                 {actions.map((action) => (
                   <button
                     key={action}
                     type="button"
                     role="menuitem"
                     data-action={action}
-                    className={`wk-agent-card-menu-item${action === 'delete' ? ' is-danger' : ''}`}
+                    className={`flex cursor-pointer items-center gap-2 rounded border-none px-2.5 py-[7px] text-left text-[13px] text-inherit hover:bg-[rgba(127,127,127,0.1)]${action === 'delete' ? ' text-[#d54941]' : ''}`}
                     onClick={() => onMenuAction(action, agent)}
                   >
                     <Icon name={ACTION_META[action]!.icon} size={14} />
@@ -298,22 +311,22 @@ export function AgentCard({ agent, t, viewer, favorited, menuOpen, onOpen, onTog
           </div>
         ) : null}
       </div>
-      <div className="wk-agent-card-content">
-        <div className="wk-agent-card-description">{agent.description || t('agent.noDescription')}</div>
+      <div className="relative z-[1] mb-1.5 flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden">
+        <div className="line-clamp-2 overflow-hidden text-[12px] font-normal leading-[18px] opacity-75">{agent.description || t('agent.noDescription')}</div>
       </div>
-      <div className="wk-agent-card-bottom">
-        <div className="wk-agent-card-badges">
-          {agent.disabledByMe ? <span className="wk-agent-disabled-badge">{t('agent.disabled')}</span> : null}
+      <div className="relative z-[1] mt-auto flex items-center justify-between border-t-[0.5px] border-t-[rgba(127,127,127,0.25)] pt-1.5">
+        <div className="flex items-center gap-1">
+          {agent.disabledByMe ? <span className="inline-flex items-center rounded bg-[rgba(127,127,127,0.12)] px-1.5 py-[2px] text-[11px]">{t('agent.disabled')}</span> : null}
           {badges.map((key) => (
-            <span key={key} className={`wk-agent-feature-badge badge-${key}`} title={key === 'modeNormal' || key === 'modeAgent' ? t(modeTitleKey) : t(FEATURE_BADGE_TITLE_KEYS[key]!)}>
+            <span key={key} className={`flex h-[22px] w-[22px] items-center justify-center rounded-[5px] transition-[background] duration-200 ease-[ease] ${FEATURE_BADGE_TONES[key] ?? ''}`} title={key === 'modeNormal' || key === 'modeAgent' ? t(modeTitleKey) : t(FEATURE_BADGE_TITLE_KEYS[key]!)}>
               <FeatureBadgeSvg badge={key} />
             </span>
           ))}
         </div>
         {!agent.isMine ? (
-          <span className="wk-agent-card-source"><Icon name="usergroup" size={12} />{agent.orgName}</span>
+          <span className="wk-agent-card-source inline-flex shrink-0 items-center gap-1 overflow-hidden text-ellipsis whitespace-nowrap rounded-[10px] bg-[rgba(127,127,127,0.1)] px-2 py-[2px] text-[11px] font-medium"><Icon name="usergroup" size={12} />{agent.orgName}</span>
         ) : badge ? (
-          <span className={`wk-agent-corner-badge is-${badge.kind}`}>
+          <span className="inline-flex shrink-0 items-center gap-[3px] rounded-[10px] bg-[rgba(127,127,127,0.1)] px-2 py-[2px] text-[11px] font-medium">
             {badge.kind === 'builtin' ? <Icon name="lock-on" size={12} /> : null}
             <span>{badge.kind === 'builtin' ? t('agent.builtin') : badge.name}</span>
           </span>
@@ -340,24 +353,24 @@ export function AgentDetailDrawer({ kind, agent, t, onClose, onUseInChat }: {
 }) {
   const config = agent.config;
   return (
-    <div className="wk-agent-drawer-overlay" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <aside className="wk-agent-drawer" role="dialog" aria-label={t('agent.detail.title')}>
-        <div className="wk-agent-drawer-header">
-          <h3 className="wk-agent-drawer-title">{t('agent.detail.title')}</h3>
-          <button type="button" className="wk-agent-drawer-close" aria-label={t('common.cancel')} onClick={onClose}><Icon name="close" size={16} /></button>
+    <div className="fixed inset-0 z-[1000] flex justify-end bg-[rgba(0,0,0,0.4)]" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <aside className="flex h-full w-[360px] max-w-[90vw] flex-col bg-[var(--wk-bg,#fff)] shadow-[-4px_0_24px_rgba(0,0,0,0.12)]" role="dialog" aria-label={t('agent.detail.title')}>
+        <div className="flex shrink-0 items-center justify-between border-b border-[rgba(127,127,127,0.2)] px-6 py-5">
+          <h3 className="m-0 text-[18px] font-semibold">{t('agent.detail.title')}</h3>
+          <button type="button" className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border-none bg-[rgba(127,127,127,0.1)]" aria-label={t('common.cancel')} onClick={onClose}><Icon name="close" size={16} /></button>
         </div>
-        <div className="wk-agent-drawer-body">
-          <div className="wk-agent-drawer-row"><span className="wk-agent-drawer-label">{t('agent.title')}</span><span className="wk-agent-drawer-value">{agent.name}</span></div>
-          <div className="wk-agent-drawer-row"><span className="wk-agent-drawer-label">{t('agent.noDescription')}</span><span className="wk-agent-drawer-value">{agent.description || t('agent.noDescription')}</span></div>
-          <div className="wk-agent-drawer-row"><span className="wk-agent-drawer-label">{t('agent.shareScope.title')}</span><span className="wk-agent-drawer-value wk-agent-drawer-scope">
+        <div className="flex flex-1 flex-col gap-5 overflow-y-auto p-6">
+          <div className="flex flex-col gap-1.5"><span className="text-[12px] leading-[1.4] opacity-65">{t('agent.title')}</span><span className="break-words text-[14px] leading-[1.5]">{agent.name}</span></div>
+          <div className="flex flex-col gap-1.5"><span className="text-[12px] leading-[1.4] opacity-65">{t('agent.noDescription')}</span><span className="break-words text-[14px] leading-[1.5]">{agent.description || t('agent.noDescription')}</span></div>
+          <div className="flex flex-col gap-1.5"><span className="text-[12px] leading-[1.4] opacity-65">{t('agent.shareScope.title')}</span><span className="flex flex-col gap-2 break-words text-[14px] leading-[1.5]">
             <span>{t('agent.shareScope.knowledgeBase')}: {scopeText(kbScope(config), t, 'agent.shareScope.kbAll', 'agent.shareScope.kbSelected', 'agent.shareScope.kbNone')}</span>
             <span>{t('agent.shareScope.chatModel')}: {config?.model_id ? t('agent.shareScope.modelConfigured') : t('agent.shareScope.modelNotSet')}</span>
             <span>{t('agent.shareScope.webSearch')}: {config?.web_search_enabled ? t('agent.shareScope.enabled') : t('agent.shareScope.disabled')}</span>
             <span>{t('agent.shareScope.mcp')}: {scopeText(mcpScope(config), t, 'agent.shareScope.mcpAll', 'agent.shareScope.mcpSelected', 'agent.shareScope.mcpNone')}</span>
           </span></div>
         </div>
-        <div className="wk-agent-drawer-footer">
-          <button type="button" className="wk-agent-btn wk-agent-btn-primary wk-agent-btn-block" onClick={() => onUseInChat(agent)}>{t('agent.detail.useInChat')}</button>
+        <div className="flex shrink-0 justify-end gap-2.5 border-t border-[rgba(127,127,127,0.2)] bg-[var(--wk-bg,#fff)] px-6 py-4">
+          <button type="button" className="inline-flex w-full cursor-pointer items-center justify-center rounded-md border-none bg-[#07c05f] px-[18px] py-2 text-[14px] text-white transition-[background] duration-200 ease-[ease] hover:bg-[#06b04d] disabled:cursor-default disabled:opacity-60" onClick={() => onUseInChat(agent)}>{t('agent.detail.useInChat')}</button>
         </div>
       </aside>
     </div>
@@ -371,16 +384,16 @@ export function AgentDeleteDialog({ agent, t, busy, onConfirm, onCancel }: {
 }) {
   if (!agent) return null;
   return (
-    <div className="wk-agent-dialog-overlay" onClick={(event) => { if (event.target === event.currentTarget) onCancel(); }}>
-      <div className="wk-agent-dialog" role="alertdialog" aria-label={t('agent.delete.confirmTitle')}>
-        <div className="wk-agent-dialog-header">
-          <span className="wk-agent-dialog-icon" aria-hidden="true"><Icon name="delete" size={18} /></span>
-          <span className="wk-agent-dialog-title">{t('agent.delete.confirmTitle')}</span>
+    <div className="fixed inset-0 z-[1100] flex items-start justify-center bg-[rgba(0,0,0,0.4)] pt-[40vh]" onClick={(event) => { if (event.target === event.currentTarget) onCancel(); }}>
+      <div className="w-[400px] max-w-[90vw] rounded-md bg-[var(--wk-bg,#fff)] p-4 shadow-[0_8px_32px_rgba(0,0,0,0.18)]" role="alertdialog" aria-label={t('agent.delete.confirmTitle')}>
+        <div className="mb-2 flex items-center">
+          <span className="mr-2 inline-flex text-[#d54941]" aria-hidden="true"><Icon name="delete" size={18} /></span>
+          <span className="text-[16px] font-semibold leading-6">{t('agent.delete.confirmTitle')}</span>
         </div>
-        <p className="wk-agent-dialog-text">{t('agent.delete.confirmMessage', { name: agent.name })}</p>
-        <div className="wk-agent-dialog-actions">
-          <button type="button" className="wk-agent-dialog-btn" onClick={onCancel}>{t('common.cancel')}</button>
-          <button type="button" className="wk-agent-dialog-btn is-confirm" disabled={busy} onClick={onConfirm}>{busy ? t('common.loading') : t('agent.delete.confirmButton')}</button>
+        <p className="m-0 mb-[21px] ml-[29px] text-[14px] leading-[22px] opacity-70">{t('agent.delete.confirmMessage', { name: agent.name })}</p>
+        <div className="flex justify-end gap-10">
+          <button type="button" className="cursor-pointer border-none bg-transparent p-0 text-[14px] text-inherit" onClick={onCancel}>{t('common.cancel')}</button>
+          <button type="button" className="cursor-pointer border-none bg-transparent p-0 text-[14px] text-[#d54941]" disabled={busy} onClick={onConfirm}>{busy ? t('common.loading') : t('agent.delete.confirmButton')}</button>
         </div>
       </div>
     </div>
@@ -428,37 +441,37 @@ export interface AgentsPageViewProps {
 function EmptyState({ t, space, canCreate, onCreate }: { t: Translate; space: string; canCreate: boolean; onCreate: () => void }) {
   if (space === 'favorites') {
     return (
-      <div className="wk-agent-empty">
-        <span className="wk-agent-empty-icon"><Icon name="star" size={48} /></span>
-        <span className="wk-agent-empty-title">{t('agent.empty.favoritesTitle')}</span>
-        <span className="wk-agent-empty-desc">{t('agent.empty.favoritesDescription')}</span>
+      <div className="col-span-full flex flex-1 flex-col items-center justify-center px-5 py-[60px]">
+        <span className="mb-5 opacity-40"><Icon name="star" size={48} /></span>
+        <span className="mb-2 text-[16px] font-semibold leading-[26px] opacity-60">{t('agent.empty.favoritesTitle')}</span>
+        <span className="text-[14px] leading-[22px] opacity-45">{t('agent.empty.favoritesDescription')}</span>
       </div>
     );
   }
   if (space === 'recents') {
     return (
-      <div className="wk-agent-empty">
-        <span className="wk-agent-empty-icon"><Icon name="history" size={48} /></span>
-        <span className="wk-agent-empty-title">{t('agent.empty.recentsTitle')}</span>
-        <span className="wk-agent-empty-desc">{t('agent.empty.recentsDescription')}</span>
+      <div className="col-span-full flex flex-1 flex-col items-center justify-center px-5 py-[60px]">
+        <span className="mb-5 opacity-40"><Icon name="history" size={48} /></span>
+        <span className="mb-2 text-[16px] font-semibold leading-[26px] opacity-60">{t('agent.empty.recentsTitle')}</span>
+        <span className="text-[14px] leading-[22px] opacity-45">{t('agent.empty.recentsDescription')}</span>
       </div>
     );
   }
   if (space === 'all' || space === 'mine') {
     return (
-      <div className="wk-agent-empty">
-        <span className="wk-agent-empty-title">{t('agent.empty.title')}</span>
-        <span className="wk-agent-empty-desc">{t('agent.empty.description')}</span>
+      <div className="col-span-full flex flex-1 flex-col items-center justify-center px-5 py-[60px]">
+        <span className="mb-2 text-[16px] font-semibold leading-[26px] opacity-60">{t('agent.empty.title')}</span>
+        <span className="text-[14px] leading-[22px] opacity-45">{t('agent.empty.description')}</span>
         {canCreate ? (
-          <button type="button" className="wk-agent-create-btn wk-agent-empty-btn" data-guide="agent-list-create" onClick={onCreate}><SparklesIcon size={18} /><span>{t('agent.createAgent')}</span></button>
+          <button type="button" className="wk-agent-empty-btn relative mt-5 inline-flex cursor-pointer items-center gap-1.5 overflow-hidden rounded-md border-none bg-[#07c05f] px-4 py-[7px] text-[14px] text-white transition-[background] duration-200 ease-[ease] hover:bg-[#06b04d]" data-guide="agent-list-create" onClick={onCreate}><SparklesIcon size={18} /><span>{t('agent.createAgent')}</span></button>
         ) : null}
       </div>
     );
   }
   return (
-    <div className="wk-agent-empty">
-      <span className="wk-agent-empty-title">{t('agent.empty.sharedTitle')}</span>
-      <span className="wk-agent-empty-desc">{t('agent.empty.sharedDescription')}</span>
+    <div className="col-span-full flex flex-1 flex-col items-center justify-center px-5 py-[60px]">
+      <span className="mb-2 text-[16px] font-semibold leading-[26px] opacity-60">{t('agent.empty.sharedTitle')}</span>
+      <span className="text-[14px] leading-[22px] opacity-45">{t('agent.empty.sharedDescription')}</span>
     </div>
   );
 }
@@ -489,27 +502,27 @@ export function AgentsPageView(props: AgentsPageViewProps) {
   });
   const hasCards = isSectioned ? sections.length > 0 : flatCards.length > 0;
   return (
-    <main className="wk-agent-page">
+    <main className="relative m-0 flex h-full min-h-0 flex-1 box-border">
       <AgentRail t={t} items={rail} onSelect={props.onSpaceChange} />
-      <div className="wk-agent-content">
-        <header className="wk-agent-header">
-          <div className="wk-agent-header-title">
-            <div className="wk-agent-title-row">
+      <div className="flex min-w-0 flex-1 flex-col pt-5 pl-7">
+        <header className="mb-4 flex items-center justify-between pr-7 [&_h2]:m-0 [&_h2]:text-[24px] [&_h2]:font-semibold [&_h2]:leading-8">
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2">
               <h2>{t('agent.title')}</h2>
               {canCreate ? (
-                <button type="button" className="wk-agent-header-create" data-guide="agent-list-create" title={t('agent.createAgent')} aria-label={t('agent.createAgent')} onClick={props.onCreate}><SparklesIcon /></button>
+                <button type="button" className="inline-flex h-7 w-7 min-w-7 cursor-pointer items-center justify-center rounded-md border border-[rgba(127,127,127,0.25)] bg-[rgba(127,127,127,0.08)] p-0 text-[#07c05f] transition-[background,border-color,color] duration-200 ease-[ease] hover:text-[#06b04d]" data-guide="agent-list-create" title={t('agent.createAgent')} aria-label={t('agent.createAgent')} onClick={props.onCreate}><SparklesIcon /></button>
               ) : null}
             </div>
-            <p className="wk-agent-header-subtitle">{t('agent.subtitle')}</p>
+            <p className="m-0 text-[14px] font-normal leading-5 opacity-65">{t('agent.subtitle')}</p>
           </div>
           {canCreate ? (
-            <button type="button" className="wk-agent-create-btn" data-guide="agent-list-create" onClick={props.onCreate}><SparklesIcon size={18} /><span>{t('agent.createAgent')}</span></button>
+            <button type="button" className="relative inline-flex cursor-pointer items-center gap-1.5 overflow-hidden rounded-md border-none bg-[#07c05f] px-4 py-[7px] text-[14px] text-white transition-[background] duration-200 ease-[ease] hover:bg-[#06b04d]" data-guide="agent-list-create" onClick={props.onCreate}><SparklesIcon size={18} /><span>{t('agent.createAgent')}</span></button>
           ) : null}
         </header>
         {notice ? <Status tone="success">{notice}</Status> : null}
-        {loading ? <div className="wk-agent-grid" aria-busy="true">{Array.from({ length: 6 }, (_, index) => <div className="wk-agent-skeleton" key={index} />)}</div> : null}
+        {loading ? <div className="grid min-w-0 flex-1 content-start gap-3 overflow-y-auto pr-7 pb-2 grid-cols-1 min-[900px]:grid-cols-2 min-[1250px]:grid-cols-3 min-[1600px]:grid-cols-4 min-[1900px]:grid-cols-5 min-[2200px]:grid-cols-6" aria-busy="true">{Array.from({ length: 6 }, (_, index) => <div className="h-[136px] animate-[wk-agent-shimmer_1.2s_ease_infinite] rounded-lg border border-[rgba(127,127,127,0.18)] bg-[linear-gradient(90deg,rgba(127,127,127,0.06)_25%,rgba(127,127,127,0.12)_37%,rgba(127,127,127,0.06)_63%)] bg-[length:400%_100%]" key={index} />)}</div> : null}
         {!loading && hasCards ? (
-          <div className="wk-agent-grid">
+          <div className="grid min-w-0 flex-1 content-start gap-3 overflow-y-auto pr-7 pb-2 grid-cols-1 min-[900px]:grid-cols-2 min-[1250px]:grid-cols-3 min-[1600px]:grid-cols-4 min-[1900px]:grid-cols-5 min-[2200px]:grid-cols-6">
             {isSectioned
               ? sections.map((section) => (
                   <AgentSection key={section.key} section={section} t={t} viewer={viewer} collapsed={collapsedSections.has(section.key)} onToggle={props.onToggleSection} cardProps={cardProps} />

@@ -9,7 +9,6 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ModelConfiguration, SandboxConfigRecord, SkillCatalog, WeKnoraClient } from '@weknora/api-client';
-import './agent-editor.css';
 import {
   applyAgentModeSwitch,
   applyKbSelectionMode,
@@ -63,24 +62,37 @@ const missReasonKey = (missKind: string): string =>
       : 'agentEditor.tools.requiresRagKb';
 
 // --- tiny form primitives (no UI library in the React client) -------------------------
+// agent-editor.css converted to utilities; var(--td-*) theme hooks kept verbatim
+// as arbitrary values (undefined in this client -> the fallback always applied).
+// wk-ae-input / wk-ae-textarea / wk-ae-select stay as anchors for the Row error variant.
+const FIELD_BASE = 'w-full rounded-md border border-[var(--td-component-stroke,#dcdcdc)] px-2.5 py-1.5 font-[family-name:inherit] text-[14px] text-inherit bg-[var(--td-bg-color-container,#fff)]';
+const FIELD_WIDE = 'max-w-[460px]';
+const FIELD_DISABLED_BG = 'disabled:bg-[var(--td-bg-color-secondarycontainer,#f2f3f5)]';
+const FIELD_INPUT = `${FIELD_BASE} ${FIELD_WIDE} ${FIELD_DISABLED_BG}`;
+const FIELD_TEXTAREA = `${FIELD_BASE} ${FIELD_WIDE} resize-y ${FIELD_DISABLED_BG}`;
+const FIELD_SELECT = `${FIELD_BASE} ${FIELD_WIDE}`;
+const FIELD_NUMBER = `${FIELD_BASE} max-w-40`;
+const FIELD_TALL = 'min-h-[200px]';
+const ROW_ERROR_FIELDS = '[&_.wk-ae-input]:border-[var(--td-error-color,#d54941)] [&_.wk-ae-textarea]:border-[var(--td-error-color,#d54941)] [&_.wk-ae-select]:border-[var(--td-error-color,#d54941)]';
+const AE_BTN = 'cursor-pointer rounded-md px-4 py-1.5 text-[14px]';
 
 function Row({ label, required = false, desc, hint, htmlFor, error, children }: {
   label: string; required?: boolean; desc?: string; hint?: string; htmlFor?: string;
   error?: string; children: React.ReactNode;
 }) {
   return (
-    <div className={`wk-ae-row${error ? ' wk-ae-row-error' : ''}`}>
-      <div className="wk-ae-row-info">
-        <label className="wk-ae-label" htmlFor={htmlFor}>
+    <div className={`flex items-start gap-6${error ? ` ${ROW_ERROR_FIELDS}` : ''}`}>
+      <div className="w-[260px] shrink-0">
+        <label className="text-sm font-medium" htmlFor={htmlFor}>
           {label}
-          {required ? <span className="wk-ae-required" aria-hidden="true">*</span> : null}
+          {required ? <span className="ml-1 text-[var(--td-error-color,#d54941)]" aria-hidden="true">*</span> : null}
         </label>
-        {desc ? <p className="wk-ae-desc">{desc}</p> : null}
-        {hint ? <p className="wk-ae-hint">{hint}</p> : null}
+        {desc ? <p className="m-0 mt-1 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{desc}</p> : null}
+        {hint ? <p className="m-0 mt-1 text-[12px] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]">{hint}</p> : null}
       </div>
-      <div className="wk-ae-row-control">
+      <div className="flex min-w-0 flex-1 flex-col items-start gap-1.5">
         {children}
-        {error ? <p className="wk-ae-error" data-field-error={htmlFor ? htmlFor.replace('wk-ae-', '').replace(/-/g, '_') : undefined}>{error}</p> : null}
+        {error ? <p className="m-0 mt-0.5 text-[12px] text-[var(--td-error-color,#d54941)]" data-field-error={htmlFor ? htmlFor.replace('wk-ae-', '').replace(/-/g, '_') : undefined}>{error}</p> : null}
       </div>
     </div>
   );
@@ -93,10 +105,10 @@ function Switch({ checked, onChange, label, field }: { checked: boolean; onChang
       role="switch"
       aria-checked={checked ? 'true' : 'false'}
       aria-label={label}
-      className={`wk-ae-switch${checked ? ' is-on' : ''}`}
+      className={`relative h-[22px] w-10 cursor-pointer rounded-[11px] border-none transition-[background] duration-200 ease-[ease] ${checked ? 'bg-[var(--td-brand-color,#0052d9)]' : 'bg-[var(--td-bg-color-secondarycontainer,#c9c9c9)]'}`}
       data-switch={field}
       onClick={() => onChange(!checked)}
-    ><span className="wk-ae-switch-dot" /></button>
+    ><span className={`absolute top-[2px] h-[18px] w-[18px] rounded-full bg-white transition-[left] duration-200 ease-[ease] ${checked ? 'left-5' : 'left-[2px]'}`} /></button>
   );
 }
 
@@ -107,9 +119,9 @@ function RadioGroup({ name, value, options, onChange }: {
   onChange: (value: string) => void;
 }) {
   return (
-    <div className="wk-ae-radio-group" role="radiogroup">
+    <div className="flex flex-wrap gap-2" role="radiogroup">
       {options.map((option) => (
-        <label key={option.value} className={`wk-ae-radio${option.value === value ? ' is-active' : ''}`}>
+        <label key={option.value} className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-3 py-[5px] text-[13px] [&>input]:accent-[var(--td-brand-color,#0052d9)] [&>input:disabled+span]:text-[var(--td-text-color-disabled,rgba(0,0,0,0.26))] ${option.value === value ? 'border-[var(--td-brand-color,#0052d9)] text-[var(--td-brand-color,#0052d9)]' : 'border-[var(--td-component-stroke,#dcdcdc)]'}`}>
           <input
             type="radio"
             name={name}
@@ -129,10 +141,10 @@ function Slider({ value, min, max, step, ariaLabel, onChange }: {
   value: number; min: number; max: number; step: number; ariaLabel: string; onChange: (next: number) => void;
 }) {
   return (
-    <span className="wk-ae-slider">
+    <span className="inline-flex items-center gap-2.5 [&>input]:w-60">
       <input type="range" min={min} max={max} step={step} value={value} aria-label={ariaLabel}
         onChange={(event) => onChange(Number(event.target.value))} />
-      <span className="wk-ae-slider-value">{value}</span>
+      <span className="min-w-8 text-[13px]">{value}</span>
     </span>
   );
 }
@@ -397,7 +409,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
   const renderKbCheckbox = (kb: KbOption) => {
     const checked = form.config.knowledge_bases.includes(kb.value);
     return (
-      <label key={kb.value} className="wk-ae-kb-item">
+      <label key={kb.value} className="flex items-center gap-2 rounded-md border border-[var(--td-component-stroke,#e7e7e7)] px-2 py-1.5 text-[13px]">
         <input
           type="checkbox"
           data-kb-id={kb.value}
@@ -409,7 +421,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
           })}
         />
         <span className="wk-ae-kb-name">{kb.label}</span>
-        <span className="wk-ae-kb-meta">{kb.type === 'faq' ? 'FAQ' : kb.ragEnabled ? 'RAG' : ''}{kb.wikiEnabled ? ' · Wiki' : ''} · {kb.count}</span>
+        <span className="ml-auto text-[12px] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]">{kb.type === 'faq' ? 'FAQ' : kb.ragEnabled ? 'RAG' : ''}{kb.wikiEnabled ? ' · Wiki' : ''} · {kb.count}</span>
       </label>
     );
   };
@@ -418,14 +430,14 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
     const editId = editorMode === 'edit' ? form.id : undefined;
     return (
       <section className="wk-ae-section" data-editor-section="basic">
-        <header className="wk-ae-section-header">
+        <header className="[&_h2]:m-0 [&_h2]:mb-1 [&_h2]:text-[16px]">
           <h2>{t('agent.editor.basicInfo')}</h2>
-          <p className="wk-ae-section-desc">{t('agent.editor.basicInfoDesc')}</p>
+          <p className="m-0 mb-4 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.basicInfoDesc')}</p>
         </header>
-        <div className="wk-ae-group">
+        <div className="flex flex-col gap-[18px]">
           {editId ? (
             <Row label={t('agent.editor.agentId')} desc={t('agent.editor.agentIdDesc')}>
-              <code className="wk-ae-agent-id" data-agent-id-copy title={editId}>{editId}</code>
+              <code className="rounded-md bg-[var(--td-bg-color-secondarycontainer,#f2f3f5)] px-2 py-1 font-[family-name:monospace] text-[12px] [overflow-wrap:anywhere]" data-agent-id-copy title={editId}>{editId}</code>
             </Row>
           ) : null}
           <Row label={t('agent.editor.mode')} required desc={isAgentMode ? t('agent.editor.agentDesc') : t('agent.editor.normalDesc')}>
@@ -443,7 +455,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
             <input
               id="wk-ae-name"
               data-field="name"
-              className="wk-ae-input"
+              className={`wk-ae-input ${FIELD_INPUT}`}
               value={form.name}
               placeholder={t('agent.editor.namePlaceholder')}
               disabled={form.is_builtin}
@@ -454,7 +466,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
             <textarea
               id="wk-ae-description"
               data-field="description"
-              className="wk-ae-textarea"
+              className={`wk-ae-textarea ${FIELD_TEXTAREA}`}
               rows={3}
               value={form.description}
               placeholder={t('agent.editor.descriptionPlaceholder')}
@@ -474,11 +486,11 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
   function renderPrompts() {
     return (
       <section className="wk-ae-section" data-editor-section="prompts">
-        <header className="wk-ae-section-header">
+        <header className="[&_h2]:m-0 [&_h2]:mb-1 [&_h2]:text-[16px]">
           <h2>{t('agent.editor.promptsConfig')}</h2>
-          <p className="wk-ae-section-desc">{t('agent.editor.promptsConfigDesc')}</p>
+          <p className="m-0 mb-4 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.promptsConfigDesc')}</p>
         </header>
-        <div className="wk-ae-group">
+        <div className="flex flex-col gap-[18px]">
           <Row
             label={t('agent.editor.systemPrompt')}
             required={!form.is_builtin}
@@ -489,7 +501,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
             <textarea
               id="wk-ae-system-prompt"
               data-field="system_prompt"
-              className="wk-ae-textarea wk-ae-textarea-tall"
+              className={`wk-ae-textarea ${FIELD_TEXTAREA} ${FIELD_TALL}`}
               rows={10}
               value={form.config.system_prompt}
               disabled={form.is_builtin}
@@ -507,7 +519,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
               <textarea
                 id="wk-ae-context-template"
                 data-field="context_template"
-                className="wk-ae-textarea"
+                className={`wk-ae-textarea ${FIELD_TEXTAREA}`}
                 rows={8}
                 value={form.config.context_template}
                 disabled={form.is_builtin}
@@ -520,7 +532,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
               <textarea
                 id="wk-ae-rewrite-user"
                 data-field="rewrite_prompt_user"
-                className="wk-ae-textarea"
+                className={`wk-ae-textarea ${FIELD_TEXTAREA}`}
                 rows={4}
                 value={form.config.rewrite_prompt_user}
                 onChange={(event) => patchConfig('rewrite_prompt_user', event.target.value)}
@@ -545,7 +557,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
               <textarea
                 id="wk-ae-fallback-response"
                 data-field="fallback_response"
-                className="wk-ae-textarea"
+                className={`wk-ae-textarea ${FIELD_TEXTAREA}`}
                 rows={3}
                 value={form.config.fallback_response}
                 onChange={(event) => patchConfig('fallback_response', event.target.value)}
@@ -557,7 +569,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
               <textarea
                 id="wk-ae-fallback-prompt"
                 data-field="fallback_prompt"
-                className="wk-ae-textarea"
+                className={`wk-ae-textarea ${FIELD_TEXTAREA}`}
                 rows={4}
                 value={form.config.fallback_prompt}
                 onChange={(event) => patchConfig('fallback_prompt', event.target.value)}
@@ -572,16 +584,16 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
   function renderModel() {
     return (
       <section className="wk-ae-section" data-editor-section="model">
-        <header className="wk-ae-section-header">
+        <header className="[&_h2]:m-0 [&_h2]:mb-1 [&_h2]:text-[16px]">
           <h2>{t('agent.editor.modelConfig')}</h2>
-          <p className="wk-ae-section-desc">{t('agent.editor.modelConfigDesc')}</p>
+          <p className="m-0 mb-4 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.modelConfigDesc')}</p>
         </header>
-        <div className="wk-ae-group">
+        <div className="flex flex-col gap-[18px]">
           <Row label={t('agent.editor.model')} required desc={t('agentEditor.desc.model')} error={errorMessage('model_id')} htmlFor="wk-ae-model-id">
             <select
               id="wk-ae-model-id"
               data-field="model_id"
-              className="wk-ae-select"
+              className={`wk-ae-select ${FIELD_SELECT}`}
               value={form.config.model_id}
               onChange={(event) => patchConfig('model_id', event.target.value)}
             >
@@ -607,7 +619,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
               }}
             />
             {maxTokensMode === 'custom' ? (
-              <input type="number" className="wk-ae-input wk-ae-input-number" min={100} max={100000} step={100}
+              <input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={100} max={100000} step={100}
                 data-field="max_completion_tokens"
                 value={form.config.max_completion_tokens}
                 onChange={(event) => patchConfig('max_completion_tokens', Number(event.target.value) || 0)} />
@@ -625,7 +637,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
             <Row label={t('agent.editor.rerankModel')} desc={t('agent.editor.rerankModelDesc')} hint={t('agent.editor.rerankModelOptionalHint')}>
               <select
                 data-field="rerank_model_id"
-                className="wk-ae-select"
+                className={`wk-ae-select ${FIELD_SELECT}`}
                 value={form.config.rerank_model_id}
                 onChange={(event) => patchConfig('rerank_model_id', event.target.value)}
               >
@@ -638,7 +650,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
             <Row label={t('agent.editor.queryUnderstandModel')} desc={t('agentEditor.desc.queryUnderstandModel')}>
               <select
                 data-field="query_understand_model_id"
-                className="wk-ae-select"
+                className={`wk-ae-select ${FIELD_SELECT}`}
                 value={form.config.query_understand_model_id}
                 onChange={(event) => patchConfig('query_understand_model_id', event.target.value)}
               >
@@ -662,7 +674,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
                 }}
               />
               {maxIterationsMode === 'limit' ? (
-                <input type="number" className="wk-ae-input wk-ae-input-number" min={2} max={50}
+                <input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={2} max={50}
                   data-field="max_iterations"
                   value={form.config.max_iterations}
                   onChange={(event) => patchConfig('max_iterations', Number(event.target.value) || 1)} />
@@ -671,7 +683,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
           ) : null}
           {isAgentMode ? (
             <Row label={t('agentEditor.llmCallTimeout.label')} desc={t('agentEditor.llmCallTimeout.desc')} hint={t('agentEditor.llmCallTimeout.hint')}>
-              <input type="number" className="wk-ae-input wk-ae-input-number" min={0} max={3600}
+              <input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={0} max={3600}
                 data-field="llm_call_timeout"
                 value={form.config.llm_call_timeout}
                 onChange={(event) => patchConfig('llm_call_timeout', Number(event.target.value) || 0)} />
@@ -685,11 +697,11 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
   function renderConversation() {
     return (
       <section className="wk-ae-section" data-editor-section="conversation">
-        <header className="wk-ae-section-header">
+        <header className="[&_h2]:m-0 [&_h2]:mb-1 [&_h2]:text-[16px]">
           <h2>{t('agent.editor.conversationSettings')}</h2>
-          <p className="wk-ae-section-desc">{isAgentMode ? t('agentEditor.desc.conversationSectionAgent') : t('agentEditor.desc.conversationSection')}</p>
+          <p className="m-0 mb-4 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{isAgentMode ? t('agentEditor.desc.conversationSectionAgent') : t('agentEditor.desc.conversationSection')}</p>
         </header>
-        <div className="wk-ae-group">
+        <div className="flex flex-col gap-[18px]">
           {quickAnswer ? (
             <Row label={t('agent.editor.multiTurn')} desc={t('agentEditor.desc.multiTurn')}>
               <Switch field="multi_turn_enabled" label={t('agent.editor.multiTurn')} checked={form.config.multi_turn_enabled}
@@ -698,7 +710,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
           ) : null}
           {form.config.multi_turn_enabled || isAgentMode ? (
             <Row label={t('agent.editor.historyTurns')} desc={t('agentEditor.desc.historyRounds')}>
-              <input type="number" className="wk-ae-input wk-ae-input-number" min={1} max={100}
+              <input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={1} max={100}
                 data-field="history_turns"
                 value={form.config.history_turns}
                 onChange={(event) => patchConfig('history_turns', Number(event.target.value) || 1)} />
@@ -724,11 +736,11 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
   function renderKnowledge() {
     return (
       <section className="wk-ae-section" data-editor-section="knowledge">
-        <header className="wk-ae-section-header">
+        <header className="[&_h2]:m-0 [&_h2]:mb-1 [&_h2]:text-[16px]">
           <h2>{t('agent.editor.knowledgeConfig')}</h2>
-          <p className="wk-ae-section-desc">{t('agent.editor.knowledgeConfigDesc')}</p>
+          <p className="m-0 mb-4 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.knowledgeConfigDesc')}</p>
         </header>
-        <div className="wk-ae-group">
+        <div className="flex flex-col gap-[18px]">
           <Row label={t('agent.editor.knowledgeBases')} desc={t('agentEditor.desc.kbScope')}>
             <RadioGroup
               name="kb-mode"
@@ -743,10 +755,10 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
           </Row>
           {kbMode === 'selected' ? (
             <Row label={t('agent.editor.selectKnowledgeBases')} desc={t('agent.editor.selectKnowledgeBasesDesc')}>
-              <div className="wk-ae-kb-list">
-                {myKbs.length > 0 ? <p className="wk-ae-kb-group-title">{t('agent.editor.myKnowledgeBases')}</p> : null}
+              <div className="flex w-full max-w-[460px] flex-col gap-1">
+                {myKbs.length > 0 ? <p className="mb-[2px] mt-[6px] text-[12px] font-semibold text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.myKnowledgeBases')}</p> : null}
                 {myKbs.map(renderKbCheckbox)}
-                {sharedKbs.length > 0 ? <p className="wk-ae-kb-group-title">{t('agent.editor.sharedKnowledgeBases')}</p> : null}
+                {sharedKbs.length > 0 ? <p className="mb-[2px] mt-[6px] text-[12px] font-semibold text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.sharedKnowledgeBases')}</p> : null}
                 {sharedKbs.map(renderKbCheckbox)}
               </div>
             </Row>
@@ -766,11 +778,11 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
   function renderRetrieval() {
     return (
       <section className="wk-ae-section" data-editor-section="retrieval">
-        <header className="wk-ae-section-header">
+        <header className="[&_h2]:m-0 [&_h2]:mb-1 [&_h2]:text-[16px]">
           <h2>{t('agent.editor.retrievalStrategy')}</h2>
-          <p className="wk-ae-section-desc">{t('agentEditor.desc.retrievalSection')}</p>
+          <p className="m-0 mb-4 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agentEditor.desc.retrievalSection')}</p>
         </header>
-        <div className="wk-ae-group">
+        <div className="flex flex-col gap-[18px]">
           {quickAnswer ? (
             <Row label={t('agent.editor.enableQueryExpansion')} desc={t('agentEditor.desc.queryExpansion')}>
               <Switch field="enable_query_expansion" label={t('agent.editor.enableQueryExpansion')} checked={form.config.enable_query_expansion}
@@ -778,7 +790,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
             </Row>
           ) : null}
           <Row label={t('agent.editor.embeddingTopK')} desc={t('agentEditor.desc.embeddingTopK')}>
-            <input type="number" className="wk-ae-input wk-ae-input-number" min={1} max={50} data-field="embedding_top_k"
+            <input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={1} max={50} data-field="embedding_top_k"
               value={form.config.embedding_top_k}
               onChange={(event) => patchConfig('embedding_top_k', Number(event.target.value) || 1)} />
           </Row>
@@ -793,7 +805,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
           {form.config.rerank_model_id ? (
             <>
               <Row label={t('agent.editor.rerankTopK')} desc={t('agentEditor.desc.rerankTopK')}>
-                <input type="number" className="wk-ae-input wk-ae-input-number" min={1} max={20} data-field="rerank_top_k"
+                <input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={1} max={20} data-field="rerank_top_k"
                   value={form.config.rerank_top_k}
                   onChange={(event) => patchConfig('rerank_top_k', Number(event.target.value) || 1)} />
               </Row>
@@ -837,11 +849,11 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
   function renderWebSearch() {
     return (
       <section className="wk-ae-section" data-editor-section="websearch">
-        <header className="wk-ae-section-header">
+        <header className="[&_h2]:m-0 [&_h2]:mb-1 [&_h2]:text-[16px]">
           <h2>{t('agent.editor.webSearchConfig')}</h2>
-          <p className="wk-ae-section-desc">{t('agent.editor.webSearchConfigDesc')}</p>
+          <p className="m-0 mb-4 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.webSearchConfigDesc')}</p>
         </header>
-        <div className="wk-ae-group">
+        <div className="flex flex-col gap-[18px]">
           <Row label={t('agent.editor.webSearch')} desc={t('agentEditor.desc.webSearch')}>
             <Switch field="web_search_enabled" label={t('agent.editor.webSearch')} checked={form.config.web_search_enabled}
               onChange={(next) => patchConfig('web_search_enabled', next)} />
@@ -849,7 +861,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
           {form.config.web_search_enabled ? (
             <>
               <Row label={t('agent.editor.webSearchProvider')} desc={t('agentEditor.desc.webSearchProvider')}>
-                <select data-field="web_search_provider_id" className="wk-ae-select" value={form.config.web_search_provider_id}
+                <select data-field="web_search_provider_id" className={`wk-ae-select ${FIELD_SELECT}`} value={form.config.web_search_provider_id}
                   onChange={(event) => patchConfig('web_search_provider_id', event.target.value)}>
                   <option value="">{t('agent.editor.webSearchProviderPlaceholder')}</option>
                   {deps.providers.map((provider) => (
@@ -884,29 +896,29 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
     const inactiveToolCount = evaluations.filter((item) => !item.ok).length;
     return (
       <section className="wk-ae-section" data-editor-section="tools">
-        <header className="wk-ae-section-header">
+        <header className="[&_h2]:m-0 [&_h2]:mb-1 [&_h2]:text-[16px]">
           <h2>{t('agent.editor.toolsConfig')}</h2>
-          <p className="wk-ae-section-desc">{t('agent.editor.toolsConfigDesc')}</p>
+          <p className="m-0 mb-4 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.toolsConfigDesc')}</p>
         </header>
-        <p className="wk-ae-tools-status">
+        <p className="text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">
           {hasKnowledgeBase
             ? t('agentEditor.tools.kbMetricRag') + ' · ' + t('agentEditor.tools.kbMetricWiki')
             : t('agentEditor.tools.statusNoKb')}
           {inactiveToolCount > 0 ? ' · ' + t('agentEditor.tools.statusInactive', { count: inactiveToolCount }) : ''}
         </p>
-        <div className="wk-ae-group">
+        <div className="flex flex-col gap-[18px]">
           {TOOL_GROUPS.map((group) => {
             const tools = TOOL_CATALOG.filter((tool) => tool.group === group.key);
             if (tools.length === 0) return null;
             return (
               <div key={group.key} className="wk-ae-tool-group">
-                <p className="wk-ae-tool-group-title">{t(group.labelKey)}</p>
-                <div className="wk-ae-tool-grid">
+                <p className="mb-1.5 mt-1 text-[13px] font-semibold">{t(group.labelKey)}</p>
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-2">
                   {tools.map((tool) => {
                     const evaluation = evaluateTool(tool);
                     const checked = form.config.allowed_tools.includes(tool.value);
                     return (
-                      <label key={tool.value} className={'wk-ae-tool' + (evaluation.ok ? '' : ' is-disabled') + (tool.danger ? ' is-danger' : '')}>
+                      <label key={tool.value} className={`flex cursor-pointer flex-col gap-0.5 rounded-lg border px-2.5 py-2 text-[13px] ${evaluation.ok ? '' : 'cursor-not-allowed opacity-55'} ${tool.danger ? 'border-[var(--td-warning-color,#e37318)]' : 'border-[var(--td-component-stroke,#e7e7e7)]'}`}>
                         <input
                           type="checkbox"
                           data-tool={tool.value}
@@ -921,9 +933,9 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
                             });
                           }}
                         />
-                        <span className="wk-ae-tool-name">{t(tool.labelKey)}{tool.danger ? ' · ' + t('agentEditor.tools.dangerTag') : ''}</span>
-                        <span className="wk-ae-tool-desc">{t(tool.descriptionKey)}</span>
-                        {!evaluation.ok ? <span className="wk-ae-tool-reason">{t(missReasonKey(evaluation.missKind))}</span> : null}
+                        <span className="font-medium">{t(tool.labelKey)}{tool.danger ? ' · ' + t('agentEditor.tools.dangerTag') : ''}</span>
+                        <span className="text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t(tool.descriptionKey)}</span>
+                        {!evaluation.ok ? <span className="text-[12px] text-[var(--td-warning-color,#e37318)]">{t(missReasonKey(evaluation.missKind))}</span> : null}
                       </label>
                     );
                   })}
@@ -932,15 +944,15 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
             );
           })}
           <Row label={t('agentEditor.tools.effectiveLabel')} desc={t('agentEditor.tools.effectiveDesc')}>
-            <div className="wk-ae-chips">
-              {evaluations.length === 0 && !form.config.web_search_enabled ? <span className="wk-ae-desc">{t('agentEditor.tools.effectiveEmpty')}</span> : null}
+            <div className="flex flex-wrap gap-1.5">
+              {evaluations.length === 0 && !form.config.web_search_enabled ? <span className="m-0 mt-1 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agentEditor.tools.effectiveEmpty')}</span> : null}
               {evaluations.map(({ tool, ok }) => (
-                <span key={tool.value} className={ok ? 'wk-ae-chip' : 'wk-ae-chip is-inactive'}>{t(tool.labelKey)}</span>
+                <span key={tool.value} className={ok ? 'rounded-[10px] bg-[var(--td-brand-color-light,#ecf2fe)] px-2.5 py-[2px] text-[12px] text-[var(--td-brand-color,#0052d9)]' : 'rounded-[10px] bg-[var(--td-bg-color-secondarycontainer,#f2f3f5)] px-2.5 py-[2px] text-[12px] text-[var(--td-text-color-disabled,rgba(0,0,0,0.26))]'}>{t(tool.labelKey)}</span>
               ))}
               {form.config.web_search_enabled ? (
                 <>
-                  <span className="wk-ae-chip">{t('agentEditor.tools.webSearch')}</span>
-                  <span className="wk-ae-chip">{t('agentEditor.tools.webFetch')}</span>
+                  <span className="rounded-[10px] bg-[var(--td-brand-color-light,#ecf2fe)] px-2.5 py-[2px] text-[12px] text-[var(--td-brand-color,#0052d9)]">{t('agentEditor.tools.webSearch')}</span>
+                  <span className="rounded-[10px] bg-[var(--td-brand-color-light,#ecf2fe)] px-2.5 py-[2px] text-[12px] text-[var(--td-brand-color,#0052d9)]">{t('agentEditor.tools.webFetch')}</span>
                 </>
               ) : null}
             </div>
@@ -955,18 +967,18 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
     const pendingRows = skillRows.filter((row) => !row.selectable);
     return (
       <section className="wk-ae-section" data-editor-section="skills">
-        <header className="wk-ae-section-header">
+        <header className="[&_h2]:m-0 [&_h2]:mb-1 [&_h2]:text-[16px]">
           <h2>{t('agent.editor.skillsConfig')}</h2>
-          <p className="wk-ae-section-desc">{t('agent.editor.skillsConfigDesc')}</p>
+          <p className="m-0 mb-4 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.skillsConfigDesc')}</p>
         </header>
-        <div className="wk-ae-group">
+        <div className="flex flex-col gap-[18px]">
           <Row label={t('agent.editor.sandboxBackend')} desc={t('agent.editor.sandboxBackendHint')}>
-            <select data-field="sandbox_config_id" className="wk-ae-select" value={form.config.sandbox_config_id}
+            <select data-field="sandbox_config_id" className={`wk-ae-select ${FIELD_SELECT}`} value={form.config.sandbox_config_id}
               onChange={(event) => patchConfig('sandbox_config_id', event.target.value)}>
               <option value="">{t('agent.editor.sandboxBackendDefault')}</option>
               {sandboxOptions.map((cfg) => <option key={cfg.id} value={cfg.id}>{cfg.name}</option>)}
             </select>
-            {sandboxOptions.length === 0 ? <p className="wk-ae-desc">{t('agent.editor.sandboxNoConfigs')}</p> : null}
+            {sandboxOptions.length === 0 ? <p className="m-0 mt-1 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.sandboxNoConfigs')}</p> : null}
           </Row>
           <Row label={t('agent.editor.skillsSelection')} desc={t('agent.editor.skillsSelectionDesc')}>
             <RadioGroup
@@ -979,19 +991,19 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
               ]}
               onChange={(value) => onScopeModeChange('skills', value as ScopeSelectionMode)}
             />
-            {!hasSandbox ? <p className="wk-ae-hint">{t('agent.editor.skillsNeedSandbox')}</p> : null}
+            {!hasSandbox ? <p className="m-0 mt-1 text-[12px] text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]">{t('agent.editor.skillsNeedSandbox')}</p> : null}
           </Row>
           {skillsMode !== 'none' && hasSandbox && skillRows.length > 0 ? (
-            <div className="wk-ae-skills">
+            <div className="flex w-full flex-col gap-1">
               {readyRows.length > 0 ? (
                 <div className="wk-ae-skill-group">
-                  <p className="wk-ae-kb-group-title">{t('agent.editor.skillsGroupAvailable')}</p>
+                  <p className="mb-[2px] mt-[6px] text-[12px] font-semibold text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.skillsGroupAvailable')}</p>
                   {readyRows.map(renderSkillRow)}
                 </div>
               ) : null}
               {pendingRows.length > 0 ? (
                 <div className="wk-ae-skill-group">
-                  <p className="wk-ae-kb-group-title">{t('agent.editor.skillsGroupUnavailable')}</p>
+                  <p className="mb-[2px] mt-[6px] text-[12px] font-semibold text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.skillsGroupUnavailable')}</p>
                   {pendingRows.map(renderSkillRow)}
                 </div>
               ) : null}
@@ -1009,7 +1021,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
     const canInstall = !busy && (!row.installed || row.installStatus === 'failed')
       && hasSandbox && namedSandboxes.some((cfg) => cfg.id === form.config.sandbox_config_id);
     return (
-      <div key={row.id} className={selectable ? 'wk-ae-skill is-ready' : 'wk-ae-skill is-pending'} data-skill-row={row.id}>
+      <div key={row.id} className={`flex items-center gap-2 rounded-md border border-[var(--td-component-stroke,#e7e7e7)] px-2 py-1.5 text-[13px]${selectable ? '' : ' opacity-70'}`} data-skill-row={row.id}>
         {skillsMode === 'selected' ? (
           <input
             type="checkbox"
@@ -1026,13 +1038,13 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
             }}
           />
         ) : null}
-        <span className="wk-ae-skill-name">{row.name}</span>
-        {row.description ? <span className="wk-ae-skill-desc">{row.description}</span> : null}
+        <span className="font-medium">{row.name}</span>
+        {row.description ? <span className="text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{row.description}</span> : null}
         {!selectable ? (
-          <span className="wk-ae-skill-hint">{row.installed ? row.installStatus : t('agent.editor.skillNotInstalled')}</span>
+          <span className="ml-auto text-[12px] text-[var(--td-warning-color,#e37318)]">{row.installed ? row.installStatus : t('agent.editor.skillNotInstalled')}</span>
         ) : null}
         {canInstall ? (
-          <button type="button" className="wk-ae-btn wk-ae-btn-small" disabled={installingId !== ''}
+          <button type="button" className="cursor-pointer rounded-md border border-[var(--td-brand-color,#0052d9)] bg-[var(--td-bg-color-container,#fff)] px-2.5 py-[2px] text-[12px] text-[var(--td-brand-color,#0052d9)] hover:bg-[var(--td-bg-color-container-hover,#f3f3f3)]" disabled={installingId !== ''}
             onClick={() => void installSkill(row.id)}>
             {installingId === row.id ? t('common.loading') : t('agent.editor.installShort')}
           </button>
@@ -1056,24 +1068,24 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
   };
 
   return (
-    <div className="wk-ae-overlay" data-editor-overlay onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <div className="wk-ae-modal" role="dialog" aria-modal="true" aria-label={editorMode === 'create' ? t('agent.editor.createTitle') : t('agent.editor.editTitle')} data-testid="agent-editor-modal">
-        <button type="button" className="wk-ae-close" aria-label={t('common.cancel')} onClick={onClose}>×</button>
-        {initializing ? <div className="wk-ae-initializing" role="status">{t('common.loading')}</div> : null}
-        <div className="wk-ae-container">
-          <aside className="wk-ae-sidebar">
-            <h2 className="wk-ae-sidebar-title" data-editor-title>
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-[rgba(0,0,0,0.5)] backdrop-blur-[4px]" data-editor-overlay onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <div className="relative flex h-[85vh] max-h-[780px] w-[90vw] max-w-[1100px] flex-col overflow-hidden rounded-xl bg-[var(--td-bg-color-container,#fff)] text-[var(--td-text-color-primary,rgba(0,0,0,0.9))] shadow-[0_8px_32px_rgba(0,0,0,0.12)]" role="dialog" aria-modal="true" aria-label={editorMode === 'create' ? t('agent.editor.createTitle') : t('agent.editor.editTitle')} data-testid="agent-editor-modal">
+        <button type="button" className="absolute top-3 right-3 z-10 h-8 w-8 cursor-pointer rounded-md border-none bg-transparent text-[18px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))] hover:bg-[var(--td-bg-color-container-hover,#f3f3f3)]" aria-label={t('common.cancel')} onClick={onClose}>×</button>
+        {initializing ? <div className="absolute inset-0 z-20 flex items-center justify-center bg-[var(--td-bg-color-container,#fff)]" role="status">{t('common.loading')}</div> : null}
+        <div className="flex h-full w-full overflow-hidden">
+          <aside className="flex w-[208px] shrink-0 flex-col overflow-hidden border-r border-[var(--td-component-stroke,#e7e7e7)] bg-[var(--td-bg-color-settings-modal,#fafafa)]">
+            <h2 className="m-0 border-b border-[var(--td-component-stroke,#e7e7e7)] px-3.5 pt-4 pb-3 text-[16px] font-semibold" data-editor-title>
               {editorMode === 'create' ? t('agent.editor.createTitle') : t('agent.editor.editTitle')}
             </h2>
-            <nav className="wk-ae-nav" data-guide="agent-editor-sidebar">
+            <nav className="flex-1 overflow-y-auto p-2" data-guide="agent-editor-sidebar">
               {navGroups.map((group) => (
                 <div key={group.key}>
-                  <p className="wk-ae-nav-group-title">{t(group.labelKey)}</p>
+                  <p className="mx-1.5 mb-[2px] mt-[6px] text-[12px] font-semibold text-[var(--td-text-color-placeholder,rgba(0,0,0,0.4))]">{t(group.labelKey)}</p>
                   {group.items.map((item) => (
                     <button
                       key={item.key}
                       type="button"
-                      className={`wk-ae-nav-item${section === item.key ? ' is-active' : ''}`}
+                      className={`mb-[2px] flex w-full cursor-pointer items-center rounded-md border-none bg-transparent px-3 py-[7px] text-left text-[14px] hover:bg-[var(--td-bg-color-container-hover,#f3f3f3)] ${section === item.key ? 'bg-[var(--td-bg-color-secondarycontainer,#f2f3f5)] font-medium text-[var(--td-brand-color,#0052d9)]' : 'text-[var(--td-text-color-primary,rgba(0,0,0,0.9))]'}`}
                       data-section-key={item.key}
                       onClick={() => setSection(item.key)}
                     >
@@ -1084,21 +1096,21 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
               ))}
             </nav>
           </aside>
-          <div className="wk-ae-main">
-            <div className="wk-ae-content">{renderSection()}</div>
-            <footer className="wk-ae-footer">
+          <div className="flex min-w-0 flex-1 flex-col">
+            <div className="flex-1 overflow-y-auto px-6 py-5">{renderSection()}</div>
+            <footer className="flex flex-col gap-1.5 border-t border-[var(--td-component-stroke,#e7e7e7)] px-6 py-2.5">
               {postCreate ? (
-                <p className="wk-ae-post-create" data-post-create>
+                <p className="m-0 text-[12px] text-[var(--td-success-color,#2ba471)]" data-post-create>
                   <strong>{t('agent.editor.postCreateHint.title')}</strong>
                   {t('agent.editor.postCreateHint.footer')}
                 </p>
               ) : null}
-              {saveError ? <p className="wk-ae-error" role="alert">{saveError}</p> : null}
-              <div className="wk-ae-footer-actions">
-                <button type="button" className="wk-ae-btn" data-editor-cancel onClick={onClose}>{t('common.cancel')}</button>
+              {saveError ? <p className="m-0 mt-0.5 text-[12px] text-[var(--td-error-color,#d54941)]" role="alert">{saveError}</p> : null}
+              <div className="flex justify-end gap-2">
+                <button type="button" className={`${AE_BTN} border border-[var(--td-component-stroke,#dcdcdc)] bg-[var(--td-bg-color-container,#fff)] text-inherit hover:bg-[var(--td-bg-color-container-hover,#f3f3f3)]`} data-editor-cancel onClick={onClose}>{t('common.cancel')}</button>
                 <button
                   type="button"
-                  className="wk-ae-btn wk-ae-btn-primary"
+                  className={`${AE_BTN} border bg-[var(--td-brand-color,#0052d9)] border-[var(--td-brand-color,#0052d9)] text-white hover:bg-[var(--td-brand-color-hover,#266fe8)] disabled:cursor-not-allowed disabled:opacity-60`}
                   data-editor-save
                   disabled={saving || initializing}
                   onClick={() => void handleSave()}

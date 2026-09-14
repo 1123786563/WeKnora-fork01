@@ -197,7 +197,7 @@ test('card shows avatar, name, description fallback and capability chips with zh
   assert.match(html, /title="多轮对话"/);
   assert.match(html, /title="快速问答"/);
   assert.match(html, /aria-pressed="false"/);
-  assert.match(html, /wk-agent-more/);
+  assert.match(html, /aria-haspopup="menu"/);
 });
 
 test('card falls back to 暂无描述 and shared cards carry the org source pill', () => {
