@@ -82,6 +82,8 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   const [mentionLoading, setMentionLoading] = useState(false);
   const [mentionError, setMentionError] = useState<string>();
   const mentionLoadedRef = useRef(false);
+  const mentionLoadingRef = useRef(false);
+  const mentionGenerationRef = useRef(0);
   const [attachments, setAttachments] = useState<ChatAttachmentView[]>([]);
   const [supportedAttachmentExtensions, setSupportedAttachmentExtensions] = useState<readonly string[]>(CHAT_ATTACHMENT_DEFAULT_EXTENSIONS);
   const attachmentRecordsRef = useRef(new Map<string, ChatAttachmentRecord>());
@@ -120,6 +122,27 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     () => selectedSessionId ? draftStorageKey(scope.scope, selectedSessionId) : null,
     [scope.scope, selectedSessionId],
   );
+
+  // Mention resources belong to the active client + scope. A late response
+  // from a previous tenant/client must not repopulate the next tenant's
+  // picker, and a scope teardown must release the in-flight guard so the next
+  // scope can issue a fresh request.
+  useEffect(() => {
+    const generation = ++mentionGenerationRef.current;
+    mentionLoadedRef.current = false;
+    mentionLoadingRef.current = false;
+    setMentionOptions([]);
+    setMentionedItems([]);
+    setMentionLoading(false);
+    setMentionError(undefined);
+    return () => {
+      if (mentionGenerationRef.current !== generation) return;
+      ++mentionGenerationRef.current;
+      mentionLoadedRef.current = false;
+      mentionLoadingRef.current = false;
+      setMentionLoading(false);
+    };
+  }, [client, scope.scope]);
 
   useEffect(() => {
     selectedSessionIdRef.current = selectedSessionId;
@@ -723,13 +746,15 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   }
 
   function loadMentionOptions(): void {
-    if (mentionLoadedRef.current || mentionLoading) return;
+    if (mentionLoadedRef.current || mentionLoadingRef.current) return;
+    const generation = mentionGenerationRef.current;
     mentionLoadedRef.current = true;
+    mentionLoadingRef.current = true;
     setMentionLoading(true);
     setMentionError(undefined);
     void client.knowledgeBases.list({ creator: 'all' }).then(
       (items) => {
-        if (!scopeController.isCurrent(scope.scope)) return;
+        if (generation !== mentionGenerationRef.current || !scopeController.isCurrent(scope.scope)) return;
         setMentionOptions(items.map((item) => ({
           id: item.id,
           name: item.name,
@@ -738,10 +763,15 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
         })));
       },
       (cause: unknown) => {
+        if (generation !== mentionGenerationRef.current || !scopeController.isCurrent(scope.scope)) return;
         mentionLoadedRef.current = false;
-        if (scopeController.isCurrent(scope.scope)) setMentionError(cause instanceof Error ? cause.message : 'Unable to load knowledge bases');
+        setMentionError(cause instanceof Error ? cause.message : 'Unable to load knowledge bases');
       },
-    ).finally(() => { if (scopeController.isCurrent(scope.scope)) setMentionLoading(false); });
+    ).finally(() => {
+      if (generation !== mentionGenerationRef.current || !scopeController.isCurrent(scope.scope)) return;
+      mentionLoadingRef.current = false;
+      setMentionLoading(false);
+    });
   }
 
   function selectMention(item: ChatMentionView): void {

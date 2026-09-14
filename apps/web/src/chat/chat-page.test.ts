@@ -466,3 +466,14 @@ test('composer exposes a KB mention listbox and selected mention chips', () => {
   assert.match(html, /data-mention-id="kb-2"/);
   assert.match(html, /aria-label="关闭: FAQ"/);
 });
+
+test('composer localizes empty KB mention states', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatComposer, {
+    ...composerBase,
+    copy: resolveChatCopy('en-US'),
+    mentionOpen: true,
+    mentionOptions: [],
+  }));
+  assert.match(html, /No knowledge bases available/);
+  assert.doesNotMatch(html, /暂无可用知识库/);
+});

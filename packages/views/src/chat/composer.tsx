@@ -77,6 +77,7 @@ export function ChatComposer({ draft, disabled = false, onDraftChange, onSubmit,
   const mentionSearchRef = useRef<HTMLInputElement>(null);
   const [mentionOpen, setMentionOpen] = useState(initialMentionOpen);
   const [mentionQuery, setMentionQuery] = useState('');
+  const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     onSubmit(createChatSubmission(draft));
@@ -96,6 +97,7 @@ export function ChatComposer({ draft, disabled = false, onDraftChange, onSubmit,
     setMentionOpen(next);
     if (next) {
       setMentionQuery('');
+      setActiveMentionIndex(0);
       onMentionOpen?.();
       window.setTimeout(() => mentionSearchRef.current?.focus(), 0);
     }
@@ -110,9 +112,19 @@ export function ChatComposer({ draft, disabled = false, onDraftChange, onSubmit,
       closeMentions();
       return;
     }
+    if (event.key === 'ArrowDown' && filteredMentionOptions.length > 0) {
+      event.preventDefault();
+      setActiveMentionIndex((current) => Math.min(current + 1, filteredMentionOptions.length - 1));
+      return;
+    }
+    if (event.key === 'ArrowUp' && filteredMentionOptions.length > 0) {
+      event.preventDefault();
+      setActiveMentionIndex((current) => Math.max(current - 1, 0));
+      return;
+    }
     if (event.key === 'Enter' && filteredMentionOptions.length > 0) {
       event.preventDefault();
-      onMentionSelect?.(filteredMentionOptions[0]);
+      onMentionSelect?.(filteredMentionOptions[Math.min(activeMentionIndex, filteredMentionOptions.length - 1)]);
       closeMentions();
     }
   }
@@ -179,10 +191,12 @@ export function ChatComposer({ draft, disabled = false, onDraftChange, onSubmit,
             </svg>
           </button>
           {mentionOpen ? <div id="wk-chat-mention-listbox" role="listbox" aria-label={t.mentionKnowledge} className="absolute bottom-[36px] left-0 z-20 w-[280px] rounded-[8px] border border-[#e7e7e7] bg-white p-[8px] shadow-[0_8px_24px_rgba(0,0,0,0.12)]">
-            <input ref={mentionSearchRef} value={mentionQuery} onChange={(event) => setMentionQuery(event.target.value)} onKeyDown={handleMentionKeyDown} aria-label={t.composerPlaceholder} placeholder={t.composerPlaceholder} className="mb-[6px] box-border w-full rounded-[6px] border border-[#e7e7e7] px-[8px] py-[6px] text-[12px] outline-none focus:border-[#07c05f]" />
+            <input ref={mentionSearchRef} value={mentionQuery} onChange={(event) => { setMentionQuery(event.target.value); setActiveMentionIndex(0); }} onKeyDown={handleMentionKeyDown} aria-label={t.composerPlaceholder} aria-activedescendant={filteredMentionOptions.length > 0 ? `wk-chat-mention-option-${filteredMentionOptions[Math.min(activeMentionIndex, filteredMentionOptions.length - 1)].id}` : undefined} aria-controls="wk-chat-mention-options" placeholder={t.composerPlaceholder} className="mb-[6px] box-border w-full rounded-[6px] border border-[#e7e7e7] px-[8px] py-[6px] text-[12px] outline-none focus:border-[#07c05f]" />
             {mentionLoading ? <p role="status" className="m-0 px-[8px] py-[8px] text-[12px] text-[rgba(0,0,0,0.45)]">{t.loadingMessages}</p> : mentionError ? <p role="alert" className="m-0 px-[8px] py-[8px] text-[12px] text-[#d54941]">{mentionError}</p> : filteredMentionOptions.length > 0 ? <div className="max-h-[220px] overflow-y-auto">
-              {filteredMentionOptions.map((item) => <button key={item.id} type="button" role="option" aria-selected="false" data-mention-id={item.id} className="flex w-full cursor-pointer items-center gap-[8px] rounded-[6px] border-0 bg-transparent px-[8px] py-[7px] text-left text-[13px] text-[rgba(0,0,0,0.75)] hover:bg-[#f3f3f3] focus:bg-[#f3f3f3] focus:outline-none" onClick={() => { onMentionSelect?.(item); closeMentions(); }}><span aria-hidden="true">@</span><span className="overflow-hidden text-ellipsis whitespace-nowrap">{item.name}</span></button>)}
-            </div> : <p className="m-0 px-[8px] py-[8px] text-[12px] text-[rgba(0,0,0,0.45)]">{mentionQuery ? '暂无匹配结果' : '暂无可用知识库'}</p>}
+              <div id="wk-chat-mention-options">
+              {filteredMentionOptions.map((item, index) => <button key={item.id} id={`wk-chat-mention-option-${item.id}`} type="button" role="option" aria-selected={index === activeMentionIndex} data-mention-id={item.id} className={index === activeMentionIndex ? 'flex w-full cursor-pointer items-center gap-[8px] rounded-[6px] border-0 bg-[#f3f3f3] px-[8px] py-[7px] text-left text-[13px] text-[rgba(0,0,0,0.75)] focus:outline-none' : 'flex w-full cursor-pointer items-center gap-[8px] rounded-[6px] border-0 bg-transparent px-[8px] py-[7px] text-left text-[13px] text-[rgba(0,0,0,0.75)] hover:bg-[#f3f3f3] focus:bg-[#f3f3f3] focus:outline-none'} onMouseEnter={() => setActiveMentionIndex(index)} onClick={() => { onMentionSelect?.(item); closeMentions(); }}><span aria-hidden="true">@</span><span className="overflow-hidden text-ellipsis whitespace-nowrap">{item.name}</span></button>)}
+              </div>
+            </div> : <p className="m-0 px-[8px] py-[8px] text-[12px] text-[rgba(0,0,0,0.45)]">{mentionQuery ? t.mentionNoResults : t.mentionNoAvailable}</p>}
           </div> : null}
           </div>
         </div>
