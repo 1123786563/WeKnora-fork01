@@ -3,8 +3,9 @@ import { AppState, FlatList, Pressable, SafeAreaView, Text, TextInput, View, Act
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { KnowledgeDocument, KnowledgeFolderNode, KnowledgeTag } from '@weknora/contracts';
 import { useMobileRuntime } from '../../runtime.tsx';
-import { pickNativeFile } from '../../platform/files.ts';
+import { pickNativeFiles } from '../../platform/files.ts';
 import { dispatchUploadEvent } from './upload-progress.ts';
+import { uploadKnowledgeFiles } from './upload-queue.ts';
 import { knowledgeListLabel } from './list.ts';
 import { selectKnowledgeDocumentLabel } from './parity.ts';
 import { referenceRoute } from './reference.ts';
@@ -78,24 +79,28 @@ export function KnowledgeDocumentsScreen() {
   const folderOptions = useMemo(() => flattenFolders(folders), [folders]);
   async function upload() {
     if (!kbId || uploading) return;
-    const file = await pickNativeFile();
-    if (!file) return;
+    const files = await pickNativeFiles();
+    if (files.length === 0) return;
     const controller = new AbortController();
     uploadController.current = controller;
-    const uploadId = `upload-${Date.now()}-${file.name}`;
     setUploading(true); setError('');
-    // Mirrors the Vue uploader: a start event per file, a terminal complete
-    // event (failure preserved as an error task), and a single `uploaded`
-    // event once at least one file succeeded so list views refresh.
-    dispatchUploadEvent({ type: 'start', uploadId, kbId, fileName: file.name });
     try {
-      await runtime.client.knowledge.documents.upload(kbId, { file }, controller.signal);
-      dispatchUploadEvent({ type: 'complete', uploadId, kbId, status: 'success', progress: 100 });
-      dispatchUploadEvent({ type: 'uploaded', kbId });
-      await loadPage(1, true);
+      // Vue emits one task per selected file. The existing API is intentionally
+      // single-file, so keep the same semantics with a cancellable FIFO queue.
+      const result = await uploadKnowledgeFiles(files, kbId, {
+        signal: controller.signal,
+        upload: (file, signal) => runtime.client.knowledge.documents.upload(kbId, { file }, signal),
+        dispatch: dispatchUploadEvent,
+      });
+      if (result.succeeded > 0) {
+        dispatchUploadEvent({ type: 'uploaded', kbId });
+        await loadPage(1, true);
+      }
+      if (result.failures.length > 0 && !result.aborted) {
+        setError(result.failures.length === 1 ? result.failures[0].error : `${result.failures.length} files failed to upload`);
+      }
     }
     catch (cause) {
-      dispatchUploadEvent({ type: 'complete', uploadId, kbId, status: 'error', error: cause instanceof Error ? cause.message : 'Unable to upload file' });
       if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Unable to upload file');
     }
     finally { uploadController.current = null; setUploading(false); }

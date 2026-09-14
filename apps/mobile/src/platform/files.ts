@@ -5,17 +5,23 @@ import { createAbortError, type Credential, type NativeFileSource } from '@wekno
 import { safeArtifactFileName } from '@weknora/domain/chat/artifacts';
 import { authHeaderForFileDownload, toNativeFileSource } from './file-uris.ts';
 
-export async function pickNativeFile(): Promise<NativeFileSource | null> {
+export async function pickNativeFiles(multiple = true): Promise<NativeFileSource[]> {
   const result = await DocumentPicker.getDocumentAsync({
     // The cancellable native UploadTask requires a seekable file:// source;
     // Android's DocumentsUI otherwise returns a content:// URI whose backing
     // directory does not exist for expo-file-system's legacy task API.
     copyToCacheDirectory: true,
-    multiple: false,
+    multiple,
     type: '*/*',
   });
-  if (result.canceled || !result.assets[0]) return null;
-  return toNativeFileSource(result.assets[0]);
+  if (result.canceled) return [];
+  return result.assets.map(toNativeFileSource);
+}
+
+/** Single-file compatibility wrapper for chat attachments and other callers. */
+export async function pickNativeFile(): Promise<NativeFileSource | null> {
+  const files = await pickNativeFiles(false);
+  return files[0] ?? null;
 }
 
 function bearerHeaders(credential: Credential): Record<string, string> {
