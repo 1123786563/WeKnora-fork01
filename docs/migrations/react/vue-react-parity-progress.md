@@ -2411,3 +2411,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Added a dependency-free native graph preview with deterministic node placement, center-node emphasis, localized neighbor expansion, and a bounded 40-node visual surface; the existing detailed list remains available for accessibility and metadata.
 - Validation: mobile suite 189/189, mobile typecheck, `git diff --check` passed.
 - N031 graph visuals now have an implemented native preview; authenticated device graph data and full Vue visual/computed-style evidence remain open.
+
+## 2026-09-15 Round N+34at — Cross-package regression after mobile slices
+
+- Web 891/891, Embed 7/7, Desktop 2/2, Shared 465/465, Mobile 189/189 all pass after the upload-progress and native graph changes.
+- Web, Shared, Mobile, Embed, and Desktop TypeScript checks pass; `git diff --check` passes.
+- Runtime acceptance remains separate: authenticated device knowledge interactions, Wails feature interactions, and live graph/upload backend evidence are still not proven by these suites.
