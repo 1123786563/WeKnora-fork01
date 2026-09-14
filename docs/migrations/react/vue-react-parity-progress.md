@@ -4,7 +4,7 @@
 
 - 新增 packages/i18n/src/generated/kbSettingsMessages.ts（59 键 ×5 locale，parser/storage/vectorStore）与 knowledgeEditorMessages.ts（586 键 ×5 locale，basic/chunking/indexing 标签）；源为 Vue locales 字节级，en-US/ja-JP 缺键按 Vue fallbackLocale=zh-CN 的渲染值补齐；两域均入 index.ts 合并链。
 - 动机：Round N+34 发现的知识库设置面板（KnowledgeSettingsPage）zh-CN 下整面英文——其所需文案全部在这两个命名空间。
-- 下一轮：KnowledgeSettingsPage 面板文案按上述键接线（约 35 处）+ live 截图对照 + 相关行 note 更新。
+- **面板文案接线完成**：页签（知识库设置/数据源管理）、基本信息、解析引擎、分块设置（策略四选项修正，移除 React 自创 recursive 选项）、索引策略（RAG 检索/Wiki/知识图谱 + Embedding/LLM 只读绑定）、存储与向量绑定、活动记录、刷新/保存。
 - 门禁：test:shared 445/445（键集一致性测试覆盖新域）、typecheck:shared 0。
 
 ## 2026-09-14 Round N+34 — 文档页 live 取证 + 新发现知识库设置面板 i18n 泄漏（部分完成）
