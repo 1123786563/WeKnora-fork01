@@ -1,4 +1,4 @@
-import { SETTINGS_SECTIONS, type SettingsSection, type SettingsOperation, type SettingsRole, type SettingsScope } from '@weknora/views';
+import { SETTINGS_SECTIONS, type SettingsSection, type SettingsOperation, type SettingsRole, type SettingsScope } from '@weknora/views/settings/registry';
 
 // Injected by vite define (apps/web/vite.config.ts) — frontend/vite.config.ts:71-74 parity.
 declare const __FRONTEND_VERSION__: string | undefined;

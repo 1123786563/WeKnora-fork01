@@ -79,6 +79,7 @@
       "@weknora/views/chat/composer": ["../../packages/views/src/chat/composer.tsx"],
       "@weknora/views/chat/markdown": ["../../packages/views/src/chat/markdown.ts"],
       "@weknora/views/chat/mermaid": ["../../packages/views/src/chat/mermaid.ts"],
+      "@weknora/views/embed/bridge": ["../../packages/views/src/embed/bridge.ts"],
       "@weknora/views/guides/contextual-guides": ["../../packages/views/src/guides/contextual-guides.ts"],
       "@weknora/views/integrations/registry": ["../../packages/views/src/integrations/registry.ts"],
       "@weknora/views/integrations/page": ["../../packages/views/src/integrations/page.tsx"],

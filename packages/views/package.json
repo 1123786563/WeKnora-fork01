@@ -10,6 +10,7 @@
     "./chat/composer": "./src/chat/composer.tsx",
     "./chat/markdown": "./src/chat/markdown.ts",
     "./chat/mermaid": "./src/chat/mermaid.ts",
+    "./embed/bridge": "./src/embed/bridge.ts",
     "./guides/contextual-guides": "./src/guides/contextual-guides.ts",
     "./integrations/registry": "./src/integrations/registry.ts",
     "./integrations/page": "./src/integrations/page.tsx",

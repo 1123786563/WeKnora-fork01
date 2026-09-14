@@ -3,7 +3,8 @@ import { extractEmbedToken, type EmbedPayload, type EmbedPublicConfig, type Embe
 import { createEmbedClient, type EmbedClient } from '@weknora/api-client/embed';
 import { createJsonTransport, type FetchLike } from '@weknora/api-client/transport';
 import type { ChatStreamEvent } from '@weknora/contracts';
-import { createEmbedBridgeGuard, EMBED_MESSAGE_SOURCE, renderChatMarkdown } from '@weknora/views';
+import { createEmbedBridgeGuard, EMBED_MESSAGE_SOURCE } from '@weknora/views/embed/bridge';
+import { renderChatMarkdown } from '@weknora/views/chat/markdown';
 
 import { attachmentUploadsFromFiles, imageDataUrisFromFiles, resolveEmbedLocale, sourceListFromReferences, translate } from './embed-ui.ts';
 import { channelIdFromPath, parentOriginFromReferrer, readStoredSession, readVisitorId, writeStoredSession } from './bootstrap.ts';

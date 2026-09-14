@@ -64,6 +64,7 @@ export default defineConfig({
       '@weknora/views/chat/composer': fileURLToPath(new URL('../../packages/views/src/chat/composer.tsx', import.meta.url)),
       '@weknora/views/chat/markdown': fileURLToPath(new URL('../../packages/views/src/chat/markdown.ts', import.meta.url)),
       '@weknora/views/chat/mermaid': fileURLToPath(new URL('../../packages/views/src/chat/mermaid.ts', import.meta.url)),
+      '@weknora/views/embed/bridge': fileURLToPath(new URL('../../packages/views/src/embed/bridge.ts', import.meta.url)),
       '@weknora/views/guides/contextual-guides': fileURLToPath(new URL('../../packages/views/src/guides/contextual-guides.ts', import.meta.url)),
       '@weknora/views/integrations/registry': fileURLToPath(new URL('../../packages/views/src/integrations/registry.ts', import.meta.url)),
       '@weknora/views/integrations/page': fileURLToPath(new URL('../../packages/views/src/integrations/page.tsx', import.meta.url)),
