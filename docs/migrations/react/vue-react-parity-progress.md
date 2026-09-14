@@ -2376,3 +2376,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Android AVD `test36-small` 已启动（`emulator-5554`），Debug APK 安装成功，`adb shell monkey -p com.weknora.mobile 1` 后顶层 Activity 为 `com.weknora.mobile/expo.modules.devlauncher.launcher.DevLauncherActivity`。
 - iOS Simulator `iPhone 17` 已 boot 完成，安装 `/tmp/weknora-react-ios/Build/Products/Debug-iphonesimulator/WeKnora.app` 成功，`simctl launch com.weknora.mobile` 返回进程号 `43969`。
 - 该证据证明原生包可安装并启动；尚未证明登录、聊天、上传等设备内业务交互，也不替代 Vue 同条件视觉对照。
+
+## 2026-09-15 Round N+34an — 原生启动界面读取
+
+- Android UIAutomator 确认当前包名为 `com.weknora.mobile`，但界面由 Expo Dev Launcher 承载；iOS 截图同样显示 `WeKnora Development Build`、`No development servers found` 与 `Enter URL manually`。
+- 因未连接 Metro/dev server，本轮不能宣称已进入业务登录或聊天页面；原生启动层已验证，业务交互证据仍待连接可用开发服务后补齐。
