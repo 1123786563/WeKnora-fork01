@@ -775,14 +775,28 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       mcpList,
       skillList,
     ]).then(
-      (results) => {
+      async (results) => {
         if (generation !== mentionGenerationRef.current || !scopeController.isCurrent(scope.scope)) return;
-        const kbItems = results[0].status === 'fulfilled' ? results[0].value.map((item) => ({
+        const kbValues = results[0].status === 'fulfilled' ? results[0].value : [];
+        const kbItems = kbValues.map((item) => ({
           id: item.id,
           name: item.name,
           type: 'kb' as const,
           kbType: item.type === 'faq' ? 'faq' as const : 'document' as const,
-        })) : [];
+        }));
+        const tagResults = await Promise.allSettled(kbValues.map((item) => client.knowledge.documents.tags(item.id, { page_size: 200 })));
+        if (generation !== mentionGenerationRef.current || !scopeController.isCurrent(scope.scope)) return;
+        const tagItems = tagResults.flatMap((result, index) => {
+          if (result.status !== 'fulfilled') return [];
+          const kb = kbValues[index];
+          return result.value.map((tag: any) => ({
+            id: String(tag.id),
+            name: String(tag.name ?? tag.label ?? tag.id),
+            type: 'tag' as const,
+            kbId: kb?.id,
+            kbName: kb?.name,
+          }));
+        });
         const fileResult = results[1].status === 'fulfilled' ? results[1].value.data : [];
         const fileItems = Array.isArray(fileResult) ? fileResult.map((item: any) => ({
           id: String(item.id),
@@ -806,7 +820,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
           skillName: item.name,
           description: item.description ?? '',
         })) : [];
-        setMentionOptions([...kbItems, ...fileItems, ...mcpItems, ...skillItems]);
+        setMentionOptions([...kbItems, ...tagItems, ...fileItems, ...mcpItems, ...skillItems]);
       },
       (cause: unknown) => {
         if (generation !== mentionGenerationRef.current || !scopeController.isCurrent(scope.scope)) return;
