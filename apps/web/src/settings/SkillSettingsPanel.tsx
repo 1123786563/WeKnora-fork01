@@ -190,10 +190,10 @@ function DrawerShell({ open, spec, children }: { open: boolean; spec: DrawerWidt
     document.addEventListener('mouseup', onUp);
   }
 
-  return <div className="skill-drawer-host" style={{ '--skill-drawer-width': `${width}px` } as React.CSSProperties} data-resizing={resizing || undefined}>
+  return <div className="contents [&_.wk-dialog]:w-[min(var(--skill-drawer-width,680px),100%)]! [&[data-resizing]_.wk-dialog]:[transition:none] [&[data-resizing]_.wk-dialog]:select-none" style={{ '--skill-drawer-width': `${width}px` } as React.CSSProperties} data-resizing={resizing || undefined}>
     {children}
-    {open ? <div className={`skill-drawer-resize-handle${resizing ? ' skill-drawer-resize-handle--active' : ''}`} role="presentation" onMouseDown={onHandleDown}>
-      <div className="skill-drawer-resize-line" />
+    {open ? <div className="group/resize fixed top-0 bottom-0 left-[calc((100vw_-_var(--skill-drawer-width,680px))_/_2_-_6px)] z-[2600] w-3 cursor-col-resize" role="presentation" onMouseDown={onHandleDown}>
+      <div className={`mx-auto h-full w-0.5 ${resizing ? 'bg-primary' : 'bg-transparent group-hover/resize:bg-primary'}`} />
     </div> : null}
   </div>;
 }
@@ -419,22 +419,22 @@ export function SkillCatalogSection({ client, initialCatalog, initialSandboxConf
   }
 
   const empty = catalog.length === 0;
-  return <section data-testid="skill-settings" className="skill-settings">
+  return <section data-testid="skill-settings" className="grid gap-3">
     {toast ? <Status tone={toast.tone}>{toast.message}</Status> : null}
     {loadError ? <Status tone="error">{loadError}</Status> : null}
     {loading ? <Status>{t('common.loading')}</Status> : empty ? (
-      <div className="skill-empty">
+      <div className="flex flex-col items-center justify-center gap-3 px-4 py-12 text-center">
         <Status>{t('settings.skills.emptyDesc')}</Status>
-        {skillConfigs.length === 0 ? <p className="wk-muted">{t('settings.skills.emptyNoSandboxHint')}</p> : null}
-        <div className="wk-list-actions">
-          <Button type="button" onClick={() => { setWizardOpen(true); }}>{t('settings.skills.addSkill')}</Button>
+        {skillConfigs.length === 0 ? <p className="wk-muted m-0">{t('settings.skills.emptyNoSandboxHint')}</p> : null}
+        <div className="wk-list-actions gap-[10px]!">
+          <Button type="button" className="bg-[var(--wks-primary,#00a870)]! border-[var(--wks-primary,#00a870)]! text-white! hover:bg-[var(--wks-primary-hover,#009664)]!" onClick={() => { setWizardOpen(true); }}>{t('settings.skills.addSkill')}</Button>
           {skillConfigs.length === 0
             ? <Button type="button" className="wk-button-outline" onClick={() => { if (typeof window !== 'undefined') window.location.assign('/platform/settings?section=sandbox'); }}>{t('settings.skills.goSandboxSettings')}</Button>
             : null}
         </div>
       </div>
     ) : (
-      <div className="skill-list">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,320px),1fr))] items-stretch gap-2.5">
         {catalog.map((item) => {
           const view = installsView(item, skillConfigs);
           const live = view.installs.length > 0;
@@ -445,60 +445,65 @@ export function SkillCatalogSection({ client, initialCatalog, initialSandboxConf
             ...view.available.map((config) => `${config.name} · ${t('settings.skills.installPanelAvailable')}`),
           ];
           const chipTooltip = tooltipLines.length === 0 ? t('settings.skills.installToSandbox') : tooltipLines.join('\n');
-          return <article key={item.id} className={`skill-card${focusedCatalogId === item.id ? ' skill-card--focused' : ''}${live ? ' skill-card--installed' : ' skill-card--idle'}`}>
-            <div className="skill-card__main"><div className="skill-card__body">
-              <div className="skill-card__header">
-                <span className="skill-card__badge" aria-hidden="true">⚡</span>
-                <div className="skill-card__heading">
-                  <h3 className="skill-card__title" title={item.name}>{item.name}</h3>
-                  {item.version ? <span className="skill-card__type">{item.version}</span> : null}
+          const cardTone = focusedCatalogId === item.id ? 'border-primary shadow-[0_0_0_2px_rgb(46_109_230/18%)]' : 'border-line';
+          const chipColorCls = chipTone === 'off' ? 'text-muted' : live ? 'text-muted-strong' : 'text-primary';
+          const chipBgCls = chipTone === 'stale' ? 'bg-[rgb(180_83_9/10%)]' : chipTone === 'failed' ? 'bg-[rgb(180_35_24/10%)]' : live ? 'bg-[#f4f6fa]' : 'bg-[rgb(46_109_230/10%)]';
+          const chipHoverCls = live ? 'enabled:hover:text-ink enabled:hover:bg-[#e9edf5]' : 'enabled:hover:text-primary enabled:hover:bg-[rgb(46_109_230/16%)]';
+          const chipCls = `inline-flex items-center gap-1 min-w-0 max-w-full m-0 px-1.5 py-0.5 border-0 rounded-control [font:inherit] text-xs leading-[18px] text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2 disabled:cursor-default disabled:opacity-60 ${chipColorCls} ${chipBgCls} ${chipHoverCls}`;
+          return <article key={item.id} className={`relative flex flex-col p-0 overflow-hidden rounded-[10px] bg-white transition-[border-color,box-shadow] duration-[180ms] min-w-0 h-full border ${cardTone}${focusedCatalogId === item.id ? ' skill-card--focused' : ''}${live ? ' skill-card--installed' : ' skill-card--idle'}`}>
+            <div className="flex items-stretch p-3 min-w-0 flex-1"><div className="flex-1 min-w-0 flex flex-col gap-2">
+              <div className="flex items-center gap-2.5 min-w-0 min-h-[28px]">
+                <span className={`shrink-0 w-[26px] h-[26px] rounded-[7px] flex items-center justify-center text-sm ${live ? 'bg-[rgb(46_109_230/12%)] text-primary' : 'bg-[#f4f6fa] text-muted-strong'}`} aria-hidden="true">⚡</span>
+                <div className="flex-1 min-w-0 flex items-baseline gap-1.5">
+                  <h3 className="flex-[0_1_auto] min-w-0 m-0 text-sm font-semibold leading-5 text-ink overflow-hidden text-ellipsis whitespace-nowrap" title={item.name}>{item.name}</h3>
+                  {item.version ? <span className="shrink-0 text-[11px] font-medium leading-[18px] text-muted">{item.version}</span> : null}
                 </div>
-                <div className="skill-card__actions">
-                  <button type="button" className="skill-card__icon-btn" title={t('settings.sandbox.skillFiles')} aria-label={t('settings.sandbox.skillFiles')} onClick={() => setFilesTarget({ id: item.id, name: item.name })}>📂</button>
+                <div className="shrink-0 flex items-center gap-0.5">
+                  <button type="button" className="shrink-0 inline-flex items-center justify-center w-6 h-6 m-0 p-0 border-0 rounded-control bg-none text-muted cursor-pointer text-[13px] focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2 enabled:hover:text-ink enabled:hover:bg-[#f1f4f9] disabled:cursor-not-allowed disabled:opacity-40" title={t('settings.sandbox.skillFiles')} aria-label={t('settings.sandbox.skillFiles')} onClick={() => setFilesTarget({ id: item.id, name: item.name })}>📂</button>
                   {canDeleteCatalog(item)
-                    ? <button type="button" className="skill-card__icon-btn skill-card__icon-btn--danger" disabled={deletingId === item.id} title={t('settings.skills.deleteCatalog')} aria-label={t('settings.skills.deleteCatalog')} onClick={() => setPendingDelete(item)}>🗑</button>
+                    ? <button type="button" className="shrink-0 inline-flex items-center justify-center w-6 h-6 m-0 p-0 border-0 rounded-control bg-none text-muted cursor-pointer text-[13px] focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2 enabled:hover:text-danger enabled:hover:bg-[rgb(180_35_24/8%)] disabled:cursor-not-allowed disabled:opacity-40" disabled={deletingId === item.id} title={t('settings.skills.deleteCatalog')} aria-label={t('settings.skills.deleteCatalog')} onClick={() => setPendingDelete(item)}>🗑</button>
                     : null}
                 </div>
               </div>
-              {item.description ? <p className="skill-card__desc" title={item.description}>{compactSkillText(item.description)}</p> : null}
-              <div className="skill-card__installs">
-                {view.installs.length === 0 && !view.canAdd ? <span className="skill-card__installs-label">{t('settings.skills.noInstalls')}</span>
+              {item.description ? <p className="line-clamp-2 m-0 overflow-hidden text-xs leading-[1.5] text-muted-strong [overflow-wrap:anywhere]" title={item.description}>{compactSkillText(item.description)}</p> : null}
+              <div className="flex items-center min-w-0 mt-auto">
+                {view.installs.length === 0 && !view.canAdd ? <span className="text-xs leading-[18px] text-muted">{t('settings.skills.noInstalls')}</span>
                   : !view.needsPanel ? (
-                    <button type="button" className={`skill-card__chip ${live ? 'skill-card__chip--installed' : 'skill-card__chip--idle'}${chipTone ? ` skill-card__entry--${chipTone}` : ''}`} disabled={Boolean(view.installs[0] && !recordFor(view.installs[0].sandboxConfigId))} title={chipTooltip} aria-label={summary}
+                    <button type="button" className={`skill-card__chip ${live ? 'skill-card__chip--installed' : 'skill-card__chip--idle'}${chipTone ? ` skill-card__entry--${chipTone}` : ''} ${chipCls}`} disabled={Boolean(view.installs[0] && !recordFor(view.installs[0].sandboxConfigId))} title={chipTooltip} aria-label={summary}
                       onClick={() => { if (view.installs[0]) openManage(item, view.installs[0]); else if (view.canAdd) openInstall(item); }}>
-                      {view.installs.some(isInstallBusy) ? <span className="skill-card__entry-dot" aria-hidden="true" /> : null}
-                      <span className="skill-card__chip-text">{summary}</span>
+                      {view.installs.some(isInstallBusy) ? <span className={`skill-card__entry-dot w-1.5 h-1.5 rounded-full ${chipTone === 'busy' ? 'bg-[#b45309]' : 'bg-current'} animate-[skill-chip-dot_1.2s_ease-in-out_infinite]`} aria-hidden="true" /> : null}
+                      <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{summary}</span>
                       <span aria-hidden="true">›</span>
                     </button>
                   ) : (
-                    <div className="skill-install-chip">
-                      <button type="button" className={`skill-card__chip ${live ? 'skill-card__chip--installed' : 'skill-card__chip--idle'}${chipTone ? ` skill-card__entry--${chipTone}` : ''}`} title={chipTooltip} aria-label={summary} aria-expanded={openPanelId === item.id}
+                    <div className="relative inline-flex min-w-0">
+                      <button type="button" className={`skill-card__chip ${live ? 'skill-card__chip--installed' : 'skill-card__chip--idle'}${chipTone ? ` skill-card__entry--${chipTone}` : ''} ${chipCls}`} title={chipTooltip} aria-label={summary} aria-expanded={openPanelId === item.id}
                         onClick={() => setOpenPanelId((current) => (current === item.id ? '' : item.id))}>
-                        {view.installs.some(isInstallBusy) ? <span className="skill-card__entry-dot" aria-hidden="true" /> : null}
-                        <span className="skill-card__chip-text">{summary}</span>
+                        {view.installs.some(isInstallBusy) ? <span className={`skill-card__entry-dot w-1.5 h-1.5 rounded-full ${chipTone === 'busy' ? 'bg-[#b45309]' : 'bg-current'} animate-[skill-chip-dot_1.2s_ease-in-out_infinite]`} aria-hidden="true" /> : null}
+                        <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{summary}</span>
                         <span aria-hidden="true">{openPanelId === item.id ? '▾' : '‹'}</span>
                       </button>
                       {openPanelId === item.id ? (
-                        <div className="skill-install-panel" data-testid={`skill-install-panel-${item.id}`}>
+                        <div className="absolute top-[calc(100%_+_6px)] left-0 z-[30] flex flex-col w-60 max-w-[calc(100vw_-_32px)] max-h-[min(360px,70vh)] overflow-y-auto py-1 bg-white border border-[#e6ebf3] rounded-[10px] shadow-[0_10px_28px_rgb(23_32_51/14%)]" data-testid={`skill-install-panel-${item.id}`}>
                           {view.installs.length > 0 ? <>
-                            <p className="skill-install-panel__group">{t('settings.skills.installPanelGroup')}</p>
+                            <p className="m-0 pt-1.5 px-3 pb-1 text-xs text-muted">{t('settings.skills.installPanelGroup')}</p>
                             {view.installs.map((installation) => (
-                              <button key={installation.sandboxConfigId} type="button" className={`skill-install-panel__item skill-card__entry--${installEntryTone(item, installation)}`} disabled={!recordFor(installation.sandboxConfigId)} title={installTooltip(item, installation)}
+                              <button key={installation.sandboxConfigId} type="button" className={`skill-card__entry--${installEntryTone(item, installation)} flex items-center gap-2 m-0 px-3 py-[7px] border-0 bg-none [font:inherit] text-[13px] text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2 enabled:hover:bg-[#f4f6fa] disabled:cursor-not-allowed disabled:opacity-55 text-[#27364d]`} disabled={!recordFor(installation.sandboxConfigId)} title={installTooltip(item, installation)}
                                 onClick={() => openManage(item, installation)}>
-                                {installation.sandboxType ? <span className="sandbox-backend-badge">{backendLabel(installation.sandboxType)}</span> : null}
-                                <span className="skill-install-panel__name">{installName(installation)}</span>
-                                {isInstallBusy(installation) ? <span className="skill-card__entry-dot" aria-hidden="true" /> : <span className="skill-card__entry-status" aria-hidden="true">{installation.status === 'failed' ? '✕' : installation.status === 'ready' ? '✓' : '!'}</span>}
+                                {installation.sandboxType ? <span className="shrink-0 px-1.5 py-px rounded-pill bg-[#eef4ff] text-primary-deep text-[11px] font-medium leading-4">{backendLabel(installation.sandboxType)}</span> : null}
+                                <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{installName(installation)}</span>
+                                {isInstallBusy(installation) ? <span className="skill-card__entry-dot w-1.5 h-1.5 rounded-full bg-current animate-[skill-chip-dot_1.2s_ease-in-out_infinite]" aria-hidden="true" /> : <span className={`shrink-0 ${installEntryTone(item, installation) === 'ready' ? 'text-[#067647]' : installEntryTone(item, installation) === 'stale' ? 'text-[#b45309]' : installEntryTone(item, installation) === 'failed' ? 'text-danger' : ''}`} aria-hidden="true">{installation.status === 'failed' ? '✕' : installation.status === 'ready' ? '✓' : '!'}</span>}
                               </button>
                             ))}
                           </> : null}
                           {view.available.length > 0 ? <>
-                            {view.installs.length > 0 ? <div className="skill-install-panel__split" role="separator" /> : null}
-                            <p className="skill-install-panel__group">{t('settings.skills.installPanelAvailable')}</p>
+                            {view.installs.length > 0 ? <div className="h-px mx-3 my-1 bg-line-soft" role="separator" /> : null}
+                            <p className="m-0 pt-1.5 px-3 pb-1 text-xs text-muted">{t('settings.skills.installPanelAvailable')}</p>
                             {view.available.map((config) => (
-                              <button key={config.id} type="button" className="skill-install-panel__item skill-install-panel__item--available" title={sandboxMetaLine(config)}
+                              <button key={config.id} type="button" className="flex items-center gap-2 m-0 px-3 py-[7px] border-0 bg-none text-primary [font:inherit] text-[13px] text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2 enabled:hover:bg-[#f4f6fa] disabled:cursor-not-allowed disabled:opacity-55" title={sandboxMetaLine(config)}
                                 onClick={() => openInstall(item, config.id)}>
-                                <span className="sandbox-backend-badge">{backendLabel(config.sandbox_type)}</span>
-                                <span className="skill-install-panel__name">{config.name}</span>
+                                <span className="shrink-0 px-1.5 py-px rounded-pill bg-[#eef4ff] text-primary-deep text-[11px] font-medium leading-4">{backendLabel(config.sandbox_type)}</span>
+                                <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{config.name}</span>
                                 <span aria-hidden="true">＋</span>
                               </button>
                             ))}
@@ -511,9 +516,9 @@ export function SkillCatalogSection({ client, initialCatalog, initialSandboxConf
             </div></div>
           </article>;
         })}
-        <button type="button" className="skill-card skill-card--add" onClick={() => setWizardOpen(true)}>
-          <span className="skill-card--add__icon" aria-hidden="true">＋</span>
-          <span className="skill-card--add__label">{t('settings.skills.addSkill')}</span>
+        <button type="button" className="skill-card--add group relative flex flex-col items-center justify-center gap-1.5 p-3 overflow-hidden h-full min-h-[88px] min-w-0 border border-dashed border-line rounded-[10px] bg-transparent text-muted cursor-pointer [font:inherit] text-center transition-[border-color,box-shadow] duration-[180ms] hover:text-primary hover:border-primary hover:bg-[rgb(46_109_230/6%)] hover:shadow-none focus-visible:text-primary focus-visible:border-primary focus-visible:bg-[rgb(46_109_230/6%)] focus-visible:shadow-none focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2" onClick={() => setWizardOpen(true)}>
+          <span className="flex items-center justify-center w-8 h-8 rounded-card bg-[#f4f6fa] text-muted-strong text-lg group-hover:bg-[rgb(46_109_230/10%)] group-focus-visible:bg-[rgb(46_109_230/10%)]" aria-hidden="true">＋</span>
+          <span className="text-[13px] font-medium leading-[1.4]">{t('settings.skills.addSkill')}</span>
         </button>
       </div>
     )}
@@ -615,25 +620,25 @@ function SandboxPickList({ client, item, configs, mode, sessionIds, targetIds, o
     };
   }, [client, rows]);
   if (rows.length === 0) return <p className="wk-muted">{t('settings.skills.noSandboxToInstall')}</p>;
-  return <div className="sandbox-pick-list">
+  return <div className="grid gap-2">
     {rows.map((row) => row.selectable ? (
-      <label key={row.config.id} className="sandbox-pick">
+      <label key={row.config.id} className="flex items-center gap-2.5 px-3 py-[9px] border border-[#e6ebf3] rounded-card bg-white">
         <input type="checkbox" checked={targetIds.includes(row.config.id)} onChange={(event) => onToggle(row.config.id, event.target.checked)} />
-        <span className="sandbox-pick__main">
-          <span className="sandbox-backend-badge">{backendLabel(row.config.sandbox_type)}</span>
-          <span className="sandbox-pick__text"><span className="sandbox-pick__name">{row.config.name}</span><span className="sandbox-pick__meta">{metaLine(row.config)}</span></span>
+        <span className="flex items-center gap-2 flex-1 min-w-0">
+          <span className="shrink-0 px-1.5 py-px rounded-pill bg-[#eef4ff] text-primary-deep text-[11px] font-medium leading-4">{backendLabel(row.config.sandbox_type)}</span>
+          <span className="flex flex-col min-w-0"><span className="text-[13px] font-medium text-ink overflow-hidden text-ellipsis whitespace-nowrap">{row.config.name}</span><span className="text-xs text-muted overflow-hidden text-ellipsis whitespace-nowrap">{metaLine(row.config)}</span></span>
         </span>
       </label>
     ) : (
-      <div key={row.config.id} className="sandbox-pick sandbox-pick--status">
-        <span className="sandbox-pick__main">
-          <span className="sandbox-backend-badge">{backendLabel(row.config.sandbox_type)}</span>
-          <span className="sandbox-pick__text">
-            <span className="sandbox-pick__name">{row.config.name}</span>
-            <span className="sandbox-pick__meta">{row.install && isInstallBusy(row.install) ? installStatusKeys(row.install.status, row.install.enabled).map((key) => t(key)).join(' ') : row.ready ? t('settings.sandbox.skillStatusReady') : metaLine(row.config)}</span>
+      <div key={row.config.id} className="flex items-center gap-2.5 px-3 py-[9px] border border-[#e6ebf3] rounded-card bg-white">
+        <span className="flex items-center gap-2 flex-1 min-w-0">
+          <span className="shrink-0 px-1.5 py-px rounded-pill bg-[#eef4ff] text-primary-deep text-[11px] font-medium leading-4">{backendLabel(row.config.sandbox_type)}</span>
+          <span className="flex flex-col min-w-0">
+            <span className="text-[13px] font-medium text-ink overflow-hidden text-ellipsis whitespace-nowrap">{row.config.name}</span>
+            <span className="text-xs text-muted overflow-hidden text-ellipsis whitespace-nowrap">{row.install && isInstallBusy(row.install) ? installStatusKeys(row.install.status, row.install.enabled).map((key) => t(key)).join(' ') : row.ready ? t('settings.sandbox.skillStatusReady') : metaLine(row.config)}</span>
           </span>
         </span>
-        {row.busy && row.install ? <div className="sandbox-pick__progress">
+        {row.busy && row.install ? <div className="flex items-center justify-end gap-1.5 shrink-0 text-muted text-xs [&_.skill-manage__progress]:w-[18px] [&_.skill-manage__progress]:h-[18px] [&_.skill-manage__progress]:m-0">
           <ProgressRing percent={installProgressPercent(progressByConfig[row.config.id], row.install.status)} />
           {progressByConfig[row.config.id] ? <span>{installProgressPercent(progressByConfig[row.config.id], row.install.status)}%</span> : null}
           <Button type="button" onClick={() => onManage(row.config, row.install!)}>{t('settings.skills.viewInstallProgress')}</Button>
@@ -658,7 +663,7 @@ export function SkillUploadProgress({ percent, t }: {
 }) {
   return (
     <div className="skill-upload-progress" role="status">
-      <span className="upload-file-name">{t('settings.sandbox.skillUploading', { percent })}</span>
+      <span className="text-[13px] text-primary [overflow-wrap:anywhere]">{t('settings.sandbox.skillUploading', { percent })}</span>
       <div
         className="skill-upload-progress__bar"
         role="progressbar"
@@ -845,15 +850,15 @@ function AddSkillWizard({ client, open, catalog, configs, installer, t, onClose,
     </nav>
     <p className="wk-muted">{stepDescription}</p>
     {error ? <Status tone="error">{error}</Status> : null}
-    {step > 0 && parsedCard ? <article className="skill-card parsed-skill"><div className="skill-card__main"><div className="skill-card__body">
-      <div className="skill-card__header">
-        <span className="skill-card__badge" aria-hidden="true">⚡</span>
-        <div className="skill-card__heading">
-          <h3 className="skill-card__title" title={parsedCard.name}>{parsedCard.name}</h3>
-          {parsedCard.version ? <span className="skill-card__type">{parsedCard.version}</span> : null}
+    {step > 0 && parsedCard ? <article className="parsed-skill relative flex flex-col p-0 overflow-hidden rounded-[10px] bg-white transition-[border-color,box-shadow] duration-[180ms] min-w-0 h-full border border-line"><div className="flex items-stretch p-3 min-w-0 flex-1"><div className="flex-1 min-w-0 flex flex-col gap-2">
+      <div className="flex items-center gap-2.5 min-w-0 min-h-[28px]">
+        <span className="shrink-0 w-[26px] h-[26px] rounded-[7px] flex items-center justify-center text-sm bg-[#f4f6fa] text-muted-strong" aria-hidden="true">⚡</span>
+        <div className="flex-1 min-w-0 flex items-baseline gap-1.5">
+          <h3 className="flex-[0_1_auto] min-w-0 m-0 text-sm font-semibold leading-5 text-ink overflow-hidden text-ellipsis whitespace-nowrap" title={parsedCard.name}>{parsedCard.name}</h3>
+          {parsedCard.version ? <span className="shrink-0 text-[11px] font-medium leading-[18px] text-muted">{parsedCard.version}</span> : null}
         </div>
       </div>
-      {parsedCard.description ? <p className="skill-card__desc" title={parsedCard.description}>{compactSkillText(parsedCard.description)}</p> : null}
+      {parsedCard.description ? <p className="line-clamp-2 m-0 overflow-hidden text-xs leading-[1.5] text-muted-strong [overflow-wrap:anywhere]" title={parsedCard.description}>{compactSkillText(parsedCard.description)}</p> : null}
     </div></div></article> : null}
     {step === 0 ? <>
       <section className="wk-settings-editor">
@@ -866,11 +871,11 @@ function AddSkillWizard({ client, open, catalog, configs, installer, t, onClose,
       <section className="wk-settings-editor">
         <h4>{t('settings.sandbox.skillUploadSection')}</h4>
         <p className="wk-muted">{t('settings.sandbox.skillUploadSectionHint', { size: maxSkillBundleMB() })}</p>
-        <input ref={fileInputRef} type="file" accept=".zip,application/zip" className="file-input-hidden" disabled={addBusy || Boolean(registeredId)} onChange={(event) => acceptFile(event.currentTarget.files?.[0] ?? null)} />
-        <div className={`file-upload-area${pendingFile ? ' has-file' : ''}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); acceptFile(event.dataTransfer.files?.[0] ?? null); }}>
-          {uploading ? <SkillUploadProgress percent={uploadPercent} t={t} /> : pendingFile ? <span className="upload-file-name">{t('settings.skills.addFileSelected', { name: pendingFile.name })}</span> : <>
-            <span className="upload-primary-text">{t('settings.sandbox.skillUploadClick')}</span>
-            <span className="upload-secondary-text">{t('settings.sandbox.skillUploadDrag')}</span>
+        <input ref={fileInputRef} type="file" accept=".zip,application/zip" className="absolute w-px h-px overflow-hidden [clip:rect(0_0_0_0)] whitespace-nowrap" disabled={addBusy || Boolean(registeredId)} onChange={(event) => acceptFile(event.currentTarget.files?.[0] ?? null)} />
+        <div className={`flex items-center justify-center min-h-24 p-3.5 border rounded-[10px] cursor-pointer text-center ${pendingFile ? 'border-solid border-primary bg-[#f4f8ff]' : 'border-dashed border-line-control bg-[#fafbfd]'}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); acceptFile(event.dataTransfer.files?.[0] ?? null); }}>
+          {uploading ? <SkillUploadProgress percent={uploadPercent} t={t} /> : pendingFile ? <span className="text-[13px] text-primary [overflow-wrap:anywhere]">{t('settings.skills.addFileSelected', { name: pendingFile.name })}</span> : <>
+            <span className="block text-[13px] font-medium text-[#27364d]">{t('settings.sandbox.skillUploadClick')}</span>
+            <span className="block mt-0.5 text-xs text-muted">{t('settings.sandbox.skillUploadDrag')}</span>
           </>}
         </div>
         {pendingFile && !registeredId ? <Button type="button" disabled={addBusy} onClick={() => { setPendingFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}>{t('settings.skills.addClearFile')}</Button> : null}
@@ -1177,36 +1182,37 @@ function SkillInstallTimeline({ client, configId, skillId, sessionId, messageId,
     }
   }
 
-  return <section className="skill-timeline skill-timeline--compact" aria-busy={loading}>
-    <div className="skill-timeline__content">
+  return <section className="skill-timeline flex flex-col pt-[10px] pr-3 pb-3 pl-3 bg-transparent border-0 rounded-none" aria-busy={loading}>
+    <div className="flex-1 min-w-0">
       {loading && timeline.frames === 0 ? <Status>{t('common.loading')}</Status>
-        : timeline.frames === 0 ? <p className="skill-timeline__empty">{live ? t('settings.sandbox.skillTranscriptWaiting') : t('settings.sandbox.skillTranscriptEmpty')}</p>
+        : timeline.frames === 0 ? <p className="my-1 text-[#999] text-xs">{live ? t('settings.sandbox.skillTranscriptWaiting') : t('settings.sandbox.skillTranscriptEmpty')}</p>
         : <>
-          {timeline.prompt ? <pre className="skill-timeline__prompt">{timeline.prompt}</pre> : null}
-          {timeline.thinking ? <div className="skill-timeline__thinking">{timeline.thinking}</div> : null}
+          {timeline.prompt ? <pre className="skill-timeline__prompt max-h-[72px] m-0 px-2 py-1.5 overflow-y-auto text-muted text-[11px] leading-[1.5] bg-white rounded-control whitespace-pre-wrap break-words">{timeline.prompt}</pre> : null}
+          {timeline.thinking ? <div className="my-2 px-[10px] py-2 text-muted text-xs leading-[1.55] whitespace-pre-wrap [overflow-wrap:anywhere] bg-white rounded-control">{timeline.thinking}</div> : null}
           {timeline.toolCalls.map((call) => (
-            <div key={call.id} className={`skill-timeline__step is-${call.status}`}>
-              <span className="skill-timeline__step-dot" aria-hidden="true" />
-              <span className="skill-timeline__step-name">{call.name ?? call.id}</span>
-              {typeof call.result === 'string' && call.result ? <span className="skill-timeline__step-result">{call.result}</span> : null}
+            <div key={call.id} className="flex items-baseline gap-1.5 my-1 text-xs leading-[1.5]">
+              <span className={`shrink-0 w-1.5 h-1.5 rounded-full self-center ${call.status === 'completed' ? 'bg-[#067647]' : call.status === 'failed' ? 'bg-danger' : 'bg-[#b45309]'}`} aria-hidden="true" />
+              <span className="text-[#27364d] font-medium [overflow-wrap:anywhere]">{call.name ?? call.id}</span>
+              {typeof call.result === 'string' && call.result ? <span className="min-w-0 text-muted whitespace-pre-wrap [overflow-wrap:anywhere]">{call.result}</span> : null}
             </div>
           ))}
-          {timeline.answer ? <div className="skill-timeline__answer markdown-content" dangerouslySetInnerHTML={{ __html: renderChatMarkdown(timeline.answer) }} /> : null}
-          {timeline.error ? <p className="skill-timeline__error" role="alert">{timeline.error}</p> : null}
+          {timeline.answer ? <div className="markdown-content min-w-0 text-xs leading-[1.55] text-ink [overflow-wrap:anywhere] [&_p]:m-0 [&_p]:mb-[0.5em] [&_p:last-child]:mb-0 [&_pre]:overflow-x-auto [&_pre]:text-[11px] [&_h1]:m-[0.4em_0_0.3em] [&_h1]:text-xs [&_h2]:m-[0.4em_0_0.3em] [&_h2]:text-xs [&_h3]:m-[0.4em_0_0.3em] [&_h3]:text-xs" dangerouslySetInnerHTML={{ __html: renderChatMarkdown(timeline.answer) }} /> : null}
+          {timeline.error ? <p className="mt-2 mb-0 text-danger text-xs" role="alert">{timeline.error}</p> : null}
         </>}
       {guidance.messages.map((item) => (
-        <div key={item.id} className="skill-timeline__guidance-message">
+        <div key={item.id} className="my-2 p-2 bg-white rounded-control [&_span]:text-xs [&_span]:text-muted [&_p]:mt-1 [&_p]:mb-0 [&_p]:whitespace-pre-wrap [&_p]:[overflow-wrap:anywhere]">
           <span>{t(`settings.sandbox.skillGuidance.${item.status}`)}</span>
           <p>{item.content}</p>
         </div>
       ))}
     </div>
-    {live || canRetry ? <div className="skill-timeline__guidance">
+    {live || canRetry ? <div className="sticky bottom-0 z-[1] shrink-0 mt-3 pt-3 bg-[var(--wk-dialog-bg,#fff)] border-t border-line-neutral">
       <textarea value={guidanceText} maxLength={10000} rows={2} disabled={sendingGuidance}
+        className="box-border w-full resize-y min-h-[44px] max-h-[132px] border border-line-control rounded-control bg-white text-ink [font:inherit] text-[13px] px-[10px] py-1.5 disabled:bg-canvas disabled:text-muted"
         placeholder={t('settings.sandbox.skillGuidance.placeholder')}
         onChange={(event) => setGuidanceText(event.target.value)} />
-      {guidanceError ? <p role="alert" className="skill-timeline__guidance-error">{guidanceError}</p> : null}
-      <div className="skill-timeline__guidance-actions">
+      {guidanceError ? <p role="alert" className="mt-1.5 mb-0 text-danger text-xs">{guidanceError}</p> : null}
+      <div className="flex items-center justify-end gap-3 mt-2 [&_span]:flex-1 [&_span]:text-xs [&_span]:text-muted">
         <span>{live && !guidance.accepting ? t('settings.sandbox.skillGuidance.unavailable') : ''}</span>
         <Button type="button" loading={sendingGuidance} disabled={!guidanceText.trim() || (live && !guidance.accepting)}
           onClick={() => void sendGuidance()}>
@@ -1423,23 +1429,23 @@ function ManageSkillDialog({ client, open, target, t, onClose, onChanged, onToas
     <p className="wk-muted">{target ? t('settings.skills.manageDrawerDesc', { name: target.record.name }) : ''}</p>
     {loading ? <Status>{t('common.loading')}</Status> : null}
     {error ? <Status tone="error">{error}</Status> : null}
-    {skill ? uninstallDone ? <div className="skill-manage__done">
+    {skill ? uninstallDone ? <div className="flex flex-col items-start gap-2.5 pt-2 pb-1 text-[#067647] [&_p]:m-0 [&_p]:text-[13px]">
       <span aria-hidden="true">✓</span>
       <p>{t('settings.sandbox.skillRemoveDone', { name: skill.name })}</p>
-    </div> : busy && skill.status === 'removing' ? <section className="skill-manage__section skill-manage__section--remove">
-      <div className="skill-manage__section-head">
+    </div> : busy && skill.status === 'removing' ? <section className="flex flex-col items-stretch gap-[10px] pt-3 border-t border-line-soft [&_h4]:m-0 [&_h4]:text-[13px] [&_h4]:font-semibold [&_h4]:text-ink">
+      <div className="flex items-center justify-between gap-3">
         <h4>{t('settings.sandbox.skillRemoveInProgress')}</h4>
         <ProgressRing percent={installProgressPercent(progress, skill.status)} />
       </div>
-      <p className="skill-manage__remove-stage">{removeStageText(progress, skill, t)}</p>
+      <p className="m-0 text-[13px] leading-[1.5] text-muted-strong">{removeStageText(progress, skill, t)}</p>
     </section> : <>
-      <div className="skill-manage__row">
-        <div className="skill-manage__info">
+      <div className="flex items-start justify-between gap-4 max-[720px]:flex-col">
+        <div className="min-w-0 [&_label]:block [&_label]:mb-1 [&_label]:text-sm [&_label]:font-medium [&_label]:text-ink">
           <label>{t('settings.skills.manageEnable')}</label>
-          <p className="wk-muted">{t('settings.sandbox.skillDisableHint')}</p>
-          <p className="wk-muted">{installStatusKeys(skill.status, skill.enabled).map((key) => t(key)).join(' · ')}</p>
+          <p className="wk-muted m-0 text-xs leading-[1.5] text-muted-strong!">{t('settings.sandbox.skillDisableHint')}</p>
+          <p className="wk-muted m-0 text-xs leading-[1.5] text-muted-strong!">{installStatusKeys(skill.status, skill.enabled).map((key) => t(key)).join(' · ')}</p>
         </div>
-        <div className="skill-manage__controls">
+        <div className="flex items-center gap-2 shrink-0">
           <label className="wk-switch"><input type="checkbox" checked={skill.enabled} disabled={busy} onChange={(event) => void toggleEnabled(event.target.checked)} /> {toggling ? '…' : ''}</label>
           {skill.status === 'failed' ? <Button type="button" loading={retrying} disabled={busy} title={t('settings.sandbox.skillRetryHint')} onClick={() => void retry()}>{t('settings.sandbox.skillRetry')}</Button> : null}
           {skill.status === 'installing' ? <Button type="button" loading={stopping} disabled={busy} title={t('settings.sandbox.skillStopHint')} onClick={() => void stop()}>{t('settings.sandbox.skillStop')}</Button> : null}
@@ -1451,19 +1457,19 @@ function ManageSkillDialog({ client, open, target, t, onClose, onChanged, onToas
         <Button type="button" onClick={() => setPendingUninstall(false)}>{t('common.cancel')}</Button>
         <Button type="button" loading={uninstalling} onClick={() => void uninstall()}>{t('common.delete')}</Button>
       </div> : null}
-      {errorLines.length > 0 ? <ul className="skill-card__error">{errorLines.map((line, index) => <li key={index}>{line}</li>)}</ul> : null}
-      {(skill.envs ?? []).length > 0 ? <section className="skill-manage__section">
+      {errorLines.length > 0 ? <ul className="mt-1 mb-0 pl-[18px] text-danger text-xs leading-[1.6]">{errorLines.map((line, index) => <li key={index}>{line}</li>)}</ul> : null}
+      {(skill.envs ?? []).length > 0 ? <section className="flex flex-col items-stretch gap-[10px] pt-3 border-t border-line-soft [&_h4]:m-0 [&_h4]:text-[13px] [&_h4]:font-semibold [&_h4]:text-ink">
         <h4>{t('settings.sandbox.skillEnv.toggle')}</h4>
         <p className="wk-muted">{t('settings.sandbox.skillEnv.workspaceHint')}</p>
-        <div className="skill-envs__rows">
-          {(skill.envs ?? []).map((env) => <div key={env.name} className="skill-envs__row">
-            <div className="skill-envs__meta">
-              <code className="skill-envs__name">{env.name}</code>
-              {env.required ? <span className="skill-envs__tag skill-envs__tag--required">{t('settings.sandbox.skillEnv.required')}</span> : null}
-              <span className={`skill-envs__tag ${env.isSet ? 'skill-envs__tag--set' : 'skill-envs__tag--unset'}`}>{env.isSet ? t('settings.sandbox.skillEnv.isSet') : t('settings.sandbox.skillEnv.notSet')}</span>
-              {env.description ? <span className="skill-envs__desc">{env.description}</span> : null}
+        <div className="grid gap-2.5">
+          {(skill.envs ?? []).map((env) => <div key={env.name} className="grid gap-1.5 py-2 border-b border-[#f1f4f9]">
+            <div className="flex items-center flex-wrap gap-1.5">
+              <code className="text-xs text-[#27364d]">{env.name}</code>
+              {env.required ? <span className="px-1.5 py-px rounded-pill text-[11px] leading-4 bg-[rgb(180_35_24/8%)] text-danger">{t('settings.sandbox.skillEnv.required')}</span> : null}
+              <span className={`px-1.5 py-px rounded-pill text-[11px] leading-4 ${env.isSet ? 'bg-[rgb(6_118_71/8%)] text-[#067647]' : 'bg-[#f1f4f9] text-muted'}`}>{env.isSet ? t('settings.sandbox.skillEnv.isSet') : t('settings.sandbox.skillEnv.notSet')}</span>
+              {env.description ? <span className="text-xs text-muted">{env.description}</span> : null}
             </div>
-            <div className="skill-envs__editor">
+            <div className="flex items-center gap-2 [&_input]:flex-1 [&_input]:min-w-0 [&_input]:box-border [&_input]:border [&_input]:border-line-control [&_input]:rounded-control [&_input]:px-[10px] [&_input]:py-1.5 [&_input]:[font:inherit] [&_input]:text-[13px]">
               <input type="password" autoComplete="new-password" spellCheck={false} aria-label={env.name}
                 placeholder={env.isSet ? t('settings.sandbox.skillEnv.placeholderSet') : t('settings.sandbox.skillEnv.placeholderUnset')}
                 value={envDrafts[env.name] ?? ''} disabled={busy || envSaving}
@@ -1483,8 +1489,8 @@ function ManageSkillDialog({ client, open, target, t, onClose, onChanged, onToas
           <Button type="button" loading={envSaving} disabled={Object.keys(envPayload()).length === 0 || busy} onClick={() => void saveEnvs()}>{t('settings.sandbox.skillEnv.save')}</Button>
         </div>
       </section> : null}
-      {hasTranscript(skill) ? <section className="skill-manage__section skill-manage__section--transcript">
-        <div className="skill-manage__section-head">
+      {hasTranscript(skill) ? <section className="skill-manage__section--transcript flex flex-col items-stretch gap-[10px] pt-3 border-t border-line-soft [&_h4]:m-0 [&_h4]:text-[13px] [&_h4]:font-semibold [&_h4]:text-ink">
+        <div className="flex items-center justify-between gap-3">
           <h4>{t('settings.sandbox.skillTranscriptTitle')}</h4>
           {skill.status === 'installing' ? <ProgressRing percent={installProgressPercent(progress, skill.status)} /> : null}
         </div>
@@ -1510,10 +1516,10 @@ function ManageSkillDialog({ client, open, target, t, onClose, onChanged, onToas
 function ProgressRing({ percent }: { percent: number }) {
   const circumference = 2 * Math.PI * 7;
   const clamped = Math.max(0, Math.min(100, percent));
-  return <div className="skill-manage__progress">
+  return <div className="skill-manage__progress inline-flex items-center gap-1.5 text-xs font-medium leading-none text-primary [&_svg]:block">
     <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true">
-      <circle className="skill-manage__progress-track" cx="9" cy="9" r="7" fill="none" strokeWidth="2" />
-      <circle className="skill-manage__progress-bar" cx="9" cy="9" r="7" fill="none" strokeWidth="2" strokeLinecap="round"
+      <circle className="stroke-line-soft" cx="9" cy="9" r="7" fill="none" strokeWidth="2" />
+      <circle className="stroke-primary" cx="9" cy="9" r="7" fill="none" strokeWidth="2" strokeLinecap="round"
         strokeDasharray={`${(clamped / 100) * circumference} ${circumference}`} transform="rotate(-90 9 9)" />
     </svg>
     <span>{clamped}%</span>
@@ -1595,45 +1601,45 @@ function CatalogFilesDialog({ client, open, target, t, onClose }: {
 
   return <Dialog open={open} title={target?.name ?? ''} onClose={onClose}>
     <p className="wk-muted">{t('settings.sandbox.skillFilesTitle')}</p>
-    <div className="skill-files-panel">
-      <aside className="skill-files-panel__nav">
+    <div className="grid grid-cols-[minmax(160px,220px)_minmax(0,1fr)] gap-3 min-h-[260px] max-[720px]:grid-cols-1">
+      <aside className="min-w-0 max-h-[420px] overflow-y-auto">
         {listError ? <p className="wk-muted">{listError}</p>
           : listLoading ? <Status>{t('common.loading')}</Status>
           : rows.length === 0 ? <p className="wk-muted">{t('settings.sandbox.skillFilesEmpty')}</p>
-          : <ul className="skill-files-panel__list">
+          : <ul className="m-0 p-0 list-none grid gap-0.5">
             {rows.map((row) => (
               <li key={row.path}>
-                <button type="button" className={`skill-files-panel__item${selectedPath === row.path ? ' is-active' : ''}${row.isDir ? ' is-dir' : ''}`} title={row.path}
+                <button type="button" className={`flex items-center gap-1 w-full px-2 py-[5px] border-0 rounded-control [font:inherit] text-[13px] text-left cursor-pointer ${selectedPath === row.path ? 'bg-[#eef4ff] text-primary-deep' : 'bg-none text-[#27364d] hover:bg-[#f4f6fa]'}${row.isDir ? ' font-medium' : ''}`} title={row.path}
                   onClick={() => { if (row.isDir) setExpanded((current) => { const next = new Set(current); if (next.has(row.path)) next.delete(row.path); else next.add(row.path); return next; }); else void selectFile(row.path); }}>
                   <span className="skill-files-panel__indent" style={{ width: `${row.depth * 12}px` }} />
                   <span aria-hidden="true">{row.isDir ? (expanded.has(row.path) ? '▾' : '▸') : '·'}</span>
-                  <span className="skill-files-panel__name">{row.name}</span>
+                  <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{row.name}</span>
                 </button>
               </li>
             ))}
           </ul>}
       </aside>
-      <section className="skill-files-panel__main">
-        {selectedPath ? <div className="skill-files-panel__bar">
-          <span className="skill-files-panel__path" title={selectedPath}>{selectedPath}</span>
+      <section className="min-w-0 flex flex-col gap-2">
+        {selectedPath ? <div className="flex items-center gap-2">
+          <span className="flex-1 min-w-0 text-xs text-muted overflow-hidden text-ellipsis whitespace-nowrap" title={selectedPath}>{selectedPath}</span>
           {markdown && file?.encoding === 'utf-8' ? <Button type="button" onClick={() => setMarkdownSource((current) => !current)}>{markdownSource ? t('settings.sandbox.skillFilesPreview') : t('settings.sandbox.skillFilesSource')}</Button> : null}
           {file?.content && file.encoding === 'utf-8' ? <Button type="button" onClick={() => void copyContent()}>{copied ? t('common.copied') : t('common.copy')}</Button> : null}
         </div> : null}
-        <div className="skill-files-panel__view">
+        <div className="min-w-0 flex-1 flex flex-col gap-2">
           {fileLoading ? <Status>{t('common.loading')}</Status>
             : fileError ? <Status tone="error">{fileError}</Status>
             : !selectedPath ? <p className="wk-muted">{t('settings.sandbox.skillFilesSelectHint')}</p>
             : <>
               {file?.truncated ? <Status tone="warning">{t('settings.sandbox.skillFilesTruncated')}</Status> : null}
-              {imageSrc ? <img className="skill-files-panel__image" src={imageSrc} alt={selectedPath} />
+              {imageSrc ? <img className="max-w-full rounded-card border border-line-soft" src={imageSrc} alt={selectedPath} />
                 : markdown && file?.encoding === 'utf-8' && file.content != null && !markdownSource ? <>
-                  {frontmatter && frontmatter.fields.length > 0 ? <dl className="skill-files-panel__meta">
-                    {frontmatter.fields.map((field) => <div key={field.key} className="skill-files-panel__meta-row"><dt>{field.key}</dt><dd className={field.code ? 'is-code' : undefined}>{field.value}</dd></div>)}
+                  {frontmatter && frontmatter.fields.length > 0 ? <dl className="skill-files-panel__meta m-0 mb-2.5 px-3 py-2.5 bg-[#f7f8fa] border border-line-soft rounded-card grid gap-1.5 text-xs">
+                    {frontmatter.fields.map((field) => <div key={field.key} className="grid grid-cols-[minmax(72px,max-content)_1fr] gap-2.5 [&_dt]:text-muted [&_dd]:m-0 [&_dd]:text-ink [&_dd]:[overflow-wrap:anywhere]"><dt>{field.key}</dt><dd className={field.code ? 'font-mono whitespace-pre-wrap' : undefined}>{field.value}</dd></div>)}
                   </dl> : null}
                   {/* Vue renders the markdown body as HTML (SkillFilesPanel.vue:87-91, 476-478); the shared renderer escapes raw HTML and allow-lists links. */}
-                  <div className="skill-files-panel__markdown markdown-content" dangerouslySetInnerHTML={{ __html: renderChatMarkdown(frontmatter?.body ?? file.content) }} />
+                  <div className="skill-files-panel__markdown markdown-content min-w-0 max-h-[420px] overflow-y-auto px-3.5 py-3 bg-white border border-line-soft rounded-card text-[13px] leading-[1.65] text-ink [overflow-wrap:anywhere] [&_h1]:m-[0.8em_0_0.4em] [&_h1]:leading-[1.3] [&_h1]:text-lg [&_h2]:m-[0.8em_0_0.4em] [&_h2]:leading-[1.3] [&_h2]:text-base [&_h3]:m-[0.8em_0_0.4em] [&_h3]:leading-[1.3] [&_h3]:text-sm [&_p]:my-[0.4em] [&_pre]:overflow-x-auto [&_pre]:px-3 [&_pre]:py-2.5 [&_pre]:bg-[#f7f8fa] [&_pre]:rounded-card [&_pre]:text-xs [&_code]:font-mono [&_code]:text-xs [&_table]:border-collapse [&_th]:border [&_th]:border-line-soft [&_th]:px-2 [&_th]:py-1 [&_td]:border [&_td]:border-line-soft [&_td]:px-2 [&_td]:py-1 [&_img]:max-w-full" dangerouslySetInnerHTML={{ __html: renderChatMarkdown(frontmatter?.body ?? file.content) }} />
                 </>
-                : file?.encoding === 'utf-8' && file.content != null ? <pre className="skill-files-panel__code"><code>{file.content}</code></pre>
+                : file?.encoding === 'utf-8' && file.content != null ? <pre className="m-0 px-3 py-2.5 overflow-auto max-h-[380px] bg-[#f7f8fa] border border-line-soft rounded-card text-xs leading-[1.55]"><code>{file.content}</code></pre>
                 : <p className="wk-muted">{t('settings.sandbox.skillFilesBinary')}</p>}
             </>}
         </div>

@@ -400,7 +400,7 @@ test('the manage drawer mounts the install timeline and live progress from the S
     assert.match(timeline?.textContent ?? '', /All set/);
     assert.match(timeline?.textContent ?? '', /use apt/);
     assert.match(timeline?.textContent ?? '', /待处理/);
-    const composer = timeline?.querySelector('.skill-timeline__guidance textarea');
+    const composer = timeline?.querySelector('textarea');
     assert.ok(composer, 'guidance composer renders while live');
     const send = Array.from(document.querySelectorAll('button')).find((button) => (button.textContent ?? '').includes('发送说明'));
     assert.ok(send, 'send guidance button renders');
@@ -417,7 +417,7 @@ test('guidance text is steered into the live run with the Vue payload and append
   try {
     await act(async () => { findButton('已安装到 Docker dev')?.click(); });
     await settle();
-    const textarea = document.querySelector('.skill-timeline__guidance textarea') as HTMLTextAreaElement;
+    const textarea = document.querySelector('textarea') as HTMLTextAreaElement;
     assert.ok(textarea, 'composer textarea renders');
     const setter = Object.getOwnPropertyDescriptor(dom.window.HTMLTextAreaElement.prototype, 'value')?.set;
     await act(async () => {
@@ -464,7 +464,7 @@ test('a failed run replays the durable history and reinstalls with guidance on r
     assert.match(timeline?.textContent ?? '', /earlier run output/);
     const retry = Array.from(document.querySelectorAll('button')).find((button) => (button.textContent ?? '').includes('携带说明重新安装')) as HTMLButtonElement;
     assert.ok(retry, 'retry composer button renders when the run can be retried');
-    const textarea = document.querySelector('.skill-timeline__guidance textarea') as HTMLTextAreaElement;
+    const textarea = document.querySelector('textarea') as HTMLTextAreaElement;
     const setter = Object.getOwnPropertyDescriptor(dom.window.HTMLTextAreaElement.prototype, 'value')?.set;
     await act(async () => {
       setter?.call(textarea, 'install libxml first');
