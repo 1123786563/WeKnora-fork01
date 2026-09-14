@@ -2104,3 +2104,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - `KnowledgeDocumentsScreen` now localizes document loading, filter loading, and upload failure fallback states through five-language knowledge keys (`41de0f18`), preserving queue/pagination/cancellation/refresh behavior.
 - Focused tests pass 4/4; mobile typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
 - Native document-list runtime evidence remains open.
+
+## 2026-09-15 Round N+33o — N031 mobile data-source error localization
+
+- `DataSourcesScreen` now localizes list/editor/test/sync-log failures, permission/cleanup/resume states, connector capability fallback, and default placeholders across five locales (`b0ef4055`), preserving sync, pagination, credential and editor behavior.
+- Focused data-source tests pass 23/23 and i18n tests 5/5; mobile typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
+- Native data-source runtime evidence remains open.
