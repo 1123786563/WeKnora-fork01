@@ -2074,3 +2074,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Mobile knowledge-base upload now supports multi-file native picking and FIFO processing across `a08ef44`, `bfe7aa62`, and `ac69f728`; single-file callers remain compatible, failed files do not block later files, cancellation stops the queue, lifecycle events and refreshes are preserved, and nested structured duplicate errors retain backend codes while mapping to five-language copy.
 - API client tests pass 10/10; mobile upload queue tests pass 5/5; mobile typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
 - N031 remains open for byte-level progress, graph/native runtime evidence, and other mobile acceptance dimensions.
+
+## 2026-09-15 Round N+33j — N031 user-scoped mobile recents
+
+- Mobile recents/favorites now follow the Vue user+tenant namespace across `6ffeb7a5` and `f645ae5d`: stable `auth.me().user.id`, anonymous namespace, refresh-failure reset, atomic generation-checked workspace hydration, and reload on user/tenant changes.
+- Focused mobile tests pass 24/24; mobile typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
+- N031 remains open for native runtime evidence and other mobile acceptance dimensions.
