@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
@@ -46,12 +46,14 @@ export function KnowledgeBaseListScreen() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [creating, setCreating] = useState(false);
+  const loadGeneration = useRef(0);
   const activeWorkspace = runtime.workspaces.find(
     (workspace) => String(workspace.id) === runtime.tenantId,
   );
   const writable = canCreateKnowledgeBase(activeWorkspace?.role);
 
   const load = useCallback(async () => {
+    const generation = ++loadGeneration.current;
     setLoading(true);
     setError("");
     try {
@@ -59,6 +61,7 @@ export function KnowledgeBaseListScreen() {
         runtime.client.knowledgeBases.list(),
         runtime.client.knowledgeBases.list({ creator: "mine" }),
       ]);
+      if (generation !== loadGeneration.current) return;
       setItems(next);
       setMineItems(mine);
       setFavoriteIds(
@@ -71,13 +74,14 @@ export function KnowledgeBaseListScreen() {
           ]),
       );
     } catch (cause) {
+      if (generation !== loadGeneration.current) return;
       setError(
         cause instanceof Error
           ? cause.message
           : knowledgeListLabel(runtime.locale, "knowledgeList.loadFailed"),
       );
     } finally {
-      setLoading(false);
+      if (generation === loadGeneration.current) setLoading(false);
     }
   }, [runtime.client]);
   useEffect(() => {
