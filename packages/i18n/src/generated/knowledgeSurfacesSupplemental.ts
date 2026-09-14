@@ -45,6 +45,8 @@ const enUS: Record<string, string> = {
   'knowledgeBase.documents.cancel': 'Cancel',
   'knowledgeBase.documents.statusUnknown': 'Unknown status',
   'knowledgeBase.documents.loadingDocuments': 'Loading documents…',
+  'knowledgeBase.documents.loadFailed': 'Unable to load documents',
+  'knowledgeBase.documents.filtersLoadFailed': 'Unable to load document filters',
   'knowledgeBase.documents.noDocuments': 'No documents match the current filters.',
   'knowledgeBase.documents.select': 'Select {name}',
   'knowledgeBase.documents.root': 'Root',
@@ -160,6 +162,8 @@ const zhCN: Record<string, string> = {
   'knowledgeBase.documents.cancel': '取消',
   'knowledgeBase.documents.statusUnknown': '状态未知',
   'knowledgeBase.documents.loadingDocuments': '正在加载文档…',
+  'knowledgeBase.documents.loadFailed': '加载文档失败',
+  'knowledgeBase.documents.filtersLoadFailed': '加载文档筛选条件失败',
   'knowledgeBase.documents.noDocuments': '没有符合当前筛选条件的文档。',
   'knowledgeBase.documents.select': '选择 {name}',
   'knowledgeBase.documents.root': '根目录',
@@ -292,6 +296,8 @@ export const knowledgeSurfacesSupplementalMessages: Record<Locale, Record<string
     'knowledgeBase.detail.previewFailed': 'プレビューを読み込めません',
     'knowledgeBase.detail.shareFailed': 'プレビューを共有できません',
     'knowledgeBase.detail.previewUnavailable': 'ドキュメントが{status}のためプレビューできません。',
+    'knowledgeBase.documents.loadFailed': 'ドキュメントを読み込めません',
+    'knowledgeBase.documents.filtersLoadFailed': 'ドキュメントの絞り込み条件を読み込めません',
   },
   'ko-KR': {
     ...enUS,
@@ -312,6 +318,8 @@ export const knowledgeSurfacesSupplementalMessages: Record<Locale, Record<string
     'knowledgeBase.detail.previewFailed': '미리보기를 불러올 수 없습니다',
     'knowledgeBase.detail.shareFailed': '미리보기를 공유할 수 없습니다',
     'knowledgeBase.detail.previewUnavailable': '문서가 {status} 상태라 미리볼 수 없습니다.',
+    'knowledgeBase.documents.loadFailed': '문서를 불러올 수 없습니다',
+    'knowledgeBase.documents.filtersLoadFailed': '문서 필터를 불러올 수 없습니다',
   },
   'ru-RU': {
     ...enUS,
@@ -332,5 +340,7 @@ export const knowledgeSurfacesSupplementalMessages: Record<Locale, Record<string
     'knowledgeBase.detail.previewFailed': 'Не удалось загрузить предпросмотр',
     'knowledgeBase.detail.shareFailed': 'Не удалось поделиться предпросмотром',
     'knowledgeBase.detail.previewUnavailable': 'Предпросмотр недоступен, пока документ имеет статус «{status}».',
+    'knowledgeBase.documents.loadFailed': 'Не удалось загрузить документы',
+    'knowledgeBase.documents.filtersLoadFailed': 'Не удалось загрузить фильтры документов',
   },
 };

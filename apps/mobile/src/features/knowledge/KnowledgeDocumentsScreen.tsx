@@ -63,13 +63,13 @@ export function KnowledgeDocumentsScreen() {
       setHasMore(result.page * result.page_size < result.total);
       setPage(nextPage);
     } catch (cause) {
-      if (generation === requestGeneration.current) setError(cause instanceof Error ? cause.message : 'Unable to load documents');
+      if (generation === requestGeneration.current) setError(cause instanceof Error ? cause.message : label('knowledgeBase.documents.loadFailed'));
     } finally {
       if (generation === requestGeneration.current) { setLoading(false); setLoadingMore(false); }
     }
   }, [folderPath, kbId, keyword, runtime.client, tagIds]);
 
-  useEffect(() => { void loadAuxiliary().catch((cause) => setError(cause instanceof Error ? cause.message : 'Unable to load filters')); }, [loadAuxiliary]);
+  useEffect(() => { void loadAuxiliary().catch((cause) => setError(cause instanceof Error ? cause.message : label('knowledgeBase.documents.filtersLoadFailed'))); }, [loadAuxiliary]);
   useEffect(() => { void loadPage(1, true); }, [loadPage]);
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => { if (state === 'active') { void loadAuxiliary(); void loadPage(1, true); } });
@@ -106,7 +106,7 @@ export function KnowledgeDocumentsScreen() {
       }
     }
     catch (cause) {
-      if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Unable to upload file');
+      if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : label('knowledgeBase.uploadFailed'));
     }
     finally { uploadController.current = null; setUploading(false); }
   }
