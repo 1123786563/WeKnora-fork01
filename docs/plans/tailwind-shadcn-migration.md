@@ -64,6 +64,11 @@ API 契约、鉴权、权限、表单校验、聊天流式、工具审批、上�
   基线+after-{foundation,auth,kblist} 截图；本地栈（:8080 sqlite / vite :5181，账号 uimig@local.dev）。
 - 本地栈注意：先前 dev 栈进程已结束；vite/后端均可用后台 job 方式自启（后端二进制 /tmp/uimig-server，
   sqlite /tmp/uimig-weknora.db，含 uimig 账号与一条 KB）。
+### 批次7：SystemGlobal 面板切片 ✅（settings-wrapper 域 1/N）
+- SystemGlobalSettingsPanel.tsx 12 处 className 迁移（tabs+is-active/rows/row/info/meta/
+  control+input-select 变体/reset/message/confirm 全套）；类名保留为测试钩子。
+- settings-wrapper.css 删除 18 条面板私有规则（wk-system-global 家族清零）。
+- 验收：typecheck 0、web 856/856（SettingsPage.test 15/15）、build ✓。
 ### 批次6：guides 域 ✅（判定为保留 CSS，按目标 III.7）
 - packages/views/src/guides/guides.css（243 行）保留原样，原因：
   ① spotlight 引导层为几何驱动定位（spot/ring/backdrop 由 JS 计算坐标、

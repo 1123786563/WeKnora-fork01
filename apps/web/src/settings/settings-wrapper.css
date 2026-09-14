@@ -9,20 +9,6 @@
    the drawer or it pushes the panel heading ~16px below the Vue position. */
 .wks-content-wrapper .wk-settings-section { margin-top: 0; }
 .wk-runtime-queues { display: grid; gap: 16px; }
-.wk-system-global { display: grid; gap: 16px; }
-.wk-system-global-tabs { border-bottom: 1px solid rgba(120,135,155,.22); display: flex; gap: 4px; overflow-x: auto; }
-.wk-system-global-tabs button { background: transparent; border: 0; border-bottom: 2px solid transparent; color: #5c6b83; cursor: pointer; font: inherit; padding: 9px 12px; white-space: nowrap; }
-.wk-system-global-tabs button.is-active { border-bottom-color: #0a8f4c; color: #0a8f4c; font-weight: 600; }
-.wk-system-global-rows { display: grid; gap: 10px; }
-.wk-system-global-row { align-items: flex-start; display: flex; gap: 24px; justify-content: space-between; }
-.wk-system-global-info { flex: 1; min-width: 0; }
-.wk-system-global-info strong { font-size: 14px; }
-.wk-system-global-info p { margin: 5px 0; }
-.wk-system-global-meta { color: #8a97ab; font-size: 12px; }
-.wk-system-global-control { align-items: flex-end; display: flex; flex-direction: column; gap: 8px; min-width: 220px; }
-.wk-system-global-control input:not([type="checkbox"]), .wk-system-global-control select { box-sizing: border-box; height: 32px; min-width: 180px; }
-.wk-system-global-reset { background: transparent; border: 0; color: #0a8f4c; cursor: pointer; font-size: 12px; padding: 2px 0; }
-.wk-system-global-message { color: #0a8f4c; font-size: 13px; margin: 0; }
 .wk-platform-api-keys { display: grid; gap: 16px; }
 .wk-api-key-create-row { display: flex; gap: 8px; margin-top: 12px; }
 .wk-api-key-create-row input { flex: 1; height: 32px; padding: 0 8px; }
@@ -68,10 +54,6 @@
 .wk-audit-detail dt { color: #5c6b83; font-size: 12px; }
 .wk-audit-detail dd { overflow-wrap: anywhere; margin: 4px 0 0; }
 .wk-audit-detail pre { background: #f7f9fb; border: 1px solid rgba(120,135,155,.18); border-radius: 8px; font-size: 12px; line-height: 1.55; margin: 0; max-height: 50vh; overflow: auto; padding: 12px 14px; white-space: pre-wrap; }
-.wk-system-global-confirm { background: #fff8e6; border: 1px solid rgba(178,106,8,.35); border-radius: 8px; padding: 14px 16px; }
-.wk-system-global-confirm p { color: #5c6b83; font-size: 13px; margin: 6px 0 12px; }
-.wk-system-global-confirm button { background: transparent; border: 1px solid rgba(120,135,155,.35); border-radius: 4px; cursor: pointer; margin-right: 8px; padding: 5px 12px; }
-.wk-system-global-confirm button:first-child { background: #b26a08; border-color: #b26a08; color: #fff; }
 .wk-runtime-queues .wk-settings-panel-heading { margin-bottom: 8px; }
 .wk-runtime-queues .wk-settings-panel-heading h2 { margin-bottom: 8px; }
 .wk-runtime-queues h3 { font-size: 16px; margin: 0 0 8px; }
