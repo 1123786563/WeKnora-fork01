@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, SafeAreaView, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import type { ApiKey } from '@weknora/api-client';
@@ -25,13 +25,20 @@ export function ApiKeysScreen() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [newToken, setNewToken] = useState('');
+  const loadGeneration = useRef(0);
 
   const load = useCallback(async () => {
     if (tenantId === null) { setLoading(false); setError(t('mobileApiKeys.noWorkspace')); return; }
+    const generation = ++loadGeneration.current;
     setLoading(true); setError('');
-    try { setKeys(await runtime.client.administration.tenantApiKeys.list(tenantId)); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : t('mobileApiKeys.loadFailed')); }
-    finally { setLoading(false); }
+    try {
+      const next = await runtime.client.administration.tenantApiKeys.list(tenantId);
+      if (generation === loadGeneration.current) setKeys(next);
+    } catch (cause) {
+      if (generation === loadGeneration.current) setError(cause instanceof Error ? cause.message : t('mobileApiKeys.loadFailed'));
+    } finally {
+      if (generation === loadGeneration.current) setLoading(false);
+    }
   }, [runtime.client, runtime.locale, tenantId]);
   useEffect(() => { void load(); }, [load]);
 
