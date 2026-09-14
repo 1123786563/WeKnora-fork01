@@ -1,4 +1,4 @@
-import { createContext, useContext, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import type { ChatSession } from '@weknora/contracts';
 import { sessionSourceBadge } from '@weknora/domain/chat/session-grouping';
 import { formatChatCopy, resolveChatCopy, resolveChatLocale, sessionGroupLabel, type ChatCopyTable } from './chat-copy.ts';
@@ -72,6 +72,8 @@ export interface SessionSidebarListProps {
   /** 清空消息 (Vue menu.vue row menu → clearSession); confirm is the caller's. */
   onClear?(sessionId: string): Promise<void> | void;
   onDelete?(sessionId: string): Promise<void> | void;
+  /** Batch delete selected rows; returning false means the caller cancelled. */
+  onBatchDelete?(sessionIds: readonly string[]): Promise<boolean | void> | boolean | void;
 }
 
 /*
@@ -79,11 +81,15 @@ export interface SessionSidebarListProps {
  * shell sidebar: time group headers (已置顶/今天/昨天/近7天/近30天/更早), full
  * titles, green active row, hover ⋯ menu (置顶/重命名会话/清空消息/删除会话).
  */
-export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, loading = false, emptyLabel, untitledLabel, onSelect, onRename, onTogglePin, onClear, onDelete, source, sourceOptions, onSourceChange }: SessionSidebarListProps) {
+export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, loading = false, emptyLabel, untitledLabel, onSelect, onRename, onTogglePin, onClear, onDelete, onBatchDelete, source, sourceOptions, onSourceChange }: SessionSidebarListProps) {
   const t = copy ?? resolveChatCopy(resolveChatLocale());
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
   const [renameError, setRenameError] = useState<string | null>(null);
+  const [batchMode, setBatchMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [batchBusy, setBatchBusy] = useState(false);
+  const [batchError, setBatchError] = useState<string | null>(null);
   const renameSubmitting = useRef(false);
   const startRename = (session: ChatSession) => {
     setEditingSessionId(session.id);
@@ -119,6 +125,45 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
   const visibleGroups = groups ?? [{ key: 'all', items: sessions ?? [] }];
   const hasMenu = Boolean(onRename || onTogglePin || onClear || onDelete);
   const totalItems = visibleGroups.reduce((count, group) => count + group.items.length, 0);
+  const visibleIds = visibleGroups.flatMap((group) => group.items.map((session) => session.id));
+  useEffect(() => {
+    setSelectedIds((current) => {
+      const next = new Set([...current].filter((id) => visibleIds.includes(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [visibleIds.join('\u0000')]);
+  const allSelected = totalItems > 0 && visibleIds.every((id) => selectedIds.has(id));
+  const toggleBatchMode = () => {
+    if (batchBusy) return;
+    setBatchMode((current) => !current);
+    setSelectedIds(new Set());
+    setBatchError(null);
+  };
+  const toggleSelected = (sessionId: string) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(sessionId)) next.delete(sessionId); else next.add(sessionId);
+      return next;
+    });
+  };
+  const toggleAll = () => setSelectedIds(allSelected ? new Set() : new Set(visibleIds));
+  const submitBatchDelete = async () => {
+    if (!onBatchDelete || selectedIds.size === 0 || batchBusy) return;
+    const ids = [...selectedIds];
+    setBatchBusy(true);
+    setBatchError(null);
+    try {
+      const result = await onBatchDelete(ids);
+      if (result !== false) {
+        setSelectedIds(new Set());
+        setBatchMode(false);
+      }
+    } catch (error) {
+      setBatchError(error instanceof Error ? error.message : '批量删除失败');
+    } finally {
+      setBatchBusy(false);
+    }
+  };
   /*
    * shell.css → utilities. Effective values verified against the built css
    * bundle: for elements whose classes also matched styles.css rules, the
@@ -134,6 +179,16 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
    */
   return <>
     {sourceOptions && onSourceChange ? <label className="grid gap-[0.25rem] mx-[4px] my-[0.55rem] text-[rgba(0,0,0,0.4)] text-[12px]">来源<select aria-label="会话来源" className="w-full box-border rounded-[6px] border border-[#cbd5e1] bg-white p-[0.45rem] text-[rgba(0,0,0,0.9)] text-[13px]" value={source ?? ''} onChange={(event) => onSourceChange(event.target.value)}>{sourceOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label> : null}
+    {onBatchDelete ? <div className="flex items-center justify-between gap-[6px] mx-[4px] my-[6px]" role="toolbar" aria-label="会话批量管理">
+      {!batchMode ? <button type="button" aria-label="批量管理" className="border-0 bg-transparent p-0 text-[12px] text-[#66758b] cursor-pointer hover:text-[#07c05f]" onClick={toggleBatchMode}>批量管理</button> : <>
+        <button type="button" aria-label="取消批量管理" className="border-0 bg-transparent p-0 text-[12px] text-[#66758b] cursor-pointer hover:text-[#07c05f]" onClick={toggleBatchMode} disabled={batchBusy}>取消</button>
+        <label className="inline-flex items-center gap-[4px] text-[12px] text-[#66758b]">
+          <input type="checkbox" aria-label="全选会话" checked={allSelected} onChange={toggleAll} disabled={batchBusy || totalItems === 0} />全选
+        </label>
+        <button type="button" aria-label="删除所选会话" className="border-0 bg-transparent p-0 text-[12px] text-[#e34d59] cursor-pointer disabled:cursor-not-allowed disabled:opacity-50" onClick={() => void submitBatchDelete()} disabled={batchBusy || selectedIds.size === 0}>{batchBusy ? '删除中…' : `删除所选 (${selectedIds.size})`}</button>
+      </>}
+    </div> : null}
+    {batchError ? <p role="alert" className="mx-[4px] my-[4px] text-[12px] text-[#e34d59]">批量删除失败：{batchError} <button type="button" aria-label="重试批量删除" className="border-0 bg-transparent p-0 text-[12px] text-[#07c05f] underline cursor-pointer" onClick={() => void submitBatchDelete()} disabled={batchBusy}>重试</button></p> : null}
     {loading ? <p role="status">{t.loadingSessions}</p> : null}
     {!loading && totalItems === 0 && emptyLabel ? <p className="my-[10px] mx-[4px] text-[rgba(0,0,0,0.4)] text-[12px]" role="status">{emptyLabel}</p> : null}
     {visibleGroups.map((group) => <section key={group.key}>
@@ -142,6 +197,7 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
         const badge = sessionSourceBadge(session);
         const active = session.id === selectedSessionId;
         return <li key={session.id} className={'group/item flex items-center rounded-[8px] relative' + (active ? ' is-active' : '')}>
+          {batchMode ? <input type="checkbox" aria-label={`选择会话 ${session.title || untitledLabel || t.untitledChat}`} checked={selectedIds.has(session.id)} onChange={() => toggleSelected(session.id)} disabled={batchBusy} className="mx-[4px] shrink-0" /> : null}
           {editingSessionId === session.id ? <div className="flex min-w-0 flex-1 flex-col gap-[2px] px-[6px] py-[4px]">
             <input type="text" aria-label={t.renameSession} value={editingTitle} maxLength={80} autoFocus disabled={renameSubmitting.current}
               className="w-full min-w-0 box-border rounded-[5px] border border-[#07c05f] bg-white px-[7px] py-[4px] text-[14px] leading-[20px] outline-none"

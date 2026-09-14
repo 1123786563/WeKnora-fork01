@@ -360,6 +360,58 @@ test('(l) replacing an admin client with a viewer client resets an invalid sourc
   assert.equal(container.querySelector('nav[aria-label="我的对话"] select[aria-label="会话来源"]'), null);
 });
 
+test('(m) batch management exposes accessible selection and deletes selected sessions', async () => {
+  const removed: string[] = [];
+  const client = fakeClient({ remove: async (sessionId: string) => { removed.push(sessionId); } });
+  const originalConfirm = window.confirm;
+  window.confirm = () => true;
+  try {
+    const container = await mountShell({ client });
+    const manage = container.querySelector('nav[aria-label="我的对话"] button[aria-label="批量管理"]') as HTMLButtonElement | null;
+    assert.ok(manage);
+    await act(async () => { manage?.click(); await settle(2); });
+    const selectAll = container.querySelector('nav[aria-label="我的对话"] input[aria-label="全选会话"]') as HTMLInputElement | null;
+    assert.ok(selectAll);
+    const checkboxes = [...container.querySelectorAll('nav[aria-label="我的对话"] input[type="checkbox"]')]
+      .filter((node) => node !== selectAll) as HTMLInputElement[];
+    assert.equal(checkboxes.length, SESSIONS.length);
+    await act(async () => { checkboxes[0]?.click(); await settle(1); });
+    await act(async () => { checkboxes[2]?.click(); await settle(1); });
+    const deleteButton = container.querySelector('nav[aria-label="我的对话"] button[aria-label="删除所选会话"]') as HTMLButtonElement | null;
+    assert.ok(deleteButton);
+    assert.equal(deleteButton?.disabled, false);
+    await act(async () => { deleteButton?.click(); await settle(10); });
+    assert.deepEqual(removed.sort(), ['session-2', 'session-pin']);
+    assert.equal(rowTitles().includes('昨天的会话'), false);
+    assert.equal(rowTitles().includes('置顶的会话'), false);
+  } finally {
+    window.confirm = originalConfirm;
+  }
+});
+
+test('(n) failed batch deletion keeps selection and offers retry', async () => {
+  let attempt = 0;
+  const client = fakeClient({ remove: async () => { attempt += 1; if (attempt === 1) throw new Error('batch delete failed'); } });
+  const originalConfirm = window.confirm;
+  window.confirm = () => true;
+  try {
+    const container = await mountShell({ client });
+    await act(async () => { (container.querySelector('nav[aria-label="我的对话"] button[aria-label="批量管理"]') as HTMLButtonElement).click(); await settle(1); });
+    const first = container.querySelector('nav[aria-label="我的对话"] input[type="checkbox"]:not([aria-label="全选会话"])') as HTMLInputElement;
+    await act(async () => { first.click(); await settle(1); });
+    await act(async () => { (container.querySelector('nav[aria-label="我的对话"] button[aria-label="删除所选会话"]') as HTMLButtonElement).click(); await settle(10); });
+    const status = container.querySelector('nav[aria-label="我的对话"] [role="alert"]');
+    assert.equal(status?.textContent?.includes('批量删除失败'), true);
+    assert.equal((first as HTMLInputElement).checked, true);
+    const retry = container.querySelector('nav[aria-label="我的对话"] button[aria-label="重试批量删除"]') as HTMLButtonElement | null;
+    assert.ok(retry);
+    await act(async () => { retry?.click(); await settle(10); });
+    assert.equal(rowTitles().includes('置顶的会话'), false);
+  } finally {
+    window.confirm = originalConfirm;
+  }
+});
+
 test('(i) renaming a session uses an inline editor with Vue normalization and commits once on Enter', async () => {
   const updates: Array<{ id: string; title: string }> = [];
   const client = fakeClient({ update: async (id: string, input: { title: string }) => {

@@ -409,6 +409,24 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
     }
   }
 
+  async function deleteShellSessions(sessionIds: readonly string[]): Promise<boolean> {
+    if (!window.confirm('确认删除选中的会话？删除后将无法恢复。')) return false;
+    const failed: string[] = [];
+    const deleted: string[] = [];
+    for (const sessionId of sessionIds) {
+      try { await client.sessions.remove(sessionId); deleted.push(sessionId); } catch { failed.push(sessionId); }
+    }
+    const selected = new Set(deleted);
+    sessionsRef.current = sessionsRef.current.filter((session) => !selected.has(session.id));
+    sessionsTotalRef.current = Math.max(0, sessionsTotalRef.current - deleted.length);
+    setSessions(sessionsRef.current);
+    if (chatSessionIdFromPath(window.location.pathname) && selected.has(chatSessionIdFromPath(window.location.pathname)!)) {
+      window.location.assign('/platform/creatChat');
+    }
+    if (failed.length > 0) throw new Error(`仍有 ${failed.length} 个会话删除失败`);
+    return true;
+  }
+
   // `/platform/knowledge-search?q=...` redirects to `?cmdk=...` (routes.tsx).
   // Consume it once on mount, open the palette, and strip the param so
   // Back/Refresh doesn't reopen it (mirrors platform/index.vue's route.query.cmdk watcher).
@@ -610,6 +628,7 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
                 onTogglePin={toggleShellSessionPin}
                 onClear={clearShellSessionMessages}
                 onDelete={deleteShellSession}
+                onBatchDelete={deleteShellSessions}
               />
             </nav>
           )}
