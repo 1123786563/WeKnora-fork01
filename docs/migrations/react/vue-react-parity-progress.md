@@ -1817,3 +1817,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 对照 Vue `UploadConfirmDialog.vue` 的 ASR `t-input clearable`，React 音频语言字段改为项目级可清空输入，补齐显式清空操作，语言 payload 与表单状态契约不变。
 - upload-confirm 定向测试 34/34、Web 全量 831/831、`typecheck:web` 与 `git diff --check` 通过；证据 `evidence/vue-react-parity/2026-09-14-n007-extraction-toast.md` 已更新。
 - N007 继续保持 `implementing`：浏览器 computed-style/同条件截图、真实后端图谱链路及 Wails/native 证据仍未闭环。
+
+## 2026-09-14 Round N+64 — N007 问题数量数字输入
+
+- 对照 Vue `UploadConfirmDialog.vue` 的 `t-input-number`，React 问题生成数量改为项目级数字输入：88px 紧凑容器、减少/增加步进按钮、1–10 边界禁用、原生 number 键盘输入与 `aria-valuemin/max/now`；更新仍写入原有 `questionCount` 字段。
+- upload-confirm 定向测试 34/34、Web 全量 831/831、`typecheck:web` 与 `git diff --check` 通过；证据 `evidence/vue-react-parity/2026-09-14-n007-extraction-toast.md` 已更新。
+- N007 继续保持 `implementing`：浏览器 computed-style/同条件截图、真实后端图谱链路及 Wails/native 证据仍未闭环。

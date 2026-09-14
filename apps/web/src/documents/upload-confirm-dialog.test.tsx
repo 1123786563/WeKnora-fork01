@@ -360,6 +360,11 @@ test('question generation section exposes the count and instructions controls', 
   assert.match(html, /面向新员工/);
   assert.match(html, /wk-question-enabled/);
   assert.match(html, /role="switch"/);
+  assert.match(html, /wk-upload-number-input/);
+  assert.match(html, /减少生成问题数量/);
+  assert.match(html, /增加生成问题数量/);
+  assert.match(html, /aria-valuemin="1"/);
+  assert.match(html, /aria-valuemax="10"/);
 });
 
 test('config sections localize through the dialog copy table in other locales', () => {

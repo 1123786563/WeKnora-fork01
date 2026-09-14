@@ -728,6 +728,34 @@ export function UploadClearableInput({ value, placeholder, ariaLabel, onChange }
   </div>;
 }
 
+export function UploadNumberInput({ value, min, max, step, ariaLabel, onChange }: {
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  ariaLabel: string;
+  onChange: (value: number) => void;
+}) {
+  const clamp = (next: number) => Math.min(max, Math.max(min, Number.isFinite(next) ? next : value));
+  const adjust = (delta: number) => onChange(clamp(value + delta));
+  return <div className="wk-upload-number-input">
+    <button type="button" aria-label={`减少${ariaLabel}`} disabled={value <= min} onClick={() => adjust(-step)}>−</button>
+    <input
+      type="number"
+      min={min}
+      max={max}
+      step={step}
+      value={value}
+      aria-label={ariaLabel}
+      aria-valuemin={min}
+      aria-valuemax={max}
+      aria-valuenow={value}
+      onChange={(event) => onChange(clamp(Number(event.target.value)))}
+    />
+    <button type="button" aria-label={`增加${ariaLabel}`} disabled={value >= max} onClick={() => adjust(step)}>+</button>
+  </div>;
+}
+
 const CHUNKING_SEPARATOR_OPTIONS = [
   { value: "\n\n", labelKey: "knowledgeEditor.chunking.separators.doubleNewline" },
   { value: "\n", labelKey: "knowledgeEditor.chunking.separators.singleNewline" },
@@ -1046,7 +1074,7 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
             <p className="wk-muted">{t("knowledgeEditor.advanced.questionGeneration.countDescription")}</p>
           </div>
           <div className="wk-upload-question-control">
-            {state.questionEnabled ? <input className="wk-upload-question-count" type="number" min={1} max={10} step={1} aria-label={t("knowledgeEditor.advanced.questionGeneration.countLabel")} value={state.questionCount} onChange={(event) => update({ questionCount: Number(event.target.value) })} /> : null}
+            {state.questionEnabled ? <UploadNumberInput min={1} max={10} step={1} ariaLabel={t("knowledgeEditor.advanced.questionGeneration.countLabel")} value={state.questionCount} onChange={(value) => update({ questionCount: value })} /> : null}
             <GraphSwitch id="wk-question-enabled" checked={state.questionEnabled} labelId="wk-question-enabled-label" onChange={(checked) => update({ questionEnabled: checked })} />
           </div>
         </div>
