@@ -1,5 +1,12 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-14 Round N+33 — en-US 语言维度全路由扫尾（19 表面双端）
+
+- enus-full-sweep.cjs：登录/注册/KB 列表/智能体/共享空间/creatChat/设置 11 分区/集成 API，共 19 表面 × 双端，en-US locale（1440x900，只读）。
+- 结论：React en-US 无 UI 中文残留。reactOnly CJK 仅两类且均非泄漏：creat-chat 会话标题（用户数据）、general 语言下拉 endonym（简体中文/日本語，Vue locale 同值）。login/register Vue 自身泄漏 9 处中文（Vue 侧限制，登记）。
+- S00 语言维度（zh/en-US）在主要路由 + 设置分区：React 全部通过；相关行的语言维度缺口就此闭合。
+- 证据：2026-09-14-enus-full-sweep.md + screenshots/enus-full-20260914/（38 张）。
+
 ## 2026-09-14 Round N+32 — R013 API Playground 真实 Session/SSE + 两处阻断级修复
 
 - 缺陷一：Playground 抽屉被设置弹窗遮罩（wks-overlay z 1100）压住、整体不可点击（elementsFromPoint 证实）。修复：抽屉内联 z 提升为常量 1200/1201/1202（对齐 Vue teleport 逃逸语义）。
