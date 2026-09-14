@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import type { AuditLog, TenantInvitation, TenantMember, TenantRole } from '@weknora/api-client';
 import { formatMessage } from '@weknora/i18n';
 import { useMobileRuntime } from '../../runtime.tsx';
-import { canManageTenant, isRemovableMember, validateInvite } from './administration.ts';
+import { administrationAuditActionKey, administrationAuditActorKey, administrationAuditOutcomeKey, canManageTenant, isRemovableMember, validateInvite } from './administration.ts';
 
 const INVITE_ROLES: readonly TenantRole[] = ['admin', 'contributor', 'viewer'];
 const MEMBER_ROLES: readonly TenantRole[] = ['admin', 'contributor', 'viewer'];
@@ -19,8 +19,12 @@ export function AdministrationScreen() {
   const router = useRouter();
   const tenantId = tenantNumber(runtime.tenantId);
   const t = (key: string, values: Record<string, string | number> = {}) => formatMessage(runtime.locale, key, values);
-  const roleLabel = (value: string) => ['admin', 'contributor', 'viewer'].includes(value) ? t(`mobileAdministration.role.${value}`) : value;
+  const roleLabel = (value: string) => ['owner', 'admin', 'contributor', 'viewer'].includes(value) ? t(`mobileAdministration.role.${value}`) : value;
   const statusLabel = (value: string) => ['active', 'pending'].includes(value) ? t(`mobileAdministration.status.${value}`) : value;
+  const auditLabel = (kind: 'action' | 'outcome' | 'actor', value: string) => {
+    const key = kind === 'action' ? administrationAuditActionKey(value) : kind === 'outcome' ? administrationAuditOutcomeKey(value) : administrationAuditActorKey(value);
+    return key ? t(key) : value;
+  };
   const role = useMemo(() => runtime.workspaces.find((item) => String(item.id) === runtime.tenantId)?.role, [runtime.tenantId, runtime.workspaces]);
   const writable = canManageTenant(role);
   const [members, setMembers] = useState<TenantMember[]>([]);
@@ -46,7 +50,7 @@ export function AdministrationScreen() {
     if (results[2].status === 'fulfilled') setAudit(results[2].value.items); else failures.push(results[2].reason);
     if (failures.length) setError(failures[0] instanceof Error ? failures[0].message : t('mobileAdministration.someDataUnavailable'));
     setLoading(false);
-  }, [runtime.client, tenantId]);
+  }, [runtime.client, runtime.locale, tenantId]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -97,7 +101,7 @@ export function AdministrationScreen() {
       <FlatList scrollEnabled={false} data={members} keyExtractor={(item) => item.user_id} ListEmptyComponent={<Text style={{ color: '#667085', marginBottom: 12 }}>{t('mobileAdministration.noMembers')}</Text>} renderItem={({ item }) => <View style={{ borderBottomColor: '#eaecf0', borderBottomWidth: 1, paddingVertical: 10 }}><View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><View style={{ flex: 1 }}><Text style={{ fontWeight: '600' }}>{item.username}</Text><Text style={{ color: '#667085', fontSize: 12 }}>{item.email} · {roleLabel(item.role)} · {statusLabel(item.status)}</Text></View>{writable && isRemovableMember(item) ? <Pressable onPress={() => remove(item)}><Text style={{ color: '#b42318' }}>{t('mobileAdministration.remove')}</Text></Pressable> : null}</View>{writable && item.role !== 'owner' ? <View style={{ flexDirection: 'row', gap: 8, marginTop: 7 }}>{MEMBER_ROLES.map((nextRole) => <Pressable key={nextRole} onPress={() => void updateRole(item, nextRole)} style={{ paddingHorizontal: 8, paddingVertical: 5, borderRadius: 12, backgroundColor: item.role === nextRole ? '#dbeafe' : '#f2f4f7' }}><Text>{roleLabel(nextRole)}</Text></Pressable>)}</View> : null}</View>} />
       {writable ? <><Text style={{ fontSize: 17, fontWeight: '700', marginTop: 18, marginBottom: 6 }}>{t('mobileAdministration.invite')}</Text><TextInput accessibilityLabel={t('mobileAdministration.inviteEmail')} keyboardType="email-address" autoCapitalize="none" value={email} onChangeText={setEmail} placeholder="person@example.com" style={{ borderColor: '#d0d5dd', borderWidth: 1, borderRadius: 8, padding: 10, marginBottom: 8 }} /><View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>{INVITE_ROLES.map((nextRole) => <Pressable key={nextRole} onPress={() => setInviteRole(nextRole)} style={{ paddingHorizontal: 9, paddingVertical: 6, borderRadius: 12, backgroundColor: inviteRole === nextRole ? '#dcfce7' : '#f2f4f7' }}><Text>{roleLabel(nextRole)}</Text></Pressable>)}</View><Pressable accessibilityRole="button" disabled={saving} onPress={() => void invite()} style={{ backgroundColor: '#2864dc', padding: 11, borderRadius: 8, alignItems: 'center', opacity: saving ? 0.5 : 1 }}><Text style={{ color: '#fff', fontWeight: '600' }}>{saving ? t('mobileAdministration.sending') : t('mobileAdministration.sendInvitation')}</Text></Pressable></> : null}
       <Text style={{ fontSize: 17, fontWeight: '700', marginTop: 18, marginBottom: 6 }}>{t('mobileAdministration.openInvitations')}</Text><FlatList scrollEnabled={false} data={invitations.filter((item) => item.status === 'pending')} keyExtractor={(item) => String(item.id)} ListEmptyComponent={<Text style={{ color: '#667085' }}>{t('mobileAdministration.noPendingInvitations')}</Text>} renderItem={({ item }) => <View style={{ borderBottomColor: '#eaecf0', borderBottomWidth: 1, paddingVertical: 9, flexDirection: 'row', justifyContent: 'space-between' }}><View><Text>{item.invitee_email || item.invitee_user_id}</Text><Text style={{ color: '#667085', fontSize: 12 }}>{roleLabel(item.role)} · {t('mobileAdministration.expires', { date: item.expires_at })}</Text></View>{writable ? <Pressable onPress={() => void revoke(item)}><Text style={{ color: '#b42318' }}>{t('mobileAdministration.revoke')}</Text></Pressable> : null}</View>} />
-      <Text style={{ fontSize: 17, fontWeight: '700', marginTop: 18, marginBottom: 6 }}>{t('mobileAdministration.auditLog')}</Text><FlatList scrollEnabled={false} data={audit} keyExtractor={(item) => String(item.id)} ListEmptyComponent={<Text style={{ color: '#667085' }}>{t('mobileAdministration.noAuditEntries')}</Text>} renderItem={({ item }) => <View style={{ borderBottomColor: '#eaecf0', borderBottomWidth: 1, paddingVertical: 9 }}><Text style={{ fontWeight: '600' }}>{item.action} · {item.outcome}</Text><Text style={{ color: '#667085', fontSize: 12 }}>{item.actor_role} · {item.created_at}</Text></View>} />
+      <Text style={{ fontSize: 17, fontWeight: '700', marginTop: 18, marginBottom: 6 }}>{t('mobileAdministration.auditLog')}</Text><FlatList scrollEnabled={false} data={audit} keyExtractor={(item) => String(item.id)} ListEmptyComponent={<Text style={{ color: '#667085' }}>{t('mobileAdministration.noAuditEntries')}</Text>} renderItem={({ item }) => <View style={{ borderBottomColor: '#eaecf0', borderBottomWidth: 1, paddingVertical: 9 }}><Text style={{ fontWeight: '600' }}>{auditLabel('action', item.action)} · {auditLabel('outcome', item.outcome)}</Text><Text style={{ color: '#667085', fontSize: 12 }}>{auditLabel('actor', item.actor_role)} · {item.created_at}</Text></View>} />
     </ScrollView>}
   </SafeAreaView>;
 }
