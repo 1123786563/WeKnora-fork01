@@ -844,21 +844,21 @@ export function WebFetchRenderer({ data, copy }: { data: unknown; copy?: ChatCop
             {row.status ? <span className={`wk-tool-status-pill is-${row.statusKind} whitespace-nowrap rounded-[10px] border px-[0.45rem] py-0 text-[0.68rem] leading-[1.5] ${row.statusKind === 'ok' ? 'border-[rgba(7,192,95,0.35)] text-[#0a7d33]' : row.statusKind === 'failed' ? 'border-[rgba(192,57,43,0.35)] text-[#c0392b]' : 'border-[#e3e8ef] text-[#52606d]'}`}>{row.status}</span> : null}
             {row.method ? <span className="wk-tool-status-pill whitespace-nowrap rounded-[10px] border border-[#e3e8ef] px-[0.45rem] py-0 text-[0.68rem] leading-[1.5] text-[#52606d]">{row.method}</span> : null}
             {row.contentLengthLabel ? <span className={"wk-tool-row-meta " + TOOL_ROW_META}>{row.contentLengthLabel}</span> : null}
-            {row.truncated ? <span className={"wk-tool-row-meta " + TOOL_ROW_META}>truncated</span> : null}
+            {row.truncated ? <span className={"wk-tool-row-meta " + TOOL_ROW_META}>{labels.webFetchPartialContent}</span> : null}
           </div>
           {row.url ? <InfoField label="URL"><a href={row.url} target="_blank" rel="noopener noreferrer" className="text-[#245a9b]">{row.url}</a></InfoField> : null}
           {row.errorCode ? <InfoField label="Error code">{row.errorCode}</InfoField> : null}
           {row.errorMessage ? <p className={"wk-tool-snippet is-error text-[#c0392b]"}>{row.errorMessage}</p> : null}
           {row.summary ? (
             <div className="wk-tool-section mt-[0.4rem]">
-              <div className="wk-tool-section-title mb-[0.2rem] text-[0.72rem] font-semibold text-[#52606d]">Summary</div>
+              <div className="wk-tool-section-title mb-[0.2rem] text-[0.72rem] font-semibold text-[#52606d]">{labels.summaryLabel}</div>
               <div className="wk-tool-full-content whitespace-pre-wrap break-words text-[0.75rem] leading-[1.55] text-[#24292f]">{row.summary}</div>
             </div>
           ) : null}
-          {row.summaryFailed ? <div className="wk-tool-section-title is-error mb-[0.2rem] text-[0.72rem] font-semibold text-[#c0392b]">Summary generation failed</div> : null}
+          {row.summaryFailed ? <div className="wk-tool-section-title is-error mb-[0.2rem] text-[0.72rem] font-semibold text-[#c0392b]">{labels.webFetchSummaryFailed}</div> : null}
           {row.rawContent ? (
             <div className="wk-tool-section mt-[0.4rem]">
-              <div className="wk-tool-section-title mb-[0.2rem] text-[0.72rem] font-semibold text-[#52606d]">Raw text{row.contentLengthLabel ? ` (${row.contentLengthLabel})` : ''}</div>
+              <div className="wk-tool-section-title mb-[0.2rem] text-[0.72rem] font-semibold text-[#52606d]">{labels.rawTextLabel}{row.contentLengthLabel ? ` (${row.contentLengthLabel})` : ''}</div>
               <pre className={"wk-tool-raw-content m-0 mt-[0.2rem] max-h-[12rem] overflow-auto rounded-[6px] border border-[#e3e8ef] bg-[#f6f8fa] px-[0.6rem] py-[0.4rem] text-[0.7rem] leading-[1.5] whitespace-pre-wrap break-words " + MONO}>{row.rawContent}</pre>
             </div>
           ) : null}

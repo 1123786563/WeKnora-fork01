@@ -394,6 +394,31 @@ test('WebFetchRenderer localizes the empty-url fallback while preserving URL ren
   assert.doesNotMatch(serialized, /Unknown link/);
 });
 
+test('WebFetchRenderer localizes summary, partial-content and raw-text labels', () => {
+  const element = WebFetchRenderer({
+    data: {
+      results: [{
+        url: 'https://docs.example.com/guide',
+        status: 'success',
+        summary: '要約内容',
+        summary_status: 'failed',
+        raw_content: '原始页面内容',
+        content_length: 8,
+        truncated: true,
+      }],
+    },
+    copy: resolveChatCopy('ja-JP'),
+  });
+  const serialized = JSON.stringify(element);
+  assert.match(serialized, /要約/);
+  assert.match(serialized, /要約失敗/);
+  assert.match(serialized, /ページの一部/);
+  assert.match(serialized, /元のテキスト/);
+  assert.doesNotMatch(serialized, /Summary generation failed/);
+  assert.doesNotMatch(serialized, /Raw text/);
+  assert.doesNotMatch(serialized, /truncated/);
+});
+
 /* ---- Thinking / Plan ---- */
 
 test('thinkingView returns the reasoning text without falling through to raw output', () => {
