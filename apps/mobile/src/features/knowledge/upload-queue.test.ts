@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { NativeFileSource } from '@weknora/api-client';
-import { uploadKnowledgeFiles } from './upload-queue.ts';
+import { knowledgeUploadErrorLabel, uploadKnowledgeFiles } from './upload-queue.ts';
 import type { UploadEvent } from './upload-progress.ts';
 
 const files: NativeFileSource[] = [
@@ -14,6 +14,7 @@ test('uploads a picker batch FIFO and emits one lifecycle pair per file', async 
   const events: UploadEvent[] = [];
   const result = await uploadKnowledgeFiles(files, 'kb-1', {
     signal: new AbortController().signal,
+    locale: 'en-US',
     createUploadId: (_file, index) => `u${index}`,
     upload: async (file) => { calls.push(file.name); },
     dispatch: (event) => events.push(event),
@@ -31,13 +32,14 @@ test('keeps processing later files when one upload fails', async () => {
   const events: UploadEvent[] = [];
   const result = await uploadKnowledgeFiles(files, 'kb-1', {
     signal: new AbortController().signal,
+    locale: 'en-US',
     createUploadId: (_file, index) => `u${index}`,
     upload: async (file) => { if (file.name === 'one.pdf') throw new Error('duplicate'); },
     dispatch: (event) => events.push(event),
   });
 
   assert.equal(result.succeeded, 1);
-  assert.deepEqual(result.failures.map(({ file, error }) => [file.name, error]), [['one.pdf', 'duplicate']]);
+  assert.deepEqual(result.failures.map(({ file, error }) => [file.name, error]), [['one.pdf', 'File already exists']]);
   const failed = events.find((event) => event.type === 'complete' && event.uploadId === 'u0');
   const passed = events.find((event) => event.type === 'complete' && event.uploadId === 'u1');
   assert.equal(failed?.type === 'complete' ? failed.status : undefined, 'error');
@@ -49,6 +51,7 @@ test('stops before the next file when the active upload is cancelled', async () 
   const calls: string[] = [];
   const result = await uploadKnowledgeFiles(files, 'kb-1', {
     signal: controller.signal,
+    locale: 'en-US',
     createUploadId: (_file, index) => `u${index}`,
     upload: async (file) => { calls.push(file.name); controller.abort(); throw new Error('cancelled'); },
     dispatch: () => undefined,
@@ -57,5 +60,14 @@ test('stops before the next file when the active upload is cancelled', async () 
   assert.deepEqual(calls, ['one.pdf']);
   assert.equal(result.succeeded, 0);
   assert.equal(result.aborted, true);
-  assert.equal(result.failures[0]?.error, 'cancelled');
+  assert.equal(result.failures[0]?.error, 'File upload failed!');
+});
+
+test('localizes stable duplicate and generic upload errors for every mobile locale', () => {
+  for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'ko-KR', 'ru-RU'] as const) {
+    assert.notEqual(knowledgeUploadErrorLabel(locale, new Error('duplicate_file')), 'duplicate_file');
+    assert.notEqual(knowledgeUploadErrorLabel(locale, new Error('network timeout')), 'network timeout');
+  }
+  assert.equal(knowledgeUploadErrorLabel('zh-CN', new Error('duplicate_file')), '文件已存在');
+  assert.equal(knowledgeUploadErrorLabel('en-US', new Error('duplicate_file')), 'File already exists');
 });

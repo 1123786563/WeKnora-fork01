@@ -89,6 +89,7 @@ export function KnowledgeDocumentsScreen() {
       // single-file, so keep the same semantics with a cancellable FIFO queue.
       const result = await uploadKnowledgeFiles(files, kbId, {
         signal: controller.signal,
+        locale: runtime.locale,
         upload: (file, signal) => runtime.client.knowledge.documents.upload(kbId, { file }, signal),
         dispatch: dispatchUploadEvent,
       });
@@ -97,7 +98,11 @@ export function KnowledgeDocumentsScreen() {
         await loadPage(1, true);
       }
       if (result.failures.length > 0 && !result.aborted) {
-        setError(result.failures.length === 1 ? result.failures[0].error : `${result.failures.length} files failed to upload`);
+        const successCount = result.succeeded;
+        const failureCount = result.failures.length;
+        setError(successCount === 0
+          ? knowledgeListLabel(runtime.locale, 'knowledgeBase.uploadAllFailed')
+          : knowledgeListLabel(runtime.locale, 'knowledgeBase.uploadPartialSuccess', { success: successCount, fail: failureCount }));
       }
     }
     catch (cause) {
