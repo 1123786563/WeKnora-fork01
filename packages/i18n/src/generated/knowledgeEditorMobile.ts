@@ -1,0 +1,57 @@
+// Mobile-only copy for the Wiki / FAQ reference editor.
+// Keep the keys in the shared i18n registry so native surfaces use the same
+// five-locale fallback and formatting behavior as the Web client.
+import type { Locale } from '../index.ts';
+
+export const knowledgeEditorMobileMessages: Record<Locale, Record<string, string>> = {
+  'zh-CN': {
+    'knowledgeEditor.mobile.editWikiTitle': '编辑 Wiki 页面',
+    'knowledgeEditor.mobile.editPermission': '需要工作空间所有者或管理员角色才能编辑。服务器权限检查仍是最终依据。',
+    'knowledgeEditor.mobile.saved': '保存成功',
+    'knowledgeEditor.mobile.loadWikiFailed': '加载 Wiki 页面失败',
+    'knowledgeEditor.mobile.loadFaqFailed': '加载 FAQ 失败',
+    'knowledgeEditor.mobile.saveWikiFailed': '保存 Wiki 页面失败',
+    'knowledgeEditor.mobile.saveFaqFailed': '保存 FAQ 失败',
+    'knowledgeEditor.mobile.versionConflict': '版本 {version} · 由服务器保护并发冲突',
+  },
+  'en-US': {
+    'knowledgeEditor.mobile.editWikiTitle': 'Edit Wiki page',
+    'knowledgeEditor.mobile.editPermission': 'Editing requires an owner or admin workspace role. The server remains authoritative.',
+    'knowledgeEditor.mobile.saved': 'Saved successfully',
+    'knowledgeEditor.mobile.loadWikiFailed': 'Unable to load Wiki page',
+    'knowledgeEditor.mobile.loadFaqFailed': 'Unable to load FAQ',
+    'knowledgeEditor.mobile.saveWikiFailed': 'Unable to save Wiki page',
+    'knowledgeEditor.mobile.saveFaqFailed': 'Unable to save FAQ',
+    'knowledgeEditor.mobile.versionConflict': 'Version {version} · server-side conflict protection',
+  },
+  'ja-JP': {
+    'knowledgeEditor.mobile.editWikiTitle': 'Wikiページを編集',
+    'knowledgeEditor.mobile.editPermission': '編集にはワークスペースの所有者または管理者ロールが必要です。最終的な権限はサーバーで確認されます。',
+    'knowledgeEditor.mobile.saved': '保存しました',
+    'knowledgeEditor.mobile.loadWikiFailed': 'Wikiページを読み込めません',
+    'knowledgeEditor.mobile.loadFaqFailed': 'FAQを読み込めません',
+    'knowledgeEditor.mobile.saveWikiFailed': 'Wikiページを保存できません',
+    'knowledgeEditor.mobile.saveFaqFailed': 'FAQを保存できません',
+    'knowledgeEditor.mobile.versionConflict': 'バージョン {version} · サーバー側で競合を保護',
+  },
+  'ko-KR': {
+    'knowledgeEditor.mobile.editWikiTitle': 'Wiki 페이지 편집',
+    'knowledgeEditor.mobile.editPermission': '편집하려면 워크스페이스 소유자 또는 관리자 역할이 필요합니다. 최종 권한은 서버에서 확인합니다.',
+    'knowledgeEditor.mobile.saved': '저장되었습니다',
+    'knowledgeEditor.mobile.loadWikiFailed': 'Wiki 페이지를 불러올 수 없습니다',
+    'knowledgeEditor.mobile.loadFaqFailed': 'FAQ를 불러올 수 없습니다',
+    'knowledgeEditor.mobile.saveWikiFailed': 'Wiki 페이지를 저장할 수 없습니다',
+    'knowledgeEditor.mobile.saveFaqFailed': 'FAQ를 저장할 수 없습니다',
+    'knowledgeEditor.mobile.versionConflict': '버전 {version} · 서버 측 충돌 보호',
+  },
+  'ru-RU': {
+    'knowledgeEditor.mobile.editWikiTitle': 'Редактировать страницу Wiki',
+    'knowledgeEditor.mobile.editPermission': 'Для редактирования нужна роль владельца или администратора рабочего пространства. Окончательная проверка прав выполняется сервером.',
+    'knowledgeEditor.mobile.saved': 'Сохранено',
+    'knowledgeEditor.mobile.loadWikiFailed': 'Не удалось загрузить страницу Wiki',
+    'knowledgeEditor.mobile.loadFaqFailed': 'Не удалось загрузить FAQ',
+    'knowledgeEditor.mobile.saveWikiFailed': 'Не удалось сохранить страницу Wiki',
+    'knowledgeEditor.mobile.saveFaqFailed': 'Не удалось сохранить FAQ',
+    'knowledgeEditor.mobile.versionConflict': 'Версия {version} · защита от конфликтов на сервере',
+  },
+};

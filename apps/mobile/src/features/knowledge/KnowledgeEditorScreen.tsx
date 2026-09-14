@@ -24,7 +24,7 @@ export function KnowledgeEditorScreen() {
   const slug = firstParam(params.slug);
   const runtime = useMobileRuntime();
   const router = useRouter();
-  const label = (key: string) => knowledgeListLabel(runtime.locale, key);
+  const label = useCallback((key: string, values: Record<string, string | number> = {}) => knowledgeListLabel(runtime.locale, key, values), [runtime.locale]);
   const role = runtime.workspaces.find((workspace) => String(workspace.id) === runtime.tenantId)?.role;
   const writable = canEdit(role);
   const [wiki, setWiki] = useState<WikiEditorDraft>({ title: '', summary: '', content: '', version: 1 });
@@ -35,7 +35,9 @@ export function KnowledgeEditorScreen() {
   const [saved, setSaved] = useState(false);
   const [conflict, setConflict] = useState(false);
 
-  const title = useMemo(() => kind === 'wiki' ? (slug ? 'Edit Wiki page' : 'New Wiki page') : (slug ? 'Edit FAQ' : 'New FAQ'), [kind, slug]);
+  const title = useMemo(() => kind === 'wiki'
+    ? (slug ? label('knowledgeEditor.mobile.editWikiTitle') : label('wikiBrowser.newPageTitle'))
+    : (slug ? label('knowledgeEditor.faq.editorEdit') : label('knowledgeEditor.faq.editorCreate')), [kind, label, slug]);
 
   const load = useCallback(async () => {
     if (!kbId || !slug) return;
@@ -48,9 +50,9 @@ export function KnowledgeEditorScreen() {
         setFaq(createFaqDraft(entry));
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : `Unable to load ${kind}`);
+      setError(cause instanceof Error ? cause.message : label(kind === 'wiki' ? 'knowledgeEditor.mobile.loadWikiFailed' : 'knowledgeEditor.mobile.loadFaqFailed'));
     } finally { setLoading(false); }
-  }, [kbId, kind, runtime.client, slug]);
+  }, [kbId, kind, label, runtime.client, slug]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -78,7 +80,7 @@ export function KnowledgeEditorScreen() {
       setSaved(true);
     } catch (cause) {
       if (classifyMobileEditorError(cause) === 'conflict') setConflict(true);
-      setError(cause instanceof Error ? cause.message : `Unable to save ${kind}`);
+      setError(cause instanceof Error ? cause.message : label(kind === 'wiki' ? 'knowledgeEditor.mobile.saveWikiFailed' : 'knowledgeEditor.mobile.saveFaqFailed'));
     } finally { setSaving(false); }
   }
 
@@ -88,25 +90,25 @@ export function KnowledgeEditorScreen() {
       <Text accessibilityRole="header" style={{ flex: 1, fontSize: 21, fontWeight: '700' }}>{title}</Text>
       {writable ? <Pressable accessibilityRole="button" disabled={saving || loading} onPress={() => void save()}><Text style={{ color: '#2864dc', opacity: saving ? 0.5 : 1 }}>{saving ? label("common.loading") : label("common.save")}</Text></Pressable> : null}
     </View>
-    {!writable ? <Text style={{ color: '#667085', marginBottom: 8 }}>Editing requires an owner or admin workspace role. The server remains authoritative.</Text> : null}
-    {loading ? <ActivityIndicator accessibilityLabel={`Loading ${kind}`} /> : <ScrollView keyboardShouldPersistTaps="handled">
+    {!writable ? <Text style={{ color: '#667085', marginBottom: 8 }}>{label('knowledgeEditor.mobile.editPermission')}</Text> : null}
+    {loading ? <ActivityIndicator accessibilityLabel={label('common.loading')} /> : <ScrollView keyboardShouldPersistTaps="handled">
       {error ? <View style={{ backgroundColor: '#fff4ed', padding: 10, borderRadius: 8, marginBottom: 10 }}><Text accessibilityRole="alert" style={{ color: '#b42318' }}>{error}</Text>{conflict ? <Pressable onPress={() => void load()}><Text style={{ color: '#2864dc', marginTop: 8 }}>{label("wikiBrowser.editConflictReload")}</Text></Pressable> : null}</View> : null}
-      {saved ? <Text accessibilityLiveRegion="polite" style={{ color: '#067647', marginBottom: 8 }}>{kind === 'wiki' ? label("wikiBrowser.editSaveSuccess") : 'Saved successfully'}</Text> : null}
+      {saved ? <Text accessibilityLiveRegion="polite" style={{ color: '#067647', marginBottom: 8 }}>{kind === 'wiki' ? label("wikiBrowser.editSaveSuccess") : label('knowledgeEditor.mobile.saved')}</Text> : null}
       {kind === 'wiki' ? <>
         <Text style={{ fontWeight: '600', marginBottom: 4 }}>{label("wikiBrowser.editTitlePlaceholder")}</Text>
-        <TextInput accessibilityLabel="Wiki title" value={wiki.title} onChangeText={(titleValue) => setWiki((current) => ({ ...current, title: titleValue }))} editable={writable} style={{ borderColor: '#d0d5dd', borderWidth: 1, borderRadius: 8, padding: 10, marginBottom: 10 }} />
+        <TextInput accessibilityLabel={label('wikiBrowser.editTitlePlaceholder')} value={wiki.title} onChangeText={(titleValue) => setWiki((current) => ({ ...current, title: titleValue }))} editable={writable} style={{ borderColor: '#d0d5dd', borderWidth: 1, borderRadius: 8, padding: 10, marginBottom: 10 }} />
         <Text style={{ fontWeight: '600', marginBottom: 4 }}>{label("wikiBrowser.editSummaryPlaceholder")}</Text>
-        <TextInput accessibilityLabel="Wiki summary" value={wiki.summary} onChangeText={(summary) => setWiki((current) => ({ ...current, summary }))} editable={writable} style={{ borderColor: '#d0d5dd', borderWidth: 1, borderRadius: 8, padding: 10, marginBottom: 10 }} />
+        <TextInput accessibilityLabel={label('wikiBrowser.editSummaryPlaceholder')} value={wiki.summary} onChangeText={(summary) => setWiki((current) => ({ ...current, summary }))} editable={writable} style={{ borderColor: '#d0d5dd', borderWidth: 1, borderRadius: 8, padding: 10, marginBottom: 10 }} />
         <Text style={{ fontWeight: '600', marginBottom: 4 }}>{label("wikiBrowser.editContentPlaceholder")}</Text>
-        <TextInput accessibilityLabel="Wiki content" value={wiki.content} onChangeText={(content) => setWiki((current) => ({ ...current, content }))} editable={writable} multiline textAlignVertical="top" style={{ borderColor: '#d0d5dd', borderWidth: 1, borderRadius: 8, padding: 10, minHeight: 220 }} />
-        <Text style={{ color: '#667085', fontSize: 12, marginTop: 8 }}>Version {wiki.version} · server-side conflict protection</Text>
+        <TextInput accessibilityLabel={label('wikiBrowser.editContentPlaceholder')} value={wiki.content} onChangeText={(content) => setWiki((current) => ({ ...current, content }))} editable={writable} multiline textAlignVertical="top" style={{ borderColor: '#d0d5dd', borderWidth: 1, borderRadius: 8, padding: 10, minHeight: 220 }} />
+        <Text style={{ color: '#667085', fontSize: 12, marginTop: 8 }}>{label('knowledgeEditor.mobile.versionConflict', { version: wiki.version })}</Text>
       </> : <>
-        <Text style={{ fontWeight: '600', marginBottom: 4 }}>Question</Text>
-        <TextInput accessibilityLabel="FAQ question" value={faq.standardQuestion} onChangeText={(standardQuestion) => setFaq((current) => ({ ...current, standardQuestion }))} editable={writable} style={{ borderColor: '#d0d5dd', borderWidth: 1, borderRadius: 8, padding: 10, marginBottom: 10 }} />
-        <Text style={{ fontWeight: '600', marginBottom: 4 }}>Answer</Text>
-        <TextInput accessibilityLabel="FAQ answer" value={faq.answer} onChangeText={(answer) => setFaq((current) => ({ ...current, answer }))} editable={writable} multiline textAlignVertical="top" style={{ borderColor: '#d0d5dd', borderWidth: 1, borderRadius: 8, padding: 10, minHeight: 160, marginBottom: 10 }} />
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8 }}><Text>Enabled</Text><Switch accessibilityLabel="FAQ enabled" value={faq.isEnabled} onValueChange={(isEnabled) => setFaq((current) => ({ ...current, isEnabled }))} disabled={!writable} /></View>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8 }}><Text>Recommended</Text><Switch accessibilityLabel="FAQ recommended" value={faq.isRecommended} onValueChange={(isRecommended) => setFaq((current) => ({ ...current, isRecommended }))} disabled={!writable} /></View>
+        <Text style={{ fontWeight: '600', marginBottom: 4 }}>{label('knowledgeEditor.faq.standardQuestion')}</Text>
+        <TextInput accessibilityLabel={label('knowledgeEditor.faq.standardQuestion')} value={faq.standardQuestion} onChangeText={(standardQuestion) => setFaq((current) => ({ ...current, standardQuestion }))} editable={writable} style={{ borderColor: '#d0d5dd', borderWidth: 1, borderRadius: 8, padding: 10, marginBottom: 10 }} />
+        <Text style={{ fontWeight: '600', marginBottom: 4 }}>{label('knowledgeEditor.faq.answers')}</Text>
+        <TextInput accessibilityLabel={label('knowledgeEditor.faq.answers')} value={faq.answer} onChangeText={(answer) => setFaq((current) => ({ ...current, answer }))} editable={writable} multiline textAlignVertical="top" style={{ borderColor: '#d0d5dd', borderWidth: 1, borderRadius: 8, padding: 10, minHeight: 160, marginBottom: 10 }} />
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8 }}><Text>{label('knowledgeEditor.faq.statusEnabled')}</Text><Switch accessibilityLabel={label('knowledgeEditor.faq.statusEnabled')} value={faq.isEnabled} onValueChange={(isEnabled) => setFaq((current) => ({ ...current, isEnabled }))} disabled={!writable} /></View>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8 }}><Text>{label('knowledgeEditor.faq.recommended')}</Text><Switch accessibilityLabel={label('knowledgeEditor.faq.recommended')} value={faq.isRecommended} onValueChange={(isRecommended) => setFaq((current) => ({ ...current, isRecommended }))} disabled={!writable} /></View>
       </>}
     </ScrollView>}
   </SafeAreaView>;
