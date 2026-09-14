@@ -47,6 +47,14 @@ API 契约、鉴权、权限、表单校验、聊天流式、工具审批、上�
 运维记录：首批并行子任务因始终未执行文件写入被中断（只读分析循环）；
 前台探针证实绝对路径写入可用。已带侦查结论 + 「边读边写 + 后台门禁」纪律重新派发。
 
+### 批次4：knowledge-list 域 ✅（Orchestrator 执行，分阶段原子替换）
+- App.tsx KnowledgeBasesPage 全部 kb-list-* 样式 → utilities（3 阶段：结构层 21 处、
+  网格/骨架/空态/section 头 19 处、卡片层 20 处）；类名保留为 DOM/测试解剖钩子（无样式规则）。
+- knowledge-list.css 823 行 → keyframes-only（kbListFadeIn/kbListFlash/kbListShimmer）。
+- 验收：typecheck 0、web 856/856、shared 445/445、build ✓、anatomy 16/16、
+  kb-list 截图复核（rail/标题/warning/卡片全正常；像素差 1.5% 为转换预期差异）。
+- 事故记录：与并行子任务并发写 App.tsx 导致截断一次，git checkout 恢复后重放三段转换；
+  该教训已固化：同一文件禁止双写，子任务仅用于无冲突域。
 ### 批次3：memory-workspace 域 ✅（Orchestrator 自做）
 - PersonalMemoryPanel.tsx 全部样式 → utilities（header/intro/group/rows/stacked row/textarea、
   720px 媒体查询 → max-[720px]: 前缀、focus color-mix → outline rgba）；

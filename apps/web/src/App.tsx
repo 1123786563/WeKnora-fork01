@@ -649,8 +649,8 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
   const emptyVisible = pageState.status === 'error' || (pageState.status === 'success' && filtered.total === 0);
 
   return (
-    <main className="wk-page kb-list-page">
-      <div className="kb-list-container">
+    <main className="wk-page kb-list-page box-border flex h-full w-full min-w-0 flex-1 flex-col overflow-y-auto px-7 pt-5 pb-0">
+      <div className="kb-list-container relative flex min-h-0 flex-1">
         {/* Vue ListSpaceSidebar dual state: collapsed icon strip ↔ expanded
             nav panel, toggled by dragging the right-edge resize handle
             (ListSpaceSidebar.vue:2-150). The collapsed strip keeps the
@@ -658,49 +658,53 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
             plus a count badge (Vue .expanded-panel, :77-144). */}
         <aside
           className={[
-            'kb-list-rail',
-            railExpanded ? 'kb-list-rail-expanded' : '',
-            railDragging ? 'kb-list-rail-dragging' : '',
+            'kb-list-rail group/rail relative z-10 min-h-0 w-14 shrink-0 transition-[width] duration-[250ms] ease-[cubic-bezier(0.4,0,0.2,1)]',
+            railExpanded ? 'kb-list-rail-expanded w-[208px]' : '',
+            railDragging ? 'kb-list-rail-dragging transition-none' : '',
           ].filter(Boolean).join(' ')}
           aria-label={t('common.knowledgeBases')}
           style={railDragging && railDragWidth !== null ? { width: railDragWidth } : undefined}
         >
           {railExpanded ? (
-            <nav className="kb-list-rail-panel">
+            <nav className="kb-list-rail-panel flex min-h-0 w-full flex-1 flex-col items-stretch gap-0.5 overflow-y-auto overflow-x-hidden border-r border-[#e3e7ee] px-2 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {railItems.map((item, index) => (
                 <Fragment key={item.key}>
-                  {index === 3 ? <div className="kb-list-rail-divider" aria-hidden="true" /> : null}
-                  {index === 4 && item.org ? <div className="kb-list-rail-section-title">{t('listSpaceSidebar.spaces')}</div> : null}
+                  {index === 3 ? <div className="kb-list-rail-divider mx-1.5 my-1.5 h-px shrink-0 bg-[#e3e7ee]" aria-hidden="true" /> : null}
+                  {index === 4 && item.org ? <div className="kb-list-rail-section-title mt-0.5 shrink-0 overflow-hidden border-t border-[#e3e7ee] px-2 pt-2 pb-0.5 text-left text-xs font-semibold leading-[1.4] text-[#646e74]">{t('listSpaceSidebar.spaces')}</div> : null}
                   <button
                     type="button"
-                    className={space === item.key ? 'kb-list-rail-panel-item kb-list-rail-panel-item-active' : 'kb-list-rail-panel-item'}
+                    className={space === item.key
+                      ? 'kb-list-rail-panel-item kb-list-rail-panel-item-active group/item flex shrink-0 cursor-pointer items-center justify-between rounded-[7px] border-0 bg-[#eef4ef] px-2 py-1.5 text-left text-sm font-[inherit] text-[#07c05f] transition-all duration-150 hover:bg-[#eef4ef]'
+                      : 'kb-list-rail-panel-item group/item flex shrink-0 cursor-pointer items-center justify-between rounded-[7px] border-0 bg-transparent px-2 py-1.5 text-left text-sm font-[inherit] text-[#1d2129] transition-all duration-150 hover:bg-[#f0f3f8]'}
                     aria-pressed={space === item.key}
                     onClick={() => setSpace(item.key)}
                   >
-                    <span className="kb-list-rail-panel-left">
+                    <span className="kb-list-rail-panel-left flex min-w-0 flex-1 items-center gap-1.5">
                       <KbIcon name={item.icon} size={16} />
-                      <span className="kb-list-rail-panel-label" title={item.org ? item.org.name : undefined}>{item.label}</span>
+                      <span className="kb-list-rail-panel-label min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-left text-[13px] leading-[1.4]" title={item.org ? item.org.name : undefined}>{item.label}</span>
                     </span>
-                    {railCountVisible(item.key, item.count) ? <span className="kb-list-rail-panel-count">{item.count}</span> : null}
+                    {railCountVisible(item.key, item.count) ? <span className={`kb-list-rail-panel-count ml-1.5 shrink-0 rounded-lg px-[7px] py-0.5 text-xs font-medium transition-all duration-150 ${space === item.key ? 'bg-[#eef4ef] text-[#07c05f]' : 'bg-[#f0f3f8] text-[#646e74] group-hover/item:text-[#1d2129]'}`}>{item.count}</span> : null}
                   </button>
                 </Fragment>
               ))}
             </nav>
           ) : (
-            <div className="kb-list-rail-strip">
+            <div className="kb-list-rail-strip flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto overflow-x-hidden pt-3 pb-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {railItems.map((item, index) => (
                 <Fragment key={item.key}>
-                  {index === 4 && item.org ? <div className="kb-list-rail-divider kb-list-rail-strip-divider" aria-hidden="true" /> : null}
+                  {index === 4 && item.org ? <div className="kb-list-rail-divider kb-list-rail-strip-divider mx-1.5 my-1.5 h-px w-10 shrink-0 bg-[#e3e7ee]" aria-hidden="true" /> : null}
                   <button
                     key={item.key}
                     type="button"
-                    className={space === item.key ? 'kb-list-rail-item kb-list-rail-item-active' : 'kb-list-rail-item'}
+                    className={space === item.key
+                      ? 'kb-list-rail-item kb-list-rail-item-active flex w-[50px] shrink-0 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border-0 bg-[#eef4ef] pt-[5px] pb-0.5 font-[inherit] text-[#07c05f] transition-all duration-150 hover:bg-[#eef4ef] hover:text-[#07c05f]'
+                      : 'kb-list-rail-item flex w-[50px] shrink-0 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border-0 bg-transparent pt-[5px] pb-0.5 font-[inherit] text-[#646e74] transition-all duration-150 hover:bg-[#f0f3f8] hover:text-[#1d2129]'}
                     title={`${item.label} (${item.count})`}
                     aria-pressed={space === item.key}
                     onClick={() => setSpace(item.key)}
                   >
                     <KbIcon name={item.icon} size={16} />
-                    <span className="kb-list-rail-label">{item.org ? truncateRailLabel(item.org.name) : item.label}</span>
+                    <span className="kb-list-rail-label max-w-[52px] overflow-hidden text-ellipsis whitespace-nowrap text-center text-[11px] leading-[1.25]">{item.org ? truncateRailLabel(item.org.name) : item.label}</span>
                   </button>
                 </Fragment>
               ))}
@@ -709,23 +713,23 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
           {/* Vue .resize-handle (:146-149): mousedown starts the drag; the
               mouseup snap threshold (>= 120px) decides expand vs collapse. */}
           <div
-            className="kb-list-rail-handle"
+            className="kb-list-rail-handle group/handle absolute bottom-0 right-[-6px] top-0 z-[12] flex w-3 cursor-col-resize items-center justify-center"
             role="separator"
             aria-orientation="vertical"
             onMouseDown={onRailDragStart}
           >
-            <div className="kb-list-rail-handle-line" />
+            <div className={`kb-list-rail-handle-line h-10 w-0.5 rounded-[1px] transition-[opacity,background] duration-200 ease-[ease] ${railDragging ? 'bg-[#07c05f] opacity-100' : 'bg-[#c9d0da] opacity-[0.45] group-hover/handle:bg-[#07c05f] group-hover/handle:opacity-100'}`} />
           </div>
         </aside>
-        <div className="kb-list-content">
+        <div className="kb-list-content flex min-w-0 flex-1 flex-col">
           {/* Vue header: title + 28x28 create icon button + subtitle */}
-          <header className="kb-list-header">
-            <div className="kb-list-title-row">
-              <h1>{t('common.knowledgeBases')}</h1>
+          <header className="kb-list-header mb-4">
+            <div className="flex items-center gap-2">
+              <h1 className="m-0 text-2xl font-semibold leading-8 text-[#17233d]">{t('common.knowledgeBases')}</h1>
               {viewer.isContributor ? (
                 <button
                   type="button"
-                  className="kb-list-header-action"
+                  className="kb-list-header-action inline-flex h-7 w-7 min-w-[28px] cursor-pointer items-center justify-center rounded-md border border-[#e3e7ee] bg-[#f2f4f8] p-0 text-[#646e74] transition-colors duration-200 hover:text-[#1d2129] [&_svg]:text-[#07c05f]"
                   data-guide="kb-list-create"
                   title={t('knowledgeList.create')}
                   aria-label={t('knowledgeList.create')}
@@ -735,14 +739,14 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
                 </button>
               ) : null}
             </div>
-            <p className="kb-list-subtitle">{t('knowledgeList.subtitle')}</p>
+            <p className="kb-list-subtitle mb-0 mt-1 text-sm font-normal leading-5 text-[#8a94a6]">{t('knowledgeList.subtitle')}</p>
           </header>
-          <div className="kb-list-main">
+          <div className="kb-list-main min-w-0 flex-1 overflow-y-auto overflow-x-hidden pb-2">
             {error ? <Status tone="error">{error}</Status> : null}
             {notice ? <Status tone="success">{notice}</Status> : null}
             {/* Vue amber uninitialized banner (KnowledgeBaseList.vue:30-34) */}
             {hasUninitialized ? (
-              <div className="kb-list-warning" role="status">
+              <div className="kb-list-warning mb-5 flex items-center gap-2 rounded-md border border-[#f7d8b0] bg-[#fdf3e7] px-4 py-3 text-sm leading-[22px] text-[#cf6b1d] [&_svg]:shrink-0" role="status">
                 <KbIcon name="info-circle" size={16} />
                 <span>{t('knowledgeList.uninitializedBanner')}</span>
               </div>
@@ -760,52 +764,52 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
               </div>)}
             </div> : null}
             {isLoading ? (
-              <div className="kb-list-grid" aria-busy="true" aria-label={t('common.loading')}>
-                {Array.from({ length: SKELETON_CARD_COUNT }, (_, index) => <div className="kb-list-skeleton" key={index} />)}
+              <div className="kb-list-grid grid grid-cols-1 gap-3 motion-safe:animate-[kbListFadeIn_0.32s_ease-out] min-[900px]:grid-cols-2 min-[1250px]:grid-cols-3 min-[1600px]:grid-cols-4 min-[1900px]:grid-cols-5 min-[2200px]:grid-cols-6" aria-busy="true" aria-label={t('common.loading')}>
+                {Array.from({ length: SKELETON_CARD_COUNT }, (_, index) => <div className="kb-list-skeleton h-[136px] rounded-lg border border-[#e3e7ee] bg-[linear-gradient(100deg,#f2f4f8_40%,#f8fafc_50%,#f2f4f8_60%)] [background-size:200%_100%] motion-safe:animate-[kbListShimmer_1.4s_ease_infinite]" key={index} />)}
               </div>
             ) : null}
             {emptyVisible && (space === 'all' || space === 'mine') ? (
-              <div className="kb-list-empty">
-                <div className="kb-list-empty-img" aria-hidden="true" dangerouslySetInnerHTML={{ __html: KB_EMPTY_SVG }} />
-                <span className="kb-list-empty-title">{t('knowledgeList.empty.title')}</span>
-                <span className="kb-list-empty-desc">{t('knowledgeList.empty.description')}</span>
-                {viewer.isContributor ? <Button type="button" className="kb-list-empty-btn" data-guide="kb-list-create" onClick={openCreate}>{t('knowledgeList.create')}</Button> : null}
+              <div className="kb-list-empty flex flex-1 flex-col items-center justify-center px-5 py-[60px] text-center">
+                <div className="kb-list-empty-img [&_svg]:mx-auto [&_svg]:mb-5 [&_svg]:block [&_svg]:h-[162px] [&_svg]:w-[162px]" aria-hidden="true" dangerouslySetInnerHTML={{ __html: KB_EMPTY_SVG }} />
+                <span className="kb-list-empty-title mb-2 text-base font-semibold leading-[26px] text-[#8a94a6]">{t('knowledgeList.empty.title')}</span>
+                <span className="kb-list-empty-desc text-sm font-normal leading-[22px] text-[#a5aebd]">{t('knowledgeList.empty.description')}</span>
+                {viewer.isContributor ? <Button type="button" className="kb-list-empty-btn mt-5 border-0 bg-[linear-gradient(135deg,#07c05f_0%,#00a67e_100%)] text-white hover:bg-[linear-gradient(135deg,#07c05f_0%,#069155_100%)]" data-guide="kb-list-create" onClick={openCreate}>{t('knowledgeList.create')}</Button> : null}
               </div>
             ) : null}
             {/* Vue per-space empty state (KnowledgeBaseList.vue:674-678):
                 shared title/description + illustration, never the create CTA */}
             {emptyVisible && isOrgScope(space) ? (
-              <div className="kb-list-empty">
-                <div className="kb-list-empty-img" aria-hidden="true" dangerouslySetInnerHTML={{ __html: KB_EMPTY_SVG }} />
-                <span className="kb-list-empty-title">{t('knowledgeList.empty.sharedTitle')}</span>
-                <span className="kb-list-empty-desc">{t('knowledgeList.empty.sharedDescription')}</span>
+              <div className="kb-list-empty flex flex-1 flex-col items-center justify-center px-5 py-[60px] text-center">
+                <div className="kb-list-empty-img [&_svg]:mx-auto [&_svg]:mb-5 [&_svg]:block [&_svg]:h-[162px] [&_svg]:w-[162px]" aria-hidden="true" dangerouslySetInnerHTML={{ __html: KB_EMPTY_SVG }} />
+                <span className="kb-list-empty-title mb-2 text-base font-semibold leading-[26px] text-[#8a94a6]">{t('knowledgeList.empty.sharedTitle')}</span>
+                <span className="kb-list-empty-desc text-sm font-normal leading-[22px] text-[#a5aebd]">{t('knowledgeList.empty.sharedDescription')}</span>
               </div>
             ) : null}
             {/* Vue favorites/recents empty states carry a scope hint, never the
                 create CTA (KnowledgeBaseList.vue:645-659) */}
             {emptyVisible && (space === 'favorites' || space === 'recents') ? (
-              <div className="kb-list-empty">
+              <div className="kb-list-empty flex flex-1 flex-col items-center justify-center px-5 py-[60px] text-center">
                 <span className="kb-list-empty-icon" aria-hidden="true"><KbIcon name={space === 'favorites' ? 'star' : 'history'} size={48} /></span>
-                <span className="kb-list-empty-title">{t(space === 'favorites' ? 'knowledgeList.empty.favoritesTitle' : 'knowledgeList.empty.recentsTitle')}</span>
-                <span className="kb-list-empty-desc">{t(space === 'favorites' ? 'knowledgeList.empty.favoritesDescription' : 'knowledgeList.empty.recentsDescription')}</span>
+                <span className="kb-list-empty-title mb-2 text-base font-semibold leading-[26px] text-[#8a94a6]">{t(space === 'favorites' ? 'knowledgeList.empty.favoritesTitle' : 'knowledgeList.empty.recentsTitle')}</span>
+                <span className="kb-list-empty-desc text-sm font-normal leading-[22px] text-[#a5aebd]">{t(space === 'favorites' ? 'knowledgeList.empty.favoritesDescription' : 'knowledgeList.empty.recentsDescription')}</span>
               </div>
             ) : null}
             {listVisible ? (
-              <div className="kb-list-grid">
+              <div className="kb-list-grid grid grid-cols-1 gap-3 motion-safe:animate-[kbListFadeIn_0.32s_ease-out] min-[900px]:grid-cols-2 min-[1250px]:grid-cols-3 min-[1600px]:grid-cols-4 min-[1900px]:grid-cols-5 min-[2200px]:grid-cols-6">
                 {rows.map((row) => {
                   if (row.kind === 'header') {
                     return (
                       <button
                         key={'sec-' + row.key}
                         type="button"
-                        className="kb-list-section-header"
+                        className="kb-list-section-header group/section col-span-full sticky top-0 z-[5] flex w-full cursor-pointer select-none items-center gap-1.5 border-0 bg-white p-1.5 pr-0 pl-0 text-left font-[inherit] text-[13px] font-semibold leading-5 text-[#646e74] shadow-[0_-8px_0_0_#fff,0_4px_0_0_#fff] hover:text-[#1d2129]"
                         aria-expanded={row.expanded}
                         onClick={() => toggleSection(row.key)}
                       >
                         <KbIcon name={row.key === 'tenantOthers' && !viewer.isAdmin ? 'browse' : SECTION_ICONS[row.key] ?? 'user'} size={14} />
                         <span>{t(row.labelKey)}</span>
-                        <span className="kb-list-section-count">{row.count}</span>
-                        <span className="kb-list-section-toggle" aria-hidden="true"><KbIcon name={row.expanded ? 'chevron-down' : 'chevron-right'} size={14} /></span>
+                        <span className="kb-list-section-count ml-0.5 rounded-lg bg-[#f2f4f8] px-1.5 text-[11px] font-medium leading-4 text-[#646e74]">{row.count}</span>
+                        <span className="kb-list-section-toggle ml-1 opacity-70 group-hover/section:opacity-100" aria-hidden="true"><KbIcon name={row.expanded ? 'chevron-down' : 'chevron-right'} size={14} /></span>
                       </button>
                     );
                   }
@@ -825,30 +829,33 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
                   const questionEnabled = (card as { question_generation_config?: { enabled?: boolean } }).question_generation_config?.enabled === true;
                   const shareCount = typeof card.share_count === 'number' ? card.share_count : 0;
                   const favorited = favorites.has(card.id);
+                  // flash 动画的 border 覆盖用 ! 前缀（同属性 utilities 冲突时保证胜出）
                   const cardClasses = [
-                    'kb-list-card',
-                    isFaq ? 'kb-list-card-faq' : 'kb-list-card-document',
-                    initialized ? '' : 'kb-list-card-uninitialized',
-                    highlightId === card.id ? 'kb-list-flash' : '',
+                    'kb-list-card group/card relative flex h-[136px] min-h-[136px] cursor-pointer flex-col rounded-lg border p-3 shadow-[0_1px_3px_rgba(0,0,0,0.04)] transition-all duration-[250ms]',
+                    isFaq
+                      ? 'kb-list-card-faq border-[#e3e7ee] bg-[linear-gradient(135deg,#ffffff_0%,rgba(0,82,217,0.04)_100%)] after:pointer-events-none after:absolute after:right-0 after:top-0 after:z-0 after:h-[60px] after:w-[60px] after:rounded-[0_12px_0_100%] after:content-[""] after:bg-[linear-gradient(135deg,rgba(0,82,217,0.08)_0%,transparent_100%)] hover:border-[#0052d9] hover:shadow-[0_4px_12px_rgba(0,82,217,0.12)] hover:bg-[linear-gradient(135deg,#ffffff_0%,rgba(0,82,217,0.08)_100%)]'
+                      : 'kb-list-card-document border-[#e3e7ee] bg-[linear-gradient(135deg,#ffffff_0%,rgba(7,192,95,0.04)_100%)] after:pointer-events-none after:absolute after:right-0 after:top-0 after:z-0 after:h-[60px] after:w-[60px] after:rounded-[0_12px_0_100%] after:content-[""] after:bg-[linear-gradient(135deg,rgba(7,192,95,0.08)_0%,transparent_100%)] hover:border-[#07c05f] hover:shadow-[0_4px_12px_rgba(7,192,95,0.12)] hover:bg-[linear-gradient(135deg,#ffffff_0%,rgba(7,192,95,0.08)_100%)]',
+                    initialized ? '' : 'kb-list-card-uninitialized opacity-90',
+                    highlightId === card.id ? 'kb-list-flash animate-[kbListFlash_0.6s_ease-in-out_3] border-[#07c05f]!' : '',
                   ].filter(Boolean).join(' ');
                   return (
                     <article key={card.id} data-kb-id={card.id} className={cardClasses} onClick={() => openCard(kb)}>
                       <button
                         type="button"
-                        className={favorited ? 'kb-favorite-star kb-favorite-star-active' : 'kb-favorite-star'}
+                        className={`kb-favorite-star absolute right-0 top-0 z-[3] flex h-6 w-6 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent transition-[opacity,background,color] duration-150 hover:bg-[#f2f4f8] hover:text-[#e37318] group-hover/card:opacity-100 ${favorited ? 'kb-favorite-star-active text-[#e37318] opacity-100' : 'text-[#8a94a6] opacity-0'}`}
                         aria-label={favorited ? t('knowledgeList.accessibility.unfavorite') : t('knowledgeList.accessibility.favorite')}
                         onClick={(event) => { event.stopPropagation(); toggleFavorite(card.id); }}
                       >
                         <KbIcon name={favorited ? 'star-filled' : 'star'} size={14} />
                       </button>
-                      <div className="kb-list-card-head">
-                        <span className="kb-list-card-title" title={String(card.name ?? '')}>
-                          {isWiki ? <span className="kb-list-card-wiki-chip">{t('knowledgeList.features.wiki')}</span> : null}
+                      <div className="kb-list-card-head relative z-[1] mb-1.5 flex items-center gap-1">
+                        <span className="kb-list-card-title flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 overflow-hidden whitespace-nowrap border-0 bg-transparent p-0 text-left text-[15px] font-semibold leading-[22px] tracking-[0.01em] text-[#1d2129]" title={String(card.name ?? '')}>
+                          {isWiki ? <span className="kb-list-card-wiki-chip shrink-0 rounded bg-[rgba(124,77,255,0.1)] px-[5px] py-0 text-[11px] font-medium leading-4 text-[#7c4dff]">{t('knowledgeList.features.wiki')}</span> : null}
                           <span className="kb-list-card-title-text">{String(card.name ?? '')}</span>
                         </span>
                         <button
                           type="button"
-                          className={menuFor === card.id ? 'kb-list-card-more kb-list-card-more-open' : 'kb-list-card-more'}
+                          className={`kb-list-card-more flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent transition-all duration-200 group-hover/card:opacity-60 hover:bg-[#edf0f5] hover:opacity-100 hover:text-[#1d2129] ${menuFor === card.id ? 'kb-list-card-more-open bg-[#edf0f5] opacity-100 text-[#1d2129]' : 'opacity-0'}`}
                           aria-label={t('common.settings')}
                           aria-haspopup="menu"
                           aria-expanded={menuFor === card.id}
@@ -858,7 +865,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
                         </button>
                       </div>
                       {menuFor === card.id ? (
-                        <div className="kb-list-more-menu" role="menu" onClick={(event) => event.stopPropagation()}>
+                        <div className="kb-list-more-menu absolute right-1.5 top-8 z-30 flex min-w-[132px] flex-col rounded-lg border border-[#e3e7ee] bg-white p-1.5 shadow-[0_8px_24px_rgba(23,35,61,0.12)]" role="menu" onClick={(event) => event.stopPropagation()}>
                           <button type="button" role="menuitem" onClick={() => { setMenuFor(null); void togglePin(kb); }}>
                             <KbIcon name="pin" size={14} />{card.is_pinned ? t('knowledgeList.pin.unpin') : t('knowledgeList.pin.pin')}
                           </button>
@@ -879,20 +886,20 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
                           ) : null}
                         </div>
                       ) : null}
-                      <p className="kb-list-card-desc">{String(card.description ?? '') || t('knowledgeBase.noDescription')}</p>
-                      <div className="kb-list-card-bottom">
-                        <div className="kb-list-badges">
-                          <span className={'kb-list-badge ' + (isFaq ? 'kb-list-badge-faq' : 'kb-list-badge-document')}>
+                      <p className="kb-list-card-desc relative z-[1] m-0 mb-1.5 min-h-0 flex-1 overflow-hidden [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] [line-clamp:2] text-xs font-normal leading-[18px] text-[#646e74]">{String(card.description ?? '') || t('knowledgeBase.noDescription')}</p>
+                      <div className="kb-list-card-bottom relative z-[1] mt-auto flex items-center justify-between gap-2 border-t-[0.5px] border-[#e3e7ee] pt-2">
+                        <div className="kb-list-badges flex min-w-0 items-center gap-1">
+                          <span className={'kb-list-badge inline-flex h-[22px] items-center justify-center gap-[3px] rounded-[5px] px-1.5 text-[11px] font-medium leading-none ' + (isFaq ? 'bg-[rgba(0,82,217,0.08)] text-[#0052d9]' : 'bg-[rgba(7,192,95,0.08)] text-[#0a9059]')}>
                             <KbIcon name={isFaq ? 'chat' : 'folder'} size={14} />
                             <span className="kb-list-badge-count">{count}</span>
                           </span>
-                          {extractEnabled ? <span className="kb-list-badge kb-list-badge-icon-only kb-list-badge-relation" title={t('knowledgeList.features.knowledgeGraph')}><KbIcon name="relation" size={14} /></span> : null}
-                          {vlmEnabled ? <span className="kb-list-badge kb-list-badge-icon-only kb-list-badge-multimodal" title={t('knowledgeList.features.multimodal')}><KbIcon name="image" size={14} /></span> : null}
-                          {questionEnabled ? <span className="kb-list-badge kb-list-badge-icon-only kb-list-badge-question" title={t('knowledgeList.features.questionGeneration')}><KbIcon name="help-circle" size={14} /></span> : null}
-                          {shareCount > 0 ? <span className="kb-list-badge kb-list-badge-icon-only kb-list-badge-shared" title={t('knowledgeList.sharedToOrgs', { count: shareCount })}><KbIcon name="share" size={14} /></span> : null}
+                          {extractEnabled ? <span className="kb-list-badge kb-list-badge-icon-only kb-list-badge-relation inline-flex h-[22px] w-[22px] items-center justify-center gap-[3px] rounded-[5px] p-0 text-[11px] font-medium leading-none bg-[rgba(124,77,255,0.08)] text-[#7c4dff]" title={t('knowledgeList.features.knowledgeGraph')}><KbIcon name="relation" size={14} /></span> : null}
+                          {vlmEnabled ? <span className="kb-list-badge kb-list-badge-icon-only kb-list-badge-multimodal inline-flex h-[22px] w-[22px] items-center justify-center gap-[3px] rounded-[5px] p-0 text-[11px] font-medium leading-none bg-[rgba(255,152,0,0.08)] text-[#e37318]" title={t('knowledgeList.features.multimodal')}><KbIcon name="image" size={14} /></span> : null}
+                          {questionEnabled ? <span className="kb-list-badge kb-list-badge-icon-only kb-list-badge-question inline-flex h-[22px] w-[22px] items-center justify-center gap-[3px] rounded-[5px] p-0 text-[11px] font-medium leading-none bg-[rgba(0,150,136,0.08)] text-[#009688]" title={t('knowledgeList.features.questionGeneration')}><KbIcon name="help-circle" size={14} /></span> : null}
+                          {shareCount > 0 ? <span className="kb-list-badge kb-list-badge-icon-only kb-list-badge-shared inline-flex h-[22px] w-[22px] items-center justify-center gap-[3px] rounded-[5px] p-0 text-[11px] font-medium leading-none bg-[rgba(0,82,217,0.08)] text-[#0052d9]" title={t('knowledgeList.sharedToOrgs', { count: shareCount })}><KbIcon name="share" size={14} /></span> : null}
                         </div>
                         {isSharedCard && typeof card.org_name === 'string' && card.org_name ? (
-                          <span className="kb-list-org-chip" title={card.org_name}><KbIcon name="workspace" size={14} />{card.org_name}</span>
+                          <span className="kb-list-org-chip inline-flex max-w-[140px] shrink-0 items-center gap-[5px] overflow-hidden whitespace-nowrap text-ellipsis rounded-md bg-[rgba(7,192,95,0.06)] px-2 py-[3px] text-xs font-medium text-[#646e74] [&_svg]:shrink-0 [&_svg]:text-[#07c05f]" title={card.org_name}><KbIcon name="workspace" size={14} />{card.org_name}</span>
                         ) : null}
                       </div>
                     </article>
