@@ -257,7 +257,7 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
     <div className="pointer-events-none absolute inset-0 z-[1] overflow-hidden" aria-hidden="true">
       {nodeIcons.map((icon, index) => (
         <div key={index} className={`absolute flex h-10 w-10 items-center justify-center rounded-full border-2 border-[rgba(255,255,255,0.3)] bg-[rgba(255,255,255,0.15)] shadow-[0_0_15px_rgba(255,255,255,0.35),0_0_30px_rgba(16,185,129,0.2),inset_0_0_8px_rgba(255,255,255,0.1)] will-change-[transform,opacity] animate-[nodePulse_5s_infinite_ease-in-out] motion-reduce:animate-none motion-reduce:opacity-65 ${AUTH_NODE_PLACEMENT[index]} [animation-delay:${AUTH_NODE_DELAYS[index]}]`}>
-          <svg className="h-5 w-5 text-[rgba(255,255,255,0.9)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">{icon}</svg>
+          <svg className="h-5 w-5 text-[rgba(255,255,255,0.9)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">{icon}</svg>
         </div>
       ))}
       <svg className="absolute inset-0 h-full w-full opacity-[0.35]" viewBox="0 0 100 100" preserveAspectRatio="none">
@@ -273,7 +273,7 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
 
     <div className="fixed right-7 top-7 z-[100] flex items-center gap-2.5 max-[768px]:right-4 max-[768px]:top-4">
       <a href="https://weknora.weixin.qq.com" target="_blank" rel="noreferrer" className="relative flex cursor-pointer items-center gap-[7px] rounded-[20px] border border-[rgba(255,255,255,0.25)] bg-[rgba(255,255,255,0.2)] px-[15px] py-[9px] text-[13px] font-semibold tracking-[0.2px] text-(--auth-text-anti) no-underline hover:border-[rgba(255,255,255,0.4)] hover:bg-[rgba(255,255,255,0.3)] [&_svg]:shrink-0" title={t('common.website')}>
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="10" /><line x1="2" y1="12" x2="22" y2="12" /><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /></svg>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="2" y1="12" x2="22" y2="12" /><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /></svg>
         <span className="link-text">{t('common.website')}</span>
       </a>
       <a href="https://github.com/Tencent/WeKnora" target="_blank" rel="noreferrer" className="relative flex cursor-pointer items-center gap-[7px] rounded-[20px] border border-[rgba(255,255,255,0.25)] bg-[rgba(255,255,255,0.2)] px-[15px] py-[9px] text-[13px] font-semibold tracking-[0.2px] text-(--auth-text-anti) no-underline hover:border-[rgba(255,255,255,0.4)] hover:bg-[rgba(255,255,255,0.3)] [&_svg]:shrink-0" title={t('common.info')}>
@@ -284,7 +284,7 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
         <button type="button" className="relative flex cursor-pointer items-center gap-[7px] rounded-[20px] border border-[rgba(255,255,255,0.25)] bg-[rgba(255,255,255,0.2)] px-[15px] py-[9px] text-[13px] font-semibold tracking-[0.2px] text-(--auth-text-anti) no-underline hover:border-[rgba(255,255,255,0.4)] hover:bg-[rgba(255,255,255,0.3)] [&_svg]:shrink-0" title={currentLang.label} onClick={() => setShowLanguageMenu((visible) => !visible)}>
           <span className="shrink-0 text-base leading-none">{currentLang.flag}</span>
           <span className="link-text">{currentLang.shortLabel}</span>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9" /></svg>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="6 9 12 15 18 9" /></svg>
         </button>
         {showLanguageMenu ? <div className="absolute right-0 top-[calc(100%+8px)] z-[1000] min-w-[160px] overflow-hidden rounded-lg border border-[#e7e7e7] bg-[rgba(255,255,255,0.97)] shadow-[0_4px_16px_rgba(0,0,0,0.12)]">
           {LANGUAGE_OPTIONS.map((option) => (
