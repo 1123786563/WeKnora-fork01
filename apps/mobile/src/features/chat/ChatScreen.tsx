@@ -64,6 +64,7 @@ export function ChatScreen() {
   const messagesGeneration = useRef(0);
   const attachmentsGeneration = useRef(0);
   const steerGeneration = useRef(0);
+  const attachmentUploadGeneration = useRef(0);
   const lifecyclePersistence = useMemo(() => createRunLifecyclePersistence(SecureStore), []);
 
   const updateRunLifecycle = useCallback((sessionId: string, event: RunLifecycleEvent) => {
@@ -284,7 +285,7 @@ export function ChatScreen() {
     if (selectedSessionId) return selectedSessionId;
     const session = await runtime.client.sessions.create({ title: formatMessage(runtime.locale, 'mobileChat.newConversation') });
     setSessions((current) => [session, ...current]);
-    setSelectedSessionId(session.id); setSteerQueue([]);
+    setSelectedSessionId(session.id); selectedSessionRef.current = session.id; setSteerQueue([]);
     return session.id;
   }
 
@@ -339,15 +340,19 @@ export function ChatScreen() {
 
   async function attach() {
     if (attaching) return;
+    const generation = ++attachmentUploadGeneration.current;
     setAttaching(true); setError('');
     try {
       const sessionId = await ensureSession();
       const file = await pickNativeFile();
       if (!file) return;
       const attachment = await runtime.client.chat.attachments.upload(sessionId, { file });
-      setAttachments((current) => [...current.filter((item) => item.id !== attachment.id), attachment]);
-    } catch (cause) { setError(errorText(cause, label('mobileChat.attachFailed'))); }
-    finally { setAttaching(false); }
+      if (generation === attachmentUploadGeneration.current && selectedSessionRef.current === sessionId) setAttachments((current) => [...current.filter((item) => item.id !== attachment.id), attachment]);
+    } catch (cause) {
+      if (generation === attachmentUploadGeneration.current) setError(errorText(cause, label('mobileChat.attachFailed')));
+    } finally {
+      if (generation === attachmentUploadGeneration.current) setAttaching(false);
+    }
   }
 
   async function approve(pendingId: string, decision: 'approve' | 'reject') {
