@@ -521,7 +521,7 @@ export function ChatPage(props: ChatPageProps) {
         ) : null}
         <ChatActionCards {...props} />
         {props.stream ? <LiveResponse copy={copy} stream={props.stream} /> : null}
-        <ReferenceList references={references} activeId={activeCitationId} onActivate={activateCitation} />
+        <ReferenceList references={references} activeId={activeCitationId} onActivate={activateCitation} copy={copy} />
         {props.error ? <p role="alert">{props.error}</p> : null}
         {props.loadingMessages ? <p role="status">{copy.loadingMessages}</p> : null}
         {/* Vue creatChat.vue renders no message list in the empty new-chat
