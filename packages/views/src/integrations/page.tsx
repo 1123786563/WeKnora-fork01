@@ -591,7 +591,7 @@ function EmbedChannelPreviewPanel({ preview, locale, t, onClose }: { preview: { 
   }, [onClose]);
   return <div className="wk-embed-preview-overlay" role="presentation" onClick={onClose}>
     <aside className="wk-embed-preview-drawer" role="dialog" aria-modal="true" aria-label={preview.channel.name || t('embedPublish.preview')} onClick={(event) => event.stopPropagation()}>
-      <header className="wk-embed-preview-header"><h2>{preview.channel.name || t('embedPublish.preview')}</h2><button type="button" className="wk-integration-drawer-close" aria-label="关闭" title="关闭" onClick={onClose}>×</button></header>
+      <header className="wk-embed-preview-header"><h2>{preview.channel.name || t('embedPublish.preview')}</h2><button type="button" className={INTEGRATION_DRAWER_CLOSE_CLASS} aria-label="关闭" title="关闭" onClick={onClose}>×</button></header>
       <div className="wk-embed-preview-body">
         <p className="wk-embed-preview-hint">{t(preview.mode === 'iframe' ? 'embedPublish.previewIframeHint' : 'embedPublish.previewWidgetHint')}</p>
         {preview.mode === 'iframe' ? <div className="wk-embed-preview-device">
@@ -662,6 +662,68 @@ const CHANNEL_CARD_TITLE_ADD_CLASS = CHANNEL_CARD_TITLE_CLASS + ' text-[13px] fo
 const CHANNEL_CARD_AGENT_CLASS = 'mt-1 block overflow-hidden text-ellipsis whitespace-nowrap text-[12px] leading-[1.4] text-[#98a2b3]';
 const CHANNEL_CARD_ACTIONS_CLASS = 'ml-auto flex shrink-0 items-center gap-0.5';
 
+// Tailwind port of the former .wk-integration-drawer family in apps/web
+// styles.css (Vue SettingDrawer parity: 560px overlay + scroll + focus colors).
+// The aside carries the drawer subtree in arbitrary variants (the wizard slots
+// below render .wk-integration-form markup, so the subtree stays
+// self-contained); properties competing with remaining unlayered rules in
+// styles.css (.wk-integration-form base) use the important suffix.
+// .wk-check-row keeps its unlayered font-weight:400 !important via :not() -
+// a layered !important would otherwise outrank it. The two @keyframes stay in
+// styles.css and are referenced via animate-[...]; motion-reduce:animate-none
+// carries the old reduced-motion block. Legacy class names stay on the
+// elements as DOM hooks (embedWizardRender.test.tsx queries
+// .wk-integration-drawer / .wk-integration-drawer-close).
+const INTEGRATION_DRAWER_OVERLAY_CLASS =
+  'wk-integration-drawer-overlay fixed inset-0 z-[1200] flex justify-end bg-[rgba(0,0,0,.5)] animate-[wk-integration-drawer-fade-in_.18s_ease-out] motion-reduce:animate-none';
+const INTEGRATION_DRAWER_CLASS =
+  'wk-integration-drawer box-border h-full w-[min(560px,100vw)] overflow-auto overscroll-contain bg-surface shadow-[-8px_0_24px_rgba(15,23,42,.12)] animate-[wk-integration-drawer-slide-in_.22s_ease-out] motion-reduce:animate-none'
+  // .wk-integration-drawer .wk-integration-form
+  + ' [&_.wk-integration-form]:box-border [&_.wk-integration-form]:w-full [&_.wk-integration-form]:max-w-none! [&_.wk-integration-form]:min-h-full [&_.wk-integration-form]:mb-0! [&_.wk-integration-form]:p-[20px_24px_24px]! [&_.wk-integration-form]:border-0! [&_.wk-integration-form]:rounded-none! [&_.wk-integration-form]:bg-surface!'
+  // .wk-integration-drawer .wk-integration-form h3
+  + ' [&_h3]:pr-[8px] [&_h3]:text-[18px]! [&_h3]:leading-[1.45] [&_h3]:text-ink'
+  // .wk-integration-drawer .wk-integration-form label
+  + ' [&_label]:gap-[6px]! [&_label]:text-ink [&_label]:text-[13px] [&_label:not(.wk-check-row)]:font-medium! [&_label]:leading-[1.4]'
+  // .wk-integration-drawer .wk-integration-form input/select/textarea (+resize, focus ring)
+  + ' [&_input]:min-h-[32px] [&_input]:px-[9px]! [&_input]:py-[7px]! [&_input]:border-[#d6dbe5]! [&_input]:rounded-[4px]! [&_input]:outline-none [&_input]:[transition:border-color_.18s_ease,box-shadow_.18s_ease]'
+  + ' [&_select]:min-h-[32px] [&_select]:px-[9px]! [&_select]:py-[7px]! [&_select]:border-[#d6dbe5]! [&_select]:rounded-[4px]! [&_select]:outline-none [&_select]:[transition:border-color_.18s_ease,box-shadow_.18s_ease]'
+  + ' [&_textarea]:min-h-[32px] [&_textarea]:px-[9px]! [&_textarea]:py-[7px]! [&_textarea]:border-[#d6dbe5]! [&_textarea]:rounded-[4px]! [&_textarea]:outline-none [&_textarea]:[transition:border-color_.18s_ease,box-shadow_.18s_ease] [&_textarea]:resize-y'
+  + ' [&_input:focus-visible]:border-accent! [&_select:focus-visible]:border-accent! [&_textarea:focus-visible]:border-accent!'
+  + ' [&_input:focus-visible]:shadow-[0_0_0_2px_rgba(7,192,95,.16)] [&_select:focus-visible]:shadow-[0_0_0_2px_rgba(7,192,95,.16)] [&_textarea:focus-visible]:shadow-[0_0_0_2px_rgba(7,192,95,.16)]'
+  // .wk-integration-drawer .wk-im-steps
+  + ' [&_.wk-im-steps]:mt-[16px] [&_.wk-im-steps]:mx-0 [&_.wk-im-steps]:mb-[18px] [&_.wk-im-steps]:flex [&_.wk-im-steps]:gap-[4px] [&_.wk-im-steps]:overflow-x-auto [&_.wk-im-steps]:pb-[2px]';
+// .wk-integration-drawer .wk-im-step (static literal: Tailwind extracts candidates from raw text,
+// so interpolated selectors would never be generated)
+const IM_STEP_CHROME =
+  ' [&_.wk-im-step]:grow-0 [&_.wk-im-step]:shrink-0 [&_.wk-im-step]:basis-auto [&_.wk-im-step]:cursor-pointer [&_.wk-im-step]:rounded-[4px]'
+  + ' [&_.wk-im-step]:border [&_.wk-im-step]:border-solid [&_.wk-im-step]:border-line [&_.wk-im-step]:bg-surface [&_.wk-im-step]:px-[8px] [&_.wk-im-step]:py-[5px]'
+  + ' [&_.wk-im-step]:[font-family:inherit] [&_.wk-im-step]:[font-style:inherit] [&_.wk-im-step]:[font-weight:inherit] [&_.wk-im-step]:text-[12px] [&_.wk-im-step]:leading-[1.4] [&_.wk-im-step]:text-[#667085]'
+  + ' [&_.wk-im-step]:[transition:background-color_.18s_ease,border-color_.18s_ease,color_.18s_ease]'
+  + ' [&_.wk-im-step.is-active]:border-accent [&_.wk-im-step.is-active]:bg-accent [&_.wk-im-step.is-active]:text-white'
+  + ' [&_.wk-im-step.is-done]:border-line [&_.wk-im-step.is-done]:bg-[#f3faf6] [&_.wk-im-step.is-done]:text-[#07a951]';
+// .wk-integration-drawer .wk-embed-step (static literal: Tailwind extracts candidates from raw text,
+// so interpolated selectors would never be generated)
+const EMBED_STEP_CHROME =
+  ' [&_.wk-embed-step]:grow-0 [&_.wk-embed-step]:shrink-0 [&_.wk-embed-step]:basis-auto [&_.wk-embed-step]:cursor-pointer [&_.wk-embed-step]:rounded-[4px]'
+  + ' [&_.wk-embed-step]:border [&_.wk-embed-step]:border-solid [&_.wk-embed-step]:border-line [&_.wk-embed-step]:bg-surface [&_.wk-embed-step]:px-[8px] [&_.wk-embed-step]:py-[5px]'
+  + ' [&_.wk-embed-step]:[font-family:inherit] [&_.wk-embed-step]:[font-style:inherit] [&_.wk-embed-step]:[font-weight:inherit] [&_.wk-embed-step]:text-[12px] [&_.wk-embed-step]:leading-[1.4] [&_.wk-embed-step]:text-[#667085]'
+  + ' [&_.wk-embed-step]:[transition:background-color_.18s_ease,border-color_.18s_ease,color_.18s_ease]'
+  + ' [&_.wk-embed-step.is-active]:border-accent [&_.wk-embed-step.is-active]:bg-accent [&_.wk-embed-step.is-active]:text-white'
+  + ' [&_.wk-embed-step.is-done]:border-line [&_.wk-embed-step.is-done]:bg-[#f3faf6] [&_.wk-embed-step.is-done]:text-[#07a951]';
+const INTEGRATION_DRAWER_CLASS_STEPS =
+  INTEGRATION_DRAWER_CLASS
+  + IM_STEP_CHROME + EMBED_STEP_CHROME
+  // .wk-integration-drawer .wk-im-step-body
+  + ' [&_.wk-im-step-body]:gap-[10px] [&_.wk-im-step-body]:m-0 [&_.wk-im-step-body]:pt-[10px] [&_.wk-im-step-body]:px-0 [&_.wk-im-step-body]:pb-[14px] [&_.wk-im-step-body]:border-0'
+  // .wk-integration-drawer .wk-im-legend
+  + ' [&_.wk-im-legend]:mb-[2px] [&_.wk-im-legend]:text-ink [&_.wk-im-legend]:text-[14px] [&_.wk-im-legend]:font-semibold'
+  // .wk-integration-drawer .wk-form-actions
+  + ' [&_.wk-form-actions]:sticky [&_.wk-form-actions]:bottom-0 [&_.wk-form-actions]:z-[1] [&_.wk-form-actions]:mt-[8px] [&_.wk-form-actions]:mx-[-24px] [&_.wk-form-actions]:mb-[-24px] [&_.wk-form-actions]:border-t [&_.wk-form-actions]:border-solid [&_.wk-form-actions]:border-[#eef1f5] [&_.wk-form-actions]:px-[24px] [&_.wk-form-actions]:py-[14px] [&_.wk-form-actions]:bg-[rgba(255,255,255,.96)]';
+// .wk-integration-drawer-close (hover mirrors the old :hover/:focus-visible
+// rule; the class name remains as a test/DOM hook on every consumer).
+const INTEGRATION_DRAWER_CLOSE_CLASS =
+  'wk-integration-drawer-close absolute top-[14px] right-[16px] z-[2] h-[28px] w-[28px] cursor-pointer rounded-[4px] border-0 bg-transparent text-[22px] leading-none text-[#667085] hover:bg-[#f3f4f6] hover:text-ink focus-visible:bg-[#f3f4f6] focus-visible:text-ink focus-visible:outline-none';
+
 function ChannelListPanel({ variant, copy, locale, items, showCreate, onToggleCreate, busy, t, renamingId, renameValue, onRenameValue, onStartRename, onSaveRename, onCancelRename, onOpenCard, onToggle, onDelete, imCreateSlot, embedCreateSlot }: {
   variant: 'im' | 'embed';
   copy: ChannelListCopy;
@@ -724,9 +786,9 @@ function ChannelListPanel({ variant, copy, locale, items, showCreate, onToggleCr
         </div>
       </button>
     </div>
-    {showCreate ? <div className="wk-integration-drawer-overlay" role="presentation" onClick={onToggleCreate}>
-      <aside className="wk-integration-drawer" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-        <button className="wk-integration-drawer-close" type="button" aria-label="关闭" title="关闭" onClick={onToggleCreate}>×</button>
+    {showCreate ? <div className={INTEGRATION_DRAWER_OVERLAY_CLASS} role="presentation" onClick={onToggleCreate}>
+      <aside className={INTEGRATION_DRAWER_CLASS_STEPS} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+        <button className={INTEGRATION_DRAWER_CLOSE_CLASS} type="button" aria-label="关闭" title="关闭" onClick={onToggleCreate}>×</button>
         {imCreateSlot ?? embedCreateSlot}
       </aside>
     </div> : null}

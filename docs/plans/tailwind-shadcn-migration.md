@@ -177,6 +177,15 @@ hook 类（测试/JS 引用）保留类名。
   + wk-pagination；ConfigurationPage.tsx：wk-role-badge。
 - styles.css 删 9 条（wk-diff 7 + wk-pagination 1 + wk-role-badge 1）；750 行。
 - 验收：typecheck 0、wiki 8/8 + configuration 8/8、web 870/870（并行新增）、build ✓。
+### 批次35：integration drawer 家族 ✅（子任务执行，Orchestrator 验收提交）
+- page.tsx +70/-1（INTEGRATION_DRAWER_* 常量 + [&_h3]/[&_input]/[&_select]/[&_textarea]/
+  [&_.wk-im-step]/[&_.wk-embed-step] 等任意变体承载子规则）；EmbedPreviewModal.tsx L69 同步；
+  styles.css 删 19 个规则块（-149 行）。
+- 代理纠正简报 2 处事实错误（消费方是 EmbedPreviewModal 而非 ApiPlaygroundDrawer；
+  第三个消费者 page.tsx:594 一并迁移）；发现并修复 close:hover 自 3abbdfc5 起的坏合并
+  （意外宽度 min(480px,100%)，恢复原始意图 bg #f3f4f6 / color #172033）。
+- 验收：typecheck 0、integrations 52/52、web 882/882（并行新增）、build ✓；
+  styles.css 1122→602 行。
 ### 批次19：TenantMembers 域 ✅（子任务执行，Orchestrator 验收提交）
 - TenantMembersPanel.tsx ~95 条规则内联 utilities（表格/分页/标签三态/确认弹层；
   settings-wrapper 抽屉 select chrome 特异性更高今日实际生效，按生效值 4 条未复制）；

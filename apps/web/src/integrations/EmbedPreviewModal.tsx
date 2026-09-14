@@ -66,7 +66,9 @@ export function EmbedPreviewModal({ open, channelId, token, title, apiBaseUrl, l
     <aside className="wk-embed-preview-drawer" role="dialog" aria-modal="true" aria-label={label} onClick={(event) => event.stopPropagation()}>
       <header className="wk-embed-preview-header">
         <h2>{label}</h2>
-        <button type="button" className="wk-integration-drawer-close" aria-label="关闭" title="关闭" onClick={onClose}>×</button>
+        {/* Former .wk-integration-drawer-close css (styles.css) as utilities;
+            the class name stays as a DOM hook. */}
+        <button type="button" className="wk-integration-drawer-close absolute top-[14px] right-[16px] z-[2] h-[28px] w-[28px] cursor-pointer rounded-[4px] border-0 bg-transparent text-[22px] leading-none text-[#667085] hover:bg-[#f3f4f6] hover:text-ink focus-visible:bg-[#f3f4f6] focus-visible:text-ink focus-visible:outline-none" aria-label="关闭" title="关闭" onClick={onClose}>×</button>
       </header>
       <div className="wk-embed-preview-body">
         <div className="wk-embed-preview-device">
