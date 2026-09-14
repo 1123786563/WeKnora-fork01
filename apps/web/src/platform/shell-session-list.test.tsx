@@ -419,3 +419,41 @@ test('(k) failed rename keeps the editor open with a recoverable error', async (
   assert.ok(row.querySelector('input[aria-label="修改标题"]'), 'failed rename remains editable');
   assert.equal(row.querySelector('[role="alert"]')?.textContent, 'rename failed');
 });
+
+test('(l) a renamed session keeps its title when a later page is appended', async () => {
+  const calls: number[] = [];
+  const client = fakeClient({
+    update: async (id: string, input: { title: string }) => ({ ...SESSIONS.find((s) => s.id === id), title: input.title }),
+    list: async (params: { page?: number }) => {
+      const page = params.page ?? 1;
+      calls.push(page);
+      return page === 1
+        ? { data: SESSIONS, total: 6, page: 1, page_size: 5 }
+        : { data: [{ ...SESSIONS.find((s) => s.id === 'session-1'), title: '服务端旧标题' }, { id: 'session-6', title: '下一页的会话', is_pinned: false, updated_at: iso(0) }], total: 6, page: 2, page_size: 2 };
+    },
+  });
+  const container = await mountShell({ client });
+  const row = [...document.querySelectorAll('nav[aria-label="我的对话"] li')].find((node) => node.textContent?.includes('今天的会话'))!;
+  const details = row.querySelector('details') as HTMLDetailsElement;
+  details.open = true;
+  const rename = [...details.querySelectorAll('[role="menuitem"]')].find((node) => node.textContent === '修改标题') as HTMLButtonElement;
+  await act(async () => { rename.click(); await settle(1); });
+  const input = row.querySelector('input[aria-label="修改标题"]') as HTMLInputElement;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')!.set!.call(input, '持久标题');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await settle(5);
+  });
+  assert.equal(rowTitles().includes('持久标题'), true);
+  const scrollContainer = shellList()?.parentElement as HTMLElement;
+  Object.defineProperties(scrollContainer, {
+    scrollHeight: { configurable: true, value: 400 },
+    clientHeight: { configurable: true, value: 200 },
+    scrollTop: { configurable: true, writable: true, value: 220 },
+  });
+  await act(async () => { scrollContainer.dispatchEvent(new Event('scroll')); await settle(10); });
+  assert.deepEqual(calls, [1, 2]);
+  assert.equal(rowTitles().includes('持久标题'), true, 'pagination must not restore the pre-rename title');
+  assert.equal(container.textContent?.includes('服务端旧标题'), false);
+});

@@ -377,7 +377,9 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
     if (!current || !title || title === current.title) return;
     try {
       const updated = await client.sessions.update(sessionId, { title, description: current?.description });
-      setSessions((items) => items.map((session) => session.id === sessionId ? updated : session));
+      const nextSessions = sessionsRef.current.map((session) => session.id === sessionId ? updated : session);
+      sessionsRef.current = nextSessions;
+      setSessions(nextSessions);
     } catch (error) {
       throw error instanceof Error ? error : new Error('修改标题失败');
     }
