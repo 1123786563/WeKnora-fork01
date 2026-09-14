@@ -177,20 +177,21 @@ test('renders Vue-shaped organization options and shared-list actions', async ()
   const container = await mount(client);
 
   await select(container, 'Select Shared Space', 'org-editor');
-  await act(async () => container.querySelector<HTMLButtonElement>('.wk-share-org-picker-trigger')?.click());
-  const option = container.querySelector('.wk-share-org-option');
+  await act(async () => container.querySelector<HTMLButtonElement>('[role="combobox"]')?.click());
+  const option = container.querySelector('[role="option"]');
   assert.ok(option, 'organization options should expose the Vue option anatomy');
   assert.match(option.textContent ?? '', /Editors/);
   assert.match(option.textContent ?? '', /7/);
   assert.match(option.textContent ?? '', /3/);
   assert.match(option.textContent ?? '', /2/);
-  assert.ok(container.querySelector('.wk-share-form-actions'), 'form should have a separated action footer');
+  const actions = [...container.querySelectorAll<HTMLDivElement>('form div')].find((row) => row.querySelector('button[type="submit"]'));
+  assert.ok(actions, 'form should have a separated action footer');
   assert.ok(button(container, 'Cancel'));
   assert.ok(button(container, 'Confirm'));
 
   await act(async () => button(container, 'Shared to (1)')?.click());
-  assert.ok(container.querySelector('.wk-share-item-avatar'));
-  assert.equal(container.querySelectorAll('.wk-share-item-actions button').length, 2, 'shared rows should expose settings and remove actions');
+  assert.ok(container.querySelector('li span[aria-hidden="true"]'));
+  assert.equal(container.querySelectorAll('li button').length, 2, 'shared rows should expose settings and remove actions');
 });
 
 test('organization picker exposes a keyboard-safe custom Vue-style option list', async () => {
@@ -198,7 +199,7 @@ test('organization picker exposes a keyboard-safe custom Vue-style option list',
   const client = clientFor(async () => ({ items: [], total: 0 }));
   client.identity.organizations.list = async () => ({ items: enriched, total: 1 });
   const container = await mount(client);
-  const trigger = container.querySelector<HTMLButtonElement>('.wk-share-org-picker-trigger');
+  const trigger = container.querySelector<HTMLButtonElement>('[role="combobox"]');
   assert.ok(trigger);
   await act(async () => trigger?.click());
   assert.ok(container.querySelector('[role="listbox"]'));
