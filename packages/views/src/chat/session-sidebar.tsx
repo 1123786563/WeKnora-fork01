@@ -20,15 +20,15 @@ export interface SessionSidebarProps {
   sessions: readonly ChatSession[];
   selectedSessionId: string | null;
   loading?: boolean;
+  source?: string;
+  sourceOptions?: readonly SessionSourceOption[];
+  onSourceChange?(source: string): void;
   onSelect(sessionId: string): void;
   onCreate(): void;
   onRename?(sessionId: string): Promise<void>;
   onTogglePin?(sessionId: string, pinned: boolean): Promise<void>;
   onDelete?(sessionId: string): Promise<void>;
   groups?: readonly SessionGroupView[];
-  source?: string;
-  sourceOptions?: readonly SessionSourceOption[];
-  onSourceChange?(source: string): void;
   groupMode?: 'none' | 'date';
   onGroupModeChange?(mode: 'none' | 'date'): void;
   keyword?: string;
@@ -59,6 +59,9 @@ export interface SessionSidebarListProps {
   groups?: readonly SessionGroupView[];
   selectedSessionId: string | null;
   loading?: boolean;
+  source?: string;
+  sourceOptions?: readonly SessionSourceOption[];
+  onSourceChange?(source: string): void;
   /** Empty-state copy (Vue menu.noSessions); omitted renders nothing. */
   emptyLabel?: string;
   /** Fallback row title (Vue mapSessionRow uses menu.newSession = 新会话). */
@@ -76,7 +79,7 @@ export interface SessionSidebarListProps {
  * shell sidebar: time group headers (已置顶/今天/昨天/近7天/近30天/更早), full
  * titles, green active row, hover ⋯ menu (置顶/重命名会话/清空消息/删除会话).
  */
-export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, loading = false, emptyLabel, untitledLabel, onSelect, onRename, onTogglePin, onClear, onDelete }: SessionSidebarListProps) {
+export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, loading = false, emptyLabel, untitledLabel, onSelect, onRename, onTogglePin, onClear, onDelete, source, sourceOptions, onSourceChange }: SessionSidebarListProps) {
   const t = copy ?? resolveChatCopy(resolveChatLocale());
   const visibleGroups = groups ?? [{ key: 'all', items: sessions ?? [] }];
   const hasMenu = Boolean(onRename || onTogglePin || onClear || onDelete);
@@ -95,6 +98,7 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
    * sessions nav as [&_ul]:px-[6px]; this shared list stays flush outside.
    */
   return <>
+    {sourceOptions && onSourceChange ? <label className="grid gap-[0.25rem] mx-[4px] my-[0.55rem] text-[rgba(0,0,0,0.4)] text-[12px]">来源<select aria-label="会话来源" className="w-full box-border rounded-[6px] border border-[#cbd5e1] bg-white p-[0.45rem] text-[rgba(0,0,0,0.9)] text-[13px]" value={source ?? ''} onChange={(event) => onSourceChange(event.target.value)}>{sourceOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label> : null}
     {loading ? <p role="status">{t.loadingSessions}</p> : null}
     {!loading && totalItems === 0 && emptyLabel ? <p className="my-[10px] mx-[4px] text-[rgba(0,0,0,0.4)] text-[12px]" role="status">{emptyLabel}</p> : null}
     {visibleGroups.map((group) => <section key={group.key}>

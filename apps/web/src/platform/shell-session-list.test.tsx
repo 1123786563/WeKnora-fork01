@@ -74,6 +74,7 @@ const SESSIONS = [
 ];
 
 function fakeClient(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  const { embed, ...sessionOverrides } = overrides;
   return {
     auth: { me: async () => ({ user: { id: 'u1', username: 'tester', email: 'tester@local.dev', avatar: '' } }) },
     sessions: {
@@ -83,8 +84,9 @@ function fakeClient(overrides: Record<string, unknown> = {}): Record<string, unk
       update: async (sessionId: string, input: { title: string }) => ({ ...SESSIONS.find((s) => s.id === sessionId), title: input.title }),
       clear: async () => undefined,
       remove: async () => undefined,
-      ...overrides,
+      ...sessionOverrides,
     },
+    embed: embed ?? { channels: { listAll: async () => [] }, im: { listAll: async () => [] } },
   };
 }
 
@@ -288,4 +290,28 @@ test('(h) a failed initial session load shows retry instead of the empty state',
   await act(async () => { retry?.click(); await new Promise((resolve) => setTimeout(resolve, 10)); });
   assert.equal(attempts, 2);
   assert.equal(rowTitles().includes('今天的会话'), true);
+});
+
+test('(i) shell session source filter exposes Vue-backed web, API, and configured channel buckets', async () => {
+  const sourceCalls: string[] = [];
+  const metadataCalls: string[] = [];
+  const client = fakeClient({
+    list: async (params: { source?: string }) => { sourceCalls.push(params.source ?? ''); return { data: [], total: 0, page: 1, page_size: 30 }; },
+    embed: {
+      channels: { listAll: async () => { metadataCalls.push('embed'); return [{ id: 'embed-1', name: '帮助中心' }]; } },
+      im: { listAll: async () => { metadataCalls.push('im'); return [{ id: 'im-1', platform: 'feishu' }]; } },
+    },
+  });
+  const container = await mountShell({ client });
+  const filter = container.querySelector('nav[aria-label="我的对话"] select[aria-label="会话来源"]') as HTMLSelectElement | null;
+  assert.ok(filter, 'expected the source filter select');
+  assert.deepEqual(metadataCalls.sort(), ['embed', 'im']);
+  assert.deepEqual([...filter.options].map((option) => option.value), ['web', 'api', 'embed:embed-1', 'im:feishu']);
+  assert.deepEqual([...filter.options].map((option) => option.textContent), ['我的对话', 'API 会话', '帮助中心', 'feishu']);
+  await act(async () => {
+    filter.value = 'api';
+    filter.dispatchEvent(new Event('change', { bubbles: true }));
+    await settle(40);
+  });
+  assert.deepEqual(sourceCalls, ['web', 'api']);
 });

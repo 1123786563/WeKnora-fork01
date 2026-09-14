@@ -3,7 +3,7 @@ import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
 import type { ChatSession, createWeKnoraClient } from '@weknora/api-client';
 import { sessionGroups } from '@weknora/domain/chat/session-state';
 import { GlobalCommandPalette } from './GlobalCommandPalette.tsx';
-import { SessionSidebarList, SessionSidebarShellContext, type SessionGroupView } from '@weknora/views';
+import { SessionSidebarList, SessionSidebarShellContext, type SessionGroupView, type SessionSourceOption } from '@weknora/views';
 import { chatSessionIdFromPath, SHELL_SESSION_ROUTE_EVENT } from '../chat/session-route.ts';
 import { ContextualGuideHost, NewUserGuide, openNewUserGuide } from '@weknora/views';
 import {
@@ -206,6 +206,11 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
   // chat page uses (client.sessions.list); later pages load as the sidebar is
   // scrolled, matching Vue menu.vue's bucket continuation behavior.
   const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [sessionSource, setSessionSource] = useState('web');
+  const [sessionSourceOptions, setSessionSourceOptions] = useState<SessionSourceOption[]>([
+    { value: 'web', label: labels.myChats },
+    { value: 'api', label: t('menu.apiChats') },
+  ]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const sessionsRef = useRef<ChatSession[]>([]);
   const sessionsTotalRef = useRef(0);
@@ -219,7 +224,7 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
     sessionsRequestRef.current = true;
     setSessionsLoading(true);
     try {
-      const result = await client.sessions.list({ page, pageSize: SHELL_SESSION_PAGE_SIZE, source: 'web' });
+      const result = await client.sessions.list({ page, pageSize: SHELL_SESSION_PAGE_SIZE, source: sessionSource });
       if (!sessionsMountedRef.current || generation !== sessionsGenerationRef.current) return;
       const incoming = page === 1
         ? result.data
@@ -235,7 +240,7 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
       if (generation === sessionsGenerationRef.current) sessionsRequestRef.current = false;
       if (sessionsMountedRef.current && generation === sessionsGenerationRef.current) setSessionsLoading(false);
     }
-  }, [client]);
+  }, [client, sessionSource]);
   useEffect(() => {
     sessionsMountedRef.current = true;
     const generation = ++sessionsGenerationRef.current;
@@ -250,6 +255,44 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
       sessionsMountedRef.current = false;
     };
   }, [loadShellSessionPage]);
+
+  // Vue menu.vue discovers configured IM/embed channels before building the
+  // source filter. The React client exposes the same tenant-scoped endpoints;
+  // only verified channel ids are surfaced, so an unavailable endpoint cannot
+  // manufacture a bucket. API is a documented server-side source even when it
+  // is empty for the current tenant.
+  useEffect(() => {
+    let active = true;
+    const loadSourceOptions = async () => {
+      const options: SessionSourceOption[] = [
+        { value: 'web', label: labels.myChats },
+        { value: 'api', label: t('menu.apiChats') },
+      ];
+      const embedApi = client.embed;
+      const [embedResult, imResult] = await Promise.allSettled([
+        embedApi?.channels?.listAll ? embedApi.channels.listAll() : Promise.reject(new Error('embed channels unavailable')),
+        embedApi?.im?.listAll ? embedApi.im.listAll() : Promise.reject(new Error('im channels unavailable')),
+      ]);
+      if (!active) return;
+      if (embedResult.status === 'fulfilled') {
+        for (const channel of embedResult.value) {
+          if (!channel || typeof channel.id !== 'string' || channel.id.trim() === '') continue;
+          options.push({ value: `embed:${channel.id}`, label: typeof channel.name === 'string' && channel.name.trim() ? channel.name : channel.id });
+        }
+      }
+      if (imResult.status === 'fulfilled') {
+        const seen = new Set<string>();
+        for (const channel of imResult.value) {
+          if (!channel || typeof channel.platform !== 'string' || channel.platform.trim() === '' || seen.has(channel.platform)) continue;
+          seen.add(channel.platform);
+          options.push({ value: `im:${channel.platform}`, label: channel.platform });
+        }
+      }
+      setSessionSourceOptions(options);
+    };
+    void loadSourceOptions();
+    return () => { active = false; };
+  }, [client, labels.myChats, t]);
 
   const onSessionsScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
     const element = event.currentTarget;
@@ -515,6 +558,9 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
                 loading={sessionsLoading}
                 emptyLabel={sessionsLoadError ? undefined : labels.noSessions}
                 untitledLabel={labels.newSession}
+                source={sessionSource}
+                sourceOptions={sessionSourceOptions}
+                onSourceChange={setSessionSource}
                 onSelect={openShellSession}
                 onRename={renameShellSession}
                 onTogglePin={toggleShellSessionPin}
