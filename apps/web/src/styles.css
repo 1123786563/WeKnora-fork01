@@ -27,18 +27,10 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-toolbar label { display: grid; gap: .25rem; }
 .wk-list-item-copy { display: grid; gap: .2rem; min-width: 0; }
 .wk-list-item-actions { display: flex; gap: .5rem; flex-shrink: 0; }
-.wk-pagination { display: flex; align-items: center; justify-content: center; gap: .75rem; padding-top: 1rem; }
 .wk-list-actions { align-items: center; display: flex; gap: .5rem; justify-content: flex-end; margin-bottom: .75rem; }
 .wk-list-actions span { color: #66758b; font-size: .85rem; margin-right: auto; }
 .wk-document-link { background: none; border: 0; color: #1849a9; cursor: pointer; font: inherit; font-weight: 650; padding: 0; text-align: left; }
 .wk-document-link:hover { text-decoration: underline; }
-.wk-diff { display: grid; gap: .75rem; }
-.wk-diff section { border: 1px solid #edf0f5; border-radius: 6px; overflow: auto; }
-.wk-diff h3 { background: #f7f9fc; font-size: .85rem; margin: 0; padding: .5rem .7rem; }
-.wk-diff pre { margin: 0; padding: .7rem; white-space: pre-wrap; }
-.wk-diff-add { background: #ecfdf3; color: #137333; display: block; }
-.wk-diff-del { background: #fef3f2; color: #b42318; display: block; }
-.wk-diff-same { display: block; }
 .wk-settings-tabs { display: flex; gap: .5rem; max-width: 1180px; margin: 0 auto; padding: 1rem 1rem 0; }
 .wk-settings-tab { border: 1px solid #dce3ed; border-radius: 999px; background: #fff; color: #506078; cursor: pointer; padding: .5rem .8rem; }
 .wk-settings-tab.is-active { border-color: #2e6de6; color: #1849a9; background: #eff4ff; }
@@ -193,7 +185,6 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-integrations-tabs button { border: 1px solid #dce3ed; border-radius: 999px; background: #fff; color: #506078; cursor: pointer; padding: .5rem .75rem; }
 .wk-integrations-tabs button.is-active { border-color: #2e6de6; color: #1849a9; background: #eff4ff; }
 .wk-integrations-panel { border: 1px solid #dce3ed; border-radius: 10px; background: #fff; padding: 1.25rem; }
-.wk-role-badge { border-radius: 999px; padding: .2rem .55rem; font-size: .8rem; color: #6941c6; background: #f4f3ff; }
 .wk-int-section-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; border-bottom: 1px solid #eef1f5; padding-bottom: 1rem; margin-bottom: 1rem; }
 .wk-int-section-header h2 { margin: 0 0 6px; color: #172033; font-size: 18px; font-weight: 600; line-height: 1.35; }
 .wk-int-section-desc { margin: 0; color: #506078; font-size: 13px; line-height: 1.6; }

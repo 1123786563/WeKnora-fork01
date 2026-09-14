@@ -172,6 +172,11 @@ hook 类（测试/JS 引用）保留类名。
   为避免 App.tsx 式并发写截断重演，待其提交收敛后由 Orchestrator 统一处理。
 - 届时顺序：先跑 pnpm typecheck:web 确认 0 → 逐族 grep 消费方 → utilities 追加 →
   删规则 → 门禁 → 提交（每族独立提交）。
+### 批次34：wk-diff/wk-pagination/wk-role-badge 散族 ✅（共享长尾清理开始）
+- WikiPage.tsx：wk-diff 容器 + 动态 wk-diff-${type} span（静态条件编码三态色）
+  + wk-pagination；ConfigurationPage.tsx：wk-role-badge。
+- styles.css 删 9 条（wk-diff 7 + wk-pagination 1 + wk-role-badge 1）；750 行。
+- 验收：typecheck 0、wiki 8/8 + configuration 8/8、web 870/870（并行新增）、build ✓。
 ### 批次19：TenantMembers 域 ✅（子任务执行，Orchestrator 验收提交）
 - TenantMembersPanel.tsx ~95 条规则内联 utilities（表格/分页/标签三态/确认弹层；
   settings-wrapper 抽屉 select chrome 特异性更高今日实际生效，按生效值 4 条未复制）；

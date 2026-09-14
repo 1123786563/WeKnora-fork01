@@ -540,7 +540,7 @@ export function WikiPage({
         </div>
         {pager.total > WIKI_PAGE_SIZE ? (
           <nav
-            className="wk-pagination"
+            className="wk-pagination flex items-center justify-center gap-3 pt-4"
             aria-label={t("wikiBrowser.page.title")}
           >
             <Button
@@ -619,7 +619,7 @@ export function WikiPage({
                   {revisionDiff.length === 0 ? (
                     <Status>{t("wikiBrowser.revisionDiffEmpty")}</Status>
                   ) : (
-                    <div className="wk-diff">
+                    <div className="wk-diff grid gap-3">
                       {revisionDiff.map((section) => (
                         <section key={section.field}>
                           <h3>{section.field}</h3>
@@ -627,7 +627,7 @@ export function WikiPage({
                             {section.lines.map((line, index) => (
                               <span
                                 key={`${section.field}-${index}`}
-                                className={`wk-diff-${line.type}`}
+                                className={`wk-diff-${line.type} block ${line.type === "add" ? "bg-[#ecfdf3] text-[#137333]" : line.type === "del" ? "bg-[#fef3f2] text-[#b42318]" : ""}`}
                               >
                                 {line.type === "add"
                                   ? "+"
