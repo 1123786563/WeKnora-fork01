@@ -86,6 +86,7 @@
       "@weknora/views/integrations/apiKeys": ["../../packages/views/src/integrations/apiKeys.ts"],
       "@weknora/views/integrations/settings-route": ["../../packages/views/src/integrations/settings-route.ts"],
       "@weknora/views/settings/registry": ["../../packages/views/src/settings/registry.ts"],
+      "@weknora/i18n/runtime": ["../../packages/i18n/src/runtime.ts"],
       "@weknora/domain/settings/local-preferences": [
         "../../packages/domain/src/settings/local-preferences.ts"
       ],

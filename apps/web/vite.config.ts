@@ -71,6 +71,7 @@ export default defineConfig({
       '@weknora/views/integrations/apiKeys': fileURLToPath(new URL('../../packages/views/src/integrations/apiKeys.ts', import.meta.url)),
       '@weknora/views/integrations/settings-route': fileURLToPath(new URL('../../packages/views/src/integrations/settings-route.ts', import.meta.url)),
       '@weknora/views/settings/registry': fileURLToPath(new URL('../../packages/views/src/settings/registry.ts', import.meta.url)),
+      '@weknora/i18n/runtime': fileURLToPath(new URL('../../packages/i18n/src/runtime.ts', import.meta.url)),
       '@weknora/views': fileURLToPath(new URL('../../packages/views/src/index.ts', import.meta.url)),
     },
   },
