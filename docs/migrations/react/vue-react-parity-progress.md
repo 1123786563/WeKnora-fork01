@@ -2319,3 +2319,7 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - 运行时发现 `/platform/chat` 会误落到 NotFound；新增到 `/platform/creatChat` 的兼容解析与查询参数保留，保持旧入口可用并复用当前聊天页面。
 - 路由专项 11/11、Web typecheck、diff check 通过；真实浏览器重载验证待下一轮补充。
+
+### 运行时补充
+
+- Chrome 已认证 React 运行时访问 `/platform/chat?agentId=a`，页面成功加载新对话并规范化地址为 `/platform/creatChat`，AX 中可见智能体选择、上传附件、知识库和发送控件；该证据覆盖旧入口重定向，不替代 Vue 同账号对照。
