@@ -2428,3 +2428,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - Replaced the remaining English `Knowledge base · <id>` context eyebrow in Data Sources, Wiki, Graph, and Knowledge Settings pages with the shared localized `common.knowledgeBases` key.
 - Validation: Web 891/891 and Web typecheck passed; `git diff --check` passed.
+
+## 2026-09-15 Round N+34aw — Document detail preview localization
+
+- Replaced direct English document loading, metadata, preview, retry, and download labels with five-locale copy in `KnowledgeDocumentDetailPage`.
+- Validation: Web 891/891, Web typecheck, and `git diff --check` passed.
