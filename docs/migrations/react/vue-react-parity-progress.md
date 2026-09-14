@@ -2206,3 +2206,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - Authenticated React Chrome AX evidence captured the parser settings route and localized API-key safety hint.
 - Successful parser connectivity, backend mutation scenarios and same-session Vue pixel comparison remain open.
+
+## 2026-09-15 Round N+34g — T07 settings section heading localization
+
+- Storage, vector-store and web-search settings headings now use their Vue i18n title/description keys (`f5426f9d`), removing the English inventory fallback from these protected sections.
+- Surface tests pass 20/20; Web typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
