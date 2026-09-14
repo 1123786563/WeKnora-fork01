@@ -136,9 +136,9 @@ test('mount loads settings, per-status counts and the active page with paginatio
     '/memory/items?status=pending&limit=1&offset=0',
     '/memory/items?status=superseded&limit=1&offset=0',
   ]);
-  assert.equal(container.querySelector('.wk-memory-content')!.textContent, 'User deploys with Docker');
+  assert.equal(container.querySelector('li p')!.textContent, 'User deploys with Docker');
   // Vue toolbar count = totalAll (sum of the four status counts).
-  assert.equal(container.querySelector('.wk-mem-list-count')!.textContent, formatMessage('zh-CN', 'memorySettings.listCount', { count: 2 }));
+  assert.equal(container.querySelector('h3 + span')!.textContent, formatMessage('zh-CN', 'memorySettings.listCount', { count: 2 }));
   const switchButton = container.querySelector('[role="switch"]') as HTMLButtonElement;
   assert.equal(switchButton.getAttribute('aria-checked'), 'true');
   assert.equal(switchButton.disabled, false);
@@ -153,7 +153,7 @@ test('tab switch refetches with the next status and pending rows confirm/reject 
   await act(async () => {});
 
   assert.ok(calls.some((call) => call.path === '/memory/items?status=pending&limit=20&offset=0'), 'pending page fetched with offset 0');
-  const pendingContent = Array.from(container.querySelectorAll('.wk-memory-content')).find((node) => node.textContent === 'Guess: likes Rust');
+  const pendingContent = Array.from(container.querySelectorAll('li p')).find((node) => node.textContent === 'Guess: likes Rust');
   assert.ok(pendingContent, 'pending row rendered');
 
   const confirmButton = Array.from(container.querySelectorAll('button')).find((button) => button.textContent!.includes(formatMessage('zh-CN', 'memorySettings.confirmGuess')));
@@ -182,10 +182,10 @@ test('tracking tab renders progress and promote jumps back to active', async () 
   });
   await act(async () => {});
 
-  const progress = container.querySelector('.wk-topic-progress-track');
+  const progress = container.querySelector('[role="progressbar"]');
   assert.ok(progress, 'topic progress bar rendered');
   assert.equal(progress!.getAttribute('aria-valuenow'), '67');
-  assert.equal(container.querySelector('.wk-topic-progress > span')!.textContent, formatMessage('zh-CN', 'memorySettings.trackingProgress', { hits: 2, threshold: 3 }));
+  assert.equal(container.querySelector('[role="progressbar"] + span')!.textContent, formatMessage('zh-CN', 'memorySettings.trackingProgress', { hits: 2, threshold: 3 }));
 
   const promote = Array.from(container.querySelectorAll('button')).find((button) => button.textContent!.includes(formatMessage('zh-CN', 'memorySettings.promoteTopic')));
   assert.ok(promote);
@@ -257,7 +257,7 @@ test('pagination pages with offset like Vue t-pagination', async () => {
   const { client, calls } = makeClient({ activeItems: rows, activeTotal: 45 });
   const container = await mountPanel(client);
 
-  const nav = container.querySelector('.wk-memory-pagination');
+  const nav = container.querySelector('[role="navigation"]');
   assert.ok(nav, 'pagination rendered above 20 rows');
   const pageTwo = Array.from(nav!.querySelectorAll('button')).find((button) => button.textContent === '2');
   assert.ok(pageTwo);
@@ -295,12 +295,12 @@ test('workspace-disabled notice gates the switch but keeps the list readable', a
   });
   const container = await mountPanel(client);
 
-  const notice = container.querySelector('.wk-mem-notice');
+  const notice = container.querySelector('[role="status"]');
   assert.ok(notice, 'workspace-disabled notice rendered');
   assert.equal(notice!.textContent!.includes(formatMessage('zh-CN', 'memorySettings.workspaceDisabled')), true);
   const switchButton = container.querySelector('[role="switch"]') as HTMLButtonElement;
   assert.equal(switchButton.disabled, true, 'switch disabled while workspace is off');
-  assert.ok(container.querySelector('.wk-memory-content'), 'list stays readable (Vue keeps the list visible)');
+  assert.ok(container.querySelector('li p'), 'list stays readable (Vue keeps the list visible)');
   const add = Array.from(container.querySelectorAll('button')).find((button) => button.textContent!.includes(formatMessage('zh-CN', 'memorySettings.add'))) as HTMLButtonElement;
   assert.equal(add.disabled, true, 'write actions gated by effective=false');
 });

@@ -1,13 +1,12 @@
 // Personal memory settings — ported from Vue frontend/src/views/settings/MemorySettings.vue
 // (mounted by Settings.vue under the "mymemory" section). Anatomy, states, copy and
 // action semantics follow the Vue source; visual tokens mirror the TDesign light theme
-// values Vue resolves at runtime (see personal-memory.css header).
+// values Vue resolves at runtime: text rgba(0,0,0,.9/.6/.4), stroke #e7e7e7, brand #07c05f, warning-1 #fef3e6.
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import { Button, Status, Switch } from '@weknora/ui';
 import { readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
-import './personal-memory.css';
 
 type MemoryRow = Record<string, unknown>;
 type MemoryStatusTab = 'active' | 'pending' | 'tracking' | 'documents' | 'superseded' | 'archived';
@@ -169,14 +168,14 @@ interface PopconfirmProps {
 function Popconfirm({ open, message, confirmLabel, cancelLabel, danger = true, busy = false, onToggle, onCancel, onConfirm, children, label }: PopconfirmProps) {
   const ref = useDismiss(open, () => onCancel);
   return (
-    <span className='wk-mem-anchor' ref={ref}>
+    <span className='relative inline-flex' ref={ref}>
       <span onClick={onToggle}>{children}</span>
       {open ? (
-        <div className='wk-popconfirm' role='alertdialog' aria-label={label ?? confirmLabel}>
-          <p>{message}</p>
-          <div className='wk-popconfirm__actions'>
+        <div className='absolute right-0 top-[calc(100%_+_6px)] z-40 w-max max-w-[260px] rounded-control border border-line-neutral bg-surface px-3 py-[10px] shadow-[0_3px_14px_2px_rgba(0,0,0,0.05),0_8px_10px_1px_rgba(0,0,0,0.06),0_5px_5px_-3px_rgba(0,0,0,0.1)]' role='alertdialog' aria-label={label ?? confirmLabel}>
+          <p className='m-0 mb-2 text-[13px] text-[rgba(0,0,0,0.9)]'>{message}</p>
+          <div className='flex justify-end gap-2'>
             <Button type='button' onClick={onCancel}>{cancelLabel}</Button>
-            <Button type='button' className={'wk-popconfirm__confirm' + (danger ? ' danger' : '')} disabled={busy} onClick={onConfirm}>{confirmLabel}</Button>
+            <Button type='button' className={danger ? 'border-[#e34d59] bg-[#e34d59] text-surface enabled:hover:border-[#f36d78] enabled:hover:bg-[#f36d78]' : undefined} disabled={busy} onClick={onConfirm}>{confirmLabel}</Button>
           </div>
         </div>
       ) : null}
@@ -569,47 +568,48 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
       const topic = str(row, 'topic');
       const isRetired = status === 'superseded' || status === 'archived';
       return (
-        <li key={id || index} className='wk-memory-item'>
-          <div className='wk-memory-main'>
+        <li key={id || index} className='flex items-start justify-between gap-4 border-b border-line-neutral py-4 last:border-b-0 max-[720px]:flex-col max-[720px]:gap-2'>
+          <div className='min-w-0 flex-1'>
             {editingId === id ? (
-              <div className='wk-memory-edit'>
+              <div className='mb-2 flex flex-col gap-2'>
                 <textarea
+                  className='w-full min-h-14 resize-y rounded-[3px] border border-line-input px-2 py-1.5 text-[14px] leading-[1.6] focus:border-accent focus:outline-2 focus:outline-offset-0 focus:outline-accent/20'
                   value={editingContent}
                   rows={2}
                   aria-label={t('common.edit')}
                   onChange={(event) => setEditingContent(event.target.value)}
                   onKeyDown={(event) => { if (event.ctrlKey && event.key === 'Enter') void handleSaveEdit(row); }}
                 />
-                <div className='wk-memory-edit-actions'>
+                <div className='flex justify-end gap-2'>
                   <Button type='button' onClick={() => { setEditingId(''); setEditingContent(''); }}>{t('common.cancel')}</Button>
                   <Button type='button' loading={busy} onClick={() => void handleSaveEdit(row)}>{t('common.save')}</Button>
                 </div>
               </div>
             ) : (
-              <p className={'wk-memory-content' + (isRetired ? ' is-inactive' : '')}>{str(row, 'content')}</p>
+              <p className={'mb-1 mt-0 break-words text-[14px] leading-[1.6] ' + (isRetired ? 'text-[rgba(0,0,0,0.4)] line-through' : 'text-[rgba(0,0,0,0.9)]')}>{str(row, 'content')}</p>
             )}
-            <div className='wk-memory-meta'>
+            <div className="flex flex-wrap items-center text-[12px] leading-[18px] text-[rgba(0,0,0,0.4)] [&>span:not(:last-child)]:after:mx-1.5 [&>span:not(:last-child)]:after:content-['·'] [&>span:not(:last-child)]:after:text-[rgba(0,0,0,0.4)]">
               <span title={kind ? kindHint(kind) : undefined}>{kind ? kindLabel(kind) : ''}</span>
-              {topic && topic !== str(row, 'content') ? <span className='wk-memory-topic' title={topic}>{topic}</span> : null}
+              {topic && topic !== str(row, 'content') ? <span className='max-w-[160px] overflow-hidden text-ellipsis whitespace-nowrap' title={topic}>{topic}</span> : null}
               <span>{originLabel(str(row, 'origin'))}</span>
               <span>{formatTime(str(row, 'valid_from'))}</span>
             </div>
           </div>
-          <div className='wk-memory-actions'>
+          <div className='-mt-0.5 flex shrink-0 items-center gap-1 max-[720px]:mt-0'>
             {status === 'pending' ? (
               <>
-                <button type='button' className='wk-mem-icon-btn wk-mem-chip-btn' disabled={!canWrite} onClick={() => void handleConfirmGuess(row)}>
+                <button type='button' className='inline-flex min-h-6 w-6 min-w-6 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] enabled:hover:bg-[#f3f3f3] disabled:cursor-not-allowed disabled:opacity-40' disabled={!canWrite} onClick={() => void handleConfirmGuess(row)}>
                   <Icon name='check' />
                   {t('memorySettings.confirmGuess')}
                 </button>
-                <button type='button' className='wk-mem-icon-btn wk-mem-chip-btn' onClick={() => void handleRejectGuess(row)}>
+                <button type='button' className='inline-flex min-h-6 w-6 min-w-6 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] enabled:hover:bg-[#f3f3f3] disabled:cursor-not-allowed disabled:opacity-40' onClick={() => void handleRejectGuess(row)}>
                   <Icon name='close' />
                   {t('memorySettings.rejectGuess')}
                 </button>
               </>
             ) : null}
             {status === 'active' ? (
-              <button type='button' className='wk-mem-icon-btn' aria-label={t('common.edit')} title={t('common.edit')} disabled={!canWrite} onClick={() => startEdit(row)}>
+              <button type='button' className='inline-flex min-h-6 w-6 min-w-6 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] enabled:hover:bg-[#f3f3f3] disabled:cursor-not-allowed disabled:opacity-40' aria-label={t('common.edit')} title={t('common.edit')} disabled={!canWrite} onClick={() => startEdit(row)}>
                 <Icon name='edit' />
               </button>
             ) : null}
@@ -625,7 +625,7 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
                 onCancel={() => setConfirmKey(null)}
                 onConfirm={() => void handleDelete(row)}
               >
-                <button type='button' className='wk-mem-icon-btn is-danger' aria-label={t('common.delete')} title={t('common.delete')}>
+                <button type='button' className='inline-flex min-h-6 w-6 min-w-6 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent p-0 text-[#e34d59] enabled:hover:bg-[#f3f3f3] disabled:cursor-not-allowed disabled:opacity-40' aria-label={t('common.delete')} title={t('common.delete')}>
                   <Icon name='delete' />
                 </button>
               </Popconfirm>
@@ -645,27 +645,27 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
       const percentage = Math.min(100, Math.round((hits / threshold) * 100));
       const aliases = Array.isArray(row.aliases) ? (row.aliases as unknown[]).filter((value): value is string => typeof value === 'string') : [];
       return (
-        <li key={id || index} className='wk-memory-item'>
-          <div className='wk-memory-main'>
-            <p className='wk-memory-content'>{str(row, 'topic')}</p>
-            <div className='wk-topic-progress'>
-              <div className='wk-topic-progress-track' role='progressbar' aria-valuenow={percentage} aria-valuemin={0} aria-valuemax={100}>
-                <div className='wk-topic-progress-fill' style={{ width: percentage + '%' }} />
+        <li key={id || index} className='flex items-start justify-between gap-4 border-b border-line-neutral py-4 last:border-b-0 max-[720px]:flex-col max-[720px]:gap-2'>
+          <div className='min-w-0 flex-1'>
+            <p className='mb-1 mt-0 break-words text-[14px] leading-[1.6] text-[rgba(0,0,0,0.9)]'>{str(row, 'topic')}</p>
+            <div className='mb-1 mt-1.5 flex max-w-[360px] items-center gap-2.5'>
+              <div className='h-1 min-w-20 flex-1 overflow-hidden rounded-full bg-line-neutral' role='progressbar' aria-valuenow={percentage} aria-valuemin={0} aria-valuemax={100}>
+                <div className='h-full rounded-full bg-accent' style={{ width: percentage + '%' }} />
               </div>
-              <span>{hits >= threshold ? t('memorySettings.trackingReady') : t('memorySettings.trackingProgress', { hits, threshold })}</span>
+              <span className='shrink-0 text-[12px] leading-[18px] text-[rgba(0,0,0,0.4)]'>{hits >= threshold ? t('memorySettings.trackingReady') : t('memorySettings.trackingProgress', { hits, threshold })}</span>
             </div>
-            <div className='wk-memory-meta'>
+            <div className="flex flex-wrap items-center text-[12px] leading-[18px] text-[rgba(0,0,0,0.4)] [&>span:not(:last-child)]:after:mx-1.5 [&>span:not(:last-child)]:after:content-['·'] [&>span:not(:last-child)]:after:text-[rgba(0,0,0,0.4)]">
               <span>{t('memorySettings.kinds.interest')}</span>
               {aliases.length > 0 ? (
-                <span className='wk-memory-topic' title={aliases.join(', ')}>
+                <span className='max-w-[160px] overflow-hidden text-ellipsis whitespace-nowrap' title={aliases.join(', ')}>
                   {t('memorySettings.trackingAliases', { aliases: aliases.join(', ') })}
                 </span>
               ) : null}
               <span>{formatTime(str(row, 'last_seen_at'))}</span>
             </div>
           </div>
-          <div className='wk-memory-actions'>
-            <button type='button' className='wk-mem-icon-btn wk-mem-chip-btn' disabled={!canWrite} onClick={() => void handlePromoteTopic(row)}>
+          <div className='-mt-0.5 flex shrink-0 items-center gap-1 max-[720px]:mt-0'>
+            <button type='button' className='inline-flex min-h-6 w-6 min-w-6 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] enabled:hover:bg-[#f3f3f3] disabled:cursor-not-allowed disabled:opacity-40' disabled={!canWrite} onClick={() => void handlePromoteTopic(row)}>
               <Icon name='star' />
               {t('memorySettings.promoteTopic')}
             </button>
@@ -680,7 +680,7 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
               onCancel={() => setConfirmKey(null)}
               onConfirm={() => void handleDismissTopic(row)}
             >
-              <button type='button' className='wk-mem-icon-btn wk-mem-chip-btn' title={t('memorySettings.dismissTopic')}>
+              <button type='button' className='inline-flex min-h-6 w-6 min-w-6 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] enabled:hover:bg-[#f3f3f3] disabled:cursor-not-allowed disabled:opacity-40' title={t('memorySettings.dismissTopic')}>
                 {t('memorySettings.dismissTopic')}
               </button>
             </Popconfirm>
@@ -696,18 +696,18 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
       const id = rowId(row);
       const knowledgeBaseId = str(row, 'knowledge_base_id');
       return (
-        <li key={id || index} className='wk-memory-item'>
-          <div className='wk-memory-main'>
-            <p className='wk-memory-content'>{str(row, 'title') || t('memorySettings.untitledDocument')}</p>
-            <div className='wk-memory-meta'>
+        <li key={id || index} className='flex items-start justify-between gap-4 border-b border-line-neutral py-4 last:border-b-0 max-[720px]:flex-col max-[720px]:gap-2'>
+          <div className='min-w-0 flex-1'>
+            <p className='mb-1 mt-0 break-words text-[14px] leading-[1.6] text-[rgba(0,0,0,0.9)]'>{str(row, 'title') || t('memorySettings.untitledDocument')}</p>
+            <div className="flex flex-wrap items-center text-[12px] leading-[18px] text-[rgba(0,0,0,0.4)] [&>span:not(:last-child)]:after:mx-1.5 [&>span:not(:last-child)]:after:content-['·'] [&>span:not(:last-child)]:after:text-[rgba(0,0,0,0.4)]">
               <span>{t('memorySettings.documentsHits', { hits: num(row, 'hits') })}</span>
               <span>{formatTime(str(row, 'last_used_at'))}</span>
             </div>
           </div>
-          <div className='wk-memory-actions'>
+          <div className='-mt-0.5 flex shrink-0 items-center gap-1 max-[720px]:mt-0'>
             <button
               type='button'
-              className='wk-mem-icon-btn wk-mem-chip-btn'
+              className='inline-flex min-h-6 w-6 min-w-6 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] enabled:hover:bg-[#f3f3f3] disabled:cursor-not-allowed disabled:opacity-40'
               disabled={!knowledgeBaseId}
               title={knowledgeBaseId ? t('memorySettings.openDocument') : t('memorySettings.openDocumentUnavailable')}
               onClick={() => handleOpenDocument(row)}
@@ -726,7 +726,7 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
               onCancel={() => setConfirmKey(null)}
               onConfirm={() => void handleStopTrackingDocument(row)}
             >
-              <button type='button' className='wk-mem-icon-btn wk-mem-chip-btn' title={t('memorySettings.stopTrackingDocument')}>
+              <button type='button' className='inline-flex min-h-6 w-6 min-w-6 cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] enabled:hover:bg-[#f3f3f3] disabled:cursor-not-allowed disabled:opacity-40' title={t('memorySettings.stopTrackingDocument')}>
                 {t('memorySettings.stopTrackingDocument')}
               </button>
             </Popconfirm>
@@ -739,26 +739,26 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
   const listBody: ReactNode = (() => {
     if (listIsEmpty) {
       return (
-        <div className='wk-mem-empty'>
-          <p className='wk-mem-empty-title'>{emptyTitle}</p>
-          <p className='wk-mem-empty-desc'>{emptyDescription}</p>
+        <div className='py-8 text-center'>
+          <p className='mb-1 mt-0 text-[14px] font-medium text-[rgba(0,0,0,0.6)]'>{emptyTitle}</p>
+          <p className='m-0 text-[13px] text-[rgba(0,0,0,0.4)]'>{emptyDescription}</p>
         </div>
       );
     }
-    if (isDocuments) return <ul className='wk-memory-list'>{documentRows}</ul>;
-    if (isTracking) return <ul className='wk-memory-list'>{trackingRows}</ul>;
-    return <ul className='wk-memory-list'>{itemRows}</ul>;
+    if (isDocuments) return <ul className='m-0 list-none p-0'>{documentRows}</ul>;
+    if (isTracking) return <ul className='m-0 list-none p-0'>{trackingRows}</ul>;
+    return <ul className='m-0 list-none p-0'>{itemRows}</ul>;
   })();
   // Vue renders the section bare on the drawer background (no outer card).
   return (
-    <div className='wk-memory-settings'>
-      <div className='wk-mem-header'>
-        <div className='wk-mem-header-wrap'>
-          <h2>{t('memorySettings.title')}</h2>
-          <span className='wk-mem-usage-anchor'>
+    <div className='w-full text-[rgba(0,0,0,0.9)]'>
+      <div className='mb-6'>
+        <div className='inline-flex items-center gap-2'>
+          <h2 className='m-0 text-[20px] font-semibold text-[rgba(0,0,0,0.9)]'>{t('memorySettings.title')}</h2>
+          <span className='relative inline-flex'>
             <button
               type='button'
-              className='wk-mem-usage-trigger'
+              className='m-0 inline-flex h-[22px] w-[22px] shrink-0 cursor-pointer items-center justify-center rounded-control border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] leading-none transition-[background-color,color] duration-200 ease-[ease] enabled:hover:bg-[#f3f3f3] enabled:hover:text-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent/20'
               aria-label={t('memorySettings.usage.iconHint')}
               title={t('memorySettings.usage.iconHint')}
               aria-expanded={usageOpen}
@@ -771,14 +771,14 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
               <Icon name='info-circle' />
             </button>
             {usageOpen ? (
-              <div className='wk-mem-usage-popup' role='dialog' aria-label={t('memorySettings.usage.title')}>
-                <div className='wk-mem-usage-title'>{t('memorySettings.usage.title')}</div>
-                <p className='wk-mem-usage-intro'>{t('memorySettings.usage.intro')}</p>
-                <div className='wk-mem-usage-rows'>
+              <div className='absolute left-0 top-[calc(100%_+_6px)] z-30 w-[380px] max-w-[calc(100vw_-_24px)] rounded-[12px] border-[0.5px] border-line-neutral bg-surface px-4 pb-3 pt-[14px] text-left shadow-[0_0_0_0.5px_rgba(0,0,0,0.03),0_2px_4px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.1)]' role='dialog' aria-label={t('memorySettings.usage.title')}>
+                <div className='text-[13px] font-semibold text-[rgba(0,0,0,0.9)]'>{t('memorySettings.usage.title')}</div>
+                <p className='mb-3 mt-1 text-[12px] leading-normal text-[rgba(0,0,0,0.4)]'>{t('memorySettings.usage.intro')}</p>
+                <div className='flex flex-col gap-2.5'>
                   {USAGE_ROW_KEYS.map((key) => (
-                    <div key={key} className='wk-mem-usage-row'>
-                      <span className='wk-mem-usage-label'>{t('memorySettings.usage.rows.' + key + '.label')}</span>
-                      <span className='wk-mem-usage-text'>{t('memorySettings.usage.rows.' + key + '.text')}</span>
+                    <div key={key} className='flex items-start gap-3 leading-normal'>
+                      <span className='w-[88px] flex-none text-[12px] font-medium text-[rgba(0,0,0,0.9)]'>{t('memorySettings.usage.rows.' + key + '.label')}</span>
+                      <span className='min-w-0 flex-1 text-[12px] text-[rgba(0,0,0,0.6)]'>{t('memorySettings.usage.rows.' + key + '.text')}</span>
                     </div>
                   ))}
                 </div>
@@ -786,23 +786,23 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
             ) : null}
           </span>
         </div>
-        <p className='wk-mem-description'>{t('memorySettings.description')}</p>
+        <p className='mb-0 mt-2 text-[14px] leading-normal text-[rgba(0,0,0,0.6)]'>{t('memorySettings.description')}</p>
       </div>
 
       {settings !== null && !workspaceEnabled ? (
-        <div className='wk-mem-notice' role='status'>
+        <div className='mb-4 flex items-center gap-2 rounded-card bg-[#fef3e6] px-4 py-3 text-[13px] text-[rgba(0,0,0,0.9)]' role='status'>
           <Icon name='info-circle' />
           <span>{t('memorySettings.workspaceDisabled')}</span>
         </div>
       ) : null}
 
-      <div className='wk-mem-setting-row'>
-        <div className='wk-mem-setting-info'>
-          <label>{t('memorySettings.enableLabel')}</label>
-          <p className='wk-mem-desc'>{t('memorySettings.enableDescription')}</p>
-          {enabled && workspaceEnabled ? <p className='wk-mem-desc'>{t('memorySettings.agentDisabledHint')}</p> : null}
+      <div className='flex items-start justify-between border-b border-line-neutral py-5 max-[720px]:flex-col max-[720px]:gap-2'>
+        <div className='max-w-[65%] flex-1 pr-6 max-[720px]:max-w-full max-[720px]:pr-0'>
+          <label className='mb-1 block text-[15px] font-medium text-[rgba(0,0,0,0.9)]'>{t('memorySettings.enableLabel')}</label>
+          <p className='m-0 text-[13px] leading-normal text-[rgba(0,0,0,0.6)]'>{t('memorySettings.enableDescription')}</p>
+          {enabled && workspaceEnabled ? <p className='m-0 text-[13px] leading-normal text-[rgba(0,0,0,0.6)]'>{t('memorySettings.agentDisabledHint')}</p> : null}
         </div>
-        <div className='wk-memory-actions'>
+        <div className='-mt-0.5 flex shrink-0 items-center gap-1 max-[720px]:mt-0'>
           <Switch
             checked={enabled}
             disabled={settings === null || !workspaceEnabled || busy}
@@ -815,31 +815,31 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
       {error ? <Status tone='error'>{error}</Status> : null}
       {notice ? <Status tone={noticeTone === 'info' ? 'neutral' : noticeTone}>{notice}</Status> : null}
 
-      <div className='wk-mem-list-section'>
-        <div className='wk-mem-toolbar'>
-          <div className='wk-mem-list-title'>
-            <h3>{t('memorySettings.listTitle')}</h3>
-            <span className='wk-mem-list-count'>{t('memorySettings.listCount', { count: totalAll })}</span>
+      <div className='mt-7'>
+        <div className='mb-2 flex flex-wrap items-center justify-between gap-3'>
+          <div className='flex items-baseline gap-2'>
+            <h3 className='m-0 text-[16px] font-semibold text-[rgba(0,0,0,0.9)]'>{t('memorySettings.listTitle')}</h3>
+            <span className='text-[13px] text-[rgba(0,0,0,0.4)]'>{t('memorySettings.listCount', { count: totalAll })}</span>
           </div>
-          <div className='wk-mem-list-actions'>
-            <span className='wk-mem-anchor' ref={addAnchorRef}>
-              <Button type='button' className='wk-mem-tool-btn' disabled={!canWrite} onClick={() => { if (!addVisible) setDraftContent(''); setAddVisible(!addVisible); }}>
+          <div className='flex flex-wrap items-center gap-1'>
+            <span className='relative inline-flex' ref={addAnchorRef}>
+              <Button type='button' className='min-h-6 gap-1 rounded-[3px] border-0 bg-transparent px-[7px] py-0 text-[13px] text-[rgba(0,0,0,0.6)] enabled:hover:bg-[#f3f3f3] enabled:hover:text-[rgba(0,0,0,0.9)] disabled:cursor-not-allowed disabled:opacity-40' disabled={!canWrite} onClick={() => { if (!addVisible) setDraftContent(''); setAddVisible(!addVisible); }}>
                 <Icon name='add' />
                 {t('memorySettings.add')}
               </Button>
               {addVisible ? (
-                <div className='wk-mem-pop' role='dialog' aria-label={t('memorySettings.addTitle')}>
-                  <div className='wk-mem-add-title'>{t('memorySettings.addTitle')}</div>
-                  <div className='wk-mem-add-form'>
-                    <label className='wk-mem-add-field'>
-                      <span>{t('memorySettings.addKindLabel')}</span>
+                <div className='absolute right-0 top-[calc(100%_+_6px)] z-30 w-[320px] max-w-[calc(100vw_-_24px)] rounded-[12px] border-[0.5px] border-line-neutral bg-surface px-4 py-[14px] shadow-[0_0_0_0.5px_rgba(0,0,0,0.03),0_2px_4px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.1)]' role='dialog' aria-label={t('memorySettings.addTitle')}>
+                  <div className='text-[14px] font-semibold text-[rgba(0,0,0,0.9)]'>{t('memorySettings.addTitle')}</div>
+                  <div className='mt-3 flex flex-col gap-3'>
+                    <label className='flex flex-col gap-1.5'>
+                      <span className='text-[12px] text-[rgba(0,0,0,0.6)]'>{t('memorySettings.addKindLabel')}</span>
                       <select value={draftKind} onChange={(event) => setDraftKind(event.target.value as typeof KINDS[number])}>
                         {KINDS.map((kind) => <option key={kind} value={kind}>{kindLabel(kind)}</option>)}
                       </select>
-                      <span className='wk-mem-kind-hint'>{kindHint(draftKind)}</span>
+                      <span className='text-[12px] leading-[18px] text-[rgba(0,0,0,0.4)]'>{kindHint(draftKind)}</span>
                     </label>
-                    <label className='wk-mem-add-field'>
-                      <span>{t('memorySettings.addContentLabel')}</span>
+                    <label className='flex flex-col gap-1.5'>
+                      <span className='text-[12px] text-[rgba(0,0,0,0.6)]'>{t('memorySettings.addContentLabel')}</span>
                       <textarea
                         value={draftContent}
                         rows={3}
@@ -848,7 +848,7 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
                         onChange={(event) => setDraftContent(event.target.value)}
                       />
                     </label>
-                    <div className='wk-mem-add-footer'>
+                    <div className='flex justify-end gap-2'>
                       <Button type='button' onClick={() => setAddVisible(false)}>{t('common.cancel')}</Button>
                       <Button type='button' loading={busy} disabled={!draftContent.trim()} onClick={() => void handleCreate()}>{t('memorySettings.add')}</Button>
                     </div>
@@ -856,7 +856,7 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
                 </div>
               ) : null}
             </span>
-            <Button type='button' className='wk-mem-tool-btn' onClick={() => void handleExport()}>
+            <Button type='button' className='min-h-6 gap-1 rounded-[3px] border-0 bg-transparent px-[7px] py-0 text-[13px] text-[rgba(0,0,0,0.6)] enabled:hover:bg-[#f3f3f3] enabled:hover:text-[rgba(0,0,0,0.9)] disabled:cursor-not-allowed disabled:opacity-40' onClick={() => void handleExport()}>
               <Icon name='download' />
               {t('memorySettings.export')}
             </Button>
@@ -872,12 +872,12 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
               onCancel={() => setConfirmKey(null)}
               onConfirm={() => void handleConsolidate()}
             >
-              <Button type='button' className='wk-mem-tool-btn' loading={consolidating} disabled={!canWrite || totalAll === 0}>
+              <Button type='button' className='min-h-6 gap-1 rounded-[3px] border-0 bg-transparent px-[7px] py-0 text-[13px] text-[rgba(0,0,0,0.6)] enabled:hover:bg-[#f3f3f3] enabled:hover:text-[rgba(0,0,0,0.9)] disabled:cursor-not-allowed disabled:opacity-40' loading={consolidating} disabled={!canWrite || totalAll === 0}>
                 <Icon name='swap' />
                 {t('memorySettings.consolidate')}
               </Button>
             </Popconfirm>
-            <span className='wk-mem-anchor' ref={clearAnchorRef}>
+            <span className='relative inline-flex' ref={clearAnchorRef}>
               <Popconfirm
                 open={confirmKey === 'clear'}
                 message={t('memorySettings.clearConfirm')}
@@ -889,7 +889,7 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
                 onCancel={() => setConfirmKey(null)}
                 onConfirm={() => void handleClear()}
               >
-                <Button type='button' className='wk-mem-tool-btn is-danger' disabled={totalAll === 0 && trackingCount === 0 && documentCount === 0}>
+                <Button type='button' className='min-h-6 gap-1 rounded-[3px] border-0 bg-transparent px-[7px] py-0 text-[13px] text-[#e34d59] enabled:hover:bg-[#f3f3f3] enabled:hover:text-[#c9353f] disabled:cursor-not-allowed disabled:opacity-40' disabled={totalAll === 0 && trackingCount === 0 && documentCount === 0}>
                   <Icon name='delete' />
                   {t('memorySettings.clear')}
                 </Button>
@@ -898,29 +898,29 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
           </div>
         </div>
 
-        <div className='wk-mem-tabs' role='tablist' aria-label={t('memorySettings.listTitle')}>
+        <div className='flex items-center overflow-x-auto border-b border-line-neutral' role='tablist' aria-label={t('memorySettings.listTitle')}>
           {allTabs.map((value) => (
-            <button key={value} type='button' role='tab' aria-selected={value === tab} className='wk-mem-tab' onClick={() => void handleTabChange(value)}>
+            <button key={value} type='button' role='tab' aria-selected={value === tab} className='m-0 inline-flex cursor-pointer items-center gap-[5px] whitespace-nowrap rounded-none border-0 border-b-2 border-b-transparent bg-transparent px-3 py-2 text-[13px] text-[rgba(0,0,0,0.6)] transition-[color,border-color] duration-200 ease-[ease] first:pl-0 hover:text-[rgba(0,0,0,0.9)] focus-visible:-outline-offset-2 focus-visible:outline-2 focus-visible:outline-accent/20 aria-selected:border-b-accent aria-selected:font-medium aria-selected:text-accent' onClick={() => void handleTabChange(value)}>
               <Icon name={TAB_ICONS[value]} size={14} />
               <span>{tabLabel(value)}</span>
             </button>
           ))}
         </div>
 
-        <div className={'wk-mem-loading' + (loading ? ' is-loading' : '')}>
+        <div className={'min-h-12' + (loading ? ' pointer-events-none opacity-55' : '')}>
           {listBody}
         </div>
-        {statusHint ? <p className='wk-mem-status-hint'>{statusHint}</p> : null}
+        {statusHint ? <p className='mb-0 mt-3 text-[12px] leading-[18px] text-[rgba(0,0,0,0.6)]'>{statusHint}</p> : null}
 
         {listTotal > PAGE_SIZE ? (
-          <div className='wk-memory-pagination' role='navigation' aria-label={t('memorySettings.listTitle')}>
-            <button type='button' className='wk-mem-page-btn' disabled={page <= 1} onClick={() => void handlePageChange(page - 1)} aria-label='previous page'>{'<'}</button>
+          <div className='mt-4 flex items-center gap-1' role='navigation' aria-label={t('memorySettings.listTitle')}>
+            <button type='button' className='h-6 min-w-6 cursor-pointer rounded-[3px] border border-transparent bg-transparent px-1.5 py-0 text-[13px] text-[rgba(0,0,0,0.6)] disabled:cursor-not-allowed disabled:opacity-40' disabled={page <= 1} onClick={() => void handlePageChange(page - 1)} aria-label='previous page'>{'<'}</button>
             {Array.from({ length: totalPages }, (_, index) => index + 1).map((pageNumber) => (
-              <button key={pageNumber} type='button' className={'wk-mem-page-btn' + (pageNumber === page ? ' is-current' : '')} aria-current={pageNumber === page ? 'page' : undefined} onClick={() => void handlePageChange(pageNumber)}>
+              <button key={pageNumber} type='button' className={'h-6 min-w-6 cursor-pointer rounded-[3px] border bg-transparent px-1.5 py-0 text-[13px] disabled:cursor-not-allowed disabled:opacity-40 ' + (pageNumber === page ? 'border-accent bg-accent text-surface' : 'border-transparent text-[rgba(0,0,0,0.6)] enabled:hover:border-accent enabled:hover:text-accent')} aria-current={pageNumber === page ? 'page' : undefined} onClick={() => void handlePageChange(pageNumber)}>
                 {pageNumber}
               </button>
             ))}
-            <button type='button' className='wk-mem-page-btn' disabled={page >= totalPages} onClick={() => void handlePageChange(page + 1)} aria-label='next page'>{'>'}</button>
+            <button type='button' className='h-6 min-w-6 cursor-pointer rounded-[3px] border border-transparent bg-transparent px-1.5 py-0 text-[13px] text-[rgba(0,0,0,0.6)] disabled:cursor-not-allowed disabled:opacity-40' disabled={page >= totalPages} onClick={() => void handlePageChange(page + 1)} aria-label='next page'>{'>'}</button>
           </div>
         ) : null}
       </div>
