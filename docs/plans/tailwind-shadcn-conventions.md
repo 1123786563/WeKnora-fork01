@@ -51,6 +51,12 @@ var(--wks-border)、var(--wks-primary) 等）。这些是既有主题能力，�
 任意值形式（如 text-[var(--wks-text-secondary,#6b7280)]、bg-[var(--wks-border,#e5e7eb)]），
 禁止压平成固定 hex。仅当某变量在全局只此一处且无主题语义时才可直接用令牌。
 
+## JS 钩子类保留规则
+
+类名可能被事件逻辑用作 DOM 钩子（querySelector/closest/matches 参数等）。删除任何类名前，
+必须 grep 该类名在域内 tsx 的字符串出现；凡作为 JS 钩子的类名一律保留（样式可改 utilities，
+类名留作钩子），并在报告中列出保留清单。
+
 ## 结构规则
 - 每个域：先读域 css 全文与全部消费 tsx，列出「类名→规则→出现位置」清单，再逐文件替换。
 - 域 css 中确属第三方/复杂动画/富文本的规则可保留为 css（放回同文件），并在回复中说明保留原因与行数。
