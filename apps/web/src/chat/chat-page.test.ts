@@ -377,6 +377,18 @@ test('composer chip renders the real model name and the context spec span like V
   assert.match(html, /aria-label="mock-stream-model"/);
 });
 
+test('composer model chip is exposed as a disabled control until model selection has a submit contract', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatComposer, {
+    ...composerBase,
+    copy: resolveChatCopy('zh-CN'),
+    modelLabel: 'mock-stream-model',
+  }));
+  // The current React stream has no model-id selection/submit contract. Keep
+  // the Vue-shaped affordance explicit and keyboard/screen-reader safe rather
+  // than exposing a misleading interactive control.
+  assert.match(html, /<button[^>]*class="wk-chat-model-chip[^>]*disabled=""[^>]*aria-disabled="true"[^>]*aria-label="mock-stream-model"/);
+});
+
 test('composer chip marks a defaulted context window like the Vue is-default class', () => {
   const html = renderToStaticMarkup(React.createElement(ChatComposer, {
     ...composerBase,
