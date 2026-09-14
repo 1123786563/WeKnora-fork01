@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import type { AuditLog, TenantInvitation, TenantMember, TenantRole } from '@weknora/api-client';
@@ -35,21 +35,24 @@ export function AdministrationScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const loadGeneration = useRef(0);
 
   const load = useCallback(async () => {
     if (tenantId === null) { setLoading(false); setError(t('mobileAdministration.noWorkspace')); return; }
+    const generation = ++loadGeneration.current;
     setLoading(true); setError('');
     const results = await Promise.allSettled([
       runtime.client.identity.tenants.members.list(tenantId, { page: 1, pageSize: 100 }),
       runtime.client.identity.tenants.invitations.listTenant(tenantId, { page: 1, pageSize: 100 }),
       runtime.client.identity.tenants.auditLog.list(tenantId, { limit: 50 }),
     ]);
+    if (generation !== loadGeneration.current) return;
     const failures: unknown[] = [];
     if (results[0].status === 'fulfilled') setMembers(results[0].value.items); else failures.push(results[0].reason);
     if (results[1].status === 'fulfilled') setInvitations(results[1].value.items); else failures.push(results[1].reason);
     if (results[2].status === 'fulfilled') setAudit(results[2].value.items); else failures.push(results[2].reason);
     if (failures.length) setError(failures[0] instanceof Error ? failures[0].message : t('mobileAdministration.someDataUnavailable'));
-    setLoading(false);
+    if (generation === loadGeneration.current) setLoading(false);
   }, [runtime.client, runtime.locale, tenantId]);
 
   useEffect(() => { void load(); }, [load]);
