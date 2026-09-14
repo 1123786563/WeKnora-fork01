@@ -740,7 +740,7 @@ export function ChunkDetailRenderer({ data, copy }: { data: unknown; copy?: Chat
   return (
     <div className="wk-tool-chunk-detail flex flex-col gap-[0.3rem]">
       {view.chunkId ? <InfoField label={labels.chunkIdLabel}><InfoCode>{view.chunkId}</InfoCode></InfoField> : null}
-      {view.knowledgeId ? <InfoField label="Document ID"><InfoCode>{view.knowledgeId}</InfoCode></InfoField> : null}
+      {view.knowledgeId ? <InfoField label={labels.documentIdLabel}><InfoCode>{view.knowledgeId}</InfoCode></InfoField> : null}
       {view.chunkIndexLabel ? <InfoField label={labels.positionLabel}>{view.chunkIndexLabel}</InfoField> : null}
       {view.contentLength !== null ? <InfoField label="Content length">{view.contentLength} chars</InfoField> : null}
       {view.content ? (

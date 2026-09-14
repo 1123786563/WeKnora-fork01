@@ -342,6 +342,23 @@ test('ChunkDetailRenderer localizes the chunk ID label in every locale', () => {
   }
 });
 
+test('ChunkDetailRenderer localizes the document ID label in every locale', () => {
+  const expected = {
+    'zh-CN': '文档ID:',
+    'en-US': 'Document ID:',
+    'ja-JP': 'ドキュメントID:',
+    'ko-KR': '문서 ID:',
+    'ru-RU': 'ID документа:',
+  } as const;
+  for (const [locale, label] of Object.entries(expected)) {
+    const element = ChunkDetailRenderer({
+      data: { knowledge_id: 'k-2' },
+      copy: resolveChatCopy(locale),
+    });
+    assert.match(JSON.stringify(element), new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  }
+});
+
 test('ChunkDetailRenderer localizes the position label in every locale', () => {
   const expected = {
     'zh-CN': '位置:',
