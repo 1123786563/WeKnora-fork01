@@ -1,5 +1,12 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-14 Round N+30 — implementing 七行 live 重验转 review（R013 R027 R031 R033 R043 R044 R046）
+
+- live 只读 sweep（impl-live-sweep.cjs，双端 owner 视角）：模型管理/MCP/沙箱/技能/API 集成五个分区全部当前渲染一致；截图 impl-live-20260914/。
+- 顺手修复（R027）：React 内置模型说明盒无样式（与 Vue 灰盒不符）——按 Vue ModelSettings.vue less:893-913 补齐 .wk-builtin-hint；修复后 i1-models-react-after.png 与 Vue 逐元素一致。
+- 七行 implementing → review，note 记录各自精确残余项（真实 MCP 服务/沙箱集群/Session SSE/连接保存流程/Wails/native）。
+- 证据：2026-09-14-impl-live-recheck.md。typecheck:web 0 错误。
+
 ## 2026-09-14 Round N+29 — STALE 12 行全部重验清除（R007 R008 R032 R045 R047-R050 N001 N002 N014 N015）
 
 - live 只读 sweep（stale-refix.cjs，双端 owner 视角）：外壳导航锚点、成员管理单标题（无 wrapper 重复、无域名泄漏）、设置关闭 ✕ 双端回 KB 列表、MCP 分区渲染——全部一致；截图 stale-refix-20260914/。

@@ -204,6 +204,12 @@
 .model-card--clickable:hover, .model-card--clickable:focus-visible { border-color: rgba(7, 192, 95, 0.65); box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08); outline: none; }
 .model-card--builtin { background: rgba(127, 142, 166, 0.06); }
 .model-card--builtin:hover { border-color: rgba(120, 135, 155, 0.3); box-shadow: none; }
+/* Vue ModelSettings.vue .builtin-models-hint (less :893-913) — gray box with
+   placeholder-tone label, secondary text and a plain doc link. */
+.wk-builtin-hint { margin-top: 12px; padding: 10px 12px; background: #f3f3f3; border: 1px solid #e7e7e7; border-radius: 6px; }
+.wk-builtin-hint p:first-child { margin: 0 0 4px 0; font-size: 12px; font-weight: 500; color: rgba(0, 0, 0, 0.4); letter-spacing: 0.02em; }
+.wk-builtin-hint .wk-muted { margin: 0 0 6px 0; font-size: 13px; line-height: 1.55; color: rgba(0, 0, 0, 0.6); }
+.wk-builtin-hint a { font-size: 13px; }
 .model-card__badge { align-items: center; border-radius: 9px; display: flex; flex-shrink: 0; font-size: 16px; height: 36px; justify-content: center; margin-top: 1px; width: 36px; }
 .model-card--chat .model-card__badge { background: rgba(0, 82, 217, 0.1); color: #0052d9; }
 .model-card--embedding .model-card__badge { background: rgba(98, 53, 187, 0.1); color: #6235bb; }
