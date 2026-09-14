@@ -225,3 +225,10 @@
 - Recorded emitted visualization chunks and the remaining bundle-size warning without changing chunk behavior.
 - Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r033-desktop-build.md`.
 - Remaining: Wails host launch and authenticated parity evidence.
+
+## Round N+34bn — Web route lazy loading
+
+- Converted protected route page imports in `apps/web/src/main.tsx` to `React.lazy` with a shared loading boundary, preserving auth pages and route guards.
+- Production build confirms initial index JS reduced from ~4.92MB to ~3.05MB minified, with route-specific chunks emitted.
+- Validation: `pnpm run build:web`; `pnpm run test:web` 891/891; `pnpm run typecheck:web`; `git diff --check`.
+- Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r034-web-route-lazy-loading.md`.

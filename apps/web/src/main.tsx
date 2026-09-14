@@ -1,5 +1,5 @@
 import { createRoot } from 'react-dom/client';
-import type { ReactNode } from 'react';
+import { lazy, Suspense, type ReactNode } from 'react';
 import { createRefreshCoordinator, createWeKnoraClient, type AuthSession, type Credential } from '@weknora/api-client';
 import { Status } from '@weknora/ui';
 import { PlatformShell } from './platform/PlatformShell.tsx';
@@ -17,23 +17,23 @@ import { initTheme } from './theme.ts';
 import { createWebScopeRuntime } from './platform/scope-runtime.ts';
 import { createWebPlatformAdapters } from './platform/adapters.ts';
 import { guardRoute, organizationInviteCode, protectedPageForRoute, resolveRoute, routeRedirect } from './routes.tsx';
-import { ChatRoutePage } from './chat/ChatRoutePage.tsx';
-import { IntegrationsRoutePage } from './integrations/IntegrationsRoutePage.tsx';
-import { KnowledgeDocumentsPage } from './documents/KnowledgeDocumentsPage.tsx';
-import { KnowledgeDocumentDetailPage } from './documents/KnowledgeDocumentDetailPage.tsx';
-import { WikiPage } from './wiki/WikiPage.tsx';
-import { FAQPage } from './faq/FAQPage.tsx';
-import { DataSourcesPage } from './data-sources/DataSourcesPage.tsx';
-import { KnowledgeSettingsPage } from './knowledge-settings/KnowledgeSettingsPage.tsx';
-import { ConfigurationPage } from './configuration/ConfigurationPage.tsx';
-import { AgentsPage } from './agents/AgentsPage.tsx';
-import { AdministrationPage } from './administration/AdministrationPage.tsx';
-import { OrganizationsPage } from './organizations/OrganizationsPage.tsx';
-import { SettingsPage } from './settings/SettingsPage.tsx';
-import { KnowledgeGraphPage } from './knowledge/KnowledgeGraphPage.tsx';
-import { KnowledgeBasesPage } from './App.tsx';
-import { NotFoundPage } from './NotFoundPage.tsx';
-import { DevMarkdownPage } from './DevMarkdownPage.tsx';
+const ChatRoutePage = lazy(() => import('./chat/ChatRoutePage.tsx').then((module) => ({ default: module.ChatRoutePage })));
+const IntegrationsRoutePage = lazy(() => import('./integrations/IntegrationsRoutePage.tsx').then((module) => ({ default: module.IntegrationsRoutePage })));
+const KnowledgeDocumentsPage = lazy(() => import('./documents/KnowledgeDocumentsPage.tsx').then((module) => ({ default: module.KnowledgeDocumentsPage })));
+const KnowledgeDocumentDetailPage = lazy(() => import('./documents/KnowledgeDocumentDetailPage.tsx').then((module) => ({ default: module.KnowledgeDocumentDetailPage })));
+const WikiPage = lazy(() => import('./wiki/WikiPage.tsx').then((module) => ({ default: module.WikiPage })));
+const FAQPage = lazy(() => import('./faq/FAQPage.tsx').then((module) => ({ default: module.FAQPage })));
+const DataSourcesPage = lazy(() => import('./data-sources/DataSourcesPage.tsx').then((module) => ({ default: module.DataSourcesPage })));
+const KnowledgeSettingsPage = lazy(() => import('./knowledge-settings/KnowledgeSettingsPage.tsx').then((module) => ({ default: module.KnowledgeSettingsPage })));
+const ConfigurationPage = lazy(() => import('./configuration/ConfigurationPage.tsx').then((module) => ({ default: module.ConfigurationPage })));
+const AgentsPage = lazy(() => import('./agents/AgentsPage.tsx').then((module) => ({ default: module.AgentsPage })));
+const AdministrationPage = lazy(() => import('./administration/AdministrationPage.tsx').then((module) => ({ default: module.AdministrationPage })));
+const OrganizationsPage = lazy(() => import('./organizations/OrganizationsPage.tsx').then((module) => ({ default: module.OrganizationsPage })));
+const SettingsPage = lazy(() => import('./settings/SettingsPage.tsx').then((module) => ({ default: module.SettingsPage })));
+const KnowledgeGraphPage = lazy(() => import('./knowledge/KnowledgeGraphPage.tsx').then((module) => ({ default: module.KnowledgeGraphPage })));
+const KnowledgeBasesPage = lazy(() => import('./App.tsx').then((module) => ({ default: module.KnowledgeBasesPage })));
+const NotFoundPage = lazy(() => import('./NotFoundPage.tsx').then((module) => ({ default: module.NotFoundPage })));
+const DevMarkdownPage = lazy(() => import('./DevMarkdownPage.tsx').then((module) => ({ default: module.DevMarkdownPage })));
 import './styles.css';
 
 const oidcCallback = parseOIDCCallbackHash(window.location.hash);
@@ -149,7 +149,7 @@ async function logout(): Promise<void> {
 // All protected /platform/* pages render inside the platform shell
 // (sidebar matching the Vue menu.vue). Auth/onboarding/embed pages stay bare.
 function renderShell(page: ReactNode): void {
-  root.render(<PlatformShell client={client} onLogout={logout}>{page}</PlatformShell>);
+  root.render(<Suspense fallback={<main className="wk-page mx-auto box-border max-w-[960px] px-5 py-12"><Status>Loading…</Status></main>}><PlatformShell client={client} onLogout={logout}>{page}</PlatformShell></Suspense>);
 }
 
 function renderProtected() {
