@@ -2399,3 +2399,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Cloud status refresh and resource list/default-resource failure fallbacks now have explicit five-locale copy, removing the remaining migration TODO markers in these settings panels.
 - Validation: `pnpm run test:web` 891/891, `pnpm run typecheck:web`, `git diff --check` passed.
 - This round covers static copy behavior only; live backend failure injection and browser interaction evidence for settings mutations remain pending.
+
+## 2026-09-15 Round N+34ar — Mobile knowledge upload byte progress
+
+- API client multipart requests now carry an optional `onProgress` callback through the native transport seam. The mobile knowledge upload queue converts byte counts to Vue-parity progress events, and the document screen wires the callback for each selected file.
+- Validation: upload queue 6/6, shared suite 465/465, mobile typecheck passed; `git diff --check` passed.
+- N031 no longer lists byte-level upload progress, user-scoped recents, or mobile English fallback as open implementation gaps. Graph visuals/capability gating and authenticated iOS/Android knowledge interaction evidence remain open.
