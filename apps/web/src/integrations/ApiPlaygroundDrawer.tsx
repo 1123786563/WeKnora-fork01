@@ -116,7 +116,14 @@ interface RunState {
 
 const idleRun: RunState = { running: false, sessionStatus: '', chatStatus: '', sessionResponse: '', streamOutput: '', finalAnswer: '', signedToken: '', error: '', successMs: null };
 
-const overlayStyle: CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(15,23,42,.4)', zIndex: 59 };
+// The playground opens from inside the settings modal (wks-overlay z-index
+// 1100), so the drawer must stack above it or the modal backdrop swallows
+// every click (Vue escapes the same way by teleporting the drawer to body).
+const PLAYGROUND_OVERLAY_Z = 1200;
+const PLAYGROUND_DRAWER_Z = 1201;
+const PLAYGROUND_RESIZE_Z = 1202;
+
+const overlayStyle: CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(15,23,42,.4)', zIndex: PLAYGROUND_OVERLAY_Z };
 const API_PLAYGROUND_DRAWER_SPEC = { storageKey: 'setting-drawer:width:api-playground', defaultWidth: 640, minWidth: 560, maxWidth: 960 } as const;
 
 export function clampApiPlaygroundWidth(width: number, viewportWidth = typeof window === 'undefined' ? API_PLAYGROUND_DRAWER_SPEC.maxWidth : window.innerWidth): number {
@@ -305,8 +312,8 @@ export function ApiPlaygroundDrawer({ open, onClose, apiKey, mode, agents, agent
 
   const drawer = (
     <div className="wk-api-playground-overlay" role="presentation" style={overlayStyle} onClick={close}>
-      <div className={`wk-api-playground-resize-handle${drawerResizing ? ' is-active' : ''}`} role="separator" aria-orientation="vertical" aria-label="调整抽屉宽度" onMouseDown={onResizeStart} style={{ position: 'fixed', top: 0, bottom: 0, right: drawerWidth, width: 8, cursor: 'col-resize', zIndex: 61 }}><span aria-hidden style={{ display: 'block', height: '100%', width: 1, margin: '0 auto', background: drawerResizing ? 'var(--wk-accent, #4a7dff)' : 'transparent' }} /></div>
-      <aside className="wk-api-playground-drawer" role="dialog" aria-modal="true" aria-label={t('integrations.api.playgroundTitle')} style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: `${drawerWidth}px`, background: 'var(--wk-bg, #fff)', boxShadow: '-12px 0 32px rgba(0,0,0,.18)', display: 'flex', flexDirection: 'column', zIndex: 60 }} onClick={(event) => event.stopPropagation()}>
+      <div className={`wk-api-playground-resize-handle${drawerResizing ? ' is-active' : ''}`} role="separator" aria-orientation="vertical" aria-label="调整抽屉宽度" onMouseDown={onResizeStart} style={{ position: 'fixed', top: 0, bottom: 0, right: drawerWidth, width: 8, cursor: 'col-resize', zIndex: PLAYGROUND_RESIZE_Z }}><span aria-hidden style={{ display: 'block', height: '100%', width: 1, margin: '0 auto', background: drawerResizing ? 'var(--wk-accent, #4a7dff)' : 'transparent' }} /></div>
+      <aside className="wk-api-playground-drawer" role="dialog" aria-modal="true" aria-label={t('integrations.api.playgroundTitle')} style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: `${drawerWidth}px`, background: 'var(--wk-bg, #fff)', boxShadow: '-12px 0 32px rgba(0,0,0,.18)', display: 'flex', flexDirection: 'column', zIndex: PLAYGROUND_DRAWER_Z }} onClick={(event) => event.stopPropagation()}>
         <header className="wk-api-playground-header" style={rowStyle}>
           <div>
             <h2 style={{ margin: 0, fontSize: 16 }}>{t('integrations.api.playgroundTitle')}</h2>

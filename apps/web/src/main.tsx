@@ -215,7 +215,7 @@ function renderProtected() {
   } else if (route.kind === 'chat' || route.path === '/platform/creatChat' || route.path.startsWith('/platform/chat/')) {
     renderShell(<ChatRoutePage client={client} scopeController={scopeController} apiBaseUrl={apiBaseUrl} knowledgeBaseId={route.kind === 'chat' ? route.knowledgeBaseId : undefined} canViewChannelSessions={scopeRuntime.canViewChannelSessions()} />);
   } else if (route.path === '/platform/integrations') {
-    renderShell(<IntegrationsRoutePage client={client} tenantId={scopeRuntime.current().scope.tenantId} />);
+    renderShell(<IntegrationsRoutePage client={client} tenantId={scopeRuntime.current().scope.tenantId} apiBaseUrl={apiBaseUrl} />);
   } else if (route.kind === 'not-found') {
     renderShell(<NotFoundPage path={route.path} />);
   } else {

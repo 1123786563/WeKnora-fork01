@@ -6,10 +6,11 @@ import { integrationKeyFromQuery, IntegrationsPage, type APIPrincipalConfig, typ
 import { parseIntegrationTenantId } from './tenant.ts';
 import { ApiPlaygroundDrawer } from './ApiPlaygroundDrawer.tsx';
 import { EmbedPreviewModal } from './EmbedPreviewModal.tsx';
+import { resolveApiBaseUrl } from '../platform/api-base.ts';
 
 // Each integrations tab fetches only the data it renders, so a missing or
 // empty collection on one tab can never break the others.
-export function IntegrationsRoutePage({ client, tenantId, activeTab, embedded = false }: { client: WeKnoraClient; tenantId: string | null; activeTab?: IntegrationKey; embedded?: boolean }) {
+export function IntegrationsRoutePage({ client, tenantId, activeTab, embedded = false, apiBaseUrl = resolveApiBaseUrl() }: { client: WeKnoraClient; tenantId: string | null; activeTab?: IntegrationKey; embedded?: boolean; apiBaseUrl?: string }) {
   const [localTab, setTab] = useState<IntegrationKey>(integrationKeyFromQuery(window.location.search));
   const tab = activeTab ?? localTab;
   const [embedChannels, setEmbedChannels] = useState<IntegrationResource[]>([]);
@@ -24,6 +25,9 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, embedded = 
   const [agentsError, setAgentsError] = useState('');
   const [knowledgeBases, setKnowledgeBases] = useState<IntegrationKnowledgeBaseOption[]>([]);
   const [apiPlaygroundOpen, setApiPlaygroundOpen] = useState(false);
+  // Vue keeps the raw create-response token in memory for the Playground (the
+  // list endpoint only returns masked keys). Same lifecycle here.
+  const [playgroundApiKey, setPlaygroundApiKey] = useState('');
   // Vue EmbedChannelPreview: the preview opens in-page, never a new tab. The
   // deploy-step preview panel lives in @weknora/views; this route-level modal
   // serves its no-token fallback arm (page.tsx onOpenEmbed call, L338).
@@ -125,7 +129,9 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, embedded = 
     onCreatePrincipalTestToken: async (externalUserId: string) => { if (activeTenantId === null) throw new Error('No active workspace selected.'); return client.administration.tenantApiKeys.createPrincipalTestToken(activeTenantId, externalUserId); },
     onCreateApiKey: async (name: string): Promise<ApiKeyRow> => {
       if (activeTenantId === null) throw new Error('No active workspace selected.');
-      return client.administration.tenantApiKeys.create(activeTenantId, { name, full_access: true });
+      const created = await client.administration.tenantApiKeys.create(activeTenantId, { name, full_access: true });
+      if (created.token) setPlaygroundApiKey(created.token);
+      return created;
     },
     onRevokeApiKey: async (keyId: ApiKeyRow['id']) => {
       if (activeTenantId === null) throw new Error('No active workspace selected.');
@@ -159,7 +165,7 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, embedded = 
   return <>
     {embedPreviewNotice ? <p className="wk-status wk-status-error" role="alert">{embedPreviewNotice}</p> : null}
     <EmbedPreviewModal open={embedPreview !== null} channelId={embedPreview?.channelId ?? ''} token={embedPreview?.token ?? ''} title={embedPreview?.title} apiBaseUrl={window.location.origin} locale={embedPreview?.locale} refreshKey={embedPreview?.refreshKey} onClose={() => setEmbedPreview(null)} />
-    <IntegrationsPage embedded={embedded} initialTab={tab} activeTab={tab} onTabChange={setTab} embedChannels={embedChannels} imChannels={imChannels} apiKeys={apiKeys} apiKeysLoading={apiKeysLoading} apiBaseUrl={window.location.origin} loading={loading} error={error} onReload={reload} onOpenEmbed={(channel) => void openEmbed(channel)} onOpenApiPlayground={() => setApiPlaygroundOpen(true)} actions={actions} agents={agents} knowledgeBases={knowledgeBases} />
-    <ApiPlaygroundDrawer open={apiPlaygroundOpen} onClose={() => setApiPlaygroundOpen(false)} apiKey={apiKeys.find((key) => key.api_key)?.api_key ?? ''} mode={principal?.mode ?? 'tenant'} agents={agents.map((agent) => ({ id: agent.id, name: agent.name }))} agentsLoading={agentsLoading} agentsError={agentsError || undefined} apiBaseUrl={window.location.origin} mintToken={actions.onCreatePrincipalTestToken} t={(key, values) => formatMessage('zh-CN', key, values)} />
+    <IntegrationsPage embedded={embedded} initialTab={tab} activeTab={tab} onTabChange={setTab} embedChannels={embedChannels} imChannels={imChannels} apiKeys={apiKeys} apiKeysLoading={apiKeysLoading} apiBaseUrl={apiBaseUrl} loading={loading} error={error} onReload={reload} onOpenEmbed={(channel) => void openEmbed(channel)} onOpenApiPlayground={() => setApiPlaygroundOpen(true)} actions={actions} agents={agents} knowledgeBases={knowledgeBases} />
+    <ApiPlaygroundDrawer open={apiPlaygroundOpen} onClose={() => setApiPlaygroundOpen(false)} apiKey={playgroundApiKey || apiKeys.find((key) => key.api_key)?.api_key || ''} mode={principal?.mode ?? 'tenant'} agents={agents.map((agent) => ({ id: agent.id, name: agent.name }))} agentsLoading={agentsLoading} agentsError={agentsError || undefined} apiBaseUrl={apiBaseUrl} mintToken={actions.onCreatePrincipalTestToken} t={(key, values) => formatMessage('zh-CN', key, values)} />
   </>;
 }

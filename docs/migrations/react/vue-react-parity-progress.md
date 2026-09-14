@@ -1,5 +1,13 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-14 Round N+32 — R013 API Playground 真实 Session/SSE + 两处阻断级修复
+
+- 缺陷一：Playground 抽屉被设置弹窗遮罩（wks-overlay z 1100）压住、整体不可点击（elementsFromPoint 证实）。修复：抽屉内联 z 提升为常量 1200/1201/1202（对齐 Vue teleport 逃逸语义）。
+- 缺陷二：抽屉硬编码 apiBaseUrl=window.location.origin（dev :5181 无 /api 代理 → Session 创建 404）。修复：新增 platform/api-base.ts resolveApiBaseUrl（VITE_API_BASE_URL → 注入 → 空串，与 main.tsx 同序），IntegrationsRoutePage 增加 apiBaseUrl prop 并透传抽屉/IntegrationsPage；main.tsx 传真实值。
+- 真实链路验证：受控创建租户 API Key（parity-playground）+ 内置智能体绑定 builtin-llm-mock 后，React 抽屉真实完成 POST /sessions 201（principal=api_tenant_key:10000:3）→ POST /agent-chat/:id 200（SSE 建立）→ 终端错误在运行结果区正确渲染。
+- 残余（环境）：内置 mock 模型 baseURL 为 IP，后端 SSRF 白名单拦截最终回答（Vue/React 等效受影响），如实记录。
+- 门禁：ApiPlaygroundDrawer 12/12、typecheck:web 0、registry 6/6、shared 444/444、web 856/856。证据：2026-09-14-r013-playground-sse-live.md + screenshots/playground-20260914/。
+
 ## 2026-09-14 Round N+31 补充 — viewer「本空间 · 仅查看」分组标签修复
 
 - domain groupKnowledgeBaseSections 增加 options.tenantReadonly（viewer/contributor 的 tenant 组标题切「本空间 · 仅查看」，组 key 稳定）；App.tsx 按 viewer.isAdmin 传入并对 viewer 切 browse 图标（对齐 Vue tenantSectionLabelKey/tenantSectionIconName）。
