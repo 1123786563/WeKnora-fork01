@@ -10,6 +10,12 @@ export interface DialogProps {
   className?: string;
 }
 
+export function getDialogFocusableElements(root: ParentNode): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(
+    'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+  )).filter((element) => element.getAttribute('tabindex') !== '-1');
+}
+
 /** A DOM-only primitive: focus enters the dialog, Escape closes it, and focus returns on close. */
 export function Dialog({ open, title, children, onClose, closeLabel = 'Close', className }: DialogProps) {
   const dialogRef = useRef<HTMLElement>(null);
@@ -22,6 +28,23 @@ export function Dialog({ open, title, children, onClose, closeLabel = 'Close', c
     dialogRef.current?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
+      if (event.key !== 'Tab' || !dialogRef.current) return;
+      const focusable = getDialogFocusableElements(dialogRef.current);
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialogRef.current.focus();
+        return;
+      }
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || active === dialogRef.current)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener('keydown', onKeyDown);
     return () => {
