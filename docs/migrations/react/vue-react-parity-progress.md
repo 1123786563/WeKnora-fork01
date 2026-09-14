@@ -2343,3 +2343,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - 新对话流中的 Tool calls 标题、文档信息 ID、元数据标题改用共享五语言文案，减少工具结果区残留英文；数据字段和状态值保持后端原值。
 - Web 全量 891/891、shared/Web typecheck、diff check 通过；完整工具结果多语言浏览器与真实数据验收仍待补齐。
+
+## 2026-09-15 Round N+34ah — N021 approval validation copy
+
+- 工具审批 JSON 编辑器的无效 JSON 与非对象参数错误改用共享五语言文案；解析函数保留无 copy 参数时的原有英文默认行为。
+- 审批专项 17/17、Web 全量 891/891、shared typecheck 通过；真实错误交互浏览器证据仍待补齐。
