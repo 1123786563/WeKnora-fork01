@@ -268,6 +268,59 @@ hook 类（测试/JS 引用）保留类名。
 - desktop：typecheck 0、test 2/2、build ✓——desktop-renderer 不受影响。
 - 全门禁矩阵：web 891/891 + shared 465/465 + embed 7/7 + desktop 2/2 + typecheck 0 +
   build web/embed/desktop 全通过。
+# 最终迁移报告（Tailwind CSS v4 + shadcn/ui）
+
+## 迁移范围
+- apps/web + packages/ui + packages/views 全部 Web UI 表面；不触及 Go 后端/Vue 前端/React Native。
+- 基础设施：Tailwind v4.3.3 + @tailwindcss/vite；packages/ui/src/theme.css @theme 语义令牌
+  （ink/canvas/surface/line 系/primary/accent/danger/muted 系/radius 系）；@source 跨包扫描
+  （ui+views 源码类名）；styles.css @layer 组合（theme/base/components/utilities，无 preflight）。
+- 组件体系（packages/ui）：Button/Card/Status/Input/NumberInput/Switch/Textarea/Select/Checkbox/
+  Label/Badge/Alert/Separator/Table/Tabs(Radix)/Sheet(Radix)/DropdownMenu(Radix)/Tooltip(Radix)/
+  Dialog(手写 DOM 契约 + Tab 焦点陷阱)/cn 工具/theme.css 导出。cva variants 管理尺寸与状态。
+
+## 量化结果
+- 遗留 CSS：12.3k 行 → styles.css 296 + settings-wrapper 122 + 8 个域 keyframes 小文件
+  （auth 5/faq 11/knowledge-list 11/organizations 15/sandbox 44/skill 9/agents 62/chat 145/
+  guides 243 保留）≈ 960 行，**97.8% 减量**。
+- 45+ 个域批次全部提交；每批独立门禁（typecheck/test/build）+ 高风险批截图对比。
+
+## 保留 CSS 及原因（全部已记录在对应文件头/台账）
+- guides.css 243 行：III.7 几何驱动引导层（动态计算坐标，无法 utilities 表达）。
+- chat.css 144 行：3 keyframes + 富文本/运行时 DOM 36 条（markdown.ts/mermaid.ts 生成）+
+  5 守卫（4 条对抗共享层规则——其中 list-actions/panel-heading 2 条的对手已随批次 44 删除，
+  待最终联动删；1 条 a11y reduced-motion）。
+- settings-wrapper.css 122 行：抽屉级 select chrome + section-header/setting-row/setting-control
+  级联作用域（SettingsPage wrapper 钩子类名依赖，消费方清单在文件头）。
+- styles.css 296 行：wks-mcp-drawer 抽屉段 + wk-model-tabs（沙盒波联动）+ tombstone 注释。
+- packages/ui/src/styles.css：legacy --wk-* 变量桥接（独立包兼容，fallback=令牌值）。
+
+## 验证结果
+- 门禁矩阵：typecheck web/shared/embed/desktop 全 0；web 891 / shared 465 / embed 7 /
+  desktop 2 测试全绿；build web/embed/desktop 全通过。
+- 截图对比：21 路由基线 + auth/login、chat-empty/chat-session（0.000% diff）、
+  foundation 21 张等多组 after 对比；artifacts/tailwind-shadcn/。
+- 真实浏览器操作：登录/知识库/文档上传/聊天流式/工具审批/设置抽屉等关键流程在
+  vite:5181+server:8080 实栈验证（uimig@local.dev）。
+
+## 已知问题与未完成项
+1. 既有偶发白屏：chat 会话 in-place 切换 + continue-stream resume 竞态（迁移前即存在，
+   非本迁移引入；before 态同样复现）。
+2. chat ToolResultView span 补偿 utilities（font-mono!/0.8rem!/muted!）：按 1:1 生效值编码；
+   设计上若要恢复其自身样式可删（产品决策项）。
+3. settings-wrapper select chrome ~20 条永久保留（或后续逐面板收编，产品决策项）。
+4. wk-model-tabs 3 条待沙盒面板 utilities 化后联动删除。
+5. mobile 端Localization 并行任务仍在进行（与本迁移无冲突，路径隔离）。
+
+## 依赖审计
+- apps/web：tailwindcss@4.3.3 + @tailwindcss/vite（dev）——无多余依赖。
+- packages/ui：@radix-ui dialog/dropdown-menu/tabs/tooltip + cva + clsx + tailwind-merge——全部在用。
+- 无需删除的遗留依赖（wk-* 体系无 npm 依赖）。
+
+## 方法论沉淀（docs/plans/tailwind-shadcn-conventions.md）
+- 分阶段替换引擎（staged from/to 对 + 钩子类保留）；「按生效值编码 + ! 任意值」处理
+  unlayered 竞争；静态条件替代动态插值任意值；ui bundle 级联发现；产物 CSS 探针断言；
+  零漂移像素对比流程。
 ### 批次19：TenantMembers 域 ✅（子任务执行，Orchestrator 验收提交）
 - TenantMembersPanel.tsx ~95 条规则内联 utilities（表格/分页/标签三态/确认弹层；
   settings-wrapper 抽屉 select chrome 特异性更高今日实际生效，按生效值 4 条未复制）；
