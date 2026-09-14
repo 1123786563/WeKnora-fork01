@@ -9,7 +9,7 @@ import { createSecureCredentialAdapter } from './platform/credentials.ts';
 import { createServerAddressAdapter } from './platform/server.ts';
 import { createMobileTransport } from './platform/transport.ts';
 import { createNetworkRecovery } from './platform/network.ts';
-import { createLatestAsyncWriter, createSessionEpoch, createSingleFlight, createWorkspaceSelectionAdapter, parseMobileWorkspaces, shouldHydrateWorkspaceMemberships, shouldRefreshMobileSession, toWorkspaceId, type MobileWorkspace } from './platform/workspace.ts';
+import { createLatestAsyncWriter, createSessionEpoch, createSingleFlight, createWorkspaceSelectionAdapter, parseMobileWorkspaces, resetMobileSessionState, shouldHydrateWorkspaceMemberships, shouldRefreshMobileSession, toWorkspaceId, type MobileWorkspace } from './platform/workspace.ts';
 import { createMobileOIDCPKCE, matchesMobileOIDCState, MOBILE_OIDC_REDIRECT, parseMobileOIDCCallback } from './platform/oidc.ts';
 import { isLocale, type Locale } from '@weknora/i18n';
 
@@ -101,10 +101,19 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
       updateCredential(next);
       return next;
     } catch (cause) {
-      if (sessionEpoch.isCurrent(startedAt)) updateCredential({ kind: 'anonymous' });
+      if (sessionEpoch.isCurrent(startedAt)) {
+        // A refresh failure invalidates the whole authenticated scope. Clear
+        // the in-memory scope immediately so pins/list screens cannot hydrate
+        // the old user or tenant while the persisted selection is removed.
+        const failedSession = sessionEpoch.invalidate();
+        if (sessionEpoch.isCurrent(failedSession)) {
+          resetMobileSessionState({ updateCredential, updateUserId, updateTenantId, setWorkspaces, setCanCreateTenant });
+          await workspaceWriter.write(null).catch(() => undefined);
+        }
+      }
       throw cause;
     }
-  }, [refreshCoordinator, sessionEpoch, updateCredential]);
+  }, [refreshCoordinator, sessionEpoch, updateCredential, updateTenantId, updateUserId, workspaceWriter]);
   const transport = useMemo(() => createMobileTransport({
     credential: () => credentialRef.current,
     refresh: refreshSession,
@@ -247,12 +256,19 @@ export function MobileRuntimeProvider({ children }: { children: ReactNode }) {
     const identity = await client.auth.me();
     if (!sessionEpoch.isCurrent(startedAt) || credentialRef.current.kind !== 'bearer' || sessionTransitions.current > 0) return;
     const activeTenantId = toWorkspaceId(identity.tenant?.id);
-    updateUserId(identity.user.id);
+    const nextUserId = identity.user.id;
+    const nextTenantId = activeTenantId === null ? null : String(activeTenantId);
+    const nextWorkspaces = parseMobileWorkspaces(identity.memberships);
+    const nextCanCreateTenant = identity.capabilities?.can_create_tenant === true;
     await workspaceWriter.write(activeTenantId);
     if (!sessionEpoch.isCurrent(startedAt) || credentialRef.current.kind !== 'bearer') return;
-    setCanCreateTenant(identity.capabilities?.can_create_tenant === true);
-    setWorkspaces(parseMobileWorkspaces(identity.memberships));
-    updateTenantId(activeTenantId === null ? null : String(activeTenantId));
+    // Commit all identity-derived state only after the storage write and the
+    // final epoch check. A superseded auth/me response must not leak even a
+    // transient user/tenant/workspace combination into the UI.
+    updateUserId(nextUserId);
+    setCanCreateTenant(nextCanCreateTenant);
+    setWorkspaces(nextWorkspaces);
+    updateTenantId(nextTenantId);
   }), [client, sessionEpoch, updateTenantId, updateUserId, workspaceWriter]);
 
   useEffect(() => createNetworkRecovery({

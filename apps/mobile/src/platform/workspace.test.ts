@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createLatestAsyncWriter, createSessionEpoch, createSingleFlight, createWorkspaceSelectionAdapter, parseMobileWorkspaces, shouldHydrateWorkspaceMemberships, shouldLoadWorkspaceRoute, shouldRefreshMobileSession, toWorkspaceId } from './workspace.ts';
+import { createLatestAsyncWriter, createSessionEpoch, createSingleFlight, createWorkspaceSelectionAdapter, parseMobileWorkspaces, resetMobileSessionState, shouldHydrateWorkspaceMemberships, shouldLoadWorkspaceRoute, shouldRefreshMobileSession, toWorkspaceId } from './workspace.ts';
 
 function store(initial: string | null = null) {
   let value = initial;
@@ -51,6 +51,24 @@ test('does not start a mobile refresh while a session transition is active', () 
   assert.equal(shouldRefreshMobileSession({ transitionCount: 1, credentialKind: 'bearer', hasRefreshToken: true }), false);
   assert.equal(shouldRefreshMobileSession({ transitionCount: 0, credentialKind: 'bearer', hasRefreshToken: true }), true);
   assert.equal(shouldRefreshMobileSession({ transitionCount: 0, credentialKind: 'anonymous', hasRefreshToken: false }), false);
+});
+
+test('refresh failure reset clears the complete authenticated scope', () => {
+  const events: unknown[] = [];
+  resetMobileSessionState({
+    updateCredential: (value) => events.push(['credential', value]),
+    updateUserId: (value) => events.push(['user', value]),
+    updateTenantId: (value) => events.push(['tenant', value]),
+    setWorkspaces: (value) => events.push(['workspaces', value]),
+    setCanCreateTenant: (value) => events.push(['canCreateTenant', value]),
+  });
+  assert.deepEqual(events, [
+    ['credential', { kind: 'anonymous' }],
+    ['user', null],
+    ['tenant', null],
+    ['workspaces', []],
+    ['canCreateTenant', false],
+  ]);
 });
 
 test('shares one in-flight workspace refresh instead of issuing concurrent auth requests', async () => {

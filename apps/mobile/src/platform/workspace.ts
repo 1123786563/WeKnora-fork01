@@ -59,6 +59,21 @@ export function shouldRefreshMobileSession(input: {
   return input.transitionCount === 0 && input.credentialKind === 'bearer' && input.hasRefreshToken;
 }
 
+/** Clear every in-memory scope when an authenticated refresh is rejected. */
+export function resetMobileSessionState(input: {
+  updateCredential: (value: { kind: 'anonymous' }) => void;
+  updateUserId: (value: string | null) => void;
+  updateTenantId: (value: string | null) => void;
+  setWorkspaces: (value: MobileWorkspace[]) => void;
+  setCanCreateTenant: (value: boolean) => void;
+}): void {
+  input.updateCredential({ kind: 'anonymous' });
+  input.updateUserId(null);
+  input.updateTenantId(null);
+  input.setWorkspaces([]);
+  input.setCanCreateTenant(false);
+}
+
 export function createSingleFlight<T>(operation: () => Promise<T>): () => Promise<T> {
   let pending: Promise<T> | null = null;
   return () => {
