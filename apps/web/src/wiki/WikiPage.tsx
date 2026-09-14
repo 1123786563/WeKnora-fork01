@@ -395,7 +395,7 @@ export function WikiPage({
     <main className="wk-page wk-wiki-page mx-auto box-border max-w-[960px] px-[1.25rem] py-12">
       <header className="wk-header mb-6 flex items-start justify-between gap-4">
         <div>
-          <p className="wk-eyebrow m-0 text-[0.78rem] font-bold uppercase tracking-[0.08em] text-primary">Knowledge base · {knowledgeBaseId}</p>
+          <p className="wk-eyebrow m-0 text-[0.78rem] font-bold uppercase tracking-[0.08em] text-primary">{t('common.knowledgeBases')} · {knowledgeBaseId}</p>
           <h1 className="text-[clamp(1.8rem,5vw,2.5rem)] my-[0.35rem]">{t("wikiBrowser.page.title")}</h1>
           <p className="wk-muted text-muted">{t("wikiBrowser.page.subtitle")}</p>
         </div>
