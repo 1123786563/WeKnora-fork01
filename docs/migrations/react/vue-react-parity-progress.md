@@ -1,5 +1,12 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-14 Round N+35 — KB 设置 i18n 基础移植（kbSettings/knowledgeEditor 命名空间入共享 i18n）
+
+- 新增 packages/i18n/src/generated/kbSettingsMessages.ts（59 键 ×5 locale，parser/storage/vectorStore）与 knowledgeEditorMessages.ts（586 键 ×5 locale，basic/chunking/indexing 标签）；源为 Vue locales 字节级，en-US/ja-JP 缺键按 Vue fallbackLocale=zh-CN 的渲染值补齐；两域均入 index.ts 合并链。
+- 动机：Round N+34 发现的知识库设置面板（KnowledgeSettingsPage）zh-CN 下整面英文——其所需文案全部在这两个命名空间。
+- 下一轮：KnowledgeSettingsPage 面板文案按上述键接线（约 35 处）+ live 截图对照 + 相关行 note 更新。
+- 门禁：test:shared 445/445（键集一致性测试覆盖新域）、typecheck:shared 0。
+
 ## 2026-09-14 Round N+34 — 文档页 live 取证 + 新发现知识库设置面板 i18n 泄漏（部分完成）
 
 - live 取证：React 文档页（Parity KB Demo ?tab=documents）真实渲染——面包屑/文件夹树/过滤/批量工具条/解析引擎警告/空态全部在位（d1-documents-react.png）。

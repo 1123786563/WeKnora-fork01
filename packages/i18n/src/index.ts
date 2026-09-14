@@ -1015,6 +1015,10 @@ import { chatMessages } from './generated/chat.ts';
 export { chatMessages };
 import { faqImportMessages } from './generated/faqImport.ts';
 export { faqImportMessages };
+import { kbSettingsMessages } from './generated/kbSettingsMessages.ts';
+export { kbSettingsMessages };
+import { knowledgeEditorMessages } from './generated/knowledgeEditorMessages.ts';
+export { knowledgeEditorMessages };
 import { errorMessages } from './generated/errorMessages.ts';
 export { errorMessages };
 import { contextualGuideMessages } from './generated/contextualGuide.ts';
@@ -1029,5 +1033,5 @@ export function isLocale(value: string): value is Locale {
   return (supportedLocales as readonly string[]).includes(value);
 }
 export const messages: Record<Locale, Record<string, string>> = Object.fromEntries(
-  (Object.keys(baseMessages) as Locale[]).map((locale) => [locale, { ...baseMessages[locale], ...knowledgeListMessages[locale], ...authMessages[locale], ...onboardingMessages[locale], ...settingsMessages[locale], ...mcpMessages[locale], ...menuMessages[locale], ...organizationMessages[locale], ...agentMessages[locale], ...integrationsMessages[locale], ...embedMessages[locale], ...knowledgeSurfacesMessages[locale], ...knowledgeSurfacesSupplementalMessages[locale], ...commandPaletteMessages[locale], ...dataSourceMessages[locale], ...newUserGuideMessages[locale], ...uploadConfirmMessages[locale], ...fontMessages[locale], ...memberMessages[locale], ...agentIntegrationsMessages[locale], ...shellSessionListMessages[locale], ...kbListExtrasMessages[locale], ...chatMessages[locale], ...contextualGuideMessages[locale], ...faqImportMessages[locale], ...errorMessages[locale] }]),
+  (Object.keys(baseMessages) as Locale[]).map((locale) => [locale, { ...baseMessages[locale], ...knowledgeListMessages[locale], ...authMessages[locale], ...onboardingMessages[locale], ...settingsMessages[locale], ...mcpMessages[locale], ...menuMessages[locale], ...organizationMessages[locale], ...agentMessages[locale], ...integrationsMessages[locale], ...embedMessages[locale], ...knowledgeSurfacesMessages[locale], ...knowledgeSurfacesSupplementalMessages[locale], ...commandPaletteMessages[locale], ...dataSourceMessages[locale], ...newUserGuideMessages[locale], ...uploadConfirmMessages[locale], ...fontMessages[locale], ...memberMessages[locale], ...agentIntegrationsMessages[locale], ...shellSessionListMessages[locale], ...kbListExtrasMessages[locale], ...chatMessages[locale], ...contextualGuideMessages[locale], ...faqImportMessages[locale], ...errorMessages[locale], ...kbSettingsMessages[locale], ...knowledgeEditorMessages[locale] }]),
 ) as Record<Locale, Record<string, string>>;
