@@ -2110,3 +2110,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - `DataSourcesScreen` now localizes list/editor/test/sync-log failures, permission/cleanup/resume states, connector capability fallback, and default placeholders across five locales (`b0ef4055`), preserving sync, pagination, credential and editor behavior.
 - Focused data-source tests pass 23/23 and i18n tests 5/5; mobile typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
 - Native data-source runtime evidence remains open.
+
+## 2026-09-15 Round N+33p — N031 mobile Wiki/FAQ reference localization
+
+- `KnowledgeReferenceScreen` and its reference view model now localize loading/error/empty/version/status/edit labels across five locales (`dbb9e7cb`), preserving slug/numeric-id routes, permissions and pagination.
+- Focused reference tests pass 6/6; mobile typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
+- Native reference runtime evidence remains open.
