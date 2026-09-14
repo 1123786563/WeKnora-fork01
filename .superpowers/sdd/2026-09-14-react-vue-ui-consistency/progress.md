@@ -232,3 +232,10 @@
 - Production build confirms initial index JS reduced from ~4.92MB to ~3.05MB minified, with route-specific chunks emitted.
 - Validation: `pnpm run build:web`; `pnpm run test:web` 891/891; `pnpm run typecheck:web`; `git diff --check`.
 - Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r034-web-route-lazy-loading.md`.
+
+## Round N+34bo — settings panel lazy loading
+
+- Converted settings panels and integration route to `React.lazy` under a shared `Suspense` boundary; kept system-global panel eager to preserve its existing synchronous render contract.
+- Production build reduced SettingsPage chunk from ~562KB to ~49KB (gzip ~15KB).
+- Validation: `pnpm run build:web`; `pnpm run test:web` 891/891; `pnpm run typecheck:web`; `git diff --check`.
+- Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r035-settings-panel-lazy-loading.md`.

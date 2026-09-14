@@ -1,34 +1,36 @@
 import { isCapabilitySupported, type CapabilityMap } from '@weknora/domain';
 import { integrationTabForSection, integrationSettingsQuery, selectSettingsQuery, INTEGRATION_SECTIONS } from '@weknora/views';
 import { openContextualGuide } from '@weknora/views';
-import { IntegrationsRoutePage } from '../integrations/IntegrationsRoutePage.tsx';
-import { useCallback, useEffect, useState } from 'react';
+const IntegrationsRoutePage = lazy(() => import('../integrations/IntegrationsRoutePage.tsx').then((m) => ({ default: m.IntegrationsRoutePage })));
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import type { SettingsRole } from '@weknora/views';
 import { roleAtLeast, SETTINGS_SECTIONS, settingsSectionsForRole } from '@weknora/views';
 import { Button, Status } from '@weknora/ui';
 import { profilePasswordPatch, settingsSectionHeading, settingsSectionMeta, tenantEditState, tenantPatch } from './surface.ts';
-import { TenantDeleteZone } from './TenantDeleteZone.tsx';
-import { MemoryWorkspacePanel } from './PersonalMemoryPanel.tsx';
-import { PersonalMemorySettingsPanel } from './PersonalMemorySettingsPanel.tsx';
-import { ResourceSettingsPanel } from './ResourceSettingsPanel.tsx';
-import { ConfigSettingsPanel, type SettingsModelOption } from './ConfigSettingsPanel.tsx';
-import { OllamaSettingsPanel } from './OllamaSettingsPanel.tsx';
-import { CloudSettingsPanel } from './CloudSettingsPanel.tsx';
-import { EnvVarSettingsPanel } from './EnvVarSettingsPanel.tsx';
+const TenantDeleteZone = lazy(() => import('./TenantDeleteZone.tsx').then((m) => ({ default: m.TenantDeleteZone })));
+const MemoryWorkspacePanel = lazy(() => import('./PersonalMemoryPanel.tsx').then((m) => ({ default: m.MemoryWorkspacePanel })));
+const PersonalMemorySettingsPanel = lazy(() => import('./PersonalMemorySettingsPanel.tsx').then((m) => ({ default: m.PersonalMemorySettingsPanel })));
+const ResourceSettingsPanel = lazy(() => import('./ResourceSettingsPanel.tsx').then((m) => ({ default: m.ResourceSettingsPanel })));
+import type { SettingsModelOption } from './ConfigSettingsPanel.tsx';
+const ConfigSettingsPanel = lazy(() => import('./ConfigSettingsPanel.tsx').then((m) => ({ default: m.ConfigSettingsPanel })));
+const OllamaSettingsPanel = lazy(() => import('./OllamaSettingsPanel.tsx').then((m) => ({ default: m.OllamaSettingsPanel })));
+const CloudSettingsPanel = lazy(() => import('./CloudSettingsPanel.tsx').then((m) => ({ default: m.CloudSettingsPanel })));
+const EnvVarSettingsPanel = lazy(() => import('./EnvVarSettingsPanel.tsx').then((m) => ({ default: m.EnvVarSettingsPanel })));
 import { LiveSectionsPanel, PortedSectionsPanel, readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
-import { McpSettingsPanel } from './McpSettingsPanel.tsx';
-import { ModelSettingsPanel } from './ModelSettingsPanel.tsx';
-import { SandboxSettingsPanel } from './SandboxSettingsPanel.tsx';
-import { SkillSettingsPanel } from './SkillSettingsPanel.tsx';
-import { TenantMembersPanel } from './TenantMembersPanel.tsx';
-import { GeneralPreferencesPanel } from './GeneralPreferencesPanel.tsx';
-import { TenantInfoSection, UserProfileSection } from './TenantUserProfileSections.tsx';
-import { SystemInfoPanel } from './SystemInfoPanel.tsx';
-import { RuntimeQueuesPanel } from './RuntimeQueuesPanel.tsx';
+const McpSettingsPanel = lazy(() => import('./McpSettingsPanel.tsx').then((m) => ({ default: m.McpSettingsPanel })));
+const ModelSettingsPanel = lazy(() => import('./ModelSettingsPanel.tsx').then((m) => ({ default: m.ModelSettingsPanel })));
+const SandboxSettingsPanel = lazy(() => import('./SandboxSettingsPanel.tsx').then((m) => ({ default: m.SandboxSettingsPanel })));
+const SkillSettingsPanel = lazy(() => import('./SkillSettingsPanel.tsx').then((m) => ({ default: m.SkillSettingsPanel })));
+const TenantMembersPanel = lazy(() => import('./TenantMembersPanel.tsx').then((m) => ({ default: m.TenantMembersPanel })));
+const GeneralPreferencesPanel = lazy(() => import('./GeneralPreferencesPanel.tsx').then((m) => ({ default: m.GeneralPreferencesPanel })));
+const TenantInfoSection = lazy(() => import('./TenantUserProfileSections.tsx').then((m) => ({ default: m.TenantInfoSection })));
+const UserProfileSection = lazy(() => import('./TenantUserProfileSections.tsx').then((m) => ({ default: m.UserProfileSection })));
+const SystemInfoPanel = lazy(() => import('./SystemInfoPanel.tsx').then((m) => ({ default: m.SystemInfoPanel })));
+const RuntimeQueuesPanel = lazy(() => import('./RuntimeQueuesPanel.tsx').then((m) => ({ default: m.RuntimeQueuesPanel })));
 import { SystemGlobalSettingsPanel } from './SystemGlobalSettingsPanel.tsx';
-import { PlatformApiKeysPanel } from './PlatformApiKeysPanel.tsx';
-import { SystemAuditLogPanel } from './SystemAuditLogPanel.tsx';
+const PlatformApiKeysPanel = lazy(() => import('./PlatformApiKeysPanel.tsx').then((m) => ({ default: m.PlatformApiKeysPanel })));
+const SystemAuditLogPanel = lazy(() => import('./SystemAuditLogPanel.tsx').then((m) => ({ default: m.SystemAuditLogPanel })));
 import './settings-wrapper.css';
 
 function errorText(error: unknown, fallback: string): string { return error instanceof Error ? error.message : fallback; }
@@ -274,7 +276,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
                     </div>
                   ) : null}
                   {selectedKey === 'tenant' && role === 'owner' ? <TenantDeleteZone client={client} tenantId={tenantId} tenantName={tenantEditState(payload).name || String(tenantId)} onDeleted={() => { window.location.assign('/login'); }} /> : null}
-                  {deniedPanel ?? (error ? <Status tone="error">{error}</Status> : loading ? <Status>{t('common.loading')}</Status> : <>{notice ? <Status tone="success">{notice}</Status> : null}{generalPanel ?? resourcePanel ?? configPanel ?? ollamaPanel ?? cloudPanel ?? envVarPanel ?? systemPanel ?? portedPanel ?? (selectedKey === 'tenant' ? <TenantInfoSection client={client} tenantId={tenantId} role={role} locale={locale} payload={payload} /> : selectedKey === 'userprofile' ? <UserProfileSection client={client} locale={locale} payload={payload} /> : selectedKey === 'memory' ? <div className="wk-settings-memory"><MemoryWorkspacePanel client={client} initialConfig={payload} canEdit={roleAtLeast(role, 'admin')} /></div> : selectedKey === 'mymemory' ? <PersonalMemorySettingsPanel client={client} initialSettings={payload} /> : null)}</>)}
+                  {deniedPanel ?? (error ? <Status tone="error">{error}</Status> : loading ? <Status>{t('common.loading')}</Status> : <Suspense fallback={<Status>{t('common.loading')}</Status>}><>{notice ? <Status tone="success">{notice}</Status> : null}{generalPanel ?? resourcePanel ?? configPanel ?? ollamaPanel ?? cloudPanel ?? envVarPanel ?? systemPanel ?? portedPanel ?? (selectedKey === 'tenant' ? <TenantInfoSection client={client} tenantId={tenantId} role={role} locale={locale} payload={payload} /> : selectedKey === 'userprofile' ? <UserProfileSection client={client} locale={locale} payload={payload} /> : selectedKey === 'memory' ? <div className="wk-settings-memory"><MemoryWorkspacePanel client={client} initialConfig={payload} canEdit={roleAtLeast(role, 'admin')} /></div> : selectedKey === 'mymemory' ? <PersonalMemorySettingsPanel client={client} initialSettings={payload} /> : null)}</></Suspense>)}
                 </div>}
               </div>
             </section>
