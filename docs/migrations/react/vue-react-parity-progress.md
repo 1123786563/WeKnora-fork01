@@ -2286,6 +2286,11 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - RelatedChunksRenderer now uses Vue `chat.noRelatedChunks` for empty objects and empty arrays across five locales in `2c091387`; default copy propagation remains compatible.
 - Shared tests pass 463/463 and Web tests pass 890/890; Web typecheck passes. Independent review found no P1/P2/P3. Browser fixture evidence remains open.
 
+## 2026-09-15 Round N+34x — N021 knowledge-base count
+
+- KnowledgeBaseListRenderer now uses Vue `chat.knowledgeBaseCount` interpolation across five locales in `77f4988b`; count fallback and default copy propagation remain unchanged.
+- Shared tests pass 464/464 and Web tests pass 890/890; Web typecheck passes. Independent review found no P1/P2/P3. Browser fixture evidence remains open.
+
 ## 2026-09-15 Round N+34v — N021 ChunkDetail field-label completion
 
 - ChunkDetail now uses Vue-aligned five-locale labels for chunk ID, document ID, position, and content length across `085de06e`, `873589a6`, `7561cda4`, and `2d616875`.

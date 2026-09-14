@@ -114,3 +114,4 @@
 - ChunkDetailRenderer now uses Vue content-length label/unit keys across five locales in `2d616875`; shared tests pass 462/462 and Web tests 890/890. Independent review found no P1/P2, with one non-blocking end-to-end copy-propagation P3 note.
 - ChunkDetail now uses Vue-aligned five-locale labels for chunk ID, document ID, position and content length across the recent N021 commits; shared tests 462/462 and Web tests 890/890 remain green, with no P1/P2 in independent reviews.
 - RelatedChunksRenderer now uses Vue `chat.noRelatedChunks` for empty results across five locales in `2c091387`; shared tests pass 463/463 and Web tests 890/890. Independent review found no P1/P2/P3.
+- KnowledgeBaseListRenderer now uses Vue `chat.knowledgeBaseCount` interpolation across five locales in `77f4988b`; shared tests pass 464/464 and Web tests 890/890. Independent review found no P1/P2/P3.
