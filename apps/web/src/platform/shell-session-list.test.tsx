@@ -335,3 +335,27 @@ test('(k) admin source filter stays hidden when API and configured channels have
   const container = await mountShell({ client });
   assert.equal(container.querySelector('nav[aria-label="我的对话"] select[aria-label="会话来源"]'), null);
 });
+
+test('(l) replacing an admin client with a viewer client resets an invalid source to web before loading', async () => {
+  const adminCalls: string[] = [];
+  const viewerCalls: string[] = [];
+  const admin = fakeClient({
+    auth: { me: async () => ({ user: { id: 'u1', username: 'admin', email: '', avatar: '' }, tenant: { id: 'tenant-1' }, memberships: [{ tenant_id: 'tenant-1', role: 'admin' }] }) },
+    embed: { channels: { listAll: async () => [] }, im: { listAll: async () => [] } },
+    list: async (params: { source?: string }) => { adminCalls.push(params.source ?? ''); return { data: [], total: 1, page: 1, page_size: 30 }; },
+  });
+  const viewer = fakeClient({
+    auth: { me: async () => ({ user: { id: 'u1', username: 'viewer', email: '', avatar: '' }, tenant: { id: 'tenant-1' }, memberships: [{ tenant_id: 'tenant-1', role: 'viewer' }] }) },
+    list: async (params: { source?: string }) => { viewerCalls.push(params.source ?? ''); return { data: [], total: 0, page: 1, page_size: 30 }; },
+  });
+  const container = await mountShell({ client: admin });
+  const filter = container.querySelector('nav[aria-label="我的对话"] select[aria-label="会话来源"]') as HTMLSelectElement;
+  assert.ok(filter);
+  await act(async () => { filter.value = 'api'; filter.dispatchEvent(new Event('change', { bubbles: true })); await settle(10); });
+  await act(async () => {
+    mountedRoot?.render(React.createElement(PlatformShell, { client: viewer as never, onLogout: () => undefined, children: React.createElement('div', null, 'page') }));
+    await settle(30);
+  });
+  assert.deepEqual(viewerCalls, ['web']);
+  assert.equal(container.querySelector('nav[aria-label="我的对话"] select[aria-label="会话来源"]'), null);
+});

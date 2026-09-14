@@ -136,6 +136,7 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
   // canManageOrg).
   const [canSeeOrganizations, setCanSeeOrganizations] = useState(true);
   const [canSeeAdminSessionSources, setCanSeeAdminSessionSources] = useState(false);
+  const authResolvedClientRef = useRef<Client | null>(null);
 
   // Global command palette (⌘K / Ctrl+K) — R011/N003. See GlobalCommandPalette.tsx.
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -162,8 +163,10 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
 
   useEffect(() => {
     let active = true;
+    authResolvedClientRef.current = null;
     void client.auth.me().then((me) => {
       if (!active) return;
+      authResolvedClientRef.current = client;
       const record = me.user as Record<string, unknown>;
       setUser({
         id: typeof record.id === 'string' ? record.id : typeof record.id === 'number' ? String(record.id) : '',
@@ -212,6 +215,10 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
   const [sessionSourceOptions, setSessionSourceOptions] = useState<SessionSourceOption[]>([
     { value: 'web', label: labels.myChats },
   ]);
+  const sessionSourceOptionsRef = useRef(sessionSourceOptions);
+  sessionSourceOptionsRef.current = sessionSourceOptions;
+  const sessionsClientRef = useRef<Client | null>(null);
+  const sessionsScopeRef = useRef(canSeeAdminSessionSources);
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const sessionsRef = useRef<ChatSession[]>([]);
   const sessionsTotalRef = useRef(0);
@@ -220,8 +227,18 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
   const sessionsMountedRef = useRef(false);
   const sessionsGenerationRef = useRef(0);
   const [sessionsLoadError, setSessionsLoadError] = useState(false);
+  useEffect(() => {
+    if (!sessionSourceOptions.some((option) => option.value === sessionSource)) setSessionSource('web');
+  }, [sessionSource, sessionSourceOptions]);
   const loadShellSessionPage = useCallback(async (page: number, generation: number) => {
     if (!sessionsMountedRef.current || generation !== sessionsGenerationRef.current || sessionsRequestRef.current) return;
+    // A bucket can disappear after an auth/client scope refresh. Let the
+    // source effect restart from web rather than issuing a stale privileged
+    // request during that render transition.
+    if (!sessionSourceOptionsRef.current.some((option) => option.value === sessionSource)) {
+      setSessionSource('web');
+      return;
+    }
     sessionsRequestRef.current = true;
     setSessionsLoading(true);
     try {
@@ -242,8 +259,16 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
       if (generation === sessionsGenerationRef.current) sessionsRequestRef.current = false;
       if (sessionsMountedRef.current && generation === sessionsGenerationRef.current) setSessionsLoading(false);
     }
-  }, [client, sessionSource]);
+  }, [canSeeAdminSessionSources, client, sessionSource]);
   useEffect(() => {
+    const clientChanged = sessionsClientRef.current !== null && sessionsClientRef.current !== client;
+    const scopeChanged = sessionsClientRef.current !== null && sessionsScopeRef.current !== canSeeAdminSessionSources;
+    sessionsClientRef.current = client;
+    sessionsScopeRef.current = canSeeAdminSessionSources;
+    if (clientChanged || scopeChanged) {
+      setSessionSource('web');
+      return () => { sessionsMountedRef.current = false; };
+    }
     sessionsMountedRef.current = true;
     const generation = ++sessionsGenerationRef.current;
     sessionsRequestRef.current = false;
@@ -269,7 +294,7 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
       const options: SessionSourceOption[] = [
         { value: 'web', label: labels.myChats },
       ];
-      if (!canSeeAdminSessionSources) {
+      if (authResolvedClientRef.current !== client || !canSeeAdminSessionSources) {
         if (active) setSessionSourceOptions(options);
         return;
       }
