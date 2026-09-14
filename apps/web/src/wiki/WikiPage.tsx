@@ -351,21 +351,21 @@ export function WikiPage({
     [revision, selected],
   );
   const directory = indexView ? (
-    <section className="wk-wiki-index" aria-label={t("wikiBrowser.indexTitle")}>
+    <section className="wk-wiki-index grid gap-3 pb-2" aria-label={t("wikiBrowser.indexTitle")}>
       {indexError ? <Status tone="error">{indexError}</Status> : null}
       {!indexError && indexLoading && !indexView.groups.length ? <Status>{t("wikiBrowser.loading")}</Status> : !indexError && indexView.groups.length === 0 ? <Status>{t("wikiBrowser.indexEmpty")}</Status> : !indexError ? indexView.groups.map((group) => <section key={group.type}><h3>{group.type}</h3><ul className="wk-list">{group.items.map((item) => <li key={item.slug}><button className="wk-document-link" type="button" onClick={() => void client.wiki.get(knowledgeBaseId, item.slug).then(choose)}>{item.title}</button><small>{item.summary}</small></li>)}</ul></section>) : null}
       {indexNextCursor ? <Button type="button" disabled={indexLoading} onClick={() => void loadMoreIndex()}>{indexLoading ? t("wikiBrowser.loading") : t("wikiBrowser.loadMoreShort")}</Button> : null}
     </section>
   ) : (
     <>
-      <div className="wk-wiki-directory-toolbar" role="toolbar" aria-label={t("wikiBrowser.viewModeToggle")}>
+      <div className="wk-wiki-directory-toolbar flex flex-wrap items-center gap-[0.35rem] pb-2" role="toolbar" aria-label={t("wikiBrowser.viewModeToggle")}>
         <Button type="button" onClick={() => switchViewMode("tree")} aria-pressed={viewMode === "tree"}>{t("wikiBrowser.viewTree")}</Button>
         <Button type="button" onClick={() => switchViewMode("list")} aria-pressed={viewMode === "list"}>{t("wikiBrowser.viewList")}</Button>
         <Button type="button" onClick={() => void openIndex()}>{t("wikiBrowser.indexTitle")}</Button>
         {canContribute ? <Button type="button" disabled={folderBusy} onClick={() => void createFolder()}>{t("wikiBrowser.folderActions")}</Button> : null}
         {folderTrail.length > 0 ? <Button type="button" onClick={backFolder}>{t("wikiBrowser.backToOverview")}</Button> : null}
       </div>
-      {viewMode === "tree" && folders.length > 0 ? <ul className="wk-list wk-wiki-folder-list">{folders.map((folder) => <li key={folder.id}><Button type="button" onClick={() => openFolder(folder)}>{folder.name} ({folder.page_count})</Button>{canContribute ? <span className="wk-list-actions"><Button type="button" disabled={folderBusy} onClick={() => void renameFolder(folder)}>{t("wikiBrowser.renameFolder")}</Button><Button type="button" disabled={folderBusy} onClick={() => void deleteFolder(folder)}>{t("wikiBrowser.deleteFolder")}</Button></span> : null}</li>)}</ul> : null}
+      {viewMode === "tree" && folders.length > 0 ? <ul className="wk-list wk-wiki-folder-list m-0 mb-2 list-none p-0 pb-2">{folders.map((folder) => <li key={folder.id}><Button type="button" onClick={() => openFolder(folder)}>{folder.name} ({folder.page_count})</Button>{canContribute ? <span className="wk-list-actions"><Button type="button" disabled={folderBusy} onClick={() => void renameFolder(folder)}>{t("wikiBrowser.renameFolder")}</Button><Button type="button" disabled={folderBusy} onClick={() => void deleteFolder(folder)}>{t("wikiBrowser.deleteFolder")}</Button></span> : null}</li>)}</ul> : null}
     </>
   );
 
@@ -382,11 +382,11 @@ export function WikiPage({
         </Button>
       </header>
       <Card>
-        <div className="wk-wiki-layout">
-          <aside className="wk-wiki-sidebar">
-            <div className="wk-wiki-sidebar-header">
-              <label className="wk-wiki-search" role="search">
-                <span className="wk-sr-only">
+        <div className="wk-wiki-layout grid grid-cols-[minmax(220px,320px)_1fr] gap-5">
+          <aside className="wk-wiki-sidebar flex min-w-0 flex-col border-r border-[#e7e7e7]">
+            <div className="wk-wiki-sidebar-header pr-2.5 pb-2">
+              <label className="wk-wiki-search flex items-center gap-[0.45rem] rounded-md border border-[#e7e7e7] bg-[#f3f3f3] px-[0.6rem] py-[0.45rem] text-[rgba(0,0,0,0.4)]" role="search">
+                <span className="wk-sr-only absolute h-px w-px m-[-1px] overflow-hidden [clip:rect(0_0_0_0)]">
                   {t("wikiBrowser.page.search")}
                 </span>
                 <span aria-hidden="true">⌕</span>
@@ -397,20 +397,20 @@ export function WikiPage({
                 />
               </label>
             </div>
-            <nav className="wk-wiki-page-list" aria-label="Wiki pages">
+            <nav className="wk-wiki-page-list flex max-h-[620px] flex-col gap-0.5 overflow-y-auto pr-2.5 pb-3" aria-label="Wiki pages">
               {directory}
               {!indexView ? pages.map((page) => (
                 <button
-                  className={`wk-wiki-page-item${selected?.id === page.id ? " is-active" : ""}`}
+                  className={`wk-wiki-page-item group/wiki-item grid min-h-[98px] cursor-pointer gap-0.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left transition-colors duration-150 hover:bg-[#f0f3f8] ${selected?.id === page.id ? "bg-[#eef4ef]" : ""}`}
                   key={page.id}
                   type="button"
                   onClick={() => choose(page)}
                 >
-                  <span className="wk-wiki-page-item-title">{page.title}</span>
-                  <span className="wk-wiki-page-item-summary">
+                  <span className="wk-wiki-page-item-title truncate text-sm leading-5 text-[#202020]">{page.title}</span>
+                  <span className="wk-wiki-page-item-summary line-clamp-2 text-xs leading-[1.5] text-[rgba(0,0,0,0.6)]">
                     {page.summary || "—"}
                   </span>
-                  <span className="wk-wiki-page-item-meta">
+                  <span className="wk-wiki-page-item-meta text-[11px] text-[rgba(0,0,0,0.4)]">
                     v{page.version}
                   </span>
                 </button>
@@ -422,8 +422,8 @@ export function WikiPage({
                 <Status tone="error">{state.message}</Status>
               ) : null}
               {!indexView && state.status === "success" && pages.length === 0 ? (
-                <div className="wk-wiki-empty">
-                  <span className="wk-wiki-empty-icon" aria-hidden="true">
+                <div className="wk-wiki-empty flex flex-1 flex-col items-center gap-2 px-5 py-[60px] text-center text-[rgba(0,0,0,0.6)]">
+                  <span className="wk-wiki-empty-icon text-[36px] leading-none text-[#07c05f]" aria-hidden="true">
                     ▧
                   </span>
                   <strong>{t("wikiBrowser.emptyTitle")}</strong>
@@ -433,7 +433,7 @@ export function WikiPage({
             </nav>
           </aside>
           {selected && !editing ? (
-            <article className="wk-wiki-reader" aria-label={selected.title}>
+            <article className="wk-wiki-reader min-w-0" aria-label={selected.title}>
               <div className="wk-header">
                 <div>
                   <h2>{selected.title}</h2>
@@ -448,11 +448,11 @@ export function WikiPage({
                   </Button>
                 </div>
               </div>
-              <pre className="wk-wiki-reader-content">{selected.content}</pre>
+              <pre className="wk-wiki-reader-content m-0 box-border min-h-[22rem] overflow-auto rounded-md border border-[#d8e0eb] bg-[#f8fafc] p-4 font-[inherit] leading-[1.65] whitespace-pre-wrap">{selected.content}</pre>
             </article>
           ) : null}
           <form
-            className="wk-wiki-editor"
+            className="wk-wiki-editor grid gap-[0.7rem]"
             style={{ display: !selected || editing ? undefined : "none" }}
             onSubmit={save}
           >
@@ -545,7 +545,7 @@ export function WikiPage({
         ) : null}
       </Card>
       {historyOpen && selected ? (
-        <Card className="wk-wiki-history">
+        <Card className="wk-wiki-history mt-4">
           <div className="wk-header">
             <div>
               <h2>{t("wikiBrowser.historyTitle", { title: selected.title })}</h2>
@@ -562,7 +562,7 @@ export function WikiPage({
           {!historyLoading && revisions.length === 0 ? (
             <Status>{t("wikiBrowser.revisionEmpty")}</Status>
           ) : null}
-          <div className="wk-wiki-history-layout">
+          <div className="wk-wiki-history-layout grid grid-cols-[minmax(180px,260px)_1fr] gap-5">
             <nav aria-label="Wiki revisions">
               <ul className="wk-list">
                 {revisions.map((item) => (

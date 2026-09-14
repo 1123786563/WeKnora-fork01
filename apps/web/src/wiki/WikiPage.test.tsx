@@ -15,13 +15,13 @@ const { WikiPage } = await import('./WikiPage.tsx');
 test('Wiki shell follows Vue browser anatomy: sidebar search and reader editor are separate', () => {
   const client = { wiki: { list: async () => ({ pages: [], total: 0 }) } } as never;
   const html = renderToStaticMarkup(React.createElement(WikiPage, { client, knowledgeBaseId: 'kb-1' }));
-  assert.match(html, /class="wk-wiki-layout"/);
-  assert.match(html, /class="wk-wiki-sidebar"/);
-  assert.match(html, /class="wk-wiki-search"/);
+  assert.match(html, /class="wk-wiki-layout[^"]*"/);
+  assert.match(html, /class="wk-wiki-sidebar[^"]*"/);
+  assert.match(html, /class="wk-wiki-search[^"]*"/);
   assert.match(html, /aria-label="Wiki pages"/);
   assert.match(html, /树形视图/);
   assert.match(html, /列表视图/);
-  assert.match(html, /class="wk-wiki-editor"/);
+  assert.match(html, /class="wk-wiki-editor[^"]*"/);
   assert.doesNotMatch(html, /class="wk-toolbar"/);
 });
 
