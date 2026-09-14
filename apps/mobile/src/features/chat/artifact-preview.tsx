@@ -10,21 +10,27 @@ export interface NativeArtifactPreviewProps {
   content?: string;
   loading?: boolean;
   error?: string;
+  labels?: {
+    back: string;
+    share: string;
+    loading: string;
+  };
   onClose(): void;
   onDownload?(): void;
 }
 
-export function NativeArtifactPreview({ artifact, uri, content, loading = false, error, onClose, onDownload }: NativeArtifactPreviewProps) {
+export function NativeArtifactPreview({ artifact, uri, content, loading = false, error, labels, onClose, onDownload }: NativeArtifactPreviewProps) {
   const model = classifyNativeArtifactPreview(artifact);
   const lines = model.kind === 'markdown' && content !== undefined ? nativeMarkdownLines(content) : [];
+  const copy = labels ?? { back: 'Back', share: 'Share', loading: 'Loading preview…' };
   return <Modal visible animationType="slide" onRequestClose={onClose}>
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, borderBottomColor: '#eaecf0', borderBottomWidth: 1 }}>
-        <Pressable accessibilityRole="button" onPress={onClose}><Text style={{ color: '#2864dc' }}>Back</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={onClose}><Text style={{ color: '#2864dc' }}>{copy.back}</Text></Pressable>
         <Text accessibilityRole="header" numberOfLines={1} style={{ flex: 1, marginHorizontal: 12, fontWeight: '700' }}>{artifact.fileName}</Text>
-        {onDownload ? <Pressable accessibilityRole="button" onPress={onDownload}><Text style={{ color: '#2864dc' }}>Share</Text></Pressable> : null}
+        {onDownload ? <Pressable accessibilityRole="button" onPress={onDownload}><Text style={{ color: '#2864dc' }}>{copy.share}</Text></Pressable> : null}
       </View>
-      {loading ? <Text accessibilityRole="progressbar" style={{ padding: 16 }}>Loading preview…</Text> : null}
+      {loading ? <Text accessibilityRole="progressbar" style={{ padding: 16 }}>{copy.loading}</Text> : null}
       {error ? <Text accessibilityRole="alert" style={{ padding: 16, color: '#b42318' }}>{error}</Text> : null}
       {!loading && !error && model.kind === 'download-only' ? <Text style={{ padding: 16, color: '#667085' }}>{model.label}</Text> : null}
       {!loading && !error && model.kind === 'image' && uri ? <Image accessibilityLabel={artifact.fileName} source={{ uri }} resizeMode="contain" style={{ flex: 1, width: '100%' }} /> : null}
