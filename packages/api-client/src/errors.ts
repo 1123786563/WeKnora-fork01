@@ -52,6 +52,7 @@ export function errorFromResult(status: number, body: unknown, headers: Record<s
     ? nested.message
     : typeof record?.message === 'string'
       ? record.message
+    : typeof record?.error === 'string' && record.error.trim() ? record.error
     : typeof body === 'string' && body.trim() ? body
       : `Request failed with status ${status}`;
   const code = status === 413
