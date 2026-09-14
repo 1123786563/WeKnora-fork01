@@ -2129,6 +2129,12 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Focused tests pass 3/3; mobile typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
 - Native management runtime evidence remains open.
 
+## 2026-09-15 Round N+33t — T10 mobile configuration localization
+
+- Mobile `ConfigurationScreen` now localizes page/section states, CRUD actions/confirmations, form labels/placeholders, MCP transport/enabled states, loading/errors and partial results through five-language `mobileConfiguration.*` keys (`42789cf7`), preserving API, permissions, credential and read-only behavior.
+- Focused tests pass 2/2; mobile typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
+- Native management runtime evidence remains open.
+
 ## 2026-09-15 Round N+33s — T10 mobile API key localization
 
 - Mobile `ApiKeysScreen` now localizes loading/errors, owner-only guidance, create/revoke flows, token states and accessibility labels across five locales (`cada5697`, `7ce141de`, `f41da865`), including distinct Korean revoke/cancel wording.
