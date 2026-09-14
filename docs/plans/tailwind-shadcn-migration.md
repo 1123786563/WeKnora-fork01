@@ -42,9 +42,24 @@ API 契约、鉴权、权限、表单校验、聊天流式、工具审批、上�
   （portal/focus-trap/aria），样式 tokens 化；Sheet（侧滑抽屉）基于同库新增。
 - 不安装 sonner/toast：现有通知面为内联 Status/Alert/popconfirm（按需原则）。
 
+## 进度账本
+
+- [x] 基础设施：theme.css 语义令牌（packages/ui/src/theme.css）+ styles.css 入口
+  （theme/utilities layer + @source 扫描 ui/views）+ ui 包导出 theme.css。
+  构建产物已验证：包内 utilities（如 .h-8）开始生成（修复了基线记录的既有缺陷）。
+- [x] 基础组件一批：button.tsx（cva：default/primary/text/danger + loading 兼容）、
+  Card/Status/Input/NumberInput/Switch 令牌化（视觉=各自既有生效样式）。
+- [x] 门禁：shared 445、web 856、typecheck 0、build ✓（web 1 处失败为 70e9f061 i18n
+  sweep 与 upload-dialog 旧断言的漂移，已随 77202404 修复；同提交修复了该提交截断的
+  KnowledgeSettingsPage.tsx 尾部）。
+- [x] 截图对比一批（baseline vs after-foundation，21 张）：差异集中在 Button 实际生效、
+  i18n sweep 文案与 kb-settings 修复；无布局/配色漂移。artifacts/tailwind-shadcn/。
+- 共享树注意：该 worktree 有并行任务在改 i18n/KB-settings（70e9f061、02a938ee）；
+  本迁移坚持路径隔离，不动 i18n 与他人文件；截图账号 uimig@local.dev。
+
 ## 页面批次（每批：转换 → 门禁 → 截图对比）
 
-1. styles.css 共享层 + App.tsx（KB 列表）+ NotFoundPage
+1. styles.css 共享层 + App.tsx（KB 列表）+ NotFoundPage  ← 共享类规则在最后一个使用方迁移后删除
 2. auth.css（login/register/join/onboarding）
 3. platform/shell.css + command-palette.css（外壳导航/命令面板）
 4. knowledge-list.css
