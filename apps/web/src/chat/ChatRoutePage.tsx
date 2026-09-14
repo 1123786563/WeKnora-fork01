@@ -43,6 +43,14 @@ function draftStorageKey(scope: ReturnType<ScopeController['current']>['scope'],
   return JSON.stringify(chatDraftKey({ ...scope, sessionId }));
 }
 
+function chatModelStorageKey(scope: ReturnType<ScopeController['current']>['scope']): string {
+  return `weknora:last-chat-model:${scope.origin}:${scope.userId ?? 'anonymous'}:${scope.tenantId ?? 'default'}`;
+}
+
+function readStoredChatModelId(scope: ReturnType<ScopeController['current']>['scope']): string {
+  try { return window.localStorage.getItem(chatModelStorageKey(scope))?.trim() ?? ''; } catch { return ''; }
+}
+
 export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowledgeBaseId, canViewChannelSessions = false }: ChatRoutePageProps) {
   const scope = scopeController.current();
   const copy = resolveChatCopy(readStoredLocale());
@@ -60,7 +68,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   // Chat models for the composer chip (Vue chatResources chatModels); the
   // KnowledgeQA filter lives in model-chip.ts like the Vue store.
   const [chatModels, setChatModels] = useState<ModelConfiguration[]>([]);
-  const [selectedModelId, setSelectedModelId] = useState('');
+  const [selectedModelId, setSelectedModelId] = useState(() => readStoredChatModelId(scope.scope));
   // Empty-state suggested questions (creatChat view) come from the selected
   // agent's suggested-questions surface; absent without an agent selection.
   const [starterQuestions, setStarterQuestions] = useState<string[]>([]);
@@ -94,8 +102,8 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   const attachmentCounterRef = useRef(0);
   const [loadingSessions, setLoadingSessions] = useState(true);
   // Vue Input-field.vue agent-model watch: the selected agent's config.model_id
-  // binds the conversation model. (User last-pick persistence belongs to a
-  // future model-picker slice; the React chat has no model selector yet.)
+  // binds the conversation model; the user's explicit model pick is persisted
+  // per origin/user/tenant so it survives a fresh chat route.
   const agentModelId = useMemo(() => {
     const agent = agents.find((item) => item.id === selectedAgentId);
     const modelId = (agent?.config as Record<string, unknown> | undefined)?.model_id;
@@ -112,6 +120,10 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   const modelOptions = useMemo(() => chatModels
     .map((model) => ({ id: String(model.id ?? '').trim(), name: String(model.display_name ?? model.name ?? model.id ?? '').trim() }))
     .filter((model) => model.id.length > 0 && model.name.length > 0), [chatModels]);
+  useEffect(() => {
+    if (!selectedModelId) return;
+    try { window.localStorage.setItem(chatModelStorageKey(scope.scope), selectedModelId); } catch { /* storage may be unavailable */ }
+  }, [scope.scope, selectedModelId]);
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
   // History refresh in-flight flag (Vue sessions.messages loader).
