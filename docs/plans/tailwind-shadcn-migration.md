@@ -89,6 +89,11 @@ API 契约、鉴权、权限、表单校验、聊天流式、工具审批、上�
   （wk-list-actions/span、wk-document-link——约 30 处域外消费方，最后统一删）。
 - 关键实现：unlayered 竞争属性用 ! 任意值；静态条件替代插值任意值（扫描器限制）。
 - 验收：typecheck 0、documents 38/38、web 856/856、build ✓、styles.css 1128→1055 行。
+### 批次24：chathistory stats 切片 ✅（settings-wrapper 域 5/N）
+- ConfigSettingsPanel.tsx chathistory stats 区 9 处 className utilities 追加
+  （采用「钩子类+追加 utilities」安全模式，避免与并发写冲突时的结构风险）；
+  settings-wrapper.css 删除 9 条 stats 规则（115→106 行）。
+- 验收：typecheck 0、web 856/856、build ✓。
 ### 批次19：TenantMembers 域 ✅（子任务执行，Orchestrator 验收提交）
 - TenantMembersPanel.tsx ~95 条规则内联 utilities（表格/分页/标签三态/确认弹层；
   settings-wrapper 抽屉 select chrome 特异性更高今日实际生效，按生效值 4 条未复制）；
