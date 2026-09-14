@@ -23,9 +23,12 @@ test('keeps personal credentials and workspace secrets in separate access scopes
 });
 
 test('registers the parity audit must-fix sections with concrete scopes and roles', () => {
+  // models/members are viewer-visible read-only pages in the Vue baseline
+  // (frontend/src/config/settingsAccess.ts: models 'viewer', members 'viewer');
+  // the panels gate their own write affordances.
   const expected = [
-    ['models', 'tenant', 'admin'],
-    ['members', 'tenant', 'admin'],
+    ['models', 'tenant', 'viewer'],
+    ['members', 'tenant', 'viewer'],
     ['mcp', 'tenant', 'admin'],
     ['sandbox', 'tenant', 'admin'],
     ['skills', 'tenant', 'admin'],
@@ -57,7 +60,10 @@ test('nav filtering by role hides admin-only and system-admin-only sections from
   assert.ok(viewerKeys.includes('general'));
   assert.ok(viewerKeys.includes('envvars'));
   assert.ok(!viewerKeys.includes('retrieval'));
-  assert.ok(!viewerKeys.includes('models'));
+  // Vue keeps models/members visible to viewers as read-only pages
+  // (settingsAccess.ts: models 'viewer', members 'viewer').
+  assert.ok(viewerKeys.includes('models'));
+  assert.ok(viewerKeys.includes('members'));
   assert.ok(!viewerKeys.includes('system-global'));
   assert.ok(!viewerKeys.includes('platform-api-keys'));
   const adminKeys = settingsSectionsForRole('admin').map((section) => section.key);

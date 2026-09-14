@@ -1,5 +1,13 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-14 Round N+31 — viewer 角色变体 live 双端对照 + 设置角色门禁对齐
+
+- 受控创建 viewer 回归账号（parity-viewer@local.dev，owner 经 members API 加入租户 10000，role=viewer；保留作角色变体回归）。
+- 发现并修复：设置分区角色门禁与 Vue 不一致——Vue settingsAccess.ts 中 models/members 为 viewer（只读页，面板内部自 gate 写操作），React registry 误为 admin（viewer 看不到入口、直连渲染权限不足）。registry.ts 两处 minRole → viewer；registry.test.ts 期望同步（6/6）。
+- live viewer 变体 sweep（viewer-variant.cjs，双端 viewer@tenant 10000）：V1 KB 列表（共享空间入口隐藏、无创建入口）、V2 设置导航（账户组 4 项 + 空间信息/成员管理/模型管理只读）、V3 直连 members（只读面板无控件泄漏）、V4 组织页——双端一致。
+- 新登记残余差异：viewer 的 KB 列表作用域标签 Vue 为「本空间 · 仅查看」、React 仅「本空间」（记录待修）。
+- 门禁：registry 6/6、shared 444/444、web 856/856。证据：2026-09-14-viewer-role-variant.md + screenshots/viewer-variant-20260914/。
+
 ## 2026-09-14 Round N+30 — implementing 七行 live 重验转 review（R013 R027 R031 R033 R043 R044 R046）
 
 - live 只读 sweep（impl-live-sweep.cjs，双端 owner 视角）：模型管理/MCP/沙箱/技能/API 集成五个分区全部当前渲染一致；截图 impl-live-20260914/。
