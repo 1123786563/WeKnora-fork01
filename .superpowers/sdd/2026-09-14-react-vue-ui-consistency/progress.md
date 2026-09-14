@@ -148,3 +148,10 @@
 - Embed suite: 7/7.
 - Desktop renderer suite: 2/2.
 - No additional failures observed; React Web remains 891/891 from the preceding slice.
+
+## Round N+34bb — system audit log copy parity
+
+- Added five-locale copy for audit log heading, controls, empty/loading/error states and detail drawer labels.
+- Validation: `pnpm run test:web` 891/891; `pnpm run typecheck:web`; `git diff --check`.
+- Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r022-system-audit-copy.md`.
+- Remaining: authenticated runtime evidence for audit pagination/detail and non-Chinese locale rendering.
