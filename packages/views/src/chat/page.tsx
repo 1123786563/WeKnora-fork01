@@ -158,7 +158,7 @@ function LiveResponse({ copy, stream, onStopStream }: { copy: ChatCopyTable; str
   </section>;
 }
 
-function ChatActionCards(props: Pick<ChatPageProps, 'toolApprovals' | 'oauthApprovals' | 'onResolveToolApproval' | 'onAuthorizeOAuth' | 'onCancelOAuth'>) {
+function ChatActionCards(props: Pick<ChatPageProps, 'toolApprovals' | 'oauthApprovals' | 'onResolveToolApproval' | 'onAuthorizeOAuth' | 'onCancelOAuth'> & { copy: ChatCopyTable }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const toolApprovals = props.toolApprovals ?? [];
@@ -180,6 +180,7 @@ function ChatActionCards(props: Pick<ChatPageProps, 'toolApprovals' | 'oauthAppr
       onResolve={props.onResolveToolApproval
         ? (pendingId, decision, modifiedArgs) => run(pendingId, () => props.onResolveToolApproval!(pendingId, decision, modifiedArgs))
         : undefined}
+      copy={props.copy}
     />)}
     {oauthApprovals.map((approval) => <div key={`oauth-${approval.pendingId}`} className="wk-chat-action-card mb-[8px] flex flex-col gap-[6px] rounded-[8px] border border-[#e7e7e7] px-[10px] py-[8px]">
       <strong className="text-[13px]">MCP authorization: {approval.serviceName ?? approval.serviceId ?? 'service'}</strong>
@@ -519,7 +520,7 @@ export function ChatPage(props: ChatPageProps) {
             ) : null}
           </section>
         ) : null}
-        <ChatActionCards {...props} />
+        <ChatActionCards {...props} copy={copy} />
         {props.stream ? <LiveResponse copy={copy} stream={props.stream} /> : null}
         <ReferenceList references={references} activeId={activeCitationId} onActivate={activateCitation} copy={copy} />
         {props.error ? <p role="alert">{props.error}</p> : null}

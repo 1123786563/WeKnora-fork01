@@ -148,7 +148,7 @@ test('chat page hides the args editor for resolved tool approvals', () => {
     toolApprovals: [{ pendingId: 'approval-1', toolName: 'search_docs', status: 'resolved', decision: 'approve' }],
     onResolveToolApproval: async () => undefined,
   }));
-  assert.match(html, /Resolved: approve/);
+  assert.match(html, /已处理: approve/);
   assert.doesNotMatch(html, /wk-chat-approval-args-input/);
   assert.doesNotMatch(html, /查看参数/);
 });
