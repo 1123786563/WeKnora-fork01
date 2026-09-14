@@ -2021,3 +2021,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Chat composer model chip is now rendered as an explicit disabled button (`7c1523d5`) because the current React stream request has no `model_id` selection contract. This preserves the Vue-shaped label/context display while exposing truthful keyboard and screen-reader semantics instead of a misleading interactive control.
 - Focused chat coverage passes 21/21; Web full regression passes 865/865; `typecheck:web`, `build:web`, and `git diff --check` pass. The existing Vite large-chunk advisory (~4.67 MB main chunk) remains unchanged.
 - N019 still has open attachment upload and knowledge-base mention selection flows, plus real browser/backend/platform evidence. Those require a coordinated API/UI contract and are not claimed closed by this slice.
+
+## 2026-09-15 Round N+33a — N019 bookmark action guard
+
+- The chat answer bookmark now uses a native disabled control (`8800090c`) while retaining the Vue-parity `aria-disabled` hook. React has no manual-editor callback or API path for this action, so the control no longer presents a focusable false affordance.
+- Focused chat coverage remains 21/21 and `git diff --check` passes. Attachment/mention flows and protected runtime evidence remain open.
