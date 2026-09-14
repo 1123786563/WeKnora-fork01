@@ -8,7 +8,6 @@
    .wk-settings-section { margin-top: 1rem } (styles.css) must not leak into
    the drawer or it pushes the panel heading ~16px below the Vue position. */
 .wks-content-wrapper .wk-settings-section { margin-top: 0; }
-.wk-runtime-queues { display: grid; gap: 16px; }
 .wk-platform-api-keys { display: grid; gap: 16px; }
 .wk-api-key-create-row { display: flex; gap: 8px; margin-top: 12px; }
 .wk-api-key-create-row input { flex: 1; height: 32px; padding: 0 8px; }
@@ -54,35 +53,6 @@
 .wk-audit-detail dt { color: #5c6b83; font-size: 12px; }
 .wk-audit-detail dd { overflow-wrap: anywhere; margin: 4px 0 0; }
 .wk-audit-detail pre { background: #f7f9fb; border: 1px solid rgba(120,135,155,.18); border-radius: 8px; font-size: 12px; line-height: 1.55; margin: 0; max-height: 50vh; overflow: auto; padding: 12px 14px; white-space: pre-wrap; }
-.wk-runtime-queues .wk-settings-panel-heading { margin-bottom: 8px; }
-.wk-runtime-queues .wk-settings-panel-heading h2 { margin-bottom: 8px; }
-.wk-runtime-queues h3 { font-size: 16px; margin: 0 0 8px; }
-.wk-runtime-queues .wk-rq-overview { background: rgba(7, 192, 95, 0.04); }
-.wk-rq-metrics { display: grid; gap: 12px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.wk-rq-metrics strong { color: #118053; font-size: 24px; }
-.wk-rq-metrics strong.is-warning { color: #b26a08; }
-.wk-rq-metrics strong.is-danger { color: #c23434; }
-.wk-rq-metrics span { color: #5c6b83; display: block; font-size: 12px; font-weight: 400; margin-top: 3px; }
-.wk-rq-pools, .wk-rq-models { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
-.wk-rq-pool, .wk-rq-model { border: 1px solid rgba(120, 135, 155, 0.24); border-radius: 8px; display: grid; gap: 5px; padding: 12px; }
-.wk-rq-pool { grid-template-columns: 1fr auto; }
-.wk-rq-pool span, .wk-rq-model span, .wk-rq-model small { color: #5c6b83; font-size: 12px; }
-.wk-rq-pool span { grid-column: 1 / -1; }
-.wk-rq-table-wrap { overflow-x: auto; }
-.wk-rq-table { border-collapse: collapse; font-size: 13px; min-width: 700px; width: 100%; }
-.wk-rq-table th, .wk-rq-table td { border-bottom: 1px solid rgba(120, 135, 155, 0.18); padding: 12px 10px; text-align: left; white-space: nowrap; }
-.wk-rq-table thead th { color: #5c6b83; font-size: 12px; font-weight: 500; }
-.wk-rq-table tbody th { font-weight: 600; }
-.wk-rq-count-button { background: transparent; border: 0; color: #0a8f4c; cursor: pointer; font: inherit; padding: 2px 6px; text-decoration: underline; }
-.wk-rq-count-button:hover, .wk-rq-count-button:focus-visible { color: #067a3f; }
-.wk-rq-task-drawer { background: #fff; border-left: 1px solid rgba(120,135,155,.25); box-shadow: -8px 0 24px rgba(23,32,51,.14); max-width: 720px; overflow: auto; padding: 24px; position: fixed; right: 0; top: 0; bottom: 0; width: min(720px, 100vw); z-index: 3200; }
-.wk-rq-task-drawer__head { align-items: flex-start; display: flex; justify-content: space-between; margin-bottom: 20px; }
-.wk-rq-task-drawer__head button { background: transparent; border: 0; cursor: pointer; font-size: 24px; line-height: 1; }
-.wk-rq-model { grid-template-columns: 1fr auto; }
-.wk-rq-model progress { grid-column: 1 / -1; height: 6px; width: 100%; }
-.wk-rq-model small { grid-column: 1 / -1; }
-.wk-rq-skeleton { background: linear-gradient(90deg, rgba(120,135,155,.08), rgba(120,135,155,.18), rgba(120,135,155,.08)); border-radius: 8px; height: 84px; }
-@media (max-width: 720px) { .wk-rq-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .wk-settings-section .section-header { margin-bottom: 32px; }
 .wk-settings-section .section-header h2 { font-size: 20px; font-weight: 600; margin: 0 0 8px; }
 .wk-settings-section .section-description { font-size: 14px; line-height: 1.5; margin: 0; opacity: 0.75; }
