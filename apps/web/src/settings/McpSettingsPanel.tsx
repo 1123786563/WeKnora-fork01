@@ -937,7 +937,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                       />
                     </label>
                     <div className="wk-mcp-toggle-row">
-                      <label className="wk-checkbox">
+                      <label className="wk-checkbox flex-none mt-0 whitespace-nowrap">
                         <input
                           type="checkbox"
                           checked={draft.enabled}

@@ -52,9 +52,6 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-settings-section input:read-only, .wk-settings-section select:disabled { background: #f7f9fc; color: #66758b; }
 .wk-settings-table { display: grid; gap: .6rem; max-width: 620px; }
 .wk-settings-table label { grid-template-columns: 8rem minmax(0, 1fr); align-items: center; }
-.wk-checkbox { display: flex !important; grid-template-columns: none !important; align-items: center; gap: .5rem !important; margin-top: .8rem; font-weight: 500 !important; }
-.wk-checkbox input { width: auto; }
-.wk-toggle-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .25rem 1rem; }
 .wk-preview-box { display: grid; gap: .75rem; margin-top: 1rem; border-top: 1px solid #eef1f5; padding-top: 1rem; }
 .wk-preview-result { border: 1px solid #dce3ed; border-radius: 6px; background: #f8fafc; padding: .75rem; }
 .wk-preview-result p { margin: 0 0 .5rem; }
@@ -256,7 +253,6 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-mcp-badge-warn { background: #fffaeb; color: #b54708; }
 .wk-mcp-badge-muted { background: #f2f4f8; color: #66758b; }
 .wk-mcp-toggle-row { align-items: center; display: flex; flex-wrap: wrap; gap: .6rem; }
-.wk-mcp-toggle-row .wk-checkbox { flex: none; margin-top: 0; white-space: nowrap; }
 .wk-mcp-usage-heading { align-items: center; display: flex; gap: .8rem; justify-content: space-between; }
 .wk-mcp-usage-counter { display: block; font-size: .78rem; text-align: right; }
 .wk-mcp-metadata { border-top: 1px solid #edf0f5; margin-top: 1.1rem; padding-top: 1rem; }
