@@ -120,9 +120,9 @@ export function WorkspaceOnboardingPage({ client, scopeRuntime, onLogout }: Work
 
     <Dialog
       open={createVisible}
-      title={<span className="wk-dialog-title-row"><svg className="wk-dialog-title-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1" fill="currentColor" /><rect x="13" y="3" width="8" height="8" rx="1" fill="currentColor" opacity="0.55" /><rect x="3" y="13" width="8" height="8" rx="1" fill="currentColor" opacity="0.55" /><rect x="13" y="13" width="8" height="8" rx="1" fill="currentColor" /></svg>{msg(locale, 'tenant.create.dialogTitle')}</span>}
+      title={<span className="inline-flex items-center gap-2"><svg className="text-primary shrink-0" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1" fill="currentColor" /><rect x="13" y="3" width="8" height="8" rx="1" fill="currentColor" opacity="0.55" /><rect x="3" y="13" width="8" height="8" rx="1" fill="currentColor" opacity="0.55" /><rect x="13" y="13" width="8" height="8" rx="1" fill="currentColor" /></svg>{msg(locale, 'tenant.create.dialogTitle')}</span>}
       onClose={() => { if (!creating) { setCreateVisible(false); setName(''); setDescription(''); setFieldErrors({}); setCreateError(''); } }}
-      className="wk-dialog--tenant-create"
+      className="w-[min(480px,100%)]!"
     >
       <p className="wk-muted">{msg(locale, 'tenant.create.dialogSubtitle')}</p>
       <form className="wk-form" onSubmit={(event) => { event.preventDefault(); void createTenant(); }}>
@@ -131,7 +131,7 @@ export function WorkspaceOnboardingPage({ client, scopeRuntime, onLogout }: Work
           {(fieldErrors.name ?? []).map((key) => <Status key={key} tone="error">{msg(locale, key)}</Status>)}
         </label>
         <label>{msg(locale, 'tenant.create.descriptionLabel')}
-          <textarea value={description} onChange={(event) => setDescription(event.target.value)} maxLength={512} rows={3} disabled={creating} placeholder={msg(locale, 'tenant.create.descriptionPlaceholder')} />
+          <textarea className="box-border w-full resize-y px-[0.6rem] py-[0.5rem] [font:inherit]" value={description} onChange={(event) => setDescription(event.target.value)} maxLength={512} rows={3} disabled={creating} placeholder={msg(locale, 'tenant.create.descriptionPlaceholder')} />
           {(fieldErrors.description ?? []).map((key) => <Status key={key} tone="error">{msg(locale, key)}</Status>)}
         </label>
         {createError ? <Status tone="error">{createError}</Status> : null}

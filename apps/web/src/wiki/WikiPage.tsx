@@ -375,7 +375,7 @@ export function WikiPage({
   const directory = indexView ? (
     <section className="wk-wiki-index grid gap-3 pb-2" aria-label={t("wikiBrowser.indexTitle")}>
       {indexError ? <Status tone="error">{indexError}</Status> : null}
-      {!indexError && indexLoading && !indexView.groups.length ? <Status>{t("wikiBrowser.loading")}</Status> : !indexError && indexView.groups.length === 0 ? <Status>{t("wikiBrowser.indexEmpty")}</Status> : !indexError ? indexView.groups.map((group) => <section key={group.type}><h3>{group.type}</h3><ul className="wk-list">{group.items.map((item) => <li key={item.slug}><button className="wk-document-link" type="button" onClick={() => void client.wiki.get(knowledgeBaseId, item.slug).then(choose)}>{item.title}</button><small>{item.summary}</small></li>)}</ul></section>) : null}
+      {!indexError && indexLoading && !indexView.groups.length ? <Status>{t("wikiBrowser.loading")}</Status> : !indexError && indexView.groups.length === 0 ? <Status>{t("wikiBrowser.indexEmpty")}</Status> : !indexError ? indexView.groups.map((group) => <section key={group.type}><h3>{group.type}</h3><ul className="wk-list">{group.items.map((item) => <li key={item.slug}><button className="border-0 bg-transparent cursor-pointer p-0 text-left text-primary-deep [font:inherit] [font-weight:650]! hover:underline" type="button" onClick={() => void client.wiki.get(knowledgeBaseId, item.slug).then(choose)}>{item.title}</button><small>{item.summary}</small></li>)}</ul></section>) : null}
       {indexNextCursor ? <Button type="button" disabled={indexLoading} onClick={() => void loadMoreIndex()}>{indexLoading ? t("wikiBrowser.loading") : t("wikiBrowser.loadMoreShort")}</Button> : null}
     </section>
   ) : (
@@ -590,7 +590,7 @@ export function WikiPage({
                 {revisions.map((item) => (
                   <li key={item.id}>
                     <button
-                      className="wk-document-link"
+                      className="border-0 bg-transparent cursor-pointer p-0 text-left text-primary-deep [font:inherit] [font-weight:650]! hover:underline"
                       type="button"
                       onClick={() => void chooseRevision(item)}
                     >

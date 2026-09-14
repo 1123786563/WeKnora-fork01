@@ -3152,7 +3152,7 @@ export function KnowledgeDocumentsPage({
                       <div className="wk-list-item-copy">
                         <button
                           type="button"
-                          className="wk-document-link border-0 bg-transparent cursor-pointer p-0 text-left text-primary-deep [font:inherit] [font-weight:650] hover:underline"
+                          className="border-0 bg-transparent cursor-pointer p-0 text-left text-primary-deep [font:inherit] [font-weight:650]! hover:underline"
                           onClick={() => onOpenDocument?.(document)}
                         >
                           {displayName(document)}

@@ -222,6 +222,14 @@ hook 类（测试/JS 引用）保留类名。
 - 保留 3 条：wk-model-tabs 三件套——SandboxSettingsPanel:1806 消费（范围外），
   已留注释待沙盒波删除；钩子类 6 个保留。
 - 验收：typecheck 0、42/42（Model+SettingsPage）、web 890/890、build ✓。
+### 批次40：styles.css 小家族清扫 ✅（子任务执行，Orchestrator 验收提交）
+- document-link(2)/preview 家族(5)/tenant-dialog 家族(4)/secret-output(3 死类)/
+  resource-check 家族(4) 全部迁出；WikiPage/DocumentsPage/WorkspaceOnboarding/
+  KnowledgeSettingsPage/DataSourcesPage 5 文件转换。
+- 关键 cascade：w-[min(480px,100%)]!（压 ui 包 .wk-dialog 基类）、[font-weight:650]!
+  （[font:inherit] 排序竞争，文档页同类问题一并修复）、resource-check 按生效值
+  编码（.wk-list li span 一直覆盖原 color/font-size）。
+- 验收：typecheck 0、受影响域 140/140、web 890/890、build ✓；styles.css 347→329 行。
 ### 批次19：TenantMembers 域 ✅（子任务执行，Orchestrator 验收提交）
 - TenantMembersPanel.tsx ~95 条规则内联 utilities（表格/分页/标签三态/确认弹层；
   settings-wrapper 抽屉 select chrome 特异性更高今日实际生效，按生效值 4 条未复制）；
