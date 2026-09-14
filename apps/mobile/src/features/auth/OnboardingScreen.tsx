@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import type { TenantInvitation } from '@weknora/api-client';
@@ -18,6 +18,7 @@ export function OnboardingScreen() {
   const [invitationError, setInvitationError] = useState('');
   const [saving, setSaving] = useState(false);
   const [respondingId, setRespondingId] = useState<number | null>(null);
+  const invitationGeneration = useRef(0);
 
   const load = useCallback(async () => {
     setLoading(true); setFailed(false); setError('');
@@ -28,9 +29,14 @@ export function OnboardingScreen() {
   useEffect(() => { if (runtime.tenantId) router.replace('/(app)/knowledge'); }, [router, runtime.tenantId]);
 
   async function loadInvitations() {
+    const generation = ++invitationGeneration.current;
     setShowInvitations(true); setInvitations(null); setInvitationError(''); setError('');
-    try { const page = await runtime.client.identity.tenants.invitations.listMine(); setInvitations(page.items.filter((item) => item.status === 'pending')); }
-    catch (cause) { setInvitations(null); setInvitationError(cause instanceof Error ? cause.message : 'Unable to load invitations'); }
+    try {
+      const page = await runtime.client.identity.tenants.invitations.listMine();
+      if (generation === invitationGeneration.current) setInvitations(page.items.filter((item) => item.status === 'pending'));
+    } catch (cause) {
+      if (generation === invitationGeneration.current) { setInvitations(null); setInvitationError(cause instanceof Error ? cause.message : 'Unable to load invitations'); }
+    }
   }
   async function createWorkspace() {
     const trimmed = name.trim();
