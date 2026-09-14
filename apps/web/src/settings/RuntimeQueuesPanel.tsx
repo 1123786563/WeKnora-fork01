@@ -31,6 +31,13 @@ const runtimeFallbacks: Record<string, string> = {
   'system.globalSettings.runtime.status.waiting': '等待中',
   'system.globalSettings.runtime.status.idle': '空闲',
 };
+const drawerCopy: Record<string, { detail: string; close: string; loading: string; empty: string; unavailable: string; failed: string }> = {
+  'zh-CN': { detail: '任务详情', close: '关闭', loading: '加载中...', empty: '暂无任务', unavailable: '运行时队列不可用。', failed: '任务加载失败。' },
+  'en-US': { detail: 'Task details', close: 'Close', loading: 'Loading...', empty: 'No tasks', unavailable: 'Runtime queue unavailable.', failed: 'Failed to load tasks.' },
+  'ja-JP': { detail: 'タスク詳細', close: '閉じる', loading: '読み込み中...', empty: 'タスクはありません', unavailable: 'ランタイムキューを利用できません。', failed: 'タスクの読み込みに失敗しました。' },
+  'ko-KR': { detail: '작업 세부 정보', close: '닫기', loading: '로드 중...', empty: '작업이 없습니다', unavailable: '런타임 큐를 사용할 수 없습니다.', failed: '작업을 불러오지 못했습니다.' },
+  'ru-RU': { detail: 'Подробности задачи', close: 'Закрыть', loading: 'Загрузка...', empty: 'Задач нет', unavailable: 'Очередь среды выполнения недоступна.', failed: 'Не удалось загрузить задачи.' },
+};
 function fallbackRuntimeText(key: string, values?: Record<string, string | number>): string {
   let value = runtimeFallbacks[key] ?? key.split('.').pop() ?? key;
   for (const [name, replacement] of Object.entries(values ?? {})) value = value.replace(`{${name}}`, String(replacement));
@@ -56,6 +63,7 @@ function queueStatus(row: Row, t: ReturnType<typeof settingsT>): string {
 export function RuntimeQueuesPanel({ client, payload, loading = false, error = null }: { client: WeKnoraClient; payload: RuntimeQueues | null; loading?: boolean; error?: string | null }) {
   const locale = useSettingsLocale();
   const baseT = settingsT(locale);
+  const drawer = drawerCopy[locale] ?? drawerCopy['zh-CN'];
   const t: ReturnType<typeof settingsT> = (key, values) => {
     const value = baseT(key, values);
     return value === key && key.startsWith('system.globalSettings.runtime.') ? fallbackRuntimeText(key, values) : value;
@@ -73,9 +81,9 @@ export function RuntimeQueuesPanel({ client, payload, loading = false, error = n
     setTaskDrawer({ queue, state, tasks: [], loading: true, error: null });
     try {
       const result = await client.administration.runtime.tasks.list(queue, state, { pageSize: 20 });
-      setTaskDrawer({ queue, state, tasks: result.tasks as Row[], loading: false, error: result.available ? null : '运行时队列不可用。' });
+      setTaskDrawer({ queue, state, tasks: result.tasks as Row[], loading: false, error: result.available ? null : drawer.unavailable });
     } catch (reason) {
-      setTaskDrawer({ queue, state, tasks: [], loading: false, error: reason instanceof Error ? reason.message : '任务加载失败。' });
+      setTaskDrawer({ queue, state, tasks: [], loading: false, error: reason instanceof Error ? reason.message : drawer.failed });
     }
   }
   const taskButton = (row: Row, state: string) => numberOf(row, state) > 0
@@ -94,6 +102,6 @@ export function RuntimeQueuesPanel({ client, payload, loading = false, error = n
       <Card><h3>{t('system.globalSettings.runtime.detailsTitle')}</h3><p className="wk-muted text-muted">{t('system.globalSettings.runtime.detailsDescription')}</p>{queues.length === 0 ? <Status>{t('system.globalSettings.runtime.empty')}</Status> : <div className="wk-rq-table-wrap overflow-x-auto"><table className="wk-rq-table w-full min-w-[700px] border-collapse text-[13px] [&_th]:border-b [&_th]:border-[rgba(120,135,155,0.18)] [&_th]:px-2.5 [&_th]:py-3 [&_th]:text-left [&_th]:whitespace-nowrap [&_td]:border-b [&_td]:border-[rgba(120,135,155,0.18)] [&_td]:px-2.5 [&_td]:py-3 [&_td]:text-left [&_td]:whitespace-nowrap [&_thead_th]:text-xs [&_thead_th]:font-medium [&_thead_th]:text-[#5c6b83] [&_tbody_th]:font-semibold"><thead><tr>{['queue','active','pending','retry','archived','completed','latency','status'].map((key) => <th key={key}>{runtimeText(t, `system.globalSettings.runtime.columns.${key}`, key)}</th>)}</tr></thead><tbody>{queues.map((row, index) => <tr key={stringOf(row, 'name') || String(index)}><th>{stringOf(row, 'name') || '—'}</th><td>{taskButton(row, 'active')}</td><td>{taskButton(row, 'pending')}</td><td>{taskButton(row, 'retry')}</td><td>{taskButton(row, 'archived')}</td><td>{taskButton(row, 'completed')}</td><td>{numberOf(row, 'latency_ms') || '—'}</td><td>{queueStatus(row, t)}</td></tr>)}</tbody></table></div>}</Card>
     </> : null}
     <Card><h3>{t('system.globalSettings.runtime.models.title')}</h3><p className="wk-muted text-muted">{t('system.globalSettings.runtime.models.description')}</p>{!payload.model_limiter_available ? <Status>{t('system.globalSettings.runtime.models.disabled')}</Status> : models.length === 0 ? <Status>{t('system.globalSettings.runtime.models.empty')}</Status> : <div className="wk-rq-models grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2.5">{models.map((row, index) => { const current = numberOf(row, 'active'); const limit = numberOf(row, 'limit'); return <div className="wk-rq-model grid grid-cols-[1fr_auto] gap-1.5 rounded-lg border border-[rgba(120,135,155,0.24)] p-3" key={stringOf(row, 'model_id') || String(index)}><div><strong>{stringOf(row, 'name') || stringOf(row, 'model_id') || '—'}</strong><span>{current} / {limit}</span></div><progress max={100} value={percent(current, limit)} /><small>{numberOf(row, 'waiting')} {t('system.globalSettings.runtime.models.columns.waiting')}</small></div>; })}</div>}</Card>
-    {taskDrawer ? <div className="wk-rq-task-drawer fixed bottom-0 right-0 top-0 z-[3200] w-[min(720px,100vw)] max-w-[720px] overflow-y-auto border-l border-[rgba(120,135,155,0.25)] bg-white p-6 shadow-[-8px_0_24px_rgba(23,32,51,0.14)]" role="dialog" aria-modal="true" aria-label={`${taskDrawer.queue} ${taskDrawer.state}`}><div className="wk-rq-task-drawer__head mb-5 flex items-start justify-between"><div><h3>{taskDrawer.queue}</h3><p className="wk-muted text-muted">{taskDrawer.state} · 任务详情</p></div><button type="button" aria-label="关闭" className="cursor-pointer border-0 bg-transparent text-2xl leading-none" onClick={() => setTaskDrawer(null)}>×</button></div>{taskDrawer.loading ? <Status>加载中...</Status> : taskDrawer.error ? <Status tone="error">{taskDrawer.error}</Status> : taskDrawer.tasks.length === 0 ? <Status>暂无任务</Status> : <ul className="wk-list m-0 list-none p-0">{taskDrawer.tasks.map((task, index) => <li key={stringOf(task, 'id') || String(index)} className="flex items-baseline justify-between gap-4 border-b border-line-soft py-[0.9rem]"><div className="wk-list-item-copy grid gap-[0.2rem] min-w-0"><strong>{stringOf(task, 'type') || '—'}</strong><span className="font-mono text-[0.8rem] text-muted">{stringOf(task, 'state') || taskDrawer.state}</span>{stringOf(task, 'last_error') ? <small>{stringOf(task, 'last_error')}</small> : null}</div></li>)}</ul>}</div> : null}
+    {taskDrawer ? <div className="wk-rq-task-drawer fixed bottom-0 right-0 top-0 z-[3200] w-[min(720px,100vw)] max-w-[720px] overflow-y-auto border-l border-[rgba(120,135,155,0.25)] bg-white p-6 shadow-[-8px_0_24px_rgba(23,32,51,0.14)]" role="dialog" aria-modal="true" aria-label={`${taskDrawer.queue} ${taskDrawer.state}`}><div className="wk-rq-task-drawer__head mb-5 flex items-start justify-between"><div><h3>{taskDrawer.queue}</h3><p className="wk-muted text-muted">{taskDrawer.state} · {drawer.detail}</p></div><button type="button" aria-label={drawer.close} className="cursor-pointer border-0 bg-transparent text-2xl leading-none" onClick={() => setTaskDrawer(null)}>×</button></div>{taskDrawer.loading ? <Status>{drawer.loading}</Status> : taskDrawer.error ? <Status tone="error">{taskDrawer.error}</Status> : taskDrawer.tasks.length === 0 ? <Status>{drawer.empty}</Status> : <ul className="wk-list m-0 list-none p-0">{taskDrawer.tasks.map((task, index) => <li key={stringOf(task, 'id') || String(index)} className="flex items-baseline justify-between gap-4 border-b border-line-soft py-[0.9rem]"><div className="wk-list-item-copy grid gap-[0.2rem] min-w-0"><strong>{stringOf(task, 'type') || '—'}</strong><span className="font-mono text-[0.8rem] text-muted">{stringOf(task, 'state') || taskDrawer.state}</span>{stringOf(task, 'last_error') ? <small>{stringOf(task, 'last_error')}</small> : null}</div></li>)}</ul>}</div> : null}
   </section>;
 }

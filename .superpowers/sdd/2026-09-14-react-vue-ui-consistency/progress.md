@@ -162,3 +162,10 @@
 - Validation: `pnpm run test:web` 891/891; `pnpm run typecheck:web`; `git diff --check`.
 - Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r023-platform-api-keys-copy.md`.
 - Remaining: authenticated runtime create/revoke evidence across supported locales.
+
+## Round N+34bd — runtime queue task copy parity
+
+- Added five-locale task drawer and task-state copy in `RuntimeQueuesPanel`.
+- Validation: `pnpm run test:web` 891/891; `pnpm run typecheck:web`; `git diff --check`.
+- Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r024-runtime-queues-task-copy.md`.
+- Remaining: environment-dependent authenticated queue task drawer evidence.
