@@ -352,6 +352,8 @@ test('question generation section exposes the count and instructions controls', 
   assert.match(html, /问题生成/);
   assert.match(html, /value="4"/);
   assert.match(html, /面向新员工/);
+  assert.match(html, /wk-question-enabled/);
+  assert.match(html, /role="switch"/);
 });
 
 test('config sections localize through the dialog copy table in other locales', () => {

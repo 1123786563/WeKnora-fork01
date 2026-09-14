@@ -30,6 +30,8 @@ Parser rows now follow Vue `KBParserSettings.vue` file-family grouping (Word/PPT
 
 Multimodal VLLM model, ASR model, and clearable image-description-language fields now use the project selector surface matching Vue `t-select`; empty required model states still use the existing form validation path.
 
+Question generation now follows the Vue settings-row anatomy: description column, 88px count control (1–10), project switch, and an enabled-only instruction row with the Vue description/textarea structure.
+
 The relation-type combobox also exposes a clear action, while entity endpoint comboboxes remain non-clearable, matching the Vue per-field `clearable` configuration.
 
 ## Verification

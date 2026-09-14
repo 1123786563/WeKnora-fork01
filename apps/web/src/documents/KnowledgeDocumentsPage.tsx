@@ -1032,41 +1032,24 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
       </fieldset>
       <fieldset className="wk-upload-confirm-question" id="wk-upload-section-question" data-section="question" style={sectionStyle("question")}>
         <legend>{t("knowledgeEditor.advanced.questionGeneration.label")}</legend>
-        <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
-          <label className="wk-checkbox" style={{ flex: 1 }}>
-            <input
-              type="checkbox"
-              checked={state.questionEnabled}
-              onChange={(event) => update({ questionEnabled: event.target.checked })}
-            />{" "}
-            {t("knowledgeEditor.advanced.questionGeneration.label")}
-          </label>
-          {state.questionEnabled ? (
-            <label>
-              <span className="wk-visually-hidden">{t("knowledgeEditor.advanced.questionGeneration.countLabel")}</span>
-              <input
-                type="number"
-                min={1}
-                max={10}
-                step={1}
-                value={state.questionCount}
-                onChange={(event) => update({ questionCount: Number(event.target.value) })}
-                style={{ width: "5rem" }}
-              />
-            </label>
-          ) : null}
+        <div className="wk-upload-question-row">
+          <div className="wk-upload-question-info">
+            <label id="wk-question-enabled-label">{t("knowledgeEditor.advanced.questionGeneration.label")}</label>
+            <p className="wk-muted">{t("knowledgeEditor.advanced.questionGeneration.countDescription")}</p>
+          </div>
+          <div className="wk-upload-question-control">
+            {state.questionEnabled ? <input className="wk-upload-question-count" type="number" min={1} max={10} step={1} aria-label={t("knowledgeEditor.advanced.questionGeneration.countLabel")} value={state.questionCount} onChange={(event) => update({ questionCount: Number(event.target.value) })} /> : null}
+            <GraphSwitch id="wk-question-enabled" checked={state.questionEnabled} labelId="wk-question-enabled-label" onChange={(checked) => update({ questionEnabled: checked })} />
+          </div>
         </div>
         {state.questionEnabled ? (
-          <label>
-            {t("knowledgeEditor.advanced.questionGeneration.instructionsLabel")}{" "}
-            <textarea
-              rows={3}
-              maxLength={4000}
-              placeholder={t("knowledgeEditor.advanced.questionGeneration.instructionsPlaceholder")}
-              value={state.questionInstructions}
-              onChange={(event) => update({ questionInstructions: event.target.value })}
-            />
-          </label>
+          <div className="wk-upload-question-instructions">
+            <div className="wk-upload-question-info">
+              <label htmlFor="wk-question-instructions">{t("knowledgeEditor.advanced.questionGeneration.instructionsLabel")}</label>
+              <p className="wk-muted">{t("knowledgeEditor.advanced.questionGeneration.instructionsDescription")}</p>
+            </div>
+            <textarea id="wk-question-instructions" rows={3} maxLength={4000} placeholder={t("knowledgeEditor.advanced.questionGeneration.instructionsPlaceholder")} value={state.questionInstructions} onChange={(event) => update({ questionInstructions: event.target.value })} />
+          </div>
         ) : null}
       </fieldset>
       {props.graphAvailable && props.graphSettings ? (

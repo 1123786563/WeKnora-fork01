@@ -68,6 +68,13 @@
 .wk-upload-parser-info { display: flex; flex: 1; flex-direction: column; gap: 5px; min-width: 0; }
 .wk-upload-parser-control { align-items: flex-start; display: flex; flex-direction: column; gap: 6px; width: 280px; }
 .wk-upload-parser-xlsx-header { align-items: center; color: var(--wk-muted, #667085); display: inline-flex; font-size: 12px; gap: 5px; }
+.wk-upload-question-row, .wk-upload-question-instructions { align-items: flex-start; border-bottom: 1px solid var(--wk-border, #e4e7ec); display: flex; gap: 16px; justify-content: space-between; padding: 10px 0; }
+.wk-upload-question-info { display: grid; flex: 1; gap: 4px; min-width: 0; }
+.wk-upload-question-info label { font-weight: 500; }
+.wk-upload-question-info p { font-size: 12px; margin: 0; }
+.wk-upload-question-control { align-items: center; display: flex; gap: 10px; }
+.wk-upload-question-count { box-sizing: border-box; height: 32px; width: 88px; }
+.wk-upload-question-instructions textarea { box-sizing: border-box; min-height: 72px; width: 280px; }
 .wk-upload-parser-info strong { font-size: 13px; font-weight: 500; }
 .wk-upload-parser-extensions { display: flex; flex-wrap: wrap; gap: 4px; }
 .wk-upload-parser-extensions span { background: rgb(120 135 155 / 10%); border-radius: 4px; color: var(--wk-muted, #667085); font-size: 11px; padding: 2px 5px; }
@@ -91,6 +98,7 @@
 .wk-upload-multi-select__popup button { background: transparent; border: 0; border-radius: 6px; cursor: pointer; font: inherit; padding: 8px 10px; text-align: left; }
 .wk-upload-multi-select__popup button:hover, .wk-upload-multi-select__popup button.is-active, .wk-upload-multi-select__popup button[aria-selected="true"] { background: rgb(7 192 95 / 10%); }
 @media (max-width: 720px) { .wk-upload-multi-select { width: 100%; } }
+@media (max-width: 720px) { .wk-upload-question-row, .wk-upload-question-instructions { flex-direction: column; } .wk-upload-question-instructions textarea { width: 100%; } }
 
 /* --- N007: graph section (Vue GraphSettings.vue scoped styles port) --------- */
 
