@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { WikiGraphData } from '@weknora/api-client';
@@ -32,14 +32,21 @@ export function KnowledgeGraphScreen() {
   const [type, setType] = useState('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const requestIdRef = useRef(0);
   const load = useCallback(async (nextMode: 'overview' | 'ego', nextCenter = center) => {
     if (!knowledgeBaseId) return;
+    const requestId = ++requestIdRef.current;
     setLoading(true); setError('');
     try {
       const result = await runtime.client.wiki.graph(knowledgeBaseId, { mode: nextMode, ...(nextMode === 'ego' && nextCenter ? { center: nextCenter, depth } : {}), ...(type === 'all' ? {} : { types: [type] }), limit: 500 });
+      if (requestId !== requestIdRef.current) return;
       setGraph(result); setMode(nextMode); setCenter(nextCenter);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : label("knowledgeBase.graph.loadFailed")); }
-    finally { setLoading(false); }
+    } catch (cause) {
+      if (requestId !== requestIdRef.current) return;
+      setError(cause instanceof Error ? cause.message : label("knowledgeBase.graph.loadFailed"));
+    } finally {
+      if (requestId === requestIdRef.current) setLoading(false);
+    }
   }, [center, depth, knowledgeBaseId, runtime.client, type]);
   // Node presses call `load` directly and update `center`; including center
   // here would immediately issue the same graph request a second time.
