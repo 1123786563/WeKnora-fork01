@@ -125,3 +125,4 @@
 - 工具结果标题五语言键正式提交为 `fix(chat): add localized tool result titles`，由 `ToolResultView` 按活动 `ChatCopyTable` 渲染；无 copy 的纯函数调用仍保持旧英文兼容。提交后工作树仅保留原有未跟踪用户文件。
 - 工具结果标题映射提交后的 Web 全量回归保持 891/891，`git diff --check` 通过；当前提交链为 `5a87f8c1`、`fa31a5a6`、`16271df3`。
 - 工具搜索命中元数据已支持活动语言：`toolChunkHits`/`toolKeywordHits` 五语言键接入 Search/Grep view，且无 copy 的旧调用继续输出原英文格式；提交 `fix(chat): localize tool hit metadata`。shared 465/465、Web typecheck 通过。
+- Shell 工具结果的 killed/truncated 状态已接入五语言 `ChatCopyTable`，提交 `fix(chat): localize shell status labels`；shared 465/465、Web typecheck 与 `git diff --check` 通过。
