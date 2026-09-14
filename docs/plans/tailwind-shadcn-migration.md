@@ -118,6 +118,13 @@ API 契约、鉴权、权限、表单校验、聊天流式、工具审批、上�
 - knowledge settings/faq/editor 残余 约 40 行
 清理纪律同 conventions：逐族 grep 消费方→utilities 追加→删规则→门禁→提交；
 hook 类（测试/JS 引用）保留类名。
+### 批次27：data-sources + admin 域块 ✅（子任务执行，Orchestrator 验收提交）
+- DataSourcesPage 14 处 + AdministrationPage 14 处 utilities 化；
+  styles.css 删 19 条（data-sources 13 + admin 5 + 720px media 1）；
+  合并规则拆分（.wk-list-actions select 保留）；styles.css 1122→975 行。
+- 代理纠正任务前提：.wk-checkbox/.wk-toggle-grid 实际消费方为 KnowledgeSettingsPage:76-77
+  与 McpSettingsPanel:940（非 AdministrationPage），按协议保留待后续域处理。
+- 验收：typecheck 0、McpToolsDirectory+SettingsPage 测试 18/18、web 856/856、build ✓。
 ### 批次19：TenantMembers 域 ✅（子任务执行，Orchestrator 验收提交）
 - TenantMembersPanel.tsx ~95 条规则内联 utilities（表格/分页/标签三态/确认弹层；
   settings-wrapper 抽屉 select chrome 特异性更高今日实际生效，按生效值 4 条未复制）；

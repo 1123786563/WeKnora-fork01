@@ -39,12 +39,6 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-diff-add { background: #ecfdf3; color: #137333; display: block; }
 .wk-diff-del { background: #fef3f2; color: #b42318; display: block; }
 .wk-diff-same { display: block; }
-.wk-data-sources-page { max-width: 1180px; }
-.wk-data-source-item { align-items: flex-start !important; }
-.wk-data-source-item small { color: #66758b; }
-.wk-data-source-logs, .wk-data-source-editor { margin-top: 1rem; }
-.wk-data-source-logs h2, .wk-data-source-editor h2 { margin: 0; }
-.wk-data-source-item .wk-list-actions { flex-wrap: wrap; }
 .wk-settings-tabs { display: flex; gap: .5rem; max-width: 1180px; margin: 0 auto; padding: 1rem 1rem 0; }
 .wk-settings-tab { border: 1px solid #dce3ed; border-radius: 999px; background: #fff; color: #506078; cursor: pointer; padding: .5rem .8rem; }
 .wk-settings-tab.is-active { border-color: #2e6de6; color: #1849a9; background: #eff4ff; }
@@ -67,12 +61,7 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-preview-result ol { margin: 0; padding-left: 1.25rem; max-height: 18rem; overflow: auto; }
 .wk-preview-result li { margin: .35rem 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .wk-settings-save { display: flex; justify-content: flex-end; margin-top: 1rem; }
-.wk-administration-page { max-width: 1180px; }
-.wk-admin-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
-.wk-admin-grid h2 { margin: 0 0 .75rem; }
-.wk-admin-form { display: grid; gap: .8rem; }
-.wk-admin-form label { display: grid; gap: .35rem; font-weight: 600; }
-.wk-admin-form input, .wk-admin-form select, .wk-list-actions select { border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #172033; font: inherit; padding: .55rem .65rem; }
+.wk-list-actions select { border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #172033; font: inherit; padding: .55rem .65rem; }
 .wk-list-actions select { max-width: 9rem; }
 .wk-organizations-page { max-width: 1180px; }
 .wk-organization-layout { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: 1rem; align-items: start; }
@@ -341,7 +330,6 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-chat-suggestions-grid button { background: #fff; border: 1px solid #dce3ed; border-radius: 6px; cursor: pointer; padding: .65rem; text-align: left; }
 .wk-chat-suggestions-grid small { color: #66758b; display: block; margin-top: .25rem; }
 @media (max-width: 720px) { .wk-chat-page { grid-template-columns: 1fr; } .wk-chat-message-scroll { max-height: 55vh; } }
-@media (max-width: 720px) { .wk-admin-grid { grid-template-columns: 1fr; } }
 @media (max-width: 720px) { .wk-organization-layout { grid-template-columns: 1fr; } .wk-organization-detail { grid-column: auto; } }
 @media (max-width: 720px) { .wk-settings-layout { grid-template-columns: 1fr; } .wk-settings-panel-heading { flex-direction: column; } .wk-settings-operation-list { justify-content: flex-start; } .wk-settings-values div { grid-template-columns: 1fr; gap: .25rem; } }
 @media (max-width: 720px) { .wk-wiki-layout { grid-template-columns: 1fr; } }
@@ -636,13 +624,6 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 .wk-graph-status-card-secondary { color: #667085; font-size: .8rem; margin-top: .25rem; }
 .wk-graph-search-results li button:hover, .wk-graph-search-results li button:focus-visible { background: #eef5ff; outline: none; }
 .wk-graph-search-results li button span { color: #718096; font-size: .75rem; }
-.wk-data-source-log-stats { color: #718096; font-size: .75rem; }
-.wk-data-source-resources { margin-top: 1rem; }
-.wk-data-source-resource-row { align-items: center; display: flex; justify-content: space-between; }
-.wk-data-source-resource-row div { display: grid; gap: .2rem; min-width: 0; }
-.wk-data-source-resource-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wk-data-source-resource-row small { color: #718096; }
-.wk-data-source-resource-row label { align-items: center; cursor: pointer; display: inline-flex; gap: .45rem; min-width: 0; }
 .wk-resource-checkbox { height: 1px; opacity: 0; position: absolute; width: 1px; }
 .wk-resource-checkbox:focus-visible + .wk-resource-check { outline: 2px solid #2e6de6; outline-offset: 2px; }
 .wk-resource-check { align-items: center; background: #fff; border: 1px solid #a8b5c8; border-radius: 3px; color: #fff; display: inline-flex; flex: 0 0 15px; font-size: 12px; height: 15px; justify-content: center; line-height: 1; width: 15px; }
