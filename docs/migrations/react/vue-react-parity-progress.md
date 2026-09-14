@@ -2348,3 +2348,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - 工具审批 JSON 编辑器的无效 JSON 与非对象参数错误改用共享五语言文案；解析函数保留无 copy 参数时的原有英文默认行为。
 - 审批专项 17/17、Web 全量 891/891、shared typecheck 通过；真实错误交互浏览器证据仍待补齐。
+
+## 2026-09-15 Round N+34ai — React 平台主路由运行时巡检
+
+- 已认证 Chrome 逐页检查 `/platform/knowledge-bases`、`/platform/agents`、`/platform/organizations`：侧栏分组、筛选入口、创建按钮、空态和计数均可达，中文 AX 文案无新增英文泄漏。
+- 知识库页显示四个范围筛选与空态；智能体页显示四个内置智能体及管理入口；共享空间页显示全部/创建/加入筛选和双入口空态。
+- 该轮只证明 React 运行时可达性和空态结构；Vue 同账号对照、真实变更链路、computed-style 与桌面/Embed 证据仍缺失。
