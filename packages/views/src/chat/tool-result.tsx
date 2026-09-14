@@ -625,9 +625,10 @@ function EmptyState({ label }: { label: string }) {
   return <p className="wk-tool-empty m-0 text-[0.78rem] italic text-[#66758b]">{label}</p>;
 }
 
-export function SearchResultsRenderer({ data }: { data: unknown }) {
+export function SearchResultsRenderer({ data, copy }: { data: unknown; copy?: ChatCopyTable }) {
+  const labels = copy ?? CHAT_COPY;
   const view = searchResultsView(data);
-  if (!view.rows.length) return <EmptyState label={LABELS.noResults} />;
+  if (!view.rows.length) return <EmptyState label={labels.toolNoResults} />;
   return (
     <ul className={"wk-tool-search-results " + TOOL_RESULT_LIST}>
       {view.rows.map((row) => (
@@ -641,9 +642,10 @@ export function SearchResultsRenderer({ data }: { data: unknown }) {
   );
 }
 
-export function WebSearchResultsRenderer({ data }: { data: unknown }) {
+export function WebSearchResultsRenderer({ data, copy }: { data: unknown; copy?: ChatCopyTable }) {
+  const labels = copy ?? CHAT_COPY;
   const view = webSearchResultsView(data);
-  if (!view.rows.length) return <EmptyState label={LABELS.noResults} />;
+  if (!view.rows.length) return <EmptyState label={labels.toolNoResults} />;
   return (
     <ul className={"wk-tool-web-results " + TOOL_RESULT_LIST}>
       {view.rows.map((row) => (
@@ -662,9 +664,10 @@ export function WebSearchResultsRenderer({ data }: { data: unknown }) {
   );
 }
 
-export function DatabaseQueryRenderer({ data }: { data: unknown }) {
+export function DatabaseQueryRenderer({ data, copy }: { data: unknown; copy?: ChatCopyTable }) {
+  const labels = copy ?? CHAT_COPY;
   const view = databaseQueryView(data);
-  if (!view.rows.length) return <EmptyState label={LABELS.noRecords} />;
+  if (!view.rows.length) return <EmptyState label={labels.toolNoRecords} />;
   return (
     <div className="wk-tool-table-wrap overflow-x-auto rounded-[6px] border border-[#e3e8ef]">
       <table className="wk-tool-table w-full border-collapse text-[0.75rem]">
@@ -678,8 +681,9 @@ export function DatabaseQueryRenderer({ data }: { data: unknown }) {
 }
 
 export function GrepResultsRenderer({ data, copy }: { data: unknown; copy?: ChatCopyTable }) {
+  const labels = copy ?? CHAT_COPY;
   const view = grepResultsView(data, copy ?? CHAT_COPY);
-  if (!view.rows.length) return <EmptyState label={LABELS.noMatches} />;
+  if (!view.rows.length) return <EmptyState label={labels.toolNoMatches} />;
   return (
     <ul className={"wk-tool-grep-results " + TOOL_RESULT_LIST}>
       {view.rows.map((row) => (
@@ -693,34 +697,35 @@ export function GrepResultsRenderer({ data, copy }: { data: unknown; copy?: Chat
   );
 }
 
-export function ShellExecRenderer({ data, args, output }: { data: unknown; args?: unknown; output?: unknown }) {
+export function ShellExecRenderer({ data, args, output, copy }: { data: unknown; args?: unknown; output?: unknown; copy?: ChatCopyTable }) {
+  const labels = copy ?? CHAT_COPY;
   const view = shellExecView(data, args, output);
   return (
     <div className="wk-tool-shell flex flex-col gap-[0.4rem]">
       {view.command ? <pre className={"wk-tool-shell-command m-0 rounded-[6px] bg-[#1f2430] px-[0.7rem] py-[0.5rem] text-[0.75rem] text-[#9ecbff] whitespace-pre-wrap break-words " + MONO}><span aria-hidden="true" className="font-mono! text-[0.8rem]! text-muted!">$ </span>{view.command}</pre> : null}
       {view.workDir || view.exitCode !== null || view.durationLabel || view.killed || view.truncated ? (
         <div className="wk-tool-shell-meta flex flex-wrap gap-x-[0.75rem] gap-y-[0.15rem] text-[0.72rem] text-[#8a94a6]">
-          {view.workDir ? <span className="font-mono! text-[0.8rem]! text-muted!">{LABELS.workDir}: {view.workDir}</span> : null}
-          {view.exitCode !== null ? <span className={`font-mono! text-[0.8rem]! text-muted! ${view.exitCode !== 0 ? 'is-error text-[#c0392b] font-semibold' : ''}`}>{LABELS.exitCode}: {view.exitCode}</span> : null}
+          {view.workDir ? <span className="font-mono! text-[0.8rem]! text-muted!">{labels.toolWorkDir}: {view.workDir}</span> : null}
+          {view.exitCode !== null ? <span className={`font-mono! text-[0.8rem]! text-muted! ${view.exitCode !== 0 ? 'is-error text-[#c0392b] font-semibold' : ''}`}>{labels.toolExitCode}: {view.exitCode}</span> : null}
           {view.durationLabel ? <span className="font-mono! text-[0.8rem]! text-muted!">{view.durationLabel}</span> : null}
           {view.killed ? <span className="font-mono! text-[0.8rem]! text-muted!">{LABELS.killed}</span> : null}
           {view.truncated ? <span className="font-mono! text-[0.8rem]! text-muted!">{LABELS.truncated}</span> : null}
         </div>
       ) : null}
-      {view.stdoutBinary || view.stderrBinary ? <EmptyState label={LABELS.binarySuppressed} /> : null}
+      {view.stdoutBinary || view.stderrBinary ? <EmptyState label={labels.toolBinarySuppressed} /> : null}
       {view.stdout ? (
         <div className="wk-tool-shell-stream overflow-hidden rounded-[6px] border border-[#e3e8ef]">
-          <div className="wk-tool-shell-stream-label border-b border-b-[#e3e8ef] bg-[#f6f8fa] px-[0.6rem] py-[0.25rem] text-[0.7rem] font-semibold text-[#52606d]">{LABELS.stdout}</div>
+          <div className="wk-tool-shell-stream-label border-b border-b-[#e3e8ef] bg-[#f6f8fa] px-[0.6rem] py-[0.25rem] text-[0.7rem] font-semibold text-[#52606d]">{labels.toolStdout}</div>
           <pre className={"m-0 max-h-[16rem] overflow-auto bg-white px-[0.7rem] py-[0.5rem] text-[0.72rem] leading-[1.5] text-[#24292f] whitespace-pre-wrap break-words " + MONO}>{view.stdout}</pre>
         </div>
       ) : null}
       {view.stderr ? (
         <div className="wk-tool-shell-stream is-stderr overflow-hidden rounded-[6px] border border-[#e3e8ef]">
-          <div className="wk-tool-shell-stream-label border-b border-b-[#e3e8ef] bg-[#f6f8fa] px-[0.6rem] py-[0.25rem] text-[0.7rem] font-semibold text-[#c0392b]">{LABELS.stderr}</div>
+          <div className="wk-tool-shell-stream-label border-b border-b-[#e3e8ef] bg-[#f6f8fa] px-[0.6rem] py-[0.25rem] text-[0.7rem] font-semibold text-[#c0392b]">{labels.toolStderr}</div>
           <pre className={"m-0 max-h-[16rem] overflow-auto bg-white px-[0.7rem] py-[0.5rem] text-[0.72rem] leading-[1.5] text-[#24292f] whitespace-pre-wrap break-words " + MONO}>{view.stderr}</pre>
         </div>
       ) : null}
-      {view.empty ? <EmptyState label={LABELS.emptyOutput} /> : null}
+      {view.empty ? <EmptyState label={labels.toolEmptyOutput} /> : null}
     </div>
   );
 }
@@ -736,7 +741,7 @@ function InfoCode({ children }: { children: React.ReactNode }) {
 export function ChunkDetailRenderer({ data, copy }: { data: unknown; copy?: ChatCopyTable }) {
   const view = chunkDetailView(data);
   const labels = copy ?? CHAT_COPY;
-  if (!view.chunkId && !view.knowledgeId && !view.content) return <EmptyState label={LABELS.noRecords} />;
+  if (!view.chunkId && !view.knowledgeId && !view.content) return <EmptyState label={labels.toolNoRecords} />;
   return (
     <div className="wk-tool-chunk-detail flex flex-col gap-[0.3rem]">
       {view.chunkId ? <InfoField label={labels.chunkIdLabel}><InfoCode>{view.chunkId}</InfoCode></InfoField> : null}
@@ -776,7 +781,7 @@ export function RelatedChunksRenderer({ data, copy }: { data: unknown; copy?: Ch
 export function KnowledgeBaseListRenderer({ data, copy }: { data: unknown; copy?: ChatCopyTable }) {
   const view = knowledgeBaseListView(data);
   const labels = copy ?? CHAT_COPY;
-  if (!view.rows.length) return <EmptyState label={LABELS.noResults} />;
+  if (!view.rows.length) return <EmptyState label={labels.toolNoResults} />;
   return (
     <div className="wk-tool-kb-list">
       <div className="wk-tool-section-title mb-[0.2rem] text-[0.72rem] font-semibold text-[#52606d]">{formatChatCopy(labels, 'knowledgeBaseCount', { count: view.count })}</div>
@@ -799,7 +804,7 @@ export function KnowledgeBaseListRenderer({ data, copy }: { data: unknown; copy?
 export function DocumentInfoRenderer({ data, copy }: { data: unknown; copy?: ChatCopyTable }) {
   const labels = copy ?? CHAT_COPY;
   const view = documentInfoView(data);
-  if (!view.rows.length) return <EmptyState label={LABELS.noResults} />;
+  if (!view.rows.length) return <EmptyState label={labels.toolNoResults} />;
   return (
     <ul className="wk-tool-doc-list m-0 flex list-none flex-col gap-[0.4rem] p-0">
       {view.rows.map((row) => (
@@ -836,7 +841,7 @@ export function DocumentInfoRenderer({ data, copy }: { data: unknown; copy?: Cha
 export function WebFetchRenderer({ data, copy }: { data: unknown; copy?: ChatCopyTable }) {
   const view = webFetchView(data);
   const labels = copy ?? CHAT_COPY;
-  if (!view.rows.length) return <EmptyState label={LABELS.noResults} />;
+  if (!view.rows.length) return <EmptyState label={labels.toolNoResults} />;
   return (
     <ul className="wk-tool-web-fetch m-0 flex list-none flex-col gap-[0.4rem] p-0">
       {view.rows.map((row) => (
@@ -873,9 +878,10 @@ export function WebFetchRenderer({ data, copy }: { data: unknown; copy?: ChatCop
   );
 }
 
-export function ThinkingRenderer({ data, output }: { data: unknown; output?: unknown }) {
+export function ThinkingRenderer({ data, output, copy }: { data: unknown; output?: unknown; copy?: ChatCopyTable }) {
+  const labels = copy ?? CHAT_COPY;
   const thought = thinkingView(data, output);
-  if (!thought) return <EmptyState label={LABELS.emptyOutput} />;
+  if (!thought) return <EmptyState label={labels.toolEmptyOutput} />;
   return <div className="wk-tool-thinking wk-tool-full-content whitespace-pre-wrap break-words text-[0.75rem] leading-[1.55] text-[#52606d]">{thought}</div>;
 }
 
@@ -886,9 +892,10 @@ const PLAN_STATUS_ICONS: Readonly<Record<PlanStepRow['status'], string>> = Objec
   skipped: '—',
 });
 
-export function PlanRenderer({ data }: { data: unknown }) {
+export function PlanRenderer({ data, copy }: { data: unknown; copy?: ChatCopyTable }) {
+  const labels = copy ?? CHAT_COPY;
   const view = planView(data);
-  if (!view.steps.length) return <EmptyState label={LABELS.noRecords} />;
+  if (!view.steps.length) return <EmptyState label={labels.toolNoRecords} />;
   return (
     <div className="wk-tool-plan">
       {view.task ? <div className="wk-tool-section-title mb-[0.2rem] text-[0.72rem] font-semibold text-[#52606d]">{view.task}</div> : null}
@@ -926,7 +933,7 @@ const TYPED_RENDERERS: Readonly<Partial<Record<NormalizedToolResult['renderer'],
 export function ToolResultView({ toolCall, copy }: { toolCall: ToolResultViewInput; copy?: ChatCopyTable }) {
   const presentation = toolResultPresentation(toolCall);
   if (!presentation.text && presentation.renderer === 'plain-text') {
-    return <small>{presentation.title}: no output</small>;
+    return <small>{presentation.title}: {(copy ?? CHAT_COPY).toolEmptyOutput}</small>;
   }
   const Typed = TYPED_RENDERERS[presentation.renderer];
   if (Typed) {
