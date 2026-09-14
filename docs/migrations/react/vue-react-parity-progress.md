@@ -2044,3 +2044,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Steer now reuses the KB mention picker and sends `mentioned_items` through the existing API contract (`fadbada8`, `cae22003`). Escape/arrow/Enter keyboard behavior and active-option ARIA state match the main composer.
 - Steer explicitly blocks when attachments are present and shows localized guidance instead of silently dropping them. Focused coverage passes 32/32; Web full regression passes 879/879; `typecheck:web`, `build:web`, and `git diff --check` pass. Independent review found no P1/P2.
 - Remaining N019 scope is document/file/tag/MCP/skill mention parity, true model selection request contract, and protected browser/backend/platform evidence.
+
+## 2026-09-15 Round N+33e — N018 session source buckets
+
+- PlatformShell now implements Vue-aligned source filtering across `205a4224`, `283af9e7`, and `06b1e977`: admin-gated API/Embed/IM buckets, correct IM display-key/API-source mapping, count probes before rendering, source-aware pagination/retry, and stale-source reset across client/role/bucket changes.
+- Focused shell tests pass 12/12; Web full regression passes 883/883; `typecheck:web`, `build:web`, and `git diff --check` pass. Independent review found no P1/P2/P3.
+- Remaining N018 differences are inline rename/clear semantics, batch management/spinner, and protected runtime evidence.
