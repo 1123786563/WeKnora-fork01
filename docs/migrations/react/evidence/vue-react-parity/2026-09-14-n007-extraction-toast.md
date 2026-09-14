@@ -65,3 +65,9 @@ The relation-type combobox also exposes a clear action, while entity endpoint co
 - Browser extraction failure against a live graph-enabled backend remains unavailable; the current deployment has graph extraction disabled, so runtime endpoint acceptance is `blocked-env`.
 
 Status: implementation and static/component regression verified; live graph extraction and cross-app screenshot evidence remain open.
+
+## R027 model editor continuation
+
+Vue `ModelEditorDialog.vue` uses TDesign inputs for dimension, context window, and max concurrency, plus TDesign switches for dimension override and vision support. React now uses project-level `ModelNumberInput` and `ModelSwitch` wrappers for those same fields. The wrappers preserve the existing draft update functions and numeric bounds while matching the Vue 32px input chrome, green focus state, disabled state, switch track/handle motion, inline descriptions, and keyboard-visible focus.
+
+Verification: `pnpm exec tsx --test apps/web/src/settings/ModelSettingsPanel.test.tsx` 23/23; `pnpm run test:web` 835/835; `pnpm run typecheck:web` passed; `git diff --check` passed. This is static/component evidence only; authenticated browser computed-style, real backend mutation/connection evidence, and Wails/native evidence remain open under R027.

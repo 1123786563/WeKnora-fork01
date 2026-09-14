@@ -314,11 +314,13 @@ test('embedding editor gates the dimension input behind the override toggle', as
   assert.match(text, /自定义输出维度/);
   const dimension = inputByPlaceholder(container, '例如：1536');
   assert.ok(dimension);
+  assert.equal(dimension.className, 'wk-model-number-input', 'advanced numeric fields use the Vue-shaped project input');
   assert.equal(dimension.disabled, true, 'dimension stays disabled until the override toggle is on (ModelEditorDialog.vue line 325)');
 
   const overrideToggle = Array.from(container.querySelectorAll('input[type="checkbox"]'))
     .find((input) => input.closest('label')?.textContent?.includes('自定义输出维度'));
   assert.ok(overrideToggle);
+  assert.ok(overrideToggle.closest('label')?.querySelector('.wk-model-switch__track'), 'Vue t-switch anatomy is preserved');
   await click(overrideToggle);
   assert.equal(dimension.disabled, false);
 });

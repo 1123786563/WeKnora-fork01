@@ -58,6 +58,56 @@ type WkcCredentialState = "loading" | "unconfigured" | "configured" | "expired";
 
 type ModelOption = { value: string; label: string; description?: string };
 
+function ModelNumberInput({
+  value,
+  min,
+  max,
+  placeholder,
+  disabled = false,
+  onChange,
+}: {
+  value: number | "";
+  min: number;
+  max: number;
+  placeholder?: string;
+  disabled?: boolean;
+  onChange: (value: number | "") => void;
+}) {
+  return (
+    <input
+      className="wk-model-number-input"
+      type="number"
+      min={min}
+      max={max}
+      placeholder={placeholder}
+      disabled={disabled}
+      value={value}
+      onChange={(event) => onChange(toNumberInput(event.target.value))}
+    />
+  );
+}
+
+function ModelSwitch({
+  checked,
+  label,
+  description,
+  onChange,
+}: {
+  checked: boolean;
+  label: string;
+  description: string;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="wk-model-switch">
+      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+      <span className="wk-model-switch__track" aria-hidden="true" />
+      <span className="wk-model-switch__label">{label}</span>
+      <span className="wk-model-switch__description">{description}</span>
+    </label>
+  );
+}
+
 export function ModelOptionSelect({
   value,
   options,
@@ -1489,14 +1539,13 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                   <>
                     <label>
                       {t("model.editor.dimensionLabel")}
-                      <input
-                        type="number"
+                      <ModelNumberInput
                         min={128}
                         max={4096}
                         placeholder={t("model.editor.dimensionPlaceholder")}
                         disabled={!draft.supportsDimensionOverride || (draft.source === "local" && checking)}
                         value={draft.dimension}
-                        onChange={(event) => updateDraft("dimension", toNumberInput(event.target.value))}
+                        onChange={(value) => updateDraft("dimension", value)}
                       />
                     </label>
                     {draft.source === "local" && draft.name ? (
@@ -1507,42 +1556,35 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                     {dimensionMessage ? (
                       <Status tone={dimensionMessage.ok ? "success" : "error"}>{dimensionMessage.text}</Status>
                     ) : null}
-                    <label className="wk-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={draft.supportsDimensionOverride}
-                        onChange={(event) => updateDraft("supportsDimensionOverride", event.target.checked)}
-                      />{" "}
-                      {t("model.editor.dimensionOverrideLabel")}
-                    </label>
-                    <p className="wk-muted">{t("model.editor.dimensionOverrideDesc")}</p>
+                    <ModelSwitch
+                      checked={draft.supportsDimensionOverride}
+                      label={t("model.editor.dimensionOverrideLabel")}
+                      description={t("model.editor.dimensionOverrideDesc")}
+                      onChange={(checked) => updateDraft("supportsDimensionOverride", checked)}
+                    />
                   </>
                 ) : null}
                 {draft.type === "chat" || draft.type === "vllm" ? (
                   <label>
                     {t("model.editor.contextWindowLabel")}
-                    <input
-                      type="number"
+                    <ModelNumberInput
                       min={1024}
                       max={10000000}
                       placeholder={t("model.editor.contextWindowPlaceholder", { value: DEFAULT_MODEL_CONTEXT_WINDOW })}
                       value={draft.contextWindow}
-                      onChange={(event) => updateDraft("contextWindow", toNumberInput(event.target.value))}
+                      onChange={(value) => updateDraft("contextWindow", value)}
                     />
                     <span className="wk-muted">{t("model.editor.contextWindowDesc")}</span>
                   </label>
                 ) : null}
                 {draft.type === "chat" ? (
                   <>
-                    <label className="wk-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={draft.supportsVision}
-                        onChange={(event) => updateDraft("supportsVision", event.target.checked)}
-                      />{" "}
-                      {t("model.editor.supportsVisionLabel")}
-                    </label>
-                    <p className="wk-muted">{t("model.editor.supportsVisionDesc")}</p>
+                    <ModelSwitch
+                      checked={draft.supportsVision}
+                      label={t("model.editor.supportsVisionLabel")}
+                      description={t("model.editor.supportsVisionDesc")}
+                      onChange={(checked) => updateDraft("supportsVision", checked)}
+                    />
                   </>
                 ) : null}
                 {draft.type === "chat" && draft.source === "remote" ? (
@@ -1561,13 +1603,12 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                 ) : null}
                 <label>
                   {t("model.editor.maxConcurrencyLabel")}
-                  <input
-                    type="number"
+                  <ModelNumberInput
                     min={0}
                     max={4096}
                     placeholder={t("model.editor.maxConcurrencyPlaceholder")}
                     value={draft.maxConcurrency}
-                    onChange={(event) => updateDraft("maxConcurrency", toNumberInput(event.target.value))}
+                    onChange={(value) => updateDraft("maxConcurrency", value)}
                   />
                   <span className="wk-muted">{t("model.editor.maxConcurrencyDesc")}</span>
                 </label>

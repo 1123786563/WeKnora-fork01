@@ -1878,3 +1878,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 对照 Vue `WikiBrowser.vue`，React 图谱页移除迁移时新增的可见 depth 原生下拉；保留 Vue 默认 ego depth=1 及 graph API 查询参数，避免 React 出现 Vue 没有的交互和浏览器默认外观。
 - 图谱单元测试 8/8、Web 全量 835/835、`typecheck:web` 与 `git diff --check` 通过；N012 证据已更新。
 - N012 仍需图谱 canvas/legend/help/status-card 的浏览器 computed-style、真实后端及平台证据。
+
+## 2026-09-14 Round N+74 — R027 模型高级字段控件
+
+- 对照 Vue `ModelEditorDialog.vue` 的 TDesign `t-input[type=number]` 与 `t-switch`，模型 dimension、context window、max concurrency 和两个能力开关改为 React 项目级 `ModelNumberInput`/`ModelSwitch`；保留原有边界、禁用条件、更新回调、payload 与校验契约，并补齐 32px 输入、Vue 绿 focus/disabled 状态、开关轨道/滑块动效与说明文案布局。
+- 模型设置定向测试 23/23、Web 全量 835/835、`typecheck:web` 与 `git diff --check` 通过。
+- R027 继续保持 `implementing`：已完成该字段控件的静态与组件行为核对；浏览器同条件 computed-style/截图、真实后端保存与连接测试及 Wails/native 证据仍未闭环。
