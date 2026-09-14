@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { formatMessage, supportedLocales } from '@weknora/i18n';
 import {
   MOBILE_CAPABILITIES,
   capabilityAction,
+  capabilityMessageKeys,
   capabilityModeLabel,
+  capabilityModeMessageKey,
   mobileCapability,
   projectMobileCapability,
 } from './capabilities.ts';
@@ -53,4 +56,20 @@ test('mobile capability projection fails closed when the server disables a surfa
   assert.equal(projected.reason, 'not_supported_in_lite');
   assert.equal(projected.mode, 'unsupported');
   assert.deepEqual(projected.requiredRoles, ['admin']);
+});
+
+test('management capability catalog has localized label, reason, and mode keys', () => {
+  for (const locale of supportedLocales) {
+    assert.notEqual(formatMessage(locale, 'mobileManagement.serverDisabled'), 'mobileManagement.serverDisabled', `${locale}:serverDisabled`);
+    for (const capability of MOBILE_CAPABILITIES) {
+      const keys = capabilityMessageKeys(capability.key);
+      assert.ok(keys);
+      assert.notEqual(formatMessage(locale, keys!.label), keys!.label, `${locale}:${capability.key}:label`);
+      assert.notEqual(formatMessage(locale, keys!.reason), keys!.reason, `${locale}:${capability.key}:reason`);
+    }
+    for (const mode of ['native-write', 'native-read', 'web-handoff', 'unsupported'] as const) {
+      const key = capabilityModeMessageKey(mode);
+      assert.notEqual(formatMessage(locale, key), key, `${locale}:${mode}`);
+    }
+  }
 });

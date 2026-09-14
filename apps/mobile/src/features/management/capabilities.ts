@@ -14,6 +14,26 @@ export interface MobileCapability {
   requiredRoles: readonly MobileCapabilityRole[];
 }
 
+/** Stable message keys keep server supplied capability reasons as data while
+ * allowing the built-in catalog copy to follow the active mobile locale. */
+export const MOBILE_CAPABILITY_MESSAGE_KEYS: Readonly<Record<string, { label: string; reason: string }>> = Object.freeze(
+  Object.fromEntries([
+    'knowledge', 'chat', 'attachments', 'approvals', 'identity', 'api-keys', 'system-runtime',
+    'organizations', 'configuration', 'skills', 'wiki-faq', 'sandbox', 'offline-writes', 'embed-admin',
+  ].map((key) => [key, { label: `mobileManagement.capability.${key}.label`, reason: `mobileManagement.capability.${key}.reason` }])),
+);
+
+export function capabilityMessageKeys(key: string): { label: string; reason: string } | undefined {
+  return MOBILE_CAPABILITY_MESSAGE_KEYS[key];
+}
+
+export function capabilityModeMessageKey(mode: MobileCapabilityMode): string {
+  if (mode === 'native-write') return 'mobileManagement.mode.nativeWrite';
+  if (mode === 'native-read') return 'mobileManagement.mode.nativeRead';
+  if (mode === 'web-handoff') return 'mobileManagement.mode.webHandoff';
+  return 'mobileManagement.mode.unsupported';
+}
+
 const TENANT_ROLES: readonly MobileCapabilityRole[] = ['owner', 'admin', 'contributor', 'viewer'];
 
 export const MOBILE_CAPABILITIES: readonly MobileCapability[] = [
