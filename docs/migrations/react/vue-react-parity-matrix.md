@@ -155,3 +155,4 @@ T07 resource-settings update (2026-09-15): `42d82596` localizes editor labels, p
 T07 parser credential-hint update (2026-09-15): `fc5b2377` localizes the API-key safety hint across five locales while preserving parser test/save behavior; settings coverage 15/15, independent review P1/P2/P3=0.
 R013 parser-settings runtime update (2026-09-15): authenticated React AX confirms localized parser fields and API-key safety hint; successful parser connectivity/backend mutations and same-session Vue pixel comparison remain open.
 T07 settings-heading update (2026-09-15): `f5426f9d` maps storage, vector-store and web-search headings to Vue i18n title/description keys, removing English inventory fallback; surface tests 20/20, independent review P1/P2/P3=0.
+R013 storage-heading runtime update (2026-09-15): authenticated React AX confirms localized storage heading/description/editor/row fallback copy; same-session Vue pixel comparison remains open.

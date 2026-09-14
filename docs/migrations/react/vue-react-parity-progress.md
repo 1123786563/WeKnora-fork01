@@ -2211,3 +2211,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - Storage, vector-store and web-search settings headings now use their Vue i18n title/description keys (`f5426f9d`), removing the English inventory fallback from these protected sections.
 - Surface tests pass 20/20; Web typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
+
+## 2026-09-15 Round N+34h — R013 storage heading browser evidence
+
+- Authenticated React Chrome AX confirms localized storage heading, description, editor labels and row fallbacks.
+- Same-session Vue pixel comparison remains open.
