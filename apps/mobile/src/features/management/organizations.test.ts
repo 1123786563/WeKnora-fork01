@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { formatMessage, supportedLocales } from '@weknora/i18n';
 import { canCreateOrganization, canManageOrganization, shareResourceId, shareResourceLabel, validateOrganizationDraft } from './organizations.ts';
 
 test('mobile organization writes are limited to organization admins', () => {
@@ -29,4 +30,15 @@ test('mobile shared-resource rows preserve the server id required for a confirme
   assert.equal(shareResourceLabel(knowledgeBase, 'knowledge-base'), 'Support KB');
   assert.equal(shareResourceLabel(agent, 'agent'), 'Support agent');
   assert.equal(shareResourceId({ id: 'missing-resource' }, 'agent'), null);
+});
+
+
+test('mobile shared-resource labels localize missing names in every supported locale', () => {
+  const missing = { id: 'share-missing' };
+  for (const locale of supportedLocales) {
+    const format = (key: string) => formatMessage(locale, key);
+    assert.equal(shareResourceLabel(missing, 'knowledge-base', format), formatMessage(locale, 'mobileOrganization.unnamedKnowledgeBase'), locale);
+    assert.equal(shareResourceLabel(missing, 'agent', format), formatMessage(locale, 'mobileOrganization.unnamedAgent'), locale);
+  }
+  assert.equal(shareResourceLabel(missing, 'agent'), 'mobileOrganization.unnamedAgent');
 });

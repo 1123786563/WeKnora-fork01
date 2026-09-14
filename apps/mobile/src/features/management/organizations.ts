@@ -11,6 +11,7 @@ export function validateOrganizationDraft(name: string, _description: string): s
 }
 
 export type OrganizationSharedResourceKind = 'knowledge-base' | 'agent';
+export type OrganizationMessageFormatter = (key: string) => string;
 
 export function shareResourceId(
   share: { [key: string]: unknown },
@@ -24,9 +25,13 @@ export function shareResourceId(
 export function shareResourceLabel(
   share: { [key: string]: unknown },
   kind: OrganizationSharedResourceKind,
+  formatMessage?: OrganizationMessageFormatter,
 ): string {
   const key = kind === 'knowledge-base' ? 'knowledge_base_name' : 'agent_name';
   const value = share[key];
   if (typeof value === 'string' && value.trim()) return value;
-  return shareResourceId(share, kind) || (kind === 'knowledge-base' ? 'Unnamed knowledge base' : 'Unnamed agent');
+  const resourceId = shareResourceId(share, kind);
+  if (resourceId) return resourceId;
+  const fallbackKey = kind === 'knowledge-base' ? 'mobileOrganization.unnamedKnowledgeBase' : 'mobileOrganization.unnamedAgent';
+  return formatMessage?.(fallbackKey) || fallbackKey;
 }
