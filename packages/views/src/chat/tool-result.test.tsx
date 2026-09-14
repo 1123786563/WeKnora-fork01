@@ -342,6 +342,23 @@ test('ChunkDetailRenderer localizes the chunk ID label in every locale', () => {
   }
 });
 
+test('ChunkDetailRenderer localizes the position label in every locale', () => {
+  const expected = {
+    'zh-CN': '位置:',
+    'en-US': 'Position:',
+    'ja-JP': '位置:',
+    'ko-KR': '위치:',
+    'ru-RU': 'Позиция:',
+  } as const;
+  for (const [locale, label] of Object.entries(expected)) {
+    const element = ChunkDetailRenderer({
+      data: { chunk_id: 'c-9', chunk_index: 4 },
+      copy: resolveChatCopy(locale),
+    });
+    assert.match(JSON.stringify(element), new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  }
+});
+
 /* ---- RelatedChunks ---- */
 
 test('relatedChunksView lists chunk positions and scores', () => {

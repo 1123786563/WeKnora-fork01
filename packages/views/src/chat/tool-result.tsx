@@ -633,7 +633,7 @@ export function SearchResultsRenderer({ data }: { data: unknown }) {
       {view.rows.map((row) => (
         <li key={row.key} className={TOOL_RESULT_ITEM}>
           <div className={"wk-tool-row-title " + TOOL_ROW_TITLE}>{row.title}</div>
-          <div className={"wk-tool-row-meta font-mono! text-[0.8rem]! text-muted! " + TOOL_ROW_META}>{row.meta}</div>
+          <div className={"wk-tool-row-meta " + TOOL_ROW_META}>{row.meta}</div>
           {row.snippets.map((snippet, i) => <p key={i} className={"wk-tool-snippet " + TOOL_SNIPPET}>{snippet}</p>)}
         </li>
       ))}
@@ -655,7 +655,7 @@ export function WebSearchResultsRenderer({ data }: { data: unknown }) {
               : row.title}
           </div>
           {row.snippet ? <p className={"wk-tool-snippet " + TOOL_SNIPPET}>{row.snippet}</p> : null}
-          {row.meta ? <div className={"wk-tool-row-meta font-mono! text-[0.8rem]! text-muted! " + TOOL_ROW_META}>{row.meta}</div> : null}
+          {row.meta ? <div className={"wk-tool-row-meta " + TOOL_ROW_META}>{row.meta}</div> : null}
         </li>
       ))}
     </ul>
@@ -685,7 +685,7 @@ export function GrepResultsRenderer({ data, copy }: { data: unknown; copy?: Chat
       {view.rows.map((row) => (
         <li key={row.key} className={TOOL_RESULT_ITEM}>
           <div className={"wk-tool-row-title " + TOOL_ROW_TITLE}>{row.title}</div>
-          {row.meta ? <div className={"wk-tool-row-meta font-mono! text-[0.8rem]! text-muted! " + TOOL_ROW_META}>{row.meta}</div> : null}
+          {row.meta ? <div className={"wk-tool-row-meta " + TOOL_ROW_META}>{row.meta}</div> : null}
           {row.snippet ? <pre className={"wk-tool-snippet-line m-0 rounded-[4px] bg-[#f6f8fa] px-[0.5rem] py-[0.25rem] text-[0.72rem] text-[#24292f] whitespace-pre-wrap break-words " + MONO}>{row.snippet}</pre> : null}
         </li>
       ))}
@@ -741,7 +741,7 @@ export function ChunkDetailRenderer({ data, copy }: { data: unknown; copy?: Chat
     <div className="wk-tool-chunk-detail flex flex-col gap-[0.3rem]">
       {view.chunkId ? <InfoField label={labels.chunkIdLabel}><InfoCode>{view.chunkId}</InfoCode></InfoField> : null}
       {view.knowledgeId ? <InfoField label="Document ID"><InfoCode>{view.knowledgeId}</InfoCode></InfoField> : null}
-      {view.chunkIndexLabel ? <InfoField label="Position">{view.chunkIndexLabel}</InfoField> : null}
+      {view.chunkIndexLabel ? <InfoField label={labels.positionLabel}>{view.chunkIndexLabel}</InfoField> : null}
       {view.contentLength !== null ? <InfoField label="Content length">{view.contentLength} chars</InfoField> : null}
       {view.content ? (
         <div className="wk-tool-section mt-[0.4rem]">
