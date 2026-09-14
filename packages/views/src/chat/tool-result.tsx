@@ -253,14 +253,46 @@ export function grepResultsView(data: unknown, copy: GrepResultsCopy = CHAT_COPY
   const pattern = str(d.query) || str(list(d.patterns)[0]);
   const chunkRows = records(d.chunk_results);
   if (chunkRows.length) {
+    // Vue groups chunk hits by document (FAQ entries remain distinct) and
+    // carries title_match across the group before formatting its metadata.
+    const grouped = new Map<string, {
+      title: string;
+      snippet: string;
+      hitCount: number;
+      titleMatch: boolean;
+    }>();
+    const order: string[] = [];
+    for (const item of chunkRows) {
+      const isFaq = Boolean(item.faq_id) || str(item.chunk_type) === 'faq';
+      const key = isFaq
+        ? str(item.faq_id) || str(item.chunk_id)
+        : str(item.knowledge_id) || str(item.chunk_id);
+      if (!key) continue;
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          title: str(item.faq_question) || str(item.knowledge_title) || LABELS.untitled,
+          snippet: str(item.match_snippet),
+          hitCount: 0,
+          titleMatch: false,
+        });
+        order.push(key);
+      }
+      const row = grouped.get(key)!;
+      row.hitCount += 1;
+      row.titleMatch ||= bool(item.title_match);
+      if (!row.snippet && str(item.match_snippet)) row.snippet = str(item.match_snippet);
+    }
     return {
       pattern,
-      rows: chunkRows.map((item) => ({
-        key: str(item.chunk_id) || str(item.knowledge_id),
-        title: str(item.faq_question) || str(item.knowledge_title) || LABELS.untitled,
-        meta: num(item.chunk_index) !== null ? `chunk #${item.chunk_index}` : '',
-        snippet: str(item.match_snippet),
-      })),
+      rows: order.map((key) => {
+        const row = grouped.get(key)!;
+        return {
+          key,
+          title: row.title,
+          meta: grepKnowledgeMeta(row.hitCount, row.hitCount, row.titleMatch, copy),
+          snippet: row.snippet,
+        };
+      }),
     };
   }
   return {

@@ -165,8 +165,32 @@ test('grepResultsView lists per-chunk rows with snippet content', () => {
   assert.equal(view.rows.length, 2);
   assert.equal(view.rows[0]!.title, 'server.py');
   assert.equal(view.rows[0]!.snippet, 'line 12: # TODO fix retry');
-  assert.equal(view.rows[1]!.meta, 'chunk #3');
+  assert.equal(view.rows[1]!.meta, '1 chunk hits · 标题匹配');
   assert.equal(view.pattern, 'TODO');
+});
+
+test('grepResultsView groups chunk hits and localizes title-match metadata in every locale', () => {
+  const data = {
+    display_type: 'grep_results',
+    patterns: ['err'],
+    chunk_results: [
+      { chunk_id: 'c1', knowledge_id: 'k1', knowledge_title: 'guide.md', match_snippet: 'first', title_match: false },
+      { chunk_id: 'c2', knowledge_id: 'k1', knowledge_title: 'guide.md', match_snippet: 'second', title_match: true },
+    ],
+  };
+  const expected = {
+    'zh-CN': '标题匹配',
+    'en-US': 'title',
+    'ja-JP': 'タイトル一致',
+    'ko-KR': '제목',
+    'ru-RU': 'заголовок',
+  } as const;
+  for (const [locale, label] of Object.entries(expected)) {
+    const view = grepResultsView(data, resolveChatCopy(locale));
+    assert.equal(view.rows.length, 1, `${locale} should group chunks by document`);
+    assert.match(view.rows[0]!.meta, new RegExp(label));
+    assert.equal(view.rows[0]!.snippet, 'first');
+  }
 });
 
 test('grepResultsView falls back to knowledge_results rows', () => {
