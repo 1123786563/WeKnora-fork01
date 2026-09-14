@@ -64,6 +64,19 @@ API 契约、鉴权、权限、表单校验、聊天流式、工具审批、上�
   基线+after-{foundation,auth,kblist} 截图；本地栈（:8080 sqlite / vite :5181，账号 uimig@local.dev）。
 - 本地栈注意：先前 dev 栈进程已结束；vite/后端均可用后台 job 方式自启（后端二进制 /tmp/uimig-server，
   sqlite /tmp/uimig-weknora.db，含 uimig 账号与一条 KB）。
+### 批次17：chat 域 ✅（子任务执行，Orchestrator 验收提交）
+- ChatRoutePage 的 5 个 views 组件全迁移；chat.css 1668→110 行
+  （9 条特异性守卫 + 3 条 @keyframes；守卫=styles.css legacy 块在产物中后置一直赢、
+  chat.css 靠高特异性赢的少数规则，batch-12 删 styles.css 块时一并删除即零漂移）。
+- 测试选择器 3 处容忍 utilities 追加；钩子类全数保留；mermaid 由 styles.css 承载未动。
+- 验收：typecheck 0、chat-page 20/20、views chat 55/55、web 856/856、build ✓。
+  ⚠ batch-12（styles.css 清理）前置项：.wk-chat-message-content 的 pre/table/citation/
+  mermaid/math 与 .wk-chat-messages li p 富文本规则需先迁移或保留。
+### 批次18：personal-memory 域 ✅（子任务执行，Orchestrator 验收提交）
+- PersonalMemorySettingsPanel.tsx 50 处 className 迁移（分页/进度/通知/伪元素分隔符等）；
+  personal-memory.css 删除（604 行、89 规则块、无 keyframes/主题变量）。
+- 测试选择器 8 处语义化；JS 钩子类 0（ref 方案）。
+- 验收：typecheck 0、面板测试 11/11、web 856/856、build ✓。
 ### 批次14：@source 路径修复 ✅（shell 波发现的关键既有 bug）
 - styles.css @source 路径 ../../packages/... → ../../../packages/...（apps/web/src 需三级）。
   oxide Scanner 实证：原路径 normalize 到不存在的 apps/packages/ui，包文件 0 被扫描。
