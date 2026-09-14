@@ -2016,3 +2016,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - `MemoryWorkspacePanel` 现在按 Vue `canEdit = hasRole('admin')` 门控 workspace 写入；viewer 的所有工作区控件只读，SettingsPage 传入 role hierarchy 计算结果。
 - workspace 变更合并后按 Vue 的 500ms debounce 保存，并在卸载时清理定时器；模型选择补齐 embedding 清空项以及 chat/embedding 的“前往全局设置添加模型”入口。
 - 验证：Web 全量 837/837、`typecheck:web`、`build:web`、`git diff --check` 通过。仍未将 R026 标记完成：认证浏览器视觉/交互、真实后端成功/失败/权限状态和 Wails/native 证据未取得。
+## 2026-09-15 Round N+33 — N019 model chip contract guard
+
+- Chat composer model chip is now rendered as an explicit disabled button (`7c1523d5`) because the current React stream request has no `model_id` selection contract. This preserves the Vue-shaped label/context display while exposing truthful keyboard and screen-reader semantics instead of a misleading interactive control.
+- Focused chat coverage passes 21/21; Web full regression passes 865/865; `typecheck:web`, `build:web`, and `git diff --check` pass. The existing Vite large-chunk advisory (~4.67 MB main chunk) remains unchanged.
+- N019 still has open attachment upload and knowledge-base mention selection flows, plus real browser/backend/platform evidence. Those require a coordinated API/UI contract and are not claimed closed by this slice.
