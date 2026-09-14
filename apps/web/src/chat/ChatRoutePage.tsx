@@ -777,6 +777,12 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     ]).then(
       async (results) => {
         if (generation !== mentionGenerationRef.current || !scopeController.isCurrent(scope.scope)) return;
+        const primarySuccess = results.some((result) => result.status === 'fulfilled');
+        if (!primarySuccess) {
+          mentionLoadedRef.current = false;
+          setMentionError(copy.knowledgeBasesLoadFailed);
+          return;
+        }
         const kbValues = results[0].status === 'fulfilled' ? results[0].value : [];
         const kbItems = kbValues.map((item) => ({
           id: item.id,
