@@ -87,11 +87,23 @@ export function buildWebChatStreamOptions(sessionId: string, content: string, ag
   const knowledgeBaseIds = knowledgeBaseId?.trim() ? { knowledge_base_ids: [knowledgeBaseId.trim()] } : {};
   const attachmentBody = attachmentIds && attachmentIds.length > 0 ? { attachment_ids: [...attachmentIds] } : {};
   const mentionBody = mentionedItems && mentionedItems.length > 0 ? { mentioned_items: [...mentionedItems] } : {};
+  const mentionKnowledgeIds = mentionedItems?.filter((item) => item.type === 'file').map((item) => item.id).filter(Boolean) ?? [];
+  const mentionTagIds = mentionedItems?.filter((item) => item.type === 'tag').map((item) => item.id).filter(Boolean) ?? [];
+  const mentionMcpServiceIds = mentionedItems?.filter((item) => item.type === 'mcp').map((item) => item.id).filter(Boolean) ?? [];
+  const mentionSkillNames = mentionedItems?.filter((item) => item.type === 'skill').map((item) => item.skill_name?.trim() || item.id).filter(Boolean) ?? [];
+  const resourceMentionBody = {
+    ...(mentionKnowledgeIds.length > 0 ? { knowledge_ids: [...new Set(mentionKnowledgeIds)] } : {}),
+    ...(mentionTagIds.length > 0 ? { tag_ids: [...new Set(mentionTagIds)] } : {}),
+  };
+  const agentResourceMentionBody = {
+    ...(mentionMcpServiceIds.length > 0 ? { mcp_service_ids: [...new Set(mentionMcpServiceIds)] } : {}),
+    ...(mentionSkillNames.length > 0 ? { skill_names: [...new Set(mentionSkillNames)] } : {}),
+  };
   const modelBody = modelId?.trim() ? { summary_model_id: modelId.trim() } : {};
-  if (!selected) return { sessionId, mode: 'knowledge', body: { query: content, channel: 'web', ...knowledgeBaseIds, ...attachmentBody, ...mentionBody, ...modelBody } };
+  if (!selected) return { sessionId, mode: 'knowledge', body: { query: content, channel: 'web', ...knowledgeBaseIds, ...attachmentBody, ...mentionBody, ...resourceMentionBody, ...modelBody } };
   return {
     sessionId,
     mode: 'agent',
-    body: { query: content, agent_enabled: true, agent_id: selected, channel: 'web', ...knowledgeBaseIds, ...attachmentBody, ...mentionBody, ...modelBody },
+    body: { query: content, agent_enabled: true, agent_id: selected, channel: 'web', ...knowledgeBaseIds, ...attachmentBody, ...mentionBody, ...resourceMentionBody, ...agentResourceMentionBody, ...modelBody },
   };
 }

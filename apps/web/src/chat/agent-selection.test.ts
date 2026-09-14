@@ -57,6 +57,15 @@ test('preserves Vue resource mention types and identifiers in the stream body', 
     { id: 'skill-1', name: 'summarize', type: 'skill' as const, skill_name: 'summarize' },
   ];
   assert.deepEqual(buildWebChatStreamOptions('session-1', 'Question', 'agent-1', undefined, undefined, mentions).body.mentioned_items, mentions);
+  assert.deepEqual(buildWebChatStreamOptions('session-1', 'Question', 'agent-1', undefined, undefined, mentions).body.knowledge_ids, ['file-1']);
+  assert.deepEqual(buildWebChatStreamOptions('session-1', 'Question', 'agent-1', undefined, undefined, mentions).body.tag_ids, ['tag-1']);
+  assert.deepEqual(buildWebChatStreamOptions('session-1', 'Question', 'agent-1', undefined, undefined, mentions).body.mcp_service_ids, ['mcp-1']);
+  assert.deepEqual(buildWebChatStreamOptions('session-1', 'Question', 'agent-1', undefined, undefined, mentions).body.skill_names, ['summarize']);
+  const quickAnswer = buildWebChatStreamOptions('session-1', 'Question', '', undefined, undefined, mentions).body;
+  assert.deepEqual(quickAnswer.knowledge_ids, ['file-1']);
+  assert.deepEqual(quickAnswer.tag_ids, ['tag-1']);
+  assert.equal('mcp_service_ids' in quickAnswer, false);
+  assert.equal('skill_names' in quickAnswer, false);
 });
 
 test('validates Vue attachment limits before creating an upload row', () => {
