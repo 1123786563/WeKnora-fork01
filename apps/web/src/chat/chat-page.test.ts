@@ -508,3 +508,14 @@ test('composer localizes empty KB mention states', () => {
   assert.match(html, /No knowledge bases available/);
   assert.doesNotMatch(html, /暂无可用知识库/);
 });
+
+test('chat route uses Vue-localized copy for destructive confirmation and KB mention load fallback', () => {
+  const routeSource = readFileSync(new URL('./ChatRoutePage.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(routeSource, /window\.confirm\(['"]Delete this conversation\?/);
+  assert.doesNotMatch(routeSource, /Unable to load knowledge bases/);
+  for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'ko-KR', 'ru-RU'] as const) {
+    const copy = resolveChatCopy(locale);
+    assert.ok(copy.deleteConfirmBody);
+    assert.ok(copy.knowledgeBasesLoadFailed);
+  }
+});

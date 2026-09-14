@@ -5,8 +5,7 @@ import { chatDraftKey } from '@weknora/domain/chat/draft';
 import { initialChatStreamState, reduceChatStream, type ChatApproval } from '@weknora/domain/chat/reducer';
 import { appendMessages, hasOlderMessages, sessionGroups, sessionPageCount } from '@weknora/domain/chat/session-state';
 import { readStoredGroupMode, storeGroupMode } from '@weknora/domain/chat/session-grouping';
-import { ChatPage, type ChatMentionView, type ChatSubmission } from '@weknora/views';
-import { openContextualGuide } from '@weknora/views';
+import { ChatPage, openContextualGuide, resolveChatCopy, type ChatMentionView, type ChatSubmission } from '@weknora/views';
 import type { ScopeController } from '@weknora/domain/scope';
 import { chatSessionIdFromPath, SHELL_SESSION_ROUTE_EVENT } from './session-route.ts';
 import { buildWebChatStreamOptions, CHAT_ATTACHMENT_DEFAULT_EXTENSIONS, initialAgentSelection, mergeChatAttachmentExtensions, resolveChatAttachmentLimits, shouldPollAttachmentStatus, validateChatAttachment, type ChatMentionItem } from './agent-selection.ts';
@@ -46,6 +45,7 @@ function draftStorageKey(scope: ReturnType<ScopeController['current']>['scope'],
 
 export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowledgeBaseId, canViewChannelSessions = false }: ChatRoutePageProps) {
   const scope = scopeController.current();
+  const copy = resolveChatCopy(readStoredLocale());
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sessionSource, setSessionSource] = useState('web');
@@ -718,7 +718,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   }
 
   async function deleteSession(sessionId: string): Promise<void> {
-    if (!window.confirm('Delete this conversation?')) return;
+    if (!window.confirm(copy.deleteConfirmBody)) return;
     try {
       await client.sessions.remove(sessionId, scope.signal);
       setSessions((items) => items.filter((session) => session.id !== sessionId));
@@ -765,7 +765,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       (cause: unknown) => {
         if (generation !== mentionGenerationRef.current || !scopeController.isCurrent(scope.scope)) return;
         mentionLoadedRef.current = false;
-        setMentionError(cause instanceof Error ? cause.message : 'Unable to load knowledge bases');
+        setMentionError(cause instanceof Error ? cause.message : copy.knowledgeBasesLoadFailed);
       },
     ).finally(() => {
       if (generation !== mentionGenerationRef.current || !scopeController.isCurrent(scope.scope)) return;
