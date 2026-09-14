@@ -751,15 +751,15 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
                 <span>{t('knowledgeList.uninitializedBanner')}</span>
               </div>
             ) : null}
-            {uploadSummaries.length ? <div className="wk-upload-progress-panel" aria-live="polite">
-              {uploadSummaries.map((summary) => <div className="wk-upload-progress-item" key={summary.kbId}>
-                <div className="wk-upload-progress-icon" aria-hidden="true">{summary.completed === summary.total ? '✓' : '↑'}</div>
-                <div className="wk-upload-progress-content">
-                  <div className="wk-upload-progress-title">{summary.completed === summary.total ? t('knowledgeList.uploadProgress.completedTitle', { name: summary.kbName }) : t('knowledgeList.uploadProgress.uploadingTitle', { name: summary.kbName })}</div>
-                  <div className="wk-upload-progress-subtitle">{summary.completed === summary.total ? t('knowledgeList.uploadProgress.completedDetail', { total: summary.total }) : t('knowledgeList.uploadProgress.detail', { completed: summary.completed, total: summary.total })}</div>
-                  <div className="wk-upload-progress-subtitle">{summary.completed === summary.total ? t('knowledgeList.uploadProgress.refreshing') : t('knowledgeList.uploadProgress.keepPageOpen')}</div>
-                  {summary.hasError ? <div className="wk-upload-progress-subtitle wk-upload-progress-error">{t('knowledgeList.uploadProgress.errorTip')}</div> : null}
-                  <div className="wk-upload-progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={summary.progress}><div className="wk-upload-progress-fill" style={{ width: `${summary.progress}%` }} /></div>
+            {uploadSummaries.length ? <div className="wk-upload-progress-panel mb-4 rounded-lg border border-[#e6f4ea] bg-[#f6fffa] px-4 py-3" aria-live="polite">
+              {uploadSummaries.map((summary, index) => <div className={`wk-upload-progress-item flex items-start gap-[10px] ${index > 0 ? 'mt-3 border-t border-[#dff0e4] pt-3' : ''}`} key={summary.kbId}>
+                <div className="wk-upload-progress-icon grid h-6 w-6 flex-none place-items-center rounded-full bg-[#d1fadf] font-bold text-[#067647]" aria-hidden="true">{summary.completed === summary.total ? '✓' : '↑'}</div>
+                <div className="wk-upload-progress-content min-w-0 flex-1">
+                  <div className="wk-upload-progress-title text-sm font-semibold text-[#172b1b]">{summary.completed === summary.total ? t('knowledgeList.uploadProgress.completedTitle', { name: summary.kbName }) : t('knowledgeList.uploadProgress.uploadingTitle', { name: summary.kbName })}</div>
+                  <div className="wk-upload-progress-subtitle mt-[3px] text-xs text-[#667085]">{summary.completed === summary.total ? t('knowledgeList.uploadProgress.completedDetail', { total: summary.total }) : t('knowledgeList.uploadProgress.detail', { completed: summary.completed, total: summary.total })}</div>
+                  <div className="wk-upload-progress-subtitle mt-[3px] text-xs text-[#667085]">{summary.completed === summary.total ? t('knowledgeList.uploadProgress.refreshing') : t('knowledgeList.uploadProgress.keepPageOpen')}</div>
+                  {summary.hasError ? <div className="wk-upload-progress-subtitle wk-upload-progress-error mt-[3px] text-xs text-[#b42318]">{t('knowledgeList.uploadProgress.errorTip')}</div> : null}
+                  <div className="wk-upload-progress-track mt-2 h-[6px] overflow-hidden rounded-full bg-[#dff3e5]" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={summary.progress}><div className="wk-upload-progress-fill h-full rounded-full bg-[#07c05f] [transition:width_.18s_ease]" style={{ width: `${summary.progress}%` }} /></div>
                 </div>
               </div>)}
             </div> : null}

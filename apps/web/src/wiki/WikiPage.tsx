@@ -18,7 +18,7 @@ export function WikiPage({
   client,
   knowledgeBaseId,
   initialSlug,
-  canContribute = true,
+  canContribute = false,
 }: {
   client: WeKnoraClient;
   knowledgeBaseId: string;
@@ -194,6 +194,7 @@ export function WikiPage({
     setEditing(false);
   }
   function newPage() {
+    if (!canContribute) return;
     setSelected(null);
     setTitle("");
     setSlug("");
@@ -206,6 +207,7 @@ export function WikiPage({
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!canContribute) return;
     if (!selected) {
       try {
         const page = await client.wiki.create(knowledgeBaseId, {
@@ -302,6 +304,7 @@ export function WikiPage({
   }
   async function revertRevision() {
     if (
+      !canContribute ||
       !selected ||
       !revision ||
       !window.confirm(
@@ -377,9 +380,9 @@ export function WikiPage({
           <h1>{t("wikiBrowser.page.title")}</h1>
           <p className="wk-muted">{t("wikiBrowser.page.subtitle")}</p>
         </div>
-        <Button type="button" onClick={newPage}>
+        {canContribute ? <Button type="button" onClick={newPage}>
           {t("wikiBrowser.page.new")}
-        </Button>
+        </Button> : null}
       </header>
       <Card>
         <div className="wk-wiki-layout grid grid-cols-[minmax(220px,320px)_1fr] gap-5">
@@ -440,9 +443,9 @@ export function WikiPage({
                   <p className="wk-muted">{selected.summary || "—"}</p>
                 </div>
                 <div className="wk-list-actions">
-                  <Button type="button" onClick={() => setEditing(true)}>
+                  {canContribute ? <Button type="button" onClick={() => setEditing(true)}>
                     {t("wikiBrowser.editBtn")}
-                  </Button>
+                  </Button> : null}
                   <Button type="button" onClick={() => void openHistory()}>
                     {t("wikiBrowser.historyBtn")}
                   </Button>
@@ -451,7 +454,7 @@ export function WikiPage({
               <pre className="wk-wiki-reader-content m-0 box-border min-h-[22rem] overflow-auto rounded-md border border-[#d8e0eb] bg-[#f8fafc] p-4 font-[inherit] leading-[1.65] whitespace-pre-wrap">{selected.content}</pre>
             </article>
           ) : null}
-          <form
+          {canContribute ? <form
             className="wk-wiki-editor grid gap-[0.7rem]"
             style={{ display: !selected || editing ? undefined : "none" }}
             onSubmit={save}
@@ -514,7 +517,7 @@ export function WikiPage({
             {saveState?.status === "saved" ? (
                 <Status tone="success">{t("wikiBrowser.editSaveSuccess")}</Status>
             ) : null}
-          </form>
+          </form> : null}
         </div>
         {pager.total > WIKI_PAGE_SIZE ? (
           <nav
@@ -586,13 +589,13 @@ export function WikiPage({
                     <strong>
                       v{revision.version} → v{selected.version}
                     </strong>
-                    <Button
+                    {canContribute ? <Button
                       type="button"
                       onClick={() => void revertRevision()}
                       loading={reverting}
                     >
                       {t("wikiBrowser.revertBtn")}
-                    </Button>
+                    </Button> : null}
                   </div>
                   {revisionDiff.length === 0 ? (
                     <Status>{t("wikiBrowser.revisionDiffEmpty")}</Status>
