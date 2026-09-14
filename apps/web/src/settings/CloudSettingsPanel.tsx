@@ -7,12 +7,12 @@ import { readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
 
 function row(value: unknown): Record<string, unknown> { return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 
-const CLOUD_STATUS_COPY: Record<Locale, { models: string; available: string; unavailable: string; status: string; serverReported: string }> = {
-  'zh-CN': { models: '模型', available: '可用', unavailable: '不可用', status: '状态', serverReported: '服务端已返回' },
-  'en-US': { models: 'Models', available: 'Available', unavailable: 'Unavailable', status: 'Status', serverReported: 'Server reported' },
-  'ja-JP': { models: 'モデル', available: '利用可能', unavailable: '利用不可', status: '状態', serverReported: 'サーバー報告' },
-  'ko-KR': { models: '모델', available: '사용 가능', unavailable: '사용 불가', status: '상태', serverReported: '서버 보고' },
-  'ru-RU': { models: 'Модели', available: 'Доступно', unavailable: 'Недоступно', status: 'Статус', serverReported: 'Сообщено сервером' },
+const CLOUD_STATUS_COPY: Record<Locale, { models: string; available: string; unavailable: string; status: string; serverReported: string; loadFailed: string }> = {
+  'zh-CN': { models: '模型', available: '可用', unavailable: '不可用', status: '状态', serverReported: '服务端已返回', loadFailed: '云服务状态加载失败' },
+  'en-US': { models: 'Models', available: 'Available', unavailable: 'Unavailable', status: 'Status', serverReported: 'Server reported', loadFailed: 'Failed to load cloud status' },
+  'ja-JP': { models: 'モデル', available: '利用可能', unavailable: '利用不可', status: '状態', serverReported: 'サーバー報告', loadFailed: 'クラウド状態の読み込みに失敗しました' },
+  'ko-KR': { models: '모델', available: '사용 가능', unavailable: '사용 불가', status: '상태', serverReported: '서버 보고', loadFailed: '클라우드 상태를 불러오지 못했습니다' },
+  'ru-RU': { models: 'Модели', available: 'Доступно', unavailable: 'Недоступно', status: 'Статус', serverReported: 'Сообщено сервером', loadFailed: 'Не удалось загрузить состояние облака' },
 };
 
 export function CloudSettingsPanel({ client, initialValue }: { client: WeKnoraClient; initialValue: unknown }) {
@@ -31,7 +31,7 @@ export function CloudSettingsPanel({ client, initialValue }: { client: WeKnoraCl
   async function reload() {
     setBusy(true); setError(null); setNotice(null);
     try { setStatus(await client.settings.weknoraCloud.status()); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : t('settings.weknoraCloud.saveFailed')); {/* TODO(migration): status-query failure has no dedicated key */} }
+    catch (reason) { setError(reason instanceof Error ? reason.message : statusCopy.loadFailed); }
     finally { setBusy(false); }
   }
 
