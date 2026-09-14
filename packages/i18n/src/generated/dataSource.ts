@@ -87,6 +87,7 @@ export const dataSourceMessages: Record<Locale, Record<string, string>> = {
     'dataSource.logMetric.total': '总计', 'dataSource.logMetric.skipped': '跳过', 'dataSource.logMetric.failed': '失败',
     // Value ported from Vue model.editor.testing (settings lane owns the model.* block).
     'dataSource.testing': '测试中...',
+    'dataSource.loadFailed': '加载数据源失败', 'dataSource.connectionTestFailed': '连接测试失败', 'dataSource.knowledgeBaseRequired': '需要知识库', 'dataSource.permissionRequired': '需要工作空间所有者或管理员权限才能修改数据源', 'dataSource.discardTemporaryFailed': '无法丢弃临时数据源', 'dataSource.resumeFailed': '恢复数据源失败', 'dataSource.syncLogsLoadFailed': '加载同步日志失败', 'dataSource.syncLogsLoadMoreFailed': '加载更多同步日志失败', 'dataSource.noDeclaredCapabilities': '未声明能力', 'dataSource.connectorTypePlaceholder': '连接器类型', 'dataSource.cronSchedulePlaceholder': 'Cron 频率', 'dataSource.credentialsPlaceholder': '凭证：token = secret', 'dataSource.settingsPlaceholder': '设置：workspace_id = example',
   },
   'en-US': {
     'datasource.title': "Data Sources",
@@ -167,6 +168,7 @@ export const dataSourceMessages: Record<Locale, Record<string, string>> = {
     'dataSource.logMetric.total': 'Total', 'dataSource.logMetric.skipped': 'skipped', 'dataSource.logMetric.failed': 'failed',
     // Value ported from Vue model.editor.testing (settings lane owns the model.* block).
     'dataSource.testing': 'Testing...',
+    'dataSource.loadFailed': 'Unable to load data sources', 'dataSource.connectionTestFailed': 'Connection test failed', 'dataSource.knowledgeBaseRequired': 'Knowledge base is required', 'dataSource.permissionRequired': 'Data-source changes require an owner or admin workspace role', 'dataSource.discardTemporaryFailed': 'Unable to discard temporary data source', 'dataSource.resumeFailed': 'Unable to resume data source', 'dataSource.syncLogsLoadFailed': 'Unable to load sync logs', 'dataSource.syncLogsLoadMoreFailed': 'Unable to load more sync logs', 'dataSource.noDeclaredCapabilities': 'no declared capabilities', 'dataSource.connectorTypePlaceholder': 'Connector type', 'dataSource.cronSchedulePlaceholder': 'Cron schedule', 'dataSource.credentialsPlaceholder': 'Credentials: token = secret', 'dataSource.settingsPlaceholder': 'Settings: workspace_id = example',
   },
   'ja-JP': {
     'datasource.title': "データソース",
@@ -247,6 +249,7 @@ export const dataSourceMessages: Record<Locale, Record<string, string>> = {
     'dataSource.logMetric.total': '合計', 'dataSource.logMetric.skipped': 'スキップ', 'dataSource.logMetric.failed': '失敗',
     // Value ported from Vue model.editor.testing (settings lane owns the model.* block).
     'dataSource.testing': 'テスト中...',
+    'dataSource.loadFailed': 'データソースを読み込めません', 'dataSource.connectionTestFailed': '接続テストに失敗しました', 'dataSource.knowledgeBaseRequired': 'ナレッジベースが必要です', 'dataSource.permissionRequired': 'データソースを変更するにはワークスペースの所有者または管理者権限が必要です', 'dataSource.discardTemporaryFailed': '一時データソースを破棄できません', 'dataSource.resumeFailed': 'データソースを再開できません', 'dataSource.syncLogsLoadFailed': '同期ログを読み込めません', 'dataSource.syncLogsLoadMoreFailed': '同期ログをさらに読み込めません', 'dataSource.noDeclaredCapabilities': '宣言された機能はありません', 'dataSource.connectorTypePlaceholder': 'コネクタの種類', 'dataSource.cronSchedulePlaceholder': 'Cron スケジュール', 'dataSource.credentialsPlaceholder': '認証情報: token = secret', 'dataSource.settingsPlaceholder': '設定: workspace_id = example',
   },
   'ko-KR': {
     'datasource.title': "데이터 소스 관리",
@@ -327,6 +330,7 @@ export const dataSourceMessages: Record<Locale, Record<string, string>> = {
     'dataSource.logMetric.total': '총계', 'dataSource.logMetric.skipped': '건너뜀', 'dataSource.logMetric.failed': '실패',
     // Value ported from Vue model.editor.testing (settings lane owns the model.* block).
     'dataSource.testing': '테스트 중...',
+    'dataSource.loadFailed': '데이터 소스를 불러올 수 없습니다', 'dataSource.connectionTestFailed': '연결 테스트에 실패했습니다', 'dataSource.knowledgeBaseRequired': '지식 베이스가 필요합니다', 'dataSource.permissionRequired': '데이터 소스를 변경하려면 워크스페이스 소유자 또는 관리자 권한이 필요합니다', 'dataSource.discardTemporaryFailed': '임시 데이터 소스를 삭제할 수 없습니다', 'dataSource.resumeFailed': '데이터 소스를 재개할 수 없습니다', 'dataSource.syncLogsLoadFailed': '동기화 로그를 불러올 수 없습니다', 'dataSource.syncLogsLoadMoreFailed': '동기화 로그를 더 불러올 수 없습니다', 'dataSource.noDeclaredCapabilities': '선언된 기능 없음', 'dataSource.connectorTypePlaceholder': '커넥터 유형', 'dataSource.cronSchedulePlaceholder': 'Cron 일정', 'dataSource.credentialsPlaceholder': '자격 증명: token = secret', 'dataSource.settingsPlaceholder': '설정: workspace_id = example',
   },
   'ru-RU': {
     'datasource.title': "Источники данных",
@@ -407,5 +411,6 @@ export const dataSourceMessages: Record<Locale, Record<string, string>> = {
     'dataSource.logMetric.total': 'Всего', 'dataSource.logMetric.skipped': 'Пропущено', 'dataSource.logMetric.failed': 'ошибок',
     // Value ported from Vue model.editor.testing (settings lane owns the model.* block).
     'dataSource.testing': 'Проверка...',
+    'dataSource.loadFailed': 'Не удалось загрузить источники данных', 'dataSource.connectionTestFailed': 'Не удалось проверить подключение', 'dataSource.knowledgeBaseRequired': 'Требуется база знаний', 'dataSource.permissionRequired': 'Для изменения источника данных нужны права владельца или администратора рабочего пространства', 'dataSource.discardTemporaryFailed': 'Не удалось удалить временный источник данных', 'dataSource.resumeFailed': 'Не удалось возобновить источник данных', 'dataSource.syncLogsLoadFailed': 'Не удалось загрузить журнал синхронизации', 'dataSource.syncLogsLoadMoreFailed': 'Не удалось загрузить дополнительные записи журнала синхронизации', 'dataSource.noDeclaredCapabilities': 'возможности не заявлены', 'dataSource.connectorTypePlaceholder': 'Тип коннектора', 'dataSource.cronSchedulePlaceholder': 'Расписание Cron', 'dataSource.credentialsPlaceholder': 'Учётные данные: token = secret', 'dataSource.settingsPlaceholder': 'Настройки: workspace_id = example',
   },
 };

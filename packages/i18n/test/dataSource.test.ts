@@ -63,6 +63,19 @@ const EDITOR_KEYS = [
   'dataSource.logMetric.failed',
   'dataSource.neverSynced',
   'dataSource.testing',
+  'dataSource.loadFailed',
+  'dataSource.connectionTestFailed',
+  'dataSource.knowledgeBaseRequired',
+  'dataSource.permissionRequired',
+  'dataSource.discardTemporaryFailed',
+  'dataSource.resumeFailed',
+  'dataSource.syncLogsLoadFailed',
+  'dataSource.syncLogsLoadMoreFailed',
+  'dataSource.noDeclaredCapabilities',
+  'dataSource.connectorTypePlaceholder',
+  'dataSource.cronSchedulePlaceholder',
+  'dataSource.credentialsPlaceholder',
+  'dataSource.settingsPlaceholder',
 ];
 
 function dataSourceKeys(locale: string): string[] {
@@ -71,7 +84,7 @@ function dataSourceKeys(locale: string): string[] {
 
 test('data-source log messages exist in every supported locale', () => {
   const keys = dataSourceKeys('en-US').sort();
-  assert.equal(keys.length, 151);
+  assert.equal(keys.length, 164);
   for (const locale of supportedLocales) {
     assert.deepEqual(dataSourceKeys(locale).sort(), keys, `${locale} data-source messages diverge`);
     assert.notEqual(formatMessage(locale, 'dataSource.syncHistory'), 'dataSource.syncHistory');

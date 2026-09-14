@@ -13,7 +13,7 @@ const React = require('react') as typeof import('react');
 const { act } = require('react') as typeof import('react');
 const { createRoot } = require('react-dom/client') as { createRoot: (host: Element) => { render(node: unknown): void; unmount(): void } };
 
-async function mount(role: string, locale = 'en-US') {
+async function mount(role: string, locale = 'en-US', overrides: { list?: () => Promise<unknown>; logs?: (...args: unknown[]) => Promise<unknown>; resume?: (...args: unknown[]) => Promise<unknown> } = {}) {
   const dom = new JSDOM('<div id="root"></div>', { url: 'https://weknora.test' });
   const runtime: any = {
     tenantId: '1', locale,
@@ -30,6 +30,9 @@ async function mount(role: string, locale = 'en-US') {
       remove: async () => undefined, logs: async (_id: string, _limit = 20, _offset = 0) => [{ id: 'log-1', status: 'success', started_at: '2026-09-13T08:00:00Z', finished_at: '2026-09-13T08:00:02Z', items_created: 3, items_updated: 1, items_deleted: 0, items_skipped: 0, items_failed: 0 }], resources: async (_id: string, parentId?: string) => parentId ? [{ external_id: 'page-2', parent_id: parentId, name: 'Child page', type: 'page' }] : [{ external_id: 'page-1', name: 'Project docs', type: 'folder', has_children: true }],
     } },
   };
+  if (overrides.list) runtime.client.dataSources.list = overrides.list;
+  if (overrides.logs) runtime.client.dataSources.logs = overrides.logs;
+  if (overrides.resume) runtime.client.dataSources.resume = overrides.resume;
   Object.assign(globalThis, { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true, __dataSourcesRuntime: runtime });
   const result = await build({ entryPoints: [resolve(root, 'apps/mobile/src/features/knowledge/DataSourcesScreen.tsx')], bundle: true, write: false, platform: 'node', format: 'cjs', jsx: 'automatic', external: ['react', 'react/jsx-runtime'], plugins: [{ name: 'native-host-fixtures', setup(b) {
     b.onResolve({ filter: /react-native|expo-router|runtime\.tsx$/ }, (args) => ({ path: args.path, namespace: 'mock' }));
@@ -44,6 +47,40 @@ async function mount(role: string, locale = 'en-US') {
   await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
   return { host, runtime, close: async () => { await act(async () => renderer.unmount()); dom.window.close(); } };
 }
+
+
+
+test('source inventory localizes the load failure fallback in every supported locale', async () => {
+  const expected: Record<string, string> = {
+    'zh-CN': '加载数据源失败',
+    'en-US': 'Unable to load data sources',
+    'ja-JP': 'データソースを読み込めません',
+    'ko-KR': '데이터 소스를 불러올 수 없습니다',
+    'ru-RU': 'Не удалось загрузить источники данных',
+  };
+  for (const [locale, message] of Object.entries(expected)) {
+    const page = await mount('viewer', locale, { list: async () => { throw 'network'; } });
+    try { assert.match(page.host.textContent ?? '', new RegExp(message.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), locale); }
+    finally { await page.close(); }
+  }
+});
+
+test('sync log and resume failures use localized fallbacks', async () => {
+  const page = await mount('admin', 'zh-CN', {
+    logs: async () => { throw 'network'; },
+    resume: async () => { throw 'network'; },
+  });
+  try {
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === '日志')?.click());
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+    assert.match(page.host.textContent ?? '', /加载同步日志失败/);
+    const resume = [...page.host.querySelectorAll('button')].find((item) => item.textContent === '恢复');
+    assert.ok(resume);
+    await act(async () => resume?.click());
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+    assert.match(page.host.textContent ?? '', /恢复数据源失败/);
+  } finally { await page.close(); }
+});
 
 test('viewer sees read-only data-source inventory without mutation controls', async () => {
   const page = await mount('viewer');
