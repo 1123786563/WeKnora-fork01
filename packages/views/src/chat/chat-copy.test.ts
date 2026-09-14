@@ -35,6 +35,14 @@ test('resolveChatCopy returns locale tables and falls back to zh-CN', () => {
   assert.deepEqual(resolveChatCopy('zh-CN'), CHAT_COPY);
 });
 
+test('resolveChatCopy exposes the Vue grep title-match label in every locale', () => {
+  assert.equal(resolveChatCopy('zh-CN').grepTitleMatch, '标题匹配');
+  assert.equal(resolveChatCopy('en-US').grepTitleMatch, 'title');
+  assert.equal(resolveChatCopy('ja-JP').grepTitleMatch, 'タイトル一致');
+  assert.equal(resolveChatCopy('ko-KR').grepTitleMatch, '제목');
+  assert.equal(resolveChatCopy('ru-RU').grepTitleMatch, 'заголовок');
+});
+
 test('batch session controls use translated English SSR copy', () => {
   const copy = resolveChatCopy('en-US');
   assert.equal(copy.batchManage, 'Batch manage');

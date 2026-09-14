@@ -1,6 +1,7 @@
 import * as React from 'react';
 
 import { normalizeToolResult, type NormalizedToolResult } from '@weknora/domain/chat/tool-results';
+import { CHAT_COPY, type ChatCopyTable } from './chat-copy.ts';
 
 export interface ToolResultViewInput {
   id: string;
@@ -235,15 +236,19 @@ export interface GrepResultsViewModel {
   rows: GrepResultRow[];
 }
 
-function grepKnowledgeMeta(hitCount: number, patternHits: number, titleMatch: boolean): string {
+export type GrepResultsCopy = Pick<ChatCopyTable, 'grepTitleMatch'>;
+
+function grepKnowledgeMeta(hitCount: number, patternHits: number, titleMatch: boolean, copy: GrepResultsCopy): string {
   const parts: string[] = [];
   if (hitCount > 0) parts.push(LABELS.chunkHits(hitCount));
   if (patternHits > 0 && patternHits !== hitCount) parts.push(LABELS.keywordHits(patternHits));
-  if (titleMatch) parts.push('title match');
+  if (titleMatch) parts.push(copy.grepTitleMatch);
   return parts.join(' · ');
 }
 
-export function grepResultsView(data: unknown): GrepResultsViewModel {
+/** Vue agentStream.grepResults.titleMatch is locale-dependent; the optional copy
+ * argument keeps the existing pure-function call shape backwards compatible. */
+export function grepResultsView(data: unknown, copy: GrepResultsCopy = CHAT_COPY): GrepResultsViewModel {
   const d = record(data);
   const pattern = str(d.query) || str(list(d.patterns)[0]);
   const chunkRows = records(d.chunk_results);
@@ -263,7 +268,7 @@ export function grepResultsView(data: unknown): GrepResultsViewModel {
     rows: records(d.knowledge_results).map((item) => ({
       key: str(item.knowledge_id),
       title: str(item.faq_question) || str(item.knowledge_title) || LABELS.untitled,
-      meta: grepKnowledgeMeta(num(item.chunk_hit_count) ?? 0, num(item.total_pattern_hits) ?? 0, item.title_match === true),
+      meta: grepKnowledgeMeta(num(item.chunk_hit_count) ?? 0, num(item.total_pattern_hits) ?? 0, item.title_match === true, copy),
       snippet: str(item.match_snippet),
     })),
   };
@@ -637,8 +642,8 @@ export function DatabaseQueryRenderer({ data }: { data: unknown }) {
   );
 }
 
-export function GrepResultsRenderer({ data }: { data: unknown }) {
-  const view = grepResultsView(data);
+export function GrepResultsRenderer({ data, copy }: { data: unknown; copy?: ChatCopyTable }) {
+  const view = grepResultsView(data, copy ?? CHAT_COPY);
   if (!view.rows.length) return <EmptyState label={LABELS.noMatches} />;
   return (
     <ul className={"wk-tool-grep-results " + TOOL_RESULT_LIST}>
@@ -863,7 +868,7 @@ export function GenericToolResultRenderer({ title, text }: { title: string; text
   return <pre>{text}</pre>;
 }
 
-const TYPED_RENDERERS: Readonly<Partial<Record<NormalizedToolResult['renderer'], React.ComponentType<{ data: unknown; args?: unknown; output?: unknown }>>>> = Object.freeze({
+const TYPED_RENDERERS: Readonly<Partial<Record<NormalizedToolResult['renderer'], React.ComponentType<{ data: unknown; args?: unknown; output?: unknown; copy?: ChatCopyTable }>>>> = Object.freeze({
   'search-results': SearchResultsRenderer,
   'web-search-results': WebSearchResultsRenderer,
   'database-query': DatabaseQueryRenderer,
@@ -878,7 +883,7 @@ const TYPED_RENDERERS: Readonly<Partial<Record<NormalizedToolResult['renderer'],
   plan: PlanRenderer,
 });
 
-export function ToolResultView({ toolCall }: { toolCall: ToolResultViewInput }) {
+export function ToolResultView({ toolCall, copy }: { toolCall: ToolResultViewInput; copy?: ChatCopyTable }) {
   const presentation = toolResultPresentation(toolCall);
   if (!presentation.text && presentation.renderer === 'plain-text') {
     return <small>{presentation.title}: no output</small>;
@@ -888,7 +893,7 @@ export function ToolResultView({ toolCall }: { toolCall: ToolResultViewInput }) 
     const result = record(toolCall.result);
     return <details className="wk-chat-tool-result">
       <summary>{presentation.title}</summary>
-      <Typed data={presentation.data} args={result.arguments} output={str(result.output)} />
+      <Typed data={presentation.data} args={result.arguments} output={str(result.output)} copy={copy} />
     </details>;
   }
   return <details className="wk-chat-tool-result">

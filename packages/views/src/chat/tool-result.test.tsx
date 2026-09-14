@@ -17,6 +17,7 @@ import {
   webFetchView,
   webSearchResultsView,
 } from './tool-result.tsx';
+import { resolveChatCopy } from './chat-copy.ts';
 
 /* ---- existing presentation tests ---- */
 
@@ -180,6 +181,19 @@ test('grepResultsView falls back to knowledge_results rows', () => {
   });
   assert.equal(view.rows.length, 1);
   assert.equal(view.rows[0]!.meta, '2 chunk hits · 4 keyword hits');
+});
+
+test('grepResultsView localizes title-match metadata while keeping the default call compatible', () => {
+  const data = {
+    display_type: 'grep_results',
+    patterns: ['err'],
+    knowledge_results: [{ knowledge_id: 'k9', knowledge_title: 'guide.md', chunk_hit_count: 1, total_pattern_hits: 1, title_match: true }],
+  };
+  assert.match(grepResultsView(data).rows[0]!.meta, /标题匹配/);
+  assert.match(grepResultsView(data, resolveChatCopy('en-US')).rows[0]!.meta, /title/);
+  assert.match(grepResultsView(data, resolveChatCopy('ja-JP')).rows[0]!.meta, /タイトル一致/);
+  assert.match(grepResultsView(data, resolveChatCopy('ko-KR')).rows[0]!.meta, /제목/);
+  assert.match(grepResultsView(data, resolveChatCopy('ru-RU')).rows[0]!.meta, /заголовок/);
 });
 
 test('grepResultsView empty state', () => {
