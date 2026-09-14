@@ -152,7 +152,7 @@ export const mobileManagementMessages: Record<Locale, Record<string, string>> = 
     'mobileApiKeys.revokeTitle': 'API 키를 취소할까요?',
     'mobileApiKeys.revokeMessage': '{name}이(가) 즉시 작동을 멈춥니다.',
     'mobileApiKeys.cancel': '취소',
-    'mobileApiKeys.revoke': '취소',
+    'mobileApiKeys.revoke': '폐기',
     'mobileApiKeys.fullAccess': '전체 액세스',
     'mobileApiKeys.noCapabilities': '권한 없음',
     'mobileApiKeys.created': '생성됨',

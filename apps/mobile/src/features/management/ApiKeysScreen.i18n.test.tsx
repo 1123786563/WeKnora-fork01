@@ -21,6 +21,7 @@ test('API key management copy resolves in every supported locale', () => {
     assert.ok(value.trim());
   }
   assert.match(formatMessage('zh-CN', 'mobileApiKeys.revokeMessage', { name: 'demo' }), /demo/);
+  assert.notEqual(formatMessage('ko-KR', 'mobileApiKeys.cancel'), formatMessage('ko-KR', 'mobileApiKeys.revoke'));
 });
 
 async function mount(locale: Locale, result: 'empty' | 'rows' | 'error') {
