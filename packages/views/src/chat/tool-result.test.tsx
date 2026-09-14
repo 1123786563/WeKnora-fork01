@@ -421,13 +421,28 @@ test('WebFetchRenderer localizes summary, partial-content and raw-text labels', 
 test('WebFetchRenderer prefers a rendered summary over its failed summary status', () => {
   const element = WebFetchRenderer({
     data: {
-      results: [{ summary: '可用な要約', summary_status: 'failed' }],
+      results: [{
+        summary: '可用な要約',
+        summary_status: 'failed',
+        summary_error_code: 'SUMMARY_TIMEOUT',
+        summary_error_message: 'summary generation timed out',
+      }],
     },
     copy: resolveChatCopy('ja-JP'),
   });
   const serialized = JSON.stringify(element);
   assert.match(serialized, /可用な要約/);
   assert.doesNotMatch(serialized, /要約失敗/);
+  assert.doesNotMatch(serialized, /SUMMARY_TIMEOUT/);
+  assert.doesNotMatch(serialized, /summary generation timed out/);
+});
+
+test('webFetchView keeps summary error fallback when no summary is available', () => {
+  const view = webFetchView({
+    results: [{ summary_status: 'failed', summary_error_code: 'SUMMARY_TIMEOUT', summary_error_message: 'summary generation timed out' }],
+  });
+  assert.equal(view.rows[0]!.errorCode, 'SUMMARY_TIMEOUT');
+  assert.equal(view.rows[0]!.errorMessage, 'summary generation timed out');
 });
 
 /* ---- Thinking / Plan ---- */

@@ -547,6 +547,7 @@ export function webFetchView(data: unknown): WebFetchViewModel {
     rows: records(d.results).map((item, i) => {
       const status = str(item.status);
       const rawStatus = str(item.summary_status);
+      const summary = str(item.summary);
       const length = num(item.content_length);
       return {
         key: str(item.url) || `fetch-${i}`,
@@ -556,9 +557,9 @@ export function webFetchView(data: unknown): WebFetchViewModel {
         status,
         statusKind: status === 'success' ? 'ok' : status === 'failed' ? 'failed' : status === 'skipped' ? 'skipped' : '',
         method: str(item.method).toUpperCase(),
-        errorCode: str(item.error_code) || str(item.summary_error_code),
-        errorMessage: str(item.error_message) || str(item.error) || str(item.summary_error_message),
-        summary: str(item.summary),
+        errorCode: str(item.error_code) || (!summary ? str(item.summary_error_code) : ''),
+        errorMessage: str(item.error_message) || str(item.error) || (!summary ? str(item.summary_error_message) : ''),
+        summary,
         summaryFailed: rawStatus === 'failed',
         rawContent: str(item.raw_content),
         contentLengthLabel: length !== null ? `${length} chars` : '',
