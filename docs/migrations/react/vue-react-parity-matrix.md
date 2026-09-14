@@ -166,3 +166,4 @@ N021 web-fetch state update (2026-09-15): summary/error precedence now follows V
 N021 chunk-detail update (2026-09-15): ChunkDetailRenderer now uses Vue `chat.fullContentLabel` across five locales; focused renderer tests cover every locale and browser fixture evidence remains open.
 N021 chunk-detail ID update (2026-09-15): ChunkDetailRenderer now uses Vue `chat.chunkIdLabel` across five locales; focused renderer/copy tests cover the label and browser fixture evidence remains open.
 N021 chunk-detail position update (2026-09-15): ChunkDetailRenderer now uses Vue `chat.positionLabel` across five locales; shared/Web regression remains green and browser fixture evidence remains open.
+N021 chunk-detail document-ID update (2026-09-15): ChunkDetailRenderer now uses Vue `chat.documentIdLabel` across five locales; shared/Web regression remains green and browser fixture evidence remains open.
