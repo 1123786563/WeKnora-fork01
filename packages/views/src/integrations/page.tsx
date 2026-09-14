@@ -1203,7 +1203,7 @@ function ApiIntegrationPanel({ apiBaseUrl, actions, principalMode, setPrincipalM
   const principal = actions.principal;
   return <div className="grid gap-5">
     <section className="rounded-[10px] border border-[#eef1f5] p-4">
-      <div className="flex items-center justify-between gap-4 py-[0.35rem]">
+      <div className="flex items-center justify-between gap-4 py-[0.35rem] max-[720px]:flex-col max-[720px]:items-start">
         <div>
           <label className="block font-semibold text-ink">{t('integrations.api.baseUrl')}</label>
           <p className="m-0 mt-[0.15rem] text-[13px] text-muted-strong">{t('integrations.api.baseUrlDesc')}</p>
@@ -1213,7 +1213,7 @@ function ApiIntegrationPanel({ apiBaseUrl, actions, principalMode, setPrincipalM
           <button className="wk-button wk-button--text shrink-0 whitespace-nowrap" type="button" title={t('integrations.api.copy')} onClick={() => { void navigator.clipboard.writeText(apiBaseUrl).catch(() => undefined); }}>{t('integrations.api.copy')}</button>
         </div>
       </div>
-      <div className="flex items-center justify-between gap-4 border-t border-[#f2f5fa] py-[0.35rem]">
+      <div className="flex items-center justify-between gap-4 border-t border-[#f2f5fa] py-[0.35rem] max-[720px]:flex-col max-[720px]:items-start">
         <div>
           <label className="block font-semibold text-ink">OpenAPI /docs</label>
           <p className="m-0 mt-[0.15rem] text-[13px] text-muted-strong"><a href={apiBaseUrl.replace(/\/+$/, '') + '/docs'} target="_blank" rel="noreferrer">{apiBaseUrl.replace(/\/+$/, '') + '/docs'}</a></p>

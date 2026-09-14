@@ -212,14 +212,19 @@ export function GeneralPreferencesPanel() {
             <p className="desc">{t('font.fontSizeDescription')}</p>
           </div>
           <div className="setting-control">
-            <div className="wk-segmented" role="radiogroup" aria-label={t('font.fontSize')}>
-              {(['small', 'normal', 'large'] as const).map((size) => (
+            <div className="inline-flex overflow-hidden rounded-[3px] border border-[#e7e7e7]" role="radiogroup" aria-label={t('font.fontSize')}>
+              {(['small', 'normal', 'large'] as const).map((size, index) => (
                 <button
                   key={size}
                   type="button"
                   role="radio"
                   aria-checked={fontSize === size}
-                  className={fontSize === size ? 'is-active' : ''}
+                  className={'h-7 cursor-pointer border-0 bg-transparent px-4 py-0 font-[inherit] text-[length:inherit] leading-[inherit]'
+                    + (index > 0 ? ' border-l border-l-[#e7e7e7]' : '')
+                    + (fontSize === size
+                      ? ' is-active bg-[#07c05f] text-white' + (index > 0 ? ' border-l-[#07c05f]' : '') + ' hover:bg-[#06b04d]'
+                      : ' hover:text-[#07c05f]' + (index > 0 ? ' hover:border-l-[#07c05f]' : ''))
+                  }
                   onClick={() => handleFontSizeChange(size)}
                 >
                   {t('font.size.' + size)}

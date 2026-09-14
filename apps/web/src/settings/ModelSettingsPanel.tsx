@@ -933,7 +933,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
       <nav className="wk-model-tabs" aria-label={t("model.editor.typeLabel")}>
         <button
           type="button"
-          className={filter === "all" ? "is-active border-b-[#0a8f4c]! text-[13px] text-[#0a8f4c]!" : "text-[13px]"}
+          className={filter === "all" ? "border-b-[#0a8f4c]! text-[13px] text-[#0a8f4c]! is-active" : "text-[13px]"}
           onClick={() => setFilter("all")}
         >
           {t("common.all")}({models.length})
@@ -942,7 +942,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
           <button
             type="button"
             key={type}
-            className={filter === type ? "is-active border-b-[#0a8f4c]! text-[13px] text-[#0a8f4c]!" : "text-[13px]"}
+            className={filter === type ? "border-b-[#0a8f4c]! text-[13px] text-[#0a8f4c]! is-active" : "text-[13px]"}
             onClick={() => setFilter(type)}
           >
             {typeLabelOf(type)}({models.filter((item) => modelType(item) === type).length})
@@ -1139,9 +1139,8 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                   <label>
                     {t("model.modelName")}
                   </label>
-                  <div className="wk-ollama-combobox-wrap">
+                  <div className="wk-ollama-combobox-wrap relative grid w-full gap-1">
                       <input
-                        className="wk-ollama-combobox"
                         role="combobox"
                         aria-expanded={ollamaOpen}
                         aria-controls="wk-ollama-listbox"
@@ -1154,19 +1153,19 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                         onKeyDown={onComboboxKeyDown}
                       />
                       {ollamaOpen ? (
-                        <div className="wk-ollama-listbox" id="wk-ollama-listbox" role="listbox">
+                        <div className="relative z-[6] grid max-h-[220px] overflow-auto rounded-lg border border-[rgba(120,135,155,0.35)] bg-white shadow-[0_8px_24px_rgba(23,32,51,0.14)]" id="wk-ollama-listbox" role="listbox">
                           {ollamaSuggestions.map((item, index) => (
                             <button
                               type="button"
                               key={item.name}
                               role="option"
                               aria-selected={index === ollamaHighlight}
-                              className={"wk-ollama-option" + (index === ollamaHighlight ? " is-highlighted" : "")}
+                              className={"flex w-full cursor-pointer items-center gap-2 border-0 bg-transparent px-3 py-2 text-left font-[inherit] hover:bg-[rgba(7,192,95,0.1)]" + (index === ollamaHighlight ? " bg-[rgba(7,192,95,0.1)]" : "")}
                               onMouseDown={(event) => { event.preventDefault(); selectOllamaModel(item.name); }}
                             >
-                              <span className="wk-ollama-option__check" aria-hidden="true">✓</span>
-                              <span className="wk-ollama-option__name">{item.name}</span>
-                              <span className="wk-ollama-option__size">{formatModelSize((item as Record<string, unknown>).size)}</span>
+                              <span className="text-xs text-[#0a8f4c]" aria-hidden="true">✓</span>
+                              <span className="flex-1 text-[13px]">{item.name}</span>
+                              <span className="text-xs text-[#7a879c]">{formatModelSize((item as Record<string, unknown>).size)}</span>
                             </button>
                           ))}
                           {ollamaDownloadOffered ? (
@@ -1174,17 +1173,17 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                               type="button"
                               role="option"
                               aria-selected={ollamaHighlight === ollamaSuggestions.length}
-                              className={"wk-ollama-option wk-ollama-option--download" + (ollamaHighlight === ollamaSuggestions.length ? " is-highlighted" : "")}
+                              className={"flex w-full cursor-pointer items-center gap-2 border-0 bg-transparent px-3 py-2 text-left font-[inherit] hover:bg-[rgba(7,192,95,0.1)]" + (ollamaHighlight === ollamaSuggestions.length ? " bg-[rgba(7,192,95,0.1)]" : "")}
                               onMouseDown={(event) => { event.preventDefault(); setOllamaOpen(false); void downloadOllamaModel(); }}
                             >
-                              <span className="wk-ollama-option__icon" aria-hidden="true">⬇</span>
-                              <span className="wk-ollama-option__name">{t("model.editor.downloadLabel", { keyword: ollamaKeyword })}</span>
+                              <span aria-hidden="true">⬇</span>
+                              <span className="flex-1 text-[13px] text-[#0a8f4c]">{t("model.editor.downloadLabel", { keyword: ollamaKeyword })}</span>
                             </button>
                           ) : null}
                         </div>
                       ) : null}
                     </div>
-                    {nameError ? <span className="wk-field-error">{nameError}</span> : null}
+                    {nameError ? <span className="wk-field-error text-xs leading-[1.4] text-[#c23434]">{nameError}</span> : null}
                   <div className="wk-list-actions">
                     <Button type="button" disabled={ollamaBusy} onClick={() => void refreshOllamaModels()}>
                       {t("model.editor.refreshList")}
@@ -1235,7 +1234,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                     onChange={(event) => changeName(event.target.value)}
                     onBlur={blurName}
                   />
-                  {nameError ? <span className="wk-field-error">{nameError}</span> : null}
+                  {nameError ? <span className="wk-field-error text-xs leading-[1.4] text-[#c23434]">{nameError}</span> : null}
                 </label>
                 <label>
                   {t("model.editor.displayNameLabel")}
@@ -1259,7 +1258,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                         onChange={(event) => changeBaseUrl(event.target.value)}
                         onBlur={blurBaseUrl}
                       />
-                      {baseUrlError ? <span className="wk-field-error">{baseUrlError}</span> : null}
+                      {baseUrlError ? <span className="wk-field-error text-xs leading-[1.4] text-[#c23434]">{baseUrlError}</span> : null}
                     </label>
                     {draft.id ? (
                       <div className="form-item">
@@ -1420,10 +1419,10 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                     {dimensionMessage ? (
                       <Status tone={dimensionMessage.ok ? "success" : "error"}>{dimensionMessage.text}</Status>
                     ) : null}
-                    <div className="wk-model-switch">
+                    <div className="mt-1 flex min-h-[22px] cursor-pointer flex-wrap items-center gap-x-2">
                       <Switch checked={draft.supportsDimensionOverride} onCheckedChange={(checked) => updateDraft("supportsDimensionOverride", checked)} aria-label={t("model.editor.dimensionOverrideLabel")} />
-                      <span className="wk-model-switch__label">{t("model.editor.dimensionOverrideLabel")}</span>
-                      <span className="wk-model-switch__description">{t("model.editor.dimensionOverrideDesc")}</span>
+                      <span className="text-[13px] font-medium text-[rgba(0,0,0,0.9)]">{t("model.editor.dimensionOverrideLabel")}</span>
+                      <span className="ml-11 mt-[2px] basis-full text-xs leading-[1.5] text-[#8a8a8a]">{t("model.editor.dimensionOverrideDesc")}</span>
                     </div>
                   </>
                 ) : null}
@@ -1442,10 +1441,10 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                 ) : null}
                 {draft.type === "chat" ? (
                   <>
-                    <div className="wk-model-switch">
+                    <div className="mt-1 flex min-h-[22px] cursor-pointer flex-wrap items-center gap-x-2">
                       <Switch checked={draft.supportsVision} onCheckedChange={(checked) => updateDraft("supportsVision", checked)} aria-label={t("model.editor.supportsVisionLabel")} />
-                      <span className="wk-model-switch__label">{t("model.editor.supportsVisionLabel")}</span>
-                      <span className="wk-model-switch__description">{t("model.editor.supportsVisionDesc")}</span>
+                      <span className="text-[13px] font-medium text-[rgba(0,0,0,0.9)]">{t("model.editor.supportsVisionLabel")}</span>
+                      <span className="ml-11 mt-[2px] basis-full text-xs leading-[1.5] text-[#8a8a8a]">{t("model.editor.supportsVisionDesc")}</span>
                     </div>
                   </>
                 ) : null}

@@ -146,8 +146,12 @@ async function click(button: Element) {
 async function submitForm(form: HTMLFormElement) {
   await act(async () => form.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true })));
 }
+// 添加磁贴的语义查询： localized add-model action（原 button.wk-model-card--add 钩子类已迁 Tailwind）
+function findAddTile(container: HTMLElement) {
+  return Array.from(container.querySelectorAll('button')).find((button) => (button.textContent ?? '').includes('添加模型')) ?? null;
+}
 async function openAddEditor(container: HTMLElement) {
-  const add = container.querySelector('button.wk-model-card--add');
+  const add = findAddTile(container);
   assert.ok(add, 'the localized add-model action should render for admins');
   await click(add);
   assert.ok(container.querySelector('.wk-model-editor'), 'the editor should open');
@@ -496,10 +500,10 @@ test('edit prefill restores stored fields and routes credentials through the sub
     credentials: { api_key: { configured: true }, app_secret: { configured: false } },
   } as never;
   const container = await mount(client, 'admin', [record]);
-  const more = container.querySelector('button.model-card__more');
+  const more = container.querySelector('.wk-vmodel-card [aria-haspopup="menu"]');
   assert.ok(more);
   await click(more);
-  const edit = container.querySelector('.model-card__menu button');
+  const edit = container.querySelector('.wk-vmodel-card [role="menuitem"]');
   assert.ok(edit);
   await click(edit);
 
@@ -547,10 +551,10 @@ test('connection test uses the per-type route and edit-mode modelId passthrough'
     credentials: { api_key: { configured: true } },
   } as never;
   const container = await mount(client, 'admin', [record]);
-  const more = container.querySelector('button.model-card__more');
+  const more = container.querySelector('.wk-vmodel-card [aria-haspopup="menu"]');
   assert.ok(more);
   await click(more);
-  const edit = container.querySelector('.model-card__menu button');
+  const edit = container.querySelector('.wk-vmodel-card [role="menuitem"]');
   assert.ok(edit);
   await click(edit);
   const test = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === '测试连接');
@@ -587,10 +591,10 @@ test('panel header keeps only the Vue title, subtitle and debug trigger', async 
     assert.ok((heading.querySelector('p')?.textContent ?? '').includes('管理不同类型的 AI 模型，支持 Ollama 本地模型和远程 API'));
     const headingButtons = Array.from(heading.querySelectorAll('button')).map((button) => button.textContent ?? '');
     assert.deepEqual(headingButtons, ['模型测试']);
-    assert.ok(heading.querySelector('.wk-model-test-trigger'), 'debug trigger keeps the Vue trigger class');
-    assert.ok((heading.querySelector('.wk-model-test-trigger') as HTMLElement | null)?.querySelector('svg'), 'the trigger carries the Vue play icon');
+    assert.ok(heading.querySelector('button'), 'debug trigger keeps the Vue trigger class');
+    assert.ok((heading.querySelector('button') as HTMLElement | null)?.querySelector('svg'), 'the trigger carries the Vue play icon');
     // The dashed add tile replaces the header add button (ModelSettings.vue lines 128-139).
-    const addTile = container.querySelector('button.wk-model-card--add');
+    const addTile = findAddTile(container);
     assert.ok(addTile, 'the dashed add tile renders for admins');
     assert.ok((addTile.textContent ?? '').includes('添加模型'));
   } finally {
@@ -618,22 +622,22 @@ test('model cards use the Vue card markup with a per-card action menu', async ()
   try {
     const card = container.querySelector('.wk-vmodel-card');
     assert.ok(card, 'cards render the Vue model-card structure');
-    assert.ok(card.querySelector('.model-card__badge'), 'type badge renders');
-    assert.equal(card.querySelector('.model-card__title')?.textContent, 'gpt-4o');
-    assert.ok((card.querySelector('.model-card__subtitle')?.textContent ?? '').includes('OpenAI · 128K'));
+    assert.ok(card.querySelector('div[aria-label]'), 'type badge renders');
+    assert.equal(card.querySelector('h3')?.textContent, 'gpt-4o');
+    assert.ok((card.querySelector('p')?.textContent ?? '').includes('OpenAI · 128K'));
     // Tenant model: the menu holds 编辑/复制; delete stays an affix action.
-    await click(card.querySelector('.model-card__more')!);
-    const menu = card.querySelector('.model-card__menu');
+    await click(card.querySelector('[aria-haspopup="menu"]')!);
+    const menu = card.querySelector('[role="menu"]');
     assert.ok(menu, 'the ellipsis menu opens');
     assert.ok((menu.textContent ?? '').includes('编辑'));
     assert.ok((menu.textContent ?? '').includes('复制'));
-    assert.ok(card.querySelector('.model-card__delete'), 'delete stays an affix action');
+    assert.ok(card.querySelector('button[aria-label]'), 'delete stays an affix action');
     // Builtin model: lock icon, no menu, no delete (ModelSettings.vue lines 741-749).
     const builtin = Array.from(container.querySelectorAll('.wk-vmodel-card')).find((node) => (node.textContent ?? '').includes('builtin-vlm'));
     assert.ok(builtin);
-    assert.ok(builtin.querySelector('.model-card__lock'), 'builtin cards show the lock');
-    assert.equal(builtin.querySelector('.model-card__more'), null);
-    assert.equal(builtin.querySelector('.model-card__delete'), null);
+    assert.ok(builtin.querySelector('span[title]'), 'builtin cards show the lock');
+    assert.equal(builtin.querySelector('[aria-haspopup="menu"]'), null);
+    assert.equal(builtin.querySelector('button[aria-label]'), null);
   } finally {
     await act(async () => mountedRoot?.unmount());
     mountedRoot = undefined;
@@ -654,15 +658,15 @@ test('local source renders a keyboard-navigable Ollama combobox with a download 
   await click(localRadio);
   await act(async () => {});
 
-  const combobox = container.querySelector<HTMLInputElement>('input.wk-ollama-combobox');
+  const combobox = container.querySelector<HTMLInputElement>('input[role="combobox"]');
   assert.ok(combobox, 'the local picker is an editable combobox input');
   assert.equal(combobox.getAttribute('role'), 'combobox');
   assert.equal(combobox.getAttribute('aria-expanded'), 'false');
   await setInput(combobox, 'qwe');
-  const listbox = container.querySelector('.wk-ollama-listbox');
+  const listbox = container.querySelector('[role="listbox"]');
   assert.ok(listbox, 'typing opens the suggestion dropdown');
   assert.equal(combobox.getAttribute('aria-expanded'), 'true');
-  const option = listbox.querySelector('.wk-ollama-option');
+  const option = listbox.querySelector('[role="option"]');
   assert.ok(option);
   assert.ok((option.textContent ?? '').includes('qwen2.5:0.5b'));
   assert.ok((option.textContent ?? '').includes('512 MB'));
@@ -670,22 +674,22 @@ test('local source renders a keyboard-navigable Ollama combobox with a download 
   // Keyboard nav: the first suggestion starts highlighted; ArrowDown/ArrowUp
   // move the highlight and Enter selects (ModelEditorDialog.vue filterable
   // select keyboard behavior).
-  assert.ok(listbox.querySelector('.wk-ollama-option.is-highlighted'), 'the first suggestion starts highlighted');
+  assert.ok(listbox.querySelector('[role="option"][aria-selected="true"]'), 'the first suggestion starts highlighted');
   await pressKey(combobox, 'ArrowDown');
-  assert.ok(listbox.querySelector('.wk-ollama-option.is-highlighted'), 'ArrowDown moves the highlight');
+  assert.ok(listbox.querySelector('[role="option"][aria-selected="true"]'), 'ArrowDown moves the highlight');
   await pressKey(combobox, 'ArrowUp');
-  assert.ok((listbox.querySelector('.wk-ollama-option.is-highlighted')?.textContent ?? '').includes('qwen2.5:0.5b'), 'ArrowUp returns to the model row');
+  assert.ok((listbox.querySelector('[role="option"][aria-selected="true"]')?.textContent ?? '').includes('qwen2.5:0.5b'), 'ArrowUp returns to the model row');
   await pressKey(combobox, 'Enter');
   assert.equal(combobox.value, 'qwen2.5:0.5b', 'Enter selects the highlighted suggestion');
-  assert.equal(container.querySelector('.wk-ollama-listbox'), null, 'selection closes the dropdown');
+  assert.equal(container.querySelector('[role="listbox"]'), null, 'selection closes the dropdown');
 
   // Unknown keyword offers the Vue download option (ModelEditorDialog.vue line 124).
   await setInput(combobox, 'gemma3:1b');
-  const downloadOption = container.querySelector('.wk-ollama-listbox .wk-ollama-option--download');
+  const downloadOption = Array.from(container.querySelectorAll('[role="option"]')).find((option) => (option.textContent ?? '').includes('下载')) ?? null;
   assert.ok(downloadOption);
   assert.ok((downloadOption.textContent ?? '').includes('下载: gemma3:1b'));
   await pressKey(combobox, 'Escape');
-  assert.equal(container.querySelector('.wk-ollama-listbox'), null, 'Escape closes the dropdown');
+  assert.equal(container.querySelector('[role="listbox"]'), null, 'Escape closes the dropdown');
   const refresh = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === '刷新列表');
   assert.ok(refresh, 'the Vue refresh action stays next to the picker');
 });
@@ -743,7 +747,7 @@ test('ESC keeps the add draft, cancel discards it', async () => {
   await pressKey(document.body, 'Escape');
   assert.equal(container.querySelector('.wk-model-editor'), null, 'ESC closes the editor');
 
-  const add = container.querySelector('button.wk-model-card--add');
+  const add = findAddTile(container);
   assert.ok(add);
   await click(add);
   const restored = inputByPlaceholder(container, '例如：gpt-4, claude-3-opus')!;

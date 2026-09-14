@@ -1053,7 +1053,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
   };
 
   const renderFieldError = (field: string) => (
-    fieldErrors[field] ? <p className="wk-field-error" role="alert">{t('settings.sandbox.fieldRequired')}</p> : null
+    fieldErrors[field] ? <p className="wk-field-error text-xs leading-[1.4] text-[#c23434]" role="alert">{t('settings.sandbox.fieldRequired')}</p> : null
   );
 
   const title = record ? t('settings.sandbox.editTitle') : t('settings.sandbox.createTitle');
@@ -1124,7 +1124,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
             <label>
               {t('settings.sandbox.configName')}
               <input value={form.name} placeholder={t('settings.sandbox.configNamePlaceholder')} aria-invalid={nameError || undefined} onChange={(event) => { updateForm({ name: event.target.value }); setNameError(false); }} />
-              {nameError ? <p className="wk-field-error" role="alert">{t('settings.sandbox.configNameRequired')}</p> : null}
+              {nameError ? <p className="wk-field-error text-xs leading-[1.4] text-[#c23434]" role="alert">{t('settings.sandbox.configNameRequired')}</p> : null}
             </label>
             <label>
               {t('settings.sandbox.configDescription')}
@@ -1273,8 +1273,8 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                             ))}
                           </dl>
                         ) : null}
-                        {isTemplateUntagged(item) ? <p className="wk-field-error">{t('settings.sandbox.templateUntaggedHint')}</p>
-                          : failureReason ? <p className="wk-field-error">{failureReason}</p>
+                        {isTemplateUntagged(item) ? <p className="wk-field-error text-xs leading-[1.4] text-[#c23434]">{t('settings.sandbox.templateUntaggedHint')}</p>
+                          : failureReason ? <p className="wk-field-error text-xs leading-[1.4] text-[#c23434]">{failureReason}</p>
                             : isTemplatePending(item) && item.standard ? <p className="wk-muted">{t('settings.sandbox.templateBuildingHint')}</p> : null}
                       </div>
                     </div>
@@ -1285,7 +1285,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
             )}
             {templatesError ? <Status tone="warning">{templatesError}</Status> : null}
             {templatesInfo ? <Status>{templatesInfo}</Status> : null}
-            {fieldErrors.template_id ? <p className="wk-field-error" role="alert">{t('settings.sandbox.templateNotReady')}</p> : null}
+            {fieldErrors.template_id ? <p className="wk-field-error text-xs leading-[1.4] text-[#c23434]" role="alert">{t('settings.sandbox.templateNotReady')}</p> : null}
             <a href={CLUSTER_GUIDE_URL} target="_blank" rel="noopener noreferrer">{t('settings.sandbox.howToBuildTemplate')}</a>
           </section>
         ) : null}
@@ -1804,9 +1804,9 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
       ) : null}
 
       <nav className="wk-model-tabs" aria-label={t('settings.sandbox.backendType')}>
-        <button type="button" className={filter === 'all' ? 'is-active' : ''} onClick={() => setFilter('all')}>{t('common.all')} ({items.length})</button>
+        <button type="button" className={filter === 'all' ? 'border-b-[#0a8f4c]! text-[13px] text-[#0a8f4c]! is-active' : 'text-[13px]'} onClick={() => setFilter('all')}>{t('common.all')} ({items.length})</button>
         {SANDBOX_BACKENDS.map((type) => (
-          <button type="button" key={type} className={filter === type ? 'is-active' : ''} onClick={() => setFilter(type)}>
+          <button type="button" key={type} className={filter === type ? 'border-b-[#0a8f4c]! text-[13px] text-[#0a8f4c]! is-active' : 'text-[13px]'} onClick={() => setFilter(type)}>
             {backendLabel(type)} ({countByType(type)})
           </button>
         ))}

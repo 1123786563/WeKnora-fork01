@@ -94,6 +94,15 @@ API 契约、鉴权、权限、表单校验、聊天流式、工具审批、上�
   settings-wrapper 抽屉 select chrome 特异性更高今日实际生效，按生效值 4 条未复制）；
   TenantMembersPanel.css 删除（752 行）；钩子类保留 13 个；测试选择器 15 处语义化。
 - 验收：typecheck 0、面板测试 9/9、web 856/856、build ✓、dist 无 .wk-tenant-members 残留。
+### 批次22-23：settings-wrapper model/ollama/segmented/field-error 家族 + integrations api-band 切片 ✅（双子任务并行，Orchestrator 合并验收提交）
+- 批次22（model/ollama/字段族）：settings-wrapper.css 删 58 条（223→139）；8 文件转换
+  （ModelSettings/OllamaUI/model-card 全家族 5 色徽章静态映射/ollama combobox/segmented/
+  field-error×8/password-editor/builtin-hint/test-trigger/tabs 跨文件消费方 grep 定位）；
+  测试 27 处+helper 语义化；六面板测试 83/83。
+- 批次23（integrations api-band）：page.tsx + ApiPlaygroundDrawer.tsx 全迁移（inline 驱动
+  属性保持 inline 只转实际生效 CSS；status 四色静态三元；var(--wk-*) 任意值保留）；
+  styles.css 删 41 规则+1 死 media、缩窄保留 2 条共享规则；测试 13 处语义化、52/52。
+- 合并验收：typecheck 0、web 856/856、shared 445/445、build ✓、styles.css 1087→1013 行。
 ### 批次14：@source 路径修复 ✅（shell 波发现的关键既有 bug）
 - styles.css @source 路径 ../../packages/... → ../../../packages/...（apps/web/src 需三级）。
   oxide Scanner 实证：原路径 normalize 到不存在的 apps/packages/ui，包文件 0 被扫描。

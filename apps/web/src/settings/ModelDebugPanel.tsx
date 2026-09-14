@@ -314,10 +314,10 @@ export function ModelDebugPanel({ client, models, onClose }: Props) {
               />
             </label>
             {supportsThinking ? (
-              <div className="wk-model-switch">
+              <div className="mt-1 flex min-h-[22px] cursor-pointer flex-wrap items-center gap-x-2">
                 <Switch checked={thinking} onCheckedChange={setThinking} aria-label={t("modelSettings.debug.thinking")} />
-                <span className="wk-model-switch__label">{t("modelSettings.debug.thinking")}</span>
-                <span className="wk-model-switch__description">{t("modelSettings.debug.thinkingDesc")}</span>
+                <span className="text-[13px] font-medium text-[rgba(0,0,0,0.9)]">{t("modelSettings.debug.thinking")}</span>
+                <span className="ml-11 mt-[2px] basis-full text-xs leading-[1.5] text-[#8a8a8a]">{t("modelSettings.debug.thinkingDesc")}</span>
               </div>
             ) : null}
           </fieldset>

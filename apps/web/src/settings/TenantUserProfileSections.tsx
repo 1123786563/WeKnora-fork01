@@ -372,7 +372,7 @@ export function UserProfileSection({ client, locale, payload }: {
           </div>
         </div>
       </div>
-      <form className="wk-password-editor" onSubmit={(event) => void submit(event)}>
+      <form className="mt-1 grid gap-3 border-t border-dashed border-[rgba(120,135,155,0.3)] pt-4" onSubmit={(event) => void submit(event)}>
         <label>
           {t('userProfile.changePassword.currentLabel')}
           <input
@@ -383,7 +383,7 @@ export function UserProfileSection({ client, locale, payload }: {
             onChange={(event) => update('oldPassword', event.target.value)}
             onBlur={() => blurField('oldPassword')}
           />
-          {fieldErrors.oldPassword ? <span className="wk-field-error">{fieldErrors.oldPassword}</span> : null}
+          {fieldErrors.oldPassword ? <span className="wk-field-error text-xs leading-[1.4] text-[#c23434]">{fieldErrors.oldPassword}</span> : null}
         </label>
         <label>
           {t('userProfile.changePassword.newLabel')}
@@ -395,7 +395,7 @@ export function UserProfileSection({ client, locale, payload }: {
             onChange={(event) => update('newPassword', event.target.value)}
             onBlur={() => blurField('newPassword')}
           />
-          {fieldErrors.newPassword ? <span className="wk-field-error">{fieldErrors.newPassword}</span> : null}
+          {fieldErrors.newPassword ? <span className="wk-field-error text-xs leading-[1.4] text-[#c23434]">{fieldErrors.newPassword}</span> : null}
         </label>
         <label>
           {t('userProfile.changePassword.confirmLabel')}
@@ -407,7 +407,7 @@ export function UserProfileSection({ client, locale, payload }: {
             onChange={(event) => update('confirmation', event.target.value)}
             onBlur={() => blurField('confirmation')}
           />
-          {fieldErrors.confirmation ? <span className="wk-field-error">{fieldErrors.confirmation}</span> : null}
+          {fieldErrors.confirmation ? <span className="wk-field-error text-xs leading-[1.4] text-[#c23434]">{fieldErrors.confirmation}</span> : null}
         </label>
         <div className="inline-edit-actions">
           <Button type="button" disabled={submitting} onClick={resetForm}>{t('common.cancel')}</Button>

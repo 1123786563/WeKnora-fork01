@@ -108,11 +108,11 @@ function runButton(container: HTMLElement) {
 
 test('drawer renders the three Vue sections with Vue defaults in zh-CN', () => {
   const { container } = mountDrawer();
-  const drawer = container.querySelector('.wk-api-playground-drawer');
+  const drawer = container.querySelector('aside[role="dialog"]');
   assert.ok(drawer, 'drawer aside rendered');
   assert.equal(drawer!.parentElement?.parentElement, document.body, 'Vue SettingDrawer teleport boundary is document.body');
   assert.equal(drawer!.getAttribute('aria-label'), 'API Playground');
-  const titles = Array.from(container.querySelectorAll('.wk-api-playground-section h4')).map((node) => node.textContent);
+  const titles = Array.from(container.querySelectorAll('h4')).map((node) => node.textContent);
   assert.deepEqual(titles, ['请求配置', '请求预览', '运行结果']);
   const query = container.querySelector<HTMLTextAreaElement>('.wk-api-playground-query');
   assert.equal(query!.value, 'hello', 'Vue default query');
@@ -120,7 +120,7 @@ test('drawer renders the three Vue sections with Vue defaults in zh-CN', () => {
   const externalUser = container.querySelector<HTMLInputElement>('.wk-api-playground-external-user');
   assert.equal(externalUser!.value, 'user_123', 'Vue default external user');
   assert.equal(container.querySelector('.wk-api-playground-empty')?.textContent, '运行后将在这里显示 Session 响应、SSE 原始输出和提取出的回答。');
-  assert.match(container.querySelector('.wk-api-playground-preview pre')?.textContent ?? '', /<API_KEY>/);
+  assert.match(container.querySelector('pre')?.textContent ?? '', /<API_KEY>/);
   assert.ok(!Array.from(container.querySelectorAll('pre')).some((pre) => (pre.textContent ?? '').includes('wk-key')), 'preview masks the api key');
 });
 
@@ -155,7 +155,7 @@ test('agent selector exposes the Vue loading state while agents are resolving', 
 
 test('signed_token preview masks both secrets behind the Vue placeholders', () => {
   const { container } = mountDrawer({ mode: 'signed_token' });
-  const preview = container.querySelector('.wk-api-playground-preview pre')?.textContent ?? '';
+  const preview = container.querySelector('pre')?.textContent ?? '';
   assert.match(preview, /<JWT>/);
   assert.match(preview, /<API_KEY>/);
   assert.ok(!preview.includes('wk-key'));
@@ -186,13 +186,13 @@ test('full direct_header run streams the SSE answer with per-step statuses', asy
   const chatHeaders = chat.init.headers as Record<string, string>;
   assert.equal(chatHeaders.Accept, 'text/event-stream');
   assert.deepEqual(JSON.parse(chat.init.body as string), { query: 'hello', agent_enabled: true, agent_id: 'a1', channel: 'api' });
-  const steps = Array.from(container.querySelectorAll('.wk-api-playground-step'));
+  const steps = Array.from(container.querySelectorAll('[data-step]'));
   assert.equal(steps.length, 3, 'session, chat and answer steps');
   const sessionStep = container.querySelector('[data-step="session"]')!;
-  assert.equal(sessionStep.querySelector('.wk-api-playground-status')!.getAttribute('data-status'), 'success');
+  assert.equal(sessionStep.querySelector('[data-status]')!.getAttribute('data-status'), 'success');
   assert.match(sessionStep.querySelector('pre')!.textContent ?? '', /sess-1/);
   const chatStep = container.querySelector('[data-step="chat"]')!;
-  assert.equal(chatStep.querySelector('.wk-api-playground-status')!.getAttribute('data-status'), 'success');
+  assert.equal(chatStep.querySelector('[data-status]')!.getAttribute('data-status'), 'success');
   assert.match(chatStep.querySelector('pre')!.textContent ?? '', /"response_type":\s*"complete"/);
   assert.equal(container.querySelector('[data-step="answer"] pre')!.textContent, '你好');
 });
@@ -207,11 +207,11 @@ test('stop during the SSE stream marks the steps stopped with the Vue message', 
   const stop = container.querySelector<HTMLButtonElement>('button[data-action="stop"]');
   assert.ok(stop, 'stop button visible while running');
   void act(() => { stop!.click(); });
-  await waitFor(() => (container.querySelector('.wk-api-playground-alert')?.textContent ?? '') === '测试已停止', 'stop never settled');
+  await waitFor(() => (container.querySelector('[role="alert"]')?.textContent ?? '') === '测试已停止', 'stop never settled');
   // Vue L1719-1720 only flips steps that are still 'running': the session step
   // already settled as success before the chat stream started.
-  assert.equal(container.querySelector('[data-step="session"] .wk-api-playground-status')!.getAttribute('data-status'), 'success');
-  assert.equal(container.querySelector('[data-step="chat"] .wk-api-playground-status')!.getAttribute('data-status'), 'stopped');
+  assert.equal(container.querySelector('[data-step="session"] [data-status]')!.getAttribute('data-status'), 'success');
+  assert.equal(container.querySelector('[data-step="chat"] [data-status]')!.getAttribute('data-status'), 'stopped');
   await waitFor(() => !runButton(container)!.disabled, 'run re-enabled after stop');
 });
 
@@ -223,8 +223,8 @@ test('terminal SSE error event fails the chat step with the provider message', a
     ], true) };
   });
   void act(() => { runButton(container)!.click(); });
-  await waitFor(() => (container.querySelector('.wk-api-playground-alert')?.textContent ?? '') === '上游模型故障', 'terminal error never surfaced');
-  assert.equal(container.querySelector('[data-step="chat"] .wk-api-playground-status')!.getAttribute('data-status'), 'failed');
+  await waitFor(() => (container.querySelector('[role="alert"]')?.textContent ?? '') === '上游模型故障', 'terminal error never surfaced');
+  assert.equal(container.querySelector('[data-step="chat"] [data-status]')!.getAttribute('data-status'), 'failed');
   assert.equal(runButton(container)!.disabled, false, 'run re-enabled after failure');
 });
 
@@ -247,7 +247,7 @@ test('signed_token run mints the test token and shows the generated token step',
   assert.equal(sessionHeaders['X-External-User-Token'], 'jwt-abc', 'minted token rides the signed-token header');
   const tokenStep = container.querySelector('[data-step="token"]');
   assert.ok(tokenStep, 'generated token step rendered');
-  assert.match(tokenStep!.querySelector('.wk-api-playground-step-header span')!.textContent ?? '', /本次生成的测试 Token/);
+  assert.match(tokenStep!.querySelector('div span')!.textContent ?? '', /本次生成的测试 Token/);
   assert.equal(tokenStep!.querySelector('pre')!.textContent, 'jwt-abc');
 });
 
