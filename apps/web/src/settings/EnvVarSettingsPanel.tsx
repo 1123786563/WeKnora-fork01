@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import { Button, Card, Status } from '@weknora/ui';
 import { envVarRemove, envVarSet, type EnvVarScope } from './surface.ts';
+import { readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
 
 function errorText(error: unknown, fallback: string): string { return error instanceof Error ? error.message : fallback; }
 
@@ -25,6 +26,7 @@ function rows(payload: unknown): EnvVarRow[] {
 }
 
 export function EnvVarSettingsPanel({ client, initialPayload, onMutated }: { client: WeKnoraClient; initialPayload: unknown; onMutated?: () => void }) {
+  const t = settingsT(readInitialLocale());
   const [scope, setScope] = useState<EnvVarScope>('skill');
   const [scopeId, setScopeId] = useState('');
   const [name, setName] = useState('');
@@ -36,7 +38,7 @@ export function EnvVarSettingsPanel({ client, initialPayload, onMutated }: { cli
   async function run(action: () => Promise<unknown>, success: string) {
     setBusy(true); setError(null); setNotice(null);
     try { await action(); setNotice(success); onMutated?.(); }
-    catch (reason) { setError(errorText(reason, 'The environment-variable operation failed; the stored value was kept.')); }
+    catch (reason) { setError(errorText(reason, t('envVarSettings.saveFailed'))); }
     finally { setBusy(false); }
   }
 
@@ -44,11 +46,11 @@ export function EnvVarSettingsPanel({ client, initialPayload, onMutated }: { cli
     event.preventDefault();
     let mutation;
     try { mutation = envVarSet(scope, scopeId, name, value); }
-    catch (reason) { setError(errorText(reason, 'Invalid environment-variable input.')); return; }
+    catch (reason) { setError(errorText(reason, t('envVarSettings.valueRequired'))); return; }
     const set = scope === 'skill'
       ? () => client.settings.envVars.skill.set(mutation.body.skill_id as string, mutation.name, mutation.value)
       : () => client.settings.envVars.sandbox.set(mutation.body.sandbox_config_id as string, mutation.name, mutation.value);
-    void run(set, 'Environment variable saved for ' + scope + ' ' + mutation.body[scope === 'skill' ? 'skill_id' : 'sandbox_config_id'] + '.');
+    void run(set, t('envVarSettings.saveSuccess'));
   }
 
   function removeVariable(row: EnvVarRow) {
@@ -58,30 +60,30 @@ export function EnvVarSettingsPanel({ client, initialPayload, onMutated }: { cli
     const remove = row.scope === 'skill'
       ? () => client.settings.envVars.skill.remove((body as { skill_id: string }).skill_id, row.name)
       : () => client.settings.envVars.sandbox.remove((body as { sandbox_config_id: string }).sandbox_config_id, row.name);
-    void run(remove, 'Environment variable ' + row.name + ' removed.');
+    void run(remove, t('envVarSettings.deleteSuccess'));
   }
 
   return <Card data-testid="envvar-panel">
     {error ? <Status tone="error">{error}</Status> : null}
     {notice ? <Status tone="success">{notice}</Status> : null}
     <form className="wk-settings-editor my-4 grid gap-[.8rem] max-w-[620px] [&_label]:grid [&_label]:gap-[.35rem] [&_label]:text-[#27364d] [&_label]:font-semibold [&_input]:w-full [&_input]:box-border [&_input]:border [&_input]:border-[#cbd5e1] [&_input]:rounded-control [&_input]:bg-white [&_input]:text-ink [&_input]:[font:inherit] [&_input]:px-[.65rem] [&_input]:py-[.55rem] [&_textarea]:w-full [&_textarea]:box-border [&_textarea]:border [&_textarea]:border-[#cbd5e1] [&_textarea]:rounded-control [&_textarea]:bg-white [&_textarea]:text-ink [&_textarea]:[font:inherit] [&_textarea]:px-[.65rem] [&_textarea]:py-[.55rem] [&_select]:w-full [&_select]:[font:inherit]" onSubmit={setVariable}>
-      <label>Scope
+      <label>{t('envVarSettings.sandboxPick')}
         <select value={scope} onChange={(event) => setScope(event.target.value as EnvVarScope)}>
-          <option value="skill">Skill (skill_id)</option>
-          <option value="sandbox">Sandbox config (sandbox_config_id)</option>
+          <option value="skill">{t('envVarSettings.skillTitle')}</option>
+          <option value="sandbox">{t('envVarSettings.sandboxTitle')}</option>
         </select>
       </label>
-      <label>{scope === 'skill' ? 'Skill ID' : 'Sandbox config ID'}<input required value={scopeId} onChange={(event) => setScopeId(event.target.value)} /></label>
-      <label>Variable name<input required value={name} onChange={(event) => setName(event.target.value)} /></label>
-      <label>Value<input required value={value} onChange={(event) => setValue(event.target.value)} /></label>
-      <Button type="submit" loading={busy}>Set variable</Button>
+      <label>{scope === 'skill' ? t('envVarSettings.skillOnSandbox', { name: 'ID' }) : t('envVarSettings.sandboxPick')}<input required value={scopeId} onChange={(event) => setScopeId(event.target.value)} /></label>
+      <label>{t('envVarSettings.namePlaceholder')}<input required value={name} onChange={(event) => setName(event.target.value)} /></label>
+      <label>{t('envVarSettings.valuePlaceholder')}<input required value={value} onChange={(event) => setValue(event.target.value)} /></label>
+      <Button type="submit" loading={busy}>{t('envVarSettings.save')}</Button>
     </form>
     {rows(initialPayload).length === 0
-      ? <p className="wk-settings-read-note text-muted-strong text-[.9rem]">No personal environment variables are stored yet.</p>
+      ? <p className="wk-settings-read-note text-muted-strong text-[.9rem]">{t('envVarSettings.sandboxEmpty')}</p>
       : <ul className="wk-list m-0 list-none p-0">{rows(initialPayload).map((row) => (
         <li key={row.scope + ':' + row.scopeId + ':' + row.name} className="flex items-baseline justify-between gap-4 border-b border-line-soft py-[0.9rem]">
           <strong>{row.name}</strong> · {row.scope} {row.scopeId} = {row.value}
-          <Button type="button" disabled={busy} onClick={() => removeVariable(row)}>Remove</Button>
+          <Button type="button" disabled={busy} onClick={() => removeVariable(row)}>{t('envVarSettings.delete')}</Button>
         </li>
       ))}</ul>}
   </Card>;
