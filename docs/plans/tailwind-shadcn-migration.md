@@ -47,6 +47,12 @@ API 契约、鉴权、权限、表单校验、聊天流式、工具审批、上�
 运维记录：首批并行子任务因始终未执行文件写入被中断（只读分析循环）；
 前台探针证实绝对路径写入可用。已带侦查结论 + 「边读边写 + 后台门禁」纪律重新派发。
 
+### 批次5：command-palette 域 ✅（Orchestrator 执行）
+- GlobalCommandPalette.tsx 23 处 className 全部 utilities 化（overlay/面板/输入行/结果组/
+  分组头/条目+选中态/快捷键徽章 kbd 变体/空态/footer）；cmdk 类名保留为测试 DOM 钩子
+  （cmdk/cmdk__input/cmdk__item/cmdk__item-shortcut，无样式规则）。
+- command-palette.css 删除（181 行，全部可 1:1 表达，无 keyframes）。
+- 验收：typecheck 0、web 856/856（含 shortcuts/render 38 项）、build ✓。
 ### 批次4：knowledge-list 域 ✅（Orchestrator 执行，分阶段原子替换）
 - App.tsx KnowledgeBasesPage 全部 kb-list-* 样式 → utilities（3 阶段：结构层 21 处、
   网格/骨架/空态/section 头 19 处、卡片层 20 处）；类名保留为 DOM/测试解剖钩子（无样式规则）。

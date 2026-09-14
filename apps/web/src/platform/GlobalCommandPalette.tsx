@@ -8,7 +8,6 @@ import {
   shortcutDigitFor,
   type CommandDescriptor,
 } from './command-palette.ts';
-import './command-palette.css';
 
 export interface GlobalCommandPaletteProps {
   /** Whether the dialog is currently shown. Mirrors Vue's `open` store ref. */
@@ -123,32 +122,32 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
 
   return (
     <div
-      className="cmdk-overlay"
+      className="fixed inset-0 z-[1000] flex items-start justify-center bg-[rgba(15,23,32,0.45)] pt-[10vh]"
       role="presentation"
       onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}
     >
-      <div className="cmdk" role="dialog" aria-modal="true" aria-label={t('commandPalette.placeholder')} onKeyDown={onKeyDown}>
-        <div className="cmdk__input-row">
+      <div className="cmdk flex max-h-[70vh] w-[640px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-[10px] bg-white shadow-[0_20px_60px_rgba(15,23,32,0.35)]" role="dialog" aria-modal="true" aria-label={t('commandPalette.placeholder')} onKeyDown={onKeyDown}>
+        <div className="flex items-center gap-2 border-b border-[#eef1f5] px-3.5 py-3">
           <input
             ref={inputRef}
             type="text"
-            className="cmdk__input"
+            className="cmdk__input min-w-0 flex-1 border-none bg-transparent text-[15px] text-[#1f2733] outline-none"
             value={query}
             onChange={(event) => { setQuery(event.target.value); setSelectedIndex(0); }}
             placeholder={t('commandPalette.placeholder')}
             spellCheck={false}
             autoFocus
           />
-          <button type="button" className="cmdk__icon-btn" aria-label={t('commandPalette.hotkey.esc')} onClick={onClose}>
+          <button type="button" className="cursor-pointer rounded-md border-none bg-transparent px-1.5 py-1 text-lg leading-none text-[#8a94a3] hover:bg-[#f2f5f9] hover:text-[#1f2733]" aria-label={t('commandPalette.hotkey.esc')} onClick={onClose}>
             ×
           </button>
         </div>
-        <div className="cmdk__results">
+        <div className="overflow-y-auto py-1.5">
           {recentCount > 0 && (
-            <div className="cmdk__group">
-              <div className="cmdk__group-header">
+            <div className="border-t border-[#f2f5f9] first:border-t-0">
+              <div className="flex items-center justify-between px-3.5 py-1.5 text-xs text-[#8a94a3]">
                 <span>{t('commandPalette.group.recent')}</span>
-                <button type="button" className="cmdk__group-action" onClick={onClearRecent}>
+                <button type="button" className="cursor-pointer border-none bg-transparent p-0 text-xs text-[#2f6fed]" onClick={onClearRecent}>
                   {t('commandPalette.clearRecent')}
                 </button>
               </div>
@@ -159,21 +158,21 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
                     key={`recent-${value}`}
                     type="button"
                     data-cmdk-index={index}
-                    className={`cmdk__item${selectedIndex === index ? ' cmdk__item--selected' : ''}`}
+                    className={`cmdk__item flex w-full cursor-pointer items-center gap-2 border-none bg-transparent px-3.5 py-2 text-left text-sm text-[#1f2733] hover:bg-[#f2f5f9] ${selectedIndex === index ? 'bg-[#f2f5f9]' : ''}`}
                     onMouseEnter={() => setSelectedIndex(index)}
                     onClick={() => pickRecent(value)}
                   >
-                    <span className="cmdk__item-label">{value}</span>
+                    <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{value}</span>
                     {digit !== undefined && (
-                      <span className="cmdk__item-shortcut"><kbd>⌘</kbd><kbd>{digit}</kbd></span>
+                      <span className={`cmdk__item-shortcut inline-flex shrink-0 items-center gap-0.5 text-[10px] text-[rgba(0,0,0,0.4)] transition-opacity duration-100 [&_kbd]:inline-block [&_kbd]:min-w-[14px] [&_kbd]:rounded-[3px] [&_kbd]:border [&_kbd]:border-[#e7e7e7] [&_kbd]:bg-[#f3f3f3] [&_kbd]:px-1 [&_kbd]:leading-[14px] [&_kbd]:text-center [&_kbd]:text-[rgba(0,0,0,0.6)] ${selectedIndex === index ? 'opacity-100' : 'opacity-55'}`}><kbd>⌘</kbd><kbd>{digit}</kbd></span>
                     )}
                   </button>
                 );
               })}
             </div>
           )}
-          <div className="cmdk__group">
-            <div className="cmdk__group-header"><span>{groupLabel}</span></div>
+          <div className="border-t border-[#f2f5f9] first:border-t-0">
+            <div className="flex items-center justify-between px-3.5 py-1.5 text-xs text-[#8a94a3]"><span>{groupLabel}</span></div>
             {items.map((command, index) => {
               const flatIndex = recentCount + index;
               const digit = shortcutDigitFor(flatIndex);
@@ -182,26 +181,26 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
                   key={command.id}
                   type="button"
                   data-cmdk-index={flatIndex}
-                  className={`cmdk__item${selectedIndex === flatIndex ? ' cmdk__item--selected' : ''}`}
+                  className={`cmdk__item flex w-full cursor-pointer items-center gap-2 border-none bg-transparent px-3.5 py-2 text-left text-sm text-[#1f2733] hover:bg-[#f2f5f9] ${selectedIndex === flatIndex ? 'bg-[#f2f5f9]' : ''}`}
                   onMouseEnter={() => setSelectedIndex(flatIndex)}
                   onClick={() => runCommand(command)}
                 >
-                  <span className="cmdk__item-label">{t(command.labelKey)}</span>
+                  <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{t(command.labelKey)}</span>
                   {digit !== undefined && (
-                    <span className="cmdk__item-shortcut"><kbd>⌘</kbd><kbd>{digit}</kbd></span>
+                    <span className={`cmdk__item-shortcut inline-flex shrink-0 items-center gap-0.5 text-[10px] text-[rgba(0,0,0,0.4)] transition-opacity duration-100 [&_kbd]:inline-block [&_kbd]:min-w-[14px] [&_kbd]:rounded-[3px] [&_kbd]:border [&_kbd]:border-[#e7e7e7] [&_kbd]:bg-[#f3f3f3] [&_kbd]:px-1 [&_kbd]:leading-[14px] [&_kbd]:text-center [&_kbd]:text-[rgba(0,0,0,0.6)] ${selectedIndex === flatIndex ? 'opacity-100' : 'opacity-55'}`}><kbd>⌘</kbd><kbd>{digit}</kbd></span>
                   )}
                 </button>
               );
             })}
-            {trimmed && items.length === 0 && <p className="cmdk__empty">{t('commandPalette.empty.noResults')}</p>}
+            {trimmed && items.length === 0 && <p className="px-3.5 py-4 text-[13px] text-[#8a94a3]">{t('commandPalette.empty.noResults')}</p>}
           </div>
           {/* Vue GlobalCommandPalette.vue:142-150 — hotkey hint footer. */}
-          <div className="cmdk__footer">
-            <span className="cmdk__hotkey"><kbd>↑</kbd><kbd>↓</kbd> {t('commandPalette.hotkey.select')}</span>
-            <span className="cmdk__hotkey"><kbd>↵</kbd> {t('commandPalette.hotkey.enter')}</span>
-            <span className="cmdk__hotkey"><kbd>⌘</kbd><kbd>1</kbd>-<kbd>9</kbd> {t('commandPalette.hotkey.cmdNumber')}</span>
-            <span className="cmdk__hotkey"><kbd>⌘</kbd><kbd>↵</kbd> {t('commandPalette.hotkey.cmdEnter')}</span>
-            <span className="cmdk__hotkey"><kbd>Esc</kbd> {t('commandPalette.hotkey.esc')}</span>
+          <div className="flex flex-wrap gap-4 border-t border-[#e7e7e7] px-3.5 py-2 text-[11px] text-[rgba(0,0,0,0.4)]">
+            <span className="inline-flex items-center gap-1 [&_kbd]:inline-block [&_kbd]:min-w-4 [&_kbd]:rounded-[3px] [&_kbd]:border [&_kbd]:border-[#e7e7e7] [&_kbd]:bg-[#f3f3f3] [&_kbd]:px-[5px] [&_kbd]:py-px [&_kbd]:text-center [&_kbd]:text-[10px] [&_kbd]:leading-[14px] [&_kbd]:text-[rgba(0,0,0,0.6)]"><kbd>↑</kbd><kbd>↓</kbd> {t('commandPalette.hotkey.select')}</span>
+            <span className="inline-flex items-center gap-1 [&_kbd]:inline-block [&_kbd]:min-w-4 [&_kbd]:rounded-[3px] [&_kbd]:border [&_kbd]:border-[#e7e7e7] [&_kbd]:bg-[#f3f3f3] [&_kbd]:px-[5px] [&_kbd]:py-px [&_kbd]:text-center [&_kbd]:text-[10px] [&_kbd]:leading-[14px] [&_kbd]:text-[rgba(0,0,0,0.6)]"><kbd>↵</kbd> {t('commandPalette.hotkey.enter')}</span>
+            <span className="inline-flex items-center gap-1 [&_kbd]:inline-block [&_kbd]:min-w-4 [&_kbd]:rounded-[3px] [&_kbd]:border [&_kbd]:border-[#e7e7e7] [&_kbd]:bg-[#f3f3f3] [&_kbd]:px-[5px] [&_kbd]:py-px [&_kbd]:text-center [&_kbd]:text-[10px] [&_kbd]:leading-[14px] [&_kbd]:text-[rgba(0,0,0,0.6)]"><kbd>⌘</kbd><kbd>1</kbd>-<kbd>9</kbd> {t('commandPalette.hotkey.cmdNumber')}</span>
+            <span className="inline-flex items-center gap-1 [&_kbd]:inline-block [&_kbd]:min-w-4 [&_kbd]:rounded-[3px] [&_kbd]:border [&_kbd]:border-[#e7e7e7] [&_kbd]:bg-[#f3f3f3] [&_kbd]:px-[5px] [&_kbd]:py-px [&_kbd]:text-center [&_kbd]:text-[10px] [&_kbd]:leading-[14px] [&_kbd]:text-[rgba(0,0,0,0.6)]"><kbd>⌘</kbd><kbd>↵</kbd> {t('commandPalette.hotkey.cmdEnter')}</span>
+            <span className="inline-flex items-center gap-1 [&_kbd]:inline-block [&_kbd]:min-w-4 [&_kbd]:rounded-[3px] [&_kbd]:border [&_kbd]:border-[#e7e7e7] [&_kbd]:bg-[#f3f3f3] [&_kbd]:px-[5px] [&_kbd]:py-px [&_kbd]:text-center [&_kbd]:text-[10px] [&_kbd]:leading-[14px] [&_kbd]:text-[rgba(0,0,0,0.6)]"><kbd>Esc</kbd> {t('commandPalette.hotkey.esc')}</span>
           </div>
         </div>
       </div>
