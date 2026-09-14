@@ -12,17 +12,17 @@ export type ApprovalArgsParseResult =
   | { ok: false; error: string };
 
 /** Parses the textarea draft; only JSON objects are accepted as tool arguments. */
-export function parseApprovalArgsInput(draft: string): ApprovalArgsParseResult {
+export function parseApprovalArgsInput(draft: string, copy?: Pick<ChatCopyTable, 'approvalInvalidJson' | 'approvalArgsObject'>): ApprovalArgsParseResult {
   const trimmed = draft.trim();
   if (!trimmed) return { ok: true, args: {} };
   let parsed: unknown;
   try {
     parsed = JSON.parse(trimmed);
   } catch (cause) {
-    return { ok: false, error: cause instanceof Error ? `Invalid JSON: ${cause.message}` : 'Invalid JSON' };
+    return { ok: false, error: cause instanceof Error ? `${copy?.approvalInvalidJson ?? 'Invalid JSON'}: ${cause.message}` : (copy?.approvalInvalidJson ?? 'Invalid JSON') };
   }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    return { ok: false, error: 'Arguments must be a JSON object' };
+    return { ok: false, error: copy?.approvalArgsObject ?? 'Arguments must be a JSON object' };
   }
   return { ok: true, args: parsed as Record<string, unknown> };
 }
@@ -32,10 +32,10 @@ export type ApprovalResolutionPayload =
   | { ok: false; error: string };
 
 /** Builds the payload for onResolveToolApproval; approve validates the edited args. */
-export function approvalResolution(decision: 'approve' | 'reject', draft: string, expanded: boolean): ApprovalResolutionPayload {
+export function approvalResolution(decision: 'approve' | 'reject', draft: string, expanded: boolean, copy?: Pick<ChatCopyTable, 'approvalInvalidJson' | 'approvalArgsObject'>): ApprovalResolutionPayload {
   if (decision === 'reject') return { ok: true, decision: 'reject' };
   if (!expanded) return { ok: true, decision: 'approve' };
-  const parsed = parseApprovalArgsInput(draft);
+  const parsed = parseApprovalArgsInput(draft, copy);
   if (!parsed.ok) return parsed;
   return { ok: true, decision: 'approve', modifiedArgs: parsed.args };
 }
@@ -56,7 +56,7 @@ export function ToolApprovalCard({ approval, busy, onResolve, copy }: ToolApprov
   async function resolve(decision: 'approve' | 'reject') {
     if (!onResolve) return;
     const expanded = pending;
-    const resolution = approvalResolution(decision, draft, expanded);
+    const resolution = approvalResolution(decision, draft, expanded, copy);
     if (!resolution.ok) {
       setArgsError(resolution.error);
       return;
