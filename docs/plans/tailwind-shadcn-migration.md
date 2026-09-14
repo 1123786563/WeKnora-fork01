@@ -64,6 +64,11 @@ API 契约、鉴权、权限、表单校验、聊天流式、工具审批、上�
   基线+after-{foundation,auth,kblist} 截图；本地栈（:8080 sqlite / vite :5181，账号 uimig@local.dev）。
 - 本地栈注意：先前 dev 栈进程已结束；vite/后端均可用后台 job 方式自启（后端二进制 /tmp/uimig-server，
   sqlite /tmp/uimig-weknora.db，含 uimig 账号与一条 KB）。
+### 批次9：PlatformApiKeys 面板切片 ✅（settings-wrapper 域 3/N）
+- PlatformApiKeysPanel.tsx 7 处 className 迁移（create 行+input/button、capabilities、
+  message、token 卡+code、表格变体、revoke 按钮）。
+- settings-wrapper.css 删除 13 行 api-key 规则（家族清零）。
+- 验收：typecheck 0、SettingsPage.test 15/15、web 856/856、build ✓。
 ### 批次8：RuntimeQueues 面板切片 ✅（settings-wrapper 域 2/N）
 - RuntimeQueuesPanel.tsx 16 处 className 迁移（skeleton/指标网格+条件色/pools/models/
   表格+thead/tbody 变体/任务抽屉/head；[&_h3] 标题规则、[&_th/_td] 表格规则以任意变体表达）。
