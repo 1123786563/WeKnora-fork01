@@ -95,6 +95,9 @@ const enUS: Record<string, string> = {
   'knowledgeBase.graph.depth': 'Depth',
   'knowledgeBase.graph.allTypes': 'All types',
   'knowledgeBase.graph.links': 'links',
+  'knowledgeBase.graph.showing': 'Showing {visible} of {total} nodes',
+  'knowledgeBase.graph.overviewBounded': 'overview is bounded',
+  'knowledgeBase.graph.familiar': 'familiar',
   'knowledgeBase.graph.ariaLinks': 'Knowledge graph links',
   'knowledgeBase.graph.loadFailed': 'Unable to load the knowledge graph',
   'knowledgeBase.settings.title': 'Knowledge base settings',
@@ -191,17 +194,54 @@ const zhCN: Record<string, string> = {
   'knowledgeBase.graph.depth': '深度',
   'knowledgeBase.graph.allTypes': '全部类型',
   'knowledgeBase.graph.links': '链接',
+  'knowledgeBase.graph.showing': '显示 {visible} / {total} 个节点',
+  'knowledgeBase.graph.overviewBounded': '概览范围有限',
+  'knowledgeBase.graph.familiar': '常用资料',
   'knowledgeBase.graph.ariaLinks': '知识图谱连接',
   'knowledgeBase.graph.loadFailed': '无法加载知识图谱',
   'knowledgeBase.settings.title': '知识库设置',
 };
 
-// ja-JP / ko-KR / ru-RU reuse the en-US copy until translated; formatMessage
-// would fall back to en-US anyway, so keeping them here is purely explicit.
+const jaJPGraph: Record<string, string> = {
+  'knowledgeBase.graph.type': '種類',
+  'knowledgeBase.graph.depth': '深さ',
+  'knowledgeBase.graph.allTypes': 'すべての種類',
+  'knowledgeBase.graph.links': 'リンク',
+  'knowledgeBase.graph.showing': '{total} ノード中 {visible} ノードを表示',
+  'knowledgeBase.graph.overviewBounded': '概要の範囲に制限あり',
+  'knowledgeBase.graph.familiar': 'よく使う資料',
+  'knowledgeBase.graph.ariaLinks': 'ナレッジグラフのリンク',
+  'knowledgeBase.graph.loadFailed': 'ナレッジグラフを読み込めません',
+};
+
+const koKRGraph: Record<string, string> = {
+  'knowledgeBase.graph.type': '유형',
+  'knowledgeBase.graph.depth': '깊이',
+  'knowledgeBase.graph.allTypes': '모든 유형',
+  'knowledgeBase.graph.links': '링크',
+  'knowledgeBase.graph.showing': '{total}개 노드 중 {visible}개 표시',
+  'knowledgeBase.graph.overviewBounded': '개요 범위가 제한됨',
+  'knowledgeBase.graph.familiar': '자주 쓰는 자료',
+  'knowledgeBase.graph.ariaLinks': '지식 그래프 링크',
+  'knowledgeBase.graph.loadFailed': '지식 그래프를 불러올 수 없습니다',
+};
+
+const ruRUGraph: Record<string, string> = {
+  'knowledgeBase.graph.type': 'Тип',
+  'knowledgeBase.graph.depth': 'Глубина',
+  'knowledgeBase.graph.allTypes': 'Все типы',
+  'knowledgeBase.graph.links': 'ссылок',
+  'knowledgeBase.graph.showing': 'Показано узлов: {visible} из {total}',
+  'knowledgeBase.graph.overviewBounded': 'обзор ограничен',
+  'knowledgeBase.graph.familiar': 'часто используемые',
+  'knowledgeBase.graph.ariaLinks': 'Связи графа знаний',
+  'knowledgeBase.graph.loadFailed': 'Не удалось загрузить граф знаний',
+};
+
 export const knowledgeSurfacesSupplementalMessages: Record<Locale, Record<string, string>> = {
   'zh-CN': zhCN,
   'en-US': enUS,
-  'ja-JP': enUS,
-  'ko-KR': enUS,
-  'ru-RU': enUS,
+  'ja-JP': { ...enUS, ...jaJPGraph },
+  'ko-KR': { ...enUS, ...koKRGraph },
+  'ru-RU': { ...enUS, ...ruRUGraph },
 };
