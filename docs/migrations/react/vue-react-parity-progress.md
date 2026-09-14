@@ -2026,3 +2026,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - The chat answer bookmark now uses a native disabled control (`8800090c`) while retaining the Vue-parity `aria-disabled` hook. React has no manual-editor callback or API path for this action, so the control no longer presents a focusable false affordance.
 - Focused chat coverage remains 21/21 and `git diff --check` passes. Attachment/mention flows and protected runtime evidence remain open.
+
+## 2026-09-15 Round N+33b — N019 attachment upload lifecycle
+
+- Attachment flow landed across `4b62db40`, `2bc25f16`, `50cdfe0e`, and `883f383b`: multi-file picker, Vue-aligned validation, runtime size limits, dynamic parser-engine extension discovery, upload status polling, real `attachment_ids` payloads, cancellation, stale-response protection, deletion compensation, and retryable removal failures.
+- Focused coverage passes 32/32; Web full regression passes 871/871; `typecheck:web`, `build:web`, and `git diff --check` pass. Independent review found no P1/P2 after the dynamic parser-type fix.
+- N019 remains open for knowledge-base mention selection, true model selection contract, and authenticated browser/real-backend/platform evidence.
