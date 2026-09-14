@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, FlatList, KeyboardAvoidingView, Linking, Platform, Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
+import { formatMessage } from '@weknora/i18n';
 import type { ChatMessage, ChatSession, ChatStreamEvent, KnowledgeBase, SteerDelivery, SteerQueueItem, TemporaryAttachment } from '@weknora/contracts';
 import { initialChatStreamState, reduceChatStream, type ChatStreamState } from '@weknora/domain/chat/reducer';
 import { artifactDownloadPath, normalizeArtifactList } from '@weknora/domain/chat/artifacts';
@@ -26,6 +27,7 @@ function uniqueMessages(messages: readonly ChatMessage[]): ChatMessage[] {
 
 export function ChatScreen() {
   const runtime = useMobileRuntime();
+  const label = useCallback((key: string) => formatMessage(runtime.locale, key), [runtime.locale]);
   const router = useRouter();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
@@ -70,37 +72,37 @@ export function ChatScreen() {
       const result = await runtime.client.sessions.list({ page: 1, pageSize: 30, source: 'mobile' });
       setSessions(result.data);
       setSelectedSessionId((current) => current || result.data[0]?.id || null);
-    } catch (cause) { setError(errorText(cause, 'Unable to load conversations')); }
+    } catch (cause) { setError(errorText(cause, label('mobileChat.loadSessionsFailed'))); }
     finally { setLoading(false); }
-  }, [runtime.client]);
+  }, [label, runtime.client]);
 
   const loadKnowledgeBases = useCallback(async () => {
     try {
       const result = await runtime.client.knowledgeBases.list();
       setKnowledgeBases(result);
       setSelectedKnowledgeBaseId((current) => current && result.some((item) => item.id === current) ? current : result[0]?.id || null);
-    } catch (cause) { setError(errorText(cause, 'Unable to load knowledge bases')); }
-  }, [runtime.client]);
+    } catch (cause) { setError(errorText(cause, label('mobileChat.loadKnowledgeBasesFailed'))); }
+  }, [label, runtime.client]);
 
   const loadMessages = useCallback(async (sessionId: string): Promise<ChatMessage[]> => {
     try {
       const result = await runtime.client.sessions.messages(sessionId, { limit: 50 });
       setMessages(result);
       return result;
-    } catch (cause) { setError(errorText(cause, 'Unable to load messages')); return []; }
-  }, [runtime.client]);
+    } catch (cause) { setError(errorText(cause, label('mobileChat.loadMessagesFailed'))); return []; }
+  }, [label, runtime.client]);
 
   const loadAttachments = useCallback(async (sessionId: string) => {
     try { setAttachments(await runtime.client.chat.attachments.list(sessionId)); }
-    catch (cause) { setError(errorText(cause, 'Unable to load attachments')); }
-  }, [runtime.client]);
+    catch (cause) { setError(errorText(cause, label('mobileChat.loadAttachmentsFailed'))); }
+  }, [label, runtime.client]);
 
   const loadSteerQueue = useCallback(async (sessionId: string) => {
     setSteerLoading(true);
     try { setSteerQueue((await runtime.client.chat.steer.list(sessionId)).items); }
-    catch (cause) { setError(errorText(cause, 'Unable to load steer queue')); }
+    catch (cause) { setError(errorText(cause, label('mobileChat.loadSteerQueueFailed'))); }
     finally { setSteerLoading(false); }
-  }, [runtime.client]);
+  }, [label, runtime.client]);
 
   useEffect(() => { void loadSessions(); }, [loadSessions]);
   useEffect(() => { void loadKnowledgeBases(); }, [loadKnowledgeBases]);
@@ -144,12 +146,12 @@ export function ChatScreen() {
       const data = typeof event.data === 'object' && event.data !== null && !Array.isArray(event.data)
         ? event.data as Record<string, unknown>
         : undefined;
-      setError(typeof event.error === 'string' ? event.error : typeof data?.error === 'string' ? data.error : 'Chat stream failed');
+      setError(typeof event.error === 'string' ? event.error : typeof data?.error === 'string' ? data.error : label('mobileChat.streamFailed'));
     }
     if (type === 'complete') updateRunLifecycle(eventSessionId, { type: 'complete' });
     if (type === 'stop') updateRunLifecycle(eventSessionId, { type: 'user-stop' });
     setStreamState((current) => reduceChatStream(current, event));
-  }, [updateRunLifecycle]);
+  }, [label, updateRunLifecycle]);
 
   const finishRun = useCallback(async (sessionId: string, controller: AbortController) => {
     if (streamController.current !== controller) return;
@@ -189,11 +191,11 @@ export function ChatScreen() {
     catch (cause) {
       if (!controller.signal.aborted) {
         updateRunLifecycle(sessionId, { type: 'failure' });
-        setError(errorText(cause, 'Unable to resume response'));
+        setError(errorText(cause, label('mobileChat.resumeFailed')));
       }
     }
     finally { resuming.current = false; await finishRun(sessionId, controller); }
-  }, [applyEvent, finishRun, runtime.client, updateRunLifecycle]);
+  }, [applyEvent, finishRun, label, runtime.client, updateRunLifecycle]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
@@ -227,29 +229,29 @@ export function ChatScreen() {
       const pending = activeOAuth.current;
       if (!pending) return;
       activeOAuth.current = null;
-      if (params.get('mcp_oauth_error')) { setError(params.get('mcp_oauth_error') || 'MCP authorization failed'); return; }
+      if (params.get('mcp_oauth_error')) { setError(params.get('mcp_oauth_error') || label('mobileChat.mcpAuthorizationFailed')); return; }
       void runtime.client.configuration.mcp.oauth.status(pending.serviceId, pending.authorizationAttempt).then((status) => {
-        if (!status.authorized) throw new Error('MCP authorization did not complete');
+        if (!status.authorized) throw new Error(label('mobileChat.mcpNotComplete'));
         return runtime.client.chat.approvals.resolveOAuth(pending.pendingId, { serviceId: pending.serviceId, decision: 'authorize' });
       }).then(() => {
         applyEvent({ response_type: 'mcp_oauth_resolved', data: { pending_id: pending.pendingId, service_id: pending.serviceId, authorized: true }, event_id: `local-oauth-${pending.pendingId}` });
-      }).catch((cause) => setError(errorText(cause, 'Unable to finish MCP authorization')));
+      }).catch((cause) => setError(errorText(cause, label('mobileChat.mcpFinishFailed'))));
     });
     return () => subscription.remove();
-  }, [applyEvent, runtime.client]);
+  }, [applyEvent, label, runtime.client]);
 
   async function createSession() {
     setError('');
     try {
-      const session = await runtime.client.sessions.create({ title: 'New conversation' });
+      const session = await runtime.client.sessions.create({ title: formatMessage(runtime.locale, 'mobileChat.newConversation') });
       setSessions((current) => [session, ...current.filter((item) => item.id !== session.id)]);
       setSelectedSessionId(session.id); setMessages([]); setAttachments([]); setSteerQueue([]); setPendingUser(null);
-    } catch (cause) { setError(errorText(cause, 'Unable to create conversation')); }
+    } catch (cause) { setError(errorText(cause, label('mobileChat.createConversationFailed'))); }
   }
 
   async function ensureSession(): Promise<string> {
     if (selectedSessionId) return selectedSessionId;
-    const session = await runtime.client.sessions.create({ title: 'New conversation' });
+    const session = await runtime.client.sessions.create({ title: formatMessage(runtime.locale, 'mobileChat.newConversation') });
     setSessions((current) => [session, ...current]);
     setSelectedSessionId(session.id); setSteerQueue([]);
     return session.id;
@@ -258,10 +260,10 @@ export function ChatScreen() {
   async function send(value = draft, options: { allowWhileSending?: boolean } = {}) {
     const query = value.trim();
     if (!query || (sending && !options.allowWhileSending)) return;
-    if (!selectedKnowledgeBaseId) { setError('Select a knowledge base before sending a message'); return; }
+    if (!selectedKnowledgeBaseId) { setError(label('mobileChat.selectKnowledgeBase')); return; }
     setError('');
     let sessionId: string;
-    try { sessionId = await ensureSession(); } catch (cause) { setError(errorText(cause, 'Unable to create conversation')); return; }
+    try { sessionId = await ensureSession(); } catch (cause) { setError(errorText(cause, label('mobileChat.createConversationFailed'))); return; }
     setDraft(''); setPendingUser(query); setStreamState(initialChatStreamState());
     activeMessageId.current = undefined;
     failedAssistantMessageId.current = undefined;
@@ -281,7 +283,7 @@ export function ChatScreen() {
     } catch (cause) {
       if (!controller.signal.aborted) {
         updateRunLifecycle(sessionId, { type: 'failure' });
-        setError(errorText(cause, 'Unable to send message'));
+        setError(errorText(cause, label('mobileChat.sendFailed')));
       }
     } finally { await finishRun(sessionId, controller); }
   }
@@ -301,7 +303,7 @@ export function ChatScreen() {
           setSending(false);
         },
       );
-    } catch (cause) { setError(errorText(cause, 'Unable to stop response')); }
+    } catch (cause) { setError(errorText(cause, label('mobileChat.stopFailed'))); }
   }
 
   async function attach() {
@@ -313,7 +315,7 @@ export function ChatScreen() {
       if (!file) return;
       const attachment = await runtime.client.chat.attachments.upload(sessionId, { file });
       setAttachments((current) => [...current.filter((item) => item.id !== attachment.id), attachment]);
-    } catch (cause) { setError(errorText(cause, 'Unable to attach file')); }
+    } catch (cause) { setError(errorText(cause, label('mobileChat.attachFailed'))); }
     finally { setAttaching(false); }
   }
 
@@ -321,11 +323,11 @@ export function ChatScreen() {
     try {
       await runtime.client.chat.approvals.resolveTool(pendingId, { decision });
       applyEvent({ response_type: 'tool_approval_resolved', data: { pending_id: pendingId, decision }, event_id: `local-approval-${pendingId}` });
-    } catch (cause) { setError(errorText(cause, 'Unable to resolve tool approval')); }
+    } catch (cause) { setError(errorText(cause, label('mobileChat.toolApprovalFailed'))); }
   }
 
   async function openOAuth(approval: ChatStreamState['oauthApprovals'][string]) {
-    if (!approval.serviceId) { setError('MCP service id is missing'); return; }
+    if (!approval.serviceId) { setError(label('mobileChat.mcpMissingService')); return; }
     try {
       const result = await runtime.client.configuration.mcp.oauth.authorizeUrl(approval.serviceId, {
         redirectURI: `${runtime.baseURL.replace(/\/+$/, '')}/api/v1/mcp-oauth/callback`,
@@ -333,7 +335,7 @@ export function ChatScreen() {
       });
       activeOAuth.current = { pendingId: approval.pendingId, serviceId: approval.serviceId, authorizationAttempt: result.authorizationAttempt };
       await Linking.openURL(result.authorizationUrl);
-    } catch (cause) { setError(errorText(cause, 'Unable to start MCP authorization')); }
+    } catch (cause) { setError(errorText(cause, label('mobileChat.startMcpFailed'))); }
   }
 
   async function cancelOAuth(approval: ChatStreamState['oauthApprovals'][string]) {
@@ -341,7 +343,7 @@ export function ChatScreen() {
     try {
       await runtime.client.chat.approvals.cancelOAuth(approval.pendingId);
       applyEvent({ response_type: 'mcp_oauth_resolved', data: { pending_id: approval.pendingId, service_id: approval.serviceId, authorized: false }, event_id: `local-oauth-cancel-${approval.pendingId}` });
-    } catch (cause) { setError(errorText(cause, 'Unable to cancel MCP authorization')); }
+    } catch (cause) { setError(errorText(cause, label('mobileChat.cancelMcpFailed'))); }
   }
 
   async function enqueueSteer(delivery: SteerDelivery) {
@@ -362,7 +364,7 @@ export function ChatScreen() {
       setDraft('');
       if (result.status === 'new_run') await send(query, { allowWhileSending: true });
       else await loadSteerQueue(sessionId);
-    } catch (cause) { setError(errorText(cause, 'Unable to steer response')); }
+    } catch (cause) { setError(errorText(cause, label('mobileChat.steerFailed'))); }
     finally { steerAction.current = null; setSteerBusy(''); }
   }
 
@@ -374,7 +376,7 @@ export function ChatScreen() {
     try {
       await runtime.client.chat.steer.promote(sessionId, item.steer_id);
       await loadSteerQueue(sessionId);
-    } catch (cause) { setError(errorText(cause, 'Unable to inject steer message')); }
+    } catch (cause) { setError(errorText(cause, label('mobileChat.injectSteerFailed'))); }
     finally { steerAction.current = null; setSteerBusy(''); }
   }
 
@@ -386,7 +388,7 @@ export function ChatScreen() {
     try {
       await runtime.client.chat.steer.remove(sessionId, item.steer_id);
       await loadSteerQueue(sessionId);
-    } catch (cause) { setError(errorText(cause, 'Unable to remove steer message')); }
+    } catch (cause) { setError(errorText(cause, label('mobileChat.removeSteerFailed'))); }
     finally { steerAction.current = null; setSteerBusy(''); }
   }
 
@@ -399,7 +401,7 @@ export function ChatScreen() {
         credential: runtime.credential,
       });
       await shareNativeFile(uri);
-    } catch (cause) { setError(errorText(cause, 'Unable to download artifact')); }
+    } catch (cause) { setError(errorText(cause, label('mobileChat.downloadArtifactFailed'))); }
   }
 
   async function openArtifact(messageId: string, artifact: ReturnType<typeof normalizeArtifactList>[number]) {
@@ -411,7 +413,7 @@ export function ChatScreen() {
       const content = model.kind === 'text' || model.kind === 'markdown' ? await readNativeTextFile(uri) : undefined;
       setArtifactPreview((current) => current?.artifact === artifact ? { artifact, uri, content, loading: false } : current);
     } catch (cause) {
-      setArtifactPreview((current) => current?.artifact === artifact ? { artifact, loading: false, error: errorText(cause, 'Unable to load artifact preview') } : current);
+      setArtifactPreview((current) => current?.artifact === artifact ? { artifact, loading: false, error: errorText(cause, label('mobileChat.previewArtifactFailed')) } : current);
     }
   }
 
@@ -428,11 +430,11 @@ export function ChatScreen() {
 
   return <SafeAreaView style={{ flex: 1 }}>
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, borderBottomColor: '#eaecf0', borderBottomWidth: 1 }}>
-      <Text accessibilityRole="header" style={{ fontSize: 22, fontWeight: '700' }}>Chat</Text>
-      <View style={{ flexDirection: 'row', gap: 12 }}><Pressable onPress={() => router.push('/knowledge')}><Text style={{ color: '#2864dc' }}>Knowledge</Text></Pressable><Pressable onPress={() => router.push('/management')}><Text style={{ color: '#2864dc' }}>Manage</Text></Pressable><Pressable onPress={() => void createSession()}><Text style={{ color: '#2864dc' }}>New</Text></Pressable></View>
+      <Text accessibilityRole="header" style={{ fontSize: 22, fontWeight: '700' }}>{label('mobileChat.title')}</Text>
+      <View style={{ flexDirection: 'row', gap: 12 }}><Pressable onPress={() => router.push('/knowledge')}><Text style={{ color: '#2864dc' }}>{formatMessage(runtime.locale, 'input.knowledgeBase')}</Text></Pressable><Pressable onPress={() => router.push('/management')}><Text style={{ color: '#2864dc' }}>{formatMessage(runtime.locale, 'menu.settings')}</Text></Pressable><Pressable onPress={() => void createSession()}><Text style={{ color: '#2864dc' }}>{formatMessage(runtime.locale, 'mobileChat.new')}</Text></Pressable></View>
     </View>
-    <FlatList horizontal data={sessions} keyExtractor={(item) => item.id} showsHorizontalScrollIndicator={false} style={{ maxHeight: 48, paddingHorizontal: 12, paddingTop: 8 }} renderItem={({ item }) => <Pressable onPress={() => { if (!sending) setSelectedSessionId(item.id); }} style={{ paddingHorizontal: 10, paddingVertical: 7, borderRadius: 14, backgroundColor: item.id === selectedSessionId ? '#dbeafe' : '#f2f4f7', marginRight: 6 }}><Text numberOfLines={1}>{item.title || 'Untitled'}</Text></Pressable>} ListEmptyComponent={loading ? <ActivityIndicator /> : <Text style={{ color: '#667085' }}>No conversations</Text>} />
-    <FlatList horizontal data={knowledgeBases} keyExtractor={(item) => item.id} showsHorizontalScrollIndicator={false} style={{ maxHeight: 48, paddingHorizontal: 12, paddingTop: 8 }} renderItem={({ item }) => <Pressable accessibilityRole="button" onPress={() => { if (!sending) setSelectedKnowledgeBaseId(item.id); }} style={{ paddingHorizontal: 10, paddingVertical: 7, borderRadius: 14, backgroundColor: item.id === selectedKnowledgeBaseId ? '#dcfce7' : '#f2f4f7', marginRight: 6 }}><Text numberOfLines={1}>{item.name}</Text></Pressable>} ListEmptyComponent={<Text style={{ color: '#667085' }}>No knowledge bases available</Text>} />
+    <FlatList horizontal data={sessions} keyExtractor={(item) => item.id} showsHorizontalScrollIndicator={false} style={{ maxHeight: 48, paddingHorizontal: 12, paddingTop: 8 }} renderItem={({ item }) => <Pressable onPress={() => { if (!sending) setSelectedSessionId(item.id); }} style={{ paddingHorizontal: 10, paddingVertical: 7, borderRadius: 14, backgroundColor: item.id === selectedSessionId ? '#dbeafe' : '#f2f4f7', marginRight: 6 }}><Text numberOfLines={1}>{item.title || label('mobileChat.untitled')}</Text></Pressable>} ListEmptyComponent={loading ? <ActivityIndicator /> : <Text style={{ color: '#667085' }}>{label('mobileChat.noConversations')}</Text>} />
+    <FlatList horizontal data={knowledgeBases} keyExtractor={(item) => item.id} showsHorizontalScrollIndicator={false} style={{ maxHeight: 48, paddingHorizontal: 12, paddingTop: 8 }} renderItem={({ item }) => <Pressable accessibilityRole="button" onPress={() => { if (!sending) setSelectedKnowledgeBaseId(item.id); }} style={{ paddingHorizontal: 10, paddingVertical: 7, borderRadius: 14, backgroundColor: item.id === selectedKnowledgeBaseId ? '#dcfce7' : '#f2f4f7', marginRight: 6 }}><Text numberOfLines={1}>{item.name}</Text></Pressable>} ListEmptyComponent={<Text style={{ color: '#667085' }}>{label('mobileChat.noKnowledgeBases')}</Text>} />
     {error ? <Text accessibilityRole="alert" style={{ color: '#b42318', paddingHorizontal: 12, paddingTop: 8 }}>{error}</Text> : null}
     <FlatList
       style={{ flex: 1, paddingHorizontal: 12 }}
@@ -441,21 +443,21 @@ export function ChatScreen() {
       keyExtractor={(item) => item.id}
       keyboardShouldPersistTaps="handled"
       ListHeaderComponent={<>
-        {streamState.thinking ? <View style={{ backgroundColor: '#f8f9fc', padding: 10, borderRadius: 8, marginBottom: 8 }}><Text style={{ color: '#667085' }}>Thinking</Text><Text selectable style={{ color: '#667085' }}>{streamState.thinking}</Text></View> : null}
-        {references.length ? <View style={{ marginBottom: 8 }}><Text style={{ fontWeight: '600' }}>References</Text>{references.flatMap((group) => group.items).map((reference) => <View key={reference.key} style={{ backgroundColor: '#f8f9fc', padding: 8, borderRadius: 8, marginTop: 4 }}><Text>{reference.title}</Text>{reference.snippet ? <Text selectable style={{ color: '#667085', fontSize: 12 }}>{reference.snippet}</Text> : null}</View>)}</View> : null}
-        {pendingApprovals.map((approval) => <View key={approval.pendingId} style={{ backgroundColor: '#fff7ed', padding: 10, borderRadius: 8, marginBottom: 8 }}><Text>Tool approval required</Text><View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}><Pressable onPress={() => void approve(approval.pendingId, 'approve')}><Text style={{ color: '#16803c' }}>Approve</Text></Pressable><Pressable onPress={() => void approve(approval.pendingId, 'reject')}><Text style={{ color: '#b42318' }}>Reject</Text></Pressable></View></View>)}
-        {pendingOAuthApprovals.map((approval) => <View key={approval.pendingId} style={{ backgroundColor: '#eef4ff', padding: 10, borderRadius: 8, marginBottom: 8 }}><Text>MCP authorization required{approval.serviceName ? ` · ${approval.serviceName}` : ''}</Text>{approval.toolName ? <Text style={{ color: '#667085', marginTop: 4 }}>Tool: {approval.toolName}</Text> : null}<View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}><Pressable onPress={() => void openOAuth(approval)}><Text style={{ color: '#2864dc' }}>Authorize</Text></Pressable><Pressable onPress={() => void cancelOAuth(approval)}><Text style={{ color: '#b42318' }}>Cancel</Text></Pressable></View></View>)}
-        {selectedSessionId ? <View style={{ backgroundColor: '#f8f9fc', padding: 10, borderRadius: 8, marginBottom: 8 }}><View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><Text style={{ fontWeight: '600' }}>Steer queue</Text><Pressable disabled={steerLoading} onPress={() => void loadSteerQueue(selectedSessionId)}><Text style={{ color: steerLoading ? '#98a2b3' : '#2864dc' }}>{steerLoading ? 'Loading…' : 'Refresh'}</Text></Pressable></View>{steerQueue.length === 0 ? <Text style={{ color: '#667085', marginTop: 6 }}>No queued instructions</Text> : steerQueue.map((item) => <View key={item.steer_id} style={{ backgroundColor: '#fff', padding: 8, borderRadius: 8, marginTop: 6 }}><Text selectable>{item.content}</Text><Text style={{ color: '#667085', fontSize: 12, marginTop: 4 }}>{item.delivery === 'inject' ? 'Injecting next' : 'After current response'}</Text><View style={{ flexDirection: 'row', gap: 12, marginTop: 6 }}>{item.delivery === 'after' ? <Pressable disabled={Boolean(steerBusy)} onPress={() => void promoteSteer(item)}><Text style={{ color: steerBusy === item.steer_id ? '#98a2b3' : '#2864dc' }}>Inject now</Text></Pressable> : null}<Pressable disabled={Boolean(steerBusy)} onPress={() => void removeSteer(item)}><Text style={{ color: steerBusy === item.steer_id ? '#98a2b3' : '#b42318' }}>Remove</Text></Pressable></View></View>)}</View> : null}
+        {streamState.thinking ? <View style={{ backgroundColor: '#f8f9fc', padding: 10, borderRadius: 8, marginBottom: 8 }}><Text style={{ color: '#667085' }}>{formatMessage(runtime.locale, 'chat.thinkingAlt')}</Text><Text selectable style={{ color: '#667085' }}>{streamState.thinking}</Text></View> : null}
+        {references.length ? <View style={{ marginBottom: 8 }}><Text style={{ fontWeight: '600' }}>{formatMessage(runtime.locale, 'chat.requestInfoTitle')}</Text>{references.flatMap((group) => group.items).map((reference) => <View key={reference.key} style={{ backgroundColor: '#f8f9fc', padding: 8, borderRadius: 8, marginTop: 4 }}><Text>{reference.title}</Text>{reference.snippet ? <Text selectable style={{ color: '#667085', fontSize: 12 }}>{reference.snippet}</Text> : null}</View>)}</View> : null}
+        {pendingApprovals.map((approval) => <View key={approval.pendingId} style={{ backgroundColor: '#fff7ed', padding: 10, borderRadius: 8, marginBottom: 8 }}><Text>{label('mobileChat.toolApprovalRequired')}</Text><View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}><Pressable onPress={() => void approve(approval.pendingId, 'approve')}><Text style={{ color: '#16803c' }}>{label('mobileChat.approve')}</Text></Pressable><Pressable onPress={() => void approve(approval.pendingId, 'reject')}><Text style={{ color: '#b42318' }}>{label('mobileChat.reject')}</Text></Pressable></View></View>)}
+        {pendingOAuthApprovals.map((approval) => <View key={approval.pendingId} style={{ backgroundColor: '#eef4ff', padding: 10, borderRadius: 8, marginBottom: 8 }}><Text>{label('mobileChat.mcpAuthorizationRequired')}{approval.serviceName ? ` · ${approval.serviceName}` : ''}</Text>{approval.toolName ? <Text style={{ color: '#667085', marginTop: 4 }}>{label('mobileChat.tool')}: {approval.toolName}</Text> : null}<View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}><Pressable onPress={() => void openOAuth(approval)}><Text style={{ color: '#2864dc' }}>{label('mobileChat.authorize')}</Text></Pressable><Pressable onPress={() => void cancelOAuth(approval)}><Text style={{ color: '#b42318' }}>{formatMessage(runtime.locale, 'common.cancel')}</Text></Pressable></View></View>)}
+        {selectedSessionId ? <View style={{ backgroundColor: '#f8f9fc', padding: 10, borderRadius: 8, marginBottom: 8 }}><View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><Text style={{ fontWeight: '600' }}>{label('mobileChat.steerQueue')}</Text><Pressable disabled={steerLoading} onPress={() => void loadSteerQueue(selectedSessionId)}><Text style={{ color: steerLoading ? '#98a2b3' : '#2864dc' }}>{steerLoading ? formatMessage(runtime.locale, 'common.loading') : formatMessage(runtime.locale, 'common.retry')}</Text></Pressable></View>{steerQueue.length === 0 ? <Text style={{ color: '#667085', marginTop: 6 }}>{label('mobileChat.noQueuedInstructions')}</Text> : steerQueue.map((item) => <View key={item.steer_id} style={{ backgroundColor: '#fff', padding: 8, borderRadius: 8, marginTop: 6 }}><Text selectable>{item.content}</Text><Text style={{ color: '#667085', fontSize: 12, marginTop: 4 }}>{item.delivery === 'inject' ? label('mobileChat.injectingNext') : label('mobileChat.afterCurrentResponse')}</Text><View style={{ flexDirection: 'row', gap: 12, marginTop: 6 }}>{item.delivery === 'after' ? <Pressable disabled={Boolean(steerBusy)} onPress={() => void promoteSteer(item)}><Text style={{ color: steerBusy === item.steer_id ? '#98a2b3' : '#2864dc' }}>{label('mobileChat.injectingNext')}</Text></Pressable> : null}<Pressable disabled={Boolean(steerBusy)} onPress={() => void removeSteer(item)}><Text style={{ color: steerBusy === item.steer_id ? '#98a2b3' : '#b42318' }}>{formatMessage(runtime.locale, 'common.delete')}</Text></Pressable></View></View>)}</View> : null}
       </>}
-      renderItem={({ item }) => <View style={{ alignSelf: item.role === 'user' ? 'flex-end' : 'stretch', maxWidth: '92%', backgroundColor: item.role === 'user' ? '#eff6ff' : '#f8f9fc', padding: 10, borderRadius: 10, marginBottom: 8 }}><Text style={{ fontWeight: '600', marginBottom: 4 }}>{item.role}</Text><Text selectable>{item.content}</Text>{item.role === 'assistant' && item.is_completed === false ? <Text style={{ color: '#667085', marginTop: 4 }}>{item.id === failedAssistantMessageId.current ? 'Response failed; send a new message to retry' : 'Resuming…'}</Text> : null}{normalizeArtifactList(selectMessageArtifacts(item)).map((artifact) => <Pressable key={`${artifact.index}-${artifact.fileName}`} onPress={() => void openArtifact(item.id, artifact)}><Text style={{ color: '#2864dc', marginTop: 6 }}>File: {artifact.fileName} · {classifyNativeArtifactPreview(artifact).kind === 'download-only' ? 'Share' : 'Preview'}</Text></Pressable>)}{item.role === 'assistant' && item.data ? <Text style={{ color: '#667085' }}>{normalizeToolResult({ output: item.data }).text}</Text> : null}</View>}
+      renderItem={({ item }) => <View style={{ alignSelf: item.role === 'user' ? 'flex-end' : 'stretch', maxWidth: '92%', backgroundColor: item.role === 'user' ? '#eff6ff' : '#f8f9fc', padding: 10, borderRadius: 10, marginBottom: 8 }}><Text style={{ fontWeight: '600', marginBottom: 4 }}>{item.role}</Text><Text selectable>{item.content}</Text>{item.role === 'assistant' && item.is_completed === false ? <Text style={{ color: '#667085', marginTop: 4 }}>{item.id === failedAssistantMessageId.current ? label('mobileChat.responseFailedRetry') : label('mobileChat.resuming')}</Text> : null}{normalizeArtifactList(selectMessageArtifacts(item)).map((artifact) => <Pressable key={`${artifact.index}-${artifact.fileName}`} onPress={() => void openArtifact(item.id, artifact)}><Text style={{ color: '#2864dc', marginTop: 6 }}>{label('mobileChat.file')}: {artifact.fileName} · {classifyNativeArtifactPreview(artifact).kind === 'download-only' ? formatMessage(runtime.locale, 'common.share') : label('mobileChat.preview')}</Text></Pressable>)}{item.role === 'assistant' && item.data ? <Text style={{ color: '#667085' }}>{normalizeToolResult({ output: item.data }).text}</Text> : null}</View>}
     />
     {attachments.length ? <ScrollView horizontal style={{ maxHeight: 38, paddingHorizontal: 12 }}><View style={{ flexDirection: 'row', gap: 8 }}>{attachments.map((attachment) => <View key={attachment.id} style={{ backgroundColor: '#f2f4f7', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 6 }}><Text>{attachment.file_name} · {attachment.status}</Text></View>)}</View></ScrollView> : null}
-    <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingVertical: 6 }}><Pressable onPress={() => setDraft('Summarize the selected knowledge base')}><Text style={{ color: '#2864dc', fontSize: 12 }}>Summarize</Text></Pressable><Pressable onPress={() => setDraft('Find related files')}><Text style={{ color: '#2864dc', fontSize: 12 }}>Related files</Text></Pressable></View>
+    <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingVertical: 6 }}><Pressable onPress={() => setDraft('Summarize the selected knowledge base')}><Text style={{ color: '#2864dc', fontSize: 12 }}>{label('mobileChat.summarize')}</Text></Pressable><Pressable onPress={() => setDraft('Find related files')}><Text style={{ color: '#2864dc', fontSize: 12 }}>{label('mobileChat.relatedFiles')}</Text></Pressable></View>
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90} style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, padding: 12, borderTopColor: '#eaecf0', borderTopWidth: 1 }}>
-      <Pressable accessibilityLabel="Attach file" onPress={() => void attach()}><Text style={{ color: attaching ? '#98a2b3' : '#2864dc' }}>{attaching ? '…' : '+'}</Text></Pressable>
-      <TextInput accessibilityLabel="Chat message" value={draft} onChangeText={setDraft} multiline maxLength={20_000} placeholder="Ask WeKnora" style={{ flex: 1, maxHeight: 120, borderColor: '#d0d5dd', borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 }} />
-      {sending ? <><Pressable accessibilityRole="button" onPress={() => void stop()}><Text style={{ color: '#b42318' }}>Stop</Text></Pressable><Pressable accessibilityLabel="Inject steering message" accessibilityRole="button" disabled={steerButtonsDisabled} onPress={() => void enqueueSteer('inject')}><Text style={{ color: steerButtonsDisabled ? '#98a2b3' : '#2864dc' }}>Inject</Text></Pressable><Pressable accessibilityLabel="Queue steering message" accessibilityRole="button" disabled={steerButtonsDisabled} onPress={() => void enqueueSteer('after')}><Text style={{ color: steerButtonsDisabled ? '#98a2b3' : '#2864dc' }}>After</Text></Pressable></> : <Pressable accessibilityRole="button" disabled={!draft.trim()} onPress={() => void send()}><Text style={{ color: draft.trim() ? '#2864dc' : '#98a2b3', fontWeight: '600' }}>Send</Text></Pressable>}
+      <Pressable accessibilityLabel={label('mobileChat.attachFile')} onPress={() => void attach()}><Text style={{ color: attaching ? '#98a2b3' : '#2864dc' }}>{attaching ? '…' : '+'}</Text></Pressable>
+      <TextInput accessibilityLabel={label('mobileChat.chatMessage')} value={draft} onChangeText={setDraft} multiline maxLength={20_000} placeholder={formatMessage(runtime.locale, 'input.placeholder')} style={{ flex: 1, maxHeight: 120, borderColor: '#d0d5dd', borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 }} />
+      {sending ? <><Pressable accessibilityRole="button" onPress={() => void stop()}><Text style={{ color: '#b42318' }}>{formatMessage(runtime.locale, 'input.stopGeneration')}</Text></Pressable><Pressable accessibilityLabel={formatMessage(runtime.locale, 'input.steerCurrent')} accessibilityRole="button" disabled={steerButtonsDisabled} onPress={() => void enqueueSteer('inject')}><Text style={{ color: steerButtonsDisabled ? '#98a2b3' : '#2864dc' }}>{formatMessage(runtime.locale, 'input.steerCurrent')}</Text></Pressable><Pressable accessibilityLabel={formatMessage(runtime.locale, 'input.steerAfter')} accessibilityRole="button" disabled={steerButtonsDisabled} onPress={() => void enqueueSteer('after')}><Text style={{ color: steerButtonsDisabled ? '#98a2b3' : '#2864dc' }}>{formatMessage(runtime.locale, 'input.steerAfter')}</Text></Pressable></> : <Pressable accessibilityRole="button" disabled={!draft.trim()} onPress={() => void send()}><Text style={{ color: draft.trim() ? '#2864dc' : '#98a2b3', fontWeight: '600' }}>{formatMessage(runtime.locale, 'input.send')}</Text></Pressable>}
     </KeyboardAvoidingView>
-    {artifactPreview ? <NativeArtifactPreview artifact={artifactPreview.artifact} uri={artifactPreview.uri} content={artifactPreview.content} loading={artifactPreview.loading} error={artifactPreview.error} onClose={() => setArtifactPreview(null)} onDownload={artifactPreview.uri ? () => { void shareNativeFile(artifactPreview.uri!).catch((cause) => setArtifactPreview((current) => current ? { ...current, error: errorText(cause, 'Unable to share artifact') } : current)); } : undefined} /> : null}
+    {artifactPreview ? <NativeArtifactPreview artifact={artifactPreview.artifact} uri={artifactPreview.uri} content={artifactPreview.content} loading={artifactPreview.loading} error={artifactPreview.error} onClose={() => setArtifactPreview(null)} onDownload={artifactPreview.uri ? () => { void shareNativeFile(artifactPreview.uri!).catch((cause) => setArtifactPreview((current) => current ? { ...current, error: errorText(cause, label('mobileChat.shareArtifactFailed')) } : current)); } : undefined} /> : null}
   </SafeAreaView>;
 }
