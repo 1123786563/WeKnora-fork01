@@ -7,7 +7,7 @@
  * Keys the Vue locale files do not define (React-side affordances with no Vue
  * counterpart) keep their zh-CN string in all locales and are annotated
  * zh-only; they are recorded as a gap in
- * docs/migrations/react/evidence/vue-react-parity/2026-09-13-chat-i18n.md.
+ * docs/migrations/react/evidence/vue-react-parity/2026-09-13-i18n-backfill.md.
  *
  * The chat-domain subset of these values is also generated into
  * @weknora/i18n (packages/i18n/src/generated/chat.ts). packages/views cannot
@@ -47,11 +47,11 @@ newChat: '新对话',
 searchSessions: '搜索',
 /** knowledgeBase.columnSource */
 sourceLabel: '来源',
-/** zh-only (no Vue locale source; see 2026-09-13-chat-i18n.md) */
+/** zh-only (no Vue locale source; see 2026-09-13-i18n-backfill.md) */
 groupLabel: '分组',
 /** common.all */
 groupAll: '全部',
-/** zh-only (no Vue locale source; see 2026-09-13-chat-i18n.md) */
+/** zh-only (no Vue locale source; see 2026-09-13-i18n-backfill.md) */
 groupByDate: '按日期',
 /** common.loading */
 loadingSessions: '加载中...',
@@ -73,7 +73,7 @@ composerPlaceholder: '直接向模型提问',
 quickAnswer: '快速问答',
 /** agent.selectAgent */
 selectAgent: '选择智能体',
-/** zh-only (no Vue locale source; see 2026-09-13-chat-i18n.md) */
+/** zh-only (no Vue locale source; see 2026-09-13-i18n-backfill.md) */
 uploadAttachment: '上传附件',
 /** input.knowledgeBase */
 mentionKnowledge: '知识库',
@@ -115,7 +115,7 @@ addToKnowledgeBase: '添加到知识库',
 requestInfo: '请求信息',
 /** chat.sandbox.tabArtifacts */
 artifacts: '产物',
-/** zh-only (no Vue locale source; see 2026-09-13-chat-i18n.md) */
+/** zh-only (no Vue locale source; see 2026-09-13-i18n-backfill.md) */
 artifactsPending: '产物生成中…',
 /** agent.artifactDrawer.preview */
 preview: '预览',
@@ -125,9 +125,9 @@ download: '下载',
 available: '可用',
 /** tenantInvitation.status.expired */
 expired: '已过期',
-/** zh-only (no Vue locale source; see 2026-09-13-chat-i18n.md) */
+/** zh-only (no Vue locale source; see 2026-09-13-i18n-backfill.md) */
 sending: '发送中…',
-/** zh-only (no Vue locale source; see 2026-09-13-chat-i18n.md) */
+/** zh-only (no Vue locale source; see 2026-09-13-i18n-backfill.md) */
 sendFailed: '发送失败',
 /** common.retry */
 retry: '重试',
@@ -143,13 +143,13 @@ openSandboxPanel: '沙箱终端',
 close: '关闭',
 /** chat.sandbox.start */
 startTerminal: '启动终端',
-/** zh-only (no Vue locale source; see 2026-09-13-chat-i18n.md) */
+/** zh-only (no Vue locale source; see 2026-09-13-i18n-backfill.md) */
 terminalInput: '终端输入',
-/** zh-only (no Vue locale source; see 2026-09-13-chat-i18n.md) */
+/** zh-only (no Vue locale source; see 2026-09-13-i18n-backfill.md) */
 sendInput: '发送输入',
-/** zh-only (no Vue locale source; see 2026-09-13-chat-i18n.md) */
+/** zh-only (no Vue locale source; see 2026-09-13-i18n-backfill.md) */
 closeTerminal: '断开终端',
-/** zh-only (no Vue locale source; see 2026-09-13-chat-i18n.md) */
+/** zh-only (no Vue locale source; see 2026-09-13-i18n-backfill.md) */
 thinkingAndTools: '思考与工具',
 /** knowledgeBase.columnStatus */
 streamStatus: '状态',
