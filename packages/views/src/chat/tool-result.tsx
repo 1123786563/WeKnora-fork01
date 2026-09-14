@@ -708,8 +708,8 @@ export function ShellExecRenderer({ data, args, output, copy }: { data: unknown;
           {view.workDir ? <span className="font-mono! text-[0.8rem]! text-muted!">{labels.toolWorkDir}: {view.workDir}</span> : null}
           {view.exitCode !== null ? <span className={`font-mono! text-[0.8rem]! text-muted! ${view.exitCode !== 0 ? 'is-error text-[#c0392b] font-semibold' : ''}`}>{labels.toolExitCode}: {view.exitCode}</span> : null}
           {view.durationLabel ? <span className="font-mono! text-[0.8rem]! text-muted!">{view.durationLabel}</span> : null}
-          {view.killed ? <span className="font-mono! text-[0.8rem]! text-muted!">{LABELS.killed}</span> : null}
-          {view.truncated ? <span className="font-mono! text-[0.8rem]! text-muted!">{LABELS.truncated}</span> : null}
+          {view.killed ? <span className="font-mono! text-[0.8rem]! text-muted!">{labels.toolKilled}</span> : null}
+          {view.truncated ? <span className="font-mono! text-[0.8rem]! text-muted!">{labels.toolTruncated}</span> : null}
         </div>
       ) : null}
       {view.stdoutBinary || view.stderrBinary ? <EmptyState label={labels.toolBinarySuppressed} /> : null}
