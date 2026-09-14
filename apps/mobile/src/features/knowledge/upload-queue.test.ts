@@ -29,6 +29,22 @@ test('uploads a picker batch FIFO and emits one lifecycle pair per file', async 
   ]);
 });
 
+test('forwards byte progress into the Vue-parity upload event bus', async () => {
+  const events: UploadEvent[] = [];
+  await uploadKnowledgeFiles([files[0]], 'kb-1', {
+    signal: new AbortController().signal,
+    locale: 'en-US',
+    createUploadId: () => 'u0',
+    upload: async (_file, _signal, onProgress) => {
+      onProgress({ loaded: 25, total: 100 });
+      onProgress({ loaded: 75, total: 100 });
+    },
+    dispatch: (event) => events.push(event),
+  });
+  assert.deepEqual(events.map((event) => event.type), ['start', 'progress', 'progress', 'complete']);
+  assert.deepEqual(events.filter((event): event is Extract<UploadEvent, { type: 'progress' }> => event.type === 'progress').map((event) => event.progress), [25, 75]);
+});
+
 test('keeps processing later files when one upload fails', async () => {
   const events: UploadEvent[] = [];
   const result = await uploadKnowledgeFiles(files, 'kb-1', {

@@ -2,6 +2,7 @@ import type { NativeFileSource } from '@weknora/api-client';
 import type { Locale } from '@weknora/i18n';
 import { knowledgeListLabel } from './list.ts';
 import type { UploadEvent } from './upload-progress.ts';
+import type { UploadProgressEvent } from '@weknora/api-client';
 
 export interface KnowledgeUploadQueueResult {
   succeeded: number;
@@ -12,7 +13,7 @@ export interface KnowledgeUploadQueueResult {
 export interface KnowledgeUploadQueueOptions {
   signal: AbortSignal;
   locale: Locale;
-  upload: (file: NativeFileSource, signal: AbortSignal) => Promise<unknown>;
+  upload: (file: NativeFileSource, signal: AbortSignal, onProgress: (progress: UploadProgressEvent) => void) => Promise<unknown>;
   dispatch: (event: UploadEvent) => void;
   createUploadId?: (file: NativeFileSource, index: number) => string;
 }
@@ -55,7 +56,9 @@ export async function uploadKnowledgeFiles(
     const uploadId = createUploadId(file, index);
     options.dispatch({ type: 'start', uploadId, kbId, fileName: file.name });
     try {
-      await options.upload(file, options.signal);
+      await options.upload(file, options.signal, ({ loaded, total }) => {
+        if (total > 0) options.dispatch({ type: 'progress', uploadId, kbId, fileName: file.name, progress: (loaded / total) * 100 });
+      });
       succeeded += 1;
       options.dispatch({ type: 'complete', uploadId, kbId, status: 'success', progress: 100 });
     } catch (cause) {

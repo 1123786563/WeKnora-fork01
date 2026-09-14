@@ -90,7 +90,7 @@ export function KnowledgeDocumentsScreen() {
       const result = await uploadKnowledgeFiles(files, kbId, {
         signal: controller.signal,
         locale: runtime.locale,
-        upload: (file, signal) => runtime.client.knowledge.documents.upload(kbId, { file }, signal),
+        upload: (file, signal, onProgress) => runtime.client.knowledge.documents.upload(kbId, { file, onProgress }, signal),
         dispatch: dispatchUploadEvent,
       });
       if (result.succeeded > 0) {

@@ -12,6 +12,7 @@ import {
   type KnowledgeTag,
 } from '@weknora/contracts';
 import type { ClientBinaryResponse, ClientRequest } from '../client.ts';
+import type { UploadProgressEvent } from '../ports.ts';
 import type { NativeFileSource } from '../ports.ts';
 import { ApiError } from '../errors.ts';
 
@@ -61,6 +62,7 @@ export interface KnowledgeDocumentUploadInput {
   process_config?: unknown;
   enable_multimodel?: boolean;
   channel?: string;
+  onProgress?: (progress: UploadProgressEvent) => void;
 }
 
 export interface KnowledgeDocumentUrlInput {
@@ -161,6 +163,7 @@ export function createKnowledgeDocumentsApi(
         nativeFile,
         multipartFields,
         signal,
+        onProgress: input.onProgress,
       });
       if (typeof response !== 'object' || response === null || !('success' in response) || (response as { success?: unknown }).success !== true) {
         throw uploadResponseError(response);

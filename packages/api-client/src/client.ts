@@ -1,6 +1,6 @@
 import { parseActionSuccessResponse, parseKnowledgeBaseListResponse, parseKnowledgeBaseResponse, type KnowledgeBase } from '@weknora/contracts';
 import { ApiError, createAbortError, errorFromResult, isNamedError } from './errors.ts';
-import type { HttpRequest, HttpResult, HttpTransport, NativeFileSource } from './ports.ts';
+import type { HttpRequest, HttpResult, HttpTransport, NativeFileSource, UploadProgressEvent } from './ports.ts';
 import { createKnowledgeDocumentsApi } from './knowledge/documents.ts';
 import { createKnowledgeFaqApi } from './knowledge/faq.ts';
 import { createWikiPagesApi } from './wiki/pages.ts';
@@ -32,6 +32,7 @@ export interface ClientRequest {
   body?: unknown;
   nativeFile?: NativeFileSource;
   multipartFields?: Record<string, string>;
+  onProgress?: (progress: UploadProgressEvent) => void;
   signal?: AbortSignal;
 }
 
@@ -174,6 +175,7 @@ export function createWeKnoraClient(options: WeKnoraClientOptions) {
           file: input.nativeFile,
           fields: input.multipartFields ?? {},
           signal: request.signal,
+          ...(input.onProgress ? { onProgress: input.onProgress } : {}),
         })
         : await options.transport.send(request);
       if (controller.signal.aborted) {
