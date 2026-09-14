@@ -61,9 +61,6 @@ body { margin: 0; min-width: 320px; }
    utilities incl. max-[720px]: variants. The ≤720px fragments of the dead
    .wk-settings-layout/.wk-settings-operation-list went with them; the
    panel-heading fragment went with its family. */
-@media (max-width: 720px) { .wk-wiki-layout { grid-template-columns: 1fr; } }
-@media (max-width: 720px) { .wk-wiki-history-layout { grid-template-columns: 1fr; } }
-@media (max-width: 720px) { .wk-toggle-grid { grid-template-columns: 1fr; } }
 
 /* Integrations surface — ported from frontend/src/components/css/channel-panel-list.less
    (Vue baseline); the .wk-integrations-page/header/tabs/panel and .wk-int-*

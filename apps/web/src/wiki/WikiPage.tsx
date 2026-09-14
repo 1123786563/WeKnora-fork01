@@ -404,7 +404,7 @@ export function WikiPage({
         </Button> : null}
       </header>
       <Card>
-        <div className="wk-wiki-layout grid grid-cols-[minmax(220px,320px)_1fr] gap-5">
+        <div className="wk-wiki-layout grid grid-cols-[minmax(220px,320px)_1fr] gap-5 max-[720px]:grid-cols-1">
           <aside className="wk-wiki-sidebar flex min-w-0 flex-col border-r border-[#e7e7e7]">
             <div className="wk-wiki-sidebar-header pr-2.5 pb-2">
               <label className="wk-wiki-search flex items-center gap-[0.45rem] rounded-md border border-[#e7e7e7] bg-[#f3f3f3] px-[0.6rem] py-[0.45rem] text-[rgba(0,0,0,0.4)]" role="search">
@@ -584,7 +584,7 @@ export function WikiPage({
           {!historyLoading && revisions.length === 0 ? (
             <Status>{t("wikiBrowser.revisionEmpty")}</Status>
           ) : null}
-          <div className="wk-wiki-history-layout grid grid-cols-[minmax(180px,260px)_1fr] gap-5">
+          <div className="wk-wiki-history-layout grid grid-cols-[minmax(180px,260px)_1fr] gap-5 max-[720px]:grid-cols-1">
             <nav aria-label="Wiki revisions">
               <ul className="wk-list m-0 list-none p-0">
                 {revisions.map((item) => (
