@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { FAQEntry, WikiPage } from '@weknora/api-client';
@@ -34,6 +34,7 @@ export function KnowledgeEditorScreen() {
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
   const [conflict, setConflict] = useState(false);
+  const loadGeneration = useRef(0);
 
   const title = useMemo(() => kind === 'wiki'
     ? (slug ? label('knowledgeEditor.mobile.editWikiTitle') : label('wikiBrowser.newPageTitle'))
@@ -41,17 +42,21 @@ export function KnowledgeEditorScreen() {
 
   const load = useCallback(async () => {
     if (!kbId || !slug) return;
+    const generation = ++loadGeneration.current;
     setLoading(true); setError(''); setConflict(false);
     try {
       if (kind === 'wiki') {
-        setWiki(createWikiDraft(await runtime.client.wiki.get(kbId, slug)));
+        const next = await runtime.client.wiki.get(kbId, slug);
+        if (generation === loadGeneration.current) setWiki(createWikiDraft(next));
       } else {
         const entry = await runtime.client.knowledge.faq.get(kbId, Number(slug));
-        setFaq(createFaqDraft(entry));
+        if (generation === loadGeneration.current) setFaq(createFaqDraft(entry));
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : label(kind === 'wiki' ? 'knowledgeEditor.mobile.loadWikiFailed' : 'knowledgeEditor.mobile.loadFaqFailed'));
-    } finally { setLoading(false); }
+      if (generation === loadGeneration.current) setError(cause instanceof Error ? cause.message : label(kind === 'wiki' ? 'knowledgeEditor.mobile.loadWikiFailed' : 'knowledgeEditor.mobile.loadFaqFailed'));
+    } finally {
+      if (generation === loadGeneration.current) setLoading(false);
+    }
   }, [kbId, kind, label, runtime.client, slug]);
 
   useEffect(() => { void load(); }, [load]);
