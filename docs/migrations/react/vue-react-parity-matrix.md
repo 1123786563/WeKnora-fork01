@@ -133,3 +133,4 @@ No future implementation slice may start unless its row IDs, exact files, owner/
 
 N031 update (2026-09-15): commits `6ffeb7a5`/`f645ae5d` now provide user+tenant recents isolation, anonymous namespace, refresh-failure identity reset, and generation-safe workspace hydration; focused mobile coverage 24/24 with independent review P1/P2/P3=0. Remaining native runtime and other mobile acceptance evidence stays open.
 N031 graph update (2026-09-15): `eb853ddd` localizes mobile graph depth/count/bounded-overview/link/familiar/load-failure/empty states across five locales; focused graph tests 3/3 and independent review P1/P2/P3=0. Native graph evidence remains open.
+N008/N031 document preview update (2026-09-15): `8bb3d9d1`/`12de9f01` localize mobile document detail and download-only preview states across five locales; focused tests 6/6, independent review P1/P2/P3=0. Native file-preview and expiry evidence remains open.

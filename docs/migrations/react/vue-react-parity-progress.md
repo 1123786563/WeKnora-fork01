@@ -2086,3 +2086,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - `KnowledgeGraphScreen` now uses the five-language graph surface copy for depth, counts, bounded overview, links, familiar markers, load failures and empty graphs (`eb853ddd`); unknown server node types remain data-driven and no unsupported capability gate was introduced.
 - Focused graph tests pass 3/3; mobile typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
 - N031 remains open for native graph runtime evidence and remaining mobile acceptance dimensions.
+
+## 2026-09-15 Round N+33l — N008/N031 mobile document detail preview copy
+
+- Mobile document detail and preview surfaces now use five-language copy across `8bb3d9d1` and `12de9f01`, including actions, metadata, loading/errors, and download-only preview labels; optional labels keep existing ChatScreen callers compatible.
+- Focused tests pass 6/6; mobile typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
+- Native file-preview and expiry/no-permission evidence remains open.
