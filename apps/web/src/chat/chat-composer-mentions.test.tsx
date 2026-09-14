@@ -61,6 +61,21 @@ test('KB mention picker supports search, Enter selection, Escape, and chip remov
   assert.deepEqual(removed, ['kb-1']);
 });
 
+test('resource mention options expose stable type markers for non-KB resources', async () => {
+  const container = document.createElement('div');
+  document.body.append(container);
+  root = createRoot(container);
+  await act(async () => root?.render(<ChatComposer copy={resolveChatCopy('zh-CN')} draft="" onDraftChange={() => undefined} onSubmit={() => undefined} mentionOptions={[
+    { id: 'file-1', name: '设计文档', type: 'file' },
+    { id: 'tag-1', name: '重要', type: 'tag' },
+    { id: 'mcp-1', name: 'Docs MCP', type: 'mcp' },
+    { id: 'skill-1', name: 'summarize', type: 'skill' },
+  ]} />));
+  await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="知识库"]')?.click());
+  assert.deepEqual([...container.querySelectorAll('[role="option"]')].map((node) => node.getAttribute('data-mention-type')), ['file', 'tag', 'mcp', 'skill']);
+  assert.deepEqual([...container.querySelectorAll('[role="option"] span:first-child')].map((node) => node.textContent), ['▧', '#', '⚒', '✦']);
+});
+
 test('streaming steer picker supports keyboard navigation and blocks existing attachments', async () => {
   const selected: string[] = [];
   const steers: string[] = [];
