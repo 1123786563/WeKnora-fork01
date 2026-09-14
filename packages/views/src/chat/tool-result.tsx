@@ -144,7 +144,12 @@ export interface SearchResultsViewModel {
 }
 
 /** Group knowledge-search hits per document; FAQ entries stay distinct rows. */
-export function searchResultsView(data: unknown): SearchResultsViewModel {
+export type SearchResultsCopy = Pick<ChatCopyTable, 'toolChunkHits'>;
+const LEGACY_CHUNK_HITS = '{count} chunk hits';
+const LEGACY_KEYWORD_HITS = '{count} keyword hits';
+function countCopy(template: string, count: number): string { return template.replace('{count}', String(count)); }
+
+export function searchResultsView(data: unknown, copy?: SearchResultsCopy): SearchResultsViewModel {
   const d = record(data);
   const items = records(d.results);
   const grouped = new Map<string, SearchResultsRow>();
@@ -164,7 +169,7 @@ export function searchResultsView(data: unknown): SearchResultsViewModel {
     grouped.get(key)!.snippets.push(str(item.content));
   }
   for (const key of order) {
-    grouped.get(key)!.meta = LABELS.chunkHits(grouped.get(key)!.snippets.length);
+    grouped.get(key)!.meta = countCopy(copy?.toolChunkHits ?? LEGACY_CHUNK_HITS, grouped.get(key)!.snippets.length);
   }
   return { query: str(d.query), rows: order.map((k) => grouped.get(k)!) };
 }
@@ -231,19 +236,19 @@ export interface GrepResultsViewModel {
   rows: GrepResultRow[];
 }
 
-export type GrepResultsCopy = Pick<ChatCopyTable, 'grepTitleMatch' | 'grepFaqEntry'>;
+export type GrepResultsCopy = Pick<ChatCopyTable, 'grepTitleMatch' | 'grepFaqEntry' | 'toolChunkHits' | 'toolKeywordHits'>;
 
-function grepKnowledgeMeta(hitCount: number, patternHits: number, titleMatch: boolean, copy: GrepResultsCopy): string {
+function grepKnowledgeMeta(hitCount: number, patternHits: number, titleMatch: boolean, copy?: GrepResultsCopy): string {
   const parts: string[] = [];
-  if (hitCount > 0) parts.push(LABELS.chunkHits(hitCount));
-  if (patternHits > 0 && patternHits !== hitCount) parts.push(LABELS.keywordHits(patternHits));
-  if (titleMatch) parts.push(copy.grepTitleMatch);
+  if (hitCount > 0) parts.push(countCopy(copy?.toolChunkHits ?? LEGACY_CHUNK_HITS, hitCount));
+  if (patternHits > 0 && patternHits !== hitCount) parts.push(countCopy(copy?.toolKeywordHits ?? LEGACY_KEYWORD_HITS, patternHits));
+  if (titleMatch) parts.push(copy?.grepTitleMatch ?? CHAT_COPY.grepTitleMatch);
   return parts.join(' · ');
 }
 
 /** Vue agentStream.grepResults.titleMatch is locale-dependent; the optional copy
  * argument keeps the existing pure-function call shape backwards compatible. */
-export function grepResultsView(data: unknown, copy: GrepResultsCopy = CHAT_COPY): GrepResultsViewModel {
+export function grepResultsView(data: unknown, copy?: GrepResultsCopy): GrepResultsViewModel {
   const d = record(data);
   const pattern = str(d.query) || str(list(d.patterns)[0]);
   const chunkRows = records(d.chunk_results);
@@ -286,7 +291,7 @@ export function grepResultsView(data: unknown, copy: GrepResultsCopy = CHAT_COPY
         return {
           key,
           title: row.title,
-          meta: row.isFaq ? copy.grepFaqEntry : grepKnowledgeMeta(row.hitCount, row.hitCount, row.titleMatch, copy),
+          meta: row.isFaq ? (copy?.grepFaqEntry ?? CHAT_COPY.grepFaqEntry) : grepKnowledgeMeta(row.hitCount, row.hitCount, row.titleMatch, copy),
           snippet: row.snippet,
         };
       }),
@@ -622,7 +627,7 @@ function EmptyState({ label }: { label: string }) {
 
 export function SearchResultsRenderer({ data, copy }: { data: unknown; copy?: ChatCopyTable }) {
   const labels = copy ?? CHAT_COPY;
-  const view = searchResultsView(data);
+  const view = searchResultsView(data, labels);
   if (!view.rows.length) return <EmptyState label={labels.toolNoResults} />;
   return (
     <ul className={"wk-tool-search-results " + TOOL_RESULT_LIST}>
@@ -677,7 +682,7 @@ export function DatabaseQueryRenderer({ data, copy }: { data: unknown; copy?: Ch
 
 export function GrepResultsRenderer({ data, copy }: { data: unknown; copy?: ChatCopyTable }) {
   const labels = copy ?? CHAT_COPY;
-  const view = grepResultsView(data, copy ?? CHAT_COPY);
+  const view = grepResultsView(data, copy);
   if (!view.rows.length) return <EmptyState label={labels.toolNoMatches} />;
   return (
     <ul className={"wk-tool-grep-results " + TOOL_RESULT_LIST}>
