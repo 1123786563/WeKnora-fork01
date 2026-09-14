@@ -753,9 +753,10 @@ export function ChunkDetailRenderer({ data, copy }: { data: unknown; copy?: Chat
   );
 }
 
-export function RelatedChunksRenderer({ data }: { data: unknown }) {
+export function RelatedChunksRenderer({ data, copy }: { data: unknown; copy?: ChatCopyTable }) {
   const view = relatedChunksView(data);
-  if (!view.rows.length) return <EmptyState label={LABELS.noResults} />;
+  const labels = copy ?? CHAT_COPY;
+  if (!view.rows.length) return <EmptyState label={labels.noRelatedChunks} />;
   return (
     <ul className="wk-tool-related-chunks m-0 flex list-none flex-col gap-[0.4rem] p-0">
       {view.rows.map((row) => (

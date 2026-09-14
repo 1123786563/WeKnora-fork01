@@ -15,6 +15,7 @@ import {
   toolResultPresentation,
   ToolResultView,
   ChunkDetailRenderer,
+  RelatedChunksRenderer,
   webFetchView,
   webSearchResultsView,
   WebFetchRenderer,
@@ -410,6 +411,22 @@ test('relatedChunksView lists chunk positions and scores', () => {
   assert.equal(view.rows[0]!.score, 0.8123);
   assert.equal(view.rows[1]!.score, null);
   assert.deepEqual(relatedChunksView({}).rows, []);
+});
+
+test('RelatedChunksRenderer localizes the empty state in every locale', () => {
+  const expected = {
+    'zh-CN': '没有找到相关片段',
+    'en-US': 'No related chunks found',
+    'ja-JP': '関連するチャンクが見つかりません',
+    'ko-KR': '관련 청크를 찾을 수 없습니다',
+    'ru-RU': 'Связанные фрагменты не найдены',
+  } as const;
+  for (const [locale, label] of Object.entries(expected)) {
+    const emptyObject = RelatedChunksRenderer({ data: {}, copy: resolveChatCopy(locale) });
+    const emptyChunks = RelatedChunksRenderer({ data: { chunks: [] }, copy: resolveChatCopy(locale) });
+    assert.match(JSON.stringify(emptyObject), new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.match(JSON.stringify(emptyChunks), new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  }
 });
 
 /* ---- KnowledgeBaseList ---- */
