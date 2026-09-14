@@ -2129,6 +2129,12 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Focused tests pass 3/3; mobile typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
 - Native management runtime evidence remains open.
 
+## 2026-09-15 Round N+33v — T10 mobile organization localization
+
+- Mobile `OrganizationsScreen` and `shareResourceLabel` now localize organization/member/share/invitation flows, permissions, confirmations, empty/errors and unnamed-resource fallbacks across five locales (`9f65d3fc`, `5919e274`), preserving server roles and resource values.
+- Focused organization tests pass 6/6; mobile typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
+- Native organization runtime evidence remains open.
+
 ## 2026-09-15 Round N+33u — T10 mobile management capability hub
 
 - `ManagementHubScreen` and `capabilities.ts` now localize capability labels, reasons, modes and required roles across five locales (`9bf93b84`), preserving server-provided reasons, fail-closed projection and route/action behavior.
