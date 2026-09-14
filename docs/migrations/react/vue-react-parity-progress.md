@@ -2191,3 +2191,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - Parser configuration now uses existing localized endpoint and MinerU credential keys in `68c59b8f`; retrieval field mutation semantics remain unchanged.
 - Settings coverage remains 15/15; Web typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
+
+## 2026-09-15 Round N+34d — T07 Web resource settings localization
+
+- Resource settings now localize editor labels, provider placeholders, safe-config copy, security guidance and row fallbacks across five locales (`42d82596`), preserving sensitive config filtering and CRUD/test/default flows.
+- Settings coverage remains 15/15; Web typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
