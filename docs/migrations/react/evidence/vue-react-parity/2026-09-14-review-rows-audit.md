@@ -105,3 +105,12 @@ STALE ≠ 证据错误，仅表示源在证据之后演进；**下一批提升�
 - **F3（悬空引用）**：chat-copy.ts 注释引用的 2026-09-13-chat-i18n.md 不存在——cosmetic，登记待补建。
 - **F4（document.title 不一致）**：已修复 870f67e9——apps/web/index.html title 从 "WeKnora React migration" 改为 "WeKnora"（对齐 Vue index.html:4）。
 
+
+## 负路径核验 D1-D6 处置记录（2026-09-14）
+依据 2026-09-14-negpath-sweep.md（14 格 92.9%，6 条差异）：
+- **D1[中] 已修复**：React 对 /platform/* 受保护前缀的 not-found 路由在鉴权前放行 → 改为未登录先重定向登录页（对齐 Vue 行为）；TDD 红绿（routes.test.ts S00 D1 用例）；dev/markdown fixture 显式放行保持不变。修复涉及 routes.tsx guardRoute。
+- **D6[低] 已修复**：NotFoundPage 文案本地化（zh-CN「页面不存在」/ en-US fallback）——React 新增的 404 页此前仅英文；Vue 无 404 页故无 Vue 基准文案，按站点主语言补 zh-CN。
+- **D2[低-中] 登录重定向目标（Vue 丢来源 vs React ?next= 回跳）**：React 行为更优，保持并记录差异；如需严格对齐 Vue（丢弃 next）需用户决策。
+- **D3[高] / D4[高] / D5[高] Vue 侧缺陷**：Vue 对不存在路由/无效 KB 深链接渲染空白死页，D5 最严重——无效 KB 呈现「知识为空，拖放上传」误导空态（上传入口可用）。React 均有明确 404/错误态+重试。**严格 parity 需将 React 降级为同等破损行为，不建议**；按 §一 作为「Vue 行为与业务契约冲突」记录，提交用户决策：(a) 批准 React 更优行为为记录在案例外；(b) 要求逐像素复刻 Vue 破损行为。
+- 后续建议切片：403 租户隔离 / register / join / onboarding 负路径与网络错误态。
+
