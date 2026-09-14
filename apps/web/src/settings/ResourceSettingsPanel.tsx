@@ -36,10 +36,6 @@ function apiFor(client: WeKnoraClient, section: ResourceSection): ResourceApi {
   return client.settings.webSearch.providers;
 }
 
-function resourceLabel(section: ResourceSection): string { /* TODO(migration): keep English labels until per-section nouns are exposed via settings.* keys */
-  return section === 'storage' ? 'storage backend' : section === 'vectorstore' ? 'vector store' : 'web-search provider';
-}
-
 export function ResourceSettingsPanel({ client, section, initialValue }: { client: WeKnoraClient; section: ResourceSection; initialValue: unknown }) {
   const api = apiFor(client, section);
   const t = settingsT(readInitialLocale());
