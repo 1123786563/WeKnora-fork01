@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { FetchLike } from '@weknora/api-client';
+import { ApiError, type FetchLike } from '@weknora/api-client';
 import { createBrowserTransport, observeUploadProgress, uploadProgressListener } from './http.ts';
 
 test('injects scoped auth headers without changing the shared transport', async () => {
@@ -56,6 +56,59 @@ test('isolates embed headers from bearer tenant context', async () => {
   assert.equal(seen[0]?.['x-embed-session'], 'sig-1');
   assert.equal(seen[0]?.['x-embed-visitor'], 'visitor-1');
   assert.equal(seen[1]?.authorization, undefined);
+});
+
+// Vue request.ts:137-139 rejects response-less failures with the localized
+// error.networkError copy; the raw "Failed to fetch" previously leaked to pages.
+test('surfaces network failures as the localized network-error ApiError', async () => {
+  const transport = createBrowserTransport({
+    credential: { kind: 'bearer', accessToken: 'access-1' },
+    fetcher: (async () => { throw new TypeError('Failed to fetch'); }) satisfies FetchLike,
+  });
+
+  await assert.rejects(
+    transport.send({ method: 'GET', url: 'https://api.test/api/v1/organizations', headers: {} }),
+    (error: unknown) => {
+      assert.ok(error instanceof ApiError);
+      assert.equal((error as ApiError).code, 'NETWORK_ERROR');
+      // No localStorage in the test runtime -> zh-CN default, byte-exact Vue copy.
+      assert.equal((error as ApiError).message, '网络错误，请检查您的网络连接');
+      return true;
+    },
+  );
+});
+
+test('network-error copy follows the stored locale, with Vue fallback-locale values', async () => {
+  const stored: Record<string, string> = { locale: 'en-US' };
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: { getItem: (key: string) => stored[key] ?? null },
+  });
+  try {
+    const transport = createBrowserTransport({
+      credential: { kind: 'bearer', accessToken: 'access-1' },
+      fetcher: (async () => { throw new TypeError('Failed to fetch'); }) satisfies FetchLike,
+    });
+    // Vue lacks error.networkError in en-US and falls back to zh-CN; the port
+    // reproduces the rendered result instead of inventing an English copy.
+    await assert.rejects(
+      transport.send({ method: 'GET', url: 'https://api.test/api/v1/organizations', headers: {} }),
+      (error: unknown) => error instanceof ApiError && error.message === '网络错误，请检查您的网络连接',
+    );
+  } finally {
+    delete (globalThis as { localStorage?: unknown }).localStorage;
+  }
+});
+
+test('non-network transport errors are not rewritten', async () => {
+  const transport = createBrowserTransport({
+    credential: { kind: 'bearer', accessToken: 'access-1' },
+    fetcher: (async () => { throw new Error('boom'); }) satisfies FetchLike,
+  });
+  await assert.rejects(
+    transport.send({ method: 'GET', url: 'https://api.test/api/v1/organizations', headers: {} }),
+    (error: unknown) => !(error instanceof ApiError) && (error as Error).message === 'boom',
+  );
 });
 
 test('forwards streaming requests with the same scoped headers', async () => {

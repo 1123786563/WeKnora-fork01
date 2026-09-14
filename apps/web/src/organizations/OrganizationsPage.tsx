@@ -310,7 +310,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
     setJoinPreviewError('');
     setJoinPreviewLoading(true);
     void organizationsApi.preview(activeInviteCode).then((preview) => { if (active) setJoinPreview(preview); })
-      .catch((reason) => { if (active) setJoinPreviewError(errorText(reason, t(locale, 'organization.invite.invalidCode'))); })
+      .catch((reason) => { if (active) setJoinPreviewError(errorText(reason, t(locale, 'organization.invite.previewFailed'))); })
       .finally(() => { if (active) setJoinPreviewLoading(false); });
     return () => { active = false; };
   }, [activeInviteCode, organizationsApi]);
@@ -376,7 +376,9 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
     if (!code) { showToast('error', t(locale, 'organization.inviteCodeRequired')); return; }
     setJoinCode(code); setJoinPreviewError(''); setJoinPreview(null); setJoinPreviewLoading(true);
     try { setJoinPreview(await organizationsApi.preview(code)); }
-    catch (reason) { setJoinPreviewError(errorText(reason, t(locale, 'organization.invite.invalidCode'))); }
+    // Vue OrganizationList.vue:879 — messageless preview failures fall back to
+    // previewFailed, not invalidCode (which is only the server's own copy).
+    catch (reason) { setJoinPreviewError(errorText(reason, t(locale, 'organization.invite.previewFailed'))); }
     finally { setJoinPreviewLoading(false); }
   }
 

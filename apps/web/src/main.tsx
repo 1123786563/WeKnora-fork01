@@ -7,6 +7,7 @@ import { LoginPage } from './auth/LoginPage.tsx';
 import { JoinPage } from './auth/JoinPage.tsx';
 import { WorkspaceOnboardingPage } from './auth/WorkspaceOnboardingPage.tsx';
 import { parseOIDCCallbackHash } from './auth/oidc.ts';
+import { reloginAfterRefreshFailure } from './auth/relogin.ts';
 import { computeAuthLanding } from './auth/session-persist.ts';
 import { readPendingInviteToken, clearPendingInviteToken } from './auth/invite-flow.ts';
 import { importLegacyPlatformState, persistSelectedTenant, readReactPlatformState, type ReactPlatformState } from './platform/legacy-session.ts';
@@ -84,7 +85,25 @@ client = createWeKnoraClient({
     tenantId: () => scopeController.current().scope.tenantId,
     locale: navigator.language,
     shouldRefresh: (request) => !request.url.endsWith('/api/v1/auth/refresh'),
-    refresh: refreshCoordinator ? async () => { await refreshCoordinator.refresh(); } : undefined,
+    refresh: refreshCoordinator ? async () => {
+      try {
+        await refreshCoordinator.refresh();
+      } catch (error) {
+        // Vue authRefresh.ts:104-150 — a failed refresh leaves the session
+        // cleared and the user on /login, never a silently poisoned session
+        // (S00 negpath batch 3, T-3). The coordinator has already cleared the
+        // bearer credential; reset the scope/session state and navigate.
+        await reloginAfterRefreshFailure({
+          clearSession: () => {
+            scopeRuntime.logout();
+            session = { ...session, credential: { kind: 'anonymous' }, tenantId: null };
+          },
+          pathname: window.location.pathname,
+          assign: (url) => window.location.assign(url),
+        });
+        throw error;
+      }
+    } : undefined,
   }),
 });
 

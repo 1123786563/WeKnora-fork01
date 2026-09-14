@@ -1,5 +1,13 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-14 Round N+27 — 负路径第四批：T-3/T-4 关闭 + 网络错误文案层
+
+- T-3 已修复：React refresh 失败后按 Vue authRefresh.ts 语义清 scope/session 并导航 /login（新增 apps/web/src/auth/relogin.ts + relogin.test.ts 4/4；main.tsx transport refresh 回调接线）。live 双端污染会话对照（negpath4-auth.cjs，只读）：双端最终 URL 均为 /login。
+- T-4 已修复：组织预览无 message 失败 fallback 由 invalidCode 对齐为 previewFailed（OrganizationsPage.tsx 两处，对齐 Vue OrganizationList.vue:879 catch 分支）；HTTP-200 业务失败边界残余差异登记不阻塞。
+- 新缺口发现并修复：网络层失败文案。live B 格显示 Vue 渲染「网络错误，请检查您的网络连接」而 React 泄漏 Failed to fetch。修复：packages/i18n 新增 error.networkError ×5 locale（en-US/ja-JP 取 Vue fallbackLocale=zh-CN 的实际渲染值，注释说明）+ apps/web transport withNetworkError 将 TypeError 转为 ApiError(NETWORK_ERROR, 本地化文案)，Abort/ApiError 透传。http.test.ts 新增 3 例。
+- 门禁：relogin 4/4、http 13/13、test:shared 444/444、test:web 856/856、typecheck×2 0 错误。
+- Live 证据：negpath4-auth.cjs 双端 A1（/login 落点）与 B1（网络错误文案逐字一致）；截图 screenshots/negpath4-20260914/；文档 2026-09-14-negpath4-auth-refresh-network.md。negpath 第三批 T-3/T-4 关闭。
+
 ## 2026-09-14 Round N+26 — R025 我的记忆整面重建 + 记忆分区挂载纠正
 
 - Vue MemorySettings.vue（mymemory 分区）对齐：React PersonalMemorySettingsPanel 从开关+只读 dl 重建为完整面板——六状态页签（计数）、items/topics/documents 三列表（pending 确认/拒绝、行内编辑 Ctrl+Enter、删除/停止跟踪/整理/清空 popconfirm、跟踪进度条 + promote 跳回 active、文档打开对齐 Vue knowledgeBase 深链）、添加弹层（kind+content）、导出 JSON 下载、分页 offset 语义、逐页签空态/提示与 Vue 同键文案。

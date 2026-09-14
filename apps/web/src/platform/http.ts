@@ -1,6 +1,26 @@
-import { createJsonTransport, type FetchLike } from '@weknora/api-client';
+import { ApiError, createJsonTransport, type FetchLike } from '@weknora/api-client';
 import type { Credential } from '@weknora/api-client';
 import type { HttpRequest, HttpResult, HttpStreamResult, NativeMultipartFileRequest } from '@weknora/api-client';
+import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
+
+// Vue request.ts:137-139 — a request that never got a response (network
+// failure) rejects with the localized error.networkError copy instead of the
+// raw fetch error, on every page.
+function activeLocale(): Locale {
+  const stored = typeof localStorage !== 'undefined' ? localStorage.getItem('locale') : null;
+  if (stored && isLocale(stored)) return stored;
+  return 'zh-CN';
+}
+
+function withNetworkError<T>(task: () => Promise<T>): Promise<T> {
+  return task().catch((error: unknown) => {
+    if (error instanceof ApiError) throw error;
+    if (error instanceof TypeError) {
+      throw new ApiError({ code: 'NETWORK_ERROR', message: formatMessage(activeLocale(), 'error.networkError'), cause: error });
+    }
+    throw error;
+  });
+}
 
 export interface BrowserTransportOptions {
   fetcher?: FetchLike;
@@ -168,17 +188,17 @@ export function createBrowserTransport(options: BrowserTransportOptions = {}) {
 
   return {
     async send(request: Parameters<typeof base.send>[0]) {
-      return sendWithRefresh(request);
+      return withNetworkError(() => sendWithRefresh(request));
     },
     async sendBinary(request: Parameters<typeof base.send>[0]) {
-      return sendBinaryWithRefresh(request);
+      return withNetworkError(() => sendBinaryWithRefresh(request));
     },
     async sendStream(request: Parameters<typeof base.send>[0]) {
       if (!base.sendStream) throw new Error('Streaming transport is unavailable');
-      return sendStreamWithRefresh(request);
+      return withNetworkError(() => sendStreamWithRefresh(request));
     },
     async sendMultipartFile(request: NativeMultipartFileRequest) {
-      return sendMultipartFileWithRefresh(request);
+      return withNetworkError(() => sendMultipartFileWithRefresh(request));
     },
   };
 }
