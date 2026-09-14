@@ -2323,3 +2323,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 ### 运行时补充
 
 - Chrome 已认证 React 运行时访问 `/platform/chat?agentId=a`，页面成功加载新对话并规范化地址为 `/platform/creatChat`，AX 中可见智能体选择、上传附件、知识库和发送控件；该证据覆盖旧入口重定向，不替代 Vue 同账号对照。
+
+## 2026-09-15 Round N+34ad — N021 reference list copy
+
+- 对话引用来源面板的标题、网页/文档/工具分组和引用片段 aria 标签改用当前 locale 的共享文案；默认解析保持跟随运行时语言。
+- ReferenceList/chat-copy 专项 13/13、shared typecheck、diff check 通过；真实引用数据与 Vue 同条件浏览器对照仍待补齐。
