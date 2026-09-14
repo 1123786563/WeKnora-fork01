@@ -1,5 +1,13 @@
 import { Status } from '@weknora/ui';
+import { useAppLocale } from './i18n.ts';
+
+const copy = {
+  'zh-CN': { title: '页面不存在', back: '返回知识库' },
+  'en-US': { title: 'Page not found', back: 'Back to knowledge bases' },
+} as const;
 
 export function NotFoundPage({ path }: { path: string }) {
-  return <main className="wk-page"><Status tone="error">Page not found: {path}</Status><a href="/platform/knowledge-bases">Back to knowledge bases</a></main>;
+  const locale = useAppLocale();
+  const t = copy[(locale in copy ? locale : 'en-US') as keyof typeof copy];
+  return <main className="wk-page"><Status tone="error">{t.title}: {path}</Status><a href="/platform/knowledge-bases">{t.back}</a></main>;
 }
