@@ -65,6 +65,44 @@ test('keeps personal memory and env-var mutations encoded and observable', async
   ]);
 });
 
+test('exposes the complete personal-memory action surface with encoded ids', async () => {
+  const requests: Array<{ method: string; path: string; body?: unknown }> = [];
+  const api = createSettingsApi(async (request) => {
+    requests.push(request);
+    if (request.method === 'GET') return { success: true, data: [], total: 7 };
+    if (request.method === 'DELETE') return { success: true, data: { removed: 2 } };
+    return { success: true, data: { merged: 1 } };
+  });
+
+  await api.memory.personal.clear();
+  await api.memory.personal.export();
+  await api.memory.personal.consolidate();
+  await api.memory.personal.items.confirm('memory/id');
+  await api.memory.personal.items.reject('memory/id');
+  const topics = await api.memory.personal.topics.list({ limit: 20, offset: 40 });
+  await api.memory.personal.topics.promote('topic/id');
+  await api.memory.personal.topics.remove('topic/id');
+  const documents = await api.memory.personal.documents.list({ limit: 20, offset: 40 });
+  await api.memory.personal.documents.remove('doc/id');
+
+  // Vue paginates and counts off the envelope total (frontend/src/api/memory.ts).
+  assert.deepEqual(topics, { rows: [], total: 7 });
+  assert.deepEqual(documents, { rows: [], total: 7 });
+
+  assert.deepEqual(requests.map(({ method, path }) => [method, path]), [
+    ['DELETE', '/api/v1/memory/items'],
+    ['GET', '/api/v1/memory/export'],
+    ['POST', '/api/v1/memory/consolidate'],
+    ['POST', '/api/v1/memory/items/memory%2Fid/confirm'],
+    ['POST', '/api/v1/memory/items/memory%2Fid/reject'],
+    ['GET', '/api/v1/memory/topics?limit=20&offset=40'],
+    ['POST', '/api/v1/memory/topics/topic%2Fid/promote'],
+    ['DELETE', '/api/v1/memory/topics/topic%2Fid'],
+    ['GET', '/api/v1/memory/documents?limit=20&offset=40'],
+    ['DELETE', '/api/v1/memory/documents/doc%2Fid'],
+  ]);
+});
+
 test('provides CRUD and connection-test seams for tenant resource settings', async () => {
   const requests: Array<{ method: string; path: string; body?: unknown }> = [];
   const api = createSettingsApi(async (request) => {

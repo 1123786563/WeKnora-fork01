@@ -28,6 +28,14 @@
 .wk-button:disabled { cursor: not-allowed; opacity: .6; }
 .wk-button-loading { display: inline-block; min-width: 1em; margin-right: .25rem; }
 .wk-card { border: 1px solid #dce3ed; border-radius: 8px; background: #ffffff; padding: 1rem; }
+.wk-switch { position: relative; display: inline-flex; align-items: center; flex-shrink: 0; width: 40px; height: 20px; padding: 0; border: none; border-radius: 999px; background: rgb(120 135 155 / 35%); cursor: pointer; transition: background-color .2s ease; }
+.wk-switch[aria-checked='true'] { background: #07c05f; }
+.wk-switch .wk-switch-knob { pointer-events: none; display: block; width: 16px; height: 16px; margin-left: 2px; border-radius: 999px; background: #ffffff; transition: transform .2s ease; }
+.wk-switch[aria-checked='true'] .wk-switch-knob { transform: translateX(20px); }
+.wk-switch:disabled { cursor: not-allowed; }
+.wk-switch[aria-checked='true']:disabled { background: #8ce0af; }
+.wk-switch[aria-checked='false']:disabled { background: rgb(120 135 155 / 35%); }
+.wk-switch:focus-visible { outline: 2px solid rgb(7 192 95 / 20%); outline-offset: 2px; }
 .wk-status { margin: 0.5rem 0; color: #506078; }
 .wk-status-error { color: #b42318; }
 .wk-status-success { color: #137333; }

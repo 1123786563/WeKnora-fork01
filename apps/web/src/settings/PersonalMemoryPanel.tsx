@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
-import { Button, Card, NumberInput, Status, Switch } from '@weknora/ui';
+import { Card, NumberInput, Status, Switch } from '@weknora/ui';
 import { ModelOptionSelect } from './ModelOptionSelect.tsx';
-import { memoryItemPatch, memoryWorkspacePatch } from './surface.ts';
+import { memoryWorkspacePatch } from './surface.ts';
 import { readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
 
 type MemoryRow = Record<string, unknown>;
@@ -73,67 +73,4 @@ export function MemoryWorkspacePanel({ client, initialConfig, canEdit = true }: 
     {setting(t('memoryWorkspaceSettings.instructionsLabel'), t('memoryWorkspaceSettings.instructionsDescription'), <textarea className="h-auto min-h-20 w-full resize-y rounded-[3px] border border-[#dcdcdc] p-2 text-[13px] focus:border-[#07c05f] focus:outline-none focus:ring-2 focus:ring-[#07c05f]/20" maxLength={1000} rows={3} value={extractInstructions} disabled={!canEdit || busy} placeholder={t('memoryWorkspaceSettings.instructionsPlaceholder')} onChange={(event) => setExtractInstructions(event.target.value)} onBlur={() => debouncedSave()} />)}
   </> : null;
   return <Card><div className="wk-settings-panel-heading"><div><h3>{t('memoryWorkspaceSettings.title')}</h3><p className="wk-muted">{t('memoryWorkspaceSettings.description')}</p></div></div><div className="wk-memory-workspace-intro mb-2 flex items-start gap-2.5 rounded-lg bg-[#f3f9f5] px-4 py-3.5 text-[13px] text-black/70"><strong className="shrink-0 font-medium text-black/90">{t('memoryWorkspaceSettings.introTitle')}</strong><span>{t('memoryWorkspaceSettings.introDescription')}</span></div>{error ? <Status tone="error">{error}</Status> : null}{notice ? <Status tone="success">{notice}</Status> : null}<div className="settings-group">{setting(t('memoryWorkspaceSettings.enableLabel'), t('memoryWorkspaceSettings.enableDescription'), <Switch checked={enabled} disabled={!canEdit || busy} onCheckedChange={(checked) => debouncedSave({ enabled: checked })} aria-label={t('memoryWorkspaceSettings.enableLabel')} />)}{enabled ? <>{setting(t('memoryWorkspaceSettings.writeModeLabel'), t('memoryWorkspaceSettings.writeModeDescription'), <ModelOptionSelect value={writeMode} options={[{ value: 'explicit_only', label: t('memoryWorkspaceSettings.writeModeExplicit') }, { value: 'auto', label: t('memoryWorkspaceSettings.writeModeAuto') }]} disabled={!canEdit || busy} onChange={(value) => debouncedSave({ writeMode: value })} />, writeMode === 'auto' ? t('memoryWorkspaceSettings.writeModeAutoHint') : t('memoryWorkspaceSettings.writeModeExplicitHint'))}{autoFields}{setting(t('memoryWorkspaceSettings.vectorRecallLabel'), t('memoryWorkspaceSettings.vectorRecallDescription'), <Switch checked={vectorRecall} disabled={!canEdit || busy} onCheckedChange={(checked) => debouncedSave({ vectorRecall: checked })} aria-label={t('memoryWorkspaceSettings.vectorRecallLabel')} />)}{vectorRecall ? setting(t('memoryWorkspaceSettings.embeddingModelLabel'), t('memoryWorkspaceSettings.embeddingModelDescription'), <ModelOptionSelect value={embeddingModelId} options={options(['embedding'])} disabled={!canEdit || busy} clearable clearLabel={t('common.remove')} addModelLabel={t('model.addModelInSettings')} onAddModel={() => window.location.assign('/platform/settings?section=models&subsection=embedding')} onChange={(value) => debouncedSave({ embeddingModelId: value })} />) : null}{setting(t('memoryWorkspaceSettings.conditioningLabel'), t('memoryWorkspaceSettings.conditioningDescription'), <Switch checked={retrievalConditioning} disabled={!canEdit || busy} onCheckedChange={(checked) => debouncedSave({ retrievalConditioning: checked })} aria-label={t('memoryWorkspaceSettings.conditioningLabel')} />)}{setting(t('memoryWorkspaceSettings.maxItemsLabel'), t('memoryWorkspaceSettings.maxItemsDescription'), <NumberInput min={10} max={2000} step={10} value={maxItems} disabled={!canEdit || busy} onValueChange={(value) => setMaxItems(Number(value))} onBlur={() => debouncedSave()} />)}</> : null}</div></Card>;
-}
-
-export function PersonalMemorySettingsPanel({ client, initialSettings }: { client: WeKnoraClient; initialSettings: unknown }) {
-  const t = settingsT(readInitialLocale());
-  const row = initialSettings !== null && typeof initialSettings === 'object' && !Array.isArray(initialSettings) ? initialSettings as MemoryRow : {};
-  const [enabled, setEnabled] = useState(row.enabled === true);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-
-  useEffect(() => { setEnabled(row.enabled === true); }, [initialSettings]);
-
-  async function updateEnabled(next: boolean) {
-    setBusy(true); setError(null); setNotice(null);
-    try { const updated = await client.settings.memory.personal.updateEnabled(next); setEnabled(updated.enabled === true); setNotice(t(next ? 'memorySettings.toasts.enabled' : 'memorySettings.toasts.disabled')); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to update personal memory state.'); }
-    finally { setBusy(false); }
-  }
-
-  return <Card><h3>{t('memorySettings.title')}</h3><p className="wk-muted">{t("memorySettings.description")}</p>{error ? <Status tone="error">{error}</Status> : null}{notice ? <Status tone="success">{notice}</Status> : null}<label><input type="checkbox" checked={enabled} disabled={busy} onChange={(event) => void updateEnabled(event.target.checked)} /> {t('memorySettings.enableLabel')}</label><dl className="wk-settings-values"><div><dt>enabled</dt><dd>{String(enabled)}</dd></div></dl></Card>;
-}
-
-export function PersonalMemoryPanel({ client, initialItems }: { client: WeKnoraClient; initialItems: unknown }) {
-  const t = settingsT(readInitialLocale());
-  const [items, setItems] = useState<MemoryRow[]>(Array.isArray(initialItems) ? initialItems.filter((item): item is MemoryRow => item !== null && typeof item === 'object' && !Array.isArray(item)) : []);
-  const [draft, setDraft] = useState('');
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingContent, setEditingContent] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-
-  useEffect(() => {
-    setItems(Array.isArray(initialItems) ? initialItems.filter((item): item is MemoryRow => item !== null && typeof item === 'object' && !Array.isArray(item)) : []);
-  }, [initialItems]);
-
-  async function createItem(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy(true); setError(null); setNotice(null);
-    try {
-      const created = await client.settings.memory.personal.items.create(memoryItemPatch(draft));
-      setItems((current) => [...current, created]); setDraft(''); setNotice(t('memorySettings.toasts.added'));
-    } catch (reason) { setError(reason instanceof Error ? reason.message : t('memorySettings.toasts.saveFailed', { message: '' })); }
-    finally { setBusy(false); }
-  }
-
-  async function saveEdit(id: string) {
-    setBusy(true); setError(null); setNotice(null);
-    try {
-      const updated = await client.settings.memory.personal.items.update(id, memoryItemPatch(editingContent));
-      setItems((current) => current.map((item) => rowId(item) === id ? updated : item)); setEditingId(null); setEditingContent(''); setNotice(t('memorySettings.toasts.updated'));
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to update personal memory.'); }
-    finally { setBusy(false); }
-  }
-
-  async function removeItem(id: string) {
-    if (!id || !window.confirm(t('memorySettings.deleteConfirm'))) return;
-    setBusy(true); setError(null); setNotice(null);
-    try { await client.settings.memory.personal.items.remove(id); setItems((current) => current.filter((item) => rowId(item) !== id)); setNotice(t('memorySettings.toasts.deleted')); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to delete personal memory.'); }
-    finally { setBusy(false); }
-  }
-
-  return <div className="wk-settings-memory"><Card><h3>{t('memorySettings.listTitle')}</h3><p className="wk-muted">{t('memorySettings.description')}</p>{error ? <Status tone="error">{error}</Status> : null}{notice ? <Status tone="success">{notice}</Status> : null}<form className="wk-settings-editor" onSubmit={(event) => void createItem(event)}><label>{t('memorySettings.addContentLabel')}<textarea required rows={3} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={t('memorySettings.addPlaceholder')} /></label><Button type="submit" loading={busy}>{t('memorySettings.add')}</Button></form></Card><Card><h3>{t('memorySettings.listTitle')}</h3>{items.length === 0 ? <Status>{t('memorySettings.emptyTitle')}</Status> : <ul className="wk-list">{items.map((item, index) => { const id = rowId(item); return <li key={id || index}><div className="wk-list-item-copy">{editingId === id ? <textarea rows={3} value={editingContent} onChange={(event) => setEditingContent(event.target.value)} /> : <strong>{rowContent(item) || 'Untitled memory'}</strong>}<span>{String(item.status ?? 'active')} · {String(item.kind ?? 'personal')}</span></div><div className="wk-list-actions">{editingId === id ? <><Button type="button" loading={busy} onClick={() => void saveEdit(id)}>{t('common.save')}</Button><Button type="button" disabled={busy} onClick={() => { setEditingId(null); setEditingContent(''); }}>{t('common.cancel')}</Button></> : <><Button type="button" disabled={!id || busy} onClick={() => { setEditingId(id); setEditingContent(rowContent(item)); }}>{t('common.edit')}</Button><Button type="button" disabled={!id || busy} onClick={() => void removeItem(id)}>{t('common.delete')}</Button></>}</div></li>; })}</ul>}</Card></div>;
 }

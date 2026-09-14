@@ -1,5 +1,15 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-14 Round N+26 — R025 我的记忆整面重建 + 记忆分区挂载纠正
+
+- Vue MemorySettings.vue（mymemory 分区）对齐：React PersonalMemorySettingsPanel 从开关+只读 dl 重建为完整面板——六状态页签（计数）、items/topics/documents 三列表（pending 确认/拒绝、行内编辑 Ctrl+Enter、删除/停止跟踪/整理/清空 popconfirm、跟踪进度条 + promote 跳回 active、文档打开对齐 Vue knowledgeBase 深链）、添加弹层（kind+content）、导出 JSON 下载、分页 offset 语义、逐页签空态/提示与 Vue 同键文案。
+- 结构性修复：memory/mymemory 分区挂载按 Vue Settings.vue 纠正（个人面板移回 mymemory，memory 只留工作区面板）；SettingsPage wrapper heading 对这两个自带 h2 的分区停用；面板改裸排版（去外层 Card）对齐 Vue。
+- 契约修复：api-client memory lists 返回 { rows, total }（MemoryListPage），补齐 clear/export/consolidate/confirm/reject/topics/documents action surface（7/7 合同测试）。
+- i18n：回填 35 键 ×5 locale（kinds/kindHints/origins/状态页签/整理 skip/usage.rows），Vue locale 字节级；键集一致性测试通过。
+- 共享组件：@weknora/ui Switch 由页面级 Tailwind 工具类改为包内 wk-switch 纯 CSS——原实现因 Tailwind v4 不扫描 pnpm node_modules 在真实浏览器塌缩成细条（live 证实）；修复后双端恢复 Vue 同款 40×20 胶囊（含 disabled on-state 色）。
+- 验证：面板专项 11/11；test:shared 444/444、test:web 849/849、typecheck×2 0 错误、build ✓。live 双端只读对照（真实后端 :8080，parity 账号，1440×900 zh-CN）：六页签标签+计数、工具栏、notice、开关位、空态逐字一致，apiErrors/pageErrors 双端 0；截图 screenshots/memory-20260914/。证据：2026-09-14-mymemory-personal-panel.md；matrix R025/R026 已更新。
+- 仍开放：真实数据写路径（编辑/确认/整理/导出）的 live 后端验证、computed-style 逐值对照、暗色令牌、Wails/native 证据、MemoryWorkspacePanel 外层 Card 遗留差异。
+
 ## 2026-09-14 Round N+25 — N011 Wiki directory contract and modes
 
 - Index 首屏现在保存后端 `next_cursor`，按分组追加后续条目并隔离加载错误；加载按钮在请求中禁用。API 10/10、Wiki UI 5/5、正式 Web 797/797、`typecheck:web` 与 `typecheck:shared` 通过。

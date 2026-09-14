@@ -9,7 +9,8 @@ import { roleAtLeast, SETTINGS_SECTIONS, settingsSectionsForRole } from '@weknor
 import { Button, Status } from '@weknora/ui';
 import { profilePasswordPatch, settingsSectionHeading, settingsSectionMeta, tenantEditState, tenantPatch } from './surface.ts';
 import { TenantDeleteZone } from './TenantDeleteZone.tsx';
-import { MemoryWorkspacePanel, PersonalMemoryPanel, PersonalMemorySettingsPanel } from './PersonalMemoryPanel.tsx';
+import { MemoryWorkspacePanel } from './PersonalMemoryPanel.tsx';
+import { PersonalMemorySettingsPanel } from './PersonalMemorySettingsPanel.tsx';
 import { ResourceSettingsPanel } from './ResourceSettingsPanel.tsx';
 import { ConfigSettingsPanel, type SettingsModelOption } from './ConfigSettingsPanel.tsx';
 import { OllamaSettingsPanel } from './OllamaSettingsPanel.tsx';
@@ -42,8 +43,10 @@ export async function readSettingsSection(client: WeKnoraClient, key: string, te
     case 'ollama': return Promise.all([client.settings.ollama.status(), client.settings.ollama.models()]).then(([status, models]) => ({ status, models }));
     case 'parser': return Promise.all([client.settings.parser.engines(), client.settings.parser.config.get()]).then(([engines, config]) => ({ engines, config }));
     case 'retrieval': return client.settings.retrieval.get();
-    case 'memory': return Promise.all([client.settings.memory.workspace.get(), client.settings.memory.personal.settings()]).then(([workspace, personal]) => ({ workspace, personal }));
-    case 'mymemory': return client.settings.memory.personal.items.list({ limit: 50 });
+    case 'memory': return client.settings.memory.workspace.get();
+    // Vue mounts MemorySettings.vue (personal surface) under "mymemory"; the
+    // panel fetches lists/counts client-side like the Vue source does.
+    case 'mymemory': return client.settings.memory.personal.settings();
     case 'envvars': return client.settings.envVars.list();
     case 'storage': return Promise.all([client.settings.storage.backends.list(), client.settings.storage.legacy.status()]).then(([backends, legacy]) => ({ backends, legacy }));
     case 'vectorstore': return client.settings.vectorStores.list();
@@ -262,7 +265,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
                       the h2 + permissions popover + audit entry + section-description
                       with the RBAC doc link, so a wrapper heading would duplicate it
                       (previously it also leaked the registry apiDomain as the text). */}
-                  {selectedKey !== 'general' && selectedKey !== 'models' && selectedKey !== 'members' ? (
+                  {selectedKey !== 'general' && selectedKey !== 'models' && selectedKey !== 'members' && selectedKey !== 'memory' && selectedKey !== 'mymemory' ? (
                     <div className="wk-settings-panel-heading">
                       <div>
                         <h2>{settingsSectionHeading(locale, selectedKey).title}</h2>
@@ -271,7 +274,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
                     </div>
                   ) : null}
                   {selectedKey === 'tenant' && role === 'owner' ? <TenantDeleteZone client={client} tenantId={tenantId} tenantName={tenantEditState(payload).name || String(tenantId)} onDeleted={() => { window.location.assign('/login'); }} /> : null}
-                  {deniedPanel ?? (error ? <Status tone="error">{error}</Status> : loading ? <Status>{t('common.loading')}</Status> : <>{notice ? <Status tone="success">{notice}</Status> : null}{generalPanel ?? resourcePanel ?? configPanel ?? ollamaPanel ?? cloudPanel ?? envVarPanel ?? systemPanel ?? portedPanel ?? (selectedKey === 'tenant' ? <TenantInfoSection client={client} tenantId={tenantId} role={role} locale={locale} payload={payload} /> : selectedKey === 'userprofile' ? <UserProfileSection client={client} locale={locale} payload={payload} /> : selectedKey === 'memory' ? <div className="wk-settings-memory"><MemoryWorkspacePanel client={client} initialConfig={((payload as Record<string, unknown> | null)?.workspace)} canEdit={roleAtLeast(role, 'admin')} /><PersonalMemorySettingsPanel client={client} initialSettings={((payload as Record<string, unknown> | null)?.personal)} /></div> : selectedKey === 'mymemory' ? <PersonalMemoryPanel client={client} initialItems={payload} /> : null)}</>)}
+                  {deniedPanel ?? (error ? <Status tone="error">{error}</Status> : loading ? <Status>{t('common.loading')}</Status> : <>{notice ? <Status tone="success">{notice}</Status> : null}{generalPanel ?? resourcePanel ?? configPanel ?? ollamaPanel ?? cloudPanel ?? envVarPanel ?? systemPanel ?? portedPanel ?? (selectedKey === 'tenant' ? <TenantInfoSection client={client} tenantId={tenantId} role={role} locale={locale} payload={payload} /> : selectedKey === 'userprofile' ? <UserProfileSection client={client} locale={locale} payload={payload} /> : selectedKey === 'memory' ? <div className="wk-settings-memory"><MemoryWorkspacePanel client={client} initialConfig={payload} canEdit={roleAtLeast(role, 'admin')} /></div> : selectedKey === 'mymemory' ? <PersonalMemorySettingsPanel client={client} initialSettings={payload} /> : null)}</>)}
                 </div>}
               </div>
             </section>

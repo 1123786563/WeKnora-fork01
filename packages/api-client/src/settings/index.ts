@@ -92,6 +92,18 @@ function dataArray(value: unknown, path: string): SettingsPayload[] {
   return array(data(value, path), `${path}.data`) as SettingsPayload[];
 }
 
+/** Memory lists answer with `${success, data, total}`; Vue paginates off `total`. */
+export interface MemoryListPage {
+  rows: SettingsPayload[];
+  total: number;
+}
+
+function dataListPage(value: unknown, path: string): MemoryListPage {
+  const envelope = success(value, path);
+  const rows = array(redact(envelope.data), `${path}.data`) as SettingsPayload[];
+  return { rows, total: typeof envelope.total === 'number' ? envelope.total : 0 };
+}
+
 function codeData(value: unknown, path: string): unknown {
   const root = record(value, path);
   if (root.code !== 0) throw new Error(`${path}.code must be 0`);
@@ -272,10 +284,19 @@ export function createSettingsApi(request: SettingsRequest) {
       async updateEnabled(enabled: boolean, signal?: AbortSignal): Promise<SettingsPayload> {
         return dataRecord(await request(withSignal({ method: 'PUT', path: '/api/v1/memory/settings', body: { enabled } }, signal)), '/memory/settings');
       },
+      async clear(signal?: AbortSignal): Promise<SettingsPayload> {
+        return dataRecord(await request(withSignal({ method: 'DELETE', path: '/api/v1/memory/items' }, signal)), '/memory/items');
+      },
+      async export(signal?: AbortSignal): Promise<SettingsPayload[]> {
+        return dataArray(await request(withSignal({ method: 'GET', path: '/api/v1/memory/export' }, signal)), '/memory/export');
+      },
+      async consolidate(signal?: AbortSignal): Promise<SettingsPayload> {
+        return dataRecord(await request(withSignal({ method: 'POST', path: '/api/v1/memory/consolidate', body: {} }, signal)), '/memory/consolidate');
+      },
       items: {
-        async list(params: { status?: string; limit?: number; offset?: number } = {}, signal?: AbortSignal): Promise<SettingsPayload[]> {
+        async list(params: { status?: string; limit?: number; offset?: number } = {}, signal?: AbortSignal): Promise<MemoryListPage> {
           const path = query('/api/v1/memory/items', [['status', params.status], ['limit', params.limit], ['offset', params.offset]]);
-          return dataArray(await request(withSignal({ method: 'GET', path }, signal)), '/memory/items');
+          return dataListPage(await request(withSignal({ method: 'GET', path }, signal)), '/memory/items');
         },
         async remove(id: string, signal?: AbortSignal): Promise<ActionSuccessResponse> {
           return actionResult(await request(withSignal({ method: 'DELETE', path: `/api/v1/memory/items/${encoded(id, 'id')}` }, signal)));
@@ -285,6 +306,33 @@ export function createSettingsApi(request: SettingsRequest) {
         },
         async update(id: string, input: SettingsPayload, signal?: AbortSignal): Promise<SettingsPayload> {
           return dataRecord(await request(withSignal({ method: 'PUT', path: `/api/v1/memory/items/${encoded(id, 'id')}`, body: input }, signal)), '/memory/items');
+        },
+        async confirm(id: string, signal?: AbortSignal): Promise<SettingsPayload> {
+          return dataRecord(await request(withSignal({ method: 'POST', path: `/api/v1/memory/items/${encoded(id, 'id')}/confirm`, body: {} }, signal)), '/memory/items');
+        },
+        async reject(id: string, signal?: AbortSignal): Promise<ActionSuccessResponse> {
+          return actionResult(await request(withSignal({ method: 'POST', path: `/api/v1/memory/items/${encoded(id, 'id')}/reject`, body: {} }, signal)));
+        },
+      },
+      topics: {
+        async list(params: { limit?: number; offset?: number } = {}, signal?: AbortSignal): Promise<MemoryListPage> {
+          const path = query('/api/v1/memory/topics', [['limit', params.limit], ['offset', params.offset]]);
+          return dataListPage(await request(withSignal({ method: 'GET', path }, signal)), '/memory/topics');
+        },
+        async promote(id: string, signal?: AbortSignal): Promise<SettingsPayload> {
+          return dataRecord(await request(withSignal({ method: 'POST', path: `/api/v1/memory/topics/${encoded(id, 'id')}/promote`, body: {} }, signal)), '/memory/topics');
+        },
+        async remove(id: string, signal?: AbortSignal): Promise<ActionSuccessResponse> {
+          return actionResult(await request(withSignal({ method: 'DELETE', path: `/api/v1/memory/topics/${encoded(id, 'id')}` }, signal)));
+        },
+      },
+      documents: {
+        async list(params: { limit?: number; offset?: number } = {}, signal?: AbortSignal): Promise<MemoryListPage> {
+          const path = query('/api/v1/memory/documents', [['limit', params.limit], ['offset', params.offset]]);
+          return dataListPage(await request(withSignal({ method: 'GET', path }, signal)), '/memory/documents');
+        },
+        async remove(id: string, signal?: AbortSignal): Promise<ActionSuccessResponse> {
+          return actionResult(await request(withSignal({ method: 'DELETE', path: `/api/v1/memory/documents/${encoded(id, 'id')}` }, signal)));
         },
       },
     },

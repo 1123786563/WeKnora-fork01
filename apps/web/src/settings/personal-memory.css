@@ -1,0 +1,604 @@
+/* Personal memory settings (Vue MemorySettings.vue anatomy).
+   Tokens mirror frontend/src/assets/theme/theme.css light values:
+   text rgba(0,0,0,.9/.6/.4), stroke #e7e7e7, brand #07c05f, warning-1 #fef3e6. */
+.wk-memory-settings {
+  width: 100%;
+  color: rgba(0, 0, 0, 0.9);
+}
+
+.wk-memory-settings .wk-mem-header {
+  margin-bottom: 24px;
+}
+
+.wk-memory-settings .wk-mem-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.9);
+  margin: 0;
+}
+
+.wk-memory-settings .wk-mem-header .wk-mem-header-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wk-memory-settings .wk-mem-header .wk-mem-description {
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.6);
+  margin: 8px 0 0;
+  line-height: 1.5;
+}
+
+.wk-memory-settings .wk-mem-usage-anchor {
+  position: relative;
+  display: inline-flex;
+}
+
+.wk-memory-settings .wk-mem-usage-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+  line-height: 0;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.wk-memory-settings .wk-mem-usage-trigger:hover {
+  background-color: #f3f3f3;
+  color: #07c05f;
+}
+
+.wk-memory-settings .wk-mem-usage-trigger:focus-visible {
+  outline: 2px solid color-mix(in srgb, #07c05f 20%, transparent);
+  outline-offset: 1px;
+}
+
+.wk-memory-settings .wk-mem-usage-popup {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 6px);
+  z-index: 30;
+  width: 380px;
+  max-width: calc(100vw - 24px);
+  padding: 14px 16px 12px;
+  border-radius: 12px;
+  background: #fff;
+  border: 0.5px solid #e7e7e7;
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.03), 0 2px 4px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.1);
+  text-align: left;
+}
+
+.wk-memory-settings .wk-mem-usage-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.9);
+}
+
+.wk-memory-settings .wk-mem-usage-intro {
+  margin: 4px 0 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(0, 0, 0, 0.4);
+}
+
+.wk-memory-settings .wk-mem-usage-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wk-memory-settings .wk-mem-usage-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  line-height: 1.5;
+}
+
+.wk-memory-settings .wk-mem-usage-label {
+  flex: 0 0 88px;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.9);
+}
+
+.wk-memory-settings .wk-mem-usage-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.wk-memory-settings .wk-mem-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  border-radius: 8px;
+  background: #fef3e6;
+  color: rgba(0, 0, 0, 0.9);
+  font-size: 13px;
+}
+
+.wk-memory-settings .wk-mem-setting-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 20px 0;
+  border-bottom: 1px solid #e7e7e7;
+}
+
+.wk-memory-settings .wk-mem-setting-info {
+  flex: 1;
+  max-width: 65%;
+  padding-right: 24px;
+}
+
+.wk-memory-settings .wk-mem-setting-info label {
+  font-size: 15px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.9);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.wk-memory-settings .wk-mem-setting-info .wk-mem-desc {
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.6);
+  margin: 0;
+  line-height: 1.5;
+}
+
+@media (max-width: 720px) {
+  .wk-memory-settings .wk-mem-setting-row { flex-direction: column; gap: 8px; }
+  .wk-memory-settings .wk-mem-setting-info { max-width: 100%; padding-right: 0; }
+}
+
+.wk-memory-settings .wk-mem-list-section {
+  margin-top: 28px;
+}
+
+.wk-memory-settings .wk-mem-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.wk-memory-settings .wk-mem-list-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.wk-memory-settings .wk-mem-list-title h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.9);
+  margin: 0;
+}
+
+.wk-memory-settings .wk-mem-list-count {
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.4);
+}
+
+.wk-memory-settings .wk-mem-list-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+/* Toolbar actions mirror TDesign small text buttons (Vue t-button variant=text). */
+.wk-memory-settings .wk-mem-tool-btn {
+  min-height: 24px;
+  padding: 0 7px;
+  border: none;
+  background: transparent;
+  border-radius: 3px;
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.6);
+  gap: 4px;
+}
+
+.wk-memory-settings .wk-mem-tool-btn:hover:not(:disabled) {
+  background: #f3f3f3;
+  border: none;
+  color: rgba(0, 0, 0, 0.9);
+}
+
+.wk-memory-settings .wk-mem-tool-btn.is-danger {
+  color: #e34d59;
+}
+
+.wk-memory-settings .wk-mem-tool-btn.is-danger:hover:not(:disabled) {
+  color: #c9353f;
+}
+
+.wk-memory-settings .wk-mem-tool-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.wk-memory-settings .wk-mem-anchor {
+  position: relative;
+  display: inline-flex;
+}
+
+.wk-memory-settings .wk-mem-pop {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 30;
+  padding: 14px 16px;
+  width: 320px;
+  max-width: calc(100vw - 24px);
+  border-radius: 12px;
+  background: #fff;
+  border: 0.5px solid #e7e7e7;
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.03), 0 2px 4px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.1);
+}
+
+.wk-memory-settings .wk-mem-add-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.9);
+}
+
+.wk-memory-settings .wk-mem-add-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.wk-memory-settings .wk-mem-add-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wk-memory-settings .wk-mem-add-field > span {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.wk-memory-settings .wk-mem-kind-hint {
+  font-size: 12px;
+  line-height: 18px;
+  color: rgba(0, 0, 0, 0.4);
+}
+
+.wk-memory-settings .wk-mem-add-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Popconfirm bubble (Vue t-popconfirm, placement=left/bottom). */
+.wk-memory-settings .wk-popconfirm {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 40;
+  width: max-content;
+  max-width: 260px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: #fff;
+  border: 1px solid #e7e7e7;
+  box-shadow: 0 3px 14px 2px rgba(0, 0, 0, 0.05), 0 8px 10px 1px rgba(0, 0, 0, 0.06), 0 5px 5px -3px rgba(0, 0, 0, 0.1);
+}
+
+.wk-memory-settings .wk-popconfirm p {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.9);
+}
+
+.wk-memory-settings .wk-popconfirm .wk-popconfirm__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.wk-memory-settings .wk-popconfirm .wk-popconfirm__actions .wk-button {
+  min-height: 24px;
+  padding: 0 7px;
+  font-size: 13px;
+}
+
+.wk-memory-settings .wk-popconfirm .wk-popconfirm__confirm.danger {
+  background: #e34d59;
+  border-color: #e34d59;
+  color: #fff;
+}
+
+.wk-memory-settings .wk-popconfirm .wk-popconfirm__confirm.danger:hover:not(:disabled) {
+  background: #f36d78;
+  border-color: #f36d78;
+}
+
+.wk-memory-settings .wk-mem-tabs {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid #e7e7e7;
+  overflow-x: auto;
+}
+
+.wk-memory-settings .wk-mem-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 12px;
+  margin: 0;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.wk-memory-settings .wk-mem-tab:first-child {
+  padding-left: 0;
+}
+
+.wk-memory-settings .wk-mem-tab:hover {
+  color: rgba(0, 0, 0, 0.9);
+}
+
+.wk-memory-settings .wk-mem-tab[aria-selected='true'] {
+  color: #07c05f;
+  border-bottom-color: #07c05f;
+  font-weight: 500;
+}
+
+.wk-memory-settings .wk-mem-tab:focus-visible {
+  outline: 2px solid color-mix(in srgb, #07c05f 20%, transparent);
+  outline-offset: -2px;
+}
+
+.wk-memory-settings .wk-mem-loading {
+  min-height: 48px;
+}
+
+.wk-memory-settings .wk-mem-loading.is-loading {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.wk-memory-settings .wk-mem-empty {
+  padding: 32px 0;
+  text-align: center;
+}
+
+.wk-memory-settings .wk-mem-empty-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.6);
+  margin: 0 0 4px 0;
+}
+
+.wk-memory-settings .wk-mem-empty-desc {
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.4);
+  margin: 0;
+}
+
+.wk-memory-settings .wk-mem-status-hint {
+  margin: 12px 0 0;
+  color: rgba(0, 0, 0, 0.6);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.wk-memory-settings .wk-memory-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.wk-memory-settings .wk-memory-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 0;
+  border-bottom: 1px solid #e7e7e7;
+}
+
+.wk-memory-settings .wk-memory-item:last-child {
+  border-bottom: none;
+}
+
+.wk-memory-settings .wk-memory-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.wk-memory-settings .wk-memory-content {
+  margin: 0 0 4px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: rgba(0, 0, 0, 0.9);
+  word-break: break-word;
+}
+
+.wk-memory-settings .wk-memory-content.is-inactive {
+  color: rgba(0, 0, 0, 0.4);
+  text-decoration: line-through;
+}
+
+.wk-memory-settings .wk-memory-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 12px;
+  line-height: 18px;
+  color: rgba(0, 0, 0, 0.4);
+}
+
+.wk-memory-settings .wk-memory-meta > span:not(:last-child)::after {
+  content: '\00b7';
+  margin: 0 6px;
+  color: rgba(0, 0, 0, 0.4);
+}
+
+.wk-memory-settings .wk-memory-topic {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-memory-settings .wk-topic-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0 4px;
+  max-width: 360px;
+}
+
+.wk-memory-settings .wk-topic-progress .wk-topic-progress-track {
+  flex: 1;
+  min-width: 80px;
+  height: 4px;
+  border-radius: 999px;
+  background: #e7e7e7;
+  overflow: hidden;
+}
+
+.wk-memory-settings .wk-topic-progress .wk-topic-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: #07c05f;
+}
+
+.wk-memory-settings .wk-topic-progress > span {
+  flex-shrink: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: rgba(0, 0, 0, 0.4);
+}
+
+.wk-memory-settings .wk-memory-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.wk-memory-settings .wk-memory-edit textarea {
+  width: 100%;
+  min-height: 56px;
+  resize: vertical;
+  border: 1px solid #dcdcdc;
+  border-radius: 3px;
+  padding: 6px 8px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.wk-memory-settings .wk-memory-edit textarea:focus {
+  border-color: #07c05f;
+  outline: 2px solid color-mix(in srgb, #07c05f 20%, transparent);
+  outline-offset: 0;
+}
+
+.wk-memory-settings .wk-memory-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.wk-memory-settings .wk-memory-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-top: -2px;
+}
+
+.wk-memory-settings .wk-memory-actions .wk-mem-icon-btn {
+  min-height: 24px;
+  min-width: 24px;
+  width: 24px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+}
+
+.wk-memory-settings .wk-memory-actions .wk-mem-icon-btn:hover:not(:disabled) {
+  background: #f3f3f3;
+}
+
+.wk-memory-settings .wk-memory-actions .wk-mem-icon-btn.is-danger {
+  color: #e34d59;
+}
+
+.wk-memory-settings .wk-memory-actions .wk-mem-icon-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.wk-memory-settings .wk-memory-pagination {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.wk-memory-settings .wk-memory-pagination .wk-mem-page-btn {
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+}
+
+.wk-memory-settings .wk-memory-pagination .wk-mem-page-btn:hover:not(:disabled):not(.is-current) {
+  border-color: #07c05f;
+  color: #07c05f;
+}
+
+.wk-memory-settings .wk-memory-pagination .wk-mem-page-btn.is-current {
+  background: #07c05f;
+  border-color: #07c05f;
+  color: #fff;
+}
+
+.wk-memory-settings .wk-memory-pagination .wk-mem-page-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+@media (max-width: 720px) {
+  .wk-memory-settings .wk-memory-item { flex-direction: column; gap: 8px; }
+  .wk-memory-settings .wk-memory-actions { margin-top: 0; }
+}
