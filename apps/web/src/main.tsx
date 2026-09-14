@@ -2,6 +2,7 @@ import { createRoot } from 'react-dom/client';
 import { lazy, Suspense, type ReactNode } from 'react';
 import { createRefreshCoordinator, createWeKnoraClient, type AuthSession, type Credential } from '@weknora/api-client';
 import { Status } from '@weknora/ui';
+import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
 import { PlatformShell } from './platform/PlatformShell.tsx';
 import { LoginPage } from './auth/LoginPage.tsx';
 import { JoinPage } from './auth/JoinPage.tsx';
@@ -54,6 +55,8 @@ if (oidcCallback?.kind === 'success') {
 }
 
 const development = (import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV ?? false;
+const loadingLocale: Locale = isLocale(navigator.language) ? navigator.language : 'en-US';
+const loadingLabel = formatMessage(loadingLocale, 'common.loading');
 const route = resolveRoute(`${window.location.pathname}${window.location.search}`, { development });
 const importedPlatformState = route.kind === 'embed' ? null : importLegacyPlatformState(window.localStorage);
 let session: ReactPlatformState = route.kind === 'embed'
@@ -149,7 +152,7 @@ async function logout(): Promise<void> {
 // All protected /platform/* pages render inside the platform shell
 // (sidebar matching the Vue menu.vue). Auth/onboarding/embed pages stay bare.
 function renderShell(page: ReactNode): void {
-  root.render(<Suspense fallback={<main className="wk-page mx-auto box-border max-w-[960px] px-5 py-12"><Status>Loading…</Status></main>}><PlatformShell client={client} onLogout={logout}>{page}</PlatformShell></Suspense>);
+  root.render(<Suspense fallback={<main className="wk-page mx-auto box-border max-w-[960px] px-5 py-12"><Status>{loadingLabel}</Status></main>}><PlatformShell client={client} onLogout={logout}>{page}</PlatformShell></Suspense>);
 }
 
 function renderProtected() {

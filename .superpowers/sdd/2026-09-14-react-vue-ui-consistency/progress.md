@@ -239,3 +239,9 @@
 - Production build reduced SettingsPage chunk from ~562KB to ~49KB (gzip ~15KB).
 - Validation: `pnpm run build:web`; `pnpm run test:web` 891/891; `pnpm run typecheck:web`; `git diff --check`.
 - Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r035-settings-panel-lazy-loading.md`.
+
+## Round N+34bp — lazy-loading boundary localization
+
+- Connected the protected-route Suspense fallback to the shared locale table, removing the hardcoded English loading label.
+- Validation: `pnpm run build:web`; `pnpm run test:web` 891/891; `pnpm run typecheck:web`; `git diff --check`.
+- Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r036-lazy-loading-copy.md`.
