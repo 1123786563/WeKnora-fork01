@@ -2250,3 +2250,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - `WebFetchRenderer` now uses the Vue `chat.unknownLink` copy for missing URLs across five locales in `d53998a9`.
 - Shared tests pass 454/454, Web tests pass 890/890, and Web typecheck/build pass. Independent review found no P1/P2; one non-blocking P3 notes that only one non-Chinese renderer locale is directly exercised. Browser fixture evidence remains open.
+
+## 2026-09-15 Round N+34p — N021 WebFetch summary error precedence
+
+- `WebFetchRenderer` now hides summary error fallback fields when a non-empty summary exists, while retaining real fetch errors, matching Vue `v-if / v-else-if` behavior in `5ae7365b`.
+- Shared tests pass 457/457 and Web tests pass 890/890; Web typecheck passes. Independent review found no P1/P2 and one non-blocking P3 for a missing mixed real-error fixture. Browser fixture evidence remains open.
