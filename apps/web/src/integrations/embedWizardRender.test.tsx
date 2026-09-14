@@ -247,8 +247,10 @@ test('clicking an embed card opens the deploy drawer: key reveal, rotate, snippe
   // parity, layoutReady gate); flush the deferred mount before asserting.
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 60)); });
   assert.equal(previews.length, 0, 'preview stays in the current Vue-shaped drawer');
-  assert.ok(container.querySelector('.wk-embed-preview-drawer'), 'preview drawer rendered');
-  assert.ok(container.querySelector('.wk-embed-preview-drawer iframe'), 'preview iframe mounted');
+  // The preview drawer is the only aside[role="dialog"] with an aria-label
+  // (replaces the former .wk-embed-preview-drawer class hook).
+  assert.ok(container.querySelector('aside[role="dialog"][aria-label]'), 'preview drawer rendered');
+  assert.ok(container.querySelector('aside[role="dialog"][aria-label] iframe'), 'preview iframe mounted');
 
   const rotate = Array.from(container.querySelectorAll<HTMLButtonElement>('button[title]')).find((button) => button.title === '重置渠道密钥');
   await act(async () => { rotate!.click(); });

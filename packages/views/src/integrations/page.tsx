@@ -589,18 +589,27 @@ function EmbedChannelPreviewPanel({ preview, locale, t, onClose }: { preview: { 
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
   }, [onClose]);
-  return <div className="wk-embed-preview-overlay" role="presentation" onClick={onClose}>
-    <aside className="wk-embed-preview-drawer" role="dialog" aria-modal="true" aria-label={preview.channel.name || t('embedPublish.preview')} onClick={(event) => event.stopPropagation()}>
-      <header className="wk-embed-preview-header"><h2>{preview.channel.name || t('embedPublish.preview')}</h2><button type="button" className={INTEGRATION_DRAWER_CLOSE_CLASS} aria-label="关闭" title="关闭" onClick={onClose}>×</button></header>
-      <div className="wk-embed-preview-body">
-        <p className="wk-embed-preview-hint">{t(preview.mode === 'iframe' ? 'embedPublish.previewIframeHint' : 'embedPublish.previewWidgetHint')}</p>
-        {preview.mode === 'iframe' ? <div className="wk-embed-preview-device">
-          <div className="wk-embed-preview-chrome"><span>●</span><span>●</span><span>●</span><code>/embed/{channelId}</code></div>
-          <div className="wk-embed-preview-screen">{!ready ? <span className="wk-muted">{t('embedPublish.previewLoading')}</span> : null}{layoutReady ? <iframe title={preview.channel.name || t('embedPublish.preview')} src={src} onLoad={() => setReady(true)} className={ready ? '' : 'is-loading'} allow="clipboard-write" /> : null}</div>
-        </div> : <div className="wk-embed-preview-widget">
-          <div className="wk-embed-preview-mock-page"><strong>{t('embedPublish.previewMockPage')}</strong><span /><span className="short" /></div>
-          {widgetOpen && layoutReady ? <div className="wk-embed-preview-widget-panel"><iframe title={preview.channel.name || t('embedPublish.preview')} src={src} onLoad={() => setReady(true)} allow="clipboard-write" /></div> : null}
-          <button type="button" className="wk-embed-preview-launcher" style={{ background: typeof preview.channel.primary_color === 'string' ? preview.channel.primary_color : '#07c05f' }} onClick={() => setWidgetOpen((open) => !open)} aria-label={widgetOpen ? '关闭' : t('embedPublish.preview')}>{widgetOpen ? '×' : '◔'}</button>
+  // Former .wk-embed-preview-overlay/.wk-embed-preview-drawer/.wk-embed-preview-header
+  // (apps/web styles.css) as Tailwind utilities; the @media (max-width: 720px)
+  // tweaks became the max-[720px]: variants on the drawer/body/widget-panel.
+  return <div className="fixed inset-0 z-[1300] flex justify-end bg-[rgba(0,0,0,.5)]" role="presentation" onClick={onClose}>
+    <aside className="box-border h-full w-[min(720px,100vw)] overflow-auto bg-surface shadow-[-8px_0_24px_rgba(15,23,42,.14)] max-[720px]:w-[100vw]" role="dialog" aria-modal="true" aria-label={preview.channel.name || t('embedPublish.preview')} onClick={(event) => event.stopPropagation()}>
+      <header className="relative flex min-h-[56px] items-center justify-between border-b border-solid border-[#eef1f5] px-[24px]"><h2 className="m-0 pr-[40px] text-[17px] text-ink">{preview.channel.name || t('embedPublish.preview')}</h2><button type="button" className={INTEGRATION_DRAWER_CLOSE_CLASS} aria-label="关闭" title="关闭" onClick={onClose}>×</button></header>
+      {/* Former .wk-embed-preview-body + .wk-embed-preview-hint. */}
+      <div className="box-border flex h-[calc(100%_-_57px)] flex-col gap-[14px] px-[24px] pb-[24px] pt-[20px] max-[720px]:px-[16px]">
+        <p className="m-0 rounded-card border border-solid border-line bg-[#f5f7fa] px-[12px] py-[10px] text-[13px] leading-[1.55] text-[#667085]">{t(preview.mode === 'iframe' ? 'embedPublish.previewIframeHint' : 'embedPublish.previewWidgetHint')}</p>
+        {preview.mode === 'iframe' ? <div className={EMBED_PREVIEW_FRAME_CLASS}>
+          {/* Former .wk-embed-preview-chrome + span:nth-child(1..3) + code. */}
+          <div className="flex items-center gap-[6px] border-b border-solid border-line bg-[#eef1f5] px-[14px] py-[10px] text-[10px] text-[#98a2b3]"><span className="text-[#ff5f57]">●</span><span className="text-[#febc2e]">●</span><span className="text-[#28c840]">●</span><code className="ml-[8px] overflow-hidden text-ellipsis whitespace-nowrap text-[12px] text-[#98a2b3]">/embed/{channelId}</code></div>
+          {/* Former .wk-embed-preview-screen + iframe rules; the old dynamic
+              .is-loading class became this static 'invisible' condition. */}
+          <div className="absolute inset-[37px_0_0] grid place-items-center">{!ready ? <span className="wk-muted">{t('embedPublish.previewLoading')}</span> : null}{layoutReady ? <iframe title={preview.channel.name || t('embedPublish.preview')} src={src} onLoad={() => setReady(true)} className={ready ? '' : 'invisible'} allow="clipboard-write" /> : null}</div>
+        </div> : <div className={EMBED_PREVIEW_FRAME_CLASS}>
+          {/* Former .wk-embed-preview-mock-page + span / span.short. */}
+          <div className="px-[32px] py-[28px] text-[#98a2b3]"><strong>{t('embedPublish.previewMockPage')}</strong><span className="block h-[10px] w-[72%] rounded-[5px] bg-[rgba(0,0,0,.06)] mt-[16px]" /><span className="block h-[10px] w-[48%] rounded-[5px] bg-[rgba(0,0,0,.06)] mt-[10px]" /></div>
+          {/* Former .wk-embed-preview-widget-panel (+ ≤720px right tweak). */}
+          {widgetOpen && layoutReady ? <div className="absolute bottom-[84px] right-[20px] h-[500px] max-h-[calc(100%_-_110px)] max-w-[calc(100%_-_32px)] w-[380px] overflow-hidden rounded-[12px] bg-surface shadow-[0_8px_28px_rgba(15,23,42,.18)] max-[720px]:right-[16px]"><iframe title={preview.channel.name || t('embedPublish.preview')} src={src} onLoad={() => setReady(true)} allow="clipboard-write" /></div> : null}
+          <button type="button" className={EMBED_PREVIEW_LAUNCHER_CLASS} style={{ background: typeof preview.channel.primary_color === 'string' ? preview.channel.primary_color : '#07c05f' }} onClick={() => setWidgetOpen((open) => !open)} aria-label={widgetOpen ? '关闭' : t('embedPublish.preview')}>{widgetOpen ? '×' : '◔'}</button>
         </div>}
       </div>
     </aside>
@@ -723,6 +732,18 @@ const INTEGRATION_DRAWER_CLASS_STEPS =
 // rule; the class name remains as a test/DOM hook on every consumer).
 const INTEGRATION_DRAWER_CLOSE_CLASS =
   'wk-integration-drawer-close absolute top-[14px] right-[16px] z-[2] h-[28px] w-[28px] cursor-pointer rounded-[4px] border-0 bg-transparent text-[22px] leading-none text-[#667085] hover:bg-[#f3f4f6] hover:text-ink focus-visible:bg-[#f3f4f6] focus-visible:text-ink focus-visible:outline-none';
+// Tailwind port of the former .wk-embed-preview-device / .wk-embed-preview-widget
+// rules in apps/web styles.css (Vue EmbedChannelPreview.vue device-frame parity;
+// the route-shell modal in apps/web EmbedPreviewModal.tsx carries the same
+// utilities). The shared @media (max-width: 720px) tweaks became max-[720px]:
+// variants and the iframe .is-loading visibility hook became a static
+// 'invisible' condition in the panel below.
+const EMBED_PREVIEW_FRAME_CLASS =
+  'relative min-h-[480px] flex-1 overflow-hidden rounded-[12px] border border-solid border-line bg-[#f5f7fa] shadow-[0_8px_24px_rgba(15,23,42,.06)]';
+// Former .wk-embed-preview-launcher (also reused as the widget-position
+// color swatch in the embed wizard form below).
+const EMBED_PREVIEW_LAUNCHER_CLASS =
+  'absolute bottom-[20px] right-[20px] h-[48px] w-[48px] cursor-pointer rounded-full border-0 text-[22px] text-white shadow-[0_4px_16px_rgba(0,0,0,.18)]';
 
 function ChannelListPanel({ variant, copy, locale, items, showCreate, onToggleCreate, busy, t, renamingId, renameValue, onRenameValue, onStartRename, onSaveRename, onCancelRename, onOpenCard, onToggle, onDelete, imCreateSlot, embedCreateSlot }: {
   variant: 'im' | 'embed';
@@ -1165,7 +1186,7 @@ function EmbedWizardPanel({ t, apiBaseUrl, agents = [], title, form, onForm, onA
       </label>
       <label>{t('embedPublish.widgetPreview')}
         <span className={'wk-embed-widget-preview pos-' + form.widgetPosition}>
-          <span className="wk-embed-preview-launcher" style={{ background: form.primaryColor }} aria-hidden="true" />
+          <span className={EMBED_PREVIEW_LAUNCHER_CLASS} style={{ background: form.primaryColor }} aria-hidden="true" />
         </span>
       </label>
     </fieldset> : null}

@@ -110,7 +110,9 @@ test('empty preview session warns in place, keeps the page, never opens a new ta
 
   assert.deepEqual(previewCalls, ['ch-1', 'ch-1'], 'views mint attempt + route-shell fallback attempt');
   assert.deepEqual(openedNewTabs, [], 'preview never falls back to a new tab (Vue L1007-1010)');
-  assert.equal(container.querySelector('.wk-embed-preview-drawer'), null, 'no drawer without a token');
+  // The preview drawer is the only aside[role="dialog"] with an aria-label
+  // (replaces the former .wk-embed-preview-drawer class hook).
+  assert.equal(container.querySelector('aside[role="dialog"][aria-label]'), null, 'no drawer without a token');
   assert.ok(container.querySelector('article'), 'channel list stays mounted (no page-level error wipe)');
   const alert = container.querySelector('[role="alert"]');
   assert.ok(alert, 'warning surfaced');
