@@ -72,7 +72,7 @@ test('chat page exposes the selected agent and server-disabled state at the chat
   assert.match(html, /Research/);
   assert.match(html, /Disabled · 不可用/);
   assert.match(html, /同意/);
-  assert.match(html, /Authorize Docs MCP/);
+  assert.match(html, /去授权 Docs MCP/);
   assert.match(html, /补充当前任务/);
   assert.match(html, /checking sources/);
   assert.match(html, /Guide &lt;safe&gt;/);

@@ -170,8 +170,8 @@ function ChatActionCards(props: Pick<ChatPageProps, 'toolApprovals' | 'oauthAppr
     try { await action(); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Chat action failed'); } finally { setBusy(null); }
   }
 
-  return <section aria-label="对话操作" className="wk-chat-actions mx-auto mb-[12px] w-full max-w-[960px] rounded-[8px] border border-[#e7e7e7] px-[12px] py-[8px]">
-    <h2 className="m-0 mb-[6px] text-[13px] text-[rgba(0,0,0,0.6)]">操作</h2>
+  return <section aria-label={props.copy.chatActionsTitle} className="wk-chat-actions mx-auto mb-[12px] w-full max-w-[960px] rounded-[8px] border border-[#e7e7e7] px-[12px] py-[8px]">
+    <h2 className="m-0 mb-[6px] text-[13px] text-[rgba(0,0,0,0.6)]">{props.copy.chatActionsTitle}</h2>
     {error ? <p role="alert">{error}</p> : null}
     {toolApprovals.map((approval) => <ToolApprovalCard
       key={`tool-${approval.pendingId}`}
@@ -183,9 +183,9 @@ function ChatActionCards(props: Pick<ChatPageProps, 'toolApprovals' | 'oauthAppr
       copy={props.copy}
     />)}
     {oauthApprovals.map((approval) => <div key={`oauth-${approval.pendingId}`} className="wk-chat-action-card mb-[8px] flex flex-col gap-[6px] rounded-[8px] border border-[#e7e7e7] px-[10px] py-[8px]">
-      <strong className="text-[13px]">MCP authorization: {approval.serviceName ?? approval.serviceId ?? 'service'}</strong>
-      {approval.toolName ? <small className="text-[rgba(0,0,0,0.4)]">Tool: {approval.toolName}</small> : null}
-      {approval.status === 'pending' && approval.serviceId && props.onAuthorizeOAuth && props.onCancelOAuth ? <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"><button type="button" className="cursor-pointer rounded-[6px] border border-[#dcdcdc] bg-white px-[12px] py-[4px] text-[13px] text-[rgba(0,0,0,0.9)] enabled:hover:bg-[#f3f3f3] disabled:cursor-not-allowed disabled:opacity-55" disabled={busy !== null} onClick={() => void run(approval.pendingId, () => props.onAuthorizeOAuth!(approval.pendingId, approval.serviceId!))}>Authorize {approval.serviceName ?? 'service'}</button><button type="button" className="cursor-pointer rounded-[6px] border border-[#dcdcdc] bg-white px-[12px] py-[4px] text-[13px] text-[rgba(0,0,0,0.9)] enabled:hover:bg-[#f3f3f3] disabled:cursor-not-allowed disabled:opacity-55" disabled={busy !== null} onClick={() => void run(approval.pendingId, () => props.onCancelOAuth!(approval.pendingId))}>Cancel</button></div> : <small className="text-[rgba(0,0,0,0.4)]">{approval.authorized ? 'Authorized' : approval.reason ?? 'Resolved'}</small>}
+      <strong className="text-[13px]">{props.copy.oauthTitle}: {approval.serviceName ?? approval.serviceId ?? props.copy.oauthTool}</strong>
+      {approval.toolName ? <small className="text-[rgba(0,0,0,0.4)]">{props.copy.oauthTool}: {approval.toolName}</small> : null}
+      {approval.status === 'pending' && approval.serviceId && props.onAuthorizeOAuth && props.onCancelOAuth ? <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"><button type="button" className="cursor-pointer rounded-[6px] border border-[#dcdcdc] bg-white px-[12px] py-[4px] text-[13px] text-[rgba(0,0,0,0.9)] enabled:hover:bg-[#f3f3f3] disabled:cursor-not-allowed disabled:opacity-55" disabled={busy !== null} onClick={() => void run(approval.pendingId, () => props.onAuthorizeOAuth!(approval.pendingId, approval.serviceId!))}>{props.copy.oauthAuthorize} {approval.serviceName ?? approval.serviceId}</button><button type="button" className="cursor-pointer rounded-[6px] border border-[#dcdcdc] bg-white px-[12px] py-[4px] text-[13px] text-[rgba(0,0,0,0.9)] enabled:hover:bg-[#f3f3f3] disabled:cursor-not-allowed disabled:opacity-55" disabled={busy !== null} onClick={() => void run(approval.pendingId, () => props.onCancelOAuth!(approval.pendingId))}>{props.copy.oauthCancel}</button></div> : <small className="text-[rgba(0,0,0,0.4)]">{approval.authorized ? props.copy.oauthAuthorized : approval.reason ?? props.copy.approvalResolved}</small>}
     </div>)}
   </section>;
 }
