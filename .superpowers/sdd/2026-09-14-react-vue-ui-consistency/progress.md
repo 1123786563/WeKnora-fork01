@@ -121,3 +121,4 @@
 - 桌面与 Embed 当前门禁复核：`pnpm test:desktop` 2/2、`pnpm typecheck:desktop`、`pnpm test:embed` 7/7、`pnpm typecheck:embed` 均通过；这属于静态/组件层证据，Wails 宿主和真实 Embed 容器运行仍需环境可用后验收。
 - `tool-result` 渲染链补齐一批剩余英文泄漏：搜索/数据库/grep 空态、Shell 工作目录/退出码/stdout/stderr/二进制与空输出、Chunk/文档/WebFetch/Plan/Thinking 空态现在通过 `ChatCopyTable` 使用五语言文案，提交 `2cad677a`。共享回归 465/465、Web 回归 891/891、Web 类型检查通过；工具结果标题、计数元数据和服务端原始状态值仍保持数据/协议语义不变。
 - `tool-result` 状态文案继续收敛：五语言新增搜索/记录/匹配/空输出、工作目录、退出码、标准输出/错误、二进制隐藏和未命名文档标签，并由各 typed renderer 读取活动 `ChatCopyTable`；提交 `2cad677a`。shared 465/465、Web 891/891、Web typecheck 通过；工具标题与命中计数仍保留下一轮 Vue 文案核对项。
+- 工具结果标题已支持活动语言映射，同时保留 `toolResultPresentation()` 无 copy 调用的既有英文兼容行为，修复测试回归；提交 `2cad677a` 后续修正。shared 465/465、Web typecheck 通过。
