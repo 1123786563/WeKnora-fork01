@@ -187,3 +187,9 @@
 - Added four non-Chinese runtime fallback dictionaries so queue and limiter surfaces no longer fall back to Chinese when shared i18n keys are absent.
 - Validation: `pnpm run test:web` 891/891; `pnpm run typecheck:web`; `git diff --check`.
 - Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r027-runtime-fallback-locales.md`.
+
+## Round N+34bh — system global empty locale
+
+- Removed the remaining hardcoded Chinese empty-state fallback from system global settings and covered all five locales.
+- Validation: `pnpm run test:web` 891/891; `pnpm run typecheck:web`; `git diff --check`.
+- Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r028-system-global-empty-locale.md`.
