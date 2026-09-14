@@ -74,6 +74,15 @@ API 契约、鉴权、权限、表单校验、聊天流式、工具审批、上�
   （login/register SIZE-DIFF 为轮播 4s 时序；其余 0.03%~3.9% 为转换预期差异）。
 - 注意：此修复使 Button/Input/Switch 等既有 ui 组件的 utilities 首次真实生效
   （此前仅 .wk-* 兜底 CSS 生效），视觉经截图复核无破坏。
+### 批次14-16：agents / documents / skill-settings 三域 ✅（子任务并行，Orchestrator 验收提交）
+- agents：AgentsPage ~60 处 + AgentEditorModal 75 块全转（--td-* 53 处任意值保留）；
+  agents.css 759→62（保留 3 条跨文件 section-header 规则 + 2 keyframes）；agent-editor.css 删除。
+- documents：documents.css 删除（1288 行、228 规则块、6 组 @media 全转前缀）；
+  3 个组件文件全迁移；钩子类保留（测试类串断言零改动）；动态类陷阱修复 1 处
+  （[transform:translateX(${…}px)] 插值不被扫描器生成 → 静态条件选择）。
+- skill-settings：SkillSettingsPanel 全迁移；css 568→9 行（保留 skill-chip-dot keyframes）；
+  主题变量任意值保留（--wks-primary/--wk-dialog-width 等 + ! 压制）。
+- 验收：typecheck 0、web 856/856（agents 16+52、documents 121、skill 31 各域测试全绿）、build ✓。
 ### 批次12：faq 域 ✅（子任务执行，Orchestrator 独立验收）
 - FAQPage.tsx + faq.css（1420→8 行 keyframes-only）+ faq-search-drawer/tag-tooltip 测试同步。
 - 验收：typecheck 0、faq 测试 53/53、web 856/856、build ✓。
