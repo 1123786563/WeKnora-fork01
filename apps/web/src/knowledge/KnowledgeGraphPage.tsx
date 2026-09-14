@@ -4,6 +4,26 @@ import { Button, Card, Status } from '@weknora/ui';
 import { filterGraphNodes, graphFrontierNodes, graphQueryParams, layoutGraphNodes, mergeGraphData, type GraphViewport, WIKI_GRAPH_TYPES, zoomGraphViewport } from './graph.ts';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 
+/* Tailwind migration: static per-type classes replacing the former
+   .wk-graph-legend-dot.is-* / .wk-knowledge-graph-node.is-* css rules. */
+const GRAPH_TYPE_DOT_BG: Record<string, string> = {
+  summary: 'bg-[#0052d9]',
+  entity: 'bg-[#2ba471]',
+  concept: 'bg-[#e37318]',
+  synthesis: 'bg-[#0594fa]',
+  comparison: 'bg-[#d54941]',
+  index: 'bg-[#7a5af8]',
+};
+
+const GRAPH_NODE_CIRCLE: Record<string, string> = {
+  summary: '[fill:#0052d9] [stroke:#003b9a]',
+  entity: '[fill:#2ba471] [stroke:#147d54]',
+  concept: '[fill:#e37318] [stroke:#b4570d]',
+  synthesis: '[fill:#0594fa] [stroke:#0575c5]',
+  comparison: '[fill:#d54941] [stroke:#a52f29]',
+  index: '[fill:#7a5af8] [stroke:#5b3ec4]',
+};
+
 export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: WeKnoraClient; knowledgeBaseId: string; slug?: string }) {
   const t = createTranslator(useAppLocale());
 
@@ -198,38 +218,38 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
       </header>
       <Card>
         <div className="wk-toolbar" role="search">
-          {status.kind === 'success' ? <><label>{t('wikiBrowser.page.search')} <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('wikiBrowser.searchPlaceholder')} aria-autocomplete="list" aria-controls="wk-graph-search-results" />{searchLoading ? <Status>{t('wikiBrowser.loading')}</Status> : null}{searchResults.length > 0 ? <ul id="wk-graph-search-results" className="wk-graph-search-results" aria-label={t('wikiBrowser.page.search')}>{searchResults.map((result) => <li key={result.slug}><button type="button" onClick={() => { setQuery(result.slug); void openNode({ slug: result.slug, title: result.title, page_type: 'page', link_count: 0 }); void load('ego', result.slug); }}>{result.title}<span>{result.slug}</span></button></li>)}</ul> : null}</label>
-          <div className="wk-graph-type-filters" role="group" aria-label={t('knowledgeBase.graph.type')}>
-            {WIKI_GRAPH_TYPES.map((graphType) => <button key={graphType} type="button" className={selectedTypes.includes(graphType) ? 'is-selected' : ''} aria-pressed={selectedTypes.includes(graphType)} onClick={() => toggleGraphType(graphType)}><span className={`wk-graph-legend-dot is-${graphType}`} aria-hidden="true" />{graphTypeLabel(graphType)}</button>)}
+          {status.kind === 'success' ? <><label>{t('wikiBrowser.page.search')} <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('wikiBrowser.searchPlaceholder')} aria-autocomplete="list" aria-controls="wk-graph-search-results" />{searchLoading ? <Status>{t('wikiBrowser.loading')}</Status> : null}{searchResults.length > 0 ? <ul id="wk-graph-search-results" className="absolute z-[3] m-[.35rem_0_0] max-h-[14rem] list-none overflow-auto rounded-[6px] border border-[#d8e0eb] bg-white p-[.25rem] shadow-[0_8px_20px_rgba(31,52,84,.12)] w-[min(24rem,100%)]" aria-label={t('wikiBrowser.page.search')}>{searchResults.map((result) => <li key={result.slug}><button type="button" className="flex w-full cursor-pointer flex-col items-start gap-[.15rem] rounded-[4px] border-0 bg-transparent p-[.5rem_.6rem] text-left text-[#27364d] hover:bg-[#eef5ff] hover:outline-none focus-visible:bg-[#eef5ff] focus-visible:outline-none" onClick={() => { setQuery(result.slug); void openNode({ slug: result.slug, title: result.title, page_type: 'page', link_count: 0 }); void load('ego', result.slug); }}>{result.title}<span className="text-[.75rem] text-[#718096]">{result.slug}</span></button></li>)}</ul> : null}</label>
+          <div className="flex flex-wrap items-center gap-[.35rem]" role="group" aria-label={t('knowledgeBase.graph.type')}>
+            {WIKI_GRAPH_TYPES.map((graphType) => <button key={graphType} type="button" className="inline-flex cursor-pointer items-center gap-[.35rem] rounded-pill border border-[#d8e0eb] bg-white p-[.35rem_.6rem] text-[#52627a] hover:border-[#2e6de6] hover:text-[#1849a9] focus-visible:border-[#2e6de6] focus-visible:text-[#1849a9] aria-pressed:bg-[#eef4ff] aria-pressed:border-[#2e6de6] aria-pressed:text-[#1849a9]" aria-pressed={selectedTypes.includes(graphType)} onClick={() => toggleGraphType(graphType)}><span className={`inline-block size-[.55rem] rounded-full ${GRAPH_TYPE_DOT_BG[graphType] ?? 'bg-[#98a2b3]'}`} aria-hidden="true" />{graphTypeLabel(graphType)}</button>)}
           </div>
-          <details className="wk-graph-help">
-            <summary>{t('wikiBrowser.helpButtonTitle')}</summary>
-            <dl>
-              <div><dt>{t('wikiBrowser.helpClickAction')}</dt><dd>{t('wikiBrowser.helpClickDesc')}</dd></div>
-              <div><dt>{t('wikiBrowser.helpDblClickAction')}</dt><dd>{t('wikiBrowser.helpDblClickDesc')}</dd></div>
-              <div><dt>{t('wikiBrowser.helpShiftClickAction')}</dt><dd>{t('wikiBrowser.helpShiftClickDesc')}</dd></div>
-              <div><dt>{t('wikiBrowser.helpDragAction')}</dt><dd>{t('wikiBrowser.helpDragDesc')}</dd></div>
-              <div><dt>{t('wikiBrowser.helpZoomAction')}</dt><dd>{t('wikiBrowser.helpZoomDesc')}</dd></div>
+          <details className="mt-2 text-[.875rem] text-[#52627a]">
+            <summary className="inline-block cursor-pointer">{t('wikiBrowser.helpButtonTitle')}</summary>
+            <dl className="mt-2 max-w-[34rem] rounded-[6px] border border-[#d8e0eb] bg-white p-[.65rem_.8rem] shadow-[0_8px_20px_rgba(31,52,84,.12)]">
+              <div className="grid grid-cols-[9rem_1fr] gap-[.75rem] py-[.2rem]"><dt className="font-semibold">{t('wikiBrowser.helpClickAction')}</dt><dd className="m-0">{t('wikiBrowser.helpClickDesc')}</dd></div>
+              <div className="grid grid-cols-[9rem_1fr] gap-[.75rem] py-[.2rem]"><dt className="font-semibold">{t('wikiBrowser.helpDblClickAction')}</dt><dd className="m-0">{t('wikiBrowser.helpDblClickDesc')}</dd></div>
+              <div className="grid grid-cols-[9rem_1fr] gap-[.75rem] py-[.2rem]"><dt className="font-semibold">{t('wikiBrowser.helpShiftClickAction')}</dt><dd className="m-0">{t('wikiBrowser.helpShiftClickDesc')}</dd></div>
+              <div className="grid grid-cols-[9rem_1fr] gap-[.75rem] py-[.2rem]"><dt className="font-semibold">{t('wikiBrowser.helpDragAction')}</dt><dd className="m-0">{t('wikiBrowser.helpDragDesc')}</dd></div>
+              <div className="grid grid-cols-[9rem_1fr] gap-[.75rem] py-[.2rem]"><dt className="font-semibold">{t('wikiBrowser.helpZoomAction')}</dt><dd className="m-0">{t('wikiBrowser.helpZoomDesc')}</dd></div>
             </dl>
           </details></> : null}
         </div>
         {status.kind === 'loading' ? <Status>{t('wikiBrowser.graphEmpty')}</Status> : null}
         {status.kind === 'error' ? <><Status tone="error">{status.message}</Status><Button type="button" onClick={() => void load(mode, center || undefined)}>{t('common.retry')}</Button></> : null}
         {status.kind === 'success' && visible ? <>
-          {graphStatusCard ? <div className="wk-graph-status-card"><div className="wk-graph-status-card-header"><span aria-hidden="true">◌</span><strong>{graphStatusCard.title}</strong></div><div className="wk-graph-status-card-primary">{graphStatusCard.primary}</div><div className="wk-graph-status-card-secondary">{graphStatusCard.secondary}</div></div> : null}
+          {graphStatusCard ? <div className="my-[.75rem] max-w-[28rem] rounded-[8px] border border-[#d8e0eb] bg-white p-[.75rem_.9rem] shadow-[0_8px_20px_rgba(31,52,84,.1)]"><div className="flex items-center gap-[.4rem] text-[.8rem] text-[#52627a]"><span aria-hidden="true">◌</span><strong>{graphStatusCard.title}</strong></div><div className="mt-[.25rem] truncate text-[1rem] font-semibold text-[#1d2939]">{graphStatusCard.primary}</div><div className="mt-[.25rem] text-[.8rem] text-[#667085]">{graphStatusCard.secondary}</div></div> : null}
           {visible.nodes.length === 0 ? <Status>{t('wikiBrowser.graphNoData')}</Status> : <>
-            <svg className="wk-knowledge-graph" viewBox="0 0 760 420" role="img" aria-label={t('knowledgeBase.graph.ariaLinks')} onPointerDown={beginPan} onPointerMove={moveGraphGesture} onPointerUp={endGraphGesture} onPointerCancel={endGraphGesture} onWheel={(event: ReactWheelEvent<SVGSVGElement>) => { event.preventDefault(); const point = svgPoint(event); setViewport((value) => zoomGraphViewport(value, event.deltaY < 0 ? 1.15 : 0.87, point)); }}>
+            <svg className="block w-full min-h-[24rem] max-[720px]:min-h-[18rem] my-4 border border-line rounded-card bg-[#fbfcfe] cursor-grab touch-none select-none active:cursor-grabbing" viewBox="0 0 760 420" role="img" aria-label={t('knowledgeBase.graph.ariaLinks')} onPointerDown={beginPan} onPointerMove={moveGraphGesture} onPointerUp={endGraphGesture} onPointerCancel={endGraphGesture} onWheel={(event: ReactWheelEvent<SVGSVGElement>) => { event.preventDefault(); const point = svgPoint(event); setViewport((value) => zoomGraphViewport(value, event.deltaY < 0 ? 1.15 : 0.87, point)); }}>
               <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.scale})`}>
-                {visible.edges.map((edge) => { const source = positionBySlug.get(edge.source); const target = positionBySlug.get(edge.target); return source && target ? <line key={`${edge.source}-${edge.target}`} x1={source.x} y1={source.y} x2={target.x} y2={target.y} className="wk-knowledge-graph-edge" /> : null; })}
-                {visible.nodes.map((node, index) => { const position = displayPositions[index]!; return <g key={node.slug} className={`wk-knowledge-graph-node is-${node.page_type}${node.familiar ? ' is-familiar' : ''}`} role="button" tabIndex={0} aria-label={`${node.title} · ${node.slug}`} onPointerDown={(event) => beginNodeDrag(event, node.slug)} onClick={() => { if (!dragged.current) void openNode(node); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void openNode(node); } }}><circle cx={position.x} cy={position.y} r={Math.min(24, 10 + Math.log2(node.link_count + 1) * 4)} /><text x={position.x} y={position.y + 40} textAnchor="middle">{node.title.length > 24 ? `${node.title.slice(0, 23)}…` : node.title}</text></g>; })}
+                {visible.edges.map((edge) => { const source = positionBySlug.get(edge.source); const target = positionBySlug.get(edge.target); return source && target ? <line key={`${edge.source}-${edge.target}`} x1={source.x} y1={source.y} x2={target.x} y2={target.y} className="stroke-[#b5c1d3] [stroke-width:1.5]" /> : null; })}
+                {visible.nodes.map((node, index) => { const position = displayPositions[index]!; const circleClass = node.familiar ? '[stroke:#f79009] [stroke-width:4]' : `${GRAPH_NODE_CIRCLE[node.page_type] ?? '[fill:#98a2b3] [stroke:#667085]'} [stroke-width:2]`; return <g key={node.slug} className="cursor-pointer outline-none [&:hover_circle]:[fill:#6941c6] [&:focus_circle]:[fill:#6941c6]" role="button" tabIndex={0} aria-label={`${node.title} · ${node.slug}`} onPointerDown={(event) => beginNodeDrag(event, node.slug)} onClick={() => { if (!dragged.current) void openNode(node); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void openNode(node); } }}><circle cx={position.x} cy={position.y} r={Math.min(24, 10 + Math.log2(node.link_count + 1) * 4)} className={circleClass} /><text x={position.x} y={position.y + 40} textAnchor="middle" className="[fill:#27364d] text-[12px] pointer-events-none">{node.title.length > 24 ? `${node.title.slice(0, 23)}…` : node.title}</text></g>; })}
               </g>
             </svg>
             <ul className="wk-list" aria-label={t('wikiBrowser.tabGraph')}>{visible.nodes.map((node) => <li key={node.slug}><div className="wk-list-item-copy"><strong>{node.title}</strong><span>{node.slug} · {node.page_type} · {node.link_count} {t('knowledgeBase.graph.links')}{node.familiar ? ` · ${t('wikiBrowser.legendFamiliar')}` : ''}</span></div><Button type="button" onClick={() => { void openNode(node); void load('ego', node.slug); }}>{t('wikiBrowser.expandNeighbors')}</Button></li>)}</ul>
-            {visible.nodes.some((node) => node.familiar) ? <p className="wk-graph-familiar-legend"><span className="wk-graph-familiar-ring" aria-hidden="true" />{t('wikiBrowser.legendFamiliar')}</p> : null}
+            {visible.nodes.some((node) => node.familiar) ? <p className="mt-2 flex items-center gap-[.4rem] text-[#52627a]"><span className="inline-block size-[.75rem] rounded-full border-2 border-[#f79009]" aria-hidden="true" />{t('wikiBrowser.legendFamiliar')}</p> : null}
           </>}
         </> : null}
       </Card>
-      {drawerNode ? <aside className="wk-graph-drawer" aria-label={drawerNode.title} role="dialog" aria-modal="true"><div className="wk-header"><div><h2>{drawerNode.title}</h2><p className="wk-muted">{drawerNode.page_type} · {drawerNode.link_count} {t('knowledgeBase.graph.links')}</p></div><Button type="button" onClick={() => { setDrawerNode(null); setDrawerPage(null); }}>{t('common.close')}</Button></div>{drawerStatus === 'loading' ? <Status>{t('wikiBrowser.loading')}</Status> : null}{drawerStatus === 'error' ? <Status tone="error">{t('wikiBrowser.revisionLoadFailed')}</Status> : null}{drawerPage ? <><p className="wk-muted">{drawerPage.summary || '—'} · {t('wikiBrowser.version', { ver: drawerPage.version })}</p><pre className="wk-graph-drawer-content">{drawerPage.content}</pre><div className="wk-list-actions"><Button type="button" onClick={() => void bloomNeighbors(drawerNode.slug)}>{t('wikiBrowser.bloomNeighbors')}</Button><Button type="button" onClick={() => void load('ego', drawerNode.slug)}>{t('wikiBrowser.expandNeighbors')}</Button></div></> : null}</aside> : null}
+      {drawerNode ? <aside className="mt-4 rounded-[8px] border border-[#d8e0eb] bg-white p-4 shadow-[0_12px_32px_rgba(31,52,84,.14)]" aria-label={drawerNode.title} role="dialog" aria-modal="true"><div className="wk-header mb-[.75rem]!"><div><h2>{drawerNode.title}</h2><p className="wk-muted">{drawerNode.page_type} · {drawerNode.link_count} {t('knowledgeBase.graph.links')}</p></div><Button type="button" onClick={() => { setDrawerNode(null); setDrawerPage(null); }}>{t('common.close')}</Button></div>{drawerStatus === 'loading' ? <Status>{t('wikiBrowser.loading')}</Status> : null}{drawerStatus === 'error' ? <Status tone="error">{t('wikiBrowser.revisionLoadFailed')}</Status> : null}{drawerPage ? <><p className="wk-muted">{drawerPage.summary || '—'} · {t('wikiBrowser.version', { ver: drawerPage.version })}</p><pre className="box-border rounded-[6px] border border-[#d8e0eb] bg-[#f8fafc] [font:inherit] leading-[1.6] max-h-[24rem] overflow-auto p-[.85rem] whitespace-pre-wrap">{drawerPage.content}</pre><div className="wk-list-actions"><Button type="button" onClick={() => void bloomNeighbors(drawerNode.slug)}>{t('wikiBrowser.bloomNeighbors')}</Button><Button type="button" onClick={() => void load('ego', drawerNode.slug)}>{t('wikiBrowser.expandNeighbors')}</Button></div></> : null}</aside> : null}
     </main>
   );
 }

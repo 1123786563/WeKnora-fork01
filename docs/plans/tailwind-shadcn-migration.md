@@ -153,6 +153,12 @@ hook 类（测试/JS 引用）保留类名。
 - 保真处理：无 preflight 下显式覆盖 UA 默认（[font:inherit]、border 序列）；隐藏原生 select
   按级联生效宽度 w-full h-px 编码；trigger nth-child(2) flex:1 用 [&>span:nth-child(2)]:flex-1。
 - 验收：typecheck 0、13/13、web 859/859（+3 新增测试）、build ✓。
+### 批次33：knowledge graph 家族 ✅（子任务执行，Orchestrator 验收提交）
+- KnowledgeGraphPage.tsx 16 处编辑；styles.css 删 45 条选择器规则/41 行
+  （graph 族 15/node 族 11/drawer 3/search-results 4/type-filters 4/legend-dot 7/help 6/familiar 2/status-card 4）。
+- 动态插值（is-${graphType}/is-${page_type}）改静态字面量映射 GRAPH_TYPE_DOT_BG/GRAPH_NODE_CIRCLE；
+  SVG line/circle/text 直接加类；抽屉 .wk-header 覆盖按生效值 mb-[.75rem]!；720px → max-[720px]:。
+- 验收：typecheck 0、graph 相关 18/18、web 865/865（+3）、build ✓；styles.css 1087→750 行。
 ### 批次19：TenantMembers 域 ✅（子任务执行，Orchestrator 验收提交）
 - TenantMembersPanel.tsx ~95 条规则内联 utilities（表格/分页/标签三态/确认弹层；
   settings-wrapper 抽屉 select chrome 特异性更高今日实际生效，按生效值 4 条未复制）；
