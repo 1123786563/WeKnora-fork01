@@ -702,14 +702,12 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     }
   }
 
-  async function renameSession(sessionId: string): Promise<void> {
+  async function renameSession(sessionId: string, requestedTitle?: string): Promise<void> {
     const current = sessions.find((session) => session.id === sessionId);
-    const title = window.prompt('Conversation title', current?.title ?? '')?.trim();
+    const title = requestedTitle?.trim().replace(/\s+/g, ' ').slice(0, 80);
     if (!title || title === current?.title) return;
-    try {
-      const updated = await client.sessions.update(sessionId, { title, description: current?.description }, scope.signal);
-      setSessions((items) => items.map((session) => session.id === sessionId ? updated : session));
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to rename conversation'); }
+    const updated = await client.sessions.update(sessionId, { title, description: current?.description }, scope.signal);
+    setSessions((items) => items.map((session) => session.id === sessionId ? updated : session));
   }
 
   async function toggleSessionPin(sessionId: string, pinned: boolean): Promise<void> {

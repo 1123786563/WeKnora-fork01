@@ -96,7 +96,7 @@ export interface ChatPageProps {
   onSteer?(content: string, mentionedItems?: readonly ChatMentionView[]): Promise<void>;
   onStopStream?(): void;
   stream?: ChatStreamPresentation;
-  onRenameSession?(sessionId: string): Promise<void>;
+  onRenameSession?(sessionId: string, title?: string): Promise<void>;
   onToggleSessionPin?(sessionId: string, pinned: boolean): Promise<void>;
   onDeleteSession?(sessionId: string): Promise<void>;
   sessionGroups?: readonly { key: string; label?: string; items: readonly ChatSession[] }[];
@@ -308,21 +308,66 @@ function TerminalPanel(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'ter
 function ChatHeaderMenu(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'selectedSessionId' | 'onRenameSession' | 'onToggleSessionPin' | 'onDeleteSession' | 'onClearSession' | 'sessions'>) {
   const copy = props.copy;
   const session = props.sessions.find((item) => item.id === props.selectedSessionId) ?? null;
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const [renameBusy, setRenameBusy] = useState(false);
+  const renameInputRef = useRef<HTMLInputElement | null>(null);
   if (!session) return null;
   const pinned = session.is_pinned === true;
+  const openRename = () => {
+    setRenameValue(session.title ?? '');
+    setRenameError(null);
+    setRenameOpen(true);
+  };
+  const closeRename = () => {
+    if (renameBusy) return;
+    setRenameOpen(false);
+    setRenameError(null);
+  };
+  const submitRename = async () => {
+    if (renameBusy || !props.onRenameSession) return;
+    const title = renameValue.trim().replace(/\s+/g, ' ').slice(0, 80);
+    if (!title) {
+      setRenameError(copy.renameTitleRequired);
+      renameInputRef.current?.focus();
+      return;
+    }
+    if (title === (session.title ?? '')) { closeRename(); return; }
+    setRenameBusy(true);
+    setRenameError(null);
+    try {
+      await props.onRenameSession(session.id, title);
+      setRenameOpen(false);
+    } catch (error) {
+      setRenameError(error instanceof Error ? error.message : copy.renameTitleFailed);
+    } finally {
+      setRenameBusy(false);
+    }
+  };
   /* .wk-chat-header-menu / -list → utilities (Vue ChatHeader ⋯ menu). */
   const menuItem = 'min-h-[30px] cursor-pointer whitespace-nowrap rounded-[5px] border-0 bg-transparent px-[10px] py-0 text-left text-[13px] leading-[20px] text-[rgba(0,0,0,0.9)] hover:bg-[#f3f3f3]';
-  return <details className="wk-chat-header-menu relative">
+  return <>
+    <details className="wk-chat-header-menu relative">
     <summary aria-label={copy.moreActions} title={copy.moreActions} className="inline-flex h-[24px] w-[24px] cursor-pointer list-none items-center justify-center rounded-[5px] border-0 text-[rgba(0,0,0,0.26)] transition-[background-color,color] duration-[150ms] ease-[ease] hover:bg-[#f3f3f3] hover:text-[rgba(0,0,0,0.9)] [&::-webkit-details-marker]:hidden">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="8" cy="3" r="1.4" /><circle cx="8" cy="8" r="1.4" /><circle cx="8" cy="13" r="1.4" /></svg>
     </summary>
     <div className="wk-chat-header-menu-list absolute left-0 top-full z-[30] mt-[2px] flex min-w-[132px] flex-col gap-[1px] rounded-[8px] border-[0.5px] border-[#e7e7e7] bg-white p-[4px] shadow-[0_0_0_0.5px_rgba(0,0,0,0.03),0_2px_6px_rgba(0,0,0,0.08)]" role="menu">
       {props.onToggleSessionPin ? <button type="button" role="menuitem" className={menuItem} onClick={() => void props.onToggleSessionPin!(session.id, !pinned)}>{pinned ? copy.unpin : copy.pin}</button> : null}
-      {props.onRenameSession ? <button type="button" role="menuitem" className={menuItem} onClick={() => void props.onRenameSession!(session.id)}>{copy.renameSession}</button> : null}
+      {props.onRenameSession ? <button type="button" role="menuitem" className={menuItem} onClick={openRename}>{copy.renameSession}</button> : null}
       {props.onClearSession ? <button type="button" role="menuitem" className={menuItem} onClick={() => void props.onClearSession!()}>{copy.clearMessages}</button> : null}
       {props.onDeleteSession ? <button type="button" role="menuitem" className={menuItem + ' text-[#e34d59] hover:bg-[#fdecee]'} onClick={() => void props.onDeleteSession!(session.id)}>{copy.deleteSession}</button> : null}
     </div>
-  </details>;
+    </details>
+    {renameOpen ? <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[rgba(0,0,0,0.28)] px-[16px]" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeRename(); }}>
+      <section className="w-full max-w-[420px] rounded-[10px] bg-white p-[20px] shadow-[0_12px_32px_rgba(0,0,0,0.16)]" role="dialog" aria-modal="true" aria-labelledby="wk-chat-rename-title">
+        <h2 id="wk-chat-rename-title" className="m-0 mb-[14px] text-[16px] font-medium leading-[24px] text-[rgba(0,0,0,0.9)]">{copy.renameTitle}</h2>
+        <input ref={renameInputRef} type="text" value={renameValue} placeholder={copy.renameTitlePlaceholder} maxLength={80} autoFocus disabled={renameBusy} aria-label={copy.renameTitle} aria-invalid={renameError ? 'true' : undefined} className="box-border w-full rounded-[6px] border border-[#dcdcdc] px-[10px] py-[8px] text-[14px] leading-[20px] outline-none focus:border-[#07c05f]" onChange={(event) => setRenameValue(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); closeRename(); } if (event.key === 'Enter') { event.preventDefault(); void submitRename(); } }} />
+        {renameError ? <p role="alert" className="m-0 mt-[6px] text-[12px] leading-[18px] text-[#e34d59]">{renameError}</p> : null}
+        <div className="mt-[18px] flex justify-end gap-[8px]"><button type="button" className="rounded-[6px] border border-[#dcdcdc] bg-white px-[12px] py-[6px] text-[13px] text-[rgba(0,0,0,0.65)]" onClick={closeRename} disabled={renameBusy}>{copy.renameCancel}</button><button type="button" className="rounded-[6px] border-0 bg-[#07c05f] px-[12px] py-[6px] text-[13px] text-white disabled:opacity-50" onClick={() => void submitRename()} disabled={renameBusy}>{renameBusy ? copy.renameSaving : copy.renameConfirm}</button></div>
+      </section>
+    </div> : null}
+  </>;
 }
 
 export function ChatPage(props: ChatPageProps) {
