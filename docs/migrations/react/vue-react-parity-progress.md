@@ -2201,3 +2201,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - Parser settings now localize the API-key safety hint across five locales (`fc5b2377`), preserving endpoint/API-key fields and parser test/save behavior.
 - Settings coverage remains 15/15; Web typecheck and build pass. Independent review found no P1/P2/P3.
+
+## 2026-09-15 Round N+34f — R013 parser settings browser boundary
+
+- Authenticated React Chrome AX evidence captured the parser settings route and localized API-key safety hint.
+- Successful parser connectivity, backend mutation scenarios and same-session Vue pixel comparison remain open.
