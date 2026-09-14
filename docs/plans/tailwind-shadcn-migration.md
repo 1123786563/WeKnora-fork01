@@ -77,6 +77,11 @@ API 契约、鉴权、权限、表单校验、聊天流式、工具审批、上�
   personal-memory.css 删除（604 行、89 规则块、无 keyframes/主题变量）。
 - 测试选择器 8 处语义化；JS 钩子类 0（ref 方案）。
 - 验收：typecheck 0、面板测试 11/11、web 856/856、build ✓。
+### 批次19：TenantMembers 域 ✅（子任务执行，Orchestrator 验收提交）
+- TenantMembersPanel.tsx ~95 条规则内联 utilities（表格/分页/标签三态/确认弹层；
+  settings-wrapper 抽屉 select chrome 特异性更高今日实际生效，按生效值 4 条未复制）；
+  TenantMembersPanel.css 删除（752 行）；钩子类保留 13 个；测试选择器 15 处语义化。
+- 验收：typecheck 0、面板测试 9/9、web 856/856、build ✓、dist 无 .wk-tenant-members 残留。
 ### 批次14：@source 路径修复 ✅（shell 波发现的关键既有 bug）
 - styles.css @source 路径 ../../packages/... → ../../../packages/...（apps/web/src 需三级）。
   oxide Scanner 实证：原路径 normalize 到不存在的 apps/packages/ui，包文件 0 被扫描。
