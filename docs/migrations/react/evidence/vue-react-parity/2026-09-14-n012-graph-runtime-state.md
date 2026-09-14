@@ -12,3 +12,7 @@
 ## 结论
 
 该记录证明 React 图谱 loading/error 条件渲染及重试文案已在浏览器实际出现；不证明 Vue/React 同数据画布视觉、真实 graph API、节点交互、Wails 或移动端验收。后续需要可用知识库 fixture 或真实后端数据后补采同视口对照。
+
+## Source parity correction
+
+Vue `WikiBrowser.vue` has no visible graph-depth selector; depth is an internal default used by ego/bloom graph loading. React no longer renders its migration-only native 1/2/3 depth selector and keeps the internal default at `1`, so this control does not remain as an unverified React-only surface.

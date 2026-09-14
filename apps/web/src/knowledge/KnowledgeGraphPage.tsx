@@ -11,7 +11,8 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
   const [status, setStatus] = useState<{ kind: 'loading' | 'success' | 'error'; message?: string }>({ kind: 'loading' });
   const [mode, setMode] = useState<'overview' | 'ego'>(() => slug ? 'ego' : 'overview');
   const [center, setCenter] = useState(slug ?? '');
-  const [depth, setDepth] = useState(1);
+  // Vue WikiBrowser keeps the ego depth internal; there is no visible depth control.
+  const depth = 1;
   const [query, setQuery] = useState('');
   const [selectedTypes, setSelectedTypes] = useState<string[]>(() => [...WIKI_GRAPH_TYPES]);
   const [searchResults, setSearchResults] = useState<Array<{ title: string; slug: string }>>([]);
@@ -82,7 +83,7 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
     }
   }
 
-  useEffect(() => { void load(mode, mode === 'ego' ? center : undefined); }, [client, knowledgeBaseId, selectedTypes, depth]);
+  useEffect(() => { void load(mode, mode === 'ego' ? center : undefined); }, [client, knowledgeBaseId, selectedTypes]);
   useEffect(() => {
     const keyword = query.trim();
     if (keyword.length < 2) { setSearchResults([]); setSearchLoading(false); return; }
@@ -198,7 +199,6 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
       <Card>
         <div className="wk-toolbar" role="search">
           {status.kind === 'success' ? <><label>{t('wikiBrowser.page.search')} <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('wikiBrowser.searchPlaceholder')} aria-autocomplete="list" aria-controls="wk-graph-search-results" />{searchLoading ? <Status>{t('wikiBrowser.loading')}</Status> : null}{searchResults.length > 0 ? <ul id="wk-graph-search-results" className="wk-graph-search-results" aria-label={t('wikiBrowser.page.search')}>{searchResults.map((result) => <li key={result.slug}><button type="button" onClick={() => { setQuery(result.slug); void openNode({ slug: result.slug, title: result.title, page_type: 'page', link_count: 0 }); void load('ego', result.slug); }}>{result.title}<span>{result.slug}</span></button></li>)}</ul> : null}</label>
-          <label>{t('knowledgeBase.graph.depth')} <select value={String(depth)} onChange={(event) => setDepth(Number(event.target.value))}><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></label>
           <div className="wk-graph-type-filters" role="group" aria-label={t('knowledgeBase.graph.type')}>
             {WIKI_GRAPH_TYPES.map((graphType) => <button key={graphType} type="button" className={selectedTypes.includes(graphType) ? 'is-selected' : ''} aria-pressed={selectedTypes.includes(graphType)} onClick={() => toggleGraphType(graphType)}><span className={`wk-graph-legend-dot is-${graphType}`} aria-hidden="true" />{graphTypeLabel(graphType)}</button>)}
           </div>
