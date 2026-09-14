@@ -16,7 +16,7 @@ import {
   isContextualGuideDone,
   markContextualGuideDone,
   openContextualGuide,
-} from '@weknora/views';
+} from '../../../packages/views/src/guides/contextual-guides.ts';
 import {
   createDeleteGuard,
   loadKnowledgeBaseListPage,

@@ -276,3 +276,4 @@
 - Switched PlatformShell session-sidebar and guide primitives from the views barrel to direct module imports to reduce unnecessary coupling.
 - Validation: `pnpm run build:web`; `pnpm run test:web` 891/891; `pnpm run typecheck:web`; `git diff --check`.
 - Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r041-shell-deep-imports.md`.
+- Web eager-entry import coupling was reduced in `a043d127` (`refactor(web): use direct platform shell imports`) and the follow-up direct imports in `apps/web/src/App.tsx`/`routes.tsx`: contextual-guide and integration-route consumers bypass the `@weknora/views` barrel. Web typecheck passed, full Web regression remains 891/891, and build passed; the eager `index` chunk measured about 2.74 MB versus the earlier 3.05 MB baseline. Evidence: `evidence/vue-react-parity/2026-09-15-r042-web-direct-view-imports.md`. Remaining bundle work is intentionally scoped for a later import-by-import review.

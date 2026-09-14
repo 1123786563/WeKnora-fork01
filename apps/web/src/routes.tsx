@@ -1,4 +1,4 @@
-import { integrationSettingsQuery } from '@weknora/views';
+import { integrationSettingsQuery } from '../../../packages/views/src/integrations/settings-route.ts';
 import { isCapabilitySupported } from '@weknora/domain';
 
 export type RouteMatch =
