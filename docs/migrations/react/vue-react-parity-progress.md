@@ -2370,3 +2370,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - 检查发现本机存在 `/Users/wuyongjun/Library/Android/sdk`；使用显式 `ANDROID_HOME`/`ANDROID_SDK_ROOT` 重跑 `./gradlew assembleDebug --no-daemon`，Android Debug 原生编译成功（`BUILD SUCCESSFUL`，531 tasks）。
 - `adb devices` 当前无已启动设备，因此未宣称 Android 安装/启动/交互验收；Expo Web export 仍因缺少 web 依赖保持 blocked-env。
+
+## 2026-09-15 Round N+34am — Android/iOS device launch evidence
+
+- Android AVD `test36-small` 已启动（`emulator-5554`），Debug APK 安装成功，`adb shell monkey -p com.weknora.mobile 1` 后顶层 Activity 为 `com.weknora.mobile/expo.modules.devlauncher.launcher.DevLauncherActivity`。
+- iOS Simulator `iPhone 17` 已 boot 完成，安装 `/tmp/weknora-react-ios/Build/Products/Debug-iphonesimulator/WeKnora.app` 成功，`simctl launch com.weknora.mobile` 返回进程号 `43969`。
+- 该证据证明原生包可安装并启动；尚未证明登录、聊天、上传等设备内业务交互，也不替代 Vue 同条件视觉对照。
