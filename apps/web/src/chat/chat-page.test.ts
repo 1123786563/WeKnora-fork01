@@ -432,8 +432,10 @@ test('composer exposes a multi-file picker and truthful attachment states', () =
       { id: 'att-2', name: 'ready.txt', status: 'ready', attachmentId: 'att-2' },
       { id: 'local-3', name: 'broken.csv', status: 'failed', error: 'Upload failed' },
     ],
+    attachmentAccept: ['.pdf', '.custom'],
   }));
   assert.match(html, /type="file"/);
+  assert.match(html, /accept="\.pdf,\.custom"/);
   assert.match(html, /multiple=""/);
   assert.match(html, /guide\.pdf/);
   assert.match(html, /queued\.txt/);

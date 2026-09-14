@@ -9,7 +9,7 @@ import { ChatPage, type ChatSubmission } from '@weknora/views';
 import { openContextualGuide } from '@weknora/views';
 import type { ScopeController } from '@weknora/domain/scope';
 import { chatSessionIdFromPath, SHELL_SESSION_ROUTE_EVENT } from './session-route.ts';
-import { buildWebChatStreamOptions, initialAgentSelection, resolveChatAttachmentLimits, shouldPollAttachmentStatus, validateChatAttachment } from './agent-selection.ts';
+import { buildWebChatStreamOptions, CHAT_ATTACHMENT_DEFAULT_EXTENSIONS, initialAgentSelection, mergeChatAttachmentExtensions, resolveChatAttachmentLimits, shouldPollAttachmentStatus, validateChatAttachment } from './agent-selection.ts';
 import { listChatModels, MODEL_CHIP_NOT_CONFIGURED, resolveChatModelChip } from './model-chip.ts';
 import { readStoredLocale } from '../i18n.ts';
 import { loadStarterQuestions } from './starter-questions.ts';
@@ -78,6 +78,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   const resumeStartedRef = useRef<Map<string, string>>(new Map());
   const [draft, setDraft] = useState('');
   const [attachments, setAttachments] = useState<ChatAttachmentView[]>([]);
+  const [supportedAttachmentExtensions, setSupportedAttachmentExtensions] = useState<readonly string[]>(CHAT_ATTACHMENT_DEFAULT_EXTENSIONS);
   const attachmentRecordsRef = useRef(new Map<string, ChatAttachmentRecord>());
   const attachmentUploadControllersRef = useRef(new Map<string, AbortController>());
   const attachmentPollTimersRef = useRef(new Map<string, number>());
@@ -190,6 +191,23 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     );
     return () => { active = false; };
   }, [client, scope.signal, scope.scope, scopeController]);
+
+  // Vue AttachmentUpload discovers additional parser-supported extensions at
+  // runtime. Keep the static baseline if this optional capability is offline.
+  useEffect(() => {
+    let active = true;
+    const parserEngines = client.knowledgeBases?.settings?.parserEngines;
+    if (!parserEngines) return () => { active = false; };
+    void parserEngines().then(
+      (result) => {
+        if (!active || !scopeController.isCurrent(scope.scope)) return;
+        const dynamic = result.data.filter((engine) => engine.Available !== false).flatMap((engine) => engine.FileTypes ?? []);
+        setSupportedAttachmentExtensions(mergeChatAttachmentExtensions(dynamic));
+      },
+      () => { if (active) setSupportedAttachmentExtensions(CHAT_ATTACHMENT_DEFAULT_EXTENSIONS); },
+    );
+    return () => { active = false; };
+  }, [client, scope.scope, scopeController]);
 
   // Vue Input-field.vue loadChatModels: fetch the model list once so the
   // composer chip can show the real model name + context spec; a failure is
@@ -455,7 +473,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
 
   async function selectAttachment(file: File): Promise<void> {
     const limits = resolveChatAttachmentLimits();
-    const validation = validateChatAttachment(file, attachmentRecordsRef.current.size, limits);
+    const validation = validateChatAttachment(file, attachmentRecordsRef.current.size, limits, supportedAttachmentExtensions);
     if (validation) {
       const message = validation === 'too-many' ? `Maximum ${limits.maxFiles} attachments allowed.` : validation === 'too-large' ? `File ${file.name} exceeds ${Math.round(limits.maxSizeBytes / (1024 * 1024))}MB limit.` : `Unsupported file type: ${file.name}`;
       const localId = `rejected-attachment-${++attachmentCounterRef.current}`;
@@ -862,6 +880,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     attachments={attachments}
     onAttachmentSelect={selectAttachment}
     onRemoveAttachment={removeAttachment}
+    attachmentAccept={supportedAttachmentExtensions}
     agents={agents.map((agent) => ({ id: agent.id, name: agent.name, disabled: disabledAgentIds.includes(agent.id) }))}
     selectedAgentId={selectedAgentId}
     onAgentChange={selectAgent}

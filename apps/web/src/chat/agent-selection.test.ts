@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildWebChatStreamOptions, initialAgentSelection, resolveChatAttachmentLimits, shouldPollAttachmentStatus, validateChatAttachment } from './agent-selection.ts';
+import { buildWebChatStreamOptions, initialAgentSelection, mergeChatAttachmentExtensions, normalizeChatAttachmentExtensions, resolveChatAttachmentLimits, shouldPollAttachmentStatus, validateChatAttachment } from './agent-selection.ts';
 
 test('selected agent switches the web chat stream to agent mode with an explicit agent id', () => {
   assert.deepEqual(buildWebChatStreamOptions('session/1', '  Summarize this  ', 'agent/1'), {
@@ -46,6 +46,15 @@ test('uses the runtime MAX_FILE_SIZE_MB override instead of a hard-coded cap', (
   const limits = resolveChatAttachmentLimits({ MAX_FILE_SIZE_MB: 1 }, '50');
   assert.equal(limits.maxSizeBytes, 1024 * 1024);
   assert.equal(validateChatAttachment({ name: 'guide.pdf', size: 1024 * 1024 + 1 }, 0, limits), 'too-large');
+});
+
+test('accepts parser engine extensions while retaining the static extension baseline', () => {
+  const dynamic = normalizeChatAttachmentExtensions(['custom', '.PDF', 'url', '']);
+  assert.deepEqual(dynamic, ['.custom', '.pdf']);
+  assert.equal(validateChatAttachment({ name: 'notes.custom', size: 100 }, 0, undefined, ['.custom']), undefined);
+  assert.equal(validateChatAttachment({ name: 'notes.pdf', size: 100 }, 0, undefined, ['.custom']), 'unsupported-type');
+  assert.deepEqual(mergeChatAttachmentExtensions(undefined).includes('.pdf'), true);
+  assert.deepEqual(mergeChatAttachmentExtensions(['custom']).includes('.custom'), true);
 });
 
 test('polls server attachment states until ready or failed', () => {

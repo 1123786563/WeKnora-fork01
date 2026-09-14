@@ -72,6 +72,7 @@ export interface ChatPageProps {
   attachments?: readonly ChatAttachmentView[];
   onAttachmentSelect?(file: File): void | Promise<void>;
   onRemoveAttachment?(id: string): void | Promise<void>;
+  attachmentAccept?: readonly string[];
   agents?: readonly ChatAgentOption[];
   selectedAgentId?: string;
   onAgentChange?(agentId: string): void;
@@ -433,6 +434,7 @@ export function ChatPage(props: ChatPageProps) {
           attachments={props.attachments}
           onAttachmentSelect={props.onAttachmentSelect}
           onRemoveAttachment={props.onRemoveAttachment}
+          attachmentAccept={props.attachmentAccept}
           agents={props.agents}
           selectedAgentId={props.selectedAgentId}
           onAgentChange={props.onAgentChange}

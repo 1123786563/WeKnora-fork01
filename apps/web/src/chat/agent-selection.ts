@@ -31,18 +31,30 @@ export function resolveChatAttachmentLimits(
   const megabytes = positiveMegabytes(runtimeValue ?? buildTimeValue, CHAT_ATTACHMENT_DEFAULT_MAX_SIZE_MB);
   return { maxFiles: CHAT_ATTACHMENT_MAX_FILES, maxSizeBytes: megabytes * 1024 * 1024 };
 }
-const CHAT_ATTACHMENT_EXTENSIONS = new Set([
+export const CHAT_ATTACHMENT_DEFAULT_EXTENSIONS = [
   '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.epub', '.mhtml',
   '.txt', '.md', '.csv', '.json', '.xml', '.html', '.markdown', '.yaml', '.yml', '.log',
   '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp',
   '.mp3', '.wav', '.m4a', '.flac', '.ogg', '.aac',
-]);
+];
 
-export function validateChatAttachment(file: { name: string; size: number }, existingCount: number, limits = resolveChatAttachmentLimits()): 'too-many' | 'too-large' | 'unsupported-type' | undefined {
+export function normalizeChatAttachmentExtensions(fileTypes: readonly unknown[]): string[] {
+  return [...new Set(fileTypes
+    .filter((value): value is string => typeof value === 'string')
+    .map((value) => value.trim().toLowerCase())
+    .filter((value) => value && value !== 'url')
+    .map((value) => value.startsWith('.') ? value : `.${value}`))];
+}
+
+export function mergeChatAttachmentExtensions(fileTypes: readonly unknown[] | undefined): string[] {
+  return [...new Set([...CHAT_ATTACHMENT_DEFAULT_EXTENSIONS, ...normalizeChatAttachmentExtensions(fileTypes ?? [])])];
+}
+
+export function validateChatAttachment(file: { name: string; size: number }, existingCount: number, limits = resolveChatAttachmentLimits(), supportedExtensions: readonly string[] = CHAT_ATTACHMENT_DEFAULT_EXTENSIONS): 'too-many' | 'too-large' | 'unsupported-type' | undefined {
   if (existingCount >= limits.maxFiles) return 'too-many';
   if (file.size > limits.maxSizeBytes) return 'too-large';
   const extension = file.name.lastIndexOf('.') >= 0 ? file.name.slice(file.name.lastIndexOf('.')).toLowerCase() : '';
-  return CHAT_ATTACHMENT_EXTENSIONS.has(extension) ? undefined : 'unsupported-type';
+  return supportedExtensions.includes(extension) ? undefined : 'unsupported-type';
 }
 
 export function shouldPollAttachmentStatus(status: 'uploaded' | 'processing' | 'ready' | 'failed'): boolean {
