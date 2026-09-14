@@ -76,42 +76,42 @@ export function DocumentsBreadcrumb(props: DocumentsBreadcrumbProps) {
   const [infoOpen, setInfoOpen] = useState(false);
   const sortedFileTypes = supportedFileTypes ? [...supportedFileTypes].sort() : [];
   return (
-    <div className="document-title-row">
-      <h2 className="document-breadcrumb">
-        <button type="button" className="breadcrumb-link" onClick={() => onNavigate(documentsKBListPath)}>{t('menu.knowledgeBase')}</button>
-        <Icon size={14} className="breadcrumb-separator"><path d={Chevrons.right} /></Icon>
-        <span className="doc-kb-switcher" onBlur={(event) => closeOnBlur(event, () => setSwitcherOpen(false))}>
-          <button type="button" className="breadcrumb-link dropdown" aria-haspopup="menu" aria-expanded={switcherOpen} onClick={() => setSwitcherOpen((open) => !open)}>
+    <div className="document-title-row flex flex-wrap items-center gap-2">
+      <h2 className="document-breadcrumb m-0 flex items-center gap-[6px] text-[20px] font-semibold text-[var(--wk-text,#101828)]">
+        <button type="button" className="breadcrumb-link inline-flex cursor-pointer items-center gap-1 rounded-[6px] border-none bg-transparent px-2 py-1 -mx-2 -my-1 text-[var(--wk-muted,#66758b)] [font:inherit] [transition:all_.12s_ease] hover:enabled:bg-[var(--wk-surface,#fff)] hover:enabled:text-[var(--wk-brand,#00a870)] disabled:cursor-not-allowed disabled:text-[var(--wk-muted,#98a2b8)]" onClick={() => onNavigate(documentsKBListPath)}>{t('menu.knowledgeBase')}</button>
+        <Icon size={14} className="breadcrumb-separator shrink-0 text-[var(--wk-muted,#98a2b8)]"><path d={Chevrons.right} /></Icon>
+        <span className="doc-kb-switcher relative inline-flex" onBlur={(event) => closeOnBlur(event, () => setSwitcherOpen(false))}>
+          <button type="button" className="breadcrumb-link dropdown group/dd inline-flex cursor-pointer items-center gap-1 rounded-[6px] border-none bg-transparent py-1 pl-2 pr-[6px] -mx-2 -my-1 text-[var(--wk-muted,#66758b)] [font:inherit] [transition:all_.12s_ease] hover:enabled:bg-[var(--wk-surface,#fff)] hover:enabled:text-[var(--wk-brand,#00a870)] disabled:cursor-not-allowed disabled:text-[var(--wk-muted,#98a2b8)]" aria-haspopup="menu" aria-expanded={switcherOpen} onClick={() => setSwitcherOpen((open) => !open)}>
             <span>{kbName ?? '…'}</span>
-            <Icon size={14} className="breadcrumb-caret"><path d={Chevrons.down} /></Icon>
+            <Icon size={14} className="breadcrumb-caret transition-transform duration-[120ms] group-hover/dd:translate-y-[1px]"><path d={Chevrons.down} /></Icon>
           </button>
-          <span className="doc-switcher-menu" role="menu" hidden={!switcherOpen}>
+          <span className="doc-switcher-menu absolute left-0 top-[calc(100%+6px)] z-[200] flex max-h-[280px] min-w-[180px] flex-col overflow-y-auto rounded-[10px] border border-[var(--wk-border,#e3e8f0)] bg-[var(--wk-surface,#fff)] p-1 shadow-[0_6px_24px_rgba(15,23,42,0.12)] [&[hidden]]:hidden" role="menu" hidden={!switcherOpen}>
             {kbList.map((kb) => (
-              <button key={kb.id} type="button" role="menuitem" className={'doc-switcher-item' + (kb.id === knowledgeBaseId ? ' is-active' : '')} onClick={() => { setSwitcherOpen(false); onNavigate(documentsKBDetailPath(kb.id)); }}>
+              <button key={kb.id} type="button" role="menuitem" className={'doc-switcher-item cursor-pointer whitespace-nowrap rounded-[6px] border-none bg-transparent px-[10px] py-[7px] text-left text-[14px] text-[var(--wk-text,#101828)] hover:bg-[rgba(0,0,0,0.04)]' + (kb.id === knowledgeBaseId ? ' is-active font-semibold text-[var(--wk-brand,#00a870)]' : '')} onClick={() => { setSwitcherOpen(false); onNavigate(documentsKBDetailPath(kb.id)); }}>
                 {kb.name}
               </button>
             ))}
           </span>
         </span>
-        <Icon size={14} className="breadcrumb-separator"><path d={Chevrons.right} /></Icon>
-        <span className="breadcrumb-current">{t('knowledgeEditor.document.title')}</span>
+        <Icon size={14} className="breadcrumb-separator shrink-0 text-[var(--wk-muted,#98a2b8)]"><path d={Chevrons.right} /></Icon>
+        <span className="breadcrumb-current font-semibold text-[var(--wk-text,#101828)]">{t('knowledgeEditor.document.title')}</span>
       </h2>
-      <div className="kb-title-actions">
-        <span className="kb-info-host" onBlur={(event) => closeOnBlur(event, () => setInfoOpen(false))}>
-          <button type="button" className="kb-info-button" aria-label={t('knowledgeBase.infoCard.tooltip')} title={t('knowledgeBase.infoCard.tooltip')} aria-expanded={infoOpen} onClick={() => setInfoOpen((open) => !open)}>
+      <div className="kb-title-actions ml-1 inline-flex shrink-0 items-center gap-[6px]">
+        <span className="kb-info-host relative inline-flex" onBlur={(event) => closeOnBlur(event, () => setInfoOpen(false))}>
+          <button type="button" className="kb-info-button inline-flex h-[30px] w-[30px] cursor-pointer items-center justify-center rounded-full border-none bg-[rgba(0,0,0,0.05)] p-0 text-[var(--wk-muted,#66758b)] [transition:all_.2s_ease] hover:bg-[rgba(0,0,0,0.09)] hover:text-[var(--wk-brand,#00a870)]" aria-label={t('knowledgeBase.infoCard.tooltip')} title={t('knowledgeBase.infoCard.tooltip')} aria-expanded={infoOpen} onClick={() => setInfoOpen((open) => !open)}>
             <InfoIcon size={16} />
           </button>
-          <span className="kb-info-card" hidden={!infoOpen}>
-            <span className="kb-info-card-header">{t('knowledgeBase.infoCard.title')}</span>
-            <span className="kb-info-card-row"><span className="kb-info-card-label">{t('knowledgeBase.infoCard.type')}</span><span className="kb-info-card-value">{kbMeta?.type?.toLowerCase() === 'faq' ? t('knowledgeEditor.basic.typeFAQ') : t('knowledgeEditor.basic.typeDocument')}</span></span>
-            {kbMeta?.description ? <span className="kb-info-card-row"><span className="kb-info-card-label">{t('knowledgeBase.description')}</span><span className="kb-info-card-value">{kbMeta.description}</span></span> : null}
-            {kbMeta?.createdAt ? <span className="kb-info-card-row"><span className="kb-info-card-label">{t('knowledgeBase.infoCard.createdAt')}</span><span className="kb-info-card-value">{kbMeta.createdAt}</span></span> : null}
+          <span className="kb-info-card absolute right-0 top-[calc(100%+8px)] z-[200] flex w-[320px] flex-col gap-[10px] rounded-[10px] border border-[var(--wk-border,#e3e8f0)] bg-[var(--wk-surface,#fff)] px-4 py-[14px] text-left text-[13px] shadow-[0_6px_24px_rgba(15,23,42,0.12)] [&[hidden]]:hidden" hidden={!infoOpen}>
+            <span className="kb-info-card-header border-b border-[var(--wk-border,#e3e8f0)] pb-2 text-[14px] font-semibold text-[var(--wk-text,#101828)]">{t('knowledgeBase.infoCard.title')}</span>
+            <span className="kb-info-card-row flex items-baseline gap-3"><span className="kb-info-card-label w-16 shrink-0 text-[var(--wk-muted,#98a2b8)]">{t('knowledgeBase.infoCard.type')}</span><span className="kb-info-card-value text-[var(--wk-text,#101828)] [word-break:break-word]">{kbMeta?.type?.toLowerCase() === 'faq' ? t('knowledgeEditor.basic.typeFAQ') : t('knowledgeEditor.basic.typeDocument')}</span></span>
+            {kbMeta?.description ? <span className="kb-info-card-row flex items-baseline gap-3"><span className="kb-info-card-label w-16 shrink-0 text-[var(--wk-muted,#98a2b8)]">{t('knowledgeBase.description')}</span><span className="kb-info-card-value text-[var(--wk-text,#101828)] [word-break:break-word]">{kbMeta.description}</span></span> : null}
+            {kbMeta?.createdAt ? <span className="kb-info-card-row flex items-baseline gap-3"><span className="kb-info-card-label w-16 shrink-0 text-[var(--wk-muted,#98a2b8)]">{t('knowledgeBase.infoCard.createdAt')}</span><span className="kb-info-card-value text-[var(--wk-text,#101828)] [word-break:break-word]">{kbMeta.createdAt}</span></span> : null}
             {sortedFileTypes.length > 0 ? (
-              <span className="kb-info-card-row">
-                <span className="kb-info-card-label">{t('knowledgeBase.infoCard.supportedFileTypes')}</span>
-                <span className="kb-info-card-value">
+              <span className="kb-info-card-row flex items-baseline gap-3">
+                <span className="kb-info-card-label w-16 shrink-0 text-[var(--wk-muted,#98a2b8)]">{t('knowledgeBase.infoCard.supportedFileTypes')}</span>
+                <span className="kb-info-card-value text-[var(--wk-text,#101828)] [word-break:break-word]">
                   {sortedFileTypes.map((fileType) => (
-                    <span key={fileType} className="kb-info-filetype">{`.${fileType}`}</span>
+                    <span key={fileType} className="kb-info-filetype mb-1 mr-1 inline-block rounded-full border border-[var(--wk-border,#e4e7ec)] px-[6px] py-0 text-[12px] leading-[20px]">{`.${fileType}`}</span>
                   ))}
                 </span>
               </span>
@@ -119,7 +119,7 @@ export function DocumentsBreadcrumb(props: DocumentsBreadcrumbProps) {
           </span>
         </span>
         {canManage ? (
-          <button type="button" className="kb-settings-button" aria-label={t('knowledgeBase.settings')} title={t('knowledgeBase.settings')} disabled={!knowledgeBaseId} onClick={() => knowledgeBaseId && onNavigate(documentsKBSettingsPath(knowledgeBaseId))}>
+          <button type="button" className="kb-settings-button inline-flex h-[30px] w-[30px] cursor-pointer items-center justify-center rounded-full border-none bg-[rgba(0,0,0,0.05)] p-0 text-[var(--wk-muted,#66758b)] [transition:all_.2s_ease] hover:bg-[rgba(0,0,0,0.09)] hover:text-[var(--wk-brand,#00a870)]" aria-label={t('knowledgeBase.settings')} title={t('knowledgeBase.settings')} disabled={!knowledgeBaseId} onClick={() => knowledgeBaseId && onNavigate(documentsKBSettingsPath(knowledgeBaseId))}>
             <GearIcon size={14} />
           </button>
         ) : null}
@@ -140,10 +140,10 @@ export interface ParserHintProps {
 export function ParserHint({ t, types, onConfigure }: ParserHintProps) {
   if (types.length === 0) return null;
   return (
-    <p className="parser-hint" onClick={onConfigure}>
-      <InfoIcon size={12} className="parser-hint-icon" />
+    <p className="parser-hint group m-0 mt-[2px] flex cursor-pointer items-center gap-1 text-[12px] leading-[1.4] text-[var(--wk-warning,#b54708)] [transition:color_.15s_ease] hover:text-[#d97706]" onClick={onConfigure}>
+      <InfoIcon size={12} className="parser-hint-icon shrink-0" />
       <span>{t('knowledgeBase.unsupportedTypesHint', { types: types.map((fileType) => `.${fileType}`).join('、') })}</span>
-      <span className="parser-hint-link">{t('knowledgeBase.goToParserSettings')} →</span>
+      <span className="parser-hint-link ml-[2px] whitespace-nowrap text-[var(--wk-brand,#0052d9)] group-hover:underline">{t('knowledgeBase.goToParserSettings')} →</span>
     </p>
   );
 }
@@ -160,25 +160,25 @@ export interface DocumentEmptyStateProps {
 export function DocumentEmptyState({ t, variant }: DocumentEmptyStateProps) {
   if (variant === 'folder') {
     return (
-      <div className="doc-empty-state">
-        <p className="doc-empty-folder">{t('knowledgeBase.folderTree.emptyFolder')}</p>
+      <div className="doc-empty-state flex w-full min-h-full flex-1 items-center justify-center px-5 py-[60px]">
+        <p className="doc-empty-folder m-0 text-[14px] text-[var(--wk-muted,#66758b)]">{t('knowledgeBase.folderTree.emptyFolder')}</p>
       </div>
     );
   }
   if (variant === 'search') {
     return (
-      <div className="doc-empty-state">
-        <p className="doc-empty-folder">{t('knowledgeBase.folderTree.emptySearch')}</p>
+      <div className="doc-empty-state flex w-full min-h-full flex-1 items-center justify-center px-5 py-[60px]">
+        <p className="doc-empty-folder m-0 text-[14px] text-[var(--wk-muted,#66758b)]">{t('knowledgeBase.folderTree.emptySearch')}</p>
       </div>
     );
   }
   return (
-    <div className="doc-empty-state">
-      <div className="doc-empty-illustration">
-        <img className="empty-img" src={emptyIllustration} alt="" />
-        <span className="empty-txt">{t('knowledgeBase.emptyKnowledgeDragDrop')}</span>
-        <span className="empty-type-txt">{t('knowledgeBase.pdfDocFormat')}</span>
-        <span className="empty-type-txt">{t('knowledgeBase.textMarkdownFormat')}</span>
+    <div className="doc-empty-state flex w-full min-h-full flex-1 items-center justify-center px-5 py-[60px]">
+      <div className="doc-empty-illustration flex flex-col items-center justify-center">
+        <img className="empty-img h-[162px] w-[162px]" src={emptyIllustration} alt="" />
+        <span className="empty-txt m-0 mb-4 mt-3 text-[16px] font-semibold leading-[26px] text-[var(--wk-muted,#667085)]">{t('knowledgeBase.emptyKnowledgeDragDrop')}</span>
+        <span className="empty-type-txt w-[217px] text-center text-[12px] font-normal text-[var(--wk-muted,#98a2b8)]">{t('knowledgeBase.pdfDocFormat')}</span>
+        <span className="empty-type-txt w-[217px] text-center text-[12px] font-normal text-[var(--wk-muted,#98a2b8)]">{t('knowledgeBase.textMarkdownFormat')}</span>
       </div>
     </div>
   );

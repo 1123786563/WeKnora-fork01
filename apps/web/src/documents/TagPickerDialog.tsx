@@ -108,24 +108,24 @@ export function TagPickerDialog({
     <Dialog open title={t(copy.heading)} onClose={onClose} closeLabel={t('common.cancel')}>
       <div className={mode === 'batch' ? 'batch-tag-body' : 'tag-edit-body'}>
         {mode === 'batch' && typeof count === 'number' ? (
-          <p className="batch-tag-subtitle">{t('knowledgeBase.batchTagSubtitle', { count })}</p>
+          <p className="batch-tag-subtitle m-0 mb-1 text-[12px] text-[var(--wk-muted,#98a2b8)]">{t('knowledgeBase.batchTagSubtitle', { count })}</p>
         ) : null}
-        <section className="wk-tag-section">
-          <div className="wk-tag-section-head">
-            <h4>{t(copy.selected)}</h4>
+        <section className="wk-tag-section mt-3 flex flex-col gap-2 border-b border-[var(--wk-border,#e4e7ec)] px-0 py-[10px] first-of-type:border-t-0">
+          <div className="wk-tag-section-head flex items-center justify-between gap-2">
+            <h4 className="m-0 text-[13px] font-semibold">{t(copy.selected)}</h4>
             {selectedSet.size > 0 ? (
-              <button type="button" className="wk-tag-link" onClick={() => setSelectedSet(new Set())}>
+              <button type="button" className="wk-tag-link cursor-pointer border-none bg-transparent p-0 text-[12px] text-[var(--wk-muted,#98a2b8)] hover:text-[var(--wk-brand,#07c05f)]" onClick={() => setSelectedSet(new Set())}>
                 {t('knowledgeBase.tagClearAction')}
               </button>
             ) : null}
           </div>
           {selectedTags.length > 0 ? (
-            <div className="batch-tag-chips">
+            <div className="batch-tag-chips flex max-h-[min(160px,24vh)] flex-wrap gap-[6px] overflow-y-auto">
               {selectedTags.map((tag) => (
                 <button
                   key={tag.id}
                   type="button"
-                  className="batch-tag-chip is-selected"
+                  className="batch-tag-chip is-selected inline-flex min-h-[22px] max-w-full cursor-pointer items-center gap-1 overflow-hidden rounded-[4px] border border-[var(--wk-border,#e4e7ec)] px-2 py-0 text-[11px] text-ellipsis whitespace-nowrap text-[var(--wk-muted,#667085)] bg-transparent border-transparent bg-[var(--wk-surface-strong,#f2f4f7)] font-medium text-[var(--wk-text,#344054)]"
                   title={tag.name}
                   onClick={() => toggleTag(tag.id)}
                 >
@@ -134,28 +134,28 @@ export function TagPickerDialog({
               ))}
             </div>
           ) : (
-            <p className="wk-tag-section-empty">{t(copy.noSelected)}</p>
+            <p className="wk-tag-section-empty m-0 min-h-[22px] text-[12px] text-[var(--wk-muted,#98a2b8)]">{t(copy.noSelected)}</p>
           )}
         </section>
-        <section className="wk-tag-section">
-          <div className="wk-tag-section-head">
-            <h4>{t(copy.available)}</h4>
+        <section className="wk-tag-section mt-3 flex flex-col gap-2 border-b border-[var(--wk-border,#e4e7ec)] px-0 py-[10px] first-of-type:border-t-0">
+          <div className="wk-tag-section-head flex items-center justify-between gap-2">
+            <h4 className="m-0 text-[13px] font-semibold">{t(copy.available)}</h4>
           </div>
           <input
             type="search"
-            className="wk-tag-search"
+            className="wk-tag-search w-full min-h-[28px] my-2 border border-[var(--wk-border,#e4e7ec)] rounded-[6px] bg-transparent px-2 py-0 text-[12px] text-[var(--wk-text,#344054)]"
             value={searchQuery}
             placeholder={t('knowledgeBase.tagEditSearch')}
             aria-label={t('knowledgeBase.tagEditSearch')}
             onChange={(event) => setSearchQuery(event.target.value)}
           />
           {availableTags.length > 0 ? (
-            <div className="batch-tag-chips">
+            <div className="batch-tag-chips flex max-h-[min(160px,24vh)] flex-wrap gap-[6px] overflow-y-auto">
               {availableTags.map((tag) => (
                 <button
                   key={tag.id}
                   type="button"
-                  className="batch-tag-chip"
+                  className="batch-tag-chip inline-flex min-h-[22px] max-w-full cursor-pointer items-center gap-1 overflow-hidden rounded-[4px] border border-[var(--wk-border,#e4e7ec)] px-2 py-0 text-[11px] text-ellipsis whitespace-nowrap text-[var(--wk-muted,#667085)] bg-transparent"
                   title={tag.knowledge_count !== undefined ? `${tag.name} (${tag.knowledge_count})` : tag.name}
                   onClick={() => toggleTag(tag.id)}
                 >
@@ -164,12 +164,12 @@ export function TagPickerDialog({
               ))}
             </div>
           ) : (
-            <div className="wk-tag-section-empty wk-tag-section-empty--row">
+            <div className="wk-tag-section-empty wk-tag-section-empty--row m-0 flex min-h-[22px] items-center justify-between gap-2 text-[12px] text-[var(--wk-muted,#98a2b8)]">
               <span>{searchQuery.trim() ? t('knowledgeBase.tagEmptyResult') : t('knowledgeBase.noTags')}</span>
               {canManage && createTag && searchQuery.trim() ? (
                 <button
                   type="button"
-                  className="wk-tag-link"
+                  className="wk-tag-link cursor-pointer border-none bg-transparent p-0 text-[12px] text-[var(--wk-muted,#98a2b8)] hover:text-[var(--wk-brand,#07c05f)]"
                   disabled={creatingTag}
                   onClick={() => void addNewTag(searchQuery)}
                 >
@@ -181,7 +181,7 @@ export function TagPickerDialog({
           {canManage && createTag ? (
             <input
               type="text"
-              className="wk-tag-create-input"
+              className="wk-tag-create-input w-full min-h-[28px] my-2 border border-[var(--wk-border,#e4e7ec)] rounded-[6px] bg-transparent px-2 py-0 text-[12px] text-[var(--wk-text,#344054)] border-dashed"
               value={newTagName}
               maxLength={40}
               disabled={creatingTag}
@@ -198,17 +198,17 @@ export function TagPickerDialog({
           ) : null}
         </section>
       </div>
-      <div className="batch-tag-footer">
-        <span className="batch-tag-selected-count">
+      <div className="batch-tag-footer mt-[14px] flex items-center justify-between gap-3 border-t border-[var(--wk-border,#e4e7ec)] pt-3">
+        <span className="batch-tag-selected-count text-[12px] text-[var(--wk-muted,#98a2b8)]">
           {t('knowledgeBase.tagSelectedCount', { count: selectedSet.size })}
         </span>
-        <div className="batch-tag-footer-right">
-          <button type="button" className="wk-tag-btn" disabled={confirmLoading} onClick={onClose}>
+        <div className="batch-tag-footer-right flex gap-2">
+          <button type="button" className="wk-tag-btn min-h-[30px] cursor-pointer rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-transparent px-[14px] py-0 text-[13px] text-[var(--wk-text,#344054)]" disabled={confirmLoading} onClick={onClose}>
             {t('common.cancel')}
           </button>
           <button
             type="button"
-            className="wk-tag-btn wk-tag-btn--primary"
+            className="wk-tag-btn wk-tag-btn--primary min-h-[30px] cursor-pointer rounded-[6px] border border-[var(--wk-brand,#07c05f)] bg-[var(--wk-brand,#07c05f)] px-[14px] py-0 text-[13px] text-white"
             disabled={confirmLoading}
             onClick={() => onConfirm(Array.from(selectedSet))}
           >
@@ -258,17 +258,18 @@ export function TagFilterPanel({
   const visible = [...missing, ...tags];
 
   return (
-    <div className="tag-filter-panel" role="group" aria-label={t('knowledgeBase.tagFilterTitle')}>
-      <div className="tag-filter-panel__header">
-        <span className="tag-filter-panel__title">{t('knowledgeBase.tagFilterTitle')}</span>
-        <span className="tag-filter-panel__count">({total ?? tags.length})</span>
-        <button type="button" className="wk-tag-link wk-tag-panel-close" aria-label={t('common.cancel')} onClick={onClose}>
+    <div className="tag-filter-panel absolute left-0 top-[calc(100%+4px)] z-40 w-[min(320px,80vw)] rounded-[8px] border border-[var(--wk-border,#e4e7ec)] bg-[var(--wk-surface,#fff)] p-[10px] shadow-[0_8px_24px_rgba(0,0,0,0.1)]" role="group" aria-label={t('knowledgeBase.tagFilterTitle')}>
+      <div className="tag-filter-panel__header flex items-center gap-1">
+        <span className="tag-filter-panel__title text-[13px] font-semibold text-[var(--wk-text,#344054)]">{t('knowledgeBase.tagFilterTitle')}</span>
+        <span className="tag-filter-panel__count text-[12px] text-[var(--wk-muted,#98a2b8)]">({total ?? tags.length})</span>
+        <button type="button" className="wk-tag-link wk-tag-panel-close ml-auto cursor-pointer border-none bg-transparent p-0 text-[12px] text-[var(--wk-muted,#98a2b8)] hover:text-[var(--wk-brand,#07c05f)]" aria-label={t('common.cancel')} onClick={onClose}>
           ×
         </button>
       </div>
       <div className="tag-filter-panel__search">
         <input
           type="search"
+          className="w-full min-h-[28px] my-2 border border-[var(--wk-border,#e4e7ec)] rounded-[6px] bg-transparent px-2 py-0 text-[12px] text-[var(--wk-text,#344054)]"
           value={searchQuery}
           placeholder={t('knowledgeBase.tagSearchPlaceholder')}
           aria-label={t('knowledgeBase.tagSearchPlaceholder')}
@@ -277,27 +278,27 @@ export function TagFilterPanel({
       </div>
       <div className="tag-filter-panel__body">
         {visible.length > 0 ? (
-          <div className="tag-filter-chips">
+          <div className="tag-filter-chips flex max-h-[min(160px,24vh)] flex-wrap gap-[6px] overflow-y-auto">
             {visible.map((tag) => (
               <button
                 key={tag.id}
                 type="button"
-                className={selectedIds.includes(tag.id) ? 'tag-filter-chip is-active' : 'tag-filter-chip'}
+                className={selectedIds.includes(tag.id) ? 'tag-filter-chip is-active inline-flex min-h-[22px] max-w-full cursor-pointer items-center gap-1 overflow-hidden rounded-[4px] border border-[var(--wk-border,#e4e7ec)] px-2 py-0 text-[11px] text-ellipsis whitespace-nowrap text-[var(--wk-muted,#667085)] bg-transparent border-transparent bg-[var(--wk-surface-strong,#f2f4f7)] font-medium text-[var(--wk-text,#344054)]' : 'tag-filter-chip inline-flex min-h-[22px] max-w-full cursor-pointer items-center gap-1 overflow-hidden rounded-[4px] border border-[var(--wk-border,#e4e7ec)] px-2 py-0 text-[11px] text-ellipsis whitespace-nowrap text-[var(--wk-muted,#667085)] bg-transparent'}
                 title={`${tag.name} (${tag.knowledge_count || 0})`}
                 onClick={() => onToggle(tag.id)}
               >
                 <span className="tag-filter-chip__label">{tag.name}</span>
-                <span className="tag-filter-chip__count">{tag.knowledge_count || 0}</span>
+                <span className="tag-filter-chip__count text-[10px] text-[var(--wk-muted,#98a2b8)]">{tag.knowledge_count || 0}</span>
               </button>
             ))}
           </div>
         ) : (
-          <p className="wk-tag-section-empty">{t('knowledgeBase.tagEmptyResult')}</p>
+          <p className="wk-tag-section-empty m-0 min-h-[22px] text-[12px] text-[var(--wk-muted,#98a2b8)]">{t('knowledgeBase.tagEmptyResult')}</p>
         )}
         {hasMore ? (
           <button
             type="button"
-            className="wk-tag-link wk-tag-load-more"
+            className="wk-tag-link wk-tag-load-more mt-2 cursor-pointer border-none bg-transparent p-0 text-[12px] text-[var(--wk-muted,#98a2b8)] hover:text-[var(--wk-brand,#07c05f)] disabled:cursor-not-allowed disabled:opacity-60"
             disabled={loadingMore}
             onClick={onLoadMore}
           >
@@ -306,8 +307,8 @@ export function TagFilterPanel({
         ) : null}
       </div>
       {selectedIds.length > 0 ? (
-        <div className="tag-filter-panel__footer">
-          <button type="button" className="wk-tag-link" onClick={onClear}>
+        <div className="tag-filter-panel__footer mt-2 flex justify-end">
+          <button type="button" className="wk-tag-link cursor-pointer border-none bg-transparent p-0 text-[12px] text-[var(--wk-muted,#98a2b8)] hover:text-[var(--wk-brand,#07c05f)]" onClick={onClear}>
             {t('knowledgeBase.tagClearAction')}
           </button>
         </div>
