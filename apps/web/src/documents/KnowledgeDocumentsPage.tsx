@@ -754,6 +754,41 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
   const parserFileTypes = [...new Set(props.parserEngines.flatMap((engine) => engine.FileTypes ?? []))]
     .filter((fileType) => fileType !== "url")
     .sort();
+  const parserFileGroups = (() => {
+    const known: Array<[string[], string]> = [
+      [["pdf"], t("kbSettings.parser.fileTypePdf")],
+      [["docx", "doc"], t("kbSettings.parser.fileTypeWord")],
+      [["pptx", "ppt"], t("kbSettings.parser.fileTypePpt")],
+      [["xlsx", "xls"], t("kbSettings.parser.fileTypeExcel")],
+      [["epub"], t("kbSettings.parser.fileTypeEbook")],
+      [["mhtml"], t("kbSettings.parser.fileTypeWebArchive")],
+      [["csv"], t("kbSettings.parser.fileTypeCsv")],
+      [["md", "markdown"], "Markdown"],
+      [["txt"], t("kbSettings.parser.fileTypeText")],
+      [["json"], t("kbSettings.parser.fileTypeJson")],
+      [["jpg", "jpeg", "png", "gif", "bmp", "tiff", "webp"], t("kbSettings.parser.fileTypeImage")],
+      [["mp3", "wav", "m4a", "flac", "ogg"], t("kbSettings.parser.fileTypeAudiovisual")],
+    ];
+    const groups = known.flatMap(([extensions, label]) => {
+      const present = extensions.filter((extension) => parserFileTypes.includes(extension));
+      return present.length ? [{ key: label, label, extensions: present }] : [];
+    });
+    const grouped = new Set(groups.flatMap((group) => group.extensions));
+    return [...groups, ...parserFileTypes.filter((extension) => !grouped.has(extension)).map((extension) => ({ key: extension, label: extension.toUpperCase(), extensions: [extension] }))];
+  })();
+  const parserEngineOptions = (extensions: string[]) => {
+    const engines = props.parserEngines.filter((engine) => engine.Available !== false && extensions.some((extension) => (engine.FileTypes ?? []).includes(extension)));
+    const simple = new Set(["md", "markdown", "txt", "csv", "json"]);
+    const defaultName = !extensions.every((extension) => simple.has(extension)) ? engines.find((engine) => engine.Name === "anydoc")?.Name ?? engines[0]?.Name : engines[0]?.Name;
+    return engines.map((engine) => ({ value: engine.Name, label: engine.Name === defaultName ? `${engine.Name} (${t("kbSettings.parser.default")})` : engine.Name }));
+  };
+  const parserRuleFor = (extensions: string[]) => state.parserRules.find((rule) => rule.file_types.some((fileType) => extensions.includes(fileType)));
+  const parserEngineFor = (extensions: string[]) => parserRuleFor(extensions)?.engine ?? parserEngineOptions(extensions)[0]?.value ?? "";
+  const updateParserXlsxHeader = (extensions: string[], checked: boolean) => update({ parserRules: (() => {
+    const current = parserRuleFor(extensions);
+    if (current) return state.parserRules.map((rule) => rule === current ? { ...rule, xlsx_first_row_as_header: checked } : rule);
+    return [...state.parserRules, { file_types: extensions, engine: "builtin", xlsx_first_row_as_header: checked }];
+  })() });
   return (
     <>
       <fieldset className="wk-upload-confirm-parser" id="wk-upload-section-parser" data-section="parser" style={sectionStyle("parser")}>
@@ -779,27 +814,32 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
         {props.parserEngines.length === 0 ? (
           <p className="wk-muted">{t("settings.parser.noEngineDetected")}</p>
         ) : (
-          parserFileTypes.map((fileType) => (
-            <label key={fileType}>
-              .{fileType}
-              <UploadSingleSelect
-                className="wk-upload-parser-select"
-                ariaLabel={`.${fileType}`}
-                value={state.parserRules.find((rule) => rule.file_types.includes(fileType))?.engine ?? ""}
-                options={[
-                  { value: "", label: t("uploadConfirm.navParserDefault") },
-                  ...props.parserEngines.filter((engine) => (engine.FileTypes ?? []).includes(fileType)).map((engine) => ({
-                    value: engine.Name,
-                    label: `${engine.Name}${engine.Available === false ? ` — ${engine.UnavailableReason || t("settings.parser.unavailable")}` : ""}`,
-                    disabled: engine.Available === false,
-                  })),
-                ]}
-                onChange={(value) => update({ parserRules: (() => {
-                  const remaining = state.parserRules.filter((rule) => !rule.file_types.includes(fileType));
-                  return value ? [...remaining, { file_types: [fileType], engine: value }] : remaining;
-                })() })}
-              />
-            </label>
+          parserFileGroups.map((group) => (
+            <div className="wk-upload-parser-row" key={group.key}>
+              <div className="wk-upload-parser-info">
+                <strong>{group.label}</strong>
+                <span className="wk-upload-parser-extensions">{group.extensions.map((extension) => <span key={extension}>.{extension}</span>)}</span>
+              </div>
+              <div className="wk-upload-parser-control">
+                <UploadSingleSelect
+                  className="wk-upload-parser-select"
+                  ariaLabel={group.label}
+                  value={parserEngineFor(group.extensions)}
+                  options={parserEngineOptions(group.extensions)}
+                  onChange={(value) => update({ parserRules: (() => {
+                    const current = parserRuleFor(group.extensions);
+                    const remaining = state.parserRules.filter((rule) => !rule.file_types.some((fileType) => group.extensions.includes(fileType)));
+                    return value ? [...remaining, { file_types: group.extensions, engine: value, ...(current?.xlsx_first_row_as_header === undefined ? {} : { xlsx_first_row_as_header: current.xlsx_first_row_as_header }) }] : remaining;
+                  })() })}
+                />
+                {group.extensions.includes("xlsx") && parserEngineFor(group.extensions) === "builtin" ? (
+                  <label className="wk-upload-parser-xlsx-header">
+                    <input type="checkbox" checked={parserRuleFor(group.extensions)?.xlsx_first_row_as_header === true} onChange={(event) => updateParserXlsxHeader(group.extensions, event.target.checked)} />
+                    {t("kbSettings.parser.xlsxFirstRowAsHeader")}
+                  </label>
+                ) : null}
+              </div>
+            </div>
           ))
         )}
       </fieldset>

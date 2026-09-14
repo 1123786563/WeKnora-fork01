@@ -26,11 +26,13 @@ The advanced chunking separator and language fields now use project multi-select
 
 Parser engine rules now use the same project single-select surface as Vue `KBParserSettings.vue`: the default option clears the rule, unavailable engines remain disabled, and the existing per-file-type rule update contract is preserved.
 
+Parser rows now follow Vue `KBParserSettings.vue` file-family grouping (Word/PPT/Excel/media and known text types) with extension chips and group-level rule updates. Excel + builtin also exposes the Vue first-row-as-header checkbox and round-trips `xlsx_first_row_as_header`.
+
 The relation-type combobox also exposes a clear action, while entity endpoint comboboxes remain non-clearable, matching the Vue per-field `clearable` configuration.
 
 ## Verification
 
-- Focused upload-confirm and pipeline suites: 31/31 passed for the current graph/upload-confirm suite; prior upload-confirm and pipeline suites: 50/50 passed.
+- Focused upload-confirm and pipeline suites: 32/32 passed for the current graph/upload-confirm suite; prior upload-confirm and pipeline suites: 50/50 passed.
 - Full Web suite: `pnpm run test:web` — 681/681 passed.
 - Web typecheck: `pnpm run typecheck:web` — passed.
 - `git diff --check` — passed.

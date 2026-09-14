@@ -3,6 +3,7 @@ import * as nodeModule from 'node:module';
 import test from 'node:test';
 import * as React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import type { ParserEngineInfo } from '@weknora/api-client';
 
 type ResolveHook = (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => unknown;
 const resolveCSS: ResolveHook = (specifier, context, nextResolve) => specifier.endsWith('.css') || specifier.endsWith('.svg')
@@ -246,7 +247,7 @@ test('section nav shows per-section status text with issue markers', () => {
 
 // --- Config sections (PDF presentation, chunking more options, question) ----------
 
-function sectionsHtml(overrides?: { state?: Partial<ReturnType<typeof defaultUploadConfirmUIState>>; hasPdf?: boolean; moreOpen?: boolean; locale?: 'zh-CN' | 'en-US' }) {
+function sectionsHtml(overrides?: { state?: Partial<ReturnType<typeof defaultUploadConfirmUIState>>; hasPdf?: boolean; moreOpen?: boolean; locale?: 'zh-CN' | 'en-US'; parserEngines?: ParserEngineInfo[] }) {
   const locale = overrides?.locale ?? 'zh-CN';
   return renderToStaticMarkup(React.createElement(UploadConfirmSections, {
     state: { ...defaultUploadConfirmUIState(), ...overrides?.state },
@@ -254,7 +255,7 @@ function sectionsHtml(overrides?: { state?: Partial<ReturnType<typeof defaultUpl
     hasPdf: overrides?.hasPdf ?? true,
     multimodalIssue: false,
     asrIssue: false,
-    parserEngines: [{ Name: 'mineru', Description: '', FileTypes: ['pdf'], Available: true }],
+    parserEngines: overrides?.parserEngines ?? [{ Name: 'mineru', Description: '', FileTypes: ['pdf'], Available: true }],
     vllmModels: [],
     asrModels: [],
     moreOpen: overrides?.moreOpen ?? false,
@@ -320,6 +321,15 @@ test('parser engine rules use the same project single-select surface', () => {
   const html = sectionsHtml({});
   assert.match(html, /wk-upload-parser-select/);
   assert.match(html, /role="combobox"/);
+});
+
+test('Excel parser group preserves Vue first-row-header control', () => {
+  const html = sectionsHtml({
+    parserEngines: [{ Name: 'builtin', Description: '', FileTypes: ['xlsx', 'xls'], Available: true }],
+    state: { parserRules: [{ file_types: ['xlsx', 'xls'], engine: 'builtin' }] },
+  });
+  assert.match(html, /Excel/);
+  assert.match(html, /xlsxFirstRowAsHeader|首行为表头/);
 });
 
 test('chunking advanced fields use Vue-shaped filterable multi-selects', () => {

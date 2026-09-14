@@ -1793,3 +1793,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 对照 Vue `KBParserSettings.vue` 的 parser engine `t-select`，React 每种文件类型的解析器控件改为项目级 single-select；默认项可清除规则，不可用引擎保持禁用，原有 `parserRules` 更新契约不变。
 - upload-confirm 定向测试 31/31、Web 全量 828/828、`typecheck:web` 与 `git diff --check` 通过；证据 `evidence/vue-react-parity/2026-09-14-n007-extraction-toast.md` 已更新。
 - N007 继续保持 `implementing`：Vue 按文件族分组布局、其他控件、浏览器 computed-style/同条件截图、真实后端图谱链路及 Wails/native 证据仍未闭环。
+
+## 2026-09-14 Round N+60 — N007 解析器文件族分组
+
+- 对照 Vue `KBParserSettings.vue`，解析配置按 Word/PPT/Excel/图片/音视频及文本文件族合并扩展名，显示扩展标签并按组写回 parser rule；Excel + builtin 恢复 `xlsx_first_row_as_header` 控件及载荷字段。
+- upload-confirm 定向测试 32/32、Web 全量 829/829、`typecheck:web` 与 `git diff --check` 通过；证据 `evidence/vue-react-parity/2026-09-14-n007-extraction-toast.md` 已更新。
+- N007 继续保持 `implementing`：浏览器 computed-style/同条件截图、真实后端图谱链路及 Wails/native 证据仍未闭环。
