@@ -1750,7 +1750,7 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
         <div>
           <h3>{t('settings.sandbox.title')}</h3>
           {/* Page hint popover (SandboxSettings.vue:8-19). */}
-          <details className="wk-sandbox-hint">
+          <details className="wk-sandbox-hint relative ml-[6px] inline-block">
             <summary aria-label={t('settings.sandbox.pageHintTitle')}>ⓘ</summary>
             <div>
               <p><strong>{t('settings.sandbox.pageHintTitle')}</strong></p>
@@ -1768,31 +1768,36 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
       {notice ? <Status tone="success">{notice}</Status> : null}
 
       {canEdit ? (
-        <div className="wk-sandbox-policy">
+        <div className="flex items-center justify-between gap-4 border-b border-[var(--wks-border,#f0f0f0)] py-3">
           <div>
-            <strong>{t('settings.sandbox.scriptPolicyLabel')}</strong>
+            <strong className="text-[14px] text-[var(--wks-text-primary,#1f2937)]">{t('settings.sandbox.scriptPolicyLabel')}</strong>
             <p className="wk-muted">{t('settings.sandbox.scriptPolicyDesc')}</p>
           </div>
           {data?.workspaceScriptsDisabled ? (
-            <button type="button" role="switch" aria-checked="false" className="wks-switch" disabled={busy}
+            <button type="button" role="switch" aria-checked="false"
+              className="relative h-[22px] w-10 flex-none cursor-pointer rounded-[11px] border-none bg-[var(--wks-border-strong,#d9d9d9)] p-0 transition-[background] duration-200 ease-[ease] disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={busy}
               aria-label={t('settings.sandbox.scriptPolicyLabel')}
               onClick={() => void setScriptsDisabled(false)}>
-              <span className="wks-switch-thumb" aria-hidden="true" />
+              <span className="absolute left-[2px] top-[2px] h-[18px] w-[18px] rounded-full bg-surface shadow-[0_1px_2px_rgba(0,0,0,0.2)] transition-[transform] duration-200 ease-[ease]" aria-hidden="true" />
             </button>
           ) : confirmingDisable ? (
-            <div className="wks-popconfirm" role="alertdialog" aria-label={t('settings.sandbox.disableScriptsConfirm')} data-confirm="disable-scripts">
-              <p>{t('settings.sandbox.disableScriptsConfirm')}</p>
-              <div className="wks-popconfirm-actions">
-                <button type="button" className="wks-popconfirm-cancel" disabled={busy} onClick={() => setConfirmingDisable(false)}>{t('common.cancel')}</button>
-                <button type="button" className="wks-popconfirm-danger" disabled={busy}
+            <div role="alertdialog" aria-label={t('settings.sandbox.disableScriptsConfirm')} data-confirm="disable-scripts"
+              className="flex items-center gap-[10px] rounded-[8px] border border-[var(--wks-warning-border,#ffe1c7)] bg-[var(--wks-warning-bg,#fff7ec)] px-[12px] py-[8px] text-[13px] text-[var(--wks-text-primary,#1f2937)]">
+              <p className="m-0">{t('settings.sandbox.disableScriptsConfirm')}</p>
+              <div className="flex gap-2">
+                <button type="button" className="cursor-pointer rounded-[6px] border border-[var(--wks-border,#e5e7eb)] bg-surface px-[10px] py-[3px]" disabled={busy} onClick={() => setConfirmingDisable(false)}>{t('common.cancel')}</button>
+                <button type="button" className="cursor-pointer rounded-[6px] border-none bg-[var(--wks-danger,#e34d59)] px-[10px] py-1 text-white" disabled={busy}
                   onClick={() => { setConfirmingDisable(false); void setScriptsDisabled(true); }}>{t('settings.sandbox.disableScripts')}</button>
               </div>
             </div>
           ) : (
-            <button type="button" role="switch" aria-checked="true" className="wks-switch is-on" disabled={busy}
+            <button type="button" role="switch" aria-checked="true"
+              className="relative h-[22px] w-10 flex-none cursor-pointer rounded-[11px] border-none bg-[var(--wks-primary,#00a870)] p-0 transition-[background] duration-200 ease-[ease] disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={busy}
               aria-label={t('settings.sandbox.scriptPolicyLabel')}
               onClick={() => setConfirmingDisable(true)}>
-              <span className="wks-switch-thumb" aria-hidden="true" />
+              <span className="absolute left-[2px] top-[2px] h-[18px] w-[18px] translate-x-[18px] rounded-full bg-surface shadow-[0_1px_2px_rgba(0,0,0,0.2)] transition-[transform] duration-200 ease-[ease]" aria-hidden="true" />
             </button>
           )}
         </div>
@@ -1845,8 +1850,8 @@ export function SandboxSettingsPanel({ client, role, initialData, dockerBackendE
       )}
 
       {inventory ? (
-        <div className="wk-sandbox-inventory-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setInventory(null); }}>
-        <section className="wk-sandbox-inventory wk-sandbox-inventory-drawer" role="dialog" aria-modal="true" aria-label={t('settings.sandbox.inventoryTitle')}>
+        <div className="wk-sandbox-inventory-overlay fixed inset-0 z-[1250] bg-[rgb(23_32_51_/_35%)]" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setInventory(null); }}>
+        <section className="wk-sandbox-inventory wk-sandbox-inventory-drawer box-border absolute top-0 right-0 bottom-0 left-auto w-[min(400px,100%)] max-h-[100vh] overflow-y-auto border-l border-line bg-surface p-5 shadow-[-18px_0_48px_rgb(23_32_51_/_16%)] animate-[wk-sandbox-inventory-enter_.18s_ease-out] max-[640px]:w-full" role="dialog" aria-modal="true" aria-label={t('settings.sandbox.inventoryTitle')}>
           <div className="wk-settings-panel-heading">
             <div>
               <h3>{t('settings.sandbox.inventoryTitle')}: {inventory.record.name}</h3>

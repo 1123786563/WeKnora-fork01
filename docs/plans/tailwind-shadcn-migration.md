@@ -47,6 +47,13 @@ API 契约、鉴权、权限、表单校验、聊天流式、工具审批、上�
 运维记录：首批并行子任务因始终未执行文件写入被中断（只读分析循环）；
 前台探针证实绝对路径写入可用。已带侦查结论 + 「边读边写 + 后台门禁」纪律重新派发。
 
+### 批次2：sandbox 域 ✅（子任务执行，Orchestrator 验收）
+- SandboxSettingsPanel.tsx 7 处 className 迁移；sandbox-settings.css 106→44 行。
+- 删除 16 条规则全转 utilities；保留 6 条（details/summary 子选择器 4 条、
+  @keyframes+prefers-reduced-motion 一对）原因已写入文件头注释。
+  var(--wks-*) 11 处按规则转任意值保留；DOM 钩子类保留（inventory overlay/drawer）。
+- 验收：typecheck 0、面板测试 28/28、build ✓、settings-sandbox 截图人工复核
+  （开关绿色 on 态、policy 行、hint、tabs、空态全部正常）。
 ### 批次1：auth 域 ✅（Orchestrator 自做，子任务环境无法写文件已回退）
 - LoginPage.tsx 全部样式 → utilities；.language-switch 保留为 closest() DOM 钩子；
   auth.css 缩减为 2 条 @keyframes（nodePulse/lineFlow，复杂动画按约定保留）；
