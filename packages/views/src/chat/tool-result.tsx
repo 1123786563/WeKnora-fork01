@@ -733,8 +733,9 @@ function InfoCode({ children }: { children: React.ReactNode }) {
   return <code className={"rounded-[3px] bg-[#f1f5f9] px-[0.3rem] py-[0.1rem] text-[0.7rem] " + MONO}>{children}</code>;
 }
 
-export function ChunkDetailRenderer({ data }: { data: unknown }) {
+export function ChunkDetailRenderer({ data, copy }: { data: unknown; copy?: ChatCopyTable }) {
   const view = chunkDetailView(data);
+  const labels = copy ?? CHAT_COPY;
   if (!view.chunkId && !view.knowledgeId && !view.content) return <EmptyState label={LABELS.noRecords} />;
   return (
     <div className="wk-tool-chunk-detail flex flex-col gap-[0.3rem]">
@@ -744,7 +745,7 @@ export function ChunkDetailRenderer({ data }: { data: unknown }) {
       {view.contentLength !== null ? <InfoField label="Content length">{view.contentLength} chars</InfoField> : null}
       {view.content ? (
         <div className="wk-tool-section mt-[0.4rem]">
-          <div className="wk-tool-section-title mb-[0.2rem] text-[0.72rem] font-semibold text-[#52606d]">Full content</div>
+          <div className="wk-tool-section-title mb-[0.2rem] text-[0.72rem] font-semibold text-[#52606d]">{labels.fullContentLabel}</div>
           <div className="wk-tool-full-content whitespace-pre-wrap break-words text-[0.75rem] leading-[1.55] text-[#24292f]">{view.content}</div>
         </div>
       ) : null}

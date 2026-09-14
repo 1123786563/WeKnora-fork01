@@ -14,6 +14,7 @@ import {
   thinkingView,
   toolResultPresentation,
   ToolResultView,
+  ChunkDetailRenderer,
   webFetchView,
   webSearchResultsView,
   WebFetchRenderer,
@@ -305,6 +306,23 @@ test('chunkDetailView surfaces chunk content with metadata', () => {
   assert.equal(view.chunkIndexLabel, '#4');
   assert.equal(view.contentLength, 128);
   assert.match(view.content, /5 business days/);
+});
+
+test('ChunkDetailRenderer localizes the full-content label in every locale', () => {
+  const expected = {
+    'zh-CN': '完整内容',
+    'en-US': 'Full content',
+    'ja-JP': '全文',
+    'ko-KR': '전체 내용',
+    'ru-RU': 'Полный текст',
+  } as const;
+  for (const [locale, label] of Object.entries(expected)) {
+    const element = ChunkDetailRenderer({
+      data: { chunk_id: 'c-9', content: 'content' },
+      copy: resolveChatCopy(locale),
+    });
+    assert.match(JSON.stringify(element), new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  }
 });
 
 /* ---- RelatedChunks ---- */

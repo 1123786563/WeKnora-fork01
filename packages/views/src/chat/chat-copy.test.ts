@@ -56,6 +56,19 @@ test('resolveChatCopy exposes the Vue unknown-link label in every locale', () =>
   }
 });
 
+test('resolveChatCopy exposes the Vue full-content label in every locale', () => {
+  const expected = {
+    'zh-CN': '完整内容',
+    'en-US': 'Full content',
+    'ja-JP': '全文',
+    'ko-KR': '전체 내용',
+    'ru-RU': 'Полный текст',
+  } as const;
+  for (const [locale, label] of Object.entries(expected)) {
+    assert.equal(resolveChatCopy(locale).fullContentLabel, label);
+  }
+});
+
 test('batch session controls use translated English SSR copy', () => {
   const copy = resolveChatCopy('en-US');
   assert.equal(copy.batchManage, 'Batch manage');
