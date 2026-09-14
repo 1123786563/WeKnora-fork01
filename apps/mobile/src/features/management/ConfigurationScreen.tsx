@@ -25,6 +25,7 @@ export function ConfigurationScreen() {
 
   const load = useCallback(async () => {
     const generation = ++loadGeneration.current;
+    setLoading(true);
     setError('');
     const [agents, models, mcp, skills] = await Promise.allSettled([
       runtime.client.configuration.agents.list(), runtime.client.configuration.models.list(), runtime.client.configuration.mcp.list(), runtime.client.configuration.skills.list(),
