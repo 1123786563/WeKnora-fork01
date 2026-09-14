@@ -2186,3 +2186,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - Authenticated React Chrome AX reached `/platform/settings?section=ollama` and showed the localized Chinese title/description plus the server-reported Ollama-unavailable state.
 - The local Ollama service was not running, so model/download success paths and same-session Vue comparison remain open.
+
+## 2026-09-15 Round N+34c — T07 Web parser settings copy
+
+- Parser configuration now uses existing localized endpoint and MinerU credential keys in `68c59b8f`; retrieval field mutation semantics remain unchanged.
+- Settings coverage remains 15/15; Web typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
