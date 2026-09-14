@@ -2354,3 +2354,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 已认证 Chrome 逐页检查 `/platform/knowledge-bases`、`/platform/agents`、`/platform/organizations`：侧栏分组、筛选入口、创建按钮、空态和计数均可达，中文 AX 文案无新增英文泄漏。
 - 知识库页显示四个范围筛选与空态；智能体页显示四个内置智能体及管理入口；共享空间页显示全部/创建/加入筛选和双入口空态。
 - 该轮只证明 React 运行时可达性和空态结构；Vue 同账号对照、真实变更链路、computed-style 与桌面/Embed 证据仍缺失。
+
+## 2026-09-15 Round N+34aj — Desktop/Embed shared-layer regression
+
+- 共享聊天文案与旧聊天入口兼容修复后，Desktop Renderer 测试 2/2、Embed 测试 7/7、Desktop/Embed typecheck 均通过。
+- 该结果只证明共享契约未破坏桌面/嵌入端静态边界；Wails 实际窗口、Embed 宿主页面和真实渠道链路仍需运行时验收。
