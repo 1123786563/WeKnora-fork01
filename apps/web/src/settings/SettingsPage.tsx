@@ -319,6 +319,7 @@ const SECTION_LABEL_KEYS: Record<string, string> = {
   members: 'tenantMember.title',
   chathistory: 'chatHistorySettings.title',
   memory: 'memoryWorkspaceSettings.title',
+  retrieval: 'retrievalSettings.title',
   models: 'settings.modelManagement',
   websearch: 'settings.webSearchConfig',
   vectorstore: 'settings.vectorStoreEngine',
