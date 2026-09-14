@@ -2387,3 +2387,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Metro `http://localhost:8081` 启动并返回 `packager-status:running`；Android AVD 通过 `exp://10.0.2.2:8081` 连接后，成功从 Dev Launcher 进入 React Native WeKnora 登录页。
 - 截图：`evidence/vue-react-parity/screenshots/native-20260915/android-login.png`；可见 WeKnora、Sign in、Email、Password、SSO、Create account、Join with invitation、Change server。
 - 该证据覆盖 Android 业务首屏启动和 Metro 连接；尚未执行登录、工作空间切换、聊天发送、上传或与 Vue 同条件视觉对照。
+
+## 2026-09-15 Round N+34ap — iOS scheme/Metro 连接尝试
+
+- iOS Simulator 已启动 Metro 后执行 `simctl openurl weknora://expo-development-client/?url=http://127.0.0.1:8081`，系统弹出“在 WeKnora 中打开？”确认框，证明 `weknora` URL scheme 已注册并可被系统识别。
+- 截图：`evidence/vue-react-parity/screenshots/native-20260915/ios-scheme-prompt.png`。
+- 当前自动化环境无法可靠点击系统确认框，因此未宣称 iOS 已进入业务登录页；Android 已有同等级业务首屏证据。
