@@ -16,21 +16,13 @@ body { margin: 0; min-width: 320px; }
 h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 /* .wk-muted deleted: every consumer carries the text-muted utility (or an
    overriding variant) since the family migrated off this file. */
-.wk-debug { color: #66758b; }
-.wk-debug { border-bottom: 1px solid #edf0f5; font-family: ui-monospace, monospace; font-size: 0.75rem; overflow-wrap: anywhere; padding-bottom: 0.8rem; }
-.wk-list { list-style: none; margin: 0; padding: 0; }
-.wk-list li { align-items: baseline; border-bottom: 1px solid #edf0f5; display: flex; justify-content: space-between; gap: 1rem; padding: 0.9rem 0; }
-.wk-list li span { color: #66758b; font-family: ui-monospace, monospace; font-size: 0.8rem; }
-.wk-form { display: flex; align-items: end; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1rem; }
-.wk-form label { display: grid; gap: 0.25rem; }
-.wk-form input { border: 1px solid #b8c5d6; border-radius: 6px; padding: 0.55rem; }
-.wk-form select, .wk-toolbar select, .wk-toolbar input { border: 1px solid #b8c5d6; border-radius: 6px; padding: 0.55rem; }
-.wk-toolbar { display: flex; align-items: end; gap: .75rem; flex-wrap: wrap; margin-bottom: 1rem; }
-.wk-toolbar label { display: grid; gap: .25rem; }
-.wk-list-item-copy { display: grid; gap: .2rem; min-width: 0; }
-.wk-list-item-actions { display: flex; gap: .5rem; flex-shrink: 0; }
-.wk-list-actions { align-items: center; display: flex; gap: .5rem; justify-content: flex-end; margin-bottom: .75rem; }
-.wk-list-actions span { color: #66758b; font-size: .85rem; margin-right: auto; }
+/* The page shell families (.wk-page/.wk-header/.wk-eyebrow/.wk-debug/.wk-list ± li/li span/
+   .wk-list-item-copy/.wk-list-item-actions/.wk-list-actions ± span/select/.wk-form ± label/input/select/
+   .wk-form-grid(±--two/--three)/.wk-form-label/.wk-toolbar ± label/select/input) moved to Tailwind
+   utilities on their consumers (按生效值编码: layered utilities that competed with these unlayered
+   rules were re-encoded with ! so the effective cascade is preserved). Class names remain on the
+   DOM as hooks: tests query them and PlatformShell's outlet override ([&_.wk-page]:max-w-none! /
+   h-full / overflow-y-auto) depends on .wk-page existing. */
 /* Retained .wk-settings-tabs/.wk-settings-tab/.wk-settings-table: still consumed
    by knowledge-settings/KnowledgeSettingsPage.tsx (outside the settings-shell
    migration scope) — delete when that page moves to utilities. */
@@ -43,16 +35,11 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
    chrome in settings-wrapper.css. Also still consumed by knowledge-settings. */
 .wk-settings-section { margin-top: 1rem; }
 .wk-settings-section h2 { margin: 0 0 .75rem; }
-.wk-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
-.wk-form-grid--three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.wk-form-grid--two { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: .75rem; }
 .wk-settings-section label { display: grid; gap: .35rem; color: #27364d; font-weight: 600; }
 .wk-settings-section input, .wk-settings-section textarea, .wk-settings-section select { width: 100%; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #172033; font: inherit; padding: .55rem .65rem; }
 .wk-settings-section input:read-only, .wk-settings-section select:disabled { background: #f7f9fc; color: #66758b; }
 .wk-settings-table { display: grid; gap: .6rem; max-width: 620px; }
 .wk-settings-table label { grid-template-columns: 8rem minmax(0, 1fr); align-items: center; }
-.wk-list-actions select { border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #172033; font: inherit; padding: .55rem .65rem; }
-.wk-list-actions select { max-width: 9rem; }
 /* .wk-settings-page/.wk-settings-layout/.wk-settings-nav/.wk-settings-save deleted:
    dead rules (zero source consumers) — the inline settings page was replaced by
    the .wks-* drawer shell. */
@@ -86,7 +73,6 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
    (border/radius/height/chevron) still comes from the drawer-wide promoted rule
    in settings-wrapper.css (.wks-modal ancestor is shared with this drawer). */
 @media (max-width: 720px) { .wks-mcp-drawer { height: calc(100vh - 24px); max-height: calc(100vh - 24px); padding: 1rem; } }
-.wk-form-label { color: #172033; font-weight: 600; }
 /* .wk-visually-hidden deleted: consumers carry sr-only; class name stays as a
    hook. */
 /* .wk-settings-values family deleted: its four consumers (CloudSettingsPanel,
@@ -97,7 +83,7 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
 @media (max-width: 720px) { .wk-settings-panel-heading { flex-direction: column; } }
 @media (max-width: 720px) { .wk-wiki-layout { grid-template-columns: 1fr; } }
 @media (max-width: 720px) { .wk-wiki-history-layout { grid-template-columns: 1fr; } }
-@media (max-width: 720px) { .wk-form-grid, .wk-form-grid--three, .wk-form-grid--two, .wk-toggle-grid { grid-template-columns: 1fr; } .wk-settings-table label { grid-template-columns: 1fr; align-items: stretch; } .wk-settings-tabs { overflow-x: auto; } }
+@media (max-width: 720px) { .wk-toggle-grid { grid-template-columns: 1fr; } .wk-settings-table label { grid-template-columns: 1fr; align-items: stretch; } .wk-settings-tabs { overflow-x: auto; } }
 
 /* Integrations surface — ported from frontend/src/components/css/channel-panel-list.less
    (Vue baseline); the .wk-integrations-page/header/tabs/panel and .wk-int-*
@@ -136,7 +122,6 @@ h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin: 0.35rem 0; }
    on its consumer (packages/views/src/integrations/page.tsx chrome/claw tabs). */
 
 
-.wk-toolbar label { position: relative; }
 
 /* ==== Settings drawer visual form (ported from frontend/src/views/settings/Settings.vue
    .settings-overlay/.settings-modal/.settings-sidebar/.nav-*). wks- prefix avoids any

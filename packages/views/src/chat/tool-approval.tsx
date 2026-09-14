@@ -82,7 +82,7 @@ export function ToolApprovalCard({ approval, busy, onResolve }: ToolApprovalCard
         />
         {argsError ? <p role="alert" className="wk-chat-approval-error m-0 text-[0.75rem] text-[#b42318]">{argsError}</p> : null}
       </details>
-      <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.4rem]">
+      <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
         <button type="button" disabled={busy} className={approvalButton} onClick={() => void resolve('approve')}>同意</button>
         <button type="button" disabled={busy} className={approvalButton} onClick={() => void resolve('reject')}>拒绝</button>
       </div>

@@ -245,6 +245,15 @@ hook 类（测试/JS 引用）保留类名。
 - settings-wrapper .wk-tag 家族 5 条协调保留（7 个 settings tag span 追加编码生效值）。
 - 钩子类全保留（测试选择器 0 改动）；验收：typecheck 0、settings 179/179 +
   integrations+Agents 43/43、web 890/890、build ✓。
+### 批次43：page shell 家族 ✅（共享层最后大块，Orchestrator 验收提交）
+- 29 个 apps/web TSX 消费方追加 utilities（保留全部钩子类名）+ views 3 处收尾
+  （tool-result 27 span 按生效值补偿 font-mono!/0.8rem!/muted!、tool-approval gap 0.5rem、
+  page.tsx 裸 wk-list-actions 补配方）；styles.css 删 25 条规则块 + 1 媒体片段。
+- PlatformShell outlet 依赖（[&_.wk-page]:max-w-none!）验证仍在；测试选择器 0 改动。
+- 合并验收：typecheck 0、web 890/890、shared 462/462、build ✓；styles.css 319 行
+  （仅剩 wks-* 抽屉段/settings 保留段/chat 5 守卫/模型 tabs/注释）。
+- 遗留产品决策项：chat ToolResultView 的补偿 span 原本被 .wk-list li span 压制，
+  设计上若要恢复其自身样式可删补偿 utilities（1:1 原则下保持现状）。
 ### 批次19：TenantMembers 域 ✅（子任务执行，Orchestrator 验收提交）
 - TenantMembersPanel.tsx ~95 条规则内联 utilities（表格/分页/标签三态/确认弹层；
   settings-wrapper 抽屉 select chrome 特异性更高今日实际生效，按生效值 4 条未复制）；
