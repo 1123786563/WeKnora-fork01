@@ -2080,3 +2080,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Mobile recents/favorites now follow the Vue user+tenant namespace across `6ffeb7a5` and `f645ae5d`: stable `auth.me().user.id`, anonymous namespace, refresh-failure reset, atomic generation-checked workspace hydration, and reload on user/tenant changes.
 - Focused mobile tests pass 24/24; mobile typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
 - N031 remains open for native runtime evidence and other mobile acceptance dimensions.
+
+## 2026-09-15 Round N+33k — N031 mobile graph localization
+
+- `KnowledgeGraphScreen` now uses the five-language graph surface copy for depth, counts, bounded overview, links, familiar markers, load failures and empty graphs (`eb853ddd`); unknown server node types remain data-driven and no unsupported capability gate was introduced.
+- Focused graph tests pass 3/3; mobile typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
+- N031 remains open for native graph runtime evidence and remaining mobile acceptance dimensions.
