@@ -11,6 +11,7 @@ import { Button, Card, Status } from "@weknora/ui";
 import { saveWikiPage, type WikiSaveState } from "./editor.ts";
 import { createTranslator, useAppLocale } from "../i18n.ts";
 import { pagerState } from "../pagination.ts";
+import { computeKBPermissions, type KBSurfaceKB, type KBSurfaceMe } from "../knowledge/permissions.ts";
 
 const WIKI_PAGE_SIZE = 50;
 
@@ -18,7 +19,7 @@ export function WikiPage({
   client,
   knowledgeBaseId,
   initialSlug,
-  canContribute = false,
+  canContribute: canContributeProp = false,
 }: {
   client: WeKnoraClient;
   knowledgeBaseId: string;
@@ -59,6 +60,24 @@ export function WikiPage({
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [reverting, setReverting] = useState(false);
+  const [canContribute, setCanContribute] = useState(canContributeProp);
+
+  useEffect(() => {
+    let active = true;
+    setCanContribute(canContributeProp);
+    void Promise.all([
+      client.knowledgeBases.settings.get(knowledgeBaseId),
+      client.auth.me().catch(() => null),
+    ] as const).then(([kb, me]) => {
+      if (!active || !me) return;
+      setCanContribute(
+        computeKBPermissions(kb as KBSurfaceKB, me as KBSurfaceMe).canContribute,
+      );
+    }).catch(() => {
+      // Keep the caller's role gate when the optional permission probe fails.
+    });
+    return () => { active = false; };
+  }, [client, knowledgeBaseId, canContributeProp]);
 
   async function loadPages() {
     setState({ status: "loading" });

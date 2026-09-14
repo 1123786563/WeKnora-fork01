@@ -41,6 +41,13 @@ test('viewer mode hides Wiki create and edit surfaces while preserving the read 
   assert.doesNotMatch(html, /class="wk-wiki-editor/);
 });
 
+test('Wiki defaults to read-only when the contributor capability is omitted', () => {
+  const client = { wiki: { list: async () => ({ pages: [], total: 0 }) } } as never;
+  const html = renderToStaticMarkup(React.createElement(WikiPage, { client, knowledgeBaseId: 'kb-1' }));
+  assert.doesNotMatch(html, /class="wk-wiki-editor/);
+  assert.doesNotMatch(html, /新建页面|新建 Wiki 页面/);
+});
+
 test('contributor mode keeps Wiki create and editor surfaces available', () => {
   const client = { wiki: { list: async () => ({ pages: [], total: 0 }) } } as never;
   const html = renderToStaticMarkup(React.createElement(WikiPage, { client, knowledgeBaseId: 'kb-1', canContribute: true }));
