@@ -149,7 +149,7 @@ export const mobileManagementMessages: Record<Locale, Record<string, string>> = 
     'mobileApiKeys.create': '범위 지정 키 만들기',
     'mobileApiKeys.creating': '생성 중…',
     'mobileApiKeys.empty': '반환된 API 키가 없습니다.',
-    'mobileApiKeys.revokeTitle': 'API 키를 취소할까요?',
+    'mobileApiKeys.revokeTitle': 'API 키를 폐기할까요?',
     'mobileApiKeys.revokeMessage': '{name}이(가) 즉시 작동을 멈춥니다.',
     'mobileApiKeys.cancel': '취소',
     'mobileApiKeys.revoke': '폐기',
