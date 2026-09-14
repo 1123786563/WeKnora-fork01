@@ -377,7 +377,7 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
 
         {isRegister && (registrationEnabled || invite) ? <div className="box-border w-full rounded-2xl border-0 bg-[rgba(255,255,255,0.97)] p-10 shadow-[0_10px_40px_rgba(0,0,0,0.15)] max-[768px]:p-5">
           <div className="form-header">
-            <h2 className="m-0 mb-2.5 text-[28px] text-[#1a1a1a]">{t('auth.createAccount')}</h2>
+            <h2 className="m-0 mb-1.5 text-2xl font-semibold text-[#1a1a1a]">{t('auth.createAccount')}</h2>
             <p className="m-0 text-sm leading-[1.5] text-[#555]">{t('auth.registerSubtitle')}</p>
           </div>
           <form className="flex flex-col gap-[18px]" onSubmit={submit} aria-label="Register form">
@@ -404,7 +404,7 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
             <button type="submit" className="h-[46px] cursor-pointer rounded-lg border-0 bg-(--auth-brand) text-base font-semibold text-white [font-family:var(--auth-font)] hover:bg-[#06ad55] disabled:cursor-not-allowed disabled:opacity-60" disabled={loading}>{loading ? t('auth.registering') : t('auth.register')}</button>
             {!inviteToken ? <div className="mt-[18px] text-center text-sm text-[#666]">
               <span>{t('auth.haveAccount')}</span>
-              <button type="button" className="cursor-pointer border-0 bg-transparent px-1 py-0 text-sm text-(--auth-brand)" onClick={() => { setMode('login'); setState('idle'); setMessage(''); setFieldErrors({}); }}>{t('auth.backToLogin')}</button>
+              <button type="button" className="ml-1 cursor-pointer border-0 bg-transparent p-0 text-sm font-medium text-(--auth-brand) hover:underline" onClick={() => { setMode('login'); setState('idle'); setMessage(''); setFieldErrors({}); }}>{t('auth.backToLogin')}</button>
             </div> : null}
           </form>
           <div className="mt-6 flex flex-col gap-2.5">

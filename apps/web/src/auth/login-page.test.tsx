@@ -116,3 +116,15 @@ test('register form keeps Vue required markers on every required field', async (
   const labels = [...document.querySelectorAll('form[aria-label="Register form"] label > span:first-child')].map((node) => node.textContent?.trim());
   assert.deepEqual(labels.slice(0, 4), ['*用户名', '*邮箱', '*密码', '*确认密码']);
 });
+
+test('register heading and return action keep the Vue visual contract', async () => {
+  await mountLogin(fakeClient());
+  const create = [...document.querySelectorAll('button')].find((node) => (node.textContent ?? '').includes('创建账户')) as HTMLButtonElement;
+  await act(async () => { create.click(); });
+  const heading = document.querySelector('form[aria-label="Register form"]')?.parentElement?.querySelector('h2');
+  assert.match(heading?.className ?? '', /text-2xl/);
+  assert.match(heading?.className ?? '', /font-semibold/);
+  const back = [...document.querySelectorAll('button')].find((node) => (node.textContent ?? '').includes('返回登录'));
+  assert.match(back?.className ?? '', /font-medium/);
+  assert.match(back?.className ?? '', /hover:underline/);
+});
