@@ -2170,3 +2170,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - `CloudSettingsPanel` now localizes its description, credential save hint and model/status fallback labels across five locales (`c56a411f`), preserving server-returned status values and credential form behavior.
 - Settings coverage remains 15/15; Web typecheck/build and `git diff --check` pass. Independent review found no P1/P2/P3.
 - Protected runtime evidence remains open.
+
+## 2026-09-15 Round N+33z — R013 Cloud settings browser evidence
+
+- Captured authenticated React Chrome AX evidence for `/platform/settings?section=weknoracloud` in `222de744`; localized Chinese status labels and credential actions were reachable.
+- The available Vue tab redirected to `/login`, so this evidence does not prove same-session Vue pixel parity or backend credential success/failure behavior.
