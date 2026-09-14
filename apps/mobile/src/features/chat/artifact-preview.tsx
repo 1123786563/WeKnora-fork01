@@ -23,7 +23,7 @@ export interface NativeArtifactPreviewProps {
 export function NativeArtifactPreview({ artifact, uri, content, loading = false, error, labels, onClose, onDownload }: NativeArtifactPreviewProps) {
   const model = classifyNativeArtifactPreview(artifact);
   const lines = model.kind === 'markdown' && content !== undefined ? nativeMarkdownLines(content) : [];
-  const copy = labels ?? { back: 'Back', share: 'Share', loading: 'Loading preview…' };
+  const copy = labels ?? { back: 'Back', share: 'Share', loading: 'Loading preview…', downloadOnly: model.label };
   return <Modal visible animationType="slide" onRequestClose={onClose}>
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, borderBottomColor: '#eaecf0', borderBottomWidth: 1 }}>

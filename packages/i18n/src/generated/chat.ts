@@ -87,6 +87,10 @@ export const chatMessages: Record<string, Record<string, string>> = {
     'mobileChat.reject': '拒绝',
     'mobileChat.authorize': '授权',
     'mobileChat.tool': '工具',
+    'mobileChat.back': '返回',
+    'mobileChat.share': '分享',
+    'mobileChat.loadingPreview': '正在加载预览…',
+    'mobileChat.downloadOnly': '此文件类型仅支持下载',
 
   },
   'en-US': {
@@ -170,6 +174,10 @@ export const chatMessages: Record<string, Record<string, string>> = {
     'mobileChat.reject': 'Reject',
     'mobileChat.authorize': 'Authorize',
     'mobileChat.tool': 'Tool',
+    'mobileChat.back': 'Back',
+    'mobileChat.share': 'Share',
+    'mobileChat.loadingPreview': 'Loading preview…',
+    'mobileChat.downloadOnly': 'This file type is available for download only',
 
   },
   'ja-JP': {
@@ -253,6 +261,10 @@ export const chatMessages: Record<string, Record<string, string>> = {
     'mobileChat.reject': '拒否',
     'mobileChat.authorize': '認証',
     'mobileChat.tool': 'ツール',
+    'mobileChat.back': '戻る',
+    'mobileChat.share': '共有',
+    'mobileChat.loadingPreview': 'プレビューを読み込み中…',
+    'mobileChat.downloadOnly': 'このファイル形式はダウンロードのみ対応しています',
 
   },
   'ko-KR': {
@@ -336,6 +348,10 @@ export const chatMessages: Record<string, Record<string, string>> = {
     'mobileChat.reject': '거부',
     'mobileChat.authorize': '인증',
     'mobileChat.tool': '도구',
+    'mobileChat.back': '뒤로',
+    'mobileChat.share': '공유',
+    'mobileChat.loadingPreview': '미리보기 로드 중…',
+    'mobileChat.downloadOnly': '이 파일 형식은 다운로드만 지원합니다',
 
   },
   'ru-RU': {
@@ -419,6 +435,10 @@ export const chatMessages: Record<string, Record<string, string>> = {
     'mobileChat.reject': 'Отклонить',
     'mobileChat.authorize': 'Авторизовать',
     'mobileChat.tool': 'Инструмент',
+    'mobileChat.back': 'Назад',
+    'mobileChat.share': 'Поделиться',
+    'mobileChat.loadingPreview': 'Загрузка предпросмотра…',
+    'mobileChat.downloadOnly': 'Этот тип файла доступен только для скачивания',
 
   },
 };

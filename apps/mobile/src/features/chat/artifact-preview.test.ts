@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { classifyNativeArtifactPreview, nativeMarkdownLines } from './artifact-preview.ts';
+import { nativeArtifactPreviewLabels } from './artifact-preview-labels.ts';
 
 test('classifies mobile artifact preview without enabling executable document content', () => {
   assert.deepEqual(classifyNativeArtifactPreview({ fileName: 'guide.md', fileType: 'text/markdown' }), {
@@ -34,4 +35,16 @@ test('native Markdown projection keeps source text and marks common readable blo
   assert.deepEqual(nativeMarkdownLines('<script>alert(1)</script>'), [
     { kind: 'text', text: '<script>alert(1)</script>' },
   ]);
+});
+
+test('native artifact drawer labels resolve for every supported locale', async () => {
+  for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'ko-KR', 'ru-RU'] as const) {
+    const labels = nativeArtifactPreviewLabels(locale);
+    for (const value of Object.values(labels)) {
+      assert.ok(value.trim());
+      assert.notEqual(value, 'mobileChat.back');
+    }
+    assert.notEqual(labels.back, labels.share, locale);
+    assert.notEqual(labels.loading, labels.downloadOnly, locale);
+  }
 });
