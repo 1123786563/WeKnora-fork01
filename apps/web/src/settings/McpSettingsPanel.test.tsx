@@ -185,7 +185,7 @@ test('MCP metadata automatically refreshes when Vue cache lookup returns empty',
     await act(async () => { submitForm(document.querySelector('.wks-mcp-drawer form') as HTMLFormElement); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     assert.equal(refreshCalls, 1, 'empty cache triggers one Vue-compatible refresh');
-    assert.match(document.querySelector('.wk-mcp-metadata')?.textContent ?? '', /1 个工具/);
+    assert.match(document.querySelector('section[aria-label="Tools 清单"]')?.textContent ?? '', /1 个工具/);
   } finally {
     await unmountEditor(root);
   }
@@ -239,7 +239,7 @@ test('MCP editor step 0 matches the Vue drawer structure and offers no stdio tra
     assert.ok(footerButtons.some((label) => label.includes('取消')) && footerButtons.some((label) => label.includes('保存并下一步')), 'footer cancel + confirm render');
     assert.ok(footerButtons.findIndex((label) => label.includes('取消')) < footerButtons.findIndex((label) => label.includes('保存并下一步')), 'Vue footer order: cancel before confirm');
     assert.ok(!findButton('测试连接'), 'Vue baseline has no reachable test-connection UI');
-    assert.ok(!dialog?.querySelector('.wk-mcp-metadata'), 'step 0 does not mount the tools panel');
+    assert.ok(!dialog?.querySelector('section[aria-label="Tools 清单"]'), 'step 0 does not mount the tools panel');
   } finally {
     await unmountEditor(root);
   }
@@ -307,18 +307,18 @@ test('step 2 gates save on tool sync and shows the Vue usage counter, hint and g
     assert.ok(saveButton?.disabled, 'save is gated until tools are synced (Vue confirm-disabled)');
     const generateButton = findButton('AI 生成');
     assert.ok(generateButton?.disabled, 'AI generate is gated until tools are synced');
-    assert.ok(dialog?.querySelector('.wk-mcp-metadata'), 'step 2 mounts the metadata panel');
+    assert.ok(dialog?.querySelector('section[aria-label="Tools 清单"]'), 'step 2 mounts the metadata panel');
     await act(async () => {
       metadataGate.resolve({ serviceId: 'svc-1', tools: [{ name: 'search', description: 'Search docs' }], serverName: 'Srv', serverVersion: '1.0', instructions: 'Use the documentation tools.', serverDescription: 'Documentation server', syncedAt: '2026-09-13T00:00:00Z', stale: false });
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
     assert.ok(!findButton('保存')?.disabled, 'save unlocks once the tool catalog syncs');
     assert.ok(!findButton('AI 生成')?.disabled, 'AI generate unlocks once the tool catalog syncs');
-    const docsTrigger = document.querySelector('.wk-mcp-server-docs-trigger') as HTMLButtonElement | null;
+    const docsTrigger = findButton('服务端原始说明');
     assert.ok(docsTrigger, 'server documentation trigger mirrors the Vue metadata popup');
     await act(async () => { docsTrigger?.click(); });
     assert.match(document.body.textContent ?? '', /Use the documentation tools\./);
-    const toolDetails = document.querySelector('.wk-mcp-directory-heading button') as HTMLButtonElement | null;
+    const toolDetails = findButton('详情');
     assert.ok(toolDetails, 'tool details trigger renders');
     await act(async () => { toolDetails?.click(); });
     const toolPopup = document.body.querySelector('.wk-mcp-tool-detail-popup');

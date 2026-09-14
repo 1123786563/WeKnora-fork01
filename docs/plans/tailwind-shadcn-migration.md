@@ -139,6 +139,13 @@ hook 类（测试/JS 引用）保留类名。
   styles.css 删 22 条（20 条 1:1 + 2 条死规则 rename 家族）；styles.css wk-channel* 清零；
   测试选择器 29 处语义化（imWizard 9/embedWizard 18/embedPreviewFallback 2）；JS 钩子 0。
 - 验收：typecheck 0、integrations 52/52、web 856/856、build ✓。
+### 批次30：wk-mcp 大家族 ✅（子任务执行，Orchestrator 验收提交）
+- styles.css 删 113 行 .wk-mcp-* 规则（含 12 行死规则）；McpToolsDirectory/
+  McpTestResultBody/McpSettingsPanel 三组件全迁移（9 个共享 utility 常量）；
+  测试选择器 5 处语义化；钩子类 6 个保留（测试 querySelector 引用）+ 4 个纯钩子未动。
+- 关键生效值编码：z-[1200]!（压 .wks-overlay）、p-[.45rem]!（压 settings-editor input）、
+  竞争色按原级联胜者加 !；重复规则合并；720px media → max-[720px]:grid-cols-1。
+- 验收：typecheck 0、mcp 测试 16/16 + 2/2、web 856/856、build ✓；styles.css 1013→835 行。
 ### 批次19：TenantMembers 域 ✅（子任务执行，Orchestrator 验收提交）
 - TenantMembersPanel.tsx ~95 条规则内联 utilities（表格/分页/标签三态/确认弹层；
   settings-wrapper 抽屉 select chrome 特异性更高今日实际生效，按生效值 4 条未复制）；
