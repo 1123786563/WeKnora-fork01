@@ -44,6 +44,9 @@ API 契约、鉴权、权限、表单校验、聊天流式、工具审批、上�
 
 ## 进度账本
 
+运维记录：首批并行子任务因始终未执行文件写入被中断（只读分析循环）；
+前台探针证实绝对路径写入可用。已带侦查结论 + 「边读边写 + 后台门禁」纪律重新派发。
+
 ### 批次1：auth 域 ✅（Orchestrator 自做，子任务环境无法写文件已回退）
 - LoginPage.tsx 全部样式 → utilities；.language-switch 保留为 closest() DOM 钩子；
   auth.css 缩减为 2 条 @keyframes（nodePulse/lineFlow，复杂动画按约定保留）；
