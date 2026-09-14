@@ -6,7 +6,7 @@ import {
   contextualGuideMessage,
   markContextualGuideDone,
   openContextualGuide,
-} from '@weknora/views';
+} from '@weknora/views/guides/contextual-guides';
 import './agents.css';
 import { AgentEditorModal } from './AgentEditorModal.tsx';
 import { makeEditorT } from './agent-editor.ts';

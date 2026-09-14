@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatMessage } from '@weknora/i18n';
 import type { WeKnoraClient } from '@weknora/api-client';
-import type { ApiKeyRow, IntegrationAgentOption, IntegrationKnowledgeBaseOption, IntegrationWeChatQrPorts } from '@weknora/views';
-import { integrationKeyFromQuery, IntegrationsPage, type APIPrincipalConfig, type IntegrationKey, type IntegrationResource } from '@weknora/views';
+import type { IntegrationAgentOption, IntegrationKnowledgeBaseOption, IntegrationWeChatQrPorts, APIPrincipalConfig, IntegrationResource } from '@weknora/views/integrations/page';
+import type { ApiKeyRow } from '@weknora/views/integrations/apiKeys';
+import type { IntegrationKey } from '@weknora/views/integrations/registry';
+import { IntegrationsPage } from '@weknora/views/integrations/page';
+import { integrationKeyFromQuery } from '@weknora/views/integrations/registry';
 import { parseIntegrationTenantId } from './tenant.ts';
 import { ApiPlaygroundDrawer } from './ApiPlaygroundDrawer.tsx';
 import { EmbedPreviewModal } from './EmbedPreviewModal.tsx';

@@ -81,6 +81,8 @@
       "@weknora/views/chat/mermaid": ["../../packages/views/src/chat/mermaid.ts"],
       "@weknora/views/guides/contextual-guides": ["../../packages/views/src/guides/contextual-guides.ts"],
       "@weknora/views/integrations/registry": ["../../packages/views/src/integrations/registry.ts"],
+      "@weknora/views/integrations/page": ["../../packages/views/src/integrations/page.tsx"],
+      "@weknora/views/integrations/apiKeys": ["../../packages/views/src/integrations/apiKeys.ts"],
       "@weknora/views/integrations/settings-route": ["../../packages/views/src/integrations/settings-route.ts"],
       "@weknora/views/settings/registry": ["../../packages/views/src/settings/registry.ts"],
       "@weknora/domain/settings/local-preferences": [
