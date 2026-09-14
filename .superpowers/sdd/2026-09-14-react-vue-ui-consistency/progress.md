@@ -169,3 +169,9 @@
 - Validation: `pnpm run test:web` 891/891; `pnpm run typecheck:web`; `git diff --check`.
 - Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r024-runtime-queues-task-copy.md`.
 - Remaining: environment-dependent authenticated queue task drawer evidence.
+
+## Round N+34be — API key capability label parity
+
+- Added locale-aware display labels for all seven system capability values without changing backend payload identifiers.
+- Validation: `pnpm run test:web` 891/891; `pnpm run typecheck:web`; `git diff --check`.
+- Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r025-platform-api-key-capability-labels.md`.
