@@ -127,3 +127,4 @@
 - 工具搜索命中元数据已支持活动语言：`toolChunkHits`/`toolKeywordHits` 五语言键接入 Search/Grep view，且无 copy 的旧调用继续输出原英文格式；提交 `fix(chat): localize tool hit metadata`。shared 465/465、Web typecheck 通过。
 - Shell 工具结果的 killed/truncated 状态已接入五语言 `ChatCopyTable`，提交 `fix(chat): localize shell status labels`；shared 465/465、Web typecheck 与 `git diff --check` 通过。
 - 工具结果详情字段已本地化：评分、片段数、FAQ/文档 ID、答案、描述、来源、文件、URL 和错误码均通过五语言 `ChatCopyTable` 渲染；提交 `fix(chat): localize tool detail fields`。shared 465/465、Web typecheck、`git diff --check` 通过。
+- ChatPage 余留英文 accessibility/fallback 文案已收敛：Live response、空态 starter 区、主聊天区、沙箱终端以及 action/steer 异常均使用活动 `ChatCopyTable`；空态条件避免 aria 标签干扰欢迎文案判断，提交 `fix(chat): localize accessibility fallbacks`。Web 891/891、typecheck:web、git diff --check 通过。
