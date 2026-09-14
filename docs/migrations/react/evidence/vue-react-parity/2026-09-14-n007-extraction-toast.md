@@ -73,3 +73,5 @@ Vue `ModelEditorDialog.vue` uses TDesign inputs for dimension, context window, a
 Verification: `pnpm exec tsx --test apps/web/src/settings/ModelSettingsPanel.test.tsx` 23/23; `pnpm run test:web` 835/835; `pnpm run typecheck:web` passed; `git diff --check` passed. This is static/component evidence only; authenticated browser computed-style, real backend mutation/connection evidence, and Wails/native evidence remain open under R027.
 
 The React implementation now has a real Tailwind v4 + shadcn-style primitive layer in `packages/ui`: `cn`, `Input`, `Switch`, and `NumberInput`. The model settings and debug surfaces consume these shared primitives; the previous local number/switch chrome was removed. `typecheck:shared`, `typecheck:web`, and `build:web` pass, but this does not establish parity for pages that have not yet migrated to the shared layer.
+
+`ModelOptionSelect` also now uses Tailwind utilities for the Vue-shaped trigger, popup, option states, selected indicator, and mobile width rule; its behavior remains covered by the model settings tests and the full Web suite (835/835).

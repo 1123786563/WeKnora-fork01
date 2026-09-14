@@ -189,29 +189,9 @@
 .wk-model-test-trigger { align-items: center; background: transparent; border: 0; color: #0a8f4c; cursor: pointer; display: inline-flex; font: inherit; font-size: 14px; font-weight: 600; gap: 6px; padding: 4px 0; }
 .wk-model-test-trigger:hover, .wk-model-test-trigger:focus-visible { color: #067a3f; }
 
-/* ModelEditorDialog.vue provider-select-popup / thinking-control-select-popup:
-   TDesign renders a compact trigger with two-line options. Keep the popup
-   local to the drawer while preserving the same keyboard and focus affordances. */
-.wk-model-option-select { position: relative; width: 100%; }
-.wk-model-option-select__trigger { align-items: center; background: #fff; border: 1px solid #dcdcdc; border-radius: 3px; box-sizing: border-box; color: rgba(0,0,0,.9); cursor: pointer; display: flex; font: inherit; height: 32px; justify-content: space-between; padding: 0 8px 0 10px; text-align: left; width: 100%; }
-.wk-model-option-select__trigger:hover { border-color: #07c05f; }
-.wk-model-option-select__trigger:focus-visible { border-color: #07c05f; box-shadow: 0 0 0 2px rgba(7,192,95,.2); outline: none; }
-.wk-model-option-select__trigger:disabled { background: #eee; border-color: #dcdcdc; color: rgba(0,0,0,.26); cursor: not-allowed; }
-.wk-model-option-select__value { display: flex; flex: 1; min-width: 0; overflow: hidden; }
-.wk-model-option-select__value > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wk-model-option-select__description { color: #8a8a8a; font-size: 12px; margin-left: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wk-model-option-select__chevron { color: rgba(0,0,0,.4); font-size: 16px; line-height: 1; margin-left: 8px; }
-.wk-model-option-select__popup { background: #fff; border: 1px solid #e7e7e7; border-radius: 6px; box-shadow: 0 8px 24px rgba(23,32,51,.14); display: grid; left: 0; max-height: 280px; min-width: 22rem; overflow: auto; padding: 4px; position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; }
-.wk-model-option-select__option { background: transparent; border: 0; border-radius: 6px; cursor: pointer; display: flex; flex-direction: column; gap: 2px; margin: 2px 0; padding: 8px 10px; text-align: left; width: 100%; }
 .wk-model-switch { align-items: center; cursor: pointer; display: flex; flex-wrap: wrap; gap: 0 8px; margin-top: 4px; min-height: 22px; }
 .wk-model-switch__label { color: rgba(0,0,0,.9); font-size: 13px; font-weight: 500; }
 .wk-model-switch__description { color: #8a8a8a; flex-basis: 100%; font-size: 12px; line-height: 1.5; margin-left: 44px; margin-top: 2px; }
-.wk-model-option-select__option:hover, .wk-model-option-select__option.is-active { background: rgba(7,192,95,.08); }
-.wk-model-option-select__option.is-selected { background: rgba(7,192,95,.12); position: relative; }
-.wk-model-option-select__option.is-selected::before { background: #07c05f; border-radius: 0 2px 2px 0; bottom: 8px; content: ''; left: 0; position: absolute; top: 8px; width: 3px; }
-.wk-model-option-select__option-title { color: rgba(0,0,0,.9); font-size: 13px; font-weight: 500; line-height: 20px; }
-.wk-model-option-select__option-description { color: #8a8a8a; font-size: 12px; line-height: 18px; white-space: normal; }
-@media (max-width: 720px) { .wk-model-option-select__popup { min-width: 0; } }
 
 /* ModelSettings.vue model type tabs (t-tabs, lines 924-952) */
 .wk-model-tabs button { font-size: 13px; }

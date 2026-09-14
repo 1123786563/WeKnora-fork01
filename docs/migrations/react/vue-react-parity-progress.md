@@ -1890,3 +1890,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 仓库原先没有 Tailwind/shadcn 基础；新增 Tailwind v4 Vite 插件、`cn`（`clsx` + `tailwind-merge`）以及共享 `Input`、`Switch`、`NumberInput` 组件。R027 模型设置和模型调试面板改用共享组件，保留 Vue 字段边界、更新和调试请求契约。
 - 模型设置/调试定向测试 27/27、Web 全量 835/835、`typecheck:shared`、`typecheck:web`、`build:web` 与 `git diff --check` 通过。
 - 这是基础设施和两个设置子面板的迁移，不代表全仓库页面已完成 Tailwind/shadcn 改造；其他页面仍需逐页迁移与 Vue 实际运行对照。
+
+## 2026-09-14 Round N+76 — R027 模型选择器 Tailwind 化
+
+- `ModelOptionSelect` 的触发器、弹层、选项、选中指示条和 720px 响应式规则改为 Tailwind utilities；移除对应设置页专用选择器 CSS，保留 Vue 的键盘导航、Escape、外部点击关闭、选中/active 状态和 popup 层级。
+- 模型设置/调试定向测试 27/27、Web 全量 835/835、`typecheck:web`、`build:web` 与 `git diff --check` 通过。
+- R027 仍未达到最终验收：认证浏览器 computed-style、真实后端保存/连接测试和 Wails/native 证据缺失；Tailwind/shadcn 迁移也尚未覆盖全仓库页面。
