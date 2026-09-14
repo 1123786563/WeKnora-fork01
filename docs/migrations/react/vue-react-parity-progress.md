@@ -2231,3 +2231,7 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - `McpSettingsPanel` now uses the shared `mcpSettings.deleteConfirmBody` interpolation for all five locales; permissions, built-in protection and delete lifecycle remain unchanged.
 - MCP-focused tests pass 18/18; independent review found no P1/P2/P3. Browser confirmation interaction evidence remains open.
+
+## 2026-09-15 Round N+34l — R013 MCP settings browser evidence
+
+- Authenticated React Chrome confirms localized MCP heading, description and add action. No service row was present to exercise the destructive confirmation dialog; same-session Vue comparison remains open.
