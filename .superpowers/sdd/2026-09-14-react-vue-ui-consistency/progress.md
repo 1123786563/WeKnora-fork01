@@ -193,3 +193,9 @@
 - Removed the remaining hardcoded Chinese empty-state fallback from system global settings and covered all five locales.
 - Validation: `pnpm run test:web` 891/891; `pnpm run typecheck:web`; `git diff --check`.
 - Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r028-system-global-empty-locale.md`.
+
+## Round N+34bi — system setting field labels
+
+- Added five-locale labels for known auth, tenant, runtime, SSRF and sandbox settings while preserving unknown-key fallback behavior.
+- Validation: `pnpm run test:web` 891/891; `pnpm run typecheck:web`; `git diff --check`.
+- Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r029-system-setting-labels.md`.
