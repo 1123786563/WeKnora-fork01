@@ -1,5 +1,12 @@
 import type { ChatSubmission } from '@weknora/views';
 
+export interface SteerMentionItem {
+  id: string;
+  name: string;
+  type: 'kb';
+  kbType?: 'document' | 'faq';
+}
+
 export const STEER_CONFLICT_STATUS = 409;
 
 export type SteerAction = 
@@ -12,6 +19,7 @@ export type SteerAction =
       channel: string;
       expectedAssistantMessageId?: string;
       steerId: string;
+      mentionedItems?: SteerMentionItem[];
     };
   };
 
@@ -25,6 +33,7 @@ export function buildSteerAction(options: {
   streaming: boolean;
   content: string;
   assistantMessageId?: string;
+  mentionedItems?: readonly SteerMentionItem[];
   newSteerId: () => string;
 }): SteerAction {
   if (!options.streaming) {
@@ -38,6 +47,7 @@ export function buildSteerAction(options: {
       channel: 'web',
       ...(options.assistantMessageId ? { expectedAssistantMessageId: options.assistantMessageId } : {}),
       steerId: options.newSteerId(),
+      ...(options.mentionedItems && options.mentionedItems.length > 0 ? { mentionedItems: [...options.mentionedItems] } : {}),
     },
   };
 }

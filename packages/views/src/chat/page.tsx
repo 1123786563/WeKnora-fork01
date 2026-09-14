@@ -93,7 +93,7 @@ export interface ChatPageProps {
   onResolveToolApproval?(pendingId: string, decision: 'approve' | 'reject', modifiedArgs?: Record<string, unknown>): Promise<void>;
   onAuthorizeOAuth?(pendingId: string, serviceId: string): Promise<void>;
   onCancelOAuth?(pendingId: string): Promise<void>;
-  onSteer?(content: string): Promise<void>;
+  onSteer?(content: string, mentionedItems?: readonly ChatMentionView[]): Promise<void>;
   onStopStream?(): void;
   stream?: ChatStreamPresentation;
   onRenameSession?(sessionId: string): Promise<void>;
@@ -189,22 +189,43 @@ function ChatActionCards(props: Pick<ChatPageProps, 'toolApprovals' | 'oauthAppr
   </section>;
 }
 
-function SteerComposer({ copy, onSteer }: { copy: ChatCopyTable; onSteer: (content: string) => Promise<void> }) {
+function SteerComposer({ copy, onSteer, mentionOptions = [], mentionedItems = [], onMentionOpen, onMentionSelect, onMentionRemove }: {
+  copy: ChatCopyTable;
+  onSteer: (content: string, mentionedItems: readonly ChatMentionView[]) => Promise<void>;
+  mentionOptions?: readonly ChatMentionView[];
+  mentionedItems?: readonly ChatMentionView[];
+  onMentionOpen?(): void;
+  onMentionSelect?(item: ChatMentionView): void;
+  onMentionRemove?(id: string): void;
+}) {
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState('');
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const content = draft.trim();
     if (!content) return;
     setBusy(true); setError(null);
-    try { await onSteer(content); setDraft(''); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Follow-up failed'); } finally { setBusy(false); }
+    try { await onSteer(content, mentionedItems); setDraft(''); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Follow-up failed'); } finally { setBusy(false); }
+  }
+
+  const availableMentions = mentionOptions.filter((item) => item.name.toLocaleLowerCase().includes(mentionQuery.trim().toLocaleLowerCase()) && !mentionedItems.some((selected) => selected.id === item.id));
+  function openMentions(): void {
+    if (busy) return;
+    const next = !mentionOpen;
+    setMentionOpen(next);
+    setMentionQuery('');
+    if (next) onMentionOpen?.();
   }
 
   return <form className="wk-chat-steer mx-auto grid w-full max-w-[960px] gap-[6px] rounded-[10px_10px_0_0] border border-b-0 border-[#dcdcdc] px-[12px] py-[8px]" onSubmit={(event) => void submit(event)}>
     <label htmlFor="wk-chat-steer-draft" className="text-[12px] text-[rgba(0,0,0,0.6)]">{copy.steerCurrent}</label>
+    {mentionedItems.length > 0 ? <ul className="m-0 flex flex-wrap gap-[6px] p-0" aria-label={copy.mentionKnowledge}>{mentionedItems.map((item) => <li key={item.id} className="inline-flex items-center gap-[5px] rounded-[6px] border border-[#d9f2e2] bg-[#f2fbf5] px-[7px] py-[3px] text-[12px] text-[rgba(0,0,0,0.65)]"><span aria-hidden="true">@</span><span>{item.name}</span><button type="button" aria-label={`${copy.close}: ${item.name}`} className="border-0 bg-transparent p-0" disabled={busy} onClick={() => onMentionRemove?.(item.id)}>×</button></li>)}</ul> : null}
     <textarea id="wk-chat-steer-draft" rows={2} value={draft} onChange={(event) => setDraft(event.target.value)} disabled={busy} className="min-h-[40px] resize-none rounded-[6px] border-0 px-[8px] py-[6px] [font:inherit] text-[13px]" />
+    <div className="relative flex items-center gap-[6px]"><button id="wk-chat-steer-mention" type="button" aria-label={copy.mentionKnowledge} aria-expanded={mentionOpen} disabled={busy} className="cursor-pointer rounded-[6px] border border-[#dcdcdc] bg-white px-[8px] py-[4px] text-[12px] disabled:cursor-not-allowed disabled:opacity-50" onClick={openMentions}>@</button>{mentionOpen ? <div role="listbox" aria-label={copy.mentionKnowledge} className="absolute bottom-[34px] left-0 z-20 w-[260px] rounded-[8px] border border-[#e7e7e7] bg-white p-[8px] shadow-[0_8px_24px_rgba(0,0,0,0.12)]"><input autoFocus value={mentionQuery} onChange={(event) => setMentionQuery(event.target.value)} aria-label={copy.composerPlaceholder} placeholder={copy.composerPlaceholder} className="mb-[6px] box-border w-full rounded-[6px] border border-[#e7e7e7] px-[8px] py-[5px] text-[12px]" />{availableMentions.length > 0 ? availableMentions.map((item) => <button key={item.id} type="button" role="option" data-mention-id={item.id} className="block w-full rounded-[6px] border-0 bg-transparent px-[8px] py-[6px] text-left text-[12px] hover:bg-[#f3f3f3]" onClick={() => { onMentionSelect?.(item); setMentionOpen(false); }}>{item.name}</button>) : <p className="m-0 px-[8px] py-[6px] text-[12px] text-[rgba(0,0,0,0.45)]">{copy.mentionNoAvailable}</p>}</div> : null}</div>
     {error ? <p role="alert">{error}</p> : null}
     <button type="submit" disabled={busy || !draft.trim()} className="cursor-pointer self-end rounded-[6px] border-0 bg-[#07c05f] px-[12px] py-[5px] text-[13px] text-white disabled:cursor-not-allowed disabled:opacity-50">{copy.steerQueued}</button>
   </form>;
@@ -431,7 +452,7 @@ export function ChatPage(props: ChatPageProps) {
         />}
         {/* A follow-up queue only makes sense while a turn is actually running;
             when idle the main composer handles the message (a steer would 409). */}
-        {props.selectedSessionId && props.onSteer && streaming ? <SteerComposer copy={copy} onSteer={props.onSteer} /> : null}
+        {props.selectedSessionId && props.onSteer && streaming ? <SteerComposer copy={copy} onSteer={props.onSteer} mentionOptions={props.mentionOptions} mentionedItems={props.mentionedItems} onMentionOpen={props.onMentionOpen} onMentionSelect={props.onMentionSelect} onMentionRemove={props.onMentionRemove} /> : null}
         <ChatComposer
           copy={copy}
           draft={props.draft}

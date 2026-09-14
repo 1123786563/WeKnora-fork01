@@ -149,6 +149,22 @@ test('chat page hides the steer composer and stop button when idle', () => {
   assert.doesNotMatch(html, /class="wk-chat-stop"/);
 });
 
+test('chat page exposes KB mention controls in the streaming steer composer', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatPage, {
+    ...baseProps,
+    mentionOptions: [{ id: 'kb-1', name: '产品文档', type: 'kb' }],
+    mentionedItems: [{ id: 'kb-2', name: 'FAQ', type: 'kb', kbType: 'faq' }],
+    onMentionOpen: () => undefined,
+    onMentionSelect: () => undefined,
+    onMentionRemove: () => undefined,
+    onSteer: async () => undefined,
+    stream: { phase: 'streaming', thinking: '', references: [], toolCalls: [] },
+  }));
+  assert.match(html, /id="wk-chat-steer-mention"/);
+  assert.match(html, /FAQ/);
+  assert.match(html, /aria-expanded="false"/);
+});
+
 test('chat page shows the artifacts-pending indicator only while streaming', () => {
   const html = renderToStaticMarkup(React.createElement(ChatPage, {
     ...baseProps,

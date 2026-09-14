@@ -13,6 +13,16 @@ test('idle steer routes through the normal send path', () => {
   assert.deepEqual(action, { kind: 'send', submission: { content: 'next question', status: 'pending' } });
 });
 
+test('idle steer keeps mentions out of the normal send submission', () => {
+  const action = buildSteerAction({
+    streaming: false,
+    content: 'normal message',
+    mentionedItems: [{ id: 'kb-1', name: 'Docs', type: 'kb' }],
+    newSteerId: () => 'unused',
+  });
+  assert.deepEqual(action, { kind: 'send', submission: { content: 'normal message', status: 'pending' } });
+});
+
 test('streaming steer enqueues with the expected assistant message id and a client steer id', () => {
   const action = buildSteerAction({
     streaming: true,
@@ -28,6 +38,27 @@ test('streaming steer enqueues with the expected assistant message id and a clie
       channel: 'web',
       expectedAssistantMessageId: 'assistant-9',
       steerId: 'sid-2',
+    },
+  });
+});
+
+test('streaming steer carries selected knowledge-base mentions', () => {
+  const action = buildSteerAction({
+    streaming: true,
+    content: 'use the FAQ context',
+    assistantMessageId: 'assistant-10',
+    mentionedItems: [{ id: 'kb-2', name: 'FAQ', type: 'kb', kbType: 'faq' }],
+    newSteerId: () => 'sid-3',
+  });
+  assert.deepEqual(action, {
+    kind: 'enqueue',
+    input: {
+      query: 'use the FAQ context',
+      delivery: 'after',
+      channel: 'web',
+      expectedAssistantMessageId: 'assistant-10',
+      steerId: 'sid-3',
+      mentionedItems: [{ id: 'kb-2', name: 'FAQ', type: 'kb', kbType: 'faq' }],
     },
   });
 });

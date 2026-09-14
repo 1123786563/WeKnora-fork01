@@ -17,7 +17,7 @@ import { createWebTerminalController, webSocketTarget, type WebTerminalControlle
 import { saveArtifactDownload } from './artifact-download.ts';
 import { externalCitationTarget } from './citation.ts';
 import { findResumeTargetMessage } from './resume.ts';
-import { buildSteerAction, isSteerConflict } from './steer-submit.ts';
+import { buildSteerAction, isSteerConflict, type SteerMentionItem } from './steer-submit.ts';
 import { feedWithLastEventId, resumeStreamOptions, type LastEventIdHolder } from './stream-recovery.ts';
 import { prepareSendRun } from './send-run.ts';
 import './chat.css';
@@ -610,14 +610,16 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     return uuid ?? 'steer-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
   }
 
-  async function steer(content: string): Promise<void> {
+  async function steer(content: string, selectedMentions: readonly ChatMentionView[] = mentionedItems): Promise<void> {
     const sessionId = selectedSessionId;
     if (!sessionId) throw new Error('Create or select a conversation first.');
     const streaming = streamState.phase === 'streaming';
+    const steerMentions: SteerMentionItem[] = selectedMentions.map((item) => ({ id: item.id, name: item.name, type: 'kb', kbType: item.kbType }));
     const action = buildSteerAction({
       streaming,
       content,
       assistantMessageId: streamState.assistantMessageId,
+      mentionedItems: steerMentions,
       newSteerId,
     });
     if (action.kind === 'send') return send(action.submission);
