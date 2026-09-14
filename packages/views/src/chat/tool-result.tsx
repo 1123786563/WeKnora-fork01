@@ -769,7 +769,7 @@ export function RelatedChunksRenderer({ data, copy }: { data: unknown; copy?: Ch
           <div className={"wk-tool-row-title " + TOOL_ROW_TITLE}>
             <span className="wk-tool-row-index mr-[0.35rem] text-[0.7rem] font-semibold text-[#8a94a6] font-mono! text-[0.8rem]! text-muted!">{row.indexLabel}</span>
             {row.positionLabel ? <span className={"wk-tool-row-meta font-mono! text-[0.8rem]! text-muted! " + TOOL_ROW_META}>{row.positionLabel}</span> : null}
-            {row.score !== null ? <span className={"wk-tool-row-meta font-mono! text-[0.8rem]! text-muted! " + TOOL_ROW_META}>score {row.score.toFixed(3)}</span> : null}
+            {row.score !== null ? <span className={"wk-tool-row-meta font-mono! text-[0.8rem]! text-muted! " + TOOL_ROW_META}>{labels.toolScore} {row.score.toFixed(3)}</span> : null}
           </div>
           {row.content ? <p className={"wk-tool-snippet " + TOOL_SNIPPET}>{row.content}</p> : null}
         </li>
@@ -812,18 +812,18 @@ export function DocumentInfoRenderer({ data, copy }: { data: unknown; copy?: Cha
           <div className={"wk-tool-row-title " + TOOL_ROW_TITLE}>
             <span className="wk-tool-row-index mr-[0.35rem] text-[0.7rem] font-semibold text-[#8a94a6] font-mono! text-[0.8rem]! text-muted!">{row.indexLabel}</span>
             {row.title}
-            {row.chunkCount !== null ? <span className={"wk-tool-row-meta font-mono! text-[0.8rem]! text-muted! " + TOOL_ROW_META}>{row.chunkCount} chunks</span> : null}
+            {row.chunkCount !== null ? <span className={"wk-tool-row-meta font-mono! text-[0.8rem]! text-muted! " + TOOL_ROW_META}>{row.chunkCount} {labels.toolChunks}</span> : null}
           </div>
-          {row.faqId ? <InfoField label="FAQ ID"><InfoCode>{row.faqId}</InfoCode></InfoField> : null}
-          {row.knowledgeId ? <InfoField label="Document ID"><InfoCode>{row.knowledgeId}</InfoCode></InfoField> : null}
+          {row.faqId ? <InfoField label={labels.toolFaqId}><InfoCode>{row.faqId}</InfoCode></InfoField> : null}
+          {row.knowledgeId ? <InfoField label={labels.toolDocumentId}><InfoCode>{row.knowledgeId}</InfoCode></InfoField> : null}
           {row.faqAnswers.length ? (
-            <InfoField label="Answers">
+            <InfoField label={labels.toolAnswers}>
               <ul className="wk-tool-faq-answers m-0 flex list-none flex-col gap-[0.15rem] p-0">{row.faqAnswers.map((answer, i) => <li key={i}>{answer}</li>)}</ul>
             </InfoField>
           ) : null}
-          {row.description ? <InfoField label="Description">{row.description}</InfoField> : null}
-          {row.sourceLabel ? <InfoField label="Source">{row.sourceLabel}</InfoField> : null}
-          {row.fileLabel ? <InfoField label="File">{row.fileLabel}</InfoField> : null}
+          {row.description ? <InfoField label={labels.toolDescription}>{row.description}</InfoField> : null}
+          {row.sourceLabel ? <InfoField label={labels.toolSource}>{row.sourceLabel}</InfoField> : null}
+          {row.fileLabel ? <InfoField label={labels.toolFile}>{row.fileLabel}</InfoField> : null}
           {row.metadata.length ? (
             <div className="wk-tool-section mt-[0.4rem]">
               <div className="wk-tool-section-title mb-[0.2rem] text-[0.72rem] font-semibold text-[#52606d]">{labels.metadataLabel}</div>
@@ -856,8 +856,8 @@ export function WebFetchRenderer({ data, copy }: { data: unknown; copy?: ChatCop
             {row.contentLengthLabel ? <span className={"wk-tool-row-meta font-mono! text-[0.8rem]! text-muted! " + TOOL_ROW_META}>{row.contentLengthLabel}</span> : null}
             {row.truncated ? <span className={"wk-tool-row-meta font-mono! text-[0.8rem]! text-muted! " + TOOL_ROW_META}>{labels.webFetchPartialContent}</span> : null}
           </div>
-          {row.url ? <InfoField label="URL"><a href={row.url} target="_blank" rel="noopener noreferrer" className="text-[#245a9b]">{row.url}</a></InfoField> : null}
-          {row.errorCode ? <InfoField label="Error code">{row.errorCode}</InfoField> : null}
+          {row.url ? <InfoField label={labels.toolUrl}><a href={row.url} target="_blank" rel="noopener noreferrer" className="text-[#245a9b]">{row.url}</a></InfoField> : null}
+          {row.errorCode ? <InfoField label={labels.toolErrorCode}>{row.errorCode}</InfoField> : null}
           {row.errorMessage ? <p className={"wk-tool-snippet is-error text-[#c0392b]"}>{row.errorMessage}</p> : null}
           {row.summary ? (
             <div className="wk-tool-section mt-[0.4rem]">
