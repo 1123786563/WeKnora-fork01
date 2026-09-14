@@ -19,28 +19,23 @@ export interface ToolResultPresentation {
   toolName?: string;
 }
 
-const TITLES: Readonly<Record<NormalizedToolResult['renderer'], string>> = Object.freeze({
-  'search-results': 'Search results',
-  'chunk-detail': 'Chunk detail',
-  'related-chunks': 'Related chunks',
-  'knowledge-base-list': 'Knowledge bases',
-  'document-info': 'Document info',
-  'graph-query-results': 'Graph results',
-  thinking: 'Thinking',
-  plan: 'Plan',
-  'database-query': 'Database query',
-  'web-search-results': 'Web search results',
-  'web-fetch-results': 'Fetched page',
-  'grep-results': 'Search in files',
-  'knowledge-chunks-list': 'Knowledge chunks',
-  'wiki-edit': 'Wiki update',
-  'shell-exec': 'Shell command',
-  'sandbox-files': 'Sandbox files',
-  'sandbox-file-write': 'Sandbox file update',
-  'read-skill': 'Read skill',
-  'mcp-discovery': 'MCP tools',
-  'mcp-call': 'MCP result',
-  'plain-text': 'Tool result',
+const TITLE_KEYS: Readonly<Record<NormalizedToolResult['renderer'], keyof ChatCopyTable>> = Object.freeze({
+  'search-results': 'toolTitleSearchResults', 'chunk-detail': 'toolTitleChunkDetail', 'related-chunks': 'toolTitleRelatedChunks',
+  'knowledge-base-list': 'toolTitleKnowledgeBaseList', 'document-info': 'toolTitleDocumentInfo', 'graph-query-results': 'toolTitleGraphQueryResults',
+  thinking: 'toolTitleThinking', plan: 'toolTitlePlan', 'database-query': 'toolTitleDatabaseQuery', 'web-search-results': 'toolTitleWebSearchResults',
+  'web-fetch-results': 'toolTitleWebFetchResults', 'grep-results': 'toolTitleGrepResults', 'knowledge-chunks-list': 'toolTitleKnowledgeChunksList',
+  'wiki-edit': 'toolTitleWikiEdit', 'shell-exec': 'toolTitleShellExec', 'sandbox-files': 'toolTitleSandboxFiles',
+  'sandbox-file-write': 'toolTitleSandboxFileWrite', 'read-skill': 'toolTitleReadSkill', 'mcp-discovery': 'toolTitleMcpDiscovery',
+  'mcp-call': 'toolTitleMcpCall', 'plain-text': 'toolTitlePlainText',
+});
+const LEGACY_TITLES: Readonly<Record<NormalizedToolResult['renderer'], string>> = Object.freeze({
+  'search-results': 'Search results', 'chunk-detail': 'Chunk detail', 'related-chunks': 'Related chunks',
+  'knowledge-base-list': 'Knowledge bases', 'document-info': 'Document info', 'graph-query-results': 'Graph results',
+  thinking: 'Thinking', plan: 'Plan', 'database-query': 'Database query', 'web-search-results': 'Web search results',
+  'web-fetch-results': 'Fetched page', 'grep-results': 'Search in files', 'knowledge-chunks-list': 'Knowledge chunks',
+  'wiki-edit': 'Wiki update', 'shell-exec': 'Shell command', 'sandbox-files': 'Sandbox files',
+  'sandbox-file-write': 'Sandbox file update', 'read-skill': 'Read skill', 'mcp-discovery': 'MCP tools',
+  'mcp-call': 'MCP result', 'plain-text': 'Tool result',
 });
 
 // TODO(migration): local English labels until the strings move to @weknora/i18n
@@ -111,7 +106,7 @@ function argsRecord(value: unknown): Record<string, unknown> {
   return record(value);
 }
 
-export function toolResultPresentation(input: ToolResultViewInput): ToolResultPresentation {
+export function toolResultPresentation(input: ToolResultViewInput, copy?: ChatCopyTable): ToolResultPresentation {
   const safeResult = redact(input.result);
   const result = record(safeResult);
   const normalized = normalizeToolResult({
@@ -124,7 +119,7 @@ export function toolResultPresentation(input: ToolResultViewInput): ToolResultPr
   });
   return {
     renderer: normalized.renderer,
-    title: TITLES[normalized.renderer],
+    title: copy ? copy[TITLE_KEYS[normalized.renderer]] : LEGACY_TITLES[normalized.renderer],
     text: normalized.text,
     contentMode: normalized.contentMode,
     data: normalized.data,
@@ -931,7 +926,7 @@ const TYPED_RENDERERS: Readonly<Partial<Record<NormalizedToolResult['renderer'],
 });
 
 export function ToolResultView({ toolCall, copy }: { toolCall: ToolResultViewInput; copy?: ChatCopyTable }) {
-  const presentation = toolResultPresentation(toolCall);
+  const presentation = toolResultPresentation(toolCall, copy ?? CHAT_COPY);
   if (!presentation.text && presentation.renderer === 'plain-text') {
     return <small>{presentation.title}: {(copy ?? CHAT_COPY).toolEmptyOutput}</small>;
   }
