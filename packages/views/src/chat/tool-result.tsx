@@ -773,12 +773,13 @@ export function RelatedChunksRenderer({ data, copy }: { data: unknown; copy?: Ch
   );
 }
 
-export function KnowledgeBaseListRenderer({ data }: { data: unknown }) {
+export function KnowledgeBaseListRenderer({ data, copy }: { data: unknown; copy?: ChatCopyTable }) {
   const view = knowledgeBaseListView(data);
+  const labels = copy ?? CHAT_COPY;
   if (!view.rows.length) return <EmptyState label={LABELS.noResults} />;
   return (
     <div className="wk-tool-kb-list">
-      <div className="wk-tool-section-title mb-[0.2rem] text-[0.72rem] font-semibold text-[#52606d]">{view.count} knowledge base{view.count === 1 ? '' : 's'}</div>
+      <div className="wk-tool-section-title mb-[0.2rem] text-[0.72rem] font-semibold text-[#52606d]">{formatChatCopy(labels, 'knowledgeBaseCount', { count: view.count })}</div>
       <ul className="wk-tool-kb-cards m-0 mt-[0.3rem] flex list-none flex-col gap-[0.4rem] p-0">
         {view.rows.map((row) => (
           <li key={row.key} className={"wk-tool-card " + TOOL_CARD}>

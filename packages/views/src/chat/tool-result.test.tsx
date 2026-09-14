@@ -15,6 +15,7 @@ import {
   toolResultPresentation,
   ToolResultView,
   ChunkDetailRenderer,
+  KnowledgeBaseListRenderer,
   RelatedChunksRenderer,
   webFetchView,
   webSearchResultsView,
@@ -443,6 +444,23 @@ test('knowledgeBaseListView lists names, ids and descriptions', () => {
   assert.equal(view.rows[0]!.name, 'HR policies');
   assert.equal(view.rows[0]!.id, 'kb-1');
   assert.equal(view.rows[1]!.description, '');
+});
+
+test('KnowledgeBaseListRenderer localizes the count in every locale', () => {
+  const expected = {
+    'zh-CN': '共 2 个知识库',
+    'en-US': '2 knowledge bases',
+    'ja-JP': '2件のナレッジベース',
+    'ko-KR': '총 2개 지식베이스',
+    'ru-RU': '2 баз знаний',
+  } as const;
+  for (const [locale, label] of Object.entries(expected)) {
+    const element = KnowledgeBaseListRenderer({
+      data: { count: 2, knowledge_bases: [{ id: 'kb-1', name: 'HR policies' }] },
+      copy: resolveChatCopy(locale),
+    });
+    assert.match(JSON.stringify(element), new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  }
 });
 
 /* ---- DocumentInfo ---- */
