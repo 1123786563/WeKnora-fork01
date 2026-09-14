@@ -2038,3 +2038,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - KB-level `@` mention support landed in `e6861f5e` and `b02e2ce6`: tenant-scoped loading, search, accessible listbox selection, full basic keyboard navigation, removable chips, localized states, and `mentioned_items` stream payloads.
 - Client/scope generation guards prevent cross-tenant stale options and release loading locks during scope changes. Focused coverage passes 35/35; Web full regression passes 875/875; `typecheck:web`, `build:web`, and `git diff --check` pass. Independent review found no P1/P2/P3.
 - Full Vue mention parity remains open for document/file/tag/MCP/skill items and steer mention payloads, along with protected browser/backend/platform evidence.
+
+## 2026-09-15 Round N+33d — N019 steer mention payload and attachment gate
+
+- Steer now reuses the KB mention picker and sends `mentioned_items` through the existing API contract (`fadbada8`, `cae22003`). Escape/arrow/Enter keyboard behavior and active-option ARIA state match the main composer.
+- Steer explicitly blocks when attachments are present and shows localized guidance instead of silently dropping them. Focused coverage passes 32/32; Web full regression passes 879/879; `typecheck:web`, `build:web`, and `git diff --check` pass. Independent review found no P1/P2.
+- Remaining N019 scope is document/file/tag/MCP/skill mention parity, true model selection request contract, and protected browser/backend/platform evidence.
