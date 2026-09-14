@@ -72,14 +72,24 @@ export function initialAgentSelection(
     : '';
 }
 
-export function buildWebChatStreamOptions(sessionId: string, content: string, agentId: string | undefined, knowledgeBaseId?: string, attachmentIds?: readonly string[]): WebChatStreamOptions {
+export interface ChatMentionItem {
+  id: string;
+  name: string;
+  type: 'kb';
+  kb_type?: 'document' | 'faq';
+  kb_id?: string;
+  kb_name?: string;
+}
+
+export function buildWebChatStreamOptions(sessionId: string, content: string, agentId: string | undefined, knowledgeBaseId?: string, attachmentIds?: readonly string[], mentionedItems?: readonly ChatMentionItem[]): WebChatStreamOptions {
   const selected = agentId?.trim();
   const knowledgeBaseIds = knowledgeBaseId?.trim() ? { knowledge_base_ids: [knowledgeBaseId.trim()] } : {};
   const attachmentBody = attachmentIds && attachmentIds.length > 0 ? { attachment_ids: [...attachmentIds] } : {};
-  if (!selected) return { sessionId, mode: 'knowledge', body: { query: content, channel: 'web', ...knowledgeBaseIds, ...attachmentBody } };
+  const mentionBody = mentionedItems && mentionedItems.length > 0 ? { mentioned_items: [...mentionedItems] } : {};
+  if (!selected) return { sessionId, mode: 'knowledge', body: { query: content, channel: 'web', ...knowledgeBaseIds, ...attachmentBody, ...mentionBody } };
   return {
     sessionId,
     mode: 'agent',
-    body: { query: content, agent_enabled: true, agent_id: selected, channel: 'web', ...knowledgeBaseIds, ...attachmentBody },
+    body: { query: content, agent_enabled: true, agent_id: selected, channel: 'web', ...knowledgeBaseIds, ...attachmentBody, ...mentionBody },
   };
 }

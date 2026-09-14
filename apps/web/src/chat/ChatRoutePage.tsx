@@ -5,11 +5,11 @@ import { chatDraftKey } from '@weknora/domain/chat/draft';
 import { initialChatStreamState, reduceChatStream, type ChatApproval } from '@weknora/domain/chat/reducer';
 import { appendMessages, hasOlderMessages, sessionGroups, sessionPageCount } from '@weknora/domain/chat/session-state';
 import { readStoredGroupMode, storeGroupMode } from '@weknora/domain/chat/session-grouping';
-import { ChatPage, type ChatSubmission } from '@weknora/views';
+import { ChatPage, type ChatMentionView, type ChatSubmission } from '@weknora/views';
 import { openContextualGuide } from '@weknora/views';
 import type { ScopeController } from '@weknora/domain/scope';
 import { chatSessionIdFromPath, SHELL_SESSION_ROUTE_EVENT } from './session-route.ts';
-import { buildWebChatStreamOptions, CHAT_ATTACHMENT_DEFAULT_EXTENSIONS, initialAgentSelection, mergeChatAttachmentExtensions, resolveChatAttachmentLimits, shouldPollAttachmentStatus, validateChatAttachment } from './agent-selection.ts';
+import { buildWebChatStreamOptions, CHAT_ATTACHMENT_DEFAULT_EXTENSIONS, initialAgentSelection, mergeChatAttachmentExtensions, resolveChatAttachmentLimits, shouldPollAttachmentStatus, validateChatAttachment, type ChatMentionItem } from './agent-selection.ts';
 import { listChatModels, MODEL_CHIP_NOT_CONFIGURED, resolveChatModelChip } from './model-chip.ts';
 import { readStoredLocale } from '../i18n.ts';
 import { loadStarterQuestions } from './starter-questions.ts';
@@ -77,6 +77,11 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   // continue-stream is started at most once per persisted incomplete message.
   const resumeStartedRef = useRef<Map<string, string>>(new Map());
   const [draft, setDraft] = useState('');
+  const [mentionOptions, setMentionOptions] = useState<ChatMentionView[]>([]);
+  const [mentionedItems, setMentionedItems] = useState<ChatMentionView[]>([]);
+  const [mentionLoading, setMentionLoading] = useState(false);
+  const [mentionError, setMentionError] = useState<string>();
+  const mentionLoadedRef = useRef(false);
   const [attachments, setAttachments] = useState<ChatAttachmentView[]>([]);
   const [supportedAttachmentExtensions, setSupportedAttachmentExtensions] = useState<readonly string[]>(CHAT_ATTACHMENT_DEFAULT_EXTENSIONS);
   const attachmentRecordsRef = useRef(new Map<string, ChatAttachmentRecord>());
@@ -391,6 +396,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     streamAbortRef.current = null;
     selectedSessionIdRef.current = sessionId;
     setSelectedSessionId(sessionId);
+    setMentionedItems([]);
     if (!preserveAttachments) void clearAttachments(true);
     window.history.pushState({}, '', `/platform/chat/${encodeURIComponent(sessionId)}`);
   }
@@ -716,6 +722,36 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     if (storageKey) window.localStorage.setItem(storageKey, value);
   }
 
+  function loadMentionOptions(): void {
+    if (mentionLoadedRef.current || mentionLoading) return;
+    mentionLoadedRef.current = true;
+    setMentionLoading(true);
+    setMentionError(undefined);
+    void client.knowledgeBases.list({ creator: 'all' }).then(
+      (items) => {
+        if (!scopeController.isCurrent(scope.scope)) return;
+        setMentionOptions(items.map((item) => ({
+          id: item.id,
+          name: item.name,
+          type: 'kb' as const,
+          kbType: item.type === 'faq' ? 'faq' as const : 'document' as const,
+        })));
+      },
+      (cause: unknown) => {
+        mentionLoadedRef.current = false;
+        if (scopeController.isCurrent(scope.scope)) setMentionError(cause instanceof Error ? cause.message : 'Unable to load knowledge bases');
+      },
+    ).finally(() => { if (scopeController.isCurrent(scope.scope)) setMentionLoading(false); });
+  }
+
+  function selectMention(item: ChatMentionView): void {
+    setMentionedItems((current) => current.some((selected) => selected.id === item.id) ? current : [...current, item]);
+  }
+
+  function removeMention(id: string): void {
+    setMentionedItems((current) => current.filter((item) => item.id !== id));
+  }
+
   function selectSuggestion(questionId: string, text: string): void {
     if (suggestions && selectedSessionId) void client.chat.suggestions.recordEvent(selectedSessionId, suggestions.id, 'click', questionId, scope.signal).catch(() => undefined);
     updateDraft(text);
@@ -829,7 +865,15 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       const runId = ++chatRunIdRef.current;
       const feed = createStreamFeed(sessionId, runId, `stream-${sessionId}`);
       setStreamState(initialChatStreamState());
-      const streamOptions = { ...buildWebChatStreamOptions(sessionId, submission.content, selectedAgentId, knowledgeBaseId, attachmentIds), signal: runController.signal };
+      const streamMentions: ChatMentionItem[] = mentionedItems.map((item) => ({
+        id: item.id,
+        name: item.name,
+        type: 'kb',
+        kb_type: item.kbType,
+        kb_id: item.id,
+        kb_name: item.name,
+      }));
+      const streamOptions = { ...buildWebChatStreamOptions(sessionId, submission.content, selectedAgentId, knowledgeBaseId, attachmentIds, streamMentions), signal: runController.signal };
       // Track the newest SSE event id so a mid-flight transport failure can
       // resume exactly once with the Last-Event-ID header before the error
       // surfaces (Vue parity: EventSource-style automatic reconnection).
@@ -855,6 +899,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
         // is unavailable; a later session selection reloads authoritative data.
       }
       clearAttachments();
+      setMentionedItems([]);
     } catch (cause) {
       // A stop request or session switch aborts the stream on purpose; that is
       // not a failed submission.
@@ -881,6 +926,13 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     onAttachmentSelect={selectAttachment}
     onRemoveAttachment={removeAttachment}
     attachmentAccept={supportedAttachmentExtensions}
+    mentionOptions={mentionOptions}
+    mentionedItems={mentionedItems}
+    mentionLoading={mentionLoading}
+    mentionError={mentionError}
+    onMentionOpen={loadMentionOptions}
+    onMentionSelect={selectMention}
+    onMentionRemove={removeMention}
     agents={agents.map((agent) => ({ id: agent.id, name: agent.name, disabled: disabledAgentIds.includes(agent.id) }))}
     selectedAgentId={selectedAgentId}
     onAgentChange={selectAgent}

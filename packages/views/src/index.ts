@@ -1,5 +1,5 @@
 export { ChatComposer, createChatSubmission } from './chat/composer.tsx';
-export type { ChatComposerProps, ChatSubmission } from './chat/composer.tsx';
+export type { ChatComposerProps, ChatMentionView, ChatSubmission } from './chat/composer.tsx';
 export { MessageList, renderMessageHtml } from './chat/message-list.tsx';
 export type { MessageListProps, PendingChatMessage } from './chat/message-list.tsx';
 export {

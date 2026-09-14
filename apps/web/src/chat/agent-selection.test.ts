@@ -35,6 +35,15 @@ test('includes only uploaded attachment ids in the stream body', () => {
   });
 });
 
+test('includes selected KB mentions and omits the field when none are selected', () => {
+  assert.deepEqual(buildWebChatStreamOptions('session-1', 'Question', '', undefined, undefined, [
+    { id: 'kb-1', name: '产品文档', type: 'kb', kb_type: 'document', kb_id: 'kb-1', kb_name: '产品文档' },
+  ]).body.mentioned_items, [
+    { id: 'kb-1', name: '产品文档', type: 'kb', kb_type: 'document', kb_id: 'kb-1', kb_name: '产品文档' },
+  ]);
+  assert.equal('mentioned_items' in buildWebChatStreamOptions('session-1', 'Question', '').body, false);
+});
+
 test('validates Vue attachment limits before creating an upload row', () => {
   assert.equal(validateChatAttachment({ name: 'guide.pdf', size: 1024 }, 0), undefined);
   assert.equal(validateChatAttachment({ name: 'guide.exe', size: 1024 }, 0), 'unsupported-type');

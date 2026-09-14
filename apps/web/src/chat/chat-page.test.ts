@@ -449,3 +449,20 @@ test('composer exposes a multi-file picker and truthful attachment states', () =
   assert.match(html, /data-attachment-status="ready"/);
   assert.match(html, /data-attachment-status="failed"/);
 });
+
+test('composer exposes a KB mention listbox and selected mention chips', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatComposer, {
+    ...composerBase,
+    copy: resolveChatCopy('zh-CN'),
+    mentionOpen: true,
+    mentionOptions: [{ id: 'kb-1', name: '产品文档', type: 'kb', kbType: 'document' }],
+    mentionedItems: [{ id: 'kb-2', name: 'FAQ', type: 'kb', kbType: 'faq' }],
+    onMentionSelect: () => undefined,
+    onMentionRemove: () => undefined,
+  }));
+  assert.match(html, /role="listbox"/);
+  assert.match(html, /产品文档/);
+  assert.match(html, /data-mention-id="kb-1"/);
+  assert.match(html, /data-mention-id="kb-2"/);
+  assert.match(html, /aria-label="关闭: FAQ"/);
+});

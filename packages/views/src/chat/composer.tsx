@@ -1,4 +1,4 @@
-import { useRef, type ChangeEvent, type FormEvent } from 'react';
+import { useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react';
 import { resolveChatCopy, resolveChatLocale, type ChatCopyTable } from './chat-copy.ts';
 
 export interface ChatSubmission {
@@ -16,6 +16,13 @@ export interface ChatAttachmentView {
   error?: string;
 }
 
+export interface ChatMentionView {
+  id: string;
+  name: string;
+  type: 'kb';
+  kbType?: 'document' | 'faq';
+}
+
 export function createChatSubmission(draft: string): ChatSubmission {
   const content = draft.trim();
   if (!content) throw new Error('message must not be empty');
@@ -31,6 +38,16 @@ export interface ChatComposerProps {
   onAttachmentSelect?(file: File): void | Promise<void>;
   onRemoveAttachment?(id: string): void | Promise<void>;
   attachmentAccept?: readonly string[];
+  /** KB-level @ mentions loaded by the application client. */
+  mentionOptions?: readonly ChatMentionView[];
+  mentionedItems?: readonly ChatMentionView[];
+  /** Test/host initial state; interactive toggling remains local. */
+  mentionOpen?: boolean;
+  mentionLoading?: boolean;
+  mentionError?: string;
+  onMentionOpen?(): void;
+  onMentionSelect?(item: ChatMentionView): void;
+  onMentionRemove?(id: string): void;
   /** Agent chip (Vue AgentSelector trigger): select options + current value. */
   agents?: readonly { id: string; name: string; disabled?: boolean }[];
   selectedAgentId?: string;
@@ -54,9 +71,12 @@ export interface ChatComposerProps {
  * left chips are the agent selector + attachment/@ buttons, right side holds
  * the model chip and the circular green send (or stop) button.
  */
-export function ChatComposer({ draft, disabled = false, onDraftChange, onSubmit, attachments = [], onAttachmentSelect, onRemoveAttachment, attachmentAccept, agents, selectedAgentId, onAgentChange, modelLabel, modelContext, modelContextIsDefault, streaming = false, onStop, copy }: ChatComposerProps) {
+export function ChatComposer({ draft, disabled = false, onDraftChange, onSubmit, attachments = [], onAttachmentSelect, onRemoveAttachment, attachmentAccept, mentionOptions = [], mentionedItems = [], mentionOpen: initialMentionOpen = false, mentionLoading = false, mentionError, onMentionOpen, onMentionSelect, onMentionRemove, agents, selectedAgentId, onAgentChange, modelLabel, modelContext, modelContextIsDefault, streaming = false, onStop, copy }: ChatComposerProps) {
   const t = copy ?? resolveChatCopy(resolveChatLocale());
   const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const mentionSearchRef = useRef<HTMLInputElement>(null);
+  const [mentionOpen, setMentionOpen] = useState(initialMentionOpen);
+  const [mentionQuery, setMentionQuery] = useState('');
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     onSubmit(createChatSubmission(draft));
@@ -67,6 +87,34 @@ export function ChatComposer({ draft, disabled = false, onDraftChange, onSubmit,
     const files = Array.from(event.target.files ?? []);
     event.target.value = '';
     for (const file of files) void onAttachmentSelect?.(file);
+  }
+
+  const filteredMentionOptions = mentionOptions.filter((item) => item.name.toLocaleLowerCase().includes(mentionQuery.trim().toLocaleLowerCase()) && !mentionedItems.some((selected) => selected.id === item.id));
+  function toggleMentions(): void {
+    if (disabled) return;
+    const next = !mentionOpen;
+    setMentionOpen(next);
+    if (next) {
+      setMentionQuery('');
+      onMentionOpen?.();
+      window.setTimeout(() => mentionSearchRef.current?.focus(), 0);
+    }
+  }
+  function closeMentions(): void {
+    setMentionOpen(false);
+    setMentionQuery('');
+  }
+  function handleMentionKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeMentions();
+      return;
+    }
+    if (event.key === 'Enter' && filteredMentionOptions.length > 0) {
+      event.preventDefault();
+      onMentionSelect?.(filteredMentionOptions[0]);
+      closeMentions();
+    }
   }
 
   function attachmentStatusLabel(attachment: ChatAttachmentView): string {
@@ -85,6 +133,12 @@ export function ChatComposer({ draft, disabled = false, onDraftChange, onSubmit,
           <span className="max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap">{attachment.name}</span>
           <span aria-label={attachmentStatusLabel(attachment)}>{attachment.status === 'ready' ? '✓' : attachment.status === 'failed' ? '!' : '…'} {attachmentStatusLabel(attachment)}</span>
           {onRemoveAttachment ? <button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-[rgba(0,0,0,0.4)] hover:text-[rgba(0,0,0,0.9)]" aria-label={`${t.close}: ${attachment.name}`} onClick={() => void onRemoveAttachment(attachment.id)}>×</button> : null}
+        </li>)}
+      </ul> : null}
+      {mentionedItems.length > 0 ? <ul className="wk-chat-mentions m-0 flex flex-wrap gap-[6px] px-[14px] pt-[10px]" aria-label={t.mentionKnowledge}>
+        {mentionedItems.map((item) => <li key={item.id} data-mention-id={item.id} className="inline-flex max-w-full items-center gap-[6px] rounded-[6px] border border-[#d9f2e2] bg-[#f2fbf5] px-[8px] py-[4px] text-[12px] text-[rgba(0,0,0,0.65)]">
+          <span aria-hidden="true">@</span><span className="max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap">{item.name}</span>
+          {onMentionRemove ? <button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-[rgba(0,0,0,0.4)] hover:text-[rgba(0,0,0,0.9)]" aria-label={`${t.close}: ${item.name}`} onClick={() => onMentionRemove(item.id)}>×</button> : null}
         </li>)}
       </ul> : null}
       <textarea
@@ -117,12 +171,20 @@ export function ChatComposer({ draft, disabled = false, onDraftChange, onSubmit,
               <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
             </svg>
           </button>
-          <button type="button" className="wk-chat-control-icon flex h-[28px] w-[28px] shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] transition-[background,color] duration-[120ms] enabled:hover:bg-[#eee] enabled:hover:text-[rgba(0,0,0,0.9)] disabled:cursor-not-allowed disabled:opacity-50" aria-label={t.mentionKnowledge} disabled={disabled} title={t.mentionKnowledge}>
+          <div className="relative">
+          <button type="button" className="wk-chat-control-icon flex h-[28px] w-[28px] shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] transition-[background,color] duration-[120ms] enabled:hover:bg-[#eee] enabled:hover:text-[rgba(0,0,0,0.9)] disabled:cursor-not-allowed disabled:opacity-50" aria-label={t.mentionKnowledge} aria-expanded={mentionOpen} aria-controls="wk-chat-mention-listbox" disabled={disabled} title={t.mentionKnowledge} onClick={toggleMentions}>
             <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
               <circle cx="10" cy="10" r="3.5" stroke="currentColor" strokeWidth="1.8" />
               <path d="M13.5 10V11.5C13.5 12.163 13.7634 12.7989 14.2322 13.2678C14.7011 13.7366 15.337 14 16 14C16.663 14 17.2989 13.7366 17.7678 13.2678C18.2366 12.7989 18.5 12.163 18.5 11.5V10C18.5 7.74566 17.6045 5.58365 16.0104 3.98959C14.4163 2.39553 12.2543 1.5 10 1.5C7.74566 1.5 5.58365 2.39553 3.98959 3.98959C2.39553 5.58365 1.5 7.74566 1.5 10C1.5 12.2543 2.39553 14.4163 3.98959 16.0104C5.58365 17.6045 7.74566 18.5 10 18.5H12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
+          {mentionOpen ? <div id="wk-chat-mention-listbox" role="listbox" aria-label={t.mentionKnowledge} className="absolute bottom-[36px] left-0 z-20 w-[280px] rounded-[8px] border border-[#e7e7e7] bg-white p-[8px] shadow-[0_8px_24px_rgba(0,0,0,0.12)]">
+            <input ref={mentionSearchRef} value={mentionQuery} onChange={(event) => setMentionQuery(event.target.value)} onKeyDown={handleMentionKeyDown} aria-label={t.composerPlaceholder} placeholder={t.composerPlaceholder} className="mb-[6px] box-border w-full rounded-[6px] border border-[#e7e7e7] px-[8px] py-[6px] text-[12px] outline-none focus:border-[#07c05f]" />
+            {mentionLoading ? <p role="status" className="m-0 px-[8px] py-[8px] text-[12px] text-[rgba(0,0,0,0.45)]">{t.loadingMessages}</p> : mentionError ? <p role="alert" className="m-0 px-[8px] py-[8px] text-[12px] text-[#d54941]">{mentionError}</p> : filteredMentionOptions.length > 0 ? <div className="max-h-[220px] overflow-y-auto">
+              {filteredMentionOptions.map((item) => <button key={item.id} type="button" role="option" aria-selected="false" data-mention-id={item.id} className="flex w-full cursor-pointer items-center gap-[8px] rounded-[6px] border-0 bg-transparent px-[8px] py-[7px] text-left text-[13px] text-[rgba(0,0,0,0.75)] hover:bg-[#f3f3f3] focus:bg-[#f3f3f3] focus:outline-none" onClick={() => { onMentionSelect?.(item); closeMentions(); }}><span aria-hidden="true">@</span><span className="overflow-hidden text-ellipsis whitespace-nowrap">{item.name}</span></button>)}
+            </div> : <p className="m-0 px-[8px] py-[8px] text-[12px] text-[rgba(0,0,0,0.45)]">{mentionQuery ? '暂无匹配结果' : '暂无可用知识库'}</p>}
+          </div> : null}
+          </div>
         </div>
         <div className="wk-chat-control-right flex items-center gap-[8px]">
           <button type="button" className="wk-chat-model-chip flex h-[22px] min-w-[100px] cursor-not-allowed items-center gap-[6px] rounded-[6px] border-[0.5px] border-[#e7e7e7] bg-transparent px-[8px] py-[2px] text-left opacity-75" disabled aria-disabled="true" aria-label={modelLabel ?? t.modelChip} title={modelLabel ?? t.modelChip}>

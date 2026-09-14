@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChatMessage, ChatSession, MessageSuggestionSet } from '@weknora/contracts';
 import { shouldShowTypingIndicator } from '@weknora/domain/chat/session-state';
-import { ChatComposer, type ChatAttachmentView, type ChatSubmission } from './composer.tsx';
+import { ChatComposer, type ChatAttachmentView, type ChatMentionView, type ChatSubmission } from './composer.tsx';
 import { MessageList, TOOL_LIST_ITEM, type PendingChatMessage } from './message-list.tsx';
 import { SessionSidebar } from './session-sidebar.tsx';
 import { ReferenceList } from './reference-list.tsx';
@@ -73,6 +73,13 @@ export interface ChatPageProps {
   onAttachmentSelect?(file: File): void | Promise<void>;
   onRemoveAttachment?(id: string): void | Promise<void>;
   attachmentAccept?: readonly string[];
+  mentionOptions?: readonly ChatMentionView[];
+  mentionedItems?: readonly ChatMentionView[];
+  mentionLoading?: boolean;
+  mentionError?: string;
+  onMentionOpen?(): void;
+  onMentionSelect?(item: ChatMentionView): void;
+  onMentionRemove?(id: string): void;
   agents?: readonly ChatAgentOption[];
   selectedAgentId?: string;
   onAgentChange?(agentId: string): void;
@@ -435,6 +442,13 @@ export function ChatPage(props: ChatPageProps) {
           onAttachmentSelect={props.onAttachmentSelect}
           onRemoveAttachment={props.onRemoveAttachment}
           attachmentAccept={props.attachmentAccept}
+          mentionOptions={props.mentionOptions}
+          mentionedItems={props.mentionedItems}
+          mentionLoading={props.mentionLoading}
+          mentionError={props.mentionError}
+          onMentionOpen={props.onMentionOpen}
+          onMentionSelect={props.onMentionSelect}
+          onMentionRemove={props.onMentionRemove}
           agents={props.agents}
           selectedAgentId={props.selectedAgentId}
           onAgentChange={props.onAgentChange}
