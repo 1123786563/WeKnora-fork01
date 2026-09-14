@@ -2333,3 +2333,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - 工具审批卡片标题、查看参数、同意、拒绝和已处理状态改用当前 locale 共享文案，并由 ChatPage 透传；旧的审批解析/API 行为保持不变。
 - 审批与共享 copy 专项 17/17、Web 全量 891/891、shared typecheck 通过；真实 MCP 审批流和浏览器多语言对照仍待补齐。
+
+## 2026-09-15 Round N+34af — N021 MCP OAuth action copy
+
+- 对话操作区的 MCP 授权标题、工具标签、授权/取消按钮、已授权状态和区域标题接入五语言共享文案，并保留服务名称显示。
+- Web 全量 891/891、shared copy/typecheck 通过；真实 OAuth 授权回调和浏览器多语言对照仍待补齐。
