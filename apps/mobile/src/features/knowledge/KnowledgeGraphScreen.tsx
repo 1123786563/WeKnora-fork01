@@ -41,7 +41,9 @@ export function KnowledgeGraphScreen() {
     } catch (cause) { setError(cause instanceof Error ? cause.message : label("knowledgeBase.graph.loadFailed")); }
     finally { setLoading(false); }
   }, [center, depth, knowledgeBaseId, runtime.client, type]);
-  useEffect(() => { void load(mode, mode === 'ego' ? center : ''); }, [knowledgeBaseId, mode, center, depth, type]);
+  // Node presses call `load` directly and update `center`; including center
+  // here would immediately issue the same graph request a second time.
+  useEffect(() => { void load(mode, mode === 'ego' ? center : ''); }, [knowledgeBaseId, mode, depth, type]);
   const types = useMemo(() => [...new Set(graph?.nodes.map((node) => node.page_type) ?? [])].sort(), [graph]);
   const visibleNodes = useMemo(() => { const needle = query.trim().toLocaleLowerCase(); return (graph?.nodes ?? []).filter((node) => !needle || `${node.title} ${node.slug}`.toLocaleLowerCase().includes(needle)); }, [graph, query]);
   const labelForType = (value: string) => graphTypeLabels[value] ? label(graphTypeLabels[value]) : value;
