@@ -199,3 +199,10 @@
 - Added five-locale labels for known auth, tenant, runtime, SSRF and sandbox settings while preserving unknown-key fallback behavior.
 - Validation: `pnpm run test:web` 891/891; `pnpm run typecheck:web`; `git diff --check`.
 - Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r029-system-setting-labels.md`.
+
+## Round N+34bj — Web production build baseline
+
+- Verified `pnpm run build:web` succeeds on the current branch.
+- Confirmed Mermaid renderer already uses dynamic imports; manual vendor split was rejected after producing circular chunks without reducing the initial app chunk.
+- Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r030-web-build-baseline.md`.
+- Follow-up: route-level code splitting remains an optional performance task requiring a separate measured design.
