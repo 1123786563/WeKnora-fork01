@@ -1,38 +1,46 @@
 /*
- * Chat visual-form parity layer — post styles.css legacy-block cleanup.
+ * Chat visual-form parity layer — Tailwind migration remainder.
  * (Vue reference: frontend/src/views/chat/index.vue, Input-field.vue,
  * botmsg.vue / usermsg.vue, MessageTimestamp.vue, SandboxSidePanel.vue,
  * suggested-questions.less; tokens from frontend/src/assets/theme/theme.css.)
  *
- * All layout/visual rules live as utilities on the chat components
+ * All layout/visual rules now live as utilities on the chat components
  * (packages/views/src/chat/*.tsx, imported by apps/web/src/chat/ChatRoutePage.tsx).
- * The legacy UNLAYERED .wk-chat-* block in apps/web/src/styles.css was deleted
- * together with the guards that only existed to beat it (main.wk-chat-page
- * double-class block + its 720px media, assistant content margin, suggestions
- * hover — their values are already carried by utilities on the elements).
+ * Utilities render inside @layer utilities, so the legacy UNLAYERED
+ * .wk-chat-* block in apps/web/src/styles.css beats them regardless of
+ * specificity — in the shipped bundle that block also sorts AFTER this file,
+ * which is why it already won the equal-specificity ties before migration.
+ * What stays here:
  *
- * What intentionally stays here:
- *
- * 1. Specificity guards vs STILL-LIVING unlayered shared rules in styles.css
- *    (global h1 clamp, .wk-list-actions, .wk-settings-panel-heading). Utilities
- *    render inside @layer utilities and lose to ANY unlayered declaration, so
- *    these guards must outlive the chat legacy block until the Orchestrator's
- *    final shared-layer cleanup removes those shared rules.
- * 2. One reduced-motion guard: the message-scroll element's smooth scrolling
- *    is a layered utility; without this unlayered floor, prefers-reduced-motion
- *    users would get animated scrolling again.
- * 3. Rich-text / runtime-generated DOM rules relocated verbatim from the
- *    deleted styles.css block (batch: .wk-chat-* legacy cleanup). These target
- *    elements rendered via dangerouslySetInnerHTML (markdown pre/table/citation/
- *    mermaid/math), runtime-created wrappers (mermaid hydration), or components
- *    that carry no utilities (artifact preview, tool result, references panel);
- *    per the migration conventions rich text stays as CSS until a dedicated
- *    batch migrates it.
- * 4. @keyframes consumed by animate-[name_...] arbitrary utilities (complex
+ * 1. Specificity guards — the few chat values that won against styles.css
+ *    ONLY through a higher-specificity selector (doubled class, descendant
+ *    chains). Without these guards the legacy block would start winning and
+ *    visually regress today. Delete them together with the styles.css block
+ *    (migration batch 12); the matching utility values remain on the elements.
+ * 2. One reduced-motion guard (div-scoped to out-rank the legacy smooth
+ *    scroll-behavior) and one hover guard vs. the legacy suggestion border.
+ * 3. @keyframes consumed by animate-[name_...] arbitrary utilities (complex
  *    animations stay CSS per the migration convention).
+ *
+ * Rich text (.wk-chat-message-content pre/table/citation/mermaid/math and
+ * .wk-chat-messages li p) is styled only by the styles.css block and stays
+ * there until the Orchestrator migrates/deletes that block.
  */
 
-/* ---- Specificity guards vs shared styles.css rules (unlayered wins) ---- */
+/* ---- Specificity guards (delete together with the styles.css .wk-chat-* block) ---- */
+main.wk-chat-page.wk-chat-page {
+  margin: 0;
+  max-width: none;
+  padding: 0;
+  gap: 0;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (max-width: 720px) {
+  main.wk-chat-page.wk-chat-page {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 
 /* Out-ranks the global h1 clamp rule in styles.css (utilities cannot: they
    are layered). Same values sit in utilities for the post-cleanup state. */
@@ -46,12 +54,18 @@
   margin: 0;
 }
 
-/* Shared .wk-list-actions { gap: .5rem } keeps losing to this scoped rule. */
+/* Legacy .wk-chat-message-content { margin-top: .3rem } loses to this
+   descendant chain today; keep the chain so it keeps losing. */
+.wk-chat-message-row--assistant .wk-chat-message-content {
+  margin: 0;
+}
+
+/* Legacy .wk-list-actions { gap: .5rem } keeps losing to this scoped rule. */
 .wk-chat-approval-card .wk-list-actions {
   gap: 0.4rem;
 }
 
-/* Shared .wk-settings-panel-heading { align-items/gap/margin } keeps losing
+/* Legacy .wk-settings-panel-heading { align-items/gap/margin } keeps losing
    to this drawer-scoped chain. */
 .wk-chat-sandbox-drawer .wk-settings-panel-heading {
   align-items: center;
@@ -59,65 +73,17 @@
   margin: 0;
 }
 
-/* Layered scroll-smooth would re-enable animated scrolling for
-   prefers-reduced-motion users; this unlayered floor keeps it instant. */
+/* Legacy suggestion button border (unlayered) would beat the layered hover
+   utility; this unlayered pseudo-class rule keeps the hover visible. */
+.wk-chat-suggestions-grid button:hover {
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
 @media (prefers-reduced-motion: reduce) {
   div.wk-chat-message-scroll {
     scroll-behavior: auto;
   }
 }
-
-/* ---- Rich text & runtime DOM (relocated verbatim from styles.css) ---- */
-
-/* Grid-blowout guard: .wk-chat-main carries no min-w-0 utility and is a grid
-   child; wide markdown tables must not stretch the column. */
-.wk-chat-main { min-width: 0; }
-
-/* Descendant row rule: also hits artifact chips and markdown list items
-   inside a message row (they carry no border/padding utilities). */
-.wk-chat-messages li { border-bottom: 1px solid #edf0f5; padding: .8rem 0; }
-.wk-chat-messages li p { margin: .3rem 0 0; overflow-wrap: anywhere; }
-
-/* Markdown content edges + generated rich text (marked renderer output). */
-.wk-chat-message-content > :first-child { margin-top: 0; }
-.wk-chat-message-content > :last-child { margin-bottom: 0; }
-.wk-chat-message-content pre { overflow-x: auto; padding: .7rem; background: #f6f8fb; border-radius: 6px; }
-.wk-chat-message-content table { border-collapse: collapse; display: block; max-width: 100%; overflow-x: auto; }
-.wk-chat-message-content th, .wk-chat-message-content td { border: 1px solid #dce3ed; padding: .35rem .55rem; text-align: left; }
-.wk-chat-message-content .wk-chat-citation { background: #eef5ff; border: 1px solid #b9d1f2; border-radius: 999px; color: #245a9b; cursor: pointer; margin: 0 .15rem; padding: .1rem .45rem; }
-.wk-chat-message-content .wk-chat-mermaid { border: 1px solid #dce3ed; border-radius: 6px; margin: .6rem 0; max-width: 100%; overflow: auto; padding: .5rem; }
-.wk-chat-message-content .wk-chat-mermaid svg { height: auto; max-width: 100%; }
-.wk-chat-message-content .math-inline, .wk-chat-message-content .math-block { font-family: Georgia, serif; }
-.wk-chat-message-content .math-block { overflow-x: auto; padding: .4rem 0; }
-
-/* Artifact preview dialog (artifact-preview.tsx carries no utilities). */
-.wk-chat-artifact-preview { border: 1px solid #dce3ed; border-radius: 8px; background: #fff; margin-top: .75rem; overflow: hidden; }
-.wk-chat-artifact-preview header { align-items: center; border-bottom: 1px solid #edf0f5; display: flex; gap: .45rem; padding: .45rem .6rem; }
-.wk-chat-artifact-preview h3 { flex: 1; font-size: .9rem; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wk-chat-artifact-preview header button { border: 1px solid #b9d1f2; border-radius: 5px; color: #245a9b; cursor: pointer; padding: .15rem .45rem; }
-.wk-chat-artifact-preview > p { margin: .75rem; }
-.wk-chat-artifact-preview-text { max-height: 28rem; margin: 0; overflow: auto; padding: .75rem; white-space: pre-wrap; overflow-wrap: anywhere; }
-.wk-chat-artifact-preview-markdown { max-height: 28rem; overflow: auto; padding: .75rem; }
-.wk-chat-artifact-preview-image { display: block; max-height: 30rem; max-width: 100%; object-fit: contain; margin: .75rem auto; }
-.wk-chat-artifact-preview-pdf { border: 0; height: 32rem; width: 100%; }
-
-/* Tool result disclosures (tool-result.tsx carries no utilities). */
-.wk-chat-tool-result { margin-top: .35rem; }
-.wk-chat-tool-result summary { cursor: pointer; color: #245a9b; }
-.wk-chat-tool-result pre { max-height: 18rem; overflow: auto; white-space: pre-wrap; }
-
-/* References panel (reference-list.tsx carries no utilities). */
-.wk-chat-references { border: 1px solid #dce3ed; border-radius: 8px; margin: 1rem 0; padding: .8rem; }
-.wk-chat-references h2, .wk-chat-references h3 { margin: 0 0 .45rem; }
-.wk-chat-references section + section { border-top: 1px solid #edf0f5; margin-top: .75rem; padding-top: .75rem; }
-.wk-chat-reference { border-bottom: 1px solid #edf0f5; display: grid; gap: .2rem; padding: .55rem 0; }
-.wk-chat-reference:last-child { border-bottom: 0; }
-.wk-chat-reference.is-active { background: #f4f8ff; }
-.wk-chat-reference-title { color: #245a9b; font-weight: 650; }
-.wk-chat-reference p { margin: 0; white-space: pre-wrap; }
-.wk-chat-reference small { color: #66758b; }
-.wk-chat-reference-ids { display: flex; flex-wrap: wrap; gap: .35rem; }
-.wk-chat-reference-ids button { border: 1px solid #b9d1f2; border-radius: 999px; background: #eef5ff; color: #245a9b; cursor: pointer; padding: .1rem .45rem; }
 
 /* ---- Keyframes for animate-[...] arbitrary utilities ---- */
 

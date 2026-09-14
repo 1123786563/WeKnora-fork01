@@ -2116,3 +2116,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - `KnowledgeReferenceScreen` and its reference view model now localize loading/error/empty/version/status/edit labels across five locales (`dbb9e7cb`), preserving slug/numeric-id routes, permissions and pagination.
 - Focused reference tests pass 6/6; mobile typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
 - Native reference runtime evidence remains open.
+
+## 2026-09-15 Round N+33q — N032 mobile chat localization
+
+- Mobile `ChatScreen` and `NativeArtifactPreview` now localize session/KB/message/steer/approval/MCP/artifact states and drawer actions across five locales (`0de1d4ed`, `ceb64491`), preserving stream lifecycle and API behavior.
+- Focused chat/i18n tests pass 2/2 and artifact-label coverage 5/5; mobile typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
+- Native chat runtime evidence remains open.
