@@ -2062,3 +2062,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Batch session management is code-complete across `b0f39ef9`, `284a0e3b`, and `126be8b9`: row selection no longer navigates, deletion uses the batch API, select-all exposes indeterminate state, source filters and row menus are hidden in batch mode, the action bar is sticky, deletion reloads page one, and visible/ARIA copy is localized for all five locales.
 - Focused shell/chat-copy/API tests pass 18/18, 8/8, and 8/8; `typecheck:web`, `build:web`, and `git diff --check` pass. Independent review found no P1/P2/P3.
 - N018 still requires authenticated browser/real-backend and Wails/native runtime evidence.
+
+## 2026-09-15 Round N+33h — N018 chat header inline rename
+
+- Chat header renaming now matches Vue across `8a6cb414`, `b07d84de`, `89e80098`, `7c25d66e`, `e9b10457`, and `b22d79c5`: inline title editing, full-title selection, blur/Enter submit with duplicate protection, Escape/cancel focus restoration, visible localized errors, and normalized 80-character titles.
+- Focused chat tests pass 26/26; `typecheck:web` and `git diff --check` pass. Independent review found no P1/P2/P3.
+- N018 still requires authenticated browser/real-backend and Wails/native runtime evidence.
