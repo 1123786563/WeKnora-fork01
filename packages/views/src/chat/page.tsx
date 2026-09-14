@@ -330,6 +330,11 @@ function ChatHeaderMenu(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'se
     setRenameError(null);
     window.setTimeout(() => renameTriggerRef.current?.focus(), 0);
   };
+  useEffect(() => {
+    if (!renameOpen) return;
+    const frame = window.requestAnimationFrame(() => renameInputRef.current?.select());
+    return () => window.cancelAnimationFrame(frame);
+  }, [renameOpen]);
   const submitRename = async () => {
     if (renameSubmittingRef.current || !props.onRenameSession) return;
     const title = renameValue.trim().replace(/\s+/g, ' ').slice(0, 80);

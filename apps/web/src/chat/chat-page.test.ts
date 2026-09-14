@@ -14,6 +14,7 @@ test('header rename uses the localized inline editor contract instead of a brows
   assert.doesNotMatch(routeSource, /window\.prompt\(/);
   assert.match(viewSource, /onBlur=\{\(event\) =>/);
   assert.match(viewSource, /renameSubmittingRef/);
+  assert.match(viewSource, /requestAnimationFrame.*select\(\)/);
   assert.match(viewSource, /role=\"alert\" className=\"text/);
   for (const locale of ['zh-CN', 'en-US', 'ja-JP', 'ko-KR', 'ru-RU'] as const) {
     const copy = resolveChatCopy(locale);
