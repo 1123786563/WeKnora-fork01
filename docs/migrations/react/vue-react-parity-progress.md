@@ -2056,3 +2056,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Shell session rows now use a Vue-shaped inline editor (`0f95ffb0`, `e4d872ca`): Enter/blur submit once, Escape cancels, title whitespace is normalized and capped at 80 characters, failed updates remain recoverable, and successful updates remain stable across later pagination.
 - Focused shell tests pass 16/16; Web full regression passes 887/887; `typecheck:web`, `build:web`, and `git diff --check` pass. Independent review found no P1/P2.
 - Remaining N018 scope is batch management/spinner parity and protected runtime evidence.
+
+## 2026-09-15 Round N+33g — N018 batch session management
+
+- Batch session management is code-complete across `b0f39ef9`, `284a0e3b`, and `126be8b9`: row selection no longer navigates, deletion uses the batch API, select-all exposes indeterminate state, source filters and row menus are hidden in batch mode, the action bar is sticky, deletion reloads page one, and visible/ARIA copy is localized for all five locales.
+- Focused shell/chat-copy/API tests pass 18/18, 8/8, and 8/8; `typecheck:web`, `build:web`, and `git diff --check` pass. Independent review found no P1/P2/P3.
+- N018 still requires authenticated browser/real-backend and Wails/native runtime evidence.
