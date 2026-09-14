@@ -313,6 +313,8 @@ function ChatHeaderMenu(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'se
   const [renameError, setRenameError] = useState<string | null>(null);
   const [renameBusy, setRenameBusy] = useState(false);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
+  const renameEditorRef = useRef<HTMLDivElement | null>(null);
+  const renameSubmittingRef = useRef(false);
   const renameDetailsRef = useRef<HTMLDetailsElement | null>(null);
   const renameTriggerRef = useRef<HTMLElement | null>(null);
   if (!session) return null;
@@ -324,13 +326,12 @@ function ChatHeaderMenu(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'se
     setRenameOpen(true);
   };
   const closeRename = () => {
-    if (renameBusy) return;
     setRenameOpen(false);
     setRenameError(null);
     window.setTimeout(() => renameTriggerRef.current?.focus(), 0);
   };
   const submitRename = async () => {
-    if (renameBusy || !props.onRenameSession) return;
+    if (renameSubmittingRef.current || !props.onRenameSession) return;
     const title = renameValue.trim().replace(/\s+/g, ' ').slice(0, 80);
     if (!title) {
       setRenameError(copy.renameTitleRequired);
@@ -339,14 +340,16 @@ function ChatHeaderMenu(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'se
     }
     const currentTitle = (session.title ?? '').trim().replace(/\s+/g, ' ').slice(0, 80);
     if (title === currentTitle) { closeRename(); return; }
+    renameSubmittingRef.current = true;
     setRenameBusy(true);
     setRenameError(null);
     try {
       await props.onRenameSession(session.id, title);
-      setRenameOpen(false);
+      closeRename();
     } catch {
       setRenameError(copy.renameTitleFailed);
     } finally {
+      renameSubmittingRef.current = false;
       setRenameBusy(false);
     }
   };
@@ -364,11 +367,11 @@ function ChatHeaderMenu(props: { copy: ChatCopyTable } & Pick<ChatPageProps, 'se
       {props.onDeleteSession ? <button type="button" role="menuitem" className={menuItem + ' text-[#e34d59] hover:bg-[#fdecee]'} onClick={() => void props.onDeleteSession!(session.id)}>{copy.deleteSession}</button> : null}
     </div>
     </details>
-    {renameOpen ? <div className="inline-flex min-w-0 items-center gap-[4px]" role="group" aria-label={copy.renameTitle}>
-      <input ref={renameInputRef} type="text" value={renameValue} placeholder={copy.renameTitlePlaceholder} maxLength={80} autoFocus disabled={renameBusy} aria-label={copy.renameTitle} aria-invalid={renameError ? 'true' : undefined} className="box-border min-w-0 w-[min(240px,50vw)] rounded-[5px] border border-[#07c05f] bg-white px-[7px] py-[3px] text-[14px] leading-[20px] outline-none" onChange={(event) => setRenameValue(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); closeRename(); } if (event.key === 'Enter') { event.preventDefault(); void submitRename(); } }} />
+    {renameOpen ? <div ref={renameEditorRef} className="inline-flex min-w-0 items-center gap-[4px]" role="group" aria-label={copy.renameTitle}>
+      <input ref={renameInputRef} type="text" value={renameValue} placeholder={copy.renameTitlePlaceholder} maxLength={80} autoFocus disabled={renameBusy} aria-label={copy.renameTitle} aria-invalid={renameError ? 'true' : undefined} className="box-border min-w-0 w-[min(240px,50vw)] rounded-[5px] border border-[#07c05f] bg-white px-[7px] py-[3px] text-[14px] leading-[20px] outline-none" onChange={(event) => setRenameValue(event.target.value)} onBlur={(event) => { const next = event.relatedTarget; if (next instanceof Node && renameEditorRef.current?.contains(next)) return; void submitRename(); }} onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); closeRename(); } if (event.key === 'Enter') { event.preventDefault(); void submitRename(); } }} />
       <button type="button" aria-label={copy.renameConfirm} className="h-[24px] cursor-pointer rounded-[5px] border-0 bg-[#07c05f] px-[7px] text-[12px] text-white disabled:opacity-50" onClick={() => void submitRename()} disabled={renameBusy}>{renameBusy ? copy.renameSaving : copy.renameConfirm}</button>
       <button type="button" aria-label={copy.renameCancel} className="h-[24px] cursor-pointer rounded-[5px] border-0 bg-transparent px-[5px] text-[12px] text-[rgba(0,0,0,0.55)] hover:bg-[#f3f3f3]" onClick={closeRename} disabled={renameBusy}>{copy.renameCancel}</button>
-      {renameError ? <span role="alert" className="sr-only">{renameError}</span> : null}
+      {renameError ? <span role="alert" className="text-[11px] leading-[16px] text-[#e34d59]">{renameError}</span> : null}
     </div> : null}
   </>;
 }
