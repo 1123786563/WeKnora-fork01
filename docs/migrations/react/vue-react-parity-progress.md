@@ -2221,3 +2221,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - Authenticated React Chrome confirms localized vector-store and web-search headings, descriptions and editor labels.
 - Same-session Vue pixel comparison remains open.
+
+## 2026-09-15 Round N+34j — R013 retrieval navigation browser evidence
+
+- Authenticated React Chrome confirms the retrieval sidebar label now renders localized `搜索设置`; admin-only visibility and controls remain intact.
+- Same-session Vue pixel comparison remains open.

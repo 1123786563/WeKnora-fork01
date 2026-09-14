@@ -157,3 +157,4 @@ R013 parser-settings runtime update (2026-09-15): authenticated React AX confirm
 T07 settings-heading update (2026-09-15): `f5426f9d` maps storage, vector-store and web-search headings to Vue i18n title/description keys, removing English inventory fallback; surface tests 20/20, independent review P1/P2/P3=0.
 R013 storage-heading runtime update (2026-09-15): authenticated React AX confirms localized storage heading/description/editor/row fallback copy; same-session Vue pixel comparison remains open.
 R013 vector/web-search runtime update (2026-09-15): authenticated React AX confirms localized section headings, descriptions and editor labels for vector-store and web-search settings; same-session Vue pixel comparison remains open.
+R013 retrieval-nav runtime update (2026-09-15): authenticated React AX confirms the retrieval sidebar label renders localized `搜索设置`; admin-only visibility and controls remain intact. Same-session Vue pixel comparison remains open.
