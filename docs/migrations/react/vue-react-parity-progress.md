@@ -2239,7 +2239,7 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 ## 2026-09-15 Round N+34m — N021 grep tool-result parity
 
 - React grep results now follow Vue chunk grouping, FAQ metadata and title-match aggregation in `20c99de6` and `27ffb52e`; five-locale copy is covered by focused tests.
-- Shared tests pass 453/453 and Web tests pass 890/890; independent review found no P1/P2/P3. Browser fixture evidence remains open.
+- Shared tests pass 453/453 and Web tests pass 890/890; independent review found no P1/P2, with two non-blocking P3 coverage notes. Browser fixture evidence remains open.
 
 ## 2026-09-15 Round N+34n — shared mobile chat copy contract
 
