@@ -69,6 +69,9 @@
 .wk-upload-parser-row:last-child { border-bottom: 0; }
 .wk-upload-parser-info { display: block; flex: 0 0 168px; min-width: 0; }
 .wk-upload-parser-control { align-items: stretch; display: flex; flex: 1; flex-direction: column; gap: 10px; min-width: 0; }
+.wk-upload-parser-warning { align-items: center; color: var(--wk-warning, #b54708); display: flex; font-size: 12px; gap: 4px; line-height: 1.4; }
+.wk-upload-parser-warning button { background: transparent; border: 0; color: var(--wk-accent, #07c05f); cursor: pointer; font: inherit; padding: 0; white-space: nowrap; }
+.wk-upload-parser-warning button:hover, .wk-upload-parser-warning button:focus-visible { text-decoration: underline; }
 .wk-upload-parser-xlsx-header { align-items: center; color: var(--wk-muted, #667085); display: inline-flex; font-size: 12px; gap: 5px; }
 .wk-upload-question-row, .wk-upload-question-instructions { align-items: flex-start; border-bottom: 1px solid var(--wk-border, #e4e7ec); display: flex; gap: 16px; justify-content: space-between; padding: 10px 0; }
 .wk-upload-question-info { display: grid; flex: 1; gap: 4px; min-width: 0; }

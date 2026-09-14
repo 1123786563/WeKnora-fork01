@@ -1866,6 +1866,12 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - upload-confirm 定向测试 36/36、Web 全量 833/833、`typecheck:web` 与 `git diff --check` 通过；证据 `evidence/vue-react-parity-2026-09-14-n007-extraction-toast.md` 已更新。
 - N007 继续保持 `implementing`：浏览器 computed-style/同条件截图、真实后端图谱链路及 Wails/native 证据仍未闭环。
 
+## 2026-09-14 Round N+72 — N007 Parser 无可用引擎状态
+
+- 对照 Vue `KBParserSettings.vue`，当请求完成但某文件族没有可用 parser engine 时，React 在对应控制列显示 warning，并通过父级导航回到知识库 parser 设置；loading 与成功空列表分支保持区分，不写入 parser rule。
+- upload-confirm 定向测试 37/37、Web 全量 834/834、`typecheck:web` 与 `git diff --check` 通过；证据 `evidence/vue-react-parity-2026-09-14-n007-extraction-toast.md` 已更新。
+- N007 继续保持 `implementing`：浏览器 computed-style/同条件截图、真实后端图谱链路及 Wails/native 证据仍未闭环。
+
 ## 2026-09-14 Round N+69 — N007 多模态与 ASR 设置行
 
 - 对照 Vue `UploadConfirmDialog.vue`，多模态/ASR 的启用、模型、语言和自定义说明字段改为共享 `UploadSettingRow` 信息列/控制列；补齐 Vue description 文案，保留模型必填、clearable 语言和条件渲染行为。

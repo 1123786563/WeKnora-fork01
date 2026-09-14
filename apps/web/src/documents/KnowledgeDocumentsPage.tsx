@@ -640,6 +640,8 @@ export interface UploadConfirmSectionsProps {
   parserEngines: ParserEngineInfo[];
   /** Vue KBParserSettings loading state; prevents an empty engine list from masquerading as loaded. */
   parserLoading?: boolean;
+  /** Vue goToParserSettings callback for a file family with no available engine. */
+  onConfigureParserSettings?: () => void;
   vllmModels: ModelConfiguration[];
   asrModels: ModelConfiguration[];
   moreOpen: boolean;
@@ -871,23 +873,29 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
                 <span className="wk-upload-parser-extensions">{group.extensions.map((extension) => <span key={extension}>.{extension}</span>)}</span>
               </div>
               <div className="wk-upload-parser-control">
+                {(() => {
+                  const options = parserEngineOptions(group.extensions);
+                  return <>
                 <UploadSingleSelect
                   className="wk-upload-parser-select"
                   ariaLabel={group.label}
                   value={parserEngineFor(group.extensions)}
-                  options={parserEngineOptions(group.extensions)}
+                  options={options}
                   onChange={(value) => update({ parserRules: (() => {
                     const current = parserRuleFor(group.extensions);
                     const remaining = state.parserRules.filter((rule) => !rule.file_types.some((fileType) => group.extensions.includes(fileType)));
                     return value ? [...remaining, { file_types: group.extensions, engine: value, ...(current?.xlsx_first_row_as_header === undefined ? {} : { xlsx_first_row_as_header: current.xlsx_first_row_as_header }) }] : remaining;
                   })() })}
                 />
+                {options.length === 0 ? <div className="wk-upload-parser-warning" role="note"><span>{t("settings.parser.noEngineDetected")}</span>{props.onConfigureParserSettings ? <button type="button" onClick={props.onConfigureParserSettings}>{t("settings.parserEngine")}</button> : null}</div> : null}
                 {group.extensions.includes("xlsx") && parserEngineFor(group.extensions) === "builtin" ? (
                   <label className="wk-upload-parser-xlsx-header">
                     <input type="checkbox" checked={parserRuleFor(group.extensions)?.xlsx_first_row_as_header === true} onChange={(event) => updateParserXlsxHeader(group.extensions, event.target.checked)} />
                     {t("kbSettings.parser.xlsxFirstRowAsHeader")}
                   </label>
                 ) : null}
+                  </>;
+                })()}
               </div>
             </div>
           ))}
@@ -3394,6 +3402,7 @@ export function KnowledgeDocumentsPage({
             asrIssue={asrIssue}
             parserEngines={parserEngines}
             parserLoading={parserEnginesLoading}
+            onConfigureParserSettings={() => window.location.assign(documentsKBSettingsPath(knowledgeBaseId))}
             vllmModels={vllmModels}
             asrModels={asrModels}
             moreOpen={chunkingMoreOpen}

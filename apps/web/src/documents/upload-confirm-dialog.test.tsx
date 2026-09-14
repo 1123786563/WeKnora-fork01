@@ -338,6 +338,12 @@ test('parser engine rules use the same project single-select surface', () => {
   assert.match(html, /role="combobox"/);
 });
 
+test('parser families expose Vue no-engine warning after loading', () => {
+  const html = sectionsHtml({ parserEngines: [{ Name: 'disabled', Description: '', FileTypes: ['pdf'], Available: false }] });
+  assert.match(html, /wk-upload-parser-warning/);
+  assert.match(html, /未检测到解析引擎|settings\.parser\.noEngineDetected/);
+});
+
 test('Excel parser group preserves Vue first-row-header control', () => {
   const html = sectionsHtml({
     parserEngines: [{ Name: 'builtin', Description: '', FileTypes: ['xlsx', 'xls'], Available: true }],
