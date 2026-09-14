@@ -2122,3 +2122,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Mobile `ChatScreen` and `NativeArtifactPreview` now localize session/KB/message/steer/approval/MCP/artifact states and drawer actions across five locales (`0de1d4ed`, `ceb64491`), preserving stream lifecycle and API behavior.
 - Focused chat/i18n tests pass 2/2 and artifact-label coverage 5/5; mobile typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
 - Native chat runtime evidence remains open.
+
+## 2026-09-15 Round N+33r — T10 mobile identity capability localization
+
+- Mobile `IdentityScreen` now localizes title, explanation, loading/error/empty states and supported/unavailable capability statuses across five locales (`5a22da52`), preserving server-provided reasons and avoiding invented capabilities.
+- Focused tests pass 3/3; mobile typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
+- Native management runtime evidence remains open.
