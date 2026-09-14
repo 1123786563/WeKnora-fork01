@@ -2181,3 +2181,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - `OllamaSettingsPanel` now localizes service description, address/model labels, download guidance, progress success feedback and task/model size fallbacks across five locales (`68ed4897`), preserving download, refresh, progress and credential behavior.
 - Settings coverage remains 15/15; Web typecheck/build and `git diff --check` pass. Independent review found no P1/P2/P3.
 - Protected runtime evidence remains open.
+
+## 2026-09-15 Round N+34b — R013 Ollama browser boundary
+
+- Authenticated React Chrome AX reached `/platform/settings?section=ollama` and showed the localized Chinese title/description plus the server-reported Ollama-unavailable state.
+- The local Ollama service was not running, so model/download success paths and same-session Vue comparison remain open.
