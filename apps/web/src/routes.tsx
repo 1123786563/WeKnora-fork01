@@ -140,8 +140,11 @@ export function guardRoute(pathname: string, context: RouteGuardContext): RouteG
     return { kind: 'redirect', to: routeRedirect(pathname) ?? '/platform/knowledge-bases', reason: 'capability-unavailable' };
   }
   if (path === '/platform/tenant') return { kind: 'redirect', to: '/platform/settings', reason: 'capability-unavailable' };
-  if (resolved.kind === 'not-found') return { kind: 'allow' };
   if (path === '/platform/dev/markdown') return { kind: 'allow' };
+  if (resolved.kind === 'not-found') {
+    if (protectedPath(path) && !context.authenticated) return { kind: 'redirect', to: `/login?next=${encodeURIComponent(pathname)}`, reason: 'authentication-required' };
+    return { kind: 'allow' };
+  }
   if (!protectedPath(path)) return { kind: 'allow' };
   if (!context.authenticated) return { kind: 'redirect', to: `/login?next=${encodeURIComponent(pathname)}`, reason: 'authentication-required' };
   if (!context.tenantId) return { kind: 'redirect', to: '/onboarding/workspace', reason: 'workspace-required' };

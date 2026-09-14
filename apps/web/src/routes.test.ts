@@ -149,3 +149,13 @@ test('guards legacy integration URLs before forwarding to the Vue settings desti
     kind: 'redirect', to: '/platform/settings?section=integration-embed', reason: 'capability-unavailable',
   });
 });
+
+test('requires authentication before rendering not-found pages under protected prefixes (S00 D1)', () => {
+  const loggedOut = { ...authenticated, authenticated: false, tenantId: null };
+  assert.deepEqual(guardRoute('/platform/not-a-page', loggedOut), {
+    kind: 'redirect',
+    to: '/login?next=%2Fplatform%2Fnot-a-page',
+    reason: 'authentication-required',
+  });
+  assert.equal(guardRoute('/unknown', loggedOut).kind, 'allow');
+});
