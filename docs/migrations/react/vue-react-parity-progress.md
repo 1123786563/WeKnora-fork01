@@ -1884,3 +1884,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 对照 Vue `ModelEditorDialog.vue` 的 TDesign `t-input[type=number]` 与 `t-switch`，模型 dimension、context window、max concurrency 和两个能力开关改为 React 项目级 `ModelNumberInput`/`ModelSwitch`；保留原有边界、禁用条件、更新回调、payload 与校验契约，并补齐 32px 输入、Vue 绿 focus/disabled 状态、开关轨道/滑块动效与说明文案布局。
 - 模型设置定向测试 23/23、Web 全量 835/835、`typecheck:web` 与 `git diff --check` 通过。
 - R027 继续保持 `implementing`：已完成该字段控件的静态与组件行为核对；浏览器同条件 computed-style/截图、真实后端保存与连接测试及 Wails/native 证据仍未闭环。
+
+## 2026-09-14 Round N+75 — React Tailwind + shadcn 基础接入
+
+- 仓库原先没有 Tailwind/shadcn 基础；新增 Tailwind v4 Vite 插件、`cn`（`clsx` + `tailwind-merge`）以及共享 `Input`、`Switch`、`NumberInput` 组件。R027 模型设置和模型调试面板改用共享组件，保留 Vue 字段边界、更新和调试请求契约。
+- 模型设置/调试定向测试 27/27、Web 全量 835/835、`typecheck:shared`、`typecheck:web`、`build:web` 与 `git diff --check` 通过。
+- 这是基础设施和两个设置子面板的迁移，不代表全仓库页面已完成 Tailwind/shadcn 改造；其他页面仍需逐页迁移与 Vue 实际运行对照。
