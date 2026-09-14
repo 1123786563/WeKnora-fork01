@@ -2381,3 +2381,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - Android UIAutomator 确认当前包名为 `com.weknora.mobile`，但界面由 Expo Dev Launcher 承载；iOS 截图同样显示 `WeKnora Development Build`、`No development servers found` 与 `Enter URL manually`。
 - 因未连接 Metro/dev server，本轮不能宣称已进入业务登录或聊天页面；原生启动层已验证，业务交互证据仍待连接可用开发服务后补齐。
+
+## 2026-09-15 Round N+34ao — Android Metro 业务页面启动
+
+- Metro `http://localhost:8081` 启动并返回 `packager-status:running`；Android AVD 通过 `exp://10.0.2.2:8081` 连接后，成功从 Dev Launcher 进入 React Native WeKnora 登录页。
+- 截图：`evidence/vue-react-parity/screenshots/native-20260915/android-login.png`；可见 WeKnora、Sign in、Email、Password、SSO、Create account、Join with invitation、Change server。
+- 该证据覆盖 Android 业务首屏启动和 Metro 连接；尚未执行登录、工作空间切换、聊天发送、上传或与 Vue 同条件视觉对照。
