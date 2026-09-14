@@ -13,6 +13,8 @@ test('keeps legacy deep links and redirects the misspelled chat path compatibly'
   assert.equal(resolveRoute('/knowledgeBase?id=kb-1').kind, 'knowledge-base');
   assert.equal(resolveRoute('/platform/settings?section=general').kind, 'platform');
   assert.equal(resolveRoute('/platform/integrations').kind, 'platform');
+  assert.deepEqual(resolveRoute('/platform/chat'), { kind: 'platform', path: '/platform/creatChat' });
+  assert.equal(routeRedirect('/platform/chat?agentId=a'), '/platform/creatChat?agentId=a');
   assert.equal(routeRedirect('/creatChat?agentId=a'), '/platform/creatChat?agentId=a');
   assert.equal(resolveRoute('/creatChat/unknown').kind, 'not-found');
   assert.deepEqual(guardRoute('/creatChat', { ...authenticated, authenticated: false, tenantId: null }), {
