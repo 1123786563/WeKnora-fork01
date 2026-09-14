@@ -3,6 +3,10 @@
  * and frontend/src/components/ModelEditorDialog.vue. Scoped under the settings
  * drawer so the rest of the shell is untouched. */
 
+/* 保留说明（Tailwind 迁移）：wk-audit-spin 供 SystemAuditLogPanel 刷新按钮的
+   animate-[wk-audit-spin_0.8s_linear_infinite] 任意值引用（keyframes 无法 utilities 表达）。 */
+@keyframes wk-audit-spin { to { transform: rotate(360deg); } }
+
 /* Vue .section (Settings.vue:892-894) carries no top margin inside
    .content-wrapper; the legacy inline-settings rule
    .wk-settings-section { margin-top: 1rem } (styles.css) must not leak into
