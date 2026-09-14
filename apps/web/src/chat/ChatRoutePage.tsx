@@ -30,6 +30,14 @@ interface ChatRoutePageProps {
   canViewChannelSessions?: boolean;
 }
 
+interface ChatAttachmentView {
+  id: string;
+  name: string;
+  status: 'pending' | 'uploading' | 'success' | 'error';
+  attachmentId?: string;
+  error?: string;
+}
+
 function draftStorageKey(scope: ReturnType<ScopeController['current']>['scope'], sessionId: string): string {
   return JSON.stringify(chatDraftKey({ ...scope, sessionId }));
 }
@@ -67,6 +75,9 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   // continue-stream is started at most once per persisted incomplete message.
   const resumeStartedRef = useRef<Map<string, string>>(new Map());
   const [draft, setDraft] = useState('');
+  const [attachments, setAttachments] = useState<ChatAttachmentView[]>([]);
+  const attachmentRecordsRef = useRef(new Map<string, { file: File; attachmentId?: string; sessionId?: string }>());
+  const attachmentCounterRef = useRef(0);
   const [loadingSessions, setLoadingSessions] = useState(true);
   // Vue Input-field.vue agent-model watch: the selected agent's config.model_id
   // binds the conversation model. (User last-pick persistence belongs to a
@@ -338,13 +349,74 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     return () => { active = false; };
   }, [client, selectedAgentId, selectedSessionId, scope.signal]);
 
-  function selectSession(sessionId: string) {
+  function selectSession(sessionId: string, preserveAttachments = false) {
     chatRunIdRef.current += 1;
     streamAbortRef.current?.abort();
     streamAbortRef.current = null;
     selectedSessionIdRef.current = sessionId;
     setSelectedSessionId(sessionId);
+    if (!preserveAttachments) {
+      attachmentRecordsRef.current.clear();
+      setAttachments([]);
+    }
     window.history.pushState({}, '', `/platform/chat/${encodeURIComponent(sessionId)}`);
+  }
+
+  async function uploadAttachment(localId: string, sessionId: string): Promise<string> {
+    const record = attachmentRecordsRef.current.get(localId);
+    if (!record) throw new Error('Attachment is no longer available.');
+    setAttachments((items) => items.map((item) => item.id === localId ? { ...item, status: 'uploading', error: undefined } : item));
+    try {
+      const uploaded = await client.chat.attachments.upload(sessionId, {
+        file: record.file,
+        fileName: record.file.name,
+        ...(selectedAgentId ? { agentId: selectedAgentId } : {}),
+      }, scope.signal);
+      if (uploaded.status === 'failed') throw new Error(uploaded.error_message || 'Attachment upload failed.');
+      record.attachmentId = uploaded.id;
+      record.sessionId = sessionId;
+      setAttachments((items) => items.map((item) => item.id === localId ? { ...item, status: 'success', attachmentId: uploaded.id, error: undefined } : item));
+      return uploaded.id;
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'Attachment upload failed.';
+      setAttachments((items) => items.map((item) => item.id === localId ? { ...item, status: 'error', error: message } : item));
+      throw cause instanceof Error ? cause : new Error(message);
+    }
+  }
+
+  async function selectAttachment(file: File): Promise<void> {
+    const localId = `local-attachment-${++attachmentCounterRef.current}`;
+    attachmentRecordsRef.current.set(localId, { file });
+    setAttachments((items) => [...items, { id: localId, name: file.name, status: 'pending' }]);
+    const sessionId = selectedSessionIdRef.current;
+    if (sessionId) void uploadAttachment(localId, sessionId).catch(() => undefined);
+  }
+
+  async function removeAttachment(localId: string): Promise<void> {
+    const record = attachmentRecordsRef.current.get(localId);
+    attachmentRecordsRef.current.delete(localId);
+    setAttachments((items) => items.filter((item) => item.id !== localId));
+    if (record?.attachmentId && record.sessionId) {
+      try { await client.chat.attachments.remove(record.sessionId, record.attachmentId, scope.signal); } catch { /* local removal remains authoritative */ }
+    }
+  }
+
+  async function uploadPendingAttachments(sessionId: string): Promise<string[]> {
+    const pending = attachments.filter((item) => item.status === 'pending');
+    const ids: string[] = [];
+    for (const item of pending) ids.push(await uploadAttachment(item.id, sessionId));
+    const failed = attachments.find((item) => item.status === 'error');
+    if (failed) throw new Error(failed.error || 'Attachment upload failed.');
+    for (const item of attachments) {
+      const record = attachmentRecordsRef.current.get(item.id);
+      if (record?.attachmentId && !ids.includes(record.attachmentId)) ids.push(record.attachmentId);
+    }
+    return ids;
+  }
+
+  function clearAttachments(): void {
+    attachmentRecordsRef.current.clear();
+    setAttachments([]);
   }
 
   function selectAgent(agentId: string) {
@@ -629,15 +701,17 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
           setSessions((current) => [created, ...current.filter((item) => item.id !== created.id)]);
           return created;
         },
-        onSessionSelected: (created) => selectSession(created.id),
+        onSessionSelected: (created) => selectSession(created.id, true),
       });
       runController = run.controller;
       streamAbortRef.current = runController;
       const sessionId = run.sessionId;
+      if (attachments.some((item) => item.status === 'uploading')) throw new Error('Attachment is still uploading.');
+      const attachmentIds = await uploadPendingAttachments(sessionId);
       const runId = ++chatRunIdRef.current;
       const feed = createStreamFeed(sessionId, runId, `stream-${sessionId}`);
       setStreamState(initialChatStreamState());
-      const streamOptions = { ...buildWebChatStreamOptions(sessionId, submission.content, selectedAgentId, knowledgeBaseId), signal: runController.signal };
+      const streamOptions = { ...buildWebChatStreamOptions(sessionId, submission.content, selectedAgentId, knowledgeBaseId, attachmentIds), signal: runController.signal };
       // Track the newest SSE event id so a mid-flight transport failure can
       // resume exactly once with the Last-Event-ID header before the error
       // surfaces (Vue parity: EventSource-style automatic reconnection).
@@ -662,6 +736,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
         // The streamed answer remains visible if the post-turn history refresh
         // is unavailable; a later session selection reloads authoritative data.
       }
+      clearAttachments();
     } catch (cause) {
       // A stop request or session switch aborts the stream on purpose; that is
       // not a failed submission.
@@ -684,6 +759,9 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     onSelectSession={selectSession}
     onCreateSession={() => void createSession()}
     onDraftChange={updateDraft}
+    attachments={attachments}
+    onAttachmentSelect={selectAttachment}
+    onRemoveAttachment={removeAttachment}
     agents={agents.map((agent) => ({ id: agent.id, name: agent.name, disabled: disabledAgentIds.includes(agent.id) }))}
     selectedAgentId={selectedAgentId}
     onAgentChange={selectAgent}

@@ -420,3 +420,23 @@ test('chat page flows the resolved model chip label into the composer chip', () 
   assert.match(html, /mock-stream-model 200K/);
   assert.match(html, /aria-label="mock-stream-model 200K"/);
 });
+
+test('composer exposes a multi-file picker and truthful attachment states', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatComposer, {
+    ...composerBase,
+    copy: resolveChatCopy('zh-CN'),
+    attachments: [
+      { id: 'local-1', name: 'guide.pdf', status: 'pending' },
+      { id: 'att-2', name: 'ready.txt', status: 'success', attachmentId: 'att-2' },
+      { id: 'local-3', name: 'broken.csv', status: 'error', error: 'Upload failed' },
+    ],
+  }));
+  assert.match(html, /type="file"/);
+  assert.match(html, /multiple=""/);
+  assert.match(html, /guide\.pdf/);
+  assert.match(html, /ready\.txt/);
+  assert.match(html, /broken\.csv/);
+  assert.match(html, /data-attachment-status="pending"/);
+  assert.match(html, /data-attachment-status="success"/);
+  assert.match(html, /data-attachment-status="error"/);
+});

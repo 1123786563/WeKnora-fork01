@@ -1,9 +1,19 @@
-import type { FormEvent } from 'react';
+import { useRef, type ChangeEvent, type FormEvent } from 'react';
 import { resolveChatCopy, resolveChatLocale, type ChatCopyTable } from './chat-copy.ts';
 
 export interface ChatSubmission {
   content: string;
   status: 'pending';
+}
+
+export type ChatAttachmentStatus = 'pending' | 'uploading' | 'success' | 'error';
+
+export interface ChatAttachmentView {
+  id: string;
+  name: string;
+  status: ChatAttachmentStatus;
+  attachmentId?: string;
+  error?: string;
 }
 
 export function createChatSubmission(draft: string): ChatSubmission {
@@ -17,6 +27,9 @@ export interface ChatComposerProps {
   disabled?: boolean;
   onDraftChange(value: string): void;
   onSubmit(submission: ChatSubmission): void;
+  attachments?: readonly ChatAttachmentView[];
+  onAttachmentSelect?(file: File): void | Promise<void>;
+  onRemoveAttachment?(id: string): void | Promise<void>;
   /** Agent chip (Vue AgentSelector trigger): select options + current value. */
   agents?: readonly { id: string; name: string; disabled?: boolean }[];
   selectedAgentId?: string;
@@ -40,18 +53,38 @@ export interface ChatComposerProps {
  * left chips are the agent selector + attachment/@ buttons, right side holds
  * the model chip and the circular green send (or stop) button.
  */
-export function ChatComposer({ draft, disabled = false, onDraftChange, onSubmit, agents, selectedAgentId, onAgentChange, modelLabel, modelContext, modelContextIsDefault, streaming = false, onStop, copy }: ChatComposerProps) {
+export function ChatComposer({ draft, disabled = false, onDraftChange, onSubmit, attachments = [], onAttachmentSelect, onRemoveAttachment, agents, selectedAgentId, onAgentChange, modelLabel, modelContext, modelContextIsDefault, streaming = false, onStop, copy }: ChatComposerProps) {
   const t = copy ?? resolveChatCopy(resolveChatLocale());
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     onSubmit(createChatSubmission(draft));
   }
 
   const showStop = streaming && !draft.trim();
+  function selectAttachments(event: ChangeEvent<HTMLInputElement>): void {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = '';
+    for (const file of files) void onAttachmentSelect?.(file);
+  }
+
+  function attachmentStatusLabel(attachment: ChatAttachmentView): string {
+    if (attachment.status === 'pending') return t.uploadAttachment;
+    if (attachment.status === 'uploading') return t.sending;
+    if (attachment.status === 'success') return t.available;
+    return attachment.error || t.sendFailed;
+  }
 
   return <form className="wk-chat-composer relative mx-auto w-full max-w-[960px] shrink-0" onSubmit={submit}>
     <label className="wk-chat-visually-hidden absolute h-[1px] w-[1px] overflow-hidden whitespace-nowrap [clip:rect(0_0_0_0)] [clip-path:inset(50%)]" htmlFor="wk-chat-draft">{t.composerPlaceholder}</label>
     <div className="wk-chat-input-shell w-full rounded-[12px] border border-[#dcdcdc] bg-white shadow-[0_2px_8px_rgba(0,0,0,0.04),0_8px_16px_-4px_rgba(0,0,0,0.06)] transition-[border-color] duration-[150ms] ease-[ease] focus-within:border-[#07c05f]">
+      {attachments.length > 0 ? <ul className="wk-chat-attachments m-0 flex flex-wrap gap-[6px] px-[14px] pt-[10px]" aria-label={t.uploadAttachment}>
+        {attachments.map((attachment) => <li key={attachment.id} data-attachment-status={attachment.status} className="inline-flex max-w-full items-center gap-[6px] rounded-[6px] border border-[#e7e7e7] bg-[#fafafa] px-[8px] py-[4px] text-[12px] text-[rgba(0,0,0,0.65)]" title={attachment.error || attachment.status}>
+          <span className="max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap">{attachment.name}</span>
+          <span aria-label={attachmentStatusLabel(attachment)}>{attachment.status === 'success' ? '✓' : attachment.status === 'error' ? '!' : '…'} {attachmentStatusLabel(attachment)}</span>
+          {onRemoveAttachment ? <button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-[rgba(0,0,0,0.4)] hover:text-[rgba(0,0,0,0.9)]" aria-label={`${t.close}: ${attachment.name}`} onClick={() => void onRemoveAttachment(attachment.id)}>×</button> : null}
+        </li>)}
+      </ul> : null}
       <textarea
         id="wk-chat-draft"
         value={draft}
@@ -76,7 +109,8 @@ export function ChatComposer({ draft, disabled = false, onDraftChange, onSubmit,
             </select>
             <svg className="wk-chat-chip-arrow pointer-events-none absolute right-[8px] shrink-0 text-[rgba(0,0,0,0.26)]" width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8L9.5 4.5H2.5Z" /></svg>
           </span> : null}
-          <button type="button" className="wk-chat-control-icon flex h-[28px] w-[28px] shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] transition-[background,color] duration-[120ms] enabled:hover:bg-[#eee] enabled:hover:text-[rgba(0,0,0,0.9)] disabled:cursor-not-allowed disabled:opacity-50" aria-label={t.uploadAttachment} disabled={disabled} title={t.uploadAttachment}>
+          <input ref={attachmentInputRef} type="file" multiple className="absolute h-px w-px overflow-hidden opacity-0" tabIndex={-1} aria-hidden="true" onChange={selectAttachments} />
+          <button type="button" className="wk-chat-control-icon flex h-[28px] w-[28px] shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent p-0 text-[rgba(0,0,0,0.6)] transition-[background,color] duration-[120ms] enabled:hover:bg-[#eee] enabled:hover:text-[rgba(0,0,0,0.9)] disabled:cursor-not-allowed disabled:opacity-50" aria-label={t.uploadAttachment} disabled={disabled || !onAttachmentSelect} title={t.uploadAttachment} onClick={() => attachmentInputRef.current?.click()}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
             </svg>

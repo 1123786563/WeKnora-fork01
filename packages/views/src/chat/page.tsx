@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChatMessage, ChatSession, MessageSuggestionSet } from '@weknora/contracts';
 import { shouldShowTypingIndicator } from '@weknora/domain/chat/session-state';
-import { ChatComposer, type ChatSubmission } from './composer.tsx';
+import { ChatComposer, type ChatAttachmentView, type ChatSubmission } from './composer.tsx';
 import { MessageList, TOOL_LIST_ITEM, type PendingChatMessage } from './message-list.tsx';
 import { SessionSidebar } from './session-sidebar.tsx';
 import { ReferenceList } from './reference-list.tsx';
@@ -69,6 +69,9 @@ export interface ChatPageProps {
   onCreateSession(): void;
   onDraftChange(value: string): void;
   send(submission: ChatSubmission): Promise<void>;
+  attachments?: readonly ChatAttachmentView[];
+  onAttachmentSelect?(file: File): void | Promise<void>;
+  onRemoveAttachment?(id: string): void | Promise<void>;
   agents?: readonly ChatAgentOption[];
   selectedAgentId?: string;
   onAgentChange?(agentId: string): void;
@@ -427,6 +430,9 @@ export function ChatPage(props: ChatPageProps) {
           disabled={sending || pending !== undefined || streaming}
           onDraftChange={props.onDraftChange}
           onSubmit={(submission) => void send(submission)}
+          attachments={props.attachments}
+          onAttachmentSelect={props.onAttachmentSelect}
+          onRemoveAttachment={props.onRemoveAttachment}
           agents={props.agents}
           selectedAgentId={props.selectedAgentId}
           onAgentChange={props.onAgentChange}
