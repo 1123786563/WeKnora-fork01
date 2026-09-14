@@ -10,7 +10,7 @@ import { ChatComposer, ChatPage, resolveChatCopy } from '@weknora/views';
 
 test('header rename uses the localized inline editor contract instead of a browser prompt', () => {
   const routeSource = readFileSync(new URL('./ChatRoutePage.tsx', import.meta.url), 'utf8');
-  const viewSource = readFileSync(new URL('../../../packages/views/src/chat/page.tsx', import.meta.url), 'utf8');
+  const viewSource = readFileSync(new URL('../../../../packages/views/src/chat/page.tsx', import.meta.url), 'utf8');
   assert.doesNotMatch(routeSource, /window\.prompt\(/);
   assert.match(viewSource, /onBlur=\{\(event\) =>/);
   assert.match(viewSource, /renameSubmittingRef/);
