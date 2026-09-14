@@ -159,6 +159,12 @@ hook 类（测试/JS 引用）保留类名。
 - 动态插值（is-${graphType}/is-${page_type}）改静态字面量映射 GRAPH_TYPE_DOT_BG/GRAPH_NODE_CIRCLE；
   SVG line/circle/text 直接加类；抽屉 .wk-header 覆盖按生效值 mb-[.75rem]!；720px → max-[720px]:。
 - 验收：typecheck 0、graph 相关 18/18、web 865/865（+3）、build ✓；styles.css 1087→750 行。
+### 批次34（进行中）：styles.css 剩余族清单已入库（164 族）
+- 台账末尾附自动生成的剩余族清单（族名+规则数，已提交）。
+- 修正：此前"91% 减量、接近完成"的表述过于乐观——styles.css 仍有 ~1013 行
+  （164 族）+ settings-wrapper 139 行保留段 + 各域 keyframes 小文件。真实剩余规模以
+  本清单为准，按族逐个收编（每族：grep 消费方 → utilities 追加 → 删规则 → 门禁）。
+- 并行任务仍在 chat 域活跃（agent-selection 等在途），chat 相关 styles.css 规则联动继续延后。
 ### 批次19：TenantMembers 域 ✅（子任务执行，Orchestrator 验收提交）
 - TenantMembersPanel.tsx ~95 条规则内联 utilities（表格/分页/标签三态/确认弹层；
   settings-wrapper 抽屉 select chrome 特异性更高今日实际生效，按生效值 4 条未复制）；
