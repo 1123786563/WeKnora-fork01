@@ -165,6 +165,13 @@ hook 类（测试/JS 引用）保留类名。
   （164 族）+ settings-wrapper 139 行保留段 + 各域 keyframes 小文件。真实剩余规模以
   本清单为准，按族逐个收编（每族：grep 消费方 → utilities 追加 → 删规则 → 门禁）。
 - 并行任务仍在 chat 域活跃（agent-selection 等在途），chat 相关 styles.css 规则联动继续延后。
+### 共享长尾清理依赖记录（2026-09-14）
+- wk-diff（wiki）/wk-pagination（wiki+documents+faq 测试负断言）/wk-capability-grid/check-row/
+  role-badge（configuration）等共享散族清理延后：并行 chat 域代理在共享树活跃
+  （agent-selection/ChatRoutePage/composer WIP），部分消费者文件与其重叠，
+  为避免 App.tsx 式并发写截断重演，待其提交收敛后由 Orchestrator 统一处理。
+- 届时顺序：先跑 pnpm typecheck:web 确认 0 → 逐族 grep 消费方 → utilities 追加 →
+  删规则 → 门禁 → 提交（每族独立提交）。
 ### 批次19：TenantMembers 域 ✅（子任务执行，Orchestrator 验收提交）
 - TenantMembersPanel.tsx ~95 条规则内联 utilities（表格/分页/标签三态/确认弹层；
   settings-wrapper 抽屉 select chrome 特异性更高今日实际生效，按生效值 4 条未复制）；
