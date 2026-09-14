@@ -25,6 +25,15 @@ test('clears only the selected session after a server-confirmed action', async (
   assert.deepEqual(request, { method: 'DELETE', path: '/api/v1/sessions/session%2F1/messages' });
 });
 
+test('deletes selected sessions through the batch endpoint in one request', async () => {
+  let request: { method: string; path: string; body?: unknown; signal?: AbortSignal } | undefined;
+  const api = createChatSessionsApi(async (input) => { request = input; return { success: true }; });
+  const controller = new AbortController();
+  await api.batchRemove(['session/1', 'session-2'], controller.signal);
+  assert.deepEqual(request, { method: 'DELETE', path: '/api/v1/sessions/batch', body: { ids: ['session/1', 'session-2'] }, signal: controller.signal });
+  await assert.rejects(() => api.batchRemove([]), /sessionIds must not be empty/);
+});
+
 test('loads message history without requesting public resource URLs', async () => {
   let path = '';
   const api = createChatSessionsApi(async (request) => {

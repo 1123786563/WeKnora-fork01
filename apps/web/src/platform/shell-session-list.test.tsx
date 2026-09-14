@@ -84,6 +84,7 @@ function fakeClient(overrides: Record<string, unknown> = {}): Record<string, unk
       update: async (sessionId: string, input: { title: string }) => ({ ...SESSIONS.find((s) => s.id === sessionId), title: input.title }),
       clear: async () => undefined,
       remove: async () => undefined,
+      batchRemove: async () => undefined,
       ...sessionOverrides,
     },
     embed: embed ?? { channels: { listAll: async () => [] }, im: { listAll: async () => [] } },
@@ -362,7 +363,10 @@ test('(l) replacing an admin client with a viewer client resets an invalid sourc
 
 test('(m) batch management exposes accessible selection and deletes selected sessions', async () => {
   const removed: string[] = [];
-  const client = fakeClient({ remove: async (sessionId: string) => { removed.push(sessionId); } });
+  const client = fakeClient({
+    list: async () => ({ data: SESSIONS.filter((session) => !removed.includes(session.id)), total: SESSIONS.length - removed.length, page: 1, page_size: 30 }),
+    batchRemove: async (sessionIds: string[]) => { removed.push(...sessionIds); },
+  });
   const originalConfirm = window.confirm;
   window.confirm = () => true;
   try {
@@ -391,7 +395,11 @@ test('(m) batch management exposes accessible selection and deletes selected ses
 
 test('(n) failed batch deletion keeps selection and offers retry', async () => {
   let attempt = 0;
-  const client = fakeClient({ remove: async () => { attempt += 1; if (attempt === 1) throw new Error('batch delete failed'); } });
+  const removed: string[] = [];
+  const client = fakeClient({
+    list: async () => ({ data: SESSIONS.filter((session) => !removed.includes(session.id)), total: SESSIONS.length - removed.length, page: 1, page_size: 30 }),
+    batchRemove: async (sessionIds: string[]) => { attempt += 1; if (attempt === 1) throw new Error('batch delete failed'); removed.push(...sessionIds); },
+  });
   const originalConfirm = window.confirm;
   window.confirm = () => true;
   try {

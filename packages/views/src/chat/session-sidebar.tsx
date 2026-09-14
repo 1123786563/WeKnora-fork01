@@ -90,6 +90,7 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [batchBusy, setBatchBusy] = useState(false);
   const [batchError, setBatchError] = useState<string | null>(null);
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
   const renameSubmitting = useRef(false);
   const startRename = (session: ChatSession) => {
     setEditingSessionId(session.id);
@@ -133,6 +134,9 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
     });
   }, [visibleIds.join('\u0000')]);
   const allSelected = totalItems > 0 && visibleIds.every((id) => selectedIds.has(id));
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = selectedIds.size > 0 && !allSelected;
+  }, [allSelected, selectedIds.size]);
   const toggleBatchMode = () => {
     if (batchBusy) return;
     setBatchMode((current) => !current);
@@ -150,6 +154,7 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
   const submitBatchDelete = async () => {
     if (!onBatchDelete || selectedIds.size === 0 || batchBusy) return;
     const ids = [...selectedIds];
+    if (!window.confirm(formatChatCopy(t, 'batchDeleteConfirm', { count: ids.length }))) return;
     setBatchBusy(true);
     setBatchError(null);
     try {
@@ -178,17 +183,17 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
    * sessions nav as [&_ul]:px-[6px]; this shared list stays flush outside.
    */
   return <>
-    {sourceOptions && onSourceChange ? <label className="grid gap-[0.25rem] mx-[4px] my-[0.55rem] text-[rgba(0,0,0,0.4)] text-[12px]">来源<select aria-label="会话来源" className="w-full box-border rounded-[6px] border border-[#cbd5e1] bg-white p-[0.45rem] text-[rgba(0,0,0,0.9)] text-[13px]" value={source ?? ''} onChange={(event) => onSourceChange(event.target.value)}>{sourceOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label> : null}
-    {onBatchDelete ? <div className="flex items-center justify-between gap-[6px] mx-[4px] my-[6px]" role="toolbar" aria-label="会话批量管理">
-      {!batchMode ? <button type="button" aria-label="批量管理" className="border-0 bg-transparent p-0 text-[12px] text-[#66758b] cursor-pointer hover:text-[#07c05f]" onClick={toggleBatchMode}>批量管理</button> : <>
-        <button type="button" aria-label="取消批量管理" className="border-0 bg-transparent p-0 text-[12px] text-[#66758b] cursor-pointer hover:text-[#07c05f]" onClick={toggleBatchMode} disabled={batchBusy}>取消</button>
+    {!batchMode && sourceOptions && onSourceChange ? <label className="grid gap-[0.25rem] mx-[4px] my-[0.55rem] text-[rgba(0,0,0,0.4)] text-[12px]">来源<select aria-label="会话来源" className="w-full box-border rounded-[6px] border border-[#cbd5e1] bg-white p-[0.45rem] text-[rgba(0,0,0,0.9)] text-[13px]" value={source ?? ''} onChange={(event) => onSourceChange(event.target.value)}>{sourceOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label> : null}
+    {onBatchDelete ? <div className="sticky bottom-0 z-10 flex items-center justify-between gap-[6px] mx-[4px] my-[6px] bg-[#f6f8fa]" role="toolbar" aria-label="会话批量管理">
+      {!batchMode ? <button type="button" aria-label="批量管理" className="border-0 bg-transparent p-0 text-[12px] text-[#66758b] cursor-pointer hover:text-[#07c05f]" onClick={toggleBatchMode}>{formatChatCopy(t, 'batchManage')}</button> : <>
+        <button type="button" aria-label="取消批量管理" className="border-0 bg-transparent p-0 text-[12px] text-[#66758b] cursor-pointer hover:text-[#07c05f]" onClick={toggleBatchMode} disabled={batchBusy}>{formatChatCopy(t, 'batchCancel')}</button>
         <label className="inline-flex items-center gap-[4px] text-[12px] text-[#66758b]">
-          <input type="checkbox" aria-label="全选会话" checked={allSelected} onChange={toggleAll} disabled={batchBusy || totalItems === 0} />全选
+          <input ref={selectAllRef} type="checkbox" aria-label={formatChatCopy(t, 'batchSelectAll')} checked={allSelected} onChange={toggleAll} disabled={batchBusy || totalItems === 0} />{formatChatCopy(t, 'batchSelectAll')}
         </label>
-        <button type="button" aria-label="删除所选会话" className="border-0 bg-transparent p-0 text-[12px] text-[#e34d59] cursor-pointer disabled:cursor-not-allowed disabled:opacity-50" onClick={() => void submitBatchDelete()} disabled={batchBusy || selectedIds.size === 0}>{batchBusy ? '删除中…' : `删除所选 (${selectedIds.size})`}</button>
+        <button type="button" aria-label="删除所选会话" className="border-0 bg-transparent p-0 text-[12px] text-[#e34d59] cursor-pointer disabled:cursor-not-allowed disabled:opacity-50" onClick={() => void submitBatchDelete()} disabled={batchBusy || selectedIds.size === 0}>{batchBusy ? formatChatCopy(t, 'batchDeleteBusy') : formatChatCopy(t, 'batchDelete', { count: selectedIds.size })}</button>
       </>}
     </div> : null}
-    {batchError ? <p role="alert" className="mx-[4px] my-[4px] text-[12px] text-[#e34d59]">批量删除失败：{batchError} <button type="button" aria-label="重试批量删除" className="border-0 bg-transparent p-0 text-[12px] text-[#07c05f] underline cursor-pointer" onClick={() => void submitBatchDelete()} disabled={batchBusy}>重试</button></p> : null}
+    {batchError ? <p role="alert" className="mx-[4px] my-[4px] text-[12px] text-[#e34d59]">{formatChatCopy(t, 'batchDeleteError', { message: batchError })} <button type="button" aria-label="重试批量删除" className="border-0 bg-transparent p-0 text-[12px] text-[#07c05f] underline cursor-pointer" onClick={() => void submitBatchDelete()} disabled={batchBusy}>{formatChatCopy(t, 'batchRetry')}</button></p> : null}
     {loading ? <p role="status">{t.loadingSessions}</p> : null}
     {!loading && totalItems === 0 && emptyLabel ? <p className="my-[10px] mx-[4px] text-[rgba(0,0,0,0.4)] text-[12px]" role="status">{emptyLabel}</p> : null}
     {visibleGroups.map((group) => <section key={group.key}>
@@ -209,7 +214,7 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
               }}
               onBlur={() => { void submitRename(session); }} />
             {renameError ? <span role="alert" className="text-[11px] leading-[16px] text-[#e34d59]">{renameError}</span> : null}
-          </div> : <button type="button" aria-current={active ? 'page' : undefined} onClick={() => onSelect(session.id)}
+          </div> : <button type="button" aria-current={active ? 'page' : undefined} onClick={() => { if (batchMode) toggleSelected(session.id); else onSelect(session.id); }}
             className={'flex flex-1 items-center min-w-0 gap-[6px] px-[10px] py-[7px] border-0 rounded-[8px] cursor-pointer text-left text-[14px] leading-[22px] overflow-hidden transition-[background-color,color] duration-[150ms] ease-[ease] '
             + (active ? 'bg-[#e9f8ec] text-[#07c05f] font-medium' : 'bg-transparent text-[rgba(0,0,0,0.9)] group-hover/item:bg-[rgba(0,0,0,0.04)]')}>
             {session.is_pinned ? <span className="shrink-0 text-[rgba(0,0,0,0.4)] text-[12px]" aria-hidden="true">★</span> : null}

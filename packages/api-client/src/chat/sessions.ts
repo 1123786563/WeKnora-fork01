@@ -69,6 +69,10 @@ export function createChatSessionsApi(request: (input: ClientRequest) => Promise
     async remove(sessionId: string, signal?: AbortSignal): Promise<void> {
       parseActionSuccessResponse(await request({ method: 'DELETE', path: sessionPath(sessionId), ...(signal === undefined ? {} : { signal }) }));
     },
+    async batchRemove(sessionIds: readonly string[], signal?: AbortSignal): Promise<void> {
+      if (sessionIds.length === 0 || sessionIds.some((id) => typeof id !== 'string' || id.trim() === '')) throw new Error('sessionIds must not be empty');
+      parseActionSuccessResponse(await request({ method: 'DELETE', path: '/api/v1/sessions/batch', body: { ids: [...sessionIds] }, ...(signal === undefined ? {} : { signal }) }));
+    },
     async clear(sessionId: string, signal?: AbortSignal): Promise<void> {
       parseActionSuccessResponse(await request({ method: 'DELETE', path: `${sessionPath(sessionId)}/messages`, ...(signal === undefined ? {} : { signal }) }));
     },
