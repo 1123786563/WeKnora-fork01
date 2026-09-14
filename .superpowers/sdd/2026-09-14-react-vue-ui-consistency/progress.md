@@ -119,3 +119,4 @@
 - React Chrome AX 平台路由复核记录于 `2026-09-15-r014-platform-route-ax.md`：知识库与智能体列表的分组筛选、计数、空态/内置条目、创建入口和共享侧栏均可达；Vue `:5173` 当前未认证回 `/login`，因此同条件像素/computed-style 与写路径仍为 `blocked-env`。
 - 回归门禁复核（`01452baf` 后）：`pnpm test:shared` 465/465、`pnpm run test:web` 891/891、`pnpm typecheck:shared`、`pnpm typecheck:web`、`pnpm typecheck:mobile`、`pnpm build:web` 全部通过；构建仍报告既有主包约 4.8MB 的 chunk warning，未改变本轮行为。
 - 桌面与 Embed 当前门禁复核：`pnpm test:desktop` 2/2、`pnpm typecheck:desktop`、`pnpm test:embed` 7/7、`pnpm typecheck:embed` 均通过；这属于静态/组件层证据，Wails 宿主和真实 Embed 容器运行仍需环境可用后验收。
+- `tool-result` 渲染链补齐一批剩余英文泄漏：搜索/数据库/grep 空态、Shell 工作目录/退出码/stdout/stderr/二进制与空输出、Chunk/文档/WebFetch/Plan/Thinking 空态现在通过 `ChatCopyTable` 使用五语言文案，提交 `2cad677a`。共享回归 465/465、Web 回归 891/891、Web 类型检查通过；工具结果标题、计数元数据和服务端原始状态值仍保持数据/协议语义不变。
