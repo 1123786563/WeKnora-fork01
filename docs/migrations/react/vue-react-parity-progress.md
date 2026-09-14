@@ -2032,3 +2032,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Attachment flow landed across `4b62db40`, `2bc25f16`, `50cdfe0e`, and `883f383b`: multi-file picker, Vue-aligned validation, runtime size limits, dynamic parser-engine extension discovery, upload status polling, real `attachment_ids` payloads, cancellation, stale-response protection, deletion compensation, and retryable removal failures.
 - Focused coverage passes 32/32; Web full regression passes 871/871; `typecheck:web`, `build:web`, and `git diff --check` pass. Independent review found no P1/P2 after the dynamic parser-type fix.
 - N019 remains open for knowledge-base mention selection, true model selection contract, and authenticated browser/real-backend/platform evidence.
+
+## 2026-09-15 Round N+33c — N019 knowledge-base mention picker
+
+- KB-level `@` mention support landed in `e6861f5e` and `b02e2ce6`: tenant-scoped loading, search, accessible listbox selection, full basic keyboard navigation, removable chips, localized states, and `mentioned_items` stream payloads.
+- Client/scope generation guards prevent cross-tenant stale options and release loading locks during scope changes. Focused coverage passes 35/35; Web full regression passes 875/875; `typecheck:web`, `build:web`, and `git diff --check` pass. Independent review found no P1/P2/P3.
+- Full Vue mention parity remains open for document/file/tag/MCP/skill items and steer mention payloads, along with protected browser/backend/platform evidence.
