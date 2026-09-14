@@ -316,6 +316,12 @@ test('chunking strategy uses a Vue-shaped single select instead of native select
   assert.match(html, /role="combobox"/);
 });
 
+test('parser engine rules use the same project single-select surface', () => {
+  const html = sectionsHtml({});
+  assert.match(html, /wk-upload-parser-select/);
+  assert.match(html, /role="combobox"/);
+});
+
 test('chunking advanced fields use Vue-shaped filterable multi-selects', () => {
   const html = sectionsHtml({ moreOpen: true });
   assert.equal((html.match(/wk-upload-multi-select"/g) ?? []).length, 2);

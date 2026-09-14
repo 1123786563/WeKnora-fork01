@@ -660,7 +660,7 @@ const CHUNKING_STRATEGY_OPTIONS = [
 
 export function UploadSingleSelect({ value, options, onChange, ariaLabel, className = "" }: {
   value: string;
-  options: readonly { value: string; label: string }[];
+  options: readonly { value: string; label: string; disabled?: boolean }[];
   onChange: (value: string) => void;
   ariaLabel: string;
   className?: string;
@@ -676,14 +676,14 @@ export function UploadSingleSelect({ value, options, onChange, ariaLabel, classN
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, [open]);
-  const choose = (index: number) => { const option = options[index]; if (!option) return; onChange(option.value); setOpen(false); setActiveIndex(index); };
+  const choose = (index: number) => { const option = options[index]; if (!option || option.disabled) return; onChange(option.value); setOpen(false); setActiveIndex(index); };
   return <div className={`wk-upload-single-select ${className}`.trim()} ref={rootRef}>
     <button type="button" className="wk-upload-single-select__trigger" role="combobox" aria-label={ariaLabel} aria-expanded={open} onClick={() => setOpen((current) => !current)} onKeyDown={(event) => {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setOpen(true); setActiveIndex((current) => Math.max(0, Math.min(options.length - 1, current + (event.key === "ArrowDown" ? 1 : -1)))); }
       else if (event.key === "Enter" && open) { event.preventDefault(); choose(activeIndex); }
       else if (event.key === "Escape") setOpen(false);
     }}><span>{options[selectedIndex]?.label ?? value}</span><span aria-hidden="true">⌄</span></button>
-    {open ? <div className="wk-upload-single-select__popup" role="listbox">{options.map((option, index) => <button type="button" role="option" aria-selected={option.value === value} className={index === activeIndex ? "is-active" : undefined} key={option.value} onMouseEnter={() => setActiveIndex(index)} onClick={() => choose(index)}>{option.label}</button>)}</div> : null}
+    {open ? <div className="wk-upload-single-select__popup" role="listbox">{options.map((option, index) => <button type="button" role="option" aria-selected={option.value === value} aria-disabled={option.disabled || undefined} disabled={option.disabled} className={`${index === activeIndex ? "is-active " : ""}${option.disabled ? "is-disabled" : ""}`.trim() || undefined} key={option.value} onMouseEnter={() => setActiveIndex(index)} onClick={() => choose(index)}>{option.label}</button>)}</div> : null}
   </div>;
 }
 
@@ -782,27 +782,23 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
           parserFileTypes.map((fileType) => (
             <label key={fileType}>
               .{fileType}
-              <select
+              <UploadSingleSelect
+                className="wk-upload-parser-select"
+                ariaLabel={`.${fileType}`}
                 value={state.parserRules.find((rule) => rule.file_types.includes(fileType))?.engine ?? ""}
-                onChange={(event) =>
-                  update({
-                    parserRules: (() => {
-                      const remaining = state.parserRules.filter((rule) => !rule.file_types.includes(fileType));
-                      return event.target.value ? [...remaining, { file_types: [fileType], engine: event.target.value }] : remaining;
-                    })(),
-                  })
-                }
-              >
-                <option value="">{t("uploadConfirm.navParserDefault")}</option>
-                {props.parserEngines
-                  .filter((engine) => (engine.FileTypes ?? []).includes(fileType))
-                  .map((engine) => (
-                    <option key={engine.Name} value={engine.Name} disabled={engine.Available === false}>
-                      {engine.Name}
-                      {engine.Available === false ? ` — ${engine.UnavailableReason || t("settings.parser.unavailable")}` : ""}
-                    </option>
-                  ))}
-              </select>
+                options={[
+                  { value: "", label: t("uploadConfirm.navParserDefault") },
+                  ...props.parserEngines.filter((engine) => (engine.FileTypes ?? []).includes(fileType)).map((engine) => ({
+                    value: engine.Name,
+                    label: `${engine.Name}${engine.Available === false ? ` — ${engine.UnavailableReason || t("settings.parser.unavailable")}` : ""}`,
+                    disabled: engine.Available === false,
+                  })),
+                ]}
+                onChange={(value) => update({ parserRules: (() => {
+                  const remaining = state.parserRules.filter((rule) => !rule.file_types.includes(fileType));
+                  return value ? [...remaining, { file_types: [fileType], engine: value }] : remaining;
+                })() })}
+              />
             </label>
           ))
         )}

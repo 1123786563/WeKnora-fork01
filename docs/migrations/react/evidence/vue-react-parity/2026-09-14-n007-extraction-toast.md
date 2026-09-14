@@ -24,11 +24,13 @@ The chunking strategy field now uses a Vue-shaped fixed-width single-select with
 
 The advanced chunking separator and language fields now use project multi-selects with Vue `multiple + creatable + filterable` behavior: chips, option filtering, Enter selection/creation, Backspace removal, Escape, and outside-click dismissal.
 
+Parser engine rules now use the same project single-select surface as Vue `KBParserSettings.vue`: the default option clears the rule, unavailable engines remain disabled, and the existing per-file-type rule update contract is preserved.
+
 The relation-type combobox also exposes a clear action, while entity endpoint comboboxes remain non-clearable, matching the Vue per-field `clearable` configuration.
 
 ## Verification
 
-- Focused upload-confirm and pipeline suites: 30/30 passed for the current graph/upload-confirm suite; prior upload-confirm and pipeline suites: 50/50 passed.
+- Focused upload-confirm and pipeline suites: 31/31 passed for the current graph/upload-confirm suite; prior upload-confirm and pipeline suites: 50/50 passed.
 - Full Web suite: `pnpm run test:web` — 681/681 passed.
 - Web typecheck: `pnpm run typecheck:web` — passed.
 - `git diff --check` — passed.

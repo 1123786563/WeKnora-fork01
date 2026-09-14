@@ -1787,3 +1787,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 对照 Vue `UploadConfirmDialog.vue` 的 separator/language `t-select multiple creatable filterable`，React 分隔符与语言字段从原生多选改为项目级多值选择器；保留数组值更新，补齐 chip、筛选、Enter 选择/创建、Backspace 删除、Escape 和外部点击关闭。
 - upload-confirm 定向测试 30/30、Web 全量 827/827、`typecheck:web` 与 `git diff --check` 通过；证据 `evidence/vue-react-parity/2026-09-14-n007-extraction-toast.md` 已更新。
 - N007 继续保持 `implementing`：解析器规则等其他控件、浏览器 computed-style/同条件截图、真实后端图谱链路及 Wails/native 证据仍未闭环。
+
+## 2026-09-14 Round N+59 — N007 解析器规则选择器
+
+- 对照 Vue `KBParserSettings.vue` 的 parser engine `t-select`，React 每种文件类型的解析器控件改为项目级 single-select；默认项可清除规则，不可用引擎保持禁用，原有 `parserRules` 更新契约不变。
+- upload-confirm 定向测试 31/31、Web 全量 828/828、`typecheck:web` 与 `git diff --check` 通过；证据 `evidence/vue-react-parity/2026-09-14-n007-extraction-toast.md` 已更新。
+- N007 继续保持 `implementing`：Vue 按文件族分组布局、其他控件、浏览器 computed-style/同条件截图、真实后端图谱链路及 Wails/native 证据仍未闭环。
