@@ -2275,3 +2275,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - ChunkDetailRenderer now uses Vue `chat.documentIdLabel` across five locales in `7561cda4`; default copy propagation remains compatible.
 - Shared tests pass 461/461 and Web tests pass 890/890; Web typecheck passes. Independent review found no P1/P2, with one non-blocking end-to-end copy-propagation P3 note. Browser fixture evidence remains open.
+
+## 2026-09-15 Round N+34u — N021 ChunkDetail content length
+
+- ChunkDetailRenderer now uses Vue `chat.contentLengthLabelSimple` and `chat.lengthChars` across five locales in `2d616875`; numeric length and null behavior remain unchanged.
+- Shared tests pass 462/462 and Web tests pass 890/890; Web typecheck passes. Independent review found no P1/P2, with one non-blocking end-to-end copy-propagation P3 note. Browser fixture evidence remains open.

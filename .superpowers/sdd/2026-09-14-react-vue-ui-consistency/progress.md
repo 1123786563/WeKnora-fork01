@@ -111,3 +111,4 @@
 - The shared utility batch `085de06e` adds Vue `chat.chunkIdLabel` copy to ChunkDetailRenderer across five locales; focused renderer/copy tests cover the label and independent review found no P1/P2, with one non-blocking end-to-end copy-propagation P3 note.
 - ChunkDetailRenderer now uses Vue `chat.positionLabel` across five locales in `873589a6`; shared tests pass 460/460 and Web tests 890/890. Independent review found no P1/P2, with one non-blocking end-to-end copy-propagation P3 note.
 - ChunkDetailRenderer now uses Vue `chat.documentIdLabel` across five locales in `7561cda4`; shared tests pass 461/461 and Web tests 890/890. Independent review found no P1/P2, with one non-blocking end-to-end copy-propagation P3 note.
+- ChunkDetailRenderer now uses Vue content-length label/unit keys across five locales in `2d616875`; shared tests pass 462/462 and Web tests 890/890. Independent review found no P1/P2, with one non-blocking end-to-end copy-propagation P3 note.
