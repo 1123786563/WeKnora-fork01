@@ -46,7 +46,7 @@ export function DevMarkdownPage() {
       <header className="wk-header mb-6 flex items-start justify-between gap-4">
         <div>
           <p className="wk-eyebrow m-0 text-[0.78rem] font-bold uppercase tracking-[0.08em] text-primary">Development fixture</p>
-          <h1>Markdown rendering test</h1>
+          <h1 className="text-[clamp(1.8rem,5vw,2.5rem)] my-[0.35rem]">Markdown rendering test</h1>
           <p className="wk-muted text-muted">Paste Markdown to inspect the escaped React rendering boundary.</p>
         </div>
         <button type="button" onClick={() => setMarkdown(DEFAULT_MARKDOWN)}>Reset</button>

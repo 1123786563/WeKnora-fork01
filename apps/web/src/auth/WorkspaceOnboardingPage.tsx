@@ -101,7 +101,7 @@ export function WorkspaceOnboardingPage({ client, scopeRuntime, onLogout }: Work
 
   const ready = view.kind === 'ready';
   return <main className="wk-page mx-auto box-border max-w-[960px] px-[1.25rem] py-12"><Card>
-    <h1>{ready && view.canCreateTenant ? msg(locale, 'auth.workspaceOnboarding.title') : msg(locale, 'auth.workspaceOnboarding.inviteOnlyTitle')}</h1>
+    <h1 className="text-[clamp(1.8rem,5vw,2.5rem)] my-[0.35rem]">{ready && view.canCreateTenant ? msg(locale, 'auth.workspaceOnboarding.title') : msg(locale, 'auth.workspaceOnboarding.inviteOnlyTitle')}</h1>
     <p className="wk-muted text-muted">{ready && view.canCreateTenant ? msg(locale, 'auth.workspaceOnboarding.description') : msg(locale, 'auth.workspaceOnboarding.inviteOnlyDescription')}</p>
     {view.kind === 'loading-policy' || (ready && false) ? <Status>{msg(locale, 'auth.workspaceOnboarding.loadingPolicy')}</Status> : null}
     {view.kind === 'policy-error' || loadFailed ? <div role="alert"><Status tone="error">{msg(locale, 'auth.workspaceOnboarding.policyLoadFailed')}</Status>

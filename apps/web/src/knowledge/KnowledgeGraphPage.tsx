@@ -206,7 +206,7 @@ export function KnowledgeGraphPage({ client, knowledgeBaseId, slug }: { client: 
       <header className="wk-header mb-6 flex items-start justify-between gap-4">
         <div>
           <p className="wk-eyebrow m-0 text-[0.78rem] font-bold uppercase tracking-[0.08em] text-primary">Knowledge base · {knowledgeBaseId}</p>
-          <h1>{t('knowledgeBase.graph.title')}</h1>
+          <h1 className="text-[clamp(1.8rem,5vw,2.5rem)] my-[0.35rem]">{t('knowledgeBase.graph.title')}</h1>
           <p className="wk-muted text-muted">{t('wikiBrowser.tabGraphTip')}</p>
         </div>
         <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
