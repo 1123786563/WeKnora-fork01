@@ -79,7 +79,7 @@ function ApiPlaygroundAgentSelect({ agents, value, loading, placeholder, loading
   return <div ref={rootRef} className="wk-api-playground-agent-select" style={{ position: 'relative' }}>
     <input
       ref={inputRef}
-      className="wk-api-playground-agent"
+      className="wk-api-playground-agent box-border"
       role="combobox"
       aria-autocomplete="list"
       aria-controls="wk-api-playground-agent-options"
@@ -145,6 +145,9 @@ function readApiPlaygroundWidth(): number {
 const bodyStyle: CSSProperties = { flex: '1 1 auto', overflowY: 'auto', padding: '0 20px 12px' };
 const footerStyle: CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 20px', borderTop: '1px solid var(--wk-border, #e5e7eb)' };
 const preStyle: CSSProperties = { background: 'var(--wk-bg-muted, #f6f8fa)', padding: 10, overflowX: 'auto', fontSize: 12 };
+// .wk-api-playground-preview/.wk-api-playground-step pre cascade (styles.css L604) as utilities;
+// inline preStyle keeps overriding background/padding/overflow-x/font-size exactly as before.
+const preClassName = 'm-0 max-h-[260px] overflow-auto whitespace-pre-wrap rounded-[6px] [font:12px/1.5_ui-monospace,SFMono-Regular,Menlo,monospace]';
 const rowStyle: CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 };
 const fieldStyle: CSSProperties = { display: 'block', margin: '10px 0', width: '100%' };
 
@@ -307,13 +310,13 @@ export function ApiPlaygroundDrawer({ open, onClose, apiKey, mode, agents, agent
   };
 
   const statusTag = (status: PlaygroundStepStatus) => (
-    <span className="wk-api-playground-status" data-status={status || 'none'}>{status || '-'}</span>
+    <span className={status === 'success' ? 'text-[#16803c]' : status === 'failed' ? 'text-[#b42318]' : status === 'stopped' ? 'text-[#a15c00]' : 'text-[var(--wk-muted-foreground,#64748b)]'} data-status={status || 'none'}>{status || '-'}</span>
   );
 
   const drawer = (
     <div className="wk-api-playground-overlay" role="presentation" style={overlayStyle} onClick={close}>
       <div className={`wk-api-playground-resize-handle${drawerResizing ? ' is-active' : ''}`} role="separator" aria-orientation="vertical" aria-label="调整抽屉宽度" onMouseDown={onResizeStart} style={{ position: 'fixed', top: 0, bottom: 0, right: drawerWidth, width: 8, cursor: 'col-resize', zIndex: PLAYGROUND_RESIZE_Z }}><span aria-hidden style={{ display: 'block', height: '100%', width: 1, margin: '0 auto', background: drawerResizing ? 'var(--wk-accent, #4a7dff)' : 'transparent' }} /></div>
-      <aside className="wk-api-playground-drawer" role="dialog" aria-modal="true" aria-label={t('integrations.api.playgroundTitle')} style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: `${drawerWidth}px`, background: 'var(--wk-bg, #fff)', boxShadow: '-12px 0 32px rgba(0,0,0,.18)', display: 'flex', flexDirection: 'column', zIndex: PLAYGROUND_DRAWER_Z }} onClick={(event) => event.stopPropagation()}>
+      <aside className="overflow-auto h-screen" role="dialog" aria-modal="true" aria-label={t('integrations.api.playgroundTitle')} style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: `${drawerWidth}px`, background: 'var(--wk-bg, #fff)', boxShadow: '-12px 0 32px rgba(0,0,0,.18)', display: 'flex', flexDirection: 'column', zIndex: PLAYGROUND_DRAWER_Z }} onClick={(event) => event.stopPropagation()}>
         <header className="wk-api-playground-header" style={rowStyle}>
           <div>
             <h2 style={{ margin: 0, fontSize: 16 }}>{t('integrations.api.playgroundTitle')}</h2>
@@ -322,76 +325,76 @@ export function ApiPlaygroundDrawer({ open, onClose, apiKey, mode, agents, agent
           <button type="button" className="wk-api-playground-close" aria-label="关闭" title="关闭" onClick={close} style={{ border: 'none', background: 'transparent', fontSize: 18, cursor: 'pointer' }}>×</button>
         </header>
 
-        <div className="wk-api-playground-body" style={bodyStyle}>
-          <section className="wk-api-playground-section">
-            <h4>{t('integrations.api.playgroundSectionRequest')}</h4>
-            <label className="wk-api-playground-field" style={{ display: 'block', margin: '10px 0' }}>
+        <div className="grid gap-[18px]" style={bodyStyle}>
+          <section className="grid gap-3 rounded-[10px] border border-[var(--wk-border,#e5e7eb)] p-4">
+            <h4 className="m-0 text-[14px]">{t('integrations.api.playgroundSectionRequest')}</h4>
+            <label className="wk-api-playground-field text-[13px]" style={{ display: 'block', margin: '10px 0' }}>
               {t('integrations.api.playgroundAgent')}
               <ApiPlaygroundAgentSelect agents={agents} value={form.agentId} loading={agentsLoading} placeholder={t('integrations.api.playgroundAgentPlaceholder')} loadingLabel={t('common.loading')} builtinLabel={t('integrations.api.playgroundBuiltin')} onChange={(agentId) => setForm((prev) => ({ ...prev, agentId }))} />
             </label>
             {agentsError ? <p className="wk-api-playground-field-error" role="alert">{agentsError}</p> : null}
-            <label className="wk-api-playground-field" style={{ display: 'block', margin: '10px 0' }}>
+            <label className="wk-api-playground-field text-[13px]" style={{ display: 'block', margin: '10px 0' }}>
               {t('integrations.api.playgroundExternalUser')}
-              <input className="wk-api-playground-external-user" type="text" value={form.externalUserId} disabled={mode === 'tenant'} placeholder={t('integrations.api.playgroundExternalUserPlaceholder')} onChange={(event) => setForm((prev) => ({ ...prev, externalUserId: event.target.value }))} style={fieldStyle} />
+              <input className="wk-api-playground-external-user box-border" type="text" value={form.externalUserId} disabled={mode === 'tenant'} placeholder={t('integrations.api.playgroundExternalUserPlaceholder')} onChange={(event) => setForm((prev) => ({ ...prev, externalUserId: event.target.value }))} style={fieldStyle} />
             </label>
             <p className="wk-api-playground-hint wk-muted">{t(externalUserHintKey(mode), { headerName: DEFAULT_DIRECT_HEADER_NAME })}</p>
-            <label className="wk-api-playground-field" style={{ display: 'block', margin: '10px 0' }}>
+            <label className="wk-api-playground-field text-[13px]" style={{ display: 'block', margin: '10px 0' }}>
               {t('integrations.api.playgroundQuestion')}
-              <textarea ref={queryRef} className="wk-api-playground-query" rows={2} value={form.query} placeholder={t('integrations.api.playgroundQuestionPlaceholder')} onChange={(event) => setForm((prev) => ({ ...prev, query: event.target.value }))} style={fieldStyle} />
+              <textarea ref={queryRef} className="wk-api-playground-query box-border" rows={2} value={form.query} placeholder={t('integrations.api.playgroundQuestionPlaceholder')} onChange={(event) => setForm((prev) => ({ ...prev, query: event.target.value }))} style={fieldStyle} />
             </label>
           </section>
 
-          <section className="wk-api-playground-section">
-            <h4>{t('integrations.api.playgroundSectionPreview')}</h4>
+          <section className="grid gap-3 rounded-[10px] border border-[var(--wk-border,#e5e7eb)] p-4">
+            <h4 className="m-0 text-[14px]">{t('integrations.api.playgroundSectionPreview')}</h4>
             <div className="wk-api-playground-preview">
               <div className="wk-api-playground-preview-toolbar" style={rowStyle}>
                 <span className="wk-muted">{t('integrations.api.playgroundRequestPreview')}</span>
                 <button type="button" className="wk-button wk-button--text" onClick={() => copy(preview)}>{t('integrations.api.copy')}</button>
               </div>
-              <pre style={preStyle}>{preview}</pre>
+              <pre className={preClassName} style={preStyle}>{preview}</pre>
             </div>
           </section>
 
-          <section className="wk-api-playground-section">
-            <h4>{t('integrations.api.playgroundSectionResult')}</h4>
-            {run.error ? <p className="wk-api-playground-alert" role="alert">{run.error}</p> : null}
+          <section className="grid gap-3 rounded-[10px] border border-[var(--wk-border,#e5e7eb)] p-4">
+            <h4 className="m-0 text-[14px]">{t('integrations.api.playgroundSectionResult')}</h4>
+            {run.error ? <p className="m-0" role="alert">{run.error}</p> : null}
             {run.successMs !== null ? <p className="wk-status wk-status-ok" role="status">{t('integrations.api.playgroundSuccess', { ms: run.successMs })}</p> : null}
             {hasResult ? (
               <div className="wk-api-playground-results">
                 {mode === 'signed_token' && run.signedToken ? (
-                  <div className="wk-api-playground-step" data-step="token">
-                    <div className="wk-api-playground-step-header" style={rowStyle}>
+                  <div className="grid gap-2" data-step="token">
+                    <div className="text-[13px]" style={rowStyle}>
                       <span>{t('integrations.api.playgroundGeneratedToken')}</span>
                       <button type="button" className="wk-button wk-button--text" onClick={() => copy(run.signedToken)}>{t('integrations.api.copy')}</button>
                     </div>
-                    <pre style={preStyle}>{run.signedToken}</pre>
+                    <pre className={preClassName} style={preStyle}>{run.signedToken}</pre>
                   </div>
                 ) : null}
-                <div className="wk-api-playground-step" data-step="session">
-                  <div className="wk-api-playground-step-header" style={rowStyle}>
+                <div className="grid gap-2" data-step="session">
+                  <div className="text-[13px]" style={rowStyle}>
                     <span>{t('integrations.api.playgroundStepSession')}</span>
                     {statusTag(run.sessionStatus)}
                   </div>
-                  <pre style={{ ...preStyle, maxHeight: 180 }}>{run.sessionResponse || '-'}</pre>
+                  <pre className={preClassName} style={{ ...preStyle, maxHeight: 180 }}>{run.sessionResponse || '-'}</pre>
                 </div>
-                <div className="wk-api-playground-step" data-step="chat">
-                  <div className="wk-api-playground-step-header" style={rowStyle}>
+                <div className="grid gap-2" data-step="chat">
+                  <div className="text-[13px]" style={rowStyle}>
                     <span>{t('integrations.api.playgroundStepChat')}</span>
                     {statusTag(run.chatStatus)}
                   </div>
-                  <pre style={{ ...preStyle, maxHeight: 240 }}>{run.streamOutput || '-'}</pre>
+                  <pre className={preClassName} style={{ ...preStyle, maxHeight: 240 }}>{run.streamOutput || '-'}</pre>
                 </div>
                 {run.finalAnswer ? (
-                  <div className="wk-api-playground-step" data-step="answer">
-                    <div className="wk-api-playground-step-header" style={rowStyle}>
+                  <div className="grid gap-2" data-step="answer">
+                    <div className="text-[13px]" style={rowStyle}>
                       <span>{t('integrations.api.playgroundFinalAnswer')}</span>
                     </div>
-                    <pre style={preStyle}>{run.finalAnswer}</pre>
+                    <pre className={preClassName} style={preStyle}>{run.finalAnswer}</pre>
                   </div>
                 ) : null}
               </div>
             ) : (
-              <p className="wk-api-playground-empty wk-muted">{t('integrations.api.playgroundEmptyResult')}</p>
+              <p className="wk-api-playground-empty wk-muted m-0">{t('integrations.api.playgroundEmptyResult')}</p>
             )}
           </section>
         </div>
@@ -399,7 +402,7 @@ export function ApiPlaygroundDrawer({ open, onClose, apiKey, mode, agents, agent
         <footer className="wk-api-playground-footer" style={footerStyle}>
           <div className="wk-api-playground-footer-left" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {run.running ? <button type="button" className="wk-button" data-action="stop" onClick={stop}>{t('integrations.api.playgroundStop')}</button> : null}
-            {disabledReason ? <span className="wk-api-playground-disabled-reason wk-muted">{t(disabledReason)}</span> : null}
+            {disabledReason ? <span className="wk-api-playground-disabled-reason wk-muted m-0">{t(disabledReason)}</span> : null}
           </div>
           <button type="button" className="wk-button wk-button--primary" data-action="run" disabled={run.running || Boolean(disabledReason)} onClick={() => void start()}>{t('integrations.api.playgroundRun')}</button>
         </footer>

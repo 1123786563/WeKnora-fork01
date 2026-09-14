@@ -1201,31 +1201,31 @@ function ApiIntegrationPanel({ apiBaseUrl, actions, principalMode, setPrincipalM
   t: Translator;
 }) {
   const principal = actions.principal;
-  return <div className="wk-api-integration">
-    <section className="wk-api-band">
-      <div className="wk-api-row">
-        <div className="wk-api-row-info">
-          <label>{t('integrations.api.baseUrl')}</label>
-          <p>{t('integrations.api.baseUrlDesc')}</p>
+  return <div className="grid gap-5">
+    <section className="rounded-[10px] border border-[#eef1f5] p-4">
+      <div className="flex items-center justify-between gap-4 py-[0.35rem]">
+        <div>
+          <label className="block font-semibold text-ink">{t('integrations.api.baseUrl')}</label>
+          <p className="m-0 mt-[0.15rem] text-[13px] text-muted-strong">{t('integrations.api.baseUrlDesc')}</p>
         </div>
-        <div className="wk-api-row-control">
+        <div className="flex min-w-0 flex-nowrap items-center gap-[0.4rem]">
           <input className="wk-mono-input" readOnly value={apiBaseUrl} aria-label={t('integrations.api.baseUrl')} />
-          <button className="wk-button wk-button--text" type="button" title={t('integrations.api.copy')} onClick={() => { void navigator.clipboard.writeText(apiBaseUrl).catch(() => undefined); }}>{t('integrations.api.copy')}</button>
+          <button className="wk-button wk-button--text shrink-0 whitespace-nowrap" type="button" title={t('integrations.api.copy')} onClick={() => { void navigator.clipboard.writeText(apiBaseUrl).catch(() => undefined); }}>{t('integrations.api.copy')}</button>
         </div>
       </div>
-      <div className="wk-api-row">
-        <div className="wk-api-row-info">
-          <label>OpenAPI /docs</label>
-          <p><a href={apiBaseUrl.replace(/\/+$/, '') + '/docs'} target="_blank" rel="noreferrer">{apiBaseUrl.replace(/\/+$/, '') + '/docs'}</a></p>
+      <div className="flex items-center justify-between gap-4 border-t border-[#f2f5fa] py-[0.35rem]">
+        <div>
+          <label className="block font-semibold text-ink">OpenAPI /docs</label>
+          <p className="m-0 mt-[0.15rem] text-[13px] text-muted-strong"><a href={apiBaseUrl.replace(/\/+$/, '') + '/docs'} target="_blank" rel="noreferrer">{apiBaseUrl.replace(/\/+$/, '') + '/docs'}</a></p>
         </div>
       </div>
     </section>
 
-    <section className="wk-api-keys">
-      <div className="wk-api-keys-header">
-        <div className="wk-api-keys-title">
-          <label>{t('integrations.api.apiKeys')}</label>
-          <p>{t('integrations.api.apiKeysDesc')}</p>
+    <section className="rounded-[10px] border border-[#eef1f5] p-4">
+      <div className="mb-[0.75rem] flex items-start justify-between gap-4">
+        <div>
+          <label className="block font-semibold text-ink">{t('integrations.api.apiKeys')}</label>
+          <p className="m-0 mt-[0.15rem] text-[13px] text-muted-strong">{t('integrations.api.apiKeysDesc')}</p>
         </div>
         <button className="wk-button" type="button" onClick={() => setShowApiKeyForm?.(!showApiKeyForm)}>{t('integrations.api.createApiKey')}</button>
       </div>
@@ -1237,24 +1237,24 @@ function ApiIntegrationPanel({ apiBaseUrl, actions, principalMode, setPrincipalM
           <button className="wk-button wk-button--text" type="button" onClick={() => setShowApiKeyForm?.(false)}>{t('common.cancel')}</button>
         </div>
       </form> : null}
-      {apiKeysLoading ? <p className="wk-status">{t('integrations.api.loading')}</p> : (apiKeys ?? []).length === 0 ? <p className="wk-status">{t('integrations.api.noApiKeys')}</p> : <div className="wk-api-key-table-wrap">
-        <table className="wk-api-key-table">
+      {apiKeysLoading ? <p className="wk-status">{t('integrations.api.loading')}</p> : (apiKeys ?? []).length === 0 ? <p className="wk-status">{t('integrations.api.noApiKeys')}</p> : <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-[13px]">
           <thead><tr>
-            <th>{t('integrations.api.apiKeyName')}</th>
-            <th>{t('integrations.api.apiKeyValue')}</th>
-            <th>{t('integrations.api.apiKeyAccessMode')}</th>
-            <th>{t('integrations.api.createdAt')}</th>
-            <th>{t('integrations.api.actions')}</th>
+            <th className="whitespace-nowrap border-b border-[#eef1f5] px-[0.6rem] py-[0.45rem] text-left text-[12px] font-medium text-muted">{t('integrations.api.apiKeyName')}</th>
+            <th className="whitespace-nowrap border-b border-[#eef1f5] px-[0.6rem] py-[0.45rem] text-left text-[12px] font-medium text-muted">{t('integrations.api.apiKeyValue')}</th>
+            <th className="whitespace-nowrap border-b border-[#eef1f5] px-[0.6rem] py-[0.45rem] text-left text-[12px] font-medium text-muted">{t('integrations.api.apiKeyAccessMode')}</th>
+            <th className="whitespace-nowrap border-b border-[#eef1f5] px-[0.6rem] py-[0.45rem] text-left text-[12px] font-medium text-muted">{t('integrations.api.createdAt')}</th>
+            <th className="whitespace-nowrap border-b border-[#eef1f5] px-[0.6rem] py-[0.45rem] text-left text-[12px] font-medium text-muted">{t('integrations.api.actions')}</th>
           </tr></thead>
           <tbody>
             {(apiKeys ?? []).map((key) => {
               const reveal = isFreshKeyVisible({ fresh: key.id === freshApiKeyId, hasValue: key.api_key !== '' });
               return <tr key={String(key.id)}>
-                <td>{key.name}</td>
-                <td><code>{apiKeyValueDisplay(key, reveal)}</code></td>
-                <td>{apiKeyAccessMode(key)}</td>
-                <td>{key.created_at ?? ''}</td>
-                <td className="wk-api-key-actions">
+                <td className="border-b border-[#f2f5fa] px-[0.6rem] py-[0.5rem] [overflow-wrap:anywhere]">{key.name}</td>
+                <td className="border-b border-[#f2f5fa] px-[0.6rem] py-[0.5rem] [overflow-wrap:anywhere]"><code className="rounded-[5px] bg-canvas px-[0.4rem] py-[0.15rem] text-[12px]">{apiKeyValueDisplay(key, reveal)}</code></td>
+                <td className="border-b border-[#f2f5fa] px-[0.6rem] py-[0.5rem] [overflow-wrap:anywhere]">{apiKeyAccessMode(key)}</td>
+                <td className="border-b border-[#f2f5fa] px-[0.6rem] py-[0.5rem] [overflow-wrap:anywhere]">{key.created_at ?? ''}</td>
+                <td className="flex items-center gap-[0.4rem] whitespace-nowrap border-b border-[#f2f5fa] px-[0.6rem] py-[0.5rem] [overflow-wrap:anywhere]">
                   {key.api_key ? <button className="wk-button" type="button" onClick={() => onCopyApiKey?.(key)}>{t('integrations.api.copy')}</button> : null}
                   <button className="wk-button wk-button--danger" type="button" onClick={() => onRevokeApiKey?.(key)}>{t('integrations.api.deleteApiKey')}</button>
                 </td>
@@ -1265,11 +1265,11 @@ function ApiIntegrationPanel({ apiBaseUrl, actions, principalMode, setPrincipalM
       </div>}
     </section>
 
-    <section className="wk-principal">
-      <div className="wk-api-keys-header">
-        <div className="wk-api-keys-title">
-          <label>{t('integrations.api.principalMode')}</label>
-          <p>{t('integrations.api.principalModeDesc')}</p>
+    <section className="rounded-[10px] border border-[#eef1f5] p-4">
+      <div className="mb-[0.75rem] flex items-start justify-between gap-4">
+        <div>
+          <label className="block font-semibold text-ink">{t('integrations.api.principalMode')}</label>
+          <p className="m-0 mt-[0.15rem] text-[13px] text-muted-strong">{t('integrations.api.principalModeDesc')}</p>
         </div>
       </div>
       <p className="wk-muted">{t('integrations.api.principalScope')}</p>
@@ -1278,20 +1278,20 @@ function ApiIntegrationPanel({ apiBaseUrl, actions, principalMode, setPrincipalM
           <button key={value} type="button" role="radio" aria-checked={principalMode === value} className={principalMode === value ? 'wk-option-chip wk-option-chip--active' : 'wk-option-chip'} onClick={() => setPrincipalMode(value)}>{t(key)}</button>
         ))}
       </div>
-      {principalMode === 'direct_header' ? <div className="wk-principal-fields">
+      {principalMode === 'direct_header' ? <div className="mt-[0.6rem] grid gap-[0.5rem]">
         <p className="wk-muted wk-muted--warn">{t('integrations.api.directWarning')}</p>
-        <label className="wk-check-row"><input type="checkbox" checked={requireDirectHeader} onChange={(event) => setRequireDirectHeader(event.target.checked)} />{t('integrations.api.requireDirectHeader')}</label>
+        <label className="wk-check-row"><input className="box-border w-full max-w-[420px] rounded-[6px] border border-line-control px-[0.6rem] py-[0.5rem] [font:inherit]" type="checkbox" checked={requireDirectHeader} onChange={(event) => setRequireDirectHeader(event.target.checked)} />{t('integrations.api.requireDirectHeader')}</label>
         <p className="wk-muted">{t('integrations.api.requireDirectHeaderDesc')}</p>
       </div> : null}
-      {principalMode === 'signed_token' ? <div className="wk-principal-fields">
-        <label>{t('integrations.api.hmacSecret')}<input type="password" value={hmacSecret} onChange={(event) => setHmacSecret(event.target.value)} placeholder={principal?.has_hmac_secret ? t('integrations.api.secretConfigured') : ''} /></label>
+      {principalMode === 'signed_token' ? <div className="mt-[0.6rem] grid gap-[0.5rem]">
+        <label className="grid gap-[0.3rem] font-semibold">{t('integrations.api.hmacSecret')}<input className="box-border w-full max-w-[420px] rounded-[6px] border border-line-control px-[0.6rem] py-[0.5rem] [font:inherit]" type="password" value={hmacSecret} onChange={(event) => setHmacSecret(event.target.value)} placeholder={principal?.has_hmac_secret ? t('integrations.api.secretConfigured') : ''} /></label>
         <p className="wk-muted">{t('integrations.api.hmacSecretDesc')}</p>
       </div> : null}
       {principalMode !== 'tenant' ? <div className="wk-form-actions">
         <button className="wk-button" type="button" disabled={busy} onClick={onSavePrincipal}>{t('common.save')}</button>
       </div> : null}
-      <div className="wk-principal-fields">
-        <label>{t('integrations.api.playgroundExternalUser')}<input value={externalUserId} onChange={(event) => setExternalUserId(event.target.value)} placeholder={t('integrations.api.playgroundExternalUserPlaceholder')} /></label>
+      <div className="mt-[0.6rem] grid gap-[0.5rem]">
+        <label className="grid gap-[0.3rem] font-semibold">{t('integrations.api.playgroundExternalUser')}<input className="box-border w-full max-w-[420px] rounded-[6px] border border-line-control px-[0.6rem] py-[0.5rem] [font:inherit]" value={externalUserId} onChange={(event) => setExternalUserId(event.target.value)} placeholder={t('integrations.api.playgroundExternalUserPlaceholder')} /></label>
         <div className="wk-form-actions">
           <button className="wk-button" type="button" disabled={busy} onClick={onCreatePrincipalToken}>{t('integrations.api.generateSecret')}</button>
         </div>
@@ -1299,11 +1299,11 @@ function ApiIntegrationPanel({ apiBaseUrl, actions, principalMode, setPrincipalM
       </div>
     </section>
 
-    <section className="wk-playground">
-      <div className="wk-api-keys-header">
-        <div className="wk-api-keys-title">
-          <label>{t('integrations.api.playgroundTitle')}</label>
-          <p>{t('integrations.api.playgroundDesc')}</p>
+    <section className="rounded-[10px] border border-[#eef1f5] p-4">
+      <div className="mb-[0.75rem] flex items-start justify-between gap-4">
+        <div>
+          <label className="block font-semibold text-ink">{t('integrations.api.playgroundTitle')}</label>
+          <p className="m-0 mt-[0.15rem] text-[13px] text-muted-strong">{t('integrations.api.playgroundDesc')}</p>
         </div>
       </div>
       {onOpenApiPlayground ? <button className="wk-button wk-button--primary" type="button" onClick={onOpenApiPlayground}>{t('integrations.api.playgroundOpen')}</button> : null}
@@ -1333,31 +1333,31 @@ function ExternalLandingPanel({ tab, locale, externalUrl, apiBaseUrl, t }: { tab
       {externalUrl ? <a className="wk-button" href={externalUrl} target="_blank" rel="noreferrer noopener">{cta.label}</a> : null}
       <span className="wk-muted">{cta.hint}</span>
     </div>
-    {tab === 'cli' ? <section className="wk-landing-section">
-      <h4>{t('integrations.cli.quickstart')}</h4>
-      <ol className="wk-landing-steps">
-        {cliSteps.map((step, index) => <li key={step.key} className="wk-landing-step">
-          <span className="wk-landing-step-num">{index + 1}</span>
+    {tab === 'cli' ? <section className="rounded-[10px] border border-[#eef1f5] p-4">
+      <h4 className="m-0 mb-[0.6rem] text-[14px] font-semibold text-ink">{t('integrations.cli.quickstart')}</h4>
+      <ol className="m-0 list-none grid gap-[0.9rem] p-0">
+        {cliSteps.map((step, index) => <li key={step.key} className="flex gap-[10px]">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[rgba(46,109,230,0.1)] text-[12px] font-semibold text-primary">{index + 1}</span>
           <div className="wk-landing-step-body">
-            <div className="wk-landing-step-title">{step.title}</div>
-            <p className="wk-landing-step-desc">{step.desc}</p>
+            <div className="text-[14px] font-semibold text-ink">{step.title}</div>
+            <p className="m-0 mt-[0.2rem] mb-[0.5rem] text-[13px] leading-[1.6] text-muted-strong">{step.desc}</p>
             <div className="wk-code-toolbar"><pre>{step.command}</pre><button className="wk-button wk-button--text" type="button" title={t('integrations.cli.copy')} onClick={() => copy(step.command)}>⧉</button></div>
           </div>
         </li>)}
       </ol>
     </section> : null}
-    {tab === 'cli' ? <section className="wk-landing-section">
-      <h4>{t('integrations.cli.commandsTitle')}</h4>
-      <p className="wk-muted">{t('integrations.cli.commandsDesc')}</p>
+    {tab === 'cli' ? <section className="rounded-[10px] border border-[#eef1f5] p-4">
+      <h4 className="m-0 mb-[0.6rem] text-[14px] font-semibold text-ink">{t('integrations.cli.commandsTitle')}</h4>
+      <p className="wk-muted m-0 mb-[0.6rem] text-[13px]">{t('integrations.cli.commandsDesc')}</p>
       <div className="wk-code-toolbar"><pre>{'weknora doc upload ./document.pdf --kb "KB_ID"\nweknora search chunks "query" --kb "KB_ID"\nweknora chat "question" --kb "KB_ID" --format text\nweknora agent list'}</pre><button className="wk-button wk-button--text" type="button" title={t('integrations.cli.copy')} onClick={() => copy('weknora doc upload')}>⧉</button></div>
     </section> : null}
-    {tab === 'cli' ? <section className="wk-landing-section">
-      <h4>{t('integrations.cli.mcpTitle')}</h4>
-      <p className="wk-muted">{t('integrations.cli.mcpDesc')}</p>
+    {tab === 'cli' ? <section className="rounded-[10px] border border-[#eef1f5] p-4">
+      <h4 className="m-0 mb-[0.6rem] text-[14px] font-semibold text-ink">{t('integrations.cli.mcpTitle')}</h4>
+      <p className="wk-muted m-0 mb-[0.6rem] text-[13px]">{t('integrations.cli.mcpDesc')}</p>
       <div className="wk-code-toolbar"><pre>{JSON.stringify({ mcpServers: { weknora: { command: 'weknora', args: ['--profile', 'weknora', 'mcp', 'serve'] } } }, null, 2)}</pre><button className="wk-button wk-button--text" type="button" title={t('integrations.cli.copy')} onClick={() => copy('mcp')}>⧉</button></div>
     </section> : null}
-    {tab === 'chrome' ? <section className="wk-landing-section">
-      <h4>{t('integrations.chrome.capabilitiesTitle')}</h4>
+    {tab === 'chrome' ? <section className="rounded-[10px] border border-[#eef1f5] p-4">
+      <h4 className="m-0 mb-[0.6rem] text-[14px] font-semibold text-ink">{t('integrations.chrome.capabilitiesTitle')}</h4>
       <div className="wk-capability-grid">
         {chromeCapabilities.map((key) => <div key={key} className="wk-capability-card">
           <h5>{t('integrations.chrome.capabilities.' + key + '.title')}</h5>
@@ -1365,20 +1365,20 @@ function ExternalLandingPanel({ tab, locale, externalUrl, apiBaseUrl, t }: { tab
         </div>)}
       </div>
     </section> : null}
-    {tab === 'chrome' ? <section className="wk-landing-section">
-      <h4>{t('integrations.chrome.stepsTitle')}</h4>
-      <ol className="wk-landing-steps">
-        {chromeSteps.map((key, index) => <li key={key} className="wk-landing-step">
-          <span className="wk-landing-step-num">{index + 1}</span>
+    {tab === 'chrome' ? <section className="rounded-[10px] border border-[#eef1f5] p-4">
+      <h4 className="m-0 mb-[0.6rem] text-[14px] font-semibold text-ink">{t('integrations.chrome.stepsTitle')}</h4>
+      <ol className="m-0 list-none grid gap-[0.9rem] p-0">
+        {chromeSteps.map((key, index) => <li key={key} className="flex gap-[10px]">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[rgba(46,109,230,0.1)] text-[12px] font-semibold text-primary">{index + 1}</span>
           <div className="wk-landing-step-body">
-            <div className="wk-landing-step-title">{t('integrations.chrome.steps.' + key + '.title')}</div>
-            <p className="wk-landing-step-desc">{t('integrations.chrome.steps.' + key + '.desc')}</p>
+            <div className="text-[14px] font-semibold text-ink">{t('integrations.chrome.steps.' + key + '.title')}</div>
+            <p className="m-0 mt-[0.2rem] mb-[0.5rem] text-[13px] leading-[1.6] text-muted-strong">{t('integrations.chrome.steps.' + key + '.desc')}</p>
           </div>
         </li>)}
       </ol>
     </section> : null}
-    {tab === 'claw' ? <section className="wk-landing-section">
-      <h4>{t('integrations.claw.capabilitiesTitle')}</h4>
+    {tab === 'claw' ? <section className="rounded-[10px] border border-[#eef1f5] p-4">
+      <h4 className="m-0 mb-[0.6rem] text-[14px] font-semibold text-ink">{t('integrations.claw.capabilitiesTitle')}</h4>
       <div className="wk-capability-grid">
         {clawCapabilities.map((key) => <div key={key} className="wk-capability-card">
           <h5>{t('integrations.claw.capabilities.' + key + '.title')}</h5>
@@ -1386,14 +1386,14 @@ function ExternalLandingPanel({ tab, locale, externalUrl, apiBaseUrl, t }: { tab
         </div>)}
       </div>
     </section> : null}
-    {tab === 'claw' ? <section className="wk-landing-section">
-      <h4>{t('integrations.claw.stepsTitle')}</h4>
-      <ol className="wk-landing-steps">
-        {clawSteps.map((key, index) => <li key={key} className="wk-landing-step">
-          <span className="wk-landing-step-num">{index + 1}</span>
+    {tab === 'claw' ? <section className="rounded-[10px] border border-[#eef1f5] p-4">
+      <h4 className="m-0 mb-[0.6rem] text-[14px] font-semibold text-ink">{t('integrations.claw.stepsTitle')}</h4>
+      <ol className="m-0 list-none grid gap-[0.9rem] p-0">
+        {clawSteps.map((key, index) => <li key={key} className="flex gap-[10px]">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[rgba(46,109,230,0.1)] text-[12px] font-semibold text-primary">{index + 1}</span>
           <div className="wk-landing-step-body">
-            <div className="wk-landing-step-title">{t('integrations.claw.steps.' + key + '.title')}</div>
-            <p className="wk-landing-step-desc">{t('integrations.claw.steps.' + key + '.desc')}</p>
+            <div className="text-[14px] font-semibold text-ink">{t('integrations.claw.steps.' + key + '.title')}</div>
+            <p className="m-0 mt-[0.2rem] mb-[0.5rem] text-[13px] leading-[1.6] text-muted-strong">{t('integrations.claw.steps.' + key + '.desc')}</p>
           </div>
         </li>)}
       </ol>

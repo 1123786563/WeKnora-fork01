@@ -48,6 +48,15 @@ type Props = {
   initialSubSection?: string;
 };
 const TYPES: ModelType[] = ["chat", "embedding", "rerank", "vllm", "asr"];
+// Tailwind 迁移：原 settings-wrapper.css 的 .model-card--<type> .model-card__badge
+// 配色改为静态映射 utilities（rgba/hex 任意值精确还原）。
+const CARD_BADGE_TONE: Record<ModelType, string> = {
+  chat: "bg-[rgba(0,82,217,0.1)] text-[#0052d9]",
+  embedding: "bg-[rgba(98,53,187,0.1)] text-[#6235bb]",
+  rerank: "bg-[rgba(184,92,0,0.12)] text-[#b85c00]",
+  vllm: "bg-[rgba(201,62,62,0.1)] text-[#c93e3e]",
+  asr: "bg-[rgba(17,128,83,0.1)] text-[#118053]",
+};
 const BUILTIN_MODELS_DOC = "https://github.com/Tencent/WeKnora/blob/main/docs/BUILTIN_MODELS.md";
 const THINKING_CONTROL_OPTIONS: Array<{ value: string; key: string }> = [
   { value: "none", key: "none" },
@@ -897,11 +906,11 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
     <section className="wk-model-settings" data-testid="model-settings">
       <div className="wk-settings-panel-heading">
         <div>
-          <h2>{t("modelSettings.title")}</h2>
+          <h2 className="mt-0! mb-2! text-[20px] font-semibold">{t("modelSettings.title")}</h2>
           <p className="wk-muted">{t("modelSettings.description")}</p>
         </div>
         {canCreate ? (
-          <button type="button" className="wk-model-test-trigger" onClick={() => setDebugOpen(true)}>
+          <button type="button" className="inline-flex cursor-pointer items-center gap-1.5 border-0 bg-transparent px-0 py-1 font-[inherit] text-sm font-semibold text-[#0a8f4c] hover:text-[#067a3f] focus-visible:text-[#067a3f]" onClick={() => setDebugOpen(true)}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
               <path d="M8 5v14l11-7z" />
             </svg>
@@ -909,12 +918,12 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
           </button>
         ) : null}
       </div>
-      <div className="wk-builtin-hint" role="note">
-        <p><strong>{t("modelSettings.builtinModels.title")}</strong></p>
-        <p className="wk-muted">
+      <div className="mt-3 rounded-md border border-[#e7e7e7] bg-[#f3f3f3] px-3 py-[10px]" role="note">
+        <p className="m-0 mb-1 text-xs font-medium tracking-[0.02em] text-[rgba(0,0,0,0.4)]"><strong>{t("modelSettings.builtinModels.title")}</strong></p>
+        <p className="m-0 mb-[6px] text-[13px] leading-[1.55] text-[rgba(0,0,0,0.6)]">
           {t(role === "system-admin" ? "modelSettings.builtinModels.descriptionAdmin" : "modelSettings.builtinModels.description")}
         </p>
-        <a href={BUILTIN_MODELS_DOC} target="_blank" rel="noopener noreferrer">
+        <a className="text-[13px]" href={BUILTIN_MODELS_DOC} target="_blank" rel="noopener noreferrer">
           {t("modelSettings.builtinModels.viewGuide")}
         </a>
       </div>
@@ -924,7 +933,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
       <nav className="wk-model-tabs" aria-label={t("model.editor.typeLabel")}>
         <button
           type="button"
-          className={filter === "all" ? "is-active" : ""}
+          className={filter === "all" ? "is-active border-b-[#0a8f4c]! text-[13px] text-[#0a8f4c]!" : "text-[13px]"}
           onClick={() => setFilter("all")}
         >
           {t("common.all")}({models.length})
@@ -933,7 +942,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
           <button
             type="button"
             key={type}
-            className={filter === type ? "is-active" : ""}
+            className={filter === type ? "is-active border-b-[#0a8f4c]! text-[13px] text-[#0a8f4c]!" : "text-[13px]"}
             onClick={() => setFilter(type)}
           >
             {typeLabelOf(type)}({models.filter((item) => modelType(item) === type).length})
@@ -943,7 +952,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
       {!canCreate && visible.length === 0 ? (
         <Status>{emptyHint}</Status>
       ) : (
-        <div className="wk-model-grid">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))]! gap-3!">
           {visible.map((model) => {
             const type = modelType(model);
             const modelParams = params(model);
@@ -956,23 +965,26 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
             return (
               <div
                 key={model.id}
-                className={"wk-vmodel-card model-card model-card--" + type + (builtin ? " model-card--builtin" : "") + (canEdit ? " model-card--clickable" : "")}
+                className={"wk-vmodel-card group/card relative box-border flex min-w-0 items-start gap-3 rounded-[10px] border border-[rgba(120,135,155,0.3)] px-4 py-[14px] transition-[border-color,box-shadow] duration-[180ms] ease-[ease]"
+                  + (builtin ? " bg-[rgba(127,142,166,0.06)] hover:border-[rgba(120,135,155,0.3)] hover:shadow-none" : " bg-white")
+                  + (canEdit ? " cursor-pointer" : "")
+                  + (canEdit && !builtin ? " hover:border-[rgba(7,192,95,0.65)] hover:shadow-[0_4px_14px_rgba(15,23,42,0.08)] hover:outline-none focus-visible:border-[rgba(7,192,95,0.65)] focus-visible:shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus-visible:outline-none" : "")}
                 onClick={canEdit ? () => openEdit(model) : undefined}
               >
-                <div className="model-card__badge" aria-label={typeLabelOf(type)}>{badgeIcon(type)}</div>
-                <div className="model-card__body">
-                  <div className="model-card__header">
-                    <h3 className="model-card__title">{label(model)}</h3>
+                <div className={"mt-px flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] text-base " + CARD_BADGE_TONE[type]} aria-label={typeLabelOf(type)}>{badgeIcon(type)}</div>
+                <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <h3 className="m-0 min-w-0 flex-1 truncate text-sm font-semibold leading-[1.4]">{label(model)}</h3>
                     {builtin ? (
-                      <span className="model-card__lock" title={t("modelSettings.builtinTag")} aria-label={t("modelSettings.builtinTag")}>
+                      <span className="shrink-0 text-[13px] text-[#8a97ab] opacity-60 group-hover/card:opacity-100" title={t("modelSettings.builtinTag")} aria-label={t("modelSettings.builtinTag")}>
                         {role === "system-admin" ? "✎" : "🔒"}
                       </span>
                     ) : null}
                     {canEdit ? (
-                      <div className="model-card__actions" onClick={(event) => event.stopPropagation()}>
+                      <div className="group/actions relative flex shrink-0 items-center gap-0.5" onClick={(event) => event.stopPropagation()}>
                         <button
                           type="button"
-                          className="model-card__action-btn model-card__more"
+                          className="cursor-pointer border-0 bg-transparent px-1.5 py-[2px] text-sm opacity-0 transition-opacity duration-150 ease-[ease] group-focus-within/actions:opacity-100 group-focus-within/card:opacity-100 group-hover/card:opacity-100 text-[#7a879c]"
                           aria-haspopup="menu"
                           aria-expanded={menuOpen}
                           onClick={() => setMenuFor(menuOpen ? null : model.id)}
@@ -980,12 +992,12 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                           ⋯
                         </button>
                         {menuOpen ? (
-                          <div className="model-card__menu" role="menu">
-                            <button type="button" role="menuitem" onClick={() => { setMenuFor(null); openEdit(model); }}>
+                          <div className="absolute right-0 top-[26px] z-[5] flex min-w-[96px] flex-col rounded-lg border border-[rgba(120,135,155,0.3)] bg-white shadow-[0_8px_24px_rgba(23,32,51,0.16)]" role="menu">
+                            <button type="button" role="menuitem" className="cursor-pointer border-0 bg-transparent px-3 py-2 text-left font-[inherit] text-[13px] hover:bg-[rgba(127,142,166,0.1)] disabled:cursor-default disabled:text-[#9aa6b8]" onClick={() => { setMenuFor(null); openEdit(model); }}>
                               {t("common.edit")}
                             </button>
                             {!builtin ? (
-                              <button type="button" role="menuitem" disabled={busy} onClick={() => { setMenuFor(null); void copyModel(model); }}>
+                              <button type="button" role="menuitem" disabled={busy} className="cursor-pointer border-0 bg-transparent px-3 py-2 text-left font-[inherit] text-[13px] hover:bg-[rgba(127,142,166,0.1)] disabled:cursor-default disabled:text-[#9aa6b8]" onClick={() => { setMenuFor(null); void copyModel(model); }}>
                                 {t("common.copy")}
                               </button>
                             ) : null}
@@ -994,7 +1006,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                         {!builtin ? (
                           <button
                             type="button"
-                            className="model-card__action-btn model-card__delete"
+                            className="cursor-pointer border-0 bg-transparent px-1.5 py-[2px] text-sm opacity-0 transition-opacity duration-150 ease-[ease] group-focus-within/actions:opacity-100 group-focus-within/card:opacity-100 group-hover/card:opacity-100 text-[#c23434]"
                             title={t("common.delete")}
                             aria-label={t("common.delete")}
                             disabled={busy}
@@ -1006,19 +1018,19 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                       </div>
                     ) : null}
                   </div>
-                  <p className="model-card__subtitle">
+                  <p className="m-0 truncate text-xs leading-[1.5] text-[#5c6b83]">
                     <span>{vendorLabel(model)}</span>
                     {type === "embedding" && typeof dimension === "number" ? (
                       <>
-                        <span className="model-card__sep"> · </span>
+                        <span className="text-[#97a3b6]"> · </span>
                         <span>{t("model.editor.dimensionLabel")} {dimension}</span>
                       </>
                     ) : null}
                     {(type === "chat" || type === "vllm") && modelHasContext(model) ? (
                       <>
-                        <span className="model-card__sep"> · </span>
+                        <span className="text-[#97a3b6]"> · </span>
                         <span
-                          className="model-card__ctx"
+                          className="tabular-nums"
                           title={isDefaultContextWindow(contextWindow)
                             ? t("model.editor.contextWindowDefaultHint", { value: formatContextWindow(contextWindow) })
                             : t("model.editor.contextWindowTokens", { count: effectiveContextWindow(contextWindow) })}
@@ -1029,7 +1041,7 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
                     ) : null}
                     {type === "chat" && supportsVision ? (
                       <>
-                        <span className="model-card__sep"> · </span>
+                        <span className="text-[#97a3b6]"> · </span>
                         <span className="model-card__vision" title={t("model.editor.supportsVisionLabel")} aria-label={t("model.editor.supportsVisionLabel")}>👁</span>
                       </>
                     ) : null}
@@ -1039,9 +1051,9 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
             );
           })}
           {canCreate ? (
-            <button type="button" className="model-card model-card--add wk-model-card--add" onClick={openAdd}>
-              <span className="model-card--add__icon" aria-hidden="true">＋</span>
-              <span className="model-card--add__label">{t("modelSettings.actions.addModel")}</span>
+            <button type="button" className="flex min-h-[68px] cursor-pointer flex-col items-center justify-center gap-2 rounded-[10px] border border-dashed border-[rgba(120,135,155,0.45)] bg-transparent px-4 py-[14px] font-[inherit] text-[#7a879c] hover:border-[#0a8f4c] hover:bg-[rgba(7,192,95,0.06)] hover:text-[#0a8f4c] focus-visible:border-[#0a8f4c] focus-visible:bg-[rgba(7,192,95,0.06)] focus-visible:text-[#0a8f4c]" onClick={openAdd}>
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[rgba(7,192,95,0.1)] text-[18px]" aria-hidden="true">＋</span>
+              <span className="text-[13px] font-medium">{t("modelSettings.actions.addModel")}</span>
             </button>
           ) : null}
         </div>
