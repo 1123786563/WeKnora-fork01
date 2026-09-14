@@ -2423,3 +2423,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Authenticated React Web runtime reached the real KB graph route and received the backend disabled-feature response. The page rendered localized heading/help, refresh/fit controls, backend error alert, and retry action.
 - Evidence: `evidence/vue-react-parity/2026-09-15-r020-wiki-graph-runtime-gating.md`.
 - This closes the live negative capability-gate check for the Web route; a successful graph payload and native-device graph interaction remain unverified.
+
+## 2026-09-15 Round N+34av — Knowledge-base context label cleanup
+
+- Replaced the remaining English `Knowledge base · <id>` context eyebrow in Data Sources, Wiki, Graph, and Knowledge Settings pages with the shared localized `common.knowledgeBases` key.
+- Validation: Web 891/891 and Web typecheck passed; `git diff --check` passed.
