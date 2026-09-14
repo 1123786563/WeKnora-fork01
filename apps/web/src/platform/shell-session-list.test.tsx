@@ -245,3 +245,47 @@ test('(f) empty session list renders the zh-CN 暂无对话 empty state', async 
   const empty = document.querySelector('nav[aria-label="我的对话"] p[role="status"]');
   assert.equal(empty?.textContent, '暂无对话');
 });
+
+test('(g) shell session list requests the next web page when scrolled near the end', async () => {
+  const calls: number[] = [];
+  const client = fakeClient({
+    list: async (params: { page?: number }) => {
+      const page = params.page ?? 1;
+      calls.push(page);
+      return page === 1
+        ? { data: SESSIONS, total: 6, page: 1, page_size: 5 }
+        : { data: [{ id: 'session-6', title: '下一页的会话', is_pinned: false, updated_at: iso(0) }], total: 6, page: 2, page_size: 1 };
+    },
+  });
+  await mountShell({ client });
+  const scrollContainer = shellList()?.parentElement as HTMLElement;
+  assert.ok(scrollContainer);
+  Object.defineProperties(scrollContainer, {
+    scrollHeight: { configurable: true, value: 400 },
+    clientHeight: { configurable: true, value: 200 },
+    scrollTop: { configurable: true, writable: true, value: 220 },
+  });
+  await act(async () => { scrollContainer.dispatchEvent(new Event('scroll')); await new Promise((resolve) => setTimeout(resolve, 10)); });
+  assert.deepEqual(calls, [1, 2]);
+  assert.equal(rowTitles().includes('下一页的会话'), true);
+});
+
+test('(h) a failed initial session load shows retry instead of the empty state', async () => {
+  let attempts = 0;
+  const client = fakeClient({
+    list: async () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error('session list unavailable');
+      return { data: SESSIONS, total: SESSIONS.length, page: 1, page_size: 30 };
+    },
+  });
+  await mountShell({ client });
+  const status = document.querySelector('nav[aria-label="我的对话"] p[role="status"]');
+  assert.equal(status?.textContent, '发生错误 重试');
+  assert.equal(status?.textContent?.includes('暂无对话'), false);
+  const retry = status?.querySelector('button') as HTMLButtonElement | null;
+  assert.ok(retry);
+  await act(async () => { retry?.click(); await new Promise((resolve) => setTimeout(resolve, 10)); });
+  assert.equal(attempts, 2);
+  assert.equal(rowTitles().includes('今天的会话'), true);
+});

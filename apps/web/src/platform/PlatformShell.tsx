@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type UIEvent } from 'react';
 import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
 import type { ChatSession, createWeKnoraClient } from '@weknora/api-client';
 import { sessionGroups } from '@weknora/domain/chat/session-state';
@@ -99,6 +99,7 @@ const COLLAPSE_STORAGE_KEY = 'weknora_sidebar_collapsed';
 // here; reported as missing keys in the slice evidence.
 const CLEAR_SESSION_CONFIRM = '确认清空当前对话的全部消息？对话本身会保留，此操作无法恢复。';
 const DELETE_SESSION_CONFIRM = '确认删除当前对话？删除后将无法恢复。';
+const SHELL_SESSION_PAGE_SIZE = 30;
 
 export function PlatformShell({ client, onLogout, children }: PlatformShellProps): ReactNode {
   const locale = useMemo(resolveLocale, []);
@@ -113,6 +114,7 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
     // Session-list copy (Vue menu.vue uses the same menu.* keys).
     myChats: formatMessage(locale, 'menu.myChats'),
     noSessions: formatMessage(locale, 'menu.noSessions'),
+    sessionLoadError: formatMessage(locale, 'common.error'),
     renameSession: formatMessage(locale, 'menu.renameSession'),
     newSession: formatMessage(locale, 'menu.newSession'),
   };
@@ -201,23 +203,70 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
 
   // Session list (Vue menu.vue .submenu): the platform sidebar lists the
   // tenant's web conversations on every protected page. Same API surface the
-  // chat page uses (client.sessions.list); first page only — the Vue list
-  // pages deeper buckets in on scroll, which the shell does not do yet.
+  // chat page uses (client.sessions.list); later pages load as the sidebar is
+  // scrolled, matching Vue menu.vue's bucket continuation behavior.
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
-  useEffect(() => {
-    let active = true;
+  const sessionsRef = useRef<ChatSession[]>([]);
+  const sessionsTotalRef = useRef(0);
+  const sessionsPageRef = useRef(0);
+  const sessionsRequestRef = useRef(false);
+  const sessionsMountedRef = useRef(false);
+  const sessionsGenerationRef = useRef(0);
+  const [sessionsLoadError, setSessionsLoadError] = useState(false);
+  const loadShellSessionPage = useCallback(async (page: number, generation: number) => {
+    if (!sessionsMountedRef.current || generation !== sessionsGenerationRef.current || sessionsRequestRef.current) return;
+    sessionsRequestRef.current = true;
     setSessionsLoading(true);
-    void client.sessions.list({ page: 1, pageSize: 30, source: 'web' }).then(
-      (result) => {
-        if (!active) return;
-        setSessions(result.data);
-        setSessionsLoading(false);
-      },
-      () => { if (active) setSessionsLoading(false); },
-    );
-    return () => { active = false; };
+    try {
+      const result = await client.sessions.list({ page, pageSize: SHELL_SESSION_PAGE_SIZE, source: 'web' });
+      if (!sessionsMountedRef.current || generation !== sessionsGenerationRef.current) return;
+      const incoming = page === 1
+        ? result.data
+        : [...sessionsRef.current, ...result.data.filter((session) => !sessionsRef.current.some((item) => item.id === session.id))];
+      sessionsRef.current = incoming;
+      sessionsTotalRef.current = result.total;
+      sessionsPageRef.current = page;
+      setSessionsLoadError(false);
+      setSessions(incoming);
+    } catch {
+      if (sessionsMountedRef.current && generation === sessionsGenerationRef.current) setSessionsLoadError(true);
+    } finally {
+      if (generation === sessionsGenerationRef.current) sessionsRequestRef.current = false;
+      if (sessionsMountedRef.current && generation === sessionsGenerationRef.current) setSessionsLoading(false);
+    }
   }, [client]);
+  useEffect(() => {
+    sessionsMountedRef.current = true;
+    const generation = ++sessionsGenerationRef.current;
+    sessionsRequestRef.current = false;
+    sessionsRef.current = [];
+    sessionsTotalRef.current = 0;
+    sessionsPageRef.current = 0;
+    setSessions([]);
+    setSessionsLoadError(false);
+    void loadShellSessionPage(1, generation);
+    return () => {
+      sessionsMountedRef.current = false;
+    };
+  }, [loadShellSessionPage]);
+
+  const onSessionsScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
+    const element = event.currentTarget;
+    if (sessionsRequestRef.current) return;
+    if (element.scrollHeight - (element.scrollTop + element.clientHeight) > 80) return;
+    const generation = sessionsGenerationRef.current;
+    if (sessionsLoadError) {
+      void loadShellSessionPage(1, generation);
+      return;
+    }
+    if (sessionsTotalRef.current === 0 || sessionsRef.current.length >= sessionsTotalRef.current) return;
+    void loadShellSessionPage(sessionsPageRef.current + 1, generation);
+  }, [loadShellSessionPage, sessionsLoadError]);
+  const retryShellSessions = useCallback(() => {
+    setSessionsLoadError(false);
+    void loadShellSessionPage(1, sessionsGenerationRef.current);
+  }, [loadShellSessionPage]);
 
   // Vue menu.vue groups the list by date unconditionally (groupSessionsByDate
   // → 已置顶/今天/昨天/近7天/近30天/更早), with the route as the selection.
@@ -264,7 +313,9 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
   async function deleteShellSession(sessionId: string): Promise<void> {
     if (!window.confirm(DELETE_SESSION_CONFIRM)) return;
     try { await client.sessions.remove(sessionId); } catch { return; }
-    setSessions((items) => items.filter((session) => session.id !== sessionId));
+    sessionsRef.current = sessionsRef.current.filter((session) => session.id !== sessionId);
+    sessionsTotalRef.current = Math.max(0, sessionsTotalRef.current - 1);
+    setSessions(sessionsRef.current);
     // Vue menu.vue: deleting the open session routes back to creatChat.
     if (chatSessionIdFromPath(window.location.pathname) === sessionId) {
       window.location.assign('/platform/creatChat');
@@ -400,7 +451,7 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
             descendant override become state-swapped utilities keyed off
             active/collapsed (aria-current="page" already marks the active
             entry for semantics). --inset-x inlined: pl-[14px]. */}
-        <div className="flex-1 min-h-0 overflow-y-auto pt-[6px]">
+        <div className="flex-1 min-h-0 overflow-y-auto pt-[6px]" onScroll={onSessionsScroll}>
           <nav className="flex flex-col gap-[2px]" aria-label="Platform">
             {visibleNavItems.map((item) => {
               const active = item.match(pathname);
@@ -455,11 +506,14 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
           {!collapsed && (
             <nav className="mt-[8px] mb-[4px] pt-[8px] border-t border-[#e7ebf0] [&_ul]:px-[6px]" aria-label={labels.myChats}>
               <h2 className="m-0 px-[14px] pb-[4px] text-[#8b97a8] text-[12px] font-semibold leading-[1.4]">{labels.myChats}</h2>
+              {sessionsLoadError && !sessionsLoading ? <p className="mx-[14px] my-2 text-xs text-[#b42318]" role="status">
+                {labels.sessionLoadError}{' '}<button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-xs text-[#07c05f] underline" onClick={retryShellSessions}>{t('common.retry')}</button>
+              </p> : null}
               <SessionSidebarList
                 groups={sessionListGroups}
                 selectedSessionId={activeChatId}
                 loading={sessionsLoading}
-                emptyLabel={labels.noSessions}
+                emptyLabel={sessionsLoadError ? undefined : labels.noSessions}
                 untitledLabel={labels.newSession}
                 onSelect={openShellSession}
                 onRename={renameShellSession}
