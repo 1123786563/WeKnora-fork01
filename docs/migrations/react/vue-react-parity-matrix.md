@@ -163,3 +163,4 @@ N021 grep tool-result update (2026-09-15): React now follows Vue grep chunk grou
 Shared i18n contract update (2026-09-15): mobile-only `mobileChat.*` keys are validated for five-locale completeness separately from the Vue web-chat baseline; shared suite passes 453/453.
 N021 web-fetch update (2026-09-15): WebFetchRenderer now uses Vue `chat.unknownLink` copy for missing URLs across five locales; browser fixture evidence remains open.
 N021 web-fetch state update (2026-09-15): summary/error precedence now follows Vue; summary error fields are hidden when a non-empty summary exists, while real fetch errors remain visible. Browser fixture evidence remains open.
+N021 chunk-detail update (2026-09-15): ChunkDetailRenderer now uses Vue `chat.fullContentLabel` across five locales; focused renderer tests cover every locale and browser fixture evidence remains open.

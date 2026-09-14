@@ -2255,3 +2255,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - `WebFetchRenderer` now hides summary error fallback fields when a non-empty summary exists, while retaining real fetch errors, matching Vue `v-if / v-else-if` behavior in `5ae7365b`.
 - Shared tests pass 457/457 and Web tests pass 890/890; Web typecheck passes. Independent review found no P1/P2 and one non-blocking P3 for a missing mixed real-error fixture. Browser fixture evidence remains open.
+
+## 2026-09-15 Round N+34q — N021 ChunkDetail full-content label
+
+- `ChunkDetailRenderer` now uses Vue `chat.fullContentLabel` across five locales in `b72e0946`; default renderer calls remain compatible.
+- Shared tests pass 458/458 and Web tests pass 890/890; Web typecheck and build pass. Independent review found no P1/P2/P3. Browser fixture evidence remains open.
