@@ -20,6 +20,7 @@ export function KnowledgeDocumentDetailScreen() {
   const [error, setError] = useState('');
   const [preview, setPreview] = useState<{ loading: boolean; error?: string; uri?: string; content?: string } | null>(null);
   const loadGeneration = useRef(0);
+  const previewGeneration = useRef(0);
   const label = useCallback((key: string, values: Record<string, string | number> = {}) => knowledgeListLabel(runtime.locale, key, values), [runtime.locale]);
 
   const load = useCallback(async () => {
@@ -50,12 +51,13 @@ export function KnowledgeDocumentDetailScreen() {
 
   async function openPreview() {
     if (!document || !id) return;
+    const generation = ++previewGeneration.current;
     const status = previewStatus(document);
     if (status.kind !== 'ready') {
       const statusLabel = status.kind === 'processing'
         ? label('knowledgeBase.timeline.running')
         : label(document.parse_status ? 'knowledgeBase.timeline.failed' : 'knowledgeBase.documents.statusUnknown');
-      setError(label('knowledgeBase.detail.previewUnavailable', { status: statusLabel }));
+      if (generation === previewGeneration.current) setError(label('knowledgeBase.detail.previewUnavailable', { status: statusLabel }));
       return;
     }
     setPreview({ loading: true });
@@ -63,8 +65,10 @@ export function KnowledgeDocumentDetailScreen() {
       const uri = await downloadKnowledgeFile({ baseURL: runtime.baseURL, path: runtime.client.knowledge.documents.previewPath(id), fileName: document.file_name || document.title || 'preview', credential: runtime.credential });
       const kind = previewKindForFile(document.file_name || document.title || '');
       const content = kind === 'text' || kind === 'markdown' ? await readNativeTextFile(uri) : undefined;
-      setPreview({ loading: false, uri, content });
-    } catch (cause) { setPreview({ loading: false, error: cause instanceof Error ? cause.message : label('knowledgeBase.detail.previewFailed') }); }
+      if (generation === previewGeneration.current) setPreview({ loading: false, uri, content });
+    } catch (cause) {
+      if (generation === previewGeneration.current) setPreview({ loading: false, error: cause instanceof Error ? cause.message : label('knowledgeBase.detail.previewFailed') });
+    }
   }
 
   return <SafeAreaView style={{ flex: 1 }}>
@@ -80,6 +84,6 @@ export function KnowledgeDocumentDetailScreen() {
         {document.file_size !== undefined ? <Text style={{ color: '#475467', marginTop: 6 }}>{label('knowledgeBase.detail.fileSize')}: {String(document.file_size)}</Text> : null}
       </> : null}
     </ScrollView>}
-    {preview ? <NativeArtifactPreview artifact={{ fileName: document?.file_name || document?.title || 'preview', fileType: document?.file_type }} uri={preview.uri} content={preview.content} loading={preview.loading} error={preview.error} labels={{ back: label('knowledgeBase.detail.backShort'), share: label('common.share'), loading: label('knowledgeBase.detail.previewLoading'), downloadOnly: label('knowledgeBase.detail.downloadOnly') }} onClose={() => setPreview(null)} onDownload={preview.uri ? () => { void shareNativeFile(preview.uri!).catch((cause) => setPreview((current) => current ? { ...current, error: cause instanceof Error ? cause.message : label('knowledgeBase.detail.shareFailed') } : current)); } : undefined} /> : null}
+    {preview ? <NativeArtifactPreview artifact={{ fileName: document?.file_name || document?.title || 'preview', fileType: document?.file_type }} uri={preview.uri} content={preview.content} loading={preview.loading} error={preview.error} labels={{ back: label('knowledgeBase.detail.backShort'), share: label('common.share'), loading: label('knowledgeBase.detail.previewLoading'), downloadOnly: label('knowledgeBase.detail.downloadOnly') }} onClose={() => { previewGeneration.current += 1; setPreview(null); }} onDownload={preview.uri ? () => { void shareNativeFile(preview.uri!).catch((cause) => setPreview((current) => current ? { ...current, error: cause instanceof Error ? cause.message : label('knowledgeBase.detail.shareFailed') } : current)); } : undefined} /> : null}
   </SafeAreaView>;
 }
