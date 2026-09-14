@@ -1835,3 +1835,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 对照 Vue `UploadConfirmDialog.vue` 的 `t-switch`，PDF 扫描覆盖、父子分块、多模态和 ASR 启用控件改为项目级 switch；保留 checked 状态、更新回调和条件区段挂载逻辑，并补齐 focus-visible、滑块动效和 `role=switch`/`aria-checked`。
 - upload-confirm 定向测试 35/35、Web 全量 832/832、`typecheck:web` 与 `git diff --check` 通过；证据 `evidence/vue-react-parity/2026-09-14-n007-extraction-toast.md` 已更新。
 - N007 继续保持 `implementing`：浏览器 computed-style/同条件截图、真实后端图谱链路及 Wails/native 证据仍未闭环。
+
+## 2026-09-14 Round N+67 — N007 分块设置行布局
+
+- 对照 Vue `UploadConfirmDialog.vue` 的 `setting-row/setting-info/setting-control`，分块策略、大小、重叠及高级选项改为信息列与控制列布局，补齐现有 Vue description 文案，并将五个分块数字控件宽度修正为 Vue 的 200px；窄视口下控制列堆叠到信息列下方。
+- upload-confirm 定向测试 35/35、Web 全量 832/832、`typecheck:web` 与 `git diff --check` 通过；证据 `evidence/vue-react-parity-2026-09-14-n007-extraction-toast.md` 已更新。
+- N007 继续保持 `implementing`：浏览器 computed-style/同条件截图、真实后端图谱链路及 Wails/native 证据仍未闭环。

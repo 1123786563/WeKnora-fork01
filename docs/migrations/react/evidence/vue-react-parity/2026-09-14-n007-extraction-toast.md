@@ -38,6 +38,8 @@ The same numeric input is now used for all five chunking numeric fields. The chu
 
 PDF scanned override, parent-child chunking, multimodal, and ASR enable controls now use a project switch matching Vue `t-switch`, including checked track/handle motion, focus-visible styling, and `role=switch`/`aria-checked` semantics.
 
+Chunking controls now use a shared Vue-shaped `setting-row` layout with an information column and a 280px control column. The five chunk numeric controls use the Vue 200px field width, descriptions come from the existing Vue-aligned locale keys, and the row stacks at the mobile breakpoint.
+
 ASR language now uses a project clearable input with an explicit clear action, matching Vue `t-input clearable`; the existing language payload remains unchanged.
 
 The relation-type combobox also exposes a clear action, while entity endpoint comboboxes remain non-clearable, matching the Vue per-field `clearable` configuration.

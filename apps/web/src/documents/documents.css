@@ -83,7 +83,14 @@
 .wk-upload-number-input button { align-items: center; background: transparent; border: 0; color: var(--wk-muted, #667085); cursor: pointer; display: inline-flex; font-size: 16px; height: 100%; justify-content: center; padding: 0; width: 25px; }
 .wk-upload-number-input button:hover:not(:disabled), .wk-upload-number-input button:focus-visible { background: rgb(7 192 95 / 10%); color: var(--wk-text, #101828); outline: none; }
 .wk-upload-number-input button:disabled { color: var(--wk-border, #d0d5dd); cursor: not-allowed; }
-.wk-upload-number-input--wide { width: 280px; }
+.wk-upload-number-input--wide { width: 200px; }
+.wk-upload-setting-row { align-items: flex-start; border-bottom: 1px solid var(--wk-border, #e4e7ec); display: flex; gap: 16px; justify-content: space-between; padding: 10px 0; }
+.wk-upload-setting-info { display: flex; flex: 1; flex-direction: column; gap: 5px; min-width: 0; }
+.wk-upload-setting-info label { font-weight: 500; }
+.wk-upload-setting-info p { font-size: 12px; margin: 0; }
+.wk-upload-setting-control { align-items: flex-start; display: flex; flex: 0 0 auto; justify-content: flex-end; width: 280px; }
+.wk-upload-setting-row--separators .wk-upload-setting-control { align-items: stretch; }
+@media (max-width: 720px) { .wk-upload-setting-row { flex-direction: column; } .wk-upload-setting-control { width: 100%; } }
 .wk-upload-switch { background: var(--wk-border, #d0d5dd); border: 0; border-radius: 999px; cursor: pointer; display: inline-flex; height: 20px; padding: 2px; transition: background-color .16s ease; width: 36px; }
 .wk-upload-switch.is-checked { background: var(--wk-accent, #07c05f); }
 .wk-upload-switch:focus-visible { box-shadow: 0 0 0 2px rgb(7 192 95 / 15%); outline: 2px solid var(--wk-accent, #07c05f); outline-offset: 2px; }

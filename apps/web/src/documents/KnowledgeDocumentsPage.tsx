@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import type { KnowledgeDocument, KnowledgeTag, ModelConfiguration, ParserEngineInfo, WeKnoraClient } from "@weknora/api-client";
 import {
   processingStatusLabel,
@@ -763,6 +764,13 @@ export function UploadSwitch({ checked, ariaLabel, onChange }: { checked: boolea
   </button>;
 }
 
+function UploadSettingRow({ label, description, children, className = "" }: { label: string; description?: string; children: ReactNode; className?: string }) {
+  return <div className={`wk-upload-setting-row ${className}`.trim()}>
+    <div className="wk-upload-setting-info"><label>{label}</label>{description ? <p className="wk-muted">{description}</p> : null}</div>
+    <div className="wk-upload-setting-control">{children}</div>
+  </div>;
+}
+
 const CHUNKING_SEPARATOR_OPTIONS = [
   { value: "\n\n", labelKey: "knowledgeEditor.chunking.separators.doubleNewline" },
   { value: "\n", labelKey: "knowledgeEditor.chunking.separators.singleNewline" },
@@ -882,8 +890,7 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
       </fieldset>
       <fieldset className="wk-upload-confirm-chunking" id="wk-upload-section-chunking" data-section="chunking" style={sectionStyle("chunking")}>
         <legend>{t("knowledgeEditor.chunking.title")}</legend>
-        <label>
-          {t("knowledgeEditor.chunking.strategyLabel")}{" "}
+        <UploadSettingRow label={t("knowledgeEditor.chunking.strategyLabel")} description={t("knowledgeEditor.chunking.strategyDescription")}>
           <UploadSingleSelect
             className="wk-upload-chunk-strategy-select"
             ariaLabel={t("knowledgeEditor.chunking.strategyLabel")}
@@ -891,15 +898,13 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
             options={CHUNKING_STRATEGY_OPTIONS.map((option) => ({ value: option.value, label: t(option.labelKey) }))}
             onChange={(value) => update({ chunkStrategy: value })}
           />
-        </label>
-        <label>
-          {t("knowledgeEditor.chunking.sizeLabel")}{" "}
+        </UploadSettingRow>
+        <UploadSettingRow label={t("knowledgeEditor.chunking.sizeLabel")} description={t("knowledgeEditor.chunking.sizeDescription")}>
           <UploadNumberInput className="wk-upload-number-input--wide" min={100} max={4000} step={50} ariaLabel={t("knowledgeEditor.chunking.sizeLabel")} value={state.chunkSize} onChange={(value) => update({ chunkSize: value })} />
-        </label>
-        <label>
-          {t("knowledgeEditor.chunking.overlapLabel")}{" "}
+        </UploadSettingRow>
+        <UploadSettingRow label={t("knowledgeEditor.chunking.overlapLabel")} description={t("knowledgeEditor.chunking.overlapDescription")}>
           <UploadNumberInput className="wk-upload-number-input--wide" min={0} max={500} step={20} ariaLabel={t("knowledgeEditor.chunking.overlapLabel")} value={state.chunkOverlap} onChange={(value) => update({ chunkOverlap: value })} />
-        </label>
+        </UploadSettingRow>
         <button
           type="button"
           className="more-options-toggle"
@@ -911,32 +916,26 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
         </button>
         {props.moreOpen ? (
           <div className="settings-group--more">
-            <label>
-              {t("knowledgeEditor.chunking.separatorsLabel")}{" "}
+            <UploadSettingRow label={t("knowledgeEditor.chunking.separatorsLabel")} description={t("knowledgeEditor.chunking.separatorsDescription")} className="wk-upload-setting-row--separators">
               <UploadMultiSelect ariaLabel={t("knowledgeEditor.chunking.separatorsLabel")} values={state.separators} options={CHUNKING_SEPARATOR_OPTIONS.map((option) => ({ value: option.value, label: t(option.labelKey) }))} onChange={(values) => update({ separators: values })} />
-            </label>
-            <label>
-              {t("knowledgeEditor.chunking.tokenLimitLabel")}{" "}
+            </UploadSettingRow>
+            <UploadSettingRow label={t("knowledgeEditor.chunking.tokenLimitLabel")} description={t("knowledgeEditor.chunking.tokenLimitDescription")}>
               <UploadNumberInput className="wk-upload-number-input--wide" min={0} max={8192} step={64} ariaLabel={t("knowledgeEditor.chunking.tokenLimitLabel")} value={state.tokenLimit} onChange={(value) => update({ tokenLimit: value })} />
-            </label>
-            <label>
-              {t("knowledgeEditor.chunking.languagesLabel")}{" "}
+            </UploadSettingRow>
+            <UploadSettingRow label={t("knowledgeEditor.chunking.languagesLabel")} description={t("knowledgeEditor.chunking.languagesDescription")}>
               <UploadMultiSelect ariaLabel={t("knowledgeEditor.chunking.languagesLabel")} values={state.languages} options={CHUNKING_LANGUAGE_OPTIONS.map((option) => ({ value: option.value, label: t(option.labelKey) }))} onChange={(values) => update({ languages: values })} />
-            </label>
-            <label className="wk-upload-switch-label">
-              {t("knowledgeEditor.chunking.parentChildLabel")}
+            </UploadSettingRow>
+            <UploadSettingRow label={t("knowledgeEditor.chunking.parentChildLabel")} description={t("knowledgeEditor.chunking.parentChildDescription")}>
               <UploadSwitch checked={state.enableParentChild} ariaLabel={t("knowledgeEditor.chunking.parentChildLabel")} onChange={(checked) => update({ enableParentChild: checked })} />
-            </label>
+            </UploadSettingRow>
             {state.enableParentChild ? (
               <>
-                <label>
-                  {t("knowledgeEditor.chunking.parentChunkSizeLabel")}{" "}
+                <UploadSettingRow label={t("knowledgeEditor.chunking.parentChunkSizeLabel")} description={t("knowledgeEditor.chunking.parentChunkSizeDescription")}>
                   <UploadNumberInput className="wk-upload-number-input--wide" min={512} max={8192} step={64} ariaLabel={t("knowledgeEditor.chunking.parentChunkSizeLabel")} value={state.parentChunkSize} onChange={(value) => update({ parentChunkSize: value })} />
-                </label>
-                <label>
-                  {t("knowledgeEditor.chunking.childChunkSizeLabel")}{" "}
+                </UploadSettingRow>
+                <UploadSettingRow label={t("knowledgeEditor.chunking.childChunkSizeLabel")} description={t("knowledgeEditor.chunking.childChunkSizeDescription")}>
                   <UploadNumberInput className="wk-upload-number-input--wide" min={64} max={2048} step={32} ariaLabel={t("knowledgeEditor.chunking.childChunkSizeLabel")} value={state.childChunkSize} onChange={(value) => update({ childChunkSize: value })} />
-                </label>
+                </UploadSettingRow>
               </>
             ) : null}
           </div>
