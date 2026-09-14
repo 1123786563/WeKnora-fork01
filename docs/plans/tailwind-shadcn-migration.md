@@ -186,6 +186,12 @@ hook 类（测试/JS 引用）保留类名。
   （意外宽度 min(480px,100%)，恢复原始意图 bg #f3f4f6 / color #172033）。
 - 验收：typecheck 0、integrations 52/52、web 882/882（并行新增）、build ✓；
   styles.css 1122→602 行。
+### 批次36：knowledge-list wk-kb 残余清除 ✅（子任务执行，Orchestrator 验收提交）
+- styles.css L272-404 整段删除（22 类 wk-kb-* 死规则 + @keyframes wk-kb-shimmer）
+  ——批次 4 已为每个角色落地等价 utilities，逐类 grep 证实 TSX 零引用，0 条需补。
+- 另标记 3 条死代码（wk-kb-flash 家族，L466-468）待下批删。
+- 验收：typecheck 0、anatomy 16/16、web 889/889（并行新增）、build ✓；
+  styles.css 750→468 行。
 ### 批次19：TenantMembers 域 ✅（子任务执行，Orchestrator 验收提交）
 - TenantMembersPanel.tsx ~95 条规则内联 utilities（表格/分页/标签三态/确认弹层；
   settings-wrapper 抽屉 select chrome 特异性更高今日实际生效，按生效值 4 条未复制）；
