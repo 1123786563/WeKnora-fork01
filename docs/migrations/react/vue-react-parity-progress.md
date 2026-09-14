@@ -2226,3 +2226,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - Authenticated React Chrome confirms the retrieval sidebar label now renders localized `搜索设置`; admin-only visibility and controls remain intact.
 - Same-session Vue pixel comparison remains open.
+
+## 2026-09-15 Round N+34k — MCP delete confirmation localization
+
+- `McpSettingsPanel` now uses the shared `mcpSettings.deleteConfirmBody` interpolation for all five locales; permissions, built-in protection and delete lifecycle remain unchanged.
+- MCP-focused tests pass 18/18; independent review found no P1/P2/P3. Browser confirmation interaction evidence remains open.
