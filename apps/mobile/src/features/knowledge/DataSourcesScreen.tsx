@@ -55,17 +55,22 @@ export function DataSourcesScreen() {
   const [logsHasMore, setLogsHasMore] = useState(false);
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
   const logsRequestId = useRef(0);
+  const loadGeneration = useRef(0);
+  const resourceGeneration = useRef(0);
+  const resourceChildrenGeneration = useRef(0);
 
   const load = useCallback(async (silent = false) => {
     if (!knowledgeBaseId) { setLoading(false); setError(t('dataSource.knowledgeBaseRequired')); return; }
+    const generation = ++loadGeneration.current;
     if (!silent) setLoading(true); setError('');
     const [sourceResult, typeResult] = await Promise.allSettled([
       runtime.client.dataSources.list(knowledgeBaseId),
       runtime.client.dataSources.types(),
     ]);
+    if (generation !== loadGeneration.current) return;
     if (sourceResult.status === 'fulfilled') setSources(sourceResult.value); else setError(sourceResult.reason instanceof Error ? sourceResult.reason.message : t('dataSource.loadFailed'));
     if (typeResult.status === 'fulfilled') setTypes(filterSupportedDataSourceTypes(typeResult.value));
-    if (!silent) setLoading(false);
+    if (!silent && generation === loadGeneration.current) setLoading(false);
   }, [knowledgeBaseId, runtime.client]);
 
   useEffect(() => { void load(); }, [load]);
@@ -83,10 +88,14 @@ export function DataSourcesScreen() {
     return Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : [];
   }
   async function loadResources(source: DataSource) {
+    const generation = ++resourceGeneration.current;
     setResourcesLoading(true); setError(''); setExpandedResourceIds([]);
-    try { setResources(await runtime.client.dataSources.resources(source.id)); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : t('dataSource.resourceLoadFailed')); }
-    finally { setResourcesLoading(false); }
+    try {
+      const next = await runtime.client.dataSources.resources(source.id);
+      if (generation === resourceGeneration.current) setResources(next);
+    }
+    catch (cause) { if (generation === resourceGeneration.current) setError(cause instanceof Error ? cause.message : t('dataSource.resourceLoadFailed')); }
+    finally { if (generation === resourceGeneration.current) setResourcesLoading(false); }
   }
   function openEdit(source: DataSource) { const ids = sourceResourceIds(source); const config = source.config && typeof source.config === 'object' && !Array.isArray(source.config) ? source.config as Record<string, unknown> : {}; const settings = config.settings && typeof config.settings === 'object' && !Array.isArray(config.settings) ? config.settings as Record<string, unknown> : {}; const projects = Array.isArray(settings.projects) ? settings.projects : []; const savedRssFeedUrls = source.type === 'rss' && typeof settings.feed_urls === 'string' ? settings.feed_urls : ''; setEditing(source); setTemporarySourceId(null); setResources([]); setSelectedResourceIds(ids); setDriveFolderToken(source.type === 'feishu_drive' || source.type === 'lark_drive' ? ids[0] ?? '' : ''); setRssFeedUrls(savedRssFeedUrls); setInitialRssFeedUrls(savedRssFeedUrls); setRssAuthHeaders(''); setCredentialValues({}); setGitlabProjects(source.type === 'gitlab' ? projects.map((project) => { const row = project as Record<string, unknown>; return { projectId: typeof row.project_id === 'string' ? row.project_id : '', ref: typeof row.ref === 'string' ? row.ref : '', paths: Array.isArray(row.paths) ? row.paths.filter((path): path is string => typeof path === 'string').join('\n') : '' }; }) : []); setExpandedResourceIds([]); setDraft(nativeDataSourceDraftFrom(source)); setError(''); void loadResources(source); }
   function toggleResource(id: string) { setSelectedResourceIds((current) => toggleDataSourceResourceSelection(resources, current, id)); }
@@ -95,6 +104,7 @@ export function DataSourcesScreen() {
   async function loadDriveRoot() {
     const token = extractDriveFolderToken(driveFolderToken);
     if (!token) { setError(t('dataSource.drive.folderTokenRequired')); return; }
+    const generation = ++resourceGeneration.current;
     setDriveFolderToken(token); setSelectedResourceIds([token]); setResourcesLoading(true); setError('');
     try {
       let source = editing;
@@ -105,22 +115,33 @@ export function DataSourcesScreen() {
       } else {
         await runtime.client.dataSources.update(source.id, { config: { resource_ids: [token] } });
       }
-      setResources(await runtime.client.dataSources.resources(source.id));
+      const next = await runtime.client.dataSources.resources(source.id);
+      if (generation !== resourceGeneration.current) return;
+      setResources(next);
       setExpandedResourceIds([]);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : t('dataSource.resourceLoadFailed')); }
-    finally { setResourcesLoading(false); }
+    } catch (cause) {
+      if (generation === resourceGeneration.current) setError(cause instanceof Error ? cause.message : t('dataSource.resourceLoadFailed'));
+    } finally {
+      if (generation === resourceGeneration.current) setResourcesLoading(false);
+    }
   }
   async function toggleResourceExpand(resource: DataSourceResource) {
     if (!editing || !resource.has_children) return;
     if (expandedResourceIds.includes(resource.external_id)) { setExpandedResourceIds((current) => current.filter((id) => id !== resource.external_id)); return; }
     const hasLoadedChildren = resources.some((item) => item.parent_id === resource.external_id);
     if (!hasLoadedChildren) {
+      const generation = ++resourceChildrenGeneration.current;
       setResourceLoadingId(resource.external_id); setError('');
       try {
         const children = await runtime.client.dataSources.resources(editing.id, resource.external_id);
+        if (generation !== resourceChildrenGeneration.current) return;
         setResources((current) => [...current, ...children.filter((child) => !current.some((item) => item.external_id === child.external_id))]);
-      } catch (cause) { setError(cause instanceof Error ? cause.message : t('dataSource.resourceLoadFailed')); return; }
-      finally { setResourceLoadingId(null); }
+      } catch (cause) {
+        if (generation === resourceChildrenGeneration.current) setError(cause instanceof Error ? cause.message : t('dataSource.resourceLoadFailed'));
+        return;
+      } finally {
+        if (generation === resourceChildrenGeneration.current) setResourceLoadingId(null);
+      }
     }
     setExpandedResourceIds((current) => [...current, resource.external_id]);
   }
