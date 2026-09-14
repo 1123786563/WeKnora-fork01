@@ -2314,3 +2314,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - 已认证 React `http://localhost:5181/platform/creatChat` 运行时 AX 检查：侧栏、新对话入口、智能体选择、上传附件、知识库按钮、模型状态和发送按钮均可达；中文文案未泄漏新增产物预览英文。
 - `/platform/chat` 不是有效 React 路由并显示页面不存在，已记录为兼容入口差异；未将其误判为聊天页验收。Vue `:5173` 当前未认证，双端同条件对照仍缺证据。
+
+## 2026-09-15 Round N+34ac — legacy flat chat route compatibility
+
+- 运行时发现 `/platform/chat` 会误落到 NotFound；新增到 `/platform/creatChat` 的兼容解析与查询参数保留，保持旧入口可用并复用当前聊天页面。
+- 路由专项 11/11、Web typecheck、diff check 通过；真实浏览器重载验证待下一轮补充。
