@@ -658,18 +658,20 @@ const CHUNKING_STRATEGY_OPTIONS = [
   { value: "legacy", labelKey: "knowledgeEditor.chunking.strategies.legacy.label" },
 ] as const;
 
-export function UploadSingleSelect({ value, options, onChange, ariaLabel, className = "" }: {
+export function UploadSingleSelect({ value, options, onChange, ariaLabel, className = "", placeholder = "", clearable = false }: {
   value: string;
   options: readonly { value: string; label: string; disabled?: boolean }[];
   onChange: (value: string) => void;
   ariaLabel: string;
   className?: string;
+  placeholder?: string;
+  clearable?: boolean;
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
-  const selectedIndex = Math.max(0, options.findIndex((option) => option.value === value));
-  const [activeIndex, setActiveIndex] = useState(selectedIndex);
-  useEffect(() => setActiveIndex(selectedIndex), [selectedIndex]);
+  const selectedIndex = options.findIndex((option) => option.value === value);
+  const [activeIndex, setActiveIndex] = useState(Math.max(0, selectedIndex));
+  useEffect(() => setActiveIndex(Math.max(0, selectedIndex)), [selectedIndex]);
   useEffect(() => {
     if (!open) return;
     const close = (event: MouseEvent) => { if (!rootRef.current?.contains(event.target as Node)) setOpen(false); };
@@ -682,7 +684,7 @@ export function UploadSingleSelect({ value, options, onChange, ariaLabel, classN
       if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setOpen(true); setActiveIndex((current) => Math.max(0, Math.min(options.length - 1, current + (event.key === "ArrowDown" ? 1 : -1)))); }
       else if (event.key === "Enter" && open) { event.preventDefault(); choose(activeIndex); }
       else if (event.key === "Escape") setOpen(false);
-    }}><span>{options[selectedIndex]?.label ?? value}</span><span aria-hidden="true">⌄</span></button>
+    }}><span>{options[selectedIndex]?.label ?? placeholder ?? value}</span>{clearable && value ? <span role="button" tabIndex={0} aria-label={`清除${ariaLabel}`} onClick={(event) => { event.stopPropagation(); onChange(""); setOpen(false); }}>×</span> : null}<span aria-hidden="true">⌄</span></button>
     {open ? <div className="wk-upload-single-select__popup" role="listbox">{options.map((option, index) => <button type="button" role="option" aria-selected={option.value === value} aria-disabled={option.disabled || undefined} disabled={option.disabled} className={`${index === activeIndex ? "is-active " : ""}${option.disabled ? "is-disabled" : ""}`.trim() || undefined} key={option.value} onMouseEnter={() => setActiveIndex(index)} onClick={() => choose(index)}>{option.label}</button>)}</div> : null}
   </div>;
 }
@@ -962,16 +964,7 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
             <label>
               {t("knowledgeEditor.advanced.multimodal.vllmLabel")} <span aria-hidden>*</span>
               {props.vllmModels.length > 0 ? (
-                <select
-                  required
-                  value={state.vllmModelId}
-                  onChange={(event) => update({ vllmModelId: event.target.value })}
-                >
-                  <option value="">{t("knowledgeEditor.advanced.multimodal.vllmPlaceholder")}</option>
-                  {props.vllmModels.map((model) => (
-                    <option key={model.id} value={model.id}>{model.name}</option>
-                  ))}
-                </select>
+                <UploadSingleSelect className="wk-upload-model-select" ariaLabel={t("knowledgeEditor.advanced.multimodal.vllmLabel")} placeholder={t("knowledgeEditor.advanced.multimodal.vllmPlaceholder")} value={state.vllmModelId} options={[{ value: "", label: t("knowledgeEditor.advanced.multimodal.vllmPlaceholder") }, ...props.vllmModels.map((model) => ({ value: model.id, label: model.name }))]} onChange={(value) => update({ vllmModelId: value })} />
               ) : (
                 <input
                   required
@@ -983,15 +976,7 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
             </label>
             <label>
               {t("knowledgeEditor.advanced.multimodal.descriptionLanguageLabel")}{" "}
-              <select
-                value={state.descriptionLanguage}
-                onChange={(event) => update({ descriptionLanguage: event.target.value })}
-              >
-                <option value="">{t("knowledgeEditor.advanced.multimodal.descriptionLanguageAuto")}</option>
-                {MULTIMODAL_LANGUAGE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>{t(option.labelKey)}</option>
-                ))}
-              </select>
+              <UploadSingleSelect className="wk-upload-model-select" ariaLabel={t("knowledgeEditor.advanced.multimodal.descriptionLanguageLabel")} placeholder={t("knowledgeEditor.advanced.multimodal.descriptionLanguageAuto")} clearable value={state.descriptionLanguage} options={MULTIMODAL_LANGUAGE_OPTIONS.map((option) => ({ value: option.value, label: t(option.labelKey) }))} onChange={(value) => update({ descriptionLanguage: value })} />
             </label>
             <label>
               {t("knowledgeEditor.advanced.multimodal.customInstructionsLabel")}{" "}
@@ -1024,16 +1009,7 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
             <label>
               {t("knowledgeEditor.asr.modelLabel")} <span aria-hidden>*</span>
               {props.asrModels.length > 0 ? (
-                <select
-                  required
-                  value={state.asrModelId}
-                  onChange={(event) => update({ asrModelId: event.target.value })}
-                >
-                  <option value="">{t("knowledgeEditor.asr.modelPlaceholder")}</option>
-                  {props.asrModels.map((model) => (
-                    <option key={model.id} value={model.id}>{model.name}</option>
-                  ))}
-                </select>
+                <UploadSingleSelect className="wk-upload-model-select" ariaLabel={t("knowledgeEditor.asr.modelLabel")} placeholder={t("knowledgeEditor.asr.modelPlaceholder")} value={state.asrModelId} options={[{ value: "", label: t("knowledgeEditor.asr.modelPlaceholder") }, ...props.asrModels.map((model) => ({ value: model.id, label: model.name }))]} onChange={(value) => update({ asrModelId: value })} />
               ) : (
                 <input
                   required

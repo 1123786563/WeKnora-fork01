@@ -28,11 +28,13 @@ Parser engine rules now use the same project single-select surface as Vue `KBPar
 
 Parser rows now follow Vue `KBParserSettings.vue` file-family grouping (Word/PPT/Excel/media and known text types) with extension chips and group-level rule updates. Excel + builtin also exposes the Vue first-row-as-header checkbox and round-trips `xlsx_first_row_as_header`.
 
+Multimodal VLLM model, ASR model, and clearable image-description-language fields now use the project selector surface matching Vue `t-select`; empty required model states still use the existing form validation path.
+
 The relation-type combobox also exposes a clear action, while entity endpoint comboboxes remain non-clearable, matching the Vue per-field `clearable` configuration.
 
 ## Verification
 
-- Focused upload-confirm and pipeline suites: 32/32 passed for the current graph/upload-confirm suite; prior upload-confirm and pipeline suites: 50/50 passed.
+- Focused upload-confirm and pipeline suites: 33/33 passed for the current graph/upload-confirm suite; prior upload-confirm and pipeline suites: 50/50 passed.
 - Full Web suite: `pnpm run test:web` — 681/681 passed.
 - Web typecheck: `pnpm run typecheck:web` — passed.
 - `git diff --check` — passed.

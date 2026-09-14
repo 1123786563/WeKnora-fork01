@@ -332,6 +332,15 @@ test('Excel parser group preserves Vue first-row-header control', () => {
   assert.match(html, /xlsxFirstRowAsHeader|首行为表头/);
 });
 
+test('multimodal and ASR model/language fields use project selectors', () => {
+  const html = renderToStaticMarkup(React.createElement(UploadConfirmSections, {
+    state: { ...defaultUploadConfirmUIState(), multimodalEnabled: true, asrEnabled: true }, update: noop, hasPdf: false, multimodalIssue: false, asrIssue: false,
+    parserEngines: [], vllmModels: [{ id: 'vlm-1', name: 'vlm' } as never], asrModels: [{ id: 'asr-1', name: 'asr' } as never], moreOpen: false, onToggleMore: noop, t: uploadConfirmT('zh-CN'),
+  }));
+  assert.equal((html.match(/wk-upload-model-select/g) ?? []).length, 3);
+  assert.match(html, /自动跟随文档语言/);
+});
+
 test('chunking advanced fields use Vue-shaped filterable multi-selects', () => {
   const html = sectionsHtml({ moreOpen: true });
   assert.equal((html.match(/wk-upload-multi-select"/g) ?? []).length, 2);

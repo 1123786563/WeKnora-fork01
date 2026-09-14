@@ -1799,3 +1799,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 对照 Vue `KBParserSettings.vue`，解析配置按 Word/PPT/Excel/图片/音视频及文本文件族合并扩展名，显示扩展标签并按组写回 parser rule；Excel + builtin 恢复 `xlsx_first_row_as_header` 控件及载荷字段。
 - upload-confirm 定向测试 32/32、Web 全量 829/829、`typecheck:web` 与 `git diff --check` 通过；证据 `evidence/vue-react-parity/2026-09-14-n007-extraction-toast.md` 已更新。
 - N007 继续保持 `implementing`：浏览器 computed-style/同条件截图、真实后端图谱链路及 Wails/native 证据仍未闭环。
+
+## 2026-09-14 Round N+61 — N007 多模态与 ASR 选择器
+
+- 对照 Vue `UploadConfirmDialog.vue`，多模态 VLLM 模型、ASR 模型和图片描述语言由原生 `<select>` 改为项目级 selector；图片描述语言保留 clearable，必填模型的空值仍由现有表单校验阻断，更新值契约不变。
+- upload-confirm 定向测试 33/33、Web 全量 830/830、`typecheck:web` 与 `git diff --check` 通过；证据 `evidence/vue-react-parity/2026-09-14-n007-extraction-toast.md` 已更新。
+- N007 继续保持 `implementing`：浏览器 computed-style/同条件截图、真实后端图谱链路及 Wails/native 证据仍未闭环。
