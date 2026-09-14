@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, ActivityIndicator, Pressable, SafeAreaView, ScrollView, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { KnowledgeDocument } from '@weknora/contracts';
@@ -19,14 +19,21 @@ export function KnowledgeDocumentDetailScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [preview, setPreview] = useState<{ loading: boolean; error?: string; uri?: string; content?: string } | null>(null);
+  const loadGeneration = useRef(0);
   const label = useCallback((key: string, values: Record<string, string | number> = {}) => knowledgeListLabel(runtime.locale, key, values), [runtime.locale]);
 
   const load = useCallback(async () => {
     if (!id) return;
+    const generation = ++loadGeneration.current;
     setLoading(true); setError('');
-    try { setDocument(await runtime.client.knowledge.documents.get(id)); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : label('knowledgeBase.detail.loadFailed')); }
-    finally { setLoading(false); }
+    try {
+      const next = await runtime.client.knowledge.documents.get(id);
+      if (generation === loadGeneration.current) setDocument(next);
+    } catch (cause) {
+      if (generation === loadGeneration.current) setError(cause instanceof Error ? cause.message : label('knowledgeBase.detail.loadFailed'));
+    } finally {
+      if (generation === loadGeneration.current) setLoading(false);
+    }
   }, [id, label, runtime.client]);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { const subscription = AppState.addEventListener('change', (state) => { if (state === 'active') void load(); }); return () => subscription.remove(); }, [load]);

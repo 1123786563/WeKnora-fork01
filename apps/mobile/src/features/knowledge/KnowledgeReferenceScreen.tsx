@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, SafeAreaView, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMobileRuntime } from '../../runtime.tsx';
@@ -18,23 +18,27 @@ export function KnowledgeReferenceScreen({ kind }: { kind: KnowledgeReferenceKin
   const [rows, setRows] = useState<ReferenceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const loadGeneration = useRef(0);
 
   const load = useCallback(async () => {
     if (!kbId) return;
+    const generation = ++loadGeneration.current;
     setLoading(true);
     setError('');
     try {
       if (kind === 'wiki') {
         const response = await runtime.client.wiki.list(kbId, { page: 1, page_size: 100 });
+        if (generation !== loadGeneration.current) return;
         setRows(response.pages.map((page) => ({ id: selectWikiReferenceEditKey(page), label: selectWikiReferenceLabel(page, { untitled: label('dataSource.untitled'), version: (version) => label('knowledgeEditor.wikiBrowser.version', { ver: version }) }), detail: page.summary || '' })));
       } else {
         const response = await runtime.client.knowledge.faq.list(kbId, { page: 1, page_size: 100 });
+        if (generation !== loadGeneration.current) return;
         setRows(response.data.map((entry) => ({ id: selectFaqReferenceEditKey(entry), label: selectFaqReferenceLabel(entry, { untitled: label('dataSource.untitled'), enabled: label('knowledgeEditor.faq.statusEnabled'), disabled: label('knowledgeEditor.faq.statusDisabled'), recommended: label('knowledgeEditor.faq.recommended') }), detail: entry.answers[0] || '' })));
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : label(kind === 'wiki' ? 'knowledgeEditor.mobile.loadWikiFailed' : 'knowledgeEditor.mobile.loadFaqFailed'));
+      if (generation === loadGeneration.current) setError(cause instanceof Error ? cause.message : label(kind === 'wiki' ? 'knowledgeEditor.mobile.loadWikiFailed' : 'knowledgeEditor.mobile.loadFaqFailed'));
     } finally {
-      setLoading(false);
+      if (generation === loadGeneration.current) setLoading(false);
     }
   }, [kbId, kind, runtime.client, runtime.locale]);
 
