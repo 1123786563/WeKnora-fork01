@@ -28,6 +28,14 @@ export function McpToolsDirectory({ tools, serviceId, approvals, busy, policyErr
   const detailRef = useRef<HTMLDivElement | null>(null);
   const triggerRefs = useRef(new Map<string, HTMLButtonElement>());
   const [popupPosition, setPopupPosition] = useState<{ top: number; left: number } | null>(null);
+  const closeToolDetail = () => {
+    const trigger = openTool ? triggerRefs.current.get(openTool) : undefined;
+    setOpenTool(null);
+    if (trigger) {
+      const schedule = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (callback: FrameRequestCallback) => window.setTimeout(callback, 0);
+      schedule(() => trigger.focus());
+    }
+  };
   const filtered = useMemo(() => { const needle = query.trim().toLocaleLowerCase(); return needle ? tools.filter((tool) => `${tool.name} ${tool.description ?? ''}`.toLocaleLowerCase().includes(needle)) : tools; }, [tools, query]);
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const visible = filtered.slice((page - 1) * pageSize, page * pageSize);
@@ -56,9 +64,9 @@ export function McpToolsDirectory({ tools, serviceId, approvals, busy, policyErr
   }, [openTool]);
   useEffect(() => {
     if (!openTool) return;
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpenTool(null); };
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.preventDefault(); closeToolDetail(); } };
     const onPointerDown = (event: PointerEvent) => {
-      if (event.target && !detailRef.current?.contains(event.target as Node)) setOpenTool(null);
+      if (event.target && !detailRef.current?.contains(event.target as Node)) closeToolDetail();
     };
     document.addEventListener('keydown', onKeyDown);
     document.addEventListener('pointerdown', onPointerDown);
