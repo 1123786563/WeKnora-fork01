@@ -99,3 +99,12 @@ test('login failure presents the backend message as a top toast, not an inline b
   assert.match(toast.textContent || '', /Invalid email or password/);
   assert.equal(document.querySelector('.form-alert'), null, 'no inline banner in the form card');
 });
+
+test('login card uses Vue box sizing and green outline for the create-account CTA', async () => {
+  await mountLogin(fakeClient());
+  const card = [...document.querySelectorAll('div')].find((node) => String(node.className).includes('bg-[rgba(255,255,255,0.97)]')) as HTMLDivElement | undefined;
+  assert.match(card?.className ?? '', /\bbox-border\b/);
+  const create = [...document.querySelectorAll('button')].find((node) => (node.textContent ?? '').includes('创建账户')) as HTMLButtonElement | undefined;
+  assert.match(create?.className ?? '', /border-\(--auth-brand\)/);
+  assert.match(create?.className ?? '', /text-\(--auth-brand\)/);
+});

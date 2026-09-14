@@ -343,7 +343,7 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
         </div> : null}
         {inviteError ? <div className="mb-[18px] flex items-center gap-2.5 rounded-[10px] border border-[#f5c2c2] bg-[#fdf0f0] px-4 py-3 text-[#d54941]">{inviteError}</div> : null}
 
-        {!isRegister ? <div className="w-full rounded-2xl border-0 bg-[rgba(255,255,255,0.97)] p-10 shadow-[0_10px_40px_rgba(0,0,0,0.15)] max-[768px]:p-5">
+        {!isRegister ? <div className="box-border w-full rounded-2xl border-0 bg-[rgba(255,255,255,0.97)] p-10 shadow-[0_10px_40px_rgba(0,0,0,0.15)] max-[768px]:p-5">
           <div className="mb-7 text-center">
             <h2 className="m-0 mb-2.5 text-[28px] text-[#1a1a1a]">{t('auth.login')}</h2>
             <p className="m-0 text-sm leading-[1.5] text-[#555]">{t('auth.subtitle')}</p>
@@ -363,7 +363,7 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
             <button type="submit" className="h-[46px] cursor-pointer rounded-lg border-0 bg-(--auth-brand) text-base font-semibold text-white [font-family:var(--auth-font)] hover:bg-[#06ad55] disabled:cursor-not-allowed disabled:opacity-60" disabled={loading}>{loading ? t('auth.loggingIn') : t('auth.login')}</button>
             {registrationEnabled ? <div className="mt-5">
               <div className="mb-3.5 text-center text-[13px] text-[#999]"><span>{t('auth.firstTime')}</span></div>
-              <button type="button" className="h-[46px] w-full cursor-pointer rounded-lg border border-[#dcdcdc] bg-white text-[15px] text-[#1a1a1a] [font-family:var(--auth-font)] hover:border-(--auth-brand) hover:text-(--auth-brand) disabled:cursor-not-allowed disabled:opacity-60" disabled={loading} onClick={() => { setMode('register'); setState('idle'); setMessage(''); setFieldErrors({}); }}>{t('auth.createAccount')}</button>
+              <button type="button" className="h-[46px] w-full cursor-pointer rounded-lg border border-(--auth-brand) bg-white text-[15px] text-(--auth-brand) [font-family:var(--auth-font)] hover:bg-[#e9fbf0] hover:border-(--auth-brand) hover:text-(--auth-brand) disabled:cursor-not-allowed disabled:opacity-60" disabled={loading} onClick={() => { setMode('register'); setState('idle'); setMessage(''); setFieldErrors({}); }}>{t('auth.createAccount')}</button>
             </div> : null}
             {oidcEnabled ? <div className="mb-3 mt-4 text-center text-[13px] text-[#999]"><span>{t('auth.orContinueWith')}</span></div> : null}
             {oidcEnabled ? <button type="button" className="h-[46px] w-full cursor-pointer rounded-lg border border-[#dcdcdc] bg-white text-[15px] text-[#1a1a1a] [font-family:var(--auth-font)] hover:border-(--auth-brand) hover:text-(--auth-brand) disabled:cursor-not-allowed disabled:opacity-60" disabled={oidcLoading || loading} onClick={() => void startOIDC()}>{oidcLoading ? t('auth.redirectingToOIDC') : oidcProvider ? t('auth.oidcLoginWithProvider', { provider: oidcProvider }) : t('auth.oidcLogin')}</button> : null}
@@ -375,7 +375,7 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
           </div>
         </div> : null}
 
-        {isRegister && (registrationEnabled || invite) ? <div className="w-full rounded-2xl border-0 bg-[rgba(255,255,255,0.97)] p-10 shadow-[0_10px_40px_rgba(0,0,0,0.15)] max-[768px]:p-5">
+        {isRegister && (registrationEnabled || invite) ? <div className="box-border w-full rounded-2xl border-0 bg-[rgba(255,255,255,0.97)] p-10 shadow-[0_10px_40px_rgba(0,0,0,0.15)] max-[768px]:p-5">
           <div className="form-header">
             <h2 className="m-0 mb-2.5 text-[28px] text-[#1a1a1a]">{t('auth.createAccount')}</h2>
             <p className="m-0 text-sm leading-[1.5] text-[#555]">{t('auth.registerSubtitle')}</p>
