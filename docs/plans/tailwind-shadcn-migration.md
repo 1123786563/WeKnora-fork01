@@ -64,6 +64,23 @@ API 契约、鉴权、权限、表单校验、聊天流式、工具审批、上�
   基线+after-{foundation,auth,kblist} 截图；本地栈（:8080 sqlite / vite :5181，账号 uimig@local.dev）。
 - 本地栈注意：先前 dev 栈进程已结束；vite/后端均可用后台 job 方式自启（后端二进制 /tmp/uimig-server，
   sqlite /tmp/uimig-weknora.db，含 uimig 账号与一条 KB）。
+### 批次14：@source 路径修复 ✅（shell 波发现的关键既有 bug）
+- styles.css @source 路径 ../../packages/... → ../../../packages/...（apps/web/src 需三级）。
+  oxide Scanner 实证：原路径 normalize 到不存在的 apps/packages/ui，包文件 0 被扫描。
+- 修复后 dist 验证：px-[0.85rem]/py-[0.45rem]/rounded-control/bg-accent/text-ink/h-8、
+  [&_kbd] 变体、max-[1024px]/max-[768px]/max-md/min-[900px] 断点、[&_.wk-page] outlet
+  覆盖（max-w-none!）全部生成。
+- 门禁：typecheck 0、web 856/856、shared 445/445、build ✓；全站截图 diff 无意外漂移
+  （login/register SIZE-DIFF 为轮播 4s 时序；其余 0.03%~3.9% 为转换预期差异）。
+- 注意：此修复使 Button/Input/Switch 等既有 ui 组件的 utilities 首次真实生效
+  （此前仅 .wk-* 兜底 CSS 生效），视觉经截图复核无破坏。
+### 批次12：faq 域 ✅（子任务执行，Orchestrator 独立验收）
+- FAQPage.tsx + faq.css（1420→8 行 keyframes-only）+ faq-search-drawer/tag-tooltip 测试同步。
+- 验收：typecheck 0、faq 测试 53/53、web 856/856、build ✓。
+### 批次13：shell 域 ✅（子任务执行，Orchestrator 独立验收）
+- PlatformShell.tsx 转换；shell.css 删除（582 行）；session-sidebar.tsx（views/chat）随迁
+  ——shell.css 原含 chat 侧栏规则，级联来源分析已注释在文件头；platform 4 个测试文件同步。
+- 验收：typecheck 0、platform 测试全绿、web 856/856、build ✓。
 ### 批次11：organizations 域 ✅（子任务执行，Orchestrator 验收）
 - OrganizationsPage.tsx 165 条规则全部 utilities 化（25 个配方常量）；organizations.css 1236→15 行
   （保留 orgContentFadeIn/orgSkelPulse 两条 keyframes）；测试选择器 19 处语义化；
