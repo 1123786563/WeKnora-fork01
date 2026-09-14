@@ -150,6 +150,15 @@ function textButtons(root: HTMLElement, text: string): HTMLButtonElement[] {
   return [...root.querySelectorAll('button')].filter((button) => button.textContent === text) as HTMLButtonElement[];
 }
 
+// Semantic queries replacing the deleted organizations.css class selectors:
+// cards are the role="button" tiles carrying the titled org-name span (section
+// headers and the ⋯ affordance are role="button" too but title nothing), and
+// the rail lives in the labeled <aside>. "is-active" survives in the TSX as a
+// state hook (its styles are utilities), so the rail selector stays class-based.
+function orgCards(root: HTMLElement): HTMLElement[] {
+  return [...root.querySelectorAll('[role="button"]')].filter((el) => el.querySelector('span[title]') !== null) as HTMLElement[];
+}
+
 test('zh-CN page renders Vue-parity anatomy and drops the English debug page', async () => {
   const { client } = clientWith([ownerOrg, joinedOrg]);
   const root = await mountPage(client);
@@ -163,18 +172,18 @@ test('zh-CN page renders Vue-parity anatomy and drops the English debug page', a
   buttonWithLabel(root, '创建共享空间');
 
   assert.match(root.textContent ?? '', /我创建的/);
-  const createdCount = root.querySelector('.org-section-count');
-  assert.ok(createdCount, 'expected a live section count chip');
+  const createdHeader = [...root.querySelectorAll('[role="button"]')].find((el) => (el.textContent ?? '').startsWith('我创建的'));
+  assert.ok(createdHeader && /\d/.test(createdHeader.textContent ?? ''), 'expected a live section count chip');
 
-  const cards = root.querySelectorAll('.org-card');
+  const cards = orgCards(root);
   assert.equal(cards.length, 2);
   assert.match(root.textContent ?? '', /parity-org/);
   assert.match(root.textContent ?? '', /joined-org/);
   assert.match(root.textContent ?? '', /暂无描述/);
   assert.match(root.textContent ?? '', /团队空间/);
-  assert.ok(root.querySelector('.org-avatar'), 'expected gradient avatar');
-  assert.ok(root.querySelector('.card-decoration svg'), 'expected constellation decoration');
-  const statBadges = root.querySelectorAll('.feature-badge');
+  assert.ok(root.querySelector('[style*="linear-gradient"]'), 'expected gradient avatar');
+  assert.ok(cards[0]?.querySelector('svg[width="56"]'), 'expected constellation decoration');
+  const statBadges = [...root.querySelectorAll('[title="成员数量"], [title="知识库"], [title="智能体"]')];
   assert.ok(statBadges.length >= 6, 'expected member/kb/agent stat badges on every card');
   for (const badge of statBadges) {
     const label = badge.getAttribute('title') ?? '';
@@ -196,10 +205,11 @@ test('empty state mirrors the Vue empty markup with join and create actions', as
   const text = root.textContent ?? '';
   assert.match(text, /您还没有加入任何共享空间/);
   assert.match(text, /创建一个共享空间或通过邀请码加入现有共享空间/);
-  const actions = root.querySelectorAll('.empty-state-actions button');
-  assert.equal(actions.length, 2);
-  assert.match(actions[0]?.textContent ?? '', /加入共享空间/);
-  assert.match(actions[1]?.textContent ?? '', /创建共享空间/);
+  const joinActions = textButtons(root, '加入共享空间');
+  const createActions = textButtons(root, '创建共享空间');
+  assert.equal(joinActions.length + createActions.length, 2, 'expected the two empty-state actions');
+  assert.match(joinActions[0]?.textContent ?? '', /加入共享空间/);
+  assert.match(createActions[0]?.textContent ?? '', /创建共享空间/);
 });
 
 test('create header button opens a modal and the create API is called on submit', async () => {
@@ -256,7 +266,7 @@ test('card click opens the shared-space settings modal with members and join req
   const { client, calls } = clientWith([ownerOrg]);
   const root = await mountPage(client);
 
-  const card = root.querySelector('.org-card');
+  const card = orgCards(root)[0];
   assert.ok(card);
   await click(card as HTMLElement);
   await act(async () => {});
@@ -300,13 +310,13 @@ test('invite_code prop auto-previews the linked organization', async () => {
 test('more menu offers leave for joined spaces and hides delete for non-owners', async () => {
   const { client } = clientWith([ownerOrg, joinedOrg]);
   const root = await mountPage(client);
-  const cards = root.querySelectorAll('.org-card');
-  const joinedCard = [...cards].find((card) => card.textContent?.includes('joined-org'));
+  const cards = orgCards(root);
+  const joinedCard = cards.find((card) => card.textContent?.includes('joined-org'));
   assert.ok(joinedCard);
-  const more = (joinedCard as HTMLElement).querySelector('.more-wrap');
+  const more = (joinedCard as HTMLElement).querySelector('[role="button"][aria-label="编辑"]');
   assert.ok(more);
   await click(more as HTMLElement);
-  const menu = (joinedCard as HTMLElement).querySelector('.popup-menu');
+  const menu = (joinedCard as HTMLElement).querySelector('[role="button"][aria-label="编辑"] > div');
   assert.ok(menu);
   assert.match(menu.textContent ?? '', /退出共享空间/);
   assert.doesNotMatch(menu.textContent ?? '', /删除/);
@@ -321,13 +331,12 @@ test('more menu offers leave for joined spaces and hides delete for non-owners',
 const NEED_TENANT_ADMIN_TIP = '此操作需要当前空间的 admin 或更高角色，请联系空间 Owner 调整权限。';
 
 async function openCardMenu(root: HTMLElement, name: string): Promise<HTMLElement> {
-  const cards = root.querySelectorAll('.org-card');
-  const card = [...cards].find((entry) => entry.textContent?.includes(name));
+  const card = orgCards(root).find((entry) => entry.textContent?.includes(name));
   assert.ok(card, 'expected card ' + name);
-  const more = (card as HTMLElement).querySelector('.more-wrap');
+  const more = (card as HTMLElement).querySelector('[role="button"][aria-label="编辑"]');
   assert.ok(more);
   await click(more as HTMLElement);
-  const menu = (card as HTMLElement).querySelector('.popup-menu');
+  const menu = (card as HTMLElement).querySelector('[role="button"][aria-label="编辑"] > div');
   assert.ok(menu, 'expected popup menu for ' + name);
   return menu as HTMLElement;
 }
@@ -369,7 +378,7 @@ test('admin/owner roles keep create and join enabled and offer delete on owned s
 test('empty-state join/create actions are disabled for a viewer', async () => {
   const { client } = clientWith([]);
   const root = await mountPage(client, undefined, 'viewer');
-  const actions = root.querySelectorAll('.empty-state-actions button');
+  const actions = [...textButtons(root, '加入共享空间'), ...textButtons(root, '创建共享空间')];
   assert.equal(actions.length, 2);
   assert.equal((actions[0] as HTMLButtonElement).disabled, true);
   assert.equal((actions[1] as HTMLButtonElement).disabled, true);
@@ -400,10 +409,10 @@ test('?scope=created deep-link selects the 我创建的 rail and lists only owne
   window.history.replaceState({}, '', '/platform/organizations?scope=created');
   const { client } = clientWith([ownerOrg, joinedOrg]);
   const root = await mountPage(client);
-  const cards = root.querySelectorAll('.org-card');
+  const cards = orgCards(root);
   assert.equal(cards.length, 1, 'only owned spaces render under ?scope=created');
   assert.match(cards[0]?.textContent ?? '', /parity-org/);
-  const activeRail = root.querySelector('.org-rail-item.is-active');
+  const activeRail = root.querySelector('aside button.is-active');
   assert.ok(activeRail, 'expected an active rail entry');
   assert.match(activeRail?.textContent ?? '', /我创建的/);
 });
@@ -412,17 +421,17 @@ test('?scope=joined deep-link selects the 我加入的 rail and lists only joine
   window.history.replaceState({}, '', '/platform/organizations?scope=joined');
   const { client } = clientWith([ownerOrg, joinedOrg]);
   const root = await mountPage(client);
-  const cards = root.querySelectorAll('.org-card');
+  const cards = orgCards(root);
   assert.equal(cards.length, 1);
   assert.match(cards[0]?.textContent ?? '', /joined-org/);
-  const activeRail = root.querySelector('.org-rail-item.is-active');
+  const activeRail = root.querySelector('aside button.is-active');
   assert.match(activeRail?.textContent ?? '', /我加入的/);
 });
 
 test('rail clicks sync ?scope= (created/joined set it, all removes it)', async () => {
   const { client } = clientWith([ownerOrg, joinedOrg]);
   const root = await mountPage(client);
-  const railButtons = [...root.querySelectorAll('.org-rail-item')] as HTMLButtonElement[];
+  const railButtons = [...root.querySelectorAll('aside button')] as HTMLButtonElement[];
   assert.equal(railButtons.length, 3, 'rail mirrors Vue ListSpaceSidebar: all/created/joined');
   const railFor = (label: string) => railButtons.find((button) => button.textContent?.includes(label));
   assert.ok(railFor('全部') && railFor('我创建的') && railFor('我加入的'), 'rail labels match Vue entries');

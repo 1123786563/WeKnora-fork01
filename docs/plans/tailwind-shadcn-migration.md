@@ -64,6 +64,11 @@ API 契约、鉴权、权限、表单校验、聊天流式、工具审批、上�
   基线+after-{foundation,auth,kblist} 截图；本地栈（:8080 sqlite / vite :5181，账号 uimig@local.dev）。
 - 本地栈注意：先前 dev 栈进程已结束；vite/后端均可用后台 job 方式自启（后端二进制 /tmp/uimig-server，
   sqlite /tmp/uimig-weknora.db，含 uimig 账号与一条 KB）。
+### 批次11：organizations 域 ✅（子任务执行，Orchestrator 验收）
+- OrganizationsPage.tsx 165 条规则全部 utilities 化（25 个配方常量）；organizations.css 1236→15 行
+  （保留 orgContentFadeIn/orgSkelPulse 两条 keyframes）；测试选择器 19 处语义化；
+  保留钩子：is-active（rail 选中态）。
+- 验收（独立复核）：organizations 测试 26/26、build ✓；dist CSS 抽查断点/任意值均已生成。
 ### 批次10：SystemAuditLog 面板切片 ✅（settings-wrapper 域 4/N）
 - SystemAuditLogPanel.tsx 12 处 className 迁移（刷新按钮+spin、表格变体、time/actor/target 列、
   tag 三态色映射注入 AUDIT_TAG_TONES、load-more、详情抽屉+head+section/dl/pre 子元素规则）。
