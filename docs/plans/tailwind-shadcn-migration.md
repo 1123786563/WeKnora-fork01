@@ -64,6 +64,14 @@ API 契约、鉴权、权限、表单校验、聊天流式、工具审批、上�
   基线+after-{foundation,auth,kblist} 截图；本地栈（:8080 sqlite / vite :5181，账号 uimig@local.dev）。
 - 本地栈注意：先前 dev 栈进程已结束；vite/后端均可用后台 job 方式自启（后端二进制 /tmp/uimig-server，
   sqlite /tmp/uimig-weknora.db，含 uimig 账号与一条 KB）。
+### 批次6：guides 域 ✅（判定为保留 CSS，按目标 III.7）
+- packages/views/src/guides/guides.css（243 行）保留原样，原因：
+  ① spotlight 引导层为几何驱动定位（spot/ring/backdrop 由 JS 计算坐标、
+  transition 跟随），非静态布局；② 入场动画 + 5 组 cubic-bezier 过渡 +
+  prefers-reduced-motion 式无障碍考量；③ var(--td-*) TDesign 主题变量带
+  亮色回退，属既有主题能力；④ 媒体查询含 !important 覆盖（utilities 表达脆弱）。
+  工具类化收益低、回归风险高（Vue parity 逐元素一致）。
+- 验收：无需转换；views 层无改动，embed 门禁不受影响。
 ### 批次5：command-palette 域 ✅（Orchestrator 执行）
 - GlobalCommandPalette.tsx 23 处 className 全部 utilities 化（overlay/面板/输入行/结果组/
   分组头/条目+选中态/快捷键徽章 kbd 变体/空态/footer）；cmdk 类名保留为测试 DOM 钩子
