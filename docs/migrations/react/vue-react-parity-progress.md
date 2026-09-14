@@ -2265,3 +2265,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - The shared utility batch `085de06e` adds Vue `chat.chunkIdLabel` copy to ChunkDetailRenderer for all five locales while preserving default renderer compatibility.
 - Focused renderer/copy tests pass (34/34 and 11/11); current shared/Web regression remains green at 458/458 and 890/890. Browser fixture evidence remains open.
+
+## 2026-09-15 Round N+34s — N021 ChunkDetail position label
+
+- ChunkDetailRenderer now uses Vue `chat.positionLabel` across five locales in `873589a6`; default copy propagation remains compatible.
+- Shared tests pass 460/460 and Web tests pass 890/890; Web typecheck passes. Independent review found no P1/P2, with one non-blocking end-to-end copy-propagation P3 note. Browser fixture evidence remains open.
