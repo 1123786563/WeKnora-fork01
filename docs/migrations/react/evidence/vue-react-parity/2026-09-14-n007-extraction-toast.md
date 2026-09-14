@@ -34,6 +34,8 @@ Question generation now follows the Vue settings-row anatomy: description column
 
 The question count now uses a project numeric input matching Vue `t-input-number`: compact 88px field, decrement/increment buttons, min/max disabled states, clamped updates, native number keyboard editing, and explicit `aria-valuemin/max/now` values.
 
+The same numeric input is now used for all five chunking numeric fields. The chunking fields keep their Vue-aligned 280px layout while preserving their individual ranges and steps: chunk size 100–4000/50, overlap 0–500/20, token limit 0–8192/64, parent chunk 512–8192/64, and child chunk 64–2048/32.
+
 ASR language now uses a project clearable input with an explicit clear action, matching Vue `t-input clearable`; the existing language payload remains unchanged.
 
 The relation-type combobox also exposes a clear action, while entity endpoint comboboxes remain non-clearable, matching the Vue per-field `clearable` configuration.

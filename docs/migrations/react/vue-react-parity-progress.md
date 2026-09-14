@@ -1823,3 +1823,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - 对照 Vue `UploadConfirmDialog.vue` 的 `t-input-number`，React 问题生成数量改为项目级数字输入：88px 紧凑容器、减少/增加步进按钮、1–10 边界禁用、原生 number 键盘输入与 `aria-valuemin/max/now`；更新仍写入原有 `questionCount` 字段。
 - upload-confirm 定向测试 34/34、Web 全量 831/831、`typecheck:web` 与 `git diff --check` 通过；证据 `evidence/vue-react-parity/2026-09-14-n007-extraction-toast.md` 已更新。
 - N007 继续保持 `implementing`：浏览器 computed-style/同条件截图、真实后端图谱链路及 Wails/native 证据仍未闭环。
+
+## 2026-09-14 Round N+65 — N007 分块数字输入
+
+- 同一项目级数字输入封装扩展到 Vue `UploadConfirmDialog.vue` 的分块大小、重叠、token limit、父块大小和子块大小字段；宽度按字段布局保留 280px，步进与边界分别保持 100–4000/0–500/0–8192/512–8192/64–2048。
+- upload-confirm 定向测试 34/34、Web 全量 831/831、`typecheck:web` 与 `git diff --check` 通过；证据 `evidence/vue-react-parity/2026-09-14-n007-extraction-toast.md` 已更新。
+- N007 继续保持 `implementing`：浏览器 computed-style/同条件截图、真实后端图谱链路及 Wails/native 证据仍未闭环。

@@ -728,17 +728,18 @@ export function UploadClearableInput({ value, placeholder, ariaLabel, onChange }
   </div>;
 }
 
-export function UploadNumberInput({ value, min, max, step, ariaLabel, onChange }: {
+export function UploadNumberInput({ value, min, max, step, ariaLabel, onChange, className = "" }: {
   value: number;
   min: number;
   max: number;
   step: number;
   ariaLabel: string;
   onChange: (value: number) => void;
+  className?: string;
 }) {
   const clamp = (next: number) => Math.min(max, Math.max(min, Number.isFinite(next) ? next : value));
   const adjust = (delta: number) => onChange(clamp(value + delta));
-  return <div className="wk-upload-number-input">
+  return <div className={`wk-upload-number-input ${className}`.trim()}>
     <button type="button" aria-label={`减少${ariaLabel}`} disabled={value <= min} onClick={() => adjust(-step)}>−</button>
     <input
       type="number"
@@ -894,25 +895,11 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
         </label>
         <label>
           {t("knowledgeEditor.chunking.sizeLabel")}{" "}
-          <input
-            type="number"
-            min={100}
-            max={4000}
-            step={50}
-            value={state.chunkSize}
-            onChange={(event) => update({ chunkSize: Number(event.target.value) })}
-          />
+          <UploadNumberInput className="wk-upload-number-input--wide" min={100} max={4000} step={50} ariaLabel={t("knowledgeEditor.chunking.sizeLabel")} value={state.chunkSize} onChange={(value) => update({ chunkSize: value })} />
         </label>
         <label>
           {t("knowledgeEditor.chunking.overlapLabel")}{" "}
-          <input
-            type="number"
-            min={0}
-            max={500}
-            step={20}
-            value={state.chunkOverlap}
-            onChange={(event) => update({ chunkOverlap: Number(event.target.value) })}
-          />
+          <UploadNumberInput className="wk-upload-number-input--wide" min={0} max={500} step={20} ariaLabel={t("knowledgeEditor.chunking.overlapLabel")} value={state.chunkOverlap} onChange={(value) => update({ chunkOverlap: value })} />
         </label>
         <button
           type="button"
@@ -931,14 +918,7 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
             </label>
             <label>
               {t("knowledgeEditor.chunking.tokenLimitLabel")}{" "}
-              <input
-                type="number"
-                min={0}
-                max={8192}
-                step={64}
-                value={state.tokenLimit}
-                onChange={(event) => update({ tokenLimit: Number(event.target.value) })}
-              />
+              <UploadNumberInput className="wk-upload-number-input--wide" min={0} max={8192} step={64} ariaLabel={t("knowledgeEditor.chunking.tokenLimitLabel")} value={state.tokenLimit} onChange={(value) => update({ tokenLimit: value })} />
             </label>
             <label>
               {t("knowledgeEditor.chunking.languagesLabel")}{" "}
@@ -956,25 +936,11 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
               <>
                 <label>
                   {t("knowledgeEditor.chunking.parentChunkSizeLabel")}{" "}
-                  <input
-                    type="number"
-                    min={512}
-                    max={8192}
-                    step={64}
-                    value={state.parentChunkSize}
-                    onChange={(event) => update({ parentChunkSize: Number(event.target.value) })}
-                  />
+                  <UploadNumberInput className="wk-upload-number-input--wide" min={512} max={8192} step={64} ariaLabel={t("knowledgeEditor.chunking.parentChunkSizeLabel")} value={state.parentChunkSize} onChange={(value) => update({ parentChunkSize: value })} />
                 </label>
                 <label>
                   {t("knowledgeEditor.chunking.childChunkSizeLabel")}{" "}
-                  <input
-                    type="number"
-                    min={64}
-                    max={2048}
-                    step={32}
-                    value={state.childChunkSize}
-                    onChange={(event) => update({ childChunkSize: Number(event.target.value) })}
-                  />
+                  <UploadNumberInput className="wk-upload-number-input--wide" min={64} max={2048} step={32} ariaLabel={t("knowledgeEditor.chunking.childChunkSizeLabel")} value={state.childChunkSize} onChange={(value) => update({ childChunkSize: value })} />
                 </label>
               </>
             ) : null}
