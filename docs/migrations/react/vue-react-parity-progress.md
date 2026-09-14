@@ -2417,3 +2417,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Web 891/891, Embed 7/7, Desktop 2/2, Shared 465/465, Mobile 189/189 all pass after the upload-progress and native graph changes.
 - Web, Shared, Mobile, Embed, and Desktop TypeScript checks pass; `git diff --check` passes.
 - Runtime acceptance remains separate: authenticated device knowledge interactions, Wails feature interactions, and live graph/upload backend evidence are still not proven by these suites.
+
+## 2026-09-15 Round N+34au — Wiki graph live capability gate
+
+- Authenticated React Web runtime reached the real KB graph route and received the backend disabled-feature response. The page rendered localized heading/help, refresh/fit controls, backend error alert, and retry action.
+- Evidence: `evidence/vue-react-parity/2026-09-15-r020-wiki-graph-runtime-gating.md`.
+- This closes the live negative capability-gate check for the Web route; a successful graph payload and native-device graph interaction remain unverified.
