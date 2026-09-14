@@ -2713,7 +2713,7 @@ export function KnowledgeDocumentsPage({
   };
 
   return (
-    <main className="wk-page wk-documents-page">
+    <main className="wk-page wk-documents-page max-w-[1180px]!">
       {stageNotice ? <div className={`${stageNoticeClass(stageNotice.tone)} fixed left-1/2 top-[1.25rem] z-[1000] -translate-x-1/2 max-w-[min(30rem,calc(100vw-2rem))] rounded-[6px] border bg-[var(--wk-surface,#fff)] px-[0.875rem] py-[0.625rem] text-[0.875rem] shadow-[0_6px_20px_rgb(16_24_40/14%)] ${STAGE_NOTICE_TONE_CLASS[stageNotice.tone]}`} role="alert" aria-live="polite">{stageNotice.text}</div> : null}
       <header className="wk-header wk-document-header">
         <div className="document-header-title flex min-w-0 flex-col gap-1">
@@ -2742,7 +2742,7 @@ export function KnowledgeDocumentsPage({
             </Status>
           ) : null}
         </div>
-        <div className="wk-list-actions">
+        <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
           <nav
             className="wk-kb-tabs"
             aria-label={t("knowledgeBase.documents.title")}
@@ -2778,8 +2778,8 @@ export function KnowledgeDocumentsPage({
         <div
           className={
             dragActive && canContribute
-              ? "wk-documents-layout wk-dropzone is-active relative outline-2 outline-dashed outline-offset-[-4px] outline-[var(--wk-accent,#4a7dff)]"
-              : "wk-documents-layout wk-dropzone relative"
+              ? "wk-documents-layout wk-dropzone is-active relative grid grid-cols-[minmax(160px,220px)_1fr] gap-[1.25rem] max-[720px]:grid-cols-1 outline-2 outline-dashed outline-offset-[-4px] outline-[var(--wk-accent,#4a7dff)]"
+              : "wk-documents-layout wk-dropzone relative grid grid-cols-[minmax(160px,220px)_1fr] gap-[1.25rem] max-[720px]:grid-cols-1"
           }
           onDragOver={
             canContribute
@@ -2808,7 +2808,7 @@ export function KnowledgeDocumentsPage({
           {uploading && canContribute ? (
             <UploadProgressMask percent={batchUploadProgress(uploadStates)} />
           ) : null}
-          <aside className="wk-folder-panel">
+          <aside className="wk-folder-panel border-r border-line-soft pr-[1rem] max-[720px]:border-b max-[720px]:border-r-0 max-[720px]:p-0 max-[720px]:pb-[1rem]">
             <strong>{t("knowledgeBase.documents.folders")}</strong>
             {folderState.status === "loading" ? (
               <Status>{t("knowledgeBase.documents.loadingFolders")}</Status>
@@ -2816,7 +2816,7 @@ export function KnowledgeDocumentsPage({
             {folderState.status === "error" ? (
               <Status tone="error">{folderState.message}</Status>
             ) : null}
-            <ul className="wk-folder-list">
+            <ul className="wk-folder-list mb-0 ml-0 mr-0 mt-[0.75rem] list-none p-0">
               {folders.map((folder) => (
                 <li
                   key={folder.path}
@@ -2826,12 +2826,12 @@ export function KnowledgeDocumentsPage({
                     type="button"
                     className={
                       folderPath === (folder.path || undefined)
-                        ? "is-active"
-                        : ""
+                        ? "is-active w-full border-0 rounded-[5px] bg-surface-wash text-primary-deep cursor-pointer flex justify-between py-[0.45rem] px-[0.5rem] text-left hover:bg-surface-wash hover:text-primary-deep"
+                        : "w-full border-0 rounded-[5px] bg-transparent text-muted-strong cursor-pointer flex justify-between py-[0.45rem] px-[0.5rem] text-left hover:bg-surface-wash hover:text-primary-deep"
                     }
                     onClick={() => setFolderPath(folder.path || undefined)}
                   >
-                    {folder.name} <span>{folder.total_count}</span>
+                    {folder.name} <span className="text-[0.8rem] text-muted">{folder.total_count}</span>
                   </button>
                 </li>
               ))}
@@ -2984,7 +2984,7 @@ export function KnowledgeDocumentsPage({
                 ) : null}
               </div>
             </div>
-            <div className="wk-list-actions">
+            <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
               <label className="wk-select-all inline-flex items-center gap-1 whitespace-nowrap">
                 <input
                   type="checkbox"
@@ -2995,7 +2995,7 @@ export function KnowledgeDocumentsPage({
                 />
                 {t("knowledgeBase.selectAll")}
               </label>
-              <span>
+              <span className="mr-auto text-[0.85rem] text-muted">
                 {t("knowledgeBase.documents.selectedOnPage", {
                   count: selectedOnPage,
                 })}
@@ -3057,7 +3057,7 @@ export function KnowledgeDocumentsPage({
             </div>
             {moving && canContribute ? (
               <div
-                className="wk-list-actions"
+                className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"
                 role="form"
                 aria-label={t("knowledgeBase.documents.moveDestination")}
               >
@@ -3126,12 +3126,12 @@ export function KnowledgeDocumentsPage({
             {state.status === "success" && items.length > 0 ? (
               <ul
                 ref={documentListRef}
-                className={`wk-list wk-document-list${marquee.visible ? " is-marquee-active" : ""}`}
+                className={`wk-list wk-document-list relative${marquee.visible ? " is-marquee-active cursor-crosshair" : ""}`}
                 onMouseDown={marquee.onMouseDown}
               >
                 {marquee.visible ? (
                   <li
-                    className={`wk-document-marquee-box is-${marquee.mode}`}
+                    className={`wk-document-marquee-box is-${marquee.mode} items-center! pointer-events-none absolute z-[4] rounded-[2px] border ${marquee.mode === "subtract" ? "border-[color-mix(in_srgb,var(--wk-danger,#d92d20)_75%,transparent)]! bg-[color-mix(in_srgb,var(--wk-danger,#d92d20)_10%,transparent)]" : "border-[color-mix(in_srgb,var(--wk-accent,#4a7dff)_75%,transparent)]! bg-[color-mix(in_srgb,var(--wk-accent,#4a7dff)_12%,transparent)]"}`}
                     style={{ left: marquee.left, top: marquee.top, width: marquee.width, height: marquee.height }}
                     aria-hidden="true"
                   />
@@ -3140,7 +3140,7 @@ export function KnowledgeDocumentsPage({
                   const status = documentStatus(document, t);
                   const actions = documentRowActions(document.parse_status);
                   return (
-                    <li key={document.id} data-select-id={document.id}>
+                    <li key={document.id} data-select-id={document.id} className="items-center!">
                       <input
                         type="checkbox"
                         aria-label={t("knowledgeBase.documents.select", {
@@ -3152,7 +3152,7 @@ export function KnowledgeDocumentsPage({
                       <div className="wk-list-item-copy">
                         <button
                           type="button"
-                          className="wk-document-link"
+                          className="wk-document-link border-0 bg-transparent cursor-pointer p-0 text-left text-primary-deep [font:inherit] [font-weight:650] hover:underline"
                           onClick={() => onOpenDocument?.(document)}
                         >
                           {displayName(document)}
@@ -3300,7 +3300,7 @@ export function KnowledgeDocumentsPage({
                   />
                 </label>
                 <p className="wk-muted" style={{ margin: "0.25rem 0 0", fontSize: "0.85rem" }}>{t("knowledgeBase.urlTip")}</p>
-                <div className="wk-list-actions">
+                <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
                   <Button
                     type="button"
                     onClick={() => {
@@ -3442,7 +3442,7 @@ export function KnowledgeDocumentsPage({
             t={ct}
           />
           {uploadError ? <Status tone="error">{uploadError}</Status> : null}
-          <div className="wk-list-actions">
+          <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
             <Button
               type="button"
               loading={uploading}
@@ -3485,7 +3485,7 @@ export function KnowledgeDocumentsPage({
               />
             </label>
             {uploadError ? <Status tone="error">{uploadError}</Status> : null}
-            <div className="wk-list-actions">
+            <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
               <Button type="button" onClick={stageManualCreate}>
                 {ct("common.confirm")}
               </Button>
@@ -3507,7 +3507,7 @@ export function KnowledgeDocumentsPage({
               count: selected.size,
             })}
           </p>
-          <div className="wk-list-actions">
+          <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
             <Button type="button" onClick={() => void deleteSelected()}>
               {t("knowledgeBase.documents.delete")}
             </Button>
@@ -3525,7 +3525,7 @@ export function KnowledgeDocumentsPage({
         >
           <p>{t("knowledgeBase.confirmBatchReparseDocument", { count: pendingBatchReparse.length })}</p>
           {mutationError ? <Status tone="error">{mutationError}</Status> : null}
-          <div className="wk-list-actions">
+          <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
             <Button type="button" onClick={() => void confirmBatchReparse()}>
               {ct("uploadConfirm.confirmReparse")}
             </Button>

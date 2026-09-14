@@ -50,10 +50,10 @@ export function DocumentPreviewContent({
     return createElement('img', { className: 'wk-preview-image', src: url, alt: fileName || 'Document preview' });
   }
   if (kind === 'audio') {
-    return createElement('audio', { className: 'wk-preview-audio', src: url, controls: true, 'aria-label': fileName || 'Audio preview' });
+    return createElement('audio', { className: 'wk-preview-audio block w-full max-w-[480px]', src: url, controls: true, 'aria-label': fileName || 'Audio preview' });
   }
   if (kind === 'video') {
-    return createElement('video', { className: 'wk-preview-video', src: url, controls: true, playsInline: true, 'aria-label': fileName || 'Video preview' });
+    return createElement('video', { className: 'wk-preview-video block max-h-[calc(100vh-240px)] max-w-full', src: url, controls: true, playsInline: true, 'aria-label': fileName || 'Video preview' });
   }
   return createElement('iframe', {
     className: 'wk-preview-pdf',

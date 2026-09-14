@@ -82,6 +82,13 @@ API 契约、鉴权、权限、表单校验、聊天流式、工具审批、上�
   page-list/reader/editor/history 六档；page-item hover 与 summary line-clamp）。
 - styles.css 删除 .wk-wiki-* 25 条 + .wk-sr-only（sr-only 语义由 utilities 复刻）。
 - 验收：typecheck 0、web 856/856、build ✓。
+### 批次21：documents styles.css 切片 ✅（子任务执行，Orchestrator 验收提交）
+- documents 三组件 20 处追加 utilities（页面宽 1180!/820!、layout 双分支、folder 家族、
+  list-actions、marquee color-mix!、metadata dl 子变体、preview 尺寸）；preview.ts 一并处理。
+- styles.css 删除 22 条 documents 规则（1128→1055 行）；保留 4 条共享规则
+  （wk-list-actions/span、wk-document-link——约 30 处域外消费方，最后统一删）。
+- 关键实现：unlayered 竞争属性用 ! 任意值；静态条件替代插值任意值（扫描器限制）。
+- 验收：typecheck 0、documents 38/38、web 856/856、build ✓、styles.css 1128→1055 行。
 ### 批次19：TenantMembers 域 ✅（子任务执行，Orchestrator 验收提交）
 - TenantMembersPanel.tsx ~95 条规则内联 utilities（表格/分页/标签三态/确认弹层；
   settings-wrapper 抽屉 select chrome 特异性更高今日实际生效，按生效值 4 条未复制）；
