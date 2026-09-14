@@ -181,3 +181,9 @@
 - Separated API key capability display labels from backend identifiers and localized all seven permissions across five locales.
 - Validation: `pnpm run test:web` 891/891; `pnpm run typecheck:web`; `git diff --check`.
 - Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r026-platform-api-key-capability-display.md`.
+
+## Round N+34bg — runtime fallback locale coverage
+
+- Added four non-Chinese runtime fallback dictionaries so queue and limiter surfaces no longer fall back to Chinese when shared i18n keys are absent.
+- Validation: `pnpm run test:web` 891/891; `pnpm run typecheck:web`; `git diff --check`.
+- Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r027-runtime-fallback-locales.md`.
