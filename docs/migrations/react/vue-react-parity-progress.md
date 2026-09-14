@@ -2338,3 +2338,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - 对话操作区的 MCP 授权标题、工具标签、授权/取消按钮、已授权状态和区域标题接入五语言共享文案，并保留服务名称显示。
 - Web 全量 891/891、shared copy/typecheck 通过；真实 OAuth 授权回调和浏览器多语言对照仍待补齐。
+
+## 2026-09-15 Round N+34ag — N021 tool-call surface copy
+
+- 新对话流中的 Tool calls 标题、文档信息 ID、元数据标题改用共享五语言文案，减少工具结果区残留英文；数据字段和状态值保持后端原值。
+- Web 全量 891/891、shared/Web typecheck、diff check 通过；完整工具结果多语言浏览器与真实数据验收仍待补齐。
