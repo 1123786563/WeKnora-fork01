@@ -10,7 +10,7 @@ function readInitialLocale(): Locale {
   const stored = window.localStorage.getItem(LOCALE_STORAGE_KEY);
   return stored && isLocale(stored) ? stored : 'zh-CN';
 }
-const msg = (locale: Locale, key: string): string => formatMessage(locale, key);
+const msg = (locale: Locale, key: string, values?: Record<string, string | number>): string => formatMessage(locale, key, values);
 
 export interface WorkspaceOnboardingPageProps {
   client: WeKnoraClient;
@@ -67,7 +67,7 @@ export function WorkspaceOnboardingPage({ client, scopeRuntime, onLogout }: Work
       scopeRuntime.hydrate(authMe);
       window.location.assign('/platform/knowledge-bases');
     } catch (error) {
-      setCreateError(error instanceof Error ? error.message : 'Workspace creation failed.');
+      setCreateError(error instanceof Error ? error.message : msg(locale, 'auth.workspaceOnboarding.workspaceCreationFailed'));
     } finally {
       setCreating(false);
     }
@@ -131,8 +131,8 @@ export function WorkspaceOnboardingPage({ client, scopeRuntime, onLogout }: Work
         </label>
         {createError ? <Status tone="error">{createError}</Status> : null}
         <div className="wk-actions">
-          <Button type="submit" disabled={creating}>{creating ? 'Creating…' : msg(locale, 'auth.workspaceOnboarding.create')}</Button>
-          <Button type="button" onClick={() => { setCreateVisible(false); setName(''); setDescription(''); setFieldErrors({}); setCreateError(''); }}>Cancel</Button>
+          <Button type="submit" disabled={creating}>{creating ? msg(locale, 'auth.workspaceOnboarding.creating') : msg(locale, 'auth.workspaceOnboarding.create')}</Button>
+          <Button type="button" onClick={() => { setCreateVisible(false); setName(''); setDescription(''); setFieldErrors({}); setCreateError(''); }}>{msg(locale, 'auth.workspaceOnboarding.cancel')}</Button>
         </div>
       </form>
     </Card> : null}
@@ -140,14 +140,14 @@ export function WorkspaceOnboardingPage({ client, scopeRuntime, onLogout }: Work
     {invitationsVisible ? <Card>
       <h2>{msg(locale, 'auth.workspaceOnboarding.invitations')}</h2>
       {invitationError ? <Status tone="error">{invitationError}</Status> : null}
-      {invitations === null ? <Status>Loading…</Status> : invitations.length === 0 ? <Status>{msg(locale, 'tenantInvitation.myInbox.empty')}</Status> : (
+      {invitations === null ? <Status>{msg(locale, 'auth.workspaceOnboarding.loadingInvitations')}</Status> : invitations.length === 0 ? <Status>{msg(locale, 'tenantInvitation.myInbox.empty')}</Status> : (
         <ul>{invitations.map((invitation) => <li key={invitation.id}>
-          <strong>{invitation.tenant_name || `workspace ${invitation.tenant_id}`}</strong> — {invitation.role}
+          <strong>{invitation.tenant_name || msg(locale, 'auth.workspaceOnboarding.workspaceFallback', { id: invitation.tenant_id })}</strong> — {invitation.role}
           <Button type="button" onClick={() => void respond(invitation, true)}>{msg(locale, 'tenantInvitation.myInbox.accept')}</Button>
           <Button type="button" onClick={() => void respond(invitation, false)}>{msg(locale, 'tenantInvitation.myInbox.decline')}</Button>
         </li>)}</ul>
       )}
-      <Button type="button" onClick={() => setInvitationsVisible(false)}>Close</Button>
+      <Button type="button" onClick={() => setInvitationsVisible(false)}>{msg(locale, 'auth.workspaceOnboarding.close')}</Button>
     </Card> : null}
   </Card></main>;
 }

@@ -63,27 +63,27 @@ export function JoinPage({ client, onAuthenticated }: JoinPageProps) {
       const session = await client.auth.registerByInvite({ token, email, username, password });
       onAuthenticated?.(session);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Invitation registration failed.');
+      setMessage(error instanceof Error ? error.message : formatMessage(storedLocale(), 'auth.join.invitationRegistrationFailed'));
     } finally {
       setSubmitting(false);
     }
   }
 
   return <main className="wk-page"><Card>
-    <h1>Join workspace</h1>
-    {lookupState === 'loading' ? <Status>Checking invitation…</Status> : null}
+    <h1>{formatMessage(storedLocale(), 'auth.join.title')}</h1>
+    {lookupState === 'loading' ? <Status>{formatMessage(storedLocale(), 'auth.join.checkingInvitation')}</Status> : null}
     {lookupState === 'error' ? <Status tone="error">{message}</Status> : null}
     {lookupState === 'ready' && lookup ? <>
-      <p>Join <strong>{lookup.tenantName || `workspace ${lookup.tenantId}`}</strong> as {lookup.role}.</p>
+      <p>{formatMessage(storedLocale(), 'auth.join.joinPrefix')} <strong>{lookup.tenantName || formatMessage(storedLocale(), 'auth.join.workspaceFallback', { id: lookup.tenantId })}</strong>{formatMessage(storedLocale(), 'auth.join.asRole', { role: lookup.role })}</p>
       <form className="wk-form" onSubmit={submit}>
-        <label>Username<input value={username} onChange={(event) => setUsername(event.target.value)} required minLength={2} /></label>
-        <label>Email<input value={email} onChange={(event) => setEmail(event.target.value)} type="email" required /></label>
-        <label>Password<input value={password} onChange={(event) => setPassword(event.target.value)} type="password" required minLength={8} maxLength={32} disabled={submitting} />
+        <label>{formatMessage(storedLocale(), 'auth.join.username')}<input value={username} onChange={(event) => setUsername(event.target.value)} required minLength={2} /></label>
+        <label>{formatMessage(storedLocale(), 'auth.join.email')}<input value={email} onChange={(event) => setEmail(event.target.value)} type="email" required /></label>
+        <label>{formatMessage(storedLocale(), 'auth.join.password')}<input value={password} onChange={(event) => setPassword(event.target.value)} type="password" required minLength={8} maxLength={32} disabled={submitting} />
         {(fieldErrors.password ?? []).map((key) => <Status key={key} tone="error">{formatMessage(storedLocale(), key)}</Status>)}</label>
-      <label>Confirm password<input value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} type="password" required disabled={submitting} />
+      <label>{formatMessage(storedLocale(), 'auth.join.confirmPassword')}<input value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} type="password" required disabled={submitting} />
         {(fieldErrors.confirmPassword ?? []).map((key) => <Status key={key} tone="error">{formatMessage(storedLocale(), key)}</Status>)}</label>
         {message ? <Status tone="error">{message}</Status> : null}
-        <Button type="submit" disabled={submitting}>{submitting ? 'Creating account…' : 'Create account and join'}</Button>
+        <Button type="submit" disabled={submitting}>{submitting ? formatMessage(storedLocale(), 'auth.join.creatingAccount') : formatMessage(storedLocale(), 'auth.join.createAccountAndJoin')}</Button>
       </form>
     </> : null}
   </Card></main>;
