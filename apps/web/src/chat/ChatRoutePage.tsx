@@ -763,12 +763,15 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     const documentSearch = client.knowledge.documents?.search
       ? client.knowledge.documents.search({ recent: true, offset: 0, limit: 20 })
       : Promise.resolve({ data: [] } as any);
+    const hasDocumentSearch = typeof client.knowledge.documents?.search === 'function';
     const mcpList = client.configuration?.mcp?.list
       ? client.configuration.mcp.list()
       : Promise.resolve([] as any[]);
+    const hasMcpList = typeof client.configuration?.mcp?.list === 'function';
     const skillList = client.configuration?.skills?.list
       ? client.configuration.skills.list()
       : Promise.resolve([] as any[]);
+    const hasSkillList = typeof client.configuration?.skills?.list === 'function';
     void Promise.allSettled([
       client.knowledgeBases.list({ creator: 'all' }),
       documentSearch,
@@ -777,7 +780,10 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     ]).then(
       async (results) => {
         if (generation !== mentionGenerationRef.current || !scopeController.isCurrent(scope.scope)) return;
-        const primarySuccess = results.some((result) => result.status === 'fulfilled');
+        const primarySuccess = results[0].status === 'fulfilled'
+          || (hasDocumentSearch && results[1].status === 'fulfilled')
+          || (hasMcpList && results[2].status === 'fulfilled')
+          || (hasSkillList && results[3].status === 'fulfilled');
         if (!primarySuccess) {
           mentionLoadedRef.current = false;
           setMentionError(copy.knowledgeBasesLoadFailed);
