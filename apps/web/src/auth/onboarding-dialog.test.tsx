@@ -1,0 +1,105 @@
+// S00 N-2: Vue renders the tenant-create form in a centered t-dialog modal
+// (frontend/src/components/CreateTenantDialog.vue: t-dialog width=480px,
+// header 创建新空间, subtitle tip, textarea description, 取消/创建 actions).
+// React used to render the same form as an inline card on the page. This
+// spec pins the modal presentation and the Vue dialog copy.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import React, { act } from 'react';
+import type { ReactNode } from 'react';
+import { afterEach } from 'node:test';
+
+import nodeModule from 'node:module';
+
+type Root = { render: (node: ReactNode) => void; unmount: () => Promise<void> | void };
+
+const isCss = (specifier: string) => specifier.endsWith('.css');
+type ResolveHook = (specifier: string, context: { parentURL?: string }, nextResolve: (s: string, c: { parentURL?: string }) => { url: string }) => { url: string; shortCircuit?: boolean };
+const resolveCSS: ResolveHook = (specifier, context, nextResolve) => isCss(specifier)
+  ? { url: 'data:text/javascript,export default {}', shortCircuit: true }
+  : nextResolve(specifier, context);
+const hooks = nodeModule as typeof nodeModule & { registerHooks?: (hooks: { resolve: ResolveHook }) => void };
+if (hooks.registerHooks) hooks.registerHooks({ resolve: resolveCSS });
+
+const require = nodeModule.createRequire(import.meta.url);
+const { JSDOM } = require('jsdom') as { JSDOM: new (html: string, options: { url: string }) => { window: Window & typeof globalThis } };
+const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://weknora.test/onboarding' });
+Object.assign(globalThis, {
+  React,
+  window: dom.window,
+  document: dom.window.document,
+  HTMLElement: dom.window.HTMLElement,
+  Element: dom.window.Element,
+  Event: dom.window.Event,
+  IS_REACT_ACT_ENVIRONMENT: true,
+});
+dom.window.localStorage.setItem('locale', 'zh-CN');
+
+const { createRoot } = await import('react-dom/client');
+const { WorkspaceOnboardingPage } = await import('./WorkspaceOnboardingPage.tsx');
+
+let mountedRoot: Root | undefined;
+afterEach(async () => {
+  if (mountedRoot) await act(async () => mountedRoot?.unmount());
+  mountedRoot = undefined;
+  document.body.replaceChildren();
+});
+
+const settle = (ms: number) => act(async () => {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+});
+
+function fakeDeps(): { client: Record<string, unknown>; scopeRuntime: Record<string, unknown> } {
+  return {
+    client: {
+      auth: { me: async () => ({ user: { id: 'u1' } }) },
+      identity: { tenants: { invitations: { pendingCount: async () => ({ pendingCount: 0 }) } } },
+    },
+    scopeRuntime: {
+      hydrate: () => {},
+      requiresWorkspace: () => true,
+      can: () => true,
+    },
+  };
+}
+
+test('tenant creation renders in a modal dialog with the Vue t-dialog copy (S00 N-2)', async () => {
+  const { client, scopeRuntime } = fakeDeps();
+  const container = document.createElement('div');
+  document.body.append(container);
+  mountedRoot = createRoot(container);
+  await act(async () => {
+    mountedRoot?.render(React.createElement(WorkspaceOnboardingPage, {
+      client: client as never,
+      scopeRuntime: scopeRuntime as never,
+      onLogout: async () => {},
+    }));
+  });
+  await settle(20);
+
+  const createEntry = [...document.querySelectorAll('button')].find((n) => n.textContent === '创建空间');
+  assert.ok(createEntry, 'expected the 创建空间 entry action after policy load');
+
+  await act(async () => { createEntry!.click(); await settle(10); });
+
+  // Vue: t-dialog modal — role=dialog, aria-modal, overlay backdrop.
+  const dialog = document.querySelector('[role="dialog"]') as HTMLElement | null;
+  assert.ok(dialog, 'expected the create form inside a role=dialog modal, not an inline card');
+  assert.equal(dialog.getAttribute('aria-modal'), 'true');
+
+  // Vue dialog header title + subtitle tip.
+  assert.match(dialog.textContent || '', /创建新空间/);
+  assert.match(dialog.textContent || '', /你将自动成为新空间的所有者/);
+
+  // Vue: description is a textarea with the Vue placeholder.
+  const description = dialog.querySelector('textarea') as HTMLTextAreaElement | null;
+  assert.ok(description, 'expected the description field to be a textarea like Vue t-textarea');
+  assert.equal(description.getAttribute('maxlength'), '512');
+  assert.equal(description.getAttribute('placeholder'), '简单描述一下这个空间的用途');
+
+  // Vue: cancel action inside the dialog.
+  const cancel = [...dialog.querySelectorAll('button')].find((n) => n.textContent === '取消');
+  assert.ok(cancel, 'expected a 取消 action inside the dialog');
+  await act(async () => { cancel!.click(); await settle(10); });
+  assert.equal(document.querySelector('[role="dialog"]'), null, 'cancel closes the dialog');
+});

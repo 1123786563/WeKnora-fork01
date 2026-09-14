@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { TenantInvitation, WeKnoraClient } from '@weknora/api-client';
-import { Button, Card, Status } from '@weknora/ui';
+import { Button, Card, Dialog, Status } from '@weknora/ui';
 import type { WebScopeRuntime } from '../platform/scope-runtime.ts';
 import { onboardingView, validateCreateTenant, type OnboardingPolicyInput } from './onboarding.ts';
 import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
@@ -118,24 +118,29 @@ export function WorkspaceOnboardingPage({ client, scopeRuntime, onLogout }: Work
     </> : null}
     <Button type="button" onClick={() => void onLogout()}>{msg(locale, 'auth.logout')}</Button>
 
-    {createVisible ? <Card>
-      <h2>{msg(locale, 'auth.workspaceOnboarding.create')}</h2>
+    <Dialog
+      open={createVisible}
+      title={<span className="wk-dialog-title-row"><svg className="wk-dialog-title-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1" fill="currentColor" /><rect x="13" y="3" width="8" height="8" rx="1" fill="currentColor" opacity="0.55" /><rect x="3" y="13" width="8" height="8" rx="1" fill="currentColor" opacity="0.55" /><rect x="13" y="13" width="8" height="8" rx="1" fill="currentColor" /></svg>{msg(locale, 'tenant.create.dialogTitle')}</span>}
+      onClose={() => { if (!creating) { setCreateVisible(false); setName(''); setDescription(''); setFieldErrors({}); setCreateError(''); } }}
+      className="wk-dialog--tenant-create"
+    >
+      <p className="wk-muted">{msg(locale, 'tenant.create.dialogSubtitle')}</p>
       <form className="wk-form" onSubmit={(event) => { event.preventDefault(); void createTenant(); }}>
         <label>{msg(locale, 'tenant.create.nameLabel')}
           <input value={name} onChange={(event) => setName(event.target.value)} maxLength={128} autoFocus disabled={creating} placeholder={msg(locale, 'tenant.create.namePlaceholder')} />
           {(fieldErrors.name ?? []).map((key) => <Status key={key} tone="error">{msg(locale, key)}</Status>)}
         </label>
         <label>{msg(locale, 'tenant.create.descriptionLabel')}
-          <input value={description} onChange={(event) => setDescription(event.target.value)} maxLength={512} disabled={creating} />
+          <textarea value={description} onChange={(event) => setDescription(event.target.value)} maxLength={512} rows={3} disabled={creating} placeholder={msg(locale, 'tenant.create.descriptionPlaceholder')} />
           {(fieldErrors.description ?? []).map((key) => <Status key={key} tone="error">{msg(locale, key)}</Status>)}
         </label>
         {createError ? <Status tone="error">{createError}</Status> : null}
         <div className="wk-actions">
-          <Button type="submit" disabled={creating}>{creating ? msg(locale, 'auth.workspaceOnboarding.creating') : msg(locale, 'auth.workspaceOnboarding.create')}</Button>
-          <Button type="button" onClick={() => { setCreateVisible(false); setName(''); setDescription(''); setFieldErrors({}); setCreateError(''); }}>{msg(locale, 'auth.workspaceOnboarding.cancel')}</Button>
+          <Button type="submit" disabled={creating}>{creating ? msg(locale, 'auth.workspaceOnboarding.creating') : msg(locale, 'tenant.create.submit')}</Button>
+          <Button type="button" onClick={() => { setCreateVisible(false); setName(''); setDescription(''); setFieldErrors({}); setCreateError(''); }}>{msg(locale, 'tenant.create.cancel')}</Button>
         </div>
       </form>
-    </Card> : null}
+    </Dialog>
 
     {invitationsVisible ? <Card>
       <h2>{msg(locale, 'auth.workspaceOnboarding.invitations')}</h2>
