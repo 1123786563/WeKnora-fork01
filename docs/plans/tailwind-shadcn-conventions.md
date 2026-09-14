@@ -44,6 +44,13 @@
 - 视觉未动之前：不动共享类在 apps/web/src/styles.css 的规则；仅当某类的最后一个使用方完成迁移时，
   由 Orchestrator 统一删除该规则。
 
+## 主题变量保留规则
+
+settings 域大量样式引用 .wks-modal 抽屉作用域的主题变量（var(--wks-text-secondary)、
+var(--wks-border)、var(--wks-primary) 等）。这些是既有主题能力，转 utilities 时必须保留为
+任意值形式（如 text-[var(--wks-text-secondary,#6b7280)]、bg-[var(--wks-border,#e5e7eb)]），
+禁止压平成固定 hex。仅当某变量在全局只此一处且无主题语义时才可直接用令牌。
+
 ## 结构规则
 - 每个域：先读域 css 全文与全部消费 tsx，列出「类名→规则→出现位置」清单，再逐文件替换。
 - 域 css 中确属第三方/复杂动画/富文本的规则可保留为 css（放回同文件），并在回复中说明保留原因与行数。
