@@ -2092,3 +2092,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Mobile document detail and preview surfaces now use five-language copy across `8bb3d9d1` and `12de9f01`, including actions, metadata, loading/errors, and download-only preview labels; optional labels keep existing ChatScreen callers compatible.
 - Focused tests pass 6/6; mobile typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
 - Native file-preview and expiry/no-permission evidence remains open.
+
+## 2026-09-15 Round N+33m — N031 mobile Wiki/FAQ editor localization
+
+- Mobile Wiki/FAQ editor labels, permission/conflict/load/save states, and required-field validation now use typed five-language keys across `0552f5bd` and `e42ed731`, preserving owner/admin gating and existing callers.
+- Focused editor tests pass 8/8; mobile typecheck and `git diff --check` pass. Independent review found no P1/P2/P3.
+- Native editor runtime evidence remains open.
