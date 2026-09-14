@@ -251,3 +251,10 @@
 - Re-ran shared, mobile, embed and desktop suites after Web route/settings lazy loading changes: 465/465, 189/189, 7/7 and 2/2.
 - Web remained green at 891/891; all package typechecks and diff check passed.
 - Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r037-cross-package-after-lazy-loading.md`.
+
+## Round N+34br — settings lazy-loading runtime verification
+
+- Fixed import-order regression discovered in the browser (`ReferenceError: Cannot access 'lazy' before initialization`).
+- Authenticated browser re-check now renders the settings dialog and expected role-denied state for a non-system-admin account.
+- Validation: `pnpm run build:web`; `pnpm run test:web` 891/891; `pnpm run typecheck:web`; `git diff --check`.
+- Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r038-settings-lazy-runtime.md`.

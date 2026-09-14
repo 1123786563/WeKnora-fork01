@@ -1,8 +1,8 @@
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { isCapabilitySupported, type CapabilityMap } from '@weknora/domain';
 import { integrationTabForSection, integrationSettingsQuery, selectSettingsQuery, INTEGRATION_SECTIONS } from '@weknora/views';
 import { openContextualGuide } from '@weknora/views';
 const IntegrationsRoutePage = lazy(() => import('../integrations/IntegrationsRoutePage.tsx').then((m) => ({ default: m.IntegrationsRoutePage })));
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import type { SettingsRole } from '@weknora/views';
 import { roleAtLeast, SETTINGS_SECTIONS, settingsSectionsForRole } from '@weknora/views';
