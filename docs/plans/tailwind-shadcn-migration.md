@@ -53,6 +53,14 @@ API 契约、鉴权、权限、表单校验、聊天流式、工具审批、上�
   memory-workspace.css 删除（153 行，全部可 1:1 表达，无 keyframes）。
 - wk-segmented 保留（settings-wrapper.css 所有，后续批次处理）。
 - 验收：typecheck 0、web 856/856、build ✓、settings-memory 截图复核（intro 盒/行布局/开关正常）。
+### 批次4（进行中）：knowledge-list 域 —— Orchestrator 亲自执行
+- 侦查完备：css 823 行 60+ 类全读；App.tsx 用点在 L652-895（67 处）；
+  kb-list-anatomy.test.tsx 约 20 处 .kb-list-* 选择器待改。
+- 分片计划：①结构层（page frame/container/header/rail/warning/grid/skeleton/empty）
+  ②卡片层（card/variants/favorite/more-menu/badges/org-chip/flash）③测试选择器+css 缩减为
+  3 条 keyframes（kbListFadeIn/kbListFlash/kbListShimmer）。注意 hover 链（card:hover .more、
+  .kb-favorite-star）与 ::after 角标渐变用 group/ arbitrary variant 表达。
+- 其余并行子任务（shell/faq/organizations）继续后台执行，完成即验收。
 ### 批次2：sandbox 域 ✅（子任务执行，Orchestrator 验收）
 - SandboxSettingsPanel.tsx 7 处 className 迁移；sandbox-settings.css 106→44 行。
 - 删除 16 条规则全转 utilities；保留 6 条（details/summary 子选择器 4 条、
