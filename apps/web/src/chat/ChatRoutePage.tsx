@@ -109,6 +109,9 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   const modelChipLabel = modelChip.label;
   const modelChipContext = modelChip.context;
   const modelChipIsDefault = modelChip.isDefaultContext;
+  const modelOptions = useMemo(() => chatModels
+    .map((model) => ({ id: String(model.id ?? '').trim(), name: String(model.display_name ?? model.name ?? model.id ?? '').trim() }))
+    .filter((model) => model.id.length > 0 && model.name.length > 0), [chatModels]);
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
   // History refresh in-flight flag (Vue sessions.messages loader).
@@ -1047,7 +1050,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     modelLabel={modelChipLabel}
     modelContext={modelChipContext}
     modelContextIsDefault={modelChipIsDefault}
-    modelOptions={chatModels.map((model) => ({ id: String(model.id), name: String(model.display_name ?? model.name ?? model.id) }))}
+    modelOptions={modelOptions}
     selectedModelId={selectedModelId}
     onModelChange={setSelectedModelId}
     starterQuestions={starterQuestions}

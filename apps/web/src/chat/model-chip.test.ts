@@ -108,6 +108,11 @@ test('an empty model list shows the localized unconfigured fallback', () => {
   assert.equal(chip.context, '');
 });
 
+test('a model with no display name uses the localized unconfigured fallback', () => {
+  const chip = resolveChatModelChip({ models: [{ id: 'm1', name: '', type: 'KnowledgeQA' }], notConfiguredLabel: '未配置' });
+  assert.equal(chip.label, '未配置');
+});
+
 test('the unconfigured fallback carries the byte-exact Vue input.notConfigured strings', () => {
   assert.equal(MODEL_CHIP_NOT_CONFIGURED['zh-CN'], '未配置');
   assert.equal(MODEL_CHIP_NOT_CONFIGURED['en-US'], 'Not configured');

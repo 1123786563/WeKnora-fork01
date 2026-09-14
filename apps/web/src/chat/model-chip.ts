@@ -111,7 +111,7 @@ export function resolveChatModelChip(options: {
     return { label: notConfiguredLabel, context: '', isDefaultContext: false };
   }
   const displayName = typeof selected.display_name === 'string' ? selected.display_name.trim() : '';
-  const name = displayName || (typeof selected.name === 'string' ? selected.name : '');
+  const name = displayName || (typeof selected.name === 'string' ? selected.name.trim() : '') || notConfiguredLabel;
   const parameters = (selected.parameters ?? undefined) as Record<string, unknown> | undefined;
   const tokens = parameters?.context_window;
   return {
