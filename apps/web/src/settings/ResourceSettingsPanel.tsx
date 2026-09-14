@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
+import type { Locale } from '@weknora/i18n';
 import { Button, Card, Status } from '@weknora/ui';
 import { settingsResourceInput, settingsResourceRows } from './surface.ts';
 import { readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
@@ -13,6 +14,14 @@ type ResourceApi = {
   remove: (id: string) => Promise<unknown>;
   testById: (id: string) => Promise<{ success: boolean; message?: string; error?: string }>;
   setDefault?: (id: string) => Promise<unknown>;
+};
+
+const RESOURCE_COPY: Record<Locale, { type: string; typePlaceholder: string; safeConfig: string; securityHint: string; unnamed: string; typeUnavailable: string; defaultLabel: string }> = {
+  'zh-CN': { type: '类型', typePlaceholder: '提供方类型', safeConfig: '安全配置 JSON', securityHint: '凭证不会从服务端回填；测试和删除操作均等待服务端确认。', unnamed: '未命名资源', typeUnavailable: '类型未知', defaultLabel: '默认' },
+  'en-US': { type: 'Type', typePlaceholder: 'Provider type', safeConfig: 'Safe configuration JSON', securityHint: 'Secrets are never prefilled from server responses. Test and delete operations wait for server confirmation.', unnamed: 'Unnamed resource', typeUnavailable: 'Type unavailable', defaultLabel: 'default' },
+  'ja-JP': { type: 'タイプ', typePlaceholder: 'プロバイダーの種類', safeConfig: '安全な設定 JSON', securityHint: 'シークレットはサーバーの応答から再表示しません。テストと削除はサーバーの確認を待ちます。', unnamed: '名前なしのリソース', typeUnavailable: '種類不明', defaultLabel: 'デフォルト' },
+  'ko-KR': { type: '유형', typePlaceholder: '공급자 유형', safeConfig: '안전한 구성 JSON', securityHint: '서버 응답의 비밀 값은 다시 표시하지 않습니다. 테스트와 삭제는 서버 확인 후 완료됩니다.', unnamed: '이름 없는 리소스', typeUnavailable: '유형 없음', defaultLabel: '기본값' },
+  'ru-RU': { type: 'Тип', typePlaceholder: 'Тип провайдера', safeConfig: 'Безопасный JSON конфигурации', securityHint: 'Секреты не подставляются из ответов сервера. Тестирование и удаление ждут подтверждения сервера.', unnamed: 'Ресурс без имени', typeUnavailable: 'Тип неизвестен', defaultLabel: 'по умолчанию' },
 };
 
 function rowId(row: ResourceRow): string {
@@ -38,7 +47,9 @@ function apiFor(client: WeKnoraClient, section: ResourceSection): ResourceApi {
 
 export function ResourceSettingsPanel({ client, section, initialValue }: { client: WeKnoraClient; section: ResourceSection; initialValue: unknown }) {
   const api = apiFor(client, section);
-  const t = settingsT(readInitialLocale());
+  const locale = readInitialLocale();
+  const t = settingsT(locale);
+  const copy = RESOURCE_COPY[locale];
   // Per-section i18n keys ported from the Vue settings editors.
   const keys = section === 'storage' ? {
     add: 'settings.storageBackend.createTitle', edit: 'settings.storageBackend.editTitle',
@@ -125,5 +136,5 @@ export function ResourceSettingsPanel({ client, section, initialValue }: { clien
     catch (reason) { setError(reason instanceof Error ? reason.message : t('settings.storageBackend.saveFailed')); {/* TODO(migration): set-default failure has no dedicated key */} setBusy(false); }
   }
 
-  return <div className="wk-settings-resource"><Card><h3>{editingId ? t(keys.edit) : t(keys.add)}</h3>{error ? <Status tone="error">{error}</Status> : null}{notice ? <Status tone="success">{notice}</Status> : null}<form className="wk-settings-editor" onSubmit={(event) => void save(event)}><label>{t(keys.name)}<input required value={name} onChange={(event) => setName(event.target.value)} /></label><label>Type<input required value={type} onChange={(event) => setType(event.target.value)} placeholder="Provider type" />{/* TODO(migration): no settings.* key for provider type placeholder */}</label><label>{/* TODO(migration): no settings.* key for safe config JSON */}Safe configuration JSON<textarea rows={4} value={configText} onChange={(event) => setConfigText(event.target.value)} /></label><div className="wk-list-actions"><Button type="submit" loading={busy}>{editingId ? t('common.save') : t(keys.add)}</Button>{editingId ? <Button type="button" disabled={busy} onClick={clearForm}>{t('common.cancel')}</Button> : null}</div></form></Card><Card><div className="wk-settings-panel-heading"><div><h3>{t(keys.list)}</h3><p className="wk-muted">Secrets are never prefilled from server responses. Test and delete operations wait for server confirmation.</p></div><Button type="button" disabled={busy} onClick={() => void refresh()}>{t('common.refresh')}</Button></div>{rows.length === 0 ? <Status>{t(keys.empty)}</Status> : <ul className="wk-list">{rows.map((row, index) => { const id = rowId(row); return <li key={id || index}><div className="wk-list-item-copy"><strong>{rowText(row, 'name') || id || 'Unnamed resource'}</strong><span>{rowText(row, 'type') || 'type unavailable'}{row.default === true ? ' · default' : ''}</span></div><div className="wk-list-actions"><Button type="button" disabled={!id || busy} onClick={() => edit(row)}>{t('common.edit')}</Button><Button type="button" disabled={!id || busy} loading={busy} onClick={() => void test(id)}>{t(keys.test)}</Button>{api.setDefault ? <Button type="button" disabled={!id || busy} onClick={() => void setDefault(id)}>{t(keys.setDefault)}</Button> : null}<Button type="button" disabled={!id || busy} onClick={() => void remove(id)}>{t('common.delete')}</Button></div></li>; })}</ul>}</Card></div>;
+  return <div className="wk-settings-resource"><Card><h3>{editingId ? t(keys.edit) : t(keys.add)}</h3>{error ? <Status tone="error">{error}</Status> : null}{notice ? <Status tone="success">{notice}</Status> : null}<form className="wk-settings-editor" onSubmit={(event) => void save(event)}><label>{t(keys.name)}<input required value={name} onChange={(event) => setName(event.target.value)} /></label><label>{copy.type}<input required value={type} onChange={(event) => setType(event.target.value)} placeholder={copy.typePlaceholder} /></label><label>{copy.safeConfig}<textarea rows={4} value={configText} onChange={(event) => setConfigText(event.target.value)} /></label><div className="wk-list-actions"><Button type="submit" loading={busy}>{editingId ? t('common.save') : t(keys.add)}</Button>{editingId ? <Button type="button" disabled={busy} onClick={clearForm}>{t('common.cancel')}</Button> : null}</div></form></Card><Card><div className="wk-settings-panel-heading"><div><h3>{t(keys.list)}</h3><p className="wk-muted">{copy.securityHint}</p></div><Button type="button" disabled={busy} onClick={() => void refresh()}>{t('common.refresh')}</Button></div>{rows.length === 0 ? <Status>{t(keys.empty)}</Status> : <ul className="wk-list">{rows.map((row, index) => { const id = rowId(row); return <li key={id || index}><div className="wk-list-item-copy"><strong>{rowText(row, 'name') || id || copy.unnamed}</strong><span>{rowText(row, 'type') || copy.typeUnavailable}{row.default === true ? ` · ${copy.defaultLabel}` : ''}</span></div><div className="wk-list-actions"><Button type="button" disabled={!id || busy} onClick={() => edit(row)}>{t('common.edit')}</Button><Button type="button" disabled={!id || busy} loading={busy} onClick={() => void test(id)}>{t(keys.test)}</Button>{api.setDefault ? <Button type="button" disabled={!id || busy} onClick={() => void setDefault(id)}>{t(keys.setDefault)}</Button> : null}<Button type="button" disabled={!id || busy} onClick={() => void remove(id)}>{t('common.delete')}</Button></div></li>; })}</ul>}</Card></div>;
 }
