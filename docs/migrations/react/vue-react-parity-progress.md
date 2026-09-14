@@ -598,6 +598,16 @@
 
 环境限制（如实记录）：
 
+
+### Round 116–188（第三轮目标周期 · 会话中段）
+- 负路径第二批（register/join/onboarding/网络错误态，20 格 100% 断言、零数据写入）交付并集成 6b03f7b1；N-1/N-3/S-1/S-2 处置记录 e1353942。
+- N-4 修复（onboarding 对话框 + JoinPage 硬编码英文接入 i18n，五语键集一致）b6a5982e + b7a667bb。
+- N-2 修复（租户创建表单改为居中模态，对齐 Vue t-dialog；五语 Vue 原文文案）52309dbb + 处置更新 2d9726dd。
+- F3 修复（chat-copy.ts 5 处悬空证据引用重指 i18n-backfill.md）7ff45646。
+- 并发协调者同期落地：model select tailwind、ui primitives token 化、memory workspace 权限、api-client settings 扩展等系列（dee230ef…b6db03d4）。
+- 门禁（集成 HEAD）：web 838/838 · shared 441/441 · typecheck 0 · build ✓。
+- 负路径第三批（403 租户隔离切片 f67e0efd）已派发运行中。
+
 ## 会话收官条目（goal round 256/256，2026-09-14）
 - 收官状态：HEAD 5a45281a（并发协调者 MCP 工具行布局对齐），工作树干净。
 - 门禁：web 805/805 · shared 440/440 · mobile 146/146 · typecheck:web 0 · build:web ✓ · Wails 构建/运行证据 ✓ · iOS 模拟器证据 ✓。
