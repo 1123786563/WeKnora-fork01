@@ -3,9 +3,11 @@ import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
 import type { ChatSession, createWeKnoraClient } from '@weknora/api-client';
 import { sessionGroups } from '@weknora/domain/chat/session-state';
 import { GlobalCommandPalette } from './GlobalCommandPalette.tsx';
-import { SessionSidebarList, SessionSidebarShellContext, type SessionGroupView, type SessionSourceOption } from '@weknora/views';
+import { SessionSidebarList, SessionSidebarShellContext, type SessionGroupView, type SessionSourceOption } from '../../../../packages/views/src/chat/session-sidebar.tsx';
 import { chatSessionIdFromPath, SHELL_SESSION_ROUTE_EVENT } from '../chat/session-route.ts';
-import { ContextualGuideHost, NewUserGuide, openNewUserGuide } from '@weknora/views';
+import { ContextualGuideHost } from '../../../../packages/views/src/guides/ContextualGuide.tsx';
+import { NewUserGuide } from '../../../../packages/views/src/guides/NewUserGuide.tsx';
+import { openNewUserGuide } from '../../../../packages/views/src/guides/new-user-guide.ts';
 import {
   clearRecentQueries,
   consumeCmdkParam,

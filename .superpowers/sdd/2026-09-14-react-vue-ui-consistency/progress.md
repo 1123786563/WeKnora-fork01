@@ -270,3 +270,9 @@
 - Attempted Expo Web export; toolchain reports missing `react-dom` and `react-native-web` dependencies.
 - No dependency changes made because this package targets native mobile acceptance; export failure is recorded as `blocked-env`, not as a code regression.
 - Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r040-mobile-export-toolchain.md`.
+
+## Round N+34bu — platform shell deep imports
+
+- Switched PlatformShell session-sidebar and guide primitives from the views barrel to direct module imports to reduce unnecessary coupling.
+- Validation: `pnpm run build:web`; `pnpm run test:web` 891/891; `pnpm run typecheck:web`; `git diff --check`.
+- Evidence: `docs/migrations/react/evidence/vue-react-parity/2026-09-15-r041-shell-deep-imports.md`.
