@@ -2433,3 +2433,8 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - Replaced direct English document loading, metadata, preview, retry, and download labels with five-locale copy in `KnowledgeDocumentDetailPage`.
 - Validation: Web 891/891, Web typecheck, and `git diff --check` passed.
+
+## 2026-09-15 Round N+34ax — Skill settings viewer copy
+
+- Replaced the viewer-only Skill settings block's direct English title, description fallback, and empty state with shared five-locale settings keys; the read-only behavior is unchanged.
+- Validation: focused SkillSettings tests 31/31, Web 891/891, Web typecheck, and `git diff --check` passed.
