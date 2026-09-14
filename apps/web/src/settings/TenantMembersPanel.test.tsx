@@ -196,13 +196,13 @@ test('zh-CN panel anatomy mirrors the Vue baseline: header row, two tables, page
 
   // Header row: title + info trigger + audit link; subtitle + RBAC doc link.
   assert.match(text, /成员管理/);
-  assert.ok(container.querySelector('.permissions-trigger-btn'), 'info-circle trigger next to the title');
-  assert.match(container.querySelector<HTMLButtonElement>('.permissions-trigger-btn')?.getAttribute('aria-label') ?? '', /角色权限说明/);
-  const auditBtn = container.querySelector<HTMLButtonElement>('.header-audit-btn');
+  assert.ok(container.querySelector('button[aria-label="角色权限说明"]'), 'info-circle trigger next to the title');
+  assert.match(container.querySelector<HTMLButtonElement>('button[aria-label="角色权限说明"]')?.getAttribute('aria-label') ?? '', /角色权限说明/);
+  const auditBtn = [...container.querySelectorAll('button')].find((b) => (b.textContent ?? '').includes('审计日志'));
   assert.ok(auditBtn, 'audit log entry sits inline with the title');
   assert.match(auditBtn?.textContent ?? '', /审计日志/);
   assert.match(text, /邀请伙伴加入当前空间并分配角色。只有 Owner 可以新增或移除成员。/);
-  const docLink = container.querySelector<HTMLAnchorElement>('a.doc-link');
+  const docLink = container.querySelector<HTMLAnchorElement>('a[href*="RBAC"]');
   assert.ok(docLink);
   assert.equal(docLink.target, '_blank');
   assert.match(docLink.href, /RBAC/);
@@ -231,9 +231,9 @@ test('zh-CN panel anatomy mirrors the Vue baseline: header row, two tables, page
   assert.equal(header?.querySelector('.members-list-count-badge')?.textContent, '2');
   const search = container.querySelector<HTMLInputElement>('input[type="search"]');
   assert.equal(search?.placeholder, '按姓名或邮箱搜索');
-  const addBtn = container.querySelector<HTMLButtonElement>('button.members-list-add-btn');
+  const addBtn = container.querySelector<HTMLButtonElement>('button[aria-label="邀请成员"]');
   assert.match(addBtn?.getAttribute('aria-label') ?? '', /邀请成员/);
-  const shareBtn = container.querySelectorAll<HTMLButtonElement>('button.members-list-add-btn')[1];
+  const shareBtn = container.querySelector<HTMLButtonElement>('button[aria-label="生成共享链接"]');
   assert.match(shareBtn?.getAttribute('aria-label') ?? '', /生成共享链接/);
 
   // Members table with Vue columns, owner badge, role select, remove control.
@@ -277,8 +277,8 @@ test('permissions popover and audit drawer open from the header row', async () =
   const { client, auditCalls } = parityClient({ members: { items: [alice], total: 1 }, currentUserId: 'u1' });
   const container = await mount(client, { items: [alice], total: 1 }, 'admin', 'zh-CN');
 
-  await act(async () => container.querySelector<HTMLButtonElement>('.permissions-trigger-btn')?.click());
-  const popover = container.querySelector('.permissions-compact');
+  await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="角色权限说明"]')?.click());
+  const popover = container.querySelector('[role="dialog"]');
   assert.ok(popover, 'info trigger opens the role-permission matrix');
   assert.match(popover?.textContent ?? '', /角色权限说明/);
   for (const role of ['所有者', '管理员', '编辑', '访客']) assert.match(popover?.textContent ?? '', new RegExp(role));
@@ -287,7 +287,7 @@ test('permissions popover and audit drawer open from the header row', async () =
   }
   assert.match(popover?.textContent ?? '', /我/, 'current role is badged with 我');
 
-  await act(async () => container.querySelector<HTMLButtonElement>('.header-audit-btn')?.click());
+  await act(async () => [...container.querySelectorAll('button')].find((b) => (b.textContent ?? '').includes('审计日志'))?.click());
   const audit = container.querySelector('[role="region"][aria-label="审计日志"]');
   assert.ok(audit, 'audit link opens the audit log region');
   assert.equal(auditCalls.length, 1, 'audit log is lazy-loaded on first open');
@@ -300,7 +300,7 @@ test('invite dialog opens from the add-member button and sends the invitation', 
   const container = await mount(client, { items: [alice], total: 1 }, 'admin', 'zh-CN');
   assert.equal(container.querySelector('[role="dialog"]'), null, 'dialog stays closed until the add button is clicked');
 
-  const addBtn = container.querySelector<HTMLButtonElement>('button.members-list-add-btn');
+  const addBtn = container.querySelector<HTMLButtonElement>('button[aria-label="邀请成员"]');
   await act(async () => addBtn?.click());
   const dialog = container.querySelector('[role="dialog"]');
   assert.ok(dialog);
@@ -344,11 +344,12 @@ test('pending invitation rows expose status badges and an inline revoke confirm'
   const revokeTrigger = rows[0].querySelector<HTMLButtonElement>('button[aria-label="撤销"]');
   assert.ok(revokeTrigger);
   await act(async () => revokeTrigger.click());
-  const confirm = rows[0].querySelector('.wk-popconfirm');
+  const confirm = rows[0].querySelector('[role="alertdialog"]');
   assert.ok(confirm, 'inline popconfirm anchored to the revoke button');
   assert.match(confirm?.textContent ?? '', /撤销后，pending@example.com 将无法再接受此邀请/);
   assert.match(confirm?.textContent ?? '', /取消/);
-  const confirmBtn = confirm?.querySelector<HTMLButtonElement>('.wk-popconfirm__confirm');
+  const confirmButtons = confirm?.querySelectorAll<HTMLButtonElement>('button');
+  const confirmBtn = confirmButtons?.[confirmButtons.length - 1];
   await act(async () => confirmBtn?.click());
   assert.deepEqual(revoked, [5]);
   assert.ok(invitationCalls.length >= 2, 'invitations reload after revoke');
@@ -366,12 +367,12 @@ test('members pager drives server-side pagination like the Vue table', async () 
   assert.ok(shell);
   assert.match(shell?.textContent ?? '', /共 25 条数据/);
   const pager = shell?.querySelector('.data-table-shell__pager');
-  const next = pager?.querySelector<HTMLButtonElement>('.wk-pager__next');
+  const next = pager?.querySelector<HTMLButtonElement>('button[aria-label="下一步"]');
   await act(async () => next?.click());
   assert.deepEqual(memberCalls.at(-1), { q: undefined, page: 2, pageSize: 20 });
 
   // Jumper navigates (跳至 1) while still on pageSize 20.
-  const jumper = pager?.querySelector<HTMLInputElement>('.wk-pager__jumper-input');
+  const jumper = pager?.querySelector<HTMLInputElement>('input');
   assert.ok(jumper);
   await act(async () => {
     const setValue = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')?.set;
@@ -383,7 +384,7 @@ test('members pager drives server-side pagination like the Vue table', async () 
   });
   assert.deepEqual(memberCalls.at(-1), { q: undefined, page: 1, pageSize: 20 });
 
-  const size = pager?.querySelector<HTMLSelectElement>('.wk-pager__size');
+  const size = pager?.querySelector<HTMLSelectElement>('select');
   assert.ok(size);
   await act(async () => {
     const setValue = Object.getOwnPropertyDescriptor(dom.window.HTMLSelectElement.prototype, 'value')?.set;
