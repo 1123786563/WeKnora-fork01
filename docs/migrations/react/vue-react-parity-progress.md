@@ -2359,3 +2359,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - 共享聊天文案与旧聊天入口兼容修复后，Desktop Renderer 测试 2/2、Embed 测试 7/7、Desktop/Embed typecheck 均通过。
 - 该结果只证明共享契约未破坏桌面/嵌入端静态边界；Wails 实际窗口、Embed 宿主页面和真实渠道链路仍需运行时验收。
+
+## 2026-09-15 Round N+34ak — Mobile native/build evidence
+
+- iOS Simulator 原生编译：`xcodebuild -workspace WeKnora.xcworkspace -scheme WeKnora -sdk iphonesimulator ... CODE_SIGNING_ALLOWED=NO build` 成功（`BUILD SUCCEEDED`）。仅证明原生编译，不代表模拟器启动和交互验收。
+- Android `./gradlew assembleDebug --no-daemon` 被环境阻断：未配置 Android SDK（缺少 `ANDROID_HOME` 或 `android/local.properties`）。
+- Expo Web export 被依赖阻断：项目未安装 `react-dom` 与 `react-native-web`，未修改依赖以绕过验收。
