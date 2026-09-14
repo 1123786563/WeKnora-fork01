@@ -2281,6 +2281,11 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - ChunkDetailRenderer now uses Vue `chat.contentLengthLabelSimple` and `chat.lengthChars` across five locales in `2d616875`; numeric length and null behavior remain unchanged.
 - Shared tests pass 462/462 and Web tests pass 890/890; Web typecheck passes. Independent review found no P1/P2, with one non-blocking end-to-end copy-propagation P3 note. Browser fixture evidence remains open.
 
+## 2026-09-15 Round N+34w — N021 RelatedChunks empty state
+
+- RelatedChunksRenderer now uses Vue `chat.noRelatedChunks` for empty objects and empty arrays across five locales in `2c091387`; default copy propagation remains compatible.
+- Shared tests pass 463/463 and Web tests pass 890/890; Web typecheck passes. Independent review found no P1/P2/P3. Browser fixture evidence remains open.
+
 ## 2026-09-15 Round N+34v — N021 ChunkDetail field-label completion
 
 - ChunkDetail now uses Vue-aligned five-locale labels for chunk ID, document ID, position, and content length across `085de06e`, `873589a6`, `7561cda4`, and `2d616875`.

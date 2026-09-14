@@ -169,3 +169,4 @@ N021 chunk-detail position update (2026-09-15): ChunkDetailRenderer now uses Vue
 N021 chunk-detail document-ID update (2026-09-15): ChunkDetailRenderer now uses Vue `chat.documentIdLabel` across five locales; shared/Web regression remains green and browser fixture evidence remains open.
 N021 chunk-detail content-length update (2026-09-15): ChunkDetailRenderer now uses Vue `chat.contentLengthLabelSimple` and `chat.lengthChars` across five locales; browser fixture evidence remains open.
 N021 chunk-detail document-ID/position follow-up (2026-09-15): ChunkDetailRenderer now uses Vue `chat.documentIdLabel` and `chat.positionLabel` across five locales; browser fixture evidence remains open.
+N021 related-chunks empty update (2026-09-15): RelatedChunksRenderer now uses Vue `chat.noRelatedChunks` for empty results across five locales; browser fixture evidence remains open.
