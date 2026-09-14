@@ -2050,3 +2050,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - PlatformShell now implements Vue-aligned source filtering across `205a4224`, `283af9e7`, and `06b1e977`: admin-gated API/Embed/IM buckets, correct IM display-key/API-source mapping, count probes before rendering, source-aware pagination/retry, and stale-source reset across client/role/bucket changes.
 - Focused shell tests pass 12/12; Web full regression passes 883/883; `typecheck:web`, `build:web`, and `git diff --check` pass. Independent review found no P1/P2/P3.
 - Remaining N018 differences are inline rename/clear semantics, batch management/spinner, and protected runtime evidence.
+
+## 2026-09-15 Round N+33f — N018 inline session rename
+
+- Shell session rows now use a Vue-shaped inline editor (`0f95ffb0`, `e4d872ca`): Enter/blur submit once, Escape cancels, title whitespace is normalized and capped at 80 characters, failed updates remain recoverable, and successful updates remain stable across later pagination.
+- Focused shell tests pass 16/16; Web full regression passes 887/887; `typecheck:web`, `build:web`, and `git diff --check` pass. Independent review found no P1/P2.
+- Remaining N018 scope is batch management/spinner parity and protected runtime evidence.
