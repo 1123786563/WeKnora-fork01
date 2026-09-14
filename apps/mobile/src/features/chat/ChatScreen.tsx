@@ -59,6 +59,11 @@ export function ChatScreen() {
   const runLifecycle = useRef(initialRunLifecycle());
   const lifecycleHydrated = useRef(false);
   const lifecycleRevision = useRef(0);
+  const sessionsGeneration = useRef(0);
+  const knowledgeBasesGeneration = useRef(0);
+  const messagesGeneration = useRef(0);
+  const attachmentsGeneration = useRef(0);
+  const steerGeneration = useRef(0);
   const lifecyclePersistence = useMemo(() => createRunLifecyclePersistence(SecureStore), []);
 
   const updateRunLifecycle = useCallback((sessionId: string, event: RunLifecycleEvent) => {
@@ -69,40 +74,65 @@ export function ChatScreen() {
   }, [lifecyclePersistence]);
 
   const loadSessions = useCallback(async () => {
+    const generation = ++sessionsGeneration.current;
     try {
       const result = await runtime.client.sessions.list({ page: 1, pageSize: 30, source: 'mobile' });
+      if (generation !== sessionsGeneration.current) return;
       setSessions(result.data);
       setSelectedSessionId((current) => current || result.data[0]?.id || null);
-    } catch (cause) { setError(errorText(cause, label('mobileChat.loadSessionsFailed'))); }
-    finally { setLoading(false); }
+    } catch (cause) {
+      if (generation === sessionsGeneration.current) setError(errorText(cause, label('mobileChat.loadSessionsFailed')));
+    } finally {
+      if (generation === sessionsGeneration.current) setLoading(false);
+    }
   }, [label, runtime.client]);
 
   const loadKnowledgeBases = useCallback(async () => {
+    const generation = ++knowledgeBasesGeneration.current;
     try {
       const result = await runtime.client.knowledgeBases.list();
+      if (generation !== knowledgeBasesGeneration.current) return;
       setKnowledgeBases(result);
       setSelectedKnowledgeBaseId((current) => current && result.some((item) => item.id === current) ? current : result[0]?.id || null);
-    } catch (cause) { setError(errorText(cause, label('mobileChat.loadKnowledgeBasesFailed'))); }
+    } catch (cause) {
+      if (generation === knowledgeBasesGeneration.current) setError(errorText(cause, label('mobileChat.loadKnowledgeBasesFailed')));
+    }
   }, [label, runtime.client]);
 
   const loadMessages = useCallback(async (sessionId: string): Promise<ChatMessage[]> => {
+    const generation = ++messagesGeneration.current;
     try {
       const result = await runtime.client.sessions.messages(sessionId, { limit: 50 });
+      if (generation !== messagesGeneration.current || selectedSessionRef.current !== sessionId) return [];
       setMessages(result);
       return result;
-    } catch (cause) { setError(errorText(cause, label('mobileChat.loadMessagesFailed'))); return []; }
+    } catch (cause) {
+      if (generation === messagesGeneration.current && selectedSessionRef.current === sessionId) setError(errorText(cause, label('mobileChat.loadMessagesFailed')));
+      return [];
+    }
   }, [label, runtime.client]);
 
   const loadAttachments = useCallback(async (sessionId: string) => {
-    try { setAttachments(await runtime.client.chat.attachments.list(sessionId)); }
-    catch (cause) { setError(errorText(cause, label('mobileChat.loadAttachmentsFailed'))); }
+    const generation = ++attachmentsGeneration.current;
+    try {
+      const result = await runtime.client.chat.attachments.list(sessionId);
+      if (generation === attachmentsGeneration.current && selectedSessionRef.current === sessionId) setAttachments(result);
+    } catch (cause) {
+      if (generation === attachmentsGeneration.current && selectedSessionRef.current === sessionId) setError(errorText(cause, label('mobileChat.loadAttachmentsFailed')));
+    }
   }, [label, runtime.client]);
 
   const loadSteerQueue = useCallback(async (sessionId: string) => {
+    const generation = ++steerGeneration.current;
     setSteerLoading(true);
-    try { setSteerQueue((await runtime.client.chat.steer.list(sessionId)).items); }
-    catch (cause) { setError(errorText(cause, label('mobileChat.loadSteerQueueFailed'))); }
-    finally { setSteerLoading(false); }
+    try {
+      const result = await runtime.client.chat.steer.list(sessionId);
+      if (generation === steerGeneration.current && selectedSessionRef.current === sessionId) setSteerQueue(result.items);
+    } catch (cause) {
+      if (generation === steerGeneration.current && selectedSessionRef.current === sessionId) setError(errorText(cause, label('mobileChat.loadSteerQueueFailed')));
+    } finally {
+      if (generation === steerGeneration.current && selectedSessionRef.current === sessionId) setSteerLoading(false);
+    }
   }, [label, runtime.client]);
 
   useEffect(() => { void loadSessions(); }, [loadSessions]);
