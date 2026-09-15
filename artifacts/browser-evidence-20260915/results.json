@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-09-15T14:07:21.268Z",
+  "capturedAt": "2026-09-15T14:15:29.737Z",
   "viewport": {
     "width": 1440,
     "height": 900
@@ -157,12 +157,12 @@
         {
           "method": "GET",
           "status": 200,
-          "url": "http://127.0.0.1:5180/api/v1/auth/oidc/config"
+          "url": "http://127.0.0.1:5180/api/v1/auth/config"
         },
         {
           "method": "GET",
           "status": 200,
-          "url": "http://127.0.0.1:5180/api/v1/auth/config"
+          "url": "http://127.0.0.1:5180/api/v1/auth/oidc/config"
         },
         {
           "method": "GET",
@@ -230,8 +230,8 @@
               "padding": "1px 0px",
               "box": {
                 "x": 897.390625,
-                "y": 358.796875,
-                "width": 400,
+                "y": 361.796875,
+                "width": 374,
                 "height": 24
               }
             },
@@ -241,7 +241,7 @@
                 "text": "登录",
                 "rect": {
                   "x": 884.390625,
-                  "y": 171.296875,
+                  "y": 175.296875,
                   "width": 400,
                   "height": 32
                 },
@@ -259,8 +259,8 @@
                 "text": "",
                 "rect": {
                   "x": 897.390625,
-                  "y": 358.796875,
-                  "width": 400,
+                  "y": 361.796875,
+                  "width": 374,
                   "height": 24
                 },
                 "color": "rgb(26, 26, 26)",

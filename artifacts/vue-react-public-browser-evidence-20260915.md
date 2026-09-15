@@ -10,7 +10,7 @@ EVIDENCE_OUTPUT_DIR="$PWD/artifacts/browser-evidence-20260915" \
   ../../artifacts/browser-evidence-20260915/collect-public-route-evidence.mjs
 ```
 
-固定条件：Vue `http://127.0.0.1:5180`、React `http://127.0.0.1:5181`、`zh-CN`、Chromium、viewport `1440x900`。结果文件的 `capturedAt` 为 `2026-09-15T14:07:21.268Z`。
+固定条件：Vue `http://127.0.0.1:5180`、React `http://127.0.0.1:5181`、`zh-CN`、Chromium、viewport `1440x900`。结果文件的 `capturedAt` 为 `2026-09-15T14:15:29.737Z`。逐项差异见 [`vue-react-public-route-differences-20260915.md`](./vue-react-public-route-differences-20260915.md)。
 
 ## 结果摘要
 
