@@ -6,7 +6,7 @@ import {
   normalizeKnowledgeProcessingStatus,
 } from "@weknora/domain/knowledge/processing";
 import { flattenKnowledgeFolders as flattenFolders } from "@weknora/domain/knowledge/folders";
-import { Button, Card, Dialog, Input, Select, Status, Textarea } from "@weknora/ui";
+import { Button, Card, Checkbox, Dialog, Input, Select, Status, Textarea } from "@weknora/ui";
 import { createTranslator, useAppLocale } from "../i18n.ts";
 import { observeUploadProgress } from "../platform/http.ts";
 import {
@@ -894,7 +894,7 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
                 {options.length === 0 ? <div className="wk-upload-parser-warning flex items-center gap-1 text-[12px] leading-[1.4] text-[var(--wk-warning,#b54708)]" role="note"><span>{t("settings.parser.noEngineDetected")}</span>{props.onConfigureParserSettings ? <button type="button" className="cursor-pointer whitespace-nowrap border-0 bg-transparent p-0 text-[var(--wk-accent,#07c05f)] [font:inherit] hover:underline focus-visible:underline" onClick={props.onConfigureParserSettings}>{t("settings.parserEngine")}</button> : null}</div> : null}
                 {group.extensions.includes("xlsx") && parserEngineFor(group.extensions) === "builtin" ? (
                   <label className="wk-upload-parser-xlsx-header inline-flex items-center gap-[5px] text-[12px] text-[var(--wk-muted,#667085)]">
-                    <input type="checkbox" checked={parserRuleFor(group.extensions)?.xlsx_first_row_as_header === true} onChange={(event) => updateParserXlsxHeader(group.extensions, event.target.checked)} />
+                    <Checkbox checked={parserRuleFor(group.extensions)?.xlsx_first_row_as_header === true} onChange={(event) => updateParserXlsxHeader(group.extensions, event.target.checked)} />
                     {t("kbSettings.parser.xlsxFirstRowAsHeader")}
                   </label>
                 ) : null}
@@ -975,7 +975,8 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
               {props.vllmModels.length > 0 ? (
                 <UploadSingleSelect className="wk-upload-model-select" ariaLabel={t("knowledgeEditor.advanced.multimodal.vllmLabel")} placeholder={t("knowledgeEditor.advanced.multimodal.vllmPlaceholder")} value={state.vllmModelId} options={[{ value: "", label: t("knowledgeEditor.advanced.multimodal.vllmPlaceholder") }, ...props.vllmModels.map((model) => ({ value: model.id, label: model.name }))]} onChange={(value) => update({ vllmModelId: value })} />
               ) : (
-                <input
+                <Input
+                  className="box-border w-full"
                   required
                   value={state.vllmModelId}
                   onChange={(event) => update({ vllmModelId: event.target.value })}
@@ -987,7 +988,7 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
               <UploadSingleSelect className="wk-upload-model-select" ariaLabel={t("knowledgeEditor.advanced.multimodal.descriptionLanguageLabel")} placeholder={t("knowledgeEditor.advanced.multimodal.descriptionLanguageAuto")} clearable value={state.descriptionLanguage} options={MULTIMODAL_LANGUAGE_OPTIONS.map((option) => ({ value: option.value, label: t(option.labelKey) }))} onChange={(value) => update({ descriptionLanguage: value })} />
             </UploadSettingRow>
             <UploadSettingRow label={t("knowledgeEditor.advanced.multimodal.customInstructionsLabel")} description={t("knowledgeEditor.advanced.multimodal.customInstructionsDescription")}>
-              <textarea
+              <Textarea
                 rows={3}
                 maxLength={4000}
                 placeholder={t("knowledgeEditor.advanced.multimodal.customInstructionsPlaceholder")}
@@ -1051,7 +1052,7 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
               <label htmlFor="wk-question-instructions" className="font-medium">{t("knowledgeEditor.advanced.questionGeneration.instructionsLabel")}</label>
               <p className="wk-muted text-muted m-0 text-[12px]">{t("knowledgeEditor.advanced.questionGeneration.instructionsDescription")}</p>
             </div>
-            <textarea id="wk-question-instructions" className="box-border min-h-[72px] w-[280px] max-[720px]:w-full" rows={3} maxLength={4000} placeholder={t("knowledgeEditor.advanced.questionGeneration.instructionsPlaceholder")} value={state.questionInstructions} onChange={(event) => update({ questionInstructions: event.target.value })} />
+            <Textarea id="wk-question-instructions" className="box-border min-h-[72px] w-[280px] max-[720px]:w-full" rows={3} maxLength={4000} placeholder={t("knowledgeEditor.advanced.questionGeneration.instructionsPlaceholder")} value={state.questionInstructions} onChange={(event) => update({ questionInstructions: event.target.value })} />
           </div>
         ) : null}
       </fieldset>
@@ -2986,7 +2987,7 @@ export function KnowledgeDocumentsPage({
             </div>
             <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
               <label className="wk-select-all inline-flex items-center gap-1 whitespace-nowrap">
-                <input
+                <Checkbox
                   type="checkbox"
                   checked={allOnPageSelected}
                   disabled={items.length === 0}
@@ -3063,7 +3064,7 @@ export function KnowledgeDocumentsPage({
               >
                 <label>
                   {t("knowledgeBase.documents.moveDestination")}{" "}
-                  <select
+                  <Select
                     value={moveTarget}
                     onChange={(event) => setMoveTarget(event.target.value)} className="max-w-[9rem] rounded-control border border-line-control bg-surface text-ink px-[0.65rem] py-[0.55rem] [font:inherit]"
                   >
@@ -3077,7 +3078,7 @@ export function KnowledgeDocumentsPage({
                           {folder.name}
                         </option>
                       ))}
-                  </select>
+                  </Select>
                 </label>
                 <Button
                   type="button"
@@ -3141,7 +3142,7 @@ export function KnowledgeDocumentsPage({
                   const actions = documentRowActions(document.parse_status);
                   return (
                     <li key={document.id} data-select-id={document.id} className="items-center! flex justify-between gap-4 border-b border-line-soft py-[0.9rem]">
-                      <input
+                      <Checkbox
                         type="checkbox"
                         aria-label={t("knowledgeBase.documents.select", {
                           name: displayName(document),
@@ -3282,7 +3283,7 @@ export function KnowledgeDocumentsPage({
               <div className="wk-upload-url-dialog flex flex-col gap-2">
                 <label>
                   {t("knowledgeBase.urlLabel")}{" "}
-                  <input
+                  <Input
                     autoFocus
                     className="box-border w-full"
                     value={sourceUrlValue}
@@ -3469,7 +3470,7 @@ export function KnowledgeDocumentsPage({
           <div className="wk-upload-url-dialog flex flex-col gap-2">
             <label>
               {t("knowledgeBase.documents.manualTitle")}{" "}
-              <input
+              <Input
                 autoFocus
                 className="box-border w-full"
                 value={manualTitle}
@@ -3478,7 +3479,7 @@ export function KnowledgeDocumentsPage({
             </label>
             <label>
               {t("knowledgeBase.documents.manualContent")}{" "}
-              <textarea
+              <Textarea
                 value={manualContent}
                 onChange={(event) => setManualContent(event.target.value)}
                 rows={6}
