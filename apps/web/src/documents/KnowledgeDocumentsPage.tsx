@@ -3960,18 +3960,18 @@ export function KnowledgeDocumentsPage({
           <div className="wk-upload-confirm-footer wk-list-actions flex items-center justify-end gap-[0.5rem]">
             <Button
               type="button"
+              disabled={!canCloseUploadConfirmDialog(uploading)}
+              onClick={closeUploadConfirmDialog}
+            >
+              {ct("uploadConfirm.cancel")}
+            </Button>
+            <Button
+              type="button"
               loading={uploading}
               disabled={!canConfirm && !uploading}
               onClick={() => void confirmUpload()}
             >
               {confirmButtonText}
-            </Button>
-            <Button
-              type="button"
-              disabled={!canCloseUploadConfirmDialog(uploading)}
-              onClick={closeUploadConfirmDialog}
-            >
-              {ct("uploadConfirm.cancel")}
             </Button>
           </div>
       </Dialog>

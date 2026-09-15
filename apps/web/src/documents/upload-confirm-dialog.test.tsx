@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import * as nodeModule from 'node:module';
 import test from 'node:test';
 import * as React from 'react';
@@ -83,6 +84,19 @@ test('upload confirmation cannot be dismissed while its request is in flight', (
   assert.equal(typeof canCloseUploadConfirmDialog, 'function');
   assert.equal(canCloseUploadConfirmDialog(false), true);
   assert.equal(canCloseUploadConfirmDialog(true), false);
+});
+
+test('upload confirmation footer keeps the Vue cancel-then-confirm action order', () => {
+  const source = readFileSync(new URL('./KnowledgeDocumentsPage.tsx', import.meta.url), 'utf8');
+  const footerStart = source.indexOf('className="wk-upload-confirm-footer');
+  const footer = source.slice(footerStart, source.indexOf('</div>', footerStart));
+  const cancelIndex = footer.indexOf('ct("uploadConfirm.cancel")');
+  const confirmIndex = footer.indexOf('confirmButtonText');
+
+  assert.ok(footerStart >= 0, 'upload confirmation footer remains present');
+  assert.ok(cancelIndex >= 0, 'cancel action remains in the footer');
+  assert.ok(confirmIndex >= 0, 'confirm action remains in the footer');
+  assert.ok(cancelIndex < confirmIndex, 'Vue renders Cancel before Confirm');
 });
 
 // --- Destination picker (Vue FolderPickerMenu parity) ---------------------------
