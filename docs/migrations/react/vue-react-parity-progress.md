@@ -1,5 +1,11 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-15 Round N+79 — N007 上传来源入口图标
+
+- 对照 Vue 上传来源下拉入口，React 将平台相关的全角加号替换为内联文件加号 SVG，避免按钮几何和字形渲染漂移；菜单行为与文件/文件夹/URL 入口保持不变。
+- 上传确认专项 37/37、Web 全量 911/911、Web 类型检查、`git diff --check` 通过；证据：`evidence/vue-react-parity/2026-09-15-r323-upload-source-icon.md`。
+- N007 仍需认证浏览器 computed-style、真实上传/解析后端和 Wails/native 证据。
+
 ## 2026-09-15 Round N+79 — N007 上传确认文件列表
 
 - 对照 Vue `UploadConfirmDialog.vue`，React 文件/URL 行补齐 24px 图标槽、12px/1.35 文件名、11px/1.3 元信息、8px 间距、ellipsis 截断及 22px icon-only 删除控件的 hover/focus 状态；保留 React 每文件上传状态和原有回调。
