@@ -710,39 +710,45 @@ function truncateNavText(text: string, max = 18): string {
 
 export function UploadSectionNav(props: UploadSectionNavProps) {
   return (
-    <nav className="wk-upload-section-nav" aria-label={props.navLabel} style={{ display: "flex", flexWrap: "wrap", gap: "0.25rem 0.75rem", margin: "0 0 0.75rem" }}>
+    <nav className="wk-upload-section-nav" aria-label={props.navLabel} style={{ display: "grid", gap: "2px", margin: 0 }}>
       {props.items.map((item) => (
         <button
           key={item.key}
           type="button"
           className={[
             "wk-upload-nav-item",
-            item.active ? "is-active bg-[rgba(74,125,255,0.08)]" : "",
-            item.issue ? "has-issue" : "",
+            item.active ? "is-active bg-[var(--wk-bg-muted,#f2f4f7)] text-[var(--wk-accent,#07c05f)]" : "",
+            item.issue ? "has-issue text-[var(--wk-danger,#d92d20)]" : "",
           ].filter(Boolean).join(" ")}
           aria-current={item.active ? "true" : undefined}
           data-section-target={item.key}
           style={{
-            display: "inline-flex",
-            alignItems: "baseline",
+            display: "flex",
+            alignItems: "flex-start",
+            width: "100%",
+            minHeight: "38px",
             gap: "6px",
-            padding: "2px 8px",
-            border: "1px solid var(--wk-border, #e4e7ec)",
+            marginBottom: "0",
+            padding: "9px 10px",
+            border: "none",
             borderRadius: "6px",
             background: "transparent",
             cursor: "pointer",
-            fontSize: "0.85rem",
+            textAlign: "left",
+            fontSize: "14px",
+            transition: "all 0.2s ease",
           }}
           onClick={() => props.onSelect(item.key)}
         >
           {item.icon ? <NavIcon name={item.icon} /> : null}
-          <span>{item.label}</span>
+          <span className="min-w-0 flex-1 flex-col gap-[3px] overflow-hidden"><span className="block overflow-hidden text-ellipsis whitespace-nowrap text-[13px] font-medium leading-[1.35]">{item.label}</span>
           <span
-            className={`wk-upload-nav-status tone-${item.tone ?? "default"}`}
+            className={`wk-upload-nav-status tone-${item.tone ?? "default"} block overflow-hidden text-ellipsis whitespace-nowrap text-[12px] leading-[1.35]`}
             title={item.statusTitle}
             style={{ color: item.tone === "error" ? "var(--wk-danger, #d92d20)" : item.tone === "warning" ? "var(--wk-warning, #b54708)" : "var(--wk-muted, #667085)" }}
           >
             {truncateNavText(item.status)}
+          </span>
           </span>
           {item.issue ? <span className="wk-upload-nav-dot" aria-hidden style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--wk-danger, #d92d20)" }} /> : null}
         </button>

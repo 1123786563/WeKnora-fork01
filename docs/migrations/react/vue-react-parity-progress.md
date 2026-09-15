@@ -1,5 +1,17 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-15 Round N+80 — N007 上传确认文件列表与区段导航
+
+- 上传确认文件/URL 行采用 Vue 的 24px 图标槽、12px 文件名、11px 元数据、溢出省略和 22px 移除按钮；区段导航改为纵向 38px 行高、状态副标题与激活/问题色态，减少弹窗信息拥挤。
+- 上传确认专项 37/37、Web 类型检查、`git diff --check` 通过；证据：`evidence/vue-react-parity/2026-09-15-n007-file-list.md`。
+- N007 仍需认证浏览器 computed-style、真实上传/解析后端和 Wails/native 证据。
+
+## 2026-09-15 Round N+80 — N007 上传配置分节导航
+
+- 修正 React 上传配置导航从横向 pill 改为 Vue 216px 侧栏纵向菜单：38px 行高、9px/10px 内边距、2px 行距、13px 标签、12px 状态、无边框及选中背景，并保留 issue/status/截断语义。
+- 聚焦 upload-confirm 测试 37/37、`pnpm typecheck:web`、`git diff --check` 通过；证据：`evidence/vue-react-parity/2026-09-15-n007-section-nav.md`。
+- N007 继续保持 `implementing`：修改后认证浏览器截图/computed-style、真实上传后端及 Wails/native 证据仍未闭环。
+
 ## 2026-09-15 Round N+79 — N007 上传来源入口图标
 
 - 对照 Vue 上传来源下拉入口，React 将平台相关的全角加号替换为内联文件加号 SVG，避免按钮几何和字形渲染漂移；菜单行为与文件/文件夹/URL 入口保持不变。
