@@ -13,6 +13,11 @@ export function knowledgeBaseCapabilities(record: Record<string, unknown>): { is
   return { isFaq, wikiEnabled: !isFaq && strategy.wiki_enabled === true, graphEnabled: !isFaq && strategy.graph_enabled === true };
 }
 
+/** Graph is its own Vue feature flag; it must not inherit Wiki availability. */
+export function canOpenKnowledgeGraph(record: Record<string, unknown>): boolean {
+  return knowledgeBaseCapabilities(record).graphEnabled;
+}
+
 export function canEditKnowledgeBase(input: KnowledgeBaseAccessInput): boolean {
   const permission = normalized(input.permission);
   if (input.viaShare) return permission === 'owner' || permission === 'admin' || permission === 'editor';

@@ -9,7 +9,7 @@ import { uploadKnowledgeFiles } from './upload-queue.ts';
 import { knowledgeListLabel } from './list.ts';
 import { selectKnowledgeDocumentLabel, shouldUseRecursiveFolderScope } from './parity.ts';
 import { referenceRoute } from './reference.ts';
-import { canManageKnowledgeBase, canMutateKnowledge, knowledgeBaseCapabilities } from './access.ts';
+import { canManageKnowledgeBase, canMutateKnowledge, canOpenKnowledgeGraph, knowledgeBaseCapabilities } from './access.ts';
 
 function flattenFolders(nodes: KnowledgeFolderNode[]): KnowledgeFolderNode[] {
   return nodes.flatMap((node) => [node, ...flattenFolders(node.children || [])]);
@@ -133,7 +133,7 @@ export function KnowledgeDocumentsScreen() {
       <Text accessibilityRole="header" style={{ flex: 1, fontSize: 21, fontWeight: '700' }}>{label("knowledgeBase.documents.title")}</Text>
       {!capabilities.isFaq && capabilities.wikiEnabled ? <Pressable accessibilityRole="button" disabled={!kbId} onPress={() => kbId && router.push(referenceRoute('wiki', kbId))}><Text style={{ color: '#2864dc' }}>{label("knowledgeBase.documents.tabWiki")}</Text></Pressable> : null}
       {capabilities.isFaq ? <Pressable accessibilityRole="button" disabled={!kbId} onPress={() => kbId && router.push(referenceRoute('faq', kbId))}><Text style={{ color: '#2864dc' }}>{label("knowledgeBase.faq.title")}</Text></Pressable> : null}
-      {!capabilities.isFaq && capabilities.wikiEnabled ? <Pressable accessibilityRole="button" disabled={!kbId} onPress={() => kbId && router.push(`/knowledge/${encodeURIComponent(kbId)}/graph`)}><Text style={{ color: '#2864dc' }}>{label("knowledgeBase.documents.tabGraph")}</Text></Pressable> : null}
+      {canOpenKnowledgeGraph(knowledgeBase ?? {}) ? <Pressable accessibilityRole="button" disabled={!kbId} onPress={() => kbId && router.push(`/knowledge/${encodeURIComponent(kbId)}/graph`)}><Text style={{ color: '#2864dc' }}>{label("knowledgeBase.documents.tabGraph")}</Text></Pressable> : null}
       {canManageKnowledgeBase({ permission, viaShare, workspaceRole }) ? <Pressable accessibilityRole="button" disabled={!kbId} onPress={() => kbId && router.push(`/knowledge/${encodeURIComponent(kbId)}/settings`)}><Text style={{ color: '#2864dc' }}>{label('knowledgeBase.settings')}</Text></Pressable> : null}
       <Pressable accessibilityRole="button" disabled={!kbId} onPress={() => kbId && router.push(`/knowledge/${encodeURIComponent(kbId)}/data-sources`)}><Text style={{ color: '#2864dc' }}>{label("dataSource.title")}</Text></Pressable>
       {canUpload ? <Pressable accessibilityRole="button" onPress={() => uploading ? uploadController.current?.abort() : void upload()}><Text style={{ color: '#2864dc' }}>{uploading ? label("common.cancel") : label("knowledgeBase.documents.uploadFile")}</Text></Pressable> : null}

@@ -22,7 +22,7 @@ async function mount(locale: 'zh-CN' | 'en-US', scenario: Scenario) {
     workspaces: [{ id: 'tenant-1', role: 'owner' }],
     client: {
       knowledge: {
-        settings: { get: async () => ({ id: 'kb-1', type: 'document', isMine: true, indexing_strategy: { wiki_enabled: true } }) },
+        settings: { get: async () => ({ id: 'kb-1', type: 'document', isMine: true, indexing_strategy: { wiki_enabled: false, graph_enabled: true } }) },
         documents: {
           list: async () => {
             if (scenario === 'documents') throw {};
@@ -86,6 +86,12 @@ test('document filter fallback error is localized', async () => {
 test('document count interpolates the loaded total', async () => {
   const page = await mount('zh-CN', 'filters');
   try { assert.match(page.host.textContent ?? '', /0 项/); }
+  finally { await page.close(); }
+});
+
+test('document shell exposes Graph when graph is enabled without Wiki', async () => {
+  const page = await mount('en-US', 'documents');
+  try { assert.match(page.host.textContent ?? '', /Graph/); }
   finally { await page.close(); }
 });
 

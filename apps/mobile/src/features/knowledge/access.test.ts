@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { canEditKnowledgeBase, canManageKnowledgeBase, canMutateKnowledge, knowledgeBaseCapabilities } from './access.ts';
+import { canEditKnowledgeBase, canManageKnowledgeBase, canMutateKnowledge, canOpenKnowledgeGraph, knowledgeBaseCapabilities } from './access.ts';
 
 test('knowledge base capabilities follow Vue feature flags and type', () => {
   assert.deepEqual(knowledgeBaseCapabilities({ type: 'faq', indexing_strategy: { wiki_enabled: true, graph_enabled: true } }), {
@@ -9,6 +9,12 @@ test('knowledge base capabilities follow Vue feature flags and type', () => {
   assert.deepEqual(knowledgeBaseCapabilities({ type: 'document', indexing_strategy: { wiki_enabled: true, graph_enabled: true } }), {
     isFaq: false, wikiEnabled: true, graphEnabled: true,
   });
+});
+
+test('graph route availability follows graph_enabled independently of wiki_enabled', () => {
+  assert.equal(canOpenKnowledgeGraph({ type: 'document', indexing_strategy: { graph_enabled: true, wiki_enabled: false } }), true);
+  assert.equal(canOpenKnowledgeGraph({ type: 'document', indexing_strategy: { graph_enabled: false, wiki_enabled: true } }), false);
+  assert.equal(canOpenKnowledgeGraph({ type: 'faq', indexing_strategy: { graph_enabled: true } }), false);
 });
 
 test('shared knowledge base permissions do not inherit the local workspace role', () => {
