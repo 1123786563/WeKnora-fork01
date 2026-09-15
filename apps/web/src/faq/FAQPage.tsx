@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import type { DragEvent, FocusEvent, FormEvent, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { FAQEntry, FAQEntryFieldsUpdate, FAQEntryPayload, FAQImportProgress, KnowledgeBase, KnowledgeTag, WeKnoraClient } from '@weknora/api-client';
-import { Button, Dialog, Status } from '@weknora/ui';
+import { Button, Checkbox, Dialog, Input, Radio, Select, Status, Textarea } from '@weknora/ui';
 import { formatMessage, type Locale } from '@weknora/i18n';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 import { computeKBPermissions, type KBSurfaceKB, type KBSurfaceMe } from '../knowledge/permissions.ts';
@@ -789,7 +789,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
           <div className="faq-filter-bar flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 pb-3">
             <div className="faq-search-input relative flex min-w-0 items-center flex-[1_1_220px] max-md:flex-[1_1_100%]">
               <SearchIcon size={16} className="faq-search-icon pointer-events-none absolute left-3 text-faint" />
-              <input
+              <Input
                 type="search"
                 className="h-9 w-full appearance-none box-border rounded-lg border border-transparent bg-surface-alt px-9 py-0 text-sm leading-[1.5] text-ink font-[inherit] outline-none [transition:background_0.2s_ease,border-color_0.2s_ease] hover:border-accent-deep hover:bg-surface focus:border-accent-deep focus:bg-surface [&::-webkit-search-cancel-button]:hidden"
                 value={keywordDraft}
@@ -907,7 +907,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                         <div className="faq-header-top flex items-start gap-2.5">
                           {canContribute ? (
                             <label className="faq-card-check inline-flex shrink-0 cursor-pointer items-center pt-[3px]" onClick={(event) => event.stopPropagation()}>
-                              <input type="checkbox" className="m-0 accent-accent-deep" checked={isSelected} aria-label={entry.standard_question} onChange={(event) => onToggleSelect(entry.id, event.target.checked)} />
+                              <Checkbox className="m-0 accent-accent-deep" checked={isSelected} aria-label={entry.standard_question} onChange={(event) => onToggleSelect(entry.id, event.target.checked)} />
                             </label>
                           ) : null}
                           <strong className="faq-question min-w-0 flex-1 overflow-hidden text-[15px] font-semibold leading-[1.5] text-ink [word-break:break-word] line-clamp-2" title={entry.standard_question}>{entry.standard_question}</strong>
@@ -976,10 +976,10 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
               <Button type="button" onClick={onBatchEnable}>{t('knowledgeEditor.faq.batchEnable')}</Button>
               <Button type="button" onClick={onBatchDisable}>{t('knowledgeEditor.faq.batchDisable')}</Button>
               <Button type="button" onClick={onBatchRecommend}>{t('knowledgeEditor.faq.recommended')}</Button>
-              <select className="wk-batch-tag max-w-[9rem] rounded-control border border-line-control bg-surface text-ink px-[0.65rem] py-[0.55rem] [font:inherit]" value={batchTag} onChange={(event) => onBatchTagChange(event.target.value)} aria-label={t('knowledgeBase.tagLabel')}>
+              <Select className="wk-batch-tag max-w-[9rem] rounded-control border border-line-control bg-surface text-ink px-[0.65rem] py-[0.55rem] [font:inherit]" value={batchTag} onChange={(event) => onBatchTagChange(event.target.value)} aria-label={t('knowledgeBase.tagLabel')}>
                 <option value="">{t('knowledgeBase.untagged')}</option>
                 {[...tagNameBySeq.entries()].map(([seqId, name]) => <option key={seqId} value={String(seqId)}>{name}</option>)}
-              </select>
+              </Select>
               <Button type="button" onClick={onBatchSetTag}>{t('knowledgeEditor.faq.batchUpdateTag')}</Button>
               <Button type="button" onClick={onBatchDelete}>{t('knowledgeEditor.faq.batchDelete')}</Button>
             </div>
@@ -998,10 +998,10 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                 <label className="import-form-label text-sm font-semibold leading-[1.5] text-ink">{t('knowledgeEditor.faqImport.modeLabel')}</label>
                 <div className="import-radio-group inline-flex gap-0" role="radiogroup" aria-label={t('knowledgeEditor.faqImport.modeLabel')}>
                   <label className={'import-radio-button inline-flex cursor-pointer select-none items-center gap-1.5 border bg-surface px-4 py-[7px] text-sm leading-[1.5] first:rounded-l-lg last:rounded-r-lg last:border-l-0 ' + (importMode === 'append' ? 'is-active border-accent-deep bg-[rgba(0,168,112,0.06)] text-accent-deep' : 'border-[#e3e8f0] text-muted')}>
-                    <input type="radio" name="faq-import-mode" className="m-0 accent-accent-deep" value="append" checked={importMode === 'append'} onChange={() => onImportModeChange('append')} /> {t('knowledgeEditor.faqImport.appendMode')}
+                    <Radio name="faq-import-mode" className="m-0 accent-accent-deep" value="append" checked={importMode === 'append'} onChange={() => onImportModeChange('append')} /> {t('knowledgeEditor.faqImport.appendMode')}
                   </label>
                   <label className={'import-radio-button inline-flex cursor-pointer select-none items-center gap-1.5 border bg-surface px-4 py-[7px] text-sm leading-[1.5] first:rounded-l-lg last:rounded-r-lg last:border-l-0 ' + (importMode === 'replace' ? 'is-active border-accent-deep bg-[rgba(0,168,112,0.06)] text-accent-deep' : 'border-[#e3e8f0] text-muted')}>
-                    <input type="radio" name="faq-import-mode" className="m-0 accent-accent-deep" value="replace" checked={importMode === 'replace'} onChange={() => onImportModeChange('replace')} /> {t('knowledgeEditor.faqImport.replaceMode')}
+                    <Radio name="faq-import-mode" className="m-0 accent-accent-deep" value="replace" checked={importMode === 'replace'} onChange={() => onImportModeChange('replace')} /> {t('knowledgeEditor.faqImport.replaceMode')}
                   </label>
                 </div>
               </div>
@@ -1065,7 +1065,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                       <p className="desc m-0 text-xs leading-[1.5] text-faint">{t('knowledgeEditor.faq.standardQuestionDesc')}</p>
                     </div>
                     <div className="setting-control flex flex-col gap-2">
-                      <input id="faq-editor-question" className={'full-width-input w-full ' + EDITOR_CONTROL} {...({ maxlength: 200 } as React.InputHTMLAttributes<HTMLInputElement>)} value={form.question} onChange={(event) => onFormChange({ question: event.target.value })} />
+                      <Input id="faq-editor-question" className={'full-width-input w-full ' + EDITOR_CONTROL} {...({ maxlength: 200 } as React.InputHTMLAttributes<HTMLInputElement>)} value={form.question} onChange={(event) => onFormChange({ question: event.target.value })} />
                     </div>
                   </div>
                   <div className="setting-row setting-row-optional setting-row-similar flex flex-col gap-2">
@@ -1075,7 +1075,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                     </div>
                     <div className="setting-control flex flex-col gap-2">
                       <div className="full-width-input-wrapper flex w-full items-center gap-2">
-                        <input
+                        <Input
                           id="faq-editor-similar"
                           className={'full-width-input ' + EDITOR_CONTROL_INLINE}
                           placeholder={t('knowledgeEditor.faq.similarPlaceholder')}
@@ -1104,7 +1104,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                     </div>
                     <div className="setting-control flex flex-col gap-2">
                       <div className="full-width-input-wrapper flex w-full items-center gap-2">
-                        <input
+                        <Input
                           id="faq-editor-negative"
                           className={'full-width-input ' + EDITOR_CONTROL_INLINE}
                           placeholder={t('knowledgeEditor.faq.negativePlaceholder')}
@@ -1134,7 +1134,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                     <div className="setting-control flex flex-col gap-2">
                       <div className="textarea-container">
                         <div className="full-width-input-wrapper textarea-wrapper flex w-full items-center gap-2">
-                          <textarea
+                          <Textarea
                             id="faq-editor-answer"
                             className={'full-width-textarea box-border w-auto min-w-0 min-h-[80px] flex-1 resize-y rounded-lg border border-[#cdd6e2] bg-surface px-2.5 py-2 text-sm leading-[1.5] text-ink font-[inherit] focus:border-accent-deep focus:outline-none'}
                             rows={3}
@@ -1165,10 +1165,10 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                       <p className="desc m-0 text-xs leading-[1.5] text-faint">{t('knowledgeEditor.faq.tagDesc')}</p>
                     </div>
                     <div className="setting-control flex flex-col gap-2">
-                      <select id="faq-editor-tag" className={'full-width-input w-full ' + EDITOR_CONTROL} value={form.tagId} onChange={(event) => onFormChange({ tagId: event.target.value })}>
+                      <Select id="faq-editor-tag" className={'full-width-input w-full ' + EDITOR_CONTROL} value={form.tagId} onChange={(event) => onFormChange({ tagId: event.target.value })}>
                         <option value="">{t('knowledgeEditor.faq.tagPlaceholder')}</option>
                         {[...tagNameBySeq.entries()].map(([seqId, name]) => <option key={seqId} value={String(seqId)}>{name}</option>)}
-                      </select>
+                      </Select>
                     </div>
                   </div>
                 </div>
@@ -1201,7 +1201,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                     <p className="desc m-0 text-xs leading-[1.5] text-faint">{t('knowledgeEditor.faq.queryPlaceholder')}</p>
                   </div>
                   <div className="setting-control flex flex-col gap-2">
-                    <input
+                    <Input
                       id="faq-search-query"
                       className={'full-width-input w-full ' + EDITOR_CONTROL}
                       placeholder={t('knowledgeEditor.faq.queryPlaceholder')}
