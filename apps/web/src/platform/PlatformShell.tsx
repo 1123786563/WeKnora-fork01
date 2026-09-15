@@ -112,6 +112,8 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
     agents: formatMessage(locale, 'menu.agents'),
     organizations: formatMessage(locale, 'menu.organizations'),
     personalSettings: formatMessage(locale, 'general.personalSettings'),
+    workspaceSettings: formatMessage(locale, 'settings.tenantInfo'),
+    membersSettings: formatMessage(locale, 'tenantMember.title'),
     // Vue UserMenu.vue:45 uses $t('newUserGuide.reopen') for the reopen entry.
     reopenGuide: formatMessage(locale, 'newUserGuide.reopen'),
     // Session-list copy (Vue menu.vue uses the same menu.* keys).
@@ -715,6 +717,16 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
                   onClick={() => setMenuOpen(false)}>
                   {labels.personalSettings}
                 </a>
+                <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
+                  href="/platform/settings?section=tenant"
+                  onClick={() => setMenuOpen(false)}>
+                  {labels.workspaceSettings}
+                </a>
+                {canSeeAdminSessionSources ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
+                  href="/platform/settings?section=members"
+                  onClick={() => setMenuOpen(false)}>
+                  {labels.membersSettings}
+                </a> : null}
                 <div className="h-[1px] bg-[#e7ebf0] my-[3px]" aria-hidden="true" />
                 <button type="button" role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#d54941] no-underline hover:bg-[#fbe9e8]"
                   onClick={() => { setMenuOpen(false); void onLogout(); }}>
