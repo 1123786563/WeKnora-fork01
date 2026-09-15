@@ -17,7 +17,7 @@ export function resolveRoute(pathname: string): RouteMatch {
   if (path === '/onboarding/workspace') return { kind: 'onboarding', path };
   if (path === '/platform/apps') return { kind: 'apps', path };
   if (path === '/craft' || path.startsWith('/craft/')) return { kind: 'craft', path };
-  if (path === '/platform/integrations') return { kind: 'integration', path };
+  if (path === '/platform/integrations' || path === '/platform/settings') return { kind: 'integration', path };
   if (path === '/' || path === '/platform' || path === '/platform/knowledge-bases') return { kind: 'platform', path };
   return { kind: 'not-found', path };
 }
@@ -39,7 +39,7 @@ function isProtectedRoute(route: RouteMatch): boolean {
 /** Vue-compatible auth gate. The complete original URL is retained in `next`. */
 export function guardRoute(pathname: string, context: RouteGuardContext): RouteGuardDecision {
   const route = resolveRoute(pathname);
-  if (route.kind === 'login' || route.kind === 'craft' || route.kind === 'integration') return { kind: 'allow' };
+  if (route.kind === 'login' || route.kind === 'craft') return { kind: 'allow' };
   if (route.kind === 'not-found') return pathnameOf(pathname).startsWith('/platform/') && !context.authenticated
     ? { kind: 'redirect', to: `/login?next=${encodeURIComponent(pathname)}`, reason: 'authentication-required' }
     : { kind: 'not-found' };
@@ -47,7 +47,7 @@ export function guardRoute(pathname: string, context: RouteGuardContext): RouteG
     if (!context.authenticated) return { kind: 'redirect', to: '/login', reason: 'authentication-required' };
     return context.tenantId ? { kind: 'redirect', to: '/platform/knowledge-bases', reason: 'workspace-required' } : { kind: 'allow' };
   }
-  if (route.kind === 'apps' || isProtectedRoute(route)) {
+  if (route.kind === 'apps' || route.kind === 'integration' || isProtectedRoute(route)) {
     if (!context.authenticated) return { kind: 'redirect', to: `/login?next=${encodeURIComponent(pathname)}`, reason: 'authentication-required' };
     if (!context.tenantId) return { kind: 'redirect', to: '/onboarding/workspace', reason: 'workspace-required' };
   }
