@@ -1,5 +1,17 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-15 Round N+101 — N016 MCP 必填字段标记
+
+- 对照 Vue `.required::before`，为 React MCP name、transport、service URL 和 usage instructions 补齐红色 `*` 与 4px 间距，保留原生 required 校验。
+- MCP 专项 14/14、`pnpm typecheck:web`、`git diff --check` 通过；证据：`evidence/vue-react-parity/2026-09-15-n016-mcp-required-markers.md`。
+- N016 仍需认证浏览器 computed-style/截图、真实 MCP 流程和 Wails/native 证据。
+
+## 2026-09-15 Round N+100 — N016 MCP OAuth 区域 layout
+
+- 对照 Vue `McpServiceDialog.vue`，将 React OAuth 区域调整为独立 label、状态/操作行和 hint 行，授权/撤销按钮收敛到 28px compact 尺寸，保留授权、撤销、错误和 loading 语义。
+- MCP 专项 14/14、`pnpm typecheck:web`、`git diff --check` 通过；证据：`evidence/vue-react-parity/2026-09-15-n016-mcp-oauth-layout.md`。
+- N016 仍需认证浏览器 OAuth layout/callback、真实授权流程和 Wails/native 证据。
+
 ## 2026-09-15 Round N+99 — N016 MCP segmented transport/auth 控件
 
 - 对照 Vue `source-options`，将 React MCP transport 与 auth 两处原生 select 替换为可访问 radio button 组，补齐 28px 控件、active 边框/背景、图标及 hover/focus 状态，保留原 draft/payload 逻辑。

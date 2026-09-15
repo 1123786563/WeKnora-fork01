@@ -565,40 +565,29 @@ function McpOAuthControl({
     }
   }
   return (
-    <div className="my-[.8rem] flex flex-wrap items-center gap-[.6rem]">
-      <span className="wk-form-label text-ink font-semibold">{t("mcpServiceDialog.oauthAuthorization")}</span>
-      <span
-        className={
-          oauth?.authorized
-            ? mcpBadgeOk
-            : oauth?.state === "refreshable"
-              ? mcpBadgeInfo
-              : mcpBadgeWarn
-        }
-      >
-        {oauth?.authorized
-          ? t("mcpServiceDialog.oauthAuthorized")
-          : oauth?.state === "refreshable"
-            ? t("mcpServiceDialog.oauthRefreshable")
-            : t("mcpServiceDialog.oauthUnauthorized")}
-      </span>
-      <Button
-        type="button"
-        disabled={busy || authorizing}
-        loading={authorizing}
-        onClick={() => void onRequestAuthorize()}
-      >
-        {oauth?.state === "reauth_required"
-          ? t("mcpServiceDialog.oauthAuthorize")
-          : t("mcpServiceDialog.oauthReauthorize")}
-      </Button>
-      {oauth && oauth.state !== "reauth_required" ? (
-        <Button type="button" disabled={busy || authorizing} onClick={() => void revoke()}>
-          {t("mcpServiceDialog.oauthRevoke")}
+    <div className="wk-mcp-oauth grid gap-2">
+      <label>{t("mcpServiceDialog.oauthAuthorization")}</label>
+      <div className="wk-mcp-oauth-status flex flex-wrap items-center gap-2">
+        <span className={oauth?.authorized ? mcpBadgeOk : oauth?.state === "refreshable" ? mcpBadgeInfo : mcpBadgeWarn}>
+          {oauth?.authorized ? t("mcpServiceDialog.oauthAuthorized") : oauth?.state === "refreshable" ? t("mcpServiceDialog.oauthRefreshable") : t("mcpServiceDialog.oauthUnauthorized")}
+        </span>
+        <Button
+          type="button"
+          className="h-7 rounded-[6px] px-3 text-[12px]"
+          disabled={busy || authorizing}
+          loading={authorizing}
+          onClick={() => void onRequestAuthorize()}
+        >
+          {oauth?.state === "reauth_required" ? t("mcpServiceDialog.oauthAuthorize") : t("mcpServiceDialog.oauthReauthorize")}
         </Button>
-      ) : null}
+        {oauth && oauth.state !== "reauth_required" ? (
+          <Button type="button" className="h-7 rounded-[6px] px-3 text-[12px]" disabled={busy || authorizing} onClick={() => void revoke()}>
+            {t("mcpServiceDialog.oauthRevoke")}
+          </Button>
+        ) : null}
+      </div>
       {error ? <Status tone="error">{error}</Status> : null}
-      <p className="wk-muted text-muted">{t("mcpServiceDialog.oauthAuthorizeHint")}</p>
+      <p className="wk-muted text-muted m-0 text-[12px] leading-[1.5]">{t("mcpServiceDialog.oauthAuthorizeHint")}</p>
     </div>
   );
 }
@@ -1044,8 +1033,8 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                   </details>
                   <fieldset className="wk-mcp-group">
                     <legend className="wk-mcp-group-title">{t("mcpServiceDialog.basicSection")}</legend>
-                    <label>
-                      {t("mcpServiceDialog.name")}
+                    <label className="wk-mcp-required">
+                      <span className="wk-mcp-label-text">{t("mcpServiceDialog.name")}</span>
                       <Input
                         required
                         maxLength={128}
@@ -1070,8 +1059,8 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                   </fieldset>
                   <fieldset className="wk-mcp-group">
                     <legend className="wk-mcp-group-title">{t("mcpServiceDialog.connectionSection")}</legend>
-                    <label>
-                      {t("mcpServiceDialog.transportType")}
+                    <label className="wk-mcp-required">
+                      <span className="wk-mcp-label-text">{t("mcpServiceDialog.transportType")}</span>
                       <div className={mcpSourceOptions} role="radiogroup" aria-label={t("mcpServiceDialog.transportType")}>
                         {(["sse", "http-streamable"] as const).map((transport) => {
                           const active = draft.transportType === transport;
@@ -1079,8 +1068,8 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                         })}
                       </div>
                     </label>
-                    <label>
-                      {t("mcpServiceDialog.serviceUrl")}
+                    <label className="wk-mcp-required">
+                      <span className="wk-mcp-label-text">{t("mcpServiceDialog.serviceUrl")}</span>
                       <Input
                         type="url"
                         required
@@ -1285,8 +1274,8 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                       </div>
                     </div>
                     <div className="flex items-center justify-between gap-[.8rem]">
-                      <label className="wk-form-label text-ink font-semibold">
-                        {t("mcpMetadata.usageInstructions")}
+                      <label className="wk-form-label text-ink font-semibold wk-mcp-required">
+                        <span className="wk-mcp-label-text">{t("mcpMetadata.usageInstructions")}</span>
                       </label>
                       <Button
                         type="button"
