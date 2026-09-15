@@ -519,7 +519,7 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
         </div>
         {invitationsLoading ? <div className="flex items-center gap-2"><Status>{tr('tenantMember.loading')}</Status></div>
           : invitationsError ? <div className="flex items-center gap-2"><Status tone="error">{invitationsError}</Status><Button type="button" onClick={() => void loadInvitations()}>{tr('tenantMember.retry')}</Button></div>
-          : invitationsTotal === 0 ? <div className="px-[0.125rem] py-2 text-[0.8125rem] text-[var(--wk-muted,#66758b)]">{tr('tenantInvitation.pendingEmpty')}</div>
+          : invitationsTotal === 0 ? <div className="rounded-[8px] border border-dashed border-[var(--wk-border,#dce3ed)] bg-[var(--wk-surface,#fff)] px-3 py-2.5 text-[0.8125rem] text-[var(--wk-muted,#66758b)]">{tr('tenantInvitation.pendingEmpty')}</div>
           : <div className="data-table-shell data-table-shell--with-footer pending-invitations-table overflow-hidden rounded-card border border-[var(--wk-border,#dce3ed)] bg-[var(--wk-surface,#fff)]">
               <div className="overflow-x-auto">
                 <table className={TBL}>
