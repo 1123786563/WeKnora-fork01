@@ -1,5 +1,17 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-15 Round N+97 — N016 MCP 字段标签 typography
+
+- 将 MCP 编辑器字段标签样式收敛到专用 `.wk-mcp-form`：13px/500、1.4 行高、6px 间距，并排除 checkbox 标签，避免通用 label 选择器污染嵌套控件。
+- MCP 专项 14/14、Web 类型检查、`git diff --check` 通过；证据：`evidence/vue-react-parity-2026-09-15-n016-mcp-label-typography.md`。
+- N016 仍需认证浏览器 computed-style/截图、真实 MCP 流程和 Wails/native 证据。
+
+## 2026-09-15 Round N+97 — N016 MCP 编辑表单 label
+
+- 对照 Vue `.form-label`，将 React MCP 普通字段 label 收敛为 13px/500/1.4、6px 间距，并排除 checkbox，移除表单级 semibold 默认覆盖。
+- MCP 专项 14/14、`pnpm typecheck:web`、`git diff --check` 通过；证据：`evidence/vue-react-parity/2026-09-15-n016-mcp-form-labels.md`。
+- N016 仍需认证浏览器 computed-style/截图、真实 MCP 流程和 Wails/native 证据。
+
 ## 2026-09-15 Round N+96 — N016 MCP 自定义请求头表单项
 
 - 对照 Vue `McpServiceDialog.vue`，移除自定义请求头嵌套卡片边框，将新增入口移到标签行右侧，并保持 key/value 编辑与删除回调不变。
