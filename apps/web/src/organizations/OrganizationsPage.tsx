@@ -942,7 +942,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
               {joinPreview && !joinCode ? (
                 <button type="button" className="flex h-[32px] w-[32px] shrink-0 cursor-pointer items-center justify-center rounded-[8px] border-0 bg-transparent text-[rgba(23,26,29,0.6)] hover:bg-[#f3f3f5] hover:text-accent" aria-label={t(locale, 'organization.join.backToSearch')} onClick={() => { setJoinPreview(null); setJoinStep('search'); }}><IconBack /></button>
               ) : null}
-              <h2 className="m-0 min-w-0 flex-1 text-[16px] font-semibold text-[rgba(23,26,29,0.92)]">{joinPreview ? t(locale, 'organization.invite.previewTitle') : t(locale, 'organization.joinOrg')}</h2>
+              <h2 className="m-0 min-w-0 flex-1 text-[16px] font-semibold leading-[1.4] text-[rgba(23,26,29,0.92)]">{joinPreview ? t(locale, 'organization.invite.previewTitle') : t(locale, 'organization.joinOrg')}</h2>
             </div>
             <div className="max-h-[calc(90vh-120px)] min-h-0 overflow-x-hidden overflow-y-auto px-[24px] pt-[20px]">
               {joinPreviewLoading ? (
@@ -1042,7 +1042,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                 </>
               )}
             </div>
-            <div className="mt-[16px] flex shrink-0 justify-end gap-[12px] border-t border-[#e7e7ea] px-[24px] pt-[16px] pb-[20px]">
+            <div className="flex shrink-0 justify-end gap-[12px] border-t border-[#e7e7ea] px-[24px] pt-[12px] pb-[20px]">
               {joinPreview ? (
                 <>
                   <button type="button" className={ORG_BTN_NEUTRAL} onClick={() => { setJoinPreview(null); if (!joinCode) setJoinStep('search'); }}>{!joinCode ? t(locale, 'organization.join.backToSearch') : t(locale, 'common.cancel')}</button>
