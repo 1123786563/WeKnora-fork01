@@ -21,6 +21,31 @@
   --radius-large: 12px;
   --radius-pill: 999px;
 
+  /*
+   * Vue/TDesign-compatible aliases. The generated design-token stylesheet is
+   * the runtime light/dark source for these values; keeping the aliases in
+   * @theme makes the same values available to Tailwind utilities and to
+   * arbitrary-value consumers such as var(--color-brand).
+   */
+  --color-brand: var(--wk-color-brand, #07c05f);
+  --color-brand-hover: var(--wk-color-brand-hover, #08dd6e);
+  --color-brand-active: var(--wk-color-brand-active, #06b04d);
+  --color-brand-light: var(--wk-color-brand-light, #e9f8ec);
+  --color-text: var(--wk-color-text, #000000e6);
+  --color-text-secondary: var(--wk-color-text-secondary, #00000099);
+  --color-text-placeholder: var(--wk-color-text-placeholder, #00000066);
+  --color-text-disabled: var(--wk-color-text-disabled, #00000042);
+  --color-page: var(--wk-color-page, #eeeeee);
+  --color-surface-hover: var(--wk-color-surface-hover, #f3f3f3);
+  --color-surface-active: var(--wk-color-surface-active, #e7e7e7);
+  --color-settings-panel: var(--wk-color-settings-panel, #f9f9f9);
+  --color-border: var(--wk-color-border, #dcdcdc);
+  --color-component: var(--wk-color-component, #e7e7e7);
+  --color-error: var(--wk-color-error, #e34d59);
+  --color-error-light: var(--wk-color-error-light, #fdecee);
+  --color-warning-vue: var(--wk-color-warning, #ed7b2f);
+  --color-success-vue: var(--wk-color-success, #00a870);
+
   /* 表面 */
   --color-canvas: #f7f9fc;        /* 应用底色 */
   --color-surface: #ffffff;       /* 卡片/面板 */
