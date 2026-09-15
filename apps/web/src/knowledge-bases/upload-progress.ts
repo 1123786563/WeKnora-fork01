@@ -51,6 +51,14 @@ export function patchUploadTask(tasks: readonly UploadTaskState[], uploadId: str
   return tasks.map((task) => task.uploadId === uploadId ? { ...task, ...patch, progress: patch.progress === undefined ? task.progress : clampUploadProgress(patch.progress) } : task);
 }
 
+function hasUploadKnowledgeBaseId(kbId: string | number | undefined | null): boolean {
+  return kbId !== undefined && kbId !== null && kbId !== '';
+}
+
+function terminalStatus(status: UploadTaskStatus | undefined): Exclude<UploadTaskStatus, 'uploading'> {
+  return status === 'error' || status === 'cancelled' ? status : 'success';
+}
+
 export function cancelUploadTask(tasks: readonly UploadTaskState[], uploadId: string): UploadTaskState[] {
   const task = tasks.find((item) => item.uploadId === uploadId);
   if (!task || task.status !== 'uploading') return [...tasks];
@@ -80,7 +88,7 @@ export function getUploadAction(status: UploadTaskStatus): UploadActionState {
 
 /** Native buttons already handle these keys; custom upload affordances can use this guard. */
 export function isUploadActionKey(key: string): boolean {
-  return key === 'Enter' || key === ' ' || key === 'Spacebar';
+  return key === 'Enter' || key === ' ' || key === 'Space' || key === 'Spacebar';
 }
 
 /**
@@ -91,38 +99,50 @@ export function applyUploadTaskEvent(tasks: readonly UploadTaskState[], event: U
   if (!event.uploadId) return [...tasks];
 
   if (event.type === 'start') {
-    if (!event.kbId) return [...tasks];
-    return upsertUploadTask(tasks, {
+    if (!hasUploadKnowledgeBaseId(event.kbId)) return [...tasks];
+    const next: UploadTaskState = {
       uploadId: event.uploadId,
       kbId: String(event.kbId),
-      fileName: event.fileName,
       progress: typeof event.progress === 'number' ? event.progress : 0,
       status: 'uploading',
-    });
+    };
+    if (event.fileName !== undefined) next.fileName = event.fileName;
+    return upsertUploadTask(tasks, next);
   }
 
   const existing = tasks.some((task) => task.uploadId === event.uploadId);
   if (existing) {
     if (event.type === 'cancel') return cancelUploadTask(tasks, event.uploadId);
     if (event.type === 'retry') return retryUploadTask(tasks, event.uploadId);
+    const current = tasks.find((task) => task.uploadId === event.uploadId)!;
+    if (current.status !== 'uploading') return [...tasks];
     if (event.type === 'progress') return patchUploadTask(tasks, event.uploadId, { progress: event.progress });
-    return patchUploadTask(tasks, event.uploadId, {
-      status: event.status ?? 'success',
-      progress: typeof event.progress === 'number' ? event.progress : 100,
-      error: event.error,
+
+    const status = terminalStatus(event.status);
+    const progress = typeof event.progress === 'number' ? event.progress : 100;
+    return tasks.map((task) => {
+      if (task.uploadId !== event.uploadId) return task;
+      const next = { ...task, status, progress: clampUploadProgress(progress) };
+      if (event.error !== undefined) next.error = event.error;
+      else if (status !== 'error') delete next.error;
+      return next;
     });
   }
 
-  if (event.kbId === undefined || event.kbId === null || event.kbId === '') return [...tasks];
+  if (!hasUploadKnowledgeBaseId(event.kbId)) return [...tasks];
   if (event.type !== 'progress' && event.type !== 'complete') return [...tasks];
-  return upsertUploadTask(tasks, {
+  const next: UploadTaskState = {
     uploadId: event.uploadId,
     kbId: String(event.kbId),
-    fileName: event.type === 'complete' ? event.fileName : undefined,
     progress: typeof event.progress === 'number' ? event.progress : 0,
     status: event.type === 'complete' ? event.status ?? 'success' : 'uploading',
-    error: event.type === 'complete' ? event.error : undefined,
-  });
+  };
+  if (event.type === 'complete') {
+    next.status = terminalStatus(event.status);
+    if (event.fileName !== undefined) next.fileName = event.fileName;
+    if (event.error !== undefined) next.error = event.error;
+  }
+  return upsertUploadTask(tasks, next);
 }
 
 export function summarizeUploadTasks(tasks: readonly UploadTaskState[], getName: (kbId: string) => string): UploadSummary[] {
