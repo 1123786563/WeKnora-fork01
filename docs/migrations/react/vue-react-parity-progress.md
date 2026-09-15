@@ -3554,3 +3554,26 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   and typecheck were re-run after integration: 1137/1137 and typecheck pass.
 - Authenticated paired visual capture, real tenant mutations, and Wails
   feature interaction remain open; this slice is not full page acceptance.
+
+## 2026-09-15 Round R389 — Public registration and OIDC error parity
+
+- Integrated `bf6c1ff7` from the parallel auth review. Direct `/register` now
+  follows the Vue observed contract: an uninvited visit remains on the login
+  surface, while self-serve registration requires the explicit register mode;
+  valid invites remain supported. OIDC error and description parameters are
+  preserved as a one-time localized login error.
+- Auth and route focused verification passed 15/15; the full Web suite and
+  Web typecheck were green before this final auth integration and must be
+  re-run after it.
+- This does not claim successful provider round-trip, authenticated tenant
+  permissions, or real registration mutation evidence.
+
+## 2026-09-15 Round R390 — Wiki and FAQ failure-state parity
+
+- Integrated `e95d6559` from the parallel Wiki/FAQ review. Wiki create/update
+  now rejects blank title/content before writes, and FAQ import polling keeps
+  backend failure visible instead of silently returning to the empty state.
+- Focused Wiki/FAQ verification passed 101/101; Web typecheck and build passed.
+  No mobile files were modified.
+- Authenticated provider-backed mutations, paired Vue/React screenshots, and
+  Wails feature interaction remain open acceptance gates.
