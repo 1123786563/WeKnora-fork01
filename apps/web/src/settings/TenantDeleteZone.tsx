@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
 import { formatMessage } from '@weknora/i18n';
+import { Button, Input } from '@weknora/ui';
 import { useAppLocale } from '../i18n.ts';
 
 /** Danger zone for permanent workspace deletion. Owner+ only (backend RBAC:
@@ -42,7 +43,7 @@ export function TenantDeleteZone({ client, tenantId, tenantName, onDeleted }: {
       </div>
       <div className="wk-delete-zone__confirm">
         <p className="wk-delete-zone__hint">{t('tenant.deleteDangerZone.confirmHint', { name: tenantName })}</p>
-        <input
+        <Input
           className="w-full box-border border border-[#cbd5e1] rounded-control bg-white text-ink [font:inherit] px-[.65rem] py-[.55rem]"
           aria-label={t('tenant.deleteDangerZone.confirmTitle')}
           value={confirmText}
@@ -50,7 +51,7 @@ export function TenantDeleteZone({ client, tenantId, tenantName, onDeleted }: {
           placeholder={tenantName}
           disabled={busy}
         />
-        <button
+        <Button
           type="button"
           data-testid="tenant-delete-button"
           className="wk-delete-zone__button"
@@ -58,7 +59,7 @@ export function TenantDeleteZone({ client, tenantId, tenantName, onDeleted }: {
           onClick={() => void handleDelete()}
         >
           {t('tenant.deleteDangerZone.button')}
-        </button>
+        </Button>
       </div>
       {error ? <p role="alert" className="wk-delete-zone__error">{error}</p> : null}
     </div>
