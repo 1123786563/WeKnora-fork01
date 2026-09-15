@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { loadKnowledgeBases, saveKnowledgeBase } from './list.ts';
+import { knowledgeBaseDetailPath, loadKnowledgeBases, saveKnowledgeBase } from './list.ts';
 
 test('loads real client data into a renderable list state', async () => {
   const state = await loadKnowledgeBases({
@@ -12,6 +12,11 @@ test('loads real client data into a renderable list state', async () => {
 
   assert.deepEqual(state, { status: 'success', items: [{ id: 'kb-1', name: 'Docs' }] });
 });
+
+test('uses the Vue detail route for initialized knowledge-base navigation', () => {
+  assert.equal(knowledgeBaseDetailPath('kb/one'), '/platform/knowledge-bases/kb%2Fone');
+});
+
 test('converts client failures into an error state without fallback data', async () => {
   const state = await loadKnowledgeBases({
     knowledgeBases: {

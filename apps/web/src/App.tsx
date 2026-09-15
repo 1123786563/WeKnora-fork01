@@ -19,6 +19,7 @@ import {
 } from '../../../packages/views/src/guides/contextual-guides.ts';
 import {
   createDeleteGuard,
+  knowledgeBaseDetailPath,
   loadKnowledgeBaseListPage,
   saveKnowledgeBase,
   type KnowledgeBaseListPageState,
@@ -658,7 +659,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
       // the guide arms (queue the intent for the next document).
       if (editingId === null && record?.id !== undefined && !isContextualGuideDone(window.localStorage, 'kbDetail')) {
         openContextualGuide('kbDetail');
-        window.location.assign(`/knowledgeBase/${encodeURIComponent(String(record.id))}`);
+        window.location.assign(knowledgeBaseDetailPath(String(record.id)));
       }
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : t('knowledgeList.messages.deleteFailed'));
@@ -732,7 +733,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
       if (kb.type !== 'faq' && count === 0 && canManageKBCard(kb, { userId: viewer.userId, isAdmin: viewer.isAdmin })) {
         openContextualGuide('kbDetail');
       }
-      window.location.assign(`/knowledgeBase/${encodeURIComponent(id)}`);
+      window.location.assign(knowledgeBaseDetailPath(id));
       return;
     }
     // Vue handleCardClick else-branch: uninitialized card click opens the

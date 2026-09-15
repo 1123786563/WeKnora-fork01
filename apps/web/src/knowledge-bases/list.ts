@@ -5,6 +5,11 @@ export type KnowledgeBaseListState =
   | { status: 'success'; items: KnowledgeBase[] }
   | { status: 'error'; code?: string; message: string };
 
+/** Vue KnowledgeBaseList.vue's canonical detail route for an opened KB. */
+export function knowledgeBaseDetailPath(id: string): string {
+  return `/platform/knowledge-bases/${encodeURIComponent(id)}`;
+}
+
 export async function loadKnowledgeBases(
   client: Pick<WeKnoraClient, 'knowledgeBases'>,
   signal?: AbortSignal,
