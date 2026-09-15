@@ -172,7 +172,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
     window.history.pushState(null, '', '/platform/settings?' + selectSettingsQuery(next, window.location.search));
   }, []);
 
-  const generalPanel = selectedKey === 'general' ? <GeneralPreferencesPanel /> : null;
+  const generalPanel = selectedKey === 'general' ? <GeneralPreferencesPanel liteMode={liteMode} /> : null;
   const resourcePanel = selectedKey === 'storage' || selectedKey === 'vectorstore' || selectedKey === 'websearch'
     ? <ResourceSettingsPanel client={client} section={selectedKey} initialValue={payload} />
     : null;

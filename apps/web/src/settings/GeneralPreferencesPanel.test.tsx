@@ -32,15 +32,40 @@ afterEach(async () => {
   dom.window.localStorage.clear();
 });
 
-async function mountPanel() {
+async function mountPanel(liteMode = false) {
   const container = document.createElement('div');
   document.body.append(container);
   mountedRoot = createRoot(container);
   await act(async () => {
-    mountedRoot?.render(<GeneralPreferencesPanel />);
+    mountedRoot?.render(<GeneralPreferencesPanel liteMode={liteMode} />);
   });
   return container;
 }
+
+test('Lite mode exposes Vue auto-update switch and persists it without dropping other settings', async () => {
+  dom.window.localStorage.setItem('WeKnora_settings', JSON.stringify({ selectedAgentId: 'agent-1', autoCheckUpdate: false }));
+  const container = await mountPanel(true);
+  const toggle = container.querySelector<HTMLButtonElement>('[role="switch"]');
+
+  assert.ok(toggle, 'Lite GeneralSettings must expose the auto-update switch');
+  assert.equal(toggle.getAttribute('aria-label'), '自动检查更新');
+  assert.equal(toggle.getAttribute('aria-checked'), 'false');
+  assert.ok(container.textContent?.includes('开启后自动检查并在后台下载最新版本安装包。'));
+
+  await act(async () => toggle.click());
+
+  assert.equal(toggle.getAttribute('aria-checked'), 'true');
+  assert.deepEqual(JSON.parse(dom.window.localStorage.getItem('WeKnora_settings') ?? '{}'), {
+    selectedAgentId: 'agent-1',
+    autoCheckUpdate: true,
+  });
+});
+
+test('non-Lite GeneralSettings does not expose the desktop-only auto-update control', async () => {
+  const container = await mountPanel(false);
+  assert.equal(container.querySelector('[role="switch"]'), null);
+  assert.equal(container.textContent?.includes('自动检查更新'), false);
+});
 
 // Vue parity anchor: GeneralSettings.vue 字体大小 t-radio-group + the WeKnora
 // global checked override (frontend/src/assets/theme/theme.css:120-141, solid

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
 import { readLocalPreferences, writeLocalPreferences, isValidTheme, isValidFontSize, type ThemeMode, type FontSize } from '@weknora/domain/settings/local-preferences';
-import { Select } from '@weknora/ui';
+import { Select, Switch } from '@weknora/ui';
 
 function readStoredLocale(): Locale {
   const stored = window.localStorage.getItem('locale');
@@ -61,6 +61,38 @@ const FONT_LABELS: Record<string, Record<string, string>> = {
     'mono:dejavu-mono': 'DejaVu Sans Mono', 'mono:liberation-mono': 'Liberation Mono', 'mono:monospace': '通用等宽',
   },
 };
+
+const AUTO_UPDATE_COPY: Record<Locale, { label: string; description: string }> = {
+  'zh-CN': { label: '自动检查更新', description: '开启后自动检查并在后台下载最新版本安装包。' },
+  'en-US': { label: 'Automatically check for updates', description: 'When enabled, automatically check and download the latest version in the background.' },
+  'ja-JP': { label: '更新を自動的に確認', description: '有効にすると、バックグラウンドで最新バージョンを自動的に確認・ダウンロードします。' },
+  'ko-KR': { label: '자동 업데이트 확인', description: '활성화하면 시작 시 최신 버전을 자동으로 확인하고 백그라운드에서 다운로드합니다.' },
+  'ru-RU': { label: 'Автоматически проверять обновления', description: 'При включении автоматически проверять и скачивать последнюю версию в фоновом режиме при запуске.' },
+};
+
+function readAutoCheckUpdate(): boolean {
+  try {
+    const raw = window.localStorage.getItem('WeKnora_settings');
+    if (!raw) return true;
+    const stored = JSON.parse(raw) as unknown;
+    return typeof stored === 'object' && stored !== null && 'autoCheckUpdate' in stored
+      ? (stored as { autoCheckUpdate?: unknown }).autoCheckUpdate !== false
+      : true;
+  } catch {
+    return true;
+  }
+}
+
+function writeAutoCheckUpdate(enabled: boolean): void {
+  let stored: Record<string, unknown> = {};
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem('WeKnora_settings') ?? '{}') as unknown;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) stored = parsed as Record<string, unknown>;
+  } catch {
+    // Vue's settings store falls back to defaults when the persisted record is corrupt.
+  }
+  window.localStorage.setItem('WeKnora_settings', JSON.stringify({ ...stored, autoCheckUpdate: enabled }));
+}
 function fontLabel(locale: Locale, group: 'sans' | 'mono', key: string): string {
   const i18nKey = 'font.' + group + '.' + key;
   const viaI18n = formatMessage(locale, i18nKey);
@@ -76,7 +108,7 @@ function applyFontCssVariables(sans: string, mono: string, size: FontSize): void
   root.style.setProperty('--wk-font-scale', String(FONT_SCALES[size]));
 }
 
-export function GeneralPreferencesPanel() {
+export function GeneralPreferencesPanel({ liteMode = false }: { liteMode?: boolean }) {
   const [locale, setLocale] = useState<Locale>(readStoredLocale);
   const [theme, setTheme] = useState<ThemeMode>(() => {
     // Vue useTheme.ts default: 'light' when storage is unavailable.
@@ -87,8 +119,10 @@ export function GeneralPreferencesPanel() {
   });
   const [sansFont, setSansFont] = useState<string>(() => window.localStorage.getItem('font_sans') ?? 'system');
   const [monoFont, setMonoFont] = useState<string>(() => window.localStorage.getItem('font_mono') ?? 'system');
+  const [autoCheckUpdate, setAutoCheckUpdate] = useState(readAutoCheckUpdate);
   const platform = useMemo(detectPlatform, []);
   const t = (key: string) => formatMessage(locale, key);
+  const autoUpdateCopy = AUTO_UPDATE_COPY[locale];
 
   // Vue useFont() applies persisted font preferences during initialization;
   // mirror that behavior when this panel is mounted so a reload does not
@@ -124,6 +158,11 @@ export function GeneralPreferencesPanel() {
     setMonoFont(next);
     window.localStorage.setItem('font_mono', next);
     applyFontCssVariables(sansFont, next, fontSize);
+  }
+
+  function handleAutoCheckUpdateChange(enabled: boolean) {
+    setAutoCheckUpdate(enabled);
+    writeAutoCheckUpdate(enabled);
   }
 
   const sansOptions = visibleSansKeys(platform);
@@ -248,6 +287,15 @@ export function GeneralPreferencesPanel() {
             </div>
           </div>
         </div>
+        {liteMode ? <div className="setting-row">
+          <div className="setting-info">
+            <label>{autoUpdateCopy.label}</label>
+            <p className="desc">{autoUpdateCopy.description}</p>
+          </div>
+          <div className="setting-control">
+            <Switch checked={autoCheckUpdate} onCheckedChange={handleAutoCheckUpdateChange} aria-label={autoUpdateCopy.label} />
+          </div>
+        </div> : null}
       </div>
     </div>
   );
