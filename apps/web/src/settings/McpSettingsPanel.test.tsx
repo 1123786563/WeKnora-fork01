@@ -18,10 +18,17 @@ else nodeModule.register(`data:text/javascript,${encodeURIComponent(`
 `)}`, import.meta.url);
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
-const { McpSettingsPanel, importMcpConfig, validateMcpDraft, buildMcpConnectionPayload } = await import('./McpSettingsPanel.tsx');
+const { McpSettingsPanel, importMcpConfig, validateMcpDraft, buildMcpConnectionPayload, clampMcpDrawerWidth } = await import('./McpSettingsPanel.tsx');
 const { formatMessage } = await import('@weknora/i18n');
 
 const client = {} as never;
+
+test('MCP drawer width follows Vue min/max and viewport clamp rules', () => {
+  assert.equal(clampMcpDrawerWidth(680, 1200), 680);
+  assert.equal(clampMcpDrawerWidth(400, 1200), 560);
+  assert.equal(clampMcpDrawerWidth(1000, 1200), 920);
+  assert.equal(clampMcpDrawerWidth(680, 500), 500);
+});
 
 test('MCP settings keeps the Vue empty state for a viewer', () => {
   const html = renderToStaticMarkup(React.createElement(McpSettingsPanel, {
@@ -228,6 +235,7 @@ test('MCP editor step 0 matches the Vue drawer structure and offers no stdio tra
     const dialog = document.querySelector('.wks-mcp-drawer');
     assert.ok(dialog, 'drawer renders');
     assert.ok(dialog?.parentElement?.classList.contains('wks-mcp-overlay'), 'drawer uses the Vue right-side overlay shell');
+    assert.ok(document.querySelector('[role="separator"][aria-orientation="vertical"]'), 'resizable Vue drawer exposes a vertical separator handle');
     const text = dialog?.textContent ?? '';
     // Scope to fieldset legends: the steps nav also says 连接配置.
     const legends = Array.from(dialog?.querySelectorAll('legend') ?? []).map((el) => el.textContent ?? '');

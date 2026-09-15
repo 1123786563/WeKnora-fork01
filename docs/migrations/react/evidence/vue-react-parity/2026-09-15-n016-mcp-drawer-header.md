@@ -10,7 +10,7 @@ The React MCP editor drawer now renders the transport icon beside the title/subt
 
 ## Verification
 
-- MCP settings tests: 13/13 passed.
+- MCP settings tests: 14/14 passed, including a regression check for the vertical resize separator.
 - `pnpm typecheck:web`: passed.
 - `git diff --check`: passed.
 

@@ -45,7 +45,7 @@ body { margin: 0; min-width: 320px; }
 /* .wk-model-tabs family kept: SandboxSettingsPanel.tsx (out of model-wave scope) still
    consumes it; delete once the sandbox panel migrates to utilities. */
 .wks-overlay.wks-mcp-overlay { align-items: stretch; justify-content: flex-end; padding: 0; backdrop-filter: none; }
-.wks-modal.wks-mcp-drawer { box-sizing: border-box; width: min(680px, 100%); height: 100vh; max-height: 100vh; overflow-y: auto; padding: 0 18px; border-radius: 0; }
+.wks-modal.wks-mcp-drawer { box-sizing: border-box; width: min(var(--mcp-drawer-width, 680px), 100%); height: 100vh; max-height: 100vh; overflow-y: auto; padding: 0 18px; border-radius: 0; }
 /* The .wks-mcp-drawer .wk-settings-* overrides (heading sticky chrome, editor
    max-width/fieldset/select layout) moved to element utilities on
    McpSettingsPanel's drawer heading/form/fieldsets/selects. Select chrome

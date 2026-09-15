@@ -40,6 +40,92 @@ function McpTransportIcon({ transport }: { transport: "sse" | "http-streamable" 
   );
 }
 
+const MCP_DRAWER_SPEC = {
+  storageKey: "setting-drawer:width:mcp-config-v2",
+  defaultWidth: 680,
+  minWidth: 560,
+  maxWidth: 920,
+} as const;
+
+export function clampMcpDrawerWidth(width: number, viewportWidth = typeof window === "undefined" ? MCP_DRAWER_SPEC.maxWidth : window.innerWidth): number {
+  const viewport = viewportWidth;
+  const cap = Math.min(MCP_DRAWER_SPEC.maxWidth, viewport);
+  const floor = Math.min(MCP_DRAWER_SPEC.minWidth, cap);
+  return Math.max(floor, Math.min(cap, Math.round(width)));
+}
+
+function readMcpDrawerWidth(): number {
+  try {
+    const raw = typeof window === "undefined" ? null : window.localStorage.getItem(MCP_DRAWER_SPEC.storageKey);
+    const parsed = raw ? Number(raw) : Number.NaN;
+    return Number.isFinite(parsed) ? clampMcpDrawerWidth(parsed) : MCP_DRAWER_SPEC.defaultWidth;
+  } catch {
+    return MCP_DRAWER_SPEC.defaultWidth;
+  }
+}
+
+function McpDrawerShell({ children }: { children: React.ReactElement<{ children?: React.ReactNode }> }) {
+  const [width, setWidth] = useState<number>(MCP_DRAWER_SPEC.defaultWidth);
+  const [resizing, setResizing] = useState(false);
+  const widthRef = useRef(width);
+  widthRef.current = width;
+
+  useEffect(() => {
+    setWidth(readMcpDrawerWidth());
+    const onWindowResize = () => setWidth((current) => clampMcpDrawerWidth(current));
+    window.addEventListener("resize", onWindowResize);
+    return () => window.removeEventListener("resize", onWindowResize);
+  }, []);
+
+  function onHandleDown(event: React.MouseEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = widthRef.current;
+    setResizing(true);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    const onMove = (move: MouseEvent) => setWidth(clampMcpDrawerWidth(startWidth + startX - move.clientX));
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      setResizing(false);
+      try {
+        window.localStorage.setItem(MCP_DRAWER_SPEC.storageKey, String(clampMcpDrawerWidth(widthRef.current)));
+      } catch {
+        // localStorage is optional in private mode and restricted embeds.
+      }
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }
+
+  const handle = (
+    <div
+      className={`group/mcp-resize fixed bottom-0 right-[var(--mcp-drawer-width)] top-0 z-[2600] w-3 cursor-col-resize ${resizing ? "is-active" : ""}`}
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="调整抽屉宽度"
+      onMouseDown={onHandleDown}
+    >
+      <div className={`mx-auto h-full w-0.5 ${resizing ? "bg-primary" : "bg-transparent group-hover/mcp-resize:bg-primary"}`} />
+    </div>
+  );
+  const content = React.isValidElement(children)
+    ? React.cloneElement(children, {}, children.props.children, handle)
+    : children;
+  return (
+    <div
+      className="contents"
+      data-resizing={resizing || undefined}
+      style={{ "--mcp-drawer-width": `${width}px` } as React.CSSProperties}
+    >
+      {content}
+    </div>
+  );
+}
+
 type McpService = McpConfiguration & {
   description?: string;
   usage_instructions?: string;
@@ -870,6 +956,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
         </div>
       )}
       {draft ? (
+        <McpDrawerShell>
         <div
           className="wks-overlay wks-mcp-overlay z-[1200]!"
           data-testid="mcp-editor-overlay"
@@ -1287,6 +1374,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
             </form>
           </div>
         </div>
+        </McpDrawerShell>
       ) : null}
     </section>
   );
