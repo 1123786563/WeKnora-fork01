@@ -1005,14 +1005,6 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                     <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{t("mcpMetadata.toolsAndUsage")}</span>
                   </button>
               </nav>
-              <Button
-                type="button"
-                className="absolute right-0 top-[14px]"
-                disabled={saving}
-                onClick={closeEditor}
-              >
-                {t("common.close")}
-              </Button>
             </div>
             <form
               ref={formRef}
@@ -1048,8 +1040,8 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                       <Status tone="error">{draft.codeImportError}</Status>
                     ) : null}
                   </details>
-                  <fieldset className="wk-mcp-group rounded-card border border-[#edf0f5] grid gap-[.7rem] p-[.8rem]">
-                    <legend>{t("mcpServiceDialog.basicSection")}</legend>
+                  <fieldset className="wk-mcp-group">
+                    <legend className="wk-mcp-group-title">{t("mcpServiceDialog.basicSection")}</legend>
                     <label>
                       {t("mcpServiceDialog.name")}
                       <Input
@@ -1074,8 +1066,8 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                       </span>
                     </div>
                   </fieldset>
-                  <fieldset className="wk-mcp-group rounded-card border border-[#edf0f5] grid gap-[.7rem] p-[.8rem]">
-                    <legend>{t("mcpServiceDialog.connectionSection")}</legend>
+                  <fieldset className="wk-mcp-group">
+                    <legend className="wk-mcp-group-title">{t("mcpServiceDialog.connectionSection")}</legend>
                     <label>
                       {t("mcpServiceDialog.transportType")}
                       <Select
@@ -1163,8 +1155,8 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                       </Button>
                     </fieldset>
                   </fieldset>
-                  <fieldset className="wk-mcp-group rounded-card border border-[#edf0f5] grid gap-[.7rem] p-[.8rem]">
-                    <legend>{t("mcpServiceDialog.authConfig")}</legend>
+                  <fieldset className="wk-mcp-group">
+                    <legend className="wk-mcp-group-title">{t("mcpServiceDialog.authConfig")}</legend>
                     <label>
                       {t("mcpServiceDialog.authType")}
                       <Select
@@ -1218,8 +1210,8 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                       </>
                     ) : null}
                   </fieldset>
-                  <fieldset className="wk-mcp-group rounded-card border border-[#edf0f5] grid gap-[.7rem] p-[.8rem]">
-                    <legend>{t("mcpServiceDialog.advancedConfig")}</legend>
+                  <fieldset className="wk-mcp-group">
+                    <legend className="wk-mcp-group-title">{t("mcpServiceDialog.advancedConfig")}</legend>
                     <label>
                       {t("mcpServiceDialog.timeoutSec")}
                       <div className="relative">
@@ -1290,7 +1282,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                 </>
               ) : (
                 <>
-                  <fieldset className="wk-mcp-group rounded-card border border-[#edf0f5] grid gap-[.7rem] p-[.8rem]">
+                  <fieldset className="wk-mcp-group">
                     <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col sticky top-0 z-[1] bg-white pt-[.25rem]">
                       <div>
                         <h4>{t("mcpMetadata.usage")}</h4>

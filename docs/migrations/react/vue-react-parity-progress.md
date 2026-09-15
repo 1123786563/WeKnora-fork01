@@ -1,5 +1,11 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-15 Round N+94 — N016 MCP 抽屉重复关闭控件
+
+- 移除 React MCP 自定义 header 中 Vue 不存在的重复“关闭”文字按钮，保留底部取消和抽屉自身关闭行为，减少 header 拥挤。
+- MCP 专项 14/14、Web 类型检查、`git diff --check` 通过；证据：`evidence/vue-react-parity/2026-09-15-n016-mcp-header-close.md`。
+- N016 仍需认证浏览器 computed-style/截图、真实 MCP 流程和 Wails/native 证据。
+
 ## 2026-09-15 Round N+93 — N016 MCP 编辑抽屉 resize
 
 - 对照 Vue `SettingDrawer` 补齐 MCP 抽屉 680px 默认、560px 最小、920px 最大、viewport clamp、同名 localStorage 持久化和 overlay 内垂直 resize separator；拖拽期间同步 cursor/user-select 清理。
