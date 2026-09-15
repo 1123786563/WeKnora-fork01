@@ -50,6 +50,7 @@ function normalizeListParams(params: KnowledgeDocumentListParams): KnowledgeDocu
 function normalizePage(value: unknown): KnowledgeDocumentPage {
   if (typeof value !== 'object' || value === null) throw new Error('Invalid knowledge document page');
   const row = value as Record<string, unknown>;
+  if ('success' in row && row.success !== true) throw new Error('Invalid knowledge document page');
   if (Array.isArray(row.items)) {
     return {
       items: row.items as KnowledgeDocument[],
