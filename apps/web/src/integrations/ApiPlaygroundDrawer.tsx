@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
+import { Input } from '@weknora/ui/input';
+import { Textarea } from '@weknora/ui/textarea';
 
 import { consumeApiPlaygroundSSE } from './apiPlaygroundSSE.ts';
 import {
@@ -77,7 +79,7 @@ function ApiPlaygroundAgentSelect({ agents, value, loading, placeholder, loading
     setOpen(false);
   }
   return <div ref={rootRef} className="wk-api-playground-agent-select" style={{ position: 'relative' }}>
-    <input
+    <Input
       ref={inputRef}
       className="wk-api-playground-agent box-border"
       role="combobox"
@@ -335,12 +337,12 @@ export function ApiPlaygroundDrawer({ open, onClose, apiKey, mode, agents, agent
             {agentsError ? <p className="wk-api-playground-field-error" role="alert">{agentsError}</p> : null}
             <label className="wk-api-playground-field text-[13px]" style={{ display: 'block', margin: '10px 0' }}>
               {t('integrations.api.playgroundExternalUser')}
-              <input className="wk-api-playground-external-user box-border" type="text" value={form.externalUserId} disabled={mode === 'tenant'} placeholder={t('integrations.api.playgroundExternalUserPlaceholder')} onChange={(event) => setForm((prev) => ({ ...prev, externalUserId: event.target.value }))} style={fieldStyle} />
+              <Input className="wk-api-playground-external-user box-border" type="text" value={form.externalUserId} disabled={mode === 'tenant'} placeholder={t('integrations.api.playgroundExternalUserPlaceholder')} onChange={(event) => setForm((prev) => ({ ...prev, externalUserId: event.target.value }))} style={fieldStyle} />
             </label>
             <p className="wk-api-playground-hint wk-muted text-muted">{t(externalUserHintKey(mode), { headerName: DEFAULT_DIRECT_HEADER_NAME })}</p>
             <label className="wk-api-playground-field text-[13px]" style={{ display: 'block', margin: '10px 0' }}>
               {t('integrations.api.playgroundQuestion')}
-              <textarea ref={queryRef} className="wk-api-playground-query box-border" rows={2} value={form.query} placeholder={t('integrations.api.playgroundQuestionPlaceholder')} onChange={(event) => setForm((prev) => ({ ...prev, query: event.target.value }))} style={fieldStyle} />
+              <Textarea ref={queryRef} className="wk-api-playground-query box-border" rows={2} value={form.query} placeholder={t('integrations.api.playgroundQuestionPlaceholder')} onChange={(event) => setForm((prev) => ({ ...prev, query: event.target.value }))} style={fieldStyle} />
             </label>
           </section>
 
