@@ -143,6 +143,51 @@ function DocumentTagChips({ tags }: { tags: ReturnType<typeof documentTags> }) {
   );
 }
 
+type DocumentViewMode = "grid" | "list";
+
+export function DocumentCardGrid({
+  items,
+  selected,
+  canContribute,
+  t,
+  onOpen,
+  onToggle,
+  onTagEdit,
+  onReparse,
+  onCancelParse,
+}: {
+  items: KnowledgeDocument[];
+  selected: Set<string>;
+  canContribute: boolean;
+  t: (key: string, values?: Record<string, string | number>) => string;
+  onOpen: (document: KnowledgeDocument) => void;
+  onToggle: (id: string, checked: boolean) => void;
+  onTagEdit: (document: KnowledgeDocument) => void;
+  onReparse: (document: KnowledgeDocument) => void;
+  onCancelParse: (document: KnowledgeDocument) => void;
+}) {
+  return <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3" data-document-view="grid">
+    {items.map((document) => {
+      const status = documentStatus(document, t);
+      const actions = documentRowActions(document.parse_status);
+      return <article key={document.id} className="min-w-0 rounded-control border border-line-soft bg-surface p-4 shadow-[0_1px_2px_rgb(16_24_40/4%)] transition-shadow hover:shadow-[0_4px_12px_rgb(16_24_40/10%)]">
+        <div className="mb-3 flex items-start justify-between gap-2">
+          <Checkbox type="checkbox" checked={selected.has(document.id)} onChange={(event) => onToggle(document.id, event.target.checked)} aria-label={t("knowledgeBase.documents.select", { name: displayName(document) })} />
+          <Status tone={status.tone}>{status.label}</Status>
+        </div>
+        <button type="button" className="mb-2 block w-full truncate border-0 bg-transparent p-0 text-left text-primary-deep [font:inherit] [font-weight:650]! hover:underline" onClick={() => onOpen(document)} title={displayName(document)}>{displayName(document)}</button>
+        <p className="m-0 min-h-10 truncate text-[0.8rem] text-muted">{document.folder_path || t("knowledgeBase.documents.root")}{document.file_type ? ` · ${document.file_type}` : ""}</p>
+        {documentTags(document).length > 0 ? <DocumentTagChips tags={documentTags(document)} /> : null}
+        {canContribute ? <div className="mt-3 flex flex-wrap gap-2 border-t border-line-soft pt-3">
+          <Button type="button" onClick={() => onTagEdit(document)}>{t("knowledgeBase.tagLabel")}</Button>
+          {actions.canReparse && !actions.canCancelParse ? <Button type="button" onClick={() => onReparse(document)}>{t("knowledgeBase.documents.reparse")}</Button> : null}
+          {actions.canCancelParse ? <Button type="button" onClick={() => onCancelParse(document)}>{t("knowledgeBase.documents.cancelParse")}</Button> : null}
+        </div> : null}
+      </article>;
+    })}
+  </div>;
+}
+
 function documentStatus(
   document: KnowledgeDocument,
   t: (key: string) => string,
@@ -1743,6 +1788,9 @@ export function KnowledgeDocumentsPage({
   const [updatedFrom, setUpdatedFrom] = useState("");
   const [updatedTo, setUpdatedTo] = useState("");
   const [folderPath, setFolderPath] = useState<string | undefined>(undefined);
+  const [viewMode, setViewMode] = useState<DocumentViewMode>(() => {
+    try { return window.localStorage.getItem("weknora.kb.docs.viewMode") === "list" ? "list" : "grid"; } catch { return "grid"; }
+  });
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const lastSelectedIndex = useRef(-1);
@@ -1877,6 +1925,10 @@ export function KnowledgeDocumentsPage({
   // Audit #6: KB-type routing — an FAQ KB must land on the FAQ route.
   // The same fetch drives permission gating and tab visibility, and seeds the
   // upload-confirm dialog defaults (Vue initFromKbInfo).
+  useEffect(() => {
+    try { window.localStorage.setItem("weknora.kb.docs.viewMode", viewMode); } catch { /* storage is optional */ }
+  }, [viewMode]);
+
   useEffect(() => {
     let active = true;
     void Promise.all([
@@ -2978,6 +3030,10 @@ export function KnowledgeDocumentsPage({
                 </div>
               </div>
               <div className="doc-filter-bar__trailing relative z-[1] flex shrink-0 items-center gap-2 [grid-area:trailing]">
+                <div className="doc-view-toggle inline-flex items-center rounded-[6px] border border-[var(--wk-border,#e4e7ec)]" role="group" aria-label={t("knowledgeBase.viewModeToggle")}>
+                  <button type="button" className={`h-8 border-0 px-2 [font:inherit] ${viewMode === "grid" ? "bg-surface-wash text-primary-deep" : "bg-transparent text-muted"}`} aria-pressed={viewMode === "grid"} aria-label={t("knowledgeBase.viewModeGrid")} title={t("knowledgeBase.viewModeGrid")} onClick={() => setViewMode("grid")}>▦</button>
+                  <button type="button" className={`h-8 border-0 border-l border-line-soft px-2 [font:inherit] ${viewMode === "list" ? "bg-surface-wash text-primary-deep" : "bg-transparent text-muted"}`} aria-pressed={viewMode === "list"} aria-label={t("knowledgeBase.viewModeList")} title={t("knowledgeBase.viewModeList")} onClick={() => setViewMode("list")}>☷</button>
+                </div>
                 {canContribute ? (
                   <div className="doc-filter-actions">
                     <UploadSourceDropdown
@@ -3148,7 +3204,20 @@ export function KnowledgeDocumentsPage({
                 }
               />
             ) : null}
-            {state.status === "success" && items.length > 0 ? (
+            {state.status === "success" && items.length > 0 && viewMode === "grid" ? (
+              <DocumentCardGrid
+                items={items}
+                selected={selected}
+                canContribute={canContribute}
+                t={t}
+                onOpen={(document) => onOpenDocument?.(document)}
+                onToggle={(id, checked) => setSelected((current) => { const next = new Set(current); if (checked) next.add(id); else next.delete(id); return next; })}
+                onTagEdit={(document) => setTagDialog({ mode: "single", document })}
+                onReparse={(document) => reparseOne(document)}
+                onCancelParse={(document) => void cancelOneParse(document.id)}
+              />
+            ) : null}
+            {state.status === "success" && items.length > 0 && viewMode === "list" ? (
               <ul
                 ref={documentListRef}
                 className={`wk-list wk-document-list relative m-0 list-none p-0${marquee.visible ? " is-marquee-active cursor-crosshair" : ""}`}
