@@ -215,7 +215,7 @@ test('system-global section renders grouped editable settings instead of a gener
   const securityTab = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]')).find((button) => button.textContent === '安全');
   assert.ok(securityTab, 'the security tab renders');
   await act(async () => securityTab?.click());
-  assert.ok(container.querySelector('input[type="checkbox"]'), 'boolean settings use a switch-like checkbox');
+  assert.ok(container.querySelector('[role="switch"]'), 'boolean settings use the shared switch control');
   assert.equal(text.includes('尚未移植'), false, 'the generic placeholder is gone');
 });
 
