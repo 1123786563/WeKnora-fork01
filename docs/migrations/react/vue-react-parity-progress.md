@@ -1,5 +1,17 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-15 Round N+88 — N016 MCP 卡片图标与底栏节奏
+
+- 对照 Vue MCP 卡片结构，将服务图标移至卡片主内容左侧并取消底栏顶部重复分隔线，保留工具数量/同步状态和编辑入口行为。
+- MCP 专项 13/13、Web 类型检查、`git diff --check` 通过。
+- N016 仍需真实同步 MCP 服务、Wails/native 与完整浏览器 computed-style 证据。
+
+## 2026-09-15 Round N+89 — N007 上传弹窗关闭按钮
+
+- 记录专用上传弹窗关闭按钮的 Vue 几何：32px 方形、右上 20px、20px 图标、6px 圆角和次级背景色；样式限定在上传弹窗作用域内。
+- 上传确认专项 37/37、Web 类型检查、`git diff --check` 通过；证据：`evidence/vue-react-parity-2026-09-15-n007-dialog-close-control.md`。
+- N007 仍需认证浏览器 computed-style/截图、真实上传后端和 Wails/native 证据。
+
 ## 2026-09-15 Round N+87 — N007 文件侧栏 header 顺序
 
 - 将标题、文件数量/继续添加操作和目的地面包屑归入同一文件侧栏 header，并把文件列表放在 header 之后，恢复 Vue 的信息层级与垂直节奏。

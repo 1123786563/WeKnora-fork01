@@ -828,9 +828,9 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
           {services.map((service) => (
             <article key={service.id} className="wk-mcp-service-card min-w-0 overflow-hidden rounded-[10px] border border-[#dce3ed] bg-white">
               <div className="wk-mcp-service-card-main flex min-w-0 flex-1 items-stretch p-3">
+                <span className="inline-flex h-[26px] w-[26px] shrink-0 items-center justify-center self-start rounded-[7px] bg-[#f3f5f8] text-[#66758b]" aria-hidden="true"><McpCardIcon name="tools" /></span>
                 <div className="wk-mcp-service-card-body flex min-w-0 flex-1 flex-col gap-2">
                   <div className="wk-mcp-service-card-header flex min-h-[28px] items-center justify-between gap-[.7rem]">
-                    <span className="inline-flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-[7px] bg-[#f3f5f8] text-[#66758b]" aria-hidden="true"><McpCardIcon name="tools" /></span>
                     <h4 title={service.name} className="m-0 min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[14px] font-semibold leading-5 text-[rgb(0_0_0_/_90%)]">{service.name}</h4>
                   {service.is_builtin ? (
                     <span className="text-[.75rem] text-[#2e6de6]">{t("mcpSettings.builtin")}</span>
@@ -843,7 +843,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                     ) : null}
                   </div>
                   {serviceDescription(service) ? <p className="wk-mcp-service-card-desc min-h-[2.6rem] [overflow-wrap:anywhere]" title={serviceDescription(service)}>{serviceDescription(service).replace(/\s+/g, " ")}</p> : canEdit && !service.is_builtin ? <button type="button" className="self-start items-center border-0 bg-transparent p-0 text-[.82rem] text-[#245a9b] cursor-pointer [font:inherit] hover:underline focus-visible:underline" onClick={() => openEditor(service, 1)}>＋ {t("mcpSettings.addUsageInstructions")}</button> : <span className="text-[.82rem] text-[#66758b]">{t("mcpSettings.noUsageInstructions")}</span>}
-                  <div className="wk-mcp-service-card-footer flex items-center justify-between gap-[.7rem] border-t border-[#edf0f5] pt-[.65rem]">
+                  <div className="wk-mcp-service-card-footer flex items-center justify-between gap-[.7rem]">
                     <button type="button" className={`${mcpToolsLink} ${service.catalog?.stale ? "text-[#b54708]!" : ""}`} title={t("mcpMetadata.toolsAndUsage")} onClick={() => canEdit && openEditor(service, 1)} disabled={!canEdit}>
                       {service.catalog?.stale ? <McpCardIcon name="error" /> : null}{service.catalog ? t("mcpSettings.toolCount", { count: service.catalog.tool_count ?? 0 }) : t("mcpSettings.toolsNotSynced")} {service.catalog?.stale ? ` · ${t("mcpSettings.toolsStale")}` : ""} {canEdit ? <McpCardIcon name="chevron-right" /> : null}
                     </button>
