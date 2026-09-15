@@ -3238,3 +3238,213 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   `@import` appearing after other statements. No Web/shared files were changed
   in this slice. Wails native launch/interaction evidence remains open until a
   real app window is launched and exercised; renderer build is not acceptance.
+
+## 2026-09-15 Round R373 — Parallel parity slices and cross-platform regression
+
+- Six scoped agents completed in parallel: Settings autosave/deduplication and
+  failure retention; Integrations landing anatomy and localized copy; knowledge
+  document-list card click/alignment/responsive behavior; Chat session
+  confirmation, failure retention, and localized actions; native mobile
+  knowledge settings/access capability routing; and Wails bootstrap,
+  deep-link, viewport, external-navigation, and credential-bridge contracts.
+- Focused evidence: Integrations tests passed 114; Chat tests passed 170;
+  document-list tests passed 244; Settings autosave test passed 1; mobile
+  tests passed 196/196 with mobile typecheck passing; desktop tests passed
+  5/5 with desktop typecheck passing. The shell session regression passed
+  18/18 after adapting assertions to the Vue confirmation state.
+- Cross-platform final evidence: `pnpm typecheck:web` passed;
+  `pnpm test:shared` passed 492/492; `pnpm --filter @weknora/web test`
+  passed 1076/1076; `pnpm build:web` passed; desktop and mobile checks passed;
+  `git diff --check` passed. These are static, unit, build, and renderer-level
+  checks, not proof of authenticated production behavior.
+- Acceptance remains open for same-condition authenticated Vue/React browser
+  screenshots and computed-style comparison, real backend mutations and
+  permission/state matrices, real Wails window interaction, and per-feature
+  iOS/Android native flows. The Apps source mismatch (React catalog exists,
+  corresponding Vue source files are absent) remains explicitly recorded as
+  `source-mismatch`; it is not treated as parity acceptance.
+
+## 2026-09-15 Round R374 — Parallel state and permission hardening
+
+- Six agents executed in parallel with disjoint ownership. Platform restored
+  the collapsed-rail search entry and command-palette affordance;
+  Administration now derives tenant roles from `auth/me` and gates member
+  mutations/audit actions; document preview ignores stale asynchronous text
+  after a document switch; Settings restored the Vue Lite-mode auto-update
+  preference; Embed keeps localized stream/API errors visible after partial
+  output; and React Native Chat adds a native retry action for failed assistant
+  responses.
+- Commits: `b6040cf1`, `c277b6ca`, `53a7d050`, `beb6e028`, `71909eb5`, and
+  `a7f56b66`. No DOM/Tailwind components were introduced into the native
+  mobile slice; Web UI changes continue to use the project component/token
+  layer.
+- Final regression evidence: `pnpm typecheck:web` passed;
+  `pnpm test:shared` passed 492/492; `pnpm --filter @weknora/web test`
+  passed 1083/1083; `pnpm build:web` passed; desktop tests 5/5 and typecheck
+  passed; mobile tests 197/197 and typecheck passed; Embed tests 12/12,
+  direct package `tsc --noEmit`, and build passed; `git diff --check` passed.
+  The attempted nonexistent Embed `typecheck` script was replaced by direct
+  TypeScript checking and is not counted as evidence.
+- These results are unit/static/build evidence. Authenticated same-condition
+  Vue/React visual/computed-style comparison, real backend mutation and role
+  matrices, real Wails feature interaction, and per-feature iOS/Android flows
+  remain open; the Apps Vue-source `source-mismatch` remains unchanged.
+
+## 2026-09-15 Round R375 — Parallel implementing-row closure pass
+
+- A second parallel batch of six scoped agents addressed remaining
+  implementation rows: knowledge upload permissions and retry-only-failed
+  behavior; custom Agent system-prompt validation; per-tool MCP policy busy
+  state; Wiki empty-reader state; organization settings role-intersection
+  read-only behavior; and ArtifactPreview text/Markdown read failures.
+- Commits: `cf3f8242`, `d803e74b`, `82691761`, `ef767ac2`, `66f51a36`, and
+  `42195d64`. Focused evidence reported by the owners: upload 106/106,
+  Agent 26/26, MCP 41/41, Wiki 94/94, organization 29/29, and artifact
+  preview 15/15. All changes preserve the existing Tailwind/shadcn Web
+  substrate or native-only mobile boundary as applicable.
+- Unified regression after integration: Web typecheck passed; shared tests
+  493/493; Web tests 1089/1089; Web build passed; desktop tests 5/5 and
+  typecheck passed; mobile tests 197/197 and typecheck passed; Embed tests
+  12/12 and direct package TypeScript check passed; `git diff --check` passed.
+- Runtime evidence remains explicitly bounded: React `:5181/login` is
+  reachable, Vue `:5173/login` is not running in this environment, and the
+  backend `:8080` responds 401 without authentication. Therefore this round
+  adds no authenticated paired visual, real-mutation, Wails feature, or
+  per-feature native-device acceptance claim.
+
+## 2026-09-15 Round R376 — Integrated second parallel batch regression
+
+- The six implementation slices from R375 were integrated and rechecked after
+  all commits landed. The final Web suite is 1089/1089 and shared suite is
+  493/493; the new Wiki empty-reader, MCP per-tool policy, organization role
+  intersection, upload retry, Agent validation, and artifact error tests are
+  included in those totals.
+- Platform checks remain green: Web typecheck/build, desktop test 5/5 and
+  typecheck, mobile test 197/197 and typecheck, Embed test 12/12 and direct
+  TypeScript check, plus `git diff --check`.
+- This closes implementation-level differences found by the agents, not the
+  runtime acceptance gate. Vue is still unavailable at `127.0.0.1:5173`, the
+  current backend responds 401 without authentication, and authenticated
+  same-condition screenshots, real mutations, Wails feature interaction and
+  per-feature iOS/Android flows remain open. No row is promoted solely from
+  these automated results.
+
+## 2026-09-15 Round R377 — Parallel share/upload/runtime parity pass
+
+- Six scoped agents completed in parallel across the remaining implementing
+  and review rows. Knowledge sharing now follows Vue direct-remove semantics;
+  upload confirmation preserves creator upload authority and retry-only-failed
+  behavior; MCP keeps delayed per-tool policy state visible and independently
+  busy; Wiki renders Vue's unselected-reader hint; organization settings apply
+  the Vue organization/tenant admin intersection; ArtifactPreview exposes
+  localized read failures; mobile FAQ references support trimmed keyword
+  search; mobile Graph follows `graph_enabled` independently from Wiki; and
+  the Wails credential bridge no longer mirrors bridged secrets into
+  `localStorage`.
+- Commits from this batch include `f1e308c9`, `3a8ccaf0`, `5768f664`,
+  `799fb643`, `b2069a44`, and `f6c940fd`. Focused tests were reported green
+  for each owned slice; native changes remain React Native-only and Web changes
+  remain on the existing Tailwind/shadcn project component layer.
+- Final integrated evidence: Web typecheck; shared tests 493/493; Web tests
+  1091/1091; Web build; desktop tests 6/6 and typecheck; mobile tests 200/200
+  and typecheck; Embed tests 12/12 and direct package TypeScript check; and
+  `git diff --check` all passed.
+- Runtime acceptance remains separate and open: Vue `127.0.0.1:5173` is
+  unavailable, backend `127.0.0.1:8080` is unauthenticated (401), and no new
+  same-condition authenticated screenshots, real mutation matrix, Wails
+  feature interaction, or per-feature iOS/Android business evidence is
+  claimed. Apps' missing Vue sources remain `source-mismatch`.
+
+## 2026-09-15 Round R378 — Parallel upload, MCP, native and shared-layer pass
+
+- Six scoped agents completed in parallel. Upload progress now accepts progress
+  and complete events keyed by `uploadId` when `kbId` is absent; UploadConfirm
+  adds the remaining Vue-aligned validation sections; MCP keeps cached policy
+  controls interactive during metadata refresh; and shared Dialog uses SSR-safe
+  unique title IDs. Native Chat terminal events now end the sending state,
+  while the native data-source tree reveals saved deep resources and expands
+  their ancestors.
+- Commits: `0e17c50d`, `222b3bf8`, `a1329510`, `06a986e4`, `1d9fe868`, and
+  `29f0f54c`. Focused tests were green for each owned slice, including upload
+  progress 5/5, UploadConfirm 4/4, MCP 21/21, Dialog 3/3, and data-source
+  focused tests 32/32. Native slices remain React Native-only.
+- Final integrated evidence: Web typecheck; shared 493/493; Web 1093/1093;
+  Web build; desktop 6/6 and typecheck; mobile 202/202 and typecheck; Embed
+  12/12 and direct TypeScript check; and `git diff --check` all passed.
+- Runtime acceptance remains open: Vue is not running at `127.0.0.1:5173`,
+  backend `127.0.0.1:8080` is unauthenticated (401), and same-condition
+  authenticated screenshots, real mutations, Wails feature interaction, and
+  per-feature iOS/Android business flows are not claimed. Apps' missing Vue
+  sources remain `source-mismatch`.
+
+## 2026-09-15 Round R379 — Parallel page-state and evidence pass
+
+- Six scoped agents completed in parallel. Share dialogs now reset permission
+  to Vue's read-only default on reopen; upload progress covers cancelled and
+  retry terminal actions, invalid progress, localization, and keyboard
+  activation; UploadConfirm aligns validation sections, tab focus, reparse
+  visibility, submit locking, and close behavior; MCP tools add explicit ARIA
+  names, dialog relationships, and live pagination announcements; native
+  document editing honors shared `editor` permissions; and the browser
+  runtime evidence records the actual port split and tool failure boundary.
+- Additional implementation evidence includes shared Dialog SSR title-ID
+  stability, mobile Chat terminal-state handling, mobile data-source deep-tree
+  expansion, and mobile FAQ search from the preceding integrated slices.
+- Final integrated regression: Web typecheck; shared 493/493; Web 1098/1098;
+  Web build; desktop 6/6 and typecheck; mobile 203/203 and typecheck; Embed
+  12/12 and direct TypeScript check; `git diff --check` all passed.
+- Browser runtime evidence is explicitly bounded in
+  `artifacts/browser-runtime-evidence-20260915.md`: React `:5181` and Vue
+  `:5180` respond, legacy Vue `:5173` does not, backend `:8080` returns 401
+  anonymously, and browser automation is blocked by missing `oci` / browser
+  request-header policy. No authenticated paired visual or real-backend
+  parity claim is made from these observations.
+
+## 2026-09-15 Round R380 — Integrated public browser comparison
+
+- Six scoped agents completed in parallel. Share forms now reset both
+  permission and organization after successful sharing; upload progress covers
+  all terminal actions and keyboard activation; UploadConfirm guards Escape,
+  overlay, and close-button dismissal during submission; MCP retains tools on
+  policy failure and exposes ARIA relationships/live pagination; mobile
+  document preview locks duplicate actions and shared editor permissions; and
+  mobile Chat terminal events reliably clear the sending state.
+- Final integrated evidence: Web typecheck; shared 493/493; Web 1111/1111;
+  Web build; desktop 6/6 and typecheck; mobile 204/204 and typecheck; Embed
+  12/12 and direct TypeScript check; `git diff --check` all passed.
+- Fresh paired public browser evidence is recorded in
+  `artifacts/vue-react-public-browser-evidence-20260915-run5.md` with
+  `artifacts/browser-evidence-20260915-run5/results.json` and 1355x776
+  screenshots. It proves only public/unauthenticated behavior and exposes a
+  real login geometry/style difference plus React/Vue auth endpoint mismatch;
+  it does not close protected-page parity.
+- Authenticated same-condition visual/computed-style evidence, real backend
+  mutations and permission matrices, Wails feature interaction, and
+  per-feature iOS/Android flows remain open. The Apps Vue-source
+  `source-mismatch` remains explicit.
+
+## 2026-09-15 Round R381 — Auth/runtime parity and regression closure
+
+- Eight agents were dispatched in parallel under the updated execution
+  constraint. Integrated login computed-style alignment (`1263ff08`), Vite
+  dev/preview `/api` and `/files` proxy plus contract tests (`cf780c86`,
+  `e317eb78`), safe invite/OIDC/`next` navigation (`1734f4ed`), failed
+  document-list envelope rejection (`0737920c`), shared Input focus/invalid
+  behavior (`c738006a`), MCP policy-error retention (`3ce207d6`), and mobile
+  native login validation (`92b613ed`, `a92b3f0c`).
+- Verification passed: Web 1122/1122, shared 493/493, mobile 205/205,
+  Embed 12/12, desktop 6/6; Web typecheck/build; mobile and desktop
+  typechecks; and `git diff --check`. Mobile validation uses the repository's
+  native `node:test` runner.
+- Real HTTP proxy evidence at React dev `:5182` and preview `:5183` reached
+  the backend: auth config/OIDC returned 200, login and `/files` returned the
+  expected anonymous 401. This does not prove authenticated login, tenant
+  permissions, or mutations.
+- Paired public Playwright evidence (Vue `:5180`, React `:5181`, zh-CN,
+  1440x900) is recorded in `artifacts/vue-react-public-route-differences-20260915.md`
+  and `artifacts/browser-evidence-20260915/`. Protected-page authenticated
+  visual/interaction evidence, Wails interaction, and iOS/Android runtime
+  evidence remain absent.
+- The matrix remains open (`N005`, `N007`, `N016`, `N031` and rows missing
+  authenticated browser, computed-style, real-backend, or native evidence),
+  so this round does not mark full Vue/React page alignment.
