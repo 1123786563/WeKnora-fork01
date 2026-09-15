@@ -11,6 +11,7 @@ export function OnboardingScreen() {
   const t = (key: string, values?: Record<string, string | number>) => formatMessage(runtime.locale ?? 'zh-CN', key, values);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  const [pendingInvitationCount, setPendingInvitationCount] = useState(0);
   const [invitations, setInvitations] = useState<TenantInvitation[] | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [showInvitations, setShowInvitations] = useState(false);
@@ -24,7 +25,16 @@ export function OnboardingScreen() {
 
   const load = useCallback(async () => {
     setLoading(true); setFailed(false); setError('');
-    try { await runtime.refreshWorkspaces(); } catch { setFailed(true); }
+    try {
+      await runtime.refreshWorkspaces();
+      try {
+        const result = await runtime.client.identity.tenants.invitations.pendingCount();
+        const count = result.pendingCount;
+        if (Number.isFinite(count) && count >= 0) setPendingInvitationCount(Math.floor(count));
+      } catch {
+        // The Vue onboarding badge is best-effort and should not block access.
+      }
+    } catch { setFailed(true); }
     finally { setLoading(false); }
   }, [runtime.refreshWorkspaces]);
   useEffect(() => { void load(); }, [load]);
@@ -66,7 +76,7 @@ export function OnboardingScreen() {
       {loading ? <View accessibilityLabel={t('auth.workspaceOnboarding.loadingPolicy')} style={{ alignItems: 'center', gap: 8 }}><ActivityIndicator /><Text>{t('auth.workspaceOnboarding.loadingPolicy')}</Text></View> : failed ? <View accessibilityRole="alert" style={{ gap: 8 }}><Text style={{ color: '#b42318' }}>{t('auth.workspaceOnboarding.policyLoadFailed')}</Text><Pressable onPress={() => void load()}><Text style={{ color: '#2864dc', textAlign: 'center' }}>{t('auth.workspaceOnboarding.retry')}</Text></Pressable></View> : <>
         {!runtime.canCreateTenant ? <Text style={{ backgroundColor: '#f2f4f7', borderRadius: 10, padding: 12, textAlign: 'center' }}>{t('auth.workspaceOnboarding.inviteOnlyNotice')}</Text> : null}
         {runtime.canCreateTenant ? <Pressable testID="create-open" onPress={() => setShowCreate(true)} style={{ backgroundColor: '#2864dc', borderRadius: 10, padding: 14 }}><Text style={{ color: '#fff', fontWeight: '700', textAlign: 'center' }}>{t('auth.workspaceOnboarding.create')}</Text></Pressable> : null}
-        <Pressable testID="invitations-open" onPress={() => void loadInvitations()} style={{ borderColor: '#2864dc', borderRadius: 10, borderWidth: 1, padding: 14 }}><Text style={{ color: '#2864dc', fontWeight: '700', textAlign: 'center' }}>{t('auth.workspaceOnboarding.invitations')}</Text></Pressable>
+        <Pressable testID="invitations-open" onPress={() => void loadInvitations()} style={{ borderColor: '#2864dc', borderRadius: 10, borderWidth: 1, padding: 14 }}><Text style={{ color: '#2864dc', fontWeight: '700', textAlign: 'center' }}>{t('auth.workspaceOnboarding.invitations')}{pendingInvitationCount > 0 ? ` (${pendingInvitationCount})` : ''}</Text></Pressable>
       </>}
       {error ? <Text accessibilityRole="alert" style={{ color: '#b42318' }}>{error}</Text> : null}
       {showCreate ? <View style={{ borderTopColor: '#eaecf0', borderTopWidth: 1, gap: 10, paddingTop: 14 }}><Text style={{ fontSize: 18, fontWeight: '700' }}>{t('auth.workspaceOnboarding.create')}</Text><TextInput accessibilityLabel={t('tenant.create.nameLabel')} value={name} onChangeText={setName} placeholder={t('tenant.create.namePlaceholder')} maxLength={128} editable={!saving} style={inputStyle} /><TextInput accessibilityLabel={t('tenant.create.descriptionLabel')} value={description} onChangeText={setDescription} placeholder={t('tenant.create.descriptionPlaceholder')} maxLength={512} editable={!saving} style={inputStyle} /><Pressable disabled={saving} onPress={() => void createWorkspace()} style={{ backgroundColor: '#2864dc', borderRadius: 10, opacity: saving ? 0.5 : 1, padding: 12 }}><Text style={{ color: '#fff', textAlign: 'center' }}>{saving ? t('auth.workspaceOnboarding.creating') : t('tenant.create.submit')}</Text></Pressable></View> : null}
