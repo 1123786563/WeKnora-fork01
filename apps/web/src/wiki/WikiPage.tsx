@@ -438,7 +438,7 @@ export function WikiPage({
                 </button>
               )) : null}
               {!indexView && state.status === "loading" ? (
-                <Status>Loading Wiki pages…</Status>
+                <Status>{t("wikiBrowser.loading")}</Status>
               ) : null}
               {!indexView && state.status === "error" ? (
                 <Status tone="error">{state.message}</Status>
