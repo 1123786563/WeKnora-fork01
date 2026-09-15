@@ -1,4 +1,5 @@
 packages:
+  - services/paseo-adapter
   - packages/contracts
   - packages/api-client
   - packages/domain

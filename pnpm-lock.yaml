@@ -523,6 +523,22 @@ importers:
         specifier: ^19.2.0
         version: 19.3.0
 
+  services/paseo-adapter:
+    dependencies:
+      '@getpaseo/client':
+        specifier: 0.7.2
+        version: 0.7.2
+    devDependencies:
+      '@types/node':
+        specifier: 22.14.0
+        version: 22.14.0
+      tsx:
+        specifier: 4.23.1
+        version: 4.23.1
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+
 packages:
 
   '@antfu/install-pkg@2.0.1':
@@ -1623,6 +1639,15 @@ packages:
 
   '@floating-ui/utils@0.2.12':
     resolution: {integrity: sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww==}
+
+  '@getpaseo/client@0.7.2':
+    resolution: {integrity: sha512-BD3uNBdp4wz79uDIJPYqAnaLXbMlZ1V/Nb9RFv0cEUcrFzk0kKAQ1NOaquD3Lz4MUJFTR8Eh/VxJB+OlbHSsiQ==}
+
+  '@getpaseo/protocol@0.7.2':
+    resolution: {integrity: sha512-bLegKuZIqO34Az8eKi0y3W0CcwwICipd7s4iFOUdOAiMwUYybzyXEpVaxuMcSzstNAtGqP+FMRteljFXAJ8T8w==}
+
+  '@getpaseo/relay@0.7.2':
+    resolution: {integrity: sha512-IKdHhpWfofVa/v248r/wiU9Bu2AWhCKOijx4BbNFkGwJr6Eazby3n99tuN9cWYnCLj6/Hfnm4yNL29Bf9jXnbg==}
 
   '@iconify/types@2.0.0':
     resolution: {integrity: sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg==}
@@ -4717,6 +4742,9 @@ packages:
     engines: {node: '>=18.0.0'}
     hasBin: true
 
+  tweetnacl@1.0.3:
+    resolution: {integrity: sha512-6rt+RN7aOi1nGMyC4Xa5DdYiukl2UWCbcJft7YhxReBGQD7OAM8Pbxw6YMo4r2diNEA8FEmu32YOn9rhaiE5yw==}
+
   type-detect@4.0.8:
     resolution: {integrity: sha512-0fr/mIH1dlO+x7TlcMy+bIDqKPsw/70tVyeHW787goQjhmqaZe10uwLujubK9q9Lg6Fiho1KUKDYz0Z7k7g5/g==}
     engines: {node: '>=4'}
@@ -5017,6 +5045,9 @@ packages:
 
   zod@3.25.76:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
+
+  zod@4.6.5:
+    resolution: {integrity: sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==}
 
 snapshots:
 
@@ -6242,6 +6273,28 @@ snapshots:
       react-dom: 19.3.0(react@19.3.0)
 
   '@floating-ui/utils@0.2.12': {}
+
+  '@getpaseo/client@0.7.2':
+    dependencies:
+      '@getpaseo/protocol': 0.7.2
+      '@getpaseo/relay': 0.7.2
+      zod: 4.6.5
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
+  '@getpaseo/protocol@0.7.2':
+    dependencies:
+      zod: 4.6.5
+
+  '@getpaseo/relay@0.7.2':
+    dependencies:
+      base64-js: 1.5.1
+      tweetnacl: 1.0.3
+      ws: 8.21.3
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
 
   '@iconify/types@2.0.0': {}
 
@@ -9844,6 +9897,8 @@ snapshots:
     optionalDependencies:
       fsevents: 2.3.3
 
+  tweetnacl@1.0.3: {}
+
   type-detect@4.0.8: {}
 
   type-fest@0.21.3: {}
@@ -10065,3 +10120,5 @@ snapshots:
       yargs-parser: 21.1.1
 
   zod@3.25.76: {}
+
+  zod@4.6.5: {}
