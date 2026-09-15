@@ -1072,7 +1072,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                       <>
                         <label>
                           {t("mcpServiceDialog.oauthScopes")}
-                          <input
+                          <Input
                             value={draft.oauthScopes}
                             placeholder={t("mcpServiceDialog.optional")}
                             onChange={(event) =>
@@ -1094,7 +1094,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                       <>
                         <label>
                           {t("mcpServiceDialog.apiKeyHeader")}
-                          <input
+                          <Input
                             value={draft.apiKeyHeader}
                             placeholder="X-API-Key"
                             onChange={(event) =>
@@ -1103,7 +1103,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                           />
                         </label>
                         <p className="wk-muted text-muted">{t("mcpServiceDialog.apiKeyHeaderDesc")}</p>
-                        {draft.id ? <div className="wk-mcp-credential-card grid gap-[.65rem] rounded-[7px] border border-[#dce3ed] bg-[#f7f9fc] p-3"><div className="flex items-center justify-between gap-3"><strong>{t("mcpServiceDialog.credentialValue")}</strong><span className={`text-[.8rem] text-[#66758b] ${draft.credentialConfigured ? "text-[#16845b]! font-semibold" : ""}`}>{draft.credentialConfigured ? "✓ " + t("common.success") : t("mcpServiceDialog.optional")}</span></div><label>{draft.credentialConfigured ? t("common.replaceValue") : t("mcpServiceDialog.credentialValue")}<input type="password" autoComplete="new-password" value={draft.apiKey} placeholder={t("mcpServiceDialog.optional")} onChange={(event) => setField("apiKey", event.target.value)} /></label>{draft.credentialConfigured ? <Button type="button" disabled={saving} onClick={() => void clearMcpCredential()}>{t("common.delete")}</Button> : null}</div> : <label>{t("mcpServiceDialog.credentialValue")}<input type="password" autoComplete="new-password" value={draft.apiKey} placeholder={t("mcpServiceDialog.optional")} onChange={(event) => setField("apiKey", event.target.value)} /></label>}
+                        {draft.id ? <div className="wk-mcp-credential-card grid gap-[.65rem] rounded-[7px] border border-[#dce3ed] bg-[#f7f9fc] p-3"><div className="flex items-center justify-between gap-3"><strong>{t("mcpServiceDialog.credentialValue")}</strong><span className={`text-[.8rem] text-[#66758b] ${draft.credentialConfigured ? "text-[#16845b]! font-semibold" : ""}`}>{draft.credentialConfigured ? "✓ " + t("common.success") : t("mcpServiceDialog.optional")}</span></div><label>{draft.credentialConfigured ? t("common.replaceValue") : t("mcpServiceDialog.credentialValue")}<Input type="password" autoComplete="new-password" value={draft.apiKey} placeholder={t("mcpServiceDialog.optional")} onChange={(event) => setField("apiKey", event.target.value)} /></label>{draft.credentialConfigured ? <Button type="button" disabled={saving} onClick={() => void clearMcpCredential()}>{t("common.delete")}</Button> : null}</div> : <label>{t("mcpServiceDialog.credentialValue")}<Input type="password" autoComplete="new-password" value={draft.apiKey} placeholder={t("mcpServiceDialog.optional")} onChange={(event) => setField("apiKey", event.target.value)} /></label>}
                       </>
                     ) : null}
                   </fieldset>
@@ -1189,7 +1189,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                         {t("mcpMetadata.generateUsage")}
                       </Button>
                     </div>
-                    <textarea
+                    <Textarea
                       required
                       rows={5}
                       maxLength={16000}
