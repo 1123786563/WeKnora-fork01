@@ -79,3 +79,51 @@ func TestWorkbenchDriverRejectsUnknown(t *testing.T) {
 	_, err := store.Admit(context.Background(), in)
 	require.ErrorIs(t, err, agentruntime.ErrConflict)
 }
+
+func TestWorkbenchDriverMethodsNormalizeAndReject(t *testing.T) {
+	store := NewAgentRunStore(openRunTestDB(t))
+	ctx := context.Background()
+	in := testAdmission()
+	in.Key.RunID = "platform-run"
+	in.RequestID = "platform-request"
+	in.AssistantMessageID = "platform-assistant"
+	require.NoError(t, func() error { _, err := store.Admit(ctx, in); return err }())
+
+	keys, err := store.ScanDriver(ctx, "", 10)
+	require.NoError(t, err)
+	require.Equal(t, []agentruntime.RunKey{in.Key}, keys)
+	_, err = store.ClaimDriver(ctx, in.Key, "", "platform-worker", time.Minute)
+	require.NoError(t, err)
+
+	_, err = store.ScanDriver(ctx, "unimplemented", 10)
+	require.ErrorIs(t, err, agentruntime.ErrConflict)
+	_, err = store.ClaimDriver(ctx, in.Key, "unimplemented", "worker", time.Minute)
+	require.ErrorIs(t, err, agentruntime.ErrConflict)
+}
+
+func TestWorkbenchOwnedRunIsTenantScoped(t *testing.T) {
+	db := openRunTestDB(t)
+	store := NewAgentRunStore(db)
+	ctx := context.Background()
+	first := testAdmission()
+	first.Key.RunID = "same-run"
+	first.RequestID = "tenant-one-request"
+	first.AssistantMessageID = "tenant-one-assistant"
+	require.NoError(t, func() error { _, err := store.Admit(ctx, first); return err }())
+
+	require.NoError(t, db.Exec(`INSERT INTO tenants (id, name, business) VALUES (2, 'tenant-2', 'test')`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO users (id, username, email, password_hash, tenant_id)
+		VALUES ('u2', 'u2', 'u2@example.test', 'x', 2)`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO sessions (id, tenant_id, title, user_id, engine_type)
+		VALUES ('s3', 2, 'tenant-two', 'u2', 'trpc')`).Error)
+	second := testAdmission()
+	second.Key.TenantID, second.Key.RunID = 2, "same-run"
+	second.SessionID, second.UserID, second.RequestID, second.AssistantMessageID = "s3", "u2", "tenant-two-request", "tenant-two-assistant"
+	require.NoError(t, func() error { _, err := store.Admit(ctx, second); return err }())
+
+	_, err := store.GetOwnedRun(ctx, 2, "u1", "same-run")
+	require.ErrorIs(t, err, agentruntime.ErrNotFound)
+	owned, err := store.GetOwnedRun(ctx, 2, "u2", "same-run")
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), owned.Key.TenantID)
+}
