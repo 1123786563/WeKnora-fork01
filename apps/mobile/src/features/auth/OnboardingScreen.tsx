@@ -8,7 +8,7 @@ import { formatMessage } from '@weknora/i18n';
 export function OnboardingScreen() {
   const runtime = useMobileRuntime();
   const router = useRouter();
-  const t = (key: string, values?: Record<string, string | number>) => formatMessage(runtime.locale, key, values);
+  const t = (key: string, values?: Record<string, string | number>) => formatMessage(runtime.locale ?? 'zh-CN', key, values);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [invitations, setInvitations] = useState<TenantInvitation[] | null>(null);
