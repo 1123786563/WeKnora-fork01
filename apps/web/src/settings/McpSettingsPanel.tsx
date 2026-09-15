@@ -1094,8 +1094,22 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                         onChange={(event) => setField("url", event.target.value)}
                         />
                     </label>
-                    <fieldset className="rounded-card border border-[#edf0f5] grid gap-[.7rem] p-[.8rem]">
-                      <legend>{t("mcpServiceDialog.customHeaders.label")}</legend>
+                    <fieldset className="wk-mcp-custom-headers flex min-w-0 flex-col gap-[.7rem] border-0 p-0">
+                      <legend className="flex w-full items-center justify-between gap-3 p-0 text-[13px] font-semibold leading-[18px]">
+                        <span>{t("mcpServiceDialog.customHeaders.label")}</span>
+                        <Button
+                          type="button"
+                          className="shrink-0"
+                          onClick={() =>
+                            setField("headers", [
+                              ...draft.headers,
+                              { key: "", value: "" },
+                            ])
+                          }
+                        >
+                          {t("mcpServiceDialog.customHeaders.add")}
+                        </Button>
+                      </legend>
                       <p className="wk-muted text-muted">{t("mcpServiceDialog.customHeaders.desc")}</p>
                       {draft.headers.map((header, index) => (
                         <div className="wk-mcp-header-row" key={index}>
@@ -1142,17 +1156,6 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                           </Button>
                         </div>
                       ))}
-                      <Button
-                        type="button"
-                        onClick={() =>
-                          setField("headers", [
-                            ...draft.headers,
-                            { key: "", value: "" },
-                          ])
-                        }
-                      >
-                        {t("mcpServiceDialog.customHeaders.add")}
-                      </Button>
                     </fieldset>
                   </fieldset>
                   <fieldset className="wk-mcp-group">
