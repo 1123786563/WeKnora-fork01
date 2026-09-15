@@ -1,5 +1,7 @@
+import * as React from 'react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { formatMessage, type Locale } from '@weknora/i18n';
+import { Input } from '@weknora/ui';
 import {
   COMMANDS,
   filterCommands,
@@ -128,7 +130,7 @@ export function GlobalCommandPalette(props: GlobalCommandPaletteProps): ReactNod
     >
       <div className="cmdk flex max-h-[70vh] w-[640px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-[10px] bg-white shadow-[0_20px_60px_rgba(15,23,32,0.35)]" role="dialog" aria-modal="true" aria-label={t('commandPalette.placeholder')} onKeyDown={onKeyDown}>
         <div className="flex items-center gap-2 border-b border-[#eef1f5] px-3.5 py-3">
-          <input
+          <Input
             ref={inputRef}
             type="text"
             className="cmdk__input min-w-0 flex-1 border-none bg-transparent text-[15px] text-[#1f2733] outline-none"
