@@ -847,7 +847,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
       )}
       {draft ? (
         <div
-          className="wks-overlay z-[1200]!"
+          className="wks-overlay wks-mcp-overlay z-[1200]!"
           data-testid="mcp-editor-overlay"
         >
           <div

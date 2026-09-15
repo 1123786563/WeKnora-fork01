@@ -44,13 +44,14 @@ body { margin: 0; min-width: 320px; }
    variants; McpSettingsPanel's max-w-none! stays correct against them. */
 /* .wk-model-tabs family kept: SandboxSettingsPanel.tsx (out of model-wave scope) still
    consumes it; delete once the sandbox panel migrates to utilities. */
-.wks-mcp-drawer { width: min(720px, 100%); height: min(780px, calc(100vh - 40px)); max-height: calc(100vh - 40px); overflow-y: auto; padding: 1.25rem 1.5rem 2rem; }
+.wks-overlay.wks-mcp-overlay { align-items: stretch; justify-content: flex-end; padding: 0; backdrop-filter: none; }
+.wks-modal.wks-mcp-drawer { box-sizing: border-box; width: min(680px, 100%); height: 100vh; max-height: 100vh; overflow-y: auto; padding: 0 18px; border-radius: 0; }
 /* The .wks-mcp-drawer .wk-settings-* overrides (heading sticky chrome, editor
    max-width/fieldset/select layout) moved to element utilities on
    McpSettingsPanel's drawer heading/form/fieldsets/selects. Select chrome
    (border/radius/height/chevron) still comes from the drawer-wide promoted rule
    in settings-wrapper.css (.wks-modal ancestor is shared with this drawer). */
-@media (max-width: 720px) { .wks-mcp-drawer { height: calc(100vh - 24px); max-height: calc(100vh - 24px); padding: 1rem; } }
+@media (max-width: 720px) { .wks-modal.wks-mcp-drawer { width: 100%; height: 100vh; max-height: 100vh; padding: 0 16px; } }
 /* .wk-visually-hidden deleted: consumers carry sr-only; class name stays as a
    hook. */
 /* .wk-settings-values family deleted: its four consumers (CloudSettingsPanel,
