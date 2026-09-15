@@ -1,13 +1,32 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { applyUploadTaskEvent, clampUploadProgress, findUploadTargetPage, patchUploadTask, summarizeUploadTasks, upsertUploadTask, type UploadTaskState } from './upload-progress.ts';
+import { applyUploadTaskEvent, cancelUploadTask, clampUploadProgress, findUploadTargetPage, getUploadAction, isUploadActionKey, patchUploadTask, retryUploadTask, summarizeUploadTasks, upsertUploadTask, type UploadTaskState } from './upload-progress.ts';
 
 const task = (uploadId: string, kbId: string, progress: number, status: UploadTaskState['status'] = 'uploading'): UploadTaskState => ({ uploadId, kbId, progress, status });
 
 test('upload progress clamps and replaces duplicate task events', () => {
   assert.equal(clampUploadProgress(123.4), 100);
+  assert.equal(clampUploadProgress(Number.NaN), 0);
+  assert.equal(clampUploadProgress(Number.POSITIVE_INFINITY), 0);
   const next = upsertUploadTask(upsertUploadTask([], task('u1', 'kb1', -4)), task('u1', 'kb1', 55.2));
   assert.deepEqual(next, [task('u1', 'kb1', 55)]);
+});
+
+test('cancel and retry keep terminal states explicit and only retry failed work', () => {
+  const tasks = [task('u1', 'kb1', 42), task('u2', 'kb1', 100, 'success')];
+  const cancelled = cancelUploadTask(tasks, 'u1');
+  assert.deepEqual(cancelled, [task('u1', 'kb1', 42, 'cancelled'), task('u2', 'kb1', 100, 'success')]);
+  assert.deepEqual(retryUploadTask(cancelled, 'u1'), [task('u1', 'kb1', 0), task('u2', 'kb1', 100, 'success')]);
+  assert.deepEqual(retryUploadTask(cancelled, 'u2'), cancelled);
+});
+
+test('upload actions expose localized keys and native button keyboard activation', () => {
+  assert.deepEqual(getUploadAction('uploading'), { cancel: true, retry: false, cancelLabelKey: 'common.cancel', retryLabelKey: 'common.retry' });
+  assert.deepEqual(getUploadAction('error'), { cancel: false, retry: true, cancelLabelKey: 'common.cancel', retryLabelKey: 'common.retry' });
+  assert.equal(isUploadActionKey('Enter'), true);
+  assert.equal(isUploadActionKey(' '), true);
+  assert.equal(isUploadActionKey('Spacebar'), true);
+  assert.equal(isUploadActionKey('Escape'), false);
 });
 
 test('highlight target page is calculated for every filtered knowledge-base scope', () => {
@@ -30,6 +49,14 @@ test('progress and completion events update an existing task without repeating k
   assert.deepEqual(completed, [{ ...task('u1', 'kb1', 100, 'error'), error: 'failed' }]);
 });
 
+test('cancel and retry events reuse the task identity without requiring kbId', () => {
+  const started = [task('u1', 'kb1', 35)];
+  const cancelled = applyUploadTaskEvent(started, { type: 'cancel', uploadId: 'u1' });
+  assert.equal(cancelled[0]?.status, 'cancelled');
+  const retried = applyUploadTaskEvent(cancelled, { type: 'retry', uploadId: 'u1' });
+  assert.deepEqual(retried, [task('u1', 'kb1', 0)]);
+});
+
 test('upload summaries aggregate progress by knowledge base and preserve errors', () => {
   const summaries = summarizeUploadTasks([
     { ...task('u1', 'kb1', 100, 'success'), fileName: 'a.pdf' },
@@ -37,7 +64,15 @@ test('upload summaries aggregate progress by knowledge base and preserve errors'
     task('u3', 'kb2', 20),
   ], (id) => id === 'kb1' ? 'Alpha' : 'Beta');
   assert.deepEqual(summaries, [
-    { kbId: 'kb1', kbName: 'Alpha', total: 2, completed: 2, progress: 70, hasError: true },
-    { kbId: 'kb2', kbName: 'Beta', total: 1, completed: 0, progress: 20, hasError: false },
+    { kbId: 'kb1', kbName: 'Alpha', total: 2, completed: 2, progress: 70, hasError: true, hasCancelled: false },
+    { kbId: 'kb2', kbName: 'Beta', total: 1, completed: 0, progress: 20, hasError: false, hasCancelled: false },
   ]);
+});
+
+test('cancelled summaries are terminal but do not claim a successful upload', () => {
+  const summaries = summarizeUploadTasks([
+    task('u1', 'kb1', 20, 'cancelled'),
+    task('u2', 'kb1', 100, 'success'),
+  ], () => 'Alpha');
+  assert.deepEqual(summaries, [{ kbId: 'kb1', kbName: 'Alpha', total: 2, completed: 2, progress: 60, hasError: false, hasCancelled: true }]);
 });

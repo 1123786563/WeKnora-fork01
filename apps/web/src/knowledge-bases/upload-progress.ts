@@ -1,4 +1,4 @@
-export type UploadTaskStatus = 'uploading' | 'success' | 'error';
+export type UploadTaskStatus = 'uploading' | 'success' | 'error' | 'cancelled';
 
 export interface UploadTaskState {
   uploadId: string;
@@ -16,11 +16,21 @@ export interface UploadSummary {
   completed: number;
   progress: number;
   hasError: boolean;
+  hasCancelled: boolean;
+}
+
+export interface UploadActionState {
+  cancel: boolean;
+  retry: boolean;
+  cancelLabelKey: 'common.cancel';
+  retryLabelKey: 'common.retry';
 }
 
 export type UploadEvent =
   | { type: 'start'; uploadId: string; kbId: string | number; fileName?: string; progress?: number }
   | { type: 'progress'; uploadId: string; kbId?: string | number; progress: number }
+  | { type: 'cancel'; uploadId: string; kbId?: string | number }
+  | { type: 'retry'; uploadId: string; kbId?: string | number }
   | { type: 'complete'; uploadId: string; kbId?: string | number; fileName?: string; progress?: number; status?: UploadTaskStatus; error?: string };
 
 export function findUploadTargetPage<T extends { id: string }>(items: readonly T[], id: string, pageSize = 12): number | null {
@@ -29,6 +39,7 @@ export function findUploadTargetPage<T extends { id: string }>(items: readonly T
 }
 
 export function clampUploadProgress(value: number): number {
+  if (!Number.isFinite(value)) return 0;
   return Math.min(100, Math.max(0, Math.round(value)));
 }
 
@@ -38,6 +49,38 @@ export function upsertUploadTask(tasks: readonly UploadTaskState[], task: Upload
 
 export function patchUploadTask(tasks: readonly UploadTaskState[], uploadId: string, patch: Partial<UploadTaskState>): UploadTaskState[] {
   return tasks.map((task) => task.uploadId === uploadId ? { ...task, ...patch, progress: patch.progress === undefined ? task.progress : clampUploadProgress(patch.progress) } : task);
+}
+
+export function cancelUploadTask(tasks: readonly UploadTaskState[], uploadId: string): UploadTaskState[] {
+  const task = tasks.find((item) => item.uploadId === uploadId);
+  if (!task || task.status !== 'uploading') return [...tasks];
+  return patchUploadTask(tasks, uploadId, { status: 'cancelled' });
+}
+
+export function retryUploadTask(tasks: readonly UploadTaskState[], uploadId: string): UploadTaskState[] {
+  const task = tasks.find((item) => item.uploadId === uploadId);
+  if (!task || (task.status !== 'error' && task.status !== 'cancelled')) return [...tasks];
+  return tasks.map((item) => {
+    if (item.uploadId !== uploadId) return item;
+    const next = { ...item, status: 'uploading' as const, progress: 0 };
+    delete next.error;
+    return next;
+  });
+}
+
+/** The page supplies these keys to the shared translator; never hard-code UI copy here. */
+export function getUploadAction(status: UploadTaskStatus): UploadActionState {
+  return {
+    cancel: status === 'uploading',
+    retry: status === 'error' || status === 'cancelled',
+    cancelLabelKey: 'common.cancel',
+    retryLabelKey: 'common.retry',
+  };
+}
+
+/** Native buttons already handle these keys; custom upload affordances can use this guard. */
+export function isUploadActionKey(key: string): boolean {
+  return key === 'Enter' || key === ' ' || key === 'Spacebar';
 }
 
 /**
@@ -60,16 +103,18 @@ export function applyUploadTaskEvent(tasks: readonly UploadTaskState[], event: U
 
   const existing = tasks.some((task) => task.uploadId === event.uploadId);
   if (existing) {
-    return patchUploadTask(tasks, event.uploadId, event.type === 'progress'
-      ? { progress: event.progress }
-      : {
-          status: event.status ?? 'success',
-          progress: typeof event.progress === 'number' ? event.progress : 100,
-          error: event.error,
-        });
+    if (event.type === 'cancel') return cancelUploadTask(tasks, event.uploadId);
+    if (event.type === 'retry') return retryUploadTask(tasks, event.uploadId);
+    if (event.type === 'progress') return patchUploadTask(tasks, event.uploadId, { progress: event.progress });
+    return patchUploadTask(tasks, event.uploadId, {
+      status: event.status ?? 'success',
+      progress: typeof event.progress === 'number' ? event.progress : 100,
+      error: event.error,
+    });
   }
 
   if (event.kbId === undefined || event.kbId === null || event.kbId === '') return [...tasks];
+  if (event.type !== 'progress' && event.type !== 'complete') return [...tasks];
   return upsertUploadTask(tasks, {
     uploadId: event.uploadId,
     kbId: String(event.kbId),
@@ -90,5 +135,6 @@ export function summarizeUploadTasks(tasks: readonly UploadTaskState[], getName:
     completed: items.filter((item) => item.status !== 'uploading').length,
     progress: clampUploadProgress(items.reduce((sum, item) => sum + item.progress, 0) / items.length),
     hasError: items.some((item) => item.status === 'error'),
+    hasCancelled: items.some((item) => item.status === 'cancelled'),
   })).sort((left, right) => left.kbName.localeCompare(right.kbName));
 }
