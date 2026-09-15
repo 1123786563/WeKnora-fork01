@@ -1015,11 +1015,14 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                           <span style={{ position: 'absolute', right: '10px', top: '8px', color: 'rgba(23, 26, 29, 0.4)' }}><IconSearch /></span>
                         </div>
                       </div>
-                      <div className="mb-[16px] flex max-h-[320px] min-h-[120px] flex-col overflow-y-auto rounded-[10px] border border-[#e7e7ea] bg-surface">
+                      <div className="mb-[16px] flex max-h-[320px] min-h-[143px] flex-col overflow-y-auto rounded-[10px] border border-[#e7e7ea] bg-surface">
                         {searchLoading ? (
                           <div className={ORG_EMPTY_INLINE} style={{ textAlign: 'center' }}>{t(locale, 'common.loading')}</div>
                         ) : searchItems.length === 0 ? (
-                          <div className={ORG_EMPTY_INLINE} style={{ textAlign: 'center' }}>{t(locale, searchQuery ? 'organization.join.noSearchResult' : 'organization.join.noSearchableSpaces')}</div>
+                          <div className="flex min-h-0 flex-col items-center justify-center gap-[4px] px-[12px] py-[18px] text-center">
+                            <div className="text-[13px] leading-[22px] text-[rgba(23,26,29,0.6)]">{t(locale, 'common.noData') === 'common.noData' ? '暂无数据' : t(locale, 'common.noData')}</div>
+                            <div className="text-[13px] leading-[22px] text-[rgba(23,26,29,0.4)]">{t(locale, searchQuery ? 'organization.join.noSearchResult' : 'organization.join.noSearchableSpaces')}</div>
+                          </div>
                         ) : searchItems.map((row) => (
                           <div key={strOf(row.id)} className="flex cursor-pointer items-center justify-between gap-[12px] border-b border-[#e7e7ea] px-[14px] py-[12px] last:border-b-0 hover:bg-[#f3f3f5]" onClick={() => { if (!searchRowFull(row)) previewSearchableOrg(row); }}>
                             <div className="flex min-w-0 flex-1 items-center gap-[10px]">
@@ -1042,21 +1045,21 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                 </>
               )}
             </div>
-            <div className="flex shrink-0 justify-end gap-[12px] border-t border-[#e7e7ea] px-[24px] pt-[12px] pb-[24px]">
+            <div className="flex shrink-0 justify-end gap-[12px] border-t border-[#e7e7ea] px-[24px] pt-[16px] pb-[20px]">
               {joinPreview ? (
                 <>
-                  <button type="button" className={ORG_BTN_NEUTRAL + ' px-[15px]'} onClick={() => { setJoinPreview(null); if (!joinCode) setJoinStep('search'); }}>{!joinCode ? t(locale, 'organization.join.backToSearch') : t(locale, 'common.cancel')}</button>
+                  <button type="button" className={ORG_BTN_NEUTRAL + ' !px-[15px]'} onClick={() => { setJoinPreview(null); if (!joinCode) setJoinStep('search'); }}>{!joinCode ? t(locale, 'organization.join.backToSearch') : t(locale, 'common.cancel')}</button>
                   {!previewIsAlreadyMember ? (
-                    <button type="button" className={ORG_BTN_PRIMARY + ' px-[15px]'} disabled={joining} onClick={() => void confirmJoin()}>{previewJoinMode === 'request' ? t(locale, 'organization.invite.submitRequest') : t(locale, 'organization.invite.primaryJoin')}</button>
+                    <button type="button" className={ORG_BTN_PRIMARY + ' !px-[15px]'} disabled={joining} onClick={() => void confirmJoin()}>{previewJoinMode === 'request' ? t(locale, 'organization.invite.submitRequest') : t(locale, 'organization.invite.primaryJoin')}</button>
                   ) : null}
                 </>
               ) : joinStep === 'invite' ? (
                 <>
-                  <button type="button" className={ORG_BTN_NEUTRAL + ' px-[15px]'} onClick={closeJoin}>{t(locale, 'common.cancel')}</button>
-                  <button type="button" className={ORG_BTN_PRIMARY + ' px-[15px]'} disabled={joinPreviewLoading} onClick={() => void doPreviewFromInput()}>{t(locale, 'organization.invite.previewAction')}</button>
+                  <button type="button" className={ORG_BTN_NEUTRAL + ' !px-[15px]'} onClick={closeJoin}>{t(locale, 'common.cancel')}</button>
+                  <button type="button" className={ORG_BTN_PRIMARY + ' !px-[15px]'} disabled={joinPreviewLoading} onClick={() => void doPreviewFromInput()}>{t(locale, 'organization.invite.previewAction')}</button>
                 </>
               ) : (
-                <button type="button" className={ORG_BTN_NEUTRAL + ' px-[15px]'} onClick={closeJoin}>{t(locale, 'common.cancel')}</button>
+                <button type="button" className={ORG_BTN_NEUTRAL + ' !px-[15px]'} onClick={closeJoin}>{t(locale, 'common.cancel')}</button>
               )}
             </div>
           </div>
