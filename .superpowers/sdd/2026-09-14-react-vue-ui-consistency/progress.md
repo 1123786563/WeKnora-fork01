@@ -620,3 +620,4 @@ N014/N015 expanded settings controls (2026-09-15): system settings, preferences,
 - R308 跨包回归（2026-09-15）：Shared 469/469、Mobile 190/190、Desktop renderer 2/2、Embed 7/7 全部通过，失败/取消/跳过均为 0；证据：`evidence/vue-react-parity/2026-09-15-r308-cross-package-regression.md`；原生编译/启动与受保护后端业务链仍待补齐。
 - R309 侧栏 scope 控件去重（2026-09-15）：PlatformShell 移除与知识库/组织页面 rail 重复的 scope 子菜单，保留页面筛选能力与主导航/会话区；PlatformShell 聚焦 12/12、Desktop 2/2、Web 911/911 通过。证据：`evidence/vue-react-parity/2026-09-15-r309-shell-scope-dedup.md`；双端像素、响应式及 native 仍待补齐。
 - R310 会话区域标题语义对齐（2026-09-15）：PlatformShell 会话区移除额外可见“我的对话”标题，保留 aria-label、会话日期/行内容和既有键盘/租户行为；Shell/配置聚焦 10/10、diff check 通过。证据：`evidence/vue-react-parity/2026-09-15-r310-shell-session-heading.md`；双端视觉、响应式及 native 仍待补齐。
+- R311 Web 全量回归（2026-09-15）：PlatformShell 会话区语义调整后 `pnpm test:web` 911/911，失败/取消/跳过均为 0。证据：`evidence/vue-react-parity/2026-09-15-r311-web-regression.md`；双端视觉、响应式及 native 仍待补齐。
