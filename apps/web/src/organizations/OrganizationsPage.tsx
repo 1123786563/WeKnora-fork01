@@ -76,6 +76,10 @@ function errorText(error: unknown, fallback: string): string { return error inst
 function strOf(value: unknown): string { return typeof value === 'string' ? value : ''; }
 function numOf(value: unknown): number { return typeof value === 'number' ? value : 0; }
 function boolOf(value: unknown): boolean { return value === true; }
+function shortId(value: unknown): string {
+  const id = strOf(value);
+  return id.length > 12 ? id.slice(0, 8) + '…' + id.slice(-4) : id;
+}
 
 type SpaceSelection = 'all' | 'created' | 'joined';
 type OrgSectionKey = 'created' | 'joined';
@@ -478,6 +482,25 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
     finally { setJoining(false); }
   }
 
+  function viewOrganizationFromPreview() {
+    if (!joinPreview || !strOf(joinPreview.id)) return;
+    const org = {
+      id: strOf(joinPreview.id),
+      name: strOf(joinPreview.name),
+      description: strOf(joinPreview.description),
+      avatar: strOf(joinPreview.avatar),
+      member_count: numOf(joinPreview.member_count),
+      share_count: numOf(joinPreview.share_count),
+      agent_share_count: numOf(joinPreview.agent_share_count),
+      is_owner: false,
+      my_role: 'viewer',
+    } as unknown as Organization;
+    setSettingsMode('edit'); setSettingsOrg(org); setSettingsSection('basic');
+    setFormName(org.name); setFormDescription(strOf(org.description)); setFormAvatar(strOf(org.avatar));
+    setInviteLink(''); setMembers([]); setRequests([]); setSharedResources([]); setSettingsOpen(true);
+    void loadOrganizationDetail(org.id);
+  }
+
   async function submitCreate(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!formName.trim()) return;
@@ -777,7 +800,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
 
       {/* Create / edit settings modal. */}
       {settingsOpen ? (
-        <div className={ORG_MODAL_OVERLAY} onClick={closeSettings}>
+        <div className={ORG_MODAL_OVERLAY + ' z-[2100]'} onClick={closeSettings}>
           <div className="relative box-border flex h-[85vh] w-[90vw] max-w-[1100px] flex-col overflow-hidden rounded-[12px] bg-surface shadow-[0_8px_32px_rgba(0,0,0,0.12)]" role="dialog" aria-label={t(locale, settingsMode === 'create' ? 'organization.createOrg' : 'organization.settings.editTitle')} onClick={(event) => event.stopPropagation()}>
             <button type="button" className={ORG_CLOSE_BTN} aria-label={t(locale, 'common.close')} onClick={closeSettings}><IconClose /></button>
             <div className="flex min-h-0 flex-1">
@@ -958,6 +981,9 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                       <FeatureBadge tone="stat-kb" title={t(locale, 'organization.invite.knowledgeBases')} count={numOf(joinPreview.share_count)} />
                       <FeatureBadge tone="stat-agent" title={t(locale, 'organization.invite.agents')} count={numOf(joinPreview.agent_share_count)} />
                     </div>
+                    <button type="button" className="inline-flex max-w-full items-center gap-[6px] rounded-full border-0 bg-[#f3f3f5] px-[10px] py-[4px] font-[inherit] text-[12px] text-[rgba(23,26,29,0.4)] hover:bg-accent-wash hover:text-accent" aria-label={t(locale, 'organization.join.spaceId')} onClick={() => { void copyText(strOf(joinPreview.id)).then((copied) => { if (copied) showToast('success', t(locale, 'common.copied')); }); }}>
+                      <span>{t(locale, 'organization.join.spaceId')}</span><code className="font-mono text-[11px] text-[rgba(23,26,29,0.6)]">{shortId(joinPreview.id)}</code><span aria-hidden="true">⧉</span>
+                    </button>
                   </div>
                   {previewIsAlreadyMember ? (
                     <div className="flex items-center justify-center gap-[8px] pt-[12px] pb-[4px] text-[14px] font-medium text-accent"><IconCheckCircle /><span>{t(locale, 'organization.invite.alreadyMember')}</span></div>
@@ -1051,7 +1077,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                   <button type="button" className={ORG_BTN_NEUTRAL + ' !px-[15px]'} onClick={() => { setJoinPreview(null); if (!joinCode) setJoinStep('search'); }}>{!joinCode ? t(locale, 'organization.join.backToSearch') : t(locale, 'common.cancel')}</button>
                   {!previewIsAlreadyMember ? (
                     <button type="button" className={ORG_BTN_PRIMARY + ' !px-[15px]'} disabled={joining} onClick={() => void confirmJoin()}>{previewJoinMode === 'request' ? t(locale, 'organization.invite.submitRequest') : t(locale, 'organization.invite.primaryJoin')}</button>
-                  ) : null}
+                  ) : <button type="button" className={ORG_BTN_PRIMARY + ' !px-[15px]'} onClick={viewOrganizationFromPreview}>{t(locale, 'organization.invite.viewOrganization')}</button>}
                 </>
               ) : joinStep === 'invite' ? (
                 <>
