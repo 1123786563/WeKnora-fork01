@@ -1,5 +1,83 @@
-:root { color: var(--wk-color-text, rgba(0,0,0,.9)); font-family: var(--wk-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif); font-synthesis: none; line-height: 20px; }
-.wk-button { min-height: 32px; border: 1px solid var(--wk-color-border,#dcdcdc); border-radius: var(--wk-radius-control,6px); background: var(--wk-color-surface,#fff); color: inherit; cursor: pointer; padding: 6px 12px; font: inherit; display: inline-flex; align-items: center; justify-content: center; gap: 6px; transition: all .15s cubic-bezier(.2,0,0,1); }.wk-button-size-small { min-height: 24px; padding: 2px 8px; font-size: 12px; }.wk-button-size-large { min-height: 40px; padding: 8px 16px; }.wk-button-primary { background: var(--wk-color-brand,#07c05f); border-color: var(--wk-color-brand,#07c05f); color: white; }.wk-button-text { border-color: transparent; background: transparent; }.wk-button-danger { color: var(--wk-color-error,#e34d59); }.wk-button:hover:not(:disabled) { border-color: var(--wk-color-brand,#07c05f); }.wk-button:focus-visible,.wk-input:focus-visible,.wk-close:focus-visible { outline: 2px solid color-mix(in srgb,var(--wk-color-brand,#07c05f) 28%,transparent); outline-offset: 2px; }.wk-button:disabled { cursor: not-allowed; opacity: .55; }.wk-spinner { width: 12px; height: 12px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: wk-spin .7s linear infinite; }@keyframes wk-spin { to { transform: rotate(360deg); } }
-.wk-input { box-sizing: border-box; min-height: 32px; width: 100%; border: 1px solid var(--wk-color-border,#dcdcdc); border-radius: 6px; padding: 6px 8px; font: inherit; color: inherit; background: var(--wk-color-surface,#fff); }.wk-input[aria-invalid=true] { border-color: var(--wk-color-error,#e34d59); }.wk-input:focus { z-index: 1; border-color: var(--wk-color-brand,#07c05f); box-shadow: 0 0 0 2px var(--wk-color-brand-focus,color-mix(in srgb,var(--wk-color-brand,#07c05f) 28%,transparent)); outline: none; }.wk-input[aria-invalid=true]:focus { border-color: var(--wk-color-error,#e34d59); box-shadow: 0 0 0 2px var(--wk-color-error-focus,color-mix(in srgb,var(--wk-color-error,#e34d59) 28%,transparent)); }.wk-card { border: 1px solid var(--wk-color-border,#dcdcdc); border-radius: 8px; background: var(--wk-color-surface,#fff); padding: 1rem; }.wk-status { margin: .5rem 0; color: var(--wk-color-text-secondary,#506078); }.wk-status-error { color: var(--wk-color-error,#b42318); }.wk-status-success { color: var(--wk-color-success,#137333); }
-.wk-overlay { position: fixed; inset: 0; z-index: var(--wk-overlay-dialog-z,3000); display: grid; place-items: center; background: rgba(0,0,0,.36); }.wk-dialog,.wk-sheet { position: relative; background: var(--wk-color-surface,#fff); border-radius: 12px; box-shadow: var(--wk-shadow-panel,0 6px 30px rgba(0,0,0,.12)); padding: 24px; }.wk-dialog { width: min(520px,calc(100vw - 32px)); }.wk-sheet { position: absolute; max-width: 100%; max-height: 100%; overflow: auto; }.wk-sheet-right,.wk-sheet-left { top: 0; bottom: 0; width: min(420px,calc(100vw - 24px)); }.wk-sheet-right { right: 0; }.wk-sheet-left { left: 0; }.wk-sheet-top,.wk-sheet-bottom { left: 0; right: 0; height: min(420px,calc(100vh - 24px)); }.wk-sheet-top { top: 0; }.wk-sheet-bottom { bottom: 0; }.wk-close { position: absolute; right: 12px; top: 12px; border: 0; background: transparent; cursor: pointer; font-size: 20px; }
-.wk-menu { position: relative; display: inline-block; }.wk-menu-popup { position: absolute; z-index: 99; min-width: 148px; padding: 4px; margin-top: 4px; border: .5px solid var(--wk-color-border,#dcdcdc); border-radius: 10px; background: var(--wk-color-surface,#fff); box-shadow: var(--wk-shadow-popup,0 0 0 .5px rgba(0,0,0,.03),0 2px 4px rgba(0,0,0,.04),0 8px 24px rgba(0,0,0,.1)); }.wk-menu-item { padding: 8px 12px; border-radius: 6px; font-size: 14px; line-height: 20px; cursor: pointer; }.wk-menu-item:hover { background: var(--wk-color-page,#f3f3f3); }.wk-select { position: relative; display: inline-block; }.wk-select > button { min-width: 148px; min-height: 32px; text-align: left; }.wk-tabs-list { display: flex; gap: 4px; border-bottom: 1px solid var(--wk-color-border,#dcdcdc); }.wk-tab-trigger { border: 0; border-bottom: 2px solid transparent; background: transparent; padding: 8px 12px; cursor: pointer; }.wk-tab-trigger[aria-selected=true] { border-color: var(--wk-color-brand,#07c05f); color: var(--wk-color-brand,#07c05f); }.wk-alert { border-radius: 6px; padding: 8px 12px; background: var(--wk-color-page,#f3f3f3); }.wk-alert-error { color: var(--wk-color-error,#e34d59); background: #fdecee; }.wk-alert-success { color: var(--wk-color-success,#00a870); }
+:root {
+  /* Vue useFont writes these app-level variables at runtime. */
+  --wk-font-sans: var(--app-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif);
+  --wk-font-mono: var(--app-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  /* Compatibility aliases for legacy wk-* consumers. The fallbacks keep the
+     standalone UI package stable when an app does not import theme.css. */
+  --wk-text: var(--color-ink, #172033);
+  --wk-muted: var(--color-muted, #66758b);
+  --wk-surface: var(--color-surface, #ffffff);
+  --wk-canvas: var(--color-canvas, #f7f9fc);
+  --wk-border: var(--color-line, #dce3ed);
+  --wk-primary: var(--color-primary, #2e6de6);
+  --wk-danger: var(--color-danger, #b42318);
+  --wk-focus-ring: 3px solid rgb(46 109 230 / 35%);
+  --wk-overlay: var(--color-overlay, rgb(0 0 0 / 50%));
+  --wk-shadow-panel: var(--shadow-panel, 0 20px 60px rgb(23 32 51 / 20%));
+  --wk-shadow-popover: var(--shadow-popover, 0 8px 24px rgb(15 23 42 / 12%));
+  color: var(--wk-text);
+  background: var(--wk-canvas);
+  font-family: var(--font-sans, var(--wk-font-sans));
+  font-synthesis: none;
+  line-height: 1.5;
+}
+
+.wk-button {
+  border: 1px solid var(--color-line-strong, #b8c5d6);
+  border-radius: var(--radius-control, 6px);
+  background: var(--color-surface, #ffffff);
+  color: var(--color-ink, #172033);
+  cursor: pointer;
+  padding: 0.55rem 0.8rem;
+}
+
+.wk-button:hover:not(:disabled) { border-color: var(--color-primary, #2e6de6); }
+.wk-button:focus-visible, .wk-dialog-close:focus-visible { outline: 2px solid color-mix(in srgb, var(--color-accent, #07c05f) 35%, transparent); outline-offset: 2px; }
+.wk-button:disabled { cursor: not-allowed; opacity: .6; }
+.wk-button-loading { display: inline-block; width: .85em; height: .85em; margin-right: .35rem; border: 2px solid currentColor; border-right-color: transparent; border-radius: 999px; animation: wk-spin .7s linear infinite; }
+@keyframes wk-spin { to { transform: rotate(360deg); } }
+.wk-card { border: 1px solid var(--color-line, #dce3ed); border-radius: var(--radius-card, 8px); background: var(--color-surface, #ffffff); padding: 1rem; }
+.wk-switch { position: relative; display: inline-flex; align-items: center; flex-shrink: 0; width: 40px; height: 20px; padding: 0; border: none; border-radius: var(--radius-pill, 999px); background: var(--color-track-off, rgb(120 135 155 / 35%)); cursor: pointer; transition: background-color .2s ease; }
+.wk-switch[aria-checked='true'] { background: var(--color-accent, #07c05f); }
+.wk-switch .wk-switch-knob { pointer-events: none; display: block; width: 16px; height: 16px; margin-left: 2px; border-radius: var(--radius-pill, 999px); background: var(--color-surface, #ffffff); transition: transform .2s ease; }
+.wk-switch[aria-checked='true'] .wk-switch-knob { transform: translateX(20px); }
+.wk-switch:disabled { cursor: not-allowed; }
+.wk-switch[aria-checked='true']:disabled { background: var(--color-track-on-disabled, #8ce0af); }
+.wk-switch[aria-checked='false']:disabled { background: var(--color-track-off, rgb(120 135 155 / 35%)); }
+.wk-switch:focus-visible { outline: 2px solid rgb(7 192 95 / 20%); outline-offset: 2px; }
+.wk-status { margin: 0.5rem 0; color: var(--color-muted-strong, #506078); }
+.wk-status-error { color: var(--color-danger, #b42318); }
+.wk-status-success { color: var(--color-success-text, #137333); }
+.wk-status-warning { color: var(--color-warning-text, #9a6700); }
+.wk-dialog-backdrop { position: fixed; inset: 0; display: grid; place-items: center; padding: 1rem; background: var(--wk-overlay); z-index: var(--wk-overlay-dialog-z, 3000); }
+.wk-dialog { box-sizing: border-box; width: min(560px, 100%); max-height: min(720px, calc(100vh - 2rem)); overflow: auto; border: 1px solid var(--color-line, #dce3ed); border-radius: var(--radius-dialog, 10px); background: var(--color-surface, #fff); box-shadow: var(--wk-shadow-panel); padding: 1.25rem; }
+.wk-dialog-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.wk-dialog-header h2 { margin: 0; font-size: 1.15rem; }
+.wk-dialog-close { border: 0; border-radius: 4px; background: transparent; color: var(--color-muted, #66758b); cursor: pointer; font-size: 1.25rem; line-height: 1; padding: .2rem .35rem; }
+.wk-dialog-body { margin-top: 1rem; }
+/* Vue KnowledgeBaseEditorModal is a wide two-pane settings surface rather
+   than the compact 560px form used by simple confirmations. */
+.wk-kb-editor-dialog { width: min(960px, 100%); max-height: min(760px, calc(100vh - 2rem)); }
+
+/* Vue UploadConfirmDialog parity: wide three-column upload configuration surface. */
+.wk-upload-confirm-dialog { position: relative; display: flex; width: min(92vw, 1160px); height: min(85vh, 750px); max-height: 750px; flex-direction: column; overflow: hidden; border: 0; border-radius: 12px; padding: 0; background: var(--color-surface, #fff); box-shadow: 0 8px 32px rgb(0 0 0 / 12%); }
+.wk-upload-confirm-dialog .wk-dialog-header { position: absolute; top: 0; right: 0; z-index: 10; box-sizing: border-box; padding: 20px; border: 0; pointer-events: none; }
+.wk-upload-confirm-dialog .wk-dialog-header h2 { display: none; }
+.wk-upload-confirm-dialog .wk-dialog-close { pointer-events: auto; display: flex; width: 32px; height: 32px; align-items: center; justify-content: center; box-sizing: border-box; padding: 0; border-radius: 6px; background: var(--color-surface-muted, #f2f4f7); font-size: 20px; line-height: 1; }
+.wk-upload-confirm-dialog .wk-dialog-body { display: flex; min-height: 0; flex: 1; flex-direction: column; margin-top: 0; overflow: hidden; padding: 0; }
+.wk-upload-confirm-layout { display: flex; min-height: 0; flex: 1; overflow: hidden; }
+.wk-upload-confirm-files-column { display: flex; width: 220px; flex-shrink: 0; flex-direction: column; box-sizing: border-box; overflow: hidden; border-right: 1px solid var(--color-line, #dce3ed); background: var(--color-surface-muted, #f7f8fa); }
+.wk-upload-confirm-files-header { display: flex; min-height: 56px; flex-shrink: 0; box-sizing: border-box; flex-direction: column; align-items: stretch; gap: 10px; padding: 12px; border-bottom: 1px solid var(--color-line, #dce3ed); }
+.wk-upload-confirm-files-header-row { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 8px; }
+.wk-upload-confirm-files-header-actions { display: inline-flex; min-width: 0; align-items: center; gap: 8px; }
+.wk-upload-confirm-files-column .wk-upload-confirm-files { min-height: 0; flex: 1; max-height: none; overflow: auto; }
+.wk-upload-confirm-settings-column { display: flex; min-width: 0; min-height: 0; flex: 1; overflow: hidden; }
+.wk-upload-confirm-section-nav { width: 216px; flex-shrink: 0; overflow-y: auto; box-sizing: border-box; padding: 10px 6px 12px; border-right: 1px solid var(--color-line, #dce3ed); background: var(--color-surface-muted, #f7f8fa); }
+.wk-upload-confirm-section-nav .wk-upload-section-nav { display: grid; gap: 2px; margin: 0; }
+.wk-upload-confirm-config-panel { min-width: 0; min-height: 0; flex: 1; overflow: auto; padding: 22px 32px 28px; }
+.wk-upload-confirm-footer { flex-shrink: 0; margin: 0; padding: 14px 20px; border-top: 1px solid var(--color-line, #dce3ed); }
+@media (max-width: 800px) { .wk-upload-confirm-dialog { width: 92vw; height: 85vh; } .wk-upload-confirm-layout { flex-direction: column; overflow: auto; } .wk-upload-confirm-files-column, .wk-upload-confirm-section-nav { width: auto; border-right: 0; border-bottom: 1px solid var(--color-line, #dce3ed); } .wk-upload-confirm-files-column { max-height: 140px; } .wk-upload-confirm-settings-column { min-height: 0; flex-direction: column; } .wk-upload-confirm-section-nav { flex: none; overflow-x: auto; overflow-y: hidden; padding: 8px; } .wk-upload-confirm-section-nav .wk-upload-section-nav { display: flex; flex-wrap: nowrap; gap: 4px; overflow-x: auto; } .wk-upload-confirm-section-nav .wk-upload-nav-item { width: auto; min-width: max-content; margin-bottom: 0; white-space: nowrap; } .wk-upload-confirm-config-panel { padding: 16px; } }
+
+/* Sheet 滑入动画（复杂动画按约定保留 CSS，组件内以 animation 名引用） */
+@keyframes sheet-in-right { from { transform: translateX(24px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@keyframes sheet-in-left { from { transform: translateX(-24px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
