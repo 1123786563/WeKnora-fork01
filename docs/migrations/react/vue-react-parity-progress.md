@@ -3543,3 +3543,14 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Native Wails launch, OS deep-link delivery, browser handoff, and secure
   credential storage remain `blocked-env`; this commit does not claim those
   runtime gates are accepted.
+
+## 2026-09-15 Round R388 — Knowledge-base state contract slice
+
+- Integrated `531877bf` from the parallel knowledge-base review. It adds
+  Vue-shaped detail-state normalization, loading/error/permission branches,
+  and search parameter construction with focused state tests; the existing
+  canonical detail route and large page implementation remain intact.
+- The agent reported 35/35 knowledge-base focused tests. Full Web regression
+  and typecheck were re-run after integration: 1137/1137 and typecheck pass.
+- Authenticated paired visual capture, real tenant mutations, and Wails
+  feature interaction remain open; this slice is not full page acceptance.
