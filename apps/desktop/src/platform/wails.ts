@@ -1,5 +1,5 @@
 export interface WailsAppBridge {
-  GetAPIBaseURL?: () => string;
+  GetAPIBaseURL?: () => string | Promise<string>;
   GetAPILanBaseURL?: () => string;
   GetDesktopListenPublicActive?: () => boolean;
   CheckForUpdates?: () => void;
@@ -26,10 +26,10 @@ export function resolveDesktopApiBaseUrl(value: unknown = typeof window === 'und
 }
 
 /** Resolve the Go method directly so the shared renderer never boots against the WebView origin. */
-export function resolveDesktopApiBaseUrlFromBridge(app: WailsAppBridge): string {
+export async function resolveDesktopApiBaseUrlFromBridge(app: WailsAppBridge): Promise<string> {
   if (typeof app.GetAPIBaseURL !== 'function') return '';
   try {
-    return resolveDesktopApiBaseUrl(app.GetAPIBaseURL());
+    return resolveDesktopApiBaseUrl(await app.GetAPIBaseURL());
   } catch {
     return '';
   }

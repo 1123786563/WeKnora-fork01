@@ -63,7 +63,7 @@ export function createDesktopRuntimeAdapters(
   };
 }
 
-export function installDesktopRuntime(): DesktopRuntimeAdapters {
+export async function installDesktopRuntime(): Promise<DesktopRuntimeAdapters> {
   const browserWindow = typeof window === 'undefined' ? undefined : window as Window & {
     runtime?: DesktopWindowRuntime;
     go?: { main?: { App?: WailsAppBridge } };
@@ -75,7 +75,7 @@ export function installDesktopRuntime(): DesktopRuntimeAdapters {
   const fileBridge = hasDesktopFileBridge(app) ? app : {};
   applyDesktopWindowDefaults(runtime);
   if (browserWindow) {
-    const apiBaseUrl = resolveDesktopApiBaseUrlFromBridge(app);
+    const apiBaseUrl = await resolveDesktopApiBaseUrlFromBridge(app);
     if (apiBaseUrl) browserWindow.__WEKNORA_API_BASE__ = apiBaseUrl;
     installDesktopExternalUrlBridge(browserWindow, runtime);
   }

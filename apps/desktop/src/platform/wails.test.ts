@@ -11,10 +11,11 @@ test('accepts only injected HTTP(S) desktop API roots', () => {
   assert.equal(resolveDesktopApiBaseUrl(''), '');
 });
 
-test('resolves the Wails API bridge before the shared renderer imports', () => {
-  assert.equal(resolveDesktopApiBaseUrlFromBridge({ GetAPIBaseURL: () => 'http://127.0.0.1:4321/api/v1/' }), 'http://127.0.0.1:4321/api/v1');
-  assert.equal(resolveDesktopApiBaseUrlFromBridge({ GetAPIBaseURL: () => 'javascript:alert(1)' }), '');
-  assert.equal(resolveDesktopApiBaseUrlFromBridge({}), '');
+test('resolves the async Wails API bridge before the shared renderer imports', async () => {
+  assert.equal(await resolveDesktopApiBaseUrlFromBridge({ GetAPIBaseURL: () => Promise.resolve('http://127.0.0.1:4321/api/v1/') }), 'http://127.0.0.1:4321/api/v1');
+  assert.equal(await resolveDesktopApiBaseUrlFromBridge({ GetAPIBaseURL: () => Promise.resolve('javascript:alert(1)') }), '');
+  assert.equal(await resolveDesktopApiBaseUrlFromBridge({ GetAPIBaseURL: () => Promise.reject(new Error('bridge unavailable')) }), '');
+  assert.equal(await resolveDesktopApiBaseUrlFromBridge({}), '');
 });
 
 test('keeps Wails bridge state explicit and maps old deep links', () => {
