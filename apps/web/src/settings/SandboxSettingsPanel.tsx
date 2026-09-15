@@ -1297,32 +1297,32 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
             <div className="wk-form-grid grid grid-cols-2 gap-4 max-[720px]:grid-cols-1">
               {isRemote ? (<>
                 <label>{t('settings.sandbox.httpTimeout')}
-                  <input type="number" min={0} placeholder="30" value={numberValue(form.backend === 'cube' ? form.cube.http_timeout_sec : form.e2b.http_timeout_sec)}
-                    onChange={(event) => { const value = parseNumber(event.target.value); if (form.backend === 'cube') setCube({ http_timeout_sec: value }); else setE2B({ http_timeout_sec: value }); }} />
+                  <NumberInput min={0} max={Number.MAX_SAFE_INTEGER} placeholder="30" value={numberInputValue(form.backend === 'cube' ? form.cube.http_timeout_sec : form.e2b.http_timeout_sec)}
+                    onValueChange={(value) => { const next = value === '' ? undefined : value; if (form.backend === 'cube') setCube({ http_timeout_sec: next }); else setE2B({ http_timeout_sec: next }); }} />
                 </label>
                 <label>{t('settings.sandbox.sandboxTtl')}
-                  <input type="number" min={0} placeholder={form.backend === 'cube' ? '1800' : '300'} value={numberValue(form.backend === 'cube' ? form.cube.cube_sandbox_ttl_seconds : form.e2b.e2b_sandbox_ttl_seconds)}
-                    onChange={(event) => { const value = parseNumber(event.target.value); if (form.backend === 'cube') setCube({ cube_sandbox_ttl_seconds: value }); else setE2B({ e2b_sandbox_ttl_seconds: value }); }} />
+                  <NumberInput min={0} max={Number.MAX_SAFE_INTEGER} placeholder={form.backend === 'cube' ? '1800' : '300'} value={numberInputValue(form.backend === 'cube' ? form.cube.cube_sandbox_ttl_seconds : form.e2b.e2b_sandbox_ttl_seconds)}
+                    onValueChange={(value) => { const next = value === '' ? undefined : value; if (form.backend === 'cube') setCube({ cube_sandbox_ttl_seconds: next }); else setE2B({ e2b_sandbox_ttl_seconds: next }); }} />
                 </label>
               </>) : (<>
                 <label>{t('settings.sandbox.dockerIdleTtl')}
-                  <input type="number" min={0} placeholder="1800" value={numberValue(form.docker.idle_ttl_seconds)} onChange={(event) => setDocker({ idle_ttl_seconds: parseNumber(event.target.value) })} />
+                  <NumberInput min={0} max={Number.MAX_SAFE_INTEGER} placeholder="1800" value={numberInputValue(form.docker.idle_ttl_seconds)} onValueChange={(value) => setDocker({ idle_ttl_seconds: value === '' ? undefined : value })} />
                 </label>
                 <label>{t('settings.sandbox.dockerCpuLimit')}
-                  <input type="number" min={0} step={0.5} placeholder="2" value={numberValue(form.docker.cpu_limit)} onChange={(event) => setDocker({ cpu_limit: parseNumber(event.target.value) })} />
+                  <NumberInput min={0} max={Number.MAX_SAFE_INTEGER} step={0.5} placeholder="2" value={numberInputValue(form.docker.cpu_limit)} onValueChange={(value) => setDocker({ cpu_limit: value === '' ? undefined : value })} />
                 </label>
                 <label>{t('settings.sandbox.dockerMemoryLimit')}
-                  <input type="number" min={0} placeholder="2048" value={numberValue(form.docker.memory_limit_mb)} onChange={(event) => setDocker({ memory_limit_mb: parseNumber(event.target.value) })} />
+                  <NumberInput min={0} max={Number.MAX_SAFE_INTEGER} placeholder="2048" value={numberInputValue(form.docker.memory_limit_mb)} onValueChange={(value) => setDocker({ memory_limit_mb: value === '' ? undefined : value })} />
                 </label>
                 <label>{t('settings.sandbox.dockerPidsLimit')}
-                  <input type="number" min={0} placeholder="512" value={numberValue(form.docker.pids_limit)} onChange={(event) => setDocker({ pids_limit: parseNumber(event.target.value) })} />
+                  <NumberInput min={0} max={Number.MAX_SAFE_INTEGER} placeholder="512" value={numberInputValue(form.docker.pids_limit)} onValueChange={(value) => setDocker({ pids_limit: value === '' ? undefined : value })} />
                 </label>
               </>)}
               <label>{t('settings.sandbox.defaultTimeout')}
-                <input type="number" min={0} placeholder="60" value={numberValue(form.defaultTimeoutSec)} onChange={(event) => setNumberField('defaultTimeoutSec', event.target.value)} />
+                <NumberInput min={0} max={Number.MAX_SAFE_INTEGER} placeholder="60" value={numberInputValue(form.defaultTimeoutSec)} onValueChange={(value) => setNumberField('defaultTimeoutSec', value === '' ? '' : String(value))} />
               </label>
               <label>{t('settings.sandbox.terminalIdleDisconnect')}
-                <input type="number" min={0} max={86400} placeholder="900" value={numberValue(form.terminalIdleDisconnectSec)} onChange={(event) => setNumberField('terminalIdleDisconnectSec', event.target.value)} />
+                <NumberInput min={0} max={86400} placeholder="900" value={numberInputValue(form.terminalIdleDisconnectSec)} onValueChange={(value) => setNumberField('terminalIdleDisconnectSec', value === '' ? '' : String(value))} />
               </label>
             </div>
             <p className="wk-muted text-muted">{t('settings.sandbox.httpTimeoutHelp')}</p>
