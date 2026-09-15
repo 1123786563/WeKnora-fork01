@@ -352,3 +352,5 @@
 - Android 文档列表/详情/预览状态门禁通过：真实 API 临时上传文档后，设备显示 1 项 processing，详情页呈现元数据与预览/下载操作；处理中预览显示本地化不可预览提示。临时文档随后删除。证据 `evidence/vue-react-parity/2026-09-15-r114-android-document-detail-preview.md`。
 
 N033 desktop build update (2026-09-15): `apps/desktop/vite.config.ts` now mirrors the Web subpath aliases for shared `@weknora/views/*` modules. This fixes production Vite resolution of `@weknora/views/chat/mermaid` (previously resolved beneath `src/index.ts`). Desktop tests 2/2, typecheck, and Vite production build now pass; Wails per-feature interaction evidence remains open.
+
+Verification update (2026-09-15): after the desktop alias fix, Web regression passes 895/895, `pnpm typecheck:web` passes, and `pnpm --dir apps/web run build` completes successfully. The earlier `pnpm --dir apps/web run typecheck` command is invalid because the package exposes no such script; the workspace `typecheck:web` script is authoritative.
