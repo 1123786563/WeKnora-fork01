@@ -3009,7 +3009,7 @@ export function KnowledgeDocumentsPage({
                 ) : null}
               </div>
             </div>
-            <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
+            {(state.status === "loading" || items.length > 0) ? <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
               <label className="wk-select-all inline-flex items-center gap-1 whitespace-nowrap">
                 <Checkbox
                   type="checkbox"
@@ -3079,7 +3079,7 @@ export function KnowledgeDocumentsPage({
               >
                 {t("knowledgeBase.documents.cancelParse")}
               </Button>
-            </div>
+            </div> : null}
             {moving && canContribute ? (
               <div
                 className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"
