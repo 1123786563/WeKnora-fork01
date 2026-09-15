@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import type { KnowledgeDocument, KnowledgeTag, ModelConfiguration, ParserEngineInfo, WeKnoraClient } from "@weknora/api-client";
 import {
   processingStatusLabel,
@@ -149,6 +149,46 @@ function DocumentTagChips({ tags }: { tags: ReturnType<typeof documentTags> }) {
   );
 }
 
+function formatDocumentTime(value: unknown): string {
+  if (typeof value !== "string" || !value) return "--";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "--";
+  const yy = String(date.getFullYear()).slice(2);
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hour = String(date.getHours()).padStart(2, "0");
+  const minute = String(date.getMinutes()).padStart(2, "0");
+  return `${yy}-${month}-${day} ${hour}:${minute}`;
+}
+
+function documentTypeLabel(document: KnowledgeDocument): string {
+  if (document.file_type) return document.file_type.toUpperCase();
+  if (document.source === "url") return "URL";
+  if (document.source === "manual") return "MANUAL";
+  return "--";
+}
+
+function DocumentCardHoverPopover({ document, position, t }: {
+  document: KnowledgeDocument;
+  position: { x: number; y: number };
+  t: (key: string, values?: Record<string, string | number>) => string;
+}) {
+  const parseStatus = document.parse_status;
+  const statusKey = parseStatus === "failed" ? "knowledgeBase.parsingFailed" : undefined;
+  return <div className="knowledge-card-hover-popover fixed z-[250] w-[360px] max-w-[calc(100vw-20px)] rounded-[8px] border border-line-soft bg-surface px-4 py-3 text-[12px] shadow-[0_8px_24px_rgb(16_24_40/14%)]" style={{ left: position.x, top: position.y }} role="tooltip">
+    <div className="mb-2 truncate text-[14px] font-semibold text-primary-deep" title={displayName(document)}>{displayName(document)}</div>
+    {statusKey ? <div className={`mb-2 ${parseStatus === "failed" ? "text-danger" : "text-warning"}`}>{t(statusKey)}</div> : typeof document.description === "string" && document.description ? <div className="mb-2 line-clamp-3 whitespace-pre-wrap break-words text-muted">{document.description}</div> : null}
+    {typeof document.source === "string" && document.source ? <div className="mb-2 flex min-w-0 items-center gap-1 truncate text-muted" title={document.source}><LinkIcon size={12} /> <span className="truncate">{document.source}</span></div> : null}
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted">
+      {document.created_at ? <span>{t("knowledgeBase.createdAt")}：{formatDocumentTime(document.created_at)}</span> : null}
+      {document.updated_at ? <span>{t("knowledgeBase.updatedAt")}：{formatDocumentTime(document.updated_at)}</span> : null}
+      <span>{documentTypeLabel(document)}</span>
+    </div>
+    {documentTags(document).length > 0 ? <div className="mt-2 flex flex-wrap gap-1">{documentTags(document).map((tag) => <span key={tag.id} className="rounded-full border border-line-soft px-1.5 py-0.5 text-[11px] text-muted">{tag.name}</span>)}</div> : null}
+    <div className="mt-2 text-[11px] text-muted">{t("knowledgeBase.clickToViewFull")}</div>
+  </div>;
+}
+
 type DocumentViewMode = "grid" | "list";
 
 export function DocumentCardGrid({
@@ -176,6 +216,23 @@ export function DocumentCardGrid({
   onReparse: (document: KnowledgeDocument) => void;
   onCancelParse: (document: KnowledgeDocument) => void;
 }) {
+  const [hovered, setHovered] = useState<{ document: KnowledgeDocument; position: { x: number; y: number } } | null>(null);
+  const hoverTimer = useRef<number | null>(null);
+  const clearHover = () => {
+    if (hoverTimer.current !== null) window.clearTimeout(hoverTimer.current);
+    hoverTimer.current = null;
+    setHovered(null);
+  };
+  const scheduleHover = (event: ReactMouseEvent<HTMLElement>, document: KnowledgeDocument) => {
+    if (hoverTimer.current !== null) window.clearTimeout(hoverTimer.current);
+    const rect = event.currentTarget.getBoundingClientRect();
+    hoverTimer.current = window.setTimeout(() => {
+      const width = Math.min(360, window.innerWidth - 20);
+      const x = rect.right + 12 + width <= window.innerWidth - 10 ? rect.right + 12 : Math.max(10, rect.left - width - 12);
+      const y = Math.max(10, Math.min(rect.top, window.innerHeight - 310));
+      setHovered({ document, position: { x, y } });
+    }, 300);
+  };
   return <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-3" data-document-view="grid">
     {folders.map((folder) => <button key={`folder-${folder.path}`} type="button" className="min-w-[240px] h-[136px] box-border flex flex-col overflow-hidden rounded-lg border border-line-soft bg-surface p-0 text-left shadow-[0_1px_2px_rgb(0_0_0/6%)] transition-[border-color,box-shadow,background-color] duration-200 hover:border-primary/40 hover:bg-surface-wash hover:shadow-[0_4px_14px_rgb(0_0_0/7%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30" title={folder.path} onClick={() => onOpenFolder(folder.path)}>
       <span className="flex min-h-0 flex-1 flex-col justify-start gap-2 overflow-hidden px-[14px] pb-[10px] pt-3">
@@ -187,7 +244,7 @@ export function DocumentCardGrid({
     {items.map((document) => {
       const status = documentStatus(document, t);
       const actions = documentRowActions(document.parse_status);
-      return <article key={document.id} className="flex h-[136px] min-w-[240px] flex-col overflow-hidden rounded-[8px] border border-line-soft bg-surface p-0 shadow-[0_1px_2px_rgb(0_0_0/6%)] transition-[border-color,box-shadow,background-color] duration-200 hover:border-primary/40 hover:shadow-[0_4px_14px_rgb(0_0_0/7%)]">
+      return <article key={document.id} className="flex h-[136px] min-w-[240px] flex-col overflow-hidden rounded-[8px] border border-line-soft bg-surface p-0 shadow-[0_1px_2px_rgb(0_0_0/6%)] transition-[border-color,box-shadow,background-color] duration-200 hover:border-primary/40 hover:shadow-[0_4px_14px_rgb(0_0_0/7%)]" onMouseEnter={(event) => scheduleHover(event, document)} onMouseLeave={clearHover}>
         <div className="flex min-h-0 flex-1 flex-col px-[14px] pb-2 pt-[10px]">
           <div className="mb-[6px] flex h-6 shrink-0 items-start gap-0">
             <Checkbox type="checkbox" checked={selected.has(document.id)} onChange={(event) => onToggle(document.id, event.target.checked)} aria-label={t("knowledgeBase.documents.select", { name: displayName(document) })} />
@@ -209,6 +266,7 @@ export function DocumentCardGrid({
         </div>
       </article>;
     })}
+    {hovered ? <DocumentCardHoverPopover document={hovered.document} position={hovered.position} t={t} /> : null}
   </div>;
 }
 
