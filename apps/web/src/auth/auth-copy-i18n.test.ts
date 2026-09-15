@@ -16,6 +16,8 @@ const keys = [
   'auth.workspaceOnboarding.workspaceFallback',
   'auth.join.title',
   'auth.join.checkingInvitation',
+  'auth.join.invitationMissingToken',
+  'auth.join.invitationInvalid',
   'auth.join.joinPrefix',
   'auth.join.asRole',
   'auth.join.workspaceFallback',

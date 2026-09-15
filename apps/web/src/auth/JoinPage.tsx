@@ -19,7 +19,7 @@ export function JoinPage({ client, onAuthenticated }: JoinPageProps) {
   const [token] = useState(() => readInviteToken(window.location.search));
   const [lookup, setLookup] = useState<InvitationLookup | null>(null);
   const [lookupState, setLookupState] = useState<'loading' | 'ready' | 'error'>(token ? 'loading' : 'error');
-  const [message, setMessage] = useState(token ? '' : 'This invitation link is missing its token.');
+  const [message, setMessage] = useState(token ? '' : formatMessage(storedLocale(), 'auth.join.invitationMissingToken'));
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -46,7 +46,7 @@ export function JoinPage({ client, onAuthenticated }: JoinPageProps) {
     }).catch((error: unknown) => {
       if (!active) return;
       setLookupState('error');
-      setMessage(error instanceof Error ? error.message : 'This invitation link is invalid or expired.');
+      setMessage(error instanceof Error ? error.message : formatMessage(storedLocale(), 'auth.join.invitationInvalid'));
     });
     return () => { active = false; };
   }, [client, token]);
