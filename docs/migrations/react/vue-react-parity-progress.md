@@ -2761,3 +2761,39 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Live computed-style comparison on the authenticated Agents page found Vue body background `rgb(238, 238, 238)` while React inherited transparent background.
 - React shared stylesheet now maps `body` to the semantic `--wk-app-background` token with Vue-compatible `#eee` fallback.
 - Browser computed style, Web typecheck, and `git diff --check` passed; full visual and responsive regression remains open.
+
+## 2026-09-15 Round R333 — Embed upload labels localization
+
+- Replaced hard-coded React Embed `Attach`/`Image` labels with Vue-derived localized upload labels for all five supported locales, including accessible labels.
+- Embed tests 9/9, Web typecheck, and `git diff --check` passed. Real channel upload success/failure and browser visual evidence remain open.
+
+## 2026-09-15 Round R334 — Embed status fallback localization
+
+- Localized the remaining Embed fallback UI strings for assistant subtitle, loading state, and session-start failure while preserving server-provided error details.
+- Embed tests 10/10, Web typecheck, and `git diff --check` passed. Real channel success/failure browser evidence remains open.
+
+## 2026-09-15 Round R335 — Embed message error prefix localization
+
+- Replaced the remaining hard-coded `Error:` message prefix with Vue-aligned locale-aware labels for all five supported locales.
+- Embed tests 11/11, Web typecheck, and `git diff --check` passed. Real channel error rendering remains open for browser verification.
+
+## 2026-09-15 Round R336 — Knowledge-base create form type label
+
+- Live Vue/React create-form comparison found React still rendered the raw English `Type` label while Vue used the localized knowledge-editor type label.
+- React now uses `knowledgeEditor.basic.typeLabel`; focused KB-list tests 18/18, Web typecheck, and `git diff --check` passed.
+- Real create submission success/failure and full 13-step browser flow remain open.
+
+## 2026-09-15 Round R337 — Knowledge-base create form field localization
+
+- Replaced remaining raw create-form labels/placeholders (`Name`, `Description`, embedding/summary model IDs) with Vue-derived `knowledgeEditor.basic/models` locale keys.
+- Web full tests 937/937, Web typecheck, and `git diff --check` passed. Real create submit and full step-flow evidence remain open.
+
+## 2026-09-15 Round R338 — Knowledge-base create labels live recheck
+
+- Authenticated React live recheck confirms the create form renders Vue-derived Chinese labels and placeholders for name, type, description, Embedding, and LLM fields.
+- Evidence: `evidence/vue-react-parity/2026-09-15-r338-kb-create-labels-live.md`. Submit success/failure and full guided flow remain open.
+
+## 2026-09-15 Round R339 — Knowledge-base create structure audit
+
+- Real browser inspection confirms the repaired React create form copy is localized, but the Vue create surface still exposes a multi-section wizard while React's underlying dialog remains a compact basic-fields form behind the shared contextual guide.
+- This is recorded as an open structural parity item; no acceptance claim is made from the matching labels alone. Full section visibility, model selection, validation, submit states, and responsive behavior remain to be implemented/verified.

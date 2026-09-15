@@ -913,16 +913,16 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
 
       <Dialog open={dialogOpen} title={editingId ? t('common.edit') + ' · ' + t('common.knowledgeBases') : t('knowledgeList.create')} onClose={() => setDialogOpen(false)}>
         <form className="wk-form mb-4 flex flex-wrap items-end gap-3" onSubmit={save}>
-          <label className="grid gap-1">{t('common.name')} <Input data-guide="kb-create-name" value={name} onChange={(event) => setName(event.target.value)} required className="rounded-control border border-line-strong p-[0.55rem]" /></label>
-          <label className="grid gap-1">{'Type'}
+          <label className="grid gap-1">{t('knowledgeEditor.basic.nameLabel')} <Input data-guide="kb-create-name" value={name} onChange={(event) => setName(event.target.value)} placeholder={t('knowledgeEditor.basic.namePlaceholder')} required className="rounded-control border border-line-strong p-[0.55rem]" /></label>
+          <label className="grid gap-1">{t('knowledgeEditor.basic.typeLabel')}
             <Select data-guide="kb-create-type" value={type} onChange={(event) => setType(event.target.value as 'document' | 'faq')} className="rounded-control border border-line-strong p-[0.55rem]">
               <option value="document">{t('common.typeDocument')}</option>
               <option value="faq">{t('common.typeFaq')}</option>
             </Select>
           </label>
-          <label className="grid gap-1">{t('common.description')} <Textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={3} /></label>
-          <label className="grid gap-1">{t('common.embeddingModel')} <Input data-guide="kb-create-embedding" value={embeddingModelId} onChange={(event) => setEmbeddingModelId(event.target.value)} placeholder="embedding_model_id" className="rounded-control border border-line-strong p-[0.55rem]" /></label>
-          <label className="grid gap-1">{t('common.summaryModel')} <Input data-guide="kb-create-llm" value={summaryModelId} onChange={(event) => setSummaryModelId(event.target.value)} placeholder="summary_model_id" className="rounded-control border border-line-strong p-[0.55rem]" /></label>
+          <label className="grid gap-1">{t('knowledgeEditor.basic.descriptionLabel')} <Textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder={t('knowledgeEditor.basic.descriptionPlaceholder')} rows={3} /></label>
+          <label className="grid gap-1">{t('knowledgeEditor.models.embeddingLabel')} <Input data-guide="kb-create-embedding" value={embeddingModelId} onChange={(event) => setEmbeddingModelId(event.target.value)} placeholder={t('knowledgeEditor.models.embeddingPlaceholder')} className="rounded-control border border-line-strong p-[0.55rem]" /></label>
+          <label className="grid gap-1">{t('knowledgeEditor.models.llmLabel')} <Input data-guide="kb-create-llm" value={summaryModelId} onChange={(event) => setSummaryModelId(event.target.value)} placeholder={t('knowledgeEditor.models.llmPlaceholder')} className="rounded-control border border-line-strong p-[0.55rem]" /></label>
           <div className="mt-3 flex justify-end gap-2">
             <Button type="submit" data-guide="kb-create-submit" loading={saving}>{editingId ? t('common.saveChanges') : t('knowledgeList.create')}</Button>
             <Button type="button" onClick={() => setDialogOpen(false)}>{t('common.cancel')}</Button>

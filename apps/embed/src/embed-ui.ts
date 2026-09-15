@@ -12,6 +12,32 @@ export interface EmbedUploadCapabilities {
   allowImageUpload: boolean;
 }
 
+const uploadLabels: Record<string, { file: string; image: string }> = {
+  'zh-CN': { file: '上传附件', image: '上传图片' },
+  'en-US': { file: 'Upload file', image: 'Upload image' },
+  'ja-JP': { file: '添付ファイルをアップロード', image: '画像をアップロード' },
+  'ko-KR': { file: '파일 업로드', image: '이미지 업로드' },
+  'ru-RU': { file: 'Загрузить файл', image: 'Загрузить изображение' },
+};
+
+export function embedUploadLabel(locale: string, kind: 'file' | 'image'): string {
+  return uploadLabels[locale]?.[kind] ?? uploadLabels['en-US']![kind];
+}
+
+export function embedAssistantLabel(locale: string): string {
+  return ({
+    'zh-CN': 'AI 助手',
+    'en-US': 'AI Assistant',
+    'ja-JP': 'AIアシスタント',
+    'ko-KR': 'AI 어시스턴트',
+    'ru-RU': 'ИИ-ассистент',
+  } as Record<string, string>)[locale] ?? 'AI Assistant';
+}
+
+export function embedErrorPrefix(locale: string): string {
+  return ({ 'zh-CN': '错误：', 'en-US': 'Error: ', 'ja-JP': 'エラー：', 'ko-KR': '오류: ', 'ru-RU': 'Ошибка: ' } as Record<string, string>)[locale] ?? 'Error: ';
+}
+
 export function resolveEmbedLocale(config: Record<string, unknown> | undefined | null, urlLocale: string): string {
   const fromConfig = typeof config?.default_locale === 'string' ? config.default_locale : '';
   if (isLocale(fromConfig)) return fromConfig;

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { attachmentUploadsFromFiles, imageDataUrisFromFiles, resolveEmbedLocale, resolveEmbedUploadCapabilities, sourceListFromReferences } from './embed-ui.ts';
+import { attachmentUploadsFromFiles, embedAssistantLabel, embedErrorPrefix, embedUploadLabel, imageDataUrisFromFiles, resolveEmbedLocale, resolveEmbedUploadCapabilities, sourceListFromReferences } from './embed-ui.ts';
 
 // Vue baselines: EmbedPage.vue applies the channel default_locale;
 // EmbedBotMessage.vue renders knowledge_references as a source list;
@@ -13,6 +13,25 @@ test('channel default_locale wins, then URL locale, then en-US', () => {
   assert.equal(resolveEmbedLocale({}, 'xx-YY'), 'en-US');
   assert.equal(resolveEmbedLocale({ default_locale: 'ko-KR' }, ''), 'ko-KR');
   assert.equal(resolveEmbedLocale(undefined, ''), 'en-US');
+});
+
+test('upload labels follow the Vue embed locale table', () => {
+  assert.equal(embedUploadLabel('zh-CN', 'file'), '上传附件');
+  assert.equal(embedUploadLabel('zh-CN', 'image'), '上传图片');
+  assert.equal(embedUploadLabel('en-US', 'file'), 'Upload file');
+  assert.equal(embedUploadLabel('xx-YY', 'image'), 'Upload image');
+});
+
+test('assistant fallback labels stay localized', () => {
+  assert.equal(embedAssistantLabel('zh-CN'), 'AI 助手');
+  assert.equal(embedAssistantLabel('ja-JP'), 'AIアシスタント');
+  assert.equal(embedAssistantLabel('xx-YY'), 'AI Assistant');
+});
+
+test('message error prefixes stay localized', () => {
+  assert.equal(embedErrorPrefix('zh-CN'), '错误：');
+  assert.equal(embedErrorPrefix('ja-JP'), 'エラー：');
+  assert.equal(embedErrorPrefix('xx-YY'), 'Error: ');
 });
 
 test('upload controls require the same permission conjunction as the Vue embed', () => {
