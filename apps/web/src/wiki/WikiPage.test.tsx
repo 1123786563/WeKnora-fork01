@@ -11,7 +11,7 @@ const hooks = nodeModule as typeof nodeModule & { registerHooks?: (hooks: { reso
 if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => specifier.endsWith('.css') ? { shortCircuit: true, url: 'data:text/javascript,export default {}' } : nextResolve(specifier, context) });
 
 const { WikiPage, wikiRevertConfirmation } = await import('./WikiPage.tsx');
-const { wikiRevertCopy } = await import('./editor.ts');
+const { wikiRevertCopy, wikiReaderEmptyState } = await import('./editor.ts');
 
 test('Wiki revert feedback uses the Vue localized confirmation and result keys', () => {
   const translate = (key: string, values?: Record<string, string | number>) => `${key}:${values?.ver ?? ''}`;
@@ -30,6 +30,8 @@ test('Wiki shell follows Vue browser anatomy: sidebar search and reader editor a
   assert.match(html, /树形视图/);
   assert.match(html, /列表视图/);
   assert.match(html, /class="wk-wiki-editor[^"]*"/);
+  assert.match(html, /class="wk-wiki-reader-empty[^\"]*"/);
+  assert.match(html, /暂无 Wiki 页面/);
   assert.doesNotMatch(html, /class="wk-toolbar"/);
   assert.doesNotMatch(html, /kb-secret/, 'the Vue context eyebrow does not expose the raw KB id');
 });
@@ -60,6 +62,18 @@ test('Wiki defaults to read-only when the contributor capability is omitted', ()
   const html = renderToStaticMarkup(React.createElement(WikiPage, { client, knowledgeBaseId: 'kb-1' }));
   assert.doesNotMatch(html, /class="wk-wiki-editor/);
   assert.doesNotMatch(html, /新建页面|新建 Wiki 页面/);
+});
+
+test('Wiki reader preserves the Vue hint when content exists but no page is selected', () => {
+  const translate = (key: string) => key;
+  assert.deepEqual(wikiReaderEmptyState(translate, true), {
+    title: 'wikiBrowser.selectPageHint',
+    description: undefined,
+  });
+  assert.deepEqual(wikiReaderEmptyState(translate, false), {
+    title: 'wikiBrowser.emptyTitle',
+    description: 'wikiBrowser.emptyDesc',
+  });
 });
 
 test('contributor mode keeps Wiki create and editor surfaces available', () => {

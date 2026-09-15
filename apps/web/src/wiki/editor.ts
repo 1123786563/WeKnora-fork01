@@ -18,6 +18,19 @@ export function applyWikiSearch(draft: string): { draft: string; keyword: string
   return { draft, keyword: draft.trim() };
 }
 
+/** Vue WikiBrowser's reader state when no page is selected. */
+export function wikiReaderEmptyState(
+  translate: (key: string) => string,
+  hasContentPages: boolean,
+): { title: string; description?: string } {
+  return hasContentPages
+    ? { title: translate('wikiBrowser.selectPageHint'), description: undefined }
+    : {
+      title: translate('wikiBrowser.emptyTitle'),
+      description: translate('wikiBrowser.emptyDesc'),
+    };
+}
+
 const defaultCopy: WikiSaveCopy = {
   titleRequired: 'Wiki title is required',
   contentRequired: 'Wiki content is required',

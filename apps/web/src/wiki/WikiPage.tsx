@@ -8,7 +8,7 @@ import type {
 } from "@weknora/api-client";
 import { diffWikiRevision } from "@weknora/domain/wiki/diff";
 import { Button, Card, Input, Status, Textarea } from "@weknora/ui";
-import { applyWikiSearch, saveWikiPage, wikiRevertCopy, type WikiSaveState } from "./editor.ts";
+import { applyWikiSearch, saveWikiPage, wikiReaderEmptyState, wikiRevertCopy, type WikiSaveState } from "./editor.ts";
 import { createTranslator, useAppLocale } from "../i18n.ts";
 import { pagerState } from "../pagination.ts";
 import { computeKBPermissions, type KBSurfaceKB, type KBSurfaceMe } from "../knowledge/permissions.ts";
@@ -475,6 +475,14 @@ export function WikiPage({
               ) : null}
             </nav>
           </aside>
+          {!selected && !editing ? (() => {
+            const emptyState = wikiReaderEmptyState(t, pages.length > 0);
+            return <div className="wk-wiki-reader-empty flex min-h-[22rem] min-w-0 flex-col items-center justify-center gap-2 px-5 py-[60px] text-center text-[rgba(0,0,0,0.6)]">
+              <span className="wk-wiki-empty-icon text-[36px] leading-none text-[#07c05f]" aria-hidden="true">▧</span>
+              <strong>{emptyState.title}</strong>
+              {emptyState.description ? <span>{emptyState.description}</span> : null}
+            </div>;
+          })() : null}
           {selected && !editing ? (
             <article className="wk-wiki-reader min-w-0" aria-label={selected.title}>
               <div className="wk-header mb-6 flex items-start justify-between gap-4">
