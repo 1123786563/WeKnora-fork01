@@ -2854,7 +2854,7 @@ export function KnowledgeDocumentsPage({
                   aria-label={t("knowledgeBase.docSearchPlaceholder")}
                 />
               </div>
-              <div className="doc-filter-bar__filters flex min-w-0 flex-nowrap items-center gap-3 overflow-x-auto [grid-area:filters] [scrollbar-width:thin]">
+              <div className="doc-filter-bar__filters box-border flex h-8 min-w-0 flex-nowrap items-center gap-3 overflow-x-auto [grid-area:filters] [scrollbar-width:thin]">
                 <div className="doc-filter-field doc-tag-filter relative w-[140px] flex-none">
                   <button
                     type="button"

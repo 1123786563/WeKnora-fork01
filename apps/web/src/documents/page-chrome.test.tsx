@@ -150,6 +150,7 @@ test('documents page filter bar matches the Vue anatomy', () => {
   assert.ok(html.includes('结束时间'), 'date-range end placeholder');
   assert.ok(html.includes('doc-filter-bar'), 'Vue filter bar class');
   assert.ok(html.includes('doc-search-field box-border h-8'), 'Vue document search control is 32px border-box');
+  assert.match(html, /doc-filter-bar__filters[^\"]*h-8/, 'Vue filter row is a 32px line box');
   assert.ok(!html.includes('rounded-card border border-line bg-surface p-4'), 'Vue document area has no extra shadcn Card chrome');
 });
 

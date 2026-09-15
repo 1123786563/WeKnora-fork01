@@ -530,3 +530,4 @@ N014/N015 expanded settings controls (2026-09-15): system settings, preferences,
 - R234 文档页头节奏对齐（2026-09-15）：包屑文字行高与页头底部间距对齐 Vue（32px/20px），文档 chrome 测试 9/9 与 diff check 通过。证据：`evidence/vue-react-parity/2026-09-15-r234-documents-header-rhythm.md`。
 - R235 文档搜索框高度对齐（2026-09-15）：筛选栏搜索输入固定 Vue 对齐的 32px 高度，文档 chrome 测试 9/9 与 diff check 通过。证据：`evidence/vue-react-parity/2026-09-15-r235-documents-search-height.md`。
 - R236 文档搜索框盒模型对齐（2026-09-15）：搜索输入固定 32px 并显式采用 border-box，文档 chrome 测试 9/9 与 diff check 通过。证据：`evidence/vue-react-parity/2026-09-15-r236-documents-search-box.md`。
+- R237 文档筛选行高度对齐（2026-09-15）：筛选控件行固定 Vue 对齐的 32px border-box 高度，文档 chrome 测试 9/9 与 diff check 通过。证据：`evidence/vue-react-parity/2026-09-15-r237-documents-filter-row.md`。
