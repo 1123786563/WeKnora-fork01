@@ -155,6 +155,56 @@ test('tenant switcher lists memberships and delegates a different workspace', as
   assert.deepEqual(switched, ['tenant-2']);
 });
 
+test('tenant selection closes the menu immediately, including the current-tenant no-op', async () => {
+  const switched: string[] = [];
+  const client = {
+    ...fakeClient('admin'),
+    auth: {
+      me: async () => ({
+        user: { id: 'u1', username: 'tester', email: 'tester@local.dev', avatar: '' },
+        tenant: { id: 'tenant-1', name: 'Parity' },
+        memberships: [
+          { tenant_id: 'tenant-1', tenant_name: 'Parity', role: 'admin' },
+          { tenant_id: 'tenant-2', tenant_name: 'Research', role: 'viewer' },
+        ],
+      }),
+    },
+  };
+  const container = document.createElement('div');
+  document.body.append(container);
+  mountedRoot = createRoot(container);
+  await act(async () => {
+    mountedRoot?.render(React.createElement(PlatformShell, {
+      client: client as never,
+      onTenantSwitch: (tenantId: string) => {
+        switched.push(tenantId);
+        return Promise.resolve();
+      },
+      onLogout: () => undefined,
+      children: React.createElement('div', null, 'page'),
+    }));
+  });
+  await settle(100);
+  await openUserMenu();
+  await act(async () => { document.querySelector<HTMLButtonElement>('[role="group"] > button')?.click(); });
+
+  const current = [...document.querySelectorAll<HTMLButtonElement>('[role="option"]')]
+    .find((button) => button.textContent?.includes('Parity'));
+  assert.ok(current, 'current tenant option should be present');
+  await act(async () => { current?.click(); });
+  assert.equal(dropdown(), null, 'clicking current tenant closes the Vue-equivalent menu');
+  assert.deepEqual(switched, [], 'current tenant remains a no-op');
+
+  await openUserMenu();
+  await act(async () => { document.querySelector<HTMLButtonElement>('[role="group"] > button')?.click(); });
+  const other = [...document.querySelectorAll<HTMLButtonElement>('[role="option"]')]
+    .find((button) => button.textContent?.includes('Research'));
+  assert.ok(other, 'other tenant option should be present');
+  await act(async () => { other?.click(); });
+  assert.equal(dropdown(), null, 'switching tenant closes the menu before awaiting navigation');
+  assert.deepEqual(switched, ['tenant-2']);
+});
+
 test('(a) with the tour finished, the user menu offers a reopen entry labelled newUserGuide.reopen', async () => {
   await mountShell();
   await openUserMenu();

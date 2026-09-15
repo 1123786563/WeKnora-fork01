@@ -7,7 +7,7 @@ import { pickNativeFiles } from '../../platform/files.ts';
 import { dispatchUploadEvent } from './upload-progress.ts';
 import { uploadKnowledgeFiles } from './upload-queue.ts';
 import { knowledgeListLabel } from './list.ts';
-import { selectKnowledgeDocumentLabel } from './parity.ts';
+import { selectKnowledgeDocumentLabel, shouldUseRecursiveFolderScope } from './parity.ts';
 import { referenceRoute } from './reference.ts';
 
 function flattenFolders(nodes: KnowledgeFolderNode[]): KnowledgeFolderNode[] {
@@ -61,7 +61,7 @@ export function KnowledgeDocumentsScreen() {
     try {
       const result = await runtime.client.knowledge.documents.list(kbId, {
         page: nextPage, page_size: 20, keyword: keyword.trim() || undefined, folder_path: folderPath,
-        folder_recursive: folderPath !== undefined,
+        folder_recursive: shouldUseRecursiveFolderScope({ folderPath, keyword, tagIds }),
         tag_ids: tagIds.length ? tagIds.join(',') : undefined,
       });
       if (generation !== requestGeneration.current) return;

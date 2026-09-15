@@ -246,7 +246,13 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
   const activeTenantId = readReactPlatformState(window.localStorage)?.tenantId ?? user.tenantId;
   const tenantSwitcherVisible = Boolean(onTenantSwitch && user.memberships.length > 0);
   const switchTenant = useCallback(async (tenantId: string) => {
-    if (!onTenantSwitch || tenantId === activeTenantId || tenantSwitchPending) return;
+    if (!onTenantSwitch || tenantSwitchPending) return;
+    // Vue UserMenu.switchToTenant closes both the account menu and its
+    // tenant submenu before handling either a no-op current-tenant click or
+    // an async tenant navigation.
+    setMenuOpen(false);
+    setTenantMenuOpen(false);
+    if (tenantId === activeTenantId) return;
     setTenantSwitchPending(tenantId);
     try {
       await onTenantSwitch(tenantId);

@@ -130,6 +130,16 @@ test('register heading and return action keep the Vue visual contract', async ()
   assert.match(back?.className ?? '', /hover:underline/);
 });
 
+test('login heading and field labels use the Vue typography contract', async () => {
+  await mountLogin(fakeClient());
+  const heading = document.querySelector('form[aria-label="Login form"]')?.parentElement?.querySelector('h2');
+  assert.match(heading?.className ?? '', /text-2xl/);
+  assert.match(heading?.className ?? '', /font-semibold/);
+  const labels = [...document.querySelectorAll('form[aria-label="Login form"] label > span:first-child')];
+  assert.equal(labels.length, 2);
+  for (const label of labels) assert.match(label.className, /text-sm/);
+});
+
 test('carousel keeps all Vue slides mounted for a fade transition', async () => {
   await mountLogin(fakeClient());
   const slides = [...document.querySelectorAll('img[alt]')].filter((node) =>

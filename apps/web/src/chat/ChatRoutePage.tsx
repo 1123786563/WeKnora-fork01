@@ -14,6 +14,8 @@ import { chatSessionIdFromPath, SHELL_SESSION_ROUTE_EVENT } from './session-rout
 import { buildWebChatStreamOptions, CHAT_ATTACHMENT_DEFAULT_EXTENSIONS, initialAgentSelection, mergeChatAttachmentExtensions, resolveChatAttachmentLimits, shouldPollAttachmentStatus, validateChatAttachment, type ChatMentionItem } from './agent-selection.ts';
 import { listChatModels, MODEL_CHIP_NOT_CONFIGURED, resolveChatModelChip } from './model-chip.ts';
 import { readStoredLocale } from '../i18n.ts';
+import { resolveChatAttachmentValidationMessage } from './attachment-messages.ts';
+import { resolveChatSessionSourceOptions } from './session-source-options.ts';
 import { loadStarterQuestions } from './starter-questions.ts';
 import { createWebTerminalController, webSocketTarget, type WebTerminalController, type WebTerminalSnapshot } from './terminal.ts';
 import { saveArtifactDownload } from './artifact-download.ts';
@@ -528,7 +530,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     const limits = resolveChatAttachmentLimits();
     const validation = validateChatAttachment(file, attachmentRecordsRef.current.size, limits, supportedAttachmentExtensions);
     if (validation) {
-      const message = validation === 'too-many' ? `Maximum ${limits.maxFiles} attachments allowed.` : validation === 'too-large' ? `File ${file.name} exceeds ${Math.round(limits.maxSizeBytes / (1024 * 1024))}MB limit.` : `Unsupported file type: ${file.name}`;
+      const message = resolveChatAttachmentValidationMessage(readStoredLocale(), validation, file.name, Math.round(limits.maxSizeBytes / (1024 * 1024)), limits.maxFiles);
       const localId = `rejected-attachment-${++attachmentCounterRef.current}`;
       setAttachments((items) => [...items, { id: localId, name: file.name, status: 'failed', error: message }]);
       return;
@@ -1089,7 +1091,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     onDeleteSession={deleteSession}
     sessionGroups={sessionGroups(sessions, new Date(), sessionGroupMode)}
     sessionSource={sessionSource}
-    sessionSourceOptions={canViewChannelSessions ? [{ value: '', label: 'All sources' }, { value: 'web', label: 'Web' }, { value: 'embed', label: 'Embed' }, { value: 'api', label: 'API' }, { value: 'feishu', label: 'Feishu' }, { value: 'wechat', label: 'WeChat' }, { value: 'slack', label: 'Slack' }] : [{ value: 'web', label: 'Web' }]}
+    sessionSourceOptions={resolveChatSessionSourceOptions(readStoredLocale(), canViewChannelSessions)}
     onSessionSourceChange={changeSessionSource}
     sessionKeyword={sessionKeyword}
     onSessionKeywordChange={changeSessionKeyword}

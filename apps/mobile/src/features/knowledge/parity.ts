@@ -21,3 +21,14 @@ export function selectKnowledgeDocumentLabel(document: KnowledgeDocument): strin
 export function isTerminalKnowledgeStatus(status: string | undefined): boolean {
   return status === 'completed' || status === 'failed' || status === 'cancelled';
 }
+
+export function shouldUseRecursiveFolderScope(filters: {
+  folderPath?: string;
+  keyword?: string;
+  tagIds?: readonly string[];
+}): boolean {
+  return Boolean(
+    filters.folderPath &&
+    (filters.keyword?.trim() || filters.tagIds?.length),
+  );
+}

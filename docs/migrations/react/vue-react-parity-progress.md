@@ -1,5 +1,11 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-15 Round R323 — Login typography/controls live recheck
+
+- 同一 1440×900、zh-CN 视口重新采集 Vue/React 登录页；标题、标签和 40px 输入控件按 Vue 实测 token 修正，React/Vue 表单底部几何已对齐到同一 y=659.30。
+- Login 专项 7/7、`pnpm typecheck:web`、`git diff --check` 通过；截图与 computed geometry：`evidence/vue-react-parity/2026-09-15-r323-login-typography-live.md`。
+- 仍未覆盖全部 auth 状态、locale/theme/responsive、OIDC/真实后端、Wails/native 和移动端验收。
+
 ## 2026-09-15 Round N+105 — 并行页面 parity 批次
 
 - 代理分工完成 Login、Knowledge Base list、Agents、Organizations、Wiki、FAQ、General settings 的最小差异修复；Integrations/Embed 完成专项审计但无代码差异。
