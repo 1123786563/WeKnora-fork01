@@ -553,7 +553,7 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
         {/* .plat-shell__item + --collapsed descendant override → utilities
             (collapsed form: centered, 4px side margins, 9px/0 padding). */}
         {collapsed && (
-          <button type="button" className="plat-shell__toggle-item flex items-center justify-center gap-[8px] mx-[4px] py-[9px] px-0 rounded-[8px] no-underline text-[#3d4a5c] text-[14px] whitespace-nowrap hover:bg-[#eceff4]" onClick={toggleCollapsed} aria-label="Expand sidebar">
+          <button type="button" className="plat-shell__toggle-item flex items-center justify-center gap-[8px] mx-[4px] py-[9px] px-0 rounded-[8px] no-underline text-[#3d4a5c] text-[14px] whitespace-nowrap hover:bg-[#eceff4]" onClick={toggleCollapsed} aria-label={t('menu.expandSidebar')} title={t('menu.expandSidebar')}>
             <svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true">
               <rect x="1.5" y="1.5" width="17" height="17" rx="3" />
               <line x1="7.5" y1="1.5" x2="7.5" y2="18.5" />

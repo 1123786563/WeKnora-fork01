@@ -111,6 +111,8 @@ test('(b) the 新对话 entry carries no shortcut hint (Vue sidebar nav has none
   document.body.replaceChildren();
   await mountShell({ collapsed: true });
   assert.equal(document.querySelectorAll('nav[aria-label="我的对话"]').length, 0, 'collapsed rail hides the sessions area');
+  const expand = document.querySelector('button[aria-label="展开侧边栏"]');
+  assert.ok(expand, 'collapsed rail uses localized expand label');
 });
 
 test('(c) platformModKeyLabel mirrors Vue menu.vue:303-304 (⌘ on Apple, Ctrl+ elsewhere)', () => {
