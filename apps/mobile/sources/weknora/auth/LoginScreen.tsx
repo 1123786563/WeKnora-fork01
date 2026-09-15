@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useProductAuth } from './session';
 import { useMobileHost } from '@/weknora/platform/host';
+import { validateLoginCredentials } from './loginValidation';
 
 export default function LoginScreen() {
   const host = useMobileHost();
@@ -18,6 +19,12 @@ export default function LoginScreen() {
     try {
       if (!host || !email.trim() || !password) {
         setError('Enter your email and password.');
+        return;
+      }
+      const validation = validateLoginCredentials(email, password);
+      const validationError = validation.email ?? validation.password;
+      if (validationError) {
+        setError(validationError);
         return;
       }
       setError(null);
