@@ -741,12 +741,12 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
             </div>
             <p className="kb-list-subtitle mb-0 mt-1 text-sm font-normal leading-5 text-[#8a94a6]">{t('knowledgeList.subtitle')}</p>
           </header>
-          <div className="kb-list-main min-w-0 flex-1 overflow-y-auto overflow-x-hidden pb-2">
+          <div className="kb-list-main min-w-0 flex-1 overflow-y-auto overflow-x-hidden pb-2 pr-7">
             {error ? <Status tone="error">{error}</Status> : null}
             {notice ? <Status tone="success">{notice}</Status> : null}
             {/* Vue amber uninitialized banner (KnowledgeBaseList.vue:30-34) */}
             {hasUninitialized ? (
-              <div className="kb-list-warning mb-5 flex items-center gap-2 rounded-md border border-[#f7d8b0] bg-[#fdf3e7] px-4 py-3 text-sm leading-[22px] text-[#cf6b1d] [&_svg]:shrink-0" role="status">
+              <div className="kb-list-warning mb-5 flex items-center gap-2 rounded-md border border-[#f7d8b0] bg-[#fdf3e7] px-4 py-3 text-sm leading-5 text-[#cf6b1d] [&_svg]:shrink-0" role="status">
                 <KbIcon name="info-circle" size={16} />
                 <span>{t('knowledgeList.uninitializedBanner')}</span>
               </div>
@@ -831,7 +831,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
                   const favorited = favorites.has(card.id);
                   // flash 动画的 border 覆盖用 ! 前缀（同属性 utilities 冲突时保证胜出）
                   const cardClasses = [
-                    'kb-list-card group/card relative flex h-[136px] min-h-[136px] cursor-pointer flex-col rounded-lg border p-3 shadow-[0_1px_3px_rgba(0,0,0,0.04)] transition-all duration-[250ms]',
+                    'kb-list-card group/card relative box-border flex h-[136px] min-h-[136px] cursor-pointer flex-col rounded-lg border p-3 shadow-[0_1px_3px_rgba(0,0,0,0.04)] transition-all duration-[250ms]',
                     isFaq
                       ? 'kb-list-card-faq border-[#e3e7ee] bg-[linear-gradient(135deg,#ffffff_0%,rgba(0,82,217,0.04)_100%)] after:pointer-events-none after:absolute after:right-0 after:top-0 after:z-0 after:h-[60px] after:w-[60px] after:rounded-[0_12px_0_100%] after:content-[""] after:bg-[linear-gradient(135deg,rgba(0,82,217,0.08)_0%,transparent_100%)] hover:border-[#0052d9] hover:shadow-[0_4px_12px_rgba(0,82,217,0.12)] hover:bg-[linear-gradient(135deg,#ffffff_0%,rgba(0,82,217,0.08)_100%)]'
                       : 'kb-list-card-document border-[#e3e7ee] bg-[linear-gradient(135deg,#ffffff_0%,rgba(7,192,95,0.04)_100%)] after:pointer-events-none after:absolute after:right-0 after:top-0 after:z-0 after:h-[60px] after:w-[60px] after:rounded-[0_12px_0_100%] after:content-[""] after:bg-[linear-gradient(135deg,rgba(7,192,95,0.08)_0%,transparent_100%)] hover:border-[#07c05f] hover:shadow-[0_4px_12px_rgba(7,192,95,0.12)] hover:bg-[linear-gradient(135deg,#ffffff_0%,rgba(7,192,95,0.08)_100%)]',
