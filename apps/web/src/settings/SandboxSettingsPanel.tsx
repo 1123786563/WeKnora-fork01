@@ -13,7 +13,7 @@ import {
   type WeKnoraClient,
 } from '@weknora/api-client';
 import { formatMessage, type Locale } from '@weknora/i18n';
-import { Button, Card, Status } from '@weknora/ui';
+import { Button, Card, Checkbox, Input, Select, Status } from '@weknora/ui';
 import { roleAtLeast, type SettingsRole } from '../../../../packages/views/src/settings/registry.ts';
 import { useAppLocale } from '../i18n.ts';
 
@@ -1113,22 +1113,22 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
             <h4>{t('settings.sandbox.sectionBasic')}</h4>
             <label>
               {t('settings.sandbox.backendType')}
-              <select value={form.backend} disabled={retargetFrozen} onChange={(event) => selectBackend(event.target.value)}>
+              <Select value={form.backend} disabled={retargetFrozen} onChange={(event) => selectBackend(event.target.value)}>
                 {SANDBOX_BACKENDS.filter((type) => dockerBackendEnabled || type !== 'docker' || form.backend === 'docker').map((type) => (
                   <option key={type} value={type}>{t(`settings.sandbox.backends.${type}`)}</option>
                 ))}
-              </select>
+              </Select>
             </label>
             <p className="wk-muted text-muted">{t(`settings.sandbox.backendDescriptions.${form.backend}`)}</p>
             {dockerBackendOff ? <Status tone="warning">{t('settings.sandbox.dockerDisabledAlert')}{t('settings.sandbox.dockerDisabledHint')}</Status> : null}
             <label>
               {t('settings.sandbox.configName')}
-              <input value={form.name} placeholder={t('settings.sandbox.configNamePlaceholder')} aria-invalid={nameError || undefined} onChange={(event) => { updateForm({ name: event.target.value }); setNameError(false); }} />
+              <Input value={form.name} placeholder={t('settings.sandbox.configNamePlaceholder')} aria-invalid={nameError || undefined} onChange={(event) => { updateForm({ name: event.target.value }); setNameError(false); }} />
               {nameError ? <p className="wk-field-error text-xs leading-[1.4] text-[#c23434]" role="alert">{t('settings.sandbox.configNameRequired')}</p> : null}
             </label>
             <label>
               {t('settings.sandbox.configDescription')}
-              <input value={form.description} placeholder={t('settings.sandbox.configDescriptionPlaceholder')} onChange={(event) => updateForm({ description: event.target.value })} />
+              <Input value={form.description} placeholder={t('settings.sandbox.configDescriptionPlaceholder')} onChange={(event) => updateForm({ description: event.target.value })} />
             </label>
           </section>
 
@@ -1140,47 +1140,47 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                   : record ? <p className="wk-muted text-muted">{t('settings.sandbox.identityFieldHint')}</p> : null}
               {form.backend === 'cube' ? (<>
                 <label>{requiredLabel('settings.sandbox.apiUrl')}
-                  <input value={form.cube.api_url ?? ''} placeholder="http://cube.example.com:33000" disabled={retargetFrozen} onChange={(event) => setCube({ api_url: event.target.value }, 'api_url')} />
+                  <Input value={form.cube.api_url ?? ''} placeholder="http://cube.example.com:33000" disabled={retargetFrozen} onChange={(event) => setCube({ api_url: event.target.value }, 'api_url')} />
                   {renderFieldError('api_url')}
                 </label>
                 <div className="wk-form-grid grid grid-cols-2 gap-4 max-[720px]:grid-cols-1">
                   <label>{requiredLabel('settings.sandbox.proxyUrl')}
-                    <input value={form.cube.proxy_url ?? ''} placeholder="http://cube.example.com:80" disabled={retargetFrozen} onChange={(event) => setCube({ proxy_url: event.target.value }, 'proxy_url')} />
+                    <Input value={form.cube.proxy_url ?? ''} placeholder="http://cube.example.com:80" disabled={retargetFrozen} onChange={(event) => setCube({ proxy_url: event.target.value }, 'proxy_url')} />
                     {renderFieldError('proxy_url')}
                   </label>
                   <label>{requiredLabel('settings.sandbox.sandboxDomain')}
-                    <input value={form.cube.sandbox_domain ?? ''} placeholder="cube.app" disabled={retargetFrozen} onChange={(event) => setCube({ sandbox_domain: event.target.value }, 'sandbox_domain')} />
+                    <Input value={form.cube.sandbox_domain ?? ''} placeholder="cube.app" disabled={retargetFrozen} onChange={(event) => setCube({ sandbox_domain: event.target.value }, 'sandbox_domain')} />
                     {renderFieldError('sandbox_domain')}
                   </label>
                 </div>
                 <label>{t('settings.sandbox.apiKey')}
-                  <input type="password" value={form.cube.api_key ?? ''} placeholder={secretInputPlaceholder('cube')} disabled={retargetFrozen} onChange={(event) => setCube({ api_key: event.target.value })} />
+                  <Input type="password" value={form.cube.api_key ?? ''} placeholder={secretInputPlaceholder('cube')} disabled={retargetFrozen} onChange={(event) => setCube({ api_key: event.target.value })} />
                 </label>
                 <p className="wk-muted text-muted">{form.storedCubeKey ? t('settings.sandbox.secretConfigured') : t('settings.sandbox.cubeApiKeyOptional')}</p>
                 <a href={CLUSTER_GUIDE_URL} target="_blank" rel="noopener noreferrer">{t('settings.sandbox.cubeApiKeyWhere')}</a>
                 <label>{t('settings.sandbox.cubeDnsServers')}
-                  <input value={(form.cube.dns_servers ?? []).join(', ')} placeholder={t('settings.sandbox.cubeDnsServersPlaceholder')} disabled={retargetFrozen}
+                  <Input value={(form.cube.dns_servers ?? []).join(', ')} placeholder={t('settings.sandbox.cubeDnsServersPlaceholder')} disabled={retargetFrozen}
                     onChange={(event) => setCube({ dns_servers: event.target.value.split(/[,\s]+/).map((item) => item.trim()).filter(Boolean) })} />
                 </label>
                 <p className="wk-muted text-muted">{t('settings.sandbox.cubeDnsServersHelp')}</p>
               </>) : (<>
                 <label>{requiredLabel('settings.sandbox.apiKey')}
-                  <input type="password" value={form.e2b.api_key ?? ''} placeholder={secretInputPlaceholder('e2b')} disabled={retargetFrozen} onChange={(event) => setE2B({ api_key: event.target.value }, 'api_key')} />
+                  <Input type="password" value={form.e2b.api_key ?? ''} placeholder={secretInputPlaceholder('e2b')} disabled={retargetFrozen} onChange={(event) => setE2B({ api_key: event.target.value }, 'api_key')} />
                   {renderFieldError('api_key')}
                 </label>
                 <p className="wk-muted text-muted">{form.storedE2BKey ? t('settings.sandbox.secretConfigured') : t('settings.sandbox.e2bApiKeyHelp')}</p>
                 <a href={E2B_API_KEYS_URL} target="_blank" rel="noopener noreferrer">{t('settings.sandbox.e2bApiKeyWhere')}</a>
                 <div className="wk-form-grid grid grid-cols-2 gap-4 max-[720px]:grid-cols-1">
                   <label>{t('settings.sandbox.apiUrl')}
-                    <input value={form.e2b.api_url ?? ''} placeholder="https://api.e2b.app" disabled={retargetFrozen} onChange={(event) => setE2B({ api_url: event.target.value })} />
+                    <Input value={form.e2b.api_url ?? ''} placeholder="https://api.e2b.app" disabled={retargetFrozen} onChange={(event) => setE2B({ api_url: event.target.value })} />
                   </label>
                   <label>{t('settings.sandbox.sandboxDomain')}
-                    <input value={form.e2b.sandbox_domain ?? ''} placeholder="e2b.app" disabled={retargetFrozen} onChange={(event) => setE2B({ sandbox_domain: event.target.value })} />
+                    <Input value={form.e2b.sandbox_domain ?? ''} placeholder="e2b.app" disabled={retargetFrozen} onChange={(event) => setE2B({ sandbox_domain: event.target.value })} />
                   </label>
                 </div>
                 <p className="wk-muted text-muted">{t('settings.sandbox.e2bApiUrlOptional')}</p>
                 <label>{t('settings.sandbox.proxyUrl')}
-                  <input value={form.e2b.proxy_url ?? ''} placeholder="http://sandbox-gateway.example.com" disabled={retargetFrozen} onChange={(event) => setE2B({ proxy_url: event.target.value })} />
+                  <Input value={form.e2b.proxy_url ?? ''} placeholder="http://sandbox-gateway.example.com" disabled={retargetFrozen} onChange={(event) => setE2B({ proxy_url: event.target.value })} />
                 </label>
                 <p className="wk-muted text-muted">{t('settings.sandbox.e2bProxyUrlOptional')}</p>
               </>)}
@@ -1189,7 +1189,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                   <p><strong>{t('settings.sandbox.allowPrivateEndpoints')}</strong></p>
                   <p className="wk-muted text-muted">{t('settings.sandbox.allowPrivateEndpointsHint')}</p>
                 </div>
-                <input type="checkbox" checked={form.allowPrivateEndpoints} disabled={retargetFrozen}
+                <Checkbox checked={form.allowPrivateEndpoints} disabled={retargetFrozen}
                   onChange={(event) => { updateForm({ allowPrivateEndpoints: event.target.checked }); setCheckResult(null); }} aria-label={t('settings.sandbox.allowPrivateEndpoints')} />
               </div>
             </section>
@@ -1201,16 +1201,16 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                 <p className="wk-muted text-muted">{t('settings.sandbox.weknoraDockerImageHint')}</p>
               </div>
               <label>{requiredLabel('settings.sandbox.dockerImage')}
-                <input value={form.docker.image ?? ''} placeholder={DEFAULT_DOCKER_IMAGE} disabled={retargetFrozen} onChange={(event) => setDocker({ image: event.target.value }, 'image')} />
+                <Input value={form.docker.image ?? ''} placeholder={DEFAULT_DOCKER_IMAGE} disabled={retargetFrozen} onChange={(event) => setDocker({ image: event.target.value }, 'image')} />
                 {renderFieldError('image')}
               </label>
               {retargetFrozen ? <p className="wk-muted text-muted">{hasSkillSnapshot ? t('settings.sandbox.templateLockedBySkills') : t('settings.sandbox.templateLockedByInFlight')}</p> : null}
               <label>{t('settings.sandbox.dockerHost')}
-                <input value={form.docker.host ?? ''} placeholder="unix:///var/run/docker.sock" disabled={retargetFrozen} onChange={(event) => setDocker({ host: event.target.value }, 'host')} />
+                <Input value={form.docker.host ?? ''} placeholder="unix:///var/run/docker.sock" disabled={retargetFrozen} onChange={(event) => setDocker({ host: event.target.value }, 'host')} />
               </label>
               <p className="wk-muted text-muted">{t('settings.sandbox.dockerHostHelp')}</p>
               <label>{t('settings.sandbox.dockerTlsCertPath')}
-                <input value={form.docker.tls_cert_path ?? ''} placeholder="/etc/weknora/docker-certs" disabled={retargetFrozen} onChange={(event) => setDocker({ tls_cert_path: event.target.value }, 'tls_cert_path')} />
+                <Input value={form.docker.tls_cert_path ?? ''} placeholder="/etc/weknora/docker-certs" disabled={retargetFrozen} onChange={(event) => setDocker({ tls_cert_path: event.target.value }, 'tls_cert_path')} />
               </label>
               <p className="wk-muted text-muted">{t('settings.sandbox.dockerTlsCertPathHelp')}</p>
               <Status tone="warning">{t('settings.sandbox.dockerHostRisk')}</Status>
@@ -1219,7 +1219,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                   <p><strong>{t('settings.sandbox.allowPrivateEndpoints')}</strong></p>
                   <p className="wk-muted text-muted">{t('settings.sandbox.allowPrivateEndpointsHint')}</p>
                 </div>
-                <input type="checkbox" checked={form.allowPrivateEndpoints} disabled={retargetFrozen}
+                <Checkbox checked={form.allowPrivateEndpoints} disabled={retargetFrozen}
                   onChange={(event) => { updateForm({ allowPrivateEndpoints: event.target.checked }); setCheckResult(null); }} aria-label={t('settings.sandbox.allowPrivateEndpoints')} />
               </div>
             </section>
