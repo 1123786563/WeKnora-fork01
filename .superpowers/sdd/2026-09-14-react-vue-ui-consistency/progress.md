@@ -354,3 +354,5 @@
 N033 desktop build update (2026-09-15): `apps/desktop/vite.config.ts` now mirrors the Web subpath aliases for shared `@weknora/views/*` modules. This fixes production Vite resolution of `@weknora/views/chat/mermaid` (previously resolved beneath `src/index.ts`). Desktop tests 2/2, typecheck, and Vite production build now pass; Wails per-feature interaction evidence remains open.
 
 Verification update (2026-09-15): after the desktop alias fix, Web regression passes 895/895, `pnpm typecheck:web` passes, and `pnpm --dir apps/web run build` completes successfully. The earlier `pnpm --dir apps/web run typecheck` command is invalid because the package exposes no such script; the workspace `typecheck:web` script is authoritative.
+
+N033 Wails update (2026-09-15): after the shared view alias fix, `PATH="/Users/wuyongjun/go/bin:$PATH" wails build -clean -tags sqlite_fts5 -o 'WeKnora Lite'` completed successfully in 28.2s. The packaged app launched and its process remained alive after 8s once Lite resources/config/.env were provisioned; per-feature Wails interaction evidence remains open.
