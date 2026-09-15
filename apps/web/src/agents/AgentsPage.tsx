@@ -82,7 +82,9 @@ function Icon({ name, size = 16 }: { name: string; size?: number }) {
     usergroup: <><circle cx="9" cy="9" r="3" /><path d="M3.5 19a5.5 5.5 0 0 1 11 0" /><path d="M16 6.5a3 3 0 0 1 0 5.5" /><path d="M17.5 14.5a5.5 5.5 0 0 1 3 4.5" /></>,
     'usergroup-add': <><circle cx="9" cy="9" r="3" /><path d="M3.5 19a5.5 5.5 0 0 1 11 0" /><path d="M18 6v6M15 9h6" /></>,
     share: <><circle cx="6" cy="12" r="2.5" /><circle cx="17" cy="6" r="2.5" /><circle cx="17" cy="18" r="2.5" /><path d="m8.3 10.8 6.4-3.6M8.3 13.2l6.4 3.6" /></>,
-    'control-platform': <><circle cx="12" cy="12" r="3" /><path d="M12 4v2.5M12 17.5V20M4 12h2.5M17.5 12H20M6.3 6.3l1.8 1.8M15.9 15.9l1.8 1.8M17.7 6.3l-1.8 1.8M8.1 15.9l-1.8 1.8" /></>,
+    // TDesign control-platform.svg: the Vue smart-reasoning avatar is a
+    // faceted cube, not the generic radial control glyph.
+    'control-platform': <><path d="M12 2L21 7V17L12 22L3 17V7L12 2Z" /><path d="M12 12L20.5 7.5M12 12V21.5M12 12L3.5 7.5" /></>,
     chat: <path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H9l-4.5 3.5V6Z" />,
     folder: <path d="M3.5 6.5A1.5 1.5 0 0 1 5 5h4l2 2.5h8A1.5 1.5 0 0 1 20.5 9v8A1.5 1.5 0 0 1 19 18.5H5A1.5 1.5 0 0 1 3.5 17v-10.5Z" />,
     extension: <path d="M10 4h4v2.5a1.5 1.5 0 0 0 3 0V4h3v4h-2.5a1.5 1.5 0 0 0 0 3H20v4h-3v-2.5a1.5 1.5 0 0 0-3 0V15h-4v-2.5" />,
