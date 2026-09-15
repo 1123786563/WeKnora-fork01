@@ -3,7 +3,7 @@
 // - TagFilterPanel   ← the tag-filter popup in KnowledgeBase.vue L2465-2556
 // Chips, sections and footer copy mirror the Vue dialogs; state stays local.
 import { useState, type ReactNode } from 'react';
-import { Dialog } from '@weknora/ui';
+import { Button, Dialog, Input } from '@weknora/ui';
 import type { KnowledgeTag } from '@weknora/api-client';
 import { filterTagOptions } from './tags.ts';
 import type { TagSurfaceT } from './tags-locale.ts';
@@ -141,7 +141,7 @@ export function TagPickerDialog({
           <div className="wk-tag-section-head flex items-center justify-between gap-2">
             <h4 className="m-0 text-[13px] font-semibold">{t(copy.available)}</h4>
           </div>
-          <input
+          <Input
             type="search"
             className="wk-tag-search w-full min-h-[28px] my-2 border border-[var(--wk-border,#e4e7ec)] rounded-[6px] bg-transparent px-2 py-0 text-[12px] text-[var(--wk-text,#344054)]"
             value={searchQuery}
@@ -179,7 +179,7 @@ export function TagPickerDialog({
             </div>
           )}
           {canManage && createTag ? (
-            <input
+            <Input
               type="text"
               className="wk-tag-create-input w-full min-h-[28px] my-2 border border-[var(--wk-border,#e4e7ec)] rounded-[6px] bg-transparent px-2 py-0 text-[12px] text-[var(--wk-text,#344054)] border-dashed"
               value={newTagName}
@@ -203,17 +203,17 @@ export function TagPickerDialog({
           {t('knowledgeBase.tagSelectedCount', { count: selectedSet.size })}
         </span>
         <div className="batch-tag-footer-right flex gap-2">
-          <button type="button" className="wk-tag-btn min-h-[30px] cursor-pointer rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-transparent px-[14px] py-0 text-[13px] text-[var(--wk-text,#344054)]" disabled={confirmLoading} onClick={onClose}>
+          <Button type="button" className="wk-tag-btn min-h-[30px] cursor-pointer rounded-[6px] border border-[var(--wk-border,#e4e7ec)] bg-transparent px-[14px] py-0 text-[13px] text-[var(--wk-text,#344054)]" disabled={confirmLoading} onClick={onClose}>
             {t('common.cancel')}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             className="wk-tag-btn wk-tag-btn--primary min-h-[30px] cursor-pointer rounded-[6px] border border-[var(--wk-brand,#07c05f)] bg-[var(--wk-brand,#07c05f)] px-[14px] py-0 text-[13px] text-white"
             disabled={confirmLoading}
             onClick={() => onConfirm(Array.from(selectedSet))}
           >
             {t('common.confirm')}
-          </button>
+          </Button>
         </div>
       </div>
     </Dialog>
@@ -267,7 +267,7 @@ export function TagFilterPanel({
         </button>
       </div>
       <div className="tag-filter-panel__search">
-        <input
+        <Input
           type="search"
           className="w-full min-h-[28px] my-2 border border-[var(--wk-border,#e4e7ec)] rounded-[6px] bg-transparent px-2 py-0 text-[12px] text-[var(--wk-text,#344054)]"
           value={searchQuery}
