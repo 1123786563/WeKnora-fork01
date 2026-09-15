@@ -3464,3 +3464,27 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   after the route change. The backend currently reports `self_serve`, while
   the Vue `:5180` runtime still renders login at `/register`; this source vs
   runtime conflict remains an environment/trigger investigation item.
+
+## 2026-09-15 Round R383 — Web-only protected-route and settings pass
+
+- Under the updated Web/desktop-only scope, parallel agents covered share
+  states, graph settings, MCP interactions, protected-route browser evidence,
+  shared UI review, desktop review, and ledger review. Mobile work was
+  explicitly excluded.
+- Integrated share-state contract coverage (`cedafeb3`) and MCP dialog
+  keyboard/focus/ARIA coverage (`f03b4435`, `615f79cf`). The graph settings
+  component and its Vue-derived validation/state tests are present
+  (`f1d380e3`, `615f79cf`); the existing full knowledge-base editor remains
+  authoritative for the live graph route, avoiding replacement of its larger
+  behavior surface.
+- Protected-route evidence now covers Vue/React at 1440x900, 1024x768, and
+  390x844, including anonymous redirects, `next`, and backend response status:
+  `artifacts/vue-react-protected-route-evidence-20260915.md` and
+  `artifacts/browser-evidence-20260915/protected-route-results.json`.
+- Web regression after integration: 1134/1134 tests, Web typecheck, Web build,
+  and `git diff --check` passed. Evidence remains anonymous/public; no
+  authenticated mutation or permission acceptance is claimed.
+- Remaining open scope is unchanged: authenticated protected-page parity,
+  real tenant permission/mutation flows, Wails runtime interaction, and any
+  rows whose Vue source/runtime trigger is unresolved. No mobile item is used
+  as acceptance for this updated objective.
