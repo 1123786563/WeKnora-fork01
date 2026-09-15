@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { integrationsLocale, integrationsT } from '../../../../packages/views/src/integrations/messages.ts';
 
 // Vue baseline: frontend/src/components/EmbedChannelPreview.vue (720px preview
 // drawer, iframe mode L5-19) + AgentEmbedChannelPanel.vue openPreviewForChannel
@@ -24,6 +25,10 @@ export interface EmbedPreviewModalProps {
   /** Bumped by the parent on reopen so the embed page fully reloads (Vue previewNonce). */
   refreshKey?: number;
   onClose: () => void;
+}
+
+function closeLabel(): string {
+  try { return integrationsT(integrationsLocale(window.localStorage.getItem('locale')), 'common.close'); } catch { return integrationsT(integrationsLocale(null), 'common.close'); }
 }
 
 /** Vue buildEmbedURL (frontend/src/api/embed/index.ts L563-577) with the origin explicit. */
@@ -72,7 +77,7 @@ export function EmbedPreviewModal({ open, channelId, token, title, apiBaseUrl, l
         <h2 className="m-0 pr-[40px] text-[17px] text-ink">{label}</h2>
         {/* Former .wk-integration-drawer-close css (styles.css) as utilities;
             the class name stays as a DOM hook. */}
-        <button type="button" className="wk-integration-drawer-close absolute top-[14px] right-[16px] z-[2] h-[28px] w-[28px] cursor-pointer rounded-[4px] border-0 bg-transparent text-[22px] leading-none text-[#667085] hover:bg-[#f3f4f6] hover:text-ink focus-visible:bg-[#f3f4f6] focus-visible:text-ink focus-visible:outline-none" aria-label="关闭" title="关闭" onClick={onClose}>×</button>
+        <button type="button" className="wk-integration-drawer-close absolute top-[14px] right-[16px] z-[2] h-[28px] w-[28px] cursor-pointer rounded-[4px] border-0 bg-transparent text-[22px] leading-none text-[#667085] hover:bg-[#f3f4f6] hover:text-ink focus-visible:bg-[#f3f4f6] focus-visible:text-ink focus-visible:outline-none" aria-label={closeLabel()} title={closeLabel()} onClick={onClose}>×</button>
       </header>
       {/* Former .wk-embed-preview-body (incl. the ≤720px padding-inline tweak). */}
       <div className="box-border flex h-[calc(100%_-_57px)] flex-col gap-[14px] px-[24px] pb-[24px] pt-[20px] max-[720px]:px-[16px]">

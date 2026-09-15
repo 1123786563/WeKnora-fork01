@@ -598,7 +598,7 @@ function EmbedChannelPreviewPanel({ preview, locale, t, onClose }: { preview: { 
   // tweaks became the max-[720px]: variants on the drawer/body/widget-panel.
   return <div className="fixed inset-0 z-[1300] flex justify-end bg-[rgba(0,0,0,.5)]" role="presentation" onClick={onClose}>
     <aside className="box-border h-full w-[min(720px,100vw)] overflow-auto bg-surface shadow-[-8px_0_24px_rgba(15,23,42,.14)] max-[720px]:w-[100vw]" role="dialog" aria-modal="true" aria-label={preview.channel.name || t('embedPublish.preview')} onClick={(event) => event.stopPropagation()}>
-      <header className="relative flex min-h-[56px] items-center justify-between border-b border-solid border-[#eef1f5] px-[24px]"><h2 className="m-0 pr-[40px] text-[17px] text-ink">{preview.channel.name || t('embedPublish.preview')}</h2><button type="button" className={INTEGRATION_DRAWER_CLOSE_CLASS} aria-label="关闭" title="关闭" onClick={onClose}>×</button></header>
+      <header className="relative flex min-h-[56px] items-center justify-between border-b border-solid border-[#eef1f5] px-[24px]"><h2 className="m-0 pr-[40px] text-[17px] text-ink">{preview.channel.name || t('embedPublish.preview')}</h2><button type="button" className={INTEGRATION_DRAWER_CLOSE_CLASS} aria-label={t('common.close')} title={t('common.close')} onClick={onClose}>×</button></header>
       {/* Former .wk-embed-preview-body + .wk-embed-preview-hint. */}
       <div className="box-border flex h-[calc(100%_-_57px)] flex-col gap-[14px] px-[24px] pb-[24px] pt-[20px] max-[720px]:px-[16px]">
         <p className="m-0 rounded-card border border-solid border-line bg-[#f5f7fa] px-[12px] py-[10px] text-[13px] leading-[1.55] text-[#667085]">{t(preview.mode === 'iframe' ? 'embedPublish.previewIframeHint' : 'embedPublish.previewWidgetHint')}</p>
@@ -852,7 +852,7 @@ function ChannelListPanel({ variant, copy, locale, items, showCreate, onToggleCr
     </div>
     {showCreate ? <div className={INTEGRATION_DRAWER_OVERLAY_CLASS} role="presentation" onClick={onToggleCreate}>
       <aside className={INTEGRATION_DRAWER_CLASS_STEPS} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-        <button className={INTEGRATION_DRAWER_CLOSE_CLASS} type="button" aria-label="关闭" title="关闭" onClick={onToggleCreate}>×</button>
+        <button className={INTEGRATION_DRAWER_CLOSE_CLASS} type="button" aria-label={t('common.close')} title={t('common.close')} onClick={onToggleCreate}>×</button>
         {imCreateSlot ?? embedCreateSlot}
       </aside>
     </div> : null}

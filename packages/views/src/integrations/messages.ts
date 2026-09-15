@@ -19,6 +19,7 @@ type FallbackTable = Record<Locale, Record<string, string>>;
 
 const FALLBACK_STRINGS: FallbackTable = {
   'zh-CN': {
+    'common.close': '关闭',
     'integrations.selectAgentHint': '请先选择一个智能体',
     'agentEditor.im.sectionCredentials': "平台凭证",
     'embedPublish.allowedOrigins': "域名白名单",
@@ -62,6 +63,7 @@ const FALLBACK_STRINGS: FallbackTable = {
     'embedPublish.defaultChannelName': '网页嵌入',
   },
   'en-US': {
+    'common.close': 'Close',
     'integrations.selectAgentHint': 'Please select an agent first',
     'agentEditor.im.sectionCredentials': "Platform credentials",
     'embedPublish.allowedOrigins': "Allowed origins",
@@ -105,6 +107,7 @@ const FALLBACK_STRINGS: FallbackTable = {
     'embedPublish.defaultChannelName': 'Web Embed',
   },
   'ja-JP': {
+    'common.close': '閉じる',
     'integrations.selectAgentHint': '先にエージェントを選択してください',
     'agentEditor.im.sectionCredentials': "プラットフォームの認証情報",
     'embedPublish.allowedOrigins': "許可オリジン",
@@ -148,6 +151,7 @@ const FALLBACK_STRINGS: FallbackTable = {
     'embedPublish.defaultChannelName': 'Web埋め込み',
   },
   'ko-KR': {
+    'common.close': '닫기',
     'integrations.selectAgentHint': '먼저 에이전트를 선택하세요',
     'agentEditor.im.sectionCredentials': "플랫폼 자격 증명",
     'embedPublish.allowedOrigins': "허용 도메인",
@@ -191,6 +195,7 @@ const FALLBACK_STRINGS: FallbackTable = {
     'embedPublish.defaultChannelName': '웹 페이지 임베드',
   },
   'ru-RU': {
+    'common.close': 'Закрыть',
     'integrations.selectAgentHint': 'Сначала выберите агента',
     'agentEditor.im.sectionCredentials': "Учётные данные платформы",
     'embedPublish.allowedOrigins': "Разрешённые домены",

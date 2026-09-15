@@ -324,7 +324,7 @@ export function ApiPlaygroundDrawer({ open, onClose, apiKey, mode, agents, agent
             <h2 style={{ margin: 0, fontSize: 16 }}>{t('integrations.api.playgroundTitle')}</h2>
             <p className="wk-muted text-muted" style={{ margin: '4px 0 0' }}>{t('integrations.api.playgroundDrawerDesc')}</p>
           </div>
-          <button type="button" className="wk-api-playground-close" aria-label="关闭" title="关闭" onClick={close} style={{ border: 'none', background: 'transparent', fontSize: 18, cursor: 'pointer' }}>×</button>
+          <button type="button" className="wk-api-playground-close" aria-label={t('common.close')} title={t('common.close')} onClick={close} style={{ border: 'none', background: 'transparent', fontSize: 18, cursor: 'pointer' }}>×</button>
         </header>
 
         <div className="grid gap-[18px]" style={bodyStyle}>
