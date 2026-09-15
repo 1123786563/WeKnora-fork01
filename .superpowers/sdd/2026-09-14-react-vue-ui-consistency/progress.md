@@ -392,3 +392,5 @@ N025/N017 editor polish (2026-09-15): fixed the unterminated textarea padding ut
 N017 system API-key interaction (2026-09-15): added a five-locale copy action for the one-time platform API-key token, with success state and manual-copy fallback when Clipboard API access fails. Web typecheck and diff check pass. Evidence: `evidence/vue-react-parity/2026-09-15-r117-system-api-key-copy.md`.
 
 N013 data-source form polish (2026-09-15): replaced hardcoded English credentials/settings examples in the Web data-source editor with the existing shared localized catalog keys. Web typecheck and diff check pass. Evidence: `evidence/vue-react-parity/2026-09-15-r118-datasource-placeholder-localization.md`.
+
+N017 runtime queue race guard (2026-09-15): task-detail requests now use a generation token; closing the drawer invalidates pending responses so slow success/error results cannot reopen or overwrite a newer drawer. Web typecheck, Web 895/895, and diff check pass. Evidence: `evidence/vue-react-parity/2026-09-15-r119-runtime-queue-close-race.md`.
