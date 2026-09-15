@@ -2854,7 +2854,7 @@ export function KnowledgeDocumentsPage({
     if (!selected.size) return;
     const ids = filterReparseIds([...selected], items);
     if (!ids.length) {
-      setMutationError("All selected documents are already being processed.");
+      setMutationError(t("common.operationFailed"));
       return;
     }
     setMutationError(null);

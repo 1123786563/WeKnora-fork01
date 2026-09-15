@@ -56,7 +56,7 @@ export function DataSourcesPage({ client, knowledgeBaseId }: { client: WeKnoraCl
   }
   useEffect(() => {
     void load();
-    void dataSources.types().then((items) => setTypes(items.sort((left, right) => left.priority - right.priority))).catch((error) => setMessage({ tone: 'warning', text: error instanceof Error ? `Connector types unavailable: ${error.message}` : 'Connector types unavailable' }));
+    void dataSources.types().then((items) => setTypes(items.sort((left, right) => left.priority - right.priority))).catch((error) => setMessage({ tone: 'warning', text: error instanceof Error ? error.message : t('dataSource.resourceLoadFailed') }));
   }, [client, knowledgeBaseId]);
 
   function openCreate() { setEditing(null); setForm({ ...newForm, type: types[0]?.type ?? '' }); setResourceSource(null); setMessage(null); }
