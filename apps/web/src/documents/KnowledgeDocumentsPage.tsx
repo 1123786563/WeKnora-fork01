@@ -189,6 +189,10 @@ export function documentCardHoverPosition(
   return { x: Math.max(10, Math.min(card.left, viewport.width - popover.width - 10)), y: Math.max(10, card.top - popover.height - offset) };
 }
 
+export function hasDocumentGridContent(items: readonly KnowledgeDocument[], folders: readonly { path: string }[]): boolean {
+  return items.length > 0 || folders.length > 0;
+}
+
 function DocumentCardHoverPopover({ document, position, t }: {
   document: KnowledgeDocument;
   position: { x: number; y: number };
@@ -3304,7 +3308,7 @@ export function KnowledgeDocumentsPage({
                 }
               />
             ) : null}
-            {state.status === "success" && items.length > 0 && viewMode === "grid" ? (
+            {state.status === "success" && viewMode === "grid" && hasDocumentGridContent(items, folders.filter((folder) => folder.path && folder.path.split("/").slice(0, -1).join("/") === (folderPath ?? ""))) ? (
               <DocumentCardGrid
                 items={items}
                 folders={folders.filter((folder) => folder.path && folder.path.split("/").slice(0, -1).join("/") === (folderPath ?? ""))}

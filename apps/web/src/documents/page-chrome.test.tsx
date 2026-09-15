@@ -23,7 +23,7 @@ const {
   ParserHint,
   DocumentEmptyState,
 } = await import('./DocumentsPageChrome.tsx');
-const { KnowledgeDocumentsPage, DocumentCardGrid, documentCardHoverPosition, folderPathCrumbs } = await import('./KnowledgeDocumentsPage.tsx');
+const { KnowledgeDocumentsPage, DocumentCardGrid, documentCardHoverPosition, folderPathCrumbs, hasDocumentGridContent } = await import('./KnowledgeDocumentsPage.tsx');
 const { createTranslator } = await import('../i18n.ts');
 
 const t = createTranslator('zh-CN');
@@ -196,4 +196,9 @@ test('document card hover placement prefers the right side and falls back within
   assert.deepEqual(documentCardHoverPosition({ left: 100, right: 300, top: 40 }, { width: 1000, height: 800 }), { x: 312, y: 40 });
   assert.deepEqual(documentCardHoverPosition({ left: 700, right: 900, top: 40 }, { width: 1000, height: 800 }), { x: 328, y: 40 });
   assert.deepEqual(documentCardHoverPosition({ left: 250, right: 350, top: 450 }, { width: 600, height: 800 }), { x: 230, y: 762 });
+});
+
+test('document grid remains mounted for a directory containing only child folders', () => {
+  assert.equal(hasDocumentGridContent([], [{ path: 'Specs/API' }]), true);
+  assert.equal(hasDocumentGridContent([], []), false);
 });
