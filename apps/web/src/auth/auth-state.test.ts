@@ -5,6 +5,8 @@ import {
   getOnboardingPresentation,
   getInviteToken,
   inviteNavigationAfterAuth,
+  oidcErrorMessage,
+  shouldShowRegistration,
   validateLoginForm,
   validateRegisterForm,
 } from './auth-state.ts';
@@ -65,6 +67,21 @@ test('auth state preserves invite token and sends invite users to the workspace'
 test('OIDC callback decodes the Vue-compatible base64url JSON payload', () => {
   const payload = Buffer.from(JSON.stringify({ success: true, token: 'access' })).toString('base64url');
   assert.deepEqual(decodeOIDCResult(payload), { success: true, token: 'access' });
+});
+
+test('registration route follows Vue invite-only visibility rules', () => {
+  assert.equal(shouldShowRegistration(undefined, false), false);
+  assert.equal(shouldShowRegistration('invite_only', false), false);
+  assert.equal(shouldShowRegistration('invite_only', true), true);
+  assert.equal(shouldShowRegistration('self_serve', false), false);
+  assert.equal(shouldShowRegistration('self_serve', false, true), true);
+  assert.equal(shouldShowRegistration('self_serve', true), true);
+});
+
+test('OIDC error callback preserves the provider description for the login surface', () => {
+  assert.equal(oidcErrorMessage('oidc_error=access_denied&oidc_error_description=用户取消授权'), '用户取消授权');
+  assert.equal(oidcErrorMessage('oidc_error=access_denied'), 'access_denied');
+  assert.equal(oidcErrorMessage('oidc_result=ignored'), null);
 });
 
 test('auth adapter preserves OIDC and invite endpoint contracts', async () => {
