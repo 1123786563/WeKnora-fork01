@@ -50,6 +50,16 @@ export function selectIncompleteAssistant(messages: readonly ChatMessage[]): Cha
   return [...messages].reverse().find((message) => message.role === 'assistant' && message.is_completed === false);
 }
 
+export function findRetryQuery(messages: readonly ChatMessage[], assistantMessageId: string): string | undefined {
+  const assistantIndex = messages.findIndex((message) => message.id === assistantMessageId && message.role === 'assistant');
+  if (assistantIndex < 0) return undefined;
+  for (let index = assistantIndex - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role === 'user') return message.content.trim() || undefined;
+  }
+  return undefined;
+}
+
 export function shouldRenderPendingUser(messages: readonly ChatMessage[], pendingUser: string | null): boolean {
   return pendingUser !== null && !messages.some((message) => message.role === 'user' && message.content === pendingUser);
 }

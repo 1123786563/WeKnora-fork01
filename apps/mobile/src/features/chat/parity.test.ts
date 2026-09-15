@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { initialChatStreamState, reduceChatStream } from '@weknora/domain/chat/reducer';
-import { buildMobileChatRequestBody, isCurrentChatRun, replayMobileChatEvents, selectAssistantMessageId, selectIncompleteAssistant, selectReferenceGroups, shouldRenderLiveAssistant, shouldRenderPendingUser } from './parity.ts';
+import { buildMobileChatRequestBody, findRetryQuery, isCurrentChatRun, replayMobileChatEvents, selectAssistantMessageId, selectIncompleteAssistant, selectReferenceGroups, shouldRenderLiveAssistant, shouldRenderPendingUser } from './parity.ts';
 
 test('mobile chat request carries the selected knowledge-base scope', () => {
   assert.deepEqual(buildMobileChatRequestBody('hello', ['kb-1'], ['attachment-1']), {
@@ -38,6 +38,18 @@ test('mobile resumes only an incomplete assistant message', () => {
     { id: 'done', session_id: 's', role: 'assistant', content: 'done', is_completed: true },
     { id: 'live', session_id: 's', role: 'assistant', content: 'partial', is_completed: false },
   ])?.id, 'live');
+});
+
+test('mobile finds the user query immediately preceding a failed assistant response', () => {
+  assert.equal(findRetryQuery([
+    { id: 'u-1', session_id: 's', role: 'user', content: 'first' },
+    { id: 'a-1', session_id: 's', role: 'assistant', content: 'done', is_completed: true },
+    { id: 'u-2', session_id: 's', role: 'user', content: 'retry me' },
+    { id: 'a-2', session_id: 's', role: 'assistant', content: 'partial', is_completed: false },
+  ], 'a-2'), 'retry me');
+  assert.equal(findRetryQuery([
+    { id: 'a-2', session_id: 's', role: 'assistant', content: 'partial', is_completed: false },
+  ], 'a-2'), undefined);
 });
 
 test('mobile does not duplicate a user message after stream recovery reloads history', () => {
