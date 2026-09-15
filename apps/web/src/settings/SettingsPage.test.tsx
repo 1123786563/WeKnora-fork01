@@ -22,7 +22,7 @@ Object.assign(globalThis, {
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
 
 const { createRoot } = await import('react-dom/client');
-const { SettingsPage } = await import('./SettingsPage.tsx');
+const { SettingsPage, settingsNavGroups } = await import('./SettingsPage.tsx');
 const { auditDateParts, auditOutcomeTone, auditTargetSummary } = await import('./SystemAuditLogPanel.tsx');
 
 let mountedRoot: Root | undefined;
@@ -105,6 +105,12 @@ test('settings wrapper drops the refresh button and the raw payload dump', async
   const container = await mountPage(makeClient());
   assert.equal(container.querySelector('.wks-reload'), null, 'no refresh button in the panel heading');
   assert.equal(container.querySelector('dl'), null, 'no raw settings value dump');
+});
+
+test('settings navigation hides the Vue-unlisted retrieval deep-link section', () => {
+  const groups = settingsNavGroups('zh-CN', ['general', 'retrieval', 'system']);
+  const keys = groups.flatMap((group) => group.items.map((item) => item.key));
+  assert.deepEqual(keys, ['general', 'system']);
 });
 
 // A3: the general section mounts the Vue GeneralSettings parity panel.

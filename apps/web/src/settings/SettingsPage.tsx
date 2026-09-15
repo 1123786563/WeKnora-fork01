@@ -311,6 +311,12 @@ const NAV_GROUP_DEFS: ReadonlyArray<{ key: string; labelKey: string; sections: r
   { key: 'platform', labelKey: 'settings.navGroups.platform', sections: ['system'] },
 ];
 
+// Vue's current Settings.vue keeps retrieval available to its settings state
+// model but does not expose it in navItems. Keep the React deep-link route
+// readable for historical URLs while avoiding a navigation-only fallback item
+// that has no Vue counterpart.
+const NAV_HIDDEN_SECTIONS = new Set(['retrieval']);
+
 // Vue label sources (Settings.vue navItems): every label is a settings.* i18n
 // string auto-ported into packages/i18n/src/settings.ts; ollama/weknoracloud
 // stay literal there too.
@@ -417,7 +423,8 @@ const SECTION_ICONS: Record<string, ReactNode> = {
 const FALLBACK_ICON = icon(<circle cx="12" cy="12" r="9" />);
 
 export function settingsNavGroups(locale: Locale, visibleKeys: readonly string[]): SettingsNavGroupView[] {
-  const labels = new Map(visibleKeys.map((key) => [key, settingsSectionLabel(locale, key)] as const));
+  const navKeys = visibleKeys.filter((key) => !NAV_HIDDEN_SECTIONS.has(key));
+  const labels = new Map(navKeys.map((key) => [key, settingsSectionLabel(locale, key)] as const));
   const groups: SettingsNavGroupView[] = NAV_GROUP_DEFS.map((def) => ({
     key: def.key,
     label: formatMessage(locale, def.labelKey),
@@ -428,7 +435,7 @@ export function settingsNavGroups(locale: Locale, visibleKeys: readonly string[]
   // Unknown registry sections keep a fallback group so role-gated entries are
   // never silently dropped from the drawer navigation.
   const assigned = new Set(NAV_GROUP_DEFS.flatMap((def) => def.sections as readonly string[]));
-  const unknown = visibleKeys.filter((key) => !assigned.has(key));
+  const unknown = navKeys.filter((key) => !assigned.has(key));
   if (unknown.length > 0) {
     groups.push({ key: 'other', label: formatMessage(locale, 'settings.navGroups.platform'), items: unknown.map((key) => ({ key, label: labels.get(key)!, icon: SECTION_ICONS[key] ?? FALLBACK_ICON })) });
   }
