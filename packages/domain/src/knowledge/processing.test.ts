@@ -65,3 +65,13 @@ test('timeline without a trace still marks the current stage as running', async 
   assert.equal(steps[0]!.state, 'running');
   assert.equal(steps[1]!.state, 'pending');
 });
+
+test('trace rows preserve tree depth and stable keys for expandable waterfall rendering', async () => {
+  const { flattenKnowledgeSpans } = await import('./processing.ts');
+  const rows = flattenKnowledgeSpans({ name: 'pipeline', children: [{ name: 'embedding', children: [{ name: 'provider-call' }] }] });
+  assert.deepEqual(rows.map((row) => ({ key: row.key, depth: row.depth, hasChildren: row.hasChildren, name: row.node.name })), [
+    { key: 'root', depth: 0, hasChildren: true, name: 'pipeline' },
+    { key: 'root.0', depth: 1, hasChildren: true, name: 'embedding' },
+    { key: 'root.0.0', depth: 2, hasChildren: false, name: 'provider-call' },
+  ]);
+});

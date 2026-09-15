@@ -86,6 +86,24 @@ function collectSpans(node: KnowledgeSpanNode | null | undefined, into: Knowledg
   if (Array.isArray(node.children)) for (const child of node.children) collectSpans(child, into);
 }
 
+export interface KnowledgeTimelineNode {
+  key: string;
+  depth: number;
+  node: KnowledgeSpanNode;
+  hasChildren: boolean;
+}
+
+/** Flatten the backend trace tree without losing parent depth for a waterfall UI. */
+export function flattenKnowledgeSpans(root: KnowledgeSpanNode | null | undefined): KnowledgeTimelineNode[] {
+  const rows: KnowledgeTimelineNode[] = [];
+  const visit = (node: KnowledgeSpanNode, depth: number, key: string) => {
+    rows.push({ key, depth, node, hasChildren: Array.isArray(node.children) && node.children.length > 0 });
+    if (Array.isArray(node.children)) node.children.forEach((child, index) => visit(child, depth + 1, `${key}.${index}`));
+  };
+  if (root) visit(root, 0, 'root');
+  return rows;
+}
+
 /** Ordered step list for the timeline: the fixed pipeline stages, each mapped
  *  to the best-matching span in the trace tree (or pending when absent). */
 export function buildKnowledgeTimeline(spans: KnowledgeSpansView): KnowledgeTimelineStep[] {

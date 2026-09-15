@@ -5,8 +5,10 @@ import {
   processingStatusLabel,
   normalizeKnowledgeProcessingStatus,
   buildKnowledgeTimeline,
+  flattenKnowledgeSpans,
   isKnowledgeProcessingActive,
   type KnowledgeTimelineStep,
+  type KnowledgeTimelineNode,
 } from "@weknora/domain/knowledge/processing";
 import { flattenKnowledgeFolders as flattenFolders } from "@weknora/domain/knowledge/folders";
 import { Button, Checkbox, Dialog, Input, Select, Sheet, Status, Textarea } from "@weknora/ui";
@@ -1985,7 +1987,9 @@ export function KnowledgeDocumentsPage({
   const [manualEditLoading, setManualEditLoading] = useState(false);
   const [manualEditSaving, setManualEditSaving] = useState(false);
   const [traceDocument, setTraceDocument] = useState<KnowledgeDocument | null>(null);
-  const [traceState, setTraceState] = useState<{ status: "idle" | "loading" | "success" | "error"; steps: KnowledgeTimelineStep[]; parseStatus?: string; message?: string }>({ status: "idle", steps: [] });
+  const [traceState, setTraceState] = useState<{ status: "idle" | "loading" | "success" | "error"; steps: KnowledgeTimelineStep[]; nodes: KnowledgeTimelineNode[]; parseStatus?: string; message?: string }>({ status: "idle", steps: [], nodes: [] });
+  const [expandedTraceNodes, setExpandedTraceNodes] = useState<Set<string>>(new Set());
+  const [selectedTraceNode, setSelectedTraceNode] = useState<KnowledgeTimelineNode | null>(null);
   // Multi-file upload parity: staged files wait behind a confirm dialog
   // (Vue UploadConfirmDialog) before any upload call is issued.
   const [pendingEntries, setPendingEntries] = useState<UploadEntry[]>([]);
@@ -2727,7 +2731,9 @@ export function KnowledgeDocumentsPage({
 
   function openTrace(document: KnowledgeDocument) {
     setTraceDocument(document);
-    setTraceState({ status: "loading", steps: [] });
+    setTraceState({ status: "loading", steps: [], nodes: [] });
+    setExpandedTraceNodes(new Set());
+    setSelectedTraceNode(null);
   }
 
   useEffect(() => {
@@ -2742,13 +2748,15 @@ export function KnowledgeDocumentsPage({
         const spans = await client.knowledgeBases.documents.spans(traceDocument.id);
         if (!active) return;
         const parseStatus = typeof spans.parse_status === "string" ? spans.parse_status : traceDocument.parse_status;
-        setTraceState({ status: "success", steps: buildKnowledgeTimeline(spans), parseStatus });
+        const nodes = flattenKnowledgeSpans(spans.trace);
+        setTraceState({ status: "success", steps: buildKnowledgeTimeline(spans), nodes, parseStatus });
+        setExpandedTraceNodes((current) => current.size > 0 ? current : new Set(nodes.map((row) => row.key)));
         if (!isKnowledgeProcessingActive(parseStatus) && polling !== undefined) {
           window.clearInterval(polling);
           polling = undefined;
         }
       } catch (error) {
-        if (active) setTraceState({ status: "error", steps: [], message: errorMessage(error, t) });
+        if (active) setTraceState({ status: "error", steps: [], nodes: [], message: errorMessage(error, t) });
       } finally {
         inFlight = false;
       }
@@ -3940,7 +3948,8 @@ export function KnowledgeDocumentsPage({
             {traceState.status === "loading" ? <Status>{t("common.loading")}</Status> : null}
             {traceState.status === "error" ? <Status tone="error">{traceState.message}</Status> : null}
             {traceState.status === "success" ? (
-              <ol className="m-0 flex list-none flex-col gap-2 p-0">
+              <div className="flex flex-col gap-4">
+                <ol className="m-0 flex list-none flex-col gap-2 p-0" aria-label={t("knowledgeBase.timeline.title")}>
                 {traceState.steps.map((step) => (
                   <li key={step.stage} data-state={step.state} className="flex items-center justify-between rounded-[6px] border border-line-soft px-3 py-2 text-[13px]">
                     <span>{t(`knowledgeBase.timeline.stage.${step.stage}`)}</span>
@@ -3949,7 +3958,29 @@ export function KnowledgeDocumentsPage({
                     </span>
                   </li>
                 ))}
-              </ol>
+                </ol>
+                {traceState.nodes.length > 0 ? (
+                  <div className="overflow-x-auto rounded-[8px] border border-line-soft">
+                    <ol className="m-0 list-none divide-y divide-line-soft p-0" aria-label={t("knowledgeBase.timeline.title")}>
+                      {traceState.nodes.filter((row) => row.depth === 0 || expandedTraceNodes.has(row.key.slice(0, row.key.lastIndexOf(".")))).map((row) => {
+                        const rawStatus = typeof row.node.status === "string" ? row.node.status.toLowerCase() : "pending";
+                        const state = rawStatus.includes("fail") || rawStatus.includes("error") ? "failed" : rawStatus.includes("run") || rawStatus.includes("progress") ? "running" : rawStatus.includes("complete") || rawStatus.includes("done") || row.node.end_time ? "done" : "pending";
+                        const label = row.node.name || row.node.stage || String(row.node.span_id || row.key);
+                        return <li key={row.key} data-state={state} className="flex min-w-[480px] items-center gap-2 px-3 py-2 text-[13px] hover:bg-surface-wash" style={{ paddingLeft: `${12 + row.depth * 16}px` }}>
+                          {row.hasChildren ? <button type="button" className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-control border-0 bg-transparent text-muted hover:bg-hover-wash" aria-expanded={expandedTraceNodes.has(row.key)} aria-label={t("knowledgeBase.timeline.title")} onClick={() => setExpandedTraceNodes((current) => { const next = new Set(current); if (next.has(row.key)) next.delete(row.key); else next.add(row.key); return next; })}>{expandedTraceNodes.has(row.key) ? "⌄" : "›"}</button> : <span className="inline-block h-6 w-6 shrink-0" aria-hidden="true" />}
+                          <button type="button" className="min-w-0 flex-1 truncate border-0 bg-transparent p-0 text-left font-mono text-ink hover:underline" onClick={() => setSelectedTraceNode(row)}>{label}</button>
+                          <span className={state === "failed" ? "text-danger" : state === "done" ? "text-success" : state === "running" ? "text-primary" : "text-muted"}>{t(`knowledgeBase.timeline.${state}`)}</span>
+                          <span className="w-20 shrink-0 text-right font-mono text-[11px] text-muted">{typeof row.node.duration_ms === "number" ? `${row.node.duration_ms}ms` : "—"}</span>
+                        </li>;
+                      })}
+                    </ol>
+                  </div>
+                ) : null}
+                {selectedTraceNode ? <section className="rounded-[8px] border border-line-soft bg-surface-wash p-3" aria-label={String(selectedTraceNode.node.name || selectedTraceNode.node.stage || selectedTraceNode.key)}>
+                  <div className="mb-2 flex items-center justify-between gap-2"><strong className="truncate text-[13px] text-ink">{selectedTraceNode.node.name || selectedTraceNode.node.stage || selectedTraceNode.key}</strong><Button type="button" onClick={() => setSelectedTraceNode(null)}>{t("knowledgeBase.documents.cancel")}</Button></div>
+                  <pre className="m-0 max-h-[240px] overflow-auto whitespace-pre-wrap break-words text-[11px] leading-[1.5] text-muted">{JSON.stringify(selectedTraceNode.node, null, 2)}</pre>
+                </section> : null}
+              </div>
             ) : null}
           </section>
         </Sheet>
