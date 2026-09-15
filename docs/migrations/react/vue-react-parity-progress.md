@@ -1,5 +1,11 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-15 Round N+82 — N007 分节导航响应式行为
+
+- 对照 Vue 800px media query，移除 `UploadSectionNav` 内联桌面布局，统一由 CSS 控制；窄屏切换为不换行横向滚动、自动宽度导航项并清除桌面行距。
+- 聚焦 upload-confirm 测试 37/37、`pnpm typecheck:web`、`git diff --check` 通过；证据：`evidence/vue-react-parity-2026-09-15-n007-section-nav-responsive.md`。
+- N007 继续保持 `implementing`：认证浏览器 responsive capture、真实后端与平台证据仍未闭环。
+
 ## 2026-09-15 Round N+82 — N007 上传配置内容区 padding
 
 - 对照 Vue `.content-wrapper`，React 配置内容区从统一 20px 修正为桌面 `22px 32px 28px`，并保留 800px 下的 16px 覆盖。
