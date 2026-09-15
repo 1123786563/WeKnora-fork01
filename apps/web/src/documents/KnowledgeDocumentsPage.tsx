@@ -9,7 +9,7 @@ import {
   type KnowledgeTimelineStep,
 } from "@weknora/domain/knowledge/processing";
 import { flattenKnowledgeFolders as flattenFolders } from "@weknora/domain/knowledge/folders";
-import { Button, Checkbox, Dialog, Input, Select, Status, Textarea } from "@weknora/ui";
+import { Button, Checkbox, Dialog, Input, Select, Sheet, Status, Textarea } from "@weknora/ui";
 import { createTranslator, useAppLocale } from "../i18n.ts";
 import { observeUploadProgress } from "../platform/http.ts";
 import {
@@ -3924,11 +3924,13 @@ export function KnowledgeDocumentsPage({
         </Dialog>
       ) : null}
       {traceDocument && canContribute ? (
-        <Dialog
+        <Sheet
           open
           title={`${t("knowledgeBase.timeline.title")}：${displayName(traceDocument)}`}
           onClose={() => setTraceDocument(null)}
-          className="max-w-[720px]"
+          side="right"
+          width="min(820px, 92vw)"
+          className="min-w-0 border-l border-line-soft"
         >
           <section className="wk-processing-timeline" aria-live="polite" aria-busy={traceState.status === "loading"}>
             {traceState.status === "loading" ? <Status>{t("common.loading")}</Status> : null}
@@ -3946,7 +3948,7 @@ export function KnowledgeDocumentsPage({
               </ol>
             ) : null}
           </section>
-        </Dialog>
+        </Sheet>
       ) : null}
       {confirmingDelete && canContribute ? (
         <Dialog
