@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import * as nodeModule from 'node:module';
 import React from 'react';
@@ -8,6 +9,9 @@ const hooks = nodeModule as typeof nodeModule & { registerHooks?: (hooks: { reso
 if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => specifier.endsWith('.css') ? { shortCircuit: true, url: 'data:text/javascript,export default {}' } : nextResolve(specifier, context) });
 const { Alert, Button, Dialog, Input, Menu, MenuContent, MenuItem, Select, Sheet, Tabs, TabsContent, TabsList, TabsTrigger } = await import('./index.tsx');
 
+const styles = readFileSync(new URL('./styles.css', import.meta.url), 'utf8');
+const compactStyles = styles.replace(/\s*([{}:;])\s*/g, '$1');
+
 test('Button and Input expose Vue-sized semantic states', () => {
   const markup = renderToStaticMarkup(<><Button variant="primary" size="small" loading>Save</Button><Input invalid aria-label="Name" /></>);
   assert.match(markup, /wk-button/);
@@ -15,6 +19,12 @@ test('Button and Input expose Vue-sized semantic states', () => {
   assert.match(markup, /aria-busy="true"/);
   assert.match(markup, /wk-input/);
   assert.match(markup, /aria-invalid="true"/);
+});
+
+test('Input keeps Vue focus rings for normal and invalid keyboard focus', () => {
+  assert.match(compactStyles, /\.wk-input:focus\{[^}]*border-color:var\(--wk-color-brand,#07c05f\)[^}]*box-shadow:0 0 0 2px var\(--wk-color-brand-focus/);
+  assert.match(compactStyles, /\.wk-input\[aria-invalid=true\]:focus\{[^}]*border-color:var\(--wk-color-error,#e34d59\)[^}]*box-shadow:0 0 0 2px var\(--wk-color-error-focus/);
+  assert.match(compactStyles, /\.wk-input:focus\{[^}]*outline:none/);
 });
 
 test('overlay and menu primitives render portal-ready accessible contracts', () => {
