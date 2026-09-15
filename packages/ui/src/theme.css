@@ -7,7 +7,10 @@
  */
 @theme {
   /* 字体 */
-  --font-sans: Inter, ui-sans-serif, system-ui, sans-serif;
+  /* Vue useFont.ts is authoritative for the default and user-selected stack.
+     Keep the runtime preference hook so every shared shadcn primitive follows
+     the same font as the application shell. */
+  --font-sans: var(--wk-font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif);
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   /* 圆角（wk 控件 6px / 卡片 8px） */
