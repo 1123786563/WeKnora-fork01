@@ -3561,7 +3561,7 @@ export function KnowledgeDocumentsPage({
                   const actions = documentRowActions(document.parse_status);
                   return (
                     <li key={document.id} data-select-id={document.id} className="items-center! flex justify-between gap-4 border-b border-line-soft py-[0.9rem]">
-                      {canContribute ? <Checkbox
+                      {canContribute && batchMode ? <Checkbox
                           type="checkbox"
                           aria-label={t("knowledgeBase.documents.select", {
                             name: displayName(document),
