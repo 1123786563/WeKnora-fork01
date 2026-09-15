@@ -17,11 +17,12 @@ test('creates an editable draft from redacted records without restoring secret p
 
 test('preserves an existing agent avatar through draft hydration and payload construction', async () => {
   const draft = configurationDraftFromRecord('agents', {
-    id: 'agent-1', name: 'Research', avatar: 'https://cdn.test/avatar.png', config: {},
+    id: 'agent-1', name: 'Research', avatar: 'https://cdn.test/avatar.png', config: { system_prompt: 'Help.' },
   });
   assert.equal(draft.avatar, 'https://cdn.test/avatar.png');
+  assert.equal(draft.isBuiltin, false);
   assert.deepEqual(configurationPayload('agents', draft), {
-    name: 'Research', description: '', avatar: 'https://cdn.test/avatar.png', config: { system_prompt: '', memory_enabled: false },
+    name: 'Research', description: '', avatar: 'https://cdn.test/avatar.png', config: { system_prompt: 'Help.', memory_enabled: false },
   });
 });
 
@@ -88,6 +89,6 @@ test('agent payloads merge typed fields back into config', () => {
 });
 
 test('agent payloads default missing typed fields', () => {
-  const payload = configurationPayload('agents', { name: 'Bare', details: '{}' } as never);
+  const payload = configurationPayload('agents', { name: 'Bare', details: '{}', isBuiltin: true } as never);
   assert.deepEqual(payload.config, { system_prompt: '', memory_enabled: false });
 });

@@ -29,6 +29,7 @@ export function configurationDraftFromRecord(section: Exclude<ConfigurationSecti
   return {
     id: text(row.id), name: text(row.name), description: text(row.description), avatar: text(row.avatar), type: text(row.type), source: text(row.source),
     details: JSON.stringify(remainingDetails), apiKey: '', appSecret: '', token: '',
+    isBuiltin: row.is_builtin === true,
     ...(section === 'mcp' ? { transportType: text(row.transport_type) || 'sse' } : {}),
     enabled: row.enabled !== false, url: text(row.url),
     credentialStatus: safeObject(row.credentials),
@@ -42,6 +43,7 @@ export function newConfigurationDraft(section: EditableConfigurationSection): Co
     name: '', description: '', type: section === 'models' ? 'KnowledgeQA' : '', source: section === 'models' ? 'custom' : '', details: '{}',
     apiKey: '', appSecret: '', token: '', ...(section === 'mcp' ? { transportType: 'sse' } : {}),
     enabled: true, url: '', credentialStatus: {},
+    isBuiltin: false,
     ...agentTyped,
   };
 }

@@ -26,6 +26,7 @@ export interface ConfigurationDraft {
   /** Typed agent fields (lifted out of the raw config JSON). */
   systemPrompt?: string;
   memoryEnabled?: boolean;
+  isBuiltin?: boolean;
 }
 
 export function parseConfigurationObject(value: string, label: string): Record<string, unknown> {
@@ -52,6 +53,7 @@ function rejectSecretKeys(value: unknown, path: string): void {
 
 export function configurationPayload(section: ConfigurationSectionKey, draft: ConfigurationDraft): Record<string, unknown> {
   if (draft.name.trim() === '') throw new Error('Name is required');
+  if (section === 'agents' && draft.isBuiltin !== true && !(draft.systemPrompt ?? '').trim()) throw new Error('System prompt is required');
   const details = parseConfigurationObject(draft.details || '{}', `${section} config`);
   if (section === 'models') {
     return { name: draft.name.trim(), display_name: draft.name.trim(), description: draft.description ?? '', type: draft.type ?? '', source: draft.source ?? '', parameters: details };

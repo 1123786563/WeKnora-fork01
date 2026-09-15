@@ -57,3 +57,12 @@ test('does not infer health from the mere presence of a configuration row', () =
   assert.equal(configurationStatus({ id: 'model-1', name: 'Model' }), 'configured');
   assert.equal(configurationStatus({ id: 'mcp-1', name: 'MCP', enabled: false }), 'disabled');
 });
+
+test('requires a system prompt when saving a custom agent, matching the Vue editor', () => {
+  assert.throws(() => configurationPayload('agents', {
+    name: 'Custom agent', details: '{}', systemPrompt: '', isBuiltin: false,
+  }), /system prompt/i);
+  assert.doesNotThrow(() => configurationPayload('agents', {
+    name: 'Built-in agent', details: '{}', systemPrompt: '', isBuiltin: true,
+  }));
+});
