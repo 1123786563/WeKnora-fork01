@@ -71,6 +71,9 @@
       "@weknora/ui": [
         "../../packages/ui/src/index.tsx"
       ],
+      "@weknora/ui/*": [
+        "../../packages/ui/src/*.tsx"
+      ],
       "@weknora/views": [
         "../../packages/views/src/index.ts"
       ],
