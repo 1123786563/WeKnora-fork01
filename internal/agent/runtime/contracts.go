@@ -43,6 +43,9 @@ type Run struct {
 	UserID             string
 	RequestID          string
 	AssistantMessageID string
+	Driver             string
+	TargetID           string
+	BudgetRef          string
 	Status             string
 	WaitReason         string
 	Owner              string
@@ -60,11 +63,16 @@ type Admission struct {
 	UserID             string
 	RequestID          string
 	AssistantMessageID string
-	RequestHash        string
-	Snapshot           json.RawMessage
-	UserMessage        json.RawMessage
-	AssistantMessage   json.RawMessage
-	Deadline           time.Time
+	// Driver is empty for legacy platform requests. The repository normalizes
+	// that form to platform before it persists or compares an admission.
+	Driver           string
+	TargetID         string
+	BudgetRef        string
+	RequestHash      string
+	Snapshot         json.RawMessage
+	UserMessage      json.RawMessage
+	AssistantMessage json.RawMessage
+	Deadline         time.Time
 }
 
 // CheckpointRecord holds a complete graph checkpoint and its pending writes.

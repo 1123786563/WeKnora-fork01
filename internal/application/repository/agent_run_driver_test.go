@@ -1,0 +1,81 @@
+package repository
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	agentruntime "github.com/Tencent/WeKnora/internal/agent/runtime"
+	"github.com/stretchr/testify/require"
+)
+
+// TestWorkbenchDriverIsolation catches a worker accidentally discovering or
+// claiming a remote-driver run through the legacy platform worker methods.
+func TestWorkbenchDriverIsolation(t *testing.T) {
+	for _, database := range []string{"sqlite", "postgres"} {
+		t.Run(database, func(t *testing.T) { testWorkbenchDriverIsolation(t) })
+	}
+}
+
+func testWorkbenchDriverIsolation(t *testing.T) {
+	store := NewAgentRunStore(openRunTestDB(t))
+	ctx := context.Background()
+	in := testAdmission()
+	in.Driver = "paseo"
+	in.TargetID = "node-1"
+	in.BudgetRef = "budget-1"
+
+	created, err := store.Admit(ctx, in)
+	require.NoError(t, err)
+	require.Equal(t, "paseo", created.Driver)
+	require.Equal(t, "node-1", created.TargetID)
+	require.Equal(t, "budget-1", created.BudgetRef)
+
+	platform, err := store.Scan(ctx, 10)
+	require.NoError(t, err)
+	require.Empty(t, platform)
+
+	paseo, err := store.ScanDriver(ctx, "paseo", 10)
+	require.NoError(t, err)
+	require.Equal(t, []agentruntime.RunKey{in.Key}, paseo)
+
+	_, err = store.Claim(ctx, in.Key, "platform-worker", time.Minute)
+	require.ErrorIs(t, err, agentruntime.ErrLeaseLost)
+	_, err = store.ClaimDriver(ctx, in.Key, "paseo", "paseo-worker", time.Minute)
+	require.NoError(t, err)
+
+	_, err = store.GetOwnedRun(ctx, 1, "other-owner", in.Key.RunID)
+	require.ErrorIs(t, err, agentruntime.ErrNotFound)
+	owned, err := store.GetOwnedRun(ctx, 1, "u1", in.Key.RunID)
+	require.NoError(t, err)
+	require.Equal(t, "paseo", owned.Driver)
+}
+
+// TestWorkbenchPaseoAdmissionKeepsSessionEngine catches a remote admission
+// mutating the session engine merely to get past the legacy platform guard.
+func TestWorkbenchPaseoAdmissionKeepsSessionEngine(t *testing.T) {
+	db := openRunTestDB(t)
+	require.NoError(t, db.Exec("UPDATE sessions SET engine_type = 'builtin' WHERE id = 's1'").Error)
+	in := testAdmission()
+	in.Driver = "paseo"
+
+	created, err := NewAgentRunStore(db).Admit(context.Background(), in)
+	require.NoError(t, err)
+	require.Equal(t, "paseo", created.Driver)
+	var sessionEngine, runEngine string
+	require.NoError(t, db.Raw("SELECT engine_type FROM sessions WHERE id = 's1'").Scan(&sessionEngine).Error)
+	require.NoError(t, db.Raw("SELECT engine_type FROM agent_runs WHERE tenant_id = 1 AND run_id = 'r1'").Scan(&runEngine).Error)
+	require.Equal(t, "builtin", sessionEngine)
+	require.Empty(t, runEngine)
+}
+
+// TestWorkbenchDriverRejectsUnknown catches a future driver becoming an
+// executable row without an explicit admission and worker implementation.
+func TestWorkbenchDriverRejectsUnknown(t *testing.T) {
+	store := NewAgentRunStore(openRunTestDB(t))
+	in := testAdmission()
+	in.Driver = "unknown-driver"
+
+	_, err := store.Admit(context.Background(), in)
+	require.ErrorIs(t, err, agentruntime.ErrConflict)
+}

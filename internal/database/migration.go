@@ -23,6 +23,8 @@ var (
 	currentMigrationError   string
 )
 
+const sqliteWorkbenchRunsMigrationVersion = 16
+
 // CachedMigrationVersion returns the migration version captured at startup.
 // Returns (version, dirty, ok). ok is false if the version was never captured.
 //
@@ -104,8 +106,11 @@ func RunMigrationsWithOptions(dsn string, opts MigrationOptions) error {
 	logger.Infof(ctx, "Starting database migration...")
 
 	migrationsPath := "file://migrations/versioned"
+	workbenchSQLiteMigrationPresent := false
 	if strings.HasPrefix(dsn, "sqlite3://") {
 		migrationsPath = "file://migrations/sqlite"
+		_, err := os.Stat("migrations/sqlite/000016_workbench_runs.up.sql")
+		workbenchSQLiteMigrationPresent = err == nil
 	}
 
 	var m *migrate.Migrate
@@ -117,6 +122,8 @@ func RunMigrationsWithOptions(dsn string, opts MigrationOptions) error {
 			setMigrationState(0, false, wrapped.Error(), false)
 			return wrapped
 		}
+		// The normal transactional driver is used through v15. The controlled
+		// v16 parent-table rebuild is reopened with NoTxWrap below.
 		driver, err := sqlite3migrate.WithInstance(sqlDB, &sqlite3migrate.Config{})
 		if err != nil {
 			sqlDB.Close()
@@ -142,7 +149,7 @@ func RunMigrationsWithOptions(dsn string, opts MigrationOptions) error {
 			return wrapped
 		}
 	}
-	defer m.Close()
+	defer func() { _, _ = m.Close() }()
 
 	// Check current version and dirty state before migration
 	oldVersion, oldDirty, versionErr := m.Version()
@@ -187,6 +194,42 @@ func RunMigrationsWithOptions(dsn string, opts MigrationOptions) error {
 				forceVersion,
 				forceVersion,
 			))
+		}
+	}
+
+	// Migration 000016 rebuilds agent_runs. SQLite only changes
+	// foreign_keys outside a transaction, while the stock migrate driver wraps
+	// every file in one. Bring an existing database to v15 with the normal
+	// transactional driver, then reopen solely for v16 with NoTxWrap so that
+	// migration's own explicit transaction controls the rebuild. Later schema
+	// changes go through the normal driver again.
+	if opts.SQLiteDBPath != "" && workbenchSQLiteMigrationPresent &&
+		(versionErr == migrate.ErrNilVersion || oldVersion < sqliteWorkbenchRunsMigrationVersion) {
+		if err := m.Migrate(sqliteWorkbenchRunsMigrationVersion - 1); err != nil && err != migrate.ErrNoChange {
+			return captureMigrationFailure(m, fmt.Errorf("failed to prepare SQLite workbench migration: %w", err))
+		}
+		if _, err := m.Close(); err != nil {
+			return fmt.Errorf("failed to close SQLite migration driver before workbench rebuild: %w", err)
+		}
+		sqlDB, err := sql.Open("sqlite3", opts.SQLiteDBPath)
+		if err != nil {
+			wrapped := fmt.Errorf("failed to reopen sqlite db for workbench migration: %w", err)
+			setMigrationState(0, false, wrapped.Error(), false)
+			return wrapped
+		}
+		driver, err := sqlite3migrate.WithInstance(sqlDB, &sqlite3migrate.Config{NoTxWrap: true})
+		if err != nil {
+			_ = sqlDB.Close()
+			wrapped := fmt.Errorf("failed to create SQLite workbench migration driver: %w", err)
+			setMigrationState(0, false, wrapped.Error(), false)
+			return wrapped
+		}
+		m, err = migrate.NewWithDatabaseInstance(migrationsPath, "sqlite3", driver)
+		if err != nil {
+			_ = sqlDB.Close()
+			wrapped := fmt.Errorf("failed to create SQLite workbench migrator: %w", err)
+			setMigrationState(0, false, wrapped.Error(), false)
+			return wrapped
 		}
 	}
 

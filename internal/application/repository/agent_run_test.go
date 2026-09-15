@@ -39,7 +39,7 @@ func openRunTestDB(t *testing.T) *gorm.DB {
 
 	sqlDB, err := sql.Open("sqlite3", dsn)
 	require.NoError(t, err)
-	driver, err := sqlite3migrate.WithInstance(sqlDB, &sqlite3migrate.Config{})
+	driver, err := sqlite3migrate.WithInstance(sqlDB, &sqlite3migrate.Config{NoTxWrap: true})
 	require.NoError(t, err)
 	migrator, err := migrate.NewWithDatabaseInstance(
 		"file://"+filepath.Join(repoRoot, "migrations/sqlite"), "sqlite3", driver,
@@ -317,7 +317,7 @@ func TestAgentRunReopenAndMigrations(t *testing.T) {
 	_, filename, _, ok := runtime.Caller(0)
 	require.True(t, ok)
 	root := filepath.Clean(filepath.Join(filepath.Dir(filename), "../../.."))
-	dir, version := "sqlite", "000014"
+	dir, version := "sqlite", "000015"
 	if db.Name() == "postgres" {
 		dir, version = "versioned", "000093"
 	}

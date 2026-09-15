@@ -27,7 +27,7 @@ func NewAgentRunStore(db *gorm.DB) *AgentRunStore { return &AgentRunStore{db: db
 type agentRunRow struct {
 	TenantID                                                              uint64
 	RunID, SessionID, OwnerID, RequestID, AssistantMessageID, RequestHash string
-	EngineType, Status, WaitReason                                        string
+	EngineType, Driver, TargetID, BudgetRef, Status, WaitReason           string
 	Snapshot                                                              string
 	GraphVersion, SDKVersion                                              string
 	SchemaVersion                                                         int
@@ -45,7 +45,8 @@ func (r agentRunRow) view() agentruntime.Run {
 	run := agentruntime.Run{
 		Key:       agentruntime.RunKey{TenantID: r.TenantID, RunID: r.RunID},
 		SessionID: r.SessionID, UserID: r.OwnerID, RequestID: r.RequestID,
-		AssistantMessageID: r.AssistantMessageID, Status: r.Status,
+		AssistantMessageID: r.AssistantMessageID, Driver: r.Driver,
+		TargetID: r.TargetID, BudgetRef: r.BudgetRef, Status: r.Status,
 		WaitReason: r.WaitReason, Owner: r.LeaseOwner, Revision: r.Revision,
 		Epoch: r.Epoch, Deadline: r.Deadline, Snapshot: json.RawMessage(r.Snapshot),
 	}
@@ -53,6 +54,16 @@ func (r agentRunRow) view() agentruntime.Run {
 		run.LeaseUntil = *r.LeaseUntil
 	}
 	return run
+}
+
+func normalizeRunDriver(driver string) (string, error) {
+	if driver == "" {
+		return "platform", nil
+	}
+	if driver == "platform" || driver == "paseo" {
+		return driver, nil
+	}
+	return "", agentruntime.ErrConflict
 }
 
 func runScope(db *gorm.DB, key agentruntime.RunKey) *gorm.DB {
@@ -69,6 +80,25 @@ func (s *AgentRunStore) Get(ctx context.Context, key agentruntime.RunKey) (agent
 	return row.view(), err
 }
 
+// GetOwnedRun reads a run only when the authenticated tenant and actor own it.
+// The complete predicate is deliberately issued as one query so no unscoped
+// run can leak between owner checks.
+func (s *AgentRunStore) GetOwnedRun(
+	ctx context.Context, tenantID uint64, ownerID, runID string,
+) (agentruntime.Run, error) {
+	if tenantID == 0 || ownerID == "" || runID == "" {
+		return agentruntime.Run{}, agentruntime.ErrNotFound
+	}
+	var row agentRunRow
+	err := s.db.WithContext(ctx).Table("agent_runs").
+		Where("tenant_id = ? AND owner_id = ? AND run_id = ?", tenantID, ownerID, runID).
+		Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return agentruntime.Run{}, agentruntime.ErrNotFound
+	}
+	return row.view(), err
+}
+
 // Admit atomically reserves a session, creates both business messages and
 // persists the immutable request snapshot. Request retries are scoped to the
 // authenticated tenant and owner; session validation precedes idempotency reads.
@@ -78,6 +108,11 @@ func (s *AgentRunStore) Admit(ctx context.Context, in agentruntime.Admission) (a
 		!json.Valid(in.Snapshot) {
 		return agentruntime.Run{}, agentruntime.ErrConflict
 	}
+	driver, err := normalizeRunDriver(in.Driver)
+	if err != nil {
+		return agentruntime.Run{}, err
+	}
+	in.Driver = driver
 	user, err := admissionMessage(in.UserMessage, "user", in)
 	if err != nil {
 		return agentruntime.Run{}, err
@@ -108,14 +143,15 @@ func (s *AgentRunStore) Admit(ctx context.Context, in agentruntime.Admission) (a
 			Take(&session).Error; e != nil {
 			return e
 		}
-		if session.EngineType != "trpc" {
+		if in.Driver == "platform" && session.EngineType != "trpc" {
 			return agentruntime.ErrConflict
 		}
 		var existing agentRunRow
 		e := tx.Where("tenant_id = ? AND owner_id = ? AND request_id = ?",
 			in.Key.TenantID, in.UserID, in.RequestID).Take(&existing).Error
 		if e == nil {
-			if existing.RequestHash != in.RequestHash || existing.SessionID != in.SessionID {
+			if existing.RequestHash != in.RequestHash || existing.SessionID != in.SessionID ||
+				existing.Driver != in.Driver || existing.TargetID != in.TargetID || existing.BudgetRef != in.BudgetRef {
 				return agentruntime.ErrConflict
 			}
 			result = existing.view()
@@ -136,8 +172,12 @@ func (s *AgentRunStore) Admit(ctx context.Context, in agentruntime.Admission) (a
 			TenantID: in.Key.TenantID, RunID: in.Key.RunID,
 			SessionID: in.SessionID, OwnerID: in.UserID, RequestID: in.RequestID,
 			AssistantMessageID: in.AssistantMessageID, RequestHash: in.RequestHash,
-			EngineType: "trpc", Status: "queued", Snapshot: string(in.Snapshot),
+			Driver: in.Driver, TargetID: in.TargetID, BudgetRef: in.BudgetRef,
+			Status: "queued", Snapshot: string(in.Snapshot),
 			GraphVersion: "1", SchemaVersion: 1, Deadline: in.Deadline,
+		}
+		if in.Driver == "platform" {
+			row.EngineType = "trpc"
 		}
 		// A concurrent request may target a different session: the database
 		// unique key is the final arbiter and the slot reservation rolls back.
@@ -210,12 +250,24 @@ func (s *AgentRunStore) claimableSQL() string {
 func (s *AgentRunStore) Claim(
 	ctx context.Context, key agentruntime.RunKey, owner string, ttl time.Duration,
 ) (agentruntime.Fence, error) {
+	return s.ClaimDriver(ctx, key, "platform", owner, ttl)
+}
+
+// ClaimDriver takes a queued or expired run only when its persisted driver
+// matches the worker's driver. The legacy Claim method remains platform-only.
+func (s *AgentRunStore) ClaimDriver(
+	ctx context.Context, key agentruntime.RunKey, driver, owner string, ttl time.Duration,
+) (agentruntime.Fence, error) {
+	driver, err := normalizeRunDriver(driver)
+	if err != nil {
+		return agentruntime.Fence{}, err
+	}
 	if owner == "" || ttl < time.Millisecond {
 		return agentruntime.Fence{}, agentruntime.ErrConflict
 	}
 	var fence agentruntime.Fence
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		claimed := runScope(tx, key).Where(s.claimableSQL()).Updates(map[string]any{
+	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		claimed := runScope(tx, key).Where("driver = ?", driver).Where(s.claimableSQL()).Updates(map[string]any{
 			"lease_owner": owner, "lease_until": s.leaseExpiry(ttl), "epoch": gorm.Expr("epoch + 1"),
 			"revision": gorm.Expr("revision + 1"), "status": "running", "updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
 		})
@@ -260,11 +312,23 @@ func (s *AgentRunStore) Renew(ctx context.Context, fence agentruntime.Fence, ttl
 
 // Scan lists claimable work, including expired runs needing recovery.
 func (s *AgentRunStore) Scan(ctx context.Context, limit int) ([]agentruntime.RunKey, error) {
+	return s.ScanDriver(ctx, "platform", limit)
+}
+
+// ScanDriver lists claimable work for one persisted execution driver.
+func (s *AgentRunStore) ScanDriver(
+	ctx context.Context, driver string, limit int,
+) ([]agentruntime.RunKey, error) {
+	driver, err := normalizeRunDriver(driver)
+	if err != nil {
+		return nil, err
+	}
 	if limit <= 0 {
 		return nil, agentruntime.ErrConflict
 	}
 	var keys []agentruntime.RunKey
-	err := s.db.WithContext(ctx).Table("agent_runs").Select("tenant_id, run_id").Where(s.claimableSQL()).
+	err = s.db.WithContext(ctx).Table("agent_runs").Select("tenant_id, run_id").
+		Where("driver = ?", driver).Where(s.claimableSQL()).
 		Order("created_at ASC, tenant_id ASC, run_id ASC").Limit(limit).Scan(&keys).Error
 	return keys, err
 }
