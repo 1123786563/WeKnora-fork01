@@ -13,6 +13,8 @@ export default defineConfig({
       '@weknora/api-client/embed': fileURLToPath(new URL('../../packages/api-client/src/embed/client.ts', import.meta.url)),
       '@weknora/api-client/transport': fileURLToPath(new URL('../../packages/api-client/src/transport/json.ts', import.meta.url)),
       '@weknora/contracts': fileURLToPath(new URL('../../packages/contracts/src/index.ts', import.meta.url)),
+      '@weknora/views/embed/bridge': fileURLToPath(new URL('../../packages/views/src/embed/bridge.ts', import.meta.url)),
+      '@weknora/views/chat/markdown': fileURLToPath(new URL('../../packages/views/src/chat/markdown.ts', import.meta.url)),
       '@weknora/views': fileURLToPath(new URL('../../packages/views/src/index.ts', import.meta.url)),
     },
   },

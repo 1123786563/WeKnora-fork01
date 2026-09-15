@@ -374,3 +374,5 @@ T10 mobile-auth catalog gate (2026-09-15): added locale-completeness and interpo
 T10 mobile OIDC feedback update (2026-09-15): LoginRoute now surfaces startOIDC failures through the localized auth error state instead of swallowing the rejection; mobile typecheck and regression remain green at 190/190.
 
 T10 mobile auth follow-up (2026-09-15): invitation token placeholder now has a dedicated localized key in all five locales; catalog coverage test includes the new key.
+
+N029 Embed build update (2026-09-15): added explicit Vite aliases for `@weknora/views/embed/bridge` and `@weknora/views/chat/markdown`, fixing the root-alias/subpath resolution failure. Embed build now passes (TypeScript + Vite); embed tests remain 7/7 and typecheck passes. Protected embed resource-preview runtime evidence remains open.
