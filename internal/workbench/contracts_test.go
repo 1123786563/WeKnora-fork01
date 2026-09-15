@@ -41,6 +41,19 @@ func TestExecutionWireRejectsInvalidValues(t *testing.T) {
 	} {
 		require.Error(t, event.Validate())
 	}
+	for _, fixture := range []string{
+		`{"schema_version":1,"run_id":"r","seq":1,"type":"event","occurred_at":"2026-09-12T00:00:00Z","payload":{}}`,
+		`{"schema_version":1,"run_id":"r","attempt_id":null,"seq":1,"type":"event","occurred_at":"2026-09-12T00:00:00Z","payload":{}}`,
+		`{"schema_version":1,"run_id":"r","attempt_id":1,"seq":1,"type":"event","occurred_at":"2026-09-12T00:00:00Z","payload":{}}`,
+		`{"schema_version":1,"run_id":"r","attempt_id":"","seq":1,"type":"event","occurred_at":"2026-02-30T00:00:00Z","payload":{}}`,
+		`{"schema_version":1,"run_id":"r","attempt_id":"","seq":1,"type":"event","occurred_at":"2026-09-12T00:00:00+24:00","payload":{}}`,
+	} {
+		_, err := ParseExecutionEvent([]byte(fixture))
+		require.Error(t, err)
+	}
+	validFractional, err := ParseExecutionEvent([]byte(`{"schema_version":1,"run_id":"r","attempt_id":"","seq":1,"type":"event","occurred_at":"2026-09-12T00:00:00.123+08:00","payload":{}}`))
+	require.NoError(t, err)
+	require.Equal(t, "2026-09-12T00:00:00.123+08:00", validFractional.OccurredAt)
 	overflow := base
 	overflow.Seq = MaxSafeInteger + 1
 	require.ErrorIs(t, overflow.Validate(), ErrSequenceOverflow)

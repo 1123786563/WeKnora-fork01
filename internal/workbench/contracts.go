@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -132,6 +133,14 @@ func (e ExecutionEvent) Validate() error {
 	if !iso8601.MatchString(e.OccurredAt) {
 		return invalid("occurred_at", "expected ISO-8601 timestamp")
 	}
+	if e.OccurredAt[len(e.OccurredAt)-1] != 'Z' {
+		offset := e.OccurredAt[len(e.OccurredAt)-6:]
+		offsetHour, hourErr := strconv.Atoi(offset[1:3])
+		offsetMinute, minuteErr := strconv.Atoi(offset[4:6])
+		if hourErr != nil || minuteErr != nil || offsetHour > 23 || offsetMinute > 59 {
+			return invalid("occurred_at", "expected ISO-8601 timestamp")
+		}
+	}
 	if _, err := time.Parse(time.RFC3339Nano, e.OccurredAt); err != nil {
 		return invalid("occurred_at", "expected ISO-8601 timestamp")
 	}
@@ -164,6 +173,17 @@ func (s ExecutionSnapshot) Validate() error {
 }
 
 func ParseExecutionEvent(raw []byte) (ExecutionEvent, error) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return ExecutionEvent{}, err
+	}
+	attemptRaw, ok := fields["attempt_id"]
+	if !ok || bytes.Equal(bytes.TrimSpace(attemptRaw), []byte("null")) {
+		return ExecutionEvent{}, invalid("attempt_id", "required")
+	}
+	if len(attemptRaw) == 0 || attemptRaw[0] != '"' {
+		return ExecutionEvent{}, invalid("attempt_id", "expected a string")
+	}
 	var event ExecutionEvent
 	if err := json.Unmarshal(raw, &event); err != nil {
 		return event, err

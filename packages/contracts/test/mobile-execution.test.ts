@@ -44,6 +44,11 @@ test('validate execution DTO capabilities and snapshot watermark', () => {
   assert.throws(() => parseExecution({ ...execution, schema_version: 2 }), /SCHEMA_VERSION/);
   assert.throws(() => parseExecution({ ...execution, capabilities: { voice: { state: 'unavailable', reason: '' } } }), /reason/);
   assert.throws(() => parseExecutionEvent({ ...event, occurred_at: '12/09/2026' }), /occurred_at/);
+  assert.throws(() => parseExecutionEvent({ ...event, occurred_at: '2026-02-30T00:00:00Z' }), /occurred_at/);
+  assert.throws(() => parseExecutionEvent({ ...event, occurred_at: '2026-09-12T00:00:00+24:00' }), /occurred_at/);
+  assert.equal(parseExecutionEvent({ ...event, occurred_at: '2026-09-12T00:00:00.123+08:00' }).occurred_at, '2026-09-12T00:00:00.123+08:00');
   assert.throws(() => parseExecutionEvent({ ...event, payload: [] }), /payload/);
+  assert.throws(() => parseExecutionEvent({ ...event, run_id: undefined }), /run_id/);
+  assert.throws(() => parseExecutionEvent({ ...event, attempt_id: undefined }), /attempt_id/);
   assert.deepEqual(parseExecutionSnapshot({ execution, watermark: 1, events: [event] }).watermark, 1);
 });
