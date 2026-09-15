@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { KnowledgeChunk, KnowledgeChunkRevision, KnowledgeDocument, WeKnoraClient } from '@weknora/api-client';
 import type { Locale } from '@weknora/i18n';
 import { Button, Card, Sheet, Status } from '@weknora/ui';
-import { buildDocumentPreview, DocumentPreviewContent, isInlinePreviewKind, previewBodyAsBlob, readPreviewText, type InlinePreviewKind } from './preview.ts';
+import { buildDocumentPreview, DocumentPreviewContent, isInlinePreviewKind, previewBodyAsBlob, readCurrentPreviewText, type InlinePreviewKind } from './preview.ts';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 import { buildKnowledgeTimeline, flattenKnowledgeSpans, isKnowledgeProcessingActive, type KnowledgeTimelineNode } from '@weknora/domain/knowledge/processing';
 import { startProcessingTimeline, type ProcessingTimelineSubscription } from './processing-timeline.ts';
@@ -382,7 +382,8 @@ function DocumentDetail({ document, client, canEdit, canDownload, previewPath, d
       if (!active) return;
       const contentType = response.contentType || response.headers['content-type'];
       if (model.kind === 'text' || model.kind === 'markdown') {
-        setPreviewState({ status: 'text', text: await readPreviewText(response.body) });
+        const text = await readCurrentPreviewText(response.body, () => active);
+        if (text !== undefined) setPreviewState({ status: 'text', text });
         return;
       }
       objectUrl = URL.createObjectURL(previewBodyAsBlob(response.body, contentType));

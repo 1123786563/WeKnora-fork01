@@ -302,6 +302,45 @@ test('document content exposes Vue preview, merged and chunks tabs and merges ch
   assert.ok(container.ownerDocument.body.textContent?.indexOf('First')! < container.ownerDocument.body.textContent?.indexOf('Second')!);
 });
 
+test('document preview ignores delayed text from a document that was replaced', async () => {
+  const previewCalls: string[] = [];
+  let releaseFirstPreview!: () => void;
+  const firstPreviewText = new Promise<void>((resolve) => { releaseFirstPreview = resolve; });
+  let textReadStarted!: () => void;
+  const firstTextReadStarted = new Promise<void>((resolve) => { textReadStarted = resolve; });
+  const firstBody = new Blob(['stale document text'], { type: 'text/plain' });
+  Object.defineProperty(firstBody, 'text', { value: async () => { textReadStarted(); await firstPreviewText; return 'stale document text'; } });
+  const client = {
+    knowledgeBases: {
+      documents: {
+        get: async (id: string) => ({
+          id, knowledge_base_id: 'kb-1', file_name: `${id}.txt`, source: 'file', file_type: 'txt', parse_status: 'completed',
+        }),
+        previewPath: (id: string) => `/api/v1/knowledge/${id}/preview`,
+        downloadPath: (id: string) => `/api/v1/knowledge/${id}/download`,
+        spans: async () => ({ trace: null }),
+        preview: async (id: string) => { previewCalls.push(id); return { body: id === 'doc-1' ? firstBody : 'current document text', headers: {}, contentType: 'text/plain' }; },
+        download: async () => ({ body: '', headers: {}, contentType: 'text/plain' }),
+        chunks: async () => ({ data: [], total: 0, page: 1, page_size: 25 }),
+      },
+      settings: { get: async () => ({ id: 'kb-1', user_id: 'user-1' }) },
+    },
+    auth: { me: async () => ({ user: { id: 'user-1', role: 'contributor' }, memberships: [{ role: 'contributor' }] }) },
+  } as never;
+  const container = document.createElement('div');
+  document.body.append(container);
+  mountedRoot = createRoot(container);
+  await act(async () => { mountedRoot?.render(<KnowledgeDocumentDetailPage client={client} documentId="doc-1" onBack={() => {}} />); });
+  await act(async () => { await firstTextReadStarted; });
+  await act(async () => { mountedRoot?.render(<KnowledgeDocumentDetailPage client={client} documentId="doc-2" onBack={() => {}} />); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+  releaseFirstPreview();
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+  const surfaceText = container.ownerDocument.body.textContent || '';
+  assert.ok(surfaceText.includes('current document text'), JSON.stringify({ previewCalls, text: surfaceText }));
+  assert.equal(surfaceText.includes('stale document text'), false);
+});
+
 test('chunk enabled state can be toggled and failed indexing can be retried', async () => {
   const updates: unknown[] = [];
   const client = detailClient(async () => ({
