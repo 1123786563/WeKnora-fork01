@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { formatMessage, supportedLocales } from '../src/index.ts';
 
-const keys = ['mobileAuth.invitationExpires', 'mobileAuth.serverTitle', 'mobileAuth.serverHint', 'mobileAuth.serverPlaceholder', 'mobileAuth.saveServer', 'mobileAuth.savingServer', 'mobileAuth.serverSaveFailed'];
+const keys = ['mobileAuth.invitationToken', 'mobileAuth.invitationExpires', 'mobileAuth.serverTitle', 'mobileAuth.serverHint', 'mobileAuth.serverPlaceholder', 'mobileAuth.saveServer', 'mobileAuth.savingServer', 'mobileAuth.serverSaveFailed'];
 
 test('mobile auth catalog contains every key in every supported locale', () => {
   for (const locale of supportedLocales) {

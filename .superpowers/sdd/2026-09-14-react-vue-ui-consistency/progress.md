@@ -372,3 +372,5 @@ T10 mobile invite-copy follow-up (2026-09-15): invitation lookup confirmation no
 T10 mobile-auth catalog gate (2026-09-15): added locale-completeness and interpolation tests for all seven `mobileAuth.*` keys; focused suite passes 2/2.
 
 T10 mobile OIDC feedback update (2026-09-15): LoginRoute now surfaces startOIDC failures through the localized auth error state instead of swallowing the rejection; mobile typecheck and regression remain green at 190/190.
+
+T10 mobile auth follow-up (2026-09-15): invitation token placeholder now has a dedicated localized key in all five locales; catalog coverage test includes the new key.
