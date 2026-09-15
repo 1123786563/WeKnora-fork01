@@ -157,7 +157,7 @@ type StubMetadata = {
   stale: boolean;
 };
 
-function mcpStubClient(overrides: { metadata?: StubMetadata; metadataGet?: () => Promise<StubMetadata | null>; metadataRefresh?: () => Promise<StubMetadata>; toolApprovalsUpdate?: () => Promise<unknown> } = {}) {
+function mcpStubClient(overrides: { metadata?: StubMetadata; metadataGet?: () => Promise<StubMetadata | null>; metadataRefresh?: () => Promise<StubMetadata>; toolApprovalsList?: () => Promise<unknown[]>; toolApprovalsUpdate?: () => Promise<unknown> } = {}) {
   const metadata: StubMetadata = overrides.metadata ?? { tools: [{ name: 'search', description: 'Search docs' }], serverName: 'Srv', serverVersion: '1.0', syncedAt: '2026-09-13T00:00:00Z', stale: false };
   return {
     configuration: {
@@ -171,7 +171,7 @@ function mcpStubClient(overrides: { metadata?: StubMetadata; metadataGet?: () =>
           get: overrides.metadataGet ?? (async () => metadata),
           refresh: overrides.metadataRefresh ?? (async () => metadata),
         },
-        toolApprovals: { list: async () => [], update: overrides.toolApprovalsUpdate ?? (async () => ({})) },
+        toolApprovals: { list: overrides.toolApprovalsList ?? (async () => []), update: overrides.toolApprovalsUpdate ?? (async () => ({})) },
         usageInstructions: { generate: async () => 'generated usage instructions' },
         oauth: {
           status: async () => ({ authorized: false, state: 'reauth_required', refreshAvailable: false }),
@@ -202,6 +202,33 @@ test('MCP metadata automatically refreshes when Vue cache lookup returns empty',
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     assert.equal(refreshCalls, 1, 'empty cache triggers one Vue-compatible refresh');
     assert.match(document.querySelector('section[aria-label="Tools 清单"]')?.textContent ?? '', /1 个工具/);
+  } finally {
+    await unmountEditor(root);
+  }
+});
+
+test('MCP tools render from a cached Vue snapshot while policy loading keeps switches disabled', async () => {
+  const policyGate = deferred<unknown[]>();
+  const root = await mountEditor(React.createElement(McpSettingsPanel, {
+    client: mcpStubClient({
+      metadata: { tools: [{ name: 'search' }], serverName: 'Srv', serverVersion: '1.0', syncedAt: '2026-09-14T00:00:00Z', stale: false },
+      toolApprovalsList: () => policyGate.promise,
+    }),
+    initialServices: [{ id: 'svc-1', name: 'Docs', transport_type: 'sse', enabled: true, is_builtin: false }],
+    role: 'admin',
+  }));
+  try {
+    await act(async () => { findButton('编辑')?.click(); });
+    const nameInput = document.querySelector('input[placeholder="请输入服务名称"]') as HTMLInputElement;
+    const urlInput = document.querySelector('input[placeholder="https://example.com/mcp"]') as HTMLInputElement;
+    await act(async () => { setInputValue(nameInput, 'Docs'); setInputValue(urlInput, 'https://example.com/mcp'); });
+    await act(async () => { submitForm(document.querySelector('.wks-mcp-drawer form') as HTMLFormElement); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    assert.match(document.body.textContent ?? '', /search/);
+    const switches = Array.from(document.querySelectorAll('[role="switch"]')) as HTMLButtonElement[];
+    assert.equal(switches.length, 2);
+    assert.ok(switches.every((control) => control.disabled), 'policy switches stay disabled while Vue policy loading is pending');
+    await act(async () => { policyGate.resolve([]); await policyGate.promise; });
   } finally {
     await unmountEditor(root);
   }

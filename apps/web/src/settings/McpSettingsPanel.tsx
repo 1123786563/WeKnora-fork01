@@ -379,26 +379,35 @@ function McpMetadataSection({
           const saved = await client.configuration.mcp.metadata.get(serviceId);
           return saved ?? client.configuration.mcp.metadata.refresh(serviceId);
         };
-    const [metadataResult, approvalsResult] = await Promise.allSettled([
-      metadataRequest(),
-      client.configuration.mcp.toolApprovals.list(serviceId),
-    ]);
-    if (generation !== loadGeneration.current) return;
-    if (metadataResult.status === "fulfilled") setMetadata(metadataResult.value);
-    if (approvalsResult.status === "fulfilled")
-      setApprovals(approvalsResult.value);
-    else {
-      setApprovals([]);
-      setPolicyError(t("mcpMetadata.policyLoadFailed"));
+    // Vue renders the metadata snapshot as soon as it resolves; the nested
+    // McpToolsList loads policy rows independently and disables only its
+    // switches while that request is pending. Do not make a slow policy
+    // request hide an already available tool directory.
+    const metadataPromise = metadataRequest()
+      .then((value) => {
+        if (generation === loadGeneration.current) setMetadata(value);
+      })
+      .catch((cause) => {
+        if (generation === loadGeneration.current)
+          setError(
+            cause instanceof Error ? cause.message : t("mcpMetadata.failed"),
+          );
+      });
+    const approvalsPromise = client.configuration.mcp.toolApprovals.list(serviceId)
+      .then((rows) => {
+        if (generation === loadGeneration.current) setApprovals(rows);
+      })
+      .catch(() => {
+        if (generation === loadGeneration.current) {
+          setApprovals([]);
+          setPolicyError(t("mcpMetadata.policyLoadFailed"));
+        }
+      });
+    await Promise.all([metadataPromise, approvalsPromise]);
+    if (generation === loadGeneration.current) {
+      setBusy(false);
+      onBusyChange(false);
     }
-    if (metadataResult.status === "rejected")
-      setError(
-        metadataResult.reason instanceof Error
-          ? metadataResult.reason.message
-          : t("mcpMetadata.failed"),
-      );
-    setBusy(false);
-    onBusyChange(false);
   }
   useEffect(() => {
     void load();
