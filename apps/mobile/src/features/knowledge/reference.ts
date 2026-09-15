@@ -39,6 +39,11 @@ export function selectFaqReferenceEditKey(row: { id: number }): string {
   return String(row.id);
 }
 
+export function faqReferenceListParams(query: string): { page: 1; page_size: 100; keyword?: string } {
+  const keyword = query.trim();
+  return keyword ? { page: 1, page_size: 100, keyword } : { page: 1, page_size: 100 };
+}
+
 export function referenceRoute(kind: KnowledgeReferenceKind, kbId: string): Href {
   return `/knowledge/${encodeURIComponent(kbId)}/${kind}` as Href;
 }

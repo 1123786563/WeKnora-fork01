@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, SafeAreaView, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, SafeAreaView, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMobileRuntime } from '../../runtime.tsx';
 import { knowledgeListLabel } from './list.ts';
-import { editorRoute, selectFaqReferenceEditKey, selectFaqReferenceLabel, selectWikiReferenceEditKey, selectWikiReferenceLabel, type KnowledgeReferenceKind } from './reference.ts';
+import { editorRoute, faqReferenceListParams, selectFaqReferenceEditKey, selectFaqReferenceLabel, selectWikiReferenceEditKey, selectWikiReferenceLabel, type KnowledgeReferenceKind } from './reference.ts';
 
 interface ReferenceRow { id: string; label: string; detail: string; }
 
@@ -26,6 +26,8 @@ export function KnowledgeReferenceScreen({ kind }: { kind: KnowledgeReferenceKin
   const [rows, setRows] = useState<ReferenceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [faqSearchDraft, setFaqSearchDraft] = useState('');
+  const [faqSearchKeyword, setFaqSearchKeyword] = useState('');
   const loadGeneration = useRef(0);
 
   const load = useCallback(async () => {
@@ -39,7 +41,7 @@ export function KnowledgeReferenceScreen({ kind }: { kind: KnowledgeReferenceKin
         if (generation !== loadGeneration.current) return;
         setRows(response.pages.map((page) => ({ id: selectWikiReferenceEditKey(page), label: selectWikiReferenceLabel(page, { untitled: label('dataSource.untitled'), version: (version) => label('knowledgeEditor.wikiBrowser.version', { ver: version }) }), detail: page.summary || '' })));
       } else {
-        const response = await runtime.client.knowledge.faq.list(kbId, { page: 1, page_size: 100 });
+        const response = await runtime.client.knowledge.faq.list(kbId, faqReferenceListParams(faqSearchKeyword));
         if (generation !== loadGeneration.current) return;
         setRows(response.data.map((entry) => ({ id: selectFaqReferenceEditKey(entry), label: selectFaqReferenceLabel(entry, { untitled: label('dataSource.untitled'), enabled: label('knowledgeEditor.faq.statusEnabled'), disabled: label('knowledgeEditor.faq.statusDisabled'), recommended: label('knowledgeEditor.faq.recommended') }), detail: entry.answers[0] || '' })));
       }
@@ -48,7 +50,7 @@ export function KnowledgeReferenceScreen({ kind }: { kind: KnowledgeReferenceKin
     } finally {
       if (generation === loadGeneration.current) setLoading(false);
     }
-  }, [kbId, kind, runtime.client, runtime.locale]);
+  }, [faqSearchKeyword, kbId, kind, runtime.client, runtime.locale]);
 
   useEffect(() => { void load(); }, [load]);
   const title = kind === 'wiki' ? label("wikiBrowser.indexTitle") : label("knowledgeBase.faq.title");
@@ -60,6 +62,15 @@ export function KnowledgeReferenceScreen({ kind }: { kind: KnowledgeReferenceKin
       <Pressable accessibilityRole="button" onPress={() => void load()}><Text style={{ color: '#2864dc' }}>{label("knowledgeBase.documents.reload")}</Text></Pressable>
     </View>
     {error ? <Text accessibilityRole="alert" style={{ color: '#b42318', marginBottom: 8 }}>{error}</Text> : null}
+    {kind === 'faq' ? <TextInput
+      accessibilityLabel={label('knowledgeEditor.faq.searchPlaceholder')}
+      placeholder={label('knowledgeEditor.faq.searchPlaceholder')}
+      value={faqSearchDraft}
+      onChangeText={setFaqSearchDraft}
+      onSubmitEditing={() => setFaqSearchKeyword(faqSearchDraft)}
+      returnKeyType="search"
+      style={{ borderColor: '#d0d5dd', borderWidth: 1, borderRadius: 8, padding: 10, marginBottom: 10 }}
+    /> : null}
     {loading ? <ActivityIndicator accessibilityLabel={`${label('common.loading')}: ${title}`} /> : <FlatList
       data={rows}
       keyExtractor={(item) => item.id}

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { editorRoute, referenceRoute, selectFaqReferenceEditKey, selectFaqReferenceLabel, selectWikiReferenceEditKey, selectWikiReferenceLabel } from './reference.ts';
+import { editorRoute, faqReferenceListParams, referenceRoute, selectFaqReferenceEditKey, selectFaqReferenceLabel, selectWikiReferenceEditKey, selectWikiReferenceLabel } from './reference.ts';
 
 test('mobile Wiki rows keep a readable title and revision marker', () => {
   assert.equal(
@@ -51,4 +51,13 @@ test('mobile knowledge reference labels accept localized copy for every visible 
     ),
     '无标题 · 已禁用 · 推荐',
   );
+});
+
+test('mobile FAQ reference forwards a trimmed search keyword like the Vue manager', () => {
+  assert.deepEqual(faqReferenceListParams('  reset access  '), {
+    page: 1,
+    page_size: 100,
+    keyword: 'reset access',
+  });
+  assert.deepEqual(faqReferenceListParams('   '), { page: 1, page_size: 100 });
 });
