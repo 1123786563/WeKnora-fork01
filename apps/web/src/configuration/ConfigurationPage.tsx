@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AgentConfiguration, ConfigurationRecord, McpConfiguration, ModelConfiguration, SkillConfiguration, WeKnoraClient } from '@weknora/api-client';
-import { Button, Card, Status } from '@weknora/ui';
+import { Button, Card, Input, Select, Status } from '@weknora/ui';
 import { configurationSections, configurationStatus, type ConfigurationSectionKey } from './surface.ts';
 import { ConfigurationEditor } from './ConfigurationEditor.tsx';
 import { AgentOperations, ModelDebugPanel, SkillOperations } from './ConfigurationOperations.tsx';
@@ -38,7 +38,7 @@ export function ConfigurationPage({ client }: { client: WeKnoraClient }) {
   function renderAgentGroups() {
     const groups = groupAgents(records.agents, currentUserId);
     const groupLabels: Record<AgentGroupKey, string> = { builtin: 'Built-in', mine: 'Created by me', shared: 'Shared with me' };
-    return <div className="wk-agent-groups"><label className="wk-agent-search">Search agents<input value={agentQuery} onChange={(event) => setAgentQuery(event.target.value)} placeholder="Filter by name or description" /></label>{(['builtin', 'mine', 'shared'] as AgentGroupKey[]).map((groupKey) => {
+    return <div className="wk-agent-groups"><label className="wk-agent-search">Search agents<Input value={agentQuery} onChange={(event) => setAgentQuery(event.target.value)} placeholder="Filter by name or description" /></label>{(['builtin', 'mine', 'shared'] as AgentGroupKey[]).map((groupKey) => {
       const group = filterAgentsByQuery(groups[groupKey], agentQuery);
       if (group.length === 0) return null;
       const isCollapsed = collapsedGroups[groupKey];
@@ -96,7 +96,7 @@ export function ConfigurationPage({ client }: { client: WeKnoraClient }) {
     <header className="wk-header mb-6 flex items-start justify-between gap-4"><div><p className="wk-eyebrow m-0 text-[0.78rem] font-bold uppercase tracking-[0.08em] text-primary">Platform configuration</p><h1 className="text-[clamp(1.8rem,5vw,2.5rem)] my-[0.35rem]">Agents, models, MCP and skills</h1><p className="wk-muted text-muted">Manage supported configuration through typed APIs. Secrets are write-only, and configuration presence never proves provider health.</p></div><Button type="button" onClick={() => void load()} disabled={loading}>Reload</Button></header>
     {editor ? <ConfigurationEditor client={client} section={editor.section} record={editor.record} onSaved={() => { setEditor(null); void load(); }} onCancel={() => setEditor(null)} /> : null}
     {usageConflict ? <ModelUsageNotice modelName={usageConflict.modelName} details={usageConflict.details} onClose={() => setUsageConflict(null)} /> : null}
-    <div className="wk-configuration-operations"><label>Agent source<select value={creator} onChange={(event) => setCreator(event.target.value as typeof creator)}><option value="all">All agents</option><option value="mine">My agents</option><option value="others">Shared agents</option></select></label></div>
+    <div className="wk-configuration-operations"><label>Agent source<Select value={creator} onChange={(event) => setCreator(event.target.value as typeof creator)}><option value="all">All agents</option><option value="mine">My agents</option><option value="others">Shared agents</option></Select></label></div>
     <AgentOperations client={client} agents={records.agents} disabledIds={records.agents.filter((item) => (item as Record<string, unknown>).disabled_by_server === true).map((item) => item.id)} />
     <ModelDebugPanel client={client} models={records.models} />
     <SkillOperations client={client} />
