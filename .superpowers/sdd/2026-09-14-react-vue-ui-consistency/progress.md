@@ -384,3 +384,5 @@ T10 mobile onboarding localization update (2026-09-15): OnboardingScreen now res
 T10 workspace route localization update (2026-09-15): authenticated workspace switcher now uses shared localized titles, loading/empty/error states, current/switching markers and action labels. Added a zh-CN fallback locale for isolated test hosts that do not provide runtime.locale. Mobile regression passes 190/190 and typecheck passes.
 
 N030/N031 native bundle update (2026-09-15): `pnpm --dir apps/mobile exec expo export --platform ios --output-dir /tmp/weknora-ios-export` completed successfully; Metro bundled 1215 modules and emitted the iOS Hermes bundle/metadata. This proves JS export only; simulator business interaction and OIDC callback evidence remain open.
+
+Verification update (2026-09-15): current cross-package regression remains green after the latest parity slices: Shared 469/469, Web 895/895, Mobile 190/190, Desktop 2/2, Embed 7/7. Evidence: `evidence/vue-react-parity/2026-09-15-r115-cross-package-regression.md`. Runtime and native acceptance rows remain separately gated by the matrix.
