@@ -6,6 +6,12 @@
 - 新增共享关闭图标，聚焦测试 13/13、Web 911/911、Web typecheck 和 diff check 通过；真实认证双端截图与后端共享/取消共享仍开放。
 - 证据：`evidence/vue-react-parity/2026-09-15-r320-share-dialog-actions.md`。
 
+## 2026-09-15 Round R321 — Share dialog organization avatar parity
+
+- 新增 Web 项目级 `SpaceAvatar`，按 Vue `SpaceAvatar.vue` 对齐 small 头像的 22px 尺寸、方形圆角、渐变哈希、Emoji 和装饰图形，并替换共享对话框的选中项、组织选项和已共享行头像。
+- 聚焦共享对话框 13/13、Web 911/911、Web typecheck 和 diff check 通过；认证双端截图与真实后端共享/取消共享仍开放。
+- 证据：`evidence/vue-react-parity/2026-09-15-r321-share-space-avatar.md`。
+
 ## 2026-09-14 Round N+35 — KB 设置 i18n 基础移植（kbSettings/knowledgeEditor 命名空间入共享 i18n）
 
 - 新增 packages/i18n/src/generated/kbSettingsMessages.ts（59 键 ×5 locale，parser/storage/vectorStore）与 knowledgeEditorMessages.ts（586 键 ×5 locale，basic/chunking/indexing 标签）；源为 Vue locales 字节级，en-US/ja-JP 缺键按 Vue fallbackLocale=zh-CN 的渲染值补齐；两域均入 index.ts 合并链。
