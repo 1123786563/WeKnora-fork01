@@ -25,6 +25,16 @@ export function resolveDesktopApiBaseUrl(value: unknown = typeof window === 'und
   } catch { return ''; }
 }
 
+/** Resolve the Go method directly so the shared renderer never boots against the WebView origin. */
+export function resolveDesktopApiBaseUrlFromBridge(app: WailsAppBridge): string {
+  if (typeof app.GetAPIBaseURL !== 'function') return '';
+  try {
+    return resolveDesktopApiBaseUrl(app.GetAPIBaseURL());
+  } catch {
+    return '';
+  }
+}
+
 export function isWailsWebView(value: unknown = typeof window === 'undefined' ? undefined : (window as Window & { runtime?: unknown }).runtime): boolean {
   return Boolean(value && typeof value === 'object');
 }

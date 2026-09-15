@@ -1,6 +1,6 @@
 import { isExternalHttpUrl, isSafeDesktopDeepLink, normalizeDesktopLocation } from './navigation.ts';
 import { hasDesktopFileBridge, type DesktopFileBridge } from './files.ts';
-import { readWailsBridge, type WailsAppBridge } from './wails.ts';
+import { readWailsBridge, resolveDesktopApiBaseUrlFromBridge, type WailsAppBridge } from './wails.ts';
 
 export const DESKTOP_WINDOW_DEFAULTS = {
   width: 1440,
@@ -21,6 +21,22 @@ export interface DesktopRuntimeAdapters {
   fileBridge: DesktopFileBridge;
   normalizeLocation: () => string;
   openExternal: (url: string) => void;
+}
+
+type DesktopOpenTarget = Pick<Window, 'open'>;
+
+/** Install before importing the shared renderer; Go's DomReady injection is intentionally later. */
+export function installDesktopExternalUrlBridge(target: DesktopOpenTarget, runtime: DesktopWindowRuntime): () => void {
+  const originalOpen = target.open;
+  target.open = ((url?: string | URL, ...args: unknown[]) => {
+    const value = typeof url === 'string' ? url : url?.toString() ?? '';
+    if (isExternalHttpUrl(value) && runtime.BrowserOpenURL) {
+      runtime.BrowserOpenURL(value);
+      return null;
+    }
+    return originalOpen.call(target, value, args[0] as string | undefined, args[1] as string | undefined);
+  }) as Window['open'];
+  return () => { target.open = originalOpen; };
 }
 
 export function applyDesktopWindowDefaults(runtime: DesktopWindowRuntime): void {
@@ -51,12 +67,18 @@ export function installDesktopRuntime(): DesktopRuntimeAdapters {
   const browserWindow = typeof window === 'undefined' ? undefined : window as Window & {
     runtime?: DesktopWindowRuntime;
     go?: { main?: { App?: WailsAppBridge } };
+    __WEKNORA_API_BASE__?: string;
     __WEKNORA_DESKTOP__?: DesktopRuntimeAdapters;
   };
   const app = readWailsBridge(browserWindow?.go?.main?.App);
   const runtime = browserWindow?.runtime ?? {};
   const fileBridge = hasDesktopFileBridge(app) ? app : {};
   applyDesktopWindowDefaults(runtime);
+  if (browserWindow) {
+    const apiBaseUrl = resolveDesktopApiBaseUrlFromBridge(app);
+    if (apiBaseUrl) browserWindow.__WEKNORA_API_BASE__ = apiBaseUrl;
+    installDesktopExternalUrlBridge(browserWindow, runtime);
+  }
   const adapters = createDesktopRuntimeAdapters(app, runtime, fileBridge, browserWindow?.location);
   if (browserWindow) {
     browserWindow.__WEKNORA_DESKTOP__ = adapters;

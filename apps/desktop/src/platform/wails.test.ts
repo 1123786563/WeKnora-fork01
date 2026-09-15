@@ -1,14 +1,20 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { isExternalHttpUrl, isSafeDesktopDeepLink, normalizeDesktopLocation, normalizeLegacyPath } from './navigation.ts';
-import { resolveDesktopApiBaseUrl, readWailsBridge, isWailsWebView } from './wails.ts';
-import { applyDesktopWindowDefaults, createDesktopRuntimeAdapters, DESKTOP_WINDOW_DEFAULTS } from './runtime.ts';
+import { resolveDesktopApiBaseUrl, resolveDesktopApiBaseUrlFromBridge, readWailsBridge, isWailsWebView } from './wails.ts';
+import { applyDesktopWindowDefaults, createDesktopRuntimeAdapters, DESKTOP_WINDOW_DEFAULTS, installDesktopExternalUrlBridge } from './runtime.ts';
 import { createDesktopCredentialStorage } from './credentials.ts';
 
 test('accepts only injected HTTP(S) desktop API roots', () => {
   assert.equal(resolveDesktopApiBaseUrl('http://127.0.0.1:1234/api/v1/'), 'http://127.0.0.1:1234/api/v1');
   assert.equal(resolveDesktopApiBaseUrl('javascript:alert(1)'), '');
   assert.equal(resolveDesktopApiBaseUrl(''), '');
+});
+
+test('resolves the Wails API bridge before the shared renderer imports', () => {
+  assert.equal(resolveDesktopApiBaseUrlFromBridge({ GetAPIBaseURL: () => 'http://127.0.0.1:4321/api/v1/' }), 'http://127.0.0.1:4321/api/v1');
+  assert.equal(resolveDesktopApiBaseUrlFromBridge({ GetAPIBaseURL: () => 'javascript:alert(1)' }), '');
+  assert.equal(resolveDesktopApiBaseUrlFromBridge({}), '');
 });
 
 test('keeps Wails bridge state explicit and maps old deep links', () => {
@@ -41,6 +47,23 @@ test('routes external URLs through Wails and rejects non-http schemes', () => {
   adapters.openExternal('https://example.test');
   adapters.openExternal('file:///tmp/private');
   assert.deepEqual(opened, ['https://example.test']);
+});
+
+test('installs an early external URL bridge and leaves internal navigation untouched', () => {
+  const opened: string[] = [];
+  const internal: string[] = [];
+  const target = {
+    open: (url: string) => { internal.push(url); return 'browser-window'; },
+  } as unknown as Window;
+  const restore = installDesktopExternalUrlBridge(target, { BrowserOpenURL: (url) => opened.push(url) });
+
+  assert.equal(target.open?.('https://example.test'), null);
+  assert.equal(target.open?.('/platform/settings'), 'browser-window');
+  assert.deepEqual(opened, ['https://example.test']);
+  assert.deepEqual(internal, ['/platform/settings']);
+
+  restore();
+  assert.equal(target.open?.('https://example.test'), 'browser-window');
 });
 
 test('uses local storage only when no desktop credential bridge exists', () => {
