@@ -1,128 +1,335 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { KnowledgeBase, ParserEngineInfo, StorageBackendView, VectorStoreView, WeKnoraClient } from '@weknora/api-client';
-import { Button, Card, Checkbox, Input, Select, Status, Textarea } from '@weknora/ui';
-import { createTranslator, useAppLocale } from '../i18n.ts';
-import { DataSourcesPage } from '../data-sources/DataSourcesPage.tsx';
-import { buildKnowledgeBaseSettingsInput, formFromKnowledgeBase, updateParserRule, validateKnowledgeBaseSettingsForm, type KnowledgeBaseSettingsForm } from './form.ts';
+import { useEffect, useMemo, useState } from 'react';
+import type { ElementType } from 'react';
+import type { KnowledgeBase } from '@weknora/contracts';
+import type { WeKnoraClient } from '@weknora/api-client';
+import { GraphSettings, type GraphExtractConfig } from './GraphSettings.tsx';
 
-type Tab = 'settings' | 'sources';
+type ProjectUi = typeof import('@weknora/ui');
 
-export interface KnowledgeSettingsInput {
-  id: string; name: string; type?: string;
-  chunking_config?: { parser_engine_rules?: Array<{ file_types?: string[]; engine?: string }> };
-  vector_store_source?: string; vector_store_name?: string; vector_store_engine_type?: string; vector_store_status?: string;
-  storage_backend_id?: string; storage_provider_config?: { provider?: string };
-  activity?: Array<{ id?: string; action?: string; outcome?: string }>;
-}
-export interface KnowledgeSettingsSection { key: 'vectorStore' | 'parser' | 'storage' | 'activity'; label: string }
-export function getKnowledgeSettingsSections(input: KnowledgeSettingsInput): KnowledgeSettingsSection[] {
-  const sections: KnowledgeSettingsSection[] = [{ key: 'vectorStore', label: 'Vector store' }];
-  if (input.type?.toLowerCase() !== 'faq') sections.push({ key: 'parser', label: 'Parser' }, { key: 'storage', label: 'Storage' });
-  sections.push({ key: 'activity', label: 'Activity' }); return sections;
-}
-export function getKnowledgeBaseActivityPath(id: string): string { return `/api/v1/knowledge-bases/${encodeURIComponent(id)}/activity?limit=30`; }
-export function summarizeKnowledgeSettings(input: KnowledgeSettingsInput) {
-  const rules = input.chunking_config?.parser_engine_rules ?? []; const rule = rules.find((entry) => entry.engine);
-  const parser = rule ? { kind: 'configured', label: rule.engine === 'mineru' ? 'MinerU' : String(rule.engine), detail: (rule.file_types ?? []).map((type) => type.toUpperCase()).join(', ') } : { kind: 'empty', label: 'Default parser', detail: 'No file-type overrides' };
-  const vectorStore = input.vector_store_status === 'unavailable' ? { kind: 'unavailable', label: input.vector_store_name ?? 'Vector store', detail: 'Check the global vector-store settings' } : input.vector_store_name ? { kind: input.vector_store_status === 'ready' ? 'ready' : 'configured', label: input.vector_store_name, detail: [input.vector_store_engine_type, input.vector_store_source].filter(Boolean).join(' · ') } : { kind: 'default', label: 'System default', detail: 'No explicit binding' };
-  const storage = input.storage_backend_id ? { kind: 'configured', label: input.storage_provider_config?.provider === 's3' ? 'S3' : input.storage_provider_config?.provider ?? 'Storage', detail: input.storage_backend_id } : { kind: 'default', label: 'System default', detail: 'No explicit instance' };
-  const recent = input.activity?.[0]; const activity = recent ? { kind: 'available', label: `${input.activity?.length ?? 0} recent event${input.activity?.length === 1 ? '' : 's'}`, detail: `${recent.action ?? 'unknown'} · ${recent.outcome ?? 'unknown'}` } : { kind: 'empty', label: 'No activity yet', detail: 'Changes will appear here' };
-  return { parser, vectorStore, storage, activity };
+export type KnowledgeSettingsSectionKey = 'vectorStore' | 'parser' | 'storage' | 'datasource' | 'share' | 'activity' | 'graph';
+
+export type KnowledgeSettingsInput = KnowledgeBase & {
+  type?: string;
+  chunking_config?: {
+    parser_engine_rules?: Array<Record<string, unknown>>;
+  };
+  vector_store_id?: string | null;
+  vector_store_source?: string;
+  vector_store_name?: string;
+  vector_store_engine_type?: string;
+  vector_store_status?: string;
+  storage_backend_id?: string | null;
+  storage_provider_config?: { provider?: string };
+  storage_config?: { provider?: string };
+  activity?: Array<Record<string, unknown>>;
+  activity_count?: number;
+  data_source_count?: number;
+  share_count?: number;
+  summary_model_id?: string;
+  extract_config?: Partial<GraphExtractConfig> & { custom_instructions?: string };
+};
+
+export interface KnowledgeSettingsSection {
+  key: KnowledgeSettingsSectionKey;
+  label: string;
+  description: string;
 }
 
-function errorMessage(error: unknown, fallback: string): string { return error instanceof Error ? error.message : fallback; }
-function parserGroups(engines: ParserEngineInfo[]): string[] {
-  const groups = new Map<string, string>();
-  for (const type of engines.flatMap((engine) => engine.FileTypes)) {
-    const normalized = type.trim().toLowerCase();
-    if (normalized && normalized !== 'url' && !groups.has(normalized)) groups.set(normalized, type.trim());
+export interface KnowledgeSettingsSummary {
+  parser: SettingSummary;
+  vectorStore: SettingSummary;
+  storage: SettingSummary;
+  activity: SettingSummary;
+  datasource: SettingSummary;
+  share: SettingSummary;
+  graph: SettingSummary;
+}
+
+interface SettingSummary {
+  kind: 'configured' | 'ready' | 'unavailable' | 'default' | 'empty' | 'available';
+  label: string;
+  detail: string;
+}
+
+const sections: KnowledgeSettingsSection[] = [
+  { key: 'vectorStore', label: 'Vector store', description: 'Bound retrieval engine and health' },
+  { key: 'parser', label: 'Parser', description: 'File-type parser rules' },
+  { key: 'storage', label: 'Storage', description: 'Files and document instance' },
+  { key: 'datasource', label: 'Data sources', description: 'External connectors and sync status' },
+  { key: 'share', label: 'Share', description: 'Spaces with access to this knowledge base' },
+  { key: 'activity', label: 'Activity', description: 'Recent configuration changes' },
+  { key: 'graph', label: 'Knowledge graph', description: 'Entity and relationship extraction' },
+];
+
+function isFaqKnowledgeBase(knowledgeBase: KnowledgeSettingsInput): boolean {
+  return knowledgeBase.type?.toLowerCase() === 'faq';
+}
+
+function text(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function titleCase(value: string): string {
+  return value
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ');
+}
+
+function parserLabel(value: string): string {
+  const knownLabels: Record<string, string> = { mineru: 'MinerU', builtin: 'Built-in', opendataloader: 'OpenDataLoader' };
+  return knownLabels[value.toLowerCase()] ?? titleCase(value);
+}
+
+function parserRules(knowledgeBase: KnowledgeSettingsInput): Array<Record<string, unknown>> {
+  return Array.isArray(knowledgeBase.chunking_config?.parser_engine_rules)
+    ? knowledgeBase.chunking_config.parser_engine_rules
+    : [];
+}
+
+export function getKnowledgeSettingsSections(
+  knowledgeBase: KnowledgeSettingsInput,
+  options: { canViewActivity?: boolean } = {},
+): KnowledgeSettingsSection[] {
+  const canViewActivity = options.canViewActivity ?? true;
+  return sections.filter((section) => {
+    if (section.key === 'parser' || section.key === 'storage' || section.key === 'graph') return !isFaqKnowledgeBase(knowledgeBase);
+    if (section.key === 'activity') return canViewActivity;
+    return true;
+  });
+}
+
+export function summarizeKnowledgeSettings(knowledgeBase: KnowledgeSettingsInput): KnowledgeSettingsSummary {
+  const rules = parserRules(knowledgeBase);
+  const engines = [...new Set(rules.map((rule) => text(rule.engine ?? rule.parser)).filter(Boolean))];
+  const extensions = [...new Set(rules.flatMap((rule) => {
+    const values = rule.file_types ?? rule.fileTypes;
+    return Array.isArray(values) ? values.map(text).filter(Boolean) : [];
+  }))];
+  const vectorName = text(knowledgeBase.vector_store_name);
+  const vectorEngine = text(knowledgeBase.vector_store_engine_type);
+  const vectorSource = text(knowledgeBase.vector_store_source);
+  const vectorUnavailable = knowledgeBase.vector_store_status === 'unavailable';
+  const vectorBound = Boolean(vectorName || knowledgeBase.vector_store_id || vectorSource);
+  const storageProvider = text(knowledgeBase.storage_provider_config?.provider)
+    || text(knowledgeBase.storage_config?.provider);
+  const storageId = text(knowledgeBase.storage_backend_id);
+  const activities = Array.isArray(knowledgeBase.activity) ? knowledgeBase.activity : [];
+  const activityCount = typeof knowledgeBase.activity_count === 'number' ? knowledgeBase.activity_count : activities.length;
+  const latestActivity = activities[0];
+  const latestAction = text(latestActivity?.action);
+  const latestOutcome = text(latestActivity?.outcome);
+  const dataSourceCount = typeof knowledgeBase.data_source_count === 'number' ? knowledgeBase.data_source_count : 0;
+  const shareCount = typeof knowledgeBase.share_count === 'number' ? knowledgeBase.share_count : 0;
+  const graphEnabled = knowledgeBase.extract_config?.enabled === true;
+
+  return {
+    parser: rules.length > 0
+      ? { kind: 'configured', label: engines.length > 0 ? engines.map(parserLabel).join(', ') : 'Custom rules', detail: extensions.length > 0 ? extensions.map((value) => value.toUpperCase()).join(', ') : 'File-type overrides' }
+      : { kind: 'empty', label: 'Default parser', detail: 'No file-type overrides' },
+    vectorStore: vectorUnavailable
+      ? { kind: 'unavailable', label: vectorName || 'Vector store unavailable', detail: 'Check the global vector-store settings' }
+      : vectorBound
+        ? { kind: 'ready', label: vectorName || 'Bound vector store', detail: [vectorEngine, vectorSource].filter(Boolean).join(' · ') || 'Explicit binding' }
+        : { kind: 'default', label: 'System default', detail: 'No explicit binding' },
+    storage: storageId || storageProvider
+      ? { kind: 'configured', label: storageProvider ? titleCase(storageProvider) : 'Storage instance', detail: storageId || 'Provider configured' }
+      : { kind: 'default', label: 'System default', detail: 'No explicit instance' },
+    activity: activityCount > 0
+      ? { kind: 'available', label: `${activityCount} recent ${activityCount === 1 ? 'event' : 'events'}`, detail: [latestAction, latestOutcome].filter(Boolean).join(' · ') || 'Open to inspect changes' }
+      : { kind: 'empty', label: 'No activity yet', detail: 'Changes will appear here' },
+    datasource: dataSourceCount > 0
+      ? { kind: 'available', label: `${dataSourceCount} data source${dataSourceCount === 1 ? '' : 's'}`, detail: 'Open to inspect sync status' }
+      : { kind: 'empty', label: 'No data sources', detail: 'Add an external connector' },
+    share: shareCount > 0
+      ? { kind: 'available', label: `${shareCount} shared space${shareCount === 1 ? '' : 's'}`, detail: 'Access is managed per share' }
+      : { kind: 'empty', label: 'Not shared', detail: 'No spaces have access' },
+    graph: graphEnabled
+      ? { kind: 'configured', label: 'Knowledge graph enabled', detail: 'Entity and relationship extraction' }
+      : { kind: 'default', label: 'Knowledge graph disabled', detail: 'Configure extraction when graph storage is enabled' },
+  };
+}
+
+export function getKnowledgeBaseActivityPath(knowledgeBaseId: string): string {
+  return `/api/v1/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}/activity?limit=30`;
+}
+
+export function getKnowledgeBaseDataSourcesPath(knowledgeBaseId: string): string {
+  return `/api/v1/datasource?kb_id=${encodeURIComponent(knowledgeBaseId)}`;
+}
+
+export function getKnowledgeBaseSharesPath(knowledgeBaseId: string): string {
+  return `/api/v1/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}/shares`;
+}
+
+function summaryTone(summary: SettingSummary): 'neutral' | 'error' | 'success' {
+  if (summary.kind === 'unavailable') return 'error';
+  if (summary.kind === 'ready' || summary.kind === 'configured' || summary.kind === 'available') return 'success';
+  return 'neutral';
+}
+
+function activityRows(value: unknown): Array<Record<string, unknown>> {
+  if (Array.isArray(value)) return value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object');
+  if (value && typeof value === 'object' && Array.isArray((value as { data?: unknown }).data)) {
+    return activityRows((value as { data: unknown }).data);
   }
-  return [...groups.values()].sort((left, right) => left.localeCompare(right));
-}
-function ruleFor(form: KnowledgeBaseSettingsForm, fileType: string): string { return form.parserRules.find((rule) => rule.file_types.some((type) => type.trim().toLowerCase() === fileType.trim().toLowerCase()))?.engine ?? ''; }
-
-export function knowledgeSettingsCanEdit(role: 'owner' | 'admin' | 'viewer' | undefined): boolean {
-  return role === 'owner' || role === 'admin';
+  return [];
 }
 
-export function KnowledgeSettingsPage({ client, knowledgeBaseId, role = 'viewer' }: { client: WeKnoraClient; knowledgeBaseId: string; role?: 'owner' | 'admin' | 'viewer' }) {
-  const t = createTranslator(useAppLocale());
-  const [tab, setTab] = useState<Tab>('settings');
-  const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeBase | null>(null);
-  const [form, setForm] = useState<KnowledgeBaseSettingsForm | null>(null);
-  const [engines, setEngines] = useState<ParserEngineInfo[]>([]);
-  const [storageBackends, setStorageBackends] = useState<StorageBackendView[]>([]);
-  const [vectorStores, setVectorStores] = useState<VectorStoreView[]>([]);
-  const [activity, setActivity] = useState<Array<Record<string, unknown>>>([]);
-  const [sample, setSample] = useState('## Sample\n\nPaste representative content to inspect the selected chunking strategy.');
-  const [preview, setPreview] = useState<{ selected_tier: string; chunks: Array<Record<string, unknown>>; stats: Record<string, number> } | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [previewing, setPreviewing] = useState(false);
-  const [message, setMessage] = useState<{ tone: 'error' | 'success' | 'warning'; text: string } | null>(null);
-  const loadGeneration = useRef(0);
-  const saveInFlight = useRef<Promise<unknown> | null>(null);
-  const settings = client.knowledge.settings;
-  const canEdit = knowledgeSettingsCanEdit(role);
+interface KnowledgeSettingsPageProps {
+  knowledgeBase: KnowledgeSettingsInput;
+  client?: WeKnoraClient;
+  canViewActivity?: boolean;
+  initialSection?: KnowledgeSettingsSectionKey;
+}
 
-  async function load() {
-    const generation = ++loadGeneration.current;
-    setLoading(true); setMessage(null);
-    const results = await Promise.allSettled([settings.get(knowledgeBaseId), settings.parserEngines(), settings.storageBackends(), settings.vectorStores(), settings.activity(knowledgeBaseId)]);
-    if (generation !== loadGeneration.current) return;
-    const kbResult = results[0];
-    if (kbResult.status === 'fulfilled') { setKnowledgeBase(kbResult.value); setForm(formFromKnowledgeBase(kbResult.value)); }
-    else { setKnowledgeBase(null); setForm(null); setMessage({ tone: 'error', text: errorMessage(kbResult.reason, t('knowledgeEditor.messages.loadDataFailed')) }); }
-    const parserResult = results[1]; if (parserResult.status === 'fulfilled') setEngines(parserResult.value.data);
-    const storageResult = results[2]; if (storageResult.status === 'fulfilled') setStorageBackends(storageResult.value.data.filter((backend) => backend.status === 'active'));
-    const vectorResult = results[3]; if (vectorResult.status === 'fulfilled') setVectorStores(vectorResult.value.data);
-    const activityResult = results[4]; if (activityResult.status === 'fulfilled') setActivity((activityResult.value.data ?? []) as Array<Record<string, unknown>>);
-    setLoading(false);
+export function KnowledgeSettingsPage({ knowledgeBase, client, canViewActivity = true, initialSection }: KnowledgeSettingsPageProps) {
+  const [ui, setUi] = useState<ProjectUi | null>(null);
+  const availableSections = useMemo(() => getKnowledgeSettingsSections(knowledgeBase, { canViewActivity }), [knowledgeBase, canViewActivity]);
+  const [activeSection, setActiveSection] = useState<KnowledgeSettingsSectionKey>(initialSection ?? availableSections[0]?.key ?? 'vectorStore');
+  const [activity, setActivity] = useState<{ status: 'idle' | 'loading' | 'ready' | 'error'; rows: Array<Record<string, unknown>>; message?: string }>({ status: 'idle', rows: [] });
+  const [dataSources, setDataSources] = useState<{ status: 'idle' | 'loading' | 'ready' | 'error'; rows: Array<Record<string, unknown>>; message?: string }>({ status: 'idle', rows: [] });
+  const [shares, setShares] = useState<{ status: 'idle' | 'loading' | 'ready' | 'error'; rows: Array<Record<string, unknown>>; message?: string }>({ status: 'idle', rows: [] });
+  const [graphExtract, setGraphExtract] = useState<GraphExtractConfig>(() => ({
+    enabled: knowledgeBase.extract_config?.enabled === true,
+    text: knowledgeBase.extract_config?.text ?? '',
+    tags: knowledgeBase.extract_config?.tags ?? [],
+    nodes: knowledgeBase.extract_config?.nodes ?? [],
+    relations: knowledgeBase.extract_config?.relations ?? [],
+    customInstructions: knowledgeBase.extract_config?.customInstructions ?? knowledgeBase.extract_config?.custom_instructions ?? '',
+  }));
+  const summary = summarizeKnowledgeSettings({ ...knowledgeBase, activity: activity.rows.length > 0 ? activity.rows : knowledgeBase.activity });
+  const active = availableSections.find((section) => section.key === activeSection) ?? availableSections[0];
+
+  useEffect(() => {
+    void import('@weknora/ui').then(setUi);
+  }, []);
+
+  useEffect(() => {
+    if (!availableSections.some((section) => section.key === activeSection)) setActiveSection(availableSections[0]?.key ?? 'vectorStore');
+  }, [activeSection, availableSections]);
+
+  useEffect(() => {
+    if (activeSection !== 'activity' || !client || !canViewActivity) return;
+    let mounted = true;
+    setActivity({ status: 'loading', rows: [] });
+    void client.request({
+      method: 'GET',
+      path: getKnowledgeBaseActivityPath(knowledgeBase.id),
+    }).then((value) => {
+      if (mounted) setActivity({ status: 'ready', rows: activityRows(value) });
+    }).catch((error: unknown) => {
+      if (mounted) setActivity({ status: 'error', rows: [], message: error instanceof Error ? error.message : 'Unable to load activity' });
+    });
+    return () => { mounted = false; };
+  }, [activeSection, canViewActivity, client, knowledgeBase.id]);
+
+  useEffect(() => {
+    if (activeSection !== 'datasource' || !client) return;
+    let mounted = true;
+    setDataSources({ status: 'loading', rows: [] });
+    void client.request({ method: 'GET', path: getKnowledgeBaseDataSourcesPath(knowledgeBase.id) }).then((value) => {
+      if (mounted) setDataSources({ status: 'ready', rows: rowsFromEnvelope(value, 'data') });
+    }).catch((error: unknown) => {
+      if (mounted) setDataSources({ status: 'error', rows: [], message: error instanceof Error ? error.message : 'Unable to load data sources' });
+    });
+    return () => { mounted = false; };
+  }, [activeSection, client, knowledgeBase.id]);
+
+  useEffect(() => {
+    if (activeSection !== 'share' || !client) return;
+    let mounted = true;
+    setShares({ status: 'loading', rows: [] });
+    void client.request({ method: 'GET', path: getKnowledgeBaseSharesPath(knowledgeBase.id) }).then((value) => {
+      if (mounted) setShares({ status: 'ready', rows: rowsFromEnvelope(value, 'shares') });
+    }).catch((error: unknown) => {
+      if (mounted) setShares({ status: 'error', rows: [], message: error instanceof Error ? error.message : 'Unable to load shares' });
+    });
+    return () => { mounted = false; };
+  }, [activeSection, client, knowledgeBase.id]);
+
+  const CardComponent = ui?.Card ?? 'section';
+  const ButtonComponent = ui?.Button ?? 'button';
+  const StatusComponent = ui?.Status ?? 'p';
+
+  return (
+    <CardComponent aria-label={`Knowledge settings for ${knowledgeBase.name}`}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(170px, 0.8fr) minmax(0, 2fr)', gap: '1.5rem', alignItems: 'start' }}>
+        <aside aria-label="Knowledge settings navigation">
+          <p className="wk-eyebrow">Knowledge settings</p>
+          <h2 style={{ margin: '0.35rem 0 1.1rem', fontSize: '1.2rem' }}>{knowledgeBase.name}</h2>
+          <nav style={{ display: 'grid', gap: '0.4rem' }}>
+            {availableSections.map((section) => {
+              const item = summary[section.key];
+              return (
+                <ButtonComponent
+                  key={section.key}
+                  type="button"
+                  aria-current={active?.key === section.key ? 'page' : undefined}
+                  onClick={() => setActiveSection(section.key)}
+                  style={{ textAlign: 'left', borderColor: active?.key === section.key ? '#2e6de6' : undefined, background: active?.key === section.key ? '#edf3ff' : '#fff' }}
+                >
+                  <span style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', fontWeight: 700 }}>
+                    {section.label}
+                    <span aria-hidden="true" style={{ color: item.kind === 'unavailable' ? '#b42318' : '#66758b' }}>•</span>
+                  </span>
+                  <span className="wk-muted" style={{ display: 'block', fontSize: '0.78rem' }}>{section.description}</span>
+                </ButtonComponent>
+              );
+            })}
+          </nav>
+        </aside>
+
+        <section aria-labelledby="knowledge-settings-section-title" style={{ minWidth: 0 }}>
+          <p className="wk-eyebrow">{active?.label}</p>
+          <h3 id="knowledge-settings-section-title" style={{ margin: '0.35rem 0 0.2rem', fontSize: '1.4rem' }}>{active?.label}</h3>
+          <p className="wk-muted" style={{ margin: '0 0 1.25rem' }}>{active?.description}</p>
+          {active?.key === 'activity' && activity.status === 'loading' ? <StatusComponent>Loading activity…</StatusComponent> : null}
+          {active?.key === 'activity' && activity.status === 'error' ? <StatusComponent tone="error">{activity.message}</StatusComponent> : null}
+          {active ? <SettingsSection summary={summary[active.key]} section={active.key} rows={activity.rows} dataSources={dataSources} shares={shares} graphExtract={graphExtract} modelId={knowledgeBase.summary_model_id ?? ''} client={client} StatusComponent={StatusComponent} onGraphChange={setGraphExtract} /> : <StatusComponent>No settings available.</StatusComponent>}
+        </section>
+      </div>
+    </CardComponent>
+  );
+}
+
+function SettingsSection({ summary, section, rows, dataSources, shares, graphExtract, modelId, client, StatusComponent, onGraphChange }: { summary: SettingSummary; section: KnowledgeSettingsSectionKey; rows: Array<Record<string, unknown>>; dataSources: { status: string; rows: Array<Record<string, unknown>>; message?: string }; shares: { status: string; rows: Array<Record<string, unknown>>; message?: string }; graphExtract: GraphExtractConfig; modelId: string; client?: WeKnoraClient; StatusComponent: ElementType; onGraphChange: (value: GraphExtractConfig) => void }) {
+  return (
+    <div style={{ display: 'grid', gap: '0.9rem' }}>
+      <div style={{ border: '1px solid #dce3ed', borderRadius: 8, padding: '1rem' }}>
+        <StatusComponent tone={summaryTone(summary)}>{summary.label}</StatusComponent>
+        <p style={{ margin: '0.35rem 0 0', fontWeight: 600 }}>{summary.detail}</p>
+      </div>
+      {section === 'vectorStore' ? <p className="wk-muted" style={{ margin: 0 }}>Bindings are read-only after creation. An unavailable binding needs recovery in the global Vector Stores settings.</p> : null}
+      {section === 'parser' ? <p className="wk-muted" style={{ margin: 0 }}>Parser overrides are grouped by file type; files without an override use the platform default.</p> : null}
+      {section === 'storage' ? <p className="wk-muted" style={{ margin: 0 }}>The selected storage instance owns uploaded files. Existing files may require migration before changing it.</p> : null}
+      {section === 'activity' ? (
+        rows.length > 0 ? (
+          <div style={{ display: 'grid', gap: '0.5rem' }}>
+            {rows.slice(0, 5).map((row, index) => <div key={String(row.id ?? index)} style={{ borderBottom: '1px solid #edf0f5', padding: '0.65rem 0' }}><strong>{titleCase(text(row.action) || 'Change')}</strong><span className="wk-muted">{' · '}{titleCase(text(row.outcome) || 'recorded')}</span></div>)}
+          </div>
+        ) : <p className="wk-muted" style={{ margin: 0 }}>No recorded changes for this knowledge base.</p>
+      ) : null}
+      {section === 'datasource' ? <RemoteRows state={dataSources} empty="No data sources configured." label={(row) => `${String(row.name ?? 'Unnamed source')} · ${String(row.status ?? 'unknown')}`} StatusComponent={StatusComponent} /> : null}
+      {section === 'share' ? <RemoteRows state={shares} empty="This knowledge base is not shared." label={(row) => `${String(row.organization_name ?? row.organization_id ?? 'Unknown space')} · ${String(row.permission ?? 'viewer')}`} StatusComponent={StatusComponent} /> : null}
+      {section === 'graph' ? <GraphSettings graphExtract={graphExtract} modelId={modelId} client={client} embedded onChange={onGraphChange} /> : null}
+    </div>
+  );
+}
+
+function rowsFromEnvelope(value: unknown, preferredKey: 'data' | 'shares'): Array<Record<string, unknown>> {
+  if (Array.isArray(value)) return activityRows(value);
+  if (value && typeof value === 'object') {
+    const row = value as Record<string, unknown>;
+    return activityRows(row[preferredKey] ?? row.data ?? row.items);
   }
+  return [];
+}
 
-  useEffect(() => { void load(); }, [client, knowledgeBaseId]);
-  const fileTypes = useMemo(() => parserGroups(engines), [engines]);
-  const setField = <K extends keyof KnowledgeBaseSettingsForm>(key: K, value: KnowledgeBaseSettingsForm[K]) => setForm((current) => current ? { ...current, [key]: value } : current);
-  const updateIndexing = (key: keyof KnowledgeBaseSettingsForm['indexing'], value: boolean) => setForm((current) => current ? { ...current, indexing: { ...current.indexing, [key]: value } } : current);
-
-  async function save(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (!form || !canEdit) return;
-    if (saveInFlight.current) return;
-    const validationError = validateKnowledgeBaseSettingsForm(form)[0];
-    if (validationError) { setMessage({ tone: 'error', text: validationError.message === 'Knowledge-base name is required' ? t('knowledgeEditor.messages.nameRequired') : validationError.message }); return; }
-    setSaving(true); setMessage(null);
-    const request = settings.update(knowledgeBaseId, buildKnowledgeBaseSettingsInput(form));
-    saveInFlight.current = request;
-    try { const updated = await request; setKnowledgeBase(updated); setForm(formFromKnowledgeBase(updated)); setMessage({ tone: 'success', text: t('knowledgeEditor.messages.updateSuccess') }); }
-    catch (error) { setMessage({ tone: 'error', text: errorMessage(error, t('common.error')) }); }
-    finally { if (saveInFlight.current === request) saveInFlight.current = null; setSaving(false); }
-  }
-
-  async function runPreview() {
-    if (!form || !sample.trim()) return;
-    setPreviewing(true); setMessage(null);
-    try { const result = await settings.previewChunking({ text: sample, chunking_config: buildKnowledgeBaseSettingsInput(form).config?.chunking_config ?? {} }); setPreview({ selected_tier: result.selected_tier, chunks: result.chunks.slice(0, 12), stats: result.stats }); }
-    catch (error) { setMessage({ tone: 'error', text: errorMessage(error, t('knowledgeEditor.chunking.debug.errorPrefix')) }); }
-    finally { setPreviewing(false); }
-  }
-
-
-  if (tab === 'sources') return <><nav className="wk-settings-tabs flex gap-2 max-w-[1180px] mx-auto px-4 pt-4 max-[720px]:overflow-x-auto"><button type="button" className="wk-settings-tab border border-[#dce3ed] rounded-full bg-white text-[#506078] cursor-pointer px-[.8rem] py-2" onClick={() => setTab('settings')}>{t('knowledgeBase.settings.title')}</button><button type="button" className="wk-settings-tab is-active border border-[#2e6de6] rounded-full bg-[#eff4ff] text-[#1849a9] cursor-pointer px-[.8rem] py-2">{t('datasource.title')}</button></nav><DataSourcesPage client={client} knowledgeBaseId={knowledgeBaseId} canManage={canEdit} /></>;
-
-  return <main className="wk-page max-w-[1180px]! mx-auto box-border px-[1.25rem] py-12">
-    <nav className="wk-settings-tabs flex gap-2 max-w-[1180px] mx-auto px-4 pt-4 max-[720px]:overflow-x-auto"><button type="button" className="wk-settings-tab is-active border border-[#2e6de6] rounded-full bg-[#eff4ff] text-[#1849a9] cursor-pointer px-[.8rem] py-2">{t('knowledgeBase.settings.title')}</button><button type="button" className="wk-settings-tab border border-[#dce3ed] rounded-full bg-white text-[#506078] cursor-pointer px-[.8rem] py-2" onClick={() => setTab('sources')}>{t('datasource.title')}</button></nav>
-    <header className="wk-header mb-6 flex items-start justify-between gap-4"><div><p className="wk-eyebrow m-0 text-[0.78rem] font-bold uppercase tracking-[0.08em] text-primary">{t('common.knowledgeBases')} · {knowledgeBaseId}</p><h1 className="text-[clamp(1.8rem,5vw,2.5rem)] my-[0.35rem]">{t('knowledgeBase.settings.title')}</h1><p className="wk-muted text-muted">{t('knowledgeEditor.chunking.description')}</p></div><Button type="button" onClick={() => void load()} disabled={loading}>{t('knowledgeEditor.activity.refresh')}</Button></header>
-    {message ? <Status tone={message.tone}>{message.text}</Status> : null}
-    {loading ? <Card><Status>{t('common.loading')}</Status></Card> : !form || !knowledgeBase ? <Card data-testid="knowledge-settings-load-error"><Status tone="error">{message?.text ?? t('knowledgeEditor.messages.loadDataFailed')}</Status><Button type="button" onClick={() => void load()}>{t('knowledgeEditor.activity.retry')}</Button></Card> : <form onSubmit={save}>
-      <fieldset disabled={!canEdit} className="contents">
-      <Card className="wk-settings-section mt-4 [&_h2]:m-0 [&_h2]:mb-3 [&_label]:grid [&_label]:gap-[.35rem] [&_label]:text-[#27364d] [&_label]:font-semibold [&_input]:w-full [&_input]:box-border [&_input]:border [&_input]:border-[#cbd5e1] [&_input]:rounded-control [&_input]:bg-white [&_input]:text-ink [&_input]:[font:inherit] [&_input]:px-[.65rem] [&_input]:py-[.55rem] [&_input]:read-only:bg-canvas [&_input]:read-only:text-muted [&_textarea]:w-full [&_textarea]:box-border [&_textarea]:border [&_textarea]:border-[#cbd5e1] [&_textarea]:rounded-control [&_textarea]:bg-white [&_textarea]:text-ink [&_textarea]:[font:inherit] [&_textarea]:px-[.65rem] [&_textarea]:py-[.55rem] [&_select]:w-full [&_select]:box-border [&_select]:[font:inherit] [&_select]:disabled:bg-canvas [&_select]:disabled:text-muted"><h2>{t('knowledgeEditor.basic.title')}</h2><div className="wk-form-grid grid grid-cols-2 gap-4 max-[720px]:grid-cols-1"><label>{t('knowledgeEditor.basic.nameLabel')}<Input required value={form.name} onChange={(event) => setField('name', event.target.value)} /></label><label>{t('knowledgeEditor.basic.descriptionLabel')}<Textarea rows={3} value={form.description} onChange={(event) => setField('description', event.target.value)} /></label></div></Card>
-      <Card className="wk-settings-section mt-4 [&_h2]:m-0 [&_h2]:mb-3 [&_label]:grid [&_label]:gap-[.35rem] [&_label]:text-[#27364d] [&_label]:font-semibold [&_input]:w-full [&_input]:box-border [&_input]:border [&_input]:border-[#cbd5e1] [&_input]:rounded-control [&_input]:bg-white [&_input]:text-ink [&_input]:[font:inherit] [&_input]:px-[.65rem] [&_input]:py-[.55rem] [&_input]:read-only:bg-canvas [&_input]:read-only:text-muted [&_textarea]:w-full [&_textarea]:box-border [&_textarea]:border [&_textarea]:border-[#cbd5e1] [&_textarea]:rounded-control [&_textarea]:bg-white [&_textarea]:text-ink [&_textarea]:[font:inherit] [&_textarea]:px-[.65rem] [&_textarea]:py-[.55rem] [&_select]:w-full [&_select]:box-border [&_select]:[font:inherit] [&_select]:disabled:bg-canvas [&_select]:disabled:text-muted"><h2>{t('kbSettings.parser.title')}</h2><p className="wk-muted text-muted">{t('kbSettings.parser.description')}</p>{engines.length === 0 ? <Status tone="warning">{t('kbSettings.parser.noEngineAvailable')}</Status> : <div className="wk-settings-table">{fileTypes.map((fileType) => <label key={fileType} className="items-center [grid-template-columns:8rem_minmax(0,1fr)] max-[720px]:[grid-template-columns:1fr] max-[720px]:items-stretch"><span>.{fileType}</span><Select value={ruleFor(form, fileType)} onChange={(event) => setField('parserRules', updateParserRule(form.parserRules, [fileType], event.target.value))}><option value="">{t('kbSettings.parser.default')}</option>{engines.filter((engine) => engine.FileTypes.includes(fileType)).map((engine) => <option key={engine.Name} value={engine.Name} disabled={engine.Available === false}>{engine.Name}{engine.Available === false ? ` — ${engine.UnavailableReason || t('kbSettings.parser.noEngine')}` : ''}</option>)}</Select></label>)}</div>}</Card>
-      <Card className="wk-settings-section mt-4 [&_h2]:m-0 [&_h2]:mb-3 [&_label]:grid [&_label]:gap-[.35rem] [&_label]:text-[#27364d] [&_label]:font-semibold [&_input]:w-full [&_input]:box-border [&_input]:border [&_input]:border-[#cbd5e1] [&_input]:rounded-control [&_input]:bg-white [&_input]:text-ink [&_input]:[font:inherit] [&_input]:px-[.65rem] [&_input]:py-[.55rem] [&_input]:read-only:bg-canvas [&_input]:read-only:text-muted [&_textarea]:w-full [&_textarea]:box-border [&_textarea]:border [&_textarea]:border-[#cbd5e1] [&_textarea]:rounded-control [&_textarea]:bg-white [&_textarea]:text-ink [&_textarea]:[font:inherit] [&_textarea]:px-[.65rem] [&_textarea]:py-[.55rem] [&_select]:w-full [&_select]:box-border [&_select]:[font:inherit] [&_select]:disabled:bg-canvas [&_select]:disabled:text-muted"><h2>{t('knowledgeEditor.chunking.title')}</h2><div className="wk-form-grid wk-form-grid--three grid gap-4 max-[720px]:grid-cols-1 grid-cols-3"><label>{t('knowledgeEditor.chunking.sizeLabel')}<Input type="number" min={1} value={form.chunkSize} onChange={(event) => setField('chunkSize', Number(event.target.value))} /></label><label>{t('knowledgeEditor.chunking.overlapLabel')}<Input type="number" min={0} value={form.chunkOverlap} onChange={(event) => setField('chunkOverlap', Number(event.target.value))} /></label><label>{t('knowledgeEditor.chunking.strategyLabel')}<Select value={form.chunkStrategy} onChange={(event) => setField('chunkStrategy', event.target.value)}><option value="auto">{t('knowledgeEditor.chunking.strategies.auto.label')}</option><option value="heading">{t('knowledgeEditor.chunking.strategies.heading.label')}</option><option value="heuristic">{t('knowledgeEditor.chunking.strategies.heuristic.label')}</option><option value="legacy">{t('knowledgeEditor.chunking.strategies.legacy.label')}</option></Select></label></div><label className="wk-checkbox"><Checkbox checked={form.parentChild} onChange={(event) => setField('parentChild', event.target.checked)} /> {t('knowledgeEditor.chunking.parentChildLabel')}</label>{form.parentChild ? <div className="wk-form-grid wk-form-grid--two grid grid-cols-2 gap-4 max-[720px]:grid-cols-1 mt-3"><label>{t('knowledgeEditor.chunking.parentChunkSizeLabel')}<Input type="number" min={1} value={form.parentChunkSize} onChange={(event) => setField('parentChunkSize', Number(event.target.value))} /></label><label>{t('knowledgeEditor.chunking.childChunkSizeLabel')}<Input type="number" min={1} value={form.childChunkSize} onChange={(event) => setField('childChunkSize', Number(event.target.value))} /></label></div> : null}<label>{t('knowledgeEditor.advanced.tableMetadataInstructions.label')}<Textarea rows={3} value={form.tableMetadataInstructions} onChange={(event) => setField('tableMetadataInstructions', event.target.value)} /></label><div className="mt-4 grid gap-3 border-t border-[#eef1f5] pt-4"><label>{t('knowledgeEditor.chunking.debug.sampleLabel')}<Textarea rows={5} value={sample} onChange={(event) => setSample(event.target.value)} /></label><Button type="button" onClick={() => void runPreview()} disabled={previewing || !sample.trim()} loading={previewing}>{t('knowledgeEditor.chunking.debug.runButton')}</Button>{preview ? <div className="rounded-control border border-line bg-[#f8fafc] p-3"><p className="m-0 mb-2">{t('knowledgeEditor.chunking.debug.selectedTier')}: <strong>{preview.selected_tier}</strong> · {t('knowledgeEditor.chunking.debug.stats.chunks')}: {preview.stats.count ?? 0}</p><ol className="m-0 max-h-[18rem] overflow-auto pl-[1.25rem]">{preview.chunks.map((chunk, index) => <li key={index} className="my-[0.35rem] whitespace-pre-wrap [overflow-wrap:anywhere]">{typeof chunk.content === 'string' ? chunk.content : JSON.stringify(chunk.content)}</li>)}</ol></div> : null}</div></Card>
-      <Card className="wk-settings-section mt-4 [&_h2]:m-0 [&_h2]:mb-3 [&_label]:grid [&_label]:gap-[.35rem] [&_label]:text-[#27364d] [&_label]:font-semibold [&_input]:w-full [&_input]:box-border [&_input]:border [&_input]:border-[#cbd5e1] [&_input]:rounded-control [&_input]:bg-white [&_input]:text-ink [&_input]:[font:inherit] [&_input]:px-[.65rem] [&_input]:py-[.55rem] [&_input]:read-only:bg-canvas [&_input]:read-only:text-muted [&_textarea]:w-full [&_textarea]:box-border [&_textarea]:border [&_textarea]:border-[#cbd5e1] [&_textarea]:rounded-control [&_textarea]:bg-white [&_textarea]:text-ink [&_textarea]:[font:inherit] [&_textarea]:px-[.65rem] [&_textarea]:py-[.55rem] [&_select]:w-full [&_select]:box-border [&_select]:[font:inherit] [&_select]:disabled:bg-canvas [&_select]:disabled:text-muted"><h2>{t('knowledgeEditor.indexing.title')}</h2><p className="wk-muted text-muted">{t('knowledgeEditor.indexing.description')}</p><div className="wk-toggle-grid grid grid-cols-2 gap-[0.25rem_1rem] max-[720px]:grid-cols-1">{([['vector_enabled', t('knowledgeEditor.indexing.searchTitle')], ['keyword_enabled', t('knowledgeEditor.indexing.searchTitle')], ['wiki_enabled', t('knowledgeEditor.indexing.wikiTitle')], ['graph_enabled', t('knowledgeEditor.indexing.graphTitle')]] as const).map(([key, label]) => <label key={key} className="wk-checkbox items-center mt-[0.8rem] max-[720px]:mt-0"><Checkbox checked={form.indexing[key]} onChange={(event) => updateIndexing(key, event.target.checked)} /> {label}</label>)}</div><div className="wk-form-grid wk-form-grid--two grid grid-cols-2 gap-4 max-[720px]:grid-cols-1 mt-3"><label>{t('knowledgeEditor.models.embeddingLabel')}<Input value={form.embeddingModelId} readOnly aria-describedby="model-binding-note" /></label><label>{t('knowledgeEditor.models.llmLabel')}<Input value={form.summaryModelId} readOnly aria-describedby="model-binding-note" /></label></div><p id="model-binding-note" className="wk-muted text-muted">{t('knowledgeEditor.models.description')}</p></Card>
-      <Card className="wk-settings-section mt-4 [&_h2]:m-0 [&_h2]:mb-3 [&_label]:grid [&_label]:gap-[.35rem] [&_label]:text-[#27364d] [&_label]:font-semibold [&_input]:w-full [&_input]:box-border [&_input]:border [&_input]:border-[#cbd5e1] [&_input]:rounded-control [&_input]:bg-white [&_input]:text-ink [&_input]:[font:inherit] [&_input]:px-[.65rem] [&_input]:py-[.55rem] [&_input]:read-only:bg-canvas [&_input]:read-only:text-muted [&_textarea]:w-full [&_textarea]:box-border [&_textarea]:border [&_textarea]:border-[#cbd5e1] [&_textarea]:rounded-control [&_textarea]:bg-white [&_textarea]:text-ink [&_textarea]:[font:inherit] [&_textarea]:px-[.65rem] [&_textarea]:py-[.55rem] [&_select]:w-full [&_select]:box-border [&_select]:[font:inherit] [&_select]:disabled:bg-canvas [&_select]:disabled:text-muted"><h2>{t('kbSettings.storage.title')}</h2><p className="wk-muted text-muted">{t('kbSettings.storage.migrateHint')}</p><div className="wk-form-grid wk-form-grid--two grid grid-cols-2 gap-4 max-[720px]:grid-cols-1 mt-3"><label>{t('kbSettings.storage.instanceLabel')}<Select value={form.storageBackendId} disabled><option value="">{t('kbSettings.parser.default')}</option>{storageBackends.map((backend) => <option key={backend.id} value={backend.id}>{backend.name} · {backend.provider}</option>)}</Select></label><label>{t('kbSettings.vectorStore.boundLabel')}<Select value={form.vectorStoreId} disabled><option value="">{t('kbSettings.vectorStore.systemDefault')}</option>{vectorStores.map((store) => <option key={store.id} value={store.id}>{store.name} · {store.engine_type}</option>)}</Select></label></div></Card>
-      {canEdit ? <div className="wk-form-actions"><Button type="submit" loading={saving}>{t('common.save')}</Button></div> : null}
-      </fieldset>
-    </form>}
-    <Card className="wk-settings-section mt-4 [&_h2]:m-0 [&_h2]:mb-3 [&_label]:grid [&_label]:gap-[.35rem] [&_label]:text-[#27364d] [&_label]:font-semibold [&_input]:w-full [&_input]:box-border [&_input]:border [&_input]:border-[#cbd5e1] [&_input]:rounded-control [&_input]:bg-white [&_input]:text-ink [&_input]:[font:inherit] [&_input]:px-[.65rem] [&_input]:py-[.55rem] [&_input]:read-only:bg-canvas [&_input]:read-only:text-muted [&_textarea]:w-full [&_textarea]:box-border [&_textarea]:border [&_textarea]:border-[#cbd5e1] [&_textarea]:rounded-control [&_textarea]:bg-white [&_textarea]:text-ink [&_textarea]:[font:inherit] [&_textarea]:px-[.65rem] [&_textarea]:py-[.55rem] [&_select]:w-full [&_select]:box-border [&_select]:[font:inherit] [&_select]:disabled:bg-canvas [&_select]:disabled:text-muted"><h2>{t('knowledgeEditor.activity.title')}</h2>{activity.length === 0 ? <Status>{t('knowledgeEditor.activity.empty')}</Status> : <ul className="wk-list m-0 list-none p-0">{activity.map((entry, index) => <li key={String(entry.id ?? index)} className="flex items-baseline justify-between gap-4 border-b border-line-soft py-[0.9rem]"><strong>{String(entry.action ?? 'unknown')}</strong><span className="font-mono text-[0.8rem] text-muted">{String(entry.outcome ?? 'unknown')}</span><small>{String(entry.created_at ?? '')}</small></li>)}</ul>}</Card>
-  </main>;
+function RemoteRows({ state, empty, label, StatusComponent }: { state: { status: string; rows: Array<Record<string, unknown>>; message?: string }; empty: string; label: (row: Record<string, unknown>) => string; StatusComponent: ElementType }) {
+  if (state.status === 'loading') return <StatusComponent>Loading…</StatusComponent>;
+  if (state.status === 'error') return <StatusComponent tone="error">{state.message}</StatusComponent>;
+  if (state.rows.length === 0) return <p className="wk-muted" style={{ margin: 0 }}>{empty}</p>;
+  return <div style={{ display: 'grid', gap: '0.5rem' }}>{state.rows.slice(0, 30).map((row, index) => <div key={String(row.id ?? index)} style={{ borderBottom: '1px solid #edf0f5', padding: '0.65rem 0' }}>{label(row)}</div>)}</div>;
 }
