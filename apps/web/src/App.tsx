@@ -5,6 +5,8 @@ import { createScopeController } from '@weknora/domain/scope';
 import { scopedKey } from '@weknora/domain';
 import { Button, Card, Status } from '@weknora/ui';
 import { loadKnowledgeBases, type KnowledgeBaseListState } from './knowledge-bases/list.ts';
+import { GraphSettings, type GraphExtractConfig } from './knowledge-settings/GraphSettings.tsx';
+import './knowledge-settings/GraphSettings.css';
 
 export type KnowledgeBaseEditorSection =
   | 'basic'
@@ -12,7 +14,8 @@ export type KnowledgeBaseEditorSection =
   | 'vectorStore'
   | 'faq'
   | 'parser'
-  | 'processing';
+  | 'processing'
+  | 'graph';
 
 export interface KnowledgeBaseEditorNavItem {
   key: KnowledgeBaseEditorSection;
@@ -43,6 +46,7 @@ export const knowledgeBaseEditorNavGroups: KnowledgeBaseEditorNavGroup[] = [
     items: [
       { key: 'parser', label: 'Parser', description: 'Document parser rules' },
       { key: 'processing', label: 'Processing', description: 'Ingestion and indexing status' },
+      { key: 'graph', label: 'Knowledge graph', description: 'Entity and relationship extraction' },
     ],
   },
 ];
@@ -57,10 +61,19 @@ function isFaqKnowledgeBase(knowledgeBase: KnowledgeBase): boolean {
   return knowledgeBase.type?.toLowerCase() === 'faq';
 }
 
-function KnowledgeBaseEditor({ knowledgeBase }: { knowledgeBase: KnowledgeBase }) {
+function KnowledgeBaseEditor({ knowledgeBase, client }: { knowledgeBase: KnowledgeBase; client: WeKnoraClient }) {
   const [activeSection, setActiveSection] = useState<KnowledgeBaseEditorSection>('basic');
   const faq = isFaqKnowledgeBase(knowledgeBase);
   const sectionTitle = editorSectionTitle(activeSection);
+  const source = knowledgeBase as KnowledgeBase & { summary_model_id?: string; extract_config?: Partial<GraphExtractConfig> & { custom_instructions?: string } };
+  const [graphExtract, setGraphExtract] = useState<GraphExtractConfig>(() => ({
+    enabled: source.extract_config?.enabled === true,
+    text: source.extract_config?.text ?? '',
+    tags: source.extract_config?.tags ?? [],
+    nodes: source.extract_config?.nodes ?? [],
+    relations: source.extract_config?.relations ?? [],
+    customInstructions: source.extract_config?.customInstructions ?? source.extract_config?.custom_instructions ?? '',
+  }));
 
   return (
     <Card>
@@ -140,6 +153,7 @@ function KnowledgeBaseEditor({ knowledgeBase }: { knowledgeBase: KnowledgeBase }
               <p className="wk-muted">Current scaffold preserves the backend list contract and does not infer processing state.</p>
             </div>
           ) : null}
+          {activeSection === 'graph' ? <GraphSettings graphExtract={graphExtract} modelId={source.summary_model_id ?? ''} client={client} embedded onChange={setGraphExtract} /> : null}
         </section>
       </div>
     </Card>
@@ -202,7 +216,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
                   </li>
                 ))}
               </ul>
-              {selectedKnowledgeBase ? <KnowledgeBaseEditor knowledgeBase={selectedKnowledgeBase} /> : null}
+              {selectedKnowledgeBase ? <KnowledgeBaseEditor knowledgeBase={selectedKnowledgeBase} client={client} /> : null}
             </>
           )
         ) : null}

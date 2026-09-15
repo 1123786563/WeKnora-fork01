@@ -1,0 +1,21 @@
+.wk-graph-settings { width: 100%; }
+.wk-graph-header { margin-bottom: 20px; }
+.wk-graph-header h2 { margin: 0 0 6px; font-size: 20px; font-weight: 600; }
+.wk-graph-form { display: flex; flex-direction: column; }
+.wk-graph-row, .wk-graph-field { border-bottom: 1px solid #dce3ed; padding: 16px 0; }
+.wk-graph-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+.wk-graph-row p, .wk-graph-field > .wk-muted { display: block; margin: 4px 0 0; line-height: 1.5; }
+.wk-graph-field { display: flex; flex-direction: column; gap: 8px; }
+.wk-graph-inline { display: flex; align-items: flex-start; gap: 12px; width: 100%; }
+.wk-graph-inline > .wk-input, .wk-graph-inline > select { flex: 1; min-width: 0; }
+.wk-graph-stack { flex-direction: column; }
+.wk-graph-stack textarea, .wk-graph-field > textarea { width: 100%; box-sizing: border-box; resize: vertical; }
+.wk-graph-node { display: flex; flex-direction: column; gap: 8px; padding: 16px; border: 1px solid #dce3ed; border-radius: 8px; background: #fff; }
+.wk-graph-node + .wk-graph-node { margin-top: 12px; }
+.wk-graph-field > .wk-status, .wk-graph-inline + .wk-status { margin: 0; }
+.wk-graph-settings-embedded .wk-graph-row { flex-direction: column; gap: 8px; padding: 12px 0; }
+.wk-graph-settings-embedded .wk-graph-row label { align-self: flex-start; }
+@media (max-width: 720px) {
+  .wk-graph-row, .wk-graph-inline { flex-direction: column; }
+  .wk-graph-inline > .wk-button, .wk-graph-inline > select, .wk-graph-inline > .wk-input { width: 100%; }
+}
