@@ -3929,7 +3929,11 @@ export function KnowledgeDocumentsPage({
           title={`${t("knowledgeBase.timeline.title")}：${displayName(traceDocument)}`}
           onClose={() => setTraceDocument(null)}
           side="right"
-          width="min(820px, 92vw)"
+          width="820px"
+          resizable
+          minWidth={560}
+          maxWidth={1400}
+          storageKey="weknora-trace-drawer-width"
           className="min-w-0 border-l border-line-soft"
         >
           <section className="wk-processing-timeline" aria-live="polite" aria-busy={traceState.status === "loading"}>
