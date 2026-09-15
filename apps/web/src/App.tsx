@@ -887,7 +887,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
                         </div>
                       ) : null}
                       <p className="kb-list-card-desc relative z-[1] m-0 mb-1.5 min-h-0 flex-1 overflow-hidden [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] [line-clamp:2] text-xs font-normal leading-[18px] text-[#646e74]">{String(card.description ?? '') || t('knowledgeBase.noDescription')}</p>
-                      <div className="kb-list-card-bottom relative z-[1] mt-auto flex items-center justify-between gap-2 border-t-[0.5px] border-[#e3e7ee] pt-2">
+                      <div className="kb-list-card-bottom relative z-[1] mt-auto flex items-center justify-between gap-2 border-t-[0.5px] border-[#e3e7ee] pt-[6px]">
                         <div className="kb-list-badges flex min-w-0 items-center gap-1">
                           <span className={'kb-list-badge inline-flex h-[22px] items-center justify-center gap-[3px] rounded-[5px] px-1.5 text-[11px] font-medium leading-none ' + (isFaq ? 'bg-[rgba(0,82,217,0.08)] text-[#0052d9]' : 'bg-[rgba(7,192,95,0.08)] text-[#0a9059]')}>
                             <KbIcon name={isFaq ? 'chat' : 'folder'} size={14} />
