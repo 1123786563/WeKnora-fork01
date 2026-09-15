@@ -299,7 +299,7 @@ test('editor drawer mirrors the Vue form: labels, per-field desc copy, required 
   assert.ok(html.includes(t('knowledgeEditor.faq.negativeQuestionsDesc')), 'negative questions desc key');
   assert.ok(html.includes(t('knowledgeEditor.faq.answersDesc')), 'answers desc key');
   assert.ok(html.includes(t('knowledgeEditor.faq.tagDesc')), 'tag desc key');
-  assert.ok(html.includes('maxlength=\"200\"'), 'standard question capped at 200 (Vue t-input :maxlength)');
+  assert.match(html, /max(?:length|Length)=\"200\"/, 'standard question capped at 200 (Vue t-input :maxlength)');
   assert.equal((html.match(/required-mark/g) || []).length, 2, '标准问 + 答案 carry the required mark');
   assert.ok(!html.includes('faq-editor-checks'), 'Vue editor has no enable/recommended checkboxes');
   assert.ok(html.includes(t('knowledgeEditor.faq.tagPlaceholder')), 'tag select keeps the Vue placeholder');
