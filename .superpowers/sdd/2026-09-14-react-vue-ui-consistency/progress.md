@@ -378,3 +378,5 @@ T10 mobile auth follow-up (2026-09-15): invitation token placeholder now has a d
 N029 Embed build update (2026-09-15): added explicit Vite aliases for `@weknora/views/embed/bridge` and `@weknora/views/chat/markdown`, fixing the root-alias/subpath resolution failure. Embed build now passes (TypeScript + Vite); embed tests remain 7/7 and typecheck passes. Protected embed resource-preview runtime evidence remains open.
 
 Release bundle update (2026-09-15): `pnpm build:react-bundle` completed the Web and Embed production builds and copied the React Web bundle to `dist/react-web/web`; shared typecheck, Embed 7/7 tests/typecheck, and desktop 2/2 tests/typecheck remain green.
+
+T10 mobile onboarding localization update (2026-09-15): OnboardingScreen now resolves workspace policy, create form, invitation list, accept/decline, empty/loading/error and logout copy through the shared auth/tenant catalog; invitation tenant fallback uses localized interpolation. Mobile typecheck passes and regression command exits successfully.
