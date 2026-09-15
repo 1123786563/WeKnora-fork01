@@ -360,6 +360,8 @@ function McpMetadataSection({
   const [approvals, setApprovals] = useState<ToolApprovalRow[]>([]);
   const [policyError, setPolicyError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [busyTools, setBusyTools] = useState<Set<string>>(new Set());
+  const busyToolsRef = useRef(new Set<string>());
   const [error, setError] = useState<string | null>(null);
   const [docsOpen, setDocsOpen] = useState(false);
   const loadGeneration = useRef(0);
@@ -417,8 +419,9 @@ function McpMetadataSection({
     field: "enabled" | "requireApproval",
     value: boolean,
   ) {
-    if (busy || metadata?.stale || policyError) return;
-    setBusy(true);
+    if (busy || busyToolsRef.current.has(toolName) || metadata?.stale || policyError) return;
+    busyToolsRef.current.add(toolName);
+    setBusyTools(new Set(busyToolsRef.current));
     onBusyChange(true);
     setError(null);
     try {
@@ -447,8 +450,9 @@ function McpMetadataSection({
         cause instanceof Error ? cause.message : t("mcpMetadata.policySaveFailed"),
       );
     } finally {
-      setBusy(false);
-      onBusyChange(false);
+      busyToolsRef.current.delete(toolName);
+      setBusyTools(new Set(busyToolsRef.current));
+      onBusyChange(busyToolsRef.current.size > 0);
     }
   }
   let syncedAt = "";
@@ -493,6 +497,7 @@ function McpMetadataSection({
             serviceId={metadata.stale ? undefined : serviceId}
             approvals={approvals}
             busy={busy || metadata.stale}
+            busyTools={busyTools}
             policyError={policyError}
             onRetryPolicies={() => void load()}
             onPolicyChange={(name, field, value) =>

@@ -7,7 +7,7 @@ import { createTranslator, useAppLocale } from '../i18n.ts';
 
 type PolicyField = 'enabled' | 'requireApproval';
 type McpToolApproval = Awaited<ReturnType<WeKnoraClient['configuration']['mcp']['toolApprovals']['list']>>[number];
-type Props = { tools: McpTool[]; serviceId?: string; approvals: McpToolApproval[]; busy: boolean; policyError: string | null; onRetryPolicies: () => void; onPolicyChange: (name: string, field: PolicyField, value: boolean) => void };
+type Props = { tools: McpTool[]; serviceId?: string; approvals: McpToolApproval[]; busy: boolean; busyTools?: ReadonlySet<string>; policyError: string | null; onRetryPolicies: () => void; onPolicyChange: (name: string, field: PolicyField, value: boolean) => void };
 
 const toolTabBase = 'cursor-pointer border-0 border-b-2 border-b-transparent bg-transparent px-0 pt-[10px] pb-2 -mb-px text-[#66758b] [font:inherit] text-[13px] leading-[1.2] hover:text-[#172033] focus-visible:text-[#172033] hover:outline-none focus-visible:outline-none';
 
@@ -18,7 +18,7 @@ function parametersOf(schema: unknown): Array<{ name: string; type?: string; req
   return Object.entries(value.properties ?? {}).map(([name, parameter]) => ({ name, type: parameter?.type, description: parameter?.description, required: required.has(name) }));
 }
 
-export function McpToolsDirectory({ tools, serviceId, approvals, busy, policyError, onRetryPolicies, onPolicyChange }: Props) {
+export function McpToolsDirectory({ tools, serviceId, approvals, busy, busyTools, policyError, onRetryPolicies, onPolicyChange }: Props) {
   const t = createTranslator(useAppLocale());
   const pageSize = 20;
   const [query, setQuery] = useState('');
@@ -87,8 +87,8 @@ export function McpToolsDirectory({ tools, serviceId, approvals, busy, policyErr
         return typeof document === 'undefined' || !document.body ? detail : createPortal(detail, document.body);
       })() : null}
       {serviceId ? <div className="mt-2.5 flex flex-wrap gap-6 text-[12px] text-[#506078]">
-        <label className="items-center cursor-pointer leading-5"><span>{t('mcpMetadata.enabled')}</span><Switch className="h-[18px]! w-[34px]!" aria-label={`${tool.name} ${t('mcpMetadata.enabled')}`} disabled={busy} checked={current.enabled} onCheckedChange={(checked) => onPolicyChange(tool.name, 'enabled', checked)} /></label>
-        <label className="items-center cursor-pointer leading-5"><span>{t('mcpMetadata.approval')}</span><Switch className="h-[18px]! w-[34px]!" aria-label={`${tool.name} ${t('mcpMetadata.approval')}`} disabled={busy} checked={current.requireApproval} onCheckedChange={(checked) => onPolicyChange(tool.name, 'requireApproval', checked)} /></label>
+        <label className="items-center cursor-pointer leading-5"><span>{t('mcpMetadata.enabled')}</span><Switch className="h-[18px]! w-[34px]!" aria-label={`${tool.name} ${t('mcpMetadata.enabled')}`} disabled={busy || busyTools?.has(tool.name) === true} checked={current.enabled} onCheckedChange={(checked) => onPolicyChange(tool.name, 'enabled', checked)} /></label>
+        <label className="items-center cursor-pointer leading-5"><span>{t('mcpMetadata.approval')}</span><Switch className="h-[18px]! w-[34px]!" aria-label={`${tool.name} ${t('mcpMetadata.approval')}`} disabled={busy || busyTools?.has(tool.name) === true} checked={current.requireApproval} onCheckedChange={(checked) => onPolicyChange(tool.name, 'requireApproval', checked)} /></label>
       </div> : null}
     </li>; })}</ul> : <Status>{t('mcpMetadata.noTools')}</Status>}
     {filtered.length > pageSize ? <nav className="flex items-center justify-end gap-[.6rem]" aria-label={t('mcpMetadata.tools')}><Button type="button" disabled={page === 1} onClick={() => setPage((value) => value - 1)}>{t('mcpMetadata.previous')}</Button><span>{page} / {pageCount}</span><Button type="button" disabled={page === pageCount} onClick={() => setPage((value) => value + 1)}>{t('mcpMetadata.next')}</Button></nav> : null}

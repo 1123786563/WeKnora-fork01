@@ -157,8 +157,8 @@ type StubMetadata = {
   stale: boolean;
 };
 
-function mcpStubClient(overrides: { metadataGet?: () => Promise<StubMetadata | null>; metadataRefresh?: () => Promise<StubMetadata> } = {}) {
-  const metadata: StubMetadata = { tools: [{ name: 'search', description: 'Search docs' }], serverName: 'Srv', serverVersion: '1.0', syncedAt: '2026-09-13T00:00:00Z', stale: false };
+function mcpStubClient(overrides: { metadata?: StubMetadata; metadataGet?: () => Promise<StubMetadata | null>; metadataRefresh?: () => Promise<StubMetadata>; toolApprovalsUpdate?: () => Promise<unknown> } = {}) {
+  const metadata: StubMetadata = overrides.metadata ?? { tools: [{ name: 'search', description: 'Search docs' }], serverName: 'Srv', serverVersion: '1.0', syncedAt: '2026-09-13T00:00:00Z', stale: false };
   return {
     configuration: {
       mcp: {
@@ -171,7 +171,7 @@ function mcpStubClient(overrides: { metadataGet?: () => Promise<StubMetadata | n
           get: overrides.metadataGet ?? (async () => metadata),
           refresh: overrides.metadataRefresh ?? (async () => metadata),
         },
-        toolApprovals: { list: async () => [], update: async () => ({}) },
+        toolApprovals: { list: async () => [], update: overrides.toolApprovalsUpdate ?? (async () => ({})) },
         usageInstructions: { generate: async () => 'generated usage instructions' },
         oauth: {
           status: async () => ({ authorized: false, state: 'reauth_required', refreshAvailable: false }),
@@ -346,6 +346,43 @@ test('step 2 gates save on tool sync and shows the Vue usage counter, hint and g
     assert.equal(dialog?.querySelector('.wk-mcp-tool-detail-popup'), null, 'tool details are not trapped in the drawer flow');
     await act(async () => { document.body.dispatchEvent(new dom.window.Event('pointerdown', { bubbles: true })); });
     assert.equal(document.body.querySelector('.wk-mcp-tool-detail-popup'), null, 'outside click closes the tool popup');
+  } finally {
+    await unmountEditor(root);
+  }
+});
+
+test('MCP policy updates lock only the tool being saved like the Vue directory', async () => {
+  const updateGate = deferred<unknown>();
+  const stub = mcpStubClient({
+    metadata: {
+    serviceId: 'svc-1',
+    tools: [{ name: 'search' }, { name: 'write' }],
+    serverName: 'Srv',
+    serverVersion: '1.0',
+    syncedAt: '2026-09-14T00:00:00Z',
+    stale: false,
+    },
+    toolApprovalsUpdate: async () => updateGate.promise,
+  });
+  const root = await mountEditor(React.createElement(McpSettingsPanel, {
+    client: stub,
+    initialServices: [],
+    role: 'admin',
+  }));
+  try {
+    await act(async () => { findButton('添加服务')?.click(); });
+    await act(async () => {
+      setInputValue(document.querySelector('input[placeholder="请输入服务名称"]') as HTMLInputElement, 'Docs');
+      setInputValue(document.querySelector('input[placeholder="https://example.com/mcp"]') as HTMLInputElement, 'https://example.com/mcp');
+    });
+    await act(async () => { submitForm(document.querySelector('.wks-mcp-drawer form') as HTMLFormElement); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    const switches = Array.from(document.querySelectorAll('[role="switch"]')) as HTMLButtonElement[];
+    assert.equal(switches.length, 4, 'two policy switches per tool');
+    await act(async () => { switches[0].click(); });
+    assert.equal(switches[0].disabled, true, 'the saving tool is disabled');
+    assert.equal(switches[2].disabled, false, 'another tool remains interactive');
+    await act(async () => { updateGate.resolve(undefined); await updateGate.promise; });
   } finally {
     await unmountEditor(root);
   }
