@@ -54,6 +54,12 @@ func TestExecutionWireRejectsInvalidValues(t *testing.T) {
 	validFractional, err := ParseExecutionEvent([]byte(`{"schema_version":1,"run_id":"r","attempt_id":"","seq":1,"type":"event","occurred_at":"2026-09-12T00:00:00.123+08:00","payload":{}}`))
 	require.NoError(t, err)
 	require.Equal(t, "2026-09-12T00:00:00.123+08:00", validFractional.OccurredAt)
+	for _, year := range []string{"0000", "0099", "0100"} {
+		fixture := `{"schema_version":1,"run_id":"r","attempt_id":"","seq":1,"type":"event","occurred_at":"` + year + `-01-02T03:04:05Z","payload":{}}`
+		event, err := ParseExecutionEvent([]byte(fixture))
+		require.NoError(t, err)
+		require.Equal(t, year+"-01-02T03:04:05Z", event.OccurredAt)
+	}
 	overflow := base
 	overflow.Seq = MaxSafeInteger + 1
 	require.ErrorIs(t, overflow.Validate(), ErrSequenceOverflow)
