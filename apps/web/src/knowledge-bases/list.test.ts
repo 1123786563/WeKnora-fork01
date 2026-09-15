@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import type { KnowledgeBaseListParams } from '@weknora/api-client';
 
 import { loadKnowledgeBases } from './list.ts';
 
@@ -28,4 +29,19 @@ test('preserves forbidden error codes for the no-permission branch', async () =>
   } as never);
 
   assert.deepEqual(state, { status: 'error', code: 'TENANT_FORBIDDEN', message: 'No access' });
+});
+
+test('passes the Vue-equivalent creator scope to the backend list request', async () => {
+  let received: unknown;
+  const state = await loadKnowledgeBases({
+    knowledgeBases: {
+      list: async (params: KnowledgeBaseListParams = {}) => {
+        received = params;
+        return [];
+      },
+    },
+  } as never, undefined, { creator: 'mine' });
+
+  assert.deepEqual(received, { creator: 'mine' });
+  assert.deepEqual(state, { status: 'success', items: [] });
 });
