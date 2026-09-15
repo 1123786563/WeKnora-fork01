@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as React from "react";
 import type { McpConfiguration, WeKnoraClient } from "@weknora/api-client";
-import { Button, Card, Status } from "@weknora/ui";
+import { Button, Card, Checkbox, Input, Select, Status, Textarea } from "@weknora/ui";
 import { McpToolsDirectory } from "./McpToolsDirectory.tsx";
 import { createTranslator, useAppLocale } from "../i18n.ts";
 
@@ -915,7 +915,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                     <p className="wk-muted text-muted">
                       {t("mcpServiceDialog.codeImport.hint")}
                     </p>
-                    <textarea
+                    <Textarea
                       rows={5}
                       value={draft.codeImport}
                       placeholder={'{\n  "mcpServers": { "my-server": { "url": "https://example.com/sse" } }\n}'}
@@ -941,7 +941,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                     <legend>{t("mcpServiceDialog.basicSection")}</legend>
                     <label>
                       {t("mcpServiceDialog.name")}
-                      <input
+                      <Input
                         required
                         maxLength={128}
                         value={draft.name}
@@ -951,7 +951,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                     </label>
                     <div className="flex flex-wrap items-center gap-[.6rem]">
                       <label className="wk-checkbox flex-none mt-0 whitespace-nowrap">
-                        <input
+                        <Checkbox
                           type="checkbox"
                           checked={draft.enabled}
                           onChange={(event) => setField("enabled", event.target.checked)}
@@ -967,7 +967,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                     <legend>{t("mcpServiceDialog.connectionSection")}</legend>
                     <label>
                       {t("mcpServiceDialog.transportType")}
-                      <select
+                      <Select
                         className="w-full box-border"
                         value={draft.transportType === "http-streamable" ? "http-streamable" : "sse"}
                         onChange={(event) =>
@@ -979,24 +979,24 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                       >
                         <option value="sse">SSE</option>
                         <option value="http-streamable">HTTP Streamable</option>
-                      </select>
+                      </Select>
                     </label>
                     <label>
                       {t("mcpServiceDialog.serviceUrl")}
-                      <input
+                      <Input
                         type="url"
                         required
                         value={draft.url}
                         placeholder={t("mcpServiceDialog.serviceUrlPlaceholder")}
                         onChange={(event) => setField("url", event.target.value)}
-                      />
+                        />
                     </label>
                     <fieldset className="rounded-card border border-[#edf0f5] grid gap-[.7rem] p-[.8rem]">
                       <legend>{t("mcpServiceDialog.customHeaders.label")}</legend>
                       <p className="wk-muted text-muted">{t("mcpServiceDialog.customHeaders.desc")}</p>
                       {draft.headers.map((header, index) => (
                         <div className="wk-mcp-header-row" key={index}>
-                          <input
+                          <Input
                             placeholder={t("mcpServiceDialog.customHeaders.keyPlaceholder")}
                             value={header.key}
                             onChange={(event) =>
@@ -1009,8 +1009,8 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                                 ),
                               )
                             }
-                          />
-                          <input
+                        />
+                          <Input
                             placeholder={t("mcpServiceDialog.customHeaders.valuePlaceholder")}
                             value={header.value}
                             onChange={(event) =>
@@ -1056,7 +1056,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                     <legend>{t("mcpServiceDialog.authConfig")}</legend>
                     <label>
                       {t("mcpServiceDialog.authType")}
-                      <select
+                      <Select
                         className="w-full box-border"
                         value={draft.authType}
                         onChange={(event) =>
@@ -1066,7 +1066,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                         <option value="">{t("mcpServiceDialog.authTypeNone")}</option>
                         <option value="api_key">{t("mcpServiceDialog.authTypeApiKey")}</option>
                         <option value="oauth">{t("mcpServiceDialog.authTypeOAuth")}</option>
-                      </select>
+                      </Select>
                     </label>
                     {draft.authType === "oauth" ? (
                       <>
@@ -1111,7 +1111,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                     <legend>{t("mcpServiceDialog.advancedConfig")}</legend>
                     <label>
                       {t("mcpServiceDialog.timeoutSec")}
-                      <input
+                      <Input
                         type="number"
                         min={1}
                         max={300}
@@ -1129,7 +1129,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                     </label>
                     <label>
                       {t("mcpServiceDialog.retryCount")}
-                      <input
+                          <Input
                         type="number"
                         min={0}
                         max={10}
@@ -1143,11 +1143,11 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                             ),
                           )
                         }
-                      />
+                          />
                     </label>
                     <label>
                       {t("mcpServiceDialog.retryDelaySec")}
-                      <input
+                          <Input
                         type="number"
                         min={0}
                         max={60}
@@ -1161,7 +1161,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                             ),
                           )
                         }
-                      />
+                          />
                     </label>
                   </fieldset>
                 </>
