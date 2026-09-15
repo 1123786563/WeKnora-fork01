@@ -26,6 +26,7 @@ import {
   parserNavStatus,
   removeUploadEntry,
   runUploadPipeline,
+  retryableUploadEntries,
   sortFolderOptions,
   toUploadEntries,
   uploadConfirmMessage,
@@ -113,6 +114,15 @@ test('abort mid-batch stops at the next file boundary', async () => {
   assert.deepEqual(uploaded, ['a.pdf']);
   assert.equal(final[0].status, 'done');
   assert.ok(final.slice(1).every((state) => state.status === 'pending'));
+});
+
+test('retryable upload entries contain only files that failed in the previous batch', async () => {
+  const entries = toUploadEntries([entry('ok.txt'), entry('bad.txt')]);
+  const final = await runUploadPipeline({
+    entries,
+    upload: async (item) => { if (item.name === 'bad.txt') throw new Error('temporary failure'); },
+  });
+  assert.deepEqual(retryableUploadEntries(final).map((item) => item.name), ['bad.txt']);
 });
 
 test('upload summary lists file names plus sizes for the confirm dialog', () => {

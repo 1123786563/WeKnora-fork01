@@ -36,6 +36,7 @@ import {
   multimodalSectionIssue,
   normalizeUploadUrl,
   removeUploadEntry,
+  retryableUploadEntries,
   runUploadPipeline,
   sectionAfterGraphAvailabilityChange,
   toUploadEntries,
@@ -57,7 +58,6 @@ import {
   type UploadNodeExtractState,
 } from "./upload-pipeline.ts";
 import {
-  computeKBPermissions,
   kbTypeRedirectPath,
   resolveKBSurfaceTabs,
   type KBSurfaceKB,
@@ -158,6 +158,20 @@ export function uploadConfirmValidationFailure(input: {
 /** Upload requests retain staged entries; dismissing their dialog would discard them. */
 export function canCloseUploadConfirmDialog(uploading: boolean): boolean {
   return !uploading;
+}
+
+/** Vue canEditKB parity for the upload surface, including shared editor grants. */
+export function canUploadKnowledgeDocuments(kb: KBSurfaceKB, me: KBSurfaceMe | null | undefined): boolean {
+  const permission = kb.my_permission ?? kb.permission;
+  if (typeof permission === "string" && permission.trim()) {
+    return ["owner", "admin", "editor"].includes(permission.trim().toLowerCase());
+  }
+  const userId = me?.user?.id;
+  const creatorId = kb.creator_id ?? kb.created_by ?? kb.user_id;
+  const isCreator = userId !== undefined && userId !== null && creatorId !== undefined && String(userId) === String(creatorId);
+  const isAdmin = Boolean(me?.user?.is_superuser === true || me?.user?.role === "admin" || me?.user?.role === "system_admin"
+    || me?.memberships?.some((membership) => membership.role === "admin" || membership.role === "system_admin"));
+  return isCreator || isAdmin;
 }
 
 function displayName(document: KnowledgeDocument): string {
@@ -2235,10 +2249,7 @@ export function KnowledgeDocumentsPage({
         setKbMeta(kb as KBSurfaceKB);
         setMe(me as KBSurfaceMe | null);
         setConfirmState(uploadConfirmStateFromKb(kb as KBSurfaceKB));
-        setCanContribute(
-          computeKBPermissions(kb as KBSurfaceKB, me as KBSurfaceMe | null)
-            .canContribute,
-        );
+        setCanContribute(canUploadKnowledgeDocuments(kb as KBSurfaceKB, me as KBSurfaceMe | null));
         setKbList(
           (list as { id: unknown; name: unknown; type?: unknown }[]).map((item) => ({
             id: String(item.id),
@@ -2798,7 +2809,14 @@ export function KnowledgeDocumentsPage({
       });
       setReloadToken((value) => value + 1);
       if (finalStates.some((state) => state.status === "done")) emitKnowledgeUploadEvent("knowledgeFileUploaded", { kbId: knowledgeBaseId });
-      if (finalStates.some((state) => state.status === "error")) return;
+      if (finalStates.some((state) => state.status === "error")) {
+        // Keep only failed files staged so the next confirmation retries the
+        // failed subset instead of re-uploading documents already accepted.
+        const failedStates = finalStates.filter((state) => state.status === "error");
+        setPendingEntries(retryableUploadEntries(finalStates));
+        setUploadStates(failedStates);
+        return;
+      }
       setPendingEntries([]);
       setPendingUrls([]);
       setPendingTagIds([]);

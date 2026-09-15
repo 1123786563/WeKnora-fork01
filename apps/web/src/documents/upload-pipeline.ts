@@ -950,3 +950,8 @@ export async function runUploadPipeline(input: RunUploadPipelineInput): Promise<
   }
   return states;
 }
+
+/** Return the staged file subset that is safe to send through a retry. */
+export function retryableUploadEntries(states: readonly UploadEntryState[]): UploadEntry[] {
+  return states.filter((state) => state.status === 'error').map((state) => state.entry);
+}

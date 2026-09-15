@@ -24,7 +24,7 @@ const {
   ParserHint,
   DocumentEmptyState,
 } = await import('./DocumentsPageChrome.tsx');
-const { KnowledgeDocumentsPage, DocumentCardGrid, documentCardHoverPosition, documentStatus, documentSourceLabel, documentFileSizeLabel, folderPathCrumbs, hasDocumentGridContent, isStorageEngineMissing } = await import('./KnowledgeDocumentsPage.tsx');
+const { KnowledgeDocumentsPage, DocumentCardGrid, documentCardHoverPosition, documentStatus, documentSourceLabel, documentFileSizeLabel, folderPathCrumbs, hasDocumentGridContent, isStorageEngineMissing, canUploadKnowledgeDocuments } = await import('./KnowledgeDocumentsPage.tsx');
 const { createTranslator } = await import('../i18n.ts');
 
 const t = createTranslator('zh-CN');
@@ -44,6 +44,12 @@ test('storage engine availability follows the Vue upload gate', () => {
   assert.equal(isStorageEngineMissing({ type: 'document', storage_backend_id: 'storage-1' }), false, 'the authoritative storage backend binding enables uploads');
   assert.equal(isStorageEngineMissing({ type: 'document', storage_provider_config: { provider: 's3' } }), false, 'the legacy provider projection remains compatible');
   assert.equal(isStorageEngineMissing({ type: 'faq' }), false, 'FAQ KBs do not use the documents upload gate');
+});
+
+test('upload permission honors the Vue shared editor grant but denies shared viewers', () => {
+  const me = { user: { id: 'viewer-in-home' }, memberships: [{ role: 'viewer' }] };
+  assert.equal(canUploadKnowledgeDocuments({ id: 'kb-1', my_permission: 'editor' }, me), true);
+  assert.equal(canUploadKnowledgeDocuments({ id: 'kb-1', my_permission: 'viewer' }, me), false);
 });
 
 // --- DocumentsBreadcrumb (Vue KnowledgeBase.vue document-title-row parity) -------
