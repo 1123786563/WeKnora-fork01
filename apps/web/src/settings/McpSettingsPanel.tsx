@@ -10,7 +10,7 @@ import { createTranslator, useAppLocale } from "../i18n.ts";
    cascade result, including ! where a retained unlayered rule competes. */
 const mcpServerDocsButton = "ml-2 rounded-[4px] border-0 bg-transparent px-1 py-[0.1rem] text-[#2e6de6] cursor-pointer [font:inherit] hover:bg-[#eef4ff]";
 const mcpIconButton = "h-6 w-6 cursor-pointer rounded-[6px] border-0 bg-transparent p-0 text-[16px] text-[#66758b] hover:bg-[#f3f5f8] hover:text-[#245a9b] hover:outline-none focus-visible:bg-[#f3f5f8] focus-visible:text-[#245a9b] focus-visible:outline-none";
-const mcpStepButton = "cursor-pointer border-0 bg-transparent p-0 px-0 py-[0.2rem] [font:inherit] text-[.82rem] font-[550] text-[#98a2b8] disabled:cursor-default disabled:opacity-60";
+const mcpStepButton = "flex min-w-0 items-center gap-2 cursor-pointer border-0 bg-transparent p-0 [font:inherit] text-[#98a2b8] disabled:cursor-default disabled:opacity-60";
 const mcpToolsLink = "cursor-pointer border-0 bg-transparent p-0 [font:inherit] text-[.82rem] text-[#66758b] hover:text-[#245a9b] hover:outline-none focus-visible:text-[#245a9b] focus-visible:outline-none";
 const mcpStatus = "inline-flex items-center gap-[5px] whitespace-nowrap cursor-pointer border-0 bg-transparent p-0 [font:inherit] text-[.82rem] text-[#66758b]";
 const mcpBadgeOk = "rounded-full px-2 py-[0.1rem] text-[.72rem] bg-[#ecfdf3] text-[#137333]";
@@ -856,10 +856,10 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
             aria-modal="true"
             aria-label={draft.id ? t("mcpServiceDialog.editTitle") : t("mcpServiceDialog.addTitle")}
           >
-            <div className="wk-settings-panel-heading relative flex h-[104px] flex-col gap-0 border-b border-[#eef1f5] mb-0 max-[720px]:flex-col sticky top-0 z-[1] bg-white px-0 pb-3 pt-[14px]">
+            <div className="wk-settings-panel-heading relative -mx-[18px] box-border flex h-[104px] shrink-0 flex-col gap-0 border-b border-[#eef1f5] mb-0 max-[720px]:flex-col sticky top-0 z-[1] bg-white px-[18px] pb-3 pt-[14px]">
               <div className="min-w-0">
-                <h3>{draft.id ? t("mcpServiceDialog.editTitle") : t("mcpServiceDialog.addTitle")}</h3>
-                <p className="wk-muted text-muted m-0 flex items-center gap-2">
+                <h3 className="m-0 text-[15px] font-semibold leading-[21px]">{draft.id ? t("mcpServiceDialog.editTitle") : t("mcpServiceDialog.addTitle")}</h3>
+                <p className="wk-muted text-muted m-0 flex items-center gap-2 text-[12px] leading-[18px]">
                   {draft.transportType === "http-streamable" ? "HTTP Streamable" : "SSE"}
                   <span
                     className={
@@ -871,27 +871,30 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                     {draft.enabled ? t("mcpSettings.enabled") : t("mcpSettings.disabled")}
                   </span>
                 </p>
-                <nav className="mt-2 flex h-6 items-center gap-2" aria-label={t("mcpMetadata.setupProgress")}>
+                <nav className="mt-[7px] flex h-6 items-center gap-2" aria-label={t("mcpMetadata.setupProgress")}>
                   <button
                     type="button"
-                    className={`${mcpStepButton} ${step === 0 ? "text-[#2e6de6]!" : step > 0 ? "text-[#506078]!" : ""}`}
+                    className={`${mcpStepButton} flex-1 text-[13px] font-medium ${step === 0 ? "text-[#07c05f]!" : step > 0 ? "text-[#506078]!" : ""}`}
                     aria-current={step === 0 ? "step" : undefined}
                     disabled={dialogBusy}
                     onClick={() => setStep(0)}
                   >
-                    1. {t("mcpMetadata.connection")}
+                    <span className={`inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold leading-none ${step === 0 ? "border-[#07c05f] bg-[#07c05f] text-white" : "border-[#07c05f] bg-[rgba(7,192,95,.12)] text-[#07c05f]"}`}>{step > 0 ? "✓" : "1"}</span>
+                    <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{t("mcpMetadata.connection")}</span>
+                    <span className={`mx-1 h-px min-w-4 flex-1 bg-[#dcdcdc] ${step > 0 ? "bg-[rgba(7,192,95,.35)]" : ""}`} aria-hidden="true" />
                   </button>
                   <span aria-hidden="true"> → </span>
                   <button
                     type="button"
-                    className={`${mcpStepButton} ${step === 1 ? "text-[#2e6de6]!" : ""}`}
+                    className={`${mcpStepButton} text-[13px] font-medium ${step === 1 ? "text-[#07c05f]!" : ""}`}
                     aria-current={step === 1 ? "step" : undefined}
                     disabled={dialogBusy}
                     onClick={() => {
                       if (step === 0) formRef.current?.requestSubmit();
                     }}
                   >
-                    2. {t("mcpMetadata.toolsAndUsage")}
+                    <span className={`inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold leading-none ${step === 1 ? "border-[#07c05f] bg-[#07c05f] text-white" : "border-[#cbd5e1] text-[#98a2b8]"}`}>2</span>
+                    <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{t("mcpMetadata.toolsAndUsage")}</span>
                   </button>
                 </nav>
               </div>
@@ -1228,7 +1231,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                   ) : null}
                 </>
               )}
-              <div className="wk-mcp-footer sticky bottom-0 mt-[1.2rem] flex items-center justify-between gap-3 border-t border-[#edf0f5] bg-white px-0 pt-[.6rem] pb-[.2rem]">
+            <div className="wk-mcp-footer sticky bottom-0 -mx-[18px] mt-[1.2rem] flex min-h-[53px] shrink-0 box-border items-center justify-between gap-3 border-t border-[#edf0f5] bg-white px-[18px] pt-[.6rem] pb-[.2rem]">
                 <div className="flex flex-1">
                   {step === 1 ? (
                     <Button
