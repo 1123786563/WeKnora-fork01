@@ -255,6 +255,12 @@ export function WikiPage({
       knowledgeBaseId,
       selected.slug,
       { title, content, summary, version },
+      {
+        titleRequired: t("wikiBrowser.newPageMissingFields"),
+        contentRequired: t("wikiBrowser.newPageMissingFields"),
+        conflict: t("wikiBrowser.editSaveFailed"),
+        saveFailed: t("wikiBrowser.editSaveFailed"),
+      },
     );
     setSaveState(result);
     if (result.status === "saved") {

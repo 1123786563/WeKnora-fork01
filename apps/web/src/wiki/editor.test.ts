@@ -19,6 +19,14 @@ test('rejects blank Wiki content before issuing a write', async () => {
   assert.deepEqual(result, { status: 'error', message: 'Wiki title is required' });
 });
 
+test('uses caller-provided localized copy for validation and conflicts', async () => {
+  const copy = { titleRequired: '请输入标题', contentRequired: '请输入正文', conflict: '页面已更新', saveFailed: '保存失败' };
+  const blank = await saveWikiPage({ update: async () => { throw new Error('unexpected'); } }, 'kb-1', 'start', { title: '', content: 'body', version: 1 }, copy);
+  assert.deepEqual(blank, { status: 'error', message: '请输入标题' });
+  const conflict = await saveWikiPage({ update: async () => { throw Object.assign(new Error('stale'), { status: 409 }); } }, 'kb-1', 'start', { title: '标题', content: '正文', version: 1 }, copy);
+  assert.deepEqual(conflict, { status: 'conflict', message: '页面已更新' });
+});
+
 test('keeps loading and error states explicit instead of returning an empty Wiki list', () => {
   assert.deepEqual(wikiSaveState(new Error('403 forbidden')), { status: 'error', message: '403 forbidden' });
 });
