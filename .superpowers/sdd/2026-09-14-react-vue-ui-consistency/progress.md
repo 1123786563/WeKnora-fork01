@@ -543,3 +543,4 @@ N014/N015 expanded settings controls (2026-09-15): system settings, preferences,
 - R245 最近 UI 对齐批次 Web 回归（2026-09-15）：知识库、文档、集成和智能体改动整合后 Web 900/900 通过，相关聚焦测试与 Web typecheck 保持通过。证据：`evidence/vue-react-parity/2026-09-15-r245-web-regression.md`；受保护后端、响应式浏览器矩阵和 Wails/native 验收仍待补齐。
 - R246 集成抽屉关闭控件本地化（2026-09-15）：预览、创建和 API Playground 关闭按钮统一复用五语言 `common.close`，集成测试 5/5、Web typecheck 与 diff check 通过。证据：`evidence/vue-react-parity/2026-09-15-r246-integrations-close-locale.md`。
 - R247 Web 全量回归（2026-09-15）：集成抽屉关闭控件本地化后，`pnpm test:web` 900/900 通过，0 失败、0 取消、0 跳过。证据：`evidence/vue-react-parity/2026-09-15-r247-web-regression.md`。
+- R248 Web 生产构建（2026-09-15）：`pnpm build:web` 成功完成 TypeScript 与 Vite 打包；仅有既有大 chunk advisory，无构建错误。证据：`evidence/vue-react-parity/2026-09-15-r248-web-build.md`。
