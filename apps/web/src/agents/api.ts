@@ -1,0 +1,9 @@
+import type { Agent } from './state.ts';
+export interface AgentRequest { method: string; path: string; body?: unknown; signal?: AbortSignal }
+export interface AgentRequestClient { request(input: AgentRequest): Promise<unknown> }
+export type AgentListState = { status: 'success'; items: Agent[] } | { status: 'error'; code?: string; message: string };
+function errorState(error: unknown): Extract<AgentListState, { status: 'error' }> { const value = error as { code?: unknown }; return { status: 'error', ...(typeof value?.code === 'string' ? { code: value.code } : {}), message: error instanceof Error ? error.message : 'Unable to load agents' }; }
+export async function loadAgents(client: AgentRequestClient, signal?: AbortSignal): Promise<AgentListState> { try { const result = await client.request({ method: 'GET', path: '/api/v1/agents', ...(signal ? { signal } : {}) }) as { data?: Agent[] }; return { status: 'success', items: result.data ?? [] }; } catch (error) { if (signal?.aborted) throw error; return errorState(error); } }
+export interface AgentInput { name: string; description?: string; avatar?: string; config?: Record<string, unknown> }
+export type SaveState = { status: 'success'; item: Agent } | { status: 'error'; code?: string; message: string };
+export async function saveAgent(client: AgentRequestClient, id: string | null, input: AgentInput, signal?: AbortSignal): Promise<SaveState> { try { const result = await client.request({ method: id ? 'PUT' : 'POST', path: id ? `/api/v1/agents/${encodeURIComponent(id)}` : '/api/v1/agents', body: input, ...(signal ? { signal } : {}) }) as { data?: Agent }; if (!result.data) return { status: 'error', message: 'Agent response did not include an agent' }; return { status: 'success', item: result.data }; } catch (error) { if (signal?.aborted) throw error; return errorState(error); } }
