@@ -20,7 +20,7 @@ import type { Root } from 'react-dom/client';
 // PlatformShell imports .css files; teach the ESM loader to treat them as
 // empty modules (same approach as new-user-guide.test.tsx).
 type ResolveHook = (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => unknown;
-const resolveCSS: ResolveHook = (specifier, context, nextResolve) => specifier.endsWith('.css')
+const resolveCSS: ResolveHook = (specifier, context, nextResolve) => specifier.endsWith('.css') || specifier.endsWith('.png')
   ? { shortCircuit: true, url: 'data:text/javascript,export default {}' }
   : nextResolve(specifier, context);
 const hooks = nodeModule as typeof nodeModule & { registerHooks?: (hooks: { resolve: ResolveHook }) => void };
