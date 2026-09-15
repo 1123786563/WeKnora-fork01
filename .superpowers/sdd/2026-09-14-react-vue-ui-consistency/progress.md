@@ -347,3 +347,4 @@
 - Android 图谱禁用能力错误已本地化：识别后端 `feature is not enabled` 并显示“此知识库未启用知识图谱功能”，保留重试操作；`test36-small` 真实后端复验通过。移动端 190/190、typecheck、Release 增量构建通过。证据 `evidence/vue-react-parity/2026-09-15-r109-android-graph-disabled-localization.md`。
 - Android 认证后聊天空态门禁通过：`test36-small` 从真实知识库列表进入“新对话”，ChatScreen 渲染标题、导航、空会话、知识库 chip、总结/相关文件、输入和发送控件；后端无可用聊天模型，发送保持禁用，未伪造请求。证据 `evidence/vue-react-parity/2026-09-15-r110-android-authenticated-chat-empty.md`。
 - 本轮移动端与共享层回归通过：Shared 467/467、Mobile 190/190、Mobile typecheck 全部退出码 0，覆盖知识库壳层、Wiki/图谱禁用错误本地化和五语言消息注册。证据 `evidence/vue-react-parity/2026-09-15-r111-shared-mobile-regression.md`。
+- Android 聊天发送失败态门禁通过：`test36-small` 真实认证会话发送 `hello` 后，用户消息落地并渲染 assistant 失败结果，输入区恢复可发送状态，补充队列与重试控件可见。证据 `evidence/vue-react-parity/2026-09-15-r112-android-chat-send-failure.md`。成功模型流、停止、审批、附件和引用仍开放。
