@@ -813,8 +813,8 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
     <section className="grid gap-4" data-testid="mcp-settings">
       <div className="wk-mcp-page-header flex items-start justify-between gap-4 mb-7 max-[720px]:flex-col">
         <div>
-          <h2 className="m-0 mb-2 text-[20px] font-semibold leading-[1.2] text-[var(--color-ink,#172033)]">{t("mcpSettings.title")}</h2>
-          <p className="wk-muted text-muted m-0 text-[14px] leading-[1.6]">
+          <h2 className="m-0 mb-2 text-[20px] font-semibold leading-[1.2] text-[rgb(0_0_0_/_90%)]">{t("mcpSettings.title")}</h2>
+          <p className="wk-muted m-0 text-[14px] leading-[1.6] text-[rgb(0_0_0_/_60%)]">
             {t("mcpSettings.description")}
           </p>
         </div>
@@ -831,7 +831,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                 <div className="wk-mcp-service-card-body flex min-w-0 flex-1 flex-col gap-2">
                   <div className="wk-mcp-service-card-header flex min-h-[28px] items-center justify-between gap-[.7rem]">
                     <span className="inline-flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-[7px] bg-[#f3f5f8] text-[#66758b]" aria-hidden="true"><McpCardIcon name="tools" /></span>
-                    <h4 title={service.name} className="m-0 min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{service.name}</h4>
+                    <h4 title={service.name} className="m-0 min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[14px] font-semibold leading-5 text-[rgb(0_0_0_/_90%)]">{service.name}</h4>
                   {service.is_builtin ? (
                     <span className="text-[.75rem] text-[#2e6de6]">{t("mcpSettings.builtin")}</span>
                   ) : null}
@@ -854,7 +854,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
               </div>
             </article>
           ))}
-          {canEdit ? <button type="button" className="flex min-h-[88px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-[10px] border border-[#dce3ed] border-dashed bg-transparent p-3 text-center text-[#66758b] [font:inherit] [transition:border-color_.18s_ease,background_.18s_ease] hover:border-[#07c05f] hover:bg-[rgba(7,192,95,.06)] hover:text-[#07c05f] hover:outline-none focus-visible:border-[#07c05f] focus-visible:bg-[rgba(7,192,95,.06)] focus-visible:text-[#07c05f] focus-visible:outline-none" onClick={() => openEditor()}><span className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-[#f3f5f8] text-[#66758b]" aria-hidden="true"><McpCardIcon name="add" size={18} /></span><span>{t("mcpSettings.addService")}</span></button> : null}
+          {canEdit ? <button type="button" className="flex min-h-[88px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-[10px] border border-[#dce3ed] border-dashed bg-transparent p-3 text-center text-[#66758b] [font:inherit] [transition:border-color_.18s_ease,background_.18s_ease] hover:border-[#07c05f] hover:bg-[rgba(7,192,95,.06)] hover:text-[#07c05f] hover:outline-none focus-visible:border-[#07c05f] focus-visible:bg-[rgba(7,192,95,.06)] focus-visible:text-[#07c05f] focus-visible:outline-none" onClick={() => openEditor()}><span className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-[#f3f5f8] text-[#66758b]" aria-hidden="true"><McpCardIcon name="add" size={18} /></span><span className="text-[13px] font-medium leading-[1.4]">{t("mcpSettings.addService")}</span></button> : null}
         </div>
       )}
       {draft ? (

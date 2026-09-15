@@ -1,5 +1,22 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-15 Round N+79 — N007 上传确认文件列表
+
+- 对照 Vue `UploadConfirmDialog.vue`，React 文件/URL 行补齐 24px 图标槽、12px/1.35 文件名、11px/1.3 元信息、8px 间距、ellipsis 截断及 22px icon-only 删除控件的 hover/focus 状态；保留 React 每文件上传状态和原有回调。
+- 聚焦 upload-confirm 测试 37/37、`pnpm typecheck:web`、`git diff --check` 通过；证据：`evidence/vue-react-parity/2026-09-15-n007-file-list.md`。
+- N007 继续保持 `implementing`：真实后端上传、同条件浏览器截图/computed-style 与 Wails/native 证据仍未闭环。
+
+## 2026-09-15 Round N+78 — N016 MCP 卡片标题与新增入口字体
+
+- 对照 Vue `McpSettings.vue`，服务名称显式固定为 14px/600/20px，新服务入口标签固定为 13px/500/1.4，避免页面和 shadcn 默认标题字体继承漂移。
+- MCP 测试 13/13、Web 类型检查、`git diff --check` 通过；N016 仍需 post-change 浏览器 computed-style、真实后端与 Wails/native 证据。
+
+## 2026-09-15 Round N+77 — N016 MCP 标题 computed-style 修正
+
+- 在 Vue 与 React 同一路由真实浏览器对照中确认字号/间距一致、标题与描述颜色不一致；React 已按 Vue computed styles 修正为 `rgba(0,0,0,.9)` 与 `rgba(0,0,0,.6)`。
+- MCP 测试 13/13、Web 类型检查、完整 Web 回归 911/911 通过；证据：`evidence/vue-react-parity/2026-09-15-n016-mcp-header-computed-style.md`。
+- 认证 React 页面 reload 后未保留可用内容，故 post-change 浏览器 computed-style 仍开放，不能标记 N016 完成。
+
 ## 2026-09-15 Round N+76 — N007 上传配置导航语义修正
 
 - 复核 N007 弹窗骨架后移除外层重复 `<nav>`，保留 `UploadSectionNav` 的唯一语义导航，避免嵌套 landmark 与滚动样式冲突。

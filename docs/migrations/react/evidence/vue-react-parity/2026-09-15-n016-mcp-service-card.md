@@ -10,6 +10,8 @@
 
 The service badge and edit/delete/add/tools affordances now use inline stroke SVGs with the same 14px icon geometry role as Vue TDesign icons, including stale warning and chevron states; Unicode glyphs are no longer used for these card controls.
 
+The service title and add-service label also carry explicit Vue typography tokens: 14px/600/20px and 13px/500/1.4 respectively.
+
 ## Verification
 
 - MCP focused tests: 13/13 passed.
