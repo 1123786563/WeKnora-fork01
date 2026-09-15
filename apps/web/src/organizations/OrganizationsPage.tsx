@@ -768,13 +768,16 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
       {/* Create / edit settings modal. */}
       {settingsOpen ? (
         <div className={ORG_MODAL_OVERLAY} onClick={closeSettings}>
-          <div className="relative box-border flex w-full max-w-[860px] flex-col overflow-hidden rounded-[12px] bg-surface shadow-[0_8px_32px_rgba(0,0,0,0.12)] h-[min(640px,90vh)]" role="dialog" aria-label={t(locale, settingsMode === 'create' ? 'organization.createOrg' : 'organization.settings.editTitle')} onClick={(event) => event.stopPropagation()}>
+          <div className="relative box-border flex h-[85vh] w-[90vw] max-w-[1100px] flex-col overflow-hidden rounded-[12px] bg-surface shadow-[0_8px_32px_rgba(0,0,0,0.12)]" role="dialog" aria-label={t(locale, settingsMode === 'create' ? 'organization.createOrg' : 'organization.settings.editTitle')} onClick={(event) => event.stopPropagation()}>
             <button type="button" className={ORG_CLOSE_BTN} aria-label={t(locale, 'common.close')} onClick={closeSettings}><IconClose /></button>
             <div className="flex min-h-0 flex-1">
-              {settingsMode === 'edit' && settingsOrg ? (
-                <nav className="box-border w-[190px] shrink-0 overflow-y-auto border-r border-[#e7e7ea] px-[10px] py-[16px]">
-                  <h2 className="m-0 mb-[12px] ml-[6px] text-[16px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.settings.editTitle')}</h2>
-                  {([
+              {settingsMode === 'create' || (settingsMode === 'edit' && settingsOrg) ? (
+                <nav className="box-border w-[208px] shrink-0 overflow-y-auto border-r border-[#e7e7ea] bg-[#f9f9f9] px-2 py-2">
+                  <h2 className="m-0 mb-[12px] ml-[6px] text-[16px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, settingsMode === 'create' ? 'organization.createOrg' : 'organization.settings.editTitle')}</h2>
+                  {(settingsMode === 'create' ? [
+                    ['basic', 'organization.editor.navBasic'],
+                    ['permissions', 'organization.editor.navPermissions'],
+                  ] : [
                     ['basic', 'organization.editor.navBasic'],
                     ['members', 'organization.members.listTitle'],
                     ['requests', 'organization.joinRequests.listTitle'],
@@ -786,23 +789,29 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                 </nav>
               ) : null}
               <div className="flex min-w-0 flex-1 flex-col">
-                <div className="min-h-0 flex-1 overflow-y-auto px-[24px] py-[20px]">
-                  {settingsMode === 'create' ? (
+                <div className={'min-h-0 flex-1 overflow-y-auto ' + (settingsMode === 'create' ? 'px-[40px] py-[28px]' : 'px-[24px] py-[20px]')}>
+                  {settingsMode === 'create' && settingsSection === 'basic' ? (
                     <form onSubmit={submitCreate}>
-                      <h2 className={ORG_SECTION_TITLE}>{t(locale, 'organization.createOrg')}</h2>
-                      <p className={ORG_SECTION_DESC}>{t(locale, 'organization.editor.basicDesc')}</p>
-                      <div className={ORG_FORM_ITEM}>
-                        <label className={ORG_FORM_LABEL} htmlFor="organization-name">{t(locale, 'organization.name')} *</label>
-                        <p className={ORG_FORM_DESC}>{t(locale, 'organization.editor.nameTip')}</p>
-                        <Input id="organization-name" name="organization-name" className={ORG_FIELD + ' min-h-[34px]'} value={formName} onChange={(event) => setFormName(event.target.value)} required />
+                      <h2 className="m-0 mb-2 text-[16px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.editor.basicTitle')}</h2>
+                      <p className="m-0 mb-6 text-[14px] leading-[22px] text-[rgba(23,26,29,0.4)]">{t(locale, 'organization.editor.basicDesc')}</p>
+                      <div className="mb-6 grid grid-cols-[minmax(0,1fr)_minmax(280px,446px)] items-start gap-6">
+                        <div><label className={ORG_FORM_LABEL} htmlFor="organization-name">{t(locale, 'organization.name')} *</label><p className={ORG_FORM_DESC}>{t(locale, 'organization.editor.nameTip')}</p></div>
+                        <div className="flex min-w-0 items-center gap-3"><SpaceAvatar name={formName || '?'} size="medium" /><Input id="organization-name" name="organization-name" className={ORG_FIELD + ' min-h-[34px]'} value={formName} onChange={(event) => setFormName(event.target.value)} required placeholder={t(locale, 'organization.namePlaceholder')} /></div>
                       </div>
-                      <div className={ORG_FORM_ITEM}>
-                        <label className={ORG_FORM_LABEL} htmlFor="organization-description">{t(locale, 'organization.description')}</label>
-                        <p className={ORG_FORM_DESC}>{t(locale, 'organization.editor.descriptionTip')}</p>
-                        <Textarea id="organization-description" name="organization-description" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={3} value={formDescription} onChange={(event) => setFormDescription(event.target.value)} />
+                      <div className="mb-6 grid grid-cols-[minmax(0,1fr)_minmax(280px,446px)] items-start gap-6">
+                        <div><label className={ORG_FORM_LABEL} htmlFor="organization-description">{t(locale, 'organization.description')}</label><p className={ORG_FORM_DESC}>{t(locale, 'organization.editor.descriptionTip')}</p></div>
+                        <Textarea id="organization-description" name="organization-description" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={3} value={formDescription} onChange={(event) => setFormDescription(event.target.value)} placeholder={t(locale, 'organization.descriptionPlaceholder')} />
                       </div>
-                      <button type="submit" className={ORG_BTN_PRIMARY} disabled={saving}>{t(locale, 'organization.createOrg')}</button>
+                      <button type="submit" className={ORG_BTN_PRIMARY + ' mt-4'} disabled={saving}>{t(locale, 'organization.createOrg')}</button>
                     </form>
+                  ) : settingsMode === 'create' ? (
+                    <section>
+                      <h2 className="m-0 mb-2 text-[16px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.editor.permissionsTitle')}</h2>
+                      <p className="m-0 mb-6 text-[14px] leading-[22px] text-[rgba(23,26,29,0.4)]">{t(locale, 'organization.editor.permissionsDesc')}</p>
+                      <div className="grid gap-4">
+                        {(['admin', 'editor', 'viewer'] as const).map((roleKey) => <div key={roleKey} className="rounded-lg border border-[#e7e7ea] bg-[#f9f9f9] p-4"><strong className="text-[15px]">{t(locale, 'organization.role.' + roleKey)}</strong><p className="m-0 mt-2 text-[13px] text-[rgba(23,26,29,0.6)]">{t(locale, roleKey === 'admin' ? 'organization.editor.fullAccess' : roleKey === 'editor' ? 'organization.editor.editAccess' : 'organization.editor.viewAccess')}</p></div>)}
+                      </div>
+                    </section>
                   ) : settingsSection === 'basic' ? (
                     <>
                       <form onSubmit={submitBasic}>
