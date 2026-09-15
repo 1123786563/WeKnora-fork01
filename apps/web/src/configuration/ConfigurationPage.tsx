@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AgentConfiguration, ConfigurationRecord, McpConfiguration, ModelConfiguration, SkillConfiguration, WeKnoraClient } from '@weknora/api-client';
 import { Button, Card, Status } from '@weknora/ui';
 import { configurationSections, configurationStatus, type ConfigurationSectionKey } from './surface.ts';
@@ -26,6 +26,7 @@ export function ConfigurationPage({ client }: { client: WeKnoraClient }) {
   const [creator, setCreator] = useState<'all' | 'mine' | 'others'>('all');
   const [usageConflict, setUsageConflict] = useState<{ modelName: string; details: ModelUsageDetails } | null>(null);
   const [currentUserId, setCurrentUserId] = useState('');
+  const loadGeneration = useRef(0);
 
   function renderConfigurationRow(sectionKey: ConfigurationSectionKey, item: ConfigurationRecord, index: number) {
     const row = item as Record<string, unknown>;
@@ -48,11 +49,13 @@ export function ConfigurationPage({ client }: { client: WeKnoraClient }) {
   const [collapsedGroups, setCollapsedGroups] = useState<Record<AgentGroupKey, boolean>>({ builtin: false, mine: false, shared: false });
 
   async function load() {
+    const generation = ++loadGeneration.current;
     setLoading(true); setErrors({}); setAvailable(null);
     const results = await Promise.allSettled([
       client.configuration.agents.listWithState({ creator }), client.configuration.models.list(),
       client.configuration.mcp.list(), client.configuration.skills.listWithAvailability(),
     ]);
+    if (generation !== loadGeneration.current) return;
     const next: Records = { agents: [], models: [], mcp: [], skills: [] };
     const nextErrors: Partial<Record<ConfigurationSectionKey, string>> = {};
     const agent = results[0];
