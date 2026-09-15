@@ -12,6 +12,66 @@ export type KnowledgeBaseListBranch =
   | { kind: 'forbidden'; message: string }
   | { kind: 'error'; message: string };
 
+export interface KnowledgeBaseListItem extends KnowledgeBase {
+  permission?: string;
+  isMine?: boolean;
+  creator_id?: string;
+  creator_name?: string;
+  is_pinned?: boolean;
+  pinned_at?: string;
+}
+
+export interface SharedKnowledgeBaseItem {
+  knowledge_base: KnowledgeBaseListItem;
+  permission?: string;
+  share_id?: string;
+  shared_at?: string;
+  org_name?: string;
+  is_mine?: boolean;
+}
+
+const permissionRank: Record<string, number> = { viewer: 1, editor: 2, admin: 3, owner: 4 };
+
+/** Merge the Vue all-scope view without duplicate cards or privilege loss. */
+export function mergeKnowledgeBaseScopes(
+  owned: KnowledgeBaseListItem[],
+  shared: SharedKnowledgeBaseItem[],
+  userId?: string,
+): KnowledgeBaseListItem[] {
+  const byId = new Map<string, KnowledgeBaseListItem>();
+  for (const item of owned) byId.set(item.id, { ...item, isMine: true });
+  for (const entry of shared) {
+    const item = entry.knowledge_base;
+    if (!item?.id || byId.has(item.id)) continue;
+    byId.set(item.id, {
+      ...item,
+      isMine: item.creator_id && userId ? item.creator_id === userId : false,
+      ...(entry.permission ? { permission: entry.permission } : {}),
+      ...(entry.share_id ? { share_id: entry.share_id } : {}),
+      ...(entry.shared_at ? { shared_at: entry.shared_at } : {}),
+      ...(entry.org_name ? { org_name: entry.org_name } : {}),
+    });
+  }
+  return [...byId.values()].sort((a, b) => {
+    if (Boolean(a.is_pinned) !== Boolean(b.is_pinned)) return a.is_pinned ? -1 : 1;
+    if (a.is_pinned && b.is_pinned) {
+      const pinDelta = Date.parse(b.pinned_at ?? '') - Date.parse(a.pinned_at ?? '');
+      if (Number.isFinite(pinDelta) && pinDelta !== 0) return pinDelta;
+    }
+    if (Boolean(a.isMine) !== Boolean(b.isMine)) return a.isMine ? -1 : 1;
+    const accessDelta = (permissionRank[b.permission ?? ''] ?? 0) - (permissionRank[a.permission ?? ''] ?? 0);
+    return accessDelta || a.name.localeCompare(b.name);
+  });
+}
+
+/** Client-side filtering used by the Vue list when a query is already loaded. */
+export function filterKnowledgeBases(items: KnowledgeBaseListItem[], query: string): KnowledgeBaseListItem[] {
+  const needle = query.trim().toLocaleLowerCase();
+  if (!needle) return items;
+  return items.filter((item) => [item.name, item.description, item.creator_name, item.type]
+    .some((value) => typeof value === 'string' && value.toLocaleLowerCase().includes(needle)));
+}
+
 export function describeKnowledgeBaseList(state: KnowledgeBaseListViewState): KnowledgeBaseListBranch {
   if (state.status === 'loading') return { kind: 'loading' };
   if (state.status === 'success') return state.items.length === 0 ? { kind: 'empty' } : { kind: 'ready', items: state.items };
@@ -31,6 +91,28 @@ export function describeKnowledgeBasePermission(permission: string | undefined):
   if (permission === 'editor') return { canView: true, canEdit: true, canShare: false };
   if (permission === 'viewer') return { canView: true, canEdit: false, canShare: false };
   return { canView: false, canEdit: false, canShare: false };
+}
+
+export interface KnowledgeBaseDetailPermission extends KnowledgeBasePermission {
+  canDownload: boolean;
+  canMutateDocuments: boolean;
+}
+
+/** Permission is evaluated from the effective share, not merely tenant role. */
+export function describeKnowledgeBaseDetailPermission(input: {
+  permission?: string;
+  isOwner?: boolean;
+  tenantRole?: string;
+  viaShare?: boolean;
+}): KnowledgeBaseDetailPermission {
+  const permission = input.permission?.toLowerCase();
+  const owner = !input.viaShare && (input.isOwner === true || input.tenantRole === 'admin');
+  const canEdit = owner || permission === 'owner' || permission === 'admin' || permission === 'editor';
+  const canShare = owner || permission === 'owner' || permission === 'admin';
+  const canView = input.viaShare ? Boolean(permission) : input.isOwner === true || Boolean(input.tenantRole);
+  const canDownload = canView && (input.tenantRole === 'contributor' || input.tenantRole === 'admin' || input.tenantRole === 'owner')
+    && (!input.viaShare || permission === 'owner' || permission === 'admin' || permission === 'editor');
+  return { canView, canEdit, canShare, canDownload, canMutateDocuments: canEdit && (input.viaShare || owner || input.tenantRole === 'contributor' || input.tenantRole === 'admin') };
 }
 
 export type KnowledgeBaseSaveResult<T> =
