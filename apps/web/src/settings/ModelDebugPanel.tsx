@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import * as React from "react";
 import type { ModelConfiguration, WeKnoraClient } from "@weknora/api-client";
-import { Button, NumberInput, Status, Switch } from "@weknora/ui";
+import { Button, NumberInput, Status, Switch, Textarea } from "@weknora/ui";
 import { useAppLocale } from "../i18n.ts";
 import {
   createModelTranslator,
@@ -262,7 +262,7 @@ export function ModelDebugPanel({ client, models, onClose }: Props) {
             {selectedTypeResolved !== "asr" ? (
               <label>
                 {inputLabel}
-                <textarea
+                <Textarea
                   rows={4}
                   value={input}
                   onChange={(event) => setInput(event.target.value)}
@@ -273,7 +273,7 @@ export function ModelDebugPanel({ client, models, onClose }: Props) {
             {isRerank ? (
               <label>
                 {t("modelSettings.debug.documents")}
-                <textarea
+                <Textarea
                   rows={4}
                   value={documents}
                   onChange={(event) => setDocuments(event.target.value)}
@@ -306,7 +306,7 @@ export function ModelDebugPanel({ client, models, onClose }: Props) {
             <div className="form-item"><label>Max Tokens</label><NumberInput min={1} max={8192} step={128} value={maxTokens} onValueChange={(value) => setMaxTokens(Number(value))} /></div>
             <label>
               {t("modelSettings.debug.systemPrompt")}
-              <textarea
+              <Textarea
                 rows={2}
                 value={systemPrompt}
                 onChange={(event) => setSystemPrompt(event.target.value)}
