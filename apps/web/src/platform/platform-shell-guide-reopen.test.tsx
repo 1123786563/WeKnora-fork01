@@ -63,9 +63,9 @@ const settle = (ms: number) => act(async () => {
   await new Promise((resolve) => setTimeout(resolve, ms));
 });
 
-function fakeClient(): Record<string, unknown> {
+function fakeClient(role?: string): Record<string, unknown> {
   return {
-    auth: { me: async () => ({ user: { id: 'u1', username: 'tester', email: 'tester@local.dev', avatar: '' } }) },
+    auth: { me: async () => ({ user: { id: 'u1', username: 'tester', email: 'tester@local.dev', avatar: '' }, tenant: { id: 'tenant-1', name: 'Parity' }, memberships: role ? [{ tenant_id: 'tenant-1', role }] : [] }) },
     sessions: {
       list: async () => ({ data: [], total: 0, page: 1, page_size: 30 }),
     },
@@ -104,6 +104,30 @@ async function openUserMenu() {
   await act(async () => { userButton()!.click(); await new Promise((resolve) => setTimeout(resolve, 5)); });
   assert.ok(dropdown(), 'dropdown must open after clicking the user button');
 }
+
+test('admin user menu exposes the Vue management shortcuts for members, models and skills', async () => {
+  window.localStorage.setItem('weknora:new-user-guide-done:v1', '1');
+  const container = document.createElement('div');
+  document.body.append(container);
+  mountedRoot = createRoot(container);
+  await act(async () => {
+    mountedRoot?.render(React.createElement(PlatformShell, {
+      client: fakeClient('admin') as never,
+      onLogout: () => undefined,
+      children: React.createElement('div', null, 'page'),
+    }));
+  });
+  await settle(20);
+  await openUserMenu();
+  const links = [...document.querySelectorAll<HTMLAnchorElement>('[role="menu"] a')];
+  assert.deepEqual(links.map((link) => link.getAttribute('href')), [
+    '/platform/settings?section=userprofile',
+    '/platform/settings?section=tenant',
+    '/platform/settings?section=members',
+    '/platform/settings?section=models',
+    '/platform/settings?section=skills',
+  ]);
+});
 
 test('(a) with the tour finished, the user menu offers a reopen entry labelled newUserGuide.reopen', async () => {
   await mountShell();

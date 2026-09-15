@@ -114,6 +114,8 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
     personalSettings: formatMessage(locale, 'general.personalSettings'),
     workspaceSettings: formatMessage(locale, 'settings.tenantInfo'),
     membersSettings: formatMessage(locale, 'tenantMember.title'),
+    modelsSettings: formatMessage(locale, 'settings.modelManagement'),
+    skillsSettings: formatMessage(locale, 'settings.skills.title'),
     // Vue UserMenu.vue:45 uses $t('newUserGuide.reopen') for the reopen entry.
     reopenGuide: formatMessage(locale, 'newUserGuide.reopen'),
     // Session-list copy (Vue menu.vue uses the same menu.* keys).
@@ -726,6 +728,16 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
                   href="/platform/settings?section=members"
                   onClick={() => setMenuOpen(false)}>
                   {labels.membersSettings}
+                </a> : null}
+                {canSeeAdminSessionSources ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
+                  href="/platform/settings?section=models"
+                  onClick={() => setMenuOpen(false)}>
+                  {labels.modelsSettings}
+                </a> : null}
+                {canSeeAdminSessionSources ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
+                  href="/platform/settings?section=skills"
+                  onClick={() => setMenuOpen(false)}>
+                  {labels.skillsSettings}
                 </a> : null}
                 <div className="h-[1px] bg-[#e7ebf0] my-[3px]" aria-hidden="true" />
                 <button type="button" role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#d54941] no-underline hover:bg-[#fbe9e8]"
