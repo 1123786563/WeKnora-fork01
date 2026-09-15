@@ -1065,7 +1065,7 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                       <p className="desc m-0 text-xs leading-[1.5] text-faint">{t('knowledgeEditor.faq.standardQuestionDesc')}</p>
                     </div>
                     <div className="setting-control flex flex-col gap-2">
-                      <Input id="faq-editor-question" className={'full-width-input w-full ' + EDITOR_CONTROL} {...({ maxlength: 200 } as React.InputHTMLAttributes<HTMLInputElement>)} value={form.question} onChange={(event) => onFormChange({ question: event.target.value })} />
+                      <Input id="faq-editor-question" className={'full-width-input w-full ' + EDITOR_CONTROL} maxLength={200} value={form.question} onChange={(event) => onFormChange({ question: event.target.value })} />
                     </div>
                   </div>
                   <div className="setting-row setting-row-optional setting-row-similar flex flex-col gap-2">
