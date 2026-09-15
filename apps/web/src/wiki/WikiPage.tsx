@@ -7,7 +7,7 @@ import type {
   WeKnoraClient,
 } from "@weknora/api-client";
 import { diffWikiRevision } from "@weknora/domain/wiki/diff";
-import { Button, Card, Status } from "@weknora/ui";
+import { Button, Card, Input, Status, Textarea } from "@weknora/ui";
 import { saveWikiPage, type WikiSaveState } from "./editor.ts";
 import { createTranslator, useAppLocale } from "../i18n.ts";
 import { pagerState } from "../pagination.ts";
@@ -412,7 +412,7 @@ export function WikiPage({
                   {t("wikiBrowser.page.search")}
                 </span>
                 <span aria-hidden="true">⌕</span>
-                <input
+                <Input
                   value={keyword}
                   onChange={(event) => setKeyword(event.target.value)}
                   placeholder={t("wikiBrowser.page.searchPlaceholder")}
@@ -480,7 +480,7 @@ export function WikiPage({
           >
             <label>
               {t("wikiBrowser.newPageTitleLabel")}{" "}
-              <input
+              <Input
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
                 required
@@ -488,7 +488,7 @@ export function WikiPage({
             </label>
             <label>
               {t("wikiBrowser.newPageSlugLabel")}{" "}
-              <input
+              <Input
                 value={slug}
                 onChange={(event) => setSlug(event.target.value)}
                 required
@@ -497,14 +497,14 @@ export function WikiPage({
             </label>
             <label>
               {t("wikiBrowser.editSummaryPlaceholder")}{" "}
-              <input
+              <Input
                 value={summary}
                 onChange={(event) => setSummary(event.target.value)}
               />
             </label>
             <label>
               {t("wikiBrowser.newPageContentLabel")}{" "}
-              <textarea
+              <Textarea
                 value={content}
                 onChange={(event) => setContent(event.target.value)}
                 rows={14}
