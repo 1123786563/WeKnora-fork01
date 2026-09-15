@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { guardRoute, organizationInviteCode, protectedPageForRoute, resolveRoute, routeRedirect, type RouteGuardContext } from './routes.tsx';
+import { authNavigationTarget, guardRoute, nextPathAfterAuth, organizationInviteCode, protectedPageForRoute, resolveRoute, routeRedirect, type RouteGuardContext } from './routes.tsx';
 
 const authenticated: RouteGuardContext = {
   authenticated: true,
@@ -60,6 +60,14 @@ test('does not treat embed or missing capability paths as authenticated platform
   assert.equal(resolveRoute('/unknown').kind, 'not-found');
   assert.equal(resolveRoute('/platform/not-a-page').kind, 'not-found');
   assert.equal(resolveRoute('/platform/system/queue').kind, 'not-found');
+});
+
+test('restores only safe auth next paths and prioritizes invite completion', () => {
+  assert.equal(nextPathAfterAuth('?next=%2Fplatform%2Fapps%3Ftab%3Dconnections'), '/platform/apps?tab=connections');
+  assert.equal(nextPathAfterAuth('?next=https%3A%2F%2Fevil.example'), '/platform/knowledge-bases');
+  assert.equal(nextPathAfterAuth('?next=%2F%2Fevil.example'), '/platform/knowledge-bases');
+  assert.equal(authNavigationTarget('?token=invite&next=%2Fplatform%2Fapps', true), '/platform/knowledge-bases');
+  assert.equal(authNavigationTarget('?next=%2Fplatform%2Fapps', false), '/platform/apps');
 });
 
 test('maps the canonical knowledge-base platform route to the list page', () => {

@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  decodeOIDCResult,
   getOnboardingPresentation,
+  getInviteToken,
+  inviteNavigationAfterAuth,
   validateLoginForm,
   validateRegisterForm,
 } from './auth-state.ts';
@@ -51,4 +54,33 @@ test('auth adapter preserves the Vue endpoint paths and login persistence contra
   assert.equal(values.get('weknora_token'), 'access');
   assert.equal(values.get('weknora_refresh_token'), 'refresh');
   assert.equal(values.get('weknora_selected_tenant_id'), '7');
+});
+
+test('auth state preserves invite token and sends invite users to the workspace', () => {
+  assert.equal(getInviteToken('?token=invite%2F123'), 'invite/123');
+  assert.equal(getInviteToken('?next=%2Fplatform%2Fapps'), null);
+  assert.equal(inviteNavigationAfterAuth('/login?next=%2Fplatform%2Fapps', true), '/platform/knowledge-bases');
+});
+
+test('OIDC callback decodes the Vue-compatible base64url JSON payload', () => {
+  const payload = Buffer.from(JSON.stringify({ success: true, token: 'access' })).toString('base64url');
+  assert.deepEqual(decodeOIDCResult(payload), { success: true, token: 'access' });
+});
+
+test('auth adapter preserves OIDC and invite endpoint contracts', async () => {
+  const requests: ClientRequest[] = [];
+  const api = createAuthApi({ request: async (input: ClientRequest) => {
+    requests.push(input);
+    if (input.path === '/api/v1/auth/oidc/config') return { success: true, enabled: true, provider_display_name: 'Logto' };
+    if (input.path.startsWith('/api/v1/auth/oidc/url?')) return { success: true, authorization_url: 'https://idp.example/authorize' };
+    return { success: true };
+  } } as never);
+  assert.deepEqual(await api.oidcConfig(), { success: true, enabled: true, provider_display_name: 'Logto' });
+  assert.deepEqual(await api.oidcStart('https://app.example/api/v1/auth/oidc/callback'), { success: true, authorization_url: 'https://idp.example/authorize' });
+  assert.deepEqual(await api.acceptInvitation('invite-token'), { success: true });
+  assert.deepEqual(requests, [
+    { method: 'GET', path: '/api/v1/auth/oidc/config' },
+    { method: 'GET', path: '/api/v1/auth/oidc/url?redirect_uri=https%3A%2F%2Fapp.example%2Fapi%2Fv1%2Fauth%2Foidc%2Fcallback' },
+    { method: 'POST', path: '/api/v1/me/invitations/accept-by-token', body: { token: 'invite-token' } },
+  ]);
 });
