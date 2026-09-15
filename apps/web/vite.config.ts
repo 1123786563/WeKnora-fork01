@@ -2,8 +2,32 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath, URL } from 'node:url';
 
+const DEV_PROXY_TARGET =
+  process.env.VITE_DEV_PROXY_TARGET ||
+  process.env.FRONTEND_BACKEND_URL ||
+  'http://localhost:8080';
+
+const backendProxy = {
+  target: DEV_PROXY_TARGET,
+  changeOrigin: true,
+  secure: false,
+  ws: true,
+};
+
 export default defineConfig({
   plugins: [react()],
+  server: {
+    proxy: {
+      '/api': backendProxy,
+      '/files': backendProxy,
+    },
+  },
+  preview: {
+    proxy: {
+      '/api': backendProxy,
+      '/files': backendProxy,
+    },
+  },
   resolve: {
     alias: {
       '@weknora/api-client': fileURLToPath(new URL('../../packages/api-client/src/index.ts', import.meta.url)),
