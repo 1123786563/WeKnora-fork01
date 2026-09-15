@@ -551,3 +551,4 @@ N014/N015 expanded settings controls (2026-09-15): system settings, preferences,
 - R252 React Native 共享层回归（2026-09-15）：`pnpm test:mobile` 190/190、`pnpm typecheck:mobile` 通过；覆盖认证、聊天恢复、数据源、收藏/最近、上传进度、文档详情和多语言。证据：`evidence/vue-react-parity/2026-09-15-r252-mobile-shared-regression.md`；原生编译/安装/启动及逐页视觉仍需独立验证。
 - R253 知识库设置反馈本地化（2026-09-15）：替换 React 加载失败、空名称校验、保存成功/失败和分块预览失败的硬编码英文，复用 Vue 对应共享 i18n 键；focused 3/3、Web typecheck 通过。证据：`evidence/vue-react-parity/2026-09-15-r253-kb-settings-fallback-i18n.md`；当前非空 KB 双端运行时数据上下文仍不一致。
 - R252 空间危险区结构对齐（2026-09-15）：按 Vue/React 浏览器对照将删除危险区移到空间信息末尾，默认仅展示危险区摘要，点击后在 Dialog 中输入空间名称确认；浏览器顺序、尺寸和交互状态复测通过，设置聚焦 16/16、Web 902/902、typecheck 与 diff check 通过。证据：`evidence/vue-react-parity/2026-09-15-r252-tenant-danger-zone.md`。
+- R255 Web 回归（2026-09-15）：设置危险区与文档空状态工具栏两批改动叠加后，`pnpm test:web` 902/902 通过，0 失败、0 取消、0 跳过。证据：`evidence/vue-react-parity/2026-09-15-r255-web-regression.md`。
