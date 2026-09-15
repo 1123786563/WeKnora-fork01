@@ -68,7 +68,9 @@ function isoTime(value: unknown, path: string): string {
   const minute = Number(match[5]);
   const second = Number(match[6]);
   const offset = match[7];
-  const calendar = new Date(Date.UTC(year, month - 1, day));
+  const calendar = new Date(0);
+  calendar.setUTCHours(0, 0, 0, 0);
+  calendar.setUTCFullYear(year, month - 1, day);
   const offsetHour = offset === 'Z' ? 0 : Number(offset.slice(1, 3));
   const offsetMinute = offset === 'Z' ? 0 : Number(offset.slice(4, 6));
   if (calendar.getUTCFullYear() !== year || calendar.getUTCMonth() !== month - 1 || calendar.getUTCDate() !== day

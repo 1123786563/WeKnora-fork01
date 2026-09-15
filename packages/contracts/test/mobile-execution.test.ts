@@ -47,6 +47,9 @@ test('validate execution DTO capabilities and snapshot watermark', () => {
   assert.throws(() => parseExecutionEvent({ ...event, occurred_at: '2026-02-30T00:00:00Z' }), /occurred_at/);
   assert.throws(() => parseExecutionEvent({ ...event, occurred_at: '2026-09-12T00:00:00+24:00' }), /occurred_at/);
   assert.equal(parseExecutionEvent({ ...event, occurred_at: '2026-09-12T00:00:00.123+08:00' }).occurred_at, '2026-09-12T00:00:00.123+08:00');
+  for (const year of ['0000', '0099', '0100']) {
+    assert.equal(parseExecutionEvent({ ...event, occurred_at: `${year}-01-02T03:04:05Z` }).occurred_at, `${year}-01-02T03:04:05Z`);
+  }
   assert.throws(() => parseExecutionEvent({ ...event, payload: [] }), /payload/);
   assert.throws(() => parseExecutionEvent({ ...event, run_id: undefined }), /run_id/);
   assert.throws(() => parseExecutionEvent({ ...event, attempt_id: undefined }), /attempt_id/);
