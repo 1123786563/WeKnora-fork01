@@ -27,6 +27,7 @@ export interface SessionSidebarProps {
   onCreate(): void;
   onRename?(sessionId: string): Promise<void>;
   onTogglePin?(sessionId: string, pinned: boolean): Promise<void>;
+  onClear?(sessionId: string): Promise<void>;
   onDelete?(sessionId: string): Promise<void>;
   groups?: readonly SessionGroupView[];
   groupMode?: 'none' | 'date';
@@ -266,7 +267,7 @@ export function SessionSidebarList({ copy, sessions, groups, selectedSessionId, 
   </>;
 }
 
-export function SessionSidebar({ copy, sessions, selectedSessionId, loading = false, onSelect, onCreate, onRename, onTogglePin, onDelete, groups, source, sourceOptions, onSourceChange, groupMode, onGroupModeChange, keyword, onKeywordChange, page = 1, pageCount = 1, onPageChange }: SessionSidebarProps) {
+export function SessionSidebar({ copy, sessions, selectedSessionId, loading = false, onSelect, onCreate, onRename, onTogglePin, onClear, onDelete, groups, source, sourceOptions, onSourceChange, groupMode, onGroupModeChange, keyword, onKeywordChange, page = 1, pageCount = 1, onPageChange }: SessionSidebarProps) {
   const t = copy ?? resolveChatCopy(resolveChatLocale());
   const shellProvidesSessionList = useContext(SessionSidebarShellContext);
   // The platform shell already renders the grouped list next to the nav
@@ -300,6 +301,7 @@ export function SessionSidebar({ copy, sessions, selectedSessionId, loading = fa
       onSelect={onSelect}
       onRename={onRename}
       onTogglePin={onTogglePin}
+      onClear={onClear}
       onDelete={onDelete}
     />
     {onPageChange && pageCount > 1 ? <nav className="mt-auto flex items-center justify-center gap-[0.4rem] pt-[0.75rem] text-[rgba(0,0,0,0.4)] text-[12px]" aria-label={t.conversationPagesLabel}><button type="button" className="cursor-pointer rounded-[6px] border border-[#dcdcdc] bg-transparent px-[8px] py-[2px] text-[rgba(0,0,0,0.6)] text-[12px] disabled:cursor-not-allowed disabled:opacity-50" disabled={page <= 1 || loading} onClick={() => onPageChange(Math.max(1, page - 1))}>{t.previous}</button><span>{formatChatCopy(t, 'pageOf', { page, total: pageCount })}</span><button type="button" className="cursor-pointer rounded-[6px] border border-[#dcdcdc] bg-transparent px-[8px] py-[2px] text-[rgba(0,0,0,0.6)] text-[12px] disabled:cursor-not-allowed disabled:opacity-50" disabled={page >= pageCount || loading} onClick={() => onPageChange(Math.min(pageCount, page + 1))}>{t.next}</button></nav> : null}

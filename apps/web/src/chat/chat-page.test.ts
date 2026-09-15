@@ -23,9 +23,13 @@ test('header rename uses the localized inline editor contract instead of a brows
 });
 
 test('chat view keeps destructive session actions behind the Vue confirmation state', () => {
+  const routeSource = readFileSync(new URL('./ChatRoutePage.tsx', import.meta.url), 'utf8');
   const viewSource = readFileSync(new URL('../../../../packages/views/src/chat/page.tsx', import.meta.url), 'utf8');
   const sidebarSource = readFileSync(new URL('../../../../packages/views/src/chat/session-sidebar.tsx', import.meta.url), 'utf8');
   assert.match(viewSource, /headerDangerAction/);
+  assert.match(viewSource, /onClear=\{props\.onClearSession\}/);
+  assert.match(routeSource, /setStreamState\(\(current\) => \(\{ \.\.\.current, phase: 'error'/);
+  assert.match(routeSource, /setStreamState\(\(current\) => \(\{ \.\.\.current, phase: 'stopped'/);
   assert.match(sidebarSource, /clearConfirmBody/);
   assert.match(sidebarSource, /deleteConfirmBody/);
   assert.match(sidebarSource, /sessionDangerAction/);

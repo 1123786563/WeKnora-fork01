@@ -970,11 +970,11 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     streamAbortRef.current = null;
     controller?.abort();
     chatRunIdRef.current += 1;
+    setStreamState((current) => ({ ...current, phase: 'stopped', artifactsPending: false }));
     if (messageId) {
       try { await client.chat.stop(sessionId, messageId, scope.signal); } catch { /* local stop still applies */ }
     }
     setMessages((current) => markChatMessageStopped(current, sessionId, messageId));
-    setStreamState((current) => ({ ...current, phase: 'stopped', artifactsPending: false }));
   }
 
   async function send(submission: ChatSubmission): Promise<void> {
@@ -1024,8 +1024,16 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
         if (runController.signal.aborted) return;
         if (isChatStreamApplicationError(cause)) throw cause;
         const retry = resumeStreamOptions(streamOptions, lastEventId.id);
-        if (!retry) throw cause;
-        await client.chat.stream(retry, feedWithLastEventId(feed, lastEventId));
+        try {
+          if (!retry) throw cause;
+          await client.chat.stream(retry, feedWithLastEventId(feed, lastEventId));
+        } catch (retryCause) {
+          if (runController.signal.aborted) return;
+          if (!isChatStreamApplicationError(retryCause) && scopeController.isCurrent(scope.scope) && selectedSessionIdRef.current === sessionId) {
+            setStreamState((current) => ({ ...current, phase: 'error', error: retryCause instanceof Error ? retryCause.message : copy.operationFailed, artifactsPending: false }));
+          }
+          throw retryCause;
+        }
       }
       if (runId !== chatRunIdRef.current || selectedSessionIdRef.current !== sessionId) return;
       // The server persists the user message before opening the stream. Refresh

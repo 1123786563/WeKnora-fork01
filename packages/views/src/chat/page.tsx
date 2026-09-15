@@ -495,6 +495,7 @@ export function ChatPage(props: ChatPageProps) {
       onCreate={props.onCreateSession}
       onRename={props.onRenameSession}
       onTogglePin={props.onToggleSessionPin}
+      onClear={props.onClearSession}
       onDelete={props.onDeleteSession}
       groups={props.sessionGroups}
       source={props.sessionSource}
