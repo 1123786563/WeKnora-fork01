@@ -32,6 +32,11 @@
 .wk-mcp-service-card-header { gap: 10px; }
 .wk-mcp-service-card-desc { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; margin: 0; overflow: hidden; font-size: 12px; line-height: 1.5; color: var(--color-muted, #66758b); }
 .wk-mcp-service-card-footer { margin-top: auto; padding-top: 0; }
+.wk-mcp-group { display: flex; min-width: 0; flex-direction: column; gap: 12px; border: 0; border-bottom: 1px solid var(--color-line, #dce3ed); border-radius: 0; padding: 12px 0 16px; }
+.wk-mcp-group:first-of-type { padding-top: 0; }
+.wk-mcp-group:last-of-type { border-bottom: 0; padding-bottom: 0; }
+.wk-mcp-group-title { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; padding: 0; border: 0; color: var(--color-ink, #172033); font-size: 13px; font-weight: 600; line-height: 18px; }
+.wk-mcp-group-title::before { width: 3px; height: 14px; flex-shrink: 0; border-radius: 2px; background: var(--color-primary, #07c05f); content: ""; }
 
 /* Vue .section (Settings.vue:892-894) carries no top margin inside
    .content-wrapper. The styles.css .wk-settings-section { margin-top: 1rem }

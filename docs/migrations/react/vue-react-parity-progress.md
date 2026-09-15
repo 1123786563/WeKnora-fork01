@@ -1,5 +1,11 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-15 Round N+95 — N016 MCP 编辑区段 anatomy
+
+- 对照 Vue `McpServiceDialog.vue`，移除 React MCP 编辑器外层配置区的圆角卡片边框，统一为 Vue 的 12/16px 留白、12px 区内间距、底部分隔线和标题绿色竖条。
+- MCP 专项 14/14、`pnpm typecheck:web`、`git diff --check` 通过；证据：`evidence/vue-react-parity/2026-09-15-n016-mcp-editor-sections.md`。
+- N016 仍需认证浏览器 computed-style/截图、真实 MCP 成功/失败流程和 Wails/native 证据。
+
 ## 2026-09-15 Round N+94 — N016 MCP 抽屉重复关闭控件
 
 - 移除 React MCP 自定义 header 中 Vue 不存在的重复“关闭”文字按钮，保留底部取消和抽屉自身关闭行为，减少 header 拥挤。
