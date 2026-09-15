@@ -1373,11 +1373,11 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
               </div>
             </>) : (
               <label>{t('settings.sandbox.dockerNetworkMode')}
-                <select value={form.docker.network_mode ?? ''} onChange={(event) => setDocker({ network_mode: event.target.value || undefined })}>
+                <Select value={form.docker.network_mode ?? ''} onChange={(event) => setDocker({ network_mode: event.target.value || undefined })}>
                   <option value="">{t('settings.sandbox.dockerNetworkBridge')}</option>
                   <option value="bridge">{t('settings.sandbox.dockerNetworkBridge')}</option>
                   <option value="none">{t('settings.sandbox.dockerNetworkNone')}</option>
-                </select>
+                </Select>
               </label>
             )}
             {form.backend === 'docker' ? <p className="wk-muted text-muted">{t('settings.sandbox.dockerNetworkModeHelp')}</p> : null}
@@ -1395,23 +1395,23 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                     <div className="wk-form-grid grid grid-cols-2 gap-4 max-[720px]:grid-cols-1">
                       <label>{t('settings.sandbox.ruleName')}<input value={rule.name} placeholder="allow-payment-api" onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, name: event.target.value } : item) }))} /></label>
                       <label>{t('settings.sandbox.ruleScheme')}
-                        <select value={rule.scheme} onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, scheme: event.target.value } : item) }))}>
+                        <Select value={rule.scheme} onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, scheme: event.target.value } : item) }))}>
                           <option value=""></option><option value="https">https</option><option value="http">http</option>
-                        </select>
+                        </Select>
                       </label>
                       <label>{t('settings.sandbox.ruleSni')}<input value={rule.sni} placeholder="api.example.com" onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, sni: event.target.value } : item) }))} /></label>
                       <label>{t('settings.sandbox.ruleHost')}<input value={rule.host} placeholder="api.example.com" onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, host: event.target.value } : item) }))} /></label>
                       <label>{t('settings.sandbox.ruleMethods')}<input value={rule.methodsText} placeholder="POST, GET" onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, methodsText: event.target.value } : item) }))} /></label>
                       <label>{t('settings.sandbox.rulePath')}<input value={rule.path} placeholder="/v1/*" onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, path: event.target.value } : item) }))} /></label>
                       <label>{t('settings.sandbox.ruleAction')}
-                        <select value={rule.deny ? 'deny' : 'allow'} onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, deny: event.target.value === 'deny' } : item) }))}>
+                        <Select value={rule.deny ? 'deny' : 'allow'} onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, deny: event.target.value === 'deny' } : item) }))}>
                           <option value="allow">{t('settings.sandbox.ruleAllow')}</option><option value="deny">{t('settings.sandbox.ruleDeny')}</option>
-                        </select>
+                        </Select>
                       </label>
                       <label>{t('settings.sandbox.ruleAudit')}
-                        <select value={rule.audit} onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, audit: event.target.value } : item) }))}>
+                        <Select value={rule.audit} onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, audit: event.target.value } : item) }))}>
                           <option value=""></option><option value="metadata">metadata</option><option value="full">full</option><option value="none">none</option>
-                        </select>
+                        </Select>
                       </label>
                     </div>
                     {!rule.deny ? (
