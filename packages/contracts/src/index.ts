@@ -619,6 +619,17 @@ export function parseKnowledgeFolderTreeResponse(value: unknown): KnowledgeFolde
   };
 }
 
+export type {
+  Capability,
+  CapabilityState,
+  ExecutionDriver,
+  ExecutionDTO,
+  ExecutionEvent,
+  ExecutionSnapshot,
+  RunStatus,
+} from './mobile/execution.ts';
+export { parseExecution, parseExecutionEvent, parseExecutionSnapshot } from './mobile/execution.ts';
+
 export function parseKnowledgeTagListResponse(value: unknown): KnowledgeTagListResponse {
   const envelope = actionEnvelope(value);
   const payload = envelope.data;
