@@ -177,6 +177,7 @@ test('document grid cards keep the Vue 240px/136px anatomy and footer metadata r
     folders: [{ path: 'Specs', name: 'Specs', total_count: 2 }],
     selected: new Set<string>(),
     canContribute: false,
+    canDownload: false,
     t,
     onOpen: noop,
     onOpenFolder: noop,
@@ -184,6 +185,10 @@ test('document grid cards keep the Vue 240px/136px anatomy and footer metadata r
     onTagEdit: noop,
     onReparse: noop,
     onCancelParse: noop,
+    onDownload: noop,
+    onMove: noop,
+    onBatchManage: noop,
+    onDelete: noop,
   }));
   assert.match(html, /grid grid-cols-\[repeat\(auto-fill,minmax\(240px,1fr\)\)\]/);
   assert.match(html, /flex h-\[136px\] min-w-\[240px\] flex-col/);
@@ -191,6 +196,32 @@ test('document grid cards keep the Vue 240px/136px anatomy and footer metadata r
   assert.ok(html.includes('A short guide'), 'completed cards render their description in the content area');
   assert.ok(html.includes('Guides'), 'folder metadata remains in the footer');
   assert.ok(!html.includes('选择 guide.pdf'), 'read-only cards do not expose the Vue canEdit-only checkbox');
+});
+
+test('editable document cards expose the Vue action-menu mutation entries', () => {
+  const html = renderToStaticMarkup(React.createElement(DocumentCardGrid, {
+    items: [{ id: 'doc-1', file_name: 'guide.pdf', file_type: 'pdf', source: 'file', parse_status: 'completed' }],
+    folders: [],
+    selected: new Set<string>(),
+    canContribute: true,
+    canDownload: true,
+    t,
+    onOpen: noop,
+    onOpenFolder: noop,
+    onToggle: noop,
+    onTagEdit: noop,
+    onReparse: noop,
+    onCancelParse: noop,
+    onDownload: noop,
+    onMove: noop,
+    onBatchManage: noop,
+    onDelete: noop,
+  }));
+  assert.ok(html.includes('aria-haspopup="menu"'), 'card has an accessible action-menu trigger');
+  assert.ok(html.includes('下载 guide.pdf'), 'download action is present for file documents');
+  assert.ok(html.includes('移动到目录'), 'folder move action is present');
+  assert.ok(html.includes('批量管理'), 'batch management action is present');
+  assert.ok(html.includes('删除文档'), 'delete action is present');
 });
 
 test('document card hover placement prefers the right side and falls back within the viewport', () => {

@@ -91,6 +91,7 @@ import {
   DocumentEmptyState,
   DocumentsBreadcrumb,
   EditIcon,
+  Icon,
   LinkIcon,
   ParserHint,
   SearchIcon,
@@ -168,6 +169,41 @@ function documentTypeLabel(document: KnowledgeDocument): string {
   return "--";
 }
 
+function MoreIcon() { return <Icon size={16}><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></Icon>; }
+function DownloadIcon() { return <Icon size={16}><path d="M12 3v12M7 10l5 5 5-5M5 21h14" /></Icon>; }
+function RefreshIcon() { return <Icon size={16}><path d="M20 11a8 8 0 10-2.34 5.66M20 4v7h-7" /></Icon>; }
+function DeleteIcon() { return <Icon size={16}><path d="M4 7h16M10 11v6M14 11v6M6 7l1 14h10l1-14M9 7V4h6v3" /></Icon>; }
+function MoveIcon() { return <Icon size={16}><path d="M4 7h7l2 2h7v9a2 2 0 01-2 2H6a2 2 0 01-2-2z" /><path d="M12 11v6M9 14h6" /></Icon>; }
+
+function DocumentCardActionMenu({ document, canDownload, t, actions, onDownload, onMove, onBatchManage, onReparse, onCancelParse, onDelete }: {
+  document: KnowledgeDocument;
+  canDownload: boolean;
+  t: (key: string, values?: Record<string, string | number>) => string;
+  actions: ReturnType<typeof documentRowActions>;
+  onDownload: () => void;
+  onMove: () => void;
+  onBatchManage: () => void;
+  onReparse: () => void;
+  onCancelParse: () => void;
+  onDelete: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const close = () => setOpen(false);
+  const menuItem = (label: string, icon: ReactNode, handler: () => void, danger = false) => <button type="button" role="menuitem" className={`flex w-full cursor-pointer items-center gap-2 rounded-[6px] border-0 bg-transparent px-3 py-2 text-left text-[14px] leading-5 [font:inherit] hover:bg-surface-wash ${danger ? "text-danger" : "text-ink"}`} onClick={() => { close(); handler(); }}>{icon}<span>{label}</span></button>;
+  const downloadable = document.source === "file" || document.source === "manual" || !document.source;
+  return <span className="relative inline-flex shrink-0" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) close(); }}>
+    <button type="button" className={`inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-[5px] border-0 bg-transparent p-0 text-muted hover:bg-surface-wash ${open ? "bg-surface-wash" : ""}`} aria-label={t("knowledgeBase.documents.title")} title={t("knowledgeBase.documents.title")} aria-haspopup="menu" aria-expanded={open} onClick={(event) => { event.stopPropagation(); setOpen((value) => !value); }}><MoreIcon /></button>
+    <span className="absolute right-0 top-[calc(100%+6px)] z-[220] flex min-w-[180px] flex-col rounded-[8px] border border-line-soft bg-surface p-1 shadow-[0_6px_24px_rgb(15_23_42/12%)] [&[hidden]]:hidden" role="menu" hidden={!open}>
+      {canDownload && downloadable ? menuItem(t("knowledgeBase.detail.download", { name: displayName(document) }), <DownloadIcon />, onDownload) : null}
+      {actions.canReparse && !actions.canCancelParse ? menuItem(t("knowledgeBase.rebuildDocument"), <RefreshIcon />, onReparse) : null}
+      {actions.canCancelParse ? menuItem(t("knowledgeBase.documents.cancelParse"), <RefreshIcon />, onCancelParse) : null}
+      {menuItem(t("knowledgeBase.moveToFolder.action"), <MoveIcon />, onMove)}
+      {menuItem(t("menu.batchManage"), <MoreIcon />, onBatchManage)}
+      {menuItem(t("knowledgeBase.deleteDocument"), <DeleteIcon />, onDelete, true)}
+    </span>
+  </span>;
+}
+
 export function documentCardHoverPosition(
   card: { left: number; right: number; top: number },
   viewport: { width: number; height: number },
@@ -221,6 +257,7 @@ export function DocumentCardGrid({
   folders,
   selected,
   canContribute,
+  canDownload,
   t,
   onOpen,
   onOpenFolder,
@@ -228,11 +265,16 @@ export function DocumentCardGrid({
   onTagEdit,
   onReparse,
   onCancelParse,
+  onDownload,
+  onMove,
+  onBatchManage,
+  onDelete,
 }: {
   items: KnowledgeDocument[];
   folders: Array<{ path: string; name: string; total_count: number }>;
   selected: Set<string>;
   canContribute: boolean;
+  canDownload: boolean;
   t: (key: string, values?: Record<string, string | number>) => string;
   onOpen: (document: KnowledgeDocument) => void;
   onOpenFolder: (path: string) => void;
@@ -240,6 +282,10 @@ export function DocumentCardGrid({
   onTagEdit: (document: KnowledgeDocument) => void;
   onReparse: (document: KnowledgeDocument) => void;
   onCancelParse: (document: KnowledgeDocument) => void;
+  onDownload: (document: KnowledgeDocument) => void;
+  onMove: (document: KnowledgeDocument) => void;
+  onBatchManage: (document: KnowledgeDocument) => void;
+  onDelete: (document: KnowledgeDocument) => void;
 }) {
   const [hovered, setHovered] = useState<{ document: KnowledgeDocument; position: { x: number; y: number } } | null>(null);
   const hoverTimer = useRef<number | null>(null);
@@ -272,6 +318,7 @@ export function DocumentCardGrid({
             {canContribute ? <Checkbox type="checkbox" checked={selected.has(document.id)} onChange={(event) => onToggle(document.id, event.target.checked)} aria-label={t("knowledgeBase.documents.select", { name: displayName(document) })} /> : null}
             <button type="button" className="min-w-0 flex-1 truncate border-0 bg-transparent p-0 text-left text-[14px] font-semibold leading-6 tracking-[.01em] text-primary-deep hover:underline" onClick={() => onOpen(document)} title={displayName(document)}>{displayName(document)}</button>
             <Status tone={status.tone}>{status.label}</Status>
+            {canContribute ? <DocumentCardActionMenu document={document} canDownload={canDownload} t={t} actions={actions} onDownload={() => onDownload(document)} onMove={() => onMove(document)} onBatchManage={() => onBatchManage(document)} onReparse={() => onReparse(document)} onCancelParse={() => onCancelParse(document)} onDelete={() => onDelete(document)} /> : null}
           </div>
           <p className="m-0 line-clamp-2 min-h-0 flex-1 overflow-hidden text-[12px] font-normal leading-[19px] text-muted">{document.summary_status === "processing" ? t("knowledgeBase.generatingSummary") : typeof document.description === "string" ? document.description : document.folder_path ?? t("knowledgeBase.documents.root")}</p>
         </div>
@@ -1849,6 +1896,7 @@ export function KnowledgeDocumentsPage({
   const tt = tagSurfaceT(locale);
   const [reloadToken, setReloadToken] = useState(0);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [confirmingDeleteDocument, setConfirmingDeleteDocument] = useState<KnowledgeDocument | null>(null);
   const [state, setState] = useState<KnowledgeDocumentListState>({
     status: "loading",
   });
@@ -2640,6 +2688,34 @@ export function KnowledgeDocumentsPage({
     }
   }
 
+  async function downloadDocument(document: KnowledgeDocument) {
+    setMutationError(null);
+    try {
+      const response = await client.knowledgeBases.documents.download(document.id);
+      const body = response.body instanceof Blob ? response.body : new Blob([response.body], { type: response.contentType || response.headers["content-type"] || "application/octet-stream" });
+      const url = URL.createObjectURL(body);
+      const anchor = window.document.createElement("a");
+      anchor.href = url;
+      anchor.download = displayName(document);
+      anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch (error) {
+      setMutationError(errorMessage(error, t));
+    }
+  }
+
+  async function deleteOneDocument() {
+    if (!confirmingDeleteDocument) return;
+    setMutationError(null);
+    try {
+      await client.knowledgeBases.documents.remove(confirmingDeleteDocument.id);
+      setConfirmingDeleteDocument(null);
+      setReloadToken((value) => value + 1);
+    } catch (error) {
+      setMutationError(errorMessage(error, t));
+    }
+  }
+
   // Vue's batch popconfirm filters documents that are already being parsed
   // before the batch endpoint is called.
   function reparseSelected() {
@@ -3314,6 +3390,7 @@ export function KnowledgeDocumentsPage({
                 folders={folders.filter((folder) => folder.path && folder.path.split("/").slice(0, -1).join("/") === (folderPath ?? ""))}
                 selected={selected}
                 canContribute={canContribute}
+                canDownload={true}
                 t={t}
                 onOpen={(document) => onOpenDocument?.(document)}
                 onOpenFolder={(path) => setFolderPath(path || undefined)}
@@ -3321,6 +3398,10 @@ export function KnowledgeDocumentsPage({
                 onTagEdit={(document) => setTagDialog({ mode: "single", document })}
                 onReparse={(document) => reparseOne(document)}
                 onCancelParse={(document) => void cancelOneParse(document.id)}
+                onDownload={(document) => void downloadDocument(document)}
+                onMove={(document) => { setSelected(new Set([document.id])); setMoving(true); setMoveTarget(document.folder_path ?? ""); }}
+                onBatchManage={(document) => setSelected(new Set([document.id]))}
+                onDelete={setConfirmingDeleteDocument}
               />
             ) : null}
             {state.status === "success" && items.length > 0 && viewMode === "list" ? (
@@ -3702,6 +3783,20 @@ export function KnowledgeDocumentsPage({
             <Button type="button" onClick={() => setConfirmingDelete(false)}>
               {t("knowledgeBase.documents.cancel")}
             </Button>
+          </div>
+        </Dialog>
+      ) : null}
+      {confirmingDeleteDocument && canContribute ? (
+        <Dialog
+          open
+          title={t("knowledgeBase.deleteDocument")}
+          onClose={() => setConfirmingDeleteDocument(null)}
+        >
+          <p>{t("knowledgeBase.confirmDeleteDocument", { fileName: displayName(confirmingDeleteDocument) })}</p>
+          {mutationError ? <Status tone="error">{mutationError}</Status> : null}
+          <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
+            <Button type="button" onClick={() => void deleteOneDocument()}>{t("knowledgeBase.confirmDelete")}</Button>
+            <Button type="button" onClick={() => setConfirmingDeleteDocument(null)}>{t("knowledgeBase.documents.cancel")}</Button>
           </div>
         </Dialog>
       ) : null}
