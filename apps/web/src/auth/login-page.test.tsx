@@ -100,6 +100,39 @@ test('login failure presents the backend message as a top toast, not an inline b
   assert.equal(document.querySelector('.form-alert'), null, 'no inline banner in the form card');
 });
 
+test('OIDC failure presents a visible localized toast', async () => {
+  const client = fakeClient();
+  (client.auth as Record<string, unknown>).oidcConfig = async () => ({ enabled: true });
+  (client.auth as Record<string, unknown>).oidcUrl = async () => { throw new Error('OIDC unavailable'); };
+  await mountLogin(client);
+  const oidc = [...document.querySelectorAll('button')].find((node) => (node.textContent ?? '').includes('OIDC')) as HTMLButtonElement;
+  assert.ok(oidc, 'expected the OIDC button');
+  await act(async () => { oidc.click(); await settle(10); });
+  assert.match(document.querySelector('[data-testid="auth-toast"]')?.textContent ?? '', /OIDC unavailable/);
+});
+
+test('validation errors are associated with their inputs', async () => {
+  await mountLogin(fakeClient());
+  const submit = [...document.querySelectorAll('button')].find((node) => node.getAttribute('type') === 'submit') as HTMLButtonElement;
+  await act(async () => { submit.click(); });
+  const email = document.querySelector('input[autocomplete="email"]') as HTMLInputElement;
+  const password = document.querySelector('input[autocomplete="current-password"]') as HTMLInputElement;
+  assert.equal(email.getAttribute('aria-invalid'), 'true');
+  assert.equal(email.getAttribute('aria-describedby'), 'auth-email-error');
+  assert.equal(password.getAttribute('aria-describedby'), 'auth-password-error');
+  assert.equal(document.querySelector('#auth-email-error')?.getAttribute('role'), 'alert');
+});
+
+test('language menu closes with Escape and exposes expanded state', async () => {
+  await mountLogin(fakeClient());
+  const trigger = document.querySelector('button[title="简体中文"]') as HTMLButtonElement;
+  assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+  await act(async () => { trigger.click(); });
+  assert.equal(trigger.getAttribute('aria-expanded'), 'true');
+  await act(async () => { trigger.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+  assert.equal(document.querySelector('[role="menu"]'), null);
+});
+
 test('login card uses Vue box sizing and green outline for the create-account CTA', async () => {
   await mountLogin(fakeClient());
   const card = [...document.querySelectorAll('div')].find((node) => String(node.className).includes('bg-[rgba(255,255,255,0.97)]')) as HTMLDivElement | undefined;

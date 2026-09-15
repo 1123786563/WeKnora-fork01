@@ -17,7 +17,11 @@ function fakeTimer() {
 }
 const handle = Symbol('handle');
 
-test('polls spans every 2s while processing and stops at completed', async () => {
+async function flushTimelineTick(): Promise<void> {
+  await new Promise<void>((resolve) => setImmediate(resolve));
+}
+
+test('fetches immediately, then polls spans every 2s while processing', async () => {
   const fake = fakeTimer();
   const fetches: string[] = [];
   const updates: string[][] = [];
@@ -32,8 +36,9 @@ test('polls spans every 2s while processing and stops at completed', async () =>
     onUpdate: (steps) => updates.push(steps.map((step) => step.stage + ':' + step.state)),
     timer: fake.timer,
   });
-  // Initial tick + two more while still processing.
-  await fake.tick(); await fake.tick(); await fake.tick();
+  await flushTimelineTick();
+  // Vue fetches on mount, then its permanent interval fetches while active.
+  await fake.tick(); await fake.tick();
   assert.deepEqual(fetches, ['doc-1', 'doc-1', 'doc-1']);
   assert.ok(updates[0]![0]!.startsWith('docreader:done'));
   // Document completes: the next poll reports the terminal status, fires
@@ -41,13 +46,17 @@ test('polls spans every 2s while processing and stops at completed', async () =>
   status = 'completed';
   await fake.tick();
   assert.deepEqual(fetches, ['doc-1', 'doc-1', 'doc-1', 'doc-1']);
+  assert.equal(subscription.stopped, false, 'the subscription remains mounted after a terminal update');
+  assert.equal(fake.cleared, false, 'only unmount clears Vue\'s permanent interval');
+  await fake.tick();
+  assert.equal(fetches.length, 4, 'terminal ticks quiesce without another request');
   subscription.stop();
   assert.ok(fake.cleared);
   await fake.tick();
   assert.equal(fetches.length, 4, 'no polls after stop');
 });
 
-test('stops reporting once the backend reports a failed status', async () => {
+test('reports a terminal failure once while retaining the interval until unmount', async () => {
   const fake = fakeTimer();
   const stops: string[] = [];
   let status = 'pending';
@@ -58,14 +67,15 @@ test('stops reporting once the backend reports a failed status', async () => {
     onStop: (spans) => stops.push(String(spans?.parse_status)),
     timer: fake.timer,
   });
-  await fake.tick();
+  await flushTimelineTick();
   assert.deepEqual(stops, []);
   status = 'failed';
   await fake.tick();
   assert.deepEqual(stops, ['failed']);
-  // Terminal: the poller keeps its interval alive (Vue parity) but the tick
-  // becomes a no-op via the stopped flag only after stop(); onStop is not
-  // re-fired because ticks continue to return terminal status. Verify idempotence:
+  assert.equal(subscription.stopped, false);
+  assert.equal(fake.cleared, false);
+  // Terminal: the permanent interval stays alive, but no later tick fetches
+  // or re-fires onStop.
   await fake.tick();
   assert.deepEqual(stops, ['failed']);
   subscription.stop();
@@ -82,7 +92,7 @@ test('polling errors are surfaced without killing the interval', async () => {
     onError: (error) => errors.push(error),
     timer: fake.timer,
   });
-  await fake.tick();
+  await flushTimelineTick();
   assert.equal(errors.length, 1);
   fail = false;
   await fake.tick();

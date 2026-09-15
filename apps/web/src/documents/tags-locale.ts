@@ -5,7 +5,7 @@
 // land this table becomes dead weight and can be dropped.
 import { formatMessage, type Locale } from '@weknora/i18n';
 
-type FallbackKey = 'common.confirm' | 'common.clear' | 'tenant.loadMore';
+type FallbackKey = 'common.confirm' | 'common.clear' | 'common.operationFailed' | 'tenant.loadMore';
 
 /** Values copied byte-exact from frontend/src/i18n/locales/*.ts. */
 const FALLBACKS: Record<FallbackKey, Record<Locale, string>> = {
@@ -24,6 +24,14 @@ const FALLBACKS: Record<FallbackKey, Record<Locale, string>> = {
     'ja-JP': 'クリア',
     'ko-KR': '지우기',
     'ru-RU': 'Очистить',
+  },
+  // zh-CN.ts L4715 / en-US.ts L2306 / ja-JP.ts L2306 / ko-KR.ts L4713 / ru-RU.ts L4713
+  'common.operationFailed': {
+    'zh-CN': '操作失败',
+    'en-US': 'Operation failed',
+    'ja-JP': '操作に失敗しました',
+    'ko-KR': '작업 실패',
+    'ru-RU': 'Операция не выполнена',
   },
   // zh-CN.ts L3318 / en-US.ts L3317 / ja-JP.ts L3317 / ko-KR.ts L3316 / ru-RU.ts L3316
   'tenant.loadMore': {

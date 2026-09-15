@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, useId, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
+import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { cn } from './lib/utils.ts';
 
 export interface SheetProps {
@@ -32,6 +33,7 @@ export function Sheet({ open, title, children, onClose, closeLabel = 'Close', si
   const initialWidth = /^\d+(?:\.\d+)?px$/.test(width) ? Number.parseFloat(width) : 420;
   const [panelWidth, setPanelWidth] = useState(initialWidth);
   const panelRef = useRef<HTMLElement>(null);
+  const titleId = useId();
   const restoreRef = useRef<HTMLElement | null>(null);
   const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   useEffect(() => {
@@ -85,12 +87,13 @@ export function Sheet({ open, title, children, onClose, closeLabel = 'Close', si
     return () => { document.removeEventListener('keydown', onKeyDown); restoreRef.current?.focus(); restoreRef.current = null; };
   }, [onClose, open]);
   if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-[1200] bg-[rgb(23_32_51_/_0.45)]" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+  const content = (
+    <div className="fixed inset-0 z-[1200] bg-[rgb(23_32_51_/_0.45)]" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
         <aside
           ref={panelRef}
           role="dialog"
           aria-modal="true"
+          aria-labelledby={titleId}
           tabIndex={-1}
           aria-label={String(title)}
           className={cn(
@@ -102,11 +105,11 @@ export function Sheet({ open, title, children, onClose, closeLabel = 'Close', si
         >
           {resizable ? <div aria-hidden="true" className={`absolute ${side === 'right' ? 'left-[-4px]' : 'right-[-4px]'} top-0 z-[1] h-full w-2 cursor-col-resize`} onMouseDown={beginResize} /> : null}
           <header className="flex items-start justify-between gap-4 px-5 py-4">
-              <h2 className="m-0 text-[1.05rem] font-semibold text-ink">{title}</h2>
+              <h2 id={titleId} className="m-0 text-[1.05rem] font-semibold text-ink">{title}</h2>
             <button
               type="button"
               aria-label={closeLabel}
-              className="cursor-pointer rounded-control border-0 bg-transparent px-1.5 py-1 text-[1.25rem] leading-none text-muted hover:bg-hover-wash focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-primary/35"
+              className="cursor-pointer rounded-control border-0 bg-transparent px-1.5 py-1 text-[1.25rem] leading-none text-muted hover:bg-hover-wash focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent/35"
               onClick={onClose}
             >
               ×
@@ -116,4 +119,5 @@ export function Sheet({ open, title, children, onClose, closeLabel = 'Close', si
         </aside>
     </div>
   );
+  return <DialogPrimitive.Root open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}><DialogPrimitive.Portal>{content}</DialogPrimitive.Portal></DialogPrimitive.Root>;
 }

@@ -23,7 +23,7 @@ const {
   ParserHint,
   DocumentEmptyState,
 } = await import('./DocumentsPageChrome.tsx');
-const { KnowledgeDocumentsPage, DocumentCardGrid, documentCardHoverPosition, documentStatus, folderPathCrumbs, hasDocumentGridContent } = await import('./KnowledgeDocumentsPage.tsx');
+const { KnowledgeDocumentsPage, DocumentCardGrid, documentCardHoverPosition, documentStatus, folderPathCrumbs, hasDocumentGridContent, isStorageEngineMissing } = await import('./KnowledgeDocumentsPage.tsx');
 const { createTranslator } = await import('../i18n.ts');
 
 const t = createTranslator('zh-CN');
@@ -36,6 +36,13 @@ test('folder path breadcrumbs preserve Vue root and ancestor paths', () => {
     { name: 'Product', path: 'Product' },
     { name: 'Guides', path: 'Product/Guides' },
   ]);
+});
+
+test('storage engine availability follows the Vue upload gate', () => {
+  assert.equal(isStorageEngineMissing({ type: 'document' }), true, 'a document KB without either storage binding is blocked');
+  assert.equal(isStorageEngineMissing({ type: 'document', storage_backend_id: 'storage-1' }), false, 'the authoritative storage backend binding enables uploads');
+  assert.equal(isStorageEngineMissing({ type: 'document', storage_provider_config: { provider: 's3' } }), false, 'the legacy provider projection remains compatible');
+  assert.equal(isStorageEngineMissing({ type: 'faq' }), false, 'FAQ KBs do not use the documents upload gate');
 });
 
 // --- DocumentsBreadcrumb (Vue KnowledgeBase.vue document-title-row parity) -------
@@ -171,11 +178,11 @@ test('upload entry moves to the Vue add-source dropdown; legacy form is gone', (
   assert.ok(!html.includes('wk-upload-panel'), 'legacy 来源/文件/上传文件 form removed');
 });
 
-test('document grid cards keep the Vue 240px/136px anatomy and footer metadata row', () => {
+test('document grid cards keep the Vue 240px/136px anatomy, footer metadata, and completed content', () => {
   const html = renderToStaticMarkup(React.createElement(DocumentCardGrid, {
-    items: [{ id: 'doc-1', file_name: 'guide.pdf', file_type: 'pdf', parse_status: 'completed', folder_path: 'Guides', description: 'A short guide', updated_at: '2026-09-15T13:36:00Z' }],
+    items: [{ id: 'doc-1', file_name: 'guide.pdf', file_type: 'pdf', parse_status: 'completed', folder_path: 'Guides', description: 'A short guide', updated_at: '2026-09-15T13:36:00Z', tags: [{ id: 'tag-1', name: 'Release notes' }] }],
     folders: [{ path: 'Specs', name: 'Specs', total_count: 2 }],
-    selected: new Set<string>(),
+    selected: new Set<string>(['doc-1']),
     batchMode: false,
     canContribute: false,
     canDownload: false,
@@ -197,9 +204,11 @@ test('document grid cards keep the Vue 240px/136px anatomy and footer metadata r
   assert.match(html, /flex h-\[136px\] min-w-\[240px\] flex-col/);
   assert.ok(html.includes('border-t border-line-soft'), 'card footer has the Vue separator');
   assert.ok(html.includes('A short guide'), 'completed cards render their description in the content area');
-  assert.ok(html.includes('已完成'), 'document status badge uses the active locale catalog');
+  assert.ok(!html.includes('已完成'), 'Vue completed cards keep the title row clear and put the description in the content area');
   assert.ok(html.includes('26-09-15 21:36'), 'updated time remains in the footer');
   assert.ok(html.includes('PDF'), 'file type remains in the footer');
+  assert.ok(html.includes('Release notes'), 'footer preserves the Vue tag metadata chips');
+  assert.match(html, /knowledge-card[^\"]*is-selected/, 'Vue selected cards retain their selected visual state');
   assert.ok(!html.includes('选择 guide.pdf'), 'read-only cards do not expose the Vue canEdit-only checkbox');
 });
 
@@ -224,6 +233,19 @@ test('document cards show the Vue summary-generating copy for pending summaries'
     onBatchManage: noop, onDelete: noop,
   }));
   assert.match(html, /生成摘要中/);
+});
+
+test('failed document cards reserve the content row for the Vue failure and trace affordance', () => {
+  const html = renderToStaticMarkup(React.createElement(DocumentCardGrid, {
+    items: [{ id: 'failed', file_name: 'broken.pdf', file_type: 'pdf', parse_status: 'failed', description: 'do not show this' }],
+    folders: [], selected: new Set<string>(), batchMode: false, canContribute: true, canDownload: false, t,
+    onOpen: noop, onOpenFolder: noop, onToggle: noop, onTagEdit: noop, onReparse: noop,
+    onCancelParse: noop, onDownload: noop, onEdit: noop, onViewTrace: noop, onMove: noop,
+    onBatchManage: noop, onDelete: noop,
+  }));
+  assert.match(html, /解析失败/, 'failure is visible in the card content rather than a title-row badge');
+  assert.match(html, /查看 Trace/, 'failed card retains the trace action');
+  assert.ok(!html.includes('do not show this'), 'failure state replaces the completed-only description');
 });
 
 test('in-flight document cards expose Vue-style spinner and trace action', () => {
@@ -277,7 +299,7 @@ test('editable document cards expose the Vue action-menu mutation entries', () =
 test('document card hover placement prefers the right side and falls back within the viewport', () => {
   assert.deepEqual(documentCardHoverPosition({ left: 100, right: 300, top: 40 }, { width: 1000, height: 800 }), { x: 312, y: 40 });
   assert.deepEqual(documentCardHoverPosition({ left: 700, right: 900, top: 40 }, { width: 1000, height: 800 }), { x: 328, y: 40 });
-  assert.deepEqual(documentCardHoverPosition({ left: 250, right: 350, top: 450 }, { width: 600, height: 800 }), { x: 230, y: 762 });
+  assert.deepEqual(documentCardHoverPosition({ left: 250, right: 350, top: 450, bottom: 586 }, { width: 600, height: 800 }), { x: 230, y: 138 });
 });
 
 test('document grid remains mounted for a directory containing only child folders', () => {

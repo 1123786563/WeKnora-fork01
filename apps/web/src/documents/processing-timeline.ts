@@ -6,10 +6,10 @@ import {
 } from '@weknora/domain/knowledge/processing';
 
 // Minimal port of the polling core of Vue knowledge-processing-timeline.vue:
-// ONE interval that fires every tick for the lifetime of the subscription;
-// the tick callback decides whether to fetch (strict mode — poll only while
-// parse_status itself is non-terminal) and stops updating once parsing
-// reaches completed/failed/cancelled.
+// Vue fetches immediately, then keeps ONE interval for the component's whole
+// lifetime. The tick callback decides whether to fetch (strict mode — poll
+// only while parse_status itself is non-terminal); only explicit cleanup
+// clears the interval.
 
 export interface ProcessingTimelineOptions {
   documentId: string;
@@ -38,9 +38,11 @@ export function startProcessingTimeline(options: ProcessingTimelineOptions): Pro
   let stopped = false;
   let inFlight = false;
   let lastSpans: KnowledgeSpansView | undefined;
+  let terminalReported = false;
 
   async function tick(): Promise<void> {
     if (stopped || inFlight) return;
+    if (lastSpans && !shouldPollKnowledgeSpans(typeof lastSpans.parse_status === 'string' ? lastSpans.parse_status : undefined)) return;
     inFlight = true;
     try {
       const spans = await options.getSpans(options.documentId);
@@ -48,10 +50,10 @@ export function startProcessingTimeline(options: ProcessingTimelineOptions): Pro
       lastSpans = spans;
       options.onUpdate?.(buildKnowledgeTimeline(spans), spans);
       if (!shouldPollKnowledgeSpans(typeof spans.parse_status === 'string' ? spans.parse_status : undefined)) {
-        options.onStop?.(spans);
-        // Quiesce stop: parsing reached completed/failed/cancelled — clear the
-        // interval so late polls cannot keep the subscription alive.
-        stop();
+        if (!terminalReported) {
+          terminalReported = true;
+          options.onStop?.(spans);
+        }
       }
     } catch (error) {
       if (!stopped) options.onError?.(error);
@@ -61,6 +63,7 @@ export function startProcessingTimeline(options: ProcessingTimelineOptions): Pro
   }
 
   const handle = timer.setInterval(() => tick(), intervalMs);
+  void tick();
 
   function stop(): void {
     if (stopped) return;

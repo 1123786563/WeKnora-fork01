@@ -4,6 +4,10 @@ import { previewKindForFile, previewStatus, type KnowledgePreviewKind } from '@w
 
 export interface KnowledgeDocumentPreviewModel {
   kind: KnowledgePreviewKind;
+  availability: {
+    kind: 'ready' | 'processing' | 'error' | 'unsupported';
+    label: string;
+  };
   ready: boolean;
   downloadOnly: boolean;
   path: string;
@@ -22,6 +26,18 @@ export async function readPreviewText(body: PreviewBody): Promise<string> {
   if (typeof Blob !== 'undefined' && body instanceof Blob) return body.text();
   if (body instanceof ArrayBuffer) return new TextDecoder().decode(body);
   throw new Error('Preview body is not readable as text');
+}
+
+/**
+ * Decode text only while its owning preview is still current.
+ *
+ * A document switch or drawer close can happen after the preview response
+ * arrives but before Blob.text() resolves. Returning undefined makes that
+ * stale result a no-op instead of replacing a newly opened preview.
+ */
+export async function readCurrentPreviewText(body: PreviewBody, isCurrent: () => boolean): Promise<string | undefined> {
+  const text = await readPreviewText(body);
+  return isCurrent() ? text : undefined;
 }
 
 export function previewBodyAsBlob(body: PreviewBody, contentType?: string): Blob {
@@ -66,5 +82,13 @@ export function buildDocumentPreview(document: KnowledgeDocument, previewPath: s
   const fileName = document.file_name || document.title || 'document';
   const status = previewStatus(document);
   const kind = previewKindForFile(fileName);
-  return { kind, ready: status.kind === 'ready', downloadOnly: !isInlinePreviewKind(kind), path: previewPath, fileName };
+  const inline = isInlinePreviewKind(kind);
+  const availability = status.kind === 'processing'
+    ? { kind: 'processing' as const, label: status.label }
+    : status.kind === 'unavailable'
+      ? { kind: 'error' as const, label: status.label }
+      : !inline
+        ? { kind: 'unsupported' as const, label: 'Unsupported file type' }
+        : { kind: 'ready' as const, label: status.label };
+  return { kind, availability, ready: status.kind === 'ready', downloadOnly: !inline, path: previewPath, fileName };
 }

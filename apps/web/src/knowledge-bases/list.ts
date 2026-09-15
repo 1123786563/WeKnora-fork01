@@ -27,8 +27,59 @@ export interface KnowledgeBaseSaveInput {
   summary_model_id?: string;
 }
 
+function objectValue(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+/**
+ * The Vue editor validates the complete draft immediately before submit.
+ * Keep that contract at the mutation boundary too, so non-visual callers
+ * (deep links, desktop, and tests) cannot bypass the same rules.
+ */
+export function validateKnowledgeBaseSaveInput(input: KnowledgeBaseSaveInput): void {
+  const name = input.name.trim();
+  if (!name) throw new Error('Knowledge base name is required');
+  if ([...name].length > 50) throw new Error('Knowledge base name must be 50 characters or fewer');
+  if (typeof input.description === 'string' && [...input.description].length > 200) {
+    throw new Error('Knowledge base description must be 200 characters or fewer');
+  }
+
+  const type = input.type ?? 'document';
+  if (type !== 'document' && type !== 'faq') throw new Error('Knowledge base type is invalid');
+
+  if (type === 'faq') {
+    const faq = objectValue(input.faq_config);
+    if ('index_mode' in faq && !String(faq.index_mode ?? '').trim()) {
+      throw new Error('Knowledge base FAQ index mode is required');
+    }
+    // Vue requires a summary model for both document and FAQ editors.
+    if (!String(input.summary_model_id ?? '').trim()) throw new Error('Knowledge base summary model is required');
+    return;
+  }
+
+  const strategy = objectValue(input.indexing_strategy);
+  if (Object.keys(strategy).length > 0) {
+    const enabled = ['vector_enabled', 'keyword_enabled', 'wiki_enabled', 'graph_enabled']
+      .some((key) => strategy[key] === true);
+    if (!enabled) throw new Error('at least one indexing strategy is required');
+    if ((strategy.vector_enabled === true || strategy.keyword_enabled === true)
+      && !String(input.embedding_model_id ?? '').trim()) {
+      throw new Error('embedding model is required');
+    }
+  }
+
+  // Keep the first failing section aligned with Vue's validateForm: strategy,
+  // embedding, then summary model.
+  if (!String(input.summary_model_id ?? '').trim()) throw new Error('Knowledge base summary model is required');
+
+  const vlm = objectValue(input.vlm_config ?? input.image_processing_config);
+  if (vlm.enabled === true && !String(vlm.model_id ?? '').trim()) {
+    throw new Error('multimodal model is required');
+  }
+}
+
 export async function saveKnowledgeBase(client: Pick<WeKnoraClient, 'knowledgeBases'>, id: string | null, input: KnowledgeBaseSaveInput) {
-  if (!input.name.trim()) throw new Error('Knowledge base name is required');
+  validateKnowledgeBaseSaveInput(input);
   return id
     ? client.knowledgeBases.update(id, input)
     : client.knowledgeBases.create(input);

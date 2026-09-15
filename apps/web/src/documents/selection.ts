@@ -136,9 +136,30 @@ export function toggleDocumentSelection(input: {
       if (input.checked) next.add(input.ids[i]);
       else next.delete(input.ids[i]);
     }
-  } else if (index >= 0) {
+  } else {
+    // Vue toggles the requested ID even if a refresh or pagination change has
+    // removed its row from the current page. Only range selection needs a
+    // current-page index.
     if (input.checked) next.add(input.id);
     else next.delete(input.id);
   }
   return { selected: next, lastIndex: index };
+}
+
+/**
+ * Vue KnowledgeBase.vue toggleSelectAll parity. The header checkbox changes
+ * only the current page, so selections retained from a different page remain
+ * available to the batch actions and total counter.
+ */
+export function toggleDocumentPageSelection(input: {
+  ids: readonly string[];
+  selected: ReadonlySet<string>;
+  checked: boolean;
+}): Set<string> {
+  const next = new Set(input.selected);
+  for (const id of input.ids) {
+    if (input.checked) next.add(id);
+    else next.delete(id);
+  }
+  return next;
 }

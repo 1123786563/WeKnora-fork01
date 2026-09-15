@@ -7,11 +7,36 @@ import { createTranslator, useAppLocale } from '../i18n.ts';
 import { buildKnowledgeTimeline, flattenKnowledgeSpans, isKnowledgeProcessingActive, type KnowledgeTimelineNode } from '@weknora/domain/knowledge/processing';
 import { startProcessingTimeline, type ProcessingTimelineSubscription } from './processing-timeline.ts';
 import type { KnowledgeTimelineStep } from '@weknora/domain/knowledge/processing';
+import { computeKBPermissions, type KBSurfaceKB, type KBSurfaceMe } from '../knowledge/permissions.ts';
 
 interface KnowledgeDocumentDetailPageProps {
   client: WeKnoraClient;
   documentId: string;
   onBack: () => void;
+}
+
+type DocumentLoadState =
+  | { status: 'loading' }
+  | { status: 'success'; document: KnowledgeDocument }
+  | { status: 'empty' }
+  | { status: 'error'; message: string };
+
+function isDocumentDetail(value: unknown): value is KnowledgeDocument {
+  return Boolean(value) && typeof value === 'object' && typeof (value as { id?: unknown }).id === 'string' && Boolean((value as { id?: string }).id?.trim());
+}
+
+/** Vue DocContent#getDisplayTitle removes a file extension but keeps manual and URL titles intact. */
+export function documentDetailTitle(document: KnowledgeDocument | undefined, fallback: string): string {
+  if (!document) return fallback;
+  const title = document.file_name || document.title || '';
+  if (!title) return fallback;
+  if (document.source !== 'file') return title;
+  const extensionAt = title.lastIndexOf('.');
+  return extensionAt > 0 ? title.slice(0, extensionAt) : title;
+}
+
+function documentCanDownload(document: KnowledgeDocument): boolean {
+  return document.source === 'file' || document.source === 'manual' || (!document.source && Boolean(document.file_name));
 }
 
 const DETAIL_COPY: Record<Locale, { load: string; bytes: string; status: string; source: string; folder: string; type: string; root: string; unavailable: string; downloadOnly: string; loading: string; retry: string; download: string; downloadFailed: string }> = {
@@ -34,7 +59,9 @@ export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: Know
   const locale = useAppLocale();
   const t = createTranslator(locale);
   const copy = DETAIL_COPY[locale];
-  const [state, setState] = useState<{ status: 'loading' } | { status: 'success'; document: KnowledgeDocument } | { status: 'error'; message: string }>({ status: 'loading' });
+  const [state, setState] = useState<DocumentLoadState>({ status: 'loading' });
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [canMutateDocument, setCanMutateDocument] = useState(false);
   const [timelineSteps, setTimelineSteps] = useState<KnowledgeTimelineStep[]>([]);
   const [traceOpen, setTraceOpen] = useState(false);
   const [traceState, setTraceState] = useState<{ status: 'idle' | 'loading' | 'success' | 'error'; steps: KnowledgeTimelineStep[]; nodes: KnowledgeTimelineNode[]; parseStatus?: string; lastError?: { error_code?: string; error_message?: string } | null; message?: string }>({ status: 'idle', steps: [], nodes: [] });
@@ -45,9 +72,33 @@ export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: Know
   useEffect(() => {
     let active = true;
     setState({ status: 'loading' });
-    void client.knowledgeBases.documents.get(documentId).then((document) => { if (active) setState({ status: 'success', document }); }).catch((error: unknown) => { if (active) setState({ status: 'error', message: error instanceof Error ? error.message : copy.load }); });
+    void client.knowledgeBases.documents.get(documentId).then((document) => {
+      if (!active) return;
+      setState(isDocumentDetail(document) ? { status: 'success', document } : { status: 'empty' });
+    }).catch((error: unknown) => { if (active) setState({ status: 'error', message: error instanceof Error ? error.message : copy.load }); });
     return () => { active = false; };
-  }, [client, documentId]);
+  }, [client, documentId, loadAttempt]);
+
+  // Vue receives KB-level permissions from KnowledgeBase.vue. The route only
+  // has a document id, so resolve the same read-only gate from the loaded
+  // document's KB before exposing download or mutation affordances.
+  useEffect(() => {
+    if (state.status !== 'success' || !state.document.knowledge_base_id) {
+      setCanMutateDocument(false);
+      return;
+    }
+    let active = true;
+    setCanMutateDocument(false);
+    void Promise.all([
+      client.knowledgeBases.settings.get(state.document.knowledge_base_id),
+      client.auth.me().catch(() => null),
+    ]).then(([kb, me]) => {
+      if (active) setCanMutateDocument(computeKBPermissions(kb as KBSurfaceKB, me as KBSurfaceMe | null).canContribute);
+    }).catch(() => {
+      if (active) setCanMutateDocument(false);
+    });
+    return () => { active = false; };
+  }, [client, state]);
 
   // Must-fix #2: processing timeline — poll the spans endpoint every 2s while
   // the document is pending/processing/finalizing; quiesce stop at terminal.
@@ -102,7 +153,7 @@ export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: Know
   }, [client, documentId, traceOpen, traceRefresh]);
 
   async function runTraceAction(action: 'reparse' | 'cancel') {
-    if (state.status !== 'success' || traceAction === 'loading') return;
+    if (state.status !== 'success' || !canMutateDocument || traceAction === 'loading') return;
     setTraceAction('loading');
     try {
       if (action === 'reparse') await client.knowledgeBases.documents.reparse(documentId);
@@ -117,12 +168,15 @@ export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: Know
     }
   }
 
-  const detailTitle = state.status === 'success' ? state.document.file_name || state.document.title || documentId : documentId;
+  const detailTitle = state.status === 'success' ? documentDetailTitle(state.document, t('common.typeDocument')) : t('common.typeDocument');
   return <main className="wk-page wk-document-detail-page max-w-[820px]! mx-auto box-border px-[1.25rem] py-12"><header className="wk-header mb-6 flex items-start justify-between gap-4"><div className="min-w-0"><div className="document-title-row flex min-h-8 items-center"><h2 className="document-breadcrumb m-0 flex min-w-0 items-center gap-2 text-[20px] font-semibold leading-8"><button type="button" className="breadcrumb-link inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-[6px] border-none bg-transparent px-2 py-1 -mx-2 -my-1 text-[14px] font-normal leading-6 text-[var(--wk-muted,#66758b)] [font:inherit] hover:bg-[var(--wk-surface,#fff)] hover:text-[var(--wk-brand,#00a870)]" onClick={onBack}>← {t('knowledgeBase.detail.back')}</button><span className="breadcrumb-separator text-[14px] font-normal text-[var(--wk-muted,#98a2b8)]" aria-hidden="true">›</span><span className="breadcrumb-current min-w-0 truncate">{detailTitle}</span></h2></div></div><div className="flex shrink-0 items-center gap-2">{state.status === 'success' ? <Button type="button" onClick={() => setTraceOpen(true)}>{t('knowledgeBase.timeline.title')}</Button> : null}</div></header>
+    <section className="wk-document-detail-surface" aria-live="polite" aria-busy={state.status === 'loading'}>
     {state.status === 'loading' ? <Status>{t('common.loading')}</Status> : null}
-    {state.status === 'error' ? <Status tone="error">{state.message}</Status> : null}
+    {state.status === 'empty' ? <Status>{t('common.empty')}</Status> : null}
+    {state.status === 'error' ? <div className="flex flex-wrap items-center gap-3"><Status tone="error">{state.message}</Status><Button type="button" variant="text" onClick={() => setLoadAttempt((attempt) => attempt + 1)}>{t('common.retry')}</Button></div> : null}
     {state.status === 'success' && timelineSteps.length > 0 ? <Card><section aria-label={t('knowledgeBase.timeline.title')} className="wk-processing-timeline"><strong>{t('knowledgeBase.timeline.title')}</strong><ol>{timelineSteps.map((step) => <li key={step.stage} data-state={step.state}>{t('knowledgeBase.timeline.stage.' + step.stage)} — {t('knowledgeBase.timeline.' + step.state)}</li>)}</ol></section></Card> : null}
-  {state.status === 'success' ? <DocumentDetail client={client} document={state.document} previewPath={client.knowledgeBases.documents.previewPath(documentId)} downloadPath={client.knowledgeBases.documents.downloadPath(documentId)} /> : null}
+  {state.status === 'success' ? <DocumentDetail client={client} document={state.document} canDownload={canMutateDocument && documentCanDownload(state.document)} previewPath={client.knowledgeBases.documents.previewPath(documentId)} downloadPath={client.knowledgeBases.documents.downloadPath(documentId)} /> : null}
+    </section>
   {traceOpen ? <Sheet open title={t('knowledgeBase.timeline.title')} onClose={() => setTraceOpen(false)} side="right" width="820px" resizable minWidth={560} maxWidth={1400} storageKey="weknora-trace-drawer-width" className="min-w-0 border-l border-line-soft">
     <section className="wk-processing-timeline" aria-live="polite" aria-busy={traceState.status === 'loading'}>
       {traceState.status === 'loading' ? <Status>{t('common.loading')}</Status> : null}
@@ -130,8 +184,8 @@ export function KnowledgeDocumentDetailPage({ client, documentId, onBack }: Know
       {traceState.status === 'success' ? <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" loading={traceAction === 'loading'} onClick={() => setTraceRefresh((value) => value + 1)}>{t('common.refresh')}</Button>
-          {traceState.parseStatus === 'failed' ? <Button type="button" loading={traceAction === 'loading'} onClick={() => void runTraceAction('reparse')}>{t('knowledgeBase.rebuildDocument')}</Button> : null}
-          {isKnowledgeProcessingActive(traceState.parseStatus) ? <Button type="button" loading={traceAction === 'loading'} onClick={() => void runTraceAction('cancel')}>{t('knowledgeBase.documents.cancelParse')}</Button> : null}
+          {canMutateDocument && traceState.parseStatus === 'failed' ? <Button type="button" loading={traceAction === 'loading'} onClick={() => void runTraceAction('reparse')}>{t('knowledgeBase.rebuildDocument')}</Button> : null}
+          {canMutateDocument && isKnowledgeProcessingActive(traceState.parseStatus) ? <Button type="button" loading={traceAction === 'loading'} onClick={() => void runTraceAction('cancel')}>{t('knowledgeBase.documents.cancelParse')}</Button> : null}
         </div>
         {traceState.parseStatus === 'failed' ? <Status tone="error">{traceState.lastError?.error_message || t('knowledgeBase.timeline.failed')}</Status> : null}
         <ol className="m-0 flex list-none flex-col gap-2 p-0" aria-label={t('knowledgeBase.timeline.title')}>
@@ -157,7 +211,7 @@ type PreviewState =
   | { status: 'blob'; url: string }
   | { status: 'error'; message: string };
 
-function DocumentDetail({ document, client, previewPath, downloadPath }: { document: KnowledgeDocument; client: WeKnoraClient; previewPath: string; downloadPath: string }) {
+function DocumentDetail({ document, client, canDownload, previewPath, downloadPath }: { document: KnowledgeDocument; client: WeKnoraClient; canDownload: boolean; previewPath: string; downloadPath: string }) {
   const model = buildDocumentPreview(document, previewPath);
   const copy = DETAIL_COPY[useAppLocale()];
   const [previewState, setPreviewState] = useState<PreviewState>({ status: 'idle' });
@@ -210,8 +264,8 @@ function DocumentDetail({ document, client, previewPath, downloadPath }: { docum
   }
 
   const inlineKind: InlinePreviewKind | undefined = isInlinePreviewKind(model.kind) ? model.kind : undefined;
-  return <Card><dl className="wk-document-metadata grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-[0.75rem] mb-[1.25rem] ml-0 mr-0 mt-0 [&_dd]:mb-0 [&_dd]:ml-0 [&_dd]:mr-0 [&_dd]:mt-[0.2rem] [&_dd]:[overflow-wrap:anywhere] [&_div]:bg-canvas [&_div]:p-[0.7rem] [&_div]:rounded-control [&_dt]:text-[0.78rem] [&_dt]:text-muted"><div><dt>{copy.status}</dt><dd>{String(document.parse_status || 'unknown')}</dd></div><div><dt>{copy.source}</dt><dd>{String(document.source || 'file')}</dd></div><div><dt>{copy.folder}</dt><dd>{String(document.folder_path || copy.root)}</dd></div><div><dt>{copy.type}</dt><dd>{String(document.file_type || model.kind)}</dd></div></dl>
+  return <Card className="wk-document-detail-card"><section className="wk-document-metadata-section border-b border-line-soft pb-4"><h3 className="m-0 mb-3 flex items-center gap-2 text-[13px] font-semibold text-ink before:h-[14px] before:w-[3px] before:rounded-[2px] before:bg-primary before:content-['']">{createTranslator(useAppLocale())('knowledgeBase.detailSectionMeta')}</h3><dl className="wk-document-metadata m-0 flex flex-col gap-2.5 [&_dd]:m-0 [&_dd]:min-w-0 [&_dd]:break-words [&_dt]:w-[72px] [&_dt]:shrink-0 [&_dt]:text-[13px] [&_dt]:text-muted"><div className="flex items-start gap-3"><dt>{copy.status}</dt><dd>{String(document.parse_status || 'unknown')}</dd></div><div className="flex items-start gap-3"><dt>{copy.source}</dt><dd>{String(document.source || 'file')}</dd></div><div className="flex items-start gap-3"><dt>{copy.folder}</dt><dd>{String(document.folder_path || copy.root)}</dd></div><div className="flex items-start gap-3"><dt>{copy.type}</dt><dd>{String(document.file_type || model.kind).toUpperCase()}</dd></div></dl></section>
     {!model.ready ? <Status tone="warning">{copy.unavailable}</Status> : model.downloadOnly ? <Status>{copy.downloadOnly}</Status> : previewState.status === 'loading' ? <Status>{copy.loading}</Status> : previewState.status === 'error' ? <><Status tone="error">{previewState.message}</Status><Button type="button" onClick={() => setPreviewAttempt((attempt) => attempt + 1)}>{copy.retry}</Button></> : previewState.status === 'text' && inlineKind ? <DocumentPreviewContent kind={inlineKind} text={previewState.text} fileName={model.fileName} /> : previewState.status === 'blob' && inlineKind ? <DocumentPreviewContent kind={inlineKind} url={previewState.url} fileName={model.fileName} /> : null}
-    <p><Button type="button" loading={downloadState === 'loading'} onClick={() => { setDownloadState('idle'); void download(); }}>{copy.download} {model.fileName}</Button>{downloadState === 'error' ? <Status tone="error">{copy.downloadFailed}</Status> : null}</p>
+    {canDownload ? <p><Button type="button" loading={downloadState === 'loading'} onClick={() => { setDownloadState('idle'); void download(); }}>{copy.download} {model.fileName}</Button>{downloadState === 'error' ? <Status tone="error">{copy.downloadFailed}</Status> : null}</p> : null}
   </Card>;
 }

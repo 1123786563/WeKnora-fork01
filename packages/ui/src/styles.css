@@ -32,9 +32,10 @@
 }
 
 .wk-button:hover:not(:disabled) { border-color: var(--color-primary, #2e6de6); }
-.wk-button:focus-visible, .wk-dialog-close:focus-visible { outline: var(--wk-focus-ring); outline-offset: 2px; }
+.wk-button:focus-visible, .wk-dialog-close:focus-visible { outline: 2px solid color-mix(in srgb, var(--color-accent, #07c05f) 35%, transparent); outline-offset: 2px; }
 .wk-button:disabled { cursor: not-allowed; opacity: .6; }
-.wk-button-loading { display: inline-block; min-width: 1em; margin-right: .25rem; }
+.wk-button-loading { display: inline-block; width: .85em; height: .85em; margin-right: .35rem; border: 2px solid currentColor; border-right-color: transparent; border-radius: 999px; animation: wk-spin .7s linear infinite; }
+@keyframes wk-spin { to { transform: rotate(360deg); } }
 .wk-card { border: 1px solid var(--color-line, #dce3ed); border-radius: var(--radius-card, 8px); background: var(--color-surface, #ffffff); padding: 1rem; }
 .wk-switch { position: relative; display: inline-flex; align-items: center; flex-shrink: 0; width: 40px; height: 20px; padding: 0; border: none; border-radius: var(--radius-pill, 999px); background: var(--color-track-off, rgb(120 135 155 / 35%)); cursor: pointer; transition: background-color .2s ease; }
 .wk-switch[aria-checked='true'] { background: var(--color-accent, #07c05f); }

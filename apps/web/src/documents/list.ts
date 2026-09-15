@@ -21,6 +21,32 @@ export interface KnowledgeDocumentListCopy {
   failed: string;
 }
 
+function hasActiveDocumentFilter(params: KnowledgeDocumentListParams, keyword: string | undefined): boolean {
+  return Boolean(
+    keyword ||
+    params.tag_ids?.trim() ||
+    params.file_type?.trim() ||
+    params.parse_status?.trim() ||
+    params.source?.trim() ||
+    params.start_time?.trim() ||
+    params.end_time?.trim(),
+  );
+}
+
+/**
+ * Mirrors Vue KnowledgeBase.vue filterParams: root is an explicit empty folder
+ * path, and every active filter widens that path to its complete subtree.
+ */
+function normalizeListParams(params: KnowledgeDocumentListParams): KnowledgeDocumentListParams {
+  const keyword = params.keyword?.trim() || undefined;
+  return {
+    ...params,
+    keyword,
+    folder_path: params.folder_path ?? '',
+    folder_recursive: hasActiveDocumentFilter(params, keyword),
+  };
+}
+
 function normalizePage(value: unknown): KnowledgeDocumentPage {
   if (typeof value !== 'object' || value === null) throw new Error('Invalid knowledge document page');
   const row = value as Record<string, unknown>;
@@ -55,7 +81,7 @@ export async function loadKnowledgeDocuments(
   const api = client.knowledge?.documents ?? client.knowledgeBases?.documents;
   if (!api) return { status: 'error', message: copy.unavailable };
   try {
-    return { status: 'success', page: normalizePage(await api.list(knowledgeBaseId, params)) };
+    return { status: 'success', page: normalizePage(await api.list(knowledgeBaseId, normalizeListParams(params))) };
   } catch (error) {
     return { status: 'error', message: error instanceof Error ? error.message : copy.failed };
   }

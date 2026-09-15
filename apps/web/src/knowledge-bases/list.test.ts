@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { loadKnowledgeBases } from './list.ts';
+import { loadKnowledgeBases, saveKnowledgeBase } from './list.ts';
 
 test('loads real client data into a renderable list state', async () => {
   const state = await loadKnowledgeBases({
@@ -29,9 +29,9 @@ test('does not report a mutation success before the client resolves', async () =
     update: async (id: string, input: { name: string }) => { calls.push(`update:${id}:${input.name}`); return { id, name: input.name }; },
     remove: async (id: string) => { calls.push(`remove:${id}`); },
   } } as never;
-  const { saveKnowledgeBase, deleteKnowledgeBase } = await import('./list.ts');
-  assert.deepEqual(await saveKnowledgeBase(client, null, { name: 'FAQ', type: 'faq' }), { id: 'kb-2', name: 'FAQ' });
-  await saveKnowledgeBase(client, 'kb-2', { name: 'FAQ v2' });
+  const { deleteKnowledgeBase } = await import('./list.ts');
+  assert.deepEqual(await saveKnowledgeBase(client, null, { name: 'FAQ', type: 'faq', summary_model_id: 'llm-1' }), { id: 'kb-2', name: 'FAQ' });
+  await saveKnowledgeBase(client, 'kb-2', { name: 'FAQ v2', summary_model_id: 'llm-1' });
   await deleteKnowledgeBase(client, 'kb-2');
   assert.deepEqual(calls, ['create:FAQ', 'update:kb-2:FAQ v2', 'remove:kb-2']);
   await assert.rejects(saveKnowledgeBase(client, null, { name: ' ' }), /name is required/);
@@ -43,6 +43,12 @@ test('passes the creator filter to the server-compatible list query', async () =
     list: async (params: unknown) => { seen = params; return []; },
   } } as never, undefined, { creator: 'mine' });
   assert.deepEqual(seen, { creator: 'mine' });
+});
+
+test('enforces the Vue editor name and description limits at the save boundary', async () => {
+  const client = { knowledgeBases: { create: async () => ({ id: 'kb-1' }) } } as never;
+  await assert.rejects(saveKnowledgeBase(client, null, { name: 'n'.repeat(51) }), /50 characters/);
+  await assert.rejects(saveKnowledgeBase(client, null, { name: 'Valid', description: 'd'.repeat(201) }), /200 characters/);
 });
 
 // ---- Card-grid page loader and delete in-flight guard ----
@@ -80,4 +86,32 @@ test('delete guard fires exactly one DELETE per confirmed action', async () => {
   assert.equal(calls, 1);
   assert.equal(await guard.confirm('kb-1'), 'deleted', 'guard releases after the first delete settles');
   assert.equal(calls, 2);
+});
+
+test('matches Vue editor submit validation before calling the mutation', async () => {
+  let calls = 0;
+  const client = { knowledgeBases: {
+    create: async () => { calls += 1; return { id: 'kb-3' }; },
+    update: async () => { calls += 1; return { id: 'kb-3' }; },
+  } } as never;
+
+  await assert.rejects(
+    saveKnowledgeBase(client, null, { name: 'Docs', type: 'document', summary_model_id: 'llm-1', indexing_strategy: { vector_enabled: true, keyword_enabled: true } }),
+    /embedding model is required/,
+  );
+  await assert.rejects(
+    saveKnowledgeBase(client, null, { name: 'Docs', type: 'document', embedding_model_id: 'embed-1', indexing_strategy: { vector_enabled: true, keyword_enabled: true } }),
+    /summary model is required/,
+  );
+  await assert.rejects(
+    saveKnowledgeBase(client, null, { name: 'Docs', type: 'document', embedding_model_id: 'embed-1', summary_model_id: 'llm-1', indexing_strategy: { vector_enabled: false, keyword_enabled: false, wiki_enabled: false, graph_enabled: false } }),
+    /at least one indexing strategy/,
+  );
+  await assert.rejects(
+    saveKnowledgeBase(client, null, { name: 'Docs', type: 'document', embedding_model_id: 'embed-1', summary_model_id: 'llm-1', vlm_config: { enabled: true, model_id: '' }, indexing_strategy: { vector_enabled: true, keyword_enabled: true } }),
+    /multimodal model is required/,
+  );
+  await assert.rejects(saveKnowledgeBase(client, null, { name: 'x'.repeat(51), type: 'faq', summary_model_id: 'llm-1' }), /50 characters/);
+  await assert.rejects(saveKnowledgeBase(client, null, { name: 'Docs', type: 'faq', summary_model_id: 'llm-1', description: 'x'.repeat(201) }), /200 characters/);
+  assert.equal(calls, 0, 'invalid Vue submissions must not call the API');
 });

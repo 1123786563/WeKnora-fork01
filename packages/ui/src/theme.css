@@ -72,6 +72,12 @@
   --color-success-text: #137333;  /* wk 族成功文本 */
   --color-warning-text: #9a6700;  /* wk 族警告文本 */
   --color-danger-strong: #d54941;
+  --color-info-line: #b3ccf5;
+  --color-success-line: #8ce0af;
+  --color-warning-line: #fedf89;
+  --color-warning-wash: #fffaeb;
+  --color-danger-line: #f1b8b3;
+  --color-danger-wash: #fdecea;
 
   /* Shared primitive effects, matching Vue TDesign defaults. */
   --color-overlay: rgb(23 32 51 / 45%);

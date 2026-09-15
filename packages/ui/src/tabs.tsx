@@ -1,4 +1,4 @@
-import { forwardRef, type HTMLAttributes, type ReactNode } from 'react';
+import React, { forwardRef, type HTMLAttributes, type ReactNode } from 'react';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
 import { cn } from './lib/utils.ts';
 
@@ -17,9 +17,9 @@ export const TabsTrigger = forwardRef<HTMLButtonElement, { value: string; childr
     <TabsPrimitive.Trigger
       ref={ref}
       className={cn(
-        'cursor-pointer rounded-t-control border border-b-0 border-transparent px-3 py-1.5 text-[13px] text-muted-strong transition-colors hover:text-ink',
-        'focus-visible:outline-[3px] focus-visible:outline-offset-[-2px] focus-visible:outline-primary/35 disabled:cursor-not-allowed disabled:opacity-55',
-        'data-[state=active]:border-line data-[state=active]:bg-canvas data-[state=active]:font-medium data-[state=active]:text-ink',
+        'min-h-8 cursor-pointer rounded-t-control border border-b-2 border-transparent px-3 py-1.5 text-[13px] text-muted-strong transition-colors hover:text-ink',
+        'focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent/35 disabled:cursor-not-allowed disabled:opacity-60',
+        'data-[state=active]:border-accent data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:text-ink',
         className,
       )}
       {...props}

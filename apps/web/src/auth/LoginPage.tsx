@@ -220,7 +220,9 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
       window.location.assign(result.authorizationUrl);
     } catch (error) {
       setState('error');
-      setMessage(error instanceof Error ? error.message : t('auth.loginErrorRetry'));
+      const text = error instanceof Error ? error.message : t('auth.loginErrorRetry');
+      setMessage(text);
+      showToast('error', text);
     } finally {
       setOIDCLoading(false);
     }
@@ -234,6 +236,8 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
   const fieldError = (field: string) => (fieldErrors[field] ?? []).map((key) => (
     <span key={key} className="text-xs text-[#d54941]">{t(key)}</span>
   ));
+  const fieldErrorId = (field: string) => `auth-${field}-error`;
+  const hasFieldError = (field: string) => Boolean(fieldErrors[field]?.length);
 
   // Animated background nodes/lines (Vue Login.vue:3-96)
   const nodeIcons = [
@@ -283,7 +287,7 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
         <span className="link-text">GitHub</span>
       </a>
       <div className="language-switch relative">
-        <button type="button" className="relative flex cursor-pointer items-center gap-[7px] rounded-[20px] border border-[rgba(255,255,255,0.25)] bg-[rgba(255,255,255,0.2)] px-[15px] py-[9px] text-[13px] font-semibold tracking-[0.2px] text-(--auth-text-anti) no-underline hover:border-[rgba(255,255,255,0.4)] hover:bg-[rgba(255,255,255,0.3)] [&_svg]:shrink-0" title={currentLang.label} onClick={() => setShowLanguageMenu((visible) => !visible)}>
+        <button type="button" className="relative flex cursor-pointer items-center gap-[7px] rounded-[20px] border border-[rgba(255,255,255,0.25)] bg-[rgba(255,255,255,0.2)] px-[15px] py-[9px] text-[13px] font-semibold tracking-[0.2px] text-(--auth-text-anti) no-underline hover:border-[rgba(255,255,255,0.4)] hover:bg-[rgba(255,255,255,0.3)] [&_svg]:shrink-0" title={currentLang.label} aria-haspopup="menu" aria-expanded={showLanguageMenu} onKeyDown={(event) => { if (event.key === 'Escape') setShowLanguageMenu(false); }} onClick={() => setShowLanguageMenu((visible) => !visible)}>
           <span className="shrink-0 text-base leading-none">{currentLang.flag}</span>
           <span className="link-text">{currentLang.shortLabel}</span>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="6 9 12 15 18 9" /></svg>
@@ -354,13 +358,13 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
           <form className="flex flex-col gap-[18px]" onSubmit={submit} aria-label="Login form">
             <label className="flex flex-col gap-1.5">
               <span className="text-sm font-medium text-[#1a1a1a]"><span style={{ color: '#d54941', marginRight: 4 }}>*</span>{t('auth.email')}</span>
-              <Input className="h-10 box-border rounded-lg border border-[#dcdcdc] bg-white px-[14px] text-[15px] text-[#1a1a1a] outline-none [font-family:var(--auth-font)] transition-colors focus:border-(--auth-brand) focus:shadow-[0_0_0_3px_rgba(7,192,95,0.1)] disabled:cursor-not-allowed disabled:bg-[#f3f3f3]" value={email} onChange={(event) => setEmail(event.target.value)} type="text" autoComplete="email" disabled={loading} placeholder={t('auth.emailPlaceholder')} />
-              {fieldError('email')}
+              <Input id="auth-email" aria-invalid={hasFieldError('email')} aria-describedby={hasFieldError('email') ? fieldErrorId('email') : undefined} className="h-10 box-border rounded-lg border border-[#dcdcdc] bg-white px-[14px] text-[15px] text-[#1a1a1a] outline-none [font-family:var(--auth-font)] transition-colors focus:border-(--auth-brand) focus:shadow-[0_0_0_3px_rgba(7,192,95,0.1)] disabled:cursor-not-allowed disabled:bg-[#f3f3f3]" value={email} onChange={(event) => setEmail(event.target.value)} type="text" autoComplete="email" disabled={loading} placeholder={t('auth.emailPlaceholder')} />
+              {hasFieldError('email') ? <span id={fieldErrorId('email')} role="alert">{fieldError('email')}</span> : null}
             </label>
             <label className="flex flex-col gap-1.5">
               <span className="text-sm font-medium text-[#1a1a1a]"><span style={{ color: '#d54941', marginRight: 4 }}>*</span>{t('auth.password')}</span>
-              <span className="relative block"><Input className="h-10 box-border w-full rounded-lg border border-[#dcdcdc] bg-white px-[14px] pr-11 text-[15px] text-[#1a1a1a] outline-none [font-family:var(--auth-font)] transition-colors focus:border-(--auth-brand) focus:shadow-[0_0_0_3px_rgba(7,192,95,0.1)] disabled:cursor-not-allowed disabled:bg-[#f3f3f3]" value={password} onChange={(event) => setPassword(event.target.value)} type={showLoginPassword ? 'text' : 'password'} autoComplete="current-password" disabled={loading} placeholder={t('auth.passwordPlaceholder')} /><button type="button" className="absolute right-3 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center border-0 bg-transparent p-0 text-[#87909d]" aria-label={t('auth.password')} onClick={() => setShowLoginPassword((visible) => !visible)}><svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M2.5 12s3.4-5.5 9.5-5.5 9.5 5.5 9.5 5.5-3.4 5.5-9.5 5.5S2.5 12 2.5 12Z" /><circle cx="12" cy="12" r="2.5" /></svg></button></span>
-              {fieldError('password')}
+              <span className="relative block"><Input id="auth-password" aria-invalid={hasFieldError('password')} aria-describedby={hasFieldError('password') ? fieldErrorId('password') : undefined} className="h-10 box-border w-full rounded-lg border border-[#dcdcdc] bg-white px-[14px] pr-11 text-[15px] text-[#1a1a1a] outline-none [font-family:var(--auth-font)] transition-colors focus:border-(--auth-brand) focus:shadow-[0_0_0_3px_rgba(7,192,95,0.1)] disabled:cursor-not-allowed disabled:bg-[#f3f3f3]" value={password} onChange={(event) => setPassword(event.target.value)} type={showLoginPassword ? 'text' : 'password'} autoComplete="current-password" disabled={loading} placeholder={t('auth.passwordPlaceholder')} /><button type="button" className="absolute right-3 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center border-0 bg-transparent p-0 text-[#87909d]" aria-label={t('auth.password')} aria-pressed={showLoginPassword} onClick={() => setShowLoginPassword((visible) => !visible)}><svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M2.5 12s3.4-5.5 9.5-5.5 9.5 5.5 9.5 5.5-3.4 5.5-9.5 5.5S2.5 12 2.5 12Z" /><circle cx="12" cy="12" r="2.5" /></svg></button></span>
+              {hasFieldError('password') ? <span id={fieldErrorId('password')} role="alert">{fieldError('password')}</span> : null}
             </label>
             <button type="submit" className="h-[46px] cursor-pointer rounded-lg border-0 bg-(--auth-brand) text-base font-semibold text-white [font-family:var(--auth-font)] hover:bg-[#06ad55] disabled:cursor-not-allowed disabled:opacity-60" disabled={loading}>{loading ? t('auth.loggingIn') : t('auth.login')}</button>
             {registrationEnabled ? <div className="mt-5">
@@ -385,13 +389,13 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
           <form className="flex flex-col gap-[18px]" onSubmit={submit} aria-label="Register form">
             <label className="flex flex-col gap-1.5">
               <span className="text-sm font-medium text-[#1a1a1a]"><span style={{ color: '#d54941', marginRight: 4 }}>*</span>{t('auth.username')}</span>
-              <Input className="h-10 box-border rounded-lg border border-[#dcdcdc] bg-white px-[14px] text-[15px] text-[#1a1a1a] outline-none [font-family:var(--auth-font)] transition-colors focus:border-(--auth-brand) focus:shadow-[0_0_0_3px_rgba(7,192,95,0.1)] disabled:cursor-not-allowed disabled:bg-[#f3f3f3]" value={username} onChange={(event) => setUsername(event.target.value)} disabled={loading} placeholder={t('auth.usernamePlaceholder')} />
-              {fieldError('username')}
+              <Input id="auth-username" aria-invalid={hasFieldError('username')} aria-describedby={hasFieldError('username') ? fieldErrorId('username') : undefined} className="h-10 box-border rounded-lg border border-[#dcdcdc] bg-white px-[14px] text-[15px] text-[#1a1a1a] outline-none [font-family:var(--auth-font)] transition-colors focus:border-(--auth-brand) focus:shadow-[0_0_0_3px_rgba(7,192,95,0.1)] disabled:cursor-not-allowed disabled:bg-[#f3f3f3]" value={username} onChange={(event) => setUsername(event.target.value)} disabled={loading} placeholder={t('auth.usernamePlaceholder')} />
+              {hasFieldError('username') ? <span id={fieldErrorId('username')} role="alert">{fieldError('username')}</span> : null}
             </label>
             <label className="flex flex-col gap-1.5">
               <span className="text-sm font-medium text-[#1a1a1a]"><span style={{ color: '#d54941', marginRight: 4 }}>*</span>{t('auth.email')}</span>
-              <Input className="h-10 box-border rounded-lg border border-[#dcdcdc] bg-white px-[14px] text-[15px] text-[#1a1a1a] outline-none [font-family:var(--auth-font)] transition-colors focus:border-(--auth-brand) focus:shadow-[0_0_0_3px_rgba(7,192,95,0.1)] disabled:cursor-not-allowed disabled:bg-[#f3f3f3]" value={email} onChange={(event) => setEmail(event.target.value)} type="text" autoComplete="email" disabled={loading} placeholder={t('auth.emailPlaceholder')} />
-              {fieldError('email')}
+              <Input id="auth-register-email" aria-invalid={hasFieldError('email')} aria-describedby={hasFieldError('email') ? fieldErrorId('email') : undefined} className="h-10 box-border rounded-lg border border-[#dcdcdc] bg-white px-[14px] text-[15px] text-[#1a1a1a] outline-none [font-family:var(--auth-font)] transition-colors focus:border-(--auth-brand) focus:shadow-[0_0_0_3px_rgba(7,192,95,0.1)] disabled:cursor-not-allowed disabled:bg-[#f3f3f3]" value={email} onChange={(event) => setEmail(event.target.value)} type="text" autoComplete="email" disabled={loading} placeholder={t('auth.emailPlaceholder')} />
+              {hasFieldError('email') ? <span id={fieldErrorId('email')} role="alert">{fieldError('email')}</span> : null}
             </label>
             <label className="flex flex-col gap-1.5">
               <span className="text-sm font-medium text-[#1a1a1a]"><span style={{ color: '#d54941', marginRight: 4 }}>*</span>{t('auth.password')}</span>

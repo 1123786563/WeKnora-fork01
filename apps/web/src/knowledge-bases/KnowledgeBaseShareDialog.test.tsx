@@ -17,8 +17,18 @@ Object.assign(globalThis, {
   window: dom.window,
   document: dom.window.document,
   HTMLElement: dom.window.HTMLElement,
+  HTMLInputElement: dom.window.HTMLInputElement,
+  HTMLButtonElement: dom.window.HTMLButtonElement,
+  HTMLSelectElement: dom.window.HTMLSelectElement,
+  HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
   Event: dom.window.Event,
+  CustomEvent: dom.window.CustomEvent,
+  KeyboardEvent: dom.window.KeyboardEvent,
   MouseEvent: dom.window.MouseEvent,
+  PointerEvent: dom.window.PointerEvent,
+  NodeFilter: dom.window.NodeFilter,
+  MutationObserver: dom.window.MutationObserver,
+  getComputedStyle: dom.window.getComputedStyle.bind(dom.window),
   IS_REACT_ACT_ENVIRONMENT: true,
 });
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
@@ -75,7 +85,10 @@ async function mount(client: WeKnoraClient, onChanged: () => void = () => undefi
   await act(async () => {
     mountedRoot?.render(<KnowledgeBaseShareDialog client={client} knowledgeBaseId={knowledgeBaseId} knowledgeBaseName="Docs" open onClose={() => undefined} onChanged={onChanged} />);
   });
-  return container;
+  // Dialog is a project-owned Radix/shadcn primitive whose content is portaled
+  // to body, just like Vue's Teleport. Query the actual rendered surface so
+  // these tests exercise the portal rather than the empty mount host.
+  return document.body;
 }
 
 function button(container: HTMLElement, label: string) {
@@ -196,7 +209,8 @@ test('renders Vue-shaped organization options and shared-list actions', async ()
 
   await act(async () => button(container, 'Shared to (1)')?.click());
   assert.ok(container.querySelector('li span[aria-hidden="true"]'));
-  assert.equal(container.querySelectorAll('li button').length, 2, 'shared rows should expose settings and remove actions');
+  assert.equal(container.querySelectorAll('li button').length, 2, 'shared rows should expose organization settings and remove actions');
+  assert.equal(container.querySelectorAll('li select').length, 0, 'Vue renders the existing permission as a tag, not an editable select');
 });
 
 test('organization picker exposes a keyboard-safe custom Vue-style option list', async () => {

@@ -46,6 +46,7 @@ test('tagSurfaceT falls back to the Vue locale copy packages/i18n still misses',
   assert.equal(tt('common.clear'), '清空');
   // Vue tenant.loadMore (L3318)
   assert.equal(tt('tenant.loadMore'), '加载更多');
+  assert.equal(tt('common.operationFailed'), '操作失败');
   const en = tagSurfaceT('en-US');
   assert.equal(en('common.confirm'), 'Confirm');
   assert.equal(en('common.clear'), 'Clear');

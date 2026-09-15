@@ -122,6 +122,42 @@ type UploadDialogMode = "file" | "manual" | "reparse";
 /** t built the way the settings panels do: shared i18n first, dialog table fallback. */
 export type UploadDialogT = (key: string, values?: Record<string, string | number>) => string;
 
+export interface UploadConfirmValidationFailure {
+  section: "multimodal" | "asr";
+  messageKey: "uploadConfirm.vlmModelRequired" | "uploadConfirm.vlmModelSelectRequired" | "uploadConfirm.asrModelRequired" | "uploadConfirm.asrModelSelectRequired";
+  patch?: Partial<Pick<UploadConfirmUIState, "multimodalEnabled" | "asrEnabled">>;
+}
+
+/**
+ * Vue validateBeforeConfirm makes the invalid configuration visible before it
+ * reports the missing-model warning. Keep that decision pure so file upload
+ * and reparse submissions cannot drift apart.
+ */
+export function uploadConfirmValidationFailure(input: {
+  state: UploadConfirmUIState;
+  hasImages: boolean;
+  hasAudio: boolean;
+}): UploadConfirmValidationFailure | null {
+  if (input.hasImages && (!input.state.multimodalEnabled || !input.state.vllmModelId.trim())) {
+    return { section: "multimodal", messageKey: "uploadConfirm.vlmModelRequired", patch: { multimodalEnabled: true } };
+  }
+  if (!input.hasImages && input.state.multimodalEnabled && !input.state.vllmModelId.trim()) {
+    return { section: "multimodal", messageKey: "uploadConfirm.vlmModelSelectRequired" };
+  }
+  if (input.hasAudio && (!input.state.asrEnabled || !input.state.asrModelId.trim())) {
+    return { section: "asr", messageKey: "uploadConfirm.asrModelRequired", patch: { asrEnabled: true } };
+  }
+  if (!input.hasAudio && input.state.asrEnabled && !input.state.asrModelId.trim()) {
+    return { section: "asr", messageKey: "uploadConfirm.asrModelSelectRequired" };
+  }
+  return null;
+}
+
+/** Upload requests retain staged entries; dismissing their dialog would discard them. */
+export function canCloseUploadConfirmDialog(uploading: boolean): boolean {
+  return !uploading;
+}
+
 function displayName(document: KnowledgeDocument): string {
   return document.file_name || document.title || document.id;
 }
@@ -130,6 +166,18 @@ export function folderPathCrumbs(path: string | undefined): Array<{ name: string
   if (!path) return [];
   const segments = path.split('/').filter(Boolean);
   return segments.map((name, index) => ({ name, path: segments.slice(0, index + 1).join('/') }));
+}
+
+/** Vue's `missingStorageEngine` guard: a storage backend is authoritative,
+ * while the provider projection keeps older API responses usable. */
+export function isStorageEngineMissing(kb: KBSurfaceKB | null | undefined): boolean {
+  if (!kb || String(kb.type ?? '').toLowerCase() === 'faq') return false;
+  if (kb.storage_backend_id) return false;
+  const providerConfig = kb.storage_provider_config;
+  const provider = providerConfig && typeof providerConfig === 'object' && !Array.isArray(providerConfig)
+    ? (providerConfig as { provider?: unknown }).provider
+    : undefined;
+  return !provider;
 }
 
 function DocumentTagChips({ tags }: { tags: ReturnType<typeof documentTags> }) {
@@ -232,7 +280,7 @@ function DocumentCardActionMenu({ document, canDownload, t, actions, onDownload,
 }
 
 export function documentCardHoverPosition(
-  card: { left: number; right: number; top: number },
+  card: { left: number; right: number; top: number; bottom?: number },
   viewport: { width: number; height: number },
   popover = { width: 360, height: 300 },
   offset = 12,
@@ -245,7 +293,13 @@ export function documentCardHoverPosition(
   if (leftX >= 10) {
     return { x: leftX, y: Math.max(10, Math.min(card.top, viewport.height - popover.height - 10)) };
   }
-  const belowY = card.top + popover.height + offset;
+  // Vue prefers an above-card fallback when neither side has room. Only use
+  // the below-card position when the card is already near the top edge.
+  const aboveY = card.top - popover.height - offset;
+  if (aboveY >= 10) {
+    return { x: Math.max(10, Math.min(card.left, viewport.width - popover.width - 10)), y: aboveY };
+  }
+  const belowY = (card.bottom ?? card.top + 136) + offset;
   if (belowY <= viewport.height - 10) {
     return { x: Math.max(10, Math.min(card.left, viewport.width - popover.width - 10)), y: belowY };
   }
@@ -347,27 +401,21 @@ export function DocumentCardGrid({
       const actions = documentRowActions(document.parse_status);
       const parseStatus = String(document.parse_status ?? "");
       const parseInFlight = parseStatus === "pending" || parseStatus === "processing" || parseStatus === "finalizing";
-      return <article key={document.id} className="flex h-[136px] min-w-[240px] flex-col overflow-hidden rounded-[8px] border border-line-soft bg-surface p-0 shadow-[0_1px_2px_rgb(0_0_0/6%)] transition-[border-color,box-shadow,background-color] duration-200 hover:border-primary/40 hover:shadow-[0_4px_14px_rgb(0_0_0/7%)]" onMouseEnter={(event) => scheduleHover(event, document)} onMouseLeave={clearHover}>
+      const summaryInFlight = document.summary_status === "pending" || document.summary_status === "processing";
+      const description = typeof document.description === "string" ? document.description : document.folder_path ?? t("knowledgeBase.documents.root");
+      const tags = documentTags(document);
+      return <article key={document.id} data-select-id={document.id} className={`knowledge-card flex h-[136px] min-w-[240px] flex-col overflow-hidden rounded-[8px] border bg-surface p-0 shadow-[0_1px_2px_rgb(0_0_0/6%)] transition-[border-color,box-shadow,background-color] duration-200 hover:border-primary/40 hover:shadow-[0_4px_14px_rgb(0_0_0/7%)] ${selected.has(document.id) ? "is-selected border-primary/70" : "border-line-soft"} ${batchMode ? "batch-mode" : ""}`} onMouseEnter={(event) => scheduleHover(event, document)} onMouseLeave={clearHover}>
         <div className="flex min-h-0 flex-1 flex-col px-[14px] pb-2 pt-[10px]">
           <div className="mb-[6px] flex h-6 shrink-0 items-start gap-0">
-            {canContribute && batchMode ? <Checkbox type="checkbox" checked={selected.has(document.id)} onChange={(event) => onToggle(document.id, event.target.checked)} aria-label={t("knowledgeBase.documents.select", { name: displayName(document) })} /> : null}
+            {canContribute && batchMode ? <span className="mr-2 inline-flex h-[29px] w-[22px] shrink-0 items-center justify-center" onClick={(event) => event.stopPropagation()}><Checkbox type="checkbox" checked={selected.has(document.id)} onChange={(event) => onToggle(document.id, event.target.checked)} aria-label={t("knowledgeBase.documents.select", { name: displayName(document) })} /></span> : null}
             <button type="button" className="min-w-0 flex-1 truncate border-0 bg-transparent p-0 text-left text-[14px] font-semibold leading-6 tracking-[.01em] text-primary-deep hover:underline" onClick={() => onOpen(document)} title={displayName(document)}>{displayName(document)}</button>
-            {parseInFlight ? (
-              <button type="button" className="inline-flex shrink-0 items-center gap-1 border-0 bg-transparent p-0 text-[12px] leading-6 text-success-text [font:inherit]" title={t("knowledgeStages.viewTrace")} onClick={() => onViewTrace(document)}>
-                <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" />
-                <span>{status.label}</span>
-                <span aria-hidden="true" className="text-[11px] leading-none">⌁</span>
-              </button>
-            ) : status.tone === "warning" && (document.summary_status === "pending" || document.summary_status === "processing") ? (
-              <span className="inline-flex shrink-0 items-center gap-1 text-[12px] leading-6 text-warning-text"><span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" />{status.label}</span>
-            ) : <Status tone={status.tone}>{status.label}</Status>}
             {canContribute ? <DocumentCardActionMenu document={document} canDownload={canDownload} t={t} actions={actions} onDownload={() => onDownload(document)} onEdit={() => onEdit(document)} onViewTrace={() => onViewTrace(document)} onMove={() => onMove(document)} onBatchManage={() => onBatchManage(document)} onReparse={() => onReparse(document)} onCancelParse={() => onCancelParse(document)} onDelete={() => onDelete(document)} /> : null}
           </div>
-          <p className="m-0 line-clamp-2 min-h-0 flex-1 overflow-hidden text-[12px] font-normal leading-[19px] text-muted">{document.summary_status === "pending" || document.summary_status === "processing" ? t("knowledgeBase.generatingSummary") : typeof document.description === "string" ? document.description : document.folder_path ?? t("knowledgeBase.documents.root")}</p>
+          {parseInFlight ? <button type="button" className="inline-flex min-h-0 flex-1 items-center gap-2 self-start border-0 bg-transparent p-0 text-[11px] text-success-text [font:inherit] hover:underline" title={t("knowledgeStages.viewTrace")} onClick={() => onViewTrace(document)}><span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" /><span>{status.label}</span><span aria-hidden="true" className="text-[14px] leading-none">⌁</span></button> : parseStatus === "failed" ? <button type="button" className="inline-flex min-h-0 flex-1 items-center gap-2 self-start border-0 bg-transparent p-0 text-[11px] text-danger [font:inherit] hover:underline" title={t("knowledgeStages.viewTrace")} onClick={() => onViewTrace(document)}><span className="inline-flex h-3 w-3 items-center justify-center rounded-full border border-current text-[9px] leading-none" aria-hidden="true">×</span><span>{t("knowledgeBase.parsingFailed")}</span><span aria-hidden="true" className="text-[14px] leading-none">⌁</span></button> : parseStatus === "draft" ? <div className="flex min-h-0 flex-1 items-center gap-2 text-[11px] text-warning-text"><Status tone="warning">{t("knowledgeBase.draft")}</Status><span>{t("knowledgeBase.draftTip")}</span></div> : summaryInFlight ? <div className="flex min-h-0 flex-1 items-center gap-2 text-[11px] text-success-text"><span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" />{t("knowledgeBase.generatingSummary")}</div> : <p className="m-0 line-clamp-2 min-h-0 flex-1 overflow-hidden text-[12px] font-normal leading-[19px] text-muted">{description}</p>}
         </div>
         <div className="flex h-8 shrink-0 items-center justify-between gap-2 border-t border-line-soft bg-surface px-[14px] text-[12px] text-muted">
           <span>{formatDocumentTime(document.updated_at ?? document.created_at)}</span>
-          <span>{documentTypeLabel(document)}</span>
+          <span className="flex min-w-0 flex-1 items-center justify-end gap-[6px] overflow-hidden">{tags.length > 0 ? <button type="button" className={`min-w-0 border-0 bg-transparent p-0 ${canContribute ? "cursor-pointer" : "cursor-default"}`} onClick={(event) => { event.stopPropagation(); if (canContribute) onTagEdit(document); }} title={tags.map((tag) => tag.name).join(", ")}><DocumentTagChips tags={tags} /></button> : null}<span className="shrink-0 text-[11px] font-medium tracking-[.02em] text-muted">{documentTypeLabel(document)}</span></span>
         </div>
       </article>;
     })}
@@ -2319,6 +2367,7 @@ export function KnowledgeDocumentsPage({
     () => computeUnsupportedFileTypes(parserEngines, parserRules),
     [parserEngines, parserRules],
   );
+  const storageEngineMissing = isStorageEngineMissing(kbMeta);
 
   const dialogMode: UploadDialogMode = pendingReparse ? "reparse" : pendingManual ? "manual" : "file";
   // Vue batchFileExts: files + URL paths + manual markdown media + reparse type.
@@ -2428,7 +2477,14 @@ export function KnowledgeDocumentsPage({
     onSelectionStart: () => setMoving(false),
   });
 
+  function ensureDocumentKbReady(): boolean {
+    if (!storageEngineMissing) return true;
+    showStageNotice(t('knowledgeBase.missingStorageEngineUpload'), 'warning');
+    return false;
+  }
+
   function stageFiles(files: Iterable<File>) {
+    if (!ensureDocumentKbReady()) return;
     const entries = toUploadEntries(files);
     if (entries.length === 0) return;
     if (pendingEntries.length === 0) setUploadTargetFolder(folderPath ?? "");
@@ -2443,6 +2499,7 @@ export function KnowledgeDocumentsPage({
 
   // Vue appendUrl: append to the staged URL list, dedupe with a warning.
   function appendStagedUrl(rawUrl: string, input: string): boolean {
+    if (!ensureDocumentKbReady()) return false;
     const normalized = normalizeUploadUrl(rawUrl);
     if (!normalized) {
       if (input === "dialog") setUploadError(ct("knowledgeBase.invalidURL"));
@@ -2492,6 +2549,12 @@ export function KnowledgeDocumentsPage({
     // Vue re-seeds from the KB each time the dialog opens; restore defaults so
     // a canceled reparse never leak per-run overrides into the next upload.
     seedConfirmFromKb();
+  }
+
+  function closeUploadConfirmDialog() {
+    if (!canCloseUploadConfirmDialog(uploading)) return;
+    if (dialogMode === "reparse") closeReparseDialog();
+    else cancelStagedUploads();
   }
 
   function choosePickerFolder(path: string) {
@@ -2561,23 +2624,11 @@ export function KnowledgeDocumentsPage({
       setUploadError(t("knowledgeEditor.chunking.overlapDescription"));
       return;
     }
-    // Vue validateBeforeConfirm: required models, with auto-enable on media batches.
-    if (hasImages && (!confirmState.multimodalEnabled || !confirmState.vllmModelId.trim())) {
-      setUploadError(ct("uploadConfirm.vlmModelRequired"));
-      updateConfirm({ multimodalEnabled: true });
-      return;
-    }
-    if (!hasImages && confirmState.multimodalEnabled && !confirmState.vllmModelId.trim()) {
-      setUploadError(ct("uploadConfirm.vlmModelSelectRequired"));
-      return;
-    }
-    if (hasAudio && (!confirmState.asrEnabled || !confirmState.asrModelId.trim())) {
-      setUploadError(ct("uploadConfirm.asrModelRequired"));
-      updateConfirm({ asrEnabled: true });
-      return;
-    }
-    if (!hasAudio && confirmState.asrEnabled && !confirmState.asrModelId.trim()) {
-      setUploadError(ct("uploadConfirm.asrModelSelectRequired"));
+    const validationFailure = uploadConfirmValidationFailure({ state: confirmState, hasImages, hasAudio });
+    if (validationFailure) {
+      setUploadError(ct(validationFailure.messageKey));
+      if (validationFailure.patch) updateConfirm(validationFailure.patch);
+      goToSection(validationFailure.section);
       return;
     }
     const processConfig = buildUploadConfirmOverrides(confirmState);
@@ -2728,6 +2779,7 @@ export function KnowledgeDocumentsPage({
   // Vue handleManualCreate: the dropdown's manual entry stages title/content
   // into the existing pendingManual confirm-dialog flow.
   function stageManualCreate() {
+    if (!ensureDocumentKbReady()) return;
     if (!manualTitle.trim() || !manualContent.trim()) {
       setUploadError(t("knowledgeBase.documents.manualTitle"));
       return;
@@ -2930,13 +2982,12 @@ export function KnowledgeDocumentsPage({
   async function confirmReparse() {
     if (!pendingReparse) return;
     setMutationError(null);
-    // Same required-model validation the upload path applies.
-    if (confirmState.multimodalEnabled && !confirmState.vllmModelId.trim()) {
-      setUploadError(ct("uploadConfirm.vlmModelSelectRequired"));
-      return;
-    }
-    if (confirmState.asrEnabled && !confirmState.asrModelId.trim()) {
-      setUploadError(ct("uploadConfirm.asrModelSelectRequired"));
+    // Reparse has no new media batch, but an enabled configuration still
+    // requires its model and must reveal the corresponding section.
+    const validationFailure = uploadConfirmValidationFailure({ state: confirmState, hasImages: false, hasAudio: false });
+    if (validationFailure) {
+      setUploadError(ct(validationFailure.messageKey));
+      goToSection(validationFailure.section);
       return;
     }
     try {
@@ -3135,6 +3186,13 @@ export function KnowledgeDocumentsPage({
             types={unsupportedFileTypes}
             onConfigure={() => window.location.assign(documentsKBSettingsPath(knowledgeBaseId))}
           />
+          {storageEngineMissing ? (
+            <p className="storage-engine-warning group m-0 mt-[2px] flex cursor-pointer items-center gap-1 text-[12px] leading-[1.4] text-[var(--wk-warning,#b54708)] [transition:color_.15s_ease] hover:text-[#d97706]" onClick={() => window.location.assign(documentsKBSettingsPath(knowledgeBaseId))}>
+              <Icon size={12} className="warning-icon shrink-0"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" /></Icon>
+              <span>{t('knowledgeBase.missingStorageEngine')}</span>
+              <span className="warning-link ml-[2px] whitespace-nowrap text-[var(--wk-brand,#0052d9)] group-hover:underline">{t('knowledgeBase.goToStorageSettings')} →</span>
+            </p>
+          ) : null}
           {!canContribute ? (
             <Status tone="warning">
               {t("knowledgeBase.documents.viewerReadonly")}
@@ -3389,6 +3447,7 @@ export function KnowledgeDocumentsPage({
                       onFiles={(files) => stageFiles(files)}
                       onSelect={(key) => {
                         setPageSourceMenuOpen(false);
+                        if ((key === "url" || key === "manual") && !ensureDocumentKbReady()) return;
                         if (key === "url") {
                           setSourceUrlValue("");
                           setSourceUrlDialogOpen(true);
@@ -3676,7 +3735,8 @@ export function KnowledgeDocumentsPage({
           open
           title={dialogTitle}
           className="wk-upload-confirm-dialog"
-          onClose={dialogMode === "reparse" ? closeReparseDialog : (uploading ? () => {} : cancelStagedUploads)}
+          closeLabel={ct("common.close")}
+          onClose={closeUploadConfirmDialog}
         >
           <div className="wk-upload-confirm-layout">
             <aside className="wk-upload-confirm-files-column">
@@ -3852,7 +3912,8 @@ export function KnowledgeDocumentsPage({
             </Button>
             <Button
               type="button"
-              onClick={dialogMode === "reparse" ? closeReparseDialog : cancelStagedUploads}
+              disabled={!canCloseUploadConfirmDialog(uploading)}
+              onClick={closeUploadConfirmDialog}
             >
               {ct("uploadConfirm.cancel")}
             </Button>

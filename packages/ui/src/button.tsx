@@ -9,7 +9,7 @@ import { cn } from './lib/utils.ts';
  * text = 透明文本钮；danger = 文本钮 + 危险色。
  */
 const buttonVariants = cva(
-  'inline-flex min-h-8 cursor-pointer items-center justify-center gap-1.5 rounded-control font-sans transition-colors focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-primary/35 disabled:cursor-not-allowed disabled:opacity-55',
+  'inline-flex min-h-8 cursor-pointer items-center justify-center gap-1.5 rounded-control font-sans text-sm leading-5 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent/35 disabled:cursor-not-allowed disabled:opacity-60',
   {
     variants: {
       variant: {
@@ -43,7 +43,7 @@ export function Button({ children, loading = false, disabled, className, variant
       disabled={disabled || loading}
       {...props}
     >
-      {loading ? <span className="wk-button-loading" aria-hidden="true">…</span> : null}
+      {loading ? <span className="wk-button-loading" aria-hidden="true" /> : null}
       {children}
     </button>
   );

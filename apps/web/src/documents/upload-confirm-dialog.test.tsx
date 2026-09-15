@@ -33,6 +33,8 @@ const {
   GraphRelationSelect,
   moveGraphRelationOption,
   UploadSingleSelect,
+  uploadConfirmValidationFailure,
+  canCloseUploadConfirmDialog,
 } = await import('./KnowledgeDocumentsPage.tsx');
 const {
   uploadConfirmT,
@@ -47,6 +49,41 @@ const {
 
 const ct = uploadConfirmT('zh-CN');
 const noop = () => {};
+
+// --- Submit validation and close lifecycle ----------------------------------------
+
+test('media validation identifies the Vue configuration section to reveal before submission', () => {
+  // This catches a regression where a missing required model only emits an
+  // error message, leaving the invalid controls hidden in another section.
+  assert.equal(typeof uploadConfirmValidationFailure, 'function');
+  const state = defaultUploadConfirmUIState();
+  assert.deepEqual(uploadConfirmValidationFailure({
+    state,
+    hasImages: true,
+    hasAudio: false,
+  }), {
+    section: 'multimodal',
+    messageKey: 'uploadConfirm.vlmModelRequired',
+    patch: { multimodalEnabled: true },
+  });
+  assert.deepEqual(uploadConfirmValidationFailure({
+    state,
+    hasImages: false,
+    hasAudio: true,
+  }), {
+    section: 'asr',
+    messageKey: 'uploadConfirm.asrModelRequired',
+    patch: { asrEnabled: true },
+  });
+});
+
+test('upload confirmation cannot be dismissed while its request is in flight', () => {
+  // This catches a cancellation path that clears staged files while the upload
+  // pipeline is still using them.
+  assert.equal(typeof canCloseUploadConfirmDialog, 'function');
+  assert.equal(canCloseUploadConfirmDialog(false), true);
+  assert.equal(canCloseUploadConfirmDialog(true), false);
+});
 
 // --- Destination picker (Vue FolderPickerMenu parity) ---------------------------
 

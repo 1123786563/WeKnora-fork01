@@ -31,6 +31,8 @@ export function WorkspaceOnboardingPage({ client, scopeRuntime, onLogout }: Work
   const [createError, setCreateError] = useState('');
   const [invitations, setInvitations] = useState<TenantInvitation[] | null>(null);
   const [invitationError, setInvitationError] = useState('');
+  const [invitationNotice, setInvitationNotice] = useState('');
+  const [respondingId, setRespondingId] = useState<number | null>(null);
 
   async function loadPolicy() {
     setLoadFailed(false);
@@ -62,7 +64,7 @@ export function WorkspaceOnboardingPage({ client, scopeRuntime, onLogout }: Work
     setCreating(true);
     setCreateError('');
     try {
-      await client.identity.tenants.admin.create({ name, description: description || undefined });
+      await client.identity.tenants.admin.create({ name: name.trim(), description: description.trim() || undefined });
       const authMe = await client.auth.me();
       scopeRuntime.hydrate(authMe);
       window.location.assign('/platform/knowledge-bases');
@@ -75,6 +77,7 @@ export function WorkspaceOnboardingPage({ client, scopeRuntime, onLogout }: Work
 
   async function loadInvitations() {
     setInvitationError('');
+    setInvitationNotice('');
     try {
       const page = await client.identity.tenants.invitations.listMine();
       setInvitations(page.items.filter((item) => item.status === 'pending'));
@@ -84,6 +87,10 @@ export function WorkspaceOnboardingPage({ client, scopeRuntime, onLogout }: Work
   }
 
   async function respond(invitation: TenantInvitation, accept: boolean) {
+    if (respondingId !== null) return;
+    setRespondingId(invitation.id);
+    setInvitationError('');
+    setInvitationNotice('');
     try {
       if (accept) await client.identity.tenants.invitations.accept(invitation.id);
       else await client.identity.tenants.invitations.decline(invitation.id);
@@ -94,8 +101,11 @@ export function WorkspaceOnboardingPage({ client, scopeRuntime, onLogout }: Work
         scopeRuntime.hydrate(authMe);
         if (!scopeRuntime.requiresWorkspace()) window.location.assign('/platform/knowledge-bases');
       }
+      setInvitationNotice(msg(locale, accept ? 'tenantInvitation.myInbox.acceptSuccess' : 'tenantInvitation.myInbox.declineSuccess', { tenant: invitation.tenant_name || msg(locale, 'auth.workspaceOnboarding.workspaceFallback', { id: invitation.tenant_id }) }));
     } catch (error) {
       setInvitationError(error instanceof Error ? error.message : msg(locale, 'auth.workspaceOnboarding.invitationsActionFailed'));
+    } finally {
+      setRespondingId(null);
     }
   }
 
@@ -150,11 +160,12 @@ export function WorkspaceOnboardingPage({ client, scopeRuntime, onLogout }: Work
       className="w-[min(560px,100%)]!"
     >
       {invitationError ? <Status tone="error">{invitationError}</Status> : null}
+      {invitationNotice ? <Status tone="success">{invitationNotice}</Status> : null}
       {invitations === null ? <Status>{msg(locale, 'auth.workspaceOnboarding.loadingInvitations')}</Status> : invitations.length === 0 ? <Status>{msg(locale, 'tenantInvitation.myInbox.empty')}</Status> : (
         <ul>{invitations.map((invitation) => <li key={invitation.id}>
           <strong>{invitation.tenant_name || msg(locale, 'auth.workspaceOnboarding.workspaceFallback', { id: invitation.tenant_id })}</strong> — {invitation.role}
-          <Button type="button" onClick={() => void respond(invitation, true)}>{msg(locale, 'tenantInvitation.myInbox.accept')}</Button>
-          <Button type="button" onClick={() => void respond(invitation, false)}>{msg(locale, 'tenantInvitation.myInbox.decline')}</Button>
+          <Button type="button" disabled={respondingId !== null} onClick={() => void respond(invitation, true)}>{msg(locale, 'tenantInvitation.myInbox.acceptButton')}</Button>
+          <Button type="button" disabled={respondingId !== null} onClick={() => void respond(invitation, false)}>{msg(locale, 'tenantInvitation.myInbox.declineButton')}</Button>
         </li>)}</ul>
       )}
       <Button type="button" onClick={() => setInvitationsVisible(false)}>{msg(locale, 'auth.workspaceOnboarding.close')}</Button>

@@ -5,7 +5,7 @@
 import { useState, type ReactNode } from 'react';
 import { Button, Dialog, Input } from '@weknora/ui';
 import type { KnowledgeTag } from '@weknora/api-client';
-import { filterTagOptions } from './tags.ts';
+import { filterTagOptions, selectTagId, tagCreateFailureMessage } from './tags.ts';
 import type { TagSurfaceT } from './tags-locale.ts';
 
 interface TagPickerDialogProps {
@@ -61,6 +61,7 @@ export function TagPickerDialog({
   const [selectedSet, setSelectedSet] = useState<ReadonlySet<string>>(new Set(preSelectedIds ?? []));
   const [newTagName, setNewTagName] = useState('');
   const [creatingTag, setCreatingTag] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const copy = COPY[mode];
 
   if (!open) return null;
@@ -85,10 +86,11 @@ export function TagPickerDialog({
   const addNewTag = async (name: string) => {
     const trimmed = name.trim();
     if (!trimmed || !createTag) return;
+    setCreateError(null);
     // Vue handleAddNewTag: an existing name just selects the tag.
     const existing = tags.find((tag) => tag.name === trimmed);
     if (existing) {
-      toggleTag(existing.id);
+      setSelectedSet((current) => new Set(selectTagId(Array.from(current), existing.id)));
       setNewTagName('');
       return;
     }
@@ -99,6 +101,8 @@ export function TagPickerDialog({
       setNewTagName('');
       setSearchQuery('');
       onTagCreated?.();
+    } catch (error) {
+      setCreateError(tagCreateFailureMessage(error, t('common.operationFailed')));
     } finally {
       setCreatingTag(false);
     }
@@ -196,6 +200,7 @@ export function TagPickerDialog({
               }}
             />
           ) : null}
+          {createError ? <p className="wk-tag-create-error m-0 text-[12px] text-danger" role="alert">{createError}</p> : null}
         </section>
       </div>
       <div className="batch-tag-footer mt-[14px] flex items-center justify-between gap-3 border-t border-[var(--wk-border,#e4e7ec)] pt-3">
@@ -258,37 +263,37 @@ export function TagFilterPanel({
   const visible = [...missing, ...tags];
 
   return (
-    <div className="tag-filter-panel absolute left-0 top-[calc(100%+4px)] z-40 w-[min(320px,80vw)] rounded-[8px] border border-[var(--wk-border,#e4e7ec)] bg-[var(--wk-surface,#fff)] p-[10px] shadow-[0_8px_24px_rgba(0,0,0,0.1)]" role="group" aria-label={t('knowledgeBase.tagFilterTitle')}>
-      <div className="tag-filter-panel__header flex items-center gap-1">
-        <span className="tag-filter-panel__title text-[13px] font-semibold text-[var(--wk-text,#344054)]">{t('knowledgeBase.tagFilterTitle')}</span>
+    <div className="tag-filter-panel absolute left-0 top-[calc(100%+4px)] z-[5500] flex max-h-[min(70vh,480px)] w-[min(320px,80vw)] flex-col rounded-[8px] border border-[var(--wk-border,#e4e7ec)] bg-[var(--wk-surface,#fff)] p-[12px_14px] text-[12px] text-[var(--wk-text,#344054)] shadow-[0_8px_24px_rgba(0,0,0,0.1)]" role="group" aria-label={t('knowledgeBase.tagFilterTitle')}>
+      <div className="tag-filter-panel__header mb-[10px] flex items-center gap-1">
+        <span className="tag-filter-panel__title flex items-baseline gap-[6px] text-[14px] font-semibold tracking-[0.5px] text-[var(--wk-text,#344054)]">{t('knowledgeBase.tagFilterTitle')}</span>
         <span className="tag-filter-panel__count text-[12px] text-[var(--wk-muted,#98a2b8)]">({total ?? tags.length})</span>
-        <button type="button" className="wk-tag-link wk-tag-panel-close ml-auto cursor-pointer border-none bg-transparent p-0 text-[12px] text-[var(--wk-muted,#98a2b8)] hover:text-[var(--wk-brand,#07c05f)]" aria-label={t('common.cancel')} onClick={onClose}>
+        <button type="button" className="wk-tag-link wk-tag-panel-close ml-auto cursor-pointer border-none bg-transparent p-0 text-[12px] text-[var(--wk-muted,#98a2b8)] hover:text-[var(--wk-brand,#07c05f)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(7_192_95_/_20%)]" aria-label={t('common.cancel')} onClick={onClose}>
           ×
         </button>
       </div>
       <div className="tag-filter-panel__search">
         <Input
           type="search"
-          className="w-full min-h-[28px] my-2 border border-[var(--wk-border,#e4e7ec)] rounded-[6px] bg-transparent px-2 py-0 text-[12px] text-[var(--wk-text,#344054)]"
+          className="mb-[10px] h-8 border-transparent bg-[var(--wk-surface-strong,#f2f4f7)] px-2 text-[13px] text-[var(--wk-text,#344054)] hover:border-[var(--wk-border,#e4e7ec)] hover:bg-[var(--wk-surface,#fff)] focus:border-[var(--wk-border,#e4e7ec)] focus:bg-[var(--wk-surface,#fff)]"
           value={searchQuery}
           placeholder={t('knowledgeBase.tagSearchPlaceholder')}
           aria-label={t('knowledgeBase.tagSearchPlaceholder')}
           onChange={(event) => onSearch(event.target.value)}
         />
       </div>
-      <div className="tag-filter-panel__body">
+      <div className="tag-filter-panel__body flex min-h-0 flex-1 flex-col gap-2 overflow-x-hidden overflow-y-auto">
         {visible.length > 0 ? (
-          <div className="tag-filter-chips flex max-h-[min(160px,24vh)] flex-wrap gap-[6px] overflow-y-auto">
+          <div className="tag-filter-chips flex flex-wrap items-start gap-[6px]">
             {visible.map((tag) => (
               <button
                 key={tag.id}
                 type="button"
-                className={selectedIds.includes(tag.id) ? 'tag-filter-chip is-active inline-flex min-h-[22px] max-w-full cursor-pointer items-center gap-1 overflow-hidden rounded-[4px] border border-[var(--wk-border,#e4e7ec)] px-2 py-0 text-[11px] text-ellipsis whitespace-nowrap text-[var(--wk-muted,#667085)] bg-transparent border-transparent bg-[var(--wk-surface-strong,#f2f4f7)] font-medium text-[var(--wk-text,#344054)]' : 'tag-filter-chip inline-flex min-h-[22px] max-w-full cursor-pointer items-center gap-1 overflow-hidden rounded-[4px] border border-[var(--wk-border,#e4e7ec)] px-2 py-0 text-[11px] text-ellipsis whitespace-nowrap text-[var(--wk-muted,#667085)] bg-transparent'}
+                className={selectedIds.includes(tag.id) ? 'tag-filter-chip is-active inline-flex h-6 max-w-full cursor-pointer items-center gap-1 overflow-hidden rounded-[4px] border border-[var(--wk-border,#e4e7ec)] px-2 py-0 text-[11px] leading-6 text-ellipsis whitespace-nowrap text-[var(--wk-brand,#07c05f)] bg-[rgb(7_192_95/6%)] font-medium focus-visible:outline-none focus-visible:[box-shadow:0_0_0_2px_rgb(120_135_155/60%)] hover:bg-[rgb(7_192_95/10%)]' : 'tag-filter-chip inline-flex h-6 max-w-full cursor-pointer items-center gap-1 overflow-hidden rounded-[4px] border border-[var(--wk-border,#e4e7ec)] px-2 py-0 text-[11px] leading-6 text-ellipsis whitespace-nowrap text-[var(--wk-muted,#667085)] bg-transparent transition-[background,color,border-color] duration-150 hover:border-[var(--wk-border-strong,#d0d5dd)] hover:bg-[var(--wk-surface-strong,#f2f4f7)] hover:text-[var(--wk-text,#344054)] focus-visible:outline-none focus-visible:[box-shadow:0_0_0_2px_rgb(120_135_155/60%)]'}
                 title={`${tag.name} (${tag.knowledge_count || 0})`}
                 onClick={() => onToggle(tag.id)}
               >
-                <span className="tag-filter-chip__label">{tag.name}</span>
-                <span className="tag-filter-chip__count text-[10px] text-[var(--wk-muted,#98a2b8)]">{tag.knowledge_count || 0}</span>
+                <span className="tag-filter-chip__label max-w-[120px] overflow-hidden text-ellipsis whitespace-nowrap">{tag.name}</span>
+                <span className="tag-filter-chip__count shrink-0 text-[10px] tabular-nums text-[var(--wk-muted,#98a2b8)] before:mr-0.5 before:content-['·'] before:opacity-65">{tag.knowledge_count || 0}</span>
               </button>
             ))}
           </div>
@@ -307,8 +312,8 @@ export function TagFilterPanel({
         ) : null}
       </div>
       {selectedIds.length > 0 ? (
-        <div className="tag-filter-panel__footer mt-2 flex justify-end">
-          <button type="button" className="wk-tag-link cursor-pointer border-none bg-transparent p-0 text-[12px] text-[var(--wk-muted,#98a2b8)] hover:text-[var(--wk-brand,#07c05f)]" onClick={onClear}>
+        <div className="tag-filter-panel__footer mt-[10px] flex justify-start border-t border-[var(--wk-border,#e4e7ec)] pt-[10px]">
+          <button type="button" className="wk-tag-link cursor-pointer border-none bg-transparent p-0 text-[13px] text-[var(--wk-muted,#98a2b8)] transition-colors hover:text-[var(--wk-brand,#07c05f)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(7_192_95_/_20%)]" onClick={onClear}>
             {t('knowledgeBase.tagClearAction')}
           </button>
         </div>

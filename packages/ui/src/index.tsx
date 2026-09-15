@@ -20,6 +20,7 @@ export { Table, TableHead, TableBody, TableRow, TableHeader, TableCell } from '.
 export { Tabs, TabsList, TabsTrigger, TabsContent } from './tabs.tsx';
 export { Sheet, type SheetProps } from './sheet.tsx';
 export { Dropdown, DropdownTrigger, DropdownContent, DropdownItem, DropdownSeparator } from './dropdown-menu.tsx';
+export { Menu, MenuTrigger, MenuContent, MenuItem, MenuSeparator } from './dropdown-menu.tsx';
 export { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from './tooltip.tsx';
 export { cn } from './lib/utils.ts';
 import './styles.css';

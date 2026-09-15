@@ -8,6 +8,8 @@ import {
   filterTagOptions,
   joinTagIds,
   paginateTagOptions,
+  selectTagId,
+  tagCreateFailureMessage,
   tagFilterLabel,
   tagFilterTitle,
   tagUpdatesFor,
@@ -75,6 +77,17 @@ test('filterTagOptions hides selected tags and filters by search case-insensitiv
     filterTagOptions(tags, [], 'legal').map((item) => item.id),
     ['3'],
   );
+});
+
+test('selectTagId keeps an existing tag selected instead of toggling it off', () => {
+  assert.deepEqual(selectTagId(['1', '2'], '2'), ['1', '2']);
+  assert.deepEqual(selectTagId(['1'], '2'), ['1', '2']);
+});
+
+test('tagCreateFailureMessage keeps a server error but safely falls back for unknown failures', () => {
+  assert.equal(tagCreateFailureMessage(new Error('Tag already exists'), '操作失败'), 'Tag already exists');
+  assert.equal(tagCreateFailureMessage({ message: '  ' }, '操作失败'), '操作失败');
+  assert.equal(tagCreateFailureMessage(null, '操作失败'), '操作失败');
 });
 
 // --- joinTagIds: Vue filterParams tag_ids (KnowledgeBase.vue L671) -----------------

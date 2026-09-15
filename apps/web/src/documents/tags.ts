@@ -77,6 +77,23 @@ export function filterTagOptions(
   });
 }
 
+/**
+ * Vue handleAddNewTag adds an existing tag to the set; it never removes one.
+ * This differs from a chip click, which deliberately toggles membership.
+ */
+export function selectTagId(selectedIds: readonly string[], tagId: string): string[] {
+  return selectedIds.includes(tagId) ? [...selectedIds] : [...selectedIds, tagId];
+}
+
+/** Vue displays the backend error, with common.operationFailed as its fallback. */
+export function tagCreateFailureMessage(error: unknown, fallback: string): string {
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string' && message.trim()) return message;
+  }
+  return fallback;
+}
+
 /** Vue filterParams (KnowledgeBase.vue L671): tag_ids joins with ',' or drops. */
 export function joinTagIds(ids: readonly string[]): string | undefined {
   return ids.length > 0 ? ids.join(',') : undefined;

@@ -1,4 +1,6 @@
-import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
+import * as DialogPrimitive from '@radix-ui/react-dialog';
+import { cn } from './lib/utils.ts';
 
 export interface DialogProps {
   open: boolean;
@@ -16,27 +18,14 @@ export function getDialogFocusableElements(root: ParentNode): HTMLElement[] {
 /** Project-owned primitive: shadcn/Radix remains a substrate, while this
  * wrapper keeps Vue's focus, Escape, outside-close and test-host contract. */
 export function Dialog({ open, title, children, onClose, closeLabel = 'Close', className }: DialogProps) {
-  const dialogRef = useRef<HTMLElement>(null);
-  const restoreRef = useRef<HTMLElement | null>(null);
   const titleId = useId();
-  useEffect(() => {
-    if (!open) return;
-    restoreRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    dialogRef.current?.focus();
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-      if (event.key !== 'Tab' || !dialogRef.current) return;
-      const focusable = getDialogFocusableElements(dialogRef.current);
-      if (focusable.length === 0) { event.preventDefault(); dialogRef.current.focus(); return; }
-      const first = focusable[0]!;
-      const last = focusable[focusable.length - 1]!;
-      const active = document.activeElement;
-      if (event.shiftKey && (active === first || active === dialogRef.current)) { event.preventDefault(); last.focus(); }
-      else if (!event.shiftKey && active === last) { event.preventDefault(); first.focus(); }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => { document.removeEventListener('keydown', onKeyDown); restoreRef.current?.focus(); restoreRef.current = null; };
-  }, [onClose, open]);
-  if (!open) return null;
-  return <div className="wk-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className={className ? `wk-dialog ${className}` : 'wk-dialog'} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} ref={dialogRef}><header className="wk-dialog-header"><h2 id={titleId}>{title}</h2><button className="wk-dialog-close" type="button" onClick={onClose} aria-label={closeLabel}>×</button></header><div className="wk-dialog-body">{children}</div></section></div>;
+  return <DialogPrimitive.Root open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
+    <DialogPrimitive.Portal>
+      <DialogPrimitive.Overlay className="wk-dialog-backdrop" />
+      <DialogPrimitive.Content className={cn('wk-dialog', className)} aria-labelledby={titleId} aria-modal="true">
+        <header className="wk-dialog-header"><DialogPrimitive.Title asChild><h2 id={titleId}>{title}</h2></DialogPrimitive.Title><DialogPrimitive.Close asChild><button className="wk-dialog-close" type="button" aria-label={closeLabel}>×</button></DialogPrimitive.Close></header>
+        <div className="wk-dialog-body">{children}</div>
+      </DialogPrimitive.Content>
+    </DialogPrimitive.Portal>
+  </DialogPrimitive.Root>;
 }

@@ -14,15 +14,19 @@ test('cancel parse is only offered while a document is pending/processing/finali
   assert.deepEqual(documentRowActions('nonsense'), { canReparse: false, canCancelParse: false });
 });
 
-test('reparse delegates to the client reparse endpoint', async () => {
-  const calls: string[] = [];
-  await reparseDocument({ reparse: async (id) => void calls.push(id), cancelParse: async () => {} }, 'doc-1');
-  assert.deepEqual(calls, ['doc-1']);
+test('reparse forwards the selected processing overrides to the client endpoint', async () => {
+  const calls: Array<{ id: string; processConfig: unknown }> = [];
+  const processConfig = { chunk_size: 640, enable_summary: true };
+  await reparseDocument({
+    reparse: async (id, receivedProcessConfig) => void calls.push({ id, processConfig: receivedProcessConfig }),
+    cancelParse: async () => {},
+  }, 'doc-1', processConfig);
+  assert.deepEqual(calls, [{ id: 'doc-1', processConfig }]);
 });
 
-test('batch reparse excludes documents already in flight', () => {
+test('batch reparse excludes in-flight and duplicate document IDs', () => {
   assert.deepEqual(
-    filterReparseIds(['done', 'working', 'missing'], [
+    filterReparseIds(['done', 'done', 'working', 'missing', 'missing'], [
       { id: 'done', parse_status: 'completed' },
       { id: 'working', parse_status: 'processing' },
     ]),
@@ -41,4 +45,27 @@ test('batch cancel only targets in-flight documents and skips settled ones', asy
   ];
   assert.deepEqual(await cancelParseDocuments(api, documents), ['a', 'c']);
   assert.deepEqual(cancelled, ['a', 'c']);
+});
+
+test('batch cancel submits each eligible document once and continues after an error', async () => {
+  const cancelled: string[] = [];
+  const expected = new Error('cancel a failed');
+  const api = {
+    reparse: async () => {},
+    cancelParse: async (id: string) => {
+      cancelled.push(id);
+      if (id === 'a') throw expected;
+    },
+  };
+
+  await assert.rejects(
+    cancelParseDocuments(api, [
+      { id: 'a', parse_status: 'processing' },
+      { id: 'a', parse_status: 'processing' },
+      { id: 'settled', parse_status: 'completed' },
+      { id: 'b', parse_status: 'finalizing' },
+    ]),
+    expected,
+  );
+  assert.deepEqual(cancelled, ['a', 'b']);
 });

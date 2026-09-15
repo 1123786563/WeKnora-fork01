@@ -29,8 +29,15 @@ Object.assign(globalThis, {
   window: dom.window,
   document: dom.window.document,
   HTMLElement: dom.window.HTMLElement,
+  HTMLInputElement: dom.window.HTMLInputElement,
+  HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
   Element: dom.window.Element,
   Event: dom.window.Event,
+  CustomEvent: dom.window.CustomEvent,
+  FocusEvent: dom.window.FocusEvent,
+  NodeFilter: dom.window.NodeFilter,
+  MutationObserver: dom.window.MutationObserver,
+  getComputedStyle: dom.window.getComputedStyle.bind(dom.window),
   IS_REACT_ACT_ENVIRONMENT: true,
 });
 dom.window.localStorage.setItem('locale', 'zh-CN');
@@ -83,6 +90,50 @@ function invitationDeps(): { client: Record<string, unknown>; scopeRuntime: Reco
     },
   };
 }
+
+test('workspace creation trims the Vue dialog values before submitting', async () => {
+  let createdInput: unknown;
+  const deps = fakeDeps();
+  (deps.client.identity as Record<string, unknown>) = { tenants: { admin: { create: async (input: unknown) => { createdInput = input; } }, invitations: { pendingCount: async () => ({ pendingCount: 0 }) } } };
+  const container = document.createElement('div');
+  document.body.append(container);
+  mountedRoot = createRoot(container);
+  await act(async () => { mountedRoot?.render(React.createElement(WorkspaceOnboardingPage, { client: deps.client as never, scopeRuntime: deps.scopeRuntime as never, onLogout: async () => {} })); });
+  await settle(20);
+  const createEntry = [...document.querySelectorAll('button')].find((n) => n.textContent === '创建空间') as HTMLButtonElement;
+  await act(async () => { createEntry.click(); });
+  const dialog = document.querySelector('[role="dialog"]') as HTMLElement;
+  const name = dialog.querySelector('input') as HTMLInputElement;
+  const description = dialog.querySelector('textarea') as HTMLTextAreaElement;
+  const setValue = (element: HTMLInputElement | HTMLTextAreaElement, value: string) => {
+    const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), 'value')!.set!;
+    setter.call(element, value);
+    element.dispatchEvent(new window.Event('input', { bubbles: true }));
+  };
+  await act(async () => { setValue(name, '  新空间  '); setValue(description, '  描述  '); });
+  await act(async () => { (dialog.querySelector('button[type="submit"]') as HTMLButtonElement).click(); await settle(10); });
+  assert.deepEqual(createdInput, { name: '新空间', description: '描述' });
+});
+
+test('invitation actions disable both buttons while responding and show success copy', async () => {
+  let resolveAccept!: () => void;
+  const deps = invitationDeps();
+  (deps.client.identity as any).tenants.invitations.accept = () => new Promise<void>((resolve) => { resolveAccept = resolve; });
+  const container = document.createElement('div');
+  document.body.append(container);
+  mountedRoot = createRoot(container);
+  await act(async () => { mountedRoot?.render(React.createElement(WorkspaceOnboardingPage, { client: deps.client as never, scopeRuntime: deps.scopeRuntime as never, onLogout: async () => {} })); });
+  await settle(20);
+  await act(async () => { ( [...document.querySelectorAll('button')].find((n) => (n.textContent ?? '').startsWith('查看邀请')) as HTMLButtonElement).click(); await settle(10); });
+  const dialog = document.querySelector('[role="dialog"]') as HTMLElement;
+  const accept = [...dialog.querySelectorAll('button')].find((n) => n.textContent === '接受') as HTMLButtonElement;
+  const decline = [...dialog.querySelectorAll('button')].find((n) => n.textContent === '拒绝') as HTMLButtonElement;
+  await act(async () => { accept.click(); });
+  assert.equal(accept.disabled, true);
+  assert.equal(decline.disabled, true);
+  await act(async () => { resolveAccept(); await settle(10); });
+  assert.match(dialog.textContent ?? '', /已加入/);
+});
 
 test('tenant creation renders in a modal dialog with the Vue t-dialog copy (S00 N-2)', async () => {
   const { client, scopeRuntime } = fakeDeps();
