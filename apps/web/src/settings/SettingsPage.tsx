@@ -110,7 +110,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
         try { setModels(await client.configuration.models.list()); } catch { setModels([]); }
       }
     }
-    catch (reason) { setPayload(null); setError(errorText(reason, `Unable to load ${section.title}`)); }
+    catch (reason) { setPayload(null); setError(errorText(reason, t('common.error'))); }
     finally { setLoading(false); }
   }
 
