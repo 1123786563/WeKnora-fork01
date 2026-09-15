@@ -130,7 +130,7 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
     if (!menuOpen) return;
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target;
-      if (target instanceof Node && userMenuRef.current?.contains(target)) return;
+      if (target && userMenuRef.current?.contains(target as Node)) return;
       setMenuOpen(false);
     };
     document.addEventListener('click', handleClickOutside);
@@ -141,7 +141,7 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
   // navigated so leaving the step can return to the previous page, mirroring
   // Vue's uiStore.openSettings/closeSettings pair.
   const guideOpenedSettingsRef = useRef(false);
-  const [user, setUser] = useState<{ id: string; name: string; email: string; avatar: string }>({ id: '', name: '', email: '', avatar: '' });
+  const [user, setUser] = useState<{ id: string; name: string; email: string; avatar: string; tenantName: string; role: string; membershipsCount: number; canAccessAllTenants: boolean }>({ id: '', name: '', email: '', avatar: '', tenantName: '', role: '', membershipsCount: 0, canAccessAllTenants: false });
   // Vue menu.ts:72-81 — the organizations nav entry is gated on
   // hasRole('admin') (owner/admin pass; viewer/contributor manage nothing in
   // the shared space). Initial true = fail-open while identity resolves:
@@ -187,6 +187,10 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
         name: typeof record.username === 'string' && record.username ? record.username : '—',
         email: typeof record.email === 'string' ? record.email : '',
         avatar: typeof record.avatar === 'string' ? record.avatar : '',
+        tenantName: typeof (me.tenant as unknown as { name?: unknown } | null | undefined)?.name === 'string' ? String((me.tenant as unknown as { name: string }).name) : '',
+        role: '',
+        membershipsCount: Array.isArray(me.memberships) ? me.memberships.length : 0,
+        canAccessAllTenants: record.can_access_all_tenants === true,
       });
       // R017 RBAC self-resolution (OrganizationsPage parity, Vue
       // currentTenantRole): the active-tenant membership role — selected
@@ -209,6 +213,7 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
         currentRole === '' || currentRole === 'admin' || currentRole === 'owner' || record.can_access_all_tenants === true,
       );
       setCanSeeAdminSessionSources(currentRole === 'admin' || currentRole === 'owner' || record.can_access_all_tenants === true);
+      setUser((current) => ({ ...current, role: currentRole }));
     }).catch(() => { /* menu falls back to placeholders; the page still works */ });
     return () => { active = false; };
   }, [client]);
@@ -530,6 +535,8 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
   };
 
   const initial = (user.name || '?').charAt(0).toUpperCase();
+  const showTenantIdentityLine = !collapsed && !user.canAccessAllTenants && user.membershipsCount > 1 || (!collapsed && user.canAccessAllTenants);
+  const roleLabel = user.role ? formatMessage(locale, `tenantMember.role.${user.role}`) : '';
 
   return (
     // shell.css → utilities: .plat-shell (flex row, full viewport), .plat-shell__aside
@@ -669,9 +676,18 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
                 {user.avatar ? <img src={user.avatar} alt="" className="w-full h-full object-cover" /> : <span className="text-white text-[12px] font-semibold leading-[1]">{initial}</span>}
               </span>
               {!collapsed && (
-                <span className="flex flex-col gap-[2px] min-w-0 flex-1">
-                  <span className="text-[14px] font-medium text-[#1f2733] whitespace-nowrap overflow-hidden text-ellipsis">{user.name || '—'}</span>
-                  <span className="text-[12px] text-[#66758b] whitespace-nowrap overflow-hidden text-ellipsis">{user.email}</span>
+                <span className="flex min-w-0 flex-1 flex-col gap-[2px]">
+                  {showTenantIdentityLine ? <>
+                    <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[14px] font-semibold tracking-[-0.01em] text-[#1f2733]">{user.tenantName || user.name || '—'}</span>
+                    <span className="flex min-w-0 items-center gap-1 overflow-hidden text-ellipsis whitespace-nowrap text-[12px] leading-[1.35] text-[#66758b]">
+                      {user.name && user.name !== user.tenantName ? <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{user.name}</span> : null}
+                      {user.name && user.name !== user.tenantName && roleLabel ? <span aria-hidden="true" className="text-[#8b97a8]">·</span> : null}
+                      {roleLabel ? <span className="shrink-0">{roleLabel}</span> : null}
+                    </span>
+                  </> : <>
+                    <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[14px] font-medium text-[#1f2733]">{user.name || '—'}</span>
+                    <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[12px] text-[#66758b]">{user.email}</span>
+                  </>}
                 </span>
               )}
             </button>

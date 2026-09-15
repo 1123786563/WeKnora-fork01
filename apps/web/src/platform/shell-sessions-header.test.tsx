@@ -57,16 +57,16 @@ const settle = (ms: number) => act(async () => {
   await new Promise((resolve) => setTimeout(resolve, ms));
 });
 
-function fakeClient(): Record<string, unknown> {
+function fakeClient(me: Record<string, unknown> = { user: { id: 'u1', username: 'tester', email: 'tester@local.dev', avatar: '' } }): Record<string, unknown> {
   return {
-    auth: { me: async () => ({ user: { id: 'u1', username: 'tester', email: 'tester@local.dev', avatar: '' } }) },
+    auth: { me: async () => me },
     sessions: {
       list: async () => ({ data: [], total: 0, page: 1, page_size: 30 }),
     },
   };
 }
 
-async function mountShell(options: { collapsed?: boolean } = {}) {
+async function mountShell(options: { collapsed?: boolean; me?: Record<string, unknown> } = {}) {
   window.localStorage.setItem('weknora:new-user-guide-done:v1', '1');
   if (options.collapsed) window.localStorage.setItem('weknora_sidebar_collapsed', 'true');
   const container = document.createElement('div');
@@ -75,7 +75,7 @@ async function mountShell(options: { collapsed?: boolean } = {}) {
   await act(async () => {
     mountedRoot?.render(React.createElement(
       PlatformShell,
-      { client: fakeClient() as never, onLogout: () => undefined, children: React.createElement('div', { 'data-testid': 'outlet-page' }, 'page') },
+      { client: fakeClient(options.me) as never, onLogout: () => undefined, children: React.createElement('div', { 'data-testid': 'outlet-page' }, 'page') },
     ));
   });
   await settle(20);
@@ -134,4 +134,20 @@ test('(d) ⌘1 / Ctrl+1 never navigate app-wide (Vue binds ⌘1-9 only inside th
   pressKey({ key: '1', ctrlKey: true });
   await settle(5);
   assert.equal(window.location.href, before, 'no app-wide ⌘1 navigation');
+});
+
+test('(e) multi-space identity shows the active tenant and localized role like Vue UserMenu', async () => {
+  await mountShell({
+    me: {
+      user: { id: 'u1', username: 'tester', email: 'tester@local.dev', avatar: '', can_access_all_tenants: false },
+      tenant: { id: 1, name: '团队空间' },
+      memberships: [{ tenant_id: 1, role: 'admin' }, { tenant_id: 2, role: 'viewer' }],
+    },
+  });
+  const button = document.querySelector('[data-guide="user-menu"]');
+  assert.ok(button);
+  assert.match(button.textContent ?? '', /团队空间/);
+  assert.match(button.textContent ?? '', /tester/);
+  assert.match(button.textContent ?? '', /管理员/);
+  assert.doesNotMatch(button.textContent ?? '', /tester@local\.dev/);
 });
