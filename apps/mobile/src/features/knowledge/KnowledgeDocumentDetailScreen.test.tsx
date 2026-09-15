@@ -33,7 +33,7 @@ async function mount(locale: 'zh-CN' | 'en-US') {
         : path === 'react-native'
           ? `import React from 'react'; const Box=({children})=><div>{children}</div>; export const AppState={addEventListener:()=>({remove:()=>{}})}; export const View=Box; export const SafeAreaView=Box; export const ScrollView=Box; export const Text=({children})=><span>{children}</span>; export const ActivityIndicator=({accessibilityLabel})=><span aria-label={accessibilityLabel}>loading</span>; export const Pressable=({children,onPress,disabled})=><button disabled={disabled} onClick={onPress}>{children}</button>;`
         : path.endsWith('platform/files.ts')
-            ? `export const downloadKnowledgeFile=async()=>'/tmp/guide.md'; export const readNativeTextFile=async()=>'# Guide'; export const shareNativeFile=async()=>{};`
+            ? `export const downloadKnowledgeFile=async()=>{if(globalThis.__documentDetailPreviewDownload) await globalThis.__documentDetailPreviewDownload; return '/tmp/guide.md';}; export const readNativeTextFile=async()=>'# Guide'; export const shareNativeFile=async()=>{};`
         : `import React from 'react'; export const NativeArtifactPreview=({labels,error})=><div>{labels?.back} {labels?.share} {labels?.loading} {labels?.downloadOnly} {error}</div>;` }));
     } }],
   });
@@ -91,4 +91,23 @@ test('document detail renders localized en-US labels', async () => {
     assert.match(page.host.textContent ?? '', /Download and share/);
     assert.match(page.host.textContent ?? '', /Document ID/);
   } finally { await page.close(); }
+});
+
+test('document detail disables download actions while native preview is loading', async () => {
+  let resolvePreview!: () => void;
+  const previewDownload = new Promise<void>((resolve) => { resolvePreview = resolve; });
+  (globalThis as { __documentDetailPreviewDownload?: Promise<void> }).__documentDetailPreviewDownload = previewDownload;
+  const page = await mount('en-US');
+  try {
+    const buttons = [...page.host.querySelectorAll('button')];
+    const preview = buttons.find((button) => button.textContent === 'Preview')!;
+    const download = buttons.find((button) => button.textContent === 'Download and share')!;
+    await act(async () => { preview.click(); await Promise.resolve(); });
+    assert.equal(preview.disabled, true);
+    assert.equal(download.disabled, true);
+  } finally {
+    resolvePreview();
+    delete (globalThis as { __documentDetailPreviewDownload?: Promise<void> }).__documentDetailPreviewDownload;
+    await page.close();
+  }
 });

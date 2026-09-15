@@ -60,6 +60,7 @@ export function KnowledgeDocumentDetailScreen() {
       if (generation === previewGeneration.current) setError(label('knowledgeBase.detail.previewUnavailable', { status: statusLabel }));
       return;
     }
+    setBusy(true);
     setPreview({ loading: true });
     try {
       const uri = await downloadKnowledgeFile({ baseURL: runtime.baseURL, path: runtime.client.knowledge.documents.previewPath(id), fileName: document.file_name || document.title || 'preview', credential: runtime.credential });
@@ -68,6 +69,8 @@ export function KnowledgeDocumentDetailScreen() {
       if (generation === previewGeneration.current) setPreview({ loading: false, uri, content });
     } catch (cause) {
       if (generation === previewGeneration.current) setPreview({ loading: false, error: cause instanceof Error ? cause.message : label('knowledgeBase.detail.previewFailed') });
+    } finally {
+      if (generation === previewGeneration.current) setBusy(false);
     }
   }
 
