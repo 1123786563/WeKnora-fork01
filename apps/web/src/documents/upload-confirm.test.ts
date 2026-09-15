@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getUploadConfirmDefaultSection, getUploadConfirmSections, isUploadConfirmDismissible, validateUploadConfirm, type UploadConfirmSection } from './upload-confirm.ts';
+import { getUploadConfirmButtonOrder, getUploadConfirmDefaultSection, getUploadConfirmSections, getUploadConfirmSourceItems, isUploadConfirmDismissible, validateUploadConfirm, type UploadConfirmSection } from './upload-confirm.ts';
 
 const validBase = {
   mode: 'file' as const,
@@ -75,4 +75,23 @@ test('detects media in URL paths without treating query strings as extensions', 
 test('keeps the dialog dismissible until submission starts', () => {
   assert.equal(isUploadConfirmDismissible(false), true);
   assert.equal(isUploadConfirmDismissible(true), false);
+});
+
+test('keeps Vue source preview order and exposes removable source items', () => {
+  assert.deepEqual(getUploadConfirmSourceItems({
+    files: [{ name: 'notes.md' }, { name: 'diagram.png' }],
+    urls: ['https://example.test/doc'],
+    multimodalEnabled: false,
+    multimodalModelId: '',
+    asrEnabled: false,
+    asrModelId: '',
+  }), [
+    { kind: 'url', index: 0, label: 'https://example.test/doc', meta: 'URL' },
+    { kind: 'file', index: 0, label: 'notes.md', meta: 'File' },
+    { kind: 'file', index: 1, label: 'diagram.png', meta: 'File' },
+  ]);
+});
+
+test('keeps cancel before confirm in every Vue dialog mode', () => {
+  assert.deepEqual(getUploadConfirmButtonOrder(), ['cancel', 'confirm']);
 });

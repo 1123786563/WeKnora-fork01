@@ -23,6 +23,14 @@ export interface UploadConfirmValidation {
   firstIssueSection: UploadConfirmSection | null;
 }
 
+export interface UploadConfirmSourceItem {
+  kind: 'file' | 'url';
+  index: number;
+  label: string;
+  meta: 'File' | 'URL';
+}
+
+
 const uploadConfirmSections: UploadConfirmSection[] = ['tags', 'parser', 'chunking', 'multimodal', 'asr', 'question'];
 
 const imageExtensions = new Set(['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp']);
@@ -57,6 +65,18 @@ export function getUploadConfirmSections(mode: UploadConfirmMode): UploadConfirm
 export function isUploadConfirmDismissible(loading: boolean): boolean {
   return !loading;
 }
+
+export function getUploadConfirmSourceItems(input: Pick<UploadConfirmInput, 'files' | 'urls'>): UploadConfirmSourceItem[] {
+  return [
+    ...(input.urls ?? []).map((label, index) => ({ kind: 'url' as const, index, label, meta: 'URL' as const })),
+    ...(input.files ?? []).map((file, index) => ({ kind: 'file' as const, index, label: file.name, meta: 'File' as const })),
+  ];
+}
+
+export function getUploadConfirmButtonOrder(): ['cancel', 'confirm'] {
+  return ['cancel', 'confirm'];
+}
+
 
 export function getUploadConfirmDefaultSection(input: UploadConfirmInput): UploadConfirmSection {
   if (input.mode === 'reparse') return 'parser';

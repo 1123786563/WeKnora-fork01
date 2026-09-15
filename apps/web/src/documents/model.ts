@@ -40,6 +40,19 @@ export function normalizeDocumentPage(value: unknown): DocumentPage {
 }
 
 export interface UploadFileLike { name: string; size: number }
+export interface UploadProgressTask { uploadId: string; fileName?: string; progress: number; status: 'uploading' | 'success' | 'error'; error?: string }
+export interface UploadProgressSummary { total: number; completed: number; progress: number; hasError: boolean }
+
+export function summarizeUploadProgress(tasks: UploadProgressTask[]): UploadProgressSummary {
+  if (tasks.length === 0) return { total: 0, completed: 0, progress: 0, hasError: false };
+  return {
+    total: tasks.length,
+    completed: tasks.filter((task) => task.status !== 'uploading').length,
+    progress: Math.min(100, Math.max(0, Math.round(tasks.reduce((sum, task) => sum + Math.min(100, Math.max(0, task.progress)), 0) / tasks.length))),
+    hasError: tasks.some((task) => task.status === 'error'),
+  };
+}
+
 export interface UploadRules { maxBytes?: number; acceptedExtensions?: string[] }
 export function validateUpload(files: UploadFileLike[], rules: UploadRules = {}): { valid: boolean; errors: string[] } {
   if (files.length === 0) return { valid: false, errors: ['select-file'] };

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { KnowledgeDocument, KnowledgeDocumentListParams, KnowledgeDocumentUploadInput } from '@weknora/api-client';
 import { Button, Card, Status } from '@weknora/ui';
-import { buildProcessingTimeline, canDocumentAction, getDocumentStatus, normalizeDocumentPage, toggleDocumentSelection, validateUpload, type DocumentPage } from './model.ts';
+import { buildProcessingTimeline, canDocumentAction, getDocumentStatus, normalizeDocumentPage, summarizeUploadProgress, toggleDocumentSelection, validateUpload, type DocumentPage, type UploadProgressTask } from './model.ts';
 
 export interface DocumentsApi {
   list: (knowledgeBaseId: string, params?: KnowledgeDocumentListParams) => Promise<unknown>;
@@ -47,6 +47,7 @@ export function DocumentsPage({ knowledgeBaseId, api, canView = true, canEdit = 
   const [preview, setPreview] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadState, setUploadState] = useState<AsyncState>('idle');
+  const [uploadTasks, setUploadTasks] = useState<UploadProgressTask[]>([]);
   const [actionState, setActionState] = useState<AsyncState>('idle');
   const [files, setFiles] = useState<File[]>([]);
   const [tagInput, setTagInput] = useState('');
@@ -98,12 +99,24 @@ export function DocumentsPage({ knowledgeBaseId, api, canView = true, canEdit = 
     if (!validation.valid || !api.upload) { setUploadError(validation.errors[0] ?? 'upload-unavailable'); return; }
     if (uploadState === 'submitting') return;
     setUploadState('submitting'); setUploadError(null);
+    const tasks: UploadProgressTask[] = files.map((file, index) => ({ uploadId: `${file.name}-${index}`, fileName: file.name, progress: 0, status: 'uploading' }));
+    setUploadTasks(tasks);
     try {
-      for (const file of files) await api.upload(knowledgeBaseId, { file, fileName: file.name, tag_ids: tagInput.split(',').map((tag) => tag.trim()).filter(Boolean) });
+      for (const [index, file] of files.entries()) {
+        try {
+          await api.upload(knowledgeBaseId, { file, fileName: file.name, tag_ids: tagInput.split(',').map((tag) => tag.trim()).filter(Boolean) });
+          setUploadTasks((current) => current.map((task, taskIndex) => taskIndex === index ? { ...task, progress: 100, status: 'success' } : task));
+        } catch (cause) {
+          setUploadTasks((current) => current.map((task, taskIndex) => taskIndex === index ? { ...task, status: 'error', error: errorMessage(cause) } : task));
+          throw cause;
+        }
+      }
       setFiles([]); if (fileInput.current) fileInput.current.value = ''; await load();
     } catch (cause) { setUploadError(errorMessage(cause)); }
     finally { setUploadState('idle'); }
   };
+
+  const uploadSummary = summarizeUploadProgress(uploadTasks);
 
   const selectedIds = [...selected];
   const mutateSelected = (operation: () => Promise<unknown>, message: string) => {
@@ -131,6 +144,12 @@ export function DocumentsPage({ knowledgeBaseId, api, canView = true, canEdit = 
         <input aria-label="Upload tags" value={tagInput} onChange={(event) => setTagInput(event.target.value)} placeholder="Tags, comma separated" />
         <Button type="button" onClick={() => void upload()} disabled={uploadState === 'submitting'}>{uploadState === 'submitting' ? 'Uploading…' : 'Upload'}</Button>
         {uploadError ? <Status tone="error">Upload failed: {uploadError}</Status> : null}
+        {uploadTasks.length > 0 ? <div aria-label="Upload progress" style={{ marginTop: 12 }}>
+          <div>{uploadSummary.completed}/{uploadSummary.total} uploaded · {uploadSummary.progress}%</div>
+          <progress max={100} value={uploadSummary.progress} aria-label="Upload progress" />
+          {uploadSummary.hasError ? <Status tone="error">One or more files failed. Retry the upload.</Status> : null}
+          <ul>{uploadTasks.map((task) => <li key={task.uploadId}>{task.fileName}: {task.status === 'uploading' ? `${task.progress}%` : task.status === 'success' ? 'Uploaded' : `Failed: ${task.error}`}</li>)}</ul>
+        </div> : null}
       </section> : <Status>Read-only access: upload and document mutations are unavailable.</Status>}
       {selected.size > 0 ? <div role="region" aria-label="Batch document actions" style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
         <span>{selected.size} selected</span>

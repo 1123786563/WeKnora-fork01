@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   buildProcessingTimeline,
   canDocumentAction,
+  summarizeUploadProgress,
   getDocumentStatus,
   normalizeDocumentPage,
   toggleDocumentSelection,
@@ -74,4 +75,12 @@ test('builds a processing timeline that distinguishes failed and completed enric
   assert.deepEqual(buildProcessingTimeline({ id: '3', parse_status: 'completed' }).map((step) => step.key), [
     'uploaded', 'parsing', 'enriching', 'indexed',
   ]);
+});
+
+test('summarizes upload progress with completed count and failure state', () => {
+  assert.deepEqual(summarizeUploadProgress([
+    { uploadId: '1', fileName: 'a.pdf', progress: 40, status: 'uploading' },
+    { uploadId: '2', fileName: 'b.pdf', progress: 100, status: 'success' },
+    { uploadId: '3', fileName: 'c.pdf', progress: 20, status: 'error', error: 'network' },
+  ]), { total: 3, completed: 2, progress: 53, hasError: true });
 });
