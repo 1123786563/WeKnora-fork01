@@ -8,6 +8,7 @@
     "./button": "./src/button.tsx",
     "./checkbox": "./src/checkbox.tsx",
     "./input": "./src/input.tsx",
+    "./range": "./src/range.tsx",
     "./textarea": "./src/textarea.tsx",
     "./theme.css": "./src/theme.css"
   },
