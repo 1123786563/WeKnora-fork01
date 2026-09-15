@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AgentConfiguration, InstalledSkill, ModelConfiguration, SandboxConfigRecord, SkillCatalog, SkillCatalogInstallation, SkillConfiguration, SkillFileContent, SkillInstallGuidanceState, WeKnoraClient } from '@weknora/api-client';
 import { initialSkillTimelineState, installProgressPercent, reduceSkillTimelineFrame, type SkillInstallProgressEvent, type SkillTimelineState } from '@weknora/domain/sandbox/skill-install';
-import { Button, Card, Dialog, Status } from '@weknora/ui';
+import { Button, Card, Checkbox, Dialog, Input, Select, Status, Textarea } from '@weknora/ui';
 import { renderChatMarkdown } from '../../../../packages/views/src/chat/markdown.ts';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 import { observeUploadProgress } from '../platform/http.ts';
@@ -575,10 +575,10 @@ async function ensureInstallerModel(installer: InstallerModel, targets: readonly
 
 function InstallerModelSelect({ installer, t }: { installer: InstallerModel; t: (key: string) => string }) {
   return <label className="grid gap-[.35rem] text-[#27364d] font-semibold">{t('settings.sandbox.skillInstallerModel')}
-    <select className="w-full [font:inherit]" value={installer.modelId} disabled={installer.saving} onChange={(event) => installer.onChange(event.target.value)}>
+    <Select className="w-full [font:inherit]" value={installer.modelId} disabled={installer.saving} onChange={(event) => installer.onChange(event.target.value)}>
       <option value="">{t('settings.sandbox.skillInstallerModelRequired')}</option>
       {installer.models.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
-    </select>
+    </Select>
   </label>;
 }
 
@@ -624,7 +624,7 @@ function SandboxPickList({ client, item, configs, mode, sessionIds, targetIds, o
   return <div className="grid gap-2">
     {rows.map((row) => row.selectable ? (
       <label key={row.config.id} className="flex items-center gap-2.5 px-3 py-[9px] border border-[#e6ebf3] rounded-card bg-white">
-        <input type="checkbox" checked={targetIds.includes(row.config.id)} onChange={(event) => onToggle(row.config.id, event.target.checked)} />
+        <Checkbox checked={targetIds.includes(row.config.id)} onChange={(event) => onToggle(row.config.id, event.target.checked)} />
         <span className="flex items-center gap-2 flex-1 min-w-0">
           <span className="shrink-0 px-1.5 py-px rounded-pill bg-[#eef4ff] text-primary-deep text-[11px] font-medium leading-4">{backendLabel(row.config.sandbox_type)}</span>
           <span className="flex flex-col min-w-0"><span className="text-[13px] font-medium text-ink overflow-hidden text-ellipsis whitespace-nowrap">{row.config.name}</span><span className="text-xs text-muted overflow-hidden text-ellipsis whitespace-nowrap">{metaLine(row.config)}</span></span>
@@ -866,7 +866,7 @@ function AddSkillWizard({ client, open, catalog, configs, installer, t, onClose,
         <h4>{t('settings.sandbox.skillSourceSection')}</h4>
         <p className="wk-muted text-muted">{t('settings.sandbox.skillSourceSectionHint', { size: maxSkillBundleMB() })}</p>
         <label>{t('settings.sandbox.skillSourcePlaceholder')}
-          <input value={source} placeholder={t('settings.sandbox.skillSourcePlaceholder')} disabled={addBusy || Boolean(registeredId)} onChange={(event) => setSource(event.target.value)} />
+          <Input value={source} placeholder={t('settings.sandbox.skillSourcePlaceholder')} disabled={addBusy || Boolean(registeredId)} onChange={(event) => setSource(event.target.value)} />
         </label>
       </section>
       <section className="wk-settings-editor my-4 grid gap-[.8rem] max-w-[620px] [&_label]:grid [&_label]:gap-[.35rem] [&_label]:text-[#27364d] [&_label]:font-semibold [&_input]:w-full [&_input]:box-border [&_input]:border [&_input]:border-[#cbd5e1] [&_input]:rounded-control [&_input]:bg-white [&_input]:text-ink [&_input]:[font:inherit] [&_input]:px-[.65rem] [&_input]:py-[.55rem] [&_textarea]:w-full [&_textarea]:box-border [&_textarea]:border [&_textarea]:border-[#cbd5e1] [&_textarea]:rounded-control [&_textarea]:bg-white [&_textarea]:text-ink [&_textarea]:[font:inherit] [&_textarea]:px-[.65rem] [&_textarea]:py-[.55rem] [&_select]:w-full [&_select]:[font:inherit]">
@@ -1208,7 +1208,7 @@ function SkillInstallTimeline({ client, configId, skillId, sessionId, messageId,
       ))}
     </div>
     {live || canRetry ? <div className="sticky bottom-0 z-[1] shrink-0 mt-3 pt-3 bg-[var(--wk-dialog-bg,#fff)] border-t border-line-neutral">
-      <textarea value={guidanceText} maxLength={10000} rows={2} disabled={sendingGuidance}
+      <Textarea value={guidanceText} maxLength={10000} rows={2} disabled={sendingGuidance}
         className="box-border w-full resize-y min-h-[44px] max-h-[132px] border border-line-control rounded-control bg-white text-ink [font:inherit] text-[13px] px-[10px] py-1.5 disabled:bg-canvas disabled:text-muted"
         placeholder={t('settings.sandbox.skillGuidance.placeholder')}
         onChange={(event) => setGuidanceText(event.target.value)} />
@@ -1471,7 +1471,7 @@ function ManageSkillDialog({ client, open, target, t, onClose, onChanged, onToas
               {env.description ? <span className="text-xs text-muted">{env.description}</span> : null}
             </div>
             <div className="flex items-center gap-2 [&_input]:flex-1 [&_input]:min-w-0 [&_input]:box-border [&_input]:border [&_input]:border-line-control [&_input]:rounded-control [&_input]:px-[10px] [&_input]:py-1.5 [&_input]:[font:inherit] [&_input]:text-[13px]">
-              <input type="password" autoComplete="new-password" spellCheck={false} aria-label={env.name}
+              <Input type="password" autoComplete="new-password" spellCheck={false} aria-label={env.name}
                 placeholder={env.isSet ? t('settings.sandbox.skillEnv.placeholderSet') : t('settings.sandbox.skillEnv.placeholderUnset')}
                 value={envDrafts[env.name] ?? ''} disabled={busy || envSaving}
                 onChange={(event) => setEnvDrafts((current) => ({ ...current, [env.name]: event.target.value }))} />
