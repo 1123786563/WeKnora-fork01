@@ -550,7 +550,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
       <aside className={collapsed
         ? 'box-border flex flex-col min-w-[60px] w-[60px] pt-[8px] px-[3px] pb-[6px] bg-[#f6f8fa] border-r border-[#e7ebf0] shadow-[1px_0_0_rgba(0,0,0,0.02)] overflow-hidden transition-[width,min-width] duration-[250ms] ease-[ease]'
         : 'box-border flex flex-col min-w-[260px] w-[260px] pt-[8px] px-[6px] pb-[6px] bg-[#f6f8fa] border-r border-[#e7ebf0] shadow-[1px_0_0_rgba(0,0,0,0.02)] overflow-hidden transition-[width,min-width] duration-[250ms] ease-[ease]'}>
-        <div className="flex items-center justify-between h-[50px] shrink-0 pr-[10px] pl-[14px]">
+        <div className="flex items-center justify-between h-[42px] shrink-0 pr-[10px] pl-[14px]">
           <a className="flex min-w-0 flex-1 items-center gap-[8px] overflow-hidden no-underline text-inherit" href="/platform/knowledge-bases" aria-label="WeKnora">
             {!collapsed && <img className="block h-auto w-[128px]" src={weknoraLogo} alt="" />}
           </a>
@@ -619,7 +619,7 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
               <ul>) rides along as an arbitrary-variant utility so the
               fallback chat sidebar (outside the shell) keeps its flush list. */}
           {!collapsed && (
-            <nav className="mt-[8px] mb-[4px] pt-[8px] border-t border-[#e7ebf0] [&_ul]:px-[6px]" aria-label={labels.myChats}>
+            <nav className="mb-[4px] pt-[8px] border-t border-[#e7ebf0] [&_h3]:mt-0 [&_ul]:px-[6px] [&_li>button]:py-[5px]" aria-label={labels.myChats}>
               {sessionsLoadError && !sessionsLoading ? <p className="mx-[14px] my-2 text-xs text-[#b42318]" role="status">
                 {labels.sessionLoadError}{' '}<button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-xs text-[#07c05f] underline" onClick={retryShellSessions}>{t('common.retry')}</button>
               </p> : null}
