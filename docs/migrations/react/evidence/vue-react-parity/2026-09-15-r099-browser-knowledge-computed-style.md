@@ -14,7 +14,7 @@
 | 页面根容器 | `MAIN`，`x=260,w=1095`，padding `48px 20px` | `.main`，`x=0,w=1355`，白色背景，14px | React 将内容放入独立主区；Vue 使用整页 flex 根容器 |
 | 知识库卡片 | 圆角 8px、1px 边框、绿色渐变背景、1px/3px 阴影 | 结果节点为 `.card-title-text` 文本，未能从同一节点取得卡片盒模型 | DOM 结构与采样节点不等价，不能直接判定卡片样式 parity |
 
-React 卡片的渐变、边框和阴影在浏览器 computed-style 中实际生效；React `main` 的 `max-w-[960px]` 类未反映为 computed `max-width`（返回 `none`），需后续确认这是预期宽布局还是 Tailwind 类覆盖问题。
+React 卡片的渐变、边框和阴影在浏览器 computed-style 中实际生效；React `main` 的 `max-w-[960px]` 类在 computed 中返回 `max-width: none`；追踪 `PlatformShell.tsx` 后确认这是 Shell 对 `.wk-page` 的全宽覆盖规则（`[&_.wk-page]:max-w-none!`），属于预期的受保护页面布局行为，不再作为待修复问题。
 
 ## 结论
 
