@@ -360,6 +360,7 @@ function McpMetadataSection({
   const [approvals, setApprovals] = useState<ToolApprovalRow[]>([]);
   const [policyError, setPolicyError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [policyBusy, setPolicyBusy] = useState(false);
   const [busyTools, setBusyTools] = useState<Set<string>>(new Set());
   const busyToolsRef = useRef(new Set<string>());
   const [error, setError] = useState<string | null>(null);
@@ -368,6 +369,7 @@ function McpMetadataSection({
   async function load(refresh = false) {
     const generation = ++loadGeneration.current;
     setBusy(true);
+    setPolicyBusy(!refresh);
     onBusyChange(true);
     setError(null);
     setPolicyError(null);
@@ -393,19 +395,22 @@ function McpMetadataSection({
             cause instanceof Error ? cause.message : t("mcpMetadata.failed"),
           );
       });
-    const approvalsPromise = client.configuration.mcp.toolApprovals.list(serviceId)
-      .then((rows) => {
-        if (generation === loadGeneration.current) setApprovals(rows);
-      })
-      .catch(() => {
-        if (generation === loadGeneration.current) {
-          setApprovals([]);
-          setPolicyError(t("mcpMetadata.policyLoadFailed"));
-        }
-      });
+    const approvalsPromise = refresh
+      ? Promise.resolve()
+      : client.configuration.mcp.toolApprovals.list(serviceId)
+        .then((rows) => {
+          if (generation === loadGeneration.current) setApprovals(rows);
+        })
+        .catch(() => {
+          if (generation === loadGeneration.current) {
+            setApprovals([]);
+            setPolicyError(t("mcpMetadata.policyLoadFailed"));
+          }
+        });
     await Promise.all([metadataPromise, approvalsPromise]);
     if (generation === loadGeneration.current) {
       setBusy(false);
+      setPolicyBusy(false);
       onBusyChange(false);
     }
   }
@@ -505,7 +510,7 @@ function McpMetadataSection({
             tools={metadata.tools}
             serviceId={metadata.stale ? undefined : serviceId}
             approvals={approvals}
-            busy={busy || metadata.stale}
+            busy={policyBusy || metadata.stale}
             busyTools={busyTools}
             policyError={policyError}
             onRetryPolicies={() => void load()}

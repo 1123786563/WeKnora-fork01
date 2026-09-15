@@ -234,6 +234,33 @@ test('MCP tools render from a cached Vue snapshot while policy loading keeps swi
   }
 });
 
+test('MCP metadata refresh keeps cached tool policies interactive like Vue', async () => {
+  const refreshGate = deferred<StubMetadata>();
+  const root = await mountEditor(React.createElement(McpSettingsPanel, {
+    client: mcpStubClient({ metadataRefresh: () => refreshGate.promise }),
+    initialServices: [{ id: 'svc-1', name: 'Docs', transport_type: 'sse', enabled: true, is_builtin: false }],
+    role: 'admin',
+  }));
+  try {
+    await act(async () => { findButton('编辑')?.click(); });
+    const nameInput = document.querySelector('input[placeholder="请输入服务名称"]') as HTMLInputElement;
+    const urlInput = document.querySelector('input[placeholder="https://example.com/mcp"]') as HTMLInputElement;
+    await act(async () => { setInputValue(nameInput, 'Docs'); setInputValue(urlInput, 'https://example.com/mcp'); });
+    await act(async () => { submitForm(document.querySelector('.wks-mcp-drawer form') as HTMLFormElement); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    const refreshButton = findButton('刷新');
+    assert.ok(refreshButton, 'cached metadata exposes refresh');
+    const switches = Array.from(document.querySelectorAll('[role="switch"]')) as HTMLButtonElement[];
+    assert.equal(switches.length, 2);
+    assert.ok(switches.every((control) => !control.disabled), 'cached policies are interactive before refresh');
+    await act(async () => { refreshButton?.click(); });
+    assert.ok(switches.every((control) => !control.disabled), 'Vue keeps cached policy controls enabled while metadata refreshes');
+    await act(async () => { refreshGate.resolve({ tools: [{ name: 'search' }], serverName: 'Srv', serverVersion: '1.0', syncedAt: '2026-09-14T00:00:00Z', stale: false }); await refreshGate.promise; });
+  } finally {
+    await unmountEditor(root);
+  }
+});
+
 function findButton(label: string): HTMLButtonElement | undefined {
   return Array.from(document.querySelectorAll('button')).find((button) => (button.textContent ?? '').includes(label)) as HTMLButtonElement | undefined;
 }
