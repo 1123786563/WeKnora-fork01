@@ -1,5 +1,17 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-15 Round R326 — Chat/Embed/KB upload 并行修复
+
+- 修复 Chat 消息 bookmark 宿主回调启用语义、Embed 上传权限 conjunction、KB 文档取消/摘要状态文案与 WebSearch provider card anatomy/动作；均未修改 Vue，Embed 保持独立入口。
+- Chat views 75/75、Web chat/documents/websearch focused 45/45、Embed 8/8、Documents 129/129、Web full 933/933、mobile 191/191、typecheck/diff check 已通过；provider card 证据：`evidence/vue-react-parity/2026-09-15-r325-websearch-provider-cards.md`。
+- 仍未闭环：认证浏览器全状态、真实后端 mutation、Wails/native 逐功能验收及 Embed 受保护资源预览。
+
+## 2026-09-15 Round R324 — Chat/文档/Platform/Settings/Mobile 并行批次
+
+- 完成 KB 文档详情标题行、Chat 附件/会话来源本地化、Platform 租户切换菜单关闭、Ollama 可用性布局、移动端文档递归查询条件等有限差异修复；未改 Vue，移动端保持原生组件体系。
+- Web focused batch 12/12、Platform 141/141 + 6/6、Documents/Knowledge 142/142、Mobile 191/191、Web typecheck、mobile typecheck、diff check 均通过；证据：`evidence/vue-react-parity/2026-09-15-r324-runtime-surfaces.md`。
+- 认证浏览器全状态、真实后端 mutation、Wails/native 编译运行和 release 平台证据仍未闭环。
+
 ## 2026-09-15 Round R323 — Login typography/controls live recheck
 
 - 同一 1440×900、zh-CN 视口重新采集 Vue/React 登录页；标题、标签和 40px 输入控件按 Vue 实测 token 修正，React/Vue 表单底部几何已对齐到同一 y=659.30。
@@ -2715,3 +2727,37 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Replaced React platform-shell generic chat/book/bot/users paths with the corresponding Vue `prefixIcon.svg`, `zhishiku.svg`, `agent.svg`, and `organization.svg` geometry, while preserving navigation semantics and active-state behavior.
 - Runtime paired observation on the authenticated `Parity KB Demo` fixture at approximately 1355x720 confirmed the KB list layout/card/state parity and the updated rail icon shapes.
 - Validation: focused shell tests 30/30, Web 911/911, Web typecheck, and `git diff --check` passed. See `evidence/vue-react-parity/2026-09-15-r313-platform-nav-icon-assets.md`.
+
+## 2026-09-15 Round R327 — Authenticated backend runtime blocked-env
+
+- Attempted to start the existing Docker `app` service for same-condition Vue/React browser verification. Docker began pulling `wechatopenai/weknora-app:latest`, but no `app` container was running when checked; `http://localhost:8080/health` was unreachable.
+- Evidence: `evidence/vue-react-parity/2026-09-15-r327-backend-runtime-blocked-env.md`.
+- Classification: `blocked-env`. This does not reduce the remaining authenticated backend, permission, Wails, native-device, or full visual-comparison gaps in the parity matrix.
+
+## 2026-09-15 Round R328 — Live backend login negative paired capture
+
+- The Docker `app` service was recovered with container-safe `REDIS_ADDR=redis:6379` and `DB_HOST=postgres` overrides; `/health` returned `{"status":"ok"}`.
+- Fresh Vue and React browser contexts at 1440×900/zh-CN both reached the real auth endpoints and received HTTP 401 for the recorded parity account, remaining on `/login` with localized invalid-credential copy.
+- Screenshots: `artifacts/parity-20260915/vue-backend-auth.png`, `artifacts/parity-20260915/react-backend-auth.png`.
+- Evidence: `evidence/vue-react-parity/2026-09-15-r328-backend-login-negative-paired.md`. This closes only the live negative auth capture; authenticated protected-page parity remains open because the account is absent in the attached database.
+
+## 2026-09-15 Round R329 — Settings default deep-link normalization
+
+- Live paired capture found Vue normalizes direct `/platform/settings` to `?section=general`, while React retained the bare path. React now performs the same history-preserving normalization on mount without changing section behavior.
+- Focused Settings tests 16/16, Web typecheck, and `git diff --check` passed.
+
+## 2026-09-15 Round R330 — Guide transition recheck
+
+- Rechecked with explicit visible-button selection: both Vue and React initially show the seven-step global guide and, after `跳过引导`, both show the one-step empty-knowledge-base contextual guide.
+- The previous apparent guide mismatch was a transition timing/selector artifact; no guide code change was required. Evidence: `evidence/vue-react-parity/2026-09-15-r330-guide-transition-verification.md`.
+
+## 2026-09-15 Round R331 — Settings default deep-link live verification
+
+- Fresh authenticated Vue/React browser contexts both resolve direct `/platform/settings` to `/platform/settings?section=general`.
+- Evidence: `evidence/vue-react-parity/2026-09-15-r331-settings-deeplink-live.md`.
+
+## 2026-09-15 Round R332 — Shared page background token correction
+
+- Live computed-style comparison on the authenticated Agents page found Vue body background `rgb(238, 238, 238)` while React inherited transparent background.
+- React shared stylesheet now maps `body` to the semantic `--wk-app-background` token with Vue-compatible `#eee` fallback.
+- Browser computed style, Web typecheck, and `git diff --check` passed; full visual and responsive regression remains open.

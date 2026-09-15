@@ -31,6 +31,14 @@ function rowId(row: ResourceRow): string {
 
 function rowText(row: ResourceRow, key: string): string { return typeof row[key] === 'string' ? row[key] as string : ''; }
 
+function nestedText(row: ResourceRow, objectKey: string, key: string): string {
+  const value = row[objectKey];
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return '';
+  return typeof (value as Record<string, unknown>)[key] === 'string' ? (value as Record<string, string>)[key] : '';
+}
+
+function providerInitial(provider: string): string { return (provider.trim().charAt(0) || '?').toUpperCase(); }
+
 function safeConfig(value: unknown): Record<string, unknown> {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return {};
   return Object.fromEntries(Object.entries(value as Record<string, unknown>).filter(([key]) => {
@@ -136,5 +144,32 @@ export function ResourceSettingsPanel({ client, section, initialValue }: { clien
     catch (reason) { setError(reason instanceof Error ? reason.message : copy.setDefaultFailed); setBusy(false); }
   }
 
-  return <div className="wk-settings-resource"><Card><h3>{editingId ? t(keys.edit) : t(keys.add)}</h3>{error ? <Status tone="error">{error}</Status> : null}{notice ? <Status tone="success">{notice}</Status> : null}<form className="wk-settings-editor my-4 grid max-w-[620px] gap-[.8rem] [&_label]:grid [&_label]:gap-[.35rem] [&_label]:text-[#27364d] [&_label]:font-semibold" onSubmit={(event) => void save(event)}><label>{t(keys.name)}<Input required value={name} onChange={(event) => setName(event.target.value)} /></label><label>{copy.type}<Input required value={type} onChange={(event) => setType(event.target.value)} placeholder={copy.typePlaceholder} /></label><label>{copy.safeConfig}<Textarea rows={4} value={configText} onChange={(event) => setConfigText(event.target.value)} /></label><div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"><Button type="submit" loading={busy}>{editingId ? t('common.save') : t(keys.add)}</Button>{editingId ? <Button type="button" disabled={busy} onClick={clearForm}>{t('common.cancel')}</Button> : null}</div></form></Card><Card><div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col"><div><h3>{t(keys.list)}</h3><p className="wk-muted text-muted m-0">{copy.securityHint}</p></div><Button type="button" disabled={busy} onClick={() => void refresh()}>{t('common.refresh')}</Button></div>{rows.length === 0 ? <Status>{t(keys.empty)}</Status> : <ul className="wk-list m-0 list-none p-0">{rows.map((row, index) => { const id = rowId(row); return <li key={id || index} className="flex items-baseline justify-between gap-4 border-b border-line-soft py-[0.9rem]"><div className="wk-list-item-copy grid gap-[0.2rem] min-w-0"><strong>{rowText(row, 'name') || id || copy.unnamed}</strong><span className="font-mono text-[0.8rem] text-muted">{rowText(row, 'type') || copy.typeUnavailable}{row.default === true ? ` · ${copy.defaultLabel}` : ''}</span></div><div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"><Button type="button" disabled={!id || busy} onClick={() => edit(row)}>{t('common.edit')}</Button><Button type="button" disabled={!id || busy} loading={busy} onClick={() => void test(id)}>{t(keys.test)}</Button>{api.setDefault ? <Button type="button" disabled={!id || busy} onClick={() => void setDefault(id)}>{t(keys.setDefault)}</Button> : null}<Button type="button" disabled={!id || busy} onClick={() => void remove(id)}>{t('common.delete')}</Button></div></li>; })}</ul>}</Card></div>;
+  const webSearchCards = section === 'websearch' ? <div className="provider-grid grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
+    {rows.map((row, index) => {
+      const id = rowId(row);
+      const provider = rowText(row, 'provider') || rowText(row, 'type');
+      const nameValue = rowText(row, 'name') || id || copy.unnamed;
+      const description = rowText(row, 'description');
+      const proxyUrl = nestedText(row, 'parameters', 'proxy_url');
+      return <article className={`provider-card provider-card--${provider || 'unknown'} rounded-card border border-line bg-surface p-4`} key={id || index}>
+        <div className="provider-card__badge inline-flex h-10 w-10 items-center justify-center rounded-control border border-line-neutral bg-surface-subtle text-sm font-semibold text-accent" aria-label={provider || copy.typeUnavailable}>{providerInitial(provider || nameValue)}</div>
+        <div className="provider-card__body mt-3 min-w-0">
+          <div className="provider-card__header flex items-start justify-between gap-3">
+            <h3 className="provider-card__title m-0 min-w-0 truncate text-[15px] font-semibold" title={nameValue}>{nameValue}</h3>
+            <div className="provider-card__actions flex shrink-0 gap-1">
+              <Button type="button" disabled={!id || busy} onClick={() => edit(row)} aria-label={`${t('common.edit')} ${nameValue}`}>{t('common.edit')}</Button>
+              <Button type="button" disabled={!id || busy} onClick={() => void remove(id)} aria-label={`${t('common.delete')} ${nameValue}`}>{t('common.delete')}</Button>
+            </div>
+          </div>
+          <div className="provider-card__subtitle mt-1 text-[13px] text-muted"><span className="provider-card__type">{provider || copy.typeUnavailable}</span>{description ? <><span className="provider-card__sep mx-1">·</span><span className="provider-card__desc" title={description}>{description}</span></> : null}</div>
+          {proxyUrl ? <div className="provider-card__url mt-2 truncate font-mono text-[12px] text-muted" title={proxyUrl}>{proxyUrl}</div> : null}
+        </div>
+      </article>;
+    })}
+    <button type="button" className="provider-card provider-card--add flex min-h-[142px] items-center justify-center rounded-card border border-dashed border-line-control bg-surface p-4 text-accent" onClick={clearForm}>
+      <span className="provider-card--add__label font-semibold">+ {t(keys.add)}</span>
+    </button>
+  </div> : null;
+
+  return <div className="wk-settings-resource"><Card><h3>{editingId ? t(keys.edit) : t(keys.add)}</h3>{error ? <Status tone="error">{error}</Status> : null}{notice ? <Status tone="success">{notice}</Status> : null}<form className="wk-settings-editor my-4 grid max-w-[620px] gap-[.8rem] [&_label]:grid [&_label]:gap-[.35rem] [&_label]:text-[#27364d] [&_label]:font-semibold" onSubmit={(event) => void save(event)}><label>{t(keys.name)}<Input required value={name} onChange={(event) => setName(event.target.value)} /></label><label>{copy.type}<Input required value={type} onChange={(event) => setType(event.target.value)} placeholder={copy.typePlaceholder} /></label><label>{copy.safeConfig}<Textarea rows={4} value={configText} onChange={(event) => setConfigText(event.target.value)} /></label><div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"><Button type="submit" loading={busy}>{editingId ? t('common.save') : t(keys.add)}</Button>{editingId ? <Button type="button" disabled={busy} onClick={clearForm}>{t('common.cancel')}</Button> : null}</div></form></Card><Card><div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col"><div><h3>{t(keys.list)}</h3><p className="wk-muted text-muted m-0">{copy.securityHint}</p></div><Button type="button" disabled={busy} onClick={() => void refresh()}>{t('common.refresh')}</Button></div>{rows.length === 0 ? <Status>{t(keys.empty)}</Status> : webSearchCards ?? <ul className="wk-list m-0 list-none p-0">{rows.map((row, index) => { const id = rowId(row); return <li key={id || index} className="flex items-baseline justify-between gap-4 border-b border-line-soft py-[0.9rem]"><div className="wk-list-item-copy grid gap-[0.2rem] min-w-0"><strong>{rowText(row, 'name') || id || copy.unnamed}</strong><span className="font-mono text-[0.8rem] text-muted">{rowText(row, 'type') || copy.typeUnavailable}{row.default === true ? ` · ${copy.defaultLabel}` : ''}</span></div><div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"><Button type="button" disabled={!id || busy} onClick={() => edit(row)}>{t('common.edit')}</Button><Button type="button" disabled={!id || busy} loading={busy} onClick={() => void test(id)}>{t(keys.test)}</Button>{api.setDefault ? <Button type="button" disabled={!id || busy} onClick={() => void setDefault(id)}>{t(keys.setDefault)}</Button> : null}<Button type="button" disabled={!id || busy} onClick={() => void remove(id)}>{t('common.delete')}</Button></div></li>; })}</ul>}</Card></div>;
 }

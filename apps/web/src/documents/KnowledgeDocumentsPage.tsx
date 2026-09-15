@@ -353,7 +353,7 @@ export function DocumentCardGrid({
             <Status tone={status.tone}>{status.label}</Status>
             {canContribute ? <DocumentCardActionMenu document={document} canDownload={canDownload} t={t} actions={actions} onDownload={() => onDownload(document)} onEdit={() => onEdit(document)} onViewTrace={() => onViewTrace(document)} onMove={() => onMove(document)} onBatchManage={() => onBatchManage(document)} onReparse={() => onReparse(document)} onCancelParse={() => onCancelParse(document)} onDelete={() => onDelete(document)} /> : null}
           </div>
-          <p className="m-0 line-clamp-2 min-h-0 flex-1 overflow-hidden text-[12px] font-normal leading-[19px] text-muted">{document.summary_status === "processing" ? t("knowledgeBase.generatingSummary") : typeof document.description === "string" ? document.description : document.folder_path ?? t("knowledgeBase.documents.root")}</p>
+          <p className="m-0 line-clamp-2 min-h-0 flex-1 overflow-hidden text-[12px] font-normal leading-[19px] text-muted">{document.summary_status === "pending" || document.summary_status === "processing" ? t("knowledgeBase.generatingSummary") : typeof document.description === "string" ? document.description : document.folder_path ?? t("knowledgeBase.documents.root")}</p>
         </div>
         <div className="flex h-8 shrink-0 items-center justify-between gap-2 border-t border-line-soft bg-surface px-[14px] text-[12px] text-muted">
           <span>{formatDocumentTime(document.updated_at ?? document.created_at)}</span>
@@ -365,7 +365,7 @@ export function DocumentCardGrid({
   </div>;
 }
 
-function documentStatus(
+export function documentStatus(
   document: KnowledgeDocument,
   t: (key: string) => string,
 ): { label: string; tone: "neutral" | "success" | "warning" | "error" } {
@@ -392,8 +392,12 @@ function documentStatus(
     cancelled: "knowledgeBase.parseStatusCancelled",
   };
   const label = statusLabelKey[status] ? t(statusLabelKey[status]!) : t("knowledgeBase.documents.statusUnknown");
+  if (status === "completed" && (document.summary_status === "pending" || document.summary_status === "processing")) {
+    return { label: t("knowledgeBase.generatingSummary"), tone: "warning" };
+  }
   if (status === "completed") return { label, tone: "success" };
-  if (status === "failed" || status === "cancelled") return { label, tone: "error" };
+  if (status === "failed") return { label, tone: "error" };
+  if (status === "cancelled") return { label, tone: "warning" };
   return { label, tone: "warning" };
 }
 

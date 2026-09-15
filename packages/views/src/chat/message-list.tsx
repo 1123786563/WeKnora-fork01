@@ -46,6 +46,8 @@ export interface MessageListProps {
   onRefreshSuggestions?(): void;
   onDismissSuggestions?(): void;
   onCitationClick?(citationId: string): void;
+  /** Host-owned Vue botmsg knowledge-base action; absent means unavailable. */
+  onBookmark?(messageId: string): void | Promise<void>;
   onArtifactDownload?(messageId: string, artifactIndex: number): Promise<void>;
   onArtifactPreview?(messageId: string, artifactIndex: number): Promise<ArtifactPreviewPayload>;
   sessionId?: string | null;
@@ -108,10 +110,15 @@ function CopyIcon() {
   </svg>;
 }
 
-function BookmarkAnswerButton({ copy: copyTable }: { copy: ChatCopyTable }) {
-  // Vue botmsg.vue adds the answer to the knowledge manual editor; the React
-  // shell has no manual-editor surface yet, so the icon renders disabled.
-  return <button type="button" className={`wk-chat-bookmark ${ANSWER_TOOL_BUTTON}`} aria-label={copyTable.addToKnowledgeBase} title={copyTable.addToKnowledgeBase} aria-disabled="true" disabled>
+export function isBookmarkActionAvailable(onBookmark?: MessageListProps['onBookmark']): boolean {
+  return Boolean(onBookmark);
+}
+
+function BookmarkAnswerButton({ copy: copyTable, messageId, onBookmark }: { copy: ChatCopyTable; messageId: string; onBookmark?: MessageListProps['onBookmark'] }) {
+  // Keep the control truthful until the host provides the Vue manual-editor
+  // action; consumers with that capability get the same enabled affordance.
+  const unavailable = !isBookmarkActionAvailable(onBookmark);
+  return <button type="button" className={`wk-chat-bookmark ${ANSWER_TOOL_BUTTON}`} aria-label={copyTable.addToKnowledgeBase} title={copyTable.addToKnowledgeBase} aria-disabled={unavailable ? 'true' : undefined} disabled={unavailable} onClick={() => void onBookmark?.(messageId)}>
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M4 2.5h8a1 1 0 0 1 1 1V14l-5-2.6L3 14V3.5a1 1 0 0 1 1-1Z" />
       <path d="M8 5.5v4M6 7.5h4" />
@@ -160,7 +167,7 @@ function ArtifactList({ copy: copyTable, message, onDownload, onPreview }: { cop
   </section>;
 }
 
-export function MessageList({ copy, messages, pending, onRetry, loadingOlder = false, hasMore = false, onLoadOlder, suggestions, onSuggestionClick, onRefreshSuggestions, onDismissSuggestions, onCitationClick, onArtifactDownload, onArtifactPreview, sessionId = null, typingIndicator = false }: MessageListProps) {
+export function MessageList({ copy, messages, pending, onRetry, loadingOlder = false, hasMore = false, onLoadOlder, suggestions, onSuggestionClick, onRefreshSuggestions, onDismissSuggestions, onCitationClick, onBookmark, onArtifactDownload, onArtifactPreview, sessionId = null, typingIndicator = false }: MessageListProps) {
   const t = copy ?? resolveChatCopy(resolveChatLocale());
   const timestampLabels = conversationTimeLabels(t);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -257,7 +264,7 @@ export function MessageList({ copy, messages, pending, onRetry, loadingOlder = f
           {isAssistant ? <div className="wk-chat-message-content m-0 text-[16px] leading-[1.6] text-[rgba(0,0,0,0.9)] break-words [overflow-wrap:anywhere]" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: renderMessageHtml(message) }} /> : <div className={`wk-chat-message-bubble ${USER_BUBBLE}`}>{message.content}</div>}
           {isAssistant ? <div className="wk-chat-answer-toolbar mt-[6px] ml-[-7px] flex min-h-[30px] items-center justify-start gap-[4px]">
             <CopyAnswerButton copy={t} message={message} />
-            <BookmarkAnswerButton copy={t} />
+            <BookmarkAnswerButton copy={t} messageId={message.id} onBookmark={onBookmark} />
             <FallbackInfoButton copy={t} message={message} />
           </div> : null}
           {isAssistant ? <AssistantExtras copy={t} message={message} /> : null}

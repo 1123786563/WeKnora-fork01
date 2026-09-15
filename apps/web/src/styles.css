@@ -9,7 +9,7 @@
 @source "../../../packages/ui/src";
 @source "../../../packages/views/src";
 
-body { margin: 0; min-width: 320px; }
+body { margin: 0; min-width: 320px; background: var(--wk-app-background, #eee); }
 /* .wk-muted deleted: every consumer carries the text-muted utility (or an
    overriding variant) since the family migrated off this file. */
 /* The page shell families (.wk-page/.wk-header/.wk-eyebrow/.wk-debug/.wk-list ± li/li span/

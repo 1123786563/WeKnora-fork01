@@ -23,7 +23,7 @@ const {
   ParserHint,
   DocumentEmptyState,
 } = await import('./DocumentsPageChrome.tsx');
-const { KnowledgeDocumentsPage, DocumentCardGrid, documentCardHoverPosition, folderPathCrumbs, hasDocumentGridContent } = await import('./KnowledgeDocumentsPage.tsx');
+const { KnowledgeDocumentsPage, DocumentCardGrid, documentCardHoverPosition, documentStatus, folderPathCrumbs, hasDocumentGridContent } = await import('./KnowledgeDocumentsPage.tsx');
 const { createTranslator } = await import('../i18n.ts');
 
 const t = createTranslator('zh-CN');
@@ -201,6 +201,22 @@ test('document grid cards keep the Vue 240px/136px anatomy and footer metadata r
   assert.ok(html.includes('26-09-15 21:36'), 'updated time remains in the footer');
   assert.ok(html.includes('PDF'), 'file type remains in the footer');
   assert.ok(!html.includes('选择 guide.pdf'), 'read-only cards do not expose the Vue canEdit-only checkbox');
+});
+
+test('document statuses preserve Vue cancelled warning and pending summary copy', () => {
+  assert.equal(documentStatus({ id: 'cancelled', parse_status: 'cancelled' } as never, t).tone, 'warning');
+  assert.equal(documentStatus({ id: 'summary', parse_status: 'completed', summary_status: 'pending' } as never, t).label, t('knowledgeBase.generatingSummary'));
+});
+
+test('document cards show the Vue summary-generating copy for pending summaries', () => {
+  const html = renderToStaticMarkup(React.createElement(DocumentCardGrid, {
+    items: [{ id: 'summary', file_name: 'guide.pdf', file_type: 'pdf', parse_status: 'completed', summary_status: 'pending' }],
+    folders: [], selected: new Set<string>(), batchMode: false, canContribute: false, canDownload: false, t,
+    onOpen: noop, onOpenFolder: noop, onToggle: noop, onTagEdit: noop, onReparse: noop,
+    onCancelParse: noop, onDownload: noop, onEdit: noop, onViewTrace: noop, onMove: noop,
+    onBatchManage: noop, onDelete: noop,
+  }));
+  assert.match(html, /生成摘要中/);
 });
 
 test('editable document cards expose the Vue action-menu mutation entries', () => {

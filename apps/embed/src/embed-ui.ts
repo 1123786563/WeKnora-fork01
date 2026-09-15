@@ -7,11 +7,23 @@ import { isLocale, messages as i18nMessages, type Locale } from '@weknora/i18n';
 
 export interface EmbedSource { title: string; knowledgeId: string; chunkId: string }
 
+export interface EmbedUploadCapabilities {
+  allowFileUpload: boolean;
+  allowImageUpload: boolean;
+}
+
 export function resolveEmbedLocale(config: Record<string, unknown> | undefined | null, urlLocale: string): string {
   const fromConfig = typeof config?.default_locale === 'string' ? config.default_locale : '';
   if (isLocale(fromConfig)) return fromConfig;
   if (isLocale(urlLocale)) return urlLocale;
   return 'en-US';
+}
+
+// Keep the independent entry point aligned with EmbedChatCore.vue:
+// file/image controls are one capability and require both channel flags.
+export function resolveEmbedUploadCapabilities(config: Record<string, unknown> | undefined | null): EmbedUploadCapabilities {
+  const enabled = config?.allow_file_upload === true && config?.agent_image_upload_enabled === true;
+  return { allowFileUpload: enabled, allowImageUpload: enabled };
 }
 
 function textOf(value: unknown): string {

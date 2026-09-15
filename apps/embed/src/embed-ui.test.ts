@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { attachmentUploadsFromFiles, imageDataUrisFromFiles, resolveEmbedLocale, sourceListFromReferences } from './embed-ui.ts';
+import { attachmentUploadsFromFiles, imageDataUrisFromFiles, resolveEmbedLocale, resolveEmbedUploadCapabilities, sourceListFromReferences } from './embed-ui.ts';
 
 // Vue baselines: EmbedPage.vue applies the channel default_locale;
 // EmbedBotMessage.vue renders knowledge_references as a source list;
@@ -13,6 +13,21 @@ test('channel default_locale wins, then URL locale, then en-US', () => {
   assert.equal(resolveEmbedLocale({}, 'xx-YY'), 'en-US');
   assert.equal(resolveEmbedLocale({ default_locale: 'ko-KR' }, ''), 'ko-KR');
   assert.equal(resolveEmbedLocale(undefined, ''), 'en-US');
+});
+
+test('upload controls require the same permission conjunction as the Vue embed', () => {
+  assert.deepEqual(resolveEmbedUploadCapabilities({ allow_file_upload: true, agent_image_upload_enabled: true }), {
+    allowFileUpload: true,
+    allowImageUpload: true,
+  });
+  assert.deepEqual(resolveEmbedUploadCapabilities({ allow_file_upload: true, agent_image_upload_enabled: false }), {
+    allowFileUpload: false,
+    allowImageUpload: false,
+  });
+  assert.deepEqual(resolveEmbedUploadCapabilities({ allow_file_upload: false, agent_image_upload_enabled: true }), {
+    allowFileUpload: false,
+    allowImageUpload: false,
+  });
 });
 
 test('knowledge references map to a flat source list', () => {

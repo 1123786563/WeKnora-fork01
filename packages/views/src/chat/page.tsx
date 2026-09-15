@@ -129,6 +129,8 @@ export interface ChatPageProps {
   onRefreshSuggestions?(): void;
   onDismissSuggestions?(): void;
   onCitationClick?(citationId: string): void;
+  /** Host-owned Vue botmsg knowledge-base action; absent means unavailable. */
+  onBookmark?(messageId: string): void | Promise<void>;
   onArtifactDownload?(messageId: string, artifactIndex: number): Promise<void>;
   onArtifactPreview?(messageId: string, artifactIndex: number): Promise<ArtifactPreviewPayload>;
   terminal?: ChatTerminalView;
@@ -556,6 +558,7 @@ export function ChatPage(props: ChatPageProps) {
           onRefreshSuggestions={props.onRefreshSuggestions}
           onDismissSuggestions={props.onDismissSuggestions}
           onCitationClick={activateCitation}
+          onBookmark={props.onBookmark}
           onArtifactDownload={props.onArtifactDownload}
           onArtifactPreview={props.onArtifactPreview}
         />}

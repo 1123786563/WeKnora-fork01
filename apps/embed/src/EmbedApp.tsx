@@ -6,7 +6,7 @@ import type { ChatStreamEvent } from '@weknora/contracts';
 import { createEmbedBridgeGuard, EMBED_MESSAGE_SOURCE } from '@weknora/views/embed/bridge';
 import { renderChatMarkdown } from '@weknora/views/chat/markdown';
 
-import { attachmentUploadsFromFiles, imageDataUrisFromFiles, resolveEmbedLocale, sourceListFromReferences, translate } from './embed-ui.ts';
+import { attachmentUploadsFromFiles, imageDataUrisFromFiles, resolveEmbedLocale, resolveEmbedUploadCapabilities, sourceListFromReferences, translate } from './embed-ui.ts';
 import { channelIdFromPath, parentOriginFromReferrer, readStoredSession, readVisitorId, writeStoredSession } from './bootstrap.ts';
 
 interface EmbedRuntime {
@@ -255,8 +255,7 @@ export function EmbedApp() {
   // Channel default_locale wins over the URL locale (Vue EmbedPage.vue).
   const effectiveLocale = resolveEmbedLocale(runtime?.config, locale);
   const t = (key: string, fallback: string) => translate(effectiveLocale, key, fallback);
-  const allowImageUpload = runtime?.config.agent_image_upload_enabled === true;
-  const allowFileUpload = runtime?.config.allow_file_upload === true || allowImageUpload;
+  const { allowFileUpload, allowImageUpload } = resolveEmbedUploadCapabilities(runtime?.config);
   const title = runtime ? titleFor(runtime.config) : 'WeKnora';
 
   return (

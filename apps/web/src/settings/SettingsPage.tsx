@@ -133,6 +133,12 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
     window.history.replaceState(null, '', '/platform/settings?' + query);
   }, [selectedKey, capabilities, liteMode]);
   useEffect(() => {
+    // Vue normalizes the settings entry to the explicit default subsection;
+    // preserve that deep-link/history contract for direct `/platform/settings`.
+    if (new URLSearchParams(window.location.search).has('section')) return;
+    window.history.replaceState(null, '', '/platform/settings?section=general');
+  }, []);
+  useEffect(() => {
     function onPopState() { setSelectedKey(requestedSection(window.location.search)); }
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener("popstate", onPopState);
