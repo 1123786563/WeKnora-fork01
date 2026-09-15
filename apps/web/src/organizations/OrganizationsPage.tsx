@@ -37,6 +37,11 @@ const ORG_SECTION_TITLE = 'm-0 mb-[4px] text-[15px] font-semibold text-[rgba(23,
 const ORG_SECTION_DESC = 'm-0 mb-[16px] text-[12px] leading-[1.5] text-[rgba(23,26,29,0.6)]';
 const ORG_EMPTY_INLINE = 'py-[18px] text-[13px] text-[rgba(23,26,29,0.4)]';
 const ORG_AVATAR_EMOJIS = ['🚀', '📁', '👥', '🏢', '💡', '📚', '🌟', '🔧', '📌', '🎯', '📂', '🔒', '🌐', '⚡', '🎨', '📊', '🤝', '💼', '📧', '🏠', '🔑', '📈', '✨', '📋', '🌍', '💬', '🔔', '📦', '🎉', '🌈'];
+const ORG_PERMISSION_ITEMS: Record<'admin' | 'editor' | 'viewer', Array<[string, boolean]>> = {
+  admin: [['organization.editor.adminPerm1', true], ['organization.editor.adminPerm2', true], ['organization.editor.adminPerm3', true], ['organization.editor.adminPerm4', true], ['organization.editor.useSharedAgentsPerm', true]],
+  editor: [['organization.editor.editorPerm1', true], ['organization.editor.editorPerm2', true], ['organization.editor.useSharedAgentsPerm', true], ['organization.editor.shareKBPerm', true], ['organization.editor.editorPerm3', false]],
+  viewer: [['organization.editor.viewerPerm1', true], ['organization.editor.useSharedAgentsPerm', true], ['organization.editor.shareKBPerm', false], ['organization.editor.viewerPerm2', false], ['organization.editor.viewerPerm3', false]],
+};
 const ORG_MODAL_OVERLAY = 'fixed inset-0 z-[2000] flex items-center justify-center bg-[rgba(0,0,0,0.5)] p-[20px] backdrop-blur-[4px]';
 const ORG_CLOSE_BTN = 'absolute right-[16px] top-[16px] z-[10] flex h-[32px] w-[32px] cursor-pointer items-center justify-center rounded-[8px] border-0 bg-transparent text-[rgba(23,26,29,0.6)] hover:bg-[#f3f3f5] hover:text-[rgba(23,26,29,0.92)]';
 const FEATURE_BADGE_BASE = 'box-border inline-flex h-[20px] cursor-default items-center justify-center gap-[3px] rounded-[5px] px-[5px] text-[11px] font-medium [transition:background_.2s_ease]';
@@ -814,8 +819,9 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                       <h2 className="m-0 mb-2 text-[16px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.editor.permissionsTitle')}</h2>
                       <p className="m-0 mb-6 text-[14px] leading-[22px] text-[rgba(23,26,29,0.4)]">{t(locale, 'organization.editor.permissionsDesc')}</p>
                       <div className="grid gap-4">
-                        {(['admin', 'editor', 'viewer'] as const).map((roleKey) => <div key={roleKey} className="rounded-lg border border-[#e7e7ea] bg-[#f9f9f9] p-4"><strong className="text-[15px]">{t(locale, 'organization.role.' + roleKey)}</strong><p className="m-0 mt-2 text-[13px] text-[rgba(23,26,29,0.6)]">{t(locale, roleKey === 'admin' ? 'organization.editor.fullAccess' : roleKey === 'editor' ? 'organization.editor.editAccess' : 'organization.editor.viewAccess')}</p></div>)}
+                        {(['admin', 'editor', 'viewer'] as const).map((roleKey) => <div key={roleKey} className="rounded-lg border border-[#e7e7ea] bg-[#f9f9f9] p-4"><div className="flex items-center justify-between gap-3"><strong className="text-[15px]">{t(locale, 'organization.role.' + roleKey)}</strong><span className="rounded-full border border-[#dce3ed] bg-white px-2 py-0.5 text-[12px] text-[rgba(23,26,29,0.6)]">{t(locale, roleKey === 'admin' ? 'organization.editor.fullAccess' : roleKey === 'editor' ? 'organization.editor.editAccess' : 'organization.editor.viewAccess')}</span></div><ul className="m-0 mt-3 grid list-none gap-1 p-0">{ORG_PERMISSION_ITEMS[roleKey].map(([key, allowed]) => <li key={key} className={'text-[13px] leading-[1.45] ' + (allowed ? 'text-[rgba(23,26,29,0.82)]' : 'text-[rgba(23,26,29,0.4)]')}><span className="mr-1" aria-hidden="true">{allowed ? '✓' : '✗'}</span>{t(locale, key)}</li>)}</ul></div>)}
                       </div>
+                      <div className="mt-4 rounded-lg border border-[rgba(46,109,230,0.18)] bg-[rgba(46,109,230,0.06)] p-3 text-[13px] text-[rgba(23,26,29,0.7)]">{t(locale, 'organization.editor.ownerNote')}</div>
                     </section>
                   ) : settingsSection === 'basic' ? (
                     <>
