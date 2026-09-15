@@ -1348,7 +1348,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                 </div>
                 {form.allowOutRows.map((row, index) => (
                   <div className="wk-net-row" key={`allow-${index}`}>
-                    <input value={row} placeholder={t('settings.sandbox.allowOutPlaceholder')}
+                    <Input value={row} placeholder={t('settings.sandbox.allowOutPlaceholder')}
                       onChange={(event) => updateForm((current) => ({ allowOutRows: current.allowOutRows.map((item, i) => i === index ? event.target.value : item) }))} />
                     <Button type="button" aria-label={t('common.delete')} onClick={() => updateForm((current) => ({ allowOutRows: current.allowOutRows.filter((_, i) => i !== index) }))}>×</Button>
                   </div>
@@ -1364,7 +1364,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                 </div>
                 {form.denyOutRows.map((row, index) => (
                   <div className="wk-net-row" key={`deny-${index}`}>
-                    <input value={row} placeholder={t('settings.sandbox.denyOutPlaceholder')}
+                    <Input value={row} placeholder={t('settings.sandbox.denyOutPlaceholder')}
                       onChange={(event) => updateForm((current) => ({ denyOutRows: current.denyOutRows.map((item, i) => i === index ? event.target.value : item) }))} />
                     <Button type="button" aria-label={t('common.delete')} onClick={() => updateForm((current) => ({ denyOutRows: current.denyOutRows.filter((_, i) => i !== index) }))}>×</Button>
                   </div>
@@ -1393,16 +1393,16 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                   <details className="wk-net-rule" key={rule.key}>
                     <summary>{rule.name.trim() || t('settings.sandbox.ruleUntitled')}</summary>
                     <div className="wk-form-grid grid grid-cols-2 gap-4 max-[720px]:grid-cols-1">
-                      <label>{t('settings.sandbox.ruleName')}<input value={rule.name} placeholder="allow-payment-api" onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, name: event.target.value } : item) }))} /></label>
+                      <label>{t('settings.sandbox.ruleName')}<Input value={rule.name} placeholder="allow-payment-api" onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, name: event.target.value } : item) }))} /></label>
                       <label>{t('settings.sandbox.ruleScheme')}
                         <Select value={rule.scheme} onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, scheme: event.target.value } : item) }))}>
                           <option value=""></option><option value="https">https</option><option value="http">http</option>
                         </Select>
                       </label>
-                      <label>{t('settings.sandbox.ruleSni')}<input value={rule.sni} placeholder="api.example.com" onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, sni: event.target.value } : item) }))} /></label>
-                      <label>{t('settings.sandbox.ruleHost')}<input value={rule.host} placeholder="api.example.com" onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, host: event.target.value } : item) }))} /></label>
-                      <label>{t('settings.sandbox.ruleMethods')}<input value={rule.methodsText} placeholder="POST, GET" onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, methodsText: event.target.value } : item) }))} /></label>
-                      <label>{t('settings.sandbox.rulePath')}<input value={rule.path} placeholder="/v1/*" onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, path: event.target.value } : item) }))} /></label>
+                      <label>{t('settings.sandbox.ruleSni')}<Input value={rule.sni} placeholder="api.example.com" onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, sni: event.target.value } : item) }))} /></label>
+                      <label>{t('settings.sandbox.ruleHost')}<Input value={rule.host} placeholder="api.example.com" onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, host: event.target.value } : item) }))} /></label>
+                      <label>{t('settings.sandbox.ruleMethods')}<Input value={rule.methodsText} placeholder="POST, GET" onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, methodsText: event.target.value } : item) }))} /></label>
+                      <label>{t('settings.sandbox.rulePath')}<Input value={rule.path} placeholder="/v1/*" onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, path: event.target.value } : item) }))} /></label>
                       <label>{t('settings.sandbox.ruleAction')}
                         <Select value={rule.deny ? 'deny' : 'allow'} onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, deny: event.target.value === 'deny' } : item) }))}>
                           <option value="allow">{t('settings.sandbox.ruleAllow')}</option><option value="deny">{t('settings.sandbox.ruleDeny')}</option>
