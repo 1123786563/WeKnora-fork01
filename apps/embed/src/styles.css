@@ -30,6 +30,7 @@ button, textarea { font: inherit; }
 .embed-message { display: flex; }
 .embed-message-user { justify-content: flex-end; }
 .embed-bubble { max-width: 86%; white-space: pre-wrap; overflow-wrap: anywhere; border-radius: 14px; padding: 10px 12px; background: color-mix(in srgb, currentColor 8%, transparent); }
+.embed-message-error { display: block; margin-top: 8px; color: #b42318; font-size: 12px; }
 .embed-message-user .embed-bubble { color: #fff; background: var(--embed-primary); }
 .embed-composer { display: flex; gap: 8px; padding: 12px 14px; border-top: 1px solid color-mix(in srgb, currentColor 14%, transparent); }
 .embed-composer textarea { min-height: 38px; max-height: 120px; flex: 1; resize: vertical; border: 1px solid color-mix(in srgb, currentColor 18%, transparent); border-radius: 10px; padding: 9px 10px; color: inherit; background: transparent; outline: none; }

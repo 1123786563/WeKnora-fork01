@@ -6,7 +6,7 @@ import type { ChatStreamEvent } from '@weknora/contracts';
 import { createEmbedBridgeGuard, EMBED_MESSAGE_SOURCE } from '@weknora/views/embed/bridge';
 import { renderChatMarkdown } from '@weknora/views/chat/markdown';
 
-import { attachmentUploadsFromFiles, embedAssistantLabel, embedErrorPrefix, embedUploadLabel, imageDataUrisFromFiles, resolveEmbedLocale, resolveEmbedUploadCapabilities, sourceListFromReferences, translate } from './embed-ui.ts';
+import { attachmentUploadsFromFiles, embedAssistantLabel, embedMessageError, embedUploadLabel, imageDataUrisFromFiles, resolveEmbedLocale, resolveEmbedUploadCapabilities, sourceListFromReferences, translate } from './embed-ui.ts';
 import { channelIdFromPath, parentOriginFromReferrer, readStoredSession, readVisitorId, writeStoredSession } from './bootstrap.ts';
 
 interface EmbedRuntime {
@@ -224,7 +224,13 @@ export function EmbedApp() {
         if (kind === 'complete') postToHost({ type: 'message_received', channel_id: channelId, session_id: runtime.session.id, content: eventContent(event) }, true);
       }, controller.signal);
     } catch (cause) {
-      if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Chat failed.');
+      if (!controller.signal.aborted) {
+        const message = cause instanceof Error ? cause.message : 'Chat failed.';
+        setError(message);
+        // Preserve the failed turn in the transcript. This mirrors the Vue
+        // embed's error state and keeps failures visible after partial output.
+        setMessages((current) => current.map((item) => item.id === localAssistantId ? { ...item, error: message, is_completed: false } : item));
+      }
     } finally {
       if (activeAssistantRef.current === localAssistantId) activeAssistantRef.current = '';
       abortRef.current = null;
@@ -273,8 +279,9 @@ export function EmbedApp() {
         <div className="embed-messages">
           {messages.map((message, index) => <article className={`embed-message embed-message-${message.role === 'user' ? 'user' : 'assistant'}`} key={textOf(message.id) || `${message.role}-${index}`}>
             <div className="embed-bubble embed-bubble-assistant">
-            {message.role === 'user' ? textOf(message.content) : message.error && !textOf(message.content) ? <span>{embedErrorPrefix(effectiveLocale) + textOf(message.error)}</span> : null}
+            {message.role === 'user' ? textOf(message.content) : null}
             {message.role !== 'user' && textOf(message.content) ? <div className="embed-markdown" dangerouslySetInnerHTML={{ __html: renderChatMarkdown(textOf(message.content)) }} /> : null}
+            {message.role !== 'user' && message.error ? <span className="embed-message-error" role="alert">{embedMessageError(effectiveLocale, textOf(message.error))}</span> : null}
             {message.role !== 'user' && sourceListFromReferences(message.references).length > 0 ? <ul className="embed-sources"><li className="embed-sources-title">{t('embed.referencesTitle', 'Sources')}</li>{sourceListFromReferences(message.references).map((source, sourceIndex) => <li key={source.knowledgeId + '-' + source.chunkId + '-' + sourceIndex} className="embed-source">{source.title}</li>)}</ul> : null}
           </div>
           </article>)}

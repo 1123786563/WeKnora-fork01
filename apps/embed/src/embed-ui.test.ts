@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { attachmentUploadsFromFiles, embedAssistantLabel, embedErrorPrefix, embedUploadLabel, imageDataUrisFromFiles, resolveEmbedLocale, resolveEmbedUploadCapabilities, sourceListFromReferences } from './embed-ui.ts';
+import { attachmentUploadsFromFiles, embedAssistantLabel, embedErrorPrefix, embedMessageError, embedUploadLabel, imageDataUrisFromFiles, resolveEmbedLocale, resolveEmbedUploadCapabilities, sourceListFromReferences } from './embed-ui.ts';
 
 // Vue baselines: EmbedPage.vue applies the channel default_locale;
 // EmbedBotMessage.vue renders knowledge_references as a source list;
@@ -32,6 +32,11 @@ test('message error prefixes stay localized', () => {
   assert.equal(embedErrorPrefix('zh-CN'), '错误：');
   assert.equal(embedErrorPrefix('ja-JP'), 'エラー：');
   assert.equal(embedErrorPrefix('xx-YY'), 'Error: ');
+});
+
+test('message errors remain visible when a stream already has partial content', () => {
+  assert.equal(embedMessageError('zh-CN', '回答中断'), '错误：回答中断');
+  assert.equal(embedMessageError('en-US', ''), '');
 });
 
 test('upload controls require the same permission conjunction as the Vue embed', () => {

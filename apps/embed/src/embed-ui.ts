@@ -38,6 +38,11 @@ export function embedErrorPrefix(locale: string): string {
   return ({ 'zh-CN': '错误：', 'en-US': 'Error: ', 'ja-JP': 'エラー：', 'ko-KR': '오류: ', 'ru-RU': 'Ошибка: ' } as Record<string, string>)[locale] ?? 'Error: ';
 }
 
+export function embedMessageError(locale: string, error: string): string {
+  const message = error.trim();
+  return message ? embedErrorPrefix(locale) + message : '';
+}
+
 export function resolveEmbedLocale(config: Record<string, unknown> | undefined | null, urlLocale: string): string {
   const fromConfig = typeof config?.default_locale === 'string' ? config.default_locale : '';
   if (isLocale(fromConfig)) return fromConfig;
