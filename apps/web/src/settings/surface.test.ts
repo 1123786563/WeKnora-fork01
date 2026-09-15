@@ -112,7 +112,9 @@ test('normalizes resource settings rows and validates a resource mutation payloa
     config: { url: 'http://qdrant' },
   });
   assert.throws(() => settingsResourceInput('', 'qdrant', '{}'), /name/);
+  assert.throws(() => settingsResourceInput('   ', 'qdrant', '{}'), /name/);
   assert.throws(() => settingsResourceInput('Primary', '', '{}'), /type/);
+  assert.throws(() => settingsResourceInput('Primary', 'qdrant', '{bad json}'), /JSON/);
   assert.throws(() => settingsResourceInput('Primary', 'qdrant', '[]'), /object/);
 });
 

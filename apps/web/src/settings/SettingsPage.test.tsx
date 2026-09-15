@@ -195,6 +195,24 @@ test('settings close blurs the focused control before leaving like the Vue drawe
   dom.window.history.back = originalBack;
 });
 
+test('settings drawer owns focus and restores it after the portal closes', async () => {
+  const opener = document.createElement('button');
+  opener.type = 'button';
+  document.body.append(opener);
+  opener.focus();
+
+  await mountPage(makeClient(), '?section=general');
+  const drawer = document.querySelector<HTMLElement>('.wks-modal');
+  const closeButton = document.querySelector<HTMLButtonElement>('[data-testid="settings-close"]');
+  assert.ok(drawer && closeButton, 'the dialog and close control render');
+  assert.equal(document.activeElement, closeButton, 'opening focuses the first dialog control');
+
+  await act(async () => mountedRoot?.unmount());
+  mountedRoot = undefined;
+  assert.equal(document.activeElement, opener, 'unmount restores focus to the opener');
+  opener.remove();
+});
+
 test('runtime queues section renders Vue overview, empty table and limiter states', async () => {
   const container = await mountPage(makeClient({ runtimeTasks: [{ id: 'task-1', queue: 'document', type: 'document:process', state: 'active', last_error: '' }], runtime: {
     available: true, upstream_concurrency: 4, parse_concurrency: 2, wiki_concurrency: 1,

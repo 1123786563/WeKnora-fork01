@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { isCapabilitySupported, type CapabilityMap } from '@weknora/domain';
 import { integrationTabForSection, integrationSettingsQuery, selectSettingsQuery } from '@weknora/views/integrations/settings-route';
@@ -96,6 +96,10 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+  const mountedRef = useRef(false);
   const section = settingsSectionMeta(selectedKey)!;
   const integrationSupported = (key: string) => { const capability = INTEGRATION_SECTIONS.find((item) => item.key === integrationTabForSection(key))?.capability; return !capability || isCapabilitySupported(capabilities, capability, { liteMode }); };
   const integrationTab = integrationTabForSection(selectedKey);
@@ -152,8 +156,38 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
   useEffect(() => {
-    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    if (mountedRef.current && document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    mountedRef.current = true;
   }, [selectedKey]);
+
+  useEffect(() => {
+    openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    closeButtonRef.current?.focus();
+    return () => {
+      if (openerRef.current && document.contains(openerRef.current)) openerRef.current.focus();
+      openerRef.current = null;
+    };
+  }, []);
+
+  function handleDialogKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== 'Tab' || !modalRef.current || !modalRef.current.contains(event.target as Node)) return;
+    const focusable = Array.from(modalRef.current.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+    ));
+    if (focusable.length === 0) {
+      event.preventDefault();
+      modalRef.current.focus();
+      return;
+    }
+    const currentIndex = focusable.indexOf(document.activeElement as HTMLElement);
+    const nextIndex = event.shiftKey
+      ? (currentIndex <= 0 ? focusable.length - 1 : currentIndex - 1)
+      : (currentIndex === focusable.length - 1 ? 0 : currentIndex + 1);
+    if (currentIndex === -1 || nextIndex !== currentIndex + (event.shiftKey ? -1 : 1)) {
+      event.preventDefault();
+      focusable[nextIndex]?.focus();
+    }
+  }
 
   // Settings.vue blurs the active control before closing the drawer. Keep the
   // same lifecycle for both the close button and Escape so focused controls do
@@ -237,8 +271,9 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
   return createPortal((
     <main className="wk-settings-drawer-root">
       <div className="wks-overlay">
-        <div className="wks-modal" role="dialog" aria-modal="true" aria-label={t('general.settings')}>
+        <div ref={modalRef} className="wks-modal" role="dialog" aria-modal="true" aria-label={t('general.settings')} onKeyDown={handleDialogKeyDown}>
           <button
+            ref={closeButtonRef}
             type="button"
             className="wks-close"
             aria-label={t('general.close')}
