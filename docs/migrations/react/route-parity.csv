@@ -16,6 +16,12 @@ route_or_entry,kind,identity,capability,interaction,target_task,migration_dispos
 /platform/knowledge-bases/:kbId/creatChat,page,authenticated,initialization,knowledge-base chat entry,T10/T11,migrate,frontend/src/views/creatChat/creatChat.vue,client-used
 /platform/chat/:chatid,page,authenticated,initialization,chat history/resume,T10-T14,migrate,frontend/src/views/chat/index.vue,client-used
 /platform/organizations,page,authenticated,organizations,organization management,T16,migrate,frontend/src/views/organization/OrganizationList.vue,client-used
+/platform/configuration,page,authenticated,models,React configuration compatibility surface,T17,react-only,apps/web/src/main.tsx,client-used
+/platform/administration,page,authenticated,organizations,React administration compatibility surface,T17,react-only,apps/web/src/main.tsx,client-used
+/platform/apps,page,authenticated,apps,reviewed app catalog and installed versions,T15,migrate,frontend/src/views/apps/AppsView.vue,client-used
+/platform/apps/connections,page,authenticated,apps,personal and workspace app connections,T15,migrate,frontend/src/views/apps/ConnectionsView.vue,client-used
+/platform/apps/authorization/:id,page,authenticated,apps,authorization attempt polling,T15,migrate,frontend/src/views/apps/AuthorizationView.vue,client-used
+/platform/apps/actions/:id,page,authenticated,apps,action approval and execution,T15,migrate,frontend/src/views/apps/ActionView.vue,client-used
 /platform/system/*,redirect,authenticated,system_admin,system settings/queues compatibility URLs,T16/T17,migrate,frontend/src/router/index.ts,client-used
 /platform/dev/markdown,dev-only,public,none,development renderer fixture,T13,test-only,frontend/src/views/dev/MarkdownTestPage.vue,client-used
 embed.html,independent-entry,embed visitor,embed,token exchange/chat/postMessage bridge,T18,migrate,frontend/embed.html; frontend/src/embed-main.ts,special-route

@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState, useId, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
-import * as DialogPrimitive from '@radix-ui/react-dialog';
+import React, { useEffect, useRef, useState, useId, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { cn } from './lib/utils.ts';
 
 export interface SheetProps {
@@ -96,6 +95,7 @@ export function Sheet({ open, title, children, onClose, closeLabel = 'Close', si
           aria-labelledby={titleId}
           tabIndex={-1}
           aria-label={String(title)}
+          data-side={side}
           className={cn(
             'fixed z-[1201] flex max-w-full flex-col overflow-y-auto border border-line bg-surface shadow-[0_20px_60px_rgba(23,32,51,0.2)]',
             sideClasses[side],
@@ -119,5 +119,5 @@ export function Sheet({ open, title, children, onClose, closeLabel = 'Close', si
         </aside>
     </div>
   );
-  return <DialogPrimitive.Root open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}><DialogPrimitive.Portal>{content}</DialogPrimitive.Portal></DialogPrimitive.Root>;
+  return content;
 }

@@ -238,9 +238,9 @@ test('create modal matches the Vue editor dimensions and keeps the primary actio
 
   const dialog = root.querySelector('[role="dialog"]') as HTMLElement | null;
   assert.ok(dialog, 'expected create modal');
-  assert.match(dialog.className, /h-\[80vh\]/, 'Vue editor uses an 80vh modal');
-  assert.match(dialog.className, /max-w-\[900px\]/, 'Vue editor caps the modal at 900px');
-  assert.match(dialog.className, /max-h-\[650px\]/, 'Vue editor caps the modal height at 650px');
+  assert.match(dialog.className, /h-\[85vh\]/, 'Vue editor uses an 85vh modal');
+  assert.match(dialog.className, /max-w-\[1100px\]/, 'Vue editor caps the modal at 1100px');
+  assert.match(dialog.className, /max-h-\[750px\]/, 'Vue editor caps the modal height at 750px');
 
   const createButtons = textButtons(dialog, '创建共享空间');
   assert.equal(createButtons.length, 1, 'expected one primary create action');

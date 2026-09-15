@@ -1,0 +1,14 @@
+/* Generated from packages/design-tokens/src/index.ts. Keep this file as the
+   CSS entrypoint used by the browser; semantic aliases below preserve the
+   existing React/Tailwind contract while the wk-* values remain Vue-derived. */
+:root {
+  --wk-color-brand: #07c05f; --wk-color-brand-hover: #08dd6e; --wk-color-brand-active: #06b04d; --wk-color-brand-light: #e9f8ec;
+  --wk-color-text: #000000e6; --wk-color-text-secondary: #00000099; --wk-color-text-placeholder: #00000066; --wk-color-text-disabled: #00000042;
+  --wk-color-surface: #fff; --wk-color-page: #eee; --wk-color-surface-hover: #f3f3f3; --wk-color-surface-active: #e7e7e7; --wk-color-border: #dcdcdc; --wk-color-component: #e7e7e7;
+  --wk-color-error: #e34d59; --wk-color-error-light: #fdecee; --wk-color-success: #00a870; --wk-color-warning: #ed7b2f;
+  --wk-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --wk-font-family-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; --wk-font-size-body: 14px; --wk-font-size-small: 12px; --wk-font-size-title: 16px;
+  --wk-line-height-body: 20px; --wk-line-height-small: 20px; --wk-line-height-title: 24px; --wk-radius-small: 2px; --wk-radius-control: 6px; --wk-radius-popup: 10px; --wk-radius-panel: 12px; --wk-radius-round: 999px;
+  --wk-shadow-popup: 0 0 0 .5px rgba(0,0,0,.03), 0 2px 4px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.1); --wk-shadow-panel: 0 6px 30px rgba(0,0,0,.12);
+  --wk-overlay-menu-min-width: 148px; --wk-overlay-dialog-z: 3000; --wk-overlay-anchored-z: 3500; --wk-motion-duration: 180ms; --wk-motion-easing: cubic-bezier(.2,0,0,1);
+}

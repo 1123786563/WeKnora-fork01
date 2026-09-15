@@ -3,6 +3,7 @@
 @layer theme, base, components, utilities;
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
+@import "../../../packages/design-tokens/src/styles.css" layer(theme);
 /* 语义令牌与跨包扫描：packages/ui 令牌事实来源 + ui/views 源码类名扫描
    （修复包内 utilities 从未生成的问题，见迁移计划"基线-既有问题"）。 */
 @import "../../../packages/ui/src/theme.css" layer(theme);

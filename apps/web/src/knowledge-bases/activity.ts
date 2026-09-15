@@ -1,5 +1,10 @@
 import type { KnowledgeBaseActivityEntry } from '@weknora/api-client';
 
+/** A response may update the panel only while it belongs to the latest filter/KB generation. */
+export function isCurrentActivityGeneration(requestGeneration: number, currentGeneration: number): boolean {
+  return requestGeneration === currentGeneration;
+}
+
 export type ActivityTone = 'success' | 'warning' | 'error' | 'primary' | 'default';
 
 export function activityDateTime(value: string, locale?: string): { date: string; time: string } {

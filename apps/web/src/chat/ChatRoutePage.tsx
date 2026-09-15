@@ -80,7 +80,10 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   // agent's suggested-questions surface; absent without an agent selection.
   const [starterQuestions, setStarterQuestions] = useState<string[]>([]);
   const [starterQuestionsLoading, setStarterQuestionsLoading] = useState(false);
-  const [selectedAgentId, setSelectedAgentId] = useState(() => new URLSearchParams(window.location.search).get('agentId')?.trim() ?? '');
+  const [selectedAgentId, setSelectedAgentId] = useState(() => {
+    const query = new URLSearchParams(window.location.search);
+    return (query.get('agentId') ?? query.get('agent_id') ?? '').trim();
+  });
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(() => chatSessionIdFromPath(window.location.pathname));
   const selectedSessionIdRef = useRef(selectedSessionId);
   const chatRunIdRef = useRef(0);

@@ -118,6 +118,11 @@
   .wk-settings-section .setting-row { flex-direction: column; gap: 8px; }
   .wk-settings-section .setting-control { justify-content: flex-start; min-width: 0; }
   .wk-settings-section .setting-control select { max-width: 100%; width: 100%; }
+  .wk-settings-section .setting-info { max-width: 100%; padding-right: 0; }
+  .wk-settings-section .inline-edit { flex-wrap: wrap; width: 100%; }
+  .wk-settings-section .inline-edit input,
+  .wk-settings-section .inline-edit-description textarea { box-sizing: border-box; max-width: 100%; width: 100%; }
+  .wk-settings-section .inline-edit-actions { flex-wrap: wrap; width: 100%; }
 }
 
 /* Item F3 remainder: model select width in aligned config rows

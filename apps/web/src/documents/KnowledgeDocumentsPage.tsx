@@ -114,6 +114,7 @@ interface KnowledgeDocumentsPageProps {
   client: WeKnoraClient;
   knowledgeBaseId: string;
   onOpenDocument?: (document: KnowledgeDocument) => void;
+  initialDocumentId?: string;
 }
 
 type UploadDialogMode = "file" | "manual" | "reparse";
@@ -1987,6 +1988,7 @@ export function KnowledgeDocumentsPage({
   client,
   knowledgeBaseId,
   onOpenDocument,
+  initialDocumentId,
 }: KnowledgeDocumentsPageProps) {
   const locale = useAppLocale() as Locale;
   const t = createTranslator(locale);
@@ -2046,6 +2048,7 @@ export function KnowledgeDocumentsPage({
   });
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const openedInitialDocument = useRef(false);
   // Vue exposes document checkboxes and the batch bar only after the user
   // explicitly enters batch-management mode from a card/row action menu.
   const [batchMode, setBatchMode] = useState(false);
@@ -2404,6 +2407,16 @@ export function KnowledgeDocumentsPage({
   }
 
   const items = state.status === "success" ? state.page.items : [];
+
+  // Vue's knowledge_id deep link opens the matching document drawer after the
+  // first list response, including legacy /knowledgeBase URLs.
+  useEffect(() => {
+    if (openedInitialDocument.current || !initialDocumentId || state.status !== "success") return;
+    const document = state.page.items.find((item) => String(item.id) === initialDocumentId);
+    if (!document) return;
+    openedInitialDocument.current = true;
+    onOpenDocument?.(document);
+  }, [initialDocumentId, onOpenDocument, state]);
   const selectedOnPage = items.filter((item) => selected.has(item.id)).length;
   const allOnPageSelected = items.length > 0 && selectedOnPage === items.length;
   const selectedDocuments = items.filter((item) => selected.has(item.id));
@@ -3609,7 +3622,7 @@ export function KnowledgeDocumentsPage({
                 selected={selected}
                 batchMode={batchMode}
                 canContribute={canContribute}
-                canDownload={true}
+                canDownload={canContribute}
                 t={t}
                 onOpen={(document) => onOpenDocument?.(document)}
                 onOpenFolder={(path) => setFolderPath(path || undefined)}

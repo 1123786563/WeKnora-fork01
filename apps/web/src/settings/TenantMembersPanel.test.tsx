@@ -309,7 +309,9 @@ test('invite dialog opens from the add-member button and sends the invitation', 
 
   const addBtn = container.querySelector<HTMLButtonElement>('button[aria-label="邀请成员"]');
   await act(async () => addBtn?.click());
-  const dialog = container.querySelector('[role="dialog"]');
+  // The project Dialog follows Vue Teleport/Radix Portal semantics and mounts
+  // the modal under document.body rather than inside the panel root.
+  const dialog = document.querySelector('[role="dialog"]');
   assert.ok(dialog);
   assert.match(dialog?.textContent ?? '', /邀请成员/);
   const email = dialog?.querySelector<HTMLInputElement>('input[type="email"]');
@@ -331,7 +333,7 @@ test('invite dialog opens from the add-member button and sends the invitation', 
   await act(async () => form?.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true })));
   assert.deepEqual(created, [{ email: 'new@example.com', role: 'contributor' }]);
   assert.ok(invitationCalls.length >= 2, 'invitations reload after the invite is sent');
-  assert.equal(container.querySelector('[role="dialog"]'), null, 'dialog closes after a successful send');
+  assert.equal(document.querySelector('[role="dialog"]'), null, 'dialog closes after a successful send');
   assert.match(container.textContent ?? '', /邀请已发出，等待对方接受。/);
 });
 

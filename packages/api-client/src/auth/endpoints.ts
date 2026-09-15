@@ -18,6 +18,22 @@ export interface AuthSession {
   tenant?: Record<string, unknown> | null;
   memberships?: unknown[];
 }
+export interface ParsedLogin {
+  credential: { kind: 'bearer'; accessToken: string; refreshToken?: string };
+  tenantId?: string;
+  user?: Record<string, unknown>;
+  tenant?: Record<string, unknown> | null;
+}
+
+export function parseLogin(value: unknown): ParsedLogin {
+  const root = successEnvelope(value);
+  const data = root.data && typeof root.data === 'object' ? record(root.data, 'auth data') : root;
+  const token = requiredString(data.token ?? data.access_token, 'access token');
+  const refreshToken = data.refresh_token ?? data.refreshToken;
+  if (refreshToken !== undefined && typeof refreshToken !== 'string') throw new Error('refresh token must be a string');
+  const tenant = data.tenant && typeof data.tenant === 'object' ? record(data.tenant, 'tenant') : data.tenant === null ? null : undefined;
+  return { credential: { kind: 'bearer', accessToken: token, ...(refreshToken === undefined ? {} : { refreshToken }) }, tenantId: tenant?.id === undefined ? undefined : String(tenant.id), user: data.user && typeof data.user === 'object' ? record(data.user, 'user') : undefined, tenant };
+}
 export interface AuthUser extends Record<string, unknown> { id: string }
 export interface AuthTenant extends Record<string, unknown> { id: string | number }
 export interface AuthMe {

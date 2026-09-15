@@ -12,6 +12,7 @@ export type RouteMatch =
   | { kind: 'knowledge-settings'; path: string; knowledgeBaseId: string }
   | { kind: 'join'; path: '/join' }
   | { kind: 'onboarding'; path: '/onboarding/workspace' }
+  | { kind: 'apps'; path: string; mode: 'catalog' | 'connections' | 'authorization' | 'action'; id?: string }
   | { kind: 'embed'; path: string }
   | { kind: 'not-found'; path: string };
 
@@ -32,6 +33,12 @@ export function resolveRoute(pathname: string, options: { development?: boolean 
   if (path === '/register') return { kind: 'login', path: '/register', mode: 'register' };
   if (path === '/join') return { kind: 'join', path: '/join' };
   if (path === '/onboarding/workspace') return { kind: 'onboarding', path };
+  if (path === '/platform/apps') return { kind: 'apps', path, mode: 'catalog' };
+  if (path === '/platform/apps/connections') return { kind: 'apps', path, mode: 'connections' };
+  const appAuthorization = path.match(/^\/platform\/apps\/authorization\/([^/]+)$/);
+  if (appAuthorization) return { kind: 'apps', path, mode: 'authorization', id: decodeSegment(appAuthorization[1]!) };
+  const appAction = path.match(/^\/platform\/apps\/actions\/([^/]+)$/);
+  if (appAction) return { kind: 'apps', path, mode: 'action', id: decodeSegment(appAction[1]!) };
   if (path.startsWith('/embed/')) return { kind: 'embed', path };
   const documentMatch = path.match(/^\/knowledgeBase\/([^/]+)\/documents\/([^/]+)$/);
   if (documentMatch) {

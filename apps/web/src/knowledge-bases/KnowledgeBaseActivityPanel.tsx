@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { KnowledgeBaseActivityEntry, WeKnoraClient } from '@weknora/api-client';
 import { Button, Select, Sheet, Status } from '@weknora/ui';
 import { createTranslator, useAppLocale } from '../i18n.ts';
-import { activityActionTone, activityDateTime, activityOutcomeTone, activityTargetSummary } from './activity.ts';
+import { activityActionTone, activityDateTime, activityOutcomeTone, activityTargetSummary, isCurrentActivityGeneration } from './activity.ts';
 
 type Props = { client: WeKnoraClient; knowledgeBaseId: string };
 type Filter = { action: string; outcome: string };
@@ -43,9 +43,11 @@ export function KnowledgeBaseActivityPanel({ client, knowledgeBaseId }: Props) {
   const [selected, setSelected] = useState<KnowledgeBaseActivityEntry | null>(null);
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
   const [outcomeMenuOpen, setOutcomeMenuOpen] = useState(false);
+  const generationRef = useRef(0);
 
   const load = useCallback(async (reset: boolean) => {
     if (loading || (!reset && nextCursor === undefined && loaded)) return;
+    const requestGeneration = reset ? ++generationRef.current : generationRef.current;
     setLoading(true); setError(null);
     try {
       const result = await client.knowledgeBases.settings.activity(knowledgeBaseId, {
@@ -54,12 +56,15 @@ export function KnowledgeBaseActivityPanel({ client, knowledgeBaseId }: Props) {
         outcome: filter.outcome || undefined,
         limit: 30,
       });
+      if (!isCurrentActivityGeneration(requestGeneration, generationRef.current)) return;
       setEntries((current) => reset ? (result.data ?? []) : [...current, ...(result.data ?? [])]);
       setNextCursor(result.next_cursor);
       setLoaded(true);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t('knowledgeEditor.activity.loadFailed'));
-    } finally { setLoading(false); }
+      if (isCurrentActivityGeneration(requestGeneration, generationRef.current)) setError(cause instanceof Error ? cause.message : t('knowledgeEditor.activity.loadFailed'));
+    } finally {
+      if (isCurrentActivityGeneration(requestGeneration, generationRef.current)) setLoading(false);
+    }
   }, [client, filter.action, filter.outcome, knowledgeBaseId, loaded, loading, nextCursor, t]);
 
   useEffect(() => { setLoaded(false); setNextCursor(undefined); void load(true); }, [knowledgeBaseId, filter.action, filter.outcome]);

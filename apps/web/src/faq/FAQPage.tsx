@@ -1595,7 +1595,7 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
     const timer = setTimeout(() => setImportTask(null), 3000);
     return () => clearTimeout(timer);
   }, [importTask?.status]);
-  const [canContribute, setCanContribute] = useState(true);
+  const [canContribute, setCanContribute] = useState(false);
   const [message, setMessage] = useState<{ tone: 'error' | 'success' | 'warning'; text: string } | null>(null);
   const navigate = useCallback((path: string) => { window.location.assign(path); }, []);
   // B6: Vue closeImportResult (:2345-2356) — persist 'close' server-side, then

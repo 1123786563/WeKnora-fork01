@@ -801,11 +801,11 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
       {/* Create / edit settings modal. */}
       {settingsOpen ? (
         <div className={ORG_MODAL_OVERLAY + ' z-[2100]'} onClick={closeSettings}>
-          <div className="relative box-border flex h-[80vh] max-h-[650px] w-[90vw] max-w-[900px] flex-col overflow-hidden rounded-[12px] bg-surface shadow-[0_8px_32px_rgba(0,0,0,0.12)]" role="dialog" aria-label={t(locale, settingsMode === 'create' ? 'organization.createOrg' : 'organization.settings.editTitle')} onClick={(event) => event.stopPropagation()}>
+          <div className="relative box-border flex h-[85vh] max-h-[750px] w-[90vw] max-w-[1100px] flex-col overflow-hidden rounded-[12px] bg-surface shadow-[0_8px_32px_rgba(0,0,0,0.12)]" role="dialog" aria-label={t(locale, settingsMode === 'create' ? 'organization.createOrg' : 'organization.settings.editTitle')} onClick={(event) => event.stopPropagation()}>
             <button type="button" className={ORG_CLOSE_BTN} aria-label={t(locale, 'common.close')} onClick={closeSettings}><IconClose /></button>
             <div className="flex min-h-0 flex-1">
               {settingsMode === 'create' || (settingsMode === 'edit' && settingsOrg) ? (
-                <nav className="box-border w-[208px] shrink-0 overflow-y-auto border-r border-[#e7e7ea] bg-[#f9f9f9] px-2 py-2">
+                <nav className="box-border w-[208px] shrink-0 overflow-y-auto border-r border-[#e7e7ea] bg-[#f9f9f9] px-2 py-2 max-[720px]:hidden">
                   <h2 className="m-0 mb-[12px] ml-[6px] text-[16px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, settingsMode === 'create' ? 'organization.createOrg' : 'organization.settings.editTitle')}</h2>
                   {(settingsMode === 'create' ? [
                     ['basic', 'organization.editor.navBasic'],
@@ -822,16 +822,16 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                 </nav>
               ) : null}
               <div className="flex min-w-0 flex-1 flex-col">
-                <div className={'min-h-0 flex-1 overflow-y-auto ' + (settingsMode === 'create' ? 'px-[40px] py-[28px]' : 'px-[24px] py-[20px]')}>
+                <div className={'min-h-0 flex-1 overflow-y-auto ' + (settingsMode === 'create' ? 'px-[40px] py-[28px] max-[720px]:px-4 max-[720px]:py-5' : 'px-[24px] py-[20px] max-[720px]:px-4 max-[720px]:py-5')}>
                   {settingsMode === 'create' && settingsSection === 'basic' ? (
                     <form id="organization-create-form" onSubmit={submitCreate}>
                       <h2 className="m-0 mb-2 text-[16px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.editor.basicTitle')}</h2>
                       <p className="m-0 mb-6 text-[14px] leading-[22px] text-[rgba(23,26,29,0.4)]">{t(locale, 'organization.editor.basicDesc')}</p>
-                      <div className="mb-6 grid grid-cols-[minmax(0,1fr)_minmax(280px,446px)] items-start gap-6">
+                      <div className="mb-6 grid grid-cols-[minmax(0,1fr)_minmax(280px,446px)] items-start gap-6 max-[720px]:grid-cols-1">
                         <div><label className={ORG_FORM_LABEL} htmlFor="organization-name">{t(locale, 'organization.name')} *</label><p className={ORG_FORM_DESC}>{t(locale, 'organization.editor.nameTip')}</p></div>
                         <div className="flex min-w-0 items-center gap-3"><div className="relative flex shrink-0 flex-col items-center gap-1"><button type="button" className="cursor-pointer rounded-lg border-0 bg-transparent p-0" aria-label={t(locale, 'organization.avatarPickerHint')} onClick={() => setAvatarPickerOpen((open) => !open)}><SpaceAvatar name={formName || '?'} avatar={formAvatar} size="medium" /></button><span className="text-[12px] text-[rgba(23,26,29,0.4)]">{t(locale, 'organization.avatar')}</span>{avatarPickerOpen ? <div className="absolute left-0 top-[64px] z-20 grid w-[220px] grid-cols-6 gap-1 rounded-lg border border-[#e7e7ea] bg-surface p-2 shadow-[0_8px_24px_rgba(0,0,0,0.12)]">{ORG_AVATAR_EMOJIS.map((emoji) => <button type="button" key={emoji} className="flex h-7 w-7 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-base hover:bg-[#f3f3f5]" aria-label={emoji} onClick={() => { setFormAvatar('emoji:' + emoji); setAvatarPickerOpen(false); }}>{emoji}</button>)}{formAvatar ? <button type="button" className="col-span-6 border-0 bg-transparent py-1 text-xs text-muted hover:bg-[#f3f3f5]" onClick={() => { setFormAvatar(''); setAvatarPickerOpen(false); }}>{t(locale, 'organization.avatarClear')}</button> : null}</div> : null}</div><Input id="organization-name" name="organization-name" className={ORG_FIELD + ' min-h-[34px]'} value={formName} onChange={(event) => setFormName(event.target.value)} required placeholder={t(locale, 'organization.namePlaceholder')} /></div>
                       </div>
-                      <div className="mb-6 grid grid-cols-[minmax(0,1fr)_minmax(280px,446px)] items-start gap-6">
+                      <div className="mb-6 grid grid-cols-[minmax(0,1fr)_minmax(280px,446px)] items-start gap-6 max-[720px]:grid-cols-1">
                         <div><label className={ORG_FORM_LABEL} htmlFor="organization-description">{t(locale, 'organization.description')}</label><p className={ORG_FORM_DESC}>{t(locale, 'organization.editor.descriptionTip')}</p></div>
                         <Textarea id="organization-description" name="organization-description" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={3} value={formDescription} onChange={(event) => setFormDescription(event.target.value)} placeholder={t(locale, 'organization.descriptionPlaceholder')} />
                       </div>

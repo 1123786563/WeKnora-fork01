@@ -7,11 +7,34 @@ import { buildKnowledgeBaseSettingsInput, formFromKnowledgeBase, updateParserRul
 
 type Tab = 'settings' | 'sources';
 
+export interface KnowledgeSettingsInput {
+  id: string; name: string; type?: string;
+  chunking_config?: { parser_engine_rules?: Array<{ file_types?: string[]; engine?: string }> };
+  vector_store_source?: string; vector_store_name?: string; vector_store_engine_type?: string; vector_store_status?: string;
+  storage_backend_id?: string; storage_provider_config?: { provider?: string };
+  activity?: Array<{ id?: string; action?: string; outcome?: string }>;
+}
+export interface KnowledgeSettingsSection { key: 'vectorStore' | 'parser' | 'storage' | 'activity'; label: string }
+export function getKnowledgeSettingsSections(input: KnowledgeSettingsInput): KnowledgeSettingsSection[] {
+  const sections: KnowledgeSettingsSection[] = [{ key: 'vectorStore', label: 'Vector store' }];
+  if (input.type?.toLowerCase() !== 'faq') sections.push({ key: 'parser', label: 'Parser' }, { key: 'storage', label: 'Storage' });
+  sections.push({ key: 'activity', label: 'Activity' }); return sections;
+}
+export function getKnowledgeBaseActivityPath(id: string): string { return `/api/v1/knowledge-bases/${encodeURIComponent(id)}/activity?limit=30`; }
+export function summarizeKnowledgeSettings(input: KnowledgeSettingsInput) {
+  const rules = input.chunking_config?.parser_engine_rules ?? []; const rule = rules.find((entry) => entry.engine);
+  const parser = rule ? { kind: 'configured', label: rule.engine === 'mineru' ? 'MinerU' : String(rule.engine), detail: (rule.file_types ?? []).map((type) => type.toUpperCase()).join(', ') } : { kind: 'empty', label: 'Default parser', detail: 'No file-type overrides' };
+  const vectorStore = input.vector_store_status === 'unavailable' ? { kind: 'unavailable', label: input.vector_store_name ?? 'Vector store', detail: 'Check the global vector-store settings' } : input.vector_store_name ? { kind: input.vector_store_status === 'ready' ? 'ready' : 'configured', label: input.vector_store_name, detail: [input.vector_store_engine_type, input.vector_store_source].filter(Boolean).join(' · ') } : { kind: 'default', label: 'System default', detail: 'No explicit binding' };
+  const storage = input.storage_backend_id ? { kind: 'configured', label: input.storage_provider_config?.provider === 's3' ? 'S3' : input.storage_provider_config?.provider ?? 'Storage', detail: input.storage_backend_id } : { kind: 'default', label: 'System default', detail: 'No explicit instance' };
+  const recent = input.activity?.[0]; const activity = recent ? { kind: 'available', label: `${input.activity?.length ?? 0} recent event${input.activity?.length === 1 ? '' : 's'}`, detail: `${recent.action ?? 'unknown'} · ${recent.outcome ?? 'unknown'}` } : { kind: 'empty', label: 'No activity yet', detail: 'Changes will appear here' };
+  return { parser, vectorStore, storage, activity };
+}
+
 function errorMessage(error: unknown, fallback: string): string { return error instanceof Error ? error.message : fallback; }
 function parserGroups(engines: ParserEngineInfo[]): string[] { return [...new Set(engines.flatMap((engine) => engine.FileTypes))].filter((type) => type !== 'url').sort(); }
 function ruleFor(form: KnowledgeBaseSettingsForm, fileType: string): string { return form.parserRules.find((rule) => rule.file_types.some((type) => type.toLowerCase() === fileType.toLowerCase()))?.engine ?? ''; }
 
-export function KnowledgeSettingsPage({ client, knowledgeBaseId }: { client: WeKnoraClient; knowledgeBaseId: string }) {
+export function KnowledgeSettingsPage({ client, knowledgeBaseId, role = 'viewer' }: { client: WeKnoraClient; knowledgeBaseId: string; role?: 'owner' | 'admin' | 'viewer' }) {
   const t = createTranslator(useAppLocale());
   const [tab, setTab] = useState<Tab>('settings');
   const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeBase | null>(null);
@@ -64,7 +87,7 @@ export function KnowledgeSettingsPage({ client, knowledgeBaseId }: { client: WeK
   }
 
 
-  if (tab === 'sources') return <><nav className="wk-settings-tabs flex gap-2 max-w-[1180px] mx-auto px-4 pt-4 max-[720px]:overflow-x-auto"><button type="button" className="wk-settings-tab border border-[#dce3ed] rounded-full bg-white text-[#506078] cursor-pointer px-[.8rem] py-2" onClick={() => setTab('settings')}>{t('knowledgeBase.settings.title')}</button><button type="button" className="wk-settings-tab is-active border border-[#2e6de6] rounded-full bg-[#eff4ff] text-[#1849a9] cursor-pointer px-[.8rem] py-2">{t('datasource.title')}</button></nav><DataSourcesPage client={client} knowledgeBaseId={knowledgeBaseId} /></>;
+  if (tab === 'sources') return <><nav className="wk-settings-tabs flex gap-2 max-w-[1180px] mx-auto px-4 pt-4 max-[720px]:overflow-x-auto"><button type="button" className="wk-settings-tab border border-[#dce3ed] rounded-full bg-white text-[#506078] cursor-pointer px-[.8rem] py-2" onClick={() => setTab('settings')}>{t('knowledgeBase.settings.title')}</button><button type="button" className="wk-settings-tab is-active border border-[#2e6de6] rounded-full bg-[#eff4ff] text-[#1849a9] cursor-pointer px-[.8rem] py-2">{t('datasource.title')}</button></nav><DataSourcesPage client={client} knowledgeBaseId={knowledgeBaseId} canManage={role === 'owner' || role === 'admin'} /></>;
 
   return <main className="wk-page max-w-[1180px]! mx-auto box-border px-[1.25rem] py-12">
     <nav className="wk-settings-tabs flex gap-2 max-w-[1180px] mx-auto px-4 pt-4 max-[720px]:overflow-x-auto"><button type="button" className="wk-settings-tab is-active border border-[#2e6de6] rounded-full bg-[#eff4ff] text-[#1849a9] cursor-pointer px-[.8rem] py-2">{t('knowledgeBase.settings.title')}</button><button type="button" className="wk-settings-tab border border-[#dce3ed] rounded-full bg-white text-[#506078] cursor-pointer px-[.8rem] py-2" onClick={() => setTab('sources')}>{t('datasource.title')}</button></nav>

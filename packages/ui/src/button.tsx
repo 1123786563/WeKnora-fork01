@@ -22,8 +22,13 @@ const buttonVariants = cva(
         danger:
           'border border-transparent bg-transparent px-[0.5rem] py-[0.3rem] text-danger hover:bg-hover-wash focus-visible:bg-hover-wash',
       },
+      size: {
+        small: 'wk-button-size-small min-h-7 text-xs',
+        medium: 'wk-button-size-medium',
+        large: 'wk-button-size-large min-h-10 px-4 text-base',
+      },
     },
-    defaultVariants: { variant: 'default' },
+    defaultVariants: { variant: 'default', size: 'medium' },
   },
 );
 
@@ -35,10 +40,10 @@ export interface ButtonProps
   loading?: boolean;
 }
 
-export function Button({ children, loading = false, disabled, className, variant, ...props }: ButtonProps) {
+export function Button({ children, loading = false, disabled, className, variant, size, ...props }: ButtonProps) {
   return (
     <button
-      className={cn(buttonVariants({ variant }), className)}
+      className={cn(buttonVariants({ variant, size }), className)}
       aria-busy={loading || undefined}
       disabled={disabled || loading}
       {...props}

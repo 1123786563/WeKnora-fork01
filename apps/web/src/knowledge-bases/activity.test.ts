@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { activityActionTone, activityDateTime, activityOutcomeTone, activityTargetSummary } from './activity.ts';
+import { isCurrentActivityGeneration } from './activity.ts';
 
 test('activity date time follows the Vue split date and clock presentation', () => {
   const result = activityDateTime('2026-09-15T08:04:00.000Z', 'en-US');
@@ -31,4 +32,9 @@ test('activity target summary exposes subject and aggregate change without raw i
   } as never);
   assert.deepEqual(result, { subject: 'Docs', change: '4 (1 failed, 1 skipped)' });
   assert.equal(result.change.includes('secret-id'), false);
+});
+
+test('superseded activity responses cannot update the current generation', () => {
+  assert.equal(isCurrentActivityGeneration(1, 2), false);
+  assert.equal(isCurrentActivityGeneration(2, 2), true);
 });

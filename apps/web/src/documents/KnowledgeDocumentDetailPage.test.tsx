@@ -48,7 +48,7 @@ afterEach(async () => {
   document.body.replaceChildren();
 });
 
-function detailClient(get: () => Promise<Record<string, unknown>>, role = 'contributor') {
+function detailClient(get: () => Promise<Record<string, unknown>>, role = 'contributor', knowledgeBaseOwnerId = 'user-1') {
   return {
     knowledgeBases: {
       documents: {
@@ -61,7 +61,7 @@ function detailClient(get: () => Promise<Record<string, unknown>>, role = 'contr
         reparse: async () => undefined,
         cancelParse: async () => undefined,
       },
-      settings: { get: async () => ({ id: 'kb-1', user_id: 'user-1' }) },
+      settings: { get: async () => ({ id: 'kb-1', user_id: knowledgeBaseOwnerId }) },
     },
     auth: { me: async () => ({ user: { id: 'user-1', role }, memberships: [{ role }] }) },
   } as never;
@@ -142,7 +142,7 @@ test('viewer detail keeps Vue download affordances hidden until permission grant
     source: 'file',
     file_type: 'pdf',
     parse_status: 'pending',
-  }), 'viewer'));
+  }), 'viewer', 'owner-1'));
 
   assert.equal(Array.from(container.querySelectorAll('button')).some((button) => button.textContent?.includes('下载')), false, 'viewer cannot see the original-file download action');
 });

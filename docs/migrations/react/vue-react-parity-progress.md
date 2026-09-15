@@ -1,5 +1,18 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-15 Round R360 — Hidden app routes and narrow-screen settings repair
+
+- Vue 路由审计发现此前账本遗漏四个应用连接入口：`/platform/apps`、`/platform/apps/connections`、`/platform/apps/authorization/:id`、`/platform/apps/actions/:id`。React 已补齐 route matching、shell dispatch、目录/连接/授权轮询/动作审批页面骨架，并保持 `/api/v1/apps/*` 的租户作用域与 expected-version 写入边界；路由清单已同步更新。
+- 按 Vue 1100px/85vh 组织设置弹窗基线修正 React 几何，并在 <=720px 隐藏固定侧栏、表单单列化；设置 inline edit 控件改为可换行、最大宽度受容器约束。
+- 证据：应用隐藏路由静态映射与 Web 类型检查/回归待本轮最终命令确认；这些页面仍需真实浏览器同视口、真实后端权限/授权/动作状态验证，暂保持 `review`，不因入口可达或构建通过而标记 accepted。
+
+## 2026-09-15 Round R359 — React 多页面并行对齐与共享组件收敛
+
+- 在目标 worktree 中并行完成认证入口、Documents、Knowledge Base editor/share/activity/settings、Integrations、Tenant Members 及设置状态模型的源码与交互契约补齐；共享 UI 以 Tailwind + shadcn/Radix 为底层，保留项目 wrapper、Vue 派生 token、focus/Escape/outside-close、loading/invalid/portal 语义。未修改 Vue。
+- 补齐并验证登录解析、知识库设置纯函数、activity stale-response generation guard、viewer 权限 fixture、成员邀请入口，以及 Button/Input/Select/Dialog/Sheet 的语义状态和 SSR 契约。并行代理报告与审查记录见 `artifacts/parity-agent-*.md`。
+- 证据：`pnpm test:shared` 485/485、`pnpm test:web` 1038/1038、`pnpm typecheck:web`、`pnpm build:web`、`git diff --check` 均通过；这是静态、单元/集成和构建证据，不等同于 Vue 浏览器验收。
+- 当前仍为 `review`：Vue 与 React 同条件逐页截图/computed-style、认证全状态、真实后端 mutation、Wails/桌面渲染和原生设备证据受当前环境阻塞（Vue :5180、React :5181、后端 :8091 不可用/无认证会话）。因此本轮不得标记为最终 parity accepted；剩余差异与阻塞继续保留在 inventory/review 台账中。
+
 ## 2026-09-15 Round R326 — Chat/Embed/KB upload 并行修复
 
 - 修复 Chat 消息 bookmark 宿主回调启用语义、Embed 上传权限 conjunction、KB 文档取消/摘要状态文案与 WebSearch provider card anatomy/动作；均未修改 Vue，Embed 保持独立入口。
@@ -3004,3 +3017,65 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Web typecheck and `git diff --check` passed. Icons, connector-specific
   credential fields, resource selection, strategy step, and mutation evidence
   remain open.
+
+## 2026-09-15 Round R361 — Deep-link and hidden app route repair
+
+- Added the four Vue app routes (`/platform/apps`, connections, authorization,
+  and actions) to the React route table, shell dispatch, route tests, and parity
+  CSV. The initial pages use project Tailwind/shadcn primitives and preserve
+  loading, empty, error, role, polling, approval, execution, and revoke states.
+- Preserved Vue-compatible deep-link behavior for `knowledge_id` document
+  entries and both `agentId`/`agent_id` chat and integration query aliases.
+  Document opening occurs only after the matching list response is available.
+- Static checks passed: `pnpm test:shared` (485/485), `pnpm test:web`
+  (1038/1038), `pnpm typecheck:web`, `pnpm build:web`, and `git diff --check`.
+  Public browser evidence is recorded in
+  `artifacts/vue-react-login-and-app-route-browser-2026-09-15.md`. Real
+  backend authorization/payment-adjacent app flows, desktop rendering, and
+  mobile rendering remain unverified or blocked-env.
+
+## 2026-09-15 Round R362 — Public auth and protected app-entry runtime check
+
+- Same-viewport Vue/React browser comparison found a visible React-only
+  required-field marker on the login labels; it was removed to match the Vue
+  runtime while native HTML validation remains in place.
+- Browser navigation to the protected `/platform/apps` entry was verified to
+  redirect unauthenticated users to login with the encoded `next` target.
+- Added route assertions for the `knowledge_id` document deep link and the
+  protected app catalog entry. Focused route tests pass 14/14; the prior full
+  Web suite remains 1038/1038.
+- Authenticated data states, real backend mutations, and platform-specific
+  rendering remain open or blocked-env.
+
+## 2026-09-15 Round R363 — Design-token CSS bridge
+
+- Expanded `tokenCss` to emit the complete Vue-derived semantic token set:
+  colors, typography, radii, shadows, overlay z-indexes, and motion values.
+- Added the corresponding CSS entrypoint export and loaded it from the React
+  Tailwind stylesheet. Existing `--color-*` compatibility variables remain
+  untouched, so this change makes the token source available without silently
+  changing already-reviewed page geometry or palette.
+- Shared regression: `pnpm test:shared` 485/485, `pnpm typecheck:web`,
+  `pnpm build:web`, and `git diff --check` passed. Dark-mode and computed-style
+  browser verification remain open.
+
+## 2026-09-15 Round R364 — Permission-sensitive document actions
+
+- Removed the document-grid `canDownload={true}` shortcut and now pass the
+  resolved knowledge-base contribution permission into the document action
+  surface, preventing the grid from exposing download controls independently
+  of the page permission decision.
+- The initial permission default remains a compatibility fallback for the
+  existing list component tests; authenticated permission and shared-KB
+  variants still require paired backend/browser evidence before acceptance.
+- Full Web regression after this change: 1038/1038; typecheck remains green.
+
+## 2026-09-15 Round R365 — Route inventory completeness
+
+- Added the two current React compatibility entries (`/platform/configuration`
+  and `/platform/administration`) to the route inventory as explicit
+  `react-only` rows, so the CSV no longer silently omits registered React
+  surfaces.
+- The independent Embed entry remains separately classified; main-SPA
+  `/embed/*` is intentionally an error boundary and is not treated as the
+  visitor application itself.

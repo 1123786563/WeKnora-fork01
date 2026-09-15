@@ -35,8 +35,14 @@ test('keeps legacy deep links and redirects the misspelled chat path compatibly'
   assert.deepEqual(resolveRoute('/knowledgeBase/kb-1/settings'), { kind: 'knowledge-settings', path: '/knowledgeBase/kb-1/settings', knowledgeBaseId: 'kb-1' });
   assert.deepEqual(resolveRoute('/platform/knowledge-bases/kb-1/creatChat'), { kind: 'chat', path: '/platform/knowledge-bases/kb-1/creatChat', knowledgeBaseId: 'kb-1' });
   assert.deepEqual(resolveRoute('/platform/knowledge-bases/kb-1?tab=wiki&slug=docs/start'), { kind: 'knowledge-base', path: '/platform/knowledge-bases/kb-1', knowledgeBaseId: 'kb-1', tab: 'wiki', slug: 'docs/start' });
+  assert.deepEqual(resolveRoute('/platform/knowledge-bases/kb-1?knowledge_id=doc-1'), { kind: 'knowledge-base', path: '/platform/knowledge-bases/kb-1', knowledgeBaseId: 'kb-1' });
   assert.equal(resolveRoute('/knowledgeBase/%E0%A4%A').kind, 'not-found');
   assert.deepEqual(resolveRoute('/platform/agents'), { kind: 'platform', path: '/platform/agents' });
+  assert.deepEqual(resolveRoute('/platform/apps'), { kind: 'apps', path: '/platform/apps', mode: 'catalog' });
+  assert.deepEqual(resolveRoute('/platform/apps/connections'), { kind: 'apps', path: '/platform/apps/connections', mode: 'connections' });
+  assert.deepEqual(resolveRoute('/platform/apps/authorization/attempt-1'), { kind: 'apps', path: '/platform/apps/authorization/attempt-1', mode: 'authorization', id: 'attempt-1' });
+  assert.deepEqual(resolveRoute('/platform/apps/actions/action-1'), { kind: 'apps', path: '/platform/apps/actions/action-1', mode: 'action', id: 'action-1' });
+  assert.deepEqual(guardRoute('/platform/apps', { ...authenticated, authenticated: false, tenantId: null }), { kind: 'redirect', to: '/login?next=%2Fplatform%2Fapps', reason: 'authentication-required' });
   assert.equal(routeRedirect('/'), '/platform/knowledge-bases');
   assert.equal(routeRedirect('/platform/knowledge-search?query=hello'), '/platform/knowledge-bases?cmdk=');
   assert.equal(routeRedirect('/platform/knowledge-search'), '/platform/knowledge-bases?cmdk=');

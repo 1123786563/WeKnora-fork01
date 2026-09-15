@@ -53,7 +53,7 @@ function setCredentialValue(text: string, key: string, value: string): string {
   return value.trim() ? [...lines, `${key} = ${value}`].join('\n') : lines.join('\n');
 }
 
-export function DataSourcesPage({ client, knowledgeBaseId }: { client: WeKnoraClient; knowledgeBaseId: string }) {
+export function DataSourcesPage({ client, knowledgeBaseId, canManage = false }: { client: WeKnoraClient; knowledgeBaseId: string; canManage?: boolean }) {
   const t = createTranslator(useAppLocale());
   const [sources, setSources] = useState<DataSource[]>([]);
   const [types, setTypes] = useState<DataSourceConnectorType[]>([]);
@@ -111,9 +111,9 @@ export function DataSourcesPage({ client, knowledgeBaseId }: { client: WeKnoraCl
     return stopPolling;
   }, [client, knowledgeBaseId]);
 
-  function openCreate() { if (accessDenied) return; setEditing(null); setCreateStep('type'); setForm({ ...newForm, type: '' }); setResourceSource(null); setMessage(null); }
+  function openCreate() { if (accessDenied || !canManage) return; setEditing(null); setCreateStep('type'); setForm({ ...newForm, type: '' }); setResourceSource(null); setMessage(null); }
   function chooseCreateType(type: string) { setForm((current) => ({ ...current, type })); setCreateStep('form'); }
-  function openEdit(source: DataSource) { setEditing(source); setCreateStep('form'); setForm(dataSourceFormFrom(source)); setResourceSource(null); setMessage(null); }
+  function openEdit(source: DataSource) { if (!canManage) return; setEditing(source); setCreateStep('form'); setForm(dataSourceFormFrom(source)); setResourceSource(null); setMessage(null); }
   function updateForm<K extends keyof DataSourceFormValues>(key: K, value: DataSourceFormValues[K]) { setForm((current) => ({ ...current, [key]: value })); }
 
   async function save(event: React.FormEvent<HTMLFormElement>) {

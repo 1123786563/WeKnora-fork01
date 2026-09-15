@@ -36,8 +36,9 @@ const PlatformShell = lazy(() => import('./platform/PlatformShell.tsx').then((mo
 const LoginPage = lazy(() => import('./auth/LoginPage.tsx').then((module) => ({ default: module.LoginPage })));
 const JoinPage = lazy(() => import('./auth/JoinPage.tsx').then((module) => ({ default: module.JoinPage })));
 const WorkspaceOnboardingPage = lazy(() => import('./auth/WorkspaceOnboardingPage.tsx').then((module) => ({ default: module.WorkspaceOnboardingPage })));
+const AppsPage = lazy(() => import('./apps/AppsPages.tsx').then((module) => ({ default: module.AppsPage })));
 
-function WikiEntry({ client, knowledgeBaseId, initialSlug, canContribute }: { client: ReturnType<typeof createWeKnoraClient>; knowledgeBaseId: string; initialSlug?: string; canContribute: boolean }) {
+function WikiEntry({ client, knowledgeBaseId, initialSlug, initialDocumentId, canContribute }: { client: ReturnType<typeof createWeKnoraClient>; knowledgeBaseId: string; initialSlug?: string; initialDocumentId?: string; canContribute: boolean }) {
   const [wikiEnabled, setWikiEnabled] = useState<boolean | null>(null);
   useEffect(() => {
     let active = true;
@@ -51,7 +52,7 @@ function WikiEntry({ client, knowledgeBaseId, initialSlug, canContribute }: { cl
   }, [client, knowledgeBaseId]);
   if (wikiEnabled === false) {
     window.history.replaceState({}, document.title, wikiEntryPath(knowledgeBaseId));
-    return <KnowledgeDocumentsPage client={client} knowledgeBaseId={knowledgeBaseId} onOpenDocument={(document) => window.location.assign(`/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}/documents/${encodeURIComponent(document.id)}`)} />;
+    return <KnowledgeDocumentsPage client={client} knowledgeBaseId={knowledgeBaseId} initialDocumentId={initialDocumentId} onOpenDocument={(document) => window.location.assign(`/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}/documents/${encodeURIComponent(document.id)}`)} />;
   }
   if (wikiEnabled === null) return <Status tone="neutral">加载中…</Status>;
   return <WikiPage client={client} knowledgeBaseId={knowledgeBaseId} initialSlug={initialSlug} canContribute={canContribute} />;
@@ -233,11 +234,11 @@ function renderProtected() {
   } else if (route.kind === 'knowledge-document') {
     renderShell(<KnowledgeDocumentDetailPage client={client} documentId={route.documentId} onBack={() => window.location.assign(`/knowledgeBase/${encodeURIComponent(route.knowledgeBaseId)}`)} />);
   } else if (route.kind === 'knowledge-wiki') {
-    renderShell(<WikiEntry client={client} knowledgeBaseId={route.knowledgeBaseId} canContribute={scopeRuntime.role() !== 'viewer'} />);
+    renderShell(<WikiEntry client={client} knowledgeBaseId={route.knowledgeBaseId} initialDocumentId={new URLSearchParams(window.location.search).get('knowledge_id')?.trim() || undefined} canContribute={scopeRuntime.role() !== 'viewer'} />);
   } else if (route.kind === 'knowledge-faq') {
     renderShell(<FAQPage client={client} knowledgeBaseId={route.knowledgeBaseId} />);
   } else if (route.kind === 'knowledge-settings') {
-    renderShell(<KnowledgeSettingsPage client={client} knowledgeBaseId={route.knowledgeBaseId} />);
+    renderShell(<KnowledgeSettingsPage client={client} knowledgeBaseId={route.knowledgeBaseId} role={scopeRuntime.role() === 'owner' ? 'owner' : scopeRuntime.role() === 'admin' ? 'admin' : 'viewer'} />);
   } else if (route.path === '/platform/agents') {
     // Real agents list (parity with Vue AgentList.vue); the consolidated
     // configuration surface stays reachable at /platform/configuration.
@@ -252,15 +253,19 @@ function renderProtected() {
     renderShell(<SettingsPage capabilities={scopeRuntime.capabilities()} liteMode={liteMode} client={client} tenantId={Number(scopeRuntime.current().scope.tenantId)} role={scopeRuntime.role() === 'owner' ? 'owner' : scopeRuntime.role() === 'admin' ? 'admin' : 'viewer'} />);
   } else if (route.path === '/platform/system') {
     renderShell(<AdministrationPage client={client} tenantId={Number(scopeRuntime.current().scope.tenantId)} systemAdmin />);
+  } else if (route.kind === 'apps') {
+    renderShell(<AppsPage client={client} mode={route.mode} id={route.id} role={scopeRuntime.role()} />);
   } else if (route.kind === 'knowledge-base' && route.knowledgeBaseId) {
     const knowledgeBaseId = route.knowledgeBaseId;
-    if (route.tab === 'wiki') renderShell(<WikiEntry client={client} knowledgeBaseId={knowledgeBaseId} initialSlug={route.slug} canContribute={scopeRuntime.role() !== 'viewer'} />);
+    const initialDocumentId = new URLSearchParams(window.location.search).get('knowledge_id')?.trim() || undefined;
+    if (route.tab === 'wiki') renderShell(<WikiEntry client={client} knowledgeBaseId={knowledgeBaseId} initialSlug={route.slug} initialDocumentId={initialDocumentId} canContribute={scopeRuntime.role() !== 'viewer'} />);
     else if (route.tab === 'graph') renderShell(<KnowledgeGraphPage client={client} knowledgeBaseId={knowledgeBaseId} slug={route.slug} />);
-    else renderShell(<KnowledgeDocumentsPage client={client} knowledgeBaseId={knowledgeBaseId} onOpenDocument={(document) => window.location.assign(`/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}/documents/${encodeURIComponent(document.id)}`)} />);
+    else renderShell(<KnowledgeDocumentsPage client={client} knowledgeBaseId={knowledgeBaseId} initialDocumentId={initialDocumentId} onOpenDocument={(document) => window.location.assign(`/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}/documents/${encodeURIComponent(document.id)}`)} />);
   } else if (route.kind === 'chat' || route.path === '/platform/creatChat' || route.path.startsWith('/platform/chat/')) {
     renderShell(<ChatRoutePage client={client} scopeController={scopeController} apiBaseUrl={apiBaseUrl} knowledgeBaseId={route.kind === 'chat' ? route.knowledgeBaseId : undefined} canViewChannelSessions={scopeRuntime.canViewChannelSessions()} />);
   } else if (route.path === '/platform/integrations') {
-    renderShell(<IntegrationsRoutePage client={client} tenantId={scopeRuntime.current().scope.tenantId} apiBaseUrl={apiBaseUrl} />);
+    const integrationQuery = new URLSearchParams(window.location.search);
+    renderShell(<IntegrationsRoutePage client={client} tenantId={scopeRuntime.current().scope.tenantId} activeAgentId={(integrationQuery.get('agentId') ?? integrationQuery.get('agent_id'))?.trim() || null} apiBaseUrl={apiBaseUrl} />);
   } else if (route.kind === 'not-found') {
     renderShell(<NotFoundPage path={route.path} />);
   } else {

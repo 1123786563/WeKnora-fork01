@@ -504,6 +504,9 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
         {canViewAudit ? <Button type="button" variant="text" className="h-6 rounded-[3px]! px-[7px] py-0 text-[12px] text-[var(--wk-muted,#66758b)]! hover:text-primary!" onClick={openAudit}>
           <Icon name="history" size={16} /> {tr('tenantMember.audit.tabLabel')}
         </Button> : null}
+        {canManage ? <Button type="button" variant="default" className="h-7 rounded-[3px]! px-2 text-xs" aria-label={tr('tenantMember.add.button')} onClick={() => setInviteOpen(true)}>
+          <Icon name="user-add" size={14} /> {tr('tenantMember.add.button')}
+        </Button> : null}
       </div>
       <p className="m-0 text-[14px] leading-[1.5] text-[var(--wk-muted,#66758b)] opacity-75">
         {tr('tenantMember.sectionDescription')}
