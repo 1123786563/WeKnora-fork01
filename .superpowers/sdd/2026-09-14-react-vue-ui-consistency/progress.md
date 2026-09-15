@@ -364,3 +364,5 @@ N021 fixture update (2026-09-15): typed tool-result renderer suite now passes 39
 Verification update (2026-09-15): mobile regression passes 190/190 and mobile TypeScript typecheck passes after the latest desktop/Web changes. Native runtime evidence remains separately gated.
 
 T10 mobile auth update (2026-09-15): public Login and Register routes now resolve visible copy, placeholders, action labels and fallback errors through the shared five-locale auth catalog; server-provided errors remain visible. Mobile typecheck passes and mobile regression remains 190/190.
+
+T10 mobile server-entry update (2026-09-15): server-address route now uses a dedicated five-locale `mobileAuth.*` catalog for title, guidance, placeholder, save/cancel and fallback error copy. Mobile typecheck, mobile regression (190/190), and i18n catalog tests (60/60) pass.

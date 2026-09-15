@@ -1,0 +1,19 @@
+import type { Locale } from '../index.ts';
+
+export const mobileAuthMessages: Record<Locale, Record<string, string>> = {
+  'zh-CN': {
+    'mobileAuth.serverTitle': '服务器地址', 'mobileAuth.serverHint': '请输入 WeKnora 服务器的 HTTP(S) 地址。桌面服务器不要使用手机上的 localhost。', 'mobileAuth.serverPlaceholder': 'https://weknora.example.com', 'mobileAuth.saveServer': '保存服务器', 'mobileAuth.savingServer': '保存中…', 'mobileAuth.serverSaveFailed': '无法保存服务器地址',
+  },
+  'en-US': {
+    'mobileAuth.serverTitle': 'Server address', 'mobileAuth.serverHint': 'Use the HTTP(S) address of your WeKnora server. Do not use phone localhost for a desktop server.', 'mobileAuth.serverPlaceholder': 'https://weknora.example.com', 'mobileAuth.saveServer': 'Save server', 'mobileAuth.savingServer': 'Saving…', 'mobileAuth.serverSaveFailed': 'Unable to save server address',
+  },
+  'ja-JP': {
+    'mobileAuth.serverTitle': 'サーバーアドレス', 'mobileAuth.serverHint': 'WeKnora サーバーの HTTP(S) アドレスを入力してください。デスクトップサーバーに電話の localhost は使用しないでください。', 'mobileAuth.serverPlaceholder': 'https://weknora.example.com', 'mobileAuth.saveServer': 'サーバーを保存', 'mobileAuth.savingServer': '保存中…', 'mobileAuth.serverSaveFailed': 'サーバーアドレスを保存できません',
+  },
+  'ko-KR': {
+    'mobileAuth.serverTitle': '서버 주소', 'mobileAuth.serverHint': 'WeKnora 서버의 HTTP(S) 주소를 사용하세요. 데스크톱 서버에는 휴대폰 localhost를 사용할 수 없습니다.', 'mobileAuth.serverPlaceholder': 'https://weknora.example.com', 'mobileAuth.saveServer': '서버 저장', 'mobileAuth.savingServer': '저장 중…', 'mobileAuth.serverSaveFailed': '서버 주소를 저장할 수 없습니다',
+  },
+  'ru-RU': {
+    'mobileAuth.serverTitle': 'Адрес сервера', 'mobileAuth.serverHint': 'Укажите HTTP(S)-адрес сервера WeKnora. Не используйте localhost телефона для настольного сервера.', 'mobileAuth.serverPlaceholder': 'https://weknora.example.com', 'mobileAuth.saveServer': 'Сохранить сервер', 'mobileAuth.savingServer': 'Сохранение…', 'mobileAuth.serverSaveFailed': 'Не удалось сохранить адрес сервера',
+  },
+};
