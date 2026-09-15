@@ -1,3 +1,5 @@
+import { createPaseoClient, type PaseoClient, type PaseoClientConfig } from '@getpaseo/client';
+
 /** The capabilities that the adapter is allowed to claim for one pinned daemon. */
 export interface PaseoCapabilities {
   create: boolean;
@@ -17,6 +19,12 @@ export type CapabilityObservation =
   | { state: 'unavailable' | 'forbidden'; reason: string };
 
 export type PaseoCapabilityProbe = Record<keyof PaseoCapabilities, CapabilityObservation>;
+
+export const PUBLIC_PASEO_METHODS = {
+  create: 'PaseoApi.agents.create',
+  observe: 'PaseoAgentHandle.waitForFinish',
+  events: 'PaseoAgentHandle.subscribe',
+} as const satisfies Partial<Record<keyof PaseoCapabilities, string>>;
 
 const CORE_CAPABILITIES = ['create', 'observe', 'events', 'cancel'] as const satisfies readonly (keyof PaseoCapabilities)[];
 
@@ -42,6 +50,16 @@ export function probeCapabilities(input: PaseoCapabilityProbe): PaseoCapabilityP
       if (observation.method.trim() === '') {
         throw new Error(`PASEO_INVALID_PROBE:${capability}:supported_requires_method`);
       }
+      const allowedMethod = capability in PUBLIC_PASEO_METHODS
+        ? PUBLIC_PASEO_METHODS[capability as keyof typeof PUBLIC_PASEO_METHODS]
+        : undefined;
+      if (allowedMethod !== observation.method) {
+        output[capability] = {
+          state: 'unavailable',
+          reason: `method is not in the pinned public SDK allowlist: ${observation.method}`,
+        };
+        continue;
+      }
       output[capability] = { state: 'supported', method: observation.method };
       continue;
     }
@@ -51,6 +69,11 @@ export function probeCapabilities(input: PaseoCapabilityProbe): PaseoCapabilityP
     output[capability] = { state: observation.state, reason: observation.reason };
   }
   return output;
+}
+
+/** Narrow runtime entry point; callers cannot accidentally import Paseo internals. */
+export function createPinnedPaseoClient(config: PaseoClientConfig): PaseoClient {
+  return createPaseoClient(config);
 }
 
 export function capabilitiesFromProbe(probe: PaseoCapabilityProbe): PaseoCapabilities {
