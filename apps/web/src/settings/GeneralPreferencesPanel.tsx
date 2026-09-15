@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
 import { readLocalPreferences, writeLocalPreferences, isValidTheme, isValidFontSize, type ThemeMode, type FontSize } from '@weknora/domain/settings/local-preferences';
+import { Select } from '@weknora/ui';
 
 function readStoredLocale(): Locale {
   const stored = window.localStorage.getItem('locale');
@@ -136,7 +137,7 @@ export function GeneralPreferencesPanel() {
             <p className="desc">{t('language.languageDescription')}</p>
           </div>
           <div className="setting-control">
-            <select
+            <Select
               className="w-[280px] max-w-[280px] max-[720px]:w-full max-[720px]:max-w-full"
               aria-label={t('language.selectLanguage')}
               value={locale}
@@ -147,7 +148,7 @@ export function GeneralPreferencesPanel() {
               <option value="ru-RU">{t('language.ruRU')}</option>
               <option value="ko-KR">{t('language.koKR')}</option>
               <option value="ja-JP">{t('language.jaJP')}</option>
-            </select>
+            </Select>
           </div>
         </div>
         <div className="setting-row">
@@ -156,7 +157,7 @@ export function GeneralPreferencesPanel() {
             <p className="desc">{t('theme.themeDescription')}</p>
           </div>
           <div className="setting-control">
-            <select
+            <Select
               className="w-[280px] max-w-[280px] max-[720px]:w-full max-[720px]:max-w-full"
               aria-label={t('theme.selectTheme')}
               value={theme}
@@ -165,7 +166,7 @@ export function GeneralPreferencesPanel() {
               <option value="light">{t('theme.light')}</option>
               <option value="dark">{t('theme.dark')}</option>
               <option value="system">{t('theme.system')}</option>
-            </select>
+            </Select>
           </div>
         </div>
         <div className="setting-row">
@@ -174,7 +175,7 @@ export function GeneralPreferencesPanel() {
             <p className="desc">{t('font.uiFontDescription')}</p>
           </div>
           <div className="setting-control setting-control--stacked">
-            <select
+            <Select
               className="w-[280px] max-w-[280px] max-[720px]:w-full max-[720px]:max-w-full"
               aria-label={t('font.selectFont')}
               value={sansFont}
@@ -183,7 +184,7 @@ export function GeneralPreferencesPanel() {
               {sansOptions.map((key) => (
                 <option key={key} value={key}>{fontLabel(locale, 'sans', key)}</option>
               ))}
-            </select>
+            </Select>
             {/* Vue GeneralSettings.vue font preview box (lines 351-375): bg
                 --td-bg-color-container #fff, border --td-component-stroke
                 #e7e7e7, radius --td-radius-medium 6px. */}
@@ -198,7 +199,7 @@ export function GeneralPreferencesPanel() {
             <p className="desc">{t('font.monoFontDescription')}</p>
           </div>
           <div className="setting-control setting-control--stacked">
-            <select
+            <Select
               className="w-[280px] max-w-[280px] max-[720px]:w-full max-[720px]:max-w-full"
               aria-label={t('font.selectFont')}
               value={monoFont}
@@ -207,7 +208,7 @@ export function GeneralPreferencesPanel() {
               {monoOptions.map((key) => (
                 <option key={key} value={key}>{fontLabel(locale, 'mono', key)}</option>
               ))}
-            </select>
+            </Select>
             <div className="box-border w-[280px] max-w-[280px] max-[720px]:w-full max-[720px]:max-w-full rounded-[6px] border border-[#e7e7e7] bg-white px-[12px] py-[8px] text-[14px] leading-[1.4] font-[family-name:var(--wk-font-mono,ui-monospace,monospace)] overflow-hidden text-ellipsis whitespace-nowrap" style={{ fontFamily: currentMonoStack }}>
               {t('font.monoPreview')}
             </div>
