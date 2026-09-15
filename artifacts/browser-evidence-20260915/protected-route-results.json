@@ -1,0 +1,705 @@
+{
+  "capturedAt": "2026-09-15T14:47:41.981Z",
+  "locale": "zh-CN",
+  "viewports": [
+    {
+      "name": "desktop",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "name": "laptop",
+      "width": 1024,
+      "height": 768
+    },
+    {
+      "name": "mobile",
+      "width": 390,
+      "height": 844
+    }
+  ],
+  "routes": [
+    "/platform/apps",
+    "/platform/apps?tab=connections",
+    "/platform/apps/not-a-route",
+    "/onboarding/workspace"
+  ],
+  "targets": [
+    {
+      "name": "vue",
+      "baseURL": "http://127.0.0.1:5180",
+      "viewports": [
+        {
+          "viewport": {
+            "name": "desktop",
+            "width": 1440,
+            "height": 900
+          },
+          "routes": [
+            {
+              "route": "/platform/apps",
+              "responseStatus": 200,
+              "finalURL": "http://127.0.0.1:5180/login",
+              "heading": "登录",
+              "bodyText": "官方网站 GitHub 🇨🇳 中文 大模型驱动的企业级知识框架 RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 RAG 增强生成 ReAct 智能体 Wiki 知识库 混合检索 登录 RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 登录以继续使用；首次使用请在下方创建账户。 邮箱 密码 登录 首次使用 WeKnora？ 创建账户 ✓ 多模态文档解析 ✓ 混合检索 + 知识图谱 ✓ ReAct 智能体问答"
+            },
+            {
+              "route": "/platform/apps?tab=connections",
+              "responseStatus": 200,
+              "finalURL": "http://127.0.0.1:5180/login",
+              "heading": "登录",
+              "bodyText": "官方网站 GitHub 🇨🇳 中文 大模型驱动的企业级知识框架 RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 RAG 增强生成 ReAct 智能体 Wiki 知识库 混合检索 登录 RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 登录以继续使用；首次使用请在下方创建账户。 邮箱 密码 登录 首次使用 WeKnora？ 创建账户 ✓ 多模态文档解析 ✓ 混合检索 + 知识图谱 ✓ ReAct 智能体问答"
+            },
+            {
+              "route": "/platform/apps/not-a-route",
+              "responseStatus": 200,
+              "finalURL": "http://127.0.0.1:5180/login",
+              "heading": "登录",
+              "bodyText": "官方网站 GitHub 🇨🇳 中文 大模型驱动的企业级知识框架 RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 RAG 增强生成 ReAct 智能体 Wiki 知识库 混合检索 登录 RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 登录以继续使用；首次使用请在下方创建账户。 邮箱 密码 登录 首次使用 WeKnora？ 创建账户 ✓ 多模态文档解析 ✓ 混合检索 + 知识图谱 ✓ ReAct 智能体问答"
+            },
+            {
+              "route": "/onboarding/workspace",
+              "responseStatus": 200,
+              "finalURL": "http://127.0.0.1:5180/login",
+              "heading": "登录",
+              "bodyText": "官方网站 GitHub 🇨🇳 中文 大模型驱动的企业级知识框架 RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 RAG 增强生成 ReAct 智能体 Wiki 知识库 混合检索 登录 RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 登录以继续使用；首次使用请在下方创建账户。 邮箱 密码 登录 首次使用 WeKnora？ 创建账户 ✓ 多模态文档解析 ✓ 混合检索 + 知识图谱 ✓ ReAct 智能体问答"
+            }
+          ],
+          "anonymousLoginError": {
+            "attempted": true,
+            "visible": true,
+            "text": "官方网站 GitHub 🇨🇳 中文 大模型驱动的企业级知识框架 RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 RAG 增强生成 ReAct 智能体 Wiki 知识库 混合检索 登录 RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 登录以继续使用；首次使用请在下方创建账户。 邮箱 密码 登录 首次使用 WeKnora？ 创建账户 ✓ 多模态文档解析 ✓ 混合检索 + 知识图谱 ✓ ReAct 智能体问答 Invalid email or password"
+          },
+          "authenticationAPIResponses": [
+            {
+              "method": "POST",
+              "status": 403,
+              "url": "http://127.0.0.1:5180/api/v1/auth/auto-setup"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5180/api/v1/auth/oidc/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5180/api/v1/auth/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5180/api/v1/auth/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5180/api/v1/auth/oidc/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5180/api/v1/auth/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5180/api/v1/auth/oidc/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5180/api/v1/auth/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5180/api/v1/auth/oidc/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5180/api/v1/auth/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5180/api/v1/auth/oidc/config"
+            },
+            {
+              "method": "POST",
+              "status": 401,
+              "url": "http://127.0.0.1:5180/api/v1/auth/login"
+            }
+          ],
+          "browserErrors": [
+            "console: Failed to load resource: the server responded with a status of 403 (Forbidden)",
+            "console: Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+          ]
+        },
+        {
+          "viewport": {
+            "name": "laptop",
+            "width": 1024,
+            "height": 768
+          },
+          "routes": [
+            {
+              "route": "/platform/apps",
+              "responseStatus": 200,
+              "finalURL": "http://127.0.0.1:5180/login",
+              "heading": "登录",
+              "bodyText": "🇨🇳 大模型驱动的企业级知识框架 RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 RAG 增强生成 ReAct 智能体 Wiki 知识库 混合检索 登录 RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 登录以继续使用；首次使用请在下方创建账户。 邮箱 密码 登录 首次使用 WeKnora？ 创建账户 ✓ 多模态文档解析 ✓ 混合检索 + 知识图谱 ✓ ReAct 智能体问答"
+            },
+            {
+              "route": "/platform/apps?tab=connections",
+              "responseStatus": 200,
+              "finalURL": "http://127.0.0.1:5180/login",
+              "heading": "登录",
+              "bodyText": "🇨🇳 大模型驱动的企业级知识框架 RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 RAG 增强生成 ReAct 智能体 Wiki 知识库 混合检索 登录 RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 登录以继续使用；首次使用请在下方创建账户。 邮箱 密码 登录 首次使用 WeKnora？ 创建账户 ✓ 多模态文档解析 ✓ 混合检索 + 知识图谱 ✓ ReAct 智能体问答"
+            },
+            {
+              "route": "/platform/apps/not-a-route",
+              "responseStatus": 200,
+              "finalURL": "http://127.0.0.1:5180/login",
+              "heading": "登录",
+              "bodyText": "🇨🇳 大模型驱动的企业级知识框架 RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 RAG 增强生成 ReAct 智能体 Wiki 知识库 混合检索 登录 RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 登录以继续使用；首次使用请在下方创建账户。 邮箱 密码 登录 首次使用 WeKnora？ 创建账户 ✓ 多模态文档解析 ✓ 混合检索 + 知识图谱 ✓ ReAct 智能体问答"
+            },
+            {
+              "route": "/onboarding/workspace",
+              "responseStatus": 200,
+              "finalURL": "http://127.0.0.1:5180/login",
+              "heading": "登录",
+              "bodyText": "🇨🇳 大模型驱动的企业级知识框架 RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 RAG 增强生成 ReAct 智能体 Wiki 知识库 混合检索 登录 RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 登录以继续使用；首次使用请在下方创建账户。 邮箱 密码 登录 首次使用 WeKnora？ 创建账户 ✓ 多模态文档解析 ✓ 混合检索 + 知识图谱 ✓ ReAct 智能体问答"
+            }
+          ],
+          "anonymousLoginError": {
+            "attempted": true,
+            "visible": true,
+            "text": "🇨🇳 大模型驱动的企业级知识框架 RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 RAG 增强生成 ReAct 智能体 Wiki 知识库 混合检索 登录 RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 登录以继续使用；首次使用请在下方创建账户。 邮箱 密码 登录 首次使用 WeKnora？ 创建账户 ✓ 多模态文档解析 ✓ 混合检索 + 知识图谱 ✓ ReAct 智能体问答 Invalid email or password"
+          },
+          "authenticationAPIResponses": [
+            {
+              "method": "POST",
+              "status": 403,
+              "url": "http://127.0.0.1:5180/api/v1/auth/auto-setup"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5180/api/v1/auth/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5180/api/v1/auth/oidc/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5180/api/v1/auth/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5180/api/v1/auth/oidc/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5180/api/v1/auth/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5180/api/v1/auth/oidc/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5180/api/v1/auth/oidc/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5180/api/v1/auth/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5180/api/v1/auth/oidc/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5180/api/v1/auth/config"
+            },
+            {
+              "method": "POST",
+              "status": 401,
+              "url": "http://127.0.0.1:5180/api/v1/auth/login"
+            }
+          ],
+          "browserErrors": [
+            "console: Failed to load resource: the server responded with a status of 403 (Forbidden)",
+            "console: Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+          ]
+        },
+        {
+          "viewport": {
+            "name": "mobile",
+            "width": 390,
+            "height": 844
+          },
+          "routes": [
+            {
+              "route": "/platform/apps",
+              "responseStatus": 200,
+              "finalURL": "http://127.0.0.1:5180/login",
+              "heading": "登录",
+              "bodyText": "官方网站 GitHub 🇨🇳 中文 大模型驱动的企业级知识框架 RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 RAG 增强生成 ReAct 智能体 Wiki 知识库 混合检索 登录 RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 登录以继续使用；首次使用请在下方创建账户。 邮箱 密码 登录 首次使用 WeKnora？ 创建账户 ✓ 多模态文档解析 ✓ 混合检索 + 知识图谱 ✓ ReAct 智能体问答"
+            },
+            {
+              "route": "/platform/apps?tab=connections",
+              "responseStatus": 200,
+              "finalURL": "http://127.0.0.1:5180/login",
+              "heading": "登录",
+              "bodyText": "官方网站 GitHub 🇨🇳 中文 大模型驱动的企业级知识框架 RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 RAG 增强生成 ReAct 智能体 Wiki 知识库 混合检索 登录 RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 登录以继续使用；首次使用请在下方创建账户。 邮箱 密码 登录 首次使用 WeKnora？ 创建账户 ✓ 多模态文档解析 ✓ 混合检索 + 知识图谱 ✓ ReAct 智能体问答"
+            },
+            {
+              "route": "/platform/apps/not-a-route",
+              "responseStatus": 200,
+              "finalURL": "http://127.0.0.1:5180/login",
+              "heading": "登录",
+              "bodyText": "官方网站 GitHub 🇨🇳 中文 大模型驱动的企业级知识框架 RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 RAG 增强生成 ReAct 智能体 Wiki 知识库 混合检索 登录 RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 登录以继续使用；首次使用请在下方创建账户。 邮箱 密码 登录 首次使用 WeKnora？ 创建账户 ✓ 多模态文档解析 ✓ 混合检索 + 知识图谱 ✓ ReAct 智能体问答"
+            },
+            {
+              "route": "/onboarding/workspace",
+              "responseStatus": 200,
+              "finalURL": "http://127.0.0.1:5180/login",
+              "heading": "登录",
+              "bodyText": "官方网站 GitHub 🇨🇳 中文 大模型驱动的企业级知识框架 RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 RAG 增强生成 ReAct 智能体 Wiki 知识库 混合检索 登录 RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 登录以继续使用；首次使用请在下方创建账户。 邮箱 密码 登录 首次使用 WeKnora？ 创建账户 ✓ 多模态文档解析 ✓ 混合检索 + 知识图谱 ✓ ReAct 智能体问答"
+            }
+          ],
+          "anonymousLoginError": {
+            "attempted": true,
+            "visible": true,
+            "text": "官方网站 GitHub 🇨🇳 中文 大模型驱动的企业级知识框架 RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 RAG 增强生成 ReAct 智能体 Wiki 知识库 混合检索 登录 RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 登录以继续使用；首次使用请在下方创建账户。 邮箱 密码 登录 首次使用 WeKnora？ 创建账户 ✓ 多模态文档解析 ✓ 混合检索 + 知识图谱 ✓ ReAct 智能体问答 Invalid email or password"
+          },
+          "authenticationAPIResponses": [
+            {
+              "method": "POST",
+              "status": 403,
+              "url": "http://127.0.0.1:5180/api/v1/auth/auto-setup"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5180/api/v1/auth/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5180/api/v1/auth/oidc/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5180/api/v1/auth/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5180/api/v1/auth/oidc/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5180/api/v1/auth/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5180/api/v1/auth/oidc/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5180/api/v1/auth/oidc/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5180/api/v1/auth/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5180/api/v1/auth/oidc/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5180/api/v1/auth/config"
+            },
+            {
+              "method": "POST",
+              "status": 401,
+              "url": "http://127.0.0.1:5180/api/v1/auth/login"
+            }
+          ],
+          "browserErrors": [
+            "console: Failed to load resource: the server responded with a status of 403 (Forbidden)",
+            "console: Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "react",
+      "baseURL": "http://127.0.0.1:5181",
+      "viewports": [
+        {
+          "viewport": {
+            "name": "desktop",
+            "width": 1440,
+            "height": 900
+          },
+          "routes": [
+            {
+              "route": "/platform/apps",
+              "responseStatus": 200,
+              "finalURL": "http://127.0.0.1:5181/login?next=%2Fplatform%2Fapps",
+              "heading": "登录",
+              "bodyText": "官方网站 GitHub 🇨🇳 中文 大模型驱动的企业级知识框架 RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 RAG 增强生成 ReAct 智能体 Wiki 知识库 混合检索 登录 RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 登录以继续使用；首次使用请在下方创建账户。 邮箱 密码 登录 首次使用 WeKnora？ 创建账户 ✓ 多模态文档解析 ✓ 混合检索 + 知识图谱 ✓ ReAct 智能体问答"
+            },
+            {
+              "route": "/platform/apps?tab=connections",
+              "responseStatus": 200,
+              "finalURL": "http://127.0.0.1:5181/login?next=%2Fplatform%2Fapps%3Ftab%3Dconnections",
+              "heading": "登录",
+              "bodyText": "官方网站 GitHub 🇨🇳 中文 大模型驱动的企业级知识框架 RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 RAG 增强生成 ReAct 智能体 Wiki 知识库 混合检索 登录 RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 登录以继续使用；首次使用请在下方创建账户。 邮箱 密码 登录 首次使用 WeKnora？ 创建账户 ✓ 多模态文档解析 ✓ 混合检索 + 知识图谱 ✓ ReAct 智能体问答"
+            },
+            {
+              "route": "/platform/apps/not-a-route",
+              "responseStatus": 200,
+              "finalURL": "http://127.0.0.1:5181/login?next=%2Fplatform%2Fapps%2Fnot-a-route",
+              "heading": "登录",
+              "bodyText": "官方网站 GitHub 🇨🇳 中文 大模型驱动的企业级知识框架 RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 RAG 增强生成 ReAct 智能体 Wiki 知识库 混合检索 登录 RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 登录以继续使用；首次使用请在下方创建账户。 邮箱 密码 登录 首次使用 WeKnora？ 创建账户 ✓ 多模态文档解析 ✓ 混合检索 + 知识图谱 ✓ ReAct 智能体问答"
+            },
+            {
+              "route": "/onboarding/workspace",
+              "responseStatus": 200,
+              "finalURL": "http://127.0.0.1:5181/login",
+              "heading": "登录",
+              "bodyText": "官方网站 GitHub 🇨🇳 中文 大模型驱动的企业级知识框架 RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 RAG 增强生成 ReAct 智能体 Wiki 知识库 混合检索 登录 RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 登录以继续使用；首次使用请在下方创建账户。 邮箱 密码 登录 首次使用 WeKnora？ 创建账户 ✓ 多模态文档解析 ✓ 混合检索 + 知识图谱 ✓ ReAct 智能体问答"
+            }
+          ],
+          "anonymousLoginError": {
+            "attempted": true,
+            "visible": true,
+            "text": "Invalid email or password 官方网站 GitHub 🇨🇳 中文 大模型驱动的企业级知识框架 RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 RAG 增强生成 ReAct 智能体 Wiki 知识库 混合检索 登录 RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 登录以继续使用；首次使用请在下方创建账户。 邮箱 密码 登录 首次使用 WeKnora？ 创建账户 ✓ 多模态文档解析 ✓ 混合检索 + 知识图谱 ✓ ReAct 智能体问答"
+          },
+          "authenticationAPIResponses": [
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5181/api/v1/auth/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5181/api/v1/auth/oidc/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5181/api/v1/auth/oidc/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5181/api/v1/auth/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5181/api/v1/auth/oidc/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5181/api/v1/auth/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5181/api/v1/auth/oidc/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5181/api/v1/auth/config"
+            },
+            {
+              "method": "POST",
+              "status": 403,
+              "url": "http://127.0.0.1:5181/api/v1/auth/auto-setup"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5181/api/v1/auth/oidc/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5181/api/v1/auth/config"
+            },
+            {
+              "method": "POST",
+              "status": 401,
+              "url": "http://127.0.0.1:5181/api/v1/auth/login"
+            }
+          ],
+          "browserErrors": [
+            "console: Failed to load resource: the server responded with a status of 403 (Forbidden)",
+            "console: Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+          ]
+        },
+        {
+          "viewport": {
+            "name": "laptop",
+            "width": 1024,
+            "height": 768
+          },
+          "routes": [
+            {
+              "route": "/platform/apps",
+              "responseStatus": 200,
+              "finalURL": "http://127.0.0.1:5181/login?next=%2Fplatform%2Fapps",
+              "heading": "登录",
+              "bodyText": "官方网站 GitHub 🇨🇳 中文 大模型驱动的企业级知识框架 RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 RAG 增强生成 ReAct 智能体 Wiki 知识库 混合检索 登录 RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 登录以继续使用；首次使用请在下方创建账户。 邮箱 密码 登录 首次使用 WeKnora？ 创建账户 ✓ 多模态文档解析 ✓ 混合检索 + 知识图谱 ✓ ReAct 智能体问答"
+            },
+            {
+              "route": "/platform/apps?tab=connections",
+              "responseStatus": 200,
+              "finalURL": "http://127.0.0.1:5181/login?next=%2Fplatform%2Fapps%3Ftab%3Dconnections",
+              "heading": "登录",
+              "bodyText": "官方网站 GitHub 🇨🇳 中文 大模型驱动的企业级知识框架 RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 RAG 增强生成 ReAct 智能体 Wiki 知识库 混合检索 登录 RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 登录以继续使用；首次使用请在下方创建账户。 邮箱 密码 登录 首次使用 WeKnora？ 创建账户 ✓ 多模态文档解析 ✓ 混合检索 + 知识图谱 ✓ ReAct 智能体问答"
+            },
+            {
+              "route": "/platform/apps/not-a-route",
+              "responseStatus": 200,
+              "finalURL": "http://127.0.0.1:5181/login?next=%2Fplatform%2Fapps%2Fnot-a-route",
+              "heading": "登录",
+              "bodyText": "官方网站 GitHub 🇨🇳 中文 大模型驱动的企业级知识框架 RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 RAG 增强生成 ReAct 智能体 Wiki 知识库 混合检索 登录 RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 登录以继续使用；首次使用请在下方创建账户。 邮箱 密码 登录 首次使用 WeKnora？ 创建账户 ✓ 多模态文档解析 ✓ 混合检索 + 知识图谱 ✓ ReAct 智能体问答"
+            },
+            {
+              "route": "/onboarding/workspace",
+              "responseStatus": 200,
+              "finalURL": "http://127.0.0.1:5181/login",
+              "heading": "登录",
+              "bodyText": "官方网站 GitHub 🇨🇳 中文 大模型驱动的企业级知识框架 RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 RAG 增强生成 ReAct 智能体 Wiki 知识库 混合检索 登录 RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 登录以继续使用；首次使用请在下方创建账户。 邮箱 密码 登录 首次使用 WeKnora？ 创建账户 ✓ 多模态文档解析 ✓ 混合检索 + 知识图谱 ✓ ReAct 智能体问答"
+            }
+          ],
+          "anonymousLoginError": {
+            "attempted": true,
+            "visible": true,
+            "text": "Invalid email or password 官方网站 GitHub 🇨🇳 中文 大模型驱动的企业级知识框架 RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 RAG 增强生成 ReAct 智能体 Wiki 知识库 混合检索 登录 RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 登录以继续使用；首次使用请在下方创建账户。 邮箱 密码 登录 首次使用 WeKnora？ 创建账户 ✓ 多模态文档解析 ✓ 混合检索 + 知识图谱 ✓ ReAct 智能体问答"
+          },
+          "authenticationAPIResponses": [
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5181/api/v1/auth/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5181/api/v1/auth/oidc/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5181/api/v1/auth/oidc/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5181/api/v1/auth/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5181/api/v1/auth/oidc/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5181/api/v1/auth/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5181/api/v1/auth/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5181/api/v1/auth/oidc/config"
+            },
+            {
+              "method": "POST",
+              "status": 403,
+              "url": "http://127.0.0.1:5181/api/v1/auth/auto-setup"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5181/api/v1/auth/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5181/api/v1/auth/oidc/config"
+            },
+            {
+              "method": "POST",
+              "status": 401,
+              "url": "http://127.0.0.1:5181/api/v1/auth/login"
+            }
+          ],
+          "browserErrors": [
+            "console: Failed to load resource: the server responded with a status of 403 (Forbidden)",
+            "console: Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+          ]
+        },
+        {
+          "viewport": {
+            "name": "mobile",
+            "width": 390,
+            "height": 844
+          },
+          "routes": [
+            {
+              "route": "/platform/apps",
+              "responseStatus": 200,
+              "finalURL": "http://127.0.0.1:5181/login?next=%2Fplatform%2Fapps",
+              "heading": "登录",
+              "bodyText": "官方网站 GitHub 🇨🇳 中文 大模型驱动的企业级知识框架 RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 RAG 增强生成 ReAct 智能体 Wiki 知识库 混合检索 登录 RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 登录以继续使用；首次使用请在下方创建账户。 邮箱 密码 登录 首次使用 WeKnora？ 创建账户 ✓ 多模态文档解析 ✓ 混合检索 + 知识图谱 ✓ ReAct 智能体问答"
+            },
+            {
+              "route": "/platform/apps?tab=connections",
+              "responseStatus": 200,
+              "finalURL": "http://127.0.0.1:5181/login?next=%2Fplatform%2Fapps%3Ftab%3Dconnections",
+              "heading": "登录",
+              "bodyText": "官方网站 GitHub 🇨🇳 中文 大模型驱动的企业级知识框架 RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 RAG 增强生成 ReAct 智能体 Wiki 知识库 混合检索 登录 RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 登录以继续使用；首次使用请在下方创建账户。 邮箱 密码 登录 首次使用 WeKnora？ 创建账户 ✓ 多模态文档解析 ✓ 混合检索 + 知识图谱 ✓ ReAct 智能体问答"
+            },
+            {
+              "route": "/platform/apps/not-a-route",
+              "responseStatus": 200,
+              "finalURL": "http://127.0.0.1:5181/login?next=%2Fplatform%2Fapps%2Fnot-a-route",
+              "heading": "登录",
+              "bodyText": "官方网站 GitHub 🇨🇳 中文 大模型驱动的企业级知识框架 RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 RAG 增强生成 ReAct 智能体 Wiki 知识库 混合检索 登录 RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 登录以继续使用；首次使用请在下方创建账户。 邮箱 密码 登录 首次使用 WeKnora？ 创建账户 ✓ 多模态文档解析 ✓ 混合检索 + 知识图谱 ✓ ReAct 智能体问答"
+            },
+            {
+              "route": "/onboarding/workspace",
+              "responseStatus": 200,
+              "finalURL": "http://127.0.0.1:5181/login",
+              "heading": "登录",
+              "bodyText": "官方网站 GitHub 🇨🇳 中文 大模型驱动的企业级知识框架 RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 RAG 增强生成 ReAct 智能体 Wiki 知识库 混合检索 登录 RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 登录以继续使用；首次使用请在下方创建账户。 邮箱 密码 登录 首次使用 WeKnora？ 创建账户 ✓ 多模态文档解析 ✓ 混合检索 + 知识图谱 ✓ ReAct 智能体问答"
+            }
+          ],
+          "anonymousLoginError": {
+            "attempted": true,
+            "visible": true,
+            "text": "Invalid email or password 官方网站 GitHub 🇨🇳 中文 大模型驱动的企业级知识框架 RAG 检索、智能体推理、Wiki 知识库，让文档真正被理解和运用 RAG 增强生成 ReAct 智能体 Wiki 知识库 混合检索 登录 RAG 问答、ReAct 智能体与 Wiki 知识库，大模型驱动的企业级知识框架 登录以继续使用；首次使用请在下方创建账户。 邮箱 密码 登录 首次使用 WeKnora？ 创建账户 ✓ 多模态文档解析 ✓ 混合检索 + 知识图谱 ✓ ReAct 智能体问答"
+          },
+          "authenticationAPIResponses": [
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5181/api/v1/auth/oidc/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5181/api/v1/auth/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5181/api/v1/auth/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5181/api/v1/auth/oidc/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5181/api/v1/auth/oidc/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5181/api/v1/auth/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5181/api/v1/auth/oidc/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5181/api/v1/auth/config"
+            },
+            {
+              "method": "POST",
+              "status": 403,
+              "url": "http://127.0.0.1:5181/api/v1/auth/auto-setup"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5181/api/v1/auth/config"
+            },
+            {
+              "method": "GET",
+              "status": 200,
+              "url": "http://127.0.0.1:5181/api/v1/auth/oidc/config"
+            },
+            {
+              "method": "POST",
+              "status": 401,
+              "url": "http://127.0.0.1:5181/api/v1/auth/login"
+            }
+          ],
+          "browserErrors": [
+            "console: Failed to load resource: the server responded with a status of 403 (Forbidden)",
+            "console: Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+          ]
+        }
+      ]
+    }
+  ],
+  "evidenceBoundary": {
+    "included": [
+      "anonymous route guard redirects",
+      "next query preservation",
+      "anonymous auth API error status",
+      "visible login error state",
+      "fixed viewport screenshots"
+    ],
+    "excluded": [
+      "valid credentials",
+      "successful authentication",
+      "business mutations",
+      "authenticated tenant/permission states",
+      "Wails/iOS/Android"
+    ]
+  }
+}
