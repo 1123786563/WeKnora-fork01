@@ -54,17 +54,17 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, embedded = 
 
   async function loadEmbed() {
     try { setEmbedChannels(await client.embed.channels.listAll()); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to load embed channels.'); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : integrationsT(currentIntegrationsLocale(), 'common.error')); }
   }
   async function loadIm() {
     try { setImChannels(await client.embed.im.listAll()); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to load IM channels.'); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : integrationsT(currentIntegrationsLocale(), 'common.error')); }
   }
   async function loadApiKeys() {
     if (activeTenantId === null) { setApiKeys([]); return; }
     setApiKeysLoading(true);
     try { setApiKeys(await client.administration.tenantApiKeys.list(activeTenantId)); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to load API keys.'); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : integrationsT(currentIntegrationsLocale(), 'common.error')); }
     finally { setApiKeysLoading(false); }
   }
 
@@ -76,7 +76,7 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, embedded = 
     setAgentsLoading(true);
     setAgentsError('');
     try { setAgents((await client.configuration.agents.list()).map((agent) => ({ id: agent.id, name: agent.name, config: agent.config }))); }
-    catch (cause) { setAgents([]); setAgentsError(cause instanceof Error ? cause.message : 'Unable to load agents.'); }
+    catch (cause) { setAgents([]); setAgentsError(cause instanceof Error ? cause.message : integrationsT(currentIntegrationsLocale(), 'common.error')); }
     finally { setAgentsLoading(false); }
   }
   async function loadKnowledgeBases() {
