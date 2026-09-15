@@ -13,13 +13,14 @@ export function createLegacyPlatformAdapter(storage: Pick<Storage, 'getItem'>): 
   return {
     read(): LegacyPlatformSession {
       const token = storage.getItem('weknora_token')?.trim() ?? '';
+      const refreshToken = storage.getItem('weknora_refresh_token')?.trim() || undefined;
       const tenantId = storage.getItem('weknora_selected_tenant_id')?.trim() || null;
       if (!token) return { credential: { kind: 'anonymous' }, tenantId };
 
       if (/^embed\s/i.test(token)) {
         return { credential: { kind: 'embed', token }, tenantId };
       }
-      return { credential: { kind: 'bearer', accessToken: token }, tenantId };
+      return { credential: { kind: 'bearer', accessToken: token, refreshToken }, tenantId };
     },
   };
 }
