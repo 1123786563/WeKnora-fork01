@@ -29,6 +29,7 @@ type Client = ReturnType<typeof createWeKnoraClient>;
 export interface PlatformShellProps {
   client: Client;
   onLogout: () => void | Promise<void>;
+  onTenantSwitch?: (tenantId: string) => Promise<void>;
   children: ReactNode;
 }
 
@@ -104,7 +105,9 @@ const CLEAR_SESSION_CONFIRM = '确认清空当前对话的全部消息？对话�
 const DELETE_SESSION_CONFIRM = '确认删除当前对话？删除后将无法恢复。';
 const SHELL_SESSION_PAGE_SIZE = 30;
 
-export function PlatformShell({ client, onLogout, children }: PlatformShellProps): ReactNode {
+type TenantMembership = { tenantId: string; tenantName: string; role: string };
+
+export function PlatformShell({ client, onLogout, onTenantSwitch, children }: PlatformShellProps): ReactNode {
   const locale = useMemo(resolveLocale, []);
   const t = useCallback((key: string) => formatMessage(locale, key), [locale]);
   const labels = {
@@ -129,6 +132,8 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
   const [pathname, setPathname] = useState(() => window.location.pathname);
   const [collapsed, setCollapsed] = useState(() => window.localStorage.getItem(COLLAPSE_STORAGE_KEY) === 'true');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [tenantMenuOpen, setTenantMenuOpen] = useState(false);
+  const [tenantSwitchPending, setTenantSwitchPending] = useState<string | null>(null);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!menuOpen) return;
@@ -145,7 +150,7 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
   // navigated so leaving the step can return to the previous page, mirroring
   // Vue's uiStore.openSettings/closeSettings pair.
   const guideOpenedSettingsRef = useRef(false);
-  const [user, setUser] = useState<{ id: string; name: string; email: string; avatar: string; tenantName: string; role: string; membershipsCount: number; canAccessAllTenants: boolean }>({ id: '', name: '', email: '', avatar: '', tenantName: '', role: '', membershipsCount: 0, canAccessAllTenants: false });
+  const [user, setUser] = useState<{ id: string; name: string; email: string; avatar: string; tenantId: string; tenantName: string; role: string; memberships: TenantMembership[]; membershipsCount: number; canAccessAllTenants: boolean }>({ id: '', name: '', email: '', avatar: '', tenantId: '', tenantName: '', role: '', memberships: [], membershipsCount: 0, canAccessAllTenants: false });
   // Vue menu.ts:72-81 — the organizations nav entry is gated on
   // hasRole('admin') (owner/admin pass; viewer/contributor manage nothing in
   // the shared space). Initial true = fail-open while identity resolves:
@@ -191,8 +196,16 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
         name: typeof record.username === 'string' && record.username ? record.username : '—',
         email: typeof record.email === 'string' ? record.email : '',
         avatar: typeof record.avatar === 'string' ? record.avatar : '',
+        tenantId: me.tenant && me.tenant.id !== null && me.tenant.id !== undefined ? String(me.tenant.id) : '',
         tenantName: typeof (me.tenant as unknown as { name?: unknown } | null | undefined)?.name === 'string' ? String((me.tenant as unknown as { name: string }).name) : '',
         role: '',
+        memberships: (me.memberships ?? []).flatMap((item) => {
+          if (!item || typeof item !== 'object') return [];
+          const row = item as Record<string, unknown>;
+          const rawId = row.tenant_id ?? row.tenantId;
+          if (rawId === undefined || rawId === null || String(rawId).trim() === '') return [];
+          return [{ tenantId: String(rawId), tenantName: typeof row.tenant_name === 'string' && row.tenant_name.trim() ? row.tenant_name : `#${String(rawId)}`, role: typeof row.role === 'string' ? row.role : '' }];
+        }),
         membershipsCount: Array.isArray(me.memberships) ? me.memberships.length : 0,
         canAccessAllTenants: record.can_access_all_tenants === true,
       });
@@ -221,6 +234,18 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
     }).catch(() => { /* menu falls back to placeholders; the page still works */ });
     return () => { active = false; };
   }, [client]);
+
+  const activeTenantId = readReactPlatformState(window.localStorage)?.tenantId ?? user.tenantId;
+  const tenantSwitcherVisible = Boolean(onTenantSwitch && user.memberships.length > 0);
+  const switchTenant = useCallback(async (tenantId: string) => {
+    if (!onTenantSwitch || tenantId === activeTenantId || tenantSwitchPending) return;
+    setTenantSwitchPending(tenantId);
+    try {
+      await onTenantSwitch(tenantId);
+    } catch {
+      setTenantSwitchPending(null);
+    }
+  }, [activeTenantId, onTenantSwitch, tenantSwitchPending]);
 
   // Recent ⌘K searches are namespaced per (user, tenant); reload whenever
   // that identity resolves (mirrors Vue commandPaletteStore's auth watcher).
@@ -724,6 +749,16 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
                   onClick={() => setMenuOpen(false)}>
                   {labels.workspaceSettings}
                 </a>
+                {tenantSwitcherVisible ? <div className="border-t border-[#eef1f5] px-[8px] py-[6px]" role="group" aria-label={t('tenant.switcher.menuLabel')}>
+                  <button type="button" className="flex items-center justify-between gap-2 w-full border-0 bg-transparent px-[4px] py-[5px] text-left text-[12px] font-semibold text-[#66758b] cursor-pointer" aria-expanded={tenantMenuOpen} onClick={() => setTenantMenuOpen((open) => !open)}>
+                    <span>{t('tenant.switcher.menuLabel')}</span><span aria-hidden="true">{tenantMenuOpen ? '⌃' : '⌄'}</span>
+                  </button>
+                  {tenantMenuOpen ? <div role="listbox" aria-label={t('tenant.switcher.menuLabel')} className="mt-[2px] max-h-[180px] overflow-y-auto">
+                    {user.memberships.map((membership) => <button key={membership.tenantId} type="button" role="option" aria-selected={membership.tenantId === activeTenantId} disabled={tenantSwitchPending !== null} className="flex items-center justify-between gap-2 w-full border-0 bg-transparent px-[4px] py-[7px] text-left text-[13px] text-[#1f2733] cursor-pointer hover:bg-[#f2f5f9] disabled:cursor-wait disabled:opacity-60" onClick={() => void switchTenant(membership.tenantId)}>
+                      <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{membership.tenantName}</span><span className="shrink-0 text-[11px] text-[#8b97a8]">{membership.tenantId === activeTenantId ? '当前' : membership.role}</span>
+                    </button>)}
+                  </div> : null}
+                </div> : null}
                 {canSeeAdminSessionSources ? <a role="menuitem" className="flex items-center gap-[10px] w-full px-[12px] py-[9px] border-none bg-transparent cursor-pointer text-[14px] text-[#1f2733] no-underline hover:bg-[#f2f5f9]"
                   href="/platform/settings?section=members"
                   onClick={() => setMenuOpen(false)}>

@@ -175,10 +175,26 @@ async function logout(): Promise<void> {
   window.location.assign('/login');
 }
 
+async function switchTenantFromShell(tenantId: string): Promise<void> {
+  const credential = currentCredential();
+  let switchedCredential: Credential | null = null;
+  const next = await scopeRuntime.switchTenant(
+    tenantId,
+    (nextTenantId, refreshToken) => client.auth.switchTenant(nextTenantId, refreshToken),
+    (authSession) => {
+      switchedCredential = { kind: 'bearer', accessToken: authSession.token, refreshToken: authSession.refreshToken };
+      persistBrowserCredential(window.localStorage, switchedCredential);
+    },
+    credential.kind === 'bearer' ? credential.refreshToken : undefined,
+  );
+  session = { ...session, credential: switchedCredential ?? credential, tenantId: next.scope.tenantId };
+  window.location.assign('/platform/knowledge-bases');
+}
+
 // All protected /platform/* pages render inside the platform shell
 // (sidebar matching the Vue menu.vue). Auth/onboarding/embed pages stay bare.
 function renderShell(page: ReactNode): void {
-  root.render(<Suspense fallback={<main className="wk-page mx-auto box-border max-w-[960px] px-5 py-12"><Status>{loadingText}</Status></main>}><PlatformShell client={client} onLogout={logout}>{page}</PlatformShell></Suspense>);
+  root.render(<Suspense fallback={<main className="wk-page mx-auto box-border max-w-[960px] px-5 py-12"><Status>{loadingText}</Status></main>}><PlatformShell client={client} onLogout={logout} onTenantSwitch={switchTenantFromShell}>{page}</PlatformShell></Suspense>);
 }
 
 function renderProtected() {

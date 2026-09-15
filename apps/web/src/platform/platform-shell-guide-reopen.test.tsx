@@ -129,6 +129,32 @@ test('admin user menu exposes the Vue management shortcuts for members, models a
   ]);
 });
 
+test('tenant switcher lists memberships and delegates a different workspace', async () => {
+  window.localStorage.setItem('weknora:new-user-guide-done:v1', '1');
+  const switched: string[] = [];
+  const container = document.createElement('div');
+  document.body.append(container);
+  mountedRoot = createRoot(container);
+  const client = { ...fakeClient('admin'), auth: { me: async () => ({ user: { id: 'u1', username: 'tester', email: 'tester@local.dev', avatar: '' }, tenant: { id: 'tenant-1', name: 'Parity' }, memberships: [{ tenant_id: 'tenant-1', tenant_name: 'Parity', role: 'admin' }, { tenant_id: 'tenant-2', tenant_name: 'Research', role: 'viewer' }] }) } };
+  await act(async () => {
+    mountedRoot?.render(React.createElement(PlatformShell, {
+      client: client as never,
+      onTenantSwitch: async (tenantId) => { switched.push(tenantId); },
+      onLogout: () => undefined,
+      children: React.createElement('div', null, 'page'),
+    }));
+  });
+  await settle(100);
+  await openUserMenu();
+  const toggle = document.querySelector<HTMLButtonElement>('[role="group"] > button');
+  assert.ok(toggle, 'tenant switcher toggle should render');
+  await act(async () => toggle?.click());
+  const option = [...document.querySelectorAll<HTMLButtonElement>('[role="option"]')].find((button) => button.textContent?.includes('Research'));
+  assert.ok(option, 'second tenant should be listed');
+  await act(async () => option?.click());
+  assert.deepEqual(switched, ['tenant-2']);
+});
+
 test('(a) with the tour finished, the user menu offers a reopen entry labelled newUserGuide.reopen', async () => {
   await mountShell();
   await openUserMenu();
