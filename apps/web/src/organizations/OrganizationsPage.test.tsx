@@ -432,6 +432,41 @@ test('empty-state join/create actions are disabled for a viewer', async () => {
   assert.equal((actions[1] as HTMLButtonElement).disabled, true);
 });
 
+test('viewer cannot edit an owned space when tenant role is below admin', async () => {
+  const { client, calls } = clientWith([ownerOrg]);
+  const root = await mountPage(client, undefined, 'viewer');
+
+  await click(orgCards(root)[0] as HTMLElement);
+  await act(async () => {});
+
+  const dialog = root.querySelector('[role="dialog"]') as HTMLElement | null;
+  assert.ok(dialog, 'expected settings modal');
+  assert.match(dialog.textContent ?? '', /此操作需要当前空间的 admin 或更高角色/);
+  assert.equal((dialog.querySelector('input[name="organization-name"]') as HTMLInputElement).disabled, true);
+  assert.equal((dialog.querySelector('textarea[name="organization-description"]') as HTMLTextAreaElement).disabled, true);
+  assert.equal(textButtons(dialog, '保存').length, 0, 'read-only settings must not expose save');
+  assert.equal(calls.update.length, 0);
+
+  const membersNav = [...dialog.querySelectorAll('button')].find((button) => button.textContent === '共享空间成员');
+  assert.ok(membersNav);
+  await click(membersNav);
+  const memberRole = dialog.querySelector('select[aria-label="角色"]') as HTMLSelectElement | null;
+  assert.ok(memberRole);
+  assert.equal(memberRole.disabled, true);
+  assert.equal(textButtons(dialog, '移除').length, 0);
+
+  const requestsNav = [...dialog.querySelectorAll('button')].find((button) => button.textContent === '待审核申请');
+  assert.ok(requestsNav);
+  await click(requestsNav);
+  assert.equal(textButtons(dialog, '通过').length, 0);
+  assert.equal(textButtons(dialog, '拒绝').length, 0);
+
+  const inviteNav = [...dialog.querySelectorAll('button')].find((button) => button.textContent === '邀请链接');
+  assert.ok(inviteNav);
+  await click(inviteNav);
+  assert.equal(textButtons(dialog, '邀请成员').length, 0);
+});
+
 test('without a role prop the page resolves canManageOrg from auth/me memberships', async () => {
   // admin membership (default fixture): buttons stay enabled…
   const admin = clientWith([ownerOrg]);

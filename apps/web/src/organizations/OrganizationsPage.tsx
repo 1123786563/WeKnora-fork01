@@ -742,6 +742,13 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
     ['shares', 'organization.sharedResources.kbListTitle'],
     ['invite', 'organization.settings.inviteLink'],
   ];
+  // Vue OrganizationSettingsModal.isAdmin requires both organization-level
+  // admin/owner membership and tenant-level admin access. The list-level
+  // canManageOrg check alone must not make an editor/viewer's settings form
+  // writable after they open a card.
+  const settingsOrgAdmin = settingsMode === 'create' || Boolean(settingsOrg && (settingsOrg.is_owner === true || settingsOrg.my_role === 'admin'));
+  const settingsCanManage = canManageOrg && settingsOrgAdmin;
+  const showSettingsRoleHint = settingsMode === 'edit' && settingsOrgAdmin && !canManageOrg;
 
   // .wk-page .wk-org-page → utilities: the org page cancels the shared
   // page gutter (max-width/padding !important) and fills the shell height.
@@ -835,13 +842,14 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                   </Select>
                 </div>
                 <div className={'min-h-0 flex-1 overflow-y-auto ' + (settingsMode === 'create' ? 'px-[40px] py-[28px] max-[720px]:px-4 max-[720px]:py-5' : 'px-[24px] py-[20px] max-[720px]:px-4 max-[720px]:py-5')}>
+                  {showSettingsRoleHint ? <div className="mb-[16px] flex items-center gap-[8px] rounded-[8px] bg-[rgba(46,109,230,0.06)] px-[12px] py-[10px] text-[13px] text-[rgba(23,26,29,0.7)]"><IconInfoCircle size={18} /><span>{writeGuardTitle}</span></div> : null}
                   {settingsMode === 'create' && settingsSection === 'basic' ? (
                     <form id="organization-create-form" onSubmit={submitCreate}>
                       <h2 className="m-0 mb-2 text-[16px] font-semibold text-[rgba(23,26,29,0.92)]">{t(locale, 'organization.editor.basicTitle')}</h2>
                       <p className="m-0 mb-6 text-[14px] leading-[22px] text-[rgba(23,26,29,0.4)]">{t(locale, 'organization.editor.basicDesc')}</p>
                       <div className="mb-6 grid grid-cols-[minmax(0,1fr)_minmax(280px,446px)] items-start gap-6 max-[720px]:grid-cols-1">
                         <div><label className={ORG_FORM_LABEL} htmlFor="organization-name">{t(locale, 'organization.name')} *</label><p className={ORG_FORM_DESC}>{t(locale, 'organization.editor.nameTip')}</p></div>
-                        <div className="flex min-w-0 items-center gap-3"><div className="relative flex shrink-0 flex-col items-center gap-1"><button type="button" className="cursor-pointer rounded-lg border-0 bg-transparent p-0" aria-label={t(locale, 'organization.avatarPickerHint')} onClick={() => setAvatarPickerOpen((open) => !open)}><SpaceAvatar name={formName || '?'} avatar={formAvatar} size="medium" /></button><span className="text-[12px] text-[rgba(23,26,29,0.4)]">{t(locale, 'organization.avatar')}</span>{avatarPickerOpen ? <div className="absolute left-0 top-[64px] z-20 grid w-[220px] grid-cols-6 gap-1 rounded-lg border border-[#e7e7ea] bg-surface p-2 shadow-[0_8px_24px_rgba(0,0,0,0.12)]">{ORG_AVATAR_EMOJIS.map((emoji) => <button type="button" key={emoji} className="flex h-7 w-7 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-base hover:bg-[#f3f3f5]" aria-label={emoji} onClick={() => { setFormAvatar('emoji:' + emoji); setAvatarPickerOpen(false); }}>{emoji}</button>)}{formAvatar ? <button type="button" className="col-span-6 border-0 bg-transparent py-1 text-xs text-muted hover:bg-[#f3f3f5]" onClick={() => { setFormAvatar(''); setAvatarPickerOpen(false); }}>{t(locale, 'organization.avatarClear')}</button> : null}</div> : null}</div><Input id="organization-name" name="organization-name" className={ORG_FIELD + ' min-h-[34px]'} value={formName} onChange={(event) => setFormName(event.target.value)} required placeholder={t(locale, 'organization.namePlaceholder')} /></div>
+                        <div className="flex min-w-0 items-center gap-3"><div className="relative flex shrink-0 flex-col items-center gap-1"><button type="button" className="cursor-pointer rounded-lg border-0 bg-transparent p-0 disabled:cursor-not-allowed disabled:opacity-55" aria-label={t(locale, 'organization.avatarPickerHint')} onClick={() => setAvatarPickerOpen((open) => !open)} disabled={!settingsCanManage}><SpaceAvatar name={formName || '?'} avatar={formAvatar} size="medium" /></button><span className="text-[12px] text-[rgba(23,26,29,0.4)]">{t(locale, 'organization.avatar')}</span>{avatarPickerOpen ? <div className="absolute left-0 top-[64px] z-20 grid w-[220px] grid-cols-6 gap-1 rounded-lg border border-[#e7e7ea] bg-surface p-2 shadow-[0_8px_24px_rgba(0,0,0,0.12)]">{ORG_AVATAR_EMOJIS.map((emoji) => <button type="button" key={emoji} className="flex h-7 w-7 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-base hover:bg-[#f3f3f5]" aria-label={emoji} onClick={() => { setFormAvatar('emoji:' + emoji); setAvatarPickerOpen(false); }}>{emoji}</button>)}{formAvatar ? <button type="button" className="col-span-6 border-0 bg-transparent py-1 text-xs text-muted hover:bg-[#f3f3f5]" onClick={() => { setFormAvatar(''); setAvatarPickerOpen(false); }}>{t(locale, 'organization.avatarClear')}</button> : null}</div> : null}</div><Input id="organization-name" name="organization-name" className={ORG_FIELD + ' min-h-[34px]'} value={formName} onChange={(event) => setFormName(event.target.value)} required placeholder={t(locale, 'organization.namePlaceholder')} /></div>
                       </div>
                       <div className="mb-6 grid grid-cols-[minmax(0,1fr)_minmax(280px,446px)] items-start gap-6 max-[720px]:grid-cols-1">
                         <div><label className={ORG_FORM_LABEL} htmlFor="organization-description">{t(locale, 'organization.description')}</label><p className={ORG_FORM_DESC}>{t(locale, 'organization.editor.descriptionTip')}</p></div>
@@ -864,13 +872,13 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                         <p className={ORG_SECTION_DESC}>{t(locale, 'organization.editor.basicDesc')}</p>
                         <div className={ORG_FORM_ITEM}>
                           <label className={ORG_FORM_LABEL} htmlFor="organization-name">{t(locale, 'organization.name')} *</label>
-                          <Input id="organization-name" name="organization-name" className={ORG_FIELD + ' min-h-[34px]'} value={formName} onChange={(event) => setFormName(event.target.value)} required />
+                          <Input id="organization-name" name="organization-name" className={ORG_FIELD + ' min-h-[34px]'} value={formName} onChange={(event) => setFormName(event.target.value)} required disabled={!settingsCanManage} />
                         </div>
                         <div className={ORG_FORM_ITEM}>
                           <label className={ORG_FORM_LABEL} htmlFor="organization-description">{t(locale, 'organization.description')}</label>
-                          <Textarea id="organization-description" name="organization-description" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={3} value={formDescription} onChange={(event) => setFormDescription(event.target.value)} />
+                          <Textarea id="organization-description" name="organization-description" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={3} value={formDescription} onChange={(event) => setFormDescription(event.target.value)} disabled={!settingsCanManage} />
                         </div>
-                        <button type="submit" className={ORG_BTN_PRIMARY} disabled={saving}>{t(locale, 'common.save')}</button>
+                        {settingsCanManage ? <button type="submit" className={ORG_BTN_PRIMARY} disabled={saving}>{t(locale, 'common.save')}</button> : null}
                       </form>
                       <form onSubmit={submitUpgradeRequest} style={{ marginTop: '24px', borderTop: '1px dashed #e7e7ea', paddingTop: '16px' }}>
                         <h3 className={ORG_SECTION_TITLE}>{t(locale, 'organization.upgrade.requestUpgrade')}</h3>
@@ -898,10 +906,10 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                             <span className="text-[12px] text-[rgba(23,26,29,0.6)]">{member.email} · {t(locale, 'organization.role.' + member.role)}</span>
                           </div>
                           <div className={ORG_ROW_ACTIONS}>
-                            <Select className={ORG_FIELD + ' min-h-[30px] w-[116px]!'} aria-label={t(locale, 'organization.members.columns.role')} value={member.role} onChange={(event) => void updateMemberRole(member, event.target.value as 'admin' | 'editor' | 'viewer')}>
+                            <Select className={ORG_FIELD + ' min-h-[30px] w-[116px]!'} aria-label={t(locale, 'organization.members.columns.role')} value={member.role} disabled={!settingsCanManage} onChange={(event) => void updateMemberRole(member, event.target.value as 'admin' | 'editor' | 'viewer')}>
                               {roleOptions.map(([value, labelKey]) => <option key={value} value={value}>{t(locale, labelKey)}</option>)}
                             </Select>
-                            <button type="button" className={ORG_BTN_NEUTRAL} onClick={() => void removeMember(member)}>{t(locale, 'common.remove')}</button>
+                            {settingsCanManage ? <button type="button" className={ORG_BTN_NEUTRAL} onClick={() => void removeMember(member)}>{t(locale, 'common.remove')}</button> : null}
                           </div>
                         </div>
                       ))}
@@ -916,8 +924,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                             <span className="text-[12px] text-[rgba(23,26,29,0.6)]">{t(locale, 'organization.joinRequests.columns.requestedRole')}: {t(locale, 'organization.role.' + request.requested_role)}</span>
                           </div>
                           <div className={ORG_ROW_ACTIONS}>
-                            <button type="button" className={ORG_BTN_OUTLINE} onClick={() => void reviewRequest(request, true)}>{t(locale, 'organization.settings.approve')}</button>
-                            <button type="button" className={ORG_BTN_NEUTRAL} onClick={() => void reviewRequest(request, false)}>{t(locale, 'organization.settings.reject')}</button>
+                            {settingsCanManage ? <><button type="button" className={ORG_BTN_OUTLINE} onClick={() => void reviewRequest(request, true)}>{t(locale, 'organization.settings.approve')}</button><button type="button" className={ORG_BTN_NEUTRAL} onClick={() => void reviewRequest(request, false)}>{t(locale, 'organization.settings.reject')}</button></> : null}
                           </div>
                         </div>
                       ))}
@@ -933,7 +940,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                               <strong className="text-[14px] font-semibold text-[rgba(23,26,29,0.92)]">{row.name}</strong>
                               <span className="text-[12px] text-[rgba(23,26,29,0.6)]">{row.permission || t(locale, 'organization.sharedResources.columns.permission')}</span>
                             </div>
-                            {row.canUnshare ? (
+                            {row.canUnshare && settingsCanManage ? (
                               <div className={ORG_ROW_ACTIONS}>
                                 <button type="button" className={ORG_BTN_NEUTRAL} onClick={() => void unshareKnowledgeBase(row)}>{t(locale, 'organization.share.unshareAction')}</button>
                               </div>
@@ -947,7 +954,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                       <h2 className={ORG_SECTION_TITLE}>{t(locale, 'organization.settings.inviteLink')}</h2>
                       <p className={ORG_SECTION_DESC}>{t(locale, 'organization.settings.inviteMembersDesc')}</p>
                       <div className={ORG_ROW_ACTIONS} style={{ marginBottom: '12px' }}>
-                        <button type="button" className={ORG_BTN_PRIMARY} onClick={() => void generateInviteLink()}>{t(locale, 'organization.settings.inviteMembers')}</button>
+                        {settingsCanManage ? <button type="button" className={ORG_BTN_PRIMARY} onClick={() => void generateInviteLink()}>{t(locale, 'organization.settings.inviteMembers')}</button> : null}
                       </div>
                       {inviteLink ? (
                         <div className="flex flex-col items-start gap-[8px] rounded-[8px] border border-[#e7e7ea] bg-[#f3f3f5] p-[12px]">
