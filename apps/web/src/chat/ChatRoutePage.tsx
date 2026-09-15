@@ -406,6 +406,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       basePath: target.basePath,
       issueTicket: (signal) => client.sandbox.issueTicket(selectedSessionId, signal),
       socketFactory: (url) => new WebSocket(url) as unknown as import('./terminal.ts').WebTerminalSocket,
+      errorCopy: copy.operationFailed,
     });
     terminalController.current = controller;
     const unsubscribe = controller.subscribe(setTerminal);

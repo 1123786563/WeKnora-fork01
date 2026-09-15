@@ -38,6 +38,7 @@ export interface WebTerminalControllerOptions {
   basePath?: string;
   issueTicket(signal?: AbortSignal): Promise<SandboxTerminalTicket>;
   socketFactory(url: string): WebTerminalSocket;
+  errorCopy?: string;
   onSnapshot?(snapshot: WebTerminalSnapshot): void;
 }
 
@@ -117,7 +118,7 @@ export function createWebTerminalController(options: WebTerminalControllerOption
       const code = typeof frame.code === 'string' ? frame.code : undefined;
       const message = typeof frame.message === 'string' && frame.message.trim()
         ? frame.message
-        : 'Terminal connection failed';
+        : options.errorCopy ?? 'Terminal connection failed';
       publish({ ...snapshot, status: terminalStatusFromCode(code, true), error: message });
     }
   }
@@ -132,7 +133,7 @@ export function createWebTerminalController(options: WebTerminalControllerOption
       ticket = await options.issueTicket(input.signal);
     } catch (cause) {
       if (expected !== generation) return;
-      const error = cause instanceof Error ? cause.message : 'Unable to issue terminal ticket';
+      const error = cause instanceof Error ? cause.message : options.errorCopy ?? 'Unable to issue terminal ticket';
       publish({ status: 'error', output: '', error });
       throw cause;
     }
@@ -166,7 +167,7 @@ export function createWebTerminalController(options: WebTerminalControllerOption
       }
     };
     nextSocket.onerror = () => {
-      if (currentSocket(expected)) publish({ ...snapshot, status: 'error', error: 'Terminal connection failed' });
+      if (currentSocket(expected)) publish({ ...snapshot, status: 'error', error: options.errorCopy ?? 'Terminal connection failed' });
     };
     nextSocket.onclose = () => {
       if (!currentSocket(expected)) return;
