@@ -345,3 +345,4 @@
 - Android 知识库壳层缺陷已修复并复验：关闭 Expo Router 默认 pathname header，避免 `knowledge/index`/`knowledge/[id]` 泄漏；文档列表计数传入 `total` 插值，设备页由 `{count} 项` 修正为 `0 项`。移动端定向测试 5/5、typecheck、Release 增量构建和 `test36-small` 设备复验通过。证据 `evidence/vue-react-parity/2026-09-15-r107-android-kb-shell-fix.md`。
 - Android Wiki 禁用能力错误已本地化：识别后端 `feature is not enabled` 错误并按 Wiki/FAQ 输出五语言文案；`test36-small` 真实后端复验显示“此知识库未启用 Wiki 功能”，不再泄漏原始英文错误串。移动端全量测试 190/190、typecheck、Release 增量构建通过。证据 `evidence/vue-react-parity/2026-09-15-r108-android-disabled-feature-localization.md`。
 - Android 图谱禁用能力错误已本地化：识别后端 `feature is not enabled` 并显示“此知识库未启用知识图谱功能”，保留重试操作；`test36-small` 真实后端复验通过。移动端 190/190、typecheck、Release 增量构建通过。证据 `evidence/vue-react-parity/2026-09-15-r109-android-graph-disabled-localization.md`。
+- Android 认证后聊天空态门禁通过：`test36-small` 从真实知识库列表进入“新对话”，ChatScreen 渲染标题、导航、空会话、知识库 chip、总结/相关文件、输入和发送控件；后端无可用聊天模型，发送保持禁用，未伪造请求。证据 `evidence/vue-react-parity/2026-09-15-r110-android-authenticated-chat-empty.md`。
