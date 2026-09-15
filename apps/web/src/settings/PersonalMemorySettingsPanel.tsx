@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
-import { Button, Status, Switch } from '@weknora/ui';
+import { Button, Select, Status, Switch, Textarea } from '@weknora/ui';
 import { readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
 
 type MemoryRow = Record<string, unknown>;
@@ -572,7 +572,7 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
           <div className='min-w-0 flex-1'>
             {editingId === id ? (
               <div className='mb-2 flex flex-col gap-2'>
-                <textarea
+                <Textarea
                   className='w-full min-h-14 resize-y rounded-[3px] border border-line-input px-2 py-1.5 text-[14px] leading-[1.6] focus:border-accent focus:outline-2 focus:outline-offset-0 focus:outline-accent/20'
                   value={editingContent}
                   rows={2}
@@ -833,14 +833,14 @@ export function PersonalMemorySettingsPanel({ client, initialSettings }: { clien
                   <div className='mt-3 flex flex-col gap-3'>
                     <label className='flex flex-col gap-1.5 text-[#27364d] font-semibold'>
                       <span className='text-[12px] text-[rgba(0,0,0,0.6)]'>{t('memorySettings.addKindLabel')}</span>
-                      <select className="w-full [font:inherit]" value={draftKind} onChange={(event) => setDraftKind(event.target.value as typeof KINDS[number])}>
+                      <Select className="w-full" value={draftKind} onChange={(event) => setDraftKind(event.target.value as typeof KINDS[number])}>
                         {KINDS.map((kind) => <option key={kind} value={kind}>{kindLabel(kind)}</option>)}
-                      </select>
+                      </Select>
                       <span className='text-[12px] leading-[18px] text-[rgba(0,0,0,0.4)]'>{kindHint(draftKind)}</span>
                     </label>
                     <label className='flex flex-col gap-1.5 text-[#27364d] font-semibold'>
                       <span className='text-[12px] text-[rgba(0,0,0,0.6)]'>{t('memorySettings.addContentLabel')}</span>
-                      <textarea
+                      <Textarea
                         className="w-full box-border border border-[#cbd5e1] rounded-control bg-white text-ink [font:inherit] px-[.65rem] py-[.55rem]"
                         value={draftContent}
                         rows={3}
