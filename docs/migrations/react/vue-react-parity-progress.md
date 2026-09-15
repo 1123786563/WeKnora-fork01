@@ -1,5 +1,11 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-15 Round N+86 — N007 上传确认弹窗标题与关闭按钮
+
+- 对齐 Vue 三栏弹窗头部：标题移入 220px 文件侧栏的 56px header，通用标题行隐藏；关闭按钮固定在右上角 20px，保持 32px 控件尺寸。
+- 上传确认专项 37/37、Web 类型检查、`git diff --check` 通过；证据：`evidence/vue-react-parity/2026-09-15-n007-dialog-header.md`。
+- N007 仍需认证浏览器 computed-style/截图、真实上传后端和 Wails/native 证据。
+
 ## 2026-09-15 Round N+85 — N007 更多处理选项切换器
 
 - 将 chunking 的“更多处理选项”切换器对齐 Vue：绿色文字、6px 图标间距、垂直 padding、hover 下划线、键盘焦点环和展开时旋转的 SVG chevron。
