@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { clampUploadProgress, findUploadTargetPage, patchUploadTask, summarizeUploadTasks, upsertUploadTask, type UploadTaskState } from './upload-progress.ts';
+import { applyUploadTaskEvent, clampUploadProgress, findUploadTargetPage, patchUploadTask, summarizeUploadTasks, upsertUploadTask, type UploadTaskState } from './upload-progress.ts';
 
 const task = (uploadId: string, kbId: string, progress: number, status: UploadTaskState['status'] = 'uploading'): UploadTaskState => ({ uploadId, kbId, progress, status });
 
@@ -19,6 +19,15 @@ test('highlight target page is calculated for every filtered knowledge-base scop
 test('upload progress patches only the matching task', () => {
   const next = patchUploadTask([task('u1', 'kb1', 10), task('u2', 'kb1', 20)], 'u2', { status: 'success', progress: 100 });
   assert.deepEqual(next, [task('u1', 'kb1', 10), task('u2', 'kb1', 100, 'success')]);
+});
+
+test('progress and completion events update an existing task without repeating kbId', () => {
+  const started = [task('u1', 'kb1', 10)];
+  const progressing = applyUploadTaskEvent(started, { type: 'progress', uploadId: 'u1', progress: 42.4 });
+  assert.deepEqual(progressing, [task('u1', 'kb1', 42)]);
+
+  const completed = applyUploadTaskEvent(progressing, { type: 'complete', uploadId: 'u1', status: 'error', error: 'failed' });
+  assert.deepEqual(completed, [{ ...task('u1', 'kb1', 100, 'error'), error: 'failed' }]);
 });
 
 test('upload summaries aggregate progress by knowledge base and preserve errors', () => {
