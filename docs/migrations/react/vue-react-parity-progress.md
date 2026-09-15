@@ -1,5 +1,11 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-15 Round N+82 — N007 上传配置内容区 padding
+
+- 对照 Vue `.content-wrapper`，React 配置内容区从统一 20px 修正为桌面 `22px 32px 28px`，并保留 800px 下的 16px 覆盖。
+- 聚焦 upload-confirm 测试 37/37、`pnpm typecheck:web`、`git diff --check` 通过；证据：`evidence/vue-react-parity-2026-09-15-n007-config-padding.md`。
+- N007 仍需修改后认证浏览器 computed-style/截图、真实上传后端及 Wails/native 证据。
+
 ## 2026-09-15 Round N+81 — N007 上传配置区段导航证据
 
 - 记录上传配置左侧导航的 Vue 纵向菜单几何：216px 侧栏、38px 行高、状态副标题、激活背景与问题色态；单一 `nav` landmark 保持不变。
