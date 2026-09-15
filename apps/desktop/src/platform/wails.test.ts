@@ -43,7 +43,7 @@ test('routes external URLs through Wails and rejects non-http schemes', () => {
   assert.deepEqual(opened, ['https://example.test']);
 });
 
-test('uses the desktop credential bridge with local fallback semantics', () => {
+test('uses local storage only when no desktop credential bridge exists', () => {
   const values = new Map<string, string>();
   const local = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => void values.set(key, value), removeItem: (key: string) => void values.delete(key) } as Storage;
   const secure = new Map<string, string>();
@@ -57,4 +57,23 @@ test('uses the desktop credential bridge with local fallback semantics', () => {
   credentials.remove('access');
   assert.equal(credentials.read('access'), null);
   assert.equal(values.has('access'), false);
+});
+
+test('does not mirror desktop credentials into local storage or revive stale values', () => {
+  const local = {
+    getItem: (key: string) => key === 'access' ? 'stale-browser-token' : null,
+    setItem: () => { throw new Error('desktop credentials must not use localStorage'); },
+    removeItem: () => { throw new Error('desktop credentials must not use localStorage'); },
+  } as unknown as Storage;
+  const secure = new Map<string, string>();
+  const credentials = createDesktopCredentialStorage(local, {
+    readCredential: (key) => secure.get(key) ?? null,
+    writeCredential: (key, value) => void secure.set(key, value),
+    removeCredential: (key) => void secure.delete(key),
+  });
+
+  credentials.write('access', 'desktop-token');
+  assert.equal(credentials.read('access'), 'desktop-token');
+  credentials.remove('access');
+  assert.equal(credentials.read('access'), null);
 });

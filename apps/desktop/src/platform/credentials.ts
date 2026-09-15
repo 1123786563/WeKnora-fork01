@@ -14,9 +14,21 @@ export function createDesktopCredentialStorage(
   storage: Storage | undefined = typeof localStorage === 'undefined' ? undefined : localStorage,
   bridge: DesktopCredentialBridge = {},
 ): DesktopCredentialStorage {
+  // A desktop bridge is the authoritative credential store. Never mirror
+  // bearer material into WebView localStorage or fall back to a stale browser
+  // value once the bridge is present.
+  const hasBridge = Boolean(
+    bridge.readCredential || bridge.writeCredential || bridge.removeCredential,
+  );
   return {
-    read: (key) => bridge.readCredential?.(key) ?? storage?.getItem(key) ?? null,
-    write: (key, value) => { bridge.writeCredential?.(key, value); storage?.setItem(key, value); },
-    remove: (key) => { bridge.removeCredential?.(key); storage?.removeItem(key); },
+    read: (key) => hasBridge ? bridge.readCredential?.(key) ?? null : storage?.getItem(key) ?? null,
+    write: (key, value) => {
+      if (hasBridge) bridge.writeCredential?.(key, value);
+      else storage?.setItem(key, value);
+    },
+    remove: (key) => {
+      if (hasBridge) bridge.removeCredential?.(key);
+      else storage?.removeItem(key);
+    },
   };
 }
