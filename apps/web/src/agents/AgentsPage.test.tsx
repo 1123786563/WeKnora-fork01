@@ -19,6 +19,7 @@ const {
   AgentDetailDrawer,
   AgentRail,
   AgentsPageView,
+  hasAgentChatModel,
   loadAgentsPageData,
 } = await import('./AgentsPage.tsx');
 const {
@@ -32,6 +33,12 @@ const { formatMessage } = await import('@weknora/i18n');
 const t = (key: string, values?: Record<string, string | number>) => formatMessage('zh-CN', key, values);
 const noop = () => {};
 const admin: AgentViewer = { userId: 'user-1', isAdmin: true, isContributor: true };
+
+test('agent creation readiness follows Vue KnowledgeQA model semantics', () => {
+  assert.equal(hasAgentChatModel([{ type: 'KnowledgeQA' }]), true);
+  assert.equal(hasAgentChatModel([{ type: 'llm' }]), false);
+  assert.equal(hasAgentChatModel([{ type: 'Embedding' }]), false);
+});
 
 const builtinAgents = [
   { id: 'builtin-quick-answer', name: '快速问答', is_builtin: true, config: { agent_mode: 'quick-answer' } },

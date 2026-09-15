@@ -587,6 +587,11 @@ function membershipRoleOf(memberships: unknown, tenantId: string | null): string
 
 interface AgentsPageProps { client: WeKnoraClient; tenantId?: string | number | null }
 
+// Vue's useTenantModelReadiness counts KnowledgeQA models as chat models.
+export function hasAgentChatModel(models: ReadonlyArray<{ type?: unknown }>): boolean {
+  return models.some((model) => model.type === 'KnowledgeQA');
+}
+
 export function AgentsPage({ client, tenantId }: AgentsPageProps) {
   const locale = useMemo(resolveLocale, []);
   const t = useCallback<Translate>((key, values) => formatMessage(locale, key, values), [locale]);
@@ -647,7 +652,7 @@ export function AgentsPage({ client, tenantId }: AgentsPageProps) {
   useEffect(() => {
     let active = true;
     void client.configuration.models.list().then((models) => {
-      if (active) setModelsReady(models.some((model) => model.type === 'llm'));
+      if (active) setModelsReady(hasAgentChatModel(models));
     }).catch(() => { if (active) setModelsReady(false); });
     return () => { active = false; };
   }, [client]);

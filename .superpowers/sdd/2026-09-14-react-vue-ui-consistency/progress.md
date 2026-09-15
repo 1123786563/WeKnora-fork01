@@ -544,3 +544,4 @@ N014/N015 expanded settings controls (2026-09-15): system settings, preferences,
 - R246 集成抽屉关闭控件本地化（2026-09-15）：预览、创建和 API Playground 关闭按钮统一复用五语言 `common.close`，集成测试 5/5、Web typecheck 与 diff check 通过。证据：`evidence/vue-react-parity/2026-09-15-r246-integrations-close-locale.md`。
 - R247 Web 全量回归（2026-09-15）：集成抽屉关闭控件本地化后，`pnpm test:web` 900/900 通过，0 失败、0 取消、0 跳过。证据：`evidence/vue-react-parity/2026-09-15-r247-web-regression.md`。
 - R248 Web 生产构建（2026-09-15）：`pnpm build:web` 成功完成 TypeScript 与 Vite 打包；仅有既有大 chunk advisory，无构建错误。证据：`evidence/vue-react-parity/2026-09-15-r248-web-build.md`。
+- R249 智能体创建模型前置条件（2026-09-15）：修正 React 将 `llm` 误当作聊天模型的问题，改为 Vue/API 契约中的 `KnowledgeQA`；同条件浏览器验证由错误跳转模型设置恢复为打开创建编辑器，编辑器边界与 Vue 均为 `127.5,54,1100,612`。Agents 聚焦 17/17、Web typecheck 通过。证据：`evidence/vue-react-parity/2026-09-15-r246-agent-model-readiness.md`；真实提交失败回滚、响应式和 Wails/native 仍待补齐。
