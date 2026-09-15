@@ -390,3 +390,5 @@ Verification update (2026-09-15): current cross-package regression remains green
 N025/N017 editor polish (2026-09-15): fixed the unterminated textarea padding utility in `ConfigurationEditor`, `ConfigurationOperations`, and `ModelDebugPanel`, restoring consistent Vue-shaped form spacing across configuration forms. Web typecheck and diff check pass. Evidence: `evidence/vue-react-parity/2026-09-15-r116-configuration-editor-spacing.md`.
 
 N017 system API-key interaction (2026-09-15): added a five-locale copy action for the one-time platform API-key token, with success state and manual-copy fallback when Clipboard API access fails. Web typecheck and diff check pass. Evidence: `evidence/vue-react-parity/2026-09-15-r117-system-api-key-copy.md`.
+
+N013 data-source form polish (2026-09-15): replaced hardcoded English credentials/settings examples in the Web data-source editor with the existing shared localized catalog keys. Web typecheck and diff check pass. Evidence: `evidence/vue-react-parity/2026-09-15-r118-datasource-placeholder-localization.md`.
