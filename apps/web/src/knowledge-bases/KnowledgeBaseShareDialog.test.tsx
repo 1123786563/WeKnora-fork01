@@ -252,7 +252,7 @@ test('shows the create failure and does not fire the change callback', async () 
   assert.equal(button(container, 'Confirm')?.disabled, false);
 });
 
-test('confirms unshare and prevents duplicate removal while the mutation is busy', async () => {
+test('prevents duplicate removal while the mutation is busy', async () => {
   const calls: string[] = [];
   const removal = deferred<void>();
   const client = clientFor(
@@ -262,8 +262,6 @@ test('confirms unshare and prevents duplicate removal while the mutation is busy
   const container = await mount(client);
   await act(async () => button(container, 'Shared to (1)')?.click());
 
-  let confirmCalls = 0;
-  window.confirm = () => { confirmCalls += 1; return true; };
   const remove = labelledButton(container, 'Remove share');
   assert.ok(remove);
   await act(async () => {
@@ -271,27 +269,25 @@ test('confirms unshare and prevents duplicate removal while the mutation is busy
     remove?.click();
   });
   assert.deepEqual(calls, ['share-1']);
-  assert.equal(confirmCalls, 1);
   assert.equal(remove?.disabled, true);
 
   await act(async () => removal.resolve());
 });
 
-test('uses the localized unshare confirmation copy and skips removal when declined', async () => {
-  let calls = 0;
+test('removes a share directly without an extra confirmation prompt like Vue', async () => {
+  let removeCalls = 0;
   const client = clientFor(async () => ({ items: [{ id: 'share-1', organization_id: 'org-editor', organization_name: 'Editors', permission: 'viewer' }], total: 1 }), {
-    remove: async () => { calls += 1; },
+    remove: async () => { removeCalls += 1; },
   });
   const container = await mount(client);
   await act(async () => button(container, 'Shared to (1)')?.click());
 
-  let prompt = '';
-  window.confirm = (message = '') => { prompt = message; return false; };
+  let confirmCalls = 0;
+  window.confirm = () => { confirmCalls += 1; return true; };
   await act(async () => labelledButton(container, 'Remove share')?.click());
 
-  assert.equal(prompt, 'Remove "Editors" from this shared space? Members will no longer have access to this knowledge base.');
-  assert.equal(calls, 0);
-  assert.equal(labelledButton(container, 'Remove share')?.disabled, false);
+  assert.equal(removeCalls, 1);
+  assert.equal(confirmCalls, 0, 'Vue removes the share without an extra confirmation prompt');
 });
 
 test('shows an unshare failure without firing the change callback', async () => {
