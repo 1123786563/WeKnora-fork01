@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getUploadConfirmDefaultSection, validateUploadConfirm, type UploadConfirmSection } from './upload-confirm.ts';
+import { getUploadConfirmDefaultSection, getUploadConfirmSections, isUploadConfirmDismissible, validateUploadConfirm, type UploadConfirmSection } from './upload-confirm.ts';
 
 const validBase = {
   mode: 'file' as const,
@@ -43,4 +43,36 @@ test('does not treat an enabled media option without matching media as a blockin
 test('rejects empty file and manual submissions', () => {
   assert.equal(validateUploadConfirm({ ...validBase, files: [] }).valid, false);
   assert.equal(validateUploadConfirm({ ...validBase, mode: 'manual', files: [], manualContent: '  ' }).valid, false);
+});
+
+test('keeps the Vue section set and omits tags while reparsing', () => {
+  assert.deepEqual(getUploadConfirmSections('file'), ['tags', 'parser', 'chunking', 'multimodal', 'asr', 'question']);
+  assert.deepEqual(getUploadConfirmSections('manual'), ['tags', 'parser', 'chunking', 'multimodal', 'asr', 'question']);
+  assert.deepEqual(getUploadConfirmSections('reparse'), ['parser', 'chunking', 'multimodal', 'asr', 'question']);
+});
+
+test('reports every media setup issue in Vue navigation order', () => {
+  const result = validateUploadConfirm({
+    ...validBase,
+    files: [{ name: 'scan.png' }, { name: 'meeting.m4a' }],
+  });
+
+  assert.deepEqual(result.issues, ['multimodal', 'asr']);
+  assert.equal(result.firstIssueSection, 'multimodal');
+});
+
+test('detects media in URL paths without treating query strings as extensions', () => {
+  const result = validateUploadConfirm({
+    ...validBase,
+    files: [],
+    urls: ['https://example.test/recording.M4A?download=1'],
+  });
+
+  assert.deepEqual(result.issues, ['asr']);
+  assert.equal(result.valid, false);
+});
+
+test('keeps the dialog dismissible until submission starts', () => {
+  assert.equal(isUploadConfirmDismissible(false), true);
+  assert.equal(isUploadConfirmDismissible(true), false);
 });

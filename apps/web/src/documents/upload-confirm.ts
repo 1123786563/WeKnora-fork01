@@ -23,6 +23,8 @@ export interface UploadConfirmValidation {
   firstIssueSection: UploadConfirmSection | null;
 }
 
+const uploadConfirmSections: UploadConfirmSection[] = ['tags', 'parser', 'chunking', 'multimodal', 'asr', 'question'];
+
 const imageExtensions = new Set(['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp']);
 const audioExtensions = new Set(['mp3', 'wav', 'm4a', 'flac', 'ogg']);
 
@@ -46,6 +48,14 @@ export function validateUploadConfirm(input: UploadConfirmInput): UploadConfirmV
   if (hasMedia(files, urls, audioExtensions) && (!input.asrEnabled || !input.asrModelId)) issues.push('asr');
 
   return { valid: issues.length === 0, issues, firstIssueSection: issues[0] ?? null };
+}
+
+export function getUploadConfirmSections(mode: UploadConfirmMode): UploadConfirmSection[] {
+  return mode === 'reparse' ? uploadConfirmSections.filter((section) => section !== 'tags') : [...uploadConfirmSections];
+}
+
+export function isUploadConfirmDismissible(loading: boolean): boolean {
+  return !loading;
 }
 
 export function getUploadConfirmDefaultSection(input: UploadConfirmInput): UploadConfirmSection {
