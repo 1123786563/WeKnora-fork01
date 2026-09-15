@@ -3,6 +3,13 @@ import type { KnowledgeBase } from '@weknora/contracts';
 
 type KnowledgeBaseListParams = NonNullable<Parameters<WeKnoraClient['knowledgeBases']['list']>[0]>;
 
+export type KnowledgeBaseScope = 'all' | 'mine' | 'others';
+
+/** The list endpoint is the source of truth for creator filtering. */
+export function buildKnowledgeBaseListParams(scope: KnowledgeBaseScope = 'all'): KnowledgeBaseListParams {
+  return scope === 'all' ? {} : { creator: scope };
+}
+
 export type KnowledgeBaseListState =
   | { status: 'success'; items: KnowledgeBase[] }
   | { status: 'error'; code?: string; message: string };

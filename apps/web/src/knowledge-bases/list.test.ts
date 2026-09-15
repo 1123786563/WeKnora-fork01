@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { KnowledgeBaseListParams } from '@weknora/api-client';
 
-import { loadKnowledgeBases } from './list.ts';
+import { buildKnowledgeBaseListParams, loadKnowledgeBases } from './list.ts';
 
 test('loads real client data into a renderable list state', async () => {
   const state = await loadKnowledgeBases({
@@ -44,4 +44,10 @@ test('passes the Vue-equivalent creator scope to the backend list request', asyn
 
   assert.deepEqual(received, { creator: 'mine' });
   assert.deepEqual(state, { status: 'success', items: [] });
+});
+
+test('does not send a creator filter for the all scope', () => {
+  assert.deepEqual(buildKnowledgeBaseListParams('all'), {});
+  assert.deepEqual(buildKnowledgeBaseListParams('mine'), { creator: 'mine' });
+  assert.deepEqual(buildKnowledgeBaseListParams('others'), { creator: 'others' });
 });

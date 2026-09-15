@@ -3,8 +3,11 @@ import test from 'node:test';
 
 import {
   describeKnowledgeBaseList,
+  describeKnowledgeBaseDetailPermission,
   describeKnowledgeBasePermission,
+  filterKnowledgeBases,
   loadKnowledgeBaseActivity,
+  mergeKnowledgeBaseScopes,
   saveKnowledgeBase,
 } from './states.ts';
 
@@ -42,4 +45,35 @@ test('normalizes activity loading, empty, and error without inventing rows', asy
   assert.deepEqual(await loadKnowledgeBaseActivity(async () => { throw new Error('activity unavailable'); }), {
     status: 'error', message: 'activity unavailable', rows: [],
   });
+});
+
+test('merges owned and shared cards once, keeping owned precedence and shared ordering', () => {
+  const items = mergeKnowledgeBaseScopes(
+    [{ id: 'owned', name: 'Owned', is_pinned: false }],
+    [
+      { knowledge_base: { id: 'owned', name: 'Duplicate' }, permission: 'viewer' },
+      { knowledge_base: { id: 'shared', name: 'Shared', is_pinned: true, pinned_at: '2026-01-01' }, permission: 'viewer', share_id: 's1' },
+    ],
+  );
+  assert.deepEqual(items.map((item) => item.id), ['shared', 'owned']);
+  assert.equal(items.find((item) => item.id === 'owned')?.name, 'Owned');
+  assert.equal(items.find((item) => item.id === 'shared')?.permission, 'viewer');
+});
+
+test('filters list search across name, description, creator, and type without changing empty semantics', () => {
+  const items = [
+    { id: '1', name: 'Docs', description: 'Platform guide', type: 'document' },
+    { id: '2', name: 'Support', description: 'Answers', creator_name: 'Lin', type: 'faq' },
+  ];
+  assert.deepEqual(filterKnowledgeBases(items, '  lin '), [items[1]]);
+  assert.deepEqual(filterKnowledgeBases(items, ''), items);
+  assert.deepEqual(filterKnowledgeBases(items, 'missing'), []);
+});
+
+test('enforces share-level detail permissions and download restrictions', () => {
+  assert.deepEqual(describeKnowledgeBaseDetailPermission({ permission: 'viewer', viaShare: true, tenantRole: 'admin' }), {
+    canView: true, canEdit: false, canShare: false, canDownload: false, canMutateDocuments: false,
+  });
+  assert.equal(describeKnowledgeBaseDetailPermission({ permission: 'editor', viaShare: true, tenantRole: 'viewer' }).canEdit, true);
+  assert.equal(describeKnowledgeBaseDetailPermission({ isOwner: true, tenantRole: 'contributor' }).canDownload, true);
 });
