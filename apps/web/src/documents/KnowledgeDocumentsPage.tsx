@@ -717,6 +717,7 @@ export function UploadSectionNav(props: UploadSectionNavProps) {
           type="button"
           className={[
             "wk-upload-nav-item",
+            "hover:bg-[var(--wk-bg-hover,#f3f5f8)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(7_192_95_/_20%)]",
             item.active ? "is-active bg-[var(--wk-bg-muted,#f2f4f7)] text-[var(--wk-accent,#07c05f)]" : "",
             item.issue ? "has-issue text-[var(--wk-danger,#d92d20)]" : "",
           ].filter(Boolean).join(" ")}
