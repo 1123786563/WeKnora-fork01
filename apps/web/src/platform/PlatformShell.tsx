@@ -125,6 +125,17 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
   const [pathname, setPathname] = useState(() => window.location.pathname);
   const [collapsed, setCollapsed] = useState(() => window.localStorage.getItem(COLLAPSE_STORAGE_KEY) === 'true');
   const [menuOpen, setMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target;
+      if (target instanceof Node && userMenuRef.current?.contains(target)) return;
+      setMenuOpen(false);
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [menuOpen]);
   // Welcome tour (Vue mounts NewUserGuide in platform/index.vue). The models
   // step opens the settings section in place; the shell remembers that it
   // navigated so leaving the step can return to the previous page, mirroring
@@ -650,7 +661,7 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
             __user-name / __user-email / __dropdown / __dropdown-item
             (+ --danger swap) / __dropdown-divider → utilities. */}
         <div className="shrink-0 px-[2px] py-[4px]">
-          <div className="relative">
+          <div ref={userMenuRef} className="relative">
             <button type="button" className="flex items-center gap-[6px] w-full px-[6px] py-[8px] border-none rounded-[8px] bg-transparent cursor-pointer text-left hover:bg-[#eceff4]" aria-haspopup="menu" aria-expanded={menuOpen}
               data-guide="user-menu"
               onClick={() => setMenuOpen((open) => !open)}>
