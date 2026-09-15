@@ -482,7 +482,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       if (shouldPollAttachmentStatus(uploaded.status)) scheduleAttachmentPoll(localId, sessionId, attachmentId, generation);
     } catch (cause) {
       if (controller.signal.aborted || !attachmentIsCurrent(localId, generation, sessionId)) return;
-      const message = cause instanceof Error ? cause.message : 'Attachment status refresh failed.';
+      const message = cause instanceof Error ? cause.message : copy.operationFailed;
       setAttachments((items) => items.map((item) => item.id === localId ? { ...item, status: 'failed', error: message } : item));
     } finally {
       if (attachmentUploadControllersRef.current.get(localId) === controller) attachmentUploadControllersRef.current.delete(localId);
@@ -505,7 +505,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       }, controller.signal);
       if (!attachmentIsCurrent(localId, generation, sessionId)) {
         try { await client.chat.attachments.remove(sessionId, uploaded.id, scope.signal); }
-        catch (cause) { setError(cause instanceof Error ? `Attachment cleanup failed: ${cause.message}` : 'Attachment cleanup failed.'); }
+        catch (cause) { setError(cause instanceof Error ? `Attachment cleanup failed: ${cause.message}` : copy.operationFailed); }
         throw new Error('Attachment upload was cancelled.');
       }
       record.attachmentId = uploaded.id;
@@ -515,7 +515,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       return uploaded.id;
     } catch (cause) {
       if (controller.signal.aborted) throw cause instanceof Error ? cause : new Error('Attachment upload cancelled.');
-      const message = cause instanceof Error ? cause.message : 'Attachment upload failed.';
+      const message = cause instanceof Error ? cause.message : copy.operationFailed;
       if (attachmentIsCurrent(localId, generation, sessionId)) setAttachments((items) => items.map((item) => item.id === localId ? { ...item, status: 'failed', error: message } : item));
       throw cause instanceof Error ? cause : new Error(message);
     } finally {
@@ -555,7 +555,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
         attachmentRecordsRef.current.delete(localId);
         setAttachments((items) => items.filter((item) => item.id !== localId));
       } catch (cause) {
-        const message = cause instanceof Error ? cause.message : 'Attachment removal failed.';
+        const message = cause instanceof Error ? cause.message : copy.operationFailed;
         attachmentGenerationsRef.current.set(localId, (attachmentGenerationsRef.current.get(localId) ?? 0) + 1);
         setAttachments((items) => items.map((item) => item.id === localId ? { ...item, status: 'failed', error: `Attachment removal failed: ${message}` } : item));
       }
@@ -585,7 +585,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     for (const [, record] of records) {
       if (!record.attachmentId || !record.sessionId) continue;
       try { await client.chat.attachments.remove(record.sessionId, record.attachmentId, scope.signal); }
-      catch (cause) { setError(cause instanceof Error ? `Attachment cleanup failed: ${cause.message}` : 'Attachment cleanup failed.'); }
+      catch (cause) { setError(cause instanceof Error ? `Attachment cleanup failed: ${cause.message}` : copy.operationFailed); }
     }
   }
 
