@@ -41,6 +41,24 @@ test('MCP tools directory fails closed and offers policy retry', () => {
   assert.match(html, /重试/);
 });
 
+test('MCP policy errors keep the Vue tool directory visible and disable its controls', () => {
+  const html = renderToStaticMarkup(React.createElement(McpToolsDirectory, {
+    serviceId: 'svc-1',
+    busy: false,
+    policyError: 'policy unavailable',
+    onRetryPolicies: () => undefined,
+    onPolicyChange: () => undefined,
+    approvals: [],
+    tools: [{ name: 'search', description: 'Search docs' }],
+  }));
+  assert.match(html, /search/);
+  assert.match(html, /详情/);
+  assert.match(html, /policy unavailable/);
+  const switches = html.match(/role="switch"/g) ?? [];
+  assert.equal(switches.length, 2);
+  assert.equal((html.match(/disabled=""/g) ?? []).length, 2, 'Vue policy error disables both switches');
+});
+
 test('MCP stale metadata keeps the Vue read-only directory without policy switches', () => {
   const html = renderToStaticMarkup(React.createElement(McpToolsDirectory, { serviceId: undefined, busy: true, policyError: null, onRetryPolicies: () => undefined, onPolicyChange: () => undefined, approvals: [], tools: [{ name: 'search' }] }));
   assert.match(html, /search/);
