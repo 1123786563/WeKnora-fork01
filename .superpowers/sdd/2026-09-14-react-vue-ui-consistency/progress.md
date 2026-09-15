@@ -614,3 +614,4 @@ N014/N015 expanded settings controls (2026-09-15): system settings, preferences,
 - R302 个人记忆设置 fallback 本地化（2026-09-15）：工作区记忆保存未知异常复用 `common.operationFailed`，服务端 message 优先；设置聚焦 31/31、Web typecheck 与 diff check 通过。证据：`evidence/vue-react-parity/2026-09-15-r302-memory-fallback-localization.md`；真实后端、浏览器 locale 及 native 仍待补齐。
 - R303 Web 全量回归（2026-09-15）：个人记忆设置 fallback 本地化后 `pnpm test:web` 911/911，失败/取消/跳过均为 0。证据：`evidence/vue-react-parity/2026-09-15-r303-web-regression.md`；受保护后端、双端视觉、响应式及 native 仍待补齐。
 - R304 邀请注册入口 fallback 本地化（2026-09-15）：JoinPage 缺少 token 与邀请无效/过期状态接入五语言词条，服务端错误优先；auth i18n 聚焦 2/2、Web typecheck 与 diff check 通过。证据：`evidence/vue-react-parity/2026-09-15-r304-join-fallback-localization.md`；真实 provider、浏览器 locale 及 native 仍待补齐。
+- R305 Web 全量回归（2026-09-15）：JoinPage 邀请 fallback 本地化后 `pnpm test:web` 911/911，失败/取消/跳过均为 0。证据：`evidence/vue-react-parity/2026-09-15-r305-web-regression.md`；provider、双端视觉、响应式及 native 仍待补齐。
