@@ -58,3 +58,8 @@ export function nextPathAfterAuth(search: string): string {
   const next = new URLSearchParams(search).get('next');
   return next && next.startsWith('/') && !next.startsWith('//') ? next : '/platform/knowledge-bases';
 }
+
+export function authNavigationTarget(search: string, invited: boolean): string {
+  if (invited) return '/platform/knowledge-bases';
+  return nextPathAfterAuth(search);
+}

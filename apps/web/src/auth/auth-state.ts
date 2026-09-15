@@ -13,6 +13,25 @@ export interface RegisterForm {
 export type AuthField = 'email' | 'password' | 'username' | 'confirmPassword';
 export type ValidationErrors = Partial<Record<AuthField, string>>;
 
+export function getInviteToken(search: string): string | null {
+  const token = new URLSearchParams(search).get('token')?.trim();
+  return token || null;
+}
+
+export function inviteNavigationAfterAuth(search: string, invited: boolean): string {
+  if (invited) return '/platform/knowledge-bases';
+  const next = new URLSearchParams(search).get('next');
+  return next && next.startsWith('/') && !next.startsWith('//') ? next : '/platform/knowledge-bases';
+}
+
+export function decodeOIDCResult(encoded: string): Record<string, unknown> {
+  const normalized = encoded.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized + '='.repeat((4 - normalized.length % 4) % 4);
+  const binary = typeof atob === 'function' ? atob(padded) : Buffer.from(padded, 'base64').toString('binary');
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>;
+}
+
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const usernamePattern = /^[a-zA-Z0-9_\u4e00-\u9fa5]+$/;
 
