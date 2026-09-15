@@ -52,6 +52,16 @@ test('upload permission honors the Vue shared editor grant but denies shared vie
   assert.equal(canUploadKnowledgeDocuments({ id: 'kb-1', my_permission: 'viewer' }, me), false);
 });
 
+test('upload permission keeps Vue creator precedence over a stale viewer projection', () => {
+  assert.equal(
+    canUploadKnowledgeDocuments(
+      { id: 'kb-1', creator_id: 'creator-1', my_permission: 'viewer' },
+      { user: { id: 'creator-1', role: 'viewer' } },
+    ),
+    true,
+  );
+});
+
 // --- DocumentsBreadcrumb (Vue KnowledgeBase.vue document-title-row parity) -------
 
 test('breadcrumb shows 知识库 › kbName › 文档 and never the raw UUID', () => {
