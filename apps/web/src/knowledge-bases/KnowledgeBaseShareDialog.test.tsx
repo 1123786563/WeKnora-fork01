@@ -82,6 +82,10 @@ function button(container: HTMLElement, label: string) {
   return [...container.querySelectorAll<HTMLButtonElement>('button')].find((item) => item.textContent?.includes(label));
 }
 
+function labelledButton(container: HTMLElement, label: string) {
+  return container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+}
+
 async function select(container: HTMLElement, label: string, value: string) {
   if (label === 'Permission') {
     const option = [...container.querySelectorAll<HTMLButtonElement>('[role="radio"]')].find((item) => item.textContent === (value === 'editor' ? 'Editable' : 'Read-only'));
@@ -245,7 +249,7 @@ test('confirms unshare and prevents duplicate removal while the mutation is busy
 
   let confirmCalls = 0;
   window.confirm = () => { confirmCalls += 1; return true; };
-  const remove = button(container, 'Remove share');
+  const remove = labelledButton(container, 'Remove share');
   assert.ok(remove);
   await act(async () => {
     remove?.click();
@@ -268,11 +272,11 @@ test('uses the localized unshare confirmation copy and skips removal when declin
 
   let prompt = '';
   window.confirm = (message = '') => { prompt = message; return false; };
-  await act(async () => button(container, 'Remove share')?.click());
+  await act(async () => labelledButton(container, 'Remove share')?.click());
 
   assert.equal(prompt, 'Remove "Editors" from this shared space? Members will no longer have access to this knowledge base.');
   assert.equal(calls, 0);
-  assert.equal(button(container, 'Remove share')?.disabled, false);
+  assert.equal(labelledButton(container, 'Remove share')?.disabled, false);
 });
 
 test('shows an unshare failure without firing the change callback', async () => {
@@ -284,12 +288,12 @@ test('shows an unshare failure without firing the change callback', async () => 
   await act(async () => button(container, 'Shared to (1)')?.click());
   window.confirm = () => true;
 
-  await act(async () => button(container, 'Remove share')?.click());
+  await act(async () => labelledButton(container, 'Remove share')?.click());
 
   assert.match(container.textContent ?? '', /remove request failed/);
   assert.doesNotMatch(container.textContent ?? '', /Share cancelled/);
   assert.equal(changed, 0);
-  assert.equal(button(container, 'Remove share')?.disabled, false);
+  assert.equal(labelledButton(container, 'Remove share')?.disabled, false);
 });
 
 test('ignores a stale load when the knowledge base changes while requests are pending', async () => {

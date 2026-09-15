@@ -1,5 +1,11 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-15 Round R320 — Knowledge-base share dialog action parity
+
+- 对齐 Vue 共享知识库对话框：标题不再拼接知识库名，面板宽度为 520px，已共享列表的设置/取消共享操作改为仅图标，并保留本地化 `aria-label/title`。
+- 新增共享关闭图标，聚焦测试 13/13、Web 911/911、Web typecheck 和 diff check 通过；真实认证双端截图与后端共享/取消共享仍开放。
+- 证据：`evidence/vue-react-parity/2026-09-15-r320-share-dialog-actions.md`。
+
 ## 2026-09-14 Round N+35 — KB 设置 i18n 基础移植（kbSettings/knowledgeEditor 命名空间入共享 i18n）
 
 - 新增 packages/i18n/src/generated/kbSettingsMessages.ts（59 键 ×5 locale，parser/storage/vectorStore）与 knowledgeEditorMessages.ts（586 键 ×5 locale，basic/chunking/indexing 标签）；源为 Vue locales 字节级，en-US/ja-JP 缺键按 Vue fallbackLocale=zh-CN 的渲染值补齐；两域均入 index.ts 合并链。
