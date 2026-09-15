@@ -371,6 +371,9 @@ test('(m) batch management exposes accessible selection and deletes selected ses
   window.confirm = () => true;
   try {
     const container = await mountShell({ client });
+    const menuToggle = container.querySelector('nav[aria-label="我的对话"] details summary') as HTMLElement | null;
+    assert.ok(menuToggle, 'expected a session actions menu');
+    await act(async () => { menuToggle?.click(); await settle(1); });
     const manage = container.querySelector('nav[aria-label="我的对话"] button[aria-label="批量管理"]') as HTMLButtonElement | null;
     assert.ok(manage);
     await act(async () => { manage?.click(); await settle(2); });
@@ -404,6 +407,9 @@ test('(n) failed batch deletion keeps selection and offers retry', async () => {
   window.confirm = () => true;
   try {
     const container = await mountShell({ client });
+    const menuToggle = container.querySelector('nav[aria-label="我的对话"] details summary') as HTMLElement | null;
+    assert.ok(menuToggle, 'expected a session actions menu');
+    await act(async () => { menuToggle.click(); await settle(1); });
     await act(async () => { (container.querySelector('nav[aria-label="我的对话"] button[aria-label="批量管理"]') as HTMLButtonElement).click(); await settle(1); });
     const first = container.querySelector('nav[aria-label="我的对话"] input[type="checkbox"]:not([aria-label="全选会话"])') as HTMLInputElement;
     await act(async () => { first.click(); await settle(1); });
