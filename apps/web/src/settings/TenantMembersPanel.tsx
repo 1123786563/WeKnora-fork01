@@ -49,6 +49,7 @@ const LOCAL_FALLBACKS: Partial<Record<Locale, Fallbacks>> = {
     'tenantMembersPanel.pager.sizePerPage': '{size} 条/页',
     'tenantMembersPanel.pager.jumper': '跳至',
     'tenantMembersPanel.pager.pageUnit': '页',
+    'tenantMembersPanel.clearSearch': '清除搜索',
   },
   'en-US': {
     'tenantInvitation.status.pending': 'Pending',
@@ -79,7 +80,11 @@ const LOCAL_FALLBACKS: Partial<Record<Locale, Fallbacks>> = {
     'tenantMembersPanel.pager.sizePerPage': '{size} / page',
     'tenantMembersPanel.pager.jumper': 'Go to',
     'tenantMembersPanel.pager.pageUnit': 'page',
+    'tenantMembersPanel.clearSearch': 'Clear search',
   },
+  'ja-JP': { 'tenantMembersPanel.clearSearch': '検索をクリア' },
+  'ko-KR': { 'tenantMembersPanel.clearSearch': '검색 지우기' },
+  'ru-RU': { 'tenantMembersPanel.clearSearch': 'Очистить поиск' },
 };
 
 function interpolate(template: string, values?: Record<string, string | number>): string {
@@ -588,7 +593,7 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
             <form className="relative min-w-40 w-56 flex-[0_1_14rem] max-[720px]:min-w-0 max-[720px]:w-full max-[720px]:flex-[1_1_100%]" role="search" onSubmit={search}>
               <span className="pointer-events-none absolute left-[0.45rem] top-1/2 inline-flex -translate-y-1/2 items-center justify-center text-[var(--wk-muted,#66758b)]"><Icon name="search" /></span>
               <Input type="search" className="w-full rounded-md! px-[1.9rem]! py-[0.4rem]! text-[var(--wk-text,#172033)]! focus-visible:[outline:var(--wk-focus-ring,3px_solid_rgb(46_109_230/35%))] focus-visible:outline-offset-2" aria-label={tr('tenantMember.searchPlaceholder')} placeholder={tr('tenantMember.searchPlaceholder')} value={query} onChange={(event) => setQuery(event.target.value)} />
-              {query ? <button type="button" className="absolute right-[0.35rem] top-1/2 inline-flex h-5 w-5 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 text-[var(--wk-muted,#66758b)] hover:text-[var(--wk-text,#172033)]" aria-label="Clear search" onClick={clearSearch}><Icon name="close" size={12} /></button> : null}
+              {query ? <button type="button" className="absolute right-[0.35rem] top-1/2 inline-flex h-5 w-5 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 text-[var(--wk-muted,#66758b)] hover:text-[var(--wk-text,#172033)]" aria-label={tr('tenantMembersPanel.clearSearch')} onClick={clearSearch}><Icon name="close" size={12} /></button> : null}
             </form>
             {canManage ? <>
               <Button type="button" className="inline-flex h-8 w-8 items-center justify-center bg-[rgb(46_109_230/8%)]! border border-[rgb(46_109_230/45%)]! p-0! text-[#2e6de6]! hover:bg-[rgb(46_109_230/16%)]!"
