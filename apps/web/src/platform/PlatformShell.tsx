@@ -22,6 +22,7 @@ import { readReactPlatformState } from './legacy-session.ts';
 // pulls it in by relative path. (shell.css is gone — all rules became
 // utilities in this file / session-sidebar.tsx.)
 import '../../../../packages/views/src/guides/guides.css';
+import weknoraLogo from '../auth/assets/weknora.png';
 
 type Client = ReturnType<typeof createWeKnoraClient>;
 
@@ -527,19 +528,26 @@ export function PlatformShell({ client, onLogout, children }: PlatformShellProps
         ? 'box-border flex flex-col min-w-[60px] w-[60px] pt-[8px] px-[3px] pb-[6px] bg-[#f6f8fa] border-r border-[#e7ebf0] shadow-[1px_0_0_rgba(0,0,0,0.02)] overflow-hidden transition-[width,min-width] duration-[250ms] ease-[ease]'
         : 'box-border flex flex-col min-w-[260px] w-[260px] pt-[8px] px-[6px] pb-[6px] bg-[#f6f8fa] border-r border-[#e7ebf0] shadow-[1px_0_0_rgba(0,0,0,0.02)] overflow-hidden transition-[width,min-width] duration-[250ms] ease-[ease]'}>
         <div className="flex items-center justify-between h-[50px] shrink-0 pr-[10px] pl-[14px]">
-          <a className="flex items-center gap-[8px] no-underline text-inherit" href="/platform/knowledge-bases" aria-label="WeKnora">
-            <span className="inline-flex items-center justify-center w-[28px] h-[28px] rounded-[8px] bg-[#2e6de6] text-white text-[15px] font-bold" aria-hidden="true">W</span>
-            {!collapsed && <span className="text-[16px] font-bold text-[#1f2733]">WeKnora</span>}
+          <a className="flex min-w-0 flex-1 items-center gap-[8px] overflow-hidden no-underline text-inherit" href="/platform/knowledge-bases" aria-label="WeKnora">
+            {!collapsed && <img className="block h-auto w-[128px]" src={weknoraLogo} alt="" />}
           </a>
           {!collapsed && (
-            <button type="button" className="inline-flex items-center justify-center w-[24px] h-[24px] border-none rounded-[4px] bg-transparent text-[#66758b] cursor-pointer hover:bg-[#eceff4]" onClick={toggleCollapsed} aria-label="Collapse sidebar" title="Collapse sidebar">
+            <div className="flex shrink-0 items-center gap-1">
+              <button type="button" className="inline-flex h-[26px] w-[26px] shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent text-[#66758b] transition-colors hover:bg-[#eceff4]" onClick={() => { setPaletteQuery(''); setPaletteOpen(true); }} aria-label={t('menu.search')} title={t('menu.search')}>
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+                  <circle cx="11" cy="11" r="6.5" />
+                  <path d="m16 16 4.5 4.5" />
+                </svg>
+              </button>
+              <button type="button" className="inline-flex items-center justify-center w-[18px] h-[18px] border-none rounded-[4px] bg-transparent text-[#66758b] cursor-pointer hover:bg-[#eceff4]" onClick={toggleCollapsed} aria-label={t('menu.collapseSidebar')} title={t('menu.collapseSidebar')}>
               <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true">
                 <rect x="1.5" y="1.5" width="17" height="17" rx="3" />
                 <line x1="7.5" y1="1.5" x2="7.5" y2="18.5" />
                 <line x1="5" y1="10" x2="3" y2="8" strokeLinecap="round" />
                 <line x1="5" y1="10" x2="3" y2="12" strokeLinecap="round" />
               </svg>
-            </button>
+              </button>
+            </div>
           )}
         </div>
         {/* .plat-shell__item + --collapsed descendant override → utilities
