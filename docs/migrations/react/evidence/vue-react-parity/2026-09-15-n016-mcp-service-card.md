@@ -16,6 +16,7 @@ The service badge and edit/delete/add/tools affordances now use inline stroke SV
 - `pnpm typecheck:web`: passed.
 - `git diff --check`: passed.
 - Authenticated Chrome AX comparison at 1355×720 confirms React now exposes only the `MCP 服务管理` level-2 heading and its description, matching Vue without the duplicate `MCP服务` wrapper heading.
+- The same live comparison confirms the header has no extra divider/sticky chrome and uses the Vue 20px title / 14px description rhythm.
 
 ## Evidence boundary
 
