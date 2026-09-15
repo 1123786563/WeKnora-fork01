@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
-import { NumberInput, Status, Switch } from '@weknora/ui';
+import { NumberInput, Status, Switch, Textarea } from '@weknora/ui';
 import { ModelOptionSelect } from './ModelOptionSelect.tsx';
 import { memoryWorkspacePatch } from './surface.ts';
 import { readInitialLocale, settingsT } from './PortedSectionsPanel.tsx';
@@ -101,7 +101,7 @@ export function MemoryWorkspacePanel({ client, initialConfig, canEdit = true }: 
             <p className="m-0 text-[13px] leading-[1.5] text-[rgba(0,0,0,0.6)]">{t('memoryWorkspaceSettings.instructionsDescription')}</p>
           </div>
           <div className="flex w-full items-center justify-stretch">
-            <textarea className="w-full min-h-[72px] resize-y rounded-[3px] border border-[#dcdcdc] p-2 text-[13px] leading-[1.6] text-[rgba(0,0,0,0.9)] transition-colors focus:border-[#07c05f] focus:outline-2 focus:outline-[rgba(7,192,95,0.2)] focus:outline-offset-0 disabled:cursor-not-allowed disabled:bg-[#f3f3f3]" maxLength={1000} rows={3} value={extractInstructions} disabled={!canEdit || busy} placeholder={t('memoryWorkspaceSettings.instructionsPlaceholder')} onChange={(event) => setExtractInstructions(event.target.value)} onBlur={() => debouncedSave()} />
+            <Textarea className="w-full min-h-[72px] resize-y" maxLength={1000} rows={3} value={extractInstructions} disabled={!canEdit || busy} placeholder={t('memoryWorkspaceSettings.instructionsPlaceholder')} onChange={(event) => setExtractInstructions(event.target.value)} onBlur={() => debouncedSave()} />
           </div>
         </div>
         {setting(t('memoryWorkspaceSettings.vectorRecallLabel'), t('memoryWorkspaceSettings.vectorRecallDescription'), <Switch checked={vectorRecall} disabled={!canEdit || busy} onCheckedChange={(checked) => debouncedSave({ vectorRecall: checked })} aria-label={t('memoryWorkspaceSettings.vectorRecallLabel')} />)}
