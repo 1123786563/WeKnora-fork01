@@ -48,6 +48,7 @@ test('breadcrumb shows 知识库 › kbName › 文档 and never the raw UUID', 
   assert.ok(html.includes('breadcrumb-link dropdown'), 'kbName crumb is a switcher dropdown');
   assert.ok(html.includes('breadcrumb-separator'), 'chevron separators present');
   assert.ok(html.includes('document-title-row flex min-h-8'), 'Vue title row keeps a 32px line box');
+  assert.ok(html.includes('text-[20px] font-semibold leading-8'), 'Vue breadcrumb uses a 32px line height');
 });
 
 test('breadcrumb carries the info popover and settings gear like the FAQ page', () => {

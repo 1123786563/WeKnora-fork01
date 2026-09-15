@@ -527,3 +527,4 @@ N014/N015 expanded settings controls (2026-09-15): system settings, preferences,
 - R231 文档页面表面层对齐（2026-09-15）：移除文档页额外 shadcn Card 圆角/边框/内边距，改用 Vue 对齐的平面内容表面；文档 chrome 测试 9/9、Web typecheck 与 diff check 通过。证据：`evidence/vue-react-parity/2026-09-15-r231-documents-surface.md`；受保护数据、真实上传、响应式、多语言浏览器和桌面/native 证据仍待补齐。
 - R232 文档表面层 Web 回归（2026-09-15）：移除 Card chrome 后 Web 898/898、文档 chrome 9/9、Web typecheck 通过。证据：`evidence/vue-react-parity/2026-09-15-r232-documents-regression.md`。
 - R233 文档标题行高度对齐（2026-09-15）：包屑标题行固定 Vue 对齐的 32px 最小行高，文档 chrome 测试 9/9 与 diff check 通过。证据：`evidence/vue-react-parity/2026-09-15-r233-documents-title-row.md`。
+- R234 文档页头节奏对齐（2026-09-15）：包屑文字行高与页头底部间距对齐 Vue（32px/20px），文档 chrome 测试 9/9 与 diff check 通过。证据：`evidence/vue-react-parity/2026-09-15-r234-documents-header-rhythm.md`。
