@@ -176,11 +176,13 @@ export function DocumentCardGrid({
   onReparse: (document: KnowledgeDocument) => void;
   onCancelParse: (document: KnowledgeDocument) => void;
 }) {
-  return <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3" data-document-view="grid">
-    {folders.map((folder) => <button key={`folder-${folder.path}`} type="button" className="min-w-0 rounded-control border border-line-soft bg-surface p-4 text-left transition-colors hover:border-primary/40 hover:bg-surface-wash" title={folder.path} onClick={() => onOpenFolder(folder.path)}>
-      <FolderIcon size={24} className="mb-3 text-primary" />
-      <strong className="block truncate text-primary-deep">{folder.name}</strong>
-      <span className="mt-1 block text-[0.8rem] text-muted">{t("knowledgeBase.folderTree.folderCardCount", { count: folder.total_count })}</span>
+  return <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-3" data-document-view="grid">
+    {folders.map((folder) => <button key={`folder-${folder.path}`} type="button" className="min-w-[240px] h-[136px] box-border flex flex-col overflow-hidden rounded-lg border border-line-soft bg-surface p-0 text-left shadow-[0_1px_2px_rgb(0_0_0/6%)] transition-[border-color,box-shadow,background-color] duration-200 hover:border-primary/40 hover:bg-surface-wash hover:shadow-[0_4px_14px_rgb(0_0_0/7%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30" title={folder.path} onClick={() => onOpenFolder(folder.path)}>
+      <span className="flex min-h-0 flex-1 flex-col justify-start gap-2 overflow-hidden px-[14px] pb-[10px] pt-3">
+        <FolderIcon size={28} className="shrink-0 text-primary opacity-[0.88]" />
+        <strong className="line-clamp-2 min-h-0 flex-1 text-sm font-medium leading-5 text-primary-deep">{folder.name}</strong>
+      </span>
+      <span className="shrink-0 border-t border-line-soft px-[14px] py-2 text-xs leading-[1.4] text-muted">{t("knowledgeBase.folderTree.folderCardCount", { count: folder.total_count })}</span>
     </button>)}
     {items.map((document) => {
       const status = documentStatus(document, t);
