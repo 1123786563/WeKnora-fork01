@@ -23,7 +23,7 @@ const {
   ParserHint,
   DocumentEmptyState,
 } = await import('./DocumentsPageChrome.tsx');
-const { KnowledgeDocumentsPage, DocumentCardGrid, folderPathCrumbs } = await import('./KnowledgeDocumentsPage.tsx');
+const { KnowledgeDocumentsPage, DocumentCardGrid, documentCardHoverPosition, folderPathCrumbs } = await import('./KnowledgeDocumentsPage.tsx');
 const { createTranslator } = await import('../i18n.ts');
 
 const t = createTranslator('zh-CN');
@@ -190,4 +190,10 @@ test('document grid cards keep the Vue 240px/136px anatomy and footer metadata r
   assert.ok(html.includes('border-t border-line-soft'), 'card footer has the Vue separator');
   assert.ok(html.includes('A short guide'), 'completed cards render their description in the content area');
   assert.ok(html.includes('Guides'), 'folder metadata remains in the footer');
+});
+
+test('document card hover placement prefers the right side and falls back within the viewport', () => {
+  assert.deepEqual(documentCardHoverPosition({ left: 100, right: 300, top: 40 }, { width: 1000, height: 800 }), { x: 312, y: 40 });
+  assert.deepEqual(documentCardHoverPosition({ left: 700, right: 900, top: 40 }, { width: 1000, height: 800 }), { x: 328, y: 40 });
+  assert.deepEqual(documentCardHoverPosition({ left: 250, right: 350, top: 450 }, { width: 600, height: 800 }), { x: 230, y: 762 });
 });

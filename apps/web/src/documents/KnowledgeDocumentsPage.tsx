@@ -168,6 +168,27 @@ function documentTypeLabel(document: KnowledgeDocument): string {
   return "--";
 }
 
+export function documentCardHoverPosition(
+  card: { left: number; right: number; top: number },
+  viewport: { width: number; height: number },
+  popover = { width: 360, height: 300 },
+  offset = 12,
+): { x: number; y: number } {
+  const rightX = card.right + offset;
+  if (rightX + popover.width <= viewport.width - 10) {
+    return { x: rightX, y: Math.max(10, Math.min(card.top, viewport.height - popover.height - 10)) };
+  }
+  const leftX = card.left - popover.width - offset;
+  if (leftX >= 10) {
+    return { x: leftX, y: Math.max(10, Math.min(card.top, viewport.height - popover.height - 10)) };
+  }
+  const belowY = card.top + popover.height + offset;
+  if (belowY <= viewport.height - 10) {
+    return { x: Math.max(10, Math.min(card.left, viewport.width - popover.width - 10)), y: belowY };
+  }
+  return { x: Math.max(10, Math.min(card.left, viewport.width - popover.width - 10)), y: Math.max(10, card.top - popover.height - offset) };
+}
+
 function DocumentCardHoverPopover({ document, position, t }: {
   document: KnowledgeDocument;
   position: { x: number; y: number };
@@ -227,10 +248,7 @@ export function DocumentCardGrid({
     if (hoverTimer.current !== null) window.clearTimeout(hoverTimer.current);
     const rect = event.currentTarget.getBoundingClientRect();
     hoverTimer.current = window.setTimeout(() => {
-      const width = Math.min(360, window.innerWidth - 20);
-      const x = rect.right + 12 + width <= window.innerWidth - 10 ? rect.right + 12 : Math.max(10, rect.left - width - 12);
-      const y = Math.max(10, Math.min(rect.top, window.innerHeight - 310));
-      setHovered({ document, position: { x, y } });
+      setHovered({ document, position: documentCardHoverPosition(rect, { width: window.innerWidth, height: window.innerHeight }, { width: Math.min(360, window.innerWidth - 20), height: 300 }) });
     }, 300);
   };
   return <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-3" data-document-view="grid">
