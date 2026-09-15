@@ -57,7 +57,9 @@
 .wk-upload-confirm-dialog .wk-dialog-body { display: flex; min-height: 0; flex: 1; flex-direction: column; margin-top: 0; overflow: hidden; padding: 0; }
 .wk-upload-confirm-layout { display: flex; min-height: 0; flex: 1; overflow: hidden; }
 .wk-upload-confirm-files-column { display: flex; width: 220px; flex-shrink: 0; flex-direction: column; box-sizing: border-box; overflow: hidden; border-right: 1px solid var(--color-line, #dce3ed); background: var(--color-surface-muted, #f7f8fa); }
-.wk-upload-confirm-files-header { display: flex; min-height: 56px; flex-shrink: 0; box-sizing: border-box; align-items: center; padding: 12px; border-bottom: 1px solid var(--color-line, #dce3ed); }
+.wk-upload-confirm-files-header { display: flex; min-height: 56px; flex-shrink: 0; box-sizing: border-box; flex-direction: column; align-items: stretch; gap: 10px; padding: 12px; border-bottom: 1px solid var(--color-line, #dce3ed); }
+.wk-upload-confirm-files-header-row { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 8px; }
+.wk-upload-confirm-files-header-actions { display: inline-flex; min-width: 0; align-items: center; gap: 8px; }
 .wk-upload-confirm-files-column .wk-upload-confirm-files { min-height: 0; flex: 1; max-height: none; overflow: auto; }
 .wk-upload-confirm-settings-column { display: flex; min-width: 0; min-height: 0; flex: 1; overflow: hidden; }
 .wk-upload-confirm-section-nav { width: 216px; flex-shrink: 0; overflow-y: auto; box-sizing: border-box; padding: 10px 6px 12px; border-right: 1px solid var(--color-line, #dce3ed); background: var(--color-surface-muted, #f7f8fa); }

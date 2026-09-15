@@ -1,5 +1,17 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-15 Round N+87 — N007 文件侧栏 header 顺序
+
+- 将标题、文件数量/继续添加操作和目的地面包屑归入同一文件侧栏 header，并把文件列表放在 header 之后，恢复 Vue 的信息层级与垂直节奏。
+- 上传确认专项 37/37、Web 类型检查、`git diff --check` 通过；证据：`evidence/vue-react-parity-2026-09-15-n007-sidebar-header-order.md`。
+- N007 仍需认证浏览器 computed-style/截图、真实上传/目录后端和 Wails/native 证据。
+
+## 2026-09-15 Round N+87 — N007 上传确认弹窗关闭控件尺寸
+
+- 对照 Vue 关闭控件，React 专用上传确认弹窗固定右上角控件为 32×32px、20px 图标、6px 圆角、居中布局和次级表面背景，避免继承通用 shadcn 按钮尺寸。
+- 上传确认专项 37/37、`pnpm typecheck:web`、`git diff --check` 通过；证据：`evidence/vue-react-parity/2026-09-15-n007-dialog-close-control.md`。
+- N007 仍需认证浏览器 computed-style/截图、真实上传后端和 Wails/native 证据。
+
 ## 2026-09-15 Round N+86 — N007 上传确认弹窗标题与关闭按钮
 
 - 对齐 Vue 三栏弹窗头部：标题移入 220px 文件侧栏的 56px header，通用标题行隐藏；关闭按钮固定在右上角 20px，保持 32px 控件尺寸。

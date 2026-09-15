@@ -3657,14 +3657,13 @@ export function KnowledgeDocumentsPage({
           <div className="wk-upload-confirm-layout">
             <aside className="wk-upload-confirm-files-column">
               <div className="wk-upload-confirm-files-header">
-                <h2 className="m-0 text-[16px] font-semibold leading-[1.35] text-[var(--wk-text,#101828)]">{dialogTitle}</h2>
-              </div>
-              {dialogMode === "file" ? (
-            <p className="wk-upload-confirm-summary" style={{ display: "flex", alignItems: "center", gap: "0.5rem", margin: "0 0 0.5rem" }}>
+                <div className="wk-upload-confirm-files-header-row">
+                  <h2 className="m-0 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[16px] font-semibold leading-[1.35] text-[var(--wk-text,#101828)]">{dialogTitle}</h2>
+                  {dialogMode === "file" ? (
+                    <div className="wk-upload-confirm-files-header-actions">
               <span className="wk-files-count" aria-label={ct("uploadConfirm.parseConfig")} style={{ minWidth: "1.4rem", textAlign: "center", borderRadius: "999px", padding: "0 0.35rem", border: "1px solid var(--wk-border, #e4e7ec)", fontSize: "0.85rem" }}>
                 {batchItemCount}
               </span>
-              <span className="wk-muted text-muted">{ct("uploadConfirm.parseConfig")}</span>
               <UploadSourceDropdown
                 tooltip={ct("uploadConfirm.continueAdd")}
                 items={[
@@ -3683,8 +3682,67 @@ export function KnowledgeDocumentsPage({
                   }
                 }}
               />
-            </p>
+                    </div>
+                  ) : null}
+                </div>
+          {dialogMode === "file" ? (
+            <fieldset className="wk-upload-confirm-destination" style={{ position: "relative", marginBottom: "0.75rem" }}>
+              <legend>{ct("uploadConfirm.destinationLabel")}</legend>
+              <button
+                type="button"
+                title={uploadTargetFolder || rootRowLabel}
+                aria-label={ct("uploadConfirm.destinationChange")}
+                aria-expanded={destinationPickerOpen}
+                onClick={() => {
+                  setDestinationPickerOpen((open) => !open);
+                  setCreatingUnder(null);
+                  setNewFolderName("");
+                  setDestinationPickerDuplicate(false);
+                }}
+                className="wk-destination-crumb inline-flex max-w-full min-w-0 items-center gap-1 border-0 bg-transparent p-0 text-left text-[12px] leading-[18px] text-[var(--wk-muted,#667085)] transition-colors hover:text-[var(--wk-accent,#07c05f)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(7_192_95_/_20%)]"
+              >
+                <span className="shrink-0">{ct("uploadConfirm.destinationLabel")}</span>
+                <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-medium text-[var(--wk-text,#101828)]">{destinationBreadcrumb(uploadTargetFolder, rootRowLabel)}</span>
+                <span className="shrink-0 text-[var(--wk-muted,#98a2b3)]" aria-hidden>{destinationPickerOpen ? "▾" : "▸"}</span>
+              </button>
+              {destinationPickerOpen ? (
+                <div
+                  className="wk-destination-popup"
+                  style={{ position: "absolute", zIndex: 30, marginTop: "4px", padding: "6px", border: "1px solid var(--wk-border, #e4e7ec)", borderRadius: "8px", background: "var(--wk-surface, #fff)", boxShadow: "0 8px 24px rgba(0,0,0,0.12)" }}
+                  role="group"
+                  aria-label={ct("uploadConfirm.destinationChange")}
+                >
+                  <UploadDestinationPicker
+                    options={pickerFolderOptions}
+                    currentPath={uploadTargetFolder}
+                    creatingUnder={creatingUnder}
+                    newFolderName={newFolderName}
+                    duplicateWarning={destinationPickerDuplicate}
+                    labels={{
+                      pickerLabel: ct("uploadConfirm.destinationChange"),
+                      rootRow: rootRowLabel,
+                      newFolderPlaceholder: t("knowledgeBase.moveToFolder.newFolderPlaceholder"),
+                      newFolderAddRoot: t("knowledgeBase.moveToFolder.newFolderAddRoot"),
+                      newFolderAddUnder: (folder) => t("knowledgeBase.moveToFolder.newFolderAddUnder", { folder }),
+                      duplicate: t("knowledgeBase.moveToFolder.duplicate"),
+                    }}
+                    onChoose={choosePickerFolder}
+                    onStartCreate={startCreatingUnder}
+                    onCancelCreate={() => {
+                      setCreatingUnder(null);
+                      setNewFolderName("");
+                    }}
+                    onNewFolderNameChange={(value) => {
+                      setNewFolderName(value);
+                      setDestinationPickerDuplicate(false);
+                    }}
+                    onCommitNewFolder={commitPickerFolder}
+                  />
+                </div>
+              ) : null}
+            </fieldset>
           ) : null}
+              </div>
           <UploadFilesPanel
             mode={dialogMode}
             entries={pendingEntries}
@@ -3743,63 +3801,6 @@ export function KnowledgeDocumentsPage({
                 </div>
               </div>
             </Dialog>
-          ) : null}
-          {dialogMode === "file" ? (
-            <fieldset className="wk-upload-confirm-destination" style={{ position: "relative", marginBottom: "0.75rem" }}>
-              <legend>{ct("uploadConfirm.destinationLabel")}</legend>
-              <button
-                type="button"
-                title={uploadTargetFolder || rootRowLabel}
-                aria-label={ct("uploadConfirm.destinationChange")}
-                aria-expanded={destinationPickerOpen}
-                onClick={() => {
-                  setDestinationPickerOpen((open) => !open);
-                  setCreatingUnder(null);
-                  setNewFolderName("");
-                  setDestinationPickerDuplicate(false);
-                }}
-                className="wk-destination-crumb inline-flex max-w-full min-w-0 items-center gap-1 border-0 bg-transparent p-0 text-left text-[12px] leading-[18px] text-[var(--wk-muted,#667085)] transition-colors hover:text-[var(--wk-accent,#07c05f)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(7_192_95_/_20%)]"
-              >
-                <span className="shrink-0">{ct("uploadConfirm.destinationLabel")}</span>
-                <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-medium text-[var(--wk-text,#101828)]">{destinationBreadcrumb(uploadTargetFolder, rootRowLabel)}</span>
-                <span className="shrink-0 text-[var(--wk-muted,#98a2b3)]" aria-hidden>{destinationPickerOpen ? "▾" : "▸"}</span>
-              </button>
-              {destinationPickerOpen ? (
-                <div
-                  className="wk-destination-popup"
-                  style={{ position: "absolute", zIndex: 30, marginTop: "4px", padding: "6px", border: "1px solid var(--wk-border, #e4e7ec)", borderRadius: "8px", background: "var(--wk-surface, #fff)", boxShadow: "0 8px 24px rgba(0,0,0,0.12)" }}
-                  role="group"
-                  aria-label={ct("uploadConfirm.destinationChange")}
-                >
-                  <UploadDestinationPicker
-                    options={pickerFolderOptions}
-                    currentPath={uploadTargetFolder}
-                    creatingUnder={creatingUnder}
-                    newFolderName={newFolderName}
-                    duplicateWarning={destinationPickerDuplicate}
-                    labels={{
-                      pickerLabel: ct("uploadConfirm.destinationChange"),
-                      rootRow: rootRowLabel,
-                      newFolderPlaceholder: t("knowledgeBase.moveToFolder.newFolderPlaceholder"),
-                      newFolderAddRoot: t("knowledgeBase.moveToFolder.newFolderAddRoot"),
-                      newFolderAddUnder: (folder) => t("knowledgeBase.moveToFolder.newFolderAddUnder", { folder }),
-                      duplicate: t("knowledgeBase.moveToFolder.duplicate"),
-                    }}
-                    onChoose={choosePickerFolder}
-                    onStartCreate={startCreatingUnder}
-                    onCancelCreate={() => {
-                      setCreatingUnder(null);
-                      setNewFolderName("");
-                    }}
-                    onNewFolderNameChange={(value) => {
-                      setNewFolderName(value);
-                      setDestinationPickerDuplicate(false);
-                    }}
-                    onCommitNewFolder={commitPickerFolder}
-                  />
-                </div>
-              ) : null}
-            </fieldset>
           ) : null}
             </aside>
             <aside className="wk-upload-confirm-settings-column">
