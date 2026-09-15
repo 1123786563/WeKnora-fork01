@@ -2,7 +2,7 @@ import type { WeKnoraClient } from '@weknora/api-client';
 
 export interface ParsedLogin {
   credential: { kind: 'bearer'; accessToken: string; refreshToken?: string };
-  tenantId: string | null;
+  tenantId?: string | null;
   user?: Record<string, unknown>;
 }
 
