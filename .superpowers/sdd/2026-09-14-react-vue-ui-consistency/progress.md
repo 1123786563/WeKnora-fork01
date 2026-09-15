@@ -370,3 +370,5 @@ T10 mobile server-entry update (2026-09-15): server-address route now uses a ded
 T10 mobile invite-copy follow-up (2026-09-15): invitation lookup confirmation now localizes workspace fallback, role label, expiry text, and busy state through `auth.join.*` plus `mobileAuth.invitationExpires`; no hardcoded English remains in that dynamic row. Mobile typecheck and i18n 60/60 pass.
 
 T10 mobile-auth catalog gate (2026-09-15): added locale-completeness and interpolation tests for all seven `mobileAuth.*` keys; focused suite passes 2/2.
+
+T10 mobile OIDC feedback update (2026-09-15): LoginRoute now surfaces startOIDC failures through the localized auth error state instead of swallowing the rejection; mobile typecheck and regression remain green at 190/190.
