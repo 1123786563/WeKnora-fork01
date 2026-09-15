@@ -15,7 +15,7 @@ import { nativeArtifactPreviewLabels } from './artifact-preview-labels.ts';
 import { buildMobileChatRequestBody, findRetryQuery, isCurrentChatRun, selectAssistantMessageId, selectIncompleteAssistant, selectMessageArtifacts, selectReferenceGroups, shouldRenderLiveAssistant, shouldRenderPendingUser, type ChatRunToken } from './parity.ts';
 import { stopChatRun } from './stop-run.ts';
 import { chatAppStateAction } from './appstate.ts';
-import { createRunLifecyclePersistence, initialRunLifecycle, shouldApplyHydratedLifecycle, transitionRunLifecycle, type RunLifecycleEvent } from './run-lifecycle.ts';
+import { createRunLifecyclePersistence, initialRunLifecycle, shouldApplyHydratedLifecycle, shouldEndSendingForStreamEvent, transitionRunLifecycle, type RunLifecycleEvent } from './run-lifecycle.ts';
 
 function errorText(cause: unknown, fallback: string): string {
   return cause instanceof Error ? cause.message : fallback;
@@ -182,6 +182,7 @@ export function ChatScreen() {
     }
     if (type === 'complete') updateRunLifecycle(eventSessionId, { type: 'complete' });
     if (type === 'stop') updateRunLifecycle(eventSessionId, { type: 'user-stop' });
+    if (shouldEndSendingForStreamEvent(type)) setSending(false);
     setStreamState((current) => reduceChatStream(current, event));
   }, [label, updateRunLifecycle]);
 

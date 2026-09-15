@@ -6,9 +6,17 @@ import {
   deserializeRunLifecycle,
   initialRunLifecycle,
   serializeRunLifecycle,
+  shouldEndSendingForStreamEvent,
   shouldApplyHydratedLifecycle,
   transitionRunLifecycle,
 } from './run-lifecycle.ts';
+
+test('a stream error ends the sending UI immediately like Vue chat', () => {
+  assert.equal(shouldEndSendingForStreamEvent('error'), true);
+  assert.equal(shouldEndSendingForStreamEvent('complete'), true);
+  assert.equal(shouldEndSendingForStreamEvent('stop'), true);
+  assert.equal(shouldEndSendingForStreamEvent('answer'), false);
+});
 
 test('a user stop is terminal and keeps the assistant id for remote cancellation', () => {
   const running = transitionRunLifecycle(initialRunLifecycle(), { type: 'start' });

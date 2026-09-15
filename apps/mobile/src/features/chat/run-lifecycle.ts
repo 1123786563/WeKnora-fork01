@@ -62,6 +62,10 @@ export function canAutoResumeRun(state: RunLifecycle): boolean {
   return state.status === 'idle' || state.status === 'background-interrupted';
 }
 
+export function shouldEndSendingForStreamEvent(type: string | undefined): boolean {
+  return type === 'error' || type === 'complete' || type === 'stop';
+}
+
 export function shouldApplyHydratedLifecycle(
   currentSessionId: string | null,
   hydratedSessionId: string,
