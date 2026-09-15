@@ -42,6 +42,7 @@ test('keeps legacy deep links and redirects the misspelled chat path compatibly'
   assert.equal(routeRedirect('/platform/knowledge-search'), '/platform/knowledge-bases?cmdk=');
   assert.equal(routeRedirect('/platform/knowledge-search?q=hello'), '/platform/knowledge-bases?cmdk=hello');
   assert.equal(routeRedirect('/platform/tenant'), '/platform/settings');
+  assert.equal(routeRedirect('/platform/administration'), '/platform/settings?section=members');
   assert.equal(routeRedirect('/platform/system/queues'), '/platform/settings?section=runtime-queues');
   assert.equal(routeRedirect('/platform/system/admins'), '/platform/settings?section=system-global');
   assert.equal(resolveRoute('/platform/dev/markdown', { development: false }).kind, 'not-found');
@@ -109,6 +110,11 @@ test('honors explicit capability and organization invite compatibility rules', (
   assert.deepEqual(guardRoute('/platform/system', { ...authenticated, isSystemAdmin: true }), {
     kind: 'redirect',
     to: '/platform/settings?section=system-global',
+    reason: 'capability-unavailable',
+  });
+  assert.deepEqual(guardRoute('/platform/administration', authenticated), {
+    kind: 'redirect',
+    to: '/platform/settings?section=members',
     reason: 'capability-unavailable',
   });
 });

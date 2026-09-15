@@ -76,6 +76,7 @@ export function routeRedirect(pathname: string): string | undefined {
   }
   if (match.path === '/platform/integrations') return `/platform/settings?${integrationSettingsQuery(pathname.includes('?') ? pathname.slice(pathname.indexOf('?')) : '', true)}`;
   if (match.path === '/platform/tenant') return '/platform/settings';
+  if (match.path === '/platform/administration') return '/platform/settings?section=members';
   if (match.path === '/platform/system' || match.path === '/platform/system/settings' || match.path === '/platform/system/admins') return '/platform/settings?section=system-global';
   if (match.path === '/platform/system/queues') return '/platform/settings?section=runtime-queues';
   if (match.kind !== 'platform') return undefined;
@@ -143,6 +144,7 @@ export function guardRoute(pathname: string, context: RouteGuardContext): RouteG
     return { kind: 'redirect', to: routeRedirect(pathname) ?? '/platform/knowledge-bases', reason: 'capability-unavailable' };
   }
   if (path === '/platform/tenant') return { kind: 'redirect', to: '/platform/settings', reason: 'capability-unavailable' };
+  if (path === '/platform/administration') return { kind: 'redirect', to: '/platform/settings?section=members', reason: 'capability-unavailable' };
   if (path === '/platform/dev/markdown') return { kind: 'allow' };
   if (resolved.kind === 'not-found') {
     if (protectedPath(path) && !context.authenticated) return { kind: 'redirect', to: `/login?next=${encodeURIComponent(pathname)}`, reason: 'authentication-required' };
