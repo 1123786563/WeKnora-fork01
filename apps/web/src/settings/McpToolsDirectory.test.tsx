@@ -65,3 +65,20 @@ test('MCP stale metadata keeps the Vue read-only directory without policy switch
   assert.doesNotMatch(html, /启用工具/);
   assert.doesNotMatch(html, /调用需审批/);
 });
+
+test('MCP tool details expose a modal tab keyboard contract', () => {
+  assert.match(source, /role="dialog" aria-modal="true"/);
+  assert.match(source, /role="tabpanel"/);
+  assert.match(source, /aria-controls=\{panelId\}/);
+  assert.match(source, /tabIndex=\{tab === item \? 0 : -1\}/);
+  assert.match(source, /event\.key === 'ArrowRight'/);
+  assert.match(source, /event\.key === 'ArrowLeft'/);
+  assert.match(source, /event\.key === 'Tab'/);
+});
+
+test('MCP tool details restore focus and keep detail ids unique per rendered tool', () => {
+  assert.match(source, /tabRefs\.current/);
+  assert.match(source, /activeTab\?\.focus\(\)/);
+  assert.match(source, /trigger\.focus\(\)/);
+  assert.match(source, /mcp-tool-detail-\$\{index\}/);
+});
