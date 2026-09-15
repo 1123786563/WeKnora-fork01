@@ -1419,12 +1419,12 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                         <strong>{t('settings.sandbox.ruleInject')}</strong>
                         {rule.inject.map((inject, injectIndex) => (
                           <div className="wk-net-row" key={`inject-${injectIndex}`}>
-                            <input value={inject.header} placeholder={t('settings.sandbox.headerName')}
+                            <Input value={inject.header} placeholder={t('settings.sandbox.headerName')}
                               onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, inject: item.inject.map((row, j) => j === injectIndex ? { ...row, header: event.target.value } : row) } : item) }))} />
-                            <input type="password" value={inject.secret}
+                            <Input type="password" value={inject.secret}
                               placeholder={isStoredNetworkSecretRecoverable(inject, inject.originalRuleName, inject.originalHeader, rule.name, inject.header) ? t('settings.sandbox.secretKeepHint') : t('settings.sandbox.headerValue')}
                               onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, inject: item.inject.map((row, j) => j === injectIndex ? { ...row, secret: event.target.value } : row) } : item) }))} />
-                            <input value={inject.format} placeholder="Bearer ${SECRET}"
+                            <Input value={inject.format} placeholder="Bearer ${SECRET}"
                               onChange={(event) => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, inject: item.inject.map((row, j) => j === injectIndex ? { ...row, format: event.target.value } : row) } : item) }))} />
                             <Button type="button" aria-label={t('common.delete')} onClick={() => updateForm((current) => ({ cubeRules: current.cubeRules.map((item, i) => i === index ? { ...item, inject: item.inject.filter((_, j) => j !== injectIndex) } : item) }))}>×</Button>
                           </div>
@@ -1458,12 +1458,12 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
                 {form.e2bHostRules.map((rule, index) => (
                   <details className="wk-net-rule" key={`e2b-rule-${index}`}>
                     <summary>{rule.host.trim() || t('settings.sandbox.ruleUntitled')}</summary>
-                    <label>{t('settings.sandbox.ruleHost')}<input value={rule.host} placeholder="api.example.com" onChange={(event) => updateForm((current) => ({ e2bHostRules: current.e2bHostRules.map((item, i) => i === index ? { ...item, host: event.target.value } : item) }))} /></label>
+                    <label>{t('settings.sandbox.ruleHost')}<Input value={rule.host} placeholder="api.example.com" onChange={(event) => updateForm((current) => ({ e2bHostRules: current.e2bHostRules.map((item, i) => i === index ? { ...item, host: event.target.value } : item) }))} /></label>
                     {rule.headers.map((header, headerIndex) => (
                       <div className="wk-net-row" key={`header-${headerIndex}`}>
-                        <input value={header.name} placeholder={t('settings.sandbox.headerName')}
+                        <Input value={header.name} placeholder={t('settings.sandbox.headerName')}
                           onChange={(event) => updateForm((current) => ({ e2bHostRules: current.e2bHostRules.map((item, i) => i === index ? { ...item, headers: item.headers.map((row, j) => j === headerIndex ? { ...row, name: event.target.value } : row) } : item) }))} />
-                        <input type="password" value={header.value}
+                        <Input type="password" value={header.value}
                           placeholder={isStoredNetworkSecretRecoverable(header, header.originalHost, header.originalName, rule.host, header.name) ? t('settings.sandbox.secretKeepHint') : t('settings.sandbox.headerValue')}
                           onChange={(event) => updateForm((current) => ({ e2bHostRules: current.e2bHostRules.map((item, i) => i === index ? { ...item, headers: item.headers.map((row, j) => j === headerIndex ? { ...row, value: event.target.value } : row) } : item) }))} />
                         <Button type="button" aria-label={t('common.delete')} onClick={() => updateForm((current) => ({ e2bHostRules: current.e2bHostRules.map((item, i) => i === index ? { ...item, headers: item.headers.filter((_, j) => j !== headerIndex) } : item) }))}>×</Button>
@@ -1485,9 +1485,9 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
             <p className="wk-muted text-muted">{t('settings.sandbox.envVarsHint')}</p>
             {form.envRows.length ? form.envRows.map((row, index) => (
               <div className="wk-net-row" key={`env-${index}`}>
-                <input value={row.key} placeholder={t('settings.sandbox.envKey')} className="env-key"
+                <Input value={row.key} placeholder={t('settings.sandbox.envKey')} className="env-key"
                   onChange={(event) => updateForm((current) => ({ envRows: current.envRows.map((item, i) => i === index ? { ...item, key: event.target.value } : item) }))} />
-                <input type="password" value={row.value} placeholder={row.stored ? t('settings.sandbox.secretKeepHint') : t('settings.sandbox.envValue')} className="env-value"
+                <Input type="password" value={row.value} placeholder={row.stored ? t('settings.sandbox.secretKeepHint') : t('settings.sandbox.envValue')} className="env-value"
                   onChange={(event) => updateForm((current) => ({ envRows: current.envRows.map((item, i) => i === index ? { ...item, value: event.target.value } : item) }))} />
                 <Button type="button" aria-label={t('common.delete')} onClick={() => updateForm((current) => ({ envRows: current.envRows.filter((_, i) => i !== index) }))}>×</Button>
               </div>
