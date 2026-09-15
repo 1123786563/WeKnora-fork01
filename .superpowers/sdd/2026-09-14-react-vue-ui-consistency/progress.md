@@ -348,3 +348,4 @@
 - Android 认证后聊天空态门禁通过：`test36-small` 从真实知识库列表进入“新对话”，ChatScreen 渲染标题、导航、空会话、知识库 chip、总结/相关文件、输入和发送控件；后端无可用聊天模型，发送保持禁用，未伪造请求。证据 `evidence/vue-react-parity/2026-09-15-r110-android-authenticated-chat-empty.md`。
 - 本轮移动端与共享层回归通过：Shared 467/467、Mobile 190/190、Mobile typecheck 全部退出码 0，覆盖知识库壳层、Wiki/图谱禁用错误本地化和五语言消息注册。证据 `evidence/vue-react-parity/2026-09-15-r111-shared-mobile-regression.md`。
 - Android 聊天发送失败态门禁通过：`test36-small` 真实认证会话发送 `hello` 后，用户消息落地并渲染 assistant 失败结果，输入区恢复可发送状态，补充队列与重试控件可见。证据 `evidence/vue-react-parity/2026-09-15-r112-android-chat-send-failure.md`。成功模型流、停止、审批、附件和引用仍开放。
+- Android 知识库创建写路径通过：真实认证态空表单校验阻止空名称；提交测试知识库成功并刷新列表显示卡片与 0 文档计数，随后删除临时数据保持租户整洁。证据 `evidence/vue-react-parity/2026-09-15-r113-android-kb-create.md`。
