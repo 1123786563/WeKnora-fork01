@@ -148,15 +148,15 @@ test('tag filter panel shows the Vue empty result and hides clear without select
 
 // --- Documents page chrome (SSR) ----------------------------------------------------
 
-test('documents page grows the Vue batch/tag affordances and drops the raw-ID prompt', () => {
+test('documents page keeps Vue batch controls hidden until batch mode and drops the raw-ID prompt', () => {
   const html = renderToStaticMarkup(React.createElement(KnowledgeDocumentsPage, {
     client: {} as never,
     knowledgeBaseId: kbId,
   }));
-  assert.ok(html.includes('批量打标签'), 'Vue batchTag button replaces the 设置标签 prompt');
+  assert.ok(!html.includes('批量打标签'), 'batch actions stay hidden until Vue batch mode is entered');
   assert.ok(!html.includes('Set tag IDs for selected documents'), 'window.prompt copy is gone');
-  assert.ok(html.includes('取消选择'), 'Vue clearSelection affordance (DocumentBatchBar)');
-  assert.ok(html.includes('全选'), 'select-all entry (DocumentListView header checkbox)');
+  assert.ok(!html.includes('取消选择'), 'batch bar stays hidden before Vue batch mode');
+  assert.ok(!html.includes('全选'), 'select-all stays hidden before Vue batch mode');
   assert.ok(html.includes('doc-tag-filter-trigger'), 'tag filter trigger button');
   assert.ok(html.includes('按标签筛选'), 'trigger aria-label/title');
   assert.ok(html.includes('全部标签'), 'default trigger label (allTags)');

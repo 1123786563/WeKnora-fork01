@@ -176,6 +176,7 @@ test('document grid cards keep the Vue 240px/136px anatomy and footer metadata r
     items: [{ id: 'doc-1', file_name: 'guide.pdf', file_type: 'pdf', parse_status: 'completed', folder_path: 'Guides', description: 'A short guide' }],
     folders: [{ path: 'Specs', name: 'Specs', total_count: 2 }],
     selected: new Set<string>(),
+    batchMode: false,
     canContribute: false,
     canDownload: false,
     t,
@@ -209,6 +210,7 @@ test('editable document cards expose the Vue action-menu mutation entries', () =
     ],
     folders: [],
     selected: new Set<string>(),
+    batchMode: true,
     canContribute: true,
     canDownload: true,
     t,
@@ -231,6 +233,7 @@ test('editable document cards expose the Vue action-menu mutation entries', () =
   assert.ok(html.includes('下载 source.pdf'), 'download action is present for file documents');
   assert.ok(html.includes('移动到目录'), 'folder move action is present');
   assert.ok(html.includes('批量管理'), 'batch management action is present');
+  assert.ok(html.includes('选择 guide.md'), 'selection checkboxes appear only after entering batch mode');
   assert.ok(html.includes('删除文档'), 'delete action is present');
 });
 
