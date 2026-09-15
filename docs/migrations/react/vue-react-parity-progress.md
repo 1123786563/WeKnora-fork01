@@ -3448,3 +3448,19 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - The matrix remains open (`N005`, `N007`, `N016`, `N031` and rows missing
   authenticated browser, computed-style, real-backend, or native evidence),
   so this round does not mark full Vue/React page alignment.
+
+## 2026-09-15 Round R382 — Direct registration policy parity
+
+- Paired public browser rerun (Vue `:5180`, React `:5181`, zh-CN, 1440x900)
+  showed a conditional `/register` difference: Vue rendered the login
+  surface while React rendered registration. React now gates direct
+  registration on the real `/api/v1/auth/config` policy and falls back to
+  login for `invite_only` (`7dcdbbdf`).
+- The same run confirmed both login inputs match Vue computed style for color,
+  transparent background, system font, 15px/24px metrics, border, radius,
+  padding, and 374x24 geometry. Remaining vertical offsets stay recorded as
+  runtime evidence rather than silently accepted as full parity.
+- Web tests 1122/1122, Web typecheck, Web build, and `git diff --check` passed
+  after the route change. The backend currently reports `self_serve`, while
+  the Vue `:5180` runtime still renders login at `/register`; this source vs
+  runtime conflict remains an environment/trigger investigation item.
