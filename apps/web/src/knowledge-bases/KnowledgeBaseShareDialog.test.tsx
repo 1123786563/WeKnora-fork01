@@ -204,6 +204,25 @@ test('filters viewer organizations and sends the selected permission in the crea
   assert.equal(changed, 1);
 });
 
+test('resets the share form after a successful share like Vue', async () => {
+  let shares: Share[] = [];
+  const client = clientFor(async () => ({ items: shares, total: shares.length }), {
+    create: async () => {
+      shares = [{ id: 'share-1', organization_id: 'org-editor', organization_name: 'Editors', permission: 'editor' }];
+      return { id: 'share-1' };
+    },
+  });
+  const container = await mount(client);
+
+  await select(container, 'Select Shared Space', 'org-editor');
+  await select(container, 'Permission', 'editor');
+  await act(async () => button(container, 'Confirm')?.click());
+
+  assert.equal(container.querySelector('[role="radio"][aria-checked="true"]')?.textContent, 'Read-only');
+  assert.equal(container.querySelector<HTMLSelectElement>('select')?.value, '', 'Vue clears the organization after sharing');
+  assert.equal(button(container, 'Confirm')?.disabled, true, 'the cleared form cannot be submitted again');
+});
+
 test('renders Vue-shaped organization options and shared-list actions', async () => {
   const enriched = [{ id: 'org-editor', name: 'Editors', is_owner: true, my_role: 'admin', member_count: 7, share_count: 3, agent_share_count: 2 }, { id: 'org-viewer', name: 'Viewers', my_role: 'editor' }] as unknown as Organization[];
   const client = clientFor(async () => ({ items: [{ id: 'share-1', organization_id: 'org-other', organization_name: 'Editors', permission: 'editor' }], total: 1 }));
