@@ -8,6 +8,24 @@ const uiCommit = typeof __FRONTEND_COMMIT__ === "string" && __FRONTEND_COMMIT__ 
 import { validatePassword } from '@weknora/domain/auth/password-policy';
 import { formatMessage, type Locale } from '@weknora/i18n';
 
+export type SettingsCloseMode = 'history' | 'knowledge-bases';
+
+const SYSTEM_ADMIN_CLOSE_SECTIONS = new Set([
+  'system-global',
+  'runtime-queues',
+  'platform-api-keys',
+  'system-audit-log',
+]);
+
+/** Mirrors Settings.vue: platform-admin pages close to knowledge bases; the
+ * ordinary settings drawer returns to the route that opened it. */
+export function settingsCloseMode(search: string): SettingsCloseMode {
+  const section = new URLSearchParams(search).get('section');
+  return section && SYSTEM_ADMIN_CLOSE_SECTIONS.has(section)
+    ? 'knowledge-bases'
+    : 'history';
+}
+
 // Vue section headers: every Vue settings component renders an
 // "h2 + section-description" pair inside its section-header block
 // (GeneralSettings.vue lines 3-6, EnvVarSettings.vue lines 3-15,

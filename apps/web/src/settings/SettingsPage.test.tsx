@@ -177,10 +177,15 @@ test('settings close blurs the focused control before leaving like the Vue drawe
   const container = await mountPage(makeClient(), '?section=general');
   const closeButton = container.querySelector<HTMLButtonElement>('[data-testid="settings-close"]');
   assert.ok(closeButton, 'the settings close button renders');
+  const originalBack = dom.window.history.back;
+  let backCalls = 0;
+  dom.window.history.back = () => { backCalls += 1; };
   closeButton.focus();
   assert.equal(document.activeElement, closeButton);
   await act(async () => closeButton.click());
   assert.notEqual(document.activeElement, closeButton, 'closing should blur the old drawer control');
+  assert.equal(backCalls, 1, 'ordinary sections should return to the route that opened the drawer');
+  dom.window.history.back = originalBack;
 });
 
 test('runtime queues section renders Vue overview, empty table and limiter states', async () => {

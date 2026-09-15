@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { chatHistoryEmbeddingLocked, cloudCredentialPatch, envVarRemove, envVarSet, formatUptimeText, memoryEnabledPatch, memoryItemPatch, memoryWorkspacePatch, ollamaModelInput, profilePasswordPatch, settingsConfigPatch, settingsResourceInput, settingsResourceRows, settingsSectionHeading, settingsSectionMeta, settingsValueEntries, systemInfoRows, tenantEditState, tenantModelIds, tenantPatch } from './surface.ts';
+import { chatHistoryEmbeddingLocked, cloudCredentialPatch, envVarRemove, envVarSet, formatUptimeText, memoryEnabledPatch, memoryItemPatch, memoryWorkspacePatch, ollamaModelInput, profilePasswordPatch, settingsCloseMode, settingsConfigPatch, settingsResourceInput, settingsResourceRows, settingsSectionHeading, settingsSectionMeta, settingsValueEntries, systemInfoRows, tenantEditState, tenantModelIds, tenantPatch } from './surface.ts';
 import { SETTINGS_SECTIONS, roleAtLeast, settingsSection, settingsSectionsForRole } from '@weknora/views';
 
 // Vue section headers: GeneralSettings.vue lines 3-6, EnvVarSettings.vue lines
@@ -36,6 +36,15 @@ test('system-admin settings keep Vue-localized section titles on direct role-den
   assert.equal(settingsSectionMeta('runtime-queues')?.title, '运行时队列');
   assert.equal(settingsSectionMeta('platform-api-keys')?.title, '平台 API Key');
   assert.equal(settingsSectionMeta('system-audit-log')?.title, '审计日志');
+});
+
+test('matches Vue close routing: ordinary sections go back, system admin sections go home', () => {
+  assert.equal(settingsCloseMode('?section=general'), 'history');
+  assert.equal(settingsCloseMode('?section=members'), 'history');
+  assert.equal(settingsCloseMode('?section=system-global'), 'knowledge-bases');
+  assert.equal(settingsCloseMode('?section=runtime-queues'), 'knowledge-bases');
+  assert.equal(settingsCloseMode('?section=platform-api-keys'), 'knowledge-bases');
+  assert.equal(settingsCloseMode('?section=system-audit-log'), 'knowledge-bases');
 });
 
 test('keeps settings operations explicit and does not display secret-shaped fields', () => {

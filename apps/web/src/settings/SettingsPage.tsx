@@ -8,7 +8,7 @@ import type { WeKnoraClient } from '@weknora/api-client';
 import type { SettingsRole } from '@weknora/views/settings/registry';
 import { roleAtLeast, SETTINGS_SECTIONS, settingsSectionsForRole } from '@weknora/views/settings/registry';
 import { Button, Status } from '@weknora/ui';
-import { profilePasswordPatch, settingsSectionHeading, settingsSectionMeta, tenantEditState, tenantPatch } from './surface.ts';
+import { profilePasswordPatch, settingsCloseMode, settingsSectionHeading, settingsSectionMeta, tenantEditState, tenantPatch } from './surface.ts';
 const TenantDeleteZone = lazy(() => import('./TenantDeleteZone.tsx').then((m) => ({ default: m.TenantDeleteZone })));
 const MemoryWorkspacePanel = lazy(() => import('./PersonalMemoryPanel.tsx').then((m) => ({ default: m.MemoryWorkspacePanel })));
 const PersonalMemorySettingsPanel = lazy(() => import('./PersonalMemorySettingsPanel.tsx').then((m) => ({ default: m.PersonalMemorySettingsPanel })));
@@ -159,7 +159,11 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
   // not survive the route transition as detached elements.
   function closeSettings() {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-    window.location.assign('/platform/knowledge-bases');
+    if (settingsCloseMode(window.location.search) === 'knowledge-bases') {
+      window.location.assign('/platform/knowledge-bases');
+    } else {
+      window.history.back();
+    }
   }
 
   // Read once on mount; the tab then follows the drawer until the user
