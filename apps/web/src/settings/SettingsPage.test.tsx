@@ -89,14 +89,14 @@ function makeClient(options: {
 
 async function mountPage(client: WeKnoraClient, search = '', role: 'owner' | 'system-admin' = 'owner') {
   if (search) dom.window.history.replaceState(null, '', '/platform/settings' + search);
-  const container = document.createElement('div');
-  document.body.append(container);
-  mountedRoot = createRoot(container);
+  const mountHost = document.createElement('div');
+  document.body.append(mountHost);
+  mountedRoot = createRoot(mountHost);
   await act(async () => {
     mountedRoot?.render(<SettingsPage client={client} tenantId={10000} role={role} />);
   });
   await act(async () => {});
-  return container;
+  return document.body;
 }
 
 // A1/A4: the Vue drawer has no per-section header refresh and never dumps raw
@@ -105,6 +105,13 @@ test('settings wrapper drops the refresh button and the raw payload dump', async
   const container = await mountPage(makeClient());
   assert.equal(container.querySelector('.wks-reload'), null, 'no refresh button in the panel heading');
   assert.equal(container.querySelector('dl'), null, 'no raw settings value dump');
+});
+
+test('settings drawer is portalled to body like the Vue Teleport shell', async () => {
+  await mountPage(makeClient(), '?section=general');
+  const drawer = document.body.querySelector('.wk-settings-drawer-root');
+  assert.ok(drawer, 'the settings drawer renders');
+  assert.equal(drawer.parentElement, document.body, 'the drawer is a direct body child like Vue Teleport');
 });
 
 test('settings navigation hides the Vue-unlisted retrieval deep-link section', () => {
@@ -260,7 +267,7 @@ test('system audit section renders Vue rows and opens a keyboard-accessible deta
   await act(async () => row?.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
   const detail = document.querySelector('.wk-audit-detail');
   assert.ok(detail, 'Enter opens the audit detail drawer');
-  assert.equal(container.contains(detail), false, 'the detail drawer is portalled like Vue SettingDrawer');
+  assert.equal(detail.parentElement, document.body, 'the detail drawer is portalled like Vue SettingDrawer');
   assert.ok(container.textContent?.includes('system.setting_changed'), 'the audit detail renders the full record');
   await act(async () => document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
   assert.equal(document.querySelector('.wk-audit-detail'), null, 'Escape closes the audit detail drawer');

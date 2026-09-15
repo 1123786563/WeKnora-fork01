@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { isCapabilitySupported, type CapabilityMap } from '@weknora/domain';
 import { integrationTabForSection, integrationSettingsQuery, selectSettingsQuery } from '@weknora/views/integrations/settings-route';
 import { INTEGRATION_SECTIONS } from '@weknora/views/integrations/registry';
@@ -233,7 +234,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
   const deniedPanel = roleDenied
     ? <div data-testid="role-denied-panel"><Status tone="error">{t('settings.roleDenied.title')}</Status><p className="wk-muted text-muted">{t('settings.roleDenied.desc')}</p></div>
     : null;
-  return (
+  return createPortal((
     <main className="wk-settings-drawer-root">
       <div className="wks-overlay">
         <div className="wks-modal" role="dialog" aria-modal="true" aria-label={t('general.settings')}>
@@ -296,7 +297,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
         </div>
       </div>
     </main>
-  );
+  ), document.body);
 }
 
 // BEGIN settings nav grouping + inline lucide-style icons (ported from
