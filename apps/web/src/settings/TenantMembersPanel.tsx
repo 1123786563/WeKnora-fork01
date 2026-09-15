@@ -471,9 +471,9 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
 
   return <section className="flex w-full flex-col gap-4" data-testid="tenant-members-settings">
     <div className="mb-8 flex flex-col gap-1.5">
-      <div className="section-header-row">
-        <div className="inline-flex min-w-0 items-center gap-2">
-          <h2 className="mt-0! mb-2! text-[20px] font-semibold text-[var(--wk-text,#172033)]">{tr('tenantMember.title')}</h2>
+      <div className="section-header-row flex items-center justify-between">
+        <div className="flex min-w-0 items-center gap-2">
+          <h2 className="m-0! text-[20px] font-semibold leading-[25px] tracking-[-0.02em] text-[var(--wk-text,#172033)]">{tr('tenantMember.title')}</h2>
           <div className="relative inline-flex" ref={permissionsRef}>
             <button type="button" className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 text-[var(--wk-muted,#66758b)] hover:text-primary hover:[outline:none] focus-visible:text-primary focus-visible:outline-offset-2 focus-visible:[outline:var(--wk-focus-ring,3px_solid_rgb(46_109_230/35%))]" aria-label={tr('tenantMember.permissions.title')}
               title={tr('tenantMember.permissions.iconHint')} aria-expanded={permissionsOpen}
@@ -500,10 +500,10 @@ export function TenantMembersPanel({ client, tenantId, role, initialMembers }: P
               </div>
             </div> : null}
           </div>
-          {canViewAudit ? <Button type="button" className="text-[var(--wk-muted,#66758b)]! hover:text-primary!" onClick={openAudit}>
-            <Icon name="history" /> {tr('tenantMember.audit.tabLabel')}
-          </Button> : null}
         </div>
+        {canViewAudit ? <Button type="button" variant="text" className="h-6 rounded-[3px]! px-[7px] py-0 text-[12px] text-[var(--wk-muted,#66758b)]! hover:text-primary!" onClick={openAudit}>
+          <Icon name="history" size={16} /> {tr('tenantMember.audit.tabLabel')}
+        </Button> : null}
       </div>
       <p className="m-0 text-[14px] leading-[1.5] text-[var(--wk-muted,#66758b)] opacity-75">
         {tr('tenantMember.sectionDescription')}
