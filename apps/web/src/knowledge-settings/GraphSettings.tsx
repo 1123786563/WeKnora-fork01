@@ -118,7 +118,7 @@ export function GraphSettings({ graphExtract, modelId, client, embedded = false,
     {!embedded ? <header className="wk-graph-header"><h2>知识图谱配置</h2><p className="wk-muted">配置实体关系提取，从文本中自动构建知识图谱。</p></header> : null}
     {system.status === 'loading' ? <Status>Loading graph database status…</Status> : null}
     {system.status === 'error' ? <Status tone="error">{system.message}</Status> : null}
-    {system.status === 'ready' && !enabled ? <Alert tone="default"><div>知识图谱数据库未启用，实体关系提取功能将无法使用</div>{!embedded && onOpenGraphGuide ? <Button type="button" variant="text" onClick={onOpenGraphGuide}>如何启用知识图谱？</Button> : null}</Alert> : null}
+    {system.status === 'ready' && !enabled ? <Alert tone="warning"><div>知识图谱数据库未启用，实体关系提取功能将无法使用</div>{!embedded && onOpenGraphGuide ? <Button type="button" variant="text" onClick={onOpenGraphGuide}>如何启用知识图谱？</Button> : null}</Alert> : null}
     {enabled ? <div className="wk-graph-form">
       <div className="wk-graph-row"><div><strong>启用实体关系提取</strong><p className="wk-muted">从上传的文本中提取实体和关系。</p></div><label><input type="checkbox" checked={local.enabled} onChange={(event) => setEnabled(event.target.checked)} /> 启用</label></div>
       {local.enabled ? <>

@@ -178,28 +178,47 @@ function activityRows(value: unknown): Array<Record<string, unknown>> {
 }
 
 interface KnowledgeSettingsPageProps {
-  knowledgeBase: KnowledgeSettingsInput;
+  knowledgeBase?: KnowledgeSettingsInput;
+  knowledgeBaseId?: string;
   client?: WeKnoraClient;
+  role?: 'owner' | 'admin' | 'viewer';
   canViewActivity?: boolean;
   initialSection?: KnowledgeSettingsSectionKey;
 }
 
-export function KnowledgeSettingsPage({ knowledgeBase, client, canViewActivity = true, initialSection }: KnowledgeSettingsPageProps) {
+export function knowledgeSettingsCanEdit(role: 'owner' | 'admin' | 'viewer' | undefined): boolean {
+  return role === 'owner' || role === 'admin';
+}
+
+export function KnowledgeSettingsPage({ knowledgeBase: providedKnowledgeBase, knowledgeBaseId, client, role = 'viewer', canViewActivity = true, initialSection }: KnowledgeSettingsPageProps) {
   const [ui, setUi] = useState<ProjectUi | null>(null);
-  const availableSections = useMemo(() => getKnowledgeSettingsSections(knowledgeBase, { canViewActivity }), [knowledgeBase, canViewActivity]);
+  const [loadedKnowledgeBase, setLoadedKnowledgeBase] = useState<KnowledgeSettingsInput | null>(providedKnowledgeBase ?? null);
+  const [loadState, setLoadState] = useState<'idle' | 'loading' | 'error'>('idle');
+  const knowledgeBase = providedKnowledgeBase ?? loadedKnowledgeBase;
+  useEffect(() => {
+    if (providedKnowledgeBase || !knowledgeBaseId || !client) return;
+    setLoadState('loading');
+    void client.knowledgeBases.settings.get(knowledgeBaseId).then((value) => {
+      setLoadedKnowledgeBase(value as KnowledgeSettingsInput);
+      setLoadState('idle');
+    }).catch(() => setLoadState('error'));
+  }, [client, knowledgeBaseId, providedKnowledgeBase]);
+  const fallbackKnowledgeBase: KnowledgeSettingsInput = { id: knowledgeBaseId ?? '', name: '', type: 'document' };
+  const currentKnowledgeBase = knowledgeBase ?? fallbackKnowledgeBase;
+  const availableSections = useMemo(() => getKnowledgeSettingsSections(currentKnowledgeBase, { canViewActivity }), [currentKnowledgeBase, canViewActivity]);
   const [activeSection, setActiveSection] = useState<KnowledgeSettingsSectionKey>(initialSection ?? availableSections[0]?.key ?? 'vectorStore');
   const [activity, setActivity] = useState<{ status: 'idle' | 'loading' | 'ready' | 'error'; rows: Array<Record<string, unknown>>; message?: string }>({ status: 'idle', rows: [] });
   const [dataSources, setDataSources] = useState<{ status: 'idle' | 'loading' | 'ready' | 'error'; rows: Array<Record<string, unknown>>; message?: string }>({ status: 'idle', rows: [] });
   const [shares, setShares] = useState<{ status: 'idle' | 'loading' | 'ready' | 'error'; rows: Array<Record<string, unknown>>; message?: string }>({ status: 'idle', rows: [] });
   const [graphExtract, setGraphExtract] = useState<GraphExtractConfig>(() => ({
-    enabled: knowledgeBase.extract_config?.enabled === true,
-    text: knowledgeBase.extract_config?.text ?? '',
-    tags: knowledgeBase.extract_config?.tags ?? [],
-    nodes: knowledgeBase.extract_config?.nodes ?? [],
-    relations: knowledgeBase.extract_config?.relations ?? [],
-    customInstructions: knowledgeBase.extract_config?.customInstructions ?? knowledgeBase.extract_config?.custom_instructions ?? '',
+    enabled: currentKnowledgeBase.extract_config?.enabled === true,
+    text: currentKnowledgeBase.extract_config?.text ?? '',
+    tags: currentKnowledgeBase.extract_config?.tags ?? [],
+    nodes: currentKnowledgeBase.extract_config?.nodes ?? [],
+    relations: currentKnowledgeBase.extract_config?.relations ?? [],
+    customInstructions: currentKnowledgeBase.extract_config?.customInstructions ?? currentKnowledgeBase.extract_config?.custom_instructions ?? '',
   }));
-  const summary = summarizeKnowledgeSettings({ ...knowledgeBase, activity: activity.rows.length > 0 ? activity.rows : knowledgeBase.activity });
+  const summary = summarizeKnowledgeSettings({ ...currentKnowledgeBase, activity: activity.rows.length > 0 ? activity.rows : currentKnowledgeBase.activity });
   const active = availableSections.find((section) => section.key === activeSection) ?? availableSections[0];
 
   useEffect(() => {
@@ -216,49 +235,49 @@ export function KnowledgeSettingsPage({ knowledgeBase, client, canViewActivity =
     setActivity({ status: 'loading', rows: [] });
     void client.request({
       method: 'GET',
-      path: getKnowledgeBaseActivityPath(knowledgeBase.id),
+      path: getKnowledgeBaseActivityPath(currentKnowledgeBase.id),
     }).then((value) => {
       if (mounted) setActivity({ status: 'ready', rows: activityRows(value) });
     }).catch((error: unknown) => {
       if (mounted) setActivity({ status: 'error', rows: [], message: error instanceof Error ? error.message : 'Unable to load activity' });
     });
     return () => { mounted = false; };
-  }, [activeSection, canViewActivity, client, knowledgeBase.id]);
+  }, [activeSection, canViewActivity, client, currentKnowledgeBase.id]);
 
   useEffect(() => {
     if (activeSection !== 'datasource' || !client) return;
     let mounted = true;
     setDataSources({ status: 'loading', rows: [] });
-    void client.request({ method: 'GET', path: getKnowledgeBaseDataSourcesPath(knowledgeBase.id) }).then((value) => {
+    void client.request({ method: 'GET', path: getKnowledgeBaseDataSourcesPath(currentKnowledgeBase.id) }).then((value) => {
       if (mounted) setDataSources({ status: 'ready', rows: rowsFromEnvelope(value, 'data') });
     }).catch((error: unknown) => {
       if (mounted) setDataSources({ status: 'error', rows: [], message: error instanceof Error ? error.message : 'Unable to load data sources' });
     });
     return () => { mounted = false; };
-  }, [activeSection, client, knowledgeBase.id]);
+  }, [activeSection, client, currentKnowledgeBase.id]);
 
   useEffect(() => {
     if (activeSection !== 'share' || !client) return;
     let mounted = true;
     setShares({ status: 'loading', rows: [] });
-    void client.request({ method: 'GET', path: getKnowledgeBaseSharesPath(knowledgeBase.id) }).then((value) => {
+    void client.request({ method: 'GET', path: getKnowledgeBaseSharesPath(currentKnowledgeBase.id) }).then((value) => {
       if (mounted) setShares({ status: 'ready', rows: rowsFromEnvelope(value, 'shares') });
     }).catch((error: unknown) => {
       if (mounted) setShares({ status: 'error', rows: [], message: error instanceof Error ? error.message : 'Unable to load shares' });
     });
     return () => { mounted = false; };
-  }, [activeSection, client, knowledgeBase.id]);
+  }, [activeSection, client, currentKnowledgeBase.id]);
 
   const CardComponent = ui?.Card ?? 'section';
   const ButtonComponent = ui?.Button ?? 'button';
   const StatusComponent = ui?.Status ?? 'p';
 
   return (
-    <CardComponent aria-label={`Knowledge settings for ${knowledgeBase.name}`}>
+    <CardComponent aria-label={`Knowledge settings for ${currentKnowledgeBase.name}`}>
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(170px, 0.8fr) minmax(0, 2fr)', gap: '1.5rem', alignItems: 'start' }}>
         <aside aria-label="Knowledge settings navigation">
           <p className="wk-eyebrow">Knowledge settings</p>
-          <h2 style={{ margin: '0.35rem 0 1.1rem', fontSize: '1.2rem' }}>{knowledgeBase.name}</h2>
+          <h2 style={{ margin: '0.35rem 0 1.1rem', fontSize: '1.2rem' }}>{currentKnowledgeBase.name}</h2>
           <nav style={{ display: 'grid', gap: '0.4rem' }}>
             {availableSections.map((section) => {
               const item = summary[section.key];
@@ -287,7 +306,7 @@ export function KnowledgeSettingsPage({ knowledgeBase, client, canViewActivity =
           <p className="wk-muted" style={{ margin: '0 0 1.25rem' }}>{active?.description}</p>
           {active?.key === 'activity' && activity.status === 'loading' ? <StatusComponent>Loading activity…</StatusComponent> : null}
           {active?.key === 'activity' && activity.status === 'error' ? <StatusComponent tone="error">{activity.message}</StatusComponent> : null}
-          {active ? <SettingsSection summary={summary[active.key]} section={active.key} rows={activity.rows} dataSources={dataSources} shares={shares} graphExtract={graphExtract} modelId={knowledgeBase.summary_model_id ?? ''} client={client} StatusComponent={StatusComponent} onGraphChange={setGraphExtract} /> : <StatusComponent>No settings available.</StatusComponent>}
+          {loadState === 'loading' ? <StatusComponent>Loading knowledge-base settings…</StatusComponent> : loadState === 'error' ? <StatusComponent tone="error">Unable to load knowledge-base settings.</StatusComponent> : active ? <SettingsSection summary={summary[active.key]} section={active.key} rows={activity.rows} dataSources={dataSources} shares={shares} graphExtract={graphExtract} modelId={currentKnowledgeBase.summary_model_id ?? ''} client={client} StatusComponent={StatusComponent} onGraphChange={setGraphExtract} /> : <StatusComponent>No settings available.</StatusComponent>}
         </section>
       </div>
     </CardComponent>
