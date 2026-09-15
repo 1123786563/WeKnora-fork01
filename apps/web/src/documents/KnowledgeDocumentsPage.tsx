@@ -114,6 +114,12 @@ function displayName(document: KnowledgeDocument): string {
   return document.file_name || document.title || document.id;
 }
 
+export function folderPathCrumbs(path: string | undefined): Array<{ name: string; path: string }> {
+  if (!path) return [];
+  const segments = path.split('/').filter(Boolean);
+  return segments.map((name, index) => ({ name, path: segments.slice(0, index + 1).join('/') }));
+}
+
 function DocumentTagChips({ tags }: { tags: ReturnType<typeof documentTags> }) {
   const ref = useRef<HTMLSpanElement | null>(null);
   const [visibleLimit, setVisibleLimit] = useState(99);
@@ -2847,6 +2853,16 @@ export function KnowledgeDocumentsPage({
             </ul>
           </aside> : null}
           <section className="wk-document-results">
+            {showFolderTree ? <nav className="doc-folder-path mb-2 flex min-h-6 items-center gap-1 overflow-x-auto text-xs text-muted" aria-label={t("knowledgeBase.folderTree.title")}>
+              <button type="button" className={folderPath ? "doc-folder-path__crumb border-0 bg-transparent px-1 py-0.5 text-muted underline-offset-2 hover:text-primary-deep hover:underline" : "doc-folder-path__crumb is-current border-0 bg-transparent px-1 py-0.5 font-medium text-ink"} onClick={() => setFolderPath(undefined)}>
+                {t("knowledgeBase.folderTree.rootRow")}
+              </button>
+              {folderPathCrumbs(folderPath).map((crumb, index, crumbs) => <span key={crumb.path} className="contents">
+                <span className="doc-folder-path__sep px-0.5 text-muted" aria-hidden="true">›</span>
+                {index === crumbs.length - 1 ? <span className="doc-folder-path__crumb is-current px-1 py-0.5 font-medium text-ink">{crumb.name}</span> : <button type="button" className="doc-folder-path__crumb border-0 bg-transparent px-1 py-0.5 text-muted underline-offset-2 hover:text-primary-deep hover:underline" onClick={() => setFolderPath(crumb.path)}>{crumb.name}</button>}
+              </span>)}
+              {filtering ? <span className="doc-folder-path__scope ml-1 px-1 text-muted">({t("knowledgeBase.folderTree.searchingSubtree")})</span> : null}
+            </nav> : null}
             <div className="doc-filter-bar grid shrink-0 items-center gap-x-3 gap-y-2 pb-3 [grid-template-areas:'search_trailing'_'filters_filters'] [grid-template-columns:1fr_auto] max-[960px]:[grid-template-areas:'search'_'trailing'_'filters'] max-[960px]:[grid-template-columns:1fr]">
               <div className="doc-search-input relative flex min-w-0 w-full items-center [grid-area:search]">
                 <SearchIcon size={16} className="doc-search-icon pointer-events-none absolute left-[10px] text-[var(--wk-muted,#98a2b8)]" />

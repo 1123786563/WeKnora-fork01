@@ -23,12 +23,20 @@ const {
   ParserHint,
   DocumentEmptyState,
 } = await import('./DocumentsPageChrome.tsx');
-const { KnowledgeDocumentsPage } = await import('./KnowledgeDocumentsPage.tsx');
+const { KnowledgeDocumentsPage, folderPathCrumbs } = await import('./KnowledgeDocumentsPage.tsx');
 const { createTranslator } = await import('../i18n.ts');
 
 const t = createTranslator('zh-CN');
 const kbId = '9727d104-cde4-4d03-879f-d7e3897b69a3';
 const noop = () => {};
+
+test('folder path breadcrumbs preserve Vue root and ancestor paths', () => {
+  assert.deepEqual(folderPathCrumbs(undefined), []);
+  assert.deepEqual(folderPathCrumbs('Product/Guides'), [
+    { name: 'Product', path: 'Product' },
+    { name: 'Guides', path: 'Product/Guides' },
+  ]);
+});
 
 // --- DocumentsBreadcrumb (Vue KnowledgeBase.vue document-title-row parity) -------
 
