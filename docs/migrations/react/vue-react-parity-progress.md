@@ -3532,3 +3532,14 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - This remains implementation/regression evidence only. Authenticated paired
   Vue/React screenshots, real permission and mutation flows, and Wails
   feature interaction evidence remain open.
+
+## 2026-09-15 Round R387 — Desktop bridge pre-bootstrap parity
+
+- Integrated `e7388183` for the React desktop renderer: the Wails API base is
+  resolved before the shared renderer imports, external HTTP(S) URLs are sent
+  through the Wails browser bridge, and unsafe schemes remain rejected.
+- Desktop focused verification is 8/8, desktop typecheck and build pass. The
+  audit is recorded at `apps/desktop/evidence/2026-09-15-wails-renderer-audit.md`.
+- Native Wails launch, OS deep-link delivery, browser handoff, and secure
+  credential storage remain `blocked-env`; this commit does not claim those
+  runtime gates are accepted.
