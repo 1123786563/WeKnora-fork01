@@ -42,13 +42,13 @@ export default function RegisterRoute() {
   return <SafeAreaView style={{ flex: 1, justifyContent: 'center', padding: 24 }}><View style={{ gap: 12 }}>
     <Text style={{ fontSize: 30, fontWeight: '700' }}>{token.trim() ? t('auth.join.title') : t('auth.register')}</Text>
     <Text style={{ color: '#667085' }}>{token.trim() ? t('auth.join.title') : t('auth.registerSubtitle')}</Text>
-    {token.trim() ? <><TextInput autoCapitalize="none" autoCorrect={false} placeholder={t('auth.join.title')} value={token} onChangeText={setToken} style={inputStyle} /><Pressable disabled={busy || !token.trim()} onPress={() => void lookup()}><Text style={{ color: '#2864dc' }}>{t('auth.join.checkingInvitation')}</Text></Pressable>{invite ? <Text style={{ color: '#667085' }}>Join {invite.tenantName || 'workspace'} as {invite.role}; expires {invite.expiresAt}.</Text> : null}</> : null}
+    {token.trim() ? <><TextInput autoCapitalize="none" autoCorrect={false} placeholder={t('auth.join.title')} value={token} onChangeText={setToken} style={inputStyle} /><Pressable disabled={busy || !token.trim()} onPress={() => void lookup()}><Text style={{ color: '#2864dc' }}>{t('auth.join.checkingInvitation')}</Text></Pressable>{invite ? <Text style={{ color: '#667085' }}>{t('auth.join.joinPrefix')} {invite.tenantName || t('auth.join.workspaceFallback', { id: '?' })}{t('auth.join.asRole', { role: invite.role })}{t('mobileAuth.invitationExpires', { expiresAt: invite.expiresAt })}</Text> : null}</> : null}
     <TextInput autoCapitalize="none" placeholder={t('auth.usernamePlaceholder')} value={username} onChangeText={setUsername} style={inputStyle} />
     <TextInput autoCapitalize="none" keyboardType="email-address" placeholder={t('auth.emailPlaceholder')} value={email} onChangeText={setEmail} style={inputStyle} />
     <TextInput placeholder={t('auth.passwordPlaceholder')} secureTextEntry value={password} onChangeText={setPassword} style={inputStyle} />
     {error ? <Text accessibilityRole="alert" style={{ color: '#b42318' }}>{error}</Text> : null}
     {notice ? <Text accessibilityLiveRegion="polite" style={{ color: '#16803c' }}>{notice}</Text> : null}
-    <Pressable disabled={busy || !username.trim() || !email.trim() || !password} onPress={() => void submit()} style={buttonStyle}><Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700' }}>{busy ? 'Working…' : token.trim() ? t('auth.join.title') : t('auth.register')}</Text></Pressable>
+    <Pressable disabled={busy || !username.trim() || !email.trim() || !password} onPress={() => void submit()} style={buttonStyle}><Text style={{ color: '#fff', textAlign: 'center', fontWeight: '700' }}>{busy ? t('common.loading') : token.trim() ? t('auth.join.title') : t('auth.register')}</Text></Pressable>
     <Pressable disabled={busy} onPress={() => router.replace('/(auth)/login')}><Text style={{ color: '#2864dc', textAlign: 'center' }}>{t('auth.backToLogin')}</Text></Pressable>
   </View></SafeAreaView>;
 }

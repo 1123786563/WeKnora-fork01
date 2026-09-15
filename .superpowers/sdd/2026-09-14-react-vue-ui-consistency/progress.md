@@ -366,3 +366,5 @@ Verification update (2026-09-15): mobile regression passes 190/190 and mobile Ty
 T10 mobile auth update (2026-09-15): public Login and Register routes now resolve visible copy, placeholders, action labels and fallback errors through the shared five-locale auth catalog; server-provided errors remain visible. Mobile typecheck passes and mobile regression remains 190/190.
 
 T10 mobile server-entry update (2026-09-15): server-address route now uses a dedicated five-locale `mobileAuth.*` catalog for title, guidance, placeholder, save/cancel and fallback error copy. Mobile typecheck, mobile regression (190/190), and i18n catalog tests (60/60) pass.
+
+T10 mobile invite-copy follow-up (2026-09-15): invitation lookup confirmation now localizes workspace fallback, role label, expiry text, and busy state through `auth.join.*` plus `mobileAuth.invitationExpires`; no hardcoded English remains in that dynamic row. Mobile typecheck and i18n 60/60 pass.
