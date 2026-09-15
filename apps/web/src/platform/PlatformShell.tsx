@@ -64,13 +64,6 @@ const KB_ACTIVE = (pathname: string): boolean =>
   /^\/platform\/knowledge-bases\/[^/]+/.test(pathname) ||
   /^\/knowledgeBase(\/|$)/.test(pathname);
 
-// .plat-shell__kb-filter (+ --active) → utilities. --active survives as a
-// hook class for tests; active color/font swap here (the :hover gray keeps
-// winning over the active blue, matching the deleted css cascade).
-const kbFilterClass = (active: boolean): string =>
-  'plat-shell__kb-filter block mx-[8px] pt-[6px] pr-[8px] pb-[6px] pl-[8px] rounded-[6px] text-[13px] no-underline hover:bg-[#eceff4] hover:text-[#3d4a5c] '
-  + (active ? 'plat-shell__kb-filter--active text-[#2e6de6] font-semibold' : 'text-[#66758b]');
-
 function Icon({ path }: { path: string }): ReactNode {
   return (
     <svg className="plat-shell__icon" viewBox="0 0 24 24" width="18" height="18" fill="none"
@@ -539,23 +532,6 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
     },
   }), []);
 
-  // KB-list quick filters: the React KB list page reads ?scope=all|mine from
-  // the URL. 收藏/最近 from the Vue rail have no backing in the React page
-  // this round, so only the two supported scopes are rendered.
-  const kbListContext = pathname === '/platform/knowledge-bases' || pathname === '/platform';
-  const currentScope = new URLSearchParams(window.location.search).get('scope') === 'mine' ? 'mine' : 'all';
-
-  // R017 organizations sub-filter: the Vue org rail (ListSpaceSidebar
-  // mode="organization", OrganizationList.vue:3-4) carries 全部/我创建的/
-  // 我加入的; the shell surfaces the same entries under the organizations nav
-  // item on /platform/organizations and drives them through the shared
-  // ?scope= convention (all|created|joined) that the page reads back.
-  const orgListContext = pathname === '/platform/organizations';
-  const currentOrgScope = (() => {
-    const value = new URLSearchParams(window.location.search).get('scope');
-    return value === 'created' || value === 'joined' ? value : 'all';
-  })();
-
   const toggleCollapsed = () => {
     setCollapsed((current) => {
       window.localStorage.setItem(COLLAPSE_STORAGE_KEY, String(!current));
@@ -633,27 +609,6 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
               );
             })}
           </nav>
-
-          {kbListContext && !collapsed && (
-            <div className="flex flex-col gap-[2px] mt-[10px] mb-[4px] pt-[8px] border-t border-[#e7ebf0]" role="navigation" aria-label={t('common.knowledgeBases')}>
-              <a href="/platform/knowledge-bases" className={kbFilterClass(currentScope === 'all')}>{t('common.all')}</a>
-              <a href="/platform/knowledge-bases?scope=mine" className={kbFilterClass(currentScope === 'mine')}>{t('knowledgeList.sections.mine')}</a>
-            </div>
-          )}
-
-          {/* R017: shared-space scope entries (Vue menu.vue has no organizations
-              submenu — only the pending-requests badge on the nav entry — so
-              the KB quick-filter block is the established shell form; counts
-              stay on the page rail like Vue's ListSpaceSidebar). Class reuse
-              is intentional: same visual language; the
-              aria-label (menu.organizations) disambiguates the blocks. */}
-          {orgListContext && !collapsed && (
-            <div className="flex flex-col gap-[2px] mt-[10px] mb-[4px] pt-[8px] border-t border-[#e7ebf0]" role="navigation" aria-label={labels.organizations}>
-              <a href="/platform/organizations" className={kbFilterClass(currentOrgScope === 'all')}>{t('common.all')}</a>
-              <a href="/platform/organizations?scope=created" className={kbFilterClass(currentOrgScope === 'created')}>{t('organization.createdByMe')}</a>
-              <a href="/platform/organizations?scope=joined" className={kbFilterClass(currentOrgScope === 'joined')}>{t('organization.joinedByMe')}</a>
-            </div>
-          )}
 
           {/* Vue menu.vue .submenu: the grouped session list lives in the
               sidebar on every protected page; collapsed sidebars hide it.
