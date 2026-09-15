@@ -3385,24 +3385,12 @@ export function KnowledgeDocumentsPage({
               <p className="wk-muted text-muted" style={{ margin: "0 0 0.4rem", fontSize: "0.85rem" }}>{ct("uploadConfirm.tagsDescription")}</p>
               <label>
                 <span className="wk-visually-hidden sr-only">{ct("uploadConfirm.tagsPlaceholder")}</span>
-                <select
-                  className="min-h-16 min-w-48"
-                  multiple
-                  value={pendingTagIds}
-                  onChange={(event) =>
-                    setPendingTagIds(
-                      Array.from(event.target.selectedOptions).map(
-                        (option) => option.value,
-                      ),
-                    )
-                  }
-                >
-                  {tags.map((tag) => (
-                    <option key={tag.id} value={tag.id}>
-                      {tag.name}
-                    </option>
-                  ))}
-                </select>
+                <UploadMultiSelect
+                  values={pendingTagIds}
+                  options={tags.map((tag) => ({ value: tag.id, label: tag.name }))}
+                  ariaLabel={ct("uploadConfirm.tagsPlaceholder")}
+                  onChange={setPendingTagIds}
+                />
               </label>
               {!uploading && tags.length === 0 ? (
                 <p className="wk-muted text-muted" style={{ margin: "0.25rem 0 0", fontSize: "0.85rem" }}>{ct("uploadConfirm.tagsEmpty")}</p>
