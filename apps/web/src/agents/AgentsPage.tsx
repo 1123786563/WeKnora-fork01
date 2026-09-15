@@ -195,7 +195,6 @@ export function AgentRail({ t, items, onSelect }: { t: Translate; items: AgentRa
               : <Icon name={item.icon === 'workspace' ? 'workspace' : item.icon} size={16} />}
           </span>
           <span className="max-w-full truncate text-[10px] leading-[14px]">{item.label}</span>
-          {item.count !== undefined ? <span className="text-[10px] leading-[14px] opacity-70">{item.count}</span> : null}
         </button>
       ))}
     </nav>

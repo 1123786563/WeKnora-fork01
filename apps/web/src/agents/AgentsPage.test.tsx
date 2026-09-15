@@ -128,7 +128,7 @@ test('list-load failure renders no raw error payload (Vue parity: silent empty s
   assert.doesNotMatch(viewerOnly, /创建智能体/);
 });
 
-test('rail renders 全部/收藏/最近/我的 with counts plus shared-space entries', () => {
+test('collapsed rail renders labels and keeps counts in the tooltip title', () => {
   const rail = renderToStaticMarkup(React.createElement(AgentRail, {
     t,
     items: [
@@ -147,6 +147,8 @@ test('rail renders 全部/收藏/最近/我的 with counts plus shared-space ent
   assert.match(rail, /空间一/);
   assert.match(rail, /aria-current="true"/);
   assert.match(rail, /data-space-key="all"/);
+  assert.match(rail, /title="全部 \(6\)"/);
+  assert.doesNotMatch(rail, />6<|>0<|>2<|>5<|>1</, 'collapsed Vue rail does not show count rows');
 });
 
 test('all view renders grouped sections with counts and one card per agent', () => {
