@@ -360,3 +360,5 @@ N033 Wails update (2026-09-15): after the shared view alias fix, `PATH="/Users/w
 Verification update (2026-09-15): shared package regression passes 467/467 after desktop alias and Wails packaging changes.
 
 N021 fixture update (2026-09-15): typed tool-result renderer suite now passes 39/39, including unknown display-type plain-text fallback, nested secret redaction, secret-shaped search content suppression, and expanded renderer coverage. Browser fixture/live backend evidence remains open.
+
+Verification update (2026-09-15): mobile regression passes 190/190 and mobile TypeScript typecheck passes after the latest desktop/Web changes. Native runtime evidence remains separately gated.
