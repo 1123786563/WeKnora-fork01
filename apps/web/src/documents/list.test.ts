@@ -17,3 +17,36 @@ test('loads documents through the api-client seam without fallback data', async 
     page: { items: [{ id: 'doc-1', parse_status: 'pending' }], total: 1, page: 1, pageSize: 20 },
   });
 });
+
+test('loads the Vue-authoritative success/data response shape', async () => {
+  const result = await loadKnowledgeDocuments({
+    knowledgeBases: {
+      documents: {
+        list: async () => ({
+          success: true,
+          data: [{ id: 'doc-1', parse_status: 'completed' }],
+          total: 1,
+          page: 2,
+          page_size: 10,
+        }),
+      },
+    },
+  } as never, 'kb-1');
+
+  assert.deepEqual(result, {
+    status: 'success',
+    page: { items: [{ id: 'doc-1', parse_status: 'completed' }], total: 1, page: 2, pageSize: 10 },
+  });
+});
+
+test('does not render data from a failed Vue response envelope', async () => {
+  const result = await loadKnowledgeDocuments({
+    knowledgeBases: {
+      documents: {
+        list: async () => ({ success: false, data: [{ id: 'stale-doc' }], total: 1 }),
+      },
+    },
+  } as never, 'kb-1');
+
+  assert.deepEqual(result, { status: 'error', message: 'Invalid knowledge document page' });
+});
