@@ -1,83 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
-import type { KnowledgeBase } from '@weknora/contracts';
 import { createScopeController } from '@weknora/domain/scope';
 import { scopedKey } from '@weknora/domain';
 import { Button, Card, Status } from '@weknora/ui';
 import { loadKnowledgeBases, type KnowledgeBaseListState } from './knowledge-bases/list.ts';
-import { GraphSettings, type GraphExtractConfig } from './knowledge-settings/GraphSettings.tsx';
+import { KnowledgeSettingsPage } from './knowledge-settings/KnowledgeSettingsPage.tsx';
 import './knowledge-settings/GraphSettings.css';
 
-export type KnowledgeBaseEditorSection =
-  | 'basic'
-  | 'models'
-  | 'vectorStore'
-  | 'faq'
-  | 'parser'
-  | 'processing'
-  | 'graph';
-
-export interface KnowledgeBaseEditorNavItem {
-  key: KnowledgeBaseEditorSection;
-  label: string;
-  description: string;
-}
-
-export interface KnowledgeBaseEditorNavGroup {
-  key: 'basic' | 'processing';
-  label: string;
-  items: KnowledgeBaseEditorNavItem[];
-}
-
-export const knowledgeBaseEditorNavGroups: KnowledgeBaseEditorNavGroup[] = [
-  {
-    key: 'basic',
-    label: 'Basic',
-    items: [
-      { key: 'basic', label: 'Basic', description: 'Name, type, and identity' },
-      { key: 'models', label: 'Models', description: 'Embedding and generation models' },
-      { key: 'vectorStore', label: 'Vector store', description: 'Vector-store binding' },
-      { key: 'faq', label: 'FAQ', description: 'Question and answer indexing' },
-    ],
-  },
-  {
-    key: 'processing',
-    label: 'Processing',
-    items: [
-      { key: 'parser', label: 'Parser', description: 'Document parser rules' },
-      { key: 'processing', label: 'Processing', description: 'Ingestion and indexing status' },
-      { key: 'graph', label: 'Knowledge graph', description: 'Entity and relationship extraction' },
-    ],
-  },
-];
-
-function editorSectionTitle(section: KnowledgeBaseEditorSection): string {
-  return knowledgeBaseEditorNavGroups
-    .flatMap((group) => group.items)
-    .find((item) => item.key === section)?.label ?? 'Basic';
-}
-
-function isFaqKnowledgeBase(knowledgeBase: KnowledgeBase): boolean {
-  return knowledgeBase.type?.toLowerCase() === 'faq';
-}
-
-function KnowledgeBaseEditor({ knowledgeBase, client }: { knowledgeBase: KnowledgeBase; client: WeKnoraClient }) {
-  const [activeSection, setActiveSection] = useState<KnowledgeBaseEditorSection>('basic');
-  const faq = isFaqKnowledgeBase(knowledgeBase);
-  const sectionTitle = editorSectionTitle(activeSection);
-  const source = knowledgeBase as KnowledgeBase & { summary_model_id?: string; extract_config?: Partial<GraphExtractConfig> & { custom_instructions?: string } };
-  const [graphExtract, setGraphExtract] = useState<GraphExtractConfig>(() => ({
-    enabled: source.extract_config?.enabled === true,
-    text: source.extract_config?.text ?? '',
-    tags: source.extract_config?.tags ?? [],
-    nodes: source.extract_config?.nodes ?? [],
-    relations: source.extract_config?.relations ?? [],
-    customInstructions: source.extract_config?.customInstructions ?? source.extract_config?.custom_instructions ?? '',
-  }));
-
-  return (
-    <Card>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.25rem', alignItems: 'flex-start' }}>
+function KnowledgeBaseEditor({ knowledgeBase, client }: { knowledgeBase: Parameters<typeof KnowledgeSettingsPage>[0]['knowledgeBase']; client: WeKnoraClient }) {
+  return <KnowledgeSettingsPage knowledgeBase={knowledgeBase} client={client} />;
+/*
         <aside aria-label="Knowledge base editor navigation" style={{ flex: '1 1 180px', minWidth: 180 }}>
           <p className="wk-eyebrow">Editor</p>
           <h2 style={{ fontSize: '1.2rem', margin: '0.35rem 0 1rem' }}>{knowledgeBase.name}</h2>
@@ -157,7 +89,7 @@ function KnowledgeBaseEditor({ knowledgeBase, client }: { knowledgeBase: Knowled
         </section>
       </div>
     </Card>
-  );
+  ); */
 }
 
 interface KnowledgeBasesPageProps {

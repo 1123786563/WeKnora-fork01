@@ -3,7 +3,9 @@ import test from 'node:test';
 
 import {
   getKnowledgeSettingsSections,
+  getKnowledgeBaseDataSourcesPath,
   getKnowledgeBaseActivityPath,
+  getKnowledgeBaseSharesPath,
   summarizeKnowledgeSettings,
   type KnowledgeSettingsInput,
 } from './KnowledgeSettingsPage.tsx';
@@ -28,11 +30,22 @@ const documentKnowledgeBase: KnowledgeSettingsInput = {
 
 test('exposes Vue-aligned sections and gates document-only sections for FAQ bases', () => {
   assert.deepEqual(getKnowledgeSettingsSections(documentKnowledgeBase).map((section) => section.key), [
-    'vectorStore', 'parser', 'storage', 'activity',
+    'vectorStore', 'parser', 'storage', 'datasource', 'share', 'activity', 'graph',
   ]);
   assert.deepEqual(getKnowledgeSettingsSections({ id: 'kb-2', name: 'FAQ', type: 'faq' }).map((section) => section.key), [
-    'vectorStore', 'activity',
+    'vectorStore', 'datasource', 'share', 'activity',
   ]);
+});
+
+test('exposes every Vue knowledge-base detail section in the editor order', () => {
+  assert.deepEqual(getKnowledgeSettingsSections(documentKnowledgeBase).map((section) => section.key), [
+    'vectorStore', 'parser', 'storage', 'datasource', 'share', 'activity', 'graph',
+  ]);
+});
+
+test('builds the Vue detail endpoints for datasource and share sections', () => {
+  assert.equal(getKnowledgeBaseDataSourcesPath('kb/a'), '/api/v1/datasource?kb_id=kb%2Fa');
+  assert.equal(getKnowledgeBaseSharesPath('kb/a'), '/api/v1/knowledge-bases/kb%2Fa/shares');
 });
 
 test('summarizes parser, vector, storage, and activity state from the existing KB response', () => {
@@ -41,6 +54,9 @@ test('summarizes parser, vector, storage, and activity state from the existing K
     vectorStore: { kind: 'ready', label: 'Search vectors', detail: 'pgvector · tenant' },
     storage: { kind: 'configured', label: 'S3', detail: 'storage-1' },
     activity: { kind: 'available', label: '1 recent event', detail: 'updated · success' },
+    datasource: { kind: 'empty', label: 'No data sources', detail: 'Add an external connector' },
+    share: { kind: 'empty', label: 'Not shared', detail: 'No spaces have access' },
+    graph: { kind: 'default', label: 'Knowledge graph disabled', detail: 'Configure extraction when graph storage is enabled' },
   });
 });
 
@@ -50,6 +66,9 @@ test('represents absent bindings and activity without inventing configuration', 
     vectorStore: { kind: 'default', label: 'System default', detail: 'No explicit binding' },
     storage: { kind: 'default', label: 'System default', detail: 'No explicit instance' },
     activity: { kind: 'empty', label: 'No activity yet', detail: 'Changes will appear here' },
+    datasource: { kind: 'empty', label: 'No data sources', detail: 'Add an external connector' },
+    share: { kind: 'empty', label: 'Not shared', detail: 'No spaces have access' },
+    graph: { kind: 'default', label: 'Knowledge graph disabled', detail: 'Configure extraction when graph storage is enabled' },
   });
 });
 

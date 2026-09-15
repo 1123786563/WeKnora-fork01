@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ElementType } from 'react';
 import type { KnowledgeBase } from '@weknora/contracts';
 import type { WeKnoraClient } from '@weknora/api-client';
+import { GraphSettings, type GraphExtractConfig } from './GraphSettings.tsx';
 
 type ProjectUi = typeof import('@weknora/ui');
 
-export type KnowledgeSettingsSectionKey = 'vectorStore' | 'parser' | 'storage' | 'activity';
+export type KnowledgeSettingsSectionKey = 'vectorStore' | 'parser' | 'storage' | 'datasource' | 'share' | 'activity' | 'graph';
 
 export type KnowledgeSettingsInput = KnowledgeBase & {
   type?: string;
@@ -22,6 +23,10 @@ export type KnowledgeSettingsInput = KnowledgeBase & {
   storage_config?: { provider?: string };
   activity?: Array<Record<string, unknown>>;
   activity_count?: number;
+  data_source_count?: number;
+  share_count?: number;
+  summary_model_id?: string;
+  extract_config?: Partial<GraphExtractConfig> & { custom_instructions?: string };
 };
 
 export interface KnowledgeSettingsSection {
@@ -35,6 +40,9 @@ export interface KnowledgeSettingsSummary {
   vectorStore: SettingSummary;
   storage: SettingSummary;
   activity: SettingSummary;
+  datasource: SettingSummary;
+  share: SettingSummary;
+  graph: SettingSummary;
 }
 
 interface SettingSummary {
@@ -47,7 +55,10 @@ const sections: KnowledgeSettingsSection[] = [
   { key: 'vectorStore', label: 'Vector store', description: 'Bound retrieval engine and health' },
   { key: 'parser', label: 'Parser', description: 'File-type parser rules' },
   { key: 'storage', label: 'Storage', description: 'Files and document instance' },
+  { key: 'datasource', label: 'Data sources', description: 'External connectors and sync status' },
+  { key: 'share', label: 'Share', description: 'Spaces with access to this knowledge base' },
   { key: 'activity', label: 'Activity', description: 'Recent configuration changes' },
+  { key: 'graph', label: 'Knowledge graph', description: 'Entity and relationship extraction' },
 ];
 
 function isFaqKnowledgeBase(knowledgeBase: KnowledgeSettingsInput): boolean {
@@ -83,7 +94,7 @@ export function getKnowledgeSettingsSections(
 ): KnowledgeSettingsSection[] {
   const canViewActivity = options.canViewActivity ?? true;
   return sections.filter((section) => {
-    if (section.key === 'parser' || section.key === 'storage') return !isFaqKnowledgeBase(knowledgeBase);
+    if (section.key === 'parser' || section.key === 'storage' || section.key === 'graph') return !isFaqKnowledgeBase(knowledgeBase);
     if (section.key === 'activity') return canViewActivity;
     return true;
   });
@@ -109,6 +120,9 @@ export function summarizeKnowledgeSettings(knowledgeBase: KnowledgeSettingsInput
   const latestActivity = activities[0];
   const latestAction = text(latestActivity?.action);
   const latestOutcome = text(latestActivity?.outcome);
+  const dataSourceCount = typeof knowledgeBase.data_source_count === 'number' ? knowledgeBase.data_source_count : 0;
+  const shareCount = typeof knowledgeBase.share_count === 'number' ? knowledgeBase.share_count : 0;
+  const graphEnabled = knowledgeBase.extract_config?.enabled === true;
 
   return {
     parser: rules.length > 0
@@ -125,11 +139,28 @@ export function summarizeKnowledgeSettings(knowledgeBase: KnowledgeSettingsInput
     activity: activityCount > 0
       ? { kind: 'available', label: `${activityCount} recent ${activityCount === 1 ? 'event' : 'events'}`, detail: [latestAction, latestOutcome].filter(Boolean).join(' · ') || 'Open to inspect changes' }
       : { kind: 'empty', label: 'No activity yet', detail: 'Changes will appear here' },
+    datasource: dataSourceCount > 0
+      ? { kind: 'available', label: `${dataSourceCount} data source${dataSourceCount === 1 ? '' : 's'}`, detail: 'Open to inspect sync status' }
+      : { kind: 'empty', label: 'No data sources', detail: 'Add an external connector' },
+    share: shareCount > 0
+      ? { kind: 'available', label: `${shareCount} shared space${shareCount === 1 ? '' : 's'}`, detail: 'Access is managed per share' }
+      : { kind: 'empty', label: 'Not shared', detail: 'No spaces have access' },
+    graph: graphEnabled
+      ? { kind: 'configured', label: 'Knowledge graph enabled', detail: 'Entity and relationship extraction' }
+      : { kind: 'default', label: 'Knowledge graph disabled', detail: 'Configure extraction when graph storage is enabled' },
   };
 }
 
 export function getKnowledgeBaseActivityPath(knowledgeBaseId: string): string {
   return `/api/v1/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}/activity?limit=30`;
+}
+
+export function getKnowledgeBaseDataSourcesPath(knowledgeBaseId: string): string {
+  return `/api/v1/datasource?kb_id=${encodeURIComponent(knowledgeBaseId)}`;
+}
+
+export function getKnowledgeBaseSharesPath(knowledgeBaseId: string): string {
+  return `/api/v1/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}/shares`;
 }
 
 function summaryTone(summary: SettingSummary): 'neutral' | 'error' | 'success' {
@@ -158,6 +189,16 @@ export function KnowledgeSettingsPage({ knowledgeBase, client, canViewActivity =
   const availableSections = useMemo(() => getKnowledgeSettingsSections(knowledgeBase, { canViewActivity }), [knowledgeBase, canViewActivity]);
   const [activeSection, setActiveSection] = useState<KnowledgeSettingsSectionKey>(initialSection ?? availableSections[0]?.key ?? 'vectorStore');
   const [activity, setActivity] = useState<{ status: 'idle' | 'loading' | 'ready' | 'error'; rows: Array<Record<string, unknown>>; message?: string }>({ status: 'idle', rows: [] });
+  const [dataSources, setDataSources] = useState<{ status: 'idle' | 'loading' | 'ready' | 'error'; rows: Array<Record<string, unknown>>; message?: string }>({ status: 'idle', rows: [] });
+  const [shares, setShares] = useState<{ status: 'idle' | 'loading' | 'ready' | 'error'; rows: Array<Record<string, unknown>>; message?: string }>({ status: 'idle', rows: [] });
+  const [graphExtract, setGraphExtract] = useState<GraphExtractConfig>(() => ({
+    enabled: knowledgeBase.extract_config?.enabled === true,
+    text: knowledgeBase.extract_config?.text ?? '',
+    tags: knowledgeBase.extract_config?.tags ?? [],
+    nodes: knowledgeBase.extract_config?.nodes ?? [],
+    relations: knowledgeBase.extract_config?.relations ?? [],
+    customInstructions: knowledgeBase.extract_config?.customInstructions ?? knowledgeBase.extract_config?.custom_instructions ?? '',
+  }));
   const summary = summarizeKnowledgeSettings({ ...knowledgeBase, activity: activity.rows.length > 0 ? activity.rows : knowledgeBase.activity });
   const active = availableSections.find((section) => section.key === activeSection) ?? availableSections[0];
 
@@ -183,6 +224,30 @@ export function KnowledgeSettingsPage({ knowledgeBase, client, canViewActivity =
     });
     return () => { mounted = false; };
   }, [activeSection, canViewActivity, client, knowledgeBase.id]);
+
+  useEffect(() => {
+    if (activeSection !== 'datasource' || !client) return;
+    let mounted = true;
+    setDataSources({ status: 'loading', rows: [] });
+    void client.request({ method: 'GET', path: getKnowledgeBaseDataSourcesPath(knowledgeBase.id) }).then((value) => {
+      if (mounted) setDataSources({ status: 'ready', rows: rowsFromEnvelope(value, 'data') });
+    }).catch((error: unknown) => {
+      if (mounted) setDataSources({ status: 'error', rows: [], message: error instanceof Error ? error.message : 'Unable to load data sources' });
+    });
+    return () => { mounted = false; };
+  }, [activeSection, client, knowledgeBase.id]);
+
+  useEffect(() => {
+    if (activeSection !== 'share' || !client) return;
+    let mounted = true;
+    setShares({ status: 'loading', rows: [] });
+    void client.request({ method: 'GET', path: getKnowledgeBaseSharesPath(knowledgeBase.id) }).then((value) => {
+      if (mounted) setShares({ status: 'ready', rows: rowsFromEnvelope(value, 'shares') });
+    }).catch((error: unknown) => {
+      if (mounted) setShares({ status: 'error', rows: [], message: error instanceof Error ? error.message : 'Unable to load shares' });
+    });
+    return () => { mounted = false; };
+  }, [activeSection, client, knowledgeBase.id]);
 
   const CardComponent = ui?.Card ?? 'section';
   const ButtonComponent = ui?.Button ?? 'button';
@@ -222,14 +287,14 @@ export function KnowledgeSettingsPage({ knowledgeBase, client, canViewActivity =
           <p className="wk-muted" style={{ margin: '0 0 1.25rem' }}>{active?.description}</p>
           {active?.key === 'activity' && activity.status === 'loading' ? <StatusComponent>Loading activity…</StatusComponent> : null}
           {active?.key === 'activity' && activity.status === 'error' ? <StatusComponent tone="error">{activity.message}</StatusComponent> : null}
-          {active ? <SettingsSection summary={summary[active.key]} section={active.key} rows={activity.rows} StatusComponent={StatusComponent} /> : <StatusComponent>No settings available.</StatusComponent>}
+          {active ? <SettingsSection summary={summary[active.key]} section={active.key} rows={activity.rows} dataSources={dataSources} shares={shares} graphExtract={graphExtract} modelId={knowledgeBase.summary_model_id ?? ''} client={client} StatusComponent={StatusComponent} onGraphChange={setGraphExtract} /> : <StatusComponent>No settings available.</StatusComponent>}
         </section>
       </div>
     </CardComponent>
   );
 }
 
-function SettingsSection({ summary, section, rows, StatusComponent }: { summary: SettingSummary; section: KnowledgeSettingsSectionKey; rows: Array<Record<string, unknown>>; StatusComponent: ElementType }) {
+function SettingsSection({ summary, section, rows, dataSources, shares, graphExtract, modelId, client, StatusComponent, onGraphChange }: { summary: SettingSummary; section: KnowledgeSettingsSectionKey; rows: Array<Record<string, unknown>>; dataSources: { status: string; rows: Array<Record<string, unknown>>; message?: string }; shares: { status: string; rows: Array<Record<string, unknown>>; message?: string }; graphExtract: GraphExtractConfig; modelId: string; client?: WeKnoraClient; StatusComponent: ElementType; onGraphChange: (value: GraphExtractConfig) => void }) {
   return (
     <div style={{ display: 'grid', gap: '0.9rem' }}>
       <div style={{ border: '1px solid #dce3ed', borderRadius: 8, padding: '1rem' }}>
@@ -246,6 +311,25 @@ function SettingsSection({ summary, section, rows, StatusComponent }: { summary:
           </div>
         ) : <p className="wk-muted" style={{ margin: 0 }}>No recorded changes for this knowledge base.</p>
       ) : null}
+      {section === 'datasource' ? <RemoteRows state={dataSources} empty="No data sources configured." label={(row) => `${String(row.name ?? 'Unnamed source')} · ${String(row.status ?? 'unknown')}`} StatusComponent={StatusComponent} /> : null}
+      {section === 'share' ? <RemoteRows state={shares} empty="This knowledge base is not shared." label={(row) => `${String(row.organization_name ?? row.organization_id ?? 'Unknown space')} · ${String(row.permission ?? 'viewer')}`} StatusComponent={StatusComponent} /> : null}
+      {section === 'graph' ? <GraphSettings graphExtract={graphExtract} modelId={modelId} client={client} embedded onChange={onGraphChange} /> : null}
     </div>
   );
+}
+
+function rowsFromEnvelope(value: unknown, preferredKey: 'data' | 'shares'): Array<Record<string, unknown>> {
+  if (Array.isArray(value)) return activityRows(value);
+  if (value && typeof value === 'object') {
+    const row = value as Record<string, unknown>;
+    return activityRows(row[preferredKey] ?? row.data ?? row.items);
+  }
+  return [];
+}
+
+function RemoteRows({ state, empty, label, StatusComponent }: { state: { status: string; rows: Array<Record<string, unknown>>; message?: string }; empty: string; label: (row: Record<string, unknown>) => string; StatusComponent: ElementType }) {
+  if (state.status === 'loading') return <StatusComponent>Loading…</StatusComponent>;
+  if (state.status === 'error') return <StatusComponent tone="error">{state.message}</StatusComponent>;
+  if (state.rows.length === 0) return <p className="wk-muted" style={{ margin: 0 }}>{empty}</p>;
+  return <div style={{ display: 'grid', gap: '0.5rem' }}>{state.rows.slice(0, 30).map((row, index) => <div key={String(row.id ?? index)} style={{ borderBottom: '1px solid #edf0f5', padding: '0.65rem 0' }}>{label(row)}</div>)}</div>;
 }
