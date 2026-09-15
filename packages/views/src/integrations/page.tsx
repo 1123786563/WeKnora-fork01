@@ -420,7 +420,7 @@ export function IntegrationsPage({ embedded = false, embedChannels, imChannels, 
       setWechatQr({ imgSrc: wechatQrImageUrl(created.qrcodeUrl), code: created.qrcode, status: 'wait' });
       void pollWeChatStatus(created.qrcode);
     } catch (cause) {
-      setWechatQrError(cause instanceof Error ? cause.message : 'Failed to generate QR code');
+      setWechatQrError(cause instanceof Error ? cause.message : t('agentEditor.im.wechatQrFailed'));
     } finally {
       setWechatQrLoading(false);
     }
