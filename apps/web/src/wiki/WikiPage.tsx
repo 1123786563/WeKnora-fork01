@@ -8,12 +8,19 @@ import type {
 } from "@weknora/api-client";
 import { diffWikiRevision } from "@weknora/domain/wiki/diff";
 import { Button, Card, Input, Status, Textarea } from "@weknora/ui";
-import { applyWikiSearch, saveWikiPage, type WikiSaveState } from "./editor.ts";
+import { applyWikiSearch, saveWikiPage, wikiRevertCopy, type WikiSaveState } from "./editor.ts";
 import { createTranslator, useAppLocale } from "../i18n.ts";
 import { pagerState } from "../pagination.ts";
 import { computeKBPermissions, type KBSurfaceKB, type KBSurfaceMe } from "../knowledge/permissions.ts";
 
 const WIKI_PAGE_SIZE = 50;
+
+export function wikiRevertConfirmation(
+  translate: (key: string, values?: Record<string, string | number>) => string,
+  version: number,
+): string {
+  return wikiRevertCopy(translate, "confirm", version);
+}
 
 export function WikiPage({
   client,
@@ -341,7 +348,7 @@ export function WikiPage({
       !selected ||
       !revision ||
       !window.confirm(
-        `Revert ${selected.title} to version ${revision.version}?`,
+        wikiRevertConfirmation(t, revision.version),
       )
     )
       return;
@@ -361,7 +368,7 @@ export function WikiPage({
       setHistoryError(
         error instanceof Error
           ? error.message
-          : t("wikiBrowser.revisionLoadFailed"),
+          : wikiRevertCopy(t, "failed", revision.version),
       );
     } finally {
       setReverting(false);
@@ -409,7 +416,7 @@ export function WikiPage({
     <main className="wk-page wk-wiki-page mx-auto box-border max-w-[960px] px-[1.25rem] py-12">
       <header className="wk-header mb-6 flex items-start justify-between gap-4">
         <div>
-          <p className="wk-eyebrow m-0 text-[0.78rem] font-bold uppercase tracking-[0.08em] text-primary">{t('common.knowledgeBases')} · {knowledgeBaseId}</p>
+          <p className="wk-eyebrow m-0 text-[0.78rem] font-bold uppercase tracking-[0.08em] text-primary">{t('common.knowledgeBases')}</p>
           <h1 className="text-[clamp(1.8rem,5vw,2.5rem)] my-[0.35rem]">{t("wikiBrowser.page.title")}</h1>
           <p className="wk-muted text-muted">{t("wikiBrowser.page.subtitle")}</p>
         </div>

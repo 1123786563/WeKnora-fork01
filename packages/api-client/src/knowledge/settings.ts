@@ -85,6 +85,13 @@ export interface KnowledgeBaseActivityResult {
   next_cursor?: number;
 }
 
+export interface KnowledgeBaseActivityQuery {
+  afterId?: number;
+  action?: string;
+  outcome?: string;
+  limit?: number;
+}
+
 function record(value: unknown, label: string): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error(`Invalid ${label}`);
   return value as Record<string, unknown>;
@@ -182,8 +189,15 @@ export function createKnowledgeSettingsApi(request: (input: ClientRequest) => Pr
     async vectorStores(): Promise<{ data: VectorStoreView[] }> {
       return parseVectorStores(await request({ method: 'GET', path: '/api/v1/vector-stores' }));
     },
-    async activity(id: string, afterId?: number): Promise<KnowledgeBaseActivityResult> {
-      const query = afterId === undefined ? '' : `?after_id=${encodeURIComponent(String(afterId))}`;
+    async activity(id: string, options?: number | KnowledgeBaseActivityQuery): Promise<KnowledgeBaseActivityResult> {
+      const queryOptions = typeof options === 'number' ? { afterId: options } : (options ?? {});
+      const params = new URLSearchParams();
+      if (queryOptions.afterId !== undefined) params.set('after_id', String(queryOptions.afterId));
+      if (queryOptions.action) params.set('action', queryOptions.action);
+      if (queryOptions.outcome) params.set('outcome', queryOptions.outcome);
+      if (queryOptions.limit !== undefined) params.set('limit', String(queryOptions.limit));
+      const encodedQuery = params.toString();
+      const query = encodedQuery ? `?${encodedQuery}` : '';
       return parseActivity(await request({ method: 'GET', path: `${kbPath(id)}/activity${query}` }));
     },
   };

@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { artifactPreviewModel } from './artifact-preview.tsx';
+import {
+  artifactPreviewModel,
+  clampArtifactPreviewWidth,
+  formatArtifactDateTime,
+  formatArtifactSize,
+} from './artifact-preview.tsx';
 import { resolveChatCopy } from './chat-copy.ts';
 
 test('classifies protected artifact types without treating HTML as executable preview content', () => {
@@ -44,4 +49,19 @@ test('artifact classification uses the active locale copy when provided', () => 
     kind: 'download-only',
     label: '下载后查看',
   });
+});
+
+test('artifact drawer width follows the Vue min/max and viewport clamp', () => {
+  assert.equal(clampArtifactPreviewWidth(400, 1440), 520);
+  assert.equal(clampArtifactPreviewWidth(760, 1440), 760);
+  assert.equal(clampArtifactPreviewWidth(2000, 1440), 1368);
+  assert.equal(clampArtifactPreviewWidth(760, 600), 570);
+});
+
+test('artifact drawer formats list metadata like the Vue drawer', () => {
+  assert.equal(formatArtifactSize(0), '0 B');
+  assert.equal(formatArtifactSize(2048), '2.0 KB');
+  assert.equal(formatArtifactDateTime(''), '—');
+  assert.equal(formatArtifactDateTime('not-a-date'), 'not-a-date');
+  assert.match(formatArtifactDateTime('2026-09-08T04:05:00Z'), /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
 });

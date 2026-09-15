@@ -10,7 +10,15 @@ import {
 import { copyAnswerText } from '@weknora/domain/chat/copy-answer';
 import { renderChatMarkdown } from './markdown.ts';
 import { hydrateMermaidBlocksWithBrowserDefaults } from './mermaid.ts';
-import { ArtifactPreview, artifactPreviewModel, type ArtifactPreviewPayload } from './artifact-preview.tsx';
+import {
+  ArtifactPreview,
+  artifactPreviewModel,
+  ARTIFACT_PREVIEW_DEFAULT_WIDTH,
+  clampArtifactPreviewWidth,
+  formatArtifactDateTime,
+  formatArtifactSize,
+  type ArtifactPreviewPayload,
+} from './artifact-preview.tsx';
 import { conversationTimeLabels, resolveChatCopy, resolveChatLocale, type ChatCopyTable } from './chat-copy.ts';
 
 /*
@@ -154,11 +162,11 @@ function AssistantExtras(props: { copy: ChatCopyTable; message: ChatMessage }) {
   </details>;
 }
 
-function ArtifactList({ copy: copyTable, message, onDownload, onPreview }: { copy: ChatCopyTable; message: ChatMessage; onDownload?: MessageListProps['onArtifactDownload']; onPreview?: (messageId: string, artifactIndex: number) => void | Promise<void> }) {
+function ArtifactList({ copy: copyTable, message, onDownload, onPreview, onOpenList }: { copy: ChatCopyTable; message: ChatMessage; onDownload?: MessageListProps['onArtifactDownload']; onPreview?: (messageId: string, artifactIndex: number) => void | Promise<void>; onOpenList?: (messageId: string) => void }) {
   const artifacts = messageArtifactItems(message);
   if (artifacts.length === 0) return null;
   return <section className="wk-chat-artifacts mt-[0.7rem] border-t border-[#edf0f5] pt-[0.5rem]" aria-label={copyTable.artifacts}>
-    <h3 className="m-0 mb-[0.35rem] text-[0.85rem] text-[rgba(0,0,0,0.6)]">{copyTable.artifacts}</h3>
+    <div className="mb-[0.35rem] flex items-center justify-between gap-[0.5rem]"><h3 className="m-0 text-[0.85rem] text-[rgba(0,0,0,0.6)]">{copyTable.artifacts}</h3>{onOpenList ? <button type="button" className="wk-chat-artifacts-open cursor-pointer border-0 bg-transparent p-0 text-[12px] text-[#245a9b] underline" onClick={() => onOpenList(message.id)}>{copyTable.artifacts}</button> : null}</div>
     <ul className="m-0 flex list-none flex-wrap gap-[0.4rem] p-0">{artifacts.map((artifact) => {
       const expired = isArtifactExpired(artifact);
       const previewable = artifactPreviewModel(artifact, copyTable).kind !== 'download-only';
@@ -174,12 +182,32 @@ export function MessageList({ copy, messages, pending, onRetry, loadingOlder = f
   const stickToBottom = useRef(true);
   const previousSessionId = useRef<string | null>(sessionId);
   const previewRequestId = useRef(0);
-  const [preview, setPreview] = useState<{ messageId: string; artifact: ChatArtifact; payload?: ArtifactPreviewPayload; loading: boolean; error?: string } | null>(null);
+  const [preview, setPreview] = useState<{ messageId: string; artifact?: ChatArtifact; payload?: ArtifactPreviewPayload; loading: boolean; error?: string } | null>(null);
+  const [previewWidth, setPreviewWidth] = useState(ARTIFACT_PREVIEW_DEFAULT_WIDTH);
+  const previewWidthRef = useRef(ARTIFACT_PREVIEW_DEFAULT_WIDTH);
+  const artifactDrawerRef = useRef<HTMLElement | null>(null);
+  const resizeCleanup = useRef<(() => void) | null>(null);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   useEffect(() => {
     previewRequestId.current += 1;
     setPreview(null);
   }, [sessionId]);
+  useEffect(() => {
+    try {
+      const stored = Number(window.localStorage.getItem('weknora-chat-artifact-preview-width'));
+      if (Number.isFinite(stored)) {
+        const width = clampArtifactPreviewWidth(stored, window.innerWidth);
+        previewWidthRef.current = width;
+        setPreviewWidth(width);
+      }
+    } catch {
+      // Storage is optional in embedded/webview contexts.
+    }
+    return () => resizeCleanup.current?.();
+  }, []);
+  useEffect(() => {
+    if (preview) artifactDrawerRef.current?.focus();
+  }, [preview?.messageId, preview?.artifact?.index]);
   const previousLayout = useRef<{ firstId?: string; length: number; height: number; top: number }>({ length: 0, height: 0, top: 0 });
   useLayoutEffect(() => {
     const container = containerRef.current;
@@ -235,6 +263,13 @@ export function MessageList({ copy, messages, pending, onRetry, loadingOlder = f
     if (citation) onCitationClick?.(citation);
   }
 
+  function openArtifactList(messageId: string): void {
+    const message = messages.find((item) => item.id === messageId);
+    if (!message || messageArtifactItems(message).length === 0) return;
+    previewRequestId.current += 1;
+    setPreview({ messageId, loading: false });
+  }
+
   async function openArtifactPreview(messageId: string, artifactIndex: number): Promise<void> {
     if (!onArtifactPreview) return;
     const message = messages.find((item) => item.id === messageId);
@@ -249,6 +284,55 @@ export function MessageList({ copy, messages, pending, onRetry, loadingOlder = f
       if (requestId === previewRequestId.current) setPreview({ messageId, artifact, loading: false, error: cause instanceof Error ? cause.message : t.chatPreviewFailed });
     }
   }
+
+  function closeArtifactDrawer(): void {
+    previewRequestId.current += 1;
+    setPreview(null);
+  }
+
+  function openArtifactFromList(artifactIndex: number): void {
+    if (!preview) return;
+    void openArtifactPreview(preview.messageId, artifactIndex);
+  }
+
+  function backToArtifactList(): void {
+    if (!preview) return;
+    previewRequestId.current += 1;
+    setPreview({ messageId: preview.messageId, loading: false });
+  }
+
+  function startArtifactResize(event: React.PointerEvent<HTMLDivElement>): void {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = previewWidth;
+    const move = (moveEvent: PointerEvent) => {
+      const width = clampArtifactPreviewWidth(startWidth + startX - moveEvent.clientX, window.innerWidth);
+      previewWidthRef.current = width;
+      setPreviewWidth(width);
+    };
+    const end = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', end);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      resizeCleanup.current = null;
+      try { window.localStorage.setItem('weknora-chat-artifact-preview-width', String(previewWidthRef.current)); } catch { /* optional */ }
+    };
+    resizeCleanup.current?.();
+    resizeCleanup.current = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', end);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', end, { once: true });
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }
+
+  const previewMessage = preview ? messages.find((message) => message.id === preview.messageId) : undefined;
+  const previewArtifacts = previewMessage ? messageArtifactItems(previewMessage) : [];
 
   return <div ref={containerRef} className="wk-chat-message-scroll relative mx-auto min-h-0 w-full max-w-[960px] max-h-[62vh] max-[720px]:max-h-[55vh] flex-1 overflow-auto scroll-smooth p-[0.25rem] [scrollbar-width:auto]" onScroll={onScroll}>
     {showScrollToBottom ? <button type="button" className="wk-chat-scroll-bottom sticky bottom-[12px] z-[10] mx-auto mt-[-48px] mb-[12px] block h-[36px] w-[36px] cursor-pointer rounded-full border border-[#e7e7e7] bg-white text-[rgba(0,0,0,0.6)] shadow-[0_2px_8px_rgba(0,0,0,0.1)]" aria-label={t.chatScrollBottom} onClick={scrollToBottom}>↓</button> : null}
@@ -268,7 +352,7 @@ export function MessageList({ copy, messages, pending, onRetry, loadingOlder = f
             <FallbackInfoButton copy={t} message={message} />
           </div> : null}
           {isAssistant ? <AssistantExtras copy={t} message={message} /> : null}
-          {isAssistant ? <ArtifactList copy={t} message={message} onDownload={onArtifactDownload} onPreview={onArtifactPreview ? openArtifactPreview : undefined} /> : null}
+          {isAssistant ? <ArtifactList copy={t} message={message} onDownload={onArtifactDownload} onPreview={onArtifactPreview ? openArtifactPreview : undefined} onOpenList={onArtifactPreview ? openArtifactList : undefined} /> : null}
         </div>
       </li>
       </Fragment>;
@@ -284,7 +368,37 @@ export function MessageList({ copy, messages, pending, onRetry, loadingOlder = f
     </li> : null}
     {typingIndicator ? <TypingIndicator copy={t} /> : null}
     </ol>
-    {preview ? <ArtifactPreview artifact={preview.artifact} payload={preview.payload} loading={preview.loading} error={preview.error} copy={t} onClose={() => { previewRequestId.current += 1; setPreview(null); }} onDownload={onArtifactDownload ? () => void onArtifactDownload(preview.messageId, preview.artifact.index) : undefined} /> : null}
+    {preview ? <>
+      <button type="button" className="wk-chat-artifact-drawer-overlay" aria-label={t.close} onClick={closeArtifactDrawer} />
+      <aside
+        className="wk-chat-artifact-drawer"
+        ref={artifactDrawerRef}
+        style={{ width: preview.artifact ? `${previewWidth}px` : '440px' }}
+        role="dialog"
+        aria-modal="false"
+        aria-label={preview.artifact ? `${preview.artifact.fileName} preview` : t.artifacts}
+        tabIndex={-1}
+        onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); closeArtifactDrawer(); } }}
+      >
+        <header className="wk-chat-artifact-drawer-header">
+          {preview.artifact ? <button type="button" className="wk-chat-artifact-drawer-back" aria-label={t.artifactPreviewBack} onClick={backToArtifactList}>‹</button> : null}
+          <h2>{preview.artifact?.fileName ?? t.artifacts}</h2>
+          {preview.artifact && onArtifactDownload ? <button type="button" className="wk-chat-artifact-drawer-action" onClick={() => void onArtifactDownload(preview.messageId, preview.artifact!.index)}>{t.download}</button> : null}
+          <button type="button" className="wk-chat-artifact-drawer-close" aria-label={t.close} onClick={closeArtifactDrawer}>×</button>
+        </header>
+        {preview.artifact ? <div className="wk-chat-artifact-drawer-body"><ArtifactPreview artifact={preview.artifact} payload={preview.payload} loading={preview.loading} error={preview.error} copy={t} showHeader={false} onClose={backToArtifactList} /></div> : <ul className="wk-chat-artifact-drawer-list">{previewArtifacts.map((artifact) => {
+          const expired = isArtifactExpired(artifact);
+          return <li key={artifact.index} className="wk-chat-artifact-drawer-item">
+            <button type="button" className="wk-chat-artifact-drawer-item-main" disabled={expired || !onArtifactPreview} onClick={() => openArtifactFromList(artifact.index)}>
+              <span className="wk-chat-artifact-drawer-item-name" title={artifact.fileName}>{artifact.fileName}</span>
+              <small>{formatArtifactSize(artifact.fileSize)} · {formatArtifactDateTime(artifact.createdAt ?? artifact.modTime)}{expired ? ` · ${t.expired}` : ''}</small>
+            </button>
+            {onArtifactDownload && !expired ? <button type="button" className="wk-chat-artifact-drawer-action" aria-label={`${t.download}: ${artifact.fileName}`} onClick={() => void onArtifactDownload(preview.messageId, artifact.index)}>{t.download}</button> : null}
+          </li>;
+        })}</ul>}
+        {preview.artifact ? <div className="wk-chat-artifact-drawer-resize" role="separator" aria-orientation="vertical" aria-label={t.artifacts} onPointerDown={startArtifactResize} /> : null}
+      </aside>
+    </> : null}
     {suggestions?.status === 'ready' && suggestions.questions.length > 0 ? <section className="wk-chat-suggestions mx-0 my-[1rem] w-full max-w-[960px] rounded-[8px] border border-[#dce3ed] p-[0.8rem]" aria-label={t.followUpQuestions}>
       <div className="wk-chat-suggestions-heading flex items-center justify-between gap-[0.6rem]"><h2 className="mt-[0.35rem] mb-[0.35rem] text-[1rem] font-normal text-[rgba(0,0,0,0.4)]">{t.followUpQuestions}</h2><div><button type="button" className="cursor-pointer rounded-[6px] border border-[#dcdcdc] bg-transparent px-[10px] py-[2px] text-[12px] text-[rgba(0,0,0,0.6)]" onClick={onRefreshSuggestions} disabled={!suggestions.allow_regenerate}>{t.suggestedRefresh}</button><button type="button" className="cursor-pointer rounded-[6px] border border-[#dcdcdc] bg-transparent px-[10px] py-[2px] text-[12px] text-[rgba(0,0,0,0.6)]" onClick={onDismissSuggestions}>{t.dismiss}</button></div></div>
       <div className="wk-chat-suggestions-grid mt-[8px] grid grid-cols-[repeat(auto-fit,minmax(12rem,1fr))] gap-[0.5rem]">{suggestions.questions.map((question) => <button type="button" key={question.id} className="cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap rounded-[6px] border border-[#dce3ed] bg-white p-[0.65rem] text-left text-[13px] leading-[1.5] text-[rgba(0,0,0,0.9)] shadow-[0_1px_2px_rgba(0,0,0,0.04)] hover:border-[rgba(0,0,0,0.1)] hover:shadow-[0_2px_6px_rgba(0,0,0,0.05)]" onClick={() => onSuggestionClick?.(question.id, question.text)}>{question.text}{question.source === 'faq' ? <small className="ml-[6px] mt-[0.25rem] block text-[#66758b]">FAQ</small> : null}</button>)}</div>

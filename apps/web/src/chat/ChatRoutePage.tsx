@@ -24,6 +24,8 @@ import { findResumeTargetMessage } from './resume.ts';
 import { buildSteerAction, isSteerConflict, type SteerMentionItem } from './steer-submit.ts';
 import { feedWithLastEventId, resumeStreamOptions, type LastEventIdHolder } from './stream-recovery.ts';
 import { prepareSendRun } from './send-run.ts';
+import { applyOAuthApprovalCancellation, applyOAuthApprovalResolution, applyToolApprovalResolution } from './approval-state.ts';
+import { chatClearConfirmation } from './clear-confirmation.ts';
 import './chat.css';
 
 interface ChatRoutePageProps {
@@ -625,10 +627,12 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   async function resolveToolApproval(pendingId: string, decision: 'approve' | 'reject', modifiedArgs?: Record<string, unknown>): Promise<void> {
     await client.chat.approvals.resolveTool(pendingId, { decision, ...(modifiedArgs ? { modifiedArgs } : {}) }, scope.signal);
     rememberApprovalResolution(pendingId, decision);
+    setStreamState((current) => ({ ...current, approvals: applyToolApprovalResolution(current.approvals, pendingId, decision) }));
   }
 
   async function cancelOAuth(pendingId: string): Promise<void> {
     await client.chat.approvals.cancelOAuth(pendingId, scope.signal);
+    setStreamState((current) => ({ ...current, oauthApprovals: applyOAuthApprovalCancellation(current.oauthApprovals, pendingId, copy.oauthCancel) }));
   }
 
   function newSteerId(): string {
@@ -714,6 +718,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
         const status = await client.configuration.mcp.oauth.status(serviceId, authorization.authorizationAttempt, scope.signal);
         if (status.authorized) {
           await client.chat.approvals.resolveOAuth(pendingId, { serviceId, decision: 'authorize' }, scope.signal);
+          setStreamState((current) => ({ ...current, oauthApprovals: applyOAuthApprovalResolution(current.oauthApprovals, pendingId, true) }));
           return;
         }
         if (popup.closed) throw new Error('MCP authorization was cancelled before completion.');
@@ -765,12 +770,14 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
   }
 
   async function clearMessages(): Promise<void> {
-    if (!selectedSessionId || !window.confirm('Clear messages in this conversation?')) return;
+    if (!selectedSessionId || !window.confirm(chatClearConfirmation(readStoredLocale()))) return;
     try {
       await client.sessions.clear(selectedSessionId, scope.signal);
       setMessages([]);
       setSuggestions(undefined);
       setHasMoreMessages(false);
+      setStreamState(initialChatStreamState());
+      approvalMemoryRef.current.clear();
     } catch (cause) { setError(cause instanceof Error ? cause.message : copy.operationFailed); }
   }
 

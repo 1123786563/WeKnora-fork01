@@ -208,6 +208,13 @@ test('document statuses preserve Vue cancelled warning and pending summary copy'
   assert.equal(documentStatus({ id: 'summary', parse_status: 'completed', summary_status: 'pending' } as never, t).label, t('knowledgeBase.generatingSummary'));
 });
 
+test('document in-flight cards use Vue parsing/finalizing copy instead of filter labels', () => {
+  assert.equal(documentStatus({ id: 'pending', parse_status: 'pending' } as never, t).label, t('knowledgeBase.parsingInProgress'));
+  assert.equal(documentStatus({ id: 'processing', parse_status: 'processing' } as never, t).label, t('knowledgeBase.parsingInProgress'));
+  assert.equal(documentStatus({ id: 'finalizing', parse_status: 'finalizing' } as never, t).label, t('knowledgeBase.parseStatusFinalizing'));
+  assert.equal(documentStatus({ id: 'finalizing-summary', parse_status: 'finalizing', summary_status: 'processing' } as never, t).label, t('knowledgeBase.generatingSummary'));
+});
+
 test('document cards show the Vue summary-generating copy for pending summaries', () => {
   const html = renderToStaticMarkup(React.createElement(DocumentCardGrid, {
     items: [{ id: 'summary', file_name: 'guide.pdf', file_type: 'pdf', parse_status: 'completed', summary_status: 'pending' }],
@@ -217,6 +224,19 @@ test('document cards show the Vue summary-generating copy for pending summaries'
     onBatchManage: noop, onDelete: noop,
   }));
   assert.match(html, /生成摘要中/);
+});
+
+test('in-flight document cards expose Vue-style spinner and trace action', () => {
+  const html = renderToStaticMarkup(React.createElement(DocumentCardGrid, {
+    items: [{ id: 'processing', file_name: 'guide.pdf', file_type: 'pdf', parse_status: 'processing' }],
+    folders: [], selected: new Set<string>(), batchMode: false, canContribute: true, canDownload: false, t,
+    onOpen: noop, onOpenFolder: noop, onToggle: noop, onTagEdit: noop, onReparse: noop,
+    onCancelParse: noop, onDownload: noop, onEdit: noop, onViewTrace: noop, onMove: noop,
+    onBatchManage: noop, onDelete: noop,
+  }));
+  assert.match(html, /animate-spin/, 'in-flight card keeps a visible loading affordance');
+  assert.match(html, /解析中/, 'in-flight card uses the Vue card copy');
+  assert.match(html, /查看 Trace/, 'trace action remains available');
 });
 
 test('editable document cards expose the Vue action-menu mutation entries', () => {

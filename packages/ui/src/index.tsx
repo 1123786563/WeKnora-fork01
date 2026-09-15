@@ -1,5 +1,6 @@
 import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react';
 import { cn } from './lib/utils.ts';
+import './theme.css';
 export { Dialog } from './dialog.tsx';
 export type { DialogProps } from './dialog.tsx';
 export { Button, type ButtonProps } from './button.tsx';

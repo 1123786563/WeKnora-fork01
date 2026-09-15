@@ -62,6 +62,7 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState('');
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [state, setState] = useState<'idle' | 'loading' | 'error' | 'success'>(initialError ? 'error' : 'idle');
@@ -358,7 +359,7 @@ export function LoginPage({ client, onAuthenticated, apiBaseUrl, initialError, i
             </label>
             <label className="flex flex-col gap-1.5">
               <span className="text-sm font-medium text-[#1a1a1a]"><span style={{ color: '#d54941', marginRight: 4 }}>*</span>{t('auth.password')}</span>
-              <Input className="h-10 box-border rounded-lg border border-[#dcdcdc] bg-white px-[14px] text-[15px] text-[#1a1a1a] outline-none [font-family:var(--auth-font)] transition-colors focus:border-(--auth-brand) focus:shadow-[0_0_0_3px_rgba(7,192,95,0.1)] disabled:cursor-not-allowed disabled:bg-[#f3f3f3]" value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="current-password" disabled={loading} placeholder={t('auth.passwordPlaceholder')} />
+              <span className="relative block"><Input className="h-10 box-border w-full rounded-lg border border-[#dcdcdc] bg-white px-[14px] pr-11 text-[15px] text-[#1a1a1a] outline-none [font-family:var(--auth-font)] transition-colors focus:border-(--auth-brand) focus:shadow-[0_0_0_3px_rgba(7,192,95,0.1)] disabled:cursor-not-allowed disabled:bg-[#f3f3f3]" value={password} onChange={(event) => setPassword(event.target.value)} type={showLoginPassword ? 'text' : 'password'} autoComplete="current-password" disabled={loading} placeholder={t('auth.passwordPlaceholder')} /><button type="button" className="absolute right-3 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center border-0 bg-transparent p-0 text-[#87909d]" aria-label={t('auth.password')} onClick={() => setShowLoginPassword((visible) => !visible)}><svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M2.5 12s3.4-5.5 9.5-5.5 9.5 5.5 9.5 5.5-3.4 5.5-9.5 5.5S2.5 12 2.5 12Z" /><circle cx="12" cy="12" r="2.5" /></svg></button></span>
               {fieldError('password')}
             </label>
             <button type="submit" className="h-[46px] cursor-pointer rounded-lg border-0 bg-(--auth-brand) text-base font-semibold text-white [font-family:var(--auth-font)] hover:bg-[#06ad55] disabled:cursor-not-allowed disabled:opacity-60" disabled={loading}>{loading ? t('auth.loggingIn') : t('auth.login')}</button>

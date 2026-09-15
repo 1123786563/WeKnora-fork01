@@ -10,18 +10,22 @@
   /* Vue useFont.ts is authoritative for the default and user-selected stack.
      Keep the runtime preference hook so every shared shadcn primitive follows
      the same font as the application shell. */
-  --font-sans: var(--wk-font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif);
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-sans: var(--app-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif);
+  --font-mono: var(--app-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
 
   /* 圆角（wk 控件 6px / 卡片 8px） */
   --radius-control: 6px;
+  --radius-field: 3px;
   --radius-card: 8px;
+  --radius-dialog: 10px;
+  --radius-large: 12px;
   --radius-pill: 999px;
 
   /* 表面 */
   --color-canvas: #f7f9fc;        /* 应用底色 */
   --color-surface: #ffffff;       /* 卡片/面板 */
   --color-surface-alt: #f2f4f8;   /* 次级填充 #f3f3f3/#eef1f5/#f4f6fa */
+  --color-surface-muted: #f3f3f3; /* Vue td-bg-color-secondarycontainer */
   --color-surface-wash: #eff4ff;  /* 蓝色浅底（选中/提示） */
 
   /* 文本 */
@@ -54,6 +58,8 @@
   /* 控件强调（Vue tdesign 绿） */
   --color-accent: #07c05f;
   --color-accent-strong: #0a8f4c;
+  --color-accent-hover: #08dd6e;
+  --color-accent-active: #06b04d;
   --color-accent-deep: #00a870;
   --color-accent-soft: rgba(7, 192, 95, 0.12);
   --color-accent-wash: rgba(7, 192, 95, 0.08);
@@ -66,4 +72,9 @@
   --color-success-text: #137333;  /* wk 族成功文本 */
   --color-warning-text: #9a6700;  /* wk 族警告文本 */
   --color-danger-strong: #d54941;
+
+  /* Shared primitive effects, matching Vue TDesign defaults. */
+  --color-overlay: rgb(23 32 51 / 45%);
+  --shadow-panel: 0 20px 60px rgb(23 32 51 / 20%);
+  --shadow-popover: 0 8px 24px rgb(15 23 42 / 12%);
 }

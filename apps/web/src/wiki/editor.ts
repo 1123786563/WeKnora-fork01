@@ -4,6 +4,16 @@ type WikiWriteApi = { update: (knowledgeBaseId: string, slug: string, input: Wik
 export type WikiSaveCopy = { titleRequired: string; contentRequired: string; conflict: string; saveFailed: string };
 export type WikiSaveState = { status: 'saved'; page: WikiPage } | { status: 'conflict' | 'error'; message: string };
 
+export function wikiRevertCopy(
+  translate: (key: string, values?: Record<string, string | number>) => string,
+  kind: 'confirm' | 'failed' | 'success',
+  version: number,
+): string {
+  if (kind === 'confirm') return translate('wikiBrowser.revertConfirm', { ver: version });
+  if (kind === 'success') return translate('wikiBrowser.revertSuccess', { ver: version });
+  return translate('wikiBrowser.revertFailed');
+}
+
 export function applyWikiSearch(draft: string): { draft: string; keyword: string } {
   return { draft, keyword: draft.trim() };
 }

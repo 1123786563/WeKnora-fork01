@@ -11,7 +11,7 @@ import {
   type MergedKnowledgeBase,
 } from '@weknora/domain';
 import { formatMessage, isLocale, type Locale, type MessageValues } from '@weknora/i18n';
-import { Button, Dialog, Input, Select, Status, Textarea } from '@weknora/ui';
+import { Button, Checkbox, Dialog, Input, Select, Status, Textarea } from '@weknora/ui';
 import {
   isContextualGuideDone,
   markContextualGuideDone,
@@ -25,8 +25,12 @@ import {
   type KnowledgeBaseSaveInput,
 } from './knowledge-bases/list.ts';
 import { KnowledgeBaseShareDialog } from './knowledge-bases/KnowledgeBaseShareDialog.tsx';
+import { KnowledgeBaseActivityPanel } from './knowledge-bases/KnowledgeBaseActivityPanel.tsx';
+import { defaultKnowledgeEditorConfig, hydrateKnowledgeEditorConfig, knowledgeEditorConfigPayload, type KnowledgeEditorConfig } from './knowledge-bases/editor-config.ts';
+import { visibleKnowledgeEditorSections, type KnowledgeEditorSection } from './knowledge-bases/editor-sections.ts';
 import { patchUploadTask, summarizeUploadTasks, upsertUploadTask, type UploadTaskState } from './knowledge-bases/upload-progress.ts';
 import { KbIcon, type KbIconName } from './knowledge-bases/kb-list-icons.tsx';
+import { DataSourcesPage } from './data-sources/DataSourcesPage.tsx';
 import { KB_EMPTY_SVG } from './knowledge-bases/empty-kb-svg.ts';
 import './knowledge-list.css';
 
@@ -120,6 +124,28 @@ type KbListRow =
   | { kind: 'header'; key: string; labelKey: string; count: number; expanded: boolean }
   | { kind: 'card'; card: MergedKnowledgeBase };
 
+type KbIndexingStrategy = {
+  vector_enabled: boolean;
+  keyword_enabled: boolean;
+  wiki_enabled: boolean;
+  graph_enabled: boolean;
+};
+
+type KnowledgeEditorOptions = {
+  parserEngines: Array<{ Name: string; Description: string; Available?: boolean }>;
+  storageBackends: Array<{ id: string; name: string; provider: string; status: string }>;
+  vectorStores: Array<{ id: string; name: string; engine_type: string; source: string; readonly: boolean }>;
+  loading: boolean;
+  error: string | null;
+};
+
+const DEFAULT_KB_INDEXING: KbIndexingStrategy = {
+  vector_enabled: true,
+  keyword_enabled: true,
+  wiki_enabled: false,
+  graph_enabled: false,
+};
+
 // Expanded-panel count badge visibility (Vue ListSpaceSidebar.vue:83/93/101/109):
 // all/mine render whenever the count is defined (including 0); favorites and
 // recents hide an empty count.
@@ -154,12 +180,18 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
 
   // Create / edit dialog state. Prefills the full config when editing.
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editorSection, setEditorSection] = useState<KnowledgeEditorSection>('basic');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [type, setType] = useState<'document' | 'faq'>('document');
   const [embeddingModelId, setEmbeddingModelId] = useState('');
   const [summaryModelId, setSummaryModelId] = useState('');
+  const [indexingStrategy, setIndexingStrategy] = useState<KbIndexingStrategy>(DEFAULT_KB_INDEXING);
+  const [editorConfig, setEditorConfig] = useState<KnowledgeEditorConfig>(defaultKnowledgeEditorConfig);
+  const [editorOptions, setEditorOptions] = useState<KnowledgeEditorOptions>({ parserEngines: [], storageBackends: [], vectorStores: [], loading: false, error: null });
+  const [editorActivity, setEditorActivity] = useState<Array<{ id: number; action: string; outcome: string; created_at: string }>>([]);
+  const [editorActivityLoading, setEditorActivityLoading] = useState(false);
   const [sharingKb, setSharingKb] = useState<{ id: string; name: string } | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -508,6 +540,38 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
     });
   };
 
+  async function loadEditorOptions() {
+    setEditorOptions((current) => ({ ...current, loading: true, error: null }));
+    const [parser, storage, vector] = await Promise.allSettled([
+      client.knowledgeBases.settings.parserEngines(),
+      client.knowledgeBases.settings.storageBackends(),
+      client.knowledgeBases.settings.vectorStores(),
+    ]);
+    if (parser.status === 'rejected' && storage.status === 'rejected' && vector.status === 'rejected') {
+      setEditorOptions((current) => ({ ...current, loading: false, error: t('knowledgeEditor.messages.loadDataFailed') }));
+      return;
+    }
+    setEditorOptions({
+      parserEngines: parser.status === 'fulfilled' ? parser.value.data.map((item) => ({ Name: item.Name, Description: item.Description, ...(item.Available === undefined ? {} : { Available: item.Available }) })) : [],
+      storageBackends: storage.status === 'fulfilled' ? storage.value.data.map((item) => ({ id: item.id, name: item.name, provider: item.provider, status: item.status })) : [],
+      vectorStores: vector.status === 'fulfilled' ? vector.value.data.map((item) => ({ id: item.id, name: item.name, engine_type: item.engine_type, source: item.source, readonly: item.readonly })) : [],
+      loading: false,
+      error: null,
+    });
+  }
+
+  async function loadEditorActivity(id: string) {
+    setEditorActivityLoading(true);
+    try {
+      const result = await client.knowledgeBases.settings.activity(id);
+      setEditorActivity((result.data ?? []).map((entry) => ({ id: entry.id, action: entry.action, outcome: entry.outcome, created_at: entry.created_at })));
+    } catch {
+      setEditorActivity([]);
+    } finally {
+      setEditorActivityLoading(false);
+    }
+  }
+
   function openCreate() {
     setEditingId(null);
     setName('');
@@ -515,6 +579,10 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
     setType('document');
     setEmbeddingModelId('');
     setSummaryModelId('');
+    setIndexingStrategy({ ...DEFAULT_KB_INDEXING });
+    setEditorConfig(defaultKnowledgeEditorConfig());
+    void loadEditorOptions();
+    setEditorSection('basic');
     // Vue KnowledgeBaseList.vue:1696 — opening the create wizard retires the
     // empty-list kbList tour; KnowledgeBaseEditorModal.vue:464 arms the
     // kbCreate tour for document KBs (the React dialog always exposes the
@@ -531,6 +599,16 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
     setType(kb.type === 'faq' ? 'faq' : 'document');
     setEmbeddingModelId(String(kb.embedding_model_id ?? ''));
     setSummaryModelId(String(kb.summary_model_id ?? ''));
+    const serverStrategy = kb.indexing_strategy as Partial<KbIndexingStrategy> | null | undefined;
+    setIndexingStrategy({
+      vector_enabled: serverStrategy?.vector_enabled ?? true,
+      keyword_enabled: serverStrategy?.keyword_enabled ?? true,
+      wiki_enabled: serverStrategy?.wiki_enabled ?? false,
+      graph_enabled: serverStrategy?.graph_enabled ?? false,
+    });
+    setEditorConfig(hydrateKnowledgeEditorConfig(kb));
+    void loadEditorOptions();
+    setEditorSection('basic');
     setDialogOpen(true);
   }
 
@@ -538,6 +616,24 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
     event.preventDefault();
     if (saving) return; // double-submit guard
     if (!name.trim()) return; // blank names are blocked
+    if (type === 'document' && !Object.values(indexingStrategy).some(Boolean)) {
+      setError(t('knowledgeEditor.indexing.atLeastOne'));
+      return;
+    }
+    if (type === 'document' && (indexingStrategy.vector_enabled || indexingStrategy.keyword_enabled) && !embeddingModelId) {
+      setError(t('knowledgeEditor.indexing.embeddingRequired'));
+      return;
+    }
+    if (type === 'faq' && !editorConfig.faqConfig.indexMode) {
+      setEditorSection('faq');
+      setError(t('knowledgeEditor.messages.indexModeRequired'));
+      return;
+    }
+    if (type === 'document' && editorConfig.multimodalConfig.enabled && !editorConfig.multimodalConfig.vllmModelId.trim()) {
+      setEditorSection('multimodal');
+      setError(t('knowledgeEditor.messages.multimodalInvalid'));
+      return;
+    }
     setSaving(true);
     setError(null);
     const input: KnowledgeBaseSaveInput = {
@@ -546,6 +642,8 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
       ...(description.trim() ? { description: description.trim() } : {}),
       ...(embeddingModelId ? { embedding_model_id: embeddingModelId } : {}),
       ...(summaryModelId ? { summary_model_id: summaryModelId } : {}),
+      ...knowledgeEditorConfigPayload(editorConfig, type),
+      ...(type === 'document' ? { indexing_strategy: { ...indexingStrategy, graph_enabled: editorConfig.nodeExtractConfig.enabled } } : {}),
     };
     try {
       const record = await saveKnowledgeBase(client, editingId, input) as { id?: unknown };
@@ -609,12 +707,12 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
     }
   }
 
-  // Vue handleSettingsById → goSettings unconditionally
-  // (KnowledgeBaseList.vue:1394-1396): the settings action opens this KB's
-  // settings without a tenant-model gate (Audit #4 superseded by source).
+  // Vue handleSettingsById → open the in-place KnowledgeBaseEditorModal.vue.
+  // Keep the list/detail context visible behind the modal; a full-page
+  // settings URL remains available for historical/deep-link callers, but the
+  // primary list action must preserve Vue's overlay interaction.
   function openKbSettings(kb: Record<string, unknown>) {
-    const id = String(kb.id);
-    window.location.assign(`/knowledgeBase/${encodeURIComponent(id)}/settings`);
+    openEdit(kb);
   }
 
   function openCard(kb: Record<string, unknown>) {
@@ -637,9 +735,9 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
       window.location.assign(`/knowledgeBase/${encodeURIComponent(id)}`);
       return;
     }
-    // Vue handleCardClick else-branch: uninitialized card click opens this
-    // KB's settings (goSettings) without a tenant-model detour.
-    window.location.assign(`/knowledgeBase/${encodeURIComponent(id)}/settings`);
+    // Vue handleCardClick else-branch: uninitialized card click opens the
+    // same in-place settings modal without a tenant-model detour.
+    openEdit(kb);
   }
 
   const isLoading = pageState.status === 'loading';
@@ -911,20 +1009,46 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
         </div>
       </div>
 
-      <Dialog open={dialogOpen} title={editingId ? t('common.edit') + ' · ' + t('common.knowledgeBases') : t('knowledgeList.create')} onClose={() => setDialogOpen(false)}>
-        <form className="wk-form mb-4 flex flex-wrap items-end gap-3" onSubmit={save}>
-          <label className="grid gap-1">{t('knowledgeEditor.basic.nameLabel')} <Input data-guide="kb-create-name" value={name} onChange={(event) => setName(event.target.value)} placeholder={t('knowledgeEditor.basic.namePlaceholder')} required className="rounded-control border border-line-strong p-[0.55rem]" /></label>
-          <label className="grid gap-1">{t('knowledgeEditor.basic.typeLabel')}
-            <Select data-guide="kb-create-type" value={type} onChange={(event) => setType(event.target.value as 'document' | 'faq')} className="rounded-control border border-line-strong p-[0.55rem]">
-              <option value="document">{t('common.typeDocument')}</option>
-              <option value="faq">{t('common.typeFaq')}</option>
-            </Select>
-          </label>
-          <label className="grid gap-1">{t('knowledgeEditor.basic.descriptionLabel')} <Textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder={t('knowledgeEditor.basic.descriptionPlaceholder')} rows={3} /></label>
-          <label className="grid gap-1">{t('knowledgeEditor.models.embeddingLabel')} <Input data-guide="kb-create-embedding" value={embeddingModelId} onChange={(event) => setEmbeddingModelId(event.target.value)} placeholder={t('knowledgeEditor.models.embeddingPlaceholder')} className="rounded-control border border-line-strong p-[0.55rem]" /></label>
-          <label className="grid gap-1">{t('knowledgeEditor.models.llmLabel')} <Input data-guide="kb-create-llm" value={summaryModelId} onChange={(event) => setSummaryModelId(event.target.value)} placeholder={t('knowledgeEditor.models.llmPlaceholder')} className="rounded-control border border-line-strong p-[0.55rem]" /></label>
+      <Dialog className="wk-kb-editor-dialog" open={dialogOpen} title={editingId ? t('knowledgeEditor.titleEdit') : t('knowledgeList.create')} closeLabel={editingId ? t('common.cancel') : undefined} onClose={() => setDialogOpen(false)}>
+        <form className="wk-form mb-4 grid gap-4" onSubmit={save}>
+          <div className="grid min-h-[360px] grid-cols-[minmax(132px,0.34fr)_minmax(0,1fr)] gap-5 max-[680px]:grid-cols-1">
+            <nav aria-label={t('common.settings')} data-guide="kb-editor-sidebar" className="flex flex-col gap-2 border-r border-line-soft pr-3 max-[680px]:border-r-0 max-[680px]:border-b max-[680px]:pb-3">
+              {visibleKnowledgeEditorSections({ type, editing: Boolean(editingId) }).map((group) => <div key={group.key} className="grid gap-1">
+                <p className="m-0 px-3 pt-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">{t(group.labelKey)}</p>
+                {group.items.map((section) => <button key={section} type="button" data-guide={`kb-editor-nav-${section}`} onClick={() => { setEditorSection(section); if (section === 'activity' && editingId) void loadEditorActivity(editingId); }} className={`border-0 bg-transparent rounded-[6px] px-3 py-2 text-left text-[13px] font-medium transition-colors ${editorSection === section ? 'bg-[color-mix(in_srgb,var(--color-brand)_10%,transparent)] text-[var(--color-brand)]' : 'text-muted hover:bg-surface-muted'}`}>{t(section === 'basic' ? 'knowledgeEditor.basic.title' : section === 'models' ? 'knowledgeEditor.models.title' : section === 'vectorStore' ? 'knowledgeEditor.sidebar.vectorStore' : section === 'faq' ? 'knowledgeEditor.faq.title' : section === 'parser' ? 'kbSettings.parser.title' : section === 'chunking' ? 'knowledgeEditor.chunking.title' : section === 'multimodal' ? 'knowledgeEditor.sidebar.multimodal' : section === 'asr' ? 'knowledgeEditor.sidebar.asr' : section === 'graph' ? 'knowledgeEditor.sidebar.graph' : section === 'advanced' ? 'knowledgeEditor.advanced.title' : section === 'storage' ? 'knowledgeEditor.sidebar.storage' : section === 'datasource' ? 'knowledgeEditor.sidebar.datasource' : section === 'share' ? 'knowledgeEditor.sidebar.share' : 'knowledgeEditor.activity.title')}</button>)}
+              </div>)}
+            </nav>
+            <div className="min-w-0">
+              {editorSection === 'basic' ? <div className="grid gap-4">
+                <div><h3 className="m-0 text-[20px] font-semibold leading-7 text-ink">{t('knowledgeEditor.basic.title')}</h3><p className="m-0 mt-1 text-sm leading-[22px] text-muted">{t('knowledgeEditor.basic.description')}</p></div>
+                {editingId ? <div className="grid gap-1"><span className="text-[13px] font-medium text-ink">{t('knowledgeEditor.basic.kbId')}</span><span className="text-xs leading-[18px] text-muted">{t('knowledgeEditor.basic.kbIdDesc')}</span><code className="rounded-[6px] bg-surface-muted px-2 py-1 font-mono text-xs text-muted">{editingId}</code></div> : null}
+                <label className="grid gap-1">{t('knowledgeEditor.basic.typeLabel')}
+                  <Select data-guide="kb-create-type" value={type} onChange={(event) => { const nextType = event.target.value as 'document' | 'faq'; setType(nextType); setEditorSection(nextType === 'faq' ? 'faq' : 'basic'); }} disabled={Boolean(editingId)} className="rounded-control border border-line-strong p-[0.55rem]"><option value="document">{t('common.typeDocument')}</option><option value="faq">{t('common.typeFaq')}</option></Select>
+                </label>
+                {type === 'document' ? <fieldset data-guide="kb-create-indexing" className="m-0 grid min-w-0 gap-2 border-0 p-0"><legend className="p-0 text-[15px] font-medium text-ink">{t('knowledgeEditor.indexing.title')}</legend><p className="m-0 text-xs leading-[18px] text-muted">{t('knowledgeEditor.indexing.description')}</p><div className="grid gap-3 min-[720px]:grid-cols-2">
+                  <label className={`grid gap-1 rounded-[8px] border p-3 transition-colors ${indexingStrategy.vector_enabled ? 'border-[var(--color-brand)] bg-[color-mix(in_srgb,var(--color-brand)_8%,transparent)]' : 'border-line-soft bg-surface'}`}><span className="flex items-start gap-2"><Checkbox checked={indexingStrategy.vector_enabled} onChange={(event) => setIndexingStrategy((current) => ({ ...current, vector_enabled: event.target.checked, keyword_enabled: event.target.checked }))} /><strong className="text-[13px] font-medium">{t('knowledgeEditor.indexing.searchTitle')}</strong></span><small className="pl-6 text-xs leading-[18px] text-muted">{t('knowledgeEditor.indexing.searchDesc')}</small></label>
+                  <label className={`grid gap-1 rounded-[8px] border p-3 transition-colors ${indexingStrategy.wiki_enabled ? 'border-[var(--color-brand)] bg-[color-mix(in_srgb,var(--color-brand)_8%,transparent)]' : 'border-line-soft bg-surface'}`}><span className="flex items-start gap-2"><Checkbox checked={indexingStrategy.wiki_enabled} onChange={(event) => setIndexingStrategy((current) => ({ ...current, wiki_enabled: event.target.checked }))} /><strong className="text-[13px] font-medium">{t('knowledgeEditor.indexing.wikiTitle')}</strong></span><small className="pl-6 text-xs leading-[18px] text-muted">{t('knowledgeEditor.indexing.wikiDesc')}</small></label>
+                </div></fieldset> : null}
+                <label className="grid gap-1">{t('knowledgeEditor.basic.nameLabel')} <Input data-guide="kb-create-name" value={name} onChange={(event) => setName(event.target.value)} placeholder={t('knowledgeEditor.basic.namePlaceholder')} required className="rounded-control border border-line-strong p-[0.55rem]" /></label>
+                <label className="grid gap-1">{t('knowledgeEditor.basic.descriptionLabel')} <Textarea value={description} maxLength={200} onChange={(event) => setDescription(event.target.value)} placeholder={t('knowledgeEditor.basic.descriptionPlaceholder')} rows={3} /><span className="text-right text-xs leading-[18px] text-muted">{description.length}/200</span></label>
+              </div> : null}
+              {editorSection === 'models' ? <div className="grid gap-4"><div><h3 className="m-0 text-[20px] font-semibold leading-7 text-ink">{t('knowledgeEditor.models.title')}</h3><p className="m-0 mt-1 text-sm leading-[22px] text-muted">{t('knowledgeEditor.models.description')}</p></div><label className="grid gap-1">{t('knowledgeEditor.models.embeddingLabel')} <Input data-guide="kb-create-embedding" value={embeddingModelId} onChange={(event) => setEmbeddingModelId(event.target.value)} placeholder={t('knowledgeEditor.models.embeddingPlaceholder')} className="rounded-control border border-line-strong p-[0.55rem]" /></label><label className="grid gap-1">{t('knowledgeEditor.models.llmLabel')} <Input data-guide="kb-create-llm" value={summaryModelId} onChange={(event) => setSummaryModelId(event.target.value)} placeholder={t('knowledgeEditor.models.llmPlaceholder')} className="rounded-control border border-line-strong p-[0.55rem]" /></label></div> : null}
+              {editorSection === 'faq' && type === 'faq' ? <div className="grid gap-4"><div><h3 className="m-0 text-[20px] font-semibold leading-7 text-ink">{t('knowledgeEditor.faq.title')}</h3><p className="m-0 mt-1 text-sm leading-[22px] text-muted">{t('knowledgeEditor.faq.description')}</p></div><label className="grid gap-1">{t('knowledgeEditor.faq.indexModeLabel')}<Select value={editorConfig.faqConfig.indexMode} onChange={(event) => setEditorConfig((current) => ({ ...current, faqConfig: { ...current.faqConfig, indexMode: event.target.value as KnowledgeEditorConfig['faqConfig']['indexMode'] } }))}><option value="question_only">{t('knowledgeEditor.faq.modes.questionOnly')}</option><option value="question_answer">{t('knowledgeEditor.faq.modes.questionAnswer')}</option></Select></label><label className="grid gap-1">{t('knowledgeEditor.faq.questionIndexModeLabel')}<Select value={editorConfig.faqConfig.questionIndexMode} onChange={(event) => setEditorConfig((current) => ({ ...current, faqConfig: { ...current.faqConfig, questionIndexMode: event.target.value as KnowledgeEditorConfig['faqConfig']['questionIndexMode'] } }))}><option value="combined">{t('knowledgeEditor.faq.modes.combined')}</option><option value="separate">{t('knowledgeEditor.faq.modes.separate')}</option></Select></label><p className="m-0 text-xs leading-[18px] text-muted">{t('knowledgeEditor.faq.entryGuide')}</p></div> : null}
+              {editorSection === 'chunking' && type === 'document' ? <div className="grid gap-4"><div><h3 className="m-0 text-[20px] font-semibold leading-7 text-ink">{t('knowledgeEditor.chunking.title')}</h3><p className="m-0 mt-1 text-sm leading-[22px] text-muted">{t('knowledgeEditor.chunking.description')}</p></div><div className="grid grid-cols-2 gap-3 max-[720px]:grid-cols-1"><label className="grid gap-1">{t('knowledgeEditor.chunking.sizeLabel')}<Input type="number" min={1} value={editorConfig.chunkingConfig.chunkSize} onChange={(event) => setEditorConfig((current) => ({ ...current, chunkingConfig: { ...current.chunkingConfig, chunkSize: Number(event.target.value) } }))} /></label><label className="grid gap-1">{t('knowledgeEditor.chunking.overlapLabel')}<Input type="number" min={0} value={editorConfig.chunkingConfig.chunkOverlap} onChange={(event) => setEditorConfig((current) => ({ ...current, chunkingConfig: { ...current.chunkingConfig, chunkOverlap: Number(event.target.value) } }))} /></label><label className="grid gap-1">{t('knowledgeEditor.chunking.strategyLabel')}<Select value={editorConfig.chunkingConfig.strategy} onChange={(event) => setEditorConfig((current) => ({ ...current, chunkingConfig: { ...current.chunkingConfig, strategy: event.target.value } }))}><option value="auto">{t('knowledgeEditor.chunking.strategies.auto.label')}</option><option value="heading">{t('knowledgeEditor.chunking.strategies.heading.label')}</option><option value="heuristic">{t('knowledgeEditor.chunking.strategies.heuristic.label')}</option><option value="legacy">{t('knowledgeEditor.chunking.strategies.legacy.label')}</option></Select></label><label className="grid gap-1">{t('knowledgeEditor.chunking.tokenLimitLabel')}<Input type="number" min={0} value={editorConfig.chunkingConfig.tokenLimit} onChange={(event) => setEditorConfig((current) => ({ ...current, chunkingConfig: { ...current.chunkingConfig, tokenLimit: Number(event.target.value) } }))} /></label></div><label className="flex items-center gap-2 text-sm"><Checkbox checked={editorConfig.chunkingConfig.enableParentChild} onChange={(event) => setEditorConfig((current) => ({ ...current, chunkingConfig: { ...current.chunkingConfig, enableParentChild: event.target.checked } }))} />{t('knowledgeEditor.chunking.parentChildLabel')}</label>{editorConfig.chunkingConfig.enableParentChild ? <div className="grid grid-cols-2 gap-3 max-[720px]:grid-cols-1"><label className="grid gap-1">{t('knowledgeEditor.chunking.parentChunkSizeLabel')}<Input type="number" min={1} value={editorConfig.chunkingConfig.parentChunkSize} onChange={(event) => setEditorConfig((current) => ({ ...current, chunkingConfig: { ...current.chunkingConfig, parentChunkSize: Number(event.target.value) } }))} /></label><label className="grid gap-1">{t('knowledgeEditor.chunking.childChunkSizeLabel')}<Input type="number" min={1} value={editorConfig.chunkingConfig.childChunkSize} onChange={(event) => setEditorConfig((current) => ({ ...current, chunkingConfig: { ...current.chunkingConfig, childChunkSize: Number(event.target.value) } }))} /></label></div> : null}<label className="grid gap-1">{t('knowledgeEditor.advanced.tableMetadataInstructions.label')}<Textarea rows={3} value={editorConfig.chunkingConfig.tableMetadataInstructions} onChange={(event) => setEditorConfig((current) => ({ ...current, chunkingConfig: { ...current.chunkingConfig, tableMetadataInstructions: event.target.value } }))} /></label></div> : null}
+              {editorSection === 'multimodal' && type === 'document' ? <div className="grid gap-4"><div><h3 className="m-0 text-[20px] font-semibold leading-7 text-ink">{t('knowledgeEditor.multimodal.title')}</h3><p className="m-0 mt-1 text-sm leading-[22px] text-muted">{t('knowledgeEditor.multimodal.description')}</p></div><label className="flex items-center gap-2 text-sm"><Checkbox checked={editorConfig.multimodalConfig.enabled} onChange={(event) => setEditorConfig((current) => ({ ...current, multimodalConfig: { ...current.multimodalConfig, enabled: event.target.checked } }))} />{t('knowledgeEditor.advanced.multimodal.label')}</label>{editorConfig.multimodalConfig.enabled ? <><label className="grid gap-1">{t('knowledgeEditor.advanced.multimodal.vllmLabel')}<Input value={editorConfig.multimodalConfig.vllmModelId} onChange={(event) => setEditorConfig((current) => ({ ...current, multimodalConfig: { ...current.multimodalConfig, vllmModelId: event.target.value } }))} placeholder={t('knowledgeEditor.advanced.multimodal.vllmPlaceholder')} /></label><label className="grid gap-1">{t('knowledgeEditor.advanced.multimodal.customInstructionsLabel')}<Textarea rows={4} maxLength={4000} value={editorConfig.multimodalConfig.customInstructions} onChange={(event) => setEditorConfig((current) => ({ ...current, multimodalConfig: { ...current.multimodalConfig, customInstructions: event.target.value } }))} placeholder={t('knowledgeEditor.advanced.multimodal.customInstructionsPlaceholder')} /></label></> : null}</div> : null}
+              {editorSection === 'asr' && type === 'document' ? <div className="grid gap-4"><div><h3 className="m-0 text-[20px] font-semibold leading-7 text-ink">{t('knowledgeEditor.asr.title')}</h3><p className="m-0 mt-1 text-sm leading-[22px] text-muted">{t('knowledgeEditor.asr.description')}</p></div><label className="flex items-center gap-2 text-sm"><Checkbox checked={editorConfig.asrConfig.enabled} onChange={(event) => setEditorConfig((current) => ({ ...current, asrConfig: { ...current.asrConfig, enabled: event.target.checked } }))} />{t('knowledgeEditor.asr.label')}</label>{editorConfig.asrConfig.enabled ? <label className="grid gap-1">{t('knowledgeEditor.asr.modelLabel')}<Input value={editorConfig.asrConfig.modelId} onChange={(event) => setEditorConfig((current) => ({ ...current, asrConfig: { ...current.asrConfig, modelId: event.target.value } }))} placeholder={t('knowledgeEditor.asr.modelPlaceholder')} /></label> : null}</div> : null}
+              {editorSection === 'graph' && type === 'document' ? <div className="grid gap-4"><div><h3 className="m-0 text-[20px] font-semibold leading-7 text-ink">{t('knowledgeEditor.sidebar.graph')}</h3><p className="m-0 mt-1 text-sm leading-[22px] text-muted">{t('knowledgeEditor.indexing.graphDesc')}</p></div><label className="flex items-center gap-2 text-sm"><Checkbox checked={editorConfig.nodeExtractConfig.enabled} onChange={(event) => setEditorConfig((current) => ({ ...current, nodeExtractConfig: { ...current.nodeExtractConfig, enabled: event.target.checked } }))} />{t('knowledgeEditor.indexing.graphTitle')}</label><label className="grid gap-1">{t('knowledgeEditor.advanced.multimodal.customInstructionsLabel')}<Textarea rows={4} value={editorConfig.nodeExtractConfig.customInstructions} onChange={(event) => setEditorConfig((current) => ({ ...current, nodeExtractConfig: { ...current.nodeExtractConfig, customInstructions: event.target.value } }))} /></label></div> : null}
+              {editorSection === 'advanced' && type === 'document' ? <div className="grid gap-4"><div><h3 className="m-0 text-[20px] font-semibold leading-7 text-ink">{t('knowledgeEditor.advanced.title')}</h3><p className="m-0 mt-1 text-sm leading-[22px] text-muted">{t('knowledgeEditor.advanced.description')}</p></div><label className="flex items-center gap-2 text-sm"><Checkbox checked={editorConfig.questionGenerationConfig.enabled} onChange={(event) => setEditorConfig((current) => ({ ...current, questionGenerationConfig: { ...current.questionGenerationConfig, enabled: event.target.checked } }))} />{t('knowledgeEditor.advanced.questionGeneration.label')}</label>{editorConfig.questionGenerationConfig.enabled ? <label className="grid gap-1">{t('knowledgeEditor.advanced.questionGeneration.countLabel')}<Input type="number" min={1} max={10} value={editorConfig.questionGenerationConfig.questionCount} onChange={(event) => setEditorConfig((current) => ({ ...current, questionGenerationConfig: { ...current.questionGenerationConfig, questionCount: Number(event.target.value) } }))} /></label> : null}<label className="flex items-center gap-2 text-sm"><Checkbox checked={editorConfig.autoTagConfig.enabled} onChange={(event) => setEditorConfig((current) => ({ ...current, autoTagConfig: { ...current.autoTagConfig, enabled: event.target.checked } }))} />{t('knowledgeEditor.advanced.autoTag.label')}</label></div> : null}
+              {editorSection === 'vectorStore' ? <div className="grid gap-4"><h3 className="m-0 text-[20px] font-semibold leading-7 text-ink">{t('knowledgeEditor.sidebar.vectorStore')}</h3><p className="m-0 text-sm leading-[22px] text-muted">{t('kbSettings.vectorStore.description')}</p><label className="grid gap-1">{t('kbSettings.vectorStore.engineLabel')}<Select value={editorConfig.vectorStoreId} disabled={Boolean(editingId) || editorOptions.loading} onChange={(event) => setEditorConfig((current) => ({ ...current, vectorStoreId: event.target.value }))}><option value="">{t('kbSettings.vectorStore.systemDefault')}</option>{editorOptions.vectorStores.map((store) => <option key={store.id} value={store.id}>{store.name} · {store.engine_type}</option>)}</Select></label><p className="m-0 text-xs leading-[18px] text-muted">{editingId ? t('kbSettings.vectorStore.immutableHint') : editorOptions.error ?? t('kbSettings.vectorStore.engineDesc')}</p></div> : null}
+              {editorSection === 'storage' ? <div className="grid gap-4"><h3 className="m-0 text-[20px] font-semibold leading-7 text-ink">{t('knowledgeEditor.sidebar.storage')}</h3><p className="m-0 text-sm leading-[22px] text-muted">{t('kbSettings.storage.selectDescription')}</p><label className="grid gap-1">{t('kbSettings.storage.instanceLabel')}<Select value={editorConfig.storageBackendId} disabled={Boolean(editingId) || editorOptions.loading} onChange={(event) => setEditorConfig((current) => ({ ...current, storageBackendId: event.target.value }))}><option value="">{t('kbSettings.storage.localStorage')}</option>{editorOptions.storageBackends.map((backend) => <option key={backend.id} value={backend.id}>{backend.name} · {backend.provider}</option>)}</Select></label><p className="m-0 text-xs leading-[18px] text-muted">{editingId ? t('kbSettings.storage.migrateHint') : editorOptions.error ?? t('kbSettings.storage.instanceDesc')}</p></div> : null}
+              {editorSection === 'parser' ? <div className="grid gap-4"><h3 className="m-0 text-[20px] font-semibold leading-7 text-ink">{t('kbSettings.parser.title')}</h3><p className="m-0 text-sm leading-[22px] text-muted">{t('kbSettings.parser.description')}</p><label className="grid gap-1">{t('kbSettings.parser.title')}<Select value={editorConfig.chunkingConfig.parserEngineRules[0]?.engine ?? ''} disabled={editorOptions.loading} onChange={(event) => setEditorConfig((current) => ({ ...current, chunkingConfig: { ...current.chunkingConfig, parserEngineRules: event.target.value ? [{ file_types: ['pdf'], engine: event.target.value }] : [] } }))}><option value="">{t('kbSettings.parser.default')}</option>{editorOptions.parserEngines.filter((engine) => engine.Available !== false).map((engine) => <option key={engine.Name} value={engine.Name}>{engine.Name}</option>)}</Select></label><p className="m-0 text-xs leading-[18px] text-muted">{editorOptions.error ?? t('kbSettings.parser.goConfig')}</p></div> : null}
+              {editorSection === 'datasource' && editingId ? <div className="max-h-[34rem] overflow-auto"><DataSourcesPage client={client} knowledgeBaseId={editingId} /></div> : null}
+              {editorSection === 'share' && editingId ? <KnowledgeBaseShareDialog client={client} knowledgeBaseId={editingId} knowledgeBaseName={name} open inline onClose={() => undefined} onChanged={() => setReloadToken((value) => value + 1)} /> : null}
+              {editorSection === 'activity' && editingId ? <KnowledgeBaseActivityPanel client={client} knowledgeBaseId={editingId} /> : null}
+            </div>
+          </div>
           <div className="mt-3 flex justify-end gap-2">
-            <Button type="submit" data-guide="kb-create-submit" loading={saving}>{editingId ? t('common.saveChanges') : t('knowledgeList.create')}</Button>
+            <Button type="submit" data-guide="kb-create-submit" loading={saving}>{editingId ? t('knowledgeEditor.buttons.saveAndClose') : t('knowledgeList.create')}</Button>
             <Button type="button" onClick={() => setDialogOpen(false)}>{t('common.cancel')}</Button>
           </div>
         </form>

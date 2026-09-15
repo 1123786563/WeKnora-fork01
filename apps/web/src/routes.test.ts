@@ -89,6 +89,34 @@ test('guards protected deep links and redirects no-tenant sessions to onboarding
   });
 });
 
+test('authenticates legacy platform redirects before choosing their destination', () => {
+  const loggedOut = { ...authenticated, authenticated: false, tenantId: null };
+  for (const path of ['/platform', '/platform/knowledge-search?q=hello', '/platform/tenant', '/platform/administration']) {
+    assert.deepEqual(guardRoute(path, loggedOut), {
+      kind: 'redirect',
+      to: `/login?next=${encodeURIComponent(path)}`,
+      reason: 'authentication-required',
+    });
+  }
+  for (const path of ['/platform', '/platform/knowledge-search?q=hello', '/platform/tenant', '/platform/administration']) {
+    assert.deepEqual(guardRoute(path, { ...authenticated, tenantId: null }), {
+      kind: 'redirect',
+      to: '/onboarding/workspace',
+      reason: 'workspace-required',
+    });
+  }
+});
+
+test('lands non-system-admin system history links on the knowledge-base page', () => {
+  for (const path of ['/platform/system', '/platform/system/settings', '/platform/system/admins', '/platform/system/queues']) {
+    assert.deepEqual(guardRoute(path, authenticated), {
+      kind: 'redirect',
+      to: '/platform/knowledge-bases',
+      reason: 'system-admin-required',
+    });
+  }
+});
+
 test('honors explicit capability and organization invite compatibility rules', () => {
   assert.deepEqual(guardRoute('/platform/organizations', {
     ...authenticated,

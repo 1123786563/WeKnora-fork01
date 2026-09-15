@@ -140,11 +140,6 @@ export function guardRoute(pathname: string, context: RouteGuardContext): RouteG
     if (!context.tenantId) return { kind: 'redirect', to: '/onboarding/workspace', reason: 'workspace-required' };
     return { kind: 'redirect', to: '/platform/knowledge-bases', reason: 'capability-unavailable' };
   }
-  if (path === '/platform' || path === '/platform/knowledge-search') {
-    return { kind: 'redirect', to: routeRedirect(pathname) ?? '/platform/knowledge-bases', reason: 'capability-unavailable' };
-  }
-  if (path === '/platform/tenant') return { kind: 'redirect', to: '/platform/settings', reason: 'capability-unavailable' };
-  if (path === '/platform/administration') return { kind: 'redirect', to: '/platform/settings?section=members', reason: 'capability-unavailable' };
   if (path === '/platform/dev/markdown') return { kind: 'allow' };
   if (resolved.kind === 'not-found') {
     if (protectedPath(path) && !context.authenticated) return { kind: 'redirect', to: `/login?next=${encodeURIComponent(pathname)}`, reason: 'authentication-required' };
@@ -153,7 +148,10 @@ export function guardRoute(pathname: string, context: RouteGuardContext): RouteG
   if (!protectedPath(path)) return { kind: 'allow' };
   if (!context.authenticated) return { kind: 'redirect', to: `/login?next=${encodeURIComponent(pathname)}`, reason: 'authentication-required' };
   if (!context.tenantId) return { kind: 'redirect', to: '/onboarding/workspace', reason: 'workspace-required' };
-  if (path.startsWith('/platform/system') && !context.isSystemAdmin) return { kind: 'redirect', to: '/platform/settings', reason: 'system-admin-required' };
+  if (path.startsWith('/platform/system') && !context.isSystemAdmin) return { kind: 'redirect', to: '/platform/knowledge-bases', reason: 'system-admin-required' };
+  if (path === '/platform' || path === '/platform/knowledge-search' || path === '/platform/tenant' || path === '/platform/administration') {
+    return { kind: 'redirect', to: routeRedirect(pathname) ?? '/platform/knowledge-bases', reason: 'capability-unavailable' };
+  }
   if (path === '/platform/system' || path === '/platform/system/settings' || path === '/platform/system/admins' || path === '/platform/system/queues') return { kind: 'redirect', to: routeRedirect(pathname) ?? '/platform/settings', reason: 'capability-unavailable' };
   if (path === '/platform/integrations') return { kind: 'redirect', to: routeRedirect(pathname)!, reason: 'capability-unavailable' };
   const capability = capabilityForPath(path);

@@ -18,11 +18,20 @@ else nodeModule.register('data:text/javascript,' + encodeURIComponent([
 ].join('\n')), import.meta.url);
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
-const { FAQBreadcrumb, FAQPageView, FAQSearchResults, createFaqTranslator, faqKBListPath, faqKBSettingsPath, faqHasMore, setEntryStatus, importFormatFromName, importProgressText, faqImportTaskView, pushListItem, removeListItem, editorFormError, faqSaveResultKey, isSectionCollapsed, toggleSection, FAQ_ANSWER_CAP, FAQ_SIMILAR_CAP, faqSearchDefaultForm, faqSearchBlocked, faqSearchRequestFrom, faqSearchResultsFromResponse, toggleSearchResultId, filterFaqTags, faqMasonryColumnCount } = await import('./FAQPage.tsx');
+const { FAQBreadcrumb, FAQPageView, FAQSearchResults, createFaqTranslator, faqKBListPath, faqKBSettingsPath, faqHasMore, setEntryStatus, importFormatFromName, importProgressText, faqImportTaskView, pushListItem, removeListItem, editorFormError, faqSaveResultKey, faqBatchSuccessKey, faqDeleteSuccessKey, isSectionCollapsed, toggleSection, FAQ_ANSWER_CAP, FAQ_SIMILAR_CAP, faqSearchDefaultForm, faqSearchBlocked, faqSearchRequestFrom, faqSearchResultsFromResponse, toggleSearchResultId, filterFaqTags, faqMasonryColumnCount } = await import('./FAQPage.tsx');
 
 const t = createFaqTranslator('zh-CN');
 const kbId = '8b26f48e-7196-405f-9803-ccf93be3cd37';
 const noop = () => {};
+
+test('FAQ batch feedback resolves to shared localized Vue keys', () => {
+  assert.equal(faqBatchSuccessKey({ is_enabled: true }), 'knowledgeEditor.faq.statusEnableSuccess');
+  assert.equal(faqBatchSuccessKey({ is_enabled: false }), 'knowledgeEditor.faq.statusDisableSuccess');
+  assert.equal(faqBatchSuccessKey({ is_recommended: true }), 'knowledgeEditor.faq.recommendedEnabled');
+  assert.equal(faqBatchSuccessKey({ tag_id: 3 }), 'knowledgeBase.tagUpdateSuccess');
+  assert.equal(faqDeleteSuccessKey(1), 'knowledgeEditor.faqImport.deleteSuccess');
+  assert.equal(faqDeleteSuccessKey(2), 'knowledgeEditor.faq.batchDeleteSuccess');
+});
 
 type FAQViewProps = NonNullable<React.ComponentProps<typeof FAQPageView>>;
 type FAQBreadcrumbProps = NonNullable<React.ComponentProps<typeof FAQBreadcrumb>>;

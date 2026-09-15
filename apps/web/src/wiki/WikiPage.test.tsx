@@ -10,11 +10,19 @@ type ResolveHook = (specifier: string, context: unknown, nextResolve: (specifier
 const hooks = nodeModule as typeof nodeModule & { registerHooks?: (hooks: { resolve: ResolveHook }) => void };
 if (hooks.registerHooks) hooks.registerHooks({ resolve: (specifier, context, nextResolve) => specifier.endsWith('.css') ? { shortCircuit: true, url: 'data:text/javascript,export default {}' } : nextResolve(specifier, context) });
 
-const { WikiPage } = await import('./WikiPage.tsx');
+const { WikiPage, wikiRevertConfirmation } = await import('./WikiPage.tsx');
+const { wikiRevertCopy } = await import('./editor.ts');
+
+test('Wiki revert feedback uses the Vue localized confirmation and result keys', () => {
+  const translate = (key: string, values?: Record<string, string | number>) => `${key}:${values?.ver ?? ''}`;
+  assert.equal(wikiRevertCopy(translate, 'confirm', 4), 'wikiBrowser.revertConfirm:4');
+  assert.equal(wikiRevertCopy(translate, 'success', 4), 'wikiBrowser.revertSuccess:4');
+  assert.equal(wikiRevertCopy(translate, 'failed', 4), 'wikiBrowser.revertFailed:');
+});
 
 test('Wiki shell follows Vue browser anatomy: sidebar search and reader editor are separate', () => {
   const client = { wiki: { list: async () => ({ pages: [], total: 0 }) } } as never;
-  const html = renderToStaticMarkup(React.createElement(WikiPage, { client, knowledgeBaseId: 'kb-1', canContribute: true }));
+  const html = renderToStaticMarkup(React.createElement(WikiPage, { client, knowledgeBaseId: 'kb-secret', canContribute: true }));
   assert.match(html, /class="wk-wiki-layout[^"]*"/);
   assert.match(html, /class="wk-wiki-sidebar[^"]*"/);
   assert.match(html, /class="wk-wiki-search[^"]*"/);
@@ -23,6 +31,12 @@ test('Wiki shell follows Vue browser anatomy: sidebar search and reader editor a
   assert.match(html, /列表视图/);
   assert.match(html, /class="wk-wiki-editor[^"]*"/);
   assert.doesNotMatch(html, /class="wk-toolbar"/);
+  assert.doesNotMatch(html, /kb-secret/, 'the Vue context eyebrow does not expose the raw KB id');
+});
+
+test('Wiki revert confirmation uses the localized Vue copy', () => {
+  const translate = (key: string, values?: Record<string, string | number>) => `${key}:${values?.ver ?? ''}`;
+  assert.equal(wikiRevertConfirmation(translate, 7), 'wikiBrowser.revertConfirm:7');
 });
 
 test('viewer mode hides Wiki folder mutation controls', () => {

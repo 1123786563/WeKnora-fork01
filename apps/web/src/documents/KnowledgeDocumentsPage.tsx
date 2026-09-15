@@ -345,12 +345,22 @@ export function DocumentCardGrid({
     {items.map((document) => {
       const status = documentStatus(document, t);
       const actions = documentRowActions(document.parse_status);
+      const parseStatus = String(document.parse_status ?? "");
+      const parseInFlight = parseStatus === "pending" || parseStatus === "processing" || parseStatus === "finalizing";
       return <article key={document.id} className="flex h-[136px] min-w-[240px] flex-col overflow-hidden rounded-[8px] border border-line-soft bg-surface p-0 shadow-[0_1px_2px_rgb(0_0_0/6%)] transition-[border-color,box-shadow,background-color] duration-200 hover:border-primary/40 hover:shadow-[0_4px_14px_rgb(0_0_0/7%)]" onMouseEnter={(event) => scheduleHover(event, document)} onMouseLeave={clearHover}>
         <div className="flex min-h-0 flex-1 flex-col px-[14px] pb-2 pt-[10px]">
           <div className="mb-[6px] flex h-6 shrink-0 items-start gap-0">
             {canContribute && batchMode ? <Checkbox type="checkbox" checked={selected.has(document.id)} onChange={(event) => onToggle(document.id, event.target.checked)} aria-label={t("knowledgeBase.documents.select", { name: displayName(document) })} /> : null}
             <button type="button" className="min-w-0 flex-1 truncate border-0 bg-transparent p-0 text-left text-[14px] font-semibold leading-6 tracking-[.01em] text-primary-deep hover:underline" onClick={() => onOpen(document)} title={displayName(document)}>{displayName(document)}</button>
-            <Status tone={status.tone}>{status.label}</Status>
+            {parseInFlight ? (
+              <button type="button" className="inline-flex shrink-0 items-center gap-1 border-0 bg-transparent p-0 text-[12px] leading-6 text-success-text [font:inherit]" title={t("knowledgeStages.viewTrace")} onClick={() => onViewTrace(document)}>
+                <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" />
+                <span>{status.label}</span>
+                <span aria-hidden="true" className="text-[11px] leading-none">⌁</span>
+              </button>
+            ) : status.tone === "warning" && (document.summary_status === "pending" || document.summary_status === "processing") ? (
+              <span className="inline-flex shrink-0 items-center gap-1 text-[12px] leading-6 text-warning-text"><span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" />{status.label}</span>
+            ) : <Status tone={status.tone}>{status.label}</Status>}
             {canContribute ? <DocumentCardActionMenu document={document} canDownload={canDownload} t={t} actions={actions} onDownload={() => onDownload(document)} onEdit={() => onEdit(document)} onViewTrace={() => onViewTrace(document)} onMove={() => onMove(document)} onBatchManage={() => onBatchManage(document)} onReparse={() => onReparse(document)} onCancelParse={() => onCancelParse(document)} onDelete={() => onDelete(document)} /> : null}
           </div>
           <p className="m-0 line-clamp-2 min-h-0 flex-1 overflow-hidden text-[12px] font-normal leading-[19px] text-muted">{document.summary_status === "pending" || document.summary_status === "processing" ? t("knowledgeBase.generatingSummary") : typeof document.description === "string" ? document.description : document.folder_path ?? t("knowledgeBase.documents.root")}</p>
@@ -391,7 +401,14 @@ export function documentStatus(
     failed: "knowledgeBase.parseStatusFailed",
     cancelled: "knowledgeBase.parseStatusCancelled",
   };
-  const label = statusLabelKey[status] ? t(statusLabelKey[status]!) : t("knowledgeBase.documents.statusUnknown");
+  // Vue DocumentCardView.vue uses the card-specific in-flight copy rather
+  // than the filter/status option copy: pending/processing are “解析中...”,
+  // while finalizing may be “生成摘要中” or “即将完成”.
+  const label = status === "pending" || status === "processing"
+    ? t("knowledgeBase.parsingInProgress")
+    : status === "finalizing" && (document.summary_status === "pending" || document.summary_status === "processing")
+      ? t("knowledgeBase.generatingSummary")
+      : statusLabelKey[status] ? t(statusLabelKey[status]!) : t("knowledgeBase.documents.statusUnknown");
   if (status === "completed" && (document.summary_status === "pending" || document.summary_status === "processing")) {
     return { label: t("knowledgeBase.generatingSummary"), tone: "warning" };
   }
@@ -2197,6 +2214,9 @@ export function KnowledgeDocumentsPage({
       folder_path: folderPath,
       // Vue: browsing lists one folder level; filtering descends the subtree.
       folder_recursive: folderPath !== undefined && filtering,
+    }, {
+      unavailable: t("common.error"),
+      failed: t("common.error"),
     }).then((next) => {
       if (active) setState(next);
     });
@@ -3760,52 +3780,6 @@ export function KnowledgeDocumentsPage({
             onRemoveUrl={removeStagedUrl}
             onRemoveEntry={removeStagedUpload}
           />
-          {sourceUrlDialogOpen ? (
-            <Dialog
-              open
-              title={t("knowledgeBase.importURLTitle")}
-              onClose={() => setSourceUrlDialogOpen(false)}
-            >
-              <div className="wk-upload-url-dialog flex flex-col gap-2">
-                <label>
-                  {t("knowledgeBase.urlLabel")}{" "}
-                  <Input
-                    autoFocus
-                    className="box-border w-full"
-                    value={sourceUrlValue}
-                    placeholder={t("knowledgeBase.urlPlaceholder")}
-                    onChange={(event) => setSourceUrlValue(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        if (appendStagedUrl(sourceUrlValue, "dialog")) {
-                          setSourceUrlDialogOpen(false);
-                          setSourceUrlValue("");
-                        }
-                      }
-                    }}
-                  />
-                </label>
-                <p className="wk-muted text-muted" style={{ margin: "0.25rem 0 0", fontSize: "0.85rem" }}>{t("knowledgeBase.urlTip")}</p>
-                <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      if (appendStagedUrl(sourceUrlValue, "dialog")) {
-                        setSourceUrlDialogOpen(false);
-                        setSourceUrlValue("");
-                      }
-                    }}
-                  >
-                    {ct("common.confirm")}
-                  </Button>
-                  <Button type="button" onClick={() => setSourceUrlDialogOpen(false)}>
-                    {ct("uploadConfirm.cancel")}
-                  </Button>
-                </div>
-              </div>
-            </Dialog>
-          ) : null}
             </aside>
             <aside className="wk-upload-confirm-settings-column">
               <div className="wk-upload-confirm-section-nav">
@@ -3882,6 +3856,55 @@ export function KnowledgeDocumentsPage({
             >
               {ct("uploadConfirm.cancel")}
             </Button>
+          </div>
+      </Dialog>
+      ) : null}
+      {/* Vue opens URL import from the page-level source menu too; this must
+          not be nested under uploadDialogOpen, which is only true after files
+          have already been staged. */}
+      {sourceUrlDialogOpen ? (
+        <Dialog
+          open
+          title={t("knowledgeBase.importURLTitle")}
+          onClose={() => setSourceUrlDialogOpen(false)}
+        >
+          <div className="wk-upload-url-dialog flex flex-col gap-2">
+            <label>
+              {t("knowledgeBase.urlLabel")} {" "}
+              <Input
+                autoFocus
+                className="box-border w-full"
+                value={sourceUrlValue}
+                placeholder={t("knowledgeBase.urlPlaceholder")}
+                onChange={(event) => setSourceUrlValue(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    if (appendStagedUrl(sourceUrlValue, "dialog")) {
+                      setSourceUrlDialogOpen(false);
+                      setSourceUrlValue("");
+                    }
+                  }
+                }}
+              />
+            </label>
+            <p className="wk-muted text-muted" style={{ margin: "0.25rem 0 0", fontSize: "0.85rem" }}>{t("knowledgeBase.urlTip")}</p>
+            <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
+              <Button
+                type="button"
+                onClick={() => {
+                  if (appendStagedUrl(sourceUrlValue, "dialog")) {
+                    setSourceUrlDialogOpen(false);
+                    setSourceUrlValue("");
+                  }
+                }}
+              >
+                {ct("common.confirm")}
+              </Button>
+              <Button type="button" onClick={() => setSourceUrlDialogOpen(false)}>
+                {ct("uploadConfirm.cancel")}
+              </Button>
+            </div>
           </div>
         </Dialog>
       ) : null}

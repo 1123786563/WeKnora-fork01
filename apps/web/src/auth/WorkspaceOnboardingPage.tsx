@@ -142,8 +142,13 @@ export function WorkspaceOnboardingPage({ client, scopeRuntime, onLogout }: Work
       </form>
     </Dialog>
 
-    {invitationsVisible ? <Card>
-      <h2>{msg(locale, 'auth.workspaceOnboarding.invitations')}</h2>
+    <Dialog
+      open={invitationsVisible}
+      title={msg(locale, 'auth.workspaceOnboarding.invitations')}
+      onClose={() => setInvitationsVisible(false)}
+      closeLabel={msg(locale, 'auth.workspaceOnboarding.close')}
+      className="w-[min(560px,100%)]!"
+    >
       {invitationError ? <Status tone="error">{invitationError}</Status> : null}
       {invitations === null ? <Status>{msg(locale, 'auth.workspaceOnboarding.loadingInvitations')}</Status> : invitations.length === 0 ? <Status>{msg(locale, 'tenantInvitation.myInbox.empty')}</Status> : (
         <ul>{invitations.map((invitation) => <li key={invitation.id}>
@@ -153,6 +158,6 @@ export function WorkspaceOnboardingPage({ client, scopeRuntime, onLogout }: Work
         </li>)}</ul>
       )}
       <Button type="button" onClick={() => setInvitationsVisible(false)}>{msg(locale, 'auth.workspaceOnboarding.close')}</Button>
-    </Card> : null}
+    </Dialog>
   </Card></main>;
 }

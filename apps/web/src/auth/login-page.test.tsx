@@ -109,6 +109,18 @@ test('login card uses Vue box sizing and green outline for the create-account CT
   assert.match(create?.className ?? '', /text-\(--auth-brand\)/);
 });
 
+test('login password control keeps Vue visibility toggle affordance', async () => {
+  await mountLogin(fakeClient());
+  const password = document.querySelector('input[autocomplete="current-password"]') as HTMLInputElement;
+  const toggle = [...document.querySelectorAll('button')].find((node) => node.getAttribute('aria-label') === '密码') as HTMLButtonElement;
+  assert.equal(password.type, 'password');
+  assert.ok(toggle, 'expected the password visibility control');
+  await act(async () => { toggle.click(); });
+  assert.equal(password.type, 'text');
+  await act(async () => { toggle.click(); });
+  assert.equal(password.type, 'password');
+});
+
 test('register form keeps Vue required markers on every required field', async () => {
   await mountLogin(fakeClient());
   const create = [...document.querySelectorAll('button')].find((node) => (node.textContent ?? '').includes('创建账户')) as HTMLButtonElement;

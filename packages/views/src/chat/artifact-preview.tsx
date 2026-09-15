@@ -15,6 +15,35 @@ export interface ArtifactPreviewModel {
   label: string;
 }
 
+export const ARTIFACT_PREVIEW_MIN_WIDTH = 520;
+export const ARTIFACT_PREVIEW_DEFAULT_WIDTH = 760;
+
+export function clampArtifactPreviewWidth(width: number, viewportWidth: number): number {
+  const safeViewport = Number.isFinite(viewportWidth) && viewportWidth > 0 ? viewportWidth : 1440;
+  const maxWidth = Math.min(1600, Math.max(ARTIFACT_PREVIEW_MIN_WIDTH, Math.floor(safeViewport * 0.95)));
+  return Math.max(ARTIFACT_PREVIEW_MIN_WIDTH, Math.min(maxWidth, Math.round(width)));
+}
+
+export function formatArtifactSize(size: number | undefined): string {
+  if (!size || size < 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let value = size;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return unit === 0 ? `${value} ${units[unit]}` : `${value.toFixed(1)} ${units[unit]}`;
+}
+
+export function formatArtifactDateTime(raw: string | undefined): string {
+  if (!raw) return '—';
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return raw;
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 function extension(fileName: string): string {
   return fileName.trim().toLowerCase().split('.').pop() ?? '';
 }
@@ -50,9 +79,10 @@ export interface ArtifactPreviewProps {
   onClose(): void;
   onDownload?(): void;
   copy?: ChatCopyTable;
+  showHeader?: boolean;
 }
 
-export function ArtifactPreview({ artifact, payload, loading = false, error, onClose, onDownload, copy }: ArtifactPreviewProps) {
+export function ArtifactPreview({ artifact, payload, loading = false, error, onClose, onDownload, copy, showHeader = true }: ArtifactPreviewProps) {
   const model = artifactPreviewModel(artifact, copy);
   const [url, setUrl] = useState('');
   const [text, setText] = useState('');
@@ -78,8 +108,8 @@ export function ArtifactPreview({ artifact, payload, loading = false, error, onC
     return () => { active = false; };
   }, [model.kind, payload]);
 
-  return <section className="wk-chat-artifact-preview" role="dialog" aria-label={`${artifact.fileName} preview`}>
-    <header><h3>{artifact.fileName}</h3><button type="button" onClick={onClose}>{copy?.artifactPreviewBack ?? 'Back'}</button>{onDownload ? <button type="button" onClick={onDownload}>{copy?.artifactPreviewDownload ?? 'Download'}</button> : null}</header>
+  return <section className={`wk-chat-artifact-preview${showHeader ? '' : ' wk-chat-artifact-preview--embedded'}`} role={showHeader ? 'dialog' : 'document'} aria-label={`${artifact.fileName} preview`}>
+    {showHeader ? <header><h3>{artifact.fileName}</h3><button type="button" onClick={onClose}>{copy?.artifactPreviewBack ?? 'Back'}</button>{onDownload ? <button type="button" onClick={onDownload}>{copy?.artifactPreviewDownload ?? 'Download'}</button> : null}</header> : null}
     {loading ? <p role="status">{copy?.artifactPreviewLoading ?? 'Loading preview…'}</p> : error ? <p role="alert">{error}</p> : model.kind === 'download-only' ? <p>{model.label}</p> : payload ? <PreviewBody model={model} fileName={artifact.fileName} payload={payload} url={url} text={text} /> : <p>{model.label}</p>}
   </section>;
 }

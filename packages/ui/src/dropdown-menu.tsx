@@ -28,7 +28,7 @@ export function DropdownItem({ className, children, ...props }: { children: Reac
     <DropdownPrimitive.Item
       className={cn(
         'flex cursor-pointer select-none items-center gap-2 rounded-control px-2.5 py-1.5 text-[13px] text-ink outline-none',
-        'data-[highlighted]:bg-hover-wash data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50',
+        'data-[highlighted]:bg-hover-wash data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 data-[disabled]:pointer-events-none',
         className,
       )}
       {...props}

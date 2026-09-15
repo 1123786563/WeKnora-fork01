@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import React, { type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from './lib/utils.ts';
 
@@ -9,14 +9,14 @@ import { cn } from './lib/utils.ts';
  * text = 透明文本钮；danger = 文本钮 + 危险色。
  */
 const buttonVariants = cva(
-  'inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-control font-sans transition-colors focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-primary/35 disabled:cursor-not-allowed disabled:opacity-55',
+  'inline-flex min-h-8 cursor-pointer items-center justify-center gap-1.5 rounded-control font-sans transition-colors focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-primary/35 disabled:cursor-not-allowed disabled:opacity-55',
   {
     variants: {
       variant: {
         default:
-          'border border-line-control bg-surface px-[0.85rem] py-[0.45rem] text-ink hover:border-accent',
+          'border border-line-control bg-surface px-[0.8rem] py-[0.55rem] text-ink hover:border-accent',
         primary:
-          'border border-accent bg-accent px-[0.85rem] py-[0.45rem] text-surface hover:bg-accent-strong',
+          'border border-accent bg-accent px-[0.8rem] py-[0.55rem] text-surface hover:bg-accent-strong',
         text:
           'border border-transparent bg-transparent px-[0.5rem] py-[0.3rem] text-muted-strong hover:bg-hover-wash focus-visible:bg-hover-wash',
         danger:

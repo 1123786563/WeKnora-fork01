@@ -356,6 +356,28 @@ test('message list renders the Vue anatomy: date separators, user pill, plain as
   assert.doesNotMatch(html, /wk-chat-scroll-bottom/);
 });
 
+test('artifact rows expose the Vue drawer entry while keeping protected actions host-owned', () => {
+  const html = renderToStaticMarkup(React.createElement(ChatPage, {
+    ...baseProps,
+    messages: [{
+      id: 'assistant-1',
+      session_id: 'session-1',
+      role: 'assistant',
+      content: 'generated files',
+      artifacts: [{ index: 0, file_name: 'report.md', file_type: 'text/markdown', file_size: 2048, created_at: '2026-09-08T04:05:00Z' }],
+    }],
+    onArtifactDownload: async () => undefined,
+    onArtifactPreview: async () => ({ body: '# report', contentType: 'text/markdown' }),
+    locale: 'zh-CN',
+  }));
+  assert.match(html, /wk-chat-artifacts-open/);
+  assert.match(html, /report\.md/);
+  assert.match(html, /预览/);
+  // The drawer is interaction-owned and must not be rendered before an
+  // artifact action opens it during SSR.
+  assert.doesNotMatch(html, /wk-chat-artifact-drawer-overlay/);
+});
+
 test('session sidebar renders time-group headers, full titles, and the hover ⋯ menu', () => {
   const html = renderToStaticMarkup(React.createElement(ChatPage, {
     sessions: [

@@ -63,6 +63,27 @@ function fakeDeps(): { client: Record<string, unknown>; scopeRuntime: Record<str
   };
 }
 
+function invitationDeps(): { client: Record<string, unknown>; scopeRuntime: Record<string, unknown> } {
+  return {
+    client: {
+      auth: { me: async () => ({ user: { id: 'u1' } }) },
+      identity: {
+        tenants: {
+          invitations: {
+            pendingCount: async () => ({ pendingCount: 1 }),
+            listMine: async () => ({ items: [{ id: 7, tenant_id: 12, tenant_name: '研发空间', role: 'member', status: 'pending' }] }),
+          },
+        },
+      },
+    },
+    scopeRuntime: {
+      hydrate: () => {},
+      requiresWorkspace: () => true,
+      can: () => true,
+    },
+  };
+}
+
 test('tenant creation renders in a modal dialog with the Vue t-dialog copy (S00 N-2)', async () => {
   const { client, scopeRuntime } = fakeDeps();
   const container = document.createElement('div');
@@ -102,4 +123,30 @@ test('tenant creation renders in a modal dialog with the Vue t-dialog copy (S00 
   assert.ok(cancel, 'expected a 取消 action inside the dialog');
   await act(async () => { cancel!.click(); await settle(10); });
   assert.equal(document.querySelector('[role="dialog"]'), null, 'cancel closes the dialog');
+});
+
+test('my invitations renders in a modal dialog like Vue WorkspaceOnboarding', async () => {
+  const { client, scopeRuntime } = invitationDeps();
+  const container = document.createElement('div');
+  document.body.append(container);
+  mountedRoot = createRoot(container);
+  await act(async () => {
+    mountedRoot?.render(React.createElement(WorkspaceOnboardingPage, {
+      client: client as never,
+      scopeRuntime: scopeRuntime as never,
+      onLogout: async () => {},
+    }));
+  });
+  await settle(20);
+
+  const invitationsEntry = [...document.querySelectorAll('button')].find((node) => (node.textContent ?? '').startsWith('查看邀请'));
+  assert.ok(invitationsEntry, 'expected the invitations entry action');
+  await act(async () => { invitationsEntry!.click(); await settle(10); });
+
+  const dialog = document.querySelector('[role="dialog"]') as HTMLElement | null;
+  assert.ok(dialog, 'expected invitations to open in a modal dialog');
+  assert.equal(dialog.getAttribute('aria-modal'), 'true');
+  assert.match(dialog.textContent || '', /查看邀请/);
+  assert.match(dialog.textContent || '', /研发空间/);
+  assert.equal(document.querySelector('[role="dialog"]')?.closest('.wk-card') ?? null, null);
 });

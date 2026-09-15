@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { Organization, WeKnoraClient } from '@weknora/api-client';
-import { Button, Dialog, Select, Status } from '@weknora/ui';
+import { Button, Dialog, Input, Select, Status } from '@weknora/ui';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 import { KbIcon } from './kb-list-icons.tsx';
 import { SpaceAvatar } from '../organizations/SpaceAvatar.tsx';
 
 type Share = Record<string, unknown> & { id: string; organization_id?: string; organization_name?: string; permission?: string };
-type Props = { client: WeKnoraClient; knowledgeBaseId: string; knowledgeBaseName: string; open: boolean; onClose: () => void; onChanged?: () => void };
+type Props = { client: WeKnoraClient; knowledgeBaseId: string; knowledgeBaseName: string; open: boolean; onClose: () => void; onChanged?: () => void; inline?: boolean };
 function canShare(org: Organization): boolean { const row = org as Record<string, unknown>; return row.is_owner === true || row.my_role === 'admin' || row.my_role === 'editor'; }
 function orgValue(org: Organization, key: string): number { const value = (org as Record<string, unknown>)[key]; return typeof value === 'number' ? value : 0; }
 function initials(name: string): string { return name.trim().split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || '?'; }
@@ -38,7 +38,7 @@ function PermissionRadio({ value, onChange, t }: { value: 'viewer' | 'editor'; o
   </div>;
 }
 
-export function KnowledgeBaseShareDialog({ client, knowledgeBaseId, knowledgeBaseName, open, onClose, onChanged }: Props) {
+export function KnowledgeBaseShareDialog({ client, knowledgeBaseId, knowledgeBaseName, open, onClose, onChanged, inline = false }: Props) {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [shares, setShares] = useState<Share[]>([]);
   const [organizationId, setOrganizationId] = useState('');
@@ -48,6 +48,7 @@ export function KnowledgeBaseShareDialog({ client, knowledgeBaseId, knowledgeBas
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [showShareList, setShowShareList] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const busyRef = useRef(false);
   const loadGeneration = useRef(0);
   const t = createTranslator(useAppLocale());
@@ -64,9 +65,10 @@ export function KnowledgeBaseShareDialog({ client, knowledgeBaseId, knowledgeBas
       setError(cause instanceof Error ? cause.message : t('organization.share.shareFailed')); return false;
     } finally { if (generation === loadGeneration.current) setLoading(false); }
   }
-  useEffect(() => { if (open) { setOrganizationId(''); setNotice(null); setShowShareList(false); void load(); } }, [open, knowledgeBaseId]);
+  useEffect(() => { if (open) { setOrganizationId(''); setNotice(null); setSearchQuery(''); setShowShareList(inline); void load(); } }, [open, knowledgeBaseId, inline]);
   async function share(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!organizationId || busyRef.current) return; busyRef.current = true; setBusy(true); setError(null); setNotice(null); try { await client.identity.organizations.knowledgeBaseShares.create(knowledgeBaseId, { organization_id: organizationId, permission }); if (await load()) { setNotice(t('organization.share.shareSuccess')); onChanged?.(); } } catch (cause) { setError(cause instanceof Error ? cause.message : t('organization.share.shareFailed')); } finally { busyRef.current = false; setBusy(false); } }
   async function unshare(item: Share) { const name = item.organization_name ?? item.organization_id ?? 'organization'; if (busyRef.current || !window.confirm(t('organization.settings.removeShareConfirm', { name }))) return; busyRef.current = true; setBusy(true); setError(null); setNotice(null); try { await client.identity.organizations.knowledgeBaseShares.remove(knowledgeBaseId, item.id); if (await load()) { setNotice(t('organization.share.unshareSuccess')); onChanged?.(); } } catch (cause) { setError(cause instanceof Error ? cause.message : t('organization.share.unshareFailed')); } finally { busyRef.current = false; setBusy(false); } }
+  async function updatePermission(item: Share, nextPermission: 'viewer' | 'editor') { if (item.permission === nextPermission || busyRef.current) return; busyRef.current = true; setBusy(true); setError(null); setNotice(null); try { await client.identity.organizations.knowledgeBaseShares.updatePermission(knowledgeBaseId, item.id, nextPermission); if (await load()) { setNotice(t('organization.roleUpdated')); onChanged?.(); } } catch (cause) { setError(cause instanceof Error ? cause.message : t('organization.share.shareFailed')); } finally { busyRef.current = false; setBusy(false); } }
   function goToOrganizationSettings(organizationId: string) {
     const url = new URL('/platform/organizations', window.location.origin);
     url.searchParams.set('orgId', organizationId);
@@ -75,14 +77,16 @@ export function KnowledgeBaseShareDialog({ client, knowledgeBaseId, knowledgeBas
   }
   const sharedIds = new Set(shares.map((item) => String(item.organization_id ?? '')));
   const available = organizations.filter((item) => !sharedIds.has(item.id));
-  return <Dialog open={open} title={t('organization.share.title')} className="w-[520px] max-w-[calc(100vw-2rem)]" onClose={onClose}>
+  const filteredShares = shares.filter((item) => !searchQuery.trim() || `${item.organization_name ?? ''} ${item.organization_id ?? ''} ${item.permission ?? ''}`.toLowerCase().includes(searchQuery.trim().toLowerCase()));
+  const content = <>
     {error ? <Status tone="error">{error}</Status> : null}{notice ? <Status tone="success">{notice}</Status> : null}{loading ? <Status>{t('organization.share.loading')}</Status> : null}
     {loading ? null : showShareList ? <>
-      <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]"><Button type="button" onClick={() => setShowShareList(false)}>{t('common.back')}</Button></div>
-      <h3>{t('organization.share.sharedTo')} ({shares.length})</h3>
-      {shares.length === 0 ? <Status>{t('organization.share.noShares')}</Status> : <ul className="m-0 grid list-none max-h-[280px] gap-[0.6rem] overflow-y-auto p-0">{shares.map((item) => <li className="flex items-center justify-between gap-3 rounded-card border border-line-soft bg-canvas p-3 [transition:background_0.2s,border-color_0.2s] hover:border-[#d8e0ec] hover:bg-[#f1f4f9] max-[640px]:flex-col max-[640px]:items-start" key={item.id}><div className="flex items-center gap-2"><SpaceAvatar name={item.organization_name ?? item.organization_id ?? ''} avatar={(item as Record<string, unknown>).avatar} size="small" /><span className="truncate">{item.organization_name ?? item.organization_id}</span><span className={`rounded-pill px-[0.45rem] py-[0.15rem] text-[0.72rem] font-semibold whitespace-nowrap ${item.permission === 'editor' ? 'bg-[#fff2d8] text-warning-text' : 'bg-[#eef1f6] text-muted'}`}>{item.permission === 'editor' ? t('organization.share.permissionEditable') : t('organization.share.permissionReadonly')}</span></div><div className="flex flex-none items-center gap-2 max-[640px]:self-end"><Button type="button" aria-label={t('organization.settings.editTitle')} title={t('organization.settings.editTitle')} onClick={() => goToOrganizationSettings(String(item.organization_id ?? ''))}><KbIcon name="settings" size={14} /></Button><Button type="button" disabled={busy} aria-label={t('organization.share.unshareAction')} title={t('organization.share.unshareAction')} onClick={() => void unshare(item)}><KbIcon name="close" size={14} /></Button></div></li>)}</ul>}
+      <div className="mb-3 flex items-center gap-2"><Input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder={t('organization.share.searchPlaceholder')} aria-label={t('organization.share.searchPlaceholder')} /><Button type="button" onClick={() => setShowShareList(false)}>{t('knowledgeEditor.share.addShare')}</Button>{inline ? null : <Button type="button" onClick={() => setShowShareList(false)}>{t('common.back')}</Button>}</div>
+      <h3>{t('organization.share.sharedTo')} ({filteredShares.length})</h3>
+      {filteredShares.length === 0 ? <Status>{searchQuery.trim() ? t('organization.share.emptySearch', { q: searchQuery.trim() }) : t('organization.share.noShares')}</Status> : <ul className="m-0 grid list-none max-h-[280px] gap-[0.6rem] overflow-y-auto p-0">{filteredShares.map((item) => <li className="flex items-center justify-between gap-3 rounded-card border border-line-soft bg-canvas p-3 [transition:background_0.2s,border-color_0.2s] hover:border-[#d8e0ec] hover:bg-[#f1f4f9] max-[640px]:flex-col max-[640px]:items-start" key={item.id}><div className="flex min-w-0 items-center gap-2"><SpaceAvatar name={item.organization_name ?? item.organization_id ?? ''} avatar={(item as Record<string, unknown>).avatar} size="small" /><span className="truncate">{item.organization_name ?? item.organization_id}</span><Select className="w-auto min-w-[6.5rem]" disabled={busy} value={item.permission === 'editor' ? 'editor' : 'viewer'} onChange={(event) => void updatePermission(item, event.target.value as 'viewer' | 'editor')}><option value="viewer">{t('organization.share.permissionReadonly')}</option><option value="editor">{t('organization.share.permissionEditable')}</option></Select></div><div className="flex flex-none items-center gap-2 max-[640px]:self-end"><Button type="button" aria-label={t('organization.settings.editTitle')} title={t('organization.settings.editTitle')} onClick={() => goToOrganizationSettings(String(item.organization_id ?? ''))}><KbIcon name="settings" size={14} /></Button><Button type="button" disabled={busy} aria-label={t('organization.share.unshareAction')} title={t('organization.share.unshareAction')} onClick={() => void unshare(item)}><KbIcon name="close" size={14} /></Button></div></li>)}</ul>}
     </> : <>
       <form className="grid gap-[0.9rem] pt-[0.5rem]" onSubmit={(event) => void share(event)}><label className="grid gap-[0.4rem] font-semibold">{t('organization.share.selectOrg')}<OrganizationPicker organizations={available} value={organizationId} onChange={setOrganizationId} placeholder={t('organization.share.selectOrgPlaceholder')} t={t} /><Select className="absolute box-border h-px w-full min-h-[2.45rem] rounded-control border border-line-control bg-surface px-[0.65rem] py-[0.55rem] text-ink [font:inherit] opacity-0 pointer-events-none" required value={organizationId} onChange={(event) => setOrganizationId(event.target.value)} aria-hidden="true" tabIndex={-1}><option value="">{t('organization.share.selectOrgPlaceholder')}</option>{available.map((org) => <option key={org.id} value={org.id}>{org.name}</option>)}</Select></label><label className="grid gap-[0.4rem] font-semibold">{t('organization.share.permission')}<PermissionRadio value={permission} onChange={setPermission} t={t} /></label><div className="flex items-start gap-[0.45rem] rounded-control bg-[#f4f6fa] px-[0.75rem] py-[0.7rem] text-[0.8rem] font-normal leading-[1.5] text-muted"><KbIcon name="info-circle" size={14} /><span>{t('organization.share.permissionTip')}</span></div><div className="mt-[0.35rem] flex items-center gap-[0.6rem] border-t border-line-soft pt-4">{shares.length > 0 ? <Button type="button" onClick={() => setShowShareList(true)}>{t('organization.share.sharedTo')} ({shares.length})</Button> : null}<span className="flex-1" aria-hidden="true" /><Button type="button" onClick={onClose}>{t('common.cancel')}</Button><Button type="submit" loading={busy} disabled={!organizationId}>{t('common.confirm')}</Button></div></form>
     </>}
-  </Dialog>;
+  </>;
+  return inline ? <section className="grid gap-3" aria-label={t('organization.share.title')}><h3 className="m-0 text-[20px] font-semibold leading-7 text-ink">{t('organization.share.title')}</h3><p className="m-0 text-sm leading-[22px] text-muted">{t('knowledgeEditor.share.description')}</p>{content}</section> : <Dialog open={open} title={t('organization.share.title')} className="w-[520px] max-w-[calc(100vw-2rem)]" onClose={onClose}>{content}</Dialog>;
 }

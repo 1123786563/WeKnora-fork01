@@ -119,6 +119,21 @@ export function faqSaveResultKey(editing: boolean): 'knowledgeEditor.messages.cr
   return editing ? 'knowledgeEditor.messages.updateSuccess' : 'knowledgeEditor.messages.createSuccess';
 }
 
+export function faqBatchSuccessKey(input: FAQEntryFieldsUpdate):
+  | 'knowledgeEditor.faq.statusEnableSuccess'
+  | 'knowledgeEditor.faq.statusDisableSuccess'
+  | 'knowledgeEditor.faq.recommendedEnabled'
+  | 'knowledgeBase.tagUpdateSuccess' {
+  if (input.is_enabled === true) return 'knowledgeEditor.faq.statusEnableSuccess';
+  if (input.is_enabled === false) return 'knowledgeEditor.faq.statusDisableSuccess';
+  if (input.is_recommended === true) return 'knowledgeEditor.faq.recommendedEnabled';
+  return 'knowledgeBase.tagUpdateSuccess';
+}
+
+export function faqDeleteSuccessKey(count: number): 'knowledgeEditor.faqImport.deleteSuccess' | 'knowledgeEditor.faq.batchDeleteSuccess' {
+  return count > 1 ? 'knowledgeEditor.faq.batchDeleteSuccess' : 'knowledgeEditor.faqImport.deleteSuccess';
+}
+
 // --- B4: search test drawer (Vue FAQEntryManager.vue:734-853, 1329-1338, 2650-2695) -
 
 export interface FAQSearchFormState { query: string; vectorThreshold: number; matchCount: number }
@@ -1690,18 +1705,18 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
   }
   async function updateSelection(input: FAQEntryFieldsUpdate) {
     if (!selected.size) return;
-    try { await faq.updateFields(knowledgeBaseId, { by_id: Object.fromEntries([...selected].map((id) => [id, input])) }); await load(false); setMessage({ tone: 'success', text: 'Selected FAQ entries updated.' }); }
+    try { await faq.updateFields(knowledgeBaseId, { by_id: Object.fromEntries([...selected].map((id) => [id, input])) }); await load(false); setMessage({ tone: 'success', text: t(faqBatchSuccessKey(input), { count: selected.size }) }); }
     catch (error) { setMessage({ tone: 'error', text: error instanceof Error ? error.message : t('common.error') }); }
   }
   async function updateSelectedTag() {
     if (!selected.size) return;
     const tagId = batchTag.trim() ? Number(batchTag) : null;
     if (tagId !== null && (!Number.isSafeInteger(tagId) || tagId < 0)) { setMessage({ tone: 'error', text: 'Tag ID must be a non-negative integer.' }); return; }
-    try { await faq.updateTags(knowledgeBaseId, { updates: Object.fromEntries([...selected].map((id) => [id, tagId])) }); await load(false); setBatchTag(''); setMessage({ tone: 'success', text: 'Selected FAQ tags updated.' }); }
+    try { await faq.updateTags(knowledgeBaseId, { updates: Object.fromEntries([...selected].map((id) => [id, tagId])) }); await load(false); setBatchTag(''); setMessage({ tone: 'success', text: t('knowledgeBase.tagUpdateSuccess') }); }
     catch (error) { setMessage({ tone: 'error', text: error instanceof Error ? error.message : t('common.error') }); }
   }
   async function removeMany(ids: number[]) {
-    try { await faq.removeMany(knowledgeBaseId, ids); await load(false); setMessage({ tone: 'success', text: 'Selected FAQ entries deleted.' }); }
+    try { await faq.removeMany(knowledgeBaseId, ids); await load(false); setMessage({ tone: 'success', text: t(faqDeleteSuccessKey(ids.length), { count: ids.length }) }); }
     catch (error) { setMessage({ tone: 'error', text: error instanceof Error ? error.message : t('common.error') }); }
   }
   // Vue processFile (FAQEntryManager.vue:1900): parse immediately, surface the

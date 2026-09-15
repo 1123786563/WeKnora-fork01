@@ -18,7 +18,14 @@ else nodeModule.register('data:text/javascript,' + encodeURIComponent([
 ].join('\n')), import.meta.url);
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
-const { KnowledgeDocumentDetailPage } = await import('./KnowledgeDocumentDetailPage.tsx');
+const { KnowledgeDocumentDetailPage, knowledgeTraceNodeState } = await import('./KnowledgeDocumentDetailPage.tsx');
+
+test('document trace nodes expose the same status semantics as the Vue trace surface', () => {
+  assert.equal(knowledgeTraceNodeState({ key: 'root', depth: 0, hasChildren: false, node: { status: 'failed' } }), 'failed');
+  assert.equal(knowledgeTraceNodeState({ key: 'root', depth: 0, hasChildren: false, node: { status: 'running' } }), 'running');
+  assert.equal(knowledgeTraceNodeState({ key: 'root', depth: 0, hasChildren: false, node: { status: 'completed' } }), 'done');
+  assert.equal(knowledgeTraceNodeState({ key: 'root', depth: 0, hasChildren: false, node: {} }), 'pending');
+});
 
 test('document detail uses the Vue document title-row anatomy', () => {
   const html = renderToStaticMarkup(React.createElement(KnowledgeDocumentDetailPage, {

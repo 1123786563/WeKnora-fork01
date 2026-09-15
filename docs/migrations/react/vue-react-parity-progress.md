@@ -1454,6 +1454,20 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   specific form parity, real 403/backend behavior, and iOS/Android evidence
   remain open.
 
+## 2026-09-15 Round R359 — Knowledge-base connector credential fields
+
+- Vue `DataSourceEditorDialog.vue` renders connector-specific credential fields;
+  React previously exposed one generic credentials textarea for every connector.
+- React now maps the Vue field contract for Feishu/Lark variants, Notion,
+  Yuque, Tencent IMA, GitLab, and RSS settings. Values still serialize through
+  the existing key/value payload boundary, preserving API and secret handling.
+- Live React AX for Feishu shows App ID, password App Secret, and optional Base
+  URL with Vue-derived labels/placeholders; the duplicate optional suffix was
+  also removed.
+- Web typecheck, full Web regression (963/963), and `git diff --check` passed.
+  Vue's prerequisite guide, connection-test footer, resource/strategy steps,
+  save/sync outcomes, and provider/native acceptance remain open.
+
 - **Mobile data-source connector selection:** the native editor now renders
   server-returned connector types as selectable cards with name/description,
   falling back to a text field only when the server returns no types. This
@@ -2797,3 +2811,196 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - Real browser inspection confirms the repaired React create form copy is localized, but the Vue create surface still exposes a multi-section wizard while React's underlying dialog remains a compact basic-fields form behind the shared contextual guide.
 - This is recorded as an open structural parity item; no acceptance claim is made from the matching labels alone. Full section visibility, model selection, validation, submit states, and responsive behavior remain to be implemented/verified.
+
+## 2026-09-15 Round R340 — Knowledge-base create indexing strategy contract
+
+- Added the Vue-aligned document indexing strategy section to the React create/edit dialog using the project `Checkbox` wrapper and shared Vue-derived locale keys for RAG, Wiki, and knowledge graph options.
+- Create defaults and edit hydration now preserve the backend `indexing_strategy` shape; document saves submit it at the top level, FAQ saves omit it. React also blocks document saves with no strategy and blocks RAG saves without an Embedding model, matching Vue validation semantics.
+- Validation: Web typecheck, Web full tests 937/937, and `git diff --check` passed. Browser submit/locked-edit/full multi-section wizard evidence remains open; this does not close R339's structural gap.
+
+## 2026-09-15 Round R341 — Knowledge-base editor section scaffold and shared primitive recovery
+
+- React knowledge-base create/edit now exposes a Vue-derived section rail for Basic Information and Model Configuration, moves model fields into the model section, keeps the indexing strategy in the basic section, disables type changes during edit, and preserves the existing save payload/validation contract.
+- Shared Button/Input/Select/Tab/Dropdown styling and semantic tokens were aligned in the project UI layer. The Dialog wrapper remains the project-owned focus/Escape/outside-close implementation after a Radix Portal experiment broke the current DOM test harness (`getComputedStyle`/`MutationObserver` unavailable); this keeps shadcn/Radix as an implementation substrate without leaking runtime assumptions into existing tests.
+- Validation: KB anatomy 18/18, route/auth/UI focused tests 15/15, Web typecheck and `git diff --check` passed. Full Web suite is not yet green after concurrent onboarding/settings changes; remaining failures are implementation/test-environment findings, not accepted parity.
+- Vue full editor sections (parser, storage, chunking, multimodal, ASR, graph, advanced, data source, share, activity), same-condition browser screenshots, real backend mutations, Wails and native acceptance remain open.
+
+## 2026-09-15 Round R342 — Parallel state, artifact, document and primitive regression batch
+
+- Parallel scoped repairs covered data-source forbidden/auth/not-found states and sync-log loading/retry/pagination deduplication; document/Wiki/FAQ localized operation feedback; Chat artifact drawer preview/list behavior with Esc/overlay close and persisted resizing; and shared Vue-derived button/input/select/tab/dropdown states.
+- `Dialog` and `Sheet` remain project-owned shadcn-compatible wrappers with explicit Escape, outside-close, focus restoration and keyboard focus cycling. A Radix Portal experiment was rejected after the existing DOM test host failed on missing `getComputedStyle`/`MutationObserver`; no stock Radix appearance is used as a substitute for Vue styling.
+- Validation on the integrated dirty worktree: Web tests 950/950; route/auth/UI focused tests 15/15; KB anatomy 18/18; artifact/chat focused 152/152; document/Wiki/FAQ focused 60/60; data-source focused 33/33; shared typecheck passed; Web typecheck passed; desktop typecheck and tests 2/2 passed; Embed typecheck/tests 11/11 passed; `git diff --check` passed.
+- Evidence boundaries: these are static/unit/DOM-host checks. No new authenticated real-backend mutation, same-condition Vue/React screenshot/computed-style matrix, Wails window interaction, provider success path, or native business-flow evidence was produced in this round.
+
+## 2026-09-15 Round R343 — Vue editor topology contract and chat run-state repair
+
+- Added a pure, tested React knowledge-editor section topology contract copied from `KnowledgeBaseEditorModal.vue`: group order, document-vs-FAQ visibility, create-vs-edit management sections, and stale-section fallback are now explicit in `apps/web/src/knowledge-bases/editor-sections.ts`.
+- A parallel chat pass added the localized running-session indicator and regression coverage across the supported locales; it did not claim browser, backend, Wails, or native acceptance.
+- Focused topology test: 3/3. Existing integrated evidence remains unchanged: static/unit/DOM-host checks only. Full editor section controls and save payloads, paired authenticated browser evidence, real backend mutations, Wails interaction, provider success, and native business flows remain open.
+
+## 2026-09-15 Round R344 — Integrated regression and platform typechecks
+
+- Integrated additional Chat approval-resolution and clear-confirmation seams plus localized running-session feedback. The Web suite now passes 958/958.
+- `pnpm run typecheck:web`, `pnpm run typecheck:shared`, `pnpm run typecheck:desktop`, and `git diff --check` pass on the dirty worktree.
+- This round still does not close parity acceptance: the Vue knowledge editor remains wider than the React implemented surface, and authenticated browser, real backend mutation, Wails, provider-success, and native business-flow evidence are absent.
+
+## 2026-09-15 Round R345 — Knowledge editor configuration contract and section controls
+
+- Added `apps/web/src/knowledge-bases/editor-config.ts` with Vue-derived defaults, hydration, and snake_case payload mapping for FAQ, chunking, parser rules, vector/storage bindings, multimodal, ASR, graph extraction, question generation, auto-tagging, and Wiki settings.
+- The React KB dialog now exposes real Tailwind/project-component controls for FAQ, chunking, multimodal, ASR, graph, advanced, vector-store, storage, and parser sections, with type-aware visibility and validation for FAQ index mode and multimodal model selection.
+- Focused editor model tests: 5/5; integrated Web suite: 960/960; Web/shared/desktop typechecks and `git diff --check` pass.
+- Remaining open items are explicit: datasource/share/activity still route to the existing settings surface, parser/vector/storage selection is not yet backed by live option loading in the modal, and no authenticated paired browser or mutation evidence exists.
+
+## 2026-09-15 Round R346 — Build and regression confirmation after editor expansion
+
+- Production Web build passed after adding the editor configuration controls; Vite emitted only existing large-chunk warnings.
+- Web tests remain 960/960, and Web/shared/desktop typechecks remain green.
+- The expanded editor is still not accepted as complete without live option loading for parser/vector/storage, full datasource/share/activity modal behavior, authenticated browser comparison, and real backend mutation evidence.
+
+## 2026-09-15 Round R347 — Live editor option loading
+
+- The React editor now requests parser engines, storage backends, and vector stores through the existing authenticated client settings API when the modal opens. Selectors render Vue-derived default/configured options and preserve edit-time immutability; all three endpoints degrade to the localized data-load error state independently.
+- Web typecheck: passed; Web tests: 960/960; production Web build: passed with existing large-chunk warnings.
+- Remaining evidence boundary: no authenticated browser capture or successful/failed real mutation has been executed in this round; datasource/share/activity still use the existing settings handoff rather than full in-modal Vue behavior.
+
+## 2026-09-15 Round R348 — Data source, share, and activity editor surfaces
+
+- The KB editor now mounts the existing project DataSourcesPage for the Vue `datasource` section, opens the project share dialog from the `share` section, and loads/renders activity entries through the authenticated KB activity API with loading/empty/retry states.
+- Web typecheck: passed; Web tests: 960/960; production Web build: passed with existing large-chunk warnings.
+- Remaining gap is now primarily visual/behavioral evidence: same-condition authenticated browser screenshots/computed styles, provider-backed data-source/share mutations, and Wails/native acceptance are still absent.
+
+## 2026-09-15 Round R349 — Login visual discrepancy fixed with live browser evidence
+
+- Same-window Vue/React login screenshots and accessibility trees at `:5180`/`:5181` exposed one concrete React discrepancy: the Vue password input had a trailing visibility eye while React did not.
+- React now uses a project-styled Tailwind control with keyboard-accessible toggle behavior; the control is covered by the focused login test and rechecked live in Chrome.
+- Evidence: `evidence/vue-react-parity/2026-09-15-r349-login-password-toggle-live.md`.
+- This closes only the unauthenticated login-surface discrepancy. Authenticated page parity, real mutations, Wails/native validation and remaining page-by-page matrix items remain open.
+
+## 2026-09-15 Round R350 — Knowledge-base settings overlay/navigation live repair
+
+- Real authenticated Vue/React comparison found that the list-card settings action still navigated React to a full-page settings route while Vue opens an in-place blurred editor overlay.
+- React list settings and uninitialized-card settings now open the existing project-owned `Dialog` editor in place; edit title/close semantics and section-rail native-button resets were aligned with the Vue baseline. The historical deep-link route remains available.
+- Evidence: `evidence/vue-react-parity/2026-09-15-r350-kb-settings-overlay-live.md`; Vue and React AX trees plus live screenshots were captured in the same Chrome session with the local parity fixture.
+- Focused KB anatomy tests: 18/18; `git diff --check`: passed. Save success/failure, datasource/share provider mutations, Wails, and native acceptance remain open.
+
+## 2026-09-15 Round R351 — Document processing card copy live repair
+
+- Same-condition Vue/React document detail inspection found React used the filter label `处理中` while Vue's document card uses the in-flight card copy `解析中...` for pending/processing and has a separate finalizing-summary branch.
+- React `documentStatus` now follows the Vue `DocumentCardView.vue` branch; focused document chrome tests are 17/17 and live React AX output matched Vue `解析中...` for the same processing document.
+- Evidence: `evidence/vue-react-parity/2026-09-15-r351-document-processing-copy-live.md`. Upload/parse mutation, Wails, and native acceptance remain open.
+- The same repair also replaces the generic warning paragraph with a Vue-style Tailwind spinner/trace action on in-flight cards; focused page-chrome coverage is 18/18.
+
+## 2026-09-15 Round R352 — Page-level URL import dialog live repair
+
+- Authenticated Vue/React browser comparison found that React's page-level
+  `添加文档 → 导入网页` callback set `sourceUrlDialogOpen`, but the dialog JSX
+  was incorrectly nested under the staged-file `uploadDialogOpen` branch and
+  therefore did not render.
+- Moved the React URL dialog to the page-level render branch. The staged-file
+  upload confirmation remains separate; the project Tailwind/shadcn-compatible
+  Dialog/Input wrappers and empty-URL behavior are preserved.
+- Vue and React live AX evidence both show the URL label, placeholder, helper
+  text, and cancel/confirm controls. Empty confirmation keeps the dialog open
+  without a backend write.
+- Evidence: `evidence/vue-react-parity/2026-09-15-r352-page-url-import-dialog-live.md`.
+- Focused upload/document tests: 37/37; Web typecheck and `git diff --check`
+  passed. This closes only the page-level URL-dialog rendering gap; valid URL
+  import, upload mutation, Wails, native, provider, and production acceptance
+  remain open.
+
+## 2026-09-15 Round R353 — Knowledge-base settings basic section live repair
+
+- Same-condition authenticated Vue/React inspection found three edit-state
+  differences in the in-place KB settings dialog: React omitted the edit-only
+  knowledge-base ID/API hint, had no Vue `34/200` description counter, and
+  rendered `保存修改` instead of Vue `保存并关闭`.
+- React `apps/web/src/App.tsx` now renders the ID block, enforces the Vue
+  200-character description limit with a live counter, and uses the localized
+  `knowledgeEditor.buttons.saveAndClose` edit action.
+- Vue and React AX trees now show the same basic-information controls and
+  footer copy in the local fixture. Evidence:
+  `evidence/vue-react-parity/2026-09-15-r353-kb-settings-basic-live.md`.
+- An unchanged fixture save was also submitted through the authenticated local
+  backend; React closed the dialog and reloaded the list on the success path.
+  Save failure/rollback, full visual computed-style parity, Wails/native, and
+  remaining settings sections remain open.
+
+## 2026-09-15 Round R354 — Knowledge-base share management inline repair
+
+- Vue `KBShareSettings.vue` renders share management directly inside the KB
+  settings editor. React previously exposed only a heading/description and a
+  button that opened a separate dialog.
+- React now mounts the project share component in inline mode with the Vue
+  empty/list surface, search, add-share flow, permission updates, and unshare
+  actions. Existing standalone dialog behavior remains covered.
+- Authenticated Vue/React AX comparison matched the title, description,
+  search field, share action, zero count, and empty state. Evidence:
+  `evidence/vue-react-parity/2026-09-15-r354-kb-share-inline-live.md`.
+- Share-dialog tests: 13/13. Provider mutation failure/success, Wails/native,
+  and production acceptance remain open.
+
+## 2026-09-15 Round R355 — Knowledge-base activity settings panel repair
+
+- Vue activity settings expose action/outcome filters, refresh/error/empty
+  states, cursor pagination, a table, and a right-side detail drawer. React's
+  prior surface was only a short unfiltered list.
+- Added `KnowledgeBaseActivityPanel` with the Vue-derived table/filter/load
+  states, keyboard row activation, and project Sheet detail drawer. Extended
+  the API client activity query to preserve cursor compatibility while sending
+  `action`, `outcome`, and `limit`.
+- Authenticated browser AX showed four real backend records, the filter/table
+  surface, load-more control, and the activity detail drawer. Evidence:
+  `evidence/vue-react-parity/2026-09-15-r355-kb-activity-live.md`.
+- API settings tests: 4/4; Web typecheck and diff-check passed. Full Web
+  regression/build and provider/Wails/native acceptance remain separate gates.
+
+## 2026-09-15 Round R356 — Knowledge-base data-source empty surface repair
+
+- Vue `DataSourceSettings.vue` keeps the section header free of actions and,
+  for a manager with no configured sources, renders the add action as a dashed
+  card inside the source grid. React previously rendered `暂无数据源` plus a
+  header button, which was a real empty-state and placement mismatch.
+- React `DataSourcesPage` now uses the Vue-derived section spacing and places
+  `添加数据源` in a Tailwind-styled dashed card with the Vue border, radius,
+  hover, focus, and icon treatment. Existing create/edit, API, and permission
+  behavior is unchanged.
+- Authenticated Vue/React AX comparison on the local fixture now shows the
+  same title, description, and inline add-card semantics; the fixture has no
+  data sources, so source-card and editor states remain separate follow-up
+  evidence. Evidence:
+  `evidence/vue-react-parity/2026-09-15-r356-kb-datasource-empty-live.md`.
+- Web regression: 963/963 passed; Web typecheck and `git diff --check` passed.
+  Non-empty source-card visual/action parity, connector backends, Wails/native,
+  and production acceptance remain open.
+
+## 2026-09-15 Round R357 — Knowledge-base data-source create wizard entry repair
+
+- Live Vue/React comparison after activating `添加数据源` showed that Vue
+  enters a `选择类型` wizard step, while React immediately exposed the whole
+  generic connector form.
+- React `DataSourcesPage` now keeps create mode in a type-selection step and
+  transitions to the existing form only after a connector is chosen. The
+  project Button/Card primitives and Tailwind focus/hover treatment are used;
+  edit mode remains directly on the edit form.
+- Browser AX now exposes the Vue-shaped `选择类型` heading, close action, and
+  selectable connector cards. Evidence:
+  `evidence/vue-react-parity/2026-09-15-r357-kb-datasource-create-step-live.md`.
+- Web typecheck and `git diff --check` passed. Connector filtering/iconography,
+  later wizard steps, backend mutations, Wails/native, and production
+  acceptance remain open.
+
+## 2026-09-15 Round R358 — Knowledge-base connector catalogue parity
+
+- Vue `DataSourceEditorDialog.vue` defines nine currently available create
+  connectors in a fixed order: Feishu, Lark, Feishu Drive, Lark Drive, Notion,
+  Yuque, Tencent IMA, RSS/Atom, and GitLab. React had rendered every backend
+  type, including connectors absent from the Vue wizard.
+- React now filters and orders the create cards from that Vue catalogue and
+  resolves the existing localized connector names/descriptions. The API still
+  retains the full server type response for edit/compatibility paths.
+- Live React AX now matches Vue's nine-card catalogue, order, and descriptions.
+  Evidence remains grouped with the create-step evidence:
+  `evidence/vue-react-parity/2026-09-15-r357-kb-datasource-create-step-live.md`.
+- Web typecheck and `git diff --check` passed. Icons, connector-specific
+  credential fields, resource selection, strategy step, and mutation evidence
+  remain open.
