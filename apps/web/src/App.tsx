@@ -831,7 +831,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
                   const favorited = favorites.has(card.id);
                   // flash 动画的 border 覆盖用 ! 前缀（同属性 utilities 冲突时保证胜出）
                   const cardClasses = [
-                    'kb-list-card group/card relative box-border flex h-[136px] min-h-[136px] cursor-pointer flex-col rounded-lg border p-3 shadow-[0_1px_3px_rgba(0,0,0,0.04)] transition-all duration-[250ms]',
+                    'kb-list-card group/card relative box-border flex h-[136px] min-h-[136px] cursor-pointer flex-col rounded-lg border px-[14px] py-3 shadow-[0_1px_3px_rgba(0,0,0,0.04)] transition-all duration-[250ms]',
                     isFaq
                       ? 'kb-list-card-faq border-[#e3e7ee] bg-[linear-gradient(135deg,#ffffff_0%,rgba(0,82,217,0.04)_100%)] after:pointer-events-none after:absolute after:right-0 after:top-0 after:z-0 after:h-[60px] after:w-[60px] after:rounded-[0_12px_0_100%] after:content-[""] after:bg-[linear-gradient(135deg,rgba(0,82,217,0.08)_0%,transparent_100%)] hover:border-[#0052d9] hover:shadow-[0_4px_12px_rgba(0,82,217,0.12)] hover:bg-[linear-gradient(135deg,#ffffff_0%,rgba(0,82,217,0.08)_100%)]'
                       : 'kb-list-card-document border-[#e3e7ee] bg-[linear-gradient(135deg,#ffffff_0%,rgba(7,192,95,0.04)_100%)] after:pointer-events-none after:absolute after:right-0 after:top-0 after:z-0 after:h-[60px] after:w-[60px] after:rounded-[0_12px_0_100%] after:content-[""] after:bg-[linear-gradient(135deg,rgba(7,192,95,0.08)_0%,transparent_100%)] hover:border-[#07c05f] hover:shadow-[0_4px_12px_rgba(7,192,95,0.12)] hover:bg-[linear-gradient(135deg,#ffffff_0%,rgba(7,192,95,0.08)_100%)]',
@@ -855,7 +855,7 @@ export function KnowledgeBasesPage({ client, scopeController }: KnowledgeBasesPa
                         </span>
                         <button
                           type="button"
-                          className={`kb-list-card-more flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent transition-all duration-200 group-hover/card:opacity-60 hover:bg-[#edf0f5] hover:opacity-100 hover:text-[#1d2129] ${menuFor === card.id ? 'kb-list-card-more-open bg-[#edf0f5] opacity-100 text-[#1d2129]' : 'opacity-0'}`}
+                          className={`kb-list-card-more flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent transition-all duration-200 group-hover/card:opacity-60 hover:bg-[#edf0f5] hover:opacity-100 hover:text-[#1d2129] ${menuFor === card.id ? 'kb-list-card-more-open bg-[#edf0f5] opacity-100 text-[#1d2129]' : 'opacity-0'}`}
                           aria-label={t('common.settings')}
                           aria-haspopup="menu"
                           aria-expanded={menuFor === card.id}
