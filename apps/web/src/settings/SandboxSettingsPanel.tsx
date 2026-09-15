@@ -13,7 +13,7 @@ import {
   type WeKnoraClient,
 } from '@weknora/api-client';
 import { formatMessage, type Locale } from '@weknora/i18n';
-import { Button, Card, Checkbox, Input, NumberInput, Select, Status } from '@weknora/ui';
+import { Button, Card, Checkbox, Input, NumberInput, Radio, Select, Status } from '@weknora/ui';
 import { roleAtLeast, type SettingsRole } from '../../../../packages/views/src/settings/registry.ts';
 import { useAppLocale } from '../i18n.ts';
 
@@ -1337,8 +1337,8 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
             {form.backend !== 'docker' ? (<>
               <fieldset>
                 <legend>{t('settings.sandbox.egressDefault')}</legend>
-                <label><input type="radio" checked={!form.denyEgressByDefault} onChange={() => updateForm({ denyEgressByDefault: false })} /> {t('settings.sandbox.egressAllowAll')}</label>
-                <label><input type="radio" checked={form.denyEgressByDefault} onChange={() => updateForm({ denyEgressByDefault: true })} /> {t('settings.sandbox.egressDenyAll')}</label>
+                <label><Radio name="sandbox-egress-policy" checked={!form.denyEgressByDefault} onChange={() => updateForm({ denyEgressByDefault: false })} /> {t('settings.sandbox.egressAllowAll')}</label>
+                <label><Radio name="sandbox-egress-policy" checked={form.denyEgressByDefault} onChange={() => updateForm({ denyEgressByDefault: true })} /> {t('settings.sandbox.egressDenyAll')}</label>
               </fieldset>
               <p className="wk-muted text-muted">{t('settings.sandbox.egressPrecedence')}</p>
               <div className="wk-sandbox-rows">
@@ -1498,8 +1498,8 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
             <h4>{t('settings.sandbox.skillRollout')}</h4>
             <p className="wk-muted text-muted">{t('settings.sandbox.skillRolloutHint')}</p>
             <fieldset>
-              <label><input type="radio" checked={form.skillRollout === 'next_turn'} onChange={() => updateForm({ skillRollout: 'next_turn' })} /> {t('settings.sandbox.skillRolloutNextTurn')}</label>
-              <label><input type="radio" checked={form.skillRollout === 'new_session'} onChange={() => updateForm({ skillRollout: 'new_session' })} /> {t('settings.sandbox.skillRolloutNewSession')}</label>
+              <label><Radio name="sandbox-skill-rollout" checked={form.skillRollout === 'next_turn'} onChange={() => updateForm({ skillRollout: 'next_turn' })} /> {t('settings.sandbox.skillRolloutNextTurn')}</label>
+              <label><Radio name="sandbox-skill-rollout" checked={form.skillRollout === 'new_session'} onChange={() => updateForm({ skillRollout: 'new_session' })} /> {t('settings.sandbox.skillRolloutNewSession')}</label>
             </fieldset>
           </section>
         </>) : null}

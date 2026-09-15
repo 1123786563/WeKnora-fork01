@@ -9,6 +9,7 @@ export { Switch } from './switch.tsx';
 export { Textarea } from './textarea.tsx';
 export { Select } from './select.tsx';
 export { Checkbox } from './checkbox.tsx';
+export { Radio } from './radio.tsx';
 export { Label } from './label.tsx';
 export { Badge } from './badge.tsx';
 export { Alert } from './alert.tsx';
