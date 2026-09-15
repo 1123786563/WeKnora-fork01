@@ -95,6 +95,10 @@ import {
   DOCUMENT_FILE_TYPE_OPTIONS,
   DOCUMENT_PARSE_STATUS_OPTIONS,
   DOCUMENT_SOURCE_OPTIONS,
+  FileIcon,
+  FolderIcon,
+  GridIcon,
+  ListIcon,
   type KBChromeListItem,
 } from "./DocumentsPageChrome.tsx";
 
@@ -172,7 +176,7 @@ export function DocumentCardGrid({
 }) {
   return <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3" data-document-view="grid">
     {folders.map((folder) => <button key={`folder-${folder.path}`} type="button" className="min-w-0 rounded-control border border-line-soft bg-surface p-4 text-left transition-colors hover:border-primary/40 hover:bg-surface-wash" title={folder.path} onClick={() => onOpenFolder(folder.path)}>
-      <span className="mb-3 block text-2xl" aria-hidden="true">📁</span>
+      <FolderIcon size={24} className="mb-3 text-primary" />
       <strong className="block truncate text-primary-deep">{folder.name}</strong>
       <span className="mt-1 block text-[0.8rem] text-muted">{t("knowledgeBase.folderTree.folderCardCount", { count: folder.total_count })}</span>
     </button>)}
@@ -678,7 +682,7 @@ export function UploadSourceDropdown(props: UploadSourceDropdownProps) {
               onClick={() => handleAction(item.key)}
               style={{ display: "flex", alignItems: "center", gap: "6px", padding: "6px 8px", border: "none", borderRadius: "6px", background: "transparent", cursor: "pointer", textAlign: "left", fontSize: "0.9rem" }}
             >
-              <span aria-hidden>{item.key === "file" ? "📄" : item.key === "folder" ? "📁" : item.key === "url" ? "🔗" : "✍️"}</span>
+              {item.key === "file" ? <FileIcon size={16} /> : item.key === "folder" ? <FolderIcon size={16} /> : <span aria-hidden className="text-[13px]">{item.key === "url" ? "↗" : "✎"}</span>}
               {item.label}
             </button>
           ))}
@@ -3040,8 +3044,8 @@ export function KnowledgeDocumentsPage({
               </div>
               <div className="doc-filter-bar__trailing relative z-[1] flex shrink-0 items-center gap-2 [grid-area:trailing]">
                 <div className="doc-view-toggle inline-flex items-center rounded-[6px] border border-[var(--wk-border,#e4e7ec)]" role="group" aria-label={t("knowledgeBase.viewModeToggle")}>
-                  <button type="button" className={`h-8 border-0 px-2 [font:inherit] ${viewMode === "grid" ? "bg-surface-wash text-primary-deep" : "bg-transparent text-muted"}`} aria-pressed={viewMode === "grid"} aria-label={t("knowledgeBase.viewModeGrid")} title={t("knowledgeBase.viewModeGrid")} onClick={() => setViewMode("grid")}>▦</button>
-                  <button type="button" className={`h-8 border-0 border-l border-line-soft px-2 [font:inherit] ${viewMode === "list" ? "bg-surface-wash text-primary-deep" : "bg-transparent text-muted"}`} aria-pressed={viewMode === "list"} aria-label={t("knowledgeBase.viewModeList")} title={t("knowledgeBase.viewModeList")} onClick={() => setViewMode("list")}>☷</button>
+                  <button type="button" className={`h-8 border-0 px-2 [font:inherit] ${viewMode === "grid" ? "bg-surface-wash text-primary-deep" : "bg-transparent text-muted"}`} aria-pressed={viewMode === "grid"} aria-label={t("knowledgeBase.viewModeGrid")} title={t("knowledgeBase.viewModeGrid")} onClick={() => setViewMode("grid")}><GridIcon size={16} /></button>
+                  <button type="button" className={`h-8 border-0 border-l border-line-soft px-2 [font:inherit] ${viewMode === "list" ? "bg-surface-wash text-primary-deep" : "bg-transparent text-muted"}`} aria-pressed={viewMode === "list"} aria-label={t("knowledgeBase.viewModeList")} title={t("knowledgeBase.viewModeList")} onClick={() => setViewMode("list")}><ListIcon size={16} /></button>
                 </div>
                 {canContribute ? (
                   <div className="doc-filter-actions">
