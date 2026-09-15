@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { TenantInvitation, WeKnoraClient } from '@weknora/api-client';
-import { Button, Card, Dialog, Status } from '@weknora/ui';
+import { Button, Card, Dialog, Input, Status, Textarea } from '@weknora/ui';
 import type { WebScopeRuntime } from '../platform/scope-runtime.ts';
 import { onboardingView, validateCreateTenant, type OnboardingPolicyInput } from './onboarding.ts';
 import { formatMessage, isLocale, type Locale } from '@weknora/i18n';
@@ -127,11 +127,11 @@ export function WorkspaceOnboardingPage({ client, scopeRuntime, onLogout }: Work
       <p className="wk-muted text-muted">{msg(locale, 'tenant.create.dialogSubtitle')}</p>
       <form className="wk-form mb-4 flex flex-wrap items-end gap-3" onSubmit={(event) => { event.preventDefault(); void createTenant(); }}>
         <label className="grid gap-1">{msg(locale, 'tenant.create.nameLabel')}
-          <input className="rounded-control border border-line-strong p-[0.55rem]" value={name} onChange={(event) => setName(event.target.value)} maxLength={128} autoFocus disabled={creating} placeholder={msg(locale, 'tenant.create.namePlaceholder')} />
+          <Input className="rounded-control border border-line-strong p-[0.55rem]" value={name} onChange={(event) => setName(event.target.value)} maxLength={128} autoFocus disabled={creating} placeholder={msg(locale, 'tenant.create.namePlaceholder')} />
           {(fieldErrors.name ?? []).map((key) => <Status key={key} tone="error">{msg(locale, key)}</Status>)}
         </label>
         <label className="grid gap-1">{msg(locale, 'tenant.create.descriptionLabel')}
-          <textarea className="box-border w-full resize-y px-[0.6rem] py-[0.5rem] [font:inherit]" value={description} onChange={(event) => setDescription(event.target.value)} maxLength={512} rows={3} disabled={creating} placeholder={msg(locale, 'tenant.create.descriptionPlaceholder')} />
+          <Textarea className="box-border w-full resize-y px-[0.6rem] py-[0.5rem] [font:inherit]" value={description} onChange={(event) => setDescription(event.target.value)} maxLength={512} rows={3} disabled={creating} placeholder={msg(locale, 'tenant.create.descriptionPlaceholder')} />
           {(fieldErrors.description ?? []).map((key) => <Status key={key} tone="error">{msg(locale, key)}</Status>)}
         </label>
         {createError ? <Status tone="error">{createError}</Status> : null}
