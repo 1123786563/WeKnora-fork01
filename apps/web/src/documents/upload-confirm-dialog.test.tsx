@@ -556,6 +556,8 @@ test('add-source control is a dropdown menu with file, folder and URL entries', 
   };
   const html = renderToStaticMarkup(React.createElement(UploadSourceDropdown, { ...dropdownProps, open: true }));
   assert.match(html, /aria-label="继续添加"/);
+  assert.match(html, /<svg[^>]*viewBox="0 0 24 24"/);
+  assert.doesNotMatch(html, /＋/);
   assert.match(html, /上传文档/);
   assert.match(html, /上传文件夹/);
   assert.match(html, /导入网页/);
