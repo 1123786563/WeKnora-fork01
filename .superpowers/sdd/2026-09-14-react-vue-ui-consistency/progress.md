@@ -388,3 +388,5 @@ N030/N031 native bundle update (2026-09-15): `pnpm --dir apps/mobile exec expo e
 Verification update (2026-09-15): current cross-package regression remains green after the latest parity slices: Shared 469/469, Web 895/895, Mobile 190/190, Desktop 2/2, Embed 7/7. Evidence: `evidence/vue-react-parity/2026-09-15-r115-cross-package-regression.md`. Runtime and native acceptance rows remain separately gated by the matrix.
 
 N025/N017 editor polish (2026-09-15): fixed the unterminated textarea padding utility in `ConfigurationEditor`, `ConfigurationOperations`, and `ModelDebugPanel`, restoring consistent Vue-shaped form spacing across configuration forms. Web typecheck and diff check pass. Evidence: `evidence/vue-react-parity/2026-09-15-r116-configuration-editor-spacing.md`.
+
+N017 system API-key interaction (2026-09-15): added a five-locale copy action for the one-time platform API-key token, with success state and manual-copy fallback when Clipboard API access fails. Web typecheck and diff check pass. Evidence: `evidence/vue-react-parity/2026-09-15-r117-system-api-key-copy.md`.
