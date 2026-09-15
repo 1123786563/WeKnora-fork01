@@ -9,7 +9,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ModelConfiguration, SandboxConfigRecord, SkillCatalog, WeKnoraClient } from '@weknora/api-client';
-import { Checkbox, Radio } from '@weknora/ui';
+import { Checkbox, Input, Radio, Select, Textarea } from '@weknora/ui';
 import {
   applyAgentModeSwitch,
   applyKbSelectionMode,
@@ -451,7 +451,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
             />
           </Row>
           <Row label={t('agent.editor.name')} required={!form.is_builtin} desc={t('agentEditor.desc.name')} htmlFor="wk-ae-name" error={errorMessage('name')}>
-            <input
+            <Input
               id="wk-ae-name"
               data-field="name"
               className={`wk-ae-input ${FIELD_INPUT}`}
@@ -462,7 +462,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
             />
           </Row>
           <Row label={t('agent.editor.description')} desc={t('agentEditor.desc.description')} htmlFor="wk-ae-description">
-            <textarea
+            <Textarea
               id="wk-ae-description"
               data-field="description"
               className={`wk-ae-textarea ${FIELD_TEXTAREA}`}
@@ -497,7 +497,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
             htmlFor="wk-ae-system-prompt"
             error={errorMessage('system_prompt')}
           >
-            <textarea
+            <Textarea
               id="wk-ae-system-prompt"
               data-field="system_prompt"
               className={`wk-ae-textarea ${FIELD_TEXTAREA} ${FIELD_TALL}`}
@@ -515,7 +515,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
               htmlFor="wk-ae-context-template"
               error={errorMessage('context_template')}
             >
-              <textarea
+              <Textarea
                 id="wk-ae-context-template"
                 data-field="context_template"
                 className={`wk-ae-textarea ${FIELD_TEXTAREA}`}
@@ -528,7 +528,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
           ) : null}
           {rewriteActive ? (
             <Row label={t('agent.editor.rewritePromptUser')} desc={t('agentEditor.desc.rewriteUserPrompt')} htmlFor="wk-ae-rewrite-user" error={errorMessage('rewrite_prompt_user')}>
-              <textarea
+              <Textarea
                 id="wk-ae-rewrite-user"
                 data-field="rewrite_prompt_user"
                 className={`wk-ae-textarea ${FIELD_TEXTAREA}`}
@@ -553,7 +553,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
           ) : null}
           {showFallback && form.config.fallback_strategy === 'fixed' ? (
             <Row label={t('agent.editor.fallbackResponse')} desc={t('agentEditor.desc.fallbackResponse')} htmlFor="wk-ae-fallback-response">
-              <textarea
+              <Textarea
                 id="wk-ae-fallback-response"
                 data-field="fallback_response"
                 className={`wk-ae-textarea ${FIELD_TEXTAREA}`}
@@ -565,7 +565,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
           ) : null}
           {showFallback && form.config.fallback_strategy === 'model' ? (
             <Row label={t('agent.editor.fallbackPrompt')} desc={t('agentEditor.desc.fallbackPrompt')} htmlFor="wk-ae-fallback-prompt" error={errorMessage('fallback_prompt')}>
-              <textarea
+              <Textarea
                 id="wk-ae-fallback-prompt"
                 data-field="fallback_prompt"
                 className={`wk-ae-textarea ${FIELD_TEXTAREA}`}
@@ -589,7 +589,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
         </header>
         <div className="flex flex-col gap-[18px]">
           <Row label={t('agent.editor.model')} required desc={t('agentEditor.desc.model')} error={errorMessage('model_id')} htmlFor="wk-ae-model-id">
-            <select
+            <Select
               id="wk-ae-model-id"
               data-field="model_id"
               className={`wk-ae-select ${FIELD_SELECT}`}
@@ -598,7 +598,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
             >
               <option value="">{t('agent.editor.modelPlaceholder')}</option>
               {chatModels.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
-            </select>
+            </Select>
           </Row>
           <Row label={t('agent.editor.temperature')} desc={t('agentEditor.desc.temperature')}>
             <Slider ariaLabel={t('agent.editor.temperature')} min={0} max={1} step={0.1} value={form.config.temperature}
@@ -618,7 +618,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
               }}
             />
             {maxTokensMode === 'custom' ? (
-              <input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={100} max={100000} step={100}
+              <Input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={100} max={100000} step={100}
                 data-field="max_completion_tokens"
                 value={form.config.max_completion_tokens}
                 onChange={(event) => patchConfig('max_completion_tokens', Number(event.target.value) || 0)} />
@@ -634,7 +634,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
           </Row>
           {hasKnowledgeBase ? (
             <Row label={t('agent.editor.rerankModel')} desc={t('agent.editor.rerankModelDesc')} hint={t('agent.editor.rerankModelOptionalHint')}>
-              <select
+              <Select
                 data-field="rerank_model_id"
                 className={`wk-ae-select ${FIELD_SELECT}`}
                 value={form.config.rerank_model_id}
@@ -642,12 +642,12 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
               >
                 <option value="">{t('agent.editor.rerankModelPlaceholder')}</option>
                 {rerankModels.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
-              </select>
+              </Select>
             </Row>
           ) : null}
           {quickAnswer && form.config.multi_turn_enabled && form.config.enable_rewrite ? (
             <Row label={t('agent.editor.queryUnderstandModel')} desc={t('agentEditor.desc.queryUnderstandModel')}>
-              <select
+              <Select
                 data-field="query_understand_model_id"
                 className={`wk-ae-select ${FIELD_SELECT}`}
                 value={form.config.query_understand_model_id}
@@ -655,7 +655,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
               >
                 <option value="">{t('agent.editor.queryUnderstandModelPlaceholder')}</option>
                 {chatModels.map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
-              </select>
+              </Select>
             </Row>
           ) : null}
           {isAgentMode ? (
@@ -673,7 +673,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
                 }}
               />
               {maxIterationsMode === 'limit' ? (
-                <input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={2} max={50}
+                <Input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={2} max={50}
                   data-field="max_iterations"
                   value={form.config.max_iterations}
                   onChange={(event) => patchConfig('max_iterations', Number(event.target.value) || 1)} />
@@ -682,7 +682,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
           ) : null}
           {isAgentMode ? (
             <Row label={t('agentEditor.llmCallTimeout.label')} desc={t('agentEditor.llmCallTimeout.desc')} hint={t('agentEditor.llmCallTimeout.hint')}>
-              <input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={0} max={3600}
+              <Input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={0} max={3600}
                 data-field="llm_call_timeout"
                 value={form.config.llm_call_timeout}
                 onChange={(event) => patchConfig('llm_call_timeout', Number(event.target.value) || 0)} />
@@ -709,7 +709,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
           ) : null}
           {form.config.multi_turn_enabled || isAgentMode ? (
             <Row label={t('agent.editor.historyTurns')} desc={t('agentEditor.desc.historyRounds')}>
-              <input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={1} max={100}
+              <Input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={1} max={100}
                 data-field="history_turns"
                 value={form.config.history_turns}
                 onChange={(event) => patchConfig('history_turns', Number(event.target.value) || 1)} />
@@ -789,7 +789,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
             </Row>
           ) : null}
           <Row label={t('agent.editor.embeddingTopK')} desc={t('agentEditor.desc.embeddingTopK')}>
-            <input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={1} max={50} data-field="embedding_top_k"
+            <Input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={1} max={50} data-field="embedding_top_k"
               value={form.config.embedding_top_k}
               onChange={(event) => patchConfig('embedding_top_k', Number(event.target.value) || 1)} />
           </Row>
@@ -804,7 +804,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
           {form.config.rerank_model_id ? (
             <>
               <Row label={t('agent.editor.rerankTopK')} desc={t('agentEditor.desc.rerankTopK')}>
-                <input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={1} max={20} data-field="rerank_top_k"
+                <Input type="number" className={`wk-ae-input ${FIELD_NUMBER}`} min={1} max={20} data-field="rerank_top_k"
                   value={form.config.rerank_top_k}
                   onChange={(event) => patchConfig('rerank_top_k', Number(event.target.value) || 1)} />
               </Row>
@@ -860,13 +860,13 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
           {form.config.web_search_enabled ? (
             <>
               <Row label={t('agent.editor.webSearchProvider')} desc={t('agentEditor.desc.webSearchProvider')}>
-                <select data-field="web_search_provider_id" className={`wk-ae-select ${FIELD_SELECT}`} value={form.config.web_search_provider_id}
+                <Select data-field="web_search_provider_id" className={`wk-ae-select ${FIELD_SELECT}`} value={form.config.web_search_provider_id}
                   onChange={(event) => patchConfig('web_search_provider_id', event.target.value)}>
                   <option value="">{t('agent.editor.webSearchProviderPlaceholder')}</option>
                   {deps.providers.map((provider) => (
                     <option key={provider.id} value={provider.id}>{provider.name}{provider.is_default ? ' · ' + t('common.default') : ''}</option>
                   ))}
-                </select>
+                </Select>
               </Row>
               <Row label={t('agent.editor.webSearchMaxResults')} desc={t('agentEditor.desc.webSearchMaxResults')}>
                 <Slider ariaLabel={t('agent.editor.webSearchMaxResults')} min={1} max={10} step={1} value={form.config.web_search_max_results}
@@ -972,11 +972,11 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
         </header>
         <div className="flex flex-col gap-[18px]">
           <Row label={t('agent.editor.sandboxBackend')} desc={t('agent.editor.sandboxBackendHint')}>
-            <select data-field="sandbox_config_id" className={`wk-ae-select ${FIELD_SELECT}`} value={form.config.sandbox_config_id}
+            <Select data-field="sandbox_config_id" className={`wk-ae-select ${FIELD_SELECT}`} value={form.config.sandbox_config_id}
               onChange={(event) => patchConfig('sandbox_config_id', event.target.value)}>
               <option value="">{t('agent.editor.sandboxBackendDefault')}</option>
               {sandboxOptions.map((cfg) => <option key={cfg.id} value={cfg.id}>{cfg.name}</option>)}
-            </select>
+            </Select>
             {sandboxOptions.length === 0 ? <p className="m-0 mt-1 text-[12px] text-[var(--td-text-color-secondary,rgba(0,0,0,0.6))]">{t('agent.editor.sandboxNoConfigs')}</p> : null}
           </Row>
           <Row label={t('agent.editor.skillsSelection')} desc={t('agent.editor.skillsSelectionDesc')}>
