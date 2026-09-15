@@ -1,5 +1,11 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-15 Round N+91 — N016 MCP 编辑抽屉 header
+
+- 对照 Vue `McpServiceDialog.vue`，React 编辑抽屉补齐 transport 图标、标题/副标题横向 header、独立步骤条及 SSE/HTTP Streamable 颜色；保留关闭、校验、步骤和保存行为。
+- MCP 专项 13/13、`pnpm typecheck:web`、`git diff --check` 通过；证据：`evidence/vue-react-parity/2026-09-15-n016-mcp-drawer-header.md`。
+- N016 仍需认证浏览器 computed-style/截图、抽屉 resize 行为、真实 MCP 流程和 Wails/native 证据。
+
 ## 2026-09-15 Round N+90 — N016 MCP 卡片 footer metadata
 
 - 将 MCP 卡片 footer 对齐 Vue：工具/同步信息与 transport 类型归入左侧 metadata 组，启用状态保持独立右侧控件，stale 状态保留警告色。

@@ -32,6 +32,14 @@ function McpCardIcon({ name, size = 14 }: { name: "tools" | "edit" | "delete" | 
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths}</svg>;
 }
 
+function McpTransportIcon({ transport }: { transport: "sse" | "http-streamable" }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {transport === "sse" ? <><path d="M5 12h14" /><path d="M8 8c2.5-2.5 5.5-2.5 8 0" /><path d="M8 16c2.5 2.5 5.5 2.5 8 0" /></> : <><path d="M5 12h14" /><path d="m13 6 6 6-6 6" /><path d="M5 6h3" /><path d="M5 18h3" /></>}
+    </svg>
+  );
+}
+
 type McpService = McpConfiguration & {
   description?: string;
   usage_instructions?: string;
@@ -872,22 +880,20 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
             aria-modal="true"
             aria-label={draft.id ? t("mcpServiceDialog.editTitle") : t("mcpServiceDialog.addTitle")}
           >
-            <div className="wk-settings-panel-heading relative -mx-[18px] box-border flex h-[104px] shrink-0 flex-col gap-0 border-b border-[#eef1f5] mb-0 max-[720px]:flex-col sticky top-0 z-[1] bg-white px-[18px] pb-3 pt-[14px]">
-              <div className="min-w-0">
-                <h3 className="m-0 text-[15px] font-semibold leading-[21px]">{draft.id ? t("mcpServiceDialog.editTitle") : t("mcpServiceDialog.addTitle")}</h3>
-                <p className="wk-muted text-muted m-0 flex items-center gap-2 text-[12px] leading-[18px]">
-                  {draft.transportType === "http-streamable" ? "HTTP Streamable" : "SSE"}
-                  <span
-                    className={
-                      draft.enabled
-                        ? mcpBadgeOk
-                        : mcpBadgeMuted
-                    }
-                  >
-                    {draft.enabled ? t("mcpSettings.enabled") : t("mcpSettings.disabled")}
-                  </span>
-                </p>
-                <nav className="mt-[7px] flex h-6 items-center gap-2" aria-label={t("mcpMetadata.setupProgress")}>
+            <div className="wk-settings-panel-heading relative -mx-[18px] box-border flex h-[104px] shrink-0 flex-col gap-2 border-b border-[#eef1f5] mb-0 max-[720px]:flex-col sticky top-0 z-[1] bg-white px-[18px] pb-3 pt-[14px]">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <span className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] ${draft.transportType === "http-streamable" ? "bg-[rgba(0,82,217,.1)] text-[#0052d9]" : "bg-[rgba(17,128,83,.12)] text-[#118053]"}`} aria-hidden="true"><McpTransportIcon transport={draft.transportType === "http-streamable" ? "http-streamable" : "sse"} /></span>
+                <div className="flex min-w-0 flex-1 flex-col gap-px">
+                  <h3 className="m-0 overflow-hidden text-ellipsis whitespace-nowrap text-[15px] font-semibold leading-[21px]">{draft.id ? t("mcpServiceDialog.editTitle") : t("mcpServiceDialog.addTitle")}</h3>
+                  <p className="wk-muted text-muted m-0 flex items-center gap-2 text-[12px] leading-[18px]">
+                    {draft.transportType === "http-streamable" ? "HTTP Streamable" : "SSE"}
+                    <span className={draft.enabled ? mcpBadgeOk : mcpBadgeMuted}>
+                      {draft.enabled ? t("mcpSettings.enabled") : t("mcpSettings.disabled")}
+                    </span>
+                  </p>
+                </div>
+              </div>
+              <nav className="flex h-6 items-center gap-2" aria-label={t("mcpMetadata.setupProgress")}>
                   <button
                     type="button"
                     className={`${mcpStepButton} flex-1 text-[13px] font-medium ${step === 0 ? "text-[#07c05f]!" : step > 0 ? "text-[#506078]!" : ""}`}
@@ -912,8 +918,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                     <span className={`inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold leading-none ${step === 1 ? "border-[#07c05f] bg-[#07c05f] text-white" : "border-[#cbd5e1] text-[#98a2b8]"}`}>2</span>
                     <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{t("mcpMetadata.toolsAndUsage")}</span>
                   </button>
-                </nav>
-              </div>
+              </nav>
               <Button
                 type="button"
                 className="absolute right-0 top-[14px]"
