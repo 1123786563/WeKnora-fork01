@@ -247,10 +247,16 @@ function skeletonCard(key: string) {
 }
 
 type ToastState = { tone: 'success' | 'error'; text: string } | null;
+type DetailFeedKey = 'members' | 'requests' | 'shares' | 'agents';
+type DetailFeedState = { status: 'idle' | 'loading' | 'ready' | 'error'; message?: string };
+const idleDetailFeeds: Record<DetailFeedKey, DetailFeedState> = {
+  members: { status: 'idle' }, requests: { status: 'idle' }, shares: { status: 'idle' }, agents: { status: 'idle' },
+};
 
 export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnoraClient; inviteCode?: string; role?: OrganizationSpaceRole }) {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
+  const [listError, setListError] = useState('');
   const [toast, setToast] = useState<ToastState>(null);
   const [selection, setSelectionState] = useState<SpaceSelection>(readScopeFromUrl);
   const [collapsedSections, setCollapsedSections] = useState<Set<OrgSectionKey>>(new Set());
@@ -269,6 +275,13 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   const [members, setMembers] = useState<OrganizationMember[]>([]);
   const [requests, setRequests] = useState<OrganizationJoinRequest[]>([]);
   const [sharedResources, setSharedResources] = useState<Array<Record<string, unknown>>>([]);
+  const [sharedAgents, setSharedAgents] = useState<Array<Record<string, unknown>>>([]);
+  const [detailFeeds, setDetailFeeds] = useState<Record<DetailFeedKey, DetailFeedState>>(idleDetailFeeds);
+  const [memberInviteQuery, setMemberInviteQuery] = useState('');
+  const [memberInviteCandidates, setMemberInviteCandidates] = useState<Array<Record<string, unknown>>>([]);
+  const [memberInviteRole, setMemberInviteRole] = useState<'admin' | 'editor' | 'viewer'>('viewer');
+  const [memberInviteLoading, setMemberInviteLoading] = useState(false);
+  const [memberInviteSaving, setMemberInviteSaving] = useState<string | null>(null);
   const [inviteLink, setInviteLink] = useState('');
   const [upgradeRole, setUpgradeRole] = useState<'admin' | 'editor' | 'viewer'>('editor');
   const [upgradeNote, setUpgradeNote] = useState('');
@@ -333,11 +346,11 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
     }).catch(() => {
       // Identity unavailable (embedded/test mounts): keep the legacy
       // permissive UI; the server still rejects unauthorized writes.
-      if (active) setResolvedCanManage(true);
+      if (active) setResolvedCanManage(false);
     });
     return () => { active = false; };
   }, [client, role]);
-  const canManageOrg = resolvedCanManage ?? true;
+  const canManageOrg = resolvedCanManage ?? false;
   const writeGuardTitle = t(locale, 'organization.rbac.needTenantAdminTip');
 
   // Vue ListSpaceSidebar v-model="spaceSelection": rail clicks mirror the
@@ -373,6 +386,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
 
   async function load() {
     setLoading(true);
+    setListError('');
     try {
       const result = await organizationsApi.list();
       setOrganizations(result.items);
@@ -380,22 +394,31 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
         const next = result.items.find((item) => item.id === settingsOrg.id);
         if (next) setSettingsOrg(next);
       }
-    } catch (reason) { showToast('error', errorText(reason, t(locale, 'organization.deleteFailed'))); }
+    } catch (reason) { setListError(errorText(reason, t(locale, 'common.error'))); }
     finally { setLoading(false); }
   }
   useEffect(() => { void load(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [client]);
 
   async function loadOrganizationDetail(id: string) {
-    // Same three feeds the legacy React page loaded on select(); failures keep
-    // server state untouched and surface as toasts.
-    const [membersResult, requestsResult, sharesResult] = await Promise.allSettled([
+    setDetailFeeds({ members: { status: 'loading' }, requests: { status: 'loading' }, shares: { status: 'loading' }, agents: { status: 'loading' } });
+    const [membersResult, requestsResult, sharesResult, agentsResult] = await Promise.allSettled([
       organizationsApi.members.list(id),
       organizationsApi.joinRequests.list(id),
       organizationsApi.knowledgeBaseShares.listForOrganization(id),
+      organizationsApi.agentShares.listForOrganization(id),
     ]);
-    if (membersResult.status === 'fulfilled') setMembers(membersResult.value.items); else showToast('error', errorText(membersResult.reason, t(locale, 'organization.memberRemoveFailed')));
+    const feedState = (result: PromiseSettledResult<unknown>, fallback: string): DetailFeedState => result.status === 'fulfilled'
+      ? { status: 'ready' } : { status: 'error', message: errorText(result.reason, fallback) };
+    setDetailFeeds({
+      members: feedState(membersResult, t(locale, 'organization.memberRemoveFailed')),
+      requests: feedState(requestsResult, t(locale, 'organization.settings.reviewFailed')),
+      shares: feedState(sharesResult, t(locale, 'organization.settings.removeShareFailed')),
+      agents: feedState(agentsResult, t(locale, 'organization.settings.removeShareFailed')),
+    });
+    if (membersResult.status === 'fulfilled') setMembers(membersResult.value.items);
     if (requestsResult.status === 'fulfilled') setRequests(requestsResult.value.items);
     if (sharesResult.status === 'fulfilled') setSharedResources(sharesResult.value.items);
+    if (agentsResult.status === 'fulfilled') setSharedAgents(agentsResult.value.items);
   }
 
   function openCreateModal() {
@@ -408,7 +431,8 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   function openSettingsModal(org: Organization) {
     setSettingsMode('edit'); setSettingsOrg(org); setSettingsSection('basic');
     setFormName(org.name); setFormDescription(strOf(org.description));
-    setInviteLink(''); setMembers([]); setRequests([]); setSharedResources([]);
+    setInviteLink(''); setMembers([]); setRequests([]); setSharedResources([]); setSharedAgents([]); setDetailFeeds(idleDetailFeeds);
+    setMemberInviteQuery(''); setMemberInviteCandidates([]); setMemberInviteRole('viewer');
     setSettingsOpen(true);
     void loadOrganizationDetail(org.id);
   }
@@ -503,10 +527,10 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
 
   async function submitCreate(event?: React.FormEvent<HTMLFormElement>) {
     event?.preventDefault();
-    if (!formName.trim()) return;
+    if (!canManageOrg || !formName.trim()) return;
     setSaving(true);
     try {
-      await organizationsApi.create({ name: formName.trim(), description: formDescription, ...(formAvatar ? { avatar: formAvatar } : {}) });
+      await organizationsApi.create({ name: formName.trim(), description: formDescription.trim(), ...(formAvatar ? { avatar: formAvatar } : {}) });
       setSettingsOpen(false); setFormName(''); setFormDescription('');
       setFormAvatar(''); setAvatarPickerOpen(false);
       await load();
@@ -517,10 +541,10 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
 
   async function submitBasic(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!settingsOrg || !formName.trim()) return;
+    if (!settingsOrg || !settingsCanManage || !formName.trim()) return;
     setSaving(true);
     try {
-      await organizationsApi.update(settingsOrg.id, { name: formName.trim(), description: formDescription });
+      await organizationsApi.update(settingsOrg.id, { name: formName.trim(), description: formDescription.trim() });
       await load();
       showToast('success', t(locale, 'organization.roleUpdated'));
     } catch (reason) { showToast('error', errorText(reason, t(locale, 'organization.roleUpdateFailed'))); }
@@ -528,7 +552,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   }
 
   async function updateMemberRole(member: OrganizationMember, nextRole: 'admin' | 'editor' | 'viewer') {
-    if (!settingsOrg) return;
+    if (!settingsOrg || !settingsCanManage || member.tenant_id === settingsOrg.owner_tenant_id || member.user_id === settingsOrg.owner_id) return;
     try {
       await organizationsApi.members.updateRole(settingsOrg.id, member.tenant_id, { role: nextRole });
       await loadOrganizationDetail(settingsOrg.id);
@@ -537,7 +561,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   }
 
   async function removeMember(member: OrganizationMember) {
-    if (!settingsOrg) return;
+    if (!settingsOrg || !settingsCanManage || member.tenant_id === settingsOrg.owner_tenant_id || member.user_id === settingsOrg.owner_id) return;
     if (!window.confirm(t(locale, 'organization.detail.removeMemberConfirm', { name: member.tenant_name ?? member.username }))) return;
     try {
       await organizationsApi.members.remove(settingsOrg.id, member.tenant_id);
@@ -547,7 +571,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   }
 
   async function reviewRequest(request: OrganizationJoinRequest, approved: boolean) {
-    if (!settingsOrg) return;
+    if (!settingsOrg || !settingsCanManage) return;
     try {
       await organizationsApi.joinRequests.review(settingsOrg.id, request.id, { approved, role: requestedRoleOf(request) });
       await loadOrganizationDetail(settingsOrg.id);
@@ -563,6 +587,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
         await organizationsApi.leave(org.id);
         showToast('success', t(locale, 'organization.leaveSuccess'));
       } else {
+        if (!canManageOrg || !isOwnerOf(org)) return;
         await organizationsApi.remove(org.id);
         showToast('success', t(locale, 'organization.deleteSuccess'));
       }
@@ -576,7 +601,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   }
 
   async function generateInviteLink() {
-    if (!settingsOrg) return;
+    if (!settingsOrg || !settingsCanManage) return;
     try {
       const { inviteCode: code } = await organizationsApi.generateInviteCode(settingsOrg.id);
       const link = buildInviteLink(code, { origin: window.location.origin, pathname: window.location.pathname, search: window.location.search });
@@ -587,10 +612,50 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   }
 
   async function unshareKnowledgeBase(row: ReturnType<typeof sharedResourceRow>) {
-    if (!settingsOrg) return;
+    if (!settingsOrg || !settingsCanManage) return;
     if (!window.confirm(t(locale, 'organization.settings.removeShareConfirm', { name: row.name }))) return;
     try {
       await organizationsApi.knowledgeBaseShares.remove(row.knowledgeBaseId, row.shareId);
+      await loadOrganizationDetail(settingsOrg.id);
+      showToast('success', t(locale, 'organization.settings.removeShareSuccess'));
+    } catch (reason) { showToast('error', errorText(reason, t(locale, 'organization.settings.removeShareFailed'))); }
+  }
+
+  async function searchMemberInviteCandidates(query: string) {
+    setMemberInviteQuery(query);
+    if (!settingsOrg || query.trim().length < 2) { setMemberInviteCandidates([]); return; }
+    setMemberInviteLoading(true);
+    try {
+      const rows = await organizationsApi.searchTenantsForInvite(settingsOrg.id, query.trim(), 10);
+      setMemberInviteCandidates(rows as unknown as Array<Record<string, unknown>>);
+    } catch (reason) {
+      setMemberInviteCandidates([]);
+      showToast('error', errorText(reason, t(locale, 'organization.addMember.failed')));
+    } finally { setMemberInviteLoading(false); }
+  }
+
+  async function inviteMember(candidate: Record<string, unknown>) {
+    if (!settingsOrg || !settingsCanManage) return;
+    const tenantId = typeof candidate.tenant_id === 'number' ? candidate.tenant_id : Number(candidate.tenant_id);
+    if (!Number.isSafeInteger(tenantId)) return;
+    const candidateId = String(candidate.tenant_id);
+    setMemberInviteSaving(candidateId);
+    try {
+      await organizationsApi.inviteMember(settingsOrg.id, { tenant_id: tenantId, representative_user_id: strOf(candidate.representative_user_id), role: memberInviteRole });
+      setMemberInviteCandidates((rows) => rows.filter((row) => String(row.tenant_id) !== candidateId));
+      await loadOrganizationDetail(settingsOrg.id);
+      showToast('success', t(locale, 'organization.addMember.success'));
+    } catch (reason) { showToast('error', errorText(reason, t(locale, 'organization.addMember.failed'))); }
+    finally { setMemberInviteSaving(null); }
+  }
+
+  async function unshareAgent(agent: Record<string, unknown>) {
+    if (!settingsOrg || !settingsCanManage) return;
+    const agentId = strOf(agent.agent_id);
+    const shareId = strOf(agent.id) || strOf(agent.share_id);
+    if (!agentId || !shareId || !window.confirm(t(locale, 'organization.settings.removeShareConfirm', { name: strOf(agent.agent_name) || strOf(agent.name) || agentId }))) return;
+    try {
+      await organizationsApi.agentShares.remove(agentId, shareId);
       await loadOrganizationDetail(settingsOrg.id);
       showToast('success', t(locale, 'organization.settings.removeShareSuccess'));
     } catch (reason) { showToast('error', errorText(reason, t(locale, 'organization.settings.removeShareFailed'))); }
@@ -740,6 +805,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
     ['members', 'organization.members.listTitle'],
     ['requests', 'organization.joinRequests.listTitle'],
     ['shares', 'organization.sharedResources.kbListTitle'],
+    ['agents', 'organization.sharedResources.agentListTitle'],
     ['invite', 'organization.settings.inviteLink'],
   ];
   // Vue OrganizationSettingsModal.isAdmin requires both organization-level
@@ -749,6 +815,12 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   const settingsOrgAdmin = settingsMode === 'create' || Boolean(settingsOrg && (settingsOrg.is_owner === true || settingsOrg.my_role === 'admin'));
   const settingsCanManage = canManageOrg && settingsOrgAdmin;
   const showSettingsRoleHint = settingsMode === 'edit' && settingsOrgAdmin && !canManageOrg;
+  const feedStatus = (key: DetailFeedKey, fallback: string) => {
+    const state = detailFeeds[key];
+    if (state.status === 'loading') return <p className={ORG_EMPTY_INLINE}>{t(locale, 'common.loading')}</p>;
+    if (state.status === 'error') return <div className="flex flex-col items-start gap-[8px] rounded-[8px] bg-[rgba(213,73,65,0.08)] px-[12px] py-[10px] text-[13px] text-[#d54941]" role="alert"><span>{state.message || fallback}</span><button type="button" className={ORG_BTN_OUTLINE} onClick={() => { if (settingsOrg) void loadOrganizationDetail(settingsOrg.id); }}>{t(locale, 'common.retry')}</button></div>;
+    return null;
+  };
 
   // .wk-page .wk-org-page → utilities: the org page cancels the shared
   // page gutter (max-width/padding !important) and fills the shell height.
@@ -794,6 +866,12 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
           <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto py-[8px]">
             {loading && organizations.length === 0 ? (
               <div className={ORG_CARD_WRAP}>{[1, 2, 3, 4].map((n) => skeletonCard('skel-' + n))}</div>
+            ) : listError ? (
+              <div className="flex flex-col items-center justify-center px-[20px] py-[60px] text-center" role="alert">
+                <IconInfoCircle size={24} />
+                <p className="m-0 mt-[12px] text-[14px] text-[#d54941]">{listError}</p>
+                <button type="button" className={ORG_BTN_OUTLINE + ' mt-[16px]'} onClick={() => void load()}>{t(locale, 'common.retry')}</button>
+              </div>
             ) : ordered.length === 0 ? (
               <div className="flex flex-1 flex-col items-center justify-center px-[20px] py-[60px]">
                 <img className="h-[162px] w-[162px] mb-[20px]" src={emptyIllustration} alt="" />
@@ -899,25 +977,30 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                     <>
                       <h2 className={ORG_SECTION_TITLE}>{t(locale, 'organization.members.listTitle')}</h2>
                       <p className={ORG_SECTION_DESC}>{t(locale, 'organization.settings.membersDesc')}</p>
-                      {members.length === 0 ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'organization.noMembers')}</p> : members.map((member) => (
+                      {settingsCanManage ? <div className="mb-[16px] rounded-[8px] border border-[#e7e7ea] bg-[#f9f9f9] p-[12px]"><div className="mb-[8px] flex items-center justify-between gap-[12px]"><strong className="text-[14px]">{t(locale, 'organization.addMember.button')}</strong><Select className={ORG_FIELD + ' min-h-[30px] w-[116px]!'} aria-label={t(locale, 'organization.addMember.selectRole')} value={memberInviteRole} onChange={(event) => setMemberInviteRole(event.target.value as 'admin' | 'editor' | 'viewer')}>{roleOptions.map(([value, labelKey]) => <option key={value} value={value}>{t(locale, labelKey)}</option>)}</Select></div><Input className={ORG_FIELD + ' min-h-[34px]'} aria-label={t(locale, 'organization.addMember.searchTenant')} value={memberInviteQuery} onChange={(event) => void searchMemberInviteCandidates(event.target.value)} placeholder={t(locale, 'organization.addMember.searchTenantPlaceholder')} />{memberInviteLoading ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'common.loading')}</p> : memberInviteCandidates.map((candidate) => <div key={String(candidate.tenant_id)} className={ORG_MEMBER_ROW}><div className={ORG_MEMBER_COPY}><strong className="text-[13px]">{strOf(candidate.tenant_name)}</strong><span className="text-[12px] text-[rgba(23,26,29,0.6)]">{strOf(candidate.representative_username) || strOf(candidate.representative_email)}</span></div><button type="button" className={ORG_BTN_OUTLINE} disabled={memberInviteSaving === String(candidate.tenant_id)} onClick={() => void inviteMember(candidate)}>{t(locale, 'organization.addMember.confirmBtn')}</button></div>)}</div> : null}
+                      {feedStatus('members', t(locale, 'organization.memberRemoveFailed'))}
+                      {detailFeeds.members.status === 'ready' && members.length === 0 ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'organization.noMembers')}</p> : null}
+                      {detailFeeds.members.status === 'ready' ? members.map((member) => (
                         <div key={member.id} className={ORG_MEMBER_ROW}>
                           <div className={ORG_MEMBER_COPY}>
                             <strong className="text-[14px] font-semibold text-[rgba(23,26,29,0.92)]">{member.tenant_name ?? member.username}</strong>
                             <span className="text-[12px] text-[rgba(23,26,29,0.6)]">{member.email} · {t(locale, 'organization.role.' + member.role)}</span>
                           </div>
                           <div className={ORG_ROW_ACTIONS}>
-                            <Select className={ORG_FIELD + ' min-h-[30px] w-[116px]!'} aria-label={t(locale, 'organization.members.columns.role')} value={member.role} disabled={!settingsCanManage} onChange={(event) => void updateMemberRole(member, event.target.value as 'admin' | 'editor' | 'viewer')}>
+                            <Select className={ORG_FIELD + ' min-h-[30px] w-[116px]!'} aria-label={t(locale, 'organization.members.columns.role')} value={member.role} disabled={!settingsCanManage || member.tenant_id === settingsOrg?.owner_tenant_id || member.user_id === settingsOrg?.owner_id} onChange={(event) => void updateMemberRole(member, event.target.value as 'admin' | 'editor' | 'viewer')}>
                               {roleOptions.map(([value, labelKey]) => <option key={value} value={value}>{t(locale, labelKey)}</option>)}
                             </Select>
-                            {settingsCanManage ? <button type="button" className={ORG_BTN_NEUTRAL} onClick={() => void removeMember(member)}>{t(locale, 'common.remove')}</button> : null}
+                            {settingsCanManage && member.tenant_id !== settingsOrg?.owner_tenant_id && member.user_id !== settingsOrg?.owner_id ? <button type="button" className={ORG_BTN_NEUTRAL} onClick={() => void removeMember(member)}>{t(locale, 'common.remove')}</button> : null}
                           </div>
                         </div>
-                      ))}
+                      )) : null}
                     </>
                   ) : settingsSection === 'requests' ? (
                     <>
                       <h2 className={ORG_SECTION_TITLE}>{t(locale, 'organization.joinRequests.listTitle')}</h2>
-                      {requests.filter((request) => request.status === 'pending').length === 0 ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'organization.settings.noPendingRequests')}</p> : requests.filter((request) => request.status === 'pending').map((request) => (
+                      {feedStatus('requests', t(locale, 'organization.settings.reviewFailed'))}
+                      {detailFeeds.requests.status === 'ready' && requests.filter((request) => request.status === 'pending').length === 0 ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'organization.settings.noPendingRequests')}</p> : null}
+                      {detailFeeds.requests.status === 'ready' ? requests.filter((request) => request.status === 'pending').map((request) => (
                         <div key={request.id} className={ORG_MEMBER_ROW}>
                           <div className={ORG_MEMBER_COPY}>
                             <strong className="text-[14px] font-semibold text-[rgba(23,26,29,0.92)]">{request.username}</strong>
@@ -927,12 +1010,14 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                             {settingsCanManage ? <><button type="button" className={ORG_BTN_OUTLINE} onClick={() => void reviewRequest(request, true)}>{t(locale, 'organization.settings.approve')}</button><button type="button" className={ORG_BTN_NEUTRAL} onClick={() => void reviewRequest(request, false)}>{t(locale, 'organization.settings.reject')}</button></> : null}
                           </div>
                         </div>
-                      ))}
+                      )) : null}
                     </>
                   ) : settingsSection === 'shares' ? (
                     <>
                       <h2 className={ORG_SECTION_TITLE}>{t(locale, 'organization.sharedResources.kbListTitle')}</h2>
-                      {sharedResources.length === 0 ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'organization.settings.noSharedKB')}</p> : sharedResources.map((resource, index) => {
+                      {feedStatus('shares', t(locale, 'organization.settings.removeShareFailed'))}
+                      {detailFeeds.shares.status === 'ready' && sharedResources.length === 0 ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'organization.settings.noSharedKB')}</p> : null}
+                      {detailFeeds.shares.status === 'ready' ? sharedResources.map((resource, index) => {
                         const row = sharedResourceRow(resource);
                         return (
                           <div key={row.shareId || index} className={ORG_MEMBER_ROW}>
@@ -947,7 +1032,15 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                             ) : null}
                           </div>
                         );
-                      })}
+                      }) : null}
+                    </>
+                  ) : settingsSection === 'agents' ? (
+                    <>
+                      <h2 className={ORG_SECTION_TITLE}>{t(locale, 'organization.sharedResources.agentListTitle')}</h2>
+                      <p className={ORG_SECTION_DESC}>{t(locale, 'organization.settings.sharedAgentsDesc')}</p>
+                      {feedStatus('agents', t(locale, 'organization.settings.removeShareFailed'))}
+                      {detailFeeds.agents.status === 'ready' && sharedAgents.length === 0 ? <p className={ORG_EMPTY_INLINE}>{t(locale, 'organization.settings.noSharedAgents')}</p> : null}
+                      {detailFeeds.agents.status === 'ready' ? sharedAgents.map((agent, index) => <div key={strOf(agent.id) || index} className={ORG_MEMBER_ROW}><div className={ORG_MEMBER_COPY}><strong className="text-[14px] font-semibold text-[rgba(23,26,29,0.92)]">{strOf(agent.agent_name) || strOf(agent.name) || strOf(agent.agent_id)}</strong><span className="text-[12px] text-[rgba(23,26,29,0.6)]">{strOf(agent.permission) || t(locale, 'organization.sharedResources.columns.permission')}</span></div>{settingsCanManage && strOf(agent.agent_id) && (strOf(agent.id) || strOf(agent.share_id)) ? <button type="button" className={ORG_BTN_NEUTRAL} onClick={() => void unshareAgent(agent)}>{t(locale, 'organization.share.unshareAction')}</button> : null}</div>) : null}
                     </>
                   ) : (
                     <>
