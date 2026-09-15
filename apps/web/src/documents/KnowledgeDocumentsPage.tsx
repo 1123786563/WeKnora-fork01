@@ -187,19 +187,26 @@ export function DocumentCardGrid({
     {items.map((document) => {
       const status = documentStatus(document, t);
       const actions = documentRowActions(document.parse_status);
-      return <article key={document.id} className="min-w-0 rounded-control border border-line-soft bg-surface p-4 shadow-[0_1px_2px_rgb(16_24_40/4%)] transition-shadow hover:shadow-[0_4px_12px_rgb(16_24_40/10%)]">
-        <div className="mb-3 flex items-start justify-between gap-2">
-          <Checkbox type="checkbox" checked={selected.has(document.id)} onChange={(event) => onToggle(document.id, event.target.checked)} aria-label={t("knowledgeBase.documents.select", { name: displayName(document) })} />
-          <Status tone={status.tone}>{status.label}</Status>
+      return <article key={document.id} className="flex h-[136px] min-w-[240px] flex-col overflow-hidden rounded-[8px] border border-line-soft bg-surface p-0 shadow-[0_1px_2px_rgb(0_0_0/6%)] transition-[border-color,box-shadow,background-color] duration-200 hover:border-primary/40 hover:shadow-[0_4px_14px_rgb(0_0_0/7%)]">
+        <div className="flex min-h-0 flex-1 flex-col px-[14px] pb-2 pt-[10px]">
+          <div className="mb-[6px] flex h-6 shrink-0 items-start gap-0">
+            <Checkbox type="checkbox" checked={selected.has(document.id)} onChange={(event) => onToggle(document.id, event.target.checked)} aria-label={t("knowledgeBase.documents.select", { name: displayName(document) })} />
+            <button type="button" className="min-w-0 flex-1 truncate border-0 bg-transparent p-0 text-left text-[14px] font-semibold leading-6 tracking-[.01em] text-primary-deep hover:underline" onClick={() => onOpen(document)} title={displayName(document)}>{displayName(document)}</button>
+            <Status tone={status.tone}>{status.label}</Status>
+          </div>
+          <p className="m-0 line-clamp-2 min-h-0 flex-1 overflow-hidden text-[12px] font-normal leading-[19px] text-muted">{document.summary_status === "processing" ? t("knowledgeBase.generatingSummary") : typeof document.description === "string" ? document.description : document.folder_path ?? t("knowledgeBase.documents.root")}</p>
         </div>
-        <button type="button" className="mb-2 block w-full truncate border-0 bg-transparent p-0 text-left text-primary-deep [font:inherit] [font-weight:650]! hover:underline" onClick={() => onOpen(document)} title={displayName(document)}>{displayName(document)}</button>
-        <p className="m-0 min-h-10 truncate text-[0.8rem] text-muted">{document.folder_path || t("knowledgeBase.documents.root")}{document.file_type ? ` · ${document.file_type}` : ""}</p>
-        {documentTags(document).length > 0 ? <DocumentTagChips tags={documentTags(document)} /> : null}
-        {canContribute ? <div className="mt-3 flex flex-wrap gap-2 border-t border-line-soft pt-3">
-          <Button type="button" onClick={() => onTagEdit(document)}>{t("knowledgeBase.tagLabel")}</Button>
-          {actions.canReparse && !actions.canCancelParse ? <Button type="button" onClick={() => onReparse(document)}>{t("knowledgeBase.documents.reparse")}</Button> : null}
-          {actions.canCancelParse ? <Button type="button" onClick={() => onCancelParse(document)}>{t("knowledgeBase.documents.cancelParse")}</Button> : null}
-        </div> : null}
+        <div className="flex h-8 shrink-0 items-center justify-between gap-2 border-t border-line-soft bg-surface px-[14px]">
+          <button type="button" className="min-w-0 max-w-[60%] truncate border-0 bg-transparent p-0 text-left text-[12px] text-muted hover:text-primary" title={document.folder_path || t("knowledgeBase.documents.root")} onClick={(event) => { event.stopPropagation(); if (document.folder_path) onOpenFolder(document.folder_path); }}>{document.folder_path || t("knowledgeBase.documents.root")}</button>
+          <div className="flex min-w-0 items-center justify-end gap-1 overflow-hidden" onClick={(event) => event.stopPropagation()}>
+            {documentTags(document).length > 0 ? <DocumentTagChips tags={documentTags(document)} /> : null}
+            {canContribute ? <div className="flex shrink-0 items-center gap-1">
+              <Button type="button" onClick={() => onTagEdit(document)}>{t("knowledgeBase.tagLabel")}</Button>
+              {actions.canReparse && !actions.canCancelParse ? <Button type="button" onClick={() => onReparse(document)}>{t("knowledgeBase.documents.reparse")}</Button> : null}
+              {actions.canCancelParse ? <Button type="button" onClick={() => onCancelParse(document)}>{t("knowledgeBase.documents.cancelParse")}</Button> : null}
+            </div> : null}
+          </div>
+        </div>
       </article>;
     })}
   </div>;

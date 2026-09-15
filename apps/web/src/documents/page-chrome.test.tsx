@@ -23,7 +23,7 @@ const {
   ParserHint,
   DocumentEmptyState,
 } = await import('./DocumentsPageChrome.tsx');
-const { KnowledgeDocumentsPage, folderPathCrumbs } = await import('./KnowledgeDocumentsPage.tsx');
+const { KnowledgeDocumentsPage, DocumentCardGrid, folderPathCrumbs } = await import('./KnowledgeDocumentsPage.tsx');
 const { createTranslator } = await import('../i18n.ts');
 
 const t = createTranslator('zh-CN');
@@ -169,4 +169,25 @@ test('upload entry moves to the Vue add-source dropdown; legacy form is gone', (
   }));
   assert.ok(html.includes('添加文档'), 'add-document trigger (aria-label/title) present');
   assert.ok(!html.includes('wk-upload-panel'), 'legacy 来源/文件/上传文件 form removed');
+});
+
+test('document grid cards keep the Vue 240px/136px anatomy and footer metadata row', () => {
+  const html = renderToStaticMarkup(React.createElement(DocumentCardGrid, {
+    items: [{ id: 'doc-1', file_name: 'guide.pdf', file_type: 'pdf', parse_status: 'completed', folder_path: 'Guides', description: 'A short guide' }],
+    folders: [{ path: 'Specs', name: 'Specs', total_count: 2 }],
+    selected: new Set<string>(),
+    canContribute: false,
+    t,
+    onOpen: noop,
+    onOpenFolder: noop,
+    onToggle: noop,
+    onTagEdit: noop,
+    onReparse: noop,
+    onCancelParse: noop,
+  }));
+  assert.match(html, /grid grid-cols-\[repeat\(auto-fill,minmax\(240px,1fr\)\)\]/);
+  assert.match(html, /flex h-\[136px\] min-w-\[240px\] flex-col/);
+  assert.ok(html.includes('border-t border-line-soft'), 'card footer has the Vue separator');
+  assert.ok(html.includes('A short guide'), 'completed cards render their description in the content area');
+  assert.ok(html.includes('Guides'), 'folder metadata remains in the footer');
 });
