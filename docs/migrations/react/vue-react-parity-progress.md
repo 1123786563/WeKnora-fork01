@@ -3577,3 +3577,15 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   No mobile files were modified.
 - Authenticated provider-backed mutations, paired Vue/React screenshots, and
   Wails feature interaction remain open acceptance gates.
+
+## 2026-09-15 Round R391 — Integrations and knowledge-settings integration gate
+
+- Integrated `42ee2f16` for Vue-shaped integrations drawer/tab/loading/error/
+  permission state contracts, then fixed its project-component mismatches in
+  `33913b84` (`Alert` danger tone and `Sheet onClose` contract).
+- Integrated `3e56e446` for the knowledge detail settings sections and repaired
+  its existing `main.tsx` route contract in `a9496a98`; the large App remains
+  preserved. Graph unavailable state now uses the project warning tone.
+- Post-fix verification: Web tests 1152/1152, knowledge-settings focused tests
+  12/12, Web typecheck, and Web build passed. Authenticated paired screenshots,
+  real mutations, and Wails feature interaction remain open.
