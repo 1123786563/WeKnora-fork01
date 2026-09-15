@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import type { KnowledgeDocument, KnowledgeTag, ModelConfiguration, ParserEngineInfo, WeKnoraClient } from "@weknora/api-client";
 import {
-  processingStatusLabel,
   normalizeKnowledgeProcessingStatus,
   buildKnowledgeTimeline,
   flattenKnowledgeSpans,
@@ -386,11 +385,18 @@ function documentStatus(
       tone: "warning",
     };
   }
-  if (status === "completed")
-    return { label: processingStatusLabel(status), tone: "success" };
-  if (status === "failed" || status === "cancelled")
-    return { label: processingStatusLabel(status), tone: "error" };
-  return { label: processingStatusLabel(status), tone: "warning" };
+  const statusLabelKey: Partial<Record<typeof status, string>> = {
+    pending: "knowledgeBase.parseStatusPending",
+    processing: "knowledgeBase.parseStatusProcessing",
+    finalizing: "knowledgeBase.parseStatusFinalizing",
+    completed: "knowledgeBase.parseStatusCompleted",
+    failed: "knowledgeBase.parseStatusFailed",
+    cancelled: "knowledgeBase.parseStatusCancelled",
+  };
+  const label = statusLabelKey[status] ? t(statusLabelKey[status]!) : t("knowledgeBase.documents.statusUnknown");
+  if (status === "completed") return { label, tone: "success" };
+  if (status === "failed" || status === "cancelled") return { label, tone: "error" };
+  return { label, tone: "warning" };
 }
 
 function errorMessage(error: unknown, t?: (key: string) => string): string {
@@ -1987,9 +1993,10 @@ export function KnowledgeDocumentsPage({
   const [manualEditLoading, setManualEditLoading] = useState(false);
   const [manualEditSaving, setManualEditSaving] = useState(false);
   const [traceDocument, setTraceDocument] = useState<KnowledgeDocument | null>(null);
-  const [traceState, setTraceState] = useState<{ status: "idle" | "loading" | "success" | "error"; steps: KnowledgeTimelineStep[]; nodes: KnowledgeTimelineNode[]; parseStatus?: string; message?: string }>({ status: "idle", steps: [], nodes: [] });
+  const [traceState, setTraceState] = useState<{ status: "idle" | "loading" | "success" | "error"; steps: KnowledgeTimelineStep[]; nodes: KnowledgeTimelineNode[]; parseStatus?: string; message?: string; lastError?: { error_code?: string; error_message?: string } | null }>({ status: "idle", steps: [], nodes: [] });
   const [expandedTraceNodes, setExpandedTraceNodes] = useState<Set<string>>(new Set());
   const [selectedTraceNode, setSelectedTraceNode] = useState<KnowledgeTimelineNode | null>(null);
+  const [confirmingTraceCancel, setConfirmingTraceCancel] = useState(false);
   // Multi-file upload parity: staged files wait behind a confirm dialog
   // (Vue UploadConfirmDialog) before any upload call is issued.
   const [pendingEntries, setPendingEntries] = useState<UploadEntry[]>([]);
@@ -2749,7 +2756,7 @@ export function KnowledgeDocumentsPage({
         if (!active) return;
         const parseStatus = typeof spans.parse_status === "string" ? spans.parse_status : traceDocument.parse_status;
         const nodes = flattenKnowledgeSpans(spans.trace);
-        setTraceState({ status: "success", steps: buildKnowledgeTimeline(spans), nodes, parseStatus });
+        setTraceState({ status: "success", steps: buildKnowledgeTimeline(spans), nodes, parseStatus, lastError: spans.last_error });
         setExpandedTraceNodes((current) => current.size > 0 ? current : new Set(nodes.map((row) => row.key)));
         if (!isKnowledgeProcessingActive(parseStatus) && polling !== undefined) {
           window.clearInterval(polling);
@@ -3949,6 +3956,12 @@ export function KnowledgeDocumentsPage({
             {traceState.status === "error" ? <Status tone="error">{traceState.message}</Status> : null}
             {traceState.status === "success" ? (
               <div className="flex flex-col gap-4">
+                <div className="flex items-center justify-end gap-2">
+                  <Button type="button" onClick={() => setTraceDocument((current) => current ? { ...current } : current)}>{t("knowledgeEditor.activity.retry")}</Button>
+                  {traceState.parseStatus === "failed" ? <Button type="button" onClick={() => { const document = traceDocument; setTraceDocument(null); if (document) reparseOne(document); }}>{t("knowledgeBase.rebuildDocument")}</Button> : null}
+                  {isKnowledgeProcessingActive(traceState.parseStatus) ? <Button type="button" onClick={() => setConfirmingTraceCancel(true)}>{t("knowledgeBase.documents.cancelParse")}</Button> : null}
+                </div>
+                {traceState.parseStatus === "failed" ? <Status tone="error">{traceState.lastError?.error_message || t("knowledgeBase.timeline.failed")}</Status> : null}
                 <ol className="m-0 flex list-none flex-col gap-2 p-0" aria-label={t("knowledgeBase.timeline.title")}>
                 {traceState.steps.map((step) => (
                   <li key={step.stage} data-state={step.state} className="flex items-center justify-between rounded-[6px] border border-line-soft px-3 py-2 text-[13px]">
@@ -3980,10 +3993,20 @@ export function KnowledgeDocumentsPage({
                   <div className="mb-2 flex items-center justify-between gap-2"><strong className="truncate text-[13px] text-ink">{selectedTraceNode.node.name || selectedTraceNode.node.stage || selectedTraceNode.key}</strong><Button type="button" onClick={() => setSelectedTraceNode(null)}>{t("knowledgeBase.documents.cancel")}</Button></div>
                   <pre className="m-0 max-h-[240px] overflow-auto whitespace-pre-wrap break-words text-[11px] leading-[1.5] text-muted">{JSON.stringify(selectedTraceNode.node, null, 2)}</pre>
                 </section> : null}
+                {traceState.parseStatus === "failed" && traceState.message ? <Status tone="error">{traceState.message}</Status> : null}
               </div>
             ) : null}
           </section>
         </Sheet>
+      ) : null}
+      {confirmingTraceCancel && traceDocument && canContribute ? (
+        <Dialog open title={t("knowledgeBase.documents.cancelParse")} onClose={() => setConfirmingTraceCancel(false)}>
+          <p>{t("knowledgeBase.cancelParseConfirmBody", { title: displayName(traceDocument) })}</p>
+          <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
+            <Button type="button" onClick={() => { setConfirmingTraceCancel(false); void cancelOneParse(traceDocument.id); }}>{t("knowledgeBase.documents.cancelParse")}</Button>
+            <Button type="button" onClick={() => setConfirmingTraceCancel(false)}>{ct("uploadConfirm.cancel")}</Button>
+          </div>
+        </Dialog>
       ) : null}
       {confirmingDelete && canContribute ? (
         <Dialog
