@@ -703,21 +703,21 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
   // .wk-page .wk-org-page → utilities: the org page cancels the shared
   // page gutter (max-width/padding !important) and fills the shell height.
   return (
-    <main className="mx-auto box-border h-full max-w-none! overflow-hidden p-0!">
+    <main className="box-border h-full max-w-none! overflow-hidden p-0!">
       <div className="relative flex h-full min-h-0 w-full m-0">
-        <aside className="flex w-[72px] shrink-0 flex-col items-center gap-[14px] border-r border-[#e7e7ea] px-[8px] py-[20px]" aria-label={t(locale, 'organization.title')}>
+        <aside className="box-border flex w-[56px] shrink-0 flex-col items-center gap-1 border-r border-[#e7e7ea] px-0 pt-3 pb-1.5" aria-label={t(locale, 'organization.title')}>
           {/* Vue ListSpaceSidebar collapsed-strip tooltips carry the live
               counts (tooltipText(name, count) → "name (count)").
               "is-active" stays as a state hook (styles are utilities). */}
-          <button type="button" className={'flex w-[56px] cursor-pointer flex-col items-center gap-[4px] rounded-[8px] border-0 px-[2px] py-[4px] font-[inherit] text-[11px] ' + (selection === 'all' ? 'is-active text-accent' : 'text-[rgba(23,26,29,0.6)] hover:text-[rgba(23,26,29,0.92)]')} title={t(locale, 'common.all') + ' (' + organizations.length + ')'} onClick={() => setSelection('all')}>
+          <button type="button" className={'flex w-[46px] shrink-0 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-[8px] border-0 px-0 pt-[5px] pb-0.5 font-[inherit] text-[11px] ' + (selection === 'all' ? 'is-active text-accent' : 'text-[rgba(23,26,29,0.6)] hover:text-[rgba(23,26,29,0.92)]')} title={t(locale, 'common.all') + ' (' + organizations.length + ')'} onClick={() => setSelection('all')}>
             <span className={'flex h-[30px] w-[30px] box-border items-center justify-center rounded-[8px] border text-inherit ' + (selection === 'all' ? 'border-[rgba(7,192,95,0.35)] bg-accent-wash' : 'border-transparent')}><IconLayers /></span>
             <span>{t(locale, 'common.all')}</span>
           </button>
-          <button type="button" className={'flex w-[56px] cursor-pointer flex-col items-center gap-[4px] rounded-[8px] border-0 px-[2px] py-[4px] font-[inherit] text-[11px] ' + (selection === 'created' ? 'is-active text-accent' : 'text-[rgba(23,26,29,0.6)] hover:text-[rgba(23,26,29,0.92)]')} title={t(locale, 'organization.createdByMe') + ' (' + createdCount + ')'} onClick={() => setSelection('created')}>
+          <button type="button" className={'flex w-[46px] shrink-0 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-[8px] border-0 px-0 pt-[5px] pb-0.5 font-[inherit] text-[11px] ' + (selection === 'created' ? 'is-active text-accent' : 'text-[rgba(23,26,29,0.6)] hover:text-[rgba(23,26,29,0.92)]')} title={t(locale, 'organization.createdByMe') + ' (' + createdCount + ')'} onClick={() => setSelection('created')}>
             <span className={'flex h-[30px] w-[30px] box-border items-center justify-center rounded-[8px] border text-inherit ' + (selection === 'created' ? 'border-[rgba(7,192,95,0.35)] bg-accent-wash' : 'border-transparent')}><IconUsergroupAdd /></span>
             <span>{t(locale, 'organization.createdByMe')}</span>
           </button>
-          <button type="button" className={'flex w-[56px] cursor-pointer flex-col items-center gap-[4px] rounded-[8px] border-0 px-[2px] py-[4px] font-[inherit] text-[11px] ' + (selection === 'joined' ? 'is-active text-accent' : 'text-[rgba(23,26,29,0.6)] hover:text-[rgba(23,26,29,0.92)]')} title={t(locale, 'organization.joinedByMe') + ' (' + joinedCount + ')'} onClick={() => setSelection('joined')}>
+          <button type="button" className={'flex w-[46px] shrink-0 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-[8px] border-0 px-0 pt-[5px] pb-0.5 font-[inherit] text-[11px] ' + (selection === 'joined' ? 'is-active text-accent' : 'text-[rgba(23,26,29,0.6)] hover:text-[rgba(23,26,29,0.92)]')} title={t(locale, 'organization.joinedByMe') + ' (' + joinedCount + ')'} onClick={() => setSelection('joined')}>
             <span className={'flex h-[30px] w-[30px] box-border items-center justify-center rounded-[8px] border text-inherit ' + (selection === 'joined' ? 'border-[rgba(7,192,95,0.35)] bg-accent-wash' : 'border-transparent')}><IconUsergroup /></span>
             <span>{t(locale, 'organization.joinedByMe')}</span>
           </button>
