@@ -196,6 +196,7 @@ function RefreshIcon() { return <Icon size={16}><path d="M20 11a8 8 0 10-2.34 5.
 function DeleteIcon() { return <Icon size={16}><path d="M4 7h16M10 11v6M14 11v6M6 7l1 14h10l1-14M9 7V4h6v3" /></Icon>; }
 function MoveIcon() { return <Icon size={16}><path d="M4 7h7l2 2h7v9a2 2 0 01-2 2H6a2 2 0 01-2-2z" /><path d="M12 11v6M9 14h6" /></Icon>; }
 function AddFileIcon() { return <Icon size={16}><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v5h5M12 12v6M9 15h6" /></Icon>; }
+function ChevronDownIcon({ open = false }: { open?: boolean }) { return <Icon size={14} className={open ? "rotate-180 transition-transform duration-200" : "transition-transform duration-200"}><path d="m5 8 7 7 7-7" /></Icon>; }
 
 function DocumentCardActionMenu({ document, canDownload, t, actions, onDownload, onEdit, onViewTrace, onMove, onBatchManage, onReparse, onCancelParse, onDelete }: {
   document: KnowledgeDocument;
@@ -1157,12 +1158,11 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
         </UploadSettingRow>
         <button
           type="button"
-          className="more-options-toggle"
+          className="more-options-toggle mt-1 inline-flex items-center gap-1.5 border-0 bg-transparent px-0 py-1.5 text-[13px] text-[var(--wk-accent,#07c05f)] [font:inherit] transition-colors hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(7_192_95_/_20%)]"
           aria-expanded={props.moreOpen}
           onClick={props.onToggleMore}
-          style={{ background: "none", border: "none", cursor: "pointer", padding: "4px 0", color: "inherit" }}
         >
-          <span aria-hidden>{props.moreOpen ? "▾" : "▸"}</span> {t("uploadConfirm.moreOptions")}
+          <ChevronDownIcon open={props.moreOpen} /> {t("uploadConfirm.moreOptions")}
         </button>
         {props.moreOpen ? (
           <div className="settings-group--more">
@@ -3656,6 +3656,9 @@ export function KnowledgeDocumentsPage({
         >
           <div className="wk-upload-confirm-layout">
             <aside className="wk-upload-confirm-files-column">
+              <div className="wk-upload-confirm-files-header">
+                <h2 className="m-0 text-[16px] font-semibold leading-[1.35] text-[var(--wk-text,#101828)]">{dialogTitle}</h2>
+              </div>
               {dialogMode === "file" ? (
             <p className="wk-upload-confirm-summary" style={{ display: "flex", alignItems: "center", gap: "0.5rem", margin: "0 0 0.5rem" }}>
               <span className="wk-files-count" aria-label={ct("uploadConfirm.parseConfig")} style={{ minWidth: "1.4rem", textAlign: "center", borderRadius: "999px", padding: "0 0.35rem", border: "1px solid var(--wk-border, #e4e7ec)", fontSize: "0.85rem" }}>

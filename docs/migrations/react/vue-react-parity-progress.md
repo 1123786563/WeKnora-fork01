@@ -1,5 +1,17 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-15 Round N+85 — N007 更多处理选项切换器
+
+- 将 chunking 的“更多处理选项”切换器对齐 Vue：绿色文字、6px 图标间距、垂直 padding、hover 下划线、键盘焦点环和展开时旋转的 SVG chevron。
+- 上传确认专项 37/37、Web 类型检查、`git diff --check` 通过；证据：`evidence/vue-react-parity/2026-09-15-n007-more-options-toggle.md`。
+- N007 仍需认证浏览器 computed-style/截图、真实上传后端和 Wails/native 证据。
+
+## 2026-09-15 Round N+85 — N007 上传确认弹窗标题与关闭按钮位置
+
+- 对照 Vue `UploadConfirmDialog.vue`，专用 React Dialog 将标题移入 220px 文件栏 56px header，并将关闭按钮改为 modal 右上角绝对定位，避免通用 Dialog header 占据三栏布局空间。
+- 聚焦 upload-confirm 测试 37/37、`pnpm typecheck:web`、`git diff --check` 通过；证据：`evidence/vue-react-parity-2026-09-15-n007-dialog-header.md`。
+- N007 继续保持 `implementing`：认证浏览器 post-change screenshot/computed-style、真实后端与 Wails/native 证据仍未闭环。
+
 ## 2026-09-15 Round N+84 — N007 上传目的地面包屑
 
 - 将上传确认弹窗目的地选择器改为 Vue 风格的无边框文本面包屑：弱化标签、突出当前目录、保留展开标记，并增加窄屏省略与键盘焦点反馈。
