@@ -3519,3 +3519,16 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Full Web regression now passes 1137/1137; desktop remains 6/6 with its
   typecheck passing. Authenticated permission/backend evidence and Wails
   runtime evidence remain open, so the parity matrix remains incomplete.
+
+## 2026-09-15 Round R386 — Settings, upload, and knowledge navigation review
+
+- Integrated Vue-shaped Settings body Portal behavior (`10d1026a`), upload
+  confirmation cancel-before-confirm ordering (`368732a5`), and canonical
+  knowledge-base detail navigation with encoded ids (`d658e09f`). These are
+  bounded Web changes using the existing project UI wrappers and preserve the
+  current large knowledge editor.
+- Verification: Web tests 1137/1137, Web typecheck, Web build, desktop tests
+  6/6, desktop typecheck, and `git diff --check` passed.
+- This remains implementation/regression evidence only. Authenticated paired
+  Vue/React screenshots, real permission and mutation flows, and Wails
+  feature interaction evidence remain open.
