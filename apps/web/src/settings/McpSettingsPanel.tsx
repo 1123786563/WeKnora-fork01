@@ -18,6 +18,18 @@ const mcpBadgeInfo = "rounded-full px-2 py-[0.1rem] text-[.72rem] bg-[#e8f1ff] t
 const mcpBadgeWarn = "rounded-full px-2 py-[0.1rem] text-[.72rem] bg-[#fffaeb] text-[#b54708]";
 const mcpBadgeMuted = "rounded-full px-2 py-[0.1rem] text-[.72rem] bg-[#f2f4f8] text-[#66758b]";
 
+function McpCardIcon({ name, size = 14 }: { name: "tools" | "edit" | "delete" | "add" | "chevron-right" | "error"; size?: number }) {
+  const paths = {
+    tools: <><path d="M14.7 6.3a4.5 4.5 0 0 0 6 6l-7.4 7.4a2.1 2.1 0 0 1-3-3z" /><path d="M14.7 6.3l3-3 3 3-3 3" /></>,
+    edit: <><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4z" /></>,
+    delete: <><path d="M3 6h18M8 6V4h8v2m-9 0 1 15h8l1-15" /><path d="M10 11v6M14 11v6" /></>,
+    add: <><path d="M12 5v14M5 12h14" /></>,
+    "chevron-right": <path d="m9 18 6-6-6-6" />,
+    error: <><circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16h.01" /></>,
+  }[name];
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths}</svg>;
+}
+
 type McpService = McpConfiguration & {
   description?: string;
   usage_instructions?: string;
@@ -801,7 +813,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
     <section className="grid gap-4" data-testid="mcp-settings">
       <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col sticky top-0 z-[1] bg-white pt-[.25rem]">
         <div>
-          <h3>{t("mcpSettings.title")}</h3>
+          <h2>{t("mcpSettings.title")}</h2>
           <p className="wk-muted text-muted m-0">
             {t("mcpSettings.description")}
           </p>
@@ -818,22 +830,22 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
               <div className="wk-mcp-service-card-main flex min-w-0 flex-1 items-stretch p-3">
                 <div className="wk-mcp-service-card-body flex min-w-0 flex-1 flex-col gap-2">
                   <div className="wk-mcp-service-card-header flex min-h-[28px] items-center justify-between gap-[.7rem]">
-                    <span className="inline-flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-[7px] bg-[#f3f5f8] text-[14px] text-[#66758b]" aria-hidden="true">⚒</span>
+                    <span className="inline-flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-[7px] bg-[#f3f5f8] text-[#66758b]" aria-hidden="true"><McpCardIcon name="tools" /></span>
                     <h4 title={service.name} className="m-0 min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{service.name}</h4>
                   {service.is_builtin ? (
                     <span className="text-[.75rem] text-[#2e6de6]">{t("mcpSettings.builtin")}</span>
                   ) : null}
                     {canEdit ? (
                       <div className="flex shrink-0 items-center gap-0.5">
-                        <button type="button" className={mcpIconButton} title={t("common.edit")} aria-label={`${service.name} · ${t("common.edit")}`} onClick={() => openEditor(service)}>✎<span className="wk-sr-only">{t("common.edit")}</span></button>
-                        {service.is_builtin ? null : <button type="button" className={`${mcpIconButton} hover:text-[#b42318]! focus-visible:text-[#b42318]!`} title={t("common.delete")} aria-label={`${service.name} · ${t("common.delete")}`} onClick={() => void remove(service)}>×<span className="wk-sr-only">{t("common.delete")}</span></button>}
+                        <button type="button" className={mcpIconButton} title={t("common.edit")} aria-label={`${service.name} · ${t("common.edit")}`} onClick={() => openEditor(service)}><McpCardIcon name="edit" /><span className="wk-sr-only">{t("common.edit")}</span></button>
+                        {service.is_builtin ? null : <button type="button" className={`${mcpIconButton} hover:text-[#b42318]! focus-visible:text-[#b42318]!`} title={t("common.delete")} aria-label={`${service.name} · ${t("common.delete")}`} onClick={() => void remove(service)}><McpCardIcon name="delete" /><span className="wk-sr-only">{t("common.delete")}</span></button>}
                       </div>
                     ) : null}
                   </div>
                   {serviceDescription(service) ? <p className="wk-mcp-service-card-desc min-h-[2.6rem] [overflow-wrap:anywhere]" title={serviceDescription(service)}>{serviceDescription(service).replace(/\s+/g, " ")}</p> : canEdit && !service.is_builtin ? <button type="button" className="self-start items-center border-0 bg-transparent p-0 text-[.82rem] text-[#245a9b] cursor-pointer [font:inherit] hover:underline focus-visible:underline" onClick={() => openEditor(service, 1)}>＋ {t("mcpSettings.addUsageInstructions")}</button> : <span className="text-[.82rem] text-[#66758b]">{t("mcpSettings.noUsageInstructions")}</span>}
                   <div className="wk-mcp-service-card-footer flex items-center justify-between gap-[.7rem] border-t border-[#edf0f5] pt-[.65rem]">
                     <button type="button" className={`${mcpToolsLink} ${service.catalog?.stale ? "text-[#b54708]!" : ""}`} title={t("mcpMetadata.toolsAndUsage")} onClick={() => canEdit && openEditor(service, 1)} disabled={!canEdit}>
-                      {service.catalog?.stale ? "⚠ " : ""}{service.catalog ? t("mcpSettings.toolCount", { count: service.catalog.tool_count ?? 0 }) : t("mcpSettings.toolsNotSynced")} {service.catalog?.stale ? ` · ${t("mcpSettings.toolsStale")}` : ""} {canEdit ? "›" : ""}
+                      {service.catalog?.stale ? <McpCardIcon name="error" /> : null}{service.catalog ? t("mcpSettings.toolCount", { count: service.catalog.tool_count ?? 0 }) : t("mcpSettings.toolsNotSynced")} {service.catalog?.stale ? ` · ${t("mcpSettings.toolsStale")}` : ""} {canEdit ? <McpCardIcon name="chevron-right" /> : null}
                     </button>
                     <span className="text-[.82rem] text-[#66758b]">{service.transport_type === "http-streamable" ? "HTTP Streamable" : service.transport_type === "stdio" ? "Stdio" : "SSE"}</span>
                     {canEdit && !service.is_builtin ? <button type="button" className={`${mcpStatus} ${service.enabled === false ? "" : "text-[#137333]!"}`} role="switch" aria-checked={service.enabled !== false} disabled={busyId === service.id} onClick={() => void toggle(service)}><span className={`inline-block h-[7px] w-[7px] rounded-full ${service.enabled === false ? "bg-[#98a2b8]" : "bg-[#07c05f]"}`} aria-hidden="true" />{service.enabled === false ? t("mcpSettings.disabled") : t("mcpSettings.enabled")}</button> : <span className={`${mcpStatus} ${service.enabled === false ? "" : "text-[#137333]!"}`}><span className={`inline-block h-[7px] w-[7px] rounded-full ${service.enabled === false ? "bg-[#98a2b8]" : "bg-[#07c05f]"}`} aria-hidden="true" />{service.enabled === false ? t("mcpSettings.disabled") : t("mcpSettings.enabled")}</span>}
@@ -842,7 +854,7 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
               </div>
             </article>
           ))}
-          {canEdit ? <button type="button" className="flex min-h-[88px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-[10px] border border-[#dce3ed] border-dashed bg-transparent p-3 text-center text-[#66758b] [font:inherit] [transition:border-color_.18s_ease,background_.18s_ease] hover:border-[#07c05f] hover:bg-[rgba(7,192,95,.06)] hover:text-[#07c05f] hover:outline-none focus-visible:border-[#07c05f] focus-visible:bg-[rgba(7,192,95,.06)] focus-visible:text-[#07c05f] focus-visible:outline-none" onClick={() => openEditor()}><span className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-[#f3f5f8] text-[18px]" aria-hidden="true">＋</span><span>{t("mcpSettings.addService")}</span></button> : null}
+          {canEdit ? <button type="button" className="flex min-h-[88px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-[10px] border border-[#dce3ed] border-dashed bg-transparent p-3 text-center text-[#66758b] [font:inherit] [transition:border-color_.18s_ease,background_.18s_ease] hover:border-[#07c05f] hover:bg-[rgba(7,192,95,.06)] hover:text-[#07c05f] hover:outline-none focus-visible:border-[#07c05f] focus-visible:bg-[rgba(7,192,95,.06)] focus-visible:text-[#07c05f] focus-visible:outline-none" onClick={() => openEditor()}><span className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-[#f3f5f8] text-[#66758b]" aria-hidden="true"><McpCardIcon name="add" size={18} /></span><span>{t("mcpSettings.addService")}</span></button> : null}
         </div>
       )}
       {draft ? (

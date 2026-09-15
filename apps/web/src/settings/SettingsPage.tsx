@@ -269,7 +269,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
                       the h2 + permissions popover + audit entry + section-description
                       with the RBAC doc link, so a wrapper heading would duplicate it
                       (previously it also leaked the registry apiDomain as the text). */}
-                  {selectedKey !== 'general' && selectedKey !== 'models' && selectedKey !== 'members' && selectedKey !== 'memory' && selectedKey !== 'mymemory' ? (
+                  {selectedKey !== 'general' && selectedKey !== 'models' && selectedKey !== 'members' && selectedKey !== 'memory' && selectedKey !== 'mymemory' && selectedKey !== 'mcp' ? (
                     <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col">
                       <div className="w-full">
                         <h2 className="m-0 mb-2 text-[20px] font-semibold leading-[normal]">{settingsSectionHeading(locale, selectedKey).title}</h2>
