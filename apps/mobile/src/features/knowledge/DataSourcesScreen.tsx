@@ -100,7 +100,23 @@ export function DataSourcesScreen() {
     setResourcesLoading(true); setError(''); setExpandedResourceIds([]);
     try {
       const next = await runtime.client.dataSources.resources(source.id);
-      if (generation === resourceGeneration.current) setResources(next);
+      if (generation !== resourceGeneration.current) return;
+      const byId = new Map(next.map((resource) => [resource.external_id, resource]));
+      const revealedAncestors: string[] = [];
+      const selectedIds = sourceResourceIds(source);
+      if (selectedIds.length > 0) {
+        const ancestors = await runtime.client.dataSources.resourceAncestors(source.id, selectedIds);
+        for (const ancestor of ancestors) {
+          if (generation !== resourceGeneration.current) return;
+          const children = await runtime.client.dataSources.resources(source.id, ancestor);
+          for (const child of children) byId.set(child.external_id, child);
+          revealedAncestors.push(ancestor);
+        }
+      }
+      if (generation === resourceGeneration.current) {
+        setResources([...byId.values()]);
+        setExpandedResourceIds(revealedAncestors);
+      }
     }
     catch (cause) { if (generation === resourceGeneration.current) setError(cause instanceof Error ? cause.message : t('dataSource.resourceLoadFailed')); }
     finally { if (generation === resourceGeneration.current) setResourcesLoading(false); }

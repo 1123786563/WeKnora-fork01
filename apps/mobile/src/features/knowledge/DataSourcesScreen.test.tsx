@@ -13,7 +13,7 @@ const React = require('react') as typeof import('react');
 const { act } = require('react') as typeof import('react');
 const { createRoot } = require('react-dom/client') as { createRoot: (host: Element) => { render(node: unknown): void; unmount(): void } };
 
-async function mount(role: string, locale = 'en-US', overrides: { list?: () => Promise<unknown>; logs?: (...args: unknown[]) => Promise<unknown>; resume?: (...args: unknown[]) => Promise<unknown> } = {}) {
+async function mount(role: string, locale = 'en-US', overrides: { list?: () => Promise<unknown>; logs?: (...args: unknown[]) => Promise<unknown>; resume?: (...args: unknown[]) => Promise<unknown>; resourceAncestors?: (...args: unknown[]) => Promise<unknown> } = {}) {
   const dom = new JSDOM('<div id="root"></div>', { url: 'https://weknora.test' });
   const runtime: any = {
     tenantId: '1', locale,
@@ -27,12 +27,13 @@ async function mount(role: string, locale = 'en-US', overrides: { list?: () => P
       validateCredentials: async () => ({ success: true }), validate: async () => ({ success: true }),
       create: async () => ({ id: 'temporary-source', knowledge_base_id: 'kb-1', name: 'New source', type: 'feishu_drive', status: 'paused', config: {} }), update: async () => ({}), putCredentials: async () => ({}),
       sync: async () => ({ success: true }), pause: async () => ({ success: true }), resume: async () => ({ success: true }),
-      remove: async () => undefined, logs: async (_id: string, _limit = 20, _offset = 0) => [{ id: 'log-1', status: 'success', started_at: '2026-09-13T08:00:00Z', finished_at: '2026-09-13T08:00:02Z', items_created: 3, items_updated: 1, items_deleted: 0, items_skipped: 0, items_failed: 0 }], resources: async (_id: string, parentId?: string) => parentId ? [{ external_id: 'page-2', parent_id: parentId, name: 'Child page', type: 'page' }] : [{ external_id: 'page-1', name: 'Project docs', type: 'folder', has_children: true }],
+      remove: async () => undefined, logs: async (_id: string, _limit = 20, _offset = 0) => [{ id: 'log-1', status: 'success', started_at: '2026-09-13T08:00:00Z', finished_at: '2026-09-13T08:00:02Z', items_created: 3, items_updated: 1, items_deleted: 0, items_skipped: 0, items_failed: 0 }], resources: async (_id: string, parentId?: string) => parentId ? [{ external_id: 'page-2', parent_id: parentId, name: 'Child page', type: 'page' }] : [{ external_id: 'page-1', name: 'Project docs', type: 'folder', has_children: true }], resourceAncestors: async () => [],
     } },
   };
   if (overrides.list) runtime.client.dataSources.list = overrides.list;
   if (overrides.logs) runtime.client.dataSources.logs = overrides.logs;
   if (overrides.resume) runtime.client.dataSources.resume = overrides.resume;
+  if (overrides.resourceAncestors) runtime.client.dataSources.resourceAncestors = overrides.resourceAncestors;
   Object.assign(globalThis, { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true, __dataSourcesRuntime: runtime });
   const result = await build({ entryPoints: [resolve(root, 'apps/mobile/src/features/knowledge/DataSourcesScreen.tsx')], bundle: true, write: false, platform: 'node', format: 'cjs', jsx: 'automatic', external: ['react', 'react/jsx-runtime'], plugins: [{ name: 'native-host-fixtures', setup(b) {
     b.onResolve({ filter: /react-native|expo-router|runtime\.tsx$/ }, (args) => ({ path: args.path, namespace: 'mock' }));
@@ -203,6 +204,20 @@ test('expanding a resource requests and renders its child resources', async () =
     assert.ok(expand);
     await act(async () => expand?.click());
     await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+    assert.match(page.host.textContent ?? '', /Child page/);
+  } finally { await page.close(); }
+});
+
+test('editing a source reveals saved deep resource selections', async () => {
+  const calls: unknown[][] = [];
+  const page = await mount('admin', 'en-US', {
+    list: async () => [{ id: 'source-1', name: 'Docs', type: 'feishu_drive', status: 'active', config: { resource_ids: ['page-2'] } }],
+    resourceAncestors: async (...args: unknown[]) => { calls.push(args); return ['page-1']; },
+  });
+  try {
+    await act(async () => [...page.host.querySelectorAll('button')].find((item) => item.textContent === 'Edit')?.click());
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+    assert.deepEqual(calls, [['source-1', ['page-2']]]);
     assert.match(page.host.textContent ?? '', /Child page/);
   } finally { await page.close(); }
 });
