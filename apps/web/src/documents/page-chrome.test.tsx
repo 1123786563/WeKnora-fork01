@@ -190,6 +190,7 @@ test('document grid cards keep the Vue 240px/136px anatomy and footer metadata r
   assert.ok(html.includes('border-t border-line-soft'), 'card footer has the Vue separator');
   assert.ok(html.includes('A short guide'), 'completed cards render their description in the content area');
   assert.ok(html.includes('Guides'), 'folder metadata remains in the footer');
+  assert.ok(!html.includes('选择 guide.pdf'), 'read-only cards do not expose the Vue canEdit-only checkbox');
 });
 
 test('document card hover placement prefers the right side and falls back within the viewport', () => {

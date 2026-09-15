@@ -269,7 +269,7 @@ export function DocumentCardGrid({
       return <article key={document.id} className="flex h-[136px] min-w-[240px] flex-col overflow-hidden rounded-[8px] border border-line-soft bg-surface p-0 shadow-[0_1px_2px_rgb(0_0_0/6%)] transition-[border-color,box-shadow,background-color] duration-200 hover:border-primary/40 hover:shadow-[0_4px_14px_rgb(0_0_0/7%)]" onMouseEnter={(event) => scheduleHover(event, document)} onMouseLeave={clearHover}>
         <div className="flex min-h-0 flex-1 flex-col px-[14px] pb-2 pt-[10px]">
           <div className="mb-[6px] flex h-6 shrink-0 items-start gap-0">
-            <Checkbox type="checkbox" checked={selected.has(document.id)} onChange={(event) => onToggle(document.id, event.target.checked)} aria-label={t("knowledgeBase.documents.select", { name: displayName(document) })} />
+            {canContribute ? <Checkbox type="checkbox" checked={selected.has(document.id)} onChange={(event) => onToggle(document.id, event.target.checked)} aria-label={t("knowledgeBase.documents.select", { name: displayName(document) })} /> : null}
             <button type="button" className="min-w-0 flex-1 truncate border-0 bg-transparent p-0 text-left text-[14px] font-semibold leading-6 tracking-[.01em] text-primary-deep hover:underline" onClick={() => onOpen(document)} title={displayName(document)}>{displayName(document)}</button>
             <Status tone={status.tone}>{status.label}</Status>
           </div>
@@ -3169,7 +3169,7 @@ export function KnowledgeDocumentsPage({
                 ) : null}
               </div>
             </div>
-            {(state.status === "loading" || items.length > 0) ? <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
+            {canContribute && (state.status === "loading" || items.length > 0) ? <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
               <label className="wk-select-all inline-flex items-center gap-1 whitespace-nowrap">
                 <Checkbox
                   type="checkbox"
@@ -3341,14 +3341,14 @@ export function KnowledgeDocumentsPage({
                   const actions = documentRowActions(document.parse_status);
                   return (
                     <li key={document.id} data-select-id={document.id} className="items-center! flex justify-between gap-4 border-b border-line-soft py-[0.9rem]">
-                      <Checkbox
-                        type="checkbox"
-                        aria-label={t("knowledgeBase.documents.select", {
-                          name: displayName(document),
-                        })}
-                        checked={selected.has(document.id)}
-                        onChange={(event) => toggleSelected(document.id, (event.nativeEvent as MouseEvent).shiftKey)}
-                      />
+                      {canContribute ? <Checkbox
+                          type="checkbox"
+                          aria-label={t("knowledgeBase.documents.select", {
+                            name: displayName(document),
+                          })}
+                          checked={selected.has(document.id)}
+                          onChange={(event) => toggleSelected(document.id, (event.nativeEvent as MouseEvent).shiftKey)}
+                        /> : null}
                       <div className="wk-list-item-copy grid gap-[0.2rem] min-w-0">
                         <button
                           type="button"
