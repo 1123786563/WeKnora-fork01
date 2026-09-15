@@ -3,8 +3,11 @@ import { createJsonTransport, createWeKnoraClient } from '@weknora/api-client';
 import { createScopeController } from '@weknora/domain/scope';
 import { KnowledgeBasesPage } from './App.tsx';
 import { CraftRoutes } from './features/craft/routes.tsx';
+import { IntegrationsPage } from './integrations/IntegrationsPage.tsx';
+import { parseIntegrationRoute } from './integrations/route.ts';
 import { authorizationHeader, readLegacyPlatformSession } from './platform/legacy-session.ts';
 import './styles.css';
+import { AuthRoutes } from './auth/AuthPages.tsx';
 
 const session = readLegacyPlatformSession();
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? '';
@@ -32,7 +35,13 @@ const client = createWeKnoraClient({
 createRoot(document.getElementById('root')!).render(
   window.location.pathname === '/craft' || window.location.pathname.startsWith('/craft/') ? (
     <CraftRoutes client={client} scopeController={scopeController} session={session} apiBaseUrl={apiBaseUrl} />
+  ) : parseIntegrationRoute(window.location.href) !== null ? (
+    <IntegrationsPage
+      route={parseIntegrationRoute(window.location.href)!}
+      onNavigate={(path) => { window.history.pushState(null, '', path); window.location.assign(path); }}
+    />
   ) : (
+    ['/login', '/register', '/onboarding/workspace'].includes(window.location.pathname) ? <AuthRoutes client={client} /> :
     <KnowledgeBasesPage client={client} scopeController={scopeController} />
   ),
 );

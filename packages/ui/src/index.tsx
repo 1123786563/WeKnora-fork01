@@ -1,13 +1,32 @@
-import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react';
-import './styles.css';
+import type { ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useId, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+// Vite owns CSS module loading; the declaration is intentionally runtime-only.
+if (typeof document !== 'undefined') {
+  // @ts-expect-error CSS is resolved by the consuming Vite application.
+  void import('./styles.css');
+}
 
-export function Button({ children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { children: ReactNode }) {
-  return <button className="wk-button" {...props}>{children}</button>;
-}
-export function Card({ children, ...props }: HTMLAttributes<HTMLDivElement> & { children: ReactNode }) {
-  return <section className="wk-card" {...props}>{children}</section>;
-}
+type Tone = 'default' | 'primary' | 'text' | 'danger'; type Size = 'small' | 'medium' | 'large';
+const cx = (...values: Array<string | false | null | undefined>) => values.filter(Boolean).join(' ');
 
-export function Status({ tone = 'neutral', children }: { tone?: 'neutral' | 'error' | 'success'; children: ReactNode }) {
-  return <p className={`wk-status wk-status-${tone}`} role={tone === 'error' ? 'alert' : 'status'}>{children}</p>;
-}
+export function Button({ variant = 'default', size = 'medium', loading = false, children, className, disabled, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Tone; size?: Size; loading?: boolean; children?: ReactNode }) { return <button className={cx('wk-button', `wk-button-${variant}`, `wk-button-size-${size}`, className)} disabled={disabled || loading} aria-busy={loading || undefined} {...props}>{loading && <span className="wk-spinner" aria-hidden="true" />}<span>{children}</span></button>; }
+export function Input({ invalid = false, className, ...props }: InputHTMLAttributes<HTMLInputElement> & { invalid?: boolean }) { return <input className={cx('wk-input', className)} aria-invalid={invalid || undefined} {...props} />; }
+export function Card({ children, ...props }: HTMLAttributes<HTMLDivElement> & { children: ReactNode }) { return <section className="wk-card" {...props}>{children}</section>; }
+export function Status({ tone = 'neutral', children }: { tone?: 'neutral' | 'error' | 'success'; children: ReactNode }) { return <p className={`wk-status wk-status-${tone}`} role={tone === 'error' ? 'alert' : 'status'}>{children}</p>; }
+
+function useDismiss(onDismiss: () => void, restore: React.RefObject<HTMLElement | null>, open: boolean) { useEffect(() => { if (!open) return; const listener = (event: KeyboardEvent) => { if (event.key === 'Escape') onDismiss(); }; document.addEventListener('keydown', listener); return () => document.removeEventListener('keydown', listener); }, [onDismiss, open]); useEffect(() => { if (!open) restore.current?.focus(); }, [open, restore]); }
+function Overlay({ children, onClick }: { children: ReactNode; onClick: () => void }) { return <div className="wk-overlay" onMouseDown={onClick}>{children}</div>; }
+export function Dialog({ open = false, title, children, onOpenChange, className }: { open?: boolean; title?: ReactNode; children?: ReactNode; onOpenChange?: (open: boolean) => void; className?: string }) { const restore = useRef<HTMLElement | null>(typeof document === 'undefined' ? null : document.activeElement as HTMLElement); const close = () => onOpenChange?.(false); useDismiss(close, restore, open); if (!open) return null; const content = <Overlay onClick={close}><div role="dialog" aria-modal="true" aria-labelledby={title ? 'wk-dialog-title' : undefined} className={cx('wk-dialog', className)} onMouseDown={e => e.stopPropagation()}><button type="button" className="wk-close" aria-label="Close" onClick={close}>×</button>{title && <h2 id="wk-dialog-title">{title}</h2>}<div>{children}</div></div></Overlay>; return typeof document === 'undefined' ? content : createPortal(content, document.body); }
+export function Sheet({ open = false, side = 'right', title, children, onOpenChange }: { open?: boolean; side?: 'left' | 'right' | 'top' | 'bottom'; title?: ReactNode; children?: ReactNode; onOpenChange?: (open: boolean) => void }) { const restore = useRef<HTMLElement | null>(typeof document === 'undefined' ? null : document.activeElement as HTMLElement); const close = () => onOpenChange?.(false); useDismiss(close, restore, open); if (!open) return null; const content = <Overlay onClick={close}><aside role="dialog" aria-modal="true" data-side={side} className={`wk-sheet wk-sheet-${side}`} onMouseDown={e => e.stopPropagation()}><button type="button" className="wk-close" aria-label="Close" onClick={close}>×</button>{title && <h2>{title}</h2>}{children}</aside></Overlay>; return typeof document === 'undefined' ? content : createPortal(content, document.body); }
+export function Alert({ tone = 'default', children, ...props }: HTMLAttributes<HTMLDivElement> & { tone?: 'default' | 'error' | 'success'; children?: ReactNode }) { return <div role={tone === 'error' ? 'alert' : 'status'} className={`wk-alert wk-alert-${tone}`} {...props}>{children}</div>; }
+
+function SelectOption({ value, children }: { value: string; children: ReactNode }) { return <div role="option" data-value={value}>{children}</div>; }
+export function Select({ value, children, ...props }: { value?: string; children?: ReactNode } & HTMLAttributes<HTMLDivElement>) { const id = useId(); return <div className="wk-select" {...props}><button type="button" role="combobox" aria-haspopup="listbox" aria-expanded="true" aria-controls={id}>{value}</button><div id={id} role="listbox">{children}</div></div>; }
+Select.Option = SelectOption;
+function MenuItem({ children, ...props }: HTMLAttributes<HTMLDivElement> & { children?: ReactNode }) { return <div role="menuitem" tabIndex={-1} className="wk-menu-item" {...props}>{children}</div>; }
+export function Menu({ open = false, label = 'Menu', children }: { open?: boolean; label?: ReactNode; children?: ReactNode }) { const [shown, setShown] = useState(open); return <div className="wk-menu"><Button aria-expanded={shown} onClick={() => setShown(!shown)}>{label}</Button>{shown && <div role="menu" className="wk-menu-popup">{children}</div>}</div>; }
+Menu.Item = MenuItem;
+const TabsContext = createContext<string | undefined>(undefined);
+function TabsList({ children }: { children?: ReactNode }) { return <div role="tablist" className="wk-tabs-list">{children}</div>; } function TabsTrigger({ value, children }: { value: string; children?: ReactNode }) { const activeValue = useContext(TabsContext); return <button type="button" role="tab" aria-selected={activeValue === value} data-value={value} className="wk-tab-trigger">{children}</button>; } function TabsContent({ value, children }: { value: string; children?: ReactNode }) { const activeValue = useContext(TabsContext); return <div role="tabpanel" hidden={activeValue !== value} data-value={value}>{children}</div>; }
+export function Tabs({ value, children }: { value: string; children?: ReactNode }) { return <TabsContext.Provider value={value}><div className="wk-tabs" data-value={value}>{children}</div></TabsContext.Provider>; } Tabs.List = TabsList; Tabs.Trigger = TabsTrigger; Tabs.Content = TabsContent;
