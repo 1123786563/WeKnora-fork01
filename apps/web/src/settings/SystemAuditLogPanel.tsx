@@ -1,7 +1,7 @@
 import type { WeKnoraClient } from '@weknora/api-client';
 import { Card, Status } from '@weknora/ui';
 import { createPortal } from 'react-dom';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { settingsT, useSettingsLocale } from './PortedSectionsPanel.tsx';
 
 // audit tag tones (was settings-wrapper.css .wk-audit-tag--* variants + neutral)
@@ -58,12 +58,14 @@ export function SystemAuditLogPanel({ client, payload }: { client: WeKnoraClient
   const [cursor, setCursor] = useState(typeof root.nextCursor === 'number' ? root.nextCursor : 0);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const loadGeneration = useRef(0);
   async function loadMore(reset = false) {
     if (loading || (!reset && !cursor)) return;
+    const generation = reset ? ++loadGeneration.current : loadGeneration.current;
     setLoading(true); setLoadError(null);
-    try { const result = await client.administration.auditLog.list({ limit: 50, ...(reset ? {} : { afterId: cursor }) }); setRows((current) => reset ? result.items as Row[] : [...current, ...result.items as Row[]]); setCursor(result.nextCursor || 0); }
-    catch (reason) { setLoadError(reason instanceof Error ? reason.message : copy.loadFailed); }
-    finally { setLoading(false); }
+    try { const result = await client.administration.auditLog.list({ limit: 50, ...(reset ? {} : { afterId: cursor }) }); if (generation !== loadGeneration.current) return; setRows((current) => reset ? result.items as Row[] : [...current, ...result.items as Row[]]); setCursor(result.nextCursor || 0); }
+    catch (reason) { if (generation === loadGeneration.current) setLoadError(reason instanceof Error ? reason.message : copy.loadFailed); }
+    finally { if (generation === loadGeneration.current) setLoading(false); }
   }
   useEffect(() => {
     if (!selected) return;

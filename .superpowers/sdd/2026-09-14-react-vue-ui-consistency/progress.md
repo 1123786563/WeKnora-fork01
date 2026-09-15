@@ -400,3 +400,5 @@ N031 mobile resource-tree accessibility (2026-09-15): data-source expansion cont
 N025/N017 configuration filter race guard (2026-09-15): ConfigurationPage now ignores stale aggregate loads when the Agent source filter changes, preventing older records/errors/availability from replacing the active filter state. Web typecheck and configuration helper/editor tests 40/40 pass. Evidence: `evidence/vue-react-parity/2026-09-15-r121-configuration-list-race-guard.md`.
 
 N017 system settings concurrent-save state (2026-09-15): SystemGlobalSettingsPanel now tracks pending saves per setting key, so concurrent updates do not prematurely re-enable controls or clear another setting's busy state. Web typecheck, settings tests 179/179, and diff check pass. Evidence: `evidence/vue-react-parity/2026-09-15-r122-system-settings-concurrent-save.md`.
+
+N017 audit-log refresh race guard (2026-09-15): audit-log refreshes now invalidate older pagination responses, preventing stale rows and loading/error state from replacing a newer reset. Web typecheck, settings tests 179/179, and diff check pass. Evidence: `evidence/vue-react-parity/2026-09-15-r123-audit-log-refresh-race.md`.
