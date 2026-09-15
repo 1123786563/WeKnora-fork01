@@ -13,7 +13,7 @@ import {
   type WeKnoraClient,
 } from '@weknora/api-client';
 import { formatMessage, type Locale } from '@weknora/i18n';
-import { Button, Card, Checkbox, Input, Select, Status } from '@weknora/ui';
+import { Button, Card, Checkbox, Input, NumberInput, Select, Status } from '@weknora/ui';
 import { roleAtLeast, type SettingsRole } from '../../../../packages/views/src/settings/registry.ts';
 import { useAppLocale } from '../i18n.ts';
 
@@ -1047,6 +1047,7 @@ function SandboxConfigEditor({ client, locale, record, presetType, dockerBackend
   }
 
   const numberValue = (value: number | undefined): string => (value === undefined ? '' : String(value));
+  const numberInputValue = (value: number | undefined): number | '' => value ?? '';
   const parseNumber = (raw: string): number | undefined => (raw.trim() === '' ? undefined : Number(raw));
   const setNumberField = (field: NumberField, raw: string): void => {
     updateForm({ [field]: parseNumber(raw) } as Partial<SandboxEditorForm>);
