@@ -280,6 +280,7 @@ export function DocumentCardGrid({
   items,
   folders,
   selected,
+  batchMode,
   canContribute,
   canDownload,
   t,
@@ -299,6 +300,7 @@ export function DocumentCardGrid({
   items: KnowledgeDocument[];
   folders: Array<{ path: string; name: string; total_count: number }>;
   selected: Set<string>;
+  batchMode: boolean;
   canContribute: boolean;
   canDownload: boolean;
   t: (key: string, values?: Record<string, string | number>) => string;
@@ -343,7 +345,7 @@ export function DocumentCardGrid({
       return <article key={document.id} className="flex h-[136px] min-w-[240px] flex-col overflow-hidden rounded-[8px] border border-line-soft bg-surface p-0 shadow-[0_1px_2px_rgb(0_0_0/6%)] transition-[border-color,box-shadow,background-color] duration-200 hover:border-primary/40 hover:shadow-[0_4px_14px_rgb(0_0_0/7%)]" onMouseEnter={(event) => scheduleHover(event, document)} onMouseLeave={clearHover}>
         <div className="flex min-h-0 flex-1 flex-col px-[14px] pb-2 pt-[10px]">
           <div className="mb-[6px] flex h-6 shrink-0 items-start gap-0">
-            {canContribute ? <Checkbox type="checkbox" checked={selected.has(document.id)} onChange={(event) => onToggle(document.id, event.target.checked)} aria-label={t("knowledgeBase.documents.select", { name: displayName(document) })} /> : null}
+            {canContribute && batchMode ? <Checkbox type="checkbox" checked={selected.has(document.id)} onChange={(event) => onToggle(document.id, event.target.checked)} aria-label={t("knowledgeBase.documents.select", { name: displayName(document) })} /> : null}
             <button type="button" className="min-w-0 flex-1 truncate border-0 bg-transparent p-0 text-left text-[14px] font-semibold leading-6 tracking-[.01em] text-primary-deep hover:underline" onClick={() => onOpen(document)} title={displayName(document)}>{displayName(document)}</button>
             <Status tone={status.tone}>{status.label}</Status>
             {canContribute ? <DocumentCardActionMenu document={document} canDownload={canDownload} t={t} actions={actions} onDownload={() => onDownload(document)} onEdit={() => onEdit(document)} onViewTrace={() => onViewTrace(document)} onMove={() => onMove(document)} onBatchManage={() => onBatchManage(document)} onReparse={() => onReparse(document)} onCancelParse={() => onCancelParse(document)} onDelete={() => onDelete(document)} /> : null}
@@ -1980,6 +1982,9 @@ export function KnowledgeDocumentsPage({
   });
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Vue exposes document checkboxes and the batch bar only after the user
+  // explicitly enters batch-management mode from a card/row action menu.
+  const [batchMode, setBatchMode] = useState(false);
   const lastSelectedIndex = useRef(-1);
   const documentListRef = useRef<HTMLUListElement | null>(null);
   const [moving, setMoving] = useState(false);
@@ -3377,7 +3382,7 @@ export function KnowledgeDocumentsPage({
                 ) : null}
               </div>
             </div>
-            {canContribute && (state.status === "loading" || items.length > 0) ? <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
+            {canContribute && (batchMode || selected.size > 0) ? <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
               <label className="wk-select-all inline-flex items-center gap-1 whitespace-nowrap">
                 <Checkbox
                   type="checkbox"
@@ -3399,8 +3404,7 @@ export function KnowledgeDocumentsPage({
               {/* Vue DocumentBatchBar: 取消选择 keeps batch mode escapable. */}
               <Button
                 type="button"
-                disabled={!selected.size}
-                onClick={() => setSelected(new Set())}
+                onClick={() => { setSelected(new Set()); setBatchMode(false); }}
               >
                 {t("knowledgeBase.clearSelection")}
               </Button>
@@ -3521,6 +3525,7 @@ export function KnowledgeDocumentsPage({
                 items={items}
                 folders={folders.filter((folder) => folder.path && folder.path.split("/").slice(0, -1).join("/") === (folderPath ?? ""))}
                 selected={selected}
+                batchMode={batchMode}
                 canContribute={canContribute}
                 canDownload={true}
                 t={t}
@@ -3533,8 +3538,8 @@ export function KnowledgeDocumentsPage({
                 onDownload={(document) => void downloadDocument(document)}
                 onEdit={(document) => void openManualEdit(document)}
                 onViewTrace={(document) => openTrace(document)}
-                onMove={(document) => { setSelected(new Set([document.id])); setMoving(true); setMoveTarget(document.folder_path ?? ""); }}
-                onBatchManage={(document) => setSelected(new Set([document.id]))}
+                onMove={(document) => { setBatchMode(true); setSelected(new Set([document.id])); setMoving(true); setMoveTarget(document.folder_path ?? ""); }}
+                onBatchManage={() => setBatchMode(true)}
                 onDelete={setConfirmingDeleteDocument}
               />
             ) : null}
