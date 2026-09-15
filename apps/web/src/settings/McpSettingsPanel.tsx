@@ -11,8 +11,10 @@ import { createTranslator, useAppLocale } from "../i18n.ts";
 const mcpServerDocsButton = "ml-2 rounded-[4px] border-0 bg-transparent px-1 py-[0.1rem] text-[#2e6de6] cursor-pointer [font:inherit] hover:bg-[#eef4ff]";
 const mcpIconButton = "h-6 w-6 cursor-pointer rounded-[6px] border-0 bg-transparent p-0 text-[16px] text-[#66758b] hover:bg-[#f3f5f8] hover:text-[#245a9b] hover:outline-none focus-visible:bg-[#f3f5f8] focus-visible:text-[#245a9b] focus-visible:outline-none";
 const mcpStepButton = "flex min-w-0 items-center gap-2 cursor-pointer border-0 bg-transparent p-0 [font:inherit] text-[#98a2b8] disabled:cursor-default disabled:opacity-60";
-const mcpToolsLink = "cursor-pointer border-0 bg-transparent p-0 [font:inherit] text-[.82rem] text-[#66758b] hover:text-[#245a9b] hover:outline-none focus-visible:text-[#245a9b] focus-visible:outline-none";
-const mcpStatus = "inline-flex items-center gap-[5px] whitespace-nowrap cursor-pointer border-0 bg-transparent p-0 [font:inherit] text-[.82rem] text-[#66758b]";
+const mcpMetadata = "flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5";
+const mcpToolsLink = "inline-flex min-w-0 max-w-full items-center gap-1 rounded-[6px] border-0 bg-[#f3f5f8] px-1.5 py-0.5 text-left [font:inherit] text-[12px] leading-[18px] text-[#66758b] hover:bg-[#f3f5f8] hover:text-[rgb(0_0_0_/_90%)] hover:outline-none focus-visible:text-[#245a9b] focus-visible:outline-none";
+const mcpType = "shrink-0 text-[11px] leading-[18px] text-[#66758b]";
+const mcpStatus = "inline-flex items-center gap-[5px] whitespace-nowrap cursor-pointer rounded-[6px] border-0 bg-transparent px-1 py-0.5 [font:inherit] text-[12px] leading-[18px] text-[#66758b] hover:bg-[#f3f5f8] disabled:cursor-wait";
 const mcpBadgeOk = "rounded-full px-2 py-[0.1rem] text-[.72rem] bg-[#ecfdf3] text-[#137333]";
 const mcpBadgeInfo = "rounded-full px-2 py-[0.1rem] text-[.72rem] bg-[#e8f1ff] text-[#2e6de6]";
 const mcpBadgeWarn = "rounded-full px-2 py-[0.1rem] text-[.72rem] bg-[#fffaeb] text-[#b54708]";
@@ -844,11 +846,13 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                   </div>
                   {serviceDescription(service) ? <p className="wk-mcp-service-card-desc min-h-[2.6rem] [overflow-wrap:anywhere]" title={serviceDescription(service)}>{serviceDescription(service).replace(/\s+/g, " ")}</p> : canEdit && !service.is_builtin ? <button type="button" className="self-start items-center border-0 bg-transparent p-0 text-[.82rem] text-[#245a9b] cursor-pointer [font:inherit] hover:underline focus-visible:underline" onClick={() => openEditor(service, 1)}>＋ {t("mcpSettings.addUsageInstructions")}</button> : <span className="text-[.82rem] text-[#66758b]">{t("mcpSettings.noUsageInstructions")}</span>}
                   <div className="wk-mcp-service-card-footer flex items-center justify-between gap-[.7rem]">
-                    <button type="button" className={`${mcpToolsLink} ${service.catalog?.stale ? "text-[#b54708]!" : ""}`} title={t("mcpMetadata.toolsAndUsage")} onClick={() => canEdit && openEditor(service, 1)} disabled={!canEdit}>
-                      {service.catalog?.stale ? <McpCardIcon name="error" /> : null}{service.catalog ? t("mcpSettings.toolCount", { count: service.catalog.tool_count ?? 0 }) : t("mcpSettings.toolsNotSynced")} {service.catalog?.stale ? ` · ${t("mcpSettings.toolsStale")}` : ""} {canEdit ? <McpCardIcon name="chevron-right" /> : null}
-                    </button>
-                    <span className="text-[.82rem] text-[#66758b]">{service.transport_type === "http-streamable" ? "HTTP Streamable" : service.transport_type === "stdio" ? "Stdio" : "SSE"}</span>
-                    {canEdit && !service.is_builtin ? <button type="button" className={`${mcpStatus} ${service.enabled === false ? "" : "text-[#137333]!"}`} role="switch" aria-checked={service.enabled !== false} disabled={busyId === service.id} onClick={() => void toggle(service)}><span className={`inline-block h-[7px] w-[7px] rounded-full ${service.enabled === false ? "bg-[#98a2b8]" : "bg-[#07c05f]"}`} aria-hidden="true" />{service.enabled === false ? t("mcpSettings.disabled") : t("mcpSettings.enabled")}</button> : <span className={`${mcpStatus} ${service.enabled === false ? "" : "text-[#137333]!"}`}><span className={`inline-block h-[7px] w-[7px] rounded-full ${service.enabled === false ? "bg-[#98a2b8]" : "bg-[#07c05f]"}`} aria-hidden="true" />{service.enabled === false ? t("mcpSettings.disabled") : t("mcpSettings.enabled")}</span>}
+                    <div className={mcpMetadata}>
+                      <button type="button" className={`${mcpToolsLink} ${service.catalog?.stale ? "bg-[#fffaeb] text-[#b54708]!" : ""}`} title={t("mcpMetadata.toolsAndUsage")} onClick={() => canEdit && openEditor(service, 1)} disabled={!canEdit}>
+                        {service.catalog?.stale ? <McpCardIcon name="error" /> : null}{service.catalog ? t("mcpSettings.toolCount", { count: service.catalog.tool_count ?? 0 }) : t("mcpSettings.toolsNotSynced")} {service.catalog?.stale ? ` · ${t("mcpSettings.toolsStale")}` : ""} {canEdit ? <McpCardIcon name="chevron-right" /> : null}
+                      </button>
+                      <span className={mcpType}>{service.transport_type === "http-streamable" ? "HTTP Streamable" : service.transport_type === "stdio" ? "Stdio" : "SSE"}</span>
+                    </div>
+                    {canEdit && !service.is_builtin ? <button type="button" className={`${mcpStatus} ${service.enabled === false ? "" : "text-[#137333]!"}`} role="switch" aria-checked={service.enabled !== false} disabled={busyId === service.id} onClick={() => void toggle(service)}><span className={`inline-block h-[5px] w-[5px] rounded-full ${service.enabled === false ? "bg-[#98a2b8]" : "bg-[#07c05f]"}`} aria-hidden="true" />{service.enabled === false ? t("mcpSettings.disabled") : t("mcpSettings.enabled")}</button> : <span className={`${mcpStatus} ${service.enabled === false ? "" : "text-[#137333]!"}`}><span className={`inline-block h-[5px] w-[5px] rounded-full ${service.enabled === false ? "bg-[#98a2b8]" : "bg-[#07c05f]"}`} aria-hidden="true" />{service.enabled === false ? t("mcpSettings.disabled") : t("mcpSettings.enabled")}</span>}
                   </div>
                 </div>
               </div>

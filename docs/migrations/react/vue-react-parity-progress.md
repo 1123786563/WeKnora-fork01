@@ -1,5 +1,10 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-15 Round N+90 — N016 MCP 卡片 footer metadata
+
+- 将 MCP 卡片 footer 对齐 Vue：工具/同步信息与 transport 类型归入左侧 metadata 组，启用状态保持独立右侧控件，stale 状态保留警告色。
+- MCP 专项 13/13、Web 全量 911/911、Web 类型检查、`git diff --check` 通过；证据：`evidence/vue-react-parity-2026-09-15-n016-card-footer-metadata.md`。
+
 ## 2026-09-15 Round N+88 — N016 MCP 卡片图标与底栏节奏
 
 - 对照 Vue MCP 卡片结构，将服务图标移至卡片主内容左侧并取消底栏顶部重复分隔线，保留工具数量/同步状态和编辑入口行为。
