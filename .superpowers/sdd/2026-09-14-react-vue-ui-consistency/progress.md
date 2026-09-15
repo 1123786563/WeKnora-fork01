@@ -404,3 +404,5 @@ N017 system settings concurrent-save state (2026-09-15): SystemGlobalSettingsPan
 N017 audit-log refresh race guard (2026-09-15): audit-log refreshes now invalidate older pagination responses, preventing stale rows and loading/error state from replacing a newer reset. Web typecheck, settings tests 179/179, and diff check pass. Evidence: `evidence/vue-react-parity/2026-09-15-r123-audit-log-refresh-race.md`.
 
 N031 mobile data-source label correction (2026-09-15): connector-settings input now exposes the localized `dataSource.connectorSettingsLabel` instead of the incorrect name label. Mobile typecheck, focused data-source tests 31/31, and diff check pass. Evidence: `evidence/vue-react-parity/2026-09-15-r124-mobile-datasource-label.md`.
+
+N014/N015 settings controls migration (2026-09-15): ConfigSettingsPanel and ResourceSettingsPanel now use shared Input/NumberInput/Select/Switch/Textarea controls while preserving Vue-shaped fields and payloads. Web typecheck, Web 895/895, production build, and diff check pass; the known large-chunk advisory remains. Evidence: `evidence/vue-react-parity/2026-09-15-r125-shared-settings-controls.md`.
