@@ -169,18 +169,35 @@ function documentTypeLabel(document: KnowledgeDocument): string {
   return "--";
 }
 
+function manualContentFromMetadata(metadata: unknown): { content: string; status: "draft" | "publish" } {
+  try {
+    const parsed = typeof metadata === "string" ? JSON.parse(metadata) : metadata;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const value = parsed as { content?: unknown; status?: unknown };
+      return {
+        content: typeof value.content === "string" ? value.content : "",
+        status: value.status === "publish" ? "publish" : "draft",
+      };
+    }
+  } catch {
+    // The detail page still opens with an empty editor when legacy metadata is invalid.
+  }
+  return { content: "", status: "draft" };
+}
+
 function MoreIcon() { return <Icon size={16}><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></Icon>; }
 function DownloadIcon() { return <Icon size={16}><path d="M12 3v12M7 10l5 5 5-5M5 21h14" /></Icon>; }
 function RefreshIcon() { return <Icon size={16}><path d="M20 11a8 8 0 10-2.34 5.66M20 4v7h-7" /></Icon>; }
 function DeleteIcon() { return <Icon size={16}><path d="M4 7h16M10 11v6M14 11v6M6 7l1 14h10l1-14M9 7V4h6v3" /></Icon>; }
 function MoveIcon() { return <Icon size={16}><path d="M4 7h7l2 2h7v9a2 2 0 01-2 2H6a2 2 0 01-2-2z" /><path d="M12 11v6M9 14h6" /></Icon>; }
 
-function DocumentCardActionMenu({ document, canDownload, t, actions, onDownload, onMove, onBatchManage, onReparse, onCancelParse, onDelete }: {
+function DocumentCardActionMenu({ document, canDownload, t, actions, onDownload, onEdit, onMove, onBatchManage, onReparse, onCancelParse, onDelete }: {
   document: KnowledgeDocument;
   canDownload: boolean;
   t: (key: string, values?: Record<string, string | number>) => string;
   actions: ReturnType<typeof documentRowActions>;
   onDownload: () => void;
+  onEdit: () => void;
   onMove: () => void;
   onBatchManage: () => void;
   onReparse: () => void;
@@ -195,6 +212,7 @@ function DocumentCardActionMenu({ document, canDownload, t, actions, onDownload,
     <button type="button" className={`inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-[5px] border-0 bg-transparent p-0 text-muted hover:bg-surface-wash ${open ? "bg-surface-wash" : ""}`} aria-label={t("knowledgeBase.documents.title")} title={t("knowledgeBase.documents.title")} aria-haspopup="menu" aria-expanded={open} onClick={(event) => { event.stopPropagation(); setOpen((value) => !value); }}><MoreIcon /></button>
     <span className="absolute right-0 top-[calc(100%+6px)] z-[220] flex min-w-[180px] flex-col rounded-[8px] border border-line-soft bg-surface p-1 shadow-[0_6px_24px_rgb(15_23_42/12%)] [&[hidden]]:hidden" role="menu" hidden={!open}>
       {canDownload && downloadable ? menuItem(t("knowledgeBase.detail.download", { name: displayName(document) }), <DownloadIcon />, onDownload) : null}
+      {document.source === "manual" ? menuItem(t("knowledgeBase.editDocument"), <EditIcon size={16} />, onEdit) : null}
       {actions.canReparse && !actions.canCancelParse ? menuItem(t("knowledgeBase.rebuildDocument"), <RefreshIcon />, onReparse) : null}
       {actions.canCancelParse ? menuItem(t("knowledgeBase.documents.cancelParse"), <RefreshIcon />, onCancelParse) : null}
       {menuItem(t("knowledgeBase.moveToFolder.action"), <MoveIcon />, onMove)}
@@ -266,6 +284,7 @@ export function DocumentCardGrid({
   onReparse,
   onCancelParse,
   onDownload,
+  onEdit,
   onMove,
   onBatchManage,
   onDelete,
@@ -283,6 +302,7 @@ export function DocumentCardGrid({
   onReparse: (document: KnowledgeDocument) => void;
   onCancelParse: (document: KnowledgeDocument) => void;
   onDownload: (document: KnowledgeDocument) => void;
+  onEdit: (document: KnowledgeDocument) => void;
   onMove: (document: KnowledgeDocument) => void;
   onBatchManage: (document: KnowledgeDocument) => void;
   onDelete: (document: KnowledgeDocument) => void;
@@ -318,7 +338,7 @@ export function DocumentCardGrid({
             {canContribute ? <Checkbox type="checkbox" checked={selected.has(document.id)} onChange={(event) => onToggle(document.id, event.target.checked)} aria-label={t("knowledgeBase.documents.select", { name: displayName(document) })} /> : null}
             <button type="button" className="min-w-0 flex-1 truncate border-0 bg-transparent p-0 text-left text-[14px] font-semibold leading-6 tracking-[.01em] text-primary-deep hover:underline" onClick={() => onOpen(document)} title={displayName(document)}>{displayName(document)}</button>
             <Status tone={status.tone}>{status.label}</Status>
-            {canContribute ? <DocumentCardActionMenu document={document} canDownload={canDownload} t={t} actions={actions} onDownload={() => onDownload(document)} onMove={() => onMove(document)} onBatchManage={() => onBatchManage(document)} onReparse={() => onReparse(document)} onCancelParse={() => onCancelParse(document)} onDelete={() => onDelete(document)} /> : null}
+            {canContribute ? <DocumentCardActionMenu document={document} canDownload={canDownload} t={t} actions={actions} onDownload={() => onDownload(document)} onEdit={() => onEdit(document)} onMove={() => onMove(document)} onBatchManage={() => onBatchManage(document)} onReparse={() => onReparse(document)} onCancelParse={() => onCancelParse(document)} onDelete={() => onDelete(document)} /> : null}
           </div>
           <p className="m-0 line-clamp-2 min-h-0 flex-1 overflow-hidden text-[12px] font-normal leading-[19px] text-muted">{document.summary_status === "processing" ? t("knowledgeBase.generatingSummary") : typeof document.description === "string" ? document.description : document.folder_path ?? t("knowledgeBase.documents.root")}</p>
         </div>
@@ -1954,6 +1974,9 @@ export function KnowledgeDocumentsPage({
   // Vue include-manual entry (handleManualCreate) — a dialog feeding the
   // existing pendingManual staging instead of uiStore.openManualEditor.
   const [manualDialogOpen, setManualDialogOpen] = useState(false);
+  const [manualEditDocument, setManualEditDocument] = useState<KnowledgeDocument | null>(null);
+  const [manualEditLoading, setManualEditLoading] = useState(false);
+  const [manualEditSaving, setManualEditSaving] = useState(false);
   // Multi-file upload parity: staged files wait behind a confirm dialog
   // (Vue UploadConfirmDialog) before any upload call is issued.
   const [pendingEntries, setPendingEntries] = useState<UploadEntry[]>([]);
@@ -2672,6 +2695,54 @@ export function KnowledgeDocumentsPage({
     setManualTitle("");
     setManualContent("");
     setManualDialogOpen(false);
+  }
+
+  async function openManualEdit(document: KnowledgeDocument) {
+    setManualEditDocument(document);
+    setManualEditLoading(true);
+    setManualEditSaving(false);
+    setUploadError(null);
+    setManualTitle(displayName(document).replace(/\.md$/i, ""));
+    setManualContent("");
+    try {
+      const detail = await client.knowledgeBases.documents.get(document.id);
+      const manual = manualContentFromMetadata(detail.metadata);
+      setManualTitle((detail.title || detail.file_name || displayName(document)).replace(/\.md$/i, ""));
+      setManualContent(manual.content);
+    } catch (error) {
+      setUploadError(errorMessage(error, t));
+    } finally {
+      setManualEditLoading(false);
+    }
+  }
+
+  async function saveManualEdit() {
+    if (!manualEditDocument || manualEditSaving) return;
+    if (!manualTitle.trim()) {
+      setUploadError(t("knowledgeBase.documents.manualTitle"));
+      return;
+    }
+    if (!manualContent.trim()) {
+      setUploadError(t("knowledgeBase.documents.manualContent"));
+      return;
+    }
+    setManualEditSaving(true);
+    setUploadError(null);
+    try {
+      const metadata = manualContentFromMetadata(manualEditDocument.metadata);
+      await client.knowledgeBases.documents.updateManual(manualEditDocument.id, {
+        title: manualTitle.trim(),
+        content: manualContent,
+        status: metadata.status,
+      });
+      setManualEditDocument(null);
+      setActionNotice({ tone: "success", text: t("knowledgeEditor.activity.actions.knowledge.updated") });
+      setReloadToken((value) => value + 1);
+    } catch (error) {
+      setUploadError(errorMessage(error, t));
+    } finally {
+      setManualEditSaving(false);
+    }
   }
 
   async function deleteSelected() {
@@ -3399,6 +3470,7 @@ export function KnowledgeDocumentsPage({
                 onReparse={(document) => reparseOne(document)}
                 onCancelParse={(document) => void cancelOneParse(document.id)}
                 onDownload={(document) => void downloadDocument(document)}
+                onEdit={(document) => void openManualEdit(document)}
                 onMove={(document) => { setSelected(new Set([document.id])); setMoving(true); setMoveTarget(document.folder_path ?? ""); }}
                 onBatchManage={(document) => setSelected(new Set([document.id]))}
                 onDelete={setConfirmingDeleteDocument}
@@ -3759,6 +3831,45 @@ export function KnowledgeDocumentsPage({
                 {ct("common.confirm")}
               </Button>
               <Button type="button" onClick={() => setManualDialogOpen(false)}>
+                {ct("uploadConfirm.cancel")}
+              </Button>
+            </div>
+          </div>
+        </Dialog>
+      ) : null}
+      {manualEditDocument && canContribute ? (
+        <Dialog
+          open
+          title={t("knowledgeBase.editDocument")}
+          onClose={() => { if (!manualEditSaving) setManualEditDocument(null); }}
+        >
+          <div className="wk-upload-url-dialog flex flex-col gap-2">
+            {manualEditLoading ? <Status>{t("common.loading")}</Status> : null}
+            <label>
+              {t("knowledgeBase.documents.manualTitle")} {" "}
+              <Input
+                autoFocus
+                className="box-border w-full"
+                value={manualTitle}
+                disabled={manualEditLoading || manualEditSaving}
+                onChange={(event) => setManualTitle(event.target.value)}
+              />
+            </label>
+            <label>
+              {t("knowledgeBase.documents.manualContent")} {" "}
+              <Textarea
+                value={manualContent}
+                disabled={manualEditLoading || manualEditSaving}
+                onChange={(event) => setManualContent(event.target.value)}
+                rows={8}
+              />
+            </label>
+            {uploadError ? <Status tone="error">{uploadError}</Status> : null}
+            <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
+              <Button type="button" disabled={manualEditLoading || manualEditSaving} onClick={() => void saveManualEdit()}>
+                {manualEditSaving ? t("common.loading") : t("knowledgeEditor.buttons.saveAndClose")}
+              </Button>
+              <Button type="button" disabled={manualEditSaving} onClick={() => setManualEditDocument(null)}>
                 {ct("uploadConfirm.cancel")}
               </Button>
             </div>

@@ -154,6 +154,7 @@ test('supports URL/manual sources and guarded document mutations', async () => {
   });
   await api.createFromUrl('kb-1', { url: 'https://example.test/a', tag_ids: ['tag-1'] });
   await api.createManual('kb-1', { title: 'Manual', content: '# body', status: 'pending' });
+  await api.updateManual('doc-2', { title: 'Manual v2', content: '# updated', status: 'draft' });
   await api.moveToFolder('kb-1', ['doc-2'], 'docs/spec');
   await api.renameFolder('kb-1', 'docs', 'archive');
   await api.updateTags({ 'doc-2': ['tag-1'] });
@@ -165,6 +166,7 @@ test('supports URL/manual sources and guarded document mutations', async () => {
   assert.deepEqual(requests.map(({ method, path }) => `${method} ${path}`), [
     'POST /api/v1/knowledge-bases/kb-1/knowledge/url',
     'POST /api/v1/knowledge-bases/kb-1/knowledge/manual',
+    'PUT /api/v1/knowledge/manual/doc-2',
     'POST /api/v1/knowledge/folder',
     'PUT /api/v1/knowledge-bases/kb-1/knowledge/folders',
     'PUT /api/v1/knowledge/tags',
@@ -173,8 +175,8 @@ test('supports URL/manual sources and guarded document mutations', async () => {
     'DELETE /api/v1/knowledge/doc-2',
     'POST /api/v1/knowledge/batch-delete',
   ]);
-  assert.deepEqual(requests[2]?.body, { kb_id: 'kb-1', knowledge_ids: ['doc-2'], folder_path: 'docs/spec' });
-  assert.deepEqual(requests[4]?.body, { updates: { 'doc-2': ['tag-1'] } });
+  assert.deepEqual(requests[3]?.body, { kb_id: 'kb-1', knowledge_ids: ['doc-2'], folder_path: 'docs/spec' });
+  assert.deepEqual(requests[5]?.body, { updates: { 'doc-2': ['tag-1'] } });
 });
 
 test('keeps knowledge-base tag CRUD on the Vue endpoint contract', async () => {

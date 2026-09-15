@@ -186,6 +186,7 @@ test('document grid cards keep the Vue 240px/136px anatomy and footer metadata r
     onReparse: noop,
     onCancelParse: noop,
     onDownload: noop,
+    onEdit: noop,
     onMove: noop,
     onBatchManage: noop,
     onDelete: noop,
@@ -200,7 +201,10 @@ test('document grid cards keep the Vue 240px/136px anatomy and footer metadata r
 
 test('editable document cards expose the Vue action-menu mutation entries', () => {
   const html = renderToStaticMarkup(React.createElement(DocumentCardGrid, {
-    items: [{ id: 'doc-1', file_name: 'guide.pdf', file_type: 'pdf', source: 'file', parse_status: 'completed' }],
+    items: [
+      { id: 'doc-1', file_name: 'guide.md', file_type: 'md', source: 'manual', parse_status: 'completed' },
+      { id: 'doc-2', file_name: 'source.pdf', file_type: 'pdf', source: 'file', parse_status: 'completed' },
+    ],
     folders: [],
     selected: new Set<string>(),
     canContribute: true,
@@ -213,12 +217,14 @@ test('editable document cards expose the Vue action-menu mutation entries', () =
     onReparse: noop,
     onCancelParse: noop,
     onDownload: noop,
+    onEdit: noop,
     onMove: noop,
     onBatchManage: noop,
     onDelete: noop,
   }));
   assert.ok(html.includes('aria-haspopup="menu"'), 'card has an accessible action-menu trigger');
-  assert.ok(html.includes('下载 guide.pdf'), 'download action is present for file documents');
+  assert.ok(html.includes('编辑文档'), 'edit action is present for manual documents');
+  assert.ok(html.includes('下载 source.pdf'), 'download action is present for file documents');
   assert.ok(html.includes('移动到目录'), 'folder move action is present');
   assert.ok(html.includes('批量管理'), 'batch management action is present');
   assert.ok(html.includes('删除文档'), 'delete action is present');

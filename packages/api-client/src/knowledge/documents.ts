@@ -188,6 +188,13 @@ export function createKnowledgeDocumentsApi(
         body: input,
       }));
     },
+    async updateManual(id: string, input: KnowledgeDocumentManualInput): Promise<KnowledgeDocument> {
+      return parseDocumentMutation(await request({
+        method: 'PUT',
+        path: `/api/v1/knowledge/manual/${encodeURIComponent(id)}`,
+        body: input,
+      }));
+    },
     async moveToFolder(knowledgeBaseId: string, knowledgeIds: string[], folderPath: string): Promise<void> {
       await request({ method: 'POST', path: '/api/v1/knowledge/folder', body: { kb_id: knowledgeBaseId, knowledge_ids: knowledgeIds, folder_path: folderPath } });
     },
