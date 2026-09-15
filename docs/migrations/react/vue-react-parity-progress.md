@@ -2443,3 +2443,9 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 
 - Replaced EnvVar settings direct English labels, empty state, operation fallbacks, and action text with existing five-locale `envVarSettings.*` keys.
 - Validation: Web 891/891, Web typecheck, and `git diff --check` passed.
+
+## 2026-09-15 Round N+34az — Platform navigation icon geometry
+
+- Replaced React platform-shell generic chat/book/bot/users paths with the corresponding Vue `prefixIcon.svg`, `zhishiku.svg`, `agent.svg`, and `organization.svg` geometry, while preserving navigation semantics and active-state behavior.
+- Runtime paired observation on the authenticated `Parity KB Demo` fixture at approximately 1355x720 confirmed the KB list layout/card/state parity and the updated rail icon shapes.
+- Validation: focused shell tests 30/30, Web 911/911, Web typecheck, and `git diff --check` passed. See `evidence/vue-react-parity/2026-09-15-r313-platform-nav-icon-assets.md`.
