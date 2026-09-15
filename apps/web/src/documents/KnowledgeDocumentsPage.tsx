@@ -4,6 +4,9 @@ import type { KnowledgeDocument, KnowledgeTag, ModelConfiguration, ParserEngineI
 import {
   processingStatusLabel,
   normalizeKnowledgeProcessingStatus,
+  buildKnowledgeTimeline,
+  isKnowledgeProcessingActive,
+  type KnowledgeTimelineStep,
 } from "@weknora/domain/knowledge/processing";
 import { flattenKnowledgeFolders as flattenFolders } from "@weknora/domain/knowledge/folders";
 import { Button, Checkbox, Dialog, Input, Select, Status, Textarea } from "@weknora/ui";
@@ -191,13 +194,14 @@ function RefreshIcon() { return <Icon size={16}><path d="M20 11a8 8 0 10-2.34 5.
 function DeleteIcon() { return <Icon size={16}><path d="M4 7h16M10 11v6M14 11v6M6 7l1 14h10l1-14M9 7V4h6v3" /></Icon>; }
 function MoveIcon() { return <Icon size={16}><path d="M4 7h7l2 2h7v9a2 2 0 01-2 2H6a2 2 0 01-2-2z" /><path d="M12 11v6M9 14h6" /></Icon>; }
 
-function DocumentCardActionMenu({ document, canDownload, t, actions, onDownload, onEdit, onMove, onBatchManage, onReparse, onCancelParse, onDelete }: {
+function DocumentCardActionMenu({ document, canDownload, t, actions, onDownload, onEdit, onViewTrace, onMove, onBatchManage, onReparse, onCancelParse, onDelete }: {
   document: KnowledgeDocument;
   canDownload: boolean;
   t: (key: string, values?: Record<string, string | number>) => string;
   actions: ReturnType<typeof documentRowActions>;
   onDownload: () => void;
   onEdit: () => void;
+  onViewTrace: () => void;
   onMove: () => void;
   onBatchManage: () => void;
   onReparse: () => void;
@@ -213,6 +217,7 @@ function DocumentCardActionMenu({ document, canDownload, t, actions, onDownload,
     <span className="absolute right-0 top-[calc(100%+6px)] z-[220] flex min-w-[180px] flex-col rounded-[8px] border border-line-soft bg-surface p-1 shadow-[0_6px_24px_rgb(15_23_42/12%)] [&[hidden]]:hidden" role="menu" hidden={!open}>
       {canDownload && downloadable ? menuItem(t("knowledgeBase.detail.download", { name: displayName(document) }), <DownloadIcon />, onDownload) : null}
       {document.source === "manual" ? menuItem(t("knowledgeBase.editDocument"), <EditIcon size={16} />, onEdit) : null}
+      {actions.canCancelParse || document.trace ? menuItem(t("knowledgeBase.timeline.title"), <MoreIcon />, onViewTrace) : null}
       {actions.canReparse && !actions.canCancelParse ? menuItem(t("knowledgeBase.rebuildDocument"), <RefreshIcon />, onReparse) : null}
       {actions.canCancelParse ? menuItem(t("knowledgeBase.documents.cancelParse"), <RefreshIcon />, onCancelParse) : null}
       {menuItem(t("knowledgeBase.moveToFolder.action"), <MoveIcon />, onMove)}
@@ -285,6 +290,7 @@ export function DocumentCardGrid({
   onCancelParse,
   onDownload,
   onEdit,
+  onViewTrace,
   onMove,
   onBatchManage,
   onDelete,
@@ -303,6 +309,7 @@ export function DocumentCardGrid({
   onCancelParse: (document: KnowledgeDocument) => void;
   onDownload: (document: KnowledgeDocument) => void;
   onEdit: (document: KnowledgeDocument) => void;
+  onViewTrace: (document: KnowledgeDocument) => void;
   onMove: (document: KnowledgeDocument) => void;
   onBatchManage: (document: KnowledgeDocument) => void;
   onDelete: (document: KnowledgeDocument) => void;
@@ -338,7 +345,7 @@ export function DocumentCardGrid({
             {canContribute ? <Checkbox type="checkbox" checked={selected.has(document.id)} onChange={(event) => onToggle(document.id, event.target.checked)} aria-label={t("knowledgeBase.documents.select", { name: displayName(document) })} /> : null}
             <button type="button" className="min-w-0 flex-1 truncate border-0 bg-transparent p-0 text-left text-[14px] font-semibold leading-6 tracking-[.01em] text-primary-deep hover:underline" onClick={() => onOpen(document)} title={displayName(document)}>{displayName(document)}</button>
             <Status tone={status.tone}>{status.label}</Status>
-            {canContribute ? <DocumentCardActionMenu document={document} canDownload={canDownload} t={t} actions={actions} onDownload={() => onDownload(document)} onEdit={() => onEdit(document)} onMove={() => onMove(document)} onBatchManage={() => onBatchManage(document)} onReparse={() => onReparse(document)} onCancelParse={() => onCancelParse(document)} onDelete={() => onDelete(document)} /> : null}
+            {canContribute ? <DocumentCardActionMenu document={document} canDownload={canDownload} t={t} actions={actions} onDownload={() => onDownload(document)} onEdit={() => onEdit(document)} onViewTrace={() => onViewTrace(document)} onMove={() => onMove(document)} onBatchManage={() => onBatchManage(document)} onReparse={() => onReparse(document)} onCancelParse={() => onCancelParse(document)} onDelete={() => onDelete(document)} /> : null}
           </div>
           <p className="m-0 line-clamp-2 min-h-0 flex-1 overflow-hidden text-[12px] font-normal leading-[19px] text-muted">{document.summary_status === "processing" ? t("knowledgeBase.generatingSummary") : typeof document.description === "string" ? document.description : document.folder_path ?? t("knowledgeBase.documents.root")}</p>
         </div>
@@ -1977,6 +1984,8 @@ export function KnowledgeDocumentsPage({
   const [manualEditDocument, setManualEditDocument] = useState<KnowledgeDocument | null>(null);
   const [manualEditLoading, setManualEditLoading] = useState(false);
   const [manualEditSaving, setManualEditSaving] = useState(false);
+  const [traceDocument, setTraceDocument] = useState<KnowledgeDocument | null>(null);
+  const [traceState, setTraceState] = useState<{ status: "idle" | "loading" | "success" | "error"; steps: KnowledgeTimelineStep[]; parseStatus?: string; message?: string }>({ status: "idle", steps: [] });
   // Multi-file upload parity: staged files wait behind a confirm dialog
   // (Vue UploadConfirmDialog) before any upload call is issued.
   const [pendingEntries, setPendingEntries] = useState<UploadEntry[]>([]);
@@ -2715,6 +2724,43 @@ export function KnowledgeDocumentsPage({
       setManualEditLoading(false);
     }
   }
+
+  function openTrace(document: KnowledgeDocument) {
+    setTraceDocument(document);
+    setTraceState({ status: "loading", steps: [] });
+  }
+
+  useEffect(() => {
+    if (!traceDocument) return;
+    let active = true;
+    let polling: number | undefined;
+    let inFlight = false;
+    const load = async () => {
+      if (!active || inFlight) return;
+      inFlight = true;
+      try {
+        const spans = await client.knowledgeBases.documents.spans(traceDocument.id);
+        if (!active) return;
+        const parseStatus = typeof spans.parse_status === "string" ? spans.parse_status : traceDocument.parse_status;
+        setTraceState({ status: "success", steps: buildKnowledgeTimeline(spans), parseStatus });
+        if (!isKnowledgeProcessingActive(parseStatus) && polling !== undefined) {
+          window.clearInterval(polling);
+          polling = undefined;
+        }
+      } catch (error) {
+        if (active) setTraceState({ status: "error", steps: [], message: errorMessage(error, t) });
+      } finally {
+        inFlight = false;
+      }
+    };
+    void load().then(() => {
+      if (active && isKnowledgeProcessingActive(traceDocument.parse_status)) polling = window.setInterval(() => void load(), 2000);
+    });
+    return () => {
+      active = false;
+      if (polling !== undefined) window.clearInterval(polling);
+    };
+  }, [client, traceDocument]);
 
   async function saveManualEdit() {
     if (!manualEditDocument || manualEditSaving) return;
@@ -3471,6 +3517,7 @@ export function KnowledgeDocumentsPage({
                 onCancelParse={(document) => void cancelOneParse(document.id)}
                 onDownload={(document) => void downloadDocument(document)}
                 onEdit={(document) => void openManualEdit(document)}
+                onViewTrace={(document) => openTrace(document)}
                 onMove={(document) => { setSelected(new Set([document.id])); setMoving(true); setMoveTarget(document.folder_path ?? ""); }}
                 onBatchManage={(document) => setSelected(new Set([document.id]))}
                 onDelete={setConfirmingDeleteDocument}
@@ -3874,6 +3921,31 @@ export function KnowledgeDocumentsPage({
               </Button>
             </div>
           </div>
+        </Dialog>
+      ) : null}
+      {traceDocument && canContribute ? (
+        <Dialog
+          open
+          title={`${t("knowledgeBase.timeline.title")}：${displayName(traceDocument)}`}
+          onClose={() => setTraceDocument(null)}
+          className="max-w-[720px]"
+        >
+          <section className="wk-processing-timeline" aria-live="polite" aria-busy={traceState.status === "loading"}>
+            {traceState.status === "loading" ? <Status>{t("common.loading")}</Status> : null}
+            {traceState.status === "error" ? <Status tone="error">{traceState.message}</Status> : null}
+            {traceState.status === "success" ? (
+              <ol className="m-0 flex list-none flex-col gap-2 p-0">
+                {traceState.steps.map((step) => (
+                  <li key={step.stage} data-state={step.state} className="flex items-center justify-between rounded-[6px] border border-line-soft px-3 py-2 text-[13px]">
+                    <span>{t(`knowledgeBase.timeline.stage.${step.stage}`)}</span>
+                    <span className={step.state === "failed" ? "text-danger" : step.state === "done" ? "text-success" : step.state === "running" ? "text-primary" : "text-muted"}>
+                      {t(`knowledgeBase.timeline.${step.state}`)}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            ) : null}
+          </section>
         </Dialog>
       ) : null}
       {confirmingDelete && canContribute ? (
