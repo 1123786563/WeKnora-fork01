@@ -362,3 +362,5 @@ Verification update (2026-09-15): shared package regression passes 467/467 after
 N021 fixture update (2026-09-15): typed tool-result renderer suite now passes 39/39, including unknown display-type plain-text fallback, nested secret redaction, secret-shaped search content suppression, and expanded renderer coverage. Browser fixture/live backend evidence remains open.
 
 Verification update (2026-09-15): mobile regression passes 190/190 and mobile TypeScript typecheck passes after the latest desktop/Web changes. Native runtime evidence remains separately gated.
+
+T10 mobile auth update (2026-09-15): public Login and Register routes now resolve visible copy, placeholders, action labels and fallback errors through the shared five-locale auth catalog; server-provided errors remain visible. Mobile typecheck passes and mobile regression remains 190/190.
