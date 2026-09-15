@@ -220,7 +220,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
           if (result.page !== sessionPage) setSessionPage(result.page);
         }
       },
-      (cause: unknown) => { if (active) setError(cause instanceof Error ? cause.message : 'Unable to load sessions'); },
+      (cause: unknown) => { if (active) setError(cause instanceof Error ? cause.message : copy.operationFailed); },
     ).finally(() => { if (active) setLoadingSessions(false); });
     return () => { active = false; };
   }, [client, scope.signal, scope.scope, scopeController, sessionPage, sessionSource, sessionKeyword]);
@@ -234,7 +234,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
         setDisabledAgentIds(result.disabledOwnAgentIds);
         setSelectedAgentId((current) => initialAgentSelection(`?agentId=${encodeURIComponent(current)}`, result.items, result.disabledOwnAgentIds));
       },
-      (cause: unknown) => { if (active) setError(cause instanceof Error ? cause.message : 'Unable to load agents'); },
+      (cause: unknown) => { if (active) setError(cause instanceof Error ? cause.message : copy.operationFailed); },
     );
     return () => { active = false; };
   }, [client, scope.signal, scope.scope, scopeController]);
@@ -304,7 +304,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
           }
         }
       },
-      (cause: unknown) => { if (active) setError(cause instanceof Error ? cause.message : 'Unable to load messages'); },
+      (cause: unknown) => { if (active) setError(cause instanceof Error ? cause.message : copy.operationFailed); },
     ).finally(() => { if (active) setLoadingMessages(false); });
     return () => { active = false; };
   }, [client, selectedSessionId, scope.signal, scope.scope, scopeController]);
@@ -327,7 +327,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     void client.chat.continueStream(sessionId, resumeId, feed, controller.signal).catch(() => {
       // Non-IM resume failures surface as errors; the partial answer stays.
       if (runId === chatRunIdRef.current && selectedSessionIdRef.current === sessionId) {
-        setError('Unable to resume the interrupted answer');
+        setError(copy.operationFailed);
       }
     }).finally(() => {
       if (streamAbortRef.current === controller) streamAbortRef.current = null;
@@ -386,7 +386,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       setMessages((current) => appendMessages(current, batch));
       setHasMoreMessages(hasOlderMessages(batch, 50) && batch[0]?.id !== oldestId);
     } catch (cause) {
-      if (scopeController.isCurrent(scope.scope)) setError(cause instanceof Error ? cause.message : 'Unable to load older messages');
+      if (scopeController.isCurrent(scope.scope)) setError(cause instanceof Error ? cause.message : copy.operationFailed);
     } finally { setLoadingOlderMessages(false); }
   }
 
@@ -684,7 +684,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
         URL.revokeObjectURL(url);
       });
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Unable to download artifact');
+      setError(cause instanceof Error ? cause.message : copy.operationFailed);
     }
   }
 
@@ -729,7 +729,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       setSessions((current) => [session, ...current.filter((item) => item.id !== session.id)]);
       selectSession(session.id);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Unable to create a session');
+      setError(cause instanceof Error ? cause.message : copy.operationFailed);
     }
   }
 
@@ -745,7 +745,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     try {
       await (pinned ? client.sessions.pin(sessionId, scope.signal) : client.sessions.unpin(sessionId, scope.signal));
       setSessions((items) => items.map((session) => session.id === sessionId ? { ...session, is_pinned: pinned } : session));
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to update conversation pin'); }
+    } catch (cause) { setError(cause instanceof Error ? cause.message : copy.operationFailed); }
   }
 
   async function deleteSession(sessionId: string): Promise<void> {
@@ -758,7 +758,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
         setSelectedSessionId(null); setMessages([]); setStreamState(initialChatStreamState());
         window.history.pushState({}, '', '/platform/creatChat');
       }
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to delete conversation'); }
+    } catch (cause) { setError(cause instanceof Error ? cause.message : copy.operationFailed); }
   }
 
   async function clearMessages(): Promise<void> {
@@ -768,7 +768,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       setMessages([]);
       setSuggestions(undefined);
       setHasMoreMessages(false);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to clear messages'); }
+    } catch (cause) { setError(cause instanceof Error ? cause.message : copy.operationFailed); }
   }
 
   function updateDraft(value: string) {
