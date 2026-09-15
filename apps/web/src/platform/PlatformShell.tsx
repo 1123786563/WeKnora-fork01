@@ -612,10 +612,10 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
               return (
                 <a key={item.key} href={item.href} className={(collapsed
                   ? 'justify-center mx-[4px] px-0 '
-                  : 'mx-[8px] px-[8px] ')
-                  + 'flex items-center gap-[8px] py-[9px] rounded-[8px] no-underline text-[14px] whitespace-nowrap '
+                  : 'mx-0 px-[14px] ')
+                  + 'box-border flex h-[38px] items-center gap-[8px] rounded-[4px] py-[8px] no-underline text-[14px] font-semibold whitespace-nowrap '
                   + (active
-                    ? 'bg-[#f3f3f3] hover:bg-[#f3f3f3] text-[#07c05f] font-medium'
+                    ? 'bg-[#f3f3f3] hover:bg-[#f3f3f3] text-[#07c05f]'
                     : 'text-[#3d4a5c] hover:bg-[#eceff4]')}
                   aria-current={active ? 'page' : undefined} title={collapsed ? item.label : undefined} data-guide={item.guide}>
                   <span className="inline-flex shrink-0">{item.icon}</span>
