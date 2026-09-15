@@ -225,6 +225,7 @@ test('MCP editor step 0 matches the Vue drawer structure and offers no stdio tra
     await act(async () => { findButton('添加服务')?.click(); });
     const dialog = document.querySelector('.wks-mcp-drawer');
     assert.ok(dialog, 'drawer renders');
+    assert.ok(dialog?.parentElement?.classList.contains('wks-mcp-overlay'), 'drawer uses the Vue right-side overlay shell');
     const text = dialog?.textContent ?? '';
     // Scope to fieldset legends: the steps nav also says 连接配置.
     const legends = Array.from(dialog?.querySelectorAll('legend') ?? []).map((el) => el.textContent ?? '');
