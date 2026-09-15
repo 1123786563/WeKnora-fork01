@@ -29,6 +29,7 @@ afterEach(async () => {
   if (mountedRoot) await act(async () => mountedRoot?.unmount());
   mountedRoot = undefined;
   document.body.replaceChildren();
+  dom.window.localStorage.removeItem('locale');
 });
 
 /** The preview modal defers the iframe mount by one tick (Vue nextTick parity). */
@@ -70,9 +71,10 @@ test('integration channel panels keep the Vue loading state until the list reque
   assert.doesNotMatch(container.textContent ?? '', /正在加载/);
 });
 
-async function mountRoutePage(client: Parameters<typeof IntegrationsRoutePage>[0]['client'], openedNewTabs: string[][]) {
+async function mountRoutePage(client: Parameters<typeof IntegrationsRoutePage>[0]['client'], openedNewTabs: string[][], locale = 'zh-CN') {
   const container = document.createElement('div');
   document.body.append(container);
+  dom.window.localStorage.setItem('locale', locale);
   (dom.window as unknown as { open: (...args: string[]) => unknown }).open = (...args: string[]) => { openedNewTabs.push(args); return null; };
   mountedRoot = createRoot(container);
   await act(async () => {
@@ -85,7 +87,7 @@ async function mountRoutePage(client: Parameters<typeof IntegrationsRoutePage>[0
 async function openDeployStepAndPreview(container: HTMLElement) {
   await act(async () => { (container.querySelector('article') as HTMLElement).click(); });
   await act(async () => {});
-  const previewButton = Array.from(container.querySelectorAll<HTMLButtonElement>('.wk-embed-code-panel button')).find((button) => button.textContent === '预览');
+  const previewButton = Array.from(container.querySelectorAll<HTMLButtonElement>('.wk-embed-code-panel button')).find((button) => /预览|Preview/.test(button.textContent ?? ''));
   assert.ok(previewButton, 'deploy step shows the Vue 预览 button');
   await act(async () => { previewButton!.click(); });
   await act(async () => {});
@@ -117,6 +119,17 @@ test('empty preview session warns in place, keeps the page, never opens a new ta
   const alert = container.querySelector('[role="alert"]');
   assert.ok(alert, 'warning surfaced');
   assert.match(alert!.textContent!, /预览暂时不可用/);
+});
+
+test('preview warning follows the active locale', async () => {
+  const client = stubClient({
+    channels: [{ id: 'ch-1', name: 'Support', agent_id: 'agent-1', default_locale: 'en-US' }],
+    sessionTokens: [''],
+    previewCalls: [],
+  });
+  const container = await mountRoutePage(client, [], 'en-US');
+  await openDeployStepAndPreview(container);
+  assert.match(container.querySelector('[role="alert"]')?.textContent ?? '', /Preview is unavailable/);
 });
 
 // When the fallback mint succeeds the preview still stays in-page: the shell

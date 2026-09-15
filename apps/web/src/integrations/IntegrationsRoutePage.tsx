@@ -10,6 +10,7 @@ import { parseIntegrationTenantId } from './tenant.ts';
 import { ApiPlaygroundDrawer } from './ApiPlaygroundDrawer.tsx';
 import { EmbedPreviewModal } from './EmbedPreviewModal.tsx';
 import { resolveApiBaseUrl } from '../platform/api-base.ts';
+import { integrationsLocale, integrationsT } from '../../../../packages/views/src/integrations/messages.ts';
 
 // Each integrations tab fetches only the data it renders, so a missing or
 // empty collection on one tab can never break the others.
@@ -112,7 +113,9 @@ export function IntegrationsRoutePage({ client, tenantId, activeTab, embedded = 
         refreshKey: embedPreviewNonce.current,
       });
     } catch {
-      setEmbedPreviewNotice('预览暂时不可用，请确认渠道已启用且 Redis 可用');
+      let locale = integrationsLocale(null);
+      try { locale = integrationsLocale(window.localStorage.getItem('locale')); } catch { /* use default locale */ }
+      setEmbedPreviewNotice(integrationsT(locale, 'embedPublish.previewUnavailable'));
     }
   }
 
