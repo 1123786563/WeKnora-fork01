@@ -1,9 +1,10 @@
 // Shell sessions-header slice tests (jsdom + react-dom), following the
 // harness in shell-session-list.test.tsx.
 //
-// Slice: the Vue sidebar session area (frontend/src/components/menu.vue) shows
-// a visible 我的对话 (menu.myChats) label at the top of the session list. The
-// React shell only had nav[aria-label=我的对话] with no visible title.
+// Slice: the Vue sidebar session area (frontend/src/components/menu.vue) uses
+// a semantic session region with date/row content but no visible 我的对话
+// heading. The React shell must preserve the semantic label without adding a
+// second visible title.
 // Coordinator ruling (strict parity): the 新建对话⌘1 fingerprint belongs to the
 // command palette's first quick action, so the sidebar nav gets no kbd hint
 // and ⌘1 stays palette-scoped — tests (b)/(d) pin that absence.
@@ -85,14 +86,13 @@ async function mountShell(options: { collapsed?: boolean; me?: Record<string, un
 const pressKey = (init: { key: string; metaKey?: boolean; ctrlKey?: boolean; shiftKey?: boolean }, target?: EventTarget) =>
   (target ?? window).dispatchEvent(new window.KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }));
 
-test('(a) the shell sessions region shows a visible 我的对话 (menu.myChats) title', async () => {
+test('(a) the shell sessions region keeps 我的对话 semantic-only', async () => {
   await mountShell();
   const nav = document.querySelector('nav[aria-label="我的对话"]');
   assert.ok(nav, 'expected the shell session list region');
   assert.equal(nav.getAttribute('aria-label'), '我的对话');
   const title = nav.querySelector('h2');
-  assert.ok(title, 'expected a visible sessions title element');
-  assert.equal(title.textContent, '我的对话');
+  assert.equal(title, null, 'Vue does not render a visible sessions title');
 });
 
 test('(b) the 新对话 entry carries no shortcut hint (Vue sidebar nav has none)', async () => {

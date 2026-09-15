@@ -612,18 +612,14 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
 
           {/* Vue menu.vue .submenu: the grouped session list lives in the
               sidebar on every protected page; collapsed sidebars hide it.
-              The visible 我的对话 title mirrors Vue's session-area label
-              (menu.myChats → SessionSourceFilter trigger, menu.vue:109-112/332). */}
+              Keep the region label semantic-only; Vue renders dates and rows
+              here without a visible 我的对话 heading. */}
           {/* .plat-shell__sessions / __sessions-title → utilities. The
               shell-context group-list indent (padding 0 6px on the session
               <ul>) rides along as an arbitrary-variant utility so the
-              fallback chat sidebar (outside the shell) keeps its flush list.
-              plat-shell__kb-filter--active is kept as a className hook for
-              the subfilter tests (no styling of its own beyond the swapped
-              color utilities below). */}
+              fallback chat sidebar (outside the shell) keeps its flush list. */}
           {!collapsed && (
             <nav className="mt-[8px] mb-[4px] pt-[8px] border-t border-[#e7ebf0] [&_ul]:px-[6px]" aria-label={labels.myChats}>
-              <h2 className="m-0 px-[14px] pb-[4px] text-[#8b97a8] text-[12px] font-semibold leading-[1.4]">{labels.myChats}</h2>
               {sessionsLoadError && !sessionsLoading ? <p className="mx-[14px] my-2 text-xs text-[#b42318]" role="status">
                 {labels.sessionLoadError}{' '}<button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-xs text-[#07c05f] underline" onClick={retryShellSessions}>{t('common.retry')}</button>
               </p> : null}
