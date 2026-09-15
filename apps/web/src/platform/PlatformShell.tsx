@@ -607,6 +607,17 @@ export function PlatformShell({ client, onLogout, onTenantSwitch, children }: Pl
           </button>
         )}
 
+        {/* Vue menu.vue keeps the global search entry available in the
+            collapsed rail (the expanded logo row is not mounted there). */}
+        {collapsed && (
+          <button type="button" className="mx-[4px] flex h-[38px] items-center justify-center rounded-[4px] border-0 bg-transparent p-0 text-[#3d4a5c] hover:bg-[#eceff4]" onClick={() => { setPaletteQuery(''); setPaletteOpen(true); }} aria-label={t('menu.search')} title={`${t('menu.search')} ${platformModKeyLabel(navigator.platform)}K`}>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="6.5" />
+              <path d="m16 16 4.5 4.5" />
+            </svg>
+          </button>
+        )}
+
         {/* .plat-shell__top / __nav → utilities. Item base styles from
             .plat-shell__item; --active (+ :hover pin) and the collapsed
             descendant override become state-swapped utilities keyed off

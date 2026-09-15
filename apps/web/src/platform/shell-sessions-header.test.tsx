@@ -34,6 +34,8 @@ Object.assign(globalThis, {
   Event: dom.window.Event,
   CustomEvent: dom.window.CustomEvent,
   IS_REACT_ACT_ENVIRONMENT: true,
+  requestAnimationFrame: (cb: (time: number) => void) => setTimeout(() => cb(16), 0) as unknown as number,
+  cancelAnimationFrame: (id: number) => clearTimeout(id),
 });
 // zh-CN like the acceptance environment; resolveLocale reads navigator.language.
 const jsdomNavigator = dom.window.navigator;
@@ -115,7 +117,21 @@ test('(b) the 新对话 entry carries no shortcut hint (Vue sidebar nav has none
   assert.ok(expand, 'collapsed rail uses localized expand label');
 });
 
-test('(c) platformModKeyLabel mirrors Vue menu.vue:303-304 (⌘ on Apple, Ctrl+ elsewhere)', () => {
+test('(c) collapsed rail keeps the Vue search entry and opens the command palette', async () => {
+  await mountShell({ collapsed: true });
+  const search = document.querySelector<HTMLButtonElement>('button[aria-label="搜索"]');
+  assert.ok(search, 'collapsed rail should keep a localized search button');
+  assert.notEqual(search, document.querySelector('button[aria-label="展开侧边栏"]'));
+
+  await act(async () => {
+    search?.click();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  });
+
+  assert.ok(document.querySelector('.cmdk'), 'collapsed search should open the global command palette');
+});
+
+test('(d) platformModKeyLabel mirrors Vue menu.vue:303-304 (⌘ on Apple, Ctrl+ elsewhere)', () => {
   assert.equal(platformModKeyLabel('MacIntel'), '⌘');
   assert.equal(platformModKeyLabel('Macintosh; Intel Mac OS X 10_15_7'), '⌘');
   assert.equal(platformModKeyLabel('iPad'), '⌘');
@@ -124,7 +140,7 @@ test('(c) platformModKeyLabel mirrors Vue menu.vue:303-304 (⌘ on Apple, Ctrl+ 
   assert.equal(platformModKeyLabel(''), 'Ctrl+');
 });
 
-test('(d) ⌘1 / Ctrl+1 never navigate app-wide (Vue binds ⌘1-9 only inside the open palette)', async () => {
+test('(e) ⌘1 / Ctrl+1 never navigate app-wide (Vue binds ⌘1-9 only inside the open palette)', async () => {
   await mountShell();
   // Strict parity: Vue has no app-wide ⌘1 binding — the ⌘1-9 shortcuts are
   // scoped to the open command palette. Guard against re-introducing a
@@ -136,7 +152,7 @@ test('(d) ⌘1 / Ctrl+1 never navigate app-wide (Vue binds ⌘1-9 only inside th
   assert.equal(window.location.href, before, 'no app-wide ⌘1 navigation');
 });
 
-test('(e) multi-space identity shows the active tenant and localized role like Vue UserMenu', async () => {
+test('(f) multi-space identity shows the active tenant and localized role like Vue UserMenu', async () => {
   await mountShell({
     me: {
       user: { id: 'u1', username: 'tester', email: 'tester@local.dev', avatar: '', can_access_all_tenants: false },
