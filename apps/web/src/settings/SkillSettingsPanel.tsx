@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AgentConfiguration, InstalledSkill, ModelConfiguration, SandboxConfigRecord, SkillCatalog, SkillCatalogInstallation, SkillConfiguration, SkillFileContent, SkillInstallGuidanceState, WeKnoraClient } from '@weknora/api-client';
 import { initialSkillTimelineState, installProgressPercent, reduceSkillTimelineFrame, type SkillInstallProgressEvent, type SkillTimelineState } from '@weknora/domain/sandbox/skill-install';
-import { Button, Card, Checkbox, Dialog, Input, Select, Status, Textarea } from '@weknora/ui';
+import { Button, Card, Checkbox, Dialog, Input, Select, Status, Switch, Textarea } from '@weknora/ui';
 import { renderChatMarkdown } from '../../../../packages/views/src/chat/markdown.ts';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 import { observeUploadProgress } from '../platform/http.ts';
@@ -1447,7 +1447,7 @@ function ManageSkillDialog({ client, open, target, t, onClose, onChanged, onToas
           <p className="wk-muted m-0 text-xs leading-[1.5] text-muted-strong!">{installStatusKeys(skill.status, skill.enabled).map((key) => t(key)).join(' · ')}</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <label className="relative inline-flex shrink-0 cursor-pointer items-center"><input type="checkbox" className="absolute m-0 h-[18px] w-[34px] cursor-pointer opacity-0" checked={skill.enabled} disabled={busy} onChange={(event) => void toggleEnabled(event.target.checked)} /> {toggling ? '…' : ''}</label>
+          <label className="inline-flex shrink-0 cursor-pointer items-center gap-2"><Switch className="h-[18px]! w-[34px]!" aria-label={t('settings.skills.manageEnable')} checked={skill.enabled} disabled={busy} onCheckedChange={(checked) => void toggleEnabled(checked)} /> {toggling ? '…' : ''}</label>
           {skill.status === 'failed' ? <Button type="button" loading={retrying} disabled={busy} title={t('settings.sandbox.skillRetryHint')} onClick={() => void retry()}>{t('settings.sandbox.skillRetry')}</Button> : null}
           {skill.status === 'installing' ? <Button type="button" loading={stopping} disabled={busy} title={t('settings.sandbox.skillStopHint')} onClick={() => void stop()}>{t('settings.sandbox.skillStop')}</Button> : null}
           {skill.status !== 'installing' ? <Button type="button" loading={uninstalling} disabled={busy} title={t('settings.skills.manageUninstallConfirm', { name: skill.name })} onClick={() => setPendingUninstall(true)}>{t('settings.skills.manageUninstall')}</Button> : null}
