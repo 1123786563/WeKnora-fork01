@@ -2,6 +2,16 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { buildKnowledgeBaseSettingsInput, formFromKnowledgeBase, updateParserRule, type KnowledgeBaseSettingsForm } from './form.ts';
+import { formatMessage } from '@weknora/i18n';
+
+test('knowledge-settings mutation fallback copy is localized in supported locales', () => {
+  for (const locale of ['zh-CN', 'en-US'] as const) {
+    assert.notEqual(formatMessage(locale, 'knowledgeEditor.messages.nameRequired'), 'knowledgeEditor.messages.nameRequired');
+    assert.notEqual(formatMessage(locale, 'knowledgeEditor.messages.loadDataFailed'), 'knowledgeEditor.messages.loadDataFailed');
+    assert.notEqual(formatMessage(locale, 'knowledgeEditor.messages.updateSuccess'), 'knowledgeEditor.messages.updateSuccess');
+    assert.notEqual(formatMessage(locale, 'knowledgeEditor.chunking.debug.errorPrefix'), 'knowledgeEditor.chunking.debug.errorPrefix');
+  }
+});
 
 test('maps a KB response into explicit settings fields and preserves section payloads', () => {
   const form = formFromKnowledgeBase({

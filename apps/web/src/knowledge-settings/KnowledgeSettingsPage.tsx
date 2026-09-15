@@ -33,7 +33,7 @@ export function KnowledgeSettingsPage({ client, knowledgeBaseId }: { client: WeK
     const results = await Promise.allSettled([settings.get(knowledgeBaseId), settings.parserEngines(), settings.storageBackends(), settings.vectorStores(), settings.activity(knowledgeBaseId)]);
     const kbResult = results[0];
     if (kbResult.status === 'fulfilled') { setKnowledgeBase(kbResult.value); setForm(formFromKnowledgeBase(kbResult.value)); }
-    else setMessage({ tone: 'error', text: errorMessage(kbResult.reason, 'Unable to load knowledge base settings') });
+    else setMessage({ tone: 'error', text: errorMessage(kbResult.reason, t('knowledgeEditor.messages.loadDataFailed')) });
     const parserResult = results[1]; if (parserResult.status === 'fulfilled') setEngines(parserResult.value.data);
     const storageResult = results[2]; if (storageResult.status === 'fulfilled') setStorageBackends(storageResult.value.data.filter((backend) => backend.status === 'active'));
     const vectorResult = results[3]; if (vectorResult.status === 'fulfilled') setVectorStores(vectorResult.value.data);
@@ -48,10 +48,10 @@ export function KnowledgeSettingsPage({ client, knowledgeBaseId }: { client: WeK
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!form) return;
-    if (!form.name.trim()) { setMessage({ tone: 'error', text: 'Knowledge base name is required.' }); return; }
+    if (!form.name.trim()) { setMessage({ tone: 'error', text: t('knowledgeEditor.messages.nameRequired') }); return; }
     setSaving(true); setMessage(null);
-    try { const updated = await settings.update(knowledgeBaseId, buildKnowledgeBaseSettingsInput(form)); setKnowledgeBase(updated); setForm(formFromKnowledgeBase(updated)); setMessage({ tone: 'success', text: 'Knowledge base settings saved.' }); }
-    catch (error) { setMessage({ tone: 'error', text: errorMessage(error, 'Unable to save settings; your form is still available.') }); }
+    try { const updated = await settings.update(knowledgeBaseId, buildKnowledgeBaseSettingsInput(form)); setKnowledgeBase(updated); setForm(formFromKnowledgeBase(updated)); setMessage({ tone: 'success', text: t('knowledgeEditor.messages.updateSuccess') }); }
+    catch (error) { setMessage({ tone: 'error', text: errorMessage(error, t('common.error')) }); }
     finally { setSaving(false); }
   }
 
@@ -59,7 +59,7 @@ export function KnowledgeSettingsPage({ client, knowledgeBaseId }: { client: WeK
     if (!form || !sample.trim()) return;
     setPreviewing(true); setMessage(null);
     try { const result = await settings.previewChunking({ text: sample, chunking_config: buildKnowledgeBaseSettingsInput(form).config?.chunking_config ?? {} }); setPreview({ selected_tier: result.selected_tier, chunks: result.chunks.slice(0, 12), stats: result.stats }); }
-    catch (error) { setMessage({ tone: 'error', text: errorMessage(error, 'Unable to preview chunking') }); }
+    catch (error) { setMessage({ tone: 'error', text: errorMessage(error, t('knowledgeEditor.chunking.debug.errorPrefix')) }); }
     finally { setPreviewing(false); }
   }
 
