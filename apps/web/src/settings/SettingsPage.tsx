@@ -271,7 +271,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
                       (previously it also leaked the registry apiDomain as the text). */}
                   {selectedKey !== 'general' && selectedKey !== 'models' && selectedKey !== 'members' && selectedKey !== 'memory' && selectedKey !== 'mymemory' ? (
                     <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col">
-                      <div>
+                      <div className="w-full">
                         <h2 className="m-0 mb-2 text-[20px] font-semibold leading-[normal]">{settingsSectionHeading(locale, selectedKey).title}</h2>
                         <p className="wk-muted text-muted m-0">{settingsSectionHeading(locale, selectedKey).description}</p>
                       </div>
