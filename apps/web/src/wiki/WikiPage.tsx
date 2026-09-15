@@ -8,7 +8,7 @@ import type {
 } from "@weknora/api-client";
 import { diffWikiRevision } from "@weknora/domain/wiki/diff";
 import { Button, Card, Input, Status, Textarea } from "@weknora/ui";
-import { applyWikiSearch, saveWikiPage, wikiReaderEmptyState, wikiRevertCopy, type WikiSaveState } from "./editor.ts";
+import { applyWikiSearch, saveWikiPage, validateWikiPageInput, wikiReaderEmptyState, wikiRevertCopy, type WikiSaveState } from "./editor.ts";
 import { createTranslator, useAppLocale } from "../i18n.ts";
 import { pagerState } from "../pagination.ts";
 import { computeKBPermissions, type KBSurfaceKB, type KBSurfaceMe } from "../knowledge/permissions.ts";
@@ -243,6 +243,14 @@ export function WikiPage({
     event.preventDefault();
     if (!canContribute) return;
     if (!selected) {
+      const validationError = validateWikiPageInput(
+        { title, content },
+        { titleRequired: t("wikiBrowser.newPageMissingFields"), contentRequired: t("wikiBrowser.newPageMissingFields"), conflict: t("wikiBrowser.editSaveFailed"), saveFailed: t("wikiBrowser.newPageFailed") },
+      );
+      if (validationError) {
+        setSaveState({ status: "error", message: validationError });
+        return;
+      }
       try {
         const page = await client.wiki.create(knowledgeBaseId, {
           title,

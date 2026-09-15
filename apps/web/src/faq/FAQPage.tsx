@@ -1653,7 +1653,11 @@ export function FAQPage({ client, knowledgeBaseId }: { client: WeKnoraClient; kn
           saveLastCompletedTaskId(knowledgeBaseId, next.task_id || importTask.task_id);
           void loadLastResult(knowledgeBaseId);
         }
-      }).catch(() => { setImportTask(null); });
+      }).catch((error) => {
+        const message = error instanceof Error && error.message ? error.message : t('common.operationFailed');
+        setImportTask((current) => current ? { ...current, status: 'failed', error: message } : current);
+        setMessage({ tone: 'error', text: message });
+      });
     }, 1500);
     return () => clearInterval(timer);
   }, [importTask, faq, knowledgeBaseId, loadLastResult]);

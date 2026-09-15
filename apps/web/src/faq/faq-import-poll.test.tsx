@@ -120,3 +120,23 @@ test('faq import polls the task and collapses the strip on completion', async ()
   await act(async () => { await settle(3200); });
   assert.equal(document.querySelector('.faq-import-strip'), null, 'strip collapses after success');
 });
+
+test('faq import polling failures remain visible as an error', async () => {
+  const fake = fakeClient([]);
+  fake.client.knowledge.faq.importProgress = async () => { throw new Error('导入进度服务不可用'); };
+  await mountPage(fake.client);
+
+  const dropdownItem = [...document.querySelectorAll('button, a')].find((n) => (n.textContent || '').includes('导入 FAQ')) as HTMLButtonElement | undefined;
+  assert.ok(dropdownItem, 'expected the import dropdown item');
+  await act(async () => { dropdownItem.click(); await settle(5); });
+  const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+  const file = new dom.window.File([JSON.stringify([{ standard_question: 'Q?', answers: ['A'] }])], 'faq.json', { type: 'application/json' });
+  Object.defineProperty(input, 'files', { value: [file] });
+  await act(async () => { input.dispatchEvent(new window.Event('change', { bubbles: true })); await settle(5); });
+  const importButton = document.querySelector('.faq-import-footer button:last-child') as HTMLButtonElement | null;
+  assert.ok(importButton, 'expected the import confirm button');
+  await act(async () => { importButton.click(); await settle(30); });
+  await act(async () => { await settle(1700); });
+
+  assert.match(document.querySelector('main')?.textContent || '', /导入进度服务不可用/);
+});

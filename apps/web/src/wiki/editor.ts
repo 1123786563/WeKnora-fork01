@@ -38,6 +38,15 @@ const defaultCopy: WikiSaveCopy = {
   saveFailed: 'Unable to save Wiki page',
 };
 
+export function validateWikiPageInput(
+  input: { title?: string; content?: string },
+  copy: WikiSaveCopy = defaultCopy,
+): string | null {
+  if (!input.title?.trim()) return copy.titleRequired;
+  if (!input.content?.trim()) return copy.contentRequired;
+  return null;
+}
+
 export async function saveWikiPage(
   api: WikiWriteApi,
   knowledgeBaseId: string,
@@ -45,8 +54,8 @@ export async function saveWikiPage(
   input: WikiPageUpdateInput & { title?: string; content?: string; version: number },
   copy: WikiSaveCopy = defaultCopy,
 ): Promise<WikiSaveState> {
-  if (!input.title?.trim()) return { status: 'error', message: copy.titleRequired };
-  if (!input.content?.trim()) return { status: 'error', message: copy.contentRequired };
+  const validationError = validateWikiPageInput(input, copy);
+  if (validationError) return { status: 'error', message: validationError };
   try {
     return { status: 'saved', page: await api.update(knowledgeBaseId, slug, input) };
   } catch (error) {
