@@ -20,7 +20,7 @@ function parametersOf(schema: unknown): Array<{ name: string; type?: string; req
 
 export function McpToolsDirectory({ tools, serviceId, approvals, busy, busyTools, policyError, onRetryPolicies, onPolicyChange }: Props) {
   const t = (key: string) => ({
-    'mcpMetadata.searchTools': 'Search MCP tools',
+    'mcpMetadata.searchTools': 'Search tool names or descriptions',
     'mcpMetadata.retry': 'Retry',
     'mcpMetadata.details': 'Details',
     'mcpMetadata.description': 'Description',

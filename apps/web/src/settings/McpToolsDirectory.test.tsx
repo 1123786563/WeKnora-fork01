@@ -7,6 +7,7 @@ const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'McpTo
 
 test('MCP tools directory exposes Vue-aligned search, policy controls, details, and pagination', () => {
   assert.match(source, /tools\.length > pageSize/);
+  assert.match(source, /'mcpMetadata\.searchTools': 'Search tool names or descriptions'/);
   assert.match(source, /aria-label=\{t\('mcpMetadata\.searchTools'\)\}/);
   assert.match(source, /aria-controls=\{detailId\}/);
   assert.match(source, /aria-live="polite"/);
