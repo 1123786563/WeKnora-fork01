@@ -6,9 +6,8 @@
 //   mode="organization" — the shared-space scope rail: 全部 / 我创建的 /
 //   我加入的, backed by spaceSelection 'all' | 'created' | 'joined').
 //   Vue menu.vue itself has NO organizations submenu (only the
-//   pending-join-requests badge on the nav entry), so the shell mirrors the
-//   established KB quick-filter block (plat-shell__kb-filters) as the
-//   equivalent interaction, and navigates via the shared ?scope= convention.
+//   pending-join-requests badge on the nav entry); the scope rail belongs to
+//   OrganizationList.vue, not the shell.
 import assert from 'node:assert/strict';
 import * as nodeModule from 'node:module';
 import test, { afterEach } from 'node:test';
@@ -80,46 +79,24 @@ async function mountShell(atPath: string): Promise<HTMLElement> {
   return container;
 }
 
-// The quick-filter blocks are role="navigation" navs with a localized
-// aria-label (their styling classes became Tailwind utilities); tests
-// disambiguate through that aria-label.
+// The old shell quick-filter block is intentionally absent; the page rail
+// owns these controls, as in Vue.
 const orgFilters = (root: HTMLElement) => root.querySelector('[role="navigation"][aria-label="共享空间"]');
-const orgFilterLinks = (root: HTMLElement) => [...(orgFilters(root)?.querySelectorAll('a') ?? [])] as HTMLAnchorElement[];
 
-test('organizations route renders the scope sub-filter with the Vue rail entries', async () => {
+test('organizations route leaves scope filtering to the page rail', async () => {
   const root = await mountShell('/platform/organizations');
-  const block = orgFilters(root);
-  assert.ok(block, 'expected an organizations sub-filter block under the shell nav');
-  const links = orgFilterLinks(root);
-  assert.equal(links.length, 3, 'sub-filter mirrors Vue ListSpaceSidebar: all/created/joined');
-  const labels = links.map((link) => link.textContent);
-  assert.deepEqual(labels, ['全部', '我创建的', '我加入的']);
-  const hrefs = links.map((link) => link.getAttribute('href'));
-  assert.deepEqual(hrefs, ['/platform/organizations', '/platform/organizations?scope=created', '/platform/organizations?scope=joined']);
+  assert.equal(orgFilters(root), null, 'Vue menu does not render an organizations submenu');
 });
 
-test('sub-filter active state follows the ?scope= deep link', async () => {
-  const allRoot = await mountShell('/platform/organizations');
-  const allLinks = orgFilterLinks(allRoot);
-  assert.match(allLinks[0]?.className ?? '', /plat-shell__kb-filter--active/, 'default (no param) activates 全部');
-  assert.doesNotMatch(allLinks[1]?.className ?? '', /plat-shell__kb-filter--active/);
-
-  const createdRoot = await mountShell('/platform/organizations?scope=created');
-  const createdLinks = orgFilterLinks(createdRoot);
-  assert.match(createdLinks[1]?.className ?? '', /plat-shell__kb-filter--active/, '?scope=created activates 我创建的');
-  assert.doesNotMatch(createdLinks[0]?.className ?? '', /plat-shell__kb-filter--active/);
-
-  const joinedRoot = await mountShell('/platform/organizations?scope=joined');
-  const joinedLinks = orgFilterLinks(joinedRoot);
-  assert.match(joinedLinks[2]?.className ?? '', /plat-shell__kb-filter--active/, '?scope=joined activates 我加入的');
+test('scope query does not create duplicate shell controls', async () => {
+  const root = await mountShell('/platform/organizations?scope=created');
+  assert.equal(orgFilters(root), null);
 });
 
-test('other routes keep the shell clean: KB page shows the KB block, not the org block', async () => {
+test('other routes keep the shell clean: KB page has no duplicate scope block', async () => {
   const kbRoot = await mountShell('/platform/knowledge-bases');
   assert.equal(orgFilters(kbRoot), null, 'org sub-filter must not render outside /platform/organizations');
-  const kbBlock = kbRoot.querySelector('[role="navigation"]');
-  assert.ok(kbBlock, 'KB quick-filter block stays on the KB route');
-  assert.equal(kbBlock.querySelectorAll('a').length, 2, 'KB block keeps its all/mine entries');
+  assert.equal(kbRoot.querySelector('[role="navigation"][aria-label="知识库"]'), null);
 
   const chatRoot = await mountShell('/platform/creatChat');
   assert.equal(orgFilters(chatRoot), null);
