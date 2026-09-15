@@ -6,7 +6,7 @@ import {
   normalizeKnowledgeProcessingStatus,
 } from "@weknora/domain/knowledge/processing";
 import { flattenKnowledgeFolders as flattenFolders } from "@weknora/domain/knowledge/folders";
-import { Button, Card, Checkbox, Dialog, Input, Select, Status, Textarea } from "@weknora/ui";
+import { Button, Checkbox, Dialog, Input, Select, Status, Textarea } from "@weknora/ui";
 import { createTranslator, useAppLocale } from "../i18n.ts";
 import { observeUploadProgress } from "../platform/http.ts";
 import {
@@ -2715,7 +2715,7 @@ export function KnowledgeDocumentsPage({
   };
 
   return (
-    <main className="wk-page wk-documents-page max-w-[1180px]! mx-auto box-border px-[1.25rem] py-12">
+    <main className="wk-page wk-documents-page max-w-[1180px]! mx-auto box-border pl-9 pr-7 py-6">
       {stageNotice ? <div className={`${stageNoticeClass(stageNotice.tone)} fixed left-1/2 top-[1.25rem] z-[1000] -translate-x-1/2 max-w-[min(30rem,calc(100vw-2rem))] rounded-[6px] border bg-[var(--wk-surface,#fff)] px-[0.875rem] py-[0.625rem] text-[0.875rem] shadow-[0_6px_20px_rgb(16_24_40/14%)] ${STAGE_NOTICE_TONE_CLASS[stageNotice.tone]}`} role="alert" aria-live="polite">{stageNotice.text}</div> : null}
       <header className="wk-header wk-document-header mb-6 flex items-start justify-between gap-4">
         <div className="document-header-title flex min-w-0 flex-col gap-1">
@@ -2775,7 +2775,7 @@ export function KnowledgeDocumentsPage({
           </Button>
         </div>
       </header>
-      <Card>
+      <div className="wk-documents-surface">
         {uploadError && !uploadDialogOpen ? <Status tone="error">{uploadError}</Status> : null}
         <div
           className={
@@ -3229,7 +3229,7 @@ export function KnowledgeDocumentsPage({
             ) : null}
           </section>
         </div>
-      </Card>
+      </div>
       {uploadDialogOpen ? (
         <Dialog
           open
