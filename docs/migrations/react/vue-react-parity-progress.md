@@ -3589,3 +3589,24 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
 - Post-fix verification: Web tests 1152/1152, knowledge-settings focused tests
   12/12, Web typecheck, and Web build passed. Authenticated paired screenshots,
   real mutations, and Wails feature interaction remain open.
+
+## 2026-09-15 Round R392 — Platform shell, organizations, and chat recovery
+
+- Integrated the bounded platform-shell review (`09f802e3`), retaining the
+  existing Vue-derived shell implementation and adding the isolated shell
+  interaction model/tests. The attempted replacement shared UI implementation
+  (`2f66f789`) and unwired Agents page seam (`b65696b4`) were not integrated:
+  both conflicted with the existing project component/page contracts and would
+  have replaced rather than adapted the established wrappers.
+- Integrated the organization detail state/permission slice (`64fc3476`):
+  list/detail feed loading and errors are explicit, shared-agent and invite
+  member feeds are represented, owner mutations are guarded, and create/update
+  descriptions are trimmed. Existing organization tests remain green.
+- Chat terminal/stopped-run recovery was already present in branch history as
+  `f4ba2c2f`; its bounded review reported 95/95 focused tests and no mobile
+  changes.
+- Verification after integration: Web regression 1159/1159, Web typecheck,
+  Web build, desktop renderer tests 8/8, desktop typecheck, and `git diff
+  --check` passed. These are static/unit/build evidence; authenticated paired
+  Vue/React screenshots, real backend permission/mutation flows, and native Wails
+  feature interaction remain open acceptance gates.
