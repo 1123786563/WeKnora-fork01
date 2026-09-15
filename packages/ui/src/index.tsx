@@ -10,6 +10,7 @@ export { Textarea } from './textarea.tsx';
 export { Select } from './select.tsx';
 export { Checkbox } from './checkbox.tsx';
 export { Radio } from './radio.tsx';
+export { Range } from './range.tsx';
 export { Label } from './label.tsx';
 export { Badge } from './badge.tsx';
 export { Alert } from './alert.tsx';

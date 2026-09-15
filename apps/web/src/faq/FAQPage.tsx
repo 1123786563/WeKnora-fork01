@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import type { DragEvent, FocusEvent, FormEvent, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { FAQEntry, FAQEntryFieldsUpdate, FAQEntryPayload, FAQImportProgress, KnowledgeBase, KnowledgeTag, WeKnoraClient } from '@weknora/api-client';
-import { Button, Checkbox, Dialog, Input, Radio, Select, Status, Textarea } from '@weknora/ui';
+import { Button, Checkbox, Dialog, Input, Radio, Range, Select, Status, Textarea } from '@weknora/ui';
 import { formatMessage, type Locale } from '@weknora/i18n';
 import { createTranslator, useAppLocale } from '../i18n.ts';
 import { computeKBPermissions, type KBSurfaceKB, type KBSurfaceMe } from '../knowledge/permissions.ts';
@@ -1218,10 +1218,10 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                   </div>
                   <div className="setting-control flex flex-col gap-2">
                     <div className="slider-wrapper flex items-center gap-2.5">
-                      <input
+                      <Range
                         id="faq-search-threshold"
                         className="min-w-0 flex-1 cursor-pointer accent-accent-deep"
-                        type="range" min={FAQ_SEARCH_VECTOR_THRESHOLD.min} max={FAQ_SEARCH_VECTOR_THRESHOLD.max} step={FAQ_SEARCH_VECTOR_THRESHOLD.step}
+                        min={FAQ_SEARCH_VECTOR_THRESHOLD.min} max={FAQ_SEARCH_VECTOR_THRESHOLD.max} step={FAQ_SEARCH_VECTOR_THRESHOLD.step}
                         value={searchForm.vectorThreshold}
                         onChange={(event) => onSearchFormChange({ vectorThreshold: Number(event.target.value) })}
                       />
@@ -1236,10 +1236,10 @@ export function FAQPageView(props: FAQPageViewProps = {}) {
                   </div>
                   <div className="setting-control flex flex-col gap-2">
                     <div className="slider-wrapper flex items-center gap-2.5">
-                      <input
+                      <Range
                         id="faq-search-match-count"
                         className="min-w-0 flex-1 cursor-pointer accent-accent-deep"
-                        type="range" min={FAQ_SEARCH_MATCH_COUNT.min} max={FAQ_SEARCH_MATCH_COUNT.max} step={FAQ_SEARCH_MATCH_COUNT.step}
+                        min={FAQ_SEARCH_MATCH_COUNT.min} max={FAQ_SEARCH_MATCH_COUNT.max} step={FAQ_SEARCH_MATCH_COUNT.step}
                         value={searchForm.matchCount}
                         onChange={(event) => onSearchFormChange({ matchCount: Number(event.target.value) })}
                       />

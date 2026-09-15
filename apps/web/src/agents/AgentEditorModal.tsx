@@ -9,7 +9,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ModelConfiguration, SandboxConfigRecord, SkillCatalog, WeKnoraClient } from '@weknora/api-client';
-import { Checkbox, Input, Radio, Select, Textarea } from '@weknora/ui';
+import { Checkbox, Input, Radio, Range, Select, Textarea } from '@weknora/ui';
 import {
   applyAgentModeSwitch,
   applyKbSelectionMode,
@@ -142,7 +142,7 @@ function Slider({ value, min, max, step, ariaLabel, onChange }: {
 }) {
   return (
     <span className="inline-flex items-center gap-2.5 [&>input]:w-60">
-      <input type="range" min={min} max={max} step={step} value={value} aria-label={ariaLabel}
+      <Range min={min} max={max} step={step} value={value} aria-label={ariaLabel}
         onChange={(event) => onChange(Number(event.target.value))} />
       <span className="min-w-8 text-[13px]">{value}</span>
     </span>
