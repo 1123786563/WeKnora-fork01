@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { WeKnoraClient } from '@weknora/api-client';
-import { Button, Status } from '@weknora/ui';
+import { Button, Input, Status, Textarea } from '@weknora/ui';
 import { formatMessage, type Locale } from '@weknora/i18n';
 import { profilePasswordPatch, tenantPatch } from './surface.ts';
 
@@ -112,7 +112,7 @@ export function TenantInfoSection({ client, tenantId, role, locale, payload }: {
           <div className="setting-control">
             {editingName ? (
               <div className="inline-edit">
-                <input
+                <Input
                   className="box-border border border-[#cbd5e1] rounded-control bg-white text-ink [font:inherit] px-[.65rem] py-[.55rem]"
                   autoFocus
                   maxLength={64}
@@ -147,7 +147,7 @@ export function TenantInfoSection({ client, tenantId, role, locale, payload }: {
           <div className="setting-control">
             {editingDescription ? (
               <div className="inline-edit inline-edit-description">
-                <textarea
+                <Textarea
                   className="box-border border border-[#cbd5e1] rounded-control bg-white text-ink [font:inherit] px-[.65rem] py-[.55rem]"
                   autoFocus
                   rows={2}
@@ -377,7 +377,7 @@ export function UserProfileSection({ client, locale, payload }: {
       <form className="mt-1 grid gap-3 border-t border-dashed border-[rgba(120,135,155,0.3)] pt-4" onSubmit={(event) => void submit(event)}>
         <label className="grid gap-[.35rem] text-[#27364d] font-semibold">
           {t('userProfile.changePassword.currentLabel')}
-          <input
+          <Input
             className="w-full box-border border border-[#cbd5e1] rounded-control bg-white text-ink [font:inherit] px-[.65rem] py-[.55rem]"
             type="password"
             autoComplete="current-password"
@@ -390,7 +390,7 @@ export function UserProfileSection({ client, locale, payload }: {
         </label>
         <label className="grid gap-[.35rem] text-[#27364d] font-semibold">
           {t('userProfile.changePassword.newLabel')}
-          <input
+          <Input
             className="w-full box-border border border-[#cbd5e1] rounded-control bg-white text-ink [font:inherit] px-[.65rem] py-[.55rem]"
             type="password"
             autoComplete="new-password"
@@ -403,7 +403,7 @@ export function UserProfileSection({ client, locale, payload }: {
         </label>
         <label className="grid gap-[.35rem] text-[#27364d] font-semibold">
           {t('userProfile.changePassword.confirmLabel')}
-          <input
+          <Input
             className="w-full box-border border border-[#cbd5e1] rounded-control bg-white text-ink [font:inherit] px-[.65rem] py-[.55rem]"
             type="password"
             autoComplete="new-password"
