@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { readReactPlatformState } from '../platform/legacy-session.ts';
 import type { Organization, OrganizationJoinRequest, OrganizationMember, WeKnoraClient } from '@weknora/api-client';
 import { formatMessage, isLocale, supportedLocales } from '@weknora/i18n';
+import { Input, Select, Textarea } from '@weknora/ui';
 import { clampApplicationNote, inviteJoinMode, requestedRoleOf } from './join.ts';
 import { buildInviteLink, copyText, sharedResourceRow } from './settings-actions.ts';
 import { organizationRoleLabel } from './summary.ts';
@@ -793,12 +794,12 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                       <div className={ORG_FORM_ITEM}>
                         <label className={ORG_FORM_LABEL} htmlFor="organization-name">{t(locale, 'organization.name')} *</label>
                         <p className={ORG_FORM_DESC}>{t(locale, 'organization.editor.nameTip')}</p>
-                        <input id="organization-name" name="organization-name" className={ORG_FIELD + ' min-h-[34px]'} value={formName} onChange={(event) => setFormName(event.target.value)} required />
+                        <Input id="organization-name" name="organization-name" className={ORG_FIELD + ' min-h-[34px]'} value={formName} onChange={(event) => setFormName(event.target.value)} required />
                       </div>
                       <div className={ORG_FORM_ITEM}>
                         <label className={ORG_FORM_LABEL} htmlFor="organization-description">{t(locale, 'organization.description')}</label>
                         <p className={ORG_FORM_DESC}>{t(locale, 'organization.editor.descriptionTip')}</p>
-                        <textarea id="organization-description" name="organization-description" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={3} value={formDescription} onChange={(event) => setFormDescription(event.target.value)} />
+                        <Textarea id="organization-description" name="organization-description" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={3} value={formDescription} onChange={(event) => setFormDescription(event.target.value)} />
                       </div>
                       <button type="submit" className={ORG_BTN_PRIMARY} disabled={saving}>{t(locale, 'organization.createOrg')}</button>
                     </form>
@@ -809,11 +810,11 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                         <p className={ORG_SECTION_DESC}>{t(locale, 'organization.editor.basicDesc')}</p>
                         <div className={ORG_FORM_ITEM}>
                           <label className={ORG_FORM_LABEL} htmlFor="organization-name">{t(locale, 'organization.name')} *</label>
-                          <input id="organization-name" name="organization-name" className={ORG_FIELD + ' min-h-[34px]'} value={formName} onChange={(event) => setFormName(event.target.value)} required />
+                          <Input id="organization-name" name="organization-name" className={ORG_FIELD + ' min-h-[34px]'} value={formName} onChange={(event) => setFormName(event.target.value)} required />
                         </div>
                         <div className={ORG_FORM_ITEM}>
                           <label className={ORG_FORM_LABEL} htmlFor="organization-description">{t(locale, 'organization.description')}</label>
-                          <textarea id="organization-description" name="organization-description" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={3} value={formDescription} onChange={(event) => setFormDescription(event.target.value)} />
+                          <Textarea id="organization-description" name="organization-description" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={3} value={formDescription} onChange={(event) => setFormDescription(event.target.value)} />
                         </div>
                         <button type="submit" className={ORG_BTN_PRIMARY} disabled={saving}>{t(locale, 'common.save')}</button>
                       </form>
@@ -821,13 +822,13 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                         <h3 className={ORG_SECTION_TITLE}>{t(locale, 'organization.upgrade.requestUpgrade')}</h3>
                         <div className={ORG_FORM_ITEM}>
                           <label className={ORG_FORM_LABEL} htmlFor="upgrade-role">{t(locale, 'organization.upgrade.selectRole')}</label>
-                          <select id="upgrade-role" className={ORG_FIELD + ' min-h-[34px]'} value={upgradeRole} onChange={(event) => setUpgradeRole(event.target.value as 'admin' | 'editor' | 'viewer')}>
+                          <Select id="upgrade-role" className={ORG_FIELD + ' min-h-[34px]'} value={upgradeRole} onChange={(event) => setUpgradeRole(event.target.value as 'admin' | 'editor' | 'viewer')}>
                             {roleOptions.map(([value, labelKey]) => <option key={value} value={value}>{t(locale, labelKey)}</option>)}
-                          </select>
+                          </Select>
                         </div>
                         <div className={ORG_FORM_ITEM}>
                           <label className={ORG_FORM_LABEL} htmlFor="upgrade-note">{t(locale, 'organization.upgrade.reason')}</label>
-                          <textarea id="upgrade-note" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={2} maxLength={500} value={upgradeNote} onChange={(event) => setUpgradeNote(clampApplicationNote(event.target.value))} placeholder={t(locale, 'organization.upgrade.reasonPlaceholder')} />
+                          <Textarea id="upgrade-note" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={2} maxLength={500} value={upgradeNote} onChange={(event) => setUpgradeNote(clampApplicationNote(event.target.value))} placeholder={t(locale, 'organization.upgrade.reasonPlaceholder')} />
                         </div>
                         <button type="submit" className={ORG_BTN_OUTLINE}>{t(locale, 'organization.upgrade.submitBtn')}</button>
                       </form>
@@ -843,9 +844,9 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                             <span className="text-[12px] text-[rgba(23,26,29,0.6)]">{member.email} · {t(locale, 'organization.role.' + member.role)}</span>
                           </div>
                           <div className={ORG_ROW_ACTIONS}>
-                            <select className={ORG_FIELD + ' min-h-[30px] w-[116px]!'} aria-label={t(locale, 'organization.members.columns.role')} value={member.role} onChange={(event) => void updateMemberRole(member, event.target.value as 'admin' | 'editor' | 'viewer')}>
+                            <Select className={ORG_FIELD + ' min-h-[30px] w-[116px]!'} aria-label={t(locale, 'organization.members.columns.role')} value={member.role} onChange={(event) => void updateMemberRole(member, event.target.value as 'admin' | 'editor' | 'viewer')}>
                               {roleOptions.map(([value, labelKey]) => <option key={value} value={value}>{t(locale, labelKey)}</option>)}
-                            </select>
+                            </Select>
                             <button type="button" className={ORG_BTN_NEUTRAL} onClick={() => void removeMember(member)}>{t(locale, 'common.remove')}</button>
                           </div>
                         </div>
@@ -952,13 +953,13 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                           <div className="mt-[14px] flex flex-col gap-[12px] border-t border-dashed border-[#e7e7ea] pt-[14px]">
                             <div className={ORG_FORM_ITEM} style={{ marginBottom: '0' }}>
                               <label className={ORG_FORM_LABEL} htmlFor="join-request-role">{t(locale, 'organization.invite.requestRole')}</label>
-                              <select id="join-request-role" className={ORG_FIELD + ' min-h-[34px]'} aria-label={t(locale, 'organization.invite.requestRole')} value={requestRole} onChange={(event) => setRequestRole(event.target.value as 'admin' | 'editor' | 'viewer')}>
+                              <Select id="join-request-role" className={ORG_FIELD + ' min-h-[34px]'} aria-label={t(locale, 'organization.invite.requestRole')} value={requestRole} onChange={(event) => setRequestRole(event.target.value as 'admin' | 'editor' | 'viewer')}>
                                 {roleOptions.map(([value, labelKey]) => <option key={value} value={value}>{t(locale, labelKey)}</option>)}
-                              </select>
+                              </Select>
                             </div>
                             <div className={ORG_FORM_ITEM} style={{ marginBottom: '0' }}>
                               <label className={ORG_FORM_LABEL} htmlFor="join-request-note">{t(locale, 'organization.invite.applicationNote')}</label>
-                              <textarea id="join-request-note" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={2} maxLength={500} value={requestNote} onChange={(event) => setRequestNote(clampApplicationNote(event.target.value))} placeholder={t(locale, 'organization.invite.messagePlaceholder')} />
+                              <Textarea id="join-request-note" className={ORG_FIELD + ' min-h-[72px] resize-y'} rows={2} maxLength={500} value={requestNote} onChange={(event) => setRequestNote(clampApplicationNote(event.target.value))} placeholder={t(locale, 'organization.invite.messagePlaceholder')} />
                             </div>
                           </div>
                         </>
@@ -980,7 +981,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                       <div className={ORG_FORM_ITEM}>
                         <label className={ORG_FORM_LABEL} htmlFor="join-code">{t(locale, 'organization.inviteCode')}</label>
                         <p className={ORG_FORM_DESC}>{t(locale, 'organization.invite.inputDesc')}</p>
-                        <input id="join-code" name="join-code" className={ORG_FIELD + ' min-h-[34px]'} value={joinInputCode} maxLength={32} placeholder={t(locale, 'organization.inviteCodePlaceholder')} onChange={(event) => setJoinInputCode(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void doPreviewFromInput(); }} />
+                        <Input id="join-code" name="join-code" className={ORG_FIELD + ' min-h-[34px]'} value={joinInputCode} maxLength={32} placeholder={t(locale, 'organization.inviteCodePlaceholder')} onChange={(event) => setJoinInputCode(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void doPreviewFromInput(); }} />
                         <p className="m-0 mt-[8px] text-[12px] leading-[1.45] text-[rgba(23,26,29,0.4)]">{t(locale, 'organization.editor.inviteCodeTip')}</p>
                       </div>
                     </>
@@ -990,7 +991,7 @@ export function OrganizationsPage({ client, inviteCode, role }: { client: WeKnor
                         <label className={ORG_FORM_LABEL} htmlFor="join-search">{t(locale, 'organization.join.searchSpaces')}</label>
                         <p className={ORG_FORM_DESC}>{t(locale, 'organization.join.searchSpacesDesc')}</p>
                         <div style={{ position: 'relative' }}>
-                          <input id="join-search" className={ORG_FIELD + ' min-h-[34px]'} value={searchQuery} placeholder={t(locale, 'organization.join.searchSpacesPlaceholder')} onChange={(event) => onSearchQueryChange(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') runSearch(searchQuery.trim()); }} />
+                          <Input id="join-search" className={ORG_FIELD + ' min-h-[34px]'} value={searchQuery} placeholder={t(locale, 'organization.join.searchSpacesPlaceholder')} onChange={(event) => onSearchQueryChange(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') runSearch(searchQuery.trim()); }} />
                           <span style={{ position: 'absolute', right: '10px', top: '8px', color: 'rgba(23, 26, 29, 0.4)' }}><IconSearch /></span>
                         </div>
                       </div>
