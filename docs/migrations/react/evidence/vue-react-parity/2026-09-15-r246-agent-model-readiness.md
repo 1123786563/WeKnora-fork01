@@ -21,6 +21,8 @@ The check now uses the explicit `KnowledgeQA` contract through
 
 - Focused Agents suite: 17/17 passed, including `KnowledgeQA`/`llm`/`Embedding`
   readiness cases.
+- Full Web suite after the fix: 901/901 passed; no failed, cancelled, or skipped
+  tests.
 - `pnpm typecheck:web`: passed.
 - Browser, same account/locale/viewport/DPR: React remains on the agents route
   and opens the create editor; modal bounds are `127.5,54,1100,612`, matching
