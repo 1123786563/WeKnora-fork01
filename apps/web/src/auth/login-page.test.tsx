@@ -185,6 +185,33 @@ test('login heading and field labels use the Vue typography contract', async () 
   for (const label of labels) assert.match(label.className, /text-sm/);
 });
 
+test('login inputs keep the Vue inner-control geometry and transparent treatment', async () => {
+  await mountLogin(fakeClient());
+  const email = document.querySelector('input[autocomplete="email"]') as HTMLInputElement;
+  assert.ok(email, 'expected the email input');
+  assert.match(email.className, /\bh-6\b/);
+  assert.match(email.className, /\brounded-none\b/);
+  assert.match(email.className, /\bbg-transparent\b/);
+  assert.match(email.className, /\bleading-6\b/);
+  assert.equal(email.closest('.auth-input-shell')?.className.includes('h-10'), true);
+  assert.equal(email.closest('.auth-input-shell')?.className.includes('px-3'), true);
+});
+
+test('login page loads registration and OIDC config once without owning auto-setup', async () => {
+  let registrationConfigCalls = 0;
+  let oidcConfigCalls = 0;
+  let autoSetupCalls = 0;
+  const client = fakeClient();
+  const auth = client.auth as Record<string, unknown>;
+  auth.registrationConfig = async () => { registrationConfigCalls += 1; return { registrationMode: 'self_serve', complexPasswordEnabled: false }; };
+  auth.oidcConfig = async () => { oidcConfigCalls += 1; return { enabled: false }; };
+  auth.autoSetup = async () => { autoSetupCalls += 1; throw new Error('auto-setup belongs to bootstrap'); };
+  await mountLogin(client);
+  assert.equal(registrationConfigCalls, 1);
+  assert.equal(oidcConfigCalls, 1);
+  assert.equal(autoSetupCalls, 0);
+});
+
 test('carousel keeps all Vue slides mounted for a fade transition', async () => {
   await mountLogin(fakeClient());
   const slides = [...document.querySelectorAll('img[alt]')].filter((node) =>

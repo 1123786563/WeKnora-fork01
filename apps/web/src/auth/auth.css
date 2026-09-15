@@ -3,3 +3,6 @@
    nodePulse — 装饰背景知识节点呼吸动画；lineFlow — 装饰背景连线流动动画。 */
 @keyframes nodePulse { 0%, 100% { transform: scale(1); opacity: .65; } 50% { transform: scale(1.08); opacity: .9; } }
 @keyframes lineFlow { 0% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 18; } }
+
+/* Vue's t-input exposes a 24px inner input inside a 40px bordered shell. */
+.auth-input-shell { box-sizing: border-box; }
