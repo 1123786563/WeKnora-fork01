@@ -167,6 +167,22 @@ test('permission uses the Vue radio-button group instead of a native select', as
   assert.equal(group.querySelector('[aria-checked="true"]')?.textContent, 'Read-only');
 });
 
+test('resets permission to read-only whenever the dialog is reopened like Vue', async () => {
+  const client = clientFor(async () => ({ items: [], total: 0 }));
+  const container = await mount(client);
+  await select(container, 'Permission', 'editor');
+  assert.equal(container.querySelector('[role="radio"][aria-checked="true"]')?.textContent, 'Editable');
+
+  await act(async () => {
+    mountedRoot?.render(<KnowledgeBaseShareDialog client={client} knowledgeBaseId="kb-1" knowledgeBaseName="Docs" open={false} onClose={() => undefined} />);
+  });
+  await act(async () => {
+    mountedRoot?.render(<KnowledgeBaseShareDialog client={client} knowledgeBaseId="kb-1" knowledgeBaseName="Docs" open onClose={() => undefined} />);
+  });
+
+  assert.equal(container.querySelector('[role="radio"][aria-checked="true"]')?.textContent, 'Read-only');
+});
+
 test('filters viewer organizations and sends the selected permission in the create payload', async () => {
   const payloads: unknown[] = [];
   const client = clientFor(async () => ({ items: [], total: 0 }), {
