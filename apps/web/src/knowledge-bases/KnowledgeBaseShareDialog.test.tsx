@@ -111,6 +111,7 @@ test('opens on the share form and toggles to the shared-list view and back', asy
   assert.ok(container.querySelector('form'), 'the dialog should start on the share form');
   const showList = button(container, 'Shared to (1)');
   assert.ok(showList, 'existing shares should expose a shared-list entry point');
+  assert.equal(showList?.closest('form') !== null, true, 'Vue places the shared-list action in the form footer');
 
   await act(async () => showList?.click());
   assert.equal(container.querySelector('form'), null, 'the form should be hidden in shared-list view');

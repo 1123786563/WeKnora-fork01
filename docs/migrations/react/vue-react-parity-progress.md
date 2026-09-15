@@ -12,6 +12,12 @@
 - 聚焦共享对话框 13/13、Web 911/911、Web typecheck 和 diff check 通过；认证双端截图与真实后端共享/取消共享仍开放。
 - 证据：`evidence/vue-react-parity/2026-09-15-r321-share-space-avatar.md`。
 
+## 2026-09-15 Round R322 — Share dialog footer structure
+
+- 将“已共享到 (n)”操作移入 Vue `.share-actions` 对应的表单 footer，位于左侧，取消/确认按钮保持右侧并由 flexible spacer 分隔。
+- 聚焦共享对话框 13/13、Web 911/911、Web typecheck 和 diff check 通过；认证双端截图与真实后端共享链路仍开放。
+- 证据：`evidence/vue-react-parity/2026-09-15-r322-share-footer-structure.md`。
+
 ## 2026-09-14 Round N+35 — KB 设置 i18n 基础移植（kbSettings/knowledgeEditor 命名空间入共享 i18n）
 
 - 新增 packages/i18n/src/generated/kbSettingsMessages.ts（59 键 ×5 locale，parser/storage/vectorStore）与 knowledgeEditorMessages.ts（586 键 ×5 locale，basic/chunking/indexing 标签）；源为 Vue locales 字节级，en-US/ja-JP 缺键按 Vue fallbackLocale=zh-CN 的渲染值补齐；两域均入 index.ts 合并链。

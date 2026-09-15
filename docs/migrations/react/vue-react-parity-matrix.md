@@ -6,6 +6,8 @@ Latest addendum (2026-09-15 R319): the expanded platform navigation item geometr
 
 Latest addendum (2026-09-15 R321): N005 share-dialog organization picker and shared rows now use the Vue `SpaceAvatar` small variant (22px square, deterministic gradient/Emoji/decorative rules); focused share dialog 13/13, Web 911/911, typecheck and diff check pass. Evidence: `evidence/vue-react-parity/2026-09-15-r321-share-space-avatar.md`. Authenticated paired screenshot and real-backend share/unshare evidence remain open.
 
+Latest addendum (2026-09-15 R322): N005 now places the `sharedTo` action inside the Vue-shaped form footer before the flexible spacer and cancel/confirm controls; focused share dialog 13/13, Web 911/911, typecheck and diff check pass. Evidence: `evidence/vue-react-parity/2026-09-15-r322-share-footer-structure.md`. Authenticated paired screenshot and real-backend share/unshare evidence remain open.
+
 Baseline Vue: `frontend/` on branch `codex/react-multiclient`; migration inventory source commit `5cf093706ebecdfe8bc4eca80886e80c01805289`; current task base `9b79558b6229d79d0ceebe22e1de4a439982c615`.
 React targets: `apps/web`, `apps/desktop`, `apps/mobile`, `apps/embed`, shared `packages/*`.
 Status values: `pending` / `implementing` / `review` / `accepted` / `blocked`. Existing accepted rows are preserved; this pass does not bulk-mark rows accepted.
