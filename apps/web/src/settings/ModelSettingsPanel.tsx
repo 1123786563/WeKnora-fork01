@@ -906,8 +906,8 @@ export function ModelSettingsPanel({ client, role, initialModels, initialSubSect
     <section className="grid gap-4" data-testid="model-settings">
       <div className="wk-settings-panel-heading flex items-start justify-between gap-4 max-[720px]:flex-col">
         <div>
-          <h2 className="mt-0! mb-2! text-[20px] font-semibold">{t("modelSettings.title")}</h2>
-          <p className="wk-muted text-muted m-0">{t("modelSettings.description")}</p>
+          <h2 className="mt-0! mb-2! text-[20px] font-semibold leading-[1.4]">{t("modelSettings.title")}</h2>
+          <p className="wk-muted text-muted m-0 text-[14px] leading-[1.6]">{t("modelSettings.description")}</p>
         </div>
         {canCreate ? (
           <button type="button" className="inline-flex cursor-pointer items-center gap-1.5 border-0 bg-transparent px-0 py-1 font-[inherit] text-sm font-semibold text-[#0a8f4c] hover:text-[#067a3f] focus-visible:text-[#067a3f]" onClick={() => setDebugOpen(true)}>
