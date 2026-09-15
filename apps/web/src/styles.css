@@ -302,3 +302,11 @@ body { margin: 0; min-width: 320px; }
 }
 
 /* highlightKbId flash animation (Vue KnowledgeBaseList.vue highlight-flash) */
+
+/* Knowledge documents: match Vue's thin horizontal filter scrollbar. */
+.doc-filter-bar__filters {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+}
+.doc-filter-bar__filters::-webkit-scrollbar { height: 4px; }
+.doc-filter-bar__filters::-webkit-scrollbar-thumb { background-color: rgba(0, 0, 0, 0.15); border-radius: 2px; }
