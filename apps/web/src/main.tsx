@@ -301,6 +301,22 @@ async function bootstrap() {
       }
       return;
     }
+    // Vue router.beforeEach redirects an already-authenticated visitor away
+    // from /login. Keep the same public-entry behavior in React: validate the
+    // imported session before choosing the tenantless onboarding landing.
+    if (session.credential.kind === 'bearer') {
+      try {
+        const authMe = await client.auth.me();
+        const hydrated = scopeRuntime.hydrate(authMe);
+        session.tenantId = hydrated.scope.tenantId;
+        window.location.assign(hydrated.scope.tenantId ? '/platform/knowledge-bases' : '/onboarding/workspace');
+        return;
+      } catch {
+        scopeRuntime.logout();
+        await browserCredentialAdapter?.clear();
+        session = { ...session, credential: { kind: 'anonymous' }, tenantId: null };
+      }
+    }
     // Vue Login.vue:817-831 — lite-edition transparent auto-setup on /login.
     const AUTO_SETUP_FAILED_KEY = 'weknora_auto_setup_failed';
     if (window.localStorage.getItem(AUTO_SETUP_FAILED_KEY) !== 'true') {
