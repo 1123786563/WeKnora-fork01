@@ -7,6 +7,14 @@ import { editorRoute, selectFaqReferenceEditKey, selectFaqReferenceLabel, select
 
 interface ReferenceRow { id: string; label: string; detail: string; }
 
+function referenceError(cause: unknown, kind: KnowledgeReferenceKind, label: (key: string) => string): string {
+  const message = cause instanceof Error ? cause.message : '';
+  if (/feature is not enabled/i.test(message)) {
+    return label(kind === 'wiki' ? 'knowledgeEditor.mobile.wikiDisabled' : 'knowledgeEditor.mobile.faqDisabled');
+  }
+  return message || label(kind === 'wiki' ? 'knowledgeEditor.mobile.loadWikiFailed' : 'knowledgeEditor.mobile.loadFaqFailed');
+}
+
 export function KnowledgeReferenceScreen({ kind }: { kind: KnowledgeReferenceKind }) {
   const { id: rawId } = useLocalSearchParams<{ id: string }>();
   const kbId = Array.isArray(rawId) ? rawId[0] : rawId;
@@ -36,7 +44,7 @@ export function KnowledgeReferenceScreen({ kind }: { kind: KnowledgeReferenceKin
         setRows(response.data.map((entry) => ({ id: selectFaqReferenceEditKey(entry), label: selectFaqReferenceLabel(entry, { untitled: label('dataSource.untitled'), enabled: label('knowledgeEditor.faq.statusEnabled'), disabled: label('knowledgeEditor.faq.statusDisabled'), recommended: label('knowledgeEditor.faq.recommended') }), detail: entry.answers[0] || '' })));
       }
     } catch (cause) {
-      if (generation === loadGeneration.current) setError(cause instanceof Error ? cause.message : label(kind === 'wiki' ? 'knowledgeEditor.mobile.loadWikiFailed' : 'knowledgeEditor.mobile.loadFaqFailed'));
+      if (generation === loadGeneration.current) setError(referenceError(cause, kind, label));
     } finally {
       if (generation === loadGeneration.current) setLoading(false);
     }
