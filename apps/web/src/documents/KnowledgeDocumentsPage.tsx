@@ -1014,7 +1014,8 @@ export function UploadConfirmSections(props: UploadConfirmSectionsProps) {
               {props.asrModels.length > 0 ? (
                 <UploadSingleSelect className="wk-upload-model-select" ariaLabel={t("knowledgeEditor.asr.modelLabel")} placeholder={t("knowledgeEditor.asr.modelPlaceholder")} value={state.asrModelId} options={[{ value: "", label: t("knowledgeEditor.asr.modelPlaceholder") }, ...props.asrModels.map((model) => ({ value: model.id, label: model.name }))]} onChange={(value) => update({ asrModelId: value })} />
               ) : (
-                <input
+                <Input
+                  className="box-border w-full"
                   required
                   value={state.asrModelId}
                   onChange={(event) => update({ asrModelId: event.target.value })}
@@ -1403,9 +1404,9 @@ export function UploadGraphSettings(props: UploadGraphSettingsProps) {
                   />
                 </div>
                 <div className="wk-graph-add-tag w-full">
-                  <input
-                    type="text"
+                  <Input
                     className="box-border w-full"
+                    type="text"
                     placeholder={t("graphSettings.tagsPlaceholder")}
                     aria-label={t("graphSettings.tagsPlaceholder")}
                     onKeyDown={(event) => {
