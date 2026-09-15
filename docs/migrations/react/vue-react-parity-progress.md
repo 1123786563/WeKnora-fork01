@@ -1,5 +1,17 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-15 Round N+74 — N016 MCP 服务卡片排版
+
+- 对照 Vue `McpSettings.vue` 服务卡片，React 补齐卡片纵向撑满、正文 12px/18px、描述两行截断和 footer 底部对齐；通过项目设置样式文件集中承载，不改变 MCP API 或权限行为。
+- MCP 聚焦测试 13/13、`pnpm typecheck:web`、`git diff --check` 通过；证据：`evidence/vue-react-parity/2026-09-15-n016-mcp-service-card.md`。
+- N016 继续保持 `implementing`：同条件浏览器 computed-style、已同步 MCP 服务状态、真实后端成功/失败流程及 Wails/native 证据仍未闭环。
+
+## 2026-09-15 Round N+73 — N007 上传确认弹窗外层布局
+
+- 对照 Vue `UploadConfirmDialog.vue` 的 92vw/1160px、85vh/750px、220px 文件栏、216px 配置导航、独立配置滚动区和 800px 响应式堆叠行为，React 上传确认流程新增专用 Dialog 骨架与集中式样式覆盖；上传状态机、字段和交互回调保持不变。
+- 聚焦 upload-confirm 测试 37/37、`pnpm typecheck:web`、完整 Web 测试 911/911 通过；证据：`evidence/vue-react-parity/2026-09-15-n007-upload-dialog-shell.md`。
+- N007 继续保持 `implementing`：同条件 Vue/React 浏览器截图与 computed-style、真实上传/解析后端、Wails/native 运行时证据仍未闭环。
+
 ## 2026-09-15 Round R320 — Knowledge-base share dialog action parity
 
 - 对齐 Vue 共享知识库对话框：标题不再拼接知识库名，面板宽度为 520px，已共享列表的设置/取消共享操作改为仅图标，并保留本地化 `aria-label/title`。

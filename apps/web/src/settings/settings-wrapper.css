@@ -26,6 +26,13 @@
  *    以及今后落入抽屉的任何裸 <select>。 */
 @keyframes wk-audit-spin { to { transform: rotate(360deg); } }
 
+/* Vue McpSettings.service-card anatomy. */
+.wk-mcp-service-card { display: flex; height: 100%; flex-direction: column; }
+.wk-mcp-service-card-body { gap: 8px; }
+.wk-mcp-service-card-header { gap: 10px; }
+.wk-mcp-service-card-desc { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; margin: 0; overflow: hidden; font-size: 12px; line-height: 1.5; color: var(--color-muted, #66758b); }
+.wk-mcp-service-card-footer { margin-top: auto; padding-top: 0.65rem; }
+
 /* Vue .section (Settings.vue:892-894) carries no top margin inside
    .content-wrapper. The styles.css .wk-settings-section { margin-top: 1rem }
    base was deleted (its consumers carry utilities; a div has no default top

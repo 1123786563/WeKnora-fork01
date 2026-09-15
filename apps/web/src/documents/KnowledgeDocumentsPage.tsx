@@ -3652,9 +3652,12 @@ export function KnowledgeDocumentsPage({
         <Dialog
           open
           title={dialogTitle}
+          className="wk-upload-confirm-dialog"
           onClose={dialogMode === "reparse" ? closeReparseDialog : (uploading ? () => {} : cancelStagedUploads)}
         >
-          {dialogMode === "file" ? (
+          <div className="wk-upload-confirm-layout">
+            <aside className="wk-upload-confirm-files-column">
+              {dialogMode === "file" ? (
             <p className="wk-upload-confirm-summary" style={{ display: "flex", alignItems: "center", gap: "0.5rem", margin: "0 0 0.5rem" }}>
               <span className="wk-files-count" aria-label={ct("uploadConfirm.parseConfig")} style={{ minWidth: "1.4rem", textAlign: "center", borderRadius: "999px", padding: "0 0.35rem", border: "1px solid var(--wk-border, #e4e7ec)", fontSize: "0.85rem" }}>
                 {batchItemCount}
@@ -3797,6 +3800,16 @@ export function KnowledgeDocumentsPage({
               ) : null}
             </fieldset>
           ) : null}
+            </aside>
+            <aside className="wk-upload-confirm-settings-column">
+              <nav className="wk-upload-confirm-section-nav">
+          <UploadSectionNav
+            items={sectionNavItems.map((item) => ({ ...item, active: activeSection === item.key }))}
+            navLabel={ct("uploadConfirm.configNav")}
+            onSelect={goToSection}
+          />
+              </nav>
+              <main className="wk-upload-confirm-config-panel">
           {dialogMode !== "reparse" ? (
             <fieldset className="wk-upload-confirm-tags mb-3 block" id="wk-upload-section-tags" data-section="tags" style={{ display: activeSection === "tags" ? undefined : "none" }}>
               <legend>{ct("uploadConfirm.tabTags")}</legend>
@@ -3815,11 +3828,6 @@ export function KnowledgeDocumentsPage({
               ) : null}
             </fieldset>
           ) : null}
-          <UploadSectionNav
-            items={sectionNavItems.map((item) => ({ ...item, active: activeSection === item.key }))}
-            navLabel={ct("uploadConfirm.configNav")}
-            onSelect={goToSection}
-          />
           <UploadConfirmSections
             state={confirmState}
             update={updateConfirm}
@@ -3849,8 +3857,11 @@ export function KnowledgeDocumentsPage({
             }
             t={ct}
           />
+              </main>
+            </aside>
+          </div>
           {uploadError ? <Status tone="error">{uploadError}</Status> : null}
-          <div className="wk-list-actions mb-[0.75rem] flex items-center justify-end gap-[0.5rem]">
+          <div className="wk-upload-confirm-footer wk-list-actions flex items-center justify-end gap-[0.5rem]">
             <Button
               type="button"
               loading={uploading}
