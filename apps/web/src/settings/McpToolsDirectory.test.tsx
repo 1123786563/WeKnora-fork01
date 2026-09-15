@@ -14,9 +14,14 @@ test('MCP tools directory exposes Vue-aligned search, policy controls, details, 
 });
 
 test('MCP tools directory fails closed and offers policy retry', () => {
-  assert.match(source, /if \(policyError\)/);
+  assert.match(source, /policyError \?/);
   assert.match(source, /onRetryPolicies/);
   assert.match(source, /Status tone="error"/);
+});
+
+test('MCP policy errors keep the Vue tool directory visible while disabling policy controls', () => {
+  assert.match(source, /policyError[\s\S]*?visible\.map/);
+  assert.match(source, /disabled=\{busy \|\| busyTools\?\.has\(tool\.name\) === true \|\| Boolean\(policyError\)\}/);
 });
 
 test('MCP stale metadata keeps the Vue read-only directory without policy switches', () => {
