@@ -245,9 +245,19 @@ body { margin: 0; min-width: 320px; }
 .wks-content { flex: 1; overflow-y: auto; background-color: #fff; }
 
 .wks-content-wrapper { max-width: 760px; padding: 40px 48px; }
+.wks-content-wrapper--wide,
+.wks-content-wrapper--full {
+  max-width: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+.wks-content-wrapper--wide { padding: 32px 36px 40px; }
+.wks-content-wrapper--full { padding: 30px 34px 40px; }
 
 @media (max-width: 1100px) {
   .wks-content-wrapper { padding: 28px 24px 40px; }
+  .wks-content-wrapper--wide { padding: 32px 36px 40px; }
+  .wks-content-wrapper--full { padding: 30px 34px 40px; }
 }
 
 .wks-section { animation: wks-fade-in 0.3s ease; }

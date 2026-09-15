@@ -37,6 +37,7 @@ import './settings-wrapper.css';
 function errorText(error: unknown, fallback: string): string { return error instanceof Error ? error.message : fallback; }
 
 const PARTIALLY_PORTED_SECTIONS = new Set(['models', 'members', 'mcp', 'sandbox', 'skills', 'system-global', 'runtime-queues', 'platform-api-keys', 'system-audit-log']);
+const SYSTEM_ADMIN_SECTIONS = new Set(['system-global', 'runtime-queues', 'platform-api-keys', 'system-audit-log']);
 
 export async function readSettingsSection(client: WeKnoraClient, key: string, tenantId: number): Promise<unknown> {
   switch (key) {
@@ -261,7 +262,7 @@ export function SettingsPage({ client, tenantId, role = 'owner', capabilities = 
               </div>
             </nav>
             <section className="wks-content" aria-live="polite">
-              <div className="wks-content-wrapper">
+              <div className={`wks-content-wrapper${selectedKey === 'members' ? ' wks-content-wrapper--wide' : (SYSTEM_ADMIN_SECTIONS.has(selectedKey) || integrationTab ? ' wks-content-wrapper--full' : '')}`}>
                 {integrationTab ? (deniedPanel ?? <IntegrationsRoutePage key={`${tenantId}:${integrationTab}`} client={client} tenantId={String(tenantId)} activeTab={integrationTab} embedded />) : <div className="wk-settings-section wks-section">
                   {/* Panels owning their full Vue section header render it themselves:
                       general/models here, and members — TenantMembers.vue:8-65 renders
