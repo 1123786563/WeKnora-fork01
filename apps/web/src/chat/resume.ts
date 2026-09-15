@@ -16,3 +16,16 @@ export function findResumeTargetMessage(messages: readonly ChatMessage[]): strin
   }
   return undefined;
 }
+
+/**
+ * Vue marks the active assistant complete when a user stops generation. Keep
+ * the transient React row out of the next cold-resume scan as well.
+ */
+export function markChatMessageStopped(messages: readonly ChatMessage[], sessionId: string, assistantMessageId?: string): ChatMessage[] {
+  const transientId = `stream-${sessionId}`;
+  return messages.map((message) => (
+    message.role === 'assistant' && (message.id === transientId || message.id === assistantMessageId)
+      ? { ...message, is_completed: true }
+      : message
+  ));
+}

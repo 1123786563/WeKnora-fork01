@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { feedWithLastEventId, resumeStreamOptions, type LastEventIdHolder } from './stream-recovery.ts';
+import { ChatStreamApplicationError, feedWithLastEventId, isChatStreamApplicationError, resumeStreamOptions, type LastEventIdHolder } from './stream-recovery.ts';
+
+test('application stream errors are terminal and must not be retried as transport failures', () => {
+  const error = new ChatStreamApplicationError('quota exceeded');
+  assert.equal(isChatStreamApplicationError(error), true);
+  assert.equal(isChatStreamApplicationError(new Error('connection reset')), false);
+});
 
 test('resumeStreamOptions attaches the last seen event id once', () => {
   const base = { sessionId: 's1', body: { query: 'hi' } };

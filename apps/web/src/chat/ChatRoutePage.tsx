@@ -20,9 +20,9 @@ import { loadStarterQuestions } from './starter-questions.ts';
 import { createWebTerminalController, webSocketTarget, type WebTerminalController, type WebTerminalSnapshot } from './terminal.ts';
 import { saveArtifactDownload } from './artifact-download.ts';
 import { externalCitationTarget } from './citation.ts';
-import { findResumeTargetMessage } from './resume.ts';
+import { findResumeTargetMessage, markChatMessageStopped } from './resume.ts';
 import { buildSteerAction, isSteerConflict, type SteerMentionItem } from './steer-submit.ts';
-import { feedWithLastEventId, resumeStreamOptions, type LastEventIdHolder } from './stream-recovery.ts';
+import { ChatStreamApplicationError, feedWithLastEventId, isChatStreamApplicationError, resumeStreamOptions, type LastEventIdHolder } from './stream-recovery.ts';
 import { prepareSendRun } from './send-run.ts';
 import { applyOAuthApprovalCancellation, applyOAuthApprovalResolution, applyToolApprovalResolution } from './approval-state.ts';
 import { chatClearConfirmation } from './clear-confirmation.ts';
@@ -939,7 +939,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
       runState = reduceChatStream(runState, event);
       setStreamState(runState);
       rememberApprovalSnapshot(runState.assistantMessageId, Object.values(runState.approvals));
-      if (runState.phase === 'error') throw new Error(runState.error ?? 'Chat stream failed');
+      if (runState.phase === 'error') throw new ChatStreamApplicationError(runState.error ?? 'Chat stream failed');
       const injectedRows = runState.injectedUserMessages.map((injected) => ({
         id: injectedId(injected.steerId, injected.userMessageId),
         session_id: sessionId, role: 'user' as const, content: injected.content, is_completed: true,
@@ -973,6 +973,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
     if (messageId) {
       try { await client.chat.stop(sessionId, messageId, scope.signal); } catch { /* local stop still applies */ }
     }
+    setMessages((current) => markChatMessageStopped(current, sessionId, messageId));
     setStreamState((current) => ({ ...current, phase: 'stopped', artifactsPending: false }));
   }
 
@@ -1021,6 +1022,7 @@ export function ChatRoutePage({ client, scopeController, apiBaseUrl = '', knowle
         await client.chat.stream(streamOptions, feedWithLastEventId(feed, lastEventId));
       } catch (cause) {
         if (runController.signal.aborted) return;
+        if (isChatStreamApplicationError(cause)) throw cause;
         const retry = resumeStreamOptions(streamOptions, lastEventId.id);
         if (!retry) throw cause;
         await client.chat.stream(retry, feedWithLastEventId(feed, lastEventId));

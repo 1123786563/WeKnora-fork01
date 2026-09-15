@@ -10,6 +10,18 @@
  * there is nothing to resume from and the failure is simply surfaced).
  */
 
+/** An SSE error event is a terminal application result, not a broken socket. */
+export class ChatStreamApplicationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ChatStreamApplicationError';
+  }
+}
+
+export function isChatStreamApplicationError(error: unknown): error is ChatStreamApplicationError {
+  return error instanceof ChatStreamApplicationError;
+}
+
 /**
  * Returns the retry stream options for a failed stream, or null when a resume
  * is not possible (no events received, or a resume was already attempted).
