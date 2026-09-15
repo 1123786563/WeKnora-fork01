@@ -3488,3 +3488,21 @@ Baseline source for this backlog: current branch `codex/react-multiclient`, task
   real tenant permission/mutation flows, Wails runtime interaction, and any
   rows whose Vue source/runtime trigger is unresolved. No mobile item is used
   as acceptance for this updated objective.
+
+## 2026-09-15 Round R384 — Web-only integration verification
+
+- The updated objective explicitly excludes mobile code. Web-only changes from
+  the parallel pass were integrated conservatively: the existing large
+  knowledge-base editor was preserved while GraphSettings validation/state
+  coverage was retained; MCP labels were restored to the Vue zh-CN contract
+  after an agent introduced English fallback text.
+- Final Web verification after integration: 1134/1134 tests, Web typecheck,
+  Web build, desktop 6/6 tests, desktop typecheck, and `git diff --check`
+  passed. Build emitted only the existing large-chunk advisory.
+- The scheduler continued returning `agent thread limit reached` for later
+  dispatch attempts even after visible completed agents were closed. This is
+  recorded as an execution-environment limitation, not as evidence of page
+  parity or a reason to reduce scope.
+- Authenticated protected-page interaction, real tenant permissions/mutations,
+  Wails runtime behavior, and unresolved Vue source/runtime trigger conflicts
+  remain open; no completion claim is made.
