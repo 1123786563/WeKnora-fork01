@@ -710,7 +710,7 @@ function truncateNavText(text: string, max = 18): string {
 
 export function UploadSectionNav(props: UploadSectionNavProps) {
   return (
-    <nav className="wk-upload-section-nav" aria-label={props.navLabel} style={{ display: "grid", gap: "2px", margin: 0 }}>
+    <nav className="wk-upload-section-nav" aria-label={props.navLabel}>
       {props.items.map((item) => (
         <button
           key={item.key}
