@@ -54,7 +54,7 @@ const joinedOrg: Organization = {
   pending_join_request_count: 0,
 } as unknown as Organization;
 
-interface Calls { create: unknown[]; preview: string[]; join: unknown[]; submitJoinRequest: unknown[]; updateRole: unknown[][]; review: unknown[][]; leave: string[]; remove: string[]; update: unknown[][]; membersList: string[]; joinRequestsList: string[]; kbSharesList: string[]; inviteCode: string[] }
+interface Calls { create: unknown[]; preview: string[]; join: unknown[]; submitJoinRequest: unknown[]; updateRole: unknown[][]; review: unknown[][]; leave: string[]; remove: string[]; update: unknown[][]; membersList: string[]; joinRequestsList: string[]; kbSharesList: string[]; agentSharesList: string[]; inviteCode: string[] }
 
 // R017: auth/me drives the page's self-resolved canManageOrg when no explicit
 // role prop is passed. The default mirrors an admin home-tenant membership so
@@ -62,7 +62,7 @@ interface Calls { create: unknown[]; preview: string[]; join: unknown[]; submitJ
 export interface MeOverride { role: string; canAccessAllTenants?: boolean }
 
 function clientWith(organizations: Organization[], me_?: MeOverride): { client: WeKnoraClient; calls: Calls } {
-  const calls: Calls = { create: [], preview: [], join: [], submitJoinRequest: [], updateRole: [], review: [], leave: [], remove: [], update: [], membersList: [], joinRequestsList: [], kbSharesList: [], inviteCode: [] };
+  const calls: Calls = { create: [], preview: [], join: [], submitJoinRequest: [], updateRole: [], review: [], leave: [], remove: [], update: [], membersList: [], joinRequestsList: [], kbSharesList: [], agentSharesList: [], inviteCode: [] };
   const organizationsApi = {
     list: async () => ({ items: organizations, total: organizations.length }),
     get: async (id: string) => organizations.find((item) => item.id === id) ?? organizations[0],
@@ -88,6 +88,10 @@ function clientWith(organizations: Organization[], me_?: MeOverride): { client: 
     },
     knowledgeBaseShares: {
       listForOrganization: async (id: string) => { calls.kbSharesList.push(id); return { items: [], total: 0 }; },
+      remove: async () => {},
+    },
+    agentShares: {
+      listForOrganization: async (id: string) => { calls.agentSharesList.push(id); return { items: [{ id: 'agent-share-1', agent_id: 'agent-1', agent_name: 'Research agent', permission: 'viewer' }], total: 1 }; },
       remove: async () => {},
     },
   };
@@ -231,11 +235,28 @@ test('create header button opens a modal and the create API is called on submit'
   const nameInput = dialog.querySelector('input[name="organization-name"]');
   assert.ok(nameInput, 'expected name input inside the modal');
   await setInputValueAsync(nameInput as HTMLInputElement, '新空间');
+  const description = dialog.querySelector('textarea[name="organization-description"]');
+  assert.ok(description, 'expected description input inside the modal');
+  await setInputValueAsync(description as HTMLTextAreaElement, '  描述  ');
   const form = dialog.querySelector('form');
   assert.ok(form, 'expected create form');
   await submitForm(form as HTMLFormElement);
   assert.equal(calls.create.length, 1);
   assert.equal((calls.create[0] as { name: string }).name, '新空间');
+  assert.equal((calls.create[0] as { description: string }).description, '描述');
+});
+
+test('list failure renders an error state and retry recovers without the empty state', async () => {
+  let attempts = 0;
+  const { client } = clientWith([ownerOrg]);
+  client.identity.organizations.list = async () => { attempts += 1; if (attempts === 1) throw new Error('organizations unavailable'); return { items: [ownerOrg], total: 1 }; };
+  const root = await mountPage(client);
+  assert.match(root.textContent ?? '', /organizations unavailable/);
+  assert.doesNotMatch(root.textContent ?? '', /您还没有加入任何共享空间/);
+  await click(textButtons(root, '重试')[0]!);
+  await act(async () => {});
+  assert.match(root.textContent ?? '', /parity-org/);
+  assert.equal(attempts, 2);
 });
 
 test('create modal matches the Vue editor dimensions and keeps the primary action in its footer', async () => {
@@ -299,6 +320,7 @@ test('card click opens the shared-space settings modal with members and join req
   assert.match(dialog.textContent ?? '', /共享空间设置/);
   assert.deepEqual(calls.membersList, ['org-1']);
   assert.deepEqual(calls.joinRequestsList, ['org-1']);
+  assert.deepEqual(calls.agentSharesList, ['org-1']);
 
   await act(async () => {});
   const dialogReady = root.querySelector('[role="dialog"]') as HTMLElement;
@@ -324,6 +346,24 @@ test('card click opens the shared-space settings modal with members and join req
   assert.equal((calls.review[0] as unknown[])[1], 'r1');
 });
 
+test('settings renders shared agents and protects the organization owner member', async () => {
+  const { client } = clientWith([ownerOrg]);
+  client.identity.organizations.members.list = async () => ({ items: [{ id: 'owner-member', user_id: 'user-1', username: 'Owner', email: 'owner@x.dev', role: 'admin', tenant_id: 1, joined_at: '2030-01-01' }], total: 1 });
+  const root = await mountPage(client);
+  await click(orgCards(root)[0] as HTMLElement);
+  await act(async () => {});
+  const dialog = root.querySelector('[role="dialog"]') as HTMLElement;
+  const membersNav = [...dialog.querySelectorAll('button')].find((button) => button.textContent === '共享空间成员');
+  assert.ok(membersNav);
+  await click(membersNav);
+  assert.equal((dialog.querySelector('select[aria-label="角色"]') as HTMLSelectElement).disabled, true);
+  assert.equal(textButtons(dialog, '移除').length, 0);
+  const agentsNav = [...dialog.querySelectorAll('button')].find((button) => button.textContent === '共享智能体');
+  assert.ok(agentsNav);
+  await click(agentsNav);
+  assert.match(dialog.textContent ?? '', /Research agent/);
+});
+
 test('settings modal exposes an equivalent section selector when the sidebar is hidden on mobile', async () => {
   const { client } = clientWith([ownerOrg]);
   const root = await mountPage(client);
@@ -340,6 +380,7 @@ test('settings modal exposes an equivalent section selector when the sidebar is 
     ['members', '共享空间成员'],
     ['requests', '待审核申请'],
     ['shares', '共享知识库'],
+    ['agents', '共享智能体'],
     ['invite', '邀请链接'],
   ]);
   assert.equal(sectionSelector.value, 'basic');
