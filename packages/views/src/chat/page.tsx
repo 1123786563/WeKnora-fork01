@@ -503,7 +503,7 @@ export function ChatPage(props: ChatPageProps) {
             </button> : null}
           </div>
         </header> : null}
-      <div className={props.selectedSessionId ? 'wk-chat-conversation flex min-h-0 flex-1 flex-col px-[16px] pb-[12px] pt-0' : 'wk-chat-conversation wk-chat-conversation--empty flex min-h-0 flex-1 flex-col justify-center px-[16px] pb-[12px] pt-0'}>
+      <div className={props.selectedSessionId ? 'wk-chat-conversation flex min-h-0 flex-1 flex-col px-[16px] pb-[12px] pt-0' : 'wk-chat-conversation wk-chat-conversation--empty flex min-h-0 flex-1 flex-col justify-center px-[16px] pb-0 pt-0'}>
         {/* Vue creatChat.vue: the welcome heading is always part of the empty
             state; suggested-question cards load per selected agent. The empty
             view centers the welcome+composer cluster (.dialogue-wrap) and must
