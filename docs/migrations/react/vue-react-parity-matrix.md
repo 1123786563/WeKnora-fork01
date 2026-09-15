@@ -171,3 +171,4 @@ N021 chunk-detail content-length update (2026-09-15): ChunkDetailRenderer now us
 N021 chunk-detail document-ID/position follow-up (2026-09-15): ChunkDetailRenderer now uses Vue `chat.documentIdLabel` and `chat.positionLabel` across five locales; browser fixture evidence remains open.
 N021 related-chunks empty update (2026-09-15): RelatedChunksRenderer now uses Vue `chat.noRelatedChunks` for empty results across five locales; browser fixture evidence remains open.
 N021 knowledge-base count update (2026-09-15): KnowledgeBaseListRenderer now uses Vue `chat.knowledgeBaseCount` interpolation across five locales; browser fixture evidence remains open.
+N032 Android runtime update (2026-09-15): `459c2c69` verifies authenticated ChatScreen empty state on `test36-small` with real tenant KB scope, localized controls and disabled send when no model is configured; real model stream/stop/approval/attachment/reference flows remain open.
