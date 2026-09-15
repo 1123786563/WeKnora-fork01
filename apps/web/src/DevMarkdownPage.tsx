@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { hydrateMermaidBlocksWithBrowserDefaults } from '@weknora/views/chat/mermaid';
 import { renderChatMarkdown } from '@weknora/views/chat/markdown';
+import { Button } from '@weknora/ui/button';
+import { Textarea } from '@weknora/ui/textarea';
 
 const DEFAULT_MARKDOWN = `# Markdown rendering fixture
 
@@ -50,11 +52,11 @@ export function DevMarkdownPage() {
           <h1 className="text-[clamp(1.8rem,5vw,2.5rem)] my-[0.35rem]">Markdown rendering test</h1>
           <p className="wk-muted text-muted">Paste Markdown to inspect the escaped React rendering boundary.</p>
         </div>
-        <button type="button" onClick={() => setMarkdown(DEFAULT_MARKDOWN)}>Reset</button>
+        <Button type="button" onClick={() => setMarkdown(DEFAULT_MARKDOWN)}>Reset</Button>
       </header>
       <label className="wk-markdown-test-editor">
         Markdown input
-        <textarea value={markdown} onChange={(event) => setMarkdown(event.target.value)} rows={12} />
+        <Textarea value={markdown} onChange={(event) => setMarkdown(event.target.value)} rows={12} />
       </label>
       <section ref={outputRef} aria-label="Rendered Markdown" className="wk-markdown-test-output" dangerouslySetInnerHTML={{ __html: renderMarkdownFixture(markdown) }}>
       </section>
