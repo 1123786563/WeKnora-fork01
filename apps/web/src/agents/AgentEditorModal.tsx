@@ -9,6 +9,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ModelConfiguration, SandboxConfigRecord, SkillCatalog, WeKnoraClient } from '@weknora/api-client';
+import { Checkbox, Radio } from '@weknora/ui';
 import {
   applyAgentModeSwitch,
   applyKbSelectionMode,
@@ -122,8 +123,7 @@ function RadioGroup({ name, value, options, onChange }: {
     <div className="flex flex-wrap gap-2" role="radiogroup">
       {options.map((option) => (
         <label key={option.value} className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-3 py-[5px] text-[13px] [&>input]:accent-[var(--td-brand-color,#0052d9)] [&>input:disabled+span]:text-[var(--td-text-color-disabled,rgba(0,0,0,0.26))] ${option.value === value ? 'border-[var(--td-brand-color,#0052d9)] text-[var(--td-brand-color,#0052d9)]' : 'border-[var(--td-component-stroke,#dcdcdc)]'}`}>
-          <input
-            type="radio"
+          <Radio
             name={name}
             value={option.value}
             checked={option.value === value}
@@ -410,8 +410,7 @@ export function AgentEditorModal({ open, mode, agent, client, t, onClose, onSave
     const checked = form.config.knowledge_bases.includes(kb.value);
     return (
       <label key={kb.value} className="flex items-center gap-2 rounded-md border border-[var(--td-component-stroke,#e7e7e7)] px-2 py-1.5 text-[13px]">
-        <input
-          type="checkbox"
+        <Checkbox
           data-kb-id={kb.value}
           checked={checked}
           onChange={(event) => patch((draft) => {
