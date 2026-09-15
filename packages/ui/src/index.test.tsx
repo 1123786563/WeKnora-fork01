@@ -31,3 +31,17 @@ test('overlay and menu primitives render portal-ready accessible contracts', () 
   assert.match(markup, /role="tab" aria-selected="true"/);
   assert.match(markup, /role="alert"/);
 });
+
+test('Dialog gives each SSR instance a unique labelled title', () => {
+  const markup = renderToStaticMarkup(<>
+    <Dialog open title="First">One</Dialog>
+    <Dialog open title="Second">Two</Dialog>
+  </>);
+  const labelledBy = [...markup.matchAll(/aria-labelledby="([^"]+)"/g)].map(match => match[1]);
+  const titleIds = [...markup.matchAll(/<h2 id="([^"]+)">/g)].map(match => match[1]);
+
+  assert.equal(labelledBy.length, 2);
+  assert.equal(titleIds.length, 2);
+  assert.equal(new Set(titleIds).size, 2);
+  assert.deepEqual(labelledBy, titleIds);
+});
