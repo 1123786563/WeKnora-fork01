@@ -4,17 +4,13 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { FAQEntry, WikiPage } from '@weknora/api-client';
 import { useMobileRuntime } from '../../runtime.tsx';
 import { knowledgeListLabel } from './list.ts';
+import { canEditKnowledgeBase } from './access.ts';
 import { classifyMobileEditorError, createFaqDraft, createWikiDraft, validateFaqDraft, validateWikiDraft, type FaqEditorDraft, type WikiEditorDraft } from './editor.ts';
 
 type EditorKind = 'faq' | 'wiki';
 
 function firstParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
-}
-
-function canEdit(role: string | undefined): boolean {
-  const normalized = role?.trim().toLowerCase();
-  return normalized === 'owner' || normalized === 'admin';
 }
 
 export function KnowledgeEditorScreen() {
@@ -26,10 +22,12 @@ export function KnowledgeEditorScreen() {
   const router = useRouter();
   const label = useCallback((key: string, values: Record<string, string | number> = {}) => knowledgeListLabel(runtime.locale, key, values), [runtime.locale]);
   const role = runtime.workspaces.find((workspace) => String(workspace.id) === runtime.tenantId)?.role;
-  const writable = canEdit(role);
+  const [permission, setPermission] = useState<unknown>();
+  const [viaShare, setViaShare] = useState(false);
+  const writable = canEditKnowledgeBase({ permission, viaShare, workspaceRole: role });
   const [wiki, setWiki] = useState<WikiEditorDraft>({ title: '', summary: '', content: '', version: 1 });
   const [faq, setFaq] = useState<FaqEditorDraft>({ standardQuestion: '', answer: '', isEnabled: true, isRecommended: false });
-  const [loading, setLoading] = useState(Boolean(slug));
+  const [loading, setLoading] = useState(Boolean(kbId));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
@@ -41,16 +39,23 @@ export function KnowledgeEditorScreen() {
     : (slug ? label('knowledgeEditor.faq.editorEdit') : label('knowledgeEditor.faq.editorCreate')), [kind, label, slug]);
 
   const load = useCallback(async () => {
-    if (!kbId || !slug) return;
+    if (!kbId) return;
     const generation = ++loadGeneration.current;
     setLoading(true); setError(''); setConflict(false);
     try {
-      if (kind === 'wiki') {
-        const next = await runtime.client.wiki.get(kbId, slug);
-        if (generation === loadGeneration.current) setWiki(createWikiDraft(next));
-      } else {
-        const entry = await runtime.client.knowledge.faq.get(kbId, Number(slug));
-        if (generation === loadGeneration.current) setFaq(createFaqDraft(entry));
+      const settings = await runtime.client.knowledge.settings?.get?.(kbId);
+      if (generation !== loadGeneration.current) return;
+      const record = settings as Record<string, unknown> | null | undefined;
+      setPermission(record?.my_permission ?? record?.permission);
+      setViaShare(record?.isMine === false || record?.is_mine === false);
+      if (slug) {
+        if (kind === 'wiki') {
+          const next = await runtime.client.wiki.get(kbId, slug);
+          if (generation === loadGeneration.current) setWiki(createWikiDraft(next));
+        } else {
+          const entry = await runtime.client.knowledge.faq.get(kbId, Number(slug));
+          if (generation === loadGeneration.current) setFaq(createFaqDraft(entry));
+        }
       }
     } catch (cause) {
       if (generation === loadGeneration.current) setError(cause instanceof Error ? cause.message : label(kind === 'wiki' ? 'knowledgeEditor.mobile.loadWikiFailed' : 'knowledgeEditor.mobile.loadFaqFailed'));

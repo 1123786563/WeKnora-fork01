@@ -12,17 +12,17 @@ const React = require('react') as typeof import('react');
 const { act } = React;
 const { createRoot } = require('react-dom/client') as { createRoot: (host: Element) => { render(node: unknown): void; unmount(): void } };
 
-async function mount(locale: string, kind: 'wiki' | 'faq', slug?: string, result: 'ok' | 'error' = 'ok') {
+async function mount(locale: string, kind: 'wiki' | 'faq', slug?: string, result: 'ok' | 'error' = 'ok', workspaceRole = 'owner', sharedPermission?: string) {
   const dom = new JSDOM('<div id="root"></div>', { url: 'https://weknora.test' });
   const wiki = { slug: 'guide', title: 'Guide', summary: 'Summary', content: '# Guide', version: 3 };
   const faq = { id: 7, standard_question: 'How?', answers: ['Like this'], is_enabled: true, is_recommended: false };
   const runtime: any = {
     locale,
     tenantId: 'tenant-1',
-    workspaces: [{ id: 'tenant-1', role: 'owner' }],
+    workspaces: [{ id: 'tenant-1', role: workspaceRole }],
     client: {
       wiki: { get: async () => { if (result === 'error') throw {}; return wiki; }, update: async () => wiki, create: async () => wiki },
-      knowledge: { faq: { get: async () => { if (result === 'error') throw {}; return faq; }, update: async () => faq, create: async () => faq } },
+      knowledge: { faq: { get: async () => { if (result === 'error') throw {}; return faq; }, update: async () => faq, create: async () => faq }, settings: { get: async () => ({ my_permission: sharedPermission, isMine: sharedPermission !== undefined ? false : true }) } },
     },
   };
   Object.assign(globalThis, { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true, __knowledgeEditorRuntime: runtime });
@@ -77,5 +77,13 @@ test('faq editor renders localized labels and localized fallback error', async (
     assert.match(text, /標準質問/);
     assert.match(text, /FAQを読み込めません/);
     assert.doesNotMatch(text, /Unable to load FAQ/);
+  } finally { await page.close(); }
+});
+
+test('shared editor permission enables saving for a viewer workspace role', async () => {
+  const page = await mount('en-US', 'faq', undefined, 'ok', 'viewer', 'editor');
+  try {
+    const save = [...page.host.querySelectorAll('button')].find((button) => button.textContent === 'Save');
+    assert.ok(save, 'shared editor permission should expose Save');
   } finally { await page.close(); }
 });
