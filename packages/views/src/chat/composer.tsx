@@ -174,7 +174,7 @@ export function ChatComposer({ draft, disabled = false, onDraftChange, onSubmit,
         disabled={disabled}
         rows={2}
         placeholder={t.composerPlaceholder}
-        className="block box-border w-full min-h-[48px] resize-none overflow-auto border-0 bg-transparent px-[14px] pt-[10px] pb-[2px] [font:inherit] text-[14px] leading-[1.6] text-[rgba(0,0,0,0.9)] outline-none placeholder:text-[rgba(0,0,0,0.26)] disabled:cursor-not-allowed disabled:bg-transparent disabled:text-[rgba(0,0,0,0.4)]"
+        className="block box-border h-[72px] w-full min-h-[72px] resize-none overflow-auto border-0 bg-transparent px-[16px] pt-[16px] pb-[8px] [font:inherit] text-[16px] leading-[24px] text-[rgba(0,0,0,0.9)] outline-none placeholder:text-[rgba(0,0,0,0.26)] disabled:cursor-not-allowed disabled:bg-transparent disabled:text-[rgba(0,0,0,0.4)]"
       />
       <div className="wk-chat-control-bar relative mx-[16px] mb-[12px] mt-0 flex flex-wrap items-center justify-between gap-[8px] pt-[8px]">
         <div className="wk-chat-control-left flex min-w-0 flex-1 flex-wrap items-center gap-[8px]">
