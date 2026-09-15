@@ -9,6 +9,7 @@ import {
   graphActionPath,
   graphDatabaseEnabled,
   graphExample,
+  shouldRenderGraphActions,
   validateGraphSettings,
   type GraphExtractConfig,
 } from './GraphSettings.tsx';
@@ -55,6 +56,12 @@ test('validates the same graph action preconditions as Vue', () => {
   assert.deepEqual(validateGraphSettings(emptyGraph(), 'llm-1', 'relations'), ['pleaseInputText']);
   assert.deepEqual(validateGraphSettings({ ...emptyGraph(), text: 'sample' }, 'llm-1', 'relations'), []);
   assert.deepEqual(validateGraphSettings(emptyGraph(), '', 'text'), ['completeModelConfig']);
+});
+
+test('hides protected graph actions unless the caller explicitly grants admin capability', () => {
+  assert.equal(shouldRenderGraphActions(undefined), false);
+  assert.equal(shouldRenderGraphActions(false), false);
+  assert.equal(shouldRenderGraphActions(true), true);
 });
 
 test('provides the Vue default example without sharing mutable graph data', () => {
