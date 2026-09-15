@@ -107,7 +107,7 @@ export function GraphSettings({ graphExtract, modelId, client, embedded = false,
     {!embedded ? <header className="wk-graph-header"><h2>Knowledge Graph Configuration</h2><p className="wk-muted">Configure entity-relationship extraction to automatically build a knowledge graph from text.</p></header> : null}
     {system.status === 'loading' ? <Status>Loading graph database status…</Status> : null}
     {system.status === 'error' ? <Status tone="error">{system.message}</Status> : null}
-    {system.status === 'ready' && !enabled ? <Alert tone="default"><div>Knowledge graph database is not enabled; entity-relationship extraction is unavailable.</div>{!embedded && onOpenGraphGuide ? <Button type="button" variant="text" onClick={onOpenGraphGuide}>How to enable knowledge graph?</Button> : null}</Alert> : null}
+    {system.status === 'ready' && !enabled ? <Alert tone="neutral"><div>Knowledge graph database is not enabled; entity-relationship extraction is unavailable.</div>{!embedded && onOpenGraphGuide ? <Button type="button" variant="text" onClick={onOpenGraphGuide}>How to enable knowledge graph?</Button> : null}</Alert> : null}
     {enabled ? <div className="wk-graph-form">
       <div className="wk-graph-row"><div><strong>Enable entity-relationship extraction</strong><p className="wk-muted">Extract entities and relationships from uploaded text.</p></div><label><input type="checkbox" checked={local.enabled} onChange={(event) => setEnabled(event.target.checked)} /> Enable</label></div>
       {local.enabled ? <>

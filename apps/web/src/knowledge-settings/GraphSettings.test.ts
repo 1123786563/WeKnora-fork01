@@ -1,17 +1,20 @@
 import assert from 'node:assert/strict';
+import * as nodeModule from 'node:module';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import {
-  clearDisabledGraphData,
-  graphActionPath,
-  graphDatabaseEnabled,
-  graphExample,
-  validateGraphSettings,
-  type GraphExtractConfig,
-} from './GraphSettings.tsx';
+type ResolveHook = (specifier: string, context: unknown, nextResolve: (specifier: string, context: unknown) => unknown) => unknown;
+const resolveCSS: ResolveHook = (specifier, context, nextResolve) => specifier.endsWith('.css')
+  ? { shortCircuit: true, url: 'data:text/javascript,export default {}' }
+  : nextResolve(specifier, context);
+const hooks = nodeModule as typeof nodeModule & { registerHooks?: (hooks: { resolve: ResolveHook }) => void };
+if (hooks.registerHooks) hooks.registerHooks({ resolve: resolveCSS });
+else nodeModule.register(`data:text/javascript,${encodeURIComponent(`export async function resolve(specifier, context, nextResolve) { if (specifier.endsWith('.css')) return { shortCircuit: true, url: 'data:text/javascript,export default {}' }; return nextResolve(specifier, context); }`)}`, import.meta.url);
+
+const { clearDisabledGraphData, graphActionPath, graphDatabaseEnabled, graphExample, validateGraphSettings } = await import('./GraphSettings.tsx');
+type GraphExtractConfig = import('./GraphSettings.tsx').GraphExtractConfig;
 
 const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'GraphSettings.tsx'), 'utf8');
 

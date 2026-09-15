@@ -20,21 +20,21 @@ function parametersOf(schema: unknown): Array<{ name: string; type?: string; req
 
 export function McpToolsDirectory({ tools, serviceId, approvals, busy, busyTools, policyError, onRetryPolicies, onPolicyChange }: Props) {
   const t = (key: string) => ({
-    'mcpMetadata.searchTools': 'Search MCP tools',
-    'mcpMetadata.retry': 'Retry',
-    'mcpMetadata.details': 'Details',
-    'mcpMetadata.description': 'Description',
-    'mcpMetadata.parameters': 'Parameters',
-    'mcpMetadata.fullSchema': 'Full schema',
-    'mcpMetadata.noDescription': 'No description',
-    'mcpMetadata.required': 'required',
-    'mcpMetadata.noParameters': 'No parameters',
-    'mcpMetadata.enabled': 'Enabled',
-    'mcpMetadata.approval': 'Require approval',
-    'mcpMetadata.tools': 'MCP tools',
-    'mcpMetadata.previous': 'Previous',
-    'mcpMetadata.next': 'Next',
-    'mcpMetadata.noTools': 'No MCP tools',
+    'mcpMetadata.searchTools': '搜索工具名称或描述',
+    'mcpMetadata.retry': '重试',
+    'mcpMetadata.details': '详情',
+    'mcpMetadata.description': '描述',
+    'mcpMetadata.parameters': '参数',
+    'mcpMetadata.fullSchema': '完整 Schema',
+    'mcpMetadata.noDescription': '暂无描述',
+    'mcpMetadata.required': '必填',
+    'mcpMetadata.noParameters': '无参数',
+    'mcpMetadata.enabled': '启用工具',
+    'mcpMetadata.approval': '调用需审批',
+    'mcpMetadata.tools': 'MCP 工具',
+    'mcpMetadata.previous': '上一步',
+    'mcpMetadata.next': '下一页',
+    'mcpMetadata.noTools': '暂无 MCP 工具',
   }[key] ?? key);
   const pageSize = 20;
   const [query, setQuery] = useState('');

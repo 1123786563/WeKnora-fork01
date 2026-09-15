@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import * as nodeModule from 'node:module';
 import test from 'node:test';
 import * as React from 'react';
@@ -18,6 +19,7 @@ else nodeModule.register(`data:text/javascript,${encodeURIComponent(`
 `)}`, import.meta.url);
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 const { McpToolsDirectory } = await import('./McpToolsDirectory.tsx');
+const source = readFileSync(new URL('./McpToolsDirectory.tsx', import.meta.url), 'utf8');
 
 test('MCP tools directory preserves Vue detail tabs, policy controls, and pagination entry', () => {
   const html = renderToStaticMarkup(React.createElement(McpToolsDirectory, {
