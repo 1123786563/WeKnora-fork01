@@ -111,6 +111,12 @@ test('page header shows agent title, subtitle and the sparkles create button', (
   assert.match(html, /<h2[^>]*>智能体<\/h2>/);
   assert.match(html, /配置和管理您的智能体，自定义对话行为和能力/);
   assert.match(html, /创建智能体/);
+  const populated = renderToStaticMarkup(React.createElement(AgentsPageView, {
+    ...baseViewProps,
+    isSectioned: false,
+    flatCards: [{ id: 'agent-1', name: '助手', is_builtin: false, isMine: true }],
+  }));
+  assert.doesNotMatch(populated, /bg-\[#07c05f\]/, 'populated Vue list has no extra green text create button');
 
 test('list-load failure renders no raw error payload (Vue parity: silent empty state)', () => {
   const html = renderToStaticMarkup(React.createElement(AgentsPageView, {

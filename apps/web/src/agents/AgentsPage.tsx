@@ -514,9 +514,6 @@ export function AgentsPageView(props: AgentsPageViewProps) {
             </div>
             <p className="m-0 text-[14px] font-normal leading-5 opacity-65">{t('agent.subtitle')}</p>
           </div>
-          {canCreate ? (
-            <button type="button" className="relative inline-flex cursor-pointer items-center gap-1.5 overflow-hidden rounded-md border-none bg-[#07c05f] px-4 py-[7px] text-[14px] text-white transition-[background] duration-200 ease-[ease] hover:bg-[#06b04d]" data-guide="agent-list-create" onClick={props.onCreate}><SparklesIcon size={18} /><span>{t('agent.createAgent')}</span></button>
-          ) : null}
         </header>
         {notice ? <Status tone="success">{notice}</Status> : null}
         {loading ? <div className="grid min-w-0 flex-1 content-start gap-3 overflow-y-auto pr-7 pb-2 grid-cols-1 min-[900px]:grid-cols-2 min-[1250px]:grid-cols-3 min-[1600px]:grid-cols-4 min-[1900px]:grid-cols-5 min-[2200px]:grid-cols-6" aria-busy="true">{Array.from({ length: 6 }, (_, index) => <div className="h-[136px] animate-[wk-agent-shimmer_1.2s_ease_infinite] rounded-lg border border-[rgba(127,127,127,0.18)] bg-[linear-gradient(90deg,rgba(127,127,127,0.06)_25%,rgba(127,127,127,0.12)_37%,rgba(127,127,127,0.06)_63%)] bg-[length:400%_100%]" key={index} />)}</div> : null}
