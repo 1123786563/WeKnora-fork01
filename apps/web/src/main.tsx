@@ -1,5 +1,5 @@
 import { createRoot } from 'react-dom/client';
-import { lazy, Suspense, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { createRefreshCoordinator, createWeKnoraClient, type AuthSession, type Credential } from '@weknora/api-client';
 import { Status } from '@weknora/ui';
 import { isLocale, loadingLabel, type Locale } from '@weknora/i18n/runtime';
@@ -14,6 +14,7 @@ import { initTheme } from './theme.ts';
 import { createWebScopeRuntime } from './platform/scope-runtime.ts';
 import { createWebPlatformAdapters } from './platform/adapters.ts';
 import { guardRoute, organizationInviteCode, protectedPageForRoute, resolveRoute, routeRedirect } from './routes.tsx';
+import { shouldOpenWiki, wikiEntryPath } from './knowledge/wiki-route.ts';
 const ChatRoutePage = lazy(() => import('./chat/ChatRoutePage.tsx').then((module) => ({ default: module.ChatRoutePage })));
 const IntegrationsRoutePage = lazy(() => import('./integrations/IntegrationsRoutePage.tsx').then((module) => ({ default: module.IntegrationsRoutePage })));
 const KnowledgeDocumentsPage = lazy(() => import('./documents/KnowledgeDocumentsPage.tsx').then((module) => ({ default: module.KnowledgeDocumentsPage })));
@@ -35,6 +36,26 @@ const PlatformShell = lazy(() => import('./platform/PlatformShell.tsx').then((mo
 const LoginPage = lazy(() => import('./auth/LoginPage.tsx').then((module) => ({ default: module.LoginPage })));
 const JoinPage = lazy(() => import('./auth/JoinPage.tsx').then((module) => ({ default: module.JoinPage })));
 const WorkspaceOnboardingPage = lazy(() => import('./auth/WorkspaceOnboardingPage.tsx').then((module) => ({ default: module.WorkspaceOnboardingPage })));
+
+function WikiEntry({ client, knowledgeBaseId, initialSlug, canContribute }: { client: ReturnType<typeof createWeKnoraClient>; knowledgeBaseId: string; initialSlug?: string; canContribute: boolean }) {
+  const [wikiEnabled, setWikiEnabled] = useState<boolean | null>(null);
+  useEffect(() => {
+    let active = true;
+    void client.knowledgeBases.settings.get(knowledgeBaseId).then((kb) => {
+      if (active) setWikiEnabled(shouldOpenWiki(kb));
+    }).catch(() => {
+      // Preserve the existing Wiki error surface when capability lookup is unavailable.
+      if (active) setWikiEnabled(true);
+    });
+    return () => { active = false; };
+  }, [client, knowledgeBaseId]);
+  if (wikiEnabled === false) {
+    window.history.replaceState({}, document.title, wikiEntryPath(knowledgeBaseId));
+    return <KnowledgeDocumentsPage client={client} knowledgeBaseId={knowledgeBaseId} onOpenDocument={(document) => window.location.assign(`/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}/documents/${encodeURIComponent(document.id)}`)} />;
+  }
+  if (wikiEnabled === null) return <Status tone="neutral">加载中…</Status>;
+  return <WikiPage client={client} knowledgeBaseId={knowledgeBaseId} initialSlug={initialSlug} canContribute={canContribute} />;
+}
 import './styles.css';
 
 const oidcCallback = parseOIDCCallbackHash(window.location.hash);
@@ -196,7 +217,7 @@ function renderProtected() {
   } else if (route.kind === 'knowledge-document') {
     renderShell(<KnowledgeDocumentDetailPage client={client} documentId={route.documentId} onBack={() => window.location.assign(`/knowledgeBase/${encodeURIComponent(route.knowledgeBaseId)}`)} />);
   } else if (route.kind === 'knowledge-wiki') {
-    renderShell(<WikiPage client={client} knowledgeBaseId={route.knowledgeBaseId} canContribute={scopeRuntime.role() !== 'viewer'} />);
+    renderShell(<WikiEntry client={client} knowledgeBaseId={route.knowledgeBaseId} canContribute={scopeRuntime.role() !== 'viewer'} />);
   } else if (route.kind === 'knowledge-faq') {
     renderShell(<FAQPage client={client} knowledgeBaseId={route.knowledgeBaseId} />);
   } else if (route.kind === 'knowledge-settings') {
@@ -217,7 +238,7 @@ function renderProtected() {
     renderShell(<AdministrationPage client={client} tenantId={Number(scopeRuntime.current().scope.tenantId)} systemAdmin />);
   } else if (route.kind === 'knowledge-base' && route.knowledgeBaseId) {
     const knowledgeBaseId = route.knowledgeBaseId;
-    if (route.tab === 'wiki') renderShell(<WikiPage client={client} knowledgeBaseId={knowledgeBaseId} initialSlug={route.slug} canContribute={scopeRuntime.role() !== 'viewer'} />);
+    if (route.tab === 'wiki') renderShell(<WikiEntry client={client} knowledgeBaseId={knowledgeBaseId} initialSlug={route.slug} canContribute={scopeRuntime.role() !== 'viewer'} />);
     else if (route.tab === 'graph') renderShell(<KnowledgeGraphPage client={client} knowledgeBaseId={knowledgeBaseId} slug={route.slug} />);
     else renderShell(<KnowledgeDocumentsPage client={client} knowledgeBaseId={knowledgeBaseId} onOpenDocument={(document) => window.location.assign(`/knowledgeBase/${encodeURIComponent(knowledgeBaseId)}/documents/${encodeURIComponent(document.id)}`)} />);
   } else if (route.kind === 'chat' || route.path === '/platform/creatChat' || route.path.startsWith('/platform/chat/')) {
