@@ -12,6 +12,8 @@ Port the Vue `UploadConfirmDialog.vue` outer geometry into the React upload conf
 
 `apps/web/src/documents/KnowledgeDocumentsPage.tsx` now uses the project `Dialog` with dedicated upload-confirm layout, files/settings columns, section-navigation rail, config scroll panel, and footer classes. `packages/ui/src/styles.css` owns the shared geometry and responsive overrides instead of the default narrow dialog surface.
 
+The navigation rail keeps `UploadSectionNav` as the only semantic `nav`; the outer sizing wrapper is non-semantic, avoiding nested navigation landmarks while preserving the Vue three-column structure.
+
 ## Verification
 
 - Focused upload-confirm tests: 37/37 passed.

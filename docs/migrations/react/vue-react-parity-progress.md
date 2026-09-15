@@ -1,5 +1,10 @@
 # Vue → React 逐页验收进度账本（vue-react-parity-progress）
 
+## 2026-09-15 Round N+76 — N007 上传配置导航语义修正
+
+- 复核 N007 弹窗骨架后移除外层重复 `<nav>`，保留 `UploadSectionNav` 的唯一语义导航，避免嵌套 landmark 与滚动样式冲突。
+- 聚焦 upload-confirm 测试 37/37、`pnpm typecheck:web`、`git diff --check` 通过；N007 继续保持 `implementing`，真实浏览器/后端/平台证据仍开放。
+
 ## 2026-09-15 Round N+75 — N005 上传遮罩插画与文案
 
 - 对照 Vue `upload-mask.vue`，React 上传遮罩接入原始 `upload-mask.svg`，补齐 164×162 插画、24px/26px 标题和两条 12px 格式说明；文案改用共享 i18n，保留现有百分比进度和无障碍 progressbar 语义。
