@@ -856,8 +856,8 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
             aria-modal="true"
             aria-label={draft.id ? t("mcpServiceDialog.editTitle") : t("mcpServiceDialog.addTitle")}
           >
-            <div className="wk-settings-panel-heading flex items-start justify-between gap-4 border-b border-[#eef1f5] pb-4 mb-4 max-[720px]:flex-col sticky top-0 z-[1] bg-white pt-[.25rem]">
-              <div>
+            <div className="wk-settings-panel-heading relative flex h-[104px] flex-col gap-0 border-b border-[#eef1f5] mb-0 max-[720px]:flex-col sticky top-0 z-[1] bg-white px-0 pb-3 pt-[14px]">
+              <div className="min-w-0">
                 <h3>{draft.id ? t("mcpServiceDialog.editTitle") : t("mcpServiceDialog.addTitle")}</h3>
                 <p className="wk-muted text-muted m-0 flex items-center gap-2">
                   {draft.transportType === "http-streamable" ? "HTTP Streamable" : "SSE"}
@@ -871,38 +871,39 @@ export function McpSettingsPanel({ client, role, initialServices }: Props) {
                     {draft.enabled ? t("mcpSettings.enabled") : t("mcpSettings.disabled")}
                   </span>
                 </p>
+                <nav className="mt-2 flex h-6 items-center gap-2" aria-label={t("mcpMetadata.setupProgress")}>
+                  <button
+                    type="button"
+                    className={`${mcpStepButton} ${step === 0 ? "text-[#2e6de6]!" : step > 0 ? "text-[#506078]!" : ""}`}
+                    aria-current={step === 0 ? "step" : undefined}
+                    disabled={dialogBusy}
+                    onClick={() => setStep(0)}
+                  >
+                    1. {t("mcpMetadata.connection")}
+                  </button>
+                  <span aria-hidden="true"> → </span>
+                  <button
+                    type="button"
+                    className={`${mcpStepButton} ${step === 1 ? "text-[#2e6de6]!" : ""}`}
+                    aria-current={step === 1 ? "step" : undefined}
+                    disabled={dialogBusy}
+                    onClick={() => {
+                      if (step === 0) formRef.current?.requestSubmit();
+                    }}
+                  >
+                    2. {t("mcpMetadata.toolsAndUsage")}
+                  </button>
+                </nav>
               </div>
               <Button
                 type="button"
+                className="absolute right-0 top-[14px]"
                 disabled={saving}
                 onClick={closeEditor}
               >
                 {t("common.close")}
               </Button>
             </div>
-            <nav className="mt-[.6rem] mb-[.2rem] flex items-center gap-2" aria-label={t("mcpMetadata.setupProgress")}>
-              <button
-                type="button"
-                className={`${mcpStepButton} ${step === 0 ? "text-[#2e6de6]!" : step > 0 ? "text-[#506078]!" : ""}`}
-                aria-current={step === 0 ? "step" : undefined}
-                disabled={dialogBusy}
-                onClick={() => setStep(0)}
-              >
-                1. {t("mcpMetadata.connection")}
-              </button>
-              <span aria-hidden="true"> → </span>
-              <button
-                type="button"
-                className={`${mcpStepButton} ${step === 1 ? "text-[#2e6de6]!" : ""}`}
-                aria-current={step === 1 ? "step" : undefined}
-                disabled={dialogBusy}
-                onClick={() => {
-                  if (step === 0) formRef.current?.requestSubmit();
-                }}
-              >
-                2. {t("mcpMetadata.toolsAndUsage")}
-              </button>
-            </nav>
             <form
               ref={formRef}
               className="wk-settings-editor my-4 grid gap-[.8rem] max-w-none! [&_label]:grid [&_label]:gap-[.35rem] [&_label]:text-[#27364d] [&_label]:font-semibold [&_input]:w-full [&_input]:box-border [&_input]:border [&_input]:border-[#cbd5e1] [&_input]:rounded-control [&_input]:bg-white [&_input]:text-ink [&_input]:[font:inherit] [&_input]:px-[.65rem] [&_input]:py-[.55rem] [&_textarea]:w-full [&_textarea]:box-border [&_textarea]:border [&_textarea]:border-[#cbd5e1] [&_textarea]:rounded-control [&_textarea]:bg-white [&_textarea]:text-ink [&_textarea]:[font:inherit] [&_textarea]:px-[.65rem] [&_textarea]:py-[.55rem] [&_select]:w-full [&_select]:[font:inherit]"
